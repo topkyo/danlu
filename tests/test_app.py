@@ -18,7 +18,7 @@ from aiwiki.app import (
     parse_frontmatter,
 )
 from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
-from aiwiki.drop import drop_image, drop_pdf, drop_repo, drop_url
+from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
 from aiwiki.llm import CompletionResult
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, watch_inbox
 
@@ -256,6 +256,52 @@ class AiwikiFlowTests(unittest.TestCase):
         auto_process_once(self.root, deterministic_only=True, semantic_lint=False)
         manifest = load_manifest(self.root)
         self.assertEqual(manifest["entries"][0]["source_type"], "url-drop")
+
+    def test_fetch_url_prefers_browser_rendered_dom_when_available(self) -> None:
+        raw_html = "<html><head><title>Loading</title></head><body><main>Loading...</main></body></html>"
+        rendered_html = (
+            "<html><head><title>Rendered Article</title></head>"
+            "<body><article><h1>Rendered Article</h1><p>Hydrated content wins.</p></article></body></html>"
+        )
+        with patch("aiwiki.drop._http_fetch_url") as fetch_mock:
+            fetch_mock.return_value = {
+                "final_url": "https://example.com/post",
+                "content_type": "text/html",
+                "status": "200",
+                "text": raw_html,
+                "error": "",
+            }
+            with patch(
+                "aiwiki.drop._render_url_in_browser",
+                return_value={"html": rendered_html, "backend": "playwright-chromium"},
+            ):
+                fetched = _fetch_url("https://example.com/post")
+        self.assertEqual(fetched["title"], "Rendered Article")
+        self.assertIn("Hydrated content wins.", fetched["text"])
+        self.assertEqual(fetched["browser_backend"], "playwright-chromium")
+        self.assertEqual(fetched["extraction_mode"], "chromium-rendered+bs4-main-content")
+
+    def test_fetch_url_can_fall_back_to_browser_when_http_fetch_fails(self) -> None:
+        rendered_html = (
+            "<html><head><title>Browser Only</title></head>"
+            "<body><article><p>Rendered after client-side app boot.</p></article></body></html>"
+        )
+        with patch("aiwiki.drop._http_fetch_url") as fetch_mock:
+            fetch_mock.return_value = {
+                "final_url": "https://example.com/app",
+                "content_type": "",
+                "status": "",
+                "text": "",
+                "error": "403 Forbidden",
+            }
+            with patch(
+                "aiwiki.drop._render_url_in_browser",
+                return_value={"html": rendered_html, "backend": "playwright-chromium"},
+            ):
+                fetched = _fetch_url("https://example.com/app")
+        self.assertEqual(fetched["status"], "browser-rendered")
+        self.assertEqual(fetched["content_type"], "text/html")
+        self.assertIn("Rendered after client-side app boot.", fetched["text"])
 
     def test_drop_pdf_creates_asset_and_note(self) -> None:
         pdf_path = self.root / "paper.pdf"

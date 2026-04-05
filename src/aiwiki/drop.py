@@ -21,10 +21,17 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     BeautifulSoup = None
 
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:  # pragma: no cover - optional dependency
+    sync_playwright = None
+
 
 USER_AGENT = "aiwiki/0.1 (+https://local)"
 MAX_TEXT_CHARS = 120000
 MAX_URL_IMAGES = 6
+BROWSER_RENDER_TIMEOUT_SECONDS = 45
+BROWSER_VIRTUAL_TIME_BUDGET_MS = 8000
 TEXT_FILE_SUFFIXES = {
     ".c",
     ".cc",
@@ -86,6 +93,7 @@ def drop_url(root: Path, url: str, title: str | None = None) -> dict[str, Any]:
                     f"- Fetched at: `{utc_now()}`",
                     f"- Content type: `{fetched['content_type']}`",
                     f"- HTTP status: `{fetched['status']}`",
+                    f"- Browser renderer: `{fetched['browser_backend'] or 'none'}`",
                     f"- Extraction mode: `{fetched['extraction_mode']}`",
                 ],
             ),
@@ -288,38 +296,191 @@ def drop_repo(root: Path, source: str, title: str | None = None, max_files: int 
 
 
 def _fetch_url(url: str) -> dict[str, Any]:
-    req = request.Request(url, headers={"User-Agent": USER_AGENT})
-    with request.urlopen(req, timeout=30) as response:
-        payload = response.read()
-        final_url = response.geturl()
-        content_type = response.headers.get_content_type()
-        charset = response.headers.get_content_charset() or "utf-8"
-        status = getattr(response, "status", 200)
-    text = payload.decode(charset, errors="replace")
-    if "html" in content_type:
-        extracted = _extract_html_document(text, final_url)
+    fetched = _http_fetch_url(url)
+    final_url = fetched["final_url"]
+    content_type = fetched["content_type"]
+    status = fetched["status"]
+    raw_text = fetched["text"]
+    browser_backend = ""
+    browser_html = ""
+    if _should_try_browser_render(final_url, content_type):
+        try:
+            rendered = _render_url_in_browser(final_url)
+        except RuntimeError:
+            rendered = {"html": "", "backend": ""}
+        browser_html = rendered["html"]
+        browser_backend = rendered["backend"]
+
+    html_text = browser_html or raw_text
+    if html_text and ("html" in content_type or browser_html):
+        extracted = _extract_html_document(html_text, final_url)
         title = extracted["title"]
         description = extracted["description"]
         body = extracted["text"]
         image_urls = extracted["image_urls"]
-        extraction_mode = extracted["mode"]
-    else:
+        if browser_html:
+            extraction_mode = f"chromium-rendered+{extracted['mode']}"
+        else:
+            extraction_mode = extracted["mode"]
+        if not content_type:
+            content_type = "text/html"
+        if not status:
+            status = "browser-rendered"
+    elif raw_text:
         title = _label_from_url(final_url)
         description = ""
-        body = text
+        body = raw_text
         image_urls = []
         extraction_mode = "plain-text"
+    else:
+        details = fetched["error"] or "unknown fetch failure"
+        raise RuntimeError(f"Failed to fetch URL `{url}`: {details}")
     body = _truncate_text(_normalize_text(body), MAX_TEXT_CHARS)
     return {
         "final_url": final_url,
         "content_type": content_type,
-        "status": str(status),
+        "status": str(status or "unknown"),
         "title": title,
         "description": _truncate_text(_normalize_text(description), 2000),
         "text": body,
         "image_urls": image_urls,
+        "browser_backend": browser_backend if browser_html else "",
         "extraction_mode": extraction_mode,
     }
+
+
+def _http_fetch_url(url: str) -> dict[str, str]:
+    try:
+        req = request.Request(url, headers={"User-Agent": USER_AGENT})
+        with request.urlopen(req, timeout=30) as response:
+            payload = response.read()
+            final_url = response.geturl()
+            content_type = response.headers.get_content_type()
+            charset = response.headers.get_content_charset() or "utf-8"
+            status = getattr(response, "status", 200)
+        text = payload.decode(charset, errors="replace")
+        return {
+            "final_url": final_url,
+            "content_type": content_type,
+            "status": str(status),
+            "text": text,
+            "error": "",
+        }
+    except Exception as exc:
+        return {
+            "final_url": url,
+            "content_type": "",
+            "status": "",
+            "text": "",
+            "error": str(exc),
+        }
+
+
+def _should_try_browser_render(url: str, content_type: str) -> bool:
+    parsed = parse.urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        return False
+    return not content_type or "html" in content_type
+
+
+def _browser_command() -> str:
+    for candidate in ("chromium-browser", "chromium", "google-chrome", "google-chrome-stable"):
+        path = shutil.which(candidate)
+        if path:
+            return path
+    return ""
+
+
+def _render_url_in_browser(url: str) -> dict[str, str]:
+    if sync_playwright is not None:
+        try:
+            html_text = _render_url_with_playwright(url)
+        except RuntimeError:
+            html_text = ""
+        if html_text:
+            return {"html": html_text, "backend": "playwright-chromium"}
+
+    browser_command = _browser_command()
+    if not browser_command:
+        return {"html": "", "backend": ""}
+
+    html_text = _render_url_with_browser_cli(url, browser_command)
+    if html_text:
+        return {"html": html_text, "backend": Path(browser_command).name}
+    return {"html": "", "backend": ""}
+
+
+def _render_url_with_playwright(url: str) -> str:
+    if sync_playwright is None:
+        return ""
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                page = browser.new_page(user_agent=USER_AGENT)
+                page.goto(url, wait_until="networkidle", timeout=BROWSER_RENDER_TIMEOUT_SECONDS * 1000)
+                return page.content()
+            finally:
+                browser.close()
+    except Exception as exc:
+        raise RuntimeError(f"Playwright render failed: {exc}") from exc
+
+
+def _render_url_with_browser_cli(url: str, browser_command: str) -> str:
+    user_data_dir = Path(tempfile.mkdtemp(prefix="aiwiki-browser-"))
+    command = [
+        browser_command,
+        "--headless",
+        "--disable-gpu",
+        "--disable-dev-shm-usage",
+        f"--virtual-time-budget={BROWSER_VIRTUAL_TIME_BUDGET_MS}",
+        f"--user-data-dir={user_data_dir}",
+        f"--user-agent={USER_AGENT}",
+        "--dump-dom",
+        url,
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=BROWSER_RENDER_TIMEOUT_SECONDS,
+            check=False,
+        )
+        if completed.returncode != 0:
+            details = completed.stderr.strip() or completed.stdout.strip()
+            if "--no-sandbox" not in command and "sandbox" in details.lower():
+                return _render_url_with_browser_cli_no_sandbox(url, browser_command, user_data_dir)
+            raise RuntimeError(f"{Path(browser_command).name} render failed: {details}")
+        return completed.stdout
+    finally:
+        shutil.rmtree(user_data_dir, ignore_errors=True)
+
+
+def _render_url_with_browser_cli_no_sandbox(url: str, browser_command: str, user_data_dir: Path) -> str:
+    command = [
+        browser_command,
+        "--headless",
+        "--disable-gpu",
+        "--disable-dev-shm-usage",
+        "--no-sandbox",
+        f"--virtual-time-budget={BROWSER_VIRTUAL_TIME_BUDGET_MS}",
+        f"--user-data-dir={user_data_dir}",
+        f"--user-agent={USER_AGENT}",
+        "--dump-dom",
+        url,
+    ]
+    completed = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        timeout=BROWSER_RENDER_TIMEOUT_SECONDS,
+        check=False,
+    )
+    if completed.returncode != 0:
+        details = completed.stderr.strip() or completed.stdout.strip()
+        raise RuntimeError(f"{Path(browser_command).name} render failed: {details}")
+    return completed.stdout
 
 
 def _extract_html_title(text: str) -> str:

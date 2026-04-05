@@ -32,7 +32,7 @@ LLM-backed execution commands:
 
 Direct raw-material entry points:
 
-- `drop-url`: fetch a web page into `raw/inbox/`, extract main content, and store page images under `raw/assets/`
+- `drop-url`: fetch a web page into `raw/inbox/`, render it in a browser when available, extract main content, and store page images under `raw/assets/`
 - `drop-pdf`: store the original PDF under `raw/assets/` and extracted text under `raw/inbox/`
 - `drop-image`: store the original image under `raw/assets/` and a metadata note under `raw/inbox/`
 - `drop-repo`: snapshot a local or remote repository into a markdown source note under `raw/inbox/`
@@ -199,9 +199,17 @@ If you want a quieter/offline mode, add `--deterministic-only`.
 `drop-url`
 
 - Best for articles, blog posts, docs pages, and newsletters
-- Fetches the page, prefers `article` / `main` content when available, and writes a markdown source note
+- Fetches the page, prefers a browser-rendered DOM when Playwright Chromium is available, then extracts `article` / `main` content
 - Downloads a limited set of page images into `raw/assets/` and links them from the note frontmatter
+- Falls back to direct HTTP + BeautifulSoup extraction if browser rendering is unavailable
 - If a site blocks basic fetching, clip it manually and drop the markdown file instead
+
+Optional browser-render setup:
+
+```bash
+python3 -m pip install --user playwright
+python3 -m playwright install chromium
+```
 
 `drop-pdf`
 
