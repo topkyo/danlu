@@ -16,7 +16,7 @@ The repository ships a Python CLI with deterministic commands plus optional LLM-
 Deterministic commands:
 
 - `ingest`: register a local file or a URL stub into `raw/`
-- `compile`: turn the current source inventory into `wiki/sources/` pages and indexes
+- `compile`: turn the current source inventory into `wiki/sources/`, `wiki/concepts/`, and `wiki/indexes/`
 - `ask`: generate a report, slide deck, or figure brief artifact grounded in the wiki
 - `file-back`: move a useful markdown output back into `wiki/derived/`
 - `lint`: scan for missing source pages, broken source references, and obvious provenance gaps
@@ -48,8 +48,8 @@ raw/
   assets/       local images and attachments
 wiki/
   sources/      one source page per raw input
-  concepts/     reserved for future concept synthesis
-  indexes/      inventory and compile status pages
+  concepts/     compiled concept pages synthesized from source pages
+  indexes/      master index, inventories, compile status, and operation log
   derived/      filed-back markdown outputs
 output/
   reports/
@@ -189,6 +189,7 @@ Once `watch` is running, the intended flow is:
 - Or you use `drop-url`, `drop-pdf`, `drop-image`, or `drop-repo`
 - `aiwiki` discovers them automatically
 - source pages are compiled under `wiki/sources/`
+- concept pages and indexes are refreshed under `wiki/concepts/` and `wiki/indexes/`
 - the LLM fills pending summaries
 - lint artifacts are refreshed under `output/lint/`
 

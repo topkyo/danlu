@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from urllib import parse, request
 
-from .app import ensure_layout, relative_path, render_frontmatter, slugify, utc_now
+from .app import append_wiki_log, ensure_layout, relative_path, render_frontmatter, slugify, utc_now
 from .config import LLMConfig
 from .llm import LLMError, create_backend_client
 
@@ -104,6 +104,17 @@ def drop_url(root: Path, url: str, title: str | None = None) -> dict[str, Any]:
         extra_frontmatter={"asset_files": asset_paths},
     )
     _write_text(note_path, markdown)
+    append_wiki_log(
+        root,
+        "ingest",
+        display_title,
+        [
+            "source_type: `url-drop`",
+            f"original_url: `{url}`",
+            f"stored_note: `{relative_path(root, note_path)}`",
+            f"asset_files: `{len(asset_paths)}`",
+        ],
+    )
     return {
         "material": "url",
         "note_path": relative_path(root, note_path),
@@ -149,6 +160,16 @@ def drop_pdf(root: Path, source: str, title: str | None = None) -> dict[str, Any
         extra_frontmatter={"asset_files": [relative_path(root, asset_path)]},
     )
     _write_text(note_path, markdown)
+    append_wiki_log(
+        root,
+        "ingest",
+        display_title,
+        [
+            "source_type: `pdf-drop`",
+            f"stored_note: `{relative_path(root, note_path)}`",
+            f"asset_path: `{relative_path(root, asset_path)}`",
+        ],
+    )
     return {
         "material": "pdf",
         "note_path": relative_path(root, note_path),
@@ -223,6 +244,17 @@ def drop_image(
         },
     )
     _write_text(note_path, markdown)
+    append_wiki_log(
+        root,
+        "ingest",
+        display_title,
+        [
+            "source_type: `image-drop`",
+            f"stored_note: `{relative_path(root, note_path)}`",
+            f"asset_path: `{relative_path(root, asset_path)}`",
+            f"vision_status: `{vision_status}`",
+        ],
+    )
     return {
         "material": "image",
         "note_path": relative_path(root, note_path),
@@ -287,6 +319,16 @@ def drop_repo(root: Path, source: str, title: str | None = None, max_files: int 
         sections=sections,
     )
     _write_text(note_path, markdown)
+    append_wiki_log(
+        root,
+        "ingest",
+        display_title,
+        [
+            "source_type: `repo-drop`",
+            f"stored_note: `{relative_path(root, note_path)}`",
+            f"source: `{original_path}`",
+        ],
+    )
     return {
         "material": "repo",
         "note_path": relative_path(root, note_path),

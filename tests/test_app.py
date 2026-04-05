@@ -48,6 +48,18 @@ class StubVisionClient:
         return CompletionResult(text=self.response, response_id="stub-vision", usage={})
 
 
+class CapturingClient:
+    def __init__(self, response: str) -> None:
+        self.response = response
+        self.prompt = ""
+        self.config = type("Config", (), {"model": "capture-model"})()
+
+    def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+        del system_prompt
+        self.prompt = user_prompt
+        return CompletionResult(text=self.response, response_id="capture-response", usage={})
+
+
 class FailingVisionClient:
     def __init__(self, backend: str = "codex-cli") -> None:
         self.config = type("Config", (), {"backend": backend, "model": "stub-vision-model"})()
@@ -114,6 +126,121 @@ class AiwikiFlowTests(unittest.TestCase):
         slide_text = (self.root / slides["path"]).read_text(encoding="utf-8")
         self.assertIn("marp: true", slide_text)
 
+    def test_compile_creates_concepts_master_index_and_log(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compiled = compile_wiki(self.root)
+        self.assertGreater(compiled["concepts"], 0)
+
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        source_frontmatter = parse_frontmatter(source_page.read_text(encoding="utf-8"))
+        self.assertTrue(source_frontmatter["concepts"])
+        self.assertTrue(list((self.root / "wiki" / "concepts").glob("*.md")))
+
+        master_index = self.root / "wiki" / "indexes" / "index.md"
+        log_page = self.root / "wiki" / "indexes" / "log.md"
+        self.assertTrue(master_index.exists())
+        self.assertTrue(log_page.exists())
+        self.assertIn("Operation Log", master_index.read_text(encoding="utf-8"))
+        self.assertIn("compile | wiki refresh", log_page.read_text(encoding="utf-8"))
+
+    def test_compile_preserves_existing_summary_on_recompile(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        current = source_page.read_text(encoding="utf-8")
+        source_page.write_text(
+            current.replace(
+                "- Pending LLM summary.",
+                "- Transformer scaling improves quality while increasing inference cost.",
+            ),
+            encoding="utf-8",
+        )
+
+        compile_wiki(self.root)
+        refreshed = source_page.read_text(encoding="utf-8")
+        self.assertIn("Transformer scaling improves quality while increasing inference cost.", refreshed)
+        self.assertNotIn("Pending LLM summary.", refreshed)
+
+    def test_compile_invalidates_summary_when_raw_source_changes(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        source_page.write_text(
+            source_page.read_text(encoding="utf-8").replace(
+                "- Pending LLM summary.",
+                "- Old summary from llm that should be invalidated.",
+            ),
+            encoding="utf-8",
+        )
+        stored_source = self.root / entry["stored_path"]
+        stored_source.write_text(
+            "# Transformer Scaling\n\nLatency behavior changed after the source edit.\n",
+            encoding="utf-8",
+        )
+
+        compile_wiki(self.root)
+
+        refreshed = source_page.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(refreshed)
+        self.assertIn("- Pending LLM summary.", refreshed)
+        self.assertNotIn("Old summary from llm", refreshed)
+        self.assertIn("Latency", refreshed)
+        self.assertNotIn("summary", [item.lower() for item in frontmatter["concepts"]])
+        self.assertTrue(frontmatter["source_sha256"])
+
+    def test_compile_invalidates_concept_summary_when_backing_source_changes(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        concept_page = self.root / "wiki" / "concepts" / "transformer-scaling.md"
+        concept_page.write_text(
+            concept_page.read_text(encoding="utf-8").replace(
+                "- This concept currently appears in `1` source page(s).",
+                "- OLD CONCEPT SUMMARY",
+            ),
+            encoding="utf-8",
+        )
+        stored_source = self.root / entry["stored_path"]
+        stored_source.write_text(
+            "# Transformer Scaling\n\nLatency throughput cache locality.\n",
+            encoding="utf-8",
+        )
+
+        compile_wiki(self.root)
+
+        refreshed = concept_page.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(refreshed)
+        self.assertNotIn("OLD CONCEPT SUMMARY", refreshed)
+        self.assertIn("This concept currently appears", refreshed)
+        self.assertTrue(frontmatter["source_signature"])
+
+    def test_ask_auto_compiles_and_returns_ranked_concepts_and_indexes(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        result = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        self.assertTrue((self.root / "wiki" / "indexes" / "index.md").exists())
+        self.assertTrue(list((self.root / "wiki" / "sources").glob("*.md")))
+        self.assertTrue(result["ranked_concepts"])
+        self.assertIn("wiki/indexes/log.md", result["index_pages"])
+
+        report_text = (self.root / result["path"]).read_text(encoding="utf-8")
+        self.assertIn("Recommended Concepts", report_text)
+        self.assertIn("Recommended Index Pages", report_text)
+
+    def test_ask_recompiles_when_raw_source_changes(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        stored_source = self.root / entry["stored_path"]
+        stored_source.write_text(
+            "# Transformer Scaling\n\nLatency throughput cache locality.\n",
+            encoding="utf-8",
+        )
+
+        result = ask_question(self.root, "Compare latency and throughput", "report")
+
+        self.assertIn("latency", result["ranked_concepts"])
+        self.assertTrue((self.root / "wiki" / "concepts" / "latency.md").exists())
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        self.assertIn("- Pending LLM summary.", source_page.read_text(encoding="utf-8"))
+
     def test_run_compile_replaces_placeholder_summary(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -165,6 +292,56 @@ class AiwikiFlowTests(unittest.TestCase):
         semantic_path = self.root / lint_result["semantic_report"]
         self.assertTrue(semantic_path.exists())
         self.assertIn("Semantic Lint Report", semantic_path.read_text(encoding="utf-8"))
+
+    def test_run_ask_truncates_append_only_log_context(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        source_page.write_text(
+            source_page.read_text(encoding="utf-8").replace(
+                "- Pending LLM summary.",
+                "- Transformer scale improves capability and raises compute demand.",
+            ),
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+
+        log_page = self.root / "wiki" / "indexes" / "log.md"
+        log_page.write_text(
+            "# Wiki Log\n\n"
+            + "EARLY-MARKER " * 1200
+            + "\n\n## recent\n\n"
+            + "LATE-MARKER " * 40
+            + "\n",
+            encoding="utf-8",
+        )
+        report_markdown = "\n".join(
+            [
+                "---",
+                'id: "query-1"',
+                'kind: "output"',
+                'format: "report"',
+                'query: "Compare transformer scale and inference cost"',
+                'generated_by: "aiwiki-ask"',
+                'created_at: "2026-04-05T00:00:00+00:00"',
+                "---",
+                "",
+                "# Compare transformer scale and inference cost",
+                "",
+                f"See `wiki/sources/{entry['id']}.md`.",
+            ]
+        )
+        client = CapturingClient(report_markdown)
+
+        run_ask(
+            self.root,
+            "Compare transformer scale and inference cost",
+            "report",
+            client=client,
+        )
+
+        self.assertIn("LATE-MARKER", client.prompt)
+        self.assertNotIn("EARLY-MARKER EARLY-MARKER EARLY-MARKER EARLY-MARKER EARLY-MARKER", client.prompt)
 
     def test_llm_status_auto_prefers_codex_cli_when_api_is_absent(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
@@ -361,6 +538,20 @@ class AiwikiFlowTests(unittest.TestCase):
         note_text = (self.root / result["note_path"]).read_text(encoding="utf-8")
         self.assertIn("Repository Tree", note_text)
         self.assertIn("README", note_text)
+
+    def test_lint_reports_missing_indexes_and_broken_concept_source_refs(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        (self.root / "wiki" / "indexes" / "index.md").unlink()
+        concept_page = next((self.root / "wiki" / "concepts").glob("*.md"))
+        broken = concept_page.read_text(encoding="utf-8").replace("wiki/sources/", "wiki/sources/missing-", 1)
+        concept_page.write_text(broken, encoding="utf-8")
+
+        lint = lint_wiki(self.root)
+        report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
+        self.assertGreaterEqual(lint["counts"]["errors"], 2)
+        self.assertIn("Missing master wiki index page.", report_text)
+        self.assertIn("Concept page references missing source page", report_text)
 
 
 if __name__ == "__main__":

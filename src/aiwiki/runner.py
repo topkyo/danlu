@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -70,7 +71,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
         prompt = _build_compile_prompt(root, entry, raw_path, current_page)
         result = effective_client.complete(_system_prompt("compile"), prompt)
         updated = _normalize_markdown(result.text)
-        _validate_source_page(updated, entry["id"], entry["stored_path"])
+        _validate_source_page(updated, entry["id"], entry["stored_path"], entry["sha256"])
         target.write_text(updated, encoding="utf-8")
         updated_pages.append(relative_path(root, target))
         _append_log(
@@ -84,6 +85,9 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                 "usage": result.usage,
             },
         )
+
+    if updated_pages:
+        compile_result = compile_wiki(root)
 
     return {
         "compile": compile_result,
@@ -112,10 +116,20 @@ def run_ask(
         page = root / "wiki" / "sources" / f"{source_id}.md"
         if page.exists():
             source_pages.append((entry, page.read_text(encoding="utf-8", errors="replace")))
+    concept_pages = []
+    for slug in artifact.get("ranked_concepts", []):
+        page = root / "wiki" / "concepts" / f"{slug}.md"
+        if page.exists():
+            concept_pages.append((slug, page.read_text(encoding="utf-8", errors="replace")))
+    index_pages = []
+    for relative in artifact.get("index_pages", []):
+        page = root / relative
+        if page.exists():
+            index_pages.append((relative, page.read_text(encoding="utf-8", errors="replace")))
 
     target = root / artifact["path"]
     current_artifact = target.read_text(encoding="utf-8", errors="replace")
-    prompt = _build_ask_prompt(root, target, question, output_format, current_artifact, source_pages)
+    prompt = _build_ask_prompt(root, target, question, output_format, current_artifact, source_pages, concept_pages, index_pages)
     effective_client = client or create_client(root)
     result = effective_client.complete(_system_prompt("ask"), prompt)
     updated = _normalize_markdown(result.text)
@@ -317,6 +331,7 @@ def _build_compile_prompt(root: Path, entry: dict[str, Any], raw_path: Path, cur
             f"- Preserve frontmatter `id: {entry['id']}`.",
             "- Preserve `kind: source`.",
             f"- Preserve `source_files: [\"{entry['stored_path']}\"]`.",
+            f"- Preserve `source_sha256: {entry['sha256']}`.",
             "- Keep the `Source Record` section and update the `Summary` section with grounded prose.",
             "- If evidence is weak or truncated, say so explicitly.",
             "",
@@ -336,6 +351,8 @@ def _build_ask_prompt(
     output_format: str,
     current_artifact: str,
     source_pages: list[tuple[dict[str, Any], str]],
+    concept_pages: list[tuple[str, str]],
+    index_pages: list[tuple[str, str]],
 ) -> str:
     template = _load_prompt(root, "ask.md")
     sections = [
@@ -348,8 +365,33 @@ def _build_ask_prompt(
         "## Current Artifact",
         current_artifact,
         "",
-        "## Source Pages",
+        "## Index Pages",
     ]
+    if not index_pages:
+        sections.append("- No index pages were available.")
+    else:
+        for relative, content in index_pages:
+            excerpt = (
+                _fit_log_prompt_section(content, max_chars=3000)
+                if relative.endswith("/log.md")
+                else _fit_prompt_section(content, max_chars=3500)
+            )
+            sections.extend([f"### {relative}", excerpt, ""])
+    sections.extend(
+        [
+            "## Concept Pages",
+        ]
+    )
+    if not concept_pages:
+        sections.append("- No ranked concept pages were available.")
+    else:
+        for slug, content in concept_pages:
+            sections.extend([f"### wiki/concepts/{slug}.md", _fit_prompt_section(content, max_chars=3200), ""])
+    sections.extend(
+        [
+        "## Source Pages",
+        ]
+    )
     if not source_pages:
         sections.append("- No ranked source pages were available. Keep the artifact cautious and explicit about missing evidence.")
     else:
@@ -357,7 +399,7 @@ def _build_ask_prompt(
             sections.extend(
                 [
                     f"### wiki/sources/{entry['id']}.md",
-                    content,
+                    _fit_prompt_section(content, max_chars=4200),
                     "",
                 ]
             )
@@ -374,16 +416,18 @@ def _build_lint_prompt(root: Path, deterministic_report: str) -> str:
         "## Wiki Indexes",
     ]
     for relative in (
+        "wiki/indexes/index.md",
         "wiki/indexes/sources.md",
         "wiki/indexes/concepts.md",
         "wiki/indexes/compile-status.md",
+        "wiki/indexes/log.md",
     ):
         path = root / relative
         if path.exists():
             sections.extend([f"### {relative}", _read_context(path, max_chars=4000), ""])
 
     included_chars = sum(len(section) for section in sections)
-    for group in ("wiki/sources", "wiki/derived"):
+    for group in ("wiki/concepts", "wiki/sources", "wiki/derived"):
         for path in sorted((root / group).glob("*.md")):
             excerpt = _read_context(path, max_chars=3500)
             next_block = f"### {relative_path(root, path)}\n{excerpt}\n"
@@ -419,7 +463,7 @@ def _normalize_markdown(text: str) -> str:
     return cleaned + "\n"
 
 
-def _validate_source_page(markdown: str, expected_id: str, expected_source_file: str) -> None:
+def _validate_source_page(markdown: str, expected_id: str, expected_source_file: str, expected_source_sha: str) -> None:
     frontmatter = parse_frontmatter(markdown)
     if not frontmatter:
         raise RuntimeError("Compile response is missing frontmatter.")
@@ -427,9 +471,32 @@ def _validate_source_page(markdown: str, expected_id: str, expected_source_file:
         raise RuntimeError("Compile response changed the source page id.")
     if frontmatter.get("kind") != "source":
         raise RuntimeError("Compile response changed the page kind.")
+    if frontmatter.get("source_sha256") != expected_source_sha:
+        raise RuntimeError("Compile response changed or dropped the source sha.")
     source_files = frontmatter.get("source_files", [])
     if expected_source_file not in source_files:
         raise RuntimeError("Compile response dropped the source file reference.")
+
+
+def _fit_prompt_section(text: str, max_chars: int, tail: bool = False) -> str:
+    if len(text) <= max_chars:
+        return text
+    if tail:
+        return "...[truncated earlier content]\n" + text[-max_chars:].lstrip()
+    return text[:max_chars].rstrip() + "\n...[truncated]"
+
+
+def _fit_log_prompt_section(text: str, max_chars: int) -> str:
+    if len(text) <= max_chars:
+        return text
+    headings = [match.start() for match in re.finditer(r"(?m)^## ", text)]
+    if headings:
+        start = headings[max(0, len(headings) - 3)]
+        excerpt = text[start:]
+        if len(excerpt) <= max_chars:
+            return "...[truncated earlier log entries]\n" + excerpt.lstrip()
+        return "...[truncated earlier log entries]\n" + excerpt[-max_chars:].lstrip()
+    return _fit_prompt_section(text, max_chars=max_chars, tail=True)
 
 
 def _validate_output_markdown(markdown: str, output_format: str, source_ids: list[str]) -> None:
