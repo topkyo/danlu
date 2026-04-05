@@ -1,0 +1,155 @@
+{
+  "active": "main-home",
+  "lastOpenFiles": [
+    "HOME.md",
+    "wiki/indexes/Raw Inbox.md",
+    "wiki/indexes/Wiki Hub.md",
+    "wiki/indexes/Outputs.md",
+    "wiki/indexes/Search Presets.md"
+  ],
+  "left": {
+    "children": [
+      {
+        "children": [
+          {
+            "id": "left-files",
+            "state": {
+              "state": {},
+              "type": "file-explorer"
+            },
+            "type": "leaf"
+          },
+          {
+            "id": "left-search-raw",
+            "state": {
+              "state": {
+                "collapseAll": false,
+                "explainSearch": false,
+                "extraContext": false,
+                "matchingCase": false,
+                "query": "path:\"raw/inbox\"",
+                "sortOrder": "alphabetical"
+              },
+              "type": "search"
+            },
+            "type": "leaf"
+          },
+          {
+            "id": "left-search-wiki",
+            "state": {
+              "state": {
+                "collapseAll": false,
+                "explainSearch": false,
+                "extraContext": false,
+                "matchingCase": false,
+                "query": "path:\"wiki/sources\" OR path:\"wiki/indexes\" OR path:\"wiki/derived\"",
+                "sortOrder": "alphabetical"
+              },
+              "type": "search"
+            },
+            "type": "leaf"
+          },
+          {
+            "id": "left-search-output",
+            "state": {
+              "state": {
+                "collapseAll": false,
+                "explainSearch": false,
+                "extraContext": false,
+                "matchingCase": false,
+                "query": "path:\"output/reports\" OR path:\"output/slides\" OR path:\"output/figures\" OR path:\"output/lint\"",
+                "sortOrder": "alphabetical"
+              },
+              "type": "search"
+            },
+            "type": "leaf"
+          }
+        ],
+        "currentTab": 0,
+        "id": "left-tabs",
+        "type": "tabs"
+      }
+    ],
+    "direction": "horizontal",
+    "id": "left-root",
+    "type": "split",
+    "width": 320
+  },
+  "main": {
+    "children": [
+      {
+        "children": [
+          {
+            "id": "main-home",
+            "state": {
+              "state": {
+                "file": "HOME.md",
+                "mode": "preview",
+                "source": false
+              },
+              "type": "markdown"
+            },
+            "type": "leaf"
+          }
+        ],
+        "currentTab": 0,
+        "id": "main-tabs",
+        "type": "tabs"
+      }
+    ],
+    "direction": "vertical",
+    "id": "main-root",
+    "type": "split"
+  },
+  "right": {
+    "children": [
+      {
+        "children": [
+          {
+            "id": "right-outline",
+            "state": {
+              "state": {
+                "file": "HOME.md"
+              },
+              "type": "outline"
+            },
+            "type": "leaf"
+          },
+          {
+            "id": "right-backlinks",
+            "state": {
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "file": "HOME.md",
+                "showSearchContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "type": "backlink"
+            },
+            "type": "leaf"
+          },
+          {
+            "id": "right-outgoing",
+            "state": {
+              "state": {
+                "file": "HOME.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "type": "outgoing-link"
+            },
+            "type": "leaf"
+          }
+        ],
+        "currentTab": 0,
+        "id": "right-tabs",
+        "type": "tabs"
+      }
+    ],
+    "direction": "horizontal",
+    "id": "right-root",
+    "type": "split",
+    "width": 300
+  }
+}

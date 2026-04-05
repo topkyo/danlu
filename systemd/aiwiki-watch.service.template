@@ -1,0 +1,15 @@
+[Unit]
+Description=aiwiki inbox watcher
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=__PROJECT_ROOT__
+EnvironmentFile=__ENV_FILE__
+Environment=PYTHONPATH=__PROJECT_ROOT__/src
+ExecStart=__PROJECT_ROOT__/scripts/run_watch.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

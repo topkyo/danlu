@@ -1,0 +1,483 @@
+"""LLM-backed execution helpers for compile, ask, and lint workflows."""
+
+from __future__ import annotations
+
+import json
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Protocol
+
+from .app import (
+    TEXT_EXTENSIONS,
+    ask_question,
+    compile_wiki,
+    ensure_layout,
+    lint_wiki,
+    load_manifest,
+    parse_frontmatter,
+    read_text_preview,
+    relative_path,
+    render_scalar,
+    sha256_bytes,
+)
+from .config import LLMConfig
+from .llm import CompletionResult, create_backend_client
+
+
+class SupportsComplete(Protocol):
+    def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+        ...
+
+
+def llm_status() -> dict[str, Any]:
+    return LLMConfig.status_from_env()
+
+
+def create_client(root: Path) -> SupportsComplete:
+    return create_backend_client(LLMConfig.from_env(), root)
+
+
+def run_compile(root: Path, client: SupportsComplete | None = None, limit: int = 5) -> dict[str, Any]:
+    ensure_layout(root)
+    compile_result = compile_wiki(root)
+    manifest = load_manifest(root)
+    pending = []
+    for entry in manifest["entries"]:
+        page = root / "wiki" / "sources" / f"{entry['id']}.md"
+        if not page.exists():
+            continue
+        content = page.read_text(encoding="utf-8", errors="replace")
+        if "Pending LLM summary." in content:
+            pending.append(entry)
+
+    updated_pages: list[str] = []
+    skipped = max(0, len(pending) - limit)
+    if not pending or limit <= 0:
+        return {
+            "compile": compile_result,
+            "updated_pages": updated_pages,
+            "pending_pages": len(pending),
+            "skipped_pages": skipped,
+        }
+
+    effective_client = client or create_client(root)
+
+    for entry in pending[:limit]:
+        target = root / "wiki" / "sources" / f"{entry['id']}.md"
+        raw_path = root / entry["stored_path"]
+        current_page = target.read_text(encoding="utf-8", errors="replace")
+        prompt = _build_compile_prompt(root, entry, raw_path, current_page)
+        result = effective_client.complete(_system_prompt("compile"), prompt)
+        updated = _normalize_markdown(result.text)
+        _validate_source_page(updated, entry["id"], entry["stored_path"])
+        target.write_text(updated, encoding="utf-8")
+        updated_pages.append(relative_path(root, target))
+        _append_log(
+            root,
+            {
+                "event": "run-compile",
+                "target": relative_path(root, target),
+                "source": entry["stored_path"],
+                "model": _client_model_name(effective_client),
+                "response_id": result.response_id,
+                "usage": result.usage,
+            },
+        )
+
+    return {
+        "compile": compile_result,
+        "updated_pages": updated_pages,
+        "pending_pages": len(pending),
+        "skipped_pages": skipped,
+    }
+
+
+def run_ask(
+    root: Path,
+    question: str,
+    output_format: str,
+    client: SupportsComplete | None = None,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    artifact = ask_question(root, question, output_format)
+    manifest = load_manifest(root)
+    entry_map = {entry["id"]: entry for entry in manifest["entries"]}
+    source_ids = artifact["ranked_sources"]
+    source_pages = []
+    for source_id in source_ids:
+        entry = entry_map.get(source_id)
+        if entry is None:
+            continue
+        page = root / "wiki" / "sources" / f"{source_id}.md"
+        if page.exists():
+            source_pages.append((entry, page.read_text(encoding="utf-8", errors="replace")))
+
+    target = root / artifact["path"]
+    current_artifact = target.read_text(encoding="utf-8", errors="replace")
+    prompt = _build_ask_prompt(root, target, question, output_format, current_artifact, source_pages)
+    effective_client = client or create_client(root)
+    result = effective_client.complete(_system_prompt("ask"), prompt)
+    updated = _normalize_markdown(result.text)
+    _validate_output_markdown(updated, output_format, source_ids)
+    target.write_text(updated, encoding="utf-8")
+    _append_log(
+        root,
+        {
+            "event": "run-ask",
+            "target": artifact["path"],
+            "question": question,
+            "format": output_format,
+            "ranked_sources": source_ids,
+            "model": _client_model_name(effective_client),
+            "response_id": result.response_id,
+            "usage": result.usage,
+        },
+    )
+    return artifact
+
+
+def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, Any]:
+    ensure_layout(root)
+    deterministic = lint_wiki(root)
+    report_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    target = root / "output" / "lint" / f"semantic-lint-{report_id}.md"
+    prompt = _build_lint_prompt(root, deterministic["path"])
+    effective_client = client or create_client(root)
+    result = effective_client.complete(_system_prompt("lint"), prompt)
+    updated = _normalize_markdown(result.text)
+    if not updated.startswith("#") and not updated.startswith("---"):
+        raise RuntimeError("Semantic lint response must be markdown.")
+    target.write_text(updated, encoding="utf-8")
+    _append_log(
+        root,
+        {
+            "event": "run-lint",
+            "target": relative_path(root, target),
+            "deterministic_report": deterministic["path"],
+            "model": _client_model_name(effective_client),
+            "response_id": result.response_id,
+            "usage": result.usage,
+        },
+    )
+    return {
+        "deterministic": deterministic,
+        "semantic_report": relative_path(root, target),
+    }
+
+
+def auto_process_once(
+    root: Path,
+    client: SupportsComplete | None = None,
+    compile_limit: int = 5,
+    deterministic_only: bool = False,
+    semantic_lint: bool = True,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    llm_enabled = bool(client) or (not deterministic_only and llm_status()["configured"])
+
+    if llm_enabled and not deterministic_only:
+        compile_result = run_compile(root, client=client, limit=compile_limit)
+    else:
+        compile_result = {
+            "compile": compile_wiki(root),
+            "updated_pages": [],
+            "pending_pages": _pending_summary_count(root),
+            "skipped_pages": 0,
+        }
+
+    if semantic_lint and llm_enabled and not deterministic_only:
+        lint_result = run_lint(root, client=client)
+    else:
+        lint_result = {
+            "deterministic": lint_wiki(root),
+            "semantic_report": "",
+        }
+
+    snapshot = inbox_snapshot(root)
+    result = {
+        "processed_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "llm_used": bool(llm_enabled and not deterministic_only),
+        "compile": compile_result,
+        "lint": lint_result,
+        "inbox_snapshot": snapshot,
+    }
+    _write_automation_state(root, result)
+    _append_log(
+        root,
+        {
+            "event": "auto-process",
+            "llm_used": result["llm_used"],
+            "compile_limit": compile_limit,
+            "inbox_digest": snapshot["digest"],
+        },
+    )
+    return result
+
+
+def watch_inbox(
+    root: Path,
+    interval_seconds: float = 5.0,
+    client: SupportsComplete | None = None,
+    compile_limit: int = 5,
+    deterministic_only: bool = False,
+    semantic_lint: bool = True,
+    process_initial: bool = True,
+    max_cycles: int | None = None,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    processed_runs: list[dict[str, Any]] = []
+    cycles = 0
+    last_snapshot = inbox_snapshot(root)
+
+    if process_initial:
+        processed_runs.append(
+            auto_process_once(
+                root,
+                client=client,
+                compile_limit=compile_limit,
+                deterministic_only=deterministic_only,
+                semantic_lint=semantic_lint,
+            )
+        )
+        last_snapshot = inbox_snapshot(root)
+
+    while max_cycles is None or cycles < max_cycles:
+        time.sleep(interval_seconds)
+        cycles += 1
+        current_snapshot = inbox_snapshot(root)
+        if current_snapshot["digest"] == last_snapshot["digest"]:
+            continue
+        processed_runs.append(
+            auto_process_once(
+                root,
+                client=client,
+                compile_limit=compile_limit,
+                deterministic_only=deterministic_only,
+                semantic_lint=semantic_lint,
+            )
+        )
+        last_snapshot = inbox_snapshot(root)
+
+    return {
+        "watch_cycles": cycles,
+        "processed_runs": len(processed_runs),
+        "last_result": processed_runs[-1] if processed_runs else None,
+    }
+
+
+def inbox_snapshot(root: Path) -> dict[str, Any]:
+    ensure_layout(root)
+    files: list[dict[str, Any]] = []
+    for path in sorted((root / "raw" / "inbox").glob("*")):
+        if not path.is_file():
+            continue
+        stat = path.stat()
+        files.append(
+            {
+                "path": relative_path(root, path),
+                "size": stat.st_size,
+                "mtime_ns": stat.st_mtime_ns,
+            }
+        )
+    digest = sha256_bytes(json.dumps(files, sort_keys=True).encode("utf-8"))
+    return {"digest": digest, "files": files}
+
+
+def _system_prompt(kind: str) -> str:
+    if kind == "compile":
+        return (
+            "You maintain a local-first research wiki. "
+            "Return only the full replacement markdown document for the target file. "
+            "Do not wrap the answer in code fences."
+        )
+    if kind == "ask":
+        return (
+            "You answer research questions by editing markdown artifacts in place. "
+            "Return only the full replacement artifact, grounded in the provided source pages."
+        )
+    return (
+        "You review a research wiki for semantic issues. "
+        "Return only the markdown report requested by the user prompt."
+    )
+
+
+def _build_compile_prompt(root: Path, entry: dict[str, Any], raw_path: Path, current_page: str) -> str:
+    template = _load_prompt(root, "compile.md")
+    raw_excerpt = _read_context(raw_path, max_chars=_context_budget())
+    target_relative = relative_path(root, root / "wiki" / "sources" / f"{entry['id']}.md")
+    return "\n\n".join(
+        [
+            template,
+            "## Target",
+            f"- Replace file: `{target_relative}`",
+            f"- Source file: `{entry['stored_path']}`",
+            "",
+            "## Hard Constraints",
+            f"- Preserve frontmatter `id: {entry['id']}`.",
+            "- Preserve `kind: source`.",
+            f"- Preserve `source_files: [\"{entry['stored_path']}\"]`.",
+            "- Keep the `Source Record` section and update the `Summary` section with grounded prose.",
+            "- If evidence is weak or truncated, say so explicitly.",
+            "",
+            "## Current Page",
+            current_page,
+            "",
+            "## Raw Source Excerpt",
+            raw_excerpt,
+        ]
+    )
+
+
+def _build_ask_prompt(
+    root: Path,
+    target: Path,
+    question: str,
+    output_format: str,
+    current_artifact: str,
+    source_pages: list[tuple[dict[str, Any], str]],
+) -> str:
+    template = _load_prompt(root, "ask.md")
+    sections = [
+        template,
+        "## Target",
+        f"- Replace file: `{relative_path(root, target)}`",
+        f"- Query: {render_scalar(question)}",
+        f"- Format: `{output_format}`",
+        "",
+        "## Current Artifact",
+        current_artifact,
+        "",
+        "## Source Pages",
+    ]
+    if not source_pages:
+        sections.append("- No ranked source pages were available. Keep the artifact cautious and explicit about missing evidence.")
+    else:
+        for entry, content in source_pages:
+            sections.extend(
+                [
+                    f"### wiki/sources/{entry['id']}.md",
+                    content,
+                    "",
+                ]
+            )
+    return "\n".join(sections)
+
+
+def _build_lint_prompt(root: Path, deterministic_report: str) -> str:
+    template = _load_prompt(root, "lint.md")
+    sections = [
+        template,
+        "## Deterministic Lint Report",
+        _read_context(root / deterministic_report, max_chars=_context_budget()),
+        "",
+        "## Wiki Indexes",
+    ]
+    for relative in (
+        "wiki/indexes/sources.md",
+        "wiki/indexes/concepts.md",
+        "wiki/indexes/compile-status.md",
+    ):
+        path = root / relative
+        if path.exists():
+            sections.extend([f"### {relative}", _read_context(path, max_chars=4000), ""])
+
+    included_chars = sum(len(section) for section in sections)
+    for group in ("wiki/sources", "wiki/derived"):
+        for path in sorted((root / group).glob("*.md")):
+            excerpt = _read_context(path, max_chars=3500)
+            next_block = f"### {relative_path(root, path)}\n{excerpt}\n"
+            if included_chars + len(next_block) > _context_budget() * 2:
+                sections.append("- Additional wiki files omitted due to context budget.")
+                return "\n".join(sections)
+            sections.append(next_block)
+            included_chars += len(next_block)
+    return "\n".join(sections)
+
+
+def _load_prompt(root: Path, name: str) -> str:
+    path = root / "prompts" / name
+    return path.read_text(encoding="utf-8")
+
+
+def _read_context(path: Path, max_chars: int) -> str:
+    if path.suffix.lower() in TEXT_EXTENSIONS:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    else:
+        text = read_text_preview(path, limit_chars=max_chars)
+    if len(text) > max_chars:
+        return text[:max_chars].rstrip() + "\n...[truncated]"
+    return text
+
+
+def _normalize_markdown(text: str) -> str:
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.splitlines()
+        if len(lines) >= 3 and lines[-1].strip() == "```":
+            cleaned = "\n".join(lines[1:-1]).strip()
+    return cleaned + "\n"
+
+
+def _validate_source_page(markdown: str, expected_id: str, expected_source_file: str) -> None:
+    frontmatter = parse_frontmatter(markdown)
+    if not frontmatter:
+        raise RuntimeError("Compile response is missing frontmatter.")
+    if frontmatter.get("id") != expected_id:
+        raise RuntimeError("Compile response changed the source page id.")
+    if frontmatter.get("kind") != "source":
+        raise RuntimeError("Compile response changed the page kind.")
+    source_files = frontmatter.get("source_files", [])
+    if expected_source_file not in source_files:
+        raise RuntimeError("Compile response dropped the source file reference.")
+
+
+def _validate_output_markdown(markdown: str, output_format: str, source_ids: list[str]) -> None:
+    if output_format in {"report", "figure"}:
+        frontmatter = parse_frontmatter(markdown)
+        if not frontmatter:
+            raise RuntimeError("Ask response is missing frontmatter.")
+    if source_ids and "wiki/sources/" not in markdown:
+        raise RuntimeError("Ask response is missing explicit source-page citations.")
+
+
+def _append_log(root: Path, event: dict[str, Any]) -> None:
+    ensure_layout(root)
+    payload = {
+        "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        **event,
+    }
+    log_path = root / ".aiwiki" / "logs" / "runs.jsonl"
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True) + "\n")
+
+
+def _context_budget() -> int:
+    return LLMConfig.status_from_env()["max_context_chars"]
+
+
+def _client_model_name(client: SupportsComplete) -> str:
+    config = getattr(client, "config", None)
+    model = getattr(config, "model", None)
+    return str(model or "")
+
+
+def _pending_summary_count(root: Path) -> int:
+    manifest = load_manifest(root)
+    pending = 0
+    for entry in manifest["entries"]:
+        page = root / "wiki" / "sources" / f"{entry['id']}.md"
+        if not page.exists():
+            continue
+        content = page.read_text(encoding="utf-8", errors="replace")
+        if "Pending LLM summary." in content:
+            pending += 1
+    return pending
+
+
+def _write_automation_state(root: Path, result: dict[str, Any]) -> None:
+    ensure_layout(root)
+    path = root / ".aiwiki" / "state" / "automation.json"
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(result, handle, indent=2, sort_keys=True)
+        handle.write("\n")

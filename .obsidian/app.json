@@ -1,0 +1,11 @@
+{
+  "alwaysUpdateLinks": true,
+  "attachmentFolderPath": "raw/assets",
+  "defaultViewMode": "preview",
+  "newFileFolderPath": "raw/inbox",
+  "newFileLocation": "folder",
+  "promptDelete": false,
+  "showInlineTitle": true,
+  "showUnsupportedFiles": true,
+  "useMarkdownLinks": true
+}
