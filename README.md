@@ -7,7 +7,6 @@ It treats a knowledge base like a build artifact:
 - `raw/` holds the source material
 - `wiki/` holds compiled markdown knowledge
 - `output/` holds query artifacts such as reports, slide decks, and figure briefs
-- `open-harness` wraps the project with contracts, verification, and review gates
 
 ## Current MVP
 
@@ -272,4 +271,12 @@ Run the local verification entry point:
 bash scripts/verify.sh
 ```
 
-This repository uses the `open-harness` Standard tier, so the current sprint scope lives in `.codex/contracts/active.md` and review outcomes belong in `.codex/gates/`.
+This check is for local development and maintenance of `aiwiki`.
+
+## Development Notes
+
+The `.codex/` and `open-harness` files in this repository are only for developing the `aiwiki` project.
+
+- They are not part of the `aiwiki` runtime.
+- They are not required for normal `aiwiki` usage.
+- They exist to track contract, review, and verification state while building the project.
