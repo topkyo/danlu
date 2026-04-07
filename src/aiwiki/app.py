@@ -1475,6 +1475,7 @@ def render_compile_status(
         "- aging 报告位于 `aging-report.md`。",
         "- 机器记忆摘要位于 `machine-memory.md`。",
         "- 机器记忆拓扑位于 `machine-memory-topology.md`。",
+        "- 机器记忆动作队列位于 `machine-memory-actions.md`。",
         "- 图谱健康页位于 `graph-health.md`。",
         "- 漂移报告位于 `drift-report.md`。",
         "- 修复待办位于 `repair-backlog.md`。",
@@ -1515,6 +1516,7 @@ def render_master_index(
         "- [编译状态](./compile-status.md)",
         "- [机器记忆](./machine-memory.md)",
         "- [机器记忆拓扑](./machine-memory-topology.md)",
+        "- [机器记忆动作队列](./machine-memory-actions.md)",
         "- [图谱健康](./graph-health.md)",
         "- [漂移报告](./drift-report.md)",
         "- [修复待办](./repair-backlog.md)",
@@ -1617,6 +1619,10 @@ def graph_health_report_path(root: Path) -> Path:
 
 def machine_memory_topology_path(root: Path) -> Path:
     return root / "wiki" / "indexes" / "machine-memory-topology.md"
+
+
+def machine_memory_actions_path(root: Path) -> Path:
+    return root / "wiki" / "indexes" / "machine-memory-actions.md"
 
 
 def repair_backlog_path(root: Path) -> Path:
@@ -1918,6 +1924,138 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
         key=lambda item: (-item["score"], item["source_title"].lower(), item["concept_title"].lower())
     )
 
+    actions: list[dict[str, Any]] = []
+    for suggestion in link_suggestions[:12]:
+        shared_terms = suggestion.get("shared_terms", [])
+        actions.append(
+            {
+                "id": f"link-{suggestion['source_id']}-{suggestion['concept_slug']}",
+                "kind": "add-source-concept-link",
+                "priority": "high" if suggestion["score"] >= 3 else "medium",
+                "title": f"补连 {suggestion['source_title']} -> {suggestion['concept_title']}",
+                "primary_path": suggestion["source_page"],
+                "secondary_path": suggestion["concept_page"],
+                "component_id": suggestion.get("component_id", ""),
+                "reason": f"共享词：{', '.join(shared_terms[:6]) or 'none'}",
+                "score": suggestion["score"],
+                "source_ids": [suggestion["source_id"]],
+                "concept_slugs": [suggestion["concept_slug"]],
+            }
+        )
+
+    suggested_source_ids = {action["source_ids"][0] for action in actions if action.get("source_ids")}
+    for source_id in isolated_source_ids:
+        if source_id in suggested_source_ids:
+            continue
+        source_node = source_node_by_id.get(source_id)
+        if not source_node:
+            continue
+        actions.append(
+            {
+                "id": f"isolated-source-{source_id}",
+                "kind": "connect-isolated-source",
+                "priority": "medium",
+                "title": f"连接孤立来源 {source_node['title']}",
+                "primary_path": source_node["source_page"],
+                "secondary_path": "",
+                "component_id": source_component_ids.get(source_id, ""),
+                "reason": "来源节点当前没有接入任何概念。",
+                "score": 1,
+                "source_ids": [source_id],
+                "concept_slugs": [],
+            }
+        )
+
+    for concept_slug in singleton_concept_slugs[:8]:
+        concept_node = concept_node_by_slug.get(concept_slug)
+        if not concept_node:
+            continue
+        source_count = len(concept_to_sources.get(concept_slug, set()))
+        actions.append(
+            {
+                "id": f"singleton-concept-{concept_slug}",
+                "kind": "expand-singleton-concept",
+                "priority": "medium",
+                "title": f"扩展单节点概念 {concept_node['title']}",
+                "primary_path": f"wiki/concepts/{concept_slug}.md",
+                "secondary_path": "",
+                "component_id": concept_component_ids.get(concept_slug, ""),
+                "reason": f"当前只关联 `{source_count}` 个来源，且没有概念间连接。",
+                "score": max(1, source_count),
+                "source_ids": sorted(concept_to_sources.get(concept_slug, set())),
+                "concept_slugs": [concept_slug],
+            }
+        )
+
+    for concept_slug in overloaded_concept_slugs[:8]:
+        concept_node = concept_node_by_slug.get(concept_slug)
+        if not concept_node:
+            continue
+        source_count = len(concept_to_sources.get(concept_slug, set()))
+        actions.append(
+            {
+                "id": f"overloaded-concept-{concept_slug}",
+                "kind": "split-overloaded-concept",
+                "priority": "high" if source_count >= 6 else "medium",
+                "title": f"拆分过载概念 {concept_node['title']}",
+                "primary_path": f"wiki/concepts/{concept_slug}.md",
+                "secondary_path": "",
+                "component_id": concept_component_ids.get(concept_slug, ""),
+                "reason": f"当前挂接 `{source_count}` 个来源，可能过宽。",
+                "score": source_count,
+                "source_ids": sorted(concept_to_sources.get(concept_slug, set())),
+                "concept_slugs": [concept_slug],
+            }
+        )
+
+    for concept_slug in bridge_concept_slugs[:6]:
+        concept_node = concept_node_by_slug.get(concept_slug)
+        if not concept_node:
+            continue
+        related_count = len(concept_related.get(concept_slug, set()))
+        actions.append(
+            {
+                "id": f"bridge-concept-{concept_slug}",
+                "kind": "monitor-bridge-concept",
+                "priority": "low",
+                "title": f"观察桥接概念 {concept_node['title']}",
+                "primary_path": f"wiki/concepts/{concept_slug}.md",
+                "secondary_path": "",
+                "component_id": concept_component_ids.get(concept_slug, ""),
+                "reason": f"概念连接 `{related_count}` 个相关概念，属于图谱桥接点。",
+                "score": related_count,
+                "source_ids": sorted(concept_to_sources.get(concept_slug, set())),
+                "concept_slugs": [concept_slug],
+            }
+        )
+
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+    actions.sort(
+        key=lambda item: (
+            priority_order.get(str(item.get("priority")), 9),
+            -int(item.get("score", 0)),
+            str(item.get("title", "")).lower(),
+            str(item.get("id", "")),
+        )
+    )
+    action_counts = {
+        "total": len(actions),
+        "by_priority": {
+            priority: sum(1 for action in actions if action.get("priority") == priority)
+            for priority in ("high", "medium", "low")
+        },
+        "by_kind": {
+            kind: sum(1 for action in actions if action.get("kind") == kind)
+            for kind in (
+                "add-source-concept-link",
+                "connect-isolated-source",
+                "expand-singleton-concept",
+                "split-overloaded-concept",
+                "monitor-bridge-concept",
+            )
+        },
+    }
+
     return {
         "isolated_source_ids": isolated_source_ids,
         "singleton_concept_slugs": singleton_concept_slugs,
@@ -1926,6 +2064,8 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
         "hub_concepts": hub_concepts[:10],
         "hub_sources": hub_sources[:10],
         "link_suggestions": link_suggestions[:12],
+        "actions": actions[:20],
+        "action_counts": action_counts,
         "component_count": len(component_sizes),
         "component_sizes": component_sizes,
         "components": components,
@@ -2154,6 +2294,26 @@ def build_machine_memory_query(memory: dict[str, Any], question: str) -> dict[st
         for component in health.get("components", [])
         if component.get("id") in touched_component_ids
     ]
+    relevant_actions: list[dict[str, Any]] = []
+    ranked_source_set = set(ranked_source_ids) | set(direct_source_scores)
+    ranked_concept_set = set(ranked_concept_slugs) | set(direct_concept_scores)
+    for action in health.get("actions", []):
+        source_hit = bool(ranked_source_set & set(action.get("source_ids", [])))
+        concept_hit = bool(ranked_concept_set & set(action.get("concept_slugs", [])))
+        component_hit = bool(action.get("component_id")) and action.get("component_id") in touched_component_ids
+        if not (source_hit or concept_hit or component_hit):
+            continue
+        relevant_actions.append(
+            {
+                "id": action["id"],
+                "kind": action["kind"],
+                "priority": action["priority"],
+                "title": action["title"],
+                "primary_path": action["primary_path"],
+                "secondary_path": action.get("secondary_path", ""),
+                "reason": action.get("reason", ""),
+            }
+        )
 
     return {
         "matched_terms": matched_terms,
@@ -2169,6 +2329,7 @@ def build_machine_memory_query(memory: dict[str, Any], question: str) -> dict[st
         "query_routes": query_routes,
         "touched_component_ids": touched_component_ids,
         "touched_components": touched_components,
+        "relevant_actions": relevant_actions[:6],
         "query_subgraph": {
             "sources": query_subgraph_sources,
             "concepts": query_subgraph_concepts,
@@ -2442,6 +2603,7 @@ def render_graph_health(memory: dict[str, Any]) -> str:
         f"- 单节点概念：`{len(health.get('singleton_concept_slugs', []))}`",
         f"- 桥接概念：`{len(health.get('bridge_concept_slugs', []))}`",
         f"- 过载概念：`{len(health.get('overloaded_concept_slugs', []))}`",
+        f"- 修复动作：`{health.get('action_counts', {}).get('total', 0)}`",
         "",
         "## 修复信号",
         f"- 孤立来源：`{', '.join(health.get('isolated_source_ids', [])[:10]) or 'none'}`",
@@ -2468,6 +2630,7 @@ def render_graph_health(memory: dict[str, Any]) -> str:
         "## 相关链接",
         "- [机器记忆](./machine-memory.md)",
         "- [拓扑视图](./machine-memory-topology.md)",
+        "- [动作队列](./machine-memory-actions.md)",
         "- [漂移报告](./drift-report.md)",
         "- [修复待办](./repair-backlog.md)",
         "- [决策索引](./decisions.md)",
@@ -2508,6 +2671,7 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         f"- Hub 概念：`{len(health.get('hub_concepts', []))}`",
         f"- Hub 来源：`{len(health.get('hub_sources', []))}`",
         f"- 修复候选：`{len(health.get('link_suggestions', []))}`",
+        f"- 修复动作：`{health.get('action_counts', {}).get('total', 0)}`",
         "",
         "## 判断层",
         "- 决策索引：`wiki/indexes/decisions.md`",
@@ -2523,6 +2687,7 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         "## 相关链接",
         "- [图谱健康](./graph-health.md)",
         "- [拓扑视图](./machine-memory-topology.md)",
+        "- [动作队列](./machine-memory-actions.md)",
         "- [漂移报告](./drift-report.md)",
         "- [修复待办](./repair-backlog.md)",
         "",
@@ -2666,6 +2831,69 @@ def render_machine_memory_topology(memory: dict[str, Any]) -> str:
             "## 相关链接",
             "- [机器记忆](./machine-memory.md)",
             "- [图谱健康](./graph-health.md)",
+            "- [动作队列](./machine-memory-actions.md)",
+            "- [修复待办](./repair-backlog.md)",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def render_machine_memory_actions(memory: dict[str, Any]) -> str:
+    health = memory.get("health", {})
+    actions = health.get("actions", [])
+    counts = health.get("action_counts", {})
+    by_priority = counts.get("by_priority", {})
+    kind_labels = {
+        "add-source-concept-link": "补链动作",
+        "connect-isolated-source": "孤立来源动作",
+        "expand-singleton-concept": "单节点概念动作",
+        "split-overloaded-concept": "过载概念动作",
+        "monitor-bridge-concept": "桥接概念观察",
+    }
+    lines = [
+        "# 机器记忆动作队列",
+        "",
+        f"- 最近编译时间：`{memory['compiled_at']}`",
+        f"- 动作总数：`{counts.get('total', 0)}`",
+        f"- 高优先级：`{by_priority.get('high', 0)}`",
+        f"- 中优先级：`{by_priority.get('medium', 0)}`",
+        f"- 低优先级：`{by_priority.get('low', 0)}`",
+        "",
+        "## 优先队列",
+    ]
+    if not actions:
+        lines.append("- 当前没有 machine-memory 动作。")
+    else:
+        for action in actions[:12]:
+            detail = f" | secondary `{action['secondary_path']}`" if action.get("secondary_path") else ""
+            lines.append(
+                f"- [{action['priority']}] {action['title']}"
+                f" | primary `{action['primary_path']}`"
+                f"{detail}"
+                f" | component `{action.get('component_id') or 'none'}`"
+            )
+    for kind, label in kind_labels.items():
+        lines.extend(["", f"## {label}"])
+        kind_actions = [action for action in actions if action.get("kind") == kind]
+        if not kind_actions:
+            lines.append("- 当前没有此类动作。")
+            continue
+        for action in kind_actions[:8]:
+            paths = [f"primary `{action['primary_path']}`"]
+            if action.get("secondary_path"):
+                paths.append(f"secondary `{action['secondary_path']}`")
+            lines.append(
+                f"- [{action['priority']}] {action['title']}"
+                f" | {' | '.join(paths)}"
+                f" | {action.get('reason', '') or 'no reason'}"
+            )
+    lines.extend(
+        [
+            "",
+            "## 相关链接",
+            "- [机器记忆](./machine-memory.md)",
+            "- [拓扑视图](./machine-memory-topology.md)",
+            "- [图谱健康](./graph-health.md)",
             "- [修复待办](./repair-backlog.md)",
         ]
     )
@@ -2772,6 +3000,9 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     )
     changed_pages += int(
         write_if_changed(machine_memory_topology_path(root), render_machine_memory_topology(memory))
+    )
+    changed_pages += int(
+        write_if_changed(machine_memory_actions_path(root), render_machine_memory_actions(memory))
     )
     changed_pages += int(write_if_changed(graph_health_report_path(root), render_graph_health(memory)))
     changed_pages += int(write_if_changed(machine_memory_drift_report_path(root), render_drift_report(memory, transition)))
@@ -2922,6 +3153,7 @@ def render_report(
         "- [Aging 报告](../../wiki/indexes/aging-report.md)",
         "- [机器记忆](../../wiki/indexes/machine-memory.md)",
         "- [拓扑视图](../../wiki/indexes/machine-memory-topology.md)",
+        "- [动作队列](../../wiki/indexes/machine-memory-actions.md)",
         "- [图谱健康](../../wiki/indexes/graph-health.md)",
         "- [漂移报告](../../wiki/indexes/drift-report.md)",
         "- [修复待办](../../wiki/indexes/repair-backlog.md)",
@@ -2948,6 +3180,7 @@ def render_report(
     )
     lines.append(f"- 查询路径数：`{len(machine_query.get('query_routes', []))}`")
     lines.append(f"- 触达分量：`{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`")
+    lines.append(f"- 命中的修复动作：`{len(machine_query.get('relevant_actions', []))}`")
     lines.extend(
         [
             "",
@@ -3016,6 +3249,7 @@ def render_slides(
         "- `wiki/indexes/aging-report.md`",
         "- `wiki/indexes/machine-memory.md`",
         "- `wiki/indexes/machine-memory-topology.md`",
+        "- `wiki/indexes/machine-memory-actions.md`",
         "- `wiki/indexes/graph-health.md`",
         "- `wiki/indexes/drift-report.md`",
         "- `wiki/indexes/repair-backlog.md`",
@@ -3029,6 +3263,7 @@ def render_slides(
         f"- 查询子图边数：`{len(machine_query.get('query_subgraph', {}).get('edges', []))}`",
         f"- 查询路径数：`{len(machine_query.get('query_routes', []))}`",
         f"- 触达分量：`{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`",
+        f"- 命中的修复动作：`{len(machine_query.get('relevant_actions', []))}`",
         "",
         "## 相关概念",
     ]
@@ -3098,6 +3333,7 @@ def render_figure_brief(
         "- [Aging 报告](../../wiki/indexes/aging-report.md)",
         "- [机器记忆](../../wiki/indexes/machine-memory.md)",
         "- [拓扑视图](../../wiki/indexes/machine-memory-topology.md)",
+        "- [动作队列](../../wiki/indexes/machine-memory-actions.md)",
         "- [图谱健康](../../wiki/indexes/graph-health.md)",
         "- [漂移报告](../../wiki/indexes/drift-report.md)",
         "- [修复待办](../../wiki/indexes/repair-backlog.md)",
@@ -3111,6 +3347,7 @@ def render_figure_brief(
         f"- 查询子图边数：`{len(machine_query.get('query_subgraph', {}).get('edges', []))}`",
         f"- 查询路径数：`{len(machine_query.get('query_routes', []))}`",
         f"- 触达分量：`{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`",
+        f"- 命中的修复动作：`{len(machine_query.get('relevant_actions', []))}`",
         "",
         "## 推荐概念",
     ]
@@ -3215,6 +3452,7 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
             "wiki/indexes/compile-status.md",
             "wiki/indexes/machine-memory.md",
             "wiki/indexes/machine-memory-topology.md",
+            "wiki/indexes/machine-memory-actions.md",
             "wiki/indexes/graph-health.md",
             "wiki/indexes/drift-report.md",
             "wiki/indexes/repair-backlog.md",
@@ -3511,6 +3749,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/compile-status.md": "Missing compile status page.",
         "wiki/indexes/machine-memory.md": "Missing machine memory index page.",
         "wiki/indexes/machine-memory-topology.md": "Missing machine memory topology page.",
+        "wiki/indexes/machine-memory-actions.md": "Missing machine memory actions page.",
         "wiki/indexes/graph-health.md": "Missing machine memory graph health page.",
         "wiki/indexes/drift-report.md": "Missing machine memory drift report.",
         "wiki/indexes/log.md": "Missing wiki operation log.",
@@ -3730,6 +3969,7 @@ def render_repair_backlog(
     singleton_concepts = health.get("singleton_concept_slugs", [])
     bridge_concepts = health.get("bridge_concept_slugs", [])
     overloaded_concepts = health.get("overloaded_concept_slugs", [])
+    actions = health.get("actions", [])
     promotions = promotion_result.get("pages", [])
     lines = [
         "# 修复待办",
@@ -3746,6 +3986,7 @@ def render_repair_backlog(
         f"- 已到期复审：`{len(overdue_pages)}`",
         f"- 升级处理项：`{len(escalated_pages)}`",
         f"- 自动晋升页面：`{promotion_result.get('count', 0)}`",
+        f"- 图谱修复动作：`{len(actions)}`",
         f"- 图谱修复候选：`{len(health.get('link_suggestions', []))}`",
         f"- 无概念覆盖来源：`{len(sources_without_concepts)}`",
         f"- 图谱分量数：`{health.get('component_count', 0)}`",
@@ -3772,18 +4013,20 @@ def render_repair_backlog(
         lines.append(f"7. 提升 `{len(escalated_pages)}` 个已经超过升级阈值的页面优先级。")
     if promotions:
         lines.append(f"8. 检查本轮自动晋升的 `{len(promotions)}` 个页面，确认是否需要补证据和审阅。")
+    if actions:
+        lines.append(f"9. 按动作队列处理 `{len(actions)}` 个 machine-memory 修复动作。")
     if health.get("link_suggestions", []):
-        lines.append(f"9. 审阅 `{len(health.get('link_suggestions', []))}` 个机器记忆修复候选，决定是否补链接。")
+        lines.append(f"10. 审阅 `{len(health.get('link_suggestions', []))}` 个机器记忆补链候选，决定是否补链接。")
     if sources_without_concepts:
-        lines.append(f"10. 检查 `{len(sources_without_concepts)}` 个没有概念覆盖的来源。")
+        lines.append(f"11. 检查 `{len(sources_without_concepts)}` 个没有概念覆盖的来源。")
     if isolated_sources:
-        lines.append(f"11. 把 `{len(isolated_sources)}` 个孤立来源节点接入概念图谱。")
+        lines.append(f"12. 把 `{len(isolated_sources)}` 个孤立来源节点接入概念图谱。")
     if singleton_concepts:
-        lines.append(f"12. 复查 `{len(singleton_concepts)}` 个还没接入更大上下文的单节点概念。")
+        lines.append(f"13. 复查 `{len(singleton_concepts)}` 个还没接入更大上下文的单节点概念。")
     if overloaded_concepts:
-        lines.append(f"13. 考虑拆分 `{len(overloaded_concepts)}` 个过载概念。")
+        lines.append(f"14. 考虑拆分 `{len(overloaded_concepts)}` 个过载概念。")
     if transition.get("changed"):
-        lines.append("14. 在下一轮研究前先检查最新的机器记忆漂移。")
+        lines.append("15. 在下一轮研究前先检查最新的机器记忆漂移。")
     if not any(
         (
             error_findings,
@@ -3851,6 +4094,18 @@ def render_repair_backlog(
             lines.append(
                 f"- {label}：`{promotion['path']}` | 动作 `{promotion['action']}` | 重复次数 `{promotion['occurrences']}`"
             )
+    lines.append("")
+    lines.append("### Machine Memory 动作")
+    if actions:
+        for action in actions[:10]:
+            detail = f" | secondary `{action['secondary_path']}`" if action.get("secondary_path") else ""
+            lines.append(
+                f"- [{action['priority']}] `{action['primary_path']}`"
+                f"{detail}"
+                f" | {action['title']}"
+            )
+    else:
+        lines.append("- 当前没有 machine-memory 动作。")
     if health.get("link_suggestions", []):
         lines.append("")
         lines.append("### 图谱修复候选")
@@ -3897,6 +4152,7 @@ def render_repair_backlog(
             "- Aging 报告：`wiki/indexes/aging-report.md`",
             "- 机器记忆：`wiki/indexes/machine-memory.md`",
             "- 拓扑视图：`wiki/indexes/machine-memory-topology.md`",
+            "- 动作队列：`wiki/indexes/machine-memory-actions.md`",
             "- 图谱健康：`wiki/indexes/graph-health.md`",
             "- 漂移报告：`wiki/indexes/drift-report.md`",
             "- 审阅队列：`wiki/indexes/review-queue.md`",
@@ -3950,6 +4206,8 @@ def write_nightly_health(
             "drift": memory.get("drift", {}),
             "health": memory.get("health", {}),
             "topology_path": relative_path(root, machine_memory_topology_path(root)),
+            "actions_path": relative_path(root, machine_memory_actions_path(root)),
+            "action_counts": memory.get("health", {}).get("action_counts", {}),
         },
         "repair_backlog": {
             "path": relative_path(root, repair_backlog_path(root)),
@@ -3960,6 +4218,7 @@ def write_nightly_health(
             "overdue_pages": [page["path"] for page in aging["overdue"]],
             "escalated_pages": [page["path"] for page in aging["escalated"]],
             "auto_promotions": [page["path"] for page in promotion_result.get("pages", [])],
+            "machine_memory_actions": [action["id"] for action in memory.get("health", {}).get("actions", [])],
         },
     }
     repair_backlog = render_repair_backlog(
@@ -3993,6 +4252,7 @@ def write_nightly_health(
             f"overdue_reviews: `{len(aging['overdue'])}`",
             f"escalation_candidates: `{len(aging['escalated'])}`",
             f"auto_promotions: `{promotion_result.get('count', 0)}`",
+            f"machine_memory_actions: `{memory.get('health', {}).get('action_counts', {}).get('total', 0)}`",
             f"repair_backlog: `{relative_path(root, repair_backlog_path(root))}`",
         ],
     )

@@ -606,6 +606,17 @@ def _render_machine_query(machine_memory_query: dict[str, Any]) -> str:
                 f"  - `{start.get('title', start.get('id', ''))}` -> `{goal.get('title', goal.get('id', ''))}`"
                 f" ({route.get('length', 0)} hop(s))"
             )
+    relevant_actions = machine_memory_query.get("relevant_actions", [])
+    lines.append(f"- Relevant repair actions: `{len(relevant_actions)}`")
+    if relevant_actions:
+        lines.append("- Repair action summaries:")
+        for action in relevant_actions[:6]:
+            detail = f" | secondary `{action['secondary_path']}`" if action.get("secondary_path") else ""
+            lines.append(
+                f"  - [{action.get('priority', 'unknown')}] {action.get('title', '')}"
+                f" | primary `{action.get('primary_path', '')}`"
+                f"{detail}"
+            )
     return "\n".join(lines)
 
 
@@ -625,6 +636,7 @@ def _build_lint_prompt(root: Path, deterministic_report: str) -> str:
         "wiki/indexes/compile-status.md",
         "wiki/indexes/machine-memory.md",
         "wiki/indexes/machine-memory-topology.md",
+        "wiki/indexes/machine-memory-actions.md",
         "wiki/indexes/graph-health.md",
         "wiki/indexes/drift-report.md",
         "wiki/indexes/log.md",

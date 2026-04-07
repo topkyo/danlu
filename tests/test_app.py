@@ -670,6 +670,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Query routes", client.prompt)
         self.assertIn("Touched components", client.prompt)
         self.assertIn("wiki/indexes/machine-memory-topology.md", client.prompt)
+        self.assertIn("wiki/indexes/machine-memory-actions.md", client.prompt)
+        self.assertIn("Relevant repair actions", client.prompt)
         self.assertIn("latency", client.prompt.lower())
 
     def test_nightly_auto_promotes_recurring_decision_outputs(self) -> None:
@@ -795,12 +797,15 @@ class AiwikiFlowTests(unittest.TestCase):
         state = json.loads(state_path.read_text(encoding="utf-8"))
         self.assertIn("修复待办", backlog_text)
         self.assertIn("图谱修复建议", backlog_text)
+        self.assertIn("Machine Memory 动作", backlog_text)
         self.assertIn("待补来源摘要", backlog_text)
         self.assertIn("审阅队列", backlog_text)
         self.assertIn("待审决策", backlog_text)
         self.assertEqual(state["repair_backlog"]["path"], result["repair_backlog"])
         self.assertEqual(state["lint"]["counts"]["warnings"], result["lint"]["counts"]["warnings"])
         self.assertIn("health", state["machine_memory"])
+        self.assertEqual(state["machine_memory"]["actions_path"], "wiki/indexes/machine-memory-actions.md")
+        self.assertIn("machine_memory_actions", state["repair_backlog"])
         self.assertTrue(state["repair_backlog"]["pending_review_decisions"])
         self.assertTrue(state["repair_backlog"]["pending_review_judgments"])
         self.assertFalse(state["llm_used"])
@@ -926,6 +931,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("hub_concepts", health)
         self.assertIn("hub_sources", health)
         self.assertIn("link_suggestions", health)
+        self.assertIn("actions", health)
+        self.assertIn("action_counts", health)
 
     def test_compile_generates_machine_memory_topology_page(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -942,6 +949,21 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("## Hub 来源", topology_text)
         self.assertIn("## Mermaid 拓扑切片", topology_text)
         self.assertIn("```mermaid", topology_text)
+
+    def test_compile_generates_machine_memory_actions_page(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        second = self.root / "tail.md"
+        second.write_text("# Tail Latency\n\nLatency throughput jitter tradeoffs.\n", encoding="utf-8")
+        ingest_source(self.root, str(second), title="Tail Latency")
+
+        compile_wiki(self.root)
+
+        actions_page = self.root / "wiki" / "indexes" / "machine-memory-actions.md"
+        self.assertTrue(actions_page.exists())
+        actions_text = actions_page.read_text(encoding="utf-8")
+        self.assertIn("## 优先队列", actions_text)
+        self.assertIn("## 补链动作", actions_text)
+        self.assertIn("## 相关链接", actions_text)
 
     def test_drop_url_creates_note_and_manifest_metadata(self) -> None:
         image_bytes = base64.b64decode(
@@ -1084,6 +1106,7 @@ class AiwikiFlowTests(unittest.TestCase):
         (self.root / "wiki" / "indexes" / "index.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory-topology.md").unlink()
+        (self.root / "wiki" / "indexes" / "machine-memory-actions.md").unlink()
         (self.root / "wiki" / "indexes" / "graph-health.md").unlink()
         (self.root / "wiki" / "indexes" / "drift-report.md").unlink()
         (self.root / ".aiwiki" / "cache" / "machine-memory-graph.json").unlink()
@@ -1097,6 +1120,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Missing master wiki index page.", report_text)
         self.assertIn("Missing machine memory index page.", report_text)
         self.assertIn("Missing machine memory topology page.", report_text)
+        self.assertIn("Missing machine memory actions page.", report_text)
         self.assertIn("Missing machine memory graph health page.", report_text)
         self.assertIn("Missing machine memory drift report.", report_text)
         self.assertIn("Missing machine memory graph export.", report_text)

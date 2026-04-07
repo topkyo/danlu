@@ -113,11 +113,13 @@ nightly 也会继续跟踪 `decision / judgment` 的 aging：
 - `review-queue.md` 会标出“已到期待复审”和“需要升级处理”
 - `aging-report.md` 会集中列出这些页面
 - `repair-backlog.md` 会把它们抬进优先队列
+- `machine-memory-actions.md` 会把图谱修复动作沉成稳定队列
 
 关键状态页：
 - [review-queue.md](./wiki/indexes/review-queue.md)
 - [aging-report.md](./wiki/indexes/aging-report.md)
 - [machine-memory-topology.md](./wiki/indexes/machine-memory-topology.md)
+- [machine-memory-actions.md](./wiki/indexes/machine-memory-actions.md)
 - [repair-backlog.md](./wiki/indexes/repair-backlog.md)
 - [graph-health.md](./wiki/indexes/graph-health.md)
 - [machine-memory.md](./wiki/indexes/machine-memory.md)
