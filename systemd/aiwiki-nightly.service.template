@@ -1,0 +1,10 @@
+[Unit]
+Description=aiwiki nightly health and repair pass
+After=default.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__PROJECT_ROOT__
+EnvironmentFile=__ENV_FILE__
+Environment=PYTHONPATH=__PROJECT_ROOT__/src
+ExecStart=__PROJECT_ROOT__/scripts/run_nightly.sh

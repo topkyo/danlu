@@ -23,7 +23,7 @@ Deterministic commands:
 
 LLM-backed execution commands:
 
-- `run-compile`: replace placeholder source summaries using a configured LLM
+- `run-compile`: replace placeholder source summaries and fallback concept summaries using a configured LLM
 - `run-ask`: create a query artifact, attach machine-memory query hints, and let the LLM fill it with grounded content
 - `run-lint`: run deterministic lint, then generate a semantic lint report
 - `run-nightly`: run compile + semantic lint and write nightly repair artifacts
@@ -95,10 +95,12 @@ Repo-local Obsidian assets are included:
 - `.aiwiki/state/nightly-health.json`: latest nightly repair snapshot
 - `.aiwiki/cache/machine-memory-graph.json`: graph export for future agent/tooling use
 
+`run-compile` now upgrades both `wiki/sources/` and `wiki/concepts/` when budget is available.
 `ask` and `run-ask` now read the compiled wiki first, then use machine-memory term hits plus graph edges to bias source and concept selection.
 They also expose bridge concepts and a lightweight query subgraph for graph-aware retrieval.
 `nightly` and `run-nightly` aggregate compile, lint, drift, and repair queues into `wiki/indexes/repair-backlog.md`.
 `graph-health.md` summarizes connected components, isolated sources, singleton concepts, and overloaded concepts.
+`install_user_service.sh` now installs both the inbox watcher and a nightly `systemd --user` timer for automated health/repair passes.
 
 The product architecture for the "Alchemy Furnace" model lives in `wiki/indexes/Alchemy Furnace.md`.
 
@@ -264,7 +266,7 @@ python3 -m playwright install chromium
 
 ## User Service
 
-To make the watcher start automatically for your user session, install the provided `systemd --user` service:
+To make the watcher and nightly repair loop start automatically for your user session, install the provided `systemd --user` units:
 
 ```bash
 cd /home/tim/ai-wiki
@@ -275,6 +277,9 @@ This installs:
 
 - unit file: `~/.config/systemd/user/aiwiki-watch.service`
 - env file: `~/.config/aiwiki/aiwiki-watch.env`
+- unit file: `~/.config/systemd/user/aiwiki-nightly.service`
+- timer file: `~/.config/systemd/user/aiwiki-nightly.timer`
+- env file: `~/.config/aiwiki/aiwiki-nightly.env`
 
 ## Developer Closure
 
@@ -292,12 +297,30 @@ That script will:
 
 It never pushes. Remote push / publish is still a separate boundary.
 
-Default env file values use `codex-cli`. Adjust the env file if you want `claude-cli` or `openai-api`, then restart the service:
+Nightly defaults:
+
+- `OnCalendar=daily`
+- if an LLM backend is configured, the timer runs `run-nightly`
+- if no LLM backend is configured, it falls back to deterministic `nightly`
+
+Useful nightly env knobs:
+
+- `AIWIKI_NIGHTLY_COMPILE_LIMIT=5`
+- `AIWIKI_NIGHTLY_DETERMINISTIC_ONLY=0`
+- `AIWIKI_NIGHTLY_NO_SEMANTIC_LINT=0`
+- install-time shell vars: `AIWIKI_NIGHTLY_ON_CALENDAR=daily`
+- install-time shell vars: `AIWIKI_NIGHTLY_PERSISTENT=true`
+
+If you change `AIWIKI_NIGHTLY_ON_CALENDAR` or `AIWIKI_NIGHTLY_PERSISTENT`, rerun `bash scripts/install_user_service.sh` to rewrite the timer unit.
+
+Default env file values use `codex-cli`. Adjust the env files if you want `claude-cli` or `openai-api`, then restart the units:
 
 ```bash
 systemctl --user restart aiwiki-watch.service
 systemctl --user status --no-pager aiwiki-watch.service
 journalctl --user -u aiwiki-watch.service -n 100 --no-pager
+systemctl --user status --no-pager aiwiki-nightly.timer
+journalctl --user -u aiwiki-nightly.service -n 100 --no-pager
 ```
 
 To remove the service:

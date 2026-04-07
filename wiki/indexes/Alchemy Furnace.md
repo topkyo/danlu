@@ -228,17 +228,17 @@ Implemented now:
 - source, concept, and index compilation
 - machine-memory graph export, drift tracking, and query planning
 - graph-health dashboard and graph-aware repair suggestions
+- LLM-backed source and concept maintenance during `run-compile`
 - nightly health checks and repair backlog generation
+- timer-based scheduling for nightly jobs
 - output generation and filed-back derived notes
 - automation via `watch` and the user service
 - Obsidian as the frontend
 
 Next-stage extensions:
 
-- richer concept maintenance by the LLM
 - deeper graph traversal and retrieval beyond the current lightweight query subgraph
 - more explicit decision pages and judgment pages
-- timer-based scheduling for nightly jobs
 
 ## Architectural Invariants
 

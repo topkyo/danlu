@@ -18,6 +18,7 @@ from aiwiki.app import (
     load_manifest,
     nightly_health,
     parse_frontmatter,
+    placeholder_concept_slugs,
 )
 from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
@@ -344,6 +345,59 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(result["pending_pages"], 1)
         self.assertIn("Transformers benefit from scale", source_page.read_text(encoding="utf-8"))
 
+    def test_run_compile_rejects_source_response_that_keeps_placeholder(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        current = source_page.read_text(encoding="utf-8")
+
+        with self.assertRaisesRegex(RuntimeError, "placeholder state"):
+            run_compile(self.root, client=StubClient([current]), limit=1)
+
+    def test_run_compile_enriches_placeholder_concept_summary(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        source_page.write_text(
+            source_page.read_text(encoding="utf-8").replace(
+                "- Pending LLM summary.",
+                "- Transformer scale improves capability and raises compute demand.",
+            ),
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+        target_slug = placeholder_concept_slugs(self.root)[0]
+        concept_page = self.root / "wiki" / "concepts" / f"{target_slug}.md"
+        current = concept_page.read_text(encoding="utf-8")
+        updated = current.replace("- This concept currently appears", "- Enriched concept synthesis appears")
+
+        result = run_compile(self.root, client=StubClient([updated]), limit=1)
+
+        self.assertEqual(result["pending_pages"], 0)
+        self.assertEqual(result["pending_concept_pages"], 5)
+        self.assertEqual(len(result["updated_concept_pages"]), 1)
+        refreshed = concept_page.read_text(encoding="utf-8")
+        self.assertIn("Enriched concept synthesis appears", refreshed)
+
+    def test_run_compile_rejects_concept_response_that_keeps_fallback(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        source_page.write_text(
+            source_page.read_text(encoding="utf-8").replace(
+                "- Pending LLM summary.",
+                "- Transformer scale improves capability and raises compute demand.",
+            ),
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+        target_slug = placeholder_concept_slugs(self.root)[0]
+        concept_page = self.root / "wiki" / "concepts" / f"{target_slug}.md"
+        current = concept_page.read_text(encoding="utf-8")
+
+        with self.assertRaisesRegex(RuntimeError, "fallback state"):
+            run_compile(self.root, client=StubClient([current]), limit=1)
+
     def test_run_ask_and_run_lint_write_llm_outputs(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -571,6 +625,29 @@ class AiwikiFlowTests(unittest.TestCase):
         content = script.read_text(encoding="utf-8")
         self.assertIn('PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"', content)
         self.assertIn('exec python3 -m aiwiki.cli "${ARGS[@]}"', content)
+
+    def test_run_nightly_script_uses_root_relative_paths(self) -> None:
+        script = Path("/home/tim/ai-wiki/scripts/run_nightly.sh")
+        content = script.read_text(encoding="utf-8")
+        self.assertIn('PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"', content)
+        self.assertIn('exec python3 -m aiwiki.cli "${ARGS[@]}"', content)
+        self.assertIn("run-nightly", content)
+        self.assertIn("nightly", content)
+
+    def test_user_service_install_script_mentions_nightly_timer(self) -> None:
+        script = Path("/home/tim/ai-wiki/scripts/install_user_service.sh")
+        content = script.read_text(encoding="utf-8")
+        self.assertIn("aiwiki-nightly.service", content)
+        self.assertIn("aiwiki-nightly.timer", content)
+        self.assertIn("AIWIKI_NIGHTLY_COMPILE_LIMIT", content)
+
+    def test_nightly_systemd_templates_exist(self) -> None:
+        service_template = Path("/home/tim/ai-wiki/systemd/aiwiki-nightly.service.template")
+        timer_template = Path("/home/tim/ai-wiki/systemd/aiwiki-nightly.timer.template")
+        self.assertTrue(service_template.exists())
+        self.assertTrue(timer_template.exists())
+        self.assertIn("ExecStart=__PROJECT_ROOT__/scripts/run_nightly.sh", service_template.read_text(encoding="utf-8"))
+        self.assertIn("OnCalendar=__ON_CALENDAR__", timer_template.read_text(encoding="utf-8"))
 
     def test_drop_url_creates_note_and_manifest_metadata(self) -> None:
         image_bytes = base64.b64decode(

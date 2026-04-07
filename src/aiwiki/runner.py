@@ -13,11 +13,14 @@ from .app import (
     TEXT_EXTENSIONS,
     ask_question,
     compile_wiki,
+    concept_summary_is_placeholder,
     ensure_layout,
     lint_wiki,
     nightly_health,
     load_manifest,
     parse_frontmatter,
+    placeholder_concept_slugs,
+    preserved_section,
     read_text_preview,
     relative_path,
     render_scalar,
@@ -55,13 +58,20 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             pending.append(entry)
 
     updated_pages: list[str] = []
+    updated_concept_pages: list[str] = []
     skipped = max(0, len(pending) - limit)
-    if not pending or limit <= 0:
+    pending_concept_slugs = placeholder_concept_slugs(root)
+    remaining_budget = max(0, limit)
+    skipped_concepts = max(0, len(pending_concept_slugs) - remaining_budget)
+    if (not pending and not pending_concept_slugs) or limit <= 0:
         return {
             "compile": compile_result,
             "updated_pages": updated_pages,
             "pending_pages": len(pending),
             "skipped_pages": skipped,
+            "updated_concept_pages": updated_concept_pages,
+            "pending_concept_pages": len(pending_concept_slugs),
+            "skipped_concept_pages": skipped_concepts,
         }
 
     effective_client = client or create_client(root)
@@ -90,12 +100,51 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
 
     if updated_pages:
         compile_result = compile_wiki(root)
+        pending_concept_slugs = placeholder_concept_slugs(root)
+    remaining_budget = max(0, limit - len(updated_pages))
+    skipped_concepts = max(0, len(pending_concept_slugs) - remaining_budget)
+
+    for slug in pending_concept_slugs[:remaining_budget]:
+        target = root / "wiki" / "concepts" / f"{slug}.md"
+        if not target.exists():
+            continue
+        current_page = target.read_text(encoding="utf-8", errors="replace")
+        if not concept_summary_is_placeholder(current_page):
+            continue
+        frontmatter = parse_frontmatter(current_page)
+        source_pages = frontmatter.get("source_pages", [])
+        if not isinstance(source_pages, list):
+            source_pages = []
+        related_slugs = _extract_related_concept_slugs(current_page)
+        prompt = _build_concept_compile_prompt(root, target, current_page, source_pages, related_slugs)
+        result = effective_client.complete(_system_prompt("compile"), prompt)
+        updated = _normalize_markdown(result.text)
+        _validate_concept_page(updated, slug, frontmatter.get("source_signature", ""), source_pages)
+        target.write_text(updated, encoding="utf-8")
+        updated_concept_pages.append(relative_path(root, target))
+        _append_log(
+            root,
+            {
+                "event": "run-compile-concept",
+                "target": relative_path(root, target),
+                "source_pages": source_pages,
+                "model": _client_model_name(effective_client),
+                "response_id": result.response_id,
+                "usage": result.usage,
+            },
+        )
+
+    if updated_concept_pages:
+        compile_result = compile_wiki(root)
 
     return {
         "compile": compile_result,
         "updated_pages": updated_pages,
         "pending_pages": len(pending),
         "skipped_pages": skipped,
+        "updated_concept_pages": updated_concept_pages,
+        "pending_concept_pages": len(pending_concept_slugs),
+        "skipped_concept_pages": skipped_concepts,
     }
 
 
@@ -390,6 +439,57 @@ def _build_compile_prompt(root: Path, entry: dict[str, Any], raw_path: Path, cur
     )
 
 
+def _build_concept_compile_prompt(
+    root: Path,
+    target: Path,
+    current_page: str,
+    source_pages: list[str],
+    related_slugs: list[str],
+) -> str:
+    template = _load_prompt(root, "compile.md")
+    source_sections: list[str] = []
+    for relative in source_pages:
+        page = root / relative
+        if not page.exists():
+            continue
+        source_sections.extend([f"### {relative}", _fit_prompt_section(page.read_text(encoding='utf-8', errors='replace'), max_chars=3200), ""])
+    related_sections: list[str] = []
+    for slug in related_slugs[:4]:
+        page = root / "wiki" / "concepts" / f"{slug}.md"
+        if not page.exists():
+            continue
+        related_sections.extend([f"### wiki/concepts/{slug}.md", _fit_prompt_section(page.read_text(encoding='utf-8', errors='replace'), max_chars=2200), ""])
+    frontmatter = parse_frontmatter(current_page)
+    return "\n\n".join(
+        [
+            template,
+            "## Target",
+            f"- Replace file: `{relative_path(root, target)}`",
+            "",
+            "## Hard Constraints",
+            f"- Preserve frontmatter `id: concept-{target.stem}`.",
+            "- Preserve `kind: concept`.",
+            f"- Preserve `source_signature: {frontmatter.get('source_signature', '')}`.",
+            f"- Preserve `source_pages: {json.dumps(source_pages)}`.",
+            "- Replace the fallback concept summary with grounded synthesis across the listed source pages.",
+            "- Keep contradictions, weak evidence, and unresolved gaps explicit.",
+            "- Preserve or improve explicit citations to `wiki/sources/*.md` when useful.",
+            "",
+            "## Runtime Schema",
+            _schema_context(root, ("index.md", "citations.md", "conflicts.md", "taxonomy.md")),
+            "",
+            "## Current Concept Page",
+            current_page,
+            "",
+            "## Related Source Pages",
+            "\n".join(source_sections) if source_sections else "- No source pages were available.",
+            "",
+            "## Related Concepts",
+            "\n".join(related_sections) if related_sections else "- No related concept pages were available.",
+        ]
+    )
+
+
 def _build_ask_prompt(
     root: Path,
     target: Path,
@@ -577,6 +677,31 @@ def _validate_source_page(markdown: str, expected_id: str, expected_source_file:
     source_files = frontmatter.get("source_files", [])
     if expected_source_file not in source_files:
         raise RuntimeError("Compile response dropped the source file reference.")
+    if preserved_section(markdown, "Summary", "").strip() == "- Pending LLM summary.":
+        raise RuntimeError("Compile response left the source summary in placeholder state.")
+
+
+def _validate_concept_page(
+    markdown: str,
+    expected_slug: str,
+    expected_source_signature: str,
+    expected_source_pages: list[str],
+) -> None:
+    frontmatter = parse_frontmatter(markdown)
+    if not frontmatter:
+        raise RuntimeError("Concept compile response is missing frontmatter.")
+    if frontmatter.get("id") != f"concept-{expected_slug}":
+        raise RuntimeError("Concept compile response changed the concept id.")
+    if frontmatter.get("kind") != "concept":
+        raise RuntimeError("Concept compile response changed the page kind.")
+    if expected_source_signature and frontmatter.get("source_signature") != expected_source_signature:
+        raise RuntimeError("Concept compile response changed or dropped the source signature.")
+    source_pages = frontmatter.get("source_pages", [])
+    for expected_source_page in expected_source_pages:
+        if expected_source_page not in source_pages:
+            raise RuntimeError("Concept compile response dropped a source page reference.")
+    if concept_summary_is_placeholder(markdown):
+        raise RuntimeError("Concept compile response left the concept summary in fallback state.")
 
 
 def _fit_prompt_section(text: str, max_chars: int, tail: bool = False) -> str:
@@ -598,6 +723,15 @@ def _fit_log_prompt_section(text: str, max_chars: int) -> str:
             return "...[truncated earlier log entries]\n" + excerpt.lstrip()
         return "...[truncated earlier log entries]\n" + excerpt[-max_chars:].lstrip()
     return _fit_prompt_section(text, max_chars=max_chars, tail=True)
+
+
+def _extract_related_concept_slugs(markdown: str) -> list[str]:
+    slugs: list[str] = []
+    for match in re.finditer(r"\(\./([a-z0-9][a-z0-9\-]*)\.md\)", markdown):
+        slug = match.group(1)
+        if slug not in slugs:
+            slugs.append(slug)
+    return slugs
 
 
 def _validate_output_markdown(markdown: str, output_format: str, source_ids: list[str]) -> None:

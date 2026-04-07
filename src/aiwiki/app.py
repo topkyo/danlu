@@ -2078,10 +2078,14 @@ def placeholder_concept_slugs(root: Path) -> list[str]:
     slugs: list[str] = []
     for page in sorted((root / "wiki" / "concepts").glob("*.md")):
         content = page.read_text(encoding="utf-8", errors="replace")
-        summary = preserved_section(content, "Summary", "")
-        if summary.startswith("- This concept currently appears in `"):
+        if concept_summary_is_placeholder(content):
             slugs.append(page.stem)
     return slugs
+
+
+def concept_summary_is_placeholder(markdown: str) -> bool:
+    summary = preserved_section(markdown, "Summary", "")
+    return summary.startswith("- This concept currently appears in `")
 
 
 def lint_wiki(root: Path) -> dict[str, Any]:
@@ -2194,6 +2198,8 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         frontmatter = parse_frontmatter(content)
         if frontmatter.get("kind") != "concept":
             findings.append(Finding("warn", relative_path(root, page), "Concept page kind is missing or incorrect."))
+        if concept_summary_is_placeholder(content):
+            findings.append(Finding("warn", relative_path(root, page), "Concept page still contains the fallback summary."))
         source_pages = frontmatter.get("source_pages", [])
         if not source_pages:
             findings.append(Finding("warn", relative_path(root, page), "Concept page has no source-page references."))
