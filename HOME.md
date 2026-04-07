@@ -13,6 +13,25 @@ kind: "dashboard"
 - 做查询
 - 回流并审阅重要结论
 
+## 最简流程
+
+对人来说，只记住这 3 个地方就够了：
+
+- 输入：`raw/`
+- 输出：`output/`
+- 沉淀：`wiki/`
+
+如果展开一点，就是：
+
+`raw/inbox/ -> wiki/sources + wiki/concepts + wiki/indexes -> output/ -> wiki/derived|decisions|judgments`
+
+对应关系：
+
+- 你把原料丢进 `raw/inbox/`，或用 `drop-*` 入口导入
+- 系统把它编译到 `wiki/`
+- 你从 `output/` 取报告、幻灯片、图表和 lint 结果
+- 值得长期保留的结果，再回流到 `wiki/`
+
 ## 今日入口
 
 - [[wiki/indexes/Raw Inbox|原料收件箱]]
