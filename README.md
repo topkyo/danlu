@@ -115,6 +115,7 @@ nightly 也会继续跟踪 `decision / judgment` 的 aging：
 - `aging-report.md` 会集中列出这些页面
 - `repair-backlog.md` 会把它们抬进优先队列
 - `machine-memory-actions.md` 会把图谱修复动作沉成稳定队列，并展示状态分布、已到期、已升级、最近清除
+- `machine-memory-repair-plan.md` 会把 accepted / proposed / deferred 动作整理成可执行批次和下一步命令提示
 
 machine-memory action 现在也有显式 lifecycle：
 - `proposed`：新发现、待处理
@@ -128,6 +129,7 @@ machine-memory action 现在也有显式 lifecycle：
 - [aging-report.md](./wiki/indexes/aging-report.md)
 - [machine-memory-topology.md](./wiki/indexes/machine-memory-topology.md)
 - [machine-memory-actions.md](./wiki/indexes/machine-memory-actions.md)
+- [machine-memory-repair-plan.md](./wiki/indexes/machine-memory-repair-plan.md)
 - [repair-backlog.md](./wiki/indexes/repair-backlog.md)
 - [graph-health.md](./wiki/indexes/graph-health.md)
 - [machine-memory.md](./wiki/indexes/machine-memory.md)

@@ -612,10 +612,15 @@ def _render_machine_query(machine_memory_query: dict[str, Any]) -> str:
         lines.append("- Repair action summaries:")
         for action in relevant_actions[:6]:
             detail = f" | secondary `{action['secondary_path']}`" if action.get("secondary_path") else ""
+            next_step = action.get("next_step", "")
+            next_part = f" | next {next_step}" if next_step else ""
             lines.append(
                 f"  - [{action.get('priority', 'unknown')}] {action.get('title', '')}"
+                f" | status `{action.get('status', 'unknown')}`"
+                f" | policy `{action.get('execution_policy', 'triage')}`"
                 f" | primary `{action.get('primary_path', '')}`"
                 f"{detail}"
+                f"{next_part}"
             )
     return "\n".join(lines)
 

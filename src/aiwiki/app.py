@@ -1153,6 +1153,141 @@ def collect_machine_memory_action_aging(actions: list[dict[str, Any]]) -> dict[s
     }
 
 
+def action_priority_rank(priority: str) -> int:
+    return {"high": 0, "medium": 1, "low": 2}.get(priority, 9)
+
+
+def action_status_rank(status: str) -> int:
+    return {"proposed": 0, "accepted": 1, "deferred": 2, "resolved": 3, "rejected": 4}.get(status, 9)
+
+
+def describe_machine_memory_action(action: dict[str, Any]) -> dict[str, str]:
+    action_id = str(action.get("id") or "")
+    kind = str(action.get("kind") or "")
+    status = str(action.get("status") or "proposed")
+    active = bool(action.get("active", True))
+    review_prefix = f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-action {action_id}"
+    kind_steps = {
+        "add-source-concept-link": "检查来源页与概念页是否应补引用或反链。",
+        "connect-isolated-source": "把孤立来源接入至少一个稳定概念。",
+        "expand-singleton-concept": "扩展单节点概念的相关来源或相关概念。",
+        "split-overloaded-concept": "把过载概念拆成更窄的概念页或子主题。",
+        "monitor-bridge-concept": "确认桥接概念仍然必要，并记录观察结论。",
+    }
+    next_step = kind_steps.get(kind, "检查这个 machine-memory 动作对应的页面。")
+    command_hint = ""
+    execution_policy = "triage"
+    if not active:
+        execution_policy = "inactive-history"
+        next_step = "信号已消失；确认是否要作为已解决归档。"
+        if status in PENDING_ACTION_STATUSES:
+            command_hint = f'{review_prefix} --status resolved --note "Signal disappeared after compile."'
+    elif status == "proposed":
+        execution_policy = "triage"
+        command_hint = f'{review_prefix} --status accepted --note "Accepted for manual repair."'
+    elif status == "accepted":
+        execution_policy = "manual-repair"
+        next_step = f"{next_step} 完成后将动作标为 resolved。"
+        command_hint = f'{review_prefix} --status resolved --note "Repair completed."'
+    elif status == "deferred":
+        execution_policy = "parked"
+        next_step = "已确认但暂缓处理；准备恢复时改回 accepted。"
+        command_hint = f'{review_prefix} --status accepted --note "Resume deferred repair."'
+    elif status == "resolved":
+        execution_policy = "closed"
+        next_step = "保持关闭，只有信号再次出现时才重开。"
+    elif status == "rejected":
+        execution_policy = "closed"
+        next_step = "保持关闭，除非修复策略改变。"
+    return {
+        "execution_policy": execution_policy,
+        "next_step": next_step,
+        "command_hint": command_hint,
+    }
+
+
+def build_machine_memory_repair_plan(health: dict[str, Any]) -> dict[str, Any]:
+    active_actions = [dict(action) for action in health.get("actions", []) if isinstance(action, dict)]
+    inactive_actions = [dict(action) for action in health.get("inactive_actions", []) if isinstance(action, dict)]
+    for action in active_actions + inactive_actions:
+        action.update(describe_machine_memory_action(action))
+    ready_actions = [action for action in active_actions if action.get("status") == "accepted"]
+    triage_actions = [action for action in active_actions if action.get("status") == "proposed"]
+    deferred_actions = [action for action in active_actions if action.get("status") == "deferred"]
+    escalated_ids = {action["id"] for action in health.get("escalated_actions", []) if action.get("id")}
+    overdue_ids = {action["id"] for action in health.get("overdue_actions", []) if action.get("id")}
+
+    batches: dict[str, dict[str, Any]] = {}
+    for action in ready_actions:
+        batch_key = str(action.get("component_id") or action.get("primary_path") or action.get("id"))
+        label = (
+            f"component `{action['component_id']}`" if action.get("component_id") else f"page `{action['primary_path']}`"
+        )
+        batch = batches.setdefault(
+            batch_key,
+            {
+                "id": batch_key,
+                "label": label,
+                "component_id": action.get("component_id", ""),
+                "primary_paths": set(),
+                "secondary_paths": set(),
+                "action_ids": [],
+                "actions": [],
+                "priority_rank": 9,
+                "escalated": False,
+                "overdue": False,
+            },
+        )
+        batch["primary_paths"].add(str(action.get("primary_path") or ""))
+        if action.get("secondary_path"):
+            batch["secondary_paths"].add(str(action.get("secondary_path") or ""))
+        batch["action_ids"].append(action["id"])
+        batch["actions"].append(action)
+        batch["priority_rank"] = min(batch["priority_rank"], action_priority_rank(str(action.get("priority") or "")))
+        batch["escalated"] = batch["escalated"] or action["id"] in escalated_ids
+        batch["overdue"] = batch["overdue"] or action["id"] in overdue_ids
+
+    execution_batches = sorted(
+        [
+            {
+                **batch,
+                "primary_paths": sorted(path for path in batch["primary_paths"] if path),
+                "secondary_paths": sorted(path for path in batch["secondary_paths"] if path),
+                "actions": sorted(
+                    batch["actions"],
+                    key=lambda item: (
+                        action_priority_rank(str(item.get("priority") or "")),
+                        -int(item.get("occurrences", 0)),
+                        str(item.get("title", "")).lower(),
+                    ),
+                ),
+            }
+            for batch in batches.values()
+        ],
+        key=lambda item: (
+            0 if item["escalated"] else 1,
+            0 if item["overdue"] else 1,
+            item["priority_rank"],
+            item["label"],
+        ),
+    )
+
+    return {
+        "ready_actions": ready_actions,
+        "triage_actions": triage_actions,
+        "deferred_actions": deferred_actions,
+        "inactive_actions": inactive_actions[:12],
+        "execution_batches": execution_batches[:10],
+        "counts": {
+            "ready": len(ready_actions),
+            "triage": len(triage_actions),
+            "deferred": len(deferred_actions),
+            "inactive": len(inactive_actions),
+            "batches": len(execution_batches),
+        },
+    }
+
+
 def normalize_query_signature(query: str) -> str:
     tokens = re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]+", query.lower())
     signature = "-".join(tokens).strip("-")
@@ -1539,6 +1674,7 @@ def render_compile_status(
         "- 机器记忆摘要位于 `machine-memory.md`。",
         "- 机器记忆拓扑位于 `machine-memory-topology.md`。",
         "- 机器记忆动作队列位于 `machine-memory-actions.md`。",
+        "- 机器记忆修复计划位于 `machine-memory-repair-plan.md`。",
         "- 图谱健康页位于 `graph-health.md`。",
         "- 漂移报告位于 `drift-report.md`。",
         "- 修复待办位于 `repair-backlog.md`。",
@@ -1580,6 +1716,7 @@ def render_master_index(
         "- [机器记忆](./machine-memory.md)",
         "- [机器记忆拓扑](./machine-memory-topology.md)",
         "- [机器记忆动作队列](./machine-memory-actions.md)",
+        "- [机器记忆修复计划](./machine-memory-repair-plan.md)",
         "- [图谱健康](./graph-health.md)",
         "- [漂移报告](./drift-report.md)",
         "- [修复待办](./repair-backlog.md)",
@@ -1686,6 +1823,10 @@ def machine_memory_topology_path(root: Path) -> Path:
 
 def machine_memory_actions_path(root: Path) -> Path:
     return root / "wiki" / "indexes" / "machine-memory-actions.md"
+
+
+def machine_memory_repair_plan_path(root: Path) -> Path:
+    return root / "wiki" / "indexes" / "machine-memory-repair-plan.md"
 
 
 def machine_memory_action_state_path(root: Path) -> Path:
@@ -2245,12 +2386,10 @@ def reconcile_machine_memory_actions(
         record["escalation_candidate"] = "false"
         inactive_records.append(record)
 
-    priority_order = {"high": 0, "medium": 1, "low": 2}
-    status_order = {"proposed": 0, "accepted": 1, "deferred": 2, "resolved": 3, "rejected": 4}
     active_records.sort(
         key=lambda item: (
-            status_order.get(str(item.get("status")), 9),
-            priority_order.get(str(item.get("priority")), 9),
+            action_status_rank(str(item.get("status"))),
+            action_priority_rank(str(item.get("priority"))),
             -int(item.get("occurrences", 0)),
             -int(item.get("score", 0)),
             str(item.get("title", "")).lower(),
@@ -2265,6 +2404,10 @@ def reconcile_machine_memory_actions(
     )
     overdue_actions = [record for record in active_records if record.get("overdue_review") == "true"]
     escalated_actions = [record for record in active_records if record.get("escalation_candidate") == "true"]
+    active_records = [{**record, **describe_machine_memory_action(record)} for record in active_records]
+    inactive_records = [{**record, **describe_machine_memory_action(record)} for record in inactive_records]
+    overdue_actions = [{**record, **describe_machine_memory_action(record)} for record in overdue_actions]
+    escalated_actions = [{**record, **describe_machine_memory_action(record)} for record in escalated_actions]
     counts = {
         "total": len(active_records),
         "inactive": len(inactive_records),
@@ -2541,10 +2684,13 @@ def build_machine_memory_query(memory: dict[str, Any], question: str) -> dict[st
                 "id": action["id"],
                 "kind": action["kind"],
                 "priority": action["priority"],
+                "status": action.get("status", "proposed"),
                 "title": action["title"],
                 "primary_path": action["primary_path"],
                 "secondary_path": action.get("secondary_path", ""),
                 "reason": action.get("reason", ""),
+                "execution_policy": action.get("execution_policy", "triage"),
+                "next_step": action.get("next_step", ""),
             }
         )
 
@@ -2839,6 +2985,8 @@ def render_graph_health(memory: dict[str, Any]) -> str:
         f"- 修复动作：`{health.get('action_counts', {}).get('total', 0)}`",
         f"- 动作已到期：`{health.get('action_counts', {}).get('overdue', 0)}`",
         f"- 动作需升级：`{health.get('action_counts', {}).get('escalated', 0)}`",
+        f"- 执行批次：`{health.get('repair_plan', {}).get('counts', {}).get('batches', 0)}`",
+        f"- 执行批次：`{health.get('repair_plan', {}).get('counts', {}).get('batches', 0)}`",
         "",
         "## 修复信号",
         f"- 孤立来源：`{', '.join(health.get('isolated_source_ids', [])[:10]) or 'none'}`",
@@ -2866,6 +3014,7 @@ def render_graph_health(memory: dict[str, Any]) -> str:
         "- [机器记忆](./machine-memory.md)",
         "- [拓扑视图](./machine-memory-topology.md)",
         "- [动作队列](./machine-memory-actions.md)",
+        "- [修复计划](./machine-memory-repair-plan.md)",
         "- [漂移报告](./drift-report.md)",
         "- [修复待办](./repair-backlog.md)",
         "- [决策索引](./decisions.md)",
@@ -2909,6 +3058,7 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         f"- 修复动作：`{health.get('action_counts', {}).get('total', 0)}`",
         f"- 动作已到期：`{health.get('action_counts', {}).get('overdue', 0)}`",
         f"- 动作需升级：`{health.get('action_counts', {}).get('escalated', 0)}`",
+        f"- 执行批次：`{health.get('repair_plan', {}).get('counts', {}).get('batches', 0)}`",
         "",
         "## 判断层",
         "- 决策索引：`wiki/indexes/decisions.md`",
@@ -2925,6 +3075,7 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         "- [图谱健康](./graph-health.md)",
         "- [拓扑视图](./machine-memory-topology.md)",
         "- [动作队列](./machine-memory-actions.md)",
+        "- [修复计划](./machine-memory-repair-plan.md)",
         "- [漂移报告](./drift-report.md)",
         "- [修复待办](./repair-backlog.md)",
         "",
@@ -2932,6 +3083,7 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         f"- 状态文件：`{health.get('action_state_path', '.aiwiki/state/machine-memory-actions.json')}`",
         "- 通过 `review-action` 推进 action status。",
         "- nightly 会继续追踪 action 的 occurrences、aging 和 escalation。",
+        "- repair 计划页：`wiki/indexes/machine-memory-repair-plan.md`",
         "",
         "## 查询加速",
         "- `ask` 和 `run-ask` 先用机器记忆 term index 做第一轮查询规划。",
@@ -3074,6 +3226,7 @@ def render_machine_memory_topology(memory: dict[str, Any]) -> str:
             "- [机器记忆](./machine-memory.md)",
             "- [图谱健康](./graph-health.md)",
             "- [动作队列](./machine-memory-actions.md)",
+            "- [修复计划](./machine-memory-repair-plan.md)",
             "- [修复待办](./repair-backlog.md)",
         ]
     )
@@ -3162,6 +3315,7 @@ def render_machine_memory_actions(memory: dict[str, Any]) -> str:
             lines.append(
                 f"- [{action['priority']}] {action['title']}"
                 f" | status `{action_status}`"
+                f" | policy `{action.get('execution_policy', 'triage')}`"
                 f" | primary `{action['primary_path']}`"
                 f"{detail}"
                 f" | occurrences `{action.get('occurrences', 0)}`"
@@ -3181,6 +3335,7 @@ def render_machine_memory_actions(memory: dict[str, Any]) -> str:
             lines.append(
                 f"- [{action['priority']}] {action['title']}"
                 f" | status `{action_status}`"
+                f" | policy `{action.get('execution_policy', 'triage')}`"
                 f" | {' | '.join(paths)}"
                 f" | first `{action.get('first_seen_at', '') or 'none'}`"
                 f" | seen `{action.get('occurrences', 0)}`"
@@ -3202,6 +3357,116 @@ def render_machine_memory_actions(memory: dict[str, Any]) -> str:
             "## 相关链接",
             "- [机器记忆](./machine-memory.md)",
             "- [拓扑视图](./machine-memory-topology.md)",
+            "- [修复计划](./machine-memory-repair-plan.md)",
+            "- [图谱健康](./graph-health.md)",
+            "- [修复待办](./repair-backlog.md)",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
+    health = memory.get("health", {})
+    plan = health.get("repair_plan", {})
+    counts = plan.get("counts", {})
+    ready_actions = plan.get("ready_actions", [])
+    triage_actions = plan.get("triage_actions", [])
+    deferred_actions = plan.get("deferred_actions", [])
+    inactive_actions = plan.get("inactive_actions", [])
+    execution_batches = plan.get("execution_batches", [])
+    lines = [
+        "# 机器记忆修复计划",
+        "",
+        f"- 最近编译时间：`{memory['compiled_at']}`",
+        f"- Ready 动作：`{counts.get('ready', 0)}`",
+        f"- 待分流动作：`{counts.get('triage', 0)}`",
+        f"- 暂缓动作：`{counts.get('deferred', 0)}`",
+        f"- 最近清除：`{counts.get('inactive', 0)}`",
+        f"- 执行批次：`{counts.get('batches', 0)}`",
+        f"- 状态文件：`{health.get('action_state_path', '.aiwiki/state/machine-memory-actions.json')}`",
+        "",
+        "## Ready Now",
+    ]
+    if not ready_actions:
+        lines.append("- 当前没有 ready action。")
+    else:
+        for action in ready_actions[:10]:
+            detail = f" | secondary `{action['secondary_path']}`" if action.get("secondary_path") else ""
+            command_hint = action.get("command_hint", "")
+            command_part = f" | command `{command_hint}`" if command_hint else ""
+            lines.append(
+                f"- [{action['priority']}] {action['title']}"
+                f" | primary `{action['primary_path']}`"
+                f"{detail}"
+                f" | next {action.get('next_step', 'n/a')}"
+                f"{command_part}"
+            )
+    lines.extend(["", "## Need Triage"])
+    if not triage_actions:
+        lines.append("- 当前没有待分流动作。")
+    else:
+        for action in triage_actions[:10]:
+            command_hint = action.get("command_hint", "")
+            command_part = f" | command `{command_hint}`" if command_hint else ""
+            lines.append(
+                f"- [{action['priority']}] {action['title']}"
+                f" | primary `{action['primary_path']}`"
+                f" | next {action.get('next_step', 'n/a')}"
+                f"{command_part}"
+            )
+    lines.extend(["", "## Deferred"])
+    if not deferred_actions:
+        lines.append("- 当前没有暂缓动作。")
+    else:
+        for action in deferred_actions[:10]:
+            command_hint = action.get("command_hint", "")
+            command_part = f" | command `{command_hint}`" if command_hint else ""
+            lines.append(
+                f"- [{action['priority']}] {action['title']}"
+                f" | primary `{action['primary_path']}`"
+                f" | revisit `{action.get('revisit_after', '') or 'none'}`"
+                f"{command_part}"
+            )
+    lines.extend(["", "## Execution Batches"])
+    if not execution_batches:
+        lines.append("- 当前没有可执行批次。")
+    else:
+        for batch in execution_batches[:8]:
+            lines.append(
+                f"- {batch['label']}"
+                f" | actions `{len(batch.get('actions', []))}`"
+                f" | escalated `{batch.get('escalated', False)}`"
+                f" | overdue `{batch.get('overdue', False)}`"
+                f" | primary `{', '.join(batch.get('primary_paths', [])) or 'none'}`"
+            )
+            for action in batch.get("actions", [])[:4]:
+                command_hint = action.get("command_hint", "")
+                command_part = f" | command `{command_hint}`" if command_hint else ""
+                lines.append(
+                    f"  action [{action['priority']}] {action['title']}"
+                    f" | status `{display_action_status(str(action.get('status')))}`"
+                    f" | next {action.get('next_step', 'n/a')}"
+                    f"{command_part}"
+                )
+    lines.extend(["", "## Recently Cleared"])
+    if not inactive_actions:
+        lines.append("- 当前没有最近清除动作。")
+    else:
+        for action in inactive_actions[:10]:
+            command_hint = action.get("command_hint", "")
+            command_part = f" | command `{command_hint}`" if command_hint else ""
+            lines.append(
+                f"- [{display_action_status(str(action.get('status')))}] {action['title']}"
+                f" | inactive_since `{action.get('inactive_since', '') or 'none'}`"
+                f" | next {action.get('next_step', 'n/a')}"
+                f"{command_part}"
+            )
+    lines.extend(
+        [
+            "",
+            "## 相关链接",
+            "- [动作队列](./machine-memory-actions.md)",
+            "- [机器记忆](./machine-memory.md)",
             "- [图谱健康](./graph-health.md)",
             "- [修复待办](./repair-backlog.md)",
         ]
@@ -3293,6 +3558,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     memory = build_machine_memory(root, entries, concepts, previews, entry_terms, compiled_at)
     memory["health"] = build_machine_memory_health(memory)
     memory["health"].update(reconcile_machine_memory_actions(root, memory["health"], compiled_at=compiled_at))
+    memory["health"]["repair_plan"] = build_machine_memory_repair_plan(memory["health"])
     memory["digest"] = machine_memory_digest(memory)
     graph = build_machine_memory_graph(memory)
     memory["graph_digest"] = graph["digest"]
@@ -3313,6 +3579,9 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     )
     changed_pages += int(
         write_if_changed(machine_memory_actions_path(root), render_machine_memory_actions(memory))
+    )
+    changed_pages += int(
+        write_if_changed(machine_memory_repair_plan_path(root), render_machine_memory_repair_plan(memory))
     )
     changed_pages += int(write_if_changed(graph_health_report_path(root), render_graph_health(memory)))
     changed_pages += int(write_if_changed(machine_memory_drift_report_path(root), render_drift_report(memory, transition)))
@@ -3464,6 +3733,7 @@ def render_report(
         "- [机器记忆](../../wiki/indexes/machine-memory.md)",
         "- [拓扑视图](../../wiki/indexes/machine-memory-topology.md)",
         "- [动作队列](../../wiki/indexes/machine-memory-actions.md)",
+        "- [修复计划](../../wiki/indexes/machine-memory-repair-plan.md)",
         "- [图谱健康](../../wiki/indexes/graph-health.md)",
         "- [漂移报告](../../wiki/indexes/drift-report.md)",
         "- [修复待办](../../wiki/indexes/repair-backlog.md)",
@@ -3560,6 +3830,7 @@ def render_slides(
         "- `wiki/indexes/machine-memory.md`",
         "- `wiki/indexes/machine-memory-topology.md`",
         "- `wiki/indexes/machine-memory-actions.md`",
+        "- `wiki/indexes/machine-memory-repair-plan.md`",
         "- `wiki/indexes/graph-health.md`",
         "- `wiki/indexes/drift-report.md`",
         "- `wiki/indexes/repair-backlog.md`",
@@ -3644,6 +3915,7 @@ def render_figure_brief(
         "- [机器记忆](../../wiki/indexes/machine-memory.md)",
         "- [拓扑视图](../../wiki/indexes/machine-memory-topology.md)",
         "- [动作队列](../../wiki/indexes/machine-memory-actions.md)",
+        "- [修复计划](../../wiki/indexes/machine-memory-repair-plan.md)",
         "- [图谱健康](../../wiki/indexes/graph-health.md)",
         "- [漂移报告](../../wiki/indexes/drift-report.md)",
         "- [修复待办](../../wiki/indexes/repair-backlog.md)",
@@ -3763,6 +4035,7 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
             "wiki/indexes/machine-memory.md",
             "wiki/indexes/machine-memory-topology.md",
             "wiki/indexes/machine-memory-actions.md",
+            "wiki/indexes/machine-memory-repair-plan.md",
             "wiki/indexes/graph-health.md",
             "wiki/indexes/drift-report.md",
             "wiki/indexes/repair-backlog.md",
@@ -4113,6 +4386,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/machine-memory.md": "Missing machine memory index page.",
         "wiki/indexes/machine-memory-topology.md": "Missing machine memory topology page.",
         "wiki/indexes/machine-memory-actions.md": "Missing machine memory actions page.",
+        "wiki/indexes/machine-memory-repair-plan.md": "Missing machine memory repair plan page.",
         "wiki/indexes/graph-health.md": "Missing machine memory graph health page.",
         "wiki/indexes/drift-report.md": "Missing machine memory drift report.",
         "wiki/indexes/log.md": "Missing wiki operation log.",
@@ -4348,6 +4622,7 @@ def render_repair_backlog(
     overdue_actions = health.get("overdue_actions", [])
     escalated_actions = health.get("escalated_actions", [])
     inactive_actions = health.get("inactive_actions", [])
+    repair_plan = health.get("repair_plan", {})
     promotions = promotion_result.get("pages", [])
     lines = [
         "# 修复待办",
@@ -4368,6 +4643,9 @@ def render_repair_backlog(
         f"- 动作已到期：`{len(overdue_actions)}`",
         f"- 动作需升级：`{len(escalated_actions)}`",
         f"- 最近清除动作：`{len(inactive_actions)}`",
+        f"- Ready 动作：`{repair_plan.get('counts', {}).get('ready', 0)}`",
+        f"- 待分流动作：`{repair_plan.get('counts', {}).get('triage', 0)}`",
+        f"- 执行批次：`{repair_plan.get('counts', {}).get('batches', 0)}`",
         f"- 图谱修复候选：`{len(health.get('link_suggestions', []))}`",
         f"- 无概念覆盖来源：`{len(sources_without_concepts)}`",
         f"- 图谱分量数：`{health.get('component_count', 0)}`",
@@ -4396,6 +4674,10 @@ def render_repair_backlog(
         lines.append(f"8. 检查本轮自动晋升的 `{len(promotions)}` 个页面，确认是否需要补证据和审阅。")
     if actions:
         lines.append(f"9. 按动作队列处理 `{len(actions)}` 个 machine-memory 修复动作。")
+    if repair_plan.get("counts", {}).get("ready", 0):
+        lines.append(
+            f"9a. 先执行 `{repair_plan.get('counts', {}).get('ready', 0)}` 个已接受动作和 `{repair_plan.get('counts', {}).get('batches', 0)}` 个批次。"
+        )
     if overdue_actions:
         lines.append(f"10. 优先清理 `{len(overdue_actions)}` 个已到期待处理的 machine-memory 动作。")
     if escalated_actions:
@@ -4515,6 +4797,16 @@ def render_repair_backlog(
             lines.append(
                 f"- 清除：`{action['id']}` | {action['title']} | inactive_since `{action.get('inactive_since', '') or 'none'}`"
             )
+    if repair_plan.get("execution_batches"):
+        lines.append("")
+        lines.append("### 执行批次")
+        for batch in repair_plan.get("execution_batches", [])[:8]:
+            lines.append(
+                f"- {batch['label']} | actions `{len(batch.get('actions', []))}`"
+                f" | escalated `{batch.get('escalated', False)}`"
+                f" | overdue `{batch.get('overdue', False)}`"
+                f" | primary `{', '.join(batch.get('primary_paths', [])) or 'none'}`"
+            )
     if health.get("link_suggestions", []):
         lines.append("")
         lines.append("### 图谱修复候选")
@@ -4562,6 +4854,7 @@ def render_repair_backlog(
             "- 机器记忆：`wiki/indexes/machine-memory.md`",
             "- 拓扑视图：`wiki/indexes/machine-memory-topology.md`",
             "- 动作队列：`wiki/indexes/machine-memory-actions.md`",
+            "- 修复计划：`wiki/indexes/machine-memory-repair-plan.md`",
             "- 图谱健康：`wiki/indexes/graph-health.md`",
             "- 漂移报告：`wiki/indexes/drift-report.md`",
             "- 审阅队列：`wiki/indexes/review-queue.md`",
@@ -4616,9 +4909,14 @@ def write_nightly_health(
             "health": memory.get("health", {}),
             "topology_path": relative_path(root, machine_memory_topology_path(root)),
             "actions_path": relative_path(root, machine_memory_actions_path(root)),
+            "repair_plan_path": relative_path(root, machine_memory_repair_plan_path(root)),
             "action_counts": memory.get("health", {}).get("action_counts", {}),
+            "repair_plan_counts": memory.get("health", {}).get("repair_plan", {}).get("counts", {}),
             "overdue_action_ids": [action["id"] for action in memory.get("health", {}).get("overdue_actions", [])],
             "escalated_action_ids": [action["id"] for action in memory.get("health", {}).get("escalated_actions", [])],
+            "ready_action_ids": [
+                action["id"] for action in memory.get("health", {}).get("repair_plan", {}).get("ready_actions", [])
+            ],
         },
         "repair_backlog": {
             "path": relative_path(root, repair_backlog_path(root)),
@@ -4632,6 +4930,10 @@ def write_nightly_health(
             "machine_memory_actions": [action["id"] for action in memory.get("health", {}).get("actions", [])],
             "overdue_action_ids": [action["id"] for action in memory.get("health", {}).get("overdue_actions", [])],
             "escalated_action_ids": [action["id"] for action in memory.get("health", {}).get("escalated_actions", [])],
+            "repair_plan_path": relative_path(root, machine_memory_repair_plan_path(root)),
+            "ready_action_ids": [
+                action["id"] for action in memory.get("health", {}).get("repair_plan", {}).get("ready_actions", [])
+            ],
         },
     }
     repair_backlog = render_repair_backlog(
@@ -4666,6 +4968,7 @@ def write_nightly_health(
             f"escalation_candidates: `{len(aging['escalated'])}`",
             f"auto_promotions: `{promotion_result.get('count', 0)}`",
             f"machine_memory_actions: `{memory.get('health', {}).get('action_counts', {}).get('total', 0)}`",
+            f"ready_machine_memory_actions: `{memory.get('health', {}).get('repair_plan', {}).get('counts', {}).get('ready', 0)}`",
             f"repair_backlog: `{relative_path(root, repair_backlog_path(root))}`",
         ],
     )

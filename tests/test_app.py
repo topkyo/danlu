@@ -812,7 +812,9 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(state["lint"]["counts"]["warnings"], result["lint"]["counts"]["warnings"])
         self.assertIn("health", state["machine_memory"])
         self.assertEqual(state["machine_memory"]["actions_path"], "wiki/indexes/machine-memory-actions.md")
+        self.assertEqual(state["machine_memory"]["repair_plan_path"], "wiki/indexes/machine-memory-repair-plan.md")
         self.assertIn("machine_memory_actions", state["repair_backlog"])
+        self.assertEqual(state["repair_backlog"]["repair_plan_path"], "wiki/indexes/machine-memory-repair-plan.md")
         self.assertTrue(state["repair_backlog"]["pending_review_decisions"])
         self.assertTrue(state["repair_backlog"]["pending_review_judgments"])
         self.assertFalse(state["llm_used"])
@@ -972,6 +974,18 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("## 补链动作", actions_text)
         self.assertIn("## 相关链接", actions_text)
 
+    def test_compile_generates_machine_memory_repair_plan_page(self) -> None:
+        self._seed_machine_memory_actions()
+
+        compile_wiki(self.root)
+
+        repair_plan = self.root / "wiki" / "indexes" / "machine-memory-repair-plan.md"
+        self.assertTrue(repair_plan.exists())
+        repair_text = repair_plan.read_text(encoding="utf-8")
+        self.assertIn("## Need Triage", repair_text)
+        self.assertIn("## Execution Batches", repair_text)
+        self.assertIn("review-action overloaded-concept-latency --status accepted", repair_text)
+
     def test_compile_persists_machine_memory_action_lifecycle_state(self) -> None:
         self._seed_machine_memory_actions()
 
@@ -1003,7 +1017,10 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(action["review_note"], "Queue it.")
         self.assertTrue(action["reviewed_at"])
         actions_page = (self.root / "wiki" / "indexes" / "machine-memory-actions.md").read_text(encoding="utf-8")
+        repair_plan = (self.root / "wiki" / "indexes" / "machine-memory-repair-plan.md").read_text(encoding="utf-8")
         self.assertIn("已接受", actions_page)
+        self.assertIn("## Ready Now", repair_plan)
+        self.assertIn("review-action overloaded-concept-latency --status resolved", repair_plan)
 
     def test_compile_marks_disappeared_machine_memory_action_inactive(self) -> None:
         self._seed_machine_memory_actions()
@@ -1169,6 +1186,7 @@ class AiwikiFlowTests(unittest.TestCase):
         (self.root / "wiki" / "indexes" / "machine-memory.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory-topology.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory-actions.md").unlink()
+        (self.root / "wiki" / "indexes" / "machine-memory-repair-plan.md").unlink()
         (self.root / "wiki" / "indexes" / "graph-health.md").unlink()
         (self.root / "wiki" / "indexes" / "drift-report.md").unlink()
         (self.root / ".aiwiki" / "cache" / "machine-memory-graph.json").unlink()
@@ -1183,6 +1201,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Missing machine memory index page.", report_text)
         self.assertIn("Missing machine memory topology page.", report_text)
         self.assertIn("Missing machine memory actions page.", report_text)
+        self.assertIn("Missing machine memory repair plan page.", report_text)
         self.assertIn("Missing machine memory graph health page.", report_text)
         self.assertIn("Missing machine memory drift report.", report_text)
         self.assertIn("Missing machine memory graph export.", report_text)
