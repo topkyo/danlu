@@ -72,4 +72,4 @@ kind: "dashboard"
 - Obsidian 新建笔记默认落到 `raw/inbox/`
 - Obsidian 新建附件默认落到 `raw/assets/`
 - 如果你要理解整体结构，去看 [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
-- 如果你要看如何运行整个系统，去看 [README.md](/home/tim/ai-wiki/README.md)
+- 如果你要看如何运行整个系统，去看 [README.md](./README.md)

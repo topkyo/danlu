@@ -8,16 +8,25 @@ cd "$PROJECT_ROOT"
 HARNESS_DIR="${HARNESS_DIR:-.codex}"
 CONTRACT_FILE="$HARNESS_DIR/contracts/active.md"
 MESSAGE=""
+STAGE_MODE="all"
+declare -a PATHS=()
 
 usage() {
   cat <<'EOF'
 Usage:
   bash scripts/finalize_task.sh [--message "commit message"]
+  bash scripts/finalize_task.sh --staged-only [--message "commit message"]
+  bash scripts/finalize_task.sh [--message "commit message"] --paths <path> [<path> ...]
 
 Behavior:
   1. Runs closed_loop.sh with --require-contract
-  2. Stages all non-ignored changes
+  2. Stages changes according to the selected mode
   3. Creates one local git commit
+
+Staging modes:
+  default        stage all non-ignored changes with `git add -A`
+  --staged-only  do not change the index; commit only what is already staged
+  --paths        stage only the listed paths; this option must appear last
 
 Notes:
   - This script never pushes.
@@ -36,6 +45,21 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || fail "Missing value for --message"
       MESSAGE="$2"
       shift 2
+      ;;
+    --staged-only)
+      [[ "$STAGE_MODE" == "all" ]] || fail "--staged-only cannot be combined with another staging mode"
+      STAGE_MODE="staged-only"
+      shift
+      ;;
+    --paths)
+      [[ "$STAGE_MODE" == "all" ]] || fail "--paths cannot be combined with another staging mode"
+      shift
+      [[ $# -gt 0 ]] || fail "--paths requires at least one path"
+      STAGE_MODE="paths"
+      while [[ $# -gt 0 ]]; do
+        PATHS+=("$1")
+        shift
+      done
       ;;
     -h|--help)
       usage
@@ -63,10 +87,22 @@ if [[ -z "$MESSAGE" ]]; then
   MESSAGE="Closed loop: $goal_line"
 fi
 
-git add -A
+case "$STAGE_MODE" in
+  all)
+    git add -A
+    ;;
+  staged-only)
+    ;;
+  paths)
+    git add -A -- "${PATHS[@]}"
+    ;;
+  *)
+    fail "Unknown staging mode: $STAGE_MODE"
+    ;;
+esac
 
 if git diff --cached --quiet --ignore-submodules --; then
-  echo "[OK] No non-ignored changes to commit"
+  echo "[OK] No staged changes to commit"
   exit 0
 fi
 

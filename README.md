@@ -2,8 +2,8 @@
 
 `aiwiki` 是一套本地优先的炼丹炉运行时：把原料持续编译成 wiki、machine memory 和可回流产物，而不是把知识库当成静态笔记仓库。
 
-架构基线见 [Alchemy Furnace.md](/home/tim/ai-wiki/wiki/indexes/Alchemy%20Furnace.md)。
-日常在 Obsidian 里使用时，入口是 [HOME.md](/home/tim/ai-wiki/HOME.md)。
+架构基线见 [Alchemy Furnace.md](<./wiki/indexes/Alchemy Furnace.md>)。
+日常在 Obsidian 里使用时，入口是 [HOME.md](./HOME.md)。
 
 ## 它是什么
 
@@ -99,18 +99,18 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . nightly
 ```
 
 关键状态页：
-- [review-queue.md](/home/tim/ai-wiki/wiki/indexes/review-queue.md)
-- [repair-backlog.md](/home/tim/ai-wiki/wiki/indexes/repair-backlog.md)
-- [graph-health.md](/home/tim/ai-wiki/wiki/indexes/graph-health.md)
-- [machine-memory.md](/home/tim/ai-wiki/wiki/indexes/machine-memory.md)
+- [review-queue.md](./wiki/indexes/review-queue.md)
+- [repair-backlog.md](./wiki/indexes/repair-backlog.md)
+- [graph-health.md](./wiki/indexes/graph-health.md)
+- [machine-memory.md](./wiki/indexes/machine-memory.md)
 
 ## 当前入口
 
 ### 人的入口
 
 - Obsidian：默认前端/IDE
-- [HOME.md](/home/tim/ai-wiki/HOME.md)：日常工作台
-- [Wiki Hub.md](/home/tim/ai-wiki/wiki/indexes/Wiki%20Hub.md)：知识中枢
+- [HOME.md](./HOME.md)：日常工作台
+- [Wiki Hub.md](<./wiki/indexes/Wiki Hub.md>)：知识中枢
 
 ### 原料入口
 
@@ -161,7 +161,7 @@ schema/    运行时规则
 prompts/   LLM 提示词模板
 ```
 
-如果你想看更细的五层模型，直接读 [Alchemy Furnace.md](/home/tim/ai-wiki/wiki/indexes/Alchemy%20Furnace.md)。
+如果你想看更细的五层模型，直接读 [Alchemy Furnace.md](<./wiki/indexes/Alchemy Furnace.md>)。
 
 ## 边界
 
@@ -206,4 +206,4 @@ bash scripts/verify.sh
 ## 开发说明
 
 `open-harness` / `.codex/` 只服务这个仓库的开发治理，不属于 `aiwiki` runtime 本体。
-runtime 架构以 [Alchemy Furnace.md](/home/tim/ai-wiki/wiki/indexes/Alchemy%20Furnace.md) 为准。
+runtime 架构以 [Alchemy Furnace.md](<./wiki/indexes/Alchemy Furnace.md>) 为准。
