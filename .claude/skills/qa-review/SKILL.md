@@ -41,3 +41,6 @@ If no findings: list checked categories and state `no findings`.
 ## Calibration
 
 After each run, append to `CALIBRATION.md`: date, task, reviewer mode, hits, misses, false positives.
+Prefer `bash scripts/write_calibration_entry.sh --from-current-gates --task "<task>" ...` so reviewer mode is imported from the current gate artifact and the log stays machine-readable for downgrade recommendations.
+If you are already writing the final gate artifact for the round, `bash scripts/write_gate_artifact.sh ... --append-calibration --calibration-task "<task>" ...` can do both in one command.
+For passing artifacts, omitting the current gate's hit/miss/false-positive counters now records a visible `0/0/0` default plus a note, so the log does not silently hide the assumption.

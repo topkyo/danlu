@@ -26,6 +26,8 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         home = (self.root / "HOME.md").read_text(encoding="utf-8")
         self.assertIn("[[wiki/indexes/Raw Inbox]]", home)
         self.assertIn("[[wiki/indexes/Wiki Hub]]", home)
+        self.assertIn("[[wiki/indexes/Alchemy Furnace]]", home)
+        self.assertIn("[[schema/index]]", home)
         self.assertIn("[[wiki/indexes/Outputs]]", home)
         self.assertIn("[[wiki/indexes/Search Presets]]", home)
 
@@ -33,6 +35,7 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         for relative in (
             "wiki/indexes/Raw Inbox.md",
             "wiki/indexes/Wiki Hub.md",
+            "wiki/indexes/Alchemy Furnace.md",
             "wiki/indexes/Outputs.md",
             "wiki/indexes/Search Presets.md",
         ):

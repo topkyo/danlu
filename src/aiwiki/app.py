@@ -16,6 +16,7 @@ LAYOUT_DIRS = (
     "raw/inbox",
     "raw/normalized",
     "raw/assets",
+    "schema",
     "wiki/sources",
     "wiki/concepts",
     "wiki/indexes",
@@ -29,6 +30,87 @@ LAYOUT_DIRS = (
     ".aiwiki/cache",
     ".aiwiki/logs",
 )
+
+DEFAULT_SCHEMA_FILES = {
+    "schema/index.md": "\n".join(
+        [
+            "# Runtime Schema",
+            "",
+            "This directory contains runtime policy for `aiwiki`.",
+            "",
+            "It is product-facing policy, not developer governance.",
+            "",
+            "## Core Policy Files",
+            "",
+            "- [Ingest Rules](./ingest.md)",
+            "- [Citation Rules](./citations.md)",
+            "- [Conflict Rules](./conflicts.md)",
+            "- [Writeback Rules](./writeback.md)",
+            "- [Taxonomy Rules](./taxonomy.md)",
+            "",
+            "## Boundary",
+            "",
+            "- `AGENTS.md` and `CLAUDE.md` are repository/developer files.",
+            "- Runtime behavior should be driven by this directory plus `prompts/`.",
+        ]
+    )
+    + "\n",
+    "schema/ingest.md": "\n".join(
+        [
+            "# Ingest Rules",
+            "",
+            "- Preserve original assets when available.",
+            "- Record original path or URL in capture notes.",
+            "- Keep ingest-generated notes in `raw/` linked back to their evidence.",
+            "- Never treat URL stubs or partial captures as strong evidence without saying so.",
+        ]
+    )
+    + "\n",
+    "schema/citations.md": "\n".join(
+        [
+            "# Citation Rules",
+            "",
+            "- Prefer `wiki/sources/*.md` citations in compiled and output layers.",
+            "- Preserve file-path provenance back to `raw/` whenever possible.",
+            "- Do not present unsupported synthesis as fact.",
+            "- If evidence is weak, partial, or conflicting, state that explicitly.",
+        ]
+    )
+    + "\n",
+    "schema/conflicts.md": "\n".join(
+        [
+            "# Conflict Rules",
+            "",
+            "- Keep contradictions explicit instead of smoothing them away.",
+            "- Prefer uncertainty over invented reconciliation.",
+            "- When sources disagree, point to both source pages.",
+            "- Track repeated drift or ambiguity in lint and future repair loops.",
+        ]
+    )
+    + "\n",
+    "schema/writeback.md": "\n".join(
+        [
+            "# Writeback Rules",
+            "",
+            "- High-value outputs may be filed back into `wiki/derived/`.",
+            "- Filed-back notes must not overwrite source pages or raw evidence.",
+            "- Derived pages should cite their source pages or raw evidence.",
+            "- Writeback is compounding knowledge, not silent mutation of facts.",
+        ]
+    )
+    + "\n",
+    "schema/taxonomy.md": "\n".join(
+        [
+            "# Taxonomy Rules",
+            "",
+            "- Keep concept names stable and human-readable.",
+            "- Prefer concept pages over repeating the same synthesis in many source pages.",
+            "- Separate source pages, concept pages, derived pages, and outputs by role.",
+            "- Promote repeated patterns into schema or decision pages when they become stable.",
+        ]
+    )
+    + "\n",
+}
 
 TEXT_EXTENSIONS = {
     ".csv",
@@ -94,6 +176,15 @@ class Finding:
 def ensure_layout(root: Path) -> None:
     for relative in LAYOUT_DIRS:
         (root / relative).mkdir(parents=True, exist_ok=True)
+    ensure_runtime_schema(root)
+
+
+def ensure_runtime_schema(root: Path) -> None:
+    for relative, content in DEFAULT_SCHEMA_FILES.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.exists():
+            path.write_text(content, encoding="utf-8")
 
 
 def utc_now() -> str:
@@ -718,7 +809,9 @@ def render_compile_status(entries: list[dict[str, Any]], concepts: list[dict[str
         f"- Source pages: `{len(entries)}`",
         f"- Concept pages: `{len(concepts)}`",
         "- Content index lives in `index.md`.",
+        "- Runtime schema lives under `schema/`.",
         "- Operation log lives in `log.md`.",
+        "- Machine memory summary lives in `machine-memory.md`.",
         "- Derived pages are filed back explicitly via `aiwiki file-back`.",
         "- Lint findings land under `output/lint/`.",
     ]
@@ -737,7 +830,9 @@ def render_master_index(entries: list[dict[str, Any]], concepts: list[dict[str, 
         "- [Sources Index](./sources.md)",
         "- [Concepts Index](./concepts.md)",
         "- [Compile Status](./compile-status.md)",
+        "- [Machine Memory](./machine-memory.md)",
         "- [Operation Log](./log.md)",
+        "- [Runtime Schema](../../schema/index.md)",
         "",
         "## Recent Sources",
     ]
@@ -795,6 +890,161 @@ def remove_stale_generated_concept_pages(root: Path, active_slugs: set[str]) -> 
     return removed
 
 
+def machine_memory_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "machine-memory.json"
+
+
+def build_machine_memory(
+    root: Path,
+    entries: list[dict[str, Any]],
+    concepts: list[dict[str, Any]],
+    previews: dict[str, str],
+    entry_terms: dict[str, list[str]],
+    compiled_at: str,
+) -> dict[str, Any]:
+    term_index: dict[str, dict[str, set[str]]] = {}
+    source_nodes: list[dict[str, Any]] = []
+    concept_nodes: list[dict[str, Any]] = []
+    source_to_concept: list[dict[str, str]] = []
+    concept_to_concept: list[dict[str, str]] = []
+    citation_map: list[dict[str, Any]] = []
+
+    def index_term(term: str, *, source_id: str | None = None, concept_slug: str | None = None) -> None:
+        bucket = term_index.setdefault(term, {"source_ids": set(), "concept_slugs": set()})
+        if source_id:
+            bucket["source_ids"].add(source_id)
+        if concept_slug:
+            bucket["concept_slugs"].add(concept_slug)
+
+    for entry in entries:
+        concept_slugs = [concept_label_to_slug(label) for label in entry_terms.get(entry["id"], [])]
+        source_page = f"wiki/sources/{entry['id']}.md"
+        summary = source_summary_or_preview(root, entry, previews[entry["id"]])
+        source_nodes.append(
+            {
+                "id": entry["id"],
+                "title": entry["title"],
+                "source_type": entry["source_type"],
+                "kind": entry["kind"],
+                "stored_path": entry["stored_path"],
+                "original_path": entry["original_path"],
+                "sha256": entry["sha256"],
+                "source_page": source_page,
+                "concept_slugs": concept_slugs,
+            }
+        )
+        citation_map.append(
+            {
+                "source_page": source_page,
+                "stored_path": entry["stored_path"],
+                "original_path": entry["original_path"],
+                "sha256": entry["sha256"],
+            }
+        )
+        for slug in concept_slugs:
+            source_to_concept.append({"source_id": entry["id"], "concept_slug": slug})
+        for token in tokenize(f"{entry['title']}\n{summary}"):
+            index_term(token, source_id=entry["id"])
+
+    for record in concepts:
+        concept_nodes.append(
+            {
+                "slug": record["slug"],
+                "title": record["title"],
+                "source_pages": [f"wiki/sources/{entry_id}.md" for entry_id in record["entry_ids"]],
+                "related_slugs": record.get("related_slugs", []),
+                "source_signature": record["source_signature"],
+            }
+        )
+        for related_slug in record.get("related_slugs", []):
+            concept_to_concept.append({"from": record["slug"], "to": related_slug})
+        for token in tokenize(record["title"]):
+            index_term(token, concept_slug=record["slug"])
+
+    drift = {
+        "missing_raw_files": [
+            entry["stored_path"] for entry in entries if not (root / entry["stored_path"]).exists()
+        ],
+        "missing_source_pages": [
+            f"wiki/sources/{entry['id']}.md"
+            for entry in entries
+            if not (root / "wiki" / "sources" / f"{entry['id']}.md").exists()
+        ],
+        "missing_concept_pages": [
+            f"wiki/concepts/{record['slug']}.md"
+            for record in concepts
+            if not (root / "wiki" / "concepts" / f"{record['slug']}.md").exists()
+        ],
+        "sources_without_concepts": [entry["id"] for entry in entries if not entry_terms.get(entry["id"])],
+    }
+
+    return {
+        "version": 1,
+        "compiled_at": compiled_at,
+        "source_nodes": sorted(source_nodes, key=lambda item: item["id"]),
+        "concept_nodes": sorted(concept_nodes, key=lambda item: item["slug"]),
+        "edges": {
+            "source_to_concept": sorted(source_to_concept, key=lambda item: (item["source_id"], item["concept_slug"])),
+            "concept_to_concept": sorted(concept_to_concept, key=lambda item: (item["from"], item["to"])),
+        },
+        "citation_map": sorted(citation_map, key=lambda item: item["source_page"]),
+        "term_index": {
+            term: {
+                "source_ids": sorted(payload["source_ids"]),
+                "concept_slugs": sorted(payload["concept_slugs"]),
+            }
+            for term, payload in sorted(term_index.items())
+        },
+        "drift": drift,
+    }
+
+
+def render_machine_memory_index(memory: dict[str, Any]) -> str:
+    concept_nodes = memory["concept_nodes"]
+    edges = memory["edges"]
+    drift = memory["drift"]
+    lines = [
+        "# Machine Memory",
+        "",
+        f"- Last compiled at: `{memory['compiled_at']}`",
+        "- Runtime state file: `.aiwiki/state/machine-memory.json`",
+        f"- Source nodes: `{len(memory['source_nodes'])}`",
+        f"- Concept nodes: `{len(concept_nodes)}`",
+        f"- Source-to-concept edges: `{len(edges['source_to_concept'])}`",
+        f"- Concept-to-concept edges: `{len(edges['concept_to_concept'])}`",
+        f"- Indexed terms: `{len(memory['term_index'])}`",
+        "",
+        "## Drift Summary",
+        f"- Missing raw files: `{len(drift['missing_raw_files'])}`",
+        f"- Missing source pages: `{len(drift['missing_source_pages'])}`",
+        f"- Missing concept pages: `{len(drift['missing_concept_pages'])}`",
+        f"- Sources without concepts: `{len(drift['sources_without_concepts'])}`",
+        "",
+        "## Top Concepts",
+    ]
+    if not concept_nodes:
+        lines.append("- No concept nodes compiled yet.")
+    else:
+        for node in sorted(
+            concept_nodes,
+            key=lambda item: (-len(item["source_pages"]), item["title"].lower()),
+        )[:10]:
+            lines.append(
+                f"- [{node['title']}](../concepts/{node['slug']}.md) "
+                f"({len(node['source_pages'])} source(s), {len(node['related_slugs'])} related concept(s))"
+            )
+    lines.extend(
+        [
+            "",
+            "## Runtime Schema",
+            "- [Schema Index](../../schema/index.md)",
+            "- [Citation Rules](../../schema/citations.md)",
+            "- [Conflict Rules](../../schema/conflicts.md)",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
 def compile_wiki(root: Path) -> dict[str, Any]:
     ensure_layout(root)
     manifest = sync_manifest_with_raw(root)
@@ -846,6 +1096,13 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         changed_pages += int(write_if_changed(destination, render_concept_page(record, compiled_at, existing_page)))
 
     removed_pages = remove_stale_generated_concept_pages(root, {record["slug"] for record in concepts})
+    memory = build_machine_memory(root, entries, concepts, previews, entry_terms, compiled_at)
+    changed_pages += int(
+        write_if_changed(machine_memory_state_path(root), json.dumps(memory, indent=2, sort_keys=True) + "\n")
+    )
+    changed_pages += int(
+        write_if_changed(root / "wiki" / "indexes" / "machine-memory.md", render_machine_memory_index(memory))
+    )
     append_wiki_log(
         root,
         "compile",
@@ -854,6 +1111,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             f"compiled_at: `{compiled_at}`",
             f"source_pages: `{len(entries)}`",
             f"concept_pages: `{len(concepts)}`",
+            f"machine_memory_terms: `{len(memory['term_index'])}`",
             f"changed_pages: `{changed_pages}`",
             f"removed_concept_pages: `{removed_pages}`",
         ],
@@ -863,6 +1121,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "compiled_at": compiled_at,
         "sources": len(entries),
         "concepts": len(concepts),
+        "machine_memory_terms": len(memory["term_index"]),
         "changed_pages": changed_pages,
     }
 
@@ -976,6 +1235,8 @@ def render_report(
         "- [Wiki Index](../../wiki/indexes/index.md)",
         "- [Sources Index](../../wiki/indexes/sources.md)",
         "- [Concepts Index](../../wiki/indexes/concepts.md)",
+        "- [Machine Memory](../../wiki/indexes/machine-memory.md)",
+        "- [Runtime Schema](../../schema/index.md)",
         "",
         "## Recommended Concepts",
     ]
@@ -1034,6 +1295,8 @@ def render_slides(
         "- `wiki/indexes/index.md`",
         "- `wiki/indexes/sources.md`",
         "- `wiki/indexes/concepts.md`",
+        "- `wiki/indexes/machine-memory.md`",
+        "- `schema/index.md`",
         "",
         "## Ranked Concepts",
     ]
@@ -1096,6 +1359,8 @@ def render_figure_brief(
         "- [Wiki Index](../../wiki/indexes/index.md)",
         "- [Sources Index](../../wiki/indexes/sources.md)",
         "- [Concepts Index](../../wiki/indexes/concepts.md)",
+        "- [Machine Memory](../../wiki/indexes/machine-memory.md)",
+        "- [Runtime Schema](../../schema/index.md)",
         "",
         "## Recommended Concepts",
     ]
@@ -1182,7 +1447,9 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
             "wiki/indexes/sources.md",
             "wiki/indexes/concepts.md",
             "wiki/indexes/compile-status.md",
+            "wiki/indexes/machine-memory.md",
             "wiki/indexes/log.md",
+            "schema/index.md",
         ],
     }
 
@@ -1283,12 +1550,39 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/sources.md": "Missing sources index page.",
         "wiki/indexes/concepts.md": "Missing concepts index page.",
         "wiki/indexes/compile-status.md": "Missing compile status page.",
+        "wiki/indexes/machine-memory.md": "Missing machine memory index page.",
         "wiki/indexes/log.md": "Missing wiki operation log.",
     }
     for relative, message in required_indexes.items():
         page = root / relative
         if not page.exists():
             findings.append(Finding("error", relative, message))
+
+    required_schema = {
+        "schema/index.md": "Missing runtime schema index.",
+        "schema/ingest.md": "Missing runtime ingest rules.",
+        "schema/citations.md": "Missing runtime citation rules.",
+        "schema/conflicts.md": "Missing runtime conflict rules.",
+        "schema/writeback.md": "Missing runtime writeback rules.",
+    }
+    for relative, message in required_schema.items():
+        page = root / relative
+        if not page.exists():
+            findings.append(Finding("error", relative, message))
+
+    memory_state = machine_memory_state_path(root)
+    if manifest["entries"] and not memory_state.exists():
+        findings.append(Finding("error", relative_path(root, memory_state), "Missing machine memory state file."))
+    elif memory_state.exists():
+        try:
+            memory = json.loads(memory_state.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            findings.append(Finding("error", relative_path(root, memory_state), "Machine memory state is not valid JSON."))
+        else:
+            if "source_nodes" not in memory or "concept_nodes" not in memory:
+                findings.append(
+                    Finding("error", relative_path(root, memory_state), "Machine memory state is missing required indexes.")
+                )
 
     concept_pages = sorted((root / "wiki" / "concepts").glob("*.md"))
     if manifest["entries"] and not concept_pages:

@@ -3,6 +3,11 @@
 Records qa-review and qa-runtime hit/miss/false-positive for Codex runs.
 Used to drive scaffolding degradation triggers.
 Each qa-review / qa-runtime run must append one entry.
+Prefer appending via `HARNESS_DIR=.codex bash scripts/write_calibration_entry.sh --from-current-gates ...` after gate artifacts are up to date.
+Review current recommendations via `HARNESS_DIR=.codex bash scripts/calibration_report.sh`.
+For automation, use `HARNESS_DIR=.codex bash scripts/calibration_report.sh --json`.
+To review what those recommendations would change, use `HARNESS_DIR=.codex bash scripts/apply_calibration_recommendation.sh --dry-run`.
+To auto-apply the current safe subset, use `HARNESS_DIR=.codex bash scripts/apply_calibration_recommendation.sh --apply` (currently only the active contract `qa-review` requirement plus its adjacent structured `calibration_note` payload).
 
 qa-review downgrade heuristic:
 - Lite: 2 consecutive zero-hit rounds
@@ -22,4 +27,7 @@ qa-review downgrade heuristic:
 - qa-runtime Hit:
 - qa-runtime Miss:
 - qa-runtime False Positive:
-- Checklist Change:
+- Contract Scope Changed:
+- New Session:
+- PROGRESS Read:
+- Notes:

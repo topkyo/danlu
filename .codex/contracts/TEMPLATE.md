@@ -33,6 +33,20 @@
 1. [第一步]
 2. [第二步]
 
+## Execution Policy
+
+- `execution_mode`: `autonomous-closed-loop`
+- `ask_policy`: `blockers-only`
+- `max_debug_rounds`: `3`（可按任务调整）
+
+## Stop Conditions
+
+- [共享环境 / 远端环境操作]
+- [发布 / 数据迁移 / 凭据 / 付费或其他不可逆外部副作用]
+- [外部接口、数据流、依赖或回滚复杂度发生高风险变化]
+- [目标不清且继续推进有较高误判风险]
+- [连续调试不收敛，需要用户决策]
+
 ## In Scope
 
 - [本轮明确要做的项]
@@ -73,6 +87,7 @@
 ## Verification Plan
 
 - `verify`:
+- `inner_loop`: 默认执行 `开发 -> 验证 -> debug -> 再验证`，直到通过或命中 `Stop Conditions`
 - `qa-review`: 优先隔离 reviewer；若退化为同 context 自审，需写明触发条件
 - `qa-runtime`: 写明 runtime layer 与实际检查入口
 

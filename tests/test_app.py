@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 import tempfile
 import unittest
@@ -130,6 +131,7 @@ class AiwikiFlowTests(unittest.TestCase):
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compiled = compile_wiki(self.root)
         self.assertGreater(compiled["concepts"], 0)
+        self.assertGreater(compiled["machine_memory_terms"], 0)
 
         source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
         source_frontmatter = parse_frontmatter(source_page.read_text(encoding="utf-8"))
@@ -138,10 +140,19 @@ class AiwikiFlowTests(unittest.TestCase):
 
         master_index = self.root / "wiki" / "indexes" / "index.md"
         log_page = self.root / "wiki" / "indexes" / "log.md"
+        memory_page = self.root / "wiki" / "indexes" / "machine-memory.md"
+        memory_state = self.root / ".aiwiki" / "state" / "machine-memory.json"
         self.assertTrue(master_index.exists())
         self.assertTrue(log_page.exists())
+        self.assertTrue(memory_page.exists())
+        self.assertTrue(memory_state.exists())
         self.assertIn("Operation Log", master_index.read_text(encoding="utf-8"))
+        self.assertIn("Machine Memory", master_index.read_text(encoding="utf-8"))
         self.assertIn("compile | wiki refresh", log_page.read_text(encoding="utf-8"))
+        self.assertIn("Runtime state file", memory_page.read_text(encoding="utf-8"))
+        memory = json.loads(memory_state.read_text(encoding="utf-8"))
+        self.assertEqual(memory["source_nodes"][0]["id"], entry["id"])
+        self.assertTrue(memory["term_index"])
 
     def test_compile_preserves_existing_summary_on_recompile(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -220,10 +231,29 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(list((self.root / "wiki" / "sources").glob("*.md")))
         self.assertTrue(result["ranked_concepts"])
         self.assertIn("wiki/indexes/log.md", result["index_pages"])
+        self.assertIn("wiki/indexes/machine-memory.md", result["index_pages"])
+        self.assertIn("schema/index.md", result["index_pages"])
 
         report_text = (self.root / result["path"]).read_text(encoding="utf-8")
         self.assertIn("Recommended Concepts", report_text)
         self.assertIn("Recommended Index Pages", report_text)
+        self.assertIn("Machine Memory", report_text)
+        self.assertIn("Runtime Schema", report_text)
+
+    def test_ensure_layout_bootstraps_runtime_schema_files(self) -> None:
+        for relative in (
+            "schema/index.md",
+            "schema/ingest.md",
+            "schema/citations.md",
+            "schema/conflicts.md",
+            "schema/writeback.md",
+            "schema/taxonomy.md",
+        ):
+            path = self.root / relative
+            self.assertTrue(path.exists(), relative)
+        schema_index = (self.root / "schema" / "index.md").read_text(encoding="utf-8")
+        self.assertIn("Runtime Schema", schema_index)
+        self.assertIn("product-facing policy", schema_index)
 
     def test_ask_recompiles_when_raw_source_changes(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -543,6 +573,7 @@ class AiwikiFlowTests(unittest.TestCase):
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
         (self.root / "wiki" / "indexes" / "index.md").unlink()
+        (self.root / "wiki" / "indexes" / "machine-memory.md").unlink()
         concept_page = next((self.root / "wiki" / "concepts").glob("*.md"))
         broken = concept_page.read_text(encoding="utf-8").replace("wiki/sources/", "wiki/sources/missing-", 1)
         concept_page.write_text(broken, encoding="utf-8")
@@ -551,6 +582,7 @@ class AiwikiFlowTests(unittest.TestCase):
         report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
         self.assertGreaterEqual(lint["counts"]["errors"], 2)
         self.assertIn("Missing master wiki index page.", report_text)
+        self.assertIn("Missing machine memory index page.", report_text)
         self.assertIn("Concept page references missing source page", report_text)
 
 

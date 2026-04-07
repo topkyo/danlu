@@ -33,3 +33,16 @@ Recommended extra headers:
 
 ## Calibration
 After each run, append to `CALIBRATION.md`, including reviewer mode.
+Prefer:
+
+```bash
+HARNESS_DIR=.codex bash scripts/write_calibration_entry.sh --from-current-gates --task "<task>" --qa-review-hit 0 --qa-review-miss 0 --qa-review-false-positive 0 --contract-scope-changed no --new-session yes --progress-read no
+```
+
+If you are already writing the final gate artifact for the round, you can collapse that into:
+
+```bash
+HARNESS_DIR=.codex bash scripts/write_gate_artifact.sh qa-review --status pass --summary "no findings" --reviewer-mode fresh-session --append-calibration --calibration-task "<task>" --contract-scope-changed no --new-session yes --progress-read no
+```
+
+If you omit the current gate's hit/miss/false-positive counters on a passing artifact, the helper records a visible `0/0/0` default and explains that default in `Notes`.

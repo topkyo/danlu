@@ -14,6 +14,8 @@ Obsidian is the place where you browse the local artifact tree and inspect what 
 
 - [[wiki/indexes/Raw Inbox]]
 - [[wiki/indexes/Wiki Hub]]
+- [[wiki/indexes/Alchemy Furnace]]
+- [[schema/index]]
 - [[wiki/indexes/Outputs]]
 - [[wiki/indexes/Search Presets]]
 
@@ -21,6 +23,7 @@ Obsidian is the place where you browse the local artifact tree and inspect what 
 
 - `raw/inbox/`: inbound source notes and direct drops
 - `raw/assets/`: local PDFs, images, and page assets captured during ingest
+- `schema/`: runtime ingest, citation, conflict, and writeback rules
 - `wiki/sources/`: one compiled source page per raw item
 - `wiki/indexes/`: dashboards, compile indexes, and operating notes
 - `wiki/derived/`: filed-back reports and other derived markdown

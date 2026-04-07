@@ -25,6 +25,7 @@ Write to `.claude/contracts/active.md` using `.claude/contracts/TEMPLATE.md`.
 ## Rules
 
 - Cross-module, runtime-affecting, or deploy-affecting work should fill `Problem / Context`, `Success Criteria`, `Constraints / Dependencies`, `Chosen Approach`, and `Execution Plan`
+- Non-trivial work should also fill `Execution Policy` and `Stop Conditions`; default to `execution_mode: autonomous-closed-loop`, `ask_policy: blockers-only`, `max_debug_rounds: 3`
 - Single-file, low-risk work may keep planning sections concise; `N/A` is acceptable where a section truly does not apply
 - `In Scope` must be specific to modules or behaviors
 - `Out Of Scope` must be explicit to prevent scope creep
@@ -35,4 +36,5 @@ Write to `.claude/contracts/active.md` using `.claude/contracts/TEMPLATE.md`.
   - `verify`: required (guardrail)
   - `qa-review`: required or not-required (scaffolding)
   - `qa-runtime`: required or not-required
+- `Stop Conditions` should state when to stop autonomous execution and ask the user instead of continuing local iteration
 - `Fail Gate` must be a testable condition

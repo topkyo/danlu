@@ -335,6 +335,9 @@ def _build_compile_prompt(root: Path, entry: dict[str, Any], raw_path: Path, cur
             "- Keep the `Source Record` section and update the `Summary` section with grounded prose.",
             "- If evidence is weak or truncated, say so explicitly.",
             "",
+            "## Runtime Schema",
+            _schema_context(root, ("index.md", "citations.md", "conflicts.md")),
+            "",
             "## Current Page",
             current_page,
             "",
@@ -361,6 +364,9 @@ def _build_ask_prompt(
         f"- Replace file: `{relative_path(root, target)}`",
         f"- Query: {render_scalar(question)}",
         f"- Format: `{output_format}`",
+        "",
+        "## Runtime Schema",
+        _schema_context(root, ("index.md", "citations.md", "conflicts.md", "writeback.md")),
         "",
         "## Current Artifact",
         current_artifact,
@@ -420,11 +426,16 @@ def _build_lint_prompt(root: Path, deterministic_report: str) -> str:
         "wiki/indexes/sources.md",
         "wiki/indexes/concepts.md",
         "wiki/indexes/compile-status.md",
+        "wiki/indexes/machine-memory.md",
         "wiki/indexes/log.md",
     ):
         path = root / relative
         if path.exists():
             sections.extend([f"### {relative}", _read_context(path, max_chars=4000), ""])
+
+    schema_context = _schema_context(root, ("index.md", "citations.md", "conflicts.md", "writeback.md"))
+    if schema_context:
+        sections.extend(["## Runtime Schema", schema_context, ""])
 
     included_chars = sum(len(section) for section in sections)
     for group in ("wiki/concepts", "wiki/sources", "wiki/derived"):
@@ -442,6 +453,16 @@ def _build_lint_prompt(root: Path, deterministic_report: str) -> str:
 def _load_prompt(root: Path, name: str) -> str:
     path = root / "prompts" / name
     return path.read_text(encoding="utf-8")
+
+
+def _schema_context(root: Path, names: tuple[str, ...]) -> str:
+    sections: list[str] = []
+    for name in names:
+        path = root / "schema" / name
+        if not path.exists():
+            continue
+        sections.extend([f"### schema/{name}", _read_context(path, max_chars=2200), ""])
+    return "\n".join(sections).strip()
 
 
 def _read_context(path: Path, max_chars: int) -> str:

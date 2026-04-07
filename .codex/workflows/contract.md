@@ -16,6 +16,7 @@ Write to `.codex/contracts/active.md` using `.codex/contracts/TEMPLATE.md`.
 
 ## Rules
 - Cross-module, runtime-affecting, or deploy-affecting work should fill `Problem / Context`, `Success Criteria`, `Constraints / Dependencies`, `Chosen Approach`, and `Execution Plan`
+- Non-trivial work should also fill `Execution Policy` and `Stop Conditions`; the default is `execution_mode: autonomous-closed-loop`, `ask_policy: blockers-only`, `max_debug_rounds: 3`
 - Single-file, low-risk work may keep planning sections concise; `N/A` is acceptable where a section truly does not apply
 - `In Scope` must be specific
 - `Out Of Scope` must be explicit
@@ -30,3 +31,4 @@ Write to `.codex/contracts/active.md` using `.codex/contracts/TEMPLATE.md`.
   - `qa-review`: `.codex/gates/qa-review.md`
   - `qa-runtime`: `.codex/gates/qa-runtime.md`
   Scripts read these paths from the contract. Keep custom paths under `.codex/gates/*.md`.
+- `Stop Conditions` should include when to stop autonomous execution and ask the user instead of continuing local iteration

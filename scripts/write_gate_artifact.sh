@@ -23,6 +23,21 @@ REVIEWER_SCOPE=""
 RUNTIME_MODE=""
 RUNTIME_IDENTITY=""
 OUTPUT_PATH=""
+APPEND_CALIBRATION=0
+CALIBRATION_TASK=""
+CALIBRATION_DATE=""
+CALIBRATION_AGENT=""
+CALIBRATION_FILE=""
+QA_REVIEW_HIT=""
+QA_REVIEW_MISS=""
+QA_REVIEW_FALSE_POSITIVE=""
+QA_RUNTIME_HIT=""
+QA_RUNTIME_MISS=""
+QA_RUNTIME_FALSE_POSITIVE=""
+CONTRACT_SCOPE_CHANGED=""
+NEW_SESSION=""
+PROGRESS_READ=""
+CALIBRATION_NOTES=""
 
 usage() {
   cat <<'EOF'
@@ -33,6 +48,21 @@ Options:
   --checked-at <YYYY-MM-DD>
   --body-file <path>
   --output <path>
+  --append-calibration
+  --calibration-task <text>
+  --calibration-date <YYYY-MM-DD>
+  --calibration-agent <name>
+  --calibration-file <path>
+  --qa-review-hit <count>
+  --qa-review-miss <count>
+  --qa-review-false-positive <count>
+  --qa-runtime-hit <count>
+  --qa-runtime-miss <count>
+  --qa-runtime-false-positive <count>
+  --contract-scope-changed <yes|no|not-applicable>
+  --new-session <yes|no>
+  --progress-read <yes|no|not-applicable>
+  --notes <text>
 
 qa-review options:
   --reviewer-mode <isolated-agent|external-agent|fresh-session|same-context|human>
@@ -55,6 +85,64 @@ require_value() {
   local flag="$1"
   local value="${2:-}"
   [[ -n "$value" ]] || fail "Missing value for $flag"
+}
+
+append_calibration_note() {
+  local note="$1"
+
+  [[ -n "$note" ]] || return 0
+  if [[ -n "$CALIBRATION_NOTES" ]]; then
+    CALIBRATION_NOTES="$CALIBRATION_NOTES; $note"
+  else
+    CALIBRATION_NOTES="$note"
+  fi
+}
+
+apply_calibration_defaults_for_current_gate() {
+  case "$GATE_NAME:$STATUS" in
+    qa-review:pass)
+      if [[ -z "$QA_REVIEW_HIT" && -z "$QA_REVIEW_MISS" && -z "$QA_REVIEW_FALSE_POSITIVE" ]]; then
+        QA_REVIEW_HIT="0"
+        QA_REVIEW_MISS="0"
+        QA_REVIEW_FALSE_POSITIVE="0"
+        append_calibration_note "auto-defaulted qa-review hit/miss/false-positive to 0 from write_gate_artifact pass"
+      fi
+      ;;
+    qa-runtime:pass)
+      if [[ -z "$QA_RUNTIME_HIT" && -z "$QA_RUNTIME_MISS" && -z "$QA_RUNTIME_FALSE_POSITIVE" ]]; then
+        QA_RUNTIME_HIT="0"
+        QA_RUNTIME_MISS="0"
+        QA_RUNTIME_FALSE_POSITIVE="0"
+        append_calibration_note "auto-defaulted qa-runtime hit/miss/false-positive to 0 from write_gate_artifact pass"
+      fi
+      ;;
+  esac
+}
+
+append_calibration_entry() {
+  local cmd=()
+
+  [[ -n "$CALIBRATION_TASK" ]] || fail "--append-calibration requires --calibration-task"
+  [[ -f "$SCRIPT_DIR/write_calibration_entry.sh" ]] || fail "Missing calibration helper: $SCRIPT_DIR/write_calibration_entry.sh"
+  apply_calibration_defaults_for_current_gate
+
+  cmd=(bash "$SCRIPT_DIR/write_calibration_entry.sh" --from-current-gates --task "$CALIBRATION_TASK")
+
+  [[ -n "$CALIBRATION_DATE" ]] && cmd+=(--date "$CALIBRATION_DATE")
+  [[ -n "$CALIBRATION_AGENT" ]] && cmd+=(--agent "$CALIBRATION_AGENT")
+  [[ -n "$CALIBRATION_FILE" ]] && cmd+=(--file "$CALIBRATION_FILE")
+  [[ -n "$QA_REVIEW_HIT" ]] && cmd+=(--qa-review-hit "$QA_REVIEW_HIT")
+  [[ -n "$QA_REVIEW_MISS" ]] && cmd+=(--qa-review-miss "$QA_REVIEW_MISS")
+  [[ -n "$QA_REVIEW_FALSE_POSITIVE" ]] && cmd+=(--qa-review-false-positive "$QA_REVIEW_FALSE_POSITIVE")
+  [[ -n "$QA_RUNTIME_HIT" ]] && cmd+=(--qa-runtime-hit "$QA_RUNTIME_HIT")
+  [[ -n "$QA_RUNTIME_MISS" ]] && cmd+=(--qa-runtime-miss "$QA_RUNTIME_MISS")
+  [[ -n "$QA_RUNTIME_FALSE_POSITIVE" ]] && cmd+=(--qa-runtime-false-positive "$QA_RUNTIME_FALSE_POSITIVE")
+  [[ -n "$CONTRACT_SCOPE_CHANGED" ]] && cmd+=(--contract-scope-changed "$CONTRACT_SCOPE_CHANGED")
+  [[ -n "$NEW_SESSION" ]] && cmd+=(--new-session "$NEW_SESSION")
+  [[ -n "$PROGRESS_READ" ]] && cmd+=(--progress-read "$PROGRESS_READ")
+  [[ -n "$CALIBRATION_NOTES" ]] && cmd+=(--notes "$CALIBRATION_NOTES")
+
+  HARNESS_DIR="$HARNESS_DIR" "${cmd[@]}"
 }
 
 append_optional_header() {
@@ -94,6 +182,80 @@ while [[ $# -gt 0 ]]; do
     --output)
       require_value "$1" "${2:-}"
       OUTPUT_PATH="$2"
+      shift 2
+      ;;
+    --append-calibration)
+      APPEND_CALIBRATION=1
+      shift
+      ;;
+    --calibration-task)
+      require_value "$1" "${2:-}"
+      CALIBRATION_TASK="$2"
+      shift 2
+      ;;
+    --calibration-date)
+      require_value "$1" "${2:-}"
+      CALIBRATION_DATE="$2"
+      shift 2
+      ;;
+    --calibration-agent)
+      require_value "$1" "${2:-}"
+      CALIBRATION_AGENT="$2"
+      shift 2
+      ;;
+    --calibration-file)
+      require_value "$1" "${2:-}"
+      CALIBRATION_FILE="$2"
+      shift 2
+      ;;
+    --qa-review-hit)
+      require_value "$1" "${2:-}"
+      QA_REVIEW_HIT="$2"
+      shift 2
+      ;;
+    --qa-review-miss)
+      require_value "$1" "${2:-}"
+      QA_REVIEW_MISS="$2"
+      shift 2
+      ;;
+    --qa-review-false-positive)
+      require_value "$1" "${2:-}"
+      QA_REVIEW_FALSE_POSITIVE="$2"
+      shift 2
+      ;;
+    --qa-runtime-hit)
+      require_value "$1" "${2:-}"
+      QA_RUNTIME_HIT="$2"
+      shift 2
+      ;;
+    --qa-runtime-miss)
+      require_value "$1" "${2:-}"
+      QA_RUNTIME_MISS="$2"
+      shift 2
+      ;;
+    --qa-runtime-false-positive)
+      require_value "$1" "${2:-}"
+      QA_RUNTIME_FALSE_POSITIVE="$2"
+      shift 2
+      ;;
+    --contract-scope-changed)
+      require_value "$1" "${2:-}"
+      CONTRACT_SCOPE_CHANGED="$2"
+      shift 2
+      ;;
+    --new-session)
+      require_value "$1" "${2:-}"
+      NEW_SESSION="$2"
+      shift 2
+      ;;
+    --progress-read)
+      require_value "$1" "${2:-}"
+      PROGRESS_READ="$2"
+      shift 2
+      ;;
+    --notes)
+      require_value "$1" "${2:-}"
+      CALIBRATION_NOTES="$2"
       shift 2
       ;;
     --reviewer-mode)
@@ -202,3 +364,7 @@ mkdir -p "$(dirname "$OUTPUT_PATH")"
 } > "$OUTPUT_PATH"
 
 echo "[OK] Wrote $OUTPUT_PATH"
+
+if [[ "$APPEND_CALIBRATION" -eq 1 ]]; then
+  append_calibration_entry
+fi

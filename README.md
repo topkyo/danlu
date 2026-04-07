@@ -45,10 +45,13 @@ raw/
   inbox/        direct drops or imported source files
   normalized/   reserved for future normalization steps
   assets/       local images and attachments
+schema/
+  index.md      runtime policy index
+  *.md          ingest/citation/conflict/writeback/taxonomy rules
 wiki/
   sources/      one source page per raw input
   concepts/     compiled concept pages synthesized from source pages
-  indexes/      master index, inventories, compile status, and operation log
+  indexes/      master index, inventories, compile status, machine memory summary, and operation log
   derived/      filed-back markdown outputs
 output/
   reports/
@@ -56,7 +59,7 @@ output/
   figures/
   lint/
 .aiwiki/
-  state/        manifest and incremental state
+  state/        manifest, incremental state, and machine-memory index
   cache/
   logs/
 prompts/
@@ -85,6 +88,9 @@ Repo-local Obsidian assets are included:
 - `.obsidian/workspace.json`: opens a dashboard plus scoped search tabs for `raw`, `wiki`, and `output`
 - `HOME.md`: default landing page for the vault
 - `wiki/indexes/*.md`: navigation and search reference pages
+- `schema/*.md`: runtime policy files used by compile, ask, and lint flows
+
+The product architecture for the "Alchemy Furnace" model lives in `wiki/indexes/Alchemy Furnace.md`.
 
 To use it, open `/home/tim/ai-wiki` as an Obsidian vault.
 

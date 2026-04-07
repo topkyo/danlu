@@ -27,6 +27,12 @@ summary: 一句话摘要
 bash scripts/write_gate_artifact.sh qa-review --status pass --summary "no findings" --reviewer-mode same-context --reviewer-fallback-reason "isolated reviewer unavailable"
 ```
 
+若当前 gate 已经是本轮最后一个 gate，也可以顺手追加 calibration entry:
+
+```bash
+bash scripts/write_gate_artifact.sh qa-runtime --status pass --summary "runtime smoke passed" --runtime-mode scripted --append-calibration --calibration-task "feature round" --contract-scope-changed no --new-session yes --progress-read no
+```
+
 执行模式字段:
 
 ```markdown
@@ -44,6 +50,7 @@ runtime_identity: <tool / model / session name>
 - 其余 `reviewer_*` 推荐写
 - `qa-runtime` 在 `status: pass` 时必须写 `runtime_mode`；其余 `runtime_*` 推荐写
 - `deploy-gate` 会校验这些必填 mode 字段；identity / scope 主要用于保留执行方式与校准数据
+- 若希望 `write_calibration_entry.sh --from-current-gates` 在 `fail` / `blocked` artifact 上也能自动导入 mode，建议这些状态同样保留对应 mode 头部
 
 ## 规则
 
