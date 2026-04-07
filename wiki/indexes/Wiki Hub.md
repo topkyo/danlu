@@ -1,39 +1,39 @@
 ---
-title: "Wiki Hub"
+title: "知识中枢"
 kind: "dashboard"
 ---
 
-# Wiki Hub
+# 知识中枢
 
-This area is the compiled knowledge layer.
+这里是编译后的知识层。
 
-## Main Areas
+## 主要区域
 
-- `wiki/sources/`: summaries, provenance, and source-level backlinks
-- `wiki/indexes/`: inventory and operational dashboards
-- `wiki/derived/`: filed-back reports, slide decks, and notes worth keeping
-- `wiki/decisions/` and `wiki/judgments/`: explicit decision and judgment layers under review
-- `schema/`: runtime rules for ingest, citations, conflicts, and writeback
-- `.aiwiki/state/`: machine-memory state and history for agents
-- `.aiwiki/cache/`: graph export and rebuildable machine-side indexes
+- `wiki/sources/`：摘要、溯源和来源级反向链接
+- `wiki/indexes/`：库存页、状态页和操作看板
+- `wiki/derived/`：回流后的报告、幻灯片和值得保留的派生笔记
+- `wiki/decisions/` 与 `wiki/judgments/`：处于审阅流中的显式决策层和判断层
+- `schema/`：ingest、引用、冲突、审阅、回流等运行时规则
+- `.aiwiki/state/`：给 agent 用的机器记忆状态和历史
+- `.aiwiki/cache/`：图谱导出和可重建的机读索引
 
-## Architecture
+## 架构入口
 
-- [[wiki/indexes/Alchemy Furnace]]: runtime architecture for the `aiwiki` knowledge system
-- [[schema/index]]: runtime schema used by compile, ask, and lint flows
-- [[wiki/indexes/machine-memory]]: current machine-memory summary
-- [[wiki/indexes/graph-health]]: current graph-health dashboard
-- [[wiki/indexes/drift-report]]: latest structural drift report
-- [[wiki/indexes/repair-backlog]]: latest nightly repair queue
-- [[wiki/indexes/review-queue]]: current decision/judgment review queue
+- [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]：`aiwiki` 的运行时架构
+- [[schema/index|运行时规则]]：compile、ask、lint 共同遵循的规则层
+- [[wiki/indexes/machine-memory|机器记忆]]：当前机器记忆摘要
+- [[wiki/indexes/graph-health|图谱健康]]：当前图谱健康看板
+- [[wiki/indexes/drift-report|漂移报告]]：最近一次结构漂移报告
+- [[wiki/indexes/repair-backlog|修复待办]]：最近一次 nightly 修复队列
+- [[wiki/indexes/review-queue|审阅队列]]：当前 decision/judgment 审阅队列
 
-## Reading Order
+## 建议阅读顺序
 
-1. Start with a source page in `wiki/sources/`.
-2. Check `machine-memory`, `review-queue`, and `repair-backlog` when you need system state.
-3. Follow links into related indexes or derived pages.
-4. Use backlinks and outgoing links in the right sidebar to navigate context.
+1. 先从 `wiki/sources/` 里的来源页开始。
+2. 需要看系统状态时，再看 `machine-memory`、`review-queue`、`repair-backlog`。
+3. 再沿着索引页或 derived 页面继续跳转。
+4. 配合右侧的 backlinks / outgoing links 浏览上下文。
 
-## Search
+## 搜索
 
-- Obsidian left search tab: `path:"wiki/sources" OR path:"wiki/indexes" OR path:"wiki/derived"`
+- Obsidian 左侧预置搜索：`path:"wiki/sources" OR path:"wiki/indexes" OR path:"wiki/derived"`

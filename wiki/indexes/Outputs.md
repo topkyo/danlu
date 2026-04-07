@@ -1,25 +1,25 @@
 ---
-title: "Outputs"
+title: "输出面板"
 kind: "dashboard"
 ---
 
-# Outputs
+# 输出面板
 
-`output/` is where transient query artifacts land before you decide whether they should be filed back.
+`output/` 是查询产物的落点，在你决定是否回流前，它们先停在这里。
 
-## Output Areas
+## 输出区域
 
-- `output/reports/`: markdown reports
-- `output/slides/`: Marp slide decks
-- `output/figures/`: figure briefs and image-oriented outputs
-- `output/lint/`: deterministic and semantic lint reports
+- `output/reports/`：markdown 报告
+- `output/slides/`：Marp 幻灯片
+- `output/figures/`：图表 brief 和图像导向输出
+- `output/lint/`：deterministic / semantic lint 报告
 
-## Review Pattern
+## 审阅模式
 
-1. Read the newest output.
-2. Check whether the citations point back to `wiki/sources/`.
-3. If the output is durable, move it into `wiki/derived/` with `file-back`.
+1. 先看最新输出。
+2. 检查引用是否确实回到了 `wiki/sources/`。
+3. 如果值得长期保留，再用 `file-back` 移入 `wiki/derived/`、`wiki/decisions/` 或 `wiki/judgments/`。
 
-## Search
+## 搜索
 
-- Obsidian left search tab: `path:"output/reports" OR path:"output/slides" OR path:"output/figures" OR path:"output/lint"`
+- Obsidian 左侧预置搜索：`path:"output/reports" OR path:"output/slides" OR path:"output/figures" OR path:"output/lint"`

@@ -1,15 +1,15 @@
-# Review Queue
+# 审阅队列
 
-- Last compiled at: `2026-04-07T09:16:58+00:00`
-- Pending decisions: `0`
-- Pending judgments: `0`
-- Recently reviewed items: `0`
+- 最近编译时间：`2026-04-07T09:50:15+00:00`
+- 待审决策：`0`
+- 待审判断：`0`
+- 最近已审项目：`0`
 
-## Pending Decisions
-- No pending decision reviews.
+## 待审决策
+- 当前没有待审决策。
 
-## Pending Judgments
-- No pending judgment reviews.
+## 待审判断
+- 当前没有待审判断。
 
-## Recently Reviewed
-- No reviewed decision or judgment pages yet.
+## 最近已审
+- 还没有已审阅的决策或判断页面。

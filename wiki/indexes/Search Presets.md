@@ -1,37 +1,37 @@
 ---
-title: "Search Presets"
+title: "搜索预设"
 kind: "reference"
 ---
 
-# Search Presets
+# 搜索预设
 
-These queries match the preloaded search tabs in the Obsidian workspace.
+这些查询和 Obsidian workspace 里预加载的搜索页签保持一致。
 
-## Raw Intake
+## 原料入口
 
 ```text
 path:"raw/inbox"
 ```
 
-## Compiled Wiki
+## 编译知识层
 
 ```text
 path:"wiki/sources" OR path:"wiki/indexes" OR path:"wiki/derived"
 ```
 
-## Outputs
+## 输出层
 
 ```text
 path:"output/reports" OR path:"output/slides" OR path:"output/figures" OR path:"output/lint"
 ```
 
-## Unresolved Summaries
+## 未补摘要
 
 ```text
 "Pending LLM summary." path:"wiki/sources"
 ```
 
-## Missing Provenance
+## 缺失溯源
 
 ```text
 "Missing source page:" path:"output/lint"

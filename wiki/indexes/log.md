@@ -111,3 +111,38 @@
 - machine_memory_changed: `False`
 - changed_pages: `12`
 - removed_concept_pages: `0`
+## [2026-04-07T09:49:57+00:00] compile | wiki refresh
+
+- compiled_at: `2026-04-07T09:49:57+00:00`
+- source_pages: `0`
+- concept_pages: `0`
+- machine_memory_terms: `0`
+- graph_components: `0`
+- machine_memory_changed: `False`
+- changed_pages: `12`
+- removed_concept_pages: `0`
+## [2026-04-07T09:50:15+00:00] compile | wiki refresh
+
+- compiled_at: `2026-04-07T09:50:15+00:00`
+- source_pages: `0`
+- concept_pages: `0`
+- machine_memory_terms: `0`
+- graph_components: `0`
+- machine_memory_changed: `False`
+- changed_pages: `12`
+- removed_concept_pages: `0`
+## [2026-04-07T09:50:15+00:00] lint | wiki health check
+
+- errors: `0`
+- warnings: `0`
+- report: `output/lint/lint-20260407-095015.md`
+## [2026-04-07T09:50:15+00:00] nightly | health and repair pass
+
+- llm_used: `False`
+- lint_errors: `0`
+- lint_warnings: `0`
+- pending_source_summaries: `0`
+- placeholder_concepts: `0`
+- pending_decision_reviews: `0`
+- pending_judgment_reviews: `0`
+- repair_backlog: `wiki/indexes/repair-backlog.md`

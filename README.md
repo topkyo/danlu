@@ -1,71 +1,71 @@
 # aiwiki
 
-`aiwiki` is a local-first knowledge compiler scaffold.
+`aiwiki` 是一个本地优先的知识编译器脚手架。
 
-It treats a knowledge base like a build artifact:
+它把知识库当作可编译产物来看待：
 
-- `raw/` holds the source material
-- `wiki/` holds compiled markdown knowledge
-- `output/` holds query artifacts such as reports, slide decks, and figure briefs
+- `raw/` 存放原始材料
+- `wiki/` 存放编译后的 markdown 知识层
+- `output/` 存放报告、幻灯片、图表 brief 等查询产物
 
-## Current MVP
+## 当前能力
 
-The repository ships a Python CLI with deterministic commands plus optional LLM-backed execution commands.
+仓库提供一套 Python CLI，分成 deterministic 主链和可选的 LLM 增强层。
 
-Deterministic commands:
+Deterministic 命令：
 
-- `ingest`: register a local file or a URL stub into `raw/`
-- `compile`: turn the current source inventory into `wiki/sources/`, `wiki/concepts/`, and `wiki/indexes/`
-- `ask`: generate a report, slide deck, or figure brief artifact grounded in the wiki and guided by machine-memory query planning
-- `file-back`: move a useful markdown output back into `wiki/derived/`, `wiki/decisions/`, or `wiki/judgments/`
-- `review-page`: move a decision or judgment page through the explicit review workflow
-- `lint`: scan for missing source pages, broken source references, and obvious provenance gaps
-- `nightly`: run deterministic compile + lint and write a repair backlog plus nightly state snapshot
+- `ingest`：把本地文件或 URL stub 登记进 `raw/`
+- `compile`：把当前来源库存编译成 `wiki/sources/`、`wiki/concepts/`、`wiki/indexes/`
+- `ask`：基于 wiki 和 machine-memory query planning 打包报告/幻灯片/图表 brief
+- `file-back`：把高价值 markdown 回流到 `wiki/derived/`、`wiki/decisions/` 或 `wiki/judgments/`
+- `review-page`：推进 decision/judgment 页面在审阅流中的状态
+- `lint`：检查缺页、坏引用、明显 provenance 缺口
+- `nightly`：跑 deterministic compile + lint，并写出 repair backlog 与 nightly health 快照
 
-LLM-backed execution commands:
+LLM 增强命令：
 
-- `run-compile`: replace placeholder source summaries and fallback concept summaries using a configured LLM
-- `run-ask`: create a query artifact, attach machine-memory query hints, and let the LLM fill it with grounded content
-- `run-lint`: run deterministic lint, then generate a semantic lint report
-- `run-nightly`: run compile + semantic lint and write nightly repair artifacts
-- `llm-check`: show whether the LLM runner is configured
-- `auto-once`: run the whole ingest/compile/summary/lint pipeline once
-- `watch`: keep watching `raw/inbox/` and trigger the pipeline automatically on changes
+- `run-compile`：用 LLM 补来源摘要和概念摘要
+- `run-ask`：创建查询 artifact，并让 LLM 把它补成 grounded 内容
+- `run-lint`：跑 deterministic lint，再补 semantic lint 报告
+- `run-nightly`：跑 compile + semantic lint，并生成 nightly 修复产物
+- `llm-check`：查看当前解析到的 LLM backend
+- `auto-once`：自动跑一轮 ingest/compile/summary/lint
+- `watch`：持续监听 `raw/inbox/` 并自动触发管线
 
-Direct raw-material entry points:
+原料入口：
 
-- `drop-url`: fetch a web page into `raw/inbox/`, render it in a browser when available, extract main content, and store page images under `raw/assets/`
-- `drop-pdf`: store the original PDF under `raw/assets/` and extracted text under `raw/inbox/`
-- `drop-image`: store the original image under `raw/assets/` and a metadata note under `raw/inbox/`
-- `drop-repo`: snapshot a local or remote repository into a markdown source note under `raw/inbox/`
+- `drop-url`：抓网页到 `raw/inbox/`，有浏览器时优先渲染后提取正文，并把页面图片落到 `raw/assets/`
+- `drop-pdf`：把原 PDF 存到 `raw/assets/`，抽取文字到 `raw/inbox/`
+- `drop-image`：把原图存到 `raw/assets/`，把 metadata/OCR/vision note 存到 `raw/inbox/`
+- `drop-repo`：把本地或远端 repo 快照成 markdown 来源笔记
 
-The deterministic path remains the safe baseline. The LLM runner is additive and uses prompt files plus explicit file-path citations.
+deterministic 路径始终是安全基线；LLM runner 是附加层，依赖 prompt 文件和显式文件路径引用。
 
-## Layout
+## 目录结构
 
 ```text
 raw/
-  inbox/        direct drops or imported source files
-  normalized/   reserved for future normalization steps
-  assets/       local images and attachments
+  inbox/        直接丢入或导入的来源文件
+  normalized/   预留给未来归一化步骤
+  assets/       本地图片和附件
 schema/
-  index.md      runtime policy index
-  *.md          ingest/citation/conflict/review/writeback/taxonomy rules
+  index.md      运行时规则总索引
+  *.md          ingest/citation/conflict/review/writeback/taxonomy 规则
 wiki/
-  sources/      one source page per raw input
-  concepts/     compiled concept pages synthesized from source pages
-  decisions/    filed-back decision records with explicit rationale/evidence sections
-  judgments/    filed-back judgment calls with explicit signals/confidence sections
-  indexes/      master index, inventories, compile status, machine memory summary, graph health, drift report, repair backlog, and operation log
-  derived/      filed-back markdown outputs
+  sources/      每个 raw 输入一页来源页
+  concepts/     从多个来源综合出的概念页
+  decisions/    显式决策页
+  judgments/    显式判断页
+  indexes/      总索引、状态页、机器记忆、图谱健康、漂移、修复待办、日志
+  derived/      回流后的派生 markdown
 output/
   reports/
   slides/
   figures/
   lint/
 .aiwiki/
-  state/        manifest, incremental state, machine-memory index, memory history, and nightly health snapshots
-  cache/        graph export and other rebuildable machine-side artifacts
+  state/        manifest、machine-memory、history、nightly health
+  cache/        graph export 和可重建的机读侧产物
   logs/
 prompts/
   compile.md
@@ -73,62 +73,55 @@ prompts/
   lint.md
 ```
 
-## Obsidian Role
+## Obsidian 的角色
 
-Obsidian is intended to be the `aiwiki` frontend or IDE, not the knowledge compiler itself.
+Obsidian 是 `aiwiki` 的前端/IDE，不是知识编译器本体。
 
-- `aiwiki` owns ingest, compile, query, lint, automation, and provenance
-- Obsidian is where you browse `raw/`, inspect `wiki/`, and read `output/`
-- You can add plugins such as Web Clipper or Marp, but the source of truth remains the repo layout on disk
+- `aiwiki` 负责 ingest、compile、query、lint、automation、provenance
+- Obsidian 负责浏览 `raw/`、检查 `wiki/`、阅读 `output/`
+- 你可以加 Web Clipper、Marp 等插件，但 source of truth 仍然是磁盘上的仓库结构
 
-The intended operating model is:
+当前仓库已经带有 repo-local Obsidian 资产：
 
-- drop or capture material into the repo
-- let `aiwiki` compile and maintain the markdown artifacts
-- use Obsidian to navigate and review those artifacts
+- `.obsidian/app.json`
+- `.obsidian/workspace.json`
+- `HOME.md`
+- `wiki/indexes/*.md`
+- `schema/*.md`
+- `.aiwiki/state/machine-memory.json`
+- `.aiwiki/state/nightly-health.json`
+- `wiki/indexes/review-queue.md`
+- `.aiwiki/cache/machine-memory-graph.json`
 
-Repo-local Obsidian assets are included:
+现在系统已经具备：
 
-- `.obsidian/app.json`: default note and attachment folders point at `raw/inbox/` and `raw/assets/`
-- `.obsidian/workspace.json`: opens a dashboard plus scoped search tabs for `raw`, `wiki`, and `output`
-- `HOME.md`: default landing page for the vault
-- `wiki/indexes/*.md`: navigation and search reference pages
-- `schema/*.md`: runtime policy files used by compile, ask, and lint flows
-- `.aiwiki/state/machine-memory.json`: deterministic machine-memory state
-- `.aiwiki/state/nightly-health.json`: latest nightly repair snapshot
-- `wiki/indexes/review-queue.md`: current decision/judgment review queue
-- `.aiwiki/cache/machine-memory-graph.json`: graph export for future agent/tooling use
+- `run-compile` 同时维护 `wiki/sources/` 和 `wiki/concepts/`
+- `ask` / `run-ask` 先读编译层，再用 machine-memory 和 graph edges 做 source/concept bias
+- `file-back --kind decision|judgment` 让高阶沉淀不再都挤进 `wiki/derived/`
+- `review-page` 让 decision / judgment 进入显式 review workflow
+- `nightly` / `run-nightly` 聚合 compile、lint、drift、repair queue 到 `wiki/indexes/repair-backlog.md`
+- `graph-health.md` 汇总 connected components、isolated sources、singleton concepts、overloaded concepts
+- `install_user_service.sh` 会同时安装 inbox watcher 和 nightly `systemd --user` timer
 
-`run-compile` now upgrades both `wiki/sources/` and `wiki/concepts/` when budget is available.
-`ask` and `run-ask` now read the compiled wiki first, then use machine-memory term hits plus graph edges to bias source and concept selection.
-They also expose bridge concepts, query routes, touched components, and a lightweight query subgraph for graph-aware retrieval.
-`file-back --kind decision|judgment` now lets the furnace accumulate explicit decision and judgment pages instead of flattening everything into generic derived notes.
-`review-page` advances those pages through explicit review states and keeps the queue visible in `wiki/indexes/review-queue.md`.
-`nightly` and `run-nightly` aggregate compile, lint, drift, and repair queues into `wiki/indexes/repair-backlog.md`.
-`graph-health.md` summarizes connected components, isolated sources, singleton concepts, and overloaded concepts.
-`install_user_service.sh` now installs both the inbox watcher and a nightly `systemd --user` timer for automated health/repair passes.
+炼丹炉产品架构文档在 [wiki/indexes/Alchemy Furnace.md](/home/tim/ai-wiki/wiki/indexes/Alchemy%20Furnace.md)。
 
-The product architecture for the "Alchemy Furnace" model lives in `wiki/indexes/Alchemy Furnace.md`.
+## LLM 配置
 
-To use it, open `/home/tim/ai-wiki` as an Obsidian vault.
+当前支持三类 backend：
 
-## LLM Configuration
+- `codex-cli`：调用本地 `codex exec`
+- `claude-cli`：调用本地 `claude --print`
+- `openai-api`：调用 OpenAI-compatible `/chat/completions`
 
-The execution layer supports three backends:
+解析顺序：
 
-- `codex-cli`: uses local `codex exec`
-- `claude-cli`: uses local `claude --print`
-- `openai-api`: uses an OpenAI-compatible `/chat/completions` endpoint
+1. 如果显式设置了 `AIWIKI_LLM_BACKEND`，优先用它
+2. 否则自动解析：
+3. 有 model + API key 时用 `openai-api`
+4. 否则如果本机有 `codex`，用 `codex-cli`
+5. 否则如果本机有 `claude`，用 `claude-cli`
 
-Selection rules:
-
-1. If `AIWIKI_LLM_BACKEND` is set, that backend is used.
-2. Otherwise `aiwiki` auto-resolves in this order:
-3. `openai-api` if model + API key are present
-4. `codex-cli` if `codex` is installed
-5. `claude-cli` if `claude` is installed
-
-Common variables:
+常用变量：
 
 ```bash
 export AIWIKI_LLM_BACKEND="codex-cli"                    # optional: auto | codex-cli | claude-cli | openai-api
@@ -138,36 +131,39 @@ export AIWIKI_LLM_TEMPERATURE="0.2"                     # optional; only used by
 export AIWIKI_LLM_MAX_CONTEXT_CHARS="24000"             # optional
 ```
 
-CLI-specific variables:
+CLI 相关：
 
 ```bash
-export AIWIKI_CODEX_COMMAND="codex"                     # optional
-export AIWIKI_CLAUDE_COMMAND="claude"                   # optional
+export AIWIKI_CODEX_COMMAND="codex"
+export AIWIKI_CLAUDE_COMMAND="claude"
 ```
 
-OpenAI-compatible API variables:
+OpenAI-compatible API：
 
 ```bash
 export AIWIKI_LLM_BACKEND="openai-api"
 export AIWIKI_LLM_MODEL="gpt-4.1-mini"
 export AIWIKI_LLM_API_KEY="..."
-export AIWIKI_LLM_BASE_URL="https://api.openai.com/v1"  # optional
+export AIWIKI_LLM_BASE_URL="https://api.openai.com/v1"
 ```
 
-`OPENAI_MODEL`, `OPENAI_API_KEY`, and `OPENAI_BASE_URL` are accepted as fallbacks for the API backend.
+`OPENAI_MODEL`、`OPENAI_API_KEY`、`OPENAI_BASE_URL` 也可作为 fallback。
 
-`llm-check` reports the resolved backend and whether auth is handled by an API key or by the local CLI session.
-It also reports whether the resolved backend supports image analysis for `drop-image`.
+`llm-check` 会输出：
 
-## Usage
+- 当前解析到的 backend
+- 认证方式是 `api-key` 还是 `cli-session`
+- 当前 backend 是否支持 `drop-image` 的图像理解
 
-Install in editable mode if you want a shell command:
+## 使用方式
+
+如果想装成 shell 命令：
 
 ```bash
 pip install -e .
 ```
 
-Or invoke it directly from the repo:
+或直接在仓库里运行：
 
 ```bash
 PYTHONPATH=src python3 -m aiwiki.cli --root . ingest /path/to/paper.md
@@ -181,9 +177,7 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . compile
 AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . run-compile --limit 3
 AIWIKI_LLM_BACKEND=claude-cli PYTHONPATH=src python3 -m aiwiki.cli --root . run-ask "Compare A and B" --format report
 AIWIKI_LLM_BACKEND=openai-api PYTHONPATH=src python3 -m aiwiki.cli --root . run-lint
-PYTHONPATH=src python3 -m aiwiki.cli --root . run-compile --limit 3
 PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare A and B" --format report
-PYTHONPATH=src python3 -m aiwiki.cli --root . run-ask "Compare A and B" --format report
 PYTHONPATH=src python3 -m aiwiki.cli --root . file-back output/reports/20260405-120000-compare-a-and-b.md
 PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/decisions/decision-20260405-example.md --status approved --note "Approved after source review."
 PYTHONPATH=src python3 -m aiwiki.cli --root . lint
@@ -193,55 +187,53 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . run-nightly
 PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
 ```
 
-## Hands-Off Mode
+## 全自动模式
 
-If you want the Karpathy-style workflow where you only drop material into the inbox, use the automation entry points.
+如果你想要 Karpathy 风格的“只投原料”，直接用自动化入口。
 
-Run one automatic pass:
+单次自动处理：
 
 ```bash
 AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . auto-once
 ```
 
-Run the watcher and then just copy files into `raw/inbox/`:
+常驻 watcher：
 
 ```bash
 AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . watch --interval 5
 ```
 
-Once `watch` is running, the intended flow is:
+`watch` 运行后，预期链路是：
 
-- You drop files into `raw/inbox/`
-- Or you use `drop-url`, `drop-pdf`, `drop-image`, or `drop-repo`
-- `aiwiki` discovers them automatically
-- source pages are compiled under `wiki/sources/`
-- concept pages and indexes are refreshed under `wiki/concepts/` and `wiki/indexes/`
-- decision and judgment review queue state is refreshed under `wiki/indexes/review-queue.md`
-- machine-memory query planning and drift artifacts are refreshed under `.aiwiki/` and `wiki/indexes/`
-- graph-health and repair artifacts are refreshed under `wiki/indexes/`
-- the LLM fills pending summaries
-- lint artifacts are refreshed under `output/lint/`
+- 你往 `raw/inbox/` 丢文件
+- 或用 `drop-url`、`drop-pdf`、`drop-image`、`drop-repo`
+- `aiwiki` 自动发现新材料
+- 在 `wiki/sources/` 下编译来源页
+- 在 `wiki/concepts/` 和 `wiki/indexes/` 下刷新概念页和索引页
+- 在 `wiki/indexes/review-queue.md` 下刷新 decision/judgment 审阅队列
+- 在 `.aiwiki/` 与 `wiki/indexes/` 下刷新 machine-memory、drift、graph-health
+- LLM 自动补摘要
+- `output/lint/` 自动刷新 lint 结果
 
-If you want a quieter/offline mode, add `--deterministic-only`.
+如果要安静/离线模式，可加 `--deterministic-only`。
 
-For a scheduled health pass outside the inbox watcher, run:
+nightly 健康巡检：
 
 ```bash
 PYTHONPATH=src python3 -m aiwiki.cli --root . nightly
 AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . run-nightly
 ```
 
-## Material Drop Modes
+## 原料投喂方式
 
 `drop-url`
 
-- Best for articles, blog posts, docs pages, and newsletters
-- Fetches the page, prefers a browser-rendered DOM when Playwright Chromium is available, then extracts `article` / `main` content
-- Downloads a limited set of page images into `raw/assets/` and links them from the note frontmatter
-- Falls back to direct HTTP + BeautifulSoup extraction if browser rendering is unavailable
-- If a site blocks basic fetching, clip it manually and drop the markdown file instead
+- 适合文章、博客、文档页、newsletter
+- 有 Playwright Chromium 时优先抓渲染后的 DOM，再抽 `article` / `main` 正文
+- 页面图片会下载到 `raw/assets/` 并在 note frontmatter 里登记
+- 没有浏览器能力时会回退到 HTTP + BeautifulSoup
 
-Optional browser-render setup:
+可选浏览器支持：
 
 ```bash
 python3 -m pip install --user playwright
@@ -250,78 +242,39 @@ python3 -m playwright install chromium
 
 `drop-pdf`
 
-- Best for papers, reports, slide decks, and exported docs
-- Copies the original PDF to `raw/assets/`
-- Runs `pdftotext` and writes extracted text into a markdown source note in `raw/inbox/`
-- Scanned PDFs may still need OCR
+- 原 PDF 落到 `raw/assets/`
+- 正文抽取结果落到 `raw/inbox/`
+- 适合论文、白皮书、导出的长文档
 
 `drop-image`
 
-- Best for screenshots, figures, diagrams, whiteboard photos, and long-image posts
-- Copies the original image to `raw/assets/`
-- Writes an image note into `raw/inbox/` with metadata, OCR text, and optional visual analysis
-- OCR is included when `tesseract` is available on the machine
-- On Ubuntu, install OCR support with `sudo apt-get install -y tesseract-ocr`
-- LLM-backed visual analysis is attempted automatically when the resolved backend supports image input
-- Current image-analysis backends are `codex-cli` and `openai-api`
-- Use `--no-vision` if you want a purely local metadata/OCR drop
+- 原图落到 `raw/assets/`
+- metadata / OCR / vision note 落到 `raw/inbox/`
+- 本机有 `tesseract` 时会自动 OCR
+- 当前支持图像理解的 backend 是 `codex-cli` 和 `openai-api`
 
 `drop-repo`
 
-- Best for local repositories or remote git URLs
-- Captures README text, repo tree, key config files, and selected source excerpts
-- Produces one snapshot note in `raw/inbox/`
+- 把本地或远程 repo snapshot 成 markdown 来源笔记
+- 适合把 README、目录结构、关键文件摘要纳入炼丹炉
 
-## User Service
+## 用户级服务
 
-To make the watcher and nightly repair loop start automatically for your user session, install the provided `systemd --user` units:
+如果希望 watcher 和 nightly repair loop 随用户会话自动启动，可以安装 `systemd --user` 单元：
 
 ```bash
-cd /home/tim/ai-wiki
 bash scripts/install_user_service.sh
 ```
 
-This installs:
+安装后会生成：
 
-- unit file: `~/.config/systemd/user/aiwiki-watch.service`
-- env file: `~/.config/aiwiki/aiwiki-watch.env`
-- unit file: `~/.config/systemd/user/aiwiki-nightly.service`
-- timer file: `~/.config/systemd/user/aiwiki-nightly.timer`
-- env file: `~/.config/aiwiki/aiwiki-nightly.env`
+- `~/.config/systemd/user/aiwiki-watch.service`
+- `~/.config/aiwiki/aiwiki-watch.env`
+- `~/.config/systemd/user/aiwiki-nightly.service`
+- `~/.config/systemd/user/aiwiki-nightly.timer`
+- `~/.config/aiwiki/aiwiki-nightly.env`
 
-## Developer Closure
-
-This repo now supports local autonomous closure through:
-
-```bash
-bash scripts/finalize_task.sh
-```
-
-That script will:
-
-- run `closed_loop.sh --require-contract`
-- stage all non-ignored changes
-- create one local commit
-
-It never pushes. Remote push / publish is still a separate boundary.
-
-Nightly defaults:
-
-- `OnCalendar=daily`
-- if an LLM backend is configured, the timer runs `run-nightly`
-- if no LLM backend is configured, it falls back to deterministic `nightly`
-
-Useful nightly env knobs:
-
-- `AIWIKI_NIGHTLY_COMPILE_LIMIT=5`
-- `AIWIKI_NIGHTLY_DETERMINISTIC_ONLY=0`
-- `AIWIKI_NIGHTLY_NO_SEMANTIC_LINT=0`
-- install-time shell vars: `AIWIKI_NIGHTLY_ON_CALENDAR=daily`
-- install-time shell vars: `AIWIKI_NIGHTLY_PERSISTENT=true`
-
-If you change `AIWIKI_NIGHTLY_ON_CALENDAR` or `AIWIKI_NIGHTLY_PERSISTENT`, rerun `bash scripts/install_user_service.sh` to rewrite the timer unit.
-
-Default env file values use `codex-cli`. Adjust the env files if you want `claude-cli` or `openai-api`, then restart the units:
+默认 env 使用 `codex-cli`。如果要换成 `claude-cli` 或 `openai-api`，改 env 文件后重启对应 unit：
 
 ```bash
 systemctl --user restart aiwiki-watch.service
@@ -331,26 +284,37 @@ systemctl --user status --no-pager aiwiki-nightly.timer
 journalctl --user -u aiwiki-nightly.service -n 100 --no-pager
 ```
 
-To remove the service:
+## 本地闭环
+
+仓库带了本地闭环脚本：
 
 ```bash
-bash scripts/uninstall_user_service.sh
+bash scripts/finalize_task.sh
+bash scripts/finalize_task.sh --message "your commit message"
 ```
 
-## Verification
+它会：
 
-Run the local verification entry point:
+1. 运行 `closed_loop.sh --require-contract`
+2. stage 所有未忽略变更
+3. 创建一次本地 commit
+
+不会自动 `push`。
+
+## 验证
 
 ```bash
 bash scripts/verify.sh
 ```
 
-This check is for local development and maintenance of `aiwiki`.
+当前覆盖：
 
-## Development Notes
+- CLI 和核心主链回归测试
+- watch / nightly 脚本语法校验
+- systemd 模板存在性检查
+- Obsidian workspace / dashboard 存在性检查
 
-The `.codex/` and `open-harness` files in this repository are only for developing the `aiwiki` project.
+## 开发备注
 
-- They are not part of the `aiwiki` runtime.
-- They are not required for normal `aiwiki` usage.
-- They exist to track contract, review, and verification state while building the project.
+- `.codex/` 和 `open-harness` 只用于本仓库开发治理，不属于 `aiwiki` runtime
+- 产品/runtime 主体是 `src/aiwiki/`、`schema/`、`raw/`、`wiki/`、`output/`

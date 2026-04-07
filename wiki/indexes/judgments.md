@@ -1,11 +1,11 @@
-# Judgments Index
+# 判断索引
 
-- Last compiled at: `2026-04-07T09:16:58+00:00`
-- Total pages: `0`
-- Pending review: `0`
+- 最近编译时间：`2026-04-07T09:50:15+00:00`
+- 页面总数：`0`
+- 待审阅数量：`0`
 
-## Status Counts
-- No curated pages yet.
+## 状态统计
+- 还没有相关页面。
 
-## Judgments
-- No judgments yet.
+## 判断列表
+- 还没有判断列表。

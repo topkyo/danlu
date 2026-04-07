@@ -1,19 +1,19 @@
-# Runtime Schema
+# 运行时规则
 
-This directory contains runtime policy for `aiwiki`.
+这个目录存放 `aiwiki` 的运行时规则。
 
-It is product-facing policy, not developer governance.
+它服务于产品运行时，不属于开发治理。
 
-## Core Policy Files
+## 核心规则文件
 
-- [Ingest Rules](./ingest.md)
-- [Citation Rules](./citations.md)
-- [Conflict Rules](./conflicts.md)
-- [Review Rules](./review.md)
-- [Writeback Rules](./writeback.md)
-- [Taxonomy Rules](./taxonomy.md)
+- [采集规则](./ingest.md)
+- [引用规则](./citations.md)
+- [冲突规则](./conflicts.md)
+- [审阅规则](./review.md)
+- [回流规则](./writeback.md)
+- [分类规则](./taxonomy.md)
 
-## Boundary
+## 边界
 
-- `AGENTS.md` and `CLAUDE.md` are repository/developer files.
-- Runtime behavior should be driven by this directory plus `prompts/`.
+- `AGENTS.md` 和 `CLAUDE.md` 是仓库/开发侧文件。
+- 运行时行为应由这个目录和 `prompts/` 共同驱动。

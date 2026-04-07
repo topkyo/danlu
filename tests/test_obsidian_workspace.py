@@ -24,17 +24,17 @@ class ObsidianWorkspaceTests(unittest.TestCase):
 
     def test_home_dashboard_links_key_index_notes(self) -> None:
         home = (self.root / "HOME.md").read_text(encoding="utf-8")
-        self.assertIn("[[wiki/indexes/Raw Inbox]]", home)
-        self.assertIn("[[wiki/indexes/Wiki Hub]]", home)
-        self.assertIn("[[wiki/indexes/Alchemy Furnace]]", home)
-        self.assertIn("[[wiki/indexes/machine-memory]]", home)
-        self.assertIn("[[wiki/indexes/graph-health]]", home)
-        self.assertIn("[[wiki/indexes/drift-report]]", home)
-        self.assertIn("[[wiki/indexes/repair-backlog]]", home)
-        self.assertIn("[[wiki/indexes/review-queue]]", home)
-        self.assertIn("[[schema/index]]", home)
-        self.assertIn("[[wiki/indexes/Outputs]]", home)
-        self.assertIn("[[wiki/indexes/Search Presets]]", home)
+        self.assertIn("[[wiki/indexes/Raw Inbox|", home)
+        self.assertIn("[[wiki/indexes/Wiki Hub|", home)
+        self.assertIn("[[wiki/indexes/Alchemy Furnace|", home)
+        self.assertIn("[[wiki/indexes/machine-memory|", home)
+        self.assertIn("[[wiki/indexes/graph-health|", home)
+        self.assertIn("[[wiki/indexes/drift-report|", home)
+        self.assertIn("[[wiki/indexes/repair-backlog|", home)
+        self.assertIn("[[wiki/indexes/review-queue|", home)
+        self.assertIn("[[schema/index|", home)
+        self.assertIn("[[wiki/indexes/Outputs|", home)
+        self.assertIn("[[wiki/indexes/Search Presets|", home)
 
     def test_index_notes_exist(self) -> None:
         for relative in (

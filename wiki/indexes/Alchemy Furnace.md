@@ -1,274 +1,274 @@
 ---
-title: "Alchemy Furnace"
+title: "炼丹炉架构"
 kind: "architecture"
 status: "active"
 ---
 
-# Alchemy Furnace
+# 炼丹炉架构
 
-`Alchemy Furnace` is the product architecture for turning `aiwiki` into a compounding knowledge system.
+`Alchemy Furnace` 是把 `aiwiki` 推进成复利型知识系统的产品架构。
 
-It is not a note-taking metaphor. It is a runtime model:
+它不是一个“记笔记”的比喻，而是一个运行时模型：
 
-- raw material goes in
-- the compiler turns it into structured knowledge
-- agents query and produce artifacts
-- high-value outputs flow back into the system
-- lint and drift checks keep the system coherent over time
+- 原料进入系统
+- 编译器把原料整理成结构化知识
+- agent 基于知识层查询并生成产物
+- 高价值输出持续回流
+- lint、drift、review 和 nightly loop 让系统长期保持一致性
 
-## Goal
+## 目标
 
-Build a local-first system where:
+构建一个本地优先的系统，使得：
 
-- humans feed source material and exercise judgment
-- `aiwiki` maintains the compiled knowledge layer
-- Obsidian acts as the human-facing frontend
-- machine-facing indexes and graph memory accelerate future agent work
+- 人负责投喂原料并保留判断权
+- `aiwiki` 维护编译后的知识层
+- Obsidian 作为给人用的前端
+- 机读索引和图谱记忆持续提升后续 agent 的工作效率
 
-The end state is not "more notes".
-The end state is a durable knowledge operating system that compounds.
+最终目标不是“更多笔记”，而是一个会持续增厚的知识操作系统。
 
-## Layer Model
+## 分层模型
 
 ### 1. Raw Sources
 
-Purpose: the earliest locally controlled evidence layer plus ingest-generated capture artifacts.
+目的：最早、最可控的证据层，以及 ingest 生成的 capture artifact。
 
-Current paths:
+当前路径：
 
 - `raw/inbox/`
 - `raw/assets/`
 - `raw/normalized/`
 
-Typical contents:
+典型内容：
 
-- articles, docs, and clipped webpages
-- papers and PDFs
-- screenshots, diagrams, and whiteboard photos
-- repository snapshots
-- logs, meeting notes, transcripts, and field notes
-- ingest-generated notes such as extracted PDF text, OCR notes, and repository capture notes
+- 网页剪藏、文档、文章
+- 论文和 PDF
+- 截图、图示、白板照片
+- repo snapshot
+- 日志、会议纪要、转录稿、现场笔记
+- PDF 抽取文本、OCR note、repo capture note 这类 ingest 产物
 
-Rules:
+规则：
 
-- preserve original assets when available
-- capture notes must point back to their original file or URL
-- `raw/` is earlier than `wiki/`, but not every file under it is a pristine original
-- derived conclusions must never overwrite evidence or capture notes
+- 能保留原始附件时优先保留
+- capture note 必须回指原文件或原 URL
+- `raw/` 先于 `wiki/`，但不是所有文件都是 pristine original
+- 派生结论不能覆盖 raw evidence 或 capture note
 
 ### 2. Compiled Wiki
 
-Purpose: the human-readable consensus layer maintained by `aiwiki`.
+目的：由 `aiwiki` 维护的人可读共识层。
 
-Current and planned paths:
+当前路径：
 
 - `wiki/sources/`
 - `wiki/concepts/`
 - `wiki/indexes/`
 - `wiki/derived/`
+- `wiki/decisions/`
+- `wiki/judgments/`
 
-Typical contents:
+典型内容：
 
-- source pages with summaries and citations
-- concept pages spanning multiple sources
-- decision pages and comparison pages
-- indexes, logs, open questions, and operating dashboards
-- filed-back reports worth preserving
+- 带摘要和引用的 source page
+- 横跨多个来源的 concept page
+- decision/judgment 页面
+- 索引、日志、开放问题、运行看板
+- 值得回流保留的报告和派生产物
 
-Rules:
+规则：
 
-- this is the layer humans read first
-- every important claim must preserve provenance
-- concept and decision pages should synthesize, not just restate
+- 这是人首先阅读的层
+- 重要结论都必须保留 provenance
+- concept 和 decision 页面应做综合，而不是简单复述
 
 ### 3. Machine Memory
 
-Purpose: the planned machine-readable acceleration layer for agents.
+目的：给 agent 用的机读加速层。
 
-Planned paths:
+当前路径：
 
 - `.aiwiki/cache/`
 - `.aiwiki/state/`
-- future graph or retrieval indexes under `.aiwiki/` or `machine/`
 
-Typical contents:
+典型内容：
 
-- chunk and citation indexes
-- entity or concept graph
+- term / citation 索引
+- source / concept graph
 - retrieval cache
-- temporal snapshots
-- drift records
-- graph exports or query accelerators
+- 时间快照
+- drift 记录
+- graph export 和 query planner 产物
 
-Rules:
+规则：
 
-- optimize for agent lookup, not human browsing
-- keep it rebuildable from raw and compiled layers
-- make drift between machine memory and wiki observable
+- 优化 agent 查询，而不是人类浏览
+- 必须能从 raw / wiki 层重建
+- wiki 与 machine memory 的漂移必须可观测
 
-This is the part most aligned with graph-oriented systems such as `graphify`.
+这一层最接近 `graphify` 这类图谱型 machine memory。
 
 ### 4. Schema
 
-Purpose: the furnace rules that tell agents how to ingest, compile, cite, lint, and write back.
+目的：定义系统如何 ingest、compile、cite、review、lint、write back。
 
-Current runtime paths:
+当前路径：
 
 - `prompts/compile.md`
 - `prompts/ask.md`
 - `prompts/lint.md`
 - `schema/`
 
-Planned runtime paths:
+规划中的路径：
 
 - `policy/`
 
-Typical contents:
+典型内容：
 
-- ingest rules
-- citation and provenance rules
-- conflict handling rules
-- review-state rules
-- output templates
-- taxonomy and naming conventions
+- ingest 规则
+- 引用与 provenance 规则
+- 冲突处理规则
+- review state 规则
+- 输出模板
+- taxonomy / naming convention
 
-Rules:
+规则：
 
-- schema is runtime policy, not just documentation
-- when the system is corrected, the rule should be corrected here too
+- schema 是运行时策略，不只是文档
+- 系统在运行中学到的新约束，应该回写到这里
 
-Boundary:
+边界：
 
-- `AGENTS.md` and `CLAUDE.md` are developer-facing project files
-- they document repository and engineering rules
-- they are not part of the `aiwiki` runtime architecture
+- `AGENTS.md` 和 `CLAUDE.md` 是开发治理文件
+- 它们不属于 `aiwiki` runtime 架构
 
 ### 5. Outputs
 
-Purpose: consumable artifacts produced from the compiled knowledge layer.
+目的：从编译知识层中生产出的可消费产物。
 
-Current paths:
+当前路径：
 
 - `output/reports/`
 - `output/slides/`
 - `output/figures/`
 - `output/lint/`
 
-Typical contents:
+典型内容：
 
-- reports
-- slide outlines
-- figure briefs
-- lint reports
-- future SOPs, decision memos, and review packs
+- 报告
+- 幻灯片提纲
+- 图表 brief
+- lint 报告
+- 后续可能的 SOP、决策 memo、review pack
 
-Rules:
+规则：
 
-- outputs are not the end of the loop
-- high-value outputs should be filed back into `wiki/derived/`
+- 输出不是终点
+- 高价值输出应继续回流到 `wiki/derived/`、`wiki/decisions/`、`wiki/judgments/`
 
-## Operating Loops
+## 运行闭环
 
 ### Ingest Loop
 
-1. Material enters through `drop-url`, `drop-pdf`, `drop-image`, `drop-repo`, or direct file drops.
-2. `aiwiki` records provenance and stores local assets.
-3. Deterministic compile creates source pages and indexes.
+1. 原料通过 `drop-url`、`drop-pdf`、`drop-image`、`drop-repo` 或直接丢文件进入系统。
+2. `aiwiki` 记录 provenance，并保存本地附件。
+3. deterministic compile 生成 source/index 层。
 
 ### Compile Loop
 
-1. `compile` builds source, concept, and index layers.
-2. `run-compile` upgrades placeholder summaries with LLM synthesis.
-3. Changed raw material invalidates stale summaries and concept pages.
+1. `compile` 维护 source、concept、index、review queue 等层。
+2. `run-compile` 用 LLM 替换 placeholder source summary 和 fallback concept summary。
+3. raw 变化后，旧的 summary 和 concept synthesis 会被失效。
 
 ### Query Loop
 
-1. `ask` or `run-ask` reads the compiled wiki first and uses machine-memory query planning to expand likely sources and concepts.
-2. The system produces reports, slides, or figure briefs.
-3. High-value results can be filed back with `file-back`.
+1. `ask` / `run-ask` 优先读取编译层，并用 machine-memory query planning 扩展相关来源与概念。
+2. 系统产出 report、slides、figure brief。
+3. 高价值结果可以通过 `file-back` 回流。
 
 ### Lint Loop
 
-1. `lint` checks missing pages, broken references, and obvious provenance gaps.
-2. `run-lint` adds semantic review.
-3. Future night jobs should also check drift between wiki and machine memory.
+1. `lint` 检查缺页、坏引用、明显 provenance 缺口。
+2. `run-lint` 补 semantic review。
+3. `nightly` / `run-nightly` 会把 drift、review queue、repair backlog 聚合起来。
 
-## Role Split
+## 角色分工
 
-### Human
+### 人
 
-- chooses what to feed the furnace
-- asks good questions
-- reviews important judgments
-- decides what is worth filing back
+- 决定投什么原料
+- 提好问题
+- 审核重要判断
+- 决定哪些产物值得回流
 
 ### aiwiki Runtime
 
-- owns ingest, compile, ask, lint, watch, and provenance
-- maintains the local artifact tree
-- enforces source and derived separation
+- 负责 ingest、compile、ask、lint、watch、nightly、provenance
+- 维护本地 artifact tree
+- 维持 source / derived / decision / judgment 的边界
 
 ### LLM Backend
 
-- upgrades summaries
-- synthesizes concepts
-- answers grounded questions
-- performs semantic lint
+- 补来源摘要
+- 补概念综合
+- 回答 grounded 问题
+- 做 semantic lint
 
 ### Obsidian
 
-- serves as the frontend and IDE
-- is where humans inspect raw, wiki, and output layers
-- is not the compiler itself
+- 作为前端和 IDE
+- 负责浏览 raw、wiki、output
+- 不是编译器本体
 
-## Current State
+## 当前状态
 
-Implemented now:
+现在已经实现：
 
-- raw ingest paths and four `drop-*` entry points
-- source, concept, and index compilation
-- machine-memory graph export, drift tracking, and query planning
-- explicit query routes and component-aware graph traversal retrieval
-- graph-health dashboard and graph-aware repair suggestions
-- explicit decision and judgment writeback layers
-- explicit decision/judgment review queue and state workflow
-- LLM-backed source and concept maintenance during `run-compile`
-- nightly health checks and repair backlog generation
-- timer-based scheduling for nightly jobs
-- output generation and filed-back derived notes
-- automation via `watch` and the user service
-- Obsidian as the frontend
+- 四类 `drop-*` 原料入口
+- source / concept / index 编译层
+- machine-memory graph export、drift tracking、query planning
+- graph-aware retrieval、query routes、component-aware traversal
+- graph-health 看板和 repair backlog
+- decision / judgment writeback layers
+- decision / judgment review workflow 与 review queue
+- `run-compile` 的 source/concept 双层维护
+- nightly health checks 和 timer 化调度
+- output 生成和高价值回流
+- `watch` 自动化与 user service
+- Obsidian 前端层
 
-Next-stage extensions:
+下一阶段值得做的：
 
-- automatic promotion from recurring outputs into decision/judgment pages
-- stronger aging, revisit, and auto-escalation around decision and judgment pages
+- 自动把 recurring outputs 晋升成 decision/judgment 页面
+- 更强的 aging / revisit / escalation 机制
+- 更深的 graph / machine-memory 能力
 
-## Architectural Invariants
+## 架构不变量
 
-- original evidence and capture notes must stay in `raw/`
-- `wiki/derived/` must not silently rewrite `raw/`
-- provenance must survive every compile and query step
-- human-facing wiki and machine-facing memory should stay separate
-- schema changes should capture learned corrections
-- important outputs should compound back into the system
+- 原始证据和 capture note 必须留在 `raw/`
+- `wiki/derived/` 不能静默改写 `raw/`
+- provenance 必须穿过 compile / query / writeback 全链路
+- 人读层和机读层要分开
+- 新学到的规则要沉到 schema
+- 重要输出应继续回流，形成复利
 
-## Practical Reading Order
+## 实际阅读顺序
 
-1. Start in `raw/` when you need evidence.
-2. Move to `wiki/sources/` and `wiki/concepts/` for synthesis.
-3. Use `wiki/indexes/` for navigation and status.
-4. Use `output/` for task-specific artifacts.
-5. Treat machine memory as supporting infrastructure, not the primary interface.
+1. 需要证据时先看 `raw/`
+2. 需要综合时看 `wiki/sources/` 和 `wiki/concepts/`
+3. 需要系统状态时看 `wiki/indexes/`
+4. 需要任务产物时看 `output/`
+5. 把 machine memory 当作支撑层，而不是主界面
 
-## Summary
+## 总结
 
-`Alchemy Furnace` is the operating architecture behind `aiwiki`:
+炼丹炉架构下：
 
-- `raw/` stores ore
-- `wiki/` stores refined knowledge
-- machine memory is the planned fast lookup layer
-- schema stores the rules of refinement
-- `output/` stores the usable artifacts
+- `raw/` 存矿石
+- `wiki/` 存提炼后的知识
+- `machine memory` 存机读加速层
+- `schema` 存炼制规则
+- `output/` 存可直接消费的产物
 
-That is the product direction: not a smarter notebook, but a compounding knowledge operating system.
+这就是 `aiwiki` 的产品方向：
+不是更聪明的笔记软件，而是一个会持续增厚的知识操作系统。

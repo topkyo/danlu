@@ -37,95 +37,95 @@ LAYOUT_DIRS = (
 DEFAULT_SCHEMA_FILES = {
     "schema/index.md": "\n".join(
         [
-            "# Runtime Schema",
+            "# 运行时规则",
             "",
-            "This directory contains runtime policy for `aiwiki`.",
+            "这个目录存放 `aiwiki` 的运行时规则。",
             "",
-            "It is product-facing policy, not developer governance.",
+            "它属于产品运行时约束，不属于开发治理说明。",
             "",
-            "## Core Policy Files",
+            "## 核心规则文件",
             "",
-            "- [Ingest Rules](./ingest.md)",
-            "- [Citation Rules](./citations.md)",
-            "- [Conflict Rules](./conflicts.md)",
-            "- [Review Rules](./review.md)",
-            "- [Writeback Rules](./writeback.md)",
-            "- [Taxonomy Rules](./taxonomy.md)",
+            "- [采集规则](./ingest.md)",
+            "- [引用规则](./citations.md)",
+            "- [冲突规则](./conflicts.md)",
+            "- [审阅规则](./review.md)",
+            "- [回流规则](./writeback.md)",
+            "- [分类规则](./taxonomy.md)",
             "",
-            "## Boundary",
+            "## 边界",
             "",
-            "- `AGENTS.md` and `CLAUDE.md` are repository/developer files.",
-            "- Runtime behavior should be driven by this directory plus `prompts/`.",
+            "- `AGENTS.md` 和 `CLAUDE.md` 是仓库/开发侧文件。",
+            "- 运行时行为应由这个目录和 `prompts/` 共同驱动。",
         ]
     )
     + "\n",
     "schema/ingest.md": "\n".join(
         [
-            "# Ingest Rules",
+            "# 采集规则",
             "",
-            "- Preserve original assets when available.",
-            "- Record original path or URL in capture notes.",
-            "- Keep ingest-generated notes in `raw/` linked back to their evidence.",
-            "- Never treat URL stubs or partial captures as strong evidence without saying so.",
+            "- 能保留原始附件时，优先保留原始附件。",
+            "- 在采集笔记里记录原始路径或 URL。",
+            "- ingest 生成的笔记要留在 `raw/`，并回指到它们的证据来源。",
+            "- URL stub 或不完整采集内容，不能在未声明的情况下当成强证据。",
         ]
     )
     + "\n",
     "schema/citations.md": "\n".join(
         [
-            "# Citation Rules",
+            "# 引用规则",
             "",
-            "- Prefer `wiki/sources/*.md` citations in compiled and output layers.",
-            "- Preserve file-path provenance back to `raw/` whenever possible.",
-            "- Do not present unsupported synthesis as fact.",
-            "- If evidence is weak, partial, or conflicting, state that explicitly.",
+            "- 在编译层和输出层里优先引用 `wiki/sources/*.md`。",
+            "- 能保留回到 `raw/` 的文件路径溯源时，尽量保留。",
+            "- 没有证据支撑的综合结论不能写成事实。",
+            "- 如果证据薄弱、不完整或互相冲突，要明确写出来。",
         ]
     )
     + "\n",
     "schema/conflicts.md": "\n".join(
         [
-            "# Conflict Rules",
+            "# 冲突规则",
             "",
-            "- Keep contradictions explicit instead of smoothing them away.",
-            "- Prefer uncertainty over invented reconciliation.",
-            "- When sources disagree, point to both source pages.",
-            "- Track repeated drift or ambiguity in lint and future repair loops.",
+            "- 让冲突保持显式，不要把它们抹平。",
+            "- 宁可保留不确定性，也不要编造一致解释。",
+            "- 当来源互相矛盾时，要同时指出两边的 source page。",
+            "- 在 lint 和后续修复循环里追踪重复出现的漂移和歧义。",
         ]
     )
     + "\n",
     "schema/review.md": "\n".join(
         [
-            "# Review Rules",
+            "# 审阅规则",
             "",
-            "- Decision pages start as `proposed` and move through explicit review states.",
-            "- Judgment pages start as `tentative` and stay explicit about confidence.",
-            "- Use the review workflow to move decision and judgment pages out of the queue.",
-            "- Review notes should record why the state changed and what to watch next.",
-            "- Approved, rejected, superseded, or revisit states should have `reviewed_at` metadata.",
+            "- decision 页面默认从 `proposed` 开始，并沿显式审阅状态推进。",
+            "- judgment 页面默认从 `tentative` 开始，并始终保留明确的 confidence。",
+            "- 用 review workflow 把 decision 和 judgment 页面从队列里推进出去。",
+            "- review note 应记录状态为什么变化、接下来要看什么。",
+            "- 进入 approved、rejected、superseded 或 revisit 等状态时，必须带 `reviewed_at`。",
         ]
     )
     + "\n",
     "schema/writeback.md": "\n".join(
         [
-            "# Writeback Rules",
+            "# 回流规则",
             "",
-            "- High-value outputs may be filed back into `wiki/derived/`.",
-            "- Stable choices may be promoted into `wiki/decisions/`.",
-            "- Reusable judgment calls may be promoted into `wiki/judgments/`.",
-            "- Decision and judgment pages should move through explicit review states instead of staying implicit drafts.",
-            "- Filed-back notes must not overwrite source pages or raw evidence.",
-            "- Derived, decision, and judgment pages should cite their source pages or raw evidence.",
-            "- Writeback is compounding knowledge, not silent mutation of facts.",
+            "- 高价值输出可以回流到 `wiki/derived/`。",
+            "- 稳定选择可以晋升到 `wiki/decisions/`。",
+            "- 可复用的判断可以晋升到 `wiki/judgments/`。",
+            "- decision 和 judgment 页面应该经过显式 review 状态，而不是一直停在隐式草稿。",
+            "- 回流笔记不能覆盖 source page 或 raw evidence。",
+            "- derived、decision、judgment 页面都应引用 source page 或 raw 证据。",
+            "- 回流是知识复利，不是对事实的静默篡改。",
         ]
     )
     + "\n",
     "schema/taxonomy.md": "\n".join(
         [
-            "# Taxonomy Rules",
+            "# 分类规则",
             "",
-            "- Keep concept names stable and human-readable.",
-            "- Prefer concept pages over repeating the same synthesis in many source pages.",
-            "- Separate source pages, concept pages, decision pages, judgment pages, derived pages, and outputs by role.",
-            "- Promote repeated patterns into schema or decision pages when they become stable.",
+            "- 让 concept 名称保持稳定且便于人读。",
+            "- 能放进 concept page 的综合结论，优先不要散落在多个 source page 里重复写。",
+            "- source、concept、decision、judgment、derived、output 各层要按职责分开。",
+            "- 当重复模式稳定下来时，把它提升进 schema 或 decision page。",
         ]
     )
     + "\n",
@@ -477,15 +477,15 @@ def ingest_source(root: Path, source: str, title: str | None = None) -> dict[str
             [
                 f"# {stub_title}",
                 "",
-                "## Source URL",
+                "## 来源 URL",
                 f"- {source}",
                 "",
-                "## Capture Status",
-                "- This URL was registered as a stub.",
-                "- Replace it with clipped markdown or an attached asset before trusting it as a fact source.",
+                "## 采集状态",
+                "- 这个 URL 目前只是一个占位 stub。",
+                "- 在把它当作事实来源前，请先用剪藏 markdown 或本地附件替换成更完整材料。",
                 "",
-                "## Notes",
-                "- The compiler will treat this file as a placeholder source until richer material is ingested.",
+                "## 备注",
+                "- 在补充更完整材料之前，编译器会把这个文件视为占位来源。",
             ]
         )
         destination.write_text(stub + "\n", encoding="utf-8")
@@ -800,15 +800,15 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
 
 def render_sources_index(entries: list[dict[str, Any]], compiled_at: str) -> str:
     lines = [
-        "# Sources Index",
+        "# 来源索引",
         "",
-        f"- Last compiled at: `{compiled_at}`",
-        f"- Total sources: `{len(entries)}`",
+        f"- 最近编译时间：`{compiled_at}`",
+        f"- 来源总数：`{len(entries)}`",
         "",
-        "## Sources",
+        "## 来源列表",
     ]
     if not entries:
-        lines.append("- No sources registered yet.")
+        lines.append("- 还没有登记任何来源。")
     else:
         for entry in entries:
             lines.append(
@@ -820,15 +820,15 @@ def render_sources_index(entries: list[dict[str, Any]], compiled_at: str) -> str
 
 def render_concepts_index(concepts: list[dict[str, Any]], compiled_at: str) -> str:
     lines = [
-        "# Concepts Index",
+        "# 概念索引",
         "",
-        f"- Last compiled at: `{compiled_at}`",
-        f"- Total concept pages: `{len(concepts)}`",
+        f"- 最近编译时间：`{compiled_at}`",
+        f"- 概念页总数：`{len(concepts)}`",
         "",
-        "## Concepts",
+        "## 概念列表",
     ]
     if not concepts:
-        lines.append("- No concept pages compiled yet.")
+        lines.append("- 还没有编译出概念页。")
     else:
         for concept in concepts:
             lines.append(
@@ -860,6 +860,21 @@ def page_needs_review(kind: str, status: str) -> bool:
     if kind == "judgment":
         return status in PENDING_JUDGMENT_REVIEW_STATUSES
     return False
+
+
+def display_curated_status(status: str) -> str:
+    mapping = {
+        "filed": "已归档",
+        "proposed": "待决策",
+        "approved": "已批准",
+        "needs-revisit": "待复审",
+        "superseded": "已替代",
+        "tentative": "暂定判断",
+        "tracking": "持续观察",
+        "confirmed": "已确认",
+        "rejected": "已否决",
+    }
+    return mapping.get(status, status or "unknown")
 
 
 def sort_curated_pages(pages: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -910,13 +925,13 @@ def review_queue(decisions: list[dict[str, str]], judgments: list[dict[str, str]
 
 
 def render_curated_page_summary(page: dict[str, str]) -> str:
-    suffix_parts = [f"status `{page.get('status', '') or 'unknown'}`"]
+    suffix_parts = [f"状态 `{display_curated_status(page.get('status', '') or 'unknown')}`"]
     confidence = page.get("confidence", "")
     if confidence:
-        suffix_parts.append(f"confidence `{confidence}`")
+        suffix_parts.append(f"置信度 `{confidence}`")
     reviewed_at = page.get("reviewed_at", "")
     if reviewed_at:
-        suffix_parts.append(f"reviewed `{reviewed_at}`")
+        suffix_parts.append(f"审阅时间 `{reviewed_at}`")
     return f"- [{page['title']}](../../{page['path']}) | " + " | ".join(suffix_parts)
 
 
@@ -934,17 +949,17 @@ def render_curated_index(
     lines = [
         f"# {heading}",
         "",
-        f"- Last compiled at: `{compiled_at}`",
-        f"- Total pages: `{len(pages)}`",
-        f"- Pending review: `{pending_review}`",
+        f"- 最近编译时间：`{compiled_at}`",
+        f"- 页面总数：`{len(pages)}`",
+        f"- 待审阅数量：`{pending_review}`",
         "",
-        "## Status Counts",
+        "## 状态统计",
     ]
     if not status_counts:
-        lines.append("- No curated pages yet.")
+        lines.append("- 还没有相关页面。")
     else:
         for status, count in sorted(status_counts.items()):
-            lines.append(f"- `{status}`: `{count}`")
+            lines.append(f"- `{display_curated_status(status)}`：`{count}`")
     lines.extend(
         [
             "",
@@ -952,7 +967,7 @@ def render_curated_index(
         ]
     )
     if not pages:
-        lines.append(f"- No {section_name.lower()} yet.")
+        lines.append(f"- 还没有{section_name}。")
     else:
         for page in pages:
             lines.append(render_curated_page_summary(page))
@@ -962,29 +977,29 @@ def render_curated_index(
 def render_review_queue(decisions: list[dict[str, str]], judgments: list[dict[str, str]], compiled_at: str) -> str:
     queue = review_queue(decisions, judgments)
     lines = [
-        "# Review Queue",
+        "# 审阅队列",
         "",
-        f"- Last compiled at: `{compiled_at}`",
-        f"- Pending decisions: `{len(queue['pending_decisions'])}`",
-        f"- Pending judgments: `{len(queue['pending_judgments'])}`",
-        f"- Recently reviewed items: `{len(queue['recently_reviewed'])}`",
+        f"- 最近编译时间：`{compiled_at}`",
+        f"- 待审决策：`{len(queue['pending_decisions'])}`",
+        f"- 待审判断：`{len(queue['pending_judgments'])}`",
+        f"- 最近已审项目：`{len(queue['recently_reviewed'])}`",
         "",
-        "## Pending Decisions",
+        "## 待审决策",
     ]
     if not queue["pending_decisions"]:
-        lines.append("- No pending decision reviews.")
+        lines.append("- 当前没有待审决策。")
     else:
         for page in queue["pending_decisions"][:12]:
             lines.append(render_curated_page_summary(page))
-    lines.extend(["", "## Pending Judgments"])
+    lines.extend(["", "## 待审判断"])
     if not queue["pending_judgments"]:
-        lines.append("- No pending judgment reviews.")
+        lines.append("- 当前没有待审判断。")
     else:
         for page in queue["pending_judgments"][:12]:
             lines.append(render_curated_page_summary(page))
-    lines.extend(["", "## Recently Reviewed"])
+    lines.extend(["", "## 最近已审"])
     if not queue["recently_reviewed"]:
-        lines.append("- No reviewed decision or judgment pages yet.")
+        lines.append("- 还没有已审阅的决策或判断页面。")
     else:
         for page in queue["recently_reviewed"][:12]:
             lines.append(render_curated_page_summary(page))
@@ -1000,26 +1015,26 @@ def render_compile_status(
 ) -> str:
     queue = review_queue(decisions, judgments)
     lines = [
-        "# Compile Status",
+        "# 编译状态",
         "",
-        f"- Last compiled at: `{compiled_at}`",
-        f"- Source pages: `{len(entries)}`",
-        f"- Concept pages: `{len(concepts)}`",
-        f"- Decision pages: `{len(decisions)}`",
-        f"- Judgment pages: `{len(judgments)}`",
-        f"- Pending review items: `{len(queue['pending_decisions']) + len(queue['pending_judgments'])}`",
-        "- Content index lives in `index.md`.",
-        "- Runtime schema lives under `schema/`.",
-        "- Operation log lives in `log.md`.",
-        "- Decision index lives in `decisions.md`.",
-        "- Judgment index lives in `judgments.md`.",
-        "- Review queue lives in `review-queue.md`.",
-        "- Machine memory summary lives in `machine-memory.md`.",
-        "- Graph health lives in `graph-health.md`.",
-        "- Drift report lives in `drift-report.md`.",
-        "- Repair backlog lives in `repair-backlog.md`.",
-        "- Derived, decision, and judgment pages are filed back explicitly via `aiwiki file-back`.",
-        "- Lint findings land under `output/lint/`.",
+        f"- 最近编译时间：`{compiled_at}`",
+        f"- 来源页：`{len(entries)}`",
+        f"- 概念页：`{len(concepts)}`",
+        f"- 决策页：`{len(decisions)}`",
+        f"- 判断页：`{len(judgments)}`",
+        f"- 待审项目：`{len(queue['pending_decisions']) + len(queue['pending_judgments'])}`",
+        "- 总索引位于 `index.md`。",
+        "- 运行时规则位于 `schema/`。",
+        "- 操作日志位于 `log.md`。",
+        "- 决策索引位于 `decisions.md`。",
+        "- 判断索引位于 `judgments.md`。",
+        "- 审阅队列位于 `review-queue.md`。",
+        "- 机器记忆摘要位于 `machine-memory.md`。",
+        "- 图谱健康页位于 `graph-health.md`。",
+        "- 漂移报告位于 `drift-report.md`。",
+        "- 修复待办位于 `repair-backlog.md`。",
+        "- derived、decision、judgment 页面通过 `aiwiki file-back` 显式回流。",
+        "- lint 结果输出在 `output/lint/`。",
     ]
     return "\n".join(lines) + "\n"
 
@@ -1033,57 +1048,57 @@ def render_master_index(
 ) -> str:
     queue = review_queue(decisions, judgments)
     lines = [
-        "# Wiki Index",
+        "# 知识库总索引",
         "",
-        f"- Last compiled at: `{compiled_at}`",
-        f"- Sources: `{len(entries)}`",
-        f"- Concepts: `{len(concepts)}`",
-        f"- Decisions: `{len(decisions)}`",
-        f"- Judgments: `{len(judgments)}`",
-        f"- Pending review items: `{len(queue['pending_decisions']) + len(queue['pending_judgments'])}`",
+        f"- 最近编译时间：`{compiled_at}`",
+        f"- 来源页：`{len(entries)}`",
+        f"- 概念页：`{len(concepts)}`",
+        f"- 决策页：`{len(decisions)}`",
+        f"- 判断页：`{len(judgments)}`",
+        f"- 待审项目：`{len(queue['pending_decisions']) + len(queue['pending_judgments'])}`",
         "",
-        "## Core Files",
-        "- [Sources Index](./sources.md)",
-        "- [Concepts Index](./concepts.md)",
-        "- [Decisions Index](./decisions.md)",
-        "- [Judgments Index](./judgments.md)",
-        "- [Review Queue](./review-queue.md)",
-        "- [Compile Status](./compile-status.md)",
-        "- [Machine Memory](./machine-memory.md)",
-        "- [Graph Health](./graph-health.md)",
-        "- [Drift Report](./drift-report.md)",
-        "- [Repair Backlog](./repair-backlog.md)",
-        "- [Operation Log](./log.md)",
-        "- [Runtime Schema](../../schema/index.md)",
+        "## 核心页面",
+        "- [来源索引](./sources.md)",
+        "- [概念索引](./concepts.md)",
+        "- [决策索引](./decisions.md)",
+        "- [判断索引](./judgments.md)",
+        "- [审阅队列](./review-queue.md)",
+        "- [编译状态](./compile-status.md)",
+        "- [机器记忆](./machine-memory.md)",
+        "- [图谱健康](./graph-health.md)",
+        "- [漂移报告](./drift-report.md)",
+        "- [修复待办](./repair-backlog.md)",
+        "- [操作日志](./log.md)",
+        "- [运行时规则](../../schema/index.md)",
         "",
-        "## Recent Sources",
+        "## 最近来源",
     ]
     if not entries:
-        lines.append("- No sources registered yet.")
+        lines.append("- 还没有登记任何来源。")
     else:
         for entry in sorted(entries, key=lambda item: item["imported_at"], reverse=True)[:8]:
             lines.append(f"- [{entry['title']}](../sources/{entry['id']}.md)")
-    lines.extend(["", "## Top Concepts"])
+    lines.extend(["", "## 重点概念"])
     if not concepts:
-        lines.append("- No concept pages compiled yet.")
+        lines.append("- 还没有编译出概念页。")
     else:
         for concept in concepts[:10]:
             lines.append(f"- [{concept['title']}](../concepts/{concept['slug']}.md)")
-    lines.extend(["", "## Needs Review"])
+    lines.extend(["", "## 待审项目"])
     if not queue["pending_decisions"] and not queue["pending_judgments"]:
-        lines.append("- No decision or judgment pages are waiting for review.")
+        lines.append("- 当前没有等待审阅的决策或判断页面。")
     else:
         for page in (queue["pending_decisions"] + queue["pending_judgments"])[:8]:
             lines.append(render_curated_page_summary(page))
-    lines.extend(["", "## Recent Decisions"])
+    lines.extend(["", "## 最近决策"])
     if not decisions:
-        lines.append("- No decision pages filed yet.")
+        lines.append("- 还没有回流的决策页面。")
     else:
         for page in decisions[:8]:
             lines.append(render_curated_page_summary(page))
-    lines.extend(["", "## Recent Judgments"])
+    lines.extend(["", "## 最近判断"])
     if not judgments:
-        lines.append("- No judgment pages filed yet.")
+        lines.append("- 还没有回流的判断页面。")
     else:
         for page in judgments[:8]:
             lines.append(render_curated_page_summary(page))
@@ -1094,7 +1109,7 @@ def ensure_wiki_log(root: Path) -> Path:
     ensure_layout(root)
     path = root / "wiki" / "indexes" / "log.md"
     if not path.exists():
-        path.write_text("# Wiki Log\n\n", encoding="utf-8")
+        path.write_text("# 知识库日志\n\n", encoding="utf-8")
     return path
 
 
@@ -1841,45 +1856,45 @@ def append_machine_memory_history(root: Path, memory: dict[str, Any], transition
 def render_drift_report(memory: dict[str, Any], transition: dict[str, Any]) -> str:
     drift = memory["drift"]
     lines = [
-        "# Drift Report",
+        "# 漂移报告",
         "",
-        f"- Compiled at: `{memory['compiled_at']}`",
-        f"- Current digest: `{memory['digest']}`",
-        f"- Graph digest: `{memory['graph_digest']}`",
+        f"- 编译时间：`{memory['compiled_at']}`",
+        f"- 当前摘要：`{memory['digest']}`",
+        f"- 图谱摘要：`{memory['graph_digest']}`",
         "",
-        "## Transition Summary",
+        "## 变化摘要",
     ]
     if not transition["has_previous_snapshot"]:
-        lines.append("- No previous machine-memory snapshot was available.")
+        lines.append("- 目前没有可对比的上一版机器记忆快照。")
     elif not transition["changed"]:
-        lines.append("- No structural drift detected since the previous snapshot.")
+        lines.append("- 相比上一版快照，没有检测到结构性漂移。")
     else:
         lines.extend(
             [
-                f"- Previous digest: `{transition['previous_digest']}`",
-                f"- Added source nodes: `{len(transition['added_source_ids'])}`",
-                f"- Removed source nodes: `{len(transition['removed_source_ids'])}`",
-                f"- Added concept nodes: `{len(transition['added_concept_slugs'])}`",
-                f"- Removed concept nodes: `{len(transition['removed_concept_slugs'])}`",
-                f"- Added edges: `{transition['added_edges']}`",
-                f"- Removed edges: `{transition['removed_edges']}`",
-                f"- Added indexed terms (sample): `{', '.join(transition['added_terms']) or 'none'}`",
-                f"- Removed indexed terms (sample): `{', '.join(transition['removed_terms']) or 'none'}`",
+                f"- 上一版摘要：`{transition['previous_digest']}`",
+                f"- 新增来源节点：`{len(transition['added_source_ids'])}`",
+                f"- 移除来源节点：`{len(transition['removed_source_ids'])}`",
+                f"- 新增概念节点：`{len(transition['added_concept_slugs'])}`",
+                f"- 移除概念节点：`{len(transition['removed_concept_slugs'])}`",
+                f"- 新增边：`{transition['added_edges']}`",
+                f"- 移除边：`{transition['removed_edges']}`",
+                f"- 新增索引词（样本）：`{', '.join(transition['added_terms']) or 'none'}`",
+                f"- 移除索引词（样本）：`{', '.join(transition['removed_terms']) or 'none'}`",
             ]
         )
     lines.extend(
         [
             "",
-            "## Current Drift Checks",
-            f"- Missing raw files: `{len(drift['missing_raw_files'])}`",
-            f"- Missing source pages: `{len(drift['missing_source_pages'])}`",
-            f"- Missing concept pages: `{len(drift['missing_concept_pages'])}`",
-            f"- Sources without concepts: `{len(drift['sources_without_concepts'])}`",
+            "## 当前漂移检查",
+            f"- 缺失 raw 文件：`{len(drift['missing_raw_files'])}`",
+            f"- 缺失来源页：`{len(drift['missing_source_pages'])}`",
+            f"- 缺失概念页：`{len(drift['missing_concept_pages'])}`",
+            f"- 无概念覆盖的来源：`{len(drift['sources_without_concepts'])}`",
             "",
-            "## Machine Memory Artifacts",
-            "- State: `.aiwiki/state/machine-memory.json`",
-            "- Graph export: `.aiwiki/cache/machine-memory-graph.json`",
-            "- History: `.aiwiki/state/machine-memory-history.jsonl`",
+            "## 机器记忆产物",
+            "- 状态文件：`.aiwiki/state/machine-memory.json`",
+            "- 图谱导出：`.aiwiki/cache/machine-memory-graph.json`",
+            "- 历史记录：`.aiwiki/state/machine-memory-history.jsonl`",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -1888,27 +1903,27 @@ def render_drift_report(memory: dict[str, Any], transition: dict[str, Any]) -> s
 def render_graph_health(memory: dict[str, Any]) -> str:
     health = memory.get("health", {})
     lines = [
-        "# Graph Health",
+        "# 图谱健康",
         "",
-        f"- Compiled at: `{memory['compiled_at']}`",
-        f"- Connected components: `{health.get('component_count', 0)}`",
-        f"- Component sizes: `{', '.join(str(size) for size in health.get('component_sizes', [])) or 'none'}`",
-        f"- Isolated sources: `{len(health.get('isolated_source_ids', []))}`",
-        f"- Singleton concepts: `{len(health.get('singleton_concept_slugs', []))}`",
-        f"- Bridge concepts: `{len(health.get('bridge_concept_slugs', []))}`",
-        f"- Overloaded concepts: `{len(health.get('overloaded_concept_slugs', []))}`",
+        f"- 编译时间：`{memory['compiled_at']}`",
+        f"- 连通分量数：`{health.get('component_count', 0)}`",
+        f"- 分量大小：`{', '.join(str(size) for size in health.get('component_sizes', [])) or 'none'}`",
+        f"- 孤立来源：`{len(health.get('isolated_source_ids', []))}`",
+        f"- 单节点概念：`{len(health.get('singleton_concept_slugs', []))}`",
+        f"- 桥接概念：`{len(health.get('bridge_concept_slugs', []))}`",
+        f"- 过载概念：`{len(health.get('overloaded_concept_slugs', []))}`",
         "",
-        "## Repair Signals",
-        f"- Isolated sources: `{', '.join(health.get('isolated_source_ids', [])[:10]) or 'none'}`",
-        f"- Singleton concepts: `{', '.join(health.get('singleton_concept_slugs', [])[:10]) or 'none'}`",
-        f"- Bridge concepts: `{', '.join(health.get('bridge_concept_slugs', [])[:10]) or 'none'}`",
-        f"- Overloaded concepts: `{', '.join(health.get('overloaded_concept_slugs', [])[:10]) or 'none'}`",
+        "## 修复信号",
+        f"- 孤立来源：`{', '.join(health.get('isolated_source_ids', [])[:10]) or 'none'}`",
+        f"- 单节点概念：`{', '.join(health.get('singleton_concept_slugs', [])[:10]) or 'none'}`",
+        f"- 桥接概念：`{', '.join(health.get('bridge_concept_slugs', [])[:10]) or 'none'}`",
+        f"- 过载概念：`{', '.join(health.get('overloaded_concept_slugs', [])[:10]) or 'none'}`",
         "",
-        "## Largest Components",
+        "## 最大分量",
     ]
     components = health.get("components", [])
     if not components:
-        lines.append("- No component data available yet.")
+        lines.append("- 暂无分量数据。")
     else:
         for component in components[:5]:
             lines.append(
@@ -1919,13 +1934,13 @@ def render_graph_health(memory: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-        "## Links",
-        "- [Machine Memory](./machine-memory.md)",
-        "- [Drift Report](./drift-report.md)",
-        "- [Repair Backlog](./repair-backlog.md)",
-        "- [Decisions Index](./decisions.md)",
-        "- [Judgments Index](./judgments.md)",
-        "- [Review Queue](./review-queue.md)",
+        "## 相关链接",
+        "- [机器记忆](./machine-memory.md)",
+        "- [漂移报告](./drift-report.md)",
+        "- [修复待办](./repair-backlog.md)",
+        "- [决策索引](./decisions.md)",
+        "- [判断索引](./judgments.md)",
+        "- [审阅队列](./review-queue.md)",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -1937,54 +1952,54 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
     drift = memory["drift"]
     health = memory.get("health", {})
     lines = [
-        "# Machine Memory",
+        "# 机器记忆",
         "",
-        f"- Last compiled at: `{memory['compiled_at']}`",
-        "- Runtime state file: `.aiwiki/state/machine-memory.json`",
-        "- Graph export: `.aiwiki/cache/machine-memory-graph.json`",
-        "- Drift report: `wiki/indexes/drift-report.md`",
-        f"- Source nodes: `{len(memory['source_nodes'])}`",
-        f"- Concept nodes: `{len(concept_nodes)}`",
-        f"- Source-to-concept edges: `{len(edges['source_to_concept'])}`",
-        f"- Concept-to-concept edges: `{len(edges['concept_to_concept'])}`",
-        f"- Indexed terms: `{len(memory['term_index'])}`",
-        f"- Machine digest: `{memory['digest']}`",
-        f"- Graph digest: `{memory['graph_digest']}`",
+        f"- 最近编译时间：`{memory['compiled_at']}`",
+        "- 运行时状态文件：`.aiwiki/state/machine-memory.json`",
+        "- 图谱导出文件：`.aiwiki/cache/machine-memory-graph.json`",
+        "- 漂移报告：`wiki/indexes/drift-report.md`",
+        f"- 来源节点：`{len(memory['source_nodes'])}`",
+        f"- 概念节点：`{len(concept_nodes)}`",
+        f"- 来源到概念的边：`{len(edges['source_to_concept'])}`",
+        f"- 概念到概念的边：`{len(edges['concept_to_concept'])}`",
+        f"- 索引词数量：`{len(memory['term_index'])}`",
+        f"- 机器摘要：`{memory['digest']}`",
+        f"- 图谱摘要：`{memory['graph_digest']}`",
         "",
-        "## Graph Health",
-        f"- Connected components: `{health.get('component_count', 0)}`",
-        f"- Isolated sources: `{len(health.get('isolated_source_ids', []))}`",
-        f"- Singleton concepts: `{len(health.get('singleton_concept_slugs', []))}`",
-        f"- Bridge concepts: `{len(health.get('bridge_concept_slugs', []))}`",
-        f"- Overloaded concepts: `{len(health.get('overloaded_concept_slugs', []))}`",
-        f"- Indexed components: `{len(health.get('components', []))}`",
+        "## 图谱健康",
+        f"- 连通分量：`{health.get('component_count', 0)}`",
+        f"- 孤立来源：`{len(health.get('isolated_source_ids', []))}`",
+        f"- 单节点概念：`{len(health.get('singleton_concept_slugs', []))}`",
+        f"- 桥接概念：`{len(health.get('bridge_concept_slugs', []))}`",
+        f"- 过载概念：`{len(health.get('overloaded_concept_slugs', []))}`",
+        f"- 已索引分量：`{len(health.get('components', []))}`",
         "",
-        "## Human Judgment Layers",
-        "- Decision index: `wiki/indexes/decisions.md`",
-        "- Judgment index: `wiki/indexes/judgments.md`",
-        "- Review queue: `wiki/indexes/review-queue.md`",
+        "## 判断层",
+        "- 决策索引：`wiki/indexes/decisions.md`",
+        "- 判断索引：`wiki/indexes/judgments.md`",
+        "- 审阅队列：`wiki/indexes/review-queue.md`",
         "",
-        "## Drift Summary",
-        f"- Missing raw files: `{len(drift['missing_raw_files'])}`",
-        f"- Missing source pages: `{len(drift['missing_source_pages'])}`",
-        f"- Missing concept pages: `{len(drift['missing_concept_pages'])}`",
-        f"- Sources without concepts: `{len(drift['sources_without_concepts'])}`",
+        "## 漂移摘要",
+        f"- 缺失 raw 文件：`{len(drift['missing_raw_files'])}`",
+        f"- 缺失来源页：`{len(drift['missing_source_pages'])}`",
+        f"- 缺失概念页：`{len(drift['missing_concept_pages'])}`",
+        f"- 无概念覆盖来源：`{len(drift['sources_without_concepts'])}`",
         "",
-        "## Links",
-        "- [Graph Health](./graph-health.md)",
-        "- [Drift Report](./drift-report.md)",
-        "- [Repair Backlog](./repair-backlog.md)",
+        "## 相关链接",
+        "- [图谱健康](./graph-health.md)",
+        "- [漂移报告](./drift-report.md)",
+        "- [修复待办](./repair-backlog.md)",
         "",
-        "## Query Acceleration",
-        "- `ask` and `run-ask` use the machine-memory term index as a first-pass query planner.",
-        "- Source-to-concept and concept-to-concept edges expand related candidates before prompt assembly.",
-        "- Query planning also extracts shortest graph routes and touched components for deeper retrieval.",
-        "- The graph export is for agent/tool consumption, not for direct human editing.",
+        "## 查询加速",
+        "- `ask` 和 `run-ask` 先用机器记忆 term index 做第一轮查询规划。",
+        "- source-to-concept 和 concept-to-concept 边会在组装 prompt 前扩展候选范围。",
+        "- 查询规划还会提取最短图路径和触达分量，支持更深的检索。",
+        "- 图谱导出主要给 agent / tooling 使用，不建议直接人工修改。",
         "",
-        "## Top Concepts",
+        "## 重点概念",
     ]
     if not concept_nodes:
-        lines.append("- No concept nodes compiled yet.")
+        lines.append("- 还没有编译出概念节点。")
     else:
         for node in sorted(
             concept_nodes,
@@ -1997,11 +2012,11 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "## Runtime Schema",
-            "- [Schema Index](../../schema/index.md)",
-            "- [Citation Rules](../../schema/citations.md)",
-            "- [Conflict Rules](../../schema/conflicts.md)",
-            "- [Review Rules](../../schema/review.md)",
+            "## 运行时规则",
+            "- [规则索引](../../schema/index.md)",
+            "- [引用规则](../../schema/citations.md)",
+            "- [冲突规则](../../schema/conflicts.md)",
+            "- [审阅规则](../../schema/review.md)",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -2045,13 +2060,13 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     changed_pages += int(
         write_if_changed(
             root / "wiki" / "indexes" / "decisions.md",
-            render_curated_index("Decisions Index", "Decisions", decision_pages, compiled_at),
+            render_curated_index("决策索引", "决策列表", decision_pages, compiled_at),
         )
     )
     changed_pages += int(
         write_if_changed(
             root / "wiki" / "indexes" / "judgments.md",
-            render_curated_index("Judgments Index", "Judgments", judgment_pages, compiled_at),
+            render_curated_index("判断索引", "判断列表", judgment_pages, compiled_at),
         )
     )
     changed_pages += int(
@@ -2233,77 +2248,77 @@ def render_report(
         "",
         f"# {question}",
         "",
-        "## Answer Contract",
-        "- Ground every non-trivial claim in `wiki/sources/*.md`.",
-        "- Call out uncertainty instead of filling gaps.",
-        "- Prefer file-path citations over vague prose references.",
+        "## 回答约束",
+        "- 所有重要结论都要落回 `wiki/sources/*.md`。",
+        "- 有不确定性就直接写出来，不要补洞。",
+        "- 优先使用文件路径引用，而不是模糊转述。",
         "",
-        "## Recommended Index Pages",
-        "- [Wiki Index](../../wiki/indexes/index.md)",
-        "- [Sources Index](../../wiki/indexes/sources.md)",
-        "- [Concepts Index](../../wiki/indexes/concepts.md)",
-        "- [Decisions Index](../../wiki/indexes/decisions.md)",
-        "- [Judgments Index](../../wiki/indexes/judgments.md)",
-        "- [Review Queue](../../wiki/indexes/review-queue.md)",
-        "- [Machine Memory](../../wiki/indexes/machine-memory.md)",
-        "- [Graph Health](../../wiki/indexes/graph-health.md)",
-        "- [Drift Report](../../wiki/indexes/drift-report.md)",
-        "- [Repair Backlog](../../wiki/indexes/repair-backlog.md)",
-        "- [Runtime Schema](../../schema/index.md)",
+        "## 推荐索引页",
+        "- [知识库总索引](../../wiki/indexes/index.md)",
+        "- [来源索引](../../wiki/indexes/sources.md)",
+        "- [概念索引](../../wiki/indexes/concepts.md)",
+        "- [决策索引](../../wiki/indexes/decisions.md)",
+        "- [判断索引](../../wiki/indexes/judgments.md)",
+        "- [审阅队列](../../wiki/indexes/review-queue.md)",
+        "- [机器记忆](../../wiki/indexes/machine-memory.md)",
+        "- [图谱健康](../../wiki/indexes/graph-health.md)",
+        "- [漂移报告](../../wiki/indexes/drift-report.md)",
+        "- [修复待办](../../wiki/indexes/repair-backlog.md)",
+        "- [运行时规则](../../schema/index.md)",
         "",
-        "## Machine Memory Query Plan",
+        "## 机器记忆查询计划",
     ]
     matched_terms = machine_query.get("matched_terms", [])
     if matched_terms:
-        lines.append(f"- Matched terms: `{', '.join(matched_terms)}`")
+        lines.append(f"- 命中词：`{', '.join(matched_terms)}`")
     else:
-        lines.append("- No direct machine-memory term hits were available yet.")
+        lines.append("- 当前还没有直接命中的机器记忆词。")
     lines.append(
-        f"- Boosted source candidates: `{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`"
+        f"- 提升权重的来源候选：`{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`"
     )
     lines.append(
-        f"- Boosted concept candidates: `{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`"
+        f"- 提升权重的概念候选：`{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`"
     )
     lines.append(
-        f"- Bridge concepts: `{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`"
+        f"- 桥接概念：`{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`"
     )
     lines.append(
-        f"- Query subgraph edges: `{len(machine_query.get('query_subgraph', {}).get('edges', []))}`"
+        f"- 查询子图边数：`{len(machine_query.get('query_subgraph', {}).get('edges', []))}`"
     )
-    lines.append(f"- Query routes: `{len(machine_query.get('query_routes', []))}`")
-    lines.append(f"- Touched components: `{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`")
+    lines.append(f"- 查询路径数：`{len(machine_query.get('query_routes', []))}`")
+    lines.append(f"- 触达分量：`{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`")
     lines.extend(
         [
             "",
-        "## Recommended Concepts",
+        "## 推荐概念",
         ]
     )
     if not concepts:
-        lines.append("- No ranked concept pages yet.")
+        lines.append("- 还没有排好序的概念页。")
     else:
         for concept in concepts:
             lines.append(f"- [{concept['title']}](../../{concept['path']})")
     lines.extend(
         [
             "",
-        "## Recommended Sources",
+        "## 推荐来源",
         ]
     )
     if not entries:
-        lines.append("- No ranked sources yet. Run `aiwiki compile` after ingesting material.")
+        lines.append("- 还没有排好序的来源。先在 ingest 后运行 `aiwiki compile`。")
     else:
         for entry in entries:
             lines.append(f"- [{entry['title']}](../../wiki/sources/{entry['id']}.md)")
     lines.extend(
         [
             "",
-            "## Draft Outline",
-            "1. Restate the research question.",
-            "2. Compare the strongest relevant sources.",
-            "3. Note disagreements, missing evidence, and next questions.",
+            "## 草稿提纲",
+            "1. 重新表述研究问题。",
+            "2. 对比最强相关来源。",
+            "3. 写出分歧、证据缺口和下一步问题。",
             "",
-            "## Citations",
-            "- Add source-page citations inline in the final answer.",
+            "## 引用要求",
+            "- 在最终答案里加入 source-page 内联引用。",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -2326,11 +2341,11 @@ def render_slides(
         "",
         f"# {question}",
         "",
-        "## Use This Deck",
-        "- Convert ranked source pages into 5-7 slides.",
-        "- Keep citations on each content slide.",
+        "## 使用说明",
+        "- 把排好序的来源页整理成 5 到 7 页幻灯片。",
+        "- 每页正文都保留引用。",
         "",
-        "## Ranked Indexes",
+        "## 相关索引",
         "- `wiki/indexes/index.md`",
         "- `wiki/indexes/sources.md`",
         "- `wiki/indexes/concepts.md`",
@@ -2343,30 +2358,30 @@ def render_slides(
         "- `wiki/indexes/repair-backlog.md`",
         "- `schema/index.md`",
         "",
-        "## Machine Memory Query Plan",
-        f"- Matched terms: `{', '.join(machine_query.get('matched_terms', [])) or 'none'}`",
-        f"- Boosted sources: `{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`",
-        f"- Boosted concepts: `{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`",
-        f"- Bridge concepts: `{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`",
-        f"- Query subgraph edges: `{len(machine_query.get('query_subgraph', {}).get('edges', []))}`",
-        f"- Query routes: `{len(machine_query.get('query_routes', []))}`",
-        f"- Touched components: `{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`",
+        "## 机器记忆查询计划",
+        f"- 命中词：`{', '.join(machine_query.get('matched_terms', [])) or 'none'}`",
+        f"- 提升权重的来源：`{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`",
+        f"- 提升权重的概念：`{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`",
+        f"- 桥接概念：`{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`",
+        f"- 查询子图边数：`{len(machine_query.get('query_subgraph', {}).get('edges', []))}`",
+        f"- 查询路径数：`{len(machine_query.get('query_routes', []))}`",
+        f"- 触达分量：`{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`",
         "",
-        "## Ranked Concepts",
+        "## 相关概念",
     ]
     if not concepts:
-        lines.append("- No ranked concept pages available yet.")
+        lines.append("- 暂无排好序的概念页。")
     else:
         for concept in concepts:
             lines.append(f"- `{concept['path']}`")
     lines.extend(
         [
             "",
-        "## Ranked Sources",
+        "## 相关来源",
         ]
     )
     if not entries:
-        lines.append("- No ranked sources available yet.")
+        lines.append("- 暂无排好序的来源。")
     else:
         for entry in entries:
             lines.append(f"- `wiki/sources/{entry['id']}.md`")
@@ -2376,9 +2391,9 @@ def render_slides(
             "---",
             "",
             f"<!-- artifact_id: {artifact_id} -->",
-            "# Findings",
+            "# 结论",
             "",
-            "- Replace this slide with grounded content.",
+            "- 用有依据的内容替换这一页。",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -2405,58 +2420,58 @@ def render_figure_brief(
     lines = [
         frontmatter,
         "",
-        f"# Figure Brief: {question}",
+        f"# 图表简报：{question}",
         "",
-        "## Goal",
-        "- Describe the figure the agent should produce.",
+        "## 目标",
+        "- 描述这张图应该表达什么。",
         "",
-        "## Recommended Index Pages",
-        "- [Wiki Index](../../wiki/indexes/index.md)",
-        "- [Sources Index](../../wiki/indexes/sources.md)",
-        "- [Concepts Index](../../wiki/indexes/concepts.md)",
-        "- [Decisions Index](../../wiki/indexes/decisions.md)",
-        "- [Judgments Index](../../wiki/indexes/judgments.md)",
-        "- [Review Queue](../../wiki/indexes/review-queue.md)",
-        "- [Machine Memory](../../wiki/indexes/machine-memory.md)",
-        "- [Graph Health](../../wiki/indexes/graph-health.md)",
-        "- [Drift Report](../../wiki/indexes/drift-report.md)",
-        "- [Repair Backlog](../../wiki/indexes/repair-backlog.md)",
-        "- [Runtime Schema](../../schema/index.md)",
+        "## 推荐索引页",
+        "- [知识库总索引](../../wiki/indexes/index.md)",
+        "- [来源索引](../../wiki/indexes/sources.md)",
+        "- [概念索引](../../wiki/indexes/concepts.md)",
+        "- [决策索引](../../wiki/indexes/decisions.md)",
+        "- [判断索引](../../wiki/indexes/judgments.md)",
+        "- [审阅队列](../../wiki/indexes/review-queue.md)",
+        "- [机器记忆](../../wiki/indexes/machine-memory.md)",
+        "- [图谱健康](../../wiki/indexes/graph-health.md)",
+        "- [漂移报告](../../wiki/indexes/drift-report.md)",
+        "- [修复待办](../../wiki/indexes/repair-backlog.md)",
+        "- [运行时规则](../../schema/index.md)",
         "",
-        "## Machine Memory Query Plan",
-        f"- Matched terms: `{', '.join(machine_query.get('matched_terms', [])) or 'none'}`",
-        f"- Boosted sources: `{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`",
-        f"- Boosted concepts: `{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`",
-        f"- Bridge concepts: `{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`",
-        f"- Query subgraph edges: `{len(machine_query.get('query_subgraph', {}).get('edges', []))}`",
-        f"- Query routes: `{len(machine_query.get('query_routes', []))}`",
-        f"- Touched components: `{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`",
+        "## 机器记忆查询计划",
+        f"- 命中词：`{', '.join(machine_query.get('matched_terms', [])) or 'none'}`",
+        f"- 提升权重的来源：`{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`",
+        f"- 提升权重的概念：`{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`",
+        f"- 桥接概念：`{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`",
+        f"- 查询子图边数：`{len(machine_query.get('query_subgraph', {}).get('edges', []))}`",
+        f"- 查询路径数：`{len(machine_query.get('query_routes', []))}`",
+        f"- 触达分量：`{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`",
         "",
-        "## Recommended Concepts",
+        "## 推荐概念",
     ]
     if not concepts:
-        lines.append("- No ranked concept pages available yet.")
+        lines.append("- 暂无排好序的概念页。")
     else:
         for concept in concepts:
             lines.append(f"- [{concept['title']}](../../{concept['path']})")
     lines.extend(
         [
             "",
-        "## Recommended Sources",
+        "## 推荐来源",
         ]
     )
     if not entries:
-        lines.append("- No ranked sources available yet.")
+        lines.append("- 暂无排好序的来源。")
     else:
         for entry in entries:
             lines.append(f"- [{entry['title']}](../../wiki/sources/{entry['id']}.md)")
     lines.extend(
         [
             "",
-            "## Figure Requirements",
-            "- State the intended chart type.",
-            "- List the variables or comparison axes.",
-            "- Include source-page citations in the caption.",
+            "## 制图要求",
+            "- 写明图表类型。",
+            "- 列出变量或对比维度。",
+            "- 在图注里包含 source-page 引用。",
             "",
             f"<!-- artifact_id: {artifact_id} -->",
         ]
@@ -2956,16 +2971,16 @@ def lint_wiki(root: Path) -> dict[str, Any]:
     error_count = sum(1 for finding in findings if finding.severity == "error")
     warn_count = sum(1 for finding in findings if finding.severity == "warn")
     lines = [
-        "# Lint Report",
+        "# Lint 报告",
         "",
-        f"- Generated at: `{generated_at}`",
-        f"- Errors: `{error_count}`",
-        f"- Warnings: `{warn_count}`",
+        f"- 生成时间：`{generated_at}`",
+        f"- 错误数：`{error_count}`",
+        f"- 警告数：`{warn_count}`",
         "",
-        "## Findings",
+        "## 发现",
     ]
     if not findings:
-        lines.append("- No findings.")
+        lines.append("- 没有发现问题。")
     else:
         for finding in findings:
             lines.append(f"- `{finding.severity}` {finding.path}: {finding.message}")
@@ -3013,46 +3028,46 @@ def render_repair_backlog(
     bridge_concepts = health.get("bridge_concept_slugs", [])
     overloaded_concepts = health.get("overloaded_concept_slugs", [])
     lines = [
-        "# Repair Backlog",
+        "# 修复待办",
         "",
-        f"- Generated at: `{generated_at}`",
-        f"- Compile changed pages: `{compile_result.get('changed_pages', 0)}`",
-        f"- Machine memory changed: `{compile_result.get('machine_memory_changed', False)}`",
-        f"- Lint errors: `{lint_result['counts']['errors']}`",
-        f"- Lint warnings: `{lint_result['counts']['warnings']}`",
-        f"- Pending source summaries: `{len(pending_sources)}`",
-        f"- Placeholder concept summaries: `{len(placeholder_concepts)}`",
-        f"- Pending decision reviews: `{len(pending_review_decisions)}`",
-        f"- Pending judgment reviews: `{len(pending_review_judgments)}`",
-        f"- Sources without concepts: `{len(sources_without_concepts)}`",
-        f"- Graph components: `{health.get('component_count', 0)}`",
-        f"- Isolated sources: `{len(isolated_sources)}`",
-        f"- Singleton concepts: `{len(singleton_concepts)}`",
-        f"- Bridge concepts: `{len(bridge_concepts)}`",
-        f"- Overloaded concepts: `{len(overloaded_concepts)}`",
+        f"- 生成时间：`{generated_at}`",
+        f"- 本轮编译改动页数：`{compile_result.get('changed_pages', 0)}`",
+        f"- 机器记忆是否变化：`{compile_result.get('machine_memory_changed', False)}`",
+        f"- Lint 错误：`{lint_result['counts']['errors']}`",
+        f"- Lint 警告：`{lint_result['counts']['warnings']}`",
+        f"- 待补来源摘要：`{len(pending_sources)}`",
+        f"- 占位概念摘要：`{len(placeholder_concepts)}`",
+        f"- 待审决策：`{len(pending_review_decisions)}`",
+        f"- 待审判断：`{len(pending_review_judgments)}`",
+        f"- 无概念覆盖来源：`{len(sources_without_concepts)}`",
+        f"- 图谱分量数：`{health.get('component_count', 0)}`",
+        f"- 孤立来源：`{len(isolated_sources)}`",
+        f"- 单节点概念：`{len(singleton_concepts)}`",
+        f"- 桥接概念：`{len(bridge_concepts)}`",
+        f"- 过载概念：`{len(overloaded_concepts)}`",
         "",
-        "## Priority Queue",
+        "## 优先队列",
     ]
     if error_findings:
-        lines.append(f"1. Resolve `{len(error_findings)}` lint error(s) before trusting downstream outputs.")
+        lines.append(f"1. 先解决 `{len(error_findings)}` 个 lint 错误，再继续依赖下游输出。")
     if pending_sources:
-        lines.append(f"2. Enrich `{len(pending_sources)}` source page(s) that still have placeholder summaries.")
+        lines.append(f"2. 补齐 `{len(pending_sources)}` 个仍是占位摘要的来源页。")
     if placeholder_concepts:
-        lines.append(f"3. Revisit `{len(placeholder_concepts)}` concept page(s) that still use fallback summaries.")
+        lines.append(f"3. 重写 `{len(placeholder_concepts)}` 个仍使用回退摘要的概念页。")
     if pending_review_decisions:
-        lines.append(f"4. Review `{len(pending_review_decisions)}` decision page(s) waiting for approval or revisit.")
+        lines.append(f"4. 审阅 `{len(pending_review_decisions)}` 个等待批准或复审的决策页。")
     if pending_review_judgments:
-        lines.append(f"5. Review `{len(pending_review_judgments)}` judgment page(s) that are still tentative or tracking.")
+        lines.append(f"5. 审阅 `{len(pending_review_judgments)}` 个仍处于暂定或跟踪状态的判断页。")
     if sources_without_concepts:
-        lines.append(f"6. Investigate `{len(sources_without_concepts)}` source(s) with no concept coverage.")
+        lines.append(f"6. 检查 `{len(sources_without_concepts)}` 个没有概念覆盖的来源。")
     if isolated_sources:
-        lines.append(f"7. Connect `{len(isolated_sources)}` isolated source node(s) into the concept graph.")
+        lines.append(f"7. 把 `{len(isolated_sources)}` 个孤立来源节点接入概念图谱。")
     if singleton_concepts:
-        lines.append(f"8. Revisit `{len(singleton_concepts)}` singleton concept(s) that do not yet connect wider context.")
+        lines.append(f"8. 复查 `{len(singleton_concepts)}` 个还没接入更大上下文的单节点概念。")
     if overloaded_concepts:
-        lines.append(f"9. Consider splitting `{len(overloaded_concepts)}` overloaded concept(s).")
+        lines.append(f"9. 考虑拆分 `{len(overloaded_concepts)}` 个过载概念。")
     if transition.get("changed"):
-        lines.append("10. Review the latest machine-memory drift before the next research pass.")
+        lines.append("10. 在下一轮研究前先检查最新的机器记忆漂移。")
     if not any(
         (
             error_findings,
@@ -3067,82 +3082,82 @@ def render_repair_backlog(
             transition.get("changed"),
         )
     ):
-        lines.append("1. No immediate repair items. Keep monitoring nightly drift and lint output.")
+        lines.append("1. 当前没有紧急修复项，继续观察 nightly 漂移和 lint 输出。")
     lines.extend(
         [
             "",
-            "## Actionable Items",
+            "## 可执行事项",
         ]
     )
     if error_findings:
-        lines.append("### Lint Errors")
+        lines.append("### Lint 错误")
         for finding in error_findings[:10]:
             lines.append(f"- `{finding['path']}`: {finding['message']}")
     if warn_findings:
         lines.append("")
-        lines.append("### Lint Warnings")
+        lines.append("### Lint 警告")
         for finding in warn_findings[:10]:
             lines.append(f"- `{finding['path']}`: {finding['message']}")
     if pending_sources:
         lines.append("")
-        lines.append("### Pending Source Summaries")
+        lines.append("### 待补来源摘要")
         for source_id in pending_sources[:10]:
             lines.append(f"- `wiki/sources/{source_id}.md`")
     if placeholder_concepts:
         lines.append("")
-        lines.append("### Placeholder Concept Summaries")
+        lines.append("### 占位概念摘要")
         for slug in placeholder_concepts[:10]:
             lines.append(f"- `wiki/concepts/{slug}.md`")
     if pending_review_decisions or pending_review_judgments:
         lines.append("")
-        lines.append("### Review Queue")
+        lines.append("### 审阅队列")
         for page in pending_review_decisions[:10]:
-            lines.append(f"- Decision: `{page['path']}` status `{page['status']}`")
+            lines.append(f"- 决策：`{page['path']}` 状态 `{display_curated_status(page['status'])}`")
         for page in pending_review_judgments[:10]:
-            lines.append(f"- Judgment: `{page['path']}` status `{page['status']}`")
+            lines.append(f"- 判断：`{page['path']}` 状态 `{display_curated_status(page['status'])}`")
     if sources_without_concepts:
         lines.append("")
-        lines.append("### Sources Without Concepts")
+        lines.append("### 无概念覆盖来源")
         for source_id in sources_without_concepts[:10]:
             lines.append(f"- `wiki/sources/{source_id}.md`")
     lines.append("")
-    lines.append("### Graph Repair Suggestions")
+    lines.append("### 图谱修复建议")
     if isolated_sources:
         for source_id in isolated_sources[:10]:
-            lines.append(f"- Connect isolated source `wiki/sources/{source_id}.md` to at least one stable concept.")
+            lines.append(f"- 将孤立来源 `wiki/sources/{source_id}.md` 至少连接到一个稳定概念。")
     if singleton_concepts:
         for slug in singleton_concepts[:10]:
-            lines.append(f"- Review singleton concept `wiki/concepts/{slug}.md` for missing related concepts or missing source links.")
+            lines.append(f"- 检查单节点概念 `wiki/concepts/{slug}.md` 是否缺少相关概念或来源链接。")
     if overloaded_concepts:
         for slug in overloaded_concepts[:10]:
-            lines.append(f"- Consider splitting broad concept `wiki/concepts/{slug}.md` into narrower pages.")
+            lines.append(f"- 考虑把过宽的概念 `wiki/concepts/{slug}.md` 拆成更窄的页面。")
     if bridge_concepts:
-        lines.append(f"- Preserve bridge concepts: `{', '.join(bridge_concepts[:10])}` because they connect multiple clusters.")
+        lines.append(f"- 保留桥接概念：`{', '.join(bridge_concepts[:10])}`，因为它们连接了多个簇。")
     if not any((isolated_sources, singleton_concepts, overloaded_concepts, bridge_concepts)):
-        lines.append("- No graph-specific repair items right now.")
+        lines.append("- 当前没有图谱专项修复项。")
     if transition.get("changed"):
         lines.append("")
-        lines.append("### Structural Drift")
-        lines.append(f"- Previous digest: `{transition.get('previous_digest', '') or 'none'}`")
-        lines.append(f"- Current digest: `{transition.get('current_digest', '') or 'none'}`")
-        lines.append(f"- Added source nodes: `{len(transition.get('added_source_ids', []))}`")
-        lines.append(f"- Added concept nodes: `{len(transition.get('added_concept_slugs', []))}`")
-        lines.append(f"- Added edges: `{transition.get('added_edges', 0)}`")
-        lines.append(f"- Removed edges: `{transition.get('removed_edges', 0)}`")
+        lines.append("### 结构漂移")
+        lines.append(f"- 上一版摘要：`{transition.get('previous_digest', '') or 'none'}`")
+        lines.append(f"- 当前摘要：`{transition.get('current_digest', '') or 'none'}`")
+        lines.append(f"- 新增来源节点：`{len(transition.get('added_source_ids', []))}`")
+        lines.append(f"- 新增概念节点：`{len(transition.get('added_concept_slugs', []))}`")
+        lines.append(f"- 新增边：`{transition.get('added_edges', 0)}`")
+        lines.append(f"- 移除边：`{transition.get('removed_edges', 0)}`")
     lines.extend(
         [
             "",
-            "## Artifacts",
-            f"- Lint report: `{lint_result['path']}`",
-            "- Machine memory: `wiki/indexes/machine-memory.md`",
-            "- Graph health: `wiki/indexes/graph-health.md`",
-            "- Drift report: `wiki/indexes/drift-report.md`",
-            "- Review queue: `wiki/indexes/review-queue.md`",
-            "- Schema index: `schema/index.md`",
+            "## 相关产物",
+            f"- Lint 报告：`{lint_result['path']}`",
+            "- 机器记忆：`wiki/indexes/machine-memory.md`",
+            "- 图谱健康：`wiki/indexes/graph-health.md`",
+            "- 漂移报告：`wiki/indexes/drift-report.md`",
+            "- 审阅队列：`wiki/indexes/review-queue.md`",
+            "- 规则索引：`schema/index.md`",
         ]
     )
     if semantic_report:
-        lines.append(f"- Semantic lint: `{semantic_report}`")
+        lines.append(f"- 语义 lint：`{semantic_report}`")
     return "\n".join(lines) + "\n"
 
 

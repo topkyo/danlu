@@ -1,6 +1,6 @@
-# Citation Rules
+# 引用规则
 
-- Prefer `wiki/sources/*.md` citations in compiled and output layers.
-- Preserve file-path provenance back to `raw/` whenever possible.
-- Do not present unsupported synthesis as fact.
-- If evidence is weak, partial, or conflicting, state that explicitly.
+- 在编译层和输出层里优先引用 `wiki/sources/*.md`。
+- 能保留回到 `raw/` 的文件路径溯源时，尽量保留。
+- 没有证据支撑的综合结论不能写成事实。
+- 如果证据薄弱、不完整或互相冲突，要明确写出来。

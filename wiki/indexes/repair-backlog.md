@@ -1,30 +1,33 @@
-# Repair Backlog
+# 修复待办
 
-- Generated at: `2026-04-07T08:24:50+00:00`
-- Compile changed pages: `0`
-- Machine memory changed: `False`
-- Lint errors: `0`
-- Lint warnings: `0`
-- Pending source summaries: `0`
-- Placeholder concept summaries: `0`
-- Sources without concepts: `0`
-- Graph components: `0`
-- Isolated sources: `0`
-- Singleton concepts: `0`
-- Bridge concepts: `0`
-- Overloaded concepts: `0`
+- 生成时间：`2026-04-07T09:50:15+00:00`
+- 本轮编译改动页数：`12`
+- 机器记忆是否变化：`False`
+- Lint 错误：`0`
+- Lint 警告：`0`
+- 待补来源摘要：`0`
+- 占位概念摘要：`0`
+- 待审决策：`0`
+- 待审判断：`0`
+- 无概念覆盖来源：`0`
+- 图谱分量数：`0`
+- 孤立来源：`0`
+- 单节点概念：`0`
+- 桥接概念：`0`
+- 过载概念：`0`
 
-## Priority Queue
-1. No immediate repair items. Keep monitoring nightly drift and lint output.
+## 优先队列
+1. 当前没有紧急修复项，继续观察 nightly 漂移和 lint 输出。
 
-## Actionable Items
+## 可执行事项
 
-### Graph Repair Suggestions
-- No graph-specific repair items right now.
+### 图谱修复建议
+- 当前没有图谱专项修复项。
 
-## Artifacts
-- Lint report: `output/lint/lint-20260407-082450.md`
-- Machine memory: `wiki/indexes/machine-memory.md`
-- Graph health: `wiki/indexes/graph-health.md`
-- Drift report: `wiki/indexes/drift-report.md`
-- Schema index: `schema/index.md`
+## 相关产物
+- Lint 报告：`output/lint/lint-20260407-095015.md`
+- 机器记忆：`wiki/indexes/machine-memory.md`
+- 图谱健康：`wiki/indexes/graph-health.md`
+- 漂移报告：`wiki/indexes/drift-report.md`
+- 审阅队列：`wiki/indexes/review-queue.md`
+- 规则索引：`schema/index.md`

@@ -1,26 +1,26 @@
-# Graph Health
+# 图谱健康
 
-- Compiled at: `2026-04-07T09:16:58+00:00`
-- Connected components: `0`
-- Component sizes: `none`
-- Isolated sources: `0`
-- Singleton concepts: `0`
-- Bridge concepts: `0`
-- Overloaded concepts: `0`
+- 编译时间：`2026-04-07T09:50:15+00:00`
+- 连通分量数：`0`
+- 分量大小：`none`
+- 孤立来源：`0`
+- 单节点概念：`0`
+- 桥接概念：`0`
+- 过载概念：`0`
 
-## Repair Signals
-- Isolated sources: `none`
-- Singleton concepts: `none`
-- Bridge concepts: `none`
-- Overloaded concepts: `none`
+## 修复信号
+- 孤立来源：`none`
+- 单节点概念：`none`
+- 桥接概念：`none`
+- 过载概念：`none`
 
-## Largest Components
-- No component data available yet.
+## 最大分量
+- 暂无分量数据。
 
-## Links
-- [Machine Memory](./machine-memory.md)
-- [Drift Report](./drift-report.md)
-- [Repair Backlog](./repair-backlog.md)
-- [Decisions Index](./decisions.md)
-- [Judgments Index](./judgments.md)
-- [Review Queue](./review-queue.md)
+## 相关链接
+- [机器记忆](./machine-memory.md)
+- [漂移报告](./drift-report.md)
+- [修复待办](./repair-backlog.md)
+- [决策索引](./decisions.md)
+- [判断索引](./judgments.md)
+- [审阅队列](./review-queue.md)

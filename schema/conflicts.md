@@ -1,6 +1,6 @@
-# Conflict Rules
+# 冲突规则
 
-- Keep contradictions explicit instead of smoothing them away.
-- Prefer uncertainty over invented reconciliation.
-- When sources disagree, point to both source pages.
-- Track repeated drift or ambiguity in lint and future repair loops.
+- 让冲突保持显式，不要把它们抹平。
+- 宁可保留不确定性，也不要编造一致解释。
+- 当来源互相矛盾时，要同时指出两边的 source page。
+- 在 lint 和后续修复循环里追踪重复出现的漂移和歧义。

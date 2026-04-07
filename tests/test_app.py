@@ -121,7 +121,7 @@ class AiwikiFlowTests(unittest.TestCase):
         entry = ingest_source(self.root, "https://example.com/karpathy-note", title="Karpathy note")
         source_path = self.root / entry["stored_path"]
         self.assertTrue(source_path.exists())
-        self.assertIn("Source URL", source_path.read_text(encoding="utf-8"))
+        self.assertIn("来源 URL", source_path.read_text(encoding="utf-8"))
 
     def test_slides_output_contains_marp_header(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -163,16 +163,16 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(memory_graph.exists())
         self.assertTrue(drift_report.exists())
         self.assertTrue(memory_history.exists())
-        self.assertIn("Operation Log", master_index.read_text(encoding="utf-8"))
-        self.assertIn("Machine Memory", master_index.read_text(encoding="utf-8"))
-        self.assertIn("Decisions Index", master_index.read_text(encoding="utf-8"))
-        self.assertIn("Judgments Index", master_index.read_text(encoding="utf-8"))
-        self.assertIn("Review Queue", master_index.read_text(encoding="utf-8"))
-        self.assertIn("Graph Health", master_index.read_text(encoding="utf-8"))
-        self.assertIn("Drift Report", master_index.read_text(encoding="utf-8"))
+        self.assertIn("操作日志", master_index.read_text(encoding="utf-8"))
+        self.assertIn("机器记忆", master_index.read_text(encoding="utf-8"))
+        self.assertIn("决策索引", master_index.read_text(encoding="utf-8"))
+        self.assertIn("判断索引", master_index.read_text(encoding="utf-8"))
+        self.assertIn("审阅队列", master_index.read_text(encoding="utf-8"))
+        self.assertIn("图谱健康", master_index.read_text(encoding="utf-8"))
+        self.assertIn("漂移报告", master_index.read_text(encoding="utf-8"))
         self.assertIn("compile | wiki refresh", log_page.read_text(encoding="utf-8"))
-        self.assertIn("Runtime state file", memory_page.read_text(encoding="utf-8"))
-        self.assertIn("Connected components", graph_health_page.read_text(encoding="utf-8"))
+        self.assertIn("运行时状态文件", memory_page.read_text(encoding="utf-8"))
+        self.assertIn("连通分量", graph_health_page.read_text(encoding="utf-8"))
         memory = json.loads(memory_state.read_text(encoding="utf-8"))
         graph = json.loads(memory_graph.read_text(encoding="utf-8"))
         self.assertEqual(memory["source_nodes"][0]["id"], entry["id"])
@@ -182,7 +182,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(memory["graph_digest"])
         self.assertTrue(graph["nodes"])
         self.assertTrue(graph["edges"])
-        self.assertIn("No previous machine-memory snapshot was available.", drift_report.read_text(encoding="utf-8"))
+        self.assertIn("没有可对比的上一版机器记忆快照", drift_report.read_text(encoding="utf-8"))
 
     def test_compile_tracks_machine_memory_drift_between_snapshots(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -198,7 +198,7 @@ class AiwikiFlowTests(unittest.TestCase):
             encoding="utf-8"
         ).strip().splitlines()
         self.assertTrue(result["machine_memory_changed"])
-        self.assertIn("Added source nodes: `1`", drift_report)
+        self.assertIn("新增来源节点：`1`", drift_report)
         self.assertGreaterEqual(len(history_lines), 2)
         latest = json.loads(history_lines[-1])
         self.assertEqual(len(latest["added_source_ids"]), 1)
@@ -288,13 +288,13 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("schema/index.md", result["index_pages"])
 
         report_text = (self.root / result["path"]).read_text(encoding="utf-8")
-        self.assertIn("Recommended Concepts", report_text)
-        self.assertIn("Recommended Index Pages", report_text)
-        self.assertIn("Machine Memory", report_text)
-        self.assertIn("Drift Report", report_text)
-        self.assertIn("Decisions Index", report_text)
-        self.assertIn("Judgments Index", report_text)
-        self.assertIn("Runtime Schema", report_text)
+        self.assertIn("推荐概念", report_text)
+        self.assertIn("推荐索引页", report_text)
+        self.assertIn("机器记忆", report_text)
+        self.assertIn("漂移报告", report_text)
+        self.assertIn("决策索引", report_text)
+        self.assertIn("判断索引", report_text)
+        self.assertIn("运行时规则", report_text)
 
     def test_ensure_layout_bootstraps_runtime_schema_files(self) -> None:
         for relative in (
@@ -308,8 +308,8 @@ class AiwikiFlowTests(unittest.TestCase):
             path = self.root / relative
             self.assertTrue(path.exists(), relative)
         schema_index = (self.root / "schema" / "index.md").read_text(encoding="utf-8")
-        self.assertIn("Runtime Schema", schema_index)
-        self.assertIn("product-facing policy", schema_index)
+        self.assertIn("运行时规则", schema_index)
+        self.assertIn("产品运行时", schema_index)
 
     def test_ask_recompiles_when_raw_source_changes(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -348,10 +348,10 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(machine_query["touched_component_ids"])
         self.assertTrue(machine_query["touched_components"])
         self.assertTrue(machine_query["query_subgraph"]["edges"])
-        self.assertIn("Machine Memory Query Plan", report_text)
-        self.assertIn("Bridge concepts", report_text)
-        self.assertIn("Query routes", report_text)
-        self.assertIn("Touched components", report_text)
+        self.assertIn("机器记忆查询计划", report_text)
+        self.assertIn("桥接概念", report_text)
+        self.assertIn("查询路径数", report_text)
+        self.assertIn("触达分量", report_text)
         self.assertIn("latency", report_text.lower())
 
     def test_run_compile_replaces_placeholder_summary(self) -> None:
@@ -488,8 +488,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(parse_frontmatter(judgment_text)["reviewed_at"])
 
         review_queue = (self.root / "wiki" / "indexes" / "review-queue.md").read_text(encoding="utf-8")
-        self.assertIn("No pending decision reviews.", review_queue)
-        self.assertIn("No pending judgment reviews.", review_queue)
+        self.assertIn("当前没有待审决策。", review_queue)
+        self.assertIn("当前没有待审判断。", review_queue)
         self.assertIn("Scaling Decision", review_queue)
         self.assertIn("Scaling Judgment", review_queue)
 
@@ -638,11 +638,11 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(state_path.exists())
         backlog_text = backlog_path.read_text(encoding="utf-8")
         state = json.loads(state_path.read_text(encoding="utf-8"))
-        self.assertIn("Repair Backlog", backlog_text)
-        self.assertIn("Graph Repair Suggestions", backlog_text)
-        self.assertIn("Pending Source Summaries", backlog_text)
-        self.assertIn("Review Queue", backlog_text)
-        self.assertIn("Pending decision reviews", backlog_text)
+        self.assertIn("修复待办", backlog_text)
+        self.assertIn("图谱修复建议", backlog_text)
+        self.assertIn("待补来源摘要", backlog_text)
+        self.assertIn("审阅队列", backlog_text)
+        self.assertIn("待审决策", backlog_text)
         self.assertEqual(state["repair_backlog"]["path"], result["repair_backlog"])
         self.assertEqual(state["lint"]["counts"]["warnings"], result["lint"]["counts"]["warnings"])
         self.assertIn("health", state["machine_memory"])
@@ -668,7 +668,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(result["lint"]["semantic_report"])
         self.assertTrue(state["llm_used"])
         self.assertEqual(state["semantic_report"], result["lint"]["semantic_report"])
-        self.assertIn("Semantic lint", backlog_path.read_text(encoding="utf-8"))
+        self.assertIn("语义 lint", backlog_path.read_text(encoding="utf-8"))
 
     def test_llm_status_auto_prefers_codex_cli_when_api_is_absent(self) -> None:
         with patch.dict(os.environ, {}, clear=True):

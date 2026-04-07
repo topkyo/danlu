@@ -1,25 +1,25 @@
 ---
-title: "Raw Inbox"
+title: "原料收件箱"
 kind: "dashboard"
 ---
 
-# Raw Inbox
+# 原料收件箱
 
-This is the intake surface for new material.
+这里是新原料进入系统的入口面。
 
-## What Belongs Here
+## 适合放什么
 
-- clipped web articles
-- source notes emitted by `drop-url`, `drop-pdf`, `drop-image`, and `drop-repo`
-- manual markdown notes that should become first-class sources
+- 网页剪藏内容
+- `drop-url`、`drop-pdf`、`drop-image`、`drop-repo` 生成的来源笔记
+- 需要进入正式来源层的手工 markdown 笔记
 
-## Search
+## 搜索
 
-- Obsidian left search tab: `path:"raw/inbox"`
-- CLI automation: `watch` or the installed `aiwiki-watch.service`
+- Obsidian 左侧预置搜索：`path:"raw/inbox"`
+- CLI 自动化入口：`watch` 或已安装的 `aiwiki-watch.service`
 
-## Expectations
+## 预期约束
 
-- notes here should preserve provenance in frontmatter
-- attachments should live in `raw/assets/`, not beside the note
-- the watcher will turn these into `wiki/sources/` pages
+- 这里的笔记应在 frontmatter 里保留 provenance
+- 附件应放在 `raw/assets/`，不要和笔记混放
+- watcher 会把这里的内容编译成 `wiki/sources/` 页面

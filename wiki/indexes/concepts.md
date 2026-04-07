@@ -1,7 +1,7 @@
-# Concepts Index
+# 概念索引
 
-- Last compiled at: `2026-04-07T09:16:58+00:00`
-- Total concept pages: `0`
+- 最近编译时间：`2026-04-07T09:50:15+00:00`
+- 概念页总数：`0`
 
-## Concepts
-- No concept pages compiled yet.
+## 概念列表
+- 还没有编译出概念页。

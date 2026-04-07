@@ -1,6 +1,6 @@
-# Ingest Rules
+# 采集规则
 
-- Preserve original assets when available.
-- Record original path or URL in capture notes.
-- Keep ingest-generated notes in `raw/` linked back to their evidence.
-- Never treat URL stubs or partial captures as strong evidence without saying so.
+- 能保留原始附件时，优先保留原始附件。
+- 在采集笔记里记录原始路径或 URL。
+- ingest 生成的笔记要留在 `raw/`，并能回指到它们的证据来源。
+- URL stub 或不完整采集内容，不能在未声明的情况下当成强证据。

@@ -1,6 +1,6 @@
-# Taxonomy Rules
+# 分类规则
 
-- Keep concept names stable and human-readable.
-- Prefer concept pages over repeating the same synthesis in many source pages.
-- Separate source pages, concept pages, decision pages, judgment pages, derived pages, and outputs by role.
-- Promote repeated patterns into schema or decision pages when they become stable.
+- 让 concept 名称保持稳定且便于人读。
+- 能放进 concept page 的综合结论，优先不要散落在多个 source page 里重复写。
+- source、concept、decision、judgment、derived、output 各层要按职责分开。
+- 当重复模式稳定下来时，把它提升进 schema 或 decision page。

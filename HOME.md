@@ -1,53 +1,52 @@
 ---
-title: "aiwiki Home"
+title: "aiwiki 首页"
 kind: "dashboard"
 ---
 
-# aiwiki Home
+# aiwiki 首页
 
-This vault treats Obsidian as the frontend for `aiwiki`.
+这个 vault 把 Obsidian 当作 `aiwiki` 的前端。
 
-`aiwiki` owns ingest, compile, ask, lint, provenance, and automation.
-Obsidian is the place where you browse the local artifact tree and inspect what the pipeline produced.
+`aiwiki` 负责 ingest、compile、ask、lint、provenance 和自动化；Obsidian 负责浏览本地目录树和检查管线产物。
 
-## Quick Links
+## 快速入口
 
-- [[wiki/indexes/Raw Inbox]]
-- [[wiki/indexes/Wiki Hub]]
-- [[wiki/indexes/Alchemy Furnace]]
-- [[wiki/indexes/machine-memory]]
-- [[wiki/indexes/graph-health]]
-- [[wiki/indexes/drift-report]]
-- [[wiki/indexes/repair-backlog]]
-- [[wiki/indexes/review-queue]]
-- [[schema/index]]
-- [[wiki/indexes/Outputs]]
-- [[wiki/indexes/Search Presets]]
+- [[wiki/indexes/Raw Inbox|原料收件箱]]
+- [[wiki/indexes/Wiki Hub|知识中枢]]
+- [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
+- [[wiki/indexes/machine-memory|机器记忆]]
+- [[wiki/indexes/graph-health|图谱健康]]
+- [[wiki/indexes/drift-report|漂移报告]]
+- [[wiki/indexes/repair-backlog|修复待办]]
+- [[wiki/indexes/review-queue|审阅队列]]
+- [[schema/index|运行时规则]]
+- [[wiki/indexes/Outputs|输出面板]]
+- [[wiki/indexes/Search Presets|搜索预设]]
 
-## Folder Map
+## 目录说明
 
-- `raw/inbox/`: inbound source notes and direct drops
-- `raw/assets/`: local PDFs, images, and page assets captured during ingest
-- `schema/`: runtime ingest, citation, conflict, and writeback rules
-- `.aiwiki/state/`: manifest, machine-memory state, and history
-- `.aiwiki/state/nightly-health.json`: latest nightly health snapshot
-- `.aiwiki/cache/`: graph export and rebuildable machine-side artifacts
-- `wiki/sources/`: one compiled source page per raw item
-- `wiki/indexes/`: dashboards, compile indexes, and operating notes
-- `wiki/decisions/` and `wiki/judgments/`: explicit decision and judgment layers
-- `wiki/derived/`: filed-back reports and other derived markdown
-- `output/`: reports, slides, figures, and lint artifacts
+- `raw/inbox/`：新投喂的来源笔记和直接丢进来的原料
+- `raw/assets/`：采集时保存的 PDF、图片和页面附件
+- `schema/`：运行时 ingest、引用、冲突、审阅、回流规则
+- `.aiwiki/state/`：manifest、机器记忆状态和历史
+- `.aiwiki/state/nightly-health.json`：最新 nightly 健康快照
+- `.aiwiki/cache/`：图谱导出和可重建的机读侧产物
+- `wiki/sources/`：每个 raw 条目对应一页编译后的来源页
+- `wiki/indexes/`：看板、索引、状态页和操作笔记
+- `wiki/decisions/` 与 `wiki/judgments/`：显式决策层和判断层
+- `wiki/derived/`：回流后的报告和派生笔记
+- `output/`：报告、幻灯片、图表和 lint 结果
 
-## Operating Model
+## 工作方式
 
-1. Drop material into `raw/inbox/` or use one of the `drop-*` entry points.
-2. Let the watcher compile source pages and refresh lint outputs.
-3. Run `nightly` or `run-nightly` for a repair backlog pass.
-4. Read `wiki/sources/`, `wiki/indexes/review-queue.md`, `wiki/indexes/repair-backlog.md`, and `output/` in Obsidian.
-5. File back high-value outputs and review decision/judgment pages explicitly.
+1. 把原料丢进 `raw/inbox/`，或用 `drop-*` 入口导入。
+2. 让 watcher 自动编译来源页并刷新 lint / 索引结果。
+3. 定期跑 `nightly` 或 `run-nightly`，生成修复待办。
+4. 在 Obsidian 里主要看 `wiki/sources/`、`wiki/indexes/review-queue.md`、`wiki/indexes/repair-backlog.md` 和 `output/`。
+5. 把高价值输出回流，并显式审阅 decision/judgment 页面。
 
-## Notes
+## 备注
 
-- New notes created from Obsidian will default to `raw/inbox/`.
-- New attachments created from Obsidian will default to `raw/assets/`.
-- The left sidebar search tabs are scoped to `raw`, `wiki`, and `output`.
+- 在 Obsidian 里新建笔记时，默认会落到 `raw/inbox/`。
+- 在 Obsidian 里新建附件时，默认会落到 `raw/assets/`。
+- 左侧预置搜索页签已经按 `raw`、`wiki`、`output` 分好范围。
