@@ -669,6 +669,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Query subgraph edge count", client.prompt)
         self.assertIn("Query routes", client.prompt)
         self.assertIn("Touched components", client.prompt)
+        self.assertIn("wiki/indexes/machine-memory-topology.md", client.prompt)
         self.assertIn("latency", client.prompt.lower())
 
     def test_nightly_auto_promotes_recurring_decision_outputs(self) -> None:
@@ -922,6 +923,25 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(health["components"])
         self.assertIn("source_component_ids", health)
         self.assertIn("concept_component_ids", health)
+        self.assertIn("hub_concepts", health)
+        self.assertIn("hub_sources", health)
+        self.assertIn("link_suggestions", health)
+
+    def test_compile_generates_machine_memory_topology_page(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        second = self.root / "tail.md"
+        second.write_text("# Tail Latency\n\nLatency throughput jitter tradeoffs.\n", encoding="utf-8")
+        ingest_source(self.root, str(second), title="Tail Latency")
+
+        compile_wiki(self.root)
+
+        topology_page = self.root / "wiki" / "indexes" / "machine-memory-topology.md"
+        self.assertTrue(topology_page.exists())
+        topology_text = topology_page.read_text(encoding="utf-8")
+        self.assertIn("## Hub 概念", topology_text)
+        self.assertIn("## Hub 来源", topology_text)
+        self.assertIn("## Mermaid 拓扑切片", topology_text)
+        self.assertIn("```mermaid", topology_text)
 
     def test_drop_url_creates_note_and_manifest_metadata(self) -> None:
         image_bytes = base64.b64decode(
@@ -1063,6 +1083,7 @@ class AiwikiFlowTests(unittest.TestCase):
         compile_wiki(self.root)
         (self.root / "wiki" / "indexes" / "index.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory.md").unlink()
+        (self.root / "wiki" / "indexes" / "machine-memory-topology.md").unlink()
         (self.root / "wiki" / "indexes" / "graph-health.md").unlink()
         (self.root / "wiki" / "indexes" / "drift-report.md").unlink()
         (self.root / ".aiwiki" / "cache" / "machine-memory-graph.json").unlink()
@@ -1075,6 +1096,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertGreaterEqual(lint["counts"]["errors"], 2)
         self.assertIn("Missing master wiki index page.", report_text)
         self.assertIn("Missing machine memory index page.", report_text)
+        self.assertIn("Missing machine memory topology page.", report_text)
         self.assertIn("Missing machine memory graph health page.", report_text)
         self.assertIn("Missing machine memory drift report.", report_text)
         self.assertIn("Missing machine memory graph export.", report_text)

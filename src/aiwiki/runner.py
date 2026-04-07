@@ -624,6 +624,7 @@ def _build_lint_prompt(root: Path, deterministic_report: str) -> str:
         "wiki/indexes/concepts.md",
         "wiki/indexes/compile-status.md",
         "wiki/indexes/machine-memory.md",
+        "wiki/indexes/machine-memory-topology.md",
         "wiki/indexes/graph-health.md",
         "wiki/indexes/drift-report.md",
         "wiki/indexes/log.md",

@@ -117,6 +117,7 @@ nightly 也会继续跟踪 `decision / judgment` 的 aging：
 关键状态页：
 - [review-queue.md](./wiki/indexes/review-queue.md)
 - [aging-report.md](./wiki/indexes/aging-report.md)
+- [machine-memory-topology.md](./wiki/indexes/machine-memory-topology.md)
 - [repair-backlog.md](./wiki/indexes/repair-backlog.md)
 - [graph-health.md](./wiki/indexes/graph-health.md)
 - [machine-memory.md](./wiki/indexes/machine-memory.md)

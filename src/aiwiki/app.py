@@ -1474,6 +1474,7 @@ def render_compile_status(
         "- 审阅队列位于 `review-queue.md`。",
         "- aging 报告位于 `aging-report.md`。",
         "- 机器记忆摘要位于 `machine-memory.md`。",
+        "- 机器记忆拓扑位于 `machine-memory-topology.md`。",
         "- 图谱健康页位于 `graph-health.md`。",
         "- 漂移报告位于 `drift-report.md`。",
         "- 修复待办位于 `repair-backlog.md`。",
@@ -1513,6 +1514,7 @@ def render_master_index(
         "- [Aging 报告](./aging-report.md)",
         "- [编译状态](./compile-status.md)",
         "- [机器记忆](./machine-memory.md)",
+        "- [机器记忆拓扑](./machine-memory-topology.md)",
         "- [图谱健康](./graph-health.md)",
         "- [漂移报告](./drift-report.md)",
         "- [修复待办](./repair-backlog.md)",
@@ -1611,6 +1613,10 @@ def machine_memory_drift_report_path(root: Path) -> Path:
 
 def graph_health_report_path(root: Path) -> Path:
     return root / "wiki" / "indexes" / "graph-health.md"
+
+
+def machine_memory_topology_path(root: Path) -> Path:
+    return root / "wiki" / "indexes" / "machine-memory-topology.md"
 
 
 def repair_backlog_path(root: Path) -> Path:
@@ -1748,10 +1754,13 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
     source_nodes = memory.get("source_nodes", [])
     concept_nodes = memory.get("concept_nodes", [])
     edges = memory.get("edges", {})
+    drift = memory.get("drift", {})
 
     source_to_concepts: dict[str, set[str]] = {}
     concept_to_sources: dict[str, set[str]] = {}
     concept_related: dict[str, set[str]] = {}
+    source_node_by_id = {node["id"]: node for node in source_nodes}
+    concept_node_by_slug = {node["slug"]: node for node in concept_nodes}
 
     for edge in edges.get("source_to_concept", []):
         source_id = edge.get("source_id")
@@ -1790,6 +1799,31 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
     overloaded_concept_slugs = sorted(
         node["slug"] for node in concept_nodes if len(concept_to_sources.get(node["slug"], set())) >= 4
     )
+
+    hub_concepts = [
+        {
+            "slug": node["slug"],
+            "title": node["title"],
+            "source_count": len(concept_to_sources.get(node["slug"], set())),
+            "related_count": len(concept_related.get(node["slug"], set())),
+            "component_id": "",
+        }
+        for node in concept_nodes
+    ]
+    hub_concepts.sort(
+        key=lambda item: (-item["source_count"], -item["related_count"], item["title"].lower())
+    )
+    hub_sources = [
+        {
+            "id": node["id"],
+            "title": node["title"],
+            "concept_count": len(source_to_concepts.get(node["id"], set())),
+            "source_page": node["source_page"],
+            "component_id": "",
+        }
+        for node in source_nodes
+    ]
+    hub_sources.sort(key=lambda item: (-item["concept_count"], item["title"].lower()))
 
     adjacency = build_machine_memory_adjacency(memory)
 
@@ -1843,11 +1877,55 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
         for concept_slug in record["concept_slugs"]:
             concept_component_ids[concept_slug] = component_id
 
+    for item in hub_concepts:
+        item["component_id"] = concept_component_ids.get(item["slug"], "")
+    for item in hub_sources:
+        item["component_id"] = source_component_ids.get(item["id"], "")
+
+    term_index = memory.get("term_index", {})
+    suggestion_scores: dict[tuple[str, str], set[str]] = {}
+    for term, payload in term_index.items():
+        source_ids = payload.get("source_ids", [])
+        concept_slugs = payload.get("concept_slugs", [])
+        if not source_ids or not concept_slugs:
+            continue
+        for source_id in source_ids:
+            if source_id not in drift.get("sources_without_concepts", []) and source_id not in isolated_source_ids:
+                continue
+            for concept_slug in concept_slugs:
+                suggestion_scores.setdefault((source_id, concept_slug), set()).add(term)
+
+    link_suggestions: list[dict[str, Any]] = []
+    for (source_id, concept_slug), shared_terms in suggestion_scores.items():
+        source_node = source_node_by_id.get(source_id)
+        concept_node = concept_node_by_slug.get(concept_slug)
+        if not source_node or not concept_node:
+            continue
+        link_suggestions.append(
+            {
+                "source_id": source_id,
+                "source_title": source_node["title"],
+                "source_page": source_node["source_page"],
+                "concept_slug": concept_slug,
+                "concept_title": concept_node["title"],
+                "concept_page": f"wiki/concepts/{concept_slug}.md",
+                "shared_terms": sorted(shared_terms),
+                "score": len(shared_terms),
+                "component_id": concept_component_ids.get(concept_slug, ""),
+            }
+        )
+    link_suggestions.sort(
+        key=lambda item: (-item["score"], item["source_title"].lower(), item["concept_title"].lower())
+    )
+
     return {
         "isolated_source_ids": isolated_source_ids,
         "singleton_concept_slugs": singleton_concept_slugs,
         "bridge_concept_slugs": bridge_concept_slugs[:10],
         "overloaded_concept_slugs": overloaded_concept_slugs,
+        "hub_concepts": hub_concepts[:10],
+        "hub_sources": hub_sources[:10],
+        "link_suggestions": link_suggestions[:12],
         "component_count": len(component_sizes),
         "component_sizes": component_sizes,
         "components": components,
@@ -2370,6 +2448,7 @@ def render_graph_health(memory: dict[str, Any]) -> str:
         f"- 单节点概念：`{', '.join(health.get('singleton_concept_slugs', [])[:10]) or 'none'}`",
         f"- 桥接概念：`{', '.join(health.get('bridge_concept_slugs', [])[:10]) or 'none'}`",
         f"- 过载概念：`{', '.join(health.get('overloaded_concept_slugs', [])[:10]) or 'none'}`",
+        f"- 修复候选：`{len(health.get('link_suggestions', []))}`",
         "",
         "## 最大分量",
     ]
@@ -2388,6 +2467,7 @@ def render_graph_health(memory: dict[str, Any]) -> str:
             "",
         "## 相关链接",
         "- [机器记忆](./machine-memory.md)",
+        "- [拓扑视图](./machine-memory-topology.md)",
         "- [漂移报告](./drift-report.md)",
         "- [修复待办](./repair-backlog.md)",
         "- [决策索引](./decisions.md)",
@@ -2425,6 +2505,9 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         f"- 桥接概念：`{len(health.get('bridge_concept_slugs', []))}`",
         f"- 过载概念：`{len(health.get('overloaded_concept_slugs', []))}`",
         f"- 已索引分量：`{len(health.get('components', []))}`",
+        f"- Hub 概念：`{len(health.get('hub_concepts', []))}`",
+        f"- Hub 来源：`{len(health.get('hub_sources', []))}`",
+        f"- 修复候选：`{len(health.get('link_suggestions', []))}`",
         "",
         "## 判断层",
         "- 决策索引：`wiki/indexes/decisions.md`",
@@ -2439,6 +2522,7 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         "",
         "## 相关链接",
         "- [图谱健康](./graph-health.md)",
+        "- [拓扑视图](./machine-memory-topology.md)",
         "- [漂移报告](./drift-report.md)",
         "- [修复待办](./repair-backlog.md)",
         "",
@@ -2469,6 +2553,120 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
             "- [引用规则](../../schema/citations.md)",
             "- [冲突规则](../../schema/conflicts.md)",
             "- [审阅规则](../../schema/review.md)",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def render_machine_memory_topology(memory: dict[str, Any]) -> str:
+    health = memory.get("health", {})
+    hub_concepts = health.get("hub_concepts", [])
+    hub_sources = health.get("hub_sources", [])
+    link_suggestions = health.get("link_suggestions", [])
+    lines = [
+        "# 机器记忆拓扑",
+        "",
+        f"- 最近编译时间：`{memory['compiled_at']}`",
+        f"- 已索引分量：`{health.get('component_count', 0)}`",
+        f"- Hub 概念：`{len(hub_concepts)}`",
+        f"- Hub 来源：`{len(hub_sources)}`",
+        f"- 修复候选：`{len(link_suggestions)}`",
+        "",
+        "## Hub 概念",
+    ]
+    if not hub_concepts:
+        lines.append("- 当前没有可展示的 hub 概念。")
+    else:
+        for item in hub_concepts[:10]:
+            lines.append(
+                f"- [{item['title']}](../concepts/{item['slug']}.md)"
+                f" | sources `{item['source_count']}`"
+                f" | related `{item['related_count']}`"
+                f" | component `{item['component_id'] or 'none'}`"
+            )
+    lines.extend(["", "## Hub 来源"])
+    if not hub_sources:
+        lines.append("- 当前没有可展示的 hub 来源。")
+    else:
+        for item in hub_sources[:10]:
+            lines.append(
+                f"- [{item['title']}](../sources/{item['id']}.md)"
+                f" | concepts `{item['concept_count']}`"
+                f" | component `{item['component_id'] or 'none'}`"
+            )
+    lines.extend(["", "## 修复候选"])
+    if not link_suggestions:
+        lines.append("- 当前没有机器记忆修复候选。")
+    else:
+        for suggestion in link_suggestions[:10]:
+            lines.append(
+                f"- [{suggestion['source_title']}](../sources/{suggestion['source_id']}.md)"
+                f" -> [{suggestion['concept_title']}](../concepts/{suggestion['concept_slug']}.md)"
+                f" | shared `{', '.join(suggestion['shared_terms'][:6])}`"
+                f" | score `{suggestion['score']}`"
+            )
+    lines.extend(["", "## Mermaid 拓扑切片", "```mermaid", "graph LR"])
+    node_lines: list[str] = []
+    edge_lines: list[str] = []
+    added_nodes: set[str] = set()
+    hub_concept_slugs = {item["slug"] for item in hub_concepts[:5]}
+    hub_source_ids = {item["id"] for item in hub_sources[:5]}
+    concept_by_slug = {node["slug"]: node for node in memory.get("concept_nodes", [])}
+    source_by_id = {node["id"]: node for node in memory.get("source_nodes", [])}
+    for source_id in sorted(hub_source_ids):
+        node = source_by_id.get(source_id)
+        if not node:
+            continue
+        node_key = f"src_{slugify(source_id).replace('-', '_')}"
+        if node_key in added_nodes:
+            continue
+        added_nodes.add(node_key)
+        label = str(node["title"]).replace('"', "'")
+        node_lines.append(f'    {node_key}["S: {label}"]')
+    for concept_slug in sorted(hub_concept_slugs):
+        node = concept_by_slug.get(concept_slug)
+        if not node:
+            continue
+        node_key = f"concept_{slugify(concept_slug).replace('-', '_')}"
+        if node_key in added_nodes:
+            continue
+        added_nodes.add(node_key)
+        label = str(node["title"]).replace('"', "'")
+        node_lines.append(f'    {node_key}["C: {label}"]')
+    for edge in memory.get("edges", {}).get("source_to_concept", []):
+        source_id = edge.get("source_id")
+        concept_slug = edge.get("concept_slug")
+        if source_id not in hub_source_ids or concept_slug not in hub_concept_slugs:
+            continue
+        left = f"src_{slugify(source_id).replace('-', '_')}"
+        right = f"concept_{slugify(concept_slug).replace('-', '_')}"
+        edge_lines.append(f"    {left} --> {right}")
+    seen_related_pairs: set[tuple[str, str]] = set()
+    for edge in memory.get("edges", {}).get("concept_to_concept", []):
+        left_slug = edge.get("from")
+        right_slug = edge.get("to")
+        if left_slug not in hub_concept_slugs or right_slug not in hub_concept_slugs:
+            continue
+        pair = tuple(sorted((str(left_slug), str(right_slug))))
+        if pair in seen_related_pairs:
+            continue
+        seen_related_pairs.add(pair)
+        left = f"concept_{slugify(left_slug).replace('-', '_')}"
+        right = f"concept_{slugify(right_slug).replace('-', '_')}"
+        edge_lines.append(f"    {left} -.-> {right}")
+    if not node_lines:
+        lines.append('    placeholder["Not enough machine-memory nodes yet"]')
+    else:
+        lines.extend(node_lines)
+        lines.extend(edge_lines[:18])
+    lines.extend(
+        [
+            "```",
+            "",
+            "## 相关链接",
+            "- [机器记忆](./machine-memory.md)",
+            "- [图谱健康](./graph-health.md)",
+            "- [修复待办](./repair-backlog.md)",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -2571,6 +2769,9 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     append_machine_memory_history(root, memory, transition)
     changed_pages += int(
         write_if_changed(root / "wiki" / "indexes" / "machine-memory.md", render_machine_memory_index(memory))
+    )
+    changed_pages += int(
+        write_if_changed(machine_memory_topology_path(root), render_machine_memory_topology(memory))
     )
     changed_pages += int(write_if_changed(graph_health_report_path(root), render_graph_health(memory)))
     changed_pages += int(write_if_changed(machine_memory_drift_report_path(root), render_drift_report(memory, transition)))
@@ -2720,6 +2921,7 @@ def render_report(
         "- [审阅队列](../../wiki/indexes/review-queue.md)",
         "- [Aging 报告](../../wiki/indexes/aging-report.md)",
         "- [机器记忆](../../wiki/indexes/machine-memory.md)",
+        "- [拓扑视图](../../wiki/indexes/machine-memory-topology.md)",
         "- [图谱健康](../../wiki/indexes/graph-health.md)",
         "- [漂移报告](../../wiki/indexes/drift-report.md)",
         "- [修复待办](../../wiki/indexes/repair-backlog.md)",
@@ -2813,6 +3015,7 @@ def render_slides(
         "- `wiki/indexes/review-queue.md`",
         "- `wiki/indexes/aging-report.md`",
         "- `wiki/indexes/machine-memory.md`",
+        "- `wiki/indexes/machine-memory-topology.md`",
         "- `wiki/indexes/graph-health.md`",
         "- `wiki/indexes/drift-report.md`",
         "- `wiki/indexes/repair-backlog.md`",
@@ -2894,6 +3097,7 @@ def render_figure_brief(
         "- [审阅队列](../../wiki/indexes/review-queue.md)",
         "- [Aging 报告](../../wiki/indexes/aging-report.md)",
         "- [机器记忆](../../wiki/indexes/machine-memory.md)",
+        "- [拓扑视图](../../wiki/indexes/machine-memory-topology.md)",
         "- [图谱健康](../../wiki/indexes/graph-health.md)",
         "- [漂移报告](../../wiki/indexes/drift-report.md)",
         "- [修复待办](../../wiki/indexes/repair-backlog.md)",
@@ -3010,6 +3214,7 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
             "wiki/indexes/aging-report.md",
             "wiki/indexes/compile-status.md",
             "wiki/indexes/machine-memory.md",
+            "wiki/indexes/machine-memory-topology.md",
             "wiki/indexes/graph-health.md",
             "wiki/indexes/drift-report.md",
             "wiki/indexes/repair-backlog.md",
@@ -3305,6 +3510,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/aging-report.md": "Missing aging report page.",
         "wiki/indexes/compile-status.md": "Missing compile status page.",
         "wiki/indexes/machine-memory.md": "Missing machine memory index page.",
+        "wiki/indexes/machine-memory-topology.md": "Missing machine memory topology page.",
         "wiki/indexes/graph-health.md": "Missing machine memory graph health page.",
         "wiki/indexes/drift-report.md": "Missing machine memory drift report.",
         "wiki/indexes/log.md": "Missing wiki operation log.",
@@ -3540,6 +3746,7 @@ def render_repair_backlog(
         f"- 已到期复审：`{len(overdue_pages)}`",
         f"- 升级处理项：`{len(escalated_pages)}`",
         f"- 自动晋升页面：`{promotion_result.get('count', 0)}`",
+        f"- 图谱修复候选：`{len(health.get('link_suggestions', []))}`",
         f"- 无概念覆盖来源：`{len(sources_without_concepts)}`",
         f"- 图谱分量数：`{health.get('component_count', 0)}`",
         f"- 孤立来源：`{len(isolated_sources)}`",
@@ -3565,16 +3772,18 @@ def render_repair_backlog(
         lines.append(f"7. 提升 `{len(escalated_pages)}` 个已经超过升级阈值的页面优先级。")
     if promotions:
         lines.append(f"8. 检查本轮自动晋升的 `{len(promotions)}` 个页面，确认是否需要补证据和审阅。")
+    if health.get("link_suggestions", []):
+        lines.append(f"9. 审阅 `{len(health.get('link_suggestions', []))}` 个机器记忆修复候选，决定是否补链接。")
     if sources_without_concepts:
-        lines.append(f"9. 检查 `{len(sources_without_concepts)}` 个没有概念覆盖的来源。")
+        lines.append(f"10. 检查 `{len(sources_without_concepts)}` 个没有概念覆盖的来源。")
     if isolated_sources:
-        lines.append(f"10. 把 `{len(isolated_sources)}` 个孤立来源节点接入概念图谱。")
+        lines.append(f"11. 把 `{len(isolated_sources)}` 个孤立来源节点接入概念图谱。")
     if singleton_concepts:
-        lines.append(f"11. 复查 `{len(singleton_concepts)}` 个还没接入更大上下文的单节点概念。")
+        lines.append(f"12. 复查 `{len(singleton_concepts)}` 个还没接入更大上下文的单节点概念。")
     if overloaded_concepts:
-        lines.append(f"12. 考虑拆分 `{len(overloaded_concepts)}` 个过载概念。")
+        lines.append(f"13. 考虑拆分 `{len(overloaded_concepts)}` 个过载概念。")
     if transition.get("changed"):
-        lines.append("13. 在下一轮研究前先检查最新的机器记忆漂移。")
+        lines.append("14. 在下一轮研究前先检查最新的机器记忆漂移。")
     if not any(
         (
             error_findings,
@@ -3642,6 +3851,15 @@ def render_repair_backlog(
             lines.append(
                 f"- {label}：`{promotion['path']}` | 动作 `{promotion['action']}` | 重复次数 `{promotion['occurrences']}`"
             )
+    if health.get("link_suggestions", []):
+        lines.append("")
+        lines.append("### 图谱修复候选")
+        for suggestion in health.get("link_suggestions", [])[:10]:
+            lines.append(
+                f"- `{suggestion['source_page']}` -> `{suggestion['concept_page']}`"
+                f" | shared `{', '.join(suggestion['shared_terms'][:6])}`"
+                f" | score `{suggestion['score']}`"
+            )
     if sources_without_concepts:
         lines.append("")
         lines.append("### 无概念覆盖来源")
@@ -3678,6 +3896,7 @@ def render_repair_backlog(
             f"- Lint 报告：`{lint_result['path']}`",
             "- Aging 报告：`wiki/indexes/aging-report.md`",
             "- 机器记忆：`wiki/indexes/machine-memory.md`",
+            "- 拓扑视图：`wiki/indexes/machine-memory-topology.md`",
             "- 图谱健康：`wiki/indexes/graph-health.md`",
             "- 漂移报告：`wiki/indexes/drift-report.md`",
             "- 审阅队列：`wiki/indexes/review-queue.md`",
@@ -3730,6 +3949,7 @@ def write_nightly_health(
             "transition": memory.get("transition", {}),
             "drift": memory.get("drift", {}),
             "health": memory.get("health", {}),
+            "topology_path": relative_path(root, machine_memory_topology_path(root)),
         },
         "repair_backlog": {
             "path": relative_path(root, repair_backlog_path(root)),

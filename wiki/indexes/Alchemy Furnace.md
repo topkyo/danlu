@@ -231,6 +231,7 @@ status: "active"
 - machine-memory graph export、drift tracking、query planning
 - graph-aware retrieval、query routes、component-aware traversal
 - graph-health 看板和 repair backlog
+- machine-memory topology、hub 指标和 Mermaid 拓扑切片
 - decision / judgment writeback layers
 - decision / judgment review workflow 与 review queue
 - recurring outputs 自动晋升到 decision / judgment 页面
