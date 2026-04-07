@@ -18,6 +18,8 @@ PROGRESS.md
 
 # Runtime state and generated outputs
 .aiwiki/state/*.json
+.aiwiki/state/*.jsonl
+.aiwiki/cache/
 .aiwiki/logs/*.jsonl
 output/
 

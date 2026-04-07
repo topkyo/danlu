@@ -812,6 +812,9 @@ def render_compile_status(entries: list[dict[str, Any]], concepts: list[dict[str
         "- Runtime schema lives under `schema/`.",
         "- Operation log lives in `log.md`.",
         "- Machine memory summary lives in `machine-memory.md`.",
+        "- Graph health lives in `graph-health.md`.",
+        "- Drift report lives in `drift-report.md`.",
+        "- Repair backlog lives in `repair-backlog.md`.",
         "- Derived pages are filed back explicitly via `aiwiki file-back`.",
         "- Lint findings land under `output/lint/`.",
     ]
@@ -831,6 +834,9 @@ def render_master_index(entries: list[dict[str, Any]], concepts: list[dict[str, 
         "- [Concepts Index](./concepts.md)",
         "- [Compile Status](./compile-status.md)",
         "- [Machine Memory](./machine-memory.md)",
+        "- [Graph Health](./graph-health.md)",
+        "- [Drift Report](./drift-report.md)",
+        "- [Repair Backlog](./repair-backlog.md)",
         "- [Operation Log](./log.md)",
         "- [Runtime Schema](../../schema/index.md)",
         "",
@@ -892,6 +898,44 @@ def remove_stale_generated_concept_pages(root: Path, active_slugs: set[str]) -> 
 
 def machine_memory_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "machine-memory.json"
+
+
+def machine_memory_graph_path(root: Path) -> Path:
+    return root / ".aiwiki" / "cache" / "machine-memory-graph.json"
+
+
+def machine_memory_history_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "machine-memory-history.jsonl"
+
+
+def machine_memory_drift_report_path(root: Path) -> Path:
+    return root / "wiki" / "indexes" / "drift-report.md"
+
+
+def graph_health_report_path(root: Path) -> Path:
+    return root / "wiki" / "indexes" / "graph-health.md"
+
+
+def repair_backlog_path(root: Path) -> Path:
+    return root / "wiki" / "indexes" / "repair-backlog.md"
+
+
+def nightly_health_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "nightly-health.json"
+
+
+def load_json_document(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def load_machine_memory(root: Path) -> dict[str, Any]:
+    memory = load_json_document(machine_memory_state_path(root))
+    return memory if isinstance(memory, dict) else {}
 
 
 def build_machine_memory(
@@ -999,26 +1043,457 @@ def build_machine_memory(
     }
 
 
+def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
+    source_nodes = memory.get("source_nodes", [])
+    concept_nodes = memory.get("concept_nodes", [])
+    edges = memory.get("edges", {})
+
+    source_to_concepts: dict[str, set[str]] = {}
+    concept_to_sources: dict[str, set[str]] = {}
+    concept_related: dict[str, set[str]] = {}
+
+    for edge in edges.get("source_to_concept", []):
+        source_id = edge.get("source_id")
+        concept_slug = edge.get("concept_slug")
+        if not isinstance(source_id, str) or not isinstance(concept_slug, str):
+            continue
+        source_to_concepts.setdefault(source_id, set()).add(concept_slug)
+        concept_to_sources.setdefault(concept_slug, set()).add(source_id)
+
+    for edge in edges.get("concept_to_concept", []):
+        left = edge.get("from")
+        right = edge.get("to")
+        if not isinstance(left, str) or not isinstance(right, str):
+            continue
+        concept_related.setdefault(left, set()).add(right)
+        concept_related.setdefault(right, set()).add(left)
+
+    isolated_source_ids = sorted(node["id"] for node in source_nodes if not source_to_concepts.get(node["id"]))
+    singleton_concept_slugs = sorted(
+        node["slug"]
+        for node in concept_nodes
+        if len(concept_to_sources.get(node["slug"], set())) <= 1 and not concept_related.get(node["slug"])
+    )
+    bridge_concept_slugs = [
+        node["slug"]
+        for node in sorted(
+            concept_nodes,
+            key=lambda item: (
+                -len(concept_to_sources.get(item["slug"], set())),
+                -len(concept_related.get(item["slug"], set())),
+                item["title"].lower(),
+            ),
+        )
+        if len(concept_to_sources.get(node["slug"], set())) >= 2 and concept_related.get(node["slug"])
+    ]
+    overloaded_concept_slugs = sorted(
+        node["slug"] for node in concept_nodes if len(concept_to_sources.get(node["slug"], set())) >= 4
+    )
+
+    adjacency: dict[str, set[str]] = {}
+    for node in source_nodes:
+        adjacency.setdefault(f"source:{node['id']}", set())
+    for node in concept_nodes:
+        adjacency.setdefault(f"concept:{node['slug']}", set())
+    for edge in edges.get("source_to_concept", []):
+        source_key = f"source:{edge['source_id']}"
+        concept_key = f"concept:{edge['concept_slug']}"
+        adjacency.setdefault(source_key, set()).add(concept_key)
+        adjacency.setdefault(concept_key, set()).add(source_key)
+    for edge in edges.get("concept_to_concept", []):
+        left_key = f"concept:{edge['from']}"
+        right_key = f"concept:{edge['to']}"
+        adjacency.setdefault(left_key, set()).add(right_key)
+        adjacency.setdefault(right_key, set()).add(left_key)
+
+    visited: set[str] = set()
+    component_sizes: list[int] = []
+    for node_key in sorted(adjacency):
+        if node_key in visited:
+            continue
+        stack = [node_key]
+        size = 0
+        while stack:
+            current = stack.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            size += 1
+            stack.extend(sorted(adjacency.get(current, set()) - visited))
+        component_sizes.append(size)
+    component_sizes.sort(reverse=True)
+
+    return {
+        "isolated_source_ids": isolated_source_ids,
+        "singleton_concept_slugs": singleton_concept_slugs,
+        "bridge_concept_slugs": bridge_concept_slugs[:10],
+        "overloaded_concept_slugs": overloaded_concept_slugs,
+        "component_count": len(component_sizes),
+        "component_sizes": component_sizes,
+    }
+
+
+def machine_memory_digest(memory: dict[str, Any]) -> str:
+    payload = {
+        "source_nodes": memory.get("source_nodes", []),
+        "concept_nodes": memory.get("concept_nodes", []),
+        "edges": memory.get("edges", {}),
+        "citation_map": memory.get("citation_map", []),
+        "term_index": memory.get("term_index", {}),
+        "drift": memory.get("drift", {}),
+    }
+    return sha256_bytes(json.dumps(payload, sort_keys=True).encode("utf-8"))
+
+
+def build_machine_memory_graph(memory: dict[str, Any]) -> dict[str, Any]:
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    for node in memory.get("source_nodes", []):
+        nodes.append(
+            {
+                "id": f"source:{node['id']}",
+                "kind": "source",
+                "title": node["title"],
+                "source_type": node["source_type"],
+                "source_page": node["source_page"],
+                "stored_path": node["stored_path"],
+            }
+        )
+    for node in memory.get("concept_nodes", []):
+        nodes.append(
+            {
+                "id": f"concept:{node['slug']}",
+                "kind": "concept",
+                "title": node["title"],
+                "source_pages": node["source_pages"],
+            }
+        )
+    for edge in memory.get("edges", {}).get("source_to_concept", []):
+        edges.append(
+            {
+                "source": f"source:{edge['source_id']}",
+                "target": f"concept:{edge['concept_slug']}",
+                "type": "HAS_CONCEPT",
+            }
+        )
+    for edge in memory.get("edges", {}).get("concept_to_concept", []):
+        edges.append(
+            {
+                "source": f"concept:{edge['from']}",
+                "target": f"concept:{edge['to']}",
+                "type": "RELATED_CONCEPT",
+            }
+        )
+    graph = {
+        "version": 1,
+        "compiled_at": memory["compiled_at"],
+        "nodes": sorted(nodes, key=lambda item: (item["kind"], item["id"])),
+        "edges": sorted(edges, key=lambda item: (item["type"], item["source"], item["target"])),
+    }
+    graph["digest"] = sha256_bytes(json.dumps({"nodes": graph["nodes"], "edges": graph["edges"]}, sort_keys=True).encode("utf-8"))
+    return graph
+
+
+def build_machine_memory_query(memory: dict[str, Any], question: str) -> dict[str, Any]:
+    term_index = memory.get("term_index", {})
+    edges = memory.get("edges", {})
+    source_nodes = {node["id"]: node for node in memory.get("source_nodes", [])}
+    concept_nodes = {node["slug"]: node for node in memory.get("concept_nodes", [])}
+    question_tokens = tokenize(question)
+    health = memory.get("health", {})
+
+    direct_source_scores: dict[str, int] = {}
+    direct_concept_scores: dict[str, int] = {}
+    matched_terms: list[str] = []
+
+    source_to_concepts: dict[str, set[str]] = {}
+    concept_to_sources: dict[str, set[str]] = {}
+    for edge in edges.get("source_to_concept", []):
+        source_id = edge.get("source_id")
+        concept_slug = edge.get("concept_slug")
+        if not isinstance(source_id, str) or not isinstance(concept_slug, str):
+            continue
+        source_to_concepts.setdefault(source_id, set()).add(concept_slug)
+        concept_to_sources.setdefault(concept_slug, set()).add(source_id)
+
+    related_concepts: dict[str, set[str]] = {}
+    for edge in edges.get("concept_to_concept", []):
+        left = edge.get("from")
+        right = edge.get("to")
+        if not isinstance(left, str) or not isinstance(right, str):
+            continue
+        related_concepts.setdefault(left, set()).add(right)
+        related_concepts.setdefault(right, set()).add(left)
+
+    for token in question_tokens:
+        payload = term_index.get(token)
+        if not isinstance(payload, dict):
+            continue
+        matched_terms.append(token)
+        for source_id in payload.get("source_ids", []):
+            if source_id in source_nodes:
+                direct_source_scores[source_id] = direct_source_scores.get(source_id, 0) + 3
+        for concept_slug in payload.get("concept_slugs", []):
+            if concept_slug in concept_nodes:
+                direct_concept_scores[concept_slug] = direct_concept_scores.get(concept_slug, 0) + 4
+
+    expanded_source_scores = dict(direct_source_scores)
+    expanded_concept_scores = dict(direct_concept_scores)
+    supporting_edges: set[tuple[str, str, str]] = set()
+
+    for source_id in list(direct_source_scores):
+        for concept_slug in sorted(source_to_concepts.get(source_id, set())):
+            expanded_concept_scores[concept_slug] = expanded_concept_scores.get(concept_slug, 0) + 2
+            supporting_edges.add(("HAS_CONCEPT", source_id, concept_slug))
+
+    for concept_slug in list(direct_concept_scores):
+        for source_id in sorted(concept_to_sources.get(concept_slug, set())):
+            expanded_source_scores[source_id] = expanded_source_scores.get(source_id, 0) + 2
+            supporting_edges.add(("HAS_CONCEPT", source_id, concept_slug))
+        for related_slug in sorted(related_concepts.get(concept_slug, set())):
+            expanded_concept_scores[related_slug] = expanded_concept_scores.get(related_slug, 0) + 1
+            supporting_edges.add(("RELATED_CONCEPT", concept_slug, related_slug))
+            for source_id in sorted(concept_to_sources.get(related_slug, set())):
+                expanded_source_scores[source_id] = expanded_source_scores.get(source_id, 0) + 1
+                supporting_edges.add(("HAS_CONCEPT", source_id, related_slug))
+
+    ranked_source_ids = [
+        source_id
+        for source_id, _score in sorted(
+            expanded_source_scores.items(),
+            key=lambda item: (-item[1], source_nodes.get(item[0], {}).get("title", item[0]).lower()),
+        )[:8]
+    ]
+    ranked_concept_slugs = [
+        concept_slug
+        for concept_slug, _score in sorted(
+            expanded_concept_scores.items(),
+            key=lambda item: (-item[1], concept_nodes.get(item[0], {}).get("title", item[0]).lower()),
+        )[:8]
+    ]
+    bridge_concept_slugs = [
+        slug for slug in ranked_concept_slugs if slug in set(health.get("bridge_concept_slugs", []))
+    ]
+    query_subgraph_sources = [
+        {
+            "id": source_id,
+            "title": source_nodes[source_id]["title"],
+            "path": source_nodes[source_id]["source_page"],
+        }
+        for source_id in ranked_source_ids
+        if source_id in source_nodes
+    ]
+    query_subgraph_concepts = [
+        {
+            "slug": concept_slug,
+            "title": concept_nodes[concept_slug]["title"],
+            "path": f"wiki/concepts/{concept_slug}.md",
+        }
+        for concept_slug in ranked_concept_slugs
+        if concept_slug in concept_nodes
+    ]
+    query_subgraph_edges = [
+        {"type": edge_type, "left": left, "right": right}
+        for edge_type, left, right in sorted(supporting_edges)
+        if (edge_type == "HAS_CONCEPT" and left in ranked_source_ids and right in ranked_concept_slugs)
+        or (edge_type == "RELATED_CONCEPT" and left in ranked_concept_slugs and right in ranked_concept_slugs)
+    ]
+
+    return {
+        "matched_terms": matched_terms,
+        "direct_source_ids": sorted(direct_source_scores),
+        "direct_concept_slugs": sorted(direct_concept_scores),
+        "ranked_source_ids": ranked_source_ids,
+        "ranked_concept_slugs": ranked_concept_slugs,
+        "bridge_concept_slugs": bridge_concept_slugs,
+        "supporting_edges": [
+            {"type": edge_type, "left": left, "right": right}
+            for edge_type, left, right in sorted(supporting_edges)
+        ],
+        "query_subgraph": {
+            "sources": query_subgraph_sources,
+            "concepts": query_subgraph_concepts,
+            "edges": query_subgraph_edges,
+        },
+    }
+
+
+def summarize_machine_memory_transition(previous: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
+    previous_source_ids = {node["id"] for node in previous.get("source_nodes", [])}
+    current_source_ids = {node["id"] for node in current.get("source_nodes", [])}
+    previous_concept_slugs = {node["slug"] for node in previous.get("concept_nodes", [])}
+    current_concept_slugs = {node["slug"] for node in current.get("concept_nodes", [])}
+    previous_terms = set(previous.get("term_index", {}).keys())
+    current_terms = set(current.get("term_index", {}).keys())
+    previous_edges = {
+        ("HAS_CONCEPT", edge["source_id"], edge["concept_slug"])
+        for edge in previous.get("edges", {}).get("source_to_concept", [])
+    } | {
+        ("RELATED_CONCEPT", edge["from"], edge["to"])
+        for edge in previous.get("edges", {}).get("concept_to_concept", [])
+    }
+    current_edges = {
+        ("HAS_CONCEPT", edge["source_id"], edge["concept_slug"])
+        for edge in current.get("edges", {}).get("source_to_concept", [])
+    } | {
+        ("RELATED_CONCEPT", edge["from"], edge["to"])
+        for edge in current.get("edges", {}).get("concept_to_concept", [])
+    }
+    previous_digest = previous.get("digest", "")
+    current_digest = current["digest"]
+    return {
+        "has_previous_snapshot": bool(previous_digest),
+        "changed": previous_digest != current_digest,
+        "previous_digest": previous_digest,
+        "current_digest": current_digest,
+        "added_source_ids": sorted(current_source_ids - previous_source_ids),
+        "removed_source_ids": sorted(previous_source_ids - current_source_ids),
+        "added_concept_slugs": sorted(current_concept_slugs - previous_concept_slugs),
+        "removed_concept_slugs": sorted(previous_concept_slugs - current_concept_slugs),
+        "added_terms": sorted(current_terms - previous_terms)[:25],
+        "removed_terms": sorted(previous_terms - current_terms)[:25],
+        "added_edges": len(current_edges - previous_edges),
+        "removed_edges": len(previous_edges - current_edges),
+    }
+
+
+def append_machine_memory_history(root: Path, memory: dict[str, Any], transition: dict[str, Any]) -> None:
+    path = machine_memory_history_path(root)
+    if transition["has_previous_snapshot"] and not transition["changed"]:
+        return
+    entry = {
+        "compiled_at": memory["compiled_at"],
+        "digest": memory["digest"],
+        "sources": len(memory.get("source_nodes", [])),
+        "concepts": len(memory.get("concept_nodes", [])),
+        "terms": len(memory.get("term_index", {})),
+        "added_source_ids": transition["added_source_ids"],
+        "removed_source_ids": transition["removed_source_ids"],
+        "added_concept_slugs": transition["added_concept_slugs"],
+        "removed_concept_slugs": transition["removed_concept_slugs"],
+        "added_edges": transition["added_edges"],
+        "removed_edges": transition["removed_edges"],
+    }
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry, sort_keys=True) + "\n")
+
+
+def render_drift_report(memory: dict[str, Any], transition: dict[str, Any]) -> str:
+    drift = memory["drift"]
+    lines = [
+        "# Drift Report",
+        "",
+        f"- Compiled at: `{memory['compiled_at']}`",
+        f"- Current digest: `{memory['digest']}`",
+        f"- Graph digest: `{memory['graph_digest']}`",
+        "",
+        "## Transition Summary",
+    ]
+    if not transition["has_previous_snapshot"]:
+        lines.append("- No previous machine-memory snapshot was available.")
+    elif not transition["changed"]:
+        lines.append("- No structural drift detected since the previous snapshot.")
+    else:
+        lines.extend(
+            [
+                f"- Previous digest: `{transition['previous_digest']}`",
+                f"- Added source nodes: `{len(transition['added_source_ids'])}`",
+                f"- Removed source nodes: `{len(transition['removed_source_ids'])}`",
+                f"- Added concept nodes: `{len(transition['added_concept_slugs'])}`",
+                f"- Removed concept nodes: `{len(transition['removed_concept_slugs'])}`",
+                f"- Added edges: `{transition['added_edges']}`",
+                f"- Removed edges: `{transition['removed_edges']}`",
+                f"- Added indexed terms (sample): `{', '.join(transition['added_terms']) or 'none'}`",
+                f"- Removed indexed terms (sample): `{', '.join(transition['removed_terms']) or 'none'}`",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "## Current Drift Checks",
+            f"- Missing raw files: `{len(drift['missing_raw_files'])}`",
+            f"- Missing source pages: `{len(drift['missing_source_pages'])}`",
+            f"- Missing concept pages: `{len(drift['missing_concept_pages'])}`",
+            f"- Sources without concepts: `{len(drift['sources_without_concepts'])}`",
+            "",
+            "## Machine Memory Artifacts",
+            "- State: `.aiwiki/state/machine-memory.json`",
+            "- Graph export: `.aiwiki/cache/machine-memory-graph.json`",
+            "- History: `.aiwiki/state/machine-memory-history.jsonl`",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def render_graph_health(memory: dict[str, Any]) -> str:
+    health = memory.get("health", {})
+    lines = [
+        "# Graph Health",
+        "",
+        f"- Compiled at: `{memory['compiled_at']}`",
+        f"- Connected components: `{health.get('component_count', 0)}`",
+        f"- Component sizes: `{', '.join(str(size) for size in health.get('component_sizes', [])) or 'none'}`",
+        f"- Isolated sources: `{len(health.get('isolated_source_ids', []))}`",
+        f"- Singleton concepts: `{len(health.get('singleton_concept_slugs', []))}`",
+        f"- Bridge concepts: `{len(health.get('bridge_concept_slugs', []))}`",
+        f"- Overloaded concepts: `{len(health.get('overloaded_concept_slugs', []))}`",
+        "",
+        "## Repair Signals",
+        f"- Isolated sources: `{', '.join(health.get('isolated_source_ids', [])[:10]) or 'none'}`",
+        f"- Singleton concepts: `{', '.join(health.get('singleton_concept_slugs', [])[:10]) or 'none'}`",
+        f"- Bridge concepts: `{', '.join(health.get('bridge_concept_slugs', [])[:10]) or 'none'}`",
+        f"- Overloaded concepts: `{', '.join(health.get('overloaded_concept_slugs', [])[:10]) or 'none'}`",
+        "",
+        "## Links",
+        "- [Machine Memory](./machine-memory.md)",
+        "- [Drift Report](./drift-report.md)",
+        "- [Repair Backlog](./repair-backlog.md)",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def render_machine_memory_index(memory: dict[str, Any]) -> str:
     concept_nodes = memory["concept_nodes"]
     edges = memory["edges"]
     drift = memory["drift"]
+    health = memory.get("health", {})
     lines = [
         "# Machine Memory",
         "",
         f"- Last compiled at: `{memory['compiled_at']}`",
         "- Runtime state file: `.aiwiki/state/machine-memory.json`",
+        "- Graph export: `.aiwiki/cache/machine-memory-graph.json`",
+        "- Drift report: `wiki/indexes/drift-report.md`",
         f"- Source nodes: `{len(memory['source_nodes'])}`",
         f"- Concept nodes: `{len(concept_nodes)}`",
         f"- Source-to-concept edges: `{len(edges['source_to_concept'])}`",
         f"- Concept-to-concept edges: `{len(edges['concept_to_concept'])}`",
         f"- Indexed terms: `{len(memory['term_index'])}`",
+        f"- Machine digest: `{memory['digest']}`",
+        f"- Graph digest: `{memory['graph_digest']}`",
+        "",
+        "## Graph Health",
+        f"- Connected components: `{health.get('component_count', 0)}`",
+        f"- Isolated sources: `{len(health.get('isolated_source_ids', []))}`",
+        f"- Singleton concepts: `{len(health.get('singleton_concept_slugs', []))}`",
+        f"- Bridge concepts: `{len(health.get('bridge_concept_slugs', []))}`",
+        f"- Overloaded concepts: `{len(health.get('overloaded_concept_slugs', []))}`",
         "",
         "## Drift Summary",
         f"- Missing raw files: `{len(drift['missing_raw_files'])}`",
         f"- Missing source pages: `{len(drift['missing_source_pages'])}`",
         f"- Missing concept pages: `{len(drift['missing_concept_pages'])}`",
         f"- Sources without concepts: `{len(drift['sources_without_concepts'])}`",
+        "",
+        "## Links",
+        "- [Graph Health](./graph-health.md)",
+        "- [Drift Report](./drift-report.md)",
+        "- [Repair Backlog](./repair-backlog.md)",
+        "",
+        "## Query Acceleration",
+        "- `ask` and `run-ask` use the machine-memory term index as a first-pass query planner.",
+        "- Source-to-concept and concept-to-concept edges expand related candidates before prompt assembly.",
+        "- The graph export is for agent/tool consumption, not for direct human editing.",
         "",
         "## Top Concepts",
     ]
@@ -1050,6 +1525,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     manifest = sync_manifest_with_raw(root)
     entries: list[dict[str, Any]] = manifest["entries"]
     compiled_at = utc_now()
+    previous_memory = load_json_document(machine_memory_state_path(root))
     changed_pages = 0
     previews: dict[str, str] = {}
     existing_pages: dict[str, str] = {}
@@ -1097,12 +1573,24 @@ def compile_wiki(root: Path) -> dict[str, Any]:
 
     removed_pages = remove_stale_generated_concept_pages(root, {record["slug"] for record in concepts})
     memory = build_machine_memory(root, entries, concepts, previews, entry_terms, compiled_at)
+    memory["health"] = build_machine_memory_health(memory)
+    memory["digest"] = machine_memory_digest(memory)
+    graph = build_machine_memory_graph(memory)
+    memory["graph_digest"] = graph["digest"]
+    memory["graph_path"] = relative_path(root, machine_memory_graph_path(root))
+    memory["history_path"] = relative_path(root, machine_memory_history_path(root))
+    transition = summarize_machine_memory_transition(previous_memory, memory)
+    memory["transition"] = transition
     changed_pages += int(
         write_if_changed(machine_memory_state_path(root), json.dumps(memory, indent=2, sort_keys=True) + "\n")
     )
+    changed_pages += int(write_if_changed(machine_memory_graph_path(root), json.dumps(graph, indent=2, sort_keys=True) + "\n"))
+    append_machine_memory_history(root, memory, transition)
     changed_pages += int(
         write_if_changed(root / "wiki" / "indexes" / "machine-memory.md", render_machine_memory_index(memory))
     )
+    changed_pages += int(write_if_changed(graph_health_report_path(root), render_graph_health(memory)))
+    changed_pages += int(write_if_changed(machine_memory_drift_report_path(root), render_drift_report(memory, transition)))
     append_wiki_log(
         root,
         "compile",
@@ -1112,6 +1600,8 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             f"source_pages: `{len(entries)}`",
             f"concept_pages: `{len(concepts)}`",
             f"machine_memory_terms: `{len(memory['term_index'])}`",
+            f"graph_components: `{memory['health']['component_count']}`",
+            f"machine_memory_changed: `{transition['changed']}`",
             f"changed_pages: `{changed_pages}`",
             f"removed_concept_pages: `{removed_pages}`",
         ],
@@ -1122,6 +1612,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "sources": len(entries),
         "concepts": len(concepts),
         "machine_memory_terms": len(memory["term_index"]),
+        "machine_memory_changed": transition["changed"],
         "changed_pages": changed_pages,
     }
 
@@ -1131,8 +1622,9 @@ def tokenize(text: str) -> list[str]:
     return [token for token in tokens if len(token) > 2 and token not in STOP_WORDS]
 
 
-def rank_concepts(root: Path, question: str) -> list[dict[str, Any]]:
+def rank_concepts(root: Path, question: str, boost_concept_slugs: set[str] | None = None) -> list[dict[str, Any]]:
     question_tokens = tokenize(question)
+    boost_concept_slugs = boost_concept_slugs or set()
     ranked: list[tuple[int, dict[str, Any]]] = []
     for path in sorted((root / "wiki" / "concepts").glob("*.md")):
         content = path.read_text(encoding="utf-8", errors="replace")
@@ -1142,6 +1634,8 @@ def rank_concepts(root: Path, question: str) -> list[dict[str, Any]]:
         score = 0
         for token in question_tokens:
             score += haystack.count(token)
+        if path.stem in boost_concept_slugs:
+            score += 5
         if score:
             ranked.append(
                 (
@@ -1208,6 +1702,7 @@ def render_report(
     question: str,
     entries: list[dict[str, Any]],
     concepts: list[dict[str, Any]],
+    machine_query: dict[str, Any],
     created_at: str,
     artifact_id: str,
 ) -> str:
@@ -1236,10 +1731,36 @@ def render_report(
         "- [Sources Index](../../wiki/indexes/sources.md)",
         "- [Concepts Index](../../wiki/indexes/concepts.md)",
         "- [Machine Memory](../../wiki/indexes/machine-memory.md)",
+        "- [Graph Health](../../wiki/indexes/graph-health.md)",
+        "- [Drift Report](../../wiki/indexes/drift-report.md)",
+        "- [Repair Backlog](../../wiki/indexes/repair-backlog.md)",
         "- [Runtime Schema](../../schema/index.md)",
         "",
-        "## Recommended Concepts",
+        "## Machine Memory Query Plan",
     ]
+    matched_terms = machine_query.get("matched_terms", [])
+    if matched_terms:
+        lines.append(f"- Matched terms: `{', '.join(matched_terms)}`")
+    else:
+        lines.append("- No direct machine-memory term hits were available yet.")
+    lines.append(
+        f"- Boosted source candidates: `{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`"
+    )
+    lines.append(
+        f"- Boosted concept candidates: `{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`"
+    )
+    lines.append(
+        f"- Bridge concepts: `{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`"
+    )
+    lines.append(
+        f"- Query subgraph edges: `{len(machine_query.get('query_subgraph', {}).get('edges', []))}`"
+    )
+    lines.extend(
+        [
+            "",
+        "## Recommended Concepts",
+        ]
+    )
     if not concepts:
         lines.append("- No ranked concept pages yet.")
     else:
@@ -1275,6 +1796,7 @@ def render_slides(
     question: str,
     entries: list[dict[str, Any]],
     concepts: list[dict[str, Any]],
+    machine_query: dict[str, Any],
     created_at: str,
     artifact_id: str,
 ) -> str:
@@ -1296,7 +1818,17 @@ def render_slides(
         "- `wiki/indexes/sources.md`",
         "- `wiki/indexes/concepts.md`",
         "- `wiki/indexes/machine-memory.md`",
+        "- `wiki/indexes/graph-health.md`",
+        "- `wiki/indexes/drift-report.md`",
+        "- `wiki/indexes/repair-backlog.md`",
         "- `schema/index.md`",
+        "",
+        "## Machine Memory Query Plan",
+        f"- Matched terms: `{', '.join(machine_query.get('matched_terms', [])) or 'none'}`",
+        f"- Boosted sources: `{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`",
+        f"- Boosted concepts: `{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`",
+        f"- Bridge concepts: `{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`",
+        f"- Query subgraph edges: `{len(machine_query.get('query_subgraph', {}).get('edges', []))}`",
         "",
         "## Ranked Concepts",
     ]
@@ -1334,6 +1866,7 @@ def render_figure_brief(
     question: str,
     entries: list[dict[str, Any]],
     concepts: list[dict[str, Any]],
+    machine_query: dict[str, Any],
     created_at: str,
     artifact_id: str,
 ) -> str:
@@ -1360,7 +1893,17 @@ def render_figure_brief(
         "- [Sources Index](../../wiki/indexes/sources.md)",
         "- [Concepts Index](../../wiki/indexes/concepts.md)",
         "- [Machine Memory](../../wiki/indexes/machine-memory.md)",
+        "- [Graph Health](../../wiki/indexes/graph-health.md)",
+        "- [Drift Report](../../wiki/indexes/drift-report.md)",
+        "- [Repair Backlog](../../wiki/indexes/repair-backlog.md)",
         "- [Runtime Schema](../../schema/index.md)",
+        "",
+        "## Machine Memory Query Plan",
+        f"- Matched terms: `{', '.join(machine_query.get('matched_terms', [])) or 'none'}`",
+        f"- Boosted sources: `{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`",
+        f"- Boosted concepts: `{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`",
+        f"- Bridge concepts: `{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`",
+        f"- Query subgraph edges: `{len(machine_query.get('query_subgraph', {}).get('edges', []))}`",
         "",
         "## Recommended Concepts",
     ]
@@ -1402,8 +1945,9 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
         compile_wiki(root)
         manifest = load_manifest(root)
         entries = manifest["entries"]
-    ranked_concepts = rank_concepts(root, question)
-    boosted_ids: set[str] = set()
+    machine_query = build_machine_memory_query(load_machine_memory(root), question)
+    ranked_concepts = rank_concepts(root, question, boost_concept_slugs=set(machine_query["ranked_concept_slugs"]))
+    boosted_ids: set[str] = set(machine_query["ranked_source_ids"])
     for concept in ranked_concepts:
         for source_page in concept.get("source_pages", []):
             if isinstance(source_page, str) and source_page.startswith("wiki/sources/") and source_page.endswith(".md"):
@@ -1415,13 +1959,13 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
 
     if output_format == "report":
         destination = root / "output" / "reports" / f"{artifact_id}.md"
-        content = render_report(question, ranked, ranked_concepts, created_at, artifact_id)
+        content = render_report(question, ranked, ranked_concepts, machine_query, created_at, artifact_id)
     elif output_format == "slides":
         destination = root / "output" / "slides" / f"{artifact_id}.md"
-        content = render_slides(question, ranked, ranked_concepts, created_at, artifact_id)
+        content = render_slides(question, ranked, ranked_concepts, machine_query, created_at, artifact_id)
     elif output_format == "figure":
         destination = root / "output" / "figures" / f"{artifact_id}.md"
-        content = render_figure_brief(question, ranked, ranked_concepts, created_at, artifact_id)
+        content = render_figure_brief(question, ranked, ranked_concepts, machine_query, created_at, artifact_id)
     else:
         raise ValueError(f"Unsupported format: {output_format}")
 
@@ -1435,6 +1979,9 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
             f"artifact: `{relative_path(root, destination)}`",
             f"ranked_sources: `{len(ranked)}`",
             f"ranked_concepts: `{len(ranked_concepts)}`",
+            f"machine_terms: `{len(machine_query['matched_terms'])}`",
+            f"machine_hits: `{len(machine_query['ranked_source_ids'])}/{len(machine_query['ranked_concept_slugs'])}`",
+            f"bridge_concepts: `{len(machine_query['bridge_concept_slugs'])}`",
         ],
     )
     return {
@@ -1442,12 +1989,16 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
         "format": output_format,
         "ranked_sources": [entry["id"] for entry in ranked],
         "ranked_concepts": [concept["slug"] for concept in ranked_concepts],
+        "machine_memory_query": machine_query,
         "index_pages": [
             "wiki/indexes/index.md",
             "wiki/indexes/sources.md",
             "wiki/indexes/concepts.md",
             "wiki/indexes/compile-status.md",
             "wiki/indexes/machine-memory.md",
+            "wiki/indexes/graph-health.md",
+            "wiki/indexes/drift-report.md",
+            "wiki/indexes/repair-backlog.md",
             "wiki/indexes/log.md",
             "schema/index.md",
         ],
@@ -1511,6 +2062,28 @@ def file_back(root: Path, artifact: str, title: str | None = None) -> dict[str, 
     return {"path": relative_path(root, destination)}
 
 
+def pending_source_summary_ids(root: Path, entries: list[dict[str, Any]]) -> list[str]:
+    pending: list[str] = []
+    for entry in entries:
+        page = root / "wiki" / "sources" / f"{entry['id']}.md"
+        if not page.exists():
+            continue
+        content = page.read_text(encoding="utf-8", errors="replace")
+        if "Pending LLM summary." in content:
+            pending.append(entry["id"])
+    return pending
+
+
+def placeholder_concept_slugs(root: Path) -> list[str]:
+    slugs: list[str] = []
+    for page in sorted((root / "wiki" / "concepts").glob("*.md")):
+        content = page.read_text(encoding="utf-8", errors="replace")
+        summary = preserved_section(content, "Summary", "")
+        if summary.startswith("- This concept currently appears in `"):
+            slugs.append(page.stem)
+    return slugs
+
+
 def lint_wiki(root: Path) -> dict[str, Any]:
     ensure_layout(root)
     manifest = sync_manifest_with_raw(root)
@@ -1551,6 +2124,8 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/concepts.md": "Missing concepts index page.",
         "wiki/indexes/compile-status.md": "Missing compile status page.",
         "wiki/indexes/machine-memory.md": "Missing machine memory index page.",
+        "wiki/indexes/graph-health.md": "Missing machine memory graph health page.",
+        "wiki/indexes/drift-report.md": "Missing machine memory drift report.",
         "wiki/indexes/log.md": "Missing wiki operation log.",
     }
     for relative, message in required_indexes.items():
@@ -1583,6 +2158,32 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                 findings.append(
                     Finding("error", relative_path(root, memory_state), "Machine memory state is missing required indexes.")
                 )
+            if "health" not in memory:
+                findings.append(
+                    Finding("warn", relative_path(root, memory_state), "Machine memory state is missing graph health data.")
+                )
+            if not memory.get("digest"):
+                findings.append(
+                    Finding("warn", relative_path(root, memory_state), "Machine memory state is missing a stable digest.")
+                )
+
+    graph_export = machine_memory_graph_path(root)
+    if manifest["entries"] and not graph_export.exists():
+        findings.append(Finding("error", relative_path(root, graph_export), "Missing machine memory graph export."))
+    elif graph_export.exists():
+        try:
+            graph = json.loads(graph_export.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            findings.append(Finding("error", relative_path(root, graph_export), "Machine memory graph export is not valid JSON."))
+        else:
+            if "nodes" not in graph or "edges" not in graph:
+                findings.append(
+                    Finding("error", relative_path(root, graph_export), "Machine memory graph export is missing nodes or edges.")
+                )
+
+    history_path = machine_memory_history_path(root)
+    if manifest["entries"] and not history_path.exists():
+        findings.append(Finding("warn", relative_path(root, history_path), "Machine memory history file has not been initialized."))
 
     concept_pages = sorted((root / "wiki" / "concepts").glob("*.md"))
     if manifest["entries"] and not concept_pages:
@@ -1643,4 +2244,222 @@ def lint_wiki(root: Path) -> dict[str, Any]:
     return {
         "path": relative_path(root, report_path),
         "counts": {"errors": error_count, "warnings": warn_count},
+        "findings": [
+            {"severity": finding.severity, "path": finding.path, "message": finding.message}
+            for finding in findings
+        ],
+    }
+
+
+def render_repair_backlog(
+    compile_result: dict[str, Any],
+    lint_result: dict[str, Any],
+    memory: dict[str, Any],
+    pending_sources: list[str],
+    placeholder_concepts: list[str],
+    semantic_report: str,
+    generated_at: str,
+) -> str:
+    drift = memory.get("drift", {})
+    health = memory.get("health", {})
+    transition = memory.get("transition", {})
+    findings = lint_result.get("findings", [])
+    error_findings = [finding for finding in findings if finding["severity"] == "error"]
+    warn_findings = [finding for finding in findings if finding["severity"] == "warn"]
+    sources_without_concepts = drift.get("sources_without_concepts", [])
+    isolated_sources = health.get("isolated_source_ids", [])
+    singleton_concepts = health.get("singleton_concept_slugs", [])
+    bridge_concepts = health.get("bridge_concept_slugs", [])
+    overloaded_concepts = health.get("overloaded_concept_slugs", [])
+    lines = [
+        "# Repair Backlog",
+        "",
+        f"- Generated at: `{generated_at}`",
+        f"- Compile changed pages: `{compile_result.get('changed_pages', 0)}`",
+        f"- Machine memory changed: `{compile_result.get('machine_memory_changed', False)}`",
+        f"- Lint errors: `{lint_result['counts']['errors']}`",
+        f"- Lint warnings: `{lint_result['counts']['warnings']}`",
+        f"- Pending source summaries: `{len(pending_sources)}`",
+        f"- Placeholder concept summaries: `{len(placeholder_concepts)}`",
+        f"- Sources without concepts: `{len(sources_without_concepts)}`",
+        f"- Graph components: `{health.get('component_count', 0)}`",
+        f"- Isolated sources: `{len(isolated_sources)}`",
+        f"- Singleton concepts: `{len(singleton_concepts)}`",
+        f"- Bridge concepts: `{len(bridge_concepts)}`",
+        f"- Overloaded concepts: `{len(overloaded_concepts)}`",
+        "",
+        "## Priority Queue",
+    ]
+    if error_findings:
+        lines.append(f"1. Resolve `{len(error_findings)}` lint error(s) before trusting downstream outputs.")
+    if pending_sources:
+        lines.append(f"2. Enrich `{len(pending_sources)}` source page(s) that still have placeholder summaries.")
+    if placeholder_concepts:
+        lines.append(f"3. Revisit `{len(placeholder_concepts)}` concept page(s) that still use fallback summaries.")
+    if sources_without_concepts:
+        lines.append(f"4. Investigate `{len(sources_without_concepts)}` source(s) with no concept coverage.")
+    if isolated_sources:
+        lines.append(f"5. Connect `{len(isolated_sources)}` isolated source node(s) into the concept graph.")
+    if singleton_concepts:
+        lines.append(f"6. Revisit `{len(singleton_concepts)}` singleton concept(s) that do not yet connect wider context.")
+    if overloaded_concepts:
+        lines.append(f"7. Consider splitting `{len(overloaded_concepts)}` overloaded concept(s).")
+    if transition.get("changed"):
+        lines.append("8. Review the latest machine-memory drift before the next research pass.")
+    if not any(
+        (
+            error_findings,
+            pending_sources,
+            placeholder_concepts,
+            sources_without_concepts,
+            isolated_sources,
+            singleton_concepts,
+            overloaded_concepts,
+            transition.get("changed"),
+        )
+    ):
+        lines.append("1. No immediate repair items. Keep monitoring nightly drift and lint output.")
+    lines.extend(
+        [
+            "",
+            "## Actionable Items",
+        ]
+    )
+    if error_findings:
+        lines.append("### Lint Errors")
+        for finding in error_findings[:10]:
+            lines.append(f"- `{finding['path']}`: {finding['message']}")
+    if warn_findings:
+        lines.append("")
+        lines.append("### Lint Warnings")
+        for finding in warn_findings[:10]:
+            lines.append(f"- `{finding['path']}`: {finding['message']}")
+    if pending_sources:
+        lines.append("")
+        lines.append("### Pending Source Summaries")
+        for source_id in pending_sources[:10]:
+            lines.append(f"- `wiki/sources/{source_id}.md`")
+    if placeholder_concepts:
+        lines.append("")
+        lines.append("### Placeholder Concept Summaries")
+        for slug in placeholder_concepts[:10]:
+            lines.append(f"- `wiki/concepts/{slug}.md`")
+    if sources_without_concepts:
+        lines.append("")
+        lines.append("### Sources Without Concepts")
+        for source_id in sources_without_concepts[:10]:
+            lines.append(f"- `wiki/sources/{source_id}.md`")
+    lines.append("")
+    lines.append("### Graph Repair Suggestions")
+    if isolated_sources:
+        for source_id in isolated_sources[:10]:
+            lines.append(f"- Connect isolated source `wiki/sources/{source_id}.md` to at least one stable concept.")
+    if singleton_concepts:
+        for slug in singleton_concepts[:10]:
+            lines.append(f"- Review singleton concept `wiki/concepts/{slug}.md` for missing related concepts or missing source links.")
+    if overloaded_concepts:
+        for slug in overloaded_concepts[:10]:
+            lines.append(f"- Consider splitting broad concept `wiki/concepts/{slug}.md` into narrower pages.")
+    if bridge_concepts:
+        lines.append(f"- Preserve bridge concepts: `{', '.join(bridge_concepts[:10])}` because they connect multiple clusters.")
+    if not any((isolated_sources, singleton_concepts, overloaded_concepts, bridge_concepts)):
+        lines.append("- No graph-specific repair items right now.")
+    if transition.get("changed"):
+        lines.append("")
+        lines.append("### Structural Drift")
+        lines.append(f"- Previous digest: `{transition.get('previous_digest', '') or 'none'}`")
+        lines.append(f"- Current digest: `{transition.get('current_digest', '') or 'none'}`")
+        lines.append(f"- Added source nodes: `{len(transition.get('added_source_ids', []))}`")
+        lines.append(f"- Added concept nodes: `{len(transition.get('added_concept_slugs', []))}`")
+        lines.append(f"- Added edges: `{transition.get('added_edges', 0)}`")
+        lines.append(f"- Removed edges: `{transition.get('removed_edges', 0)}`")
+    lines.extend(
+        [
+            "",
+            "## Artifacts",
+            f"- Lint report: `{lint_result['path']}`",
+            "- Machine memory: `wiki/indexes/machine-memory.md`",
+            "- Graph health: `wiki/indexes/graph-health.md`",
+            "- Drift report: `wiki/indexes/drift-report.md`",
+            "- Schema index: `schema/index.md`",
+        ]
+    )
+    if semantic_report:
+        lines.append(f"- Semantic lint: `{semantic_report}`")
+    return "\n".join(lines) + "\n"
+
+
+def write_nightly_health(
+    root: Path,
+    compile_result: dict[str, Any],
+    lint_result: dict[str, Any],
+    *,
+    semantic_report: str = "",
+    llm_used: bool = False,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    manifest = load_manifest(root)
+    memory = load_machine_memory(root)
+    pending_sources = pending_source_summary_ids(root, manifest["entries"])
+    placeholder_concepts = placeholder_concept_slugs(root)
+    generated_at = utc_now()
+    state = {
+        "generated_at": generated_at,
+        "llm_used": llm_used,
+        "compile": compile_result,
+        "lint": {
+            "path": lint_result["path"],
+            "counts": lint_result["counts"],
+        },
+        "semantic_report": semantic_report,
+        "machine_memory": {
+            "digest": memory.get("digest", ""),
+            "graph_digest": memory.get("graph_digest", ""),
+            "transition": memory.get("transition", {}),
+            "drift": memory.get("drift", {}),
+            "health": memory.get("health", {}),
+        },
+        "repair_backlog": {
+            "path": relative_path(root, repair_backlog_path(root)),
+            "pending_source_summaries": pending_sources,
+            "placeholder_concepts": placeholder_concepts,
+        },
+    }
+    repair_backlog = render_repair_backlog(
+        compile_result,
+        lint_result,
+        memory,
+        pending_sources,
+        placeholder_concepts,
+        semantic_report,
+        generated_at,
+    )
+    repair_backlog_path(root).write_text(repair_backlog, encoding="utf-8")
+    nightly_health_state_path(root).write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    append_wiki_log(
+        root,
+        "nightly",
+        "health and repair pass",
+        [
+            f"llm_used: `{llm_used}`",
+            f"lint_errors: `{lint_result['counts']['errors']}`",
+            f"lint_warnings: `{lint_result['counts']['warnings']}`",
+            f"pending_source_summaries: `{len(pending_sources)}`",
+            f"placeholder_concepts: `{len(placeholder_concepts)}`",
+            f"repair_backlog: `{relative_path(root, repair_backlog_path(root))}`",
+        ],
+    )
+    return state
+
+
+def nightly_health(root: Path) -> dict[str, Any]:
+    ensure_layout(root)
+    compile_result = compile_wiki(root)
+    lint_result = lint_wiki(root)
+    state = write_nightly_health(root, compile_result, lint_result, semantic_report="", llm_used=False)
+    return {
+        "compile": compile_result,
+        "lint": lint_result,
+        "repair_backlog": state["repair_backlog"]["path"],
+        "state_path": relative_path(root, nightly_health_state_path(root)),
     }

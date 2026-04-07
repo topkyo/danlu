@@ -182,7 +182,7 @@ Rules:
 
 ### Query Loop
 
-1. `ask` or `run-ask` reads the compiled wiki first.
+1. `ask` or `run-ask` reads the compiled wiki first and uses machine-memory query planning to expand likely sources and concepts.
 2. The system produces reports, slides, or figure briefs.
 3. High-value results can be filed back with `file-back`.
 
@@ -226,18 +226,19 @@ Implemented now:
 
 - raw ingest paths and four `drop-*` entry points
 - source, concept, and index compilation
+- machine-memory graph export, drift tracking, and query planning
+- graph-health dashboard and graph-aware repair suggestions
+- nightly health checks and repair backlog generation
 - output generation and filed-back derived notes
 - automation via `watch` and the user service
 - Obsidian as the frontend
 
 Next-stage extensions:
 
-- stronger machine-memory layer
-- graph indexing and drift tracking
 - richer concept maintenance by the LLM
-- nightly health checks and repair loops
+- deeper graph traversal and retrieval beyond the current lightweight query subgraph
 - more explicit decision pages and judgment pages
-- a dedicated runtime schema directory separate from developer governance files
+- timer-based scheduling for nightly jobs
 
 ## Architectural Invariants
 

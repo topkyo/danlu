@@ -6,9 +6,9 @@ import argparse
 import json
 from pathlib import Path
 
-from .app import ask_question, compile_wiki, ensure_layout, file_back, ingest_source, lint_wiki
+from .app import ask_question, compile_wiki, ensure_layout, file_back, ingest_source, lint_wiki, nightly_health
 from .drop import drop_image, drop_pdf, drop_repo, drop_url
-from .runner import auto_process_once, llm_status, run_ask, run_compile, run_lint, watch_inbox
+from .runner import auto_process_once, llm_status, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -93,6 +93,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("lint", help="Run deterministic lint checks against the wiki.")
     subparsers.add_parser("run-lint", help="Run deterministic lint plus an LLM-backed semantic lint pass.")
+    subparsers.add_parser("nightly", help="Run deterministic compile + lint and write nightly repair artifacts.")
+    run_nightly_parser = subparsers.add_parser(
+        "run-nightly",
+        help="Run compile + semantic lint and write nightly repair artifacts.",
+    )
+    run_nightly_parser.add_argument(
+        "--compile-limit",
+        type=int,
+        default=5,
+        help="Maximum number of pending source pages to summarize in one run.",
+    )
+    run_nightly_parser.add_argument(
+        "--no-semantic-lint",
+        action="store_true",
+        help="Skip the semantic lint pass and write deterministic nightly artifacts only.",
+    )
     subparsers.add_parser("llm-check", help="Show whether the LLM runner is configured.")
 
     auto_once_parser = subparsers.add_parser(
@@ -192,6 +208,14 @@ def main(argv: list[str] | None = None) -> int:
             result = lint_wiki(root)
         elif args.command == "run-lint":
             result = run_lint(root)
+        elif args.command == "nightly":
+            result = nightly_health(root)
+        elif args.command == "run-nightly":
+            result = run_nightly(
+                root,
+                compile_limit=args.compile_limit,
+                semantic_lint=not args.no_semantic_lint,
+            )
         elif args.command == "llm-check":
             result = llm_status()
         elif args.command == "auto-once":

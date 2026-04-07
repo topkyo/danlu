@@ -15,6 +15,10 @@ Obsidian is the place where you browse the local artifact tree and inspect what 
 - [[wiki/indexes/Raw Inbox]]
 - [[wiki/indexes/Wiki Hub]]
 - [[wiki/indexes/Alchemy Furnace]]
+- [[wiki/indexes/machine-memory]]
+- [[wiki/indexes/graph-health]]
+- [[wiki/indexes/drift-report]]
+- [[wiki/indexes/repair-backlog]]
 - [[schema/index]]
 - [[wiki/indexes/Outputs]]
 - [[wiki/indexes/Search Presets]]
@@ -24,6 +28,9 @@ Obsidian is the place where you browse the local artifact tree and inspect what 
 - `raw/inbox/`: inbound source notes and direct drops
 - `raw/assets/`: local PDFs, images, and page assets captured during ingest
 - `schema/`: runtime ingest, citation, conflict, and writeback rules
+- `.aiwiki/state/`: manifest, machine-memory state, and history
+- `.aiwiki/state/nightly-health.json`: latest nightly health snapshot
+- `.aiwiki/cache/`: graph export and rebuildable machine-side artifacts
 - `wiki/sources/`: one compiled source page per raw item
 - `wiki/indexes/`: dashboards, compile indexes, and operating notes
 - `wiki/derived/`: filed-back reports and other derived markdown
@@ -33,8 +40,9 @@ Obsidian is the place where you browse the local artifact tree and inspect what 
 
 1. Drop material into `raw/inbox/` or use one of the `drop-*` entry points.
 2. Let the watcher compile source pages and refresh lint outputs.
-3. Read `wiki/sources/` and `output/` in Obsidian.
-4. File back high-value outputs into `wiki/derived/`.
+3. Run `nightly` or `run-nightly` for a repair backlog pass.
+4. Read `wiki/sources/`, `wiki/indexes/repair-backlog.md`, and `output/` in Obsidian.
+5. File back high-value outputs into `wiki/derived/`.
 
 ## Notes
 

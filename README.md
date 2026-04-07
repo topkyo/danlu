@@ -16,15 +16,17 @@ Deterministic commands:
 
 - `ingest`: register a local file or a URL stub into `raw/`
 - `compile`: turn the current source inventory into `wiki/sources/`, `wiki/concepts/`, and `wiki/indexes/`
-- `ask`: generate a report, slide deck, or figure brief artifact grounded in the wiki
+- `ask`: generate a report, slide deck, or figure brief artifact grounded in the wiki and guided by machine-memory query planning
 - `file-back`: move a useful markdown output back into `wiki/derived/`
 - `lint`: scan for missing source pages, broken source references, and obvious provenance gaps
+- `nightly`: run deterministic compile + lint and write a repair backlog plus nightly state snapshot
 
 LLM-backed execution commands:
 
 - `run-compile`: replace placeholder source summaries using a configured LLM
-- `run-ask`: create a query artifact and let the LLM fill it with grounded content
+- `run-ask`: create a query artifact, attach machine-memory query hints, and let the LLM fill it with grounded content
 - `run-lint`: run deterministic lint, then generate a semantic lint report
+- `run-nightly`: run compile + semantic lint and write nightly repair artifacts
 - `llm-check`: show whether the LLM runner is configured
 - `auto-once`: run the whole ingest/compile/summary/lint pipeline once
 - `watch`: keep watching `raw/inbox/` and trigger the pipeline automatically on changes
@@ -51,7 +53,7 @@ schema/
 wiki/
   sources/      one source page per raw input
   concepts/     compiled concept pages synthesized from source pages
-  indexes/      master index, inventories, compile status, machine memory summary, and operation log
+  indexes/      master index, inventories, compile status, machine memory summary, graph health, drift report, repair backlog, and operation log
   derived/      filed-back markdown outputs
 output/
   reports/
@@ -59,8 +61,8 @@ output/
   figures/
   lint/
 .aiwiki/
-  state/        manifest, incremental state, and machine-memory index
-  cache/
+  state/        manifest, incremental state, machine-memory index, memory history, and nightly health snapshots
+  cache/        graph export and other rebuildable machine-side artifacts
   logs/
 prompts/
   compile.md
@@ -89,6 +91,14 @@ Repo-local Obsidian assets are included:
 - `HOME.md`: default landing page for the vault
 - `wiki/indexes/*.md`: navigation and search reference pages
 - `schema/*.md`: runtime policy files used by compile, ask, and lint flows
+- `.aiwiki/state/machine-memory.json`: deterministic machine-memory state
+- `.aiwiki/state/nightly-health.json`: latest nightly repair snapshot
+- `.aiwiki/cache/machine-memory-graph.json`: graph export for future agent/tooling use
+
+`ask` and `run-ask` now read the compiled wiki first, then use machine-memory term hits plus graph edges to bias source and concept selection.
+They also expose bridge concepts and a lightweight query subgraph for graph-aware retrieval.
+`nightly` and `run-nightly` aggregate compile, lint, drift, and repair queues into `wiki/indexes/repair-backlog.md`.
+`graph-health.md` summarizes connected components, isolated sources, singleton concepts, and overloaded concepts.
 
 The product architecture for the "Alchemy Furnace" model lives in `wiki/indexes/Alchemy Furnace.md`.
 
@@ -169,6 +179,8 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . run-ask "Compare A and B" --format
 PYTHONPATH=src python3 -m aiwiki.cli --root . file-back output/reports/20260405-120000-compare-a-and-b.md
 PYTHONPATH=src python3 -m aiwiki.cli --root . lint
 PYTHONPATH=src python3 -m aiwiki.cli --root . run-lint
+PYTHONPATH=src python3 -m aiwiki.cli --root . nightly
+PYTHONPATH=src python3 -m aiwiki.cli --root . run-nightly
 PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
 ```
 
@@ -195,10 +207,19 @@ Once `watch` is running, the intended flow is:
 - `aiwiki` discovers them automatically
 - source pages are compiled under `wiki/sources/`
 - concept pages and indexes are refreshed under `wiki/concepts/` and `wiki/indexes/`
+- machine-memory query planning and drift artifacts are refreshed under `.aiwiki/` and `wiki/indexes/`
+- graph-health and repair artifacts are refreshed under `wiki/indexes/`
 - the LLM fills pending summaries
 - lint artifacts are refreshed under `output/lint/`
 
 If you want a quieter/offline mode, add `--deterministic-only`.
+
+For a scheduled health pass outside the inbox watcher, run:
+
+```bash
+PYTHONPATH=src python3 -m aiwiki.cli --root . nightly
+AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . run-nightly
+```
 
 ## Material Drop Modes
 
@@ -254,6 +275,22 @@ This installs:
 
 - unit file: `~/.config/systemd/user/aiwiki-watch.service`
 - env file: `~/.config/aiwiki/aiwiki-watch.env`
+
+## Developer Closure
+
+This repo now supports local autonomous closure through:
+
+```bash
+bash scripts/finalize_task.sh
+```
+
+That script will:
+
+- run `closed_loop.sh --require-contract`
+- stage all non-ignored changes
+- create one local commit
+
+It never pushes. Remote push / publish is still a separate boundary.
 
 Default env file values use `codex-cli`. Adjust the env file if you want `claude-cli` or `openai-api`, then restart the service:
 

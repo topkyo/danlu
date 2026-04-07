@@ -27,6 +27,10 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         self.assertIn("[[wiki/indexes/Raw Inbox]]", home)
         self.assertIn("[[wiki/indexes/Wiki Hub]]", home)
         self.assertIn("[[wiki/indexes/Alchemy Furnace]]", home)
+        self.assertIn("[[wiki/indexes/machine-memory]]", home)
+        self.assertIn("[[wiki/indexes/graph-health]]", home)
+        self.assertIn("[[wiki/indexes/drift-report]]", home)
+        self.assertIn("[[wiki/indexes/repair-backlog]]", home)
         self.assertIn("[[schema/index]]", home)
         self.assertIn("[[wiki/indexes/Outputs]]", home)
         self.assertIn("[[wiki/indexes/Search Presets]]", home)
@@ -36,6 +40,8 @@ class ObsidianWorkspaceTests(unittest.TestCase):
             "wiki/indexes/Raw Inbox.md",
             "wiki/indexes/Wiki Hub.md",
             "wiki/indexes/Alchemy Furnace.md",
+            "wiki/indexes/graph-health.md",
+            "wiki/indexes/repair-backlog.md",
             "wiki/indexes/Outputs.md",
             "wiki/indexes/Search Presets.md",
         ):

@@ -16,12 +16,13 @@ from aiwiki.app import (
     ingest_source,
     lint_wiki,
     load_manifest,
+    nightly_health,
     parse_frontmatter,
 )
 from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
 from aiwiki.llm import CompletionResult
-from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, watch_inbox
+from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 
 
 class StubClient:
@@ -141,18 +142,56 @@ class AiwikiFlowTests(unittest.TestCase):
         master_index = self.root / "wiki" / "indexes" / "index.md"
         log_page = self.root / "wiki" / "indexes" / "log.md"
         memory_page = self.root / "wiki" / "indexes" / "machine-memory.md"
+        graph_health_page = self.root / "wiki" / "indexes" / "graph-health.md"
         memory_state = self.root / ".aiwiki" / "state" / "machine-memory.json"
+        memory_graph = self.root / ".aiwiki" / "cache" / "machine-memory-graph.json"
+        drift_report = self.root / "wiki" / "indexes" / "drift-report.md"
+        memory_history = self.root / ".aiwiki" / "state" / "machine-memory-history.jsonl"
         self.assertTrue(master_index.exists())
         self.assertTrue(log_page.exists())
         self.assertTrue(memory_page.exists())
+        self.assertTrue(graph_health_page.exists())
         self.assertTrue(memory_state.exists())
+        self.assertTrue(memory_graph.exists())
+        self.assertTrue(drift_report.exists())
+        self.assertTrue(memory_history.exists())
         self.assertIn("Operation Log", master_index.read_text(encoding="utf-8"))
         self.assertIn("Machine Memory", master_index.read_text(encoding="utf-8"))
+        self.assertIn("Graph Health", master_index.read_text(encoding="utf-8"))
+        self.assertIn("Drift Report", master_index.read_text(encoding="utf-8"))
         self.assertIn("compile | wiki refresh", log_page.read_text(encoding="utf-8"))
         self.assertIn("Runtime state file", memory_page.read_text(encoding="utf-8"))
+        self.assertIn("Connected components", graph_health_page.read_text(encoding="utf-8"))
         memory = json.loads(memory_state.read_text(encoding="utf-8"))
+        graph = json.loads(memory_graph.read_text(encoding="utf-8"))
         self.assertEqual(memory["source_nodes"][0]["id"], entry["id"])
         self.assertTrue(memory["term_index"])
+        self.assertIn("health", memory)
+        self.assertTrue(memory["digest"])
+        self.assertTrue(memory["graph_digest"])
+        self.assertTrue(graph["nodes"])
+        self.assertTrue(graph["edges"])
+        self.assertIn("No previous machine-memory snapshot was available.", drift_report.read_text(encoding="utf-8"))
+
+    def test_compile_tracks_machine_memory_drift_between_snapshots(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        second = self.root / "sample-two.md"
+        second.write_text("# Latency Notes\n\nThroughput and latency tradeoffs.\n", encoding="utf-8")
+        ingest_source(self.root, str(second), title="Latency Notes")
+
+        result = compile_wiki(self.root)
+
+        drift_report = (self.root / "wiki" / "indexes" / "drift-report.md").read_text(encoding="utf-8")
+        history_lines = (self.root / ".aiwiki" / "state" / "machine-memory-history.jsonl").read_text(
+            encoding="utf-8"
+        ).strip().splitlines()
+        self.assertTrue(result["machine_memory_changed"])
+        self.assertIn("Added source nodes: `1`", drift_report)
+        self.assertGreaterEqual(len(history_lines), 2)
+        latest = json.loads(history_lines[-1])
+        self.assertEqual(len(latest["added_source_ids"]), 1)
+        self.assertTrue(latest["added_source_ids"][0].endswith("-latency-notes"))
 
     def test_compile_preserves_existing_summary_on_recompile(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -232,12 +271,14 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(result["ranked_concepts"])
         self.assertIn("wiki/indexes/log.md", result["index_pages"])
         self.assertIn("wiki/indexes/machine-memory.md", result["index_pages"])
+        self.assertIn("wiki/indexes/drift-report.md", result["index_pages"])
         self.assertIn("schema/index.md", result["index_pages"])
 
         report_text = (self.root / result["path"]).read_text(encoding="utf-8")
         self.assertIn("Recommended Concepts", report_text)
         self.assertIn("Recommended Index Pages", report_text)
         self.assertIn("Machine Memory", report_text)
+        self.assertIn("Drift Report", report_text)
         self.assertIn("Runtime Schema", report_text)
 
     def test_ensure_layout_bootstraps_runtime_schema_files(self) -> None:
@@ -270,6 +311,28 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue((self.root / "wiki" / "concepts" / "latency.md").exists())
         source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
         self.assertIn("- Pending LLM summary.", source_page.read_text(encoding="utf-8"))
+
+    def test_ask_uses_machine_memory_for_query_planning(self) -> None:
+        sample = self.root / "latency.md"
+        sample.write_text("# Throughput Notes\n\nLatency throughput cache locality.\n", encoding="utf-8")
+        ingest_source(self.root, str(sample), title="Throughput Notes")
+        sample_two = self.root / "tail.md"
+        sample_two.write_text("# Tail Latency\n\nLatency throughput jitter tradeoffs.\n", encoding="utf-8")
+        ingest_source(self.root, str(sample_two), title="Tail Latency")
+        compile_wiki(self.root)
+
+        result = ask_question(self.root, "Compare latency tail behavior", "report")
+
+        machine_query = result["machine_memory_query"]
+        report_text = (self.root / result["path"]).read_text(encoding="utf-8")
+        self.assertIn("latency", machine_query["matched_terms"])
+        self.assertTrue(any("throughput" in slug for slug in machine_query["ranked_concept_slugs"]))
+        self.assertTrue(machine_query["bridge_concept_slugs"])
+        self.assertTrue(machine_query["supporting_edges"])
+        self.assertTrue(machine_query["query_subgraph"]["edges"])
+        self.assertIn("Machine Memory Query Plan", report_text)
+        self.assertIn("Bridge concepts", report_text)
+        self.assertIn("latency", report_text.lower())
 
     def test_run_compile_replaces_placeholder_summary(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -372,6 +435,81 @@ class AiwikiFlowTests(unittest.TestCase):
 
         self.assertIn("LATE-MARKER", client.prompt)
         self.assertNotIn("EARLY-MARKER EARLY-MARKER EARLY-MARKER EARLY-MARKER EARLY-MARKER", client.prompt)
+
+    def test_run_ask_includes_machine_memory_query_plan_in_prompt(self) -> None:
+        sample = self.root / "latency.md"
+        sample.write_text("# Throughput Notes\n\nLatency throughput cache locality.\n", encoding="utf-8")
+        entry = ingest_source(self.root, str(sample), title="Throughput Notes")
+        compile_wiki(self.root)
+        report_markdown = "\n".join(
+            [
+                "---",
+                'id: "query-1"',
+                'kind: "output"',
+                'format: "report"',
+                'query: "Compare latency tail behavior"',
+                'generated_by: "aiwiki-ask"',
+                'created_at: "2026-04-07T00:00:00+00:00"',
+                "---",
+                "",
+                "# Compare latency tail behavior",
+                "",
+                f"See `wiki/sources/{entry['id']}.md`.",
+            ]
+        )
+        client = CapturingClient(report_markdown)
+
+        run_ask(
+            self.root,
+            "Compare latency tail behavior",
+            "report",
+            client=client,
+        )
+
+        self.assertIn("## Machine Memory Query Plan", client.prompt)
+        self.assertIn("Matched terms", client.prompt)
+        self.assertIn("Bridge concepts", client.prompt)
+        self.assertIn("Query subgraph edge count", client.prompt)
+        self.assertIn("latency", client.prompt.lower())
+
+    def test_nightly_writes_repair_backlog_and_state(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+
+        result = nightly_health(self.root)
+
+        backlog_path = self.root / result["repair_backlog"]
+        state_path = self.root / result["state_path"]
+        self.assertTrue(backlog_path.exists())
+        self.assertTrue(state_path.exists())
+        backlog_text = backlog_path.read_text(encoding="utf-8")
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        self.assertIn("Repair Backlog", backlog_text)
+        self.assertIn("Graph Repair Suggestions", backlog_text)
+        self.assertIn("Pending Source Summaries", backlog_text)
+        self.assertEqual(state["repair_backlog"]["path"], result["repair_backlog"])
+        self.assertEqual(state["lint"]["counts"]["warnings"], result["lint"]["counts"]["warnings"])
+        self.assertIn("health", state["machine_memory"])
+        self.assertFalse(state["llm_used"])
+
+    def test_run_nightly_writes_semantic_artifacts_and_state(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        updated_source = source_page.read_text(encoding="utf-8").replace(
+            "- Pending LLM summary.",
+            "- Transformer scale improves capability and raises compute demand.",
+        )
+        semantic_lint = "# Semantic Lint Report\n\n- Review placeholder concept summaries next.\n"
+
+        result = run_nightly(self.root, client=StubClient([updated_source, semantic_lint]), compile_limit=1)
+
+        backlog_path = self.root / result["repair_backlog"]
+        state = json.loads((self.root / result["state_path"]).read_text(encoding="utf-8"))
+        self.assertTrue(backlog_path.exists())
+        self.assertTrue(result["lint"]["semantic_report"])
+        self.assertTrue(state["llm_used"])
+        self.assertEqual(state["semantic_report"], result["lint"]["semantic_report"])
+        self.assertIn("Semantic lint", backlog_path.read_text(encoding="utf-8"))
 
     def test_llm_status_auto_prefers_codex_cli_when_api_is_absent(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
@@ -574,6 +712,9 @@ class AiwikiFlowTests(unittest.TestCase):
         compile_wiki(self.root)
         (self.root / "wiki" / "indexes" / "index.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory.md").unlink()
+        (self.root / "wiki" / "indexes" / "graph-health.md").unlink()
+        (self.root / "wiki" / "indexes" / "drift-report.md").unlink()
+        (self.root / ".aiwiki" / "cache" / "machine-memory-graph.json").unlink()
         concept_page = next((self.root / "wiki" / "concepts").glob("*.md"))
         broken = concept_page.read_text(encoding="utf-8").replace("wiki/sources/", "wiki/sources/missing-", 1)
         concept_page.write_text(broken, encoding="utf-8")
@@ -583,6 +724,9 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertGreaterEqual(lint["counts"]["errors"], 2)
         self.assertIn("Missing master wiki index page.", report_text)
         self.assertIn("Missing machine memory index page.", report_text)
+        self.assertIn("Missing machine memory graph health page.", report_text)
+        self.assertIn("Missing machine memory drift report.", report_text)
+        self.assertIn("Missing machine memory graph export.", report_text)
         self.assertIn("Concept page references missing source page", report_text)
 
 

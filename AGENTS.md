@@ -52,22 +52,27 @@
 - 本地代码、文档、测试、prompts、harness 文件修改
 - 目录结构调整与无副作用的本地验证
 - 当前用户范围内的 `systemd --user` 服务安装与更新
+- 在 `closed_loop` 通过后执行本地自动提交，前提是没有命中 stop conditions 且没有外部副作用
+- 使用 `scripts/finalize_task.sh` 收口本地闭环并生成 commit
 
 需要先确认:
 - 外部模型/服务接入
 - 远端部署、共享环境改动、凭据配置
 - 会改变 repo 事实分层规则的架构调整
+- `push`、远端发布、PR 创建
 
 ## Harness 闭环
 
 - 开工前先读 `PROGRESS.md` 和 `.codex/contracts/active.md`
 - 非 trivial 任务默认维护 active contract
 - 默认顺序: `contract -> implement -> verify -> qa-review -> update PROGRESS`
+- 本地 end-to-end 收口默认可以继续到 `closed_loop -> finalize_task.sh`
 - `verify` 入口统一为 `bash scripts/verify.sh`
 - Standard tier 默认要求 `qa-review`; 当前没有独立 reviewer 时要记录 fallback 原因
 
 ## 沟通
 
 - 先结论，再证据，再建议
-- 不主动 commit / push
+- 默认不主动 `push`
+- 本地 `commit` 允许在 `closed_loop` 通过后自动进行；如果当前执行环境有更高优先级限制，以更高优先级限制为准
 - 发现事实层污染、无来源结论或越层写入时必须明确指出

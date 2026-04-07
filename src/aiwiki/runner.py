@@ -15,12 +15,14 @@ from .app import (
     compile_wiki,
     ensure_layout,
     lint_wiki,
+    nightly_health,
     load_manifest,
     parse_frontmatter,
     read_text_preview,
     relative_path,
     render_scalar,
     sha256_bytes,
+    write_nightly_health,
 )
 from .config import LLMConfig
 from .llm import CompletionResult, create_backend_client
@@ -129,7 +131,17 @@ def run_ask(
 
     target = root / artifact["path"]
     current_artifact = target.read_text(encoding="utf-8", errors="replace")
-    prompt = _build_ask_prompt(root, target, question, output_format, current_artifact, source_pages, concept_pages, index_pages)
+    prompt = _build_ask_prompt(
+        root,
+        target,
+        question,
+        output_format,
+        current_artifact,
+        source_pages,
+        concept_pages,
+        index_pages,
+        artifact.get("machine_memory_query", {}),
+    )
     effective_client = client or create_client(root)
     result = effective_client.complete(_system_prompt("ask"), prompt)
     updated = _normalize_markdown(result.text)
@@ -177,6 +189,37 @@ def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, An
     return {
         "deterministic": deterministic,
         "semantic_report": relative_path(root, target),
+    }
+
+
+def run_nightly(
+    root: Path,
+    client: SupportsComplete | None = None,
+    compile_limit: int = 5,
+    semantic_lint: bool = True,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    effective_client = client or create_client(root)
+    compile_result = run_compile(root, client=effective_client, limit=compile_limit)
+    if semantic_lint:
+        lint_result = run_lint(root, client=effective_client)
+    else:
+        lint_result = {
+            "deterministic": lint_wiki(root),
+            "semantic_report": "",
+        }
+    state = write_nightly_health(
+        root,
+        compile_result["compile"],
+        lint_result["deterministic"],
+        semantic_report=lint_result["semantic_report"],
+        llm_used=True,
+    )
+    return {
+        "compile": compile_result,
+        "lint": lint_result,
+        "repair_backlog": state["repair_backlog"]["path"],
+        "state_path": relative_path(root, root / ".aiwiki" / "state" / "nightly-health.json"),
     }
 
 
@@ -356,6 +399,7 @@ def _build_ask_prompt(
     source_pages: list[tuple[dict[str, Any], str]],
     concept_pages: list[tuple[str, str]],
     index_pages: list[tuple[str, str]],
+    machine_memory_query: dict[str, Any],
 ) -> str:
     template = _load_prompt(root, "ask.md")
     sections = [
@@ -370,6 +414,9 @@ def _build_ask_prompt(
         "",
         "## Current Artifact",
         current_artifact,
+        "",
+        "## Machine Memory Query Plan",
+        _render_machine_query(machine_memory_query),
         "",
         "## Index Pages",
     ]
@@ -412,6 +459,37 @@ def _build_ask_prompt(
     return "\n".join(sections)
 
 
+def _render_machine_query(machine_memory_query: dict[str, Any]) -> str:
+    matched_terms = machine_memory_query.get("matched_terms", [])
+    direct_source_ids = machine_memory_query.get("direct_source_ids", [])
+    direct_concept_slugs = machine_memory_query.get("direct_concept_slugs", [])
+    ranked_source_ids = machine_memory_query.get("ranked_source_ids", [])
+    ranked_concept_slugs = machine_memory_query.get("ranked_concept_slugs", [])
+    supporting_edges = machine_memory_query.get("supporting_edges", [])
+
+    lines = [
+        f"- Matched terms: `{', '.join(matched_terms) or 'none'}`",
+        f"- Direct source hits: `{', '.join(direct_source_ids) or 'none'}`",
+        f"- Direct concept hits: `{', '.join(direct_concept_slugs) or 'none'}`",
+        f"- Ranked source candidates: `{', '.join(ranked_source_ids) or 'none'}`",
+        f"- Ranked concept candidates: `{', '.join(ranked_concept_slugs) or 'none'}`",
+        f"- Bridge concepts: `{', '.join(machine_memory_query.get('bridge_concept_slugs', [])) or 'none'}`",
+        "- Supporting edges:",
+    ]
+    if not supporting_edges:
+        lines.append("  - none")
+    else:
+        for edge in supporting_edges[:12]:
+            lines.append(f"  - {edge['type']}: `{edge['left']}` -> `{edge['right']}`")
+        if len(supporting_edges) > 12:
+            lines.append(f"  - ... {len(supporting_edges) - 12} more edge(s)")
+    subgraph = machine_memory_query.get("query_subgraph", {})
+    lines.append(f"- Query subgraph sources: `{', '.join(node['id'] for node in subgraph.get('sources', [])) or 'none'}`")
+    lines.append(f"- Query subgraph concepts: `{', '.join(node['slug'] for node in subgraph.get('concepts', [])) or 'none'}`")
+    lines.append(f"- Query subgraph edge count: `{len(subgraph.get('edges', []))}`")
+    return "\n".join(lines)
+
+
 def _build_lint_prompt(root: Path, deterministic_report: str) -> str:
     template = _load_prompt(root, "lint.md")
     sections = [
@@ -427,6 +505,8 @@ def _build_lint_prompt(root: Path, deterministic_report: str) -> str:
         "wiki/indexes/concepts.md",
         "wiki/indexes/compile-status.md",
         "wiki/indexes/machine-memory.md",
+        "wiki/indexes/graph-health.md",
+        "wiki/indexes/drift-report.md",
         "wiki/indexes/log.md",
     ):
         path = root / relative
