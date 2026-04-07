@@ -185,6 +185,7 @@ status: "active"
 1. `ask` / `run-ask` 优先读取编译层，并用 machine-memory query planning 扩展相关来源与概念。
 2. 系统产出 report、slides、figure brief。
 3. 高价值结果可以通过 `file-back` 回流。
+4. `nightly` / `run-nightly` 可以把重复出现且问题类型明确的 output 自动晋升到 decision / judgment。
 
 ### Lint Loop
 
@@ -231,6 +232,7 @@ status: "active"
 - graph-health 看板和 repair backlog
 - decision / judgment writeback layers
 - decision / judgment review workflow 与 review queue
+- recurring outputs 自动晋升到 decision / judgment 页面
 - `run-compile` 的 source/concept 双层维护
 - nightly health checks 和 timer 化调度
 - output 生成和高价值回流
@@ -239,7 +241,6 @@ status: "active"
 
 下一阶段值得做的：
 
-- 自动把 recurring outputs 晋升成 decision/judgment 页面
 - 更强的 aging / revisit / escalation 机制
 - 更深的 graph / machine-memory 能力
 

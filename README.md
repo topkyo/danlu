@@ -106,6 +106,8 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . lint
 PYTHONPATH=src python3 -m aiwiki.cli --root . nightly
 ```
 
+`nightly` / `run-nightly` 现在还会扫描重复出现的 report / figure 输出，并把足够明确的决策型、判断型问题自动晋升到 `wiki/decisions/` 或 `wiki/judgments/`；这些页面仍然会进入审阅队列，不会被当成已批准结论。
+
 关键状态页：
 - [review-queue.md](./wiki/indexes/review-queue.md)
 - [repair-backlog.md](./wiki/indexes/repair-backlog.md)

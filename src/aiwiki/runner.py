@@ -20,6 +20,7 @@ from .app import (
     load_manifest,
     parse_frontmatter,
     placeholder_concept_slugs,
+    promote_recurring_outputs,
     preserved_section,
     read_text_preview,
     relative_path,
@@ -250,6 +251,9 @@ def run_nightly(
     ensure_layout(root)
     effective_client = client or create_client(root)
     compile_result = run_compile(root, client=effective_client, limit=compile_limit)
+    promotion_result = promote_recurring_outputs(root)
+    if promotion_result["count"]:
+        compile_result["compile"] = compile_wiki(root)
     if semantic_lint:
         lint_result = run_lint(root, client=effective_client)
     else:
@@ -261,12 +265,14 @@ def run_nightly(
         root,
         compile_result["compile"],
         lint_result["deterministic"],
+        promotion_result=promotion_result,
         semantic_report=lint_result["semantic_report"],
         llm_used=True,
     )
     return {
         "compile": compile_result,
         "lint": lint_result,
+        "promotions": promotion_result,
         "repair_backlog": state["repair_backlog"]["path"],
         "state_path": relative_path(root, root / ".aiwiki" / "state" / "nightly-health.json"),
     }

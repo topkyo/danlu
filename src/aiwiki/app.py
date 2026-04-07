@@ -188,6 +188,67 @@ DECISION_STATUSES = ("proposed", "approved", "needs-revisit", "superseded")
 JUDGMENT_STATUSES = ("tentative", "tracking", "confirmed", "rejected")
 PENDING_DECISION_REVIEW_STATUSES = {"proposed", "needs-revisit"}
 PENDING_JUDGMENT_REVIEW_STATUSES = {"tentative", "tracking"}
+AUTO_PROMOTION_MIN_OCCURRENCES = 2
+AUTO_PROMOTION_FORMATS = {"report", "figure"}
+DECISION_QUERY_MARKERS = (
+    "should we",
+    "which option",
+    "which approach",
+    "which should",
+    "decision",
+    "decide",
+    "choose",
+    "choice",
+    "adopt",
+    "select",
+    "prioritize",
+    "migrate",
+    "replace",
+    "switch",
+    "deprecate",
+    "approve",
+    "reject",
+    "是否应该",
+    "该不该",
+    "怎么选",
+    "如何选",
+    "选择",
+    "决策",
+    "采用",
+    "迁移",
+    "替换",
+    "切换",
+    "取舍",
+    "批准",
+    "否决",
+)
+JUDGMENT_QUERY_MARKERS = (
+    "will ",
+    "likely",
+    "risk",
+    "forecast",
+    "outlook",
+    "signal",
+    "signals",
+    "probability",
+    "expect",
+    "assessment",
+    "assess",
+    "judge",
+    "trend",
+    "confidence",
+    "是否会",
+    "会不会",
+    "风险",
+    "预判",
+    "判断",
+    "信号",
+    "概率",
+    "趋势",
+    "置信",
+    "走向",
+    "可能性",
+)
 
 
 @dataclass
@@ -281,6 +342,15 @@ def next_identifier(existing_ids: set[str], seed: str) -> str:
     candidate = seed
     index = 2
     while candidate in existing_ids:
+        candidate = f"{seed}-{index}"
+        index += 1
+    return candidate
+
+
+def next_available_stem(directory: Path, seed: str, suffix: str = ".md") -> str:
+    candidate = seed
+    index = 2
+    while (directory / f"{candidate}{suffix}").exists():
         candidate = f"{seed}-{index}"
         index += 1
     return candidate
@@ -382,6 +452,25 @@ def upsert_markdown_section(markdown: str, heading: str, content: str) -> str:
     if base:
         return base + "\n\n" + block
     return block
+
+
+def replace_first_markdown_heading(markdown: str, title: str) -> str:
+    lines = markdown.splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith("# "):
+            lines[index] = f"# {title}"
+            return "\n".join(lines).strip() + "\n"
+    body = markdown.strip()
+    if body:
+        return f"# {title}\n\n{body}\n"
+    return f"# {title}\n"
+
+
+def first_markdown_heading(markdown: str) -> str:
+    for line in strip_frontmatter(markdown).splitlines():
+        if line.startswith("# "):
+            return line[2:].strip()
+    return ""
 
 
 def write_if_changed(path: Path, content: str) -> bool:
@@ -921,6 +1010,207 @@ def review_queue(decisions: list[dict[str, str]], judgments: list[dict[str, str]
         "pending_decisions": pending_decisions,
         "pending_judgments": pending_judgments,
         "recently_reviewed": reviewed,
+    }
+
+
+def normalize_query_signature(query: str) -> str:
+    tokens = re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]+", query.lower())
+    signature = "-".join(tokens).strip("-")
+    return signature[:160] or "query"
+
+
+def classify_recurring_output_kind(query: str) -> str:
+    normalized = " ".join(re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]+", query.lower()))
+    decision_score = sum(1 for marker in DECISION_QUERY_MARKERS if marker in normalized)
+    judgment_score = sum(1 for marker in JUDGMENT_QUERY_MARKERS if marker in normalized)
+    if decision_score <= 0 and judgment_score <= 0:
+        return ""
+    if decision_score >= judgment_score:
+        return "decision"
+    return "judgment"
+
+
+def promotion_page_title(kind: str, query: str) -> str:
+    prefix = "决策沉淀" if kind == "decision" else "判断沉淀"
+    return f"{prefix}：{query}"
+
+
+def collect_output_artifacts(root: Path) -> list[dict[str, str]]:
+    artifacts: list[dict[str, str]] = []
+    for relative in ("output/reports", "output/figures"):
+        for path in sorted((root / relative).glob("*.md")):
+            content = path.read_text(encoding="utf-8", errors="replace")
+            frontmatter = parse_frontmatter(content)
+            if frontmatter.get("kind") != "output":
+                continue
+            query = str(frontmatter.get("query") or "").strip()
+            output_format = str(frontmatter.get("format") or "").strip()
+            if not query or output_format not in AUTO_PROMOTION_FORMATS:
+                continue
+            artifacts.append(
+                {
+                    "path": relative_path(root, path),
+                    "query": query,
+                    "query_signature": normalize_query_signature(query),
+                    "format": output_format,
+                    "created_at": str(frontmatter.get("created_at") or ""),
+                    "title": first_markdown_heading(content) or path.stem,
+                }
+            )
+    return sorted(artifacts, key=lambda item: (item["query_signature"], item["created_at"], item["path"]))
+
+
+def find_promoted_curated_page(root: Path, kind: str, query_signature: str) -> Path | None:
+    folder = "decisions" if kind == "decision" else "judgments"
+    for path in sorted((root / "wiki" / folder).glob("*.md")):
+        frontmatter = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+        if frontmatter.get("kind") != kind:
+            continue
+        if str(frontmatter.get("promotion_query_signature") or "") == query_signature:
+            return path
+    return None
+
+
+def recurring_promotion_needs_refresh(page_path: Path, artifacts: list[dict[str, str]]) -> bool:
+    frontmatter = parse_frontmatter(page_path.read_text(encoding="utf-8", errors="replace"))
+    current_count = str(frontmatter.get("promotion_count") or "")
+    current_last_artifact = str(frontmatter.get("promotion_last_artifact") or "")
+    current_sources = {
+        str(path)
+        for path in frontmatter.get("source_files", [])
+        if isinstance(path, str) and path.strip()
+    }
+    desired_count = str(len(artifacts))
+    desired_last_artifact = artifacts[-1]["path"]
+    desired_sources = {artifact["path"] for artifact in artifacts}
+    if current_count != desired_count:
+        return True
+    if current_last_artifact != desired_last_artifact:
+        return True
+    if not desired_sources.issubset(current_sources):
+        return True
+    return False
+
+
+def annotate_recurring_promotion(
+    root: Path,
+    page_path: Path,
+    *,
+    kind: str,
+    query: str,
+    query_signature: str,
+    artifacts: list[dict[str, str]],
+    generated_at: str,
+) -> None:
+    content = page_path.read_text(encoding="utf-8", errors="replace")
+    frontmatter = parse_frontmatter(content)
+    source_files = [
+        str(path)
+        for path in frontmatter.get("source_files", [])
+        if isinstance(path, str) and path.strip()
+    ]
+    for artifact in artifacts:
+        artifact_path = artifact["path"]
+        if artifact_path not in source_files:
+            source_files.append(artifact_path)
+    formats = sorted({artifact["format"] for artifact in artifacts})
+    title = promotion_page_title(kind, query)
+    frontmatter["title"] = title
+    frontmatter["source_files"] = source_files
+    frontmatter["promotion_origin"] = "nightly-recurring-output"
+    frontmatter["promotion_query"] = query
+    frontmatter["promotion_query_signature"] = query_signature
+    frontmatter["promotion_count"] = str(len(artifacts))
+    frontmatter["promotion_formats"] = formats
+    frontmatter["promotion_last_artifact"] = artifacts[-1]["path"]
+    frontmatter["last_compiled_at"] = generated_at
+    body = replace_first_markdown_heading(strip_frontmatter(content).strip(), title).strip()
+    auto_lines = [
+        "- Rule: `nightly-recurring-output`",
+        f"- Query: `{query}`",
+        f"- Signature: `{query_signature}`",
+        f"- Matching outputs: `{len(artifacts)}`",
+        f"- Latest artifact: `{artifacts[-1]['path']}`",
+        f"- Formats: `{', '.join(formats)}`",
+    ]
+    for artifact in artifacts[-5:]:
+        auto_lines.append(f"- Supporting artifact: `{artifact['path']}`")
+    updated_body = upsert_markdown_section(body, "Auto Promotion", "\n".join(auto_lines)).strip()
+    page_path.write_text(f"{render_frontmatter(frontmatter)}\n\n{updated_body}\n", encoding="utf-8")
+
+
+def promote_recurring_outputs(root: Path) -> dict[str, Any]:
+    ensure_layout(root)
+    groups: dict[str, list[dict[str, str]]] = {}
+    for artifact in collect_output_artifacts(root):
+        groups.setdefault(artifact["query_signature"], []).append(artifact)
+
+    generated_at = utc_now()
+    created = 0
+    updated = 0
+    promotions: list[dict[str, str]] = []
+    for query_signature, artifacts in sorted(groups.items()):
+        if len(artifacts) < AUTO_PROMOTION_MIN_OCCURRENCES:
+            continue
+        query = artifacts[0]["query"]
+        kind = classify_recurring_output_kind(query)
+        if kind not in {"decision", "judgment"}:
+            continue
+        existing = find_promoted_curated_page(root, kind, query_signature)
+        if existing is None:
+            result = file_back(
+                root,
+                artifacts[-1]["path"],
+                title=f"{kind}-{query_signature}",
+                kind=kind,
+            )
+            page_path = root / result["path"]
+            action = "created"
+            created += 1
+        else:
+            if not recurring_promotion_needs_refresh(existing, artifacts):
+                continue
+            page_path = existing
+            action = "updated"
+            updated += 1
+        annotate_recurring_promotion(
+            root,
+            page_path,
+            kind=kind,
+            query=query,
+            query_signature=query_signature,
+            artifacts=artifacts,
+            generated_at=generated_at,
+        )
+        promotions.append(
+            {
+                "kind": kind,
+                "action": action,
+                "path": relative_path(root, page_path),
+                "query": query,
+                "query_signature": query_signature,
+                "occurrences": str(len(artifacts)),
+                "latest_artifact": artifacts[-1]["path"],
+            }
+        )
+        append_wiki_log(
+            root,
+            "promote",
+            query,
+            [
+                f"kind: `{kind}`",
+                f"action: `{action}`",
+                f"occurrences: `{len(artifacts)}`",
+                f"page: `{relative_path(root, page_path)}`",
+                f"latest_artifact: `{artifacts[-1]['path']}`",
+            ],
+        )
+
+    return {
+        "count": len(promotions),
+        "created": created,
+        "updated": updated,
+        "pages": promotions,
     }
 
 
@@ -2497,16 +2787,22 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
     ranked = rank_sources(root, entries, question, boost_source_ids=boosted_ids)
     created_at = utc_now()
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    artifact_id = f"query-{stamp}-{slugify(question)[:48]}"
+    artifact_seed = f"query-{stamp}-{slugify(question)[:48]}"
 
     if output_format == "report":
-        destination = root / "output" / "reports" / f"{artifact_id}.md"
+        directory = root / "output" / "reports"
+        artifact_id = next_available_stem(directory, artifact_seed)
+        destination = directory / f"{artifact_id}.md"
         content = render_report(question, ranked, ranked_concepts, machine_query, created_at, artifact_id)
     elif output_format == "slides":
-        destination = root / "output" / "slides" / f"{artifact_id}.md"
+        directory = root / "output" / "slides"
+        artifact_id = next_available_stem(directory, artifact_seed)
+        destination = directory / f"{artifact_id}.md"
         content = render_slides(question, ranked, ranked_concepts, machine_query, created_at, artifact_id)
     elif output_format == "figure":
-        destination = root / "output" / "figures" / f"{artifact_id}.md"
+        directory = root / "output" / "figures"
+        artifact_id = next_available_stem(directory, artifact_seed)
+        destination = directory / f"{artifact_id}.md"
         content = render_figure_brief(question, ranked, ranked_concepts, machine_query, created_at, artifact_id)
     else:
         raise ValueError(f"Unsupported format: {output_format}")
@@ -2568,12 +2864,14 @@ def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "
     artifact_ref = (
         relative_path(root, artifact_path) if artifact_path.is_relative_to(root) else str(artifact_path)
     )
-    entry_id = f"{kind}-{stamp}-{slugify(title or artifact_path.stem)[:48]}"
-    destination = {
-        "derived": root / "wiki" / "derived" / f"{entry_id}.md",
-        "decision": root / "wiki" / "decisions" / f"{entry_id}.md",
-        "judgment": root / "wiki" / "judgments" / f"{entry_id}.md",
+    entry_seed = f"{kind}-{stamp}-{slugify(title or artifact_path.stem)[:48]}"
+    directory = {
+        "derived": root / "wiki" / "derived",
+        "decision": root / "wiki" / "decisions",
+        "judgment": root / "wiki" / "judgments",
     }[kind]
+    entry_id = next_available_stem(directory, entry_seed)
+    destination = directory / f"{entry_id}.md"
     original = artifact_path.read_text(encoding="utf-8", errors="replace")
     frontmatter = render_frontmatter(
         {
@@ -3009,6 +3307,7 @@ def render_repair_backlog(
     compile_result: dict[str, Any],
     lint_result: dict[str, Any],
     memory: dict[str, Any],
+    promotion_result: dict[str, Any],
     pending_sources: list[str],
     placeholder_concepts: list[str],
     pending_review_decisions: list[dict[str, str]],
@@ -3027,6 +3326,7 @@ def render_repair_backlog(
     singleton_concepts = health.get("singleton_concept_slugs", [])
     bridge_concepts = health.get("bridge_concept_slugs", [])
     overloaded_concepts = health.get("overloaded_concept_slugs", [])
+    promotions = promotion_result.get("pages", [])
     lines = [
         "# 修复待办",
         "",
@@ -3039,6 +3339,7 @@ def render_repair_backlog(
         f"- 占位概念摘要：`{len(placeholder_concepts)}`",
         f"- 待审决策：`{len(pending_review_decisions)}`",
         f"- 待审判断：`{len(pending_review_judgments)}`",
+        f"- 自动晋升页面：`{promotion_result.get('count', 0)}`",
         f"- 无概念覆盖来源：`{len(sources_without_concepts)}`",
         f"- 图谱分量数：`{health.get('component_count', 0)}`",
         f"- 孤立来源：`{len(isolated_sources)}`",
@@ -3058,16 +3359,18 @@ def render_repair_backlog(
         lines.append(f"4. 审阅 `{len(pending_review_decisions)}` 个等待批准或复审的决策页。")
     if pending_review_judgments:
         lines.append(f"5. 审阅 `{len(pending_review_judgments)}` 个仍处于暂定或跟踪状态的判断页。")
+    if promotions:
+        lines.append(f"6. 检查本轮自动晋升的 `{len(promotions)}` 个页面，确认是否需要补证据和审阅。")
     if sources_without_concepts:
-        lines.append(f"6. 检查 `{len(sources_without_concepts)}` 个没有概念覆盖的来源。")
+        lines.append(f"7. 检查 `{len(sources_without_concepts)}` 个没有概念覆盖的来源。")
     if isolated_sources:
-        lines.append(f"7. 把 `{len(isolated_sources)}` 个孤立来源节点接入概念图谱。")
+        lines.append(f"8. 把 `{len(isolated_sources)}` 个孤立来源节点接入概念图谱。")
     if singleton_concepts:
-        lines.append(f"8. 复查 `{len(singleton_concepts)}` 个还没接入更大上下文的单节点概念。")
+        lines.append(f"9. 复查 `{len(singleton_concepts)}` 个还没接入更大上下文的单节点概念。")
     if overloaded_concepts:
-        lines.append(f"9. 考虑拆分 `{len(overloaded_concepts)}` 个过载概念。")
+        lines.append(f"10. 考虑拆分 `{len(overloaded_concepts)}` 个过载概念。")
     if transition.get("changed"):
-        lines.append("10. 在下一轮研究前先检查最新的机器记忆漂移。")
+        lines.append("11. 在下一轮研究前先检查最新的机器记忆漂移。")
     if not any(
         (
             error_findings,
@@ -3075,6 +3378,7 @@ def render_repair_backlog(
             placeholder_concepts,
             pending_review_decisions,
             pending_review_judgments,
+            promotions,
             sources_without_concepts,
             isolated_sources,
             singleton_concepts,
@@ -3115,6 +3419,14 @@ def render_repair_backlog(
             lines.append(f"- 决策：`{page['path']}` 状态 `{display_curated_status(page['status'])}`")
         for page in pending_review_judgments[:10]:
             lines.append(f"- 判断：`{page['path']}` 状态 `{display_curated_status(page['status'])}`")
+    if promotions:
+        lines.append("")
+        lines.append("### 本轮自动晋升")
+        for promotion in promotions[:10]:
+            label = "决策" if promotion["kind"] == "decision" else "判断"
+            lines.append(
+                f"- {label}：`{promotion['path']}` | 动作 `{promotion['action']}` | 重复次数 `{promotion['occurrences']}`"
+            )
     if sources_without_concepts:
         lines.append("")
         lines.append("### 无概念覆盖来源")
@@ -3166,10 +3478,12 @@ def write_nightly_health(
     compile_result: dict[str, Any],
     lint_result: dict[str, Any],
     *,
+    promotion_result: dict[str, Any] | None = None,
     semantic_report: str = "",
     llm_used: bool = False,
 ) -> dict[str, Any]:
     ensure_layout(root)
+    promotion_result = promotion_result or {"count": 0, "created": 0, "updated": 0, "pages": []}
     manifest = load_manifest(root)
     memory = load_machine_memory(root)
     pending_sources = pending_source_summary_ids(root, manifest["entries"])
@@ -3187,6 +3501,7 @@ def write_nightly_health(
             "counts": lint_result["counts"],
         },
         "semantic_report": semantic_report,
+        "promotions": promotion_result,
         "machine_memory": {
             "digest": memory.get("digest", ""),
             "graph_digest": memory.get("graph_digest", ""),
@@ -3200,12 +3515,14 @@ def write_nightly_health(
             "placeholder_concepts": placeholder_concepts,
             "pending_review_decisions": [page["path"] for page in queue["pending_decisions"]],
             "pending_review_judgments": [page["path"] for page in queue["pending_judgments"]],
+            "auto_promotions": [page["path"] for page in promotion_result.get("pages", [])],
         },
     }
     repair_backlog = render_repair_backlog(
         compile_result,
         lint_result,
         memory,
+        promotion_result,
         pending_sources,
         placeholder_concepts,
         queue["pending_decisions"],
@@ -3227,6 +3544,7 @@ def write_nightly_health(
             f"placeholder_concepts: `{len(placeholder_concepts)}`",
             f"pending_decision_reviews: `{len(queue['pending_decisions'])}`",
             f"pending_judgment_reviews: `{len(queue['pending_judgments'])}`",
+            f"auto_promotions: `{promotion_result.get('count', 0)}`",
             f"repair_backlog: `{relative_path(root, repair_backlog_path(root))}`",
         ],
     )
@@ -3236,11 +3554,22 @@ def write_nightly_health(
 def nightly_health(root: Path) -> dict[str, Any]:
     ensure_layout(root)
     compile_result = compile_wiki(root)
+    promotion_result = promote_recurring_outputs(root)
+    if promotion_result["count"]:
+        compile_result = compile_wiki(root)
     lint_result = lint_wiki(root)
-    state = write_nightly_health(root, compile_result, lint_result, semantic_report="", llm_used=False)
+    state = write_nightly_health(
+        root,
+        compile_result,
+        lint_result,
+        promotion_result=promotion_result,
+        semantic_report="",
+        llm_used=False,
+    )
     return {
         "compile": compile_result,
         "lint": lint_result,
+        "promotions": promotion_result,
         "repair_backlog": state["repair_backlog"]["path"],
         "state_path": relative_path(root, nightly_health_state_path(root)),
     }

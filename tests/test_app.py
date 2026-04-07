@@ -453,6 +453,18 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Scaling Decision", review_queue)
         self.assertIn("Scaling Judgment", review_queue)
 
+    def test_file_back_generates_unique_paths_for_same_title(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+
+        first = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+        second = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+
+        self.assertNotEqual(first["path"], second["path"])
+        self.assertTrue((self.root / first["path"]).exists())
+        self.assertTrue((self.root / second["path"]).exists())
+
     def test_review_page_updates_status_and_refreshes_queue(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -622,6 +634,83 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Query routes", client.prompt)
         self.assertIn("Touched components", client.prompt)
         self.assertIn("latency", client.prompt.lower())
+
+    def test_nightly_auto_promotes_recurring_decision_outputs(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        question = "Should we adopt transformer caching for inference?"
+        ask_question(self.root, question, "report")
+        ask_question(self.root, question, "report")
+
+        result = nightly_health(self.root)
+
+        decision_pages = sorted((self.root / "wiki" / "decisions").glob("*.md"))
+        self.assertEqual(len(decision_pages), 1)
+        decision_text = decision_pages[0].read_text(encoding="utf-8")
+        decision_frontmatter = parse_frontmatter(decision_text)
+        self.assertEqual(decision_frontmatter["kind"], "decision")
+        self.assertEqual(decision_frontmatter["promotion_origin"], "nightly-recurring-output")
+        self.assertEqual(decision_frontmatter["promotion_count"], "2")
+        self.assertIn(question, decision_text)
+        self.assertIn("## Auto Promotion", decision_text)
+        self.assertEqual(result["promotions"]["count"], 1)
+        self.assertEqual(result["promotions"]["created"], 1)
+        state = json.loads((self.root / result["state_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(state["promotions"]["count"], 1)
+        self.assertTrue(state["repair_backlog"]["auto_promotions"])
+
+    def test_nightly_auto_promotes_recurring_judgment_outputs(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        question = "Will transformer inference cost keep rising?"
+        ask_question(self.root, question, "report")
+        ask_question(self.root, question, "report")
+
+        result = nightly_health(self.root)
+
+        judgment_pages = sorted((self.root / "wiki" / "judgments").glob("*.md"))
+        self.assertEqual(len(judgment_pages), 1)
+        judgment_text = judgment_pages[0].read_text(encoding="utf-8")
+        judgment_frontmatter = parse_frontmatter(judgment_text)
+        self.assertEqual(judgment_frontmatter["kind"], "judgment")
+        self.assertEqual(judgment_frontmatter["promotion_origin"], "nightly-recurring-output")
+        self.assertEqual(judgment_frontmatter["promotion_count"], "2")
+        self.assertEqual(judgment_frontmatter["status"], "tentative")
+        self.assertIn(question, judgment_text)
+        self.assertEqual(result["promotions"]["count"], 1)
+
+    def test_nightly_updates_existing_auto_promoted_page_without_duplicates(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        question = "Should we adopt transformer caching for inference?"
+        ask_question(self.root, question, "report")
+        ask_question(self.root, question, "report")
+        nightly_health(self.root)
+
+        ask_question(self.root, question, "report")
+        result = nightly_health(self.root)
+
+        decision_pages = sorted((self.root / "wiki" / "decisions").glob("*.md"))
+        self.assertEqual(len(decision_pages), 1)
+        decision_frontmatter = parse_frontmatter(decision_pages[0].read_text(encoding="utf-8"))
+        self.assertEqual(decision_frontmatter["promotion_count"], "3")
+        self.assertEqual(result["promotions"]["count"], 1)
+        self.assertEqual(result["promotions"]["created"], 0)
+        self.assertEqual(result["promotions"]["updated"], 1)
+
+    def test_nightly_skips_auto_promotion_when_recurring_outputs_have_not_changed(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        question = "Should we adopt transformer caching for inference?"
+        ask_question(self.root, question, "report")
+        ask_question(self.root, question, "report")
+        nightly_health(self.root)
+
+        result = nightly_health(self.root)
+
+        self.assertEqual(result["promotions"]["count"], 0)
+        decision_pages = sorted((self.root / "wiki" / "decisions").glob("*.md"))
+        self.assertEqual(len(decision_pages), 1)
 
     def test_nightly_writes_repair_backlog_and_state(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
