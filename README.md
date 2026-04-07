@@ -1,6 +1,6 @@
 # aiwiki
 
-`aiwiki` 是一套本地优先的炼丹炉运行时：把原料持续编译成 wiki、machine memory 和可回流产物，而不是把知识库当成静态笔记仓库。
+`aiwiki` 是一套 local-first 的知识复利操作系统：它把网页、PDF、图片、repo 和本地笔记等原料持续编译成可追溯的 `wiki`、`machine memory`、`decision/judgment` 与可回流输出，并通过 `review`、`lint`、`nightly` 持续维护知识质量；它不是静态笔记库，也不是一次性 RAG 问答器，而是一套让知识能够持续沉淀、审阅和修复的运行时。
 
 架构基线见 [Alchemy Furnace.md](<./wiki/indexes/Alchemy Furnace.md>)。
 日常在 Obsidian 里使用时，入口是 [HOME.md](./HOME.md)。
@@ -143,6 +143,8 @@ machine-memory action 现在也有显式 lifecycle：
 - Obsidian：默认前端/IDE
 - [HOME.md](./HOME.md)：日常工作台
 - [Wiki Hub.md](<./wiki/indexes/Wiki Hub.md>)：知识中枢
+- [review-center.md](./wiki/indexes/review-center.md)：统一审阅/修复入口
+- [graph-view.md](./wiki/indexes/graph-view.md)：统一图谱入口
 
 ### 原料入口
 

@@ -294,6 +294,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("wiki/indexes/drift-report.md", result["index_pages"])
         self.assertIn("wiki/indexes/decisions.md", result["index_pages"])
         self.assertIn("wiki/indexes/judgments.md", result["index_pages"])
+        self.assertIn("wiki/indexes/review-center.md", result["index_pages"])
+        self.assertIn("wiki/indexes/graph-view.md", result["index_pages"])
         self.assertIn("schema/index.md", result["index_pages"])
 
         report_text = (self.root / result["path"]).read_text(encoding="utf-8")
@@ -303,6 +305,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("漂移报告", report_text)
         self.assertIn("决策索引", report_text)
         self.assertIn("判断索引", report_text)
+        self.assertIn("审阅中心", report_text)
+        self.assertIn("图谱视图", report_text)
         self.assertIn("运行时规则", report_text)
 
     def test_ensure_layout_bootstraps_runtime_schema_files(self) -> None:
@@ -319,6 +323,15 @@ class AiwikiFlowTests(unittest.TestCase):
         schema_index = (self.root / "schema" / "index.md").read_text(encoding="utf-8")
         self.assertIn("运行时规则", schema_index)
         self.assertIn("产品运行时", schema_index)
+
+    def test_ensure_layout_bootstraps_runtime_dashboard_files(self) -> None:
+        for relative, marker in (
+            ("wiki/indexes/review-center.md", "审阅中心"),
+            ("wiki/indexes/graph-view.md", "图谱视图"),
+        ):
+            path = self.root / relative
+            self.assertTrue(path.exists(), relative)
+            self.assertIn(marker, path.read_text(encoding="utf-8"))
 
     def test_ask_recompiles_when_raw_source_changes(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -1272,6 +1285,8 @@ class AiwikiFlowTests(unittest.TestCase):
         compile_wiki(self.root)
         (self.root / "wiki" / "indexes" / "index.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory.md").unlink()
+        (self.root / "wiki" / "indexes" / "review-center.md").unlink()
+        (self.root / "wiki" / "indexes" / "graph-view.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory-topology.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory-actions.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory-repair-plan.md").unlink()
@@ -1286,6 +1301,8 @@ class AiwikiFlowTests(unittest.TestCase):
         lint = lint_wiki(self.root)
         report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
         self.assertGreaterEqual(lint["counts"]["errors"], 2)
+        self.assertTrue((self.root / "wiki" / "indexes" / "review-center.md").exists())
+        self.assertTrue((self.root / "wiki" / "indexes" / "graph-view.md").exists())
         self.assertIn("Missing master wiki index page.", report_text)
         self.assertIn("Missing machine memory index page.", report_text)
         self.assertIn("Missing machine memory topology page.", report_text)

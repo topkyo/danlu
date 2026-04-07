@@ -133,6 +133,65 @@ DEFAULT_SCHEMA_FILES = {
     + "\n",
 }
 
+DEFAULT_DASHBOARD_FILES = {
+    "wiki/indexes/review-center.md": "\n".join(
+        [
+            "# 审阅中心",
+            "",
+            "这里是炼丹炉的人用审阅入口，负责把 pending review、aging、repair 和 concept rewrite 收拢到一个地方。",
+            "",
+            "## 先看哪里",
+            "",
+            "- [审阅队列](./review-queue.md)：处理 `decision / judgment` 的状态推进",
+            "- [Aging 报告](./aging-report.md)：看 overdue 和 escalation",
+            "- [概念质量](./concept-quality.md)：看弱概念、冲突信号、证据缺口、重写优先级",
+            "- [机器记忆动作队列](./machine-memory-actions.md)：看 machine-memory action lifecycle",
+            "- [机器记忆修复计划](./machine-memory-repair-plan.md)：看 execution batch 和 execution proposal",
+            "- [修复待办](./repair-backlog.md)：看 nightly 汇总出来的优先级队列",
+            "",
+            "## 推荐顺序",
+            "",
+            "1. 先处理升级项和已到期复审。",
+            "2. 再处理 accepted 的 machine-memory 修复动作。",
+            "3. 然后处理高优先级弱概念页和显式冲突信号。",
+            "4. 最后处理 deferred / watch 类项目。",
+            "",
+            "## 边界",
+            "",
+            "- 这里是入口页，不直接替代 `review-queue.md` 或 `repair-backlog.md`。",
+            "- 高风险修复仍然应通过 review 后执行，不要直接改写事实层。",
+        ]
+    )
+    + "\n",
+    "wiki/indexes/graph-view.md": "\n".join(
+        [
+            "# 图谱视图",
+            "",
+            "这里是炼丹炉的人用图谱入口，负责把 machine memory 的几类图相关页面收拢起来。",
+            "",
+            "## 先看哪里",
+            "",
+            "- [机器记忆](./machine-memory.md)：看 term index、digest、动作/提案数量",
+            "- [机器记忆拓扑](./machine-memory-topology.md)：看 hub、Mermaid 拓扑切片",
+            "- [图谱健康](./graph-health.md)：看 component、isolated/singleton/bridge 信号",
+            "- [漂移报告](./drift-report.md)：看最近一次 machine-memory 结构变化",
+            "- [概念质量](./concept-quality.md)：看图谱问题如何传导到 concept rewrite",
+            "",
+            "## 怎么读",
+            "",
+            "1. 先看 component、hub 和 drift 是否稳定。",
+            "2. 再看 link suggestion、action queue 和 repair proposal。",
+            "3. 最后回到具体 `wiki/concepts/` 或 `wiki/sources/` 页面处理。",
+            "",
+            "## 边界",
+            "",
+            "- 这里展示的是 `aiwiki` 的 machine-memory 视角，不等于 Obsidian 自带的 Graph View。",
+            "- Obsidian Graph 更适合看笔记链接；这里更适合看知识编译后的机读层状态。",
+        ]
+    )
+    + "\n",
+}
+
 TEXT_EXTENSIONS = {
     ".csv",
     ".json",
@@ -314,10 +373,19 @@ def ensure_layout(root: Path) -> None:
     for relative in LAYOUT_DIRS:
         (root / relative).mkdir(parents=True, exist_ok=True)
     ensure_runtime_schema(root)
+    ensure_runtime_dashboards(root)
 
 
 def ensure_runtime_schema(root: Path) -> None:
     for relative, content in DEFAULT_SCHEMA_FILES.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.exists():
+            path.write_text(content, encoding="utf-8")
+
+
+def ensure_runtime_dashboards(root: Path) -> None:
+    for relative, content in DEFAULT_DASHBOARD_FILES.items():
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         if not path.exists():
@@ -1712,8 +1780,10 @@ def render_compile_status(
         "- 决策索引位于 `decisions.md`。",
         "- 判断索引位于 `judgments.md`。",
         "- 审阅队列位于 `review-queue.md`。",
+        "- 审阅中心位于 `review-center.md`。",
         "- aging 报告位于 `aging-report.md`。",
         "- 机器记忆摘要位于 `machine-memory.md`。",
+        "- 图谱视图位于 `graph-view.md`。",
         "- 机器记忆拓扑位于 `machine-memory-topology.md`。",
         "- 机器记忆动作队列位于 `machine-memory-actions.md`。",
         "- 机器记忆修复计划位于 `machine-memory-repair-plan.md`。",
@@ -1754,9 +1824,11 @@ def render_master_index(
         "- [决策索引](./decisions.md)",
         "- [判断索引](./judgments.md)",
         "- [审阅队列](./review-queue.md)",
+        "- [审阅中心](./review-center.md)",
         "- [Aging 报告](./aging-report.md)",
         "- [编译状态](./compile-status.md)",
         "- [机器记忆](./machine-memory.md)",
+        "- [图谱视图](./graph-view.md)",
         "- [机器记忆拓扑](./machine-memory-topology.md)",
         "- [机器记忆动作队列](./machine-memory-actions.md)",
         "- [机器记忆修复计划](./machine-memory-repair-plan.md)",
@@ -3912,9 +3984,11 @@ def render_report(
         "- [决策索引](../../wiki/indexes/decisions.md)",
         "- [判断索引](../../wiki/indexes/judgments.md)",
         "- [审阅队列](../../wiki/indexes/review-queue.md)",
+        "- [审阅中心](../../wiki/indexes/review-center.md)",
         "- [Aging 报告](../../wiki/indexes/aging-report.md)",
         "- [概念质量](../../wiki/indexes/concept-quality.md)",
         "- [机器记忆](../../wiki/indexes/machine-memory.md)",
+        "- [图谱视图](../../wiki/indexes/graph-view.md)",
         "- [拓扑视图](../../wiki/indexes/machine-memory-topology.md)",
         "- [动作队列](../../wiki/indexes/machine-memory-actions.md)",
         "- [修复计划](../../wiki/indexes/machine-memory-repair-plan.md)",
@@ -4010,9 +4084,11 @@ def render_slides(
         "- `wiki/indexes/decisions.md`",
         "- `wiki/indexes/judgments.md`",
         "- `wiki/indexes/review-queue.md`",
+        "- `wiki/indexes/review-center.md`",
         "- `wiki/indexes/aging-report.md`",
         "- `wiki/indexes/concept-quality.md`",
         "- `wiki/indexes/machine-memory.md`",
+        "- `wiki/indexes/graph-view.md`",
         "- `wiki/indexes/machine-memory-topology.md`",
         "- `wiki/indexes/machine-memory-actions.md`",
         "- `wiki/indexes/machine-memory-repair-plan.md`",
@@ -4096,9 +4172,11 @@ def render_figure_brief(
         "- [决策索引](../../wiki/indexes/decisions.md)",
         "- [判断索引](../../wiki/indexes/judgments.md)",
         "- [审阅队列](../../wiki/indexes/review-queue.md)",
+        "- [审阅中心](../../wiki/indexes/review-center.md)",
         "- [Aging 报告](../../wiki/indexes/aging-report.md)",
         "- [概念质量](../../wiki/indexes/concept-quality.md)",
         "- [机器记忆](../../wiki/indexes/machine-memory.md)",
+        "- [图谱视图](../../wiki/indexes/graph-view.md)",
         "- [拓扑视图](../../wiki/indexes/machine-memory-topology.md)",
         "- [动作队列](../../wiki/indexes/machine-memory-actions.md)",
         "- [修复计划](../../wiki/indexes/machine-memory-repair-plan.md)",
@@ -4216,9 +4294,11 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
             "wiki/indexes/decisions.md",
             "wiki/indexes/judgments.md",
             "wiki/indexes/review-queue.md",
+            "wiki/indexes/review-center.md",
             "wiki/indexes/aging-report.md",
             "wiki/indexes/compile-status.md",
             "wiki/indexes/machine-memory.md",
+            "wiki/indexes/graph-view.md",
             "wiki/indexes/machine-memory-topology.md",
             "wiki/indexes/machine-memory-actions.md",
             "wiki/indexes/machine-memory-repair-plan.md",
@@ -4942,10 +5022,12 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/decisions.md": "Missing decisions index page.",
         "wiki/indexes/judgments.md": "Missing judgments index page.",
         "wiki/indexes/review-queue.md": "Missing review queue page.",
+        "wiki/indexes/review-center.md": "Missing review center page.",
         "wiki/indexes/aging-report.md": "Missing aging report page.",
         "wiki/indexes/concept-quality.md": "Missing concept quality page.",
         "wiki/indexes/compile-status.md": "Missing compile status page.",
         "wiki/indexes/machine-memory.md": "Missing machine memory index page.",
+        "wiki/indexes/graph-view.md": "Missing graph view page.",
         "wiki/indexes/machine-memory-topology.md": "Missing machine memory topology page.",
         "wiki/indexes/machine-memory-actions.md": "Missing machine memory actions page.",
         "wiki/indexes/machine-memory-repair-plan.md": "Missing machine memory repair plan page.",

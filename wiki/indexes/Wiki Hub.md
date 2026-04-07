@@ -21,7 +21,9 @@ kind: "dashboard"
 
 - [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]：`aiwiki` 的运行时架构
 - [[schema/index|运行时规则]]：compile、ask、lint 共同遵循的规则层
+- [[wiki/indexes/review-center|审阅中心]]：把 review、aging、repair 和 concept rewrite 收到一起
 - [[wiki/indexes/machine-memory|机器记忆]]：当前机器记忆摘要
+- [[wiki/indexes/graph-view|图谱视图]]：machine-memory 的统一人读入口
 - [[wiki/indexes/graph-health|图谱健康]]：当前图谱健康看板
 - [[wiki/indexes/drift-report|漂移报告]]：最近一次结构漂移报告
 - [[wiki/indexes/repair-backlog|修复待办]]：最近一次 nightly 修复队列
