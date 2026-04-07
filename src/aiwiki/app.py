@@ -29,6 +29,7 @@ LAYOUT_DIRS = (
     "output/slides",
     "output/figures",
     "output/graph",
+    "output/review",
     "output/lint",
     "prompts",
     ".aiwiki/state",
@@ -150,6 +151,7 @@ DEFAULT_DASHBOARD_FILES = {
             "- [机器记忆动作队列](./machine-memory-actions.md)：看 machine-memory action lifecycle",
             "- [机器记忆修复计划](./machine-memory-repair-plan.md)：看 execution batch 和 execution proposal",
             "- [修复待办](./repair-backlog.md)：看 nightly 汇总出来的优先级队列",
+            "- [本地审阅面板](../../output/review/review-center.html)：直接看审阅 cockpit",
             "",
             "## 推荐顺序",
             "",
@@ -1757,6 +1759,147 @@ def render_aging_report(decisions: list[dict[str, str]], judgments: list[dict[st
     return "\n".join(lines) + "\n"
 
 
+def render_review_center_html(
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    memory: dict[str, Any],
+    compiled_at: str,
+) -> str:
+    queue = review_queue(decisions, judgments)
+    aging = collect_aging_signals(decisions, judgments)
+    health = memory.get("health", {})
+    plan = health.get("repair_plan", {})
+    concept_quality = health.get("concept_quality", {})
+    pending_items = queue.get("pending_decisions", []) + queue.get("pending_judgments", [])
+    ready_actions = plan.get("ready_actions", [])
+    rewrite_candidates = concept_quality.get("rewrite_candidates", [])
+    conflict_signals = concept_quality.get("conflict_signals", [])
+
+    def render_page_item(page: dict[str, str]) -> str:
+        path = html.escape(f"../../{page['path']}")
+        status = html.escape(display_curated_status(page.get("status", "") or "unknown"))
+        revisit = html.escape(page.get("revisit_after", "") or "none")
+        return (
+            f'<li><a href="{path}">{html.escape(page["title"])}</a>'
+            f" | status {status}"
+            f" | revisit {revisit}</li>"
+        )
+
+    def render_action_item(action: dict[str, Any]) -> str:
+        primary = html.escape(str(action.get("primary_path") or ""))
+        status = html.escape(display_action_status(str(action.get("status") or "proposed")))
+        priority = html.escape(str(action.get("priority") or "medium"))
+        detail = ""
+        if action.get("secondary_path"):
+            detail = f" | secondary <code>{html.escape(str(action['secondary_path']))}</code>"
+        return (
+            f"<li>{html.escape(str(action.get('title') or 'unnamed action'))}"
+            f" | priority {priority}"
+            f" | status {status}"
+            f" | primary <code>{primary}</code>{detail}</li>"
+        )
+
+    def render_concept_item(item: dict[str, Any]) -> str:
+        slug = html.escape(str(item.get("slug") or ""))
+        title = html.escape(str(item.get("title") or slug))
+        issues = html.escape(", ".join(item.get("issues", [])) or "none")
+        return (
+            f'<li><a href="../../wiki/concepts/{slug}.md">{title}</a>'
+            f" | issues {issues}"
+            f" | sources {int(item.get('source_count', 0))}</li>"
+        )
+
+    pending_list = "".join(render_page_item(page) for page in pending_items[:12]) or "<li>当前没有待审项目。</li>"
+    overdue_list = "".join(render_page_item(page) for page in aging.get("overdue", [])[:10]) or "<li>当前没有已到期待复审页面。</li>"
+    escalated_list = "".join(render_page_item(page) for page in aging.get("escalated", [])[:10]) or "<li>当前没有需要升级处理的页面。</li>"
+    ready_action_list = "".join(render_action_item(action) for action in ready_actions[:10]) or "<li>当前没有 ready repair action。</li>"
+    rewrite_list = "".join(render_concept_item(item) for item in rewrite_candidates[:10]) or "<li>当前没有高优先级弱概念页。</li>"
+    conflict_list = "".join(render_concept_item(item) for item in conflict_signals[:10]) or "<li>当前没有显式概念冲突信号。</li>"
+
+    summary_cards = [
+        ("待审项目", str(len(pending_items))),
+        ("已到期复审", str(len(aging.get("overdue", [])))),
+        ("升级项", str(len(aging.get("escalated", [])))),
+        ("ready actions", str(plan.get("counts", {}).get("ready", 0))),
+        ("重写候选", str(concept_quality.get("counts", {}).get("rewrite_candidates", 0))),
+        ("冲突信号", str(concept_quality.get("counts", {}).get("conflict_signals", 0))),
+    ]
+
+    return "\n".join(
+        [
+            "<!doctype html>",
+            '<html lang="zh-CN">',
+            "<head>",
+            '  <meta charset="utf-8" />',
+            '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+            "  <title>Review Center</title>",
+            "  <style>",
+            "    :root { color-scheme: light; --bg: #fffaf0; --ink: #1f2937; --muted: #6b7280; --panel: #ffffff; --line: #e5e7eb; }",
+            "    body { margin: 0; padding: 24px; background: linear-gradient(180deg, #fffaf0 0%, #f3f4f6 100%); color: var(--ink); font: 14px/1.6 'Segoe UI', 'PingFang SC', sans-serif; }",
+            "    main { max-width: 1120px; margin: 0 auto; }",
+            "    h1, h2 { margin: 0 0 12px; }",
+            "    p { margin: 0 0 12px; color: var(--muted); }",
+            "    .panel, .card { background: rgba(255,255,255,0.94); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 18px 40px rgba(15,23,42,0.06); }",
+            "    .panel { padding: 18px; margin-bottom: 18px; }",
+            "    .meta, .lists { display: grid; gap: 16px; }",
+            "    .meta { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin: 18px 0 24px; }",
+            "    .card { padding: 14px 16px; }",
+            "    .metric { font-size: 24px; font-weight: 800; color: #b45309; }",
+            "    .metric-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }",
+            "    .lists { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }",
+            "    ul { margin: 0; padding-left: 18px; }",
+            "    li { margin: 4px 0; }",
+            "    a { color: #92400e; text-decoration: none; }",
+            "    a:hover { text-decoration: underline; }",
+            "    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }",
+            "  </style>",
+            "</head>",
+            "<body>",
+            "<main>",
+            '  <section class="panel">',
+            "    <h1>Review Center</h1>",
+            f"    <p>编译时间：<code>{html.escape(compiled_at)}</code>。这是炼丹炉的人用审阅 cockpit：把 review、aging、repair 和 concept rewrite 收在一个地方。</p>",
+            '    <div class="meta">',
+            *[
+                f'      <div class="card"><div class="metric">{html.escape(value)}</div><div class="metric-label">{html.escape(label)}</div></div>'
+                for label, value in summary_cards
+            ],
+            "    </div>",
+            "  </section>",
+            '  <section class="lists">',
+            '    <div class="panel"><h2>待审项目</h2><ul>',
+            f"{pending_list}",
+            "    </ul></div>",
+            '    <div class="panel"><h2>已到期 / 需升级</h2><ul>',
+            f"{overdue_list}",
+            f"{escalated_list}",
+            "    </ul></div>",
+            '    <div class="panel"><h2>Ready Repair Actions</h2><ul>',
+            f"{ready_action_list}",
+            "    </ul></div>",
+            '    <div class="panel"><h2>概念重写优先级</h2><ul>',
+            f"{rewrite_list}",
+            "    </ul></div>",
+            '    <div class="panel"><h2>概念冲突信号</h2><ul>',
+            f"{conflict_list}",
+            "    </ul></div>",
+            '    <div class="panel"><h2>相关入口</h2><ul>',
+            '      <li><a href="../../wiki/indexes/review-center.md">Review Center Dashboard</a></li>',
+            '      <li><a href="../../wiki/indexes/review-queue.md">审阅队列</a></li>',
+            '      <li><a href="../../wiki/indexes/aging-report.md">Aging 报告</a></li>',
+            '      <li><a href="../../wiki/indexes/machine-memory-actions.md">机器记忆动作队列</a></li>',
+            '      <li><a href="../../wiki/indexes/machine-memory-repair-plan.md">机器记忆修复计划</a></li>',
+            '      <li><a href="../../wiki/indexes/concept-quality.md">概念质量</a></li>',
+            "    </ul></div>",
+            "  </section>",
+            "</main>",
+            "</body>",
+            "</html>",
+            "",
+        ]
+    )
+
+
 def render_compile_status(
     entries: list[dict[str, Any]],
     concepts: list[dict[str, Any]],
@@ -1925,6 +2068,10 @@ def machine_memory_graph_path(root: Path) -> Path:
 
 def machine_memory_graph_html_path(root: Path) -> Path:
     return root / "output" / "graph" / "machine-memory.html"
+
+
+def review_center_html_path(root: Path) -> Path:
+    return root / "output" / "review" / "review-center.html"
 
 
 def machine_memory_history_path(root: Path) -> Path:
@@ -4075,6 +4222,9 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     changed_pages += int(
         write_if_changed(machine_memory_repair_plan_path(root), render_machine_memory_repair_plan(memory))
     )
+    changed_pages += int(
+        write_if_changed(review_center_html_path(root), render_review_center_html(decision_pages, judgment_pages, memory, compiled_at))
+    )
     changed_pages += int(write_if_changed(concept_quality_path(root), render_concept_quality(memory)))
     changed_pages += int(write_if_changed(graph_health_report_path(root), render_graph_health(memory)))
     changed_pages += int(write_if_changed(machine_memory_drift_report_path(root), render_drift_report(memory, transition)))
@@ -5293,10 +5443,13 @@ def lint_wiki(root: Path) -> dict[str, Any]:
 
     memory_state = machine_memory_state_path(root)
     graph_html = machine_memory_graph_html_path(root)
+    review_html = review_center_html_path(root)
     if manifest["entries"] and not memory_state.exists():
         findings.append(Finding("error", relative_path(root, memory_state), "Missing machine memory state file."))
     if manifest["entries"] and not graph_html.exists():
         findings.append(Finding("error", relative_path(root, graph_html), "Missing machine memory graph HTML view."))
+    if manifest["entries"] and not review_html.exists():
+        findings.append(Finding("error", relative_path(root, review_html), "Missing review center HTML view."))
     if memory_state.exists():
         try:
             memory = json.loads(memory_state.read_text(encoding="utf-8"))

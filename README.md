@@ -143,7 +143,7 @@ machine-memory action 现在也有显式 lifecycle：
 - Obsidian：默认前端/IDE
 - [HOME.md](./HOME.md)：日常工作台
 - [Wiki Hub.md](<./wiki/indexes/Wiki Hub.md>)：知识中枢
-- [review-center.md](./wiki/indexes/review-center.md)：统一审阅/修复入口
+- [review-center.md](./wiki/indexes/review-center.md)：统一审阅/修复入口；本地审阅面板在 `output/review/review-center.html`
 - [graph-view.md](./wiki/indexes/graph-view.md)：统一图谱入口；本地图谱产物在 `output/graph/machine-memory.html`
 
 ### 原料入口

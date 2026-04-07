@@ -15,6 +15,7 @@ kind: "dashboard"
 - [机器记忆动作队列](./machine-memory-actions.md)：看 machine-memory action lifecycle
 - [机器记忆修复计划](./machine-memory-repair-plan.md)：看 execution batch 和 execution proposal
 - [修复待办](./repair-backlog.md)：看 nightly 汇总出来的优先级队列
+- [本地审阅面板](../../output/review/review-center.html)：直接看审阅 cockpit
 
 ## 推荐顺序
 
@@ -22,6 +23,7 @@ kind: "dashboard"
 2. 再处理 accepted 的 machine-memory 修复动作。
 3. 然后处理高优先级弱概念页和显式冲突信号。
 4. 最后处理 deferred / watch 类项目。
+5. 需要统一查看时，优先打开 `output/review/review-center.html`。
 
 ## 边界
 

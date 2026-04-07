@@ -66,7 +66,7 @@ kind: "dashboard"
 - 想确认新投料有没有进系统：看 [[wiki/indexes/Raw Inbox|原料收件箱]]
 - 想看系统当前总览：看 [[wiki/indexes/Wiki Hub|知识中枢]]
 - 想看 pending review：看 [[wiki/indexes/review-queue|审阅队列]]
-- 想把 review / repair / aging 放到一个地方看：看 [[wiki/indexes/review-center|审阅中心]]
+- 想把 review / repair / aging 放到一个地方看：看 [[wiki/indexes/review-center|审阅中心]]，真正的本地审阅面板在 `output/review/review-center.html`
 - 想看修复优先级：看 [[wiki/indexes/repair-backlog|修复待办]]
 - 想看 retrieval / graph 是否健康：看 [[wiki/indexes/graph-health|图谱健康]] 和 [[wiki/indexes/machine-memory|机器记忆]]
 - 想从统一入口看 machine-memory 图层：看 [[wiki/indexes/graph-view|图谱视图]]，真正的本地图谱产物在 `output/graph/machine-memory.html`
