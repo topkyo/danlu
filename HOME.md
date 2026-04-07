@@ -1,52 +1,75 @@
 ---
-title: "aiwiki 首页"
+title: "炼丹炉工作台"
 kind: "dashboard"
 ---
 
-# aiwiki 首页
+# 炼丹炉工作台
 
-这个 vault 把 Obsidian 当作 `aiwiki` 的前端。
+这里不是架构说明书，而是 `aiwiki` 在 Obsidian 里的日常入口。
 
-`aiwiki` 负责 ingest、compile、ask、lint、provenance 和自动化；Obsidian 负责浏览本地目录树和检查管线产物。
+你在这里主要做 4 件事：
+- 投料
+- 看状态
+- 做查询
+- 回流并审阅重要结论
 
-## 快速入口
+## 今日入口
 
 - [[wiki/indexes/Raw Inbox|原料收件箱]]
 - [[wiki/indexes/Wiki Hub|知识中枢]]
 - [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
-- [[wiki/indexes/machine-memory|机器记忆]]
-- [[wiki/indexes/graph-health|图谱健康]]
-- [[wiki/indexes/drift-report|漂移报告]]
-- [[wiki/indexes/repair-backlog|修复待办]]
-- [[wiki/indexes/review-queue|审阅队列]]
-- [[schema/index|运行时规则]]
 - [[wiki/indexes/Outputs|输出面板]]
 - [[wiki/indexes/Search Presets|搜索预设]]
 
-## 目录说明
+## 今日信号
 
-- `raw/inbox/`：新投喂的来源笔记和直接丢进来的原料
-- `raw/assets/`：采集时保存的 PDF、图片和页面附件
-- `schema/`：运行时 ingest、引用、冲突、审阅、回流规则
-- `.aiwiki/state/`：manifest、机器记忆状态和历史
-- `.aiwiki/state/nightly-health.json`：最新 nightly 健康快照
-- `.aiwiki/cache/`：图谱导出和可重建的机读侧产物
-- `wiki/sources/`：每个 raw 条目对应一页编译后的来源页
-- `wiki/indexes/`：看板、索引、状态页和操作笔记
-- `wiki/decisions/` 与 `wiki/judgments/`：显式决策层和判断层
-- `wiki/derived/`：回流后的报告和派生笔记
+- [[wiki/indexes/review-queue|审阅队列]]
+- [[wiki/indexes/repair-backlog|修复待办]]
+- [[wiki/indexes/drift-report|漂移报告]]
+- [[wiki/indexes/graph-health|图谱健康]]
+- [[wiki/indexes/machine-memory|机器记忆]]
+- [[schema/index|运行时规则]]
+
+## 日常循环
+
+1. 把网页、PDF、图片、repo 或本地文件投进 `raw/inbox/`，或使用 `drop-*` 入口。
+2. 让 watcher / compile / nightly 自动刷新 `wiki/`、`output/` 和状态页。
+3. 在 `wiki/sources/`、`wiki/concepts/`、`wiki/indexes/` 里检查系统是否已经形成稳定知识。
+4. 用 `ask` / `run-ask` 生成报告、幻灯片或图表 brief。
+5. 把高价值结果 `file-back` 到 `wiki/derived/`、`wiki/decisions/`、`wiki/judgments/`，再进入审阅流。
+
+## 现在去哪看
+
+- 想确认新投料有没有进系统：看 [[wiki/indexes/Raw Inbox|原料收件箱]]
+- 想看系统当前总览：看 [[wiki/indexes/Wiki Hub|知识中枢]]
+- 想看 pending review：看 [[wiki/indexes/review-queue|审阅队列]]
+- 想看修复优先级：看 [[wiki/indexes/repair-backlog|修复待办]]
+- 想看 retrieval / graph 是否健康：看 [[wiki/indexes/graph-health|图谱健康]] 和 [[wiki/indexes/machine-memory|机器记忆]]
+- 想看最终产物：看 [[wiki/indexes/Outputs|输出面板]]
+
+## 路径职责
+
+- `raw/inbox/`：原始材料和 ingest 生成的 capture notes
+- `raw/assets/`：原始附件、页面图片、PDF、截图
+- `wiki/sources/`：来源页
+- `wiki/concepts/`：概念页
+- `wiki/indexes/`：索引、状态、日志、漂移、图谱健康、审阅队列、修复待办
+- `wiki/decisions/` 与 `wiki/judgments/`：高阶结论层
+- `wiki/derived/`：回流后的派生 markdown
 - `output/`：报告、幻灯片、图表和 lint 结果
+- `schema/`：运行时规则
 
-## 工作方式
+## 使用边界
 
-1. 把原料丢进 `raw/inbox/`，或用 `drop-*` 入口导入。
-2. 让 watcher 自动编译来源页并刷新 lint / 索引结果。
-3. 定期跑 `nightly` 或 `run-nightly`，生成修复待办。
-4. 在 Obsidian 里主要看 `wiki/sources/`、`wiki/indexes/review-queue.md`、`wiki/indexes/repair-backlog.md` 和 `output/`。
-5. 把高价值输出回流，并显式审阅 decision/judgment 页面。
+- Obsidian 是前端/IDE，不是编译器
+- `aiwiki` 负责 ingest、compile、ask、lint、watch、nightly、provenance
+- 原始证据留在 `raw/`
+- 高价值综合沉到 `wiki/`
+- 查询产物先出到 `output/`，确认后再回流
 
 ## 备注
 
-- 在 Obsidian 里新建笔记时，默认会落到 `raw/inbox/`。
-- 在 Obsidian 里新建附件时，默认会落到 `raw/assets/`。
-- 左侧预置搜索页签已经按 `raw`、`wiki`、`output` 分好范围。
+- Obsidian 新建笔记默认落到 `raw/inbox/`
+- Obsidian 新建附件默认落到 `raw/assets/`
+- 如果你要理解整体结构，去看 [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
+- 如果你要看如何运行整个系统，去看 [README.md](/home/tim/ai-wiki/README.md)
