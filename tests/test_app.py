@@ -676,6 +676,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Query subgraph edge count", client.prompt)
         self.assertIn("Query routes", client.prompt)
         self.assertIn("Touched components", client.prompt)
+        self.assertIn("wiki/indexes/concept-quality.md", client.prompt)
         self.assertIn("wiki/indexes/machine-memory-topology.md", client.prompt)
         self.assertIn("wiki/indexes/machine-memory-actions.md", client.prompt)
         self.assertIn("Relevant repair actions", client.prompt)
@@ -810,11 +811,13 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("待审决策", backlog_text)
         self.assertEqual(state["repair_backlog"]["path"], result["repair_backlog"])
         self.assertEqual(state["lint"]["counts"]["warnings"], result["lint"]["counts"]["warnings"])
+        self.assertEqual(state["concept_quality"]["path"], "wiki/indexes/concept-quality.md")
         self.assertIn("health", state["machine_memory"])
         self.assertEqual(state["machine_memory"]["actions_path"], "wiki/indexes/machine-memory-actions.md")
         self.assertEqual(state["machine_memory"]["repair_plan_path"], "wiki/indexes/machine-memory-repair-plan.md")
         self.assertIn("machine_memory_actions", state["repair_backlog"])
         self.assertEqual(state["repair_backlog"]["repair_plan_path"], "wiki/indexes/machine-memory-repair-plan.md")
+        self.assertTrue(state["repair_backlog"]["weak_concept_slugs"])
         self.assertTrue(state["repair_backlog"]["pending_review_decisions"])
         self.assertTrue(state["repair_backlog"]["pending_review_judgments"])
         self.assertFalse(state["llm_used"])
@@ -985,6 +988,17 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("## Need Triage", repair_text)
         self.assertIn("## Execution Batches", repair_text)
         self.assertIn("review-action overloaded-concept-latency --status accepted", repair_text)
+
+    def test_compile_generates_concept_quality_page(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+
+        compile_wiki(self.root)
+
+        concept_quality = self.root / "wiki" / "indexes" / "concept-quality.md"
+        self.assertTrue(concept_quality.exists())
+        quality_text = concept_quality.read_text(encoding="utf-8")
+        self.assertIn("## Rewrite Now", quality_text)
+        self.assertIn("## Merge Candidates", quality_text)
 
     def test_compile_persists_machine_memory_action_lifecycle_state(self) -> None:
         self._seed_machine_memory_actions()
@@ -1187,6 +1201,7 @@ class AiwikiFlowTests(unittest.TestCase):
         (self.root / "wiki" / "indexes" / "machine-memory-topology.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory-actions.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory-repair-plan.md").unlink()
+        (self.root / "wiki" / "indexes" / "concept-quality.md").unlink()
         (self.root / "wiki" / "indexes" / "graph-health.md").unlink()
         (self.root / "wiki" / "indexes" / "drift-report.md").unlink()
         (self.root / ".aiwiki" / "cache" / "machine-memory-graph.json").unlink()
@@ -1202,6 +1217,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Missing machine memory topology page.", report_text)
         self.assertIn("Missing machine memory actions page.", report_text)
         self.assertIn("Missing machine memory repair plan page.", report_text)
+        self.assertIn("Missing concept quality page.", report_text)
         self.assertIn("Missing machine memory graph health page.", report_text)
         self.assertIn("Missing machine memory drift report.", report_text)
         self.assertIn("Missing machine memory graph export.", report_text)

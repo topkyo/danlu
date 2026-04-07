@@ -1708,6 +1708,7 @@ def render_master_index(
         "## 核心页面",
         "- [来源索引](./sources.md)",
         "- [概念索引](./concepts.md)",
+        "- [概念质量](./concept-quality.md)",
         "- [决策索引](./decisions.md)",
         "- [判断索引](./judgments.md)",
         "- [审阅队列](./review-queue.md)",
@@ -1827,6 +1828,10 @@ def machine_memory_actions_path(root: Path) -> Path:
 
 def machine_memory_repair_plan_path(root: Path) -> Path:
     return root / "wiki" / "indexes" / "machine-memory-repair-plan.md"
+
+
+def concept_quality_path(root: Path) -> Path:
+    return root / "wiki" / "indexes" / "concept-quality.md"
 
 
 def machine_memory_action_state_path(root: Path) -> Path:
@@ -3078,6 +3083,7 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         "- [修复计划](./machine-memory-repair-plan.md)",
         "- [漂移报告](./drift-report.md)",
         "- [修复待办](./repair-backlog.md)",
+        "- [概念质量](./concept-quality.md)",
         "",
         "## Action Workflow",
         f"- 状态文件：`{health.get('action_state_path', '.aiwiki/state/machine-memory-actions.json')}`",
@@ -3228,6 +3234,7 @@ def render_machine_memory_topology(memory: dict[str, Any]) -> str:
             "- [动作队列](./machine-memory-actions.md)",
             "- [修复计划](./machine-memory-repair-plan.md)",
             "- [修复待办](./repair-backlog.md)",
+            "- [概念质量](./concept-quality.md)",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -3474,6 +3481,68 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_concept_quality(memory: dict[str, Any]) -> str:
+    quality = memory.get("health", {}).get("concept_quality", {})
+    counts = quality.get("counts", {})
+    weak_concepts = quality.get("weak_concepts", [])
+    stable_concepts = quality.get("stable_concepts", [])
+    merge_candidates = quality.get("merge_candidates", [])
+    lines = [
+        "# 概念质量",
+        "",
+        f"- 最近编译时间：`{memory['compiled_at']}`",
+        f"- 弱概念页：`{counts.get('weak', 0)}`",
+        f"- 稳定概念页：`{counts.get('stable', 0)}`",
+        f"- 占位概念页：`{counts.get('placeholders', 0)}`",
+        f"- 合并候选：`{counts.get('merge_candidates', 0)}`",
+        "",
+        "## Rewrite Now",
+    ]
+    if not weak_concepts:
+        lines.append("- 当前没有需要立即重写的概念页。")
+    else:
+        for concept in weak_concepts[:12]:
+            lines.append(
+                f"- [{concept['title']}](../concepts/{concept['slug']}.md)"
+                f" | issues `{', '.join(concept.get('issues', [])) or 'none'}`"
+                f" | sources `{concept.get('source_count', 0)}`"
+                f" | related `{concept.get('related_count', 0)}`"
+            )
+    lines.extend(["", "## Merge Candidates"])
+    if not merge_candidates:
+        lines.append("- 当前没有明显的概念合并候选。")
+    else:
+        for candidate in merge_candidates[:10]:
+            lines.append(
+                f"- [{candidate['left_title']}](../concepts/{candidate['left_slug']}.md)"
+                f" <-> [{candidate['right_title']}](../concepts/{candidate['right_slug']}.md)"
+                f" | shared_sources `{len(candidate.get('shared_sources', []))}`"
+                f" | shared_tokens `{', '.join(candidate.get('shared_tokens', [])) or 'none'}`"
+            )
+    lines.extend(["", "## Stable Concepts"])
+    if not stable_concepts:
+        lines.append("- 当前还没有稳定概念页。")
+    else:
+        for concept in stable_concepts[:10]:
+            lines.append(
+                f"- [{concept['title']}](../concepts/{concept['slug']}.md)"
+                f" | sources `{concept.get('source_count', 0)}`"
+                f" | related `{concept.get('related_count', 0)}`"
+            )
+    lines.extend(
+        [
+            "",
+            "## 相关链接",
+            "- [概念索引](./concepts.md)",
+            "- [机器记忆](./machine-memory.md)",
+            "- [动作队列](./machine-memory-actions.md)",
+            "- [修复计划](./machine-memory-repair-plan.md)",
+            "- [修复待办](./repair-backlog.md)",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
 def compile_wiki(root: Path) -> dict[str, Any]:
     ensure_layout(root)
     manifest = sync_manifest_with_raw(root)
@@ -3559,6 +3628,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     memory["health"] = build_machine_memory_health(memory)
     memory["health"].update(reconcile_machine_memory_actions(root, memory["health"], compiled_at=compiled_at))
     memory["health"]["repair_plan"] = build_machine_memory_repair_plan(memory["health"])
+    memory["health"]["concept_quality"] = build_concept_quality(root, memory)
     memory["digest"] = machine_memory_digest(memory)
     graph = build_machine_memory_graph(memory)
     memory["graph_digest"] = graph["digest"]
@@ -3583,6 +3653,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     changed_pages += int(
         write_if_changed(machine_memory_repair_plan_path(root), render_machine_memory_repair_plan(memory))
     )
+    changed_pages += int(write_if_changed(concept_quality_path(root), render_concept_quality(memory)))
     changed_pages += int(write_if_changed(graph_health_report_path(root), render_graph_health(memory)))
     changed_pages += int(write_if_changed(machine_memory_drift_report_path(root), render_drift_report(memory, transition)))
     append_wiki_log(
@@ -3730,6 +3801,7 @@ def render_report(
         "- [判断索引](../../wiki/indexes/judgments.md)",
         "- [审阅队列](../../wiki/indexes/review-queue.md)",
         "- [Aging 报告](../../wiki/indexes/aging-report.md)",
+        "- [概念质量](../../wiki/indexes/concept-quality.md)",
         "- [机器记忆](../../wiki/indexes/machine-memory.md)",
         "- [拓扑视图](../../wiki/indexes/machine-memory-topology.md)",
         "- [动作队列](../../wiki/indexes/machine-memory-actions.md)",
@@ -3827,6 +3899,7 @@ def render_slides(
         "- `wiki/indexes/judgments.md`",
         "- `wiki/indexes/review-queue.md`",
         "- `wiki/indexes/aging-report.md`",
+        "- `wiki/indexes/concept-quality.md`",
         "- `wiki/indexes/machine-memory.md`",
         "- `wiki/indexes/machine-memory-topology.md`",
         "- `wiki/indexes/machine-memory-actions.md`",
@@ -3912,6 +3985,7 @@ def render_figure_brief(
         "- [判断索引](../../wiki/indexes/judgments.md)",
         "- [审阅队列](../../wiki/indexes/review-queue.md)",
         "- [Aging 报告](../../wiki/indexes/aging-report.md)",
+        "- [概念质量](../../wiki/indexes/concept-quality.md)",
         "- [机器记忆](../../wiki/indexes/machine-memory.md)",
         "- [拓扑视图](../../wiki/indexes/machine-memory-topology.md)",
         "- [动作队列](../../wiki/indexes/machine-memory-actions.md)",
@@ -4340,6 +4414,101 @@ def concept_summary_is_placeholder(markdown: str) -> bool:
     return summary.startswith("- This concept currently appears in `")
 
 
+def concept_quality_tokens(label: str) -> set[str]:
+    return {token for token in tokenize(label) if token not in STOP_WORDS}
+
+
+def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
+    placeholder_slugs = set(placeholder_concept_slugs(root))
+    singleton_slugs = set(memory.get("health", {}).get("singleton_concept_slugs", []))
+    concept_nodes = [dict(node) for node in memory.get("concept_nodes", []) if isinstance(node, dict)]
+    weak_concepts: list[dict[str, Any]] = []
+    stable_concepts: list[dict[str, Any]] = []
+
+    for node in concept_nodes:
+        slug = str(node.get("slug") or "")
+        title = str(node.get("title") or slug)
+        source_pages = list(node.get("source_pages", []))
+        related_slugs = list(node.get("related_slugs", []))
+        issues: list[str] = []
+        score = 0
+        if slug in placeholder_slugs:
+            issues.append("placeholder-summary")
+            score += 3
+        if slug in singleton_slugs or len(source_pages) <= 1:
+            issues.append("single-source")
+            score += 2
+        if not related_slugs:
+            issues.append("no-related-concepts")
+            score += 1
+        record = {
+            "slug": slug,
+            "title": title,
+            "path": f"wiki/concepts/{slug}.md",
+            "source_count": len(source_pages),
+            "related_count": len(related_slugs),
+            "issues": issues,
+            "score": score,
+            "quality_state": "stable" if score == 0 else ("rewrite-now" if score >= 3 else "watch"),
+        }
+        if score:
+            weak_concepts.append(record)
+        else:
+            stable_concepts.append(record)
+
+    merge_candidates: list[dict[str, Any]] = []
+    for index, left in enumerate(concept_nodes):
+        left_tokens = concept_quality_tokens(str(left.get("title") or left.get("slug") or ""))
+        left_sources = set(left.get("source_pages", []))
+        if not left_tokens or not left_sources:
+            continue
+        for right in concept_nodes[index + 1 :]:
+            right_tokens = concept_quality_tokens(str(right.get("title") or right.get("slug") or ""))
+            right_sources = set(right.get("source_pages", []))
+            if not right_tokens or not right_sources:
+                continue
+            shared_sources = sorted(left_sources & right_sources)
+            if not shared_sources:
+                continue
+            shared_tokens = sorted(left_tokens & right_tokens)
+            left_slug = str(left.get("slug") or "")
+            right_slug = str(right.get("slug") or "")
+            subset_match = left_tokens <= right_tokens or right_tokens <= left_tokens or left_slug in right_slug or right_slug in left_slug
+            if not subset_match and len(shared_tokens) < 2:
+                continue
+            merge_candidates.append(
+                {
+                    "left_slug": left_slug,
+                    "left_title": str(left.get("title") or left_slug),
+                    "right_slug": right_slug,
+                    "right_title": str(right.get("title") or right_slug),
+                    "shared_sources": shared_sources,
+                    "shared_tokens": shared_tokens,
+                    "score": len(shared_sources) * 2 + len(shared_tokens),
+                }
+            )
+
+    weak_concepts.sort(
+        key=lambda item: (-int(item.get("score", 0)), int(item.get("source_count", 0)), item.get("title", "").lower())
+    )
+    stable_concepts.sort(key=lambda item: (-int(item.get("source_count", 0)), item.get("title", "").lower()))
+    merge_candidates.sort(
+        key=lambda item: (-int(item.get("score", 0)), item["left_title"].lower(), item["right_title"].lower())
+    )
+    return {
+        "weak_concepts": weak_concepts[:20],
+        "stable_concepts": stable_concepts[:12],
+        "merge_candidates": merge_candidates[:12],
+        "placeholder_slugs": sorted(placeholder_slugs),
+        "counts": {
+            "weak": len(weak_concepts),
+            "stable": len(stable_concepts),
+            "merge_candidates": len(merge_candidates),
+            "placeholders": len(placeholder_slugs),
+        },
+    }
+
+
 def lint_wiki(root: Path) -> dict[str, Any]:
     ensure_layout(root)
     manifest = sync_manifest_with_raw(root)
@@ -4382,6 +4551,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/judgments.md": "Missing judgments index page.",
         "wiki/indexes/review-queue.md": "Missing review queue page.",
         "wiki/indexes/aging-report.md": "Missing aging report page.",
+        "wiki/indexes/concept-quality.md": "Missing concept quality page.",
         "wiki/indexes/compile-status.md": "Missing compile status page.",
         "wiki/indexes/machine-memory.md": "Missing machine memory index page.",
         "wiki/indexes/machine-memory-topology.md": "Missing machine memory topology page.",
@@ -4623,6 +4793,7 @@ def render_repair_backlog(
     escalated_actions = health.get("escalated_actions", [])
     inactive_actions = health.get("inactive_actions", [])
     repair_plan = health.get("repair_plan", {})
+    concept_quality = health.get("concept_quality", {})
     promotions = promotion_result.get("pages", [])
     lines = [
         "# 修复待办",
@@ -4646,6 +4817,8 @@ def render_repair_backlog(
         f"- Ready 动作：`{repair_plan.get('counts', {}).get('ready', 0)}`",
         f"- 待分流动作：`{repair_plan.get('counts', {}).get('triage', 0)}`",
         f"- 执行批次：`{repair_plan.get('counts', {}).get('batches', 0)}`",
+        f"- 弱概念页：`{concept_quality.get('counts', {}).get('weak', 0)}`",
+        f"- 概念合并候选：`{concept_quality.get('counts', {}).get('merge_candidates', 0)}`",
         f"- 图谱修复候选：`{len(health.get('link_suggestions', []))}`",
         f"- 无概念覆盖来源：`{len(sources_without_concepts)}`",
         f"- 图谱分量数：`{health.get('component_count', 0)}`",
@@ -4662,6 +4835,8 @@ def render_repair_backlog(
         lines.append(f"2. 补齐 `{len(pending_sources)}` 个仍是占位摘要的来源页。")
     if placeholder_concepts:
         lines.append(f"3. 重写 `{len(placeholder_concepts)}` 个仍使用回退摘要的概念页。")
+    if concept_quality.get("counts", {}).get("weak", 0):
+        lines.append(f"3a. 按概念质量看板优先处理 `{concept_quality.get('counts', {}).get('weak', 0)}` 个弱概念页。")
     if pending_review_decisions:
         lines.append(f"4. 审阅 `{len(pending_review_decisions)}` 个等待批准或复审的决策页。")
     if pending_review_judgments:
@@ -4797,6 +4972,23 @@ def render_repair_backlog(
             lines.append(
                 f"- 清除：`{action['id']}` | {action['title']} | inactive_since `{action.get('inactive_since', '') or 'none'}`"
             )
+    if concept_quality.get("weak_concepts"):
+        lines.append("")
+        lines.append("### 弱概念页")
+        for concept in concept_quality.get("weak_concepts", [])[:10]:
+            lines.append(
+                f"- `{concept['path']}` | issues `{', '.join(concept.get('issues', [])) or 'none'}`"
+                f" | sources `{concept.get('source_count', 0)}`"
+            )
+    if concept_quality.get("merge_candidates"):
+        lines.append("")
+        lines.append("### 概念合并候选")
+        for candidate in concept_quality.get("merge_candidates", [])[:8]:
+            lines.append(
+                f"- `{candidate['left_slug']}` <-> `{candidate['right_slug']}`"
+                f" | shared_sources `{len(candidate.get('shared_sources', []))}`"
+                f" | shared_tokens `{', '.join(candidate.get('shared_tokens', [])) or 'none'}`"
+            )
     if repair_plan.get("execution_batches"):
         lines.append("")
         lines.append("### 执行批次")
@@ -4901,6 +5093,13 @@ def write_nightly_health(
             "escalated_pages": [page["path"] for page in aging["escalated"]],
             "scheduled_pages": [page["path"] for page in aging["scheduled"]],
         },
+        "concept_quality": {
+            "path": relative_path(root, concept_quality_path(root)),
+            "weak_concept_slugs": [
+                concept["slug"] for concept in memory.get("health", {}).get("concept_quality", {}).get("weak_concepts", [])
+            ],
+            "merge_candidates": memory.get("health", {}).get("concept_quality", {}).get("counts", {}).get("merge_candidates", 0),
+        },
         "machine_memory": {
             "digest": memory.get("digest", ""),
             "graph_digest": memory.get("graph_digest", ""),
@@ -4927,6 +5126,9 @@ def write_nightly_health(
             "overdue_pages": [page["path"] for page in aging["overdue"]],
             "escalated_pages": [page["path"] for page in aging["escalated"]],
             "auto_promotions": [page["path"] for page in promotion_result.get("pages", [])],
+            "weak_concept_slugs": [
+                concept["slug"] for concept in memory.get("health", {}).get("concept_quality", {}).get("weak_concepts", [])
+            ],
             "machine_memory_actions": [action["id"] for action in memory.get("health", {}).get("actions", [])],
             "overdue_action_ids": [action["id"] for action in memory.get("health", {}).get("overdue_actions", [])],
             "escalated_action_ids": [action["id"] for action in memory.get("health", {}).get("escalated_actions", [])],
@@ -4967,6 +5169,7 @@ def write_nightly_health(
             f"overdue_reviews: `{len(aging['overdue'])}`",
             f"escalation_candidates: `{len(aging['escalated'])}`",
             f"auto_promotions: `{promotion_result.get('count', 0)}`",
+            f"weak_concepts: `{memory.get('health', {}).get('concept_quality', {}).get('counts', {}).get('weak', 0)}`",
             f"machine_memory_actions: `{memory.get('health', {}).get('action_counts', {}).get('total', 0)}`",
             f"ready_machine_memory_actions: `{memory.get('health', {}).get('repair_plan', {}).get('counts', {}).get('ready', 0)}`",
             f"repair_backlog: `{relative_path(root, repair_backlog_path(root))}`",

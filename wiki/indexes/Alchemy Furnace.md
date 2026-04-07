@@ -195,6 +195,7 @@ status: "active"
 4. pending 的 decision / judgment 会持续进入 aging / revisit / escalation 跟踪。
 5. machine-memory action queue 会保留 `proposed / accepted / deferred / resolved / rejected` 生命周期，并把 overdue / escalation / inactive 历史暴露给 nightly。
 6. repair plan 会把 accepted / proposed / deferred 动作整理成 execution batches，给 nightly 和人工修复提供下一步提示。
+7. concept quality loop 会把弱概念页、占位概念和概念合并候选整理成稳定看板。
 
 ## 角色分工
 
@@ -236,6 +237,7 @@ status: "active"
 - machine-memory topology、hub 指标、动作队列和 Mermaid 拓扑切片
 - machine-memory action lifecycle、review-action 入口、inactive / overdue / escalation 视图
 - machine-memory repair plan、execution batch、next-step / command-hint
+- concept-quality 看板、弱概念页和概念合并候选
 - decision / judgment writeback layers
 - decision / judgment review workflow 与 review queue
 - recurring outputs 自动晋升到 decision / judgment 页面
@@ -248,7 +250,7 @@ status: "active"
 
 下一阶段值得做的：
 
-- concept quality loop：冲突显式化、重复概念合并、低质量概念重写优先级
+- 更深的 concept quality loop：冲突显式化、低质量概念重写优先级、LLM 重写策略
 - 更深的 graph repair automation：从 plan 走向更强的 repair 执行策略
 
 ## 架构不变量
