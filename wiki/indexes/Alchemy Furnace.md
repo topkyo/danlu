@@ -193,6 +193,7 @@ status: "active"
 2. `run-lint` 补 semantic review。
 3. `nightly` / `run-nightly` 会把 drift、review queue、repair backlog 聚合起来。
 4. pending 的 decision / judgment 会持续进入 aging / revisit / escalation 跟踪。
+5. machine-memory action queue 会保留 `proposed / accepted / deferred / resolved / rejected` 生命周期，并把 overdue / escalation / inactive 历史暴露给 nightly。
 
 ## 角色分工
 
@@ -232,6 +233,7 @@ status: "active"
 - graph-aware retrieval、query routes、component-aware traversal
 - graph-health 看板和 repair backlog
 - machine-memory topology、hub 指标、动作队列和 Mermaid 拓扑切片
+- machine-memory action lifecycle、review-action 入口、inactive / overdue / escalation 视图
 - decision / judgment writeback layers
 - decision / judgment review workflow 与 review queue
 - recurring outputs 自动晋升到 decision / judgment 页面
@@ -244,8 +246,8 @@ status: "active"
 
 下一阶段值得做的：
 
-- 更深的 graph repair automation / machine-memory actions
-- 更强的 aging / revisit / escalation 机制
+- action execution policy 与更深的 graph repair automation
+- concept quality loop：冲突显式化、重复概念合并、低质量概念重写优先级
 
 ## 架构不变量
 

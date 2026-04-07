@@ -20,6 +20,7 @@ from aiwiki.app import (
     parse_frontmatter,
     placeholder_concept_slugs,
     render_frontmatter,
+    review_machine_memory_action,
     review_page,
 )
 from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
@@ -92,6 +93,12 @@ class AiwikiFlowTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()
+
+    def _seed_machine_memory_actions(self) -> None:
+        for index in range(4):
+            source = self.root / f"action-{index}.md"
+            source.write_text(f"# Latency Node {index}\n\nLatency throughput node {index}.\n", encoding="utf-8")
+            ingest_source(self.root, str(source), title=f"Latency Node {index}")
 
     def test_ingest_compile_ask_file_back_and_lint(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -964,6 +971,61 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("## 优先队列", actions_text)
         self.assertIn("## 补链动作", actions_text)
         self.assertIn("## 相关链接", actions_text)
+
+    def test_compile_persists_machine_memory_action_lifecycle_state(self) -> None:
+        self._seed_machine_memory_actions()
+
+        compile_wiki(self.root)
+        state_path = self.root / ".aiwiki" / "state" / "machine-memory-actions.json"
+        first_state = json.loads(state_path.read_text(encoding="utf-8"))
+        self.assertTrue(first_state["actions"])
+        overloaded = next(action for action in first_state["actions"] if action["id"] == "overloaded-concept-latency")
+        self.assertEqual(overloaded["status"], "proposed")
+        self.assertEqual(overloaded["occurrences"], 1)
+        self.assertTrue(overloaded["active"])
+
+        compile_wiki(self.root)
+        second_state = json.loads(state_path.read_text(encoding="utf-8"))
+        overloaded = next(action for action in second_state["actions"] if action["id"] == "overloaded-concept-latency")
+        self.assertEqual(overloaded["occurrences"], 2)
+        self.assertEqual(overloaded["pending_review"], "true")
+
+    def test_review_machine_memory_action_updates_status_and_refreshes_page(self) -> None:
+        self._seed_machine_memory_actions()
+        compile_wiki(self.root)
+
+        result = review_machine_memory_action(self.root, "overloaded-concept-latency", "accepted", note="Queue it.")
+
+        self.assertEqual(result["status"], "accepted")
+        state = json.loads((self.root / ".aiwiki" / "state" / "machine-memory-actions.json").read_text(encoding="utf-8"))
+        action = next(action for action in state["actions"] if action["id"] == "overloaded-concept-latency")
+        self.assertEqual(action["status"], "accepted")
+        self.assertEqual(action["review_note"], "Queue it.")
+        self.assertTrue(action["reviewed_at"])
+        actions_page = (self.root / "wiki" / "indexes" / "machine-memory-actions.md").read_text(encoding="utf-8")
+        self.assertIn("已接受", actions_page)
+
+    def test_compile_marks_disappeared_machine_memory_action_inactive(self) -> None:
+        self._seed_machine_memory_actions()
+        compile_wiki(self.root)
+
+        manifest = load_manifest(self.root)
+        target_entry = next(entry for entry in manifest["entries"] if entry["title"] == "Latency Node 3")
+        source = self.root / target_entry["stored_path"]
+        source.write_text(
+            "---\n"
+            'title: "Different Topic"\n'
+            "---\n\n"
+            "# Different Topic\n\n"
+            "Completely unrelated material.\n",
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+
+        state = json.loads((self.root / ".aiwiki" / "state" / "machine-memory-actions.json").read_text(encoding="utf-8"))
+        action = next(action for action in state["actions"] if action["id"] == "overloaded-concept-latency")
+        self.assertFalse(action["active"])
+        self.assertTrue(action["inactive_since"])
 
     def test_drop_url_creates_note_and_manifest_metadata(self) -> None:
         image_bytes = base64.b64decode(

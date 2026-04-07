@@ -6,7 +6,17 @@ import argparse
 import json
 from pathlib import Path
 
-from .app import ask_question, compile_wiki, ensure_layout, file_back, ingest_source, lint_wiki, nightly_health, review_page
+from .app import (
+    ask_question,
+    compile_wiki,
+    ensure_layout,
+    file_back,
+    ingest_source,
+    lint_wiki,
+    nightly_health,
+    review_machine_memory_action,
+    review_page,
+)
 from .drop import drop_image, drop_pdf, drop_repo, drop_url
 from .runner import auto_process_once, llm_status, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 
@@ -108,6 +118,14 @@ def build_parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--status", required=True, help="Target review status for the page.")
     review_parser.add_argument("--note", help="Optional review note to store in the page.")
     review_parser.add_argument("--confidence", help="Optional confidence override for judgment pages.")
+
+    action_review_parser = subparsers.add_parser(
+        "review-action",
+        help="Advance a machine-memory repair action through the explicit action workflow.",
+    )
+    action_review_parser.add_argument("action_id", help="Machine-memory action id.")
+    action_review_parser.add_argument("--status", required=True, help="Target action status.")
+    action_review_parser.add_argument("--note", help="Optional action review note.")
 
     subparsers.add_parser("lint", help="Run deterministic lint checks against the wiki.")
     subparsers.add_parser("run-lint", help="Run deterministic lint plus an LLM-backed semantic lint pass.")
@@ -224,6 +242,8 @@ def main(argv: list[str] | None = None) -> int:
             result = file_back(root, args.artifact, title=args.title, kind=args.kind)
         elif args.command == "review-page":
             result = review_page(root, args.page, args.status, note=args.note, confidence=args.confidence)
+        elif args.command == "review-action":
+            result = review_machine_memory_action(root, args.action_id, args.status, note=args.note)
         elif args.command == "lint":
             result = lint_wiki(root)
         elif args.command == "run-lint":

@@ -102,6 +102,7 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . file-back output/reports/xxx.md
 
 ```bash
 PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/decisions/example.md --status approved --note "Approved after source review."
+PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-latency --status accepted --note "Queue for concept split."
 PYTHONPATH=src python3 -m aiwiki.cli --root . lint
 PYTHONPATH=src python3 -m aiwiki.cli --root . nightly
 ```
@@ -113,7 +114,14 @@ nightly 也会继续跟踪 `decision / judgment` 的 aging：
 - `review-queue.md` 会标出“已到期待复审”和“需要升级处理”
 - `aging-report.md` 会集中列出这些页面
 - `repair-backlog.md` 会把它们抬进优先队列
-- `machine-memory-actions.md` 会把图谱修复动作沉成稳定队列
+- `machine-memory-actions.md` 会把图谱修复动作沉成稳定队列，并展示状态分布、已到期、已升级、最近清除
+
+machine-memory action 现在也有显式 lifecycle：
+- `proposed`：新发现、待处理
+- `accepted`：已接受，进入修复队列
+- `deferred`：确认存在，但延后处理
+- `resolved`：已解决
+- `rejected`：确认无需处理
 
 关键状态页：
 - [review-queue.md](./wiki/indexes/review-queue.md)

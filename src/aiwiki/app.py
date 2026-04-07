@@ -188,13 +188,18 @@ STOP_WORDS = {
 
 DECISION_STATUSES = ("proposed", "approved", "needs-revisit", "superseded")
 JUDGMENT_STATUSES = ("tentative", "tracking", "confirmed", "rejected")
+ACTION_STATUSES = ("proposed", "accepted", "deferred", "resolved", "rejected")
 PENDING_DECISION_REVIEW_STATUSES = {"proposed", "needs-revisit"}
 PENDING_JUDGMENT_REVIEW_STATUSES = {"tentative", "tracking"}
+PENDING_ACTION_STATUSES = {"proposed", "accepted", "deferred"}
 AGING_WINDOWS_DAYS: dict[tuple[str, str], tuple[int, int]] = {
     ("decision", "proposed"): (7, 21),
     ("decision", "needs-revisit"): (3, 10),
     ("judgment", "tentative"): (7, 21),
     ("judgment", "tracking"): (14, 30),
+    ("action", "proposed"): (3, 10),
+    ("action", "accepted"): (7, 21),
+    ("action", "deferred"): (14, 30),
 }
 AUTO_PROMOTION_MIN_OCCURRENCES = 2
 AUTO_PROMOTION_FORMATS = {"report", "figure"}
@@ -1030,6 +1035,21 @@ def display_curated_status(status: str) -> str:
     return mapping.get(status, status or "unknown")
 
 
+def action_needs_review(status: str) -> bool:
+    return status in PENDING_ACTION_STATUSES
+
+
+def display_action_status(status: str) -> str:
+    mapping = {
+        "proposed": "待处理",
+        "accepted": "已接受",
+        "deferred": "暂缓",
+        "resolved": "已解决",
+        "rejected": "已拒绝",
+    }
+    return mapping.get(status, status or "unknown")
+
+
 def sort_curated_pages(pages: list[dict[str, str]]) -> list[dict[str, str]]:
     def sort_key(page: dict[str, str]) -> tuple[str, str]:
         return (page.get("reviewed_at", "") or page.get("updated_at", ""), page["title"].lower())
@@ -1087,6 +1107,49 @@ def review_queue(decisions: list[dict[str, str]], judgments: list[dict[str, str]
         "pending_decisions": pending_decisions,
         "pending_judgments": pending_judgments,
         "recently_reviewed": reviewed,
+    }
+
+
+def collect_machine_memory_actions(root: Path) -> list[dict[str, Any]]:
+    state = load_machine_memory_action_state(root)
+    actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
+    now = datetime.now(timezone.utc)
+    for action in actions:
+        action.setdefault("status", "proposed")
+        action.setdefault("active", True)
+        action.setdefault("priority", "medium")
+        action.setdefault("review_note", "")
+        action.setdefault("first_seen_at", "")
+        action.setdefault("last_seen_at", "")
+        action.setdefault("inactive_since", "")
+        action.setdefault("occurrences", 0)
+        action.setdefault("pending_review", "true" if action_needs_review(str(action.get("status"))) else "false")
+        action.update(evaluate_page_aging(action, now=now))
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+    status_order = {"proposed": 0, "accepted": 1, "deferred": 2, "resolved": 3, "rejected": 4}
+    return sorted(
+        actions,
+        key=lambda item: (
+            0 if item.get("active") else 1,
+            status_order.get(str(item.get("status")), 9),
+            priority_order.get(str(item.get("priority")), 9),
+            -int(item.get("occurrences", 0)),
+            str(item.get("title", "")).lower(),
+        ),
+    )
+
+
+def collect_machine_memory_action_aging(actions: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    active_actions = [action for action in actions if action.get("active")]
+    overdue = [action for action in active_actions if action.get("overdue_review") == "true"]
+    escalated = [action for action in active_actions if action.get("escalation_candidate") == "true"]
+    scheduled = [action for action in active_actions if action.get("aging_state") == "scheduled"]
+    inactive = [action for action in actions if not action.get("active")]
+    return {
+        "overdue": overdue,
+        "escalated": escalated,
+        "scheduled": scheduled,
+        "inactive": inactive,
     }
 
 
@@ -1625,6 +1688,10 @@ def machine_memory_actions_path(root: Path) -> Path:
     return root / "wiki" / "indexes" / "machine-memory-actions.md"
 
 
+def machine_memory_action_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "machine-memory-actions.json"
+
+
 def repair_backlog_path(root: Path) -> Path:
     return root / "wiki" / "indexes" / "repair-backlog.md"
 
@@ -1644,6 +1711,30 @@ def load_json_document(path: Path) -> dict[str, Any]:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return {}
+
+
+def default_machine_memory_action_state() -> dict[str, Any]:
+    return {"version": 1, "actions": []}
+
+
+def load_machine_memory_action_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(machine_memory_action_state_path(root))
+    if not isinstance(document, dict):
+        return default_machine_memory_action_state()
+    actions = document.get("actions")
+    if not isinstance(actions, list):
+        return default_machine_memory_action_state()
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "actions": [action for action in actions if isinstance(action, dict)],
+    }
+
+
+def save_machine_memory_action_state(root: Path, document: dict[str, Any]) -> None:
+    machine_memory_action_state_path(root).write_text(
+        json.dumps(document, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def load_machine_memory(root: Path) -> dict[str, Any]:
@@ -2074,6 +2165,146 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def reconcile_machine_memory_actions(
+    root: Path,
+    health: dict[str, Any],
+    *,
+    compiled_at: str,
+) -> dict[str, Any]:
+    previous_state = load_machine_memory_action_state(root)
+    previous_by_id = {
+        str(action.get("id")): action for action in previous_state.get("actions", []) if action.get("id")
+    }
+    now = parse_iso_datetime(compiled_at) or datetime.now(timezone.utc)
+    active_records: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+
+    for action in health.get("actions", []):
+        action_id = str(action.get("id") or "").strip()
+        if not action_id:
+            continue
+        previous = previous_by_id.get(action_id, {})
+        previous_status = str(previous.get("status") or "proposed")
+        status = previous_status if previous_status in ACTION_STATUSES else "proposed"
+        reopened_count = int(previous.get("reopened_count") or 0)
+        reopened_from = ""
+        if previous and previous.get("active") is False and status in {"resolved", "rejected"}:
+            reopened_from = status
+            reopened_count += 1
+            status = "proposed"
+        first_seen_at = str(previous.get("first_seen_at") or compiled_at)
+        occurrences = int(previous.get("occurrences") or 0)
+        if occurrences <= 0:
+            occurrences = 1
+        else:
+            occurrences += 1
+        status_updated_at = str(previous.get("status_updated_at") or first_seen_at)
+        if status != previous_status or not status_updated_at:
+            status_updated_at = compiled_at
+        reviewed_at = str(previous.get("reviewed_at") or "")
+        review_note = str(previous.get("review_note") or "")
+        revisit_after = str(previous.get("revisit_after") or "")
+        escalate_after = str(previous.get("escalate_after") or "")
+        if status in PENDING_ACTION_STATUSES:
+            if not revisit_after and not escalate_after:
+                base_timestamp = reviewed_at or status_updated_at or first_seen_at
+                revisit_after, escalate_after = schedule_review_windows("action", status, base_timestamp)
+        else:
+            revisit_after, escalate_after = "", ""
+        record = {
+            **action,
+            "status": status,
+            "active": True,
+            "first_seen_at": first_seen_at,
+            "last_seen_at": compiled_at,
+            "occurrences": occurrences,
+            "status_updated_at": status_updated_at,
+            "reviewed_at": reviewed_at,
+            "review_note": review_note,
+            "revisit_after": revisit_after,
+            "escalate_after": escalate_after,
+            "reopened_count": reopened_count,
+            "reopened_from": reopened_from,
+            "inactive_since": "",
+            "pending_review": "true" if action_needs_review(status) else "false",
+        }
+        record.update(evaluate_page_aging(record, now=now))
+        active_records.append(record)
+        seen_ids.add(action_id)
+
+    inactive_records: list[dict[str, Any]] = []
+    for action_id, previous in previous_by_id.items():
+        if action_id in seen_ids:
+            continue
+        record = dict(previous)
+        record["active"] = False
+        record["inactive_since"] = str(previous.get("inactive_since") or compiled_at)
+        record["pending_review"] = "false"
+        record["aging_state"] = ""
+        record["overdue_review"] = "false"
+        record["escalation_candidate"] = "false"
+        inactive_records.append(record)
+
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+    status_order = {"proposed": 0, "accepted": 1, "deferred": 2, "resolved": 3, "rejected": 4}
+    active_records.sort(
+        key=lambda item: (
+            status_order.get(str(item.get("status")), 9),
+            priority_order.get(str(item.get("priority")), 9),
+            -int(item.get("occurrences", 0)),
+            -int(item.get("score", 0)),
+            str(item.get("title", "")).lower(),
+        )
+    )
+    inactive_records.sort(
+        key=lambda item: (
+            str(item.get("inactive_since") or item.get("last_seen_at") or ""),
+            str(item.get("title", "")).lower(),
+        ),
+        reverse=True,
+    )
+    overdue_actions = [record for record in active_records if record.get("overdue_review") == "true"]
+    escalated_actions = [record for record in active_records if record.get("escalation_candidate") == "true"]
+    counts = {
+        "total": len(active_records),
+        "inactive": len(inactive_records),
+        "overdue": len(overdue_actions),
+        "escalated": len(escalated_actions),
+        "by_priority": {
+            priority: sum(1 for action in active_records if action.get("priority") == priority)
+            for priority in ("high", "medium", "low")
+        },
+        "by_status": {
+            status: sum(1 for action in active_records if action.get("status") == status)
+            for status in ACTION_STATUSES
+        },
+        "by_kind": {
+            kind: sum(1 for action in active_records if action.get("kind") == kind)
+            for kind in (
+                "add-source-concept-link",
+                "connect-isolated-source",
+                "expand-singleton-concept",
+                "split-overloaded-concept",
+                "monitor-bridge-concept",
+            )
+        },
+    }
+    state_document = {
+        "version": 1,
+        "compiled_at": compiled_at,
+        "actions": active_records + inactive_records,
+    }
+    save_machine_memory_action_state(root, state_document)
+    return {
+        "actions": active_records[:20],
+        "inactive_actions": inactive_records[:12],
+        "overdue_actions": overdue_actions[:10],
+        "escalated_actions": escalated_actions[:10],
+        "action_counts": counts,
+        "action_state_path": relative_path(root, machine_memory_action_state_path(root)),
+    }
+
+
 def machine_memory_digest(memory: dict[str, Any]) -> str:
     payload = {
         "source_nodes": memory.get("source_nodes", []),
@@ -2298,6 +2529,8 @@ def build_machine_memory_query(memory: dict[str, Any], question: str) -> dict[st
     ranked_source_set = set(ranked_source_ids) | set(direct_source_scores)
     ranked_concept_set = set(ranked_concept_slugs) | set(direct_concept_scores)
     for action in health.get("actions", []):
+        if action.get("status") not in PENDING_ACTION_STATUSES:
+            continue
         source_hit = bool(ranked_source_set & set(action.get("source_ids", [])))
         concept_hit = bool(ranked_concept_set & set(action.get("concept_slugs", [])))
         component_hit = bool(action.get("component_id")) and action.get("component_id") in touched_component_ids
@@ -2604,6 +2837,8 @@ def render_graph_health(memory: dict[str, Any]) -> str:
         f"- 桥接概念：`{len(health.get('bridge_concept_slugs', []))}`",
         f"- 过载概念：`{len(health.get('overloaded_concept_slugs', []))}`",
         f"- 修复动作：`{health.get('action_counts', {}).get('total', 0)}`",
+        f"- 动作已到期：`{health.get('action_counts', {}).get('overdue', 0)}`",
+        f"- 动作需升级：`{health.get('action_counts', {}).get('escalated', 0)}`",
         "",
         "## 修复信号",
         f"- 孤立来源：`{', '.join(health.get('isolated_source_ids', [])[:10]) or 'none'}`",
@@ -2672,6 +2907,8 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         f"- Hub 来源：`{len(health.get('hub_sources', []))}`",
         f"- 修复候选：`{len(health.get('link_suggestions', []))}`",
         f"- 修复动作：`{health.get('action_counts', {}).get('total', 0)}`",
+        f"- 动作已到期：`{health.get('action_counts', {}).get('overdue', 0)}`",
+        f"- 动作需升级：`{health.get('action_counts', {}).get('escalated', 0)}`",
         "",
         "## 判断层",
         "- 决策索引：`wiki/indexes/decisions.md`",
@@ -2690,6 +2927,11 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         "- [动作队列](./machine-memory-actions.md)",
         "- [漂移报告](./drift-report.md)",
         "- [修复待办](./repair-backlog.md)",
+        "",
+        "## Action Workflow",
+        f"- 状态文件：`{health.get('action_state_path', '.aiwiki/state/machine-memory-actions.json')}`",
+        "- 通过 `review-action` 推进 action status。",
+        "- nightly 会继续追踪 action 的 occurrences、aging 和 escalation。",
         "",
         "## 查询加速",
         "- `ask` 和 `run-ask` 先用机器记忆 term index 做第一轮查询规划。",
@@ -2841,8 +3083,12 @@ def render_machine_memory_topology(memory: dict[str, Any]) -> str:
 def render_machine_memory_actions(memory: dict[str, Any]) -> str:
     health = memory.get("health", {})
     actions = health.get("actions", [])
+    inactive_actions = health.get("inactive_actions", [])
+    overdue_actions = health.get("overdue_actions", [])
+    escalated_actions = health.get("escalated_actions", [])
     counts = health.get("action_counts", {})
     by_priority = counts.get("by_priority", {})
+    by_status = counts.get("by_status", {})
     kind_labels = {
         "add-source-concept-link": "补链动作",
         "connect-isolated-source": "孤立来源动作",
@@ -2858,18 +3104,67 @@ def render_machine_memory_actions(memory: dict[str, Any]) -> str:
         f"- 高优先级：`{by_priority.get('high', 0)}`",
         f"- 中优先级：`{by_priority.get('medium', 0)}`",
         f"- 低优先级：`{by_priority.get('low', 0)}`",
+        f"- 已到期：`{counts.get('overdue', 0)}`",
+        f"- 已升级：`{counts.get('escalated', 0)}`",
+        f"- 已清除：`{counts.get('inactive', 0)}`",
+        f"- 状态文件：`{health.get('action_state_path', '.aiwiki/state/machine-memory-actions.json')}`",
         "",
-        "## 优先队列",
+        "## 状态分布",
     ]
+    for status in ACTION_STATUSES:
+        lines.append(f"- `{display_action_status(status)}`：`{by_status.get(status, 0)}`")
+    lines.extend(
+        [
+            "",
+            "## 已升级动作",
+        ]
+    )
+    if not escalated_actions:
+        lines.append("- 当前没有需要升级处理的动作。")
+    else:
+        for action in escalated_actions[:8]:
+            detail = f" | secondary `{action['secondary_path']}`" if action.get("secondary_path") else ""
+            lines.append(
+                f"- [{display_action_status(str(action.get('status')))}] {action['title']}"
+                f" | primary `{action['primary_path']}`"
+                f"{detail}"
+                f" | occurrences `{action.get('occurrences', 0)}`"
+            )
+    lines.extend(
+        [
+            "",
+            "## 已到期动作",
+        ]
+    )
+    if not overdue_actions:
+        lines.append("- 当前没有已到期待处理的动作。")
+    else:
+        for action in overdue_actions[:8]:
+            detail = f" | secondary `{action['secondary_path']}`" if action.get("secondary_path") else ""
+            lines.append(
+                f"- [{display_action_status(str(action.get('status')))}] {action['title']}"
+                f" | primary `{action['primary_path']}`"
+                f"{detail}"
+                f" | revisit `{action.get('revisit_after', '') or 'none'}`"
+            )
+    lines.extend(
+        [
+            "",
+        "## 优先队列",
+        ]
+    )
     if not actions:
         lines.append("- 当前没有 machine-memory 动作。")
     else:
         for action in actions[:12]:
             detail = f" | secondary `{action['secondary_path']}`" if action.get("secondary_path") else ""
+            action_status = display_action_status(str(action.get("status")))
             lines.append(
                 f"- [{action['priority']}] {action['title']}"
+                f" | status `{action_status}`"
                 f" | primary `{action['primary_path']}`"
                 f"{detail}"
+                f" | occurrences `{action.get('occurrences', 0)}`"
                 f" | component `{action.get('component_id') or 'none'}`"
             )
     for kind, label in kind_labels.items():
@@ -2882,10 +3177,24 @@ def render_machine_memory_actions(memory: dict[str, Any]) -> str:
             paths = [f"primary `{action['primary_path']}`"]
             if action.get("secondary_path"):
                 paths.append(f"secondary `{action['secondary_path']}`")
+            action_status = display_action_status(str(action.get("status")))
             lines.append(
                 f"- [{action['priority']}] {action['title']}"
+                f" | status `{action_status}`"
                 f" | {' | '.join(paths)}"
+                f" | first `{action.get('first_seen_at', '') or 'none'}`"
+                f" | seen `{action.get('occurrences', 0)}`"
                 f" | {action.get('reason', '') or 'no reason'}"
+            )
+    lines.extend(["", "## 最近清除"])
+    if not inactive_actions:
+        lines.append("- 当前没有最近清除的动作。")
+    else:
+        for action in inactive_actions[:8]:
+            lines.append(
+                f"- [{display_action_status(str(action.get('status')))}] {action['title']}"
+                f" | last_seen `{action.get('last_seen_at', '') or 'none'}`"
+                f" | inactive_since `{action.get('inactive_since', '') or 'none'}`"
             )
     lines.extend(
         [
@@ -2983,6 +3292,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     removed_pages = remove_stale_generated_concept_pages(root, {record["slug"] for record in concepts})
     memory = build_machine_memory(root, entries, concepts, previews, entry_terms, compiled_at)
     memory["health"] = build_machine_memory_health(memory)
+    memory["health"].update(reconcile_machine_memory_actions(root, memory["health"], compiled_at=compiled_at))
     memory["digest"] = machine_memory_digest(memory)
     graph = build_machine_memory_graph(memory)
     memory["graph_digest"] = graph["digest"]
@@ -3599,6 +3909,59 @@ def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "
     return {"path": relative_path(root, destination)}
 
 
+def review_machine_memory_action(
+    root: Path,
+    action_id: str,
+    status: str,
+    *,
+    note: str | None = None,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    if status not in ACTION_STATUSES:
+        raise ValueError(f"Unsupported machine-memory action status: {status}")
+    state = load_machine_memory_action_state(root)
+    actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
+    target: dict[str, Any] | None = None
+    for action in actions:
+        if str(action.get("id") or "") == action_id:
+            target = action
+            break
+    if target is None:
+        raise FileNotFoundError(f"Machine-memory action not found: {action_id}")
+    reviewed_at = utc_now()
+    target["status"] = status
+    target["reviewed_at"] = reviewed_at
+    target["status_updated_at"] = reviewed_at
+    target["review_note"] = note or ""
+    target["pending_review"] = "true" if action_needs_review(status) else "false"
+    if status in PENDING_ACTION_STATUSES:
+        revisit_after, escalate_after = schedule_review_windows("action", status, reviewed_at)
+    else:
+        revisit_after, escalate_after = "", ""
+    target["revisit_after"] = revisit_after
+    target["escalate_after"] = escalate_after
+    target.update(evaluate_page_aging(target))
+    save_machine_memory_action_state(root, {"version": 1, "actions": actions})
+    append_wiki_log(
+        root,
+        "action-review",
+        str(target.get("title") or action_id),
+        [
+            f"action_id: `{action_id}`",
+            f"status: `{status}`",
+            f"primary: `{target.get('primary_path', '')}`",
+            f"priority: `{target.get('priority', '')}`",
+        ],
+    )
+    compile_wiki(root)
+    return {
+        "id": action_id,
+        "status": status,
+        "reviewed_at": reviewed_at,
+        "active": bool(target.get("active", True)),
+    }
+
+
 def review_page(
     root: Path,
     page: str,
@@ -3812,6 +4175,18 @@ def lint_wiki(root: Path) -> dict[str, Any]:
     if manifest["entries"] and not history_path.exists():
         findings.append(Finding("warn", relative_path(root, history_path), "Machine memory history file has not been initialized."))
 
+    action_state_path = machine_memory_action_state_path(root)
+    if manifest["entries"] and not action_state_path.exists():
+        findings.append(
+            Finding("warn", relative_path(root, action_state_path), "Machine memory action state file has not been initialized.")
+        )
+    elif action_state_path.exists():
+        action_state = load_json_document(action_state_path)
+        if not isinstance(action_state, dict) or not isinstance(action_state.get("actions"), list):
+            findings.append(
+                Finding("error", relative_path(root, action_state_path), "Machine memory action state is not valid JSON.")
+            )
+
     concept_pages = sorted((root / "wiki" / "concepts").glob("*.md"))
     if manifest["entries"] and not concept_pages:
         findings.append(Finding("warn", "wiki/concepts", "No concept pages have been compiled yet."))
@@ -3970,6 +4345,9 @@ def render_repair_backlog(
     bridge_concepts = health.get("bridge_concept_slugs", [])
     overloaded_concepts = health.get("overloaded_concept_slugs", [])
     actions = health.get("actions", [])
+    overdue_actions = health.get("overdue_actions", [])
+    escalated_actions = health.get("escalated_actions", [])
+    inactive_actions = health.get("inactive_actions", [])
     promotions = promotion_result.get("pages", [])
     lines = [
         "# 修复待办",
@@ -3987,6 +4365,9 @@ def render_repair_backlog(
         f"- 升级处理项：`{len(escalated_pages)}`",
         f"- 自动晋升页面：`{promotion_result.get('count', 0)}`",
         f"- 图谱修复动作：`{len(actions)}`",
+        f"- 动作已到期：`{len(overdue_actions)}`",
+        f"- 动作需升级：`{len(escalated_actions)}`",
+        f"- 最近清除动作：`{len(inactive_actions)}`",
         f"- 图谱修复候选：`{len(health.get('link_suggestions', []))}`",
         f"- 无概念覆盖来源：`{len(sources_without_concepts)}`",
         f"- 图谱分量数：`{health.get('component_count', 0)}`",
@@ -4015,18 +4396,22 @@ def render_repair_backlog(
         lines.append(f"8. 检查本轮自动晋升的 `{len(promotions)}` 个页面，确认是否需要补证据和审阅。")
     if actions:
         lines.append(f"9. 按动作队列处理 `{len(actions)}` 个 machine-memory 修复动作。")
+    if overdue_actions:
+        lines.append(f"10. 优先清理 `{len(overdue_actions)}` 个已到期待处理的 machine-memory 动作。")
+    if escalated_actions:
+        lines.append(f"11. 先处理 `{len(escalated_actions)}` 个已升级的 machine-memory 动作。")
     if health.get("link_suggestions", []):
-        lines.append(f"10. 审阅 `{len(health.get('link_suggestions', []))}` 个机器记忆补链候选，决定是否补链接。")
+        lines.append(f"12. 审阅 `{len(health.get('link_suggestions', []))}` 个机器记忆补链候选，决定是否补链接。")
     if sources_without_concepts:
-        lines.append(f"11. 检查 `{len(sources_without_concepts)}` 个没有概念覆盖的来源。")
+        lines.append(f"13. 检查 `{len(sources_without_concepts)}` 个没有概念覆盖的来源。")
     if isolated_sources:
-        lines.append(f"12. 把 `{len(isolated_sources)}` 个孤立来源节点接入概念图谱。")
+        lines.append(f"14. 把 `{len(isolated_sources)}` 个孤立来源节点接入概念图谱。")
     if singleton_concepts:
-        lines.append(f"13. 复查 `{len(singleton_concepts)}` 个还没接入更大上下文的单节点概念。")
+        lines.append(f"15. 复查 `{len(singleton_concepts)}` 个还没接入更大上下文的单节点概念。")
     if overloaded_concepts:
-        lines.append(f"14. 考虑拆分 `{len(overloaded_concepts)}` 个过载概念。")
+        lines.append(f"16. 考虑拆分 `{len(overloaded_concepts)}` 个过载概念。")
     if transition.get("changed"):
-        lines.append("15. 在下一轮研究前先检查最新的机器记忆漂移。")
+        lines.append("17. 在下一轮研究前先检查最新的机器记忆漂移。")
     if not any(
         (
             error_findings,
@@ -4099,13 +4484,37 @@ def render_repair_backlog(
     if actions:
         for action in actions[:10]:
             detail = f" | secondary `{action['secondary_path']}`" if action.get("secondary_path") else ""
+            action_status = display_action_status(str(action.get("status")))
             lines.append(
                 f"- [{action['priority']}] `{action['primary_path']}`"
                 f"{detail}"
                 f" | {action['title']}"
+                f" | status `{action_status}`"
+                f" | seen `{action.get('occurrences', 0)}`"
             )
     else:
         lines.append("- 当前没有 machine-memory 动作。")
+    if escalated_actions or overdue_actions:
+        lines.append("")
+        lines.append("### Action Aging")
+        for action in escalated_actions[:10]:
+            action_status = display_action_status(str(action.get("status")))
+            lines.append(
+                f"- 升级：`{action['id']}` | {action['title']} | status `{action_status}`"
+            )
+        for action in overdue_actions[:10]:
+            if any(action["id"] == escalated["id"] for escalated in escalated_actions[:10]):
+                continue
+            lines.append(
+                f"- 到期：`{action['id']}` | {action['title']} | revisit `{action.get('revisit_after', '') or 'none'}`"
+            )
+    if inactive_actions:
+        lines.append("")
+        lines.append("### 最近清除动作")
+        for action in inactive_actions[:10]:
+            lines.append(
+                f"- 清除：`{action['id']}` | {action['title']} | inactive_since `{action.get('inactive_since', '') or 'none'}`"
+            )
     if health.get("link_suggestions", []):
         lines.append("")
         lines.append("### 图谱修复候选")
@@ -4208,6 +4617,8 @@ def write_nightly_health(
             "topology_path": relative_path(root, machine_memory_topology_path(root)),
             "actions_path": relative_path(root, machine_memory_actions_path(root)),
             "action_counts": memory.get("health", {}).get("action_counts", {}),
+            "overdue_action_ids": [action["id"] for action in memory.get("health", {}).get("overdue_actions", [])],
+            "escalated_action_ids": [action["id"] for action in memory.get("health", {}).get("escalated_actions", [])],
         },
         "repair_backlog": {
             "path": relative_path(root, repair_backlog_path(root)),
@@ -4219,6 +4630,8 @@ def write_nightly_health(
             "escalated_pages": [page["path"] for page in aging["escalated"]],
             "auto_promotions": [page["path"] for page in promotion_result.get("pages", [])],
             "machine_memory_actions": [action["id"] for action in memory.get("health", {}).get("actions", [])],
+            "overdue_action_ids": [action["id"] for action in memory.get("health", {}).get("overdue_actions", [])],
+            "escalated_action_ids": [action["id"] for action in memory.get("health", {}).get("escalated_actions", [])],
         },
     }
     repair_backlog = render_repair_backlog(
