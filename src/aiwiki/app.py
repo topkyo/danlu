@@ -186,6 +186,45 @@ STOP_WORDS = {
     "wiki",
 }
 
+CONFLICT_SIGNAL_PAIRS = (
+    ("increase", "decrease", "increase-vs-decrease"),
+    ("rise", "fall", "rise-vs-fall"),
+    ("higher", "lower", "higher-vs-lower"),
+    ("more", "less", "more-vs-less"),
+    ("improve", "hurt", "improve-vs-hurt"),
+    ("benefit", "risk", "benefit-vs-risk"),
+    ("faster", "slower", "faster-vs-slower"),
+    ("增加", "减少", "增加-vs-减少"),
+    ("上升", "下降", "上升-vs-下降"),
+    ("更高", "更低", "更高-vs-更低"),
+    ("更多", "更少", "更多-vs-更少"),
+    ("改善", "恶化", "改善-vs-恶化"),
+    ("收益", "风险", "收益-vs-风险"),
+    ("更快", "更慢", "更快-vs-更慢"),
+)
+
+EVIDENCE_GAP_MARKERS = (
+    "unclear",
+    "unknown",
+    "missing",
+    "partial",
+    "truncated",
+    "weak",
+    "incomplete",
+    "not enough",
+    "insufficient",
+    "todo",
+    "tbd",
+    "不确定",
+    "未知",
+    "缺失",
+    "待补",
+    "截断",
+    "薄弱",
+    "不完整",
+    "证据不足",
+)
+
 DECISION_STATUSES = ("proposed", "approved", "needs-revisit", "superseded")
 JUDGMENT_STATUSES = ("tentative", "tracking", "confirmed", "rejected")
 ACTION_STATUSES = ("proposed", "accepted", "deferred", "resolved", "rejected")
@@ -1271,6 +1310,7 @@ def build_machine_memory_repair_plan(health: dict[str, Any]) -> dict[str, Any]:
             item["label"],
         ),
     )
+    execution_proposals = repair_execution_proposals(ready_actions + triage_actions + deferred_actions)
 
     return {
         "ready_actions": ready_actions,
@@ -1278,12 +1318,14 @@ def build_machine_memory_repair_plan(health: dict[str, Any]) -> dict[str, Any]:
         "deferred_actions": deferred_actions,
         "inactive_actions": inactive_actions[:12],
         "execution_batches": execution_batches[:10],
+        "execution_proposals": execution_proposals,
         "counts": {
             "ready": len(ready_actions),
             "triage": len(triage_actions),
             "deferred": len(deferred_actions),
             "inactive": len(inactive_actions),
             "batches": len(execution_batches),
+            "proposals": len(execution_proposals),
         },
     }
 
@@ -2673,6 +2715,11 @@ def build_machine_memory_query(memory: dict[str, Any], question: str) -> dict[st
         for component in health.get("components", [])
         if component.get("id") in touched_component_ids
     ]
+    proposal_by_action_id = {
+        str(proposal.get("action_id") or ""): proposal
+        for proposal in health.get("repair_plan", {}).get("execution_proposals", [])
+        if proposal.get("action_id")
+    }
     relevant_actions: list[dict[str, Any]] = []
     ranked_source_set = set(ranked_source_ids) | set(direct_source_scores)
     ranked_concept_set = set(ranked_concept_slugs) | set(direct_concept_scores)
@@ -2684,6 +2731,7 @@ def build_machine_memory_query(memory: dict[str, Any], question: str) -> dict[st
         component_hit = bool(action.get("component_id")) and action.get("component_id") in touched_component_ids
         if not (source_hit or concept_hit or component_hit):
             continue
+        proposal = proposal_by_action_id.get(str(action.get("id") or ""), {})
         relevant_actions.append(
             {
                 "id": action["id"],
@@ -2696,6 +2744,9 @@ def build_machine_memory_query(memory: dict[str, Any], question: str) -> dict[st
                 "reason": action.get("reason", ""),
                 "execution_policy": action.get("execution_policy", "triage"),
                 "next_step": action.get("next_step", ""),
+                "proposal_kind": proposal.get("proposal_kind", ""),
+                "proposal_summary": proposal.get("summary", ""),
+                "proposal_targets": proposal.get("target_paths", []),
             }
         )
 
@@ -2991,7 +3042,7 @@ def render_graph_health(memory: dict[str, Any]) -> str:
         f"- 动作已到期：`{health.get('action_counts', {}).get('overdue', 0)}`",
         f"- 动作需升级：`{health.get('action_counts', {}).get('escalated', 0)}`",
         f"- 执行批次：`{health.get('repair_plan', {}).get('counts', {}).get('batches', 0)}`",
-        f"- 执行批次：`{health.get('repair_plan', {}).get('counts', {}).get('batches', 0)}`",
+        f"- 执行提案：`{health.get('repair_plan', {}).get('counts', {}).get('proposals', 0)}`",
         "",
         "## 修复信号",
         f"- 孤立来源：`{', '.join(health.get('isolated_source_ids', [])[:10]) or 'none'}`",
@@ -3064,6 +3115,9 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         f"- 动作已到期：`{health.get('action_counts', {}).get('overdue', 0)}`",
         f"- 动作需升级：`{health.get('action_counts', {}).get('escalated', 0)}`",
         f"- 执行批次：`{health.get('repair_plan', {}).get('counts', {}).get('batches', 0)}`",
+        f"- 执行提案：`{health.get('repair_plan', {}).get('counts', {}).get('proposals', 0)}`",
+        f"- 概念冲突信号：`{health.get('concept_quality', {}).get('counts', {}).get('conflict_signals', 0)}`",
+        f"- 概念重写候选：`{health.get('concept_quality', {}).get('counts', {}).get('rewrite_candidates', 0)}`",
         "",
         "## 判断层",
         "- 决策索引：`wiki/indexes/decisions.md`",
@@ -3381,6 +3435,7 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
     deferred_actions = plan.get("deferred_actions", [])
     inactive_actions = plan.get("inactive_actions", [])
     execution_batches = plan.get("execution_batches", [])
+    execution_proposals = plan.get("execution_proposals", [])
     lines = [
         "# 机器记忆修复计划",
         "",
@@ -3390,6 +3445,7 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
         f"- 暂缓动作：`{counts.get('deferred', 0)}`",
         f"- 最近清除：`{counts.get('inactive', 0)}`",
         f"- 执行批次：`{counts.get('batches', 0)}`",
+        f"- 执行提案：`{counts.get('proposals', 0)}`",
         f"- 状态文件：`{health.get('action_state_path', '.aiwiki/state/machine-memory-actions.json')}`",
         "",
         "## Ready Now",
@@ -3455,6 +3511,23 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
                     f" | next {action.get('next_step', 'n/a')}"
                     f"{command_part}"
                 )
+    lines.extend(["", "## Execution Proposals"])
+    if not execution_proposals:
+        lines.append("- 当前没有页级执行提案。")
+    else:
+        for proposal in execution_proposals[:10]:
+            command_part = f" | command `{proposal['command_hint']}`" if proposal.get("command_hint") else ""
+            lines.append(
+                f"- [{proposal['priority']}] {proposal['title']}"
+                f" | status `{display_action_status(str(proposal.get('status')))}`"
+                f" | kind `{proposal.get('proposal_kind', 'manual-repair')}`"
+                f" | risk `{proposal.get('risk', 'medium')}`"
+                f" | targets `{', '.join(proposal.get('target_paths', [])) or 'none'}`"
+                f"{command_part}"
+            )
+            lines.append(f"  - strategy: {proposal.get('summary', 'n/a')}")
+            for edit in proposal.get("suggested_edits", [])[:3]:
+                lines.append(f"  - edit: {edit}")
     lines.extend(["", "## Recently Cleared"])
     if not inactive_actions:
         lines.append("- 当前没有最近清除动作。")
@@ -3487,6 +3560,9 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
     weak_concepts = quality.get("weak_concepts", [])
     stable_concepts = quality.get("stable_concepts", [])
     merge_candidates = quality.get("merge_candidates", [])
+    rewrite_candidates = quality.get("rewrite_candidates", [])
+    conflict_signals = quality.get("conflict_signals", [])
+    gap_signals = quality.get("gap_signals", [])
     lines = [
         "# 概念质量",
         "",
@@ -3495,6 +3571,9 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
         f"- 稳定概念页：`{counts.get('stable', 0)}`",
         f"- 占位概念页：`{counts.get('placeholders', 0)}`",
         f"- 合并候选：`{counts.get('merge_candidates', 0)}`",
+        f"- 重写候选：`{counts.get('rewrite_candidates', 0)}`",
+        f"- 冲突信号：`{counts.get('conflict_signals', 0)}`",
+        f"- 证据缺口：`{counts.get('gap_signals', 0)}`",
         "",
         "## Rewrite Now",
     ]
@@ -3507,6 +3586,39 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
                 f" | issues `{', '.join(concept.get('issues', [])) or 'none'}`"
                 f" | sources `{concept.get('source_count', 0)}`"
                 f" | related `{concept.get('related_count', 0)}`"
+            )
+    lines.extend(["", "## Rewrite Priority"])
+    if not rewrite_candidates:
+        lines.append("- 当前没有新的重写候选。")
+    else:
+        for candidate in rewrite_candidates[:10]:
+            lines.append(
+                f"- [{candidate['title']}](../concepts/{candidate['slug']}.md)"
+                f" | priority `{candidate.get('priority', 'n/a')}`"
+                f" | score `{candidate.get('score', 0)}`"
+                f" | issues `{', '.join(candidate.get('issues', [])) or 'none'}`"
+            )
+            lines.append(f"  - strategy: {candidate.get('rewrite_strategy', 'n/a')}")
+    lines.extend(["", "## Conflict Signals"])
+    if not conflict_signals:
+        lines.append("- 当前没有显式概念冲突信号。")
+    else:
+        for signal in conflict_signals[:10]:
+            lines.append(
+                f"- [{signal['title']}](../concepts/{signal['slug']}.md)"
+                f" | signal `{signal.get('label', 'n/a')}`"
+                f" | sources `{', '.join(signal.get('source_pages', [])) or 'none'}`"
+            )
+    lines.extend(["", "## Evidence Gaps"])
+    if not gap_signals:
+        lines.append("- 当前没有显式证据缺口。")
+    else:
+        for gap in gap_signals[:10]:
+            lines.append(
+                f"- [{gap['title']}](../concepts/{gap['slug']}.md)"
+                f" | kind `{gap.get('kind', 'n/a')}`"
+                f" | source `{gap.get('path', 'n/a')}`"
+                f" | markers `{', '.join(gap.get('markers', [])) or 'none'}`"
             )
     lines.extend(["", "## Merge Candidates"])
     if not merge_candidates:
@@ -4418,43 +4530,204 @@ def concept_quality_tokens(label: str) -> set[str]:
     return {token for token in tokenize(label) if token not in STOP_WORDS}
 
 
+def load_source_page_context(root: Path, relative: str) -> dict[str, str]:
+    path = root / relative
+    if not path.exists():
+        return {"path": relative, "title": relative.rsplit("/", 1)[-1], "summary": "", "status": "missing"}
+    content = path.read_text(encoding="utf-8", errors="replace")
+    frontmatter = parse_frontmatter(content)
+    summary = preserved_section(content, "Summary", "").strip()
+    status = "placeholder" if summary == "- Pending LLM summary." else "ready"
+    return {
+        "path": relative,
+        "title": str(frontmatter.get("title") or path.stem),
+        "summary": summary,
+        "status": status,
+    }
+
+
+def detect_concept_conflict_signals(source_contexts: list[dict[str, str]]) -> list[dict[str, Any]]:
+    by_path = {
+        context["path"]: str(context.get("summary") or "").lower()
+        for context in source_contexts
+        if context.get("status") == "ready" and context.get("summary")
+    }
+    signals: list[dict[str, Any]] = []
+    seen_labels: set[str] = set()
+    for positive, negative, label in CONFLICT_SIGNAL_PAIRS:
+        positive_hits = sorted(path for path, summary in by_path.items() if positive in summary)
+        negative_hits = sorted(path for path, summary in by_path.items() if negative in summary)
+        if not positive_hits or not negative_hits:
+            continue
+        touched_paths = sorted(set(positive_hits) | set(negative_hits))
+        if len(touched_paths) < 2 or label in seen_labels:
+            continue
+        seen_labels.add(label)
+        signals.append(
+            {
+                "label": label,
+                "positive": positive,
+                "negative": negative,
+                "source_pages": touched_paths,
+                "source_titles": [
+                    next(
+                        (
+                            str(context.get("title") or path)
+                            for context in source_contexts
+                            if context.get("path") == path
+                        ),
+                        path,
+                    )
+                    for path in touched_paths
+                ],
+            }
+        )
+    return signals
+
+
+def detect_concept_gap_signals(source_contexts: list[dict[str, str]]) -> list[dict[str, Any]]:
+    gaps: list[dict[str, Any]] = []
+    for context in source_contexts:
+        path = str(context.get("path") or "")
+        title = str(context.get("title") or path)
+        status = str(context.get("status") or "")
+        summary = str(context.get("summary") or "").lower()
+        if status == "missing":
+            gaps.append({"kind": "missing-source-page", "path": path, "title": title, "markers": ["missing-source-page"]})
+            continue
+        if status == "placeholder":
+            gaps.append({"kind": "pending-source-summary", "path": path, "title": title, "markers": ["pending-source-summary"]})
+            continue
+        markers = sorted({marker for marker in EVIDENCE_GAP_MARKERS if marker in summary})
+        if markers:
+            gaps.append({"kind": "evidence-gap", "path": path, "title": title, "markers": markers})
+    return gaps
+
+
+def concept_rewrite_priority(score: int, issues: list[str], conflicts: list[dict[str, Any]]) -> str:
+    if score >= 6 or conflicts or "placeholder-summary" in issues:
+        return "high"
+    if score >= 3:
+        return "medium"
+    if score > 0:
+        return "low"
+    return ""
+
+
+def concept_rewrite_strategy(record: dict[str, Any]) -> str:
+    issues = set(record.get("issues", []))
+    steps: list[str] = []
+    if "placeholder-summary" in issues:
+        steps.append("替换占位摘要，改成 grounded synthesis。")
+    if "conflicting-source-signals" in issues:
+        steps.append("并列呈现冲突来源，明确分歧和适用边界。")
+    if "evidence-gap" in issues:
+        steps.append("保留证据缺口和不确定性，避免过强结论。")
+    if "single-source" in issues:
+        steps.append("保持保守措辞，并指出还缺哪些来源。")
+    if "no-related-concepts" in issues:
+        steps.append("补充相关概念边界和反链。")
+    if "merge-boundary" in issues:
+        steps.append("检查是否需要合并或拆分概念边界。")
+    return " ".join(steps[:3]) or "保持当前概念总结。"
+
+
+def repair_execution_proposals(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    strategy_map = {
+        "add-source-concept-link": {
+            "kind": "cross-link",
+            "risk": "low",
+            "summary": "补 source/concept 双向链接，并检查概念摘要是否需要吸收新证据。",
+            "edits": [
+                "在 source page 里补 concept 引用或相关链接。",
+                "在 concept page 的 Related Sources 里加入该 source page。",
+                "如果来源提供新证据，重写 concept 摘要并保持 provenance。",
+            ],
+        },
+        "connect-isolated-source": {
+            "kind": "connect-source",
+            "risk": "medium",
+            "summary": "把孤立来源接入至少一个稳定概念，并显式记录依据。",
+            "edits": [
+                "先从 source page 抽出候选概念。",
+                "优先补到现有稳定概念；必要时再新建概念页。",
+                "保持 source page 对 raw evidence 的回指。",
+            ],
+        },
+        "expand-singleton-concept": {
+            "kind": "expand-concept",
+            "risk": "medium",
+            "summary": "扩展单节点概念的来源覆盖或相关概念边界。",
+            "edits": [
+                "补更多来源或相关概念反链。",
+                "重写摘要时强调当前证据仍然有限。",
+                "如果概念过窄，考虑降级为 source-specific note。",
+            ],
+        },
+        "split-overloaded-concept": {
+            "kind": "split-concept",
+            "risk": "high",
+            "summary": "拆分过载概念，明确子概念边界和来源分流。",
+            "edits": [
+                "先定义更窄的子概念名称和边界。",
+                "把 source pages 重新分流到更具体的概念页。",
+                "在原概念页保留拆分说明和跳转链接。",
+            ],
+        },
+        "monitor-bridge-concept": {
+            "kind": "monitor-bridge",
+            "risk": "low",
+            "summary": "记录桥接概念仍然必要的原因，避免误删跨簇连接。",
+            "edits": [
+                "在 concept page 里补一段 bridge maintenance note。",
+                "确认相关概念链接仍然成立。",
+                "如果桥接已经失效，再把动作转成 merge 或 split。 ",
+            ],
+        },
+    }
+    proposals: list[dict[str, Any]] = []
+    for action in actions:
+        template = strategy_map.get(str(action.get("kind") or ""), {})
+        target_paths = [
+            path
+            for path in (
+                str(action.get("primary_path") or ""),
+                str(action.get("secondary_path") or ""),
+            )
+            if path
+        ]
+        proposal = {
+            "id": f"proposal-{action.get('id', '')}",
+            "action_id": str(action.get("id") or ""),
+            "title": str(action.get("title") or ""),
+            "priority": str(action.get("priority") or "medium"),
+            "status": str(action.get("status") or "proposed"),
+            "execution_policy": str(action.get("execution_policy") or "triage"),
+            "proposal_kind": str(template.get("kind") or "manual-repair"),
+            "risk": str(template.get("risk") or "medium"),
+            "summary": str(template.get("summary") or action.get("reason") or ""),
+            "target_paths": target_paths,
+            "suggested_edits": list(template.get("edits") or [str(action.get("reason") or "检查相关页面并补修复说明。")]),
+            "command_hint": str(action.get("command_hint") or ""),
+            "next_step": str(action.get("next_step") or ""),
+        }
+        proposals.append(proposal)
+    proposals.sort(
+        key=lambda item: (
+            action_status_rank(item["status"]),
+            action_priority_rank(item["priority"]),
+            item["proposal_kind"],
+            item["title"].lower(),
+        )
+    )
+    return proposals[:16]
+
+
 def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
     placeholder_slugs = set(placeholder_concept_slugs(root))
     singleton_slugs = set(memory.get("health", {}).get("singleton_concept_slugs", []))
     concept_nodes = [dict(node) for node in memory.get("concept_nodes", []) if isinstance(node, dict)]
-    weak_concepts: list[dict[str, Any]] = []
-    stable_concepts: list[dict[str, Any]] = []
-
-    for node in concept_nodes:
-        slug = str(node.get("slug") or "")
-        title = str(node.get("title") or slug)
-        source_pages = list(node.get("source_pages", []))
-        related_slugs = list(node.get("related_slugs", []))
-        issues: list[str] = []
-        score = 0
-        if slug in placeholder_slugs:
-            issues.append("placeholder-summary")
-            score += 3
-        if slug in singleton_slugs or len(source_pages) <= 1:
-            issues.append("single-source")
-            score += 2
-        if not related_slugs:
-            issues.append("no-related-concepts")
-            score += 1
-        record = {
-            "slug": slug,
-            "title": title,
-            "path": f"wiki/concepts/{slug}.md",
-            "source_count": len(source_pages),
-            "related_count": len(related_slugs),
-            "issues": issues,
-            "score": score,
-            "quality_state": "stable" if score == 0 else ("rewrite-now" if score >= 3 else "watch"),
-        }
-        if score:
-            weak_concepts.append(record)
-        else:
-            stable_concepts.append(record)
+    concept_records: dict[str, dict[str, Any]] = {}
 
     merge_candidates: list[dict[str, Any]] = []
     for index, left in enumerate(concept_nodes):
@@ -4488,23 +4761,142 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
                 }
             )
 
-    weak_concepts.sort(
-        key=lambda item: (-int(item.get("score", 0)), int(item.get("source_count", 0)), item.get("title", "").lower())
-    )
-    stable_concepts.sort(key=lambda item: (-int(item.get("source_count", 0)), item.get("title", "").lower()))
     merge_candidates.sort(
         key=lambda item: (-int(item.get("score", 0)), item["left_title"].lower(), item["right_title"].lower())
+    )
+    merge_candidate_slugs = {
+        slug
+        for candidate in merge_candidates
+        for slug in (candidate.get("left_slug", ""), candidate.get("right_slug", ""))
+        if slug
+    }
+
+    for node in concept_nodes:
+        slug = str(node.get("slug") or "")
+        title = str(node.get("title") or slug)
+        source_pages = list(node.get("source_pages", []))
+        related_slugs = list(node.get("related_slugs", []))
+        source_contexts = [load_source_page_context(root, relative) for relative in source_pages]
+        conflict_signals = detect_concept_conflict_signals(source_contexts)
+        gap_signals = detect_concept_gap_signals(source_contexts)
+        issues: list[str] = []
+        score = 0
+        if slug in placeholder_slugs:
+            issues.append("placeholder-summary")
+            score += 3
+        if slug in singleton_slugs or len(source_pages) <= 1:
+            issues.append("single-source")
+            score += 2
+        if not related_slugs:
+            issues.append("no-related-concepts")
+            score += 1
+        if conflict_signals:
+            issues.append("conflicting-source-signals")
+            score += 3
+        if gap_signals:
+            issues.append("evidence-gap")
+            score += 2
+        if slug in merge_candidate_slugs:
+            issues.append("merge-boundary")
+            score += 1
+        concept_records[slug] = {
+            "slug": slug,
+            "title": title,
+            "path": f"wiki/concepts/{slug}.md",
+            "source_pages": source_pages,
+            "source_count": len(source_pages),
+            "related_count": len(related_slugs),
+            "issues": issues,
+            "score": score,
+            "conflict_signals": conflict_signals[:4],
+            "gap_signals": gap_signals[:4],
+            "quality_state": "stable" if score == 0 else ("rewrite-now" if score >= 3 else "watch"),
+        }
+
+    weak_concepts: list[dict[str, Any]] = []
+    stable_concepts: list[dict[str, Any]] = []
+    rewrite_candidates: list[dict[str, Any]] = []
+    all_conflict_signals: list[dict[str, Any]] = []
+    all_gap_signals: list[dict[str, Any]] = []
+    for record in concept_records.values():
+        record["rewrite_priority"] = concept_rewrite_priority(
+            int(record.get("score", 0)),
+            list(record.get("issues", [])),
+            list(record.get("conflict_signals", [])),
+        )
+        record["rewrite_strategy"] = concept_rewrite_strategy(record)
+        if record["conflict_signals"]:
+            for signal in record["conflict_signals"]:
+                all_conflict_signals.append({"slug": record["slug"], "title": record["title"], **signal})
+        if record["gap_signals"]:
+            for gap in record["gap_signals"]:
+                all_gap_signals.append({"slug": record["slug"], "title": record["title"], **gap})
+        if int(record.get("score", 0)) > 0:
+            weak_concepts.append(record)
+            rewrite_candidates.append(
+                {
+                    "slug": record["slug"],
+                    "title": record["title"],
+                    "path": record["path"],
+                    "priority": record["rewrite_priority"],
+                    "issues": list(record.get("issues", [])),
+                    "score": int(record.get("score", 0)),
+                    "rewrite_strategy": record["rewrite_strategy"],
+                    "conflict_count": len(record.get("conflict_signals", [])),
+                    "gap_count": len(record.get("gap_signals", [])),
+                    "source_pages": list(record.get("source_pages", [])),
+                }
+            )
+        else:
+            stable_concepts.append(record)
+
+    weak_concepts.sort(
+        key=lambda item: (
+            -int(item.get("score", 0)),
+            -len(item.get("conflict_signals", [])),
+            int(item.get("source_count", 0)),
+            item.get("title", "").lower(),
+        )
+    )
+    stable_concepts.sort(key=lambda item: (-int(item.get("source_count", 0)), item.get("title", "").lower()))
+    rewrite_candidates.sort(
+        key=lambda item: (
+            action_priority_rank(item.get("priority", "")),
+            -int(item.get("score", 0)),
+            -int(item.get("conflict_count", 0)),
+            item.get("title", "").lower(),
+        )
+    )
+    all_conflict_signals.sort(
+        key=lambda item: (
+            -len(item.get("source_pages", [])),
+            item.get("title", "").lower(),
+            item.get("label", ""),
+        )
+    )
+    all_gap_signals.sort(
+        key=lambda item: (
+            item.get("kind", ""),
+            item.get("title", "").lower(),
+            item.get("path", ""),
+        )
     )
     return {
         "weak_concepts": weak_concepts[:20],
         "stable_concepts": stable_concepts[:12],
         "merge_candidates": merge_candidates[:12],
+        "rewrite_candidates": rewrite_candidates[:12],
+        "conflict_signals": all_conflict_signals[:12],
+        "gap_signals": all_gap_signals[:12],
         "placeholder_slugs": sorted(placeholder_slugs),
         "counts": {
             "weak": len(weak_concepts),
             "stable": len(stable_concepts),
             "merge_candidates": len(merge_candidates),
             "placeholders": len(placeholder_slugs),
+            "rewrite_candidates": len(rewrite_candidates),
+            "conflict_signals": len(all_conflict_signals),
+            "gap_signals": len(all_gap_signals),
         },
     }
 
@@ -4794,6 +5186,7 @@ def render_repair_backlog(
     inactive_actions = health.get("inactive_actions", [])
     repair_plan = health.get("repair_plan", {})
     concept_quality = health.get("concept_quality", {})
+    execution_proposals = repair_plan.get("execution_proposals", [])
     promotions = promotion_result.get("pages", [])
     lines = [
         "# 修复待办",
@@ -4817,8 +5210,11 @@ def render_repair_backlog(
         f"- Ready 动作：`{repair_plan.get('counts', {}).get('ready', 0)}`",
         f"- 待分流动作：`{repair_plan.get('counts', {}).get('triage', 0)}`",
         f"- 执行批次：`{repair_plan.get('counts', {}).get('batches', 0)}`",
+        f"- 执行提案：`{repair_plan.get('counts', {}).get('proposals', 0)}`",
         f"- 弱概念页：`{concept_quality.get('counts', {}).get('weak', 0)}`",
         f"- 概念合并候选：`{concept_quality.get('counts', {}).get('merge_candidates', 0)}`",
+        f"- 概念冲突信号：`{concept_quality.get('counts', {}).get('conflict_signals', 0)}`",
+        f"- 概念证据缺口：`{concept_quality.get('counts', {}).get('gap_signals', 0)}`",
         f"- 图谱修复候选：`{len(health.get('link_suggestions', []))}`",
         f"- 无概念覆盖来源：`{len(sources_without_concepts)}`",
         f"- 图谱分量数：`{health.get('component_count', 0)}`",
@@ -4853,10 +5249,14 @@ def render_repair_backlog(
         lines.append(
             f"9a. 先执行 `{repair_plan.get('counts', {}).get('ready', 0)}` 个已接受动作和 `{repair_plan.get('counts', {}).get('batches', 0)}` 个批次。"
         )
+    if repair_plan.get("counts", {}).get("proposals", 0):
+        lines.append(f"9b. 参考 `{repair_plan.get('counts', {}).get('proposals', 0)}` 个页级执行提案决定下一批修复。")
     if overdue_actions:
         lines.append(f"10. 优先清理 `{len(overdue_actions)}` 个已到期待处理的 machine-memory 动作。")
     if escalated_actions:
         lines.append(f"11. 先处理 `{len(escalated_actions)}` 个已升级的 machine-memory 动作。")
+    if concept_quality.get("counts", {}).get("conflict_signals", 0):
+        lines.append(f"11a. 先把 `{concept_quality.get('counts', {}).get('conflict_signals', 0)}` 个概念冲突信号显式写进相关概念页。")
     if health.get("link_suggestions", []):
         lines.append(f"12. 审阅 `{len(health.get('link_suggestions', []))}` 个机器记忆补链候选，决定是否补链接。")
     if sources_without_concepts:
@@ -4980,6 +5380,22 @@ def render_repair_backlog(
                 f"- `{concept['path']}` | issues `{', '.join(concept.get('issues', [])) or 'none'}`"
                 f" | sources `{concept.get('source_count', 0)}`"
             )
+    if concept_quality.get("rewrite_candidates"):
+        lines.append("")
+        lines.append("### 概念重写优先级")
+        for candidate in concept_quality.get("rewrite_candidates", [])[:8]:
+            lines.append(
+                f"- `{candidate['path']}` | priority `{candidate.get('priority', 'n/a')}`"
+                f" | strategy `{candidate.get('rewrite_strategy', 'n/a')}`"
+            )
+    if concept_quality.get("conflict_signals"):
+        lines.append("")
+        lines.append("### 概念冲突信号")
+        for signal in concept_quality.get("conflict_signals", [])[:8]:
+            lines.append(
+                f"- `{signal['slug']}` | signal `{signal.get('label', 'n/a')}`"
+                f" | sources `{', '.join(signal.get('source_pages', [])) or 'none'}`"
+            )
     if concept_quality.get("merge_candidates"):
         lines.append("")
         lines.append("### 概念合并候选")
@@ -4998,6 +5414,15 @@ def render_repair_backlog(
                 f" | escalated `{batch.get('escalated', False)}`"
                 f" | overdue `{batch.get('overdue', False)}`"
                 f" | primary `{', '.join(batch.get('primary_paths', [])) or 'none'}`"
+            )
+    if execution_proposals:
+        lines.append("")
+        lines.append("### Repair Execution Proposals")
+        for proposal in execution_proposals[:8]:
+            lines.append(
+                f"- `{proposal['action_id']}` | targets `{', '.join(proposal.get('target_paths', [])) or 'none'}`"
+                f" | risk `{proposal.get('risk', 'medium')}`"
+                f" | strategy `{proposal.get('summary', 'n/a')}`"
             )
     if health.get("link_suggestions", []):
         lines.append("")
@@ -5098,7 +5523,13 @@ def write_nightly_health(
             "weak_concept_slugs": [
                 concept["slug"] for concept in memory.get("health", {}).get("concept_quality", {}).get("weak_concepts", [])
             ],
+            "rewrite_candidate_slugs": [
+                concept["slug"]
+                for concept in memory.get("health", {}).get("concept_quality", {}).get("rewrite_candidates", [])
+            ],
             "merge_candidates": memory.get("health", {}).get("concept_quality", {}).get("counts", {}).get("merge_candidates", 0),
+            "conflict_signals": memory.get("health", {}).get("concept_quality", {}).get("counts", {}).get("conflict_signals", 0),
+            "gap_signals": memory.get("health", {}).get("concept_quality", {}).get("counts", {}).get("gap_signals", 0),
         },
         "machine_memory": {
             "digest": memory.get("digest", ""),
@@ -5116,6 +5547,10 @@ def write_nightly_health(
             "ready_action_ids": [
                 action["id"] for action in memory.get("health", {}).get("repair_plan", {}).get("ready_actions", [])
             ],
+            "proposal_action_ids": [
+                proposal["action_id"]
+                for proposal in memory.get("health", {}).get("repair_plan", {}).get("execution_proposals", [])
+            ],
         },
         "repair_backlog": {
             "path": relative_path(root, repair_backlog_path(root)),
@@ -5129,12 +5564,20 @@ def write_nightly_health(
             "weak_concept_slugs": [
                 concept["slug"] for concept in memory.get("health", {}).get("concept_quality", {}).get("weak_concepts", [])
             ],
+            "rewrite_candidate_slugs": [
+                concept["slug"]
+                for concept in memory.get("health", {}).get("concept_quality", {}).get("rewrite_candidates", [])
+            ],
             "machine_memory_actions": [action["id"] for action in memory.get("health", {}).get("actions", [])],
             "overdue_action_ids": [action["id"] for action in memory.get("health", {}).get("overdue_actions", [])],
             "escalated_action_ids": [action["id"] for action in memory.get("health", {}).get("escalated_actions", [])],
             "repair_plan_path": relative_path(root, machine_memory_repair_plan_path(root)),
             "ready_action_ids": [
                 action["id"] for action in memory.get("health", {}).get("repair_plan", {}).get("ready_actions", [])
+            ],
+            "proposal_action_ids": [
+                proposal["action_id"]
+                for proposal in memory.get("health", {}).get("repair_plan", {}).get("execution_proposals", [])
             ],
         },
     }

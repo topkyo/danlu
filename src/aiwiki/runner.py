@@ -16,6 +16,7 @@ from .app import (
     concept_summary_is_placeholder,
     ensure_layout,
     lint_wiki,
+    load_machine_memory,
     nightly_health,
     load_manifest,
     parse_frontmatter,
@@ -59,20 +60,27 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             pending.append(entry)
 
     updated_pages: list[str] = []
-    updated_concept_pages: list[str] = []
+    updated_placeholder_concept_pages: list[str] = []
+    updated_rewrite_concept_pages: list[str] = []
     skipped = max(0, len(pending) - limit)
     pending_concept_slugs = placeholder_concept_slugs(root)
     remaining_budget = max(0, limit)
     skipped_concepts = max(0, len(pending_concept_slugs) - remaining_budget)
-    if (not pending and not pending_concept_slugs) or limit <= 0:
+    memory = load_machine_memory(root)
+    pending_rewrite_candidates = _rewrite_candidate_slugs(memory, exclude=set(pending_concept_slugs))
+    skipped_rewrite_candidates = max(0, len(pending_rewrite_candidates) - remaining_budget)
+    if (not pending and not pending_concept_slugs and not pending_rewrite_candidates) or limit <= 0:
         return {
             "compile": compile_result,
             "updated_pages": updated_pages,
             "pending_pages": len(pending),
             "skipped_pages": skipped,
-            "updated_concept_pages": updated_concept_pages,
+            "updated_concept_pages": updated_placeholder_concept_pages + updated_rewrite_concept_pages,
             "pending_concept_pages": len(pending_concept_slugs),
             "skipped_concept_pages": skipped_concepts,
+            "updated_rewrite_concept_pages": updated_rewrite_concept_pages,
+            "pending_rewrite_concept_pages": len(pending_rewrite_candidates),
+            "skipped_rewrite_concept_pages": skipped_rewrite_candidates,
         }
 
     effective_client = client or create_client(root)
@@ -102,6 +110,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
     if updated_pages:
         compile_result = compile_wiki(root)
         pending_concept_slugs = placeholder_concept_slugs(root)
+        memory = load_machine_memory(root)
     remaining_budget = max(0, limit - len(updated_pages))
     skipped_concepts = max(0, len(pending_concept_slugs) - remaining_budget)
 
@@ -122,7 +131,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
         updated = _normalize_markdown(result.text)
         _validate_concept_page(updated, slug, frontmatter.get("source_signature", ""), source_pages)
         target.write_text(updated, encoding="utf-8")
-        updated_concept_pages.append(relative_path(root, target))
+        updated_placeholder_concept_pages.append(relative_path(root, target))
         _append_log(
             root,
             {
@@ -135,7 +144,56 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             },
         )
 
-    if updated_concept_pages:
+    if updated_placeholder_concept_pages:
+        compile_result = compile_wiki(root)
+        memory = load_machine_memory(root)
+
+    remaining_budget = max(0, limit - len(updated_pages) - len(updated_placeholder_concept_pages))
+    pending_rewrite_candidates = _rewrite_candidate_slugs(
+        memory,
+        exclude=set(pending_concept_slugs) | {Path(path).stem for path in updated_placeholder_concept_pages},
+    )
+    skipped_rewrite_candidates = max(0, len(pending_rewrite_candidates) - remaining_budget)
+
+    for slug in pending_rewrite_candidates[:remaining_budget]:
+        target = root / "wiki" / "concepts" / f"{slug}.md"
+        if not target.exists():
+            continue
+        current_page = target.read_text(encoding="utf-8", errors="replace")
+        frontmatter = parse_frontmatter(current_page)
+        source_pages = frontmatter.get("source_pages", [])
+        if not isinstance(source_pages, list):
+            source_pages = []
+        related_slugs = _extract_related_concept_slugs(current_page)
+        quality_record = _rewrite_candidate_record(memory, slug)
+        prompt = _build_concept_compile_prompt(
+            root,
+            target,
+            current_page,
+            source_pages,
+            related_slugs,
+            quality_record=quality_record,
+        )
+        result = effective_client.complete(_system_prompt("compile"), prompt)
+        updated = _normalize_markdown(result.text)
+        _validate_concept_page(updated, slug, frontmatter.get("source_signature", ""), source_pages)
+        target.write_text(updated, encoding="utf-8")
+        updated_rewrite_concept_pages.append(relative_path(root, target))
+        _append_log(
+            root,
+            {
+                "event": "run-compile-concept-rewrite",
+                "target": relative_path(root, target),
+                "source_pages": source_pages,
+                "quality_priority": quality_record.get("priority", ""),
+                "quality_issues": quality_record.get("issues", []),
+                "model": _client_model_name(effective_client),
+                "response_id": result.response_id,
+                "usage": result.usage,
+            },
+        )
+
+    if updated_rewrite_concept_pages:
         compile_result = compile_wiki(root)
 
     return {
@@ -143,9 +201,12 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
         "updated_pages": updated_pages,
         "pending_pages": len(pending),
         "skipped_pages": skipped,
-        "updated_concept_pages": updated_concept_pages,
+        "updated_concept_pages": updated_placeholder_concept_pages + updated_rewrite_concept_pages,
         "pending_concept_pages": len(pending_concept_slugs),
         "skipped_concept_pages": skipped_concepts,
+        "updated_rewrite_concept_pages": updated_rewrite_concept_pages,
+        "pending_rewrite_concept_pages": len(pending_rewrite_candidates),
+        "skipped_rewrite_concept_pages": skipped_rewrite_candidates,
     }
 
 
@@ -452,6 +513,7 @@ def _build_concept_compile_prompt(
     current_page: str,
     source_pages: list[str],
     related_slugs: list[str],
+    quality_record: dict[str, Any] | None = None,
 ) -> str:
     template = _load_prompt(root, "compile.md")
     source_sections: list[str] = []
@@ -467,6 +529,22 @@ def _build_concept_compile_prompt(
             continue
         related_sections.extend([f"### wiki/concepts/{slug}.md", _fit_prompt_section(page.read_text(encoding='utf-8', errors='replace'), max_chars=2200), ""])
     frontmatter = parse_frontmatter(current_page)
+    quality_lines = [
+        f"- Rewrite priority: `{quality_record.get('priority', 'n/a')}`",
+        f"- Issues: `{', '.join(quality_record.get('issues', [])) or 'none'}`",
+        f"- Strategy: {quality_record.get('rewrite_strategy', 'Keep the concept grounded and explicit.')}",
+    ] if quality_record else ["- No extra concept-quality signal was attached."]
+    if quality_record and quality_record.get("conflict_signals"):
+        for signal in quality_record.get("conflict_signals", [])[:4]:
+            quality_lines.append(
+                f"- Conflict `{signal.get('label', 'n/a')}` from `{', '.join(signal.get('source_pages', [])) or 'none'}`"
+            )
+    if quality_record and quality_record.get("gap_signals"):
+        for gap in quality_record.get("gap_signals", [])[:4]:
+            quality_lines.append(
+                f"- Gap `{gap.get('kind', 'n/a')}` on `{gap.get('path', 'n/a')}`"
+                f" with markers `{', '.join(gap.get('markers', [])) or 'none'}`"
+            )
     return "\n\n".join(
         [
             template,
@@ -485,6 +563,9 @@ def _build_concept_compile_prompt(
             "## Runtime Schema",
             _schema_context(root, ("index.md", "citations.md", "conflicts.md", "taxonomy.md")),
             "",
+            "## Concept Quality Signals",
+            "\n".join(quality_lines),
+            "",
             "## Current Concept Page",
             current_page,
             "",
@@ -495,6 +576,37 @@ def _build_concept_compile_prompt(
             "\n".join(related_sections) if related_sections else "- No related concept pages were available.",
         ]
     )
+
+
+def _rewrite_candidate_slugs(memory: dict[str, Any], *, exclude: set[str]) -> list[str]:
+    quality = memory.get("health", {}).get("concept_quality", {})
+    candidates = quality.get("rewrite_candidates", [])
+    slugs: list[str] = []
+    for candidate in candidates:
+        slug = str(candidate.get("slug") or "")
+        if not slug or slug in exclude:
+            continue
+        slugs.append(slug)
+    return slugs
+
+
+def _rewrite_candidate_record(memory: dict[str, Any], slug: str) -> dict[str, Any]:
+    quality = memory.get("health", {}).get("concept_quality", {})
+    weak_by_slug = {
+        str(record.get("slug") or ""): record
+        for record in quality.get("weak_concepts", [])
+        if isinstance(record, dict)
+    }
+    for candidate in quality.get("rewrite_candidates", []):
+        if str(candidate.get("slug") or "") != slug:
+            continue
+        record = dict(candidate)
+        weak_record = weak_by_slug.get(slug, {})
+        if weak_record:
+            record.setdefault("conflict_signals", weak_record.get("conflict_signals", []))
+            record.setdefault("gap_signals", weak_record.get("gap_signals", []))
+        return record
+    return {}
 
 
 def _build_ask_prompt(
@@ -614,6 +726,14 @@ def _render_machine_query(machine_memory_query: dict[str, Any]) -> str:
             detail = f" | secondary `{action['secondary_path']}`" if action.get("secondary_path") else ""
             next_step = action.get("next_step", "")
             next_part = f" | next {next_step}" if next_step else ""
+            proposal_targets = action.get("proposal_targets", [])
+            proposal_part = (
+                f" | proposal `{action.get('proposal_kind', 'manual-repair')}` -> `{', '.join(proposal_targets)}`"
+                if proposal_targets
+                else ""
+            )
+            strategy = action.get("proposal_summary", "")
+            strategy_part = f" | strategy {strategy}" if strategy else ""
             lines.append(
                 f"  - [{action.get('priority', 'unknown')}] {action.get('title', '')}"
                 f" | status `{action.get('status', 'unknown')}`"
@@ -621,6 +741,8 @@ def _render_machine_query(machine_memory_query: dict[str, Any]) -> str:
                 f" | primary `{action.get('primary_path', '')}`"
                 f"{detail}"
                 f"{next_part}"
+                f"{proposal_part}"
+                f"{strategy_part}"
             )
     return "\n".join(lines)
 

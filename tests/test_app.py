@@ -15,6 +15,7 @@ from aiwiki.app import (
     file_back,
     ingest_source,
     lint_wiki,
+    load_machine_memory,
     load_manifest,
     nightly_health,
     parse_frontmatter,
@@ -425,6 +426,43 @@ class AiwikiFlowTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "fallback state"):
             run_compile(self.root, client=StubClient([current]), limit=1)
 
+    def test_run_compile_rewrites_weak_non_placeholder_concept(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        source_page.write_text(
+            source_page.read_text(encoding="utf-8").replace(
+                "- Pending LLM summary.",
+                "- Transformer scale improves capability and raises compute demand.",
+            ),
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+
+        for concept_page in sorted((self.root / "wiki" / "concepts").glob("*.md")):
+            concept_page.write_text(
+                concept_page.read_text(encoding="utf-8").replace(
+                    "- This concept currently appears",
+                    f"- Existing synthesis for {concept_page.stem} appears",
+                ),
+                encoding="utf-8",
+            )
+        compile_wiki(self.root)
+
+        memory = load_machine_memory(self.root)
+        candidate = memory["health"]["concept_quality"]["rewrite_candidates"][0]
+        concept_page = self.root / candidate["path"]
+        current = concept_page.read_text(encoding="utf-8")
+        updated = current.replace("Existing synthesis", "Rewritten synthesis")
+
+        result = run_compile(self.root, client=StubClient([updated]), limit=1)
+
+        self.assertEqual(result["pending_pages"], 0)
+        self.assertEqual(result["pending_concept_pages"], 0)
+        self.assertGreaterEqual(result["pending_rewrite_concept_pages"], 1)
+        self.assertEqual(len(result["updated_rewrite_concept_pages"]), 1)
+        self.assertIn("Rewritten synthesis", concept_page.read_text(encoding="utf-8"))
+
     def test_file_back_supports_decision_and_judgment_kinds(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -679,6 +717,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("wiki/indexes/concept-quality.md", client.prompt)
         self.assertIn("wiki/indexes/machine-memory-topology.md", client.prompt)
         self.assertIn("wiki/indexes/machine-memory-actions.md", client.prompt)
+        self.assertIn("wiki/indexes/machine-memory-repair-plan.md", client.prompt)
         self.assertIn("Relevant repair actions", client.prompt)
         self.assertIn("latency", client.prompt.lower())
 
@@ -812,12 +851,15 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(state["repair_backlog"]["path"], result["repair_backlog"])
         self.assertEqual(state["lint"]["counts"]["warnings"], result["lint"]["counts"]["warnings"])
         self.assertEqual(state["concept_quality"]["path"], "wiki/indexes/concept-quality.md")
+        self.assertIn("rewrite_candidate_slugs", state["concept_quality"])
         self.assertIn("health", state["machine_memory"])
         self.assertEqual(state["machine_memory"]["actions_path"], "wiki/indexes/machine-memory-actions.md")
         self.assertEqual(state["machine_memory"]["repair_plan_path"], "wiki/indexes/machine-memory-repair-plan.md")
+        self.assertIn("proposal_action_ids", state["machine_memory"])
         self.assertIn("machine_memory_actions", state["repair_backlog"])
         self.assertEqual(state["repair_backlog"]["repair_plan_path"], "wiki/indexes/machine-memory-repair-plan.md")
         self.assertTrue(state["repair_backlog"]["weak_concept_slugs"])
+        self.assertIn("proposal_action_ids", state["repair_backlog"])
         self.assertTrue(state["repair_backlog"]["pending_review_decisions"])
         self.assertTrue(state["repair_backlog"]["pending_review_judgments"])
         self.assertFalse(state["llm_used"])
@@ -987,6 +1029,7 @@ class AiwikiFlowTests(unittest.TestCase):
         repair_text = repair_plan.read_text(encoding="utf-8")
         self.assertIn("## Need Triage", repair_text)
         self.assertIn("## Execution Batches", repair_text)
+        self.assertIn("## Execution Proposals", repair_text)
         self.assertIn("review-action overloaded-concept-latency --status accepted", repair_text)
 
     def test_compile_generates_concept_quality_page(self) -> None:
@@ -998,7 +1041,38 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(concept_quality.exists())
         quality_text = concept_quality.read_text(encoding="utf-8")
         self.assertIn("## Rewrite Now", quality_text)
+        self.assertIn("## Rewrite Priority", quality_text)
+        self.assertIn("## Conflict Signals", quality_text)
+        self.assertIn("## Evidence Gaps", quality_text)
         self.assertIn("## Merge Candidates", quality_text)
+
+    def test_compile_surfaces_concept_conflict_signals(self) -> None:
+        first = self.root / "first.md"
+        first.write_text("# Latency Outlook\n\nLatency will increase with larger batches.\n", encoding="utf-8")
+        second = self.root / "second.md"
+        second.write_text("# Latency Outlook\n\nLatency may decrease after cache reuse.\n", encoding="utf-8")
+        first_entry = ingest_source(self.root, str(first), title="Latency Outlook A")
+        second_entry = ingest_source(self.root, str(second), title="Latency Outlook B")
+
+        compile_wiki(self.root)
+
+        first_page = self.root / "wiki" / "sources" / f"{first_entry['id']}.md"
+        second_page = self.root / "wiki" / "sources" / f"{second_entry['id']}.md"
+        first_page.write_text(
+            first_page.read_text(encoding="utf-8").replace("- Pending LLM summary.", "- Latency will increase as batches grow."),
+            encoding="utf-8",
+        )
+        second_page.write_text(
+            second_page.read_text(encoding="utf-8").replace("- Pending LLM summary.", "- Latency can decrease once cache reuse stabilizes."),
+            encoding="utf-8",
+        )
+
+        compile_wiki(self.root)
+
+        memory = load_machine_memory(self.root)
+        self.assertGreaterEqual(memory["health"]["concept_quality"]["counts"]["conflict_signals"], 1)
+        quality_text = (self.root / "wiki" / "indexes" / "concept-quality.md").read_text(encoding="utf-8")
+        self.assertIn("increase-vs-decrease", quality_text)
 
     def test_compile_persists_machine_memory_action_lifecycle_state(self) -> None:
         self._seed_machine_memory_actions()

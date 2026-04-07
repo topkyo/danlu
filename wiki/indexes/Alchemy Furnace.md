@@ -177,7 +177,7 @@ status: "active"
 ### Compile Loop
 
 1. `compile` 维护 source、concept、index、review queue 等层。
-2. `run-compile` 用 LLM 替换 placeholder source summary 和 fallback concept summary。
+2. `run-compile` 用 LLM 替换 placeholder source summary、fallback concept summary，并继续重写高优先级弱概念页。
 3. raw 变化后，旧的 summary 和 concept synthesis 会被失效。
 
 ### Query Loop
@@ -195,7 +195,8 @@ status: "active"
 4. pending 的 decision / judgment 会持续进入 aging / revisit / escalation 跟踪。
 5. machine-memory action queue 会保留 `proposed / accepted / deferred / resolved / rejected` 生命周期，并把 overdue / escalation / inactive 历史暴露给 nightly。
 6. repair plan 会把 accepted / proposed / deferred 动作整理成 execution batches，给 nightly 和人工修复提供下一步提示。
-7. concept quality loop 会把弱概念页、占位概念和概念合并候选整理成稳定看板。
+7. repair plan 还会继续生成页级 execution proposals，把图谱修复推进到可审执行方案。
+8. concept quality loop 会把弱概念页、占位概念、概念合并候选、冲突信号、证据缺口和重写优先级整理成稳定看板。
 
 ## 角色分工
 
@@ -227,7 +228,7 @@ status: "active"
 
 ## 当前状态
 
-现在已经实现：
+现在已经实现当前架构文档定义的主线阶段：
 
 - 四类 `drop-*` 原料入口
 - source / concept / index 编译层
@@ -236,22 +237,23 @@ status: "active"
 - graph-health 看板和 repair backlog
 - machine-memory topology、hub 指标、动作队列和 Mermaid 拓扑切片
 - machine-memory action lifecycle、review-action 入口、inactive / overdue / escalation 视图
-- machine-memory repair plan、execution batch、next-step / command-hint
-- concept-quality 看板、弱概念页和概念合并候选
+- machine-memory repair plan、execution batch、页级 execution proposals、next-step / command-hint
+- concept-quality 看板、弱概念页、概念合并候选、冲突信号、证据缺口和重写优先级
 - decision / judgment writeback layers
 - decision / judgment review workflow 与 review queue
 - recurring outputs 自动晋升到 decision / judgment 页面
 - aging-report、overdue review、escalation 候选信号
-- `run-compile` 的 source/concept 双层维护
+- `run-compile` 的 source/concept 双层维护与高优先级弱概念重写
 - nightly health checks 和 timer 化调度
 - output 生成和高价值回流
 - `watch` 自动化与 user service
 - Obsidian 前端层
 
-下一阶段值得做的：
+后续增强方向：
 
-- 更深的 concept quality loop：冲突显式化、低质量概念重写优先级、LLM 重写策略
-- 更深的 graph repair automation：从 plan 走向更强的 repair 执行策略
+- 更细的 concept rewrite acceptance / review gate
+- 更安全的低风险 semi-auto repair apply
+- 更直观的 machine-memory 图谱可视化
 
 ## 架构不变量
 

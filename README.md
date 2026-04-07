@@ -77,7 +77,7 @@ AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . run-a
 
 把材料整理成知识层：
 - `compile` 维护 `wiki/sources/`、`wiki/concepts/`、`wiki/indexes/`
-- `run-compile` 用 LLM 补来源摘要和概念摘要
+- `run-compile` 用 LLM 补来源摘要、占位概念摘要，并继续重写高优先级弱概念页
 
 ### 3. 查询
 
@@ -115,8 +115,8 @@ nightly 也会继续跟踪 `decision / judgment` 的 aging：
 - `aging-report.md` 会集中列出这些页面
 - `repair-backlog.md` 会把它们抬进优先队列
 - `machine-memory-actions.md` 会把图谱修复动作沉成稳定队列，并展示状态分布、已到期、已升级、最近清除
-- `machine-memory-repair-plan.md` 会把 accepted / proposed / deferred 动作整理成可执行批次和下一步命令提示
-- `concept-quality.md` 会把弱概念页、占位概念和概念合并候选集中列出来
+- `machine-memory-repair-plan.md` 会把 accepted / proposed / deferred 动作整理成可执行批次、页级执行提案和下一步命令提示
+- `concept-quality.md` 会把弱概念页、占位概念、概念合并候选、冲突信号、证据缺口和重写优先级集中列出来
 
 machine-memory action 现在也有显式 lifecycle：
 - `proposed`：新发现、待处理
