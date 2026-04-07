@@ -29,6 +29,7 @@ output/
 # Python
 __pycache__/
 *.pyc
+*.swp
 .venv/
 dist/
 build/
