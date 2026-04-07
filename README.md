@@ -17,7 +17,7 @@ Deterministic commands:
 - `ingest`: register a local file or a URL stub into `raw/`
 - `compile`: turn the current source inventory into `wiki/sources/`, `wiki/concepts/`, and `wiki/indexes/`
 - `ask`: generate a report, slide deck, or figure brief artifact grounded in the wiki and guided by machine-memory query planning
-- `file-back`: move a useful markdown output back into `wiki/derived/`
+- `file-back`: move a useful markdown output back into `wiki/derived/`, `wiki/decisions/`, or `wiki/judgments/`
 - `lint`: scan for missing source pages, broken source references, and obvious provenance gaps
 - `nightly`: run deterministic compile + lint and write a repair backlog plus nightly state snapshot
 
@@ -53,6 +53,8 @@ schema/
 wiki/
   sources/      one source page per raw input
   concepts/     compiled concept pages synthesized from source pages
+  decisions/    filed-back decision records with explicit rationale/evidence sections
+  judgments/    filed-back judgment calls with explicit signals/confidence sections
   indexes/      master index, inventories, compile status, machine memory summary, graph health, drift report, repair backlog, and operation log
   derived/      filed-back markdown outputs
 output/
@@ -98,6 +100,7 @@ Repo-local Obsidian assets are included:
 `run-compile` now upgrades both `wiki/sources/` and `wiki/concepts/` when budget is available.
 `ask` and `run-ask` now read the compiled wiki first, then use machine-memory term hits plus graph edges to bias source and concept selection.
 They also expose bridge concepts, query routes, touched components, and a lightweight query subgraph for graph-aware retrieval.
+`file-back --kind decision|judgment` now lets the furnace accumulate explicit decision and judgment pages instead of flattening everything into generic derived notes.
 `nightly` and `run-nightly` aggregate compile, lint, drift, and repair queues into `wiki/indexes/repair-backlog.md`.
 `graph-health.md` summarizes connected components, isolated sources, singleton concepts, and overloaded concepts.
 `install_user_service.sh` now installs both the inbox watcher and a nightly `systemd --user` timer for automated health/repair passes.

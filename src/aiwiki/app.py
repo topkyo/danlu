@@ -20,6 +20,8 @@ LAYOUT_DIRS = (
     "schema",
     "wiki/sources",
     "wiki/concepts",
+    "wiki/decisions",
+    "wiki/judgments",
     "wiki/indexes",
     "wiki/derived",
     "output/reports",
@@ -94,8 +96,10 @@ DEFAULT_SCHEMA_FILES = {
             "# Writeback Rules",
             "",
             "- High-value outputs may be filed back into `wiki/derived/`.",
+            "- Stable choices may be promoted into `wiki/decisions/`.",
+            "- Reusable judgment calls may be promoted into `wiki/judgments/`.",
             "- Filed-back notes must not overwrite source pages or raw evidence.",
-            "- Derived pages should cite their source pages or raw evidence.",
+            "- Derived, decision, and judgment pages should cite their source pages or raw evidence.",
             "- Writeback is compounding knowledge, not silent mutation of facts.",
         ]
     )
@@ -106,7 +110,7 @@ DEFAULT_SCHEMA_FILES = {
             "",
             "- Keep concept names stable and human-readable.",
             "- Prefer concept pages over repeating the same synthesis in many source pages.",
-            "- Separate source pages, concept pages, derived pages, and outputs by role.",
+            "- Separate source pages, concept pages, decision pages, judgment pages, derived pages, and outputs by role.",
             "- Promote repeated patterns into schema or decision pages when they become stable.",
         ]
     )
@@ -802,37 +806,98 @@ def render_concepts_index(concepts: list[dict[str, Any]], compiled_at: str) -> s
     return "\n".join(lines) + "\n"
 
 
-def render_compile_status(entries: list[dict[str, Any]], concepts: list[dict[str, Any]], compiled_at: str) -> str:
+def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[dict[str, str]]:
+    pages: list[dict[str, str]] = []
+    for path in sorted((root / "wiki" / folder).glob("*.md")):
+        content = path.read_text(encoding="utf-8", errors="replace")
+        frontmatter = parse_frontmatter(content)
+        pages.append(
+            {
+                "title": str(frontmatter.get("title") or path.stem),
+                "path": relative_path(root, path),
+                "kind": str(frontmatter.get("kind") or ""),
+                "confidence": str(frontmatter.get("confidence") or ""),
+                "matches_expected_kind": str(frontmatter.get("kind") or "") == expected_kind,
+            }
+        )
+    return pages
+
+
+def render_curated_index(
+    heading: str,
+    section_name: str,
+    pages: list[dict[str, str]],
+    compiled_at: str,
+) -> str:
+    lines = [
+        f"# {heading}",
+        "",
+        f"- Last compiled at: `{compiled_at}`",
+        f"- Total pages: `{len(pages)}`",
+        "",
+        f"## {section_name}",
+    ]
+    if not pages:
+        lines.append(f"- No {section_name.lower()} yet.")
+    else:
+        for page in pages:
+            confidence = page.get("confidence", "")
+            suffix = f" | confidence `{confidence}`" if confidence else ""
+            lines.append(f"- [{page['title']}](../../{page['path']}){suffix}")
+    return "\n".join(lines) + "\n"
+
+
+def render_compile_status(
+    entries: list[dict[str, Any]],
+    concepts: list[dict[str, Any]],
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    compiled_at: str,
+) -> str:
     lines = [
         "# Compile Status",
         "",
         f"- Last compiled at: `{compiled_at}`",
         f"- Source pages: `{len(entries)}`",
         f"- Concept pages: `{len(concepts)}`",
+        f"- Decision pages: `{len(decisions)}`",
+        f"- Judgment pages: `{len(judgments)}`",
         "- Content index lives in `index.md`.",
         "- Runtime schema lives under `schema/`.",
         "- Operation log lives in `log.md`.",
+        "- Decision index lives in `decisions.md`.",
+        "- Judgment index lives in `judgments.md`.",
         "- Machine memory summary lives in `machine-memory.md`.",
         "- Graph health lives in `graph-health.md`.",
         "- Drift report lives in `drift-report.md`.",
         "- Repair backlog lives in `repair-backlog.md`.",
-        "- Derived pages are filed back explicitly via `aiwiki file-back`.",
+        "- Derived, decision, and judgment pages are filed back explicitly via `aiwiki file-back`.",
         "- Lint findings land under `output/lint/`.",
     ]
     return "\n".join(lines) + "\n"
 
 
-def render_master_index(entries: list[dict[str, Any]], concepts: list[dict[str, Any]], compiled_at: str) -> str:
+def render_master_index(
+    entries: list[dict[str, Any]],
+    concepts: list[dict[str, Any]],
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    compiled_at: str,
+) -> str:
     lines = [
         "# Wiki Index",
         "",
         f"- Last compiled at: `{compiled_at}`",
         f"- Sources: `{len(entries)}`",
         f"- Concepts: `{len(concepts)}`",
+        f"- Decisions: `{len(decisions)}`",
+        f"- Judgments: `{len(judgments)}`",
         "",
         "## Core Files",
         "- [Sources Index](./sources.md)",
         "- [Concepts Index](./concepts.md)",
+        "- [Decisions Index](./decisions.md)",
+        "- [Judgments Index](./judgments.md)",
         "- [Compile Status](./compile-status.md)",
         "- [Machine Memory](./machine-memory.md)",
         "- [Graph Health](./graph-health.md)",
@@ -854,6 +919,18 @@ def render_master_index(entries: list[dict[str, Any]], concepts: list[dict[str, 
     else:
         for concept in concepts[:10]:
             lines.append(f"- [{concept['title']}](../concepts/{concept['slug']}.md)")
+    lines.extend(["", "## Recent Decisions"])
+    if not decisions:
+        lines.append("- No decision pages filed yet.")
+    else:
+        for page in decisions[:8]:
+            lines.append(f"- [{page['title']}](../../{page['path']})")
+    lines.extend(["", "## Recent Judgments"])
+    if not judgments:
+        lines.append("- No judgment pages filed yet.")
+    else:
+        for page in judgments[:8]:
+            lines.append(f"- [{page['title']}](../../{page['path']})")
     return "\n".join(lines) + "\n"
 
 
@@ -1690,6 +1767,8 @@ def render_graph_health(memory: dict[str, Any]) -> str:
         "- [Machine Memory](./machine-memory.md)",
         "- [Drift Report](./drift-report.md)",
         "- [Repair Backlog](./repair-backlog.md)",
+        "- [Decisions Index](./decisions.md)",
+        "- [Judgments Index](./judgments.md)",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -1722,6 +1801,10 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         f"- Bridge concepts: `{len(health.get('bridge_concept_slugs', []))}`",
         f"- Overloaded concepts: `{len(health.get('overloaded_concept_slugs', []))}`",
         f"- Indexed components: `{len(health.get('components', []))}`",
+        "",
+        "## Human Judgment Layers",
+        "- Decision index: `wiki/indexes/decisions.md`",
+        "- Judgment index: `wiki/indexes/judgments.md`",
         "",
         "## Drift Summary",
         f"- Missing raw files: `{len(drift['missing_raw_files'])}`",
@@ -1798,14 +1881,31 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     changed_pages += int(
         write_if_changed(root / "wiki" / "indexes" / "concepts.md", render_concepts_index(concepts, compiled_at))
     )
+    decision_pages = collect_curated_pages(root, "decisions", "decision")
+    judgment_pages = collect_curated_pages(root, "judgments", "judgment")
     changed_pages += int(
         write_if_changed(
-            root / "wiki" / "indexes" / "compile-status.md",
-            render_compile_status(entries, concepts, compiled_at),
+            root / "wiki" / "indexes" / "decisions.md",
+            render_curated_index("Decisions Index", "Decisions", decision_pages, compiled_at),
         )
     )
     changed_pages += int(
-        write_if_changed(root / "wiki" / "indexes" / "index.md", render_master_index(entries, concepts, compiled_at))
+        write_if_changed(
+            root / "wiki" / "indexes" / "judgments.md",
+            render_curated_index("Judgments Index", "Judgments", judgment_pages, compiled_at),
+        )
+    )
+    changed_pages += int(
+        write_if_changed(
+            root / "wiki" / "indexes" / "compile-status.md",
+            render_compile_status(entries, concepts, decision_pages, judgment_pages, compiled_at),
+        )
+    )
+    changed_pages += int(
+        write_if_changed(
+            root / "wiki" / "indexes" / "index.md",
+            render_master_index(entries, concepts, decision_pages, judgment_pages, compiled_at),
+        )
     )
     ensure_wiki_log(root)
 
@@ -1975,6 +2075,8 @@ def render_report(
         "- [Wiki Index](../../wiki/indexes/index.md)",
         "- [Sources Index](../../wiki/indexes/sources.md)",
         "- [Concepts Index](../../wiki/indexes/concepts.md)",
+        "- [Decisions Index](../../wiki/indexes/decisions.md)",
+        "- [Judgments Index](../../wiki/indexes/judgments.md)",
         "- [Machine Memory](../../wiki/indexes/machine-memory.md)",
         "- [Graph Health](../../wiki/indexes/graph-health.md)",
         "- [Drift Report](../../wiki/indexes/drift-report.md)",
@@ -2064,6 +2166,8 @@ def render_slides(
         "- `wiki/indexes/index.md`",
         "- `wiki/indexes/sources.md`",
         "- `wiki/indexes/concepts.md`",
+        "- `wiki/indexes/decisions.md`",
+        "- `wiki/indexes/judgments.md`",
         "- `wiki/indexes/machine-memory.md`",
         "- `wiki/indexes/graph-health.md`",
         "- `wiki/indexes/drift-report.md`",
@@ -2141,6 +2245,8 @@ def render_figure_brief(
         "- [Wiki Index](../../wiki/indexes/index.md)",
         "- [Sources Index](../../wiki/indexes/sources.md)",
         "- [Concepts Index](../../wiki/indexes/concepts.md)",
+        "- [Decisions Index](../../wiki/indexes/decisions.md)",
+        "- [Judgments Index](../../wiki/indexes/judgments.md)",
         "- [Machine Memory](../../wiki/indexes/machine-memory.md)",
         "- [Graph Health](../../wiki/indexes/graph-health.md)",
         "- [Drift Report](../../wiki/indexes/drift-report.md)",
@@ -2246,6 +2352,8 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
             "wiki/indexes/index.md",
             "wiki/indexes/sources.md",
             "wiki/indexes/concepts.md",
+            "wiki/indexes/decisions.md",
+            "wiki/indexes/judgments.md",
             "wiki/indexes/compile-status.md",
             "wiki/indexes/machine-memory.md",
             "wiki/indexes/graph-health.md",
@@ -2257,7 +2365,7 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
     }
 
 
-def file_back(root: Path, artifact: str, title: str | None = None) -> dict[str, Any]:
+def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "derived") -> dict[str, Any]:
     ensure_layout(root)
     candidate = Path(artifact)
     artifact_path = candidate if candidate.is_absolute() else (root / candidate)
@@ -2266,31 +2374,37 @@ def file_back(root: Path, artifact: str, title: str | None = None) -> dict[str, 
         raise FileNotFoundError(f"Artifact not found: {artifact}")
     if artifact_path.suffix.lower() not in {".md", ".markdown", ".txt"}:
         raise ValueError("Only markdown or text artifacts can be filed back in the MVP.")
+    if kind not in {"derived", "decision", "judgment"}:
+        raise ValueError(f"Unsupported filed-back kind: {kind}")
 
     filed_at = utc_now()
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     artifact_ref = (
         relative_path(root, artifact_path) if artifact_path.is_relative_to(root) else str(artifact_path)
     )
-    entry_id = f"derived-{stamp}-{slugify(title or artifact_path.stem)[:48]}"
-    destination = root / "wiki" / "derived" / f"{entry_id}.md"
+    entry_id = f"{kind}-{stamp}-{slugify(title or artifact_path.stem)[:48]}"
+    destination = {
+        "derived": root / "wiki" / "derived" / f"{entry_id}.md",
+        "decision": root / "wiki" / "decisions" / f"{entry_id}.md",
+        "judgment": root / "wiki" / "judgments" / f"{entry_id}.md",
+    }[kind]
     original = artifact_path.read_text(encoding="utf-8", errors="replace")
-    payload = "\n".join(
-        [
-            render_frontmatter(
-                {
-                    "id": entry_id,
-                    "kind": "derived",
-                    "status": "filed",
-                    "title": title or artifact_path.stem,
-                    "source_files": [artifact_ref],
-                    "citations": [],
-                    "generated_by": "aiwiki-file-back",
-                    "last_compiled_at": filed_at,
-                    "confidence": "medium",
-                }
-            ),
-            "",
+    frontmatter = render_frontmatter(
+        {
+            "id": entry_id,
+            "kind": kind,
+            "status": "filed" if kind == "derived" else "captured",
+            "title": title or artifact_path.stem,
+            "source_files": [artifact_ref],
+            "citations": [],
+            "generated_by": "aiwiki-file-back",
+            "last_compiled_at": filed_at,
+            "confidence": "medium",
+        }
+    )
+    stripped = strip_frontmatter(original).strip()
+    if kind == "derived":
+        body_lines = [
             f"# {title or artifact_path.stem}",
             "",
             "## Origin",
@@ -2298,15 +2412,62 @@ def file_back(root: Path, artifact: str, title: str | None = None) -> dict[str, 
             f"- Filed at: `{filed_at}`",
             "",
             "## Filed Content",
-            strip_frontmatter(original).strip(),
+            stripped,
         ]
-    ).rstrip() + "\n"
+    elif kind == "decision":
+        body_lines = [
+            f"# {title or artifact_path.stem}",
+            "",
+            "## Origin",
+            f"- Filed from: `{artifact_ref}`",
+            f"- Filed at: `{filed_at}`",
+            "",
+            "## Decision",
+            "- State the concrete decision here.",
+            "",
+            "## Why",
+            "- Summarize the rationale and tradeoffs.",
+            "",
+            "## Evidence",
+            f"- Review `{artifact_ref}` and cite `wiki/sources/*.md` or `raw/` evidence explicitly.",
+            "",
+            "## Risks And Revisit",
+            "- Record what could invalidate this decision and when to revisit it.",
+            "",
+            "## Supporting Artifact",
+            stripped,
+        ]
+    else:
+        body_lines = [
+            f"# {title or artifact_path.stem}",
+            "",
+            "## Origin",
+            f"- Filed from: `{artifact_ref}`",
+            f"- Filed at: `{filed_at}`",
+            "",
+            "## Judgment",
+            "- State the judgment call here.",
+            "",
+            "## Signals",
+            f"- Summarize the signals from `{artifact_ref}` and cite `wiki/sources/*.md` or `raw/` evidence.",
+            "",
+            "## Counterevidence",
+            "- Record what could make this judgment wrong.",
+            "",
+            "## Confidence And Follow-up",
+            "- Keep confidence explicit and list what to watch next.",
+            "",
+            "## Supporting Artifact",
+            stripped,
+        ]
+    payload = "\n".join([frontmatter, "", *body_lines]).rstrip() + "\n"
     destination.write_text(payload, encoding="utf-8")
     append_wiki_log(
         root,
         "file-back",
         title or artifact_path.stem,
         [
+            f"kind: `{kind}`",
             f"from: `{artifact_ref}`",
             f"destination: `{relative_path(root, destination)}`",
         ],
@@ -2378,6 +2539,8 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/index.md": "Missing master wiki index page.",
         "wiki/indexes/sources.md": "Missing sources index page.",
         "wiki/indexes/concepts.md": "Missing concepts index page.",
+        "wiki/indexes/decisions.md": "Missing decisions index page.",
+        "wiki/indexes/judgments.md": "Missing judgments index page.",
         "wiki/indexes/compile-status.md": "Missing compile status page.",
         "wiki/indexes/machine-memory.md": "Missing machine memory index page.",
         "wiki/indexes/graph-health.md": "Missing machine memory graph health page.",
@@ -2462,12 +2625,38 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                     Finding("error", relative_path(root, page), f"Concept page references missing source page: `{source_page}`.")
                 )
 
-    for page in sorted((root / "wiki" / "derived").glob("*.md")):
-        content = page.read_text(encoding="utf-8", errors="replace")
-        if "wiki/sources/" not in content and "raw/" not in content:
-            findings.append(
-                Finding("warn", relative_path(root, page), "Derived page has no explicit source-page reference.")
-            )
+    for group, expected_kind in (
+        ("wiki/derived", "derived"),
+        ("wiki/decisions", "decision"),
+        ("wiki/judgments", "judgment"),
+    ):
+        for page in sorted((root / group).glob("*.md")):
+            content = page.read_text(encoding="utf-8", errors="replace")
+            frontmatter = parse_frontmatter(content)
+            if frontmatter.get("kind") != expected_kind:
+                findings.append(
+                    Finding("warn", relative_path(root, page), f"{expected_kind.capitalize()} page kind is missing or incorrect.")
+                )
+            if "wiki/sources/" not in content and "raw/" not in content:
+                findings.append(
+                    Finding("warn", relative_path(root, page), f"{expected_kind.capitalize()} page has no explicit source-page reference.")
+                )
+            if expected_kind == "decision":
+                for section in ("## Decision", "## Evidence"):
+                    if section not in content:
+                        findings.append(
+                            Finding("warn", relative_path(root, page), f"Decision page is missing section `{section}`.")
+                        )
+            if expected_kind == "judgment":
+                for section in ("## Judgment", "## Signals"):
+                    if section not in content:
+                        findings.append(
+                            Finding("warn", relative_path(root, page), f"Judgment page is missing section `{section}`.")
+                        )
+                if not frontmatter.get("confidence"):
+                    findings.append(
+                        Finding("warn", relative_path(root, page), "Judgment page is missing explicit confidence metadata.")
+                    )
 
     generated_at = utc_now()
     report_name = f"lint-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.md"

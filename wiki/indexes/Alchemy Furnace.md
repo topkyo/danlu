@@ -229,6 +229,7 @@ Implemented now:
 - machine-memory graph export, drift tracking, and query planning
 - explicit query routes and component-aware graph traversal retrieval
 - graph-health dashboard and graph-aware repair suggestions
+- explicit decision and judgment writeback layers
 - LLM-backed source and concept maintenance during `run-compile`
 - nightly health checks and repair backlog generation
 - timer-based scheduling for nightly jobs
@@ -238,8 +239,8 @@ Implemented now:
 
 Next-stage extensions:
 
-- deeper graph traversal and retrieval beyond the current lightweight query subgraph
-- more explicit decision pages and judgment pages
+- automatic promotion from recurring outputs into decision/judgment pages
+- stronger review/workflow around decision and judgment pages
 
 ## Architectural Invariants
 

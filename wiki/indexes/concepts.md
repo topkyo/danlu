@@ -1,6 +1,6 @@
 # Concepts Index
 
-- Last compiled at: `2026-04-07T08:24:50+00:00`
+- Last compiled at: `2026-04-07T09:05:02+00:00`
 - Total concept pages: `0`
 
 ## Concepts

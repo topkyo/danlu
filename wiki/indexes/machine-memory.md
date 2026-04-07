@@ -1,6 +1,6 @@
 # Machine Memory
 
-- Last compiled at: `2026-04-07T08:24:50+00:00`
+- Last compiled at: `2026-04-07T09:05:02+00:00`
 - Runtime state file: `.aiwiki/state/machine-memory.json`
 - Graph export: `.aiwiki/cache/machine-memory-graph.json`
 - Drift report: `wiki/indexes/drift-report.md`
@@ -18,6 +18,11 @@
 - Singleton concepts: `0`
 - Bridge concepts: `0`
 - Overloaded concepts: `0`
+- Indexed components: `0`
+
+## Human Judgment Layers
+- Decision index: `wiki/indexes/decisions.md`
+- Judgment index: `wiki/indexes/judgments.md`
 
 ## Drift Summary
 - Missing raw files: `0`
@@ -33,6 +38,7 @@
 ## Query Acceleration
 - `ask` and `run-ask` use the machine-memory term index as a first-pass query planner.
 - Source-to-concept and concept-to-concept edges expand related candidates before prompt assembly.
+- Query planning also extracts shortest graph routes and touched components for deeper retrieval.
 - The graph export is for agent/tool consumption, not for direct human editing.
 
 ## Top Concepts

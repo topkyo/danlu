@@ -144,6 +144,8 @@ class AiwikiFlowTests(unittest.TestCase):
         log_page = self.root / "wiki" / "indexes" / "log.md"
         memory_page = self.root / "wiki" / "indexes" / "machine-memory.md"
         graph_health_page = self.root / "wiki" / "indexes" / "graph-health.md"
+        decisions_index = self.root / "wiki" / "indexes" / "decisions.md"
+        judgments_index = self.root / "wiki" / "indexes" / "judgments.md"
         memory_state = self.root / ".aiwiki" / "state" / "machine-memory.json"
         memory_graph = self.root / ".aiwiki" / "cache" / "machine-memory-graph.json"
         drift_report = self.root / "wiki" / "indexes" / "drift-report.md"
@@ -152,12 +154,16 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(log_page.exists())
         self.assertTrue(memory_page.exists())
         self.assertTrue(graph_health_page.exists())
+        self.assertTrue(decisions_index.exists())
+        self.assertTrue(judgments_index.exists())
         self.assertTrue(memory_state.exists())
         self.assertTrue(memory_graph.exists())
         self.assertTrue(drift_report.exists())
         self.assertTrue(memory_history.exists())
         self.assertIn("Operation Log", master_index.read_text(encoding="utf-8"))
         self.assertIn("Machine Memory", master_index.read_text(encoding="utf-8"))
+        self.assertIn("Decisions Index", master_index.read_text(encoding="utf-8"))
+        self.assertIn("Judgments Index", master_index.read_text(encoding="utf-8"))
         self.assertIn("Graph Health", master_index.read_text(encoding="utf-8"))
         self.assertIn("Drift Report", master_index.read_text(encoding="utf-8"))
         self.assertIn("compile | wiki refresh", log_page.read_text(encoding="utf-8"))
@@ -273,6 +279,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("wiki/indexes/log.md", result["index_pages"])
         self.assertIn("wiki/indexes/machine-memory.md", result["index_pages"])
         self.assertIn("wiki/indexes/drift-report.md", result["index_pages"])
+        self.assertIn("wiki/indexes/decisions.md", result["index_pages"])
+        self.assertIn("wiki/indexes/judgments.md", result["index_pages"])
         self.assertIn("schema/index.md", result["index_pages"])
 
         report_text = (self.root / result["path"]).read_text(encoding="utf-8")
@@ -280,6 +288,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Recommended Index Pages", report_text)
         self.assertIn("Machine Memory", report_text)
         self.assertIn("Drift Report", report_text)
+        self.assertIn("Decisions Index", report_text)
+        self.assertIn("Judgments Index", report_text)
         self.assertIn("Runtime Schema", report_text)
 
     def test_ensure_layout_bootstraps_runtime_schema_files(self) -> None:
@@ -402,6 +412,33 @@ class AiwikiFlowTests(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "fallback state"):
             run_compile(self.root, client=StubClient([current]), limit=1)
+
+    def test_file_back_supports_decision_and_judgment_kinds(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+
+        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+
+        decision_path = self.root / decision["path"]
+        judgment_path = self.root / judgment["path"]
+        self.assertTrue(decision_path.exists())
+        self.assertTrue(judgment_path.exists())
+        self.assertIn("wiki/decisions/", decision["path"])
+        self.assertIn("wiki/judgments/", judgment["path"])
+        self.assertEqual(parse_frontmatter(decision_path.read_text(encoding="utf-8"))["kind"], "decision")
+        self.assertEqual(parse_frontmatter(judgment_path.read_text(encoding="utf-8"))["kind"], "judgment")
+        self.assertIn("## Decision", decision_path.read_text(encoding="utf-8"))
+        self.assertIn("## Evidence", decision_path.read_text(encoding="utf-8"))
+        self.assertIn("## Judgment", judgment_path.read_text(encoding="utf-8"))
+        self.assertIn("## Signals", judgment_path.read_text(encoding="utf-8"))
+
+        compile_wiki(self.root)
+        decisions_index = (self.root / "wiki" / "indexes" / "decisions.md").read_text(encoding="utf-8")
+        judgments_index = (self.root / "wiki" / "indexes" / "judgments.md").read_text(encoding="utf-8")
+        self.assertIn("Scaling Decision", decisions_index)
+        self.assertIn("Scaling Judgment", judgments_index)
 
     def test_run_ask_and_run_lint_write_llm_outputs(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")

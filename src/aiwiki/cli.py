@@ -87,9 +87,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output artifact format.",
     )
 
-    file_back_parser = subparsers.add_parser("file-back", help="File a markdown artifact back into wiki/derived.")
+    file_back_parser = subparsers.add_parser(
+        "file-back",
+        help="File a markdown artifact back into wiki/derived, wiki/decisions, or wiki/judgments.",
+    )
     file_back_parser.add_argument("artifact", help="Path to a markdown artifact.")
     file_back_parser.add_argument("--title", help="Optional filed-back title.")
+    file_back_parser.add_argument(
+        "--kind",
+        choices=("derived", "decision", "judgment"),
+        default="derived",
+        help="Filed-back page kind.",
+    )
 
     subparsers.add_parser("lint", help="Run deterministic lint checks against the wiki.")
     subparsers.add_parser("run-lint", help="Run deterministic lint plus an LLM-backed semantic lint pass.")
@@ -203,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "run-ask":
             result = run_ask(root, args.question, args.format)
         elif args.command == "file-back":
-            result = file_back(root, args.artifact, title=args.title)
+            result = file_back(root, args.artifact, title=args.title, kind=args.kind)
         elif args.command == "lint":
             result = lint_wiki(root)
         elif args.command == "run-lint":
