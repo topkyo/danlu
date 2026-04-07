@@ -333,6 +333,18 @@ class AiwikiFlowTests(unittest.TestCase):
             self.assertTrue(path.exists(), relative)
             self.assertIn(marker, path.read_text(encoding="utf-8"))
 
+    def test_compile_writes_machine_memory_graph_html(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        graph_html = self.root / "output" / "graph" / "machine-memory.html"
+        payload = graph_html.read_text(encoding="utf-8")
+        self.assertTrue(graph_html.exists())
+        self.assertIn("Machine Memory Graph", payload)
+        self.assertIn("<svg", payload)
+        self.assertIn("Transformer Scaling", payload)
+        self.assertIn("../../wiki/indexes/graph-view.md", payload)
+
     def test_ask_recompiles_when_raw_source_changes(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -1294,6 +1306,7 @@ class AiwikiFlowTests(unittest.TestCase):
         (self.root / "wiki" / "indexes" / "graph-health.md").unlink()
         (self.root / "wiki" / "indexes" / "drift-report.md").unlink()
         (self.root / ".aiwiki" / "cache" / "machine-memory-graph.json").unlink()
+        (self.root / "output" / "graph" / "machine-memory.html").unlink()
         concept_page = next((self.root / "wiki" / "concepts").glob("*.md"))
         broken = concept_page.read_text(encoding="utf-8").replace("wiki/sources/", "wiki/sources/missing-", 1)
         concept_page.write_text(broken, encoding="utf-8")
@@ -1312,6 +1325,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Missing machine memory graph health page.", report_text)
         self.assertIn("Missing machine memory drift report.", report_text)
         self.assertIn("Missing machine memory graph export.", report_text)
+        self.assertIn("Missing machine memory graph HTML view.", report_text)
         self.assertIn("Concept page references missing source page", report_text)
 
 

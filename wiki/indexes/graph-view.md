@@ -14,12 +14,14 @@ kind: "dashboard"
 - [图谱健康](./graph-health.md)：看 component、isolated/singleton/bridge 信号
 - [漂移报告](./drift-report.md)：看最近一次 machine-memory 结构变化
 - [概念质量](./concept-quality.md)：看图谱问题如何传导到 concept rewrite
+- [本地图谱 HTML](../../output/graph/machine-memory.html)：直接看可视化图谱产物
 
 ## 怎么读
 
 1. 先看 component、hub 和 drift 是否稳定。
 2. 再看 link suggestion、action queue 和 repair proposal。
 3. 最后回到具体 `wiki/concepts/` 或 `wiki/sources/` 页面处理。
+4. 需要真正看图时，优先打开 `output/graph/machine-memory.html`。
 
 ## 边界
 

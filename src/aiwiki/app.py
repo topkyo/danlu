@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 import hashlib
+import html
 import json
 import re
 import shutil
@@ -27,6 +28,7 @@ LAYOUT_DIRS = (
     "output/reports",
     "output/slides",
     "output/figures",
+    "output/graph",
     "output/lint",
     "prompts",
     ".aiwiki/state",
@@ -176,6 +178,7 @@ DEFAULT_DASHBOARD_FILES = {
             "- [图谱健康](./graph-health.md)：看 component、isolated/singleton/bridge 信号",
             "- [漂移报告](./drift-report.md)：看最近一次 machine-memory 结构变化",
             "- [概念质量](./concept-quality.md)：看图谱问题如何传导到 concept rewrite",
+            "- [本地图谱 HTML](../../output/graph/machine-memory.html)：直接看可视化图谱产物",
             "",
             "## 怎么读",
             "",
@@ -1920,6 +1923,10 @@ def machine_memory_graph_path(root: Path) -> Path:
     return root / ".aiwiki" / "cache" / "machine-memory-graph.json"
 
 
+def machine_memory_graph_html_path(root: Path) -> Path:
+    return root / "output" / "graph" / "machine-memory.html"
+
+
 def machine_memory_history_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "machine-memory-history.jsonl"
 
@@ -2626,6 +2633,234 @@ def build_machine_memory_graph(memory: dict[str, Any]) -> dict[str, Any]:
     }
     graph["digest"] = sha256_bytes(json.dumps({"nodes": graph["nodes"], "edges": graph["edges"]}, sort_keys=True).encode("utf-8"))
     return graph
+
+
+def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, Any]) -> str:
+    health = memory.get("health", {})
+    source_nodes = {node["id"]: node for node in memory.get("source_nodes", [])}
+    concept_nodes = {node["slug"]: node for node in memory.get("concept_nodes", [])}
+    components = health.get("components", [])
+    if not components and (source_nodes or concept_nodes):
+        components = [
+            {
+                "id": "component-1",
+                "source_ids": sorted(source_nodes),
+                "concept_slugs": sorted(concept_nodes),
+                "size": len(source_nodes) + len(concept_nodes),
+            }
+        ]
+
+    positions: dict[str, tuple[int, int]] = {}
+    sections: list[dict[str, Any]] = []
+    current_y = 36
+    section_width = 980
+    for component in components:
+        source_ids = [source_id for source_id in component.get("source_ids", []) if source_id in source_nodes]
+        concept_slugs = [slug for slug in component.get("concept_slugs", []) if slug in concept_nodes]
+        if not source_ids and not concept_slugs:
+            continue
+        row_count = max(len(source_ids), len(concept_slugs), 1)
+        row_gap = 68
+        section_height = 96 + max(row_count - 1, 0) * row_gap
+        row_top = current_y + 52
+        for index, source_id in enumerate(source_ids):
+            positions[f"source:{source_id}"] = (220, row_top + index * row_gap)
+        for index, concept_slug in enumerate(concept_slugs):
+            positions[f"concept:{concept_slug}"] = (820, row_top + index * row_gap)
+        sections.append(
+            {
+                "id": component.get("id", "component"),
+                "y": current_y,
+                "height": section_height,
+                "source_ids": source_ids,
+                "concept_slugs": concept_slugs,
+            }
+        )
+        current_y += section_height + 28
+
+    view_height = max(current_y + 24, 320)
+
+    def truncate_label(text: str, limit: int = 30) -> str:
+        return text if len(text) <= limit else f"{text[: limit - 3]}..."
+
+    edge_fragments: list[str] = []
+    for edge in graph.get("edges", []):
+        source = str(edge.get("source") or "")
+        target = str(edge.get("target") or "")
+        if source not in positions or target not in positions:
+            continue
+        x1, y1 = positions[source]
+        x2, y2 = positions[target]
+        if str(edge.get("type") or "") == "RELATED_CONCEPT":
+            stroke = "#f59e0b"
+            dash = ' stroke-dasharray="8 6"'
+        else:
+            stroke = "#94a3b8"
+            dash = ""
+        edge_fragments.append(
+            f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{stroke}" stroke-width="2"{dash} opacity="0.72" />'
+        )
+
+    node_fragments: list[str] = []
+    for node in graph.get("nodes", []):
+        node_id = str(node.get("id") or "")
+        position = positions.get(node_id)
+        if not position:
+            continue
+        x, y = position
+        kind = str(node.get("kind") or "concept")
+        title = str(node.get("title") or node_id)
+        if kind == "source":
+            fill = "#0f766e"
+            stroke = "#115e59"
+            href = f"../../{html.escape(str(node.get('source_page') or ''))}"
+            subtitle = html.escape(str(node.get("source_type") or "source"))
+        else:
+            fill = "#1d4ed8"
+            stroke = "#1e40af"
+            href = f"../../wiki/concepts/{html.escape(node_id.removeprefix('concept:'))}.md"
+            subtitle = "concept"
+        safe_title = html.escape(title)
+        label = html.escape(truncate_label(title))
+        rx = x - 120
+        ry = y - 22
+        node_fragments.append(
+            "\n".join(
+                [
+                    f'<a href="{href}">',
+                    f'  <title>{safe_title}</title>',
+                    f'  <rect x="{rx}" y="{ry}" width="240" height="44" rx="14" fill="{fill}" stroke="{stroke}" stroke-width="2" />',
+                    f'  <text x="{x}" y="{y - 3}" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">{label}</text>',
+                    f'  <text x="{x}" y="{y + 14}" text-anchor="middle" fill="#dbeafe" font-size="11">{html.escape(subtitle)}</text>',
+                    "</a>",
+                ]
+            )
+        )
+
+    section_fragments: list[str] = []
+    for section in sections:
+        section_fragments.append(
+            f'<rect x="20" y="{section["y"]}" width="{section_width}" height="{section["height"]}" rx="18" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5" />'
+        )
+        section_fragments.append(
+            f'<text x="44" y="{section["y"] + 28}" fill="#0f172a" font-size="15" font-weight="700">{html.escape(section["id"])}</text>'
+        )
+        section_fragments.append(
+            f'<text x="44" y="{section["y"] + 48}" fill="#475569" font-size="12">sources {len(section["source_ids"])} | concepts {len(section["concept_slugs"])}</text>'
+        )
+
+    hub_concepts = health.get("hub_concepts", [])
+    hub_sources = health.get("hub_sources", [])
+    actions = health.get("action_counts", {})
+    repair_counts = health.get("repair_plan", {}).get("counts", {})
+    summary_items = [
+        f"来源节点 {len(memory.get('source_nodes', []))}",
+        f"概念节点 {len(memory.get('concept_nodes', []))}",
+        f"分量 {health.get('component_count', 0)}",
+        f"桥接概念 {len(health.get('bridge_concept_slugs', []))}",
+        f"修复动作 {actions.get('total', 0)}",
+        f"执行提案 {repair_counts.get('proposals', 0)}",
+    ]
+
+    hub_concept_items = "".join(
+        f'<li><a href="../../wiki/concepts/{html.escape(item["slug"])}.md">{html.escape(item["title"])}</a> | sources {item.get("source_count", 0)} | related {item.get("related_count", 0)}</li>'
+        for item in hub_concepts[:8]
+    ) or "<li>当前没有 hub 概念。</li>"
+    hub_source_items = "".join(
+        f'<li><a href="../../wiki/sources/{html.escape(item["id"])}.md">{html.escape(item["title"])}</a> | concepts {item.get("concept_count", 0)}</li>'
+        for item in hub_sources[:8]
+    ) or "<li>当前没有 hub 来源。</li>"
+    suggestion_items = "".join(
+        f'<li><a href="../../wiki/sources/{html.escape(item["source_id"])}.md">{html.escape(item["source_title"])}</a> -> <a href="../../wiki/concepts/{html.escape(item["concept_slug"])}.md">{html.escape(item["concept_title"])}</a> | score {item.get("score", 0)} | shared {html.escape(", ".join(item.get("shared_terms", [])[:5]) or "none")}</li>'
+        for item in health.get("link_suggestions", [])[:8]
+    ) or "<li>当前没有修复候选。</li>"
+
+    empty_state = ""
+    if not graph.get("nodes"):
+        empty_state = '<div class="empty">当前还没有 machine-memory 节点。先投料并运行 compile，再打开这个页面。</div>'
+
+    svg_body = "\n".join(section_fragments + edge_fragments + node_fragments)
+    return "\n".join(
+        [
+            "<!doctype html>",
+            '<html lang="zh-CN">',
+            "<head>",
+            '  <meta charset="utf-8" />',
+            '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+            "  <title>Machine Memory Graph</title>",
+            "  <style>",
+            "    :root { color-scheme: light; --bg: #f8fafc; --ink: #0f172a; --muted: #475569; --panel: #ffffff; --line: #cbd5e1; }",
+            "    body { margin: 0; padding: 24px; background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%); color: var(--ink); font: 14px/1.6 'Segoe UI', 'PingFang SC', sans-serif; }",
+            "    main { max-width: 1120px; margin: 0 auto; }",
+            "    h1, h2 { margin: 0 0 12px; }",
+            "    p { margin: 0 0 12px; color: var(--muted); }",
+            "    .meta, .cards, .lists { display: grid; gap: 16px; }",
+            "    .meta { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin: 18px 0 24px; }",
+            "    .card, .panel { background: rgba(255,255,255,0.92); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 18px 40px rgba(15,23,42,0.06); }",
+            "    .card { padding: 14px 16px; }",
+            "    .metric { font-size: 24px; font-weight: 800; color: #1d4ed8; }",
+            "    .metric-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }",
+            "    .panel { padding: 18px; margin-bottom: 18px; }",
+            "    .canvas { overflow-x: auto; }",
+            "    svg { width: 100%; min-width: 1020px; height: auto; display: block; }",
+            "    ul { margin: 0; padding-left: 18px; }",
+            "    li { margin: 4px 0; }",
+            "    a { color: #1d4ed8; text-decoration: none; }",
+            "    a:hover { text-decoration: underline; }",
+            "    .lists { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }",
+            "    .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; color: var(--muted); }",
+            "    .legend span::before { content: ''; display: inline-block; width: 12px; height: 12px; border-radius: 999px; margin-right: 6px; vertical-align: -1px; }",
+            "    .legend .source::before { background: #0f766e; }",
+            "    .legend .concept::before { background: #1d4ed8; }",
+            "    .legend .related::before { background: #f59e0b; }",
+            "    .empty { padding: 16px; background: #fff7ed; border: 1px solid #fdba74; border-radius: 14px; color: #9a3412; }",
+            "  </style>",
+            "</head>",
+            "<body>",
+            "<main>",
+            "  <section class=\"panel\">",
+            "    <h1>Machine Memory Graph</h1>",
+            f"    <p>编译时间：<code>{html.escape(str(memory.get('compiled_at', '')))}</code> | 图谱摘要：<code>{html.escape(str(graph.get('digest', '')))}</code></p>",
+            "    <p>这是炼丹炉 machine-memory 的本地图谱视图。来源节点与概念节点按连通分量分块展示，直接点击节点可跳回对应的 wiki 页面。</p>",
+            "    <div class=\"meta\">",
+            *[f'      <div class="card"><div class="metric">{html.escape(item.split()[-1])}</div><div class="metric-label">{html.escape(" ".join(item.split()[:-1]) or item)}</div></div>' for item in summary_items],
+            "    </div>",
+            "    <div class=\"legend\">",
+            '      <span class="source">source</span>',
+            '      <span class="concept">concept</span>',
+            '      <span class="related">related edge</span>',
+            "    </div>",
+            "  </section>",
+            f"  {empty_state}",
+            "  <section class=\"panel canvas\">",
+            f'    <svg viewBox="0 0 1020 {view_height}" role="img" aria-label="machine memory graph">',
+            f"{svg_body}",
+            "    </svg>",
+            "  </section>",
+            "  <section class=\"lists\">",
+            '    <div class="panel"><h2>Hub 概念</h2><ul>',
+            f"{hub_concept_items}",
+            "    </ul></div>",
+            '    <div class="panel"><h2>Hub 来源</h2><ul>',
+            f"{hub_source_items}",
+            "    </ul></div>",
+            '    <div class="panel"><h2>修复候选</h2><ul>',
+            f"{suggestion_items}",
+            "    </ul></div>",
+            "  </section>",
+            '  <section class="panel"><h2>相关入口</h2><ul>',
+            '    <li><a href="../../wiki/indexes/graph-view.md">Graph View Dashboard</a></li>',
+            '    <li><a href="../../wiki/indexes/machine-memory.md">机器记忆</a></li>',
+            '    <li><a href="../../wiki/indexes/machine-memory-topology.md">机器记忆拓扑</a></li>',
+            '    <li><a href="../../wiki/indexes/graph-health.md">图谱健康</a></li>',
+            '    <li><a href="../../wiki/indexes/machine-memory-repair-plan.md">修复计划</a></li>',
+            "  </ul></section>",
+            "</main>",
+            "</body>",
+            "</html>",
+            "",
+        ]
+    )
 
 
 def build_machine_memory_adjacency(memory: dict[str, Any]) -> dict[str, dict[str, str]]:
@@ -3824,6 +4059,9 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         write_if_changed(machine_memory_state_path(root), json.dumps(memory, indent=2, sort_keys=True) + "\n")
     )
     changed_pages += int(write_if_changed(machine_memory_graph_path(root), json.dumps(graph, indent=2, sort_keys=True) + "\n"))
+    changed_pages += int(
+        write_if_changed(machine_memory_graph_html_path(root), render_machine_memory_graph_html(memory, graph))
+    )
     append_machine_memory_history(root, memory, transition)
     changed_pages += int(
         write_if_changed(root / "wiki" / "indexes" / "machine-memory.md", render_machine_memory_index(memory))
@@ -5054,9 +5292,12 @@ def lint_wiki(root: Path) -> dict[str, Any]:
             findings.append(Finding("error", relative, message))
 
     memory_state = machine_memory_state_path(root)
+    graph_html = machine_memory_graph_html_path(root)
     if manifest["entries"] and not memory_state.exists():
         findings.append(Finding("error", relative_path(root, memory_state), "Missing machine memory state file."))
-    elif memory_state.exists():
+    if manifest["entries"] and not graph_html.exists():
+        findings.append(Finding("error", relative_path(root, graph_html), "Missing machine memory graph HTML view."))
+    if memory_state.exists():
         try:
             memory = json.loads(memory_state.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
