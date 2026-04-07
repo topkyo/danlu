@@ -18,6 +18,7 @@ Deterministic commands:
 - `compile`: turn the current source inventory into `wiki/sources/`, `wiki/concepts/`, and `wiki/indexes/`
 - `ask`: generate a report, slide deck, or figure brief artifact grounded in the wiki and guided by machine-memory query planning
 - `file-back`: move a useful markdown output back into `wiki/derived/`, `wiki/decisions/`, or `wiki/judgments/`
+- `review-page`: move a decision or judgment page through the explicit review workflow
 - `lint`: scan for missing source pages, broken source references, and obvious provenance gaps
 - `nightly`: run deterministic compile + lint and write a repair backlog plus nightly state snapshot
 
@@ -49,7 +50,7 @@ raw/
   assets/       local images and attachments
 schema/
   index.md      runtime policy index
-  *.md          ingest/citation/conflict/writeback/taxonomy rules
+  *.md          ingest/citation/conflict/review/writeback/taxonomy rules
 wiki/
   sources/      one source page per raw input
   concepts/     compiled concept pages synthesized from source pages
@@ -95,12 +96,14 @@ Repo-local Obsidian assets are included:
 - `schema/*.md`: runtime policy files used by compile, ask, and lint flows
 - `.aiwiki/state/machine-memory.json`: deterministic machine-memory state
 - `.aiwiki/state/nightly-health.json`: latest nightly repair snapshot
+- `wiki/indexes/review-queue.md`: current decision/judgment review queue
 - `.aiwiki/cache/machine-memory-graph.json`: graph export for future agent/tooling use
 
 `run-compile` now upgrades both `wiki/sources/` and `wiki/concepts/` when budget is available.
 `ask` and `run-ask` now read the compiled wiki first, then use machine-memory term hits plus graph edges to bias source and concept selection.
 They also expose bridge concepts, query routes, touched components, and a lightweight query subgraph for graph-aware retrieval.
 `file-back --kind decision|judgment` now lets the furnace accumulate explicit decision and judgment pages instead of flattening everything into generic derived notes.
+`review-page` advances those pages through explicit review states and keeps the queue visible in `wiki/indexes/review-queue.md`.
 `nightly` and `run-nightly` aggregate compile, lint, drift, and repair queues into `wiki/indexes/repair-backlog.md`.
 `graph-health.md` summarizes connected components, isolated sources, singleton concepts, and overloaded concepts.
 `install_user_service.sh` now installs both the inbox watcher and a nightly `systemd --user` timer for automated health/repair passes.
@@ -182,6 +185,7 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . run-compile --limit 3
 PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare A and B" --format report
 PYTHONPATH=src python3 -m aiwiki.cli --root . run-ask "Compare A and B" --format report
 PYTHONPATH=src python3 -m aiwiki.cli --root . file-back output/reports/20260405-120000-compare-a-and-b.md
+PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/decisions/decision-20260405-example.md --status approved --note "Approved after source review."
 PYTHONPATH=src python3 -m aiwiki.cli --root . lint
 PYTHONPATH=src python3 -m aiwiki.cli --root . run-lint
 PYTHONPATH=src python3 -m aiwiki.cli --root . nightly
@@ -212,6 +216,7 @@ Once `watch` is running, the intended flow is:
 - `aiwiki` discovers them automatically
 - source pages are compiled under `wiki/sources/`
 - concept pages and indexes are refreshed under `wiki/concepts/` and `wiki/indexes/`
+- decision and judgment review queue state is refreshed under `wiki/indexes/review-queue.md`
 - machine-memory query planning and drift artifacts are refreshed under `.aiwiki/` and `wiki/indexes/`
 - graph-health and repair artifacts are refreshed under `wiki/indexes/`
 - the LLM fills pending summaries

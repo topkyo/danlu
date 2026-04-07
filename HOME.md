@@ -19,6 +19,7 @@ Obsidian is the place where you browse the local artifact tree and inspect what 
 - [[wiki/indexes/graph-health]]
 - [[wiki/indexes/drift-report]]
 - [[wiki/indexes/repair-backlog]]
+- [[wiki/indexes/review-queue]]
 - [[schema/index]]
 - [[wiki/indexes/Outputs]]
 - [[wiki/indexes/Search Presets]]
@@ -33,6 +34,7 @@ Obsidian is the place where you browse the local artifact tree and inspect what 
 - `.aiwiki/cache/`: graph export and rebuildable machine-side artifacts
 - `wiki/sources/`: one compiled source page per raw item
 - `wiki/indexes/`: dashboards, compile indexes, and operating notes
+- `wiki/decisions/` and `wiki/judgments/`: explicit decision and judgment layers
 - `wiki/derived/`: filed-back reports and other derived markdown
 - `output/`: reports, slides, figures, and lint artifacts
 
@@ -41,8 +43,8 @@ Obsidian is the place where you browse the local artifact tree and inspect what 
 1. Drop material into `raw/inbox/` or use one of the `drop-*` entry points.
 2. Let the watcher compile source pages and refresh lint outputs.
 3. Run `nightly` or `run-nightly` for a repair backlog pass.
-4. Read `wiki/sources/`, `wiki/indexes/repair-backlog.md`, and `output/` in Obsidian.
-5. File back high-value outputs into `wiki/derived/`.
+4. Read `wiki/sources/`, `wiki/indexes/review-queue.md`, `wiki/indexes/repair-backlog.md`, and `output/` in Obsidian.
+5. File back high-value outputs and review decision/judgment pages explicitly.
 
 ## Notes
 

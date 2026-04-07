@@ -91,3 +91,23 @@
 - machine_memory_changed: `False`
 - changed_pages: `11`
 - removed_concept_pages: `0`
+## [2026-04-07T09:15:32+00:00] compile | wiki refresh
+
+- compiled_at: `2026-04-07T09:15:32+00:00`
+- source_pages: `0`
+- concept_pages: `0`
+- machine_memory_terms: `0`
+- graph_components: `0`
+- machine_memory_changed: `False`
+- changed_pages: `12`
+- removed_concept_pages: `0`
+## [2026-04-07T09:16:58+00:00] compile | wiki refresh
+
+- compiled_at: `2026-04-07T09:16:58+00:00`
+- source_pages: `0`
+- concept_pages: `0`
+- machine_memory_terms: `0`
+- graph_components: `0`
+- machine_memory_changed: `False`
+- changed_pages: `12`
+- removed_concept_pages: `0`

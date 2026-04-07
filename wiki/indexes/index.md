@@ -1,16 +1,18 @@
 # Wiki Index
 
-- Last compiled at: `2026-04-07T09:05:02+00:00`
+- Last compiled at: `2026-04-07T09:16:58+00:00`
 - Sources: `0`
 - Concepts: `0`
 - Decisions: `0`
 - Judgments: `0`
+- Pending review items: `0`
 
 ## Core Files
 - [Sources Index](./sources.md)
 - [Concepts Index](./concepts.md)
 - [Decisions Index](./decisions.md)
 - [Judgments Index](./judgments.md)
+- [Review Queue](./review-queue.md)
 - [Compile Status](./compile-status.md)
 - [Machine Memory](./machine-memory.md)
 - [Graph Health](./graph-health.md)
@@ -24,6 +26,9 @@
 
 ## Top Concepts
 - No concept pages compiled yet.
+
+## Needs Review
+- No decision or judgment pages are waiting for review.
 
 ## Recent Decisions
 - No decision pages filed yet.

@@ -9,6 +9,7 @@ It is product-facing policy, not developer governance.
 - [Ingest Rules](./ingest.md)
 - [Citation Rules](./citations.md)
 - [Conflict Rules](./conflicts.md)
+- [Review Rules](./review.md)
 - [Writeback Rules](./writeback.md)
 - [Taxonomy Rules](./taxonomy.md)
 

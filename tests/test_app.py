@@ -19,6 +19,7 @@ from aiwiki.app import (
     nightly_health,
     parse_frontmatter,
     placeholder_concept_slugs,
+    review_page,
 )
 from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
@@ -146,6 +147,7 @@ class AiwikiFlowTests(unittest.TestCase):
         graph_health_page = self.root / "wiki" / "indexes" / "graph-health.md"
         decisions_index = self.root / "wiki" / "indexes" / "decisions.md"
         judgments_index = self.root / "wiki" / "indexes" / "judgments.md"
+        review_queue = self.root / "wiki" / "indexes" / "review-queue.md"
         memory_state = self.root / ".aiwiki" / "state" / "machine-memory.json"
         memory_graph = self.root / ".aiwiki" / "cache" / "machine-memory-graph.json"
         drift_report = self.root / "wiki" / "indexes" / "drift-report.md"
@@ -156,6 +158,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(graph_health_page.exists())
         self.assertTrue(decisions_index.exists())
         self.assertTrue(judgments_index.exists())
+        self.assertTrue(review_queue.exists())
         self.assertTrue(memory_state.exists())
         self.assertTrue(memory_graph.exists())
         self.assertTrue(drift_report.exists())
@@ -164,6 +167,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Machine Memory", master_index.read_text(encoding="utf-8"))
         self.assertIn("Decisions Index", master_index.read_text(encoding="utf-8"))
         self.assertIn("Judgments Index", master_index.read_text(encoding="utf-8"))
+        self.assertIn("Review Queue", master_index.read_text(encoding="utf-8"))
         self.assertIn("Graph Health", master_index.read_text(encoding="utf-8"))
         self.assertIn("Drift Report", master_index.read_text(encoding="utf-8"))
         self.assertIn("compile | wiki refresh", log_page.read_text(encoding="utf-8"))
@@ -429,16 +433,65 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("wiki/judgments/", judgment["path"])
         self.assertEqual(parse_frontmatter(decision_path.read_text(encoding="utf-8"))["kind"], "decision")
         self.assertEqual(parse_frontmatter(judgment_path.read_text(encoding="utf-8"))["kind"], "judgment")
+        self.assertEqual(parse_frontmatter(decision_path.read_text(encoding="utf-8"))["status"], "proposed")
+        self.assertEqual(parse_frontmatter(judgment_path.read_text(encoding="utf-8"))["status"], "tentative")
         self.assertIn("## Decision", decision_path.read_text(encoding="utf-8"))
         self.assertIn("## Evidence", decision_path.read_text(encoding="utf-8"))
+        self.assertIn("## Review Status", decision_path.read_text(encoding="utf-8"))
+        self.assertIn("## Review Notes", decision_path.read_text(encoding="utf-8"))
         self.assertIn("## Judgment", judgment_path.read_text(encoding="utf-8"))
         self.assertIn("## Signals", judgment_path.read_text(encoding="utf-8"))
+        self.assertIn("## Review Status", judgment_path.read_text(encoding="utf-8"))
+        self.assertIn("## Review Notes", judgment_path.read_text(encoding="utf-8"))
 
         compile_wiki(self.root)
         decisions_index = (self.root / "wiki" / "indexes" / "decisions.md").read_text(encoding="utf-8")
         judgments_index = (self.root / "wiki" / "indexes" / "judgments.md").read_text(encoding="utf-8")
+        review_queue = (self.root / "wiki" / "indexes" / "review-queue.md").read_text(encoding="utf-8")
         self.assertIn("Scaling Decision", decisions_index)
         self.assertIn("Scaling Judgment", judgments_index)
+        self.assertIn("Scaling Decision", review_queue)
+        self.assertIn("Scaling Judgment", review_queue)
+
+    def test_review_page_updates_status_and_refreshes_queue(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+        compile_wiki(self.root)
+
+        reviewed_decision = review_page(
+            self.root,
+            decision["path"],
+            "approved",
+            note="Approved after source review.",
+        )
+        reviewed_judgment = review_page(
+            self.root,
+            judgment["path"],
+            "confirmed",
+            note="Confirmed after follow-up checks.",
+            confidence="high",
+        )
+
+        self.assertEqual(reviewed_decision["status"], "approved")
+        self.assertEqual(reviewed_judgment["status"], "confirmed")
+        decision_text = (self.root / decision["path"]).read_text(encoding="utf-8")
+        judgment_text = (self.root / judgment["path"]).read_text(encoding="utf-8")
+        self.assertIn("Approved after source review.", decision_text)
+        self.assertIn("Confirmed after follow-up checks.", judgment_text)
+        self.assertEqual(parse_frontmatter(decision_text)["status"], "approved")
+        self.assertTrue(parse_frontmatter(decision_text)["reviewed_at"])
+        self.assertEqual(parse_frontmatter(judgment_text)["status"], "confirmed")
+        self.assertEqual(parse_frontmatter(judgment_text)["confidence"], "high")
+        self.assertTrue(parse_frontmatter(judgment_text)["reviewed_at"])
+
+        review_queue = (self.root / "wiki" / "indexes" / "review-queue.md").read_text(encoding="utf-8")
+        self.assertIn("No pending decision reviews.", review_queue)
+        self.assertIn("No pending judgment reviews.", review_queue)
+        self.assertIn("Scaling Decision", review_queue)
+        self.assertIn("Scaling Judgment", review_queue)
 
     def test_run_ask_and_run_lint_write_llm_outputs(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -572,6 +625,10 @@ class AiwikiFlowTests(unittest.TestCase):
 
     def test_nightly_writes_repair_backlog_and_state(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+        file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
 
         result = nightly_health(self.root)
 
@@ -584,9 +641,13 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Repair Backlog", backlog_text)
         self.assertIn("Graph Repair Suggestions", backlog_text)
         self.assertIn("Pending Source Summaries", backlog_text)
+        self.assertIn("Review Queue", backlog_text)
+        self.assertIn("Pending decision reviews", backlog_text)
         self.assertEqual(state["repair_backlog"]["path"], result["repair_backlog"])
         self.assertEqual(state["lint"]["counts"]["warnings"], result["lint"]["counts"]["warnings"])
         self.assertIn("health", state["machine_memory"])
+        self.assertTrue(state["repair_backlog"]["pending_review_decisions"])
+        self.assertTrue(state["repair_backlog"]["pending_review_judgments"])
         self.assertFalse(state["llm_used"])
 
     def test_run_nightly_writes_semantic_artifacts_and_state(self) -> None:

@@ -117,10 +117,10 @@ Current runtime paths:
 - `prompts/compile.md`
 - `prompts/ask.md`
 - `prompts/lint.md`
+- `schema/`
 
 Planned runtime paths:
 
-- `schema/`
 - `policy/`
 
 Typical contents:
@@ -128,6 +128,7 @@ Typical contents:
 - ingest rules
 - citation and provenance rules
 - conflict handling rules
+- review-state rules
 - output templates
 - taxonomy and naming conventions
 
@@ -230,6 +231,7 @@ Implemented now:
 - explicit query routes and component-aware graph traversal retrieval
 - graph-health dashboard and graph-aware repair suggestions
 - explicit decision and judgment writeback layers
+- explicit decision/judgment review queue and state workflow
 - LLM-backed source and concept maintenance during `run-compile`
 - nightly health checks and repair backlog generation
 - timer-based scheduling for nightly jobs
@@ -240,7 +242,7 @@ Implemented now:
 Next-stage extensions:
 
 - automatic promotion from recurring outputs into decision/judgment pages
-- stronger review/workflow around decision and judgment pages
+- stronger aging, revisit, and auto-escalation around decision and judgment pages
 
 ## Architectural Invariants
 

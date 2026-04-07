@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .app import ask_question, compile_wiki, ensure_layout, file_back, ingest_source, lint_wiki, nightly_health
+from .app import ask_question, compile_wiki, ensure_layout, file_back, ingest_source, lint_wiki, nightly_health, review_page
 from .drop import drop_image, drop_pdf, drop_repo, drop_url
 from .runner import auto_process_once, llm_status, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 
@@ -99,6 +99,15 @@ def build_parser() -> argparse.ArgumentParser:
         default="derived",
         help="Filed-back page kind.",
     )
+
+    review_parser = subparsers.add_parser(
+        "review-page",
+        help="Advance a decision or judgment page through the explicit review workflow.",
+    )
+    review_parser.add_argument("page", help="Path to a decision or judgment markdown page.")
+    review_parser.add_argument("--status", required=True, help="Target review status for the page.")
+    review_parser.add_argument("--note", help="Optional review note to store in the page.")
+    review_parser.add_argument("--confidence", help="Optional confidence override for judgment pages.")
 
     subparsers.add_parser("lint", help="Run deterministic lint checks against the wiki.")
     subparsers.add_parser("run-lint", help="Run deterministic lint plus an LLM-backed semantic lint pass.")
@@ -213,6 +222,8 @@ def main(argv: list[str] | None = None) -> int:
             result = run_ask(root, args.question, args.format)
         elif args.command == "file-back":
             result = file_back(root, args.artifact, title=args.title, kind=args.kind)
+        elif args.command == "review-page":
+            result = review_page(root, args.page, args.status, note=args.note, confidence=args.confidence)
         elif args.command == "lint":
             result = lint_wiki(root)
         elif args.command == "run-lint":

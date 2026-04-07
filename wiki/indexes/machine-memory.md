@@ -1,6 +1,6 @@
 # Machine Memory
 
-- Last compiled at: `2026-04-07T09:05:02+00:00`
+- Last compiled at: `2026-04-07T09:16:58+00:00`
 - Runtime state file: `.aiwiki/state/machine-memory.json`
 - Graph export: `.aiwiki/cache/machine-memory-graph.json`
 - Drift report: `wiki/indexes/drift-report.md`
@@ -23,6 +23,7 @@
 ## Human Judgment Layers
 - Decision index: `wiki/indexes/decisions.md`
 - Judgment index: `wiki/indexes/judgments.md`
+- Review queue: `wiki/indexes/review-queue.md`
 
 ## Drift Summary
 - Missing raw files: `0`
@@ -48,3 +49,4 @@
 - [Schema Index](../../schema/index.md)
 - [Citation Rules](../../schema/citations.md)
 - [Conflict Rules](../../schema/conflicts.md)
+- [Review Rules](../../schema/review.md)

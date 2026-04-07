@@ -48,6 +48,7 @@ DEFAULT_SCHEMA_FILES = {
             "- [Ingest Rules](./ingest.md)",
             "- [Citation Rules](./citations.md)",
             "- [Conflict Rules](./conflicts.md)",
+            "- [Review Rules](./review.md)",
             "- [Writeback Rules](./writeback.md)",
             "- [Taxonomy Rules](./taxonomy.md)",
             "",
@@ -91,6 +92,18 @@ DEFAULT_SCHEMA_FILES = {
         ]
     )
     + "\n",
+    "schema/review.md": "\n".join(
+        [
+            "# Review Rules",
+            "",
+            "- Decision pages start as `proposed` and move through explicit review states.",
+            "- Judgment pages start as `tentative` and stay explicit about confidence.",
+            "- Use the review workflow to move decision and judgment pages out of the queue.",
+            "- Review notes should record why the state changed and what to watch next.",
+            "- Approved, rejected, superseded, or revisit states should have `reviewed_at` metadata.",
+        ]
+    )
+    + "\n",
     "schema/writeback.md": "\n".join(
         [
             "# Writeback Rules",
@@ -98,6 +111,7 @@ DEFAULT_SCHEMA_FILES = {
             "- High-value outputs may be filed back into `wiki/derived/`.",
             "- Stable choices may be promoted into `wiki/decisions/`.",
             "- Reusable judgment calls may be promoted into `wiki/judgments/`.",
+            "- Decision and judgment pages should move through explicit review states instead of staying implicit drafts.",
             "- Filed-back notes must not overwrite source pages or raw evidence.",
             "- Derived, decision, and judgment pages should cite their source pages or raw evidence.",
             "- Writeback is compounding knowledge, not silent mutation of facts.",
@@ -169,6 +183,11 @@ STOP_WORDS = {
     "with",
     "wiki",
 }
+
+DECISION_STATUSES = ("proposed", "approved", "needs-revisit", "superseded")
+JUDGMENT_STATUSES = ("tentative", "tracking", "confirmed", "rejected")
+PENDING_DECISION_REVIEW_STATUSES = {"proposed", "needs-revisit"}
+PENDING_JUDGMENT_REVIEW_STATUSES = {"tentative", "tracking"}
 
 
 @dataclass
@@ -350,6 +369,19 @@ def strip_frontmatter(text: str) -> str:
         if line.strip() == "---":
             return "\n".join(lines[index + 1 :]).lstrip()
     return text
+
+
+def upsert_markdown_section(markdown: str, heading: str, content: str) -> str:
+    section = content.strip()
+    block = f"## {heading}\n{section}\n"
+    pattern = rf"(?ms)^## {re.escape(heading)}\n(.*?)(?=^## |\Z)"
+    if re.search(pattern, markdown):
+        updated = re.sub(pattern, block + "\n", markdown).strip()
+        return updated + "\n"
+    base = markdown.rstrip()
+    if base:
+        return base + "\n\n" + block
+    return block
 
 
 def write_if_changed(path: Path, content: str) -> bool:
@@ -806,21 +838,86 @@ def render_concepts_index(concepts: list[dict[str, Any]], compiled_at: str) -> s
     return "\n".join(lines) + "\n"
 
 
+def default_curated_status(kind: str) -> str:
+    if kind == "decision":
+        return "proposed"
+    if kind == "judgment":
+        return "tentative"
+    return "filed"
+
+
+def valid_curated_statuses(kind: str) -> tuple[str, ...]:
+    if kind == "decision":
+        return DECISION_STATUSES
+    if kind == "judgment":
+        return JUDGMENT_STATUSES
+    return ()
+
+
+def page_needs_review(kind: str, status: str) -> bool:
+    if kind == "decision":
+        return status in PENDING_DECISION_REVIEW_STATUSES
+    if kind == "judgment":
+        return status in PENDING_JUDGMENT_REVIEW_STATUSES
+    return False
+
+
+def sort_curated_pages(pages: list[dict[str, str]]) -> list[dict[str, str]]:
+    def sort_key(page: dict[str, str]) -> tuple[str, str]:
+        return (page.get("reviewed_at", "") or page.get("updated_at", ""), page["title"].lower())
+
+    return sorted(pages, key=sort_key, reverse=True)
+
+
 def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[dict[str, str]]:
     pages: list[dict[str, str]] = []
     for path in sorted((root / "wiki" / folder).glob("*.md")):
         content = path.read_text(encoding="utf-8", errors="replace")
         frontmatter = parse_frontmatter(content)
+        status = str(frontmatter.get("status") or default_curated_status(expected_kind))
+        reviewed_at = str(frontmatter.get("reviewed_at") or "")
+        updated_at = str(frontmatter.get("last_compiled_at") or "")
         pages.append(
             {
                 "title": str(frontmatter.get("title") or path.stem),
                 "path": relative_path(root, path),
                 "kind": str(frontmatter.get("kind") or ""),
+                "status": status,
                 "confidence": str(frontmatter.get("confidence") or ""),
+                "reviewed_at": reviewed_at,
+                "updated_at": updated_at,
                 "matches_expected_kind": str(frontmatter.get("kind") or "") == expected_kind,
+                "pending_review": "true" if page_needs_review(expected_kind, status) else "false",
             }
         )
-    return pages
+    return sort_curated_pages(pages)
+
+
+def review_queue(decisions: list[dict[str, str]], judgments: list[dict[str, str]]) -> dict[str, list[dict[str, str]]]:
+    pending_decisions = [page for page in decisions if page.get("pending_review") == "true"]
+    pending_judgments = [page for page in judgments if page.get("pending_review") == "true"]
+    reviewed = [
+        page
+        for page in decisions + judgments
+        if page.get("reviewed_at") and page.get("pending_review") != "true"
+    ]
+    reviewed = sorted(reviewed, key=lambda page: (page.get("reviewed_at", ""), page["title"].lower()), reverse=True)
+    return {
+        "pending_decisions": pending_decisions,
+        "pending_judgments": pending_judgments,
+        "recently_reviewed": reviewed,
+    }
+
+
+def render_curated_page_summary(page: dict[str, str]) -> str:
+    suffix_parts = [f"status `{page.get('status', '') or 'unknown'}`"]
+    confidence = page.get("confidence", "")
+    if confidence:
+        suffix_parts.append(f"confidence `{confidence}`")
+    reviewed_at = page.get("reviewed_at", "")
+    if reviewed_at:
+        suffix_parts.append(f"reviewed `{reviewed_at}`")
+    return f"- [{page['title']}](../../{page['path']}) | " + " | ".join(suffix_parts)
 
 
 def render_curated_index(
@@ -829,21 +926,68 @@ def render_curated_index(
     pages: list[dict[str, str]],
     compiled_at: str,
 ) -> str:
+    pending_review = sum(1 for page in pages if page.get("pending_review") == "true")
+    status_counts: dict[str, int] = {}
+    for page in pages:
+        status = page.get("status", "") or "unknown"
+        status_counts[status] = status_counts.get(status, 0) + 1
     lines = [
         f"# {heading}",
         "",
         f"- Last compiled at: `{compiled_at}`",
         f"- Total pages: `{len(pages)}`",
+        f"- Pending review: `{pending_review}`",
         "",
-        f"## {section_name}",
+        "## Status Counts",
     ]
+    if not status_counts:
+        lines.append("- No curated pages yet.")
+    else:
+        for status, count in sorted(status_counts.items()):
+            lines.append(f"- `{status}`: `{count}`")
+    lines.extend(
+        [
+            "",
+        f"## {section_name}",
+        ]
+    )
     if not pages:
         lines.append(f"- No {section_name.lower()} yet.")
     else:
         for page in pages:
-            confidence = page.get("confidence", "")
-            suffix = f" | confidence `{confidence}`" if confidence else ""
-            lines.append(f"- [{page['title']}](../../{page['path']}){suffix}")
+            lines.append(render_curated_page_summary(page))
+    return "\n".join(lines) + "\n"
+
+
+def render_review_queue(decisions: list[dict[str, str]], judgments: list[dict[str, str]], compiled_at: str) -> str:
+    queue = review_queue(decisions, judgments)
+    lines = [
+        "# Review Queue",
+        "",
+        f"- Last compiled at: `{compiled_at}`",
+        f"- Pending decisions: `{len(queue['pending_decisions'])}`",
+        f"- Pending judgments: `{len(queue['pending_judgments'])}`",
+        f"- Recently reviewed items: `{len(queue['recently_reviewed'])}`",
+        "",
+        "## Pending Decisions",
+    ]
+    if not queue["pending_decisions"]:
+        lines.append("- No pending decision reviews.")
+    else:
+        for page in queue["pending_decisions"][:12]:
+            lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## Pending Judgments"])
+    if not queue["pending_judgments"]:
+        lines.append("- No pending judgment reviews.")
+    else:
+        for page in queue["pending_judgments"][:12]:
+            lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## Recently Reviewed"])
+    if not queue["recently_reviewed"]:
+        lines.append("- No reviewed decision or judgment pages yet.")
+    else:
+        for page in queue["recently_reviewed"][:12]:
+            lines.append(render_curated_page_summary(page))
     return "\n".join(lines) + "\n"
 
 
@@ -854,6 +998,7 @@ def render_compile_status(
     judgments: list[dict[str, str]],
     compiled_at: str,
 ) -> str:
+    queue = review_queue(decisions, judgments)
     lines = [
         "# Compile Status",
         "",
@@ -862,11 +1007,13 @@ def render_compile_status(
         f"- Concept pages: `{len(concepts)}`",
         f"- Decision pages: `{len(decisions)}`",
         f"- Judgment pages: `{len(judgments)}`",
+        f"- Pending review items: `{len(queue['pending_decisions']) + len(queue['pending_judgments'])}`",
         "- Content index lives in `index.md`.",
         "- Runtime schema lives under `schema/`.",
         "- Operation log lives in `log.md`.",
         "- Decision index lives in `decisions.md`.",
         "- Judgment index lives in `judgments.md`.",
+        "- Review queue lives in `review-queue.md`.",
         "- Machine memory summary lives in `machine-memory.md`.",
         "- Graph health lives in `graph-health.md`.",
         "- Drift report lives in `drift-report.md`.",
@@ -884,6 +1031,7 @@ def render_master_index(
     judgments: list[dict[str, str]],
     compiled_at: str,
 ) -> str:
+    queue = review_queue(decisions, judgments)
     lines = [
         "# Wiki Index",
         "",
@@ -892,12 +1040,14 @@ def render_master_index(
         f"- Concepts: `{len(concepts)}`",
         f"- Decisions: `{len(decisions)}`",
         f"- Judgments: `{len(judgments)}`",
+        f"- Pending review items: `{len(queue['pending_decisions']) + len(queue['pending_judgments'])}`",
         "",
         "## Core Files",
         "- [Sources Index](./sources.md)",
         "- [Concepts Index](./concepts.md)",
         "- [Decisions Index](./decisions.md)",
         "- [Judgments Index](./judgments.md)",
+        "- [Review Queue](./review-queue.md)",
         "- [Compile Status](./compile-status.md)",
         "- [Machine Memory](./machine-memory.md)",
         "- [Graph Health](./graph-health.md)",
@@ -919,18 +1069,24 @@ def render_master_index(
     else:
         for concept in concepts[:10]:
             lines.append(f"- [{concept['title']}](../concepts/{concept['slug']}.md)")
+    lines.extend(["", "## Needs Review"])
+    if not queue["pending_decisions"] and not queue["pending_judgments"]:
+        lines.append("- No decision or judgment pages are waiting for review.")
+    else:
+        for page in (queue["pending_decisions"] + queue["pending_judgments"])[:8]:
+            lines.append(render_curated_page_summary(page))
     lines.extend(["", "## Recent Decisions"])
     if not decisions:
         lines.append("- No decision pages filed yet.")
     else:
         for page in decisions[:8]:
-            lines.append(f"- [{page['title']}](../../{page['path']})")
+            lines.append(render_curated_page_summary(page))
     lines.extend(["", "## Recent Judgments"])
     if not judgments:
         lines.append("- No judgment pages filed yet.")
     else:
         for page in judgments[:8]:
-            lines.append(f"- [{page['title']}](../../{page['path']})")
+            lines.append(render_curated_page_summary(page))
     return "\n".join(lines) + "\n"
 
 
@@ -1769,6 +1925,7 @@ def render_graph_health(memory: dict[str, Any]) -> str:
         "- [Repair Backlog](./repair-backlog.md)",
         "- [Decisions Index](./decisions.md)",
         "- [Judgments Index](./judgments.md)",
+        "- [Review Queue](./review-queue.md)",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -1805,6 +1962,7 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         "## Human Judgment Layers",
         "- Decision index: `wiki/indexes/decisions.md`",
         "- Judgment index: `wiki/indexes/judgments.md`",
+        "- Review queue: `wiki/indexes/review-queue.md`",
         "",
         "## Drift Summary",
         f"- Missing raw files: `{len(drift['missing_raw_files'])}`",
@@ -1843,6 +2001,7 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
             "- [Schema Index](../../schema/index.md)",
             "- [Citation Rules](../../schema/citations.md)",
             "- [Conflict Rules](../../schema/conflicts.md)",
+            "- [Review Rules](../../schema/review.md)",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -1893,6 +2052,12 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         write_if_changed(
             root / "wiki" / "indexes" / "judgments.md",
             render_curated_index("Judgments Index", "Judgments", judgment_pages, compiled_at),
+        )
+    )
+    changed_pages += int(
+        write_if_changed(
+            root / "wiki" / "indexes" / "review-queue.md",
+            render_review_queue(decision_pages, judgment_pages, compiled_at),
         )
     )
     changed_pages += int(
@@ -2009,6 +2174,8 @@ def wiki_requires_compile(root: Path, entries: list[dict[str, Any]]) -> bool:
         return False
     if not (root / "wiki" / "indexes" / "index.md").exists():
         return True
+    if not (root / "wiki" / "indexes" / "review-queue.md").exists():
+        return True
     if any(source_page_is_stale(root, entry) for entry in entries):
         return True
     concept_dir = root / "wiki" / "concepts"
@@ -2077,6 +2244,7 @@ def render_report(
         "- [Concepts Index](../../wiki/indexes/concepts.md)",
         "- [Decisions Index](../../wiki/indexes/decisions.md)",
         "- [Judgments Index](../../wiki/indexes/judgments.md)",
+        "- [Review Queue](../../wiki/indexes/review-queue.md)",
         "- [Machine Memory](../../wiki/indexes/machine-memory.md)",
         "- [Graph Health](../../wiki/indexes/graph-health.md)",
         "- [Drift Report](../../wiki/indexes/drift-report.md)",
@@ -2168,6 +2336,7 @@ def render_slides(
         "- `wiki/indexes/concepts.md`",
         "- `wiki/indexes/decisions.md`",
         "- `wiki/indexes/judgments.md`",
+        "- `wiki/indexes/review-queue.md`",
         "- `wiki/indexes/machine-memory.md`",
         "- `wiki/indexes/graph-health.md`",
         "- `wiki/indexes/drift-report.md`",
@@ -2247,6 +2416,7 @@ def render_figure_brief(
         "- [Concepts Index](../../wiki/indexes/concepts.md)",
         "- [Decisions Index](../../wiki/indexes/decisions.md)",
         "- [Judgments Index](../../wiki/indexes/judgments.md)",
+        "- [Review Queue](../../wiki/indexes/review-queue.md)",
         "- [Machine Memory](../../wiki/indexes/machine-memory.md)",
         "- [Graph Health](../../wiki/indexes/graph-health.md)",
         "- [Drift Report](../../wiki/indexes/drift-report.md)",
@@ -2354,6 +2524,7 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
             "wiki/indexes/concepts.md",
             "wiki/indexes/decisions.md",
             "wiki/indexes/judgments.md",
+            "wiki/indexes/review-queue.md",
             "wiki/indexes/compile-status.md",
             "wiki/indexes/machine-memory.md",
             "wiki/indexes/graph-health.md",
@@ -2393,13 +2564,14 @@ def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "
         {
             "id": entry_id,
             "kind": kind,
-            "status": "filed" if kind == "derived" else "captured",
+            "status": default_curated_status(kind),
             "title": title or artifact_path.stem,
             "source_files": [artifact_ref],
             "citations": [],
             "generated_by": "aiwiki-file-back",
             "last_compiled_at": filed_at,
             "confidence": "medium",
+            "reviewed_at": "",
         }
     )
     stripped = strip_frontmatter(original).strip()
@@ -2434,6 +2606,13 @@ def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "
             "## Risks And Revisit",
             "- Record what could invalidate this decision and when to revisit it.",
             "",
+            "## Review Status",
+            "- Current status: `proposed`",
+            "- Review this page when the decision is approved, superseded, or needs revisit.",
+            "",
+            "## Review Notes",
+            "- No review has been recorded yet.",
+            "",
             "## Supporting Artifact",
             stripped,
         ]
@@ -2457,6 +2636,13 @@ def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "
             "## Confidence And Follow-up",
             "- Keep confidence explicit and list what to watch next.",
             "",
+            "## Review Status",
+            "- Current status: `tentative`",
+            "- Review this page when the judgment is confirmed, rejected, or moved to active tracking.",
+            "",
+            "## Review Notes",
+            "- No review has been recorded yet.",
+            "",
             "## Supporting Artifact",
             stripped,
         ]
@@ -2473,6 +2659,72 @@ def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "
         ],
     )
     return {"path": relative_path(root, destination)}
+
+
+def review_page(
+    root: Path,
+    page: str,
+    status: str,
+    *,
+    note: str | None = None,
+    confidence: str | None = None,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    candidate = Path(page)
+    target = candidate if candidate.is_absolute() else (root / candidate)
+    target = target.resolve()
+    if not target.is_file():
+        raise FileNotFoundError(f"Review target not found: {page}")
+    content = target.read_text(encoding="utf-8", errors="replace")
+    frontmatter = parse_frontmatter(content)
+    kind = str(frontmatter.get("kind") or "")
+    if kind not in {"decision", "judgment"}:
+        raise ValueError("Only decision or judgment pages can enter the review workflow.")
+    valid_statuses = valid_curated_statuses(kind)
+    if status not in valid_statuses:
+        raise ValueError(f"Unsupported review status for {kind}: {status}")
+    reviewed_at = utc_now()
+    frontmatter["status"] = status
+    frontmatter["reviewed_at"] = reviewed_at
+    if kind == "judgment" and confidence:
+        frontmatter["confidence"] = confidence
+    body = strip_frontmatter(content).strip()
+    review_status_lines = [
+        f"- Current status: `{status}`",
+        f"- Reviewed at: `{reviewed_at}`",
+    ]
+    if confidence and kind == "judgment":
+        review_status_lines.append(f"- Confidence: `{confidence}`")
+    review_notes_lines = [
+        f"- Outcome: `{status}`",
+        f"- Reviewed at: `{reviewed_at}`",
+    ]
+    if note:
+        review_notes_lines.append(f"- Note: {note}")
+    else:
+        review_notes_lines.append("- No additional review note recorded.")
+    updated_body = upsert_markdown_section(body, "Review Status", "\n".join(review_status_lines))
+    updated_body = upsert_markdown_section(updated_body, "Review Notes", "\n".join(review_notes_lines))
+    target.write_text(f"{render_frontmatter(frontmatter)}\n\n{updated_body.strip()}\n", encoding="utf-8")
+    append_wiki_log(
+        root,
+        "review",
+        str(frontmatter.get("title") or target.stem),
+        [
+            f"kind: `{kind}`",
+            f"status: `{status}`",
+            f"path: `{relative_path(root, target)}`",
+            f"confidence: `{frontmatter.get('confidence', '') or 'n/a'}`",
+        ],
+    )
+    compile_wiki(root)
+    return {
+        "path": relative_path(root, target),
+        "kind": kind,
+        "status": status,
+        "reviewed_at": reviewed_at,
+        "confidence": str(frontmatter.get("confidence") or ""),
+    }
 
 
 def pending_source_summary_ids(root: Path, entries: list[dict[str, Any]]) -> list[str]:
@@ -2541,6 +2793,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/concepts.md": "Missing concepts index page.",
         "wiki/indexes/decisions.md": "Missing decisions index page.",
         "wiki/indexes/judgments.md": "Missing judgments index page.",
+        "wiki/indexes/review-queue.md": "Missing review queue page.",
         "wiki/indexes/compile-status.md": "Missing compile status page.",
         "wiki/indexes/machine-memory.md": "Missing machine memory index page.",
         "wiki/indexes/graph-health.md": "Missing machine memory graph health page.",
@@ -2557,6 +2810,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "schema/ingest.md": "Missing runtime ingest rules.",
         "schema/citations.md": "Missing runtime citation rules.",
         "schema/conflicts.md": "Missing runtime conflict rules.",
+        "schema/review.md": "Missing runtime review rules.",
         "schema/writeback.md": "Missing runtime writeback rules.",
     }
     for relative, message in required_schema.items():
@@ -2642,13 +2896,45 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                     Finding("warn", relative_path(root, page), f"{expected_kind.capitalize()} page has no explicit source-page reference.")
                 )
             if expected_kind == "decision":
+                if frontmatter.get("status") not in DECISION_STATUSES:
+                    findings.append(
+                        Finding(
+                            "warn",
+                            relative_path(root, page),
+                            f"Decision page has unsupported status `{frontmatter.get('status', '')}`.",
+                        )
+                    )
                 for section in ("## Decision", "## Evidence"):
                     if section not in content:
                         findings.append(
                             Finding("warn", relative_path(root, page), f"Decision page is missing section `{section}`.")
                         )
+                for section in ("## Review Status", "## Review Notes"):
+                    if section not in content:
+                        findings.append(
+                            Finding("warn", relative_path(root, page), f"Decision page is missing section `{section}`.")
+                        )
+                if frontmatter.get("status") in {"approved", "needs-revisit", "superseded"} and not frontmatter.get(
+                    "reviewed_at"
+                ):
+                    findings.append(
+                        Finding("warn", relative_path(root, page), "Reviewed decision page is missing `reviewed_at`."),
+                    )
             if expected_kind == "judgment":
+                if frontmatter.get("status") not in JUDGMENT_STATUSES:
+                    findings.append(
+                        Finding(
+                            "warn",
+                            relative_path(root, page),
+                            f"Judgment page has unsupported status `{frontmatter.get('status', '')}`.",
+                        )
+                    )
                 for section in ("## Judgment", "## Signals"):
+                    if section not in content:
+                        findings.append(
+                            Finding("warn", relative_path(root, page), f"Judgment page is missing section `{section}`.")
+                        )
+                for section in ("## Review Status", "## Review Notes"):
                     if section not in content:
                         findings.append(
                             Finding("warn", relative_path(root, page), f"Judgment page is missing section `{section}`.")
@@ -2656,6 +2942,12 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                 if not frontmatter.get("confidence"):
                     findings.append(
                         Finding("warn", relative_path(root, page), "Judgment page is missing explicit confidence metadata.")
+                    )
+                if frontmatter.get("status") in {"tracking", "confirmed", "rejected"} and not frontmatter.get(
+                    "reviewed_at"
+                ):
+                    findings.append(
+                        Finding("warn", relative_path(root, page), "Reviewed judgment page is missing `reviewed_at`."),
                     )
 
     generated_at = utc_now()
@@ -2704,6 +2996,8 @@ def render_repair_backlog(
     memory: dict[str, Any],
     pending_sources: list[str],
     placeholder_concepts: list[str],
+    pending_review_decisions: list[dict[str, str]],
+    pending_review_judgments: list[dict[str, str]],
     semantic_report: str,
     generated_at: str,
 ) -> str:
@@ -2728,6 +3022,8 @@ def render_repair_backlog(
         f"- Lint warnings: `{lint_result['counts']['warnings']}`",
         f"- Pending source summaries: `{len(pending_sources)}`",
         f"- Placeholder concept summaries: `{len(placeholder_concepts)}`",
+        f"- Pending decision reviews: `{len(pending_review_decisions)}`",
+        f"- Pending judgment reviews: `{len(pending_review_judgments)}`",
         f"- Sources without concepts: `{len(sources_without_concepts)}`",
         f"- Graph components: `{health.get('component_count', 0)}`",
         f"- Isolated sources: `{len(isolated_sources)}`",
@@ -2743,21 +3039,27 @@ def render_repair_backlog(
         lines.append(f"2. Enrich `{len(pending_sources)}` source page(s) that still have placeholder summaries.")
     if placeholder_concepts:
         lines.append(f"3. Revisit `{len(placeholder_concepts)}` concept page(s) that still use fallback summaries.")
+    if pending_review_decisions:
+        lines.append(f"4. Review `{len(pending_review_decisions)}` decision page(s) waiting for approval or revisit.")
+    if pending_review_judgments:
+        lines.append(f"5. Review `{len(pending_review_judgments)}` judgment page(s) that are still tentative or tracking.")
     if sources_without_concepts:
-        lines.append(f"4. Investigate `{len(sources_without_concepts)}` source(s) with no concept coverage.")
+        lines.append(f"6. Investigate `{len(sources_without_concepts)}` source(s) with no concept coverage.")
     if isolated_sources:
-        lines.append(f"5. Connect `{len(isolated_sources)}` isolated source node(s) into the concept graph.")
+        lines.append(f"7. Connect `{len(isolated_sources)}` isolated source node(s) into the concept graph.")
     if singleton_concepts:
-        lines.append(f"6. Revisit `{len(singleton_concepts)}` singleton concept(s) that do not yet connect wider context.")
+        lines.append(f"8. Revisit `{len(singleton_concepts)}` singleton concept(s) that do not yet connect wider context.")
     if overloaded_concepts:
-        lines.append(f"7. Consider splitting `{len(overloaded_concepts)}` overloaded concept(s).")
+        lines.append(f"9. Consider splitting `{len(overloaded_concepts)}` overloaded concept(s).")
     if transition.get("changed"):
-        lines.append("8. Review the latest machine-memory drift before the next research pass.")
+        lines.append("10. Review the latest machine-memory drift before the next research pass.")
     if not any(
         (
             error_findings,
             pending_sources,
             placeholder_concepts,
+            pending_review_decisions,
+            pending_review_judgments,
             sources_without_concepts,
             isolated_sources,
             singleton_concepts,
@@ -2791,6 +3093,13 @@ def render_repair_backlog(
         lines.append("### Placeholder Concept Summaries")
         for slug in placeholder_concepts[:10]:
             lines.append(f"- `wiki/concepts/{slug}.md`")
+    if pending_review_decisions or pending_review_judgments:
+        lines.append("")
+        lines.append("### Review Queue")
+        for page in pending_review_decisions[:10]:
+            lines.append(f"- Decision: `{page['path']}` status `{page['status']}`")
+        for page in pending_review_judgments[:10]:
+            lines.append(f"- Judgment: `{page['path']}` status `{page['status']}`")
     if sources_without_concepts:
         lines.append("")
         lines.append("### Sources Without Concepts")
@@ -2828,6 +3137,7 @@ def render_repair_backlog(
             "- Machine memory: `wiki/indexes/machine-memory.md`",
             "- Graph health: `wiki/indexes/graph-health.md`",
             "- Drift report: `wiki/indexes/drift-report.md`",
+            "- Review queue: `wiki/indexes/review-queue.md`",
             "- Schema index: `schema/index.md`",
         ]
     )
@@ -2849,6 +3159,9 @@ def write_nightly_health(
     memory = load_machine_memory(root)
     pending_sources = pending_source_summary_ids(root, manifest["entries"])
     placeholder_concepts = placeholder_concept_slugs(root)
+    decisions = collect_curated_pages(root, "decisions", "decision")
+    judgments = collect_curated_pages(root, "judgments", "judgment")
+    queue = review_queue(decisions, judgments)
     generated_at = utc_now()
     state = {
         "generated_at": generated_at,
@@ -2870,6 +3183,8 @@ def write_nightly_health(
             "path": relative_path(root, repair_backlog_path(root)),
             "pending_source_summaries": pending_sources,
             "placeholder_concepts": placeholder_concepts,
+            "pending_review_decisions": [page["path"] for page in queue["pending_decisions"]],
+            "pending_review_judgments": [page["path"] for page in queue["pending_judgments"]],
         },
     }
     repair_backlog = render_repair_backlog(
@@ -2878,6 +3193,8 @@ def write_nightly_health(
         memory,
         pending_sources,
         placeholder_concepts,
+        queue["pending_decisions"],
+        queue["pending_judgments"],
         semantic_report,
         generated_at,
     )
@@ -2893,6 +3210,8 @@ def write_nightly_health(
             f"lint_warnings: `{lint_result['counts']['warnings']}`",
             f"pending_source_summaries: `{len(pending_sources)}`",
             f"placeholder_concepts: `{len(placeholder_concepts)}`",
+            f"pending_decision_reviews: `{len(queue['pending_decisions'])}`",
+            f"pending_judgment_reviews: `{len(queue['pending_judgments'])}`",
             f"repair_backlog: `{relative_path(root, repair_backlog_path(root))}`",
         ],
     )
