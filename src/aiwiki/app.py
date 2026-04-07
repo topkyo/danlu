@@ -8,7 +8,7 @@ import json
 import re
 import shutil
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -101,6 +101,8 @@ DEFAULT_SCHEMA_FILES = {
             "- 用 review workflow 把 decision 和 judgment 页面从队列里推进出去。",
             "- review note 应记录状态为什么变化、接下来要看什么。",
             "- 进入 approved、rejected、superseded 或 revisit 等状态时，必须带 `reviewed_at`。",
+            "- pending 的 decision / judgment 页面应带 `revisit_after` 和 `escalate_after`，让 nightly 能追踪 aging 信号。",
+            "- `aging-report.md`、`review-queue.md` 和 `repair-backlog.md` 应把 overdue / escalation 候选项显式展示出来。",
         ]
     )
     + "\n",
@@ -188,6 +190,12 @@ DECISION_STATUSES = ("proposed", "approved", "needs-revisit", "superseded")
 JUDGMENT_STATUSES = ("tentative", "tracking", "confirmed", "rejected")
 PENDING_DECISION_REVIEW_STATUSES = {"proposed", "needs-revisit"}
 PENDING_JUDGMENT_REVIEW_STATUSES = {"tentative", "tracking"}
+AGING_WINDOWS_DAYS: dict[tuple[str, str], tuple[int, int]] = {
+    ("decision", "proposed"): (7, 21),
+    ("decision", "needs-revisit"): (3, 10),
+    ("judgment", "tentative"): (7, 21),
+    ("judgment", "tracking"): (14, 30),
+}
 AUTO_PROMOTION_MIN_OCCURRENCES = 2
 AUTO_PROMOTION_FORMATS = {"report", "figure"}
 DECISION_QUERY_MARKERS = (
@@ -274,6 +282,28 @@ def ensure_runtime_schema(root: Path) -> None:
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def parse_iso_datetime(value: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def schedule_review_windows(kind: str, status: str, base_timestamp: str) -> tuple[str, str]:
+    if (kind, status) not in AGING_WINDOWS_DAYS:
+        return "", ""
+    base = parse_iso_datetime(base_timestamp) or datetime.now(timezone.utc)
+    revisit_days, escalate_days = AGING_WINDOWS_DAYS[(kind, status)]
+    revisit_after = (base + timedelta(days=revisit_days)).replace(microsecond=0).isoformat()
+    escalate_after = (base + timedelta(days=escalate_days)).replace(microsecond=0).isoformat()
+    return revisit_after, escalate_after
 
 
 def slugify(value: str) -> str:
@@ -951,6 +981,40 @@ def page_needs_review(kind: str, status: str) -> bool:
     return False
 
 
+def evaluate_page_aging(page: dict[str, str], now: datetime | None = None) -> dict[str, str]:
+    now = now or datetime.now(timezone.utc)
+    revisit_after = parse_iso_datetime(page.get("revisit_after", ""))
+    escalate_after = parse_iso_datetime(page.get("escalate_after", ""))
+    overdue = bool(revisit_after and revisit_after <= now)
+    escalated = bool(escalate_after and escalate_after <= now)
+    aging_state = ""
+    if escalated:
+        aging_state = "escalated"
+    elif overdue:
+        aging_state = "overdue"
+    elif revisit_after:
+        aging_state = "scheduled"
+    return {
+        "revisit_after": revisit_after.replace(microsecond=0).isoformat() if revisit_after else "",
+        "escalate_after": escalate_after.replace(microsecond=0).isoformat() if escalate_after else "",
+        "aging_state": aging_state,
+        "overdue_review": "true" if overdue else "false",
+        "escalation_candidate": "true" if escalated else "false",
+    }
+
+
+def collect_aging_signals(decisions: list[dict[str, str]], judgments: list[dict[str, str]]) -> dict[str, list[dict[str, str]]]:
+    pages = decisions + judgments
+    overdue = [page for page in pages if page.get("overdue_review") == "true"]
+    escalated = [page for page in pages if page.get("escalation_candidate") == "true"]
+    scheduled = [page for page in pages if page.get("aging_state") == "scheduled"]
+    return {
+        "overdue": overdue,
+        "escalated": escalated,
+        "scheduled": scheduled,
+    }
+
+
 def display_curated_status(status: str) -> str:
     mapping = {
         "filed": "已归档",
@@ -975,12 +1039,18 @@ def sort_curated_pages(pages: list[dict[str, str]]) -> list[dict[str, str]]:
 
 def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[dict[str, str]]:
     pages: list[dict[str, str]] = []
+    now = datetime.now(timezone.utc)
     for path in sorted((root / "wiki" / folder).glob("*.md")):
         content = path.read_text(encoding="utf-8", errors="replace")
         frontmatter = parse_frontmatter(content)
         status = str(frontmatter.get("status") or default_curated_status(expected_kind))
         reviewed_at = str(frontmatter.get("reviewed_at") or "")
         updated_at = str(frontmatter.get("last_compiled_at") or "")
+        revisit_after = str(frontmatter.get("revisit_after") or "")
+        escalate_after = str(frontmatter.get("escalate_after") or "")
+        if not revisit_after and not escalate_after:
+            base_timestamp = reviewed_at or updated_at or utc_now()
+            revisit_after, escalate_after = schedule_review_windows(expected_kind, status, base_timestamp)
         pages.append(
             {
                 "title": str(frontmatter.get("title") or path.stem),
@@ -990,11 +1060,18 @@ def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[d
                 "confidence": str(frontmatter.get("confidence") or ""),
                 "reviewed_at": reviewed_at,
                 "updated_at": updated_at,
+                "revisit_after": revisit_after,
+                "escalate_after": escalate_after,
                 "matches_expected_kind": str(frontmatter.get("kind") or "") == expected_kind,
                 "pending_review": "true" if page_needs_review(expected_kind, status) else "false",
             }
         )
-    return sort_curated_pages(pages)
+    enriched: list[dict[str, str]] = []
+    for page in pages:
+        enriched_page = dict(page)
+        enriched_page.update(evaluate_page_aging(enriched_page, now=now))
+        enriched.append(enriched_page)
+    return sort_curated_pages(enriched)
 
 
 def review_queue(decisions: list[dict[str, str]], judgments: list[dict[str, str]]) -> dict[str, list[dict[str, str]]]:
@@ -1222,6 +1299,13 @@ def render_curated_page_summary(page: dict[str, str]) -> str:
     reviewed_at = page.get("reviewed_at", "")
     if reviewed_at:
         suffix_parts.append(f"审阅时间 `{reviewed_at}`")
+    revisit_after = page.get("revisit_after", "")
+    if revisit_after:
+        suffix_parts.append(f"复审截止 `{revisit_after}`")
+    if page.get("overdue_review") == "true":
+        suffix_parts.append("已到期待复审")
+    if page.get("escalation_candidate") == "true":
+        suffix_parts.append("需要升级处理")
     return f"- [{page['title']}](../../{page['path']}) | " + " | ".join(suffix_parts)
 
 
@@ -1232,6 +1316,8 @@ def render_curated_index(
     compiled_at: str,
 ) -> str:
     pending_review = sum(1 for page in pages if page.get("pending_review") == "true")
+    overdue_review = sum(1 for page in pages if page.get("overdue_review") == "true")
+    escalated = sum(1 for page in pages if page.get("escalation_candidate") == "true")
     status_counts: dict[str, int] = {}
     for page in pages:
         status = page.get("status", "") or "unknown"
@@ -1242,6 +1328,8 @@ def render_curated_index(
         f"- 最近编译时间：`{compiled_at}`",
         f"- 页面总数：`{len(pages)}`",
         f"- 待审阅数量：`{pending_review}`",
+        f"- 已到期数量：`{overdue_review}`",
+        f"- 需要升级：`{escalated}`",
         "",
         "## 状态统计",
     ]
@@ -1266,6 +1354,7 @@ def render_curated_index(
 
 def render_review_queue(decisions: list[dict[str, str]], judgments: list[dict[str, str]], compiled_at: str) -> str:
     queue = review_queue(decisions, judgments)
+    aging = collect_aging_signals(decisions, judgments)
     lines = [
         "# 审阅队列",
         "",
@@ -1273,6 +1362,8 @@ def render_review_queue(decisions: list[dict[str, str]], judgments: list[dict[st
         f"- 待审决策：`{len(queue['pending_decisions'])}`",
         f"- 待审判断：`{len(queue['pending_judgments'])}`",
         f"- 最近已审项目：`{len(queue['recently_reviewed'])}`",
+        f"- 已到期复审：`{len(aging['overdue'])}`",
+        f"- 需要升级处理：`{len(aging['escalated'])}`",
         "",
         "## 待审决策",
     ]
@@ -1287,12 +1378,71 @@ def render_review_queue(decisions: list[dict[str, str]], judgments: list[dict[st
     else:
         for page in queue["pending_judgments"][:12]:
             lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## 已到期待复审"])
+    if not aging["overdue"]:
+        lines.append("- 当前没有已到期的决策或判断页面。")
+    else:
+        for page in aging["overdue"][:12]:
+            lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## 需要升级处理"])
+    if not aging["escalated"]:
+        lines.append("- 当前没有需要升级处理的页面。")
+    else:
+        for page in aging["escalated"][:12]:
+            lines.append(render_curated_page_summary(page))
     lines.extend(["", "## 最近已审"])
     if not queue["recently_reviewed"]:
         lines.append("- 还没有已审阅的决策或判断页面。")
     else:
         for page in queue["recently_reviewed"][:12]:
             lines.append(render_curated_page_summary(page))
+    return "\n".join(lines) + "\n"
+
+
+def render_aging_report(decisions: list[dict[str, str]], judgments: list[dict[str, str]], compiled_at: str) -> str:
+    aging = collect_aging_signals(decisions, judgments)
+    pages = decisions + judgments
+    lines = [
+        "# Aging 报告",
+        "",
+        f"- 最近编译时间：`{compiled_at}`",
+        f"- 已到期复审：`{len(aging['overdue'])}`",
+        f"- 需要升级处理：`{len(aging['escalated'])}`",
+        f"- 已排期复审：`{len(aging['scheduled'])}`",
+        "",
+        "## 需要升级处理",
+    ]
+    if not aging["escalated"]:
+        lines.append("- 当前没有升级处理项。")
+    else:
+        for page in aging["escalated"][:20]:
+            lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## 已到期待复审"])
+    if not aging["overdue"]:
+        lines.append("- 当前没有已到期页面。")
+    else:
+        for page in aging["overdue"][:20]:
+            lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## 已排期复审"])
+    if not aging["scheduled"]:
+        lines.append("- 当前没有已排期的复审页面。")
+    else:
+        for page in aging["scheduled"][:20]:
+            lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## 建议动作"])
+    if aging["escalated"]:
+        lines.append("- 优先处理升级项，补证据、更新状态或明确下一次复审窗口。")
+    if aging["overdue"] and not aging["escalated"]:
+        lines.append("- 先清理已到期页面，避免 review queue 长期堆积。")
+    if not aging["overdue"] and not aging["escalated"]:
+        lines.append("- 当前 aging 状态健康，继续通过 nightly 跟踪。")
+    stale_reviewed = [
+        page
+        for page in pages
+        if page.get("pending_review") != "true" and page.get("revisit_after")
+    ]
+    if stale_reviewed:
+        lines.append("- 已审页面如仍保留复审窗口，必要时在下一次 review 中收紧或清空。")
     return "\n".join(lines) + "\n"
 
 
@@ -1304,6 +1454,7 @@ def render_compile_status(
     compiled_at: str,
 ) -> str:
     queue = review_queue(decisions, judgments)
+    aging = collect_aging_signals(decisions, judgments)
     lines = [
         "# 编译状态",
         "",
@@ -1313,12 +1464,15 @@ def render_compile_status(
         f"- 决策页：`{len(decisions)}`",
         f"- 判断页：`{len(judgments)}`",
         f"- 待审项目：`{len(queue['pending_decisions']) + len(queue['pending_judgments'])}`",
+        f"- 已到期复审：`{len(aging['overdue'])}`",
+        f"- 需要升级：`{len(aging['escalated'])}`",
         "- 总索引位于 `index.md`。",
         "- 运行时规则位于 `schema/`。",
         "- 操作日志位于 `log.md`。",
         "- 决策索引位于 `decisions.md`。",
         "- 判断索引位于 `judgments.md`。",
         "- 审阅队列位于 `review-queue.md`。",
+        "- aging 报告位于 `aging-report.md`。",
         "- 机器记忆摘要位于 `machine-memory.md`。",
         "- 图谱健康页位于 `graph-health.md`。",
         "- 漂移报告位于 `drift-report.md`。",
@@ -1337,6 +1491,7 @@ def render_master_index(
     compiled_at: str,
 ) -> str:
     queue = review_queue(decisions, judgments)
+    aging = collect_aging_signals(decisions, judgments)
     lines = [
         "# 知识库总索引",
         "",
@@ -1346,6 +1501,8 @@ def render_master_index(
         f"- 决策页：`{len(decisions)}`",
         f"- 判断页：`{len(judgments)}`",
         f"- 待审项目：`{len(queue['pending_decisions']) + len(queue['pending_judgments'])}`",
+        f"- 已到期复审：`{len(aging['overdue'])}`",
+        f"- 需要升级处理：`{len(aging['escalated'])}`",
         "",
         "## 核心页面",
         "- [来源索引](./sources.md)",
@@ -1353,6 +1510,7 @@ def render_master_index(
         "- [决策索引](./decisions.md)",
         "- [判断索引](./judgments.md)",
         "- [审阅队列](./review-queue.md)",
+        "- [Aging 报告](./aging-report.md)",
         "- [编译状态](./compile-status.md)",
         "- [机器记忆](./machine-memory.md)",
         "- [图谱健康](./graph-health.md)",
@@ -1457,6 +1615,10 @@ def graph_health_report_path(root: Path) -> Path:
 
 def repair_backlog_path(root: Path) -> Path:
     return root / "wiki" / "indexes" / "repair-backlog.md"
+
+
+def aging_report_path(root: Path) -> Path:
+    return root / "wiki" / "indexes" / "aging-report.md"
 
 
 def nightly_health_state_path(root: Path) -> Path:
@@ -2367,6 +2529,12 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     )
     changed_pages += int(
         write_if_changed(
+            aging_report_path(root),
+            render_aging_report(decision_pages, judgment_pages, compiled_at),
+        )
+    )
+    changed_pages += int(
+        write_if_changed(
             root / "wiki" / "indexes" / "compile-status.md",
             render_compile_status(entries, concepts, decision_pages, judgment_pages, compiled_at),
         )
@@ -2550,6 +2718,7 @@ def render_report(
         "- [决策索引](../../wiki/indexes/decisions.md)",
         "- [判断索引](../../wiki/indexes/judgments.md)",
         "- [审阅队列](../../wiki/indexes/review-queue.md)",
+        "- [Aging 报告](../../wiki/indexes/aging-report.md)",
         "- [机器记忆](../../wiki/indexes/machine-memory.md)",
         "- [图谱健康](../../wiki/indexes/graph-health.md)",
         "- [漂移报告](../../wiki/indexes/drift-report.md)",
@@ -2642,6 +2811,7 @@ def render_slides(
         "- `wiki/indexes/decisions.md`",
         "- `wiki/indexes/judgments.md`",
         "- `wiki/indexes/review-queue.md`",
+        "- `wiki/indexes/aging-report.md`",
         "- `wiki/indexes/machine-memory.md`",
         "- `wiki/indexes/graph-health.md`",
         "- `wiki/indexes/drift-report.md`",
@@ -2722,6 +2892,7 @@ def render_figure_brief(
         "- [决策索引](../../wiki/indexes/decisions.md)",
         "- [判断索引](../../wiki/indexes/judgments.md)",
         "- [审阅队列](../../wiki/indexes/review-queue.md)",
+        "- [Aging 报告](../../wiki/indexes/aging-report.md)",
         "- [机器记忆](../../wiki/indexes/machine-memory.md)",
         "- [图谱健康](../../wiki/indexes/graph-health.md)",
         "- [漂移报告](../../wiki/indexes/drift-report.md)",
@@ -2836,6 +3007,7 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
             "wiki/indexes/decisions.md",
             "wiki/indexes/judgments.md",
             "wiki/indexes/review-queue.md",
+            "wiki/indexes/aging-report.md",
             "wiki/indexes/compile-status.md",
             "wiki/indexes/machine-memory.md",
             "wiki/indexes/graph-health.md",
@@ -2873,6 +3045,10 @@ def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "
     entry_id = next_available_stem(directory, entry_seed)
     destination = directory / f"{entry_id}.md"
     original = artifact_path.read_text(encoding="utf-8", errors="replace")
+    revisit_after = ""
+    escalate_after = ""
+    if kind in {"decision", "judgment"}:
+        revisit_after, escalate_after = schedule_review_windows(kind, default_curated_status(kind), filed_at)
     frontmatter = render_frontmatter(
         {
             "id": entry_id,
@@ -2885,6 +3061,8 @@ def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "
             "last_compiled_at": filed_at,
             "confidence": "medium",
             "reviewed_at": "",
+            "revisit_after": revisit_after,
+            "escalate_after": escalate_after,
         }
     )
     stripped = strip_frontmatter(original).strip()
@@ -2918,6 +3096,8 @@ def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "
             "",
             "## Risks And Revisit",
             "- Record what could invalidate this decision and when to revisit it.",
+            f"- Default revisit window: `{revisit_after or 'none'}`",
+            f"- Default escalation window: `{escalate_after or 'none'}`",
             "",
             "## Review Status",
             "- Current status: `proposed`",
@@ -2948,6 +3128,8 @@ def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "
             "",
             "## Confidence And Follow-up",
             "- Keep confidence explicit and list what to watch next.",
+            f"- Default revisit window: `{revisit_after or 'none'}`",
+            f"- Default escalation window: `{escalate_after or 'none'}`",
             "",
             "## Review Status",
             "- Current status: `tentative`",
@@ -3001,6 +3183,9 @@ def review_page(
     frontmatter["reviewed_at"] = reviewed_at
     if kind == "judgment" and confidence:
         frontmatter["confidence"] = confidence
+    revisit_after, escalate_after = schedule_review_windows(kind, status, reviewed_at)
+    frontmatter["revisit_after"] = revisit_after
+    frontmatter["escalate_after"] = escalate_after
     body = strip_frontmatter(content).strip()
     review_status_lines = [
         f"- Current status: `{status}`",
@@ -3018,6 +3203,16 @@ def review_page(
         review_notes_lines.append("- No additional review note recorded.")
     updated_body = upsert_markdown_section(body, "Review Status", "\n".join(review_status_lines))
     updated_body = upsert_markdown_section(updated_body, "Review Notes", "\n".join(review_notes_lines))
+    updated_body = upsert_markdown_section(
+        updated_body,
+        "Aging",
+        "\n".join(
+            [
+                f"- Revisit after: `{revisit_after or 'none'}`",
+                f"- Escalate after: `{escalate_after or 'none'}`",
+            ]
+        ),
+    )
     target.write_text(f"{render_frontmatter(frontmatter)}\n\n{updated_body.strip()}\n", encoding="utf-8")
     append_wiki_log(
         root,
@@ -3107,6 +3302,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/decisions.md": "Missing decisions index page.",
         "wiki/indexes/judgments.md": "Missing judgments index page.",
         "wiki/indexes/review-queue.md": "Missing review queue page.",
+        "wiki/indexes/aging-report.md": "Missing aging report page.",
         "wiki/indexes/compile-status.md": "Missing compile status page.",
         "wiki/indexes/machine-memory.md": "Missing machine memory index page.",
         "wiki/indexes/graph-health.md": "Missing machine memory graph health page.",
@@ -3312,6 +3508,8 @@ def render_repair_backlog(
     placeholder_concepts: list[str],
     pending_review_decisions: list[dict[str, str]],
     pending_review_judgments: list[dict[str, str]],
+    overdue_pages: list[dict[str, str]],
+    escalated_pages: list[dict[str, str]],
     semantic_report: str,
     generated_at: str,
 ) -> str:
@@ -3339,6 +3537,8 @@ def render_repair_backlog(
         f"- 占位概念摘要：`{len(placeholder_concepts)}`",
         f"- 待审决策：`{len(pending_review_decisions)}`",
         f"- 待审判断：`{len(pending_review_judgments)}`",
+        f"- 已到期复审：`{len(overdue_pages)}`",
+        f"- 升级处理项：`{len(escalated_pages)}`",
         f"- 自动晋升页面：`{promotion_result.get('count', 0)}`",
         f"- 无概念覆盖来源：`{len(sources_without_concepts)}`",
         f"- 图谱分量数：`{health.get('component_count', 0)}`",
@@ -3359,18 +3559,22 @@ def render_repair_backlog(
         lines.append(f"4. 审阅 `{len(pending_review_decisions)}` 个等待批准或复审的决策页。")
     if pending_review_judgments:
         lines.append(f"5. 审阅 `{len(pending_review_judgments)}` 个仍处于暂定或跟踪状态的判断页。")
+    if overdue_pages:
+        lines.append(f"6. 先清理 `{len(overdue_pages)}` 个已到期但还没复审的页面。")
+    if escalated_pages:
+        lines.append(f"7. 提升 `{len(escalated_pages)}` 个已经超过升级阈值的页面优先级。")
     if promotions:
-        lines.append(f"6. 检查本轮自动晋升的 `{len(promotions)}` 个页面，确认是否需要补证据和审阅。")
+        lines.append(f"8. 检查本轮自动晋升的 `{len(promotions)}` 个页面，确认是否需要补证据和审阅。")
     if sources_without_concepts:
-        lines.append(f"7. 检查 `{len(sources_without_concepts)}` 个没有概念覆盖的来源。")
+        lines.append(f"9. 检查 `{len(sources_without_concepts)}` 个没有概念覆盖的来源。")
     if isolated_sources:
-        lines.append(f"8. 把 `{len(isolated_sources)}` 个孤立来源节点接入概念图谱。")
+        lines.append(f"10. 把 `{len(isolated_sources)}` 个孤立来源节点接入概念图谱。")
     if singleton_concepts:
-        lines.append(f"9. 复查 `{len(singleton_concepts)}` 个还没接入更大上下文的单节点概念。")
+        lines.append(f"11. 复查 `{len(singleton_concepts)}` 个还没接入更大上下文的单节点概念。")
     if overloaded_concepts:
-        lines.append(f"10. 考虑拆分 `{len(overloaded_concepts)}` 个过载概念。")
+        lines.append(f"12. 考虑拆分 `{len(overloaded_concepts)}` 个过载概念。")
     if transition.get("changed"):
-        lines.append("11. 在下一轮研究前先检查最新的机器记忆漂移。")
+        lines.append("13. 在下一轮研究前先检查最新的机器记忆漂移。")
     if not any(
         (
             error_findings,
@@ -3378,6 +3582,8 @@ def render_repair_backlog(
             placeholder_concepts,
             pending_review_decisions,
             pending_review_judgments,
+            overdue_pages,
+            escalated_pages,
             promotions,
             sources_without_concepts,
             isolated_sources,
@@ -3419,6 +3625,15 @@ def render_repair_backlog(
             lines.append(f"- 决策：`{page['path']}` 状态 `{display_curated_status(page['status'])}`")
         for page in pending_review_judgments[:10]:
             lines.append(f"- 判断：`{page['path']}` 状态 `{display_curated_status(page['status'])}`")
+    if overdue_pages or escalated_pages:
+        lines.append("")
+        lines.append("### Aging 信号")
+        for page in escalated_pages[:10]:
+            lines.append(f"- 升级：`{page['path']}` | 状态 `{display_curated_status(page['status'])}`")
+        for page in overdue_pages[:10]:
+            if page in escalated_pages[:10]:
+                continue
+            lines.append(f"- 到期：`{page['path']}` | 状态 `{display_curated_status(page['status'])}`")
     if promotions:
         lines.append("")
         lines.append("### 本轮自动晋升")
@@ -3461,6 +3676,7 @@ def render_repair_backlog(
             "",
             "## 相关产物",
             f"- Lint 报告：`{lint_result['path']}`",
+            "- Aging 报告：`wiki/indexes/aging-report.md`",
             "- 机器记忆：`wiki/indexes/machine-memory.md`",
             "- 图谱健康：`wiki/indexes/graph-health.md`",
             "- 漂移报告：`wiki/indexes/drift-report.md`",
@@ -3491,6 +3707,7 @@ def write_nightly_health(
     decisions = collect_curated_pages(root, "decisions", "decision")
     judgments = collect_curated_pages(root, "judgments", "judgment")
     queue = review_queue(decisions, judgments)
+    aging = collect_aging_signals(decisions, judgments)
     generated_at = utc_now()
     state = {
         "generated_at": generated_at,
@@ -3502,6 +3719,11 @@ def write_nightly_health(
         },
         "semantic_report": semantic_report,
         "promotions": promotion_result,
+        "aging": {
+            "overdue_pages": [page["path"] for page in aging["overdue"]],
+            "escalated_pages": [page["path"] for page in aging["escalated"]],
+            "scheduled_pages": [page["path"] for page in aging["scheduled"]],
+        },
         "machine_memory": {
             "digest": memory.get("digest", ""),
             "graph_digest": memory.get("graph_digest", ""),
@@ -3515,6 +3737,8 @@ def write_nightly_health(
             "placeholder_concepts": placeholder_concepts,
             "pending_review_decisions": [page["path"] for page in queue["pending_decisions"]],
             "pending_review_judgments": [page["path"] for page in queue["pending_judgments"]],
+            "overdue_pages": [page["path"] for page in aging["overdue"]],
+            "escalated_pages": [page["path"] for page in aging["escalated"]],
             "auto_promotions": [page["path"] for page in promotion_result.get("pages", [])],
         },
     }
@@ -3527,6 +3751,8 @@ def write_nightly_health(
         placeholder_concepts,
         queue["pending_decisions"],
         queue["pending_judgments"],
+        aging["overdue"],
+        aging["escalated"],
         semantic_report,
         generated_at,
     )
@@ -3544,6 +3770,8 @@ def write_nightly_health(
             f"placeholder_concepts: `{len(placeholder_concepts)}`",
             f"pending_decision_reviews: `{len(queue['pending_decisions'])}`",
             f"pending_judgment_reviews: `{len(queue['pending_judgments'])}`",
+            f"overdue_reviews: `{len(aging['overdue'])}`",
+            f"escalation_candidates: `{len(aging['escalated'])}`",
             f"auto_promotions: `{promotion_result.get('count', 0)}`",
             f"repair_backlog: `{relative_path(root, repair_backlog_path(root))}`",
         ],
@@ -3570,6 +3798,7 @@ def nightly_health(root: Path) -> dict[str, Any]:
         "compile": compile_result,
         "lint": lint_result,
         "promotions": promotion_result,
+        "aging": state["aging"],
         "repair_backlog": state["repair_backlog"]["path"],
         "state_path": relative_path(root, nightly_health_state_path(root)),
     }

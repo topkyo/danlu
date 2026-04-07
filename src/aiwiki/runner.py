@@ -273,6 +273,7 @@ def run_nightly(
         "compile": compile_result,
         "lint": lint_result,
         "promotions": promotion_result,
+        "aging": state["aging"],
         "repair_backlog": state["repair_backlog"]["path"],
         "state_path": relative_path(root, root / ".aiwiki" / "state" / "nightly-health.json"),
     }

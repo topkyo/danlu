@@ -19,6 +19,7 @@ from aiwiki.app import (
     nightly_health,
     parse_frontmatter,
     placeholder_concept_slugs,
+    render_frontmatter,
     review_page,
 )
 from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
@@ -465,6 +466,21 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue((self.root / first["path"]).exists())
         self.assertTrue((self.root / second["path"]).exists())
 
+    def test_file_back_sets_default_aging_windows_for_curated_pages(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+
+        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+
+        decision_frontmatter = parse_frontmatter((self.root / decision["path"]).read_text(encoding="utf-8"))
+        judgment_frontmatter = parse_frontmatter((self.root / judgment["path"]).read_text(encoding="utf-8"))
+        self.assertTrue(decision_frontmatter["revisit_after"])
+        self.assertTrue(decision_frontmatter["escalate_after"])
+        self.assertTrue(judgment_frontmatter["revisit_after"])
+        self.assertTrue(judgment_frontmatter["escalate_after"])
+
     def test_review_page_updates_status_and_refreshes_queue(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -504,6 +520,26 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("当前没有待审判断。", review_queue)
         self.assertIn("Scaling Decision", review_queue)
         self.assertIn("Scaling Judgment", review_queue)
+
+    def test_review_page_clears_aging_windows_for_terminal_status(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+
+        review_page(
+            self.root,
+            decision["path"],
+            "approved",
+            note="Approved after source review.",
+        )
+
+        decision_text = (self.root / decision["path"]).read_text(encoding="utf-8")
+        decision_frontmatter = parse_frontmatter(decision_text)
+        self.assertEqual(decision_frontmatter["revisit_after"], "")
+        self.assertEqual(decision_frontmatter["escalate_after"], "")
+        self.assertIn("- Revisit after: `none`", decision_text)
+        self.assertIn("- Escalate after: `none`", decision_text)
 
     def test_run_ask_and_run_lint_write_llm_outputs(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -711,6 +747,35 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(result["promotions"]["count"], 0)
         decision_pages = sorted((self.root / "wiki" / "decisions").glob("*.md"))
         self.assertEqual(len(decision_pages), 1)
+
+    def test_nightly_surfaces_aging_overdue_and_escalation_signals(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+        decision_path = self.root / decision["path"]
+        decision_text = decision_path.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(decision_text)
+        frontmatter["revisit_after"] = "2000-01-01T00:00:00+00:00"
+        frontmatter["escalate_after"] = "2000-01-02T00:00:00+00:00"
+        decision_path.write_text(
+            f"{render_frontmatter(frontmatter)}\n\n{decision_text.split('---', 2)[2].lstrip()}",
+            encoding="utf-8",
+        )
+
+        result = nightly_health(self.root)
+
+        self.assertIn(decision["path"], result["aging"]["overdue_pages"])
+        self.assertIn(decision["path"], result["aging"]["escalated_pages"])
+        state = json.loads((self.root / result["state_path"]).read_text(encoding="utf-8"))
+        self.assertIn(decision["path"], state["repair_backlog"]["overdue_pages"])
+        self.assertIn(decision["path"], state["repair_backlog"]["escalated_pages"])
+        aging_report = (self.root / "wiki" / "indexes" / "aging-report.md").read_text(encoding="utf-8")
+        review_queue = (self.root / "wiki" / "indexes" / "review-queue.md").read_text(encoding="utf-8")
+        self.assertIn("Scaling Decision", aging_report)
+        self.assertIn("需要升级处理", aging_report)
+        self.assertIn("已到期待复审", review_queue)
+        self.assertIn("需要升级处理", review_queue)
 
     def test_nightly_writes_repair_backlog_and_state(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

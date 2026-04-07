@@ -192,6 +192,7 @@ status: "active"
 1. `lint` 检查缺页、坏引用、明显 provenance 缺口。
 2. `run-lint` 补 semantic review。
 3. `nightly` / `run-nightly` 会把 drift、review queue、repair backlog 聚合起来。
+4. pending 的 decision / judgment 会持续进入 aging / revisit / escalation 跟踪。
 
 ## 角色分工
 
@@ -233,6 +234,7 @@ status: "active"
 - decision / judgment writeback layers
 - decision / judgment review workflow 与 review queue
 - recurring outputs 自动晋升到 decision / judgment 页面
+- aging-report、overdue review、escalation 候选信号
 - `run-compile` 的 source/concept 双层维护
 - nightly health checks 和 timer 化调度
 - output 生成和高价值回流
@@ -241,8 +243,8 @@ status: "active"
 
 下一阶段值得做的：
 
-- 更强的 aging / revisit / escalation 机制
 - 更深的 graph / machine-memory 能力
+- 更强的 aging / revisit / escalation 机制
 
 ## 架构不变量
 
