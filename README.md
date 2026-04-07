@@ -97,7 +97,7 @@ Repo-local Obsidian assets are included:
 
 `run-compile` now upgrades both `wiki/sources/` and `wiki/concepts/` when budget is available.
 `ask` and `run-ask` now read the compiled wiki first, then use machine-memory term hits plus graph edges to bias source and concept selection.
-They also expose bridge concepts and a lightweight query subgraph for graph-aware retrieval.
+They also expose bridge concepts, query routes, touched components, and a lightweight query subgraph for graph-aware retrieval.
 `nightly` and `run-nightly` aggregate compile, lint, drift, and repair queues into `wiki/indexes/repair-backlog.md`.
 `graph-health.md` summarizes connected components, isolated sources, singleton concepts, and overloaded concepts.
 `install_user_service.sh` now installs both the inbox watcher and a nightly `systemd --user` timer for automated health/repair passes.

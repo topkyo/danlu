@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 import hashlib
 import json
 import re
@@ -1090,38 +1091,57 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
         node["slug"] for node in concept_nodes if len(concept_to_sources.get(node["slug"], set())) >= 4
     )
 
-    adjacency: dict[str, set[str]] = {}
-    for node in source_nodes:
-        adjacency.setdefault(f"source:{node['id']}", set())
-    for node in concept_nodes:
-        adjacency.setdefault(f"concept:{node['slug']}", set())
-    for edge in edges.get("source_to_concept", []):
-        source_key = f"source:{edge['source_id']}"
-        concept_key = f"concept:{edge['concept_slug']}"
-        adjacency.setdefault(source_key, set()).add(concept_key)
-        adjacency.setdefault(concept_key, set()).add(source_key)
-    for edge in edges.get("concept_to_concept", []):
-        left_key = f"concept:{edge['from']}"
-        right_key = f"concept:{edge['to']}"
-        adjacency.setdefault(left_key, set()).add(right_key)
-        adjacency.setdefault(right_key, set()).add(left_key)
+    adjacency = build_machine_memory_adjacency(memory)
 
     visited: set[str] = set()
     component_sizes: list[int] = []
+    component_records: list[dict[str, Any]] = []
     for node_key in sorted(adjacency):
         if node_key in visited:
             continue
         stack = [node_key]
-        size = 0
+        members: set[str] = set()
         while stack:
             current = stack.pop()
             if current in visited:
                 continue
             visited.add(current)
-            size += 1
-            stack.extend(sorted(adjacency.get(current, set()) - visited))
-        component_sizes.append(size)
+            members.add(current)
+            stack.extend(sorted(set(adjacency.get(current, {})) - visited))
+        component_sizes.append(len(members))
+        source_ids = sorted(member.removeprefix("source:") for member in members if member.startswith("source:"))
+        concept_slugs = sorted(member.removeprefix("concept:") for member in members if member.startswith("concept:"))
+        component_records.append(
+            {
+                "source_ids": source_ids,
+                "concept_slugs": concept_slugs,
+                "size": len(members),
+                "sort_key": (
+                    -len(members),
+                    source_ids[0] if source_ids else "~",
+                    concept_slugs[0] if concept_slugs else "~",
+                ),
+            }
+        )
     component_sizes.sort(reverse=True)
+    component_records.sort(key=lambda item: item["sort_key"])
+    components: list[dict[str, Any]] = []
+    source_component_ids: dict[str, str] = {}
+    concept_component_ids: dict[str, str] = {}
+    for index, record in enumerate(component_records, start=1):
+        component_id = f"component-{index}"
+        components.append(
+            {
+                "id": component_id,
+                "size": record["size"],
+                "source_ids": record["source_ids"],
+                "concept_slugs": record["concept_slugs"],
+            }
+        )
+        for source_id in record["source_ids"]:
+            source_component_ids[source_id] = component_id
+        for concept_slug in record["concept_slugs"]:
+            concept_component_ids[concept_slug] = component_id
 
     return {
         "isolated_source_ids": isolated_source_ids,
@@ -1130,6 +1150,9 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
         "overloaded_concept_slugs": overloaded_concept_slugs,
         "component_count": len(component_sizes),
         "component_sizes": component_sizes,
+        "components": components,
+        "source_component_ids": source_component_ids,
+        "concept_component_ids": concept_component_ids,
     }
 
 
@@ -1194,6 +1217,25 @@ def build_machine_memory_graph(memory: dict[str, Any]) -> dict[str, Any]:
     return graph
 
 
+def build_machine_memory_adjacency(memory: dict[str, Any]) -> dict[str, dict[str, str]]:
+    adjacency: dict[str, dict[str, str]] = {}
+    for node in memory.get("source_nodes", []):
+        adjacency.setdefault(f"source:{node['id']}", {})
+    for node in memory.get("concept_nodes", []):
+        adjacency.setdefault(f"concept:{node['slug']}", {})
+    for edge in memory.get("edges", {}).get("source_to_concept", []):
+        source_key = f"source:{edge['source_id']}"
+        concept_key = f"concept:{edge['concept_slug']}"
+        adjacency.setdefault(source_key, {})[concept_key] = "HAS_CONCEPT"
+        adjacency.setdefault(concept_key, {})[source_key] = "HAS_CONCEPT"
+    for edge in memory.get("edges", {}).get("concept_to_concept", []):
+        left_key = f"concept:{edge['from']}"
+        right_key = f"concept:{edge['to']}"
+        adjacency.setdefault(left_key, {})[right_key] = "RELATED_CONCEPT"
+        adjacency.setdefault(right_key, {})[left_key] = "RELATED_CONCEPT"
+    return adjacency
+
+
 def build_machine_memory_query(memory: dict[str, Any], question: str) -> dict[str, Any]:
     term_index = memory.get("term_index", {})
     edges = memory.get("edges", {})
@@ -1201,6 +1243,7 @@ def build_machine_memory_query(memory: dict[str, Any], question: str) -> dict[st
     concept_nodes = {node["slug"]: node for node in memory.get("concept_nodes", [])}
     question_tokens = tokenize(question)
     health = memory.get("health", {})
+    adjacency = build_machine_memory_adjacency(memory)
 
     direct_source_scores: dict[str, int] = {}
     direct_concept_scores: dict[str, int] = {}
@@ -1257,6 +1300,26 @@ def build_machine_memory_query(memory: dict[str, Any], question: str) -> dict[st
                 expanded_source_scores[source_id] = expanded_source_scores.get(source_id, 0) + 1
                 supporting_edges.add(("HAS_CONCEPT", source_id, related_slug))
 
+    query_routes = build_machine_memory_query_routes(
+        memory,
+        adjacency,
+        direct_source_scores,
+        direct_concept_scores,
+        expanded_source_scores,
+        expanded_concept_scores,
+    )
+    for route in query_routes:
+        for node in route["nodes"]:
+            if node["kind"] == "source":
+                expanded_source_scores[node["id"]] = expanded_source_scores.get(node["id"], 0) + 2
+            else:
+                expanded_concept_scores[node["slug"]] = expanded_concept_scores.get(node["slug"], 0) + 2
+        for edge in route["edges"]:
+            if edge["type"] == "HAS_CONCEPT":
+                supporting_edges.add(("HAS_CONCEPT", edge["left"], edge["right"]))
+            elif edge["type"] == "RELATED_CONCEPT":
+                supporting_edges.add(("RELATED_CONCEPT", edge["left"], edge["right"]))
+
     ranked_source_ids = [
         source_id
         for source_id, _score in sorted(
@@ -1298,6 +1361,21 @@ def build_machine_memory_query(memory: dict[str, Any], question: str) -> dict[st
         if (edge_type == "HAS_CONCEPT" and left in ranked_source_ids and right in ranked_concept_slugs)
         or (edge_type == "RELATED_CONCEPT" and left in ranked_concept_slugs and right in ranked_concept_slugs)
     ]
+    touched_component_ids = sorted(
+        {
+            component_id
+            for component_id in (
+                [health.get("source_component_ids", {}).get(source_id) for source_id in ranked_source_ids]
+                + [health.get("concept_component_ids", {}).get(slug) for slug in ranked_concept_slugs]
+            )
+            if component_id
+        }
+    )
+    touched_components = [
+        component
+        for component in health.get("components", [])
+        if component.get("id") in touched_component_ids
+    ]
 
     return {
         "matched_terms": matched_terms,
@@ -1310,11 +1388,160 @@ def build_machine_memory_query(memory: dict[str, Any], question: str) -> dict[st
             {"type": edge_type, "left": left, "right": right}
             for edge_type, left, right in sorted(supporting_edges)
         ],
+        "query_routes": query_routes,
+        "touched_component_ids": touched_component_ids,
+        "touched_components": touched_components,
         "query_subgraph": {
             "sources": query_subgraph_sources,
             "concepts": query_subgraph_concepts,
             "edges": query_subgraph_edges,
         },
+    }
+
+
+def build_machine_memory_query_routes(
+    memory: dict[str, Any],
+    adjacency: dict[str, dict[str, str]],
+    direct_source_scores: dict[str, int],
+    direct_concept_scores: dict[str, int],
+    expanded_source_scores: dict[str, int],
+    expanded_concept_scores: dict[str, int],
+) -> list[dict[str, Any]]:
+    anchor_nodes = ranked_machine_memory_anchor_nodes(
+        direct_source_scores,
+        direct_concept_scores,
+        expanded_source_scores,
+        expanded_concept_scores,
+    )
+    routes: list[dict[str, Any]] = []
+    seen_routes: set[tuple[str, ...]] = set()
+    for index, start in enumerate(anchor_nodes):
+        for goal in anchor_nodes[index + 1 :]:
+            path = shortest_machine_memory_path(adjacency, start, goal)
+            if len(path) < 2:
+                continue
+            route_key = tuple(path)
+            if route_key in seen_routes:
+                continue
+            seen_routes.add(route_key)
+            routes.append(render_machine_memory_route(memory, adjacency, path))
+            if len(routes) >= 4:
+                return routes
+    return routes
+
+
+def ranked_machine_memory_anchor_nodes(
+    direct_source_scores: dict[str, int],
+    direct_concept_scores: dict[str, int],
+    expanded_source_scores: dict[str, int],
+    expanded_concept_scores: dict[str, int],
+) -> list[str]:
+    anchors: list[str] = []
+    for concept_slug, _score in sorted(direct_concept_scores.items(), key=lambda item: (-item[1], item[0]))[:4]:
+        anchors.append(f"concept:{concept_slug}")
+    for source_id, _score in sorted(direct_source_scores.items(), key=lambda item: (-item[1], item[0]))[:3]:
+        anchors.append(f"source:{source_id}")
+    if len(anchors) < 2:
+        for concept_slug, _score in sorted(expanded_concept_scores.items(), key=lambda item: (-item[1], item[0]))[:4]:
+            key = f"concept:{concept_slug}"
+            if key not in anchors:
+                anchors.append(key)
+        for source_id, _score in sorted(expanded_source_scores.items(), key=lambda item: (-item[1], item[0]))[:3]:
+            key = f"source:{source_id}"
+            if key not in anchors:
+                anchors.append(key)
+    return anchors[:4]
+
+
+def shortest_machine_memory_path(adjacency: dict[str, dict[str, str]], start: str, goal: str) -> list[str]:
+    if start == goal:
+        return [start]
+    if start not in adjacency or goal not in adjacency:
+        return []
+    queue: deque[str] = deque([start])
+    parents: dict[str, str | None] = {start: None}
+    while queue:
+        current = queue.popleft()
+        for neighbor in sorted(adjacency.get(current, {})):
+            if neighbor in parents:
+                continue
+            parents[neighbor] = current
+            if neighbor == goal:
+                queue.clear()
+                break
+            queue.append(neighbor)
+    if goal not in parents:
+        return []
+    path: list[str] = []
+    current: str | None = goal
+    while current is not None:
+        path.append(current)
+        current = parents[current]
+    return list(reversed(path))
+
+
+def render_machine_memory_route(
+    memory: dict[str, Any],
+    adjacency: dict[str, dict[str, str]],
+    path: list[str],
+) -> dict[str, Any]:
+    nodes = [machine_memory_node_metadata(memory, node_key) for node_key in path]
+    edges: list[dict[str, str]] = []
+    for left, right in zip(path, path[1:]):
+        edge_type = adjacency.get(left, {}).get(right, "")
+        if edge_type == "HAS_CONCEPT":
+            if left.startswith("source:"):
+                edges.append(
+                    {
+                        "type": edge_type,
+                        "left": left.removeprefix("source:"),
+                        "right": right.removeprefix("concept:"),
+                    }
+                )
+            else:
+                edges.append(
+                    {
+                        "type": edge_type,
+                        "left": right.removeprefix("source:"),
+                        "right": left.removeprefix("concept:"),
+                    }
+                )
+        else:
+            edges.append(
+                {
+                    "type": "RELATED_CONCEPT",
+                    "left": left.removeprefix("concept:"),
+                    "right": right.removeprefix("concept:"),
+                }
+            )
+    return {
+        "start": nodes[0],
+        "goal": nodes[-1],
+        "length": max(0, len(path) - 1),
+        "nodes": nodes,
+        "edges": edges,
+    }
+
+
+def machine_memory_node_metadata(memory: dict[str, Any], node_key: str) -> dict[str, Any]:
+    if node_key.startswith("source:"):
+        source_id = node_key.removeprefix("source:")
+        source_nodes = {node["id"]: node for node in memory.get("source_nodes", [])}
+        node = source_nodes.get(source_id, {})
+        return {
+            "kind": "source",
+            "id": source_id,
+            "title": node.get("title", source_id),
+            "path": node.get("source_page", f"wiki/sources/{source_id}.md"),
+        }
+    concept_slug = node_key.removeprefix("concept:")
+    concept_nodes = {node["slug"]: node for node in memory.get("concept_nodes", [])}
+    node = concept_nodes.get(concept_slug, {})
+    return {
+        "kind": "concept",
+        "slug": concept_slug,
+        "title": node.get("title", concept_slug),
+        "path": f"wiki/concepts/{concept_slug}.md",
     }
 
 
@@ -1444,11 +1671,27 @@ def render_graph_health(memory: dict[str, Any]) -> str:
         f"- Bridge concepts: `{', '.join(health.get('bridge_concept_slugs', [])[:10]) or 'none'}`",
         f"- Overloaded concepts: `{', '.join(health.get('overloaded_concept_slugs', [])[:10]) or 'none'}`",
         "",
+        "## Largest Components",
+    ]
+    components = health.get("components", [])
+    if not components:
+        lines.append("- No component data available yet.")
+    else:
+        for component in components[:5]:
+            lines.append(
+                f"- `{component['id']}` size `{component['size']}`"
+                f" | sources `{', '.join(component.get('source_ids', [])[:4]) or 'none'}`"
+                f" | concepts `{', '.join(component.get('concept_slugs', [])[:4]) or 'none'}`"
+            )
+    lines.extend(
+        [
+            "",
         "## Links",
         "- [Machine Memory](./machine-memory.md)",
         "- [Drift Report](./drift-report.md)",
         "- [Repair Backlog](./repair-backlog.md)",
-    ]
+        ]
+    )
     return "\n".join(lines) + "\n"
 
 
@@ -1478,6 +1721,7 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         f"- Singleton concepts: `{len(health.get('singleton_concept_slugs', []))}`",
         f"- Bridge concepts: `{len(health.get('bridge_concept_slugs', []))}`",
         f"- Overloaded concepts: `{len(health.get('overloaded_concept_slugs', []))}`",
+        f"- Indexed components: `{len(health.get('components', []))}`",
         "",
         "## Drift Summary",
         f"- Missing raw files: `{len(drift['missing_raw_files'])}`",
@@ -1493,6 +1737,7 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         "## Query Acceleration",
         "- `ask` and `run-ask` use the machine-memory term index as a first-pass query planner.",
         "- Source-to-concept and concept-to-concept edges expand related candidates before prompt assembly.",
+        "- Query planning also extracts shortest graph routes and touched components for deeper retrieval.",
         "- The graph export is for agent/tool consumption, not for direct human editing.",
         "",
         "## Top Concepts",
@@ -1755,6 +2000,8 @@ def render_report(
     lines.append(
         f"- Query subgraph edges: `{len(machine_query.get('query_subgraph', {}).get('edges', []))}`"
     )
+    lines.append(f"- Query routes: `{len(machine_query.get('query_routes', []))}`")
+    lines.append(f"- Touched components: `{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`")
     lines.extend(
         [
             "",
@@ -1829,6 +2076,8 @@ def render_slides(
         f"- Boosted concepts: `{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`",
         f"- Bridge concepts: `{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`",
         f"- Query subgraph edges: `{len(machine_query.get('query_subgraph', {}).get('edges', []))}`",
+        f"- Query routes: `{len(machine_query.get('query_routes', []))}`",
+        f"- Touched components: `{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`",
         "",
         "## Ranked Concepts",
     ]
@@ -1904,6 +2153,8 @@ def render_figure_brief(
         f"- Boosted concepts: `{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`",
         f"- Bridge concepts: `{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`",
         f"- Query subgraph edges: `{len(machine_query.get('query_subgraph', {}).get('edges', []))}`",
+        f"- Query routes: `{len(machine_query.get('query_routes', []))}`",
+        f"- Touched components: `{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`",
         "",
         "## Recommended Concepts",
     ]
@@ -1982,6 +2233,7 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
             f"machine_terms: `{len(machine_query['matched_terms'])}`",
             f"machine_hits: `{len(machine_query['ranked_source_ids'])}/{len(machine_query['ranked_concept_slugs'])}`",
             f"bridge_concepts: `{len(machine_query['bridge_concept_slugs'])}`",
+            f"query_routes: `{len(machine_query['query_routes'])}`",
         ],
     )
     return {

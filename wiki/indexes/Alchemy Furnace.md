@@ -227,6 +227,7 @@ Implemented now:
 - raw ingest paths and four `drop-*` entry points
 - source, concept, and index compilation
 - machine-memory graph export, drift tracking, and query planning
+- explicit query routes and component-aware graph traversal retrieval
 - graph-health dashboard and graph-aware repair suggestions
 - LLM-backed source and concept maintenance during `run-compile`
 - nightly health checks and repair backlog generation

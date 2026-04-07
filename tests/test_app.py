@@ -330,9 +330,14 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(any("throughput" in slug for slug in machine_query["ranked_concept_slugs"]))
         self.assertTrue(machine_query["bridge_concept_slugs"])
         self.assertTrue(machine_query["supporting_edges"])
+        self.assertTrue(machine_query["query_routes"])
+        self.assertTrue(machine_query["touched_component_ids"])
+        self.assertTrue(machine_query["touched_components"])
         self.assertTrue(machine_query["query_subgraph"]["edges"])
         self.assertIn("Machine Memory Query Plan", report_text)
         self.assertIn("Bridge concepts", report_text)
+        self.assertIn("Query routes", report_text)
+        self.assertIn("Touched components", report_text)
         self.assertIn("latency", report_text.lower())
 
     def test_run_compile_replaces_placeholder_summary(self) -> None:
@@ -524,6 +529,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Matched terms", client.prompt)
         self.assertIn("Bridge concepts", client.prompt)
         self.assertIn("Query subgraph edge count", client.prompt)
+        self.assertIn("Query routes", client.prompt)
+        self.assertIn("Touched components", client.prompt)
         self.assertIn("latency", client.prompt.lower())
 
     def test_nightly_writes_repair_backlog_and_state(self) -> None:
@@ -648,6 +655,21 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(timer_template.exists())
         self.assertIn("ExecStart=__PROJECT_ROOT__/scripts/run_nightly.sh", service_template.read_text(encoding="utf-8"))
         self.assertIn("OnCalendar=__ON_CALENDAR__", timer_template.read_text(encoding="utf-8"))
+
+    def test_compile_persists_component_health_metadata(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        second = self.root / "tail.md"
+        second.write_text("# Tail Latency\n\nLatency throughput jitter tradeoffs.\n", encoding="utf-8")
+        ingest_source(self.root, str(second), title="Tail Latency")
+
+        compile_wiki(self.root)
+
+        memory = json.loads((self.root / ".aiwiki" / "state" / "machine-memory.json").read_text(encoding="utf-8"))
+        health = memory["health"]
+        self.assertIn("components", health)
+        self.assertTrue(health["components"])
+        self.assertIn("source_component_ids", health)
+        self.assertIn("concept_component_ids", health)
 
     def test_drop_url_creates_note_and_manifest_metadata(self) -> None:
         image_bytes = base64.b64decode(

@@ -574,6 +574,7 @@ def _render_machine_query(machine_memory_query: dict[str, Any]) -> str:
         f"- Ranked source candidates: `{', '.join(ranked_source_ids) or 'none'}`",
         f"- Ranked concept candidates: `{', '.join(ranked_concept_slugs) or 'none'}`",
         f"- Bridge concepts: `{', '.join(machine_memory_query.get('bridge_concept_slugs', [])) or 'none'}`",
+        f"- Touched components: `{', '.join(machine_memory_query.get('touched_component_ids', [])) or 'none'}`",
         "- Supporting edges:",
     ]
     if not supporting_edges:
@@ -587,6 +588,17 @@ def _render_machine_query(machine_memory_query: dict[str, Any]) -> str:
     lines.append(f"- Query subgraph sources: `{', '.join(node['id'] for node in subgraph.get('sources', [])) or 'none'}`")
     lines.append(f"- Query subgraph concepts: `{', '.join(node['slug'] for node in subgraph.get('concepts', [])) or 'none'}`")
     lines.append(f"- Query subgraph edge count: `{len(subgraph.get('edges', []))}`")
+    routes = machine_memory_query.get("query_routes", [])
+    lines.append(f"- Query routes: `{len(routes)}`")
+    if routes:
+        lines.append("- Route summaries:")
+        for route in routes[:4]:
+            start = route.get("start", {})
+            goal = route.get("goal", {})
+            lines.append(
+                f"  - `{start.get('title', start.get('id', ''))}` -> `{goal.get('title', goal.get('id', ''))}`"
+                f" ({route.get('length', 0)} hop(s))"
+            )
     return "\n".join(lines)
 
 
