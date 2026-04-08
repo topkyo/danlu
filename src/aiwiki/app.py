@@ -221,6 +221,7 @@ DEFAULT_DASHBOARD_FILES = {
             "- [机器记忆修复计划](./machine-memory-repair-plan.md)：看 execution batch、proposal 和 patch plan",
             "- [机器记忆动作队列](./machine-memory-actions.md)：看 action lifecycle 和 ready actions",
             "- [审阅中心](./review-center.md)：看 aging、rewrite 和 pending review",
+            "- [执行审计](./execution-audit.md)：看 apply / revert 历史和策略分级",
             "- [炉心面板](./furnace-center.md)：看统一产品壳入口",
             "- [本地执行面板](../../output/control/execution-center.html)：直接看执行 cockpit",
             "",
@@ -234,6 +235,32 @@ DEFAULT_DASHBOARD_FILES = {
             "",
             "- 这里优先展示 reviewable execution plan，不自动 apply 高风险修复。",
             "- safe apply 仍只覆盖 allowlist 内的低风险动作。",
+        ]
+    )
+    + "\n",
+    "wiki/indexes/execution-audit.md": "\n".join(
+        [
+            "# 执行审计",
+            "",
+            "这里是炼丹炉的人用执行审计入口，负责把 execution receipt、revert 历史、policy 分级和协议分布收拢到一个地方。",
+            "",
+            "## 先看哪里",
+            "",
+            "- [执行中心](./execution-center.md)：看当前 ready action、proposal 和 patch plan",
+            "- [机器记忆修复计划](./machine-memory-repair-plan.md)：看 execution batch 和页级 patch plan",
+            "- [机器记忆动作队列](./machine-memory-actions.md)：看 action lifecycle 和 policy",
+            "- [本地执行审计面板](../../output/control/execution-audit.html)：直接看 execution audit cockpit",
+            "",
+            "## 怎么用",
+            "",
+            "1. 先看最近 apply / revert 是否符合预期。",
+            "2. 再看 policy bands 是否和当前动作状态一致。",
+            "3. 最后看协议分布和 receipt history，确认执行层没有漂移。",
+            "",
+            "## 边界",
+            "",
+            "- 这里负责审计，不直接替代 execution-center。",
+            "- receipt history 仍然是 file-based，本页展示的是当前快照。",
         ]
     )
     + "\n",
@@ -915,6 +942,15 @@ PENDING_JUDGMENT_REVIEW_STATUSES = {"tentative", "tracking"}
 PENDING_ACTION_STATUSES = {"proposed", "accepted", "deferred"}
 PENDING_REWRITE_PROPOSAL_STATUSES = {"proposed", "accepted", "deferred"}
 LOW_RISK_APPLYABLE_ACTION_KINDS = {"add-source-concept-link"}
+
+EXECUTION_BAND_LABELS = {
+    "review-first": "先审后动",
+    "manual-repair": "人工修复",
+    "bundle-safe-apply": "bundle 安全执行",
+    "deferred": "暂缓观察",
+    "closed": "已关闭",
+    "history-only": "历史归档",
+}
 AGING_WINDOWS_DAYS: dict[tuple[str, str], tuple[int, int]] = {
     ("decision", "proposed"): (7, 21),
     ("decision", "needs-revisit"): (3, 10),
@@ -2685,6 +2721,56 @@ def action_supports_low_risk_apply(action: dict[str, Any]) -> bool:
     )
 
 
+def execution_policy_profile(action: dict[str, Any]) -> dict[str, Any]:
+    status = str(action.get("status") or "proposed")
+    active = bool(action.get("active", True))
+    if not active:
+        return {
+            "execution_policy": "inactive-history",
+            "execution_band": "history-only",
+            "capabilities": ["history"],
+            "policy_summary": "信号已消失，只保留历史与审计价值。",
+        }
+    if status == "proposed":
+        return {
+            "execution_policy": "triage",
+            "execution_band": "review-first",
+            "capabilities": ["review"],
+            "policy_summary": "先 review / triage，再决定是否进入 accepted。",
+        }
+    if status == "accepted" and action_supports_low_risk_apply(action):
+        return {
+            "execution_policy": "semi-auto-apply",
+            "execution_band": "bundle-safe-apply",
+            "capabilities": ["dry-run", "bundle-apply", "revert-safe", "history"],
+            "policy_summary": "支持 dry-run、bundle-driven apply 和 receipt 驱动回滚。",
+        }
+    if status == "accepted":
+        return {
+            "execution_policy": "manual-repair",
+            "execution_band": "manual-repair",
+            "capabilities": ["manual-edit", "review"],
+            "policy_summary": "只能走人工修复与 review，不开放 safe apply。",
+        }
+    if status == "deferred":
+        return {
+            "execution_policy": "parked",
+            "execution_band": "deferred",
+            "capabilities": ["resume-review", "history"],
+            "policy_summary": "动作已暂缓，保留复查与恢复入口。",
+        }
+    return {
+        "execution_policy": "closed",
+        "execution_band": "closed",
+        "capabilities": ["history"],
+        "policy_summary": "动作已关闭，仅保留审计与历史记录。",
+    }
+
+
+def execution_band_label(band: str) -> str:
+    return EXECUTION_BAND_LABELS.get(band, band or "unknown")
+
+
 PATCH_ROLE_LABELS = {
     "source": "来源页",
     "concept": "概念页",
@@ -3036,6 +3122,25 @@ def append_execution_receipt_history(root: Path, receipt: dict[str, Any]) -> Non
         handle.write(json.dumps(receipt, ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def load_execution_receipt_history(root: Path) -> list[dict[str, Any]]:
+    path = execution_receipt_history_path(root)
+    if not path.exists():
+        return []
+    records: list[dict[str, Any]] = []
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and str(payload.get("kind") or "") == "execution-receipt":
+            records.append(payload)
+    records.sort(key=lambda item: str(item.get("applied_at") or ""), reverse=True)
+    return records
+
+
 def remove_stale_generated_execution_proposal_pages(root: Path, active_action_ids: set[str]) -> int:
     removed = 0
     directory = execution_proposals_dir(root)
@@ -3082,39 +3187,37 @@ def describe_machine_memory_action(action: dict[str, Any]) -> dict[str, str]:
     }
     next_step = kind_steps.get(kind, "检查这个 machine-memory 动作对应的页面。")
     command_hint = ""
-    execution_policy = "triage"
+    profile = execution_policy_profile(action)
+    execution_policy = str(profile.get("execution_policy") or "triage")
+    execution_band = str(profile.get("execution_band") or "review-first")
+    capabilities = [str(item) for item in profile.get("capabilities", []) if isinstance(item, str) and item]
     if not active:
-        execution_policy = "inactive-history"
         next_step = "信号已消失；确认是否要作为已解决归档。"
         if status in PENDING_ACTION_STATUSES:
             command_hint = f'{review_prefix} --status resolved --note "Signal disappeared after compile."'
     elif status == "proposed":
-        execution_policy = "triage"
         command_hint = f'{review_prefix} --status accepted --note "Accepted for manual repair."'
     elif status == "accepted":
         if action_supports_low_risk_apply(action):
-            execution_policy = "semi-auto-apply"
             next_step = "这是低风险动作；可以直接通过 safe execution layer 应用，再让 compile 收敛状态。"
             command_hint = (
                 f'PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id}'
                 ' --note "Applied accepted low-risk repair."'
             )
         else:
-            execution_policy = "manual-repair"
             next_step = f"{next_step} 完成后将动作标为 resolved。"
             command_hint = f'{review_prefix} --status resolved --note "Repair completed."'
     elif status == "deferred":
-        execution_policy = "parked"
         next_step = "已确认但暂缓处理；准备恢复时改回 accepted。"
         command_hint = f'{review_prefix} --status accepted --note "Resume deferred repair."'
-    elif status == "resolved":
-        execution_policy = "closed"
-        next_step = "保持关闭，只有信号再次出现时才重开。"
-    elif status == "rejected":
-        execution_policy = "closed"
+    elif status in {"resolved", "rejected"}:
         next_step = "保持关闭，除非修复策略改变。"
     return {
         "execution_policy": execution_policy,
+        "execution_band": execution_band,
+        "execution_capabilities": ", ".join(capabilities) if capabilities else "none",
+        "execution_capability_list": capabilities,
+        "policy_summary": str(profile.get("policy_summary") or ""),
         "next_step": next_step,
         "command_hint": command_hint,
         "apply_ready": "true" if action_supports_low_risk_apply(action) else "false",
@@ -3966,6 +4069,7 @@ def render_furnace_center(
             "## 快速跳转",
             "- [审阅中心](./review-center.md)",
             "- [执行中心](./execution-center.md)",
+            "- [执行审计](./execution-audit.md)",
             "- [图谱视图](./graph-view.md)",
             "- [修复待办](./repair-backlog.md)",
             "- [协议总览](./protocols.md)",
@@ -3974,6 +4078,7 @@ def render_furnace_center(
             "- [本地图谱视图](../../output/graph/machine-memory.html)",
             "- [本地炉心面板](../../output/control/furnace-center.html)",
             "- [本地执行面板](../../output/control/execution-center.html)",
+            "- [本地执行审计面板](../../output/control/execution-audit.html)",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -4110,12 +4215,14 @@ def render_furnace_center_html(
             '      <a href="../../wiki/indexes/furnace-center.md">Markdown 面板</a>',
             '      <a href="../../wiki/indexes/review-center.md">审阅中心</a>',
             '      <a href="../../wiki/indexes/execution-center.md">执行中心</a>',
+            '      <a href="../../wiki/indexes/execution-audit.md">执行审计</a>',
             '      <a href="../../wiki/indexes/graph-view.md">图谱视图</a>',
             '      <a href="../../wiki/indexes/repair-backlog.md">修复待办</a>',
             '      <a href="../../wiki/indexes/protocols.md">协议总览</a>',
             '      <a href="../../output/review/review-center.html">审阅 HTML</a>',
             '      <a href="../../output/graph/machine-memory.html">图谱 HTML</a>',
             '      <a href="../../output/control/execution-center.html">执行 HTML</a>',
+            '      <a href="../../output/control/execution-audit.html">审计 HTML</a>',
             "    </div>",
             '    <div class="meta">',
             *[
@@ -4345,6 +4452,10 @@ def execution_center_html_path(root: Path) -> Path:
     return root / "output" / "control" / "execution-center.html"
 
 
+def execution_audit_html_path(root: Path) -> Path:
+    return root / "output" / "control" / "execution-audit.html"
+
+
 def machine_memory_history_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "machine-memory-history.jsonl"
 
@@ -4371,6 +4482,10 @@ def machine_memory_repair_plan_path(root: Path) -> Path:
 
 def execution_center_path(root: Path) -> Path:
     return root / "wiki" / "indexes" / "execution-center.md"
+
+
+def execution_audit_path(root: Path) -> Path:
+    return root / "wiki" / "indexes" / "execution-audit.md"
 
 
 def execution_proposals_dir(root: Path) -> Path:
@@ -5018,6 +5133,40 @@ def reconcile_machine_memory_actions(
     inactive_records: list[dict[str, Any]] = []
     for action_id, previous in previous_by_id.items():
         if action_id in seen_ids:
+            continue
+        preserved_pending = (
+            bool(previous.get("active", True))
+            and str(previous.get("status") or "") in PENDING_ACTION_STATUSES
+            and str(previous.get("kind") or "") in LOW_RISK_APPLYABLE_ACTION_KINDS
+        )
+        if preserved_pending:
+            try:
+                validate_low_risk_action_targets(root, previous)
+            except RuntimeError:
+                preserved_pending = False
+        if preserved_pending:
+            status = str(previous.get("status") or "proposed")
+            reviewed_at = str(previous.get("reviewed_at") or "")
+            first_seen_at = str(previous.get("first_seen_at") or compiled_at)
+            status_updated_at = str(previous.get("status_updated_at") or first_seen_at)
+            revisit_after = str(previous.get("revisit_after") or "")
+            escalate_after = str(previous.get("escalate_after") or "")
+            if not revisit_after and not escalate_after:
+                base_timestamp = reviewed_at or status_updated_at or first_seen_at
+                revisit_after, escalate_after = schedule_review_windows("action", status, base_timestamp)
+            record = {
+                **dict(previous),
+                "status": status,
+                "active": True,
+                "last_seen_at": compiled_at,
+                "inactive_since": "",
+                "pending_review": "true" if action_needs_review(status) else "false",
+                "revisit_after": revisit_after,
+                "escalate_after": escalate_after,
+            }
+            record.update(evaluate_page_aging(record, now=now))
+            active_records.append(record)
+            seen_ids.add(action_id)
             continue
         record = dict(previous)
         record["active"] = False
@@ -6389,6 +6538,7 @@ def render_machine_memory_actions(memory: dict[str, Any]) -> str:
             lines.append(
                 f"- [{action['priority']}] {action['title']}"
                 f" | status `{action_status}`"
+                f" | band `{action.get('execution_band', 'review-first')}`"
                 f" | policy `{action.get('execution_policy', 'triage')}`"
                 f" | primary `{action['primary_path']}`"
                 f"{detail}"
@@ -6409,6 +6559,7 @@ def render_machine_memory_actions(memory: dict[str, Any]) -> str:
             lines.append(
                 f"- [{action['priority']}] {action['title']}"
                 f" | status `{action_status}`"
+                f" | band `{action.get('execution_band', 'review-first')}`"
                 f" | policy `{action.get('execution_policy', 'triage')}`"
                 f" | {' | '.join(paths)}"
                 f" | first `{action.get('first_seen_at', '') or 'none'}`"
@@ -6485,6 +6636,7 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
                 f"- [{action['priority']}] {action['title']}"
                 f" | primary `{action['primary_path']}`"
                 f"{detail}"
+                f" | band `{action.get('execution_band', 'review-first')}`"
                 f" | next {action.get('next_step', 'n/a')}"
                 f"{command_part}"
             )
@@ -6498,6 +6650,7 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
             lines.append(
                 f"- [{action['priority']}] {action['title']}"
                 f" | primary `{action['primary_path']}`"
+                f" | band `{action.get('execution_band', 'review-first')}`"
                 f" | next {action.get('next_step', 'n/a')}"
                 f"{command_part}"
             )
@@ -6512,6 +6665,7 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
                 f"- [{action['priority']}] {action['title']}"
                 f" | primary `{action['primary_path']}`"
                 f" | revisit `{action.get('revisit_after', '') or 'none'}`"
+                f" | band `{action.get('execution_band', 'review-first')}`"
                 f"{command_part}"
             )
     lines.extend(["", "## Execution Batches"])
@@ -6742,7 +6896,7 @@ def render_execution_center(memory: dict[str, Any], *, compiled_at: str, active_
     else:
         for action in apply_ready_actions[:10]:
             lines.append(
-                f"- `{action['title']}` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action.get('id', '')} --bundle output/control/execution-bundles/{slugify(str(action.get('id') or ''))}.json` | primary `{action.get('primary_path', '')}`"
+                f"- `{action['title']}` | band `{action.get('execution_band', 'bundle-safe-apply')}` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action.get('id', '')} --bundle output/control/execution-bundles/{slugify(str(action.get('id') or ''))}.json` | primary `{action.get('primary_path', '')}`"
             )
     lines.extend(["", "## Revert Safe Apply"])
     if not revert_ready_actions:
@@ -6780,9 +6934,11 @@ def render_execution_center(memory: dict[str, Any], *, compiled_at: str, active_
             "## Quick Links",
             "- [机器记忆修复计划](./machine-memory-repair-plan.md)",
             "- [机器记忆动作队列](./machine-memory-actions.md)",
+            "- [执行审计](./execution-audit.md)",
             "- [审阅中心](./review-center.md)",
             "- [炉心面板](./furnace-center.md)",
             "- [本地执行面板](../../output/control/execution-center.html)",
+            "- [本地执行审计面板](../../output/control/execution-audit.html)",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -6884,13 +7040,277 @@ def render_execution_center_html(memory: dict[str, Any], *, compiled_at: str, ac
             f'    <div class="panel"><h2>Recent Receipts</h2><ul>{receipt_markup}</ul></div>',
             '    <div class="panel"><h2>相关入口</h2><ul>'
             '      <li><a href="../../wiki/indexes/execution-center.md">Markdown 执行中心</a></li>'
+            '      <li><a href="../../wiki/indexes/execution-audit.md">执行审计</a></li>'
             '      <li><a href="../../wiki/indexes/machine-memory-repair-plan.md">修复计划</a></li>'
             '      <li><a href="../../wiki/indexes/machine-memory-actions.md">动作队列</a></li>'
             '      <li><a href="../../wiki/indexes/review-center.md">审阅中心</a></li>'
             '      <li><a href="../../wiki/indexes/furnace-center.md">炉心面板</a></li>'
+            '      <li><a href="../../output/control/execution-audit.html">审计 HTML</a></li>'
             "    </ul></div>",
             "  </section>",
             "</main>",
+            "</body>",
+            "</html>",
+            "",
+        ]
+    )
+
+
+def build_execution_audit_snapshot(root: Path, memory: dict[str, Any], *, active_protocol: str) -> dict[str, Any]:
+    health = memory.get("health", {})
+    actions = [dict(action) for action in health.get("actions", []) if isinstance(action, dict)]
+    inactive_actions = [dict(action) for action in health.get("inactive_actions", []) if isinstance(action, dict)]
+    all_actions = actions + inactive_actions
+    history = load_execution_receipt_history(root)
+    recent_apply = [record for record in history if str(record.get("operation") or "") == "apply"][:8]
+    recent_revert = [record for record in history if str(record.get("operation") or "") == "revert"][:8]
+    band_counts: dict[str, int] = {}
+    protocol_counts: dict[str, int] = {}
+    receipt_counts: dict[str, int] = {}
+    for record in history:
+        protocol = str(record.get("protocol") or DEFAULT_PROTOCOL)
+        protocol_counts[protocol] = protocol_counts.get(protocol, 0) + 1
+        action_id = str(record.get("action_id") or "")
+        if action_id:
+            receipt_counts[action_id] = receipt_counts.get(action_id, 0) + 1
+    action_rows: list[dict[str, Any]] = []
+    for action in all_actions:
+        profile = execution_policy_profile(action)
+        band = str(action.get("execution_band") or profile.get("execution_band") or "review-first")
+        band_counts[band] = band_counts.get(band, 0) + 1
+        action_id = str(action.get("id") or "")
+        capabilities = action.get("execution_capability_list")
+        if not isinstance(capabilities, list):
+            capabilities = list(profile.get("capabilities") or [])
+        action_rows.append(
+            {
+                "id": action_id,
+                "title": str(action.get("title") or action_id),
+                "status": display_action_status(str(action.get("status") or "proposed")),
+                "execution_band": band,
+                "execution_band_label": execution_band_label(band),
+                "execution_policy": str(action.get("execution_policy") or profile.get("execution_policy") or "triage"),
+                "execution_capabilities": [str(item) for item in capabilities if isinstance(item, str) and item],
+                "policy_summary": str(action.get("policy_summary") or profile.get("policy_summary") or ""),
+                "receipt_count": receipt_counts.get(action_id, 0),
+                "last_receipt_path": str(action.get("last_receipt_path") or ""),
+                "primary_path": str(action.get("primary_path") or ""),
+            }
+        )
+    action_rows.sort(
+        key=lambda item: (
+            0 if item.get("execution_band") == "bundle-safe-apply" else 1,
+            0 if item.get("status") == display_action_status("accepted") else 1,
+            str(item.get("title") or "").lower(),
+        )
+    )
+    band_rows = [
+        {"band": band, "label": execution_band_label(band), "count": band_counts.get(band, 0)}
+        for band in ("bundle-safe-apply", "review-first", "manual-repair", "deferred", "closed", "history-only")
+        if band_counts.get(band, 0)
+    ]
+    protocol_rows = [
+        {"protocol": protocol, "title": protocol_title(protocol), "count": count}
+        for protocol, count in sorted(protocol_counts.items(), key=lambda item: (-item[1], item[0]))
+    ]
+    return {
+        "compiled_at": str(memory.get("compiled_at") or ""),
+        "active_protocol": active_protocol,
+        "receipt_history_path": relative_path(root, execution_receipt_history_path(root)),
+        "counts": {
+            "actions": len(all_actions),
+            "receipts": len(history),
+            "apply": len([record for record in history if str(record.get("operation") or "") == "apply"]),
+            "revert": len([record for record in history if str(record.get("operation") or "") == "revert"]),
+            "bundle_safe": band_counts.get("bundle-safe-apply", 0),
+        },
+        "policy_bands": band_rows,
+        "protocols": protocol_rows,
+        "recent_apply": recent_apply,
+        "recent_revert": recent_revert,
+        "actions": action_rows[:16],
+    }
+
+
+def render_execution_audit(audit: dict[str, Any]) -> str:
+    lines = [
+        "# 执行审计",
+        "",
+        f"- 最近编译时间：`{audit.get('compiled_at', '')}`",
+        f"- 当前协议：`{audit.get('active_protocol', DEFAULT_PROTOCOL)}` ({protocol_title(str(audit.get('active_protocol') or DEFAULT_PROTOCOL))})",
+        f"- 动作总数：`{audit.get('counts', {}).get('actions', 0)}`",
+        f"- Receipt 总数：`{audit.get('counts', {}).get('receipts', 0)}`",
+        f"- Apply / Revert：`{audit.get('counts', {}).get('apply', 0)}` / `{audit.get('counts', {}).get('revert', 0)}`",
+        f"- Bundle-safe actions：`{audit.get('counts', {}).get('bundle_safe', 0)}`",
+        f"- Receipt history：`{audit.get('receipt_history_path', '.aiwiki/state/execution-receipts.jsonl')}`",
+        "",
+        "## Policy Bands",
+    ]
+    band_rows = audit.get("policy_bands", [])
+    if not band_rows:
+        lines.append("- 当前还没有可审计的 execution policy band。")
+    else:
+        for row in band_rows:
+            lines.append(f"- `{row['band']}` | {row['label']} | count `{row['count']}`")
+    lines.extend(["", "## Recent Apply"])
+    recent_apply = audit.get("recent_apply", [])
+    if not recent_apply:
+        lines.append("- 当前还没有 apply receipt。")
+    else:
+        for receipt in recent_apply:
+            lines.append(
+                f"- `{receipt.get('title', receipt.get('action_id', 'receipt'))}`"
+                f" | action `{receipt.get('action_id', '')}`"
+                f" | protocol `{receipt.get('protocol', DEFAULT_PROTOCOL)}`"
+                f" | applied `{receipt.get('applied_at', '')}`"
+            )
+    lines.extend(["", "## Recent Revert"])
+    recent_revert = audit.get("recent_revert", [])
+    if not recent_revert:
+        lines.append("- 当前还没有 revert receipt。")
+    else:
+        for receipt in recent_revert:
+            lines.append(
+                f"- `{receipt.get('title', receipt.get('action_id', 'receipt'))}`"
+                f" | action `{receipt.get('action_id', '')}`"
+                f" | protocol `{receipt.get('protocol', DEFAULT_PROTOCOL)}`"
+                f" | reverted `{receipt.get('applied_at', '')}`"
+            )
+    lines.extend(["", "## Protocol Breakdown"])
+    protocols = audit.get("protocols", [])
+    if not protocols:
+        lines.append("- 当前还没有 protocol 级 execution history。")
+    else:
+        for row in protocols:
+            lines.append(f"- `{row['protocol']}` ({row['title']}) | receipts `{row['count']}`")
+    lines.extend(["", "## Action Audit"])
+    actions = audit.get("actions", [])
+    if not actions:
+        lines.append("- 当前还没有 action audit rows。")
+    else:
+        for action in actions:
+            capabilities = ", ".join(action.get("execution_capabilities", [])) or "none"
+            lines.append(
+                f"- `{action['title']}`"
+                f" | status `{action['status']}`"
+                f" | band `{action['execution_band']}`"
+                f" | policy `{action['execution_policy']}`"
+                f" | receipts `{action['receipt_count']}`"
+            )
+            lines.append(f"  - capabilities: {capabilities}")
+            lines.append(f"  - summary: {action.get('policy_summary', 'n/a')}")
+            if action.get("last_receipt_path"):
+                lines.append(f"  - last receipt: `{action['last_receipt_path']}`")
+    lines.extend(
+        [
+            "",
+            "## 相关链接",
+            "- [执行中心](./execution-center.md)",
+            "- [机器记忆修复计划](./machine-memory-repair-plan.md)",
+            "- [机器记忆动作队列](./machine-memory-actions.md)",
+            "- [炉心面板](./furnace-center.md)",
+            "- [本地执行审计面板](../../output/control/execution-audit.html)",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def render_execution_audit_html(audit: dict[str, Any]) -> str:
+    summary_cards = [
+        ("Receipts", str(audit.get("counts", {}).get("receipts", 0))),
+        ("Apply", str(audit.get("counts", {}).get("apply", 0))),
+        ("Revert", str(audit.get("counts", {}).get("revert", 0))),
+        ("Bundle Safe", str(audit.get("counts", {}).get("bundle_safe", 0))),
+    ]
+    band_markup = "".join(
+        f"<li><strong>{html.escape(str(row.get('label') or row.get('band') or 'band'))}</strong>"
+        f" <span class=\"item-meta\">{html.escape(str(row.get('band') or ''))}</span>"
+        f"<div class=\"metric-inline\">count {html.escape(str(row.get('count') or 0))}</div></li>"
+        for row in audit.get("policy_bands", [])
+    ) or "<li>当前还没有可审计的 execution policy band。</li>"
+    apply_markup = "".join(
+        f"<li><strong>{html.escape(str(item.get('title') or item.get('action_id') or 'receipt'))}</strong>"
+        f"<div class=\"item-meta\">{html.escape(str(item.get('action_id') or ''))} / {html.escape(str(item.get('protocol') or DEFAULT_PROTOCOL))}</div>"
+        f"<div>{html.escape(str(item.get('applied_at') or ''))}</div></li>"
+        for item in audit.get("recent_apply", [])
+    ) or "<li>当前还没有 apply receipt。</li>"
+    revert_markup = "".join(
+        f"<li><strong>{html.escape(str(item.get('title') or item.get('action_id') or 'receipt'))}</strong>"
+        f"<div class=\"item-meta\">{html.escape(str(item.get('action_id') or ''))} / {html.escape(str(item.get('protocol') or DEFAULT_PROTOCOL))}</div>"
+        f"<div>{html.escape(str(item.get('applied_at') or ''))}</div></li>"
+        for item in audit.get("recent_revert", [])
+    ) or "<li>当前还没有 revert receipt。</li>"
+    protocol_markup = "".join(
+        f"<li><strong>{html.escape(str(row.get('title') or row.get('protocol') or 'protocol'))}</strong>"
+        f" <span class=\"item-meta\">{html.escape(str(row.get('protocol') or ''))}</span>"
+        f"<div>receipts {html.escape(str(row.get('count') or 0))}</div></li>"
+        for row in audit.get("protocols", [])
+    ) or "<li>当前还没有 protocol 级 execution history。</li>"
+    action_markup = "".join(
+        f"<li><strong>{html.escape(str(action.get('title') or action.get('id') or 'action'))}</strong>"
+        f"<div class=\"item-meta\">{html.escape(str(action.get('execution_band_label') or action.get('execution_band') or ''))}"
+        f" / {html.escape(str(action.get('execution_policy') or 'triage'))}"
+        f" / receipts {html.escape(str(action.get('receipt_count') or 0))}</div>"
+        f"<div>{html.escape(str(action.get('policy_summary') or ''))}</div></li>"
+        for action in audit.get("actions", [])
+    ) or "<li>当前还没有 action audit rows。</li>"
+    return "\n".join(
+        [
+            "<!doctype html>",
+            '<html lang="zh-CN">',
+            "<head>",
+            '  <meta charset="utf-8" />',
+            '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+            "  <title>Execution Audit</title>",
+            "  <style>",
+            "    :root { color-scheme: light; --bg: #f8fafc; --ink: #0f172a; --muted: #475569; --panel: rgba(255,255,255,0.94); --line: #cbd5e1; }",
+            "    body { margin: 0; padding: 24px; background: linear-gradient(180deg, #f8fafc 0%, #ecfeff 100%); color: var(--ink); font: 14px/1.6 'Segoe UI', 'PingFang SC', sans-serif; }",
+            "    main { max-width: 1100px; margin: 0 auto; }",
+            "    .panel, .card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 18px 40px rgba(15,23,42,0.06); }",
+            "    .panel { padding: 18px; margin-bottom: 18px; }",
+            "    .meta, .grid { display: grid; gap: 16px; }",
+            "    .meta { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-top: 18px; }",
+            "    .grid { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }",
+            "    .card { padding: 14px 16px; }",
+            "    .metric { font-size: 24px; font-weight: 800; color: #0f766e; }",
+            "    .metric-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }",
+            "    .metric-inline { color: #0f766e; font-weight: 700; }",
+            "    ul { margin: 0; padding-left: 18px; }",
+            "    li { margin: 6px 0; }",
+            "    a { color: #0f766e; text-decoration: none; }",
+            "    a:hover { text-decoration: underline; }",
+            "    .item-meta { color: var(--muted); font-size: 12px; }",
+            "    code { background: #ecfeff; padding: 1px 6px; border-radius: 6px; }",
+            "  </style>",
+            "</head>",
+            "<body>",
+            "  <main>",
+            "    <section class=\"panel\">",
+            "      <h1>Execution Audit</h1>",
+            f"      <p>当前协议 <strong>{html.escape(str(audit.get('active_protocol') or DEFAULT_PROTOCOL))}</strong> · 最近编译 {html.escape(str(audit.get('compiled_at') or ''))}</p>",
+            "      <p><a href=\"../../wiki/indexes/execution-audit.md\">Markdown 审计页</a> · <a href=\"../../wiki/indexes/execution-center.md\">执行中心</a> · <a href=\"../../wiki/indexes/furnace-center.md\">炉心面板</a></p>",
+            "      <div class=\"meta\">",
+            *[
+                "\n".join(
+                    [
+                        '        <div class="card">',
+                        f'          <div class="metric-label">{html.escape(label)}</div>',
+                        f'          <div class="metric">{html.escape(value)}</div>',
+                        "        </div>",
+                    ]
+                )
+                for label, value in summary_cards
+            ],
+            "      </div>",
+            "    </section>",
+            "    <section class=\"grid\">",
+            f'      <div class="card"><h2>Policy Bands</h2><ul>{band_markup}</ul></div>',
+            f'      <div class="card"><h2>Protocol Breakdown</h2><ul>{protocol_markup}</ul></div>',
+            f'      <div class="card"><h2>Recent Apply</h2><ul>{apply_markup}</ul></div>',
+            f'      <div class="card"><h2>Recent Revert</h2><ul>{revert_markup}</ul></div>',
+            f'      <div class="card"><h2>Action Audit</h2><ul>{action_markup}</ul></div>',
+            "    </section>",
+            "  </main>",
             "</body>",
             "</html>",
             "",
@@ -7492,6 +7912,17 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             ),
         )
     )
+    execution_audit = build_execution_audit_snapshot(
+        root,
+        memory,
+        active_protocol=protocol_state["active_protocol"],
+    )
+    changed_pages += int(
+        write_if_changed(
+            execution_audit_path(root),
+            render_execution_audit(execution_audit),
+        )
+    )
     recent_outputs = collect_recent_output_artifacts(root)
     changed_pages += int(
         write_if_changed(
@@ -7539,6 +7970,12 @@ def compile_wiki(root: Path) -> dict[str, Any]:
                 compiled_at=compiled_at,
                 active_protocol=protocol_state["active_protocol"],
             ),
+        )
+    )
+    changed_pages += int(
+        write_if_changed(
+            execution_audit_html_path(root),
+            render_execution_audit_html(execution_audit),
         )
     )
     changed_pages += int(write_if_changed(concept_quality_path(root), render_concept_quality(memory)))
@@ -9332,6 +9769,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/protocols.md": "Missing protocol dashboard page.",
         "wiki/indexes/furnace-center.md": "Missing furnace center page.",
         "wiki/indexes/execution-center.md": "Missing execution center page.",
+        "wiki/indexes/execution-audit.md": "Missing execution audit page.",
         "wiki/indexes/review-queue.md": "Missing review queue page.",
         "wiki/indexes/review-center.md": "Missing review center page.",
         "wiki/indexes/aging-report.md": "Missing aging report page.",
@@ -9375,6 +9813,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
     graph_html = machine_memory_graph_html_path(root)
     furnace_html = furnace_center_html_path(root)
     execution_html = execution_center_html_path(root)
+    execution_audit_html = execution_audit_html_path(root)
     review_html = review_center_html_path(root)
     if manifest["entries"] and not memory_state.exists():
         findings.append(Finding("error", relative_path(root, memory_state), "Missing machine memory state file."))
@@ -9384,6 +9823,8 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         findings.append(Finding("error", relative_path(root, furnace_html), "Missing furnace center HTML view."))
     if manifest["entries"] and not execution_html.exists():
         findings.append(Finding("error", relative_path(root, execution_html), "Missing execution center HTML view."))
+    if manifest["entries"] and not execution_audit_html.exists():
+        findings.append(Finding("error", relative_path(root, execution_audit_html), "Missing execution audit HTML view."))
     if manifest["entries"] and not review_html.exists():
         findings.append(Finding("error", relative_path(root, review_html), "Missing review center HTML view."))
     if memory_state.exists():

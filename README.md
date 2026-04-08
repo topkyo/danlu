@@ -7,6 +7,7 @@
 统一产品壳入口见 [furnace-center.md](<./wiki/indexes/furnace-center.md>)；本地 HTML 控制面板在 `output/control/furnace-center.html`。
 执行工作区入口见 [execution-center.md](<./wiki/indexes/execution-center.md>)；本地执行面板在 `output/control/execution-center.html`，机器可读 bundle 会落在 `output/control/execution-bundles/`。
 safe execution receipt 会落在 `output/control/execution-receipts/`。
+执行审计入口见 [execution-audit.md](<./wiki/indexes/execution-audit.md>)；本地审计面板在 `output/control/execution-audit.html`。
 关于“一个统一炉子，多个领域协议”的原则，见 [Furnace Protocols.md](<./wiki/indexes/Furnace Protocols.md>)。
 协议运行时入口见 [protocols.md](<./wiki/indexes/protocols.md>)；当前 starter library 提供 `general / investing / research / product / ops` 五套协议。
 当前协议不只是 metadata：它已经会改变 `decision / judgment` 的默认 review window、`file-back` 模板、recurring promotion 的标题与分类语义、`review / nightly / repair` 的优先级焦点，以及 `ask / output / execution proposal` 的策略偏置。
@@ -148,6 +149,7 @@ nightly 也会继续跟踪 `decision / judgment` 的 aging：
 - `machine-memory-actions.md` 会把图谱修复动作沉成稳定队列，并展示状态分布、已到期、已升级、最近清除
 - `machine-memory-repair-plan.md` 会把 accepted / proposed / deferred 动作整理成可执行批次、页级执行提案、page-level patch plan 和下一步命令提示
 - `execution-center.md` 会把 safe apply、execution proposal 和 proposal 页面统一收敛成执行工作区
+- `execution-audit.md` 会把 apply / revert 历史、policy bands、protocol breakdown 和 action audit 收拢成统一审计入口
 - `concept-quality.md` 会把弱概念页、占位概念、概念合并候选、冲突信号、证据缺口和重写优先级集中列出来
 - `rewrite-proposals.md` 会把高优先级弱概念页的 rewrite proposal、状态和 apply 入口集中列出来
 
@@ -170,6 +172,7 @@ safe execution layer 现在也已经接上：
 - 真正 `apply-action` 时会消费并校验 execution bundle；bundle 缺失或陈旧时会拒绝执行
 - `revert-action` 会基于最近一次 apply receipt 回滚 low-risk safe apply，并把动作放回待处理
 - 成功 `apply-action` 后会写 execution receipt，保留最近一次执行回执
+- action queue 现在会暴露显式 `execution_band` / capability 标签，区分 `review-first / manual-repair / bundle-safe-apply / deferred / closed / history-only`
 - 当前低风险动作会通过 `.aiwiki/state/manual-links.json` 写入可审、可重编译的 manual link state，而不是静默覆盖事实层
 
 关键状态页：
@@ -194,6 +197,7 @@ safe execution layer 现在也已经接上：
 - [protocols.md](./wiki/indexes/protocols.md)：协议入口和 active protocol 状态
 - [furnace-center.md](<./wiki/indexes/furnace-center.md>)：统一工作台入口；本地控制面板在 `output/control/furnace-center.html`
 - [execution-center.md](./wiki/indexes/execution-center.md)：执行工作区入口；本地执行面板在 `output/control/execution-center.html`
+- [execution-audit.md](./wiki/indexes/execution-audit.md)：执行审计入口；本地审计面板在 `output/control/execution-audit.html`
 - [review-center.md](./wiki/indexes/review-center.md)：统一审阅/修复入口；本地审阅面板在 `output/review/review-center.html`
 - [graph-view.md](./wiki/indexes/graph-view.md)：统一图谱入口；本地图谱产物在 `output/graph/machine-memory.html`，现在带搜索、分量过滤、节点详情和 safe-apply 摘要
 

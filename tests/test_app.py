@@ -421,6 +421,7 @@ class AiwikiFlowTests(unittest.TestCase):
         for relative, marker in (
             ("wiki/indexes/furnace-center.md", "炉心面板"),
             ("wiki/indexes/execution-center.md", "执行中心"),
+            ("wiki/indexes/execution-audit.md", "执行审计"),
             ("wiki/indexes/review-center.md", "审阅中心"),
             ("wiki/indexes/graph-view.md", "图谱视图"),
         ):
@@ -484,6 +485,93 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Page-level patch steps", dashboard_payload)
         self.assertIn("Execution Center", html_payload)
         self.assertIn("../../wiki/indexes/execution-center.md", html_payload)
+
+    def test_compile_writes_execution_audit_markdown_and_html(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "manual-link-action",
+                        "kind": "add-source-concept-link",
+                        "title": "Manual safe apply link",
+                        "reason": "Backfill source/concept link.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "accepted",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                    }
+                ],
+            },
+        )
+        review_machine_memory_action(self.root, "manual-link-action", "accepted", note="Accepted for audit view.")
+        dry_run = apply_machine_memory_action(self.root, "manual-link-action", dry_run=True)
+        bundle_path = self.root / dry_run["bundle_path"]
+        bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        bundle_path.write_text(json.dumps(dry_run["bundle"], ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        apply_machine_memory_action(
+            self.root,
+            "manual-link-action",
+            note="Safe apply for audit page.",
+            bundle_path=dry_run["bundle_path"],
+        )
+        revert_machine_memory_action(self.root, "manual-link-action", note="Rollback for audit page.")
+        compile_wiki(self.root)
+
+        dashboard = self.root / "wiki" / "indexes" / "execution-audit.md"
+        html_path = self.root / "output" / "control" / "execution-audit.html"
+        dashboard_payload = dashboard.read_text(encoding="utf-8")
+        html_payload = html_path.read_text(encoding="utf-8")
+        self.assertTrue(dashboard.exists())
+        self.assertTrue(html_path.exists())
+        self.assertIn("Policy Bands", dashboard_payload)
+        self.assertIn("Recent Apply", dashboard_payload)
+        self.assertIn("Recent Revert", dashboard_payload)
+        self.assertIn("Execution Audit", html_payload)
+        self.assertIn("../../wiki/indexes/execution-audit.md", html_payload)
+
+    def test_execution_audit_surfaces_policy_band_and_capabilities(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "manual-link-action",
+                        "kind": "add-source-concept-link",
+                        "title": "Manual safe apply link",
+                        "reason": "Backfill source/concept link.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "accepted",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                    }
+                ],
+            },
+        )
+
+        compile_wiki(self.root)
+
+        audit_payload = (self.root / "wiki" / "indexes" / "execution-audit.md").read_text(encoding="utf-8")
+        actions_payload = (self.root / "wiki" / "indexes" / "machine-memory-actions.md").read_text(encoding="utf-8")
+        self.assertIn("bundle-safe-apply", audit_payload)
+        self.assertIn("dry-run, bundle-apply, revert-safe, history", audit_payload)
+        self.assertIn("band `bundle-safe-apply`", actions_payload)
 
     def test_ask_recompiles_when_raw_source_changes(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -2208,6 +2296,7 @@ class AiwikiFlowTests(unittest.TestCase):
         (self.root / "wiki" / "indexes" / "furnace-center.md").unlink()
         (self.root / "wiki" / "indexes" / "review-center.md").unlink()
         (self.root / "wiki" / "indexes" / "graph-view.md").unlink()
+        (self.root / "wiki" / "indexes" / "execution-audit.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory-topology.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory-actions.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory-repair-plan.md").unlink()
@@ -2219,6 +2308,7 @@ class AiwikiFlowTests(unittest.TestCase):
         (self.root / ".aiwiki" / "cache" / "machine-memory-graph.json").unlink()
         (self.root / "output" / "control" / "furnace-center.html").unlink()
         (self.root / "output" / "control" / "execution-center.html").unlink()
+        (self.root / "output" / "control" / "execution-audit.html").unlink()
         (self.root / "output" / "graph" / "machine-memory.html").unlink()
         (self.root / "output" / "review" / "review-center.html").unlink()
         concept_page = next((self.root / "wiki" / "concepts").glob("*.md"))
@@ -2230,6 +2320,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertGreaterEqual(lint["counts"]["errors"], 2)
         self.assertTrue((self.root / "wiki" / "indexes" / "furnace-center.md").exists())
         self.assertTrue((self.root / "wiki" / "indexes" / "execution-center.md").exists())
+        self.assertTrue((self.root / "wiki" / "indexes" / "execution-audit.md").exists())
         self.assertTrue((self.root / "wiki" / "indexes" / "review-center.md").exists())
         self.assertTrue((self.root / "wiki" / "indexes" / "graph-view.md").exists())
         self.assertIn("Missing master wiki index page.", report_text)
@@ -2244,6 +2335,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Missing machine memory graph export.", report_text)
         self.assertIn("Missing furnace center HTML view.", report_text)
         self.assertIn("Missing execution center HTML view.", report_text)
+        self.assertIn("Missing execution audit HTML view.", report_text)
         self.assertIn("Missing machine memory graph HTML view.", report_text)
         self.assertIn("Missing review center HTML view.", report_text)
         self.assertIn("Concept page references missing source page", report_text)
