@@ -3137,8 +3137,7 @@ def load_execution_receipt_history(root: Path) -> list[dict[str, Any]]:
             continue
         if isinstance(payload, dict) and str(payload.get("kind") or "") == "execution-receipt":
             records.append(payload)
-    records.sort(key=lambda item: str(item.get("applied_at") or ""), reverse=True)
-    return records
+    return list(reversed(records))
 
 
 def remove_stale_generated_execution_proposal_pages(root: Path, active_action_ids: set[str]) -> int:
@@ -7056,6 +7055,90 @@ def render_execution_center_html(memory: dict[str, Any], *, compiled_at: str, ac
     )
 
 
+def collect_execution_consistency_signals(
+    root: Path,
+    actions: list[dict[str, Any]],
+    history: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    manual_state = load_manual_link_state(root)
+    active_manual_links: dict[str, list[dict[str, Any]]] = {}
+    for item in manual_state.get("source_to_concept", []):
+        if not isinstance(item, dict) or not bool(item.get("active", True)):
+            continue
+        origin_action_id = str(item.get("origin_action_id") or "")
+        if not origin_action_id:
+            continue
+        active_manual_links.setdefault(origin_action_id, []).append(item)
+    latest_receipt_by_action: dict[str, dict[str, Any]] = {}
+    for record in history:
+        action_id = str(record.get("action_id") or "")
+        if action_id and action_id not in latest_receipt_by_action:
+            latest_receipt_by_action[action_id] = record
+
+    signals: list[dict[str, str]] = []
+    for action in actions:
+        if str(action.get("kind") or "") not in LOW_RISK_APPLYABLE_ACTION_KINDS:
+            continue
+        action_id = str(action.get("id") or "")
+        if not action_id:
+            continue
+        status = str(action.get("status") or "proposed")
+        latest = latest_receipt_by_action.get(action_id)
+        latest_operation = str(latest.get("operation") or "") if latest else ""
+        has_active_manual_link = bool(active_manual_links.get(action_id))
+        title = str(action.get("title") or action_id)
+        primary_path = str(action.get("primary_path") or "")
+
+        if status == "resolved" and latest_operation != "apply":
+            signals.append(
+                {
+                    "severity": "error",
+                    "action_id": action_id,
+                    "title": title,
+                    "path": primary_path,
+                    "message": "动作标记为 resolved，但最新 execution receipt 不是 apply。",
+                }
+            )
+        if status == "resolved" and not has_active_manual_link:
+            signals.append(
+                {
+                    "severity": "error",
+                    "action_id": action_id,
+                    "title": title,
+                    "path": primary_path,
+                    "message": "动作标记为 resolved，但 active manual-link state 缺失。",
+                }
+            )
+        if latest_operation == "revert" and has_active_manual_link:
+            signals.append(
+                {
+                    "severity": "error",
+                    "action_id": action_id,
+                    "title": title,
+                    "path": primary_path,
+                    "message": "最新 receipt 已是 revert，但 manual-link state 仍然 active。",
+                }
+            )
+        if status in PENDING_ACTION_STATUSES and has_active_manual_link:
+            signals.append(
+                {
+                    "severity": "warn",
+                    "action_id": action_id,
+                    "title": title,
+                    "path": primary_path,
+                    "message": "动作仍在待处理状态，但 manual-link state 仍然 active；需要确认是否应先 revert 或直接 resolve。",
+                }
+            )
+    signals.sort(
+        key=lambda item: (
+            0 if item.get("severity") == "error" else 1,
+            str(item.get("title") or "").lower(),
+            str(item.get("message") or ""),
+        )
+    )
+    return signals
+
+
 def build_execution_audit_snapshot(root: Path, memory: dict[str, Any], *, active_protocol: str) -> dict[str, Any]:
     health = memory.get("health", {})
     actions = [dict(action) for action in health.get("actions", []) if isinstance(action, dict)]
@@ -7113,6 +7196,7 @@ def build_execution_audit_snapshot(root: Path, memory: dict[str, Any], *, active
         {"protocol": protocol, "title": protocol_title(protocol), "count": count}
         for protocol, count in sorted(protocol_counts.items(), key=lambda item: (-item[1], item[0]))
     ]
+    consistency_signals = collect_execution_consistency_signals(root, all_actions, history)
     return {
         "compiled_at": str(memory.get("compiled_at") or ""),
         "active_protocol": active_protocol,
@@ -7129,6 +7213,11 @@ def build_execution_audit_snapshot(root: Path, memory: dict[str, Any], *, active
         "recent_apply": recent_apply,
         "recent_revert": recent_revert,
         "actions": action_rows[:16],
+        "consistency_signals": consistency_signals[:16],
+        "consistency_counts": {
+            "errors": sum(1 for item in consistency_signals if item.get("severity") == "error"),
+            "warns": sum(1 for item in consistency_signals if item.get("severity") == "warn"),
+        },
     }
 
 
@@ -7183,6 +7272,17 @@ def render_execution_audit(audit: dict[str, Any]) -> str:
     else:
         for row in protocols:
             lines.append(f"- `{row['protocol']}` ({row['title']}) | receipts `{row['count']}`")
+    lines.extend(["", "## Consistency Signals"])
+    consistency_signals = audit.get("consistency_signals", [])
+    if not consistency_signals:
+        lines.append("- 当前没有 execution consistency signal。")
+    else:
+        for signal in consistency_signals:
+            lines.append(
+                f"- [{signal.get('severity', 'warn')}] `{signal.get('title', signal.get('action_id', 'signal'))}`"
+                f" | action `{signal.get('action_id', '')}`"
+                f" | {signal.get('message', '')}"
+            )
     lines.extend(["", "## Action Audit"])
     actions = audit.get("actions", [])
     if not actions:
@@ -7254,6 +7354,12 @@ def render_execution_audit_html(audit: dict[str, Any]) -> str:
         f"<div>{html.escape(str(action.get('policy_summary') or ''))}</div></li>"
         for action in audit.get("actions", [])
     ) or "<li>当前还没有 action audit rows。</li>"
+    consistency_markup = "".join(
+        f"<li><strong>{html.escape(str(signal.get('title') or signal.get('action_id') or 'signal'))}</strong>"
+        f" <span class=\"item-meta\">{html.escape(str(signal.get('severity') or 'warn'))}</span>"
+        f"<div>{html.escape(str(signal.get('message') or ''))}</div></li>"
+        for signal in audit.get("consistency_signals", [])
+    ) or "<li>当前没有 execution consistency signal。</li>"
     return "\n".join(
         [
             "<!doctype html>",
@@ -7308,6 +7414,7 @@ def render_execution_audit_html(audit: dict[str, Any]) -> str:
             f'      <div class="card"><h2>Protocol Breakdown</h2><ul>{protocol_markup}</ul></div>',
             f'      <div class="card"><h2>Recent Apply</h2><ul>{apply_markup}</ul></div>',
             f'      <div class="card"><h2>Recent Revert</h2><ul>{revert_markup}</ul></div>',
+            f'      <div class="card"><h2>Consistency Signals</h2><ul>{consistency_markup}</ul></div>',
             f'      <div class="card"><h2>Action Audit</h2><ul>{action_markup}</ul></div>',
             "    </section>",
             "  </main>",
@@ -9904,6 +10011,19 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                             f"Referenced execution receipt does not exist for action `{action.get('id', '')}`.",
                         )
                     )
+            consistency_signals = collect_execution_consistency_signals(
+                root,
+                [dict(action) for action in action_state.get("actions", []) if isinstance(action, dict)],
+                load_execution_receipt_history(root),
+            )
+            for signal in consistency_signals:
+                findings.append(
+                    Finding(
+                        str(signal.get("severity") or "warn"),
+                        str(signal.get("path") or relative_path(root, action_state_path)),
+                        f"Execution consistency issue for action `{signal.get('action_id', '')}`: {signal.get('message', '')}",
+                    )
+                )
 
     rewrite_state_path = concept_rewrite_state_path(root)
     if manifest["entries"] and not rewrite_state_path.exists():

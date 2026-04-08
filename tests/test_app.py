@@ -573,6 +573,86 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("dry-run, bundle-apply, revert-safe, history", audit_payload)
         self.assertIn("band `bundle-safe-apply`", actions_payload)
 
+    def test_execution_audit_surfaces_consistency_signal_for_resolved_action_without_receipt(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "manual-link-action",
+                        "kind": "add-source-concept-link",
+                        "title": "Manual safe apply link",
+                        "reason": "Backfill source/concept link.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "resolved",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                    }
+                ],
+            },
+        )
+
+        compile_wiki(self.root)
+
+        audit_payload = (self.root / "wiki" / "indexes" / "execution-audit.md").read_text(encoding="utf-8")
+        self.assertIn("Consistency Signals", audit_payload)
+        self.assertIn("resolved，但最新 execution receipt 不是 apply", audit_payload)
+
+    def test_lint_reports_execution_consistency_issue_when_revert_receipt_keeps_manual_link_active(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "manual-link-action",
+                        "kind": "add-source-concept-link",
+                        "title": "Manual safe apply link",
+                        "reason": "Backfill source/concept link.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "accepted",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                    }
+                ],
+            },
+        )
+        dry_run = apply_machine_memory_action(self.root, "manual-link-action", dry_run=True)
+        bundle_path = self.root / dry_run["bundle_path"]
+        bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        bundle_path.write_text(json.dumps(dry_run["bundle"], ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        apply_machine_memory_action(
+            self.root,
+            "manual-link-action",
+            note="Safe apply for consistency lint.",
+            bundle_path=dry_run["bundle_path"],
+        )
+        revert_machine_memory_action(self.root, "manual-link-action", note="Rollback before lint.")
+        manual_state_path = self.root / ".aiwiki" / "state" / "manual-links.json"
+        manual_state = json.loads(manual_state_path.read_text(encoding="utf-8"))
+        manual_state["source_to_concept"][0]["active"] = True
+        manual_state_path.write_text(json.dumps(manual_state, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+        lint = lint_wiki(self.root)
+        report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
+        self.assertIn("Execution consistency issue for action `manual-link-action`", report_text)
+        self.assertIn("最新 receipt 已是 revert，但 manual-link state 仍然 active", report_text)
+
     def test_ask_recompiles_when_raw_source_changes(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)

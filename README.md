@@ -150,6 +150,7 @@ nightly 也会继续跟踪 `decision / judgment` 的 aging：
 - `machine-memory-repair-plan.md` 会把 accepted / proposed / deferred 动作整理成可执行批次、页级执行提案、page-level patch plan 和下一步命令提示
 - `execution-center.md` 会把 safe apply、execution proposal 和 proposal 页面统一收敛成执行工作区
 - `execution-audit.md` 会把 apply / revert 历史、policy bands、protocol breakdown 和 action audit 收拢成统一审计入口
+- execution audit 现在还会显示 `action state / receipt / manual-link state` 的 consistency signals
 - `concept-quality.md` 会把弱概念页、占位概念、概念合并候选、冲突信号、证据缺口和重写优先级集中列出来
 - `rewrite-proposals.md` 会把高优先级弱概念页的 rewrite proposal、状态和 apply 入口集中列出来
 
