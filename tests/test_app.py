@@ -31,6 +31,7 @@ from aiwiki.app import (
     review_page,
     save_machine_memory_action_state,
     set_active_protocol,
+    strip_frontmatter,
 )
 from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
@@ -716,8 +717,38 @@ class AiwikiFlowTests(unittest.TestCase):
         after_signature = parse_frontmatter(concept_path.read_text(encoding="utf-8"))["source_signature"]
         self.assertNotEqual(before_signature, after_signature)
 
+    def test_apply_machine_memory_action_rejects_inactive_action(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "inactive-link-action",
+                        "kind": "add-source-concept-link",
+                        "title": "Inactive safe apply link",
+                        "reason": "Stale link action.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "accepted",
+                        "priority": "low",
+                        "active": False,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                    }
+                ],
+            },
+        )
+
+        with self.assertRaises(RuntimeError):
+            apply_machine_memory_action(self.root, "inactive-link-action", note="Should fail.")
+
     def test_file_back_supports_decision_and_judgment_kinds(self) -> None:
-        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
         report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
 
@@ -734,6 +765,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(parse_frontmatter(judgment_path.read_text(encoding="utf-8"))["kind"], "judgment")
         self.assertEqual(parse_frontmatter(decision_path.read_text(encoding="utf-8"))["status"], "proposed")
         self.assertEqual(parse_frontmatter(judgment_path.read_text(encoding="utf-8"))["status"], "tentative")
+        self.assertIn(f"wiki/sources/{entry['id']}.md", parse_frontmatter(decision_path.read_text(encoding="utf-8"))["citations"])
+        self.assertIn(f"wiki/sources/{entry['id']}.md", parse_frontmatter(judgment_path.read_text(encoding="utf-8"))["citations"])
         self.assertIn("## Decision", decision_path.read_text(encoding="utf-8"))
         self.assertIn("## Evidence", decision_path.read_text(encoding="utf-8"))
         self.assertIn("## Review Status", decision_path.read_text(encoding="utf-8"))
@@ -751,6 +784,25 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Scaling Judgment", judgments_index)
         self.assertIn("Scaling Decision", review_queue)
         self.assertIn("Scaling Judgment", review_queue)
+
+    def test_lint_warns_when_curated_page_has_no_structured_citations(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+        decision_path = self.root / decision["path"]
+        decision_text = decision_path.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(decision_text)
+        frontmatter["citations"] = []
+        decision_path.write_text(
+            f"{render_frontmatter(frontmatter)}\n\n{strip_frontmatter(decision_text).lstrip()}",
+            encoding="utf-8",
+        )
+
+        lint = lint_wiki(self.root)
+
+        report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
+        self.assertIn("Decision page is missing structured `citations` metadata.", report_text)
 
     def test_file_back_propagates_protocol_metadata(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -1114,6 +1166,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(decision_frontmatter["kind"], "decision")
         self.assertEqual(decision_frontmatter["promotion_origin"], "nightly-recurring-output")
         self.assertEqual(decision_frontmatter["promotion_count"], "2")
+        self.assertTrue(decision_frontmatter["citations"])
         self.assertIn(question, decision_text)
         self.assertIn("## Auto Promotion", decision_text)
         self.assertEqual(result["promotions"]["count"], 1)
@@ -1139,6 +1192,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(judgment_frontmatter["promotion_origin"], "nightly-recurring-output")
         self.assertEqual(judgment_frontmatter["promotion_count"], "2")
         self.assertEqual(judgment_frontmatter["status"], "tentative")
+        self.assertTrue(judgment_frontmatter["citations"])
         self.assertIn(question, judgment_text)
         self.assertEqual(result["promotions"]["count"], 1)
 

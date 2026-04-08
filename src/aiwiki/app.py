@@ -1235,6 +1235,42 @@ def upsert_markdown_section(markdown: str, heading: str, content: str) -> str:
     return block
 
 
+PROVENANCE_PATH_PATTERN = re.compile(r"(?:\.\./)*(wiki/sources/[^\s`)\]]+\.md|raw/[^\s`)\]]+)")
+
+
+def normalize_workspace_path(value: str) -> str:
+    normalized = value.strip().strip("'\"`")
+    while normalized.startswith("../"):
+        normalized = normalized[3:]
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized.rstrip(".,;:")
+
+
+def extract_provenance_paths(root: Path, markdown: str) -> list[str]:
+    frontmatter = parse_frontmatter(markdown)
+    candidates: list[str] = []
+    for key in ("citations", "source_files"):
+        value = frontmatter.get(key, [])
+        if isinstance(value, list):
+            candidates.extend(str(item) for item in value if isinstance(item, str))
+    candidates.extend(match.group(1) for match in PROVENANCE_PATH_PATTERN.finditer(markdown))
+
+    normalized_paths: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        path = normalize_workspace_path(candidate)
+        if not path.startswith(("wiki/sources/", "raw/")):
+            continue
+        if not (root / path).exists():
+            continue
+        if path in seen:
+            continue
+        seen.add(path)
+        normalized_paths.append(path)
+    return normalized_paths
+
+
 def replace_first_markdown_heading(markdown: str, title: str) -> str:
     lines = markdown.splitlines()
     for index, line in enumerate(lines):
@@ -2485,11 +2521,27 @@ def annotate_recurring_promotion(
         artifact_path = artifact["path"]
         if artifact_path not in source_files:
             source_files.append(artifact_path)
+    citations = [
+        str(path)
+        for path in frontmatter.get("citations", [])
+        if isinstance(path, str) and path.strip()
+    ]
+    seen_citations = {path for path in citations}
+    for artifact in artifacts:
+        artifact_path = root / artifact["path"]
+        if not artifact_path.exists():
+            continue
+        for citation in extract_provenance_paths(root, artifact_path.read_text(encoding="utf-8", errors="replace")):
+            if citation in seen_citations:
+                continue
+            seen_citations.add(citation)
+            citations.append(citation)
     formats = sorted({artifact["format"] for artifact in artifacts})
     title = promotion_page_title(kind, query, protocol)
     frontmatter["title"] = title
     frontmatter["protocol"] = protocol
     frontmatter["source_files"] = source_files
+    frontmatter["citations"] = citations
     frontmatter["promotion_origin"] = "nightly-recurring-output"
     frontmatter["promotion_query"] = query
     frontmatter["promotion_query_signature"] = query_signature
@@ -6496,6 +6548,7 @@ def file_back(
     )
     original = artifact_path.read_text(encoding="utf-8", errors="replace")
     original_frontmatter = parse_frontmatter(original)
+    citations = extract_provenance_paths(root, original)
     source_protocol = str(original_frontmatter.get("protocol") or "").strip()
     resolved_protocol = resolve_protocol(root, protocol or source_protocol or None)
     entry_seed = f"{kind}-{stamp}-{slugify(title or artifact_path.stem)[:48]}"
@@ -6523,7 +6576,7 @@ def file_back(
             "title": title or artifact_path.stem,
             "protocol": resolved_protocol,
             "source_files": [artifact_ref],
-            "citations": [],
+            "citations": citations,
             "generated_by": "aiwiki-file-back",
             "last_compiled_at": filed_at,
             "confidence": "medium",
@@ -6666,6 +6719,34 @@ def rewrite_proposal_is_apply_ready(root: Path, proposal: dict[str, Any]) -> boo
     return str(proposal.get("status") or "") == "accepted" and rewrite_proposal_candidate_is_current(root, proposal)
 
 
+def validate_low_risk_action_targets(root: Path, action: dict[str, Any]) -> tuple[str, str]:
+    if not bool(action.get("active", True)):
+        raise RuntimeError("Machine-memory action is no longer active.")
+    source_ids = [str(item) for item in action.get("source_ids", []) if isinstance(item, str)]
+    concept_slugs = [str(item) for item in action.get("concept_slugs", []) if isinstance(item, str)]
+    if not source_ids or not concept_slugs:
+        raise RuntimeError("Low-risk link action is missing source_ids or concept_slugs.")
+    source_id = source_ids[0]
+    concept_slug = concept_slugs[0]
+    manifest = sync_manifest_with_raw(root)
+    known_source_ids = {str(entry.get("id") or "") for entry in manifest.get("entries", []) if isinstance(entry, dict)}
+    if source_id not in known_source_ids:
+        raise RuntimeError("Low-risk link action references a source that is no longer in the manifest.")
+    primary_path = root / str(action.get("primary_path") or "")
+    secondary_path = root / str(action.get("secondary_path") or "")
+    if not primary_path.is_file() or primary_path.stem != source_id:
+        raise RuntimeError("Low-risk link action primary source page is missing or no longer matches the source id.")
+    if not secondary_path.is_file() or secondary_path.stem != concept_slug:
+        raise RuntimeError("Low-risk link action secondary concept page is missing or no longer matches the concept slug.")
+    primary_frontmatter = parse_frontmatter(primary_path.read_text(encoding="utf-8", errors="replace"))
+    secondary_frontmatter = parse_frontmatter(secondary_path.read_text(encoding="utf-8", errors="replace"))
+    if str(primary_frontmatter.get("kind") or "") != "source":
+        raise RuntimeError("Low-risk link action primary path is not a source page anymore.")
+    if str(secondary_frontmatter.get("kind") or "") != "concept":
+        raise RuntimeError("Low-risk link action secondary path is not a concept page anymore.")
+    return source_id, concept_slug
+
+
 def apply_concept_rewrite(root: Path, slug: str, *, note: str | None = None) -> dict[str, Any]:
     ensure_layout(root)
     state = load_concept_rewrite_state(root)
@@ -6803,12 +6884,7 @@ def apply_machine_memory_action(root: Path, action_id: str, *, note: str | None 
     manual_state = load_manual_link_state(root)
     manual_links = [dict(item) for item in manual_state.get("source_to_concept", []) if isinstance(item, dict)]
     if kind == "add-source-concept-link":
-        source_ids = [str(item) for item in target.get("source_ids", []) if isinstance(item, str)]
-        concept_slugs = [str(item) for item in target.get("concept_slugs", []) if isinstance(item, str)]
-        if not source_ids or not concept_slugs:
-            raise RuntimeError("Low-risk link action is missing source_ids or concept_slugs.")
-        source_id = source_ids[0]
-        concept_slug = concept_slugs[0]
+        source_id, concept_slug = validate_low_risk_action_targets(root, target)
         existing = next(
             (
                 item
@@ -7597,6 +7673,11 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         for page in sorted((root / group).glob("*.md")):
             content = page.read_text(encoding="utf-8", errors="replace")
             frontmatter = parse_frontmatter(content)
+            citations = [
+                str(path)
+                for path in frontmatter.get("citations", [])
+                if isinstance(path, str) and path.strip()
+            ]
             if frontmatter.get("kind") != expected_kind:
                 findings.append(
                     Finding("warn", relative_path(root, page), f"{expected_kind.capitalize()} page kind is missing or incorrect.")
@@ -7605,6 +7686,24 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                 findings.append(
                     Finding("warn", relative_path(root, page), f"{expected_kind.capitalize()} page has no explicit source-page reference.")
                 )
+            if expected_kind in {"derived", "decision", "judgment"} and not citations:
+                findings.append(
+                    Finding(
+                        "warn",
+                        relative_path(root, page),
+                        f"{expected_kind.capitalize()} page is missing structured `citations` metadata.",
+                    )
+                )
+            for citation in citations:
+                candidate = root / citation
+                if not candidate.exists():
+                    findings.append(
+                        Finding(
+                            "error",
+                            relative_path(root, page),
+                            f"{expected_kind.capitalize()} page references missing citation path: `{citation}`.",
+                        )
+                    )
             if expected_kind in {"decision", "judgment"} and not frontmatter.get("protocol"):
                 findings.append(
                     Finding("warn", relative_path(root, page), f"{expected_kind.capitalize()} page is missing explicit `protocol` metadata.")
