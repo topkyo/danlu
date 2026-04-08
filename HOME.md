@@ -44,6 +44,7 @@ kind: "dashboard"
 - [[wiki/indexes/execution-audit|执行审计]]
 - [[wiki/indexes/agent-workbench|Agent Workbench]]
 - [[wiki/indexes/cognitive-history|认知历史]]
+- [[wiki/indexes/output-packs|输出 Pack 总览]]
 - [[wiki/indexes/protocols|协议总览]]
 - [[wiki/indexes/review-center|审阅中心]]
 - [[wiki/indexes/judgment-assets|判断资产]]
@@ -59,6 +60,7 @@ kind: "dashboard"
 - [[wiki/indexes/execution-audit|执行审计]]
 - [[wiki/indexes/agent-workbench|Agent Workbench]]
 - [[wiki/indexes/cognitive-history|认知历史]]
+- [[wiki/indexes/output-packs|输出 Pack 总览]]
 - [[wiki/indexes/repair-backlog|修复待办]]
 - [[wiki/indexes/rewrite-proposals|Rewrite 提案]]
 - [[wiki/indexes/drift-report|漂移报告]]
@@ -85,6 +87,7 @@ kind: "dashboard"
 - 想复盘 apply / revert 历史、policy bands、协议级执行分布和 consistency signals：看 [[wiki/indexes/execution-audit|执行审计]]，真正的本地审计面板在 `output/control/execution-audit.html`
 - 想从“单人 + 多 agent 工作小组”的视角分工：看 [[wiki/indexes/agent-workbench|Agent Workbench]]，具体角色 pack 会落在 `output/agents/`
 - 想看哪些旧判断被新证据挑战、哪些页面缺 snapshot、哪些 judgment 已经积累长历史：看 [[wiki/indexes/cognitive-history|认知历史]]
+- 想把待审页面、已审 memo 和可执行 SOP 草案打包给人或 agent：看 [[wiki/indexes/output-packs|输出 Pack 总览]]，具体 pack 会落在 `output/packs/`
 - 想切换或查看当前协议：看 [[wiki/indexes/protocols|协议总览]]
 - 想确认协议具体改变了什么行为：看 [[schema/protocols/index|协议规则]]
 - 想看 pending review：看 [[wiki/indexes/review-queue|审阅队列]]
@@ -106,6 +109,7 @@ kind: "dashboard"
 - `wiki/decisions/` 与 `wiki/judgments/`：高阶结论层
 - `wiki/derived/`：回流后的派生 markdown
 - `output/`：报告、幻灯片、图表和 lint 结果
+- `output/packs/`：review packs、decision memos、SOP drafts
 - `schema/`：运行时规则
 - `schema/protocols/`：领域协议覆盖层
 

@@ -181,6 +181,7 @@ class AiwikiFlowTests(unittest.TestCase):
         judgments_index = self.root / "wiki" / "indexes" / "judgments.md"
         agent_workbench = self.root / "wiki" / "indexes" / "agent-workbench.md"
         cognitive_history = self.root / "wiki" / "indexes" / "cognitive-history.md"
+        output_packs = self.root / "wiki" / "indexes" / "output-packs.md"
         review_queue = self.root / "wiki" / "indexes" / "review-queue.md"
         memory_state = self.root / ".aiwiki" / "state" / "machine-memory.json"
         memory_graph = self.root / ".aiwiki" / "cache" / "machine-memory-graph.json"
@@ -194,6 +195,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(judgments_index.exists())
         self.assertTrue(agent_workbench.exists())
         self.assertTrue(cognitive_history.exists())
+        self.assertTrue(output_packs.exists())
         self.assertTrue(review_queue.exists())
         self.assertTrue(memory_state.exists())
         self.assertTrue(memory_graph.exists())
@@ -206,6 +208,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("审阅队列", master_index.read_text(encoding="utf-8"))
         self.assertIn("Agent Workbench", master_index.read_text(encoding="utf-8"))
         self.assertIn("认知历史", master_index.read_text(encoding="utf-8"))
+        self.assertIn("输出 Pack 总览", master_index.read_text(encoding="utf-8"))
         self.assertIn("图谱健康", master_index.read_text(encoding="utf-8"))
         self.assertIn("漂移报告", master_index.read_text(encoding="utf-8"))
         self.assertIn("compile | wiki refresh", log_page.read_text(encoding="utf-8"))
@@ -1734,6 +1737,38 @@ class AiwikiFlowTests(unittest.TestCase):
             self.assertIn("## Suggested Actions", pack_text)
             self.assertIn("## Related Links", pack_text)
 
+    def test_compile_generates_output_packs_for_review_memo_and_sop(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+        review_page(
+            self.root,
+            judgment["path"],
+            "confirmed",
+            note="Confirmed for memo export.",
+            confidence="high",
+        )
+        self._seed_machine_memory_actions()
+        compile_wiki(self.root)
+        review_machine_memory_action(self.root, "overloaded-concept-latency", "accepted", note="Queue SOP draft.")
+
+        packs_index = (self.root / "wiki" / "indexes" / "output-packs.md").read_text(encoding="utf-8")
+        review_pack = next((self.root / "output" / "packs" / "review").glob("*.md"))
+        decision_memo = next((self.root / "output" / "packs" / "decision-memos").glob("*.md"))
+        sop_draft = next((self.root / "output" / "packs" / "sop-drafts").glob("*.md"))
+
+        self.assertIn("Review Pack", packs_index)
+        self.assertIn("Decision Memo", packs_index)
+        self.assertIn("SOP Draft", packs_index)
+        self.assertIn("Scaling Decision", review_pack.read_text(encoding="utf-8"))
+        self.assertIn("Scaling Judgment", decision_memo.read_text(encoding="utf-8"))
+        sop_text = sop_draft.read_text(encoding="utf-8")
+        self.assertIn("## Step-by-Step", sop_text)
+        self.assertIn("Action id:", sop_text)
+        self.assertIn("apply-action", sop_text)
+
     def test_run_ask_includes_machine_memory_query_plan_in_prompt(self) -> None:
         sample = self.root / "latency.md"
         sample.write_text("# Throughput Notes\n\nLatency throughput cache locality.\n", encoding="utf-8")
@@ -1775,6 +1810,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("wiki/indexes/concept-quality.md", client.prompt)
         self.assertIn("wiki/indexes/agent-workbench.md", client.prompt)
         self.assertIn("wiki/indexes/cognitive-history.md", client.prompt)
+        self.assertIn("wiki/indexes/output-packs.md", client.prompt)
         self.assertIn("wiki/indexes/machine-memory-topology.md", client.prompt)
         self.assertIn("wiki/indexes/machine-memory-actions.md", client.prompt)
         self.assertIn("wiki/indexes/machine-memory-repair-plan.md", client.prompt)
@@ -2647,6 +2683,31 @@ class AiwikiFlowTests(unittest.TestCase):
         lint = lint_wiki(self.root)
         report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
         self.assertIn(f"Missing execution bundle for action `{proposal['action_id']}`.", report_text)
+
+    def test_lint_reports_missing_output_pack_candidates(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+        review_page(
+            self.root,
+            judgment["path"],
+            "confirmed",
+            note="Confirmed for memo export.",
+            confidence="high",
+        )
+        self._seed_machine_memory_actions()
+        compile_wiki(self.root)
+        review_machine_memory_action(self.root, "overloaded-concept-latency", "accepted", note="Queue SOP draft.")
+
+        next((self.root / "output" / "packs" / "review").glob("*.md")).unlink()
+        next((self.root / "output" / "packs" / "decision-memos").glob("*.md")).unlink()
+        next((self.root / "output" / "packs" / "sop-drafts").glob("*.md")).unlink()
+
+        lint = lint_wiki(self.root)
+        report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
+        self.assertIn("Missing output pack", report_text)
 
 
 if __name__ == "__main__":

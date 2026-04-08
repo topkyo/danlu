@@ -31,6 +31,9 @@ LAYOUT_DIRS = (
     "output/slides",
     "output/figures",
     "output/agents",
+    "output/packs/review",
+    "output/packs/decision-memos",
+    "output/packs/sop-drafts",
     "output/graph",
     "output/control",
     "output/review",
@@ -318,6 +321,19 @@ DEFAULT_DASHBOARD_FILES = {
             "- compile 后会把 agent packs 写到 `output/agents/`。",
             "- 这些 pack 是给单人 owner + 多 agent 工作小组的工作单。",
             "- 这里先做人用总览，不直接执行 agent。",
+        ]
+    )
+    + "\n",
+    "wiki/indexes/output-packs.md": "\n".join(
+        [
+            "# 输出 Pack 总览",
+            "",
+            "这里会汇总 compile 生成的稳定 pack 产物。",
+            "",
+            "- `review packs` 会把待审 / 漂移 / aging 页面导出成可直接审阅的工作单。",
+            "- `decision memos` 会把已审 decision / judgment 导出成稳定 memo。",
+            "- `SOP drafts` 会把 ready action / execution proposal 导出成可执行草案。",
+            "- 这些 pack 先保持 deterministic markdown 产物，不引入新的 runtime 执行器。",
         ]
     )
     + "\n",
@@ -3536,6 +3552,18 @@ def remove_stale_generated_execution_bundle_files(root: Path, active_action_ids:
     return removed
 
 
+def remove_stale_generated_markdown_files(directory: Path, active_stems: set[str]) -> int:
+    removed = 0
+    if not directory.exists():
+        return 0
+    for path in sorted(directory.glob("*.md")):
+        if path.stem in active_stems:
+            continue
+        path.unlink()
+        removed += 1
+    return removed
+
+
 def describe_machine_memory_action(action: dict[str, Any]) -> dict[str, str]:
     action_id = str(action.get("id") or "")
     kind = str(action.get("kind") or "")
@@ -4222,6 +4250,500 @@ def render_cognitive_history(
             "- [审阅队列](./review-queue.md)",
             "- [审阅中心](./review-center.md)",
             "- [Aging 报告](./aging-report.md)",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def compact_section_lines(markdown: str, heading: str, *, fallback: str, limit: int = 5) -> list[str]:
+    section = preserved_section(markdown, heading, "").strip()
+    if not section:
+        return [fallback]
+    lines = [line.strip() for line in section.splitlines() if line.strip()]
+    if not lines:
+        return [fallback]
+    if len(lines) > limit:
+        return [*lines[:limit], "- ..."]
+    return lines
+
+
+def workspace_link(path: str, label: str | None = None) -> str:
+    target = path.strip()
+    display = label or target
+    return f"[{display}](../../{target})"
+
+
+def pack_workspace_link(path: str, label: str | None = None) -> str:
+    target = path.strip()
+    display = label or target
+    return f"[{display}](../../../{target})"
+
+
+def load_workspace_markdown(root: Path, relative: str) -> tuple[dict[str, Any], str]:
+    path = root / relative
+    content = path.read_text(encoding="utf-8", errors="replace")
+    return parse_frontmatter(content), content
+
+
+def build_output_packs(
+    root: Path,
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    memory: dict[str, Any],
+    protocol_state: dict[str, Any],
+    recent_outputs: list[dict[str, str]],
+    compiled_at: str,
+) -> dict[str, Any]:
+    active_protocol = protocol_state["active_protocol"]
+    pages = decisions + judgments
+    review_candidates = sorted(
+        [
+            page
+            for page in pages
+            if page.get("pending_review") == "true"
+            or page.get("citation_drift") == "true"
+            or page.get("overdue_review") == "true"
+            or page.get("escalation_candidate") == "true"
+        ],
+        key=lambda page: (
+            0 if page.get("escalation_candidate") == "true" else 1,
+            0 if page.get("overdue_review") == "true" else 1,
+            0 if page.get("citation_drift") == "true" else 1,
+            0 if page.get("pending_review") == "true" else 1,
+            -page_focus_score(active_protocol, page),
+            page.get("title", "").lower(),
+        ),
+    )
+    reviewed_candidates = sort_curated_pages(
+        [page for page in pages if page.get("reviewed_at") and page.get("pending_review") != "true"]
+    )
+    repair_plan = memory.get("health", {}).get("repair_plan", {})
+    ready_actions = [
+        action for action in repair_plan.get("ready_actions", []) if isinstance(action, dict) and action.get("active")
+    ]
+    execution_proposals = [
+        proposal for proposal in repair_plan.get("execution_proposals", []) if isinstance(proposal, dict)
+    ]
+    proposal_by_action = {
+        str(proposal.get("action_id") or ""): proposal
+        for proposal in execution_proposals
+        if proposal.get("action_id")
+    }
+    review_packs: list[dict[str, str]] = []
+    decision_memos: list[dict[str, str]] = []
+    sop_drafts: list[dict[str, str]] = []
+
+    for page in review_candidates:
+        frontmatter, content = load_workspace_markdown(root, page["path"])
+        reasons: list[str] = []
+        if page.get("pending_review") == "true":
+            reasons.append("pending review")
+        if page.get("overdue_review") == "true":
+            reasons.append("overdue review")
+        if page.get("escalation_candidate") == "true":
+            reasons.append("escalation candidate")
+        if page.get("citation_drift") == "true":
+            reasons.append("citation drift")
+        if int(page.get("citation_snapshot_gap_count", "0") or "0") > 0:
+            reasons.append("citation snapshot gap")
+        kind = str(frontmatter.get("kind") or page.get("kind") or "curated")
+        section_name = "Decision" if kind == "decision" else "Judgment"
+        evidence_section = "Evidence" if kind == "decision" else "Signals"
+        citations = [str(item) for item in frontmatter.get("citations", []) if isinstance(item, str) and item.strip()]
+        destination = review_pack_path(root, page["path"])
+        frontmatter_text = render_frontmatter(
+            {
+                "id": f"review-pack-{destination.stem}",
+                "kind": "output-pack",
+                "pack_kind": "review-pack",
+                "title": f"Review Pack · {page['title']}",
+                "protocol": str(frontmatter.get("protocol") or active_protocol),
+                "target_path": page["path"],
+                "target_kind": kind,
+                "source_files": [page["path"]],
+                "citations": citations,
+                "generated_by": "aiwiki-compile",
+                "last_compiled_at": compiled_at,
+            }
+        )
+        lines = [
+            frontmatter_text,
+            "",
+            f"# Review Pack · {page['title']}",
+            "",
+            "## Overview",
+            f"- Target page: `{page['path']}`",
+            f"- Kind: `{kind}`",
+            f"- Status: `{display_curated_status(page.get('status', 'unknown'))}`",
+            f"- Protocol: `{frontmatter.get('protocol') or active_protocol}` ({protocol_title(str(frontmatter.get('protocol') or active_protocol))})",
+            f"- Review reasons: `{', '.join(reasons) or 'manual review'}`",
+            f"- Revisit / Escalate: `{page.get('revisit_after', '') or 'none'}` / `{page.get('escalate_after', '') or 'none'}`",
+            "",
+            f"## Current {section_name}",
+            *compact_section_lines(content, section_name, fallback="- 当前还没有稳定结论。"),
+            "",
+            f"## {evidence_section} Snapshot",
+            *compact_section_lines(content, evidence_section, fallback="- 当前还没有整理过证据快照。"),
+            "",
+            "## Counter Evidence",
+            *compact_section_lines(content, "Counter Evidence", fallback="- Pending counter evidence."),
+            "",
+            "## Invalidation",
+            *compact_section_lines(content, "Invalidation", fallback="- Pending invalidation conditions."),
+            "",
+            "## Review History",
+            *compact_section_lines(content, "Review History", fallback="- No review history yet."),
+            "",
+            "## Review Checklist",
+            *[f"- {line}" for line in PROTOCOL_LIBRARY.get(str(frontmatter.get("protocol") or active_protocol), {}).get("review", [])],
+            "",
+            "## Commands",
+            f"- `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page {page['path']} --status "
+            f"{'approved' if kind == 'decision' else 'confirmed'} --note \"Review pack follow-up.\"`",
+            "",
+            "## Citations",
+        ]
+        if not citations:
+            lines.append("- 当前没有结构化 citations。")
+        else:
+            lines.extend(f"- `{citation}`" for citation in citations)
+        lines.extend(
+            [
+                "",
+                "## Related Links",
+                f"- {pack_workspace_link(page['path'], page['title'])}",
+                "- [审阅队列](../../../wiki/indexes/review-queue.md)",
+                "- [审阅中心](../../../wiki/indexes/review-center.md)",
+                "- [认知历史](../../../wiki/indexes/cognitive-history.md)",
+            ]
+        )
+        review_packs.append(
+            {
+                "title": f"Review Pack · {page['title']}",
+                "path": relative_path(root, destination),
+                "content": "\n".join(lines) + "\n",
+                "target_path": page["path"],
+                "protocol": str(frontmatter.get("protocol") or active_protocol),
+                "reasons": ", ".join(reasons) or "manual review",
+            }
+        )
+
+    for page in reviewed_candidates:
+        frontmatter, content = load_workspace_markdown(root, page["path"])
+        kind = str(frontmatter.get("kind") or page.get("kind") or "curated")
+        memo_label = "Decision Memo" if kind == "decision" else "Judgment Memo"
+        section_name = "Decision" if kind == "decision" else "Judgment"
+        evidence_section = "Evidence" if kind == "decision" else "Signals"
+        citations = [str(item) for item in frontmatter.get("citations", []) if isinstance(item, str) and item.strip()]
+        destination = decision_memo_path(root, page["path"])
+        frontmatter_text = render_frontmatter(
+            {
+                "id": f"decision-memo-{destination.stem}",
+                "kind": "output-pack",
+                "pack_kind": "decision-memo",
+                "title": f"{memo_label} · {page['title']}",
+                "protocol": str(frontmatter.get("protocol") or active_protocol),
+                "target_path": page["path"],
+                "target_kind": kind,
+                "source_files": [page["path"]],
+                "citations": citations,
+                "generated_by": "aiwiki-compile",
+                "last_compiled_at": compiled_at,
+            }
+        )
+        lines = [
+            frontmatter_text,
+            "",
+            f"# {memo_label} · {page['title']}",
+            "",
+            "## Overview",
+            f"- Target page: `{page['path']}`",
+            f"- Status: `{display_curated_status(page.get('status', 'unknown'))}`",
+            f"- Protocol: `{frontmatter.get('protocol') or active_protocol}` ({protocol_title(str(frontmatter.get('protocol') or active_protocol))})",
+            f"- Reviewed at: `{page.get('reviewed_at', '') or 'unknown'}`",
+            f"- Confidence: `{frontmatter.get('confidence') or page.get('confidence', '') or 'n/a'}`",
+            "",
+            "## Executive Summary",
+            *compact_section_lines(content, section_name, fallback="- 当前还没有稳定结论。", limit=6),
+            "",
+            f"## {evidence_section}",
+            *compact_section_lines(content, evidence_section, fallback="- 当前还没有整理过证据。", limit=6),
+            "",
+            "## Counter Evidence",
+            *compact_section_lines(content, "Counter Evidence", fallback="- Pending counter evidence.", limit=5),
+            "",
+            "## Invalidation",
+            *compact_section_lines(content, "Invalidation", fallback="- Pending invalidation conditions.", limit=5),
+            "",
+            "## Next Signals",
+            *compact_section_lines(content, "Next Signals", fallback="- Pending next signals.", limit=5),
+            "",
+            "## Review History",
+            *compact_section_lines(content, "Review History", fallback="- No review history yet.", limit=6),
+            "",
+            "## Citations",
+        ]
+        if not citations:
+            lines.append("- 当前没有结构化 citations。")
+        else:
+            lines.extend(f"- `{citation}`" for citation in citations)
+        if recent_outputs:
+            lines.extend(["", "## Nearby Recent Outputs"])
+            for artifact in recent_outputs[:5]:
+                lines.append(
+                    f"- {pack_workspace_link(artifact['path'], artifact['title'])}"
+                    f" | format `{artifact['format'] or 'unknown'}`"
+                    f" | protocol `{artifact['protocol'] or DEFAULT_PROTOCOL}`"
+                )
+        lines.extend(
+            [
+                "",
+                "## Related Links",
+                f"- {pack_workspace_link(page['path'], page['title'])}",
+                "- [判断资产](../../../wiki/indexes/judgment-assets.md)",
+                "- [认知历史](../../../wiki/indexes/cognitive-history.md)",
+                "- [审阅中心](../../../wiki/indexes/review-center.md)",
+            ]
+        )
+        decision_memos.append(
+            {
+                "title": f"{memo_label} · {page['title']}",
+                "path": relative_path(root, destination),
+                "content": "\n".join(lines) + "\n",
+                "target_path": page["path"],
+                "protocol": str(frontmatter.get("protocol") or active_protocol),
+                "reviewed_at": page.get("reviewed_at", "") or "",
+            }
+        )
+
+    proposal_count = 0
+    for proposal in execution_proposals:
+        action_id = str(proposal.get("action_id") or "").strip()
+        if not action_id:
+            continue
+        destination = sop_draft_path(root, action_id)
+        frontmatter_text = render_frontmatter(
+            {
+                "id": f"sop-draft-{destination.stem}",
+                "kind": "output-pack",
+                "pack_kind": "sop-draft",
+                "title": f"SOP Draft · {proposal.get('title') or action_id}",
+                "protocol": str(proposal.get("protocol") or active_protocol),
+                "action_id": action_id,
+                "source_files": [str(proposal.get("proposal_path") or "")],
+                "generated_by": "aiwiki-compile",
+                "last_compiled_at": compiled_at,
+            }
+        )
+        patch_plan = proposal.get("page_patch_plan", [])
+        bundle_path = str(proposal.get("bundle_path") or "")
+        lines = [
+            frontmatter_text,
+            "",
+            f"# SOP Draft · {proposal.get('title') or action_id}",
+            "",
+            "## Overview",
+            f"- Action id: `{action_id}`",
+            f"- Risk: `{proposal.get('risk', 'medium')}`",
+            f"- Proposal kind: `{proposal.get('proposal_kind', 'manual-repair')}`",
+            f"- Protocol: `{proposal.get('protocol') or active_protocol}` ({protocol_title(str(proposal.get('protocol') or active_protocol))})",
+            f"- Targets: `{', '.join(proposal.get('target_paths', [])) or 'none'}`",
+            f"- Bundle: `{bundle_path or 'none'}`",
+            "",
+            "## Strategy",
+            f"- {proposal.get('summary', '检查目标页面并确认是否执行。')}",
+            "",
+            "## Step-by-Step",
+            f"1. 先跑 `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --dry-run`。",
+        ]
+        if bundle_path:
+            lines.append(
+                f"2. 如果 dry-run 结果符合预期，再执行 `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --bundle {bundle_path}`。"
+            )
+        else:
+            lines.append("2. 当前没有 bundle，先回到 execution proposal 页面确认执行边界。")
+        lines.append(
+            f"3. 如需回滚，执行 `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-action {action_id}`。"
+        )
+        lines.extend(["", "## Page-Level Patch Plan"])
+        if not patch_plan:
+            lines.append("- 当前没有页级 patch step。")
+        else:
+            for patch in patch_plan:
+                lines.append(
+                    f"- `{patch.get('path', '')}`"
+                    f" | role `{patch.get('role_label', patch.get('role', 'page'))}`"
+                    f" | mode `{patch.get('mode', 'update')}`"
+                    f" | sections `{', '.join(patch.get('sections', [])) or 'none'}`"
+                )
+                lines.append(f"  - {patch.get('summary', '检查相关页面并补充修复说明。')}")
+        lines.extend(
+            [
+                "",
+                "## Suggested Edits",
+            ]
+        )
+        edits = proposal.get("suggested_edits", [])
+        if not edits:
+            lines.append("- 当前没有额外建议。")
+        else:
+            lines.extend(f"- {edit}" for edit in edits[:8])
+        lines.extend(
+            [
+                "",
+                "## Related Links",
+                f"- {pack_workspace_link(str(proposal.get('proposal_path') or ''), 'Execution Proposal')}" if proposal.get("proposal_path") else "- Execution Proposal: none",
+                f"- {pack_workspace_link(bundle_path, 'Execution Bundle')}" if bundle_path else "- Execution Bundle: none",
+                "- [执行中心](../../../wiki/indexes/execution-center.md)",
+                "- [执行审计](../../../wiki/indexes/execution-audit.md)",
+                "- [机器记忆修复计划](../../../wiki/indexes/machine-memory-repair-plan.md)",
+            ]
+        )
+        sop_drafts.append(
+            {
+                "title": f"SOP Draft · {proposal.get('title') or action_id}",
+                "path": relative_path(root, destination),
+                "content": "\n".join(lines) + "\n",
+                "action_id": action_id,
+                "protocol": str(proposal.get("protocol") or active_protocol),
+                "risk": str(proposal.get("risk") or "medium"),
+            }
+        )
+        proposal_count += 1
+
+    for action in ready_actions:
+        action_id = str(action.get("id") or "").strip()
+        if not action_id or action_id in proposal_by_action:
+            continue
+        destination = sop_draft_path(root, action_id)
+        band = str(action.get("execution_band") or "review-first")
+        bundle_path = relative_path(root, execution_bundle_path(root, action_id))
+        frontmatter_text = render_frontmatter(
+            {
+                "id": f"sop-draft-{destination.stem}",
+                "kind": "output-pack",
+                "pack_kind": "sop-draft",
+                "title": f"SOP Draft · {action.get('title') or action_id}",
+                "protocol": active_protocol,
+                "action_id": action_id,
+                "source_files": [str(action.get("primary_path") or "")],
+                "generated_by": "aiwiki-compile",
+                "last_compiled_at": compiled_at,
+            }
+        )
+        lines = [
+            frontmatter_text,
+            "",
+            f"# SOP Draft · {action.get('title') or action_id}",
+            "",
+            "## Overview",
+            f"- Action id: `{action_id}`",
+            f"- Status: `{display_action_status(str(action.get('status') or 'proposed'))}`",
+            f"- Priority: `{action.get('priority', 'medium')}`",
+            f"- Execution band: `{band}` ({execution_band_label(band)})",
+            f"- Primary / Secondary: `{action.get('primary_path', '')}` / `{action.get('secondary_path', '') or 'none'}`",
+            "",
+            "## Step-by-Step",
+            f"1. 先跑 `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --dry-run`。",
+            f"2. 如果执行 band 仍允许，再执行 `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --bundle {bundle_path}`。",
+            f"3. 必要时用 `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-action {action_id}` 回滚。",
+            "",
+            "## Action Notes",
+            f"- Reason: {action.get('reason', 'n/a')}",
+            f"- Next step: {action.get('next_step', 'n/a')}",
+            f"- Command hint: `{action.get('command_hint', '') or 'none'}`",
+            "",
+            "## Related Links",
+            "- [执行中心](../../../wiki/indexes/execution-center.md)",
+            "- [执行审计](../../../wiki/indexes/execution-audit.md)",
+            "- [机器记忆动作队列](../../../wiki/indexes/machine-memory-actions.md)",
+        ]
+        sop_drafts.append(
+            {
+                "title": f"SOP Draft · {action.get('title') or action_id}",
+                "path": relative_path(root, destination),
+                "content": "\n".join(lines) + "\n",
+                "action_id": action_id,
+                "protocol": active_protocol,
+                "risk": "low" if action_supports_low_risk_apply(action) else "medium",
+            }
+        )
+
+    counts = {
+        "review_packs": len(review_packs),
+        "decision_memos": len(decision_memos),
+        "sop_drafts": len(sop_drafts),
+        "execution_proposal_sops": proposal_count,
+    }
+    return {
+        "compiled_at": compiled_at,
+        "active_protocol": active_protocol,
+        "review_packs": review_packs,
+        "decision_memos": decision_memos,
+        "sop_drafts": sop_drafts,
+        "counts": counts,
+    }
+
+
+def render_output_packs_index(output_packs: dict[str, Any], compiled_at: str, active_protocol: str) -> str:
+    review_packs = output_packs.get("review_packs", [])
+    decision_memos = output_packs.get("decision_memos", [])
+    sop_drafts = output_packs.get("sop_drafts", [])
+    counts = output_packs.get("counts", {})
+    lines = [
+        "# 输出 Pack 总览",
+        "",
+        f"- 最近编译时间：`{compiled_at}`",
+        f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})",
+        f"- Review packs：`{counts.get('review_packs', len(review_packs))}`",
+        f"- Decision memos：`{counts.get('decision_memos', len(decision_memos))}`",
+        f"- SOP drafts：`{counts.get('sop_drafts', len(sop_drafts))}`",
+        "",
+        "## Pack 目录",
+        "- `output/packs/review/`：待审 / 漂移 / aging 页面",
+        "- `output/packs/decision-memos/`：已审 decision / judgment",
+        "- `output/packs/sop-drafts/`：ready action / execution proposal",
+        "",
+        "## Review Packs",
+    ]
+    if not review_packs:
+        lines.append("- 当前没有 review packs。")
+    else:
+        for pack in review_packs[:16]:
+            lines.append(
+                f"- {workspace_link(pack['path'], pack['title'])}"
+                f" | target `{pack.get('target_path', '')}`"
+                f" | reasons `{pack.get('reasons', 'manual review')}`"
+            )
+    lines.extend(["", "## Decision Memos"])
+    if not decision_memos:
+        lines.append("- 当前没有 decision memos。")
+    else:
+        for pack in decision_memos[:16]:
+            lines.append(
+                f"- {workspace_link(pack['path'], pack['title'])}"
+                f" | target `{pack.get('target_path', '')}`"
+                f" | reviewed `{pack.get('reviewed_at', '') or 'unknown'}`"
+            )
+    lines.extend(["", "## SOP Drafts"])
+    if not sop_drafts:
+        lines.append("- 当前没有 SOP drafts。")
+    else:
+        for pack in sop_drafts[:16]:
+            lines.append(
+                f"- {workspace_link(pack['path'], pack['title'])}"
+                f" | action `{pack.get('action_id', '')}`"
+                f" | risk `{pack.get('risk', 'medium')}`"
+            )
+    lines.extend(
+        [
+            "",
+            "## 相关入口",
+            "- [炉心面板](./furnace-center.md)",
+            "- [审阅中心](./review-center.md)",
+            "- [执行中心](./execution-center.md)",
+            "- [执行审计](./execution-audit.md)",
+            "- [判断资产](./judgment-assets.md)",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -4948,6 +5470,7 @@ def render_furnace_center(
             "- [执行审计](./execution-audit.md)",
             "- [Agent Workbench](./agent-workbench.md)",
             "- [认知历史](./cognitive-history.md)",
+            "- [输出 Pack 总览](./output-packs.md)",
             "- [判断资产](./judgment-assets.md)",
             "- [图谱视图](./graph-view.md)",
             "- [修复待办](./repair-backlog.md)",
@@ -5098,6 +5621,7 @@ def render_furnace_center_html(
             '      <a href="../../wiki/indexes/execution-audit.md">执行审计</a>',
             '      <a href="../../wiki/indexes/agent-workbench.md">Agent Workbench</a>',
             '      <a href="../../wiki/indexes/cognitive-history.md">认知历史</a>',
+            '      <a href="../../wiki/indexes/output-packs.md">输出 Packs</a>',
             '      <a href="../../wiki/indexes/judgment-assets.md">判断资产</a>',
             '      <a href="../../wiki/indexes/graph-view.md">图谱视图</a>',
             '      <a href="../../wiki/indexes/repair-backlog.md">修复待办</a>',
@@ -5168,6 +5692,7 @@ def render_compile_status(
         "- 协议总览位于 `protocols.md`。",
         "- 炉心面板位于 `furnace-center.md`。",
         "- 执行中心位于 `execution-center.md`。",
+        "- 输出 Pack 总览位于 `output-packs.md`。",
         "- 操作日志位于 `log.md`。",
         "- Agent Workbench 位于 `agent-workbench.md`。",
         "- 决策索引位于 `decisions.md`。",
@@ -5228,6 +5753,7 @@ def render_master_index(
         "- [协议总览](./protocols.md)",
         "- [炉心面板](./furnace-center.md)",
         "- [执行中心](./execution-center.md)",
+        "- [输出 Pack 总览](./output-packs.md)",
         "- [审阅队列](./review-queue.md)",
         "- [审阅中心](./review-center.md)",
         "- [Aging 报告](./aging-report.md)",
@@ -5385,6 +5911,39 @@ def agent_workbench_path(root: Path) -> Path:
 
 def agent_pack_path(root: Path, role: str) -> Path:
     return root / "output" / "agents" / f"{slugify(role)}.md"
+
+
+def output_packs_index_path(root: Path) -> Path:
+    return root / "wiki" / "indexes" / "output-packs.md"
+
+
+def review_packs_dir(root: Path) -> Path:
+    return root / "output" / "packs" / "review"
+
+
+def decision_memos_dir(root: Path) -> Path:
+    return root / "output" / "packs" / "decision-memos"
+
+
+def sop_drafts_dir(root: Path) -> Path:
+    return root / "output" / "packs" / "sop-drafts"
+
+
+def pack_stem(seed: str) -> str:
+    cleaned = seed.replace("/", "-").replace("\\", "-").replace(".md", "")
+    return slugify(cleaned)[:96] or "pack"
+
+
+def review_pack_path(root: Path, target_path: str) -> Path:
+    return review_packs_dir(root) / f"{pack_stem(target_path)}.md"
+
+
+def decision_memo_path(root: Path, target_path: str) -> Path:
+    return decision_memos_dir(root) / f"{pack_stem(target_path)}.md"
+
+
+def sop_draft_path(root: Path, action_id: str) -> Path:
+    return sop_drafts_dir(root) / f"{pack_stem(action_id)}.md"
 
 
 def execution_proposals_dir(root: Path) -> Path:
@@ -8965,6 +9524,39 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         )
     )
     recent_outputs = collect_recent_output_artifacts(root)
+    output_packs = build_output_packs(
+        root,
+        decision_pages,
+        judgment_pages,
+        memory,
+        protocol_state,
+        recent_outputs,
+        compiled_at,
+    )
+    changed_pages += int(
+        write_if_changed(
+            output_packs_index_path(root),
+            render_output_packs_index(output_packs, compiled_at, protocol_state["active_protocol"]),
+        )
+    )
+    for pack in output_packs["review_packs"]:
+        changed_pages += int(write_if_changed(root / pack["path"], pack["content"]))
+    for pack in output_packs["decision_memos"]:
+        changed_pages += int(write_if_changed(root / pack["path"], pack["content"]))
+    for pack in output_packs["sop_drafts"]:
+        changed_pages += int(write_if_changed(root / pack["path"], pack["content"]))
+    removed_pages += remove_stale_generated_markdown_files(
+        review_packs_dir(root),
+        {Path(pack["path"]).stem for pack in output_packs["review_packs"]},
+    )
+    removed_pages += remove_stale_generated_markdown_files(
+        decision_memos_dir(root),
+        {Path(pack["path"]).stem for pack in output_packs["decision_memos"]},
+    )
+    removed_pages += remove_stale_generated_markdown_files(
+        sop_drafts_dir(root),
+        {Path(pack["path"]).stem for pack in output_packs["sop_drafts"]},
+    )
     agent_packs = build_agent_packs(
         root,
         entries,
@@ -9099,6 +9691,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             f"active_protocol: `{protocol_state['active_protocol']}`",
             f"machine_memory_terms: `{len(memory['term_index'])}`",
             f"graph_components: `{memory['health']['component_count']}`",
+            f"output_packs: `{output_packs['counts']['review_packs']}/{output_packs['counts']['decision_memos']}/{output_packs['counts']['sop_drafts']}`",
             f"machine_memory_changed: `{transition['changed']}`",
             f"changed_pages: `{changed_pages}`",
             f"removed_concept_pages: `{removed_pages}`",
@@ -9112,6 +9705,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "machine_memory_terms": len(memory["term_index"]),
         "machine_memory_changed": transition["changed"],
         "changed_pages": changed_pages,
+        "output_packs": dict(output_packs["counts"]),
     }
 
 
@@ -9260,6 +9854,7 @@ def render_report(
             "- [判断资产](../../wiki/indexes/judgment-assets.md)",
             "- [Agent Workbench](../../wiki/indexes/agent-workbench.md)",
             "- [认知历史](../../wiki/indexes/cognitive-history.md)",
+            "- [输出 Pack 总览](../../wiki/indexes/output-packs.md)",
             "- [协议总览](../../wiki/indexes/protocols.md)",
             "- [审阅队列](../../wiki/indexes/review-queue.md)",
             "- [审阅中心](../../wiki/indexes/review-center.md)",
@@ -9386,6 +9981,7 @@ def render_slides(
             "- `wiki/indexes/judgment-assets.md`",
             "- `wiki/indexes/agent-workbench.md`",
             "- `wiki/indexes/cognitive-history.md`",
+            "- `wiki/indexes/output-packs.md`",
             "- `wiki/indexes/protocols.md`",
             "- `wiki/indexes/review-queue.md`",
             "- `wiki/indexes/review-center.md`",
@@ -9495,6 +10091,7 @@ def render_figure_brief(
             "- [判断资产](../../wiki/indexes/judgment-assets.md)",
             "- [Agent Workbench](../../wiki/indexes/agent-workbench.md)",
             "- [认知历史](../../wiki/indexes/cognitive-history.md)",
+            "- [输出 Pack 总览](../../wiki/indexes/output-packs.md)",
             "- [协议总览](../../wiki/indexes/protocols.md)",
             "- [审阅队列](../../wiki/indexes/review-queue.md)",
             "- [审阅中心](../../wiki/indexes/review-center.md)",
@@ -9637,6 +10234,7 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
             "wiki/indexes/judgment-assets.md",
             "wiki/indexes/agent-workbench.md",
             "wiki/indexes/cognitive-history.md",
+            "wiki/indexes/output-packs.md",
             "wiki/indexes/protocols.md",
             "wiki/indexes/review-queue.md",
             "wiki/indexes/review-center.md",
@@ -10868,6 +11466,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/judgment-assets.md": "Missing judgment asset dashboard page.",
         "wiki/indexes/agent-workbench.md": "Missing agent workbench page.",
         "wiki/indexes/cognitive-history.md": "Missing cognitive history page.",
+        "wiki/indexes/output-packs.md": "Missing output packs index page.",
         "wiki/indexes/rewrite-proposals.md": "Missing rewrite proposal index page.",
         "wiki/indexes/protocols.md": "Missing protocol dashboard page.",
         "wiki/indexes/furnace-center.md": "Missing furnace center page.",
@@ -10912,6 +11511,21 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         if not page.exists():
             findings.append(Finding("error", relative, f"Missing active protocol rule file: `{relative}`."))
 
+    decision_pages = collect_curated_pages(root, "decisions", "decision")
+    judgment_pages = collect_curated_pages(root, "judgments", "judgment")
+    pack_memory: dict[str, Any] = {}
+    if machine_memory_state_path(root).exists():
+        pack_memory = load_machine_memory(root)
+    expected_output_packs = build_output_packs(
+        root,
+        decision_pages,
+        judgment_pages,
+        pack_memory,
+        protocol_state,
+        collect_recent_output_artifacts(root),
+        utc_now(),
+    )
+
     memory_state = machine_memory_state_path(root)
     graph_html = machine_memory_graph_html_path(root)
     furnace_html = furnace_center_html_path(root)
@@ -10930,6 +11544,17 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         findings.append(Finding("error", relative_path(root, execution_audit_html), "Missing execution audit HTML view."))
     if manifest["entries"] and not review_html.exists():
         findings.append(Finding("error", relative_path(root, review_html), "Missing review center HTML view."))
+    for pack_group in ("review_packs", "decision_memos", "sop_drafts"):
+        for pack in expected_output_packs.get(pack_group, []):
+            pack_path = root / str(pack.get("path") or "")
+            if not pack_path.exists():
+                findings.append(
+                    Finding(
+                        "error",
+                        relative_path(root, pack_path),
+                        f"Missing output pack `{pack_path.name}` for `{pack_group}`.",
+                    )
+                )
     if manifest["entries"]:
         for pack in AGENT_PACK_LIBRARY:
             pack_path = agent_pack_path(root, str(pack["role"]))
@@ -11094,10 +11719,10 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                     Finding("error", relative_path(root, page), f"Concept page references missing source page: `{source_page}`.")
                 )
 
-    for group, expected_kind in (
-        ("wiki/derived", "derived"),
-        ("wiki/decisions", "decision"),
-        ("wiki/judgments", "judgment"),
+    for group, expected_kind, pages in (
+        ("wiki/derived", "derived", None),
+        ("wiki/decisions", "decision", decision_pages),
+        ("wiki/judgments", "judgment", judgment_pages),
     ):
         for page in sorted((root / group).glob("*.md")):
             content = page.read_text(encoding="utf-8", errors="replace")
