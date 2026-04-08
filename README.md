@@ -4,6 +4,7 @@
 
 架构基线见 [Alchemy Furnace.md](<./wiki/indexes/Alchemy Furnace.md>)。
 从当前版本继续提升到上限的路线，见 [Furnace Ceiling Roadmap.md](<./wiki/indexes/Furnace Ceiling Roadmap.md>)。
+最终极形态草图见 [Furnace Ultimate Architecture.md](<./wiki/indexes/Furnace Ultimate Architecture.md>)。
 日常在 Obsidian 里使用时，入口是 [HOME.md](./HOME.md)。
 统一产品壳入口见 [furnace-center.md](<./wiki/indexes/furnace-center.md>)；本地 HTML 控制面板在 `output/control/furnace-center.html`。
 执行工作区入口见 [execution-center.md](<./wiki/indexes/execution-center.md>)；本地执行面板在 `output/control/execution-center.html`，机器可读 bundle 会落在 `output/control/execution-bundles/`。

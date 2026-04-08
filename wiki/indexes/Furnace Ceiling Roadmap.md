@@ -15,6 +15,10 @@ status: "active"
 
 它不是替代 [[wiki/indexes/Alchemy Furnace|炼丹炉架构]] 的主文档，而是主文档的后续演化路线。
 
+如果你要看“真正做成后，它最终会长成什么样”，再读：
+
+- [[wiki/indexes/Furnace Ultimate Architecture|炼丹炉最终极形态]]
+
 ## 当前所在位置
 
 当前炼丹炉已经具备：

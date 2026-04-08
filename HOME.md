@@ -38,6 +38,7 @@ kind: "dashboard"
 - [[wiki/indexes/Wiki Hub|知识中枢]]
 - [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
 - [[wiki/indexes/Furnace Ceiling Roadmap|上限路线图]]
+- [[wiki/indexes/Furnace Ultimate Architecture|最终极形态]]
 - [[wiki/indexes/furnace-center|炉心面板]]
 - [[wiki/indexes/execution-center|执行中心]]
 - [[wiki/indexes/execution-audit|执行审计]]
@@ -125,4 +126,5 @@ kind: "dashboard"
 - Obsidian 新建附件默认落到 `raw/assets/`
 - 如果你要理解整体结构，去看 [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
 - 如果你要看从现在到上限还差哪些阶段，去看 [[wiki/indexes/Furnace Ceiling Roadmap|上限路线图]]
+- 如果你要看这套系统最终想长成什么样，去看 [[wiki/indexes/Furnace Ultimate Architecture|最终极形态]]
 - 如果你要看如何运行整个系统，去看 [README.md](./README.md)

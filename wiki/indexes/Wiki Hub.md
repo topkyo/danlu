@@ -22,6 +22,7 @@ kind: "dashboard"
 
 - [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]：`aiwiki` 的运行时架构
 - [[wiki/indexes/Furnace Ceiling Roadmap|上限路线图]]：从当前版本到更高上限的演化顺序
+- [[wiki/indexes/Furnace Ultimate Architecture|最终极形态]]：这套系统真正想长成的终局形态
 - [[wiki/indexes/Furnace Protocols|统一炼丹协议]]：一个炉子，多种领域协议
 - [[wiki/indexes/protocols|协议总览]]：当前 active protocol 和可用协议库
 - [[wiki/indexes/furnace-center|炉心面板]]：统一入口，先看今天该处理什么
