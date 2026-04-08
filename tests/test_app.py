@@ -419,6 +419,7 @@ class AiwikiFlowTests(unittest.TestCase):
     def test_ensure_layout_bootstraps_runtime_dashboard_files(self) -> None:
         for relative, marker in (
             ("wiki/indexes/furnace-center.md", "炉心面板"),
+            ("wiki/indexes/execution-center.md", "执行中心"),
             ("wiki/indexes/review-center.md", "审阅中心"),
             ("wiki/indexes/graph-view.md", "图谱视图"),
         ):
@@ -468,6 +469,20 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Review Center", payload)
         self.assertIn("待审项目", payload)
         self.assertIn("../../wiki/indexes/review-center.md", payload)
+
+    def test_compile_writes_execution_center_markdown_and_html(self) -> None:
+        self._seed_machine_memory_actions()
+        compile_wiki(self.root)
+
+        dashboard = self.root / "wiki" / "indexes" / "execution-center.md"
+        html_path = self.root / "output" / "control" / "execution-center.html"
+        dashboard_payload = dashboard.read_text(encoding="utf-8")
+        html_payload = html_path.read_text(encoding="utf-8")
+        self.assertTrue(dashboard.exists())
+        self.assertTrue(html_path.exists())
+        self.assertIn("Page-level patch steps", dashboard_payload)
+        self.assertIn("Execution Center", html_payload)
+        self.assertIn("../../wiki/indexes/execution-center.md", html_payload)
 
     def test_ask_recompiles_when_raw_source_changes(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -1645,8 +1660,12 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(first["page_patch_plan"])
         self.assertIn("path", first["page_patch_plan"][0])
         self.assertIn("sections", first["page_patch_plan"][0])
+        self.assertIn("proposal_path", first)
         repair_plan = (self.root / "wiki" / "indexes" / "machine-memory-repair-plan.md").read_text(encoding="utf-8")
         self.assertIn("mode `", repair_plan)
+        proposal_page = self.root / first["proposal_path"]
+        self.assertTrue(proposal_page.exists())
+        self.assertIn("## Page-Level Patch Plan", proposal_page.read_text(encoding="utf-8"))
 
     def test_compile_generates_concept_quality_page(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -1916,12 +1935,14 @@ class AiwikiFlowTests(unittest.TestCase):
         (self.root / "wiki" / "indexes" / "machine-memory-topology.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory-actions.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory-repair-plan.md").unlink()
+        (self.root / "wiki" / "indexes" / "execution-center.md").unlink()
         (self.root / "wiki" / "indexes" / "concept-quality.md").unlink()
         (self.root / "wiki" / "indexes" / "rewrite-proposals.md").unlink()
         (self.root / "wiki" / "indexes" / "graph-health.md").unlink()
         (self.root / "wiki" / "indexes" / "drift-report.md").unlink()
         (self.root / ".aiwiki" / "cache" / "machine-memory-graph.json").unlink()
         (self.root / "output" / "control" / "furnace-center.html").unlink()
+        (self.root / "output" / "control" / "execution-center.html").unlink()
         (self.root / "output" / "graph" / "machine-memory.html").unlink()
         (self.root / "output" / "review" / "review-center.html").unlink()
         concept_page = next((self.root / "wiki" / "concepts").glob("*.md"))
@@ -1932,6 +1953,7 @@ class AiwikiFlowTests(unittest.TestCase):
         report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
         self.assertGreaterEqual(lint["counts"]["errors"], 2)
         self.assertTrue((self.root / "wiki" / "indexes" / "furnace-center.md").exists())
+        self.assertTrue((self.root / "wiki" / "indexes" / "execution-center.md").exists())
         self.assertTrue((self.root / "wiki" / "indexes" / "review-center.md").exists())
         self.assertTrue((self.root / "wiki" / "indexes" / "graph-view.md").exists())
         self.assertIn("Missing master wiki index page.", report_text)
@@ -1945,6 +1967,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Missing machine memory drift report.", report_text)
         self.assertIn("Missing machine memory graph export.", report_text)
         self.assertIn("Missing furnace center HTML view.", report_text)
+        self.assertIn("Missing execution center HTML view.", report_text)
         self.assertIn("Missing machine memory graph HTML view.", report_text)
         self.assertIn("Missing review center HTML view.", report_text)
         self.assertIn("Concept page references missing source page", report_text)

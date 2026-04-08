@@ -210,6 +210,33 @@ DEFAULT_DASHBOARD_FILES = {
         ]
     )
     + "\n",
+    "wiki/indexes/execution-center.md": "\n".join(
+        [
+            "# 执行中心",
+            "",
+            "这里是炼丹炉的人用执行入口，负责把 repair action、page-level patch plan 和 safe apply 候选收拢到一个地方。",
+            "",
+            "## 先看哪里",
+            "",
+            "- [机器记忆修复计划](./machine-memory-repair-plan.md)：看 execution batch、proposal 和 patch plan",
+            "- [机器记忆动作队列](./machine-memory-actions.md)：看 action lifecycle 和 ready actions",
+            "- [审阅中心](./review-center.md)：看 aging、rewrite 和 pending review",
+            "- [炉心面板](./furnace-center.md)：看统一产品壳入口",
+            "- [本地执行面板](../../output/control/execution-center.html)：直接看执行 cockpit",
+            "",
+            "## 怎么用",
+            "",
+            "1. 先看 accepted 的 safe apply action。",
+            "2. 再看 execution proposal 和 page-level patch plan。",
+            "3. 需要深入时，再跳到具体 proposal 页面或目标页面。",
+            "",
+            "## 边界",
+            "",
+            "- 这里优先展示 reviewable execution plan，不自动 apply 高风险修复。",
+            "- safe apply 仍只覆盖 allowlist 内的低风险动作。",
+        ]
+    )
+    + "\n",
     "wiki/indexes/graph-view.md": "\n".join(
         [
             "# 图谱视图",
@@ -1568,6 +1595,7 @@ def write_if_changed(path: Path, content: str) -> bool:
         current = path.read_text(encoding="utf-8")
         if current == content:
             return False
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     return True
 
@@ -2869,6 +2897,48 @@ def build_page_patch_plan(root: Path, action: dict[str, Any], *, active_protocol
     return plan
 
 
+def safe_apply_preview(root: Path, action: dict[str, Any]) -> dict[str, Any] | None:
+    if str(action.get("kind") or "") not in LOW_RISK_APPLYABLE_ACTION_KINDS:
+        return None
+    try:
+        source_id, concept_slug = validate_low_risk_action_targets(root, action)
+    except RuntimeError:
+        return None
+    primary_path = str(action.get("primary_path") or "")
+    secondary_path = str(action.get("secondary_path") or "")
+    return {
+        "apply_mode": "manual-link-state",
+        "state_path": relative_path(root, manual_link_state_path(root)),
+        "entry": {
+            "source_id": source_id,
+            "concept_slug": concept_slug,
+            "origin_action_id": str(action.get("id") or ""),
+            "active": True,
+        },
+        "affected_paths": [
+            path for path in (primary_path, secondary_path, "wiki/indexes/machine-memory-repair-plan.md") if path
+        ],
+        "follow_up": "执行后会重跑 compile，让 source/concept/index 层按 manual link state 收敛。",
+    }
+
+
+def remove_stale_generated_execution_proposal_pages(root: Path, active_action_ids: set[str]) -> int:
+    removed = 0
+    directory = execution_proposals_dir(root)
+    if not directory.exists():
+        return 0
+    for path in sorted(directory.glob("*.md")):
+        frontmatter = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+        if str(frontmatter.get("kind") or "") != "execution-proposal":
+            continue
+        action_id = str(frontmatter.get("action_id") or "")
+        if action_id and action_id in active_action_ids:
+            continue
+        path.unlink()
+        removed += 1
+    return removed
+
+
 def describe_machine_memory_action(action: dict[str, Any]) -> dict[str, str]:
     action_id = str(action.get("id") or "")
     kind = str(action.get("kind") or "")
@@ -3614,6 +3684,7 @@ def render_review_center_html(
             '      <li><a href="../../wiki/indexes/aging-report.md">Aging 报告</a></li>',
             '      <li><a href="../../wiki/indexes/machine-memory-actions.md">机器记忆动作队列</a></li>',
             '      <li><a href="../../wiki/indexes/machine-memory-repair-plan.md">机器记忆修复计划</a></li>',
+            '      <li><a href="../../wiki/indexes/execution-center.md">执行中心</a></li>',
             '      <li><a href="../../wiki/indexes/concept-quality.md">概念质量</a></li>',
             '      <li><a href="../../wiki/indexes/rewrite-proposals.md">Rewrite Proposals</a></li>',
             "    </ul></div>",
@@ -3766,6 +3837,7 @@ def render_furnace_center(
             "",
             "## 快速跳转",
             "- [审阅中心](./review-center.md)",
+            "- [执行中心](./execution-center.md)",
             "- [图谱视图](./graph-view.md)",
             "- [修复待办](./repair-backlog.md)",
             "- [协议总览](./protocols.md)",
@@ -3773,6 +3845,7 @@ def render_furnace_center(
             "- [本地审阅面板](../../output/review/review-center.html)",
             "- [本地图谱视图](../../output/graph/machine-memory.html)",
             "- [本地炉心面板](../../output/control/furnace-center.html)",
+            "- [本地执行面板](../../output/control/execution-center.html)",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -3908,11 +3981,13 @@ def render_furnace_center_html(
             '    <div class="quick-links">',
             '      <a href="../../wiki/indexes/furnace-center.md">Markdown 面板</a>',
             '      <a href="../../wiki/indexes/review-center.md">审阅中心</a>',
+            '      <a href="../../wiki/indexes/execution-center.md">执行中心</a>',
             '      <a href="../../wiki/indexes/graph-view.md">图谱视图</a>',
             '      <a href="../../wiki/indexes/repair-backlog.md">修复待办</a>',
             '      <a href="../../wiki/indexes/protocols.md">协议总览</a>',
             '      <a href="../../output/review/review-center.html">审阅 HTML</a>',
             '      <a href="../../output/graph/machine-memory.html">图谱 HTML</a>',
+            '      <a href="../../output/control/execution-center.html">执行 HTML</a>',
             "    </div>",
             '    <div class="meta">',
             *[
@@ -3973,6 +4048,7 @@ def render_compile_status(
         "- 协议规则位于 `schema/protocols/`。",
         "- 协议总览位于 `protocols.md`。",
         "- 炉心面板位于 `furnace-center.md`。",
+        "- 执行中心位于 `execution-center.md`。",
         "- 操作日志位于 `log.md`。",
         "- 决策索引位于 `decisions.md`。",
         "- 判断索引位于 `judgments.md`。",
@@ -4025,6 +4101,7 @@ def render_master_index(
         "- [判断索引](./judgments.md)",
         "- [协议总览](./protocols.md)",
         "- [炉心面板](./furnace-center.md)",
+        "- [执行中心](./execution-center.md)",
         "- [审阅队列](./review-queue.md)",
         "- [审阅中心](./review-center.md)",
         "- [Aging 报告](./aging-report.md)",
@@ -4136,6 +4213,10 @@ def furnace_center_html_path(root: Path) -> Path:
     return root / "output" / "control" / "furnace-center.html"
 
 
+def execution_center_html_path(root: Path) -> Path:
+    return root / "output" / "control" / "execution-center.html"
+
+
 def machine_memory_history_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "machine-memory-history.jsonl"
 
@@ -4158,6 +4239,18 @@ def machine_memory_actions_path(root: Path) -> Path:
 
 def machine_memory_repair_plan_path(root: Path) -> Path:
     return root / "wiki" / "indexes" / "machine-memory-repair-plan.md"
+
+
+def execution_center_path(root: Path) -> Path:
+    return root / "wiki" / "indexes" / "execution-center.md"
+
+
+def execution_proposals_dir(root: Path) -> Path:
+    return root / "wiki" / "execution-proposals"
+
+
+def execution_proposal_path(root: Path, action_id: str) -> Path:
+    return execution_proposals_dir(root) / f"{slugify(action_id)}.md"
 
 
 def concept_quality_path(root: Path) -> Path:
@@ -6352,6 +6445,224 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_execution_proposal_page(proposal: dict[str, Any], *, compiled_at: str) -> str:
+    frontmatter = render_frontmatter(
+        {
+            "title": str(proposal.get("title") or proposal.get("action_id") or "Execution Proposal"),
+            "kind": "execution-proposal",
+            "status": str(proposal.get("status") or "proposed"),
+            "action_id": str(proposal.get("action_id") or ""),
+            "proposal_kind": str(proposal.get("proposal_kind") or "manual-repair"),
+            "risk": str(proposal.get("risk") or "medium"),
+            "priority": str(proposal.get("priority") or "medium"),
+            "protocol": str(proposal.get("protocol") or DEFAULT_PROTOCOL),
+            "target_paths": list(proposal.get("target_paths", [])),
+            "generated_by": "aiwiki-compile",
+            "last_compiled_at": compiled_at,
+        }
+    )
+    lines = [
+        f"# {proposal.get('title') or proposal.get('action_id')}",
+        "",
+        "## Overview",
+        f"- Action id: `{proposal.get('action_id', '')}`",
+        f"- Status: `{display_action_status(str(proposal.get('status') or 'proposed'))}`",
+        f"- Kind: `{proposal.get('proposal_kind', 'manual-repair')}`",
+        f"- Risk: `{proposal.get('risk', 'medium')}`",
+        f"- Protocol: `{proposal.get('protocol', DEFAULT_PROTOCOL)}`",
+        f"- Priority: `{proposal.get('priority', 'medium')}`",
+        f"- Targets: `{', '.join(proposal.get('target_paths', [])) or 'none'}`",
+        "",
+        "## Strategy",
+        f"- {proposal.get('summary', 'n/a')}",
+        "",
+        "## Suggested Edits",
+    ]
+    edits = proposal.get("suggested_edits", [])
+    if not edits:
+        lines.append("- 当前没有额外建议。")
+    else:
+        lines.extend(f"- {edit}" for edit in edits)
+    lines.extend(["", "## Page-Level Patch Plan"])
+    patch_plan = proposal.get("page_patch_plan", [])
+    if not patch_plan:
+        lines.append("- 当前没有页级 patch step。")
+    else:
+        for patch in patch_plan:
+            sections = ", ".join(patch.get("sections", [])) or "none"
+            lines.append(
+                f"- `{patch.get('path', '')}`"
+                f" | role `{patch.get('role_label', patch.get('role', 'page'))}`"
+                f" | mode `{patch.get('mode', 'update')}`"
+                f" | exists `{patch.get('exists', False)}`"
+                f" | sections `{sections}`"
+            )
+            lines.append(f"  - {patch.get('summary', '检查相关页面并补充修复说明。')}")
+    lines.extend(["", "## Commands"])
+    if proposal.get("command_hint"):
+        lines.append(f"- Suggested command: `{proposal['command_hint']}`")
+    else:
+        lines.append("- 当前没有直接命令提示。")
+    safe_preview = proposal.get("safe_apply_preview")
+    lines.extend(["", "## Safe Apply Preview"])
+    if not safe_preview:
+        lines.append("- 当前 proposal 不支持低风险 safe apply。")
+    else:
+        entry = safe_preview.get("entry", {})
+        lines.append(f"- Apply mode: `{safe_preview.get('apply_mode', 'manual')}`")
+        lines.append(f"- State path: `{safe_preview.get('state_path', '')}`")
+        lines.append(
+            f"- Manual link entry: source `{entry.get('source_id', '')}` -> concept `{entry.get('concept_slug', '')}`"
+        )
+        lines.append(f"- Affected paths: `{', '.join(safe_preview.get('affected_paths', [])) or 'none'}`")
+        lines.append(f"- Follow-up: {safe_preview.get('follow_up', 'n/a')}")
+    lines.extend(
+        [
+            "",
+            "## Related Links",
+            "- [执行中心](../indexes/execution-center.md)",
+            "- [机器记忆修复计划](../indexes/machine-memory-repair-plan.md)",
+            "- [机器记忆动作队列](../indexes/machine-memory-actions.md)",
+            "- [炉心面板](../indexes/furnace-center.md)",
+        ]
+    )
+    return f"{frontmatter}\n\n" + "\n".join(lines).strip() + "\n"
+
+
+def render_execution_center(memory: dict[str, Any], *, compiled_at: str, active_protocol: str) -> str:
+    plan = memory.get("health", {}).get("repair_plan", {})
+    proposals = plan.get("execution_proposals", [])
+    ready_actions = plan.get("ready_actions", [])
+    apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
+    patch_steps = sum(len(proposal.get("page_patch_plan", [])) for proposal in proposals)
+    lines = [
+        "# 执行中心",
+        "",
+        f"- 最近编译时间：`{compiled_at}`",
+        f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})",
+        f"- Ready actions：`{plan.get('counts', {}).get('ready', 0)}`",
+        f"- 可安全执行动作：`{len(apply_ready_actions)}`",
+        f"- Execution proposals：`{plan.get('counts', {}).get('proposals', 0)}`",
+        f"- Page-level patch steps：`{patch_steps}`",
+        "- 本地执行面板：`output/control/execution-center.html`",
+        "",
+        "## Safe Apply Now",
+    ]
+    if not apply_ready_actions:
+        lines.append("- 当前没有可直接 `apply-action` 的低风险动作。")
+    else:
+        for action in apply_ready_actions[:10]:
+            lines.append(
+                f"- `{action['title']}` | command `{action.get('command_hint', '')}` | primary `{action.get('primary_path', '')}`"
+            )
+    lines.extend(["", "## Execution Proposals"])
+    if not proposals:
+        lines.append("- 当前没有 execution proposal。")
+    else:
+        for proposal in proposals[:12]:
+            lines.append(
+                f"- [{proposal['title']}](../execution-proposals/{slugify(str(proposal.get('action_id') or ''))}.md)"
+                f" | risk `{proposal.get('risk', 'medium')}`"
+                f" | patch `{len(proposal.get('page_patch_plan', []))}`"
+                f" | targets `{', '.join(proposal.get('target_paths', [])) or 'none'}`"
+            )
+    lines.extend(
+        [
+            "",
+            "## Quick Links",
+            "- [机器记忆修复计划](./machine-memory-repair-plan.md)",
+            "- [机器记忆动作队列](./machine-memory-actions.md)",
+            "- [审阅中心](./review-center.md)",
+            "- [炉心面板](./furnace-center.md)",
+            "- [本地执行面板](../../output/control/execution-center.html)",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def render_execution_center_html(memory: dict[str, Any], *, compiled_at: str, active_protocol: str) -> str:
+    plan = memory.get("health", {}).get("repair_plan", {})
+    proposals = plan.get("execution_proposals", [])
+    ready_actions = plan.get("ready_actions", [])
+    apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
+    patch_steps = sum(len(proposal.get("page_patch_plan", [])) for proposal in proposals)
+    summary_cards = [
+        ("Ready Actions", str(plan.get("counts", {}).get("ready", 0))),
+        ("Safe Apply", str(len(apply_ready_actions))),
+        ("Proposals", str(plan.get("counts", {}).get("proposals", 0))),
+        ("Patch Steps", str(patch_steps)),
+    ]
+    safe_apply_markup = "".join(
+        f"<li><strong>{html.escape(str(action.get('title') or 'unnamed action'))}</strong>"
+        f"<div><code>{html.escape(str(action.get('command_hint') or ''))}</code></div>"
+        f"<div class=\"item-meta\">{html.escape(str(action.get('primary_path') or ''))}</div></li>"
+        for action in apply_ready_actions[:8]
+    ) or "<li>当前没有可直接 safe apply 的动作。</li>"
+    proposal_markup = "".join(
+        f"<li><strong><a href=\"../../wiki/execution-proposals/{html.escape(slugify(str(proposal.get('action_id') or '')))}.md\">{html.escape(str(proposal.get('title') or 'proposal'))}</a></strong>"
+        f" <span class=\"item-meta\">risk {html.escape(str(proposal.get('risk') or 'medium'))} / patch {len(proposal.get('page_patch_plan', []))}</span>"
+        f"<div>{html.escape(str(proposal.get('summary') or ''))}</div></li>"
+        for proposal in proposals[:10]
+    ) or "<li>当前没有 execution proposal。</li>"
+    return "\n".join(
+        [
+            "<!doctype html>",
+            '<html lang="zh-CN">',
+            "<head>",
+            '  <meta charset="utf-8" />',
+            '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+            "  <title>Execution Center</title>",
+            "  <style>",
+            "    :root { color-scheme: light; --bg: #f8fafc; --ink: #0f172a; --muted: #475569; --panel: rgba(255,255,255,0.94); --line: #cbd5e1; }",
+            "    body { margin: 0; padding: 24px; background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%); color: var(--ink); font: 14px/1.6 'Segoe UI', 'PingFang SC', sans-serif; }",
+            "    main { max-width: 1100px; margin: 0 auto; }",
+            "    .panel, .card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 18px 40px rgba(15,23,42,0.06); }",
+            "    .panel { padding: 18px; margin-bottom: 18px; }",
+            "    .meta, .grid { display: grid; gap: 16px; }",
+            "    .meta { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-top: 18px; }",
+            "    .grid { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }",
+            "    .card { padding: 14px 16px; }",
+            "    .metric { font-size: 24px; font-weight: 800; color: #1d4ed8; }",
+            "    .metric-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }",
+            "    ul { margin: 0; padding-left: 18px; }",
+            "    li { margin: 6px 0; }",
+            "    a { color: #1d4ed8; text-decoration: none; }",
+            "    a:hover { text-decoration: underline; }",
+            "    .item-meta { color: var(--muted); font-size: 12px; }",
+            "    code { background: #eff6ff; padding: 1px 6px; border-radius: 6px; }",
+            "  </style>",
+            "</head>",
+            "<body>",
+            "<main>",
+            '  <section class="panel">',
+            "    <h1>Execution Center</h1>",
+            f"    <p>编译时间：<code>{html.escape(compiled_at)}</code>。当前协议：<code>{html.escape(active_protocol)}</code>。这里把 safe apply、execution proposal 和 patch-step 执行工作区收敛到一个地方。</p>",
+            '    <div class="meta">',
+            *[
+                f'      <div class="card"><div class="metric">{html.escape(value)}</div><div class="metric-label">{html.escape(label)}</div></div>'
+                for label, value in summary_cards
+            ],
+            "    </div>",
+            "  </section>",
+            '  <section class="grid">',
+            f'    <div class="panel"><h2>Safe Apply Actions</h2><ul>{safe_apply_markup}</ul></div>',
+            f'    <div class="panel"><h2>Execution Proposals</h2><ul>{proposal_markup}</ul></div>',
+            '    <div class="panel"><h2>相关入口</h2><ul>'
+            '      <li><a href="../../wiki/indexes/execution-center.md">Markdown 执行中心</a></li>'
+            '      <li><a href="../../wiki/indexes/machine-memory-repair-plan.md">修复计划</a></li>'
+            '      <li><a href="../../wiki/indexes/machine-memory-actions.md">动作队列</a></li>'
+            '      <li><a href="../../wiki/indexes/review-center.md">审阅中心</a></li>'
+            '      <li><a href="../../wiki/indexes/furnace-center.md">炉心面板</a></li>'
+            "    </ul></div>",
+            "  </section>",
+            "</main>",
+            "</body>",
+            "</html>",
+            "",
+        ]
+    )
+
+
 def render_concept_quality(memory: dict[str, Any]) -> str:
     quality = memory.get("health", {}).get("concept_quality", {})
     rewrite_state = memory.get("health", {}).get("concept_rewrite", {})
@@ -6936,6 +7247,16 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     changed_pages += int(
         write_if_changed(machine_memory_repair_plan_path(root), render_machine_memory_repair_plan(memory))
     )
+    changed_pages += int(
+        write_if_changed(
+            execution_center_path(root),
+            render_execution_center(
+                memory,
+                compiled_at=compiled_at,
+                active_protocol=protocol_state["active_protocol"],
+            ),
+        )
+    )
     recent_outputs = collect_recent_output_artifacts(root)
     changed_pages += int(
         write_if_changed(
@@ -6975,6 +7296,16 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             ),
         )
     )
+    changed_pages += int(
+        write_if_changed(
+            execution_center_html_path(root),
+            render_execution_center_html(
+                memory,
+                compiled_at=compiled_at,
+                active_protocol=protocol_state["active_protocol"],
+            ),
+        )
+    )
     changed_pages += int(write_if_changed(concept_quality_path(root), render_concept_quality(memory)))
     changed_pages += int(
         write_if_changed(
@@ -6987,6 +7318,21 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             write_if_changed(
                 root / proposal["proposal_path"],
                 render_concept_rewrite_proposal_page(proposal),
+            )
+        )
+    removed_pages += remove_stale_generated_execution_proposal_pages(
+        root,
+        {
+            str(proposal.get("action_id") or "")
+            for proposal in memory["health"]["repair_plan"].get("execution_proposals", [])
+            if proposal.get("action_id")
+        },
+    )
+    for proposal in memory["health"]["repair_plan"].get("execution_proposals", []):
+        changed_pages += int(
+            write_if_changed(
+                root / str(proposal["proposal_path"]),
+                render_execution_proposal_page(proposal, compiled_at=compiled_at),
             )
         )
     changed_pages += int(write_if_changed(graph_health_report_path(root), render_graph_health(memory)))
@@ -8285,6 +8631,7 @@ def repair_execution_proposals(
     proposals: list[dict[str, Any]] = []
     for action in actions:
         template = strategy_map.get(str(action.get("kind") or ""), {})
+        action_id = str(action.get("id") or "")
         target_paths = [
             path
             for path in (
@@ -8294,8 +8641,8 @@ def repair_execution_proposals(
             if path
         ]
         proposal = {
-            "id": f"proposal-{action.get('id', '')}",
-            "action_id": str(action.get("id") or ""),
+            "id": f"proposal-{action_id}",
+            "action_id": action_id,
             "title": str(action.get("title") or ""),
             "priority": str(action.get("priority") or "medium"),
             "status": str(action.get("status") or "proposed"),
@@ -8315,6 +8662,8 @@ def repair_execution_proposals(
             "focus_score": int(action.get("focus_score", 0)),
         }
         proposal["page_patch_plan"] = build_page_patch_plan(root, action, active_protocol=active_protocol)
+        proposal["proposal_path"] = relative_path(root, execution_proposal_path(root, action_id))
+        proposal["safe_apply_preview"] = safe_apply_preview(root, action)
         proposals.append(proposal)
     proposals.sort(
         key=lambda item: (
@@ -8550,6 +8899,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/rewrite-proposals.md": "Missing rewrite proposal index page.",
         "wiki/indexes/protocols.md": "Missing protocol dashboard page.",
         "wiki/indexes/furnace-center.md": "Missing furnace center page.",
+        "wiki/indexes/execution-center.md": "Missing execution center page.",
         "wiki/indexes/review-queue.md": "Missing review queue page.",
         "wiki/indexes/review-center.md": "Missing review center page.",
         "wiki/indexes/aging-report.md": "Missing aging report page.",
@@ -8592,6 +8942,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
     memory_state = machine_memory_state_path(root)
     graph_html = machine_memory_graph_html_path(root)
     furnace_html = furnace_center_html_path(root)
+    execution_html = execution_center_html_path(root)
     review_html = review_center_html_path(root)
     if manifest["entries"] and not memory_state.exists():
         findings.append(Finding("error", relative_path(root, memory_state), "Missing machine memory state file."))
@@ -8599,6 +8950,8 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         findings.append(Finding("error", relative_path(root, graph_html), "Missing machine memory graph HTML view."))
     if manifest["entries"] and not furnace_html.exists():
         findings.append(Finding("error", relative_path(root, furnace_html), "Missing furnace center HTML view."))
+    if manifest["entries"] and not execution_html.exists():
+        findings.append(Finding("error", relative_path(root, execution_html), "Missing execution center HTML view."))
     if manifest["entries"] and not review_html.exists():
         findings.append(Finding("error", relative_path(root, review_html), "Missing review center HTML view."))
     if memory_state.exists():
@@ -8619,6 +8972,17 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                 findings.append(
                     Finding("warn", relative_path(root, memory_state), "Machine memory state is missing a stable digest.")
                 )
+            repair_plan = memory.get("health", {}).get("repair_plan", {}) if isinstance(memory, dict) else {}
+            execution_proposals = repair_plan.get("execution_proposals", []) if isinstance(repair_plan, dict) else []
+            for proposal in execution_proposals:
+                if not isinstance(proposal, dict):
+                    continue
+                action_id = str(proposal.get("action_id") or "")
+                proposal_path = root / str(proposal.get("proposal_path") or relative_path(root, execution_proposal_path(root, action_id)))
+                if action_id and not proposal_path.exists():
+                    findings.append(
+                        Finding("error", relative_path(root, proposal_path), f"Missing execution proposal page for action `{action_id}`.")
+                    )
 
     graph_export = machine_memory_graph_path(root)
     if manifest["entries"] and not graph_export.exists():
