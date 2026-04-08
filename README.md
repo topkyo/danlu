@@ -25,6 +25,7 @@ safe execution receipt 会落在 `output/control/execution-receipts/`。
 - `output/` 放查询产物
 - `schema/` 放运行时规则
 - `schema/protocols/` 放领域协议覆盖层
+- `file-back` 完成后会立即刷新本地索引和 review queue，不需要再手动补一次 `compile`
 
 Obsidian 是前端/IDE，`aiwiki` 才是编译器和自动化 runtime。
 

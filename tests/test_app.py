@@ -136,6 +136,19 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue((self.root / lint["path"]).exists())
         self.assertGreaterEqual(lint["counts"]["warnings"], 1)
 
+    def test_file_back_refreshes_review_queue_without_manual_compile(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+
+        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+
+        review_queue = (self.root / "wiki" / "indexes" / "review-queue.md").read_text(encoding="utf-8")
+        decisions_index = (self.root / "wiki" / "indexes" / "decisions.md").read_text(encoding="utf-8")
+        self.assertTrue((self.root / decision["path"]).exists())
+        self.assertIn("Scaling Decision", review_queue)
+        self.assertIn("Scaling Decision", decisions_index)
+
     def test_url_ingest_creates_stub_source(self) -> None:
         entry = ingest_source(self.root, "https://example.com/karpathy-note", title="Karpathy note")
         source_path = self.root / entry["stored_path"]
@@ -1180,6 +1193,7 @@ class AiwikiFlowTests(unittest.TestCase):
         receipt = json.loads((self.root / result["receipt_path"]).read_text(encoding="utf-8"))
         self.assertEqual(receipt["kind"], "execution-receipt")
         self.assertEqual(receipt["operation"], "revert")
+        self.assertEqual(receipt["bundle"]["status"], "proposed")
         history_lines = (self.root / ".aiwiki" / "state" / "execution-receipts.jsonl").read_text(encoding="utf-8").strip().splitlines()
         self.assertEqual(len(history_lines), 2)
         state = json.loads((self.root / ".aiwiki" / "state" / "machine-memory-actions.json").read_text(encoding="utf-8"))

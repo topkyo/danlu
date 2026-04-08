@@ -8780,6 +8780,7 @@ def file_back(
             f"destination: `{relative_path(root, destination)}`",
         ],
     )
+    compile_wiki(root)
     return {"path": relative_path(root, destination), "protocol": resolved_protocol}
 
 
@@ -9232,29 +9233,44 @@ def revert_machine_memory_action(
     save_manual_link_state(root, {"version": 1, "source_to_concept": manual_links})
 
     protocol = load_protocol_state(root)["active_protocol"]
-    preview_proposals = repair_execution_proposals(root, [target], active_protocol=protocol)
+    reverted_target = {
+        **dict(target),
+        "status": "proposed",
+        "execution_policy": "triage",
+        "execution_band": "review-first",
+        "reviewed_at": reverted_at,
+        "status_updated_at": reverted_at,
+        "review_note": note or "Safe apply reverted.",
+        "pending_review": "true",
+        "last_receipt_path": relative_path(root, receipt_path),
+        "command_hint": f'PYTHONPATH=src python3 -m aiwiki.cli --root . review-action {action_id} --status accepted --note "Resume reverted repair."',
+        "next_step": "回滚后重新 review，确认是否要再次 accepted 再执行。",
+    }
+    preview_proposals = repair_execution_proposals(root, [reverted_target], active_protocol=protocol)
     proposal = preview_proposals[0] if preview_proposals else {
         "action_id": action_id,
-        "title": str(target.get("title") or action_id),
+        "title": str(reverted_target.get("title") or action_id),
         "proposal_kind": "manual-repair",
         "risk": "low",
-        "priority": str(target.get("priority") or "medium"),
+        "priority": str(reverted_target.get("priority") or "medium"),
         "protocol": protocol,
-        "summary": str(target.get("reason") or ""),
+        "status": "proposed",
+        "execution_policy": "triage",
+        "summary": str(reverted_target.get("reason") or ""),
         "target_paths": [
             path
-            for path in (str(target.get("primary_path") or ""), str(target.get("secondary_path") or ""))
+            for path in (str(reverted_target.get("primary_path") or ""), str(reverted_target.get("secondary_path") or ""))
             if path
         ],
-        "page_patch_plan": build_page_patch_plan(root, target, active_protocol=protocol),
-        "safe_apply_preview": safe_apply_preview(root, target),
-        "command_hint": str(target.get("command_hint") or ""),
+        "page_patch_plan": build_page_patch_plan(root, reverted_target, active_protocol=protocol),
+        "safe_apply_preview": safe_apply_preview(root, reverted_target),
+        "command_hint": str(reverted_target.get("command_hint") or ""),
         "bundle_path": relative_path(root, execution_bundle_path(root, action_id)),
         "proposal_path": relative_path(root, execution_proposal_path(root, action_id)),
     }
     revert_receipt = build_execution_receipt(
         root,
-        target,
+        reverted_target,
         applied_at=reverted_at,
         note=note,
         proposal=proposal,
@@ -9264,12 +9280,12 @@ def revert_machine_memory_action(
     receipt_path.write_text(json.dumps(revert_receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     append_execution_receipt_history(root, revert_receipt)
 
-    target["status"] = "proposed"
-    target["reviewed_at"] = reverted_at
-    target["status_updated_at"] = reverted_at
-    target["review_note"] = note or "Safe apply reverted."
-    target["pending_review"] = "true"
-    target["last_receipt_path"] = relative_path(root, receipt_path)
+    target["status"] = str(reverted_target["status"])
+    target["reviewed_at"] = str(reverted_target["reviewed_at"])
+    target["status_updated_at"] = str(reverted_target["status_updated_at"])
+    target["review_note"] = str(reverted_target["review_note"])
+    target["pending_review"] = str(reverted_target["pending_review"])
+    target["last_receipt_path"] = str(reverted_target["last_receipt_path"])
     revisit_after, escalate_after = schedule_review_windows("action", "proposed", reverted_at)
     target["revisit_after"] = revisit_after
     target["escalate_after"] = escalate_after
