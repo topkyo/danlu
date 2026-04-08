@@ -72,7 +72,7 @@ kind: "dashboard"
 - 想确认新投料有没有进系统：看 [[wiki/indexes/Raw Inbox|原料收件箱]]
 - 想看系统当前总览：看 [[wiki/indexes/Wiki Hub|知识中枢]]
 - 想从一个地方看今天该做什么：看 [[wiki/indexes/furnace-center|炉心面板]]，真正的本地控制面板在 `output/control/furnace-center.html`
-- 想专门看 safe apply、proposal 和 patch-step：看 [[wiki/indexes/execution-center|执行中心]]，真正的本地执行面板在 `output/control/execution-center.html`
+- 想专门看 safe apply、proposal、patch-step 和 execution bundle：看 [[wiki/indexes/execution-center|执行中心]]，真正的本地执行面板在 `output/control/execution-center.html`
 - 想切换或查看当前协议：看 [[wiki/indexes/protocols|协议总览]]
 - 想确认协议具体改变了什么行为：看 [[schema/protocols/index|协议规则]]
 - 想看 pending review：看 [[wiki/indexes/review-queue|审阅队列]]

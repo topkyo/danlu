@@ -769,6 +769,46 @@ class AiwikiFlowTests(unittest.TestCase):
         after_signature = parse_frontmatter(concept_path.read_text(encoding="utf-8"))["source_signature"]
         self.assertNotEqual(before_signature, after_signature)
 
+    def test_apply_machine_memory_action_dry_run_returns_bundle_without_mutation(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "manual-link-action",
+                        "kind": "add-source-concept-link",
+                        "title": "Manual safe apply link",
+                        "reason": "Backfill source/concept link.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "accepted",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                    }
+                ],
+            },
+        )
+
+        result = apply_machine_memory_action(self.root, "manual-link-action", dry_run=True)
+
+        self.assertTrue(result["dry_run"])
+        self.assertEqual(result["status"], "accepted")
+        self.assertIn("bundle", result)
+        self.assertEqual(result["bundle"]["kind"], "execution-bundle")
+        self.assertEqual(result["bundle"]["action_id"], "manual-link-action")
+        self.assertTrue(result["preview"])
+        self.assertFalse((self.root / ".aiwiki" / "state" / "manual-links.json").exists())
+        state = json.loads((self.root / ".aiwiki" / "state" / "machine-memory-actions.json").read_text(encoding="utf-8"))
+        action = next(action for action in state["actions"] if action["id"] == "manual-link-action")
+        self.assertEqual(action["status"], "accepted")
+
     def test_apply_machine_memory_action_rejects_inactive_action(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -1667,6 +1707,21 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(proposal_page.exists())
         self.assertIn("## Page-Level Patch Plan", proposal_page.read_text(encoding="utf-8"))
 
+    def test_compile_writes_execution_bundle_json(self) -> None:
+        self._seed_machine_memory_actions()
+
+        compile_wiki(self.root)
+
+        memory = load_machine_memory(self.root)
+        proposal = memory["health"]["repair_plan"]["execution_proposals"][0]
+        bundle_path = self.root / proposal["bundle_path"]
+        self.assertTrue(bundle_path.exists())
+        bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+        self.assertEqual(bundle["kind"], "execution-bundle")
+        self.assertEqual(bundle["action_id"], proposal["action_id"])
+        self.assertEqual(bundle["bundle_path"], proposal["bundle_path"])
+        self.assertTrue(bundle["page_patch_plan"])
+
     def test_compile_generates_concept_quality_page(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
 
@@ -1971,6 +2026,20 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Missing machine memory graph HTML view.", report_text)
         self.assertIn("Missing review center HTML view.", report_text)
         self.assertIn("Concept page references missing source page", report_text)
+
+    def test_lint_reports_missing_execution_bundle(self) -> None:
+        self._seed_machine_memory_actions()
+
+        compile_wiki(self.root)
+
+        memory = load_machine_memory(self.root)
+        proposal = memory["health"]["repair_plan"]["execution_proposals"][0]
+        bundle_path = self.root / proposal["bundle_path"]
+        bundle_path.unlink()
+
+        lint = lint_wiki(self.root)
+        report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
+        self.assertIn(f"Missing execution bundle for action `{proposal['action_id']}`.", report_text)
 
 
 if __name__ == "__main__":

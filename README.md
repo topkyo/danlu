@@ -5,7 +5,7 @@
 架构基线见 [Alchemy Furnace.md](<./wiki/indexes/Alchemy Furnace.md>)。
 日常在 Obsidian 里使用时，入口是 [HOME.md](./HOME.md)。
 统一产品壳入口见 [furnace-center.md](<./wiki/indexes/furnace-center.md>)；本地 HTML 控制面板在 `output/control/furnace-center.html`。
-执行工作区入口见 [execution-center.md](<./wiki/indexes/execution-center.md>)；本地执行面板在 `output/control/execution-center.html`。
+执行工作区入口见 [execution-center.md](<./wiki/indexes/execution-center.md>)；本地执行面板在 `output/control/execution-center.html`，机器可读 bundle 会落在 `output/control/execution-bundles/`。
 关于“一个统一炉子，多个领域协议”的原则，见 [Furnace Protocols.md](<./wiki/indexes/Furnace Protocols.md>)。
 协议运行时入口见 [protocols.md](<./wiki/indexes/protocols.md>)；当前 starter library 提供 `general / investing / research / product / ops` 五套协议。
 当前协议不只是 metadata：它已经会改变 `decision / judgment` 的默认 review window、`file-back` 模板、recurring promotion 的标题与分类语义、`review / nightly / repair` 的优先级焦点，以及 `ask / output / execution proposal` 的策略偏置。
@@ -165,6 +165,7 @@ concept rewrite 现在也有显式 gate：
 safe execution layer 现在也已经接上：
 - `review-action` 负责把 repair action 推进到 `accepted / deferred / resolved / rejected`
 - `apply-action` 只会处理 allowlist 内的低风险动作
+- `apply-action --dry-run` 会先返回 execution bundle 和 safe-apply preview，不写入状态文件
 - 当前低风险动作会通过 `.aiwiki/state/manual-links.json` 写入可审、可重编译的 manual link state，而不是静默覆盖事实层
 
 关键状态页：

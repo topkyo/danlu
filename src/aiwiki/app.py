@@ -2922,6 +2922,52 @@ def safe_apply_preview(root: Path, action: dict[str, Any]) -> dict[str, Any] | N
     }
 
 
+def build_execution_bundle(
+    root: Path,
+    proposal: dict[str, Any],
+    *,
+    compiled_at: str,
+) -> dict[str, Any]:
+    patch_steps: list[dict[str, Any]] = []
+    for index, patch in enumerate(proposal.get("page_patch_plan", []), start=1):
+        patch_steps.append(
+            {
+                "step": index,
+                "path": str(patch.get("path") or ""),
+                "role": str(patch.get("role") or ""),
+                "role_label": str(patch.get("role_label") or patch.get("role") or "page"),
+                "mode": str(patch.get("mode") or "update"),
+                "sections": list(patch.get("sections") or []),
+                "summary": str(patch.get("summary") or ""),
+                "exists": bool(patch.get("exists", False)),
+                "command_hint": str(patch.get("command_hint") or ""),
+            }
+        )
+    return {
+        "version": 1,
+        "kind": "execution-bundle",
+        "generated_by": "aiwiki-compile",
+        "compiled_at": compiled_at,
+        "action_id": str(proposal.get("action_id") or ""),
+        "title": str(proposal.get("title") or ""),
+        "status": str(proposal.get("status") or "proposed"),
+        "proposal_kind": str(proposal.get("proposal_kind") or "manual-repair"),
+        "risk": str(proposal.get("risk") or "medium"),
+        "priority": str(proposal.get("priority") or "medium"),
+        "protocol": str(proposal.get("protocol") or DEFAULT_PROTOCOL),
+        "summary": str(proposal.get("summary") or ""),
+        "target_paths": list(proposal.get("target_paths") or []),
+        "suggested_edits": list(proposal.get("suggested_edits") or []),
+        "proposal_path": str(proposal.get("proposal_path") or ""),
+        "bundle_path": str(proposal.get("bundle_path") or ""),
+        "page_patch_plan": patch_steps,
+        "safe_apply_preview": proposal.get("safe_apply_preview"),
+        "command_hint": str(proposal.get("command_hint") or ""),
+        "next_step": str(proposal.get("next_step") or ""),
+        "dry_run_supported": bool(proposal.get("safe_apply_preview")),
+    }
+
+
 def remove_stale_generated_execution_proposal_pages(root: Path, active_action_ids: set[str]) -> int:
     removed = 0
     directory = execution_proposals_dir(root)
@@ -2933,6 +2979,20 @@ def remove_stale_generated_execution_proposal_pages(root: Path, active_action_id
             continue
         action_id = str(frontmatter.get("action_id") or "")
         if action_id and action_id in active_action_ids:
+            continue
+        path.unlink()
+        removed += 1
+    return removed
+
+
+def remove_stale_generated_execution_bundle_files(root: Path, active_action_ids: set[str]) -> int:
+    removed = 0
+    directory = execution_bundles_dir(root)
+    if not directory.exists():
+        return 0
+    active_slugs = {slugify(action_id) for action_id in active_action_ids if action_id}
+    for path in sorted(directory.glob("*.json")):
+        if path.stem in active_slugs:
             continue
         path.unlink()
         removed += 1
@@ -4251,6 +4311,14 @@ def execution_proposals_dir(root: Path) -> Path:
 
 def execution_proposal_path(root: Path, action_id: str) -> Path:
     return execution_proposals_dir(root) / f"{slugify(action_id)}.md"
+
+
+def execution_bundles_dir(root: Path) -> Path:
+    return root / "output" / "control" / "execution-bundles"
+
+
+def execution_bundle_path(root: Path, action_id: str) -> Path:
+    return execution_bundles_dir(root) / f"{slugify(action_id)}.json"
 
 
 def concept_quality_path(root: Path) -> Path:
@@ -6381,6 +6449,7 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
                 f"{command_part}"
             )
             lines.append(f"  - strategy: {proposal.get('summary', 'n/a')}")
+            lines.append(f"  - bundle: `{proposal.get('bundle_path', '') or 'none'}`")
             for edit in proposal.get("suggested_edits", [])[:3]:
                 lines.append(f"  - edit: {edit}")
             patch_plan = proposal.get("page_patch_plan", [])
@@ -6472,6 +6541,7 @@ def render_execution_proposal_page(proposal: dict[str, Any], *, compiled_at: str
         f"- Protocol: `{proposal.get('protocol', DEFAULT_PROTOCOL)}`",
         f"- Priority: `{proposal.get('priority', 'medium')}`",
         f"- Targets: `{', '.join(proposal.get('target_paths', [])) or 'none'}`",
+        f"- Bundle: `{proposal.get('bundle_path', '') or 'none'}`",
         "",
         "## Strategy",
         f"- {proposal.get('summary', 'n/a')}",
@@ -6524,6 +6594,7 @@ def render_execution_proposal_page(proposal: dict[str, Any], *, compiled_at: str
             "- [机器记忆修复计划](../indexes/machine-memory-repair-plan.md)",
             "- [机器记忆动作队列](../indexes/machine-memory-actions.md)",
             "- [炉心面板](../indexes/furnace-center.md)",
+            f"- [Execution Bundle](../../{proposal.get('bundle_path', '')})" if proposal.get("bundle_path") else "- Execution Bundle: none",
         ]
     )
     return f"{frontmatter}\n\n" + "\n".join(lines).strip() + "\n"
@@ -6565,6 +6636,7 @@ def render_execution_center(memory: dict[str, Any], *, compiled_at: str, active_
                 f" | risk `{proposal.get('risk', 'medium')}`"
                 f" | patch `{len(proposal.get('page_patch_plan', []))}`"
                 f" | targets `{', '.join(proposal.get('target_paths', [])) or 'none'}`"
+                f" | bundle `{proposal.get('bundle_path', '') or 'none'}`"
             )
     lines.extend(
         [
@@ -6601,7 +6673,8 @@ def render_execution_center_html(memory: dict[str, Any], *, compiled_at: str, ac
     proposal_markup = "".join(
         f"<li><strong><a href=\"../../wiki/execution-proposals/{html.escape(slugify(str(proposal.get('action_id') or '')))}.md\">{html.escape(str(proposal.get('title') or 'proposal'))}</a></strong>"
         f" <span class=\"item-meta\">risk {html.escape(str(proposal.get('risk') or 'medium'))} / patch {len(proposal.get('page_patch_plan', []))}</span>"
-        f"<div>{html.escape(str(proposal.get('summary') or ''))}</div></li>"
+        f"<div>{html.escape(str(proposal.get('summary') or ''))}</div>"
+        f"<div class=\"item-meta\"><a href=\"../../{html.escape(str(proposal.get('bundle_path') or ''))}\">Execution Bundle</a></div></li>"
         for proposal in proposals[:10]
     ) or "<li>当前没有 execution proposal。</li>"
     return "\n".join(
@@ -7328,11 +7401,31 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             if proposal.get("action_id")
         },
     )
+    removed_pages += remove_stale_generated_execution_bundle_files(
+        root,
+        {
+            str(proposal.get("action_id") or "")
+            for proposal in memory["health"]["repair_plan"].get("execution_proposals", [])
+            if proposal.get("action_id")
+        },
+    )
     for proposal in memory["health"]["repair_plan"].get("execution_proposals", []):
         changed_pages += int(
             write_if_changed(
                 root / str(proposal["proposal_path"]),
                 render_execution_proposal_page(proposal, compiled_at=compiled_at),
+            )
+        )
+        changed_pages += int(
+            write_if_changed(
+                root / str(proposal["bundle_path"]),
+                json.dumps(
+                    build_execution_bundle(root, proposal, compiled_at=compiled_at),
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n",
             )
         )
     changed_pages += int(write_if_changed(graph_health_report_path(root), render_graph_health(memory)))
@@ -8234,7 +8327,13 @@ def review_machine_memory_action(
     }
 
 
-def apply_machine_memory_action(root: Path, action_id: str, *, note: str | None = None) -> dict[str, Any]:
+def apply_machine_memory_action(
+    root: Path,
+    action_id: str,
+    *,
+    note: str | None = None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
     ensure_layout(root)
     state = load_machine_memory_action_state(root)
     actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
@@ -8250,13 +8349,46 @@ def apply_machine_memory_action(root: Path, action_id: str, *, note: str | None 
     kind = str(target.get("kind") or "")
     if kind not in LOW_RISK_APPLYABLE_ACTION_KINDS:
         raise RuntimeError("Only low-risk accepted actions support semi-auto apply.")
+    protocol = load_protocol_state(root)["active_protocol"]
+    source_id, concept_slug = validate_low_risk_action_targets(root, target)
+    preview_proposals = repair_execution_proposals(root, [target], active_protocol=protocol)
+    proposal = preview_proposals[0] if preview_proposals else {
+        "action_id": action_id,
+        "title": str(target.get("title") or action_id),
+        "proposal_kind": "manual-repair",
+        "risk": "low",
+        "priority": str(target.get("priority") or "medium"),
+        "protocol": protocol,
+        "summary": str(target.get("reason") or ""),
+        "target_paths": [
+            path
+            for path in (str(target.get("primary_path") or ""), str(target.get("secondary_path") or ""))
+            if path
+        ],
+        "page_patch_plan": build_page_patch_plan(root, target, active_protocol=protocol),
+        "safe_apply_preview": safe_apply_preview(root, target),
+        "command_hint": str(target.get("command_hint") or ""),
+        "bundle_path": relative_path(root, execution_bundle_path(root, action_id)),
+        "proposal_path": relative_path(root, execution_proposal_path(root, action_id)),
+    }
+    bundle = build_execution_bundle(root, proposal, compiled_at=utc_now())
+    if dry_run:
+        return {
+            "id": action_id,
+            "dry_run": True,
+            "apply_mode": "manual-link-state",
+            "status": str(target.get("status") or "accepted"),
+            "bundle_path": proposal.get("bundle_path", ""),
+            "proposal_path": proposal.get("proposal_path", ""),
+            "preview": proposal.get("safe_apply_preview"),
+            "bundle": bundle,
+        }
 
     applied_at = utc_now()
     apply_mode = "manual-link-state"
     manual_state = load_manual_link_state(root)
     manual_links = [dict(item) for item in manual_state.get("source_to_concept", []) if isinstance(item, dict)]
     if kind == "add-source-concept-link":
-        source_id, concept_slug = validate_low_risk_action_targets(root, target)
         existing = next(
             (
                 item
@@ -8663,6 +8795,7 @@ def repair_execution_proposals(
         }
         proposal["page_patch_plan"] = build_page_patch_plan(root, action, active_protocol=active_protocol)
         proposal["proposal_path"] = relative_path(root, execution_proposal_path(root, action_id))
+        proposal["bundle_path"] = relative_path(root, execution_bundle_path(root, action_id))
         proposal["safe_apply_preview"] = safe_apply_preview(root, action)
         proposals.append(proposal)
     proposals.sort(
@@ -8982,6 +9115,11 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                 if action_id and not proposal_path.exists():
                     findings.append(
                         Finding("error", relative_path(root, proposal_path), f"Missing execution proposal page for action `{action_id}`.")
+                    )
+                bundle_path = root / str(proposal.get("bundle_path") or relative_path(root, execution_bundle_path(root, action_id)))
+                if action_id and not bundle_path.exists():
+                    findings.append(
+                        Finding("error", relative_path(root, bundle_path), f"Missing execution bundle for action `{action_id}`.")
                     )
 
     graph_export = machine_memory_graph_path(root)
