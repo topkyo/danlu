@@ -179,6 +179,7 @@ class AiwikiFlowTests(unittest.TestCase):
         graph_health_page = self.root / "wiki" / "indexes" / "graph-health.md"
         decisions_index = self.root / "wiki" / "indexes" / "decisions.md"
         judgments_index = self.root / "wiki" / "indexes" / "judgments.md"
+        agent_workbench = self.root / "wiki" / "indexes" / "agent-workbench.md"
         cognitive_history = self.root / "wiki" / "indexes" / "cognitive-history.md"
         review_queue = self.root / "wiki" / "indexes" / "review-queue.md"
         memory_state = self.root / ".aiwiki" / "state" / "machine-memory.json"
@@ -191,6 +192,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(graph_health_page.exists())
         self.assertTrue(decisions_index.exists())
         self.assertTrue(judgments_index.exists())
+        self.assertTrue(agent_workbench.exists())
         self.assertTrue(cognitive_history.exists())
         self.assertTrue(review_queue.exists())
         self.assertTrue(memory_state.exists())
@@ -202,6 +204,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("决策索引", master_index.read_text(encoding="utf-8"))
         self.assertIn("判断索引", master_index.read_text(encoding="utf-8"))
         self.assertIn("审阅队列", master_index.read_text(encoding="utf-8"))
+        self.assertIn("Agent Workbench", master_index.read_text(encoding="utf-8"))
         self.assertIn("认知历史", master_index.read_text(encoding="utf-8"))
         self.assertIn("图谱健康", master_index.read_text(encoding="utf-8"))
         self.assertIn("漂移报告", master_index.read_text(encoding="utf-8"))
@@ -1705,6 +1708,32 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("LATE-MARKER", client.prompt)
         self.assertNotIn("EARLY-MARKER EARLY-MARKER EARLY-MARKER EARLY-MARKER EARLY-MARKER", client.prompt)
 
+    def test_compile_generates_agent_workbench_and_role_packs(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        workbench = (self.root / "wiki" / "indexes" / "agent-workbench.md").read_text(encoding="utf-8")
+        self.assertIn("Agent Workbench", workbench)
+        self.assertIn("Ingest Agent", workbench)
+        self.assertIn("../../output/agents/ingest-agent.md", workbench)
+
+        for role in (
+            "ingest-agent",
+            "concept-agent",
+            "judgment-agent",
+            "review-agent",
+            "repair-planner",
+            "execution-agent",
+            "nightly-agent",
+        ):
+            pack_path = self.root / "output" / "agents" / f"{role}.md"
+            self.assertTrue(pack_path.exists(), role)
+            pack_text = pack_path.read_text(encoding="utf-8")
+            self.assertIn("## Mission", pack_text)
+            self.assertIn("## Current Focus", pack_text)
+            self.assertIn("## Suggested Actions", pack_text)
+            self.assertIn("## Related Links", pack_text)
+
     def test_run_ask_includes_machine_memory_query_plan_in_prompt(self) -> None:
         sample = self.root / "latency.md"
         sample.write_text("# Throughput Notes\n\nLatency throughput cache locality.\n", encoding="utf-8")
@@ -1744,6 +1773,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Query routes", client.prompt)
         self.assertIn("Touched components", client.prompt)
         self.assertIn("wiki/indexes/concept-quality.md", client.prompt)
+        self.assertIn("wiki/indexes/agent-workbench.md", client.prompt)
         self.assertIn("wiki/indexes/cognitive-history.md", client.prompt)
         self.assertIn("wiki/indexes/machine-memory-topology.md", client.prompt)
         self.assertIn("wiki/indexes/machine-memory-actions.md", client.prompt)

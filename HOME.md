@@ -42,6 +42,7 @@ kind: "dashboard"
 - [[wiki/indexes/furnace-center|炉心面板]]
 - [[wiki/indexes/execution-center|执行中心]]
 - [[wiki/indexes/execution-audit|执行审计]]
+- [[wiki/indexes/agent-workbench|Agent Workbench]]
 - [[wiki/indexes/cognitive-history|认知历史]]
 - [[wiki/indexes/protocols|协议总览]]
 - [[wiki/indexes/review-center|审阅中心]]
@@ -56,6 +57,7 @@ kind: "dashboard"
 - [[wiki/indexes/review-center|审阅中心]]
 - [[wiki/indexes/execution-center|执行中心]]
 - [[wiki/indexes/execution-audit|执行审计]]
+- [[wiki/indexes/agent-workbench|Agent Workbench]]
 - [[wiki/indexes/cognitive-history|认知历史]]
 - [[wiki/indexes/repair-backlog|修复待办]]
 - [[wiki/indexes/rewrite-proposals|Rewrite 提案]]
@@ -81,6 +83,7 @@ kind: "dashboard"
 - 想从一个地方看今天该做什么：看 [[wiki/indexes/furnace-center|炉心面板]]，真正的本地控制面板在 `output/control/furnace-center.html`
 - 想专门看 safe apply、proposal、patch-step、execution bundle 和 execution receipt：看 [[wiki/indexes/execution-center|执行中心]]，真正的本地执行面板在 `output/control/execution-center.html`；真实 apply 会消费 bundle，不会裸执行，必要时可 `revert-action` 回滚 low-risk safe apply
 - 想复盘 apply / revert 历史、policy bands、协议级执行分布和 consistency signals：看 [[wiki/indexes/execution-audit|执行审计]]，真正的本地审计面板在 `output/control/execution-audit.html`
+- 想从“单人 + 多 agent 工作小组”的视角分工：看 [[wiki/indexes/agent-workbench|Agent Workbench]]，具体角色 pack 会落在 `output/agents/`
 - 想看哪些旧判断被新证据挑战、哪些页面缺 snapshot、哪些 judgment 已经积累长历史：看 [[wiki/indexes/cognitive-history|认知历史]]
 - 想切换或查看当前协议：看 [[wiki/indexes/protocols|协议总览]]
 - 想确认协议具体改变了什么行为：看 [[schema/protocols/index|协议规则]]

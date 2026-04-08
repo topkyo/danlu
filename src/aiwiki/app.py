@@ -30,6 +30,7 @@ LAYOUT_DIRS = (
     "output/reports",
     "output/slides",
     "output/figures",
+    "output/agents",
     "output/graph",
     "output/control",
     "output/review",
@@ -305,6 +306,18 @@ DEFAULT_DASHBOARD_FILES = {
             "",
             "- 这里展示的是 `aiwiki` 的 machine-memory 视角，不等于 Obsidian 自带的 Graph View。",
             "- Obsidian Graph 更适合看笔记链接；这里更适合看知识编译后的机读层状态。",
+        ]
+    )
+    + "\n",
+    "wiki/indexes/agent-workbench.md": "\n".join(
+        [
+            "# Agent Workbench",
+            "",
+            "这里会汇总炼丹炉当前可生成的 agent packs。",
+            "",
+            "- compile 后会把 agent packs 写到 `output/agents/`。",
+            "- 这些 pack 是给单人 owner + 多 agent 工作小组的工作单。",
+            "- 这里先做人用总览，不直接执行 agent。",
         ]
     )
     + "\n",
@@ -1051,6 +1064,45 @@ class Finding:
     severity: str
     path: str
     message: str
+
+
+AGENT_PACK_LIBRARY = (
+    {
+        "role": "ingest-agent",
+        "title": "Ingest Agent",
+        "mission": "整理新原料、补来源页和基础元数据，让证据层持续进炉。",
+    },
+    {
+        "role": "concept-agent",
+        "title": "Concept Agent",
+        "mission": "维护 concept 层，处理弱概念、冲突信号、证据缺口和 rewrite proposal。",
+    },
+    {
+        "role": "judgment-agent",
+        "title": "Judgment Agent",
+        "mission": "把高价值输出沉成 decision / judgment，并补齐判断资产缺口。",
+    },
+    {
+        "role": "review-agent",
+        "title": "Review Agent",
+        "mission": "清理 pending review、aging 和 judgment drift，把旧判断拉回复审。",
+    },
+    {
+        "role": "repair-planner",
+        "title": "Repair Planner",
+        "mission": "把 machine-memory action、patch plan 和 execution proposal 收敛成可执行修复队列。",
+    },
+    {
+        "role": "execution-agent",
+        "title": "Execution Agent",
+        "mission": "只在安全边界内执行 bundle-driven 低风险动作，并保留 receipt / revert 链。",
+    },
+    {
+        "role": "nightly-agent",
+        "title": "Nightly Agent",
+        "mission": "夜间巡检、复审、漂移检查和自动晋升，维持整炉持续收敛。",
+    },
+)
 
 
 def ensure_layout(root: Path) -> None:
@@ -4175,6 +4227,290 @@ def render_cognitive_history(
     return "\n".join(lines) + "\n"
 
 
+def render_agent_pack(
+    role: str,
+    title: str,
+    mission: str,
+    protocol: str,
+    compiled_at: str,
+    focus: list[str],
+    actions: list[str],
+    links: list[str],
+) -> str:
+    frontmatter = render_frontmatter(
+        {
+            "id": slugify(role),
+            "kind": "agent-pack",
+            "agent_role": role,
+            "title": title,
+            "protocol": protocol,
+            "generated_by": "aiwiki-compile",
+            "last_compiled_at": compiled_at,
+        }
+    )
+    lines = [
+        frontmatter,
+        "",
+        f"# {title}",
+        "",
+        f"- Agent role: `{role}`",
+        f"- Protocol: `{protocol}` ({protocol_title(protocol)})",
+        f"- Compiled at: `{compiled_at}`",
+        "",
+        "## Mission",
+        f"- {mission}",
+        "",
+        "## Current Focus",
+    ]
+    if not focus:
+        lines.append("- 当前没有额外焦点。")
+    else:
+        lines.extend(f"- {item}" for item in focus)
+    lines.extend(["", "## Suggested Actions"])
+    if not actions:
+        lines.append("- 当前没有新的建议动作。")
+    else:
+        lines.extend(f"- {item}" for item in actions)
+    lines.extend(["", "## Related Links"])
+    if not links:
+        lines.append("- 当前没有相关链接。")
+    else:
+        lines.extend(f"- {item}" for item in links)
+    return "\n".join(lines) + "\n"
+
+
+def build_agent_packs(
+    root: Path,
+    entries: list[dict[str, Any]],
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    memory: dict[str, Any],
+    protocol_state: dict[str, Any],
+    recent_outputs: list[dict[str, str]],
+    compiled_at: str,
+) -> list[dict[str, str]]:
+    active_protocol = protocol_state["active_protocol"]
+    queue = review_queue(decisions, judgments, active_protocol=active_protocol)
+    aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
+    health = memory.get("health", {})
+    concept_quality = health.get("concept_quality", {})
+    rewrite_state = health.get("concept_rewrite", {})
+    repair_plan = health.get("repair_plan", {})
+    pending_sources = pending_source_summary_ids(root, entries)
+    drifted_pages = [page for page in decisions + judgments if page.get("citation_drift") == "true"]
+    snapshot_gap_pages = [
+        page for page in decisions + judgments if int(page.get("citation_snapshot_gap_count", "0") or "0") > 0
+    ]
+    missing_asset_pages = [
+        page
+        for page in decisions + judgments
+        if page.get("has_counter_evidence") != "true"
+        or page.get("has_invalidation") != "true"
+        or page.get("has_next_signals") != "true"
+    ]
+    ready_actions = repair_plan.get("ready_actions", [])
+    apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
+    all_actions = [*health.get("actions", []), *health.get("inactive_actions", [])]
+    revert_ready_actions = [
+        action for action in all_actions if str(action.get("status") or "") == "resolved" and action.get("last_receipt_path")
+    ]
+    execution_audit = build_execution_audit_snapshot(root, memory, active_protocol=active_protocol)
+    packs: list[dict[str, str]] = []
+    for spec in AGENT_PACK_LIBRARY:
+        role = str(spec["role"])
+        title = str(spec["title"])
+        mission = str(spec["mission"])
+        focus: list[str]
+        actions: list[str]
+        links: list[str]
+        if role == "ingest-agent":
+            focus = [
+                f"待补来源摘要 `{len(pending_sources)}`",
+                f"来源页 `{len(entries)}`",
+                f"最近输出 `{len(recent_outputs)}`",
+            ]
+            actions = [f"补齐 `wiki/sources/{source_id}.md` 的来源摘要。" for source_id in pending_sources[:6]]
+            if not actions:
+                actions = ["继续观察新投料，并保持 source page 和 raw evidence 对齐。"]
+            links = [
+                "[来源索引](../../wiki/indexes/sources.md)",
+                "[原料收件箱](../../wiki/indexes/Raw Inbox.md)",
+                "[采集规则](../../schema/ingest.md)",
+            ]
+        elif role == "concept-agent":
+            focus = [
+                f"弱概念页 `{concept_quality.get('counts', {}).get('weak', 0)}`",
+                f"冲突信号 `{concept_quality.get('counts', {}).get('conflict_signals', 0)}`",
+                f"Rewrite 提案 `{rewrite_state.get('counts', {}).get('active', 0)}`",
+            ]
+            actions = [
+                f"优先重写 `{candidate['path']}`，策略 `{candidate.get('rewrite_strategy', 'n/a')}`。"
+                for candidate in concept_quality.get("rewrite_candidates", [])[:5]
+            ]
+            if not actions:
+                actions = ["继续维护 concept 稳定性，确保冲突和证据缺口保持显式。"]
+            links = [
+                "[概念质量](../../wiki/indexes/concept-quality.md)",
+                "[Rewrite 提案](../../wiki/indexes/rewrite-proposals.md)",
+                "[概念索引](../../wiki/indexes/concepts.md)",
+                "[机器记忆拓扑](../../wiki/indexes/machine-memory-topology.md)",
+            ]
+        elif role == "judgment-agent":
+            focus = [
+                f"最近输出 `{len(recent_outputs)}`",
+                f"待补判断资产 `{len(missing_asset_pages)}`",
+                f"证据漂移页面 `{len(drifted_pages)}`",
+            ]
+            actions = [
+                f"补齐 `{page['path']}` 的反证 / 失效条件 / 下一信号。"
+                for page in missing_asset_pages[:5]
+            ]
+            if recent_outputs:
+                actions.append(f"检查最近输出 `{recent_outputs[0]['path']}` 是否值得晋升成 decision / judgment。")
+            links = [
+                "[判断资产](../../wiki/indexes/judgment-assets.md)",
+                "[决策索引](../../wiki/indexes/decisions.md)",
+                "[判断索引](../../wiki/indexes/judgments.md)",
+                "[认知历史](../../wiki/indexes/cognitive-history.md)",
+            ]
+        elif role == "review-agent":
+            focus = [
+                f"待审项目 `{len(queue['pending_decisions']) + len(queue['pending_judgments'])}`",
+                f"已到期 / 升级 `{len(aging.get('overdue', []))}` / `{len(aging.get('escalated', []))}`",
+                f"证据漂移 / snapshot gap `{len(drifted_pages)}` / `{len(snapshot_gap_pages)}`",
+            ]
+            actions = [f"复查 `{page['path']}`，因为它已被新证据挑战。" for page in drifted_pages[:5]]
+            if not actions:
+                actions = [
+                    f"推进 `{page['path']}` 的 review 状态。"
+                    for page in (queue.get("pending_decisions", []) + queue.get("pending_judgments", []))[:5]
+                ]
+            links = [
+                "[审阅队列](../../wiki/indexes/review-queue.md)",
+                "[审阅中心](../../wiki/indexes/review-center.md)",
+                "[Aging 报告](../../wiki/indexes/aging-report.md)",
+                "[认知历史](../../wiki/indexes/cognitive-history.md)",
+            ]
+        elif role == "repair-planner":
+            focus = [
+                f"动作队列 `{len(health.get('actions', []))}`",
+                f"Ready 动作 `{repair_plan.get('counts', {}).get('ready', 0)}`",
+                f"执行提案 `{repair_plan.get('counts', {}).get('proposals', 0)}`",
+            ]
+            actions = [
+                f"审阅 `{proposal.get('proposal_path', '')}`，确认 patch step `{len(proposal.get('page_patch_plan', []))}`。"
+                for proposal in repair_plan.get("execution_proposals", [])[:5]
+            ]
+            if not actions:
+                actions = ["当前没有新的 execution proposal，继续跟踪 machine-memory actions。"]
+            links = [
+                "[机器记忆动作队列](../../wiki/indexes/machine-memory-actions.md)",
+                "[机器记忆修复计划](../../wiki/indexes/machine-memory-repair-plan.md)",
+                "[修复待办](../../wiki/indexes/repair-backlog.md)",
+                "[图谱健康](../../wiki/indexes/graph-health.md)",
+            ]
+        elif role == "execution-agent":
+            focus = [
+                f"可 apply 动作 `{len(apply_ready_actions)}`",
+                f"可 revert 动作 `{len(revert_ready_actions)}`",
+                f"执行 receipt `{execution_audit.get('counts', {}).get('receipts', 0)}`",
+            ]
+            actions = [
+                f"对 `{action.get('id', '')}` 先做 `apply-action --dry-run`，再决定是否执行。"
+                for action in apply_ready_actions[:5]
+            ]
+            if revert_ready_actions:
+                actions.append(
+                    f"必要时回滚 `{revert_ready_actions[0].get('id', '')}`，保持 low-risk execution 可逆。"
+                )
+            if not actions:
+                actions = ["当前没有可执行动作，继续监控 execution audit 和 consistency signals。"]
+            links = [
+                "[执行中心](../../wiki/indexes/execution-center.md)",
+                "[执行审计](../../wiki/indexes/execution-audit.md)",
+                "[机器记忆修复计划](../../wiki/indexes/machine-memory-repair-plan.md)",
+            ]
+        else:
+            focus = [
+                f"待补来源摘要 `{len(pending_sources)}`",
+                f"已到期页面 `{len(aging.get('overdue', []))}`",
+                f"证据漂移页面 `{len(drifted_pages)}`",
+            ]
+            actions = [
+                "夜间优先刷新 compile / lint / review queue / cognitive history。",
+                "把 recurring outputs 继续晋升成 decision / judgment。",
+                "追踪 drift、aging 和 repair backlog，避免知识层长期漂移。",
+            ]
+            links = [
+                "[炉心面板](../../wiki/indexes/furnace-center.md)",
+                "[修复待办](../../wiki/indexes/repair-backlog.md)",
+                "[认知历史](../../wiki/indexes/cognitive-history.md)",
+                "[编译状态](../../wiki/indexes/compile-status.md)",
+            ]
+        packs.append(
+            {
+                "role": role,
+                "title": title,
+                "mission": mission,
+                "path": relative_path(root, agent_pack_path(root, role)),
+                "content": render_agent_pack(
+                    role,
+                    title,
+                    mission,
+                    active_protocol,
+                    compiled_at,
+                    focus,
+                    actions,
+                    links,
+                ),
+            }
+        )
+    return packs
+
+
+def render_agent_workbench(
+    packs: list[dict[str, str]],
+    compiled_at: str,
+    active_protocol: str,
+) -> str:
+    lines = [
+        "# Agent Workbench",
+        "",
+        f"- 最近编译时间：`{compiled_at}`",
+        f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})",
+        f"- Agent packs：`{len(packs)}`",
+        "",
+        "## 角色总览",
+    ]
+    if not packs:
+        lines.append("- 当前还没有 agent packs。")
+    else:
+        for pack in packs:
+            lines.append(
+                f"- [{pack['title']}](../../{pack['path']})"
+                f" | role `{pack['role']}`"
+                f" | {pack['mission']}"
+            )
+    lines.extend(
+        [
+            "",
+            "## 如何使用",
+            "1. Human Owner 先在炉心面板里决定今天要调度哪个角色。",
+            "2. 进入对应 agent pack，看当前焦点、建议动作和相关链接。",
+            "3. 角色之间共享同一个 `raw / wiki / machine memory / decision / judgment`，不维护私有真相。",
+            "",
+            "## 相关入口",
+            "- [炉心面板](./furnace-center.md)",
+            "- [审阅中心](./review-center.md)",
+            "- [执行中心](./execution-center.md)",
+            "- [执行审计](./execution-audit.md)",
+            "- [认知历史](./cognitive-history.md)",
+            "- [图谱视图](./graph-view.md)",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
 def render_review_queue(
     decisions: list[dict[str, str]],
     judgments: list[dict[str, str]],
@@ -4610,6 +4946,7 @@ def render_furnace_center(
             "- [审阅中心](./review-center.md)",
             "- [执行中心](./execution-center.md)",
             "- [执行审计](./execution-audit.md)",
+            "- [Agent Workbench](./agent-workbench.md)",
             "- [认知历史](./cognitive-history.md)",
             "- [判断资产](./judgment-assets.md)",
             "- [图谱视图](./graph-view.md)",
@@ -4759,6 +5096,7 @@ def render_furnace_center_html(
             '      <a href="../../wiki/indexes/review-center.md">审阅中心</a>',
             '      <a href="../../wiki/indexes/execution-center.md">执行中心</a>',
             '      <a href="../../wiki/indexes/execution-audit.md">执行审计</a>',
+            '      <a href="../../wiki/indexes/agent-workbench.md">Agent Workbench</a>',
             '      <a href="../../wiki/indexes/cognitive-history.md">认知历史</a>',
             '      <a href="../../wiki/indexes/judgment-assets.md">判断资产</a>',
             '      <a href="../../wiki/indexes/graph-view.md">图谱视图</a>',
@@ -4831,6 +5169,7 @@ def render_compile_status(
         "- 炉心面板位于 `furnace-center.md`。",
         "- 执行中心位于 `execution-center.md`。",
         "- 操作日志位于 `log.md`。",
+        "- Agent Workbench 位于 `agent-workbench.md`。",
         "- 决策索引位于 `decisions.md`。",
         "- 判断索引位于 `judgments.md`。",
         "- 判断资产盘点位于 `judgment-assets.md`。",
@@ -4884,6 +5223,7 @@ def render_master_index(
         "- [决策索引](./decisions.md)",
         "- [判断索引](./judgments.md)",
         "- [判断资产](./judgment-assets.md)",
+        "- [Agent Workbench](./agent-workbench.md)",
         "- [认知历史](./cognitive-history.md)",
         "- [协议总览](./protocols.md)",
         "- [炉心面板](./furnace-center.md)",
@@ -5037,6 +5377,14 @@ def execution_center_path(root: Path) -> Path:
 
 def execution_audit_path(root: Path) -> Path:
     return root / "wiki" / "indexes" / "execution-audit.md"
+
+
+def agent_workbench_path(root: Path) -> Path:
+    return root / "wiki" / "indexes" / "agent-workbench.md"
+
+
+def agent_pack_path(root: Path, role: str) -> Path:
+    return root / "output" / "agents" / f"{slugify(role)}.md"
 
 
 def execution_proposals_dir(root: Path) -> Path:
@@ -8617,6 +8965,24 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         )
     )
     recent_outputs = collect_recent_output_artifacts(root)
+    agent_packs = build_agent_packs(
+        root,
+        entries,
+        decision_pages,
+        judgment_pages,
+        memory,
+        protocol_state,
+        recent_outputs,
+        compiled_at,
+    )
+    changed_pages += int(
+        write_if_changed(
+            agent_workbench_path(root),
+            render_agent_workbench(agent_packs, compiled_at, protocol_state["active_protocol"]),
+        )
+    )
+    for pack in agent_packs:
+        changed_pages += int(write_if_changed(root / pack["path"], pack["content"]))
     changed_pages += int(
         write_if_changed(
             root / "wiki" / "indexes" / "furnace-center.md",
@@ -8892,6 +9258,7 @@ def render_report(
             "- [决策索引](../../wiki/indexes/decisions.md)",
             "- [判断索引](../../wiki/indexes/judgments.md)",
             "- [判断资产](../../wiki/indexes/judgment-assets.md)",
+            "- [Agent Workbench](../../wiki/indexes/agent-workbench.md)",
             "- [认知历史](../../wiki/indexes/cognitive-history.md)",
             "- [协议总览](../../wiki/indexes/protocols.md)",
             "- [审阅队列](../../wiki/indexes/review-queue.md)",
@@ -9017,6 +9384,7 @@ def render_slides(
             "- `wiki/indexes/decisions.md`",
             "- `wiki/indexes/judgments.md`",
             "- `wiki/indexes/judgment-assets.md`",
+            "- `wiki/indexes/agent-workbench.md`",
             "- `wiki/indexes/cognitive-history.md`",
             "- `wiki/indexes/protocols.md`",
             "- `wiki/indexes/review-queue.md`",
@@ -9125,6 +9493,7 @@ def render_figure_brief(
             "- [决策索引](../../wiki/indexes/decisions.md)",
             "- [判断索引](../../wiki/indexes/judgments.md)",
             "- [判断资产](../../wiki/indexes/judgment-assets.md)",
+            "- [Agent Workbench](../../wiki/indexes/agent-workbench.md)",
             "- [认知历史](../../wiki/indexes/cognitive-history.md)",
             "- [协议总览](../../wiki/indexes/protocols.md)",
             "- [审阅队列](../../wiki/indexes/review-queue.md)",
@@ -9266,6 +9635,7 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
             "wiki/indexes/decisions.md",
             "wiki/indexes/judgments.md",
             "wiki/indexes/judgment-assets.md",
+            "wiki/indexes/agent-workbench.md",
             "wiki/indexes/cognitive-history.md",
             "wiki/indexes/protocols.md",
             "wiki/indexes/review-queue.md",
@@ -10496,6 +10866,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/decisions.md": "Missing decisions index page.",
         "wiki/indexes/judgments.md": "Missing judgments index page.",
         "wiki/indexes/judgment-assets.md": "Missing judgment asset dashboard page.",
+        "wiki/indexes/agent-workbench.md": "Missing agent workbench page.",
         "wiki/indexes/cognitive-history.md": "Missing cognitive history page.",
         "wiki/indexes/rewrite-proposals.md": "Missing rewrite proposal index page.",
         "wiki/indexes/protocols.md": "Missing protocol dashboard page.",
@@ -10559,6 +10930,13 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         findings.append(Finding("error", relative_path(root, execution_audit_html), "Missing execution audit HTML view."))
     if manifest["entries"] and not review_html.exists():
         findings.append(Finding("error", relative_path(root, review_html), "Missing review center HTML view."))
+    if manifest["entries"]:
+        for pack in AGENT_PACK_LIBRARY:
+            pack_path = agent_pack_path(root, str(pack["role"]))
+            if not pack_path.exists():
+                findings.append(
+                    Finding("error", relative_path(root, pack_path), f"Missing agent pack for role `{pack['role']}`.")
+                )
     if memory_state.exists():
         try:
             memory = json.loads(memory_state.read_text(encoding="utf-8"))
