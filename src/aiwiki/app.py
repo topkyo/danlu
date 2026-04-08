@@ -2065,6 +2065,17 @@ def rewrite_proposal_status_rank(status: str) -> int:
     return {"proposed": 0, "accepted": 1, "deferred": 2, "applied": 3, "rejected": 4}.get(status, 9)
 
 
+def html_safe_json_literal(value: Any) -> str:
+    return (
+        json.dumps(value, ensure_ascii=False)
+        .replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
+
+
 def sort_curated_pages(pages: list[dict[str, str]]) -> list[dict[str, str]]:
     def sort_key(page: dict[str, str]) -> tuple[str, str]:
         return (page.get("reviewed_at", "") or page.get("updated_at", ""), page["title"].lower())
@@ -4087,12 +4098,11 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
         if component.get("id")
     )
     node_rows_markup = "".join(node_rows) or "<li>当前没有可浏览的节点。</li>"
-    node_payload = json.dumps(
+    node_payload = html_safe_json_literal(
         {
             "nodes": node_records,
             "defaultNodeId": node_records[0]["id"] if node_records else "",
-        },
-        ensure_ascii=False,
+        }
     )
 
     empty_state = ""
@@ -5470,7 +5480,8 @@ def reconcile_concept_rewrite_proposals(
         if status not in REWRITE_PROPOSAL_STATUSES:
             status = "proposed"
         previous_signature = str(previous.get("source_signature") or "")
-        if previous_signature and previous_signature != source_signature and status in {"applied", "rejected"}:
+        signature_changed = bool(previous_signature and previous_signature != source_signature)
+        if signature_changed and status in {"applied", "rejected"}:
             status = "proposed"
         candidate_markdown = str(previous.get("candidate_markdown") or "")
         candidate_digest = str(previous.get("candidate_digest") or concept_rewrite_proposal_digest(candidate_markdown))
@@ -5479,6 +5490,13 @@ def reconcile_concept_rewrite_proposals(
         reviewed_at = str(previous.get("reviewed_at") or "")
         review_note = str(previous.get("review_note") or "")
         applied_at = str(previous.get("applied_at") or "")
+        if signature_changed:
+            status = "proposed"
+            candidate_markdown = ""
+            candidate_digest = ""
+            reviewed_at = ""
+            review_note = ""
+            applied_at = ""
         record = {
             "slug": slug,
             "title": str(candidate.get("title") or snapshot.get("title") or slug),
@@ -5501,9 +5519,10 @@ def reconcile_concept_rewrite_proposals(
             "pending_review": "true" if rewrite_proposal_needs_review(status) else "false",
             "candidate_markdown": candidate_markdown,
             "candidate_digest": candidate_digest,
-            "apply_ready": bool(status == "accepted" and candidate_markdown),
+            "apply_ready": False,
             "current_summary": str(snapshot.get("summary") or ""),
         }
+        record["apply_ready"] = rewrite_proposal_is_apply_ready(root, record)
         active_records.append(record)
         seen_slugs.add(slug)
 
@@ -5692,7 +5711,7 @@ def store_concept_rewrite_candidate(
     digest = concept_rewrite_proposal_digest(candidate_markdown)
     previous_digest = str(target.get("candidate_digest") or "")
     previous_status = str(target.get("status") or "proposed")
-    if previous_digest and previous_digest != digest and previous_status in {"applied", "rejected"}:
+    if previous_digest and previous_digest != digest and previous_status != "proposed":
         target["status"] = "proposed"
         target["reviewed_at"] = ""
         target["review_note"] = ""
@@ -5717,7 +5736,7 @@ def store_concept_rewrite_candidate(
         }
     )
     target["pending_review"] = "true" if rewrite_proposal_needs_review(str(target.get("status") or "proposed")) else "false"
-    target["apply_ready"] = bool(str(target.get("status") or "") == "accepted" and target.get("candidate_markdown"))
+    target["apply_ready"] = rewrite_proposal_is_apply_ready(root, target)
     save_concept_rewrite_state(root, {"version": 1, "proposals": proposals})
     write_if_changed(root / str(target["proposal_path"]), render_concept_rewrite_proposal_page(target))
     return {
@@ -6563,12 +6582,14 @@ def review_concept_rewrite(
             break
     if target is None:
         raise FileNotFoundError(f"Concept rewrite proposal not found: {slug}")
+    if status == "accepted" and not rewrite_proposal_candidate_is_current(root, target):
+        raise RuntimeError("Concept rewrite proposal candidate is stale or invalid. Run run-compile again before accepting.")
     reviewed_at = utc_now()
     target["status"] = status
     target["reviewed_at"] = reviewed_at
     target["review_note"] = note or ""
     target["pending_review"] = "true" if rewrite_proposal_needs_review(status) else "false"
-    target["apply_ready"] = bool(status == "accepted" and target.get("candidate_markdown"))
+    target["apply_ready"] = rewrite_proposal_is_apply_ready(root, target)
     if status != "applied":
         target["applied_at"] = str(target.get("applied_at") or "")
     save_concept_rewrite_state(root, {"version": 1, "proposals": proposals})
@@ -6610,6 +6631,39 @@ def _validate_rewrite_candidate_markdown(
     normalized_candidate_sources = [str(item) for item in candidate_source_pages if isinstance(item, str)]
     if normalized_candidate_sources != source_pages:
         raise RuntimeError("Rewrite candidate source_pages no longer match the target concept.")
+
+
+def rewrite_proposal_candidate_is_current(root: Path, proposal: dict[str, Any]) -> bool:
+    slug = str(proposal.get("slug") or "")
+    candidate_markdown = str(proposal.get("candidate_markdown") or "")
+    if not slug or not candidate_markdown:
+        return False
+    concept_path = root / str(proposal.get("target_path") or f"wiki/concepts/{slug}.md")
+    if not concept_path.exists():
+        return False
+    current_frontmatter = parse_frontmatter(concept_path.read_text(encoding="utf-8", errors="replace"))
+    current_source_signature = str(current_frontmatter.get("source_signature") or "")
+    expected_source_signature = str(proposal.get("source_signature") or "")
+    if expected_source_signature and current_source_signature != expected_source_signature:
+        return False
+    current_source_pages = current_frontmatter.get("source_pages", [])
+    if not isinstance(current_source_pages, list):
+        return False
+    normalized_source_pages = [str(item) for item in current_source_pages if isinstance(item, str)]
+    try:
+        _validate_rewrite_candidate_markdown(
+            candidate_markdown,
+            slug,
+            expected_source_signature,
+            normalized_source_pages,
+        )
+    except RuntimeError:
+        return False
+    return True
+
+
+def rewrite_proposal_is_apply_ready(root: Path, proposal: dict[str, Any]) -> bool:
+    return str(proposal.get("status") or "") == "accepted" and rewrite_proposal_candidate_is_current(root, proposal)
 
 
 def apply_concept_rewrite(root: Path, slug: str, *, note: str | None = None) -> dict[str, Any]:
@@ -7504,6 +7558,14 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                 if proposal.get("apply_ready") and not proposal.get("candidate_markdown"):
                     findings.append(
                         Finding("error", relative_path(root, proposal_path), "Rewrite proposal is marked apply_ready but has no candidate markdown.")
+                    )
+                if proposal.get("apply_ready") and not rewrite_proposal_is_apply_ready(root, proposal):
+                    findings.append(
+                        Finding(
+                            "error",
+                            relative_path(root, proposal_path),
+                            "Rewrite proposal is marked apply_ready but no longer matches the current concept sources.",
+                        )
                     )
 
     concept_pages = sorted((root / "wiki" / "concepts").glob("*.md"))

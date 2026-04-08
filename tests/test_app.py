@@ -621,6 +621,59 @@ class AiwikiFlowTests(unittest.TestCase):
         proposal_text = proposal_path.read_text(encoding="utf-8")
         self.assertIn("已应用", proposal_text)
 
+    def test_compile_invalidates_accepted_rewrite_when_source_signature_changes(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        source_page.write_text(
+            source_page.read_text(encoding="utf-8").replace(
+                "- Pending LLM summary.",
+                "- Transformer scale improves capability and raises compute demand.",
+            ),
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+
+        for concept_page in sorted((self.root / "wiki" / "concepts").glob("*.md")):
+            concept_page.write_text(
+                concept_page.read_text(encoding="utf-8").replace(
+                    "- This concept currently appears",
+                    f"- Existing synthesis for {concept_page.stem} appears",
+                ),
+                encoding="utf-8",
+            )
+        compile_wiki(self.root)
+
+        memory = load_machine_memory(self.root)
+        candidate = memory["health"]["concept_quality"]["rewrite_candidates"][0]
+        concept_page = self.root / candidate["path"]
+        current = concept_page.read_text(encoding="utf-8")
+        updated = current.replace("Existing synthesis", "Rewritten synthesis")
+
+        result = run_compile(self.root, client=StubClient([updated]), limit=1)
+        proposal_path = self.root / result["updated_rewrite_proposal_pages"][0]
+        slug = proposal_path.stem
+
+        review = review_concept_rewrite(self.root, slug, "accepted", note="Looks grounded.")
+        self.assertTrue(review["apply_ready"])
+
+        stored_source = self.root / entry["stored_path"]
+        stored_source.write_text(
+            "# Transformer Scaling\n\nLatency throughput cache locality changed after review.\n",
+            encoding="utf-8",
+        )
+
+        compile_wiki(self.root)
+
+        state = json.loads((self.root / ".aiwiki" / "state" / "concept-rewrite-proposals.json").read_text(encoding="utf-8"))
+        proposal = next(item for item in state["proposals"] if item["slug"] == slug)
+        self.assertEqual(proposal["status"], "proposed")
+        self.assertFalse(proposal["apply_ready"])
+        self.assertEqual(proposal["candidate_markdown"], "")
+        self.assertEqual(proposal["reviewed_at"], "")
+        proposal_text = (self.root / proposal["proposal_path"]).read_text(encoding="utf-8")
+        self.assertIn("当前还没有生成候选重写内容", proposal_text)
+
     def test_apply_machine_memory_action_writes_manual_link_state(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -1698,6 +1751,18 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("graph-node-browser", payload)
         self.assertIn("graphUiData", payload)
         self.assertIn("节点详情", payload)
+
+    def test_compile_escapes_script_sensitive_text_in_machine_memory_graph_html(self) -> None:
+        scripted = self.root / "scripted.md"
+        scripted.write_text("# Scripted Source\n\nGraph payload should stay safe.\n", encoding="utf-8")
+        ingest_source(self.root, str(scripted), title="Bad </script> \u2028 title")
+
+        compile_wiki(self.root)
+
+        payload = (self.root / "output" / "graph" / "machine-memory.html").read_text(encoding="utf-8")
+        self.assertIn("\\u003c/script\\u003e", payload)
+        self.assertIn("\\u2028", payload)
+        self.assertNotIn("Bad </script> \u2028 title", payload)
 
     def test_lint_reports_missing_indexes_and_broken_concept_source_refs(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
