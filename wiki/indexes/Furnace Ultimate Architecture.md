@@ -52,6 +52,16 @@ status: "active"
 
 ## 总体架构
 
+为了和 [[wiki/indexes/Alchemy Furnace|炼丹炉架构]] 保持一致，这份终局草图继续显式保留：
+
+- `Schema / Protocol` 作为独立的运行时层
+- `Outputs` 作为独立的产物层
+
+其中：
+
+- `Schema / Protocol` 是跨层约束，不只是某一步的附属配置
+- `Outputs` 是人和 agent 的可消费产物，不只是临时副作用
+
 ```text
                  ┌──────────────────────────┐
                  │       Human Owner        │
@@ -88,27 +98,42 @@ status: "active"
                               │
                               ▼
 ┌───────────────────────────────────────────────────────────┐
-│ 5. Governance Layer                                      │
+│ 5. Schema / Protocol Layer                               │
+│ schema / prompts / protocols / policy                    │
+│ 作为跨层运行时约束，塑造 compile/judgment/review/execute │
+└───────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌───────────────────────────────────────────────────────────┐
+│ 6. Governance Layer                                      │
 │ review / aging / escalation / drift / lint / repair      │
 │ 负责长期一致性、复审和知识卫生                            │
 └───────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌───────────────────────────────────────────────────────────┐
-│ 6. Execution Layer                                       │
+│ 7. Execution Layer                                       │
 │ dry-run / bundle / apply / receipt / revert / audit      │
 │ 只安全执行低风险动作，高风险永远停在人类边界外            │
 └───────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌───────────────────────────────────────────────────────────┐
-│ 7. Product Shell                                         │
-│ furnace-center / review-center / graph-view / audit      │
+│ 8. Outputs Layer                                         │
+│ reports / slides / figures / bundles / receipts / packs  │
+│ 人和 agent 的可消费产物层，同时也是高价值回流入口          │
+└───────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌───────────────────────────────────────────────────────────┐
+│ 9. Product Shell                                         │
+│ furnace-center / review-center / execution-center        │
+│ graph-view / execution-audit                             │
 │ 人通过统一工作台和系统交互                                │
 └───────────────────────────────────────────────────────────┘
 ```
 
-## 七层解释
+## 九层解释
 
 ### 1. Evidence Fabric
 
@@ -173,7 +198,24 @@ status: "active"
 
 但它永远不替代人读的 wiki。
 
-### 5. Governance Layer
+### 5. Schema / Protocol Layer
+
+职责：
+
+- 定义系统如何 ingest、compile、cite、review、lint、write back
+- 把“一个统一炉子，多套协议”真正落成 runtime 规则
+- 决定不同领域下 query、judgment、review、nightly、execution 的偏置
+
+这里至少应该存在：
+
+- `schema/`
+- `schema/protocols/`
+- prompts / policy / taxonomy
+- review 和 execution 的策略约束
+
+这层不是静态文档，而是运行时的规则平面。
+
+### 6. Governance Layer
 
 职责：
 
@@ -184,7 +226,7 @@ status: "active"
 
 它的意义是把系统从“会长内容”变成“会维护知识质量”。
 
-### 6. Execution Layer
+### 7. Execution Layer
 
 职责：
 
@@ -203,7 +245,25 @@ status: "active"
 
 **只在安全边界内自动化。**
 
-### 7. Product Shell
+### 8. Outputs Layer
+
+职责：
+
+- 把知识层、判断层和执行层转成可消费产物
+- 为人、agent 和后续回流提供稳定 artifact
+
+这里至少应该包括：
+
+- reports
+- slides
+- figures
+- execution bundles
+- execution receipts
+- review packs / decision memo / SOP 草案
+
+这层必须显式存在，因为它决定系统如何把内部结构变成外部可用结果。
+
+### 9. Product Shell
 
 职责：
 
@@ -216,6 +276,7 @@ status: "active"
 - 审阅
 - 修复
 - 图谱
+- 执行中心
 - 执行
 - 审计
 

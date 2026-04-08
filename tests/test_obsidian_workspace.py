@@ -64,6 +64,14 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         ):
             self.assertTrue((self.root / relative).exists(), relative)
 
+    def test_ultimate_architecture_keeps_core_layers_visible(self) -> None:
+        text = (self.root / "wiki" / "indexes" / "Furnace Ultimate Architecture.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("Schema / Protocol Layer", text)
+        self.assertIn("Outputs Layer", text)
+        self.assertIn("execution-center", text)
+
 
 if __name__ == "__main__":
     unittest.main()
