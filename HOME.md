@@ -93,6 +93,7 @@ kind: "dashboard"
 - `decision / judgment` 的默认 review window
 - `file-back` 生成的 `decision / judgment` 模板
 - recurring promotion 的标题和分类语义
+- `review-queue`、`review-center`、`repair-backlog` 与 machine-memory action queue 的优先级焦点
 
 ## 使用边界
 

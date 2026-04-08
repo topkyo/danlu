@@ -426,6 +426,62 @@ PROTOCOL_PROMOTION_PREFIXES: dict[str, dict[str, str]] = {
     "research": {"decision": "研发决策沉淀", "judgment": "研发判断沉淀"},
 }
 
+PROTOCOL_FOCUS_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "general": (),
+    "investing": (
+        "company",
+        "thesis",
+        "catalyst",
+        "risk",
+        "invalidation",
+        "valuation",
+        "earnings",
+        "guidance",
+        "moat",
+        "position",
+        "仓位",
+        "财报",
+        "估值",
+        "护城河",
+        "催化剂",
+        "失效条件",
+    ),
+    "research": (
+        "paper",
+        "repo",
+        "benchmark",
+        "experiment",
+        "architecture",
+        "regression",
+        "latency",
+        "throughput",
+        "bottleneck",
+        "failure mode",
+        "tradeoff",
+        "实验",
+        "基准",
+        "架构",
+        "回归",
+        "延迟",
+        "吞吐",
+        "瓶颈",
+    ),
+}
+
+PROTOCOL_ACTION_KIND_WEIGHTS: dict[str, dict[str, int]] = {
+    "general": {},
+    "investing": {
+        "split-overloaded-concept": 2,
+        "add-source-concept-link": 1,
+        "monitor-bridge-concept": 1,
+    },
+    "research": {
+        "expand-singleton-concept": 2,
+        "connect-isolated-source": 2,
+        "split-overloaded-concept": 1,
+    },
+}
+
 TEXT_EXTENSIONS = {
     ".csv",
     ".json",
@@ -797,6 +853,43 @@ def protocol_runtime_summary(slug: str) -> list[str]:
         f"- Auto-promotion 标题前缀：decision `{prefixes['decision']}` / judgment `{prefixes['judgment']}`"
     )
     return lines
+
+
+def protocol_focus_score(protocol: str, text: str) -> int:
+    normalized = " ".join(re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]+", text.lower()))
+    return sum(1 for marker in PROTOCOL_FOCUS_KEYWORDS.get(protocol, ()) if marker in normalized)
+
+
+def page_focus_score(active_protocol: str, page: dict[str, str]) -> int:
+    score = protocol_focus_score(
+        active_protocol,
+        " ".join(
+            [
+                str(page.get("title") or ""),
+                str(page.get("path") or ""),
+                str(page.get("status") or ""),
+            ]
+        ),
+    )
+    if str(page.get("protocol") or "") == active_protocol:
+        score += 10
+    return score
+
+
+def action_focus_score(active_protocol: str, action: dict[str, Any]) -> int:
+    score = protocol_focus_score(
+        active_protocol,
+        " ".join(
+            [
+                str(action.get("title") or ""),
+                str(action.get("reason") or ""),
+                str(action.get("primary_path") or ""),
+                str(action.get("secondary_path") or ""),
+            ]
+        ),
+    )
+    score += PROTOCOL_ACTION_KIND_WEIGHTS.get(active_protocol, {}).get(str(action.get("kind") or ""), 0)
+    return score
 
 
 def set_active_protocol(root: Path, protocol: str) -> dict[str, Any]:
@@ -1595,11 +1688,25 @@ def evaluate_page_aging(page: dict[str, str], now: datetime | None = None) -> di
     }
 
 
-def collect_aging_signals(decisions: list[dict[str, str]], judgments: list[dict[str, str]]) -> dict[str, list[dict[str, str]]]:
+def collect_aging_signals(
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    *,
+    active_protocol: str = DEFAULT_PROTOCOL,
+) -> dict[str, list[dict[str, str]]]:
     pages = decisions + judgments
-    overdue = [page for page in pages if page.get("overdue_review") == "true"]
-    escalated = [page for page in pages if page.get("escalation_candidate") == "true"]
-    scheduled = [page for page in pages if page.get("aging_state") == "scheduled"]
+    overdue = sorted(
+        [page for page in pages if page.get("overdue_review") == "true"],
+        key=lambda page: (-page_focus_score(active_protocol, page), page.get("revisit_after", "") or "9999", page["title"].lower()),
+    )
+    escalated = sorted(
+        [page for page in pages if page.get("escalation_candidate") == "true"],
+        key=lambda page: (-page_focus_score(active_protocol, page), page.get("escalate_after", "") or "9999", page["title"].lower()),
+    )
+    scheduled = sorted(
+        [page for page in pages if page.get("aging_state") == "scheduled"],
+        key=lambda page: (-page_focus_score(active_protocol, page), page.get("revisit_after", "") or "9999", page["title"].lower()),
+    )
     return {
         "overdue": overdue,
         "escalated": escalated,
@@ -1901,9 +2008,32 @@ def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[d
     return sort_curated_pages(enriched)
 
 
-def review_queue(decisions: list[dict[str, str]], judgments: list[dict[str, str]]) -> dict[str, list[dict[str, str]]]:
-    pending_decisions = [page for page in decisions if page.get("pending_review") == "true"]
-    pending_judgments = [page for page in judgments if page.get("pending_review") == "true"]
+def review_queue(
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    *,
+    active_protocol: str = DEFAULT_PROTOCOL,
+) -> dict[str, list[dict[str, str]]]:
+    pending_decisions = sorted(
+        [page for page in decisions if page.get("pending_review") == "true"],
+        key=lambda page: (
+            0 if page.get("escalation_candidate") == "true" else 1,
+            0 if page.get("overdue_review") == "true" else 1,
+            -page_focus_score(active_protocol, page),
+            page.get("revisit_after", "") or "9999",
+            page["title"].lower(),
+        ),
+    )
+    pending_judgments = sorted(
+        [page for page in judgments if page.get("pending_review") == "true"],
+        key=lambda page: (
+            0 if page.get("escalation_candidate") == "true" else 1,
+            0 if page.get("overdue_review") == "true" else 1,
+            -page_focus_score(active_protocol, page),
+            page.get("revisit_after", "") or "9999",
+            page["title"].lower(),
+        ),
+    )
     reviewed = [
         page
         for page in decisions + judgments
@@ -1921,6 +2051,7 @@ def collect_machine_memory_actions(root: Path) -> list[dict[str, Any]]:
     state = load_machine_memory_action_state(root)
     actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
     now = datetime.now(timezone.utc)
+    active_protocol = load_protocol_state(root)["active_protocol"]
     for action in actions:
         action.setdefault("status", "proposed")
         action.setdefault("active", True)
@@ -1932,6 +2063,7 @@ def collect_machine_memory_actions(root: Path) -> list[dict[str, Any]]:
         action.setdefault("occurrences", 0)
         action.setdefault("pending_review", "true" if action_needs_review(str(action.get("status"))) else "false")
         action.update(evaluate_page_aging(action, now=now))
+        action["focus_score"] = action_focus_score(active_protocol, action)
     priority_order = {"high": 0, "medium": 1, "low": 2}
     status_order = {"proposed": 0, "accepted": 1, "deferred": 2, "resolved": 3, "rejected": 4}
     return sorted(
@@ -1939,6 +2071,9 @@ def collect_machine_memory_actions(root: Path) -> list[dict[str, Any]]:
         key=lambda item: (
             0 if item.get("active") else 1,
             status_order.get(str(item.get("status")), 9),
+            0 if item.get("escalation_candidate") == "true" else 1,
+            0 if item.get("overdue_review") == "true" else 1,
+            -int(item.get("focus_score", 0)),
             priority_order.get(str(item.get("priority")), 9),
             -int(item.get("occurrences", 0)),
             str(item.get("title", "")).lower(),
@@ -2013,10 +2148,11 @@ def describe_machine_memory_action(action: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def build_machine_memory_repair_plan(health: dict[str, Any]) -> dict[str, Any]:
+def build_machine_memory_repair_plan(health: dict[str, Any], *, active_protocol: str = DEFAULT_PROTOCOL) -> dict[str, Any]:
     active_actions = [dict(action) for action in health.get("actions", []) if isinstance(action, dict)]
     inactive_actions = [dict(action) for action in health.get("inactive_actions", []) if isinstance(action, dict)]
     for action in active_actions + inactive_actions:
+        action["focus_score"] = action_focus_score(active_protocol, action)
         action.update(describe_machine_memory_action(action))
     ready_actions = [action for action in active_actions if action.get("status") == "accepted"]
     triage_actions = [action for action in active_actions if action.get("status") == "proposed"]
@@ -2063,6 +2199,7 @@ def build_machine_memory_repair_plan(health: dict[str, Any]) -> dict[str, Any]:
                 "actions": sorted(
                     batch["actions"],
                     key=lambda item: (
+                        -int(item.get("focus_score", 0)),
                         action_priority_rank(str(item.get("priority") or "")),
                         -int(item.get("occurrences", 0)),
                         str(item.get("title", "")).lower(),
@@ -2074,6 +2211,7 @@ def build_machine_memory_repair_plan(health: dict[str, Any]) -> dict[str, Any]:
         key=lambda item: (
             0 if item["escalated"] else 1,
             0 if item["overdue"] else 1,
+            -max((int(action.get("focus_score", 0)) for action in item["actions"]), default=0),
             item["priority_rank"],
             item["label"],
         ),
@@ -2379,18 +2517,28 @@ def render_curated_index(
     return "\n".join(lines) + "\n"
 
 
-def render_review_queue(decisions: list[dict[str, str]], judgments: list[dict[str, str]], compiled_at: str) -> str:
-    queue = review_queue(decisions, judgments)
-    aging = collect_aging_signals(decisions, judgments)
+def render_review_queue(
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    compiled_at: str,
+    *,
+    active_protocol: str = DEFAULT_PROTOCOL,
+) -> str:
+    queue = review_queue(decisions, judgments, active_protocol=active_protocol)
+    aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
     lines = [
         "# 审阅队列",
         "",
         f"- 最近编译时间：`{compiled_at}`",
+        f"- 当前协议焦点：`{active_protocol}` ({protocol_title(active_protocol)})",
         f"- 待审决策：`{len(queue['pending_decisions'])}`",
         f"- 待审判断：`{len(queue['pending_judgments'])}`",
         f"- 最近已审项目：`{len(queue['recently_reviewed'])}`",
         f"- 已到期复审：`{len(aging['overdue'])}`",
         f"- 需要升级处理：`{len(aging['escalated'])}`",
+        "",
+        "## 协议审阅焦点",
+        *[f"- {line}" for line in PROTOCOL_LIBRARY.get(active_protocol, {}).get("review", [])],
         "",
         "## 待审决策",
     ]
@@ -2426,13 +2574,20 @@ def render_review_queue(decisions: list[dict[str, str]], judgments: list[dict[st
     return "\n".join(lines) + "\n"
 
 
-def render_aging_report(decisions: list[dict[str, str]], judgments: list[dict[str, str]], compiled_at: str) -> str:
-    aging = collect_aging_signals(decisions, judgments)
+def render_aging_report(
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    compiled_at: str,
+    *,
+    active_protocol: str = DEFAULT_PROTOCOL,
+) -> str:
+    aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
     pages = decisions + judgments
     lines = [
         "# Aging 报告",
         "",
         f"- 最近编译时间：`{compiled_at}`",
+        f"- 当前协议焦点：`{active_protocol}` ({protocol_title(active_protocol)})",
         f"- 已到期复审：`{len(aging['overdue'])}`",
         f"- 需要升级处理：`{len(aging['escalated'])}`",
         f"- 已排期复审：`{len(aging['scheduled'])}`",
@@ -2478,9 +2633,11 @@ def render_review_center_html(
     judgments: list[dict[str, str]],
     memory: dict[str, Any],
     compiled_at: str,
+    *,
+    active_protocol: str = DEFAULT_PROTOCOL,
 ) -> str:
-    queue = review_queue(decisions, judgments)
-    aging = collect_aging_signals(decisions, judgments)
+    queue = review_queue(decisions, judgments, active_protocol=active_protocol)
+    aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
     health = memory.get("health", {})
     plan = health.get("repair_plan", {})
     concept_quality = health.get("concept_quality", {})
@@ -2572,7 +2729,7 @@ def render_review_center_html(
             "<main>",
             '  <section class="panel">',
             "    <h1>Review Center</h1>",
-            f"    <p>编译时间：<code>{html.escape(compiled_at)}</code>。这是炼丹炉的人用审阅 cockpit：把 review、aging、repair 和 concept rewrite 收在一个地方。</p>",
+            f"    <p>编译时间：<code>{html.escape(compiled_at)}</code>。当前协议焦点：<code>{html.escape(active_protocol)}</code>。这是炼丹炉的人用审阅 cockpit：把 review、aging、repair 和 concept rewrite 收在一个地方。</p>",
             '    <div class="meta">',
             *[
                 f'      <div class="card"><div class="metric">{html.escape(value)}</div><div class="metric-label">{html.escape(label)}</div></div>'
@@ -2622,8 +2779,8 @@ def render_compile_status(
     protocol_state: dict[str, Any],
     compiled_at: str,
 ) -> str:
-    queue = review_queue(decisions, judgments)
-    aging = collect_aging_signals(decisions, judgments)
+    queue = review_queue(decisions, judgments, active_protocol=protocol_state["active_protocol"])
+    aging = collect_aging_signals(decisions, judgments, active_protocol=protocol_state["active_protocol"])
     lines = [
         "# 编译状态",
         "",
@@ -2668,8 +2825,8 @@ def render_master_index(
     protocol_state: dict[str, Any],
     compiled_at: str,
 ) -> str:
-    queue = review_queue(decisions, judgments)
-    aging = collect_aging_signals(decisions, judgments)
+    queue = review_queue(decisions, judgments, active_protocol=protocol_state["active_protocol"])
+    aging = collect_aging_signals(decisions, judgments, active_protocol=protocol_state["active_protocol"])
     lines = [
         "# 知识库总索引",
         "",
@@ -4882,13 +5039,23 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     changed_pages += int(
         write_if_changed(
             root / "wiki" / "indexes" / "review-queue.md",
-            render_review_queue(decision_pages, judgment_pages, compiled_at),
+            render_review_queue(
+                decision_pages,
+                judgment_pages,
+                compiled_at,
+                active_protocol=protocol_state["active_protocol"],
+            ),
         )
     )
     changed_pages += int(
         write_if_changed(
             aging_report_path(root),
-            render_aging_report(decision_pages, judgment_pages, compiled_at),
+            render_aging_report(
+                decision_pages,
+                judgment_pages,
+                compiled_at,
+                active_protocol=protocol_state["active_protocol"],
+            ),
         )
     )
     changed_pages += int(
@@ -4922,7 +5089,10 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     memory = build_machine_memory(root, entries, concepts, previews, entry_terms, compiled_at)
     memory["health"] = build_machine_memory_health(memory)
     memory["health"].update(reconcile_machine_memory_actions(root, memory["health"], compiled_at=compiled_at))
-    memory["health"]["repair_plan"] = build_machine_memory_repair_plan(memory["health"])
+    memory["health"]["repair_plan"] = build_machine_memory_repair_plan(
+        memory["health"],
+        active_protocol=protocol_state["active_protocol"],
+    )
     memory["health"]["concept_quality"] = build_concept_quality(root, memory)
     memory["digest"] = machine_memory_digest(memory)
     graph = build_machine_memory_graph(memory)
@@ -4952,7 +5122,16 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         write_if_changed(machine_memory_repair_plan_path(root), render_machine_memory_repair_plan(memory))
     )
     changed_pages += int(
-        write_if_changed(review_center_html_path(root), render_review_center_html(decision_pages, judgment_pages, memory, compiled_at))
+        write_if_changed(
+            review_center_html_path(root),
+            render_review_center_html(
+                decision_pages,
+                judgment_pages,
+                memory,
+                compiled_at,
+                active_protocol=protocol_state["active_protocol"],
+            ),
+        )
     )
     changed_pages += int(write_if_changed(concept_quality_path(root), render_concept_quality(memory)))
     changed_pages += int(write_if_changed(graph_health_report_path(root), render_graph_health(memory)))
@@ -6368,6 +6547,7 @@ def render_repair_backlog(
     compile_result: dict[str, Any],
     lint_result: dict[str, Any],
     memory: dict[str, Any],
+    active_protocol: str,
     promotion_result: dict[str, Any],
     pending_sources: list[str],
     placeholder_concepts: list[str],
@@ -6401,6 +6581,7 @@ def render_repair_backlog(
         "# 修复待办",
         "",
         f"- 生成时间：`{generated_at}`",
+        f"- 当前协议焦点：`{active_protocol}` ({protocol_title(active_protocol)})",
         f"- 本轮编译改动页数：`{compile_result.get('changed_pages', 0)}`",
         f"- 机器记忆是否变化：`{compile_result.get('machine_memory_changed', False)}`",
         f"- Lint 错误：`{lint_result['counts']['errors']}`",
@@ -6434,6 +6615,11 @@ def render_repair_backlog(
         "",
         "## 优先队列",
     ]
+    if PROTOCOL_LIBRARY.get(active_protocol, {}).get("nightly"):
+        lines.extend(["### 协议 Nightly 焦点"])
+        for focus in PROTOCOL_LIBRARY.get(active_protocol, {}).get("nightly", []):
+            lines.append(f"- {focus}")
+        lines.append("")
     if error_findings:
         lines.append(f"1. 先解决 `{len(error_findings)}` 个 lint 错误，再继续依赖下游输出。")
     if pending_sources:
@@ -6709,9 +6895,9 @@ def write_nightly_health(
     placeholder_concepts = placeholder_concept_slugs(root)
     decisions = collect_curated_pages(root, "decisions", "decision")
     judgments = collect_curated_pages(root, "judgments", "judgment")
-    queue = review_queue(decisions, judgments)
-    aging = collect_aging_signals(decisions, judgments)
     protocol_state = load_protocol_state(root)
+    queue = review_queue(decisions, judgments, active_protocol=protocol_state["active_protocol"])
+    aging = collect_aging_signals(decisions, judgments, active_protocol=protocol_state["active_protocol"])
     generated_at = utc_now()
     state = {
         "generated_at": generated_at,
@@ -6721,6 +6907,8 @@ def write_nightly_health(
             "state_path": protocol_state["state_path"],
             "available_protocols": protocol_state["available_protocols"],
             "dashboard_path": "wiki/indexes/protocols.md",
+            "review_focus": PROTOCOL_LIBRARY.get(protocol_state["active_protocol"], {}).get("review", []),
+            "nightly_focus": PROTOCOL_LIBRARY.get(protocol_state["active_protocol"], {}).get("nightly", []),
         },
         "compile": compile_result,
         "lint": {
@@ -6801,6 +6989,7 @@ def write_nightly_health(
         compile_result,
         lint_result,
         memory,
+        protocol_state["active_protocol"],
         promotion_result,
         pending_sources,
         placeholder_concepts,

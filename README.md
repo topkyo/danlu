@@ -6,7 +6,7 @@
 日常在 Obsidian 里使用时，入口是 [HOME.md](./HOME.md)。
 关于“一个统一炉子，多个领域协议”的原则，见 [Furnace Protocols.md](<./wiki/indexes/Furnace Protocols.md>)。
 协议运行时入口见 [protocols.md](<./wiki/indexes/protocols.md>)；当前 starter library 提供 `general / investing / research` 三套协议。
-当前协议不只是 metadata：它已经会改变 `decision / judgment` 的默认 review window、`file-back` 模板，以及 recurring promotion 的标题与分类语义。
+当前协议不只是 metadata：它已经会改变 `decision / judgment` 的默认 review window、`file-back` 模板、recurring promotion 的标题与分类语义，以及 `review / nightly / repair` 的优先级焦点。
 
 ## 它是什么
 
@@ -102,6 +102,7 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare A and B" --format rep
 - `decision / judgment` 的默认 `revisit_after / escalate_after` 会按协议变化
 - `file-back` 生成的 `decision / judgment` 页面结构会按协议变化
 - recurring promotion 的标题前缀和分类提示会按协议变化
+- `review-queue`、`review-center`、`repair-backlog` 和 machine-memory action queue 会按 active protocol 调整排序与焦点
 
 ### 3. 查询
 

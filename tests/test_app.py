@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from aiwiki.app import (
     ask_question,
+    collect_machine_memory_actions,
     compile_wiki,
     ensure_layout,
     file_back,
@@ -25,6 +26,7 @@ from aiwiki.app import (
     render_frontmatter,
     review_machine_memory_action,
     review_page,
+    save_machine_memory_action_state,
     set_active_protocol,
 )
 from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
@@ -767,6 +769,22 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(int(revisit_delta.total_seconds() // 86400), 2)
         self.assertEqual(int(escalate_delta.total_seconds() // 86400), 5)
 
+    def test_nightly_prioritizes_pending_reviews_for_active_protocol(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        general_report = ask_question(self.root, "Should we adopt transformer caching?", "report", protocol="general")
+        investing_report = ask_question(self.root, "Should we underwrite this thesis?", "report", protocol="investing")
+        general_decision = file_back(self.root, general_report["path"], title="General Decision", kind="decision")
+        investing_decision = file_back(self.root, investing_report["path"], title="Investing Decision", kind="decision")
+        set_active_protocol(self.root, "investing")
+
+        result = nightly_health(self.root)
+
+        state = json.loads((self.root / result["state_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(state["protocol"]["active_protocol"], "investing")
+        self.assertEqual(state["repair_backlog"]["pending_review_decisions"][0], investing_decision["path"])
+        self.assertIn(general_decision["path"], state["repair_backlog"]["pending_review_decisions"])
+
     def test_run_ask_and_run_lint_write_llm_outputs(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -1093,6 +1111,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("proposal_action_ids", state["repair_backlog"])
         self.assertTrue(state["repair_backlog"]["pending_review_decisions"])
         self.assertTrue(state["repair_backlog"]["pending_review_judgments"])
+        self.assertIn("review_focus", state["protocol"])
+        self.assertIn("nightly_focus", state["protocol"])
         self.assertFalse(state["llm_used"])
 
     def test_run_nightly_writes_semantic_artifacts_and_state(self) -> None:
@@ -1249,6 +1269,44 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("## 优先队列", actions_text)
         self.assertIn("## 补链动作", actions_text)
         self.assertIn("## 相关链接", actions_text)
+
+    def test_collect_machine_memory_actions_respects_active_protocol_focus(self) -> None:
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "research-action",
+                        "kind": "expand-singleton-concept",
+                        "title": "Benchmark regression repair",
+                        "reason": "benchmark throughput regression",
+                        "primary_path": "wiki/concepts/benchmark-latency.md",
+                        "secondary_path": "",
+                        "status": "proposed",
+                        "priority": "medium",
+                        "active": True,
+                    },
+                    {
+                        "id": "investing-action",
+                        "kind": "split-overloaded-concept",
+                        "title": "Moat thesis drift cleanup",
+                        "reason": "valuation and catalyst thesis drift",
+                        "primary_path": "wiki/concepts/company-moat.md",
+                        "secondary_path": "",
+                        "status": "proposed",
+                        "priority": "medium",
+                        "active": True,
+                    },
+                ],
+            },
+        )
+        set_active_protocol(self.root, "research")
+
+        actions = collect_machine_memory_actions(self.root)
+
+        self.assertEqual(actions[0]["id"], "research-action")
+        self.assertGreaterEqual(int(actions[0]["focus_score"]), int(actions[1]["focus_score"]))
 
     def test_compile_generates_machine_memory_repair_plan_page(self) -> None:
         self._seed_machine_memory_actions()
