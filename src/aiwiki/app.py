@@ -22,6 +22,7 @@ LAYOUT_DIRS = (
     "schema/protocols",
     "wiki/sources",
     "wiki/concepts",
+    "wiki/rewrite-proposals",
     "wiki/decisions",
     "wiki/judgments",
     "wiki/indexes",
@@ -616,9 +617,12 @@ EVIDENCE_GAP_MARKERS = (
 DECISION_STATUSES = ("proposed", "approved", "needs-revisit", "superseded")
 JUDGMENT_STATUSES = ("tentative", "tracking", "confirmed", "rejected")
 ACTION_STATUSES = ("proposed", "accepted", "deferred", "resolved", "rejected")
+REWRITE_PROPOSAL_STATUSES = ("proposed", "accepted", "deferred", "applied", "rejected")
 PENDING_DECISION_REVIEW_STATUSES = {"proposed", "needs-revisit"}
 PENDING_JUDGMENT_REVIEW_STATUSES = {"tentative", "tracking"}
 PENDING_ACTION_STATUSES = {"proposed", "accepted", "deferred"}
+PENDING_REWRITE_PROPOSAL_STATUSES = {"proposed", "accepted", "deferred"}
+LOW_RISK_APPLYABLE_ACTION_KINDS = {"add-source-concept-link"}
 AGING_WINDOWS_DAYS: dict[tuple[str, str], tuple[int, int]] = {
     ("decision", "proposed"): (7, 21),
     ("decision", "needs-revisit"): (3, 10),
@@ -1542,6 +1546,19 @@ def source_summary_or_preview(root: Path, entry: dict[str, Any], preview: str) -
     return preview
 
 
+def active_manual_source_concept_links(root: Path) -> dict[str, set[str]]:
+    state = load_manual_link_state(root)
+    mapping: dict[str, set[str]] = {}
+    for item in state.get("source_to_concept", []):
+        source_id = str(item.get("source_id") or "").strip()
+        concept_slug = str(item.get("concept_slug") or "").strip()
+        active = bool(item.get("active", True))
+        if not source_id or not concept_slug or not active:
+            continue
+        mapping.setdefault(source_id, set()).add(concept_slug)
+    return mapping
+
+
 def build_concept_records(
     root: Path,
     entries: list[dict[str, Any]],
@@ -1549,9 +1566,14 @@ def build_concept_records(
 ) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:
     concept_map: dict[str, dict[str, Any]] = {}
     entry_terms: dict[str, list[str]] = {}
+    manual_links = active_manual_source_concept_links(root)
     for entry in entries:
         context = source_summary_or_preview(root, entry, previews[entry["id"]])
         terms = entry_concept_terms(entry, context)
+        for manual_slug in sorted(manual_links.get(entry["id"], set())):
+            manual_label = manual_slug.replace("-", " ")
+            if manual_label not in terms:
+                terms.append(manual_label)
         entry_terms[entry["id"]] = terms
         for label in terms:
             slug = concept_label_to_slug(label)
@@ -1563,10 +1585,13 @@ def build_concept_records(
                     "title": concept_label_to_title(label),
                     "entries": [],
                     "score": 0,
+                    "manual_source_ids": set(),
                 },
             )
             record["entries"].append(entry)
             record["score"] += 1
+            if slug in manual_links.get(entry["id"], set()):
+                record["manual_source_ids"].add(entry["id"])
 
     ranked_records = sorted(concept_map.values(), key=lambda item: (-item["score"], item["title"].lower()))[:30]
     allowed = {record["slug"] for record in ranked_records}
@@ -1577,6 +1602,7 @@ def build_concept_records(
 
     by_slug = {record["slug"]: record for record in ranked_records}
     for record in ranked_records:
+        record["manual_source_ids"] = sorted(record.get("manual_source_ids", set()))
         related_counts: dict[str, int] = {}
         for entry in record["entries"]:
             for label in filtered_entry_terms[entry["id"]]:
@@ -1597,6 +1623,7 @@ def concept_source_signature(record: dict[str, Any]) -> str:
         "entry_ids": sorted(record["entry_ids"]),
         "entry_sources": sorted(f"{entry['id']}:{entry['sha256']}" for entry in record["entries"]),
         "related_slugs": sorted(record.get("related_slugs", [])),
+        "manual_source_ids": sorted(record.get("manual_source_ids", [])),
     }
     return sha256_bytes(json.dumps(payload, sort_keys=True).encode("utf-8"))
 
@@ -2019,6 +2046,25 @@ def display_action_status(status: str) -> str:
     return mapping.get(status, status or "unknown")
 
 
+def rewrite_proposal_needs_review(status: str) -> bool:
+    return status in PENDING_REWRITE_PROPOSAL_STATUSES
+
+
+def display_rewrite_proposal_status(status: str) -> str:
+    mapping = {
+        "proposed": "待审提案",
+        "accepted": "已接受提案",
+        "deferred": "暂缓提案",
+        "applied": "已应用",
+        "rejected": "已拒绝",
+    }
+    return mapping.get(status, status or "unknown")
+
+
+def rewrite_proposal_status_rank(status: str) -> int:
+    return {"proposed": 0, "accepted": 1, "deferred": 2, "applied": 3, "rejected": 4}.get(status, 9)
+
+
 def sort_curated_pages(pages: list[dict[str, str]]) -> list[dict[str, str]]:
     def sort_key(page: dict[str, str]) -> tuple[str, str]:
         return (page.get("reviewed_at", "") or page.get("updated_at", ""), page["title"].lower())
@@ -2165,6 +2211,14 @@ def action_status_rank(status: str) -> int:
     return {"proposed": 0, "accepted": 1, "deferred": 2, "resolved": 3, "rejected": 4}.get(status, 9)
 
 
+def action_supports_low_risk_apply(action: dict[str, Any]) -> bool:
+    return (
+        bool(action.get("active", True))
+        and str(action.get("status") or "") == "accepted"
+        and str(action.get("kind") or "") in LOW_RISK_APPLYABLE_ACTION_KINDS
+    )
+
+
 def describe_machine_memory_action(action: dict[str, Any]) -> dict[str, str]:
     action_id = str(action.get("id") or "")
     kind = str(action.get("kind") or "")
@@ -2190,9 +2244,17 @@ def describe_machine_memory_action(action: dict[str, Any]) -> dict[str, str]:
         execution_policy = "triage"
         command_hint = f'{review_prefix} --status accepted --note "Accepted for manual repair."'
     elif status == "accepted":
-        execution_policy = "manual-repair"
-        next_step = f"{next_step} 完成后将动作标为 resolved。"
-        command_hint = f'{review_prefix} --status resolved --note "Repair completed."'
+        if action_supports_low_risk_apply(action):
+            execution_policy = "semi-auto-apply"
+            next_step = "这是低风险动作；可以直接通过 safe execution layer 应用，再让 compile 收敛状态。"
+            command_hint = (
+                f'PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id}'
+                ' --note "Applied accepted low-risk repair."'
+            )
+        else:
+            execution_policy = "manual-repair"
+            next_step = f"{next_step} 完成后将动作标为 resolved。"
+            command_hint = f'{review_prefix} --status resolved --note "Repair completed."'
     elif status == "deferred":
         execution_policy = "parked"
         next_step = "已确认但暂缓处理；准备恢复时改回 accepted。"
@@ -2207,6 +2269,7 @@ def describe_machine_memory_action(action: dict[str, Any]) -> dict[str, str]:
         "execution_policy": execution_policy,
         "next_step": next_step,
         "command_hint": command_hint,
+        "apply_ready": "true" if action_supports_low_risk_apply(action) else "false",
     }
 
 
@@ -2706,10 +2769,14 @@ def render_review_center_html(
     health = memory.get("health", {})
     plan = health.get("repair_plan", {})
     concept_quality = health.get("concept_quality", {})
+    rewrite_state = health.get("concept_rewrite", {})
     pending_items = queue.get("pending_decisions", []) + queue.get("pending_judgments", [])
     ready_actions = plan.get("ready_actions", [])
+    apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
     rewrite_candidates = concept_quality.get("rewrite_candidates", [])
     conflict_signals = concept_quality.get("conflict_signals", [])
+    rewrite_proposals = rewrite_state.get("proposals", [])
+    apply_ready_rewrites = [proposal for proposal in rewrite_proposals if proposal.get("apply_ready")]
 
     def render_page_item(page: dict[str, str]) -> str:
         path = html.escape(f"../../{page['path']}")
@@ -2728,11 +2795,14 @@ def render_review_center_html(
         detail = ""
         if action.get("secondary_path"):
             detail = f" | secondary <code>{html.escape(str(action['secondary_path']))}</code>"
+        command = ""
+        if action.get("command_hint"):
+            command = f" | command <code>{html.escape(str(action['command_hint']))}</code>"
         return (
             f"<li>{html.escape(str(action.get('title') or 'unnamed action'))}"
             f" | priority {priority}"
             f" | status {status}"
-            f" | primary <code>{primary}</code>{detail}</li>"
+            f" | primary <code>{primary}</code>{detail}{command}</li>"
         )
 
     def render_concept_item(item: dict[str, Any]) -> str:
@@ -2745,12 +2815,27 @@ def render_review_center_html(
             f" | sources {int(item.get('source_count', 0))}</li>"
         )
 
+    def render_rewrite_item(item: dict[str, Any]) -> str:
+        slug = html.escape(str(item.get("slug") or ""))
+        title = html.escape(str(item.get("title") or slug))
+        status = html.escape(display_rewrite_proposal_status(str(item.get("status") or "proposed")))
+        return (
+            f'<li><a href="../../wiki/rewrite-proposals/{slug}.md">{title}</a>'
+            f" | status {status}"
+            f" | apply_ready {html.escape(str(bool(item.get('apply_ready'))).lower())}</li>"
+        )
+
     pending_list = "".join(render_page_item(page) for page in pending_items[:12]) or "<li>当前没有待审项目。</li>"
     overdue_list = "".join(render_page_item(page) for page in aging.get("overdue", [])[:10]) or "<li>当前没有已到期待复审页面。</li>"
     escalated_list = "".join(render_page_item(page) for page in aging.get("escalated", [])[:10]) or "<li>当前没有需要升级处理的页面。</li>"
     ready_action_list = "".join(render_action_item(action) for action in ready_actions[:10]) or "<li>当前没有 ready repair action。</li>"
+    apply_ready_action_list = (
+        "".join(render_action_item(action) for action in apply_ready_actions[:8])
+        or "<li>当前没有可直接 semi-auto apply 的低风险动作。</li>"
+    )
     rewrite_list = "".join(render_concept_item(item) for item in rewrite_candidates[:10]) or "<li>当前没有高优先级弱概念页。</li>"
     conflict_list = "".join(render_concept_item(item) for item in conflict_signals[:10]) or "<li>当前没有显式概念冲突信号。</li>"
+    rewrite_proposal_list = "".join(render_rewrite_item(item) for item in rewrite_proposals[:10]) or "<li>当前没有 rewrite proposal。</li>"
 
     summary_cards = [
         ("待审项目", str(len(pending_items))),
@@ -2759,6 +2844,9 @@ def render_review_center_html(
         ("ready actions", str(plan.get("counts", {}).get("ready", 0))),
         ("重写候选", str(concept_quality.get("counts", {}).get("rewrite_candidates", 0))),
         ("冲突信号", str(concept_quality.get("counts", {}).get("conflict_signals", 0))),
+        ("rewrite 提案", str(rewrite_state.get("counts", {}).get("active", 0))),
+        ("可应用 rewrite", str(len(apply_ready_rewrites))),
+        ("可应用动作", str(len(apply_ready_actions))),
     ]
 
     return "\n".join(
@@ -2813,11 +2901,17 @@ def render_review_center_html(
             '    <div class="panel"><h2>Ready Repair Actions</h2><ul>',
             f"{ready_action_list}",
             "    </ul></div>",
+            '    <div class="panel"><h2>Safe Apply Actions</h2><ul>',
+            f"{apply_ready_action_list}",
+            "    </ul></div>",
             '    <div class="panel"><h2>概念重写优先级</h2><ul>',
             f"{rewrite_list}",
             "    </ul></div>",
             '    <div class="panel"><h2>概念冲突信号</h2><ul>',
             f"{conflict_list}",
+            "    </ul></div>",
+            '    <div class="panel"><h2>Rewrite Proposals</h2><ul>',
+            f"{rewrite_proposal_list}",
             "    </ul></div>",
             '    <div class="panel"><h2>相关入口</h2><ul>',
             '      <li><a href="../../wiki/indexes/review-center.md">Review Center Dashboard</a></li>',
@@ -2826,6 +2920,7 @@ def render_review_center_html(
             '      <li><a href="../../wiki/indexes/machine-memory-actions.md">机器记忆动作队列</a></li>',
             '      <li><a href="../../wiki/indexes/machine-memory-repair-plan.md">机器记忆修复计划</a></li>',
             '      <li><a href="../../wiki/indexes/concept-quality.md">概念质量</a></li>',
+            '      <li><a href="../../wiki/indexes/rewrite-proposals.md">Rewrite Proposals</a></li>',
             "    </ul></div>",
             "  </section>",
             "</main>",
@@ -2873,6 +2968,7 @@ def render_compile_status(
         "- 机器记忆拓扑位于 `machine-memory-topology.md`。",
         "- 机器记忆动作队列位于 `machine-memory-actions.md`。",
         "- 机器记忆修复计划位于 `machine-memory-repair-plan.md`。",
+        "- Rewrite 提案队列位于 `rewrite-proposals.md`。",
         "- 图谱健康页位于 `graph-health.md`。",
         "- 漂移报告位于 `drift-report.md`。",
         "- 修复待办位于 `repair-backlog.md`。",
@@ -2921,6 +3017,7 @@ def render_master_index(
         "- [机器记忆拓扑](./machine-memory-topology.md)",
         "- [机器记忆动作队列](./machine-memory-actions.md)",
         "- [机器记忆修复计划](./machine-memory-repair-plan.md)",
+        "- [Rewrite Proposals](./rewrite-proposals.md)",
         "- [图谱健康](./graph-health.md)",
         "- [漂移报告](./drift-report.md)",
         "- [修复待办](./repair-backlog.md)",
@@ -3046,8 +3143,24 @@ def concept_quality_path(root: Path) -> Path:
     return root / "wiki" / "indexes" / "concept-quality.md"
 
 
+def concept_rewrite_index_path(root: Path) -> Path:
+    return root / "wiki" / "indexes" / "rewrite-proposals.md"
+
+
+def concept_rewrite_proposal_page_path(root: Path, slug: str) -> Path:
+    return root / "wiki" / "rewrite-proposals" / f"{slug}.md"
+
+
 def machine_memory_action_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "machine-memory-actions.json"
+
+
+def concept_rewrite_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "concept-rewrite-proposals.json"
+
+
+def manual_link_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "manual-links.json"
 
 
 def repair_backlog_path(root: Path) -> Path:
@@ -3098,6 +3211,54 @@ def save_machine_memory_action_state(root: Path, document: dict[str, Any]) -> No
 def load_machine_memory(root: Path) -> dict[str, Any]:
     memory = load_json_document(machine_memory_state_path(root))
     return memory if isinstance(memory, dict) else {}
+
+
+def default_concept_rewrite_state() -> dict[str, Any]:
+    return {"version": 1, "proposals": []}
+
+
+def load_concept_rewrite_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(concept_rewrite_state_path(root))
+    if not isinstance(document, dict):
+        return default_concept_rewrite_state()
+    proposals = document.get("proposals")
+    if not isinstance(proposals, list):
+        return default_concept_rewrite_state()
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "proposals": [proposal for proposal in proposals if isinstance(proposal, dict)],
+    }
+
+
+def save_concept_rewrite_state(root: Path, document: dict[str, Any]) -> None:
+    concept_rewrite_state_path(root).write_text(
+        json.dumps(document, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def default_manual_link_state() -> dict[str, Any]:
+    return {"version": 1, "source_to_concept": []}
+
+
+def load_manual_link_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(manual_link_state_path(root))
+    if not isinstance(document, dict):
+        return default_manual_link_state()
+    source_to_concept = document.get("source_to_concept")
+    if not isinstance(source_to_concept, list):
+        return default_manual_link_state()
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "source_to_concept": [item for item in source_to_concept if isinstance(item, dict)],
+    }
+
+
+def save_manual_link_state(root: Path, document: dict[str, Any]) -> None:
+    manual_link_state_path(root).write_text(
+        json.dumps(document, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def build_machine_memory(
@@ -3775,11 +3936,14 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
         return text if len(text) <= limit else f"{text[: limit - 3]}..."
 
     edge_fragments: list[str] = []
+    degree_map: dict[str, int] = {}
     for edge in graph.get("edges", []):
         source = str(edge.get("source") or "")
         target = str(edge.get("target") or "")
         if source not in positions or target not in positions:
             continue
+        degree_map[source] = degree_map.get(source, 0) + 1
+        degree_map[target] = degree_map.get(target, 0) + 1
         x1, y1 = positions[source]
         x2, y2 = positions[target]
         if str(edge.get("type") or "") == "RELATED_CONCEPT":
@@ -3789,10 +3953,16 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             stroke = "#94a3b8"
             dash = ""
         edge_fragments.append(
-            f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{stroke}" stroke-width="2"{dash} opacity="0.72" />'
+            f'<line class="graph-edge" data-source="{html.escape(source)}" data-target="{html.escape(target)}" '
+            f'x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{stroke}" stroke-width="2"{dash} opacity="0.72" />'
         )
 
     node_fragments: list[str] = []
+    node_rows: list[str] = []
+    node_records: list[dict[str, Any]] = []
+    source_component_ids = health.get("source_component_ids", {})
+    concept_component_ids = health.get("concept_component_ids", {})
+    component_label_by_id = {str(component.get("id") or ""): str(component.get("id") or "") for component in components}
     for node in graph.get("nodes", []):
         node_id = str(node.get("id") or "")
         position = positions.get(node_id)
@@ -3804,28 +3974,63 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
         if kind == "source":
             fill = "#0f766e"
             stroke = "#115e59"
-            href = f"../../{html.escape(str(node.get('source_page') or ''))}"
-            subtitle = html.escape(str(node.get("source_type") or "source"))
+            page_path = str(node.get("source_page") or "")
+            href = f"../../{html.escape(page_path)}"
+            subtitle = str(node.get("source_type") or "source")
+            component_id = str(source_component_ids.get(node_id.removeprefix("source:"), "") or "")
+            secondary_metric = str(node.get("stored_path") or "")
         else:
             fill = "#1d4ed8"
             stroke = "#1e40af"
-            href = f"../../wiki/concepts/{html.escape(node_id.removeprefix('concept:'))}.md"
+            slug = node_id.removeprefix("concept:")
+            page_path = f"wiki/concepts/{slug}.md"
+            href = f"../../wiki/concepts/{html.escape(slug)}.md"
             subtitle = "concept"
+            component_id = str(concept_component_ids.get(slug, "") or "")
+            secondary_metric = f"source_pages {len(node.get('source_pages', []))}"
         safe_title = html.escape(title)
         label = html.escape(truncate_label(title))
         rx = x - 120
         ry = y - 22
+        component_label = component_label_by_id.get(component_id, component_id or "none")
         node_fragments.append(
             "\n".join(
                 [
-                    f'<a href="{href}">',
-                    f'  <title>{safe_title}</title>',
-                    f'  <rect x="{rx}" y="{ry}" width="240" height="44" rx="14" fill="{fill}" stroke="{stroke}" stroke-width="2" />',
-                    f'  <text x="{x}" y="{y - 3}" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">{label}</text>',
-                    f'  <text x="{x}" y="{y + 14}" text-anchor="middle" fill="#dbeafe" font-size="11">{html.escape(subtitle)}</text>',
-                    "</a>",
+                    f'<g class="graph-node" data-node-id="{html.escape(node_id)}" data-kind="{html.escape(kind)}" data-component="{html.escape(component_id)}" data-title="{safe_title.lower()}">',
+                    f'  <a href="{href}">',
+                    f'    <title>{safe_title}</title>',
+                    f'    <rect x="{rx}" y="{ry}" width="240" height="44" rx="14" fill="{fill}" stroke="{stroke}" stroke-width="2" />',
+                    f'    <text x="{x}" y="{y - 3}" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">{label}</text>',
+                    f'    <text x="{x}" y="{y + 14}" text-anchor="middle" fill="#dbeafe" font-size="11">{html.escape(subtitle)}</text>',
+                    "  </a>",
+                    "</g>",
                 ]
             )
+        )
+        node_rows.append(
+            "<li class=\"node-row\""
+            f" data-node-id=\"{html.escape(node_id)}\""
+            f" data-kind=\"{html.escape(kind)}\""
+            f" data-component=\"{html.escape(component_id)}\""
+            f" data-title=\"{safe_title.lower()}\">"
+            f"<button type=\"button\" class=\"node-detail-button\" data-node-id=\"{html.escape(node_id)}\">详情</button> "
+            f"<a href=\"{href}\">{safe_title}</a>"
+            f" <span class=\"node-meta\">{html.escape(subtitle)} · {html.escape(component_label)} · degree {degree_map.get(node_id, 0)}</span>"
+            "</li>"
+        )
+        node_records.append(
+            {
+                "id": node_id,
+                "kind": kind,
+                "title": title,
+                "subtitle": subtitle,
+                "href": href,
+                "page_path": page_path,
+                "component_id": component_id,
+                "component_label": component_label,
+                "degree": degree_map.get(node_id, 0),
+                "secondary_metric": secondary_metric,
+            }
         )
 
     section_fragments: list[str] = []
@@ -3844,6 +4049,10 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
     hub_sources = health.get("hub_sources", [])
     actions = health.get("action_counts", {})
     repair_counts = health.get("repair_plan", {}).get("counts", {})
+    rewrite_counts = health.get("concept_rewrite", {}).get("counts", {})
+    safe_apply_actions = [
+        action for action in health.get("repair_plan", {}).get("ready_actions", []) if action_supports_low_risk_apply(action)
+    ]
     summary_items = [
         f"来源节点 {len(memory.get('source_nodes', []))}",
         f"概念节点 {len(memory.get('concept_nodes', []))}",
@@ -3851,6 +4060,8 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
         f"桥接概念 {len(health.get('bridge_concept_slugs', []))}",
         f"修复动作 {actions.get('total', 0)}",
         f"执行提案 {repair_counts.get('proposals', 0)}",
+        f"rewrite 提案 {rewrite_counts.get('active', 0)}",
+        f"safe apply {len(safe_apply_actions)}",
     ]
 
     hub_concept_items = "".join(
@@ -3865,6 +4076,24 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
         f'<li><a href="../../wiki/sources/{html.escape(item["source_id"])}.md">{html.escape(item["source_title"])}</a> -> <a href="../../wiki/concepts/{html.escape(item["concept_slug"])}.md">{html.escape(item["concept_title"])}</a> | score {item.get("score", 0)} | shared {html.escape(", ".join(item.get("shared_terms", [])[:5]) or "none")}</li>'
         for item in health.get("link_suggestions", [])[:8]
     ) or "<li>当前没有修复候选。</li>"
+    apply_ready_items = "".join(
+        f'<li>{html.escape(str(action.get("title") or action.get("id") or "action"))} | command <code>{html.escape(str(action.get("command_hint") or ""))}</code></li>'
+        for action in safe_apply_actions[:8]
+        if action.get("command_hint")
+    ) or "<li>当前没有可直接 semi-auto apply 的动作。</li>"
+    component_options = "".join(
+        f'<option value="{html.escape(str(component.get("id") or ""))}">{html.escape(str(component.get("id") or ""))} ({len(component.get("source_ids", [])) + len(component.get("concept_slugs", []))})</option>'
+        for component in components
+        if component.get("id")
+    )
+    node_rows_markup = "".join(node_rows) or "<li>当前没有可浏览的节点。</li>"
+    node_payload = json.dumps(
+        {
+            "nodes": node_records,
+            "defaultNodeId": node_records[0]["id"] if node_records else "",
+        },
+        ensure_ascii=False,
+    )
 
     empty_state = ""
     if not graph.get("nodes"):
@@ -3892,6 +4121,9 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "    .metric { font-size: 24px; font-weight: 800; color: #1d4ed8; }",
             "    .metric-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }",
             "    .panel { padding: 18px; margin-bottom: 18px; }",
+            "    .controls { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 18px; }",
+            "    label { display: block; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }",
+            "    input, select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; font: inherit; background: #fff; }",
             "    .canvas { overflow-x: auto; }",
             "    svg { width: 100%; min-width: 1020px; height: auto; display: block; }",
             "    ul { margin: 0; padding-left: 18px; }",
@@ -3899,12 +4131,23 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "    a { color: #1d4ed8; text-decoration: none; }",
             "    a:hover { text-decoration: underline; }",
             "    .lists { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }",
+            "    .workbench { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); gap: 18px; align-items: start; }",
+            "    .node-browser { max-height: 560px; overflow: auto; }",
+            "    .node-browser ul { list-style: none; padding-left: 0; }",
+            "    .node-row { padding: 10px 0; border-bottom: 1px solid #e2e8f0; }",
+            "    .node-row:last-child { border-bottom: 0; }",
+            "    .node-meta { color: var(--muted); font-size: 12px; }",
+            "    .node-detail-button { margin-right: 8px; border: 1px solid var(--line); background: #eff6ff; color: #1d4ed8; border-radius: 999px; padding: 2px 10px; cursor: pointer; }",
+            "    .graph-node.hidden, .graph-edge.hidden, .node-row.hidden { display: none; }",
+            "    .details-grid { display: grid; gap: 10px; }",
+            "    .details-grid code { background: #eff6ff; padding: 2px 6px; border-radius: 8px; }",
             "    .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; color: var(--muted); }",
             "    .legend span::before { content: ''; display: inline-block; width: 12px; height: 12px; border-radius: 999px; margin-right: 6px; vertical-align: -1px; }",
             "    .legend .source::before { background: #0f766e; }",
             "    .legend .concept::before { background: #1d4ed8; }",
             "    .legend .related::before { background: #f59e0b; }",
             "    .empty { padding: 16px; background: #fff7ed; border: 1px solid #fdba74; border-radius: 14px; color: #9a3412; }",
+            "    @media (max-width: 960px) { .workbench { grid-template-columns: 1fr; } }",
             "  </style>",
             "</head>",
             "<body>",
@@ -3923,10 +4166,25 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "    </div>",
             "  </section>",
             f"  {empty_state}",
-            "  <section class=\"panel canvas\">",
-            f'    <svg viewBox="0 0 1020 {view_height}" role="img" aria-label="machine memory graph">',
+            '  <section class="panel">',
+            '    <div class="controls">',
+            '      <div><label for="graph-search">搜索节点</label><input id="graph-search" type="search" placeholder="输入标题、slug、source id" /></div>',
+            '      <div><label for="graph-kind">节点类型</label><select id="graph-kind"><option value="">全部</option><option value="source">source</option><option value="concept">concept</option></select></div>',
+            f'      <div><label for="graph-component">分量</label><select id="graph-component"><option value="">全部分量</option>{component_options}</select></div>',
+            "    </div>",
+            '    <div class="workbench">',
+            '      <div class="panel canvas">',
+            f'        <svg viewBox="0 0 1020 {view_height}" role="img" aria-label="machine memory graph">',
             f"{svg_body}",
-            "    </svg>",
+            "        </svg>",
+            "      </div>",
+            '      <div class="details-grid">',
+            '        <div class="panel"><h2>节点详情</h2><div id="graph-node-details">选择右侧节点详情按钮，查看 component、degree 和回链路径。</div></div>',
+            '        <div class="panel node-browser"><h2>节点浏览器</h2><ul id="graph-node-browser">',
+            f"{node_rows_markup}",
+            "        </ul></div>",
+            "      </div>",
+            "    </div>",
             "  </section>",
             "  <section class=\"lists\">",
             '    <div class="panel"><h2>Hub 概念</h2><ul>',
@@ -3938,6 +4196,9 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             '    <div class="panel"><h2>修复候选</h2><ul>',
             f"{suggestion_items}",
             "    </ul></div>",
+            '    <div class="panel"><h2>Safe Apply</h2><ul>',
+            f"{apply_ready_items}",
+            "    </ul></div>",
             "  </section>",
             '  <section class="panel"><h2>相关入口</h2><ul>',
             '    <li><a href="../../wiki/indexes/graph-view.md">Graph View Dashboard</a></li>',
@@ -3946,6 +4207,71 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             '    <li><a href="../../wiki/indexes/graph-health.md">图谱健康</a></li>',
             '    <li><a href="../../wiki/indexes/machine-memory-repair-plan.md">修复计划</a></li>',
             "  </ul></section>",
+            "  <script>",
+            f"    const graphUiData = {node_payload};",
+            "    const nodeMap = new Map((graphUiData.nodes || []).map((node) => [node.id, node]));",
+            "    const searchInput = document.getElementById('graph-search');",
+            "    const kindSelect = document.getElementById('graph-kind');",
+            "    const componentSelect = document.getElementById('graph-component');",
+            "    const nodeDetails = document.getElementById('graph-node-details');",
+            "    function renderDetails(nodeId) {",
+            "      const node = nodeMap.get(nodeId);",
+            "      if (!node) { nodeDetails.innerHTML = '当前没有可展示的节点详情。'; return; }",
+            "      nodeDetails.innerHTML = [",
+            "        `<div><strong>${node.title}</strong></div>`,",
+            "        `<div>kind: <code>${node.kind}</code></div>`,",
+            "        `<div>component: <code>${node.component_label || 'none'}</code></div>`,",
+            "        `<div>degree: <code>${node.degree}</code></div>`,",
+            "        `<div>path: <code>${node.page_path}</code></div>`,",
+            "        `<div>${node.secondary_metric || ''}</div>`,",
+            "        `<div><a href=\"${node.href}\">打开页面</a></div>`",
+            "      ].join('');",
+            "    }",
+            "    function applyFilters() {",
+            "      const needle = (searchInput.value || '').trim().toLowerCase();",
+            "      const kind = kindSelect.value || '';",
+            "      const component = componentSelect.value || '';",
+            "      const visibleIds = new Set();",
+            "      document.querySelectorAll('.graph-node').forEach((element) => {",
+            "        const title = element.dataset.title || '';",
+            "        const nodeKind = element.dataset.kind || '';",
+            "        const nodeComponent = element.dataset.component || '';",
+            "        const nodeId = element.dataset.nodeId || '';",
+            "        const matches = (!needle || title.includes(needle) || nodeId.toLowerCase().includes(needle))",
+            "          && (!kind || nodeKind === kind)",
+            "          && (!component || nodeComponent === component);",
+            "        element.classList.toggle('hidden', !matches);",
+            "        if (matches) visibleIds.add(nodeId);",
+            "      });",
+            "      document.querySelectorAll('.graph-edge').forEach((element) => {",
+            "        const visible = visibleIds.has(element.dataset.source || '') && visibleIds.has(element.dataset.target || '');",
+            "        element.classList.toggle('hidden', !visible);",
+            "      });",
+            "      document.querySelectorAll('.node-row').forEach((element) => {",
+            "        const title = element.dataset.title || '';",
+            "        const nodeKind = element.dataset.kind || '';",
+            "        const nodeComponent = element.dataset.component || '';",
+            "        const nodeId = element.dataset.nodeId || '';",
+            "        const matches = (!needle || title.includes(needle) || nodeId.toLowerCase().includes(needle))",
+            "          && (!kind || nodeKind === kind)",
+            "          && (!component || nodeComponent === component);",
+            "        element.classList.toggle('hidden', !matches);",
+            "      });",
+            "      if (!visibleIds.size) {",
+            "        nodeDetails.innerHTML = '当前筛选条件下没有节点。';",
+            "        return;",
+            "      }",
+            "      const firstVisible = document.querySelector('.node-row:not(.hidden)');",
+            "      if (firstVisible) renderDetails(firstVisible.dataset.nodeId || '');",
+            "    }",
+            "    document.querySelectorAll('.node-detail-button').forEach((button) => {",
+            "      button.addEventListener('click', () => renderDetails(button.dataset.nodeId || ''));",
+            "    });",
+            "    [searchInput, kindSelect, componentSelect].forEach((element) => element.addEventListener('input', applyFilters));",
+            "    [kindSelect, componentSelect].forEach((element) => element.addEventListener('change', applyFilters));",
+            "    renderDetails(graphUiData.defaultNodeId || '');",
+            "    applyFilters();",
+            "  </script>",
             "</main>",
             "</body>",
             "</html>",
@@ -4142,6 +4468,8 @@ def build_machine_memory_query(memory: dict[str, Any], question: str, *, protoco
                 "reason": action.get("reason", ""),
                 "execution_policy": action.get("execution_policy", "triage"),
                 "next_step": action.get("next_step", ""),
+                "command_hint": action.get("command_hint", ""),
+                "apply_ready": action.get("apply_ready", "false"),
                 "proposal_kind": proposal.get("proposal_kind", ""),
                 "proposal_summary": proposal.get("summary", ""),
                 "proposal_targets": proposal.get("target_paths", []),
@@ -4525,6 +4853,8 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         f"- 执行提案：`{health.get('repair_plan', {}).get('counts', {}).get('proposals', 0)}`",
         f"- 概念冲突信号：`{health.get('concept_quality', {}).get('counts', {}).get('conflict_signals', 0)}`",
         f"- 概念重写候选：`{health.get('concept_quality', {}).get('counts', {}).get('rewrite_candidates', 0)}`",
+        f"- Rewrite 提案：`{health.get('concept_rewrite', {}).get('counts', {}).get('active', 0)}`",
+        f"- 可应用 Rewrite：`{health.get('concept_rewrite', {}).get('counts', {}).get('apply_ready', 0)}`",
         "",
         "## 判断层",
         "- 决策索引：`wiki/indexes/decisions.md`",
@@ -4545,6 +4875,7 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         "- [漂移报告](./drift-report.md)",
         "- [修复待办](./repair-backlog.md)",
         "- [概念质量](./concept-quality.md)",
+        "- [Rewrite Proposals](./rewrite-proposals.md)",
         "",
         "## Action Workflow",
         f"- 状态文件：`{health.get('action_state_path', '.aiwiki/state/machine-memory-actions.json')}`",
@@ -4963,6 +5294,7 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
 
 def render_concept_quality(memory: dict[str, Any]) -> str:
     quality = memory.get("health", {}).get("concept_quality", {})
+    rewrite_state = memory.get("health", {}).get("concept_rewrite", {})
     counts = quality.get("counts", {})
     weak_concepts = quality.get("weak_concepts", [])
     stable_concepts = quality.get("stable_concepts", [])
@@ -4981,6 +5313,9 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
         f"- 重写候选：`{counts.get('rewrite_candidates', 0)}`",
         f"- 冲突信号：`{counts.get('conflict_signals', 0)}`",
         f"- 证据缺口：`{counts.get('gap_signals', 0)}`",
+        f"- Rewrite 提案：`{rewrite_state.get('counts', {}).get('active', 0)}`",
+        f"- 待审提案：`{rewrite_state.get('counts', {}).get('pending_review', 0)}`",
+        f"- 可应用提案：`{rewrite_state.get('counts', {}).get('apply_ready', 0)}`",
         "",
         "## Rewrite Now",
     ]
@@ -5006,6 +5341,19 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
                 f" | issues `{', '.join(candidate.get('issues', [])) or 'none'}`"
             )
             lines.append(f"  - strategy: {candidate.get('rewrite_strategy', 'n/a')}")
+    lines.extend(["", "## Rewrite Proposals"])
+    if not rewrite_state.get("proposals"):
+        lines.append("- 当前还没有 concept rewrite proposal。先运行 `run-compile` 或等待下一次 rewrite proposal 生成。")
+    else:
+        for proposal in rewrite_state.get("proposals", [])[:10]:
+            lines.append(
+                f"- [{proposal['title']}](../rewrite-proposals/{proposal['slug']}.md)"
+                f" | status `{display_rewrite_proposal_status(str(proposal.get('status') or 'proposed'))}`"
+                f" | priority `{proposal.get('priority', 'n/a')}`"
+                f" | apply_ready `{proposal.get('apply_ready', False)}`"
+            )
+            if proposal.get("rewrite_strategy"):
+                lines.append(f"  - strategy: {proposal['rewrite_strategy']}")
     lines.extend(["", "## Conflict Signals"])
     if not conflict_signals:
         lines.append("- 当前没有显式概念冲突信号。")
@@ -5056,10 +5404,328 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
             "- [机器记忆](./machine-memory.md)",
             "- [动作队列](./machine-memory-actions.md)",
             "- [修复计划](./machine-memory-repair-plan.md)",
+            "- [Rewrite Proposals](./rewrite-proposals.md)",
             "- [修复待办](./repair-backlog.md)",
         ]
     )
     return "\n".join(lines) + "\n"
+
+
+def concept_page_snapshot(root: Path, slug: str) -> dict[str, Any]:
+    path = root / "wiki" / "concepts" / f"{slug}.md"
+    if not path.exists():
+        return {
+            "path": relative_path(root, path),
+            "title": slug,
+            "source_signature": "",
+            "source_pages": [],
+            "summary": "",
+            "content": "",
+        }
+    content = path.read_text(encoding="utf-8", errors="replace")
+    frontmatter = parse_frontmatter(content)
+    source_pages = frontmatter.get("source_pages", [])
+    if not isinstance(source_pages, list):
+        source_pages = []
+    return {
+        "path": relative_path(root, path),
+        "title": str(frontmatter.get("title") or path.stem),
+        "source_signature": str(frontmatter.get("source_signature") or ""),
+        "source_pages": [str(item) for item in source_pages if isinstance(item, str)],
+        "summary": preserved_section(content, "Summary", ""),
+        "content": content,
+    }
+
+
+def concept_rewrite_proposal_digest(candidate_markdown: str) -> str:
+    if not candidate_markdown:
+        return ""
+    return sha256_bytes(candidate_markdown.encode("utf-8"))
+
+
+def reconcile_concept_rewrite_proposals(
+    root: Path,
+    quality: dict[str, Any],
+    *,
+    compiled_at: str,
+) -> dict[str, Any]:
+    previous_state = load_concept_rewrite_state(root)
+    previous_by_slug = {
+        str(proposal.get("slug") or ""): proposal
+        for proposal in previous_state.get("proposals", [])
+        if proposal.get("slug")
+    }
+    active_records: list[dict[str, Any]] = []
+    inactive_records: list[dict[str, Any]] = []
+    seen_slugs: set[str] = set()
+
+    for candidate in quality.get("rewrite_candidates", []):
+        slug = str(candidate.get("slug") or "").strip()
+        if not slug:
+            continue
+        snapshot = concept_page_snapshot(root, slug)
+        previous = previous_by_slug.get(slug, {})
+        source_signature = str(candidate.get("source_signature") or snapshot.get("source_signature") or "")
+        status = str(previous.get("status") or "proposed")
+        if status not in REWRITE_PROPOSAL_STATUSES:
+            status = "proposed"
+        previous_signature = str(previous.get("source_signature") or "")
+        if previous_signature and previous_signature != source_signature and status in {"applied", "rejected"}:
+            status = "proposed"
+        candidate_markdown = str(previous.get("candidate_markdown") or "")
+        candidate_digest = str(previous.get("candidate_digest") or concept_rewrite_proposal_digest(candidate_markdown))
+        first_proposed_at = str(previous.get("first_proposed_at") or compiled_at)
+        occurrences = int(previous.get("occurrences") or 0) + 1
+        reviewed_at = str(previous.get("reviewed_at") or "")
+        review_note = str(previous.get("review_note") or "")
+        applied_at = str(previous.get("applied_at") or "")
+        record = {
+            "slug": slug,
+            "title": str(candidate.get("title") or snapshot.get("title") or slug),
+            "priority": str(candidate.get("priority") or "medium"),
+            "score": int(candidate.get("score") or 0),
+            "issues": list(candidate.get("issues") or []),
+            "rewrite_strategy": str(candidate.get("rewrite_strategy") or ""),
+            "target_path": str(candidate.get("path") or snapshot.get("path") or f"wiki/concepts/{slug}.md"),
+            "proposal_path": relative_path(root, concept_rewrite_proposal_page_path(root, slug)),
+            "source_signature": source_signature,
+            "source_pages": list(candidate.get("source_pages") or snapshot.get("source_pages") or []),
+            "status": status,
+            "active": True,
+            "first_proposed_at": first_proposed_at,
+            "last_proposed_at": compiled_at,
+            "occurrences": occurrences,
+            "reviewed_at": reviewed_at,
+            "review_note": review_note,
+            "applied_at": applied_at,
+            "pending_review": "true" if rewrite_proposal_needs_review(status) else "false",
+            "candidate_markdown": candidate_markdown,
+            "candidate_digest": candidate_digest,
+            "apply_ready": bool(status == "accepted" and candidate_markdown),
+            "current_summary": str(snapshot.get("summary") or ""),
+        }
+        active_records.append(record)
+        seen_slugs.add(slug)
+
+    for slug, previous in previous_by_slug.items():
+        if slug in seen_slugs:
+            continue
+        record = dict(previous)
+        record["active"] = False
+        record["pending_review"] = "false"
+        record["apply_ready"] = False
+        inactive_records.append(record)
+
+    active_records.sort(
+        key=lambda item: (
+            rewrite_proposal_status_rank(str(item.get("status") or "")),
+            action_priority_rank(str(item.get("priority") or "")),
+            -int(item.get("score", 0)),
+            str(item.get("title", "")).lower(),
+        )
+    )
+    inactive_records.sort(
+        key=lambda item: (
+            str(item.get("applied_at") or item.get("reviewed_at") or item.get("last_proposed_at") or ""),
+            str(item.get("title", "")).lower(),
+        ),
+        reverse=True,
+    )
+    document = {
+        "version": 1,
+        "compiled_at": compiled_at,
+        "proposals": active_records + inactive_records,
+    }
+    save_concept_rewrite_state(root, document)
+    counts = {
+        "active": len(active_records),
+        "inactive": len(inactive_records),
+        "pending_review": sum(1 for proposal in active_records if proposal.get("pending_review") == "true"),
+        "apply_ready": sum(1 for proposal in active_records if proposal.get("apply_ready")),
+        "by_status": {
+            status: sum(1 for proposal in active_records if proposal.get("status") == status)
+            for status in REWRITE_PROPOSAL_STATUSES
+        },
+    }
+    return {
+        "all_proposals": active_records + inactive_records,
+        "proposals": active_records[:12],
+        "inactive_proposals": inactive_records[:8],
+        "counts": counts,
+        "state_path": relative_path(root, concept_rewrite_state_path(root)),
+    }
+
+
+def render_concept_rewrite_proposal_page(proposal: dict[str, Any]) -> str:
+    frontmatter = render_frontmatter(
+        {
+            "id": f"rewrite-proposal-{proposal['slug']}",
+            "kind": "rewrite-proposal",
+            "status": proposal.get("status", "proposed"),
+            "title": proposal["title"],
+            "target_path": proposal.get("target_path", ""),
+            "source_signature": proposal.get("source_signature", ""),
+            "generated_by": "aiwiki-run-compile",
+            "last_compiled_at": proposal.get("last_proposed_at", ""),
+        }
+    )
+    lines = [
+        frontmatter,
+        "",
+        f"# Rewrite Proposal · {proposal['title']}",
+        "",
+        "## Proposal Status",
+        f"- Status: `{display_rewrite_proposal_status(str(proposal.get('status') or 'proposed'))}`",
+        f"- Priority: `{proposal.get('priority', 'n/a')}`",
+        f"- Score: `{proposal.get('score', 0)}`",
+        f"- Apply ready: `{proposal.get('apply_ready', False)}`",
+        f"- First proposed: `{proposal.get('first_proposed_at', '') or 'none'}`",
+        f"- Last proposed: `{proposal.get('last_proposed_at', '') or 'none'}`",
+        f"- Reviewed at: `{proposal.get('reviewed_at', '') or 'none'}`",
+        f"- Applied at: `{proposal.get('applied_at', '') or 'none'}`",
+        "",
+        "## Target",
+        f"- Target page: `{proposal.get('target_path', '')}`",
+        f"- Source signature: `{proposal.get('source_signature', '')}`",
+        f"- Source pages: `{', '.join(proposal.get('source_pages', [])) or 'none'}`",
+        "",
+        "## Current Summary Snapshot",
+        proposal.get("current_summary", "") or "- No summary snapshot captured.",
+        "",
+        "## Rewrite Strategy",
+        f"- Issues: `{', '.join(proposal.get('issues', [])) or 'none'}`",
+        f"- Strategy: {proposal.get('rewrite_strategy', 'n/a')}",
+        "",
+        "## Commands",
+        f"- Review: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite {proposal['slug']} --status accepted`",
+        f"- Apply: `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {proposal['slug']}`",
+        "",
+        "## Proposed Markdown",
+    ]
+    if proposal.get("candidate_markdown"):
+        lines.extend(
+            [
+                "```markdown",
+                str(proposal["candidate_markdown"]).strip(),
+                "```",
+            ]
+        )
+    else:
+        lines.append("- 当前还没有生成候选重写内容。先运行 `run-compile`。")
+    return "\n".join(lines) + "\n"
+
+
+def render_concept_rewrite_index(state: dict[str, Any], compiled_at: str) -> str:
+    proposals = state.get("proposals", [])
+    inactive = state.get("inactive_proposals", [])
+    counts = state.get("counts", {})
+    lines = [
+        "# Rewrite Proposals",
+        "",
+        f"- 最近编译时间：`{compiled_at}`",
+        f"- Active proposals：`{counts.get('active', 0)}`",
+        f"- Pending review：`{counts.get('pending_review', 0)}`",
+        f"- Apply ready：`{counts.get('apply_ready', 0)}`",
+        f"- 状态文件：`{state.get('state_path', '.aiwiki/state/concept-rewrite-proposals.json')}`",
+        "",
+        "## Pending Review",
+    ]
+    pending = [proposal for proposal in proposals if proposal.get("pending_review") == "true"]
+    if not pending:
+        lines.append("- 当前没有待审的 rewrite proposal。")
+    else:
+        for proposal in pending[:12]:
+            lines.append(
+                f"- [{proposal['title']}](../rewrite-proposals/{proposal['slug']}.md)"
+                f" | status `{display_rewrite_proposal_status(str(proposal.get('status') or 'proposed'))}`"
+                f" | priority `{proposal.get('priority', 'n/a')}`"
+                f" | apply_ready `{proposal.get('apply_ready', False)}`"
+            )
+    lines.extend(["", "## Apply Ready"])
+    apply_ready = [proposal for proposal in proposals if proposal.get("apply_ready")]
+    if not apply_ready:
+        lines.append("- 当前没有可直接应用的 rewrite proposal。")
+    else:
+        for proposal in apply_ready[:12]:
+            lines.append(
+                f"- [{proposal['title']}](../rewrite-proposals/{proposal['slug']}.md)"
+                f" | command `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {proposal['slug']}`"
+            )
+    lines.extend(["", "## Recently Closed"])
+    if not inactive:
+        lines.append("- 当前没有已关闭的 rewrite proposal。")
+    else:
+        for proposal in inactive[:8]:
+            lines.append(
+                f"- [{proposal['title']}](../rewrite-proposals/{proposal['slug']}.md)"
+                f" | status `{display_rewrite_proposal_status(str(proposal.get('status') or 'proposed'))}`"
+                f" | applied `{proposal.get('applied_at', '') or 'none'}`"
+            )
+    return "\n".join(lines) + "\n"
+
+
+def store_concept_rewrite_candidate(
+    root: Path,
+    slug: str,
+    *,
+    quality_record: dict[str, Any],
+    candidate_markdown: str,
+    generated_at: str,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    snapshot = concept_page_snapshot(root, slug)
+    state = load_concept_rewrite_state(root)
+    proposals = [dict(proposal) for proposal in state.get("proposals", []) if isinstance(proposal, dict)]
+    target: dict[str, Any] | None = None
+    for proposal in proposals:
+        if str(proposal.get("slug") or "") == slug:
+            target = proposal
+            break
+    if target is None:
+        target = {
+            "slug": slug,
+            "title": str(quality_record.get("title") or snapshot.get("title") or slug),
+            "status": "proposed",
+            "first_proposed_at": generated_at,
+        }
+        proposals.append(target)
+    digest = concept_rewrite_proposal_digest(candidate_markdown)
+    previous_digest = str(target.get("candidate_digest") or "")
+    previous_status = str(target.get("status") or "proposed")
+    if previous_digest and previous_digest != digest and previous_status in {"applied", "rejected"}:
+        target["status"] = "proposed"
+        target["reviewed_at"] = ""
+        target["review_note"] = ""
+        target["applied_at"] = ""
+    target.update(
+        {
+            "title": str(quality_record.get("title") or snapshot.get("title") or slug),
+            "priority": str(quality_record.get("priority") or "medium"),
+            "score": int(quality_record.get("score") or 0),
+            "issues": list(quality_record.get("issues") or []),
+            "rewrite_strategy": str(quality_record.get("rewrite_strategy") or ""),
+            "target_path": str(quality_record.get("path") or snapshot.get("path") or f"wiki/concepts/{slug}.md"),
+            "proposal_path": relative_path(root, concept_rewrite_proposal_page_path(root, slug)),
+            "source_signature": str(quality_record.get("source_signature") or snapshot.get("source_signature") or ""),
+            "source_pages": list(quality_record.get("source_pages") or snapshot.get("source_pages") or []),
+            "active": True,
+            "last_proposed_at": generated_at,
+            "occurrences": int(target.get("occurrences") or 0) + 1,
+            "candidate_markdown": candidate_markdown.strip() + "\n",
+            "candidate_digest": digest,
+            "current_summary": str(snapshot.get("summary") or ""),
+        }
+    )
+    target["pending_review"] = "true" if rewrite_proposal_needs_review(str(target.get("status") or "proposed")) else "false"
+    target["apply_ready"] = bool(str(target.get("status") or "") == "accepted" and target.get("candidate_markdown"))
+    save_concept_rewrite_state(root, {"version": 1, "proposals": proposals})
+    write_if_changed(root / str(target["proposal_path"]), render_concept_rewrite_proposal_page(target))
+    return {
+        "slug": slug,
+        "proposal_path": str(target["proposal_path"]),
+        "status": str(target.get("status") or "proposed"),
+        "candidate_digest": digest,
+    }
 
 
 def compile_wiki(root: Path) -> dict[str, Any]:
@@ -5168,6 +5834,11 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         active_protocol=protocol_state["active_protocol"],
     )
     memory["health"]["concept_quality"] = build_concept_quality(root, memory)
+    memory["health"]["concept_rewrite"] = reconcile_concept_rewrite_proposals(
+        root,
+        memory["health"]["concept_quality"],
+        compiled_at=compiled_at,
+    )
     memory["digest"] = machine_memory_digest(memory)
     graph = build_machine_memory_graph(memory)
     memory["graph_digest"] = graph["digest"]
@@ -5208,6 +5879,19 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         )
     )
     changed_pages += int(write_if_changed(concept_quality_path(root), render_concept_quality(memory)))
+    changed_pages += int(
+        write_if_changed(
+            concept_rewrite_index_path(root),
+            render_concept_rewrite_index(memory["health"]["concept_rewrite"], compiled_at),
+        )
+    )
+    for proposal in memory["health"]["concept_rewrite"].get("all_proposals", []):
+        changed_pages += int(
+            write_if_changed(
+                root / proposal["proposal_path"],
+                render_concept_rewrite_proposal_page(proposal),
+            )
+        )
     changed_pages += int(write_if_changed(graph_health_report_path(root), render_graph_health(memory)))
     changed_pages += int(write_if_changed(machine_memory_drift_report_path(root), render_drift_report(memory, transition)))
     append_wiki_log(
@@ -5856,6 +6540,140 @@ def file_back(
     return {"path": relative_path(root, destination), "protocol": resolved_protocol}
 
 
+def _save_machine_memory_action_records(root: Path, actions: list[dict[str, Any]]) -> None:
+    save_machine_memory_action_state(root, {"version": 1, "actions": actions})
+
+
+def review_concept_rewrite(
+    root: Path,
+    slug: str,
+    status: str,
+    *,
+    note: str | None = None,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    if status not in REWRITE_PROPOSAL_STATUSES:
+        raise ValueError(f"Unsupported concept rewrite status: {status}")
+    state = load_concept_rewrite_state(root)
+    proposals = [dict(proposal) for proposal in state.get("proposals", []) if isinstance(proposal, dict)]
+    target: dict[str, Any] | None = None
+    for proposal in proposals:
+        if str(proposal.get("slug") or "") == slug:
+            target = proposal
+            break
+    if target is None:
+        raise FileNotFoundError(f"Concept rewrite proposal not found: {slug}")
+    reviewed_at = utc_now()
+    target["status"] = status
+    target["reviewed_at"] = reviewed_at
+    target["review_note"] = note or ""
+    target["pending_review"] = "true" if rewrite_proposal_needs_review(status) else "false"
+    target["apply_ready"] = bool(status == "accepted" and target.get("candidate_markdown"))
+    if status != "applied":
+        target["applied_at"] = str(target.get("applied_at") or "")
+    save_concept_rewrite_state(root, {"version": 1, "proposals": proposals})
+    append_wiki_log(
+        root,
+        "rewrite-review",
+        str(target.get("title") or slug),
+        [
+            f"slug: `{slug}`",
+            f"status: `{status}`",
+            f"target: `{target.get('target_path', '')}`",
+        ],
+    )
+    compile_wiki(root)
+    return {
+        "slug": slug,
+        "status": status,
+        "reviewed_at": reviewed_at,
+        "apply_ready": bool(target.get("apply_ready", False)),
+    }
+
+
+def _validate_rewrite_candidate_markdown(
+    candidate_markdown: str,
+    slug: str,
+    source_signature: str,
+    source_pages: list[str],
+) -> None:
+    frontmatter = parse_frontmatter(candidate_markdown)
+    if str(frontmatter.get("id") or "") != f"concept-{slug}":
+        raise RuntimeError("Rewrite candidate must preserve the concept id.")
+    if str(frontmatter.get("kind") or "") != "concept":
+        raise RuntimeError("Rewrite candidate must preserve `kind: concept`.")
+    if str(frontmatter.get("source_signature") or "") != source_signature:
+        raise RuntimeError("Rewrite candidate source_signature no longer matches the target concept.")
+    candidate_source_pages = frontmatter.get("source_pages", [])
+    if not isinstance(candidate_source_pages, list):
+        raise RuntimeError("Rewrite candidate must preserve source_pages.")
+    normalized_candidate_sources = [str(item) for item in candidate_source_pages if isinstance(item, str)]
+    if normalized_candidate_sources != source_pages:
+        raise RuntimeError("Rewrite candidate source_pages no longer match the target concept.")
+
+
+def apply_concept_rewrite(root: Path, slug: str, *, note: str | None = None) -> dict[str, Any]:
+    ensure_layout(root)
+    state = load_concept_rewrite_state(root)
+    proposals = [dict(proposal) for proposal in state.get("proposals", []) if isinstance(proposal, dict)]
+    target: dict[str, Any] | None = None
+    for proposal in proposals:
+        if str(proposal.get("slug") or "") == slug:
+            target = proposal
+            break
+    if target is None:
+        raise FileNotFoundError(f"Concept rewrite proposal not found: {slug}")
+    if str(target.get("status") or "") != "accepted":
+        raise RuntimeError("Concept rewrite proposal must be accepted before apply.")
+    candidate_markdown = str(target.get("candidate_markdown") or "")
+    if not candidate_markdown:
+        raise RuntimeError("Concept rewrite proposal has no candidate markdown to apply.")
+    concept_path = root / str(target.get("target_path") or f"wiki/concepts/{slug}.md")
+    if not concept_path.exists():
+        raise FileNotFoundError(f"Concept page not found: {concept_path}")
+    current_frontmatter = parse_frontmatter(concept_path.read_text(encoding="utf-8", errors="replace"))
+    current_source_signature = str(current_frontmatter.get("source_signature") or "")
+    expected_source_signature = str(target.get("source_signature") or "")
+    if expected_source_signature and current_source_signature != expected_source_signature:
+        raise RuntimeError("Concept page changed since this rewrite proposal was generated.")
+    current_source_pages = current_frontmatter.get("source_pages", [])
+    if not isinstance(current_source_pages, list):
+        current_source_pages = []
+    normalized_source_pages = [str(item) for item in current_source_pages if isinstance(item, str)]
+    _validate_rewrite_candidate_markdown(
+        candidate_markdown,
+        slug,
+        expected_source_signature,
+        normalized_source_pages,
+    )
+    concept_path.write_text(candidate_markdown.strip() + "\n", encoding="utf-8")
+    applied_at = utc_now()
+    target["status"] = "applied"
+    target["applied_at"] = applied_at
+    target["reviewed_at"] = applied_at
+    target["review_note"] = note or "Applied accepted rewrite proposal."
+    target["pending_review"] = "false"
+    target["apply_ready"] = False
+    save_concept_rewrite_state(root, {"version": 1, "proposals": proposals})
+    append_wiki_log(
+        root,
+        "rewrite-apply",
+        str(target.get("title") or slug),
+        [
+            f"slug: `{slug}`",
+            f"target: `{target.get('target_path', '')}`",
+            f"proposal_path: `{target.get('proposal_path', '')}`",
+        ],
+    )
+    compile_wiki(root)
+    return {
+        "slug": slug,
+        "status": "applied",
+        "applied_at": applied_at,
+        "path": str(target.get("target_path") or f"wiki/concepts/{slug}.md"),
+    }
+
+
 def review_machine_memory_action(
     root: Path,
     action_id: str,
@@ -5906,6 +6724,96 @@ def review_machine_memory_action(
         "status": status,
         "reviewed_at": reviewed_at,
         "active": bool(target.get("active", True)),
+    }
+
+
+def apply_machine_memory_action(root: Path, action_id: str, *, note: str | None = None) -> dict[str, Any]:
+    ensure_layout(root)
+    state = load_machine_memory_action_state(root)
+    actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
+    target: dict[str, Any] | None = None
+    for action in actions:
+        if str(action.get("id") or "") == action_id:
+            target = action
+            break
+    if target is None:
+        raise FileNotFoundError(f"Machine-memory action not found: {action_id}")
+    if str(target.get("status") or "") != "accepted":
+        raise RuntimeError("Machine-memory action must be accepted before apply.")
+    kind = str(target.get("kind") or "")
+    if kind not in LOW_RISK_APPLYABLE_ACTION_KINDS:
+        raise RuntimeError("Only low-risk accepted actions support semi-auto apply.")
+
+    applied_at = utc_now()
+    apply_mode = "manual-link-state"
+    manual_state = load_manual_link_state(root)
+    manual_links = [dict(item) for item in manual_state.get("source_to_concept", []) if isinstance(item, dict)]
+    if kind == "add-source-concept-link":
+        source_ids = [str(item) for item in target.get("source_ids", []) if isinstance(item, str)]
+        concept_slugs = [str(item) for item in target.get("concept_slugs", []) if isinstance(item, str)]
+        if not source_ids or not concept_slugs:
+            raise RuntimeError("Low-risk link action is missing source_ids or concept_slugs.")
+        source_id = source_ids[0]
+        concept_slug = concept_slugs[0]
+        existing = next(
+            (
+                item
+                for item in manual_links
+                if str(item.get("source_id") or "") == source_id
+                and str(item.get("concept_slug") or "") == concept_slug
+                and bool(item.get("active", True))
+            ),
+            None,
+        )
+        if existing is None:
+            manual_links.append(
+                {
+                    "source_id": source_id,
+                    "concept_slug": concept_slug,
+                    "active": True,
+                    "created_at": applied_at,
+                    "applied_at": applied_at,
+                    "origin_action_id": action_id,
+                    "note": note or "Applied accepted low-risk repair action.",
+                }
+            )
+        else:
+            existing["active"] = True
+            existing["applied_at"] = applied_at
+            existing["origin_action_id"] = action_id
+            existing["note"] = note or str(existing.get("note") or "")
+        save_manual_link_state(root, {"version": 1, "source_to_concept": manual_links})
+    else:  # pragma: no cover - guarded by allowlist above
+        raise RuntimeError(f"Unsupported apply kind: {kind}")
+
+    target["status"] = "resolved"
+    target["reviewed_at"] = applied_at
+    target["status_updated_at"] = applied_at
+    target["review_note"] = note or "Semi-auto apply completed."
+    target["pending_review"] = "false"
+    target["revisit_after"] = ""
+    target["escalate_after"] = ""
+    target["aging_state"] = ""
+    target["overdue_review"] = "false"
+    target["escalation_candidate"] = "false"
+    _save_machine_memory_action_records(root, actions)
+    append_wiki_log(
+        root,
+        "action-apply",
+        str(target.get("title") or action_id),
+        [
+            f"action_id: `{action_id}`",
+            f"kind: `{kind}`",
+            f"apply_mode: `{apply_mode}`",
+            f"primary: `{target.get('primary_path', '')}`",
+        ],
+    )
+    compile_wiki(root)
+    return {
+        "id": action_id,
+        "status": "resolved",
+        "applied_at": applied_at,
+        "apply_mode": apply_mode,
     }
 
 
@@ -6363,6 +7271,7 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
                     "slug": record["slug"],
                     "title": record["title"],
                     "path": record["path"],
+                    "source_signature": record.get("source_signature", ""),
                     "priority": record["rewrite_priority"],
                     "issues": list(record.get("issues", [])),
                     "score": int(record.get("score", 0)),
@@ -6466,6 +7375,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/concepts.md": "Missing concepts index page.",
         "wiki/indexes/decisions.md": "Missing decisions index page.",
         "wiki/indexes/judgments.md": "Missing judgments index page.",
+        "wiki/indexes/rewrite-proposals.md": "Missing rewrite proposal index page.",
         "wiki/indexes/protocols.md": "Missing protocol dashboard page.",
         "wiki/indexes/review-queue.md": "Missing review queue page.",
         "wiki/indexes/review-center.md": "Missing review center page.",
@@ -6563,6 +7473,38 @@ def lint_wiki(root: Path) -> dict[str, Any]:
             findings.append(
                 Finding("error", relative_path(root, action_state_path), "Machine memory action state is not valid JSON.")
             )
+
+    rewrite_state_path = concept_rewrite_state_path(root)
+    if manifest["entries"] and not rewrite_state_path.exists():
+        findings.append(
+            Finding("warn", relative_path(root, rewrite_state_path), "Concept rewrite proposal state file has not been initialized.")
+        )
+    elif rewrite_state_path.exists():
+        rewrite_state = load_json_document(rewrite_state_path)
+        proposals = rewrite_state.get("proposals") if isinstance(rewrite_state, dict) else None
+        if not isinstance(proposals, list):
+            findings.append(
+                Finding("error", relative_path(root, rewrite_state_path), "Concept rewrite proposal state is not valid JSON.")
+            )
+        else:
+            for proposal in proposals:
+                if not isinstance(proposal, dict):
+                    continue
+                slug = str(proposal.get("slug") or "")
+                proposal_path = root / str(proposal.get("proposal_path") or f"wiki/rewrite-proposals/{slug}.md")
+                if slug and not proposal_path.exists():
+                    findings.append(
+                        Finding("error", relative_path(root, proposal_path), f"Missing rewrite proposal page for concept `{slug}`.")
+                    )
+                target_path = root / str(proposal.get("target_path") or f"wiki/concepts/{slug}.md")
+                if slug and not target_path.exists():
+                    findings.append(
+                        Finding("error", relative_path(root, target_path), f"Rewrite proposal target concept page is missing: `{slug}`.")
+                    )
+                if proposal.get("apply_ready") and not proposal.get("candidate_markdown"):
+                    findings.append(
+                        Finding("error", relative_path(root, proposal_path), "Rewrite proposal is marked apply_ready but has no candidate markdown.")
+                    )
 
     concept_pages = sorted((root / "wiki" / "concepts").glob("*.md"))
     if manifest["entries"] and not concept_pages:
@@ -6732,6 +7674,10 @@ def render_repair_backlog(
     inactive_actions = health.get("inactive_actions", [])
     repair_plan = health.get("repair_plan", {})
     concept_quality = health.get("concept_quality", {})
+    rewrite_state = health.get("concept_rewrite", {})
+    rewrite_proposals = rewrite_state.get("proposals", [])
+    apply_ready_rewrites = [proposal for proposal in rewrite_proposals if proposal.get("apply_ready")]
+    apply_ready_actions = [action for action in actions if action_supports_low_risk_apply(action)]
     execution_proposals = repair_plan.get("execution_proposals", [])
     promotions = promotion_result.get("pages", [])
     lines = [
@@ -6762,6 +7708,10 @@ def render_repair_backlog(
         f"- 概念合并候选：`{concept_quality.get('counts', {}).get('merge_candidates', 0)}`",
         f"- 概念冲突信号：`{concept_quality.get('counts', {}).get('conflict_signals', 0)}`",
         f"- 概念证据缺口：`{concept_quality.get('counts', {}).get('gap_signals', 0)}`",
+        f"- Rewrite 提案：`{rewrite_state.get('counts', {}).get('active', 0)}`",
+        f"- 待审 Rewrite：`{rewrite_state.get('counts', {}).get('pending_review', 0)}`",
+        f"- 可应用 Rewrite：`{len(apply_ready_rewrites)}`",
+        f"- 可安全执行动作：`{len(apply_ready_actions)}`",
         f"- 图谱修复候选：`{len(health.get('link_suggestions', []))}`",
         f"- 无概念覆盖来源：`{len(sources_without_concepts)}`",
         f"- 图谱分量数：`{health.get('component_count', 0)}`",
@@ -6785,6 +7735,10 @@ def render_repair_backlog(
         lines.append(f"3. 重写 `{len(placeholder_concepts)}` 个仍使用回退摘要的概念页。")
     if concept_quality.get("counts", {}).get("weak", 0):
         lines.append(f"3a. 按概念质量看板优先处理 `{concept_quality.get('counts', {}).get('weak', 0)}` 个弱概念页。")
+    if rewrite_state.get("counts", {}).get("pending_review", 0):
+        lines.append(f"3b. 先审 `{rewrite_state.get('counts', {}).get('pending_review', 0)}` 个 concept rewrite proposal。")
+    if apply_ready_rewrites:
+        lines.append(f"3c. 应用 `{len(apply_ready_rewrites)}` 个已接受的 concept rewrite proposal，让概念页先收敛。")
     if pending_review_decisions:
         lines.append(f"4. 审阅 `{len(pending_review_decisions)}` 个等待批准或复审的决策页。")
     if pending_review_judgments:
@@ -6803,6 +7757,8 @@ def render_repair_backlog(
         )
     if repair_plan.get("counts", {}).get("proposals", 0):
         lines.append(f"9b. 参考 `{repair_plan.get('counts', {}).get('proposals', 0)}` 个页级执行提案决定下一批修复。")
+    if apply_ready_actions:
+        lines.append(f"9c. 其中 `{len(apply_ready_actions)}` 个低风险动作可直接走 `apply-action` 半自动执行。")
     if overdue_actions:
         lines.append(f"10. 优先清理 `{len(overdue_actions)}` 个已到期待处理的 machine-memory 动作。")
     if escalated_actions:
@@ -6940,6 +7896,19 @@ def render_repair_backlog(
                 f"- `{candidate['path']}` | priority `{candidate.get('priority', 'n/a')}`"
                 f" | strategy `{candidate.get('rewrite_strategy', 'n/a')}`"
             )
+    if rewrite_proposals:
+        lines.append("")
+        lines.append("### Rewrite Proposals")
+        for proposal in rewrite_proposals[:8]:
+            command = (
+                f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {proposal['slug']}"
+                if proposal.get("apply_ready")
+                else f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite {proposal['slug']} --status accepted"
+            )
+            lines.append(
+                f"- `{proposal['target_path']}` | status `{display_rewrite_proposal_status(str(proposal.get('status') or 'proposed'))}`"
+                f" | strategy `{proposal.get('rewrite_strategy', 'n/a')}` | command `{command}`"
+            )
     if concept_quality.get("conflict_signals"):
         lines.append("")
         lines.append("### 概念冲突信号")
@@ -6975,6 +7944,15 @@ def render_repair_backlog(
                 f"- `{proposal['action_id']}` | targets `{', '.join(proposal.get('target_paths', [])) or 'none'}`"
                 f" | risk `{proposal.get('risk', 'medium')}`"
                 f" | strategy `{proposal.get('summary', 'n/a')}`"
+            )
+    if apply_ready_actions:
+        lines.append("")
+        lines.append("### Safe Apply Actions")
+        for action in apply_ready_actions[:8]:
+            lines.append(
+                f"- `{action['id']}` | `{action['title']}`"
+                f" | command `{action.get('command_hint', '')}`"
+                f" | primary `{action.get('primary_path', '')}`"
             )
     if health.get("link_suggestions", []):
         lines.append("")
@@ -7091,6 +8069,21 @@ def write_nightly_health(
             "merge_candidates": memory.get("health", {}).get("concept_quality", {}).get("counts", {}).get("merge_candidates", 0),
             "conflict_signals": memory.get("health", {}).get("concept_quality", {}).get("counts", {}).get("conflict_signals", 0),
             "gap_signals": memory.get("health", {}).get("concept_quality", {}).get("counts", {}).get("gap_signals", 0),
+        },
+        "concept_rewrite": {
+            "path": relative_path(root, concept_rewrite_index_path(root)),
+            "state_path": memory.get("health", {}).get("concept_rewrite", {}).get("state_path", ".aiwiki/state/concept-rewrite-proposals.json"),
+            "pending_review_slugs": [
+                proposal["slug"]
+                for proposal in memory.get("health", {}).get("concept_rewrite", {}).get("proposals", [])
+                if proposal.get("pending_review") == "true"
+            ],
+            "apply_ready_slugs": [
+                proposal["slug"]
+                for proposal in memory.get("health", {}).get("concept_rewrite", {}).get("proposals", [])
+                if proposal.get("apply_ready")
+            ],
+            "active_count": memory.get("health", {}).get("concept_rewrite", {}).get("counts", {}).get("active", 0),
         },
         "machine_memory": {
             "digest": memory.get("digest", ""),

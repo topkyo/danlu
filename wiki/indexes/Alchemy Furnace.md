@@ -303,6 +303,9 @@ status: "active"
 - machine-memory action lifecycle、review-action 入口、inactive / overdue / escalation 视图
 - machine-memory repair plan、execution batch、页级 execution proposals、next-step / command-hint
 - concept-quality 看板、弱概念页、概念合并候选、冲突信号、证据缺口和重写优先级
+- concept rewrite proposal / review / apply gate
+- 低风险 repair 的 safe execution layer（`apply-action`）
+- 交互式 machine-memory graph HTML（搜索、分量过滤、节点详情、safe-apply 摘要）
 - decision / judgment writeback layers
 - decision / judgment review workflow 与 review queue
 - recurring outputs 自动晋升到 decision / judgment 页面
@@ -315,9 +318,9 @@ status: "active"
 
 后续增强方向：
 
-- 更细的 concept rewrite acceptance / review gate
-- 更安全的低风险 semi-auto repair apply
-- 更直观的 machine-memory 图谱可视化
+- 更强的 review-center / graph-view 产品壳
+- 更丰富的 graph execution 和 page-level patch/apply 策略
+- 更深的 protocol starter library（`product / ops / more domain packs`）
 
 ## 架构不变量
 

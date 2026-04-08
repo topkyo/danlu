@@ -48,6 +48,7 @@ kind: "dashboard"
 - [[wiki/indexes/review-queue|审阅队列]]
 - [[wiki/indexes/review-center|审阅中心]]
 - [[wiki/indexes/repair-backlog|修复待办]]
+- [[wiki/indexes/rewrite-proposals|Rewrite 提案]]
 - [[wiki/indexes/drift-report|漂移报告]]
 - [[wiki/indexes/graph-health|图谱健康]]
 - [[wiki/indexes/graph-view|图谱视图]]
@@ -71,9 +72,10 @@ kind: "dashboard"
 - 想确认协议具体改变了什么行为：看 [[schema/protocols/index|协议规则]]
 - 想看 pending review：看 [[wiki/indexes/review-queue|审阅队列]]
 - 想把 review / repair / aging 放到一个地方看：看 [[wiki/indexes/review-center|审阅中心]]，真正的本地审阅面板在 `output/review/review-center.html`
+- 想先处理弱概念页的 rewrite gate：看 [[wiki/indexes/rewrite-proposals|Rewrite 提案]]
 - 想看修复优先级：看 [[wiki/indexes/repair-backlog|修复待办]]
 - 想看 retrieval / graph 是否健康：看 [[wiki/indexes/graph-health|图谱健康]] 和 [[wiki/indexes/machine-memory|机器记忆]]
-- 想从统一入口看 machine-memory 图层：看 [[wiki/indexes/graph-view|图谱视图]]，真正的本地图谱产物在 `output/graph/machine-memory.html`
+- 想从统一入口看 machine-memory 图层：看 [[wiki/indexes/graph-view|图谱视图]]，真正的本地图谱产物在 `output/graph/machine-memory.html`，现在带搜索、分量过滤和节点详情
 - 想看最终产物：看 [[wiki/indexes/Outputs|输出面板]]
 
 ## 路径职责

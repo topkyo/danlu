@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 
 from .app import (
+    apply_concept_rewrite,
+    apply_machine_memory_action,
     ask_question,
     compile_wiki,
     ensure_layout,
@@ -15,6 +17,7 @@ from .app import (
     lint_wiki,
     load_protocol_state,
     nightly_health,
+    review_concept_rewrite,
     review_machine_memory_action,
     review_page,
     set_active_protocol,
@@ -140,6 +143,21 @@ def build_parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--note", help="Optional review note to store in the page.")
     review_parser.add_argument("--confidence", help="Optional confidence override for judgment pages.")
 
+    rewrite_review_parser = subparsers.add_parser(
+        "review-rewrite",
+        help="Advance a concept rewrite proposal through the explicit rewrite workflow.",
+    )
+    rewrite_review_parser.add_argument("slug", help="Concept slug.")
+    rewrite_review_parser.add_argument("--status", required=True, help="Target rewrite proposal status.")
+    rewrite_review_parser.add_argument("--note", help="Optional review note.")
+
+    apply_rewrite_parser = subparsers.add_parser(
+        "apply-rewrite",
+        help="Apply an accepted concept rewrite proposal to the target concept page.",
+    )
+    apply_rewrite_parser.add_argument("slug", help="Concept slug.")
+    apply_rewrite_parser.add_argument("--note", help="Optional apply note.")
+
     action_review_parser = subparsers.add_parser(
         "review-action",
         help="Advance a machine-memory repair action through the explicit action workflow.",
@@ -147,6 +165,13 @@ def build_parser() -> argparse.ArgumentParser:
     action_review_parser.add_argument("action_id", help="Machine-memory action id.")
     action_review_parser.add_argument("--status", required=True, help="Target action status.")
     action_review_parser.add_argument("--note", help="Optional action review note.")
+
+    apply_action_parser = subparsers.add_parser(
+        "apply-action",
+        help="Apply an accepted low-risk machine-memory repair action through the safe execution layer.",
+    )
+    apply_action_parser.add_argument("action_id", help="Machine-memory action id.")
+    apply_action_parser.add_argument("--note", help="Optional apply note.")
 
     subparsers.add_parser("lint", help="Run deterministic lint checks against the wiki.")
     subparsers.add_parser("run-lint", help="Run deterministic lint plus an LLM-backed semantic lint pass.")
@@ -270,8 +295,14 @@ def main(argv: list[str] | None = None) -> int:
             result = file_back(root, args.artifact, title=args.title, kind=args.kind, protocol=args.protocol)
         elif args.command == "review-page":
             result = review_page(root, args.page, args.status, note=args.note, confidence=args.confidence)
+        elif args.command == "review-rewrite":
+            result = review_concept_rewrite(root, args.slug, args.status, note=args.note)
+        elif args.command == "apply-rewrite":
+            result = apply_concept_rewrite(root, args.slug, note=args.note)
         elif args.command == "review-action":
             result = review_machine_memory_action(root, args.action_id, args.status, note=args.note)
+        elif args.command == "apply-action":
+            result = apply_machine_memory_action(root, args.action_id, note=args.note)
         elif args.command == "lint":
             result = lint_wiki(root)
         elif args.command == "run-lint":

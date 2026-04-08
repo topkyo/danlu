@@ -145,6 +145,7 @@ nightly 也会继续跟踪 `decision / judgment` 的 aging：
 - `machine-memory-actions.md` 会把图谱修复动作沉成稳定队列，并展示状态分布、已到期、已升级、最近清除
 - `machine-memory-repair-plan.md` 会把 accepted / proposed / deferred 动作整理成可执行批次、页级执行提案和下一步命令提示
 - `concept-quality.md` 会把弱概念页、占位概念、概念合并候选、冲突信号、证据缺口和重写优先级集中列出来
+- `rewrite-proposals.md` 会把高优先级弱概念页的 rewrite proposal、状态和 apply 入口集中列出来
 
 machine-memory action 现在也有显式 lifecycle：
 - `proposed`：新发现、待处理
@@ -153,10 +154,21 @@ machine-memory action 现在也有显式 lifecycle：
 - `resolved`：已解决
 - `rejected`：确认无需处理
 
+concept rewrite 现在也有显式 gate：
+- `run-compile` 会把高优先级弱概念页先生成 `rewrite proposal`
+- `review-rewrite` 用来接受 / 暂缓 / 拒绝提案
+- `apply-rewrite` 只会对已接受、且 source signature 仍匹配的提案执行
+
+safe execution layer 现在也已经接上：
+- `review-action` 负责把 repair action 推进到 `accepted / deferred / resolved / rejected`
+- `apply-action` 只会处理 allowlist 内的低风险动作
+- 当前低风险动作会通过 `.aiwiki/state/manual-links.json` 写入可审、可重编译的 manual link state，而不是静默覆盖事实层
+
 关键状态页：
 - [review-queue.md](./wiki/indexes/review-queue.md)
 - [aging-report.md](./wiki/indexes/aging-report.md)
 - [concept-quality.md](./wiki/indexes/concept-quality.md)
+- [rewrite-proposals.md](./wiki/indexes/rewrite-proposals.md)
 - [machine-memory-topology.md](./wiki/indexes/machine-memory-topology.md)
 - [machine-memory-actions.md](./wiki/indexes/machine-memory-actions.md)
 - [machine-memory-repair-plan.md](./wiki/indexes/machine-memory-repair-plan.md)
@@ -173,7 +185,7 @@ machine-memory action 现在也有显式 lifecycle：
 - [Wiki Hub.md](<./wiki/indexes/Wiki Hub.md>)：知识中枢
 - [protocols.md](./wiki/indexes/protocols.md)：协议入口和 active protocol 状态
 - [review-center.md](./wiki/indexes/review-center.md)：统一审阅/修复入口；本地审阅面板在 `output/review/review-center.html`
-- [graph-view.md](./wiki/indexes/graph-view.md)：统一图谱入口；本地图谱产物在 `output/graph/machine-memory.html`
+- [graph-view.md](./wiki/indexes/graph-view.md)：统一图谱入口；本地图谱产物在 `output/graph/machine-memory.html`，现在带搜索、分量过滤、节点详情和 safe-apply 摘要
 
 ### 原料入口
 

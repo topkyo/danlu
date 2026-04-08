@@ -10,6 +10,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from aiwiki.app import (
+    apply_concept_rewrite,
+    apply_machine_memory_action,
     ask_question,
     collect_machine_memory_actions,
     compile_wiki,
@@ -24,6 +26,7 @@ from aiwiki.app import (
     parse_frontmatter,
     placeholder_concept_slugs,
     render_frontmatter,
+    review_concept_rewrite,
     review_machine_memory_action,
     review_page,
     save_machine_memory_action_state,
@@ -568,8 +571,97 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(result["pending_pages"], 0)
         self.assertEqual(result["pending_concept_pages"], 0)
         self.assertGreaterEqual(result["pending_rewrite_concept_pages"], 1)
-        self.assertEqual(len(result["updated_rewrite_concept_pages"]), 1)
-        self.assertIn("Rewritten synthesis", concept_page.read_text(encoding="utf-8"))
+        self.assertEqual(len(result["updated_rewrite_concept_pages"]), 0)
+        self.assertEqual(len(result["updated_rewrite_proposal_pages"]), 1)
+        self.assertIn("Existing synthesis", concept_page.read_text(encoding="utf-8"))
+        proposal_page = self.root / result["updated_rewrite_proposal_pages"][0]
+        self.assertTrue(proposal_page.exists())
+        self.assertIn("Rewritten synthesis", proposal_page.read_text(encoding="utf-8"))
+
+    def test_review_and_apply_concept_rewrite_updates_concept_page(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        source_page.write_text(
+            source_page.read_text(encoding="utf-8").replace(
+                "- Pending LLM summary.",
+                "- Transformer scale improves capability and raises compute demand.",
+            ),
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+
+        for concept_page in sorted((self.root / "wiki" / "concepts").glob("*.md")):
+            concept_page.write_text(
+                concept_page.read_text(encoding="utf-8").replace(
+                    "- This concept currently appears",
+                    f"- Existing synthesis for {concept_page.stem} appears",
+                ),
+                encoding="utf-8",
+            )
+        compile_wiki(self.root)
+
+        memory = load_machine_memory(self.root)
+        candidate = memory["health"]["concept_quality"]["rewrite_candidates"][0]
+        concept_page = self.root / candidate["path"]
+        current = concept_page.read_text(encoding="utf-8")
+        updated = current.replace("Existing synthesis", "Rewritten synthesis")
+
+        result = run_compile(self.root, client=StubClient([updated]), limit=1)
+        proposal_path = self.root / result["updated_rewrite_proposal_pages"][0]
+        slug = proposal_path.stem
+
+        review = review_concept_rewrite(self.root, slug, "accepted", note="Looks grounded.")
+        applied = apply_concept_rewrite(self.root, slug, note="Apply accepted rewrite.")
+
+        self.assertEqual(review["status"], "accepted")
+        self.assertEqual(applied["status"], "applied")
+        refreshed = concept_page.read_text(encoding="utf-8")
+        self.assertIn("Rewritten synthesis", refreshed)
+        proposal_text = proposal_path.read_text(encoding="utf-8")
+        self.assertIn("已应用", proposal_text)
+
+    def test_apply_machine_memory_action_writes_manual_link_state(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+        concept_path = self.root / "wiki" / "concepts" / f"{concept_slug}.md"
+        before_signature = parse_frontmatter(concept_path.read_text(encoding="utf-8"))["source_signature"]
+
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "manual-link-action",
+                        "kind": "add-source-concept-link",
+                        "title": "Manual safe apply link",
+                        "reason": "Backfill source/concept link.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "accepted",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                    }
+                ],
+            },
+        )
+
+        result = apply_machine_memory_action(self.root, "manual-link-action", note="Safe apply for test.")
+
+        self.assertEqual(result["status"], "resolved")
+        manual_link_state = json.loads(
+            (self.root / ".aiwiki" / "state" / "manual-links.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(manual_link_state["source_to_concept"][0]["source_id"], entry["id"])
+        self.assertEqual(manual_link_state["source_to_concept"][0]["concept_slug"], concept_slug)
+        after_signature = parse_frontmatter(concept_path.read_text(encoding="utf-8"))["source_signature"]
+        self.assertNotEqual(before_signature, after_signature)
 
     def test_file_back_supports_decision_and_judgment_kinds(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -1597,6 +1689,16 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Repository Tree", note_text)
         self.assertIn("README", note_text)
 
+    def test_compile_generates_interactive_machine_memory_graph_html(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        payload = (self.root / "output" / "graph" / "machine-memory.html").read_text(encoding="utf-8")
+        self.assertIn("graph-search", payload)
+        self.assertIn("graph-node-browser", payload)
+        self.assertIn("graphUiData", payload)
+        self.assertIn("节点详情", payload)
+
     def test_lint_reports_missing_indexes_and_broken_concept_source_refs(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -1608,6 +1710,7 @@ class AiwikiFlowTests(unittest.TestCase):
         (self.root / "wiki" / "indexes" / "machine-memory-actions.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory-repair-plan.md").unlink()
         (self.root / "wiki" / "indexes" / "concept-quality.md").unlink()
+        (self.root / "wiki" / "indexes" / "rewrite-proposals.md").unlink()
         (self.root / "wiki" / "indexes" / "graph-health.md").unlink()
         (self.root / "wiki" / "indexes" / "drift-report.md").unlink()
         (self.root / ".aiwiki" / "cache" / "machine-memory-graph.json").unlink()
@@ -1628,6 +1731,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Missing machine memory actions page.", report_text)
         self.assertIn("Missing machine memory repair plan page.", report_text)
         self.assertIn("Missing concept quality page.", report_text)
+        self.assertIn("Missing rewrite proposal index page.", report_text)
         self.assertIn("Missing machine memory graph health page.", report_text)
         self.assertIn("Missing machine memory drift report.", report_text)
         self.assertIn("Missing machine memory graph export.", report_text)

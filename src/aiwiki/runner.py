@@ -28,6 +28,7 @@ from .app import (
     relative_path,
     render_scalar,
     sha256_bytes,
+    store_concept_rewrite_candidate,
     write_nightly_health,
 )
 from .config import LLMConfig
@@ -62,7 +63,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
 
     updated_pages: list[str] = []
     updated_placeholder_concept_pages: list[str] = []
-    updated_rewrite_concept_pages: list[str] = []
+    updated_rewrite_proposal_pages: list[str] = []
     skipped = max(0, len(pending) - limit)
     pending_concept_slugs = placeholder_concept_slugs(root)
     remaining_budget = max(0, limit)
@@ -76,10 +77,11 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             "updated_pages": updated_pages,
             "pending_pages": len(pending),
             "skipped_pages": skipped,
-            "updated_concept_pages": updated_placeholder_concept_pages + updated_rewrite_concept_pages,
+            "updated_concept_pages": updated_placeholder_concept_pages,
             "pending_concept_pages": len(pending_concept_slugs),
             "skipped_concept_pages": skipped_concepts,
-            "updated_rewrite_concept_pages": updated_rewrite_concept_pages,
+            "updated_rewrite_concept_pages": [],
+            "updated_rewrite_proposal_pages": updated_rewrite_proposal_pages,
             "pending_rewrite_concept_pages": len(pending_rewrite_candidates),
             "skipped_rewrite_concept_pages": skipped_rewrite_candidates,
         }
@@ -178,13 +180,20 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
         result = effective_client.complete(_system_prompt("compile"), prompt)
         updated = _normalize_markdown(result.text)
         _validate_concept_page(updated, slug, frontmatter.get("source_signature", ""), source_pages)
-        target.write_text(updated, encoding="utf-8")
-        updated_rewrite_concept_pages.append(relative_path(root, target))
+        proposal = store_concept_rewrite_candidate(
+            root,
+            slug,
+            quality_record=quality_record,
+            candidate_markdown=updated,
+            generated_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        )
+        updated_rewrite_proposal_pages.append(str(proposal["proposal_path"]))
         _append_log(
             root,
             {
-                "event": "run-compile-concept-rewrite",
-                "target": relative_path(root, target),
+                "event": "run-compile-concept-rewrite-proposal",
+                "target": str(proposal["proposal_path"]),
+                "concept_page": relative_path(root, target),
                 "source_pages": source_pages,
                 "quality_priority": quality_record.get("priority", ""),
                 "quality_issues": quality_record.get("issues", []),
@@ -194,7 +203,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             },
         )
 
-    if updated_rewrite_concept_pages:
+    if updated_rewrite_proposal_pages:
         compile_result = compile_wiki(root)
 
     return {
@@ -202,10 +211,11 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
         "updated_pages": updated_pages,
         "pending_pages": len(pending),
         "skipped_pages": skipped,
-        "updated_concept_pages": updated_placeholder_concept_pages + updated_rewrite_concept_pages,
+        "updated_concept_pages": updated_placeholder_concept_pages,
         "pending_concept_pages": len(pending_concept_slugs),
         "skipped_concept_pages": skipped_concepts,
-        "updated_rewrite_concept_pages": updated_rewrite_concept_pages,
+        "updated_rewrite_concept_pages": [],
+        "updated_rewrite_proposal_pages": updated_rewrite_proposal_pages,
         "pending_rewrite_concept_pages": len(pending_rewrite_candidates),
         "skipped_rewrite_concept_pages": skipped_rewrite_candidates,
     }
