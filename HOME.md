@@ -93,6 +93,8 @@ kind: "dashboard"
 - `schema/`：运行时规则
 - `schema/protocols/`：领域协议覆盖层
 
+当前 starter library 已提供 `general / investing / research / product / ops` 五套协议。
+
 当前协议已经会改变：
 - `decision / judgment` 的默认 review window
 - `file-back` 生成的 `decision / judgment` 模板
@@ -100,7 +102,7 @@ kind: "dashboard"
 - `review-queue`、`review-center`、`repair-backlog` 与 machine-memory action queue 的优先级焦点
 - `ask` 对来源页和概念页的排序偏好
 - `report / slides / figure` 的输出组织偏置
-- machine-memory repair execution proposal 的领域化修复提示
+- machine-memory repair execution proposal 的领域化修复提示和 page-level patch plan
 
 ## 使用边界
 

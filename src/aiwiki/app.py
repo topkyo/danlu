@@ -350,6 +350,72 @@ PROTOCOL_LIBRARY = {
             "答案里要同时指出 evidence、regression risk 和 next experiment。",
         ],
     },
+    "product": {
+        "title": "产品协议",
+        "summary": "面向 user problem、insight、bet、metric 和 launch judgment 的协议。",
+        "focus": [
+            "围绕 user problem / insight / bet / metric / launch judgment 组织知识。",
+            "把用户信号、产品假设、验证结果和发布判断持续沉淀。",
+        ],
+        "taxonomy": [
+            "concept 优先围绕 user problem、segment、funnel、feature、metric、launch risk。",
+            "decision 记录 prioritize / launch / rollback / deprecate / resource bet 这类动作。",
+            "judgment 记录 insight、bet、expected impact、validation gap、launch readiness。",
+        ],
+        "decision": [
+            "写清动作、目标用户、影响指标、验证方式和回滚条件。",
+            "把依赖、上线窗口和风险前提显式写出来。",
+        ],
+        "judgment": [
+            "写清 user problem、insight、bet、evidence、counter evidence 和 confidence。",
+            "把验证缺口和下一次 release / review 窗口一起记录。",
+        ],
+        "review": [
+            "重点审 metric drift、launch readiness、核心 bet 变化和用户信号反转。",
+            "对发布前判断保持更短的 revisit window。",
+        ],
+        "nightly": [
+            "优先抬升 metric regression、launch blockers、未验证 bet 和待复查判断。",
+            "把 recurring outputs 晋升成 product decision 或 product judgment。",
+        ],
+        "query": [
+            "优先组织成 user problem / insight / bet / metric / launch risk。",
+            "答案里要显式区分 evidence、assumption 和 next validation。",
+        ],
+    },
+    "ops": {
+        "title": "运维协议",
+        "summary": "面向 incident、runbook、mitigation、escalation 和 follow-up 的协议。",
+        "focus": [
+            "围绕 incident / mitigation / escalation / runbook / follow-up 组织知识。",
+            "把处置动作、根因判断、影响范围和复盘结论持续沉淀。",
+        ],
+        "taxonomy": [
+            "concept 优先围绕 incident type、service、dependency、blast radius、runbook、failure mode。",
+            "decision 记录 mitigate / rollback / failover / isolate / escalate / follow-up owner。",
+            "judgment 记录 root cause hypothesis、capacity risk、recurrence risk、operational debt。",
+        ],
+        "decision": [
+            "写清楚处置动作、影响范围、回滚条件、owner 和升级链路。",
+            "把恢复目标、验证信号和 follow-up 时间窗口写清楚。",
+        ],
+        "judgment": [
+            "写清根因判断、证据、反证、blast radius、residual risk 和 confidence。",
+            "保留 incident 时间标签，避免旧结论跨事件复用。",
+        ],
+        "review": [
+            "重点审 incident recurrence、SLO drift、runbook 老化和升级滞后。",
+            "未确认根因的判断默认极短 revisit window。",
+        ],
+        "nightly": [
+            "优先抬升 unresolved incident judgment、runbook drift、capacity risk 和 follow-up debt。",
+            "把 recurring outputs 晋升成 incident decision 或 ops judgment。",
+        ],
+        "query": [
+            "优先组织成 incident timeline / blast radius / mitigation / root cause / follow-up。",
+            "答案里要同时指出当前缓解、残余风险和下一次复查点。",
+        ],
+    },
 }
 
 PROTOCOL_REVIEW_WINDOWS: dict[str, dict[tuple[str, str], tuple[int, int]]] = {
@@ -365,6 +431,18 @@ PROTOCOL_REVIEW_WINDOWS: dict[str, dict[tuple[str, str], tuple[int, int]]] = {
         ("decision", "needs-revisit"): (2, 7),
         ("judgment", "tentative"): (4, 10),
         ("judgment", "tracking"): (7, 21),
+    },
+    "product": {
+        ("decision", "proposed"): (4, 10),
+        ("decision", "needs-revisit"): (2, 5),
+        ("judgment", "tentative"): (3, 7),
+        ("judgment", "tracking"): (7, 14),
+    },
+    "ops": {
+        ("decision", "proposed"): (1, 3),
+        ("decision", "needs-revisit"): (1, 2),
+        ("judgment", "tentative"): (1, 3),
+        ("judgment", "tracking"): (3, 7),
     },
 }
 
@@ -447,12 +525,94 @@ PROTOCOL_CLASSIFICATION_MARKERS: dict[str, dict[str, tuple[str, ...]]] = {
             "开放问题",
         ),
     },
+    "product": {
+        "decision": (
+            "launch",
+            "ship",
+            "rollout",
+            "prioritize",
+            "deprecate",
+            "sunset",
+            "scope",
+            "bet",
+            "go-to-market",
+            "go no-go",
+            "发布",
+            "上线",
+            "灰度",
+            "优先级",
+            "下线",
+            "资源投入",
+        ),
+        "judgment": (
+            "user problem",
+            "insight",
+            "metric",
+            "activation",
+            "retention",
+            "churn",
+            "adoption",
+            "funnel",
+            "launch readiness",
+            "segment",
+            "用户问题",
+            "洞察",
+            "指标",
+            "转化",
+            "留存",
+            "流失",
+            "发布准备度",
+        ),
+    },
+    "ops": {
+        "decision": (
+            "incident",
+            "mitigate",
+            "rollback",
+            "failover",
+            "disable",
+            "throttle",
+            "isolate",
+            "escalate",
+            "hotfix",
+            "containment",
+            "事故",
+            "缓解",
+            "回滚",
+            "切流",
+            "降级",
+            "隔离",
+            "升级",
+            "热修",
+        ),
+        "judgment": (
+            "root cause",
+            "blast radius",
+            "recurrence",
+            "capacity",
+            "dependency",
+            "runbook",
+            "slo",
+            "sla",
+            "oncall",
+            "operational debt",
+            "根因",
+            "影响范围",
+            "复发",
+            "容量",
+            "依赖",
+            "值班",
+            "运行负债",
+        ),
+    },
 }
 
 PROTOCOL_PROMOTION_PREFIXES: dict[str, dict[str, str]] = {
     "general": {"decision": "决策沉淀", "judgment": "判断沉淀"},
     "investing": {"decision": "投资决策沉淀", "judgment": "投资判断沉淀"},
     "research": {"decision": "研发决策沉淀", "judgment": "研发判断沉淀"},
+    "product": {"decision": "产品决策沉淀", "judgment": "产品判断沉淀"},
+    "ops": {"decision": "运维决策沉淀", "judgment": "运维判断沉淀"},
 }
 
 PROTOCOL_FOCUS_KEYWORDS: dict[str, tuple[str, ...]] = {
@@ -495,6 +655,48 @@ PROTOCOL_FOCUS_KEYWORDS: dict[str, tuple[str, ...]] = {
         "吞吐",
         "瓶颈",
     ),
+    "product": (
+        "user problem",
+        "insight",
+        "bet",
+        "metric",
+        "launch",
+        "rollout",
+        "retention",
+        "activation",
+        "adoption",
+        "funnel",
+        "segment",
+        "north star",
+        "用户问题",
+        "洞察",
+        "指标",
+        "发布",
+        "灰度",
+        "留存",
+        "转化",
+    ),
+    "ops": (
+        "incident",
+        "mitigation",
+        "rollback",
+        "failover",
+        "runbook",
+        "root cause",
+        "blast radius",
+        "dependency",
+        "capacity",
+        "slo",
+        "sla",
+        "事故",
+        "缓解",
+        "回滚",
+        "切流",
+        "根因",
+        "影响范围",
+        "依赖",
+        "容量",
+    ),
 }
 
 PROTOCOL_ACTION_KIND_WEIGHTS: dict[str, dict[str, int]] = {
@@ -507,6 +709,17 @@ PROTOCOL_ACTION_KIND_WEIGHTS: dict[str, dict[str, int]] = {
     "research": {
         "expand-singleton-concept": 2,
         "connect-isolated-source": 2,
+        "split-overloaded-concept": 1,
+    },
+    "product": {
+        "split-overloaded-concept": 2,
+        "expand-singleton-concept": 1,
+        "monitor-bridge-concept": 1,
+    },
+    "ops": {
+        "connect-isolated-source": 2,
+        "add-source-concept-link": 2,
+        "monitor-bridge-concept": 2,
         "split-overloaded-concept": 1,
     },
 }
@@ -546,6 +759,30 @@ PROTOCOL_OUTPUT_GUIDANCE: dict[str, dict[str, tuple[str, ...]]] = {
         ),
         "figure": (
             "优先做 benchmark、latency/throughput、tradeoff 或 regression signal 图。",
+        ),
+    },
+    "product": {
+        "report": (
+            "优先组织成 user problem / insight / bet / metric / launch risk / next validation。",
+            "把关键假设、受影响用户和下一次验证窗口写清楚。",
+        ),
+        "slides": (
+            "优先呈现 user problem、关键 insight、核心 bet、metric 和 launch readiness。",
+        ),
+        "figure": (
+            "优先做 funnel、retention、segment、metric delta 或 launch risk 图。",
+        ),
+    },
+    "ops": {
+        "report": (
+            "优先组织成 incident timeline / blast radius / mitigation / root cause / follow-up。",
+            "把当前缓解状态、残余风险和下一次复查窗口写清楚。",
+        ),
+        "slides": (
+            "优先呈现事故时间线、影响范围、缓解动作、根因判断和 follow-up。",
+        ),
+        "figure": (
+            "优先做 incident timeline、capacity、dependency 或 SLO drift 图。",
         ),
     },
 }
@@ -780,7 +1017,7 @@ def render_protocol_library_index() -> str:
         "",
         "- 炉子只有一个。",
         "- 领域协议可以有很多套。",
-        "- 当前 starter library 先提供 `general / investing / research` 三套协议。",
+        f"- 当前 starter library 已提供 `{ ' / '.join(sorted(PROTOCOL_LIBRARY)) }` {len(PROTOCOL_LIBRARY)} 套协议。",
         "",
         "## 可用协议",
     ]
@@ -799,6 +1036,8 @@ def render_protocol_library_index() -> str:
             "- `decision / judgment` 的默认 review window 会按协议变化。",
             "- `file-back` 生成的 `decision / judgment` 页面模板会按协议变化。",
             "- recurring promotion 的标题前缀和分类提示会按协议变化。",
+            "- `review / nightly / repair` 的优先级和焦点会按协议变化。",
+            "- `query / output / execution proposal` 会按协议加入领域偏置。",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -923,6 +1162,12 @@ def protocol_runtime_summary(slug: str) -> list[str]:
     lines.append(
         f"- Auto-promotion 标题前缀：decision `{prefixes['decision']}` / judgment `{prefixes['judgment']}`"
     )
+    review_focus = PROTOCOL_LIBRARY.get(slug, {}).get("review", [])
+    nightly_focus = PROTOCOL_LIBRARY.get(slug, {}).get("nightly", [])
+    if review_focus:
+        lines.append(f"- Review focus：`{' / '.join(review_focus[:2])}`")
+    if nightly_focus:
+        lines.append(f"- Nightly focus：`{' / '.join(nightly_focus[:2])}`")
     return lines
 
 
@@ -1976,6 +2221,66 @@ def curated_page_template(
                 "## Supporting Artifact",
                 supporting_body,
             ]
+        if protocol == "product":
+            return [
+                f"# {title}",
+                "",
+                *origin_block,
+                "## Product Decision",
+                "- State the action: prioritize, launch, roll out, deprecate, or pause.",
+                "",
+                "## User Problem And Bet",
+                "- Record the target user problem, the product bet, and the expected behavior change.",
+                "",
+                "## Metric And Validation",
+                f"- Review `{artifact_ref}` and cite `wiki/sources/*.md` or `raw/` evidence explicitly.",
+                "- Name the primary metric, rollout checkpoint, or validation signal.",
+                "",
+                "## Launch Risks And Rollback",
+                "- Record launch blockers, segment risk, and rollback/containment conditions.",
+                f"- Default revisit window: `{revisit_after or 'none'}`",
+                f"- Default escalation window: `{escalate_after or 'none'}`",
+                "",
+                "## Review Status",
+                "- Current status: `proposed`",
+                "- Review this page when launch readiness, metric movement, or the product bet changes.",
+                "",
+                "## Review Notes",
+                "- No review has been recorded yet.",
+                "",
+                "## Supporting Artifact",
+                supporting_body,
+            ]
+        if protocol == "ops":
+            return [
+                f"# {title}",
+                "",
+                *origin_block,
+                "## Incident Decision",
+                "- State the action: mitigate, roll back, fail over, isolate, escalate, or follow up.",
+                "",
+                "## Incident Scope",
+                "- Record the impacted service, blast radius, owner, and current operational state.",
+                "",
+                "## Mitigation Evidence",
+                f"- Review `{artifact_ref}` and cite `wiki/sources/*.md` or `raw/` evidence explicitly.",
+                "- Name the signal that shows mitigation is working.",
+                "",
+                "## Residual Risk And Follow-up",
+                "- Record rollback/failover paths, residual risk, and follow-up owner.",
+                f"- Default revisit window: `{revisit_after or 'none'}`",
+                f"- Default escalation window: `{escalate_after or 'none'}`",
+                "",
+                "## Review Status",
+                "- Current status: `proposed`",
+                "- Review this page when the incident state, blast radius, or owner changes.",
+                "",
+                "## Review Notes",
+                "- No review has been recorded yet.",
+                "",
+                "## Supporting Artifact",
+                supporting_body,
+            ]
         return [
             f"# {title}",
             "",
@@ -2058,6 +2363,64 @@ def curated_page_template(
             "## Review Status",
             "- Current status: `tentative`",
             "- Review this page when new benchmark, regression, or experiment evidence arrives.",
+            "",
+            "## Review Notes",
+            "- No review has been recorded yet.",
+            "",
+            "## Supporting Artifact",
+            supporting_body,
+        ]
+    if protocol == "product":
+        return [
+            f"# {title}",
+            "",
+            *origin_block,
+            "## Product Judgment",
+            "- State the insight, product bet, or launch-readiness judgment here.",
+            "",
+            "## User Signal And Evidence",
+            f"- Summarize user signal, metric evidence, or rollout data from `{artifact_ref}` and supporting sources.",
+            "",
+            "## Counter Signals",
+            "- Record what user, metric, or launch evidence could invalidate this judgment.",
+            "",
+            "## Confidence And Next Validation",
+            "- Keep confidence explicit and name the next validation checkpoint, release, or metric review.",
+            f"- Default revisit window: `{revisit_after or 'none'}`",
+            f"- Default escalation window: `{escalate_after or 'none'}`",
+            "",
+            "## Review Status",
+            "- Current status: `tentative`",
+            "- Review this page when the signal strengthens, weakens, or the launch plan changes.",
+            "",
+            "## Review Notes",
+            "- No review has been recorded yet.",
+            "",
+            "## Supporting Artifact",
+            supporting_body,
+        ]
+    if protocol == "ops":
+        return [
+            f"# {title}",
+            "",
+            *origin_block,
+            "## Ops Judgment",
+            "- State the root-cause, blast-radius, or operational-risk judgment here.",
+            "",
+            "## Incident Evidence",
+            f"- Summarize incident timeline, logs, or runbook evidence from `{artifact_ref}` and supporting sources.",
+            "",
+            "## Counter Evidence",
+            "- Record what would falsify this root-cause or operational-risk judgment.",
+            "",
+            "## Confidence And Follow-up",
+            "- Keep confidence explicit and name the next incident review, runbook update, or mitigation check.",
+            f"- Default revisit window: `{revisit_after or 'none'}`",
+            f"- Default escalation window: `{escalate_after or 'none'}`",
+            "",
+            "## Review Status",
+            "- Current status: `tentative`",
+            "- Review this page when new incident evidence, residual risk, or follow-up status arrives.",
             "",
             "## Review Notes",
             "- No review has been recorded yet.",
@@ -2294,6 +2657,218 @@ def action_supports_low_risk_apply(action: dict[str, Any]) -> bool:
     )
 
 
+PATCH_ROLE_LABELS = {
+    "source": "来源页",
+    "concept": "概念页",
+    "index": "索引页",
+    "state": "状态文件",
+    "output": "输出页",
+    "other": "页面",
+}
+
+PATCH_PLAN_TEMPLATES: dict[str, dict[str, Any]] = {
+    "add-source-concept-link": {
+        "summary": "补 source/concept 双向链接，并把新证据吸收到概念页摘要里。",
+        "roles": {
+            "source": {
+                "mode": "update",
+                "sections": ("Related Concepts", "Summary", "Citations"),
+                "summary": "在来源页补 concept 引用，并保留 raw/source provenance。",
+            },
+            "concept": {
+                "mode": "update",
+                "sections": ("Related Sources", "Summary", "Related Concepts"),
+                "summary": "把来源页纳入概念页，并更新 grounded synthesis。",
+            },
+            "state": {
+                "mode": "semi-auto-apply",
+                "sections": ("source_to_concept",),
+                "summary": "通过 manual-link state 注入低风险补链，让 compile 收敛页面链接。",
+            },
+        },
+    },
+    "connect-isolated-source": {
+        "summary": "把孤立来源接回稳定概念层，并明确为什么要接入。",
+        "roles": {
+            "source": {
+                "mode": "update",
+                "sections": ("Summary", "Related Concepts", "Citations"),
+                "summary": "从来源页抽出候选概念并补引用。",
+            },
+            "concept": {
+                "mode": "update",
+                "sections": ("Related Sources", "Summary"),
+                "summary": "优先把来源接到已有稳定概念，而不是盲目新建概念。",
+            },
+            "index": {
+                "mode": "review",
+                "sections": ("Concept Coverage", "Open Questions"),
+                "summary": "在索引层确认是否还缺概念覆盖或需要新概念。",
+            },
+        },
+    },
+    "expand-singleton-concept": {
+        "summary": "扩展单节点概念的来源覆盖，并收紧其适用边界。",
+        "roles": {
+            "concept": {
+                "mode": "update",
+                "sections": ("Summary", "Related Sources", "Related Concepts"),
+                "summary": "补来源覆盖、显式有限证据，并更新相关概念边界。",
+            },
+            "index": {
+                "mode": "review",
+                "sections": ("Rewrite Priority", "Open Questions"),
+                "summary": "在概念质量和索引层确认是否需要持续重写或补料。",
+            },
+        },
+    },
+    "split-overloaded-concept": {
+        "summary": "把过载概念拆成更窄的主题，并把来源重新分流。",
+        "roles": {
+            "concept": {
+                "mode": "rewrite",
+                "sections": ("Summary", "Related Sources", "Related Concepts"),
+                "summary": "缩窄概念边界、保留拆分说明，并给出后续子概念方向。",
+            },
+            "index": {
+                "mode": "review",
+                "sections": ("Merge Candidates", "Rewrite Priority"),
+                "summary": "在概念质量层复核拆分理由和后续子概念候选。",
+            },
+        },
+    },
+    "monitor-bridge-concept": {
+        "summary": "确认桥接概念仍有必要，并记录跨簇连接的理由。",
+        "roles": {
+            "concept": {
+                "mode": "review",
+                "sections": ("Summary", "Related Concepts", "Related Sources"),
+                "summary": "补 bridge maintenance note，明确为什么这个桥接概念还成立。",
+            },
+            "index": {
+                "mode": "review",
+                "sections": ("Bridge Concepts", "Repair Signals"),
+                "summary": "在图谱健康层确认桥接信号是否稳定，避免误删关键连接。",
+            },
+        },
+    },
+}
+
+PATCH_PLAN_AUXILIARY_PATHS: dict[str, tuple[str, ...]] = {
+    "connect-isolated-source": ("wiki/indexes/concepts.md",),
+    "expand-singleton-concept": ("wiki/indexes/concept-quality.md",),
+    "split-overloaded-concept": ("wiki/indexes/concept-quality.md", "wiki/indexes/rewrite-proposals.md"),
+    "monitor-bridge-concept": ("wiki/indexes/graph-health.md",),
+}
+
+PROTOCOL_PATCH_HINTS: dict[str, tuple[str, ...]] = {
+    "general": (),
+    "investing": (
+        "同步检查 thesis、risk、catalyst 和 invalidation 页面是否要一起更新。",
+    ),
+    "research": (
+        "同步检查 benchmark、experiment、tradeoff 和 regression risk 是否要一起更新。",
+    ),
+    "product": (
+        "同步检查 user problem、metric、launch risk 和 validation gap 是否要一起更新。",
+    ),
+    "ops": (
+        "同步检查 incident timeline、blast radius、mitigation 和 follow-up 是否要一起更新。",
+    ),
+}
+
+
+def patch_role_for_path(path: str) -> str:
+    if path.startswith("wiki/sources/"):
+        return "source"
+    if path.startswith("wiki/concepts/"):
+        return "concept"
+    if path.startswith("wiki/indexes/"):
+        return "index"
+    if path.startswith(".aiwiki/state/"):
+        return "state"
+    if path.startswith("output/"):
+        return "output"
+    return "other"
+
+
+def patch_sections_for_action(kind: str, role: str) -> tuple[str, ...]:
+    template = PATCH_PLAN_TEMPLATES.get(kind, {})
+    roles = template.get("roles", {})
+    if role in roles:
+        return tuple(roles[role].get("sections", ()))
+    fallback = {
+        "source": ("Summary", "Citations"),
+        "concept": ("Summary", "Related Sources", "Related Concepts"),
+        "index": ("Status", "Open Questions"),
+        "state": ("state",),
+        "output": ("Summary",),
+        "other": ("Summary",),
+    }
+    return fallback.get(role, ("Summary",))
+
+
+def patch_summary_for_action(kind: str, role: str) -> str:
+    template = PATCH_PLAN_TEMPLATES.get(kind, {})
+    roles = template.get("roles", {})
+    if role in roles:
+        return str(roles[role].get("summary") or "")
+    return str(template.get("summary") or "检查相关页面并补充修复说明。")
+
+
+def patch_mode_for_action(kind: str, role: str) -> str:
+    template = PATCH_PLAN_TEMPLATES.get(kind, {})
+    roles = template.get("roles", {})
+    if role in roles:
+        return str(roles[role].get("mode") or "update")
+    return "update"
+
+
+def build_page_patch_plan(root: Path, action: dict[str, Any], *, active_protocol: str = DEFAULT_PROTOCOL) -> list[dict[str, Any]]:
+    kind = str(action.get("kind") or "")
+    seen_paths: set[str] = set()
+    ordered_paths: list[str] = []
+    for raw_path in (
+        str(action.get("primary_path") or ""),
+        str(action.get("secondary_path") or ""),
+        *PATCH_PLAN_AUXILIARY_PATHS.get(kind, ()),
+    ):
+        path = raw_path.strip()
+        if not path or path in seen_paths:
+            continue
+        seen_paths.add(path)
+        ordered_paths.append(path)
+    if action_supports_low_risk_apply(action):
+        ordered_paths.append(".aiwiki/state/manual-links.json")
+
+    plan: list[dict[str, Any]] = []
+    for path in ordered_paths:
+        role = patch_role_for_path(path)
+        absolute = root / path
+        title = absolute.stem
+        if absolute.is_file() and role != "state":
+            frontmatter = parse_frontmatter(absolute.read_text(encoding="utf-8", errors="replace"))
+            title = str(frontmatter.get("title") or title)
+        summary = patch_summary_for_action(kind, role)
+        protocol_hints = PROTOCOL_PATCH_HINTS.get(active_protocol, ())
+        if protocol_hints and role in {"source", "concept", "index"}:
+            summary = f"{summary} {protocol_hints[0]}".strip()
+        plan.append(
+            {
+                "path": path,
+                "title": title,
+                "role": role,
+                "role_label": PATCH_ROLE_LABELS.get(role, role),
+                "exists": absolute.is_file(),
+                "mode": patch_mode_for_action(kind, role),
+                "sections": list(patch_sections_for_action(kind, role)),
+                "summary": summary,
+                "command_hint": str(action.get("command_hint") or ""),
+            }
+        )
+    return plan
+
+
 def describe_machine_memory_action(action: dict[str, Any]) -> dict[str, str]:
     action_id = str(action.get("id") or "")
     kind = str(action.get("kind") or "")
@@ -2348,7 +2923,12 @@ def describe_machine_memory_action(action: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def build_machine_memory_repair_plan(health: dict[str, Any], *, active_protocol: str = DEFAULT_PROTOCOL) -> dict[str, Any]:
+def build_machine_memory_repair_plan(
+    root: Path,
+    health: dict[str, Any],
+    *,
+    active_protocol: str = DEFAULT_PROTOCOL,
+) -> dict[str, Any]:
     active_actions = [dict(action) for action in health.get("actions", []) if isinstance(action, dict)]
     inactive_actions = [dict(action) for action in health.get("inactive_actions", []) if isinstance(action, dict)]
     for action in active_actions + inactive_actions:
@@ -2417,6 +2997,7 @@ def build_machine_memory_repair_plan(health: dict[str, Any], *, active_protocol:
         ),
     )
     execution_proposals = repair_execution_proposals(
+        root,
         ready_actions + triage_actions + deferred_actions,
         active_protocol=active_protocol,
     )
@@ -2435,6 +3016,7 @@ def build_machine_memory_repair_plan(health: dict[str, Any], *, active_protocol:
             "inactive": len(inactive_actions),
             "batches": len(execution_batches),
             "proposals": len(execution_proposals),
+            "patch_steps": sum(len(proposal.get("page_patch_plan", [])) for proposal in execution_proposals),
         },
     }
 
@@ -3065,6 +3647,7 @@ def render_furnace_center(
     rewrite_proposals = rewrite_state.get("proposals", [])
     apply_ready_rewrites = [proposal for proposal in rewrite_proposals if proposal.get("apply_ready")]
     execution_proposals = plan.get("execution_proposals", [])
+    page_patch_steps = sum(len(proposal.get("page_patch_plan", [])) for proposal in execution_proposals)
     recent_reviewed = queue.get("recently_reviewed", [])[:6]
     next_steps: list[str] = []
     if apply_ready_actions:
@@ -3091,6 +3674,7 @@ def render_furnace_center(
         f"- 可直接 apply 的动作：`{len(apply_ready_actions)}`",
         f"- Rewrite 提案：`{rewrite_state.get('counts', {}).get('active', 0)}`",
         f"- 可直接 apply 的 rewrite：`{len(apply_ready_rewrites)}`",
+        f"- 页级 patch step：`{page_patch_steps}`",
         f"- 最近输出：`{len(recent_outputs)}`",
         "- 本地控制面板：`output/control/furnace-center.html`",
         "",
@@ -3127,6 +3711,20 @@ def render_furnace_center(
                 f"- `{proposal['action_id']}` | risk `{proposal.get('risk', 'medium')}`"
                 f" | targets `{', '.join(proposal.get('target_paths', [])) or 'none'}`"
             )
+    if execution_proposals:
+        lines.append("")
+        lines.append("### Page-Level Patch Plan")
+        for proposal in execution_proposals[:4]:
+            patch_plan = proposal.get("page_patch_plan", [])
+            if not patch_plan:
+                continue
+            lines.append(f"- `{proposal['action_id']}` | patch step `{len(patch_plan)}`")
+            for patch in patch_plan[:3]:
+                lines.append(
+                    f"  - `{patch.get('path', '')}`"
+                    f" | mode `{patch.get('mode', 'update')}`"
+                    f" | sections `{', '.join(patch.get('sections', [])) or 'none'}`"
+                )
     if not any((apply_ready_actions, apply_ready_rewrites, execution_proposals)):
         lines.append("- 当前没有即刻可执行项。")
 
@@ -3201,6 +3799,7 @@ def render_furnace_center_html(
     rewrite_proposals = rewrite_state.get("proposals", [])
     apply_ready_rewrites = [proposal for proposal in rewrite_proposals if proposal.get("apply_ready")]
     execution_proposals = plan.get("execution_proposals", [])
+    page_patch_steps = sum(len(proposal.get("page_patch_plan", [])) for proposal in execution_proposals)
     recent_reviewed = queue.get("recently_reviewed", [])[:8]
 
     def render_page_item(page: dict[str, str]) -> str:
@@ -3235,11 +3834,13 @@ def render_furnace_center_html(
         )
 
     def render_proposal_item(proposal: dict[str, Any]) -> str:
+        patch_count = len(proposal.get("page_patch_plan", []))
         return (
             f"<li><strong>{html.escape(str(proposal.get('action_id') or 'proposal'))}</strong>"
             f" <span class=\"item-meta\">risk {html.escape(str(proposal.get('risk') or 'medium'))}</span>"
             f"<div>{html.escape(str(proposal.get('summary') or ''))}</div>"
-            f"<div><code>{html.escape(', '.join(proposal.get('target_paths', [])) or 'none')}</code></div></li>"
+            f"<div><code>{html.escape(', '.join(proposal.get('target_paths', [])) or 'none')}</code></div>"
+            f"<div class=\"item-meta\">patch steps {patch_count}</div></li>"
         )
 
     summary_cards = [
@@ -3251,6 +3852,7 @@ def render_furnace_center_html(
         ("可 apply 动作", str(len(apply_ready_actions))),
         ("Rewrite 提案", str(rewrite_state.get("counts", {}).get("active", 0))),
         ("可 apply rewrite", str(len(apply_ready_rewrites))),
+        ("Patch Steps", str(page_patch_steps)),
         ("最近输出", str(len(recent_outputs))),
     ]
 
@@ -5197,6 +5799,7 @@ def render_graph_health(memory: dict[str, Any]) -> str:
         f"- 动作需升级：`{health.get('action_counts', {}).get('escalated', 0)}`",
         f"- 执行批次：`{health.get('repair_plan', {}).get('counts', {}).get('batches', 0)}`",
         f"- 执行提案：`{health.get('repair_plan', {}).get('counts', {}).get('proposals', 0)}`",
+        f"- 页级 patch step：`{health.get('repair_plan', {}).get('counts', {}).get('patch_steps', 0)}`",
         "",
         "## 修复信号",
         f"- 孤立来源：`{', '.join(health.get('isolated_source_ids', [])[:10]) or 'none'}`",
@@ -5270,6 +5873,7 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         f"- 动作需升级：`{health.get('action_counts', {}).get('escalated', 0)}`",
         f"- 执行批次：`{health.get('repair_plan', {}).get('counts', {}).get('batches', 0)}`",
         f"- 执行提案：`{health.get('repair_plan', {}).get('counts', {}).get('proposals', 0)}`",
+        f"- 页级 patch step：`{health.get('repair_plan', {}).get('counts', {}).get('patch_steps', 0)}`",
         f"- 概念冲突信号：`{health.get('concept_quality', {}).get('counts', {}).get('conflict_signals', 0)}`",
         f"- 概念重写候选：`{health.get('concept_quality', {}).get('counts', {}).get('rewrite_candidates', 0)}`",
         f"- Rewrite 提案：`{health.get('concept_rewrite', {}).get('counts', {}).get('active', 0)}`",
@@ -5603,6 +6207,7 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
         f"- 最近清除：`{counts.get('inactive', 0)}`",
         f"- 执行批次：`{counts.get('batches', 0)}`",
         f"- 执行提案：`{counts.get('proposals', 0)}`",
+        f"- 页级 patch step：`{counts.get('patch_steps', 0)}`",
         f"- 状态文件：`{health.get('action_state_path', '.aiwiki/state/machine-memory-actions.json')}`",
         "",
         "## Ready Now",
@@ -5685,6 +6290,42 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
             lines.append(f"  - strategy: {proposal.get('summary', 'n/a')}")
             for edit in proposal.get("suggested_edits", [])[:3]:
                 lines.append(f"  - edit: {edit}")
+            patch_plan = proposal.get("page_patch_plan", [])
+            if patch_plan:
+                for patch in patch_plan[:4]:
+                    sections = ", ".join(patch.get("sections", [])) or "none"
+                    lines.append(
+                        f"  - patch `{patch.get('path', '')}`"
+                        f" | role `{patch.get('role_label', patch.get('role', 'page'))}`"
+                        f" | mode `{patch.get('mode', 'update')}`"
+                        f" | sections `{sections}`"
+                    )
+    lines.extend(["", "## Page-Level Patch Plans"])
+    if not execution_proposals:
+        lines.append("- 当前没有页级 patch plan。")
+    else:
+        for proposal in execution_proposals[:8]:
+            patch_plan = proposal.get("page_patch_plan", [])
+            if not patch_plan:
+                continue
+            lines.append(
+                f"### `{proposal.get('action_id', 'proposal')}` · {proposal.get('title', 'unnamed proposal')}"
+            )
+            lines.append(f"- Summary: {proposal.get('summary', 'n/a')}")
+            lines.append(f"- Risk: `{proposal.get('risk', 'medium')}` | Protocol: `{proposal.get('protocol', DEFAULT_PROTOCOL)}`")
+            for patch in patch_plan:
+                sections = ", ".join(patch.get("sections", [])) or "none"
+                command_hint = str(patch.get("command_hint") or "")
+                lines.append(
+                    f"- `{patch.get('path', '')}`"
+                    f" | role `{patch.get('role_label', patch.get('role', 'page'))}`"
+                    f" | mode `{patch.get('mode', 'update')}`"
+                    f" | sections `{sections}`"
+                    f" | exists `{patch.get('exists', False)}`"
+                )
+                lines.append(f"  - {patch.get('summary', '检查相关页面并补充修复说明。')}")
+                if command_hint:
+                    lines.append(f"  - command: `{command_hint}`")
     lines.extend(["", "## Recently Cleared"])
     if not inactive_actions:
         lines.append("- 当前没有最近清除动作。")
@@ -6258,6 +6899,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     memory["health"] = build_machine_memory_health(memory)
     memory["health"].update(reconcile_machine_memory_actions(root, memory["health"], compiled_at=compiled_at))
     memory["health"]["repair_plan"] = build_machine_memory_repair_plan(
+        root,
         memory["health"],
         active_protocol=protocol_state["active_protocol"],
     )
@@ -7548,6 +8190,7 @@ def concept_rewrite_strategy(record: dict[str, Any]) -> str:
 
 
 def repair_execution_proposals(
+    root: Path,
     actions: list[dict[str, Any]],
     *,
     active_protocol: str = DEFAULT_PROTOCOL,
@@ -7623,6 +8266,20 @@ def repair_execution_proposals(
                 "优先把 next experiment 或 validation path 写清楚。",
             ],
         },
+        "product": {
+            "summary_suffix": " 同时检查 user problem、metric、launch readiness 和 validation gap 是否需要同步更新。",
+            "edits": [
+                "如果涉及产品概念，明确 user problem、bet、metric impact 和 launch risk。",
+                "优先把 next validation 或 rollout checkpoint 写清楚。",
+            ],
+        },
+        "ops": {
+            "summary_suffix": " 同时检查 incident timeline、blast radius、mitigation 和 follow-up 是否需要同步更新。",
+            "edits": [
+                "如果涉及运维概念，明确 incident 状态、根因判断、残余风险和 follow-up。",
+                "优先把 owner、rollback path 或 next review window 写清楚。",
+            ],
+        },
     }
     hint = protocol_hints.get(active_protocol, protocol_hints[DEFAULT_PROTOCOL])
     proposals: list[dict[str, Any]] = []
@@ -7657,6 +8314,7 @@ def repair_execution_proposals(
             "protocol": active_protocol,
             "focus_score": int(action.get("focus_score", 0)),
         }
+        proposal["page_patch_plan"] = build_page_patch_plan(root, action, active_protocol=active_protocol)
         proposals.append(proposal)
     proposals.sort(
         key=lambda item: (

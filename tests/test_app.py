@@ -219,6 +219,18 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("investing", payload)
         self.assertIn("../../schema/protocols/investing/index.md", payload)
 
+    def test_protocol_dashboard_lists_product_and_ops_protocols(self) -> None:
+        compile_wiki(self.root)
+
+        payload = (self.root / "wiki" / "indexes" / "protocols.md").read_text(encoding="utf-8")
+
+        self.assertIn("../../schema/protocols/product/index.md", payload)
+        self.assertIn("../../schema/protocols/ops/index.md", payload)
+        set_active_protocol(self.root, "ops")
+        updated = (self.root / "wiki" / "indexes" / "protocols.md").read_text(encoding="utf-8")
+        self.assertIn("ops", updated)
+        self.assertIn("../../schema/protocols/ops/index.md", updated)
+
     def test_compile_tracks_machine_memory_drift_between_snapshots(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -391,12 +403,16 @@ class AiwikiFlowTests(unittest.TestCase):
             "schema/protocols/general/taxonomy.md",
             "schema/protocols/investing/index.md",
             "schema/protocols/research/index.md",
+            "schema/protocols/product/index.md",
+            "schema/protocols/ops/index.md",
         ):
             self.assertTrue((self.root / relative).exists(), relative)
         state = load_protocol_state(self.root)
         self.assertEqual(state["active_protocol"], "general")
         self.assertIn("investing", state["available_protocols"])
         self.assertIn("research", state["available_protocols"])
+        self.assertIn("product", state["available_protocols"])
+        self.assertIn("ops", state["available_protocols"])
         schema_index = (self.root / "schema" / "index.md").read_text(encoding="utf-8")
         self.assertIn("协议规则", schema_index)
 
@@ -843,17 +859,25 @@ class AiwikiFlowTests(unittest.TestCase):
         general_report = ask_question(self.root, "Should we adopt transformer caching?", "report", protocol="general")
         investing_report = ask_question(self.root, "Should we underwrite this thesis?", "report", protocol="investing")
         research_report = ask_question(self.root, "Should we adopt this benchmark pipeline?", "report", protocol="research")
+        product_report = ask_question(self.root, "Should we launch this onboarding bet?", "report", protocol="product")
+        ops_report = ask_question(self.root, "Should we fail over this incident service?", "report", protocol="ops")
 
         general_decision = file_back(self.root, general_report["path"], title="General Decision", kind="decision")
         investing_decision = file_back(self.root, investing_report["path"], title="Investing Decision", kind="decision")
         research_decision = file_back(self.root, research_report["path"], title="Research Decision", kind="decision")
+        product_decision = file_back(self.root, product_report["path"], title="Product Decision", kind="decision")
+        ops_decision = file_back(self.root, ops_report["path"], title="Ops Decision", kind="decision")
 
         general_text = (self.root / general_decision["path"]).read_text(encoding="utf-8")
         investing_text = (self.root / investing_decision["path"]).read_text(encoding="utf-8")
         research_text = (self.root / research_decision["path"]).read_text(encoding="utf-8")
+        product_text = (self.root / product_decision["path"]).read_text(encoding="utf-8")
+        ops_text = (self.root / ops_decision["path"]).read_text(encoding="utf-8")
         general_frontmatter = parse_frontmatter(general_text)
         investing_frontmatter = parse_frontmatter(investing_text)
         research_frontmatter = parse_frontmatter(research_text)
+        product_frontmatter = parse_frontmatter(product_text)
+        ops_frontmatter = parse_frontmatter(ops_text)
 
         self.assertIn("## Decision", general_text)
         self.assertIn("## Position Decision", investing_text)
@@ -862,6 +886,12 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("## Architecture Decision", research_text)
         self.assertIn("## Validation Plan", research_text)
         self.assertIn("## Rollback And Risks", research_text)
+        self.assertIn("## Product Decision", product_text)
+        self.assertIn("## User Problem And Bet", product_text)
+        self.assertIn("## Metric And Validation", product_text)
+        self.assertIn("## Incident Decision", ops_text)
+        self.assertIn("## Incident Scope", ops_text)
+        self.assertIn("## Residual Risk And Follow-up", ops_text)
 
         general_delta = datetime.fromisoformat(general_frontmatter["revisit_after"]) - datetime.fromisoformat(
             general_frontmatter["last_compiled_at"]
@@ -872,21 +902,35 @@ class AiwikiFlowTests(unittest.TestCase):
         research_delta = datetime.fromisoformat(research_frontmatter["revisit_after"]) - datetime.fromisoformat(
             research_frontmatter["last_compiled_at"]
         )
+        product_delta = datetime.fromisoformat(product_frontmatter["revisit_after"]) - datetime.fromisoformat(
+            product_frontmatter["last_compiled_at"]
+        )
+        ops_delta = datetime.fromisoformat(ops_frontmatter["revisit_after"]) - datetime.fromisoformat(
+            ops_frontmatter["last_compiled_at"]
+        )
         self.assertEqual(int(general_delta.total_seconds() // 86400), 7)
         self.assertEqual(int(investing_delta.total_seconds() // 86400), 3)
         self.assertEqual(int(research_delta.total_seconds() // 86400), 5)
+        self.assertEqual(int(product_delta.total_seconds() // 86400), 4)
+        self.assertEqual(int(ops_delta.total_seconds() // 86400), 1)
 
     def test_file_back_uses_protocol_specific_judgment_templates(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
         investing_report = ask_question(self.root, "Will this thesis hold after earnings?", "report", protocol="investing")
         research_report = ask_question(self.root, "Latency benchmark regression after cache migration", "report", protocol="research")
+        product_report = ask_question(self.root, "Is this launch ready for beta users?", "report", protocol="product")
+        ops_report = ask_question(self.root, "What is the likely root cause of this incident?", "report", protocol="ops")
 
         investing_judgment = file_back(self.root, investing_report["path"], title="Investing Judgment", kind="judgment")
         research_judgment = file_back(self.root, research_report["path"], title="Research Judgment", kind="judgment")
+        product_judgment = file_back(self.root, product_report["path"], title="Product Judgment", kind="judgment")
+        ops_judgment = file_back(self.root, ops_report["path"], title="Ops Judgment", kind="judgment")
 
         investing_text = (self.root / investing_judgment["path"]).read_text(encoding="utf-8")
         research_text = (self.root / research_judgment["path"]).read_text(encoding="utf-8")
+        product_text = (self.root / product_judgment["path"]).read_text(encoding="utf-8")
+        ops_text = (self.root / ops_judgment["path"]).read_text(encoding="utf-8")
 
         self.assertIn("## Investment Judgment", investing_text)
         self.assertIn("## Drivers And Catalysts", investing_text)
@@ -894,6 +938,12 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("## Research Judgment", research_text)
         self.assertIn("## Supporting Evidence", research_text)
         self.assertIn("## Open Questions", research_text)
+        self.assertIn("## Product Judgment", product_text)
+        self.assertIn("## User Signal And Evidence", product_text)
+        self.assertIn("## Confidence And Next Validation", product_text)
+        self.assertIn("## Ops Judgment", ops_text)
+        self.assertIn("## Incident Evidence", ops_text)
+        self.assertIn("## Confidence And Follow-up", ops_text)
 
     def test_file_back_generates_unique_paths_for_same_title(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -1568,6 +1618,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("## Need Triage", repair_text)
         self.assertIn("## Execution Batches", repair_text)
         self.assertIn("## Execution Proposals", repair_text)
+        self.assertIn("## Page-Level Patch Plans", repair_text)
         self.assertIn("review-action overloaded-concept-latency --status accepted", repair_text)
 
     def test_repair_plan_uses_protocol_specific_proposal_hints(self) -> None:
@@ -1581,6 +1632,21 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(proposals)
         self.assertEqual(proposals[0]["protocol"], "research")
         self.assertIn("benchmark", proposals[0]["summary"].lower())
+
+    def test_repair_plan_exposes_page_level_patch_steps(self) -> None:
+        self._seed_machine_memory_actions()
+
+        compile_wiki(self.root)
+
+        memory = json.loads((self.root / ".aiwiki" / "state" / "machine-memory.json").read_text(encoding="utf-8"))
+        proposals = memory["health"]["repair_plan"]["execution_proposals"]
+        self.assertTrue(proposals)
+        first = proposals[0]
+        self.assertTrue(first["page_patch_plan"])
+        self.assertIn("path", first["page_patch_plan"][0])
+        self.assertIn("sections", first["page_patch_plan"][0])
+        repair_plan = (self.root / "wiki" / "indexes" / "machine-memory-repair-plan.md").read_text(encoding="utf-8")
+        self.assertIn("mode `", repair_plan)
 
     def test_compile_generates_concept_quality_page(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

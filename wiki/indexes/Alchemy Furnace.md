@@ -75,9 +75,17 @@ status: "active"
 - `ops`
   - `incident / runbook / mitigation / escalation / follow-up`
 
-### 规划中的协议路径
+### 协议路径
 
 - `schema/protocols/`
+
+当前 runtime starter library 已提供：
+
+- `general`
+- `investing`
+- `research`
+- `product`
+- `ops`
 
 建议每个协议至少定义：
 
@@ -88,7 +96,7 @@ status: "active"
 - nightly policy
 - query / output hints
 
-当前它仍属于架构方向，而不是完整 runtime 功能；但后续增强应围绕这一层展开，而不是再复制一套新的炉子。
+当前它已经进入 runtime 第一版；后续增强应继续围绕协议语义深化，而不是再复制一套新的炉子。
 
 ## 分层模型
 
@@ -316,11 +324,13 @@ status: "active"
 - `watch` 自动化与 user service
 - Obsidian 前端层
 
-后续增强方向：
+当前主线和增强阶段已经完成。
 
-- 更强的 review-center / graph-view 产品壳
-- 更丰富的 graph execution 和 page-level patch/apply 策略
-- 更深的 protocol starter library（`product / ops / more domain packs`）
+后续方向不再是补这份架构文档里的未完项，而是继续做产品化和更深执行层，例如：
+
+- 更统一的本地控制台和产品壳
+- 更安全的 page-level patch / apply 执行策略
+- 更多领域协议包和更深协议语义
 
 ## 架构不变量
 

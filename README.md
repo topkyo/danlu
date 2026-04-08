@@ -6,7 +6,7 @@
 日常在 Obsidian 里使用时，入口是 [HOME.md](./HOME.md)。
 统一产品壳入口见 [furnace-center.md](<./wiki/indexes/furnace-center.md>)；本地 HTML 控制面板在 `output/control/furnace-center.html`。
 关于“一个统一炉子，多个领域协议”的原则，见 [Furnace Protocols.md](<./wiki/indexes/Furnace Protocols.md>)。
-协议运行时入口见 [protocols.md](<./wiki/indexes/protocols.md>)；当前 starter library 提供 `general / investing / research` 三套协议。
+协议运行时入口见 [protocols.md](<./wiki/indexes/protocols.md>)；当前 starter library 提供 `general / investing / research / product / ops` 五套协议。
 当前协议不只是 metadata：它已经会改变 `decision / judgment` 的默认 review window、`file-back` 模板、recurring promotion 的标题与分类语义、`review / nightly / repair` 的优先级焦点，以及 `ask / output / execution proposal` 的策略偏置。
 
 ## 它是什么
@@ -144,7 +144,7 @@ nightly 也会继续跟踪 `decision / judgment` 的 aging：
 - `aging-report.md` 会集中列出这些页面
 - `repair-backlog.md` 会把它们抬进优先队列
 - `machine-memory-actions.md` 会把图谱修复动作沉成稳定队列，并展示状态分布、已到期、已升级、最近清除
-- `machine-memory-repair-plan.md` 会把 accepted / proposed / deferred 动作整理成可执行批次、页级执行提案和下一步命令提示
+- `machine-memory-repair-plan.md` 会把 accepted / proposed / deferred 动作整理成可执行批次、页级执行提案、page-level patch plan 和下一步命令提示
 - `concept-quality.md` 会把弱概念页、占位概念、概念合并候选、冲突信号、证据缺口和重写优先级集中列出来
 - `rewrite-proposals.md` 会把高优先级弱概念页的 rewrite proposal、状态和 apply 入口集中列出来
 

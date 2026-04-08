@@ -4,12 +4,14 @@
 
 - 炉子只有一个。
 - 领域协议可以有很多套。
-- 当前 starter library 先提供 `general / investing / research` 三套协议。
+- 当前 starter library 先提供 `general / investing / research / product / ops` 五套协议。
 
 ## 可用协议
 - [通用协议](./general/index.md)：默认的跨域协议，适合把事实、综合、判断和复审保持分层。
 - [投资协议](./investing/index.md)：面向 thesis、risk、catalyst、invalidation 和 position decision 的协议。
 - [研发协议](./research/index.md)：面向 paper、repo、benchmark、experiment 和 architecture decision 的协议。
+- [产品协议](./product/index.md)：面向 user problem、insight、bet、metric 和 launch judgment 的协议。
+- [运维协议](./ops/index.md)：面向 incident、runbook、mitigation、escalation 和 follow-up 的协议。
 
 ## 约束
 
@@ -24,4 +26,4 @@
 - `review-queue`、`review-center`、`repair-backlog` 和 machine-memory action queue 会按 active protocol 调整优先级。
 - `ask` 会按 active protocol 调整 source / concept ranking。
 - `report / slides / figure` 会写入协议化输出偏置，约束最终成品组织方式。
-- machine-memory repair execution proposal 会按 active protocol 追加领域化修复提示。
+- machine-memory repair execution proposal 会按 active protocol 追加领域化修复提示和 page-level patch plan。
