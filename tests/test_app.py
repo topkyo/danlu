@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from datetime import datetime
 import json
 import os
 import tempfile
@@ -596,6 +597,65 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(decision["protocol"], "investing")
         self.assertEqual(decision_frontmatter["protocol"], "investing")
 
+    def test_file_back_uses_protocol_specific_decision_templates_and_windows(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        general_report = ask_question(self.root, "Should we adopt transformer caching?", "report", protocol="general")
+        investing_report = ask_question(self.root, "Should we underwrite this thesis?", "report", protocol="investing")
+        research_report = ask_question(self.root, "Should we adopt this benchmark pipeline?", "report", protocol="research")
+
+        general_decision = file_back(self.root, general_report["path"], title="General Decision", kind="decision")
+        investing_decision = file_back(self.root, investing_report["path"], title="Investing Decision", kind="decision")
+        research_decision = file_back(self.root, research_report["path"], title="Research Decision", kind="decision")
+
+        general_text = (self.root / general_decision["path"]).read_text(encoding="utf-8")
+        investing_text = (self.root / investing_decision["path"]).read_text(encoding="utf-8")
+        research_text = (self.root / research_decision["path"]).read_text(encoding="utf-8")
+        general_frontmatter = parse_frontmatter(general_text)
+        investing_frontmatter = parse_frontmatter(investing_text)
+        research_frontmatter = parse_frontmatter(research_text)
+
+        self.assertIn("## Decision", general_text)
+        self.assertIn("## Position Decision", investing_text)
+        self.assertIn("## Scope And Sizing", investing_text)
+        self.assertIn("## Bear Case And Invalidation", investing_text)
+        self.assertIn("## Architecture Decision", research_text)
+        self.assertIn("## Validation Plan", research_text)
+        self.assertIn("## Rollback And Risks", research_text)
+
+        general_delta = datetime.fromisoformat(general_frontmatter["revisit_after"]) - datetime.fromisoformat(
+            general_frontmatter["last_compiled_at"]
+        )
+        investing_delta = datetime.fromisoformat(investing_frontmatter["revisit_after"]) - datetime.fromisoformat(
+            investing_frontmatter["last_compiled_at"]
+        )
+        research_delta = datetime.fromisoformat(research_frontmatter["revisit_after"]) - datetime.fromisoformat(
+            research_frontmatter["last_compiled_at"]
+        )
+        self.assertEqual(int(general_delta.total_seconds() // 86400), 7)
+        self.assertEqual(int(investing_delta.total_seconds() // 86400), 3)
+        self.assertEqual(int(research_delta.total_seconds() // 86400), 5)
+
+    def test_file_back_uses_protocol_specific_judgment_templates(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        investing_report = ask_question(self.root, "Will this thesis hold after earnings?", "report", protocol="investing")
+        research_report = ask_question(self.root, "Latency benchmark regression after cache migration", "report", protocol="research")
+
+        investing_judgment = file_back(self.root, investing_report["path"], title="Investing Judgment", kind="judgment")
+        research_judgment = file_back(self.root, research_report["path"], title="Research Judgment", kind="judgment")
+
+        investing_text = (self.root / investing_judgment["path"]).read_text(encoding="utf-8")
+        research_text = (self.root / research_judgment["path"]).read_text(encoding="utf-8")
+
+        self.assertIn("## Investment Judgment", investing_text)
+        self.assertIn("## Drivers And Catalysts", investing_text)
+        self.assertIn("## Risks And Invalidation", investing_text)
+        self.assertIn("## Research Judgment", research_text)
+        self.assertIn("## Supporting Evidence", research_text)
+        self.assertIn("## Open Questions", research_text)
+
     def test_file_back_generates_unique_paths_for_same_title(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -682,6 +742,30 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(decision_frontmatter["escalate_after"], "")
         self.assertIn("- Revisit after: `none`", decision_text)
         self.assertIn("- Escalate after: `none`", decision_text)
+
+    def test_review_page_uses_protocol_specific_revisit_windows(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Should we underwrite this thesis?", "report", protocol="investing")
+        decision = file_back(self.root, report["path"], title="Investing Decision", kind="decision")
+
+        review_page(
+            self.root,
+            decision["path"],
+            "needs-revisit",
+            note="Need to revisit after catalyst drift.",
+        )
+
+        decision_text = (self.root / decision["path"]).read_text(encoding="utf-8")
+        decision_frontmatter = parse_frontmatter(decision_text)
+        revisit_delta = datetime.fromisoformat(decision_frontmatter["revisit_after"]) - datetime.fromisoformat(
+            decision_frontmatter["reviewed_at"]
+        )
+        escalate_delta = datetime.fromisoformat(decision_frontmatter["escalate_after"]) - datetime.fromisoformat(
+            decision_frontmatter["reviewed_at"]
+        )
+        self.assertEqual(int(revisit_delta.total_seconds() // 86400), 2)
+        self.assertEqual(int(escalate_delta.total_seconds() // 86400), 5)
 
     def test_run_ask_and_run_lint_write_llm_outputs(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -900,6 +984,36 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(len(decision_pages), 2)
         protocols = sorted(parse_frontmatter(path.read_text(encoding="utf-8"))["protocol"] for path in decision_pages)
         self.assertEqual(protocols, ["general", "investing"])
+
+    def test_nightly_auto_promotion_uses_protocol_specific_titles(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        question = "Should we underwrite this thesis?"
+        ask_question(self.root, question, "report", protocol="investing")
+        ask_question(self.root, question, "report", protocol="investing")
+
+        nightly_health(self.root)
+
+        decision_pages = sorted((self.root / "wiki" / "decisions").glob("*.md"))
+        self.assertEqual(len(decision_pages), 1)
+        decision_frontmatter = parse_frontmatter(decision_pages[0].read_text(encoding="utf-8"))
+        self.assertEqual(decision_frontmatter["protocol"], "investing")
+        self.assertTrue(str(decision_frontmatter["title"]).startswith("投资决策沉淀："))
+
+    def test_nightly_protocol_specific_markers_can_promote_research_judgment(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        question = "Latency bottleneck tradeoff after cache rewrite"
+        ask_question(self.root, question, "report", protocol="research")
+        ask_question(self.root, question, "report", protocol="research")
+
+        nightly_health(self.root)
+
+        judgment_pages = sorted((self.root / "wiki" / "judgments").glob("*.md"))
+        self.assertEqual(len(judgment_pages), 1)
+        judgment_frontmatter = parse_frontmatter(judgment_pages[0].read_text(encoding="utf-8"))
+        self.assertEqual(judgment_frontmatter["protocol"], "research")
+        self.assertTrue(str(judgment_frontmatter["title"]).startswith("研发判断沉淀："))
 
     def test_nightly_skips_auto_promotion_when_recurring_outputs_have_not_changed(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

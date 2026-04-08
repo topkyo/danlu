@@ -323,6 +323,109 @@ PROTOCOL_LIBRARY = {
     },
 }
 
+PROTOCOL_REVIEW_WINDOWS: dict[str, dict[tuple[str, str], tuple[int, int]]] = {
+    "general": {},
+    "investing": {
+        ("decision", "proposed"): (3, 7),
+        ("decision", "needs-revisit"): (2, 5),
+        ("judgment", "tentative"): (3, 7),
+        ("judgment", "tracking"): (7, 14),
+    },
+    "research": {
+        ("decision", "proposed"): (5, 14),
+        ("decision", "needs-revisit"): (2, 7),
+        ("judgment", "tentative"): (4, 10),
+        ("judgment", "tracking"): (7, 21),
+    },
+}
+
+PROTOCOL_CLASSIFICATION_MARKERS: dict[str, dict[str, tuple[str, ...]]] = {
+    "general": {"decision": (), "judgment": ()},
+    "investing": {
+        "decision": (
+            "underwrite",
+            "position",
+            "sizing",
+            "allocate",
+            "build",
+            "trim",
+            "exit",
+            "buy",
+            "sell",
+            "hold",
+            "建仓",
+            "加仓",
+            "减仓",
+            "卖出",
+            "持有",
+            "仓位",
+            "配置",
+        ),
+        "judgment": (
+            "thesis",
+            "catalyst",
+            "invalidation",
+            "valuation",
+            "earnings",
+            "guidance",
+            "bull",
+            "bear",
+            "moat",
+            "upside",
+            "downside",
+            "thesis drift",
+            "护城河",
+            "催化剂",
+            "估值",
+            "财报",
+            "失效条件",
+        ),
+    },
+    "research": {
+        "decision": (
+            "adopt",
+            "reject",
+            "rollback",
+            "benchmark",
+            "experiment",
+            "architecture",
+            "regression",
+            "integrate",
+            "migrate",
+            "roll back",
+            "采用",
+            "回滚",
+            "实验",
+            "基准",
+            "架构",
+            "回归",
+        ),
+        "judgment": (
+            "hypothesis",
+            "latency",
+            "throughput",
+            "failure mode",
+            "tradeoff",
+            "expected gain",
+            "bottleneck",
+            "open question",
+            "假设",
+            "延迟",
+            "吞吐",
+            "瓶颈",
+            "失败模式",
+            "取舍",
+            "开放问题",
+        ),
+    },
+}
+
+PROTOCOL_PROMOTION_PREFIXES: dict[str, dict[str, str]] = {
+    "general": {"decision": "决策沉淀", "judgment": "判断沉淀"},
+    "investing": {"decision": "投资决策沉淀", "judgment": "投资判断沉淀"},
+    "research": {"decision": "研发决策沉淀", "judgment": "研发判断沉淀"},
+}
+
 TEXT_EXTENSIONS = {
     ".csv",
     ".json",
@@ -563,6 +666,12 @@ def render_protocol_library_index() -> str:
             "",
             "- 协议层是统一 runtime 的覆盖层，不是新的 runtime 分叉。",
             "- 领域差异优先落到 `schema/protocols/`，而不是复制一套 `aiwiki`。",
+            "",
+            "## 当前已经生效的运行时差异",
+            "",
+            "- `decision / judgment` 的默认 review window 会按协议变化。",
+            "- `file-back` 生成的 `decision / judgment` 页面模板会按协议变化。",
+            "- recurring promotion 的标题前缀和分类提示会按协议变化。",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -672,6 +781,24 @@ def resolve_protocol(root: Path, protocol: str | None = None) -> str:
     return candidate
 
 
+def protocol_runtime_summary(slug: str) -> list[str]:
+    windows = PROTOCOL_REVIEW_WINDOWS.get(slug, {})
+    lines = [f"- 默认协议：`{slug}` ({protocol_title(slug)})"]
+    if not windows:
+        lines.append("- Review window：沿通用默认窗口。")
+    else:
+        lines.append("- Review window overrides:")
+        for (kind, status), (revisit_days, escalate_days) in sorted(windows.items()):
+            lines.append(
+                f"  - `{kind}:{status}` -> revisit `{revisit_days}`d / escalate `{escalate_days}`d"
+            )
+    prefixes = PROTOCOL_PROMOTION_PREFIXES.get(slug, PROTOCOL_PROMOTION_PREFIXES[DEFAULT_PROTOCOL])
+    lines.append(
+        f"- Auto-promotion 标题前缀：decision `{prefixes['decision']}` / judgment `{prefixes['judgment']}`"
+    )
+    return lines
+
+
 def set_active_protocol(root: Path, protocol: str) -> dict[str, Any]:
     active = resolve_protocol(root, protocol)
     path = protocol_state_path(root)
@@ -730,6 +857,9 @@ def render_protocols_dashboard(root: Path, compiled_at: str) -> str:
             "- 统一 runtime，不复制多个炉子。",
             "- 领域差异优先落在 `schema/protocols/`。",
             "- 查询、回流和审阅默认沿当前 active protocol 执行，但 page frontmatter 会保留显式 protocol 字段。",
+            "",
+            "## 当前协议语义",
+            *protocol_runtime_summary(active),
         ]
     )
     return "\n".join(lines) + "\n"
@@ -751,11 +881,18 @@ def parse_iso_datetime(value: str) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
-def schedule_review_windows(kind: str, status: str, base_timestamp: str) -> tuple[str, str]:
-    if (kind, status) not in AGING_WINDOWS_DAYS:
+def schedule_review_windows(
+    kind: str,
+    status: str,
+    base_timestamp: str,
+    *,
+    protocol: str = DEFAULT_PROTOCOL,
+) -> tuple[str, str]:
+    windows = PROTOCOL_REVIEW_WINDOWS.get(protocol, {}).get((kind, status), AGING_WINDOWS_DAYS.get((kind, status)))
+    if not windows:
         return "", ""
     base = parse_iso_datetime(base_timestamp) or datetime.now(timezone.utc)
-    revisit_days, escalate_days = AGING_WINDOWS_DAYS[(kind, status)]
+    revisit_days, escalate_days = windows
     revisit_after = (base + timedelta(days=revisit_days)).replace(microsecond=0).isoformat()
     escalate_after = (base + timedelta(days=escalate_days)).replace(microsecond=0).isoformat()
     return revisit_after, escalate_after
@@ -1485,6 +1622,219 @@ def display_curated_status(status: str) -> str:
     return mapping.get(status, status or "unknown")
 
 
+def curated_page_template(
+    *,
+    kind: str,
+    protocol: str,
+    title: str,
+    artifact_ref: str,
+    filed_at: str,
+    revisit_after: str,
+    escalate_after: str,
+    supporting_body: str,
+) -> list[str]:
+    origin_block = [
+        "## Origin",
+        f"- Filed from: `{artifact_ref}`",
+        f"- Filed at: `{filed_at}`",
+        f"- Protocol: `{protocol}`",
+        "",
+    ]
+    if kind == "derived":
+        return [
+            f"# {title}",
+            "",
+            *origin_block,
+            "## Filed Content",
+            supporting_body,
+        ]
+    if kind == "decision":
+        if protocol == "investing":
+            return [
+                f"# {title}",
+                "",
+                *origin_block,
+                "## Position Decision",
+                "- State the action: observe, build, add, trim, exit, or reject.",
+                "",
+                "## Scope And Sizing",
+                "- Record the position scope, sizing guardrails, or watchlist boundary.",
+                "",
+                "## Thesis",
+                "- Summarize the thesis and the supporting evidence.",
+                "",
+                "## Evidence",
+                f"- Review `{artifact_ref}` and cite `wiki/sources/*.md` or `raw/` evidence explicitly.",
+                "",
+                "## Bear Case And Invalidation",
+                "- Record the counter-thesis, invalidation triggers, and stop conditions.",
+                "",
+                "## Catalysts And Revisit",
+                "- Record the next earnings/event/catalyst and what to monitor before revisiting.",
+                f"- Default revisit window: `{revisit_after or 'none'}`",
+                f"- Default escalation window: `{escalate_after or 'none'}`",
+                "",
+                "## Review Status",
+                "- Current status: `proposed`",
+                "- Review this page when the action is approved, resized, exited, or invalidated.",
+                "",
+                "## Review Notes",
+                "- No review has been recorded yet.",
+                "",
+                "## Supporting Artifact",
+                supporting_body,
+            ]
+        if protocol == "research":
+            return [
+                f"# {title}",
+                "",
+                *origin_block,
+                "## Architecture Decision",
+                "- State the action: adopt, reject, defer, migrate, or rollback.",
+                "",
+                "## Affected Surface",
+                "- Record the systems, components, teams, or experiments affected.",
+                "",
+                "## Evidence",
+                f"- Review `{artifact_ref}` and cite `wiki/sources/*.md` or `raw/` evidence explicitly.",
+                "",
+                "## Validation Plan",
+                "- Define the benchmark, test, or rollout signal that would validate this decision.",
+                "",
+                "## Rollback And Risks",
+                "- Record regression risks, rollback path, and explicit failure conditions.",
+                f"- Default revisit window: `{revisit_after or 'none'}`",
+                f"- Default escalation window: `{escalate_after or 'none'}`",
+                "",
+                "## Review Status",
+                "- Current status: `proposed`",
+                "- Review this page when the rollout result, benchmark, or regression signal changes.",
+                "",
+                "## Review Notes",
+                "- No review has been recorded yet.",
+                "",
+                "## Supporting Artifact",
+                supporting_body,
+            ]
+        return [
+            f"# {title}",
+            "",
+            *origin_block,
+            "## Decision",
+            "- State the concrete decision here.",
+            "",
+            "## Why",
+            "- Summarize the rationale and tradeoffs.",
+            "",
+            "## Evidence",
+            f"- Review `{artifact_ref}` and cite `wiki/sources/*.md` or `raw/` evidence explicitly.",
+            "",
+            "## Risks And Revisit",
+            "- Record what could invalidate this decision and when to revisit it.",
+            f"- Default revisit window: `{revisit_after or 'none'}`",
+            f"- Default escalation window: `{escalate_after or 'none'}`",
+            "",
+            "## Review Status",
+            "- Current status: `proposed`",
+            "- Review this page when the decision is approved, superseded, or needs revisit.",
+            "",
+            "## Review Notes",
+            "- No review has been recorded yet.",
+            "",
+            "## Supporting Artifact",
+            supporting_body,
+        ]
+    if protocol == "investing":
+        return [
+            f"# {title}",
+            "",
+            *origin_block,
+            "## Investment Judgment",
+            "- State the thesis or judgment call here.",
+            "",
+            "## Drivers And Catalysts",
+            f"- Summarize the key drivers and catalysts from `{artifact_ref}` and supporting sources.",
+            "",
+            "## Risks And Invalidation",
+            "- Record the main risks, disconfirming signals, and invalidation conditions.",
+            "",
+            "## Confidence And Watchlist",
+            "- Keep confidence explicit and list the next datapoints to watch.",
+            f"- Default revisit window: `{revisit_after or 'none'}`",
+            f"- Default escalation window: `{escalate_after or 'none'}`",
+            "",
+            "## Review Status",
+            "- Current status: `tentative`",
+            "- Review this page when the thesis strengthens, weakens, or is invalidated.",
+            "",
+            "## Review Notes",
+            "- No review has been recorded yet.",
+            "",
+            "## Supporting Artifact",
+            supporting_body,
+        ]
+    if protocol == "research":
+        return [
+            f"# {title}",
+            "",
+            *origin_block,
+            "## Research Judgment",
+            "- State the hypothesis, expected gain, or architecture judgment here.",
+            "",
+            "## Supporting Evidence",
+            f"- Summarize benchmark, experiment, or source evidence from `{artifact_ref}` and `wiki/sources/*.md`.",
+            "",
+            "## Counter Evidence",
+            "- Record the regression risks, weak signals, or conflicting results.",
+            "",
+            "## Open Questions",
+            "- List what remains uncertain and what experiment should resolve it.",
+            "",
+            "## Confidence And Next Experiment",
+            "- Keep confidence explicit and name the next benchmark or follow-up check.",
+            f"- Default revisit window: `{revisit_after or 'none'}`",
+            f"- Default escalation window: `{escalate_after or 'none'}`",
+            "",
+            "## Review Status",
+            "- Current status: `tentative`",
+            "- Review this page when new benchmark, regression, or experiment evidence arrives.",
+            "",
+            "## Review Notes",
+            "- No review has been recorded yet.",
+            "",
+            "## Supporting Artifact",
+            supporting_body,
+        ]
+    return [
+        f"# {title}",
+        "",
+        *origin_block,
+        "## Judgment",
+        "- State the judgment call here.",
+        "",
+        "## Signals",
+        f"- Summarize the signals from `{artifact_ref}` and cite `wiki/sources/*.md` or `raw/` evidence.",
+        "",
+        "## Counterevidence",
+        "- Record what could make this judgment wrong.",
+        "",
+        "## Confidence And Follow-up",
+        "- Keep confidence explicit and list what to watch next.",
+        f"- Default revisit window: `{revisit_after or 'none'}`",
+        f"- Default escalation window: `{escalate_after or 'none'}`",
+        "",
+        "## Review Status",
+        "- Current status: `tentative`",
+        "- Review this page when the judgment is confirmed, rejected, or moved to active tracking.",
+        "",
+        "## Review Notes",
+        "- No review has been recorded yet.",
+        "",
+        "## Supporting Artifact",
+        supporting_body,
+    ]
+
+
 def action_needs_review(status: str) -> bool:
     return status in PENDING_ACTION_STATUSES
 
@@ -1516,18 +1866,24 @@ def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[d
         status = str(frontmatter.get("status") or default_curated_status(expected_kind))
         reviewed_at = str(frontmatter.get("reviewed_at") or "")
         updated_at = str(frontmatter.get("last_compiled_at") or "")
+        protocol = str(frontmatter.get("protocol") or DEFAULT_PROTOCOL)
         revisit_after = str(frontmatter.get("revisit_after") or "")
         escalate_after = str(frontmatter.get("escalate_after") or "")
         if not revisit_after and not escalate_after:
             base_timestamp = reviewed_at or updated_at or utc_now()
-            revisit_after, escalate_after = schedule_review_windows(expected_kind, status, base_timestamp)
+            revisit_after, escalate_after = schedule_review_windows(
+                expected_kind,
+                status,
+                base_timestamp,
+                protocol=protocol,
+            )
         pages.append(
             {
                 "title": str(frontmatter.get("title") or path.stem),
                 "path": relative_path(root, path),
                 "kind": str(frontmatter.get("kind") or ""),
                 "status": status,
-                "protocol": str(frontmatter.get("protocol") or ""),
+                "protocol": protocol,
                 "confidence": str(frontmatter.get("confidence") or ""),
                 "reviewed_at": reviewed_at,
                 "updated_at": updated_at,
@@ -1748,10 +2104,13 @@ def normalize_query_signature(query: str) -> str:
     return signature[:160] or "query"
 
 
-def classify_recurring_output_kind(query: str) -> str:
+def classify_recurring_output_kind(query: str, protocol: str = DEFAULT_PROTOCOL) -> str:
     normalized = " ".join(re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]+", query.lower()))
-    decision_score = sum(1 for marker in DECISION_QUERY_MARKERS if marker in normalized)
-    judgment_score = sum(1 for marker in JUDGMENT_QUERY_MARKERS if marker in normalized)
+    protocol_markers = PROTOCOL_CLASSIFICATION_MARKERS.get(protocol, PROTOCOL_CLASSIFICATION_MARKERS[DEFAULT_PROTOCOL])
+    decision_markers = DECISION_QUERY_MARKERS + tuple(protocol_markers.get("decision", ()))
+    judgment_markers = JUDGMENT_QUERY_MARKERS + tuple(protocol_markers.get("judgment", ()))
+    decision_score = sum(1 for marker in decision_markers if marker in normalized)
+    judgment_score = sum(1 for marker in judgment_markers if marker in normalized)
     if decision_score <= 0 and judgment_score <= 0:
         return ""
     if decision_score >= judgment_score:
@@ -1759,8 +2118,11 @@ def classify_recurring_output_kind(query: str) -> str:
     return "judgment"
 
 
-def promotion_page_title(kind: str, query: str) -> str:
-    prefix = "决策沉淀" if kind == "decision" else "判断沉淀"
+def promotion_page_title(kind: str, query: str, protocol: str = DEFAULT_PROTOCOL) -> str:
+    prefix = PROTOCOL_PROMOTION_PREFIXES.get(protocol, PROTOCOL_PROMOTION_PREFIXES[DEFAULT_PROTOCOL]).get(
+        kind,
+        "决策沉淀" if kind == "decision" else "判断沉淀",
+    )
     return f"{prefix}：{query}"
 
 
@@ -1847,7 +2209,7 @@ def annotate_recurring_promotion(
         if artifact_path not in source_files:
             source_files.append(artifact_path)
     formats = sorted({artifact["format"] for artifact in artifacts})
-    title = promotion_page_title(kind, query)
+    title = promotion_page_title(kind, query, protocol)
     frontmatter["title"] = title
     frontmatter["protocol"] = protocol
     frontmatter["source_files"] = source_files
@@ -1888,7 +2250,7 @@ def promote_recurring_outputs(root: Path) -> dict[str, Any]:
         if len(artifacts) < AUTO_PROMOTION_MIN_OCCURRENCES:
             continue
         query = artifacts[0]["query"]
-        kind = classify_recurring_output_kind(query)
+        kind = classify_recurring_output_kind(query, protocol)
         if kind not in {"decision", "judgment"}:
             continue
         existing = find_promoted_curated_page(root, kind, query_signature, protocol)
@@ -5140,7 +5502,12 @@ def file_back(
     revisit_after = ""
     escalate_after = ""
     if kind in {"decision", "judgment"}:
-        revisit_after, escalate_after = schedule_review_windows(kind, default_curated_status(kind), filed_at)
+        revisit_after, escalate_after = schedule_review_windows(
+            kind,
+            default_curated_status(kind),
+            filed_at,
+            protocol=resolved_protocol,
+        )
     frontmatter = render_frontmatter(
         {
             "id": entry_id,
@@ -5159,84 +5526,16 @@ def file_back(
         }
     )
     stripped = strip_frontmatter(original).strip()
-    if kind == "derived":
-        body_lines = [
-            f"# {title or artifact_path.stem}",
-            "",
-            "## Origin",
-            f"- Filed from: `{artifact_ref}`",
-            f"- Filed at: `{filed_at}`",
-            f"- Protocol: `{resolved_protocol}`",
-            "",
-            "## Filed Content",
-            stripped,
-        ]
-    elif kind == "decision":
-        body_lines = [
-            f"# {title or artifact_path.stem}",
-            "",
-            "## Origin",
-            f"- Filed from: `{artifact_ref}`",
-            f"- Filed at: `{filed_at}`",
-            f"- Protocol: `{resolved_protocol}`",
-            "",
-            "## Decision",
-            "- State the concrete decision here.",
-            "",
-            "## Why",
-            "- Summarize the rationale and tradeoffs.",
-            "",
-            "## Evidence",
-            f"- Review `{artifact_ref}` and cite `wiki/sources/*.md` or `raw/` evidence explicitly.",
-            "",
-            "## Risks And Revisit",
-            "- Record what could invalidate this decision and when to revisit it.",
-            f"- Default revisit window: `{revisit_after or 'none'}`",
-            f"- Default escalation window: `{escalate_after or 'none'}`",
-            "",
-            "## Review Status",
-            "- Current status: `proposed`",
-            "- Review this page when the decision is approved, superseded, or needs revisit.",
-            "",
-            "## Review Notes",
-            "- No review has been recorded yet.",
-            "",
-            "## Supporting Artifact",
-            stripped,
-        ]
-    else:
-        body_lines = [
-            f"# {title or artifact_path.stem}",
-            "",
-            "## Origin",
-            f"- Filed from: `{artifact_ref}`",
-            f"- Filed at: `{filed_at}`",
-            f"- Protocol: `{resolved_protocol}`",
-            "",
-            "## Judgment",
-            "- State the judgment call here.",
-            "",
-            "## Signals",
-            f"- Summarize the signals from `{artifact_ref}` and cite `wiki/sources/*.md` or `raw/` evidence.",
-            "",
-            "## Counterevidence",
-            "- Record what could make this judgment wrong.",
-            "",
-            "## Confidence And Follow-up",
-            "- Keep confidence explicit and list what to watch next.",
-            f"- Default revisit window: `{revisit_after or 'none'}`",
-            f"- Default escalation window: `{escalate_after or 'none'}`",
-            "",
-            "## Review Status",
-            "- Current status: `tentative`",
-            "- Review this page when the judgment is confirmed, rejected, or moved to active tracking.",
-            "",
-            "## Review Notes",
-            "- No review has been recorded yet.",
-            "",
-            "## Supporting Artifact",
-            stripped,
-        ]
+    body_lines = curated_page_template(
+        kind=kind,
+        protocol=resolved_protocol,
+        title=title or artifact_path.stem,
+        artifact_ref=artifact_ref,
+        filed_at=filed_at,
+        revisit_after=revisit_after,
+        escalate_after=escalate_after,
+        supporting_body=stripped,
+    )
     payload = "\n".join([frontmatter, "", *body_lines]).rstrip() + "\n"
     destination.write_text(payload, encoding="utf-8")
     append_wiki_log(
@@ -5333,7 +5632,12 @@ def review_page(
     frontmatter["reviewed_at"] = reviewed_at
     if kind == "judgment" and confidence:
         frontmatter["confidence"] = confidence
-    revisit_after, escalate_after = schedule_review_windows(kind, status, reviewed_at)
+    revisit_after, escalate_after = schedule_review_windows(
+        kind,
+        status,
+        reviewed_at,
+        protocol=str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
+    )
     frontmatter["revisit_after"] = revisit_after
     frontmatter["escalate_after"] = escalate_after
     body = strip_frontmatter(content).strip()

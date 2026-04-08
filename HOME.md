@@ -68,6 +68,7 @@ kind: "dashboard"
 - 想确认新投料有没有进系统：看 [[wiki/indexes/Raw Inbox|原料收件箱]]
 - 想看系统当前总览：看 [[wiki/indexes/Wiki Hub|知识中枢]]
 - 想切换或查看当前协议：看 [[wiki/indexes/protocols|协议总览]]
+- 想确认协议具体改变了什么行为：看 [[schema/protocols/index|协议规则]]
 - 想看 pending review：看 [[wiki/indexes/review-queue|审阅队列]]
 - 想把 review / repair / aging 放到一个地方看：看 [[wiki/indexes/review-center|审阅中心]]，真正的本地审阅面板在 `output/review/review-center.html`
 - 想看修复优先级：看 [[wiki/indexes/repair-backlog|修复待办]]
@@ -87,6 +88,11 @@ kind: "dashboard"
 - `output/`：报告、幻灯片、图表和 lint 结果
 - `schema/`：运行时规则
 - `schema/protocols/`：领域协议覆盖层
+
+当前协议已经会改变：
+- `decision / judgment` 的默认 review window
+- `file-back` 生成的 `decision / judgment` 模板
+- recurring promotion 的标题和分类语义
 
 ## 使用边界
 

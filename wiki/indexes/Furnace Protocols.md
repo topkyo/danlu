@@ -154,6 +154,16 @@ status: "active"
 - 决策和判断页明确标注 protocol
 - review / nightly 按 protocol 采用不同规则
 
+## 当前已落地到 runtime 的协议差异
+
+现在这不是纯文档原则，runtime 已经有最小行为差异：
+
+- `decision / judgment` 的默认 review window 会按 protocol 变化
+- `file-back` 生成的 `decision / judgment` 模板会按 protocol 变化
+- recurring promotion 的标题前缀和分类提示会按 protocol 变化
+
+这意味着 protocol 已经不是“只贴一个标签”，而是会改变一部分 deterministic 行为。
+
 ## 当前结论
 
 现在的炼丹炉应该继续沿这条路走：
