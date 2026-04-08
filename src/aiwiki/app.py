@@ -482,6 +482,45 @@ PROTOCOL_ACTION_KIND_WEIGHTS: dict[str, dict[str, int]] = {
     },
 }
 
+PROTOCOL_OUTPUT_GUIDANCE: dict[str, dict[str, tuple[str, ...]]] = {
+    "general": {
+        "report": (
+            "先重述问题，再列证据、分歧、缺口和下一步问题。",
+            "不要把猜测写成事实。",
+        ),
+        "slides": (
+            "每页都保留引用和关键不确定性。",
+        ),
+        "figure": (
+            "图表应强调变量关系、假设和证据边界。",
+        ),
+    },
+    "investing": {
+        "report": (
+            "优先组织成 thesis / bull-bear evidence / catalysts / risks / invalidation。",
+            "把时间窗口和下一次财报或事件复审写清楚。",
+        ),
+        "slides": (
+            "优先呈现 thesis、估值/风险、催化剂和失效条件。",
+        ),
+        "figure": (
+            "优先做 thesis、估值、风险或催化剂的对比图，而不是泛泛总结图。",
+        ),
+    },
+    "research": {
+        "report": (
+            "优先组织成 benchmark / experiment / tradeoff / regression risk / next experiment。",
+            "把 open questions 和验证条件写清楚。",
+        ),
+        "slides": (
+            "优先呈现 benchmark、架构取舍、回归风险和下一步实验。",
+        ),
+        "figure": (
+            "优先做 benchmark、latency/throughput、tradeoff 或 regression signal 图。",
+        ),
+    },
+}
+
 TEXT_EXTENSIONS = {
     ".csv",
     ".json",
@@ -890,6 +929,29 @@ def action_focus_score(active_protocol: str, action: dict[str, Any]) -> int:
     )
     score += PROTOCOL_ACTION_KIND_WEIGHTS.get(active_protocol, {}).get(str(action.get("kind") or ""), 0)
     return score
+
+
+def entry_focus_score(active_protocol: str, entry: dict[str, Any], summary_or_preview: str) -> int:
+    return protocol_focus_score(
+        active_protocol,
+        " ".join(
+            [
+                str(entry.get("title") or ""),
+                str(entry.get("source_type") or ""),
+                summary_or_preview,
+            ]
+        ),
+    )
+
+
+def concept_focus_score(active_protocol: str, title: str, content: str) -> int:
+    return protocol_focus_score(active_protocol, f"{title}\n{content}")
+
+
+def protocol_output_guidance(protocol: str, output_format: str) -> tuple[str, ...]:
+    default_guidance = PROTOCOL_OUTPUT_GUIDANCE.get(DEFAULT_PROTOCOL, {})
+    protocol_guidance = PROTOCOL_OUTPUT_GUIDANCE.get(protocol, default_guidance)
+    return tuple(protocol_guidance.get(output_format, default_guidance.get(output_format, ())))
 
 
 def set_active_protocol(root: Path, protocol: str) -> dict[str, Any]:
@@ -2216,7 +2278,10 @@ def build_machine_memory_repair_plan(health: dict[str, Any], *, active_protocol:
             item["label"],
         ),
     )
-    execution_proposals = repair_execution_proposals(ready_actions + triage_actions + deferred_actions)
+    execution_proposals = repair_execution_proposals(
+        ready_actions + triage_actions + deferred_actions,
+        active_protocol=active_protocol,
+    )
 
     return {
         "ready_actions": ready_actions,
@@ -3908,7 +3973,7 @@ def build_machine_memory_adjacency(memory: dict[str, Any]) -> dict[str, dict[str
     return adjacency
 
 
-def build_machine_memory_query(memory: dict[str, Any], question: str) -> dict[str, Any]:
+def build_machine_memory_query(memory: dict[str, Any], question: str, *, protocol: str = DEFAULT_PROTOCOL) -> dict[str, Any]:
     term_index = memory.get("term_index", {})
     edges = memory.get("edges", {})
     source_nodes = {node["id"]: node for node in memory.get("source_nodes", [])}
@@ -4080,8 +4145,17 @@ def build_machine_memory_query(memory: dict[str, Any], question: str) -> dict[st
                 "proposal_kind": proposal.get("proposal_kind", ""),
                 "proposal_summary": proposal.get("summary", ""),
                 "proposal_targets": proposal.get("target_paths", []),
+                "focus_score": action_focus_score(protocol, action),
             }
         )
+    relevant_actions.sort(
+        key=lambda item: (
+            0 if item.get("status") == "accepted" else 1,
+            -int(item.get("focus_score", 0)),
+            action_priority_rank(str(item.get("priority") or "")),
+            str(item.get("title") or "").lower(),
+        )
+    )
 
     return {
         "matched_terms": matched_terms,
@@ -5168,7 +5242,13 @@ def tokenize(text: str) -> list[str]:
     return [token for token in tokens if len(token) > 2 and token not in STOP_WORDS]
 
 
-def rank_concepts(root: Path, question: str, boost_concept_slugs: set[str] | None = None) -> list[dict[str, Any]]:
+def rank_concepts(
+    root: Path,
+    question: str,
+    boost_concept_slugs: set[str] | None = None,
+    *,
+    protocol: str = DEFAULT_PROTOCOL,
+) -> list[dict[str, Any]]:
     question_tokens = tokenize(question)
     boost_concept_slugs = boost_concept_slugs or set()
     ranked: list[tuple[int, dict[str, Any]]] = []
@@ -5180,6 +5260,7 @@ def rank_concepts(root: Path, question: str, boost_concept_slugs: set[str] | Non
         score = 0
         for token in question_tokens:
             score += haystack.count(token)
+        score += concept_focus_score(protocol, str(title), strip_frontmatter(content))
         if path.stem in boost_concept_slugs:
             score += 5
         if score:
@@ -5223,6 +5304,8 @@ def rank_sources(
     entries: list[dict[str, Any]],
     question: str,
     boost_source_ids: set[str] | None = None,
+    *,
+    protocol: str = DEFAULT_PROTOCOL,
 ) -> list[dict[str, Any]]:
     question_tokens = tokenize(question)
     scored: list[tuple[int, dict[str, Any]]] = []
@@ -5238,6 +5321,7 @@ def rank_sources(
         for concept in entry_concept_terms(entry, summary_or_preview, max_terms=4):
             for token in question_tokens:
                 score += concept.lower().count(token)
+        score += entry_focus_score(protocol, entry, summary_or_preview)
         if entry["id"] in boost_source_ids:
             score += 5
         if score:
@@ -5256,6 +5340,7 @@ def render_report(
     artifact_id: str,
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
+    output_guidance = protocol_output_guidance(active_protocol, "report")
     frontmatter = render_frontmatter(
         {
             "id": artifact_id,
@@ -5278,30 +5363,41 @@ def render_report(
         "- 优先使用文件路径引用，而不是模糊转述。",
         f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
         "",
-        "## 推荐索引页",
-        "- [知识库总索引](../../wiki/indexes/index.md)",
-        "- [来源索引](../../wiki/indexes/sources.md)",
-        "- [概念索引](../../wiki/indexes/concepts.md)",
-        "- [决策索引](../../wiki/indexes/decisions.md)",
-        "- [判断索引](../../wiki/indexes/judgments.md)",
-        "- [协议总览](../../wiki/indexes/protocols.md)",
-        "- [审阅队列](../../wiki/indexes/review-queue.md)",
-        "- [审阅中心](../../wiki/indexes/review-center.md)",
-        "- [Aging 报告](../../wiki/indexes/aging-report.md)",
-        "- [概念质量](../../wiki/indexes/concept-quality.md)",
-        "- [机器记忆](../../wiki/indexes/machine-memory.md)",
-        "- [图谱视图](../../wiki/indexes/graph-view.md)",
-        "- [拓扑视图](../../wiki/indexes/machine-memory-topology.md)",
-        "- [动作队列](../../wiki/indexes/machine-memory-actions.md)",
-        "- [修复计划](../../wiki/indexes/machine-memory-repair-plan.md)",
-        "- [图谱健康](../../wiki/indexes/graph-health.md)",
-        "- [漂移报告](../../wiki/indexes/drift-report.md)",
-        "- [修复待办](../../wiki/indexes/repair-backlog.md)",
-        "- [运行时规则](../../schema/index.md)",
-        f"- [当前协议规则](../../schema/protocols/{active_protocol}/index.md)",
-        "",
-        "## 机器记忆查询计划",
+        "## 协议输出偏置",
     ]
+    if output_guidance:
+        for line in output_guidance:
+            lines.append(f"- {line}")
+    else:
+        lines.append("- 当前协议没有额外的报告偏置。")
+    lines.extend(
+        [
+            "",
+            "## 推荐索引页",
+            "- [知识库总索引](../../wiki/indexes/index.md)",
+            "- [来源索引](../../wiki/indexes/sources.md)",
+            "- [概念索引](../../wiki/indexes/concepts.md)",
+            "- [决策索引](../../wiki/indexes/decisions.md)",
+            "- [判断索引](../../wiki/indexes/judgments.md)",
+            "- [协议总览](../../wiki/indexes/protocols.md)",
+            "- [审阅队列](../../wiki/indexes/review-queue.md)",
+            "- [审阅中心](../../wiki/indexes/review-center.md)",
+            "- [Aging 报告](../../wiki/indexes/aging-report.md)",
+            "- [概念质量](../../wiki/indexes/concept-quality.md)",
+            "- [机器记忆](../../wiki/indexes/machine-memory.md)",
+            "- [图谱视图](../../wiki/indexes/graph-view.md)",
+            "- [拓扑视图](../../wiki/indexes/machine-memory-topology.md)",
+            "- [动作队列](../../wiki/indexes/machine-memory-actions.md)",
+            "- [修复计划](../../wiki/indexes/machine-memory-repair-plan.md)",
+            "- [图谱健康](../../wiki/indexes/graph-health.md)",
+            "- [漂移报告](../../wiki/indexes/drift-report.md)",
+            "- [修复待办](../../wiki/indexes/repair-backlog.md)",
+            "- [运行时规则](../../schema/index.md)",
+            f"- [当前协议规则](../../schema/protocols/{active_protocol}/index.md)",
+            "",
+            "## 机器记忆查询计划",
+        ]
+    )
     matched_terms = machine_query.get("matched_terms", [])
     if matched_terms:
         lines.append(f"- 命中词：`{', '.join(matched_terms)}`")
@@ -5347,13 +5443,13 @@ def render_report(
     lines.extend(
         [
             "",
-            "## 草稿提纲",
-            "1. 重新表述研究问题。",
-            "2. 对比最强相关来源。",
-            "3. 写出分歧、证据缺口和下一步问题。",
-            "",
-            "## 引用要求",
-            "- 在最终答案里加入 source-page 内联引用。",
+        "## 草稿提纲",
+        "1. 重新表述研究问题。",
+        "2. 按当前协议优先组织最相关来源和概念。",
+        "3. 写出分歧、证据缺口和下一步问题。",
+        "",
+        "## 引用要求",
+        "- 在最终答案里加入 source-page 内联引用。",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -5369,6 +5465,7 @@ def render_slides(
     artifact_id: str,
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
+    output_guidance = protocol_output_guidance(active_protocol, "slides")
     lines = [
         "---",
         "marp: true",
@@ -5389,40 +5486,51 @@ def render_slides(
         "- 每页正文都保留引用。",
         f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
         "",
-        "## 相关索引",
-        "- `wiki/indexes/index.md`",
-        "- `wiki/indexes/sources.md`",
-        "- `wiki/indexes/concepts.md`",
-        "- `wiki/indexes/decisions.md`",
-        "- `wiki/indexes/judgments.md`",
-        "- `wiki/indexes/protocols.md`",
-        "- `wiki/indexes/review-queue.md`",
-        "- `wiki/indexes/review-center.md`",
-        "- `wiki/indexes/aging-report.md`",
-        "- `wiki/indexes/concept-quality.md`",
-        "- `wiki/indexes/machine-memory.md`",
-        "- `wiki/indexes/graph-view.md`",
-        "- `wiki/indexes/machine-memory-topology.md`",
-        "- `wiki/indexes/machine-memory-actions.md`",
-        "- `wiki/indexes/machine-memory-repair-plan.md`",
-        "- `wiki/indexes/graph-health.md`",
-        "- `wiki/indexes/drift-report.md`",
-        "- `wiki/indexes/repair-backlog.md`",
-        "- `schema/index.md`",
-        f"- `schema/protocols/{active_protocol}/index.md`",
-        "",
-        "## 机器记忆查询计划",
-        f"- 命中词：`{', '.join(machine_query.get('matched_terms', [])) or 'none'}`",
-        f"- 提升权重的来源：`{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`",
-        f"- 提升权重的概念：`{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`",
-        f"- 桥接概念：`{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`",
-        f"- 查询子图边数：`{len(machine_query.get('query_subgraph', {}).get('edges', []))}`",
-        f"- 查询路径数：`{len(machine_query.get('query_routes', []))}`",
-        f"- 触达分量：`{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`",
-        f"- 命中的修复动作：`{len(machine_query.get('relevant_actions', []))}`",
-        "",
-        "## 相关概念",
+        "## 协议输出偏置",
     ]
+    if output_guidance:
+        for line in output_guidance:
+            lines.append(f"- {line}")
+    else:
+        lines.append("- 当前协议没有额外的幻灯片偏置。")
+    lines.extend(
+        [
+            "",
+            "## 相关索引",
+            "- `wiki/indexes/index.md`",
+            "- `wiki/indexes/sources.md`",
+            "- `wiki/indexes/concepts.md`",
+            "- `wiki/indexes/decisions.md`",
+            "- `wiki/indexes/judgments.md`",
+            "- `wiki/indexes/protocols.md`",
+            "- `wiki/indexes/review-queue.md`",
+            "- `wiki/indexes/review-center.md`",
+            "- `wiki/indexes/aging-report.md`",
+            "- `wiki/indexes/concept-quality.md`",
+            "- `wiki/indexes/machine-memory.md`",
+            "- `wiki/indexes/graph-view.md`",
+            "- `wiki/indexes/machine-memory-topology.md`",
+            "- `wiki/indexes/machine-memory-actions.md`",
+            "- `wiki/indexes/machine-memory-repair-plan.md`",
+            "- `wiki/indexes/graph-health.md`",
+            "- `wiki/indexes/drift-report.md`",
+            "- `wiki/indexes/repair-backlog.md`",
+            "- `schema/index.md`",
+            f"- `schema/protocols/{active_protocol}/index.md`",
+            "",
+            "## 机器记忆查询计划",
+            f"- 命中词：`{', '.join(machine_query.get('matched_terms', [])) or 'none'}`",
+            f"- 提升权重的来源：`{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`",
+            f"- 提升权重的概念：`{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`",
+            f"- 桥接概念：`{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`",
+            f"- 查询子图边数：`{len(machine_query.get('query_subgraph', {}).get('edges', []))}`",
+            f"- 查询路径数：`{len(machine_query.get('query_routes', []))}`",
+            f"- 触达分量：`{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`",
+            f"- 命中的修复动作：`{len(machine_query.get('relevant_actions', []))}`",
+            "",
+            "## 相关概念",
+        ]
+    )
     if not concepts:
         lines.append("- 暂无排好序的概念页。")
     else:
@@ -5463,6 +5571,7 @@ def render_figure_brief(
     artifact_id: str,
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
+    output_guidance = protocol_output_guidance(active_protocol, "figure")
     frontmatter = render_frontmatter(
         {
             "id": artifact_id,
@@ -5483,40 +5592,51 @@ def render_figure_brief(
         "- 描述这张图应该表达什么。",
         f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
         "",
-        "## 推荐索引页",
-        "- [知识库总索引](../../wiki/indexes/index.md)",
-        "- [来源索引](../../wiki/indexes/sources.md)",
-        "- [概念索引](../../wiki/indexes/concepts.md)",
-        "- [决策索引](../../wiki/indexes/decisions.md)",
-        "- [判断索引](../../wiki/indexes/judgments.md)",
-        "- [协议总览](../../wiki/indexes/protocols.md)",
-        "- [审阅队列](../../wiki/indexes/review-queue.md)",
-        "- [审阅中心](../../wiki/indexes/review-center.md)",
-        "- [Aging 报告](../../wiki/indexes/aging-report.md)",
-        "- [概念质量](../../wiki/indexes/concept-quality.md)",
-        "- [机器记忆](../../wiki/indexes/machine-memory.md)",
-        "- [图谱视图](../../wiki/indexes/graph-view.md)",
-        "- [拓扑视图](../../wiki/indexes/machine-memory-topology.md)",
-        "- [动作队列](../../wiki/indexes/machine-memory-actions.md)",
-        "- [修复计划](../../wiki/indexes/machine-memory-repair-plan.md)",
-        "- [图谱健康](../../wiki/indexes/graph-health.md)",
-        "- [漂移报告](../../wiki/indexes/drift-report.md)",
-        "- [修复待办](../../wiki/indexes/repair-backlog.md)",
-        "- [运行时规则](../../schema/index.md)",
-        f"- [当前协议规则](../../schema/protocols/{active_protocol}/index.md)",
-        "",
-        "## 机器记忆查询计划",
-        f"- 命中词：`{', '.join(machine_query.get('matched_terms', [])) or 'none'}`",
-        f"- 提升权重的来源：`{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`",
-        f"- 提升权重的概念：`{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`",
-        f"- 桥接概念：`{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`",
-        f"- 查询子图边数：`{len(machine_query.get('query_subgraph', {}).get('edges', []))}`",
-        f"- 查询路径数：`{len(machine_query.get('query_routes', []))}`",
-        f"- 触达分量：`{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`",
-        f"- 命中的修复动作：`{len(machine_query.get('relevant_actions', []))}`",
-        "",
-        "## 推荐概念",
+        "## 协议输出偏置",
     ]
+    if output_guidance:
+        for line in output_guidance:
+            lines.append(f"- {line}")
+    else:
+        lines.append("- 当前协议没有额外的图表偏置。")
+    lines.extend(
+        [
+            "",
+            "## 推荐索引页",
+            "- [知识库总索引](../../wiki/indexes/index.md)",
+            "- [来源索引](../../wiki/indexes/sources.md)",
+            "- [概念索引](../../wiki/indexes/concepts.md)",
+            "- [决策索引](../../wiki/indexes/decisions.md)",
+            "- [判断索引](../../wiki/indexes/judgments.md)",
+            "- [协议总览](../../wiki/indexes/protocols.md)",
+            "- [审阅队列](../../wiki/indexes/review-queue.md)",
+            "- [审阅中心](../../wiki/indexes/review-center.md)",
+            "- [Aging 报告](../../wiki/indexes/aging-report.md)",
+            "- [概念质量](../../wiki/indexes/concept-quality.md)",
+            "- [机器记忆](../../wiki/indexes/machine-memory.md)",
+            "- [图谱视图](../../wiki/indexes/graph-view.md)",
+            "- [拓扑视图](../../wiki/indexes/machine-memory-topology.md)",
+            "- [动作队列](../../wiki/indexes/machine-memory-actions.md)",
+            "- [修复计划](../../wiki/indexes/machine-memory-repair-plan.md)",
+            "- [图谱健康](../../wiki/indexes/graph-health.md)",
+            "- [漂移报告](../../wiki/indexes/drift-report.md)",
+            "- [修复待办](../../wiki/indexes/repair-backlog.md)",
+            "- [运行时规则](../../schema/index.md)",
+            f"- [当前协议规则](../../schema/protocols/{active_protocol}/index.md)",
+            "",
+            "## 机器记忆查询计划",
+            f"- 命中词：`{', '.join(machine_query.get('matched_terms', [])) or 'none'}`",
+            f"- 提升权重的来源：`{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`",
+            f"- 提升权重的概念：`{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`",
+            f"- 桥接概念：`{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`",
+            f"- 查询子图边数：`{len(machine_query.get('query_subgraph', {}).get('edges', []))}`",
+            f"- 查询路径数：`{len(machine_query.get('query_routes', []))}`",
+            f"- 触达分量：`{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`",
+            f"- 命中的修复动作：`{len(machine_query.get('relevant_actions', []))}`",
+            "",
+            "## 推荐概念",
+        ]
+    )
     if not concepts:
         lines.append("- 暂无排好序的概念页。")
     else:
@@ -5525,7 +5645,7 @@ def render_figure_brief(
     lines.extend(
         [
             "",
-        "## 推荐来源",
+            "## 推荐来源",
         ]
     )
     if not entries:
@@ -5562,14 +5682,19 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
             **protocol_state,
             "active_protocol": active_protocol,
         }
-    machine_query = build_machine_memory_query(load_machine_memory(root), question)
-    ranked_concepts = rank_concepts(root, question, boost_concept_slugs=set(machine_query["ranked_concept_slugs"]))
+    machine_query = build_machine_memory_query(load_machine_memory(root), question, protocol=active_protocol)
+    ranked_concepts = rank_concepts(
+        root,
+        question,
+        boost_concept_slugs=set(machine_query["ranked_concept_slugs"]),
+        protocol=active_protocol,
+    )
     boosted_ids: set[str] = set(machine_query["ranked_source_ids"])
     for concept in ranked_concepts:
         for source_page in concept.get("source_pages", []):
             if isinstance(source_page, str) and source_page.startswith("wiki/sources/") and source_page.endswith(".md"):
                 boosted_ids.add(Path(source_page).stem)
-    ranked = rank_sources(root, entries, question, boost_source_ids=boosted_ids)
+    ranked = rank_sources(root, entries, question, boost_source_ids=boosted_ids, protocol=active_protocol)
     created_at = utc_now()
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     artifact_seed = f"query-{stamp}-{slugify(question)[:48]}"
@@ -6000,7 +6125,11 @@ def concept_rewrite_strategy(record: dict[str, Any]) -> str:
     return " ".join(steps[:3]) or "保持当前概念总结。"
 
 
-def repair_execution_proposals(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def repair_execution_proposals(
+    actions: list[dict[str, Any]],
+    *,
+    active_protocol: str = DEFAULT_PROTOCOL,
+) -> list[dict[str, Any]]:
     strategy_map = {
         "add-source-concept-link": {
             "kind": "cross-link",
@@ -6053,6 +6182,27 @@ def repair_execution_proposals(actions: list[dict[str, Any]]) -> list[dict[str, 
             ],
         },
     }
+    protocol_hints = {
+        "general": {
+            "summary_suffix": "",
+            "edits": [],
+        },
+        "investing": {
+            "summary_suffix": " 同时检查 thesis、risk、catalyst 和 invalidation 是否需要同步更新。",
+            "edits": [
+                "如果涉及公司/赛道概念，明确 bull / bear evidence、catalyst、risk 和 invalidation。",
+                "优先保持 company / thesis / valuation / risk factor 的边界清晰。",
+            ],
+        },
+        "research": {
+            "summary_suffix": " 同时检查 benchmark、experiment、tradeoff 和 regression risk 是否需要同步更新。",
+            "edits": [
+                "如果涉及研发概念，明确 benchmark、experiment、architecture tradeoff 和 regression risk。",
+                "优先把 next experiment 或 validation path 写清楚。",
+            ],
+        },
+    }
+    hint = protocol_hints.get(active_protocol, protocol_hints[DEFAULT_PROTOCOL])
     proposals: list[dict[str, Any]] = []
     for action in actions:
         template = strategy_map.get(str(action.get("kind") or ""), {})
@@ -6073,16 +6223,23 @@ def repair_execution_proposals(actions: list[dict[str, Any]]) -> list[dict[str, 
             "execution_policy": str(action.get("execution_policy") or "triage"),
             "proposal_kind": str(template.get("kind") or "manual-repair"),
             "risk": str(template.get("risk") or "medium"),
-            "summary": str(template.get("summary") or action.get("reason") or ""),
+            "summary": (
+                str(template.get("summary") or action.get("reason") or "")
+                + str(hint.get("summary_suffix") or "")
+            ).strip(),
             "target_paths": target_paths,
-            "suggested_edits": list(template.get("edits") or [str(action.get("reason") or "检查相关页面并补修复说明。")]),
+            "suggested_edits": list(template.get("edits") or [str(action.get("reason") or "检查相关页面并补修复说明。")])
+            + list(hint.get("edits") or []),
             "command_hint": str(action.get("command_hint") or ""),
             "next_step": str(action.get("next_step") or ""),
+            "protocol": active_protocol,
+            "focus_score": int(action.get("focus_score", 0)),
         }
         proposals.append(proposal)
     proposals.sort(
         key=lambda item: (
             action_status_rank(item["status"]),
+            -int(item.get("focus_score", 0)),
             action_priority_rank(item["priority"]),
             item["proposal_kind"],
             item["title"].lower(),

@@ -162,6 +162,9 @@ status: "active"
 - `file-back` 生成的 `decision / judgment` 模板会按 protocol 变化
 - recurring promotion 的标题前缀和分类提示会按 protocol 变化
 - `review-queue`、`review-center`、`repair-backlog` 和 machine-memory action queue 会按 active protocol 调整优先级
+- `ask` 在 source / concept ranking 上会按 protocol 增加领域相关性权重
+- `report / slides / figure` 会带 protocol-specific output guidance
+- machine-memory repair execution proposal 会按 protocol 注入领域化修复提示
 
 这意味着 protocol 已经不是“只贴一个标签”，而是会改变一部分 deterministic 行为。
 

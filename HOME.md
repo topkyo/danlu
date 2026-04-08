@@ -94,6 +94,9 @@ kind: "dashboard"
 - `file-back` 生成的 `decision / judgment` 模板
 - recurring promotion 的标题和分类语义
 - `review-queue`、`review-center`、`repair-backlog` 与 machine-memory action queue 的优先级焦点
+- `ask` 对来源页和概念页的排序偏好
+- `report / slides / figure` 的输出组织偏置
+- machine-memory repair execution proposal 的领域化修复提示
 
 ## 使用边界
 

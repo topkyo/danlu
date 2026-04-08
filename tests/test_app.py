@@ -346,6 +346,25 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("schema/protocols/investing/index.md", result["protocol_pages"])
         self.assertIn("当前协议：`investing`", report_text)
 
+    def test_ask_uses_protocol_focus_for_source_ranking(self) -> None:
+        investing = self.root / "investing.md"
+        investing.write_text(
+            "# Company Outlook\n\nOutlook thesis catalyst valuation risk invalidation.\n",
+            encoding="utf-8",
+        )
+        generic = self.root / "generic.md"
+        generic.write_text(
+            "# Generic Outlook\n\nOutlook summary and generic note.\n",
+            encoding="utf-8",
+        )
+        investing_entry = ingest_source(self.root, str(investing), title="Company Outlook")
+        ingest_source(self.root, str(generic), title="Generic Outlook")
+        compile_wiki(self.root)
+
+        result = ask_question(self.root, "Outlook review", "report", protocol="investing")
+
+        self.assertEqual(result["ranked_sources"][0], investing_entry["id"])
+
     def test_ensure_layout_bootstraps_runtime_schema_files(self) -> None:
         for relative in (
             "schema/index.md",
@@ -924,6 +943,16 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Relevant repair actions", client.prompt)
         self.assertIn("latency", client.prompt.lower())
 
+    def test_report_includes_protocol_specific_output_guidance(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        report = ask_question(self.root, "Should we underwrite this thesis?", "report", protocol="investing")
+        report_text = (self.root / report["path"]).read_text(encoding="utf-8")
+
+        self.assertIn("## 协议输出偏置", report_text)
+        self.assertIn("thesis / bull-bear evidence / catalysts / risks / invalidation", report_text)
+
     def test_nightly_auto_promotes_recurring_decision_outputs(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -1320,6 +1349,18 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("## Execution Batches", repair_text)
         self.assertIn("## Execution Proposals", repair_text)
         self.assertIn("review-action overloaded-concept-latency --status accepted", repair_text)
+
+    def test_repair_plan_uses_protocol_specific_proposal_hints(self) -> None:
+        self._seed_machine_memory_actions()
+        set_active_protocol(self.root, "research")
+
+        compile_wiki(self.root)
+
+        memory = json.loads((self.root / ".aiwiki" / "state" / "machine-memory.json").read_text(encoding="utf-8"))
+        proposals = memory["health"]["repair_plan"]["execution_proposals"]
+        self.assertTrue(proposals)
+        self.assertEqual(proposals[0]["protocol"], "research")
+        self.assertIn("benchmark", proposals[0]["summary"].lower())
 
     def test_compile_generates_concept_quality_page(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

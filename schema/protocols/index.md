@@ -22,4 +22,6 @@
 - `file-back` 生成的 `decision / judgment` 页面模板会按协议变化。
 - recurring promotion 的标题前缀和分类提示会按协议变化。
 - `review-queue`、`review-center`、`repair-backlog` 和 machine-memory action queue 会按 active protocol 调整优先级。
-- 这些差异先落在 deterministic runtime；更深的协议化 query / nightly 偏置仍可继续演进。
+- `ask` 会按 active protocol 调整 source / concept ranking。
+- `report / slides / figure` 会写入协议化输出偏置，约束最终成品组织方式。
+- machine-memory repair execution proposal 会按 active protocol 追加领域化修复提示。
