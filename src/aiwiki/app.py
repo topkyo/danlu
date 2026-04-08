@@ -2943,7 +2943,7 @@ def build_execution_bundle(
                 "command_hint": str(patch.get("command_hint") or ""),
             }
         )
-    return {
+    bundle = {
         "version": 1,
         "kind": "execution-bundle",
         "generated_by": "aiwiki-compile",
@@ -2966,6 +2966,36 @@ def build_execution_bundle(
         "next_step": str(proposal.get("next_step") or ""),
         "dry_run_supported": bool(proposal.get("safe_apply_preview")),
     }
+    bundle["digest"] = execution_bundle_digest(bundle)
+    return bundle
+
+
+def execution_bundle_digest(bundle: dict[str, Any]) -> str:
+    payload = {
+        "action_id": str(bundle.get("action_id") or ""),
+        "title": str(bundle.get("title") or ""),
+        "status": str(bundle.get("status") or ""),
+        "proposal_kind": str(bundle.get("proposal_kind") or ""),
+        "risk": str(bundle.get("risk") or ""),
+        "priority": str(bundle.get("priority") or ""),
+        "protocol": str(bundle.get("protocol") or DEFAULT_PROTOCOL),
+        "summary": str(bundle.get("summary") or ""),
+        "target_paths": list(bundle.get("target_paths") or []),
+        "suggested_edits": list(bundle.get("suggested_edits") or []),
+        "page_patch_plan": list(bundle.get("page_patch_plan") or []),
+        "safe_apply_preview": bundle.get("safe_apply_preview"),
+        "command_hint": str(bundle.get("command_hint") or ""),
+        "next_step": str(bundle.get("next_step") or ""),
+        "dry_run_supported": bool(bundle.get("dry_run_supported")),
+    }
+    return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
+def load_execution_bundle(path: Path) -> dict[str, Any]:
+    document = load_json_document(path)
+    if not isinstance(document, dict) or str(document.get("kind") or "") != "execution-bundle":
+        raise RuntimeError(f"Invalid execution bundle: {path}")
+    return document
 
 
 def build_execution_receipt(
@@ -6626,8 +6656,12 @@ def render_execution_proposal_page(proposal: dict[str, Any], *, compiled_at: str
             )
             lines.append(f"  - {patch.get('summary', '检查相关页面并补充修复说明。')}")
     lines.extend(["", "## Commands"])
+    if proposal.get("bundle_path"):
+        lines.append(
+            f"- Suggested apply: `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {proposal.get('action_id', '')} --bundle {proposal.get('bundle_path', '')}`"
+        )
     if proposal.get("command_hint"):
-        lines.append(f"- Suggested command: `{proposal['command_hint']}`")
+        lines.append(f"- Suggested next step: `{proposal['command_hint']}`")
     else:
         lines.append("- 当前没有直接命令提示。")
     safe_preview = proposal.get("safe_apply_preview")
@@ -6690,7 +6724,7 @@ def render_execution_center(memory: dict[str, Any], *, compiled_at: str, active_
     else:
         for action in apply_ready_actions[:10]:
             lines.append(
-                f"- `{action['title']}` | command `{action.get('command_hint', '')}` | primary `{action.get('primary_path', '')}`"
+                f"- `{action['title']}` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action.get('id', '')} --bundle output/control/execution-bundles/{slugify(str(action.get('id') or ''))}.json` | primary `{action.get('primary_path', '')}`"
             )
     lines.extend(["", "## Execution Proposals"])
     if not proposals:
@@ -8424,6 +8458,7 @@ def apply_machine_memory_action(
     *,
     note: str | None = None,
     dry_run: bool = False,
+    bundle_path: str | None = None,
 ) -> dict[str, Any]:
     ensure_layout(root)
     state = load_machine_memory_action_state(root)
@@ -8474,6 +8509,23 @@ def apply_machine_memory_action(
             "preview": proposal.get("safe_apply_preview"),
             "bundle": bundle,
         }
+
+    selected_bundle_path = (
+        root / bundle_path.strip()
+        if bundle_path and bundle_path.strip()
+        else root / str(proposal.get("bundle_path") or "")
+    )
+    if not selected_bundle_path.exists():
+        raise FileNotFoundError(
+            f"Execution bundle not found: {relative_path(root, selected_bundle_path)}. Run compile or apply-action --dry-run first."
+        )
+    stored_bundle = load_execution_bundle(selected_bundle_path)
+    if str(stored_bundle.get("action_id") or "") != action_id:
+        raise RuntimeError("Execution bundle action_id does not match the requested action.")
+    if str(stored_bundle.get("digest") or "") != execution_bundle_digest(stored_bundle):
+        raise RuntimeError("Execution bundle digest is invalid; regenerate the bundle before apply.")
+    if str(stored_bundle.get("digest") or "") != str(bundle.get("digest") or ""):
+        raise RuntimeError("Execution bundle is stale; re-run compile or apply-action --dry-run before apply.")
 
     applied_at = utc_now()
     apply_mode = "manual-link-state"

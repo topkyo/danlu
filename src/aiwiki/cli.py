@@ -177,6 +177,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Preview the safe-apply bundle without mutating manual-link state.",
     )
+    apply_action_parser.add_argument(
+        "--bundle",
+        help="Optional execution bundle path to validate and consume during apply.",
+    )
 
     subparsers.add_parser("lint", help="Run deterministic lint checks against the wiki.")
     subparsers.add_parser("run-lint", help="Run deterministic lint plus an LLM-backed semantic lint pass.")
@@ -307,7 +311,13 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "review-action":
             result = review_machine_memory_action(root, args.action_id, args.status, note=args.note)
         elif args.command == "apply-action":
-            result = apply_machine_memory_action(root, args.action_id, note=args.note, dry_run=args.dry_run)
+            result = apply_machine_memory_action(
+                root,
+                args.action_id,
+                note=args.note,
+                dry_run=args.dry_run,
+                bundle_path=args.bundle,
+            )
         elif args.command == "lint":
             result = lint_wiki(root)
         elif args.command == "run-lint":

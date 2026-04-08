@@ -167,6 +167,7 @@ safe execution layer 现在也已经接上：
 - `review-action` 负责把 repair action 推进到 `accepted / deferred / resolved / rejected`
 - `apply-action` 只会处理 allowlist 内的低风险动作
 - `apply-action --dry-run` 会先返回 execution bundle 和 safe-apply preview，不写入状态文件
+- 真正 `apply-action` 时会消费并校验 execution bundle；bundle 缺失或陈旧时会拒绝执行
 - 成功 `apply-action` 后会写 execution receipt，保留最近一次执行回执
 - 当前低风险动作会通过 `.aiwiki/state/manual-links.json` 写入可审、可重编译的 manual link state，而不是静默覆盖事实层
 

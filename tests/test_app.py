@@ -757,8 +757,17 @@ class AiwikiFlowTests(unittest.TestCase):
                 ],
             },
         )
+        dry_run = apply_machine_memory_action(self.root, "manual-link-action", dry_run=True)
+        bundle_path = self.root / dry_run["bundle_path"]
+        bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        bundle_path.write_text(json.dumps(dry_run["bundle"], ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
-        result = apply_machine_memory_action(self.root, "manual-link-action", note="Safe apply for test.")
+        result = apply_machine_memory_action(
+            self.root,
+            "manual-link-action",
+            note="Safe apply for test.",
+            bundle_path=dry_run["bundle_path"],
+        )
 
         self.assertEqual(result["status"], "resolved")
         manual_link_state = json.loads(
@@ -807,6 +816,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("bundle", result)
         self.assertEqual(result["bundle"]["kind"], "execution-bundle")
         self.assertEqual(result["bundle"]["action_id"], "manual-link-action")
+        self.assertTrue(result["bundle"]["digest"])
         self.assertTrue(result["preview"])
         self.assertFalse((self.root / ".aiwiki" / "state" / "manual-links.json").exists())
         state = json.loads((self.root / ".aiwiki" / "state" / "machine-memory-actions.json").read_text(encoding="utf-8"))
@@ -843,6 +853,77 @@ class AiwikiFlowTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             apply_machine_memory_action(self.root, "inactive-link-action", note="Should fail.")
 
+    def test_apply_machine_memory_action_requires_bundle_file(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "manual-link-action",
+                        "kind": "add-source-concept-link",
+                        "title": "Manual safe apply link",
+                        "reason": "Backfill source/concept link.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "accepted",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                    }
+                ],
+            },
+        )
+
+        with self.assertRaises(FileNotFoundError):
+            apply_machine_memory_action(self.root, "manual-link-action", note="Should fail without bundle.")
+
+    def test_apply_machine_memory_action_rejects_stale_bundle(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "manual-link-action",
+                        "kind": "add-source-concept-link",
+                        "title": "Manual safe apply link",
+                        "reason": "Backfill source/concept link.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "accepted",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                    }
+                ],
+            },
+        )
+        dry_run = apply_machine_memory_action(self.root, "manual-link-action", dry_run=True)
+        bundle_path = self.root / dry_run["bundle_path"]
+        bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        bundle = dry_run["bundle"]
+        bundle["summary"] = "tampered stale bundle"
+        bundle_path.write_text(json.dumps(bundle, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+        with self.assertRaises(RuntimeError):
+            apply_machine_memory_action(
+                self.root,
+                "manual-link-action",
+                note="Should fail with stale bundle.",
+                bundle_path=dry_run["bundle_path"],
+            )
+
     def test_lint_reports_missing_execution_receipt(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -869,7 +950,16 @@ class AiwikiFlowTests(unittest.TestCase):
                 ],
             },
         )
-        result = apply_machine_memory_action(self.root, "manual-link-action", note="Safe apply for receipt test.")
+        dry_run = apply_machine_memory_action(self.root, "manual-link-action", dry_run=True)
+        bundle_path = self.root / dry_run["bundle_path"]
+        bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        bundle_path.write_text(json.dumps(dry_run["bundle"], ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        result = apply_machine_memory_action(
+            self.root,
+            "manual-link-action",
+            note="Safe apply for receipt test.",
+            bundle_path=dry_run["bundle_path"],
+        )
         (self.root / result["receipt_path"]).unlink()
 
         lint = lint_wiki(self.root)
