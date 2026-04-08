@@ -10,6 +10,7 @@
 执行工作区入口见 [execution-center.md](<./wiki/indexes/execution-center.md>)；本地执行面板在 `output/control/execution-center.html`，机器可读 bundle 会落在 `output/control/execution-bundles/`。
 safe execution receipt 会落在 `output/control/execution-receipts/`。
 执行审计入口见 [execution-audit.md](<./wiki/indexes/execution-audit.md>)；本地审计面板在 `output/control/execution-audit.html`。
+认知历史入口见 [cognitive-history.md](<./wiki/indexes/cognitive-history.md>)；这里会汇总 reviewed judgment 的 citation drift、snapshot 缺口和复审轨迹。
 关于“一个统一炉子，多个领域协议”的原则，见 [Furnace Protocols.md](<./wiki/indexes/Furnace Protocols.md>)。
 协议运行时入口见 [protocols.md](<./wiki/indexes/protocols.md>)；当前 starter library 提供 `general / investing / research / product / ops` 五套协议。
 当前协议不只是 metadata：它已经会改变 `decision / judgment` 的默认 review window、`file-back` 模板、recurring promotion 的标题与分类语义、`review / nightly / repair` 的优先级焦点，以及 `ask / output / execution proposal` 的策略偏置。
@@ -157,6 +158,7 @@ nightly 也会继续跟踪 `decision / judgment` 的 aging：
 - `concept-quality.md` 会把弱概念页、占位概念、概念合并候选、冲突信号、证据缺口和重写优先级集中列出来
 - `rewrite-proposals.md` 会把高优先级弱概念页的 rewrite proposal、状态和 apply 入口集中列出来
 - `judgment-assets.md` 会盘点 `decision / judgment` 的判断资产完整度、反证、失效条件、下一信号和复审历史缺口
+- `cognitive-history.md` 会把 reviewed `decision / judgment` 的 citation drift、snapshot gap 和长历史页面集中收拢出来
 
 machine-memory action 现在也有显式 lifecycle：
 - `proposed`：新发现、待处理
@@ -191,6 +193,7 @@ safe execution layer 现在也已经接上：
 - [repair-backlog.md](./wiki/indexes/repair-backlog.md)
 - [graph-health.md](./wiki/indexes/graph-health.md)
 - [machine-memory.md](./wiki/indexes/machine-memory.md)
+- [cognitive-history.md](./wiki/indexes/cognitive-history.md)
 
 ## 当前入口
 

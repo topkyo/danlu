@@ -179,6 +179,7 @@ class AiwikiFlowTests(unittest.TestCase):
         graph_health_page = self.root / "wiki" / "indexes" / "graph-health.md"
         decisions_index = self.root / "wiki" / "indexes" / "decisions.md"
         judgments_index = self.root / "wiki" / "indexes" / "judgments.md"
+        cognitive_history = self.root / "wiki" / "indexes" / "cognitive-history.md"
         review_queue = self.root / "wiki" / "indexes" / "review-queue.md"
         memory_state = self.root / ".aiwiki" / "state" / "machine-memory.json"
         memory_graph = self.root / ".aiwiki" / "cache" / "machine-memory-graph.json"
@@ -190,6 +191,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(graph_health_page.exists())
         self.assertTrue(decisions_index.exists())
         self.assertTrue(judgments_index.exists())
+        self.assertTrue(cognitive_history.exists())
         self.assertTrue(review_queue.exists())
         self.assertTrue(memory_state.exists())
         self.assertTrue(memory_graph.exists())
@@ -200,6 +202,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("决策索引", master_index.read_text(encoding="utf-8"))
         self.assertIn("判断索引", master_index.read_text(encoding="utf-8"))
         self.assertIn("审阅队列", master_index.read_text(encoding="utf-8"))
+        self.assertIn("认知历史", master_index.read_text(encoding="utf-8"))
         self.assertIn("图谱健康", master_index.read_text(encoding="utf-8"))
         self.assertIn("漂移报告", master_index.read_text(encoding="utf-8"))
         self.assertIn("compile | wiki refresh", log_page.read_text(encoding="utf-8"))
@@ -1262,6 +1265,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(parse_frontmatter(judgment_path.read_text(encoding="utf-8"))["status"], "tentative")
         self.assertIn(f"wiki/sources/{entry['id']}.md", parse_frontmatter(decision_path.read_text(encoding="utf-8"))["citations"])
         self.assertIn(f"wiki/sources/{entry['id']}.md", parse_frontmatter(judgment_path.read_text(encoding="utf-8"))["citations"])
+        self.assertTrue(parse_frontmatter(decision_path.read_text(encoding="utf-8"))["citation_snapshots"])
+        self.assertTrue(parse_frontmatter(judgment_path.read_text(encoding="utf-8"))["citation_snapshots"])
         self.assertIn("## Decision", decision_path.read_text(encoding="utf-8"))
         self.assertIn("## Evidence", decision_path.read_text(encoding="utf-8"))
         self.assertIn("## Counter Evidence", decision_path.read_text(encoding="utf-8"))
@@ -1520,6 +1525,34 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Need to revisit after fresh evidence.", decision_text)
         self.assertGreaterEqual(decision_text.count("| status `"), 2)
 
+    def test_review_page_refreshes_citation_snapshots_after_source_change(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+
+        decision_path = self.root / decision["path"]
+        original_frontmatter = parse_frontmatter(decision_path.read_text(encoding="utf-8"))
+        original_snapshots = list(original_frontmatter["citation_snapshots"])
+
+        (self.root / entry["stored_path"]).write_text(
+            "# Transformer Scaling\n\nTransformers still benefit from scale.\nInference cost curve shifted after cache updates.\n",
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+
+        reviewed = review_page(
+            self.root,
+            decision["path"],
+            "needs-revisit",
+            note="Source changed after first judgment.",
+        )
+
+        refreshed_frontmatter = parse_frontmatter((self.root / reviewed["path"]).read_text(encoding="utf-8"))
+        self.assertNotEqual(original_snapshots, refreshed_frontmatter["citation_snapshots"])
+        self.assertTrue(refreshed_frontmatter["citation_snapshots"])
+        self.assertIn("wiki/sources/", refreshed_frontmatter["citation_snapshots"][0])
+
     def test_review_page_clears_aging_windows_for_terminal_status(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -1711,6 +1744,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Query routes", client.prompt)
         self.assertIn("Touched components", client.prompt)
         self.assertIn("wiki/indexes/concept-quality.md", client.prompt)
+        self.assertIn("wiki/indexes/cognitive-history.md", client.prompt)
         self.assertIn("wiki/indexes/machine-memory-topology.md", client.prompt)
         self.assertIn("wiki/indexes/machine-memory-actions.md", client.prompt)
         self.assertIn("wiki/indexes/machine-memory-repair-plan.md", client.prompt)
@@ -1746,6 +1780,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(decision_frontmatter["promotion_origin"], "nightly-recurring-output")
         self.assertEqual(decision_frontmatter["promotion_count"], "2")
         self.assertTrue(decision_frontmatter["citations"])
+        self.assertTrue(decision_frontmatter["citation_snapshots"])
         self.assertIn(question, decision_text)
         self.assertIn("## Auto Promotion", decision_text)
         self.assertEqual(result["promotions"]["count"], 1)
@@ -1772,8 +1807,69 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(judgment_frontmatter["promotion_count"], "2")
         self.assertEqual(judgment_frontmatter["status"], "tentative")
         self.assertTrue(judgment_frontmatter["citations"])
+        self.assertTrue(judgment_frontmatter["citation_snapshots"])
         self.assertIn(question, judgment_text)
         self.assertEqual(result["promotions"]["count"], 1)
+
+    def test_compile_generates_cognitive_history_and_surfaces_citation_drift(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+        review_page(
+            self.root,
+            decision["path"],
+            "approved",
+            note="Approved before the source changed.",
+        )
+
+        (self.root / entry["stored_path"]).write_text(
+            "# Transformer Scaling\n\nTransformers benefit from scale.\nThe cached inference path changed the cost tradeoff.\n",
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+
+        cognitive_history = (self.root / "wiki" / "indexes" / "cognitive-history.md").read_text(encoding="utf-8")
+        decisions_index = (self.root / "wiki" / "indexes" / "decisions.md").read_text(encoding="utf-8")
+        self.assertIn("Scaling Decision", cognitive_history)
+        self.assertIn("证据漂移", cognitive_history)
+        self.assertIn("Scaling Decision", decisions_index)
+        self.assertIn("证据漂移", decisions_index)
+
+    def test_lint_warns_when_reviewed_judgment_has_citation_drift_and_snapshot_gap(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Will transformer inference cost keep rising?", "report")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+        review_page(
+            self.root,
+            judgment["path"],
+            "confirmed",
+            note="Confirmed before evidence changed.",
+            confidence="high",
+        )
+
+        (self.root / entry["stored_path"]).write_text(
+            "# Transformer Scaling\n\nTransformers still benefit from scale.\nNew serving optimizations changed inference cost assumptions.\n",
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+
+        judgment_path = self.root / judgment["path"]
+        judgment_text = judgment_path.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(judgment_text)
+        frontmatter["citation_snapshots"] = []
+        judgment_path.write_text(
+            f"{render_frontmatter(frontmatter)}\n\n{strip_frontmatter(judgment_text).lstrip()}",
+            encoding="utf-8",
+        )
+
+        lint = lint_wiki(self.root)
+
+        report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
+        self.assertIn("Judgment page is missing `citation_snapshots` metadata.", report_text)
+        self.assertIn("Judgment page has citation snapshot gaps", report_text)
+        self.assertIn("Reviewed judgment page has citation drift", report_text)
 
     def test_nightly_updates_existing_auto_promoted_page_without_duplicates(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

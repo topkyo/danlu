@@ -164,6 +164,7 @@ DEFAULT_DASHBOARD_FILES = {
             "- [审阅队列](./review-queue.md)：处理 `decision / judgment` 的状态推进",
             "- [Aging 报告](./aging-report.md)：看 overdue 和 escalation",
             "- [概念质量](./concept-quality.md)：看弱概念、冲突信号、证据缺口、重写优先级",
+            "- [认知历史](./cognitive-history.md)：看 reviewed judgment 是否因证据变化需要拉回复审",
             "- [机器记忆动作队列](./machine-memory-actions.md)：看 machine-memory action lifecycle",
             "- [机器记忆修复计划](./machine-memory-repair-plan.md)：看 execution batch 和 execution proposal",
             "- [修复待办](./repair-backlog.md)：看 nightly 汇总出来的优先级队列",
@@ -192,6 +193,7 @@ DEFAULT_DASHBOARD_FILES = {
             "## 先看哪里",
             "",
             "- [审阅中心](./review-center.md)：看 pending review、aging、rewrite 和 ready action",
+            "- [认知历史](./cognitive-history.md)：看旧判断是否被新证据挑战",
             "- [图谱视图](./graph-view.md)：看 machine-memory 图层和 graph health",
             "- [修复待办](./repair-backlog.md)：看 nightly 汇总出的优先级队列",
             "- [协议总览](./protocols.md)：看当前 active protocol",
@@ -221,6 +223,7 @@ DEFAULT_DASHBOARD_FILES = {
             "- [机器记忆修复计划](./machine-memory-repair-plan.md)：看 execution batch、proposal 和 patch plan",
             "- [机器记忆动作队列](./machine-memory-actions.md)：看 action lifecycle 和 ready actions",
             "- [审阅中心](./review-center.md)：看 aging、rewrite 和 pending review",
+            "- [认知历史](./cognitive-history.md)：看哪些 judgment 已因证据漂移需要拉回复审",
             "- [执行审计](./execution-audit.md)：看 apply / revert 历史和策略分级",
             "- [炉心面板](./furnace-center.md)：看统一产品壳入口",
             "- [本地执行面板](../../output/control/execution-center.html)：直接看执行 cockpit",
@@ -247,6 +250,7 @@ DEFAULT_DASHBOARD_FILES = {
             "## 先看哪里",
             "",
             "- [执行中心](./execution-center.md)：看当前 ready action、proposal 和 patch plan",
+            "- [认知历史](./cognitive-history.md)：对照 judgment drift 和 review history 决定是否升级修复",
             "- [机器记忆修复计划](./machine-memory-repair-plan.md)：看 execution batch 和页级 patch plan",
             "- [机器记忆动作队列](./machine-memory-actions.md)：看 action lifecycle 和 policy",
             "- [本地执行审计面板](../../output/control/execution-audit.html)：直接看 execution audit cockpit",
@@ -261,6 +265,18 @@ DEFAULT_DASHBOARD_FILES = {
             "",
             "- 这里负责审计，不直接替代 execution-center。",
             "- receipt history 仍然是 file-based，本页展示的是当前快照。",
+        ]
+    )
+    + "\n",
+    "wiki/indexes/cognitive-history.md": "\n".join(
+        [
+            "# 认知历史",
+            "",
+            "这里会汇总 reviewed `decision / judgment` 的复审轨迹、证据漂移和长历史页面。",
+            "",
+            "- compile 后会自动刷新。",
+            "- 这里优先看“哪些旧判断被新证据挑战”。",
+            "- 这里不自动改状态，只做检测、索引和提醒。",
         ]
     )
     + "\n",
@@ -1614,6 +1630,72 @@ def extract_provenance_paths(root: Path, markdown: str) -> list[str]:
     return normalized_paths
 
 
+def evidence_path_digest(root: Path, relative: str) -> str:
+    path = root / relative
+    if not path.exists():
+        return ""
+    if relative.startswith("wiki/sources/"):
+        return compiled_source_sha(path.read_text(encoding="utf-8", errors="replace"))
+    if path.is_file():
+        return sha256_file(path)
+    return ""
+
+
+def build_citation_snapshots(root: Path, citations: list[str]) -> list[str]:
+    snapshots: list[str] = []
+    seen: set[str] = set()
+    for citation in citations:
+        normalized = normalize_workspace_path(str(citation))
+        if not normalized or normalized in seen:
+            continue
+        digest = evidence_path_digest(root, normalized)
+        if not digest:
+            continue
+        seen.add(normalized)
+        snapshots.append(f"{normalized}#{digest}")
+    return snapshots
+
+
+def parse_citation_snapshots(frontmatter: dict[str, Any]) -> dict[str, str]:
+    snapshots: dict[str, str] = {}
+    raw_value = frontmatter.get("citation_snapshots", [])
+    if not isinstance(raw_value, list):
+        return snapshots
+    for item in raw_value:
+        if not isinstance(item, str) or "#" not in item:
+            continue
+        relative, digest = item.rsplit("#", 1)
+        relative = normalize_workspace_path(relative)
+        if not relative or not digest:
+            continue
+        snapshots[relative] = digest
+    return snapshots
+
+
+def analyze_citation_snapshots(
+    root: Path,
+    citations: list[str],
+    frontmatter: dict[str, Any],
+) -> dict[str, Any]:
+    current = {
+        snapshot.rsplit("#", 1)[0]: snapshot.rsplit("#", 1)[1]
+        for snapshot in build_citation_snapshots(root, citations)
+        if "#" in snapshot
+    }
+    recorded = parse_citation_snapshots(frontmatter)
+    drifted = sorted(path for path, digest in current.items() if recorded.get(path) and recorded[path] != digest)
+    missing = sorted(path for path in current if path not in recorded)
+    stale = sorted(path for path in recorded if path not in current)
+    return {
+        "current": current,
+        "recorded": recorded,
+        "drifted": drifted,
+        "missing": missing,
+        "stale": stale,
+        "has_drift": bool(drifted or missing or stale),
+    }
+
+
 def replace_first_markdown_heading(markdown: str, title: str) -> str:
     lines = markdown.splitlines()
     for index, line in enumerate(lines):
@@ -1991,6 +2073,14 @@ def append_review_history_entry(
         entry_parts.append("note none")
     history_lines.insert(0, " | ".join(entry_parts))
     return upsert_markdown_section(markdown, "Review History", "\n".join(history_lines))
+
+
+def review_history_entries(markdown: str) -> list[str]:
+    return [
+        line
+        for line in normalized_markdown_section_lines(markdown, "Review History")
+        if line != "- No review history yet."
+    ]
 
 
 def concept_label_to_slug(label: str) -> str:
@@ -2795,6 +2885,13 @@ def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[d
             )
             for heading in CURATED_ASSET_SECTION_ORDER
         }
+        citations = [
+            str(path)
+            for path in frontmatter.get("citations", [])
+            if isinstance(path, str) and path.strip()
+        ]
+        citation_snapshot_state = analyze_citation_snapshots(root, citations, frontmatter)
+        review_entries = review_history_entries(content)
         asset_score = sum(1 for snapshot in asset_snapshots.values() if snapshot.get("meaningful"))
         pages.append(
             {
@@ -2816,6 +2913,14 @@ def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[d
                 "has_next_signals": "true" if asset_snapshots["Next Signals"]["meaningful"] else "false",
                 "has_review_history": "true" if asset_snapshots["Review History"]["meaningful"] else "false",
                 "review_history_entries": str(asset_snapshots["Review History"]["review_history_entries"]),
+                "latest_review_history_entry": review_entries[0] if review_entries else "",
+                "citation_count": str(len(citations)),
+                "citation_snapshot_count": str(len(citation_snapshot_state["recorded"])),
+                "citation_drift": "true" if citation_snapshot_state["has_drift"] else "false",
+                "citation_drift_count": str(len(citation_snapshot_state["drifted"])),
+                "citation_snapshot_gap_count": str(
+                    len(citation_snapshot_state["missing"]) + len(citation_snapshot_state["stale"])
+                ),
             }
         )
     enriched: list[dict[str, str]] = []
@@ -3677,10 +3782,12 @@ def annotate_recurring_promotion(
             citations.append(citation)
     formats = sorted({artifact["format"] for artifact in artifacts})
     title = promotion_page_title(kind, query, protocol)
+    citation_snapshots = build_citation_snapshots(root, citations)
     frontmatter["title"] = title
     frontmatter["protocol"] = protocol
     frontmatter["source_files"] = source_files
     frontmatter["citations"] = citations
+    frontmatter["citation_snapshots"] = citation_snapshots
     frontmatter["promotion_origin"] = "nightly-recurring-output"
     frontmatter["promotion_query"] = query
     frontmatter["promotion_query_signature"] = query_signature
@@ -3802,6 +3909,12 @@ def render_curated_page_summary(page: dict[str, str]) -> str:
     review_history_entries = int(page.get("review_history_entries", "0") or "0")
     if review_history_entries:
         suffix_parts.append(f"复审历史 `{review_history_entries}`")
+    citation_drift_count = int(page.get("citation_drift_count", "0") or "0")
+    citation_snapshot_gap_count = int(page.get("citation_snapshot_gap_count", "0") or "0")
+    if page.get("citation_drift") == "true":
+        suffix_parts.append(f"证据漂移 `{citation_drift_count or 1}`")
+    if citation_snapshot_gap_count:
+        suffix_parts.append(f"快照缺口 `{citation_snapshot_gap_count}`")
     if page.get("overdue_review") == "true":
         suffix_parts.append("已到期待复审")
     if page.get("escalation_candidate") == "true":
@@ -3818,6 +3931,8 @@ def render_curated_index(
     pending_review = sum(1 for page in pages if page.get("pending_review") == "true")
     overdue_review = sum(1 for page in pages if page.get("overdue_review") == "true")
     escalated = sum(1 for page in pages if page.get("escalation_candidate") == "true")
+    drifted = [page for page in pages if page.get("citation_drift") == "true"]
+    snapshot_gaps = [page for page in pages if int(page.get("citation_snapshot_gap_count", "0") or "0") > 0]
     status_counts: dict[str, int] = {}
     for page in pages:
         status = page.get("status", "") or "unknown"
@@ -3830,6 +3945,8 @@ def render_curated_index(
         f"- 待审阅数量：`{pending_review}`",
         f"- 已到期数量：`{overdue_review}`",
         f"- 需要升级：`{escalated}`",
+        f"- 证据漂移：`{len(drifted)}`",
+        f"- 快照缺口：`{len(snapshot_gaps)}`",
         "",
         "## 状态统计",
     ]
@@ -3848,6 +3965,18 @@ def render_curated_index(
         lines.append(f"- 还没有{section_name}。")
     else:
         for page in pages:
+            lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## 证据漂移"])
+    if not drifted:
+        lines.append("- 当前没有检测到 citation drift。")
+    else:
+        for page in drifted[:12]:
+            lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## Snapshot 缺口"])
+    if not snapshot_gaps:
+        lines.append("- 当前没有 citation snapshot 缺口。")
+    else:
+        for page in snapshot_gaps[:12]:
             lines.append(render_curated_page_summary(page))
     return "\n".join(lines) + "\n"
 
@@ -3924,6 +4053,120 @@ def render_judgment_assets(
             "## 相关链接",
             "- [决策索引](./decisions.md)",
             "- [判断索引](./judgments.md)",
+            "- [审阅队列](./review-queue.md)",
+            "- [审阅中心](./review-center.md)",
+            "- [认知历史](./cognitive-history.md)",
+            "- [Aging 报告](./aging-report.md)",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def render_cognitive_history(
+    root: Path,
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    compiled_at: str,
+    *,
+    active_protocol: str = DEFAULT_PROTOCOL,
+) -> str:
+    pages = sort_curated_pages(decisions + judgments)
+    drifted_pages = sorted(
+        [page for page in pages if page.get("citation_drift") == "true"],
+        key=lambda page: (
+            0 if page.get("escalation_candidate") == "true" else 1,
+            0 if page.get("overdue_review") == "true" else 1,
+            -int(page.get("citation_drift_count", "0") or "0"),
+            -page_focus_score(active_protocol, page),
+            page.get("title", "").lower(),
+        ),
+    )
+    snapshot_gap_pages = sorted(
+        [page for page in pages if int(page.get("citation_snapshot_gap_count", "0") or "0") > 0],
+        key=lambda page: (
+            -int(page.get("citation_snapshot_gap_count", "0") or "0"),
+            0 if page.get("pending_review") == "true" else 1,
+            page.get("title", "").lower(),
+        ),
+    )
+    long_history_pages = sorted(
+        [page for page in pages if int(page.get("review_history_entries", "0") or "0") > 0],
+        key=lambda page: (
+            -int(page.get("review_history_entries", "0") or "0"),
+            page.get("reviewed_at", "") or "",
+            page.get("title", "").lower(),
+        ),
+        reverse=True,
+    )
+    recent_events: list[tuple[str, str, str, str]] = []
+    for page in pages:
+        page_path = root / page["path"]
+        if not page_path.exists():
+            continue
+        content = page_path.read_text(encoding="utf-8", errors="replace")
+        for entry in review_history_entries(content)[:3]:
+            match = re.match(r"- `([^`]+)`", entry)
+            reviewed_at = match.group(1) if match else ""
+            recent_events.append((reviewed_at, page["title"], page["path"], entry))
+    recent_events.sort(key=lambda item: item[0], reverse=True)
+    lines = [
+        "# 认知历史",
+        "",
+        f"- 最近编译时间：`{compiled_at}`",
+        f"- 当前协议焦点：`{active_protocol}` ({protocol_title(active_protocol)})",
+        f"- decision / judgment 页面：`{len(pages)}`",
+        f"- 证据漂移页面：`{len(drifted_pages)}`",
+        f"- snapshot 缺口页面：`{len(snapshot_gap_pages)}`",
+        f"- 有复审历史的页面：`{len(long_history_pages)}`",
+        "",
+        "## 证据漂移",
+    ]
+    if not drifted_pages:
+        lines.append("- 当前没有 reviewed judgment / decision 因 citation drift 被标记。")
+    else:
+        for page in drifted_pages[:12]:
+            lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## Snapshot 缺口"])
+    if not snapshot_gap_pages:
+        lines.append("- 当前没有 citation snapshot 缺口。")
+    else:
+        for page in snapshot_gap_pages[:12]:
+            lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## 最近认知事件"])
+    if not recent_events:
+        lines.append("- 当前还没有 review history 事件。")
+    else:
+        for reviewed_at, title, path, entry in recent_events[:20]:
+            lines.append(
+                f"- [{title}](../../{path}) | reviewed `{reviewed_at or 'unknown'}` | {entry.replace(f'- `{reviewed_at}` | ', '') if reviewed_at else entry}"
+            )
+    lines.extend(["", "## 长历史页面"])
+    if not long_history_pages:
+        lines.append("- 当前还没有积累多轮复审历史的页面。")
+    else:
+        for page in long_history_pages[:12]:
+            lines.append(render_curated_page_summary(page))
+    lines.extend(
+        [
+            "",
+            "## 建议动作",
+        ]
+    )
+    if drifted_pages:
+        lines.append(f"- 先复查 `{len(drifted_pages)}` 个被新证据挑战的 decision / judgment。")
+    if snapshot_gap_pages:
+        lines.append(f"- 补齐 `{len(snapshot_gap_pages)}` 个缺少 citation snapshot 的页面，避免 drift 失真。")
+    if long_history_pages:
+        lines.append(f"- 从 `{min(len(long_history_pages), 5)}` 个长历史页面里提炼更稳定的 judgment pattern。")
+    if not any((drifted_pages, snapshot_gap_pages, long_history_pages)):
+        lines.append("- 当前认知历史层比较干净，继续靠 nightly 累积 review history。")
+    lines.extend(
+        [
+            "",
+            "## 相关链接",
+            "- [决策索引](./decisions.md)",
+            "- [判断索引](./judgments.md)",
+            "- [判断资产](./judgment-assets.md)",
             "- [审阅队列](./review-queue.md)",
             "- [审阅中心](./review-center.md)",
             "- [Aging 报告](./aging-report.md)",
@@ -4128,6 +4371,7 @@ def render_review_center_html(
         ("待审项目", str(len(pending_items))),
         ("已到期复审", str(len(aging.get("overdue", [])))),
         ("升级项", str(len(aging.get("escalated", [])))),
+        ("证据漂移", str(sum(1 for page in decisions + judgments if page.get("citation_drift") == "true"))),
         ("ready actions", str(plan.get("counts", {}).get("ready", 0))),
         ("重写候选", str(concept_quality.get("counts", {}).get("rewrite_candidates", 0))),
         ("冲突信号", str(concept_quality.get("counts", {}).get("conflict_signals", 0))),
@@ -4205,6 +4449,7 @@ def render_review_center_html(
             '      <li><a href="../../wiki/indexes/review-center.md">Review Center Dashboard</a></li>',
             '      <li><a href="../../wiki/indexes/review-queue.md">审阅队列</a></li>',
             '      <li><a href="../../wiki/indexes/aging-report.md">Aging 报告</a></li>',
+            '      <li><a href="../../wiki/indexes/cognitive-history.md">认知历史</a></li>',
             '      <li><a href="../../wiki/indexes/machine-memory-actions.md">机器记忆动作队列</a></li>',
             '      <li><a href="../../wiki/indexes/machine-memory-repair-plan.md">机器记忆修复计划</a></li>',
             '      <li><a href="../../wiki/indexes/judgment-assets.md">判断资产</a></li>',
@@ -4237,6 +4482,7 @@ def render_furnace_center(
     concept_quality = health.get("concept_quality", {})
     rewrite_state = health.get("concept_rewrite", {})
     pending_items = queue.get("pending_decisions", []) + queue.get("pending_judgments", [])
+    citation_drift_count = sum(1 for page in decisions + judgments if page.get("citation_drift") == "true")
     ready_actions = plan.get("ready_actions", [])
     apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
     rewrite_proposals = rewrite_state.get("proposals", [])
@@ -4265,6 +4511,7 @@ def render_furnace_center(
         f"- 概念节点：`{len(memory.get('concept_nodes', []))}`",
         f"- 待审项目：`{len(pending_items)}`",
         f"- 已到期 / 升级：`{len(aging.get('overdue', []))}` / `{len(aging.get('escalated', []))}`",
+        f"- 证据漂移：`{citation_drift_count}`",
         f"- Ready repair actions：`{plan.get('counts', {}).get('ready', 0)}`",
         f"- 可直接 apply 的动作：`{len(apply_ready_actions)}`",
         f"- Rewrite 提案：`{rewrite_state.get('counts', {}).get('active', 0)}`",
@@ -4363,6 +4610,7 @@ def render_furnace_center(
             "- [审阅中心](./review-center.md)",
             "- [执行中心](./execution-center.md)",
             "- [执行审计](./execution-audit.md)",
+            "- [认知历史](./cognitive-history.md)",
             "- [判断资产](./judgment-assets.md)",
             "- [图谱视图](./graph-view.md)",
             "- [修复待办](./repair-backlog.md)",
@@ -4448,6 +4696,7 @@ def render_furnace_center_html(
         ("概念", str(len(memory.get("concept_nodes", [])))),
         ("待审", str(len(pending_items))),
         ("到期/升级", f"{len(aging.get('overdue', []))}/{len(aging.get('escalated', []))}"),
+        ("证据漂移", str(sum(1 for page in decisions + judgments if page.get("citation_drift") == "true"))),
         ("Ready 动作", str(plan.get("counts", {}).get("ready", 0))),
         ("可 apply 动作", str(len(apply_ready_actions))),
         ("Rewrite 提案", str(rewrite_state.get("counts", {}).get("active", 0))),
@@ -4510,6 +4759,7 @@ def render_furnace_center_html(
             '      <a href="../../wiki/indexes/review-center.md">审阅中心</a>',
             '      <a href="../../wiki/indexes/execution-center.md">执行中心</a>',
             '      <a href="../../wiki/indexes/execution-audit.md">执行审计</a>',
+            '      <a href="../../wiki/indexes/cognitive-history.md">认知历史</a>',
             '      <a href="../../wiki/indexes/judgment-assets.md">判断资产</a>',
             '      <a href="../../wiki/indexes/graph-view.md">图谱视图</a>',
             '      <a href="../../wiki/indexes/repair-backlog.md">修复待办</a>',
@@ -4573,6 +4823,7 @@ def render_compile_status(
         f"- 待审项目：`{len(queue['pending_decisions']) + len(queue['pending_judgments'])}`",
         f"- 已到期复审：`{len(aging['overdue'])}`",
         f"- 需要升级：`{len(aging['escalated'])}`",
+        f"- 证据漂移：`{sum(1 for page in decisions + judgments if page.get('citation_drift') == 'true')}`",
         "- 总索引位于 `index.md`。",
         "- 运行时规则位于 `schema/`。",
         "- 协议规则位于 `schema/protocols/`。",
@@ -4583,6 +4834,7 @@ def render_compile_status(
         "- 决策索引位于 `decisions.md`。",
         "- 判断索引位于 `judgments.md`。",
         "- 判断资产盘点位于 `judgment-assets.md`。",
+        "- 认知历史位于 `cognitive-history.md`。",
         "- 审阅队列位于 `review-queue.md`。",
         "- 审阅中心位于 `review-center.md`。",
         "- aging 报告位于 `aging-report.md`。",
@@ -4623,6 +4875,7 @@ def render_master_index(
         f"- 待审项目：`{len(queue['pending_decisions']) + len(queue['pending_judgments'])}`",
         f"- 已到期复审：`{len(aging['overdue'])}`",
         f"- 需要升级处理：`{len(aging['escalated'])}`",
+        f"- 证据漂移：`{sum(1 for page in decisions + judgments if page.get('citation_drift') == 'true')}`",
         "",
         "## 核心页面",
         "- [来源索引](./sources.md)",
@@ -4631,6 +4884,7 @@ def render_master_index(
         "- [决策索引](./decisions.md)",
         "- [判断索引](./judgments.md)",
         "- [判断资产](./judgment-assets.md)",
+        "- [认知历史](./cognitive-history.md)",
         "- [协议总览](./protocols.md)",
         "- [炉心面板](./furnace-center.md)",
         "- [执行中心](./execution-center.md)",
@@ -4843,6 +5097,10 @@ def repair_backlog_path(root: Path) -> Path:
 
 def judgment_assets_path(root: Path) -> Path:
     return root / "wiki" / "indexes" / "judgment-assets.md"
+
+
+def cognitive_history_path(root: Path) -> Path:
+    return root / "wiki" / "indexes" / "cognitive-history.md"
 
 
 def aging_report_path(root: Path) -> Path:
@@ -7236,6 +7494,7 @@ def render_execution_center(memory: dict[str, Any], *, compiled_at: str, active_
             "- [机器记忆修复计划](./machine-memory-repair-plan.md)",
             "- [机器记忆动作队列](./machine-memory-actions.md)",
             "- [执行审计](./execution-audit.md)",
+            "- [认知历史](./cognitive-history.md)",
             "- [审阅中心](./review-center.md)",
             "- [炉心面板](./furnace-center.md)",
             "- [本地执行面板](../../output/control/execution-center.html)",
@@ -7610,6 +7869,7 @@ def render_execution_audit(audit: dict[str, Any]) -> str:
             "- [执行中心](./execution-center.md)",
             "- [机器记忆修复计划](./machine-memory-repair-plan.md)",
             "- [机器记忆动作队列](./machine-memory-actions.md)",
+            "- [认知历史](./cognitive-history.md)",
             "- [炉心面板](./furnace-center.md)",
             "- [本地执行审计面板](../../output/control/execution-audit.html)",
         ]
@@ -8244,6 +8504,18 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     )
     changed_pages += int(
         write_if_changed(
+            cognitive_history_path(root),
+            render_cognitive_history(
+                root,
+                decision_pages,
+                judgment_pages,
+                compiled_at,
+                active_protocol=protocol_state["active_protocol"],
+            ),
+        )
+    )
+    changed_pages += int(
+        write_if_changed(
             aging_report_path(root),
             render_aging_report(
                 decision_pages,
@@ -8620,6 +8892,7 @@ def render_report(
             "- [决策索引](../../wiki/indexes/decisions.md)",
             "- [判断索引](../../wiki/indexes/judgments.md)",
             "- [判断资产](../../wiki/indexes/judgment-assets.md)",
+            "- [认知历史](../../wiki/indexes/cognitive-history.md)",
             "- [协议总览](../../wiki/indexes/protocols.md)",
             "- [审阅队列](../../wiki/indexes/review-queue.md)",
             "- [审阅中心](../../wiki/indexes/review-center.md)",
@@ -8744,6 +9017,7 @@ def render_slides(
             "- `wiki/indexes/decisions.md`",
             "- `wiki/indexes/judgments.md`",
             "- `wiki/indexes/judgment-assets.md`",
+            "- `wiki/indexes/cognitive-history.md`",
             "- `wiki/indexes/protocols.md`",
             "- `wiki/indexes/review-queue.md`",
             "- `wiki/indexes/review-center.md`",
@@ -8851,6 +9125,7 @@ def render_figure_brief(
             "- [决策索引](../../wiki/indexes/decisions.md)",
             "- [判断索引](../../wiki/indexes/judgments.md)",
             "- [判断资产](../../wiki/indexes/judgment-assets.md)",
+            "- [认知历史](../../wiki/indexes/cognitive-history.md)",
             "- [协议总览](../../wiki/indexes/protocols.md)",
             "- [审阅队列](../../wiki/indexes/review-queue.md)",
             "- [审阅中心](../../wiki/indexes/review-center.md)",
@@ -8991,6 +9266,7 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
             "wiki/indexes/decisions.md",
             "wiki/indexes/judgments.md",
             "wiki/indexes/judgment-assets.md",
+            "wiki/indexes/cognitive-history.md",
             "wiki/indexes/protocols.md",
             "wiki/indexes/review-queue.md",
             "wiki/indexes/review-center.md",
@@ -9038,6 +9314,7 @@ def file_back(
     original = artifact_path.read_text(encoding="utf-8", errors="replace")
     original_frontmatter = parse_frontmatter(original)
     citations = extract_provenance_paths(root, original)
+    citation_snapshots = build_citation_snapshots(root, citations)
     source_protocol = str(original_frontmatter.get("protocol") or "").strip()
     resolved_protocol = resolve_protocol(root, protocol or source_protocol or None)
     entry_seed = f"{kind}-{stamp}-{slugify(title or artifact_path.stem)[:48]}"
@@ -9066,6 +9343,7 @@ def file_back(
             "protocol": resolved_protocol,
             "source_files": [artifact_ref],
             "citations": citations,
+            "citation_snapshots": citation_snapshots,
             "generated_by": "aiwiki-file-back",
             "last_compiled_at": filed_at,
             "confidence": "medium",
@@ -9697,6 +9975,9 @@ def review_page(
         note=note,
         confidence=confidence if kind == "judgment" else None,
     )
+    citations = extract_provenance_paths(root, updated_body)
+    frontmatter["citations"] = citations
+    frontmatter["citation_snapshots"] = build_citation_snapshots(root, citations)
     target.write_text(f"{render_frontmatter(frontmatter)}\n\n{updated_body.strip()}\n", encoding="utf-8")
     append_wiki_log(
         root,
@@ -10215,6 +10496,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/decisions.md": "Missing decisions index page.",
         "wiki/indexes/judgments.md": "Missing judgments index page.",
         "wiki/indexes/judgment-assets.md": "Missing judgment asset dashboard page.",
+        "wiki/indexes/cognitive-history.md": "Missing cognitive history page.",
         "wiki/indexes/rewrite-proposals.md": "Missing rewrite proposal index page.",
         "wiki/indexes/protocols.md": "Missing protocol dashboard page.",
         "wiki/indexes/furnace-center.md": "Missing furnace center page.",
@@ -10447,6 +10729,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                 for path in frontmatter.get("citations", [])
                 if isinstance(path, str) and path.strip()
             ]
+            citation_snapshot_state = analyze_citation_snapshots(root, citations, frontmatter)
             if frontmatter.get("kind") != expected_kind:
                 findings.append(
                     Finding("warn", relative_path(root, page), f"{expected_kind.capitalize()} page kind is missing or incorrect.")
@@ -10463,6 +10746,14 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                         f"{expected_kind.capitalize()} page is missing structured `citations` metadata.",
                     )
                 )
+            if expected_kind in {"derived", "decision", "judgment"} and citations and not frontmatter.get("citation_snapshots"):
+                findings.append(
+                    Finding(
+                        "warn",
+                        relative_path(root, page),
+                        f"{expected_kind.capitalize()} page is missing `citation_snapshots` metadata.",
+                    )
+                )
             for citation in citations:
                 candidate = root / citation
                 if not candidate.exists():
@@ -10473,6 +10764,16 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                             f"{expected_kind.capitalize()} page references missing citation path: `{citation}`.",
                         )
                     )
+            if expected_kind in {"decision", "judgment"} and (
+                citation_snapshot_state["missing"] or citation_snapshot_state["stale"]
+            ):
+                findings.append(
+                    Finding(
+                        "warn",
+                        relative_path(root, page),
+                        f"{expected_kind.capitalize()} page has citation snapshot gaps: missing `{len(citation_snapshot_state['missing'])}` stale `{len(citation_snapshot_state['stale'])}`.",
+                    )
+                )
             if expected_kind in {"decision", "judgment"} and not frontmatter.get("protocol"):
                 findings.append(
                     Finding("warn", relative_path(root, page), f"{expected_kind.capitalize()} page is missing explicit `protocol` metadata.")
@@ -10525,6 +10826,14 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                     findings.append(
                         Finding("warn", relative_path(root, page), "Reviewed decision page is missing `reviewed_at`."),
                     )
+                if frontmatter.get("reviewed_at") and citation_snapshot_state["has_drift"]:
+                    findings.append(
+                        Finding(
+                            "warn",
+                            relative_path(root, page),
+                            f"Reviewed decision page has citation drift: drifted `{len(citation_snapshot_state['drifted'])}` missing `{len(citation_snapshot_state['missing'])}` stale `{len(citation_snapshot_state['stale'])}`.",
+                        )
+                    )
             if expected_kind == "judgment":
                 if frontmatter.get("status") not in JUDGMENT_STATUSES:
                     findings.append(
@@ -10576,6 +10885,14 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                 ):
                     findings.append(
                         Finding("warn", relative_path(root, page), "Reviewed judgment page is missing `reviewed_at`."),
+                    )
+                if frontmatter.get("reviewed_at") and citation_snapshot_state["has_drift"]:
+                    findings.append(
+                        Finding(
+                            "warn",
+                            relative_path(root, page),
+                            f"Reviewed judgment page has citation drift: drifted `{len(citation_snapshot_state['drifted'])}` missing `{len(citation_snapshot_state['missing'])}` stale `{len(citation_snapshot_state['stale'])}`.",
+                        )
                     )
 
     generated_at = utc_now()
@@ -10974,6 +11291,7 @@ def render_repair_backlog(
             "## 相关产物",
             f"- Lint 报告：`{lint_result['path']}`",
             "- Aging 报告：`wiki/indexes/aging-report.md`",
+            "- 认知历史：`wiki/indexes/cognitive-history.md`",
             "- 机器记忆：`wiki/indexes/machine-memory.md`",
             "- 拓扑视图：`wiki/indexes/machine-memory-topology.md`",
             "- 动作队列：`wiki/indexes/machine-memory-actions.md`",
