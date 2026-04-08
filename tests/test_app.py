@@ -26,6 +26,7 @@ from aiwiki.app import (
     parse_frontmatter,
     placeholder_concept_slugs,
     render_frontmatter,
+    revert_machine_memory_action,
     review_concept_rewrite,
     review_machine_memory_action,
     review_page,
@@ -965,6 +966,99 @@ class AiwikiFlowTests(unittest.TestCase):
         lint = lint_wiki(self.root)
         report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
         self.assertIn("Referenced execution receipt does not exist for action `manual-link-action`.", report_text)
+
+    def test_revert_machine_memory_action_deactivates_manual_link_and_writes_revert_receipt(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "manual-link-action",
+                        "kind": "add-source-concept-link",
+                        "title": "Manual safe apply link",
+                        "reason": "Backfill source/concept link.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "accepted",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                    }
+                ],
+            },
+        )
+        dry_run = apply_machine_memory_action(self.root, "manual-link-action", dry_run=True)
+        bundle_path = self.root / dry_run["bundle_path"]
+        bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        bundle_path.write_text(json.dumps(dry_run["bundle"], ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        apply_machine_memory_action(
+            self.root,
+            "manual-link-action",
+            note="Apply before revert test.",
+            bundle_path=dry_run["bundle_path"],
+        )
+
+        result = revert_machine_memory_action(self.root, "manual-link-action", note="Rollback this safe apply.")
+
+        self.assertEqual(result["status"], "proposed")
+        manual_link_state = json.loads((self.root / ".aiwiki" / "state" / "manual-links.json").read_text(encoding="utf-8"))
+        self.assertFalse(manual_link_state["source_to_concept"][0]["active"])
+        receipt = json.loads((self.root / result["receipt_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(receipt["kind"], "execution-receipt")
+        self.assertEqual(receipt["operation"], "revert")
+        history_lines = (self.root / ".aiwiki" / "state" / "execution-receipts.jsonl").read_text(encoding="utf-8").strip().splitlines()
+        self.assertEqual(len(history_lines), 2)
+        state = json.loads((self.root / ".aiwiki" / "state" / "machine-memory-actions.json").read_text(encoding="utf-8"))
+        action = next(action for action in state["actions"] if action["id"] == "manual-link-action")
+        self.assertEqual(action["status"], "proposed")
+        self.assertEqual(action["last_receipt_path"], result["receipt_path"])
+
+    def test_revert_machine_memory_action_rejects_non_apply_receipt(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "manual-link-action",
+                        "kind": "add-source-concept-link",
+                        "title": "Manual safe apply link",
+                        "reason": "Backfill source/concept link.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "accepted",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                    }
+                ],
+            },
+        )
+        dry_run = apply_machine_memory_action(self.root, "manual-link-action", dry_run=True)
+        bundle_path = self.root / dry_run["bundle_path"]
+        bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        bundle_path.write_text(json.dumps(dry_run["bundle"], ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        apply_machine_memory_action(
+            self.root,
+            "manual-link-action",
+            note="Apply before double revert test.",
+            bundle_path=dry_run["bundle_path"],
+        )
+        revert_machine_memory_action(self.root, "manual-link-action", note="First revert.")
+
+        with self.assertRaises(RuntimeError):
+            revert_machine_memory_action(self.root, "manual-link-action", note="Second revert should fail.")
 
     def test_file_back_supports_decision_and_judgment_kinds(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")

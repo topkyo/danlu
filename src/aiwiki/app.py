@@ -3005,6 +3005,8 @@ def build_execution_receipt(
     applied_at: str,
     note: str | None,
     proposal: dict[str, Any],
+    operation: str = "apply",
+    resulting_status: str = "resolved",
 ) -> dict[str, Any]:
     bundle = build_execution_bundle(root, proposal, compiled_at=applied_at)
     return {
@@ -3012,11 +3014,12 @@ def build_execution_receipt(
         "kind": "execution-receipt",
         "generated_by": "aiwiki-apply-action",
         "applied_at": applied_at,
+        "operation": operation,
         "action_id": str(action.get("id") or ""),
         "title": str(action.get("title") or ""),
-        "status": "resolved",
+        "status": resulting_status,
         "protocol": str(proposal.get("protocol") or DEFAULT_PROTOCOL),
-        "apply_mode": "manual-link-state",
+        "apply_mode": "manual-link-state" if operation == "apply" else "manual-link-state-revert",
         "note": note or "",
         "primary_path": str(action.get("primary_path") or ""),
         "secondary_path": str(action.get("secondary_path") or ""),
@@ -3024,6 +3027,13 @@ def build_execution_receipt(
         "bundle": bundle,
         "safe_apply_preview": proposal.get("safe_apply_preview"),
     }
+
+
+def append_execution_receipt_history(root: Path, receipt: dict[str, Any]) -> None:
+    path = execution_receipt_history_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(receipt, ensure_ascii=False, sort_keys=True) + "\n")
 
 
 def remove_stale_generated_execution_proposal_pages(root: Path, active_action_ids: set[str]) -> int:
@@ -4385,6 +4395,10 @@ def execution_receipts_dir(root: Path) -> Path:
 
 def execution_receipt_path(root: Path, action_id: str) -> Path:
     return execution_receipts_dir(root) / f"{slugify(action_id)}.json"
+
+
+def execution_receipt_history_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "execution-receipts.jsonl"
 
 
 def concept_quality_path(root: Path) -> Path:
@@ -6695,15 +6709,19 @@ def render_execution_center(memory: dict[str, Any], *, compiled_at: str, active_
     plan = memory.get("health", {}).get("repair_plan", {})
     proposals = plan.get("execution_proposals", [])
     ready_actions = plan.get("ready_actions", [])
+    all_actions = [*memory.get("health", {}).get("actions", []), *memory.get("health", {}).get("inactive_actions", [])]
     recent_receipts = sorted(
         [
             action
-            for action in [*memory.get("health", {}).get("actions", []), *memory.get("health", {}).get("inactive_actions", [])]
+            for action in all_actions
             if action.get("last_receipt_path")
         ],
         key=lambda item: str(item.get("status_updated_at") or item.get("reviewed_at") or ""),
         reverse=True,
     )
+    revert_ready_actions = [
+        action for action in recent_receipts if str(action.get("status") or "") == "resolved"
+    ]
     apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
     patch_steps = sum(len(proposal.get("page_patch_plan", [])) for proposal in proposals)
     lines = [
@@ -6725,6 +6743,14 @@ def render_execution_center(memory: dict[str, Any], *, compiled_at: str, active_
         for action in apply_ready_actions[:10]:
             lines.append(
                 f"- `{action['title']}` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action.get('id', '')} --bundle output/control/execution-bundles/{slugify(str(action.get('id') or ''))}.json` | primary `{action.get('primary_path', '')}`"
+            )
+    lines.extend(["", "## Revert Safe Apply"])
+    if not revert_ready_actions:
+        lines.append("- 当前没有可回滚的 safe apply。")
+    else:
+        for action in revert_ready_actions[:10]:
+            lines.append(
+                f"- `{action['title']}` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-action {action.get('id', '')}` | receipt `{action.get('last_receipt_path', '')}`"
             )
     lines.extend(["", "## Execution Proposals"])
     if not proposals:
@@ -6766,15 +6792,19 @@ def render_execution_center_html(memory: dict[str, Any], *, compiled_at: str, ac
     plan = memory.get("health", {}).get("repair_plan", {})
     proposals = plan.get("execution_proposals", [])
     ready_actions = plan.get("ready_actions", [])
+    all_actions = [*memory.get("health", {}).get("actions", []), *memory.get("health", {}).get("inactive_actions", [])]
     recent_receipts = sorted(
         [
             action
-            for action in [*memory.get("health", {}).get("actions", []), *memory.get("health", {}).get("inactive_actions", [])]
+            for action in all_actions
             if action.get("last_receipt_path")
         ],
         key=lambda item: str(item.get("status_updated_at") or item.get("reviewed_at") or ""),
         reverse=True,
     )
+    revert_ready_actions = [
+        action for action in recent_receipts if str(action.get("status") or "") == "resolved"
+    ]
     apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
     patch_steps = sum(len(proposal.get("page_patch_plan", [])) for proposal in proposals)
     summary_cards = [
@@ -6789,6 +6819,12 @@ def render_execution_center_html(memory: dict[str, Any], *, compiled_at: str, ac
         f"<div class=\"item-meta\">{html.escape(str(action.get('primary_path') or ''))}</div></li>"
         for action in apply_ready_actions[:8]
     ) or "<li>当前没有可直接 safe apply 的动作。</li>"
+    revert_markup = "".join(
+        f"<li><strong>{html.escape(str(action.get('title') or 'unnamed action'))}</strong>"
+        f"<div><code>PYTHONPATH=src python3 -m aiwiki.cli --root . revert-action {html.escape(str(action.get('id') or ''))}</code></div>"
+        f"<div class=\"item-meta\">{html.escape(str(action.get('last_receipt_path') or ''))}</div></li>"
+        for action in revert_ready_actions[:8]
+    ) or "<li>当前没有可回滚的 safe apply。</li>"
     proposal_markup = "".join(
         f"<li><strong><a href=\"../../wiki/execution-proposals/{html.escape(slugify(str(proposal.get('action_id') or '')))}.md\">{html.escape(str(proposal.get('title') or 'proposal'))}</a></strong>"
         f" <span class=\"item-meta\">risk {html.escape(str(proposal.get('risk') or 'medium'))} / patch {len(proposal.get('page_patch_plan', []))}</span>"
@@ -6843,6 +6879,7 @@ def render_execution_center_html(memory: dict[str, Any], *, compiled_at: str, ac
             "  </section>",
             '  <section class="grid">',
             f'    <div class="panel"><h2>Safe Apply Actions</h2><ul>{safe_apply_markup}</ul></div>',
+            f'    <div class="panel"><h2>Revert Safe Apply</h2><ul>{revert_markup}</ul></div>',
             f'    <div class="panel"><h2>Execution Proposals</h2><ul>{proposal_markup}</ul></div>',
             f'    <div class="panel"><h2>Recent Receipts</h2><ul>{receipt_markup}</ul></div>',
             '    <div class="panel"><h2>相关入口</h2><ul>'
@@ -8567,6 +8604,7 @@ def apply_machine_memory_action(
     receipt_path = execution_receipt_path(root, action_id)
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
     receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    append_execution_receipt_history(root, receipt)
 
     target["status"] = "resolved"
     target["reviewed_at"] = applied_at
@@ -8597,6 +8635,117 @@ def apply_machine_memory_action(
         "status": "resolved",
         "applied_at": applied_at,
         "apply_mode": apply_mode,
+        "receipt_path": relative_path(root, receipt_path),
+    }
+
+
+def revert_machine_memory_action(
+    root: Path,
+    action_id: str,
+    *,
+    note: str | None = None,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    state = load_machine_memory_action_state(root)
+    actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
+    target: dict[str, Any] | None = None
+    for action in actions:
+        if str(action.get("id") or "") == action_id:
+            target = action
+            break
+    if target is None:
+        raise FileNotFoundError(f"Machine-memory action not found: {action_id}")
+    receipt_relative = str(target.get("last_receipt_path") or "")
+    if not receipt_relative:
+        raise RuntimeError("Machine-memory action has no execution receipt to revert.")
+    receipt_path = root / receipt_relative
+    if not receipt_path.exists():
+        raise FileNotFoundError(f"Execution receipt not found: {receipt_relative}")
+    receipt = load_json_document(receipt_path)
+    if not isinstance(receipt, dict) or str(receipt.get("kind") or "") != "execution-receipt":
+        raise RuntimeError("Execution receipt is not valid.")
+    if str(receipt.get("operation") or "") != "apply":
+        raise RuntimeError("Only the latest apply receipt can be reverted.")
+    if str(receipt.get("action_id") or "") != action_id:
+        raise RuntimeError("Execution receipt action_id does not match the requested action.")
+
+    manual_state = load_manual_link_state(root)
+    manual_links = [dict(item) for item in manual_state.get("source_to_concept", []) if isinstance(item, dict)]
+    active_entry: dict[str, Any] | None = None
+    for item in manual_links:
+        if str(item.get("origin_action_id") or "") != action_id:
+            continue
+        if bool(item.get("active", True)):
+            active_entry = item
+            break
+    if active_entry is None:
+        raise RuntimeError("No active safe-apply state exists for this action.")
+
+    reverted_at = utc_now()
+    active_entry["active"] = False
+    active_entry["reverted_at"] = reverted_at
+    active_entry["revert_note"] = note or "Safe apply reverted."
+    save_manual_link_state(root, {"version": 1, "source_to_concept": manual_links})
+
+    protocol = load_protocol_state(root)["active_protocol"]
+    preview_proposals = repair_execution_proposals(root, [target], active_protocol=protocol)
+    proposal = preview_proposals[0] if preview_proposals else {
+        "action_id": action_id,
+        "title": str(target.get("title") or action_id),
+        "proposal_kind": "manual-repair",
+        "risk": "low",
+        "priority": str(target.get("priority") or "medium"),
+        "protocol": protocol,
+        "summary": str(target.get("reason") or ""),
+        "target_paths": [
+            path
+            for path in (str(target.get("primary_path") or ""), str(target.get("secondary_path") or ""))
+            if path
+        ],
+        "page_patch_plan": build_page_patch_plan(root, target, active_protocol=protocol),
+        "safe_apply_preview": safe_apply_preview(root, target),
+        "command_hint": str(target.get("command_hint") or ""),
+        "bundle_path": relative_path(root, execution_bundle_path(root, action_id)),
+        "proposal_path": relative_path(root, execution_proposal_path(root, action_id)),
+    }
+    revert_receipt = build_execution_receipt(
+        root,
+        target,
+        applied_at=reverted_at,
+        note=note,
+        proposal=proposal,
+        operation="revert",
+        resulting_status="proposed",
+    )
+    receipt_path.write_text(json.dumps(revert_receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    append_execution_receipt_history(root, revert_receipt)
+
+    target["status"] = "proposed"
+    target["reviewed_at"] = reverted_at
+    target["status_updated_at"] = reverted_at
+    target["review_note"] = note or "Safe apply reverted."
+    target["pending_review"] = "true"
+    target["last_receipt_path"] = relative_path(root, receipt_path)
+    revisit_after, escalate_after = schedule_review_windows("action", "proposed", reverted_at)
+    target["revisit_after"] = revisit_after
+    target["escalate_after"] = escalate_after
+    target.update(evaluate_page_aging(target))
+    _save_machine_memory_action_records(root, actions)
+    append_wiki_log(
+        root,
+        "action-revert",
+        str(target.get("title") or action_id),
+        [
+            f"action_id: `{action_id}`",
+            f"receipt: `{relative_path(root, receipt_path)}`",
+            f"primary: `{target.get('primary_path', '')}`",
+        ],
+    )
+    compile_wiki(root)
+    return {
+        "id": action_id,
+        "status": "proposed",
+        "reverted_at": reverted_at,
         "receipt_path": relative_path(root, receipt_path),
     }
 

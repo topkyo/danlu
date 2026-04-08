@@ -17,6 +17,7 @@ from .app import (
     lint_wiki,
     load_protocol_state,
     nightly_health,
+    revert_machine_memory_action,
     review_concept_rewrite,
     review_machine_memory_action,
     review_page,
@@ -182,6 +183,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional execution bundle path to validate and consume during apply.",
     )
 
+    revert_action_parser = subparsers.add_parser(
+        "revert-action",
+        help="Revert the latest low-risk safe apply for a machine-memory action.",
+    )
+    revert_action_parser.add_argument("action_id", help="Machine-memory action id.")
+    revert_action_parser.add_argument("--note", help="Optional revert note.")
+
     subparsers.add_parser("lint", help="Run deterministic lint checks against the wiki.")
     subparsers.add_parser("run-lint", help="Run deterministic lint plus an LLM-backed semantic lint pass.")
     subparsers.add_parser("nightly", help="Run deterministic compile + lint and write nightly repair artifacts.")
@@ -318,6 +326,8 @@ def main(argv: list[str] | None = None) -> int:
                 dry_run=args.dry_run,
                 bundle_path=args.bundle,
             )
+        elif args.command == "revert-action":
+            result = revert_machine_memory_action(root, args.action_id, note=args.note)
         elif args.command == "lint":
             result = lint_wiki(root)
         elif args.command == "run-lint":
