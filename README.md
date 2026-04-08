@@ -4,6 +4,7 @@
 
 架构基线见 [Alchemy Furnace.md](<./wiki/indexes/Alchemy Furnace.md>)。
 日常在 Obsidian 里使用时，入口是 [HOME.md](./HOME.md)。
+关于“一个统一炉子，多个领域协议”的原则，见 [Furnace Protocols.md](<./wiki/indexes/Furnace Protocols.md>)。
 
 ## 它是什么
 

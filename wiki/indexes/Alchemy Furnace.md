@@ -27,6 +27,69 @@ status: "active"
 
 最终目标不是“更多笔记”，而是一个会持续增厚的知识操作系统。
 
+## 统一内核 + 多协议
+
+炼丹炉应该统一成一个系统，而不是拆成“投资版炉子”和“研发版炉子”两个 runtime。
+
+正确的长期形态是：
+
+- 一个统一的 `aiwiki` 炼丹炉内核
+- 多套按场景切换的 protocol / schema
+
+也就是：
+
+- 炉子只有一个
+- 丹方可以有很多套
+
+统一内核负责：
+
+- `raw -> wiki -> machine memory -> outputs` 主链
+- provenance、review、aging、escalation、repair、nightly
+- graph / machine-memory
+- decision / judgment 的基本生命周期
+
+协议层负责：
+
+- 概念分类和 taxonomy
+- decision / judgment 模板
+- review 窗口与升级规则
+- nightly 应重点跟踪的信号
+- query / writeback / lint 的领域偏置
+
+这意味着：
+
+- 投资、研发、产品、运营可以共用一套炉子
+- 不同领域通过 protocol 形成不同“炼丹方式”
+- 跨域判断仍然可以互相引用和迁移
+
+不要把“一个炉子，多种 protocol”误写成“多个炉子，多套系统”。
+
+### 协议层示例
+
+- `investing`
+  - `company / thesis / catalyst / risk / invalidation / position decision`
+- `research`
+  - `paper / repo / benchmark / experiment / architecture decision`
+- `product`
+  - `user problem / insight / bet / metric / launch judgment`
+- `ops`
+  - `incident / runbook / mitigation / escalation / follow-up`
+
+### 规划中的协议路径
+
+- `schema/protocols/`
+
+建议每个协议至少定义：
+
+- taxonomy
+- decision template
+- judgment template
+- review policy
+- nightly policy
+- query / output hints
+
+当前它仍属于架构方向，而不是完整 runtime 功能；但后续增强应围绕这一层展开，而不是再复制一套新的炉子。
+
 ## 分层模型
 
 ### 1. Raw Sources
@@ -122,6 +185,7 @@ status: "active"
 规划中的路径：
 
 - `policy/`
+- `schema/protocols/`
 
 典型内容：
 

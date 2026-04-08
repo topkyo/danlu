@@ -20,6 +20,7 @@ kind: "dashboard"
 ## 架构入口
 
 - [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]：`aiwiki` 的运行时架构
+- [[wiki/indexes/Furnace Protocols|统一炼丹协议]]：一个炉子，多种领域协议
 - [[schema/index|运行时规则]]：compile、ask、lint 共同遵循的规则层
 - [[wiki/indexes/review-center|审阅中心]]：把 review、aging、repair 和 concept rewrite 收到一起
 - [[wiki/indexes/machine-memory|机器记忆]]：当前机器记忆摘要
