@@ -16,6 +16,7 @@ from .app import (
     concept_summary_is_placeholder,
     ensure_layout,
     lint_wiki,
+    load_protocol_state,
     load_machine_memory,
     nightly_health,
     load_manifest,
@@ -214,10 +215,11 @@ def run_ask(
     root: Path,
     question: str,
     output_format: str,
+    protocol: str | None = None,
     client: SupportsComplete | None = None,
 ) -> dict[str, Any]:
     ensure_layout(root)
-    artifact = ask_question(root, question, output_format)
+    artifact = ask_question(root, question, output_format, protocol=protocol)
     manifest = load_manifest(root)
     entry_map = {entry["id"]: entry for entry in manifest["entries"]}
     source_ids = artifact["ranked_sources"]
@@ -234,6 +236,11 @@ def run_ask(
         page = root / "wiki" / "concepts" / f"{slug}.md"
         if page.exists():
             concept_pages.append((slug, page.read_text(encoding="utf-8", errors="replace")))
+    protocol_pages = []
+    for relative in artifact.get("protocol_pages", []):
+        page = root / relative
+        if page.exists():
+            protocol_pages.append((relative, page.read_text(encoding="utf-8", errors="replace")))
     index_pages = []
     for relative in artifact.get("index_pages", []):
         page = root / relative
@@ -250,6 +257,7 @@ def run_ask(
         current_artifact,
         source_pages,
         concept_pages,
+        protocol_pages,
         index_pages,
         artifact.get("machine_memory_query", {}),
     )
@@ -265,6 +273,7 @@ def run_ask(
             "target": artifact["path"],
             "question": question,
             "format": output_format,
+            "protocol": artifact.get("protocol", ""),
             "ranked_sources": source_ids,
             "model": _client_model_name(effective_client),
             "response_id": result.response_id,
@@ -498,6 +507,9 @@ def _build_compile_prompt(root: Path, entry: dict[str, Any], raw_path: Path, cur
             "## Runtime Schema",
             _schema_context(root, ("index.md", "citations.md", "conflicts.md")),
             "",
+            "## Active Protocol",
+            _protocol_context(root, ("index.md", "taxonomy.md", "query.md")),
+            "",
             "## Current Page",
             current_page,
             "",
@@ -563,6 +575,9 @@ def _build_concept_compile_prompt(
             "## Runtime Schema",
             _schema_context(root, ("index.md", "citations.md", "conflicts.md", "taxonomy.md")),
             "",
+            "## Active Protocol",
+            _protocol_context(root, ("index.md", "taxonomy.md", "query.md")),
+            "",
             "## Concept Quality Signals",
             "\n".join(quality_lines),
             "",
@@ -617,6 +632,7 @@ def _build_ask_prompt(
     current_artifact: str,
     source_pages: list[tuple[dict[str, Any], str]],
     concept_pages: list[tuple[str, str]],
+    protocol_pages: list[tuple[str, str]],
     index_pages: list[tuple[str, str]],
     machine_memory_query: dict[str, Any],
 ) -> str:
@@ -630,6 +646,9 @@ def _build_ask_prompt(
         "",
         "## Runtime Schema",
         _schema_context(root, ("index.md", "citations.md", "conflicts.md", "writeback.md")),
+        "",
+        "## Active Protocol",
+        _protocol_context(root, ("index.md", "taxonomy.md", "decision.md", "judgment.md", "review.md", "nightly.md", "query.md")),
         "",
         "## Current Artifact",
         current_artifact,
@@ -649,6 +668,16 @@ def _build_ask_prompt(
                 else _fit_prompt_section(content, max_chars=3500)
             )
             sections.extend([f"### {relative}", excerpt, ""])
+    sections.extend(
+        [
+            "## Protocol Pages",
+        ]
+    )
+    if not protocol_pages:
+        sections.append("- No protocol pages were available.")
+    else:
+        for relative, content in protocol_pages:
+            sections.extend([f"### {relative}", _fit_prompt_section(content, max_chars=2200), ""])
     sections.extend(
         [
             "## Concept Pages",
@@ -754,6 +783,9 @@ def _build_lint_prompt(root: Path, deterministic_report: str) -> str:
         "## Deterministic Lint Report",
         _read_context(root / deterministic_report, max_chars=_context_budget()),
         "",
+        "## Active Protocol",
+        _protocol_context(root, ("index.md", "review.md", "nightly.md")),
+        "",
         "## Wiki Indexes",
     ]
     for relative in (
@@ -801,6 +833,18 @@ def _schema_context(root: Path, names: tuple[str, ...]) -> str:
         if not path.exists():
             continue
         sections.extend([f"### schema/{name}", _read_context(path, max_chars=2200), ""])
+    return "\n".join(sections).strip()
+
+
+def _protocol_context(root: Path, names: tuple[str, ...]) -> str:
+    state = load_protocol_state(root)
+    active = state["active_protocol"]
+    sections: list[str] = [f"- Active protocol: `{active}` ({state['state_path']})", ""]
+    for name in names:
+        path = root / "schema" / "protocols" / active / name
+        if not path.exists():
+            continue
+        sections.extend([f"### schema/protocols/{active}/{name}", _read_context(path, max_chars=2200), ""])
     return "\n".join(sections).strip()
 
 

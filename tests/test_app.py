@@ -17,12 +17,14 @@ from aiwiki.app import (
     lint_wiki,
     load_machine_memory,
     load_manifest,
+    load_protocol_state,
     nightly_health,
     parse_frontmatter,
     placeholder_concept_slugs,
     render_frontmatter,
     review_machine_memory_action,
     review_page,
+    set_active_protocol,
 )
 from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
@@ -193,6 +195,23 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(graph["edges"])
         self.assertIn("没有可对比的上一版机器记忆快照", drift_report.read_text(encoding="utf-8"))
 
+    def test_compile_writes_protocol_dashboard(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        protocol_page = self.root / "wiki" / "indexes" / "protocols.md"
+        self.assertTrue(protocol_page.exists())
+        payload = protocol_page.read_text(encoding="utf-8")
+        self.assertIn("当前 active protocol", payload)
+        self.assertIn("general", payload)
+        self.assertIn("../../schema/protocols/general/index.md", payload)
+
+    def test_protocol_set_updates_dashboard_without_compile(self) -> None:
+        set_active_protocol(self.root, "investing")
+        payload = (self.root / "wiki" / "indexes" / "protocols.md").read_text(encoding="utf-8")
+        self.assertIn("investing", payload)
+        self.assertIn("../../schema/protocols/investing/index.md", payload)
+
     def test_compile_tracks_machine_memory_drift_between_snapshots(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -309,6 +328,21 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("图谱视图", report_text)
         self.assertIn("运行时规则", report_text)
 
+    def test_ask_can_override_protocol_and_exposes_protocol_pages(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        set_active_protocol(self.root, "general")
+
+        result = ask_question(self.root, "Compare transformer scale and inference cost", "report", protocol="investing")
+
+        report_text = (self.root / result["path"]).read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(report_text)
+        self.assertEqual(result["protocol"], "investing")
+        self.assertEqual(frontmatter["protocol"], "investing")
+        self.assertIn("wiki/indexes/protocols.md", result["index_pages"])
+        self.assertIn("schema/protocols/index.md", result["index_pages"])
+        self.assertIn("schema/protocols/investing/index.md", result["protocol_pages"])
+        self.assertIn("当前协议：`investing`", report_text)
+
     def test_ensure_layout_bootstraps_runtime_schema_files(self) -> None:
         for relative in (
             "schema/index.md",
@@ -323,6 +357,22 @@ class AiwikiFlowTests(unittest.TestCase):
         schema_index = (self.root / "schema" / "index.md").read_text(encoding="utf-8")
         self.assertIn("运行时规则", schema_index)
         self.assertIn("产品运行时", schema_index)
+
+    def test_ensure_layout_bootstraps_protocol_library_and_state(self) -> None:
+        for relative in (
+            "schema/protocols/index.md",
+            "schema/protocols/general/index.md",
+            "schema/protocols/general/taxonomy.md",
+            "schema/protocols/investing/index.md",
+            "schema/protocols/research/index.md",
+        ):
+            self.assertTrue((self.root / relative).exists(), relative)
+        state = load_protocol_state(self.root)
+        self.assertEqual(state["active_protocol"], "general")
+        self.assertIn("investing", state["available_protocols"])
+        self.assertIn("research", state["available_protocols"])
+        schema_index = (self.root / "schema" / "index.md").read_text(encoding="utf-8")
+        self.assertIn("协议规则", schema_index)
 
     def test_ensure_layout_bootstraps_runtime_dashboard_files(self) -> None:
         for relative, marker in (
@@ -535,6 +585,17 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Scaling Decision", review_queue)
         self.assertIn("Scaling Judgment", review_queue)
 
+    def test_file_back_propagates_protocol_metadata(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Should we underwrite this thesis?", "report", protocol="investing")
+
+        decision = file_back(self.root, report["path"], title="Investing Decision", kind="decision")
+
+        decision_frontmatter = parse_frontmatter((self.root / decision["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(decision["protocol"], "investing")
+        self.assertEqual(decision_frontmatter["protocol"], "investing")
+
     def test_file_back_generates_unique_paths_for_same_title(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -719,6 +780,7 @@ class AiwikiFlowTests(unittest.TestCase):
         sample.write_text("# Throughput Notes\n\nLatency throughput cache locality.\n", encoding="utf-8")
         entry = ingest_source(self.root, str(sample), title="Throughput Notes")
         compile_wiki(self.root)
+        set_active_protocol(self.root, "investing")
         report_markdown = "\n".join(
             [
                 "---",
@@ -726,6 +788,7 @@ class AiwikiFlowTests(unittest.TestCase):
                 'kind: "output"',
                 'format: "report"',
                 'query: "Compare latency tail behavior"',
+                'protocol: "investing"',
                 'generated_by: "aiwiki-ask"',
                 'created_at: "2026-04-07T00:00:00+00:00"',
                 "---",
@@ -754,6 +817,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("wiki/indexes/machine-memory-topology.md", client.prompt)
         self.assertIn("wiki/indexes/machine-memory-actions.md", client.prompt)
         self.assertIn("wiki/indexes/machine-memory-repair-plan.md", client.prompt)
+        self.assertIn("schema/protocols/investing/index.md", client.prompt)
+        self.assertIn("schema/protocols/investing/query.md", client.prompt)
         self.assertIn("Relevant repair actions", client.prompt)
         self.assertIn("latency", client.prompt.lower())
 
@@ -819,6 +884,22 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(result["promotions"]["count"], 1)
         self.assertEqual(result["promotions"]["created"], 0)
         self.assertEqual(result["promotions"]["updated"], 1)
+
+    def test_nightly_partitions_auto_promotions_by_protocol(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        question = "Should we adopt transformer caching for inference?"
+        ask_question(self.root, question, "report", protocol="general")
+        ask_question(self.root, question, "report", protocol="general")
+        ask_question(self.root, question, "report", protocol="investing")
+        ask_question(self.root, question, "report", protocol="investing")
+
+        nightly_health(self.root)
+
+        decision_pages = sorted((self.root / "wiki" / "decisions").glob("*.md"))
+        self.assertEqual(len(decision_pages), 2)
+        protocols = sorted(parse_frontmatter(path.read_text(encoding="utf-8"))["protocol"] for path in decision_pages)
+        self.assertEqual(protocols, ["general", "investing"])
 
     def test_nightly_skips_auto_promotion_when_recurring_outputs_have_not_changed(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

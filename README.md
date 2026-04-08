@@ -5,6 +5,7 @@
 架构基线见 [Alchemy Furnace.md](<./wiki/indexes/Alchemy Furnace.md>)。
 日常在 Obsidian 里使用时，入口是 [HOME.md](./HOME.md)。
 关于“一个统一炉子，多个领域协议”的原则，见 [Furnace Protocols.md](<./wiki/indexes/Furnace Protocols.md>)。
+协议运行时入口见 [protocols.md](<./wiki/indexes/protocols.md>)；当前 starter library 提供 `general / investing / research` 三套协议。
 
 ## 它是什么
 
@@ -18,6 +19,7 @@
 - `.aiwiki/` 放 machine memory、状态和缓存
 - `output/` 放查询产物
 - `schema/` 放运行时规则
+- `schema/protocols/` 放领域协议覆盖层
 
 Obsidian 是前端/IDE，`aiwiki` 才是编译器和自动化 runtime。
 
@@ -43,7 +45,14 @@ cd /home/tim/ai-wiki
 PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
 ```
 
-3. 投一份原料：
+3. 查看或切换 active protocol：
+
+```bash
+PYTHONPATH=src python3 -m aiwiki.cli --root . protocol-status
+PYTHONPATH=src python3 -m aiwiki.cli --root . protocol-set investing
+```
+
+4. 投一份原料：
 
 ```bash
 PYTHONPATH=src python3 -m aiwiki.cli --root . drop-url https://example.com/article
@@ -52,18 +61,19 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . drop-image /path/to/diagram.png
 PYTHONPATH=src python3 -m aiwiki.cli --root . drop-repo https://github.com/user/repo.git
 ```
 
-4. 编译或直接让 watcher 接管：
+5. 编译或直接让 watcher 接管：
 
 ```bash
 PYTHONPATH=src python3 -m aiwiki.cli --root . compile
 AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . run-compile --limit 3
 ```
 
-5. 提问并生成产物：
+6. 提问并生成产物：
 
 ```bash
 PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare A and B" --format report
 AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . run-ask "Compare A and B" --format report
+PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare A and B" --format report --protocol investing
 ```
 
 ## 日常工作流
@@ -79,6 +89,13 @@ AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . run-a
 把材料整理成知识层：
 - `compile` 维护 `wiki/sources/`、`wiki/concepts/`、`wiki/indexes/`
 - `run-compile` 用 LLM 补来源摘要、占位概念摘要，并继续重写高优先级弱概念页
+
+### 2.5 协议
+
+统一炉子里可以切不同协议：
+- `protocol-status`：看当前 active protocol
+- `protocol-set <slug>`：切换后续 ask / file-back / nightly 默认使用的协议
+- `ask --protocol <slug>`：只对单次查询覆盖协议，不改全局 active protocol
 
 ### 3. 查询
 
@@ -144,6 +161,7 @@ machine-memory action 现在也有显式 lifecycle：
 - Obsidian：默认前端/IDE
 - [HOME.md](./HOME.md)：日常工作台
 - [Wiki Hub.md](<./wiki/indexes/Wiki Hub.md>)：知识中枢
+- [protocols.md](./wiki/indexes/protocols.md)：协议入口和 active protocol 状态
 - [review-center.md](./wiki/indexes/review-center.md)：统一审阅/修复入口；本地审阅面板在 `output/review/review-center.html`
 - [graph-view.md](./wiki/indexes/graph-view.md)：统一图谱入口；本地图谱产物在 `output/graph/machine-memory.html`
 
@@ -193,6 +211,7 @@ wiki/      编译后的知识层
 output/    报告、图表、幻灯片、lint 结果
 .aiwiki/   machine memory、状态、缓存
 schema/    运行时规则
+schema/protocols/ 领域协议规则
 prompts/   LLM 提示词模板
 ```
 

@@ -27,6 +27,7 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         self.assertIn("[[wiki/indexes/Raw Inbox|", home)
         self.assertIn("[[wiki/indexes/Wiki Hub|", home)
         self.assertIn("[[wiki/indexes/Alchemy Furnace|", home)
+        self.assertIn("[[wiki/indexes/protocols|", home)
         self.assertIn("[[wiki/indexes/Furnace Protocols|", (self.root / "wiki" / "indexes" / "Wiki Hub.md").read_text(encoding="utf-8"))
         self.assertIn("[[wiki/indexes/review-center|", home)
         self.assertIn("[[wiki/indexes/graph-view|", home)
@@ -36,6 +37,7 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         self.assertIn("[[wiki/indexes/repair-backlog|", home)
         self.assertIn("[[wiki/indexes/review-queue|", home)
         self.assertIn("[[schema/index|", home)
+        self.assertIn("[[schema/protocols/index|", home)
         self.assertIn("[[wiki/indexes/Outputs|", home)
         self.assertIn("[[wiki/indexes/Search Presets|", home)
 
@@ -45,6 +47,7 @@ class ObsidianWorkspaceTests(unittest.TestCase):
             "wiki/indexes/Wiki Hub.md",
             "wiki/indexes/Alchemy Furnace.md",
             "wiki/indexes/Furnace Protocols.md",
+            "wiki/indexes/protocols.md",
             "wiki/indexes/review-center.md",
             "wiki/indexes/graph-view.md",
             "wiki/indexes/graph-health.md",

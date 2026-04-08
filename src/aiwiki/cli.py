@@ -13,9 +13,11 @@ from .app import (
     file_back,
     ingest_source,
     lint_wiki,
+    load_protocol_state,
     nightly_health,
     review_machine_memory_action,
     review_page,
+    set_active_protocol,
 )
 from .drop import drop_image, drop_pdf, drop_repo, drop_url
 from .runner import auto_process_once, llm_status, run_ask, run_compile, run_lint, run_nightly, watch_inbox
@@ -65,6 +67,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("compile", help="Compile manifest entries into wiki source pages and indexes.")
 
+    protocol_status_parser = subparsers.add_parser(
+        "protocol-status",
+        help="Show the active furnace protocol and available protocol library.",
+    )
+    protocol_status_parser.add_argument(
+        "--set",
+        dest="set_protocol",
+        help="Optional protocol slug to activate before printing status.",
+    )
+
+    protocol_set_parser = subparsers.add_parser(
+        "protocol-set",
+        help="Set the active furnace protocol for subsequent ask/file-back/nightly workflows.",
+    )
+    protocol_set_parser.add_argument("protocol", help="Protocol slug, for example general, investing, or research.")
+
     run_compile_parser = subparsers.add_parser(
         "run-compile",
         help="Compile sources and use the configured LLM to replace placeholder summaries.",
@@ -84,6 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="report",
         help="Output artifact format.",
     )
+    ask_parser.add_argument("--protocol", help="Optional protocol override for this query.")
 
     run_ask_parser = subparsers.add_parser(
         "run-ask",
@@ -96,6 +115,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="report",
         help="Output artifact format.",
     )
+    run_ask_parser.add_argument("--protocol", help="Optional protocol override for this query.")
 
     file_back_parser = subparsers.add_parser(
         "file-back",
@@ -109,6 +129,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="derived",
         help="Filed-back page kind.",
     )
+    file_back_parser.add_argument("--protocol", help="Optional protocol override for the filed-back page.")
 
     review_parser = subparsers.add_parser(
         "review-page",
@@ -232,14 +253,21 @@ def main(argv: list[str] | None = None) -> int:
             result = _maybe_auto_process(root, result, args)
         elif args.command == "compile":
             result = compile_wiki(root)
+        elif args.command == "protocol-status":
+            if args.set_protocol:
+                result = set_active_protocol(root, args.set_protocol)
+            else:
+                result = load_protocol_state(root)
+        elif args.command == "protocol-set":
+            result = set_active_protocol(root, args.protocol)
         elif args.command == "run-compile":
             result = run_compile(root, limit=args.limit)
         elif args.command == "ask":
-            result = ask_question(root, args.question, args.format)
+            result = ask_question(root, args.question, args.format, protocol=args.protocol)
         elif args.command == "run-ask":
-            result = run_ask(root, args.question, args.format)
+            result = run_ask(root, args.question, args.format, protocol=args.protocol)
         elif args.command == "file-back":
-            result = file_back(root, args.artifact, title=args.title, kind=args.kind)
+            result = file_back(root, args.artifact, title=args.title, kind=args.kind, protocol=args.protocol)
         elif args.command == "review-page":
             result = review_page(root, args.page, args.status, note=args.note, confidence=args.confidence)
         elif args.command == "review-action":

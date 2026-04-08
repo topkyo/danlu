@@ -14,6 +14,7 @@ kind: "dashboard"
 - `wiki/derived/`：回流后的报告、幻灯片和值得保留的派生笔记
 - `wiki/decisions/` 与 `wiki/judgments/`：处于审阅流中的显式决策层和判断层
 - `schema/`：ingest、引用、冲突、审阅、回流等运行时规则
+- `schema/protocols/`：统一炉子的领域协议覆盖层
 - `.aiwiki/state/`：给 agent 用的机器记忆状态和历史
 - `.aiwiki/cache/`：图谱导出和可重建的机读索引
 
@@ -21,7 +22,9 @@ kind: "dashboard"
 
 - [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]：`aiwiki` 的运行时架构
 - [[wiki/indexes/Furnace Protocols|统一炼丹协议]]：一个炉子，多种领域协议
+- [[wiki/indexes/protocols|协议总览]]：当前 active protocol 和可用协议库
 - [[schema/index|运行时规则]]：compile、ask、lint 共同遵循的规则层
+- [[schema/protocols/index|协议规则库]]：`general / investing / research` starter protocols
 - [[wiki/indexes/review-center|审阅中心]]：把 review、aging、repair 和 concept rewrite 收到一起
 - [[wiki/indexes/machine-memory|机器记忆]]：当前机器记忆摘要
 - [[wiki/indexes/graph-view|图谱视图]]：machine-memory 的统一人读入口

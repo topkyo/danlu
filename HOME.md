@@ -37,6 +37,7 @@ kind: "dashboard"
 - [[wiki/indexes/Raw Inbox|原料收件箱]]
 - [[wiki/indexes/Wiki Hub|知识中枢]]
 - [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
+- [[wiki/indexes/protocols|协议总览]]
 - [[wiki/indexes/review-center|审阅中心]]
 - [[wiki/indexes/graph-view|图谱视图]]
 - [[wiki/indexes/Outputs|输出面板]]
@@ -52,6 +53,7 @@ kind: "dashboard"
 - [[wiki/indexes/graph-view|图谱视图]]
 - [[wiki/indexes/machine-memory|机器记忆]]
 - [[schema/index|运行时规则]]
+- [[schema/protocols/index|协议规则]]
 
 ## 日常循环
 
@@ -65,6 +67,7 @@ kind: "dashboard"
 
 - 想确认新投料有没有进系统：看 [[wiki/indexes/Raw Inbox|原料收件箱]]
 - 想看系统当前总览：看 [[wiki/indexes/Wiki Hub|知识中枢]]
+- 想切换或查看当前协议：看 [[wiki/indexes/protocols|协议总览]]
 - 想看 pending review：看 [[wiki/indexes/review-queue|审阅队列]]
 - 想把 review / repair / aging 放到一个地方看：看 [[wiki/indexes/review-center|审阅中心]]，真正的本地审阅面板在 `output/review/review-center.html`
 - 想看修复优先级：看 [[wiki/indexes/repair-backlog|修复待办]]
@@ -83,6 +86,7 @@ kind: "dashboard"
 - `wiki/derived/`：回流后的派生 markdown
 - `output/`：报告、幻灯片、图表和 lint 结果
 - `schema/`：运行时规则
+- `schema/protocols/`：领域协议覆盖层
 
 ## 使用边界
 

@@ -19,6 +19,7 @@ LAYOUT_DIRS = (
     "raw/normalized",
     "raw/assets",
     "schema",
+    "schema/protocols",
     "wiki/sources",
     "wiki/concepts",
     "wiki/decisions",
@@ -54,6 +55,7 @@ DEFAULT_SCHEMA_FILES = {
             "- [审阅规则](./review.md)",
             "- [回流规则](./writeback.md)",
             "- [分类规则](./taxonomy.md)",
+            "- [协议规则](./protocols/index.md)",
             "",
             "## 边界",
             "",
@@ -137,6 +139,18 @@ DEFAULT_SCHEMA_FILES = {
 }
 
 DEFAULT_DASHBOARD_FILES = {
+    "wiki/indexes/protocols.md": "\n".join(
+        [
+            "# 协议总览",
+            "",
+            "这里是统一炼丹炉的协议入口页。",
+            "",
+            "- 当前 active protocol 会在 `compile` 后写到这里。",
+            "- 具体规则落在 `schema/protocols/`。",
+            "- 这里展示的是“一个统一炉子，多种领域协议”的运行时入口，而不是新的 runtime 分叉。",
+        ]
+    )
+    + "\n",
     "wiki/indexes/review-center.md": "\n".join(
         [
             "# 审阅中心",
@@ -195,6 +209,118 @@ DEFAULT_DASHBOARD_FILES = {
         ]
     )
     + "\n",
+}
+
+DEFAULT_PROTOCOL = "general"
+PROTOCOL_SECTION_FILES = ("taxonomy", "decision", "judgment", "review", "nightly", "query")
+PROTOCOL_SECTION_TITLES = {
+    "taxonomy": "分类规则",
+    "decision": "决策模板",
+    "judgment": "判断模板",
+    "review": "审阅策略",
+    "nightly": "Nightly 策略",
+    "query": "查询提示",
+}
+PROTOCOL_LIBRARY = {
+    "general": {
+        "title": "通用协议",
+        "summary": "默认的跨域协议，适合把事实、综合、判断和复审保持分层。",
+        "focus": [
+            "保持 raw evidence、wiki synthesis 和 decision/judgment 分层。",
+            "优先记录证据、冲突和下一次复审窗口。",
+        ],
+        "taxonomy": [
+            "concept 以稳定主题、对象或机制命名。",
+            "decision 用来记录明确动作，judgment 用来记录可复用判断。",
+            "跨域内容默认先落在通用概念，再按需要引用到具体协议。",
+        ],
+        "decision": [
+            "记录决定了什么、为什么、依据是什么、何时复审。",
+            "明确失效条件和后续观察信号。",
+        ],
+        "judgment": [
+            "记录判断、证据、反证、置信度和观察窗口。",
+            "不把猜测伪装成事实；证据薄弱时直接写出来。",
+        ],
+        "review": [
+            "优先清理 overdue / escalation 项，再审新产生的 decision/judgment。",
+            "高风险结论默认保持 tentative / proposed，直到证据稳定。",
+        ],
+        "nightly": [
+            "关注 pending review、aging、repair backlog、concept rewrite。",
+            "把 recurring outputs 保守晋升到 decision/judgment。",
+        ],
+        "query": [
+            "优先引用 `wiki/sources/*.md` 和稳定 concept page。",
+            "把不确定性和冲突显式写入产物，不做静默补洞。",
+        ],
+    },
+    "investing": {
+        "title": "投资协议",
+        "summary": "面向 thesis、risk、catalyst、invalidation 和 position decision 的协议。",
+        "focus": [
+            "围绕 company / thesis / catalyst / risk / invalidation 组织知识。",
+            "把判断形成、证据变化和 thesis 失效条件记录清楚。",
+        ],
+        "taxonomy": [
+            "concept 优先围绕 company、industry、moat、valuation、risk factor。",
+            "decision 记录观察、建仓、加仓、减仓、否决等动作。",
+            "judgment 记录 thesis、预期、概率、风险边界。",
+        ],
+        "decision": [
+            "必须写清动作、仓位/范围、触发条件和失效条件。",
+            "把关键证据、反证和下一次财报/事件复审时间写清楚。",
+        ],
+        "judgment": [
+            "写清 thesis、drivers、catalysts、risks、invalidation、confidence。",
+            "对定性结论保持时间标签，避免把旧判断当成常量。",
+        ],
+        "review": [
+            "重点审 earnings、guidance、监管、估值和 thesis drift。",
+            "高风险判断默认更短 review window。",
+        ],
+        "nightly": [
+            "优先抬升 thesis drift、risk escalation、待复审 company judgment。",
+            "对重复出现的投研输出保守晋升，不直接代替投资决策。",
+        ],
+        "query": [
+            "默认要求结论回指 source page，并显式标记 bull / bear evidence。",
+            "鼓励把 thesis 与 invalidation 并列呈现。",
+        ],
+    },
+    "research": {
+        "title": "研发协议",
+        "summary": "面向 paper、repo、benchmark、experiment 和 architecture decision 的协议。",
+        "focus": [
+            "围绕 paper / repo / benchmark / experiment / architecture decision 组织知识。",
+            "让实验结果、失败记录和设计取舍持续沉淀。",
+        ],
+        "taxonomy": [
+            "concept 优先围绕机制、系统瓶颈、算法、benchmark、failure mode。",
+            "decision 记录 adopt / reject / defer / rollback 这类工程动作。",
+            "judgment 记录 tradeoff、hypothesis、risk、expected gain。",
+        ],
+        "decision": [
+            "写清楚要不要采用、影响面、依赖、回滚路径和验证方式。",
+            "把成功指标和回归风险显式写出来。",
+        ],
+        "judgment": [
+            "写清对方法、架构或实验结果的判断及其置信度。",
+            "显式列出 supporting evidence、counter evidence、open questions。",
+        ],
+        "review": [
+            "重点审 regression、benchmark drift、过期实验结论和架构取舍。",
+            "待确认实验结论保留更高 revisit 频率。",
+        ],
+        "nightly": [
+            "优先抬升 weak concepts、failed experiments、regression signals。",
+            "把 recurring outputs 晋升成 architecture decision 或 engineering judgment。",
+        ],
+        "query": [
+            "优先对比 benchmark、experiment 和 architecture tradeoff。",
+            "答案里要同时指出 evidence、regression risk 和 next experiment。",
+        ],
+    },
 }
 
 TEXT_EXTENSIONS = {
@@ -378,6 +504,7 @@ def ensure_layout(root: Path) -> None:
     for relative in LAYOUT_DIRS:
         (root / relative).mkdir(parents=True, exist_ok=True)
     ensure_runtime_schema(root)
+    ensure_protocol_scaffold(root)
     ensure_runtime_dashboards(root)
 
 
@@ -395,6 +522,217 @@ def ensure_runtime_dashboards(root: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         if not path.exists():
             path.write_text(content, encoding="utf-8")
+
+
+def protocol_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "protocol.json"
+
+
+def default_protocol_state() -> dict[str, Any]:
+    return {"version": 1, "active_protocol": DEFAULT_PROTOCOL}
+
+
+def protocol_title(slug: str) -> str:
+    metadata = PROTOCOL_LIBRARY.get(slug, {})
+    return str(metadata.get("title") or slug.replace("-", " ").title())
+
+
+def protocol_summary(slug: str) -> str:
+    metadata = PROTOCOL_LIBRARY.get(slug, {})
+    return str(metadata.get("summary") or "")
+
+
+def render_protocol_library_index() -> str:
+    lines = [
+        "# 协议规则索引",
+        "",
+        "这里存放统一炼丹炉的多协议规则层。",
+        "",
+        "- 炉子只有一个。",
+        "- 领域协议可以有很多套。",
+        "- 当前 starter library 先提供 `general / investing / research` 三套协议。",
+        "",
+        "## 可用协议",
+    ]
+    for slug in sorted(PROTOCOL_LIBRARY):
+        lines.append(f"- [{protocol_title(slug)}](./{slug}/index.md)：{protocol_summary(slug)}")
+    lines.extend(
+        [
+            "",
+            "## 约束",
+            "",
+            "- 协议层是统一 runtime 的覆盖层，不是新的 runtime 分叉。",
+            "- 领域差异优先落到 `schema/protocols/`，而不是复制一套 `aiwiki`。",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def render_protocol_overview(slug: str) -> str:
+    metadata = PROTOCOL_LIBRARY[slug]
+    lines = [
+        f"# {metadata['title']}",
+        "",
+        metadata["summary"],
+        "",
+        "## 规则文件",
+    ]
+    for section in PROTOCOL_SECTION_FILES:
+        lines.append(f"- [{PROTOCOL_SECTION_TITLES[section]}](./{section}.md)")
+    lines.extend(["", "## 关注点"])
+    for line in metadata.get("focus", []):
+        lines.append(f"- {line}")
+    return "\n".join(lines) + "\n"
+
+
+def render_protocol_section(slug: str, section: str) -> str:
+    metadata = PROTOCOL_LIBRARY[slug]
+    title = protocol_title(slug)
+    section_title = PROTOCOL_SECTION_TITLES[section]
+    body = metadata.get(section, [])
+    lines = [
+        f"# {title} · {section_title}",
+        "",
+        f"这页属于 `{slug}` 协议。",
+        "",
+    ]
+    for line in body:
+        lines.append(f"- {line}")
+    return "\n".join(lines) + "\n"
+
+
+def ensure_protocol_scaffold(root: Path) -> None:
+    base = root / "schema" / "protocols"
+    base.mkdir(parents=True, exist_ok=True)
+    index_path = base / "index.md"
+    if not index_path.exists():
+        index_path.write_text(render_protocol_library_index(), encoding="utf-8")
+    for slug in sorted(PROTOCOL_LIBRARY):
+        overview = base / slug / "index.md"
+        overview.parent.mkdir(parents=True, exist_ok=True)
+        if not overview.exists():
+            overview.write_text(render_protocol_overview(slug), encoding="utf-8")
+        for section in PROTOCOL_SECTION_FILES:
+            path = base / slug / f"{section}.md"
+            if not path.exists():
+                path.write_text(render_protocol_section(slug, section), encoding="utf-8")
+    state = protocol_state_path(root)
+    if not state.exists():
+        state.write_text(json.dumps(default_protocol_state(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def available_protocols(root: Path) -> list[str]:
+    ensure_protocol_scaffold(root)
+    protocols: list[str] = []
+    for path in sorted((root / "schema" / "protocols").glob("*/index.md")):
+        protocols.append(path.parent.name)
+    return protocols
+
+
+def protocol_descriptor(root: Path, slug: str) -> dict[str, Any]:
+    base = root / "schema" / "protocols" / slug
+    return {
+        "slug": slug,
+        "title": protocol_title(slug),
+        "summary": protocol_summary(slug),
+        "paths": {
+            "index": relative_path(root, base / "index.md"),
+            **{section: relative_path(root, base / f"{section}.md") for section in PROTOCOL_SECTION_FILES},
+        },
+    }
+
+
+def load_protocol_state(root: Path) -> dict[str, Any]:
+    ensure_protocol_scaffold(root)
+    path = protocol_state_path(root)
+    state = load_json_document(path) if path.exists() else default_protocol_state()
+    available = available_protocols(root)
+    active = str(state.get("active_protocol") or DEFAULT_PROTOCOL)
+    if active not in available:
+        active = DEFAULT_PROTOCOL if DEFAULT_PROTOCOL in available else (available[0] if available else DEFAULT_PROTOCOL)
+    normalized = {"version": 1, "active_protocol": active}
+    if state != normalized:
+        path.write_text(json.dumps(normalized, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return {
+        **normalized,
+        "available_protocols": available,
+        "protocols": [protocol_descriptor(root, slug) for slug in available],
+        "state_path": relative_path(root, path),
+    }
+
+
+def resolve_protocol(root: Path, protocol: str | None = None) -> str:
+    state = load_protocol_state(root)
+    if protocol is None:
+        return state["active_protocol"]
+    candidate = protocol.strip().lower()
+    if candidate not in state["available_protocols"]:
+        available = ", ".join(state["available_protocols"])
+        raise ValueError(f"Unknown protocol: {protocol}. Available protocols: {available}")
+    return candidate
+
+
+def set_active_protocol(root: Path, protocol: str) -> dict[str, Any]:
+    active = resolve_protocol(root, protocol)
+    path = protocol_state_path(root)
+    path.write_text(json.dumps({"version": 1, "active_protocol": active}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    state = load_protocol_state(root)
+    write_if_changed(root / "wiki" / "indexes" / "protocols.md", render_protocols_dashboard(root, utc_now()))
+    append_wiki_log(
+        root,
+        "protocol",
+        "switch active protocol",
+        [
+            f"active_protocol: `{active}`",
+            f"state_path: `{state['state_path']}`",
+        ],
+    )
+    return state
+
+
+def protocol_paths(root: Path, protocol: str | None = None) -> list[str]:
+    slug = resolve_protocol(root, protocol)
+    base = root / "schema" / "protocols" / slug
+    paths = [relative_path(root, base / "index.md")]
+    paths.extend(relative_path(root, base / f"{section}.md") for section in PROTOCOL_SECTION_FILES)
+    return paths
+
+
+def render_protocols_dashboard(root: Path, compiled_at: str) -> str:
+    state = load_protocol_state(root)
+    active = state["active_protocol"]
+    lines = [
+        "# 协议总览",
+        "",
+        f"- 最近编译时间：`{compiled_at}`",
+        f"- 当前 active protocol：`{active}` ({protocol_title(active)})",
+        f"- 协议总数：`{len(state['available_protocols'])}`",
+        f"- 状态文件：`{state['state_path']}`",
+        "- 切换命令：`PYTHONPATH=src python3 -m aiwiki.cli --root . protocol-set <slug>`",
+        "",
+        "## 当前协议入口",
+    ]
+    for relative in protocol_paths(root, active):
+        label = Path(relative).stem
+        if label == "index":
+            label = "overview"
+        lines.append(f"- [{relative}](../../{relative})")
+    lines.extend(["", "## 可用协议"])
+    for descriptor in state["protocols"]:
+        lines.append(
+            f"- [{descriptor['title']}](../../{descriptor['paths']['index']})"
+            f" | slug `{descriptor['slug']}` | {descriptor['summary']}"
+        )
+    lines.extend(
+        [
+            "",
+            "## 运行原则",
+            "- 统一 runtime，不复制多个炉子。",
+            "- 领域差异优先落在 `schema/protocols/`。",
+            "- 查询、回流和审阅默认沿当前 active protocol 执行，但 page frontmatter 会保留显式 protocol 字段。",
+        ]
+    )
+    return "\n".join(lines) + "\n"
 
 
 def utc_now() -> str:
@@ -1189,6 +1527,7 @@ def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[d
                 "path": relative_path(root, path),
                 "kind": str(frontmatter.get("kind") or ""),
                 "status": status,
+                "protocol": str(frontmatter.get("protocol") or ""),
                 "confidence": str(frontmatter.get("confidence") or ""),
                 "reviewed_at": reviewed_at,
                 "updated_at": updated_at,
@@ -1442,6 +1781,7 @@ def collect_output_artifacts(root: Path) -> list[dict[str, str]]:
                     "path": relative_path(root, path),
                     "query": query,
                     "query_signature": normalize_query_signature(query),
+                    "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
                     "format": output_format,
                     "created_at": str(frontmatter.get("created_at") or ""),
                     "title": first_markdown_heading(content) or path.stem,
@@ -1450,14 +1790,16 @@ def collect_output_artifacts(root: Path) -> list[dict[str, str]]:
     return sorted(artifacts, key=lambda item: (item["query_signature"], item["created_at"], item["path"]))
 
 
-def find_promoted_curated_page(root: Path, kind: str, query_signature: str) -> Path | None:
+def find_promoted_curated_page(root: Path, kind: str, query_signature: str, protocol: str) -> Path | None:
     folder = "decisions" if kind == "decision" else "judgments"
     for path in sorted((root / "wiki" / folder).glob("*.md")):
         frontmatter = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
         if frontmatter.get("kind") != kind:
             continue
         if str(frontmatter.get("promotion_query_signature") or "") == query_signature:
-            return path
+            page_protocol = str(frontmatter.get("protocol") or "")
+            if page_protocol == protocol or (not page_protocol and protocol == DEFAULT_PROTOCOL):
+                return path
     return None
 
 
@@ -1487,6 +1829,7 @@ def annotate_recurring_promotion(
     page_path: Path,
     *,
     kind: str,
+    protocol: str,
     query: str,
     query_signature: str,
     artifacts: list[dict[str, str]],
@@ -1506,6 +1849,7 @@ def annotate_recurring_promotion(
     formats = sorted({artifact["format"] for artifact in artifacts})
     title = promotion_page_title(kind, query)
     frontmatter["title"] = title
+    frontmatter["protocol"] = protocol
     frontmatter["source_files"] = source_files
     frontmatter["promotion_origin"] = "nightly-recurring-output"
     frontmatter["promotion_query"] = query
@@ -1517,6 +1861,7 @@ def annotate_recurring_promotion(
     body = replace_first_markdown_heading(strip_frontmatter(content).strip(), title).strip()
     auto_lines = [
         "- Rule: `nightly-recurring-output`",
+        f"- Protocol: `{protocol}`",
         f"- Query: `{query}`",
         f"- Signature: `{query_signature}`",
         f"- Matching outputs: `{len(artifacts)}`",
@@ -1531,28 +1876,29 @@ def annotate_recurring_promotion(
 
 def promote_recurring_outputs(root: Path) -> dict[str, Any]:
     ensure_layout(root)
-    groups: dict[str, list[dict[str, str]]] = {}
+    groups: dict[tuple[str, str], list[dict[str, str]]] = {}
     for artifact in collect_output_artifacts(root):
-        groups.setdefault(artifact["query_signature"], []).append(artifact)
+        groups.setdefault((artifact["protocol"], artifact["query_signature"]), []).append(artifact)
 
     generated_at = utc_now()
     created = 0
     updated = 0
     promotions: list[dict[str, str]] = []
-    for query_signature, artifacts in sorted(groups.items()):
+    for (protocol, query_signature), artifacts in sorted(groups.items()):
         if len(artifacts) < AUTO_PROMOTION_MIN_OCCURRENCES:
             continue
         query = artifacts[0]["query"]
         kind = classify_recurring_output_kind(query)
         if kind not in {"decision", "judgment"}:
             continue
-        existing = find_promoted_curated_page(root, kind, query_signature)
+        existing = find_promoted_curated_page(root, kind, query_signature, protocol)
         if existing is None:
             result = file_back(
                 root,
                 artifacts[-1]["path"],
                 title=f"{kind}-{query_signature}",
                 kind=kind,
+                protocol=protocol,
             )
             page_path = root / result["path"]
             action = "created"
@@ -1567,6 +1913,7 @@ def promote_recurring_outputs(root: Path) -> dict[str, Any]:
             root,
             page_path,
             kind=kind,
+            protocol=protocol,
             query=query,
             query_signature=query_signature,
             artifacts=artifacts,
@@ -1577,6 +1924,7 @@ def promote_recurring_outputs(root: Path) -> dict[str, Any]:
                 "kind": kind,
                 "action": action,
                 "path": relative_path(root, page_path),
+                "protocol": protocol,
                 "query": query,
                 "query_signature": query_signature,
                 "occurrences": str(len(artifacts)),
@@ -1589,6 +1937,7 @@ def promote_recurring_outputs(root: Path) -> dict[str, Any]:
             query,
             [
                 f"kind: `{kind}`",
+                f"protocol: `{protocol}`",
                 f"action: `{action}`",
                 f"occurrences: `{len(artifacts)}`",
                 f"page: `{relative_path(root, page_path)}`",
@@ -1606,6 +1955,9 @@ def promote_recurring_outputs(root: Path) -> dict[str, Any]:
 
 def render_curated_page_summary(page: dict[str, str]) -> str:
     suffix_parts = [f"状态 `{display_curated_status(page.get('status', '') or 'unknown')}`"]
+    protocol = page.get("protocol", "")
+    if protocol:
+        suffix_parts.append(f"协议 `{protocol}`")
     confidence = page.get("confidence", "")
     if confidence:
         suffix_parts.append(f"置信度 `{confidence}`")
@@ -1905,6 +2257,7 @@ def render_compile_status(
     concepts: list[dict[str, Any]],
     decisions: list[dict[str, str]],
     judgments: list[dict[str, str]],
+    protocol_state: dict[str, Any],
     compiled_at: str,
 ) -> str:
     queue = review_queue(decisions, judgments)
@@ -1917,11 +2270,14 @@ def render_compile_status(
         f"- 概念页：`{len(concepts)}`",
         f"- 决策页：`{len(decisions)}`",
         f"- 判断页：`{len(judgments)}`",
+        f"- 当前 active protocol：`{protocol_state['active_protocol']}` ({protocol_title(protocol_state['active_protocol'])})",
         f"- 待审项目：`{len(queue['pending_decisions']) + len(queue['pending_judgments'])}`",
         f"- 已到期复审：`{len(aging['overdue'])}`",
         f"- 需要升级：`{len(aging['escalated'])}`",
         "- 总索引位于 `index.md`。",
         "- 运行时规则位于 `schema/`。",
+        "- 协议规则位于 `schema/protocols/`。",
+        "- 协议总览位于 `protocols.md`。",
         "- 操作日志位于 `log.md`。",
         "- 决策索引位于 `decisions.md`。",
         "- 判断索引位于 `judgments.md`。",
@@ -1947,6 +2303,7 @@ def render_master_index(
     concepts: list[dict[str, Any]],
     decisions: list[dict[str, str]],
     judgments: list[dict[str, str]],
+    protocol_state: dict[str, Any],
     compiled_at: str,
 ) -> str:
     queue = review_queue(decisions, judgments)
@@ -1959,6 +2316,7 @@ def render_master_index(
         f"- 概念页：`{len(concepts)}`",
         f"- 决策页：`{len(decisions)}`",
         f"- 判断页：`{len(judgments)}`",
+        f"- 当前 active protocol：`{protocol_state['active_protocol']}` ({protocol_title(protocol_state['active_protocol'])})",
         f"- 待审项目：`{len(queue['pending_decisions']) + len(queue['pending_judgments'])}`",
         f"- 已到期复审：`{len(aging['overdue'])}`",
         f"- 需要升级处理：`{len(aging['escalated'])}`",
@@ -1969,6 +2327,7 @@ def render_master_index(
         "- [概念质量](./concept-quality.md)",
         "- [决策索引](./decisions.md)",
         "- [判断索引](./judgments.md)",
+        "- [协议总览](./protocols.md)",
         "- [审阅队列](./review-queue.md)",
         "- [审阅中心](./review-center.md)",
         "- [Aging 报告](./aging-report.md)",
@@ -1983,6 +2342,7 @@ def render_master_index(
         "- [修复待办](./repair-backlog.md)",
         "- [操作日志](./log.md)",
         "- [运行时规则](../../schema/index.md)",
+        "- [协议规则](../../schema/protocols/index.md)",
         "",
         "## 最近来源",
     ]
@@ -4114,6 +4474,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     manifest = sync_manifest_with_raw(root)
     entries: list[dict[str, Any]] = manifest["entries"]
     compiled_at = utc_now()
+    protocol_state = load_protocol_state(root)
     previous_memory = load_json_document(machine_memory_state_path(root))
     changed_pages = 0
     previews: dict[str, str] = {}
@@ -4171,13 +4532,19 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     changed_pages += int(
         write_if_changed(
             root / "wiki" / "indexes" / "compile-status.md",
-            render_compile_status(entries, concepts, decision_pages, judgment_pages, compiled_at),
+            render_compile_status(entries, concepts, decision_pages, judgment_pages, protocol_state, compiled_at),
         )
     )
     changed_pages += int(
         write_if_changed(
             root / "wiki" / "indexes" / "index.md",
-            render_master_index(entries, concepts, decision_pages, judgment_pages, compiled_at),
+            render_master_index(entries, concepts, decision_pages, judgment_pages, protocol_state, compiled_at),
+        )
+    )
+    changed_pages += int(
+        write_if_changed(
+            root / "wiki" / "indexes" / "protocols.md",
+            render_protocols_dashboard(root, compiled_at),
         )
     )
     ensure_wiki_log(root)
@@ -4236,6 +4603,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             f"compiled_at: `{compiled_at}`",
             f"source_pages: `{len(entries)}`",
             f"concept_pages: `{len(concepts)}`",
+            f"active_protocol: `{protocol_state['active_protocol']}`",
             f"machine_memory_terms: `{len(memory['term_index'])}`",
             f"graph_components: `{memory['health']['component_count']}`",
             f"machine_memory_changed: `{transition['changed']}`",
@@ -4342,15 +4710,18 @@ def render_report(
     entries: list[dict[str, Any]],
     concepts: list[dict[str, Any]],
     machine_query: dict[str, Any],
+    protocol_state: dict[str, Any],
     created_at: str,
     artifact_id: str,
 ) -> str:
+    active_protocol = protocol_state["active_protocol"]
     frontmatter = render_frontmatter(
         {
             "id": artifact_id,
             "kind": "output",
             "format": "report",
             "query": question,
+            "protocol": active_protocol,
             "generated_by": "aiwiki-ask",
             "created_at": created_at,
         }
@@ -4364,6 +4735,7 @@ def render_report(
         "- 所有重要结论都要落回 `wiki/sources/*.md`。",
         "- 有不确定性就直接写出来，不要补洞。",
         "- 优先使用文件路径引用，而不是模糊转述。",
+        f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
         "",
         "## 推荐索引页",
         "- [知识库总索引](../../wiki/indexes/index.md)",
@@ -4371,6 +4743,7 @@ def render_report(
         "- [概念索引](../../wiki/indexes/concepts.md)",
         "- [决策索引](../../wiki/indexes/decisions.md)",
         "- [判断索引](../../wiki/indexes/judgments.md)",
+        "- [协议总览](../../wiki/indexes/protocols.md)",
         "- [审阅队列](../../wiki/indexes/review-queue.md)",
         "- [审阅中心](../../wiki/indexes/review-center.md)",
         "- [Aging 报告](../../wiki/indexes/aging-report.md)",
@@ -4384,6 +4757,7 @@ def render_report(
         "- [漂移报告](../../wiki/indexes/drift-report.md)",
         "- [修复待办](../../wiki/indexes/repair-backlog.md)",
         "- [运行时规则](../../schema/index.md)",
+        f"- [当前协议规则](../../schema/protocols/{active_protocol}/index.md)",
         "",
         "## 机器记忆查询计划",
     ]
@@ -4449,12 +4823,20 @@ def render_slides(
     entries: list[dict[str, Any]],
     concepts: list[dict[str, Any]],
     machine_query: dict[str, Any],
+    protocol_state: dict[str, Any],
     created_at: str,
     artifact_id: str,
 ) -> str:
+    active_protocol = protocol_state["active_protocol"]
     lines = [
         "---",
         "marp: true",
+        'kind: "output"',
+        'format: "slides"',
+        f"query: {render_scalar(question)}",
+        f'protocol: "{active_protocol}"',
+        'generated_by: "aiwiki-ask"',
+        f'created_at: "{created_at}"',
         f"title: {render_scalar(question)}",
         f"description: {render_scalar(f'Generated at {created_at}')}",
         "---",
@@ -4464,6 +4846,7 @@ def render_slides(
         "## 使用说明",
         "- 把排好序的来源页整理成 5 到 7 页幻灯片。",
         "- 每页正文都保留引用。",
+        f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
         "",
         "## 相关索引",
         "- `wiki/indexes/index.md`",
@@ -4471,6 +4854,7 @@ def render_slides(
         "- `wiki/indexes/concepts.md`",
         "- `wiki/indexes/decisions.md`",
         "- `wiki/indexes/judgments.md`",
+        "- `wiki/indexes/protocols.md`",
         "- `wiki/indexes/review-queue.md`",
         "- `wiki/indexes/review-center.md`",
         "- `wiki/indexes/aging-report.md`",
@@ -4484,6 +4868,7 @@ def render_slides(
         "- `wiki/indexes/drift-report.md`",
         "- `wiki/indexes/repair-backlog.md`",
         "- `schema/index.md`",
+        f"- `schema/protocols/{active_protocol}/index.md`",
         "",
         "## 机器记忆查询计划",
         f"- 命中词：`{', '.join(machine_query.get('matched_terms', [])) or 'none'}`",
@@ -4532,15 +4917,18 @@ def render_figure_brief(
     entries: list[dict[str, Any]],
     concepts: list[dict[str, Any]],
     machine_query: dict[str, Any],
+    protocol_state: dict[str, Any],
     created_at: str,
     artifact_id: str,
 ) -> str:
+    active_protocol = protocol_state["active_protocol"]
     frontmatter = render_frontmatter(
         {
             "id": artifact_id,
             "kind": "output",
             "format": "figure",
             "query": question,
+            "protocol": active_protocol,
             "generated_by": "aiwiki-ask",
             "created_at": created_at,
         }
@@ -4552,6 +4940,7 @@ def render_figure_brief(
         "",
         "## 目标",
         "- 描述这张图应该表达什么。",
+        f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
         "",
         "## 推荐索引页",
         "- [知识库总索引](../../wiki/indexes/index.md)",
@@ -4559,6 +4948,7 @@ def render_figure_brief(
         "- [概念索引](../../wiki/indexes/concepts.md)",
         "- [决策索引](../../wiki/indexes/decisions.md)",
         "- [判断索引](../../wiki/indexes/judgments.md)",
+        "- [协议总览](../../wiki/indexes/protocols.md)",
         "- [审阅队列](../../wiki/indexes/review-queue.md)",
         "- [审阅中心](../../wiki/indexes/review-center.md)",
         "- [Aging 报告](../../wiki/indexes/aging-report.md)",
@@ -4572,6 +4962,7 @@ def render_figure_brief(
         "- [漂移报告](../../wiki/indexes/drift-report.md)",
         "- [修复待办](../../wiki/indexes/repair-backlog.md)",
         "- [运行时规则](../../schema/index.md)",
+        f"- [当前协议规则](../../schema/protocols/{active_protocol}/index.md)",
         "",
         "## 机器记忆查询计划",
         f"- 命中词：`{', '.join(machine_query.get('matched_terms', [])) or 'none'}`",
@@ -4615,7 +5006,7 @@ def render_figure_brief(
     return "\n".join(lines) + "\n"
 
 
-def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any]:
+def ask_question(root: Path, question: str, output_format: str, protocol: str | None = None) -> dict[str, Any]:
     ensure_layout(root)
     manifest = sync_manifest_with_raw(root)
     entries: list[dict[str, Any]] = manifest["entries"]
@@ -4623,6 +5014,13 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
         compile_wiki(root)
         manifest = load_manifest(root)
         entries = manifest["entries"]
+    protocol_state = load_protocol_state(root)
+    active_protocol = resolve_protocol(root, protocol)
+    if active_protocol != protocol_state["active_protocol"]:
+        protocol_state = {
+            **protocol_state,
+            "active_protocol": active_protocol,
+        }
     machine_query = build_machine_memory_query(load_machine_memory(root), question)
     ranked_concepts = rank_concepts(root, question, boost_concept_slugs=set(machine_query["ranked_concept_slugs"]))
     boosted_ids: set[str] = set(machine_query["ranked_source_ids"])
@@ -4639,17 +5037,17 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
         directory = root / "output" / "reports"
         artifact_id = next_available_stem(directory, artifact_seed)
         destination = directory / f"{artifact_id}.md"
-        content = render_report(question, ranked, ranked_concepts, machine_query, created_at, artifact_id)
+        content = render_report(question, ranked, ranked_concepts, machine_query, protocol_state, created_at, artifact_id)
     elif output_format == "slides":
         directory = root / "output" / "slides"
         artifact_id = next_available_stem(directory, artifact_seed)
         destination = directory / f"{artifact_id}.md"
-        content = render_slides(question, ranked, ranked_concepts, machine_query, created_at, artifact_id)
+        content = render_slides(question, ranked, ranked_concepts, machine_query, protocol_state, created_at, artifact_id)
     elif output_format == "figure":
         directory = root / "output" / "figures"
         artifact_id = next_available_stem(directory, artifact_seed)
         destination = directory / f"{artifact_id}.md"
-        content = render_figure_brief(question, ranked, ranked_concepts, machine_query, created_at, artifact_id)
+        content = render_figure_brief(question, ranked, ranked_concepts, machine_query, protocol_state, created_at, artifact_id)
     else:
         raise ValueError(f"Unsupported format: {output_format}")
 
@@ -4663,6 +5061,7 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
             f"artifact: `{relative_path(root, destination)}`",
             f"ranked_sources: `{len(ranked)}`",
             f"ranked_concepts: `{len(ranked_concepts)}`",
+            f"protocol: `{active_protocol}`",
             f"machine_terms: `{len(machine_query['matched_terms'])}`",
             f"machine_hits: `{len(machine_query['ranked_source_ids'])}/{len(machine_query['ranked_concept_slugs'])}`",
             f"bridge_concepts: `{len(machine_query['bridge_concept_slugs'])}`",
@@ -4672,6 +5071,7 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
     return {
         "path": relative_path(root, destination),
         "format": output_format,
+        "protocol": active_protocol,
         "ranked_sources": [entry["id"] for entry in ranked],
         "ranked_concepts": [concept["slug"] for concept in ranked_concepts],
         "machine_memory_query": machine_query,
@@ -4681,6 +5081,7 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
             "wiki/indexes/concepts.md",
             "wiki/indexes/decisions.md",
             "wiki/indexes/judgments.md",
+            "wiki/indexes/protocols.md",
             "wiki/indexes/review-queue.md",
             "wiki/indexes/review-center.md",
             "wiki/indexes/aging-report.md",
@@ -4695,11 +5096,19 @@ def ask_question(root: Path, question: str, output_format: str) -> dict[str, Any
             "wiki/indexes/repair-backlog.md",
             "wiki/indexes/log.md",
             "schema/index.md",
+            "schema/protocols/index.md",
         ],
+        "protocol_pages": protocol_paths(root, active_protocol),
     }
 
 
-def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "derived") -> dict[str, Any]:
+def file_back(
+    root: Path,
+    artifact: str,
+    title: str | None = None,
+    kind: str = "derived",
+    protocol: str | None = None,
+) -> dict[str, Any]:
     ensure_layout(root)
     candidate = Path(artifact)
     artifact_path = candidate if candidate.is_absolute() else (root / candidate)
@@ -4716,6 +5125,10 @@ def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "
     artifact_ref = (
         relative_path(root, artifact_path) if artifact_path.is_relative_to(root) else str(artifact_path)
     )
+    original = artifact_path.read_text(encoding="utf-8", errors="replace")
+    original_frontmatter = parse_frontmatter(original)
+    source_protocol = str(original_frontmatter.get("protocol") or "").strip()
+    resolved_protocol = resolve_protocol(root, protocol or source_protocol or None)
     entry_seed = f"{kind}-{stamp}-{slugify(title or artifact_path.stem)[:48]}"
     directory = {
         "derived": root / "wiki" / "derived",
@@ -4724,7 +5137,6 @@ def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "
     }[kind]
     entry_id = next_available_stem(directory, entry_seed)
     destination = directory / f"{entry_id}.md"
-    original = artifact_path.read_text(encoding="utf-8", errors="replace")
     revisit_after = ""
     escalate_after = ""
     if kind in {"decision", "judgment"}:
@@ -4735,6 +5147,7 @@ def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "
             "kind": kind,
             "status": default_curated_status(kind),
             "title": title or artifact_path.stem,
+            "protocol": resolved_protocol,
             "source_files": [artifact_ref],
             "citations": [],
             "generated_by": "aiwiki-file-back",
@@ -4753,6 +5166,7 @@ def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "
             "## Origin",
             f"- Filed from: `{artifact_ref}`",
             f"- Filed at: `{filed_at}`",
+            f"- Protocol: `{resolved_protocol}`",
             "",
             "## Filed Content",
             stripped,
@@ -4764,6 +5178,7 @@ def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "
             "## Origin",
             f"- Filed from: `{artifact_ref}`",
             f"- Filed at: `{filed_at}`",
+            f"- Protocol: `{resolved_protocol}`",
             "",
             "## Decision",
             "- State the concrete decision here.",
@@ -4796,6 +5211,7 @@ def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "
             "## Origin",
             f"- Filed from: `{artifact_ref}`",
             f"- Filed at: `{filed_at}`",
+            f"- Protocol: `{resolved_protocol}`",
             "",
             "## Judgment",
             "- State the judgment call here.",
@@ -4829,11 +5245,12 @@ def file_back(root: Path, artifact: str, title: str | None = None, kind: str = "
         title or artifact_path.stem,
         [
             f"kind: `{kind}`",
+            f"protocol: `{resolved_protocol}`",
             f"from: `{artifact_ref}`",
             f"destination: `{relative_path(root, destination)}`",
         ],
     )
-    return {"path": relative_path(root, destination)}
+    return {"path": relative_path(root, destination), "protocol": resolved_protocol}
 
 
 def review_machine_memory_action(
@@ -5409,6 +5826,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/concepts.md": "Missing concepts index page.",
         "wiki/indexes/decisions.md": "Missing decisions index page.",
         "wiki/indexes/judgments.md": "Missing judgments index page.",
+        "wiki/indexes/protocols.md": "Missing protocol dashboard page.",
         "wiki/indexes/review-queue.md": "Missing review queue page.",
         "wiki/indexes/review-center.md": "Missing review center page.",
         "wiki/indexes/aging-report.md": "Missing aging report page.",
@@ -5435,11 +5853,18 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "schema/conflicts.md": "Missing runtime conflict rules.",
         "schema/review.md": "Missing runtime review rules.",
         "schema/writeback.md": "Missing runtime writeback rules.",
+        "schema/protocols/index.md": "Missing protocol schema index.",
     }
     for relative, message in required_schema.items():
         page = root / relative
         if not page.exists():
             findings.append(Finding("error", relative, message))
+
+    protocol_state = load_protocol_state(root)
+    for relative in protocol_paths(root, protocol_state["active_protocol"]):
+        page = root / relative
+        if not page.exists():
+            findings.append(Finding("error", relative, f"Missing active protocol rule file: `{relative}`."))
 
     memory_state = machine_memory_state_path(root)
     graph_html = machine_memory_graph_html_path(root)
@@ -5535,6 +5960,10 @@ def lint_wiki(root: Path) -> dict[str, Any]:
             if "wiki/sources/" not in content and "raw/" not in content:
                 findings.append(
                     Finding("warn", relative_path(root, page), f"{expected_kind.capitalize()} page has no explicit source-page reference.")
+                )
+            if expected_kind in {"decision", "judgment"} and not frontmatter.get("protocol"):
+                findings.append(
+                    Finding("warn", relative_path(root, page), f"{expected_kind.capitalize()} page is missing explicit `protocol` metadata.")
                 )
             if expected_kind == "decision":
                 if frontmatter.get("status") not in DECISION_STATUSES:
@@ -5978,10 +6407,17 @@ def write_nightly_health(
     judgments = collect_curated_pages(root, "judgments", "judgment")
     queue = review_queue(decisions, judgments)
     aging = collect_aging_signals(decisions, judgments)
+    protocol_state = load_protocol_state(root)
     generated_at = utc_now()
     state = {
         "generated_at": generated_at,
         "llm_used": llm_used,
+        "protocol": {
+            "active_protocol": protocol_state["active_protocol"],
+            "state_path": protocol_state["state_path"],
+            "available_protocols": protocol_state["available_protocols"],
+            "dashboard_path": "wiki/indexes/protocols.md",
+        },
         "compile": compile_result,
         "lint": {
             "path": lint_result["path"],
