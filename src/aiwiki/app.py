@@ -294,6 +294,13 @@ DEFAULT_DASHBOARD_FILES = {
     + "\n",
 }
 
+CURATED_ASSET_SECTION_ORDER = (
+    "Counter Evidence",
+    "Invalidation",
+    "Next Signals",
+    "Review History",
+)
+
 DEFAULT_PROTOCOL = "general"
 PROTOCOL_SECTION_FILES = ("taxonomy", "decision", "judgment", "review", "nightly", "query")
 PROTOCOL_SECTION_TITLES = {
@@ -1883,6 +1890,109 @@ def compiled_source_sha(markdown: str) -> str:
     return ""
 
 
+def normalized_markdown_section_lines(markdown: str, heading: str) -> list[str]:
+    section = preserved_section(markdown, heading, "").strip()
+    if not section:
+        return []
+    return [line.strip() for line in section.splitlines() if line.strip()]
+
+
+def curated_asset_placeholder_lines(
+    heading: str,
+    *,
+    revisit_after: str = "",
+    escalate_after: str = "",
+) -> list[str]:
+    placeholders = {
+        "Counter Evidence": ["- Pending counter evidence."],
+        "Invalidation": ["- Pending invalidation conditions."],
+        "Next Signals": [
+            "- Pending next signals.",
+            f"- Default revisit window: `{revisit_after or 'none'}`",
+            f"- Default escalation window: `{escalate_after or 'none'}`",
+        ],
+        "Review History": ["- No review history yet."],
+    }
+    return placeholders.get(heading, [])
+
+
+def render_curated_asset_sections(
+    *,
+    revisit_after: str,
+    escalate_after: str,
+) -> list[str]:
+    sections: list[str] = []
+    for heading in CURATED_ASSET_SECTION_ORDER:
+        if heading == "Review History":
+            continue
+        sections.extend(
+            [
+                "",
+                f"## {heading}",
+                *curated_asset_placeholder_lines(
+                    heading,
+                    revisit_after=revisit_after,
+                    escalate_after=escalate_after,
+                ),
+            ]
+        )
+    return sections
+
+
+def render_review_history_section() -> list[str]:
+    return [
+        "",
+        "## Review History",
+        *curated_asset_placeholder_lines("Review History"),
+    ]
+
+
+def curated_asset_section_snapshot(
+    markdown: str,
+    heading: str,
+    *,
+    revisit_after: str = "",
+    escalate_after: str = "",
+) -> dict[str, Any]:
+    lines = normalized_markdown_section_lines(markdown, heading)
+    placeholders = curated_asset_placeholder_lines(
+        heading,
+        revisit_after=revisit_after,
+        escalate_after=escalate_after,
+    )
+    meaningful_lines = [line for line in lines if line not in placeholders]
+    review_history_entries = 0
+    if heading == "Review History":
+        review_history_entries = sum(1 for line in meaningful_lines if line.startswith("- `"))
+    return {
+        "present": bool(lines),
+        "meaningful": bool(meaningful_lines),
+        "placeholder_only": bool(lines) and not meaningful_lines,
+        "review_history_entries": review_history_entries,
+    }
+
+
+def append_review_history_entry(
+    markdown: str,
+    *,
+    reviewed_at: str,
+    status: str,
+    note: str | None = None,
+    confidence: str | None = None,
+) -> str:
+    existing_lines = normalized_markdown_section_lines(markdown, "Review History")
+    history_lines = [line for line in existing_lines if line != "- No review history yet."]
+    entry_parts = [f"- `{reviewed_at}` | status `{status}`"]
+    if confidence:
+        entry_parts.append(f"confidence `{confidence}`")
+    if note:
+        entry_parts.append(f"note {note}")
+    else:
+        entry_parts.append("note none")
+    history_lines.insert(0, " | ".join(entry_parts))
+    return upsert_markdown_section(markdown, "Review History", "\n".join(history_lines))
+
+
 def concept_label_to_slug(label: str) -> str:
     return slugify(label)[:64]
 
@@ -2001,6 +2111,28 @@ def concept_source_signature(record: dict[str, Any]) -> str:
     return sha256_bytes(json.dumps(payload, sort_keys=True).encode("utf-8"))
 
 
+def render_concept_conflict_lines(source_contexts: list[dict[str, str]]) -> list[str]:
+    signals = detect_concept_conflict_signals(source_contexts)
+    if not signals:
+        return ["- 当前没有显式冲突信号。"]
+    lines: list[str] = []
+    for signal in signals[:6]:
+        lines.append(f"- `{signal['label']}` | sources `{', '.join(signal.get('source_pages', [])) or 'none'}`")
+    return lines
+
+
+def render_concept_gap_lines(source_contexts: list[dict[str, str]]) -> list[str]:
+    gaps = detect_concept_gap_signals(source_contexts)
+    if not gaps:
+        return ["- 当前没有显式证据缺口。"]
+    lines: list[str] = []
+    for gap in gaps[:6]:
+        lines.append(
+            f"- `{gap.get('kind', 'unknown')}` | source `{gap.get('path', 'n/a')}` | markers `{', '.join(gap.get('markers', [])) or 'none'}`"
+        )
+    return lines
+
+
 def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page: str) -> str:
     existing_frontmatter = parse_frontmatter(existing_page)
     source_changed = existing_frontmatter.get("source_signature") not in ("", record["source_signature"])
@@ -2029,6 +2161,10 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
             key=lambda item: item["title"].lower(),
         )
     ] or ["- No related concepts yet."]
+    source_contexts = [
+        load_source_page_context(record["root"], f"wiki/sources/{entry_id}.md")
+        for entry_id in record["entry_ids"]
+    ]
     frontmatter = render_frontmatter(
         {
             "id": f"concept-{record['slug']}",
@@ -2056,6 +2192,12 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
         "",
         "## Related Concepts",
         *related_concept_lines,
+        "",
+        "## Conflict Signals",
+        *render_concept_conflict_lines(source_contexts),
+        "",
+        "## Evidence Gaps",
+        *render_concept_gap_lines(source_contexts),
         "",
         "## Maintenance Notes",
         "- Promote stable findings here instead of repeating the same synthesis across source pages.",
@@ -2242,6 +2384,10 @@ def curated_page_template(
                 "- Record the next earnings/event/catalyst and what to monitor before revisiting.",
                 f"- Default revisit window: `{revisit_after or 'none'}`",
                 f"- Default escalation window: `{escalate_after or 'none'}`",
+                *render_curated_asset_sections(
+                    revisit_after=revisit_after,
+                    escalate_after=escalate_after,
+                ),
                 "",
                 "## Review Status",
                 "- Current status: `proposed`",
@@ -2249,6 +2395,7 @@ def curated_page_template(
                 "",
                 "## Review Notes",
                 "- No review has been recorded yet.",
+                *render_review_history_section(),
                 "",
                 "## Supporting Artifact",
                 supporting_body,
@@ -2274,6 +2421,10 @@ def curated_page_template(
                 "- Record regression risks, rollback path, and explicit failure conditions.",
                 f"- Default revisit window: `{revisit_after or 'none'}`",
                 f"- Default escalation window: `{escalate_after or 'none'}`",
+                *render_curated_asset_sections(
+                    revisit_after=revisit_after,
+                    escalate_after=escalate_after,
+                ),
                 "",
                 "## Review Status",
                 "- Current status: `proposed`",
@@ -2281,6 +2432,7 @@ def curated_page_template(
                 "",
                 "## Review Notes",
                 "- No review has been recorded yet.",
+                *render_review_history_section(),
                 "",
                 "## Supporting Artifact",
                 supporting_body,
@@ -2304,6 +2456,10 @@ def curated_page_template(
                 "- Record launch blockers, segment risk, and rollback/containment conditions.",
                 f"- Default revisit window: `{revisit_after or 'none'}`",
                 f"- Default escalation window: `{escalate_after or 'none'}`",
+                *render_curated_asset_sections(
+                    revisit_after=revisit_after,
+                    escalate_after=escalate_after,
+                ),
                 "",
                 "## Review Status",
                 "- Current status: `proposed`",
@@ -2311,6 +2467,7 @@ def curated_page_template(
                 "",
                 "## Review Notes",
                 "- No review has been recorded yet.",
+                *render_review_history_section(),
                 "",
                 "## Supporting Artifact",
                 supporting_body,
@@ -2334,6 +2491,10 @@ def curated_page_template(
                 "- Record rollback/failover paths, residual risk, and follow-up owner.",
                 f"- Default revisit window: `{revisit_after or 'none'}`",
                 f"- Default escalation window: `{escalate_after or 'none'}`",
+                *render_curated_asset_sections(
+                    revisit_after=revisit_after,
+                    escalate_after=escalate_after,
+                ),
                 "",
                 "## Review Status",
                 "- Current status: `proposed`",
@@ -2341,6 +2502,7 @@ def curated_page_template(
                 "",
                 "## Review Notes",
                 "- No review has been recorded yet.",
+                *render_review_history_section(),
                 "",
                 "## Supporting Artifact",
                 supporting_body,
@@ -2362,6 +2524,10 @@ def curated_page_template(
             "- Record what could invalidate this decision and when to revisit it.",
             f"- Default revisit window: `{revisit_after or 'none'}`",
             f"- Default escalation window: `{escalate_after or 'none'}`",
+            *render_curated_asset_sections(
+                revisit_after=revisit_after,
+                escalate_after=escalate_after,
+            ),
             "",
             "## Review Status",
             "- Current status: `proposed`",
@@ -2369,6 +2535,7 @@ def curated_page_template(
             "",
             "## Review Notes",
             "- No review has been recorded yet.",
+            *render_review_history_section(),
             "",
             "## Supporting Artifact",
             supporting_body,
@@ -2391,6 +2558,10 @@ def curated_page_template(
             "- Keep confidence explicit and list the next datapoints to watch.",
             f"- Default revisit window: `{revisit_after or 'none'}`",
             f"- Default escalation window: `{escalate_after or 'none'}`",
+            *render_curated_asset_sections(
+                revisit_after=revisit_after,
+                escalate_after=escalate_after,
+            ),
             "",
             "## Review Status",
             "- Current status: `tentative`",
@@ -2398,6 +2569,7 @@ def curated_page_template(
             "",
             "## Review Notes",
             "- No review has been recorded yet.",
+            *render_review_history_section(),
             "",
             "## Supporting Artifact",
             supporting_body,
@@ -2423,6 +2595,10 @@ def curated_page_template(
             "- Keep confidence explicit and name the next benchmark or follow-up check.",
             f"- Default revisit window: `{revisit_after or 'none'}`",
             f"- Default escalation window: `{escalate_after or 'none'}`",
+            *render_curated_asset_sections(
+                revisit_after=revisit_after,
+                escalate_after=escalate_after,
+            ),
             "",
             "## Review Status",
             "- Current status: `tentative`",
@@ -2430,6 +2606,7 @@ def curated_page_template(
             "",
             "## Review Notes",
             "- No review has been recorded yet.",
+            *render_review_history_section(),
             "",
             "## Supporting Artifact",
             supporting_body,
@@ -2452,6 +2629,10 @@ def curated_page_template(
             "- Keep confidence explicit and name the next validation checkpoint, release, or metric review.",
             f"- Default revisit window: `{revisit_after or 'none'}`",
             f"- Default escalation window: `{escalate_after or 'none'}`",
+            *render_curated_asset_sections(
+                revisit_after=revisit_after,
+                escalate_after=escalate_after,
+            ),
             "",
             "## Review Status",
             "- Current status: `tentative`",
@@ -2459,6 +2640,7 @@ def curated_page_template(
             "",
             "## Review Notes",
             "- No review has been recorded yet.",
+            *render_review_history_section(),
             "",
             "## Supporting Artifact",
             supporting_body,
@@ -2481,6 +2663,10 @@ def curated_page_template(
             "- Keep confidence explicit and name the next incident review, runbook update, or mitigation check.",
             f"- Default revisit window: `{revisit_after or 'none'}`",
             f"- Default escalation window: `{escalate_after or 'none'}`",
+            *render_curated_asset_sections(
+                revisit_after=revisit_after,
+                escalate_after=escalate_after,
+            ),
             "",
             "## Review Status",
             "- Current status: `tentative`",
@@ -2488,6 +2674,7 @@ def curated_page_template(
             "",
             "## Review Notes",
             "- No review has been recorded yet.",
+            *render_review_history_section(),
             "",
             "## Supporting Artifact",
             supporting_body,
@@ -2509,6 +2696,10 @@ def curated_page_template(
         "- Keep confidence explicit and list what to watch next.",
         f"- Default revisit window: `{revisit_after or 'none'}`",
         f"- Default escalation window: `{escalate_after or 'none'}`",
+        *render_curated_asset_sections(
+            revisit_after=revisit_after,
+            escalate_after=escalate_after,
+        ),
         "",
         "## Review Status",
         "- Current status: `tentative`",
@@ -2516,6 +2707,7 @@ def curated_page_template(
         "",
         "## Review Notes",
         "- No review has been recorded yet.",
+        *render_review_history_section(),
         "",
         "## Supporting Artifact",
         supporting_body,
@@ -2594,6 +2786,16 @@ def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[d
                 base_timestamp,
                 protocol=protocol,
             )
+        asset_snapshots = {
+            heading: curated_asset_section_snapshot(
+                content,
+                heading,
+                revisit_after=revisit_after,
+                escalate_after=escalate_after,
+            )
+            for heading in CURATED_ASSET_SECTION_ORDER
+        }
+        asset_score = sum(1 for snapshot in asset_snapshots.values() if snapshot.get("meaningful"))
         pages.append(
             {
                 "title": str(frontmatter.get("title") or path.stem),
@@ -2608,6 +2810,12 @@ def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[d
                 "escalate_after": escalate_after,
                 "matches_expected_kind": str(frontmatter.get("kind") or "") == expected_kind,
                 "pending_review": "true" if page_needs_review(expected_kind, status) else "false",
+                "asset_score": str(asset_score),
+                "has_counter_evidence": "true" if asset_snapshots["Counter Evidence"]["meaningful"] else "false",
+                "has_invalidation": "true" if asset_snapshots["Invalidation"]["meaningful"] else "false",
+                "has_next_signals": "true" if asset_snapshots["Next Signals"]["meaningful"] else "false",
+                "has_review_history": "true" if asset_snapshots["Review History"]["meaningful"] else "false",
+                "review_history_entries": str(asset_snapshots["Review History"]["review_history_entries"]),
             }
         )
     enriched: list[dict[str, str]] = []
@@ -3589,6 +3797,11 @@ def render_curated_page_summary(page: dict[str, str]) -> str:
     revisit_after = page.get("revisit_after", "")
     if revisit_after:
         suffix_parts.append(f"复审截止 `{revisit_after}`")
+    if page.get("asset_score"):
+        suffix_parts.append(f"资产 `{page.get('asset_score')}/4`")
+    review_history_entries = int(page.get("review_history_entries", "0") or "0")
+    if review_history_entries:
+        suffix_parts.append(f"复审历史 `{review_history_entries}`")
     if page.get("overdue_review") == "true":
         suffix_parts.append("已到期待复审")
     if page.get("escalation_candidate") == "true":
@@ -3636,6 +3849,86 @@ def render_curated_index(
     else:
         for page in pages:
             lines.append(render_curated_page_summary(page))
+    return "\n".join(lines) + "\n"
+
+
+def render_judgment_assets(
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    compiled_at: str,
+    *,
+    active_protocol: str = DEFAULT_PROTOCOL,
+) -> str:
+    pages = sorted(
+        decisions + judgments,
+        key=lambda page: (
+            0 if page.get("escalation_candidate") == "true" else 1,
+            0 if page.get("overdue_review") == "true" else 1,
+            -page_focus_score(active_protocol, page),
+            -(int(page.get("asset_score", "0") or "0")),
+            page.get("title", "").lower(),
+        ),
+    )
+    strong_assets = [page for page in pages if int(page.get("asset_score", "0") or "0") >= 3]
+    missing_counter = [page for page in pages if page.get("has_counter_evidence") != "true"]
+    missing_invalidation = [page for page in pages if page.get("has_invalidation") != "true"]
+    missing_next_signals = [page for page in pages if page.get("has_next_signals") != "true"]
+    missing_history = [page for page in pages if page.get("has_review_history") != "true"]
+    lines = [
+        "# 判断资产",
+        "",
+        f"- 最近编译时间：`{compiled_at}`",
+        f"- 当前协议焦点：`{active_protocol}` ({protocol_title(active_protocol)})",
+        f"- 决策页：`{len(decisions)}`",
+        f"- 判断页：`{len(judgments)}`",
+        f"- 资产完整（>= 3/4）：`{len(strong_assets)}`",
+        f"- 缺反证：`{len(missing_counter)}`",
+        f"- 缺失效条件：`{len(missing_invalidation)}`",
+        f"- 缺下一信号：`{len(missing_next_signals)}`",
+        f"- 缺复审历史：`{len(missing_history)}`",
+        "",
+        "## 强判断资产",
+    ]
+    if not strong_assets:
+        lines.append("- 当前还没有资产完整度较高的 decision / judgment 页面。")
+    else:
+        for page in strong_assets[:12]:
+            lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## 缺 Counter Evidence"])
+    if not missing_counter:
+        lines.append("- 当前所有判断资产都包含显式 counter evidence。")
+    else:
+        for page in missing_counter[:12]:
+            lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## 缺 Invalidation"])
+    if not missing_invalidation:
+        lines.append("- 当前所有判断资产都包含显式 invalidation 条件。")
+    else:
+        for page in missing_invalidation[:12]:
+            lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## 缺 Next Signals"])
+    if not missing_next_signals:
+        lines.append("- 当前所有判断资产都包含下一次观察信号。")
+    else:
+        for page in missing_next_signals[:12]:
+            lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## 缺 Review History"])
+    if not missing_history:
+        lines.append("- 当前所有判断资产都已经积累复审历史。")
+    else:
+        for page in missing_history[:12]:
+            lines.append(render_curated_page_summary(page))
+    lines.extend(
+        [
+            "",
+            "## 相关链接",
+            "- [决策索引](./decisions.md)",
+            "- [判断索引](./judgments.md)",
+            "- [审阅队列](./review-queue.md)",
+            "- [审阅中心](./review-center.md)",
+            "- [Aging 报告](./aging-report.md)",
+        ]
+    )
     return "\n".join(lines) + "\n"
 
 
@@ -3914,6 +4207,7 @@ def render_review_center_html(
             '      <li><a href="../../wiki/indexes/aging-report.md">Aging 报告</a></li>',
             '      <li><a href="../../wiki/indexes/machine-memory-actions.md">机器记忆动作队列</a></li>',
             '      <li><a href="../../wiki/indexes/machine-memory-repair-plan.md">机器记忆修复计划</a></li>',
+            '      <li><a href="../../wiki/indexes/judgment-assets.md">判断资产</a></li>',
             '      <li><a href="../../wiki/indexes/execution-center.md">执行中心</a></li>',
             '      <li><a href="../../wiki/indexes/concept-quality.md">概念质量</a></li>',
             '      <li><a href="../../wiki/indexes/rewrite-proposals.md">Rewrite Proposals</a></li>',
@@ -4069,6 +4363,7 @@ def render_furnace_center(
             "- [审阅中心](./review-center.md)",
             "- [执行中心](./execution-center.md)",
             "- [执行审计](./execution-audit.md)",
+            "- [判断资产](./judgment-assets.md)",
             "- [图谱视图](./graph-view.md)",
             "- [修复待办](./repair-backlog.md)",
             "- [协议总览](./protocols.md)",
@@ -4215,6 +4510,7 @@ def render_furnace_center_html(
             '      <a href="../../wiki/indexes/review-center.md">审阅中心</a>',
             '      <a href="../../wiki/indexes/execution-center.md">执行中心</a>',
             '      <a href="../../wiki/indexes/execution-audit.md">执行审计</a>',
+            '      <a href="../../wiki/indexes/judgment-assets.md">判断资产</a>',
             '      <a href="../../wiki/indexes/graph-view.md">图谱视图</a>',
             '      <a href="../../wiki/indexes/repair-backlog.md">修复待办</a>',
             '      <a href="../../wiki/indexes/protocols.md">协议总览</a>',
@@ -4286,6 +4582,7 @@ def render_compile_status(
         "- 操作日志位于 `log.md`。",
         "- 决策索引位于 `decisions.md`。",
         "- 判断索引位于 `judgments.md`。",
+        "- 判断资产盘点位于 `judgment-assets.md`。",
         "- 审阅队列位于 `review-queue.md`。",
         "- 审阅中心位于 `review-center.md`。",
         "- aging 报告位于 `aging-report.md`。",
@@ -4333,6 +4630,7 @@ def render_master_index(
         "- [概念质量](./concept-quality.md)",
         "- [决策索引](./decisions.md)",
         "- [判断索引](./judgments.md)",
+        "- [判断资产](./judgment-assets.md)",
         "- [协议总览](./protocols.md)",
         "- [炉心面板](./furnace-center.md)",
         "- [执行中心](./execution-center.md)",
@@ -4541,6 +4839,10 @@ def manual_link_state_path(root: Path) -> Path:
 
 def repair_backlog_path(root: Path) -> Path:
     return root / "wiki" / "indexes" / "repair-backlog.md"
+
+
+def judgment_assets_path(root: Path) -> Path:
+    return root / "wiki" / "indexes" / "judgment-assets.md"
 
 
 def aging_report_path(root: Path) -> Path:
@@ -7931,6 +8233,17 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     )
     changed_pages += int(
         write_if_changed(
+            judgment_assets_path(root),
+            render_judgment_assets(
+                decision_pages,
+                judgment_pages,
+                compiled_at,
+                active_protocol=protocol_state["active_protocol"],
+            ),
+        )
+    )
+    changed_pages += int(
+        write_if_changed(
             aging_report_path(root),
             render_aging_report(
                 decision_pages,
@@ -7963,6 +8276,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     concept_lookup = {record["slug"]: record for record in concepts}
     for record in concepts:
         record["record_lookup"] = concept_lookup
+        record["root"] = root
         destination = root / "wiki" / "concepts" / f"{record['slug']}.md"
         existing_page = destination.read_text(encoding="utf-8", errors="replace") if destination.exists() else ""
         changed_pages += int(write_if_changed(destination, render_concept_page(record, compiled_at, existing_page)))
@@ -8305,6 +8619,7 @@ def render_report(
             "- [概念索引](../../wiki/indexes/concepts.md)",
             "- [决策索引](../../wiki/indexes/decisions.md)",
             "- [判断索引](../../wiki/indexes/judgments.md)",
+            "- [判断资产](../../wiki/indexes/judgment-assets.md)",
             "- [协议总览](../../wiki/indexes/protocols.md)",
             "- [审阅队列](../../wiki/indexes/review-queue.md)",
             "- [审阅中心](../../wiki/indexes/review-center.md)",
@@ -8428,6 +8743,7 @@ def render_slides(
             "- `wiki/indexes/concepts.md`",
             "- `wiki/indexes/decisions.md`",
             "- `wiki/indexes/judgments.md`",
+            "- `wiki/indexes/judgment-assets.md`",
             "- `wiki/indexes/protocols.md`",
             "- `wiki/indexes/review-queue.md`",
             "- `wiki/indexes/review-center.md`",
@@ -8534,6 +8850,7 @@ def render_figure_brief(
             "- [概念索引](../../wiki/indexes/concepts.md)",
             "- [决策索引](../../wiki/indexes/decisions.md)",
             "- [判断索引](../../wiki/indexes/judgments.md)",
+            "- [判断资产](../../wiki/indexes/judgment-assets.md)",
             "- [协议总览](../../wiki/indexes/protocols.md)",
             "- [审阅队列](../../wiki/indexes/review-queue.md)",
             "- [审阅中心](../../wiki/indexes/review-center.md)",
@@ -8673,6 +8990,7 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
             "wiki/indexes/concepts.md",
             "wiki/indexes/decisions.md",
             "wiki/indexes/judgments.md",
+            "wiki/indexes/judgment-assets.md",
             "wiki/indexes/protocols.md",
             "wiki/indexes/review-queue.md",
             "wiki/indexes/review-center.md",
@@ -9372,6 +9690,13 @@ def review_page(
             ]
         ),
     )
+    updated_body = append_review_history_entry(
+        updated_body,
+        reviewed_at=reviewed_at,
+        status=status,
+        note=note,
+        confidence=confidence if kind == "judgment" else None,
+    )
     target.write_text(f"{render_frontmatter(frontmatter)}\n\n{updated_body.strip()}\n", encoding="utf-8")
     append_wiki_log(
         root,
@@ -9750,6 +10075,7 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
             "title": title,
             "path": f"wiki/concepts/{slug}.md",
             "source_pages": source_pages,
+            "source_signature": str(node.get("source_signature") or ""),
             "source_count": len(source_pages),
             "related_count": len(related_slugs),
             "issues": issues,
@@ -9888,6 +10214,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/concepts.md": "Missing concepts index page.",
         "wiki/indexes/decisions.md": "Missing decisions index page.",
         "wiki/indexes/judgments.md": "Missing judgments index page.",
+        "wiki/indexes/judgment-assets.md": "Missing judgment asset dashboard page.",
         "wiki/indexes/rewrite-proposals.md": "Missing rewrite proposal index page.",
         "wiki/indexes/protocols.md": "Missing protocol dashboard page.",
         "wiki/indexes/furnace-center.md": "Missing furnace center page.",
@@ -10092,6 +10419,11 @@ def lint_wiki(root: Path) -> dict[str, Any]:
             findings.append(Finding("warn", relative_path(root, page), "Concept page kind is missing or incorrect."))
         if concept_summary_is_placeholder(content):
             findings.append(Finding("warn", relative_path(root, page), "Concept page still contains the fallback summary."))
+        for section in ("## Conflict Signals", "## Evidence Gaps"):
+            if section not in content:
+                findings.append(
+                    Finding("warn", relative_path(root, page), f"Concept page is missing section `{section}`.")
+                )
         source_pages = frontmatter.get("source_pages", [])
         if not source_pages:
             findings.append(Finding("warn", relative_path(root, page), "Concept page has no source-page references."))
@@ -10164,6 +10496,29 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                         findings.append(
                             Finding("warn", relative_path(root, page), f"Decision page is missing section `{section}`.")
                         )
+                for heading in CURATED_ASSET_SECTION_ORDER:
+                    snapshot = curated_asset_section_snapshot(
+                        content,
+                        heading,
+                        revisit_after=str(frontmatter.get("revisit_after") or ""),
+                        escalate_after=str(frontmatter.get("escalate_after") or ""),
+                    )
+                    if not snapshot["present"]:
+                        findings.append(
+                            Finding("warn", relative_path(root, page), f"Decision page is missing section `## {heading}`.")
+                        )
+                    elif (
+                        heading != "Review History"
+                        and frontmatter.get("status") in {"approved", "needs-revisit", "superseded"}
+                        and not snapshot["meaningful"]
+                    ):
+                        findings.append(
+                            Finding("warn", relative_path(root, page), f"Decision page still has placeholder `{heading}` content.")
+                        )
+                    elif heading == "Review History" and frontmatter.get("reviewed_at") and not snapshot["meaningful"]:
+                        findings.append(
+                            Finding("warn", relative_path(root, page), "Decision page is reviewed but has no populated `Review History`.")
+                        )
                 if frontmatter.get("status") in {"approved", "needs-revisit", "superseded"} and not frontmatter.get(
                     "reviewed_at"
                 ):
@@ -10188,6 +10543,29 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                     if section not in content:
                         findings.append(
                             Finding("warn", relative_path(root, page), f"Judgment page is missing section `{section}`.")
+                        )
+                for heading in CURATED_ASSET_SECTION_ORDER:
+                    snapshot = curated_asset_section_snapshot(
+                        content,
+                        heading,
+                        revisit_after=str(frontmatter.get("revisit_after") or ""),
+                        escalate_after=str(frontmatter.get("escalate_after") or ""),
+                    )
+                    if not snapshot["present"]:
+                        findings.append(
+                            Finding("warn", relative_path(root, page), f"Judgment page is missing section `## {heading}`.")
+                        )
+                    elif (
+                        heading != "Review History"
+                        and frontmatter.get("status") in {"tracking", "confirmed", "rejected"}
+                        and not snapshot["meaningful"]
+                    ):
+                        findings.append(
+                            Finding("warn", relative_path(root, page), f"Judgment page still has placeholder `{heading}` content.")
+                        )
+                    elif heading == "Review History" and frontmatter.get("reviewed_at") and not snapshot["meaningful"]:
+                        findings.append(
+                            Finding("warn", relative_path(root, page), "Judgment page is reviewed but has no populated `Review History`.")
                         )
                 if not frontmatter.get("confidence"):
                     findings.append(

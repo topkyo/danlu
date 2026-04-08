@@ -44,6 +44,7 @@ kind: "dashboard"
 - [[wiki/indexes/execution-audit|执行审计]]
 - [[wiki/indexes/protocols|协议总览]]
 - [[wiki/indexes/review-center|审阅中心]]
+- [[wiki/indexes/judgment-assets|判断资产]]
 - [[wiki/indexes/graph-view|图谱视图]]
 - [[wiki/indexes/Outputs|输出面板]]
 - [[wiki/indexes/Search Presets|搜索预设]]
@@ -82,6 +83,7 @@ kind: "dashboard"
 - 想确认协议具体改变了什么行为：看 [[schema/protocols/index|协议规则]]
 - 想看 pending review：看 [[wiki/indexes/review-queue|审阅队列]]
 - 想把 review / repair / aging 放到一个地方看：看 [[wiki/indexes/review-center|审阅中心]]，真正的本地审阅面板在 `output/review/review-center.html`
+- 想盘点哪些 decision / judgment 还缺反证、失效条件、下一信号或复审历史：看 [[wiki/indexes/judgment-assets|判断资产]]
 - 想先处理弱概念页的 rewrite gate：看 [[wiki/indexes/rewrite-proposals|Rewrite 提案]]
 - 想看修复优先级：看 [[wiki/indexes/repair-backlog|修复待办]]
 - 想看 retrieval / graph 是否健康：看 [[wiki/indexes/graph-health|图谱健康]] 和 [[wiki/indexes/machine-memory|机器记忆]]

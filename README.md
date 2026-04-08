@@ -156,6 +156,7 @@ nightly 也会继续跟踪 `decision / judgment` 的 aging：
 - execution audit 现在还会显示 `action state / receipt / manual-link state` 的 consistency signals
 - `concept-quality.md` 会把弱概念页、占位概念、概念合并候选、冲突信号、证据缺口和重写优先级集中列出来
 - `rewrite-proposals.md` 会把高优先级弱概念页的 rewrite proposal、状态和 apply 入口集中列出来
+- `judgment-assets.md` 会盘点 `decision / judgment` 的判断资产完整度、反证、失效条件、下一信号和复审历史缺口
 
 machine-memory action 现在也有显式 lifecycle：
 - `proposed`：新发现、待处理
@@ -203,6 +204,7 @@ safe execution layer 现在也已经接上：
 - [execution-center.md](./wiki/indexes/execution-center.md)：执行工作区入口；本地执行面板在 `output/control/execution-center.html`
 - [execution-audit.md](./wiki/indexes/execution-audit.md)：执行审计入口；本地审计面板在 `output/control/execution-audit.html`
 - [review-center.md](./wiki/indexes/review-center.md)：统一审阅/修复入口；本地审阅面板在 `output/review/review-center.html`
+- [judgment-assets.md](./wiki/indexes/judgment-assets.md)：判断资产盘点入口
 - [graph-view.md](./wiki/indexes/graph-view.md)：统一图谱入口；本地图谱产物在 `output/graph/machine-memory.html`，现在带搜索、分量过滤、节点详情和 safe-apply 摘要
 
 ### 原料入口

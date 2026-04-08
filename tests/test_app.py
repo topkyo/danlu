@@ -1264,10 +1264,18 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn(f"wiki/sources/{entry['id']}.md", parse_frontmatter(judgment_path.read_text(encoding="utf-8"))["citations"])
         self.assertIn("## Decision", decision_path.read_text(encoding="utf-8"))
         self.assertIn("## Evidence", decision_path.read_text(encoding="utf-8"))
+        self.assertIn("## Counter Evidence", decision_path.read_text(encoding="utf-8"))
+        self.assertIn("## Invalidation", decision_path.read_text(encoding="utf-8"))
+        self.assertIn("## Next Signals", decision_path.read_text(encoding="utf-8"))
+        self.assertIn("## Review History", decision_path.read_text(encoding="utf-8"))
         self.assertIn("## Review Status", decision_path.read_text(encoding="utf-8"))
         self.assertIn("## Review Notes", decision_path.read_text(encoding="utf-8"))
         self.assertIn("## Judgment", judgment_path.read_text(encoding="utf-8"))
         self.assertIn("## Signals", judgment_path.read_text(encoding="utf-8"))
+        self.assertIn("## Counter Evidence", judgment_path.read_text(encoding="utf-8"))
+        self.assertIn("## Invalidation", judgment_path.read_text(encoding="utf-8"))
+        self.assertIn("## Next Signals", judgment_path.read_text(encoding="utf-8"))
+        self.assertIn("## Review History", judgment_path.read_text(encoding="utf-8"))
         self.assertIn("## Review Status", judgment_path.read_text(encoding="utf-8"))
         self.assertIn("## Review Notes", judgment_path.read_text(encoding="utf-8"))
 
@@ -1298,6 +1306,23 @@ class AiwikiFlowTests(unittest.TestCase):
 
         report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
         self.assertIn("Decision page is missing structured `citations` metadata.", report_text)
+
+    def test_lint_warns_when_reviewed_decision_keeps_placeholder_asset_sections(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+        review_page(
+            self.root,
+            decision["path"],
+            "approved",
+            note="Approved after review.",
+        )
+
+        lint = lint_wiki(self.root)
+
+        report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
+        self.assertIn("Decision page still has placeholder `Counter Evidence` content.", report_text)
 
     def test_file_back_propagates_protocol_metadata(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -1469,6 +1494,31 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("当前没有待审判断。", review_queue)
         self.assertIn("Scaling Decision", review_queue)
         self.assertIn("Scaling Judgment", review_queue)
+
+    def test_review_page_appends_review_history(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+
+        review_page(
+            self.root,
+            decision["path"],
+            "approved",
+            note="Approved after source review.",
+        )
+        review_page(
+            self.root,
+            decision["path"],
+            "needs-revisit",
+            note="Need to revisit after fresh evidence.",
+        )
+
+        decision_text = (self.root / decision["path"]).read_text(encoding="utf-8")
+        self.assertIn("## Review History", decision_text)
+        self.assertIn("Approved after source review.", decision_text)
+        self.assertIn("Need to revisit after fresh evidence.", decision_text)
+        self.assertGreaterEqual(decision_text.count("| status `"), 2)
 
     def test_review_page_clears_aging_windows_for_terminal_status(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -2166,6 +2216,30 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertGreaterEqual(memory["health"]["concept_quality"]["counts"]["conflict_signals"], 1)
         quality_text = (self.root / "wiki" / "indexes" / "concept-quality.md").read_text(encoding="utf-8")
         self.assertIn("increase-vs-decrease", quality_text)
+
+        concept_pages = list((self.root / "wiki" / "concepts").glob("*.md"))
+        matching_pages = [page for page in concept_pages if "increase-vs-decrease" in page.read_text(encoding="utf-8")]
+        self.assertTrue(matching_pages)
+        concept_text = matching_pages[0].read_text(encoding="utf-8")
+        self.assertIn("## Conflict Signals", concept_text)
+        self.assertIn("## Evidence Gaps", concept_text)
+
+    def test_compile_generates_judgment_assets_page(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+        file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+
+        compile_wiki(self.root)
+
+        judgment_assets = self.root / "wiki" / "indexes" / "judgment-assets.md"
+        self.assertTrue(judgment_assets.exists())
+        judgment_assets_text = judgment_assets.read_text(encoding="utf-8")
+        self.assertIn("## 强判断资产", judgment_assets_text)
+        self.assertIn("## 缺 Counter Evidence", judgment_assets_text)
+        self.assertIn("Scaling Decision", judgment_assets_text)
+        self.assertIn("Scaling Judgment", judgment_assets_text)
 
     def test_compile_persists_machine_memory_action_lifecycle_state(self) -> None:
         self._seed_machine_memory_actions()
