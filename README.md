@@ -4,6 +4,7 @@
 
 架构基线见 [Alchemy Furnace.md](<./wiki/indexes/Alchemy Furnace.md>)。
 日常在 Obsidian 里使用时，入口是 [HOME.md](./HOME.md)。
+统一产品壳入口见 [furnace-center.md](<./wiki/indexes/furnace-center.md>)；本地 HTML 控制面板在 `output/control/furnace-center.html`。
 关于“一个统一炉子，多个领域协议”的原则，见 [Furnace Protocols.md](<./wiki/indexes/Furnace Protocols.md>)。
 协议运行时入口见 [protocols.md](<./wiki/indexes/protocols.md>)；当前 starter library 提供 `general / investing / research` 三套协议。
 当前协议不只是 metadata：它已经会改变 `decision / judgment` 的默认 review window、`file-back` 模板、recurring promotion 的标题与分类语义、`review / nightly / repair` 的优先级焦点，以及 `ask / output / execution proposal` 的策略偏置。
@@ -184,6 +185,7 @@ safe execution layer 现在也已经接上：
 - [HOME.md](./HOME.md)：日常工作台
 - [Wiki Hub.md](<./wiki/indexes/Wiki Hub.md>)：知识中枢
 - [protocols.md](./wiki/indexes/protocols.md)：协议入口和 active protocol 状态
+- [furnace-center.md](<./wiki/indexes/furnace-center.md>)：统一工作台入口；本地控制面板在 `output/control/furnace-center.html`
 - [review-center.md](./wiki/indexes/review-center.md)：统一审阅/修复入口；本地审阅面板在 `output/review/review-center.html`
 - [graph-view.md](./wiki/indexes/graph-view.md)：统一图谱入口；本地图谱产物在 `output/graph/machine-memory.html`，现在带搜索、分量过滤、节点详情和 safe-apply 摘要
 

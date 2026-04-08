@@ -37,6 +37,7 @@ kind: "dashboard"
 - [[wiki/indexes/Raw Inbox|原料收件箱]]
 - [[wiki/indexes/Wiki Hub|知识中枢]]
 - [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
+- [[wiki/indexes/furnace-center|炉心面板]]
 - [[wiki/indexes/protocols|协议总览]]
 - [[wiki/indexes/review-center|审阅中心]]
 - [[wiki/indexes/graph-view|图谱视图]]
@@ -68,6 +69,7 @@ kind: "dashboard"
 
 - 想确认新投料有没有进系统：看 [[wiki/indexes/Raw Inbox|原料收件箱]]
 - 想看系统当前总览：看 [[wiki/indexes/Wiki Hub|知识中枢]]
+- 想从一个地方看今天该做什么：看 [[wiki/indexes/furnace-center|炉心面板]]，真正的本地控制面板在 `output/control/furnace-center.html`
 - 想切换或查看当前协议：看 [[wiki/indexes/protocols|协议总览]]
 - 想确认协议具体改变了什么行为：看 [[schema/protocols/index|协议规则]]
 - 想看 pending review：看 [[wiki/indexes/review-queue|审阅队列]]

@@ -402,12 +402,33 @@ class AiwikiFlowTests(unittest.TestCase):
 
     def test_ensure_layout_bootstraps_runtime_dashboard_files(self) -> None:
         for relative, marker in (
+            ("wiki/indexes/furnace-center.md", "炉心面板"),
             ("wiki/indexes/review-center.md", "审阅中心"),
             ("wiki/indexes/graph-view.md", "图谱视图"),
         ):
             path = self.root / relative
             self.assertTrue(path.exists(), relative)
             self.assertIn(marker, path.read_text(encoding="utf-8"))
+
+    def test_compile_writes_furnace_center_markdown_and_html(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        ask_question(self.root, "Compare transformer scale and inference cost", "report")
+
+        compile_wiki(self.root)
+
+        dashboard = self.root / "wiki" / "indexes" / "furnace-center.md"
+        dashboard_payload = dashboard.read_text(encoding="utf-8")
+        html_path = self.root / "output" / "control" / "furnace-center.html"
+        html_payload = html_path.read_text(encoding="utf-8")
+        self.assertTrue(dashboard.exists())
+        self.assertTrue(html_path.exists())
+        self.assertIn("今天先做什么", dashboard_payload)
+        self.assertIn("本地炉心面板", dashboard_payload)
+        self.assertIn("Compare transformer scale and inference cost", dashboard_payload)
+        self.assertIn("Furnace Center", html_payload)
+        self.assertIn("../../wiki/indexes/furnace-center.md", html_payload)
+        self.assertIn("Compare transformer scale and inference cost", html_payload)
 
     def test_compile_writes_machine_memory_graph_html(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -1823,6 +1844,7 @@ class AiwikiFlowTests(unittest.TestCase):
         compile_wiki(self.root)
         (self.root / "wiki" / "indexes" / "index.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory.md").unlink()
+        (self.root / "wiki" / "indexes" / "furnace-center.md").unlink()
         (self.root / "wiki" / "indexes" / "review-center.md").unlink()
         (self.root / "wiki" / "indexes" / "graph-view.md").unlink()
         (self.root / "wiki" / "indexes" / "machine-memory-topology.md").unlink()
@@ -1833,6 +1855,7 @@ class AiwikiFlowTests(unittest.TestCase):
         (self.root / "wiki" / "indexes" / "graph-health.md").unlink()
         (self.root / "wiki" / "indexes" / "drift-report.md").unlink()
         (self.root / ".aiwiki" / "cache" / "machine-memory-graph.json").unlink()
+        (self.root / "output" / "control" / "furnace-center.html").unlink()
         (self.root / "output" / "graph" / "machine-memory.html").unlink()
         (self.root / "output" / "review" / "review-center.html").unlink()
         concept_page = next((self.root / "wiki" / "concepts").glob("*.md"))
@@ -1842,6 +1865,7 @@ class AiwikiFlowTests(unittest.TestCase):
         lint = lint_wiki(self.root)
         report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
         self.assertGreaterEqual(lint["counts"]["errors"], 2)
+        self.assertTrue((self.root / "wiki" / "indexes" / "furnace-center.md").exists())
         self.assertTrue((self.root / "wiki" / "indexes" / "review-center.md").exists())
         self.assertTrue((self.root / "wiki" / "indexes" / "graph-view.md").exists())
         self.assertIn("Missing master wiki index page.", report_text)
@@ -1854,6 +1878,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Missing machine memory graph health page.", report_text)
         self.assertIn("Missing machine memory drift report.", report_text)
         self.assertIn("Missing machine memory graph export.", report_text)
+        self.assertIn("Missing furnace center HTML view.", report_text)
         self.assertIn("Missing machine memory graph HTML view.", report_text)
         self.assertIn("Missing review center HTML view.", report_text)
         self.assertIn("Concept page references missing source page", report_text)

@@ -31,6 +31,7 @@ LAYOUT_DIRS = (
     "output/slides",
     "output/figures",
     "output/graph",
+    "output/control",
     "output/review",
     "output/lint",
     "prompts",
@@ -179,6 +180,33 @@ DEFAULT_DASHBOARD_FILES = {
             "",
             "- 这里是入口页，不直接替代 `review-queue.md` 或 `repair-backlog.md`。",
             "- 高风险修复仍然应通过 review 后执行，不要直接改写事实层。",
+        ]
+    )
+    + "\n",
+    "wiki/indexes/furnace-center.md": "\n".join(
+        [
+            "# 炉心面板",
+            "",
+            "这里是炼丹炉的人用统一入口，负责把今天最该处理的 review、repair、graph 和 output 收到一个地方。",
+            "",
+            "## 先看哪里",
+            "",
+            "- [审阅中心](./review-center.md)：看 pending review、aging、rewrite 和 ready action",
+            "- [图谱视图](./graph-view.md)：看 machine-memory 图层和 graph health",
+            "- [修复待办](./repair-backlog.md)：看 nightly 汇总出的优先级队列",
+            "- [协议总览](./protocols.md)：看当前 active protocol",
+            "- [本地炉心面板](../../output/control/furnace-center.html)：直接看统一控制面板",
+            "",
+            "## 怎么用",
+            "",
+            "1. 先看今天的 ready actions、apply-ready rewrites 和 overdue review。",
+            "2. 再看最新 output 是否值得回流成 derived / decision / judgment。",
+            "3. 需要深入时，再跳到 review-center、graph-view 或具体页面。",
+            "",
+            "## 边界",
+            "",
+            "- 这是统一入口，不替代各自的专业页面。",
+            "- 高风险修复仍然停留在 proposal / review 层，不会从这里直接自动 apply。",
         ]
     )
     + "\n",
@@ -2465,6 +2493,27 @@ def collect_output_artifacts(root: Path) -> list[dict[str, str]]:
     return sorted(artifacts, key=lambda item: (item["query_signature"], item["created_at"], item["path"]))
 
 
+def collect_recent_output_artifacts(root: Path, *, limit: int = 12) -> list[dict[str, str]]:
+    artifacts: list[dict[str, str]] = []
+    for relative in ("output/reports", "output/slides", "output/figures"):
+        for path in sorted((root / relative).glob("*.md")):
+            content = path.read_text(encoding="utf-8", errors="replace")
+            frontmatter = parse_frontmatter(content)
+            if frontmatter.get("kind") != "output":
+                continue
+            artifacts.append(
+                {
+                    "path": relative_path(root, path),
+                    "query": str(frontmatter.get("query") or "").strip(),
+                    "format": str(frontmatter.get("format") or "").strip(),
+                    "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
+                    "created_at": str(frontmatter.get("created_at") or ""),
+                    "title": first_markdown_heading(content) or path.stem,
+                }
+            )
+    return sorted(artifacts, key=lambda item: (item["created_at"], item["path"]), reverse=True)[:limit]
+
+
 def find_promoted_curated_page(root: Path, kind: str, query_signature: str, protocol: str) -> Path | None:
     folder = "decisions" if kind == "decision" else "judgments"
     for path in sorted((root / "wiki" / folder).glob("*.md")):
@@ -2977,6 +3026,7 @@ def render_review_center_html(
             f"{rewrite_proposal_list}",
             "    </ul></div>",
             '    <div class="panel"><h2>相关入口</h2><ul>',
+            '      <li><a href="../../wiki/indexes/furnace-center.md">炉心面板</a></li>',
             '      <li><a href="../../wiki/indexes/review-center.md">Review Center Dashboard</a></li>',
             '      <li><a href="../../wiki/indexes/review-queue.md">审阅队列</a></li>',
             '      <li><a href="../../wiki/indexes/aging-report.md">Aging 报告</a></li>',
@@ -2985,6 +3035,306 @@ def render_review_center_html(
             '      <li><a href="../../wiki/indexes/concept-quality.md">概念质量</a></li>',
             '      <li><a href="../../wiki/indexes/rewrite-proposals.md">Rewrite Proposals</a></li>',
             "    </ul></div>",
+            "  </section>",
+            "</main>",
+            "</body>",
+            "</html>",
+            "",
+        ]
+    )
+
+
+def render_furnace_center(
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    memory: dict[str, Any],
+    compiled_at: str,
+    protocol_state: dict[str, Any],
+    recent_outputs: list[dict[str, str]],
+) -> str:
+    active_protocol = protocol_state["active_protocol"]
+    queue = review_queue(decisions, judgments, active_protocol=active_protocol)
+    aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
+    health = memory.get("health", {})
+    plan = health.get("repair_plan", {})
+    concept_quality = health.get("concept_quality", {})
+    rewrite_state = health.get("concept_rewrite", {})
+    pending_items = queue.get("pending_decisions", []) + queue.get("pending_judgments", [])
+    ready_actions = plan.get("ready_actions", [])
+    apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
+    rewrite_proposals = rewrite_state.get("proposals", [])
+    apply_ready_rewrites = [proposal for proposal in rewrite_proposals if proposal.get("apply_ready")]
+    execution_proposals = plan.get("execution_proposals", [])
+    recent_reviewed = queue.get("recently_reviewed", [])[:6]
+    next_steps: list[str] = []
+    if apply_ready_actions:
+        next_steps.append(f"先处理 `{len(apply_ready_actions)}` 个可直接 `apply-action` 的低风险动作。")
+    if apply_ready_rewrites:
+        next_steps.append(f"应用 `{len(apply_ready_rewrites)}` 个已接受的 concept rewrite proposal。")
+    if aging.get("escalated"):
+        next_steps.append(f"优先复查 `{len(aging.get('escalated', []))}` 个升级项。")
+    if pending_items:
+        next_steps.append(f"继续审 `{len(pending_items)}` 个 decision / judgment 页面。")
+    if not next_steps:
+        next_steps.append("当前没有紧急执行项，优先看最新输出和图谱漂移。")
+
+    lines = [
+        "# 炉心面板",
+        "",
+        f"- 最近编译时间：`{compiled_at}`",
+        f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})",
+        f"- 来源节点：`{len(memory.get('source_nodes', []))}`",
+        f"- 概念节点：`{len(memory.get('concept_nodes', []))}`",
+        f"- 待审项目：`{len(pending_items)}`",
+        f"- 已到期 / 升级：`{len(aging.get('overdue', []))}` / `{len(aging.get('escalated', []))}`",
+        f"- Ready repair actions：`{plan.get('counts', {}).get('ready', 0)}`",
+        f"- 可直接 apply 的动作：`{len(apply_ready_actions)}`",
+        f"- Rewrite 提案：`{rewrite_state.get('counts', {}).get('active', 0)}`",
+        f"- 可直接 apply 的 rewrite：`{len(apply_ready_rewrites)}`",
+        f"- 最近输出：`{len(recent_outputs)}`",
+        "- 本地控制面板：`output/control/furnace-center.html`",
+        "",
+        "## 今天先做什么",
+    ]
+    for index, step in enumerate(next_steps, start=1):
+        lines.append(f"{index}. {step}")
+
+    lines.extend(
+        [
+            "",
+            "## 即刻可执行",
+        ]
+    )
+    if apply_ready_actions:
+        lines.append("### Safe Apply Actions")
+        for action in apply_ready_actions[:8]:
+            lines.append(
+                f"- `{action['title']}` | command `{action.get('command_hint', '')}`"
+                f" | primary `{action.get('primary_path', '')}`"
+            )
+    if apply_ready_rewrites:
+        lines.append("")
+        lines.append("### Apply-Ready Rewrites")
+        for proposal in apply_ready_rewrites[:8]:
+            lines.append(
+                f"- `{proposal['target_path']}` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {proposal['slug']}`"
+            )
+    if execution_proposals:
+        lines.append("")
+        lines.append("### Execution Proposals")
+        for proposal in execution_proposals[:8]:
+            lines.append(
+                f"- `{proposal['action_id']}` | risk `{proposal.get('risk', 'medium')}`"
+                f" | targets `{', '.join(proposal.get('target_paths', [])) or 'none'}`"
+            )
+    if not any((apply_ready_actions, apply_ready_rewrites, execution_proposals)):
+        lines.append("- 当前没有即刻可执行项。")
+
+    lines.extend(
+        [
+            "",
+            "## 最近输出",
+        ]
+    )
+    if not recent_outputs:
+        lines.append("- 当前还没有 recent outputs。")
+    else:
+        for artifact in recent_outputs:
+            lines.append(
+                f"- [{artifact['title']}](../../{artifact['path']})"
+                f" | format `{artifact['format'] or 'unknown'}`"
+                f" | protocol `{artifact['protocol'] or DEFAULT_PROTOCOL}`"
+                f" | created `{artifact['created_at'] or 'unknown'}`"
+            )
+
+    lines.extend(
+        [
+            "",
+            "## 最近已审 / 已沉淀",
+        ]
+    )
+    if recent_reviewed:
+        for page in recent_reviewed:
+            lines.append(
+                f"- [{page['title']}](../../{page['path']})"
+                f" | status `{display_curated_status(page.get('status', 'unknown'))}`"
+                f" | reviewed `{page.get('reviewed_at', '') or 'unknown'}`"
+            )
+    else:
+        lines.append("- 当前还没有最近已审项目。")
+
+    lines.extend(
+        [
+            "",
+            "## 快速跳转",
+            "- [审阅中心](./review-center.md)",
+            "- [图谱视图](./graph-view.md)",
+            "- [修复待办](./repair-backlog.md)",
+            "- [协议总览](./protocols.md)",
+            "- [输出面板](./Outputs.md)",
+            "- [本地审阅面板](../../output/review/review-center.html)",
+            "- [本地图谱视图](../../output/graph/machine-memory.html)",
+            "- [本地炉心面板](../../output/control/furnace-center.html)",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def render_furnace_center_html(
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    memory: dict[str, Any],
+    compiled_at: str,
+    protocol_state: dict[str, Any],
+    recent_outputs: list[dict[str, str]],
+) -> str:
+    active_protocol = protocol_state["active_protocol"]
+    queue = review_queue(decisions, judgments, active_protocol=active_protocol)
+    aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
+    health = memory.get("health", {})
+    plan = health.get("repair_plan", {})
+    concept_quality = health.get("concept_quality", {})
+    rewrite_state = health.get("concept_rewrite", {})
+    pending_items = queue.get("pending_decisions", []) + queue.get("pending_judgments", [])
+    ready_actions = plan.get("ready_actions", [])
+    apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
+    rewrite_proposals = rewrite_state.get("proposals", [])
+    apply_ready_rewrites = [proposal for proposal in rewrite_proposals if proposal.get("apply_ready")]
+    execution_proposals = plan.get("execution_proposals", [])
+    recent_reviewed = queue.get("recently_reviewed", [])[:8]
+
+    def render_page_item(page: dict[str, str]) -> str:
+        return (
+            f'<li><a href="../../{html.escape(page["path"])}">{html.escape(page["title"])}</a>'
+            f" <span class=\"item-meta\">{html.escape(display_curated_status(page.get('status', 'unknown')))}</span></li>"
+        )
+
+    def render_action_item(action: dict[str, Any]) -> str:
+        command = html.escape(str(action.get("command_hint") or ""))
+        return (
+            f"<li><strong>{html.escape(str(action.get('title') or 'unnamed action'))}</strong>"
+            f" <span class=\"item-meta\">{html.escape(str(action.get('priority') or 'medium'))} / {html.escape(display_action_status(str(action.get('status') or 'proposed')))}</span>"
+            f"<div><code>{html.escape(str(action.get('primary_path') or ''))}</code></div>"
+            f"{f'<div><code>{command}</code></div>' if command else ''}</li>"
+        )
+
+    def render_rewrite_item(proposal: dict[str, Any]) -> str:
+        slug = html.escape(str(proposal.get("slug") or ""))
+        target = html.escape(str(proposal.get("target_path") or f"wiki/concepts/{slug}.md"))
+        command = f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {slug}"
+        return (
+            f"<li><strong><a href=\"../../wiki/rewrite-proposals/{slug}.md\">{html.escape(str(proposal.get('title') or slug))}</a></strong>"
+            f" <span class=\"item-meta\">{html.escape(display_rewrite_proposal_status(str(proposal.get('status') or 'proposed')))}</span>"
+            f"<div><code>{target}</code></div><div><code>{html.escape(command)}</code></div></li>"
+        )
+
+    def render_output_item(artifact: dict[str, str]) -> str:
+        return (
+            f'<li><a href="../../{html.escape(artifact["path"])}">{html.escape(artifact["title"])}</a>'
+            f" <span class=\"item-meta\">{html.escape(artifact['format'] or 'unknown')} / {html.escape(artifact['protocol'] or DEFAULT_PROTOCOL)} / {html.escape(artifact['created_at'] or 'unknown')}</span></li>"
+        )
+
+    def render_proposal_item(proposal: dict[str, Any]) -> str:
+        return (
+            f"<li><strong>{html.escape(str(proposal.get('action_id') or 'proposal'))}</strong>"
+            f" <span class=\"item-meta\">risk {html.escape(str(proposal.get('risk') or 'medium'))}</span>"
+            f"<div>{html.escape(str(proposal.get('summary') or ''))}</div>"
+            f"<div><code>{html.escape(', '.join(proposal.get('target_paths', [])) or 'none')}</code></div></li>"
+        )
+
+    summary_cards = [
+        ("来源", str(len(memory.get("source_nodes", [])))),
+        ("概念", str(len(memory.get("concept_nodes", [])))),
+        ("待审", str(len(pending_items))),
+        ("到期/升级", f"{len(aging.get('overdue', []))}/{len(aging.get('escalated', []))}"),
+        ("Ready 动作", str(plan.get("counts", {}).get("ready", 0))),
+        ("可 apply 动作", str(len(apply_ready_actions))),
+        ("Rewrite 提案", str(rewrite_state.get("counts", {}).get("active", 0))),
+        ("可 apply rewrite", str(len(apply_ready_rewrites))),
+        ("最近输出", str(len(recent_outputs))),
+    ]
+
+    protocol_focus = PROTOCOL_LIBRARY.get(active_protocol, {}).get("review", [])[:3]
+    nightly_focus = PROTOCOL_LIBRARY.get(active_protocol, {}).get("nightly", [])[:3]
+    pending_markup = "".join(render_page_item(page) for page in pending_items[:8]) or "<li>当前没有待审项目。</li>"
+    aging_markup = "".join(render_page_item(page) for page in (aging.get("escalated", []) + aging.get("overdue", []))[:8]) or "<li>当前没有已到期或升级项目。</li>"
+    apply_action_markup = "".join(render_action_item(action) for action in apply_ready_actions[:8]) or "<li>当前没有可直接 apply 的低风险动作。</li>"
+    rewrite_markup = "".join(render_rewrite_item(proposal) for proposal in apply_ready_rewrites[:8]) or "<li>当前没有可直接 apply 的 rewrite proposal。</li>"
+    proposal_markup = "".join(render_proposal_item(proposal) for proposal in execution_proposals[:8]) or "<li>当前没有 execution proposal。</li>"
+    output_markup = "".join(render_output_item(artifact) for artifact in recent_outputs[:10]) or "<li>当前还没有 recent outputs。</li>"
+    reviewed_markup = "".join(render_page_item(page) for page in recent_reviewed) or "<li>当前还没有最近已审项目。</li>"
+    focus_markup = "".join(f"<li>{html.escape(item)}</li>" for item in protocol_focus + nightly_focus) or "<li>当前协议没有额外焦点。</li>"
+
+    return "\n".join(
+        [
+            "<!doctype html>",
+            '<html lang="zh-CN">',
+            "<head>",
+            '  <meta charset="utf-8" />',
+            '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+            "  <title>Furnace Center</title>",
+            "  <style>",
+            "    :root { color-scheme: light; --bg: #f8fafc; --ink: #0f172a; --muted: #475569; --panel: rgba(255,255,255,0.94); --line: #cbd5e1; }",
+            "    body { margin: 0; padding: 24px; background: radial-gradient(circle at top right, #dbeafe 0%, #f8fafc 40%, #fefce8 100%); color: var(--ink); font: 14px/1.6 'Segoe UI', 'PingFang SC', sans-serif; }",
+            "    main { max-width: 1180px; margin: 0 auto; }",
+            "    h1, h2 { margin: 0 0 12px; }",
+            "    p { margin: 0 0 12px; color: var(--muted); }",
+            "    .panel, .card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 18px 40px rgba(15,23,42,0.06); }",
+            "    .panel { padding: 18px; }",
+            "    .hero { margin-bottom: 18px; }",
+            "    .meta, .grid { display: grid; gap: 16px; }",
+            "    .meta { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); margin-top: 18px; }",
+            "    .grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }",
+            "    .card { padding: 14px 16px; }",
+            "    .metric { font-size: 24px; font-weight: 800; color: #1d4ed8; }",
+            "    .metric-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }",
+            "    ul { margin: 0; padding-left: 18px; }",
+            "    li { margin: 6px 0; }",
+            "    a { color: #1d4ed8; text-decoration: none; }",
+            "    a:hover { text-decoration: underline; }",
+            "    .item-meta { color: var(--muted); font-size: 12px; }",
+            "    code { background: #eff6ff; padding: 1px 6px; border-radius: 6px; }",
+            "    .quick-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }",
+            "    .quick-links a { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; background: #ffffff; }",
+            "  </style>",
+            "</head>",
+            "<body>",
+            "<main>",
+            '  <section class="panel hero">',
+            "    <h1>Furnace Center</h1>",
+            f"    <p>编译时间：<code>{html.escape(compiled_at)}</code>。当前协议：<code>{html.escape(active_protocol)}</code> ({html.escape(protocol_title(active_protocol))})。这是炼丹炉的统一入口：把 review、graph、execution 和 recent outputs 收到一个地方。</p>",
+            '    <div class="quick-links">',
+            '      <a href="../../wiki/indexes/furnace-center.md">Markdown 面板</a>',
+            '      <a href="../../wiki/indexes/review-center.md">审阅中心</a>',
+            '      <a href="../../wiki/indexes/graph-view.md">图谱视图</a>',
+            '      <a href="../../wiki/indexes/repair-backlog.md">修复待办</a>',
+            '      <a href="../../wiki/indexes/protocols.md">协议总览</a>',
+            '      <a href="../../output/review/review-center.html">审阅 HTML</a>',
+            '      <a href="../../output/graph/machine-memory.html">图谱 HTML</a>',
+            "    </div>",
+            '    <div class="meta">',
+            *[
+                f'      <div class="card"><div class="metric">{html.escape(value)}</div><div class="metric-label">{html.escape(label)}</div></div>'
+                for label, value in summary_cards
+            ],
+            "    </div>",
+            "  </section>",
+            '  <section class="grid">',
+            f'    <div class="panel"><h2>待审 / 已到期</h2><ul>{pending_markup}{aging_markup}</ul></div>',
+            f'    <div class="panel"><h2>Safe Apply</h2><ul>{apply_action_markup}</ul></div>',
+            f'    <div class="panel"><h2>Apply-Ready Rewrites</h2><ul>{rewrite_markup}</ul></div>',
+            f'    <div class="panel"><h2>Execution Proposals</h2><ul>{proposal_markup}</ul></div>',
+            f'    <div class="panel"><h2>最近输出</h2><ul>{output_markup}</ul></div>',
+            f'    <div class="panel"><h2>协议焦点</h2><ul>{focus_markup}</ul></div>',
+            f'    <div class="panel"><h2>最近已审 / 已沉淀</h2><ul>{reviewed_markup}</ul></div>',
+            '    <div class="panel"><h2>系统状态</h2><ul>'
+            f'<li>graph components <code>{html.escape(str(health.get("component_count", 0)))}</code></li>'
+            f'<li>bridge concepts <code>{html.escape(str(len(health.get("bridge_concept_slugs", []))))}</code></li>'
+            f'<li>conflict signals <code>{html.escape(str(concept_quality.get("counts", {}).get("conflict_signals", 0)))}</code></li>'
+            f'<li>gap signals <code>{html.escape(str(concept_quality.get("counts", {}).get("gap_signals", 0)))}</code></li>'
+            f'<li>rewrite candidates <code>{html.escape(str(concept_quality.get("counts", {}).get("rewrite_candidates", 0)))}</code></li>'
+            f'<li>ready batches <code>{html.escape(str(plan.get("counts", {}).get("batches", 0)))}</code></li>'
+            "</ul></div>",
             "  </section>",
             "</main>",
             "</body>",
@@ -3020,6 +3370,7 @@ def render_compile_status(
         "- 运行时规则位于 `schema/`。",
         "- 协议规则位于 `schema/protocols/`。",
         "- 协议总览位于 `protocols.md`。",
+        "- 炉心面板位于 `furnace-center.md`。",
         "- 操作日志位于 `log.md`。",
         "- 决策索引位于 `decisions.md`。",
         "- 判断索引位于 `judgments.md`。",
@@ -3071,6 +3422,7 @@ def render_master_index(
         "- [决策索引](./decisions.md)",
         "- [判断索引](./judgments.md)",
         "- [协议总览](./protocols.md)",
+        "- [炉心面板](./furnace-center.md)",
         "- [审阅队列](./review-queue.md)",
         "- [审阅中心](./review-center.md)",
         "- [Aging 报告](./aging-report.md)",
@@ -3176,6 +3528,10 @@ def machine_memory_graph_html_path(root: Path) -> Path:
 
 def review_center_html_path(root: Path) -> Path:
     return root / "output" / "review" / "review-center.html"
+
+
+def furnace_center_html_path(root: Path) -> Path:
+    return root / "output" / "control" / "furnace-center.html"
 
 
 def machine_memory_history_path(root: Path) -> Path:
@@ -4263,6 +4619,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "    </ul></div>",
             "  </section>",
             '  <section class="panel"><h2>相关入口</h2><ul>',
+            '    <li><a href="../../wiki/indexes/furnace-center.md">炉心面板</a></li>',
             '    <li><a href="../../wiki/indexes/graph-view.md">Graph View Dashboard</a></li>',
             '    <li><a href="../../wiki/indexes/machine-memory.md">机器记忆</a></li>',
             '    <li><a href="../../wiki/indexes/machine-memory-topology.md">机器记忆拓扑</a></li>',
@@ -5937,6 +6294,20 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     changed_pages += int(
         write_if_changed(machine_memory_repair_plan_path(root), render_machine_memory_repair_plan(memory))
     )
+    recent_outputs = collect_recent_output_artifacts(root)
+    changed_pages += int(
+        write_if_changed(
+            root / "wiki" / "indexes" / "furnace-center.md",
+            render_furnace_center(
+                decision_pages,
+                judgment_pages,
+                memory,
+                compiled_at,
+                protocol_state,
+                recent_outputs,
+            ),
+        )
+    )
     changed_pages += int(
         write_if_changed(
             review_center_html_path(root),
@@ -5946,6 +6317,19 @@ def compile_wiki(root: Path) -> dict[str, Any]:
                 memory,
                 compiled_at,
                 active_protocol=protocol_state["active_protocol"],
+            ),
+        )
+    )
+    changed_pages += int(
+        write_if_changed(
+            furnace_center_html_path(root),
+            render_furnace_center_html(
+                decision_pages,
+                judgment_pages,
+                memory,
+                compiled_at,
+                protocol_state,
+                recent_outputs,
             ),
         )
     )
@@ -7507,6 +7891,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/judgments.md": "Missing judgments index page.",
         "wiki/indexes/rewrite-proposals.md": "Missing rewrite proposal index page.",
         "wiki/indexes/protocols.md": "Missing protocol dashboard page.",
+        "wiki/indexes/furnace-center.md": "Missing furnace center page.",
         "wiki/indexes/review-queue.md": "Missing review queue page.",
         "wiki/indexes/review-center.md": "Missing review center page.",
         "wiki/indexes/aging-report.md": "Missing aging report page.",
@@ -7548,11 +7933,14 @@ def lint_wiki(root: Path) -> dict[str, Any]:
 
     memory_state = machine_memory_state_path(root)
     graph_html = machine_memory_graph_html_path(root)
+    furnace_html = furnace_center_html_path(root)
     review_html = review_center_html_path(root)
     if manifest["entries"] and not memory_state.exists():
         findings.append(Finding("error", relative_path(root, memory_state), "Missing machine memory state file."))
     if manifest["entries"] and not graph_html.exists():
         findings.append(Finding("error", relative_path(root, graph_html), "Missing machine memory graph HTML view."))
+    if manifest["entries"] and not furnace_html.exists():
+        findings.append(Finding("error", relative_path(root, furnace_html), "Missing furnace center HTML view."))
     if manifest["entries"] and not review_html.exists():
         findings.append(Finding("error", relative_path(root, review_html), "Missing review center HTML view."))
     if memory_state.exists():

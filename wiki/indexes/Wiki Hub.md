@@ -23,6 +23,7 @@ kind: "dashboard"
 - [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]：`aiwiki` 的运行时架构
 - [[wiki/indexes/Furnace Protocols|统一炼丹协议]]：一个炉子，多种领域协议
 - [[wiki/indexes/protocols|协议总览]]：当前 active protocol 和可用协议库
+- [[wiki/indexes/furnace-center|炉心面板]]：统一入口，先看今天该处理什么
 - [[schema/index|运行时规则]]：compile、ask、lint 共同遵循的规则层
 - [[schema/protocols/index|协议规则库]]：`general / investing / research` starter protocols
 - [[wiki/indexes/review-center|审阅中心]]：把 review、aging、repair 和 concept rewrite 收到一起
