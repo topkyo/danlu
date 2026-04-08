@@ -34,6 +34,7 @@ LAYOUT_DIRS = (
     "output/packs/review",
     "output/packs/decision-memos",
     "output/packs/sop-drafts",
+    "output/pilots",
     "output/graph",
     "output/control",
     "output/review",
@@ -334,6 +335,18 @@ DEFAULT_DASHBOARD_FILES = {
             "- `decision memos` 会把已审 decision / judgment 导出成稳定 memo。",
             "- `SOP drafts` 会把 ready action / execution proposal 导出成可执行草案。",
             "- 这些 pack 先保持 deterministic markdown 产物，不引入新的 runtime 执行器。",
+        ]
+    )
+    + "\n",
+    "wiki/indexes/domain-pilots.md": "\n".join(
+        [
+            "# 领域 Pilot 总览",
+            "",
+            "这里会汇总 compile 生成的协议 pilot scorecard。",
+            "",
+            "- `output/pilots/*.md` 会按协议生成高密度场景压实的 deterministic scorecard。",
+            "- scorecard 负责回答：这个协议现在处于 seed / building / compounding 的哪一档。",
+            "- 它们不会改变 runtime，只负责把协议运行密度、判断资产和执行信号收拢成可追踪入口。",
         ]
     )
     + "\n",
@@ -4749,6 +4762,242 @@ def render_output_packs_index(output_packs: dict[str, Any], compiled_at: str, ac
     return "\n".join(lines) + "\n"
 
 
+def domain_pilots_index_path(root: Path) -> Path:
+    return root / "wiki" / "indexes" / "domain-pilots.md"
+
+
+def pilot_scorecards_dir(root: Path) -> Path:
+    return root / "output" / "pilots"
+
+
+def pilot_scorecard_path(root: Path, protocol: str) -> Path:
+    return pilot_scorecards_dir(root) / f"{slugify(protocol)}.md"
+
+
+def pilot_stage(metrics: dict[str, int]) -> tuple[str, str]:
+    curated = metrics["decisions"] + metrics["judgments"]
+    reviewed = metrics["reviewed"]
+    outputs = metrics["outputs"]
+    receipts = metrics["receipts"]
+    packs = metrics["review_packs"] + metrics["decision_memos"] + metrics["sop_drafts"]
+    if curated == 0 and outputs == 0:
+        return ("seed", "尚未形成该协议的稳定判断资产。")
+    if curated < 2 or reviewed == 0:
+        return ("warming-up", "已经开始沉淀，但 reviewed judgment / decision 还偏少。")
+    if reviewed < 3 or outputs < 3:
+        return ("building", "协议已经起量，但还没进入明显复利。")
+    if packs < 2 or receipts == 0:
+        return ("active", "判断和 pack 已形成，但执行闭环还不够密。")
+    return ("compounding", "已经出现判断、pack、执行和复审的复利迹象。")
+
+
+def build_domain_pilots(
+    root: Path,
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    memory: dict[str, Any],
+    protocol_state: dict[str, Any],
+    recent_outputs: list[dict[str, str]],
+    all_outputs: list[dict[str, str]],
+    output_packs: dict[str, Any],
+    execution_audit: dict[str, Any],
+    compiled_at: str,
+) -> dict[str, Any]:
+    active_protocol = protocol_state["active_protocol"]
+    review_pack_counts: dict[str, int] = {}
+    decision_memo_counts: dict[str, int] = {}
+    sop_draft_counts: dict[str, int] = {}
+    for pack in output_packs.get("review_packs", []):
+        protocol = str(pack.get("protocol") or DEFAULT_PROTOCOL)
+        review_pack_counts[protocol] = review_pack_counts.get(protocol, 0) + 1
+    for pack in output_packs.get("decision_memos", []):
+        protocol = str(pack.get("protocol") or DEFAULT_PROTOCOL)
+        decision_memo_counts[protocol] = decision_memo_counts.get(protocol, 0) + 1
+    for pack in output_packs.get("sop_drafts", []):
+        protocol = str(pack.get("protocol") or DEFAULT_PROTOCOL)
+        sop_draft_counts[protocol] = sop_draft_counts.get(protocol, 0) + 1
+    receipt_counts = {
+        str(row.get("protocol") or DEFAULT_PROTOCOL): int(row.get("count") or 0)
+        for row in execution_audit.get("protocols", [])
+        if isinstance(row, dict)
+    }
+    repair_plan = memory.get("health", {}).get("repair_plan", {})
+    proposal_counts: dict[str, int] = {}
+    for proposal in repair_plan.get("execution_proposals", []):
+        if not isinstance(proposal, dict):
+            continue
+        protocol = str(proposal.get("protocol") or active_protocol)
+        proposal_counts[protocol] = proposal_counts.get(protocol, 0) + 1
+
+    scorecards: list[dict[str, Any]] = []
+    for protocol in sorted(PROTOCOL_LIBRARY):
+        protocol_decisions = [page for page in decisions if page.get("protocol") == protocol]
+        protocol_judgments = [page for page in judgments if page.get("protocol") == protocol]
+        protocol_outputs = [artifact for artifact in all_outputs if artifact.get("protocol") == protocol]
+        protocol_recent_outputs = [artifact for artifact in recent_outputs if artifact.get("protocol") == protocol][:5]
+        pending = sum(1 for page in [*protocol_decisions, *protocol_judgments] if page.get("pending_review") == "true")
+        reviewed = sum(
+            1
+            for page in [*protocol_decisions, *protocol_judgments]
+            if page.get("reviewed_at") and page.get("pending_review") != "true"
+        )
+        overdue = sum(1 for page in [*protocol_decisions, *protocol_judgments] if page.get("overdue_review") == "true")
+        escalation = sum(
+            1 for page in [*protocol_decisions, *protocol_judgments] if page.get("escalation_candidate") == "true"
+        )
+        metrics = {
+            "decisions": len(protocol_decisions),
+            "judgments": len(protocol_judgments),
+            "reviewed": reviewed,
+            "pending": pending,
+            "overdue": overdue,
+            "escalation": escalation,
+            "outputs": len(protocol_outputs),
+            "review_packs": review_pack_counts.get(protocol, 0),
+            "decision_memos": decision_memo_counts.get(protocol, 0),
+            "sop_drafts": sop_draft_counts.get(protocol, 0),
+            "receipts": receipt_counts.get(protocol, 0),
+            "execution_proposals": proposal_counts.get(protocol, 0),
+        }
+        stage, stage_summary = pilot_stage(metrics)
+        gaps: list[str] = []
+        if metrics["decisions"] + metrics["judgments"] == 0:
+            gaps.append("还没有该协议的 `decision / judgment` 资产。")
+        if metrics["reviewed"] == 0:
+            gaps.append("还没有 reviewed judgment / decision。")
+        if metrics["outputs"] < 2:
+            gaps.append("可回流 outputs 还不够密。")
+        if metrics["pending"] > metrics["reviewed"]:
+            gaps.append("待审页面多于已审资产。")
+        if metrics["review_packs"] == 0 and metrics["pending"] > 0:
+            gaps.append("需要先把 pending review 炼成 review packs。")
+        if metrics["decision_memos"] == 0 and metrics["reviewed"] > 0:
+            gaps.append("已审判断还没有形成 decision memos。")
+        if metrics["sop_drafts"] == 0 and metrics["execution_proposals"] > 0:
+            gaps.append("执行提案还没有形成 SOP drafts。")
+        if metrics["receipts"] == 0 and metrics["sop_drafts"] > 0:
+            gaps.append("还没有 execution receipt，可先从 dry-run / low-risk apply 开始。")
+        next_moves = [
+            PROTOCOL_LIBRARY[protocol]["focus"][0],
+            PROTOCOL_LIBRARY[protocol]["review"][0],
+            PROTOCOL_LIBRARY[protocol]["nightly"][0],
+        ]
+        if gaps:
+            next_moves.insert(0, gaps[0])
+        destination = pilot_scorecard_path(root, protocol)
+        frontmatter_text = render_frontmatter(
+            {
+                "id": f"pilot-scorecard-{slugify(protocol)}",
+                "kind": "pilot-scorecard",
+                "title": f"{protocol_title(protocol)} Pilot Scorecard",
+                "protocol": protocol,
+                "generated_by": "aiwiki-compile",
+                "last_compiled_at": compiled_at,
+            }
+        )
+        lines = [
+            frontmatter_text,
+            "",
+            f"# {protocol_title(protocol)} Pilot Scorecard",
+            "",
+            "## Overview",
+            f"- Protocol: `{protocol}` ({protocol_title(protocol)})",
+            f"- Stage: `{stage}`",
+            f"- Summary: {stage_summary}",
+            f"- 当前协议是否 active：`{'yes' if protocol == active_protocol else 'no'}`",
+            "",
+            "## Density Snapshot",
+            f"- Decisions / Judgments: `{metrics['decisions']}` / `{metrics['judgments']}`",
+            f"- Reviewed / Pending: `{metrics['reviewed']}` / `{metrics['pending']}`",
+            f"- Overdue / Escalation: `{metrics['overdue']}` / `{metrics['escalation']}`",
+            f"- Outputs: `{metrics['outputs']}`",
+            f"- Review packs / Decision memos / SOP drafts: `{metrics['review_packs']}` / `{metrics['decision_memos']}` / `{metrics['sop_drafts']}`",
+            f"- Execution proposals / Receipts: `{metrics['execution_proposals']}` / `{metrics['receipts']}`",
+            "",
+            "## Protocol Focus",
+            *[f"- {line}" for line in PROTOCOL_LIBRARY[protocol]["focus"]],
+            "",
+            "## Gaps",
+        ]
+        if not gaps:
+            lines.append("- 当前没有明显结构性缺口。")
+        else:
+            lines.extend(f"- {gap}" for gap in gaps)
+        lines.extend(["", "## Next Moves"])
+        lines.extend(f"- {item}" for item in next_moves[:5])
+        lines.extend(["", "## Recent Outputs"])
+        if not protocol_recent_outputs:
+            lines.append("- 当前没有最近 output。")
+        else:
+            for artifact in protocol_recent_outputs:
+                lines.append(
+                    f"- {pack_workspace_link(artifact['path'], artifact['title'])}"
+                    f" | format `{artifact['format'] or 'unknown'}`"
+                    f" | created `{artifact['created_at'] or 'unknown'}`"
+                )
+        lines.extend(
+            [
+                "",
+                "## Related Links",
+                f"- {pack_workspace_link(f'schema/protocols/{protocol}/index.md', f'{protocol_title(protocol)} 协议规则')}",
+                f"- {pack_workspace_link('wiki/indexes/protocols.md', '协议总览')}",
+                f"- {pack_workspace_link('wiki/indexes/output-packs.md', '输出 Pack 总览')}",
+                f"- {pack_workspace_link('wiki/indexes/review-center.md', '审阅中心')}",
+                f"- {pack_workspace_link('wiki/indexes/execution-center.md', '执行中心')}",
+            ]
+        )
+        scorecards.append(
+            {
+                "protocol": protocol,
+                "title": f"{protocol_title(protocol)} Pilot Scorecard",
+                "path": relative_path(root, destination),
+                "content": "\n".join(lines) + "\n",
+                "stage": stage,
+                "summary": stage_summary,
+                "metrics": metrics,
+            }
+        )
+    return {
+        "compiled_at": compiled_at,
+        "active_protocol": active_protocol,
+        "scorecards": scorecards,
+    }
+
+
+def render_domain_pilots_index(domain_pilots: dict[str, Any], compiled_at: str, active_protocol: str) -> str:
+    lines = [
+        "# 领域 Pilot 总览",
+        "",
+        f"- 最近编译时间：`{compiled_at}`",
+        f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})",
+        f"- 协议总数：`{len(domain_pilots.get('scorecards', []))}`",
+        "",
+        "## 协议 Scorecards",
+    ]
+    for scorecard in domain_pilots.get("scorecards", []):
+        metrics = scorecard.get("metrics", {})
+        lines.append(
+            f"- {workspace_link(scorecard['path'], scorecard['title'])}"
+            f" | stage `{scorecard.get('stage', 'seed')}`"
+            f" | curated `{int(metrics.get('decisions', 0)) + int(metrics.get('judgments', 0))}`"
+            f" | outputs `{metrics.get('outputs', 0)}`"
+            f" | receipts `{metrics.get('receipts', 0)}`"
+        )
+        lines.append(f"  - {scorecard.get('summary', '')}")
+    lines.extend(
+        [
+            "",
+            "## 相关入口",
+            "- [协议总览](./protocols.md)",
+            "- [输出 Pack 总览](./output-packs.md)",
+            "- [炉心面板](./furnace-center.md)",
+            "- [审阅中心](./review-center.md)",
+            "- [执行中心](./execution-center.md)",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
 def render_agent_pack(
     role: str,
     title: str,
@@ -5471,6 +5720,7 @@ def render_furnace_center(
             "- [Agent Workbench](./agent-workbench.md)",
             "- [认知历史](./cognitive-history.md)",
             "- [输出 Pack 总览](./output-packs.md)",
+            "- [领域 Pilot 总览](./domain-pilots.md)",
             "- [判断资产](./judgment-assets.md)",
             "- [图谱视图](./graph-view.md)",
             "- [修复待办](./repair-backlog.md)",
@@ -5622,6 +5872,7 @@ def render_furnace_center_html(
             '      <a href="../../wiki/indexes/agent-workbench.md">Agent Workbench</a>',
             '      <a href="../../wiki/indexes/cognitive-history.md">认知历史</a>',
             '      <a href="../../wiki/indexes/output-packs.md">输出 Packs</a>',
+            '      <a href="../../wiki/indexes/domain-pilots.md">领域 Pilots</a>',
             '      <a href="../../wiki/indexes/judgment-assets.md">判断资产</a>',
             '      <a href="../../wiki/indexes/graph-view.md">图谱视图</a>',
             '      <a href="../../wiki/indexes/repair-backlog.md">修复待办</a>',
@@ -5693,6 +5944,7 @@ def render_compile_status(
         "- 炉心面板位于 `furnace-center.md`。",
         "- 执行中心位于 `execution-center.md`。",
         "- 输出 Pack 总览位于 `output-packs.md`。",
+        "- 领域 Pilot 总览位于 `domain-pilots.md`。",
         "- 操作日志位于 `log.md`。",
         "- Agent Workbench 位于 `agent-workbench.md`。",
         "- 决策索引位于 `decisions.md`。",
@@ -5754,6 +6006,7 @@ def render_master_index(
         "- [炉心面板](./furnace-center.md)",
         "- [执行中心](./execution-center.md)",
         "- [输出 Pack 总览](./output-packs.md)",
+        "- [领域 Pilot 总览](./domain-pilots.md)",
         "- [审阅队列](./review-queue.md)",
         "- [审阅中心](./review-center.md)",
         "- [Aging 报告](./aging-report.md)",
@@ -9523,6 +9776,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             render_execution_audit(execution_audit),
         )
     )
+    all_outputs = collect_output_artifacts(root)
     recent_outputs = collect_recent_output_artifacts(root)
     output_packs = build_output_packs(
         root,
@@ -9556,6 +9810,30 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     removed_pages += remove_stale_generated_markdown_files(
         sop_drafts_dir(root),
         {Path(pack["path"]).stem for pack in output_packs["sop_drafts"]},
+    )
+    domain_pilots = build_domain_pilots(
+        root,
+        decision_pages,
+        judgment_pages,
+        memory,
+        protocol_state,
+        recent_outputs,
+        all_outputs,
+        output_packs,
+        execution_audit,
+        compiled_at,
+    )
+    changed_pages += int(
+        write_if_changed(
+            domain_pilots_index_path(root),
+            render_domain_pilots_index(domain_pilots, compiled_at, protocol_state["active_protocol"]),
+        )
+    )
+    for scorecard in domain_pilots["scorecards"]:
+        changed_pages += int(write_if_changed(root / scorecard["path"], scorecard["content"]))
+    removed_pages += remove_stale_generated_markdown_files(
+        pilot_scorecards_dir(root),
+        {Path(scorecard["path"]).stem for scorecard in domain_pilots["scorecards"]},
     )
     agent_packs = build_agent_packs(
         root,
@@ -9692,6 +9970,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             f"machine_memory_terms: `{len(memory['term_index'])}`",
             f"graph_components: `{memory['health']['component_count']}`",
             f"output_packs: `{output_packs['counts']['review_packs']}/{output_packs['counts']['decision_memos']}/{output_packs['counts']['sop_drafts']}`",
+            f"domain_pilots: `{len(domain_pilots['scorecards'])}`",
             f"machine_memory_changed: `{transition['changed']}`",
             f"changed_pages: `{changed_pages}`",
             f"removed_concept_pages: `{removed_pages}`",
@@ -9706,6 +9985,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "machine_memory_changed": transition["changed"],
         "changed_pages": changed_pages,
         "output_packs": dict(output_packs["counts"]),
+        "domain_pilots": len(domain_pilots["scorecards"]),
     }
 
 
@@ -9855,6 +10135,7 @@ def render_report(
             "- [Agent Workbench](../../wiki/indexes/agent-workbench.md)",
             "- [认知历史](../../wiki/indexes/cognitive-history.md)",
             "- [输出 Pack 总览](../../wiki/indexes/output-packs.md)",
+            "- [领域 Pilot 总览](../../wiki/indexes/domain-pilots.md)",
             "- [协议总览](../../wiki/indexes/protocols.md)",
             "- [审阅队列](../../wiki/indexes/review-queue.md)",
             "- [审阅中心](../../wiki/indexes/review-center.md)",
@@ -9982,6 +10263,7 @@ def render_slides(
             "- `wiki/indexes/agent-workbench.md`",
             "- `wiki/indexes/cognitive-history.md`",
             "- `wiki/indexes/output-packs.md`",
+            "- `wiki/indexes/domain-pilots.md`",
             "- `wiki/indexes/protocols.md`",
             "- `wiki/indexes/review-queue.md`",
             "- `wiki/indexes/review-center.md`",
@@ -10092,6 +10374,7 @@ def render_figure_brief(
             "- [Agent Workbench](../../wiki/indexes/agent-workbench.md)",
             "- [认知历史](../../wiki/indexes/cognitive-history.md)",
             "- [输出 Pack 总览](../../wiki/indexes/output-packs.md)",
+            "- [领域 Pilot 总览](../../wiki/indexes/domain-pilots.md)",
             "- [协议总览](../../wiki/indexes/protocols.md)",
             "- [审阅队列](../../wiki/indexes/review-queue.md)",
             "- [审阅中心](../../wiki/indexes/review-center.md)",
@@ -10235,6 +10518,7 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
             "wiki/indexes/agent-workbench.md",
             "wiki/indexes/cognitive-history.md",
             "wiki/indexes/output-packs.md",
+            "wiki/indexes/domain-pilots.md",
             "wiki/indexes/protocols.md",
             "wiki/indexes/review-queue.md",
             "wiki/indexes/review-center.md",
@@ -11467,6 +11751,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/agent-workbench.md": "Missing agent workbench page.",
         "wiki/indexes/cognitive-history.md": "Missing cognitive history page.",
         "wiki/indexes/output-packs.md": "Missing output packs index page.",
+        "wiki/indexes/domain-pilots.md": "Missing domain pilots index page.",
         "wiki/indexes/rewrite-proposals.md": "Missing rewrite proposal index page.",
         "wiki/indexes/protocols.md": "Missing protocol dashboard page.",
         "wiki/indexes/furnace-center.md": "Missing furnace center page.",
@@ -11525,6 +11810,23 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         collect_recent_output_artifacts(root),
         utc_now(),
     )
+    execution_audit_snapshot = build_execution_audit_snapshot(
+        root,
+        pack_memory,
+        active_protocol=protocol_state["active_protocol"],
+    ) if pack_memory else {"protocols": [], "counts": {}, "recent_apply": [], "recent_revert": []}
+    expected_domain_pilots = build_domain_pilots(
+        root,
+        decision_pages,
+        judgment_pages,
+        pack_memory,
+        protocol_state,
+        collect_recent_output_artifacts(root),
+        collect_output_artifacts(root),
+        expected_output_packs,
+        execution_audit_snapshot,
+        utc_now(),
+    )
 
     memory_state = machine_memory_state_path(root)
     graph_html = machine_memory_graph_html_path(root)
@@ -11555,6 +11857,16 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                         f"Missing output pack `{pack_path.name}` for `{pack_group}`.",
                     )
                 )
+    for scorecard in expected_domain_pilots.get("scorecards", []):
+        scorecard_path = root / str(scorecard.get("path") or "")
+        if not scorecard_path.exists():
+            findings.append(
+                Finding(
+                    "error",
+                    relative_path(root, scorecard_path),
+                    f"Missing domain pilot scorecard `{scorecard_path.name}`.",
+                )
+            )
     if manifest["entries"]:
         for pack in AGENT_PACK_LIBRARY:
             pack_path = agent_pack_path(root, str(pack["role"]))

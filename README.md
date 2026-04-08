@@ -13,6 +13,7 @@ safe execution receipt 会落在 `output/control/execution-receipts/`。
 多 agent 工作单入口见 [agent-workbench.md](<./wiki/indexes/agent-workbench.md>)；compile 会把角色 pack 写到 `output/agents/`。
 认知历史入口见 [cognitive-history.md](<./wiki/indexes/cognitive-history.md>)；这里会汇总 reviewed judgment 的 citation drift、snapshot 缺口和复审轨迹。
 输出 pack 入口见 [output-packs.md](<./wiki/indexes/output-packs.md>)；compile 会把 `review packs / decision memos / SOP drafts` 写到 `output/packs/`。
+领域 pilot 入口见 [domain-pilots.md](<./wiki/indexes/domain-pilots.md>)；compile 会把各协议的 deterministic scorecard 写到 `output/pilots/`。
 关于“一个统一炉子，多个领域协议”的原则，见 [Furnace Protocols.md](<./wiki/indexes/Furnace Protocols.md>)。
 协议运行时入口见 [protocols.md](<./wiki/indexes/protocols.md>)；当前 starter library 提供 `general / investing / research / product / ops` 五套协议。
 当前协议不只是 metadata：它已经会改变 `decision / judgment` 的默认 review window、`file-back` 模板、recurring promotion 的标题与分类语义、`review / nightly / repair` 的优先级焦点，以及 `ask / output / execution proposal` 的策略偏置。
@@ -163,6 +164,7 @@ nightly 也会继续跟踪 `decision / judgment` 的 aging：
 - `cognitive-history.md` 会把 reviewed `decision / judgment` 的 citation drift、snapshot gap 和长历史页面集中收拢出来
 - `agent-workbench.md` 会把 `ingest / concept / judgment / review / repair-planner / execution / nightly` 角色 pack 收到一个地方，agent 具体工作单会落在 `output/agents/`
 - `output-packs.md` 会把 `review packs / decision memos / SOP drafts` 收到统一入口，具体 pack 会落在 `output/packs/`
+- `domain-pilots.md` 会把 `general / investing / research / product / ops` 的 pilot scorecard 收到统一入口，具体 scorecard 会落在 `output/pilots/`
 
 machine-memory action 现在也有显式 lifecycle：
 - `proposed`：新发现、待处理
@@ -200,6 +202,7 @@ safe execution layer 现在也已经接上：
 - [cognitive-history.md](./wiki/indexes/cognitive-history.md)
 - [agent-workbench.md](./wiki/indexes/agent-workbench.md)
 - [output-packs.md](./wiki/indexes/output-packs.md)
+- [domain-pilots.md](./wiki/indexes/domain-pilots.md)
 
 ## 当前入口
 
@@ -214,6 +217,7 @@ safe execution layer 现在也已经接上：
 - [execution-audit.md](./wiki/indexes/execution-audit.md)：执行审计入口；本地审计面板在 `output/control/execution-audit.html`
 - [review-center.md](./wiki/indexes/review-center.md)：统一审阅/修复入口；本地审阅面板在 `output/review/review-center.html`
 - [output-packs.md](./wiki/indexes/output-packs.md)：输出 pack 入口；deterministic packs 会落在 `output/packs/`
+- [domain-pilots.md](./wiki/indexes/domain-pilots.md)：领域 pilot 入口；各协议 scorecard 会落在 `output/pilots/`
 - [judgment-assets.md](./wiki/indexes/judgment-assets.md)：判断资产盘点入口
 - [graph-view.md](./wiki/indexes/graph-view.md)：统一图谱入口；本地图谱产物在 `output/graph/machine-memory.html`，现在带搜索、分量过滤、节点详情和 safe-apply 摘要
 
@@ -260,7 +264,7 @@ export AIWIKI_LLM_MAX_CONTEXT_CHARS="24000"
 ```text
 raw/       原料、附件、capture notes
 wiki/      编译后的知识层
-output/    报告、图表、幻灯片、pack、lint 结果
+output/    报告、图表、幻灯片、pack、pilot、lint 结果
 .aiwiki/   machine memory、状态、缓存
 schema/    运行时规则
 schema/protocols/ 领域协议规则

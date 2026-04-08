@@ -182,6 +182,7 @@ class AiwikiFlowTests(unittest.TestCase):
         agent_workbench = self.root / "wiki" / "indexes" / "agent-workbench.md"
         cognitive_history = self.root / "wiki" / "indexes" / "cognitive-history.md"
         output_packs = self.root / "wiki" / "indexes" / "output-packs.md"
+        domain_pilots = self.root / "wiki" / "indexes" / "domain-pilots.md"
         review_queue = self.root / "wiki" / "indexes" / "review-queue.md"
         memory_state = self.root / ".aiwiki" / "state" / "machine-memory.json"
         memory_graph = self.root / ".aiwiki" / "cache" / "machine-memory-graph.json"
@@ -196,6 +197,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(agent_workbench.exists())
         self.assertTrue(cognitive_history.exists())
         self.assertTrue(output_packs.exists())
+        self.assertTrue(domain_pilots.exists())
         self.assertTrue(review_queue.exists())
         self.assertTrue(memory_state.exists())
         self.assertTrue(memory_graph.exists())
@@ -209,6 +211,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Agent Workbench", master_index.read_text(encoding="utf-8"))
         self.assertIn("认知历史", master_index.read_text(encoding="utf-8"))
         self.assertIn("输出 Pack 总览", master_index.read_text(encoding="utf-8"))
+        self.assertIn("领域 Pilot 总览", master_index.read_text(encoding="utf-8"))
         self.assertIn("图谱健康", master_index.read_text(encoding="utf-8"))
         self.assertIn("漂移报告", master_index.read_text(encoding="utf-8"))
         self.assertIn("compile | wiki refresh", log_page.read_text(encoding="utf-8"))
@@ -1769,6 +1772,34 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Action id:", sop_text)
         self.assertIn("apply-action", sop_text)
 
+    def test_compile_generates_domain_pilot_scorecards(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        ask_question(self.root, "Should we underwrite this thesis?", "report", protocol="investing")
+        ask_question(self.root, "Latency benchmark regression after cache migration", "report", protocol="research")
+        report = ask_question(self.root, "Is this launch ready for beta users?", "report", protocol="product")
+        judgment = file_back(self.root, report["path"], title="Launch Readiness", kind="judgment")
+        review_page(
+            self.root,
+            judgment["path"],
+            "confirmed",
+            note="Stable enough for pilot scorecard.",
+            confidence="medium",
+        )
+        compile_wiki(self.root)
+
+        pilots_index = (self.root / "wiki" / "indexes" / "domain-pilots.md").read_text(encoding="utf-8")
+        investing_scorecard = (self.root / "output" / "pilots" / "investing.md").read_text(encoding="utf-8")
+        product_scorecard = (self.root / "output" / "pilots" / "product.md").read_text(encoding="utf-8")
+
+        self.assertIn("## 协议 Scorecards", pilots_index)
+        self.assertIn("通用协议 Pilot Scorecard", pilots_index)
+        self.assertIn("投资协议 Pilot Scorecard", pilots_index)
+        self.assertIn("## Density Snapshot", investing_scorecard)
+        self.assertIn("## Gaps", investing_scorecard)
+        self.assertIn("## Next Moves", product_scorecard)
+        self.assertIn("## Recent Outputs", product_scorecard)
+
     def test_run_ask_includes_machine_memory_query_plan_in_prompt(self) -> None:
         sample = self.root / "latency.md"
         sample.write_text("# Throughput Notes\n\nLatency throughput cache locality.\n", encoding="utf-8")
@@ -1811,6 +1842,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("wiki/indexes/agent-workbench.md", client.prompt)
         self.assertIn("wiki/indexes/cognitive-history.md", client.prompt)
         self.assertIn("wiki/indexes/output-packs.md", client.prompt)
+        self.assertIn("wiki/indexes/domain-pilots.md", client.prompt)
         self.assertIn("wiki/indexes/machine-memory-topology.md", client.prompt)
         self.assertIn("wiki/indexes/machine-memory-actions.md", client.prompt)
         self.assertIn("wiki/indexes/machine-memory-repair-plan.md", client.prompt)
@@ -2708,6 +2740,16 @@ class AiwikiFlowTests(unittest.TestCase):
         lint = lint_wiki(self.root)
         report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
         self.assertIn("Missing output pack", report_text)
+
+    def test_lint_reports_missing_domain_pilot_scorecard(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        (self.root / "output" / "pilots" / "general.md").unlink()
+
+        lint = lint_wiki(self.root)
+        report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
+        self.assertIn("Missing domain pilot scorecard", report_text)
 
 
 if __name__ == "__main__":

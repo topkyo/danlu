@@ -27,3 +27,4 @@
 - `ask` 会按 active protocol 调整 source / concept ranking。
 - `report / slides / figure` 会写入协议化输出偏置，约束最终成品组织方式。
 - machine-memory repair execution proposal 会按 active protocol 追加领域化修复提示和 page-level patch plan。
+- compile 会为每个协议生成 deterministic `pilot scorecard`，统一入口在 `wiki/indexes/domain-pilots.md`，具体文件落在 `output/pilots/`。
