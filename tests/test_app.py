@@ -766,6 +766,10 @@ class AiwikiFlowTests(unittest.TestCase):
         )
         self.assertEqual(manual_link_state["source_to_concept"][0]["source_id"], entry["id"])
         self.assertEqual(manual_link_state["source_to_concept"][0]["concept_slug"], concept_slug)
+        self.assertIn("receipt_path", result)
+        receipt = json.loads((self.root / result["receipt_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(receipt["kind"], "execution-receipt")
+        self.assertEqual(receipt["action_id"], "manual-link-action")
         after_signature = parse_frontmatter(concept_path.read_text(encoding="utf-8"))["source_signature"]
         self.assertNotEqual(before_signature, after_signature)
 
@@ -838,6 +842,39 @@ class AiwikiFlowTests(unittest.TestCase):
 
         with self.assertRaises(RuntimeError):
             apply_machine_memory_action(self.root, "inactive-link-action", note="Should fail.")
+
+    def test_lint_reports_missing_execution_receipt(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "manual-link-action",
+                        "kind": "add-source-concept-link",
+                        "title": "Manual safe apply link",
+                        "reason": "Backfill source/concept link.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "accepted",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                    }
+                ],
+            },
+        )
+        result = apply_machine_memory_action(self.root, "manual-link-action", note="Safe apply for receipt test.")
+        (self.root / result["receipt_path"]).unlink()
+
+        lint = lint_wiki(self.root)
+        report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
+        self.assertIn("Referenced execution receipt does not exist for action `manual-link-action`.", report_text)
 
     def test_file_back_supports_decision_and_judgment_kinds(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")

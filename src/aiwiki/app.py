@@ -2968,6 +2968,34 @@ def build_execution_bundle(
     }
 
 
+def build_execution_receipt(
+    root: Path,
+    action: dict[str, Any],
+    *,
+    applied_at: str,
+    note: str | None,
+    proposal: dict[str, Any],
+) -> dict[str, Any]:
+    bundle = build_execution_bundle(root, proposal, compiled_at=applied_at)
+    return {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-apply-action",
+        "applied_at": applied_at,
+        "action_id": str(action.get("id") or ""),
+        "title": str(action.get("title") or ""),
+        "status": "resolved",
+        "protocol": str(proposal.get("protocol") or DEFAULT_PROTOCOL),
+        "apply_mode": "manual-link-state",
+        "note": note or "",
+        "primary_path": str(action.get("primary_path") or ""),
+        "secondary_path": str(action.get("secondary_path") or ""),
+        "receipt_path": relative_path(root, execution_receipt_path(root, str(action.get("id") or ""))),
+        "bundle": bundle,
+        "safe_apply_preview": proposal.get("safe_apply_preview"),
+    }
+
+
 def remove_stale_generated_execution_proposal_pages(root: Path, active_action_ids: set[str]) -> int:
     removed = 0
     directory = execution_proposals_dir(root)
@@ -4321,6 +4349,14 @@ def execution_bundle_path(root: Path, action_id: str) -> Path:
     return execution_bundles_dir(root) / f"{slugify(action_id)}.json"
 
 
+def execution_receipts_dir(root: Path) -> Path:
+    return root / "output" / "control" / "execution-receipts"
+
+
+def execution_receipt_path(root: Path, action_id: str) -> Path:
+    return execution_receipts_dir(root) / f"{slugify(action_id)}.json"
+
+
 def concept_quality_path(root: Path) -> Path:
     return root / "wiki" / "indexes" / "concept-quality.md"
 
@@ -4904,6 +4940,7 @@ def reconcile_machine_memory_actions(
             status_updated_at = compiled_at
         reviewed_at = str(previous.get("reviewed_at") or "")
         review_note = str(previous.get("review_note") or "")
+        last_receipt_path = str(previous.get("last_receipt_path") or "")
         revisit_after = str(previous.get("revisit_after") or "")
         escalate_after = str(previous.get("escalate_after") or "")
         if status in PENDING_ACTION_STATUSES:
@@ -4922,6 +4959,7 @@ def reconcile_machine_memory_actions(
             "status_updated_at": status_updated_at,
             "reviewed_at": reviewed_at,
             "review_note": review_note,
+            "last_receipt_path": last_receipt_path,
             "revisit_after": revisit_after,
             "escalate_after": escalate_after,
             "reopened_count": reopened_count,
@@ -6222,6 +6260,15 @@ def render_machine_memory_actions(memory: dict[str, Any]) -> str:
     inactive_actions = health.get("inactive_actions", [])
     overdue_actions = health.get("overdue_actions", [])
     escalated_actions = health.get("escalated_actions", [])
+    recent_receipts = sorted(
+        [
+            action
+            for action in [*actions, *inactive_actions]
+            if action.get("last_receipt_path")
+        ],
+        key=lambda item: str(item.get("status_updated_at") or item.get("reviewed_at") or ""),
+        reverse=True,
+    )
     counts = health.get("action_counts", {})
     by_priority = counts.get("by_priority", {})
     by_status = counts.get("by_status", {})
@@ -6333,6 +6380,16 @@ def render_machine_memory_actions(memory: dict[str, Any]) -> str:
                 f"- [{display_action_status(str(action.get('status')))}] {action['title']}"
                 f" | last_seen `{action.get('last_seen_at', '') or 'none'}`"
                 f" | inactive_since `{action.get('inactive_since', '') or 'none'}`"
+            )
+    lines.extend(["", "## 最近执行回执"])
+    if not recent_receipts:
+        lines.append("- 当前还没有 safe execution receipt。")
+    else:
+        for action in recent_receipts[:8]:
+            lines.append(
+                f"- [{display_action_status(str(action.get('status')))}] {action['title']}"
+                f" | receipt `{action.get('last_receipt_path', '')}`"
+                f" | updated `{action.get('status_updated_at', '') or action.get('reviewed_at', '') or 'none'}`"
             )
     lines.extend(
         [
@@ -6604,6 +6661,15 @@ def render_execution_center(memory: dict[str, Any], *, compiled_at: str, active_
     plan = memory.get("health", {}).get("repair_plan", {})
     proposals = plan.get("execution_proposals", [])
     ready_actions = plan.get("ready_actions", [])
+    recent_receipts = sorted(
+        [
+            action
+            for action in [*memory.get("health", {}).get("actions", []), *memory.get("health", {}).get("inactive_actions", [])]
+            if action.get("last_receipt_path")
+        ],
+        key=lambda item: str(item.get("status_updated_at") or item.get("reviewed_at") or ""),
+        reverse=True,
+    )
     apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
     patch_steps = sum(len(proposal.get("page_patch_plan", [])) for proposal in proposals)
     lines = [
@@ -6638,6 +6704,16 @@ def render_execution_center(memory: dict[str, Any], *, compiled_at: str, active_
                 f" | targets `{', '.join(proposal.get('target_paths', [])) or 'none'}`"
                 f" | bundle `{proposal.get('bundle_path', '') or 'none'}`"
             )
+    lines.extend(["", "## Recent Receipts"])
+    if not recent_receipts:
+        lines.append("- 当前还没有 safe execution receipt。")
+    else:
+        for action in recent_receipts[:8]:
+            lines.append(
+                f"- `{action['title']}`"
+                f" | receipt `{action.get('last_receipt_path', '')}`"
+                f" | updated `{action.get('status_updated_at', '') or action.get('reviewed_at', '') or 'none'}`"
+            )
     lines.extend(
         [
             "",
@@ -6656,6 +6732,15 @@ def render_execution_center_html(memory: dict[str, Any], *, compiled_at: str, ac
     plan = memory.get("health", {}).get("repair_plan", {})
     proposals = plan.get("execution_proposals", [])
     ready_actions = plan.get("ready_actions", [])
+    recent_receipts = sorted(
+        [
+            action
+            for action in [*memory.get("health", {}).get("actions", []), *memory.get("health", {}).get("inactive_actions", [])]
+            if action.get("last_receipt_path")
+        ],
+        key=lambda item: str(item.get("status_updated_at") or item.get("reviewed_at") or ""),
+        reverse=True,
+    )
     apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
     patch_steps = sum(len(proposal.get("page_patch_plan", [])) for proposal in proposals)
     summary_cards = [
@@ -6677,6 +6762,11 @@ def render_execution_center_html(memory: dict[str, Any], *, compiled_at: str, ac
         f"<div class=\"item-meta\"><a href=\"../../{html.escape(str(proposal.get('bundle_path') or ''))}\">Execution Bundle</a></div></li>"
         for proposal in proposals[:10]
     ) or "<li>当前没有 execution proposal。</li>"
+    receipt_markup = "".join(
+        f"<li><strong>{html.escape(str(action.get('title') or 'unnamed action'))}</strong>"
+        f"<div class=\"item-meta\"><a href=\"../../{html.escape(str(action.get('last_receipt_path') or ''))}\">Execution Receipt</a></div></li>"
+        for action in recent_receipts[:8]
+    ) or "<li>当前还没有 safe execution receipt。</li>"
     return "\n".join(
         [
             "<!doctype html>",
@@ -6720,6 +6810,7 @@ def render_execution_center_html(memory: dict[str, Any], *, compiled_at: str, ac
             '  <section class="grid">',
             f'    <div class="panel"><h2>Safe Apply Actions</h2><ul>{safe_apply_markup}</ul></div>',
             f'    <div class="panel"><h2>Execution Proposals</h2><ul>{proposal_markup}</ul></div>',
+            f'    <div class="panel"><h2>Recent Receipts</h2><ul>{receipt_markup}</ul></div>',
             '    <div class="panel"><h2>相关入口</h2><ul>'
             '      <li><a href="../../wiki/indexes/execution-center.md">Markdown 执行中心</a></li>'
             '      <li><a href="../../wiki/indexes/machine-memory-repair-plan.md">修复计划</a></li>'
@@ -8420,6 +8511,11 @@ def apply_machine_memory_action(
     else:  # pragma: no cover - guarded by allowlist above
         raise RuntimeError(f"Unsupported apply kind: {kind}")
 
+    receipt = build_execution_receipt(root, target, applied_at=applied_at, note=note, proposal=proposal)
+    receipt_path = execution_receipt_path(root, action_id)
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
     target["status"] = "resolved"
     target["reviewed_at"] = applied_at
     target["status_updated_at"] = applied_at
@@ -8430,6 +8526,7 @@ def apply_machine_memory_action(
     target["aging_state"] = ""
     target["overdue_review"] = "false"
     target["escalation_candidate"] = "false"
+    target["last_receipt_path"] = relative_path(root, receipt_path)
     _save_machine_memory_action_records(root, actions)
     append_wiki_log(
         root,
@@ -8448,6 +8545,7 @@ def apply_machine_memory_action(
         "status": "resolved",
         "applied_at": applied_at,
         "apply_mode": apply_mode,
+        "receipt_path": relative_path(root, receipt_path),
     }
 
 
@@ -9151,6 +9249,19 @@ def lint_wiki(root: Path) -> dict[str, Any]:
             findings.append(
                 Finding("error", relative_path(root, action_state_path), "Machine memory action state is not valid JSON.")
             )
+        else:
+            for action in action_state.get("actions", []):
+                if not isinstance(action, dict):
+                    continue
+                receipt_path = str(action.get("last_receipt_path") or "")
+                if receipt_path and not (root / receipt_path).exists():
+                    findings.append(
+                        Finding(
+                            "error",
+                            receipt_path,
+                            f"Referenced execution receipt does not exist for action `{action.get('id', '')}`.",
+                        )
+                    )
 
     rewrite_state_path = concept_rewrite_state_path(root)
     if manifest["entries"] and not rewrite_state_path.exists():
