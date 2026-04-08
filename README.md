@@ -3,6 +3,7 @@
 `aiwiki` 是一套 local-first 的知识复利操作系统：它把网页、PDF、图片、repo 和本地笔记等原料持续编译成可追溯的 `wiki`、`machine memory`、`decision/judgment` 与可回流输出，并通过 `review`、`lint`、`nightly` 持续维护知识质量；它不是静态笔记库，也不是一次性 RAG 问答器，而是一套让知识能够持续沉淀、审阅和修复的运行时。
 
 架构基线见 [Alchemy Furnace.md](<./wiki/indexes/Alchemy Furnace.md>)。
+从当前版本继续提升到上限的路线，见 [Furnace Ceiling Roadmap.md](<./wiki/indexes/Furnace Ceiling Roadmap.md>)。
 日常在 Obsidian 里使用时，入口是 [HOME.md](./HOME.md)。
 统一产品壳入口见 [furnace-center.md](<./wiki/indexes/furnace-center.md>)；本地 HTML 控制面板在 `output/control/furnace-center.html`。
 执行工作区入口见 [execution-center.md](<./wiki/indexes/execution-center.md>)；本地执行面板在 `output/control/execution-center.html`，机器可读 bundle 会落在 `output/control/execution-bundles/`。
