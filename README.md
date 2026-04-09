@@ -1,12 +1,15 @@
 # 炼丹炉
 
-**把原料炼成可复审的判断资产。**
+**为投资研究和技术研发，把原料炼成可复审的判断资产。**
 
-炼丹炉是一套 `local-first` 的知识复利操作系统。它把网页、PDF、图片、repo 和本地笔记等原料，持续编译成可追溯的 `wiki`、`machine memory`、`decision / judgment` 和可回流输出；它不是静态笔记库，也不是一次性 RAG 问答器，而是一个会持续编译、审阅、修复、复查并沉淀判断的认知系统。
+炼丹炉是一套面向投资研究、技术研发和高价值判断场景的 `local-first` 知识复利操作系统。它把网页、PDF、图片、repo、会议纪要和本地笔记等原料，持续编译成可追溯的 `wiki`、`machine memory`、`decision / judgment` 和可回流输出；它不是静态笔记库，也不是一次性 RAG 问答器，而是一个帮助你长期积累 thesis、研究结论、技术判断和复审历史的认知系统。
 
 仓库、CLI 和底层 runtime 仍然叫 `aiwiki`；`aiwiki` 是炼丹炉的实现内核。
 
-如果你更关心投资研究或技术研发的人群化表达，单独看 `readme-investing-research` 分支。
+这条分支是炼丹炉的“投资/研发版 README”，文案会更偏：
+- 公司 / 赛道 / thesis / catalyst / risk / invalidation
+- paper / repo / benchmark / experiment / architecture decision
+- report -> judgment -> review -> revisit 这条长期研究链
 
 ## 一句话理解
 
@@ -32,6 +35,13 @@
 
 Obsidian 是前端/IDE；炼丹炉是整个系统；`aiwiki` 是底层 runtime。
 
+## 更适合谁
+
+- 投资研究者：想把财报、电话会、访谈、赛道资料、判断变化和复审记录放进同一个炉子。
+- 技术研发者：想把论文、repo、实验、benchmark、设计权衡和技术判断沉淀成长期资产。
+
+如果你更关心通用产品入口，而不是投资/研发场景，可以回到 `main` 分支。
+
 ## 最小工作流
 
 1. 投料
@@ -53,8 +63,8 @@ AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . run-c
 3. 提问并出结果
 
 ```bash
-PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare A and B" --format report
-AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . run-ask "Compare A and B" --format report
+PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare company A and company B on thesis, catalyst, risk, and invalidation" --format report
+AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . run-ask "Compare paper A and repo B on architecture tradeoffs and benchmark evidence" --format report
 ```
 
 4. 回流高价值结果
