@@ -73,12 +73,14 @@ status: "active"
 - `.aiwiki/state/active-corpora.json`
 - `.aiwiki/state/archive-candidates.json`
 - `.aiwiki/state/material-routing.json`
+- `.aiwiki/state/runtime-history.jsonl`
 
 原因：
 
 - 都属于 machine-readable runtime state
 - `material-state.json`、`archive-candidates.json`、`material-routing.json` 应可由当前 manifest、`raw/ + wiki/ + machine memory` 增量重建
 - `active-corpora.json` 属于可持久化的运行态工作集；它应可由当前状态加 query / review / nightly 的近期运行历史重新收敛，但不应被当成独立事实源
+- `runtime-history.jsonl` 应作为 active corpus 收敛时的统一运行历史来源；`wiki/indexes/log.md` 只做人读镜像，不做 canonical state input
 - 不该污染 `raw/` 或 `wiki/` 本身
 
 ## 1. Material State
@@ -118,6 +120,7 @@ status: "active"
   - 把 evidence 和 judgment 层关联起来，但不混状态机
 - `active_corpus_ids`
   - 记录当前被哪些工作集显式点亮
+  - 第一版落地时允许为空数组或暂时缺省；等 `active-corpora.json` 接上后再稳定回填
 
 ## 2. Active Corpus
 
@@ -160,6 +163,9 @@ status: "active"
   - 例如 `question / review / nightly / judgment`
 - `focus_ref` / `question_hash` / `output_refs`
   - 明确带运行时会话语义，因此 active corpus 需要持久化而不是只做瞬时计算
+- `runtime-history.jsonl`
+  - 应作为 query / review / nightly 近期运行历史的统一 machine-readable 来源
+  - `wiki/indexes/log.md` 继续保留给人看，但不作为 active corpus 的 canonical rebuild input
 - `bridge_evidence_ids`
   - 显式记录跨协议召回的证据
 - `status`
@@ -308,6 +314,7 @@ status: "active"
 原因：
 
 - 先有温度和工作集，query / nightly 才有真正的运行面
+- 第一版如果先落 `material-state.json`，其中的 `active_corpus_ids` 应保持空/缺省；在 `active-corpora.json` 落地后再统一回填
 - routing 分数其次，因为它依赖前两者
 - archive candidate 最后补，避免一开始就把“归档”做得过重
 

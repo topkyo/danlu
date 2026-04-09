@@ -74,6 +74,19 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         self.assertIn("Outputs Layer", text)
         self.assertIn("execution-center", text)
 
+    def test_material_scaling_docs_keep_runtime_state_guards(self) -> None:
+        state_model = (
+            self.root / "wiki" / "indexes" / "Furnace Material State Model.md"
+        ).read_text(encoding="utf-8")
+        scaling = (
+            self.root / "wiki" / "indexes" / "Furnace Material Scaling.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("manifest `entries[*].id`", state_model)
+        self.assertIn("runtime-history.jsonl", state_model)
+        self.assertIn("active_corpus_ids", state_model)
+        self.assertIn("空/缺省", state_model)
+        self.assertIn("统一落在 machine-readable 的 runtime history 文件里", scaling)
+
 
 if __name__ == "__main__":
     unittest.main()

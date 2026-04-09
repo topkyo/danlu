@@ -275,6 +275,11 @@ query 未来应遵循：
 5. 让 machine memory 支持 protocol/topic/time shard
 6. 让 nightly 开始处理升温 / 降温 / 归档建议
 
+实现时还有两个收口原则应一开始写死：
+
+- 第一步如果先落 `material-state`，其中 `active_corpus_ids` 应保持空/缺省；等 `active-corpora` 接上后再统一回填
+- `active corpus` 所依赖的近期 `query / review / nightly` 历史，应该统一落在 machine-readable 的 runtime history 文件里，而不是让各模块各记一份
+
 ## 结论
 
 原料越来越多时，炼丹炉不该变成“更大的仓库”，而应该变成：
