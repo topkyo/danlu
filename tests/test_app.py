@@ -37,6 +37,7 @@ from aiwiki.app import (
     nightly_health,
     parse_frontmatter,
     placeholder_concept_slugs,
+    protocol_related_concept_lifecycle_summary,
     render_frontmatter,
     reactivate_concept,
     revert_material_archive,
@@ -3069,10 +3070,121 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("## Lifecycle Governance", research_scorecard)
         self.assertIn("## Protocol-Related Lifecycle Concept Backlog", research_scorecard)
         self.assertIn("## Protocol-Related Retired Concepts", research_scorecard)
+        self.assertIn("Related direct / secondary / bridge concepts", research_scorecard)
+        self.assertIn("protocol_relevance", research_scorecard)
         self.assertIn(backlog_title, research_scorecard)
         self.assertIn(retired_title, research_scorecard)
         self.assertNotIn(backlog_title, investing_scorecard)
         self.assertNotIn(retired_title, investing_scorecard)
+
+    def test_protocol_related_concept_lifecycle_summary_supports_strong_top2_and_bridge(self) -> None:
+        knowledge_lifecycle = {
+            "entries": [
+                {
+                    "kind": "concept",
+                    "title": "Direct Research Concept",
+                    "path": "wiki/concepts/direct-research.md",
+                    "lifecycle_state": "review",
+                    "source_ids": ["source-direct"],
+                },
+                {
+                    "kind": "concept",
+                    "title": "Strong Secondary Concept",
+                    "path": "wiki/concepts/strong-secondary.md",
+                    "lifecycle_state": "revisit",
+                    "source_ids": ["source-secondary"],
+                },
+                {
+                    "kind": "concept",
+                    "title": "Bridge Research Concept",
+                    "path": "wiki/concepts/bridge-research.md",
+                    "lifecycle_state": "retired",
+                    "source_ids": ["source-bridge"],
+                },
+                {
+                    "kind": "concept",
+                    "title": "Cold Secondary Concept",
+                    "path": "wiki/concepts/cold-secondary.md",
+                    "lifecycle_state": "review",
+                    "source_ids": ["source-cold-secondary"],
+                },
+            ]
+        }
+        material_routing = {
+            "entries": [
+                {
+                    "entry_id": "source-direct",
+                    "top_protocols": [
+                        {"protocol": "research", "total_score": 3.3, "selected_as": "hot-evidence"},
+                        {"protocol": "investing", "total_score": 1.6, "selected_as": "cold-evidence"},
+                    ],
+                    "protocol_snapshots": [
+                        {"protocol": "research", "selected_as": "hot-evidence", "total_score": 3.3, "is_bridge": False}
+                    ],
+                    "cross_protocol_bridge": False,
+                },
+                {
+                    "entry_id": "source-secondary",
+                    "top_protocols": [
+                        {"protocol": "investing", "total_score": 3.4, "selected_as": "hot-evidence"},
+                        {"protocol": "research", "total_score": 2.6, "selected_as": "warm-evidence"},
+                    ],
+                    "protocol_snapshots": [
+                        {"protocol": "research", "selected_as": "warm-evidence", "total_score": 2.6, "is_bridge": False}
+                    ],
+                    "cross_protocol_bridge": False,
+                },
+                {
+                    "entry_id": "source-bridge",
+                    "top_protocols": [
+                        {"protocol": "investing", "total_score": 3.5, "selected_as": "hot-evidence"},
+                        {"protocol": "research", "total_score": 2.5, "selected_as": "warm-evidence"},
+                    ],
+                    "protocol_snapshots": [
+                        {"protocol": "research", "selected_as": "warm-evidence", "total_score": 2.5, "is_bridge": True}
+                    ],
+                    "cross_protocol_bridge": True,
+                },
+                {
+                    "entry_id": "source-cold-secondary",
+                    "top_protocols": [
+                        {"protocol": "investing", "total_score": 2.7, "selected_as": "warm-evidence"},
+                        {"protocol": "research", "total_score": 1.8, "selected_as": "cold-evidence"},
+                    ],
+                    "protocol_snapshots": [
+                        {"protocol": "research", "selected_as": "cold-evidence", "total_score": 1.8, "is_bridge": False}
+                    ],
+                    "cross_protocol_bridge": False,
+                },
+            ]
+        }
+
+        summary = protocol_related_concept_lifecycle_summary(
+            knowledge_lifecycle,
+            material_routing,
+            protocol="research",
+        )
+
+        backlog_titles = [entry["title"] for entry in summary["concept_backlog"]]
+        retired_titles = [entry["title"] for entry in summary["retired_concepts"]]
+
+        self.assertIn("Direct Research Concept", backlog_titles)
+        self.assertIn("Strong Secondary Concept", backlog_titles)
+        self.assertIn("Bridge Research Concept", retired_titles)
+        self.assertNotIn("Cold Secondary Concept", backlog_titles)
+        self.assertEqual(summary["counts"]["direct_related_concepts"], 1)
+        self.assertEqual(summary["counts"]["secondary_related_concepts"], 1)
+        self.assertEqual(summary["counts"]["bridge_related_concepts"], 1)
+        self.assertEqual(
+            summary["inference_mode"],
+            "source-top1-plus-strong-top2-plus-cross-protocol-bridge",
+        )
+        bridge_entry = next(entry for entry in summary["retired_concepts"] if entry["title"] == "Bridge Research Concept")
+        secondary_entry = next(
+            entry for entry in summary["concept_backlog"] if entry["title"] == "Strong Secondary Concept"
+        )
+        self.assertEqual(bridge_entry["protocol_relevance_primary_mode"], "cross-protocol-bridge")
+        self.assertEqual(secondary_entry["protocol_relevance_primary_mode"], "strong-top2")
 
     def test_run_ask_includes_machine_memory_query_plan_in_prompt(self) -> None:
         sample = self.root / "latency.md"
