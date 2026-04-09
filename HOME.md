@@ -5,32 +5,32 @@ kind: "dashboard"
 
 # 炼丹炉工作台
 
-这里不是架构说明书，而是 `aiwiki` 在 Obsidian 里的日常入口。
+这里是 `aiwiki` 在 Obsidian 里的日常入口，不讲长篇架构，只回答 4 个问题：
 
-你在这里主要做 4 件事：
-- 投料
-- 看状态
-- 做查询
-- 回流并审阅重要结论
+- 原料放哪
+- 今天看哪
+- 结果去哪
+- 现在先做什么
 
-## 最简流程
+## 最简模型
 
-对人来说，只记住这 3 个地方就够了：
+只记住这 3 个地方：
 
 - 输入：`raw/`
-- 输出：`output/`
 - 沉淀：`wiki/`
+- 输出：`output/`
 
-如果展开一点，就是：
+展开就是：
 
 `raw/inbox/ -> wiki/sources + wiki/concepts + wiki/indexes -> output/ -> wiki/derived|decisions|judgments`
 
-对应关系：
+## 今天先做什么
 
-- 你把原料丢进 `raw/inbox/`，或用 `drop-*` 入口导入
-- 系统把它编译到 `wiki/`
-- 你从 `output/` 取报告、幻灯片、图表和 lint 结果
-- 值得长期保留的结果，再回流到 `wiki/`
+1. 把新材料放进 `raw/inbox/`，或用 `drop-*` 导入。
+2. 看 `furnace-center`、`review-queue`、`execution-center`，确认今天真正要处理什么。
+3. 用 `ask / run-ask` 出报告、幻灯片或图表。
+4. 把高价值结果 `file-back` 到 `wiki/derived / decisions / judgments`。
+5. 用 `review`、`nightly` 和 `execution` 维持系统质量。
 
 ## 今日入口
 
@@ -72,75 +72,50 @@ kind: "dashboard"
 - [[schema/index|运行时规则]]
 - [[schema/protocols/index|协议规则]]
 
-## 日常循环
-
-1. 把网页、PDF、图片、repo 或本地文件投进 `raw/inbox/`，或使用 `drop-*` 入口。
-2. 让 watcher / compile / nightly 自动刷新 `wiki/`、`output/` 和状态页。
-3. 在 `wiki/sources/`、`wiki/concepts/`、`wiki/indexes/` 里检查系统是否已经形成稳定知识。
-4. 用 `ask` / `run-ask` 生成报告、幻灯片或图表 brief。
-5. 把高价值结果 `file-back` 到 `wiki/derived/`、`wiki/decisions/`、`wiki/judgments/`，再进入审阅流。
-
 ## 现在去哪看
 
-- 想确认新投料有没有进系统：看 [[wiki/indexes/Raw Inbox|原料收件箱]]
-- 想看系统当前总览：看 [[wiki/indexes/Wiki Hub|知识中枢]]
-- 想从一个地方看今天该做什么：看 [[wiki/indexes/furnace-center|炉心面板]]，真正的本地控制面板在 `output/control/furnace-center.html`
-- 想专门看 safe apply、proposal、patch-step、execution bundle 和 execution receipt：看 [[wiki/indexes/execution-center|执行中心]]，真正的本地执行面板在 `output/control/execution-center.html`；真实 apply 会消费 bundle，不会裸执行，必要时可 `revert-action` 回滚 low-risk safe apply
-- 想复盘 apply / revert 历史、policy bands、协议级执行分布和 consistency signals：看 [[wiki/indexes/execution-audit|执行审计]]，真正的本地审计面板在 `output/control/execution-audit.html`
-- 想从“单人 + 多 agent 工作小组”的视角分工：看 [[wiki/indexes/agent-workbench|Agent Workbench]]，具体角色 pack 会落在 `output/agents/`
-- 想看哪些旧判断被新证据挑战、哪些页面缺 snapshot、哪些 judgment 已经积累长历史：看 [[wiki/indexes/cognitive-history|认知历史]]
-- 想把待审页面、已审 memo 和可执行 SOP 草案打包给人或 agent：看 [[wiki/indexes/output-packs|输出 Pack 总览]]，具体 pack 会落在 `output/packs/`
-- 想看 `general / investing / research / product / ops` 这些协议现在到底炼到哪一档：看 [[wiki/indexes/domain-pilots|领域 Pilot 总览]]，具体 scorecard 会落在 `output/pilots/`
-- 想切换或查看当前协议：看 [[wiki/indexes/protocols|协议总览]]
-- 想确认协议具体改变了什么行为：看 [[schema/protocols/index|协议规则]]
-- 想看 pending review：看 [[wiki/indexes/review-queue|审阅队列]]
-- 想把 review / repair / aging 放到一个地方看：看 [[wiki/indexes/review-center|审阅中心]]，真正的本地审阅面板在 `output/review/review-center.html`
-- 想盘点哪些 decision / judgment 还缺反证、失效条件、下一信号或复审历史：看 [[wiki/indexes/judgment-assets|判断资产]]
-- 想先处理弱概念页的 rewrite gate：看 [[wiki/indexes/rewrite-proposals|Rewrite 提案]]
-- 想看修复优先级：看 [[wiki/indexes/repair-backlog|修复待办]]
-- 想看 retrieval / graph 是否健康：看 [[wiki/indexes/graph-health|图谱健康]] 和 [[wiki/indexes/machine-memory|机器记忆]]
-- 想从统一入口看 machine-memory 图层：看 [[wiki/indexes/graph-view|图谱视图]]，真正的本地图谱产物在 `output/graph/machine-memory.html`，现在带搜索、分量过滤和节点详情
-- 想看最终产物：看 [[wiki/indexes/Outputs|输出面板]]
+- 想看总控页：[[wiki/indexes/furnace-center|炉心面板]]
+  本地 HTML：`output/control/furnace-center.html`
+- 想看执行：[[wiki/indexes/execution-center|执行中心]]
+  本地 HTML：`output/control/execution-center.html`
+- 想看 apply / revert 历史：[[wiki/indexes/execution-audit|执行审计]]
+  本地 HTML：`output/control/execution-audit.html`
+- 想看审阅和 aging：[[wiki/indexes/review-center|审阅中心]]
+  本地 HTML：`output/review/review-center.html`
+- 想看图谱：[[wiki/indexes/graph-view|图谱视图]]
+  本地 HTML：`output/graph/machine-memory.html`
+- 想看领域协议现状：[[wiki/indexes/domain-pilots|领域 Pilot 总览]]
+- 想看输出 pack：[[wiki/indexes/output-packs|输出 Pack 总览]]
+- 想看判断资产：[[wiki/indexes/judgment-assets|判断资产]]
+- 想看历史复查：[[wiki/indexes/cognitive-history|认知历史]]
 
 ## 路径职责
 
-- `raw/inbox/`：原始材料和 ingest 生成的 capture notes
-- `raw/assets/`：原始附件、页面图片、PDF、截图
+- `raw/inbox/`：原始材料和 capture notes
+- `raw/assets/`：图片、附件、PDF、页面资源
 - `wiki/sources/`：来源页
 - `wiki/concepts/`：概念页
-- `wiki/indexes/`：索引、状态、日志、漂移、图谱健康、审阅队列、修复待办
-- `wiki/decisions/` 与 `wiki/judgments/`：高阶结论层
-- `wiki/derived/`：回流后的派生 markdown
-- `output/`：报告、幻灯片、图表和 lint 结果
+- `wiki/indexes/`：索引、状态、队列、健康页
+- `wiki/decisions/`：决策页
+- `wiki/judgments/`：判断页
+- `wiki/derived/`：回流后的派生页面
+- `output/`：报告、幻灯片、图表、lint
 - `output/packs/`：review packs、decision memos、SOP drafts
-- `output/pilots/`：各协议的 pilot scorecards
+- `output/pilots/`：各协议 pilot scorecards
 - `schema/`：运行时规则
-- `schema/protocols/`：领域协议覆盖层
+- `schema/protocols/`：领域协议
 
-当前 starter library 已提供 `general / investing / research / product / ops` 五套协议。
+## 当前边界
 
-当前协议已经会改变：
-- `decision / judgment` 的默认 review window
-- `file-back` 生成的 `decision / judgment` 模板
-- recurring promotion 的标题和分类语义
-- `review-queue`、`review-center`、`repair-backlog` 与 machine-memory action queue 的优先级焦点
-- `ask` 对来源页和概念页的排序偏好
-- `report / slides / figure` 的输出组织偏置
-- machine-memory repair execution proposal 的领域化修复提示和 page-level patch plan
-
-## 使用边界
-
-- Obsidian 是前端/IDE，不是编译器
-- `aiwiki` 负责 ingest、compile、ask、lint、watch、nightly、provenance
-- 原始证据留在 `raw/`
-- 高价值综合沉到 `wiki/`
-- 查询产物先出到 `output/`，确认后再回流
+- Obsidian 是前端，不是编译器
+- `aiwiki` 负责 ingest、compile、ask、lint、nightly、execution
+- `raw/` 不被派生结论覆盖
+- safe execution 只开放低风险动作
+- 当前运行模型是 `single writer, many readers`
 
 ## 备注
 
-- Obsidian 新建笔记默认落到 `raw/inbox/`
-- Obsidian 新建附件默认落到 `raw/assets/`
-- 如果你要理解整体结构，去看 [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
-- 如果你要看从现在到上限还差哪些阶段，去看 [[wiki/indexes/Furnace Ceiling Roadmap|上限路线图]]
-- 如果你要看这套系统最终想长成什么样，去看 [[wiki/indexes/Furnace Ultimate Architecture|最终极形态]]
-- 如果你要看如何运行整个系统，去看 [README.md](./README.md)
+- 新建笔记默认进 `raw/inbox/`
+- 新建附件默认进 `raw/assets/`
+- 详细运行说明看 [README.md](./README.md)
+- 详细架构看 [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
