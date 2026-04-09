@@ -1,8 +1,10 @@
-# aiwiki
+# 炼丹炉
 
-`aiwiki` 是“炼丹炉”的 `local-first` runtime。
+**把原料炼成判断资产。**
 
-它把网页、PDF、图片、repo 和本地笔记等原料编译成可追溯的 `wiki`、`machine memory`、`decision / judgment` 和可回流输出；它不是静态笔记库，也不是一次性 RAG 问答器，而是一个会持续编译、审阅、修复和复查知识的炉子。
+炼丹炉是一套 `local-first` 的知识复利操作系统。它把网页、PDF、图片、repo 和本地笔记等原料持续编译成可追溯的 `wiki`、`machine memory`、`decision / judgment` 和可回流输出；它不是静态笔记库，也不是一次性 RAG 问答器，而是一个会持续编译、审阅、修复、复查并沉淀判断的认知系统。
+
+仓库、CLI 和底层 runtime 仍然叫 `aiwiki`；`aiwiki` 是炼丹炉的实现内核。
 
 ## 一句话理解
 
