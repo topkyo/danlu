@@ -6,6 +6,8 @@ const path = require("path");
 const PLUGIN_ID = "furnace-product-shell";
 const VIEW_TYPE_FURNACE_CENTER = "furnace-product-shell-furnace-center";
 const VIEW_TYPE_RECENT_RUNS = "furnace-product-shell-recent-runs";
+const VIEW_TYPE_REVIEW_CENTER = "furnace-product-shell-review-center";
+const VIEW_TYPE_EXECUTION_CENTER = "furnace-product-shell-execution-center";
 const SHELL_SUMMARY_PATH = "output/control/shell-summary.json";
 const DEFAULT_PROTOCOLS = ["general", "investing", "research", "product", "ops"];
 const DEFAULT_SETTINGS = {
@@ -220,6 +222,70 @@ class RecentRunsView extends ItemView {
   }
 }
 
+class ReviewCenterView extends ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    this.plugin = plugin;
+  }
+
+  getViewType() {
+    return VIEW_TYPE_REVIEW_CENTER;
+  }
+
+  getDisplayText() {
+    return "Review Center";
+  }
+
+  getIcon() {
+    return "clipboard-check";
+  }
+
+  async onOpen() {
+    this.plugin.registerOpenView(this);
+    this.render();
+  }
+
+  async onClose() {
+    this.plugin.unregisterOpenView(this);
+  }
+
+  render() {
+    this.plugin.renderReviewCenter(this.contentEl);
+  }
+}
+
+class ExecutionCenterView extends ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    this.plugin = plugin;
+  }
+
+  getViewType() {
+    return VIEW_TYPE_EXECUTION_CENTER;
+  }
+
+  getDisplayText() {
+    return "Execution Center";
+  }
+
+  getIcon() {
+    return "play-circle";
+  }
+
+  async onOpen() {
+    this.plugin.registerOpenView(this);
+    this.render();
+  }
+
+  async onClose() {
+    this.plugin.unregisterOpenView(this);
+  }
+
+  render() {
+    this.plugin.renderExecutionCenter(this.contentEl);
+  }
+}
+
 class FurnaceProductShellSettingTab extends PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
@@ -314,6 +380,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
     this.registerView(VIEW_TYPE_FURNACE_CENTER, (leaf) => new FurnaceCenterView(leaf, this));
     this.registerView(VIEW_TYPE_RECENT_RUNS, (leaf) => new RecentRunsView(leaf, this));
+    this.registerView(VIEW_TYPE_REVIEW_CENTER, (leaf) => new ReviewCenterView(leaf, this));
+    this.registerView(VIEW_TYPE_EXECUTION_CENTER, (leaf) => new ExecutionCenterView(leaf, this));
     this.addSettingTab(new FurnaceProductShellSettingTab(this.app, this));
 
     this.addRibbonIcon("flask-conical", "Open Furnace Center", () => {
@@ -335,6 +403,20 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       name: "Open Recent Runs",
       callback: () => {
         this.runUiAction(() => this.openRecentRunsView(), "Open Recent Runs");
+      },
+    });
+    this.addCommand({
+      id: "open-review-center",
+      name: "Open Review Center",
+      callback: () => {
+        this.runUiAction(() => this.openReviewCenterView(), "Open Review Center");
+      },
+    });
+    this.addCommand({
+      id: "open-execution-center",
+      name: "Open Execution Center",
+      callback: () => {
+        this.runUiAction(() => this.openExecutionCenterView(), "Open Execution Center");
       },
     });
     this.addCommand({
@@ -734,6 +816,14 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     await this.openView(VIEW_TYPE_RECENT_RUNS);
   }
 
+  async openReviewCenterView() {
+    await this.openView(VIEW_TYPE_REVIEW_CENTER);
+  }
+
+  async openExecutionCenterView() {
+    await this.openView(VIEW_TYPE_EXECUTION_CENTER);
+  }
+
   async openWorkspacePath(relativePath) {
     const normalized = String(relativePath || "").trim();
     if (!normalized) {
@@ -804,6 +894,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       { label: "Ask", onClick: async () => new AskCommandModal(this.app, this).open() },
       { label: "Nightly", onClick: async () => this.runNightlyCommand() },
       { label: "Set Protocol", onClick: async () => new ProtocolCommandModal(this.app, this).open() },
+      { label: "Review Center", onClick: async () => this.openReviewCenterView() },
+      { label: "Execution Center", onClick: async () => this.openExecutionCenterView() },
       { label: "Recent Runs", onClick: async () => this.openRecentRunsView() },
     ]);
 
@@ -1004,6 +1096,238 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         }
       });
     }
+  }
+
+  renderReviewCenter(contentEl) {
+    contentEl.empty();
+    contentEl.addClass("furnace-shell-view");
+    contentEl.createEl("h2", { text: "Review Center" });
+
+    if (!this.repoState.valid) {
+      contentEl.createDiv({
+        cls: "furnace-shell-empty",
+        text: `Repo-local runtime unavailable. Missing: ${this.repoState.missingPaths.join(", ")}`,
+      });
+      return;
+    }
+
+    this.renderActionButtons(contentEl, [
+      { label: "Refresh", cta: true, onClick: async () => this.refreshShellSummaryCommand() },
+      { label: "Furnace Center", onClick: async () => this.openFurnaceCenterView() },
+      { label: "Execution Center", onClick: async () => this.openExecutionCenterView() },
+    ]);
+
+    if (!this.shellSummary) {
+      contentEl.createDiv({
+        cls: "furnace-shell-empty",
+        text: "shell-summary.json 尚未生成。先运行 Refresh / Compile / Nightly 之一。",
+      });
+      return;
+    }
+
+    const review = this.shellSummary.review_backlog_counts || {};
+    const aging = this.shellSummary.aging_summary || {};
+    this.renderCardGrid(contentEl, [
+      { label: "Pending Decisions", value: review.pending_decisions || 0 },
+      { label: "Pending Judgments", value: review.pending_judgments || 0 },
+      { label: "Overdue Reviews", value: aging.overdue_count || 0 },
+      { label: "Escalation", value: aging.escalated_count || 0 },
+      { label: "Concept Backlog", value: review.concept_backlog || 0 },
+      { label: "Review Concepts", value: review.review_concepts || 0 },
+      { label: "Revisit Concepts", value: review.revisit_concepts || 0 },
+      { label: "Retired Concepts", value: review.retired_concepts || 0 },
+    ]);
+
+    const agingSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+    agingSection.createEl("h3", { text: "Aging Summary" });
+    const agingList = agingSection.createEl("ul", { cls: "furnace-shell-list" });
+    [
+      ["Overdue pages", aging.overdue_pages || []],
+      ["Escalated pages", aging.escalated_pages || []],
+      ["Scheduled pages", aging.scheduled_pages || []],
+    ].forEach(([label, pages]) => {
+      const item = agingList.createEl("li");
+      item.createEl("strong", { text: `${label}: ${pages.length}` });
+      if (!pages.length) {
+        item.createDiv({ cls: "furnace-shell-meta", text: "none" });
+        return;
+      }
+      item.createDiv({
+        cls: "furnace-shell-meta",
+        text: pages.slice(0, 6).join(" | "),
+      });
+    });
+
+    const reviewEvents = Array.isArray(this.shellSummary.recent_runs)
+      ? this.shellSummary.recent_runs.filter((entry) => entry.event_type === "review")
+      : [];
+    const eventsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+    eventsSection.createEl("h3", { text: "Recent Review Events" });
+    if (!reviewEvents.length) {
+      eventsSection.createDiv({ cls: "furnace-shell-empty", text: "当前没有 recent review events。" });
+    } else {
+      const list = eventsSection.createEl("ul", { cls: "furnace-shell-list" });
+      reviewEvents.slice(0, 8).forEach((entry) => {
+        const item = list.createEl("li");
+        item.createEl("strong", { text: entry.title || entry.page_path || "review" });
+        item.createDiv({
+          cls: "furnace-shell-meta",
+          text: `${entry.status || "status-unknown"} | ${entry.occurred_at || "unknown"}`,
+        });
+        if (entry.page_path) {
+          const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
+          const button = actions.createEl("button", { text: "Open page" });
+          button.addEventListener("click", () => {
+            this.runUiAction(() => this.openWorkspacePath(entry.page_path), `Open review page: ${entry.page_path}`);
+          });
+        }
+      });
+    }
+
+    const links = this.shellSummary.links || {};
+    const linksSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+    linksSection.createEl("h3", { text: "Governance Links" });
+    const linkList = linksSection.createEl("ul", { cls: "furnace-shell-list" });
+    [
+      ["review_center_markdown", "Review Center Index"],
+      ["review_center_html", "Review Center HTML"],
+      ["protocols_markdown", "Protocols"],
+      ["domain_pilots_markdown", "Domain Pilots"],
+      ["output_packs_markdown", "Output Packs"],
+    ].forEach(([key, label]) => {
+      if (!links[key]) {
+        return;
+      }
+      const item = linkList.createEl("li");
+      item.createEl("span", { text: label });
+      const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
+      const button = actions.createEl("button", { text: "Open" });
+      button.addEventListener("click", () => {
+        this.runUiAction(() => this.openWorkspacePath(links[key]), `Open link: ${links[key]}`);
+      });
+    });
+  }
+
+  renderExecutionCenter(contentEl) {
+    contentEl.empty();
+    contentEl.addClass("furnace-shell-view");
+    contentEl.createEl("h2", { text: "Execution Center" });
+
+    if (!this.repoState.valid) {
+      contentEl.createDiv({
+        cls: "furnace-shell-empty",
+        text: `Repo-local runtime unavailable. Missing: ${this.repoState.missingPaths.join(", ")}`,
+      });
+      return;
+    }
+
+    this.renderActionButtons(contentEl, [
+      { label: "Refresh", cta: true, onClick: async () => this.refreshShellSummaryCommand() },
+      { label: "Furnace Center", onClick: async () => this.openFurnaceCenterView() },
+      { label: "Review Center", onClick: async () => this.openReviewCenterView() },
+      { label: "Recent Runs", onClick: async () => this.openRecentRunsView() },
+    ]);
+
+    if (!this.shellSummary) {
+      contentEl.createDiv({
+        cls: "furnace-shell-empty",
+        text: "shell-summary.json 尚未生成。先运行 Refresh / Compile / Nightly 之一。",
+      });
+      return;
+    }
+
+    const receipts = Array.isArray(this.shellSummary.recent_receipts) ? this.shellSummary.recent_receipts : [];
+    const executionEvents = Array.isArray(this.shellSummary.recent_runs)
+      ? this.shellSummary.recent_runs.filter((entry) =>
+          ["archive-apply", "archive-revert", "knowledge-lifecycle-override", "nightly"].includes(entry.event_type)
+        )
+      : [];
+    this.renderCardGrid(contentEl, [
+      { label: "Recent Receipts", value: receipts.length },
+      { label: "Execution Events", value: executionEvents.length },
+      {
+        label: "Archive Events",
+        value: executionEvents.filter((entry) => ["archive-apply", "archive-revert"].includes(entry.event_type)).length,
+      },
+      {
+        label: "Lifecycle Overrides",
+        value: executionEvents.filter((entry) => entry.event_type === "knowledge-lifecycle-override").length,
+      },
+      {
+        label: "Nightly Runs",
+        value: executionEvents.filter((entry) => entry.event_type === "nightly").length,
+      },
+    ]);
+
+    const receiptsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+    receiptsSection.createEl("h3", { text: "Recent Receipts" });
+    if (!receipts.length) {
+      receiptsSection.createDiv({ cls: "furnace-shell-empty", text: "当前没有 recent receipts。" });
+    } else {
+      const list = receiptsSection.createEl("ul", { cls: "furnace-shell-list" });
+      receipts.slice(0, 8).forEach((receipt) => {
+        const item = list.createEl("li");
+        item.createEl("strong", { text: receipt.title || receipt.subject_id || "receipt" });
+        item.createDiv({
+          cls: "furnace-shell-meta",
+          text: `${receipt.operation || "operation"} | ${receipt.protocol || "general"} | ${receipt.applied_at || "unknown"}`,
+        });
+        if (receipt.receipt_path) {
+          const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
+          const button = actions.createEl("button", { text: "Open receipt" });
+          button.addEventListener("click", () => {
+            this.runUiAction(() => this.openWorkspacePath(receipt.receipt_path), `Open receipt: ${receipt.receipt_path}`);
+          });
+        }
+      });
+    }
+
+    const eventsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+    eventsSection.createEl("h3", { text: "Recent Execution Events" });
+    if (!executionEvents.length) {
+      eventsSection.createDiv({ cls: "furnace-shell-empty", text: "当前没有 recent execution events。" });
+    } else {
+      const list = eventsSection.createEl("ul", { cls: "furnace-shell-list" });
+      executionEvents.slice(0, 10).forEach((entry) => {
+        const item = list.createEl("li");
+        item.createEl("strong", { text: entry.title || entry.event_type || "event" });
+        item.createDiv({
+          cls: "furnace-shell-meta",
+          text: `${entry.event_type || "event"} | ${entry.protocol || "general"} | ${entry.occurred_at || "unknown"}`,
+        });
+        const pathValue = entry.receipt_path || entry.path || entry.output_path || "";
+        if (pathValue) {
+          const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
+          const button = actions.createEl("button", { text: "Open" });
+          button.addEventListener("click", () => {
+            this.runUiAction(() => this.openWorkspacePath(pathValue), `Open execution path: ${pathValue}`);
+          });
+        }
+      });
+    }
+
+    const links = this.shellSummary.links || {};
+    const linksSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+    linksSection.createEl("h3", { text: "Execution Links" });
+    const linkList = linksSection.createEl("ul", { cls: "furnace-shell-list" });
+    [
+      ["execution_center_markdown", "Execution Center Index"],
+      ["execution_center_html", "Execution Center HTML"],
+      ["execution_audit_markdown", "Execution Audit"],
+      ["execution_audit_html", "Execution Audit HTML"],
+      ["graph_view_markdown", "Graph View"],
+    ].forEach(([key, label]) => {
+      if (!links[key]) {
+        return;
+      }
+      const item = linkList.createEl("li");
+      item.createEl("span", { text: label });
+      const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
+      const button = actions.createEl("button", { text: "Open" });
+      button.addEventListener("click", () => {
+        this.runUiAction(() => this.openWorkspacePath(links[key]), `Open link: ${links[key]}`);
+      });
+    });
   }
 
   refreshOpenViews() {

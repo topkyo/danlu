@@ -43,11 +43,12 @@ status: "active"
 
 - `Furnace Center`
 - `Recent Runs`
+- `Review Center`
+- `Execution Center`
 - `Refresh Furnace Shell / Compile / Ask / Nightly / Set Protocol`
 
 还没有实现：
 
-- `Review Center` / `Execution Center` 插件视图
 - `file-back / review-page / apply-* / archive` 的插件接线
 - TypeScript/build toolchain
 
