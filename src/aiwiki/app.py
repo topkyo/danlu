@@ -3603,6 +3603,75 @@ def knowledge_lifecycle_governance_summary(
     }
 
 
+def concept_lifecycle_matches_protocol(
+    entry: dict[str, Any],
+    *,
+    protocol: str,
+    routing_by_entry_id: dict[str, dict[str, Any]],
+) -> bool:
+    source_ids = [str(item) for item in entry.get("source_ids", []) if isinstance(item, str) and item]
+    if not source_ids:
+        return False
+    for source_id in source_ids:
+        routing_entry = routing_by_entry_id.get(source_id, {})
+        top_protocols = [
+            str(item.get("protocol") or "")
+            for item in routing_entry.get("top_protocols", [])
+            if isinstance(item, dict) and str(item.get("protocol") or "")
+        ]
+        if top_protocols[:1] == [protocol]:
+            return True
+    return False
+
+
+def protocol_related_concept_lifecycle_summary(
+    knowledge_lifecycle: dict[str, Any] | None,
+    material_routing: dict[str, Any] | None,
+    *,
+    protocol: str,
+) -> dict[str, Any]:
+    knowledge_lifecycle = knowledge_lifecycle or default_knowledge_lifecycle_state()
+    material_routing = material_routing or default_material_routing_state()
+    routing_by_entry_id = {
+        str(entry.get("entry_id") or ""): entry
+        for entry in material_routing.get("entries", [])
+        if isinstance(entry, dict) and entry.get("entry_id")
+    }
+    related_concepts = sort_knowledge_lifecycle_entries(
+        [
+            entry
+            for entry in select_knowledge_lifecycle_entries(knowledge_lifecycle, kinds={"concept"})
+            if concept_lifecycle_matches_protocol(entry, protocol=protocol, routing_by_entry_id=routing_by_entry_id)
+        ],
+        active_protocol=protocol,
+    )
+    concept_backlog = [
+        entry for entry in related_concepts if str(entry.get("lifecycle_state") or "") in {"review", "revisit"}
+    ]
+    review_concepts = [entry for entry in concept_backlog if str(entry.get("lifecycle_state") or "") == "review"]
+    revisit_concepts = [entry for entry in concept_backlog if str(entry.get("lifecycle_state") or "") == "revisit"]
+    retired_concepts = [
+        entry for entry in related_concepts if str(entry.get("lifecycle_state") or "") == "retired"
+    ]
+    return {
+        "concept_backlog": concept_backlog,
+        "review_concepts": review_concepts,
+        "revisit_concepts": revisit_concepts,
+        "retired_concepts": retired_concepts,
+        "counts": {
+            "related_concepts": len(related_concepts),
+            "concept_backlog": len(concept_backlog),
+            "review_concepts": len(review_concepts),
+            "revisit_concepts": len(revisit_concepts),
+            "retired_concepts": len(retired_concepts),
+            "active_concepts": sum(
+                1 for entry in related_concepts if str(entry.get("lifecycle_state") or "") == "active"
+            ),
+        },
+        "inference_mode": "source-top-protocol",
+    }
+
+
 def refresh_knowledge_lifecycle_state(
     root: Path,
     *,
@@ -5701,8 +5770,13 @@ def build_domain_pilots(
     output_packs: dict[str, Any],
     execution_audit: dict[str, Any],
     compiled_at: str,
+    *,
+    knowledge_lifecycle: dict[str, Any] | None = None,
+    material_routing: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     active_protocol = protocol_state["active_protocol"]
+    knowledge_lifecycle = knowledge_lifecycle or load_knowledge_lifecycle_state(root)
+    material_routing = material_routing or load_material_routing_state(root)
     review_pack_counts: dict[str, int] = {}
     decision_memo_counts: dict[str, int] = {}
     sop_draft_counts: dict[str, int] = {}
@@ -5734,6 +5808,12 @@ def build_domain_pilots(
         protocol_judgments = [page for page in judgments if page.get("protocol") == protocol]
         protocol_outputs = [artifact for artifact in all_outputs if artifact.get("protocol") == protocol]
         protocol_recent_outputs = [artifact for artifact in recent_outputs if artifact.get("protocol") == protocol][:5]
+        lifecycle_summary = protocol_related_concept_lifecycle_summary(
+            knowledge_lifecycle,
+            material_routing,
+            protocol=protocol,
+        )
+        lifecycle_counts = lifecycle_summary.get("counts", {})
         pending = sum(1 for page in [*protocol_decisions, *protocol_judgments] if page.get("pending_review") == "true")
         reviewed = sum(
             1
@@ -5757,9 +5837,15 @@ def build_domain_pilots(
             "sop_drafts": sop_draft_counts.get(protocol, 0),
             "receipts": receipt_counts.get(protocol, 0),
             "execution_proposals": proposal_counts.get(protocol, 0),
+            "lifecycle_concept_backlog": lifecycle_counts.get("concept_backlog", 0),
+            "lifecycle_retired_concepts": lifecycle_counts.get("retired_concepts", 0),
         }
         stage, stage_summary = pilot_stage(metrics)
         gaps: list[str] = []
+        if lifecycle_counts.get("concept_backlog", 0):
+            gaps.append(
+                f"有 `{lifecycle_counts.get('concept_backlog', 0)}` 个 protocol-related lifecycle concept backlog 尚未收敛。"
+            )
         if metrics["decisions"] + metrics["judgments"] == 0:
             gaps.append("还没有该协议的 `decision / judgment` 资产。")
         if metrics["reviewed"] == 0:
@@ -5812,6 +5898,7 @@ def build_domain_pilots(
             f"- Outputs: `{metrics['outputs']}`",
             f"- Review packs / Decision memos / SOP drafts: `{metrics['review_packs']}` / `{metrics['decision_memos']}` / `{metrics['sop_drafts']}`",
             f"- Execution proposals / Receipts: `{metrics['execution_proposals']}` / `{metrics['receipts']}`",
+            f"- Protocol-related lifecycle backlog / retired concepts: `{metrics['lifecycle_concept_backlog']}` / `{metrics['lifecycle_retired_concepts']}`",
             "",
             "## Protocol Focus",
             *[f"- {line}" for line in PROTOCOL_LIBRARY[protocol]["focus"]],
@@ -5822,6 +5909,31 @@ def build_domain_pilots(
             lines.append("- 当前没有明显结构性缺口。")
         else:
             lines.extend(f"- {gap}" for gap in gaps)
+        lines.extend(
+            [
+                "",
+                "## Lifecycle Governance",
+                "- 以下 concept lifecycle 摘要只统计 supporting sources 的 `material-routing top_protocols` 首位命中当前协议的概念，避免伪装成全局精确计数。",
+                f"- Inference mode: `{lifecycle_summary.get('inference_mode', 'unknown')}`",
+                f"- Related review concepts: `{lifecycle_counts.get('review_concepts', 0)}`",
+                f"- Related revisit concepts: `{lifecycle_counts.get('revisit_concepts', 0)}`",
+                f"- Related retired concepts: `{lifecycle_counts.get('retired_concepts', 0)}`",
+                f"- Related active concepts: `{lifecycle_counts.get('active_concepts', 0)}`",
+                "",
+                "## Protocol-Related Lifecycle Concept Backlog",
+            ]
+        )
+        if not lifecycle_summary.get("concept_backlog"):
+            lines.append("- 当前没有 protocol-related lifecycle concept backlog。")
+        else:
+            for entry in lifecycle_summary.get("concept_backlog", [])[:10]:
+                lines.append(render_knowledge_lifecycle_entry_summary(entry))
+        lines.extend(["", "## Protocol-Related Retired Concepts"])
+        if not lifecycle_summary.get("retired_concepts"):
+            lines.append("- 当前没有 protocol-related retired concept。")
+        else:
+            for entry in lifecycle_summary.get("retired_concepts", [])[:10]:
+                lines.append(render_knowledge_lifecycle_entry_summary(entry))
         lines.extend(["", "## Next Moves"])
         lines.extend(f"- {item}" for item in next_moves[:5])
         lines.extend(["", "## Recent Outputs"])
@@ -5854,6 +5966,7 @@ def build_domain_pilots(
                 "stage": stage,
                 "summary": stage_summary,
                 "metrics": metrics,
+                "lifecycle_summary": lifecycle_summary,
             }
         )
     return {
@@ -5881,6 +5994,8 @@ def render_domain_pilots_index(domain_pilots: dict[str, Any], compiled_at: str, 
             f" | curated `{int(metrics.get('decisions', 0)) + int(metrics.get('judgments', 0))}`"
             f" | outputs `{metrics.get('outputs', 0)}`"
             f" | receipts `{metrics.get('receipts', 0)}`"
+            f" | lifecycle backlog `{metrics.get('lifecycle_concept_backlog', 0)}`"
+            f" | retired `{metrics.get('lifecycle_retired_concepts', 0)}`"
         )
         lines.append(f"  - {scorecard.get('summary', '')}")
     lines.extend(
@@ -12478,6 +12593,14 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         active_corpora_state=active_corpora_state,
         memory=memory,
     )
+    material_state = refresh_material_state(
+        root,
+        generated_at=compiled_at,
+        entries=entries,
+        active_protocol=protocol_state["active_protocol"],
+    )
+    material_routing = load_material_routing_state(root)
+    archive_candidates = load_archive_candidates_state(root)
     changed_pages += int(
         write_if_changed(
             root / "wiki" / "indexes" / "protocols.md",
@@ -12533,6 +12656,8 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         output_packs,
         execution_audit,
         compiled_at,
+        knowledge_lifecycle=knowledge_lifecycle,
+        material_routing=material_routing,
     )
     changed_pages += int(
         write_if_changed(
@@ -12684,14 +12809,6 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     )
     changed_pages += int(write_if_changed(graph_health_report_path(root), render_graph_health(memory)))
     changed_pages += int(write_if_changed(machine_memory_drift_report_path(root), render_drift_report(memory, transition)))
-    material_state = refresh_material_state(
-        root,
-        generated_at=compiled_at,
-        entries=entries,
-        active_protocol=protocol_state["active_protocol"],
-    )
-    material_routing = load_material_routing_state(root)
-    archive_candidates = load_archive_candidates_state(root)
     changed_pages += int(
         write_if_changed(
             root / "wiki" / "indexes" / "review-queue.md",

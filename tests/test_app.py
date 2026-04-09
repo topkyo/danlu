@@ -208,6 +208,70 @@ class AiwikiFlowTests(unittest.TestCase):
         compile_wiki(self.root)
         return "Latency Outlook", retired_entry["title"]
 
+    def _seed_protocol_lifecycle_governance_surface_state(self, protocol: str = "research") -> tuple[str, str]:
+        if protocol != "research":
+            raise ValueError(f"Unsupported protocol fixture: {protocol}")
+
+        first = self.root / "research-first.md"
+        first.write_text(
+            "# Latency Benchmark\n\nBenchmark regression shows latency bottleneck in the experiment repo.\n",
+            encoding="utf-8",
+        )
+        second = self.root / "research-second.md"
+        second.write_text(
+            "# Latency Benchmark\n\nArchitecture change improves throughput but may hide another latency regression.\n",
+            encoding="utf-8",
+        )
+        third = self.root / "research-third.md"
+        third.write_text(
+            "# Throughput Bottleneck\n\nRepo benchmark documents a persistent throughput bottleneck.\n",
+            encoding="utf-8",
+        )
+        first_entry = ingest_source(self.root, str(first), title="Latency Benchmark A")
+        second_entry = ingest_source(self.root, str(second), title="Latency Benchmark B")
+        ingest_source(self.root, str(third), title="Throughput Bottleneck")
+        set_active_protocol(self.root, protocol)
+
+        compile_wiki(self.root)
+
+        first_page = self.root / "wiki" / "sources" / f"{first_entry['id']}.md"
+        second_page = self.root / "wiki" / "sources" / f"{second_entry['id']}.md"
+        first_page.write_text(
+            first_page.read_text(encoding="utf-8").replace(
+                "- Pending LLM summary.",
+                "- Benchmark regression shows latency increasing while throughput collapses in the experiment repo.",
+            ),
+            encoding="utf-8",
+        )
+        second_page.write_text(
+            second_page.read_text(encoding="utf-8").replace(
+                "- Pending LLM summary.",
+                "- Benchmark rerun suggests architecture tuning restores throughput and reduces latency bottlenecks.",
+            ),
+            encoding="utf-8",
+        )
+
+        compile_wiki(self.root)
+
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        backlog_entry = next(
+            entry
+            for entry in lifecycle["entries"]
+            if entry["kind"] == "concept" and entry["lifecycle_state"] in {"review", "revisit"}
+        )
+        retired_entry = next(
+            entry
+            for entry in lifecycle["entries"]
+            if entry["kind"] == "concept" and entry["title"] != backlog_entry["title"]
+        )
+        retire_concept(
+            self.root,
+            Path(retired_entry["path"]).stem,
+            note="Retire protocol-related concept for domain pilot lifecycle summary.",
+        )
+        compile_wiki(self.root)
+        return backlog_entry["title"], retired_entry["title"]
+
     def test_ingest_compile_ask_file_back_and_lint(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         manifest = load_manifest(self.root)
@@ -2993,6 +3057,22 @@ class AiwikiFlowTests(unittest.TestCase):
 
         research_scorecard = (self.root / "output" / "pilots" / "research.md").read_text(encoding="utf-8")
         self.assertIn("- Outputs: `1`", research_scorecard)
+
+    def test_domain_pilot_scorecards_surface_protocol_aware_lifecycle_governance(self) -> None:
+        backlog_title, retired_title = self._seed_protocol_lifecycle_governance_surface_state()
+
+        pilots_index = (self.root / "wiki" / "indexes" / "domain-pilots.md").read_text(encoding="utf-8")
+        research_scorecard = (self.root / "output" / "pilots" / "research.md").read_text(encoding="utf-8")
+        investing_scorecard = (self.root / "output" / "pilots" / "investing.md").read_text(encoding="utf-8")
+
+        self.assertIn("lifecycle backlog", pilots_index)
+        self.assertIn("## Lifecycle Governance", research_scorecard)
+        self.assertIn("## Protocol-Related Lifecycle Concept Backlog", research_scorecard)
+        self.assertIn("## Protocol-Related Retired Concepts", research_scorecard)
+        self.assertIn(backlog_title, research_scorecard)
+        self.assertIn(retired_title, research_scorecard)
+        self.assertNotIn(backlog_title, investing_scorecard)
+        self.assertNotIn(retired_title, investing_scorecard)
 
     def test_run_ask_includes_machine_memory_query_plan_in_prompt(self) -> None:
         sample = self.root / "latency.md"
