@@ -1478,7 +1478,14 @@ def set_active_protocol(root: Path, protocol: str) -> dict[str, Any]:
     path = protocol_state_path(root)
     path.write_text(json.dumps({"version": 1, "active_protocol": active}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     state = load_protocol_state(root)
-    write_if_changed(root / "wiki" / "indexes" / "protocols.md", render_protocols_dashboard(root, utc_now()))
+    write_if_changed(
+        root / "wiki" / "indexes" / "protocols.md",
+        render_protocols_dashboard(
+            root,
+            utc_now(),
+            knowledge_lifecycle=load_knowledge_lifecycle_state(root),
+        ),
+    )
     append_wiki_log(
         root,
         "protocol",
@@ -1499,9 +1506,21 @@ def protocol_paths(root: Path, protocol: str | None = None) -> list[str]:
     return paths
 
 
-def render_protocols_dashboard(root: Path, compiled_at: str) -> str:
+def render_protocols_dashboard(
+    root: Path,
+    compiled_at: str,
+    *,
+    knowledge_lifecycle: dict[str, Any] | None = None,
+) -> str:
     state = load_protocol_state(root)
     active = state["active_protocol"]
+    lifecycle_summary = knowledge_lifecycle_governance_summary(
+        knowledge_lifecycle or load_knowledge_lifecycle_state(root),
+        active_protocol=active,
+    )
+    lifecycle_counts = lifecycle_summary.get("counts", {})
+    concept_backlog = lifecycle_summary.get("concept_backlog", [])
+    retired_concepts = lifecycle_summary.get("retired_concepts", [])
     lines = [
         "# 协议总览",
         "",
@@ -1509,6 +1528,7 @@ def render_protocols_dashboard(root: Path, compiled_at: str) -> str:
         f"- 当前 active protocol：`{active}` ({protocol_title(active)})",
         f"- 协议总数：`{len(state['available_protocols'])}`",
         f"- 状态文件：`{state['state_path']}`",
+        f"- lifecycle concept backlog / retired：`{lifecycle_counts.get('concept_backlog', len(concept_backlog))}` / `{lifecycle_counts.get('retired_concepts', len(retired_concepts))}`",
         "- 切换命令：`PYTHONPATH=src python3 -m aiwiki.cli --root . protocol-set <slug>`",
         "",
         "## 当前协议入口",
@@ -1524,6 +1544,30 @@ def render_protocols_dashboard(root: Path, compiled_at: str) -> str:
             f"- [{descriptor['title']}](../../{descriptor['paths']['index']})"
             f" | slug `{descriptor['slug']}` | {descriptor['summary']}"
         )
+    lines.extend(
+        [
+            "",
+            "## Lifecycle Governance Summary",
+            "- 以下 lifecycle backlog 是全局 knowledge plane 工作面，按当前 active protocol 排序，不伪装成 protocol-specific 指标。",
+            f"- review concepts：`{lifecycle_counts.get('review_concepts', 0)}`",
+            f"- revisit concepts：`{lifecycle_counts.get('revisit_concepts', 0)}`",
+            f"- retired concepts：`{lifecycle_counts.get('retired_concepts', len(retired_concepts))}`",
+            f"- active concepts：`{lifecycle_counts.get('active_concepts', 0)}`",
+            "",
+            "## Lifecycle Concept Backlog",
+        ]
+    )
+    if not concept_backlog:
+        lines.append("- 当前没有 lifecycle-driven concept backlog。")
+    else:
+        for entry in concept_backlog[:10]:
+            lines.append(render_knowledge_lifecycle_entry_summary(entry))
+    lines.extend(["", "## Retired Concepts"])
+    if not retired_concepts:
+        lines.append("- 当前没有 retired concept。")
+    else:
+        for entry in retired_concepts[:10]:
+            lines.append(render_knowledge_lifecycle_entry_summary(entry))
     lines.extend(
         [
             "",
@@ -6122,13 +6166,38 @@ def render_agent_workbench(
     packs: list[dict[str, str]],
     compiled_at: str,
     active_protocol: str,
+    *,
+    knowledge_lifecycle: dict[str, Any] | None = None,
 ) -> str:
+    lifecycle_summary = knowledge_lifecycle_governance_summary(
+        knowledge_lifecycle,
+        active_protocol=active_protocol,
+    )
+    lifecycle_counts = lifecycle_summary.get("counts", {})
+    concept_backlog = lifecycle_summary.get("concept_backlog", [])
+    retired_concepts = lifecycle_summary.get("retired_concepts", [])
+    dispatch_hints: list[str] = []
+    if concept_backlog:
+        dispatch_hints.append(
+            f"先调 [Review Agent](../../output/agents/review-agent.md)，处理 `{len(concept_backlog)}` 个 lifecycle concept backlog。"
+        )
+    if lifecycle_counts.get("review_concepts", 0) or lifecycle_counts.get("revisit_concepts", 0):
+        dispatch_hints.append(
+            f"需要概念整理时，再调 [Concept Agent](../../output/agents/concept-agent.md)，消化 `{lifecycle_counts.get('review_concepts', 0) + lifecycle_counts.get('revisit_concepts', 0)}` 个 review / revisit concept。"
+        )
+    if retired_concepts:
+        dispatch_hints.append(
+            f"确认 `{min(len(retired_concepts), 3)}` 个 retired concept 是否要恢复进入工作面，优先走 [Review Agent](../../output/agents/review-agent.md)。"
+        )
+    if not dispatch_hints:
+        dispatch_hints.append("当前 lifecycle governance 较干净，按输出、执行或 ingest 压力决定要调度哪个角色。")
     lines = [
         "# Agent Workbench",
         "",
         f"- 最近编译时间：`{compiled_at}`",
         f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})",
         f"- Agent packs：`{len(packs)}`",
+        f"- lifecycle concept backlog / retired：`{lifecycle_counts.get('concept_backlog', len(concept_backlog))}` / `{lifecycle_counts.get('retired_concepts', len(retired_concepts))}`",
         "",
         "## 角色总览",
     ]
@@ -6141,6 +6210,31 @@ def render_agent_workbench(
                 f" | role `{pack['role']}`"
                 f" | {pack['mission']}"
             )
+    lines.extend(
+        [
+            "",
+            "## Lifecycle Governance Summary",
+            f"- review concepts：`{lifecycle_counts.get('review_concepts', 0)}`",
+            f"- revisit concepts：`{lifecycle_counts.get('revisit_concepts', 0)}`",
+            f"- retired concepts：`{lifecycle_counts.get('retired_concepts', len(retired_concepts))}`",
+            f"- active concepts：`{lifecycle_counts.get('active_concepts', 0)}`",
+            "",
+            "## Lifecycle Dispatch Hints",
+        ]
+    )
+    lines.extend(f"- {hint}" for hint in dispatch_hints)
+    lines.extend(["", "## Lifecycle Concept Backlog"])
+    if not concept_backlog:
+        lines.append("- 当前没有 lifecycle-driven concept backlog。")
+    else:
+        for entry in concept_backlog[:10]:
+            lines.append(render_knowledge_lifecycle_entry_summary(entry))
+    lines.extend(["", "## Retired Concepts"])
+    if not retired_concepts:
+        lines.append("- 当前没有 retired concept。")
+    else:
+        for entry in retired_concepts[:10]:
+            lines.append(render_knowledge_lifecycle_entry_summary(entry))
     lines.extend(
         [
             "",
@@ -12292,12 +12386,6 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             render_master_index(entries, concepts, decision_pages, judgment_pages, protocol_state, compiled_at),
         )
     )
-    changed_pages += int(
-        write_if_changed(
-            root / "wiki" / "indexes" / "protocols.md",
-            render_protocols_dashboard(root, compiled_at),
-        )
-    )
     ensure_wiki_log(root)
 
     concept_lookup = {record["slug"]: record for record in concepts}
@@ -12390,6 +12478,16 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         active_corpora_state=active_corpora_state,
         memory=memory,
     )
+    changed_pages += int(
+        write_if_changed(
+            root / "wiki" / "indexes" / "protocols.md",
+            render_protocols_dashboard(
+                root,
+                compiled_at,
+                knowledge_lifecycle=knowledge_lifecycle,
+            ),
+        )
+    )
     output_packs = build_output_packs(
         root,
         decision_pages,
@@ -12462,7 +12560,12 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     changed_pages += int(
         write_if_changed(
             agent_workbench_path(root),
-            render_agent_workbench(agent_packs, compiled_at, protocol_state["active_protocol"]),
+            render_agent_workbench(
+                agent_packs,
+                compiled_at,
+                protocol_state["active_protocol"],
+                knowledge_lifecycle=knowledge_lifecycle,
+            ),
         )
     )
     for pack in agent_packs:

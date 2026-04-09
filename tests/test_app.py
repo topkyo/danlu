@@ -1051,6 +1051,28 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("ops", updated)
         self.assertIn("../../schema/protocols/ops/index.md", updated)
 
+    def test_protocol_dashboard_surfaces_lifecycle_governance_summary(self) -> None:
+        backlog_title, retired_title = self._seed_lifecycle_governance_surface_state()
+
+        payload = (self.root / "wiki" / "indexes" / "protocols.md").read_text(encoding="utf-8")
+
+        self.assertIn("## Lifecycle Governance Summary", payload)
+        self.assertIn("## Lifecycle Concept Backlog", payload)
+        self.assertIn("## Retired Concepts", payload)
+        self.assertIn(backlog_title, payload)
+        self.assertIn(retired_title, payload)
+
+    def test_protocol_set_keeps_lifecycle_governance_summary_without_compile(self) -> None:
+        backlog_title, retired_title = self._seed_lifecycle_governance_surface_state()
+
+        set_active_protocol(self.root, "ops")
+
+        payload = (self.root / "wiki" / "indexes" / "protocols.md").read_text(encoding="utf-8")
+        self.assertIn("ops", payload)
+        self.assertIn("## Lifecycle Governance Summary", payload)
+        self.assertIn(backlog_title, payload)
+        self.assertIn(retired_title, payload)
+
     def test_compile_tracks_machine_memory_drift_between_snapshots(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -2840,6 +2862,18 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("已退役概念", review_pack)
         self.assertIn(backlog_title, review_pack)
         self.assertIn(retired_title, review_pack)
+
+    def test_agent_workbench_surfaces_lifecycle_governance_summary(self) -> None:
+        backlog_title, retired_title = self._seed_lifecycle_governance_surface_state()
+
+        workbench = (self.root / "wiki" / "indexes" / "agent-workbench.md").read_text(encoding="utf-8")
+
+        self.assertIn("## Lifecycle Governance Summary", workbench)
+        self.assertIn("## Lifecycle Dispatch Hints", workbench)
+        self.assertIn("## Lifecycle Concept Backlog", workbench)
+        self.assertIn("## Retired Concepts", workbench)
+        self.assertIn(backlog_title, workbench)
+        self.assertIn(retired_title, workbench)
 
     def test_compile_generates_output_packs_for_review_memo_and_sop(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
