@@ -5688,6 +5688,103 @@ def render_review_center_html(
     )
 
 
+def protocol_scorecard(domain_pilots: dict[str, Any], protocol: str) -> dict[str, Any]:
+    for scorecard in domain_pilots.get("scorecards", []):
+        if isinstance(scorecard, dict) and str(scorecard.get("protocol") or "") == protocol:
+            return scorecard
+    return {}
+
+
+def protocol_output_pack_rows(output_packs: dict[str, Any], protocol: str, *, limit: int = 8) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for pack in output_packs.get("review_packs", []):
+        if str(pack.get("protocol") or DEFAULT_PROTOCOL) != protocol:
+            continue
+        rows.append(
+            {
+                "kind": "Review Pack",
+                "title": str(pack.get("title") or "Review Pack"),
+                "path": str(pack.get("path") or ""),
+                "meta": str(pack.get("reasons") or "manual review"),
+            }
+        )
+    for pack in output_packs.get("decision_memos", []):
+        if str(pack.get("protocol") or DEFAULT_PROTOCOL) != protocol:
+            continue
+        rows.append(
+            {
+                "kind": "Decision Memo",
+                "title": str(pack.get("title") or "Decision Memo"),
+                "path": str(pack.get("path") or ""),
+                "meta": str(pack.get("reviewed_at") or "reviewed"),
+            }
+        )
+    for pack in output_packs.get("sop_drafts", []):
+        if str(pack.get("protocol") or DEFAULT_PROTOCOL) != protocol:
+            continue
+        rows.append(
+            {
+                "kind": "SOP Draft",
+                "title": str(pack.get("title") or "SOP Draft"),
+                "path": str(pack.get("path") or ""),
+                "meta": str(pack.get("risk") or "medium"),
+            }
+        )
+    rows.sort(key=lambda item: (item["kind"], item["title"].lower()))
+    return rows[:limit]
+
+
+def protocol_execution_receipts(execution_audit: dict[str, Any], protocol: str, *, limit: int = 8) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for bucket_name, label in (("recent_apply", "apply"), ("recent_revert", "revert")):
+        for record in execution_audit.get(bucket_name, []):
+            if str(record.get("protocol") or DEFAULT_PROTOCOL) != protocol:
+                continue
+            rows.append(
+                {
+                    "kind": label,
+                    "title": str(record.get("title") or record.get("action_id") or "receipt"),
+                    "action_id": str(record.get("action_id") or ""),
+                    "receipt_path": str(record.get("receipt_path") or ""),
+                    "applied_at": str(record.get("applied_at") or ""),
+                }
+            )
+    rows.sort(key=lambda item: (item["applied_at"], item["title"].lower()), reverse=True)
+    return rows[:limit]
+
+
+def furnace_quick_commands(
+    active_protocol: str,
+    apply_ready_actions: list[dict[str, Any]],
+    apply_ready_rewrites: list[dict[str, Any]],
+) -> list[str]:
+    commands = [
+        "PYTHONPATH=src python3 -m aiwiki.cli --root . protocol-status",
+        f"PYTHONPATH=src python3 -m aiwiki.cli --root . ask \"对当前主题做协议化总结\" --format report --protocol {active_protocol}",
+        "PYTHONPATH=src python3 -m aiwiki.cli --root . nightly",
+    ]
+    if apply_ready_actions:
+        first_action = apply_ready_actions[0]
+        action_id = str(first_action.get("id") or "")
+        bundle_hint = str(first_action.get("bundle_path") or "")
+        if action_id:
+            commands.append(
+                f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --dry-run"
+            )
+            if bundle_hint:
+                commands.append(
+                    f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --bundle {bundle_hint}"
+                )
+    if apply_ready_rewrites:
+        first_rewrite = apply_ready_rewrites[0]
+        slug = str(first_rewrite.get("slug") or "")
+        if slug:
+            commands.append(
+                f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {slug}"
+            )
+    return commands[:6]
+
+
 def render_furnace_center(
     decisions: list[dict[str, str]],
     judgments: list[dict[str, str]],
@@ -5695,6 +5792,9 @@ def render_furnace_center(
     compiled_at: str,
     protocol_state: dict[str, Any],
     recent_outputs: list[dict[str, str]],
+    output_packs: dict[str, Any],
+    domain_pilots: dict[str, Any],
+    execution_audit: dict[str, Any],
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
     queue = review_queue(decisions, judgments, active_protocol=active_protocol)
@@ -5712,6 +5812,11 @@ def render_furnace_center(
     execution_proposals = plan.get("execution_proposals", [])
     page_patch_steps = sum(len(proposal.get("page_patch_plan", [])) for proposal in execution_proposals)
     recent_reviewed = queue.get("recently_reviewed", [])[:6]
+    scorecard = protocol_scorecard(domain_pilots, active_protocol)
+    scorecard_metrics = scorecard.get("metrics", {}) if isinstance(scorecard, dict) else {}
+    pack_rows = protocol_output_pack_rows(output_packs, active_protocol)
+    receipt_rows = protocol_execution_receipts(execution_audit, active_protocol)
+    quick_commands = furnace_quick_commands(active_protocol, apply_ready_actions, apply_ready_rewrites)
     next_steps: list[str] = []
     if apply_ready_actions:
         next_steps.append(f"先处理 `{len(apply_ready_actions)}` 个可直接 `apply-action` 的低风险动作。")
@@ -5739,6 +5844,9 @@ def render_furnace_center(
         f"- Rewrite 提案：`{rewrite_state.get('counts', {}).get('active', 0)}`",
         f"- 可直接 apply 的 rewrite：`{len(apply_ready_rewrites)}`",
         f"- 页级 patch step：`{page_patch_steps}`",
+        f"- 当前协议 stage：`{scorecard.get('stage', 'seed') if scorecard else 'unknown'}`",
+        f"- 当前协议 outputs / receipts：`{scorecard_metrics.get('outputs', 0)}` / `{scorecard_metrics.get('receipts', 0)}`",
+        f"- 当前协议 review packs / memos / SOP：`{scorecard_metrics.get('review_packs', 0)}` / `{scorecard_metrics.get('decision_memos', 0)}` / `{scorecard_metrics.get('sop_drafts', 0)}`",
         f"- 最近输出：`{len(recent_outputs)}`",
         "- 本地控制面板：`output/control/furnace-center.html`",
         "",
@@ -5809,6 +5917,49 @@ def render_furnace_center(
                 f" | created `{artifact['created_at'] or 'unknown'}`"
             )
 
+    lines.extend(["", "## 当前协议 Pilot"])
+    if not scorecard:
+        lines.append("- 当前协议还没有 pilot scorecard。")
+    else:
+        lines.append(
+            f"- [{scorecard['title']}](../../{scorecard['path']})"
+            f" | stage `{scorecard.get('stage', 'seed')}`"
+            f" | {scorecard.get('summary', '')}"
+        )
+        gaps = compact_section_lines(scorecard.get("content", ""), "Gaps", fallback="- 当前没有明显结构性缺口。", limit=4)
+        lines.append("")
+        lines.append("### 当前缺口")
+        lines.extend(gaps)
+        next_moves_lines = compact_section_lines(scorecard.get("content", ""), "Next Moves", fallback="- 当前没有额外 next moves。", limit=4)
+        lines.append("")
+        lines.append("### 下一动作")
+        lines.extend(next_moves_lines)
+
+    lines.extend(["", "## 最新输出 Packs"])
+    if not pack_rows:
+        lines.append("- 当前协议还没有 review pack / decision memo / SOP draft。")
+    else:
+        for pack in pack_rows:
+            lines.append(
+                f"- [{pack['title']}](../../{pack['path']})"
+                f" | kind `{pack['kind']}`"
+                f" | meta `{pack['meta'] or 'n/a'}`"
+            )
+
+    lines.extend(["", "## 最近执行回执"])
+    if not receipt_rows:
+        lines.append("- 当前协议还没有 execution receipt。")
+    else:
+        for receipt in receipt_rows:
+            receipt_path = receipt["receipt_path"] or ".aiwiki/state/execution-receipts.jsonl"
+            lines.append(
+                f"- `{receipt['title']}`"
+                f" | kind `{receipt['kind']}`"
+                f" | action `{receipt['action_id']}`"
+                f" | receipt `{receipt_path}`"
+                f" | at `{receipt['applied_at'] or 'unknown'}`"
+            )
+
     lines.extend(
         [
             "",
@@ -5824,6 +5975,10 @@ def render_furnace_center(
             )
     else:
         lines.append("- 当前还没有最近已审项目。")
+
+    lines.extend(["", "## 快速命令"])
+    for command in quick_commands:
+        lines.append(f"- `{command}`")
 
     lines.extend(
         [
@@ -5858,6 +6013,9 @@ def render_furnace_center_html(
     compiled_at: str,
     protocol_state: dict[str, Any],
     recent_outputs: list[dict[str, str]],
+    output_packs: dict[str, Any],
+    domain_pilots: dict[str, Any],
+    execution_audit: dict[str, Any],
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
     queue = review_queue(decisions, judgments, active_protocol=active_protocol)
@@ -5874,6 +6032,11 @@ def render_furnace_center_html(
     execution_proposals = plan.get("execution_proposals", [])
     page_patch_steps = sum(len(proposal.get("page_patch_plan", [])) for proposal in execution_proposals)
     recent_reviewed = queue.get("recently_reviewed", [])[:8]
+    scorecard = protocol_scorecard(domain_pilots, active_protocol)
+    scorecard_metrics = scorecard.get("metrics", {}) if isinstance(scorecard, dict) else {}
+    pack_rows = protocol_output_pack_rows(output_packs, active_protocol)
+    receipt_rows = protocol_execution_receipts(execution_audit, active_protocol)
+    quick_commands = furnace_quick_commands(active_protocol, apply_ready_actions, apply_ready_rewrites)
 
     def render_page_item(page: dict[str, str]) -> str:
         return (
@@ -5928,6 +6091,11 @@ def render_furnace_center_html(
         ("可 apply rewrite", str(len(apply_ready_rewrites))),
         ("Patch Steps", str(page_patch_steps)),
         ("最近输出", str(len(recent_outputs))),
+        ("Pilot Stage", str(scorecard.get("stage", "unknown") if scorecard else "unknown")),
+        ("Review Packs", str(scorecard_metrics.get("review_packs", 0))),
+        ("Decision Memos", str(scorecard_metrics.get("decision_memos", 0))),
+        ("SOP Drafts", str(scorecard_metrics.get("sop_drafts", 0))),
+        ("Receipts", str(scorecard_metrics.get("receipts", 0))),
     ]
 
     protocol_focus = PROTOCOL_LIBRARY.get(active_protocol, {}).get("review", [])[:3]
@@ -5940,6 +6108,42 @@ def render_furnace_center_html(
     output_markup = "".join(render_output_item(artifact) for artifact in recent_outputs[:10]) or "<li>当前还没有 recent outputs。</li>"
     reviewed_markup = "".join(render_page_item(page) for page in recent_reviewed) or "<li>当前还没有最近已审项目。</li>"
     focus_markup = "".join(f"<li>{html.escape(item)}</li>" for item in protocol_focus + nightly_focus) or "<li>当前协议没有额外焦点。</li>"
+    pack_markup = "".join(
+        f"<li><strong><a href=\"../../{html.escape(row['path'])}\">{html.escape(row['title'])}</a></strong>"
+        f" <span class=\"item-meta\">{html.escape(row['kind'])} / {html.escape(row['meta'] or 'n/a')}</span></li>"
+        for row in pack_rows[:10]
+    ) or "<li>当前协议还没有 review pack / decision memo / SOP draft。</li>"
+    receipt_markup = "".join(
+        f"<li><strong>{html.escape(row['title'])}</strong>"
+        f" <span class=\"item-meta\">{html.escape(row['kind'])} / {html.escape(row['action_id'])}</span>"
+        f"<div><code>{html.escape(row['receipt_path'] or '.aiwiki/state/execution-receipts.jsonl')}</code></div>"
+        f"<div class=\"item-meta\">{html.escape(row['applied_at'] or 'unknown')}</div></li>"
+        for row in receipt_rows[:10]
+    ) or "<li>当前协议还没有 execution receipt。</li>"
+    quick_command_markup = "".join(
+        f"<li><code>{html.escape(command)}</code></li>" for command in quick_commands
+    ) or "<li>当前没有额外快速命令。</li>"
+    scorecard_markup = (
+        "\n".join(
+            [
+                f'<p><strong><a href="../../{html.escape(str(scorecard.get("path") or ""))}">{html.escape(str(scorecard.get("title") or "Pilot Scorecard"))}</a></strong></p>',
+                f'<p class="item-meta">stage {html.escape(str(scorecard.get("stage") or "seed"))} · {html.escape(str(scorecard.get("summary") or ""))}</p>',
+                '<ul>'
+                + "".join(
+                    f"<li>{html.escape(line.lstrip('- ').strip())}</li>"
+                    for line in compact_section_lines(
+                        str(scorecard.get("content") or ""),
+                        "Next Moves",
+                        fallback="- 当前没有额外 next moves。",
+                        limit=4,
+                    )
+                )
+                + "</ul>",
+            ]
+        )
+        if scorecard
+        else "<p>当前协议还没有 pilot scorecard。</p>"
+    )
 
     return "\n".join(
         [
@@ -6012,6 +6216,10 @@ def render_furnace_center_html(
             f'    <div class="panel"><h2>最近输出</h2><ul>{output_markup}</ul></div>',
             f'    <div class="panel"><h2>协议焦点</h2><ul>{focus_markup}</ul></div>',
             f'    <div class="panel"><h2>最近已审 / 已沉淀</h2><ul>{reviewed_markup}</ul></div>',
+            f'    <div class="panel"><h2>当前协议 Pilot</h2>{scorecard_markup}</div>',
+            f'    <div class="panel"><h2>最新输出 Packs</h2><ul>{pack_markup}</ul></div>',
+            f'    <div class="panel"><h2>最近执行回执</h2><ul>{receipt_markup}</ul></div>',
+            f'    <div class="panel"><h2>快速命令</h2><ul>{quick_command_markup}</ul></div>',
             '    <div class="panel"><h2>系统状态</h2><ul>'
             f'<li>graph components <code>{html.escape(str(health.get("component_count", 0)))}</code></li>'
             f'<li>bridge concepts <code>{html.escape(str(len(health.get("bridge_concept_slugs", []))))}</code></li>'
@@ -9994,6 +10202,9 @@ def compile_wiki(root: Path) -> dict[str, Any]:
                 compiled_at,
                 protocol_state,
                 recent_outputs,
+                output_packs,
+                domain_pilots,
+                execution_audit,
             ),
         )
     )
@@ -10019,6 +10230,9 @@ def compile_wiki(root: Path) -> dict[str, Any]:
                 compiled_at,
                 protocol_state,
                 recent_outputs,
+                output_packs,
+                domain_pilots,
+                execution_audit,
             ),
         )
     )

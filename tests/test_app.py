@@ -20,6 +20,7 @@ from aiwiki.app import (
     ingest_source,
     lint_wiki,
     load_machine_memory,
+    load_machine_memory_action_state,
     load_manifest,
     load_protocol_state,
     nightly_health,
@@ -493,6 +494,85 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Furnace Center", html_payload)
         self.assertIn("../../wiki/indexes/furnace-center.md", html_payload)
         self.assertIn("Compare transformer scale and inference cost", html_payload)
+
+    def test_furnace_center_surfaces_pilots_packs_receipts_and_commands(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        set_active_protocol(self.root, "research")
+        report = ask_question(self.root, "Latency benchmark regression after cache migration", "report", protocol="research")
+        file_back(self.root, report["path"], title="Latency Decision", kind="decision")
+        judgment = file_back(self.root, report["path"], title="Latency Judgment", kind="judgment")
+        review_page(
+            self.root,
+            judgment["path"],
+            "confirmed",
+            note="Stable enough for cockpit surfaces.",
+            confidence="high",
+        )
+        self._seed_machine_memory_actions()
+        compile_wiki(self.root)
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+        entry = load_manifest(self.root)["entries"][0]
+        action_state = load_machine_memory_action_state(self.root)
+        actions = [dict(item) for item in action_state.get("actions", []) if isinstance(item, dict)]
+        actions.append(
+            {
+                "id": "manual-link-action",
+                "kind": "add-source-concept-link",
+                "title": "Manual safe apply link",
+                "reason": "Backfill source/concept link for cockpit receipts.",
+                "primary_path": f"wiki/sources/{entry['id']}.md",
+                "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                "status": "accepted",
+                "priority": "low",
+                "active": True,
+                "source_ids": [entry["id"]],
+                "concept_slugs": [concept_slug],
+                "protocol": "research",
+            }
+        )
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": actions,
+            },
+        )
+        action_id = "manual-link-action"
+        review_machine_memory_action(self.root, action_id, "accepted", note="Queue apply path.")
+        review_machine_memory_action(self.root, "overloaded-concept-latency", "accepted", note="Queue SOP draft.")
+        compile_wiki(self.root)
+        dry_run = apply_machine_memory_action(self.root, action_id, dry_run=True)
+        bundle_path = self.root / dry_run["bundle_path"]
+        bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        bundle_path.write_text(
+            json.dumps(dry_run["bundle"], ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        apply_machine_memory_action(
+            self.root,
+            action_id,
+            bundle_path=dry_run["bundle_path"],
+            note="Apply for cockpit receipt coverage.",
+        )
+
+        dashboard_payload = (self.root / "wiki" / "indexes" / "furnace-center.md").read_text(encoding="utf-8")
+        html_payload = (self.root / "output" / "control" / "furnace-center.html").read_text(encoding="utf-8")
+
+        self.assertIn("## 当前协议 Pilot", dashboard_payload)
+        self.assertIn("研发协议 Pilot Scorecard", dashboard_payload)
+        self.assertIn("## 最新输出 Packs", dashboard_payload)
+        self.assertIn("Review Pack", dashboard_payload)
+        self.assertIn("Decision Memo", dashboard_payload)
+        self.assertIn("SOP Draft", dashboard_payload)
+        self.assertIn("## 最近执行回执", dashboard_payload)
+        self.assertIn("receipt", dashboard_payload)
+        self.assertIn("## 快速命令", dashboard_payload)
+        self.assertIn("protocol-status", dashboard_payload)
+        self.assertIn("当前协议 Pilot", html_payload)
+        self.assertIn("最新输出 Packs", html_payload)
+        self.assertIn("最近执行回执", html_payload)
+        self.assertIn("快速命令", html_payload)
+        self.assertIn("研发协议 Pilot Scorecard", html_payload)
 
     def test_compile_writes_machine_memory_graph_html(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
