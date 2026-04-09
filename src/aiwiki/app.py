@@ -3583,6 +3583,131 @@ def build_execution_receipt(
     }
 
 
+def build_material_archive_bundle(
+    root: Path,
+    *,
+    entry_id: str,
+    title: str,
+    source_path: str,
+    protocol: str,
+    applied_at: str,
+    operation: str,
+    current_temperature: str,
+    resulting_temperature: str,
+) -> dict[str, Any]:
+    command_hint = (
+        f"PYTHONPATH=src python3 -m aiwiki.cli --root . revert-archive {entry_id}"
+        if operation == "apply"
+        else f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-archive {entry_id}"
+    )
+    action_id = material_archive_action_id(entry_id)
+    bundle = {
+        "version": 1,
+        "kind": "execution-bundle",
+        "generated_by": "aiwiki-material-archive",
+        "compiled_at": applied_at,
+        "action_id": action_id,
+        "title": f"{'Archive' if operation == 'apply' else 'Restore'} {title}",
+        "status": "resolved" if operation == "apply" else "proposed",
+        "proposal_kind": "material-archive",
+        "risk": "low",
+        "priority": "low",
+        "protocol": protocol,
+        "summary": f"{operation} material archive override for `{entry_id}`.",
+        "target_paths": [
+            path
+            for path in (
+                source_path,
+                relative_path(root, material_archive_state_path(root)),
+                relative_path(root, material_state_path(root)),
+            )
+            if path
+        ],
+        "suggested_edits": [f"temperature `{current_temperature}` -> `{resulting_temperature}`"],
+        "proposal_path": "",
+        "bundle_path": "",
+        "page_patch_plan": [],
+        "safe_apply_preview": {
+            "apply_mode": (
+                "material-temperature-archive"
+                if operation == "apply"
+                else "material-temperature-archive-revert"
+            ),
+            "state_path": relative_path(root, material_archive_state_path(root)),
+            "entry": {
+                "entry_id": entry_id,
+                "active": operation == "apply",
+                "temperature": resulting_temperature,
+            },
+            "affected_paths": [
+                path
+                for path in (
+                    source_path,
+                    relative_path(root, material_archive_state_path(root)),
+                    relative_path(root, material_state_path(root)),
+                )
+                if path
+            ],
+            "follow_up": "执行后会重跑 compile，让 material-state / archive-candidates / ask 排序同步收敛。",
+        },
+        "command_hint": command_hint,
+        "next_step": "如需恢复材料，再执行对应的 revert-archive。",
+        "dry_run_supported": False,
+    }
+    bundle["digest"] = execution_bundle_digest(bundle)
+    return bundle
+
+
+def build_material_archive_receipt(
+    root: Path,
+    *,
+    entry_id: str,
+    title: str,
+    source_path: str,
+    protocol: str,
+    applied_at: str,
+    note: str | None,
+    operation: str,
+    current_temperature: str,
+    resulting_temperature: str,
+) -> dict[str, Any]:
+    action_id = material_archive_action_id(entry_id)
+    receipt_path = execution_receipt_path(root, action_id)
+    bundle = build_material_archive_bundle(
+        root,
+        entry_id=entry_id,
+        title=title,
+        source_path=source_path,
+        protocol=protocol,
+        applied_at=applied_at,
+        operation=operation,
+        current_temperature=current_temperature,
+        resulting_temperature=resulting_temperature,
+    )
+    return {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-material-archive",
+        "applied_at": applied_at,
+        "operation": operation,
+        "action_id": action_id,
+        "title": f"{'Archive' if operation == 'apply' else 'Restore'} {title}",
+        "status": "resolved" if operation == "apply" else "proposed",
+        "protocol": protocol,
+        "subject_kind": "material-archive",
+        "subject_id": entry_id,
+        "apply_mode": "material-temperature-archive" if operation == "apply" else "material-temperature-archive-revert",
+        "note": note or "",
+        "primary_path": source_path,
+        "secondary_path": "",
+        "current_temperature": current_temperature,
+        "resulting_temperature": resulting_temperature,
+        "receipt_path": relative_path(root, receipt_path),
+        "bundle": bundle,
+        "safe_apply_preview": bundle.get("safe_apply_preview"),
+    }
+
+
 def append_execution_receipt_history(root: Path, receipt: dict[str, Any]) -> None:
     path = execution_receipt_history_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -6644,6 +6769,10 @@ def archive_candidates_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "archive-candidates.json"
 
 
+def material_archive_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "material-archives.json"
+
+
 def load_json_document(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -6773,6 +6902,43 @@ def load_archive_candidates_state(root: Path) -> dict[str, Any]:
 
 def save_archive_candidates_state(root: Path, document: dict[str, Any]) -> None:
     save_json_document(archive_candidates_state_path(root), document)
+
+
+def default_material_archive_state() -> dict[str, Any]:
+    return {"version": 1, "entries": []}
+
+
+def load_material_archive_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(material_archive_state_path(root))
+    if not isinstance(document, dict):
+        return default_material_archive_state()
+    entries = document.get("entries")
+    if not isinstance(entries, list):
+        return default_material_archive_state()
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "entries": [entry for entry in entries if isinstance(entry, dict)],
+    }
+
+
+def save_material_archive_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(material_archive_state_path(root), document)
+
+
+def active_material_archive_entries(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        str(entry.get("entry_id") or ""): entry
+        for entry in document.get("entries", [])
+        if isinstance(entry, dict) and entry.get("entry_id") and bool(entry.get("active", False))
+    }
+
+
+def active_archived_material_ids(root: Path) -> set[str]:
+    return set(active_material_archive_entries(load_material_archive_state(root)))
+
+
+def material_archive_action_id(entry_id: str) -> str:
+    return f"archive-{entry_id}"
 
 
 def question_signature(question: str) -> str:
@@ -7318,17 +7484,19 @@ def active_corpus_bridge_evidence_ids(
     *,
     routing_state: dict[str, Any] | None = None,
     active_protocol: str = DEFAULT_PROTOCOL,
+    blocked_source_ids: set[str] | None = None,
 ) -> list[str]:
+    blocked_source_ids = blocked_source_ids or set()
     bridge_concepts = set(machine_query.get("bridge_concept_slugs", []))
     source_set = set(source_ids) | {
         str(source_id)
         for source_id in machine_query.get("ranked_source_ids", [])
-        if isinstance(source_id, str) and source_id
+        if isinstance(source_id, str) and source_id and source_id not in blocked_source_ids
     }
     for node in machine_query.get("query_subgraph", {}).get("sources", []):
         if isinstance(node, dict):
             node_id = str(node.get("id") or "")
-            if node_id:
+            if node_id and node_id not in blocked_source_ids:
                 source_set.add(node_id)
     bridge_ids: list[str] = []
     seen: set[str] = set()
@@ -7340,18 +7508,23 @@ def active_corpus_bridge_evidence_ids(
                 continue
             left = str(edge.get("left") or "")
             right = str(edge.get("right") or "")
-            if left in source_set and right in bridge_concepts and left not in seen:
+            if (
+                left in source_set
+                and left not in blocked_source_ids
+                and right in bridge_concepts
+                and left not in seen
+            ):
                 seen.add(left)
                 bridge_ids.append(left)
     if routing_state:
-        excluded = set(source_set) | set(bridge_ids)
+        excluded = set(source_set) | set(bridge_ids) | set(blocked_source_ids)
         for entry_id in routing_bridge_recall_ids(
             machine_query,
             routing_state,
             active_protocol=active_protocol,
             excluded_source_ids=excluded,
         ):
-            if entry_id not in seen:
+            if entry_id not in seen and entry_id not in blocked_source_ids:
                 seen.add(entry_id)
                 bridge_ids.append(entry_id)
     return bridge_ids
@@ -7404,6 +7577,8 @@ def refresh_material_state(
     machine_memory = load_machine_memory(root)
     graph_context = material_graph_context(machine_memory)
     previous_archive_candidates = load_archive_candidates_state(root)
+    material_archive_state = load_material_archive_state(root)
+    archived_entries = active_material_archive_entries(material_archive_state)
     last_query_hit_at: dict[str, str] = {}
     last_review_reference_at: dict[str, str] = {}
 
@@ -7461,6 +7636,13 @@ def refresh_material_state(
             computed_at=generated_at,
         )
         routing_entries.append(routing_entry)
+        archive_record = archived_entries.get(entry_id, {})
+        temperature = temperature_from_routing(
+            str(routing_entry.get("selected_as") or ""),
+            supports_judgment_ids=supports_judgment_ids,
+        )
+        if archive_record:
+            temperature = "archived"
         material_entries.append(
             {
                 "entry_id": entry_id,
@@ -7468,16 +7650,16 @@ def refresh_material_state(
                 "kind": str(entry.get("kind") or ""),
                 "source_type": str(entry.get("source_type") or ""),
                 "protocol_hints": protocol_hints,
-                "temperature": temperature_from_routing(
-                    str(routing_entry.get("selected_as") or ""),
-                    supports_judgment_ids=supports_judgment_ids,
-                ),
+                "temperature": temperature,
                 "last_touched_at": str(entry.get("updated_at") or entry.get("imported_at") or ""),
                 "last_query_hit_at": query_hit_at,
                 "last_review_reference_at": review_hit_at,
                 "citation_count": citation_count,
                 "supports_judgment_ids": supports_judgment_ids,
                 "active_corpus_ids": active_corpus_ids,
+                "archive_override": bool(archive_record),
+                "archived_at": str(archive_record.get("archived_at") or ""),
+                "archive_receipt_path": str(archive_record.get("last_receipt_path") or ""),
                 "archive_candidate": False,
             }
         )
@@ -11390,7 +11572,10 @@ def rank_sources(
     question_tokens = tokenize(question)
     scored: list[tuple[int, dict[str, Any]]] = []
     boost_source_ids = boost_source_ids or set()
+    archived_source_ids = active_archived_material_ids(root)
     for entry in entries:
+        if str(entry.get("id") or "") in archived_source_ids:
+            continue
         source_file = root / entry["stored_path"]
         preview = read_text_preview(source_file, limit_lines=8)
         summary_or_preview = source_summary_or_preview(root, entry, preview)
@@ -11778,6 +11963,7 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
             **protocol_state,
             "active_protocol": active_protocol,
         }
+    blocked_source_ids = active_archived_material_ids(root)
     routing_state = load_material_routing_state(root)
     machine_query = build_machine_memory_query(load_machine_memory(root), question, protocol=active_protocol)
     ranked_concepts = rank_concepts(
@@ -11821,6 +12007,7 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
         [entry["id"] for entry in ranked],
         routing_state=routing_state,
         active_protocol=active_protocol,
+        blocked_source_ids=blocked_source_ids,
     )
     active_corpus = upsert_active_corpus(
         root,
@@ -12528,6 +12715,234 @@ def revert_machine_memory_action(
     return {
         "id": action_id,
         "status": "proposed",
+        "reverted_at": reverted_at,
+        "receipt_path": relative_path(root, receipt_path),
+    }
+
+
+@runtime_write_operation
+def apply_material_archive(
+    root: Path,
+    entry_id: str,
+    *,
+    note: str | None = None,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    manifest = sync_manifest_with_raw(root)
+    if (
+        wiki_requires_compile(root, manifest["entries"])
+        or not material_state_path(root).exists()
+        or not archive_candidates_state_path(root).exists()
+    ):
+        compile_wiki(root)
+        manifest = load_manifest(root)
+
+    archive_candidates = load_archive_candidates_state(root)
+    material_state = load_material_state(root)
+    material_archive_state = load_material_archive_state(root)
+    archived_entries = active_material_archive_entries(material_archive_state)
+    if entry_id in archived_entries:
+        raise RuntimeError(f"Material is already archived: {entry_id}")
+
+    candidate = next(
+        (
+            item
+            for item in archive_candidates.get("entries", [])
+            if isinstance(item, dict) and str(item.get("entry_id") or "") == entry_id
+        ),
+        None,
+    )
+    if candidate is None:
+        raise FileNotFoundError(f"Archive candidate not found: {entry_id}")
+    if str(candidate.get("status") or "") != "ready":
+        raise RuntimeError("Only ready archive candidates support apply.")
+    if str(candidate.get("recommended_temperature") or "") != "archived":
+        raise RuntimeError("Only archive candidates recommending `archived` support apply.")
+
+    material_entry = next(
+        (
+            item
+            for item in material_state.get("entries", [])
+            if isinstance(item, dict) and str(item.get("entry_id") or "") == entry_id
+        ),
+        None,
+    )
+    if material_entry is None:
+        raise FileNotFoundError(f"Material state entry not found: {entry_id}")
+    if str(material_entry.get("temperature") or "") != "cold":
+        raise RuntimeError("Only cold material can transition to archived.")
+    if material_entry.get("active_corpus_ids"):
+        raise RuntimeError("Active-corpus material cannot transition to archived.")
+
+    manifest_entry = next(
+        (
+            item
+            for item in manifest.get("entries", [])
+            if isinstance(item, dict) and str(item.get("id") or "") == entry_id
+        ),
+        {},
+    )
+    title = str(manifest_entry.get("title") or entry_id)
+    source_path = f"wiki/sources/{entry_id}.md"
+    protocol = str(load_protocol_state(root)["active_protocol"] or DEFAULT_PROTOCOL)
+    applied_at = utc_now()
+    receipt = build_material_archive_receipt(
+        root,
+        entry_id=entry_id,
+        title=title,
+        source_path=source_path,
+        protocol=protocol,
+        applied_at=applied_at,
+        note=note,
+        operation="apply",
+        current_temperature="cold",
+        resulting_temperature="archived",
+    )
+    receipt_path = execution_receipt_path(root, material_archive_action_id(entry_id))
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    append_execution_receipt_history(root, receipt)
+
+    archive_entries = [
+        dict(item)
+        for item in material_archive_state.get("entries", [])
+        if isinstance(item, dict) and str(item.get("entry_id") or "") != entry_id
+    ]
+    archive_entries.append(
+        {
+            "entry_id": entry_id,
+            "title": title,
+            "source_path": source_path,
+            "active": True,
+            "archived_at": applied_at,
+            "reverted_at": "",
+            "previous_temperature": "cold",
+            "note": note or "",
+            "recommended_temperature": "archived",
+            "last_receipt_path": relative_path(root, receipt_path),
+        }
+    )
+    save_material_archive_state(root, {"version": 1, "entries": archive_entries})
+    append_runtime_history(
+        root,
+        {
+            "event_type": "archive-apply",
+            "occurred_at": applied_at,
+            "protocol": protocol,
+            "source_ids": [entry_id],
+            "receipt_path": relative_path(root, receipt_path),
+        },
+    )
+    append_wiki_log(
+        root,
+        "archive-apply",
+        title,
+        [
+            f"entry_id: `{entry_id}`",
+            f"source: `{source_path}`",
+            "temperature: `cold -> archived`",
+            f"receipt: `{relative_path(root, receipt_path)}`",
+        ],
+    )
+    compile_wiki(root)
+    return {
+        "id": entry_id,
+        "status": "archived",
+        "applied_at": applied_at,
+        "receipt_path": relative_path(root, receipt_path),
+    }
+
+
+@runtime_write_operation
+def revert_material_archive(
+    root: Path,
+    entry_id: str,
+    *,
+    note: str | None = None,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    manifest = sync_manifest_with_raw(root)
+    if wiki_requires_compile(root, manifest["entries"]) or not material_state_path(root).exists():
+        compile_wiki(root)
+        manifest = load_manifest(root)
+
+    material_archive_state = load_material_archive_state(root)
+    archive_entries = [dict(item) for item in material_archive_state.get("entries", []) if isinstance(item, dict)]
+    target = next((item for item in archive_entries if str(item.get("entry_id") or "") == entry_id), None)
+    if target is None or not bool(target.get("active", False)):
+        raise RuntimeError(f"No active archived material exists for entry: {entry_id}")
+
+    receipt_relative = str(target.get("last_receipt_path") or "")
+    if not receipt_relative:
+        raise RuntimeError("Archived material has no execution receipt to revert.")
+    receipt_path = root / receipt_relative
+    if not receipt_path.exists():
+        raise FileNotFoundError(f"Execution receipt not found: {receipt_relative}")
+    receipt = load_json_document(receipt_path)
+    if not isinstance(receipt, dict) or str(receipt.get("kind") or "") != "execution-receipt":
+        raise RuntimeError("Execution receipt is not valid.")
+    if str(receipt.get("operation") or "") != "apply":
+        raise RuntimeError("Only the latest apply archive receipt can be reverted.")
+    if str(receipt.get("subject_id") or "") != entry_id:
+        raise RuntimeError("Execution receipt subject_id does not match the requested entry.")
+
+    manifest_entry = next(
+        (
+            item
+            for item in manifest.get("entries", [])
+            if isinstance(item, dict) and str(item.get("id") or "") == entry_id
+        ),
+        {},
+    )
+    title = str(manifest_entry.get("title") or target.get("title") or entry_id)
+    source_path = str(target.get("source_path") or f"wiki/sources/{entry_id}.md")
+    protocol = str(load_protocol_state(root)["active_protocol"] or DEFAULT_PROTOCOL)
+    reverted_at = utc_now()
+    revert_receipt = build_material_archive_receipt(
+        root,
+        entry_id=entry_id,
+        title=title,
+        source_path=source_path,
+        protocol=protocol,
+        applied_at=reverted_at,
+        note=note,
+        operation="revert",
+        current_temperature="archived",
+        resulting_temperature="cold",
+    )
+    receipt_path.write_text(json.dumps(revert_receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    append_execution_receipt_history(root, revert_receipt)
+
+    target["active"] = False
+    target["reverted_at"] = reverted_at
+    target["revert_note"] = note or "Material archive reverted."
+    target["last_receipt_path"] = relative_path(root, receipt_path)
+    save_material_archive_state(root, {"version": 1, "entries": archive_entries})
+    append_runtime_history(
+        root,
+        {
+            "event_type": "archive-revert",
+            "occurred_at": reverted_at,
+            "protocol": protocol,
+            "source_ids": [entry_id],
+            "receipt_path": relative_path(root, receipt_path),
+        },
+    )
+    append_wiki_log(
+        root,
+        "archive-revert",
+        title,
+        [
+            f"entry_id: `{entry_id}`",
+            f"source: `{source_path}`",
+            "temperature: `archived -> cold`",
+            f"receipt: `{relative_path(root, receipt_path)}`",
+        ],
+    )
+    compile_wiki(root)
+    return {
+        "id": entry_id,
+        "status": "cold",
         "reverted_at": reverted_at,
         "receipt_path": relative_path(root, receipt_path),
     }

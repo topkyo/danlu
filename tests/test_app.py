@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 from datetime import datetime
+import io
 import json
 import os
 import tempfile
@@ -13,6 +14,7 @@ from aiwiki.app import (
     active_corpus_bridge_evidence_ids,
     append_execution_receipt_history,
     apply_concept_rewrite,
+    apply_material_archive,
     apply_machine_memory_action,
     ask_question,
     build_archive_candidate_state,
@@ -30,6 +32,7 @@ from aiwiki.app import (
     parse_frontmatter,
     placeholder_concept_slugs,
     render_frontmatter,
+    revert_material_archive,
     revert_machine_memory_action,
     review_concept_rewrite,
     review_machine_memory_action,
@@ -41,6 +44,7 @@ from aiwiki.app import (
     strip_frontmatter,
 )
 from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
+from aiwiki.cli import main as cli_main
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
 from aiwiki.llm import CompletionResult
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
@@ -116,6 +120,20 @@ class AiwikiFlowTests(unittest.TestCase):
             source = self.root / f"action-{index}.md"
             source.write_text(f"# Latency Node {index}\n\nLatency throughput node {index}.\n", encoding="utf-8")
             ingest_source(self.root, str(source), title=f"Latency Node {index}")
+
+    def _prepare_ready_archive_candidate(self) -> dict[str, str]:
+        archive_source = self.root / "archive-candidate.md"
+        archive_source.write_text("# Obscure Legacy Note\n\nMisc.\n", encoding="utf-8")
+        entry = ingest_source(self.root, str(archive_source), title="Obscure Legacy Note")
+        compile_wiki(self.root)
+        manifest = load_manifest(self.root)
+        manifest["entries"][0]["imported_at"] = "2025-01-01T00:00:00+00:00"
+        manifest["entries"][0]["updated_at"] = "2025-01-01T00:00:00+00:00"
+        save_manifest(self.root, manifest)
+        set_active_protocol(self.root, "investing")
+        compile_wiki(self.root)
+        compile_wiki(self.root)
+        return entry
 
     def test_ingest_compile_ask_file_back_and_lint(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -509,6 +527,75 @@ class AiwikiFlowTests(unittest.TestCase):
         )
 
         self.assertEqual(archive_candidates["entries"], [])
+
+    def test_apply_material_archive_persists_archived_temperature_across_compile(self) -> None:
+        entry = self._prepare_ready_archive_candidate()
+
+        result = apply_material_archive(self.root, entry["id"], note="Archive stale source.")
+
+        self.assertEqual(result["status"], "archived")
+        archive_state = json.loads((self.root / ".aiwiki" / "state" / "material-archives.json").read_text(encoding="utf-8"))
+        archive_entry = next(item for item in archive_state["entries"] if item["entry_id"] == entry["id"])
+        self.assertTrue(archive_entry["active"])
+        self.assertEqual(archive_entry["previous_temperature"], "cold")
+        material_state = json.loads((self.root / ".aiwiki" / "state" / "material-state.json").read_text(encoding="utf-8"))
+        material_entry = next(item for item in material_state["entries"] if item["entry_id"] == entry["id"])
+        self.assertEqual(material_entry["temperature"], "archived")
+        self.assertTrue(material_entry["archive_override"])
+        self.assertFalse(material_entry["archive_candidate"])
+        receipt = json.loads((self.root / result["receipt_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(receipt["kind"], "execution-receipt")
+        self.assertEqual(receipt["subject_kind"], "material-archive")
+        self.assertEqual(receipt["subject_id"], entry["id"])
+        self.assertEqual(receipt["resulting_temperature"], "archived")
+
+        compile_wiki(self.root)
+
+        material_state = json.loads((self.root / ".aiwiki" / "state" / "material-state.json").read_text(encoding="utf-8"))
+        material_entry = next(item for item in material_state["entries"] if item["entry_id"] == entry["id"])
+        self.assertEqual(material_entry["temperature"], "archived")
+
+    def test_revert_material_archive_restores_cold_and_query_visibility(self) -> None:
+        entry = self._prepare_ready_archive_candidate()
+        apply_material_archive(self.root, entry["id"], note="Archive stale source.")
+
+        report = ask_question(self.root, "Obscure legacy note", "report")
+        self.assertNotIn(entry["id"], report["ranked_sources"])
+
+        result = revert_material_archive(self.root, entry["id"], note="Restore archived source.")
+
+        self.assertEqual(result["status"], "cold")
+        archive_state = json.loads((self.root / ".aiwiki" / "state" / "material-archives.json").read_text(encoding="utf-8"))
+        archive_entry = next(item for item in archive_state["entries"] if item["entry_id"] == entry["id"])
+        self.assertFalse(archive_entry["active"])
+        receipt = json.loads((self.root / result["receipt_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(receipt["operation"], "revert")
+        self.assertEqual(receipt["resulting_temperature"], "cold")
+        material_state = json.loads((self.root / ".aiwiki" / "state" / "material-state.json").read_text(encoding="utf-8"))
+        material_entry = next(item for item in material_state["entries"] if item["entry_id"] == entry["id"])
+        self.assertEqual(material_entry["temperature"], "cold")
+
+        report = ask_question(self.root, "Obscure legacy note", "report")
+        self.assertIn(entry["id"], report["ranked_sources"])
+
+    def test_cli_apply_archive_and_revert_commands(self) -> None:
+        entry = self._prepare_ready_archive_candidate()
+
+        with patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            self.assertEqual(
+                cli_main(["--root", str(self.root), "apply-archive", entry["id"], "--note", "Archive via CLI."]),
+                0,
+            )
+            payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["status"], "archived")
+
+        with patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            self.assertEqual(
+                cli_main(["--root", str(self.root), "revert-archive", entry["id"], "--note", "Restore via CLI."]),
+                0,
+            )
+            payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["status"], "cold")
 
     def test_protocol_set_updates_dashboard_without_compile(self) -> None:
         set_active_protocol(self.root, "investing")

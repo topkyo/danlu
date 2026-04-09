@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .app import (
     apply_concept_rewrite,
+    apply_material_archive,
     apply_machine_memory_action,
     ask_question,
     compile_wiki,
@@ -17,6 +18,7 @@ from .app import (
     lint_wiki,
     load_protocol_state,
     nightly_health,
+    revert_material_archive,
     revert_machine_memory_action,
     review_concept_rewrite,
     review_machine_memory_action,
@@ -190,6 +192,20 @@ def build_parser() -> argparse.ArgumentParser:
     revert_action_parser.add_argument("action_id", help="Machine-memory action id.")
     revert_action_parser.add_argument("--note", help="Optional revert note.")
 
+    apply_archive_parser = subparsers.add_parser(
+        "apply-archive",
+        help="Apply a ready archive candidate and pin the material temperature to archived.",
+    )
+    apply_archive_parser.add_argument("entry_id", help="Manifest/material entry id.")
+    apply_archive_parser.add_argument("--note", help="Optional apply note.")
+
+    revert_archive_parser = subparsers.add_parser(
+        "revert-archive",
+        help="Revert the latest explicit archive transition and restore the material to cold.",
+    )
+    revert_archive_parser.add_argument("entry_id", help="Manifest/material entry id.")
+    revert_archive_parser.add_argument("--note", help="Optional revert note.")
+
     subparsers.add_parser("lint", help="Run deterministic lint checks against the wiki.")
     subparsers.add_parser("run-lint", help="Run deterministic lint plus an LLM-backed semantic lint pass.")
     subparsers.add_parser("nightly", help="Run deterministic compile + lint and write nightly repair artifacts.")
@@ -328,6 +344,10 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif args.command == "revert-action":
             result = revert_machine_memory_action(root, args.action_id, note=args.note)
+        elif args.command == "apply-archive":
+            result = apply_material_archive(root, args.entry_id, note=args.note)
+        elif args.command == "revert-archive":
+            result = revert_material_archive(root, args.entry_id, note=args.note)
         elif args.command == "lint":
             result = lint_wiki(root)
         elif args.command == "run-lint":
