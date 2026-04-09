@@ -351,8 +351,9 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(len(material_routing["entries"]), 1)
         self.assertEqual(archive_candidates["version"], 1)
         self.assertEqual(knowledge_lifecycle["version"], 1)
-        self.assertEqual(knowledge_lifecycle["entries"], [])
-        self.assertEqual(knowledge_lifecycle["counts"]["total"], 0)
+        self.assertGreater(knowledge_lifecycle["counts"]["total"], 0)
+        self.assertGreater(knowledge_lifecycle["counts"]["by_kind"]["concept"]["total"], 0)
+        self.assertTrue(any(item["kind"] == "concept" for item in knowledge_lifecycle["entries"]))
 
         record = material_state["entries"][0]
         routing_record = material_routing["entries"][0]
@@ -482,6 +483,51 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(judgment_entry["lifecycle_state"], "revisit")
         self.assertIn("citation-drift", judgment_entry["invalidation_signals"])
         self.assertTrue(judgment_entry["citation_drift"])
+
+    def test_ask_refreshes_concept_lifecycle_active_corpus_linkage(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        linked_concepts = [
+            entry for entry in lifecycle["entries"]
+            if entry["kind"] == "concept" and report["active_corpus_id"] in entry.get("active_corpus_ids", [])
+        ]
+        self.assertTrue(linked_concepts)
+        self.assertTrue(all(entry["lifecycle_state"] in {"active", "review", "revisit"} for entry in linked_concepts))
+
+    def test_concept_conflict_enters_knowledge_lifecycle_revisit(self) -> None:
+        first = self.root / "first.md"
+        first.write_text("# Latency Outlook\n\nLatency will increase with larger batches.\n", encoding="utf-8")
+        second = self.root / "second.md"
+        second.write_text("# Latency Outlook\n\nLatency may decrease after cache reuse.\n", encoding="utf-8")
+        first_entry = ingest_source(self.root, str(first), title="Latency Outlook A")
+        second_entry = ingest_source(self.root, str(second), title="Latency Outlook B")
+
+        compile_wiki(self.root)
+
+        first_page = self.root / "wiki" / "sources" / f"{first_entry['id']}.md"
+        second_page = self.root / "wiki" / "sources" / f"{second_entry['id']}.md"
+        first_page.write_text(
+            first_page.read_text(encoding="utf-8").replace("- Pending LLM summary.", "- Latency will increase as batches grow."),
+            encoding="utf-8",
+        )
+        second_page.write_text(
+            second_page.read_text(encoding="utf-8").replace("- Pending LLM summary.", "- Latency can decrease once cache reuse stabilizes."),
+            encoding="utf-8",
+        )
+
+        compile_wiki(self.root)
+
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        revisit_concepts = [
+            entry for entry in lifecycle["entries"]
+            if entry["kind"] == "concept" and "concept-conflict" in entry.get("invalidation_signals", [])
+        ]
+        self.assertTrue(revisit_concepts)
+        self.assertTrue(all(entry["lifecycle_state"] == "revisit" for entry in revisit_concepts))
 
     def test_archive_candidates_progress_to_ready_and_reactivate(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -3072,8 +3118,9 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(state["lint"]["counts"]["warnings"], result["lint"]["counts"]["warnings"])
         self.assertEqual(state["concept_quality"]["path"], "wiki/indexes/concept-quality.md")
         self.assertEqual(state["knowledge_lifecycle"]["path"], ".aiwiki/state/knowledge-lifecycle.json")
-        self.assertEqual(state["knowledge_lifecycle"]["entry_count"], 2)
+        self.assertGreaterEqual(state["knowledge_lifecycle"]["entry_count"], 2)
         self.assertIn("review", state["knowledge_lifecycle"]["state_counts"])
+        self.assertGreater(state["knowledge_lifecycle"]["kind_counts"]["concept"]["total"], 0)
         self.assertIn("rewrite_candidate_slugs", state["concept_quality"])
         self.assertIn("health", state["machine_memory"])
         self.assertEqual(state["machine_memory"]["actions_path"], "wiki/indexes/machine-memory-actions.md")
