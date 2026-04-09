@@ -1071,12 +1071,14 @@ JUDGMENT_STATUSES = ("tentative", "tracking", "confirmed", "rejected")
 ACTION_STATUSES = ("proposed", "accepted", "deferred", "resolved", "rejected")
 REWRITE_PROPOSAL_STATUSES = ("proposed", "accepted", "deferred", "applied", "rejected")
 ACTIVE_CORPUS_STATUSES = ("active", "cooling", "expired")
+ARCHIVE_CANDIDATE_STATUSES = ("suggested", "deferred", "ready", "reactivated")
 PENDING_DECISION_REVIEW_STATUSES = {"proposed", "needs-revisit"}
 PENDING_JUDGMENT_REVIEW_STATUSES = {"tentative", "tracking"}
 PENDING_ACTION_STATUSES = {"proposed", "accepted", "deferred"}
 PENDING_REWRITE_PROPOSAL_STATUSES = {"proposed", "accepted", "deferred"}
 LOW_RISK_APPLYABLE_ACTION_KINDS = {"add-source-concept-link"}
 ACTIVE_CORPUS_TTL = timedelta(days=3)
+ARCHIVE_QUERY_STALE_AFTER = timedelta(days=14)
 
 EXECUTION_BAND_LABELS = {
     "review-first": "先审后动",
@@ -6634,6 +6636,14 @@ def runtime_history_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "runtime-history.jsonl"
 
 
+def material_routing_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "material-routing.json"
+
+
+def archive_candidates_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "archive-candidates.json"
+
+
 def load_json_document(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -6720,6 +6730,51 @@ def append_runtime_history(root: Path, event: dict[str, Any]) -> None:
         handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def default_material_routing_state() -> dict[str, Any]:
+    return {"version": 1, "computed_at": "", "active_protocol": DEFAULT_PROTOCOL, "entries": []}
+
+
+def load_material_routing_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(material_routing_state_path(root))
+    if not isinstance(document, dict):
+        return default_material_routing_state()
+    entries = document.get("entries")
+    if not isinstance(entries, list):
+        return default_material_routing_state()
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "computed_at": str(document.get("computed_at") or ""),
+        "active_protocol": str(document.get("active_protocol") or DEFAULT_PROTOCOL),
+        "entries": [entry for entry in entries if isinstance(entry, dict)],
+    }
+
+
+def save_material_routing_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(material_routing_state_path(root), document)
+
+
+def default_archive_candidates_state() -> dict[str, Any]:
+    return {"version": 1, "generated_at": "", "entries": []}
+
+
+def load_archive_candidates_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(archive_candidates_state_path(root))
+    if not isinstance(document, dict):
+        return default_archive_candidates_state()
+    entries = document.get("entries")
+    if not isinstance(entries, list):
+        return default_archive_candidates_state()
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "generated_at": str(document.get("generated_at") or ""),
+        "entries": [entry for entry in entries if isinstance(entry, dict)],
+    }
+
+
+def save_archive_candidates_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(archive_candidates_state_path(root), document)
+
+
 def question_signature(question: str) -> str:
     normalized = " ".join(question.lower().split())
     return f"sha256:{sha256_bytes(normalized.encode('utf-8'))}"
@@ -6762,27 +6817,106 @@ def protocol_hints_for_material(entry: dict[str, Any], preview: str) -> list[str
     return hints or [DEFAULT_PROTOCOL]
 
 
-def infer_material_temperature(
-    entry: dict[str, Any],
-    *,
-    active_corpus_ids: list[str],
-    supports_judgment_ids: list[str],
-    citation_count: int,
-    last_query_hit_at: str,
-    last_review_reference_at: str,
-) -> str:
-    last_touched_at = str(entry.get("updated_at") or entry.get("imported_at") or "")
-    recent_touch = parse_iso_datetime(last_touched_at)
+def recency_score_for_timestamp(timestamp: str) -> float:
+    parsed = parse_iso_datetime(timestamp)
+    if parsed is None:
+        return 0.0
     now = datetime.now(timezone.utc)
-    if active_corpus_ids:
+    age = now - parsed
+    if age <= timedelta(days=3):
+        return 1.0
+    if age <= timedelta(days=7):
+        return 0.7
+    if age <= timedelta(days=30):
+        return 0.4
+    return 0.1
+
+
+def material_protocol_score(
+    active_protocol: str,
+    *,
+    protocol_hints: list[str],
+    entry: dict[str, Any],
+    preview: str,
+) -> float:
+    text = " ".join(
+        [
+            str(entry.get("title") or ""),
+            str(entry.get("source_type") or ""),
+            preview,
+        ]
+    )
+    focus_score = protocol_focus_score(active_protocol, text)
+    if active_protocol == DEFAULT_PROTOCOL:
+        base = 0.6
+    elif active_protocol in protocol_hints:
+        base = 0.75
+    else:
+        base = 0.2
+    return round(min(1.0, base + min(0.25, focus_score * 0.05)), 3)
+
+
+def material_graph_context(memory: dict[str, Any]) -> dict[str, Any]:
+    health = memory.get("health", {})
+    bridge_concepts = set(health.get("bridge_concept_slugs", []))
+    concept_count_by_entry: dict[str, int] = {}
+    bridge_source_ids: set[str] = set()
+    for edge in memory.get("edges", {}).get("source_to_concept", []):
+        source_id = str(edge.get("source_id") or "")
+        concept_slug = str(edge.get("concept_slug") or "")
+        if not source_id or not concept_slug:
+            continue
+        concept_count_by_entry[source_id] = concept_count_by_entry.get(source_id, 0) + 1
+        if concept_slug in bridge_concepts:
+            bridge_source_ids.add(source_id)
+    action_pressure_by_entry: dict[str, float] = {}
+    for action in health.get("actions", []):
+        if not isinstance(action, dict):
+            continue
+        weight = 0.2
+        if str(action.get("priority") or "") == "high":
+            weight += 0.15
+        if str(action.get("status") or "") in {"accepted", "proposed"}:
+            weight += 0.1
+        for source_id in action.get("source_ids", []) or []:
+            if isinstance(source_id, str) and source_id:
+                action_pressure_by_entry[source_id] = action_pressure_by_entry.get(source_id, 0.0) + weight
+    for action in health.get("overdue_actions", []):
+        if not isinstance(action, dict):
+            continue
+        for source_id in action.get("source_ids", []) or []:
+            if isinstance(source_id, str) and source_id:
+                action_pressure_by_entry[source_id] = action_pressure_by_entry.get(source_id, 0.0) + 0.2
+    for action in health.get("escalated_actions", []):
+        if not isinstance(action, dict):
+            continue
+        for source_id in action.get("source_ids", []) or []:
+            if isinstance(source_id, str) and source_id:
+                action_pressure_by_entry[source_id] = action_pressure_by_entry.get(source_id, 0.0) + 0.25
+    return {
+        "concept_count_by_entry": concept_count_by_entry,
+        "bridge_source_ids": bridge_source_ids,
+        "action_pressure_by_entry": action_pressure_by_entry,
+        "sources_without_concepts": set(memory.get("drift", {}).get("sources_without_concepts", [])),
+    }
+
+
+def material_routing_selected_as(total_score: float, *, active_corpus_ids: list[str]) -> str:
+    if active_corpus_ids or total_score >= 3.2:
+        return "hot-evidence"
+    if total_score >= 2.2:
+        return "warm-evidence"
+    if total_score >= 1.2:
+        return "cold-evidence"
+    return "archive-candidate"
+
+
+def temperature_from_routing(selected_as: str, *, supports_judgment_ids: list[str]) -> str:
+    if selected_as == "hot-evidence":
         return "hot"
-    if last_query_hit_at and parse_iso_datetime(last_query_hit_at) and now - parse_iso_datetime(last_query_hit_at) <= timedelta(days=3):
-        return "hot"
-    if last_review_reference_at and parse_iso_datetime(last_review_reference_at) and now - parse_iso_datetime(last_review_reference_at) <= timedelta(days=7):
-        return "hot"
-    if recent_touch and now - recent_touch <= timedelta(days=3):
-        return "hot"
-    if supports_judgment_ids or citation_count > 0:
+    if selected_as == "warm-evidence":
+        return "warm"
+    if supports_judgment_ids:
         return "warm"
     return "cold"
 
@@ -6830,6 +6964,7 @@ def scan_material_reference_state(
     _by_id, path_to_entry_id = entry_lookup_maps(entries)
     citation_count_by_entry: dict[str, int] = {}
     supports_judgment_ids: dict[str, set[str]] = {}
+    active_judgment_ids: set[str] = set()
 
     for relative in ("wiki/derived", "wiki/decisions", "wiki/judgments"):
         directory = root / relative
@@ -6844,20 +6979,219 @@ def scan_material_reference_state(
                 continue
             frontmatter = parse_frontmatter(content)
             judgment_id = str(frontmatter.get("id") or path.stem)
+            if str(frontmatter.get("status") or "") != "rejected":
+                active_judgment_ids.add(judgment_id)
             for entry_id in cited_entry_ids:
                 supports_judgment_ids.setdefault(entry_id, set()).add(judgment_id)
 
     return {
         "citation_count_by_entry": citation_count_by_entry,
         "supports_judgment_ids": {entry_id: sorted(ids) for entry_id, ids in supports_judgment_ids.items()},
+        "active_judgment_ids": sorted(active_judgment_ids),
     }
+
+
+def build_material_routing_snapshot(
+    *,
+    active_protocol: str,
+    entry: dict[str, Any],
+    preview: str,
+    protocol_hints: list[str],
+    active_corpus_ids: list[str],
+    supports_judgment_ids: list[str],
+    last_query_hit_at: str,
+    last_review_reference_at: str,
+    graph_context: dict[str, Any],
+    computed_at: str,
+) -> dict[str, Any]:
+    entry_id = str(entry.get("id") or "")
+    concept_count = int(graph_context.get("concept_count_by_entry", {}).get(entry_id, 0))
+    is_bridge = entry_id in graph_context.get("bridge_source_ids", set())
+    graph_score = 0.0
+    graph_score += min(0.55, concept_count * 0.18)
+    if active_corpus_ids:
+        graph_score += 0.25
+    if is_bridge:
+        graph_score += 0.2
+    graph_score = round(min(1.0, graph_score), 3)
+
+    judgment_score = round(min(1.0, len(supports_judgment_ids) * 0.35), 3)
+    recency_score = round(
+        min(
+            1.0,
+            max(
+                recency_score_for_timestamp(str(entry.get("updated_at") or entry.get("imported_at") or "")),
+                recency_score_for_timestamp(last_query_hit_at),
+                recency_score_for_timestamp(last_review_reference_at),
+            ),
+        ),
+        3,
+    )
+
+    drift_score = 0.0
+    if entry_id in graph_context.get("sources_without_concepts", set()):
+        drift_score += 0.4
+    drift_score += float(graph_context.get("action_pressure_by_entry", {}).get(entry_id, 0.0))
+    drift_score = round(min(1.0, drift_score), 3)
+
+    protocol_score = material_protocol_score(
+        active_protocol,
+        protocol_hints=protocol_hints,
+        entry=entry,
+        preview=preview,
+    )
+    total_score = round(protocol_score + graph_score + judgment_score + recency_score + drift_score, 3)
+    selected_as = material_routing_selected_as(total_score, active_corpus_ids=active_corpus_ids)
+    return {
+        "entry_id": entry_id,
+        "protocol": active_protocol,
+        "scores": {
+            "protocol_score": protocol_score,
+            "graph_score": graph_score,
+            "judgment_score": judgment_score,
+            "recency_score": recency_score,
+            "drift_score": drift_score,
+        },
+        "total_score": total_score,
+        "selected_as": selected_as,
+        "is_bridge": is_bridge,
+        "computed_at": computed_at,
+    }
+
+
+def archive_candidate_reactivation_signals(
+    material_entry: dict[str, Any],
+    routing_snapshot: dict[str, Any],
+    previous_candidate: dict[str, Any],
+) -> list[str]:
+    signals: list[str] = []
+    previous_flagged_at = str(previous_candidate.get("last_flagged_at") or "")
+    if material_entry.get("active_corpus_ids"):
+        signals.append("active-corpus")
+    if str(material_entry.get("last_query_hit_at") or "") and timestamp_is_newer(
+        str(material_entry.get("last_query_hit_at") or ""),
+        previous_flagged_at,
+    ):
+        signals.append("query-hit")
+    if str(material_entry.get("last_review_reference_at") or "") and timestamp_is_newer(
+        str(material_entry.get("last_review_reference_at") or ""),
+        previous_flagged_at,
+    ):
+        signals.append("review-reference")
+    if bool(routing_snapshot.get("is_bridge")):
+        signals.append("bridge-evidence")
+    if float(routing_snapshot.get("total_score", 0.0) or 0.0) >= 2.2:
+        signals.append("routing-score-recovered")
+    return signals
+
+
+def build_archive_candidate_state(
+    *,
+    material_entries: list[dict[str, Any]],
+    routing_entries: list[dict[str, Any]],
+    active_judgment_ids: set[str],
+    generated_at: str,
+    previous_state: dict[str, Any],
+) -> dict[str, Any]:
+    previous_by_entry = {
+        str(entry.get("entry_id") or ""): entry
+        for entry in previous_state.get("entries", [])
+        if isinstance(entry, dict) and entry.get("entry_id")
+    }
+    routing_by_entry = {
+        str(entry.get("entry_id") or ""): entry
+        for entry in routing_entries
+        if isinstance(entry, dict) and entry.get("entry_id")
+    }
+    entries: list[dict[str, Any]] = []
+    for material_entry in material_entries:
+        entry_id = str(material_entry.get("entry_id") or "")
+        if not entry_id:
+            continue
+        routing_snapshot = routing_by_entry.get(entry_id, {})
+        previous_candidate = previous_by_entry.get(entry_id, {})
+        blocked_by_judgment_ids = sorted(set(material_entry.get("supports_judgment_ids", [])) & active_judgment_ids)
+        last_query_hit_at = parse_iso_datetime(str(material_entry.get("last_query_hit_at") or ""))
+        query_stale = last_query_hit_at is None or (datetime.now(timezone.utc) - last_query_hit_at) > ARCHIVE_QUERY_STALE_AFTER
+        touch_stale = recency_score_for_timestamp(str(material_entry.get("last_touched_at") or "")) <= 0.4
+        total_score = float(routing_snapshot.get("total_score", 0.0) or 0.0)
+        is_bridge = bool(routing_snapshot.get("is_bridge"))
+        no_active_corpus = not material_entry.get("active_corpus_ids")
+        candidate = (
+            no_active_corpus
+            and query_stale
+            and touch_stale
+            and not is_bridge
+            and str(material_entry.get("temperature") or "") in {"warm", "cold"}
+            and str(routing_snapshot.get("selected_as") or "") in {"cold-evidence", "archive-candidate"}
+        )
+        if candidate:
+            reason_codes: list[str] = []
+            if no_active_corpus:
+                reason_codes.append("no-active-corpus")
+            if query_stale:
+                reason_codes.append("stale-no-query-hit")
+            if touch_stale:
+                reason_codes.append("stale-no-touch")
+            if total_score < 2.0:
+                reason_codes.append("low-routing-score")
+            if str(material_entry.get("temperature") or "") == "cold":
+                reason_codes.append("already-cold")
+            recommended_temperature = "archived" if str(material_entry.get("temperature") or "") == "cold" and total_score < 1.2 else "cold"
+            status = "suggested"
+            if blocked_by_judgment_ids:
+                status = "deferred"
+            elif previous_candidate and str(previous_candidate.get("status") or "") in {"suggested", "ready"}:
+                status = "ready"
+            entries.append(
+                {
+                    "entry_id": entry_id,
+                    "current_temperature": str(material_entry.get("temperature") or ""),
+                    "recommended_temperature": recommended_temperature,
+                    "reason_codes": reason_codes,
+                    "first_flagged_at": str(previous_candidate.get("first_flagged_at") or generated_at),
+                    "last_flagged_at": generated_at,
+                    "blocked_by_judgment_ids": blocked_by_judgment_ids,
+                    "reactivation_signals": list(previous_candidate.get("reactivation_signals", []))
+                    if isinstance(previous_candidate.get("reactivation_signals"), list)
+                    else [],
+                    "status": status if status in ARCHIVE_CANDIDATE_STATUSES else "suggested",
+                }
+            )
+            continue
+        if previous_candidate:
+            reactivation_signals = archive_candidate_reactivation_signals(material_entry, routing_snapshot, previous_candidate)
+            if reactivation_signals:
+                entries.append(
+                    {
+                        "entry_id": entry_id,
+                        "current_temperature": str(material_entry.get("temperature") or ""),
+                        "recommended_temperature": str(previous_candidate.get("recommended_temperature") or "cold"),
+                        "reason_codes": [],
+                        "first_flagged_at": str(previous_candidate.get("first_flagged_at") or generated_at),
+                        "last_flagged_at": str(previous_candidate.get("last_flagged_at") or generated_at),
+                        "blocked_by_judgment_ids": blocked_by_judgment_ids,
+                        "reactivation_signals": reactivation_signals,
+                        "status": "reactivated",
+                    }
+                )
+    return {"version": 1, "generated_at": generated_at, "entries": entries}
 
 
 def active_corpus_bridge_evidence_ids(machine_query: dict[str, Any], source_ids: list[str]) -> list[str]:
     bridge_concepts = set(machine_query.get("bridge_concept_slugs", []))
     if not bridge_concepts:
         return []
-    source_set = set(source_ids)
+    source_set = set(source_ids) | {
+        str(source_id)
+        for source_id in machine_query.get("ranked_source_ids", [])
+        if isinstance(source_id, str) and source_id
+    }
+    for node in machine_query.get("query_subgraph", {}).get("sources", []):
+        if isinstance(node, dict):
+            node_id = str(node.get("id") or "")
+            if node_id:
+                source_set.add(node_id)
     bridge_ids: list[str] = []
     seen: set[str] = set()
     for edge in machine_query.get("query_subgraph", {}).get("edges", []):
@@ -6909,12 +7243,17 @@ def refresh_material_state(
     *,
     generated_at: str,
     entries: list[dict[str, Any]] | None = None,
+    active_protocol: str | None = None,
 ) -> dict[str, Any]:
     ensure_layout(root)
     manifest_entries = entries if entries is not None else load_manifest(root).get("entries", [])
+    resolved_protocol = active_protocol or load_protocol_state(root)["active_protocol"]
     history = load_runtime_history(root)
     active_corpora = reconcile_active_corpora_state(root, changed_at=generated_at)["corpora"]
     reference_state = scan_material_reference_state(root, manifest_entries)
+    machine_memory = load_machine_memory(root)
+    graph_context = material_graph_context(machine_memory)
+    previous_archive_candidates = load_archive_candidates_state(root)
     last_query_hit_at: dict[str, str] = {}
     last_review_reference_at: dict[str, str] = {}
 
@@ -6948,6 +7287,7 @@ def refresh_material_state(
                 active_corpus_ids_by_entry[entry_id].append(corpus_id)
 
     material_entries: list[dict[str, Any]] = []
+    routing_entries: list[dict[str, Any]] = []
     for entry in manifest_entries:
         entry_id = str(entry.get("id") or "")
         stored_path = str(entry.get("stored_path") or "")
@@ -6957,20 +7297,30 @@ def refresh_material_state(
         active_corpus_ids = sorted(active_corpus_ids_by_entry.get(entry_id, []))
         query_hit_at = last_query_hit_at.get(entry_id, "")
         review_hit_at = last_review_reference_at.get(entry_id, "")
+        protocol_hints = protocol_hints_for_material(entry, preview)
+        routing_snapshot = build_material_routing_snapshot(
+            active_protocol=resolved_protocol,
+            entry=entry,
+            preview=preview,
+            protocol_hints=protocol_hints,
+            active_corpus_ids=active_corpus_ids,
+            supports_judgment_ids=supports_judgment_ids,
+            last_query_hit_at=query_hit_at,
+            last_review_reference_at=review_hit_at,
+            graph_context=graph_context,
+            computed_at=generated_at,
+        )
+        routing_entries.append(routing_snapshot)
         material_entries.append(
             {
                 "entry_id": entry_id,
                 "path": stored_path,
                 "kind": str(entry.get("kind") or ""),
                 "source_type": str(entry.get("source_type") or ""),
-                "protocol_hints": protocol_hints_for_material(entry, preview),
-                "temperature": infer_material_temperature(
-                    entry,
-                    active_corpus_ids=active_corpus_ids,
+                "protocol_hints": protocol_hints,
+                "temperature": temperature_from_routing(
+                    str(routing_snapshot.get("selected_as") or ""),
                     supports_judgment_ids=supports_judgment_ids,
-                    citation_count=citation_count,
-                    last_query_hit_at=query_hit_at,
-                    last_review_reference_at=review_hit_at,
                 ),
                 "last_touched_at": str(entry.get("updated_at") or entry.get("imported_at") or ""),
                 "last_query_hit_at": query_hit_at,
@@ -6982,8 +7332,30 @@ def refresh_material_state(
             }
         )
 
+    routing_document = {
+        "version": 1,
+        "computed_at": generated_at,
+        "active_protocol": resolved_protocol,
+        "entries": routing_entries,
+    }
+    archive_document = build_archive_candidate_state(
+        material_entries=material_entries,
+        routing_entries=routing_entries,
+        active_judgment_ids=set(reference_state.get("active_judgment_ids", [])),
+        generated_at=generated_at,
+        previous_state=previous_archive_candidates,
+    )
+    active_archive_ids = {
+        str(entry.get("entry_id") or "")
+        for entry in archive_document.get("entries", [])
+        if str(entry.get("status") or "") in {"suggested", "deferred", "ready"}
+    }
+    for material_entry in material_entries:
+        material_entry["archive_candidate"] = material_entry.get("entry_id") in active_archive_ids
     document = {"version": 1, "generated_at": generated_at, "entries": material_entries}
     save_material_state(root, document)
+    save_material_routing_state(root, routing_document)
+    save_archive_candidates_state(root, archive_document)
     return document
 
 
@@ -10746,7 +11118,14 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     )
     changed_pages += int(write_if_changed(graph_health_report_path(root), render_graph_health(memory)))
     changed_pages += int(write_if_changed(machine_memory_drift_report_path(root), render_drift_report(memory, transition)))
-    material_state = refresh_material_state(root, generated_at=compiled_at, entries=entries)
+    material_state = refresh_material_state(
+        root,
+        generated_at=compiled_at,
+        entries=entries,
+        active_protocol=protocol_state["active_protocol"],
+    )
+    material_routing = load_material_routing_state(root)
+    archive_candidates = load_archive_candidates_state(root)
     active_corpora_state = load_active_corpora_state(root)
     append_wiki_log(
         root,
@@ -10762,6 +11141,8 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             f"output_packs: `{output_packs['counts']['review_packs']}/{output_packs['counts']['decision_memos']}/{output_packs['counts']['sop_drafts']}`",
             f"domain_pilots: `{len(domain_pilots['scorecards'])}`",
             f"material_state_entries: `{len(material_state['entries'])}`",
+            f"material_routing_entries: `{len(material_routing.get('entries', []))}`",
+            f"archive_candidates: `{len(archive_candidates.get('entries', []))}`",
             f"active_corpora: `{len(active_corpora_state.get('corpora', []))}`",
             f"machine_memory_changed: `{transition['changed']}`",
             f"changed_pages: `{changed_pages}`",
@@ -10780,6 +11161,8 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "domain_pilots": len(domain_pilots["scorecards"]),
         "material_state_path": relative_path(root, material_state_path(root)),
         "active_corpora_path": relative_path(root, active_corpora_state_path(root)),
+        "material_routing_path": relative_path(root, material_routing_state_path(root)),
+        "archive_candidates_path": relative_path(root, archive_candidates_state_path(root)),
     }
 
 
@@ -11310,7 +11693,7 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
             "touched_component_ids": machine_query.get("touched_component_ids", []),
         },
     )
-    refresh_material_state(root, generated_at=created_at)
+    refresh_material_state(root, generated_at=created_at, active_protocol=active_protocol)
     append_wiki_log(
         root,
         "query",
@@ -13532,7 +13915,14 @@ def write_nightly_health(
             ],
         },
     )
-    material_state = refresh_material_state(root, generated_at=generated_at, entries=manifest["entries"])
+    material_state = refresh_material_state(
+        root,
+        generated_at=generated_at,
+        entries=manifest["entries"],
+        active_protocol=protocol_state["active_protocol"],
+    )
+    material_routing = load_material_routing_state(root)
+    archive_candidates = load_archive_candidates_state(root)
     state = {
         "generated_at": generated_at,
         "llm_used": llm_used,
@@ -13553,6 +13943,25 @@ def write_nightly_health(
         "material_state": {
             "path": relative_path(root, material_state_path(root)),
             "entry_count": len(material_state["entries"]),
+        },
+        "material_routing": {
+            "path": relative_path(root, material_routing_state_path(root)),
+            "entry_count": len(material_routing.get("entries", [])),
+            "active_protocol": material_routing.get("active_protocol", protocol_state["active_protocol"]),
+        },
+        "archive_candidates": {
+            "path": relative_path(root, archive_candidates_state_path(root)),
+            "entry_count": len(archive_candidates.get("entries", [])),
+            "ready_ids": [
+                str(entry.get("entry_id") or "")
+                for entry in archive_candidates.get("entries", [])
+                if str(entry.get("status") or "") == "ready"
+            ],
+            "deferred_ids": [
+                str(entry.get("entry_id") or "")
+                for entry in archive_candidates.get("entries", [])
+                if str(entry.get("status") or "") == "deferred"
+            ],
         },
         "active_corpora": {
             "path": relative_path(root, active_corpora_state_path(root)),
@@ -13690,6 +14099,7 @@ def write_nightly_health(
             f"escalation_candidates: `{len(aging['escalated'])}`",
             f"cooled_active_corpora: `{len(cooled_corpus_ids)}`",
             f"expired_active_corpora: `{len(expired_corpus_ids)}`",
+            f"archive_candidates: `{len(archive_candidates.get('entries', []))}`",
             f"auto_promotions: `{promotion_result.get('count', 0)}`",
             f"weak_concepts: `{memory.get('health', {}).get('concept_quality', {}).get('counts', {}).get('weak', 0)}`",
             f"machine_memory_actions: `{memory.get('health', {}).get('action_counts', {}).get('total', 0)}`",

@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from aiwiki.app import (
+    active_corpus_bridge_evidence_ids,
     append_execution_receipt_history,
     apply_concept_rewrite,
     apply_machine_memory_action,
@@ -33,6 +34,7 @@ from aiwiki.app import (
     review_machine_memory_action,
     review_page,
     runtime_write_lock,
+    save_manifest,
     save_machine_memory_action_state,
     set_active_protocol,
     strip_frontmatter,
@@ -267,25 +269,47 @@ class AiwikiFlowTests(unittest.TestCase):
 
         material_state_path = self.root / ".aiwiki" / "state" / "material-state.json"
         active_corpora_path = self.root / ".aiwiki" / "state" / "active-corpora.json"
+        material_routing_path = self.root / ".aiwiki" / "state" / "material-routing.json"
+        archive_candidates_path = self.root / ".aiwiki" / "state" / "archive-candidates.json"
         self.assertEqual(compiled["material_state_path"], ".aiwiki/state/material-state.json")
         self.assertEqual(compiled["active_corpora_path"], ".aiwiki/state/active-corpora.json")
+        self.assertEqual(compiled["material_routing_path"], ".aiwiki/state/material-routing.json")
+        self.assertEqual(compiled["archive_candidates_path"], ".aiwiki/state/archive-candidates.json")
         self.assertTrue(material_state_path.exists())
         self.assertTrue(active_corpora_path.exists())
+        self.assertTrue(material_routing_path.exists())
+        self.assertTrue(archive_candidates_path.exists())
 
         material_state = json.loads(material_state_path.read_text(encoding="utf-8"))
         active_corpora = json.loads(active_corpora_path.read_text(encoding="utf-8"))
+        material_routing = json.loads(material_routing_path.read_text(encoding="utf-8"))
+        archive_candidates = json.loads(archive_candidates_path.read_text(encoding="utf-8"))
         self.assertEqual(material_state["version"], 1)
         self.assertEqual(len(material_state["entries"]), 1)
         self.assertEqual(active_corpora["version"], 1)
         self.assertEqual(active_corpora["corpora"], [])
+        self.assertEqual(material_routing["version"], 1)
+        self.assertEqual(material_routing["active_protocol"], "general")
+        self.assertEqual(len(material_routing["entries"]), 1)
+        self.assertEqual(archive_candidates["version"], 1)
 
         record = material_state["entries"][0]
+        routing_record = material_routing["entries"][0]
         self.assertEqual(record["entry_id"], entry["id"])
         self.assertEqual(record["path"], entry["stored_path"])
         self.assertEqual(record["active_corpus_ids"], [])
         self.assertIn(record["temperature"], {"hot", "warm", "cold"})
         self.assertTrue(record["protocol_hints"])
         self.assertTrue(record["last_touched_at"])
+        self.assertEqual(routing_record["entry_id"], entry["id"])
+        self.assertEqual(routing_record["protocol"], "general")
+        self.assertIn("protocol_score", routing_record["scores"])
+        self.assertIn("graph_score", routing_record["scores"])
+        self.assertIn("judgment_score", routing_record["scores"])
+        self.assertIn("recency_score", routing_record["scores"])
+        self.assertIn("drift_score", routing_record["scores"])
+        self.assertIn(routing_record["selected_as"], {"hot-evidence", "warm-evidence", "cold-evidence", "archive-candidate"})
+        self.assertIsInstance(routing_record["is_bridge"], bool)
 
     def test_ask_creates_active_corpus_and_runtime_history(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -347,6 +371,62 @@ class AiwikiFlowTests(unittest.TestCase):
         nightly_events = [json.loads(line) for line in history_lines if json.loads(line)["event_type"] == "nightly"]
         self.assertTrue(nightly_events)
         self.assertIn(report["active_corpus_id"], nightly_events[-1]["cooled_corpus_ids"])
+
+    def test_archive_candidates_progress_to_ready_and_reactivate(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        manifest = load_manifest(self.root)
+        manifest["entries"][0]["imported_at"] = "2025-01-01T00:00:00+00:00"
+        manifest["entries"][0]["updated_at"] = "2025-01-01T00:00:00+00:00"
+        save_manifest(self.root, manifest)
+
+        compile_wiki(self.root)
+        archive_candidates = json.loads(
+            (self.root / ".aiwiki" / "state" / "archive-candidates.json").read_text(encoding="utf-8")
+        )
+        candidate = next(item for item in archive_candidates["entries"] if item["entry_id"] == entry["id"])
+        self.assertEqual(candidate["status"], "suggested")
+        self.assertIn("no-active-corpus", candidate["reason_codes"])
+        material_state = json.loads((self.root / ".aiwiki" / "state" / "material-state.json").read_text(encoding="utf-8"))
+        self.assertTrue(next(item for item in material_state["entries"] if item["entry_id"] == entry["id"])["archive_candidate"])
+
+        compile_wiki(self.root)
+        archive_candidates = json.loads(
+            (self.root / ".aiwiki" / "state" / "archive-candidates.json").read_text(encoding="utf-8")
+        )
+        candidate = next(item for item in archive_candidates["entries"] if item["entry_id"] == entry["id"])
+        self.assertEqual(candidate["status"], "ready")
+
+        ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        archive_candidates = json.loads(
+            (self.root / ".aiwiki" / "state" / "archive-candidates.json").read_text(encoding="utf-8")
+        )
+        candidate = next(item for item in archive_candidates["entries"] if item["entry_id"] == entry["id"])
+        self.assertEqual(candidate["status"], "reactivated")
+        self.assertTrue(candidate["reactivation_signals"])
+        self.assertIn("active-corpus", candidate["reactivation_signals"])
+        material_state = json.loads((self.root / ".aiwiki" / "state" / "material-state.json").read_text(encoding="utf-8"))
+        self.assertFalse(next(item for item in material_state["entries"] if item["entry_id"] == entry["id"])["archive_candidate"])
+
+    def test_bridge_evidence_expands_beyond_top_ranked_sources(self) -> None:
+        machine_query = {
+            "bridge_concept_slugs": ["shared-bridge"],
+            "ranked_source_ids": ["src-ranked", "src-bridge"],
+            "query_subgraph": {
+                "sources": [
+                    {"id": "src-ranked", "title": "Ranked"},
+                    {"id": "src-bridge", "title": "Bridge"},
+                ],
+                "edges": [
+                    {"type": "HAS_CONCEPT", "left": "src-ranked", "right": "main-concept"},
+                    {"type": "HAS_CONCEPT", "left": "src-bridge", "right": "shared-bridge"},
+                ],
+            },
+        }
+
+        bridge_ids = active_corpus_bridge_evidence_ids(machine_query, ["src-ranked"])
+        self.assertEqual(bridge_ids, ["src-bridge"])
 
     def test_protocol_set_updates_dashboard_without_compile(self) -> None:
         set_active_protocol(self.root, "investing")
