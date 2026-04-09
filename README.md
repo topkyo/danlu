@@ -317,4 +317,4 @@ bash scripts/verify.sh
 
 `open-harness` / `.codex/` 只服务这个仓库的开发治理，不属于 `aiwiki` runtime 本体。
 runtime 架构以 [Alchemy Furnace.md](<./wiki/indexes/Alchemy Furnace.md>) 为准。
-如果你想把本地运行态文件从代码改动里分开，可以执行 `bash scripts/configure_local_worktree.sh --apply`；撤销则用 `--undo`。
+如果你想把本地运行态文件从代码改动里分开，可以执行 `bash scripts/configure_local_worktree.sh --apply`；撤销则用 `--undo`。`--status` 现在还会显示被隐藏 tracked 运行态页是否已经和当前仓库基线发生 `repo-drift`。

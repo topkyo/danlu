@@ -96,7 +96,27 @@ class LocalWorktreeScriptTests(unittest.TestCase):
 
         undo_status = self._run_script("--status")
         self.assertIn("exclude_block=absent", undo_status)
+        self.assertIn("baseline_state=absent", undo_status)
         self.assertIn(".obsidian/app.json: tracked", undo_status)
+
+    def test_status_reports_repo_drift_for_hidden_tracked_files(self) -> None:
+        self._run_script("--apply")
+        initial_status = self._run_script("--status")
+        self.assertIn("baseline_state=present", initial_status)
+        self.assertIn("wiki/indexes/compile-status.md: skip-worktree aligned", initial_status)
+
+        self._git("update-index", "--no-skip-worktree", "--", "wiki/indexes/compile-status.md")
+        self._write("wiki/indexes/compile-status.md", "repo update\n")
+        self._git("add", "wiki/indexes/compile-status.md")
+        self._git("commit", "-qm", "update tracked runtime page")
+        self._git("update-index", "--skip-worktree", "--", "wiki/indexes/compile-status.md")
+
+        drift_status = self._run_script("--status")
+        self.assertIn("wiki/indexes/compile-status.md: skip-worktree repo-drift", drift_status)
+
+        self._run_script("--undo")
+        cleared_status = self._run_script("--status")
+        self.assertIn("baseline_state=absent", cleared_status)
 
 
 if __name__ == "__main__":

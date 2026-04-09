@@ -69,6 +69,7 @@ fi
 MARKER_BEGIN="# >>> aiwiki-local-worktree >>>"
 MARKER_END="# <<< aiwiki-local-worktree <<<"
 EXCLUDE_FILE="$ROOT/.git/info/exclude"
+STATE_FILE="$ROOT/.git/info/aiwiki-local-worktree.state"
 
 TRACKED_RUNTIME_FILES=(
   ".obsidian/app.json"
@@ -167,9 +168,58 @@ exclude_block_present() {
   [[ -f "$EXCLUDE_FILE" ]] && grep -Fqx "$MARKER_BEGIN" "$EXCLUDE_FILE"
 }
 
+tracked_head_oid() {
+  local path="$1"
+  if ! is_tracked "$path"; then
+    printf 'missing'
+    return
+  fi
+  git -C "$ROOT" rev-parse --verify "HEAD:$path" 2>/dev/null || printf 'missing'
+}
+
+write_state_file() {
+  : >"$STATE_FILE"
+  for path in "${TRACKED_RUNTIME_FILES[@]}"; do
+    printf '%s\t%s\n' "$path" "$(tracked_head_oid "$path")" >>"$STATE_FILE"
+  done
+}
+
+baseline_oid() {
+  local path="$1"
+  if [[ ! -f "$STATE_FILE" ]]; then
+    printf 'unknown'
+    return
+  fi
+  local line
+  line="$(awk -F '\t' -v target="$path" '$1 == target {print $2; exit}' "$STATE_FILE")"
+  if [[ -n "$line" ]]; then
+    printf '%s' "$line"
+  else
+    printf 'unknown'
+  fi
+}
+
+drift_state() {
+  local path="$1"
+  local baseline
+  local current
+  baseline="$(baseline_oid "$path")"
+  current="$(tracked_head_oid "$path")"
+  if [[ "$baseline" == "unknown" ]]; then
+    printf 'unknown'
+    return
+  fi
+  if [[ "$baseline" == "$current" ]]; then
+    printf 'aligned'
+  else
+    printf 'repo-drift'
+  fi
+}
+
 apply_config() {
   local tmp
   ensure_parent_dir "$EXCLUDE_FILE"
+  ensure_parent_dir "$STATE_FILE"
   tmp="$(mktemp)"
   remove_exclude_block "$EXCLUDE_FILE" "$tmp"
   write_exclude_block "$tmp"
@@ -177,6 +227,7 @@ apply_config() {
   for path in "${TRACKED_RUNTIME_FILES[@]}"; do
     set_skip_state --skip-worktree "$path"
   done
+  write_state_file
   echo "Applied local worktree hygiene for $ROOT"
 }
 
@@ -189,6 +240,7 @@ undo_config() {
   for path in "${TRACKED_RUNTIME_FILES[@]}"; do
     set_skip_state --no-skip-worktree "$path"
   done
+  rm -f -- "$STATE_FILE"
   echo "Removed local worktree hygiene for $ROOT"
 }
 
@@ -199,9 +251,14 @@ status_config() {
   else
     echo "exclude_block=absent"
   fi
+  if [[ -f "$STATE_FILE" ]]; then
+    echo "baseline_state=present"
+  else
+    echo "baseline_state=absent"
+  fi
   echo "tracked_runtime:"
   for path in "${TRACKED_RUNTIME_FILES[@]}"; do
-    printf '  %s: %s\n' "$path" "$(tracked_state "$path")"
+    printf '  %s: %s %s\n' "$path" "$(tracked_state "$path")" "$(drift_state "$path")"
   done
 }
 
