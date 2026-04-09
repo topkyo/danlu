@@ -3501,6 +3501,15 @@ def display_protocol_relevance_mode(mode: str) -> str:
     return mapping.get(mode, mode or "unknown")
 
 
+def display_protocol_relevance_ambiguity(state: str) -> str:
+    mapping = {
+        "dominant": "dominant",
+        "mixed": "mixed",
+        "bridge": "bridge",
+    }
+    return mapping.get(state, state or "unknown")
+
+
 def select_knowledge_lifecycle_entries(
     knowledge_lifecycle: dict[str, Any],
     *,
@@ -3566,6 +3575,9 @@ def render_knowledge_lifecycle_entry_summary(entry: dict[str, Any]) -> str:
     protocol_relevance_mode = str(entry.get("protocol_relevance_primary_mode") or "")
     if protocol_relevance_mode:
         parts.append(f"protocol_relevance `{display_protocol_relevance_mode(protocol_relevance_mode)}`")
+    protocol_relevance_ambiguity = str(entry.get("protocol_relevance_ambiguity") or "")
+    if protocol_relevance_ambiguity:
+        parts.append(f"protocol_ambiguity `{display_protocol_relevance_ambiguity(protocol_relevance_ambiguity)}`")
     return f"- [{title}](../../{path}) | " + " | ".join(parts)
 
 
@@ -3699,6 +3711,15 @@ def concept_protocol_relevance(
     }
 
 
+def concept_protocol_ambiguity_state(modes: list[str]) -> str:
+    normalized = [str(item) for item in modes if isinstance(item, str) and item]
+    if "cross-protocol-bridge" in normalized:
+        return "bridge"
+    if normalized == ["source-top1"]:
+        return "dominant"
+    return "mixed"
+
+
 def concept_lifecycle_matches_protocol(
     entry: dict[str, Any],
     *,
@@ -3732,20 +3753,29 @@ def protocol_related_concept_lifecycle_summary(
         "strong-top2": 0,
         "cross-protocol-bridge": 0,
     }
+    ambiguity_counts = {
+        "dominant": 0,
+        "mixed": 0,
+        "bridge": 0,
+    }
     related_entries: list[dict[str, Any]] = []
     for entry in select_knowledge_lifecycle_entries(knowledge_lifecycle, kinds={"concept"}):
         relevance = concept_protocol_relevance(entry, protocol=protocol, routing_by_entry_id=routing_by_entry_id)
         if not relevance.get("related"):
             continue
         primary_mode = str(relevance.get("primary_mode") or "")
+        ambiguity = concept_protocol_ambiguity_state(list(relevance.get("modes", [])))
         if primary_mode in mode_counts:
             mode_counts[primary_mode] += 1
+        if ambiguity in ambiguity_counts:
+            ambiguity_counts[ambiguity] += 1
         related_entries.append(
             {
                 **entry,
                 "protocol_relevance_primary_mode": primary_mode,
                 "protocol_relevance_modes": list(relevance.get("modes", [])),
                 "protocol_relevance_source_ids": list(relevance.get("source_ids", [])),
+                "protocol_relevance_ambiguity": ambiguity,
             }
         )
     related_concepts = sort_knowledge_lifecycle_entries(related_entries, active_protocol=protocol)
@@ -3757,11 +3787,25 @@ def protocol_related_concept_lifecycle_summary(
     retired_concepts = [
         entry for entry in related_concepts if str(entry.get("lifecycle_state") or "") == "retired"
     ]
+    ambiguity_watchlist = [
+        entry
+        for entry in related_concepts
+        if str(entry.get("protocol_relevance_ambiguity") or "") in {"mixed", "bridge"}
+    ]
+    mixed_concepts = [
+        entry for entry in ambiguity_watchlist if str(entry.get("protocol_relevance_ambiguity") or "") == "mixed"
+    ]
+    bridge_concepts = [
+        entry for entry in ambiguity_watchlist if str(entry.get("protocol_relevance_ambiguity") or "") == "bridge"
+    ]
     return {
         "concept_backlog": concept_backlog,
         "review_concepts": review_concepts,
         "revisit_concepts": revisit_concepts,
         "retired_concepts": retired_concepts,
+        "ambiguity_watchlist": ambiguity_watchlist,
+        "mixed_concepts": mixed_concepts,
+        "bridge_concepts": bridge_concepts,
         "counts": {
             "related_concepts": len(related_concepts),
             "concept_backlog": len(concept_backlog),
@@ -3774,8 +3818,12 @@ def protocol_related_concept_lifecycle_summary(
             "direct_related_concepts": mode_counts["source-top1"],
             "secondary_related_concepts": mode_counts["strong-top2"],
             "bridge_related_concepts": mode_counts["cross-protocol-bridge"],
+            "dominant_related_concepts": ambiguity_counts["dominant"],
+            "mixed_related_concepts": ambiguity_counts["mixed"],
+            "ambiguity_bridge_concepts": ambiguity_counts["bridge"],
         },
         "inference_mode": "source-top1-plus-strong-top2-plus-cross-protocol-bridge",
+        "ambiguity_mode": "dominant-vs-mixed-vs-bridge",
     }
 
 
@@ -5946,6 +5994,9 @@ def build_domain_pilots(
             "execution_proposals": proposal_counts.get(protocol, 0),
             "lifecycle_concept_backlog": lifecycle_counts.get("concept_backlog", 0),
             "lifecycle_retired_concepts": lifecycle_counts.get("retired_concepts", 0),
+            "lifecycle_dominant_concepts": lifecycle_counts.get("dominant_related_concepts", 0),
+            "lifecycle_mixed_concepts": lifecycle_counts.get("mixed_related_concepts", 0),
+            "lifecycle_bridge_concepts": lifecycle_counts.get("ambiguity_bridge_concepts", 0),
         }
         stage, stage_summary = pilot_stage(metrics)
         gaps: list[str] = []
@@ -5953,6 +6004,11 @@ def build_domain_pilots(
             gaps.append(
                 f"有 `{lifecycle_counts.get('concept_backlog', 0)}` 个 protocol-related lifecycle concept backlog 尚未收敛。"
             )
+        ambiguity_count = int(lifecycle_counts.get("mixed_related_concepts", 0)) + int(
+            lifecycle_counts.get("ambiguity_bridge_concepts", 0)
+        )
+        if ambiguity_count:
+            gaps.append(f"有 `{ambiguity_count}` 个 protocol-related concept 仍处于 mixed / bridge ambiguity，需要人工校准归属。")
         if metrics["decisions"] + metrics["judgments"] == 0:
             gaps.append("还没有该协议的 `decision / judgment` 资产。")
         if metrics["reviewed"] == 0:
@@ -6022,11 +6078,25 @@ def build_domain_pilots(
                 "## Lifecycle Governance",
                 "- 以下 concept lifecycle 摘要优先统计 supporting sources 的 `material-routing top_protocols` 首位命中；若来源在当前协议仍是 `warm/hot evidence`，或属于 `cross_protocol_bridge` 且当前协议仍位于 top2，也会保守纳入。",
                 f"- Inference mode: `{lifecycle_summary.get('inference_mode', 'unknown')}`",
+                f"- Ambiguity mode: `{lifecycle_summary.get('ambiguity_mode', 'unknown')}`",
                 f"- Related direct / secondary / bridge concepts: `{lifecycle_counts.get('direct_related_concepts', 0)}` / `{lifecycle_counts.get('secondary_related_concepts', 0)}` / `{lifecycle_counts.get('bridge_related_concepts', 0)}`",
+                f"- Related dominant / mixed / bridge concepts: `{lifecycle_counts.get('dominant_related_concepts', 0)}` / `{lifecycle_counts.get('mixed_related_concepts', 0)}` / `{lifecycle_counts.get('ambiguity_bridge_concepts', 0)}`",
                 f"- Related review concepts: `{lifecycle_counts.get('review_concepts', 0)}`",
                 f"- Related revisit concepts: `{lifecycle_counts.get('revisit_concepts', 0)}`",
                 f"- Related retired concepts: `{lifecycle_counts.get('retired_concepts', 0)}`",
                 f"- Related active concepts: `{lifecycle_counts.get('active_concepts', 0)}`",
+                "",
+                "## Protocol Ambiguity Watchlist",
+            ]
+        )
+        if not lifecycle_summary.get("ambiguity_watchlist"):
+            lines.append("- 当前没有 mixed / bridge ambiguity concept。")
+        else:
+            lines.append("- 以下概念仍需要人工判断是当前协议主归属、混合归属，还是桥接归属。")
+            for entry in lifecycle_summary.get("ambiguity_watchlist", [])[:10]:
+                lines.append(render_knowledge_lifecycle_entry_summary(entry))
+        lines.extend(
+            [
                 "",
                 "## Protocol-Related Lifecycle Concept Backlog",
             ]
@@ -6104,6 +6174,7 @@ def render_domain_pilots_index(domain_pilots: dict[str, Any], compiled_at: str, 
             f" | receipts `{metrics.get('receipts', 0)}`"
             f" | lifecycle backlog `{metrics.get('lifecycle_concept_backlog', 0)}`"
             f" | retired `{metrics.get('lifecycle_retired_concepts', 0)}`"
+            f" | dominant/mixed/bridge `{metrics.get('lifecycle_dominant_concepts', 0)}/{metrics.get('lifecycle_mixed_concepts', 0)}/{metrics.get('lifecycle_bridge_concepts', 0)}`"
         )
         lines.append(f"  - {scorecard.get('summary', '')}")
     lines.extend(

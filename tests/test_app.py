@@ -3067,10 +3067,13 @@ class AiwikiFlowTests(unittest.TestCase):
         investing_scorecard = (self.root / "output" / "pilots" / "investing.md").read_text(encoding="utf-8")
 
         self.assertIn("lifecycle backlog", pilots_index)
+        self.assertIn("dominant/mixed/bridge", pilots_index)
         self.assertIn("## Lifecycle Governance", research_scorecard)
+        self.assertIn("## Protocol Ambiguity Watchlist", research_scorecard)
         self.assertIn("## Protocol-Related Lifecycle Concept Backlog", research_scorecard)
         self.assertIn("## Protocol-Related Retired Concepts", research_scorecard)
         self.assertIn("Related direct / secondary / bridge concepts", research_scorecard)
+        self.assertIn("Related dominant / mixed / bridge concepts", research_scorecard)
         self.assertIn("protocol_relevance", research_scorecard)
         self.assertIn(backlog_title, research_scorecard)
         self.assertIn(retired_title, research_scorecard)
@@ -3175,16 +3178,28 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(summary["counts"]["direct_related_concepts"], 1)
         self.assertEqual(summary["counts"]["secondary_related_concepts"], 1)
         self.assertEqual(summary["counts"]["bridge_related_concepts"], 1)
+        self.assertEqual(summary["counts"]["dominant_related_concepts"], 1)
+        self.assertEqual(summary["counts"]["mixed_related_concepts"], 1)
+        self.assertEqual(summary["counts"]["ambiguity_bridge_concepts"], 1)
         self.assertEqual(
             summary["inference_mode"],
             "source-top1-plus-strong-top2-plus-cross-protocol-bridge",
         )
+        self.assertEqual(summary["ambiguity_mode"], "dominant-vs-mixed-vs-bridge")
         bridge_entry = next(entry for entry in summary["retired_concepts"] if entry["title"] == "Bridge Research Concept")
+        direct_entry = next(entry for entry in summary["concept_backlog"] if entry["title"] == "Direct Research Concept")
         secondary_entry = next(
             entry for entry in summary["concept_backlog"] if entry["title"] == "Strong Secondary Concept"
         )
         self.assertEqual(bridge_entry["protocol_relevance_primary_mode"], "cross-protocol-bridge")
         self.assertEqual(secondary_entry["protocol_relevance_primary_mode"], "strong-top2")
+        self.assertEqual(direct_entry["protocol_relevance_ambiguity"], "dominant")
+        self.assertEqual(secondary_entry["protocol_relevance_ambiguity"], "mixed")
+        self.assertEqual(bridge_entry["protocol_relevance_ambiguity"], "bridge")
+        watchlist_titles = [entry["title"] for entry in summary["ambiguity_watchlist"]]
+        self.assertIn("Strong Secondary Concept", watchlist_titles)
+        self.assertIn("Bridge Research Concept", watchlist_titles)
+        self.assertNotIn("Direct Research Concept", watchlist_titles)
 
     def test_run_ask_includes_machine_memory_query_plan_in_prompt(self) -> None:
         sample = self.root / "latency.md"
