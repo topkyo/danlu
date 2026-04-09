@@ -52,11 +52,15 @@ status: "active"
 - `Review Action / Apply Action / Revert Action`
 - 通用受限表单 modal
 - `Review Center / Execution Center` 内的动作按钮
+- `Review Center / Execution Center` 内的 item-level inline action
+- `review-page / review-rewrite / review-action` 的 context picker
+- context 缺失时显式回退到手动 modal
 
 还没有实现：
 
 - TypeScript/build toolchain
-- 更细的 action-specific context picker / item-level inline action
+- 更细的 action-specific summary / tighter object identity
+- 更完整的 item-level coverage（当前还是第一轮，不是所有对象都已直连）
 
 ## 为什么要单独做这层
 
@@ -514,6 +518,7 @@ Product Shell 必须显式定义“什么时候刷新”，否则 cockpit 很容
 
 ### Phase 3
 
+- item-level inline action + context-aware fallback
 - 更细的 lifecycle summary
 - domain-pilots / agent-workbench / output-packs 集成
 - 更好的 long-running task UX

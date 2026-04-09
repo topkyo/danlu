@@ -8136,6 +8136,7 @@ def shell_recent_receipts(root: Path, *, limit: int = 8) -> list[dict[str, Any]]
     receipts = load_execution_receipt_history(root)
     return [
         {
+            "action_id": str(receipt.get("action_id") or ""),
             "applied_at": str(receipt.get("applied_at") or ""),
             "operation": str(receipt.get("operation") or ""),
             "protocol": str(receipt.get("protocol") or ""),
