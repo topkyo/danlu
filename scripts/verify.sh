@@ -10,6 +10,7 @@ export PYTHONPATH="$PROJECT_ROOT/src"
 bash -n scripts/run_watch.sh
 bash -n scripts/run_nightly.sh
 bash -n scripts/finalize_task.sh
+bash -n scripts/configure_local_worktree.sh
 bash -n scripts/install_user_service.sh
 bash -n scripts/uninstall_user_service.sh
 python3 -m compileall src tests >/dev/null
