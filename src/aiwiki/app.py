@@ -1072,6 +1072,7 @@ ACTION_STATUSES = ("proposed", "accepted", "deferred", "resolved", "rejected")
 REWRITE_PROPOSAL_STATUSES = ("proposed", "accepted", "deferred", "applied", "rejected")
 ACTIVE_CORPUS_STATUSES = ("active", "cooling", "expired")
 ARCHIVE_CANDIDATE_STATUSES = ("suggested", "deferred", "ready", "reactivated")
+KNOWLEDGE_LIFECYCLE_STATES = ("active", "review", "deferred", "retired", "revisit")
 PENDING_DECISION_REVIEW_STATUSES = {"proposed", "needs-revisit"}
 PENDING_JUDGMENT_REVIEW_STATUSES = {"tentative", "tracking"}
 PENDING_ACTION_STATUSES = {"proposed", "accepted", "deferred"}
@@ -3123,6 +3124,200 @@ def review_queue(
         "pending_judgments": pending_judgments,
         "recently_reviewed": reviewed,
     }
+
+
+def knowledge_lifecycle_invalidation_signals(page: dict[str, str]) -> list[str]:
+    signals: list[str] = []
+    if str(page.get("status") or "") == "needs-revisit":
+        signals.append("explicit-needs-revisit")
+    if page.get("citation_drift") == "true":
+        signals.append("citation-drift")
+    if int(page.get("citation_snapshot_gap_count", "0") or "0") > 0:
+        signals.append("citation-snapshot-gap")
+    if page.get("overdue_review") == "true":
+        signals.append("overdue-review")
+    if page.get("escalation_candidate") == "true":
+        signals.append("escalation-candidate")
+    return signals
+
+
+def knowledge_lifecycle_active_corpus_ids(
+    source_ids: list[str],
+    active_corpora: list[dict[str, Any]],
+) -> list[str]:
+    source_id_set = {source_id for source_id in source_ids if source_id}
+    if not source_id_set:
+        return []
+    active_ids: list[str] = []
+    for corpus in active_corpora:
+        if str(corpus.get("status") or "") not in {"active", "cooling"}:
+            continue
+        corpus_id = str(corpus.get("corpus_id") or "")
+        if not corpus_id:
+            continue
+        corpus_source_ids = {
+            str(item)
+            for item in [*(corpus.get("source_ids", []) or []), *(corpus.get("bridge_evidence_ids", []) or [])]
+            if isinstance(item, str)
+        }
+        if source_id_set & corpus_source_ids:
+            active_ids.append(corpus_id)
+    return sorted(active_ids)
+
+
+def knowledge_lifecycle_classification(
+    *,
+    status: str,
+    pending_review: bool,
+    invalidation_signals: list[str],
+    active_corpus_ids: list[str],
+) -> tuple[str, list[str]]:
+    if status in {"superseded", "rejected"}:
+        return "retired", ["terminal-status"]
+    if invalidation_signals:
+        return "revisit", ["invalidation-signal", *invalidation_signals]
+    if pending_review:
+        return "review", ["pending-review-status"]
+    if active_corpus_ids and status in {"approved", "confirmed"}:
+        return "active", ["active-corpus-linked"]
+    return "deferred", ["reviewed-idle"]
+
+
+def build_knowledge_lifecycle_entry(
+    root: Path,
+    page: dict[str, str],
+    *,
+    expected_kind: str,
+    path_to_entry_id: dict[str, str],
+    active_corpora: list[dict[str, Any]],
+) -> dict[str, Any]:
+    page_path = root / str(page.get("path") or "")
+    content = page_path.read_text(encoding="utf-8", errors="replace") if page_path.exists() else ""
+    frontmatter = parse_frontmatter(content)
+    citations = [
+        str(item)
+        for item in frontmatter.get("citations", [])
+        if isinstance(item, str) and item.strip()
+    ]
+    if not citations and content:
+        citations = extract_provenance_paths(root, content)
+    source_ids = entry_ids_from_paths(path_to_entry_id, citations)
+    active_corpus_ids = knowledge_lifecycle_active_corpus_ids(source_ids, active_corpora)
+    invalidation_signals = knowledge_lifecycle_invalidation_signals(page)
+    lifecycle_state, reason_codes = knowledge_lifecycle_classification(
+        status=str(page.get("status") or ""),
+        pending_review=page.get("pending_review") == "true",
+        invalidation_signals=invalidation_signals,
+        active_corpus_ids=active_corpus_ids,
+    )
+    return {
+        "page_id": str(frontmatter.get("id") or Path(str(page.get("path") or "")).stem),
+        "title": str(page.get("title") or frontmatter.get("title") or Path(str(page.get("path") or "")).stem),
+        "path": str(page.get("path") or ""),
+        "kind": expected_kind,
+        "protocol": str(page.get("protocol") or frontmatter.get("protocol") or DEFAULT_PROTOCOL),
+        "status": str(page.get("status") or ""),
+        "lifecycle_state": lifecycle_state,
+        "reason_codes": reason_codes,
+        "reviewed_at": str(page.get("reviewed_at") or ""),
+        "revisit_after": str(page.get("revisit_after") or ""),
+        "escalate_after": str(page.get("escalate_after") or ""),
+        "aging_state": str(page.get("aging_state") or ""),
+        "pending_review": page.get("pending_review") == "true",
+        "overdue_review": page.get("overdue_review") == "true",
+        "escalation_candidate": page.get("escalation_candidate") == "true",
+        "source_ids": source_ids,
+        "active_corpus_ids": active_corpus_ids,
+        "invalidation_signals": invalidation_signals,
+        "citation_count": int(page.get("citation_count", "0") or "0"),
+        "citation_drift": page.get("citation_drift") == "true",
+        "citation_drift_count": int(page.get("citation_drift_count", "0") or "0"),
+        "citation_snapshot_gap_count": int(page.get("citation_snapshot_gap_count", "0") or "0"),
+        "review_history_entries": int(page.get("review_history_entries", "0") or "0"),
+        "asset_score": int(page.get("asset_score", "0") or "0"),
+        "confidence": str(page.get("confidence") or ""),
+    }
+
+
+def knowledge_lifecycle_counts(entries: list[dict[str, Any]]) -> dict[str, Any]:
+    by_state = {state: 0 for state in KNOWLEDGE_LIFECYCLE_STATES}
+    by_kind = {
+        "decision": {"total": 0, "by_state": {state: 0 for state in KNOWLEDGE_LIFECYCLE_STATES}},
+        "judgment": {"total": 0, "by_state": {state: 0 for state in KNOWLEDGE_LIFECYCLE_STATES}},
+    }
+    invalidated = 0
+    active_corpus_linked = 0
+    for entry in entries:
+        lifecycle_state = str(entry.get("lifecycle_state") or "")
+        kind = str(entry.get("kind") or "")
+        if lifecycle_state in by_state:
+            by_state[lifecycle_state] += 1
+        if kind in by_kind:
+            by_kind[kind]["total"] += 1
+            if lifecycle_state in by_kind[kind]["by_state"]:
+                by_kind[kind]["by_state"][lifecycle_state] += 1
+        if entry.get("invalidation_signals"):
+            invalidated += 1
+        if entry.get("active_corpus_ids"):
+            active_corpus_linked += 1
+    return {
+        "total": len(entries),
+        "by_state": by_state,
+        "by_kind": by_kind,
+        "invalidated": invalidated,
+        "active_corpus_linked": active_corpus_linked,
+    }
+
+
+def refresh_knowledge_lifecycle_state(
+    root: Path,
+    *,
+    generated_at: str,
+    decisions: list[dict[str, str]] | None = None,
+    judgments: list[dict[str, str]] | None = None,
+    entries: list[dict[str, Any]] | None = None,
+    active_corpora_state: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    manifest_entries = entries if entries is not None else load_manifest(root).get("entries", [])
+    _entry_by_id, path_to_entry_id = entry_lookup_maps(manifest_entries)
+    decision_pages = decisions if decisions is not None else collect_curated_pages(root, "decisions", "decision")
+    judgment_pages = judgments if judgments is not None else collect_curated_pages(root, "judgments", "judgment")
+    active_corpora = [
+        dict(corpus)
+        for corpus in (active_corpora_state or load_active_corpora_state(root)).get("corpora", [])
+        if isinstance(corpus, dict)
+    ]
+    lifecycle_entries = [
+        *[
+            build_knowledge_lifecycle_entry(
+                root,
+                page,
+                expected_kind="decision",
+                path_to_entry_id=path_to_entry_id,
+                active_corpora=active_corpora,
+            )
+            for page in decision_pages
+        ],
+        *[
+            build_knowledge_lifecycle_entry(
+                root,
+                page,
+                expected_kind="judgment",
+                path_to_entry_id=path_to_entry_id,
+                active_corpora=active_corpora,
+            )
+            for page in judgment_pages
+        ],
+    ]
+    document = {
+        "version": 1,
+        "generated_at": generated_at,
+        "entries": lifecycle_entries,
+        "counts": knowledge_lifecycle_counts(lifecycle_entries),
+    }
+    save_knowledge_lifecycle_state(root, document)
+    return document
 
 
 def collect_machine_memory_actions(root: Path) -> list[dict[str, Any]]:
@@ -6769,6 +6964,10 @@ def archive_candidates_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "archive-candidates.json"
 
 
+def knowledge_lifecycle_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "knowledge-lifecycle.json"
+
+
 def material_archive_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "material-archives.json"
 
@@ -6902,6 +7101,47 @@ def load_archive_candidates_state(root: Path) -> dict[str, Any]:
 
 def save_archive_candidates_state(root: Path, document: dict[str, Any]) -> None:
     save_json_document(archive_candidates_state_path(root), document)
+
+
+def default_knowledge_lifecycle_state() -> dict[str, Any]:
+    by_state = {state: 0 for state in KNOWLEDGE_LIFECYCLE_STATES}
+    return {
+        "version": 1,
+        "generated_at": "",
+        "entries": [],
+        "counts": {
+            "total": 0,
+            "by_state": dict(by_state),
+            "by_kind": {
+                "decision": {"total": 0, "by_state": dict(by_state)},
+                "judgment": {"total": 0, "by_state": dict(by_state)},
+            },
+            "invalidated": 0,
+            "active_corpus_linked": 0,
+        },
+    }
+
+
+def load_knowledge_lifecycle_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(knowledge_lifecycle_state_path(root))
+    if not isinstance(document, dict):
+        return default_knowledge_lifecycle_state()
+    entries = document.get("entries")
+    if not isinstance(entries, list):
+        return default_knowledge_lifecycle_state()
+    counts = document.get("counts")
+    if not isinstance(counts, dict):
+        counts = default_knowledge_lifecycle_state()["counts"]
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "generated_at": str(document.get("generated_at") or ""),
+        "entries": [entry for entry in entries if isinstance(entry, dict)],
+        "counts": counts,
+    }
+
+
+def save_knowledge_lifecycle_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(knowledge_lifecycle_state_path(root), document)
 
 
 def default_material_archive_state() -> dict[str, Any]:
@@ -11683,6 +11923,14 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     material_routing = load_material_routing_state(root)
     archive_candidates = load_archive_candidates_state(root)
     active_corpora_state = load_active_corpora_state(root)
+    knowledge_lifecycle = refresh_knowledge_lifecycle_state(
+        root,
+        generated_at=compiled_at,
+        decisions=decision_pages,
+        judgments=judgment_pages,
+        entries=entries,
+        active_corpora_state=active_corpora_state,
+    )
     append_wiki_log(
         root,
         "compile",
@@ -11700,6 +11948,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             f"material_routing_entries: `{len(material_routing.get('entries', []))}`",
             f"archive_candidates: `{len(archive_candidates.get('entries', []))}`",
             f"active_corpora: `{len(active_corpora_state.get('corpora', []))}`",
+            f"knowledge_lifecycle_entries: `{len(knowledge_lifecycle.get('entries', []))}`",
             f"machine_memory_changed: `{transition['changed']}`",
             f"changed_pages: `{changed_pages}`",
             f"removed_concept_pages: `{removed_pages}`",
@@ -11719,6 +11968,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "active_corpora_path": relative_path(root, active_corpora_state_path(root)),
         "material_routing_path": relative_path(root, material_routing_state_path(root)),
         "archive_candidates_path": relative_path(root, archive_candidates_state_path(root)),
+        "knowledge_lifecycle_path": relative_path(root, knowledge_lifecycle_state_path(root)),
     }
 
 
@@ -14108,6 +14358,93 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                         )
                     )
 
+    knowledge_state_path = knowledge_lifecycle_state_path(root)
+    expected_lifecycle_paths = {page["path"] for page in decision_pages + judgment_pages}
+    if expected_lifecycle_paths and not knowledge_state_path.exists():
+        findings.append(Finding("error", relative_path(root, knowledge_state_path), "Missing knowledge lifecycle state file."))
+    elif knowledge_state_path.exists():
+        knowledge_state = load_json_document(knowledge_state_path)
+        lifecycle_entries = knowledge_state.get("entries") if isinstance(knowledge_state, dict) else None
+        if not isinstance(lifecycle_entries, list):
+            findings.append(
+                Finding("error", relative_path(root, knowledge_state_path), "Knowledge lifecycle state is not valid JSON.")
+            )
+        else:
+            if expected_lifecycle_paths and len(lifecycle_entries) != len(expected_lifecycle_paths):
+                findings.append(
+                    Finding(
+                        "warn",
+                        relative_path(root, knowledge_state_path),
+                        f"Knowledge lifecycle state entry count `{len(lifecycle_entries)}` does not match curated page count `{len(expected_lifecycle_paths)}`.",
+                    )
+                )
+            for entry in lifecycle_entries:
+                if not isinstance(entry, dict):
+                    continue
+                page_id = str(entry.get("page_id") or "")
+                path = str(entry.get("path") or "")
+                kind = str(entry.get("kind") or "")
+                lifecycle_state = str(entry.get("lifecycle_state") or "")
+                source_ids = entry.get("source_ids")
+                active_corpus_ids = entry.get("active_corpus_ids")
+                invalidation_signals = entry.get("invalidation_signals")
+                if not page_id:
+                    findings.append(
+                        Finding("error", relative_path(root, knowledge_state_path), "Knowledge lifecycle entry is missing `page_id`.")
+                    )
+                if kind not in {"decision", "judgment"}:
+                    findings.append(
+                        Finding(
+                            "error",
+                            relative_path(root, knowledge_state_path),
+                            f"Knowledge lifecycle entry has unsupported kind `{kind or 'unknown'}`.",
+                        )
+                    )
+                if lifecycle_state not in KNOWLEDGE_LIFECYCLE_STATES:
+                    findings.append(
+                        Finding(
+                            "error",
+                            relative_path(root, knowledge_state_path),
+                            f"Knowledge lifecycle entry has unsupported state `{lifecycle_state or 'unknown'}`.",
+                        )
+                    )
+                if not path:
+                    findings.append(
+                        Finding("error", relative_path(root, knowledge_state_path), "Knowledge lifecycle entry is missing `path`.")
+                    )
+                elif not (root / path).exists():
+                    findings.append(
+                        Finding("error", relative_path(root, knowledge_state_path), f"Knowledge lifecycle entry references missing page `{path}`.")
+                    )
+                elif expected_lifecycle_paths and path not in expected_lifecycle_paths:
+                    findings.append(
+                        Finding(
+                            "warn",
+                            relative_path(root, knowledge_state_path),
+                            f"Knowledge lifecycle entry references unmanaged page `{path}`.",
+                        )
+                    )
+                if not isinstance(source_ids, list):
+                    findings.append(
+                        Finding("error", relative_path(root, knowledge_state_path), "Knowledge lifecycle entry `source_ids` is not a list.")
+                    )
+                if not isinstance(active_corpus_ids, list):
+                    findings.append(
+                        Finding(
+                            "error",
+                            relative_path(root, knowledge_state_path),
+                            "Knowledge lifecycle entry `active_corpus_ids` is not a list.",
+                        )
+                    )
+                if not isinstance(invalidation_signals, list):
+                    findings.append(
+                        Finding(
+                            "error",
+                            relative_path(root, knowledge_state_path),
+                            "Knowledge lifecycle entry `invalidation_signals` is not a list.",
+                        )
+                    )
+
     concept_pages = sorted((root / "wiki" / "concepts").glob("*.md"))
     if manifest["entries"] and not concept_pages:
         findings.append(Finding("warn", "wiki/concepts", "No concept pages have been compiled yet."))
@@ -14790,6 +15127,14 @@ def write_nightly_health(
     )
     material_routing = load_material_routing_state(root)
     archive_candidates = load_archive_candidates_state(root)
+    knowledge_lifecycle = refresh_knowledge_lifecycle_state(
+        root,
+        generated_at=generated_at,
+        decisions=decisions,
+        judgments=judgments,
+        entries=manifest["entries"],
+        active_corpora_state=active_corpora_state,
+    )
     state = {
         "generated_at": generated_at,
         "llm_used": llm_used,
@@ -14847,6 +15192,21 @@ def write_nightly_health(
                 str(corpus.get("corpus_id") or "")
                 for corpus in active_corpora
                 if str(corpus.get("status") or "") == "expired"
+            ],
+        },
+        "knowledge_lifecycle": {
+            "path": relative_path(root, knowledge_lifecycle_state_path(root)),
+            "entry_count": len(knowledge_lifecycle.get("entries", [])),
+            "state_counts": dict(knowledge_lifecycle.get("counts", {}).get("by_state", {})),
+            "invalidated_page_ids": [
+                str(entry.get("page_id") or "")
+                for entry in knowledge_lifecycle.get("entries", [])
+                if entry.get("invalidation_signals")
+            ],
+            "active_page_ids": [
+                str(entry.get("page_id") or "")
+                for entry in knowledge_lifecycle.get("entries", [])
+                if str(entry.get("lifecycle_state") or "") == "active"
             ],
         },
         "promotions": promotion_result,
@@ -14967,6 +15327,7 @@ def write_nightly_health(
             f"cooled_active_corpora: `{len(cooled_corpus_ids)}`",
             f"expired_active_corpora: `{len(expired_corpus_ids)}`",
             f"archive_candidates: `{len(archive_candidates.get('entries', []))}`",
+            f"knowledge_lifecycle_entries: `{len(knowledge_lifecycle.get('entries', []))}`",
             f"auto_promotions: `{promotion_result.get('count', 0)}`",
             f"weak_concepts: `{memory.get('health', {}).get('concept_quality', {}).get('counts', {}).get('weak', 0)}`",
             f"machine_memory_actions: `{memory.get('health', {}).get('action_counts', {}).get('total', 0)}`",

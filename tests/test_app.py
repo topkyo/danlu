@@ -26,6 +26,7 @@ from aiwiki.app import (
     ingest_source,
     lint_wiki,
     load_archive_candidates_state,
+    load_knowledge_lifecycle_state,
     load_machine_memory,
     load_machine_memory_action_state,
     load_manifest,
@@ -324,19 +325,23 @@ class AiwikiFlowTests(unittest.TestCase):
         active_corpora_path = self.root / ".aiwiki" / "state" / "active-corpora.json"
         material_routing_path = self.root / ".aiwiki" / "state" / "material-routing.json"
         archive_candidates_path = self.root / ".aiwiki" / "state" / "archive-candidates.json"
+        knowledge_lifecycle_path = self.root / ".aiwiki" / "state" / "knowledge-lifecycle.json"
         self.assertEqual(compiled["material_state_path"], ".aiwiki/state/material-state.json")
         self.assertEqual(compiled["active_corpora_path"], ".aiwiki/state/active-corpora.json")
         self.assertEqual(compiled["material_routing_path"], ".aiwiki/state/material-routing.json")
         self.assertEqual(compiled["archive_candidates_path"], ".aiwiki/state/archive-candidates.json")
+        self.assertEqual(compiled["knowledge_lifecycle_path"], ".aiwiki/state/knowledge-lifecycle.json")
         self.assertTrue(material_state_path.exists())
         self.assertTrue(active_corpora_path.exists())
         self.assertTrue(material_routing_path.exists())
         self.assertTrue(archive_candidates_path.exists())
+        self.assertTrue(knowledge_lifecycle_path.exists())
 
         material_state = json.loads(material_state_path.read_text(encoding="utf-8"))
         active_corpora = json.loads(active_corpora_path.read_text(encoding="utf-8"))
         material_routing = json.loads(material_routing_path.read_text(encoding="utf-8"))
         archive_candidates = json.loads(archive_candidates_path.read_text(encoding="utf-8"))
+        knowledge_lifecycle = json.loads(knowledge_lifecycle_path.read_text(encoding="utf-8"))
         self.assertEqual(material_state["version"], 1)
         self.assertEqual(len(material_state["entries"]), 1)
         self.assertEqual(active_corpora["version"], 1)
@@ -345,6 +350,9 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(material_routing["active_protocol"], "general")
         self.assertEqual(len(material_routing["entries"]), 1)
         self.assertEqual(archive_candidates["version"], 1)
+        self.assertEqual(knowledge_lifecycle["version"], 1)
+        self.assertEqual(knowledge_lifecycle["entries"], [])
+        self.assertEqual(knowledge_lifecycle["counts"]["total"], 0)
 
         record = material_state["entries"][0]
         routing_record = material_routing["entries"][0]
@@ -418,6 +426,28 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(record["last_review_reference_at"])
         self.assertIn(Path(judgment["path"]).stem, record["supports_judgment_ids"])
 
+    def test_reviewed_pages_enter_knowledge_lifecycle_active_when_linked_to_active_corpus(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+
+        review_page(self.root, decision["path"], status="approved", note="Approved after source review.")
+        review_page(self.root, judgment["path"], status="confirmed", note="Confirmed after checks.", confidence="high")
+
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        self.assertEqual(lifecycle["counts"]["by_state"]["active"], 2)
+        decision_entry = next(item for item in lifecycle["entries"] if item["page_id"] == Path(decision["path"]).stem)
+        judgment_entry = next(item for item in lifecycle["entries"] if item["page_id"] == Path(judgment["path"]).stem)
+        self.assertEqual(decision_entry["lifecycle_state"], "active")
+        self.assertEqual(judgment_entry["lifecycle_state"], "active")
+        self.assertEqual(decision_entry["source_ids"], [entry["id"]])
+        self.assertEqual(judgment_entry["source_ids"], [entry["id"]])
+        self.assertEqual(decision_entry["active_corpus_ids"], [report["active_corpus_id"]])
+        self.assertEqual(judgment_entry["active_corpus_ids"], [report["active_corpus_id"]])
+        self.assertEqual(judgment_entry["confidence"], "high")
+
     def test_nightly_cools_active_corpora_and_records_runtime_event(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -433,6 +463,25 @@ class AiwikiFlowTests(unittest.TestCase):
         nightly_events = [json.loads(line) for line in history_lines if json.loads(line)["event_type"] == "nightly"]
         self.assertTrue(nightly_events)
         self.assertIn(report["active_corpus_id"], nightly_events[-1]["cooled_corpus_ids"])
+
+    def test_knowledge_lifecycle_marks_citation_drift_as_revisit_signal(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+        review_page(self.root, judgment["path"], status="confirmed", note="Confirmed after checks.", confidence="high")
+
+        (self.root / entry["stored_path"]).write_text(
+            "# Transformer Scaling\n\nTransformers still benefit from scale.\nInference cost shifted after cache changes.\n",
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        judgment_entry = next(item for item in lifecycle["entries"] if item["page_id"] == Path(judgment["path"]).stem)
+        self.assertEqual(judgment_entry["lifecycle_state"], "revisit")
+        self.assertIn("citation-drift", judgment_entry["invalidation_signals"])
+        self.assertTrue(judgment_entry["citation_drift"])
 
     def test_archive_candidates_progress_to_ready_and_reactivate(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -3022,6 +3071,9 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(state["repair_backlog"]["path"], result["repair_backlog"])
         self.assertEqual(state["lint"]["counts"]["warnings"], result["lint"]["counts"]["warnings"])
         self.assertEqual(state["concept_quality"]["path"], "wiki/indexes/concept-quality.md")
+        self.assertEqual(state["knowledge_lifecycle"]["path"], ".aiwiki/state/knowledge-lifecycle.json")
+        self.assertEqual(state["knowledge_lifecycle"]["entry_count"], 2)
+        self.assertIn("review", state["knowledge_lifecycle"]["state_counts"])
         self.assertIn("rewrite_candidate_slugs", state["concept_quality"])
         self.assertIn("health", state["machine_memory"])
         self.assertEqual(state["machine_memory"]["actions_path"], "wiki/indexes/machine-memory-actions.md")
