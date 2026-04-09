@@ -6,7 +6,7 @@ status: "active"
 
 # 炼丹炉架构
 
-`Alchemy Furnace` 是把 `aiwiki` 推进成复利型知识系统的产品架构。
+`Alchemy Furnace` 是建立在 `aiwiki` 之上的复利型知识系统架构。
 
 它不是一个“记笔记”的比喻，而是一个运行时模型：
 
@@ -21,7 +21,7 @@ status: "active"
 构建一个本地优先的系统，使得：
 
 - 人负责投喂原料并保留判断权
-- `aiwiki` 维护编译后的知识层
+- `aiwiki` 作为 runtime 维护编译后的知识层
 - Obsidian 作为给人用的前端
 - 机读索引和图谱记忆持续提升后续 agent 的工作效率
 
@@ -42,7 +42,7 @@ status: "active"
 
 正确的长期形态是：
 
-- 一个统一的 `aiwiki` 炼丹炉内核
+- 一个统一的、由 `aiwiki` 驱动的炼丹炉内核
 - 多套按场景切换的 protocol / schema
 
 也就是：

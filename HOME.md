@@ -5,7 +5,7 @@ kind: "dashboard"
 
 # 炼丹炉工作台
 
-这里是 `aiwiki` 在 Obsidian 里的日常入口，不讲长篇架构，只回答 4 个问题：
+这里是炼丹炉在 Obsidian 里的日常入口。底层 runtime 仍然叫 `aiwiki`，但你日常使用面对的是“炼丹炉”这个系统。
 
 - 原料放哪
 - 今天看哪
@@ -108,7 +108,7 @@ kind: "dashboard"
 ## 当前边界
 
 - Obsidian 是前端，不是编译器
-- `aiwiki` 负责 ingest、compile、ask、lint、nightly、execution
+- 底层由 `aiwiki` 负责 ingest、compile、ask、lint、nightly、execution
 - `raw/` 不被派生结论覆盖
 - safe execution 只开放低风险动作
 - 当前运行模型是 `single writer, many readers`

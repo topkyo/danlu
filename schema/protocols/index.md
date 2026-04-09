@@ -16,7 +16,7 @@
 ## 约束
 
 - 协议层是统一 runtime 的覆盖层，不是新的 runtime 分叉。
-- 领域差异优先落到 `schema/protocols/`，而不是复制一套 `aiwiki`。
+- 领域差异优先落到 `schema/protocols/`，而不是复制一套新的 runtime。
 
 ## 当前已经生效的运行时差异
 

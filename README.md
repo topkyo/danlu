@@ -1,6 +1,6 @@
 # aiwiki
 
-`aiwiki` 是一套 `local-first` 的知识复利运行时。
+`aiwiki` 是“炼丹炉”的 `local-first` runtime。
 
 它把网页、PDF、图片、repo 和本地笔记等原料编译成可追溯的 `wiki`、`machine memory`、`decision / judgment` 和可回流输出；它不是静态笔记库，也不是一次性 RAG 问答器，而是一个会持续编译、审阅、修复和复查知识的炉子。
 
@@ -19,14 +19,14 @@
 
 ## 它是什么
 
-`aiwiki` 现在已经有：
+炼丹炉现在已经有这些底座，底层 runtime 由 `aiwiki` 提供：
 - 五层主线：`raw / wiki / machine memory / schema / outputs`
 - 治理链：`review / aging / escalation / repair / nightly`
 - 判断层：`decision / judgment`
 - 协议层：`general / investing / research / product / ops`
 - 执行层：`dry-run / bundle / apply / receipt / revert / audit`
 
-Obsidian 是前端/IDE，`aiwiki` 才是 runtime。
+Obsidian 是前端/IDE；炼丹炉是整个系统；`aiwiki` 是底层 runtime。
 
 ## 最小工作流
 
