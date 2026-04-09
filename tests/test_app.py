@@ -1472,6 +1472,22 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn(backlog_title, payload)
         self.assertIn(retired_title, payload)
 
+    def test_furnace_center_surfaces_lifecycle_governance_summary(self) -> None:
+        backlog_title, retired_title = self._seed_lifecycle_governance_surface_state()
+
+        dashboard_payload = (self.root / "wiki" / "indexes" / "furnace-center.md").read_text(encoding="utf-8")
+        html_payload = (self.root / "output" / "control" / "furnace-center.html").read_text(encoding="utf-8")
+
+        self.assertIn("## Lifecycle 治理摘要", dashboard_payload)
+        self.assertIn("### Lifecycle Concept Backlog", dashboard_payload)
+        self.assertIn("### Retired Concepts", dashboard_payload)
+        self.assertIn(backlog_title, dashboard_payload)
+        self.assertIn(retired_title, dashboard_payload)
+        self.assertIn("生命周期治理", html_payload)
+        self.assertIn("已退役概念", html_payload)
+        self.assertIn(backlog_title, html_payload)
+        self.assertIn(retired_title, html_payload)
+
     def test_compile_writes_execution_center_markdown_and_html(self) -> None:
         self._seed_machine_memory_actions()
         compile_wiki(self.root)
@@ -2814,6 +2830,16 @@ class AiwikiFlowTests(unittest.TestCase):
             self.assertIn("## Current Focus", pack_text)
             self.assertIn("## Suggested Actions", pack_text)
             self.assertIn("## Related Links", pack_text)
+
+    def test_review_agent_pack_surfaces_lifecycle_governance_summary(self) -> None:
+        backlog_title, retired_title = self._seed_lifecycle_governance_surface_state()
+
+        review_pack = (self.root / "output" / "agents" / "review-agent.md").read_text(encoding="utf-8")
+
+        self.assertIn("生命周期概念待审", review_pack)
+        self.assertIn("已退役概念", review_pack)
+        self.assertIn(backlog_title, review_pack)
+        self.assertIn(retired_title, review_pack)
 
     def test_compile_generates_output_packs_for_review_memo_and_sop(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

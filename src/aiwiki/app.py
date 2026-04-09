@@ -5914,10 +5914,18 @@ def build_agent_packs(
     protocol_state: dict[str, Any],
     recent_outputs: list[dict[str, str]],
     compiled_at: str,
+    *,
+    knowledge_lifecycle: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     active_protocol = protocol_state["active_protocol"]
     queue = review_queue(decisions, judgments, active_protocol=active_protocol)
     aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
+    lifecycle_summary = knowledge_lifecycle_governance_summary(
+        knowledge_lifecycle,
+        active_protocol=active_protocol,
+    )
+    concept_backlog = lifecycle_summary.get("concept_backlog", [])
+    retired_concepts = lifecycle_summary.get("retired_concepts", [])
     health = memory.get("health", {})
     concept_quality = health.get("concept_quality", {})
     rewrite_state = health.get("concept_rewrite", {})
@@ -6004,17 +6012,33 @@ def build_agent_packs(
                 f"待审项目 `{len(queue['pending_decisions']) + len(queue['pending_judgments'])}`",
                 f"已到期 / 升级 `{len(aging.get('overdue', []))}` / `{len(aging.get('escalated', []))}`",
                 f"证据漂移 / snapshot gap `{len(drifted_pages)}` / `{len(snapshot_gap_pages)}`",
+                f"生命周期概念待审 `{len(concept_backlog)}`",
+                f"已退役概念 `{len(retired_concepts)}`",
             ]
-            actions = [f"复查 `{page['path']}`，因为它已被新证据挑战。" for page in drifted_pages[:5]]
+            actions = [
+                f"推进 lifecycle concept `{entry.get('title') or entry.get('page_id') or 'unknown'}`，状态 `{display_knowledge_lifecycle_state(str(entry.get('lifecycle_state') or 'unknown'))}`。"
+                for entry in concept_backlog[:3]
+            ]
+            actions.extend(
+                f"复查 `{page['path']}`，因为它已被新证据挑战。"
+                for page in drifted_pages[:3]
+            )
+            if retired_concepts:
+                retired = retired_concepts[0]
+                actions.append(
+                    f"确认 retired concept `{retired.get('title') or retired.get('page_id') or 'unknown'}` 是否需要 re-activate。"
+                )
             if not actions:
                 actions = [
                     f"推进 `{page['path']}` 的 review 状态。"
                     for page in (queue.get("pending_decisions", []) + queue.get("pending_judgments", []))[:5]
                 ]
+            actions = actions[:6]
             links = [
                 "[审阅队列](../../wiki/indexes/review-queue.md)",
                 "[审阅中心](../../wiki/indexes/review-center.md)",
                 "[Aging 报告](../../wiki/indexes/aging-report.md)",
+                "[概念索引](../../wiki/indexes/concepts.md)",
                 "[认知历史](../../wiki/indexes/cognitive-history.md)",
             ]
         elif role == "repair-planner":
@@ -6654,10 +6678,19 @@ def render_furnace_center(
     output_packs: dict[str, Any],
     domain_pilots: dict[str, Any],
     execution_audit: dict[str, Any],
+    *,
+    knowledge_lifecycle: dict[str, Any] | None = None,
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
     queue = review_queue(decisions, judgments, active_protocol=active_protocol)
     aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
+    lifecycle_summary = knowledge_lifecycle_governance_summary(
+        knowledge_lifecycle,
+        active_protocol=active_protocol,
+    )
+    concept_backlog = lifecycle_summary.get("concept_backlog", [])
+    retired_concepts = lifecycle_summary.get("retired_concepts", [])
+    lifecycle_counts = lifecycle_summary.get("counts", {})
     health = memory.get("health", {})
     plan = health.get("repair_plan", {})
     concept_quality = health.get("concept_quality", {})
@@ -6685,6 +6718,8 @@ def render_furnace_center(
     receipt_rows = protocol_execution_receipts(execution_audit, active_protocol)
     quick_commands = furnace_quick_commands(active_protocol, apply_ready_actions, apply_ready_rewrites)
     next_steps: list[str] = []
+    if concept_backlog:
+        next_steps.append(f"先处理 `{min(len(concept_backlog), 5)}` 个 lifecycle concept backlog。")
     if apply_ready_actions:
         next_steps.append(f"先处理 `{len(apply_ready_actions)}` 个可直接 `apply-action` 的低风险动作。")
     if apply_ready_rewrites:
@@ -6693,6 +6728,8 @@ def render_furnace_center(
         next_steps.append(f"优先复查 `{len(aging.get('escalated', []))}` 个升级项。")
     if pending_items:
         next_steps.append(f"继续审 `{len(pending_items)}` 个 decision / judgment 页面。")
+    if retired_concepts and not concept_backlog:
+        next_steps.append(f"检查 `{min(len(retired_concepts), 3)}` 个 retired concept 是否需要重新激活。")
     if not next_steps:
         next_steps.append("当前没有紧急执行项，优先看最新输出和图谱漂移。")
 
@@ -6705,6 +6742,7 @@ def render_furnace_center(
         f"- 概念节点：`{len(memory.get('concept_nodes', []))}`",
         f"- 待审项目：`{len(pending_items)}`",
         f"- 已到期 / 升级：`{len(aging.get('overdue', []))}` / `{len(aging.get('escalated', []))}`",
+        f"- 生命周期概念待审 / 已退役：`{lifecycle_counts.get('concept_backlog', len(concept_backlog))}` / `{lifecycle_counts.get('retired_concepts', len(retired_concepts))}`",
         f"- 证据漂移：`{citation_drift_count}`",
         f"- Ready repair actions：`{len(ready_actions)}`",
         f"- 可直接 apply 的动作：`{len(apply_ready_actions)}`",
@@ -6802,6 +6840,29 @@ def render_furnace_center(
         lines.append("### 下一动作")
         lines.extend(next_moves_lines)
 
+    lines.extend(["", "## Lifecycle 治理摘要"])
+    lines.extend(
+        [
+            f"- review concepts：`{lifecycle_counts.get('review_concepts', 0)}`",
+            f"- revisit concepts：`{lifecycle_counts.get('revisit_concepts', 0)}`",
+            f"- retired concepts：`{lifecycle_counts.get('retired_concepts', len(retired_concepts))}`",
+            f"- active concepts：`{lifecycle_counts.get('active_concepts', 0)}`",
+            "",
+            "### Lifecycle Concept Backlog",
+        ]
+    )
+    if not concept_backlog:
+        lines.append("- 当前没有 lifecycle-driven concept backlog。")
+    else:
+        for entry in concept_backlog[:12]:
+            lines.append(render_knowledge_lifecycle_entry_summary(entry))
+    lines.extend(["", "### Retired Concepts"])
+    if not retired_concepts:
+        lines.append("- 当前没有 retired concept。")
+    else:
+        for entry in retired_concepts[:12]:
+            lines.append(render_knowledge_lifecycle_entry_summary(entry))
+
     lines.extend(["", "## 最新输出 Packs"])
     if not pack_rows:
         lines.append("- 当前协议还没有 review pack / decision memo / SOP draft。")
@@ -6883,10 +6944,16 @@ def render_furnace_center_html(
     output_packs: dict[str, Any],
     domain_pilots: dict[str, Any],
     execution_audit: dict[str, Any],
+    *,
+    knowledge_lifecycle: dict[str, Any] | None = None,
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
     queue = review_queue(decisions, judgments, active_protocol=active_protocol)
     aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
+    lifecycle_summary = knowledge_lifecycle_governance_summary(
+        knowledge_lifecycle,
+        active_protocol=active_protocol,
+    )
     health = memory.get("health", {})
     plan = health.get("repair_plan", {})
     concept_quality = health.get("concept_quality", {})
@@ -6954,11 +7021,35 @@ def render_furnace_center_html(
             f"<div class=\"item-meta\">patch steps {patch_count}</div></li>"
         )
 
+    def render_lifecycle_item(entry: dict[str, Any]) -> str:
+        path = str(entry.get("path") or "")
+        title = html.escape(str(entry.get("title") or entry.get("page_id") or "unknown"))
+        state = html.escape(display_knowledge_lifecycle_state(str(entry.get("lifecycle_state") or "")))
+        override = ""
+        if bool(entry.get("override_active")):
+            override = f" | override {html.escape(str(entry.get('override_state') or entry.get('lifecycle_state') or 'unknown'))}"
+        invalidation_signals = entry.get("invalidation_signals", [])
+        invalidation = ""
+        if isinstance(invalidation_signals, list) and invalidation_signals:
+            invalidation = f" | invalidation {html.escape(', '.join(str(item) for item in invalidation_signals[:3]))}"
+        active_corpus_ids = entry.get("active_corpus_ids", [])
+        active_corpora = ""
+        if isinstance(active_corpus_ids, list) and active_corpus_ids:
+            active_corpora = f" | active corpora {html.escape(str(len(active_corpus_ids)))}"
+        if path:
+            return (
+                f'<li><a href="../../{html.escape(path)}">{title}</a>'
+                f" | state {state}{override}{invalidation}{active_corpora}</li>"
+            )
+        return f"<li>{title} | state {state}{override}{invalidation}{active_corpora}</li>"
+
     summary_cards = [
         ("来源", str(len(memory.get("source_nodes", [])))),
         ("概念", str(len(memory.get("concept_nodes", [])))),
         ("待审", str(len(pending_items))),
         ("到期/升级", f"{len(aging.get('overdue', []))}/{len(aging.get('escalated', []))}"),
+        ("生命周期待审", str(lifecycle_summary.get("counts", {}).get("concept_backlog", 0))),
+        ("已退役概念", str(lifecycle_summary.get("counts", {}).get("retired_concepts", 0))),
         ("证据漂移", str(sum(1 for page in decisions + judgments if page.get("citation_drift") == "true"))),
         ("Ready 动作", str(plan.get("counts", {}).get("ready", 0))),
         ("可 apply 动作", str(len(apply_ready_actions))),
@@ -6983,6 +7074,14 @@ def render_furnace_center_html(
     output_markup = "".join(render_output_item(artifact) for artifact in recent_outputs[:10]) or "<li>当前还没有 recent outputs。</li>"
     reviewed_markup = "".join(render_page_item(page) for page in recent_reviewed) or "<li>当前还没有最近已审项目。</li>"
     focus_markup = "".join(f"<li>{html.escape(item)}</li>" for item in protocol_focus + nightly_focus) or "<li>当前协议没有额外焦点。</li>"
+    lifecycle_backlog_markup = (
+        "".join(render_lifecycle_item(entry) for entry in lifecycle_summary.get("concept_backlog", [])[:10])
+        or "<li>当前没有 lifecycle concept backlog。</li>"
+    )
+    retired_concept_markup = (
+        "".join(render_lifecycle_item(entry) for entry in lifecycle_summary.get("retired_concepts", [])[:10])
+        or "<li>当前没有 retired concept。</li>"
+    )
     pack_markup = "".join(
         f"<li><strong><a href=\"../../{html.escape(row['path'])}\">{html.escape(row['title'])}</a></strong>"
         f" <span class=\"item-meta\">{html.escape(row['kind'])} / {html.escape(row['meta'] or 'n/a')}</span></li>"
@@ -7085,6 +7184,12 @@ def render_furnace_center_html(
             "  </section>",
             '  <section class="grid">',
             f'    <div class="panel"><h2>待审 / 已到期</h2><ul>{pending_markup}{aging_markup}</ul></div>',
+            '    <div class="panel"><h2>生命周期治理</h2>'
+            f'<p class="item-meta">review {html.escape(str(lifecycle_summary.get("counts", {}).get("review_concepts", 0)))}'
+            f' · revisit {html.escape(str(lifecycle_summary.get("counts", {}).get("revisit_concepts", 0)))}'
+            f' · active {html.escape(str(lifecycle_summary.get("counts", {}).get("active_concepts", 0)))}</p>'
+            f"<ul>{lifecycle_backlog_markup}</ul></div>",
+            f'    <div class="panel"><h2>已退役概念</h2><ul>{retired_concept_markup}</ul></div>',
             f'    <div class="panel"><h2>Safe Apply</h2><ul>{apply_action_markup}</ul></div>',
             f'    <div class="panel"><h2>Apply-Ready Rewrites</h2><ul>{rewrite_markup}</ul></div>',
             f'    <div class="panel"><h2>Execution Proposals</h2><ul>{proposal_markup}</ul></div>',
@@ -12352,6 +12457,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         protocol_state,
         recent_outputs,
         compiled_at,
+        knowledge_lifecycle=knowledge_lifecycle,
     )
     changed_pages += int(
         write_if_changed(
@@ -12374,6 +12480,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
                 output_packs,
                 domain_pilots,
                 execution_audit,
+                knowledge_lifecycle=knowledge_lifecycle,
             ),
         )
     )
@@ -12403,6 +12510,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
                 output_packs,
                 domain_pilots,
                 execution_audit,
+                knowledge_lifecycle=knowledge_lifecycle,
             ),
         )
     )
