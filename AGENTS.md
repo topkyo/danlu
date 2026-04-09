@@ -2,7 +2,8 @@
 
 ## 作用域与分层
 
-- 本仓库实现 `aiwiki`，一个 local-first 的知识编译器原型
+- 本仓库实现 `aiwiki`，即“炼丹炉”的 local-first runtime / CLI / 仓库本体
+- “炼丹炉”是产品/系统名；`aiwiki` 是实现内核、命令名和仓库名
 - `open-harness` 负责工程闭环与质量护栏，不负责知识库 runtime 本身
 - 动态任务状态写 `PROGRESS.md`
 - 设计边界和本轮执行约束写 `.codex/contracts/active.md`
@@ -21,14 +22,16 @@
 
 ## 项目一句话
 
-- `aiwiki` is a file-based knowledge compiler that turns raw sources into structured markdown wiki artifacts.
+- `aiwiki` is the file-based runtime that powers 炼丹炉, compiling raw sources into structured wiki, machine memory, and reviewable outputs.
 
 ## 当前方向
 
-- 搭建 MVP: `ingest`, `compile`, `ask`, `file-back`, `lint`
-- 增量接入多后端 LLM 执行层（`codex-cli` / `claude-cli` / `openai-api`），但保持 deterministic 路径可独立运行
-- 提供 4 个直接投喂入口：`drop-url` / `drop-pdf` / `drop-image` / `drop-repo`
-- 保持 `raw/ -> wiki/ -> output/` 分层，先不接向量库、服务化部署或 fine-tuning
+- 维护炼丹炉五层主线：`raw / wiki / machine memory / schema / outputs`
+- 维持 deterministic baseline + 多后端 LLM 执行层（`codex-cli` / `claude-cli` / `openai-api`）
+- 维持直接投喂入口：`drop-url` / `drop-pdf` / `drop-image` / `drop-repo`
+- 维持协议 runtime：`general / investing / research / product / ops`
+- 维持治理与执行层：`review / aging / escalation / repair / nightly / apply / revert / audit`
+- 保持 `raw/ -> wiki/ -> output/` 分层，不引入 hosted service、multi-user sync、heavy RAG infra 或 fine-tuning
 
 ## Source Of Truth
 
@@ -42,9 +45,11 @@
 ## 稳定约束
 
 - 技术栈: Python 3.10+, stdlib-first, markdown + JSON manifest
+- 运行模型: `single writer, many readers`
 - `raw/` 是唯一事实输入层；`wiki/sources/` 与 `wiki/derived/` 必须严格分层
 - 派生输出不能覆盖原始 source pages；所有结论都应保留 provenance
-- 非目标: hosted service, multi-user sync, OCR, heavy RAG infra, fine-tuning
+- `decision / judgment / execution` 层必须保持可审计、可回滚、可追溯
+- 非目标: hosted service, multi-user sync, heavy RAG infra, fine-tuning
 
 ## 自主权边界
 
@@ -75,4 +80,5 @@
 - 先结论，再证据，再建议
 - 默认不主动 `push`
 - 本地 `commit` 允许在 `closed_loop` 通过后自动进行；如果当前执行环境有更高优先级限制，以更高优先级限制为准
+- 讨论产品时优先说“炼丹炉”；讨论仓库、CLI、runtime 时再说 `aiwiki`
 - 发现事实层污染、无来源结论或越层写入时必须明确指出

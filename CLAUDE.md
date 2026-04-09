@@ -2,21 +2,23 @@
 
 ## Scope
 
-- This repository implements `aiwiki`, a local-first knowledge compiler MVP.
+- This repository implements `aiwiki`, the local-first runtime / CLI behind 炼丹炉.
+- 炼丹炉 is the product/system name; `aiwiki` is the runtime, command name, and repository name.
 - `open-harness` provides the engineering loop and gate scaffolding around the project.
 - Dynamic task state lives in `PROGRESS.md`.
 - Current scope, acceptance criteria, and gate requirements live in `.codex/contracts/active.md`.
 
 ## Project Summary
 
-- `aiwiki` turns raw sources into structured markdown wiki artifacts and reviewable output bundles.
+- `aiwiki` compiles raw sources into structured wiki artifacts, machine memory, judgment assets, and reviewable execution outputs.
 
 ## Current Direction
 
-- Build the MVP CLI around `ingest`, `compile`, `ask`, `file-back`, and `lint`.
-- Add a multi-backend execution layer (`codex-cli`, `claude-cli`, `openai-api`) without removing the deterministic baseline.
-- Add direct material drop entry points for URLs, PDFs, images, and repositories.
-- Preserve the `raw/ -> wiki/ -> output/` layering and provenance rules.
+- Maintain the five-layer furnace runtime: `raw / wiki / machine memory / schema / outputs`.
+- Keep the deterministic baseline plus multi-backend execution (`codex-cli`, `claude-cli`, `openai-api`).
+- Keep direct material drop entry points for URLs, PDFs, images, and repositories.
+- Maintain protocol-aware runtime behavior for `general / investing / research / product / ops`.
+- Maintain the governance and execution layers: `review / aging / escalation / repair / nightly / apply / revert / audit`.
 
 ## Source Of Truth
 
@@ -30,10 +32,12 @@
 ## Stable Constraints
 
 - Python 3.10+, stdlib-first, file-based state
+- Runtime model: `single writer, many readers`
 - `raw/` is the only fact input layer
 - `wiki/sources/` and `wiki/derived/` stay separate
 - Derived outputs never overwrite source pages
-- No vector database, hosted service, OCR, or fine-tuning in the MVP
+- Judgment and execution artifacts must remain auditable, reversible, and provenance-aware
+- No hosted service, multi-user sync, heavy RAG infrastructure, or fine-tuning
 
 ## Working Rules
 
@@ -41,3 +45,4 @@
 - Keep provenance explicit in generated artifacts
 - Record any same-context review fallback in the gate artifact
 - User-level service wiring is allowed when it stays within the current user's session scope
+- Use “炼丹炉” for the product/system and `aiwiki` only for repo/runtime/CLI contexts
