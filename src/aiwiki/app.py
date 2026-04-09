@@ -3781,6 +3781,27 @@ def collect_output_artifacts(root: Path) -> list[dict[str, str]]:
     return sorted(artifacts, key=lambda item: (item["query_signature"], item["created_at"], item["path"]))
 
 
+def collect_output_density_artifacts(root: Path) -> list[dict[str, str]]:
+    artifacts: list[dict[str, str]] = []
+    for relative in ("output/reports", "output/slides", "output/figures"):
+        for path in sorted((root / relative).glob("*.md")):
+            content = path.read_text(encoding="utf-8", errors="replace")
+            frontmatter = parse_frontmatter(content)
+            if frontmatter.get("kind") != "output":
+                continue
+            artifacts.append(
+                {
+                    "path": relative_path(root, path),
+                    "query": str(frontmatter.get("query") or "").strip(),
+                    "format": str(frontmatter.get("format") or "").strip(),
+                    "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
+                    "created_at": str(frontmatter.get("created_at") or ""),
+                    "title": first_markdown_heading(content) or path.stem,
+                }
+            )
+    return sorted(artifacts, key=lambda item: (item["created_at"], item["path"]))
+
+
 def collect_recent_output_artifacts(root: Path, *, limit: int = 12) -> list[dict[str, str]]:
     artifacts: list[dict[str, str]] = []
     for relative in ("output/reports", "output/slides", "output/figures"):
@@ -4630,14 +4651,17 @@ def build_output_packs(
             continue
         destination = sop_draft_path(root, action_id)
         band = str(action.get("execution_band") or "review-first")
-        bundle_path = relative_path(root, execution_bundle_path(root, action_id))
+        action_protocol = str(action.get("protocol") or active_protocol)
+        bundle_absolute = execution_bundle_path(root, action_id)
+        bundle_relative = relative_path(root, bundle_absolute)
+        bundle_path = bundle_relative if bundle_absolute.exists() else ""
         frontmatter_text = render_frontmatter(
             {
                 "id": f"sop-draft-{destination.stem}",
                 "kind": "output-pack",
                 "pack_kind": "sop-draft",
                 "title": f"SOP Draft · {action.get('title') or action_id}",
-                "protocol": active_protocol,
+                "protocol": action_protocol,
                 "action_id": action_id,
                 "source_files": [str(action.get("primary_path") or "")],
                 "generated_by": "aiwiki-compile",
@@ -4653,31 +4677,51 @@ def build_output_packs(
             f"- Action id: `{action_id}`",
             f"- Status: `{display_action_status(str(action.get('status') or 'proposed'))}`",
             f"- Priority: `{action.get('priority', 'medium')}`",
+            f"- Protocol: `{action_protocol}` ({protocol_title(action_protocol)})",
             f"- Execution band: `{band}` ({execution_band_label(band)})",
             f"- Primary / Secondary: `{action.get('primary_path', '')}` / `{action.get('secondary_path', '') or 'none'}`",
             "",
             "## Step-by-Step",
             f"1. 先跑 `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --dry-run`。",
-            f"2. 如果执行 band 仍允许，再执行 `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --bundle {bundle_path}`。",
-            f"3. 必要时用 `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-action {action_id}` 回滚。",
-            "",
-            "## Action Notes",
-            f"- Reason: {action.get('reason', 'n/a')}",
-            f"- Next step: {action.get('next_step', 'n/a')}",
-            f"- Command hint: `{action.get('command_hint', '') or 'none'}`",
-            "",
-            "## Related Links",
-            "- [执行中心](../../../wiki/indexes/execution-center.md)",
-            "- [执行审计](../../../wiki/indexes/execution-audit.md)",
-            "- [机器记忆动作队列](../../../wiki/indexes/machine-memory-actions.md)",
         ]
+        if bundle_path:
+            lines.extend(
+                [
+                    f"2. 如果执行 band 仍允许，再执行 `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --bundle {bundle_path}`。",
+                    f"3. 必要时用 `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-action {action_id}` 回滚。",
+                ]
+            )
+            bundle_link = f"- [Execution Bundle](../../../{bundle_path})"
+        else:
+            lines.extend(
+                [
+                    "2. 当前还没有稳定 bundle；先停在 dry-run，或回到 execution proposal 层生成 bundle。",
+                    "3. 生成 bundle 后再执行真实 apply。",
+                ]
+            )
+            bundle_link = "- Execution Bundle: none"
+        lines.extend(
+            [
+                "",
+                "## Action Notes",
+                f"- Reason: {action.get('reason', 'n/a')}",
+                f"- Next step: {action.get('next_step', 'n/a')}",
+                f"- Command hint: `{action.get('command_hint', '') or 'none'}`",
+                "",
+                "## Related Links",
+                "- [执行中心](../../../wiki/indexes/execution-center.md)",
+                "- [执行审计](../../../wiki/indexes/execution-audit.md)",
+                "- [机器记忆动作队列](../../../wiki/indexes/machine-memory-actions.md)",
+                bundle_link,
+            ]
+        )
         sop_drafts.append(
             {
                 "title": f"SOP Draft · {action.get('title') or action_id}",
                 "path": relative_path(root, destination),
                 "content": "\n".join(lines) + "\n",
                 "action_id": action_id,
-                "protocol": active_protocol,
+                "protocol": action_protocol,
                 "risk": "low" if action_supports_low_risk_apply(action) else "medium",
             }
         )
@@ -4826,7 +4870,7 @@ def build_domain_pilots(
     for proposal in repair_plan.get("execution_proposals", []):
         if not isinstance(proposal, dict):
             continue
-        protocol = str(proposal.get("protocol") or active_protocol)
+        protocol = str(proposal.get("protocol") or DEFAULT_PROTOCOL)
         proposal_counts[protocol] = proposal_counts.get(protocol, 0) + 1
 
     scorecards: list[dict[str, Any]] = []
@@ -6785,6 +6829,7 @@ def reconcile_machine_memory_actions(
     health: dict[str, Any],
     *,
     compiled_at: str,
+    active_protocol: str = DEFAULT_PROTOCOL,
 ) -> dict[str, Any]:
     previous_state = load_machine_memory_action_state(root)
     previous_by_id = {
@@ -6800,6 +6845,7 @@ def reconcile_machine_memory_actions(
             continue
         previous = previous_by_id.get(action_id, {})
         previous_status = str(previous.get("status") or "proposed")
+        protocol = str(previous.get("protocol") or action.get("protocol") or active_protocol or DEFAULT_PROTOCOL)
         status = previous_status if previous_status in ACTION_STATUSES else "proposed"
         reopened_count = int(previous.get("reopened_count") or 0)
         reopened_from = ""
@@ -6829,6 +6875,7 @@ def reconcile_machine_memory_actions(
             revisit_after, escalate_after = "", ""
         record = {
             **action,
+            "protocol": protocol,
             "status": status,
             "active": True,
             "first_seen_at": first_seen_at,
@@ -6875,6 +6922,7 @@ def reconcile_machine_memory_actions(
                 revisit_after, escalate_after = schedule_review_windows("action", status, base_timestamp)
             record = {
                 **dict(previous),
+                "protocol": str(previous.get("protocol") or active_protocol or DEFAULT_PROTOCOL),
                 "status": status,
                 "active": True,
                 "last_seen_at": compiled_at,
@@ -6888,6 +6936,7 @@ def reconcile_machine_memory_actions(
             seen_ids.add(action_id)
             continue
         record = dict(previous)
+        record["protocol"] = str(previous.get("protocol") or active_protocol or DEFAULT_PROTOCOL)
         record["active"] = False
         record["inactive_since"] = str(previous.get("inactive_since") or compiled_at)
         record["pending_review"] = "false"
@@ -9716,7 +9765,14 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     removed_pages = remove_stale_generated_concept_pages(root, {record["slug"] for record in concepts})
     memory = build_machine_memory(root, entries, concepts, previews, entry_terms, compiled_at)
     memory["health"] = build_machine_memory_health(memory)
-    memory["health"].update(reconcile_machine_memory_actions(root, memory["health"], compiled_at=compiled_at))
+    memory["health"].update(
+        reconcile_machine_memory_actions(
+            root,
+            memory["health"],
+            compiled_at=compiled_at,
+            active_protocol=protocol_state["active_protocol"],
+        )
+    )
     memory["health"]["repair_plan"] = build_machine_memory_repair_plan(
         root,
         memory["health"],
@@ -9776,7 +9832,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             render_execution_audit(execution_audit),
         )
     )
-    all_outputs = collect_output_artifacts(root)
+    all_outputs = collect_output_density_artifacts(root)
     recent_outputs = collect_recent_output_artifacts(root)
     output_packs = build_output_packs(
         root,
@@ -10905,7 +10961,7 @@ def apply_machine_memory_action(
     kind = str(target.get("kind") or "")
     if kind not in LOW_RISK_APPLYABLE_ACTION_KINDS:
         raise RuntimeError("Only low-risk accepted actions support semi-auto apply.")
-    protocol = load_protocol_state(root)["active_protocol"]
+    protocol = str(target.get("protocol") or load_protocol_state(root)["active_protocol"] or DEFAULT_PROTOCOL)
     source_id, concept_slug = validate_low_risk_action_targets(root, target)
     preview_proposals = repair_execution_proposals(root, [target], active_protocol=protocol)
     proposal = preview_proposals[0] if preview_proposals else {
@@ -11080,9 +11136,10 @@ def revert_machine_memory_action(
     active_entry["revert_note"] = note or "Safe apply reverted."
     save_manual_link_state(root, {"version": 1, "source_to_concept": manual_links})
 
-    protocol = load_protocol_state(root)["active_protocol"]
+    protocol = str(target.get("protocol") or load_protocol_state(root)["active_protocol"] or DEFAULT_PROTOCOL)
     reverted_target = {
         **dict(target),
+        "protocol": protocol,
         "status": "proposed",
         "execution_policy": "triage",
         "execution_band": "review-first",
@@ -11476,11 +11533,12 @@ def repair_execution_proposals(
             ],
         },
     }
-    hint = protocol_hints.get(active_protocol, protocol_hints[DEFAULT_PROTOCOL])
     proposals: list[dict[str, Any]] = []
     for action in actions:
         template = strategy_map.get(str(action.get("kind") or ""), {})
         action_id = str(action.get("id") or "")
+        proposal_protocol = str(action.get("protocol") or active_protocol or DEFAULT_PROTOCOL)
+        hint = protocol_hints.get(proposal_protocol, protocol_hints[DEFAULT_PROTOCOL])
         target_paths = [
             path
             for path in (
@@ -11507,10 +11565,10 @@ def repair_execution_proposals(
             + list(hint.get("edits") or []),
             "command_hint": str(action.get("command_hint") or ""),
             "next_step": str(action.get("next_step") or ""),
-            "protocol": active_protocol,
+            "protocol": proposal_protocol,
             "focus_score": int(action.get("focus_score", 0)),
         }
-        proposal["page_patch_plan"] = build_page_patch_plan(root, action, active_protocol=active_protocol)
+        proposal["page_patch_plan"] = build_page_patch_plan(root, action, active_protocol=proposal_protocol)
         proposal["proposal_path"] = relative_path(root, execution_proposal_path(root, action_id))
         proposal["bundle_path"] = relative_path(root, execution_bundle_path(root, action_id))
         proposal["safe_apply_preview"] = safe_apply_preview(root, action)
@@ -11822,7 +11880,7 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         pack_memory,
         protocol_state,
         collect_recent_output_artifacts(root),
-        collect_output_artifacts(root),
+        collect_output_density_artifacts(root),
         expected_output_packs,
         execution_audit_snapshot,
         utc_now(),

@@ -1772,6 +1772,44 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Action id:", sop_text)
         self.assertIn("apply-action", sop_text)
 
+    def test_compile_fallback_sop_without_bundle_stays_dry_run_only(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+        actions = []
+        for index in range(17):
+            actions.append(
+                {
+                    "id": f"accepted-link-{index:02d}",
+                    "kind": "add-source-concept-link",
+                    "title": f"Accepted Link {index:02d}",
+                    "reason": "Backfill stable source/concept link.",
+                    "primary_path": f"wiki/sources/{entry['id']}.md",
+                    "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                    "status": "accepted",
+                    "priority": "low",
+                    "active": True,
+                    "source_ids": [entry["id"]],
+                    "concept_slugs": [concept_slug],
+                    "protocol": "investing",
+                }
+            )
+        save_machine_memory_action_state(self.root, {"version": 1, "actions": actions})
+
+        compile_wiki(self.root)
+
+        sop_drafts = list((self.root / "output" / "packs" / "sop-drafts").glob("*.md"))
+        self.assertGreaterEqual(len(sop_drafts), 17)
+        fallback_texts = [
+            path.read_text(encoding="utf-8")
+            for path in sop_drafts
+            if "Execution Bundle: none" in path.read_text(encoding="utf-8")
+        ]
+        self.assertTrue(fallback_texts)
+        self.assertIn("先停在 dry-run", fallback_texts[0])
+        self.assertNotIn("--bundle", fallback_texts[0])
+
     def test_compile_generates_domain_pilot_scorecards(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -1799,6 +1837,16 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("## Gaps", investing_scorecard)
         self.assertIn("## Next Moves", product_scorecard)
         self.assertIn("## Recent Outputs", product_scorecard)
+
+    def test_domain_pilots_count_slides_outputs(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        ask_question(self.root, "Summarize transformer scaling for a team deck", "slides", protocol="research")
+        compile_wiki(self.root)
+
+        research_scorecard = (self.root / "output" / "pilots" / "research.md").read_text(encoding="utf-8")
+        self.assertIn("- Outputs: `1`", research_scorecard)
 
     def test_run_ask_includes_machine_memory_query_plan_in_prompt(self) -> None:
         sample = self.root / "latency.md"
@@ -2368,6 +2416,66 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(bundle["action_id"], proposal["action_id"])
         self.assertEqual(bundle["bundle_path"], proposal["bundle_path"])
         self.assertTrue(bundle["page_patch_plan"])
+
+    def test_execution_protocol_stays_stable_across_active_protocol_switch(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "manual-link-action",
+                        "kind": "add-source-concept-link",
+                        "title": "Manual safe apply link",
+                        "reason": "Backfill source/concept link.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "accepted",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                        "protocol": "investing",
+                    }
+                ],
+            },
+        )
+        set_active_protocol(self.root, "research")
+
+        compile_wiki(self.root)
+
+        memory = load_machine_memory(self.root)
+        proposal = next(
+            proposal
+            for proposal in memory["health"]["repair_plan"]["execution_proposals"]
+            if proposal["action_id"] == "manual-link-action"
+        )
+        self.assertEqual(proposal["protocol"], "investing")
+        investing_scorecard = (self.root / "output" / "pilots" / "investing.md").read_text(encoding="utf-8")
+        self.assertIn("Execution proposals / Receipts: `1` / `0`", investing_scorecard)
+
+        dry_run = apply_machine_memory_action(self.root, "manual-link-action", dry_run=True)
+        bundle_path = self.root / dry_run["bundle_path"]
+        bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        bundle_path.write_text(json.dumps(dry_run["bundle"], ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        result = apply_machine_memory_action(
+            self.root,
+            "manual-link-action",
+            note="Protocol stability apply.",
+            bundle_path=dry_run["bundle_path"],
+        )
+        receipt = json.loads((self.root / result["receipt_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(receipt["protocol"], "investing")
+
+        compile_wiki(self.root)
+        investing_scorecard = (self.root / "output" / "pilots" / "investing.md").read_text(encoding="utf-8")
+        research_scorecard = (self.root / "output" / "pilots" / "research.md").read_text(encoding="utf-8")
+        self.assertIn("Execution proposals / Receipts: `0` / `1`", investing_scorecard)
+        self.assertIn("Execution proposals / Receipts: `0` / `0`", research_scorecard)
 
     def test_compile_generates_concept_quality_page(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
