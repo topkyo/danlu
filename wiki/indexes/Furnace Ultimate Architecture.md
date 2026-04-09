@@ -13,7 +13,6 @@ status: "active"
 对应关系：
 
 - 基线架构：[[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
-- 提升路线：[[wiki/indexes/Furnace Ceiling Roadmap|炼丹炉上限路线图]]
 - 最终形态：当前这份文档
 
 ## 核心定义

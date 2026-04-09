@@ -29,12 +29,11 @@ status: "active"
 
 ## 上限路线
 
-如果要看“从当前版本继续提升到真正上限，还差哪些阶段”，直接读：
+如果要看这套系统最终想长成什么样，直接读：
 
-- [[wiki/indexes/Furnace Ceiling Roadmap|炼丹炉上限路线图]]
 - [[wiki/indexes/Furnace Ultimate Architecture|炼丹炉最终极形态]]
 
-`Alchemy Furnace` 这份文档负责定义基线架构；上限路线图负责定义从当前版本到更高上限的演化顺序；最终极形态文档负责定义这套系统最终想长成什么样。
+`Alchemy Furnace` 这份文档负责定义基线架构；最终极形态文档负责定义这套系统最终想长成什么样。
 
 ## 统一内核 + 多协议
 

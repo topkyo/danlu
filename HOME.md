@@ -37,7 +37,7 @@ kind: "dashboard"
 - [[wiki/indexes/Raw Inbox|原料收件箱]]
 - [[wiki/indexes/Wiki Hub|知识中枢]]
 - [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
-- [[wiki/indexes/Furnace Ceiling Roadmap|上限路线图]]
+- [[wiki/indexes/Furnace Ultimate Architecture|最终极形态]]
 - [[wiki/indexes/Furnace Ultimate Architecture|最终极形态]]
 - [[wiki/indexes/furnace-center|炉心面板]]
 - [[wiki/indexes/execution-center|执行中心]]
