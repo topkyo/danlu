@@ -6861,6 +6861,11 @@ def material_graph_context(memory: dict[str, Any]) -> dict[str, Any]:
     bridge_concepts = set(health.get("bridge_concept_slugs", []))
     concept_count_by_entry: dict[str, int] = {}
     bridge_source_ids: set[str] = set()
+    source_component_ids = {
+        str(source_id): str(component_id)
+        for source_id, component_id in health.get("source_component_ids", {}).items()
+        if isinstance(source_id, str) and isinstance(component_id, str)
+    }
     for edge in memory.get("edges", {}).get("source_to_concept", []):
         source_id = str(edge.get("source_id") or "")
         concept_slug = str(edge.get("concept_slug") or "")
@@ -6898,6 +6903,7 @@ def material_graph_context(memory: dict[str, Any]) -> dict[str, Any]:
         "bridge_source_ids": bridge_source_ids,
         "action_pressure_by_entry": action_pressure_by_entry,
         "sources_without_concepts": set(memory.get("drift", {}).get("sources_without_concepts", [])),
+        "source_component_ids": source_component_ids,
     }
 
 
@@ -7045,6 +7051,7 @@ def build_material_routing_snapshot(
     return {
         "entry_id": entry_id,
         "protocol": active_protocol,
+        "component_id": str(graph_context.get("source_component_ids", {}).get(entry_id, "") or ""),
         "scores": {
             "protocol_score": protocol_score,
             "graph_score": graph_score,
@@ -7059,10 +7066,78 @@ def build_material_routing_snapshot(
     }
 
 
+def material_top_protocols(protocol_snapshots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    ranked = sorted(
+        [snapshot for snapshot in protocol_snapshots if isinstance(snapshot, dict)],
+        key=lambda item: (-float(item.get("total_score", 0.0) or 0.0), str(item.get("protocol") or "")),
+    )
+    return [
+        {
+            "protocol": str(snapshot.get("protocol") or ""),
+            "total_score": float(snapshot.get("total_score", 0.0) or 0.0),
+            "selected_as": str(snapshot.get("selected_as") or ""),
+        }
+        for snapshot in ranked[:3]
+    ]
+
+
+def cross_protocol_bridge_entry(protocol_snapshots: list[dict[str, Any]], active_protocol: str) -> bool:
+    for snapshot in protocol_snapshots:
+        if not isinstance(snapshot, dict):
+            continue
+        if str(snapshot.get("protocol") or "") == active_protocol:
+            continue
+        if bool(snapshot.get("is_bridge")) and float(snapshot.get("total_score", 0.0) or 0.0) >= 2.2:
+            return True
+    return False
+
+
+def build_material_routing_entry(
+    *,
+    active_protocol: str,
+    entry: dict[str, Any],
+    preview: str,
+    protocol_hints: list[str],
+    active_corpus_ids: list[str],
+    supports_judgment_ids: list[str],
+    last_query_hit_at: str,
+    last_review_reference_at: str,
+    graph_context: dict[str, Any],
+    computed_at: str,
+) -> dict[str, Any]:
+    protocol_snapshots = [
+        build_material_routing_snapshot(
+            active_protocol=protocol,
+            entry=entry,
+            preview=preview,
+            protocol_hints=protocol_hints,
+            active_corpus_ids=active_corpus_ids,
+            supports_judgment_ids=supports_judgment_ids,
+            last_query_hit_at=last_query_hit_at,
+            last_review_reference_at=last_review_reference_at,
+            graph_context=graph_context,
+            computed_at=computed_at,
+        )
+        for protocol in sorted(PROTOCOL_LIBRARY)
+    ]
+    active_snapshot = next(
+        (snapshot for snapshot in protocol_snapshots if str(snapshot.get("protocol") or "") == active_protocol),
+        protocol_snapshots[0],
+    )
+    return {
+        **active_snapshot,
+        "protocol_snapshots": protocol_snapshots,
+        "top_protocols": material_top_protocols(protocol_snapshots),
+        "cross_protocol_bridge": cross_protocol_bridge_entry(protocol_snapshots, active_protocol),
+    }
+
+
 def archive_candidate_reactivation_signals(
     material_entry: dict[str, Any],
     routing_snapshot: dict[str, Any],
     previous_candidate: dict[str, Any],
+    *,
+    active_protocol: str = DEFAULT_PROTOCOL,
 ) -> list[str]:
     signals: list[str] = []
     previous_flagged_at = str(previous_candidate.get("last_flagged_at") or "")
@@ -7082,6 +7157,15 @@ def archive_candidate_reactivation_signals(
         signals.append("bridge-evidence")
     if float(routing_snapshot.get("total_score", 0.0) or 0.0) >= 2.2:
         signals.append("routing-score-recovered")
+    if bool(routing_snapshot.get("cross_protocol_bridge")):
+        signals.append("cross-protocol-bridge")
+    top_protocols = [
+        str(item.get("protocol") or "")
+        for item in routing_snapshot.get("top_protocols", [])
+        if isinstance(item, dict) and str(item.get("protocol") or "")
+    ]
+    if any(protocol != active_protocol for protocol in top_protocols[:2]):
+        signals.append("cross-protocol-top-rank")
     return signals
 
 
@@ -7092,6 +7176,7 @@ def build_archive_candidate_state(
     active_judgment_ids: set[str],
     generated_at: str,
     previous_state: dict[str, Any],
+    active_protocol: str = DEFAULT_PROTOCOL,
 ) -> dict[str, Any]:
     previous_by_entry = {
         str(entry.get("entry_id") or ""): entry
@@ -7116,12 +7201,14 @@ def build_archive_candidate_state(
         touch_stale = recency_score_for_timestamp(str(material_entry.get("last_touched_at") or "")) <= 0.4
         total_score = float(routing_snapshot.get("total_score", 0.0) or 0.0)
         is_bridge = bool(routing_snapshot.get("is_bridge"))
+        cross_protocol_bridge = bool(routing_snapshot.get("cross_protocol_bridge"))
         no_active_corpus = not material_entry.get("active_corpus_ids")
         candidate = (
             no_active_corpus
             and query_stale
             and touch_stale
             and not is_bridge
+            and not cross_protocol_bridge
             and str(material_entry.get("temperature") or "") in {"warm", "cold"}
             and str(routing_snapshot.get("selected_as") or "") in {"cold-evidence", "archive-candidate"}
         )
@@ -7160,7 +7247,12 @@ def build_archive_candidate_state(
             )
             continue
         if previous_candidate:
-            reactivation_signals = archive_candidate_reactivation_signals(material_entry, routing_snapshot, previous_candidate)
+            reactivation_signals = archive_candidate_reactivation_signals(
+                material_entry,
+                routing_snapshot,
+                previous_candidate,
+                active_protocol=active_protocol,
+            )
             if reactivation_signals:
                 entries.append(
                     {
@@ -7174,14 +7266,60 @@ def build_archive_candidate_state(
                         "reactivation_signals": reactivation_signals,
                         "status": "reactivated",
                     }
-                )
+    )
     return {"version": 1, "generated_at": generated_at, "entries": entries}
 
 
-def active_corpus_bridge_evidence_ids(machine_query: dict[str, Any], source_ids: list[str]) -> list[str]:
+def routing_bridge_recall_ids(
+    machine_query: dict[str, Any],
+    routing_state: dict[str, Any],
+    *,
+    active_protocol: str,
+    excluded_source_ids: set[str],
+) -> list[str]:
+    touched_component_ids = {
+        str(component_id)
+        for component_id in machine_query.get("touched_component_ids", [])
+        if isinstance(component_id, str) and component_id
+    }
+    candidates: list[tuple[float, str]] = []
+    for entry in routing_state.get("entries", []):
+        if not isinstance(entry, dict):
+            continue
+        entry_id = str(entry.get("entry_id") or "")
+        component_id = str(entry.get("component_id") or "")
+        if not entry_id or entry_id in excluded_source_ids:
+            continue
+        if not touched_component_ids or component_id not in touched_component_ids:
+            continue
+        protocol_snapshots = [
+            snapshot for snapshot in entry.get("protocol_snapshots", []) if isinstance(snapshot, dict)
+        ]
+        if not cross_protocol_bridge_entry(protocol_snapshots, active_protocol):
+            continue
+        non_active_scores = [
+            float(snapshot.get("total_score", 0.0) or 0.0)
+            for snapshot in protocol_snapshots
+            if str(snapshot.get("protocol") or "") != active_protocol
+        ]
+        if not non_active_scores:
+            continue
+        best_score = max(non_active_scores)
+        if best_score < 2.2:
+            continue
+        candidates.append((best_score, entry_id))
+    candidates.sort(key=lambda item: (-item[0], item[1]))
+    return [entry_id for _score, entry_id in candidates[:3]]
+
+
+def active_corpus_bridge_evidence_ids(
+    machine_query: dict[str, Any],
+    source_ids: list[str],
+    *,
+    routing_state: dict[str, Any] | None = None,
+    active_protocol: str = DEFAULT_PROTOCOL,
+) -> list[str]:
     bridge_concepts = set(machine_query.get("bridge_concept_slugs", []))
-    if not bridge_concepts:
-        return []
     source_set = set(source_ids) | {
         str(source_id)
         for source_id in machine_query.get("ranked_source_ids", [])
@@ -7194,16 +7332,28 @@ def active_corpus_bridge_evidence_ids(machine_query: dict[str, Any], source_ids:
                 source_set.add(node_id)
     bridge_ids: list[str] = []
     seen: set[str] = set()
-    for edge in machine_query.get("query_subgraph", {}).get("edges", []):
-        if not isinstance(edge, dict):
-            continue
-        if edge.get("type") != "HAS_CONCEPT":
-            continue
-        left = str(edge.get("left") or "")
-        right = str(edge.get("right") or "")
-        if left in source_set and right in bridge_concepts and left not in seen:
-            seen.add(left)
-            bridge_ids.append(left)
+    if bridge_concepts:
+        for edge in machine_query.get("query_subgraph", {}).get("edges", []):
+            if not isinstance(edge, dict):
+                continue
+            if edge.get("type") != "HAS_CONCEPT":
+                continue
+            left = str(edge.get("left") or "")
+            right = str(edge.get("right") or "")
+            if left in source_set and right in bridge_concepts and left not in seen:
+                seen.add(left)
+                bridge_ids.append(left)
+    if routing_state:
+        excluded = set(source_set) | set(bridge_ids)
+        for entry_id in routing_bridge_recall_ids(
+            machine_query,
+            routing_state,
+            active_protocol=active_protocol,
+            excluded_source_ids=excluded,
+        ):
+            if entry_id not in seen:
+                seen.add(entry_id)
+                bridge_ids.append(entry_id)
     return bridge_ids
 
 
@@ -7298,7 +7448,7 @@ def refresh_material_state(
         query_hit_at = last_query_hit_at.get(entry_id, "")
         review_hit_at = last_review_reference_at.get(entry_id, "")
         protocol_hints = protocol_hints_for_material(entry, preview)
-        routing_snapshot = build_material_routing_snapshot(
+        routing_entry = build_material_routing_entry(
             active_protocol=resolved_protocol,
             entry=entry,
             preview=preview,
@@ -7310,7 +7460,7 @@ def refresh_material_state(
             graph_context=graph_context,
             computed_at=generated_at,
         )
-        routing_entries.append(routing_snapshot)
+        routing_entries.append(routing_entry)
         material_entries.append(
             {
                 "entry_id": entry_id,
@@ -7319,7 +7469,7 @@ def refresh_material_state(
                 "source_type": str(entry.get("source_type") or ""),
                 "protocol_hints": protocol_hints,
                 "temperature": temperature_from_routing(
-                    str(routing_snapshot.get("selected_as") or ""),
+                    str(routing_entry.get("selected_as") or ""),
                     supports_judgment_ids=supports_judgment_ids,
                 ),
                 "last_touched_at": str(entry.get("updated_at") or entry.get("imported_at") or ""),
@@ -7344,6 +7494,7 @@ def refresh_material_state(
         active_judgment_ids=set(reference_state.get("active_judgment_ids", [])),
         generated_at=generated_at,
         previous_state=previous_archive_candidates,
+        active_protocol=resolved_protocol,
     )
     active_archive_ids = {
         str(entry.get("entry_id") or "")
@@ -11627,6 +11778,7 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
             **protocol_state,
             "active_protocol": active_protocol,
         }
+    routing_state = load_material_routing_state(root)
     machine_query = build_machine_memory_query(load_machine_memory(root), question, protocol=active_protocol)
     ranked_concepts = rank_concepts(
         root,
@@ -11664,7 +11816,12 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
 
     destination.write_text(content, encoding="utf-8")
     artifact_ref = relative_path(root, destination)
-    bridge_evidence_ids = active_corpus_bridge_evidence_ids(machine_query, [entry["id"] for entry in ranked])
+    bridge_evidence_ids = active_corpus_bridge_evidence_ids(
+        machine_query,
+        [entry["id"] for entry in ranked],
+        routing_state=routing_state,
+        active_protocol=active_protocol,
+    )
     active_corpus = upsert_active_corpus(
         root,
         protocol=active_protocol,

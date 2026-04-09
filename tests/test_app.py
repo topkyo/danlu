@@ -15,6 +15,7 @@ from aiwiki.app import (
     apply_concept_rewrite,
     apply_machine_memory_action,
     ask_question,
+    build_archive_candidate_state,
     collect_machine_memory_actions,
     compile_wiki,
     ensure_layout,
@@ -310,6 +311,15 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("drift_score", routing_record["scores"])
         self.assertIn(routing_record["selected_as"], {"hot-evidence", "warm-evidence", "cold-evidence", "archive-candidate"})
         self.assertIsInstance(routing_record["is_bridge"], bool)
+        self.assertIn("component_id", routing_record)
+        self.assertIn("cross_protocol_bridge", routing_record)
+        self.assertTrue(routing_record["protocol_snapshots"])
+        self.assertTrue(routing_record["top_protocols"])
+        self.assertLessEqual(len(routing_record["top_protocols"]), 3)
+        self.assertTrue(
+            {"general", "investing", "research", "product", "ops"}
+            <= {item["protocol"] for item in routing_record["protocol_snapshots"]}
+        )
 
     def test_ask_creates_active_corpus_and_runtime_history(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -427,6 +437,78 @@ class AiwikiFlowTests(unittest.TestCase):
 
         bridge_ids = active_corpus_bridge_evidence_ids(machine_query, ["src-ranked"])
         self.assertEqual(bridge_ids, ["src-bridge"])
+
+    def test_bridge_evidence_recalls_cross_protocol_routing_matches(self) -> None:
+        machine_query = {
+            "bridge_concept_slugs": [],
+            "ranked_source_ids": ["src-ranked"],
+            "query_subgraph": {"sources": [{"id": "src-ranked", "title": "Ranked"}], "edges": []},
+            "touched_component_ids": ["component-7"],
+        }
+        routing_state = {
+            "entries": [
+                {
+                    "entry_id": "src-cross",
+                    "component_id": "component-7",
+                    "cross_protocol_bridge": False,
+                    "protocol_snapshots": [
+                        {"protocol": "general", "total_score": 2.6, "is_bridge": True},
+                        {"protocol": "research", "total_score": 1.4, "is_bridge": True},
+                    ],
+                },
+                {
+                    "entry_id": "src-weak",
+                    "component_id": "component-7",
+                    "cross_protocol_bridge": True,
+                    "protocol_snapshots": [
+                        {"protocol": "general", "total_score": 2.0, "is_bridge": True},
+                        {"protocol": "research", "total_score": 1.5, "is_bridge": True},
+                    ],
+                },
+            ]
+        }
+
+        bridge_ids = active_corpus_bridge_evidence_ids(
+            machine_query,
+            ["src-ranked"],
+            routing_state=routing_state,
+            active_protocol="research",
+        )
+
+        self.assertEqual(bridge_ids, ["src-cross"])
+
+    def test_archive_candidate_skips_cross_protocol_bridge_sources(self) -> None:
+        archive_candidates = build_archive_candidate_state(
+            material_entries=[
+                {
+                    "entry_id": "src-cross",
+                    "temperature": "cold",
+                    "active_corpus_ids": [],
+                    "supports_judgment_ids": [],
+                    "last_query_hit_at": "",
+                    "last_touched_at": "2025-01-01T00:00:00+00:00",
+                }
+            ],
+            routing_entries=[
+                {
+                    "entry_id": "src-cross",
+                    "selected_as": "archive-candidate",
+                    "total_score": 1.6,
+                    "is_bridge": False,
+                    "cross_protocol_bridge": True,
+                    "top_protocols": [
+                        {"protocol": "research", "total_score": 2.6, "selected_as": "warm-evidence"},
+                        {"protocol": "general", "total_score": 1.6, "selected_as": "archive-candidate"},
+                    ],
+                }
+            ],
+            active_judgment_ids=set(),
+            generated_at="2026-04-09T00:00:00+00:00",
+            previous_state={"entries": []},
+            active_protocol="general",
+        )
+
+        self.assertEqual(archive_candidates["entries"], [])
 
     def test_protocol_set_updates_dashboard_without_compile(self) -> None:
         set_active_protocol(self.root, "investing")
