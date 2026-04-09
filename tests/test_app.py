@@ -3767,6 +3767,10 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn('output/control/shell-summary.json', content)
         self.assertIn('scripts/aiwiki-launcher.sh', content)
         self.assertNotIn(".aiwiki/state/", content)
+        self.assertIn("launcherIsExecutable(launcherPath)", content)
+        self.assertIn("fs.accessSync(launcherPath, fs.constants.X_OK)", content)
+        self.assertIn("runUiAction(action, label = \"ui-action\")", content)
+        self.assertIn("console.error(`[furnace-product-shell] ${label} failed`, error);", content)
 
     def test_cli_shell_status_command_outputs_summary_json(self) -> None:
         with patch("sys.stdout", new_callable=io.StringIO) as stdout:

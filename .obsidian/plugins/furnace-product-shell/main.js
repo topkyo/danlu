@@ -92,12 +92,16 @@ class AskCommandModal extends Modal {
         const mode = String(modeSelect.value || "ask");
         const protocol = String(protocolSelect.value || "").trim();
         this.close();
-        await this.plugin.runAskCommand({
-          question,
-          format,
-          mode,
-          protocol,
-        });
+        this.plugin.runUiAction(
+          () =>
+            this.plugin.runAskCommand({
+              question,
+              format,
+              mode,
+              protocol,
+            }),
+          "Ask modal"
+        );
       })
     );
     actionSetting.addButton((button) =>
@@ -139,7 +143,7 @@ class ProtocolCommandModal extends Modal {
           return;
         }
         this.close();
-        await this.plugin.runProtocolSetCommand(protocol);
+        this.plugin.runUiAction(() => this.plugin.runProtocolSetCommand(protocol), "Set protocol modal");
       })
     );
     actionSetting.addButton((button) =>
@@ -313,38 +317,38 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.addSettingTab(new FurnaceProductShellSettingTab(this.app, this));
 
     this.addRibbonIcon("flask-conical", "Open Furnace Center", () => {
-      void this.openFurnaceCenterView();
+      this.runUiAction(() => this.openFurnaceCenterView(), "Open Furnace Center");
     });
     this.addRibbonIcon("refresh-ccw", "Refresh Furnace Shell", () => {
-      void this.refreshShellSummaryCommand();
+      this.runUiAction(() => this.refreshShellSummaryCommand(), "Refresh Furnace Shell");
     });
 
     this.addCommand({
       id: "open-furnace-center",
       name: "Open Furnace Center",
       callback: () => {
-        void this.openFurnaceCenterView();
+        this.runUiAction(() => this.openFurnaceCenterView(), "Open Furnace Center");
       },
     });
     this.addCommand({
       id: "open-recent-runs",
       name: "Open Recent Runs",
       callback: () => {
-        void this.openRecentRunsView();
+        this.runUiAction(() => this.openRecentRunsView(), "Open Recent Runs");
       },
     });
     this.addCommand({
       id: "refresh-furnace-shell",
       name: "Refresh Furnace Shell",
       callback: () => {
-        void this.refreshShellSummaryCommand();
+        this.runUiAction(() => this.refreshShellSummaryCommand(), "Refresh Furnace Shell");
       },
     });
     this.addCommand({
       id: "run-compile",
       name: "Compile",
       callback: () => {
-        void this.runCompileCommand();
+        this.runUiAction(() => this.runCompileCommand(), "Compile");
       },
     });
     this.addCommand({
@@ -358,7 +362,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       id: "run-nightly",
       name: "Nightly",
       callback: () => {
-        void this.runNightlyCommand();
+        this.runUiAction(() => this.runNightlyCommand(), "Nightly");
       },
     });
     this.addCommand({
@@ -418,6 +422,18 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.pluginState.recentRuns = this.pluginState.recentRuns.slice(0, limit);
   }
 
+  launcherIsExecutable(launcherPath) {
+    if (!launcherPath || !fs.existsSync(launcherPath)) {
+      return false;
+    }
+    try {
+      fs.accessSync(launcherPath, fs.constants.X_OK);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
   refreshRepoState() {
     const adapter = this.app.vault && this.app.vault.adapter;
     const root = adapter && typeof adapter.basePath === "string" ? adapter.basePath : "";
@@ -436,7 +452,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           missingPaths.push(relativePath);
         }
       });
-      if (!launcherPath || !fs.existsSync(launcherPath)) {
+      if (!this.launcherIsExecutable(launcherPath)) {
         missingPaths.push(this.settings.launcherPath);
       }
     }
@@ -566,6 +582,14 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         reject(error);
       });
     });
+  }
+
+  runUiAction(action, label = "ui-action") {
+    Promise.resolve()
+      .then(() => action())
+      .catch((error) => {
+        console.error(`[furnace-product-shell] ${label} failed`, error);
+      });
   }
 
   createRunRecord(label, args) {
@@ -756,7 +780,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         button.addClass("mod-cta");
       }
       button.addEventListener("click", () => {
-        void buttonConfig.onClick();
+        this.runUiAction(() => buttonConfig.onClick(), `Button: ${buttonConfig.label}`);
       });
     });
   }
@@ -831,7 +855,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
         const openButton = actions.createEl("button", { text: "Open" });
         openButton.addEventListener("click", () => {
-          void this.openWorkspacePath(artifact.path);
+          this.runUiAction(() => this.openWorkspacePath(artifact.path), `Open output: ${artifact.path}`);
         });
       });
     }
@@ -855,7 +879,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
       const button = actions.createEl("button", { text: "Open" });
       button.addEventListener("click", () => {
-        void this.openWorkspacePath(links[key]);
+        this.runUiAction(() => this.openWorkspacePath(links[key]), `Open link: ${links[key]}`);
       });
     });
     if (this.settings.showHtmlShortcuts) {
@@ -872,7 +896,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
         const button = actions.createEl("button", { text: "Open" });
         button.addEventListener("click", () => {
-          void this.openWorkspacePath(links[key]);
+          this.runUiAction(() => this.openWorkspacePath(links[key]), `Open link: ${links[key]}`);
         });
       });
     }
@@ -917,17 +941,17 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         if (record.resultPath || record.receiptPath) {
           const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
           if (record.resultPath) {
-            const outputButton = actions.createEl("button", { text: "Open result" });
-            outputButton.addEventListener("click", () => {
-              void this.openWorkspacePath(record.resultPath);
-            });
-          }
-          if (record.receiptPath) {
-            const receiptButton = actions.createEl("button", { text: "Open receipt" });
-            receiptButton.addEventListener("click", () => {
-              void this.openWorkspacePath(record.receiptPath);
-            });
-          }
+          const outputButton = actions.createEl("button", { text: "Open result" });
+          outputButton.addEventListener("click", () => {
+              this.runUiAction(() => this.openWorkspacePath(record.resultPath), `Open result: ${record.resultPath}`);
+          });
+        }
+        if (record.receiptPath) {
+          const receiptButton = actions.createEl("button", { text: "Open receipt" });
+          receiptButton.addEventListener("click", () => {
+              this.runUiAction(() => this.openWorkspacePath(record.receiptPath), `Open receipt: ${record.receiptPath}`);
+          });
+        }
         }
       });
     }
@@ -951,7 +975,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
           const button = actions.createEl("button", { text: "Open" });
           button.addEventListener("click", () => {
-            void this.openWorkspacePath(pathValue);
+            this.runUiAction(() => this.openWorkspacePath(pathValue), `Open runtime event path: ${pathValue}`);
           });
         }
       });
@@ -975,7 +999,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
           const button = actions.createEl("button", { text: "Open receipt" });
           button.addEventListener("click", () => {
-            void this.openWorkspacePath(receipt.receipt_path);
+            this.runUiAction(() => this.openWorkspacePath(receipt.receipt_path), `Open receipt: ${receipt.receipt_path}`);
           });
         }
       });
