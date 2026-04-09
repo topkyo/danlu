@@ -1,0 +1,100 @@
+.furnace-shell-view {
+  padding: 12px 16px 18px;
+}
+
+.furnace-shell-view h2,
+.furnace-shell-view h3 {
+  margin-top: 0;
+}
+
+.furnace-shell-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin: 12px 0 18px;
+}
+
+.furnace-shell-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--background-secondary);
+}
+
+.furnace-shell-card-label {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.furnace-shell-card-value {
+  font-size: 1.35em;
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+.furnace-shell-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 18px;
+}
+
+.furnace-shell-actions button {
+  cursor: pointer;
+}
+
+.furnace-shell-section {
+  margin-top: 18px;
+}
+
+.furnace-shell-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.furnace-shell-list li {
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding: 10px 0;
+}
+
+.furnace-shell-list li:last-child {
+  border-bottom: 0;
+}
+
+.furnace-shell-meta {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  margin-top: 4px;
+}
+
+.furnace-shell-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.furnace-shell-status-ok {
+  color: var(--color-green);
+}
+
+.furnace-shell-status-running {
+  color: var(--color-orange);
+}
+
+.furnace-shell-status-failed {
+  color: var(--color-red);
+}
+
+.furnace-shell-empty {
+  color: var(--text-muted);
+  padding: 12px 0;
+}
+
+.furnace-shell-code {
+  font-family: var(--font-monospace);
+  font-size: 0.9em;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

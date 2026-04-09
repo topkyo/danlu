@@ -31,6 +31,26 @@ status: "active"
 - Obsidian 插件负责统一入口、状态展示、命令调度和结果跳转
 - 人通过插件面板与炼丹炉交互，而不是记大量命令和在多个页面间跳转
 
+## 当前实现状态
+
+截至当前仓库状态，Phase 1 已开始落地到：
+
+- `.obsidian/plugins/furnace-product-shell/manifest.json`
+- `.obsidian/plugins/furnace-product-shell/main.js`
+- `.obsidian/plugins/furnace-product-shell/styles.css`
+
+本轮只实现最小 desktop shell：
+
+- `Furnace Center`
+- `Recent Runs`
+- `Refresh Furnace Shell / Compile / Ask / Nightly / Set Protocol`
+
+还没有实现：
+
+- `Review Center` / `Execution Center` 插件视图
+- `file-back / review-page / apply-* / archive` 的插件接线
+- TypeScript/build toolchain
+
 ## 为什么要单独做这层
 
 当前炼丹炉已经有：

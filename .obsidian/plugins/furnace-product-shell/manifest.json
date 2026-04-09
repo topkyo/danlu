@@ -1,0 +1,9 @@
+{
+  "id": "furnace-product-shell",
+  "name": "Furnace Product Shell",
+  "version": "0.1.0",
+  "minAppVersion": "1.8.0",
+  "description": "Desktop-only Product Shell for aiwiki, backed by shell-summary.json and the repo-local aiwiki launcher.",
+  "author": "OpenAI Codex",
+  "isDesktopOnly": true
+}

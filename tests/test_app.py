@@ -5,6 +5,7 @@ from datetime import datetime
 import io
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -3732,6 +3733,40 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn('PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"', content)
         self.assertIn('export PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"', content)
         self.assertIn('exec python3 -m aiwiki.cli --root "$PROJECT_ROOT" "$@"', content)
+
+    def test_product_shell_plugin_manifest_declares_desktop_only(self) -> None:
+        manifest_path = Path("/home/tim/ai-wiki/.obsidian/plugins/furnace-product-shell/manifest.json")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(manifest["id"], "furnace-product-shell")
+        self.assertEqual(manifest["name"], "Furnace Product Shell")
+        self.assertTrue(manifest["isDesktopOnly"])
+        self.assertGreaterEqual(str(manifest["minAppVersion"]), "1.8.0")
+
+    def test_product_shell_plugin_main_js_passes_node_syntax_check(self) -> None:
+        plugin_path = Path("/home/tim/ai-wiki/.obsidian/plugins/furnace-product-shell/main.js")
+        result = subprocess.run(
+            ["node", "--check", str(plugin_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+    def test_product_shell_plugin_scaffold_declares_p0_views_and_commands(self) -> None:
+        plugin_path = Path("/home/tim/ai-wiki/.obsidian/plugins/furnace-product-shell/main.js")
+        content = plugin_path.read_text(encoding="utf-8")
+        self.assertIn('const VIEW_TYPE_FURNACE_CENTER = "furnace-product-shell-furnace-center";', content)
+        self.assertIn('const VIEW_TYPE_RECENT_RUNS = "furnace-product-shell-recent-runs";', content)
+        self.assertIn('id: "open-furnace-center"', content)
+        self.assertIn('id: "open-recent-runs"', content)
+        self.assertIn('id: "refresh-furnace-shell"', content)
+        self.assertIn('id: "run-compile"', content)
+        self.assertIn('id: "run-ask"', content)
+        self.assertIn('id: "run-nightly"', content)
+        self.assertIn('id: "set-protocol"', content)
+        self.assertIn('output/control/shell-summary.json', content)
+        self.assertIn('scripts/aiwiki-launcher.sh', content)
+        self.assertNotIn(".aiwiki/state/", content)
 
     def test_cli_shell_status_command_outputs_summary_json(self) -> None:
         with patch("sys.stdout", new_callable=io.StringIO) as stdout:
