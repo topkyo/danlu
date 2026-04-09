@@ -149,6 +149,22 @@ class AiwikiFlowTests(unittest.TestCase):
         manifest = load_manifest(self.root)
         return [entry for entry in manifest["entries"] if entry["id"] in {first_entry["id"], second_entry["id"]}]
 
+    def _prepare_stale_protocol_material(self) -> dict[str, str]:
+        sample = self.root / "earnings-thesis.md"
+        sample.write_text(
+            "# Earnings Thesis\n\nRevenue margin valuation EPS cashflow multiple underwrite risk.\n",
+            encoding="utf-8",
+        )
+        entry = ingest_source(self.root, str(sample), title="Earnings Thesis")
+        compile_wiki(self.root)
+        manifest = load_manifest(self.root)
+        manifest["entries"][0]["imported_at"] = "2025-01-01T00:00:00+00:00"
+        manifest["entries"][0]["updated_at"] = "2025-01-01T00:00:00+00:00"
+        save_manifest(self.root, manifest)
+        compile_wiki(self.root)
+        compile_wiki(self.root)
+        return entry
+
     def test_ingest_compile_ask_file_back_and_lint(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         manifest = load_manifest(self.root)
@@ -754,6 +770,26 @@ class AiwikiFlowTests(unittest.TestCase):
 
         self.assertEqual(general_ranked[0]["id"], alpha["id"])
         self.assertEqual(investing_ranked[0]["id"], zulu["id"])
+
+    def test_stale_protocol_hinted_material_can_recommend_archived_under_general(self) -> None:
+        entry = self._prepare_stale_protocol_material()
+
+        archive_candidates = json.loads(
+            (self.root / ".aiwiki" / "state" / "archive-candidates.json").read_text(encoding="utf-8")
+        )
+        candidate = next(item for item in archive_candidates["entries"] if item["entry_id"] == entry["id"])
+
+        self.assertEqual(candidate["status"], "ready")
+        self.assertEqual(candidate["recommended_temperature"], "archived")
+
+    def test_protocol_hinted_material_has_clear_top_protocol_margin(self) -> None:
+        self._prepare_stale_protocol_material()
+
+        routing_state = json.loads((self.root / ".aiwiki" / "state" / "material-routing.json").read_text(encoding="utf-8"))
+        routing_entry = routing_state["entries"][0]
+        self.assertEqual(routing_entry["top_protocols"][0]["protocol"], "investing")
+        margin = routing_entry["top_protocols"][0]["total_score"] - routing_entry["top_protocols"][1]["total_score"]
+        self.assertGreaterEqual(margin, 0.5)
 
     def test_protocol_set_updates_dashboard_without_compile(self) -> None:
         set_active_protocol(self.root, "investing")

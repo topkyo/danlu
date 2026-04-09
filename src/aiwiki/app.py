@@ -7024,8 +7024,9 @@ def material_protocol_score(
         ]
     )
     focus_score = protocol_focus_score(active_protocol, text)
+    non_default_hints = [hint for hint in protocol_hints if hint and hint != DEFAULT_PROTOCOL]
     if active_protocol == DEFAULT_PROTOCOL:
-        base = 0.6
+        base = 0.4 if not non_default_hints else 0.25
     elif active_protocol in protocol_hints:
         base = 0.75
     else:
