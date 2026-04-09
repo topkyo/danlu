@@ -18,8 +18,10 @@ from .app import (
     lint_wiki,
     load_protocol_state,
     nightly_health,
+    reactivate_concept,
     revert_material_archive,
     revert_machine_memory_action,
+    retire_concept,
     review_concept_rewrite,
     review_machine_memory_action,
     review_page,
@@ -160,6 +162,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     apply_rewrite_parser.add_argument("slug", help="Concept slug.")
     apply_rewrite_parser.add_argument("--note", help="Optional apply note.")
+
+    retire_concept_parser = subparsers.add_parser(
+        "retire-concept",
+        help="Apply an explicit concept lifecycle override and retire a concept from default query ranking.",
+    )
+    retire_concept_parser.add_argument("slug", help="Concept slug.")
+    retire_concept_parser.add_argument("--note", help="Optional retire note.")
+
+    reactivate_concept_parser = subparsers.add_parser(
+        "reactivate-concept",
+        help="Clear the active retired override for a concept and return it to heuristic lifecycle routing.",
+    )
+    reactivate_concept_parser.add_argument("slug", help="Concept slug.")
+    reactivate_concept_parser.add_argument("--note", help="Optional reactivate note.")
 
     action_review_parser = subparsers.add_parser(
         "review-action",
@@ -332,6 +348,10 @@ def main(argv: list[str] | None = None) -> int:
             result = review_concept_rewrite(root, args.slug, args.status, note=args.note)
         elif args.command == "apply-rewrite":
             result = apply_concept_rewrite(root, args.slug, note=args.note)
+        elif args.command == "retire-concept":
+            result = retire_concept(root, args.slug, note=args.note)
+        elif args.command == "reactivate-concept":
+            result = reactivate_concept(root, args.slug, note=args.note)
         elif args.command == "review-action":
             result = review_machine_memory_action(root, args.action_id, args.status, note=args.note)
         elif args.command == "apply-action":

@@ -3369,7 +3369,45 @@ def build_concept_lifecycle_entry(
         "rewrite_apply_ready": bool(rewrite_proposal.get("apply_ready")),
         "source_count": int(quality_record.get("source_count") or len(source_pages)),
         "related_count": int(quality_record.get("related_count") or 0),
+        "override_active": False,
+        "override_state": "",
+        "override_reason_codes": [],
+        "override_note": "",
+        "override_updated_at": "",
+        "override_source": "",
     }
+
+
+def apply_knowledge_lifecycle_override(
+    entry: dict[str, Any],
+    override: dict[str, Any] | None,
+) -> dict[str, Any]:
+    normalized = dict(entry)
+    if not override or not bool(override.get("active")):
+        return normalized
+    override_state = str(override.get("lifecycle_state") or "")
+    if override_state not in KNOWLEDGE_LIFECYCLE_STATES:
+        return normalized
+    override_reason_codes = [
+        str(reason)
+        for reason in override.get("reason_codes", [])
+        if isinstance(reason, str) and reason.strip()
+    ]
+    normalized["derived_lifecycle_state"] = str(entry.get("lifecycle_state") or "")
+    normalized["derived_reason_codes"] = list(entry.get("reason_codes") or [])
+    normalized["override_active"] = True
+    normalized["override_state"] = override_state
+    normalized["override_reason_codes"] = override_reason_codes
+    normalized["override_note"] = str(override.get("note") or "")
+    normalized["override_updated_at"] = str(override.get("updated_at") or override.get("applied_at") or "")
+    normalized["override_source"] = str(override.get("operation") or "manual-runtime")
+    normalized["lifecycle_state"] = override_state
+    normalized["reason_codes"] = ["manual-override", *(override_reason_codes or [f"manual-{override_state}"])]
+    if override_state == "retired":
+        normalized["pending_review"] = False
+        normalized["overdue_review"] = False
+        normalized["escalation_candidate"] = False
+    return normalized
 
 
 def knowledge_lifecycle_counts(entries: list[dict[str, Any]]) -> dict[str, Any]:
@@ -3410,6 +3448,8 @@ def refresh_knowledge_lifecycle_state(
     memory: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     ensure_layout(root)
+    override_state = ensure_knowledge_lifecycle_override_state(root)
+    active_overrides = active_knowledge_lifecycle_overrides(override_state)
     manifest_entries = entries if entries is not None else load_manifest(root).get("entries", [])
     _entry_by_id, path_to_entry_id = entry_lookup_maps(manifest_entries)
     decision_pages = decisions if decisions is not None else collect_curated_pages(root, "decisions", "decision")
@@ -3477,6 +3517,12 @@ def refresh_knowledge_lifecycle_state(
             )
             for path in sorted((root / "wiki" / "concepts").glob("*.md"))
         ],
+    ]
+    lifecycle_entries = [
+        apply_knowledge_lifecycle_override(entry, active_overrides.get(str(entry.get("path") or "")))
+        if str(entry.get("kind") or "") == "concept"
+        else entry
+        for entry in lifecycle_entries
     ]
     document = {
         "version": 1,
@@ -7136,6 +7182,10 @@ def knowledge_lifecycle_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "knowledge-lifecycle.json"
 
 
+def knowledge_lifecycle_override_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "knowledge-lifecycle-overrides.json"
+
+
 def material_archive_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "material-archives.json"
 
@@ -7309,6 +7359,43 @@ def save_knowledge_lifecycle_state(root: Path, document: dict[str, Any]) -> None
     save_json_document(knowledge_lifecycle_state_path(root), document)
 
 
+def default_knowledge_lifecycle_override_state() -> dict[str, Any]:
+    return {"version": 1, "entries": []}
+
+
+def load_knowledge_lifecycle_override_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(knowledge_lifecycle_override_state_path(root))
+    if not isinstance(document, dict):
+        return default_knowledge_lifecycle_override_state()
+    entries = document.get("entries")
+    if not isinstance(entries, list):
+        return default_knowledge_lifecycle_override_state()
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "entries": [entry for entry in entries if isinstance(entry, dict)],
+    }
+
+
+def save_knowledge_lifecycle_override_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(knowledge_lifecycle_override_state_path(root), document)
+
+
+def ensure_knowledge_lifecycle_override_state(root: Path) -> dict[str, Any]:
+    state = load_knowledge_lifecycle_override_state(root)
+    path = knowledge_lifecycle_override_state_path(root)
+    if not path.exists():
+        save_knowledge_lifecycle_override_state(root, state)
+    return state
+
+
+def active_knowledge_lifecycle_overrides(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        str(entry.get("path") or ""): entry
+        for entry in document.get("entries", [])
+        if isinstance(entry, dict) and bool(entry.get("active")) and str(entry.get("path") or "")
+    }
+
+
 def default_material_archive_state() -> dict[str, Any]:
     return {"version": 1, "entries": []}
 
@@ -7344,6 +7431,24 @@ def active_archived_material_ids(root: Path) -> set[str]:
 
 def material_archive_action_id(entry_id: str) -> str:
     return f"archive-{entry_id}"
+
+
+def concept_page_path(root: Path, slug: str) -> Path:
+    return root / "wiki" / "concepts" / f"{slug}.md"
+
+
+def concept_lifecycle_entry(lifecycle_state: dict[str, Any], slug: str) -> dict[str, Any]:
+    target_path = f"wiki/concepts/{slug}.md"
+    return next(
+        (
+            dict(entry)
+            for entry in lifecycle_state.get("entries", [])
+            if isinstance(entry, dict)
+            and str(entry.get("kind") or "") == "concept"
+            and str(entry.get("path") or "") == target_path
+        ),
+        {},
+    )
 
 
 def routing_snapshot_for_protocol(routing_entry: dict[str, Any], protocol: str) -> dict[str, Any]:
@@ -12135,6 +12240,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "material_routing_path": relative_path(root, material_routing_state_path(root)),
         "archive_candidates_path": relative_path(root, archive_candidates_state_path(root)),
         "knowledge_lifecycle_path": relative_path(root, knowledge_lifecycle_state_path(root)),
+        "knowledge_lifecycle_overrides_path": relative_path(root, knowledge_lifecycle_override_state_path(root)),
     }
 
 
@@ -12153,7 +12259,17 @@ def rank_concepts(
     question_tokens = tokenize(question)
     boost_concept_slugs = boost_concept_slugs or set()
     ranked: list[tuple[int, dict[str, Any]]] = []
+    lifecycle = load_knowledge_lifecycle_state(root)
+    retired_paths = {
+        str(entry.get("path") or "")
+        for entry in lifecycle.get("entries", [])
+        if isinstance(entry, dict)
+        and str(entry.get("kind") or "") == "concept"
+        and str(entry.get("lifecycle_state") or "") == "retired"
+    }
     for path in sorted((root / "wiki" / "concepts").glob("*.md")):
+        if relative_path(root, path) in retired_paths:
+            continue
         content = path.read_text(encoding="utf-8", errors="replace")
         frontmatter = parse_frontmatter(content)
         title = frontmatter.get("title") or path.stem
@@ -13103,6 +13219,163 @@ def apply_concept_rewrite(root: Path, slug: str, *, note: str | None = None) -> 
         "status": "applied",
         "applied_at": applied_at,
         "path": str(target.get("target_path") or f"wiki/concepts/{slug}.md"),
+    }
+
+
+def refresh_knowledge_lifecycle_runtime(root: Path, *, generated_at: str | None = None) -> dict[str, Any]:
+    manifest = sync_manifest_with_raw(root)
+    return refresh_knowledge_lifecycle_state(
+        root,
+        generated_at=generated_at or utc_now(),
+        entries=manifest["entries"],
+        active_corpora_state=load_active_corpora_state(root),
+        memory=load_machine_memory(root),
+    )
+
+
+@runtime_write_operation
+def retire_concept(root: Path, slug: str, *, note: str | None = None) -> dict[str, Any]:
+    ensure_layout(root)
+    path = concept_page_path(root, slug)
+    if not path.exists():
+        raise FileNotFoundError(f"Concept page not found: {relative_path(root, path)}")
+    lifecycle = refresh_knowledge_lifecycle_runtime(root)
+    current_entry = concept_lifecycle_entry(lifecycle, slug)
+    if not current_entry:
+        raise RuntimeError(f"Concept lifecycle entry not found: {slug}")
+    if current_entry.get("active_corpus_ids"):
+        raise RuntimeError("Active-corpus concept cannot transition to retired.")
+    if str(current_entry.get("lifecycle_state") or "") == "retired" and current_entry.get("override_active"):
+        raise RuntimeError(f"Concept is already retired: {slug}")
+
+    override_state = ensure_knowledge_lifecycle_override_state(root)
+    override_entries = [dict(entry) for entry in override_state.get("entries", []) if isinstance(entry, dict)]
+    retired_at = utc_now()
+    path_ref = relative_path(root, path)
+    page_id = str(current_entry.get("page_id") or f"concept-{slug}")
+    for entry in override_entries:
+        if (
+            bool(entry.get("active"))
+            and str(entry.get("kind") or "") == "concept"
+            and str(entry.get("path") or "") == path_ref
+        ):
+            entry["active"] = False
+            entry["cleared_at"] = retired_at
+            entry["cleared_note"] = "Superseded by newer concept lifecycle override."
+    override_entries.append(
+        {
+            "page_id": page_id,
+            "slug": slug,
+            "path": path_ref,
+            "kind": "concept",
+            "lifecycle_state": "retired",
+            "active": True,
+            "operation": "retire",
+            "reason_codes": ["manual-retire"],
+            "applied_at": retired_at,
+            "updated_at": retired_at,
+            "note": note or "Concept retired from the active knowledge plane.",
+        }
+    )
+    save_knowledge_lifecycle_override_state(root, {"version": 1, "entries": override_entries})
+    updated_lifecycle = refresh_knowledge_lifecycle_runtime(root, generated_at=retired_at)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "knowledge-lifecycle-override",
+            "occurred_at": retired_at,
+            "operation": "retire",
+            "kind": "concept",
+            "page_id": page_id,
+            "slug": slug,
+            "path": path_ref,
+            "lifecycle_state": "retired",
+            "note": note or "",
+        },
+    )
+    append_wiki_log(
+        root,
+        "concept-retire",
+        str(current_entry.get("title") or slug),
+        [
+            f"slug: `{slug}`",
+            f"path: `{path_ref}`",
+            f"lifecycle_state: `retired`",
+            f"override_state: `{relative_path(root, knowledge_lifecycle_override_state_path(root))}`",
+        ],
+    )
+    final_entry = concept_lifecycle_entry(updated_lifecycle, slug)
+    return {
+        "slug": slug,
+        "path": path_ref,
+        "status": str(final_entry.get("lifecycle_state") or "retired"),
+        "override_path": relative_path(root, knowledge_lifecycle_override_state_path(root)),
+        "knowledge_lifecycle_path": relative_path(root, knowledge_lifecycle_state_path(root)),
+        "updated_at": retired_at,
+    }
+
+
+@runtime_write_operation
+def reactivate_concept(root: Path, slug: str, *, note: str | None = None) -> dict[str, Any]:
+    ensure_layout(root)
+    path = concept_page_path(root, slug)
+    if not path.exists():
+        raise FileNotFoundError(f"Concept page not found: {relative_path(root, path)}")
+    override_state = ensure_knowledge_lifecycle_override_state(root)
+    override_entries = [dict(entry) for entry in override_state.get("entries", []) if isinstance(entry, dict)]
+    path_ref = relative_path(root, path)
+    target: dict[str, Any] | None = None
+    for entry in override_entries:
+        if (
+            bool(entry.get("active"))
+            and str(entry.get("kind") or "") == "concept"
+            and str(entry.get("path") or "") == path_ref
+            and str(entry.get("lifecycle_state") or "") == "retired"
+        ):
+            target = entry
+            break
+    if target is None:
+        raise RuntimeError(f"No active retired concept override exists for slug: {slug}")
+    reactivated_at = utc_now()
+    target["active"] = False
+    target["reactivated_at"] = reactivated_at
+    target["reactivate_note"] = note or "Concept reactivated into heuristic lifecycle routing."
+    target["updated_at"] = reactivated_at
+    save_knowledge_lifecycle_override_state(root, {"version": 1, "entries": override_entries})
+    updated_lifecycle = refresh_knowledge_lifecycle_runtime(root, generated_at=reactivated_at)
+    final_entry = concept_lifecycle_entry(updated_lifecycle, slug)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "knowledge-lifecycle-override",
+            "occurred_at": reactivated_at,
+            "operation": "reactivate",
+            "kind": "concept",
+            "page_id": str(target.get("page_id") or f"concept-{slug}"),
+            "slug": slug,
+            "path": path_ref,
+            "lifecycle_state": str(final_entry.get("lifecycle_state") or ""),
+            "note": note or "",
+        },
+    )
+    append_wiki_log(
+        root,
+        "concept-reactivate",
+        str(final_entry.get("title") or slug),
+        [
+            f"slug: `{slug}`",
+            f"path: `{path_ref}`",
+            f"lifecycle_state: `{str(final_entry.get('lifecycle_state') or 'unknown')}`",
+            f"override_state: `{relative_path(root, knowledge_lifecycle_override_state_path(root))}`",
+        ],
+    )
+    return {
+        "slug": slug,
+        "path": path_ref,
+        "status": str(final_entry.get("lifecycle_state") or ""),
+        "override_path": relative_path(root, knowledge_lifecycle_override_state_path(root)),
+        "knowledge_lifecycle_path": relative_path(root, knowledge_lifecycle_state_path(root)),
+        "updated_at": reactivated_at,
     }
 
 
@@ -14655,6 +14928,124 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                                 f"Concept lifecycle entry `{page_id}` is missing `quality_state`.",
                             )
                         )
+                    if not isinstance(entry.get("override_reason_codes", []), list):
+                        findings.append(
+                            Finding(
+                                "error",
+                                relative_path(root, knowledge_state_path),
+                                "Concept lifecycle entry `override_reason_codes` is not a list.",
+                            )
+                        )
+                    override_state = str(entry.get("override_state") or "")
+                    if override_state and override_state not in KNOWLEDGE_LIFECYCLE_STATES:
+                        findings.append(
+                            Finding(
+                                "error",
+                                relative_path(root, knowledge_state_path),
+                                f"Concept lifecycle entry `{page_id}` has unsupported override state `{override_state}`.",
+                            )
+                        )
+                    if not isinstance(entry.get("override_active"), bool):
+                        findings.append(
+                            Finding(
+                                "error",
+                                relative_path(root, knowledge_state_path),
+                                "Concept lifecycle entry `override_active` is not a bool.",
+                            )
+                        )
+
+    knowledge_override_path = knowledge_lifecycle_override_state_path(root)
+    if concept_pages and not knowledge_override_path.exists():
+        findings.append(
+            Finding("error", relative_path(root, knowledge_override_path), "Missing knowledge lifecycle override state file.")
+        )
+    elif knowledge_override_path.exists():
+        override_state = load_json_document(knowledge_override_path)
+        override_entries = override_state.get("entries") if isinstance(override_state, dict) else None
+        if not isinstance(override_entries, list):
+            findings.append(
+                Finding(
+                    "error",
+                    relative_path(root, knowledge_override_path),
+                    "Knowledge lifecycle override state is not valid JSON.",
+                )
+            )
+        else:
+            active_override_paths: dict[str, int] = {}
+            for entry in override_entries:
+                if not isinstance(entry, dict):
+                    continue
+                slug = str(entry.get("slug") or "")
+                path = str(entry.get("path") or "")
+                kind = str(entry.get("kind") or "")
+                lifecycle_state = str(entry.get("lifecycle_state") or "")
+                if not slug:
+                    findings.append(
+                        Finding(
+                            "error",
+                            relative_path(root, knowledge_override_path),
+                            "Knowledge lifecycle override entry is missing `slug`.",
+                        )
+                    )
+                if kind and kind != "concept":
+                    findings.append(
+                        Finding(
+                            "error",
+                            relative_path(root, knowledge_override_path),
+                            f"Knowledge lifecycle override entry has unsupported kind `{kind}`.",
+                        )
+                    )
+                if lifecycle_state and lifecycle_state not in KNOWLEDGE_LIFECYCLE_STATES:
+                    findings.append(
+                        Finding(
+                            "error",
+                            relative_path(root, knowledge_override_path),
+                            f"Knowledge lifecycle override entry has unsupported state `{lifecycle_state}`.",
+                        )
+                    )
+                if not isinstance(entry.get("active"), bool):
+                    findings.append(
+                        Finding(
+                            "error",
+                            relative_path(root, knowledge_override_path),
+                            "Knowledge lifecycle override entry `active` is not a bool.",
+                        )
+                    )
+                if not path:
+                    findings.append(
+                        Finding(
+                            "error",
+                            relative_path(root, knowledge_override_path),
+                            "Knowledge lifecycle override entry is missing `path`.",
+                        )
+                    )
+                elif not (root / path).exists():
+                    findings.append(
+                        Finding(
+                            "error",
+                            relative_path(root, knowledge_override_path),
+                            f"Knowledge lifecycle override entry references missing page `{path}`.",
+                        )
+                    )
+                if bool(entry.get("active")):
+                    active_override_paths[path] = active_override_paths.get(path, 0) + 1
+                    if lifecycle_state != "retired":
+                        findings.append(
+                            Finding(
+                                "warn",
+                                relative_path(root, knowledge_override_path),
+                                f"Active concept lifecycle override for `{slug or path}` is `{lifecycle_state or 'unknown'}`; current workflow expects `retired`.",
+                            )
+                        )
+            for path, count in active_override_paths.items():
+                if path and count > 1:
+                    findings.append(
+                        Finding(
+                            "error",
+                            relative_path(root, knowledge_override_path),
+                            f"Multiple active knowledge lifecycle overrides reference `{path}`.",
+                        )
+                    )
 
     if manifest["entries"] and not concept_pages:
         findings.append(Finding("warn", "wiki/concepts", "No concept pages have been compiled yet."))
@@ -15407,6 +15798,7 @@ def write_nightly_health(
         },
         "knowledge_lifecycle": {
             "path": relative_path(root, knowledge_lifecycle_state_path(root)),
+            "overrides_path": relative_path(root, knowledge_lifecycle_override_state_path(root)),
             "entry_count": len(knowledge_lifecycle.get("entries", [])),
             "state_counts": dict(knowledge_lifecycle.get("counts", {}).get("by_state", {})),
             "kind_counts": dict(knowledge_lifecycle.get("counts", {}).get("by_kind", {})),
@@ -15425,6 +15817,12 @@ def write_nightly_health(
                 for entry in knowledge_lifecycle.get("entries", [])
                 if str(entry.get("kind") or "") == "concept"
                 and entry.get("active_corpus_ids")
+            ],
+            "retired_concept_ids": [
+                str(entry.get("page_id") or "")
+                for entry in knowledge_lifecycle.get("entries", [])
+                if str(entry.get("kind") or "") == "concept"
+                and str(entry.get("lifecycle_state") or "") == "retired"
             ],
         },
         "promotions": promotion_result,

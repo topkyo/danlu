@@ -47,3 +47,19 @@ qa-review downgrade heuristic:
 - New Session: no
 - PROGRESS Read: yes
 - Notes: captured after gate refresh and closed_loop pass
+
+- Date: 2026-04-09
+- Agent: Codex
+- Task: concept lifecycle override retire/reactivate
+- qa-review Mode: same-context
+- qa-review Hit: 0
+- qa-review Miss: 0
+- qa-review False Positive: 0
+- qa-runtime Mode: scripted
+- qa-runtime Hit: 0
+- qa-runtime Miss: 0
+- qa-runtime False Positive: 0
+- Contract Scope Changed: no
+- New Session: no
+- PROGRESS Read: yes
+- Notes: captured after concept lifecycle override closed_loop pass

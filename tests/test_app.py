@@ -27,6 +27,7 @@ from aiwiki.app import (
     lint_wiki,
     load_archive_candidates_state,
     load_knowledge_lifecycle_state,
+    load_knowledge_lifecycle_override_state,
     load_machine_memory,
     load_machine_memory_action_state,
     load_manifest,
@@ -37,13 +38,16 @@ from aiwiki.app import (
     parse_frontmatter,
     placeholder_concept_slugs,
     render_frontmatter,
+    reactivate_concept,
     revert_material_archive,
     revert_machine_memory_action,
     review_concept_rewrite,
     review_machine_memory_action,
     review_page,
     runtime_write_lock,
+    rank_concepts,
     rank_sources,
+    retire_concept,
     save_manifest,
     save_material_routing_state,
     save_material_state,
@@ -326,22 +330,26 @@ class AiwikiFlowTests(unittest.TestCase):
         material_routing_path = self.root / ".aiwiki" / "state" / "material-routing.json"
         archive_candidates_path = self.root / ".aiwiki" / "state" / "archive-candidates.json"
         knowledge_lifecycle_path = self.root / ".aiwiki" / "state" / "knowledge-lifecycle.json"
+        knowledge_lifecycle_overrides_path = self.root / ".aiwiki" / "state" / "knowledge-lifecycle-overrides.json"
         self.assertEqual(compiled["material_state_path"], ".aiwiki/state/material-state.json")
         self.assertEqual(compiled["active_corpora_path"], ".aiwiki/state/active-corpora.json")
         self.assertEqual(compiled["material_routing_path"], ".aiwiki/state/material-routing.json")
         self.assertEqual(compiled["archive_candidates_path"], ".aiwiki/state/archive-candidates.json")
         self.assertEqual(compiled["knowledge_lifecycle_path"], ".aiwiki/state/knowledge-lifecycle.json")
+        self.assertEqual(compiled["knowledge_lifecycle_overrides_path"], ".aiwiki/state/knowledge-lifecycle-overrides.json")
         self.assertTrue(material_state_path.exists())
         self.assertTrue(active_corpora_path.exists())
         self.assertTrue(material_routing_path.exists())
         self.assertTrue(archive_candidates_path.exists())
         self.assertTrue(knowledge_lifecycle_path.exists())
+        self.assertTrue(knowledge_lifecycle_overrides_path.exists())
 
         material_state = json.loads(material_state_path.read_text(encoding="utf-8"))
         active_corpora = json.loads(active_corpora_path.read_text(encoding="utf-8"))
         material_routing = json.loads(material_routing_path.read_text(encoding="utf-8"))
         archive_candidates = json.loads(archive_candidates_path.read_text(encoding="utf-8"))
         knowledge_lifecycle = json.loads(knowledge_lifecycle_path.read_text(encoding="utf-8"))
+        knowledge_lifecycle_overrides = json.loads(knowledge_lifecycle_overrides_path.read_text(encoding="utf-8"))
         self.assertEqual(material_state["version"], 1)
         self.assertEqual(len(material_state["entries"]), 1)
         self.assertEqual(active_corpora["version"], 1)
@@ -351,6 +359,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(len(material_routing["entries"]), 1)
         self.assertEqual(archive_candidates["version"], 1)
         self.assertEqual(knowledge_lifecycle["version"], 1)
+        self.assertEqual(knowledge_lifecycle_overrides["version"], 1)
+        self.assertEqual(knowledge_lifecycle_overrides["entries"], [])
         self.assertGreater(knowledge_lifecycle["counts"]["total"], 0)
         self.assertGreater(knowledge_lifecycle["counts"]["by_kind"]["concept"]["total"], 0)
         self.assertTrue(any(item["kind"] == "concept" for item in knowledge_lifecycle["entries"]))
@@ -528,6 +538,58 @@ class AiwikiFlowTests(unittest.TestCase):
         ]
         self.assertTrue(revisit_concepts)
         self.assertTrue(all(entry["lifecycle_state"] == "revisit" for entry in revisit_concepts))
+
+    def test_retire_concept_sets_retired_override_and_exits_default_ranking(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        concept_entry = next(entry for entry in lifecycle["entries"] if entry["kind"] == "concept")
+        slug = Path(concept_entry["path"]).stem
+        title = concept_entry["title"]
+        self.assertIn(slug, [item["slug"] for item in rank_concepts(self.root, title)])
+
+        result = retire_concept(self.root, slug, note="Retire noisy concept from active ranking.")
+
+        self.assertEqual(result["status"], "retired")
+        updated_lifecycle = load_knowledge_lifecycle_state(self.root)
+        retired_entry = next(entry for entry in updated_lifecycle["entries"] if entry["path"] == concept_entry["path"])
+        self.assertEqual(retired_entry["lifecycle_state"], "retired")
+        self.assertTrue(retired_entry["override_active"])
+        self.assertEqual(retired_entry["override_state"], "retired")
+        self.assertNotEqual(retired_entry["derived_lifecycle_state"], "retired")
+        self.assertNotIn(slug, [item["slug"] for item in rank_concepts(self.root, title)])
+
+        override_state = load_knowledge_lifecycle_override_state(self.root)
+        active_override = next(
+            entry
+            for entry in override_state["entries"]
+            if entry["slug"] == slug and entry["active"]
+        )
+        self.assertEqual(active_override["lifecycle_state"], "retired")
+
+    def test_reactivate_concept_clears_retired_override_and_restores_ranking(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        concept_entry = next(entry for entry in lifecycle["entries"] if entry["kind"] == "concept")
+        slug = Path(concept_entry["path"]).stem
+        title = concept_entry["title"]
+        retire_concept(self.root, slug, note="Retire before reactivation.")
+
+        result = reactivate_concept(self.root, slug, note="Restore concept to heuristic routing.")
+
+        self.assertIn(result["status"], {"active", "review", "deferred", "revisit"})
+        updated_lifecycle = load_knowledge_lifecycle_state(self.root)
+        reactivated_entry = next(entry for entry in updated_lifecycle["entries"] if entry["path"] == concept_entry["path"])
+        self.assertNotEqual(reactivated_entry["lifecycle_state"], "retired")
+        self.assertFalse(reactivated_entry["override_active"])
+        self.assertEqual(reactivated_entry["override_state"], "")
+        self.assertIn(slug, [item["slug"] for item in rank_concepts(self.root, title)])
+
+        override_state = load_knowledge_lifecycle_override_state(self.root)
+        self.assertFalse(any(entry["slug"] == slug and entry["active"] for entry in override_state["entries"]))
 
     def test_archive_candidates_progress_to_ready_and_reactivate(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
