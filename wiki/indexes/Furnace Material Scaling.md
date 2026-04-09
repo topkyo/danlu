@@ -106,14 +106,39 @@ status: "active"
 
 - `archive candidates`
 - `cold evidence`
-- `inactive concepts`
-- `retired judgments`
+- `cold attachments`
+- `reactivation candidates`
 
 规则：
 
 - 归档不能破坏 provenance
 - 归档后仍应保留被引用路径
 - 归档只改变默认优先级，不改变历史可追溯性
+
+### 4. 证据温度层 vs 知识资产生命周期
+
+这里必须明确分开两件事：
+
+- **证据温度层**
+  - 面向 `raw`、附件、capture notes、source-level evidence
+  - 解决“哪些材料应该继续处于热路径”这个问题
+- **知识资产生命周期**
+  - 面向 `concept / judgment / decision`
+  - 解决“哪些知识资产处于 active / review / retired / revisit”这个问题
+
+两者相关，但不应共用同一套状态机。
+
+原因：
+
+- `raw/` 仍然是唯一事实输入层
+- `concept / judgment / decision` 属于编译后的知识层和判断层
+- 证据降温不等于知识资产退役
+- 某个旧 evidence 可以进入 cold/archive，但由它支撑的 judgment 仍然可能处于 active revisit
+
+因此，规模化设计里应该始终保持：
+
+- 证据层讨论 `hot / warm / cold / archived`
+- 知识层讨论 `active / review / deferred / retired / revisit`
 
 ## Protocol-aware Material Routing
 
@@ -124,6 +149,7 @@ status: "active"
 - 什么 concept 应继续硬化
 - 什么 evidence 可以降温
 - 什么 archive 需要重新升温
+- 哪些跨协议证据应作为 bridge evidence 被召回
 
 举例：
 
@@ -138,7 +164,17 @@ status: "active"
 
 这意味着：
 
-**同一个炉子可以有多个协议，但每个协议在同一时刻只“点亮”自己最相关的材料面。**
+**同一个炉子可以有多个协议，但每个协议在同一时刻只“优先点亮”自己最相关的材料面。**
+
+这里的关键不是协议隔离，而是协议偏置：
+
+- 当前 active protocol 应主导排序和优先级
+- 但跨协议证据不能被硬隔离
+- 当 graph、judgment、review 或 drift 信号显示跨域关联存在时，相关证据应被稳定召回
+
+也就是说，正确形态不是“按协议切成几个互不相见的桶”，而是：
+
+**一个统一炉子，当前协议优先，跨协议证据可召回。**
 
 ## Machine Memory 的职责升级
 
