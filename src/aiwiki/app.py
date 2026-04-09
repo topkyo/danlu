@@ -5736,8 +5736,18 @@ def protocol_output_pack_rows(output_packs: dict[str, Any], protocol: str, *, li
 
 def protocol_execution_receipts(execution_audit: dict[str, Any], protocol: str, *, limit: int = 8) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
+    protocol_buckets = execution_audit.get("recent_by_protocol", {})
     for bucket_name, label in (("recent_apply", "apply"), ("recent_revert", "revert")):
-        for record in execution_audit.get(bucket_name, []):
+        bucket_rows = []
+        if isinstance(protocol_buckets, dict):
+            scoped = protocol_buckets.get(bucket_name, {})
+            if isinstance(scoped, dict):
+                protocol_rows = scoped.get(protocol, [])
+                if isinstance(protocol_rows, list):
+                    bucket_rows = protocol_rows
+        if not bucket_rows:
+            bucket_rows = execution_audit.get(bucket_name, [])
+        for record in bucket_rows:
             if str(record.get("protocol") or DEFAULT_PROTOCOL) != protocol:
                 continue
             rows.append(
@@ -5805,11 +5815,19 @@ def render_furnace_center(
     rewrite_state = health.get("concept_rewrite", {})
     pending_items = queue.get("pending_decisions", []) + queue.get("pending_judgments", [])
     citation_drift_count = sum(1 for page in decisions + judgments if page.get("citation_drift") == "true")
-    ready_actions = plan.get("ready_actions", [])
+    ready_actions = [
+        action
+        for action in plan.get("ready_actions", [])
+        if isinstance(action, dict) and str(action.get("protocol") or DEFAULT_PROTOCOL) == active_protocol
+    ]
     apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
     rewrite_proposals = rewrite_state.get("proposals", [])
     apply_ready_rewrites = [proposal for proposal in rewrite_proposals if proposal.get("apply_ready")]
-    execution_proposals = plan.get("execution_proposals", [])
+    execution_proposals = [
+        proposal
+        for proposal in plan.get("execution_proposals", [])
+        if isinstance(proposal, dict) and str(proposal.get("protocol") or DEFAULT_PROTOCOL) == active_protocol
+    ]
     page_patch_steps = sum(len(proposal.get("page_patch_plan", [])) for proposal in execution_proposals)
     recent_reviewed = queue.get("recently_reviewed", [])[:6]
     scorecard = protocol_scorecard(domain_pilots, active_protocol)
@@ -5839,7 +5857,7 @@ def render_furnace_center(
         f"- 待审项目：`{len(pending_items)}`",
         f"- 已到期 / 升级：`{len(aging.get('overdue', []))}` / `{len(aging.get('escalated', []))}`",
         f"- 证据漂移：`{citation_drift_count}`",
-        f"- Ready repair actions：`{plan.get('counts', {}).get('ready', 0)}`",
+        f"- Ready repair actions：`{len(ready_actions)}`",
         f"- 可直接 apply 的动作：`{len(apply_ready_actions)}`",
         f"- Rewrite 提案：`{rewrite_state.get('counts', {}).get('active', 0)}`",
         f"- 可直接 apply 的 rewrite：`{len(apply_ready_rewrites)}`",
@@ -6025,11 +6043,19 @@ def render_furnace_center_html(
     concept_quality = health.get("concept_quality", {})
     rewrite_state = health.get("concept_rewrite", {})
     pending_items = queue.get("pending_decisions", []) + queue.get("pending_judgments", [])
-    ready_actions = plan.get("ready_actions", [])
+    ready_actions = [
+        action
+        for action in plan.get("ready_actions", [])
+        if isinstance(action, dict) and str(action.get("protocol") or DEFAULT_PROTOCOL) == active_protocol
+    ]
     apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
     rewrite_proposals = rewrite_state.get("proposals", [])
     apply_ready_rewrites = [proposal for proposal in rewrite_proposals if proposal.get("apply_ready")]
-    execution_proposals = plan.get("execution_proposals", [])
+    execution_proposals = [
+        proposal
+        for proposal in plan.get("execution_proposals", [])
+        if isinstance(proposal, dict) and str(proposal.get("protocol") or DEFAULT_PROTOCOL) == active_protocol
+    ]
     page_patch_steps = sum(len(proposal.get("page_patch_plan", [])) for proposal in execution_proposals)
     recent_reviewed = queue.get("recently_reviewed", [])[:8]
     scorecard = protocol_scorecard(domain_pilots, active_protocol)
@@ -9199,6 +9225,10 @@ def build_execution_audit_snapshot(root: Path, memory: dict[str, Any], *, active
     history = load_execution_receipt_history(root)
     recent_apply = [record for record in history if str(record.get("operation") or "") == "apply"][:8]
     recent_revert = [record for record in history if str(record.get("operation") or "") == "revert"][:8]
+    recent_by_protocol: dict[str, dict[str, list[dict[str, Any]]]] = {
+        "recent_apply": {},
+        "recent_revert": {},
+    }
     band_counts: dict[str, int] = {}
     protocol_counts: dict[str, int] = {}
     receipt_counts: dict[str, int] = {}
@@ -9208,6 +9238,12 @@ def build_execution_audit_snapshot(root: Path, memory: dict[str, Any], *, active
         action_id = str(record.get("action_id") or "")
         if action_id:
             receipt_counts[action_id] = receipt_counts.get(action_id, 0) + 1
+        operation = str(record.get("operation") or "")
+        if operation in {"apply", "revert"}:
+            bucket_name = "recent_apply" if operation == "apply" else "recent_revert"
+            scoped = recent_by_protocol[bucket_name].setdefault(protocol, [])
+            if len(scoped) < 8:
+                scoped.append(record)
     action_rows: list[dict[str, Any]] = []
     for action in all_actions:
         profile = execution_policy_profile(action)
@@ -9264,6 +9300,7 @@ def build_execution_audit_snapshot(root: Path, memory: dict[str, Any], *, active
         "protocols": protocol_rows,
         "recent_apply": recent_apply,
         "recent_revert": recent_revert,
+        "recent_by_protocol": recent_by_protocol,
         "actions": action_rows[:16],
         "consistency_signals": consistency_signals[:16],
         "consistency_counts": {

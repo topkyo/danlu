@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from aiwiki.app import (
+    append_execution_receipt_history,
     apply_concept_rewrite,
     apply_machine_memory_action,
     ask_question,
@@ -573,6 +574,97 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("最近执行回执", html_payload)
         self.assertIn("快速命令", html_payload)
         self.assertIn("研发协议 Pilot Scorecard", html_payload)
+
+    def test_furnace_center_keeps_protocol_receipts_beyond_global_recent_cutoff(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        set_active_protocol(self.root, "research")
+        append_execution_receipt_history(
+            self.root,
+            {
+                "kind": "execution-receipt",
+                "operation": "apply",
+                "protocol": "research",
+                "action_id": "research-action",
+                "title": "Research receipt",
+                "receipt_path": "output/control/execution-receipts/research-action.json",
+                "applied_at": "2026-04-09T10:00:00+08:00",
+            },
+        )
+        for index in range(9):
+            append_execution_receipt_history(
+                self.root,
+                {
+                    "kind": "execution-receipt",
+                    "operation": "apply",
+                    "protocol": "investing",
+                    "action_id": f"investing-action-{index}",
+                    "title": f"Investing receipt {index}",
+                    "receipt_path": f"output/control/execution-receipts/investing-action-{index}.json",
+                    "applied_at": f"2026-04-09T10:{index + 1:02d}:00+08:00",
+                },
+            )
+
+        compile_wiki(self.root)
+
+        dashboard_payload = (self.root / "wiki" / "indexes" / "furnace-center.md").read_text(encoding="utf-8")
+        html_payload = (self.root / "output" / "control" / "furnace-center.html").read_text(encoding="utf-8")
+
+        self.assertIn("Research receipt", dashboard_payload)
+        self.assertIn("Research receipt", html_payload)
+
+    def test_furnace_center_filters_actions_and_proposals_to_active_protocol(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        self._seed_machine_memory_actions()
+        set_active_protocol(self.root, "research")
+        compile_wiki(self.root)
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+        entry = load_manifest(self.root)["entries"][0]
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "research-manual-link",
+                        "kind": "add-source-concept-link",
+                        "title": "Research safe apply link",
+                        "reason": "Research cockpit action.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "accepted",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                        "protocol": "research",
+                    },
+                    {
+                        "id": "investing-manual-link",
+                        "kind": "add-source-concept-link",
+                        "title": "Investing safe apply link",
+                        "reason": "Investing cockpit action.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "accepted",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                        "protocol": "investing",
+                    },
+                ],
+            },
+        )
+
+        compile_wiki(self.root)
+
+        dashboard_payload = (self.root / "wiki" / "indexes" / "furnace-center.md").read_text(encoding="utf-8")
+        html_payload = (self.root / "output" / "control" / "furnace-center.html").read_text(encoding="utf-8")
+
+        self.assertIn("Research safe apply link", dashboard_payload)
+        self.assertNotIn("Investing safe apply link", dashboard_payload)
+        self.assertIn("Research safe apply link", html_payload)
+        self.assertNotIn("Investing safe apply link", html_payload)
 
     def test_compile_writes_machine_memory_graph_html(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
