@@ -3513,6 +3513,52 @@ def render_knowledge_lifecycle_entry_summary(entry: dict[str, Any]) -> str:
     return f"- [{title}](../../{path}) | " + " | ".join(parts)
 
 
+def knowledge_lifecycle_governance_summary(
+    knowledge_lifecycle: dict[str, Any] | None,
+    *,
+    active_protocol: str = DEFAULT_PROTOCOL,
+) -> dict[str, Any]:
+    knowledge_lifecycle = knowledge_lifecycle or default_knowledge_lifecycle_state()
+    concept_backlog = sort_knowledge_lifecycle_entries(
+        select_knowledge_lifecycle_entries(
+            knowledge_lifecycle,
+            kinds={"concept"},
+            states={"review", "revisit"},
+        ),
+        active_protocol=active_protocol,
+    )
+    review_concepts = [entry for entry in concept_backlog if str(entry.get("lifecycle_state") or "") == "review"]
+    revisit_concepts = [entry for entry in concept_backlog if str(entry.get("lifecycle_state") or "") == "revisit"]
+    retired_concepts = sort_knowledge_lifecycle_entries(
+        select_knowledge_lifecycle_entries(
+            knowledge_lifecycle,
+            kinds={"concept"},
+            states={"retired"},
+        ),
+        active_protocol=active_protocol,
+    )
+    concept_counts = (
+        knowledge_lifecycle.get("counts", {})
+        .get("by_kind", {})
+        .get("concept", {})
+        .get("by_state", {})
+    )
+    return {
+        "concept_backlog": concept_backlog,
+        "review_concepts": review_concepts,
+        "revisit_concepts": revisit_concepts,
+        "retired_concepts": retired_concepts,
+        "counts": {
+            "concept_backlog": len(concept_backlog),
+            "review_concepts": len(review_concepts),
+            "revisit_concepts": len(revisit_concepts),
+            "retired_concepts": len(retired_concepts),
+            "active_concepts": int(concept_counts.get("active", 0) or 0),
+            "deferred_concepts": int(concept_counts.get("deferred", 0) or 0),
+        },
+    }
+
+
 def refresh_knowledge_lifecycle_state(
     root: Path,
     *,
@@ -5055,8 +5101,14 @@ def build_output_packs(
     protocol_state: dict[str, Any],
     recent_outputs: list[dict[str, str]],
     compiled_at: str,
+    *,
+    knowledge_lifecycle: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     active_protocol = protocol_state["active_protocol"]
+    lifecycle_summary = knowledge_lifecycle_governance_summary(
+        knowledge_lifecycle,
+        active_protocol=active_protocol,
+    )
     pages = decisions + judgments
     review_candidates = sorted(
         [
@@ -5466,6 +5518,7 @@ def build_output_packs(
         "review_packs": review_packs,
         "decision_memos": decision_memos,
         "sop_drafts": sop_drafts,
+        "lifecycle_summary": lifecycle_summary,
         "counts": counts,
     }
 
@@ -5474,6 +5527,10 @@ def render_output_packs_index(output_packs: dict[str, Any], compiled_at: str, ac
     review_packs = output_packs.get("review_packs", [])
     decision_memos = output_packs.get("decision_memos", [])
     sop_drafts = output_packs.get("sop_drafts", [])
+    lifecycle_summary = output_packs.get("lifecycle_summary", {})
+    lifecycle_counts = lifecycle_summary.get("counts", {})
+    concept_backlog = lifecycle_summary.get("concept_backlog", [])
+    retired_concepts = lifecycle_summary.get("retired_concepts", [])
     counts = output_packs.get("counts", {})
     lines = [
         "# 输出 Pack 总览",
@@ -5483,14 +5540,40 @@ def render_output_packs_index(output_packs: dict[str, Any], compiled_at: str, ac
         f"- Review packs：`{counts.get('review_packs', len(review_packs))}`",
         f"- Decision memos：`{counts.get('decision_memos', len(decision_memos))}`",
         f"- SOP drafts：`{counts.get('sop_drafts', len(sop_drafts))}`",
+        f"- lifecycle concept backlog：`{lifecycle_counts.get('concept_backlog', len(concept_backlog))}`",
+        f"- revisit concepts：`{lifecycle_counts.get('revisit_concepts', 0)}`",
+        f"- retired concepts：`{lifecycle_counts.get('retired_concepts', len(retired_concepts))}`",
         "",
         "## Pack 目录",
         "- `output/packs/review/`：待审 / 漂移 / aging 页面",
         "- `output/packs/decision-memos/`：已审 decision / judgment",
         "- `output/packs/sop-drafts/`：ready action / execution proposal",
         "",
-        "## Review Packs",
+        "## Lifecycle Governance Summary",
+        f"- review concepts：`{lifecycle_counts.get('review_concepts', 0)}`",
+        f"- revisit concepts：`{lifecycle_counts.get('revisit_concepts', 0)}`",
+        f"- retired concepts：`{lifecycle_counts.get('retired_concepts', len(retired_concepts))}`",
+        f"- active concepts：`{lifecycle_counts.get('active_concepts', 0)}`",
+        "",
+        "## Lifecycle Concept Backlog",
     ]
+    if not concept_backlog:
+        lines.append("- 当前没有 lifecycle-driven concept backlog。")
+    else:
+        for entry in concept_backlog[:12]:
+            lines.append(render_knowledge_lifecycle_entry_summary(entry))
+    lines.extend(["", "## Retired Concepts"])
+    if not retired_concepts:
+        lines.append("- 当前没有 retired concept。")
+    else:
+        for entry in retired_concepts[:12]:
+            lines.append(render_knowledge_lifecycle_entry_summary(entry))
+    lines.extend(
+        [
+            "",
+        "## Review Packs",
+        ]
+    )
     if not review_packs:
         lines.append("- 当前没有 review packs。")
     else:
@@ -6237,9 +6320,15 @@ def render_review_center_html(
     compiled_at: str,
     *,
     active_protocol: str = DEFAULT_PROTOCOL,
+    knowledge_lifecycle: dict[str, Any] | None = None,
 ) -> str:
+    knowledge_lifecycle = knowledge_lifecycle or default_knowledge_lifecycle_state()
     queue = review_queue(decisions, judgments, active_protocol=active_protocol)
     aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
+    lifecycle_summary = knowledge_lifecycle_governance_summary(
+        knowledge_lifecycle,
+        active_protocol=active_protocol,
+    )
     health = memory.get("health", {})
     plan = health.get("repair_plan", {})
     concept_quality = health.get("concept_quality", {})
@@ -6299,9 +6388,39 @@ def render_review_center_html(
             f" | apply_ready {html.escape(str(bool(item.get('apply_ready'))).lower())}</li>"
         )
 
+    def render_lifecycle_item(entry: dict[str, Any]) -> str:
+        path = str(entry.get("path") or "")
+        title = html.escape(str(entry.get("title") or entry.get("page_id") or "unknown"))
+        state = html.escape(display_knowledge_lifecycle_state(str(entry.get("lifecycle_state") or "")))
+        override = ""
+        if bool(entry.get("override_active")):
+            override = f" | override {html.escape(str(entry.get('override_state') or entry.get('lifecycle_state') or 'unknown'))}"
+        invalidation_signals = entry.get("invalidation_signals", [])
+        invalidation = ""
+        if isinstance(invalidation_signals, list) and invalidation_signals:
+            invalidation = f" | invalidation {html.escape(', '.join(str(item) for item in invalidation_signals[:3]))}"
+        active_corpus_ids = entry.get("active_corpus_ids", [])
+        active_corpora = ""
+        if isinstance(active_corpus_ids, list) and active_corpus_ids:
+            active_corpora = f" | active corpora {html.escape(str(len(active_corpus_ids)))}"
+        if path:
+            return (
+                f'<li><a href="../../{html.escape(path)}">{title}</a>'
+                f" | state {state}{override}{invalidation}{active_corpora}</li>"
+            )
+        return f"<li>{title} | state {state}{override}{invalidation}{active_corpora}</li>"
+
     pending_list = "".join(render_page_item(page) for page in pending_items[:12]) or "<li>当前没有待审项目。</li>"
     overdue_list = "".join(render_page_item(page) for page in aging.get("overdue", [])[:10]) or "<li>当前没有已到期待复审页面。</li>"
     escalated_list = "".join(render_page_item(page) for page in aging.get("escalated", [])[:10]) or "<li>当前没有需要升级处理的页面。</li>"
+    lifecycle_backlog_list = (
+        "".join(render_lifecycle_item(entry) for entry in lifecycle_summary.get("concept_backlog", [])[:10])
+        or "<li>当前没有 lifecycle concept backlog。</li>"
+    )
+    retired_concept_list = (
+        "".join(render_lifecycle_item(entry) for entry in lifecycle_summary.get("retired_concepts", [])[:10])
+        or "<li>当前没有 retired concept。</li>"
+    )
     ready_action_list = "".join(render_action_item(action) for action in ready_actions[:10]) or "<li>当前没有 ready repair action。</li>"
     apply_ready_action_list = (
         "".join(render_action_item(action) for action in apply_ready_actions[:8])
@@ -6315,6 +6434,8 @@ def render_review_center_html(
         ("待审项目", str(len(pending_items))),
         ("已到期复审", str(len(aging.get("overdue", [])))),
         ("升级项", str(len(aging.get("escalated", [])))),
+        ("生命周期待审", str(lifecycle_summary.get("counts", {}).get("concept_backlog", 0))),
+        ("已退役概念", str(lifecycle_summary.get("counts", {}).get("retired_concepts", 0))),
         ("证据漂移", str(sum(1 for page in decisions + judgments if page.get("citation_drift") == "true"))),
         ("ready actions", str(plan.get("counts", {}).get("ready", 0))),
         ("重写候选", str(concept_quality.get("counts", {}).get("rewrite_candidates", 0))),
@@ -6372,6 +6493,12 @@ def render_review_center_html(
             '    <div class="panel"><h2>已到期 / 需升级</h2><ul>',
             f"{overdue_list}",
             f"{escalated_list}",
+            "    </ul></div>",
+            '    <div class="panel"><h2>生命周期概念待审</h2><ul>',
+            f"{lifecycle_backlog_list}",
+            "    </ul></div>",
+            '    <div class="panel"><h2>已退役概念</h2><ul>',
+            f"{retired_concept_list}",
             "    </ul></div>",
             '    <div class="panel"><h2>Ready Repair Actions</h2><ul>',
             f"{ready_action_list}",
@@ -12148,6 +12275,16 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     )
     all_outputs = collect_output_density_artifacts(root)
     recent_outputs = collect_recent_output_artifacts(root)
+    active_corpora_state = load_active_corpora_state(root)
+    knowledge_lifecycle = refresh_knowledge_lifecycle_state(
+        root,
+        generated_at=compiled_at,
+        decisions=decision_pages,
+        judgments=judgment_pages,
+        entries=entries,
+        active_corpora_state=active_corpora_state,
+        memory=memory,
+    )
     output_packs = build_output_packs(
         root,
         decision_pages,
@@ -12156,6 +12293,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         protocol_state,
         recent_outputs,
         compiled_at,
+        knowledge_lifecycle=knowledge_lifecycle,
     )
     changed_pages += int(
         write_if_changed(
@@ -12248,6 +12386,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
                 memory,
                 compiled_at,
                 active_protocol=protocol_state["active_protocol"],
+                knowledge_lifecycle=knowledge_lifecycle,
             ),
         )
     )
@@ -12342,16 +12481,6 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     )
     material_routing = load_material_routing_state(root)
     archive_candidates = load_archive_candidates_state(root)
-    active_corpora_state = load_active_corpora_state(root)
-    knowledge_lifecycle = refresh_knowledge_lifecycle_state(
-        root,
-        generated_at=compiled_at,
-        decisions=decision_pages,
-        judgments=judgment_pages,
-        entries=entries,
-        active_corpora_state=active_corpora_state,
-        memory=memory,
-    )
     changed_pages += int(
         write_if_changed(
             root / "wiki" / "indexes" / "review-queue.md",
@@ -15924,6 +16053,10 @@ def write_nightly_health(
         active_corpora_state=active_corpora_state,
         memory=memory,
     )
+    lifecycle_summary = knowledge_lifecycle_governance_summary(
+        knowledge_lifecycle,
+        active_protocol=protocol_state["active_protocol"],
+    )
     state = {
         "generated_at": generated_at,
         "llm_used": llm_used,
@@ -16011,6 +16144,28 @@ def write_nightly_health(
                 if str(entry.get("kind") or "") == "concept"
                 and str(entry.get("lifecycle_state") or "") == "retired"
             ],
+            "governance_summary": {
+                "concept_backlog_count": lifecycle_summary.get("counts", {}).get("concept_backlog", 0),
+                "review_concept_count": lifecycle_summary.get("counts", {}).get("review_concepts", 0),
+                "revisit_concept_count": lifecycle_summary.get("counts", {}).get("revisit_concepts", 0),
+                "retired_concept_count": lifecycle_summary.get("counts", {}).get("retired_concepts", 0),
+                "concept_backlog_ids": [
+                    str(entry.get("page_id") or "")
+                    for entry in lifecycle_summary.get("concept_backlog", [])
+                ],
+                "review_concept_ids": [
+                    str(entry.get("page_id") or "")
+                    for entry in lifecycle_summary.get("review_concepts", [])
+                ],
+                "revisit_concept_ids": [
+                    str(entry.get("page_id") or "")
+                    for entry in lifecycle_summary.get("revisit_concepts", [])
+                ],
+                "retired_concept_ids": [
+                    str(entry.get("page_id") or "")
+                    for entry in lifecycle_summary.get("retired_concepts", [])
+                ],
+            },
         },
         "promotions": promotion_result,
         "aging": {

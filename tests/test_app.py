@@ -174,6 +174,40 @@ class AiwikiFlowTests(unittest.TestCase):
         compile_wiki(self.root)
         return entry
 
+    def _seed_lifecycle_governance_surface_state(self) -> tuple[str, str]:
+        first = self.root / "first.md"
+        first.write_text("# Latency Outlook\n\nLatency will increase with larger batches.\n", encoding="utf-8")
+        second = self.root / "second.md"
+        second.write_text("# Latency Outlook\n\nLatency may decrease after cache reuse.\n", encoding="utf-8")
+        first_entry = ingest_source(self.root, str(first), title="Latency Outlook A")
+        second_entry = ingest_source(self.root, str(second), title="Latency Outlook B")
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+
+        compile_wiki(self.root)
+
+        first_page = self.root / "wiki" / "sources" / f"{first_entry['id']}.md"
+        second_page = self.root / "wiki" / "sources" / f"{second_entry['id']}.md"
+        first_page.write_text(
+            first_page.read_text(encoding="utf-8").replace("- Pending LLM summary.", "- Latency will increase as batches grow."),
+            encoding="utf-8",
+        )
+        second_page.write_text(
+            second_page.read_text(encoding="utf-8").replace("- Pending LLM summary.", "- Latency can decrease once cache reuse stabilizes."),
+            encoding="utf-8",
+        )
+
+        compile_wiki(self.root)
+
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        retired_entry = next(
+            entry
+            for entry in lifecycle["entries"]
+            if entry["kind"] == "concept" and entry["title"] != "Latency Outlook"
+        )
+        retire_concept(self.root, Path(retired_entry["path"]).stem, note="Retire concept for lifecycle governance summary.")
+        compile_wiki(self.root)
+        return "Latency Outlook", retired_entry["title"]
+
     def test_ingest_compile_ask_file_back_and_lint(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         manifest = load_manifest(self.root)
@@ -1426,6 +1460,17 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Review Center", payload)
         self.assertIn("待审项目", payload)
         self.assertIn("../../wiki/indexes/review-center.md", payload)
+
+    def test_review_center_html_surfaces_lifecycle_governance_summary(self) -> None:
+        backlog_title, retired_title = self._seed_lifecycle_governance_surface_state()
+
+        review_html = self.root / "output" / "review" / "review-center.html"
+        payload = review_html.read_text(encoding="utf-8")
+
+        self.assertIn("生命周期概念待审", payload)
+        self.assertIn("已退役概念", payload)
+        self.assertIn(backlog_title, payload)
+        self.assertIn(retired_title, payload)
 
     def test_compile_writes_execution_center_markdown_and_html(self) -> None:
         self._seed_machine_memory_actions()
@@ -2802,6 +2847,17 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Action id:", sop_text)
         self.assertIn("apply-action", sop_text)
 
+    def test_output_packs_index_surfaces_lifecycle_governance_summary(self) -> None:
+        backlog_title, retired_title = self._seed_lifecycle_governance_surface_state()
+
+        packs_index = (self.root / "wiki" / "indexes" / "output-packs.md").read_text(encoding="utf-8")
+
+        self.assertIn("Lifecycle Governance Summary", packs_index)
+        self.assertIn("Lifecycle Concept Backlog", packs_index)
+        self.assertIn("Retired Concepts", packs_index)
+        self.assertIn(backlog_title, packs_index)
+        self.assertIn(retired_title, packs_index)
+
     def test_compile_fallback_sop_without_bundle_stays_dry_run_only(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -3245,6 +3301,18 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("review_focus", state["protocol"])
         self.assertIn("nightly_focus", state["protocol"])
         self.assertFalse(state["llm_used"])
+
+    def test_nightly_state_surfaces_lifecycle_governance_summary(self) -> None:
+        self._seed_lifecycle_governance_surface_state()
+
+        result = nightly_health(self.root)
+
+        state = json.loads((self.root / result["state_path"]).read_text(encoding="utf-8"))
+        governance_summary = state["knowledge_lifecycle"]["governance_summary"]
+        self.assertGreater(governance_summary["concept_backlog_count"], 0)
+        self.assertGreater(governance_summary["retired_concept_count"], 0)
+        self.assertTrue(governance_summary["concept_backlog_ids"])
+        self.assertTrue(governance_summary["retired_concept_ids"])
 
     def test_run_nightly_writes_semantic_artifacts_and_state(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
