@@ -28,7 +28,7 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         self.assertIn("[[wiki/indexes/Wiki Hub|", home)
         self.assertIn("[[wiki/indexes/Alchemy Furnace|", home)
         self.assertIn("[[wiki/indexes/Furnace Ultimate Architecture|", home)
-        self.assertIn("[[wiki/indexes/Furnace Ultimate Architecture|", home)
+        self.assertIn("[[wiki/indexes/Furnace Material Scaling|", home)
         self.assertIn("[[wiki/indexes/furnace-center|", home)
         self.assertIn("[[wiki/indexes/protocols|", home)
         self.assertIn("[[wiki/indexes/Furnace Protocols|", (self.root / "wiki" / "indexes" / "Wiki Hub.md").read_text(encoding="utf-8"))
@@ -50,6 +50,7 @@ class ObsidianWorkspaceTests(unittest.TestCase):
             "wiki/indexes/Wiki Hub.md",
             "wiki/indexes/Alchemy Furnace.md",
             "wiki/indexes/Furnace Ultimate Architecture.md",
+            "wiki/indexes/Furnace Material Scaling.md",
             "wiki/indexes/Furnace Protocols.md",
             "wiki/indexes/furnace-center.md",
             "wiki/indexes/protocols.md",

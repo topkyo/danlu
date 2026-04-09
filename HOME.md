@@ -38,7 +38,7 @@ kind: "dashboard"
 - [[wiki/indexes/Wiki Hub|知识中枢]]
 - [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
 - [[wiki/indexes/Furnace Ultimate Architecture|最终极形态]]
-- [[wiki/indexes/Furnace Ultimate Architecture|最终极形态]]
+- [[wiki/indexes/Furnace Material Scaling|大规模原料处理]]
 - [[wiki/indexes/furnace-center|炉心面板]]
 - [[wiki/indexes/execution-center|执行中心]]
 - [[wiki/indexes/execution-audit|执行审计]]

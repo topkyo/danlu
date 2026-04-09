@@ -32,8 +32,9 @@ status: "active"
 如果要看这套系统最终想长成什么样，直接读：
 
 - [[wiki/indexes/Furnace Ultimate Architecture|炼丹炉最终极形态]]
+- [[wiki/indexes/Furnace Material Scaling|大规模原料处理设计]]
 
-`Alchemy Furnace` 这份文档负责定义基线架构；最终极形态文档负责定义这套系统最终想长成什么样。
+`Alchemy Furnace` 这份文档负责定义基线架构；最终极形态文档负责定义这套系统最终想长成什么样；规模化设计文档负责定义原料越来越多时这套炉子如何继续稳定工作。
 
 ## 统一内核 + 多协议
 
