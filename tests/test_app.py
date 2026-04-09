@@ -18,15 +18,19 @@ from aiwiki.app import (
     apply_machine_memory_action,
     ask_question,
     build_archive_candidate_state,
+    build_machine_memory_query,
     collect_machine_memory_actions,
     compile_wiki,
     ensure_layout,
     file_back,
     ingest_source,
     lint_wiki,
+    load_archive_candidates_state,
     load_machine_memory,
     load_machine_memory_action_state,
     load_manifest,
+    load_material_routing_state,
+    load_material_state,
     load_protocol_state,
     nightly_health,
     parse_frontmatter,
@@ -1489,6 +1493,106 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("查询路径数", report_text)
         self.assertIn("触达分量", report_text)
         self.assertIn("latency", report_text.lower())
+
+    def test_machine_memory_query_prefers_recent_sources_for_recent_questions(self) -> None:
+        stale = self.root / "latency-alpha.md"
+        stale.write_text("# Latency Notes\n\nLatency throughput notes.\n", encoding="utf-8")
+        stale_entry = ingest_source(self.root, str(stale), title="Latency Notes Alpha")
+        fresh = self.root / "latency-zeta.md"
+        fresh.write_text("# Latency Notes\n\nLatency throughput notes.\n", encoding="utf-8")
+        fresh_entry = ingest_source(self.root, str(fresh), title="Latency Notes Zeta")
+        compile_wiki(self.root)
+
+        manifest = load_manifest(self.root)
+        for entry in manifest["entries"]:
+            if entry["id"] == stale_entry["id"]:
+                entry["imported_at"] = "2025-01-01T00:00:00+00:00"
+                entry["updated_at"] = "2025-01-01T00:00:00+00:00"
+        save_manifest(self.root, manifest)
+        compile_wiki(self.root)
+
+        machine_query = build_machine_memory_query(
+            load_machine_memory(self.root),
+            "latest latency notes",
+            protocol="research",
+            material_state=load_material_state(self.root),
+            routing_state=load_material_routing_state(self.root),
+            archive_candidates=load_archive_candidates_state(self.root),
+        )
+
+        self.assertEqual(machine_query["time_focus"], "recent")
+        self.assertIn("latest", machine_query["time_focus_markers"])
+        self.assertEqual(machine_query["ranked_source_ids"][0], fresh_entry["id"])
+        self.assertIn(fresh_entry["id"], machine_query["time_shard_source_ids"])
+
+    def test_machine_memory_query_protocol_shard_prefers_active_protocol_sources(self) -> None:
+        investing = self.root / "investing-notes.md"
+        investing.write_text("# Strategy Notes\n\nCompany thesis valuation catalyst.\n", encoding="utf-8")
+        investing_entry = ingest_source(self.root, str(investing), title="Strategy Notes Alpha")
+        research = self.root / "research-notes.md"
+        research.write_text("# Strategy Notes\n\nLatency throughput benchmark experiment.\n", encoding="utf-8")
+        research_entry = ingest_source(self.root, str(research), title="Strategy Notes Zeta")
+        compile_wiki(self.root)
+
+        investing_query = build_machine_memory_query(
+            load_machine_memory(self.root),
+            "compare strategy notes",
+            protocol="investing",
+            material_state=load_material_state(self.root),
+            routing_state=load_material_routing_state(self.root),
+            archive_candidates=load_archive_candidates_state(self.root),
+        )
+        research_query = build_machine_memory_query(
+            load_machine_memory(self.root),
+            "compare strategy notes",
+            protocol="research",
+            material_state=load_material_state(self.root),
+            routing_state=load_material_routing_state(self.root),
+            archive_candidates=load_archive_candidates_state(self.root),
+        )
+
+        self.assertEqual(investing_query["protocol_shard_source_ids"][0], investing_entry["id"])
+        self.assertEqual(research_query["protocol_shard_source_ids"][0], research_entry["id"])
+
+    def test_historical_query_surfaces_archive_recall_hints_without_reintroducing_archived_source(self) -> None:
+        legacy = self.root / "legacy-latency.md"
+        legacy.write_text("# Legacy Latency Notes\n\nLatency notes.\n", encoding="utf-8")
+        legacy_entry = ingest_source(self.root, str(legacy), title="Legacy Latency Notes")
+        compile_wiki(self.root)
+
+        manifest = load_manifest(self.root)
+        for entry in manifest["entries"]:
+            if entry["id"] == legacy_entry["id"]:
+                entry["imported_at"] = "2025-01-01T00:00:00+00:00"
+                entry["updated_at"] = "2025-01-01T00:00:00+00:00"
+        save_manifest(self.root, manifest)
+
+        compile_wiki(self.root)
+        compile_wiki(self.root)
+        archive_candidates = json.loads(
+            (self.root / ".aiwiki" / "state" / "archive-candidates.json").read_text(encoding="utf-8")
+        )
+        legacy_candidate = next(item for item in archive_candidates["entries"] if item["entry_id"] == legacy_entry["id"])
+        self.assertEqual(legacy_candidate["status"], "ready")
+        self.assertEqual(legacy_candidate["recommended_temperature"], "archived")
+
+        apply_material_archive(self.root, legacy_entry["id"], note="Archive legacy latency notes.")
+
+        current = self.root / "current-latency.md"
+        current.write_text("# Current Latency Notes\n\nLatency notes.\n", encoding="utf-8")
+        current_entry = ingest_source(self.root, str(current), title="Current Latency Notes")
+        compile_wiki(self.root)
+
+        result = ask_question(self.root, "legacy latency notes", "report")
+
+        machine_query = result["machine_memory_query"]
+        report_text = (self.root / result["path"]).read_text(encoding="utf-8")
+        self.assertEqual(machine_query["time_focus"], "historical")
+        self.assertTrue(machine_query["archive_recall_hints"])
+        self.assertEqual(machine_query["archive_recall_hints"][0]["entry_id"], legacy_entry["id"])
+        self.assertNotIn(legacy_entry["id"], result["ranked_sources"])
+        self.assertIn(current_entry["id"], result["ranked_sources"])
+        self.assertIn("归档召回提示", report_text)
 
     def test_run_compile_replaces_placeholder_summary(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")

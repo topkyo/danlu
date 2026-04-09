@@ -7009,6 +7009,131 @@ def recency_score_for_timestamp(timestamp: str) -> float:
     return 0.1
 
 
+QUERY_TIME_FOCUS_MARKERS: dict[str, tuple[str, ...]] = {
+    "recent": ("latest", "recent", "current", "new", "newest", "updated", "today", "fresh"),
+    "historical": ("history", "historical", "legacy", "old", "older", "previous", "prior", "archive", "archived"),
+}
+
+
+def machine_memory_query_time_focus(question: str) -> dict[str, Any]:
+    normalized = " ".join(re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]+", question.lower()))
+    recent_hits = [marker for marker in QUERY_TIME_FOCUS_MARKERS["recent"] if marker in normalized]
+    historical_hits = [marker for marker in QUERY_TIME_FOCUS_MARKERS["historical"] if marker in normalized]
+    if historical_hits and len(historical_hits) >= len(recent_hits):
+        return {"focus": "historical", "markers": historical_hits[:4]}
+    if recent_hits:
+        return {"focus": "recent", "markers": recent_hits[:4]}
+    return {"focus": "", "markers": []}
+
+
+def machine_memory_source_runtime_record(
+    source_id: str,
+    *,
+    base_score: float,
+    source_nodes: dict[str, dict[str, Any]],
+    material_by_entry: dict[str, dict[str, Any]],
+    routing_by_entry: dict[str, dict[str, Any]],
+    archive_candidates_by_entry: dict[str, dict[str, Any]],
+    protocol: str,
+    time_focus: str,
+) -> dict[str, Any]:
+    material_entry = material_by_entry.get(source_id, {})
+    routing_entry = routing_by_entry.get(source_id, {})
+    routing_snapshot = routing_snapshot_for_protocol(routing_entry, protocol)
+    archive_candidate = archive_candidates_by_entry.get(source_id, {})
+    temperature = str(material_entry.get("temperature") or "")
+
+    protocol_bonus = 0.0
+    top_protocols = [
+        str(item.get("protocol") or "")
+        for item in routing_entry.get("top_protocols", [])
+        if isinstance(item, dict) and str(item.get("protocol") or "")
+    ]
+    protocol_is_top = top_protocols[:1] == [protocol]
+    protocol_in_top2 = protocol in top_protocols[:2]
+    selected_as = str(routing_snapshot.get("selected_as") or "")
+    selected_bonus = 0.0
+    if selected_as == "hot-evidence":
+        selected_bonus = 0.9
+    elif selected_as == "warm-evidence":
+        selected_bonus = 0.6
+    elif selected_as == "cold-evidence":
+        selected_bonus = 0.3
+    total_score = float(routing_snapshot.get("total_score", 0.0) or 0.0)
+    if protocol_is_top:
+        protocol_bonus += 2.5 + selected_bonus + min(1.0, total_score * 0.25)
+    elif protocol_in_top2:
+        protocol_bonus += 1.2 + min(0.25, selected_bonus * 0.4) + min(0.4, total_score * 0.1)
+
+    activity_score = max(
+        recency_score_for_timestamp(str(material_entry.get("last_touched_at") or "")),
+        recency_score_for_timestamp(str(material_entry.get("last_query_hit_at") or "")),
+        recency_score_for_timestamp(str(material_entry.get("last_review_reference_at") or "")),
+    )
+    time_bonus = 0.0
+    if time_focus == "recent":
+        time_bonus += activity_score * 4.0
+        if temperature == "hot":
+            time_bonus += 0.4
+        elif temperature == "warm":
+            time_bonus += 0.2
+        elif temperature == "cold":
+            time_bonus -= 0.35
+        elif temperature == "archived":
+            time_bonus -= 1.0
+    elif time_focus == "historical":
+        time_bonus += (1.0 - activity_score) * 4.0
+        if temperature == "cold":
+            time_bonus += 0.8
+        elif temperature == "archived":
+            time_bonus += 1.4
+        elif temperature == "hot":
+            time_bonus -= 0.25
+        if archive_candidate:
+            time_bonus += 0.6
+
+    protocol_shard = protocol_is_top or (protocol_in_top2 and selected_as in {"hot-evidence", "warm-evidence"})
+    time_shard = bool(time_focus) and time_bonus > 1.0
+    archive_status = "archived" if temperature == "archived" else str(archive_candidate.get("status") or "")
+    archive_hint = bool(
+        temperature == "archived"
+        or (time_focus == "historical" and (temperature == "cold" or bool(archive_candidate)))
+        or (
+            archive_candidate
+            and str(archive_candidate.get("recommended_temperature") or "") == "archived"
+        )
+    )
+    archive_hint_score = base_score + protocol_bonus + max(0.0, time_bonus)
+    if temperature == "archived":
+        archive_hint_score += 1.0
+    elif archive_candidate:
+        archive_hint_score += 0.6
+    elif temperature == "cold":
+        archive_hint_score += 0.3
+
+    return {
+        "entry_id": source_id,
+        "title": str(source_nodes.get(source_id, {}).get("title") or source_id),
+        "path": str(source_nodes.get(source_id, {}).get("source_page") or f"wiki/sources/{source_id}.md"),
+        "base_score": float(base_score),
+        "protocol_bonus": round(protocol_bonus, 3),
+        "time_bonus": round(time_bonus, 3),
+        "combined_score": round(float(base_score) + protocol_bonus + time_bonus, 3),
+        "protocol_shard": protocol_shard,
+        "time_shard": time_shard,
+        "temperature": temperature,
+        "archive_status": archive_status,
+        "archive_hint": archive_hint,
+        "archive_hint_score": round(archive_hint_score, 3),
+        "recommended_temperature": str(archive_candidate.get("recommended_temperature") or ""),
+        "reason_codes": [
+            str(reason)
+            for reason in archive_candidate.get("reason_codes", [])
+            if isinstance(reason, str) and reason
+        ],
+    }
+
+
 def material_protocol_score(
     active_protocol: str,
     *,
@@ -8913,7 +9038,15 @@ def build_machine_memory_adjacency(memory: dict[str, Any]) -> dict[str, dict[str
     return adjacency
 
 
-def build_machine_memory_query(memory: dict[str, Any], question: str, *, protocol: str = DEFAULT_PROTOCOL) -> dict[str, Any]:
+def build_machine_memory_query(
+    memory: dict[str, Any],
+    question: str,
+    *,
+    protocol: str = DEFAULT_PROTOCOL,
+    material_state: dict[str, Any] | None = None,
+    routing_state: dict[str, Any] | None = None,
+    archive_candidates: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     term_index = memory.get("term_index", {})
     edges = memory.get("edges", {})
     source_nodes = {node["id"]: node for node in memory.get("source_nodes", [])}
@@ -8921,6 +9054,26 @@ def build_machine_memory_query(memory: dict[str, Any], question: str, *, protoco
     question_tokens = tokenize(question)
     health = memory.get("health", {})
     adjacency = build_machine_memory_adjacency(memory)
+    material_state = material_state or {"entries": []}
+    routing_state = routing_state or {"entries": []}
+    archive_candidates = archive_candidates or {"entries": []}
+    material_by_entry = {
+        str(entry.get("entry_id") or ""): entry
+        for entry in material_state.get("entries", [])
+        if isinstance(entry, dict) and entry.get("entry_id")
+    }
+    routing_by_entry = {
+        str(entry.get("entry_id") or ""): entry
+        for entry in routing_state.get("entries", [])
+        if isinstance(entry, dict) and entry.get("entry_id")
+    }
+    archive_candidates_by_entry = {
+        str(entry.get("entry_id") or ""): entry
+        for entry in archive_candidates.get("entries", [])
+        if isinstance(entry, dict) and entry.get("entry_id")
+    }
+    time_focus_state = machine_memory_query_time_focus(question)
+    time_focus = str(time_focus_state.get("focus") or "")
 
     direct_source_scores: dict[str, int] = {}
     direct_concept_scores: dict[str, int] = {}
@@ -8997,12 +9150,33 @@ def build_machine_memory_query(memory: dict[str, Any], question: str, *, protoco
             elif edge["type"] == "RELATED_CONCEPT":
                 supporting_edges.add(("RELATED_CONCEPT", edge["left"], edge["right"]))
 
+    source_rank_records = [
+        machine_memory_source_runtime_record(
+            source_id,
+            base_score=base_score,
+            source_nodes=source_nodes,
+            material_by_entry=material_by_entry,
+            routing_by_entry=routing_by_entry,
+            archive_candidates_by_entry=archive_candidates_by_entry,
+            protocol=protocol,
+            time_focus=time_focus,
+        )
+        for source_id, base_score in expanded_source_scores.items()
+        if source_id in source_nodes
+    ]
+    source_rank_records.sort(
+        key=lambda item: (
+            -float(item.get("combined_score", 0.0) or 0.0),
+            -float(item.get("base_score", 0.0) or 0.0),
+            -float(item.get("protocol_bonus", 0.0) or 0.0),
+            -float(item.get("time_bonus", 0.0) or 0.0),
+            str(item.get("title") or item.get("entry_id") or "").lower(),
+        )
+    )
     ranked_source_ids = [
-        source_id
-        for source_id, _score in sorted(
-            expanded_source_scores.items(),
-            key=lambda item: (-item[1], source_nodes.get(item[0], {}).get("title", item[0]).lower()),
-        )[:8]
+        str(item.get("entry_id") or "")
+        for item in source_rank_records[:8]
+        if item.get("entry_id")
     ]
     ranked_concept_slugs = [
         concept_slug
@@ -9014,6 +9188,36 @@ def build_machine_memory_query(memory: dict[str, Any], question: str, *, protoco
     bridge_concept_slugs = [
         slug for slug in ranked_concept_slugs if slug in set(health.get("bridge_concept_slugs", []))
     ]
+    protocol_shard_source_ids = [
+        str(item.get("entry_id") or "")
+        for item in source_rank_records
+        if bool(item.get("protocol_shard")) and item.get("entry_id")
+    ][:5]
+    time_shard_source_ids = [
+        str(item.get("entry_id") or "")
+        for item in source_rank_records
+        if bool(item.get("time_shard")) and item.get("entry_id")
+    ][:5]
+    archive_recall_hints = [
+        {
+            "entry_id": str(item.get("entry_id") or ""),
+            "title": str(item.get("title") or item.get("entry_id") or ""),
+            "path": str(item.get("path") or ""),
+            "temperature": str(item.get("temperature") or ""),
+            "archive_status": str(item.get("archive_status") or ""),
+            "recommended_temperature": str(item.get("recommended_temperature") or ""),
+            "reason_codes": list(item.get("reason_codes", []) or []),
+        }
+        for item in sorted(
+            source_rank_records,
+            key=lambda record: (
+                -float(record.get("archive_hint_score", 0.0) or 0.0),
+                -float(record.get("combined_score", 0.0) or 0.0),
+                str(record.get("title") or record.get("entry_id") or "").lower(),
+            ),
+        )
+        if bool(item.get("archive_hint")) and item.get("entry_id")
+    ][:3]
     query_subgraph_sources = [
         {
             "id": source_id,
@@ -9103,8 +9307,13 @@ def build_machine_memory_query(memory: dict[str, Any], question: str, *, protoco
         "matched_terms": matched_terms,
         "direct_source_ids": sorted(direct_source_scores),
         "direct_concept_slugs": sorted(direct_concept_scores),
+        "time_focus": time_focus,
+        "time_focus_markers": list(time_focus_state.get("markers", []) or []),
         "ranked_source_ids": ranked_source_ids,
         "ranked_concept_slugs": ranked_concept_slugs,
+        "protocol_shard_source_ids": protocol_shard_source_ids,
+        "time_shard_source_ids": time_shard_source_ids,
+        "archive_recall_hints": archive_recall_hints,
         "bridge_concept_slugs": bridge_concept_slugs,
         "supporting_edges": [
             {"type": edge_type, "left": left, "right": right}
@@ -11660,6 +11869,36 @@ def rank_sources(
     return [entry for _combined, _base, _runtime, entry in scored[:5]]
 
 
+def machine_memory_query_plan_lines(machine_query: dict[str, Any]) -> list[str]:
+    lines = [
+        f"- 命中词：`{', '.join(machine_query.get('matched_terms', [])) or 'none'}`",
+        f"- 提升权重的来源：`{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`",
+        f"- 提升权重的概念：`{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`",
+        f"- 协议 shard 来源：`{', '.join(machine_query.get('protocol_shard_source_ids', [])) or 'none'}`",
+        f"- 时间偏置：`{str(machine_query.get('time_focus') or 'none')}`",
+        f"- 时间意图词：`{', '.join(machine_query.get('time_focus_markers', [])) or 'none'}`",
+        f"- 时间 shard 来源：`{', '.join(machine_query.get('time_shard_source_ids', [])) or 'none'}`",
+        f"- 桥接概念：`{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`",
+        f"- 查询子图边数：`{len(machine_query.get('query_subgraph', {}).get('edges', []))}`",
+        f"- 查询路径数：`{len(machine_query.get('query_routes', []))}`",
+        f"- 触达分量：`{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`",
+        f"- 命中的修复动作：`{len(machine_query.get('relevant_actions', []))}`",
+    ]
+    archive_hints = machine_query.get("archive_recall_hints", []) or []
+    if archive_hints:
+        hint_labels = []
+        for hint in archive_hints[:3]:
+            title = str(hint.get("title") or hint.get("entry_id") or "")
+            temperature = str(hint.get("temperature") or "")
+            archive_status = str(hint.get("archive_status") or "")
+            state_label = "/".join(part for part in (temperature, archive_status) if part) or "hint"
+            hint_labels.append(f"{title} [{state_label}]")
+        lines.append(f"- 归档召回提示：`{', '.join(hint_labels)}`")
+    else:
+        lines.append("- 归档召回提示：`none`")
+    return lines
+
+
 def render_report(
     question: str,
     entries: list[dict[str, Any]],
@@ -11738,21 +11977,7 @@ def render_report(
         lines.append(f"- 命中词：`{', '.join(matched_terms)}`")
     else:
         lines.append("- 当前还没有直接命中的机器记忆词。")
-    lines.append(
-        f"- 提升权重的来源候选：`{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`"
-    )
-    lines.append(
-        f"- 提升权重的概念候选：`{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`"
-    )
-    lines.append(
-        f"- 桥接概念：`{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`"
-    )
-    lines.append(
-        f"- 查询子图边数：`{len(machine_query.get('query_subgraph', {}).get('edges', []))}`"
-    )
-    lines.append(f"- 查询路径数：`{len(machine_query.get('query_routes', []))}`")
-    lines.append(f"- 触达分量：`{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`")
-    lines.append(f"- 命中的修复动作：`{len(machine_query.get('relevant_actions', []))}`")
+    lines.extend(machine_memory_query_plan_lines(machine_query)[1:])
     lines.extend(
         [
             "",
@@ -11859,18 +12084,11 @@ def render_slides(
             f"- `schema/protocols/{active_protocol}/index.md`",
             "",
             "## 机器记忆查询计划",
-            f"- 命中词：`{', '.join(machine_query.get('matched_terms', [])) or 'none'}`",
-            f"- 提升权重的来源：`{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`",
-            f"- 提升权重的概念：`{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`",
-            f"- 桥接概念：`{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`",
-            f"- 查询子图边数：`{len(machine_query.get('query_subgraph', {}).get('edges', []))}`",
-            f"- 查询路径数：`{len(machine_query.get('query_routes', []))}`",
-            f"- 触达分量：`{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`",
-            f"- 命中的修复动作：`{len(machine_query.get('relevant_actions', []))}`",
             "",
             "## 相关概念",
         ]
     )
+    lines[-2:-2] = machine_memory_query_plan_lines(machine_query)
     if not concepts:
         lines.append("- 暂无排好序的概念页。")
     else:
@@ -11970,18 +12188,11 @@ def render_figure_brief(
             f"- [当前协议规则](../../schema/protocols/{active_protocol}/index.md)",
             "",
             "## 机器记忆查询计划",
-            f"- 命中词：`{', '.join(machine_query.get('matched_terms', [])) or 'none'}`",
-            f"- 提升权重的来源：`{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`",
-            f"- 提升权重的概念：`{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`",
-            f"- 桥接概念：`{', '.join(machine_query.get('bridge_concept_slugs', [])) or 'none'}`",
-            f"- 查询子图边数：`{len(machine_query.get('query_subgraph', {}).get('edges', []))}`",
-            f"- 查询路径数：`{len(machine_query.get('query_routes', []))}`",
-            f"- 触达分量：`{', '.join(machine_query.get('touched_component_ids', [])) or 'none'}`",
-            f"- 命中的修复动作：`{len(machine_query.get('relevant_actions', []))}`",
             "",
             "## 推荐概念",
         ]
     )
+    lines[-2:-2] = machine_memory_query_plan_lines(machine_query)
     if not concepts:
         lines.append("- 暂无排好序的概念页。")
     else:
@@ -12029,8 +12240,17 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
             "active_protocol": active_protocol,
         }
     blocked_source_ids = active_archived_material_ids(root)
+    material_state = load_material_state(root)
     routing_state = load_material_routing_state(root)
-    machine_query = build_machine_memory_query(load_machine_memory(root), question, protocol=active_protocol)
+    archive_candidates = load_archive_candidates_state(root)
+    machine_query = build_machine_memory_query(
+        load_machine_memory(root),
+        question,
+        protocol=active_protocol,
+        material_state=material_state,
+        routing_state=routing_state,
+        archive_candidates=archive_candidates,
+    )
     ranked_concepts = rank_concepts(
         root,
         question,
@@ -12100,6 +12320,12 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
             "concept_slugs": [concept["slug"] for concept in ranked_concepts],
             "bridge_evidence_ids": bridge_evidence_ids,
             "touched_component_ids": machine_query.get("touched_component_ids", []),
+            "time_focus": str(machine_query.get("time_focus") or ""),
+            "archive_recall_hint_ids": [
+                str(item.get("entry_id") or "")
+                for item in machine_query.get("archive_recall_hints", [])
+                if isinstance(item, dict) and item.get("entry_id")
+            ],
         },
     )
     refresh_material_state(root, generated_at=created_at, active_protocol=active_protocol)
@@ -12116,6 +12342,10 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
             f"active_corpus: `{active_corpus['corpus_id']}`",
             f"machine_terms: `{len(machine_query['matched_terms'])}`",
             f"machine_hits: `{len(machine_query['ranked_source_ids'])}/{len(machine_query['ranked_concept_slugs'])}`",
+            f"time_focus: `{str(machine_query.get('time_focus') or 'none')}`",
+            f"protocol_shard_sources: `{len(machine_query.get('protocol_shard_source_ids', []))}`",
+            f"time_shard_sources: `{len(machine_query.get('time_shard_source_ids', []))}`",
+            f"archive_recall_hints: `{len(machine_query.get('archive_recall_hints', []))}`",
             f"bridge_concepts: `{len(machine_query['bridge_concept_slugs'])}`",
             f"query_routes: `{len(machine_query['query_routes'])}`",
         ],
