@@ -77,7 +77,8 @@ status: "active"
 原因：
 
 - 都属于 machine-readable runtime state
-- 都应可由 `raw/ + wiki/ + machine memory` 增量重建
+- `material-state.json`、`archive-candidates.json`、`material-routing.json` 应可由当前 manifest、`raw/ + wiki/ + machine memory` 增量重建
+- `active-corpora.json` 属于可持久化的运行态工作集；它应可由当前状态加 query / review / nightly 的近期运行历史重新收敛，但不应被当成独立事实源
 - 不该污染 `raw/` 或 `wiki/` 本身
 
 ## 1. Material State
@@ -88,7 +89,7 @@ status: "active"
 
 ```json
 {
-  "material_id": "src-20260409-abc123",
+  "entry_id": "src-20260409-abc123",
   "path": "raw/inbox/example.md",
   "kind": "raw_note",
   "source_type": "web",
@@ -106,8 +107,9 @@ status: "active"
 
 说明：
 
-- `material_id`
-  - 稳定 ID，不直接依赖 path
+- `entry_id`
+  - 直接复用当前 manifest `entries[*].id`
+  - 这里不引入第二套 `material_id` 命名空间
 - `protocol_hints`
   - 表示该材料天然更贴近哪些协议，但不是硬隔离
 - `temperature`
@@ -120,6 +122,17 @@ status: "active"
 ## 2. Active Corpus
 
 最小单元：一次 query / review / nightly 所围绕的活动工作集。
+
+它应被视为：
+
+- 一个可持久化的 runtime working set
+- 一个会自然过期、被重新点亮、被 nightly 降温的工作集
+- 一个需要参考近期 query / review / nightly 历史来重建的运行态对象
+
+它不应被视为：
+
+- 新的 evidence source of truth
+- 只靠 `raw/ + wiki/ + machine memory` 就能无损重建的静态派生物
 
 建议字段：
 
@@ -145,6 +158,8 @@ status: "active"
 
 - `focus_kind`
   - 例如 `question / review / nightly / judgment`
+- `focus_ref` / `question_hash` / `output_refs`
+  - 明确带运行时会话语义，因此 active corpus 需要持久化而不是只做瞬时计算
 - `bridge_evidence_ids`
   - 显式记录跨协议召回的证据
 - `status`
@@ -160,7 +175,7 @@ status: "active"
 
 ```json
 {
-  "material_id": "src-20260409-abc123",
+  "entry_id": "src-20260409-abc123",
   "current_temperature": "warm",
   "recommended_temperature": "cold",
   "reason_codes": ["stale-no-query-hit", "no-active-corpus"],
@@ -188,7 +203,7 @@ status: "active"
 
 ```json
 {
-  "material_id": "src-20260409-abc123",
+  "entry_id": "src-20260409-abc123",
   "protocol": "research",
   "scores": {
     "protocol_score": 0.9,
@@ -303,6 +318,8 @@ status: "active"
 最关键的约束仍然是：
 
 - evidence temperature 和 knowledge lifecycle 分开
+- evidence state 主键直接复用 manifest `entries[*].id`
 - 当前协议优先，但跨协议证据可召回
+- active corpus 是可持久化的运行态工作集，不是新的事实源
 - machine memory 负责窄化入口，不让 LLM直接面对大库
 - 所有状态都优先进入 `.aiwiki/state/`，而不是污染 `raw/` 或 `wiki/`

@@ -75,6 +75,16 @@ status: "active"
 
 真正进入运行时的，不该是整个知识库，而应是 **active corpus**。
 
+这里的 active corpus 更接近：
+
+- 可持久化的 runtime working set
+- 当前问题 / 当前协议 / 当前复审面的运行态聚焦结果
+
+而不是：
+
+- 新的事实源
+- 只靠 `raw/ + wiki/ + machine memory` 就能无损重建的静态快照
+
 每个 active corpus 由 4 类信号组成：
 
 - 当前 `protocol`
