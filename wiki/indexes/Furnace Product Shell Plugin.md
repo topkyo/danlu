@@ -39,18 +39,24 @@ status: "active"
 - `.obsidian/plugins/furnace-product-shell/main.js`
 - `.obsidian/plugins/furnace-product-shell/styles.css`
 
-本轮只实现最小 desktop shell：
+当前已经实现的最小 desktop shell：
 
 - `Furnace Center`
 - `Recent Runs`
 - `Review Center`
 - `Execution Center`
 - `Refresh Furnace Shell / Compile / Ask / Nightly / Set Protocol`
+- `File Back / Review Page / Review Rewrite / Apply Rewrite`
+- `Retire Concept / Reactivate Concept`
+- `Apply Archive / Revert Archive`
+- `Review Action / Apply Action / Revert Action`
+- 通用受限表单 modal
+- `Review Center / Execution Center` 内的动作按钮
 
 还没有实现：
 
-- `file-back / review-page / apply-* / archive` 的插件接线
 - TypeScript/build toolchain
+- 更细的 action-specific context picker / item-level inline action
 
 ## 为什么要单独做这层
 
@@ -502,8 +508,9 @@ Product Shell 必须显式定义“什么时候刷新”，否则 cockpit 很容
 ### Phase 2
 
 - Review Center / Execution Center
-- `file-back / review-page / review-rewrite / archive` 接线
+- `file-back / review-page / review-rewrite / archive / apply-*` 接线
 - 输出和 receipt 深链接
+- 已完成
 
 ### Phase 3
 

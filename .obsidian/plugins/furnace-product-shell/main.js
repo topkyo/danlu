@@ -222,6 +222,93 @@ class RecentRunsView extends ItemView {
   }
 }
 
+class StructuredCommandModal extends Modal {
+  constructor(app, plugin, spec) {
+    super(app);
+    this.plugin = plugin;
+    this.spec = spec;
+    this.controls = {};
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("furnace-shell-view");
+    contentEl.createEl("h2", { text: this.spec.title || "Run command" });
+    if (this.spec.description) {
+      contentEl.createDiv({ cls: "furnace-shell-meta", text: this.spec.description });
+    }
+
+    (this.spec.fields || []).forEach((field) => {
+      const setting = new Setting(contentEl).setName(field.label);
+      if (field.description) {
+        setting.setDesc(field.description);
+      }
+      const initialValue = typeof field.initialValue === "function" ? field.initialValue() : field.initialValue;
+      const normalized = field.kind === "toggle" ? Boolean(initialValue) : String(initialValue || "");
+      let control = null;
+
+      if (field.kind === "textarea") {
+        control = setting.controlEl.createEl("textarea");
+        control.rows = field.rows || 4;
+        control.value = normalized;
+      } else if (field.kind === "select") {
+        control = setting.controlEl.createEl("select");
+        (field.options || []).forEach((optionValue) => {
+          const option = Array.isArray(optionValue)
+            ? { value: optionValue[0], label: optionValue[1] }
+            : { value: optionValue.value, label: optionValue.label };
+          const element = control.createEl("option", { text: option.label, value: option.value });
+          element.value = option.value;
+        });
+        control.value = normalized;
+      } else if (field.kind === "toggle") {
+        control = setting.controlEl.createEl("input", { type: "checkbox" });
+        control.checked = Boolean(initialValue);
+      } else {
+        control = setting.controlEl.createEl("input", { type: "text" });
+        control.value = normalized;
+      }
+
+      if (field.placeholder && "placeholder" in control) {
+        control.placeholder = field.placeholder;
+      }
+      if (field.kind !== "toggle") {
+        control.addClass("furnace-shell-code");
+      }
+      this.controls[field.key] = control;
+    });
+
+    const actionSetting = new Setting(contentEl);
+    actionSetting.addButton((button) =>
+      button.setButtonText(this.spec.submitLabel || "Run").setCta().onClick(() => {
+        const values = {};
+        for (const field of this.spec.fields || []) {
+          const control = this.controls[field.key];
+          const value = field.kind === "toggle" ? Boolean(control.checked) : String(control.value || "").trim();
+          if (field.required && !value) {
+            new Notice(`${field.label} 不能为空。`);
+            return;
+          }
+          values[field.key] = value;
+        }
+        this.close();
+        this.plugin.runUiAction(() => this.spec.onSubmit(values), this.spec.title || "command modal");
+      })
+    );
+    actionSetting.addButton((button) =>
+      button.setButtonText("Cancel").onClick(() => {
+        this.close();
+      })
+    );
+
+    const firstField = this.spec.fields && this.spec.fields.length ? this.controls[this.spec.fields[0].key] : null;
+    if (firstField && typeof firstField.focus === "function") {
+      firstField.focus();
+    }
+  }
+}
+
 class ReviewCenterView extends ItemView {
   constructor(leaf, plugin) {
     super(leaf);
@@ -454,6 +541,83 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         new ProtocolCommandModal(this.app, this).open();
       },
     });
+    this.addCommand({
+      id: "file-back",
+      name: "File Back",
+      callback: () => {
+        this.openFileBackModal();
+      },
+    });
+    this.addCommand({
+      id: "review-page",
+      name: "Review Page",
+      callback: () => {
+        this.openReviewPageModal();
+      },
+    });
+    this.addCommand({
+      id: "review-rewrite",
+      name: "Review Rewrite",
+      callback: () => {
+        this.openReviewRewriteModal();
+      },
+    });
+    this.addCommand({
+      id: "apply-rewrite",
+      name: "Apply Rewrite",
+      callback: () => {
+        this.openApplyRewriteModal();
+      },
+    });
+    this.addCommand({
+      id: "retire-concept",
+      name: "Retire Concept",
+      callback: () => {
+        this.openRetireConceptModal();
+      },
+    });
+    this.addCommand({
+      id: "reactivate-concept",
+      name: "Reactivate Concept",
+      callback: () => {
+        this.openReactivateConceptModal();
+      },
+    });
+    this.addCommand({
+      id: "apply-archive",
+      name: "Apply Archive",
+      callback: () => {
+        this.openApplyArchiveModal();
+      },
+    });
+    this.addCommand({
+      id: "revert-archive",
+      name: "Revert Archive",
+      callback: () => {
+        this.openRevertArchiveModal();
+      },
+    });
+    this.addCommand({
+      id: "review-action",
+      name: "Review Action",
+      callback: () => {
+        this.openReviewActionModal();
+      },
+    });
+    this.addCommand({
+      id: "apply-action",
+      name: "Apply Action",
+      callback: () => {
+        this.openApplyActionModal();
+      },
+    });
+    this.addCommand({
+      id: "revert-action",
+      name: "Revert Action",
+      callback: () => {
+        this.openRevertActionModal();
+      },
+    });
 
     this.registerEvent(this.app.vault.on("modify", (file) => {
       void this.handleVaultChange(file.path);
@@ -568,6 +732,51 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       ? this.shellSummary.available_protocols.filter((item) => typeof item === "string" && item)
       : [];
     return fromSummary.length ? fromSummary : DEFAULT_PROTOCOLS;
+  }
+
+  getActiveFilePath() {
+    const activeFile = this.app.workspace.getActiveFile ? this.app.workspace.getActiveFile() : null;
+    return activeFile && typeof activeFile.path === "string" ? activeFile.path : "";
+  }
+
+  getActiveConceptSlug() {
+    const activePath = this.getActiveFilePath();
+    if (!activePath.startsWith("wiki/concepts/") || !activePath.endsWith(".md")) {
+      return "";
+    }
+    return path.basename(activePath, ".md");
+  }
+
+  getActiveOutputPath() {
+    const activePath = this.getActiveFilePath();
+    if (activePath.startsWith("output/") && activePath.endsWith(".md")) {
+      return activePath;
+    }
+    return "";
+  }
+
+  getActiveCuratedPagePath() {
+    const activePath = this.getActiveFilePath();
+    if (
+      activePath.endsWith(".md")
+      && (activePath.startsWith("wiki/decisions/") || activePath.startsWith("wiki/judgments/"))
+    ) {
+      return activePath;
+    }
+    return "";
+  }
+
+  appendOptionalArg(args, flag, value) {
+    const normalized = String(value || "").trim();
+    if (!normalized) {
+      return args;
+    }
+    args.push(flag, normalized);
+    return args;
+  }
+
+  openStructuredCommandModal(spec) {
+    new StructuredCommandModal(this.app, this, spec).open();
   }
 
   async handleVaultChange(relativePath) {
@@ -797,6 +1006,248 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       args.push("--protocol", protocol);
     }
     await this.runPluginCommand(`Ask: ${truncateText(question, 48)}`, args, { refreshAfter: true });
+  }
+
+  async runCliAction(label, command, args = []) {
+    await this.runPluginCommand(label, [command, ...args], { refreshAfter: true });
+  }
+
+  openFileBackModal() {
+    this.openStructuredCommandModal({
+      title: "File Back",
+      description: "File an output artifact back into wiki/derived, wiki/decisions, or wiki/judgments.",
+      fields: [
+        {
+          key: "artifact",
+          label: "Artifact path",
+          required: true,
+          placeholder: "output/reports/....md",
+          initialValue: () => this.getActiveOutputPath(),
+        },
+        {
+          key: "title",
+          label: "Title",
+          placeholder: "Optional filed-back title",
+        },
+        {
+          key: "kind",
+          label: "Kind",
+          kind: "select",
+          initialValue: "derived",
+          options: [
+            ["derived", "derived"],
+            ["decision", "decision"],
+            ["judgment", "judgment"],
+          ],
+        },
+        {
+          key: "protocol",
+          label: "Protocol",
+          kind: "select",
+          initialValue: "",
+          options: [["", "current protocol"], ...this.getAvailableProtocols().map((item) => [item, item])],
+        },
+      ],
+      onSubmit: async (values) => {
+        const args = [values.artifact];
+        this.appendOptionalArg(args, "--title", values.title);
+        this.appendOptionalArg(args, "--kind", values.kind);
+        this.appendOptionalArg(args, "--protocol", values.protocol);
+        await this.runCliAction(`File Back: ${values.kind}`, "file-back", args);
+      },
+    });
+  }
+
+  openReviewPageModal() {
+    this.openStructuredCommandModal({
+      title: "Review Page",
+      description: "Advance a decision or judgment page through the explicit review workflow.",
+      fields: [
+        {
+          key: "page",
+          label: "Page path",
+          required: true,
+          placeholder: "wiki/decisions/... or wiki/judgments/...",
+          initialValue: () => this.getActiveCuratedPagePath(),
+        },
+        {
+          key: "status",
+          label: "Status",
+          required: true,
+          placeholder: "approved / confirmed / needs-revision ...",
+        },
+        {
+          key: "note",
+          label: "Note",
+          kind: "textarea",
+          placeholder: "Optional review note",
+          rows: 4,
+        },
+        {
+          key: "confidence",
+          label: "Confidence",
+          placeholder: "Optional confidence override",
+        },
+      ],
+      onSubmit: async (values) => {
+        const args = [values.page, "--status", values.status];
+        this.appendOptionalArg(args, "--note", values.note);
+        this.appendOptionalArg(args, "--confidence", values.confidence);
+        await this.runCliAction(`Review Page: ${values.status}`, "review-page", args);
+      },
+    });
+  }
+
+  openReviewRewriteModal() {
+    this.openStructuredCommandModal({
+      title: "Review Rewrite",
+      description: "Advance a concept rewrite proposal through the rewrite workflow.",
+      fields: [
+        { key: "slug", label: "Concept slug", required: true, initialValue: () => this.getActiveConceptSlug() },
+        { key: "status", label: "Status", required: true, placeholder: "accepted / rejected / needs-revision ..." },
+        { key: "note", label: "Note", kind: "textarea", rows: 4, placeholder: "Optional review note" },
+      ],
+      onSubmit: async (values) => {
+        const args = [values.slug, "--status", values.status];
+        this.appendOptionalArg(args, "--note", values.note);
+        await this.runCliAction(`Review Rewrite: ${values.slug}`, "review-rewrite", args);
+      },
+    });
+  }
+
+  openApplyRewriteModal() {
+    this.openStructuredCommandModal({
+      title: "Apply Rewrite",
+      description: "Apply an accepted concept rewrite proposal.",
+      fields: [
+        { key: "slug", label: "Concept slug", required: true, initialValue: () => this.getActiveConceptSlug() },
+        { key: "note", label: "Note", kind: "textarea", rows: 4, placeholder: "Optional apply note" },
+      ],
+      onSubmit: async (values) => {
+        const args = [values.slug];
+        this.appendOptionalArg(args, "--note", values.note);
+        await this.runCliAction(`Apply Rewrite: ${values.slug}`, "apply-rewrite", args);
+      },
+    });
+  }
+
+  openRetireConceptModal() {
+    this.openStructuredCommandModal({
+      title: "Retire Concept",
+      description: "Apply an explicit retired override for a concept.",
+      fields: [
+        { key: "slug", label: "Concept slug", required: true, initialValue: () => this.getActiveConceptSlug() },
+        { key: "note", label: "Note", kind: "textarea", rows: 4, placeholder: "Why retire this concept?" },
+      ],
+      onSubmit: async (values) => {
+        const args = [values.slug];
+        this.appendOptionalArg(args, "--note", values.note);
+        await this.runCliAction(`Retire Concept: ${values.slug}`, "retire-concept", args);
+      },
+    });
+  }
+
+  openReactivateConceptModal() {
+    this.openStructuredCommandModal({
+      title: "Reactivate Concept",
+      description: "Clear the explicit retired override for a concept.",
+      fields: [
+        { key: "slug", label: "Concept slug", required: true, initialValue: () => this.getActiveConceptSlug() },
+        { key: "note", label: "Note", kind: "textarea", rows: 4, placeholder: "Optional reactivate note" },
+      ],
+      onSubmit: async (values) => {
+        const args = [values.slug];
+        this.appendOptionalArg(args, "--note", values.note);
+        await this.runCliAction(`Reactivate Concept: ${values.slug}`, "reactivate-concept", args);
+      },
+    });
+  }
+
+  openApplyArchiveModal() {
+    this.openStructuredCommandModal({
+      title: "Apply Archive",
+      description: "Apply a ready archive candidate and pin it to archived.",
+      fields: [
+        { key: "entry_id", label: "Entry id", required: true, placeholder: "manifest/material entry id" },
+        { key: "note", label: "Note", kind: "textarea", rows: 4, placeholder: "Optional apply note" },
+      ],
+      onSubmit: async (values) => {
+        const args = [values.entry_id];
+        this.appendOptionalArg(args, "--note", values.note);
+        await this.runCliAction(`Apply Archive: ${values.entry_id}`, "apply-archive", args);
+      },
+    });
+  }
+
+  openRevertArchiveModal() {
+    this.openStructuredCommandModal({
+      title: "Revert Archive",
+      description: "Revert the latest explicit archive transition.",
+      fields: [
+        { key: "entry_id", label: "Entry id", required: true, placeholder: "manifest/material entry id" },
+        { key: "note", label: "Note", kind: "textarea", rows: 4, placeholder: "Optional revert note" },
+      ],
+      onSubmit: async (values) => {
+        const args = [values.entry_id];
+        this.appendOptionalArg(args, "--note", values.note);
+        await this.runCliAction(`Revert Archive: ${values.entry_id}`, "revert-archive", args);
+      },
+    });
+  }
+
+  openReviewActionModal() {
+    this.openStructuredCommandModal({
+      title: "Review Action",
+      description: "Advance a machine-memory repair action through the explicit action workflow.",
+      fields: [
+        { key: "action_id", label: "Action id", required: true, placeholder: "machine-memory action id" },
+        { key: "status", label: "Status", required: true, placeholder: "accepted / rejected / ready ..." },
+        { key: "note", label: "Note", kind: "textarea", rows: 4, placeholder: "Optional action review note" },
+      ],
+      onSubmit: async (values) => {
+        const args = [values.action_id, "--status", values.status];
+        this.appendOptionalArg(args, "--note", values.note);
+        await this.runCliAction(`Review Action: ${values.action_id}`, "review-action", args);
+      },
+    });
+  }
+
+  openApplyActionModal() {
+    this.openStructuredCommandModal({
+      title: "Apply Action",
+      description: "Apply an accepted low-risk machine-memory repair action.",
+      fields: [
+        { key: "action_id", label: "Action id", required: true, placeholder: "machine-memory action id" },
+        { key: "note", label: "Note", kind: "textarea", rows: 4, placeholder: "Optional apply note" },
+        { key: "bundle", label: "Bundle path", placeholder: "Optional execution bundle path" },
+        { key: "dry_run", label: "Dry run", kind: "toggle", initialValue: false },
+      ],
+      onSubmit: async (values) => {
+        const args = [values.action_id];
+        this.appendOptionalArg(args, "--note", values.note);
+        this.appendOptionalArg(args, "--bundle", values.bundle);
+        if (values.dry_run) {
+          args.push("--dry-run");
+        }
+        await this.runCliAction(`Apply Action: ${values.action_id}`, "apply-action", args);
+      },
+    });
+  }
+
+  openRevertActionModal() {
+    this.openStructuredCommandModal({
+      title: "Revert Action",
+      description: "Revert the latest low-risk safe apply for a machine-memory action.",
+      fields: [
+        { key: "action_id", label: "Action id", required: true, placeholder: "machine-memory action id" },
+        { key: "note", label: "Note", kind: "textarea", rows: 4, placeholder: "Optional revert note" },
+      ],
+      onSubmit: async (values) => {
+        const args = [values.action_id];
+        this.appendOptionalArg(args, "--note", values.note);
+        await this.runCliAction(`Revert Action: ${values.action_id}`, "revert-action", args);
+      },
+    });
   }
 
   async openView(viewType) {
@@ -1116,6 +1567,14 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       { label: "Furnace Center", onClick: async () => this.openFurnaceCenterView() },
       { label: "Execution Center", onClick: async () => this.openExecutionCenterView() },
     ]);
+    this.renderActionButtons(contentEl, [
+      { label: "Review Page", onClick: async () => this.openReviewPageModal() },
+      { label: "Review Rewrite", onClick: async () => this.openReviewRewriteModal() },
+      { label: "Apply Rewrite", onClick: async () => this.openApplyRewriteModal() },
+      { label: "Retire Concept", onClick: async () => this.openRetireConceptModal() },
+      { label: "Reactivate Concept", onClick: async () => this.openReactivateConceptModal() },
+      { label: "File Back", onClick: async () => this.openFileBackModal() },
+    ]);
 
     if (!this.shellSummary) {
       contentEl.createDiv({
@@ -1226,6 +1685,13 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       { label: "Furnace Center", onClick: async () => this.openFurnaceCenterView() },
       { label: "Review Center", onClick: async () => this.openReviewCenterView() },
       { label: "Recent Runs", onClick: async () => this.openRecentRunsView() },
+    ]);
+    this.renderActionButtons(contentEl, [
+      { label: "Review Action", onClick: async () => this.openReviewActionModal() },
+      { label: "Apply Action", onClick: async () => this.openApplyActionModal() },
+      { label: "Revert Action", onClick: async () => this.openRevertActionModal() },
+      { label: "Apply Archive", onClick: async () => this.openApplyArchiveModal() },
+      { label: "Revert Archive", onClick: async () => this.openRevertArchiveModal() },
     ]);
 
     if (!this.shellSummary) {
