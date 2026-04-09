@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 from collections import deque
+from contextlib import contextmanager
 import hashlib
 import html
 import json
+import os
 import re
 import shutil
+import threading
+import functools
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+import fcntl
 
 
 LAYOUT_DIRS = (
@@ -44,6 +49,69 @@ LAYOUT_DIRS = (
     ".aiwiki/cache",
     ".aiwiki/logs",
 )
+
+_RUNTIME_LOCK_GUARD = threading.RLock()
+_RUNTIME_LOCKS: dict[str, dict[str, Any]] = {}
+
+
+def runtime_lock_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "runtime.lock"
+
+
+@contextmanager
+def runtime_write_lock(root: Path):
+    resolved_root = str(root.resolve())
+    with _RUNTIME_LOCK_GUARD:
+        state = _RUNTIME_LOCKS.get(resolved_root)
+        if state is not None:
+            state["depth"] = int(state.get("depth", 0)) + 1
+            handle = state["handle"]
+        else:
+            lock_path = runtime_lock_path(root)
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
+            handle = lock_path.open("a+", encoding="utf-8")
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            handle.seek(0)
+            handle.truncate()
+            handle.write(
+                json.dumps(
+                    {
+                        "pid": os.getpid(),
+                        "root": resolved_root,
+                        "acquired_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+                + "\n"
+            )
+            handle.flush()
+            _RUNTIME_LOCKS[resolved_root] = {"handle": handle, "depth": 1}
+    try:
+        yield
+    finally:
+        with _RUNTIME_LOCK_GUARD:
+            state = _RUNTIME_LOCKS.get(resolved_root)
+            if state is None:
+                return
+            state["depth"] = int(state.get("depth", 0)) - 1
+            if state["depth"] > 0:
+                return
+            handle = state["handle"]
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            finally:
+                handle.close()
+                _RUNTIME_LOCKS.pop(resolved_root, None)
+
+
+def runtime_write_operation(func):
+    @functools.wraps(func)
+    def wrapper(root: Path, *args, **kwargs):
+        with runtime_write_lock(root):
+            return func(root, *args, **kwargs)
+
+    return wrapper
 
 DEFAULT_SCHEMA_FILES = {
     "schema/index.md": "\n".join(
@@ -1398,6 +1466,7 @@ def protocol_output_guidance(protocol: str, output_format: str) -> tuple[str, ..
     return tuple(protocol_guidance.get(output_format, default_guidance.get(output_format, ())))
 
 
+@runtime_write_operation
 def set_active_protocol(root: Path, protocol: str) -> dict[str, Any]:
     active = resolve_protocol(root, protocol)
     path = protocol_state_path(root)
@@ -1874,6 +1943,7 @@ def sync_manifest_with_raw(root: Path) -> dict[str, Any]:
     return manifest
 
 
+@runtime_write_operation
 def ingest_source(root: Path, source: str, title: str | None = None) -> dict[str, Any]:
     ensure_layout(root)
     manifest = sync_manifest_with_raw(root)
@@ -3925,6 +3995,7 @@ def annotate_recurring_promotion(
     page_path.write_text(f"{render_frontmatter(frontmatter)}\n\n{updated_body}\n", encoding="utf-8")
 
 
+@runtime_write_operation
 def promote_recurring_outputs(root: Path) -> dict[str, Any]:
     ensure_layout(root)
     groups: dict[tuple[str, str], list[dict[str, str]]] = {}
@@ -6341,6 +6412,7 @@ def load_machine_memory_action_state(root: Path) -> dict[str, Any]:
     }
 
 
+@runtime_write_operation
 def save_machine_memory_action_state(root: Path, document: dict[str, Any]) -> None:
     machine_memory_action_state_path(root).write_text(
         json.dumps(document, indent=2, sort_keys=True) + "\n",
@@ -6370,6 +6442,7 @@ def load_concept_rewrite_state(root: Path) -> dict[str, Any]:
     }
 
 
+@runtime_write_operation
 def save_concept_rewrite_state(root: Path, document: dict[str, Any]) -> None:
     concept_rewrite_state_path(root).write_text(
         json.dumps(document, indent=2, sort_keys=True) + "\n",
@@ -6394,6 +6467,7 @@ def load_manual_link_state(root: Path) -> dict[str, Any]:
     }
 
 
+@runtime_write_operation
 def save_manual_link_state(root: Path, document: dict[str, Any]) -> None:
     manual_link_state_path(root).write_text(
         json.dumps(document, indent=2, sort_keys=True) + "\n",
@@ -9641,6 +9715,7 @@ def store_concept_rewrite_candidate(
     }
 
 
+@runtime_write_operation
 def compile_wiki(root: Path) -> dict[str, Any]:
     ensure_layout(root)
     manifest = sync_manifest_with_raw(root)
@@ -10490,6 +10565,7 @@ def render_figure_brief(
     return "\n".join(lines) + "\n"
 
 
+@runtime_write_operation
 def ask_question(root: Path, question: str, output_format: str, protocol: str | None = None) -> dict[str, Any]:
     ensure_layout(root)
     manifest = sync_manifest_with_raw(root)
@@ -10596,6 +10672,7 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
     }
 
 
+@runtime_write_operation
 def file_back(
     root: Path,
     artifact: str,
@@ -10692,6 +10769,7 @@ def _save_machine_memory_action_records(root: Path, actions: list[dict[str, Any]
     save_machine_memory_action_state(root, {"version": 1, "actions": actions})
 
 
+@runtime_write_operation
 def review_concept_rewrite(
     root: Path,
     slug: str,
@@ -10823,6 +10901,7 @@ def validate_low_risk_action_targets(root: Path, action: dict[str, Any]) -> tupl
     return source_id, concept_slug
 
 
+@runtime_write_operation
 def apply_concept_rewrite(root: Path, slug: str, *, note: str | None = None) -> dict[str, Any]:
     ensure_layout(root)
     state = load_concept_rewrite_state(root)
@@ -10885,6 +10964,7 @@ def apply_concept_rewrite(root: Path, slug: str, *, note: str | None = None) -> 
     }
 
 
+@runtime_write_operation
 def review_machine_memory_action(
     root: Path,
     action_id: str,
@@ -10938,6 +11018,7 @@ def review_machine_memory_action(
     }
 
 
+@runtime_write_operation
 def apply_machine_memory_action(
     root: Path,
     action_id: str,
@@ -11088,6 +11169,7 @@ def apply_machine_memory_action(
     }
 
 
+@runtime_write_operation
 def revert_machine_memory_action(
     root: Path,
     action_id: str,
@@ -11215,6 +11297,7 @@ def revert_machine_memory_action(
     }
 
 
+@runtime_write_operation
 def review_page(
     root: Path,
     page: str,
@@ -11765,6 +11848,7 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+@runtime_write_operation
 def lint_wiki(root: Path) -> dict[str, Any]:
     ensure_layout(root)
     manifest = sync_manifest_with_raw(root)
@@ -12680,6 +12764,7 @@ def render_repair_backlog(
     return "\n".join(lines) + "\n"
 
 
+@runtime_write_operation
 def write_nightly_health(
     root: Path,
     compile_result: dict[str, Any],
@@ -12843,6 +12928,7 @@ def write_nightly_health(
     return state
 
 
+@runtime_write_operation
 def nightly_health(root: Path) -> dict[str, Any]:
     ensure_layout(root)
     compile_result = compile_wiki(root)

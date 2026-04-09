@@ -30,6 +30,7 @@ from aiwiki.app import (
     review_concept_rewrite,
     review_machine_memory_action,
     review_page,
+    runtime_write_lock,
     save_machine_memory_action_state,
     set_active_protocol,
     strip_frontmatter,
@@ -148,6 +149,25 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue((self.root / decision["path"]).exists())
         self.assertIn("Scaling Decision", review_queue)
         self.assertIn("Scaling Decision", decisions_index)
+
+    def test_runtime_write_lock_is_reentrant_across_app_and_runner(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        current_report = (self.root / report["path"]).read_text(encoding="utf-8")
+
+        with runtime_write_lock(self.root):
+            rerun = run_ask(
+                self.root,
+                "Compare transformer scale and inference cost",
+                "report",
+                client=StubClient([current_report]),
+            )
+            filed = file_back(self.root, rerun["path"], title="Locked Decision", kind="decision")
+
+        self.assertTrue((self.root / rerun["path"]).exists())
+        self.assertTrue((self.root / filed["path"]).exists())
+        self.assertTrue((self.root / ".aiwiki" / "state" / "runtime.lock").exists())
 
     def test_url_ingest_creates_stub_source(self) -> None:
         entry = ingest_source(self.root, "https://example.com/karpathy-note", title="Karpathy note")

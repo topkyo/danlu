@@ -27,6 +27,7 @@ from .app import (
     read_text_preview,
     relative_path,
     render_scalar,
+    runtime_write_operation,
     sha256_bytes,
     store_concept_rewrite_candidate,
     write_nightly_health,
@@ -48,6 +49,7 @@ def create_client(root: Path) -> SupportsComplete:
     return create_backend_client(LLMConfig.from_env(), root)
 
 
+@runtime_write_operation
 def run_compile(root: Path, client: SupportsComplete | None = None, limit: int = 5) -> dict[str, Any]:
     ensure_layout(root)
     compile_result = compile_wiki(root)
@@ -221,6 +223,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
     }
 
 
+@runtime_write_operation
 def run_ask(
     root: Path,
     question: str,
@@ -293,6 +296,7 @@ def run_ask(
     return artifact
 
 
+@runtime_write_operation
 def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, Any]:
     ensure_layout(root)
     deterministic = lint_wiki(root)
@@ -322,6 +326,7 @@ def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, An
     }
 
 
+@runtime_write_operation
 def run_nightly(
     root: Path,
     client: SupportsComplete | None = None,
@@ -359,6 +364,7 @@ def run_nightly(
     }
 
 
+@runtime_write_operation
 def auto_process_once(
     root: Path,
     client: SupportsComplete | None = None,
