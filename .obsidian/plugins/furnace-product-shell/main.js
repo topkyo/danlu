@@ -833,6 +833,14 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     new ContextPickerModal(this.app, this, spec).open();
   }
 
+  controlIdSet(key) {
+    const executionControls = this.shellSummary && typeof this.shellSummary === "object"
+      ? this.shellSummary.execution_controls
+      : null;
+    const values = executionControls && Array.isArray(executionControls[key]) ? executionControls[key] : [];
+    return new Set(values.map((item) => String(item || "").trim()).filter(Boolean));
+  }
+
   uniqueContextOptions(options, keyName = "value") {
     const seen = new Set();
     return (Array.isArray(options) ? options : []).filter((option) => {
@@ -846,6 +854,26 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       seen.add(key);
       return true;
     });
+  }
+
+  pickActionControlSet(mode = "review") {
+    if (mode === "apply") {
+      return this.controlIdSet("apply_ready_action_ids");
+    }
+    if (mode === "revert") {
+      return this.controlIdSet("revert_ready_action_ids");
+    }
+    return null;
+  }
+
+  pickArchiveControlSet(mode = "apply") {
+    if (mode === "apply") {
+      return this.controlIdSet("apply_ready_archive_entry_ids");
+    }
+    if (mode === "revert") {
+      return this.controlIdSet("revert_ready_archive_entry_ids");
+    }
+    return new Set();
   }
 
   inferActionIdFromReceipt(receipt) {
@@ -942,12 +970,16 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return this.uniqueContextOptions(candidates, "slug");
   }
 
-  visibleActionCandidates() {
+  visibleActionCandidates(mode = "review") {
     const receipts = Array.isArray(this.shellSummary && this.shellSummary.recent_receipts) ? this.shellSummary.recent_receipts : [];
+    const allowedIds = this.pickActionControlSet(mode);
     const candidates = receipts
       .map((receipt) => {
         const actionId = this.inferActionIdFromReceipt(receipt);
         if (!actionId || String(receipt.subject_kind || "") === "material-archive") {
+          return null;
+        }
+        if (allowedIds && !allowedIds.has(actionId)) {
           return null;
         }
         return {
@@ -963,15 +995,16 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return this.uniqueContextOptions(candidates, "actionId");
   }
 
-  visibleArchiveCandidates() {
+  visibleArchiveCandidates(mode = "apply") {
     const candidates = [];
+    const allowedIds = this.pickArchiveControlSet(mode);
     const receipts = Array.isArray(this.shellSummary && this.shellSummary.recent_receipts) ? this.shellSummary.recent_receipts : [];
     receipts.forEach((receipt) => {
       if (String(receipt.subject_kind || "") !== "material-archive") {
         return;
       }
       const entryId = String(receipt.subject_id || "").trim();
-      if (!entryId) {
+      if (!entryId || !allowedIds.has(entryId)) {
         return;
       }
       candidates.push({
@@ -988,7 +1021,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       : [];
     executionEvents.forEach((entry) => {
       const entryId = Array.isArray(entry.source_ids) && entry.source_ids.length ? String(entry.source_ids[0] || "").trim() : "";
-      if (!entryId) {
+      if (!entryId || !allowedIds.has(entryId)) {
         return;
       }
       candidates.push({
@@ -1525,7 +1558,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
-  openReviewActionContextPicker(options = this.visibleActionCandidates()) {
+  openReviewActionContextPicker(options = this.visibleActionCandidates("review")) {
     this.openContextAwareAction({
       title: "Pick Review Action",
       description: "Prefer a visible execution receipt before falling back to manual action id entry.",
@@ -1537,7 +1570,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
-  openApplyArchiveContextPicker(options = this.visibleArchiveCandidates()) {
+  openApplyArchiveContextPicker(options = this.visibleArchiveCandidates("apply")) {
     this.openContextAwareAction({
       title: "Pick Archive Target",
       description: "Prefer a visible archive receipt or event before falling back to manual entry id.",
@@ -1549,7 +1582,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
-  openRevertArchiveContextPicker(options = this.visibleArchiveCandidates()) {
+  openRevertArchiveContextPicker(options = this.visibleArchiveCandidates("revert")) {
     this.openContextAwareAction({
       title: "Pick Archive Revert Target",
       description: "Prefer a visible archive receipt or event before falling back to manual entry id.",
@@ -1561,7 +1594,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
-  openApplyActionContextPicker(options = this.visibleActionCandidates()) {
+  openApplyActionContextPicker(options = this.visibleActionCandidates("apply")) {
     this.openContextAwareAction({
       title: "Pick Apply Action",
       description: "Prefer a visible execution receipt before falling back to manual action id entry.",
@@ -1573,7 +1606,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
-  openRevertActionContextPicker(options = this.visibleActionCandidates()) {
+  openRevertActionContextPicker(options = this.visibleActionCandidates("revert")) {
     this.openContextAwareAction({
       title: "Pick Revert Action",
       description: "Prefer a visible execution receipt before falling back to manual action id entry.",
@@ -2085,6 +2118,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       const list = receiptsSection.createEl("ul", { cls: "furnace-shell-list" });
       receipts.slice(0, 8).forEach((receipt) => {
         const item = list.createEl("li");
+        const actionId = this.inferActionIdFromReceipt(receipt);
+        const revertReadyActions = this.controlIdSet("revert_ready_action_ids");
+        const applyReadyActions = this.controlIdSet("apply_ready_action_ids");
+        const revertReadyArchives = this.controlIdSet("revert_ready_archive_entry_ids");
+        const applyReadyArchives = this.controlIdSet("apply_ready_archive_entry_ids");
         item.createEl("strong", { text: receipt.title || receipt.subject_id || "receipt" });
         item.createDiv({
           cls: "furnace-shell-meta",
@@ -2097,35 +2135,30 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
             this.runUiAction(() => this.openWorkspacePath(receipt.receipt_path), `Open receipt: ${receipt.receipt_path}`);
           });
           if (String(receipt.subject_kind || "") === "material-archive" && String(receipt.subject_id || "")) {
-            const archiveButton = actions.createEl("button", {
-              text: String(receipt.operation || "") === "apply" ? "Revert archive" : "Apply archive",
-            });
-            archiveButton.addEventListener("click", () => {
-              const entryId = String(receipt.subject_id || "");
-              this.runUiAction(
-                () =>
-                  String(receipt.operation || "") === "apply"
-                    ? this.openRevertArchiveModal({ entryId })
-                    : this.openApplyArchiveModal({ entryId }),
-                `Archive receipt action: ${entryId}`
-              );
-            });
-          } else {
-            const actionId = this.inferActionIdFromReceipt(receipt);
-            if (actionId) {
-              const reviewButton = actions.createEl("button", { text: "Review action" });
-              reviewButton.addEventListener("click", () => {
-                this.runUiAction(() => this.openReviewActionModal({ actionId }), `Review action from receipt: ${actionId}`);
+            const entryId = String(receipt.subject_id || "");
+            if (revertReadyArchives.has(entryId) || applyReadyArchives.has(entryId)) {
+              const archiveButton = actions.createEl("button", {
+                text: revertReadyArchives.has(entryId) ? "Revert archive" : "Apply archive",
               });
+              archiveButton.addEventListener("click", () => {
+                this.runUiAction(
+                  () => (revertReadyArchives.has(entryId) ? this.openRevertArchiveModal({ entryId }) : this.openApplyArchiveModal({ entryId })),
+                  `Archive receipt action: ${entryId}`
+                );
+              });
+            }
+          } else if (actionId) {
+            const reviewButton = actions.createEl("button", { text: "Review action" });
+            reviewButton.addEventListener("click", () => {
+              this.runUiAction(() => this.openReviewActionModal({ actionId }), `Review action from receipt: ${actionId}`);
+            });
+            if (revertReadyActions.has(actionId) || applyReadyActions.has(actionId)) {
               const actionButton = actions.createEl("button", {
-                text: String(receipt.operation || "") === "apply" ? "Revert action" : "Apply action",
+                text: revertReadyActions.has(actionId) ? "Revert action" : "Apply action",
               });
               actionButton.addEventListener("click", () => {
                 this.runUiAction(
-                  () =>
-                    String(receipt.operation || "") === "apply"
-                      ? this.openRevertActionModal({ actionId })
-                      : this.openApplyActionModal({ actionId }),
+                  () => (revertReadyActions.has(actionId) ? this.openRevertActionModal({ actionId }) : this.openApplyActionModal({ actionId })),
                   `Execution receipt action: ${actionId}`
                 );
               });
@@ -2143,6 +2176,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       const list = eventsSection.createEl("ul", { cls: "furnace-shell-list" });
       executionEvents.slice(0, 10).forEach((entry) => {
         const item = list.createEl("li");
+        const revertReadyArchives = this.controlIdSet("revert_ready_archive_entry_ids");
+        const applyReadyArchives = this.controlIdSet("apply_ready_archive_entry_ids");
         item.createEl("strong", { text: entry.title || entry.event_type || "event" });
         item.createDiv({
           cls: "furnace-shell-meta",
@@ -2158,18 +2193,17 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         }
         if (["archive-apply", "archive-revert"].includes(String(entry.event_type || "")) && Array.isArray(entry.source_ids) && entry.source_ids.length) {
           const entryId = String(entry.source_ids[0] || "");
-          const archiveButton = actions.createEl("button", {
-            text: String(entry.event_type || "") === "archive-apply" ? "Revert archive" : "Apply archive",
-          });
-          archiveButton.addEventListener("click", () => {
-            this.runUiAction(
-              () =>
-                String(entry.event_type || "") === "archive-apply"
-                  ? this.openRevertArchiveModal({ entryId })
-                  : this.openApplyArchiveModal({ entryId }),
-              `Archive event action: ${entryId}`
-            );
-          });
+          if (revertReadyArchives.has(entryId) || applyReadyArchives.has(entryId)) {
+            const archiveButton = actions.createEl("button", {
+              text: revertReadyArchives.has(entryId) ? "Revert archive" : "Apply archive",
+            });
+            archiveButton.addEventListener("click", () => {
+              this.runUiAction(
+                () => (revertReadyArchives.has(entryId) ? this.openRevertArchiveModal({ entryId }) : this.openApplyArchiveModal({ entryId })),
+                `Archive event action: ${entryId}`
+              );
+            });
+          }
         }
         if (String(entry.event_type || "") === "knowledge-lifecycle-override" && String(entry.path || "").startsWith("wiki/concepts/")) {
           const slug = path.basename(String(entry.path || ""), ".md");

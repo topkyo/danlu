@@ -3638,6 +3638,58 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(result["recent_receipts"][0]["receipt_path"], archive_result["receipt_path"])
         self.assertEqual(result["recent_receipts"][0]["operation"], "apply")
 
+    def test_shell_status_exposes_state_aware_execution_controls(self) -> None:
+        archive_entry = self._prepare_ready_archive_candidate()
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "manual-link-action",
+                        "kind": "add-source-concept-link",
+                        "title": "Manual safe apply link",
+                        "reason": "Backfill source/concept link.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "accepted",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                    }
+                ],
+            },
+        )
+        dry_run = apply_machine_memory_action(self.root, "manual-link-action", dry_run=True)
+        bundle_path = self.root / dry_run["bundle_path"]
+        bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        bundle_path.write_text(json.dumps(dry_run["bundle"], ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        apply_machine_memory_action(
+            self.root,
+            "manual-link-action",
+            note="Apply before shell control check.",
+            bundle_path=dry_run["bundle_path"],
+        )
+        apply_material_archive(self.root, archive_entry["id"], note="Archive before shell control check.")
+
+        result = shell_status(self.root)
+
+        self.assertNotIn("manual-link-action", result["execution_controls"]["apply_ready_action_ids"])
+        self.assertIn("manual-link-action", result["execution_controls"]["revert_ready_action_ids"])
+        self.assertNotIn(archive_entry["id"], result["execution_controls"]["apply_ready_archive_entry_ids"])
+        self.assertIn(archive_entry["id"], result["execution_controls"]["revert_ready_archive_entry_ids"])
+
+        revert_machine_memory_action(self.root, "manual-link-action", note="Rollback after shell control check.")
+        reverted = shell_status(self.root)
+
+        self.assertNotIn("manual-link-action", reverted["execution_controls"]["apply_ready_action_ids"])
+        self.assertNotIn("manual-link-action", reverted["execution_controls"]["revert_ready_action_ids"])
+
     def test_run_nightly_writes_semantic_artifacts_and_state(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -3788,18 +3840,21 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("class ContextPickerModal extends Modal", content)
         self.assertIn("openStructuredCommandModal(spec)", content)
         self.assertIn("openContextPicker(spec)", content)
+        self.assertIn("controlIdSet(key)", content)
         self.assertIn("openContextAwareAction(spec)", content)
         self.assertIn("visibleReviewPageCandidates()", content)
         self.assertIn("visibleRewriteCandidates()", content)
-        self.assertIn("visibleActionCandidates()", content)
-        self.assertIn("visibleArchiveCandidates()", content)
+        self.assertIn('visibleActionCandidates(mode = "review")', content)
+        self.assertIn('visibleArchiveCandidates(mode = "apply")', content)
+        self.assertIn('pickActionControlSet(mode = "review")', content)
+        self.assertIn('pickArchiveControlSet(mode = "apply")', content)
         self.assertIn("openReviewPageContextPicker(options = this.visibleReviewPageCandidates())", content)
         self.assertIn("openReviewRewriteContextPicker(options = this.visibleRewriteCandidates())", content)
-        self.assertIn("openReviewActionContextPicker(options = this.visibleActionCandidates())", content)
-        self.assertIn("openApplyArchiveContextPicker(options = this.visibleArchiveCandidates())", content)
-        self.assertIn("openRevertArchiveContextPicker(options = this.visibleArchiveCandidates())", content)
-        self.assertIn("openApplyActionContextPicker(options = this.visibleActionCandidates())", content)
-        self.assertIn("openRevertActionContextPicker(options = this.visibleActionCandidates())", content)
+        self.assertIn('openReviewActionContextPicker(options = this.visibleActionCandidates("review"))', content)
+        self.assertIn('openApplyArchiveContextPicker(options = this.visibleArchiveCandidates("apply"))', content)
+        self.assertIn('openRevertArchiveContextPicker(options = this.visibleArchiveCandidates("revert"))', content)
+        self.assertIn('openApplyActionContextPicker(options = this.visibleActionCandidates("apply"))', content)
+        self.assertIn('openRevertActionContextPicker(options = this.visibleActionCandidates("revert"))', content)
         self.assertIn("runCliAction(label, command, args = [])", content)
         self.assertIn("getActiveOutputPath()", content)
         self.assertIn("getActiveCuratedPagePath()", content)
@@ -3817,12 +3872,16 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn('emptyNotice: "当前没有可见的 review backlog 条目，已回退到手动表单。"', content)
         self.assertIn('emptyNotice: "当前没有可见的 machine-memory action context，已回退到手动表单。"', content)
         self.assertIn('output/control/shell-summary.json', content)
+        self.assertIn('execution_controls', content)
         self.assertIn('scripts/aiwiki-launcher.sh', content)
         self.assertNotIn(".aiwiki/state/", content)
         self.assertIn("launcherIsExecutable(launcherPath)", content)
         self.assertIn("fs.accessSync(launcherPath, fs.constants.X_OK)", content)
         self.assertIn("runUiAction(action, label = \"ui-action\")", content)
         self.assertIn("console.error(`[furnace-product-shell] ${label} failed`, error);", content)
+        app_content = Path("/home/tim/ai-wiki/src/aiwiki/app.py").read_text(encoding="utf-8")
+        self.assertIn("def shell_execution_controls(root: Path, memory: dict[str, Any]) -> dict[str, list[str]]:", app_content)
+        self.assertIn('"execution_controls": shell_execution_controls(root, memory),', app_content)
 
     def test_cli_shell_status_command_outputs_summary_json(self) -> None:
         with patch("sys.stdout", new_callable=io.StringIO) as stdout:

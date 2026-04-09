@@ -8150,6 +8150,53 @@ def shell_recent_receipts(root: Path, *, limit: int = 8) -> list[dict[str, Any]]
     ]
 
 
+def shell_execution_controls(root: Path, memory: dict[str, Any]) -> dict[str, list[str]]:
+    repair_plan = memory.get("health", {}).get("repair_plan", {})
+    ready_actions = [
+        action
+        for action in repair_plan.get("ready_actions", [])
+        if isinstance(action, dict)
+    ]
+    apply_ready_action_ids = [
+        str(action.get("id") or "")
+        for action in ready_actions
+        if action_supports_low_risk_apply(action) and action.get("id")
+    ]
+    all_actions = [
+        action
+        for action in [
+            *memory.get("health", {}).get("actions", []),
+            *memory.get("health", {}).get("inactive_actions", []),
+        ]
+        if isinstance(action, dict)
+    ]
+    revert_ready_action_ids = [
+        str(action.get("id") or "")
+        for action in all_actions
+        if action.get("id")
+        and action.get("last_receipt_path")
+        and str(action.get("status") or "") == "resolved"
+    ]
+    archive_candidates = load_archive_candidates_state(root)
+    apply_ready_archive_entry_ids = [
+        str(entry.get("entry_id") or "")
+        for entry in archive_candidates.get("entries", [])
+        if (
+            isinstance(entry, dict)
+            and entry.get("entry_id")
+            and str(entry.get("status") or "") == "ready"
+            and str(entry.get("recommended_temperature") or "") == "archived"
+        )
+    ]
+    revert_ready_archive_entry_ids = sorted(active_material_archive_entries(load_material_archive_state(root)).keys())
+    return {
+        "apply_ready_action_ids": sorted({item for item in apply_ready_action_ids if item}),
+        "revert_ready_action_ids": sorted({item for item in revert_ready_action_ids if item}),
+        "apply_ready_archive_entry_ids": sorted({item for item in apply_ready_archive_entry_ids if item}),
+        "revert_ready_archive_entry_ids": revert_ready_archive_entry_ids,
+    }
+
+
 def shell_links(root: Path) -> dict[str, str]:
     return {
         "summary_path": relative_path(root, shell_summary_path(root)),
@@ -8287,6 +8334,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> dict[
             "escalated_pages": [page["path"] for page in aging["escalated"][:8]],
             "scheduled_pages": [page["path"] for page in aging["scheduled"][:8]],
         },
+        "execution_controls": shell_execution_controls(root, memory),
         "recent_outputs": collect_recent_output_artifacts(root, limit=8),
         "recent_receipts": shell_recent_receipts(root, limit=8),
         "recent_runs": shell_recent_runs(root, limit=8),
