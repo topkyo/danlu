@@ -3437,6 +3437,82 @@ def knowledge_lifecycle_counts(entries: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def display_knowledge_lifecycle_state(state: str) -> str:
+    mapping = {
+        "active": "活跃",
+        "review": "待审",
+        "deferred": "暂挂",
+        "retired": "已退役",
+        "revisit": "待回看",
+    }
+    return mapping.get(state, state or "unknown")
+
+
+def select_knowledge_lifecycle_entries(
+    knowledge_lifecycle: dict[str, Any],
+    *,
+    kinds: set[str] | None = None,
+    states: set[str] | None = None,
+) -> list[dict[str, Any]]:
+    selected: list[dict[str, Any]] = []
+    for entry in knowledge_lifecycle.get("entries", []):
+        if not isinstance(entry, dict):
+            continue
+        kind = str(entry.get("kind") or "")
+        lifecycle_state = str(entry.get("lifecycle_state") or "")
+        if kinds is not None and kind not in kinds:
+            continue
+        if states is not None and lifecycle_state not in states:
+            continue
+        selected.append(dict(entry))
+    return selected
+
+
+def sort_knowledge_lifecycle_entries(
+    entries: list[dict[str, Any]],
+    *,
+    active_protocol: str = DEFAULT_PROTOCOL,
+) -> list[dict[str, Any]]:
+    state_rank = {"revisit": 0, "review": 1, "active": 2, "deferred": 3, "retired": 4}
+    return sorted(
+        entries,
+        key=lambda entry: (
+            state_rank.get(str(entry.get("lifecycle_state") or ""), 9),
+            0 if str(entry.get("protocol") or "") == active_protocol and active_protocol else 1,
+            0 if bool(entry.get("override_active")) else 1,
+            -len(entry.get("invalidation_signals", []) if isinstance(entry.get("invalidation_signals"), list) else []),
+            -len(entry.get("active_corpus_ids", []) if isinstance(entry.get("active_corpus_ids"), list) else []),
+            str(entry.get("title") or "").lower(),
+        ),
+    )
+
+
+def render_knowledge_lifecycle_entry_summary(entry: dict[str, Any]) -> str:
+    title = str(entry.get("title") or entry.get("page_id") or "unknown")
+    path = str(entry.get("path") or "")
+    kind = str(entry.get("kind") or "knowledge")
+    lifecycle_state = str(entry.get("lifecycle_state") or "")
+    parts = [
+        f"kind `{kind}`",
+        f"state `{display_knowledge_lifecycle_state(lifecycle_state)}`",
+    ]
+    if bool(entry.get("override_active")):
+        parts.append(f"override `{str(entry.get('override_state') or lifecycle_state or 'unknown')}`")
+    invalidation_signals = entry.get("invalidation_signals", [])
+    if isinstance(invalidation_signals, list) and invalidation_signals:
+        parts.append(f"invalidation `{','.join(str(item) for item in invalidation_signals[:3])}`")
+    active_corpus_ids = entry.get("active_corpus_ids", [])
+    if isinstance(active_corpus_ids, list) and active_corpus_ids:
+        parts.append(f"active_corpora `{len(active_corpus_ids)}`")
+    review_signal_codes = entry.get("review_signal_codes", [])
+    if isinstance(review_signal_codes, list) and review_signal_codes:
+        parts.append(f"review_signals `{','.join(str(item) for item in review_signal_codes[:3])}`")
+    reason_codes = entry.get("reason_codes", [])
+    if isinstance(reason_codes, list) and reason_codes:
+        parts.append(f"reasons `{','.join(str(item) for item in reason_codes[:3])}`")
+    return f"- [{title}](../../{path}) | " + " | ".join(parts)
+
+
 def refresh_knowledge_lifecycle_state(
     root: Path,
     *,
@@ -4792,7 +4868,9 @@ def render_cognitive_history(
     compiled_at: str,
     *,
     active_protocol: str = DEFAULT_PROTOCOL,
+    knowledge_lifecycle: dict[str, Any] | None = None,
 ) -> str:
+    knowledge_lifecycle = knowledge_lifecycle or load_knowledge_lifecycle_state(root)
     pages = sort_curated_pages(decisions + judgments)
     drifted_pages = sorted(
         [page for page in pages if page.get("citation_drift") == "true"],
@@ -4821,6 +4899,31 @@ def render_cognitive_history(
         ),
         reverse=True,
     )
+    lifecycle_revisit_entries = sort_knowledge_lifecycle_entries(
+        select_knowledge_lifecycle_entries(
+            knowledge_lifecycle,
+            states={"revisit"},
+        ),
+        active_protocol=active_protocol,
+    )
+    lifecycle_entry_titles = {
+        str(entry.get("path") or ""): str(entry.get("title") or entry.get("page_id") or "")
+        for entry in knowledge_lifecycle.get("entries", [])
+        if isinstance(entry, dict) and entry.get("path")
+    }
+    concept_override_events: list[tuple[str, str, str, str]] = []
+    for event in load_runtime_history(root):
+        if str(event.get("event_type") or "") != "knowledge-lifecycle-override":
+            continue
+        if str(event.get("kind") or "") != "concept":
+            continue
+        occurred_at = str(event.get("occurred_at") or "")
+        path = str(event.get("path") or "")
+        title = lifecycle_entry_titles.get(path) or str(event.get("slug") or path or "unknown concept")
+        operation = str(event.get("operation") or "override")
+        lifecycle_state = str(event.get("lifecycle_state") or "")
+        concept_override_events.append((occurred_at, title, path, f"{operation} -> {lifecycle_state or 'unknown'}"))
+    concept_override_events.sort(key=lambda item: item[0], reverse=True)
     recent_events: list[tuple[str, str, str, str]] = []
     for page in pages:
         page_path = root / page["path"]
@@ -4841,6 +4944,8 @@ def render_cognitive_history(
         f"- 证据漂移页面：`{len(drifted_pages)}`",
         f"- snapshot 缺口页面：`{len(snapshot_gap_pages)}`",
         f"- 有复审历史的页面：`{len(long_history_pages)}`",
+        f"- 生命周期待回看项：`{len(lifecycle_revisit_entries)}`",
+        f"- concept lifecycle 事件：`{len(concept_override_events)}`",
         "",
         "## 证据漂移",
     ]
@@ -4855,6 +4960,20 @@ def render_cognitive_history(
     else:
         for page in snapshot_gap_pages[:12]:
             lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## 生命周期待回看项"])
+    if not lifecycle_revisit_entries:
+        lines.append("- 当前没有 lifecycle state 标记为 `revisit` 的知识项。")
+    else:
+        for entry in lifecycle_revisit_entries[:16]:
+            lines.append(render_knowledge_lifecycle_entry_summary(entry))
+    lines.extend(["", "## 概念生命周期事件"])
+    if not concept_override_events:
+        lines.append("- 当前还没有 concept lifecycle override 事件。")
+    else:
+        for occurred_at, title, path, detail in concept_override_events[:20]:
+            lines.append(
+                f"- [{title}](../../{path}) | occurred `{occurred_at or 'unknown'}` | {detail}"
+            )
     lines.extend(["", "## 最近认知事件"])
     if not recent_events:
         lines.append("- 当前还没有 review history 事件。")
@@ -5941,9 +6060,27 @@ def render_review_queue(
     compiled_at: str,
     *,
     active_protocol: str = DEFAULT_PROTOCOL,
+    knowledge_lifecycle: dict[str, Any] | None = None,
 ) -> str:
+    knowledge_lifecycle = knowledge_lifecycle or default_knowledge_lifecycle_state()
     queue = review_queue(decisions, judgments, active_protocol=active_protocol)
     aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
+    concept_backlog = sort_knowledge_lifecycle_entries(
+        select_knowledge_lifecycle_entries(
+            knowledge_lifecycle,
+            kinds={"concept"},
+            states={"review", "revisit"},
+        ),
+        active_protocol=active_protocol,
+    )
+    retired_concepts = sort_knowledge_lifecycle_entries(
+        select_knowledge_lifecycle_entries(
+            knowledge_lifecycle,
+            kinds={"concept"},
+            states={"retired"},
+        ),
+        active_protocol=active_protocol,
+    )
     lines = [
         "# 审阅队列",
         "",
@@ -5954,6 +6091,8 @@ def render_review_queue(
         f"- 最近已审项目：`{len(queue['recently_reviewed'])}`",
         f"- 已到期复审：`{len(aging['overdue'])}`",
         f"- 需要升级处理：`{len(aging['escalated'])}`",
+        f"- lifecycle concept backlog：`{len(concept_backlog)}`",
+        f"- retired concepts：`{len(retired_concepts)}`",
         "",
         "## 协议审阅焦点",
         *[f"- {line}" for line in PROTOCOL_LIBRARY.get(active_protocol, {}).get("review", [])],
@@ -5983,6 +6122,18 @@ def render_review_queue(
     else:
         for page in aging["escalated"][:12]:
             lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## 生命周期概念待审"])
+    if not concept_backlog:
+        lines.append("- 当前没有 lifecycle state 标记为 `review` / `revisit` 的 concept。")
+    else:
+        for entry in concept_backlog[:12]:
+            lines.append(render_knowledge_lifecycle_entry_summary(entry))
+    lines.extend(["", "## 已退役概念"])
+    if not retired_concepts:
+        lines.append("- 当前没有 retired concept。")
+    else:
+        for entry in retired_concepts[:12]:
+            lines.append(render_knowledge_lifecycle_entry_summary(entry))
     lines.extend(["", "## 最近已审"])
     if not queue["recently_reviewed"]:
         lines.append("- 还没有已审阅的决策或判断页面。")
@@ -5998,9 +6149,26 @@ def render_aging_report(
     compiled_at: str,
     *,
     active_protocol: str = DEFAULT_PROTOCOL,
+    knowledge_lifecycle: dict[str, Any] | None = None,
 ) -> str:
+    knowledge_lifecycle = knowledge_lifecycle or default_knowledge_lifecycle_state()
     aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
     pages = decisions + judgments
+    lifecycle_revisit_entries = sort_knowledge_lifecycle_entries(
+        select_knowledge_lifecycle_entries(
+            knowledge_lifecycle,
+            states={"revisit"},
+        ),
+        active_protocol=active_protocol,
+    )
+    retired_concepts = sort_knowledge_lifecycle_entries(
+        select_knowledge_lifecycle_entries(
+            knowledge_lifecycle,
+            kinds={"concept"},
+            states={"retired"},
+        ),
+        active_protocol=active_protocol,
+    )
     lines = [
         "# Aging 报告",
         "",
@@ -6009,6 +6177,8 @@ def render_aging_report(
         f"- 已到期复审：`{len(aging['overdue'])}`",
         f"- 需要升级处理：`{len(aging['escalated'])}`",
         f"- 已排期复审：`{len(aging['scheduled'])}`",
+        f"- 生命周期待回看项：`{len(lifecycle_revisit_entries)}`",
+        f"- retired concepts：`{len(retired_concepts)}`",
         "",
         "## 需要升级处理",
     ]
@@ -6029,11 +6199,25 @@ def render_aging_report(
     else:
         for page in aging["scheduled"][:20]:
             lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## 生命周期待回看项"])
+    if not lifecycle_revisit_entries:
+        lines.append("- 当前没有 lifecycle state 标记为 `revisit` 的知识项。")
+    else:
+        for entry in lifecycle_revisit_entries[:20]:
+            lines.append(render_knowledge_lifecycle_entry_summary(entry))
+    lines.extend(["", "## 已退役概念"])
+    if not retired_concepts:
+        lines.append("- 当前没有 retired concept。")
+    else:
+        for entry in retired_concepts[:20]:
+            lines.append(render_knowledge_lifecycle_entry_summary(entry))
     lines.extend(["", "## 建议动作"])
     if aging["escalated"]:
         lines.append("- 优先处理升级项，补证据、更新状态或明确下一次复审窗口。")
     if aging["overdue"] and not aging["escalated"]:
         lines.append("- 先清理已到期页面，避免 review queue 长期堆积。")
+    if lifecycle_revisit_entries:
+        lines.append("- 把 lifecycle `revisit` 项和时间窗口型 overdue 项一起看，避免只盯 review date 而忽略证据失效。")
     if not aging["overdue"] and not aging["escalated"]:
         lines.append("- 当前 aging 状态健康，继续通过 nightly 跟踪。")
     stale_reviewed = [
@@ -11855,42 +12039,8 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     )
     changed_pages += int(
         write_if_changed(
-            root / "wiki" / "indexes" / "review-queue.md",
-            render_review_queue(
-                decision_pages,
-                judgment_pages,
-                compiled_at,
-                active_protocol=protocol_state["active_protocol"],
-            ),
-        )
-    )
-    changed_pages += int(
-        write_if_changed(
             judgment_assets_path(root),
             render_judgment_assets(
-                decision_pages,
-                judgment_pages,
-                compiled_at,
-                active_protocol=protocol_state["active_protocol"],
-            ),
-        )
-    )
-    changed_pages += int(
-        write_if_changed(
-            cognitive_history_path(root),
-            render_cognitive_history(
-                root,
-                decision_pages,
-                judgment_pages,
-                compiled_at,
-                active_protocol=protocol_state["active_protocol"],
-            ),
-        )
-    )
-    changed_pages += int(
-        write_if_changed(
-            aging_report_path(root),
-            render_aging_report(
                 decision_pages,
                 judgment_pages,
                 compiled_at,
@@ -12201,6 +12351,43 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         entries=entries,
         active_corpora_state=active_corpora_state,
         memory=memory,
+    )
+    changed_pages += int(
+        write_if_changed(
+            root / "wiki" / "indexes" / "review-queue.md",
+            render_review_queue(
+                decision_pages,
+                judgment_pages,
+                compiled_at,
+                active_protocol=protocol_state["active_protocol"],
+                knowledge_lifecycle=knowledge_lifecycle,
+            ),
+        )
+    )
+    changed_pages += int(
+        write_if_changed(
+            cognitive_history_path(root),
+            render_cognitive_history(
+                root,
+                decision_pages,
+                judgment_pages,
+                compiled_at,
+                active_protocol=protocol_state["active_protocol"],
+                knowledge_lifecycle=knowledge_lifecycle,
+            ),
+        )
+    )
+    changed_pages += int(
+        write_if_changed(
+            aging_report_path(root),
+            render_aging_report(
+                decision_pages,
+                judgment_pages,
+                compiled_at,
+                active_protocol=protocol_state["active_protocol"],
+                knowledge_lifecycle=knowledge_lifecycle,
+            ),
+        )
     )
     append_wiki_log(
         root,

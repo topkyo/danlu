@@ -3012,6 +3012,54 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Scaling Decision", decisions_index)
         self.assertIn("证据漂移", decisions_index)
 
+    def test_governance_indexes_surface_lifecycle_revisit_concepts(self) -> None:
+        first = self.root / "first.md"
+        first.write_text("# Latency Outlook\n\nLatency will increase with larger batches.\n", encoding="utf-8")
+        second = self.root / "second.md"
+        second.write_text("# Latency Outlook\n\nLatency may decrease after cache reuse.\n", encoding="utf-8")
+        first_entry = ingest_source(self.root, str(first), title="Latency Outlook A")
+        second_entry = ingest_source(self.root, str(second), title="Latency Outlook B")
+
+        compile_wiki(self.root)
+
+        first_page = self.root / "wiki" / "sources" / f"{first_entry['id']}.md"
+        second_page = self.root / "wiki" / "sources" / f"{second_entry['id']}.md"
+        first_page.write_text(
+            first_page.read_text(encoding="utf-8").replace("- Pending LLM summary.", "- Latency will increase as batches grow."),
+            encoding="utf-8",
+        )
+        second_page.write_text(
+            second_page.read_text(encoding="utf-8").replace("- Pending LLM summary.", "- Latency can decrease once cache reuse stabilizes."),
+            encoding="utf-8",
+        )
+
+        compile_wiki(self.root)
+
+        review_queue = (self.root / "wiki" / "indexes" / "review-queue.md").read_text(encoding="utf-8")
+        aging_report = (self.root / "wiki" / "indexes" / "aging-report.md").read_text(encoding="utf-8")
+        self.assertIn("生命周期概念待审", review_queue)
+        self.assertIn("Latency Outlook", review_queue)
+        self.assertIn("生命周期待回看项", aging_report)
+        self.assertIn("Latency Outlook", aging_report)
+
+    def test_cognitive_history_surfaces_concept_lifecycle_override_events(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        concept_entry = next(entry for entry in lifecycle["entries"] if entry["kind"] == "concept")
+        slug = Path(concept_entry["path"]).stem
+        title = concept_entry["title"]
+
+        retire_concept(self.root, slug, note="Retire concept from governance history test.")
+        reactivate_concept(self.root, slug, note="Reactivate concept from governance history test.")
+        compile_wiki(self.root)
+
+        cognitive_history = (self.root / "wiki" / "indexes" / "cognitive-history.md").read_text(encoding="utf-8")
+        self.assertIn("概念生命周期事件", cognitive_history)
+        self.assertIn(title, cognitive_history)
+        self.assertIn("reactivate ->", cognitive_history)
+
     def test_lint_warns_when_reviewed_judgment_has_citation_drift_and_snapshot_gap(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
