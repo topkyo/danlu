@@ -23,6 +23,7 @@ kind: "dashboard"
 - [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]：炼丹炉的基线架构，建立在 `aiwiki` runtime 之上
 - [[wiki/indexes/Furnace Ultimate Architecture|最终极形态]]：这套系统最终想长成的认知操作系统形态
 - [[wiki/indexes/Furnace Material Scaling|大规模原料处理]]：原料越来越多时的冷热分层、活动工作集和归档设计
+- [[wiki/indexes/Furnace Material State Model|原料状态模型]]：把 `temperature / active corpus / archive` 压成实现级 schema
 - [[wiki/indexes/Furnace Protocols|统一炼丹协议]]：一个炉子，多种领域协议
 - [[wiki/indexes/protocols|协议总览]]：当前 active protocol 和可用协议库
 - [[wiki/indexes/furnace-center|炉心面板]]：统一入口，先看今天该处理什么
