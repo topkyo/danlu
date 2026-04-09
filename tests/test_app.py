@@ -261,6 +261,93 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("general", payload)
         self.assertIn("../../schema/protocols/general/index.md", payload)
 
+    def test_compile_writes_material_state_baseline(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compiled = compile_wiki(self.root)
+
+        material_state_path = self.root / ".aiwiki" / "state" / "material-state.json"
+        active_corpora_path = self.root / ".aiwiki" / "state" / "active-corpora.json"
+        self.assertEqual(compiled["material_state_path"], ".aiwiki/state/material-state.json")
+        self.assertEqual(compiled["active_corpora_path"], ".aiwiki/state/active-corpora.json")
+        self.assertTrue(material_state_path.exists())
+        self.assertTrue(active_corpora_path.exists())
+
+        material_state = json.loads(material_state_path.read_text(encoding="utf-8"))
+        active_corpora = json.loads(active_corpora_path.read_text(encoding="utf-8"))
+        self.assertEqual(material_state["version"], 1)
+        self.assertEqual(len(material_state["entries"]), 1)
+        self.assertEqual(active_corpora["version"], 1)
+        self.assertEqual(active_corpora["corpora"], [])
+
+        record = material_state["entries"][0]
+        self.assertEqual(record["entry_id"], entry["id"])
+        self.assertEqual(record["path"], entry["stored_path"])
+        self.assertEqual(record["active_corpus_ids"], [])
+        self.assertIn(record["temperature"], {"hot", "warm", "cold"})
+        self.assertTrue(record["protocol_hints"])
+        self.assertTrue(record["last_touched_at"])
+
+    def test_ask_creates_active_corpus_and_runtime_history(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+
+        active_corpora = json.loads((self.root / ".aiwiki" / "state" / "active-corpora.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(active_corpora["corpora"]), 1)
+        corpus = active_corpora["corpora"][0]
+        self.assertEqual(corpus["corpus_id"], report["active_corpus_id"])
+        self.assertEqual(corpus["status"], "active")
+        self.assertEqual(corpus["focus_kind"], "question")
+        self.assertIn(entry["id"], corpus["source_ids"])
+        self.assertIn(report["path"], corpus["output_refs"])
+        self.assertTrue(corpus["expires_at"])
+
+        history_lines = (self.root / ".aiwiki" / "state" / "runtime-history.jsonl").read_text(encoding="utf-8").strip().splitlines()
+        last_event = json.loads(history_lines[-1])
+        self.assertEqual(last_event["event_type"], "query")
+        self.assertEqual(last_event["corpus_id"], report["active_corpus_id"])
+        self.assertIn(entry["id"], last_event["source_ids"])
+
+        material_state = json.loads((self.root / ".aiwiki" / "state" / "material-state.json").read_text(encoding="utf-8"))
+        record = next(item for item in material_state["entries"] if item["entry_id"] == entry["id"])
+        self.assertTrue(record["last_query_hit_at"])
+        self.assertIn(report["active_corpus_id"], record["active_corpus_ids"])
+
+    def test_review_updates_material_state_and_runtime_history(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+
+        review_page(self.root, judgment["path"], status="tracking", note="keep watching", confidence="high")
+
+        history_lines = (self.root / ".aiwiki" / "state" / "runtime-history.jsonl").read_text(encoding="utf-8").strip().splitlines()
+        review_events = [json.loads(line) for line in history_lines if json.loads(line)["event_type"] == "review"]
+        self.assertTrue(review_events)
+        self.assertIn(entry["id"], review_events[-1]["source_ids"])
+
+        material_state = json.loads((self.root / ".aiwiki" / "state" / "material-state.json").read_text(encoding="utf-8"))
+        record = next(item for item in material_state["entries"] if item["entry_id"] == entry["id"])
+        self.assertTrue(record["last_review_reference_at"])
+        self.assertIn(Path(judgment["path"]).stem, record["supports_judgment_ids"])
+
+    def test_nightly_cools_active_corpora_and_records_runtime_event(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+
+        nightly_health(self.root)
+
+        active_corpora = json.loads((self.root / ".aiwiki" / "state" / "active-corpora.json").read_text(encoding="utf-8"))
+        corpus = next(item for item in active_corpora["corpora"] if item["corpus_id"] == report["active_corpus_id"])
+        self.assertEqual(corpus["status"], "cooling")
+
+        history_lines = (self.root / ".aiwiki" / "state" / "runtime-history.jsonl").read_text(encoding="utf-8").strip().splitlines()
+        nightly_events = [json.loads(line) for line in history_lines if json.loads(line)["event_type"] == "nightly"]
+        self.assertTrue(nightly_events)
+        self.assertIn(report["active_corpus_id"], nightly_events[-1]["cooled_corpus_ids"])
+
     def test_protocol_set_updates_dashboard_without_compile(self) -> None:
         set_active_protocol(self.root, "investing")
         payload = (self.root / "wiki" / "indexes" / "protocols.md").read_text(encoding="utf-8")

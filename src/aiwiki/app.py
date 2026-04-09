@@ -1070,11 +1070,13 @@ DECISION_STATUSES = ("proposed", "approved", "needs-revisit", "superseded")
 JUDGMENT_STATUSES = ("tentative", "tracking", "confirmed", "rejected")
 ACTION_STATUSES = ("proposed", "accepted", "deferred", "resolved", "rejected")
 REWRITE_PROPOSAL_STATUSES = ("proposed", "accepted", "deferred", "applied", "rejected")
+ACTIVE_CORPUS_STATUSES = ("active", "cooling", "expired")
 PENDING_DECISION_REVIEW_STATUSES = {"proposed", "needs-revisit"}
 PENDING_JUDGMENT_REVIEW_STATUSES = {"tentative", "tracking"}
 PENDING_ACTION_STATUSES = {"proposed", "accepted", "deferred"}
 PENDING_REWRITE_PROPOSAL_STATUSES = {"proposed", "accepted", "deferred"}
 LOW_RISK_APPLYABLE_ACTION_KINDS = {"add-source-concept-link"}
+ACTIVE_CORPUS_TTL = timedelta(days=3)
 
 EXECUTION_BAND_LABELS = {
     "review-first": "先审后动",
@@ -6620,6 +6622,18 @@ def nightly_health_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "nightly-health.json"
 
 
+def material_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "material-state.json"
+
+
+def active_corpora_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "active-corpora.json"
+
+
+def runtime_history_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "runtime-history.jsonl"
+
+
 def load_json_document(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -6627,6 +6641,398 @@ def load_json_document(path: Path) -> dict[str, Any]:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return {}
+
+
+def save_json_document(path: Path, document: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def load_jsonl_documents(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    documents: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            payload = line.strip()
+            if not payload:
+                continue
+            try:
+                document = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(document, dict):
+                documents.append(document)
+    return documents
+
+
+def default_material_state() -> dict[str, Any]:
+    return {"version": 1, "generated_at": "", "entries": []}
+
+
+def load_material_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(material_state_path(root))
+    if not isinstance(document, dict):
+        return default_material_state()
+    entries = document.get("entries")
+    if not isinstance(entries, list):
+        return default_material_state()
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "generated_at": str(document.get("generated_at") or ""),
+        "entries": [entry for entry in entries if isinstance(entry, dict)],
+    }
+
+
+def save_material_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(material_state_path(root), document)
+
+
+def default_active_corpora_state() -> dict[str, Any]:
+    return {"version": 1, "corpora": []}
+
+
+def load_active_corpora_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(active_corpora_state_path(root))
+    if not isinstance(document, dict):
+        return default_active_corpora_state()
+    corpora = document.get("corpora")
+    if not isinstance(corpora, list):
+        return default_active_corpora_state()
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "corpora": [corpus for corpus in corpora if isinstance(corpus, dict)],
+    }
+
+
+def save_active_corpora_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(active_corpora_state_path(root), document)
+
+
+def load_runtime_history(root: Path) -> list[dict[str, Any]]:
+    return load_jsonl_documents(runtime_history_path(root))
+
+
+def append_runtime_history(root: Path, event: dict[str, Any]) -> None:
+    path = runtime_history_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+def question_signature(question: str) -> str:
+    normalized = " ".join(question.lower().split())
+    return f"sha256:{sha256_bytes(normalized.encode('utf-8'))}"
+
+
+def timestamp_is_newer(candidate: str, current: str) -> bool:
+    candidate_dt = parse_iso_datetime(candidate)
+    current_dt = parse_iso_datetime(current)
+    if candidate_dt is None:
+        return False
+    if current_dt is None:
+        return True
+    return candidate_dt > current_dt
+
+
+def update_latest_timestamp(mapping: dict[str, str], key: str, timestamp: str) -> None:
+    if not key or not timestamp:
+        return
+    if timestamp_is_newer(timestamp, mapping.get(key, "")):
+        mapping[key] = timestamp
+
+
+def protocol_hints_for_material(entry: dict[str, Any], preview: str) -> list[str]:
+    text = " ".join(
+        [
+            str(entry.get("title") or ""),
+            str(entry.get("source_type") or ""),
+            preview,
+        ]
+    )
+    scored: list[tuple[int, str]] = []
+    for protocol in sorted(PROTOCOL_LIBRARY):
+        if protocol == DEFAULT_PROTOCOL:
+            continue
+        score = protocol_focus_score(protocol, text)
+        if score > 0:
+            scored.append((score, protocol))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    hints = [protocol for _score, protocol in scored[:2]]
+    return hints or [DEFAULT_PROTOCOL]
+
+
+def infer_material_temperature(
+    entry: dict[str, Any],
+    *,
+    active_corpus_ids: list[str],
+    supports_judgment_ids: list[str],
+    citation_count: int,
+    last_query_hit_at: str,
+    last_review_reference_at: str,
+) -> str:
+    last_touched_at = str(entry.get("updated_at") or entry.get("imported_at") or "")
+    recent_touch = parse_iso_datetime(last_touched_at)
+    now = datetime.now(timezone.utc)
+    if active_corpus_ids:
+        return "hot"
+    if last_query_hit_at and parse_iso_datetime(last_query_hit_at) and now - parse_iso_datetime(last_query_hit_at) <= timedelta(days=3):
+        return "hot"
+    if last_review_reference_at and parse_iso_datetime(last_review_reference_at) and now - parse_iso_datetime(last_review_reference_at) <= timedelta(days=7):
+        return "hot"
+    if recent_touch and now - recent_touch <= timedelta(days=3):
+        return "hot"
+    if supports_judgment_ids or citation_count > 0:
+        return "warm"
+    return "cold"
+
+
+def entry_lookup_maps(entries: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+    by_id: dict[str, dict[str, Any]] = {}
+    path_to_entry_id: dict[str, str] = {}
+    for entry in entries:
+        entry_id = str(entry.get("id") or "")
+        if not entry_id:
+            continue
+        by_id[entry_id] = entry
+        stored_path = normalize_workspace_path(str(entry.get("stored_path") or ""))
+        if stored_path:
+            path_to_entry_id[stored_path] = entry_id
+        source_path = f"wiki/sources/{entry_id}.md"
+        path_to_entry_id[source_path] = entry_id
+    return by_id, path_to_entry_id
+
+
+def entry_ids_from_paths(path_to_entry_id: dict[str, str], paths: list[str]) -> list[str]:
+    entry_ids: list[str] = []
+    seen: set[str] = set()
+    for candidate in paths:
+        normalized = normalize_workspace_path(candidate)
+        entry_id = path_to_entry_id.get(normalized, "")
+        if not entry_id and normalized.startswith("wiki/sources/") and normalized.endswith(".md"):
+            entry_id = Path(normalized).stem
+        if not entry_id or entry_id in seen:
+            continue
+        seen.add(entry_id)
+        entry_ids.append(entry_id)
+    return entry_ids
+
+
+def source_ids_for_citations(root: Path, entries: list[dict[str, Any]], markdown: str) -> list[str]:
+    _by_id, path_to_entry_id = entry_lookup_maps(entries)
+    return entry_ids_from_paths(path_to_entry_id, extract_provenance_paths(root, markdown))
+
+
+def scan_material_reference_state(
+    root: Path,
+    entries: list[dict[str, Any]],
+) -> dict[str, Any]:
+    _by_id, path_to_entry_id = entry_lookup_maps(entries)
+    citation_count_by_entry: dict[str, int] = {}
+    supports_judgment_ids: dict[str, set[str]] = {}
+
+    for relative in ("wiki/derived", "wiki/decisions", "wiki/judgments"):
+        directory = root / relative
+        if not directory.exists():
+            continue
+        for path in sorted(directory.glob("*.md")):
+            content = path.read_text(encoding="utf-8", errors="replace")
+            cited_entry_ids = entry_ids_from_paths(path_to_entry_id, extract_provenance_paths(root, content))
+            for entry_id in cited_entry_ids:
+                citation_count_by_entry[entry_id] = citation_count_by_entry.get(entry_id, 0) + 1
+            if relative != "wiki/judgments":
+                continue
+            frontmatter = parse_frontmatter(content)
+            judgment_id = str(frontmatter.get("id") or path.stem)
+            for entry_id in cited_entry_ids:
+                supports_judgment_ids.setdefault(entry_id, set()).add(judgment_id)
+
+    return {
+        "citation_count_by_entry": citation_count_by_entry,
+        "supports_judgment_ids": {entry_id: sorted(ids) for entry_id, ids in supports_judgment_ids.items()},
+    }
+
+
+def active_corpus_bridge_evidence_ids(machine_query: dict[str, Any], source_ids: list[str]) -> list[str]:
+    bridge_concepts = set(machine_query.get("bridge_concept_slugs", []))
+    if not bridge_concepts:
+        return []
+    source_set = set(source_ids)
+    bridge_ids: list[str] = []
+    seen: set[str] = set()
+    for edge in machine_query.get("query_subgraph", {}).get("edges", []):
+        if not isinstance(edge, dict):
+            continue
+        if edge.get("type") != "HAS_CONCEPT":
+            continue
+        left = str(edge.get("left") or "")
+        right = str(edge.get("right") or "")
+        if left in source_set and right in bridge_concepts and left not in seen:
+            seen.add(left)
+            bridge_ids.append(left)
+    return bridge_ids
+
+
+def reconcile_active_corpora_state(
+    root: Path,
+    *,
+    changed_at: str,
+    nightly_cooldown: bool = False,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    state = load_active_corpora_state(root)
+    changed = not active_corpora_state_path(root).exists()
+    corpora: list[dict[str, Any]] = []
+    for raw_corpus in state.get("corpora", []):
+        corpus = dict(raw_corpus)
+        status = str(corpus.get("status") or "active")
+        if status not in ACTIVE_CORPUS_STATUSES:
+            status = "active"
+            changed = True
+        expires_at = str(corpus.get("expires_at") or "")
+        if expires_at and timestamp_is_newer(changed_at, expires_at):
+            if status != "expired":
+                status = "expired"
+                changed = True
+        elif nightly_cooldown and status == "active":
+            status = "cooling"
+            changed = True
+        corpus["status"] = status
+        corpora.append(corpus)
+    if changed:
+        save_active_corpora_state(root, {"version": 1, "corpora": corpora})
+    return {"version": 1, "corpora": corpora, "changed": changed}
+
+
+def refresh_material_state(
+    root: Path,
+    *,
+    generated_at: str,
+    entries: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    manifest_entries = entries if entries is not None else load_manifest(root).get("entries", [])
+    history = load_runtime_history(root)
+    active_corpora = reconcile_active_corpora_state(root, changed_at=generated_at)["corpora"]
+    reference_state = scan_material_reference_state(root, manifest_entries)
+    last_query_hit_at: dict[str, str] = {}
+    last_review_reference_at: dict[str, str] = {}
+
+    for event in history:
+        occurred_at = str(event.get("occurred_at") or "")
+        event_type = str(event.get("event_type") or "")
+        source_ids = [str(item) for item in event.get("source_ids", []) if isinstance(item, str)]
+        if event_type == "query":
+            for entry_id in source_ids:
+                update_latest_timestamp(last_query_hit_at, entry_id, occurred_at)
+        elif event_type == "review":
+            for entry_id in source_ids:
+                update_latest_timestamp(last_review_reference_at, entry_id, occurred_at)
+
+    active_corpus_ids_by_entry: dict[str, list[str]] = {}
+    for corpus in active_corpora:
+        status = str(corpus.get("status") or "")
+        if status not in {"active", "cooling"}:
+            continue
+        corpus_id = str(corpus.get("corpus_id") or "")
+        if not corpus_id:
+            continue
+        source_ids = [
+            str(item)
+            for item in [*(corpus.get("source_ids", []) or []), *(corpus.get("bridge_evidence_ids", []) or [])]
+            if isinstance(item, str)
+        ]
+        for entry_id in source_ids:
+            active_corpus_ids_by_entry.setdefault(entry_id, [])
+            if corpus_id not in active_corpus_ids_by_entry[entry_id]:
+                active_corpus_ids_by_entry[entry_id].append(corpus_id)
+
+    material_entries: list[dict[str, Any]] = []
+    for entry in manifest_entries:
+        entry_id = str(entry.get("id") or "")
+        stored_path = str(entry.get("stored_path") or "")
+        preview = read_text_preview(root / stored_path) if stored_path and (root / stored_path).exists() else ""
+        supports_judgment_ids = reference_state["supports_judgment_ids"].get(entry_id, [])
+        citation_count = int(reference_state["citation_count_by_entry"].get(entry_id, 0))
+        active_corpus_ids = sorted(active_corpus_ids_by_entry.get(entry_id, []))
+        query_hit_at = last_query_hit_at.get(entry_id, "")
+        review_hit_at = last_review_reference_at.get(entry_id, "")
+        material_entries.append(
+            {
+                "entry_id": entry_id,
+                "path": stored_path,
+                "kind": str(entry.get("kind") or ""),
+                "source_type": str(entry.get("source_type") or ""),
+                "protocol_hints": protocol_hints_for_material(entry, preview),
+                "temperature": infer_material_temperature(
+                    entry,
+                    active_corpus_ids=active_corpus_ids,
+                    supports_judgment_ids=supports_judgment_ids,
+                    citation_count=citation_count,
+                    last_query_hit_at=query_hit_at,
+                    last_review_reference_at=review_hit_at,
+                ),
+                "last_touched_at": str(entry.get("updated_at") or entry.get("imported_at") or ""),
+                "last_query_hit_at": query_hit_at,
+                "last_review_reference_at": review_hit_at,
+                "citation_count": citation_count,
+                "supports_judgment_ids": supports_judgment_ids,
+                "active_corpus_ids": active_corpus_ids,
+                "archive_candidate": False,
+            }
+        )
+
+    document = {"version": 1, "generated_at": generated_at, "entries": material_entries}
+    save_material_state(root, document)
+    return document
+
+
+def upsert_active_corpus(
+    root: Path,
+    *,
+    protocol: str,
+    question: str,
+    source_ids: list[str],
+    concept_slugs: list[str],
+    bridge_evidence_ids: list[str],
+    output_ref: str,
+    changed_at: str,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    state = reconcile_active_corpora_state(root, changed_at=changed_at)
+    corpora = [dict(corpus) for corpus in state.get("corpora", [])]
+    base_timestamp = parse_iso_datetime(changed_at) or datetime.now(timezone.utc)
+    signature = question_signature(question)
+    seed = slugify(question)[:40] or "question"
+    corpus_id = f"{protocol}-{seed}-{signature.split(':', 1)[1][:8]}"
+    target: dict[str, Any] | None = None
+    for corpus in corpora:
+        if str(corpus.get("corpus_id") or "") == corpus_id:
+            target = corpus
+            break
+    if target is None:
+        target = {"corpus_id": corpus_id, "created_at": changed_at}
+        corpora.append(target)
+    output_refs = [str(item) for item in target.get("output_refs", []) if isinstance(item, str)]
+    if output_ref and output_ref not in output_refs:
+        output_refs.append(output_ref)
+    target.update(
+        {
+            "protocol": protocol,
+            "focus_kind": "question",
+            "focus_ref": question,
+            "question_hash": signature,
+            "source_ids": source_ids,
+            "concept_slugs": concept_slugs,
+            "bridge_evidence_ids": bridge_evidence_ids,
+            "output_refs": output_refs[-8:],
+            "status": "active",
+            "last_used_at": changed_at,
+            "expires_at": (base_timestamp + ACTIVE_CORPUS_TTL).replace(microsecond=0).isoformat(),
+        }
+    )
+    save_active_corpora_state(root, {"version": 1, "corpora": corpora})
+    return target
 
 
 def default_machine_memory_action_state() -> dict[str, Any]:
@@ -10337,9 +10743,11 @@ def compile_wiki(root: Path) -> dict[str, Any]:
                 )
                 + "\n",
             )
-        )
+    )
     changed_pages += int(write_if_changed(graph_health_report_path(root), render_graph_health(memory)))
     changed_pages += int(write_if_changed(machine_memory_drift_report_path(root), render_drift_report(memory, transition)))
+    material_state = refresh_material_state(root, generated_at=compiled_at, entries=entries)
+    active_corpora_state = load_active_corpora_state(root)
     append_wiki_log(
         root,
         "compile",
@@ -10353,6 +10761,8 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             f"graph_components: `{memory['health']['component_count']}`",
             f"output_packs: `{output_packs['counts']['review_packs']}/{output_packs['counts']['decision_memos']}/{output_packs['counts']['sop_drafts']}`",
             f"domain_pilots: `{len(domain_pilots['scorecards'])}`",
+            f"material_state_entries: `{len(material_state['entries'])}`",
+            f"active_corpora: `{len(active_corpora_state.get('corpora', []))}`",
             f"machine_memory_changed: `{transition['changed']}`",
             f"changed_pages: `{changed_pages}`",
             f"removed_concept_pages: `{removed_pages}`",
@@ -10368,6 +10778,8 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "changed_pages": changed_pages,
         "output_packs": dict(output_packs["counts"]),
         "domain_pilots": len(domain_pilots["scorecards"]),
+        "material_state_path": relative_path(root, material_state_path(root)),
+        "active_corpora_path": relative_path(root, active_corpora_state_path(root)),
     }
 
 
@@ -10868,16 +11280,48 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
         raise ValueError(f"Unsupported format: {output_format}")
 
     destination.write_text(content, encoding="utf-8")
+    artifact_ref = relative_path(root, destination)
+    bridge_evidence_ids = active_corpus_bridge_evidence_ids(machine_query, [entry["id"] for entry in ranked])
+    active_corpus = upsert_active_corpus(
+        root,
+        protocol=active_protocol,
+        question=question,
+        source_ids=[entry["id"] for entry in ranked],
+        concept_slugs=[concept["slug"] for concept in ranked_concepts],
+        bridge_evidence_ids=bridge_evidence_ids,
+        output_ref=artifact_ref,
+        changed_at=created_at,
+    )
+    append_runtime_history(
+        root,
+        {
+            "event_type": "query",
+            "occurred_at": created_at,
+            "protocol": active_protocol,
+            "corpus_id": active_corpus["corpus_id"],
+            "focus_kind": "question",
+            "focus_ref": question,
+            "question_hash": question_signature(question),
+            "output_format": output_format,
+            "output_ref": artifact_ref,
+            "source_ids": [entry["id"] for entry in ranked],
+            "concept_slugs": [concept["slug"] for concept in ranked_concepts],
+            "bridge_evidence_ids": bridge_evidence_ids,
+            "touched_component_ids": machine_query.get("touched_component_ids", []),
+        },
+    )
+    refresh_material_state(root, generated_at=created_at)
     append_wiki_log(
         root,
         "query",
         question,
         [
             f"format: `{output_format}`",
-            f"artifact: `{relative_path(root, destination)}`",
+            f"artifact: `{artifact_ref}`",
             f"ranked_sources: `{len(ranked)}`",
             f"ranked_concepts: `{len(ranked_concepts)}`",
             f"protocol: `{active_protocol}`",
+            f"active_corpus: `{active_corpus['corpus_id']}`",
             f"machine_terms: `{len(machine_query['matched_terms'])}`",
             f"machine_hits: `{len(machine_query['ranked_source_ids'])}/{len(machine_query['ranked_concept_slugs'])}`",
             f"bridge_concepts: `{len(machine_query['bridge_concept_slugs'])}`",
@@ -10885,9 +11329,10 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
         ],
     )
     return {
-        "path": relative_path(root, destination),
+        "path": artifact_ref,
         "format": output_format,
         "protocol": active_protocol,
+        "active_corpus_id": active_corpus["corpus_id"],
         "ranked_sources": [entry["id"] for entry in ranked],
         "ranked_concepts": [concept["slug"] for concept in ranked_concepts],
         "machine_memory_query": machine_query,
@@ -11622,6 +12067,21 @@ def review_page(
     frontmatter["citations"] = citations
     frontmatter["citation_snapshots"] = build_citation_snapshots(root, citations)
     target.write_text(f"{render_frontmatter(frontmatter)}\n\n{updated_body.strip()}\n", encoding="utf-8")
+    _entry_by_id, path_to_entry_id = entry_lookup_maps(load_manifest(root).get("entries", []))
+    source_ids = entry_ids_from_paths(path_to_entry_id, citations)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "review",
+            "occurred_at": reviewed_at,
+            "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
+            "page_id": str(frontmatter.get("id") or target.stem),
+            "page_path": relative_path(root, target),
+            "page_kind": kind,
+            "status": status,
+            "source_ids": source_ids,
+        },
+    )
     append_wiki_log(
         root,
         "review",
@@ -13037,6 +13497,42 @@ def write_nightly_health(
     queue = review_queue(decisions, judgments, active_protocol=protocol_state["active_protocol"])
     aging = collect_aging_signals(decisions, judgments, active_protocol=protocol_state["active_protocol"])
     generated_at = utc_now()
+    active_corpora_before = load_active_corpora_state(root)
+    previous_status_by_corpus = {
+        str(corpus.get("corpus_id") or ""): str(corpus.get("status") or "")
+        for corpus in active_corpora_before.get("corpora", [])
+        if corpus.get("corpus_id")
+    }
+    active_corpora_state = reconcile_active_corpora_state(root, changed_at=generated_at, nightly_cooldown=True)
+    active_corpora = active_corpora_state["corpora"]
+    cooled_corpus_ids = [
+        str(corpus.get("corpus_id") or "")
+        for corpus in active_corpora
+        if str(corpus.get("status") or "") == "cooling"
+        and previous_status_by_corpus.get(str(corpus.get("corpus_id") or "")) == "active"
+    ]
+    expired_corpus_ids = [
+        str(corpus.get("corpus_id") or "")
+        for corpus in active_corpora
+        if str(corpus.get("status") or "") == "expired"
+        and previous_status_by_corpus.get(str(corpus.get("corpus_id") or "")) != "expired"
+    ]
+    append_runtime_history(
+        root,
+        {
+            "event_type": "nightly",
+            "occurred_at": generated_at,
+            "protocol": protocol_state["active_protocol"],
+            "cooled_corpus_ids": cooled_corpus_ids,
+            "expired_corpus_ids": expired_corpus_ids,
+            "active_corpus_ids": [
+                str(corpus.get("corpus_id") or "")
+                for corpus in active_corpora
+                if str(corpus.get("status") or "") == "active"
+            ],
+        },
+    )
+    material_state = refresh_material_state(root, generated_at=generated_at, entries=manifest["entries"])
     state = {
         "generated_at": generated_at,
         "llm_used": llm_used,
@@ -13054,6 +13550,29 @@ def write_nightly_health(
             "counts": lint_result["counts"],
         },
         "semantic_report": semantic_report,
+        "material_state": {
+            "path": relative_path(root, material_state_path(root)),
+            "entry_count": len(material_state["entries"]),
+        },
+        "active_corpora": {
+            "path": relative_path(root, active_corpora_state_path(root)),
+            "count": len(active_corpora),
+            "active_ids": [
+                str(corpus.get("corpus_id") or "")
+                for corpus in active_corpora
+                if str(corpus.get("status") or "") == "active"
+            ],
+            "cooling_ids": [
+                str(corpus.get("corpus_id") or "")
+                for corpus in active_corpora
+                if str(corpus.get("status") or "") == "cooling"
+            ],
+            "expired_ids": [
+                str(corpus.get("corpus_id") or "")
+                for corpus in active_corpora
+                if str(corpus.get("status") or "") == "expired"
+            ],
+        },
         "promotions": promotion_result,
         "aging": {
             "overdue_pages": [page["path"] for page in aging["overdue"]],
@@ -13169,6 +13688,8 @@ def write_nightly_health(
             f"pending_judgment_reviews: `{len(queue['pending_judgments'])}`",
             f"overdue_reviews: `{len(aging['overdue'])}`",
             f"escalation_candidates: `{len(aging['escalated'])}`",
+            f"cooled_active_corpora: `{len(cooled_corpus_ids)}`",
+            f"expired_active_corpora: `{len(expired_corpus_ids)}`",
             f"auto_promotions: `{promotion_result.get('count', 0)}`",
             f"weak_concepts: `{memory.get('health', {}).get('concept_quality', {}).get('counts', {}).get('weak', 0)}`",
             f"machine_memory_actions: `{memory.get('health', {}).get('action_counts', {}).get('total', 0)}`",
