@@ -6941,6 +6941,17 @@ def material_archive_action_id(entry_id: str) -> str:
     return f"archive-{entry_id}"
 
 
+def routing_snapshot_for_protocol(routing_entry: dict[str, Any], protocol: str) -> dict[str, Any]:
+    if not isinstance(routing_entry, dict):
+        return {}
+    if str(routing_entry.get("protocol") or "") == protocol:
+        return routing_entry
+    for snapshot in routing_entry.get("protocol_snapshots", []):
+        if isinstance(snapshot, dict) and str(snapshot.get("protocol") or "") == protocol:
+            return snapshot
+    return {}
+
+
 def question_signature(question: str) -> str:
     normalized = " ".join(question.lower().split())
     return f"sha256:{sha256_bytes(normalized.encode('utf-8'))}"
@@ -11570,11 +11581,25 @@ def rank_sources(
     protocol: str = DEFAULT_PROTOCOL,
 ) -> list[dict[str, Any]]:
     question_tokens = tokenize(question)
-    scored: list[tuple[int, dict[str, Any]]] = []
+    scored: list[tuple[float, int, float, dict[str, Any]]] = []
     boost_source_ids = boost_source_ids or set()
+    material_state = load_material_state(root)
+    material_by_id = {
+        str(item.get("entry_id") or ""): item
+        for item in material_state.get("entries", [])
+        if isinstance(item, dict) and item.get("entry_id")
+    }
+    routing_state = load_material_routing_state(root)
+    routing_by_id = {
+        str(item.get("entry_id") or ""): item
+        for item in routing_state.get("entries", [])
+        if isinstance(item, dict) and item.get("entry_id")
+    }
     archived_source_ids = active_archived_material_ids(root)
     for entry in entries:
-        if str(entry.get("id") or "") in archived_source_ids:
+        entry_id = str(entry.get("id") or "")
+        material_entry = material_by_id.get(entry_id, {})
+        if entry_id in archived_source_ids or str(material_entry.get("temperature") or "") == "archived":
             continue
         source_file = root / entry["stored_path"]
         preview = read_text_preview(source_file, limit_lines=8)
@@ -11587,12 +11612,49 @@ def rank_sources(
             for token in question_tokens:
                 score += concept.lower().count(token)
         score += entry_focus_score(protocol, entry, summary_or_preview)
-        if entry["id"] in boost_source_ids:
+        if entry_id in boost_source_ids:
             score += 5
-        if score:
-            scored.append((score, entry))
-    scored.sort(key=lambda item: (-item[0], item[1]["title"].lower()))
-    return [entry for _score, entry in scored[:5]]
+        if not score:
+            continue
+
+        routing_entry = routing_by_id.get(entry_id, {})
+        routing_snapshot = routing_snapshot_for_protocol(routing_entry, protocol)
+        runtime_score = 0.0
+        if material_entry.get("active_corpus_ids"):
+            runtime_score += 3.0
+        temperature = str(material_entry.get("temperature") or "")
+        if temperature == "hot":
+            runtime_score += 2.0
+        elif temperature == "warm":
+            runtime_score += 1.0
+        if material_entry.get("supports_judgment_ids"):
+            runtime_score += 0.5
+
+        selected_as = str(routing_snapshot.get("selected_as") or "")
+        if selected_as == "hot-evidence":
+            runtime_score += 2.5
+        elif selected_as == "warm-evidence":
+            runtime_score += 1.5
+        elif selected_as == "cold-evidence":
+            runtime_score += 0.5
+        elif selected_as == "archive-candidate":
+            runtime_score -= 0.5
+        runtime_score += min(1.5, float(routing_snapshot.get("total_score", 0.0) or 0.0) * 0.35)
+
+        top_protocols = [
+            str(item.get("protocol") or "")
+            for item in routing_entry.get("top_protocols", [])
+            if isinstance(item, dict) and str(item.get("protocol") or "")
+        ]
+        if top_protocols[:1] == [protocol]:
+            runtime_score += 1.0
+        elif protocol in top_protocols[:2]:
+            runtime_score += 0.5
+
+        combined_score = float(score * 5) + runtime_score
+        scored.append((combined_score, score, runtime_score, entry))
+    scored.sort(key=lambda item: (-item[0], -item[1], -item[2], item[3]["title"].lower()))
+    return [entry for _combined, _base, _runtime, entry in scored[:5]]
 
 
 def render_report(

@@ -38,7 +38,10 @@ from aiwiki.app import (
     review_machine_memory_action,
     review_page,
     runtime_write_lock,
+    rank_sources,
     save_manifest,
+    save_material_routing_state,
+    save_material_state,
     save_machine_memory_action_state,
     set_active_protocol,
     strip_frontmatter,
@@ -134,6 +137,17 @@ class AiwikiFlowTests(unittest.TestCase):
         compile_wiki(self.root)
         compile_wiki(self.root)
         return entry
+
+    def _seed_runtime_ranking_entries(self) -> list[dict[str, str]]:
+        first = self.root / "alpha-cache.md"
+        first.write_text("# Alpha Cache\n\nLatency cache tradeoff evidence.\n", encoding="utf-8")
+        second = self.root / "zulu-cache.md"
+        second.write_text("# Zulu Cache\n\nLatency cache tradeoff evidence.\n", encoding="utf-8")
+        first_entry = ingest_source(self.root, str(first), title="Alpha Cache")
+        second_entry = ingest_source(self.root, str(second), title="Zulu Cache")
+        compile_wiki(self.root)
+        manifest = load_manifest(self.root)
+        return [entry for entry in manifest["entries"] if entry["id"] in {first_entry["id"], second_entry["id"]}]
 
     def test_ingest_compile_ask_file_back_and_lint(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -596,6 +610,150 @@ class AiwikiFlowTests(unittest.TestCase):
             )
             payload = json.loads(stdout.getvalue())
         self.assertEqual(payload["status"], "cold")
+
+    def test_rank_sources_prefers_active_corpus_and_warmer_material_on_close_matches(self) -> None:
+        entries = self._seed_runtime_ranking_entries()
+        alpha = next(entry for entry in entries if entry["title"] == "Alpha Cache")
+        zulu = next(entry for entry in entries if entry["title"] == "Zulu Cache")
+
+        save_material_state(
+            self.root,
+            {
+                "version": 1,
+                "generated_at": "2026-04-09T00:00:00+00:00",
+                "entries": [
+                    {
+                        "entry_id": alpha["id"],
+                        "temperature": "cold",
+                        "active_corpus_ids": [],
+                        "supports_judgment_ids": [],
+                    },
+                    {
+                        "entry_id": zulu["id"],
+                        "temperature": "warm",
+                        "active_corpus_ids": ["corpus-1"],
+                        "supports_judgment_ids": [],
+                    },
+                ],
+            },
+        )
+        save_material_routing_state(
+            self.root,
+            {
+                "version": 1,
+                "computed_at": "2026-04-09T00:00:00+00:00",
+                "active_protocol": "general",
+                "entries": [
+                    {
+                        "entry_id": alpha["id"],
+                        "protocol": "general",
+                        "selected_as": "cold-evidence",
+                        "total_score": 1.4,
+                        "top_protocols": [{"protocol": "general", "total_score": 1.4, "selected_as": "cold-evidence"}],
+                        "protocol_snapshots": [
+                            {"protocol": "general", "selected_as": "cold-evidence", "total_score": 1.4}
+                        ],
+                    },
+                    {
+                        "entry_id": zulu["id"],
+                        "protocol": "general",
+                        "selected_as": "warm-evidence",
+                        "total_score": 2.7,
+                        "top_protocols": [{"protocol": "general", "total_score": 2.7, "selected_as": "warm-evidence"}],
+                        "protocol_snapshots": [
+                            {"protocol": "general", "selected_as": "warm-evidence", "total_score": 2.7}
+                        ],
+                    },
+                ],
+            },
+        )
+
+        ranked = rank_sources(
+            self.root,
+            entries,
+            "latency cache tradeoff",
+            boost_source_ids={alpha["id"], zulu["id"]},
+            protocol="general",
+        )
+
+        self.assertEqual(ranked[0]["id"], zulu["id"])
+
+    def test_rank_sources_uses_protocol_specific_routing_snapshot(self) -> None:
+        entries = self._seed_runtime_ranking_entries()
+        alpha = next(entry for entry in entries if entry["title"] == "Alpha Cache")
+        zulu = next(entry for entry in entries if entry["title"] == "Zulu Cache")
+
+        save_material_state(
+            self.root,
+            {
+                "version": 1,
+                "generated_at": "2026-04-09T00:00:00+00:00",
+                "entries": [
+                    {
+                        "entry_id": alpha["id"],
+                        "temperature": "warm",
+                        "active_corpus_ids": [],
+                        "supports_judgment_ids": [],
+                    },
+                    {
+                        "entry_id": zulu["id"],
+                        "temperature": "warm",
+                        "active_corpus_ids": [],
+                        "supports_judgment_ids": [],
+                    },
+                ],
+            },
+        )
+        save_material_routing_state(
+            self.root,
+            {
+                "version": 1,
+                "computed_at": "2026-04-09T00:00:00+00:00",
+                "active_protocol": "general",
+                "entries": [
+                    {
+                        "entry_id": alpha["id"],
+                        "protocol": "general",
+                        "selected_as": "warm-evidence",
+                        "total_score": 2.5,
+                        "top_protocols": [{"protocol": "general", "total_score": 2.5, "selected_as": "warm-evidence"}],
+                        "protocol_snapshots": [
+                            {"protocol": "general", "selected_as": "warm-evidence", "total_score": 2.5},
+                            {"protocol": "investing", "selected_as": "cold-evidence", "total_score": 1.2},
+                        ],
+                    },
+                    {
+                        "entry_id": zulu["id"],
+                        "protocol": "general",
+                        "selected_as": "cold-evidence",
+                        "total_score": 1.1,
+                        "top_protocols": [{"protocol": "investing", "total_score": 2.8, "selected_as": "warm-evidence"}],
+                        "protocol_snapshots": [
+                            {"protocol": "general", "selected_as": "cold-evidence", "total_score": 1.1},
+                            {"protocol": "investing", "selected_as": "warm-evidence", "total_score": 2.8},
+                        ],
+                    },
+                ],
+            },
+        )
+
+        general_ranked = rank_sources(
+            self.root,
+            entries,
+            "latency cache tradeoff",
+            boost_source_ids={alpha["id"], zulu["id"]},
+            protocol="general",
+        )
+        investing_ranked = rank_sources(
+            self.root,
+            entries,
+            "latency cache tradeoff",
+            boost_source_ids={alpha["id"], zulu["id"]},
+            protocol="investing",
+        )
+
+        self.assertEqual(general_ranked[0]["id"], alpha["id"])
+        self.assertEqual(investing_ranked[0]["id"], zulu["id"])
 
     def test_protocol_set_updates_dashboard_without_compile(self) -> None:
         set_active_protocol(self.root, "investing")
