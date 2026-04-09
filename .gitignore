@@ -35,3 +35,7 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+
+# Harness upgrade sync
+.claude/review-handoffs/
+.codex/review-handoffs/

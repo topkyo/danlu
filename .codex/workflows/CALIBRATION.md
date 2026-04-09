@@ -79,3 +79,19 @@ qa-review downgrade heuristic:
 - New Session: no
 - PROGRESS Read: yes
 - Notes: captured after governance index closed_loop pass
+
+- Date: 2026-04-09
+- Agent: Codex
+- Task: open-harness upgrade sync
+- qa-review Mode: same-context
+- qa-review Hit: 0
+- qa-review Miss: 0
+- qa-review False Positive: 0
+- qa-runtime Mode: scripted
+- qa-runtime Hit: 0
+- qa-runtime Miss: 0
+- qa-runtime False Positive: 0
+- Contract Scope Changed: no
+- New Session: no
+- PROGRESS Read: no
+- Notes: captured after upgrading ai-wiki to latest local /home/tim/open-harness scaffold

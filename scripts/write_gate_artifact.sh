@@ -20,6 +20,11 @@ REVIEWER_MODE=""
 REVIEWER_FALLBACK_REASON=""
 REVIEWER_IDENTITY=""
 REVIEWER_SCOPE=""
+REVIEW_FINDINGS_COUNT=""
+REVIEW_FINDINGS_HIGHEST_SEVERITY=""
+RESOLVE_REVIEWER_MODE=0
+REVIEW_CAPABILITIES_FILE=""
+REVIEW_MODE_PREFERENCE=""
 RUNTIME_MODE=""
 RUNTIME_IDENTITY=""
 OUTPUT_PATH=""
@@ -66,9 +71,14 @@ Options:
 
 qa-review options:
   --reviewer-mode <isolated-agent|external-agent|fresh-session|same-context|human>
+  --resolve-reviewer-mode
+  --review-capabilities-file <path>
+  --review-mode-preference <mode,mode,...>
   --reviewer-fallback-reason <text>
   --reviewer-identity <text>
   --reviewer-scope <contract+diff+touched-files|full-repo|custom>
+  --review-findings-count <count>
+  --review-findings-highest-severity <critical|high|medium|low>
 
 qa-runtime options:
   --runtime-mode <scripted|isolated-agent|same-context|human>
@@ -150,6 +160,51 @@ append_optional_header() {
   local value="$2"
   [[ -n "$value" ]] || return 0
   printf '%s: %s\n' "$key" "$value"
+}
+
+auto_resolve_reviewer_mode() {
+  local cmd=()
+  local resolved_output=""
+  local explicit_fallback_reason="$REVIEWER_FALLBACK_REASON"
+  local explicit_identity="$REVIEWER_IDENTITY"
+  local explicit_scope="$REVIEWER_SCOPE"
+  local resolved_mode=""
+  local resolved_fallback_reason=""
+  local resolved_identity=""
+  local resolved_scope=""
+
+  [[ "$RESOLVE_REVIEWER_MODE" -eq 1 ]] || return 0
+  [[ "$GATE_NAME" == "qa-review" ]] || fail "--resolve-reviewer-mode is only valid for qa-review artifacts"
+  [[ "$STATUS" != "not-required" ]] || fail "--resolve-reviewer-mode cannot be used with qa-review status not-required"
+  [[ -z "$REVIEWER_MODE" ]] || fail "Cannot combine --resolve-reviewer-mode with --reviewer-mode"
+  [[ -f "$SCRIPT_DIR/resolve_review_mode.sh" ]] || fail "Missing review mode resolver: $SCRIPT_DIR/resolve_review_mode.sh"
+
+  cmd=(bash "$SCRIPT_DIR/resolve_review_mode.sh")
+  [[ -n "$REVIEW_CAPABILITIES_FILE" ]] && cmd+=(--capabilities-file "$REVIEW_CAPABILITIES_FILE")
+  [[ -n "$REVIEW_MODE_PREFERENCE" ]] && cmd+=(--preference "$REVIEW_MODE_PREFERENCE")
+  resolved_output="$(HARNESS_DIR="$HARNESS_DIR" "${cmd[@]}")"
+
+  # shellcheck disable=SC1091
+  source /dev/stdin <<< "$resolved_output"
+  resolved_mode="$REVIEWER_MODE"
+  resolved_fallback_reason="$REVIEWER_FALLBACK_REASON"
+  resolved_identity="$REVIEWER_IDENTITY"
+  resolved_scope="$REVIEWER_SCOPE"
+
+  REVIEWER_MODE="$resolved_mode"
+  REVIEWER_FALLBACK_REASON="$resolved_fallback_reason"
+  REVIEWER_IDENTITY="$resolved_identity"
+  REVIEWER_SCOPE="$resolved_scope"
+
+  if [[ -n "$explicit_fallback_reason" ]]; then
+    REVIEWER_FALLBACK_REASON="$explicit_fallback_reason"
+  fi
+  if [[ -n "$explicit_identity" ]]; then
+    REVIEWER_IDENTITY="$explicit_identity"
+  fi
+  if [[ -n "$explicit_scope" ]]; then
+    REVIEWER_SCOPE="$explicit_scope"
+  fi
 }
 
 while [[ $# -gt 0 ]]; do
@@ -263,6 +318,20 @@ while [[ $# -gt 0 ]]; do
       REVIEWER_MODE="$2"
       shift 2
       ;;
+    --resolve-reviewer-mode)
+      RESOLVE_REVIEWER_MODE=1
+      shift
+      ;;
+    --review-capabilities-file)
+      require_value "$1" "${2:-}"
+      REVIEW_CAPABILITIES_FILE="$2"
+      shift 2
+      ;;
+    --review-mode-preference)
+      require_value "$1" "${2:-}"
+      REVIEW_MODE_PREFERENCE="$2"
+      shift 2
+      ;;
     --reviewer-fallback-reason)
       require_value "$1" "${2:-}"
       REVIEWER_FALLBACK_REASON="$2"
@@ -276,6 +345,16 @@ while [[ $# -gt 0 ]]; do
     --reviewer-scope)
       require_value "$1" "${2:-}"
       REVIEWER_SCOPE="$2"
+      shift 2
+      ;;
+    --review-findings-count)
+      require_value "$1" "${2:-}"
+      REVIEW_FINDINGS_COUNT="$2"
+      shift 2
+      ;;
+    --review-findings-highest-severity)
+      require_value "$1" "${2:-}"
+      REVIEW_FINDINGS_HIGHEST_SEVERITY="$2"
       shift 2
       ;;
     --runtime-mode)
@@ -304,9 +383,18 @@ done
 }
 [[ "$STATUS" =~ ^(pass|fail|blocked|not-required)$ ]] || fail "Invalid status: $STATUS"
 [[ -n "$SUMMARY" ]] || fail "Missing --summary"
+[[ -z "$REVIEW_FINDINGS_COUNT" || "$REVIEW_FINDINGS_COUNT" =~ ^[0-9]+$ ]] || fail "--review-findings-count must be a non-negative integer"
+[[ -z "$REVIEW_FINDINGS_HIGHEST_SEVERITY" || "$REVIEW_FINDINGS_HIGHEST_SEVERITY" =~ ^(critical|high|medium|low)$ ]] || fail "--review-findings-highest-severity must be one of critical, high, medium, low"
 
 CONTRACT_FILE="$HARNESS_DIR/contracts/active.md"
 [[ -f "$CONTRACT_FILE" ]] || fail "Missing contract: $CONTRACT_FILE"
+
+if [[ "$RESOLVE_REVIEWER_MODE" -eq 0 ]]; then
+  [[ -z "$REVIEW_CAPABILITIES_FILE" ]] || fail "--review-capabilities-file requires --resolve-reviewer-mode"
+  [[ -z "$REVIEW_MODE_PREFERENCE" ]] || fail "--review-mode-preference requires --resolve-reviewer-mode"
+fi
+
+auto_resolve_reviewer_mode
 
 case "$GATE_NAME" in
   qa-review)
@@ -318,6 +406,10 @@ case "$GATE_NAME" in
       if [[ "$REVIEWER_MODE" == "same-context" ]]; then
         [[ -n "$REVIEWER_FALLBACK_REASON" ]] || fail "qa-review same-context pass requires --reviewer-fallback-reason"
       fi
+      if [[ -n "$REVIEW_FINDINGS_COUNT" && "$REVIEW_FINDINGS_COUNT" != "0" ]]; then
+        fail "qa-review pass cannot record non-zero --review-findings-count"
+      fi
+      [[ -z "$REVIEW_FINDINGS_HIGHEST_SEVERITY" ]] || fail "qa-review pass cannot record --review-findings-highest-severity"
     fi
     ;;
   qa-runtime)
@@ -348,6 +440,8 @@ mkdir -p "$(dirname "$OUTPUT_PATH")"
       append_optional_header "reviewer_fallback_reason" "$REVIEWER_FALLBACK_REASON"
       append_optional_header "reviewer_identity" "$REVIEWER_IDENTITY"
       append_optional_header "reviewer_scope" "$REVIEWER_SCOPE"
+      append_optional_header "review_findings_count" "$REVIEW_FINDINGS_COUNT"
+      append_optional_header "review_findings_highest_severity" "$REVIEW_FINDINGS_HIGHEST_SEVERITY"
       ;;
     qa-runtime)
       append_optional_header "runtime_mode" "$RUNTIME_MODE"

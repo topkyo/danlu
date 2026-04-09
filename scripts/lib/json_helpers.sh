@@ -42,6 +42,26 @@ harness_emit_json_boolean() {
   esac
 }
 
+harness_emit_json_boolean_or_null() {
+  local value="${1:-}"
+
+  if [[ -n "$value" ]]; then
+    harness_emit_json_boolean "$value"
+  else
+    printf 'null'
+  fi
+}
+
+harness_emit_json_number_or_null() {
+  local value="${1:-}"
+
+  if [[ "$value" =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
+    printf '%s' "$value"
+  else
+    printf 'null'
+  fi
+}
+
 harness_extract_top_level_json_string() {
   local key="$1"
   local json_payload="$2"

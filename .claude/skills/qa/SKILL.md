@@ -17,6 +17,10 @@ Review from an independent reviewer perspective, not restating implementation in
   - fresh session with only contract, diff, and touched-file context
 - Fallback: same-context self-review only when isolation is unavailable or calibration has deliberately downgraded review independence
 - If fallback is used, write `reviewer_fallback_reason` in the artifact
+- `scripts/resolve_review_mode.sh` can resolve this mode from `.claude/review-capabilities.env`; it chooses a reviewer mode, it does not schedule the reviewer for you
+- `scripts/launch_qa_review.sh` is the minimal execution bridge for this decision: it writes a handoff file and can call a configured `REVIEW_LAUNCH_COMMAND_*`
+- The bundled Claude capability template ships an opt-in `fresh-session` preset using `claude -p`; enable `REVIEW_CAPABILITY_FRESH_SESSION=yes` only when you want to use it
+- `scripts/run_qa_review.sh` is the recommended end-to-end helper when you want one command for launch + output capture + artifact write, and it can append calibration too
 
 ## Required Check Categories
 
@@ -31,6 +35,9 @@ Review from an independent reviewer perspective, not restating implementation in
 
 Write gate artifact with: status, checked_at, contract_sha, worktree_fingerprint, findings.
 Prefer generating the header via `bash scripts/write_gate_artifact.sh ...`, then append findings below it.
+For project-local automatic mode selection, prefer `bash scripts/write_gate_artifact.sh qa-review ... --resolve-reviewer-mode`.
+If the project configured launcher hooks in `.claude/review-capabilities.env`, prefer `bash scripts/launch_qa_review.sh --task "<task>"` before writing the final artifact.
+For the shortest path, prefer `bash scripts/run_qa_review.sh --task "<task>" --status auto --append-calibration --contract-scope-changed no --new-session yes --progress-read no`.
 Required when `status: pass`:
 - `reviewer_mode`: `isolated-agent | external-agent | fresh-session | same-context | human`
 - If `reviewer_mode: same-context`, `reviewer_fallback_reason`
@@ -43,3 +50,4 @@ If no findings: list checked categories and state `no findings`.
 ## Calibration
 
 After each run, append to `CALIBRATION.md`: date, task, reviewer mode, hits, misses, false positives.
+Prefer `bash scripts/write_calibration_entry.sh --from-current-gates --task "<task>" ...` so reviewer mode is imported from the current gate artifact and the log stays machine-readable for downgrade recommendations.

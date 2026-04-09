@@ -24,8 +24,14 @@ summary: 一句话摘要
 可用以下命令自动写入这些头部字段:
 
 ```bash
-HARNESS_DIR=.codex bash scripts/write_gate_artifact.sh qa-review --status pass --summary "no findings" --reviewer-mode same-context --reviewer-fallback-reason "isolated reviewer unavailable"
+HARNESS_DIR=.codex bash scripts/write_gate_artifact.sh qa-review --status pass --summary "no findings" --resolve-reviewer-mode
 ```
+
+`--resolve-reviewer-mode` reads `.codex/review-capabilities.env`, picks the first supported mode from the configured preference order, and auto-fills `reviewer_fallback_reason` when the result degrades to `same-context`.
+If the project configured launcher hooks, `HARNESS_DIR=.codex bash scripts/launch_qa_review.sh --task "<task>"` can prepare a handoff file and trigger the mode-specific launcher command before you write the final artifact.
+The bundled `.codex/review-capabilities.env` already includes an opt-in `fresh-session` launcher preset based on `codex review --uncommitted`; it remains inactive until `REVIEW_CAPABILITY_FRESH_SESSION=yes`.
+If you want the shortest path, `HARNESS_DIR=.codex bash scripts/run_qa_review.sh --task "<task>" --status auto --append-calibration --contract-scope-changed no --new-session yes --progress-read no` can launch review, capture output, write the artifact, and append calibration in one command.
+That helper also auto-records `review_findings_count`. Clean passing artifacts keep that count at `0`; if the review output includes explicit markers such as `[high]` or `Severity: medium`, `review_findings_highest_severity` is only retained on non-pass or optional artifacts that still preserve findings.
 
 若当前 gate 已经是本轮最后一个 gate，也可以顺手追加 calibration entry:
 
@@ -40,6 +46,8 @@ reviewer_mode: isolated-agent | external-agent | fresh-session | same-context | 
 reviewer_fallback_reason: <required when reviewer_mode is same-context>
 reviewer_identity: <tool / model / session name>
 reviewer_scope: contract+diff+touched-files | full-repo | custom
+review_findings_count: <optional inferred findings count>
+review_findings_highest_severity: critical | high | medium | low
 runtime_mode: scripted | isolated-agent | same-context | human
 runtime_identity: <tool / model / session name>
 ```
@@ -47,7 +55,10 @@ runtime_identity: <tool / model / session name>
 其中:
 - `qa-review` 在 `status: pass` 时必须写 `reviewer_mode`
 - 若 `reviewer_mode: same-context`，必须写 `reviewer_fallback_reason`
+- `qa-review` 在 `status: pass` 时若写 `review_findings_count`，其值必须是 `0`
+- `qa-review` 在 `status: pass` 时不得写 `review_findings_highest_severity`
 - 其余 `reviewer_*` 推荐写
+- 若希望按项目配置自动决定 reviewer 形态，优先使用 `--resolve-reviewer-mode` 而不是手写 `--reviewer-mode`
 - `qa-runtime` 在 `status: pass` 时必须写 `runtime_mode`；其余 `runtime_*` 推荐写
 - `deploy-gate` 会校验这些必填 mode 字段；identity / scope 主要用于保留执行方式与校准数据
 - 若希望 `write_calibration_entry.sh --from-current-gates` 在 `fail` / `blocked` artifact 上也能自动导入 mode，建议这些状态同样保留对应 mode 头部

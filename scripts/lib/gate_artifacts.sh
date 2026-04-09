@@ -111,6 +111,8 @@ harness_validate_gate_execution_metadata() {
   local status="$3"
   local mode=""
   local fallback_reason=""
+  local review_findings_count=""
+  local review_findings_highest_severity=""
 
   [[ "$status" == "pass" ]] || return 0
 
@@ -123,6 +125,15 @@ harness_validate_gate_execution_metadata() {
         fallback_reason="$(harness_extract_artifact_header "reviewer_fallback_reason" "$path")"
         [[ -n "$fallback_reason" ]] || harness_gate_fail "$gate_name artifact missing reviewer_fallback_reason for same-context fallback: $path"
       fi
+      review_findings_count="$(harness_extract_artifact_header "review_findings_count" "$path")"
+      if [[ -n "$review_findings_count" && ! "$review_findings_count" =~ ^[0-9]+$ ]]; then
+        harness_gate_fail "$gate_name artifact has invalid review_findings_count: $path"
+      fi
+      if [[ -n "$review_findings_count" && "$review_findings_count" != "0" ]]; then
+        harness_gate_fail "$gate_name pass artifact cannot record non-zero review_findings_count: $path"
+      fi
+      review_findings_highest_severity="$(harness_extract_artifact_header "review_findings_highest_severity" "$path")"
+      [[ -z "$review_findings_highest_severity" ]] || harness_gate_fail "$gate_name pass artifact cannot record review_findings_highest_severity: $path"
       ;;
     qa-runtime)
       mode="$(harness_extract_gate_execution_mode "$gate_name" "$path")"

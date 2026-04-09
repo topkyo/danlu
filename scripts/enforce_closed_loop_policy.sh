@@ -13,6 +13,8 @@ REQUIRE_CONTRACT=0
 CHECK_CALIBRATION_REPORT=0
 JSON_OUTPUT=0
 HARNESS_DIR="${HARNESS_DIR:-.claude}"
+MAX_QA_REVIEW_FINDINGS=""
+DENY_QA_REVIEW_SEVERITY=""
 declare -a ALLOW_ACTIONS=("none")
 declare -a ALLOW_QA_REVIEW_RECOMMENDATIONS=("KEEP current qa-review requirement" "KEEP qa-review required" "INSUFFICIENT DATA")
 declare -a ALLOW_CONTRACT_RECOMMENDATIONS=("KEEP standalone contract" "INSUFFICIENT DATA")
@@ -26,6 +28,17 @@ CALIBRATION_REPORT_AVAILABLE=""
 CALIBRATION_QA_REVIEW_RECOMMENDATION=""
 CALIBRATION_CONTRACT_RECOMMENDATION=""
 CALIBRATION_PROGRESS_RECOMMENDATION=""
+QA_REVIEW_ARTIFACT_PRESENT=""
+QA_REVIEW_ARTIFACT_STATUS=""
+QA_REVIEW_REVIEWER_MODE=""
+QA_REVIEW_FINDINGS_COUNT=""
+QA_REVIEW_HIGHEST_SEVERITY=""
+QA_REVIEW_FINDINGS_THRESHOLD_READY=""
+QA_REVIEW_RECOMMENDED_MAX_FINDINGS=""
+QA_REVIEW_FINDINGS_THRESHOLD_DETAIL=""
+QA_REVIEW_SEVERITY_THRESHOLD_READY=""
+QA_REVIEW_STRICTEST_PASSING_DENY_SEVERITY=""
+QA_REVIEW_SEVERITY_THRESHOLD_DETAIL=""
 POLICY_ERROR=""
 declare -a VIOLATION_FIELDS=()
 declare -a VIOLATION_VALUES=()
@@ -46,6 +59,8 @@ Options:
   --allow-qa-review-recommendation <value>
   --allow-contract-recommendation <value>
   --allow-progress-recommendation <value>
+  --max-qa-review-findings <count>
+  --deny-qa-review-severity <critical|high|medium|low>
 EOF
 }
 
@@ -85,6 +100,26 @@ add_violation() {
 
 add_remediation() {
   REMEDIATIONS+=("$1")
+}
+
+severity_rank() {
+  case "${1:-}" in
+    critical)
+      printf '%s\n' "4"
+      ;;
+    high)
+      printf '%s\n' "3"
+      ;;
+    medium)
+      printf '%s\n' "2"
+      ;;
+    low)
+      printf '%s\n' "1"
+      ;;
+    *)
+      printf '%s\n' "0"
+      ;;
+  esac
 }
 
 format_violation_summary() {
@@ -163,6 +198,17 @@ emit_json_result() {
   printf '    "recommended_action": %s,\n' "$(harness_emit_json_string_or_null "$RECOMMENDED_ACTION")"
   printf '    "note_status": %s,\n' "$(harness_emit_json_string_or_null "$NOTE_STATUS")"
   printf '    "qa_review_requirement": %s,\n' "$(harness_emit_json_string_or_null "$QA_REVIEW_REQUIREMENT")"
+  printf '    "qa_review_artifact_present": %s,\n' "$(harness_emit_json_boolean_or_null "$QA_REVIEW_ARTIFACT_PRESENT")"
+  printf '    "qa_review_artifact_status": %s,\n' "$(harness_emit_json_string_or_null "$QA_REVIEW_ARTIFACT_STATUS")"
+  printf '    "qa_review_reviewer_mode": %s,\n' "$(harness_emit_json_string_or_null "$QA_REVIEW_REVIEWER_MODE")"
+  printf '    "qa_review_findings_count": %s,\n' "$(harness_emit_json_number_or_null "$QA_REVIEW_FINDINGS_COUNT")"
+  printf '    "qa_review_highest_severity": %s,\n' "$(harness_emit_json_string_or_null "$QA_REVIEW_HIGHEST_SEVERITY")"
+  printf '    "qa_review_findings_threshold_ready": %s,\n' "$(harness_emit_json_boolean_or_null "$QA_REVIEW_FINDINGS_THRESHOLD_READY")"
+  printf '    "qa_review_recommended_max_findings": %s,\n' "$(harness_emit_json_number_or_null "$QA_REVIEW_RECOMMENDED_MAX_FINDINGS")"
+  printf '    "qa_review_findings_threshold_detail": %s,\n' "$(harness_emit_json_string_or_null "$QA_REVIEW_FINDINGS_THRESHOLD_DETAIL")"
+  printf '    "qa_review_severity_threshold_ready": %s,\n' "$(harness_emit_json_boolean_or_null "$QA_REVIEW_SEVERITY_THRESHOLD_READY")"
+  printf '    "qa_review_strictest_passing_deny_severity": %s,\n' "$(harness_emit_json_string_or_null "$QA_REVIEW_STRICTEST_PASSING_DENY_SEVERITY")"
+  printf '    "qa_review_severity_threshold_detail": %s,\n' "$(harness_emit_json_string_or_null "$QA_REVIEW_SEVERITY_THRESHOLD_DETAIL")"
   printf '    "calibration_report_available": %s,\n' "$(harness_emit_json_string_or_null "$CALIBRATION_REPORT_AVAILABLE")"
   printf '    "qa_review_recommendation": %s,\n' "$(harness_emit_json_string_or_null "$CALIBRATION_QA_REVIEW_RECOMMENDATION")"
   printf '    "contract_recommendation": %s,\n' "$(harness_emit_json_string_or_null "$CALIBRATION_CONTRACT_RECOMMENDATION")"
@@ -212,6 +258,16 @@ while [[ $# -gt 0 ]]; do
       ALLOW_PROGRESS_RECOMMENDATIONS+=("$2")
       shift 2
       ;;
+    --max-qa-review-findings)
+      require_value "$1" "${2:-}"
+      MAX_QA_REVIEW_FINDINGS="$2"
+      shift 2
+      ;;
+    --deny-qa-review-severity)
+      require_value "$1" "${2:-}"
+      DENY_QA_REVIEW_SEVERITY="${2,,}"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -221,6 +277,9 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+[[ -z "$MAX_QA_REVIEW_FINDINGS" || "$MAX_QA_REVIEW_FINDINGS" =~ ^[0-9]+$ ]] || fail "--max-qa-review-findings must be a non-negative integer"
+[[ -z "$DENY_QA_REVIEW_SEVERITY" || "$DENY_QA_REVIEW_SEVERITY" =~ ^(critical|high|medium|low)$ ]] || fail "--deny-qa-review-severity must be one of critical, high, medium, low"
 
 declare -a CLOSED_LOOP_ARGS=("--json")
 if [[ "$ARTIFACTS_ONLY" -eq 1 ]]; then
@@ -265,6 +324,17 @@ RECOMMENDED_ACTION="$(harness_extract_top_level_json_string "compat_policy_recom
 NOTE_STATUS="$(harness_extract_top_level_json_string "compat_policy_note_status" "$CLOSED_LOOP_JSON")"
 QA_REVIEW_REQUIREMENT="$(harness_extract_top_level_json_string "compat_policy_qa_review_requirement" "$CLOSED_LOOP_JSON")"
 CALIBRATION_REPORT_AVAILABLE="$(harness_extract_top_level_json_literal "compat_calibration_report_available" "$CLOSED_LOOP_JSON")"
+QA_REVIEW_ARTIFACT_PRESENT="$(harness_extract_top_level_json_literal "compat_qa_review_artifact_present" "$CLOSED_LOOP_JSON")"
+QA_REVIEW_ARTIFACT_STATUS="$(harness_extract_top_level_json_string "compat_qa_review_artifact_status" "$CLOSED_LOOP_JSON")"
+QA_REVIEW_REVIEWER_MODE="$(harness_extract_top_level_json_string "compat_qa_review_reviewer_mode" "$CLOSED_LOOP_JSON")"
+QA_REVIEW_FINDINGS_COUNT="$(harness_extract_top_level_json_literal "compat_qa_review_findings_count" "$CLOSED_LOOP_JSON")"
+QA_REVIEW_HIGHEST_SEVERITY="$(harness_extract_top_level_json_string "compat_qa_review_highest_severity" "$CLOSED_LOOP_JSON")"
+QA_REVIEW_FINDINGS_THRESHOLD_READY="$(harness_extract_top_level_json_literal "compat_qa_review_findings_threshold_ready" "$CLOSED_LOOP_JSON")"
+QA_REVIEW_RECOMMENDED_MAX_FINDINGS="$(harness_extract_top_level_json_literal "compat_qa_review_recommended_max_findings" "$CLOSED_LOOP_JSON")"
+QA_REVIEW_FINDINGS_THRESHOLD_DETAIL="$(harness_extract_top_level_json_string "compat_qa_review_findings_threshold_detail" "$CLOSED_LOOP_JSON")"
+QA_REVIEW_SEVERITY_THRESHOLD_READY="$(harness_extract_top_level_json_literal "compat_qa_review_severity_threshold_ready" "$CLOSED_LOOP_JSON")"
+QA_REVIEW_STRICTEST_PASSING_DENY_SEVERITY="$(harness_extract_top_level_json_string "compat_qa_review_strictest_passing_deny_severity" "$CLOSED_LOOP_JSON")"
+QA_REVIEW_SEVERITY_THRESHOLD_DETAIL="$(harness_extract_top_level_json_string "compat_qa_review_severity_threshold_detail" "$CLOSED_LOOP_JSON")"
 CALIBRATION_QA_REVIEW_RECOMMENDATION="$(harness_extract_top_level_json_string "compat_calibration_qa_review_recommendation" "$CLOSED_LOOP_JSON")"
 CALIBRATION_CONTRACT_RECOMMENDATION="$(harness_extract_top_level_json_string "compat_calibration_contract_recommendation" "$CLOSED_LOOP_JSON")"
 CALIBRATION_PROGRESS_RECOMMENDATION="$(harness_extract_top_level_json_string "compat_calibration_progress_recommendation" "$CLOSED_LOOP_JSON")"
@@ -276,6 +346,16 @@ if [[ -z "$RECOMMENDED_ACTION" ]]; then
     exit 1
   fi
   fail "$POLICY_ERROR"
+fi
+
+if [[ "$QA_REVIEW_FINDINGS_COUNT" == "null" ]]; then
+  QA_REVIEW_FINDINGS_COUNT=""
+fi
+if [[ "$QA_REVIEW_RECOMMENDED_MAX_FINDINGS" == "null" ]]; then
+  QA_REVIEW_RECOMMENDED_MAX_FINDINGS=""
+fi
+if [[ "$CALIBRATION_REPORT_AVAILABLE" == "null" ]]; then
+  CALIBRATION_REPORT_AVAILABLE=""
 fi
 
 if ! value_is_allowed "$RECOMMENDED_ACTION" "ALLOW_ACTIONS"; then
@@ -290,6 +370,36 @@ if ! value_is_allowed "$RECOMMENDED_ACTION" "ALLOW_ACTIONS"; then
       add_remediation "Allow this action explicitly with: bash scripts/enforce_closed_loop_policy.sh --allow-action $RECOMMENDED_ACTION"
       ;;
   esac
+fi
+
+if [[ -n "$MAX_QA_REVIEW_FINDINGS" ]]; then
+  if [[ "$QA_REVIEW_ARTIFACT_PRESENT" != "true" ]]; then
+    add_violation "qa_review_artifact_present" "missing"
+    add_remediation "Ensure the qa-review artifact exists before enforcing findings-count thresholds."
+  elif [[ -z "$QA_REVIEW_FINDINGS_COUNT" ]]; then
+    add_violation "qa_review_findings_count" "missing"
+    add_remediation "Record review_findings_count in the qa-review artifact, or re-run qa-review via scripts/run_qa_review.sh so the helper can infer it."
+  elif (( QA_REVIEW_FINDINGS_COUNT > MAX_QA_REVIEW_FINDINGS )); then
+    add_violation "qa_review_findings_count" "$QA_REVIEW_FINDINGS_COUNT > $MAX_QA_REVIEW_FINDINGS"
+    add_remediation "Reduce qa-review findings to $MAX_QA_REVIEW_FINDINGS or below, or raise the threshold with: bash scripts/enforce_closed_loop_policy.sh --max-qa-review-findings $QA_REVIEW_FINDINGS_COUNT"
+  fi
+fi
+
+if [[ -n "$DENY_QA_REVIEW_SEVERITY" ]]; then
+  if [[ "$QA_REVIEW_ARTIFACT_PRESENT" != "true" ]]; then
+    add_violation "qa_review_artifact_present" "missing"
+    add_remediation "Ensure the qa-review artifact exists before enforcing severity thresholds."
+  elif [[ -n "$QA_REVIEW_HIGHEST_SEVERITY" ]]; then
+    if (( $(severity_rank "$QA_REVIEW_HIGHEST_SEVERITY") >= $(severity_rank "$DENY_QA_REVIEW_SEVERITY") )); then
+      add_violation "qa_review_highest_severity" "$QA_REVIEW_HIGHEST_SEVERITY >= $DENY_QA_REVIEW_SEVERITY"
+      add_remediation "Resolve qa-review findings at severity $DENY_QA_REVIEW_SEVERITY or above, or relax the threshold with: bash scripts/enforce_closed_loop_policy.sh --deny-qa-review-severity critical"
+    fi
+  elif [[ -n "$QA_REVIEW_FINDINGS_COUNT" && "$QA_REVIEW_FINDINGS_COUNT" =~ ^[0-9]+$ && "$QA_REVIEW_FINDINGS_COUNT" -eq 0 ]]; then
+    :
+  else
+    add_violation "qa_review_highest_severity" "missing"
+    add_remediation "Record review_findings_highest_severity in the qa-review artifact, or include explicit severity markers like [high] / Severity: medium in the qa-review output."
+  fi
 fi
 
 if [[ "$CHECK_CALIBRATION_REPORT" -eq 1 ]]; then
