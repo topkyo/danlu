@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any
 import fcntl
 
+from .config import LLMConfig
+
 
 LAYOUT_DIRS = (
     "raw/inbox",
@@ -7809,6 +7811,10 @@ def furnace_center_html_path(root: Path) -> Path:
     return root / "output" / "control" / "furnace-center.html"
 
 
+def shell_summary_path(root: Path) -> Path:
+    return root / "output" / "control" / "shell-summary.json"
+
+
 def execution_center_html_path(root: Path) -> Path:
     return root / "output" / "control" / "execution-center.html"
 
@@ -7859,6 +7865,10 @@ def agent_pack_path(root: Path, role: str) -> Path:
 
 def output_packs_index_path(root: Path) -> Path:
     return root / "wiki" / "indexes" / "output-packs.md"
+
+
+def domain_pilots_path(root: Path) -> Path:
+    return root / "wiki" / "indexes" / "domain-pilots.md"
 
 
 def review_packs_dir(root: Path) -> Path:
@@ -8078,6 +8088,223 @@ def append_runtime_history(root: Path, event: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+def summarize_runtime_event_for_shell(event: dict[str, Any]) -> dict[str, Any]:
+    event_type = str(event.get("event_type") or "")
+    summary = {
+        "event_type": event_type,
+        "occurred_at": str(event.get("occurred_at") or ""),
+        "protocol": str(event.get("protocol") or ""),
+        "title": "",
+    }
+    if event_type == "query":
+        summary["title"] = str(event.get("focus_ref") or "Query")
+        summary["output_path"] = str(event.get("output_ref") or "")
+        summary["corpus_id"] = str(event.get("corpus_id") or "")
+        summary["output_format"] = str(event.get("output_format") or "")
+    elif event_type == "review":
+        summary["title"] = str(event.get("page_path") or "Review")
+        summary["page_path"] = str(event.get("page_path") or "")
+        summary["status"] = str(event.get("status") or "")
+        summary["page_kind"] = str(event.get("page_kind") or "")
+    elif event_type == "knowledge-lifecycle-override":
+        summary["title"] = str(event.get("slug") or event.get("page_id") or "Lifecycle override")
+        summary["operation"] = str(event.get("operation") or "")
+        summary["path"] = str(event.get("path") or "")
+        summary["lifecycle_state"] = str(event.get("lifecycle_state") or "")
+    elif event_type in {"archive-apply", "archive-revert"}:
+        summary["title"] = str(event.get("source_ids", ["archive"])[0] if event.get("source_ids") else "Archive")
+        summary["receipt_path"] = str(event.get("receipt_path") or "")
+        summary["source_ids"] = [str(item) for item in event.get("source_ids", []) if item]
+    elif event_type == "nightly":
+        summary["title"] = "Nightly health"
+        summary["active_corpus_ids"] = [str(item) for item in event.get("active_corpus_ids", []) if item]
+        summary["cooled_corpus_ids"] = [str(item) for item in event.get("cooled_corpus_ids", []) if item]
+        summary["expired_corpus_ids"] = [str(item) for item in event.get("expired_corpus_ids", []) if item]
+    else:
+        summary["title"] = event_type or "runtime-event"
+    return summary
+
+
+def shell_recent_runs(root: Path, *, limit: int = 8) -> list[dict[str, Any]]:
+    history = load_runtime_history(root)
+    return [summarize_runtime_event_for_shell(event) for event in list(reversed(history))[:limit]]
+
+
+def shell_recent_receipts(root: Path, *, limit: int = 8) -> list[dict[str, Any]]:
+    receipts = load_execution_receipt_history(root)
+    return [
+        {
+            "applied_at": str(receipt.get("applied_at") or ""),
+            "operation": str(receipt.get("operation") or ""),
+            "protocol": str(receipt.get("protocol") or ""),
+            "receipt_path": str(receipt.get("receipt_path") or ""),
+            "status": str(receipt.get("status") or ""),
+            "subject_id": str(receipt.get("subject_id") or ""),
+            "subject_kind": str(receipt.get("subject_kind") or ""),
+            "title": str(receipt.get("title") or ""),
+        }
+        for receipt in receipts[:limit]
+    ]
+
+
+def shell_links(root: Path) -> dict[str, str]:
+    return {
+        "summary_path": relative_path(root, shell_summary_path(root)),
+        "furnace_center_markdown": "wiki/indexes/furnace-center.md",
+        "review_center_markdown": "wiki/indexes/review-center.md",
+        "execution_center_markdown": "wiki/indexes/execution-center.md",
+        "execution_audit_markdown": "wiki/indexes/execution-audit.md",
+        "graph_view_markdown": "wiki/indexes/graph-view.md",
+        "protocols_markdown": "wiki/indexes/protocols.md",
+        "domain_pilots_markdown": "wiki/indexes/domain-pilots.md",
+        "output_packs_markdown": "wiki/indexes/output-packs.md",
+        "agent_workbench_markdown": "wiki/indexes/agent-workbench.md",
+        "furnace_center_html": relative_path(root, furnace_center_html_path(root)),
+        "review_center_html": relative_path(root, review_center_html_path(root)),
+        "execution_center_html": relative_path(root, execution_center_html_path(root)),
+        "execution_audit_html": relative_path(root, execution_audit_html_path(root)),
+        "graph_html": relative_path(root, machine_memory_graph_html_path(root)),
+        "product_shell_design": "wiki/indexes/Furnace Product Shell Plugin.md",
+        "product_shell_runtime_plan": "wiki/indexes/Furnace Product Shell Runtime Plan.md",
+    }
+
+
+def shell_capabilities(root: Path) -> dict[str, Any]:
+    return {
+        "launcher_mode": "repo-local",
+        "supports_hidden_state_read": False,
+        "commands": {
+            "p0": [
+                "shell-status",
+                "compile",
+                "ask",
+                "run-ask",
+                "nightly",
+                "protocol-status",
+                "protocol-set",
+                "llm-check",
+            ],
+            "p1": [
+                "run-compile",
+                "run-nightly",
+                "file-back",
+                "review-page",
+                "review-rewrite",
+                "apply-rewrite",
+                "retire-concept",
+                "reactivate-concept",
+                "apply-archive",
+                "revert-archive",
+            ],
+            "p2": ["review-action", "apply-action", "revert-action", "watch", "auto-once"],
+        },
+        "views": {
+            "furnace_center_markdown": (root / "wiki" / "indexes" / "furnace-center.md").exists(),
+            "review_center_markdown": (root / "wiki" / "indexes" / "review-center.md").exists(),
+            "execution_center_markdown": execution_center_path(root).exists(),
+            "execution_audit_markdown": execution_audit_path(root).exists(),
+            "domain_pilots_markdown": domain_pilots_path(root).exists(),
+            "output_packs_markdown": output_packs_index_path(root).exists(),
+            "agent_workbench_markdown": agent_workbench_path(root).exists(),
+            "furnace_center_html": furnace_center_html_path(root).exists(),
+            "review_center_html": review_center_html_path(root).exists(),
+            "execution_center_html": execution_center_html_path(root).exists(),
+            "execution_audit_html": execution_audit_html_path(root).exists(),
+            "graph_html": machine_memory_graph_html_path(root).exists(),
+        },
+    }
+
+
+def shell_protocol_state(root: Path) -> dict[str, Any]:
+    state = load_json_document(protocol_state_path(root))
+    available = sorted(PROTOCOL_LIBRARY)
+    active = str(state.get("active_protocol") or DEFAULT_PROTOCOL)
+    if active not in available:
+        active = DEFAULT_PROTOCOL if DEFAULT_PROTOCOL in available else (available[0] if available else DEFAULT_PROTOCOL)
+    return {
+        "active_protocol": active,
+        "available_protocols": available,
+        "state_path": relative_path(root, protocol_state_path(root)),
+    }
+
+
+def build_shell_summary(root: Path, *, generated_at: str | None = None) -> dict[str, Any]:
+    ensure_layout(root)
+    generated_at = generated_at or utc_now()
+    protocol_state = shell_protocol_state(root)
+    llm_status = LLMConfig.status_from_env()
+    decisions = collect_curated_pages(root, "decisions", "decision")
+    judgments = collect_curated_pages(root, "judgments", "judgment")
+    queue = review_queue(decisions, judgments, active_protocol=protocol_state["active_protocol"])
+    aging = collect_aging_signals(decisions, judgments, active_protocol=protocol_state["active_protocol"])
+    knowledge_lifecycle = load_knowledge_lifecycle_state(root)
+    lifecycle_summary = knowledge_lifecycle_governance_summary(
+        knowledge_lifecycle,
+        active_protocol=protocol_state["active_protocol"],
+    )
+    memory = load_machine_memory(root)
+    nightly_state = load_json_document(nightly_health_state_path(root))
+    review_backlog_counts = {
+        "pending_decisions": len(queue["pending_decisions"]),
+        "pending_judgments": len(queue["pending_judgments"]),
+        "overdue_reviews": len(aging["overdue"]),
+        "escalation_candidates": len(aging["escalated"]),
+        "concept_backlog": lifecycle_summary.get("counts", {}).get("concept_backlog", 0),
+        "review_concepts": lifecycle_summary.get("counts", {}).get("review_concepts", 0),
+        "revisit_concepts": lifecycle_summary.get("counts", {}).get("revisit_concepts", 0),
+        "retired_concepts": lifecycle_summary.get("counts", {}).get("retired_concepts", 0),
+        "machine_memory_actions": memory.get("health", {}).get("action_counts", {}).get("total", 0),
+        "ready_actions": memory.get("health", {}).get("repair_plan", {}).get("counts", {}).get("ready", 0),
+        "overdue_actions": len(memory.get("health", {}).get("overdue_actions", [])),
+        "escalated_actions": len(memory.get("health", {}).get("escalated_actions", [])),
+    }
+    return {
+        "kind": "product-shell-summary",
+        "contract_version": 1,
+        "generated_at": generated_at,
+        "generated_by": "aiwiki-shell-status",
+        "summary_path": relative_path(root, shell_summary_path(root)),
+        "active_protocol": protocol_state["active_protocol"],
+        "available_protocols": list(protocol_state.get("available_protocols", [])),
+        "llm_status": {
+            "configured": bool(llm_status.get("configured")),
+            "backend": str(llm_status.get("backend") or ""),
+            "backend_requested": str(llm_status.get("backend_requested") or ""),
+            "model": str(llm_status.get("model") or ""),
+            "available_backends": list(llm_status.get("available_backends", [])),
+            "image_analysis_supported": bool(llm_status.get("image_analysis_supported")),
+            "message": str(llm_status.get("message") or ""),
+        },
+        "review_backlog_counts": review_backlog_counts,
+        "aging_summary": {
+            "overdue_count": len(aging["overdue"]),
+            "escalated_count": len(aging["escalated"]),
+            "scheduled_count": len(aging["scheduled"]),
+            "overdue_pages": [page["path"] for page in aging["overdue"][:8]],
+            "escalated_pages": [page["path"] for page in aging["escalated"][:8]],
+            "scheduled_pages": [page["path"] for page in aging["scheduled"][:8]],
+        },
+        "recent_outputs": collect_recent_output_artifacts(root, limit=8),
+        "recent_receipts": shell_recent_receipts(root, limit=8),
+        "recent_runs": shell_recent_runs(root, limit=8),
+        "nightly": {
+            "available": nightly_health_state_path(root).exists(),
+            "generated_at": str(nightly_state.get("generated_at") or ""),
+            "state_path": relative_path(root, nightly_health_state_path(root)),
+            "llm_used": bool(nightly_state.get("llm_used", False)),
+            "lint_counts": dict(nightly_state.get("lint", {}).get("counts", {})),
+        },
+        "links": shell_links(root),
+        "capabilities": shell_capabilities(root),
+    }
+
+
+def write_shell_summary(root: Path, summary: dict[str, Any] | None = None) -> dict[str, Any]:
+    summary = summary or build_shell_summary(root)
+    write_if_changed(shell_summary_path(root), json.dumps(summary, indent=2, sort_keys=True) + "\n")
+    return summary
 
 
 def default_material_routing_state() -> dict[str, Any]:
@@ -16827,3 +17054,10 @@ def nightly_health(root: Path) -> dict[str, Any]:
         "repair_backlog": state["repair_backlog"]["path"],
         "state_path": relative_path(root, nightly_health_state_path(root)),
     }
+
+
+@runtime_write_operation
+def shell_status(root: Path) -> dict[str, Any]:
+    ensure_layout(root)
+    summary = build_shell_summary(root)
+    return write_shell_summary(root, summary)

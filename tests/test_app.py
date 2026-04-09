@@ -54,6 +54,8 @@ from aiwiki.app import (
     save_material_state,
     save_machine_memory_action_state,
     set_active_protocol,
+    shell_status,
+    shell_summary_path,
     strip_frontmatter,
 )
 from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
@@ -3581,6 +3583,59 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(governance_summary["concept_backlog_ids"])
         self.assertTrue(governance_summary["retired_concept_ids"])
 
+    def test_shell_status_writes_summary_with_contract_version_and_capabilities(self) -> None:
+        lifecycle_path = self.root / ".aiwiki" / "state" / "knowledge-lifecycle.json"
+        history_path = self.root / ".aiwiki" / "state" / "runtime-history.jsonl"
+        protocol_path = self.root / ".aiwiki" / "state" / "protocol.json"
+        protocol_before = protocol_path.read_text(encoding="utf-8")
+        self.assertFalse(lifecycle_path.exists())
+        self.assertFalse(history_path.exists())
+
+        result = shell_status(self.root)
+
+        self.assertEqual(result["kind"], "product-shell-summary")
+        self.assertEqual(result["contract_version"], 1)
+        self.assertEqual(result["summary_path"], "output/control/shell-summary.json")
+        self.assertIn("capabilities", result)
+        self.assertIn("commands", result["capabilities"])
+        self.assertIn("shell-status", result["capabilities"]["commands"]["p0"])
+        self.assertFalse(result["capabilities"]["supports_hidden_state_read"])
+        self.assertEqual(result["recent_outputs"], [])
+        self.assertEqual(result["recent_receipts"], [])
+        self.assertEqual(result["recent_runs"], [])
+        self.assertFalse(lifecycle_path.exists())
+        self.assertFalse(history_path.exists())
+        self.assertEqual(protocol_before, protocol_path.read_text(encoding="utf-8"))
+
+        written = json.loads(shell_summary_path(self.root).read_text(encoding="utf-8"))
+        self.assertEqual(written["contract_version"], 1)
+        self.assertIn("capabilities", written)
+
+    def test_shell_status_surfaces_recent_outputs_and_query_runs(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scaling tradeoffs", "report")
+
+        result = shell_status(self.root)
+
+        self.assertTrue(result["recent_outputs"])
+        self.assertEqual(result["recent_outputs"][0]["path"], report["path"])
+        self.assertTrue(result["recent_runs"])
+        self.assertEqual(result["recent_runs"][0]["event_type"], "query")
+        self.assertEqual(result["recent_runs"][0]["output_path"], report["path"])
+
+    def test_shell_status_surfaces_recent_receipts_and_nightly_snapshot(self) -> None:
+        entry = self._prepare_ready_archive_candidate()
+        archive_result = apply_material_archive(self.root, entry["id"], note="Archive for shell summary.")
+        nightly_health(self.root)
+
+        result = shell_status(self.root)
+
+        self.assertTrue(result["nightly"]["available"])
+        self.assertTrue(result["recent_receipts"])
+        self.assertEqual(result["recent_receipts"][0]["receipt_path"], archive_result["receipt_path"])
+        self.assertEqual(result["recent_receipts"][0]["operation"], "apply")
+
     def test_run_nightly_writes_semantic_artifacts_and_state(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -3669,6 +3724,21 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn('exec python3 -m aiwiki.cli "${ARGS[@]}"', content)
         self.assertIn("run-nightly", content)
         self.assertIn("nightly", content)
+
+    def test_aiwiki_launcher_script_uses_repo_local_paths(self) -> None:
+        script = Path("/home/tim/ai-wiki/scripts/aiwiki-launcher.sh")
+        content = script.read_text(encoding="utf-8")
+        self.assertTrue(os.access(script, os.X_OK))
+        self.assertIn('PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"', content)
+        self.assertIn('export PYTHONPATH="${PYTHONPATH:-$PROJECT_ROOT/src}"', content)
+        self.assertIn('exec python3 -m aiwiki.cli --root "$PROJECT_ROOT" "$@"', content)
+
+    def test_cli_shell_status_command_outputs_summary_json(self) -> None:
+        with patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            self.assertEqual(cli_main(["--root", str(self.root), "shell-status"]), 0)
+            payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["contract_version"], 1)
+        self.assertEqual(payload["summary_path"], "output/control/shell-summary.json")
 
     def test_user_service_install_script_mentions_nightly_timer(self) -> None:
         script = Path("/home/tim/ai-wiki/scripts/install_user_service.sh")

@@ -86,6 +86,7 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . nightly
 - Obsidian 工作台：[HOME.md](./HOME.md)
 - 炼丹炉基线架构：[Alchemy Furnace.md](<./wiki/indexes/Alchemy Furnace.md>)
 - 最终极形态：[Furnace Ultimate Architecture.md](<./wiki/indexes/Furnace Ultimate Architecture.md>)
+- Product Shell 插件设计：[Furnace Product Shell Plugin.md](<./wiki/indexes/Furnace Product Shell Plugin.md>)
 - 大规模原料处理设计：[Furnace Material Scaling.md](<./wiki/indexes/Furnace Material Scaling.md>)
 - 统一炉子 + 多协议：[Furnace Protocols.md](<./wiki/indexes/Furnace Protocols.md>)
 

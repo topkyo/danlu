@@ -26,6 +26,7 @@ from .app import (
     review_machine_memory_action,
     review_page,
     set_active_protocol,
+    shell_status,
 )
 from .drop import drop_image, drop_pdf, drop_repo, drop_url
 from .runner import auto_process_once, llm_status, run_ask, run_compile, run_lint, run_nightly, watch_inbox
@@ -90,6 +91,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Set the active furnace protocol for subsequent ask/file-back/nightly workflows.",
     )
     protocol_set_parser.add_argument("protocol", help="Protocol slug, for example general, investing, or research.")
+
+    subparsers.add_parser(
+        "shell-status",
+        help="Write and return the Product Shell summary contract for front-end workbench integrations.",
+    )
 
     run_compile_parser = subparsers.add_parser(
         "run-compile",
@@ -334,6 +340,8 @@ def main(argv: list[str] | None = None) -> int:
                 result = load_protocol_state(root)
         elif args.command == "protocol-set":
             result = set_active_protocol(root, args.protocol)
+        elif args.command == "shell-status":
+            result = shell_status(root)
         elif args.command == "run-compile":
             result = run_compile(root, limit=args.limit)
         elif args.command == "ask":

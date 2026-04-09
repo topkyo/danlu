@@ -22,6 +22,7 @@ kind: "dashboard"
 
 - [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]：炼丹炉的基线架构，建立在 `aiwiki` runtime 之上
 - [[wiki/indexes/Furnace Ultimate Architecture|最终极形态]]：这套系统最终想长成的认知操作系统形态
+- [[wiki/indexes/Furnace Product Shell Plugin|Product Shell 插件]]：把当前 markdown/html 控制面升级成 Obsidian 内的桌面工作台
 - [[wiki/indexes/Furnace Material Scaling|大规模原料处理]]：原料越来越多时的冷热分层、活动工作集和归档设计
 - [[wiki/indexes/Furnace Material State Model|原料状态模型]]：把 `temperature / active corpus / archive` 压成实现级 schema
 - [[wiki/indexes/Furnace Protocols|统一炼丹协议]]：一个炉子，多种领域协议

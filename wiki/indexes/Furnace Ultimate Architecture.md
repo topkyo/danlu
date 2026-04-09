@@ -268,6 +268,10 @@ status: "active"
 
 - 把分散的能力统一成一个人真正愿意天天用的工作台
 
+实现级设计可见：
+
+- [[wiki/indexes/Furnace Product Shell Plugin|炼丹炉 Product Shell Plugin]]
+
 最终理想状态：
 
 - 投料
