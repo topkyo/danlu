@@ -558,6 +558,53 @@ class AiwikiFlowTests(unittest.TestCase):
 
         self.assertEqual(archive_candidates["entries"], [])
 
+    def test_archive_candidate_deferred_promotes_to_ready_after_judgment_unblocks(self) -> None:
+        material_entries = [
+            {
+                "entry_id": "src-deferred",
+                "temperature": "cold",
+                "active_corpus_ids": [],
+                "supports_judgment_ids": ["judgment-1"],
+                "last_query_hit_at": "",
+                "last_touched_at": "2025-01-01T00:00:00+00:00",
+            }
+        ]
+        routing_entries = [
+            {
+                "entry_id": "src-deferred",
+                "selected_as": "archive-candidate",
+                "total_score": 1.0,
+                "is_bridge": False,
+                "cross_protocol_bridge": False,
+                "top_protocols": [
+                    {"protocol": "general", "total_score": 1.0, "selected_as": "archive-candidate"}
+                ],
+            }
+        ]
+
+        deferred_state = build_archive_candidate_state(
+            material_entries=material_entries,
+            routing_entries=routing_entries,
+            active_judgment_ids={"judgment-1"},
+            generated_at="2026-04-09T00:00:00+00:00",
+            previous_state={"entries": []},
+        )
+        deferred_entry = deferred_state["entries"][0]
+        self.assertEqual(deferred_entry["status"], "deferred")
+        self.assertEqual(deferred_entry["blocked_by_judgment_ids"], ["judgment-1"])
+
+        unblocked_state = build_archive_candidate_state(
+            material_entries=material_entries,
+            routing_entries=routing_entries,
+            active_judgment_ids=set(),
+            generated_at="2026-04-10T00:00:00+00:00",
+            previous_state=deferred_state,
+        )
+        unblocked_entry = unblocked_state["entries"][0]
+        self.assertEqual(unblocked_entry["status"], "ready")
+        self.assertEqual(unblocked_entry["blocked_by_judgment_ids"], [])
+        self.assertEqual(unblocked_entry["first_flagged_at"], "2026-04-09T00:00:00+00:00")
+
     def test_apply_material_archive_persists_archived_temperature_across_compile(self) -> None:
         entry = self._prepare_ready_archive_candidate()
 

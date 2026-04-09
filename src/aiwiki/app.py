@@ -7406,7 +7406,9 @@ def build_archive_candidate_state(
             status = "suggested"
             if blocked_by_judgment_ids:
                 status = "deferred"
-            elif previous_candidate and str(previous_candidate.get("status") or "") in {"suggested", "ready"}:
+            # Deferred means the candidate already crossed the archive bar once.
+            # When the blocking judgments clear, it should resume at ready.
+            elif previous_candidate and str(previous_candidate.get("status") or "") in {"suggested", "ready", "deferred"}:
                 status = "ready"
             entries.append(
                 {
