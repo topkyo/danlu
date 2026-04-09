@@ -3730,7 +3730,7 @@ class AiwikiFlowTests(unittest.TestCase):
         content = script.read_text(encoding="utf-8")
         self.assertTrue(os.access(script, os.X_OK))
         self.assertIn('PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"', content)
-        self.assertIn('export PYTHONPATH="${PYTHONPATH:-$PROJECT_ROOT/src}"', content)
+        self.assertIn('export PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"', content)
         self.assertIn('exec python3 -m aiwiki.cli --root "$PROJECT_ROOT" "$@"', content)
 
     def test_cli_shell_status_command_outputs_summary_json(self) -> None:
