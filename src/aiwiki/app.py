@@ -1927,6 +1927,25 @@ def write_if_changed(path: Path, content: str) -> bool:
     return True
 
 
+ISO_DATETIME_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\+\d{2}:\d{2}|Z)")
+
+
+def normalize_generated_artifact_content(content: str) -> str:
+    return ISO_DATETIME_PATTERN.sub("<ISO_DATETIME>", content)
+
+
+def write_if_changed_ignoring_timestamps(path: Path, content: str) -> tuple[bool, bool]:
+    if path.exists():
+        current = path.read_text(encoding="utf-8")
+        if current == content:
+            return False, False
+        if normalize_generated_artifact_content(current) == normalize_generated_artifact_content(content):
+            return False, False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return True, True
+
+
 def sync_manifest_with_raw(root: Path) -> dict[str, Any]:
     ensure_layout(root)
     manifest = load_manifest(root)
@@ -2404,6 +2423,32 @@ def concept_source_signature(record: dict[str, Any]) -> str:
     return sha256_bytes(json.dumps(payload, sort_keys=True).encode("utf-8"))
 
 
+def concept_source_pages(record: dict[str, Any]) -> list[str]:
+    return [f"wiki/sources/{entry_id}.md" for entry_id in record["entry_ids"]]
+
+
+def concept_render_signature(root: Path, record: dict[str, Any]) -> str:
+    source_contexts = [
+        load_source_page_context(root, relative)
+        for relative in concept_source_pages(record)
+    ]
+    payload = {
+        "title": record["title"],
+        "source_signature": record["source_signature"],
+        "source_pages": concept_source_pages(record),
+        "source_contexts": [
+            {
+                "path": context.get("path", ""),
+                "title": context.get("title", ""),
+                "status": context.get("status", ""),
+                "summary": context.get("summary", ""),
+            }
+            for context in source_contexts
+        ],
+    }
+    return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
 def render_concept_conflict_lines(source_contexts: list[dict[str, str]]) -> list[str]:
     signals = detect_concept_conflict_signals(source_contexts)
     if not signals:
@@ -2435,6 +2480,8 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
     confidence = existing_frontmatter.get("confidence", "medium") if not source_changed else "medium"
     if not isinstance(confidence, str) or not confidence:
         confidence = "medium"
+    source_pages = concept_source_pages(record)
+    render_signature = str(record.get("render_signature") or concept_render_signature(record["root"], record))
     summary_fallback = "\n".join(
         [
             f"- This concept currently appears in `{len(record['entries'])}` source page(s).",
@@ -2464,8 +2511,9 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
             "kind": "concept",
             "status": "compiled",
             "title": record["title"],
-            "source_pages": [f"wiki/sources/{entry_id}.md" for entry_id in record["entry_ids"]],
+            "source_pages": source_pages,
             "source_signature": record["source_signature"],
+            "render_signature": render_signature,
             "citations": citations,
             "generated_by": "aiwiki-compile",
             "last_compiled_at": compiled_at,
@@ -7750,10 +7798,35 @@ def render_compile_status(
         for entry_id in compile_state.get("clean_source_ids", [])
         if str(entry_id)
     ]
+    dirty_concept_slugs = [
+        str(slug)
+        for slug in compile_state.get("dirty_concept_slugs", [])
+        if str(slug)
+    ]
+    clean_concept_slugs = [
+        str(slug)
+        for slug in compile_state.get("clean_concept_slugs", [])
+        if str(slug)
+    ]
+    dirty_index_artifacts = [
+        str(path)
+        for path in compile_state.get("dirty_index_artifacts", [])
+        if str(path)
+    ]
+    clean_index_artifacts = [
+        str(path)
+        for path in compile_state.get("clean_index_artifacts", [])
+        if str(path)
+    ]
     entry_by_id = {
         str(entry.get("id") or ""): entry
         for entry in entries
         if isinstance(entry, dict) and str(entry.get("id") or "")
+    }
+    concept_by_slug = {
+        str(record.get("slug") or ""): record
+        for record in concepts
+        if isinstance(record, dict) and str(record.get("slug") or "")
     }
     detail_labels = {
         "manifest_entries": "entries",
@@ -7767,7 +7840,13 @@ def render_compile_status(
         "updated_pages": "updated_pages",
         "skipped_pages": "skipped_pages",
         "concept_pages": "concepts",
+        "dirty_concepts": "dirty_concepts",
+        "clean_concepts": "clean_concepts",
+        "tracked_artifacts": "tracked_artifacts",
+        "dirty_artifacts": "dirty_artifacts",
+        "clean_artifacts": "clean_artifacts",
         "updated_artifacts": "updated_artifacts",
+        "skipped_artifacts": "skipped_artifacts",
         "removed_generated_pages": "removed_generated_pages",
         "material_state_entries": "material_state_entries",
         "archive_candidates": "archive_candidates",
@@ -7790,6 +7869,10 @@ def render_compile_status(
         "- Compile state：`.aiwiki/state/compile-state.json`",
         f"- Dirty source：`{len(dirty_source_ids)}`",
         f"- Clean source：`{len(clean_source_ids)}`",
+        f"- Dirty concept：`{len(dirty_concept_slugs)}`",
+        f"- Clean concept：`{len(clean_concept_slugs)}`",
+        f"- Dirty index artifact：`{len(dirty_index_artifacts)}`",
+        f"- Clean index artifact：`{len(clean_index_artifacts)}`",
         "- 总索引位于 `index.md`。",
         "- 运行时规则位于 `schema/`。",
         "- 协议规则位于 `schema/protocols/`。",
@@ -7846,6 +7929,24 @@ def render_compile_status(
             lines.append(f"- [{title}](../sources/{entry_id}.md)")
         if len(dirty_source_ids) > 8:
             lines.append(f"- 其余 dirty source：`{len(dirty_source_ids) - 8}`")
+    lines.extend(["", "## Dirty Concepts"])
+    if not dirty_concept_slugs:
+        lines.append("- 当前没有 dirty concept page。")
+    else:
+        for slug in dirty_concept_slugs[:8]:
+            record = concept_by_slug.get(slug, {})
+            title = str(record.get("title") or slug)
+            lines.append(f"- [{title}](../concepts/{slug}.md)")
+        if len(dirty_concept_slugs) > 8:
+            lines.append(f"- 其余 dirty concept：`{len(dirty_concept_slugs) - 8}`")
+    lines.extend(["", "## Dirty Index Artifacts"])
+    if not dirty_index_artifacts:
+        lines.append("- 当前没有 dirty index artifact。")
+    else:
+        for relative in dirty_index_artifacts[:12]:
+            lines.append(f"- `{relative}`")
+        if len(dirty_index_artifacts) > 12:
+            lines.append(f"- 其余 dirty artifact：`{len(dirty_index_artifacts) - 12}`")
     return "\n".join(lines) + "\n"
 
 
@@ -8234,6 +8335,10 @@ def default_compile_state() -> dict[str, Any]:
         "manifest_entry_count": 0,
         "dirty_source_ids": [],
         "clean_source_ids": [],
+        "dirty_concept_slugs": [],
+        "clean_concept_slugs": [],
+        "dirty_index_artifacts": [],
+        "clean_index_artifacts": [],
         "phase_summary": [],
     }
 
@@ -8242,10 +8347,22 @@ def load_compile_state(root: Path) -> dict[str, Any]:
     document = load_json_document(compile_state_path(root))
     if not isinstance(document, dict):
         return default_compile_state()
-    dirty_source_ids = document.get("dirty_source_ids")
-    clean_source_ids = document.get("clean_source_ids")
+    dirty_source_ids = document.get("dirty_source_ids", [])
+    clean_source_ids = document.get("clean_source_ids", [])
+    dirty_concept_slugs = document.get("dirty_concept_slugs", [])
+    clean_concept_slugs = document.get("clean_concept_slugs", [])
+    dirty_index_artifacts = document.get("dirty_index_artifacts", [])
+    clean_index_artifacts = document.get("clean_index_artifacts", [])
     phase_summary = document.get("phase_summary")
-    if not isinstance(dirty_source_ids, list) or not isinstance(clean_source_ids, list) or not isinstance(phase_summary, list):
+    if (
+        not isinstance(dirty_source_ids, list)
+        or not isinstance(clean_source_ids, list)
+        or not isinstance(dirty_concept_slugs, list)
+        or not isinstance(clean_concept_slugs, list)
+        or not isinstance(dirty_index_artifacts, list)
+        or not isinstance(clean_index_artifacts, list)
+        or not isinstance(phase_summary, list)
+    ):
         return default_compile_state()
     return {
         "version": int(document.get("version", 1) or 1),
@@ -8253,6 +8370,10 @@ def load_compile_state(root: Path) -> dict[str, Any]:
         "manifest_entry_count": int(document.get("manifest_entry_count", 0) or 0),
         "dirty_source_ids": [str(entry_id) for entry_id in dirty_source_ids if str(entry_id)],
         "clean_source_ids": [str(entry_id) for entry_id in clean_source_ids if str(entry_id)],
+        "dirty_concept_slugs": [str(slug) for slug in dirty_concept_slugs if str(slug)],
+        "clean_concept_slugs": [str(slug) for slug in clean_concept_slugs if str(slug)],
+        "dirty_index_artifacts": [str(path) for path in dirty_index_artifacts if str(path)],
+        "clean_index_artifacts": [str(path) for path in clean_index_artifacts if str(path)],
         "phase_summary": [phase for phase in phase_summary if isinstance(phase, dict)],
     }
 
@@ -13438,6 +13559,23 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     source_changed_pages = 0
     concept_changed_pages = 0
     index_changed_pages = 0
+    dirty_index_artifacts: list[str] = []
+    clean_index_artifacts: list[str] = []
+
+    def write_index_artifact(destination: Path, content: str) -> int:
+        nonlocal changed_pages
+        nonlocal index_changed_pages
+
+        wrote, dirty = write_if_changed_ignoring_timestamps(destination, content)
+        relative = relative_path(root, destination)
+        if dirty:
+            dirty_index_artifacts.append(relative)
+        else:
+            clean_index_artifacts.append(relative)
+        changed_pages += int(wrote)
+        index_changed_pages += int(wrote)
+        return int(wrote)
+
     previews: dict[str, str] = {}
     for entry in entries:
         source_file = root / entry["stored_path"]
@@ -13470,57 +13608,50 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         source_changed_pages += wrote
         changed_pages += wrote
 
-    wrote = int(write_if_changed(root / "wiki" / "indexes" / "sources.md", render_sources_index(entries, compiled_at)))
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(write_if_changed(root / "wiki" / "indexes" / "concepts.md", render_concepts_index(concepts, compiled_at)))
-    changed_pages += wrote
-    index_changed_pages += wrote
+    write_index_artifact(root / "wiki" / "indexes" / "sources.md", render_sources_index(entries, compiled_at))
+    write_index_artifact(root / "wiki" / "indexes" / "concepts.md", render_concepts_index(concepts, compiled_at))
     decision_pages = collect_curated_pages(root, "decisions", "decision")
     judgment_pages = collect_curated_pages(root, "judgments", "judgment")
-    wrote = int(
-        write_if_changed(
-            root / "wiki" / "indexes" / "decisions.md",
-            render_curated_index("决策索引", "决策列表", decision_pages, compiled_at),
-        )
+    write_index_artifact(
+        root / "wiki" / "indexes" / "decisions.md",
+        render_curated_index("决策索引", "决策列表", decision_pages, compiled_at),
     )
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(
-        write_if_changed(
-            root / "wiki" / "indexes" / "judgments.md",
-            render_curated_index("判断索引", "判断列表", judgment_pages, compiled_at),
-        )
+    write_index_artifact(
+        root / "wiki" / "indexes" / "judgments.md",
+        render_curated_index("判断索引", "判断列表", judgment_pages, compiled_at),
     )
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(
-        write_if_changed(
-            judgment_assets_path(root),
-            render_judgment_assets(
-                decision_pages,
-                judgment_pages,
-                compiled_at,
-                active_protocol=protocol_state["active_protocol"],
-            ),
-        )
+    write_index_artifact(
+        judgment_assets_path(root),
+        render_judgment_assets(
+            decision_pages,
+            judgment_pages,
+            compiled_at,
+            active_protocol=protocol_state["active_protocol"],
+        ),
     )
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(
-        write_if_changed(
-            root / "wiki" / "indexes" / "index.md",
-            render_master_index(entries, concepts, decision_pages, judgment_pages, protocol_state, compiled_at),
-        )
+    write_index_artifact(
+        root / "wiki" / "indexes" / "index.md",
+        render_master_index(entries, concepts, decision_pages, judgment_pages, protocol_state, compiled_at),
     )
-    changed_pages += wrote
-    index_changed_pages += wrote
     ensure_wiki_log(root)
 
     concept_lookup = {record["slug"]: record for record in concepts}
+    dirty_concept_slugs: list[str] = []
+    clean_concept_slugs: list[str] = []
+    dirty_concept_slug_set: set[str] = set()
     for record in concepts:
         record["record_lookup"] = concept_lookup
         record["root"] = root
+        record["render_signature"] = concept_render_signature(root, record)
+        slug = str(record["slug"])
+        if concept_page_requires_compile(root, record):
+            dirty_concept_slugs.append(slug)
+            dirty_concept_slug_set.add(slug)
+        else:
+            clean_concept_slugs.append(slug)
+    for record in concepts:
+        if str(record["slug"]) not in dirty_concept_slug_set:
+            continue
         destination = root / "wiki" / "concepts" / f"{record['slug']}.md"
         existing_page = destination.read_text(encoding="utf-8", errors="replace") if destination.exists() else ""
         wrote = int(write_if_changed(destination, render_concept_page(record, compiled_at, existing_page)))
@@ -13556,48 +13687,28 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     memory["history_path"] = relative_path(root, machine_memory_history_path(root))
     transition = summarize_machine_memory_transition(previous_memory, memory)
     memory["transition"] = transition
-    wrote = int(write_if_changed(machine_memory_state_path(root), json.dumps(memory, indent=2, sort_keys=True) + "\n"))
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(write_if_changed(machine_memory_graph_path(root), json.dumps(graph, indent=2, sort_keys=True) + "\n"))
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(write_if_changed(machine_memory_graph_html_path(root), render_machine_memory_graph_html(memory, graph)))
-    changed_pages += wrote
-    index_changed_pages += wrote
+    write_index_artifact(machine_memory_state_path(root), json.dumps(memory, indent=2, sort_keys=True) + "\n")
+    write_index_artifact(machine_memory_graph_path(root), json.dumps(graph, indent=2, sort_keys=True) + "\n")
+    write_index_artifact(machine_memory_graph_html_path(root), render_machine_memory_graph_html(memory, graph))
     append_machine_memory_history(root, memory, transition)
-    wrote = int(write_if_changed(root / "wiki" / "indexes" / "machine-memory.md", render_machine_memory_index(memory)))
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(write_if_changed(machine_memory_topology_path(root), render_machine_memory_topology(memory)))
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(write_if_changed(machine_memory_actions_path(root), render_machine_memory_actions(memory)))
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(write_if_changed(machine_memory_repair_plan_path(root), render_machine_memory_repair_plan(memory)))
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(
-        write_if_changed(
-            execution_center_path(root),
-            render_execution_center(
-                memory,
-                compiled_at=compiled_at,
-                active_protocol=protocol_state["active_protocol"],
-            ),
-        )
+    write_index_artifact(root / "wiki" / "indexes" / "machine-memory.md", render_machine_memory_index(memory))
+    write_index_artifact(machine_memory_topology_path(root), render_machine_memory_topology(memory))
+    write_index_artifact(machine_memory_actions_path(root), render_machine_memory_actions(memory))
+    write_index_artifact(machine_memory_repair_plan_path(root), render_machine_memory_repair_plan(memory))
+    write_index_artifact(
+        execution_center_path(root),
+        render_execution_center(
+            memory,
+            compiled_at=compiled_at,
+            active_protocol=protocol_state["active_protocol"],
+        ),
     )
-    changed_pages += wrote
-    index_changed_pages += wrote
     execution_audit = build_execution_audit_snapshot(
         root,
         memory,
         active_protocol=protocol_state["active_protocol"],
     )
-    wrote = int(write_if_changed(execution_audit_path(root), render_execution_audit(execution_audit)))
-    changed_pages += wrote
-    index_changed_pages += wrote
+    write_index_artifact(execution_audit_path(root), render_execution_audit(execution_audit))
     all_outputs = collect_output_density_artifacts(root)
     recent_outputs = collect_recent_output_artifacts(root)
     active_corpora_state = load_active_corpora_state(root)
@@ -13618,18 +13729,14 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     )
     material_routing = load_material_routing_state(root)
     archive_candidates = load_archive_candidates_state(root)
-    wrote = int(
-        write_if_changed(
-            root / "wiki" / "indexes" / "protocols.md",
-            render_protocols_dashboard(
-                root,
-                compiled_at,
-                knowledge_lifecycle=knowledge_lifecycle,
-            ),
-        )
+    write_index_artifact(
+        root / "wiki" / "indexes" / "protocols.md",
+        render_protocols_dashboard(
+            root,
+            compiled_at,
+            knowledge_lifecycle=knowledge_lifecycle,
+        ),
     )
-    changed_pages += wrote
-    index_changed_pages += wrote
     output_packs = build_output_packs(
         root,
         decision_pages,
@@ -13640,26 +13747,16 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         compiled_at,
         knowledge_lifecycle=knowledge_lifecycle,
     )
-    wrote = int(
-        write_if_changed(
-            output_packs_index_path(root),
-            render_output_packs_index(output_packs, compiled_at, protocol_state["active_protocol"]),
-        )
+    write_index_artifact(
+        output_packs_index_path(root),
+        render_output_packs_index(output_packs, compiled_at, protocol_state["active_protocol"]),
     )
-    changed_pages += wrote
-    index_changed_pages += wrote
     for pack in output_packs["review_packs"]:
-        wrote = int(write_if_changed(root / pack["path"], pack["content"]))
-        changed_pages += wrote
-        index_changed_pages += wrote
+        write_index_artifact(root / pack["path"], pack["content"])
     for pack in output_packs["decision_memos"]:
-        wrote = int(write_if_changed(root / pack["path"], pack["content"]))
-        changed_pages += wrote
-        index_changed_pages += wrote
+        write_index_artifact(root / pack["path"], pack["content"])
     for pack in output_packs["sop_drafts"]:
-        wrote = int(write_if_changed(root / pack["path"], pack["content"]))
-        changed_pages += wrote
-        index_changed_pages += wrote
+        write_index_artifact(root / pack["path"], pack["content"])
     removed_pages += remove_stale_generated_markdown_files(
         review_packs_dir(root),
         {Path(pack["path"]).stem for pack in output_packs["review_packs"]},
@@ -13686,18 +13783,12 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         knowledge_lifecycle=knowledge_lifecycle,
         material_routing=material_routing,
     )
-    wrote = int(
-        write_if_changed(
-            domain_pilots_index_path(root),
-            render_domain_pilots_index(domain_pilots, compiled_at, protocol_state["active_protocol"]),
-        )
+    write_index_artifact(
+        domain_pilots_index_path(root),
+        render_domain_pilots_index(domain_pilots, compiled_at, protocol_state["active_protocol"]),
     )
-    changed_pages += wrote
-    index_changed_pages += wrote
     for scorecard in domain_pilots["scorecards"]:
-        wrote = int(write_if_changed(root / scorecard["path"], scorecard["content"]))
-        changed_pages += wrote
-        index_changed_pages += wrote
+        write_index_artifact(root / scorecard["path"], scorecard["content"])
     removed_pages += remove_stale_generated_markdown_files(
         pilot_scorecards_dir(root),
         {Path(scorecard["path"]).stem for scorecard in domain_pilots["scorecards"]},
@@ -13713,106 +13804,74 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         compiled_at,
         knowledge_lifecycle=knowledge_lifecycle,
     )
-    wrote = int(
-        write_if_changed(
-            agent_workbench_path(root),
-            render_agent_workbench(
-                agent_packs,
-                compiled_at,
-                protocol_state["active_protocol"],
-                knowledge_lifecycle=knowledge_lifecycle,
-            ),
-        )
+    write_index_artifact(
+        agent_workbench_path(root),
+        render_agent_workbench(
+            agent_packs,
+            compiled_at,
+            protocol_state["active_protocol"],
+            knowledge_lifecycle=knowledge_lifecycle,
+        ),
     )
-    changed_pages += wrote
-    index_changed_pages += wrote
     for pack in agent_packs:
-        wrote = int(write_if_changed(root / pack["path"], pack["content"]))
-        changed_pages += wrote
-        index_changed_pages += wrote
-    wrote = int(
-        write_if_changed(
-            root / "wiki" / "indexes" / "furnace-center.md",
-            render_furnace_center(
-                decision_pages,
-                judgment_pages,
-                memory,
-                compiled_at,
-                protocol_state,
-                recent_outputs,
-                output_packs,
-                domain_pilots,
-                execution_audit,
-                knowledge_lifecycle=knowledge_lifecycle,
-            ),
-        )
+        write_index_artifact(root / pack["path"], pack["content"])
+    write_index_artifact(
+        root / "wiki" / "indexes" / "furnace-center.md",
+        render_furnace_center(
+            decision_pages,
+            judgment_pages,
+            memory,
+            compiled_at,
+            protocol_state,
+            recent_outputs,
+            output_packs,
+            domain_pilots,
+            execution_audit,
+            knowledge_lifecycle=knowledge_lifecycle,
+        ),
     )
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(
-        write_if_changed(
-            review_center_html_path(root),
-            render_review_center_html(
-                decision_pages,
-                judgment_pages,
-                memory,
-                compiled_at,
-                active_protocol=protocol_state["active_protocol"],
-                knowledge_lifecycle=knowledge_lifecycle,
-            ),
-        )
+    write_index_artifact(
+        review_center_html_path(root),
+        render_review_center_html(
+            decision_pages,
+            judgment_pages,
+            memory,
+            compiled_at,
+            active_protocol=protocol_state["active_protocol"],
+            knowledge_lifecycle=knowledge_lifecycle,
+        ),
     )
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(
-        write_if_changed(
-            furnace_center_html_path(root),
-            render_furnace_center_html(
-                decision_pages,
-                judgment_pages,
-                memory,
-                compiled_at,
-                protocol_state,
-                recent_outputs,
-                output_packs,
-                domain_pilots,
-                execution_audit,
-                knowledge_lifecycle=knowledge_lifecycle,
-            ),
-        )
+    write_index_artifact(
+        furnace_center_html_path(root),
+        render_furnace_center_html(
+            decision_pages,
+            judgment_pages,
+            memory,
+            compiled_at,
+            protocol_state,
+            recent_outputs,
+            output_packs,
+            domain_pilots,
+            execution_audit,
+            knowledge_lifecycle=knowledge_lifecycle,
+        ),
     )
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(
-        write_if_changed(
-            execution_center_html_path(root),
-            render_execution_center_html(
-                memory,
-                compiled_at=compiled_at,
-                active_protocol=protocol_state["active_protocol"],
-            ),
-        )
+    write_index_artifact(
+        execution_center_html_path(root),
+        render_execution_center_html(
+            memory,
+            compiled_at=compiled_at,
+            active_protocol=protocol_state["active_protocol"],
+        ),
     )
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(write_if_changed(execution_audit_html_path(root), render_execution_audit_html(execution_audit)))
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(write_if_changed(concept_quality_path(root), render_concept_quality(memory)))
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(
-        write_if_changed(
-            concept_rewrite_index_path(root),
-            render_concept_rewrite_index(memory["health"]["concept_rewrite"], compiled_at),
-        )
+    write_index_artifact(execution_audit_html_path(root), render_execution_audit_html(execution_audit))
+    write_index_artifact(concept_quality_path(root), render_concept_quality(memory))
+    write_index_artifact(
+        concept_rewrite_index_path(root),
+        render_concept_rewrite_index(memory["health"]["concept_rewrite"], compiled_at),
     )
-    changed_pages += wrote
-    index_changed_pages += wrote
     for proposal in memory["health"]["concept_rewrite"].get("all_proposals", []):
-        wrote = int(write_if_changed(root / proposal["proposal_path"], render_concept_rewrite_proposal_page(proposal)))
-        changed_pages += wrote
-        index_changed_pages += wrote
+        write_index_artifact(root / proposal["proposal_path"], render_concept_rewrite_proposal_page(proposal))
     removed_pages += remove_stale_generated_execution_proposal_pages(
         root,
         {
@@ -13830,77 +13889,53 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         },
     )
     for proposal in memory["health"]["repair_plan"].get("execution_proposals", []):
-        wrote = int(
-            write_if_changed(
-                root / str(proposal["proposal_path"]),
-                render_execution_proposal_page(proposal, compiled_at=compiled_at),
+        write_index_artifact(
+            root / str(proposal["proposal_path"]),
+            render_execution_proposal_page(proposal, compiled_at=compiled_at),
+        )
+        write_index_artifact(
+            root / str(proposal["bundle_path"]),
+            json.dumps(
+                build_execution_bundle(root, proposal, compiled_at=compiled_at),
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
             )
+            + "\n",
         )
-        changed_pages += wrote
-        index_changed_pages += wrote
-        wrote = int(
-            write_if_changed(
-                root / str(proposal["bundle_path"]),
-                json.dumps(
-                    build_execution_bundle(root, proposal, compiled_at=compiled_at),
-                    ensure_ascii=False,
-                    indent=2,
-                    sort_keys=True,
-                )
-                + "\n",
-            )
-        )
-        changed_pages += wrote
-        index_changed_pages += wrote
-    wrote = int(write_if_changed(graph_health_report_path(root), render_graph_health(memory)))
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(write_if_changed(machine_memory_drift_report_path(root), render_drift_report(memory, transition)))
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(
-        write_if_changed(
-            root / "wiki" / "indexes" / "review-queue.md",
-            render_review_queue(
-                decision_pages,
-                judgment_pages,
-                compiled_at,
-                active_protocol=protocol_state["active_protocol"],
-                knowledge_lifecycle=knowledge_lifecycle,
-            ),
-        )
+    write_index_artifact(graph_health_report_path(root), render_graph_health(memory))
+    write_index_artifact(machine_memory_drift_report_path(root), render_drift_report(memory, transition))
+    write_index_artifact(
+        root / "wiki" / "indexes" / "review-queue.md",
+        render_review_queue(
+            decision_pages,
+            judgment_pages,
+            compiled_at,
+            active_protocol=protocol_state["active_protocol"],
+            knowledge_lifecycle=knowledge_lifecycle,
+        ),
     )
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(
-        write_if_changed(
-            cognitive_history_path(root),
-            render_cognitive_history(
-                root,
-                decision_pages,
-                judgment_pages,
-                compiled_at,
-                active_protocol=protocol_state["active_protocol"],
-                knowledge_lifecycle=knowledge_lifecycle,
-            ),
-        )
+    write_index_artifact(
+        cognitive_history_path(root),
+        render_cognitive_history(
+            root,
+            decision_pages,
+            judgment_pages,
+            compiled_at,
+            active_protocol=protocol_state["active_protocol"],
+            knowledge_lifecycle=knowledge_lifecycle,
+        ),
     )
-    changed_pages += wrote
-    index_changed_pages += wrote
-    wrote = int(
-        write_if_changed(
-            aging_report_path(root),
-            render_aging_report(
-                decision_pages,
-                judgment_pages,
-                compiled_at,
-                active_protocol=protocol_state["active_protocol"],
-                knowledge_lifecycle=knowledge_lifecycle,
-            ),
-        )
+    write_index_artifact(
+        aging_report_path(root),
+        render_aging_report(
+            decision_pages,
+            judgment_pages,
+            compiled_at,
+            active_protocol=protocol_state["active_protocol"],
+            knowledge_lifecycle=knowledge_lifecycle,
+        ),
     )
-    changed_pages += wrote
-    index_changed_pages += wrote
 
     metadata_details = manifest_change_summary(previous_manifest.get("entries", []), entries)
     phase_summary = [
@@ -13927,20 +13962,27 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         {
             "name": "concept_refresh",
             "label": "concept refresh",
-            "mode": "full",
+            "mode": "incremental",
             "status": "completed",
             "details": {
                 "concept_pages": len(concepts),
+                "dirty_concepts": len(dirty_concept_slugs),
+                "clean_concepts": len(clean_concept_slugs),
                 "updated_pages": concept_changed_pages,
+                "skipped_pages": len(clean_concept_slugs),
             },
         },
         {
             "name": "index_refresh",
             "label": "index refresh",
-            "mode": "full",
+            "mode": "incremental",
             "status": "completed",
             "details": {
+                "tracked_artifacts": len(dirty_index_artifacts) + len(clean_index_artifacts),
+                "dirty_artifacts": len(dirty_index_artifacts),
+                "clean_artifacts": len(clean_index_artifacts),
                 "updated_artifacts": index_changed_pages,
+                "skipped_artifacts": len(clean_index_artifacts),
             },
         },
         {
@@ -13963,6 +14005,10 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "manifest_entry_count": len(entries),
         "dirty_source_ids": dirty_source_ids,
         "clean_source_ids": clean_source_ids,
+        "dirty_concept_slugs": dirty_concept_slugs,
+        "clean_concept_slugs": clean_concept_slugs,
+        "dirty_index_artifacts": dirty_index_artifacts,
+        "clean_index_artifacts": clean_index_artifacts,
         "phase_summary": phase_summary,
     }
     save_compile_state(root, compile_state)
@@ -13990,6 +14036,10 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             f"compile_state: `{relative_path(root, compile_state_path(root))}`",
             f"compile_dirty_sources: `{len(dirty_source_ids)}`",
             f"compile_clean_sources: `{len(clean_source_ids)}`",
+            f"compile_dirty_concepts: `{len(dirty_concept_slugs)}`",
+            f"compile_clean_concepts: `{len(clean_concept_slugs)}`",
+            f"compile_dirty_index_artifacts: `{len(dirty_index_artifacts)}`",
+            f"compile_clean_index_artifacts: `{len(clean_index_artifacts)}`",
             f"source_pages_updated: `{source_changed_pages}`",
             f"source_pages: `{len(entries)}`",
             f"concept_pages: `{len(concepts)}`",
@@ -14020,6 +14070,12 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "clean_sources": len(clean_source_ids),
         "dirty_source_ids": list(dirty_source_ids),
         "clean_source_ids": list(clean_source_ids),
+        "dirty_concepts": len(dirty_concept_slugs),
+        "clean_concepts": len(clean_concept_slugs),
+        "dirty_concept_slugs": list(dirty_concept_slugs),
+        "clean_concept_slugs": list(clean_concept_slugs),
+        "dirty_index_artifacts": list(dirty_index_artifacts),
+        "clean_index_artifacts": list(clean_index_artifacts),
         "phase_summary": phase_summary,
         "output_packs": dict(output_packs["counts"]),
         "domain_pilots": len(domain_pilots["scorecards"]),
@@ -14106,6 +14162,25 @@ def source_page_requires_compile(root: Path, entry: dict[str, Any], concepts: li
     normalized_existing = [str(label) for label in existing_concepts if str(label)]
     normalized_target = [str(label) for label in concepts if str(label)]
     return normalized_existing != normalized_target
+
+
+def concept_page_requires_compile(root: Path, record: dict[str, Any]) -> bool:
+    page = root / "wiki" / "concepts" / f"{record['slug']}.md"
+    if not page.exists():
+        return True
+    content = page.read_text(encoding="utf-8", errors="replace")
+    frontmatter = parse_frontmatter(content)
+    existing_source_pages = frontmatter.get("source_pages", [])
+    if not isinstance(existing_source_pages, list):
+        existing_source_pages = []
+    normalized_existing = [str(path) for path in existing_source_pages if str(path)]
+    normalized_target = concept_source_pages(record)
+    if normalized_existing != normalized_target:
+        return True
+    if str(frontmatter.get("source_signature") or "") != record["source_signature"]:
+        return True
+    render_signature = str(record.get("render_signature") or concept_render_signature(root, record))
+    return str(frontmatter.get("render_signature") or "") != render_signature
 
 
 def wiki_requires_compile(root: Path, entries: list[dict[str, Any]]) -> bool:

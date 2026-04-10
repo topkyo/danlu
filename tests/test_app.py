@@ -512,6 +512,10 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(compile_state["manifest_entry_count"], 1)
         self.assertEqual(compile_state["dirty_source_ids"], [entry["id"]])
         self.assertEqual(compile_state["clean_source_ids"], [])
+        self.assertTrue(compile_state["dirty_concept_slugs"])
+        self.assertEqual(compile_state["clean_concept_slugs"], [])
+        self.assertTrue(compile_state["dirty_index_artifacts"])
+        self.assertEqual(compile_state["clean_index_artifacts"], [])
         phase_names = [phase["name"] for phase in compile_state["phase_summary"]]
         self.assertEqual(
             phase_names,
@@ -527,14 +531,32 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(source_phase["mode"], "incremental")
         self.assertEqual(source_phase["details"]["dirty_sources"], 1)
         self.assertEqual(source_phase["details"]["clean_sources"], 0)
+        concept_phase = next(phase for phase in compile_state["phase_summary"] if phase["name"] == "concept_refresh")
+        self.assertEqual(concept_phase["mode"], "incremental")
+        self.assertEqual(concept_phase["details"]["dirty_concepts"], len(compile_state["dirty_concept_slugs"]))
+        self.assertEqual(concept_phase["details"]["clean_concepts"], 0)
+        index_phase = next(phase for phase in compile_state["phase_summary"] if phase["name"] == "index_refresh")
+        self.assertEqual(index_phase["mode"], "incremental")
+        self.assertEqual(index_phase["details"]["dirty_artifacts"], len(compile_state["dirty_index_artifacts"]))
+        self.assertEqual(index_phase["details"]["clean_artifacts"], 0)
         self.assertEqual(compiled["dirty_sources"], 1)
         self.assertEqual(compiled["clean_sources"], 0)
         self.assertEqual(compiled["dirty_source_ids"], [entry["id"]])
         self.assertEqual(compiled["clean_source_ids"], [])
+        self.assertEqual(compiled["dirty_concepts"], len(compile_state["dirty_concept_slugs"]))
+        self.assertEqual(compiled["clean_concepts"], 0)
+        self.assertEqual(compiled["dirty_concept_slugs"], compile_state["dirty_concept_slugs"])
+        self.assertEqual(compiled["clean_concept_slugs"], [])
+        self.assertEqual(compiled["dirty_index_artifacts"], compile_state["dirty_index_artifacts"])
+        self.assertEqual(compiled["clean_index_artifacts"], [])
 
         compile_status = compile_status_path.read_text(encoding="utf-8")
         self.assertIn("## Compile Phases", compile_status)
         self.assertIn("incremental_source_compile", compile_status)
+        self.assertIn("concept_refresh", compile_status)
+        self.assertIn("index_refresh", compile_status)
+        self.assertIn("## Dirty Concepts", compile_status)
+        self.assertIn("## Dirty Index Artifacts", compile_status)
         self.assertIn(".aiwiki/state/compile-state.json", compile_status)
 
     def test_compile_skips_clean_source_pages_on_second_run(self) -> None:
@@ -565,6 +587,65 @@ class AiwikiFlowTests(unittest.TestCase):
         compile_state = json.loads((self.root / ".aiwiki" / "state" / "compile-state.json").read_text(encoding="utf-8"))
         self.assertEqual(compile_state["dirty_source_ids"], [])
         self.assertEqual(compile_state["clean_source_ids"], [entry["id"]])
+
+    def test_compile_skips_clean_concept_pages_on_second_run(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+
+        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:00:00+00:00"):
+            first = compile_wiki(self.root)
+
+        concept_page = sorted((self.root / "wiki" / "concepts").glob("*.md"))[0]
+        concept_slugs = [path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md"))]
+        first_frontmatter = parse_frontmatter(concept_page.read_text(encoding="utf-8"))
+        self.assertEqual(first_frontmatter["last_compiled_at"], first["compiled_at"])
+
+        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:05:00+00:00"):
+            second = compile_wiki(self.root)
+
+        second_frontmatter = parse_frontmatter(concept_page.read_text(encoding="utf-8"))
+        self.assertEqual(second["dirty_concepts"], 0)
+        self.assertEqual(second["clean_concepts"], second["concepts"])
+        self.assertEqual(second["dirty_concept_slugs"], [])
+        self.assertEqual(set(second["clean_concept_slugs"]), set(concept_slugs))
+        self.assertEqual(second_frontmatter["last_compiled_at"], first["compiled_at"])
+        self.assertNotEqual(second["compiled_at"], first["compiled_at"])
+
+        concept_phase = next(phase for phase in second["phase_summary"] if phase["name"] == "concept_refresh")
+        self.assertEqual(concept_phase["mode"], "incremental")
+        self.assertEqual(concept_phase["details"]["updated_pages"], 0)
+        self.assertEqual(concept_phase["details"]["skipped_pages"], len(concept_slugs))
+
+        compile_state = json.loads((self.root / ".aiwiki" / "state" / "compile-state.json").read_text(encoding="utf-8"))
+        self.assertEqual(compile_state["dirty_concept_slugs"], [])
+        self.assertEqual(set(compile_state["clean_concept_slugs"]), set(concept_slugs))
+
+    def test_compile_skips_clean_index_artifacts_on_second_run(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+
+        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:00:00+00:00"):
+            first = compile_wiki(self.root)
+
+        index_page = self.root / "wiki" / "indexes" / "index.md"
+        first_index = index_page.read_text(encoding="utf-8")
+        self.assertIn("- 最近编译时间：`2026-04-10T10:00:00+00:00`", first_index)
+
+        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:05:00+00:00"):
+            second = compile_wiki(self.root)
+
+        second_index = index_page.read_text(encoding="utf-8")
+        self.assertEqual(first_index, second_index)
+        self.assertIn("wiki/indexes/index.md", second["clean_index_artifacts"])
+        self.assertNotIn("wiki/indexes/index.md", second["dirty_index_artifacts"])
+
+        index_phase = next(phase for phase in second["phase_summary"] if phase["name"] == "index_refresh")
+        self.assertEqual(index_phase["mode"], "incremental")
+        self.assertGreater(index_phase["details"]["tracked_artifacts"], 0)
+        self.assertGreater(index_phase["details"]["clean_artifacts"], 0)
+        self.assertGreater(index_phase["details"]["skipped_artifacts"], 0)
+
+        compile_state = json.loads((self.root / ".aiwiki" / "state" / "compile-state.json").read_text(encoding="utf-8"))
+        self.assertIn("wiki/indexes/index.md", compile_state["clean_index_artifacts"])
+        self.assertNotIn("wiki/indexes/index.md", compile_state["dirty_index_artifacts"])
 
     def test_ask_creates_active_corpus_and_runtime_history(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -1302,6 +1383,89 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertNotIn("OLD CONCEPT SUMMARY", refreshed)
         self.assertIn("This concept currently appears", refreshed)
         self.assertTrue(frontmatter["source_signature"])
+        self.assertTrue(frontmatter["render_signature"])
+
+    def test_compile_rebuilds_dirty_concept_when_source_summary_changes(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+
+        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:00:00+00:00"):
+            compile_wiki(self.root)
+
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        source_page.write_text(
+            source_page.read_text(encoding="utf-8").replace(
+                "- Pending LLM summary.",
+                "- Transformer scaling also rise.",
+            ),
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+
+        concept_page = self.root / "wiki" / "concepts" / "transformer-scaling.md"
+        concept_page.write_text(
+            concept_page.read_text(encoding="utf-8").replace(
+                "This concept currently appears",
+                "Custom concept summary stays and currently appears",
+            ),
+            encoding="utf-8",
+        )
+        before_frontmatter = parse_frontmatter(concept_page.read_text(encoding="utf-8"))
+        source_page.write_text(
+            source_page.read_text(encoding="utf-8").replace(
+                "- Transformer scaling also rise.",
+                "- TRANSFORMER scaling also rise!",
+            ),
+            encoding="utf-8",
+        )
+
+        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:05:00+00:00"):
+            second = compile_wiki(self.root)
+
+        refreshed = concept_page.read_text(encoding="utf-8")
+        after_frontmatter = parse_frontmatter(refreshed)
+        self.assertIn("Custom concept summary stays", refreshed)
+        self.assertEqual(before_frontmatter["source_signature"], after_frontmatter["source_signature"])
+        self.assertNotEqual(before_frontmatter["render_signature"], after_frontmatter["render_signature"])
+        self.assertEqual(after_frontmatter["last_compiled_at"], second["compiled_at"])
+        self.assertIn("transformer-scaling", second["dirty_concept_slugs"])
+
+    def test_compile_removes_stale_concept_pages_when_concepts_disappear(self) -> None:
+        removable = self.root / "removable.md"
+        removable.write_text("# Note\n\nAlpha beta gamma.\n", encoding="utf-8")
+        entry = ingest_source(self.root, str(removable), title="Note")
+        compile_wiki(self.root)
+
+        alpha_page = self.root / "wiki" / "concepts" / "alpha.md"
+        self.assertTrue(alpha_page.exists())
+
+        stored_source = self.root / entry["stored_path"]
+        stored_source.write_text("# Note\n\nDelta epsilon zeta.\n", encoding="utf-8")
+
+        compile_wiki(self.root)
+
+        self.assertFalse(alpha_page.exists())
+        self.assertTrue((self.root / "wiki" / "concepts" / "delta.md").exists())
+
+    def test_compile_marks_related_index_artifact_dirty_when_concepts_change(self) -> None:
+        removable = self.root / "removable.md"
+        removable.write_text("# Note\n\nAlpha beta gamma.\n", encoding="utf-8")
+        entry = ingest_source(self.root, str(removable), title="Note")
+        compile_wiki(self.root)
+
+        concepts_index = self.root / "wiki" / "indexes" / "concepts.md"
+        before = concepts_index.read_text(encoding="utf-8")
+        self.assertIn("Alpha", before)
+
+        stored_source = self.root / entry["stored_path"]
+        stored_source.write_text("# Note\n\nDelta epsilon zeta.\n", encoding="utf-8")
+
+        result = compile_wiki(self.root)
+
+        after = concepts_index.read_text(encoding="utf-8")
+        self.assertIn("wiki/indexes/concepts.md", result["dirty_index_artifacts"])
+        self.assertNotIn("wiki/indexes/concepts.md", result["clean_index_artifacts"])
+        self.assertNotEqual(before, after)
+        self.assertIn("Delta", after)
 
     def test_ask_auto_compiles_and_returns_ranked_concepts_and_indexes(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

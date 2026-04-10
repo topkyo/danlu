@@ -1,30 +1,36 @@
 ---
 title: "炼丹炉能力地图"
 kind: "roadmap"
-status: "active"
+status: "snapshot"
 ---
 
 # 炼丹炉能力地图
 
-这份文档回答两件事：
+这份文档现在主要回答一件事：
 
 1. **截至 2026-04-10，炼丹炉当前已经做到了什么**
-2. **如果继续推进 Product Shell，下一轮最合理的 contract 应该长什么样**
 
-它不是终局愿景稿，也不是单轮 sprint contract。
+它不是终局愿景稿，也不是当前 active sprint contract。
 
 它是：
 
 - 当前能力分布图
 - 当前成熟度判断
-- 下一轮 Product Shell contract 草案
+- 截至 `2026-04-10` 的能力快照
 
 对应关系：
 
 - 基线架构：[[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
 - 终局架构：[[wiki/indexes/Furnace Ultimate Architecture|炼丹炉最终极形态]]
 - Product Shell 设计稿：[[wiki/indexes/Furnace Product Shell Plugin|炼丹炉 Product Shell Plugin]]
-- 当前这份：`现在做到哪了 + 下一轮怎么接`
+- 当前 active 实施线：[[wiki/indexes/Furnace Incremental Compile Plan|炼丹炉增量编译计划]]
+- 当前这份：`现在做到哪了`
+
+## 当前角色
+
+- 这份文档保留为能力快照 / 参考文档
+- 它不再承担“下一轮 contract”职责
+- 当前实现主线已经切到 `Furnace Incremental Compile Plan`
 
 ## 一句话判断
 
