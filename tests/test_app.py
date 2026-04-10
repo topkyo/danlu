@@ -497,6 +497,75 @@ class AiwikiFlowTests(unittest.TestCase):
             <= {item["protocol"] for item in routing_record["protocol_snapshots"]}
         )
 
+    def test_compile_writes_phase_summary_and_compile_state(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+
+        compiled = compile_wiki(self.root)
+
+        compile_state_path = self.root / ".aiwiki" / "state" / "compile-state.json"
+        compile_status_path = self.root / "wiki" / "indexes" / "compile-status.md"
+        self.assertEqual(compiled["compile_state_path"], ".aiwiki/state/compile-state.json")
+        self.assertTrue(compile_state_path.exists())
+        self.assertTrue(compile_status_path.exists())
+
+        compile_state = json.loads(compile_state_path.read_text(encoding="utf-8"))
+        self.assertEqual(compile_state["manifest_entry_count"], 1)
+        self.assertEqual(compile_state["dirty_source_ids"], [entry["id"]])
+        self.assertEqual(compile_state["clean_source_ids"], [])
+        phase_names = [phase["name"] for phase in compile_state["phase_summary"]]
+        self.assertEqual(
+            phase_names,
+            [
+                "metadata_refresh",
+                "incremental_source_compile",
+                "concept_refresh",
+                "index_refresh",
+                "cold_archive_maintenance",
+            ],
+        )
+        source_phase = next(phase for phase in compile_state["phase_summary"] if phase["name"] == "incremental_source_compile")
+        self.assertEqual(source_phase["mode"], "incremental")
+        self.assertEqual(source_phase["details"]["dirty_sources"], 1)
+        self.assertEqual(source_phase["details"]["clean_sources"], 0)
+        self.assertEqual(compiled["dirty_sources"], 1)
+        self.assertEqual(compiled["clean_sources"], 0)
+        self.assertEqual(compiled["dirty_source_ids"], [entry["id"]])
+        self.assertEqual(compiled["clean_source_ids"], [])
+
+        compile_status = compile_status_path.read_text(encoding="utf-8")
+        self.assertIn("## Compile Phases", compile_status)
+        self.assertIn("incremental_source_compile", compile_status)
+        self.assertIn(".aiwiki/state/compile-state.json", compile_status)
+
+    def test_compile_skips_clean_source_pages_on_second_run(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+
+        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:00:00+00:00"):
+            first = compile_wiki(self.root)
+
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        first_frontmatter = parse_frontmatter(source_page.read_text(encoding="utf-8"))
+        self.assertEqual(first_frontmatter["last_compiled_at"], first["compiled_at"])
+
+        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:05:00+00:00"):
+            second = compile_wiki(self.root)
+
+        second_frontmatter = parse_frontmatter(source_page.read_text(encoding="utf-8"))
+        self.assertEqual(second["dirty_sources"], 0)
+        self.assertEqual(second["clean_sources"], 1)
+        self.assertEqual(second["dirty_source_ids"], [])
+        self.assertEqual(second["clean_source_ids"], [entry["id"]])
+        self.assertEqual(second_frontmatter["last_compiled_at"], first["compiled_at"])
+        self.assertNotEqual(second["compiled_at"], first["compiled_at"])
+
+        source_phase = next(phase for phase in second["phase_summary"] if phase["name"] == "incremental_source_compile")
+        self.assertEqual(source_phase["details"]["updated_pages"], 0)
+        self.assertEqual(source_phase["details"]["skipped_pages"], 1)
+
+        compile_state = json.loads((self.root / ".aiwiki" / "state" / "compile-state.json").read_text(encoding="utf-8"))
+        self.assertEqual(compile_state["dirty_source_ids"], [])
+        self.assertEqual(compile_state["clean_source_ids"], [entry["id"]])
+
     def test_ask_creates_active_corpus_and_runtime_history(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
