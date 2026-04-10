@@ -22,6 +22,7 @@ from aiwiki.app import (
     build_machine_memory_query,
     collect_machine_memory_actions,
     compile_wiki,
+    entry_concept_terms,
     ensure_layout,
     file_back,
     ingest_source,
@@ -51,6 +52,7 @@ from aiwiki.app import (
     rank_sources,
     retire_concept,
     save_manifest,
+    save_manual_link_state,
     save_material_routing_state,
     save_material_state,
     save_machine_memory_action_state,
@@ -503,21 +505,30 @@ class AiwikiFlowTests(unittest.TestCase):
         compiled = compile_wiki(self.root)
 
         compile_state_path = self.root / ".aiwiki" / "state" / "compile-state.json"
+        concept_build_state_path = self.root / ".aiwiki" / "state" / "concept-build-state.json"
         compile_status_path = self.root / "wiki" / "indexes" / "compile-status.md"
         self.assertEqual(compiled["compile_state_path"], ".aiwiki/state/compile-state.json")
+        self.assertEqual(compiled["concept_build_state_path"], ".aiwiki/state/concept-build-state.json")
         self.assertTrue(compile_state_path.exists())
+        self.assertTrue(concept_build_state_path.exists())
         self.assertTrue(compile_status_path.exists())
 
         compile_state = json.loads(compile_state_path.read_text(encoding="utf-8"))
+        concept_build_state = json.loads(concept_build_state_path.read_text(encoding="utf-8"))
         self.assertEqual(compile_state["manifest_entry_count"], 1)
         self.assertEqual(compile_state["dirty_source_ids"], [entry["id"]])
         self.assertEqual(compile_state["clean_source_ids"], [])
+        self.assertEqual(compile_state["dirty_concept_source_ids"], [entry["id"]])
+        self.assertEqual(compile_state["clean_concept_source_ids"], [])
         self.assertTrue(compile_state["dirty_concept_slugs"])
         self.assertEqual(compile_state["clean_concept_slugs"], [])
         self.assertTrue(compile_state["dirty_index_artifacts"])
         self.assertEqual(compile_state["clean_index_artifacts"], [])
         self.assertTrue(compile_state["dirty_maintenance_artifacts"])
         self.assertEqual(compile_state["clean_maintenance_artifacts"], [])
+        self.assertIn(entry["id"], concept_build_state["entry_records"])
+        self.assertTrue(concept_build_state["entry_records"][entry["id"]]["input_signature"])
+        self.assertTrue(concept_build_state["entry_records"][entry["id"]]["terms"])
         phase_names = [phase["name"] for phase in compile_state["phase_summary"]]
         self.assertEqual(
             phase_names,
@@ -535,6 +546,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(source_phase["details"]["clean_sources"], 0)
         concept_phase = next(phase for phase in compile_state["phase_summary"] if phase["name"] == "concept_refresh")
         self.assertEqual(concept_phase["mode"], "incremental")
+        self.assertEqual(concept_phase["details"]["dirty_concept_sources"], 1)
+        self.assertEqual(concept_phase["details"]["clean_concept_sources"], 0)
         self.assertEqual(concept_phase["details"]["dirty_concepts"], len(compile_state["dirty_concept_slugs"]))
         self.assertEqual(concept_phase["details"]["clean_concepts"], 0)
         index_phase = next(phase for phase in compile_state["phase_summary"] if phase["name"] == "index_refresh")
@@ -554,6 +567,10 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(compiled["clean_sources"], 0)
         self.assertEqual(compiled["dirty_source_ids"], [entry["id"]])
         self.assertEqual(compiled["clean_source_ids"], [])
+        self.assertEqual(compiled["dirty_concept_sources"], 1)
+        self.assertEqual(compiled["clean_concept_sources"], 0)
+        self.assertEqual(compiled["dirty_concept_source_ids"], [entry["id"]])
+        self.assertEqual(compiled["clean_concept_source_ids"], [])
         self.assertEqual(compiled["dirty_concepts"], len(compile_state["dirty_concept_slugs"]))
         self.assertEqual(compiled["clean_concepts"], 0)
         self.assertEqual(compiled["dirty_concept_slugs"], compile_state["dirty_concept_slugs"])
@@ -567,10 +584,13 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("## Compile Phases", compile_status)
         self.assertIn("incremental_source_compile", compile_status)
         self.assertIn("concept_refresh", compile_status)
+        self.assertIn("dirty_concept_sources=1", compile_status)
+        self.assertIn("## Dirty Concept Sources", compile_status)
         self.assertIn("index_refresh", compile_status)
         self.assertIn("## Dirty Concepts", compile_status)
         self.assertIn("## Dirty Index Artifacts", compile_status)
         self.assertIn("## Dirty Maintenance Artifacts", compile_status)
+        self.assertIn(".aiwiki/state/concept-build-state.json", compile_status)
         self.assertIn(".aiwiki/state/compile-state.json", compile_status)
 
     def test_compile_skips_clean_source_pages_on_second_run(self) -> None:
@@ -632,6 +652,26 @@ class AiwikiFlowTests(unittest.TestCase):
         compile_state = json.loads((self.root / ".aiwiki" / "state" / "compile-state.json").read_text(encoding="utf-8"))
         self.assertEqual(compile_state["dirty_concept_slugs"], [])
         self.assertEqual(set(compile_state["clean_concept_slugs"]), set(concept_slugs))
+
+    def test_compile_reuses_clean_concept_source_terms_on_second_run(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        concept_build_state_path = self.root / ".aiwiki" / "state" / "concept-build-state.json"
+        first_state = concept_build_state_path.read_text(encoding="utf-8")
+
+        with patch("aiwiki.app.entry_concept_terms", side_effect=AssertionError("should reuse clean concept source terms")):
+            second = compile_wiki(self.root)
+
+        self.assertEqual(second["dirty_concept_sources"], 0)
+        self.assertEqual(second["clean_concept_sources"], 1)
+        self.assertEqual(second["dirty_concept_source_ids"], [])
+        self.assertEqual(second["clean_concept_source_ids"], [entry["id"]])
+        self.assertEqual(first_state, concept_build_state_path.read_text(encoding="utf-8"))
+
+        concept_phase = next(phase for phase in second["phase_summary"] if phase["name"] == "concept_refresh")
+        self.assertEqual(concept_phase["details"]["dirty_concept_sources"], 0)
+        self.assertEqual(concept_phase["details"]["clean_concept_sources"], 1)
 
     def test_compile_skips_clean_index_artifacts_on_second_run(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -1534,6 +1574,54 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertNotIn(".aiwiki/state/knowledge-lifecycle.json", result["clean_maintenance_artifacts"])
         self.assertNotEqual(before, after)
         self.assertIn('"path": "wiki/concepts/delta.md"', after)
+
+    def test_compile_marks_concept_source_dirty_when_source_summary_changes(self) -> None:
+        removable = self.root / "removable.md"
+        removable.write_text("# Note\n\nAlpha beta gamma.\n", encoding="utf-8")
+        entry = ingest_source(self.root, str(removable), title="Note")
+        compile_wiki(self.root)
+
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        source_page.write_text(
+            source_page.read_text(encoding="utf-8").replace("- Pending LLM summary.", "- Delta epsilon zeta."),
+            encoding="utf-8",
+        )
+
+        with patch("aiwiki.app.entry_concept_terms", wraps=entry_concept_terms) as patched_terms:
+            result = compile_wiki(self.root)
+
+        self.assertEqual(patched_terms.call_count, 1)
+        self.assertEqual(result["dirty_concept_source_ids"], [entry["id"]])
+        self.assertIn("delta", result["dirty_concept_slugs"])
+        self.assertTrue((self.root / "wiki" / "concepts" / "delta.md").exists())
+
+    def test_compile_marks_concept_source_dirty_when_manual_link_changes(self) -> None:
+        removable = self.root / "removable.md"
+        removable.write_text("# Note\n\nAlpha beta gamma.\n", encoding="utf-8")
+        entry = ingest_source(self.root, str(removable), title="Note")
+        compile_wiki(self.root)
+
+        save_manual_link_state(
+            self.root,
+            {
+                "version": 1,
+                "source_to_concept": [
+                    {
+                        "source_id": entry["id"],
+                        "concept_slug": "delta",
+                        "active": True,
+                    }
+                ],
+            },
+        )
+
+        with patch("aiwiki.app.entry_concept_terms", wraps=entry_concept_terms) as patched_terms:
+            result = compile_wiki(self.root)
+
+        self.assertEqual(patched_terms.call_count, 1)
+        self.assertEqual(result["dirty_concept_source_ids"], [entry["id"]])
+        self.assertIn("delta", result["dirty_concept_slugs"])
+        self.assertTrue((self.root / "wiki" / "concepts" / "delta.md").exists())
 
     def test_ask_auto_compiles_and_returns_ranked_concepts_and_indexes(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

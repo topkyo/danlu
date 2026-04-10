@@ -2390,22 +2390,61 @@ def active_manual_source_concept_links(root: Path) -> dict[str, set[str]]:
     return mapping
 
 
+def concept_source_input_signature(entry: dict[str, Any], context: str, manual_slugs: list[str]) -> str:
+    payload = {
+        "entry_id": str(entry.get("id") or ""),
+        "title": str(entry.get("title") or ""),
+        "source_sha256": str(entry.get("sha256") or ""),
+        "context": context,
+        "manual_slugs": sorted(str(slug) for slug in manual_slugs if str(slug)),
+    }
+    return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
 def build_concept_records(
     root: Path,
     entries: list[dict[str, Any]],
     previews: dict[str, str],
-) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:
+    *,
+    generated_at: str,
+) -> tuple[list[dict[str, Any]], dict[str, list[str]], dict[str, Any]]:
     concept_map: dict[str, dict[str, Any]] = {}
     entry_terms: dict[str, list[str]] = {}
+    previous_state = load_concept_build_state(root)
+    previous_records = previous_state.get("entry_records", {})
+    if not isinstance(previous_records, dict):
+        previous_records = {}
     manual_links = active_manual_source_concept_links(root)
+    dirty_concept_source_ids: list[str] = []
+    clean_concept_source_ids: list[str] = []
+    entry_records: dict[str, dict[str, Any]] = {}
     for entry in entries:
+        entry_id = str(entry["id"])
         context = source_summary_or_preview(root, entry, previews[entry["id"]])
-        terms = entry_concept_terms(entry, context)
-        for manual_slug in sorted(manual_links.get(entry["id"], set())):
+        manual_slugs = sorted(manual_links.get(entry_id, set()))
+        input_signature = concept_source_input_signature(entry, context, manual_slugs)
+        previous_record = previous_records.get(entry_id, {})
+        cached_terms = previous_record.get("terms", []) if isinstance(previous_record, dict) else []
+        if (
+            isinstance(previous_record, dict)
+            and str(previous_record.get("input_signature") or "") == input_signature
+            and isinstance(cached_terms, list)
+        ):
+            terms = [str(label) for label in cached_terms if str(label)][:5]
+            clean_concept_source_ids.append(entry_id)
+        else:
+            terms = entry_concept_terms(entry, context)
+            dirty_concept_source_ids.append(entry_id)
+        for manual_slug in manual_slugs:
             manual_label = manual_slug.replace("-", " ")
             if manual_label not in terms:
                 terms.append(manual_label)
-        entry_terms[entry["id"]] = terms
+        terms = terms[:5]
+        entry_terms[entry_id] = terms
+        entry_records[entry_id] = {
+            "input_signature": input_signature,
+            "terms": list(terms),
+        }
         for label in terms:
             slug = concept_label_to_slug(label)
             record = concept_map.setdefault(
@@ -2421,8 +2460,8 @@ def build_concept_records(
             )
             record["entries"].append(entry)
             record["score"] += 1
-            if slug in manual_links.get(entry["id"], set()):
-                record["manual_source_ids"].add(entry["id"])
+            if slug in manual_links.get(entry_id, set()):
+                record["manual_source_ids"].add(entry_id)
 
     ranked_records = sorted(concept_map.values(), key=lambda item: (-item["score"], item["title"].lower()))[:30]
     allowed = {record["slug"] for record in ranked_records}
@@ -2445,7 +2484,16 @@ def build_concept_records(
         record["related_slugs"] = [slug for slug, _count in related[:6]]
         record["entry_ids"] = [entry["id"] for entry in record["entries"]]
         record["source_signature"] = concept_source_signature(record)
-    return ranked_records, filtered_entry_terms
+    state_document = {
+        "version": 1,
+        "generated_at": generated_at,
+        "entry_records": entry_records,
+    }
+    return ranked_records, filtered_entry_terms, {
+        "state_document": state_document,
+        "dirty_concept_source_ids": dirty_concept_source_ids,
+        "clean_concept_source_ids": clean_concept_source_ids,
+    }
 
 
 def concept_source_signature(record: dict[str, Any]) -> str:
@@ -7856,6 +7904,16 @@ def render_compile_status(
         for entry_id in compile_state.get("clean_source_ids", [])
         if str(entry_id)
     ]
+    dirty_concept_source_ids = [
+        str(entry_id)
+        for entry_id in compile_state.get("dirty_concept_source_ids", [])
+        if str(entry_id)
+    ]
+    clean_concept_source_ids = [
+        str(entry_id)
+        for entry_id in compile_state.get("clean_concept_source_ids", [])
+        if str(entry_id)
+    ]
     dirty_concept_slugs = [
         str(slug)
         for slug in compile_state.get("dirty_concept_slugs", [])
@@ -7907,6 +7965,9 @@ def render_compile_status(
         "clean_sources": "clean",
         "updated_pages": "updated_pages",
         "skipped_pages": "skipped_pages",
+        "concept_sources": "concept_sources",
+        "dirty_concept_sources": "dirty_concept_sources",
+        "clean_concept_sources": "clean_concept_sources",
         "concept_pages": "concepts",
         "dirty_concepts": "dirty_concepts",
         "clean_concepts": "clean_concepts",
@@ -7935,8 +7996,11 @@ def render_compile_status(
         f"- 需要升级：`{len(aging['escalated'])}`",
         f"- 证据漂移：`{sum(1 for page in decisions + judgments if page.get('citation_drift') == 'true')}`",
         "- Compile state：`.aiwiki/state/compile-state.json`",
+        "- Concept build state：`.aiwiki/state/concept-build-state.json`",
         f"- Dirty source：`{len(dirty_source_ids)}`",
         f"- Clean source：`{len(clean_source_ids)}`",
+        f"- Dirty concept source：`{len(dirty_concept_source_ids)}`",
+        f"- Clean concept source：`{len(clean_concept_source_ids)}`",
         f"- Dirty concept：`{len(dirty_concept_slugs)}`",
         f"- Clean concept：`{len(clean_concept_slugs)}`",
         f"- Dirty index artifact：`{len(dirty_index_artifacts)}`",
@@ -7999,6 +8063,16 @@ def render_compile_status(
             lines.append(f"- [{title}](../sources/{entry_id}.md)")
         if len(dirty_source_ids) > 8:
             lines.append(f"- 其余 dirty source：`{len(dirty_source_ids) - 8}`")
+    lines.extend(["", "## Dirty Concept Sources"])
+    if not dirty_concept_source_ids:
+        lines.append("- 当前没有 dirty concept source。")
+    else:
+        for entry_id in dirty_concept_source_ids[:8]:
+            entry = entry_by_id.get(entry_id, {})
+            title = str(entry.get("title") or entry_id)
+            lines.append(f"- [{title}](../sources/{entry_id}.md)")
+        if len(dirty_concept_source_ids) > 8:
+            lines.append(f"- 其余 dirty concept source：`{len(dirty_concept_source_ids) - 8}`")
     lines.extend(["", "## Dirty Concepts"])
     if not dirty_concept_slugs:
         lines.append("- 当前没有 dirty concept page。")
@@ -8342,6 +8416,10 @@ def compile_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "compile-state.json"
 
 
+def concept_build_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "concept-build-state.json"
+
+
 def material_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "material-state.json"
 
@@ -8413,6 +8491,8 @@ def default_compile_state() -> dict[str, Any]:
         "manifest_entry_count": 0,
         "dirty_source_ids": [],
         "clean_source_ids": [],
+        "dirty_concept_source_ids": [],
+        "clean_concept_source_ids": [],
         "dirty_concept_slugs": [],
         "clean_concept_slugs": [],
         "dirty_index_artifacts": [],
@@ -8429,6 +8509,8 @@ def load_compile_state(root: Path) -> dict[str, Any]:
         return default_compile_state()
     dirty_source_ids = document.get("dirty_source_ids", [])
     clean_source_ids = document.get("clean_source_ids", [])
+    dirty_concept_source_ids = document.get("dirty_concept_source_ids", [])
+    clean_concept_source_ids = document.get("clean_concept_source_ids", [])
     dirty_concept_slugs = document.get("dirty_concept_slugs", [])
     clean_concept_slugs = document.get("clean_concept_slugs", [])
     dirty_index_artifacts = document.get("dirty_index_artifacts", [])
@@ -8439,6 +8521,8 @@ def load_compile_state(root: Path) -> dict[str, Any]:
     if (
         not isinstance(dirty_source_ids, list)
         or not isinstance(clean_source_ids, list)
+        or not isinstance(dirty_concept_source_ids, list)
+        or not isinstance(clean_concept_source_ids, list)
         or not isinstance(dirty_concept_slugs, list)
         or not isinstance(clean_concept_slugs, list)
         or not isinstance(dirty_index_artifacts, list)
@@ -8454,6 +8538,8 @@ def load_compile_state(root: Path) -> dict[str, Any]:
         "manifest_entry_count": int(document.get("manifest_entry_count", 0) or 0),
         "dirty_source_ids": [str(entry_id) for entry_id in dirty_source_ids if str(entry_id)],
         "clean_source_ids": [str(entry_id) for entry_id in clean_source_ids if str(entry_id)],
+        "dirty_concept_source_ids": [str(entry_id) for entry_id in dirty_concept_source_ids if str(entry_id)],
+        "clean_concept_source_ids": [str(entry_id) for entry_id in clean_concept_source_ids if str(entry_id)],
         "dirty_concept_slugs": [str(slug) for slug in dirty_concept_slugs if str(slug)],
         "clean_concept_slugs": [str(slug) for slug in clean_concept_slugs if str(slug)],
         "dirty_index_artifacts": [str(path) for path in dirty_index_artifacts if str(path)],
@@ -8466,6 +8552,39 @@ def load_compile_state(root: Path) -> dict[str, Any]:
 
 def save_compile_state(root: Path, document: dict[str, Any]) -> None:
     save_json_document(compile_state_path(root), document)
+
+
+def default_concept_build_state() -> dict[str, Any]:
+    return {"version": 1, "generated_at": "", "entry_records": {}}
+
+
+def load_concept_build_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(concept_build_state_path(root))
+    if not isinstance(document, dict):
+        return default_concept_build_state()
+    entry_records = document.get("entry_records")
+    if not isinstance(entry_records, dict):
+        return default_concept_build_state()
+    normalized_records: dict[str, dict[str, Any]] = {}
+    for entry_id, record in entry_records.items():
+        if not isinstance(entry_id, str) or not entry_id or not isinstance(record, dict):
+            continue
+        terms = record.get("terms", [])
+        if not isinstance(terms, list):
+            continue
+        normalized_records[entry_id] = {
+            "input_signature": str(record.get("input_signature") or ""),
+            "terms": [str(label) for label in terms if str(label)][:5],
+        }
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "generated_at": str(document.get("generated_at") or ""),
+        "entry_records": normalized_records,
+    }
+
+
+def save_concept_build_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(concept_build_state_path(root), document)
 
 
 def manifest_change_summary(previous_entries: list[dict[str, Any]], current_entries: list[dict[str, Any]]) -> dict[str, int]:
@@ -13705,7 +13824,18 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         source_file = root / entry["stored_path"]
         preview = read_text_preview(source_file)
         previews[entry["id"]] = preview
-    concepts, entry_terms = build_concept_records(root, entries, previews)
+    concepts, entry_terms, concept_build = build_concept_records(
+        root,
+        entries,
+        previews,
+        generated_at=compiled_at,
+    )
+    dirty_concept_source_ids = list(concept_build.get("dirty_concept_source_ids", []))
+    clean_concept_source_ids = list(concept_build.get("clean_concept_source_ids", []))
+    concept_build_state = concept_build.get("state_document", {})
+    if not isinstance(concept_build_state, dict):
+        concept_build_state = default_concept_build_state()
+    write_json_document_if_changed_ignoring_generated_timestamps(concept_build_state_path(root), concept_build_state)
     dirty_source_ids: list[str] = []
     clean_source_ids: list[str] = []
     dirty_source_id_set: set[str] = set()
@@ -14094,6 +14224,9 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             "mode": "incremental",
             "status": "completed",
             "details": {
+                "concept_sources": len(entries),
+                "dirty_concept_sources": len(dirty_concept_source_ids),
+                "clean_concept_sources": len(clean_concept_source_ids),
                 "concept_pages": len(concepts),
                 "dirty_concepts": len(dirty_concept_slugs),
                 "clean_concepts": len(clean_concept_slugs),
@@ -14139,6 +14272,8 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "manifest_entry_count": len(entries),
         "dirty_source_ids": dirty_source_ids,
         "clean_source_ids": clean_source_ids,
+        "dirty_concept_source_ids": dirty_concept_source_ids,
+        "clean_concept_source_ids": clean_concept_source_ids,
         "dirty_concept_slugs": dirty_concept_slugs,
         "clean_concept_slugs": clean_concept_slugs,
         "dirty_index_artifacts": dirty_index_artifacts,
@@ -14172,6 +14307,8 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             f"compile_state: `{relative_path(root, compile_state_path(root))}`",
             f"compile_dirty_sources: `{len(dirty_source_ids)}`",
             f"compile_clean_sources: `{len(clean_source_ids)}`",
+            f"compile_dirty_concept_sources: `{len(dirty_concept_source_ids)}`",
+            f"compile_clean_concept_sources: `{len(clean_concept_source_ids)}`",
             f"compile_dirty_concepts: `{len(dirty_concept_slugs)}`",
             f"compile_clean_concepts: `{len(clean_concept_slugs)}`",
             f"compile_dirty_index_artifacts: `{len(dirty_index_artifacts)}`",
@@ -14208,6 +14345,10 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "clean_sources": len(clean_source_ids),
         "dirty_source_ids": list(dirty_source_ids),
         "clean_source_ids": list(clean_source_ids),
+        "dirty_concept_sources": len(dirty_concept_source_ids),
+        "clean_concept_sources": len(clean_concept_source_ids),
+        "dirty_concept_source_ids": list(dirty_concept_source_ids),
+        "clean_concept_source_ids": list(clean_concept_source_ids),
         "dirty_concepts": len(dirty_concept_slugs),
         "clean_concepts": len(clean_concept_slugs),
         "dirty_concept_slugs": list(dirty_concept_slugs),
@@ -14220,6 +14361,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "output_packs": dict(output_packs["counts"]),
         "domain_pilots": len(domain_pilots["scorecards"]),
         "compile_state_path": relative_path(root, compile_state_path(root)),
+        "concept_build_state_path": relative_path(root, concept_build_state_path(root)),
         "material_state_path": relative_path(root, material_state_path(root)),
         "active_corpora_path": relative_path(root, active_corpora_state_path(root)),
         "material_routing_path": relative_path(root, material_routing_state_path(root)),
