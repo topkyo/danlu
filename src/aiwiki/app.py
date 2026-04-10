@@ -3041,6 +3041,120 @@ def rewrite_proposal_status_rank(status: str) -> int:
     return {"proposed": 0, "accepted": 1, "deferred": 2, "applied": 3, "rejected": 4}.get(status, 9)
 
 
+def transition_profile(
+    allowed_transitions: list[str],
+    *,
+    preferred_transitions: list[str] | None = None,
+    default_transition: str = "",
+) -> dict[str, Any]:
+    allowed = [str(item).strip() for item in allowed_transitions if str(item).strip()]
+    preferred = [str(item).strip() for item in (preferred_transitions or []) if str(item).strip() in allowed]
+    default_value = str(default_transition or "").strip()
+    if default_value not in allowed:
+        default_value = preferred[0] if preferred else (allowed[0] if allowed else "")
+    return {
+        "allowed_transitions": allowed,
+        "preferred_transitions": preferred,
+        "default_transition": default_value,
+    }
+
+
+def curated_page_transition_profile(kind: str, status: str) -> dict[str, Any]:
+    if kind == "decision":
+        if status == "proposed":
+            return transition_profile(
+                ["approved", "needs-revisit", "superseded"],
+                preferred_transitions=["approved", "needs-revisit"],
+                default_transition="approved",
+            )
+        if status == "approved":
+            return transition_profile(
+                ["needs-revisit", "superseded"],
+                preferred_transitions=["needs-revisit"],
+                default_transition="needs-revisit",
+            )
+        if status == "needs-revisit":
+            return transition_profile(
+                ["approved", "superseded"],
+                preferred_transitions=["approved"],
+                default_transition="approved",
+            )
+        return transition_profile([])
+    if kind == "judgment":
+        if status == "tentative":
+            return transition_profile(
+                ["tracking", "confirmed", "rejected"],
+                preferred_transitions=["tracking", "confirmed"],
+                default_transition="tracking",
+            )
+        if status == "tracking":
+            return transition_profile(
+                ["confirmed", "rejected"],
+                preferred_transitions=["confirmed"],
+                default_transition="confirmed",
+            )
+        if status == "confirmed":
+            return transition_profile(
+                ["tracking", "rejected"],
+                preferred_transitions=["tracking"],
+                default_transition="tracking",
+            )
+        return transition_profile([])
+    return transition_profile([])
+
+
+def rewrite_transition_profile(status: str) -> dict[str, Any]:
+    if status == "proposed":
+        return transition_profile(
+            ["accepted", "deferred", "rejected"],
+            preferred_transitions=["accepted", "deferred"],
+            default_transition="accepted",
+        )
+    if status == "accepted":
+        return transition_profile(
+            ["deferred", "rejected"],
+            preferred_transitions=["deferred"],
+            default_transition="deferred",
+        )
+    if status == "deferred":
+        return transition_profile(
+            ["accepted", "rejected"],
+            preferred_transitions=["accepted"],
+            default_transition="accepted",
+        )
+    return transition_profile([])
+
+
+def action_transition_profile(status: str) -> dict[str, Any]:
+    if status == "proposed":
+        return transition_profile(
+            ["accepted", "deferred", "rejected"],
+            preferred_transitions=["accepted", "deferred"],
+            default_transition="accepted",
+        )
+    if status == "accepted":
+        return transition_profile(
+            ["resolved", "deferred", "rejected"],
+            preferred_transitions=["resolved", "deferred"],
+            default_transition="resolved",
+        )
+    if status == "deferred":
+        return transition_profile(
+            ["accepted", "resolved", "rejected"],
+            preferred_transitions=["accepted", "resolved"],
+            default_transition="accepted",
+        )
+    return transition_profile([])
+
+
+def archive_transition_profile(*, can_apply: bool, can_revert: bool) -> dict[str, Any]:
+    if can_apply:
+        return transition_profile(["apply"], preferred_transitions=["apply"], default_transition="apply")
+    if can_revert:
+        return transition_profile(["revert"], preferred_transitions=["revert"], default_transition="revert")
+    return transition_profile([])
+
+
 def html_safe_json_literal(value: Any) -> str:
     return (
         json.dumps(value, ensure_ascii=False)
@@ -8183,12 +8297,19 @@ def shell_review_controls(
                 "escalate_after": str(page.get("escalate_after") or ""),
                 "reviewed_at": str(page.get("reviewed_at") or ""),
                 "updated_at": str(page.get("updated_at") or ""),
+                "can_review": False,
                 "reasons": [],
             }
             page_by_path[page_path] = current
         reasons = current.setdefault("reasons", [])
         if reason_code and reason_code not in reasons:
             reasons.append(reason_code)
+        profile = curated_page_transition_profile(
+            str(current.get("kind") or ""),
+            str(current.get("status") or ""),
+        )
+        current.update(profile)
+        current["can_review"] = bool(profile.get("allowed_transitions"))
 
     for page in queue.get("pending_decisions", []) + queue.get("pending_judgments", []):
         add_page(page, "pending-review")
@@ -8219,6 +8340,7 @@ def shell_review_controls(
         if not slug or not bool(proposal.get("active", True)):
             continue
         status = str(proposal.get("status") or "proposed")
+        profile = rewrite_transition_profile(status)
         rewrite_controls.append(
             {
                 "slug": slug,
@@ -8230,13 +8352,14 @@ def shell_review_controls(
                 "target_path": str(proposal.get("target_path") or f"wiki/concepts/{slug}.md"),
                 "pending_review": str(proposal.get("pending_review") or "") == "true",
                 "apply_ready": bool(proposal.get("apply_ready", False)),
-                "can_review": rewrite_proposal_needs_review(status),
+                "can_review": bool(profile.get("allowed_transitions")),
                 "can_apply": bool(proposal.get("apply_ready", False)),
                 "first_proposed_at": str(proposal.get("first_proposed_at") or ""),
                 "last_proposed_at": str(proposal.get("last_proposed_at") or ""),
                 "reviewed_at": str(proposal.get("reviewed_at") or ""),
                 "issue_count": len(proposal.get("issues", [])) if isinstance(proposal.get("issues"), list) else 0,
                 "source_count": len(proposal.get("source_pages", [])) if isinstance(proposal.get("source_pages"), list) else 0,
+                **profile,
             }
         )
     rewrite_controls.sort(
@@ -8283,7 +8406,8 @@ def shell_action_control_objects(
             continue
         seen_ids.add(action_id)
         status = str(action.get("status") or "proposed")
-        can_review = bool(action.get("active", True)) and status in {"proposed", "accepted", "deferred"}
+        profile = action_transition_profile(status) if bool(action.get("active", True)) else transition_profile([])
+        can_review = bool(profile.get("allowed_transitions"))
         can_apply = action_id in apply_ready_action_ids
         can_revert = action_id in revert_ready_action_ids
         proposal_path = execution_proposal_path(root, action_id)
@@ -8311,6 +8435,7 @@ def shell_action_control_objects(
                 "can_review": can_review,
                 "can_apply": can_apply,
                 "can_revert": can_revert,
+                **profile,
             }
         )
     controls.sort(
@@ -8362,6 +8487,9 @@ def shell_archive_control_objects(
         manifest_entry = manifest_by_id.get(entry_id, {})
         title = str(manifest_entry.get("title") or archived.get("title") or entry_id)
         source_path = str(archived.get("source_path") or f"wiki/sources/{entry_id}.md")
+        can_apply = entry_id in apply_ready_archive_entry_ids
+        can_revert = entry_id in revert_ready_archive_entry_ids
+        profile = archive_transition_profile(can_apply=can_apply, can_revert=can_revert)
         controls.append(
             {
                 "entry_id": entry_id,
@@ -8380,8 +8508,9 @@ def shell_archive_control_objects(
                 "archived": bool(archived.get("active", False)),
                 "archived_at": str(archived.get("archived_at") or ""),
                 "last_receipt_path": str(archived.get("last_receipt_path") or ""),
-                "can_apply": entry_id in apply_ready_archive_entry_ids,
-                "can_revert": entry_id in revert_ready_archive_entry_ids,
+                "can_apply": can_apply,
+                "can_revert": can_revert,
+                **profile,
             }
         )
     controls.sort(

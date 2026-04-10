@@ -17,6 +17,30 @@ const DEFAULT_SETTINGS = {
   recentRunsLimit: 8,
   showHtmlShortcuts: true,
 };
+const CURATED_STATUS_LABELS = {
+  proposed: "Proposed",
+  approved: "Approved",
+  "needs-revisit": "Needs revisit",
+  superseded: "Superseded",
+  tentative: "Tentative",
+  tracking: "Tracking",
+  confirmed: "Confirmed",
+  rejected: "Rejected",
+};
+const ACTION_STATUS_LABELS = {
+  proposed: "Proposed",
+  accepted: "Accepted",
+  deferred: "Deferred",
+  resolved: "Resolved",
+  rejected: "Rejected",
+};
+const REWRITE_STATUS_LABELS = {
+  proposed: "Proposed",
+  accepted: "Accepted",
+  deferred: "Deferred",
+  applied: "Applied",
+  rejected: "Rejected",
+};
 
 function truncateText(value, limit = 240) {
   const text = String(value || "").trim();
@@ -35,6 +59,18 @@ function readJsonText(rawText) {
     return null;
   }
   return JSON.parse(text);
+}
+
+function displayCuratedStatus(status) {
+  return CURATED_STATUS_LABELS[String(status || "").trim()] || String(status || "unknown");
+}
+
+function displayActionStatus(status) {
+  return ACTION_STATUS_LABELS[String(status || "").trim()] || String(status || "unknown");
+}
+
+function displayRewriteStatus(status) {
+  return REWRITE_STATUS_LABELS[String(status || "").trim()] || String(status || "unknown");
 }
 
 class AskCommandModal extends Modal {
@@ -870,26 +906,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
-  pickActionControlSet(mode = "review") {
-    if (mode === "apply") {
-      return this.controlIdSet("apply_ready_action_ids");
-    }
-    if (mode === "revert") {
-      return this.controlIdSet("revert_ready_action_ids");
-    }
-    return null;
-  }
-
-  pickArchiveControlSet(mode = "apply") {
-    if (mode === "apply") {
-      return this.controlIdSet("apply_ready_archive_entry_ids");
-    }
-    if (mode === "revert") {
-      return this.controlIdSet("revert_ready_archive_entry_ids");
-    }
-    return new Set();
-  }
-
   inferActionIdFromReceipt(receipt) {
     if (!receipt || typeof receipt !== "object") {
       return "";
@@ -907,11 +923,14 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         return {
           value: page.path,
           label: page.title || page.path || "review-page",
-          description: `${kind} | ${status} | ${reasons}`,
+          description: `${kind} | ${displayCuratedStatus(status)} | ${reasons}`,
           pageId: String(page.page_id || ""),
           pagePath: String(page.path || ""),
           pageKind: kind,
           currentStatus: status,
+          allowedTransitions: Array.isArray(page.allowed_transitions) ? page.allowed_transitions : [],
+          preferredTransitions: Array.isArray(page.preferred_transitions) ? page.preferred_transitions : [],
+          defaultTransition: String(page.default_transition || ""),
         };
       }),
       "pagePath"
@@ -929,12 +948,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           return {
             value: proposal.slug,
             label: proposal.title || proposal.slug || "rewrite-proposal",
-            description: `${status} | priority ${priority} | score ${proposal.score || 0}`,
+            description: `${displayRewriteStatus(status)} | priority ${priority} | score ${proposal.score || 0}`,
             slug: String(proposal.slug || ""),
             status,
             proposalPath: String(proposal.proposal_path || ""),
             targetPath: String(proposal.target_path || ""),
             canApply: Boolean(proposal.can_apply),
+            allowedTransitions: Array.isArray(proposal.allowed_transitions) ? proposal.allowed_transitions : [],
+            preferredTransitions: Array.isArray(proposal.preferred_transitions) ? proposal.preferred_transitions : [],
+            defaultTransition: String(proposal.default_transition || ""),
           };
         }),
       "slug"
@@ -960,10 +982,13 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           return {
             value: action.action_id,
             label: action.title || action.action_id || "action",
-            description: `${status} | priority ${priority}${primaryPath ? ` | ${primaryPath}` : ""}`,
+            description: `${displayActionStatus(status)} | priority ${priority}${primaryPath ? ` | ${primaryPath}` : ""}`,
             actionId: String(action.action_id || ""),
             status,
             bundlePath: String(action.bundle_path || ""),
+            allowedTransitions: Array.isArray(action.allowed_transitions) ? action.allowed_transitions : [],
+            preferredTransitions: Array.isArray(action.preferred_transitions) ? action.preferred_transitions : [],
+            defaultTransition: String(action.default_transition || ""),
           };
         }),
       "actionId"
@@ -982,6 +1007,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
             label: entry.title || entry.entry_id || "archive-entry",
             description: `${candidateStatus || currentTemperature || "archive"} | ${entry.source_path || ""}`,
             entryId: String(entry.entry_id || ""),
+            allowedTransitions: Array.isArray(entry.allowed_transitions) ? entry.allowed_transitions : [],
+            preferredTransitions: Array.isArray(entry.preferred_transitions) ? entry.preferred_transitions : [],
+            defaultTransition: String(entry.default_transition || ""),
           };
         }),
       "entryId"
@@ -1004,6 +1032,97 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         .filter((entry) => entry && typeof entry === "object" && String(entry.entry_id || "").trim())
         .map((entry) => [String(entry.entry_id || "").trim(), entry])
     );
+  }
+
+  transitionLabel(controlType, transition) {
+    if (controlType === "page") {
+      return displayCuratedStatus(transition);
+    }
+    if (controlType === "rewrite") {
+      return displayRewriteStatus(transition);
+    }
+    if (controlType === "action") {
+      return displayActionStatus(transition);
+    }
+    if (controlType === "archive") {
+      return transition === "revert" ? "Revert archive" : "Apply archive";
+    }
+    return String(transition || "transition");
+  }
+
+  transitionOptions(controlType, control) {
+    if (!control || typeof control !== "object") {
+      return [];
+    }
+    const allowed = Array.isArray(control.allowedTransitions || control.allowed_transitions)
+      ? (control.allowedTransitions || control.allowed_transitions)
+      : [];
+    const preferredSet = new Set(
+      (Array.isArray(control.preferredTransitions || control.preferred_transitions)
+        ? (control.preferredTransitions || control.preferred_transitions)
+        : []
+      ).map((item) => String(item || "").trim()).filter(Boolean)
+    );
+    const defaultTransition = String(control.defaultTransition || control.default_transition || "").trim();
+    return allowed
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .map((value) => ({
+        value,
+        label: this.transitionLabel(controlType, value),
+        description: preferredSet.has(value) ? "preferred transition" : "allowed transition",
+        isDefault: value === defaultTransition,
+        isPreferred: preferredSet.has(value),
+      }))
+      .sort((left, right) => {
+        if (left.isDefault !== right.isDefault) {
+          return left.isDefault ? -1 : 1;
+        }
+        if (left.isPreferred !== right.isPreferred) {
+          return left.isPreferred ? -1 : 1;
+        }
+        return String(left.label || "").localeCompare(String(right.label || ""));
+      });
+  }
+
+  preferredTransitionOptions(controlType, control) {
+    return this.transitionOptions(controlType, control).filter((option) => option.isPreferred).slice(0, 2);
+  }
+
+  openTransitionPicker({ title, description, controlType, control, onSubmit, onFallback, emptyNotice }) {
+    const options = this.transitionOptions(controlType, control);
+    if (!options.length) {
+      if (emptyNotice) {
+        new Notice(emptyNotice);
+      }
+      if (typeof onFallback === "function") {
+        onFallback();
+      }
+      return;
+    }
+    if (options.length === 1) {
+      onSubmit(options[0].value);
+      return;
+    }
+    this.openContextPicker({
+      title,
+      description,
+      submitLabel: "Use",
+      options,
+      onSubmit: (option) => onSubmit(option.value),
+    });
+  }
+
+  async runReviewPageTransition(pagePath, status) {
+    await this.runCliAction(`Review Page: ${status}`, "review-page", [pagePath, "--status", status]);
+  }
+
+  async runReviewRewriteTransition(slug, status) {
+    await this.runCliAction(`Review Rewrite: ${slug}`, "review-rewrite", [slug, "--status", status]);
+  }
+
+  async runReviewActionTransition(actionId, status) {
+    await this.runCliAction(`Review Action: ${actionId}`, "review-action", [actionId, "--status", status]);
   }
 
   visibleReviewPageCandidates() {
@@ -1525,7 +1644,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       options,
       emptyNotice: "当前没有可见的 review backlog 条目，已回退到手动表单。",
       onFallback: () => this.openReviewPageModal(),
-      onSubmit: (option) => this.openReviewPageModal({ pagePath: option.pagePath }),
+      onSubmit: (option) => this.openReviewPageTransitionPicker(option),
     });
   }
 
@@ -1537,7 +1656,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       options,
       emptyNotice: "当前没有可见的 concept context，已回退到手动表单。",
       onFallback: () => this.openReviewRewriteModal(),
-      onSubmit: (option) => this.openReviewRewriteModal({ slug: option.slug || option.value || "" }),
+      onSubmit: (option) => this.openReviewRewriteTransitionPicker(option),
     });
   }
 
@@ -1549,7 +1668,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       options,
       emptyNotice: "当前没有可见的 machine-memory action context，已回退到手动表单。",
       onFallback: () => this.openReviewActionModal(),
-      onSubmit: (option) => this.openReviewActionModal({ actionId: option.actionId || option.value || "" }),
+      onSubmit: (option) => this.openReviewActionTransitionPicker(option),
     });
   }
 
@@ -1598,6 +1717,59 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       emptyNotice: "当前没有可见的 machine-memory action context，已回退到手动表单。",
       onFallback: () => this.openRevertActionModal(),
       onSubmit: (option) => this.openRevertActionModal({ actionId: option.actionId || option.value || "" }),
+    });
+  }
+
+  openReviewPageTransitionPicker(control) {
+    const pagePath = String(control.pagePath || control.path || control.value || "").trim();
+    this.openTransitionPicker({
+      title: "Pick Review Transition",
+      description: "Choose a valid next status for this review page.",
+      controlType: "page",
+      control,
+      emptyNotice: "当前没有显式 review transition，已回退到手动表单。",
+      onFallback: () => this.openReviewPageModal({ pagePath }),
+      onSubmit: (status) => {
+        this.runUiAction(
+          () => this.runReviewPageTransition(pagePath, status),
+          `Review page transition: ${pagePath} -> ${status}`
+        );
+      },
+    });
+  }
+
+  openReviewRewriteTransitionPicker(control) {
+    this.openTransitionPicker({
+      title: "Pick Rewrite Transition",
+      description: "Choose a valid next status for this rewrite proposal.",
+      controlType: "rewrite",
+      control,
+      emptyNotice: "当前没有显式 rewrite transition，已回退到手动表单。",
+      onFallback: () => this.openReviewRewriteModal({ slug: control.slug || control.value || "" }),
+      onSubmit: (status) => {
+        this.runUiAction(
+          () => this.runReviewRewriteTransition(control.slug || control.value || "", status),
+          `Review rewrite transition: ${control.slug || control.value || ""} -> ${status}`
+        );
+      },
+    });
+  }
+
+  openReviewActionTransitionPicker(control) {
+    const actionId = String(control.actionId || control.action_id || control.value || "").trim();
+    this.openTransitionPicker({
+      title: "Pick Action Transition",
+      description: "Choose a valid next status for this machine-memory action.",
+      controlType: "action",
+      control,
+      emptyNotice: "当前没有显式 action transition，已回退到手动表单。",
+      onFallback: () => this.openReviewActionModal({ actionId }),
+      onSubmit: (status) => {
+        this.runUiAction(
+          () => this.runReviewActionTransition(actionId, status),
+          `Review action transition: ${actionId} -> ${status}`
+        );
+      },
     });
   }
 
@@ -1949,6 +2121,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     ]);
 
     const reviewControlObjects = this.reviewControlList("pages");
+    const reviewControlsByPath = new Map(
+      reviewControlObjects
+        .filter((page) => page && typeof page === "object" && String(page.path || "").trim())
+        .map((page) => [String(page.path || "").trim(), page])
+    );
     const reviewObjectsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
     reviewObjectsSection.createEl("h3", { text: "Review Control Objects" });
     if (!reviewControlObjects.length) {
@@ -1960,17 +2137,28 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         item.createEl("strong", { text: page.title || page.path || "review-page" });
         item.createDiv({
           cls: "furnace-shell-meta",
-          text: `${page.kind || "page"} | ${page.status || "unknown"} | ${(Array.isArray(page.reasons) ? page.reasons.join(", ") : "") || "review-object"}`,
+          text: `${page.kind || "page"} | ${displayCuratedStatus(page.status)} | ${(Array.isArray(page.reasons) ? page.reasons.join(", ") : "") || "review-object"}`,
         });
         const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
         const openButton = actions.createEl("button", { text: "Open page" });
         openButton.addEventListener("click", () => {
           this.runUiAction(() => this.openWorkspacePath(page.path), `Open review control page: ${page.path}`);
         });
-        const reviewButton = actions.createEl("button", { text: "Review" });
-        reviewButton.addEventListener("click", () => {
-          this.runUiAction(() => this.openReviewPageModal({ pagePath: page.path }), `Review control page: ${page.path}`);
+        this.preferredTransitionOptions("page", page).forEach((transition) => {
+          const transitionButton = actions.createEl("button", { text: transition.label });
+          transitionButton.addEventListener("click", () => {
+            this.runUiAction(
+              () => this.runReviewPageTransition(page.path, transition.value),
+              `Review control quick action: ${page.path} -> ${transition.value}`
+            );
+          });
         });
+        if (Array.isArray(page.allowed_transitions) && page.allowed_transitions.length) {
+          const reviewButton = actions.createEl("button", { text: "More" });
+          reviewButton.addEventListener("click", () => {
+            this.runUiAction(() => this.openReviewPageTransitionPicker(page), `Review control page: ${page.path}`);
+          });
+        }
       });
     }
 
@@ -1986,7 +2174,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         item.createEl("strong", { text: proposal.title || proposal.slug || "rewrite-proposal" });
         item.createDiv({
           cls: "furnace-shell-meta",
-          text: `${proposal.status || "unknown"} | priority ${proposal.priority || "medium"} | score ${proposal.score || 0}`,
+          text: `${displayRewriteStatus(proposal.status)} | priority ${proposal.priority || "medium"} | score ${proposal.score || 0}`,
         });
         const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
         if (proposal.proposal_path) {
@@ -2001,10 +2189,19 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
             this.runUiAction(() => this.openWorkspacePath(proposal.target_path), `Open rewrite target: ${proposal.target_path}`);
           });
         }
-        if (proposal.can_review) {
-          const reviewButton = actions.createEl("button", { text: "Review rewrite" });
+        this.preferredTransitionOptions("rewrite", proposal).forEach((transition) => {
+          const transitionButton = actions.createEl("button", { text: transition.label });
+          transitionButton.addEventListener("click", () => {
+            this.runUiAction(
+              () => this.runReviewRewriteTransition(proposal.slug, transition.value),
+              `Rewrite quick action: ${proposal.slug} -> ${transition.value}`
+            );
+          });
+        });
+        if (proposal.can_review && Array.isArray(proposal.allowed_transitions) && proposal.allowed_transitions.length) {
+          const reviewButton = actions.createEl("button", { text: "More" });
           reviewButton.addEventListener("click", () => {
-            this.runUiAction(() => this.openReviewRewriteModal({ slug: proposal.slug }), `Review rewrite object: ${proposal.slug}`);
+            this.runUiAction(() => this.openReviewRewriteTransitionPicker(proposal), `Review rewrite object: ${proposal.slug}`);
           });
         }
         if (proposal.can_apply) {
@@ -2035,13 +2232,17 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         const pageItem = pageList.createEl("li");
         pageItem.createEl("span", { text: pagePath });
         const actions = pageItem.createDiv({ cls: "furnace-shell-inline-actions" });
+        const reviewControl = reviewControlsByPath.get(String(pagePath || "").trim());
         const openButton = actions.createEl("button", { text: "Open" });
         openButton.addEventListener("click", () => {
           this.runUiAction(() => this.openWorkspacePath(pagePath), `Open aging page: ${pagePath}`);
         });
         const reviewButton = actions.createEl("button", { text: "Review" });
         reviewButton.addEventListener("click", () => {
-          this.runUiAction(() => this.openReviewPageModal({ pagePath }), `Review aging page: ${pagePath}`);
+          this.runUiAction(
+            () => (reviewControl ? this.openReviewPageTransitionPicker(reviewControl) : this.openReviewPageModal({ pagePath })),
+            `Review aging page: ${pagePath}`
+          );
         });
       });
     });
@@ -2057,6 +2258,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       const list = eventsSection.createEl("ul", { cls: "furnace-shell-list" });
       reviewEvents.slice(0, 8).forEach((entry) => {
         const item = list.createEl("li");
+        const reviewControl = reviewControlsByPath.get(String(entry.page_path || "").trim());
         item.createEl("strong", { text: entry.title || entry.page_path || "review" });
         item.createDiv({
           cls: "furnace-shell-meta",
@@ -2071,7 +2273,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           const reviewButton = actions.createEl("button", { text: "Review" });
           reviewButton.addEventListener("click", () => {
             this.runUiAction(
-              () => this.openReviewPageModal({ pagePath: entry.page_path, status: entry.status || "" }),
+              () => (
+                reviewControl
+                  ? this.openReviewPageTransitionPicker(reviewControl)
+                  : this.openReviewPageModal({ pagePath: entry.page_path, status: entry.status || "" })
+              ),
               `Review event page: ${entry.page_path}`
             );
           });
@@ -2146,6 +2352,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       : [];
     const actionControlsById = this.actionControlsById();
     const archiveControlsById = this.archiveControlsById();
+    const actionControlObjects = this.executionControlList("actions");
     this.renderCardGrid(contentEl, [
       { label: "Recent Receipts", value: receipts.length },
       { label: "Execution Events", value: executionEvents.length },
@@ -2162,6 +2369,65 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         value: executionEvents.filter((entry) => entry.event_type === "nightly").length,
       },
     ]);
+
+    const actionObjectsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+    actionObjectsSection.createEl("h3", { text: "Action Control Objects" });
+    if (!actionControlObjects.length) {
+      actionObjectsSection.createDiv({ cls: "furnace-shell-empty", text: "当前没有显式 action control object。" });
+    } else {
+      const list = actionObjectsSection.createEl("ul", { cls: "furnace-shell-list" });
+      actionControlObjects.slice(0, 10).forEach((action) => {
+        const item = list.createEl("li");
+        item.createEl("strong", { text: action.title || action.action_id || "action" });
+        item.createDiv({
+          cls: "furnace-shell-meta",
+          text: `${displayActionStatus(action.status)} | ${action.priority || "medium"} | ${action.primary_path || ""}`,
+        });
+        const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
+        if (action.primary_path) {
+          const openPrimary = actions.createEl("button", { text: "Open primary" });
+          openPrimary.addEventListener("click", () => {
+            this.runUiAction(() => this.openWorkspacePath(action.primary_path), `Open action primary: ${action.primary_path}`);
+          });
+        }
+        if (action.proposal_path) {
+          const openProposal = actions.createEl("button", { text: "Open proposal" });
+          openProposal.addEventListener("click", () => {
+            this.runUiAction(() => this.openWorkspacePath(action.proposal_path), `Open action proposal: ${action.proposal_path}`);
+          });
+        }
+        this.preferredTransitionOptions("action", action).forEach((transition) => {
+          const transitionButton = actions.createEl("button", { text: transition.label });
+          transitionButton.addEventListener("click", () => {
+            this.runUiAction(
+              () => this.runReviewActionTransition(action.action_id, transition.value),
+              `Action quick transition: ${action.action_id} -> ${transition.value}`
+            );
+          });
+        });
+        if (action.can_review && Array.isArray(action.allowed_transitions) && action.allowed_transitions.length) {
+          const moreButton = actions.createEl("button", { text: "More" });
+          moreButton.addEventListener("click", () => {
+            this.runUiAction(() => this.openReviewActionTransitionPicker(action), `Review action object: ${action.action_id}`);
+          });
+        }
+        if (action.can_apply) {
+          const applyButton = actions.createEl("button", { text: "Apply action" });
+          applyButton.addEventListener("click", () => {
+            this.runUiAction(
+              () => this.openApplyActionModal({ actionId: action.action_id, bundle: action.bundle_path || "" }),
+              `Apply action object: ${action.action_id}`
+            );
+          });
+        }
+        if (action.can_revert) {
+          const revertButton = actions.createEl("button", { text: "Revert action" });
+          revertButton.addEventListener("click", () => {
+            this.runUiAction(() => this.openRevertActionModal({ actionId: action.action_id }), `Revert action object: ${action.action_id}`);
+          });
+        }
+      });
+    }
 
     const receiptsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
     receiptsSection.createEl("h3", { text: "Recent Receipts" });
@@ -2205,7 +2471,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
             if (actionControl.can_review) {
               const reviewButton = actions.createEl("button", { text: "Review action" });
               reviewButton.addEventListener("click", () => {
-                this.runUiAction(() => this.openReviewActionModal({ actionId }), `Review action from receipt: ${actionId}`);
+                this.runUiAction(() => this.openReviewActionTransitionPicker(actionControl), `Review action from receipt: ${actionId}`);
               });
             }
             if (actionControl.can_revert || actionControl.can_apply) {
