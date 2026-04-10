@@ -2430,7 +2430,7 @@ def build_concept_records(
             and str(previous_record.get("input_signature") or "") == input_signature
             and isinstance(cached_terms, list)
         ):
-            terms = [str(label) for label in cached_terms if str(label)][:5]
+            terms = [str(label) for label in cached_terms if str(label)]
             clean_concept_source_ids.append(entry_id)
         else:
             terms = entry_concept_terms(entry, context)
@@ -2439,7 +2439,6 @@ def build_concept_records(
             manual_label = manual_slug.replace("-", " ")
             if manual_label not in terms:
                 terms.append(manual_label)
-        terms = terms[:5]
         entry_terms[entry_id] = terms
         entry_records[entry_id] = {
             "input_signature": input_signature,
@@ -2485,7 +2484,7 @@ def build_concept_records(
         record["entry_ids"] = [entry["id"] for entry in record["entries"]]
         record["source_signature"] = concept_source_signature(record)
     state_document = {
-        "version": 1,
+        "version": 2,
         "generated_at": generated_at,
         "entry_records": entry_records,
     }
@@ -8555,12 +8554,15 @@ def save_compile_state(root: Path, document: dict[str, Any]) -> None:
 
 
 def default_concept_build_state() -> dict[str, Any]:
-    return {"version": 1, "generated_at": "", "entry_records": {}}
+    return {"version": 2, "generated_at": "", "entry_records": {}}
 
 
 def load_concept_build_state(root: Path) -> dict[str, Any]:
     document = load_json_document(concept_build_state_path(root))
     if not isinstance(document, dict):
+        return default_concept_build_state()
+    version = int(document.get("version", 1) or 1)
+    if version < 2:
         return default_concept_build_state()
     entry_records = document.get("entry_records")
     if not isinstance(entry_records, dict):
@@ -8574,10 +8576,10 @@ def load_concept_build_state(root: Path) -> dict[str, Any]:
             continue
         normalized_records[entry_id] = {
             "input_signature": str(record.get("input_signature") or ""),
-            "terms": [str(label) for label in terms if str(label)][:5],
+            "terms": [str(label) for label in terms if str(label)],
         }
     return {
-        "version": int(document.get("version", 1) or 1),
+        "version": version,
         "generated_at": str(document.get("generated_at") or ""),
         "entry_records": normalized_records,
     }

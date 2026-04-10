@@ -1623,6 +1623,34 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("delta", result["dirty_concept_slugs"])
         self.assertTrue((self.root / "wiki" / "concepts" / "delta.md").exists())
 
+    def test_compile_keeps_manual_link_when_auto_terms_already_fill_limit(self) -> None:
+        removable = self.root / "removable.md"
+        removable.write_text("# Note\n\nAlpha beta gamma delta epsilon zeta eta theta.\n", encoding="utf-8")
+        entry = ingest_source(self.root, str(removable), title="Note")
+        compile_wiki(self.root)
+
+        save_manual_link_state(
+            self.root,
+            {
+                "version": 1,
+                "source_to_concept": [
+                    {
+                        "source_id": entry["id"],
+                        "concept_slug": "manual-bridge",
+                        "active": True,
+                    }
+                ],
+            },
+        )
+
+        compile_wiki(self.root)
+
+        self.assertTrue((self.root / "wiki" / "concepts" / "manual-bridge.md").exists())
+        concept_build_state = json.loads(
+            (self.root / ".aiwiki" / "state" / "concept-build-state.json").read_text(encoding="utf-8")
+        )
+        self.assertIn("manual bridge", concept_build_state["entry_records"][entry["id"]]["terms"])
+
     def test_ask_auto_compiles_and_returns_ranked_concepts_and_indexes(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         result = ask_question(self.root, "Compare transformer scale and inference cost", "report")
