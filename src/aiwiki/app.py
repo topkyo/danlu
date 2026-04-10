@@ -8287,6 +8287,7 @@ def shell_review_controls(
                 "path": page_path,
                 "kind": str(page.get("kind") or ""),
                 "status": str(page.get("status") or ""),
+                "current_status": str(page.get("status") or ""),
                 "protocol": str(page.get("protocol") or ""),
                 "confidence": str(page.get("confidence") or ""),
                 "pending_review": str(page.get("pending_review") or "") == "true",
@@ -8298,6 +8299,7 @@ def shell_review_controls(
                 "reviewed_at": str(page.get("reviewed_at") or ""),
                 "updated_at": str(page.get("updated_at") or ""),
                 "can_review": False,
+                "can_refresh_review": False,
                 "reasons": [],
             }
             page_by_path[page_path] = current
@@ -8310,6 +8312,7 @@ def shell_review_controls(
         )
         current.update(profile)
         current["can_review"] = bool(profile.get("allowed_transitions"))
+        current["can_refresh_review"] = bool(valid_curated_statuses(str(current.get("kind") or "")))
 
     for page in queue.get("pending_decisions", []) + queue.get("pending_judgments", []):
         add_page(page, "pending-review")
@@ -8346,6 +8349,7 @@ def shell_review_controls(
                 "slug": slug,
                 "title": str(proposal.get("title") or slug),
                 "status": status,
+                "current_status": status,
                 "priority": str(proposal.get("priority") or "medium"),
                 "score": int(proposal.get("score") or 0),
                 "proposal_path": str(proposal.get("proposal_path") or ""),
@@ -8353,6 +8357,7 @@ def shell_review_controls(
                 "pending_review": str(proposal.get("pending_review") or "") == "true",
                 "apply_ready": bool(proposal.get("apply_ready", False)),
                 "can_review": bool(profile.get("allowed_transitions")),
+                "can_refresh_review": status in REWRITE_PROPOSAL_STATUSES,
                 "can_apply": bool(proposal.get("apply_ready", False)),
                 "first_proposed_at": str(proposal.get("first_proposed_at") or ""),
                 "last_proposed_at": str(proposal.get("last_proposed_at") or ""),
@@ -8373,8 +8378,8 @@ def shell_review_controls(
         )
     )
     return {
-        "pages": review_pages[:12],
-        "rewrite_proposals": rewrite_controls[:12],
+        "pages": review_pages,
+        "rewrite_proposals": rewrite_controls,
     }
 
 
@@ -8417,6 +8422,7 @@ def shell_action_control_objects(
                 "action_id": action_id,
                 "title": str(action.get("title") or action_id),
                 "status": status,
+                "current_status": status,
                 "kind": str(action.get("kind") or ""),
                 "priority": str(action.get("priority") or "medium"),
                 "protocol": str(action.get("protocol") or DEFAULT_PROTOCOL),
@@ -8433,6 +8439,7 @@ def shell_action_control_objects(
                 "proposal_path": relative_path(root, proposal_path) if proposal_path.exists() else "",
                 "bundle_path": relative_path(root, bundle_path) if bundle_path.exists() else "",
                 "can_review": can_review,
+                "can_refresh_review": bool(action.get("active", True)) and status in ACTION_STATUSES,
                 "can_apply": can_apply,
                 "can_revert": can_revert,
                 **profile,
@@ -8450,7 +8457,7 @@ def shell_action_control_objects(
             str(item.get("title") or "").lower(),
         )
     )
-    return controls[:16]
+    return controls
 
 
 def shell_archive_control_objects(
@@ -8521,7 +8528,7 @@ def shell_archive_control_objects(
             str(item.get("title") or "").lower(),
         )
     )
-    return controls[:16]
+    return controls
 
 
 def shell_execution_controls(root: Path, memory: dict[str, Any]) -> dict[str, Any]:

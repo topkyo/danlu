@@ -3769,18 +3769,24 @@ class AiwikiFlowTests(unittest.TestCase):
 
         self.assertIn(decision["path"], review_pages)
         self.assertTrue(review_pages[decision["path"]]["page_id"])
+        self.assertEqual(review_pages[decision["path"]]["current_status"], "proposed")
+        self.assertTrue(review_pages[decision["path"]]["can_refresh_review"])
         self.assertIn("pending-review", review_pages[decision["path"]]["reasons"])
         self.assertIn("approved", review_pages[decision["path"]]["allowed_transitions"])
         self.assertIn("needs-revisit", review_pages[decision["path"]]["preferred_transitions"])
         self.assertEqual(review_pages[decision["path"]]["default_transition"], "approved")
         self.assertIn(rewrite_slug, rewrite_controls)
         self.assertTrue(rewrite_controls[rewrite_slug]["can_review"])
+        self.assertEqual(rewrite_controls[rewrite_slug]["current_status"], "proposed")
+        self.assertTrue(rewrite_controls[rewrite_slug]["can_refresh_review"])
         self.assertEqual(rewrite_controls[rewrite_slug]["proposal_path"], f"wiki/rewrite-proposals/{rewrite_slug}.md")
         self.assertIn("accepted", rewrite_controls[rewrite_slug]["allowed_transitions"])
         self.assertEqual(rewrite_controls[rewrite_slug]["default_transition"], "accepted")
         self.assertIn("identity-aware-action", action_controls)
         self.assertTrue(action_controls["identity-aware-action"]["can_apply"])
         self.assertFalse(action_controls["identity-aware-action"]["can_revert"])
+        self.assertEqual(action_controls["identity-aware-action"]["current_status"], "accepted")
+        self.assertTrue(action_controls["identity-aware-action"]["can_refresh_review"])
         self.assertEqual(action_controls["identity-aware-action"]["primary_path"], f"wiki/sources/{entry['id']}.md")
         self.assertIn("resolved", action_controls["identity-aware-action"]["allowed_transitions"])
         self.assertEqual(action_controls["identity-aware-action"]["default_transition"], "resolved")
@@ -3790,6 +3796,49 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(archive_controls[archive_entry["id"]]["source_path"], f"wiki/sources/{archive_entry['id']}.md")
         self.assertEqual(archive_controls[archive_entry["id"]]["allowed_transitions"], ["apply"])
         self.assertEqual(archive_controls[archive_entry["id"]]["default_transition"], "apply")
+
+    def test_shell_status_control_objects_are_not_truncated(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scaling tradeoffs", "report")
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+
+        for index in range(13):
+            file_back(
+                self.root,
+                report["path"],
+                title=f"Decision {index}",
+                kind="decision",
+            )
+
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": f"bulk-action-{index}",
+                        "kind": "add-source-concept-link",
+                        "title": f"Bulk Action {index}",
+                        "reason": "Bulk control-object fixture.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "proposed",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                    }
+                    for index in range(17)
+                ],
+            },
+        )
+        compile_wiki(self.root)
+
+        result = shell_status(self.root)
+
+        self.assertGreaterEqual(len(result["review_controls"]["pages"]), 13)
+        self.assertGreaterEqual(len(result["execution_controls"]["actions"]), 17)
 
     def test_run_nightly_writes_semantic_artifacts_and_state(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -3946,7 +3995,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("executionControlList(key)", content)
         self.assertIn("transitionOptions(controlType, control)", content)
         self.assertIn("preferredTransitionOptions(controlType, control)", content)
-        self.assertIn("openTransitionPicker({ title, description, controlType, control, onSubmit, onFallback, emptyNotice })", content)
+        self.assertIn("manualReviewOption(controlType)", content)
+        self.assertIn("openTransitionPicker({ title, description, controlType, control, onSubmit, onFallback, onManual, emptyNotice })", content)
         self.assertIn("runReviewPageTransition(pagePath, status)", content)
         self.assertIn("runReviewRewriteTransition(slug, status)", content)
         self.assertIn("runReviewActionTransition(actionId, status)", content)
@@ -3980,6 +4030,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn('label: "File Back"', content)
         self.assertIn('label: "Review Action"', content)
         self.assertIn('label: "Apply Archive"', content)
+        self.assertIn('text: "Re-review"', content)
+        self.assertIn('Manual review...', content)
         self.assertIn('text: "Review"', content)
         self.assertIn('text: "Review action"', content)
         self.assertIn('? "Revert archive" : "Apply archive"', content)
@@ -3997,6 +4049,11 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn('review_controls', content)
         self.assertIn('execution_controls', content)
         self.assertIn('scripts/aiwiki-launcher.sh', content)
+        self.assertIn("canRefreshReview", content)
+        self.assertIn("currentStatus", content)
+        self.assertIn("onManual: () => this.openReviewPageModal({ pagePath, status: currentStatus, confidence })", content)
+        self.assertIn("onManual: () => this.openReviewRewriteModal({ slug, status: currentStatus })", content)
+        self.assertIn("onManual: () => this.openReviewActionModal({ actionId, status: currentStatus })", content)
         self.assertNotIn(".aiwiki/state/", content)
         self.assertIn("launcherIsExecutable(launcherPath)", content)
         self.assertIn("fs.accessSync(launcherPath, fs.constants.X_OK)", content)
@@ -4012,6 +4069,10 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("def shell_action_control_objects(", app_content)
         self.assertIn("def shell_archive_control_objects(", app_content)
         self.assertIn("def shell_execution_controls(root: Path, memory: dict[str, Any]) -> dict[str, Any]:", app_content)
+        self.assertIn('"current_status": str(page.get("status") or ""),', app_content)
+        self.assertIn('current["can_refresh_review"] = bool(valid_curated_statuses(str(current.get("kind") or "")))', app_content)
+        self.assertIn('"can_refresh_review": status in REWRITE_PROPOSAL_STATUSES,', app_content)
+        self.assertIn('"can_refresh_review": bool(action.get("active", True)) and status in ACTION_STATUSES,', app_content)
         self.assertIn('"review_controls": review_controls,', app_content)
         self.assertIn('"execution_controls": shell_execution_controls(root, memory),', app_content)
 

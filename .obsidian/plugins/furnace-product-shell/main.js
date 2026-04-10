@@ -928,6 +928,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           pagePath: String(page.path || ""),
           pageKind: kind,
           currentStatus: status,
+          confidence: String(page.confidence || ""),
+          canRefreshReview: Boolean(page.can_refresh_review),
           allowedTransitions: Array.isArray(page.allowed_transitions) ? page.allowed_transitions : [],
           preferredTransitions: Array.isArray(page.preferred_transitions) ? page.preferred_transitions : [],
           defaultTransition: String(page.default_transition || ""),
@@ -951,9 +953,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
             description: `${displayRewriteStatus(status)} | priority ${priority} | score ${proposal.score || 0}`,
             slug: String(proposal.slug || ""),
             status,
+            currentStatus: String(proposal.current_status || status),
             proposalPath: String(proposal.proposal_path || ""),
             targetPath: String(proposal.target_path || ""),
             canApply: Boolean(proposal.can_apply),
+            canRefreshReview: Boolean(proposal.can_refresh_review),
             allowedTransitions: Array.isArray(proposal.allowed_transitions) ? proposal.allowed_transitions : [],
             preferredTransitions: Array.isArray(proposal.preferred_transitions) ? proposal.preferred_transitions : [],
             defaultTransition: String(proposal.default_transition || ""),
@@ -985,7 +989,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
             description: `${displayActionStatus(status)} | priority ${priority}${primaryPath ? ` | ${primaryPath}` : ""}`,
             actionId: String(action.action_id || ""),
             status,
+            currentStatus: String(action.current_status || status),
             bundlePath: String(action.bundle_path || ""),
+            canRefreshReview: Boolean(action.can_refresh_review),
             allowedTransitions: Array.isArray(action.allowed_transitions) ? action.allowed_transitions : [],
             preferredTransitions: Array.isArray(action.preferred_transitions) ? action.preferred_transitions : [],
             defaultTransition: String(action.default_transition || ""),
@@ -1089,9 +1095,25 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return this.transitionOptions(controlType, control).filter((option) => option.isPreferred).slice(0, 2);
   }
 
-  openTransitionPicker({ title, description, controlType, control, onSubmit, onFallback, emptyNotice }) {
-    const options = this.transitionOptions(controlType, control);
-    if (!options.length) {
+  manualReviewOption(controlType) {
+    const labelMap = {
+      page: "Manual review...",
+      rewrite: "Manual rewrite review...",
+      action: "Manual action review...",
+    };
+    return {
+      value: "__manual__",
+      label: labelMap[controlType] || "Manual review...",
+      description: "keep current status and capture note / confidence in the full form",
+      isManual: true,
+      isPreferred: false,
+      isDefault: false,
+    };
+  }
+
+  openTransitionPicker({ title, description, controlType, control, onSubmit, onFallback, onManual, emptyNotice }) {
+    const transitionOptions = this.transitionOptions(controlType, control);
+    if (!transitionOptions.length && typeof onManual !== "function") {
       if (emptyNotice) {
         new Notice(emptyNotice);
       }
@@ -1100,16 +1122,30 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       }
       return;
     }
-    if (options.length === 1) {
-      onSubmit(options[0].value);
+    if (!transitionOptions.length && typeof onManual === "function") {
+      onManual();
       return;
+    }
+    if (transitionOptions.length === 1 && typeof onManual !== "function") {
+      onSubmit(transitionOptions[0].value);
+      return;
+    }
+    const options = transitionOptions.slice();
+    if (typeof onManual === "function") {
+      options.push(this.manualReviewOption(controlType));
     }
     this.openContextPicker({
       title,
       description,
       submitLabel: "Use",
       options,
-      onSubmit: (option) => onSubmit(option.value),
+      onSubmit: (option) => {
+        if (option && option.isManual && typeof onManual === "function") {
+          onManual();
+          return;
+        }
+        onSubmit(option.value);
+      },
     });
   }
 
@@ -1722,13 +1758,16 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   openReviewPageTransitionPicker(control) {
     const pagePath = String(control.pagePath || control.path || control.value || "").trim();
+    const currentStatus = String(control.currentStatus || control.current_status || control.status || "").trim();
+    const confidence = String(control.confidence || "").trim();
     this.openTransitionPicker({
       title: "Pick Review Transition",
       description: "Choose a valid next status for this review page.",
       controlType: "page",
       control,
       emptyNotice: "当前没有显式 review transition，已回退到手动表单。",
-      onFallback: () => this.openReviewPageModal({ pagePath }),
+      onFallback: () => this.openReviewPageModal({ pagePath, status: currentStatus, confidence }),
+      onManual: () => this.openReviewPageModal({ pagePath, status: currentStatus, confidence }),
       onSubmit: (status) => {
         this.runUiAction(
           () => this.runReviewPageTransition(pagePath, status),
@@ -1739,17 +1778,20 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   openReviewRewriteTransitionPicker(control) {
+    const slug = String(control.slug || control.value || "").trim();
+    const currentStatus = String(control.currentStatus || control.current_status || control.status || "").trim();
     this.openTransitionPicker({
       title: "Pick Rewrite Transition",
       description: "Choose a valid next status for this rewrite proposal.",
       controlType: "rewrite",
       control,
       emptyNotice: "当前没有显式 rewrite transition，已回退到手动表单。",
-      onFallback: () => this.openReviewRewriteModal({ slug: control.slug || control.value || "" }),
+      onFallback: () => this.openReviewRewriteModal({ slug, status: currentStatus }),
+      onManual: () => this.openReviewRewriteModal({ slug, status: currentStatus }),
       onSubmit: (status) => {
         this.runUiAction(
-          () => this.runReviewRewriteTransition(control.slug || control.value || "", status),
-          `Review rewrite transition: ${control.slug || control.value || ""} -> ${status}`
+          () => this.runReviewRewriteTransition(slug, status),
+          `Review rewrite transition: ${slug} -> ${status}`
         );
       },
     });
@@ -1757,13 +1799,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   openReviewActionTransitionPicker(control) {
     const actionId = String(control.actionId || control.action_id || control.value || "").trim();
+    const currentStatus = String(control.currentStatus || control.current_status || control.status || "").trim();
     this.openTransitionPicker({
       title: "Pick Action Transition",
       description: "Choose a valid next status for this machine-memory action.",
       controlType: "action",
       control,
       emptyNotice: "当前没有显式 action transition，已回退到手动表单。",
-      onFallback: () => this.openReviewActionModal({ actionId }),
+      onFallback: () => this.openReviewActionModal({ actionId, status: currentStatus }),
+      onManual: () => this.openReviewActionModal({ actionId, status: currentStatus }),
       onSubmit: (status) => {
         this.runUiAction(
           () => this.runReviewActionTransition(actionId, status),
@@ -2144,6 +2188,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         openButton.addEventListener("click", () => {
           this.runUiAction(() => this.openWorkspacePath(page.path), `Open review control page: ${page.path}`);
         });
+        if (page.can_refresh_review) {
+          const refreshButton = actions.createEl("button", { text: "Re-review" });
+          refreshButton.addEventListener("click", () => {
+            this.runUiAction(
+              () => this.openReviewPageModal({ pagePath: page.path, status: page.current_status || page.status || "", confidence: page.confidence || "" }),
+              `Re-review control page: ${page.path}`
+            );
+          });
+        }
         this.preferredTransitionOptions("page", page).forEach((transition) => {
           const transitionButton = actions.createEl("button", { text: transition.label });
           transitionButton.addEventListener("click", () => {
@@ -2187,6 +2240,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           const targetButton = actions.createEl("button", { text: "Open target" });
           targetButton.addEventListener("click", () => {
             this.runUiAction(() => this.openWorkspacePath(proposal.target_path), `Open rewrite target: ${proposal.target_path}`);
+          });
+        }
+        if (proposal.can_refresh_review) {
+          const refreshButton = actions.createEl("button", { text: "Re-review" });
+          refreshButton.addEventListener("click", () => {
+            this.runUiAction(
+              () => this.openReviewRewriteModal({ slug: proposal.slug, status: proposal.current_status || proposal.status || "" }),
+              `Re-review rewrite object: ${proposal.slug}`
+            );
           });
         }
         this.preferredTransitionOptions("rewrite", proposal).forEach((transition) => {
@@ -2394,6 +2456,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           const openProposal = actions.createEl("button", { text: "Open proposal" });
           openProposal.addEventListener("click", () => {
             this.runUiAction(() => this.openWorkspacePath(action.proposal_path), `Open action proposal: ${action.proposal_path}`);
+          });
+        }
+        if (action.can_refresh_review) {
+          const refreshButton = actions.createEl("button", { text: "Re-review" });
+          refreshButton.addEventListener("click", () => {
+            this.runUiAction(
+              () => this.openReviewActionModal({ actionId: action.action_id, status: action.current_status || action.status || "" }),
+              `Re-review action object: ${action.action_id}`
+            );
           });
         }
         this.preferredTransitionOptions("action", action).forEach((transition) => {
