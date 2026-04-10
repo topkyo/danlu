@@ -143,8 +143,11 @@ class AiwikiFlowTests(unittest.TestCase):
         entry = ingest_source(self.root, str(archive_source), title="Obscure Legacy Note")
         compile_wiki(self.root)
         manifest = load_manifest(self.root)
-        manifest["entries"][0]["imported_at"] = "2025-01-01T00:00:00+00:00"
-        manifest["entries"][0]["updated_at"] = "2025-01-01T00:00:00+00:00"
+        for manifest_entry in manifest["entries"]:
+            if manifest_entry["id"] == entry["id"]:
+                manifest_entry["imported_at"] = "2025-01-01T00:00:00+00:00"
+                manifest_entry["updated_at"] = "2025-01-01T00:00:00+00:00"
+                break
         save_manifest(self.root, manifest)
         set_active_protocol(self.root, "investing")
         compile_wiki(self.root)
@@ -3683,12 +3686,101 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("manual-link-action", result["execution_controls"]["revert_ready_action_ids"])
         self.assertNotIn(archive_entry["id"], result["execution_controls"]["apply_ready_archive_entry_ids"])
         self.assertIn(archive_entry["id"], result["execution_controls"]["revert_ready_archive_entry_ids"])
+        action_controls = {
+            entry["action_id"]: entry
+            for entry in result["execution_controls"]["actions"]
+        }
+        archive_controls = {
+            entry["entry_id"]: entry
+            for entry in result["execution_controls"]["archives"]
+        }
+        self.assertFalse(action_controls["manual-link-action"]["can_apply"])
+        self.assertTrue(action_controls["manual-link-action"]["can_revert"])
+        self.assertFalse(archive_controls[archive_entry["id"]]["can_apply"])
+        self.assertTrue(archive_controls[archive_entry["id"]]["can_revert"])
 
         revert_machine_memory_action(self.root, "manual-link-action", note="Rollback after shell control check.")
         reverted = shell_status(self.root)
 
         self.assertNotIn("manual-link-action", reverted["execution_controls"]["apply_ready_action_ids"])
         self.assertNotIn("manual-link-action", reverted["execution_controls"]["revert_ready_action_ids"])
+
+    def test_shell_status_exposes_identity_aware_review_and_execution_objects(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scaling tradeoffs", "report")
+        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        source_page.write_text(
+            source_page.read_text(encoding="utf-8").replace(
+                "- Pending LLM summary.",
+                "- Transformer scale improves capability and raises compute demand.",
+            ),
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+        for concept_page in sorted((self.root / "wiki" / "concepts").glob("*.md")):
+            concept_page.write_text(
+                concept_page.read_text(encoding="utf-8").replace(
+                    "- This concept currently appears",
+                    f"- Existing synthesis for {concept_page.stem} appears",
+                ),
+                encoding="utf-8",
+            )
+        compile_wiki(self.root)
+        memory = load_machine_memory(self.root)
+        candidate = memory["health"]["concept_quality"]["rewrite_candidates"][0]
+        concept_page = self.root / candidate["path"]
+        updated = concept_page.read_text(encoding="utf-8").replace("Existing synthesis", "Rewritten synthesis")
+        compile_result = run_compile(self.root, client=StubClient([updated]), limit=1)
+        rewrite_slug = Path(compile_result["updated_rewrite_proposal_pages"][0]).stem
+
+        archive_entry = self._prepare_ready_archive_candidate()
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "identity-aware-action",
+                        "kind": "add-source-concept-link",
+                        "title": "Identity-aware manual link",
+                        "reason": "Backfill source/concept link.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{rewrite_slug}.md",
+                        "status": "accepted",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [rewrite_slug],
+                    }
+                ],
+            },
+        )
+        compile_wiki(self.root)
+
+        result = shell_status(self.root)
+
+        review_pages = {page["path"]: page for page in result["review_controls"]["pages"]}
+        rewrite_controls = {proposal["slug"]: proposal for proposal in result["review_controls"]["rewrite_proposals"]}
+        action_controls = {action["action_id"]: action for action in result["execution_controls"]["actions"]}
+        archive_controls = {archive["entry_id"]: archive for archive in result["execution_controls"]["archives"]}
+
+        self.assertIn(decision["path"], review_pages)
+        self.assertTrue(review_pages[decision["path"]]["page_id"])
+        self.assertIn("pending-review", review_pages[decision["path"]]["reasons"])
+        self.assertIn(rewrite_slug, rewrite_controls)
+        self.assertTrue(rewrite_controls[rewrite_slug]["can_review"])
+        self.assertEqual(rewrite_controls[rewrite_slug]["proposal_path"], f"wiki/rewrite-proposals/{rewrite_slug}.md")
+        self.assertIn("identity-aware-action", action_controls)
+        self.assertTrue(action_controls["identity-aware-action"]["can_apply"])
+        self.assertFalse(action_controls["identity-aware-action"]["can_revert"])
+        self.assertEqual(action_controls["identity-aware-action"]["primary_path"], f"wiki/sources/{entry['id']}.md")
+        self.assertIn(archive_entry["id"], archive_controls)
+        self.assertTrue(archive_controls[archive_entry["id"]]["can_apply"])
+        self.assertFalse(archive_controls[archive_entry["id"]]["can_revert"])
+        self.assertEqual(archive_controls[archive_entry["id"]]["source_path"], f"wiki/sources/{archive_entry['id']}.md")
 
     def test_run_nightly_writes_semantic_artifacts_and_state(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -3841,11 +3933,19 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("openStructuredCommandModal(spec)", content)
         self.assertIn("openContextPicker(spec)", content)
         self.assertIn("controlIdSet(key)", content)
+        self.assertIn("reviewControlList(key)", content)
+        self.assertIn("executionControlList(key)", content)
         self.assertIn("openContextAwareAction(spec)", content)
         self.assertIn("visibleReviewPageCandidates()", content)
         self.assertIn("visibleRewriteCandidates()", content)
         self.assertIn('visibleActionCandidates(mode = "review")', content)
         self.assertIn('visibleArchiveCandidates(mode = "apply")', content)
+        self.assertIn("reviewPageControlItems()", content)
+        self.assertIn('rewriteControlItems(mode = "review")', content)
+        self.assertIn('actionControlItems(mode = "review")', content)
+        self.assertIn('archiveControlItems(mode = "apply")', content)
+        self.assertIn("actionControlsById()", content)
+        self.assertIn("archiveControlsById()", content)
         self.assertIn('pickActionControlSet(mode = "review")', content)
         self.assertIn('pickArchiveControlSet(mode = "apply")', content)
         self.assertIn("openReviewPageContextPicker(options = this.visibleReviewPageCandidates())", content)
@@ -3869,9 +3969,12 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn('? "Revert archive" : "Apply archive"', content)
         self.assertIn('? "Revert action" : "Apply action"', content)
         self.assertIn('? "Reactivate concept" : "Retire concept"', content)
+        self.assertIn("Review Control Objects", content)
+        self.assertIn("Rewrite Proposal Objects", content)
         self.assertIn('emptyNotice: "当前没有可见的 review backlog 条目，已回退到手动表单。"', content)
         self.assertIn('emptyNotice: "当前没有可见的 machine-memory action context，已回退到手动表单。"', content)
         self.assertIn('output/control/shell-summary.json', content)
+        self.assertIn('review_controls', content)
         self.assertIn('execution_controls', content)
         self.assertIn('scripts/aiwiki-launcher.sh', content)
         self.assertNotIn(".aiwiki/state/", content)
@@ -3880,7 +3983,11 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("runUiAction(action, label = \"ui-action\")", content)
         self.assertIn("console.error(`[furnace-product-shell] ${label} failed`, error);", content)
         app_content = Path("/home/tim/ai-wiki/src/aiwiki/app.py").read_text(encoding="utf-8")
-        self.assertIn("def shell_execution_controls(root: Path, memory: dict[str, Any]) -> dict[str, list[str]]:", app_content)
+        self.assertIn("def shell_review_controls(", app_content)
+        self.assertIn("def shell_action_control_objects(", app_content)
+        self.assertIn("def shell_archive_control_objects(", app_content)
+        self.assertIn("def shell_execution_controls(root: Path, memory: dict[str, Any]) -> dict[str, Any]:", app_content)
+        self.assertIn('"review_controls": review_controls,', app_content)
         self.assertIn('"execution_controls": shell_execution_controls(root, memory),', app_content)
 
     def test_cli_shell_status_command_outputs_summary_json(self) -> None:

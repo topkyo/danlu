@@ -3098,6 +3098,7 @@ def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[d
         asset_score = sum(1 for snapshot in asset_snapshots.values() if snapshot.get("meaningful"))
         pages.append(
             {
+                "page_id": str(frontmatter.get("id") or path.stem),
                 "title": str(frontmatter.get("title") or path.stem),
                 "path": relative_path(root, path),
                 "kind": str(frontmatter.get("kind") or ""),
@@ -8114,7 +8115,9 @@ def summarize_runtime_event_for_shell(event: dict[str, Any]) -> dict[str, Any]:
         summary["path"] = str(event.get("path") or "")
         summary["lifecycle_state"] = str(event.get("lifecycle_state") or "")
     elif event_type in {"archive-apply", "archive-revert"}:
-        summary["title"] = str(event.get("source_ids", ["archive"])[0] if event.get("source_ids") else "Archive")
+        entry_id = str(event.get("source_ids", ["archive"])[0] if event.get("source_ids") else "Archive")
+        summary["title"] = entry_id
+        summary["entry_id"] = entry_id
         summary["receipt_path"] = str(event.get("receipt_path") or "")
         summary["source_ids"] = [str(item) for item in event.get("source_ids", []) if item]
     elif event_type == "nightly":
@@ -8150,7 +8153,249 @@ def shell_recent_receipts(root: Path, *, limit: int = 8) -> list[dict[str, Any]]
     ]
 
 
-def shell_execution_controls(root: Path, memory: dict[str, Any]) -> dict[str, list[str]]:
+def shell_review_controls(
+    root: Path,
+    *,
+    queue: dict[str, list[dict[str, str]]],
+    aging: dict[str, list[dict[str, str]]],
+) -> dict[str, list[dict[str, Any]]]:
+    page_by_path: dict[str, dict[str, Any]] = {}
+
+    def add_page(page: dict[str, str], reason_code: str) -> None:
+        page_path = str(page.get("path") or "")
+        if not page_path:
+            return
+        current = page_by_path.get(page_path)
+        if current is None:
+            current = {
+                "page_id": str(page.get("page_id") or Path(page_path).stem),
+                "title": str(page.get("title") or page_path),
+                "path": page_path,
+                "kind": str(page.get("kind") or ""),
+                "status": str(page.get("status") or ""),
+                "protocol": str(page.get("protocol") or ""),
+                "confidence": str(page.get("confidence") or ""),
+                "pending_review": str(page.get("pending_review") or "") == "true",
+                "overdue_review": str(page.get("overdue_review") or "") == "true",
+                "escalation_candidate": str(page.get("escalation_candidate") or "") == "true",
+                "aging_state": str(page.get("aging_state") or ""),
+                "revisit_after": str(page.get("revisit_after") or ""),
+                "escalate_after": str(page.get("escalate_after") or ""),
+                "reviewed_at": str(page.get("reviewed_at") or ""),
+                "updated_at": str(page.get("updated_at") or ""),
+                "reasons": [],
+            }
+            page_by_path[page_path] = current
+        reasons = current.setdefault("reasons", [])
+        if reason_code and reason_code not in reasons:
+            reasons.append(reason_code)
+
+    for page in queue.get("pending_decisions", []) + queue.get("pending_judgments", []):
+        add_page(page, "pending-review")
+    for page in aging.get("escalated", []):
+        add_page(page, "escalation-candidate")
+    for page in aging.get("overdue", []):
+        add_page(page, "overdue-review")
+    for page in aging.get("scheduled", []):
+        add_page(page, "scheduled-review")
+
+    review_pages = sorted(
+        page_by_path.values(),
+        key=lambda item: (
+            0 if item.get("escalation_candidate") else 1,
+            0 if item.get("overdue_review") else 1,
+            0 if item.get("pending_review") else 1,
+            str(item.get("revisit_after") or "9999"),
+            str(item.get("title") or "").lower(),
+        ),
+    )
+
+    rewrite_state = load_concept_rewrite_state(root)
+    rewrite_controls: list[dict[str, Any]] = []
+    for proposal in rewrite_state.get("proposals", []):
+        if not isinstance(proposal, dict):
+            continue
+        slug = str(proposal.get("slug") or "").strip()
+        if not slug or not bool(proposal.get("active", True)):
+            continue
+        status = str(proposal.get("status") or "proposed")
+        rewrite_controls.append(
+            {
+                "slug": slug,
+                "title": str(proposal.get("title") or slug),
+                "status": status,
+                "priority": str(proposal.get("priority") or "medium"),
+                "score": int(proposal.get("score") or 0),
+                "proposal_path": str(proposal.get("proposal_path") or ""),
+                "target_path": str(proposal.get("target_path") or f"wiki/concepts/{slug}.md"),
+                "pending_review": str(proposal.get("pending_review") or "") == "true",
+                "apply_ready": bool(proposal.get("apply_ready", False)),
+                "can_review": rewrite_proposal_needs_review(status),
+                "can_apply": bool(proposal.get("apply_ready", False)),
+                "first_proposed_at": str(proposal.get("first_proposed_at") or ""),
+                "last_proposed_at": str(proposal.get("last_proposed_at") or ""),
+                "reviewed_at": str(proposal.get("reviewed_at") or ""),
+                "issue_count": len(proposal.get("issues", [])) if isinstance(proposal.get("issues"), list) else 0,
+                "source_count": len(proposal.get("source_pages", [])) if isinstance(proposal.get("source_pages"), list) else 0,
+            }
+        )
+    rewrite_controls.sort(
+        key=lambda item: (
+            0 if item.get("can_review") else 1,
+            0 if item.get("apply_ready") else 1,
+            rewrite_proposal_status_rank(str(item.get("status") or "")),
+            action_priority_rank(str(item.get("priority") or "")),
+            -int(item.get("score", 0)),
+            str(item.get("title") or "").lower(),
+        )
+    )
+    return {
+        "pages": review_pages[:12],
+        "rewrite_proposals": rewrite_controls[:12],
+    }
+
+
+def shell_action_control_objects(
+    root: Path,
+    memory: dict[str, Any],
+    *,
+    apply_ready_action_ids: set[str],
+    revert_ready_action_ids: set[str],
+) -> list[dict[str, Any]]:
+    health = memory.get("health", {})
+    repair_plan = health.get("repair_plan", {})
+    all_actions = [
+        action
+        for action in [
+            *health.get("actions", []),
+            *health.get("inactive_actions", []),
+            *repair_plan.get("ready_actions", []),
+            *repair_plan.get("triage_actions", []),
+            *repair_plan.get("deferred_actions", []),
+        ]
+        if isinstance(action, dict)
+    ]
+    controls: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for action in all_actions:
+        action_id = str(action.get("id") or "").strip()
+        if not action_id or action_id in seen_ids:
+            continue
+        seen_ids.add(action_id)
+        status = str(action.get("status") or "proposed")
+        can_review = bool(action.get("active", True)) and status in {"proposed", "accepted", "deferred"}
+        can_apply = action_id in apply_ready_action_ids
+        can_revert = action_id in revert_ready_action_ids
+        proposal_path = execution_proposal_path(root, action_id)
+        bundle_path = execution_bundle_path(root, action_id)
+        controls.append(
+            {
+                "action_id": action_id,
+                "title": str(action.get("title") or action_id),
+                "status": status,
+                "kind": str(action.get("kind") or ""),
+                "priority": str(action.get("priority") or "medium"),
+                "protocol": str(action.get("protocol") or DEFAULT_PROTOCOL),
+                "primary_path": str(action.get("primary_path") or ""),
+                "secondary_path": str(action.get("secondary_path") or ""),
+                "component_id": str(action.get("component_id") or ""),
+                "execution_policy": str(action.get("execution_policy") or ""),
+                "execution_band": str(action.get("execution_band") or ""),
+                "policy_summary": str(action.get("policy_summary") or ""),
+                "pending_review": str(action.get("pending_review") or "") == "true",
+                "overdue_review": str(action.get("overdue_review") or "") == "true",
+                "escalation_candidate": str(action.get("escalation_candidate") or "") == "true",
+                "last_receipt_path": str(action.get("last_receipt_path") or ""),
+                "proposal_path": relative_path(root, proposal_path) if proposal_path.exists() else "",
+                "bundle_path": relative_path(root, bundle_path) if bundle_path.exists() else "",
+                "can_review": can_review,
+                "can_apply": can_apply,
+                "can_revert": can_revert,
+            }
+        )
+    controls.sort(
+        key=lambda item: (
+            0 if item.get("can_apply") else 1,
+            0 if item.get("can_review") else 1,
+            0 if item.get("can_revert") else 1,
+            0 if item.get("escalation_candidate") else 1,
+            0 if item.get("overdue_review") else 1,
+            action_status_rank(str(item.get("status") or "")),
+            action_priority_rank(str(item.get("priority") or "")),
+            str(item.get("title") or "").lower(),
+        )
+    )
+    return controls[:16]
+
+
+def shell_archive_control_objects(
+    root: Path,
+    *,
+    apply_ready_archive_entry_ids: set[str],
+    revert_ready_archive_entry_ids: set[str],
+) -> list[dict[str, Any]]:
+    manifest = load_manifest(root)
+    manifest_by_id = {
+        str(entry.get("id") or ""): entry
+        for entry in manifest.get("entries", [])
+        if isinstance(entry, dict) and entry.get("id")
+    }
+    archive_candidates = load_archive_candidates_state(root)
+    archive_candidate_by_id = {
+        str(entry.get("entry_id") or ""): entry
+        for entry in archive_candidates.get("entries", [])
+        if isinstance(entry, dict) and entry.get("entry_id")
+    }
+    active_archives = active_material_archive_entries(load_material_archive_state(root))
+    entry_ids = sorted(
+        {
+            *archive_candidate_by_id.keys(),
+            *active_archives.keys(),
+            *apply_ready_archive_entry_ids,
+            *revert_ready_archive_entry_ids,
+        }
+    )
+    controls: list[dict[str, Any]] = []
+    for entry_id in entry_ids:
+        candidate = archive_candidate_by_id.get(entry_id, {})
+        archived = active_archives.get(entry_id, {})
+        manifest_entry = manifest_by_id.get(entry_id, {})
+        title = str(manifest_entry.get("title") or archived.get("title") or entry_id)
+        source_path = str(archived.get("source_path") or f"wiki/sources/{entry_id}.md")
+        controls.append(
+            {
+                "entry_id": entry_id,
+                "title": title,
+                "source_path": source_path,
+                "candidate_status": str(candidate.get("status") or ""),
+                "current_temperature": str(candidate.get("current_temperature") or ("archived" if archived else "")),
+                "recommended_temperature": str(candidate.get("recommended_temperature") or archived.get("recommended_temperature") or ""),
+                "reason_codes": list(candidate.get("reason_codes", [])) if isinstance(candidate.get("reason_codes"), list) else [],
+                "blocked_by_judgment_ids": list(candidate.get("blocked_by_judgment_ids", []))
+                if isinstance(candidate.get("blocked_by_judgment_ids"), list)
+                else [],
+                "reactivation_signals": list(candidate.get("reactivation_signals", []))
+                if isinstance(candidate.get("reactivation_signals"), list)
+                else [],
+                "archived": bool(archived.get("active", False)),
+                "archived_at": str(archived.get("archived_at") or ""),
+                "last_receipt_path": str(archived.get("last_receipt_path") or ""),
+                "can_apply": entry_id in apply_ready_archive_entry_ids,
+                "can_revert": entry_id in revert_ready_archive_entry_ids,
+            }
+        )
+    controls.sort(
+        key=lambda item: (
+            0 if item.get("can_apply") else 1,
+            0 if item.get("can_revert") else 1,
+            0 if item.get("archived") else 1,
+            str(item.get("title") or "").lower(),
+        )
+    )
+    return controls[:16]
+
+
+def shell_execution_controls(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
     repair_plan = memory.get("health", {}).get("repair_plan", {})
     ready_actions = [
         action
@@ -8189,11 +8434,26 @@ def shell_execution_controls(root: Path, memory: dict[str, Any]) -> dict[str, li
         )
     ]
     revert_ready_archive_entry_ids = sorted(active_material_archive_entries(load_material_archive_state(root)).keys())
+    apply_ready_action_id_set = {item for item in apply_ready_action_ids if item}
+    revert_ready_action_id_set = {item for item in revert_ready_action_ids if item}
+    apply_ready_archive_entry_id_set = {item for item in apply_ready_archive_entry_ids if item}
+    revert_ready_archive_entry_id_set = set(revert_ready_archive_entry_ids)
     return {
-        "apply_ready_action_ids": sorted({item for item in apply_ready_action_ids if item}),
-        "revert_ready_action_ids": sorted({item for item in revert_ready_action_ids if item}),
-        "apply_ready_archive_entry_ids": sorted({item for item in apply_ready_archive_entry_ids if item}),
+        "apply_ready_action_ids": sorted(apply_ready_action_id_set),
+        "revert_ready_action_ids": sorted(revert_ready_action_id_set),
+        "apply_ready_archive_entry_ids": sorted(apply_ready_archive_entry_id_set),
         "revert_ready_archive_entry_ids": revert_ready_archive_entry_ids,
+        "actions": shell_action_control_objects(
+            root,
+            memory,
+            apply_ready_action_ids=apply_ready_action_id_set,
+            revert_ready_action_ids=revert_ready_action_id_set,
+        ),
+        "archives": shell_archive_control_objects(
+            root,
+            apply_ready_archive_entry_ids=apply_ready_archive_entry_id_set,
+            revert_ready_archive_entry_ids=revert_ready_archive_entry_id_set,
+        ),
     }
 
 
@@ -8308,6 +8568,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> dict[
         "overdue_actions": len(memory.get("health", {}).get("overdue_actions", [])),
         "escalated_actions": len(memory.get("health", {}).get("escalated_actions", [])),
     }
+    review_controls = shell_review_controls(root, queue=queue, aging=aging)
     return {
         "kind": "product-shell-summary",
         "contract_version": 1,
@@ -8334,6 +8595,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> dict[
             "escalated_pages": [page["path"] for page in aging["escalated"][:8]],
             "scheduled_pages": [page["path"] for page in aging["scheduled"][:8]],
         },
+        "review_controls": review_controls,
         "execution_controls": shell_execution_controls(root, memory),
         "recent_outputs": collect_recent_output_artifacts(root, limit=8),
         "recent_receipts": shell_recent_receipts(root, limit=8),

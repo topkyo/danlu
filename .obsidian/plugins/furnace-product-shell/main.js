@@ -841,6 +841,20 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return new Set(values.map((item) => String(item || "").trim()).filter(Boolean));
   }
 
+  reviewControlList(key) {
+    const reviewControls = this.shellSummary && typeof this.shellSummary === "object"
+      ? this.shellSummary.review_controls
+      : null;
+    return reviewControls && Array.isArray(reviewControls[key]) ? reviewControls[key] : [];
+  }
+
+  executionControlList(key) {
+    const executionControls = this.shellSummary && typeof this.shellSummary === "object"
+      ? this.shellSummary.execution_controls
+      : null;
+    return executionControls && Array.isArray(executionControls[key]) ? executionControls[key] : [];
+  }
+
   uniqueContextOptions(options, keyName = "value") {
     const seen = new Set();
     return (Array.isArray(options) ? options : []).filter((option) => {
@@ -880,160 +894,132 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (!receipt || typeof receipt !== "object") {
       return "";
     }
-    const direct = String(receipt.action_id || "").trim();
-    if (direct) {
-      return direct;
-    }
-    const receiptPath = String(receipt.receipt_path || "").trim();
-    if (!receiptPath) {
-      return "";
-    }
-    return path.basename(receiptPath, path.extname(receiptPath));
+    return String(receipt.action_id || "").trim();
   }
 
-  activeConceptContextOption() {
-    const slug = this.getActiveConceptSlug();
-    if (!slug) {
-      return null;
-    }
-    return {
-      value: slug,
-      label: slug,
-      description: "当前激活的 concept 页面",
-      slug,
-    };
+  reviewPageControlItems() {
+    const pages = this.reviewControlList("pages");
+    return this.uniqueContextOptions(
+      pages.map((page) => {
+        const reasons = Array.isArray(page.reasons) && page.reasons.length ? page.reasons.join(", ") : "review object";
+        const kind = String(page.kind || "").trim() || "page";
+        const status = String(page.status || "").trim() || "unknown";
+        return {
+          value: page.path,
+          label: page.title || page.path || "review-page",
+          description: `${kind} | ${status} | ${reasons}`,
+          pageId: String(page.page_id || ""),
+          pagePath: String(page.path || ""),
+          pageKind: kind,
+          currentStatus: status,
+        };
+      }),
+      "pagePath"
+    );
+  }
+
+  rewriteControlItems(mode = "review") {
+    const proposals = this.reviewControlList("rewrite_proposals");
+    return this.uniqueContextOptions(
+      proposals
+        .filter((proposal) => (mode === "apply" ? Boolean(proposal.can_apply) : Boolean(proposal.can_review)))
+        .map((proposal) => {
+          const status = String(proposal.status || "").trim() || "unknown";
+          const priority = String(proposal.priority || "").trim() || "medium";
+          return {
+            value: proposal.slug,
+            label: proposal.title || proposal.slug || "rewrite-proposal",
+            description: `${status} | priority ${priority} | score ${proposal.score || 0}`,
+            slug: String(proposal.slug || ""),
+            status,
+            proposalPath: String(proposal.proposal_path || ""),
+            targetPath: String(proposal.target_path || ""),
+            canApply: Boolean(proposal.can_apply),
+          };
+        }),
+      "slug"
+    );
+  }
+
+  actionControlItems(mode = "review") {
+    return this.uniqueContextOptions(
+      this.executionControlList("actions")
+        .filter((action) => {
+          if (mode === "apply") {
+            return Boolean(action.can_apply);
+          }
+          if (mode === "revert") {
+            return Boolean(action.can_revert);
+          }
+          return Boolean(action.can_review);
+        })
+        .map((action) => {
+          const status = String(action.status || "").trim() || "unknown";
+          const priority = String(action.priority || "").trim() || "medium";
+          const primaryPath = String(action.primary_path || "").trim();
+          return {
+            value: action.action_id,
+            label: action.title || action.action_id || "action",
+            description: `${status} | priority ${priority}${primaryPath ? ` | ${primaryPath}` : ""}`,
+            actionId: String(action.action_id || ""),
+            status,
+            bundlePath: String(action.bundle_path || ""),
+          };
+        }),
+      "actionId"
+    );
+  }
+
+  archiveControlItems(mode = "apply") {
+    return this.uniqueContextOptions(
+      this.executionControlList("archives")
+        .filter((entry) => (mode === "revert" ? Boolean(entry.can_revert) : Boolean(entry.can_apply)))
+        .map((entry) => {
+          const candidateStatus = String(entry.candidate_status || "").trim();
+          const currentTemperature = String(entry.current_temperature || "").trim();
+          return {
+            value: entry.entry_id,
+            label: entry.title || entry.entry_id || "archive-entry",
+            description: `${candidateStatus || currentTemperature || "archive"} | ${entry.source_path || ""}`,
+            entryId: String(entry.entry_id || ""),
+          };
+        }),
+      "entryId"
+    );
+  }
+
+  actionControlsById() {
+    const controls = this.executionControlList("actions");
+    return new Map(
+      controls
+        .filter((action) => action && typeof action === "object" && String(action.action_id || "").trim())
+        .map((action) => [String(action.action_id || "").trim(), action])
+    );
+  }
+
+  archiveControlsById() {
+    const controls = this.executionControlList("archives");
+    return new Map(
+      controls
+        .filter((entry) => entry && typeof entry === "object" && String(entry.entry_id || "").trim())
+        .map((entry) => [String(entry.entry_id || "").trim(), entry])
+    );
   }
 
   visibleReviewPageCandidates() {
-    if (!this.shellSummary) {
-      return [];
-    }
-    const aging = this.shellSummary.aging_summary || {};
-    const pathToCandidate = new Map();
-    const addCandidate = (pagePath, description, extras = {}) => {
-      const normalized = String(pagePath || "").trim();
-      if (!normalized) {
-        return;
-      }
-      const current = pathToCandidate.get(normalized) || {
-        value: normalized,
-        label: normalized,
-        description: "",
-        pagePath: normalized,
-        pageKind: "",
-        status: "",
-      };
-      current.description = current.description || description || "";
-      current.pageKind = current.pageKind || String(extras.pageKind || "").trim();
-      current.status = current.status || String(extras.status || "").trim();
-      pathToCandidate.set(normalized, current);
-    };
-
-    (aging.escalated_pages || []).forEach((pagePath) => addCandidate(pagePath, "Escalated review candidate"));
-    (aging.overdue_pages || []).forEach((pagePath) => addCandidate(pagePath, "Overdue review candidate"));
-    (aging.scheduled_pages || []).forEach((pagePath) => addCandidate(pagePath, "Scheduled review candidate"));
-
-    const reviewEvents = Array.isArray(this.shellSummary.recent_runs)
-      ? this.shellSummary.recent_runs.filter((entry) => entry.event_type === "review")
-      : [];
-    reviewEvents.forEach((entry) => {
-      addCandidate(entry.page_path, `Recent review event${entry.status ? ` | ${entry.status}` : ""}`, {
-        pageKind: entry.page_kind,
-        status: entry.status,
-      });
-    });
-    return this.uniqueContextOptions(Array.from(pathToCandidate.values()), "pagePath");
+    return this.reviewPageControlItems();
   }
 
   visibleRewriteCandidates() {
-    const candidates = [];
-    const activeConcept = this.activeConceptContextOption();
-    if (activeConcept) {
-      candidates.push(activeConcept);
-    }
-    const executionEvents = Array.isArray(this.shellSummary && this.shellSummary.recent_runs)
-      ? this.shellSummary.recent_runs.filter((entry) => entry.event_type === "knowledge-lifecycle-override")
-      : [];
-    executionEvents.forEach((entry) => {
-      const conceptPath = String(entry.path || "").trim();
-      if (!conceptPath.startsWith("wiki/concepts/") || !conceptPath.endsWith(".md")) {
-        return;
-      }
-      const slug = path.basename(conceptPath, ".md");
-      candidates.push({
-        value: slug,
-        label: slug,
-        description: `Lifecycle override | ${entry.lifecycle_state || entry.operation || "concept"}`,
-        slug,
-      });
-    });
-    return this.uniqueContextOptions(candidates, "slug");
+    return this.rewriteControlItems("review");
   }
 
   visibleActionCandidates(mode = "review") {
-    const receipts = Array.isArray(this.shellSummary && this.shellSummary.recent_receipts) ? this.shellSummary.recent_receipts : [];
-    const allowedIds = this.pickActionControlSet(mode);
-    const candidates = receipts
-      .map((receipt) => {
-        const actionId = this.inferActionIdFromReceipt(receipt);
-        if (!actionId || String(receipt.subject_kind || "") === "material-archive") {
-          return null;
-        }
-        if (allowedIds && !allowedIds.has(actionId)) {
-          return null;
-        }
-        return {
-          value: actionId,
-          label: receipt.title || actionId,
-          description: `${receipt.operation || "operation"} | ${receipt.applied_at || "unknown"}`,
-          actionId,
-          operation: String(receipt.operation || ""),
-          receiptPath: String(receipt.receipt_path || ""),
-        };
-      })
-      .filter(Boolean);
-    return this.uniqueContextOptions(candidates, "actionId");
+    return this.actionControlItems(mode);
   }
 
   visibleArchiveCandidates(mode = "apply") {
-    const candidates = [];
-    const allowedIds = this.pickArchiveControlSet(mode);
-    const receipts = Array.isArray(this.shellSummary && this.shellSummary.recent_receipts) ? this.shellSummary.recent_receipts : [];
-    receipts.forEach((receipt) => {
-      if (String(receipt.subject_kind || "") !== "material-archive") {
-        return;
-      }
-      const entryId = String(receipt.subject_id || "").trim();
-      if (!entryId || !allowedIds.has(entryId)) {
-        return;
-      }
-      candidates.push({
-        value: entryId,
-        label: receipt.title || entryId,
-        description: `${receipt.operation || "operation"} | ${receipt.applied_at || "unknown"}`,
-        entryId,
-        operation: String(receipt.operation || ""),
-        receiptPath: String(receipt.receipt_path || ""),
-      });
-    });
-    const executionEvents = Array.isArray(this.shellSummary && this.shellSummary.recent_runs)
-      ? this.shellSummary.recent_runs.filter((entry) => ["archive-apply", "archive-revert"].includes(entry.event_type))
-      : [];
-    executionEvents.forEach((entry) => {
-      const entryId = Array.isArray(entry.source_ids) && entry.source_ids.length ? String(entry.source_ids[0] || "").trim() : "";
-      if (!entryId || !allowedIds.has(entryId)) {
-        return;
-      }
-      candidates.push({
-        value: entryId,
-        label: entry.title || entryId,
-        description: `${entry.event_type || "archive"} | ${entry.occurred_at || "unknown"}`,
-        entryId,
-        operation: entry.event_type === "archive-apply" ? "apply" : "revert",
-        receiptPath: String(entry.receipt_path || ""),
-      });
-    });
-    return this.uniqueContextOptions(candidates, "entryId");
+    return this.archiveControlItems(mode);
   }
 
   openContextAwareAction(spec) {
@@ -1534,22 +1520,19 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   openReviewPageContextPicker(options = this.visibleReviewPageCandidates()) {
     this.openContextAwareAction({
       title: "Pick Review Page",
-      description: "Prefer a visible review backlog item before falling back to manual page entry.",
+      description: "Prefer an explicit review control object before falling back to manual page entry.",
       keyName: "pagePath",
       options,
       emptyNotice: "当前没有可见的 review backlog 条目，已回退到手动表单。",
       onFallback: () => this.openReviewPageModal(),
-      onSubmit: (option) => this.openReviewPageModal({
-        pagePath: option.pagePath,
-        status: option.status || "",
-      }),
+      onSubmit: (option) => this.openReviewPageModal({ pagePath: option.pagePath }),
     });
   }
 
   openReviewRewriteContextPicker(options = this.visibleRewriteCandidates()) {
     this.openContextAwareAction({
       title: "Pick Rewrite Context",
-      description: "Prefer a visible or active concept context before falling back to manual slug entry.",
+      description: "Prefer an explicit rewrite proposal object before falling back to manual slug entry.",
       keyName: "slug",
       options,
       emptyNotice: "当前没有可见的 concept context，已回退到手动表单。",
@@ -1561,7 +1544,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   openReviewActionContextPicker(options = this.visibleActionCandidates("review")) {
     this.openContextAwareAction({
       title: "Pick Review Action",
-      description: "Prefer a visible execution receipt before falling back to manual action id entry.",
+      description: "Prefer an explicit action control object before falling back to manual action id entry.",
       keyName: "actionId",
       options,
       emptyNotice: "当前没有可见的 machine-memory action context，已回退到手动表单。",
@@ -1573,7 +1556,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   openApplyArchiveContextPicker(options = this.visibleArchiveCandidates("apply")) {
     this.openContextAwareAction({
       title: "Pick Archive Target",
-      description: "Prefer a visible archive receipt or event before falling back to manual entry id.",
+      description: "Prefer an explicit archive control object before falling back to manual entry id.",
       keyName: "entryId",
       options,
       emptyNotice: "当前没有可见的 archive context，已回退到手动表单。",
@@ -1585,7 +1568,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   openRevertArchiveContextPicker(options = this.visibleArchiveCandidates("revert")) {
     this.openContextAwareAction({
       title: "Pick Archive Revert Target",
-      description: "Prefer a visible archive receipt or event before falling back to manual entry id.",
+      description: "Prefer an explicit archive control object before falling back to manual entry id.",
       keyName: "entryId",
       options,
       emptyNotice: "当前没有可见的 archive context，已回退到手动表单。",
@@ -1597,19 +1580,19 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   openApplyActionContextPicker(options = this.visibleActionCandidates("apply")) {
     this.openContextAwareAction({
       title: "Pick Apply Action",
-      description: "Prefer a visible execution receipt before falling back to manual action id entry.",
+      description: "Prefer an explicit action control object before falling back to manual action id entry.",
       keyName: "actionId",
       options,
       emptyNotice: "当前没有可见的 machine-memory action context，已回退到手动表单。",
       onFallback: () => this.openApplyActionModal(),
-      onSubmit: (option) => this.openApplyActionModal({ actionId: option.actionId || option.value || "" }),
+      onSubmit: (option) => this.openApplyActionModal({ actionId: option.actionId || option.value || "", bundle: option.bundlePath || "" }),
     });
   }
 
   openRevertActionContextPicker(options = this.visibleActionCandidates("revert")) {
     this.openContextAwareAction({
       title: "Pick Revert Action",
-      description: "Prefer a visible execution receipt before falling back to manual action id entry.",
+      description: "Prefer an explicit action control object before falling back to manual action id entry.",
       keyName: "actionId",
       options,
       emptyNotice: "当前没有可见的 machine-memory action context，已回退到手动表单。",
@@ -1965,6 +1948,74 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       { label: "Retired Concepts", value: review.retired_concepts || 0 },
     ]);
 
+    const reviewControlObjects = this.reviewControlList("pages");
+    const reviewObjectsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+    reviewObjectsSection.createEl("h3", { text: "Review Control Objects" });
+    if (!reviewControlObjects.length) {
+      reviewObjectsSection.createDiv({ cls: "furnace-shell-empty", text: "当前没有显式 review control object。" });
+    } else {
+      const list = reviewObjectsSection.createEl("ul", { cls: "furnace-shell-list" });
+      reviewControlObjects.slice(0, 10).forEach((page) => {
+        const item = list.createEl("li");
+        item.createEl("strong", { text: page.title || page.path || "review-page" });
+        item.createDiv({
+          cls: "furnace-shell-meta",
+          text: `${page.kind || "page"} | ${page.status || "unknown"} | ${(Array.isArray(page.reasons) ? page.reasons.join(", ") : "") || "review-object"}`,
+        });
+        const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
+        const openButton = actions.createEl("button", { text: "Open page" });
+        openButton.addEventListener("click", () => {
+          this.runUiAction(() => this.openWorkspacePath(page.path), `Open review control page: ${page.path}`);
+        });
+        const reviewButton = actions.createEl("button", { text: "Review" });
+        reviewButton.addEventListener("click", () => {
+          this.runUiAction(() => this.openReviewPageModal({ pagePath: page.path }), `Review control page: ${page.path}`);
+        });
+      });
+    }
+
+    const rewriteControlObjects = this.reviewControlList("rewrite_proposals");
+    const rewriteSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+    rewriteSection.createEl("h3", { text: "Rewrite Proposal Objects" });
+    if (!rewriteControlObjects.length) {
+      rewriteSection.createDiv({ cls: "furnace-shell-empty", text: "当前没有显式 rewrite proposal object。" });
+    } else {
+      const list = rewriteSection.createEl("ul", { cls: "furnace-shell-list" });
+      rewriteControlObjects.slice(0, 10).forEach((proposal) => {
+        const item = list.createEl("li");
+        item.createEl("strong", { text: proposal.title || proposal.slug || "rewrite-proposal" });
+        item.createDiv({
+          cls: "furnace-shell-meta",
+          text: `${proposal.status || "unknown"} | priority ${proposal.priority || "medium"} | score ${proposal.score || 0}`,
+        });
+        const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
+        if (proposal.proposal_path) {
+          const proposalButton = actions.createEl("button", { text: "Open proposal" });
+          proposalButton.addEventListener("click", () => {
+            this.runUiAction(() => this.openWorkspacePath(proposal.proposal_path), `Open rewrite proposal: ${proposal.proposal_path}`);
+          });
+        }
+        if (proposal.target_path) {
+          const targetButton = actions.createEl("button", { text: "Open target" });
+          targetButton.addEventListener("click", () => {
+            this.runUiAction(() => this.openWorkspacePath(proposal.target_path), `Open rewrite target: ${proposal.target_path}`);
+          });
+        }
+        if (proposal.can_review) {
+          const reviewButton = actions.createEl("button", { text: "Review rewrite" });
+          reviewButton.addEventListener("click", () => {
+            this.runUiAction(() => this.openReviewRewriteModal({ slug: proposal.slug }), `Review rewrite object: ${proposal.slug}`);
+          });
+        }
+        if (proposal.can_apply) {
+          const applyButton = actions.createEl("button", { text: "Apply rewrite" });
+          applyButton.addEventListener("click", () => {
+            this.runUiAction(() => this.openApplyRewriteModal({ slug: proposal.slug }), `Apply rewrite object: ${proposal.slug}`);
+          });
+        }
+      });
+    }
+
     const agingSection = contentEl.createDiv({ cls: "furnace-shell-section" });
     agingSection.createEl("h3", { text: "Aging Summary" });
     const agingList = agingSection.createEl("ul", { cls: "furnace-shell-list" });
@@ -2093,6 +2144,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           ["archive-apply", "archive-revert", "knowledge-lifecycle-override", "nightly"].includes(entry.event_type)
         )
       : [];
+    const actionControlsById = this.actionControlsById();
+    const archiveControlsById = this.archiveControlsById();
     this.renderCardGrid(contentEl, [
       { label: "Recent Receipts", value: receipts.length },
       { label: "Execution Events", value: executionEvents.length },
@@ -2119,10 +2172,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       receipts.slice(0, 8).forEach((receipt) => {
         const item = list.createEl("li");
         const actionId = this.inferActionIdFromReceipt(receipt);
-        const revertReadyActions = this.controlIdSet("revert_ready_action_ids");
-        const applyReadyActions = this.controlIdSet("apply_ready_action_ids");
-        const revertReadyArchives = this.controlIdSet("revert_ready_archive_entry_ids");
-        const applyReadyArchives = this.controlIdSet("apply_ready_archive_entry_ids");
+        const actionControl = actionControlsById.get(actionId);
+        const archiveEntryId = String(receipt.subject_id || "").trim();
+        const archiveControl = archiveControlsById.get(archiveEntryId);
         item.createEl("strong", { text: receipt.title || receipt.subject_id || "receipt" });
         item.createDiv({
           cls: "furnace-shell-meta",
@@ -2134,31 +2186,38 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           button.addEventListener("click", () => {
             this.runUiAction(() => this.openWorkspacePath(receipt.receipt_path), `Open receipt: ${receipt.receipt_path}`);
           });
-          if (String(receipt.subject_kind || "") === "material-archive" && String(receipt.subject_id || "")) {
-            const entryId = String(receipt.subject_id || "");
-            if (revertReadyArchives.has(entryId) || applyReadyArchives.has(entryId)) {
+          if (String(receipt.subject_kind || "") === "material-archive" && archiveControl) {
+            if (archiveControl.can_revert || archiveControl.can_apply) {
               const archiveButton = actions.createEl("button", {
-                text: revertReadyArchives.has(entryId) ? "Revert archive" : "Apply archive",
+                text: archiveControl.can_revert ? "Revert archive" : "Apply archive",
               });
               archiveButton.addEventListener("click", () => {
                 this.runUiAction(
-                  () => (revertReadyArchives.has(entryId) ? this.openRevertArchiveModal({ entryId }) : this.openApplyArchiveModal({ entryId })),
-                  `Archive receipt action: ${entryId}`
+                  () =>
+                    (archiveControl.can_revert
+                      ? this.openRevertArchiveModal({ entryId: archiveControl.entry_id })
+                      : this.openApplyArchiveModal({ entryId: archiveControl.entry_id })),
+                  `Archive receipt action: ${archiveControl.entry_id}`
                 );
               });
             }
-          } else if (actionId) {
-            const reviewButton = actions.createEl("button", { text: "Review action" });
-            reviewButton.addEventListener("click", () => {
-              this.runUiAction(() => this.openReviewActionModal({ actionId }), `Review action from receipt: ${actionId}`);
-            });
-            if (revertReadyActions.has(actionId) || applyReadyActions.has(actionId)) {
+          } else if (actionControl) {
+            if (actionControl.can_review) {
+              const reviewButton = actions.createEl("button", { text: "Review action" });
+              reviewButton.addEventListener("click", () => {
+                this.runUiAction(() => this.openReviewActionModal({ actionId }), `Review action from receipt: ${actionId}`);
+              });
+            }
+            if (actionControl.can_revert || actionControl.can_apply) {
               const actionButton = actions.createEl("button", {
-                text: revertReadyActions.has(actionId) ? "Revert action" : "Apply action",
+                text: actionControl.can_revert ? "Revert action" : "Apply action",
               });
               actionButton.addEventListener("click", () => {
                 this.runUiAction(
-                  () => (revertReadyActions.has(actionId) ? this.openRevertActionModal({ actionId }) : this.openApplyActionModal({ actionId })),
+                  () =>
+                    (actionControl.can_revert
+                      ? this.openRevertActionModal({ actionId })
+                      : this.openApplyActionModal({ actionId, bundle: actionControl.bundle_path || "" })),
                   `Execution receipt action: ${actionId}`
                 );
               });
@@ -2176,8 +2235,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       const list = eventsSection.createEl("ul", { cls: "furnace-shell-list" });
       executionEvents.slice(0, 10).forEach((entry) => {
         const item = list.createEl("li");
-        const revertReadyArchives = this.controlIdSet("revert_ready_archive_entry_ids");
-        const applyReadyArchives = this.controlIdSet("apply_ready_archive_entry_ids");
+        const archiveEntryId = String(entry.entry_id || (Array.isArray(entry.source_ids) && entry.source_ids.length ? entry.source_ids[0] : "") || "");
+        const archiveControl = archiveControlsById.get(archiveEntryId);
         item.createEl("strong", { text: entry.title || entry.event_type || "event" });
         item.createDiv({
           cls: "furnace-shell-meta",
@@ -2191,16 +2250,18 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
             this.runUiAction(() => this.openWorkspacePath(pathValue), `Open execution path: ${pathValue}`);
           });
         }
-        if (["archive-apply", "archive-revert"].includes(String(entry.event_type || "")) && Array.isArray(entry.source_ids) && entry.source_ids.length) {
-          const entryId = String(entry.source_ids[0] || "");
-          if (revertReadyArchives.has(entryId) || applyReadyArchives.has(entryId)) {
+        if (["archive-apply", "archive-revert"].includes(String(entry.event_type || "")) && archiveControl) {
+          if (archiveControl.can_revert || archiveControl.can_apply) {
             const archiveButton = actions.createEl("button", {
-              text: revertReadyArchives.has(entryId) ? "Revert archive" : "Apply archive",
+              text: archiveControl.can_revert ? "Revert archive" : "Apply archive",
             });
             archiveButton.addEventListener("click", () => {
               this.runUiAction(
-                () => (revertReadyArchives.has(entryId) ? this.openRevertArchiveModal({ entryId }) : this.openApplyArchiveModal({ entryId })),
-                `Archive event action: ${entryId}`
+                () =>
+                  (archiveControl.can_revert
+                    ? this.openRevertArchiveModal({ entryId: archiveControl.entry_id })
+                    : this.openApplyArchiveModal({ entryId: archiveControl.entry_id })),
+                `Archive event action: ${archiveControl.entry_id}`
               );
             });
           }
