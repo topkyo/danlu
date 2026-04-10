@@ -1946,6 +1946,42 @@ def write_if_changed_ignoring_timestamps(path: Path, content: str) -> tuple[bool
     return True, True
 
 
+def render_json_document(document: dict[str, Any]) -> str:
+    return json.dumps(document, indent=2, sort_keys=True) + "\n"
+
+
+def normalize_generated_state_document(payload: Any) -> Any:
+    if isinstance(payload, dict):
+        normalized: dict[str, Any] = {}
+        for key, value in payload.items():
+            if key in {"generated_at", "computed_at"} and isinstance(value, str) and ISO_DATETIME_PATTERN.fullmatch(value):
+                normalized[key] = "<ISO_DATETIME>"
+            else:
+                normalized[key] = normalize_generated_state_document(value)
+        return normalized
+    if isinstance(payload, list):
+        return [normalize_generated_state_document(item) for item in payload]
+    return payload
+
+
+def write_json_document_if_changed_ignoring_generated_timestamps(path: Path, document: dict[str, Any]) -> tuple[bool, bool]:
+    rendered = render_json_document(document)
+    if path.exists():
+        current = path.read_text(encoding="utf-8")
+        if current == rendered:
+            return False, False
+        try:
+            current_document = json.loads(current)
+        except json.JSONDecodeError:
+            current_document = None
+        if isinstance(current_document, dict):
+            if normalize_generated_state_document(current_document) == normalize_generated_state_document(document):
+                return False, False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(rendered, encoding="utf-8")
+    return True, True
+
+
 def sync_manifest_with_raw(root: Path) -> dict[str, Any]:
     ensure_layout(root)
     manifest = load_manifest(root)
@@ -4002,6 +4038,29 @@ def refresh_knowledge_lifecycle_state(
     active_corpora_state: dict[str, Any] | None = None,
     memory: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    document = build_knowledge_lifecycle_document(
+        root,
+        generated_at=generated_at,
+        decisions=decisions,
+        judgments=judgments,
+        entries=entries,
+        active_corpora_state=active_corpora_state,
+        memory=memory,
+    )
+    save_knowledge_lifecycle_state(root, document)
+    return document
+
+
+def build_knowledge_lifecycle_document(
+    root: Path,
+    *,
+    generated_at: str,
+    decisions: list[dict[str, str]] | None = None,
+    judgments: list[dict[str, str]] | None = None,
+    entries: list[dict[str, Any]] | None = None,
+    active_corpora_state: dict[str, Any] | None = None,
+    memory: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     ensure_layout(root)
     override_state = ensure_knowledge_lifecycle_override_state(root)
     active_overrides = active_knowledge_lifecycle_overrides(override_state)
@@ -4085,7 +4144,6 @@ def refresh_knowledge_lifecycle_state(
         "entries": lifecycle_entries,
         "counts": knowledge_lifecycle_counts(lifecycle_entries),
     }
-    save_knowledge_lifecycle_state(root, document)
     return document
 
 
@@ -7818,6 +7876,16 @@ def render_compile_status(
         for path in compile_state.get("clean_index_artifacts", [])
         if str(path)
     ]
+    dirty_maintenance_artifacts = [
+        str(path)
+        for path in compile_state.get("dirty_maintenance_artifacts", [])
+        if str(path)
+    ]
+    clean_maintenance_artifacts = [
+        str(path)
+        for path in compile_state.get("clean_maintenance_artifacts", [])
+        if str(path)
+    ]
     entry_by_id = {
         str(entry.get("id") or ""): entry
         for entry in entries
@@ -7873,6 +7941,8 @@ def render_compile_status(
         f"- Clean concept：`{len(clean_concept_slugs)}`",
         f"- Dirty index artifact：`{len(dirty_index_artifacts)}`",
         f"- Clean index artifact：`{len(clean_index_artifacts)}`",
+        f"- Dirty maintenance artifact：`{len(dirty_maintenance_artifacts)}`",
+        f"- Clean maintenance artifact：`{len(clean_maintenance_artifacts)}`",
         "- 总索引位于 `index.md`。",
         "- 运行时规则位于 `schema/`。",
         "- 协议规则位于 `schema/protocols/`。",
@@ -7947,6 +8017,14 @@ def render_compile_status(
             lines.append(f"- `{relative}`")
         if len(dirty_index_artifacts) > 12:
             lines.append(f"- 其余 dirty artifact：`{len(dirty_index_artifacts) - 12}`")
+    lines.extend(["", "## Dirty Maintenance Artifacts"])
+    if not dirty_maintenance_artifacts:
+        lines.append("- 当前没有 dirty maintenance artifact。")
+    else:
+        for relative in dirty_maintenance_artifacts[:12]:
+            lines.append(f"- `{relative}`")
+        if len(dirty_maintenance_artifacts) > 12:
+            lines.append(f"- 其余 dirty artifact：`{len(dirty_maintenance_artifacts) - 12}`")
     return "\n".join(lines) + "\n"
 
 
@@ -8307,7 +8385,7 @@ def load_json_document(path: Path) -> dict[str, Any]:
 
 def save_json_document(path: Path, document: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(render_json_document(document), encoding="utf-8")
 
 
 def load_jsonl_documents(path: Path) -> list[dict[str, Any]]:
@@ -8339,6 +8417,8 @@ def default_compile_state() -> dict[str, Any]:
         "clean_concept_slugs": [],
         "dirty_index_artifacts": [],
         "clean_index_artifacts": [],
+        "dirty_maintenance_artifacts": [],
+        "clean_maintenance_artifacts": [],
         "phase_summary": [],
     }
 
@@ -8353,6 +8433,8 @@ def load_compile_state(root: Path) -> dict[str, Any]:
     clean_concept_slugs = document.get("clean_concept_slugs", [])
     dirty_index_artifacts = document.get("dirty_index_artifacts", [])
     clean_index_artifacts = document.get("clean_index_artifacts", [])
+    dirty_maintenance_artifacts = document.get("dirty_maintenance_artifacts", [])
+    clean_maintenance_artifacts = document.get("clean_maintenance_artifacts", [])
     phase_summary = document.get("phase_summary")
     if (
         not isinstance(dirty_source_ids, list)
@@ -8361,6 +8443,8 @@ def load_compile_state(root: Path) -> dict[str, Any]:
         or not isinstance(clean_concept_slugs, list)
         or not isinstance(dirty_index_artifacts, list)
         or not isinstance(clean_index_artifacts, list)
+        or not isinstance(dirty_maintenance_artifacts, list)
+        or not isinstance(clean_maintenance_artifacts, list)
         or not isinstance(phase_summary, list)
     ):
         return default_compile_state()
@@ -8374,6 +8458,8 @@ def load_compile_state(root: Path) -> dict[str, Any]:
         "clean_concept_slugs": [str(slug) for slug in clean_concept_slugs if str(slug)],
         "dirty_index_artifacts": [str(path) for path in dirty_index_artifacts if str(path)],
         "clean_index_artifacts": [str(path) for path in clean_index_artifacts if str(path)],
+        "dirty_maintenance_artifacts": [str(path) for path in dirty_maintenance_artifacts if str(path)],
+        "clean_maintenance_artifacts": [str(path) for path in clean_maintenance_artifacts if str(path)],
         "phase_summary": [phase for phase in phase_summary if isinstance(phase, dict)],
     }
 
@@ -9959,6 +10045,25 @@ def refresh_material_state(
     entries: list[dict[str, Any]] | None = None,
     active_protocol: str | None = None,
 ) -> dict[str, Any]:
+    documents = build_material_state_documents(
+        root,
+        generated_at=generated_at,
+        entries=entries,
+        active_protocol=active_protocol,
+    )
+    save_material_state(root, documents["material_state"])
+    save_material_routing_state(root, documents["material_routing"])
+    save_archive_candidates_state(root, documents["archive_candidates"])
+    return documents["material_state"]
+
+
+def build_material_state_documents(
+    root: Path,
+    *,
+    generated_at: str,
+    entries: list[dict[str, Any]] | None = None,
+    active_protocol: str | None = None,
+) -> dict[str, dict[str, Any]]:
     ensure_layout(root)
     manifest_entries = entries if entries is not None else load_manifest(root).get("entries", [])
     resolved_protocol = active_protocol or load_protocol_state(root)["active_protocol"]
@@ -10076,11 +10181,13 @@ def refresh_material_state(
     }
     for material_entry in material_entries:
         material_entry["archive_candidate"] = material_entry.get("entry_id") in active_archive_ids
-    document = {"version": 1, "generated_at": generated_at, "entries": material_entries}
-    save_material_state(root, document)
-    save_material_routing_state(root, routing_document)
-    save_archive_candidates_state(root, archive_document)
-    return document
+    material_document = {"version": 1, "generated_at": generated_at, "entries": material_entries}
+    return {
+        "material_state": material_document,
+        "material_routing": routing_document,
+        "archive_candidates": archive_document,
+        "active_corpora_state": {"version": 1, "corpora": active_corpora},
+    }
 
 
 def upsert_active_corpus(
@@ -13559,8 +13666,11 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     source_changed_pages = 0
     concept_changed_pages = 0
     index_changed_pages = 0
+    maintenance_changed_pages = 0
     dirty_index_artifacts: list[str] = []
     clean_index_artifacts: list[str] = []
+    dirty_maintenance_artifacts: list[str] = []
+    clean_maintenance_artifacts: list[str] = []
 
     def write_index_artifact(destination: Path, content: str) -> int:
         nonlocal changed_pages
@@ -13574,6 +13684,20 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             clean_index_artifacts.append(relative)
         changed_pages += int(wrote)
         index_changed_pages += int(wrote)
+        return int(wrote)
+
+    def write_maintenance_artifact(destination: Path, document: dict[str, Any]) -> int:
+        nonlocal changed_pages
+        nonlocal maintenance_changed_pages
+
+        wrote, dirty = write_json_document_if_changed_ignoring_generated_timestamps(destination, document)
+        relative = relative_path(root, destination)
+        if dirty:
+            dirty_maintenance_artifacts.append(relative)
+        else:
+            clean_maintenance_artifacts.append(relative)
+        changed_pages += int(wrote)
+        maintenance_changed_pages += int(wrote)
         return int(wrote)
 
     previews: dict[str, str] = {}
@@ -13711,8 +13835,17 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     write_index_artifact(execution_audit_path(root), render_execution_audit(execution_audit))
     all_outputs = collect_output_density_artifacts(root)
     recent_outputs = collect_recent_output_artifacts(root)
-    active_corpora_state = load_active_corpora_state(root)
-    knowledge_lifecycle = refresh_knowledge_lifecycle_state(
+    material_state_documents = build_material_state_documents(
+        root,
+        generated_at=compiled_at,
+        entries=entries,
+        active_protocol=protocol_state["active_protocol"],
+    )
+    active_corpora_state = material_state_documents["active_corpora_state"]
+    material_state = material_state_documents["material_state"]
+    material_routing = material_state_documents["material_routing"]
+    archive_candidates = material_state_documents["archive_candidates"]
+    knowledge_lifecycle = build_knowledge_lifecycle_document(
         root,
         generated_at=compiled_at,
         decisions=decision_pages,
@@ -13721,14 +13854,10 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         active_corpora_state=active_corpora_state,
         memory=memory,
     )
-    material_state = refresh_material_state(
-        root,
-        generated_at=compiled_at,
-        entries=entries,
-        active_protocol=protocol_state["active_protocol"],
-    )
-    material_routing = load_material_routing_state(root)
-    archive_candidates = load_archive_candidates_state(root)
+    write_maintenance_artifact(material_state_path(root), material_state)
+    write_maintenance_artifact(material_routing_state_path(root), material_routing)
+    write_maintenance_artifact(archive_candidates_state_path(root), archive_candidates)
+    write_maintenance_artifact(knowledge_lifecycle_state_path(root), knowledge_lifecycle)
     write_index_artifact(
         root / "wiki" / "indexes" / "protocols.md",
         render_protocols_dashboard(
@@ -13988,9 +14117,14 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         {
             "name": "cold_archive_maintenance",
             "label": "cold/archive maintenance",
-            "mode": "full",
+            "mode": "incremental",
             "status": "completed",
             "details": {
+                "tracked_artifacts": len(dirty_maintenance_artifacts) + len(clean_maintenance_artifacts),
+                "dirty_artifacts": len(dirty_maintenance_artifacts),
+                "clean_artifacts": len(clean_maintenance_artifacts),
+                "updated_artifacts": maintenance_changed_pages,
+                "skipped_artifacts": len(clean_maintenance_artifacts),
                 "removed_generated_pages": removed_pages,
                 "material_state_entries": len(material_state["entries"]),
                 "archive_candidates": len(archive_candidates.get("entries", [])),
@@ -14009,6 +14143,8 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "clean_concept_slugs": clean_concept_slugs,
         "dirty_index_artifacts": dirty_index_artifacts,
         "clean_index_artifacts": clean_index_artifacts,
+        "dirty_maintenance_artifacts": dirty_maintenance_artifacts,
+        "clean_maintenance_artifacts": clean_maintenance_artifacts,
         "phase_summary": phase_summary,
     }
     save_compile_state(root, compile_state)
@@ -14040,6 +14176,8 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             f"compile_clean_concepts: `{len(clean_concept_slugs)}`",
             f"compile_dirty_index_artifacts: `{len(dirty_index_artifacts)}`",
             f"compile_clean_index_artifacts: `{len(clean_index_artifacts)}`",
+            f"compile_dirty_maintenance_artifacts: `{len(dirty_maintenance_artifacts)}`",
+            f"compile_clean_maintenance_artifacts: `{len(clean_maintenance_artifacts)}`",
             f"source_pages_updated: `{source_changed_pages}`",
             f"source_pages: `{len(entries)}`",
             f"concept_pages: `{len(concepts)}`",
@@ -14076,6 +14214,8 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "clean_concept_slugs": list(clean_concept_slugs),
         "dirty_index_artifacts": list(dirty_index_artifacts),
         "clean_index_artifacts": list(clean_index_artifacts),
+        "dirty_maintenance_artifacts": list(dirty_maintenance_artifacts),
+        "clean_maintenance_artifacts": list(clean_maintenance_artifacts),
         "phase_summary": phase_summary,
         "output_packs": dict(output_packs["counts"]),
         "domain_pilots": len(domain_pilots["scorecards"]),

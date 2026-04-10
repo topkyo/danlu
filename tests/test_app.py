@@ -516,6 +516,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(compile_state["clean_concept_slugs"], [])
         self.assertTrue(compile_state["dirty_index_artifacts"])
         self.assertEqual(compile_state["clean_index_artifacts"], [])
+        self.assertTrue(compile_state["dirty_maintenance_artifacts"])
+        self.assertEqual(compile_state["clean_maintenance_artifacts"], [])
         phase_names = [phase["name"] for phase in compile_state["phase_summary"]]
         self.assertEqual(
             phase_names,
@@ -539,6 +541,15 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(index_phase["mode"], "incremental")
         self.assertEqual(index_phase["details"]["dirty_artifacts"], len(compile_state["dirty_index_artifacts"]))
         self.assertEqual(index_phase["details"]["clean_artifacts"], 0)
+        maintenance_phase = next(
+            phase for phase in compile_state["phase_summary"] if phase["name"] == "cold_archive_maintenance"
+        )
+        self.assertEqual(maintenance_phase["mode"], "incremental")
+        self.assertEqual(
+            maintenance_phase["details"]["dirty_artifacts"],
+            len(compile_state["dirty_maintenance_artifacts"]),
+        )
+        self.assertEqual(maintenance_phase["details"]["clean_artifacts"], 0)
         self.assertEqual(compiled["dirty_sources"], 1)
         self.assertEqual(compiled["clean_sources"], 0)
         self.assertEqual(compiled["dirty_source_ids"], [entry["id"]])
@@ -549,6 +560,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(compiled["clean_concept_slugs"], [])
         self.assertEqual(compiled["dirty_index_artifacts"], compile_state["dirty_index_artifacts"])
         self.assertEqual(compiled["clean_index_artifacts"], [])
+        self.assertEqual(compiled["dirty_maintenance_artifacts"], compile_state["dirty_maintenance_artifacts"])
+        self.assertEqual(compiled["clean_maintenance_artifacts"], [])
 
         compile_status = compile_status_path.read_text(encoding="utf-8")
         self.assertIn("## Compile Phases", compile_status)
@@ -557,6 +570,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("index_refresh", compile_status)
         self.assertIn("## Dirty Concepts", compile_status)
         self.assertIn("## Dirty Index Artifacts", compile_status)
+        self.assertIn("## Dirty Maintenance Artifacts", compile_status)
         self.assertIn(".aiwiki/state/compile-state.json", compile_status)
 
     def test_compile_skips_clean_source_pages_on_second_run(self) -> None:
@@ -646,6 +660,39 @@ class AiwikiFlowTests(unittest.TestCase):
         compile_state = json.loads((self.root / ".aiwiki" / "state" / "compile-state.json").read_text(encoding="utf-8"))
         self.assertIn("wiki/indexes/index.md", compile_state["clean_index_artifacts"])
         self.assertNotIn("wiki/indexes/index.md", compile_state["dirty_index_artifacts"])
+
+    def test_compile_skips_clean_maintenance_artifacts_on_second_run(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+
+        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:00:00+00:00"):
+            compile_wiki(self.root)
+
+        material_state_path = self.root / ".aiwiki" / "state" / "material-state.json"
+        knowledge_lifecycle_path = self.root / ".aiwiki" / "state" / "knowledge-lifecycle.json"
+        first_material_state = material_state_path.read_text(encoding="utf-8")
+        first_knowledge_lifecycle = knowledge_lifecycle_path.read_text(encoding="utf-8")
+
+        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:05:00+00:00"):
+            second = compile_wiki(self.root)
+
+        self.assertEqual(first_material_state, material_state_path.read_text(encoding="utf-8"))
+        self.assertEqual(first_knowledge_lifecycle, knowledge_lifecycle_path.read_text(encoding="utf-8"))
+        self.assertIn(".aiwiki/state/material-state.json", second["clean_maintenance_artifacts"])
+        self.assertIn(".aiwiki/state/knowledge-lifecycle.json", second["clean_maintenance_artifacts"])
+        self.assertNotIn(".aiwiki/state/material-state.json", second["dirty_maintenance_artifacts"])
+        self.assertNotIn(".aiwiki/state/knowledge-lifecycle.json", second["dirty_maintenance_artifacts"])
+
+        maintenance_phase = next(
+            phase for phase in second["phase_summary"] if phase["name"] == "cold_archive_maintenance"
+        )
+        self.assertEqual(maintenance_phase["mode"], "incremental")
+        self.assertGreater(maintenance_phase["details"]["tracked_artifacts"], 0)
+        self.assertGreater(maintenance_phase["details"]["clean_artifacts"], 0)
+        self.assertGreater(maintenance_phase["details"]["skipped_artifacts"], 0)
+
+        compile_state = json.loads((self.root / ".aiwiki" / "state" / "compile-state.json").read_text(encoding="utf-8"))
+        self.assertIn(".aiwiki/state/material-state.json", compile_state["clean_maintenance_artifacts"])
+        self.assertNotIn(".aiwiki/state/material-state.json", compile_state["dirty_maintenance_artifacts"])
 
     def test_ask_creates_active_corpus_and_runtime_history(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -1466,6 +1513,27 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertNotIn("wiki/indexes/concepts.md", result["clean_index_artifacts"])
         self.assertNotEqual(before, after)
         self.assertIn("Delta", after)
+
+    def test_compile_marks_related_maintenance_artifact_dirty_when_concepts_change(self) -> None:
+        removable = self.root / "removable.md"
+        removable.write_text("# Note\n\nAlpha beta gamma.\n", encoding="utf-8")
+        entry = ingest_source(self.root, str(removable), title="Note")
+        compile_wiki(self.root)
+
+        lifecycle_path = self.root / ".aiwiki" / "state" / "knowledge-lifecycle.json"
+        before = lifecycle_path.read_text(encoding="utf-8")
+        self.assertIn('"path": "wiki/concepts/alpha.md"', before)
+
+        stored_source = self.root / entry["stored_path"]
+        stored_source.write_text("# Note\n\nDelta epsilon zeta.\n", encoding="utf-8")
+
+        result = compile_wiki(self.root)
+
+        after = lifecycle_path.read_text(encoding="utf-8")
+        self.assertIn(".aiwiki/state/knowledge-lifecycle.json", result["dirty_maintenance_artifacts"])
+        self.assertNotIn(".aiwiki/state/knowledge-lifecycle.json", result["clean_maintenance_artifacts"])
+        self.assertNotEqual(before, after)
+        self.assertIn('"path": "wiki/concepts/delta.md"', after)
 
     def test_ask_auto_compiles_and_returns_ranked_concepts_and_indexes(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
