@@ -8544,6 +8544,26 @@ def render_compile_status(
         if str(slug)
     ]
     machine_memory_core_reused = bool(compile_state.get("machine_memory_core_reused", False))
+    dirty_ranking_source_ids = [
+        str(entry_id)
+        for entry_id in compile_state.get("dirty_ranking_source_ids", [])
+        if str(entry_id)
+    ]
+    clean_ranking_source_ids = [
+        str(entry_id)
+        for entry_id in compile_state.get("clean_ranking_source_ids", [])
+        if str(entry_id)
+    ]
+    dirty_ranking_concept_slugs = [
+        str(slug)
+        for slug in compile_state.get("dirty_ranking_concept_slugs", [])
+        if str(slug)
+    ]
+    clean_ranking_concept_slugs = [
+        str(slug)
+        for slug in compile_state.get("clean_ranking_concept_slugs", [])
+        if str(slug)
+    ]
     dirty_output_pack_groups = [
         str(group)
         for group in compile_state.get("dirty_output_pack_groups", [])
@@ -8618,6 +8638,12 @@ def render_compile_status(
         "dirty_machine_memory_concepts": "dirty_machine_memory_concepts",
         "clean_machine_memory_concepts": "clean_machine_memory_concepts",
         "reused_core": "reused_core",
+        "ranking_sources": "ranking_sources",
+        "dirty_ranking_sources": "dirty_ranking_sources",
+        "clean_ranking_sources": "clean_ranking_sources",
+        "ranking_concepts": "ranking_concepts",
+        "dirty_ranking_concepts": "dirty_ranking_concepts",
+        "clean_ranking_concepts": "clean_ranking_concepts",
         "pack_groups": "pack_groups",
         "dirty_pack_groups": "dirty_pack_groups",
         "clean_pack_groups": "clean_pack_groups",
@@ -8654,6 +8680,7 @@ def render_compile_status(
         "- Compile state：`.aiwiki/state/compile-state.json`",
         "- Concept build state：`.aiwiki/state/concept-build-state.json`",
         "- Machine memory build state：`.aiwiki/state/machine-memory-build-state.json`",
+        "- Ranking build state：`.aiwiki/state/ranking-build-state.json`",
         "- Output pack build state：`.aiwiki/state/output-pack-build-state.json`",
         "- Domain pilot build state：`.aiwiki/state/domain-pilot-build-state.json`",
         f"- Dirty source：`{len(dirty_source_ids)}`",
@@ -8667,6 +8694,10 @@ def render_compile_status(
         f"- Dirty machine-memory concept：`{len(dirty_machine_memory_concept_slugs)}`",
         f"- Clean machine-memory concept：`{len(clean_machine_memory_concept_slugs)}`",
         f"- Machine-memory core reused：`{machine_memory_core_reused}`",
+        f"- Dirty ranking source：`{len(dirty_ranking_source_ids)}`",
+        f"- Clean ranking source：`{len(clean_ranking_source_ids)}`",
+        f"- Dirty ranking concept：`{len(dirty_ranking_concept_slugs)}`",
+        f"- Clean ranking concept：`{len(clean_ranking_concept_slugs)}`",
         f"- Dirty output pack group：`{len(dirty_output_pack_groups)}`",
         f"- Clean output pack group：`{len(clean_output_pack_groups)}`",
         f"- Dirty domain pilot protocol：`{len(dirty_domain_pilot_protocols)}`",
@@ -8773,6 +8804,46 @@ def render_compile_status(
             lines.append(
                 f"- 其余 dirty machine-memory concept：`{len(dirty_machine_memory_concept_slugs) - 8}`"
             )
+    lines.extend(["", "## Dirty Ranking Sources"])
+    if not dirty_ranking_source_ids:
+        lines.append("- 当前没有 dirty ranking source record。")
+    else:
+        for entry_id in dirty_ranking_source_ids[:8]:
+            entry = entry_by_id.get(entry_id, {})
+            title = str(entry.get("title") or entry_id)
+            lines.append(f"- [{title}](../sources/{entry_id}.md)")
+        if len(dirty_ranking_source_ids) > 8:
+            lines.append(f"- 其余 dirty ranking source：`{len(dirty_ranking_source_ids) - 8}`")
+    lines.extend(["", "## Clean Ranking Sources"])
+    if not clean_ranking_source_ids:
+        lines.append("- 当前没有 clean ranking source record。")
+    else:
+        for entry_id in clean_ranking_source_ids[:8]:
+            entry = entry_by_id.get(entry_id, {})
+            title = str(entry.get("title") or entry_id)
+            lines.append(f"- [{title}](../sources/{entry_id}.md)")
+        if len(clean_ranking_source_ids) > 8:
+            lines.append(f"- 其余 clean ranking source：`{len(clean_ranking_source_ids) - 8}`")
+    lines.extend(["", "## Dirty Ranking Concepts"])
+    if not dirty_ranking_concept_slugs:
+        lines.append("- 当前没有 dirty ranking concept record。")
+    else:
+        for slug in dirty_ranking_concept_slugs[:8]:
+            record = concept_by_slug.get(slug, {})
+            title = str(record.get("title") or slug)
+            lines.append(f"- [{title}](../concepts/{slug}.md)")
+        if len(dirty_ranking_concept_slugs) > 8:
+            lines.append(f"- 其余 dirty ranking concept：`{len(dirty_ranking_concept_slugs) - 8}`")
+    lines.extend(["", "## Clean Ranking Concepts"])
+    if not clean_ranking_concept_slugs:
+        lines.append("- 当前没有 clean ranking concept record。")
+    else:
+        for slug in clean_ranking_concept_slugs[:8]:
+            record = concept_by_slug.get(slug, {})
+            title = str(record.get("title") or slug)
+            lines.append(f"- [{title}](../concepts/{slug}.md)")
+        if len(clean_ranking_concept_slugs) > 8:
+            lines.append(f"- 其余 clean ranking concept：`{len(clean_ranking_concept_slugs) - 8}`")
     lines.extend(["", "## Dirty Output Pack Groups"])
     if not dirty_output_pack_groups:
         lines.append("- 当前没有 dirty output pack group。")
@@ -9138,6 +9209,10 @@ def machine_memory_build_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "machine-memory-build-state.json"
 
 
+def ranking_build_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "ranking-build-state.json"
+
+
 def output_pack_build_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "output-pack-build-state.json"
 
@@ -9226,6 +9301,10 @@ def default_compile_state() -> dict[str, Any]:
         "dirty_machine_memory_concept_slugs": [],
         "clean_machine_memory_concept_slugs": [],
         "machine_memory_core_reused": False,
+        "dirty_ranking_source_ids": [],
+        "clean_ranking_source_ids": [],
+        "dirty_ranking_concept_slugs": [],
+        "clean_ranking_concept_slugs": [],
         "dirty_output_pack_groups": [],
         "clean_output_pack_groups": [],
         "dirty_domain_pilot_protocols": [],
@@ -9252,6 +9331,10 @@ def load_compile_state(root: Path) -> dict[str, Any]:
     clean_machine_memory_source_ids = document.get("clean_machine_memory_source_ids", [])
     dirty_machine_memory_concept_slugs = document.get("dirty_machine_memory_concept_slugs", [])
     clean_machine_memory_concept_slugs = document.get("clean_machine_memory_concept_slugs", [])
+    dirty_ranking_source_ids = document.get("dirty_ranking_source_ids", [])
+    clean_ranking_source_ids = document.get("clean_ranking_source_ids", [])
+    dirty_ranking_concept_slugs = document.get("dirty_ranking_concept_slugs", [])
+    clean_ranking_concept_slugs = document.get("clean_ranking_concept_slugs", [])
     dirty_output_pack_groups = document.get("dirty_output_pack_groups", [])
     clean_output_pack_groups = document.get("clean_output_pack_groups", [])
     dirty_domain_pilot_protocols = document.get("dirty_domain_pilot_protocols", [])
@@ -9272,6 +9355,10 @@ def load_compile_state(root: Path) -> dict[str, Any]:
         or not isinstance(clean_machine_memory_source_ids, list)
         or not isinstance(dirty_machine_memory_concept_slugs, list)
         or not isinstance(clean_machine_memory_concept_slugs, list)
+        or not isinstance(dirty_ranking_source_ids, list)
+        or not isinstance(clean_ranking_source_ids, list)
+        or not isinstance(dirty_ranking_concept_slugs, list)
+        or not isinstance(clean_ranking_concept_slugs, list)
         or not isinstance(dirty_output_pack_groups, list)
         or not isinstance(clean_output_pack_groups, list)
         or not isinstance(dirty_domain_pilot_protocols, list)
@@ -9306,6 +9393,10 @@ def load_compile_state(root: Path) -> dict[str, Any]:
             str(slug) for slug in clean_machine_memory_concept_slugs if str(slug)
         ],
         "machine_memory_core_reused": bool(document.get("machine_memory_core_reused", False)),
+        "dirty_ranking_source_ids": [str(entry_id) for entry_id in dirty_ranking_source_ids if str(entry_id)],
+        "clean_ranking_source_ids": [str(entry_id) for entry_id in clean_ranking_source_ids if str(entry_id)],
+        "dirty_ranking_concept_slugs": [str(slug) for slug in dirty_ranking_concept_slugs if str(slug)],
+        "clean_ranking_concept_slugs": [str(slug) for slug in clean_ranking_concept_slugs if str(slug)],
         "dirty_output_pack_groups": [str(group) for group in dirty_output_pack_groups if str(group)],
         "clean_output_pack_groups": [str(group) for group in clean_output_pack_groups if str(group)],
         "dirty_domain_pilot_protocols": [
@@ -9401,6 +9492,60 @@ def load_machine_memory_build_state(root: Path) -> dict[str, Any]:
 
 def save_machine_memory_build_state(root: Path, document: dict[str, Any]) -> None:
     save_json_document(machine_memory_build_state_path(root), document)
+
+
+def default_ranking_build_state() -> dict[str, Any]:
+    return {"version": 1, "generated_at": "", "source_records": {}, "concept_records": {}}
+
+
+def load_ranking_build_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(ranking_build_state_path(root))
+    if not isinstance(document, dict):
+        return default_ranking_build_state()
+    source_records = document.get("source_records")
+    concept_records = document.get("concept_records")
+    if not isinstance(source_records, dict) or not isinstance(concept_records, dict):
+        return default_ranking_build_state()
+
+    normalized_source_records: dict[str, dict[str, Any]] = {}
+    for entry_id, record in source_records.items():
+        if not isinstance(entry_id, str) or not entry_id or not isinstance(record, dict):
+            continue
+        summary_or_preview = str(record.get("summary_or_preview") or "")
+        concept_terms = record.get("concept_terms")
+        if not isinstance(concept_terms, list):
+            continue
+        normalized_source_records[entry_id] = {
+            "input_signature": str(record.get("input_signature") or ""),
+            "summary_or_preview": summary_or_preview,
+            "concept_terms": [str(term) for term in concept_terms if str(term)],
+        }
+
+    normalized_concept_records: dict[str, dict[str, Any]] = {}
+    for slug, record in concept_records.items():
+        if not isinstance(slug, str) or not slug or not isinstance(record, dict):
+            continue
+        source_pages = record.get("source_pages")
+        if not isinstance(source_pages, list):
+            continue
+        normalized_concept_records[slug] = {
+            "input_signature": str(record.get("input_signature") or ""),
+            "title": str(record.get("title") or slug),
+            "path": str(record.get("path") or f"wiki/concepts/{slug}.md"),
+            "source_pages": [str(path) for path in source_pages if str(path)],
+            "content": str(record.get("content") or ""),
+        }
+
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "generated_at": str(document.get("generated_at") or ""),
+        "source_records": normalized_source_records,
+        "concept_records": normalized_concept_records,
+    }
+
+
+def save_ranking_build_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(ranking_build_state_path(root), document)
 
 
 def default_output_pack_build_state() -> dict[str, Any]:
@@ -15026,6 +15171,23 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         active_protocol=protocol_state["active_protocol"],
     )
     write_index_artifact(execution_audit_path(root), render_execution_audit(execution_audit))
+    ranking_build = build_ranking_state(
+        root,
+        entries,
+        concepts,
+        generated_at=compiled_at,
+    )
+    ranking_build_state = ranking_build.get("state_document", {})
+    if not isinstance(ranking_build_state, dict):
+        ranking_build_state = default_ranking_build_state()
+    write_json_document_if_changed_ignoring_generated_timestamps(
+        ranking_build_state_path(root),
+        ranking_build_state,
+    )
+    dirty_ranking_source_ids = list(ranking_build.get("dirty_source_ids", []))
+    clean_ranking_source_ids = list(ranking_build.get("clean_source_ids", []))
+    dirty_ranking_concept_slugs = list(ranking_build.get("dirty_concept_slugs", []))
+    clean_ranking_concept_slugs = list(ranking_build.get("clean_concept_slugs", []))
     all_outputs = collect_output_density_artifacts(root)
     recent_outputs = collect_recent_output_artifacts(root)
     material_state_documents = build_material_state_documents(
@@ -15355,6 +15517,20 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             },
         },
         {
+            "name": "ranking_refresh",
+            "label": "concept/global ranking refresh",
+            "mode": "incremental",
+            "status": "completed",
+            "details": {
+                "ranking_sources": len(entries),
+                "dirty_ranking_sources": len(dirty_ranking_source_ids),
+                "clean_ranking_sources": len(clean_ranking_source_ids),
+                "ranking_concepts": len(concepts),
+                "dirty_ranking_concepts": len(dirty_ranking_concept_slugs),
+                "clean_ranking_concepts": len(clean_ranking_concept_slugs),
+            },
+        },
+        {
             "name": "index_refresh",
             "label": "index refresh",
             "mode": "incremental",
@@ -15430,6 +15606,10 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "dirty_machine_memory_concept_slugs": dirty_machine_memory_concept_slugs,
         "clean_machine_memory_concept_slugs": clean_machine_memory_concept_slugs,
         "machine_memory_core_reused": machine_memory_core_reused,
+        "dirty_ranking_source_ids": dirty_ranking_source_ids,
+        "clean_ranking_source_ids": clean_ranking_source_ids,
+        "dirty_ranking_concept_slugs": dirty_ranking_concept_slugs,
+        "clean_ranking_concept_slugs": clean_ranking_concept_slugs,
         "dirty_output_pack_groups": dirty_output_pack_groups,
         "clean_output_pack_groups": clean_output_pack_groups,
         "dirty_domain_pilot_protocols": dirty_domain_pilot_protocols,
@@ -15474,6 +15654,10 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             f"compile_dirty_machine_memory_concepts: `{len(dirty_machine_memory_concept_slugs)}`",
             f"compile_clean_machine_memory_concepts: `{len(clean_machine_memory_concept_slugs)}`",
             f"machine_memory_core_reused: `{machine_memory_core_reused}`",
+            f"compile_dirty_ranking_sources: `{len(dirty_ranking_source_ids)}`",
+            f"compile_clean_ranking_sources: `{len(clean_ranking_source_ids)}`",
+            f"compile_dirty_ranking_concepts: `{len(dirty_ranking_concept_slugs)}`",
+            f"compile_clean_ranking_concepts: `{len(clean_ranking_concept_slugs)}`",
             f"compile_dirty_output_pack_groups: `{len(dirty_output_pack_groups)}`",
             f"compile_clean_output_pack_groups: `{len(clean_output_pack_groups)}`",
             f"compile_dirty_domain_pilot_protocols: `{len(dirty_domain_pilot_protocols)}`",
@@ -15529,6 +15713,14 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "dirty_machine_memory_concept_slugs": list(dirty_machine_memory_concept_slugs),
         "clean_machine_memory_concept_slugs": list(clean_machine_memory_concept_slugs),
         "machine_memory_core_reused": machine_memory_core_reused,
+        "dirty_ranking_sources": len(dirty_ranking_source_ids),
+        "clean_ranking_sources": len(clean_ranking_source_ids),
+        "dirty_ranking_source_ids": list(dirty_ranking_source_ids),
+        "clean_ranking_source_ids": list(clean_ranking_source_ids),
+        "dirty_ranking_concepts": len(dirty_ranking_concept_slugs),
+        "clean_ranking_concepts": len(clean_ranking_concept_slugs),
+        "dirty_ranking_concept_slugs": list(dirty_ranking_concept_slugs),
+        "clean_ranking_concept_slugs": list(clean_ranking_concept_slugs),
         "dirty_output_pack_groups": list(dirty_output_pack_groups),
         "clean_output_pack_groups": list(clean_output_pack_groups),
         "dirty_domain_pilot_protocols": list(dirty_domain_pilot_protocols),
@@ -15543,6 +15735,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "compile_state_path": relative_path(root, compile_state_path(root)),
         "concept_build_state_path": relative_path(root, concept_build_state_path(root)),
         "machine_memory_build_state_path": relative_path(root, machine_memory_build_state_path(root)),
+        "ranking_build_state_path": relative_path(root, ranking_build_state_path(root)),
         "output_pack_build_state_path": relative_path(root, output_pack_build_state_path(root)),
         "domain_pilot_build_state_path": relative_path(root, domain_pilot_build_state_path(root)),
         "material_state_path": relative_path(root, material_state_path(root)),
@@ -15559,6 +15752,187 @@ def tokenize(text: str) -> list[str]:
     return [token for token in tokens if len(token) > 2 and token not in STOP_WORDS]
 
 
+def ranking_source_record_is_reusable(record: dict[str, Any]) -> bool:
+    return (
+        isinstance(record, dict)
+        and isinstance(record.get("summary_or_preview"), str)
+        and isinstance(record.get("concept_terms"), list)
+    )
+
+
+def ranking_concept_record_is_reusable(record: dict[str, Any]) -> bool:
+    return (
+        isinstance(record, dict)
+        and isinstance(record.get("title"), str)
+        and isinstance(record.get("path"), str)
+        and isinstance(record.get("source_pages"), list)
+        and isinstance(record.get("content"), str)
+    )
+
+
+def ranking_source_summary_or_preview(root: Path, entry: dict[str, Any]) -> str:
+    source_file = root / str(entry.get("stored_path") or "")
+    preview = read_text_preview(source_file, limit_lines=8) if source_file.exists() else ""
+    return source_summary_or_preview(root, entry, preview)
+
+
+def ranking_source_input_signature(entry: dict[str, Any], summary_or_preview: str) -> str:
+    payload = {
+        "entry_id": str(entry.get("id") or ""),
+        "title": str(entry.get("title") or ""),
+        "source_type": str(entry.get("source_type") or ""),
+        "kind": str(entry.get("kind") or ""),
+        "stored_path": str(entry.get("stored_path") or ""),
+        "sha256": str(entry.get("sha256") or ""),
+        "summary_or_preview": summary_or_preview,
+    }
+    return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
+def build_ranking_source_record(
+    entry: dict[str, Any],
+    summary_or_preview: str,
+    *,
+    input_signature: str = "",
+) -> dict[str, Any]:
+    return {
+        "input_signature": input_signature or ranking_source_input_signature(entry, summary_or_preview),
+        "summary_or_preview": summary_or_preview,
+        "concept_terms": entry_concept_terms(entry, summary_or_preview, max_terms=4),
+    }
+
+
+def ranking_concept_input_signature(record: dict[str, Any]) -> str:
+    payload = {
+        "slug": str(record.get("slug") or ""),
+        "title": str(record.get("title") or ""),
+        "source_signature": str(record.get("source_signature") or ""),
+        "render_signature": str(record.get("render_signature") or ""),
+        "source_pages": concept_source_pages(record),
+    }
+    return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
+def build_ranking_concept_record(
+    root: Path,
+    path: Path,
+    *,
+    input_signature: str = "",
+    fallback_title: str = "",
+    fallback_source_pages: list[str] | None = None,
+) -> dict[str, Any]:
+    content = path.read_text(encoding="utf-8", errors="replace")
+    frontmatter = parse_frontmatter(content)
+    source_pages = frontmatter.get("source_pages", fallback_source_pages or [])
+    if not isinstance(source_pages, list):
+        source_pages = fallback_source_pages or []
+    return {
+        "input_signature": input_signature,
+        "title": str(frontmatter.get("title") or fallback_title or path.stem),
+        "path": relative_path(root, path),
+        "source_pages": [str(source_page) for source_page in source_pages if str(source_page)],
+        "content": strip_frontmatter(content),
+    }
+
+
+def build_ranking_state(
+    root: Path,
+    entries: list[dict[str, Any]],
+    concepts: list[dict[str, Any]],
+    *,
+    generated_at: str,
+) -> dict[str, Any]:
+    previous_state = load_ranking_build_state(root)
+    previous_source_records = previous_state.get("source_records", {})
+    previous_concept_records = previous_state.get("concept_records", {})
+    if not isinstance(previous_source_records, dict):
+        previous_source_records = {}
+    if not isinstance(previous_concept_records, dict):
+        previous_concept_records = {}
+
+    source_records: dict[str, dict[str, Any]] = {}
+    dirty_source_ids: list[str] = []
+    clean_source_ids: list[str] = []
+    for entry in entries:
+        entry_id = str(entry.get("id") or "")
+        if not entry_id:
+            continue
+        summary_or_preview = ranking_source_summary_or_preview(root, entry)
+        input_signature = ranking_source_input_signature(entry, summary_or_preview)
+        previous_record = previous_source_records.get(entry_id, {})
+        if (
+            ranking_source_record_is_reusable(previous_record)
+            and str(previous_record.get("input_signature") or "") == input_signature
+        ):
+            source_records[entry_id] = {
+                "input_signature": input_signature,
+                "summary_or_preview": str(previous_record.get("summary_or_preview") or ""),
+                "concept_terms": [str(term) for term in previous_record.get("concept_terms", []) if str(term)],
+            }
+            clean_source_ids.append(entry_id)
+        else:
+            source_records[entry_id] = build_ranking_source_record(
+                entry,
+                summary_or_preview,
+                input_signature=input_signature,
+            )
+            dirty_source_ids.append(entry_id)
+
+    concept_records: dict[str, dict[str, Any]] = {}
+    dirty_concept_slugs: list[str] = []
+    clean_concept_slugs: list[str] = []
+    for record in concepts:
+        slug = str(record.get("slug") or "")
+        if not slug:
+            continue
+        input_signature = ranking_concept_input_signature(record)
+        previous_record = previous_concept_records.get(slug, {})
+        if (
+            ranking_concept_record_is_reusable(previous_record)
+            and str(previous_record.get("input_signature") or "") == input_signature
+        ):
+            concept_records[slug] = {
+                "input_signature": input_signature,
+                "title": str(previous_record.get("title") or slug),
+                "path": str(previous_record.get("path") or f"wiki/concepts/{slug}.md"),
+                "source_pages": [str(path) for path in previous_record.get("source_pages", []) if str(path)],
+                "content": str(previous_record.get("content") or ""),
+            }
+            clean_concept_slugs.append(slug)
+        else:
+            concept_records[slug] = build_ranking_concept_record(
+                root,
+                root / "wiki" / "concepts" / f"{slug}.md",
+                input_signature=input_signature,
+                fallback_title=str(record.get("title") or slug),
+                fallback_source_pages=concept_source_pages(record),
+            )
+            dirty_concept_slugs.append(slug)
+
+    removed_source_ids = sorted(set(previous_source_records) - set(source_records))
+    removed_concept_slugs = sorted(set(previous_concept_records) - set(concept_records))
+    return {
+        "state_document": {
+            "version": 1,
+            "generated_at": generated_at,
+            "source_records": source_records,
+            "concept_records": concept_records,
+        },
+        "dirty_source_ids": dirty_source_ids,
+        "clean_source_ids": clean_source_ids,
+        "dirty_concept_slugs": dirty_concept_slugs,
+        "clean_concept_slugs": clean_concept_slugs,
+        "removed_source_ids": removed_source_ids,
+        "removed_concept_slugs": removed_concept_slugs,
+        "inputs_clean": not (
+            dirty_source_ids
+            or dirty_concept_slugs
+            or removed_source_ids
+            or removed_concept_slugs
+        ),
+    }
+
+
 def rank_concepts(
     root: Path,
     question: str,
@@ -15569,6 +15943,10 @@ def rank_concepts(
     question_tokens = tokenize(question)
     boost_concept_slugs = boost_concept_slugs or set()
     ranked: list[tuple[int, dict[str, Any]]] = []
+    ranking_state = load_ranking_build_state(root)
+    concept_records = ranking_state.get("concept_records", {})
+    if not isinstance(concept_records, dict):
+        concept_records = {}
     lifecycle = load_knowledge_lifecycle_state(root)
     retired_paths = {
         str(entry.get("path") or "")
@@ -15580,14 +15958,19 @@ def rank_concepts(
     for path in sorted((root / "wiki" / "concepts").glob("*.md")):
         if relative_path(root, path) in retired_paths:
             continue
-        content = path.read_text(encoding="utf-8", errors="replace")
-        frontmatter = parse_frontmatter(content)
-        title = frontmatter.get("title") or path.stem
-        haystack = f"{title}\n{strip_frontmatter(content)}".lower()
+        record = concept_records.get(path.stem, {})
+        if not ranking_concept_record_is_reusable(record):
+            record = build_ranking_concept_record(root, path)
+        title = str(record.get("title") or path.stem)
+        content = str(record.get("content") or "")
+        source_pages = record.get("source_pages", [])
+        if not isinstance(source_pages, list):
+            source_pages = []
+        haystack = f"{title}\n{content}".lower()
         score = 0
         for token in question_tokens:
             score += haystack.count(token)
-        score += concept_focus_score(protocol, str(title), strip_frontmatter(content))
+        score += concept_focus_score(protocol, title, content)
         if path.stem in boost_concept_slugs:
             score += 5
         if score:
@@ -15596,9 +15979,9 @@ def rank_concepts(
                     score,
                     {
                         "slug": path.stem,
-                        "title": str(title),
-                        "path": relative_path(root, path),
-                        "source_pages": frontmatter.get("source_pages", []),
+                        "title": title,
+                        "path": str(record.get("path") or relative_path(root, path)),
+                        "source_pages": [str(source_page) for source_page in source_pages if str(source_page)],
                     },
                 )
             )
@@ -15672,6 +16055,10 @@ def rank_sources(
     question_tokens = tokenize(question)
     scored: list[tuple[float, int, float, dict[str, Any]]] = []
     boost_source_ids = boost_source_ids or set()
+    ranking_state = load_ranking_build_state(root)
+    source_records = ranking_state.get("source_records", {})
+    if not isinstance(source_records, dict):
+        source_records = {}
     material_state = load_material_state(root)
     material_by_id = {
         str(item.get("entry_id") or ""): item
@@ -15690,14 +16077,19 @@ def rank_sources(
         material_entry = material_by_id.get(entry_id, {})
         if entry_id in archived_source_ids or str(material_entry.get("temperature") or "") == "archived":
             continue
-        source_file = root / entry["stored_path"]
-        preview = read_text_preview(source_file, limit_lines=8)
-        summary_or_preview = source_summary_or_preview(root, entry, preview)
+        ranking_record = source_records.get(entry_id, {})
+        if ranking_source_record_is_reusable(ranking_record):
+            summary_or_preview = str(ranking_record.get("summary_or_preview") or "")
+            concept_terms = [str(term) for term in ranking_record.get("concept_terms", []) if str(term)]
+        else:
+            summary_or_preview = ranking_source_summary_or_preview(root, entry)
+            ranking_record = build_ranking_source_record(entry, summary_or_preview)
+            concept_terms = [str(term) for term in ranking_record.get("concept_terms", []) if str(term)]
         haystack = " ".join([entry["title"], summary_or_preview]).lower()
         score = 0
         for token in question_tokens:
             score += haystack.count(token)
-        for concept in entry_concept_terms(entry, summary_or_preview, max_terms=4):
+        for concept in concept_terms:
             for token in question_tokens:
                 score += concept.lower().count(token)
         score += entry_focus_score(protocol, entry, summary_or_preview)

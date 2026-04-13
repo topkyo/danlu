@@ -507,6 +507,7 @@ class AiwikiFlowTests(unittest.TestCase):
         compile_state_path = self.root / ".aiwiki" / "state" / "compile-state.json"
         concept_build_state_path = self.root / ".aiwiki" / "state" / "concept-build-state.json"
         machine_memory_build_state_path = self.root / ".aiwiki" / "state" / "machine-memory-build-state.json"
+        ranking_build_state_path = self.root / ".aiwiki" / "state" / "ranking-build-state.json"
         output_pack_build_state_path = self.root / ".aiwiki" / "state" / "output-pack-build-state.json"
         domain_pilot_build_state_path = self.root / ".aiwiki" / "state" / "domain-pilot-build-state.json"
         compile_status_path = self.root / "wiki" / "indexes" / "compile-status.md"
@@ -516,11 +517,13 @@ class AiwikiFlowTests(unittest.TestCase):
             compiled["machine_memory_build_state_path"],
             ".aiwiki/state/machine-memory-build-state.json",
         )
+        self.assertEqual(compiled["ranking_build_state_path"], ".aiwiki/state/ranking-build-state.json")
         self.assertEqual(compiled["output_pack_build_state_path"], ".aiwiki/state/output-pack-build-state.json")
         self.assertEqual(compiled["domain_pilot_build_state_path"], ".aiwiki/state/domain-pilot-build-state.json")
         self.assertTrue(compile_state_path.exists())
         self.assertTrue(concept_build_state_path.exists())
         self.assertTrue(machine_memory_build_state_path.exists())
+        self.assertTrue(ranking_build_state_path.exists())
         self.assertTrue(output_pack_build_state_path.exists())
         self.assertTrue(domain_pilot_build_state_path.exists())
         self.assertTrue(compile_status_path.exists())
@@ -528,6 +531,7 @@ class AiwikiFlowTests(unittest.TestCase):
         compile_state = json.loads(compile_state_path.read_text(encoding="utf-8"))
         concept_build_state = json.loads(concept_build_state_path.read_text(encoding="utf-8"))
         machine_memory_build_state = json.loads(machine_memory_build_state_path.read_text(encoding="utf-8"))
+        ranking_build_state = json.loads(ranking_build_state_path.read_text(encoding="utf-8"))
         output_pack_build_state = json.loads(output_pack_build_state_path.read_text(encoding="utf-8"))
         domain_pilot_build_state = json.loads(domain_pilot_build_state_path.read_text(encoding="utf-8"))
         self.assertEqual(compile_state["manifest_entry_count"], 1)
@@ -542,6 +546,10 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(compile_state["dirty_machine_memory_concept_slugs"])
         self.assertEqual(compile_state["clean_machine_memory_concept_slugs"], [])
         self.assertFalse(compile_state["machine_memory_core_reused"])
+        self.assertEqual(compile_state["dirty_ranking_source_ids"], [entry["id"]])
+        self.assertEqual(compile_state["clean_ranking_source_ids"], [])
+        self.assertTrue(compile_state["dirty_ranking_concept_slugs"])
+        self.assertEqual(compile_state["clean_ranking_concept_slugs"], [])
         self.assertTrue(compile_state["dirty_output_pack_groups"])
         self.assertEqual(compile_state["clean_output_pack_groups"], [])
         self.assertTrue(compile_state["dirty_domain_pilot_protocols"])
@@ -556,6 +564,11 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn(entry["id"], machine_memory_build_state["source_records"])
         self.assertTrue(machine_memory_build_state["source_records"][entry["id"]]["input_signature"])
         self.assertTrue(machine_memory_build_state["concept_records"])
+        self.assertIn(entry["id"], ranking_build_state["source_records"])
+        self.assertTrue(ranking_build_state["source_records"][entry["id"]]["input_signature"])
+        self.assertTrue(ranking_build_state["source_records"][entry["id"]]["concept_terms"])
+        self.assertTrue(ranking_build_state["source_records"][entry["id"]]["summary_or_preview"])
+        self.assertTrue(ranking_build_state["concept_records"])
         self.assertIn("review_packs", output_pack_build_state["group_records"])
         self.assertTrue(output_pack_build_state["group_records"]["review_packs"]["input_signature"])
         self.assertIn("general", domain_pilot_build_state["protocol_records"])
@@ -568,6 +581,7 @@ class AiwikiFlowTests(unittest.TestCase):
                 "incremental_source_compile",
                 "concept_refresh",
                 "machine_memory_refresh",
+                "ranking_refresh",
                 "index_refresh",
                 "cold_archive_maintenance",
                 "output_pack_refresh",
@@ -596,6 +610,15 @@ class AiwikiFlowTests(unittest.TestCase):
         )
         self.assertEqual(machine_memory_phase["details"]["clean_machine_memory_concepts"], 0)
         self.assertFalse(machine_memory_phase["details"]["reused_core"])
+        ranking_phase = next(phase for phase in compile_state["phase_summary"] if phase["name"] == "ranking_refresh")
+        self.assertEqual(ranking_phase["mode"], "incremental")
+        self.assertEqual(ranking_phase["details"]["dirty_ranking_sources"], 1)
+        self.assertEqual(ranking_phase["details"]["clean_ranking_sources"], 0)
+        self.assertEqual(
+            ranking_phase["details"]["dirty_ranking_concepts"],
+            len(compile_state["dirty_ranking_concept_slugs"]),
+        )
+        self.assertEqual(ranking_phase["details"]["clean_ranking_concepts"], 0)
         index_phase = next(phase for phase in compile_state["phase_summary"] if phase["name"] == "index_refresh")
         self.assertEqual(index_phase["mode"], "incremental")
         self.assertEqual(index_phase["details"]["dirty_artifacts"], len(compile_state["dirty_index_artifacts"]))
@@ -642,6 +665,15 @@ class AiwikiFlowTests(unittest.TestCase):
         )
         self.assertEqual(compiled["clean_machine_memory_concept_slugs"], [])
         self.assertFalse(compiled["machine_memory_core_reused"])
+        self.assertEqual(compiled["dirty_ranking_sources"], 1)
+        self.assertEqual(compiled["clean_ranking_sources"], 0)
+        self.assertEqual(compiled["dirty_ranking_source_ids"], [entry["id"]])
+        self.assertEqual(compiled["clean_ranking_source_ids"], [])
+        self.assertEqual(
+            compiled["dirty_ranking_concept_slugs"],
+            compile_state["dirty_ranking_concept_slugs"],
+        )
+        self.assertEqual(compiled["clean_ranking_concept_slugs"], [])
         self.assertEqual(compiled["dirty_output_pack_groups"], compile_state["dirty_output_pack_groups"])
         self.assertEqual(compiled["clean_output_pack_groups"], [])
         self.assertEqual(compiled["dirty_domain_pilot_protocols"], compile_state["dirty_domain_pilot_protocols"])
@@ -661,6 +693,10 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("dirty_machine_memory_sources=1", compile_status)
         self.assertIn("## Dirty Machine Memory Sources", compile_status)
         self.assertIn("## Dirty Machine Memory Concepts", compile_status)
+        self.assertIn("ranking_refresh", compile_status)
+        self.assertIn("dirty_ranking_sources=1", compile_status)
+        self.assertIn("## Dirty Ranking Sources", compile_status)
+        self.assertIn("## Dirty Ranking Concepts", compile_status)
         self.assertIn("output_pack_refresh", compile_status)
         self.assertIn("dirty_pack_groups=4", compile_status)
         self.assertIn("## Dirty Output Pack Groups", compile_status)
@@ -672,6 +708,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("## Dirty Maintenance Artifacts", compile_status)
         self.assertIn(".aiwiki/state/concept-build-state.json", compile_status)
         self.assertIn(".aiwiki/state/machine-memory-build-state.json", compile_status)
+        self.assertIn(".aiwiki/state/ranking-build-state.json", compile_status)
         self.assertIn(".aiwiki/state/output-pack-build-state.json", compile_status)
         self.assertIn(".aiwiki/state/domain-pilot-build-state.json", compile_status)
         self.assertIn(".aiwiki/state/compile-state.json", compile_status)
@@ -794,6 +831,46 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(compile_state["clean_machine_memory_source_ids"], [entry["id"]])
         self.assertEqual(compile_state["dirty_machine_memory_concept_slugs"], [])
         self.assertTrue(compile_state["machine_memory_core_reused"])
+
+    def test_compile_reuses_clean_ranking_records_on_second_run(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        first = compile_wiki(self.root)
+
+        ranking_build_state_path = self.root / ".aiwiki" / "state" / "ranking-build-state.json"
+        first_state = ranking_build_state_path.read_text(encoding="utf-8")
+
+        with patch(
+            "aiwiki.app.build_ranking_source_record",
+            side_effect=AssertionError("should reuse clean source ranking records"),
+        ), patch(
+            "aiwiki.app.build_ranking_concept_record",
+            side_effect=AssertionError("should reuse clean concept ranking records"),
+        ):
+            second = compile_wiki(self.root)
+
+        self.assertEqual(second["dirty_ranking_sources"], 0)
+        self.assertEqual(second["clean_ranking_sources"], 1)
+        self.assertEqual(second["dirty_ranking_source_ids"], [])
+        self.assertEqual(second["clean_ranking_source_ids"], [entry["id"]])
+        self.assertEqual(second["dirty_ranking_concepts"], 0)
+        self.assertEqual(second["clean_ranking_concepts"], first["concepts"])
+        self.assertEqual(second["dirty_ranking_concept_slugs"], [])
+        self.assertEqual(first_state, ranking_build_state_path.read_text(encoding="utf-8"))
+
+        ranking_phase = next(phase for phase in second["phase_summary"] if phase["name"] == "ranking_refresh")
+        self.assertEqual(ranking_phase["details"]["dirty_ranking_sources"], 0)
+        self.assertEqual(ranking_phase["details"]["clean_ranking_sources"], 1)
+        self.assertEqual(ranking_phase["details"]["dirty_ranking_concepts"], 0)
+        self.assertEqual(ranking_phase["details"]["clean_ranking_concepts"], second["clean_ranking_concepts"])
+
+        compile_state = json.loads((self.root / ".aiwiki" / "state" / "compile-state.json").read_text(encoding="utf-8"))
+        self.assertEqual(compile_state["dirty_ranking_source_ids"], [])
+        self.assertEqual(compile_state["clean_ranking_source_ids"], [entry["id"]])
+        self.assertEqual(compile_state["dirty_ranking_concept_slugs"], [])
+        self.assertEqual(
+            len(compile_state["clean_ranking_concept_slugs"]),
+            second["clean_ranking_concepts"],
+        )
 
     def test_compile_reuses_clean_output_pack_groups_on_second_run(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -1774,8 +1851,9 @@ class AiwikiFlowTests(unittest.TestCase):
         with patch("aiwiki.app.entry_concept_terms", wraps=entry_concept_terms) as patched_terms:
             result = compile_wiki(self.root)
 
-        self.assertEqual(patched_terms.call_count, 1)
+        self.assertEqual(patched_terms.call_count, 2)
         self.assertEqual(result["dirty_concept_source_ids"], [entry["id"]])
+        self.assertEqual(result["dirty_ranking_source_ids"], [entry["id"]])
         self.assertIn("delta", result["dirty_concept_slugs"])
         self.assertTrue((self.root / "wiki" / "concepts" / "delta.md").exists())
 
@@ -1910,6 +1988,22 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("审阅中心", report_text)
         self.assertIn("图谱视图", report_text)
         self.assertIn("运行时规则", report_text)
+
+    def test_ask_reuses_clean_ranking_build_state(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        with patch(
+            "aiwiki.app.build_ranking_source_record",
+            side_effect=AssertionError("should reuse clean source ranking state"),
+        ), patch(
+            "aiwiki.app.build_ranking_concept_record",
+            side_effect=AssertionError("should reuse clean concept ranking state"),
+        ):
+            result = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+
+        self.assertTrue(result["ranked_sources"])
+        self.assertTrue(result["ranked_concepts"])
 
     def test_ask_can_override_protocol_and_exposes_protocol_pages(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
