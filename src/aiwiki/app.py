@@ -5662,24 +5662,21 @@ def load_workspace_markdown(root: Path, relative: str) -> tuple[dict[str, Any], 
     return parse_frontmatter(content), content
 
 
-def build_output_packs(
-    root: Path,
+def workspace_file_signature(root: Path, relative: str) -> str:
+    path = root / relative
+    if not path.exists() or not path.is_file():
+        return ""
+    return sha256_file(path)
+
+
+def output_pack_review_candidates(
     decisions: list[dict[str, str]],
     judgments: list[dict[str, str]],
-    memory: dict[str, Any],
-    protocol_state: dict[str, Any],
-    recent_outputs: list[dict[str, str]],
-    compiled_at: str,
     *,
-    knowledge_lifecycle: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    active_protocol = protocol_state["active_protocol"]
-    lifecycle_summary = knowledge_lifecycle_governance_summary(
-        knowledge_lifecycle,
-        active_protocol=active_protocol,
-    )
+    active_protocol: str,
+) -> list[dict[str, str]]:
     pages = decisions + judgments
-    review_candidates = sorted(
+    return sorted(
         [
             page
             for page in pages
@@ -5697,9 +5694,16 @@ def build_output_packs(
             page.get("title", "").lower(),
         ),
     )
-    reviewed_candidates = sort_curated_pages(
-        [page for page in pages if page.get("reviewed_at") and page.get("pending_review") != "true"]
-    )
+
+
+def output_pack_reviewed_candidates(
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    return sort_curated_pages([page for page in decisions + judgments if page.get("reviewed_at") and page.get("pending_review") != "true"])
+
+
+def output_pack_repair_plan_candidates(memory: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     repair_plan = memory.get("health", {}).get("repair_plan", {})
     ready_actions = [
         action for action in repair_plan.get("ready_actions", []) if isinstance(action, dict) and action.get("active")
@@ -5707,15 +5711,154 @@ def build_output_packs(
     execution_proposals = [
         proposal for proposal in repair_plan.get("execution_proposals", []) if isinstance(proposal, dict)
     ]
-    proposal_by_action = {
-        str(proposal.get("action_id") or ""): proposal
-        for proposal in execution_proposals
-        if proposal.get("action_id")
-    }
-    review_packs: list[dict[str, str]] = []
-    decision_memos: list[dict[str, str]] = []
-    sop_drafts: list[dict[str, str]] = []
+    return ready_actions, execution_proposals
 
+
+def output_pack_state_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [{key: value for key, value in record.items() if key != "content"} for record in records if isinstance(record, dict)]
+
+
+def output_pack_group_is_reusable(root: Path, records: list[dict[str, Any]]) -> bool:
+    for record in records:
+        path = str(record.get("path") or "")
+        if not path:
+            return False
+        if not (root / path).exists():
+            return False
+    return True
+
+
+def output_pack_lifecycle_summary_input_signature(lifecycle_summary: dict[str, Any], *, active_protocol: str) -> str:
+    payload = {
+        "active_protocol": active_protocol,
+        "lifecycle_summary": lifecycle_summary,
+    }
+    return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
+def output_pack_review_group_input_signature(
+    root: Path,
+    review_candidates: list[dict[str, str]],
+    *,
+    active_protocol: str,
+) -> str:
+    payload = {
+        "active_protocol": active_protocol,
+        "review_candidates": [
+            {
+                "path": str(page.get("path") or ""),
+                "title": str(page.get("title") or ""),
+                "status": str(page.get("status") or ""),
+                "kind": str(page.get("kind") or ""),
+                "protocol": str(page.get("protocol") or ""),
+                "pending_review": str(page.get("pending_review") or ""),
+                "overdue_review": str(page.get("overdue_review") or ""),
+                "escalation_candidate": str(page.get("escalation_candidate") or ""),
+                "citation_drift": str(page.get("citation_drift") or ""),
+                "citation_snapshot_gap_count": str(page.get("citation_snapshot_gap_count", "") or ""),
+                "revisit_after": str(page.get("revisit_after") or ""),
+                "escalate_after": str(page.get("escalate_after") or ""),
+                "page_signature": workspace_file_signature(root, str(page.get("path") or "")),
+            }
+            for page in review_candidates
+        ],
+    }
+    return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
+def output_pack_decision_memo_group_input_signature(
+    root: Path,
+    reviewed_candidates: list[dict[str, str]],
+    recent_outputs: list[dict[str, str]],
+    *,
+    active_protocol: str,
+) -> str:
+    payload = {
+        "active_protocol": active_protocol,
+        "reviewed_candidates": [
+            {
+                "path": str(page.get("path") or ""),
+                "title": str(page.get("title") or ""),
+                "status": str(page.get("status") or ""),
+                "kind": str(page.get("kind") or ""),
+                "protocol": str(page.get("protocol") or ""),
+                "reviewed_at": str(page.get("reviewed_at") or ""),
+                "confidence": str(page.get("confidence") or ""),
+                "page_signature": workspace_file_signature(root, str(page.get("path") or "")),
+            }
+            for page in reviewed_candidates
+        ],
+        "recent_outputs": [
+            {
+                "path": str(artifact.get("path") or ""),
+                "title": str(artifact.get("title") or ""),
+                "format": str(artifact.get("format") or ""),
+                "protocol": str(artifact.get("protocol") or ""),
+                "created_at": str(artifact.get("created_at") or ""),
+            }
+            for artifact in recent_outputs[:5]
+            if isinstance(artifact, dict)
+        ],
+    }
+    return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
+def output_pack_sop_group_input_signature(
+    root: Path,
+    ready_actions: list[dict[str, Any]],
+    execution_proposals: list[dict[str, Any]],
+    *,
+    active_protocol: str,
+) -> str:
+    payload = {
+        "active_protocol": active_protocol,
+        "execution_proposals": [
+            {
+                "action_id": str(proposal.get("action_id") or ""),
+                "title": str(proposal.get("title") or ""),
+                "risk": str(proposal.get("risk") or ""),
+                "proposal_kind": str(proposal.get("proposal_kind") or ""),
+                "protocol": str(proposal.get("protocol") or ""),
+                "summary": str(proposal.get("summary") or ""),
+                "proposal_path": str(proposal.get("proposal_path") or ""),
+                "bundle_path": str(proposal.get("bundle_path") or ""),
+                "target_paths": list(proposal.get("target_paths", []) or []),
+                "page_patch_plan": list(proposal.get("page_patch_plan", []) or []),
+                "suggested_edits": list(proposal.get("suggested_edits", []) or []),
+            }
+            for proposal in execution_proposals
+        ],
+        "ready_actions": [
+            {
+                "id": str(action.get("id") or ""),
+                "title": str(action.get("title") or ""),
+                "status": str(action.get("status") or ""),
+                "priority": str(action.get("priority") or ""),
+                "protocol": str(action.get("protocol") or ""),
+                "execution_band": str(action.get("execution_band") or ""),
+                "primary_path": str(action.get("primary_path") or ""),
+                "secondary_path": str(action.get("secondary_path") or ""),
+                "reason": str(action.get("reason") or ""),
+                "next_step": str(action.get("next_step") or ""),
+                "command_hint": str(action.get("command_hint") or ""),
+                "active": bool(action.get("active")),
+                "bundle_exists": execution_bundle_path(root, str(action.get("id") or "")).exists(),
+                "low_risk_apply": action_supports_low_risk_apply(action),
+            }
+            for action in ready_actions
+        ],
+    }
+    return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
+def build_output_pack_review_packs(
+    root: Path,
+    review_candidates: list[dict[str, str]],
+    *,
+    active_protocol: str,
+    compiled_at: str,
+) -> list[dict[str, Any]]:
+    review_packs: list[dict[str, Any]] = []
     for page in review_candidates:
         frontmatter, content = load_workspace_markdown(root, page["path"])
         reasons: list[str] = []
@@ -5734,13 +5877,14 @@ def build_output_packs(
         evidence_section = "Evidence" if kind == "decision" else "Signals"
         citations = [str(item) for item in frontmatter.get("citations", []) if isinstance(item, str) and item.strip()]
         destination = review_pack_path(root, page["path"])
+        protocol = str(frontmatter.get("protocol") or active_protocol)
         frontmatter_text = render_frontmatter(
             {
                 "id": f"review-pack-{destination.stem}",
                 "kind": "output-pack",
                 "pack_kind": "review-pack",
                 "title": f"Review Pack · {page['title']}",
-                "protocol": str(frontmatter.get("protocol") or active_protocol),
+                "protocol": protocol,
                 "target_path": page["path"],
                 "target_kind": kind,
                 "source_files": [page["path"]],
@@ -5758,7 +5902,7 @@ def build_output_packs(
             f"- Target page: `{page['path']}`",
             f"- Kind: `{kind}`",
             f"- Status: `{display_curated_status(page.get('status', 'unknown'))}`",
-            f"- Protocol: `{frontmatter.get('protocol') or active_protocol}` ({protocol_title(str(frontmatter.get('protocol') or active_protocol))})",
+            f"- Protocol: `{protocol}` ({protocol_title(protocol)})",
             f"- Review reasons: `{', '.join(reasons) or 'manual review'}`",
             f"- Revisit / Escalate: `{page.get('revisit_after', '') or 'none'}` / `{page.get('escalate_after', '') or 'none'}`",
             "",
@@ -5778,7 +5922,7 @@ def build_output_packs(
             *compact_section_lines(content, "Review History", fallback="- No review history yet."),
             "",
             "## Review Checklist",
-            *[f"- {line}" for line in PROTOCOL_LIBRARY.get(str(frontmatter.get("protocol") or active_protocol), {}).get("review", [])],
+            *[f"- {line}" for line in PROTOCOL_LIBRARY.get(protocol, {}).get("review", [])],
             "",
             "## Commands",
             f"- `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page {page['path']} --status "
@@ -5806,11 +5950,22 @@ def build_output_packs(
                 "path": relative_path(root, destination),
                 "content": "\n".join(lines) + "\n",
                 "target_path": page["path"],
-                "protocol": str(frontmatter.get("protocol") or active_protocol),
+                "protocol": protocol,
                 "reasons": ", ".join(reasons) or "manual review",
             }
         )
+    return review_packs
 
+
+def build_output_pack_decision_memos(
+    root: Path,
+    reviewed_candidates: list[dict[str, str]],
+    recent_outputs: list[dict[str, str]],
+    *,
+    active_protocol: str,
+    compiled_at: str,
+) -> list[dict[str, Any]]:
+    decision_memos: list[dict[str, Any]] = []
     for page in reviewed_candidates:
         frontmatter, content = load_workspace_markdown(root, page["path"])
         kind = str(frontmatter.get("kind") or page.get("kind") or "curated")
@@ -5819,13 +5974,14 @@ def build_output_packs(
         evidence_section = "Evidence" if kind == "decision" else "Signals"
         citations = [str(item) for item in frontmatter.get("citations", []) if isinstance(item, str) and item.strip()]
         destination = decision_memo_path(root, page["path"])
+        protocol = str(frontmatter.get("protocol") or active_protocol)
         frontmatter_text = render_frontmatter(
             {
                 "id": f"decision-memo-{destination.stem}",
                 "kind": "output-pack",
                 "pack_kind": "decision-memo",
                 "title": f"{memo_label} · {page['title']}",
-                "protocol": str(frontmatter.get("protocol") or active_protocol),
+                "protocol": protocol,
                 "target_path": page["path"],
                 "target_kind": kind,
                 "source_files": [page["path"]],
@@ -5842,7 +5998,7 @@ def build_output_packs(
             "## Overview",
             f"- Target page: `{page['path']}`",
             f"- Status: `{display_curated_status(page.get('status', 'unknown'))}`",
-            f"- Protocol: `{frontmatter.get('protocol') or active_protocol}` ({protocol_title(str(frontmatter.get('protocol') or active_protocol))})",
+            f"- Protocol: `{protocol}` ({protocol_title(protocol)})",
             f"- Reviewed at: `{page.get('reviewed_at', '') or 'unknown'}`",
             f"- Confidence: `{frontmatter.get('confidence') or page.get('confidence', '') or 'n/a'}`",
             "",
@@ -5894,24 +6050,41 @@ def build_output_packs(
                 "path": relative_path(root, destination),
                 "content": "\n".join(lines) + "\n",
                 "target_path": page["path"],
-                "protocol": str(frontmatter.get("protocol") or active_protocol),
+                "protocol": protocol,
                 "reviewed_at": page.get("reviewed_at", "") or "",
             }
         )
+    return decision_memos
 
+
+def build_output_pack_sop_drafts(
+    root: Path,
+    ready_actions: list[dict[str, Any]],
+    execution_proposals: list[dict[str, Any]],
+    *,
+    active_protocol: str,
+    compiled_at: str,
+) -> tuple[list[dict[str, Any]], int]:
+    sop_drafts: list[dict[str, Any]] = []
+    proposal_by_action = {
+        str(proposal.get("action_id") or ""): proposal
+        for proposal in execution_proposals
+        if proposal.get("action_id")
+    }
     proposal_count = 0
     for proposal in execution_proposals:
         action_id = str(proposal.get("action_id") or "").strip()
         if not action_id:
             continue
         destination = sop_draft_path(root, action_id)
+        protocol = str(proposal.get("protocol") or active_protocol)
         frontmatter_text = render_frontmatter(
             {
                 "id": f"sop-draft-{destination.stem}",
                 "kind": "output-pack",
                 "pack_kind": "sop-draft",
                 "title": f"SOP Draft · {proposal.get('title') or action_id}",
-                "protocol": str(proposal.get("protocol") or active_protocol),
+                "protocol": protocol,
                 "action_id": action_id,
                 "source_files": [str(proposal.get("proposal_path") or "")],
                 "generated_by": "aiwiki-compile",
@@ -5929,7 +6102,7 @@ def build_output_packs(
             f"- Action id: `{action_id}`",
             f"- Risk: `{proposal.get('risk', 'medium')}`",
             f"- Proposal kind: `{proposal.get('proposal_kind', 'manual-repair')}`",
-            f"- Protocol: `{proposal.get('protocol') or active_protocol}` ({protocol_title(str(proposal.get('protocol') or active_protocol))})",
+            f"- Protocol: `{protocol}` ({protocol_title(protocol)})",
             f"- Targets: `{', '.join(proposal.get('target_paths', [])) or 'none'}`",
             f"- Bundle: `{bundle_path or 'none'}`",
             "",
@@ -5960,12 +6133,7 @@ def build_output_packs(
                     f" | sections `{', '.join(patch.get('sections', [])) or 'none'}`"
                 )
                 lines.append(f"  - {patch.get('summary', '检查相关页面并补充修复说明。')}")
-        lines.extend(
-            [
-                "",
-                "## Suggested Edits",
-            ]
-        )
+        lines.extend(["", "## Suggested Edits"])
         edits = proposal.get("suggested_edits", [])
         if not edits:
             lines.append("- 当前没有额外建议。")
@@ -5988,7 +6156,7 @@ def build_output_packs(
                 "path": relative_path(root, destination),
                 "content": "\n".join(lines) + "\n",
                 "action_id": action_id,
-                "protocol": str(proposal.get("protocol") or active_protocol),
+                "protocol": protocol,
                 "risk": str(proposal.get("risk") or "medium"),
             }
         )
@@ -6074,7 +6242,48 @@ def build_output_packs(
                 "risk": "low" if action_supports_low_risk_apply(action) else "medium",
             }
         )
+    return sop_drafts, proposal_count
 
+
+def build_output_packs(
+    root: Path,
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    memory: dict[str, Any],
+    protocol_state: dict[str, Any],
+    recent_outputs: list[dict[str, str]],
+    compiled_at: str,
+    *,
+    knowledge_lifecycle: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    active_protocol = protocol_state["active_protocol"]
+    lifecycle_summary = knowledge_lifecycle_governance_summary(
+        knowledge_lifecycle,
+        active_protocol=active_protocol,
+    )
+    review_candidates = output_pack_review_candidates(decisions, judgments, active_protocol=active_protocol)
+    reviewed_candidates = output_pack_reviewed_candidates(decisions, judgments)
+    ready_actions, execution_proposals = output_pack_repair_plan_candidates(memory)
+    review_packs = build_output_pack_review_packs(
+        root,
+        review_candidates,
+        active_protocol=active_protocol,
+        compiled_at=compiled_at,
+    )
+    decision_memos = build_output_pack_decision_memos(
+        root,
+        reviewed_candidates,
+        recent_outputs,
+        active_protocol=active_protocol,
+        compiled_at=compiled_at,
+    )
+    sop_drafts, proposal_count = build_output_pack_sop_drafts(
+        root,
+        ready_actions,
+        execution_proposals,
+        active_protocol=active_protocol,
+        compiled_at=compiled_at,
+    )
     counts = {
         "review_packs": len(review_packs),
         "decision_memos": len(decision_memos),
@@ -6089,6 +6298,159 @@ def build_output_packs(
         "sop_drafts": sop_drafts,
         "lifecycle_summary": lifecycle_summary,
         "counts": counts,
+    }
+
+
+def build_output_packs_incremental(
+    root: Path,
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    memory: dict[str, Any],
+    protocol_state: dict[str, Any],
+    recent_outputs: list[dict[str, str]],
+    compiled_at: str,
+    *,
+    knowledge_lifecycle: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    active_protocol = protocol_state["active_protocol"]
+    lifecycle_summary = knowledge_lifecycle_governance_summary(
+        knowledge_lifecycle,
+        active_protocol=active_protocol,
+    )
+    review_candidates = output_pack_review_candidates(decisions, judgments, active_protocol=active_protocol)
+    reviewed_candidates = output_pack_reviewed_candidates(decisions, judgments)
+    ready_actions, execution_proposals = output_pack_repair_plan_candidates(memory)
+    previous_state = load_output_pack_build_state(root)
+    previous_group_records = previous_state.get("group_records", {})
+    signatures = {
+        "lifecycle_summary": output_pack_lifecycle_summary_input_signature(
+            lifecycle_summary,
+            active_protocol=active_protocol,
+        ),
+        "review_packs": output_pack_review_group_input_signature(
+            root,
+            review_candidates,
+            active_protocol=active_protocol,
+        ),
+        "decision_memos": output_pack_decision_memo_group_input_signature(
+            root,
+            reviewed_candidates,
+            recent_outputs,
+            active_protocol=active_protocol,
+        ),
+        "sop_drafts": output_pack_sop_group_input_signature(
+            root,
+            ready_actions,
+            execution_proposals,
+            active_protocol=active_protocol,
+        ),
+    }
+    dirty_groups: list[str] = []
+    clean_groups: list[str] = []
+    review_packs: list[dict[str, Any]]
+    decision_memos: list[dict[str, Any]]
+    sop_drafts: list[dict[str, Any]]
+
+    lifecycle_reusable = (
+        isinstance(previous_group_records.get("lifecycle_summary"), dict)
+        and str(previous_group_records["lifecycle_summary"].get("input_signature") or "") == signatures["lifecycle_summary"]
+    )
+    if lifecycle_reusable:
+        clean_groups.append("lifecycle_summary")
+    else:
+        dirty_groups.append("lifecycle_summary")
+
+    previous_review_packs = previous_state.get("review_packs", [])
+    review_reusable = (
+        isinstance(previous_group_records.get("review_packs"), dict)
+        and str(previous_group_records["review_packs"].get("input_signature") or "") == signatures["review_packs"]
+        and output_pack_group_is_reusable(root, previous_review_packs)
+    )
+    if review_reusable:
+        review_packs = [dict(record) for record in previous_review_packs]
+        clean_groups.append("review_packs")
+    else:
+        review_packs = build_output_pack_review_packs(
+            root,
+            review_candidates,
+            active_protocol=active_protocol,
+            compiled_at=compiled_at,
+        )
+        dirty_groups.append("review_packs")
+
+    previous_decision_memos = previous_state.get("decision_memos", [])
+    memo_reusable = (
+        isinstance(previous_group_records.get("decision_memos"), dict)
+        and str(previous_group_records["decision_memos"].get("input_signature") or "") == signatures["decision_memos"]
+        and output_pack_group_is_reusable(root, previous_decision_memos)
+    )
+    if memo_reusable:
+        decision_memos = [dict(record) for record in previous_decision_memos]
+        clean_groups.append("decision_memos")
+    else:
+        decision_memos = build_output_pack_decision_memos(
+            root,
+            reviewed_candidates,
+            recent_outputs,
+            active_protocol=active_protocol,
+            compiled_at=compiled_at,
+        )
+        dirty_groups.append("decision_memos")
+
+    previous_sop_drafts = previous_state.get("sop_drafts", [])
+    sop_reusable = (
+        isinstance(previous_group_records.get("sop_drafts"), dict)
+        and str(previous_group_records["sop_drafts"].get("input_signature") or "") == signatures["sop_drafts"]
+        and output_pack_group_is_reusable(root, previous_sop_drafts)
+    )
+    if sop_reusable:
+        sop_drafts = [dict(record) for record in previous_sop_drafts]
+        clean_groups.append("sop_drafts")
+        proposal_count = int(previous_state.get("counts", {}).get("execution_proposal_sops", 0) or 0)
+    else:
+        sop_drafts, proposal_count = build_output_pack_sop_drafts(
+            root,
+            ready_actions,
+            execution_proposals,
+            active_protocol=active_protocol,
+            compiled_at=compiled_at,
+        )
+        dirty_groups.append("sop_drafts")
+
+    counts = {
+        "review_packs": len(review_packs),
+        "decision_memos": len(decision_memos),
+        "sop_drafts": len(sop_drafts),
+        "execution_proposal_sops": proposal_count,
+    }
+    output_packs = {
+        "compiled_at": compiled_at,
+        "active_protocol": active_protocol,
+        "review_packs": review_packs,
+        "decision_memos": decision_memos,
+        "sop_drafts": sop_drafts,
+        "lifecycle_summary": lifecycle_summary,
+        "counts": counts,
+    }
+    state_document = {
+        "version": 1,
+        "generated_at": compiled_at,
+        "active_protocol": active_protocol,
+        "group_records": {
+            group: {"input_signature": signature}
+            for group, signature in signatures.items()
+        },
+        "lifecycle_summary": lifecycle_summary,
+        "review_packs": output_pack_state_records(review_packs),
+        "decision_memos": output_pack_state_records(decision_memos),
+        "sop_drafts": output_pack_state_records(sop_drafts),
+        "counts": counts,
+    }
+    return {
+        "output_packs": output_packs,
+        "state_document": state_document,
+        "dirty_groups": dirty_groups,
+        "clean_groups": clean_groups,
     }
 
 
@@ -6215,6 +6577,320 @@ def pilot_stage(metrics: dict[str, int]) -> tuple[str, str]:
     return ("compounding", "已经出现判断、pack、执行和复审的复利迹象。")
 
 
+def domain_pilot_state_scorecard(scorecard: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in scorecard.items() if key != "content"}
+
+
+def domain_pilot_scorecard_is_reusable(root: Path, scorecard: dict[str, Any]) -> bool:
+    path = str(scorecard.get("path") or "")
+    return bool(path) and (root / path).exists()
+
+
+def domain_pilot_protocol_inputs(
+    protocol: str,
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    recent_outputs: list[dict[str, str]],
+    all_outputs: list[dict[str, str]],
+    output_packs: dict[str, Any],
+    execution_audit: dict[str, Any],
+    memory: dict[str, Any],
+    *,
+    knowledge_lifecycle: dict[str, Any],
+    material_routing: dict[str, Any],
+    active_protocol: str,
+) -> dict[str, Any]:
+    lifecycle_summary = protocol_related_concept_lifecycle_summary(
+        knowledge_lifecycle,
+        material_routing,
+        protocol=protocol,
+    )
+    receipt_counts = {
+        str(row.get("protocol") or DEFAULT_PROTOCOL): int(row.get("count") or 0)
+        for row in execution_audit.get("protocols", [])
+        if isinstance(row, dict)
+    }
+    repair_plan = memory.get("health", {}).get("repair_plan", {})
+    execution_proposals = [
+        {
+            "action_id": str(proposal.get("action_id") or ""),
+            "title": str(proposal.get("title") or ""),
+            "protocol": str(proposal.get("protocol") or DEFAULT_PROTOCOL),
+            "proposal_kind": str(proposal.get("proposal_kind") or ""),
+            "summary": str(proposal.get("summary") or ""),
+        }
+        for proposal in repair_plan.get("execution_proposals", [])
+        if isinstance(proposal, dict) and str(proposal.get("protocol") or DEFAULT_PROTOCOL) == protocol
+    ]
+    return {
+        "protocol": protocol,
+        "active_protocol": active_protocol,
+        "decisions": [
+            {
+                "title": str(page.get("title") or ""),
+                "path": str(page.get("path") or ""),
+                "status": str(page.get("status") or ""),
+                "pending_review": str(page.get("pending_review") or ""),
+                "overdue_review": str(page.get("overdue_review") or ""),
+                "escalation_candidate": str(page.get("escalation_candidate") or ""),
+                "reviewed_at": str(page.get("reviewed_at") or ""),
+            }
+            for page in decisions
+            if str(page.get("protocol") or DEFAULT_PROTOCOL) == protocol
+        ],
+        "judgments": [
+            {
+                "title": str(page.get("title") or ""),
+                "path": str(page.get("path") or ""),
+                "status": str(page.get("status") or ""),
+                "pending_review": str(page.get("pending_review") or ""),
+                "overdue_review": str(page.get("overdue_review") or ""),
+                "escalation_candidate": str(page.get("escalation_candidate") or ""),
+                "reviewed_at": str(page.get("reviewed_at") or ""),
+            }
+            for page in judgments
+            if str(page.get("protocol") or DEFAULT_PROTOCOL) == protocol
+        ],
+        "all_outputs": [
+            {
+                "title": str(artifact.get("title") or ""),
+                "path": str(artifact.get("path") or ""),
+                "format": str(artifact.get("format") or ""),
+                "protocol": str(artifact.get("protocol") or DEFAULT_PROTOCOL),
+                "created_at": str(artifact.get("created_at") or ""),
+            }
+            for artifact in all_outputs
+            if str(artifact.get("protocol") or DEFAULT_PROTOCOL) == protocol
+        ],
+        "recent_outputs": [
+            {
+                "title": str(artifact.get("title") or ""),
+                "path": str(artifact.get("path") or ""),
+                "format": str(artifact.get("format") or ""),
+                "protocol": str(artifact.get("protocol") or DEFAULT_PROTOCOL),
+                "created_at": str(artifact.get("created_at") or ""),
+            }
+            for artifact in recent_outputs
+            if str(artifact.get("protocol") or DEFAULT_PROTOCOL) == protocol
+        ][:5],
+        "review_packs": [
+            {
+                "title": str(pack.get("title") or ""),
+                "path": str(pack.get("path") or ""),
+            }
+            for pack in output_packs.get("review_packs", [])
+            if str(pack.get("protocol") or DEFAULT_PROTOCOL) == protocol
+        ],
+        "decision_memos": [
+            {
+                "title": str(pack.get("title") or ""),
+                "path": str(pack.get("path") or ""),
+            }
+            for pack in output_packs.get("decision_memos", [])
+            if str(pack.get("protocol") or DEFAULT_PROTOCOL) == protocol
+        ],
+        "sop_drafts": [
+            {
+                "title": str(pack.get("title") or ""),
+                "path": str(pack.get("path") or ""),
+                "risk": str(pack.get("risk") or "medium"),
+            }
+            for pack in output_packs.get("sop_drafts", [])
+            if str(pack.get("protocol") or DEFAULT_PROTOCOL) == protocol
+        ],
+        "receipt_count": receipt_counts.get(protocol, 0),
+        "execution_proposals": execution_proposals,
+        "lifecycle_summary": lifecycle_summary,
+    }
+
+
+def domain_pilot_protocol_input_signature(protocol_inputs: dict[str, Any]) -> str:
+    return sha256_bytes(json.dumps(protocol_inputs, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
+def build_domain_pilot_scorecard(
+    root: Path,
+    protocol_inputs: dict[str, Any],
+    *,
+    compiled_at: str,
+) -> dict[str, Any]:
+    protocol = str(protocol_inputs.get("protocol") or DEFAULT_PROTOCOL)
+    active_protocol = str(protocol_inputs.get("active_protocol") or DEFAULT_PROTOCOL)
+    protocol_decisions = list(protocol_inputs.get("decisions", []) or [])
+    protocol_judgments = list(protocol_inputs.get("judgments", []) or [])
+    protocol_outputs = list(protocol_inputs.get("all_outputs", []) or [])
+    protocol_recent_outputs = list(protocol_inputs.get("recent_outputs", []) or [])
+    lifecycle_summary = dict(protocol_inputs.get("lifecycle_summary", {}) or {})
+    lifecycle_counts = lifecycle_summary.get("counts", {})
+    metrics = {
+        "decisions": len(protocol_decisions),
+        "judgments": len(protocol_judgments),
+        "reviewed": sum(
+            1
+            for page in [*protocol_decisions, *protocol_judgments]
+            if str(page.get("reviewed_at") or "") and str(page.get("pending_review") or "") != "true"
+        ),
+        "pending": sum(1 for page in [*protocol_decisions, *protocol_judgments] if page.get("pending_review") == "true"),
+        "overdue": sum(1 for page in [*protocol_decisions, *protocol_judgments] if page.get("overdue_review") == "true"),
+        "escalation": sum(
+            1 for page in [*protocol_decisions, *protocol_judgments] if page.get("escalation_candidate") == "true"
+        ),
+        "outputs": len(protocol_outputs),
+        "review_packs": len(list(protocol_inputs.get("review_packs", []) or [])),
+        "decision_memos": len(list(protocol_inputs.get("decision_memos", []) or [])),
+        "sop_drafts": len(list(protocol_inputs.get("sop_drafts", []) or [])),
+        "receipts": int(protocol_inputs.get("receipt_count", 0) or 0),
+        "execution_proposals": len(list(protocol_inputs.get("execution_proposals", []) or [])),
+        "lifecycle_concept_backlog": int(lifecycle_counts.get("concept_backlog", 0) or 0),
+        "lifecycle_retired_concepts": int(lifecycle_counts.get("retired_concepts", 0) or 0),
+        "lifecycle_dominant_concepts": int(lifecycle_counts.get("dominant_related_concepts", 0) or 0),
+        "lifecycle_mixed_concepts": int(lifecycle_counts.get("mixed_related_concepts", 0) or 0),
+        "lifecycle_bridge_concepts": int(lifecycle_counts.get("ambiguity_bridge_concepts", 0) or 0),
+    }
+    stage, stage_summary = pilot_stage(metrics)
+    gaps: list[str] = []
+    if lifecycle_counts.get("concept_backlog", 0):
+        gaps.append(
+            f"有 `{lifecycle_counts.get('concept_backlog', 0)}` 个 protocol-related lifecycle concept backlog 尚未收敛。"
+        )
+    ambiguity_count = int(lifecycle_counts.get("mixed_related_concepts", 0)) + int(
+        lifecycle_counts.get("ambiguity_bridge_concepts", 0)
+    )
+    if ambiguity_count:
+        gaps.append(f"有 `{ambiguity_count}` 个 protocol-related concept 仍处于 mixed / bridge ambiguity，需要人工校准归属。")
+    if metrics["decisions"] + metrics["judgments"] == 0:
+        gaps.append("还没有该协议的 `decision / judgment` 资产。")
+    if metrics["reviewed"] == 0:
+        gaps.append("还没有 reviewed judgment / decision。")
+    if metrics["outputs"] < 2:
+        gaps.append("可回流 outputs 还不够密。")
+    if metrics["pending"] > metrics["reviewed"]:
+        gaps.append("待审页面多于已审资产。")
+    if metrics["review_packs"] == 0 and metrics["pending"] > 0:
+        gaps.append("需要先把 pending review 炼成 review packs。")
+    if metrics["decision_memos"] == 0 and metrics["reviewed"] > 0:
+        gaps.append("已审判断还没有形成 decision memos。")
+    if metrics["sop_drafts"] == 0 and metrics["execution_proposals"] > 0:
+        gaps.append("执行提案还没有形成 SOP drafts。")
+    if metrics["receipts"] == 0 and metrics["sop_drafts"] > 0:
+        gaps.append("还没有 execution receipt，可先从 dry-run / low-risk apply 开始。")
+    next_moves = [
+        PROTOCOL_LIBRARY[protocol]["focus"][0],
+        PROTOCOL_LIBRARY[protocol]["review"][0],
+        PROTOCOL_LIBRARY[protocol]["nightly"][0],
+    ]
+    if gaps:
+        next_moves.insert(0, gaps[0])
+    destination = pilot_scorecard_path(root, protocol)
+    frontmatter_text = render_frontmatter(
+        {
+            "id": f"pilot-scorecard-{slugify(protocol)}",
+            "kind": "pilot-scorecard",
+            "title": f"{protocol_title(protocol)} Pilot Scorecard",
+            "protocol": protocol,
+            "generated_by": "aiwiki-compile",
+            "last_compiled_at": compiled_at,
+        }
+    )
+    lines = [
+        frontmatter_text,
+        "",
+        f"# {protocol_title(protocol)} Pilot Scorecard",
+        "",
+        "## Overview",
+        f"- Protocol: `{protocol}` ({protocol_title(protocol)})",
+        f"- Stage: `{stage}`",
+        f"- Summary: {stage_summary}",
+        f"- 当前协议是否 active：`{'yes' if protocol == active_protocol else 'no'}`",
+        "",
+        "## Density Snapshot",
+        f"- Decisions / Judgments: `{metrics['decisions']}` / `{metrics['judgments']}`",
+        f"- Reviewed / Pending: `{metrics['reviewed']}` / `{metrics['pending']}`",
+        f"- Overdue / Escalation: `{metrics['overdue']}` / `{metrics['escalation']}`",
+        f"- Outputs: `{metrics['outputs']}`",
+        f"- Review packs / Decision memos / SOP drafts: `{metrics['review_packs']}` / `{metrics['decision_memos']}` / `{metrics['sop_drafts']}`",
+        f"- Execution proposals / Receipts: `{metrics['execution_proposals']}` / `{metrics['receipts']}`",
+        f"- Protocol-related lifecycle backlog / retired concepts: `{metrics['lifecycle_concept_backlog']}` / `{metrics['lifecycle_retired_concepts']}`",
+        "",
+        "## Protocol Focus",
+        *[f"- {line}" for line in PROTOCOL_LIBRARY[protocol]["focus"]],
+        "",
+        "## Gaps",
+    ]
+    if not gaps:
+        lines.append("- 当前没有明显结构性缺口。")
+    else:
+        lines.extend(f"- {gap}" for gap in gaps)
+    lines.extend(
+        [
+            "",
+            "## Lifecycle Governance",
+            "- 以下 concept lifecycle 摘要优先统计 supporting sources 的 `material-routing top_protocols` 首位命中；若来源在当前协议仍是 `warm/hot evidence`，或属于 `cross_protocol_bridge` 且当前协议仍位于 top2，也会保守纳入。",
+            f"- Inference mode: `{lifecycle_summary.get('inference_mode', 'unknown')}`",
+            f"- Ambiguity mode: `{lifecycle_summary.get('ambiguity_mode', 'unknown')}`",
+            f"- Related direct / secondary / bridge concepts: `{lifecycle_counts.get('direct_related_concepts', 0)}` / `{lifecycle_counts.get('secondary_related_concepts', 0)}` / `{lifecycle_counts.get('bridge_related_concepts', 0)}`",
+            f"- Related dominant / mixed / bridge concepts: `{lifecycle_counts.get('dominant_related_concepts', 0)}` / `{lifecycle_counts.get('mixed_related_concepts', 0)}` / `{lifecycle_counts.get('ambiguity_bridge_concepts', 0)}`",
+            f"- Related review concepts: `{lifecycle_counts.get('review_concepts', 0)}`",
+            f"- Related revisit concepts: `{lifecycle_counts.get('revisit_concepts', 0)}`",
+            f"- Related retired concepts: `{lifecycle_counts.get('retired_concepts', 0)}`",
+            f"- Related active concepts: `{lifecycle_counts.get('active_concepts', 0)}`",
+            "",
+            "## Protocol Ambiguity Watchlist",
+        ]
+    )
+    if not lifecycle_summary.get("ambiguity_watchlist"):
+        lines.append("- 当前没有 mixed / bridge ambiguity concept。")
+    else:
+        lines.append("- 以下概念仍需要人工判断是当前协议主归属、混合归属，还是桥接归属。")
+        for entry in lifecycle_summary.get("ambiguity_watchlist", [])[:10]:
+            lines.append(render_knowledge_lifecycle_entry_summary(entry))
+    lines.extend(["", "## Protocol-Related Lifecycle Concept Backlog"])
+    if not lifecycle_summary.get("concept_backlog"):
+        lines.append("- 当前没有 protocol-related lifecycle concept backlog。")
+    else:
+        for entry in lifecycle_summary.get("concept_backlog", [])[:10]:
+            lines.append(render_knowledge_lifecycle_entry_summary(entry))
+    lines.extend(["", "## Protocol-Related Retired Concepts"])
+    if not lifecycle_summary.get("retired_concepts"):
+        lines.append("- 当前没有 protocol-related retired concept。")
+    else:
+        for entry in lifecycle_summary.get("retired_concepts", [])[:10]:
+            lines.append(render_knowledge_lifecycle_entry_summary(entry))
+    lines.extend(["", "## Next Moves"])
+    lines.extend(f"- {item}" for item in next_moves[:5])
+    lines.extend(["", "## Recent Outputs"])
+    if not protocol_recent_outputs:
+        lines.append("- 当前没有最近 output。")
+    else:
+        for artifact in protocol_recent_outputs:
+            lines.append(
+                f"- {pack_workspace_link(artifact['path'], artifact['title'])}"
+                f" | format `{artifact['format'] or 'unknown'}`"
+                f" | created `{artifact['created_at'] or 'unknown'}`"
+            )
+    lines.extend(
+        [
+            "",
+            "## Related Links",
+            f"- {pack_workspace_link(f'schema/protocols/{protocol}/index.md', f'{protocol_title(protocol)} 协议规则')}",
+            "- [协议总览](../../../wiki/indexes/protocols.md)",
+            "- [输出 Pack 总览](../../../wiki/indexes/output-packs.md)",
+            "- [审阅中心](../../../wiki/indexes/review-center.md)",
+            "- [执行中心](../../../wiki/indexes/execution-center.md)",
+        ]
+    )
+    return {
+        "protocol": protocol,
+        "title": f"{protocol_title(protocol)} Pilot Scorecard",
+        "path": relative_path(root, destination),
+        "content": "\n".join(lines) + "\n",
+        "stage": stage,
+        "summary": stage_summary,
+        "metrics": metrics,
+        "lifecycle_summary": lifecycle_summary,
+    }
+
+
 def build_domain_pilots(
     root: Path,
     decisions: list[dict[str, str]],
@@ -6233,225 +6909,118 @@ def build_domain_pilots(
     active_protocol = protocol_state["active_protocol"]
     knowledge_lifecycle = knowledge_lifecycle or load_knowledge_lifecycle_state(root)
     material_routing = material_routing or load_material_routing_state(root)
-    review_pack_counts: dict[str, int] = {}
-    decision_memo_counts: dict[str, int] = {}
-    sop_draft_counts: dict[str, int] = {}
-    for pack in output_packs.get("review_packs", []):
-        protocol = str(pack.get("protocol") or DEFAULT_PROTOCOL)
-        review_pack_counts[protocol] = review_pack_counts.get(protocol, 0) + 1
-    for pack in output_packs.get("decision_memos", []):
-        protocol = str(pack.get("protocol") or DEFAULT_PROTOCOL)
-        decision_memo_counts[protocol] = decision_memo_counts.get(protocol, 0) + 1
-    for pack in output_packs.get("sop_drafts", []):
-        protocol = str(pack.get("protocol") or DEFAULT_PROTOCOL)
-        sop_draft_counts[protocol] = sop_draft_counts.get(protocol, 0) + 1
-    receipt_counts = {
-        str(row.get("protocol") or DEFAULT_PROTOCOL): int(row.get("count") or 0)
-        for row in execution_audit.get("protocols", [])
-        if isinstance(row, dict)
-    }
-    repair_plan = memory.get("health", {}).get("repair_plan", {})
-    proposal_counts: dict[str, int] = {}
-    for proposal in repair_plan.get("execution_proposals", []):
-        if not isinstance(proposal, dict):
-            continue
-        protocol = str(proposal.get("protocol") or DEFAULT_PROTOCOL)
-        proposal_counts[protocol] = proposal_counts.get(protocol, 0) + 1
-
-    scorecards: list[dict[str, Any]] = []
-    for protocol in sorted(PROTOCOL_LIBRARY):
-        protocol_decisions = [page for page in decisions if page.get("protocol") == protocol]
-        protocol_judgments = [page for page in judgments if page.get("protocol") == protocol]
-        protocol_outputs = [artifact for artifact in all_outputs if artifact.get("protocol") == protocol]
-        protocol_recent_outputs = [artifact for artifact in recent_outputs if artifact.get("protocol") == protocol][:5]
-        lifecycle_summary = protocol_related_concept_lifecycle_summary(
-            knowledge_lifecycle,
-            material_routing,
-            protocol=protocol,
+    scorecards = [
+        build_domain_pilot_scorecard(
+            root,
+            domain_pilot_protocol_inputs(
+                protocol,
+                decisions,
+                judgments,
+                recent_outputs,
+                all_outputs,
+                output_packs,
+                execution_audit,
+                memory,
+                knowledge_lifecycle=knowledge_lifecycle,
+                material_routing=material_routing,
+                active_protocol=active_protocol,
+            ),
+            compiled_at=compiled_at,
         )
-        lifecycle_counts = lifecycle_summary.get("counts", {})
-        pending = sum(1 for page in [*protocol_decisions, *protocol_judgments] if page.get("pending_review") == "true")
-        reviewed = sum(
-            1
-            for page in [*protocol_decisions, *protocol_judgments]
-            if page.get("reviewed_at") and page.get("pending_review") != "true"
-        )
-        overdue = sum(1 for page in [*protocol_decisions, *protocol_judgments] if page.get("overdue_review") == "true")
-        escalation = sum(
-            1 for page in [*protocol_decisions, *protocol_judgments] if page.get("escalation_candidate") == "true"
-        )
-        metrics = {
-            "decisions": len(protocol_decisions),
-            "judgments": len(protocol_judgments),
-            "reviewed": reviewed,
-            "pending": pending,
-            "overdue": overdue,
-            "escalation": escalation,
-            "outputs": len(protocol_outputs),
-            "review_packs": review_pack_counts.get(protocol, 0),
-            "decision_memos": decision_memo_counts.get(protocol, 0),
-            "sop_drafts": sop_draft_counts.get(protocol, 0),
-            "receipts": receipt_counts.get(protocol, 0),
-            "execution_proposals": proposal_counts.get(protocol, 0),
-            "lifecycle_concept_backlog": lifecycle_counts.get("concept_backlog", 0),
-            "lifecycle_retired_concepts": lifecycle_counts.get("retired_concepts", 0),
-            "lifecycle_dominant_concepts": lifecycle_counts.get("dominant_related_concepts", 0),
-            "lifecycle_mixed_concepts": lifecycle_counts.get("mixed_related_concepts", 0),
-            "lifecycle_bridge_concepts": lifecycle_counts.get("ambiguity_bridge_concepts", 0),
-        }
-        stage, stage_summary = pilot_stage(metrics)
-        gaps: list[str] = []
-        if lifecycle_counts.get("concept_backlog", 0):
-            gaps.append(
-                f"有 `{lifecycle_counts.get('concept_backlog', 0)}` 个 protocol-related lifecycle concept backlog 尚未收敛。"
-            )
-        ambiguity_count = int(lifecycle_counts.get("mixed_related_concepts", 0)) + int(
-            lifecycle_counts.get("ambiguity_bridge_concepts", 0)
-        )
-        if ambiguity_count:
-            gaps.append(f"有 `{ambiguity_count}` 个 protocol-related concept 仍处于 mixed / bridge ambiguity，需要人工校准归属。")
-        if metrics["decisions"] + metrics["judgments"] == 0:
-            gaps.append("还没有该协议的 `decision / judgment` 资产。")
-        if metrics["reviewed"] == 0:
-            gaps.append("还没有 reviewed judgment / decision。")
-        if metrics["outputs"] < 2:
-            gaps.append("可回流 outputs 还不够密。")
-        if metrics["pending"] > metrics["reviewed"]:
-            gaps.append("待审页面多于已审资产。")
-        if metrics["review_packs"] == 0 and metrics["pending"] > 0:
-            gaps.append("需要先把 pending review 炼成 review packs。")
-        if metrics["decision_memos"] == 0 and metrics["reviewed"] > 0:
-            gaps.append("已审判断还没有形成 decision memos。")
-        if metrics["sop_drafts"] == 0 and metrics["execution_proposals"] > 0:
-            gaps.append("执行提案还没有形成 SOP drafts。")
-        if metrics["receipts"] == 0 and metrics["sop_drafts"] > 0:
-            gaps.append("还没有 execution receipt，可先从 dry-run / low-risk apply 开始。")
-        next_moves = [
-            PROTOCOL_LIBRARY[protocol]["focus"][0],
-            PROTOCOL_LIBRARY[protocol]["review"][0],
-            PROTOCOL_LIBRARY[protocol]["nightly"][0],
-        ]
-        if gaps:
-            next_moves.insert(0, gaps[0])
-        destination = pilot_scorecard_path(root, protocol)
-        frontmatter_text = render_frontmatter(
-            {
-                "id": f"pilot-scorecard-{slugify(protocol)}",
-                "kind": "pilot-scorecard",
-                "title": f"{protocol_title(protocol)} Pilot Scorecard",
-                "protocol": protocol,
-                "generated_by": "aiwiki-compile",
-                "last_compiled_at": compiled_at,
-            }
-        )
-        lines = [
-            frontmatter_text,
-            "",
-            f"# {protocol_title(protocol)} Pilot Scorecard",
-            "",
-            "## Overview",
-            f"- Protocol: `{protocol}` ({protocol_title(protocol)})",
-            f"- Stage: `{stage}`",
-            f"- Summary: {stage_summary}",
-            f"- 当前协议是否 active：`{'yes' if protocol == active_protocol else 'no'}`",
-            "",
-            "## Density Snapshot",
-            f"- Decisions / Judgments: `{metrics['decisions']}` / `{metrics['judgments']}`",
-            f"- Reviewed / Pending: `{metrics['reviewed']}` / `{metrics['pending']}`",
-            f"- Overdue / Escalation: `{metrics['overdue']}` / `{metrics['escalation']}`",
-            f"- Outputs: `{metrics['outputs']}`",
-            f"- Review packs / Decision memos / SOP drafts: `{metrics['review_packs']}` / `{metrics['decision_memos']}` / `{metrics['sop_drafts']}`",
-            f"- Execution proposals / Receipts: `{metrics['execution_proposals']}` / `{metrics['receipts']}`",
-            f"- Protocol-related lifecycle backlog / retired concepts: `{metrics['lifecycle_concept_backlog']}` / `{metrics['lifecycle_retired_concepts']}`",
-            "",
-            "## Protocol Focus",
-            *[f"- {line}" for line in PROTOCOL_LIBRARY[protocol]["focus"]],
-            "",
-            "## Gaps",
-        ]
-        if not gaps:
-            lines.append("- 当前没有明显结构性缺口。")
-        else:
-            lines.extend(f"- {gap}" for gap in gaps)
-        lines.extend(
-            [
-                "",
-                "## Lifecycle Governance",
-                "- 以下 concept lifecycle 摘要优先统计 supporting sources 的 `material-routing top_protocols` 首位命中；若来源在当前协议仍是 `warm/hot evidence`，或属于 `cross_protocol_bridge` 且当前协议仍位于 top2，也会保守纳入。",
-                f"- Inference mode: `{lifecycle_summary.get('inference_mode', 'unknown')}`",
-                f"- Ambiguity mode: `{lifecycle_summary.get('ambiguity_mode', 'unknown')}`",
-                f"- Related direct / secondary / bridge concepts: `{lifecycle_counts.get('direct_related_concepts', 0)}` / `{lifecycle_counts.get('secondary_related_concepts', 0)}` / `{lifecycle_counts.get('bridge_related_concepts', 0)}`",
-                f"- Related dominant / mixed / bridge concepts: `{lifecycle_counts.get('dominant_related_concepts', 0)}` / `{lifecycle_counts.get('mixed_related_concepts', 0)}` / `{lifecycle_counts.get('ambiguity_bridge_concepts', 0)}`",
-                f"- Related review concepts: `{lifecycle_counts.get('review_concepts', 0)}`",
-                f"- Related revisit concepts: `{lifecycle_counts.get('revisit_concepts', 0)}`",
-                f"- Related retired concepts: `{lifecycle_counts.get('retired_concepts', 0)}`",
-                f"- Related active concepts: `{lifecycle_counts.get('active_concepts', 0)}`",
-                "",
-                "## Protocol Ambiguity Watchlist",
-            ]
-        )
-        if not lifecycle_summary.get("ambiguity_watchlist"):
-            lines.append("- 当前没有 mixed / bridge ambiguity concept。")
-        else:
-            lines.append("- 以下概念仍需要人工判断是当前协议主归属、混合归属，还是桥接归属。")
-            for entry in lifecycle_summary.get("ambiguity_watchlist", [])[:10]:
-                lines.append(render_knowledge_lifecycle_entry_summary(entry))
-        lines.extend(
-            [
-                "",
-                "## Protocol-Related Lifecycle Concept Backlog",
-            ]
-        )
-        if not lifecycle_summary.get("concept_backlog"):
-            lines.append("- 当前没有 protocol-related lifecycle concept backlog。")
-        else:
-            for entry in lifecycle_summary.get("concept_backlog", [])[:10]:
-                lines.append(render_knowledge_lifecycle_entry_summary(entry))
-        lines.extend(["", "## Protocol-Related Retired Concepts"])
-        if not lifecycle_summary.get("retired_concepts"):
-            lines.append("- 当前没有 protocol-related retired concept。")
-        else:
-            for entry in lifecycle_summary.get("retired_concepts", [])[:10]:
-                lines.append(render_knowledge_lifecycle_entry_summary(entry))
-        lines.extend(["", "## Next Moves"])
-        lines.extend(f"- {item}" for item in next_moves[:5])
-        lines.extend(["", "## Recent Outputs"])
-        if not protocol_recent_outputs:
-            lines.append("- 当前没有最近 output。")
-        else:
-            for artifact in protocol_recent_outputs:
-                lines.append(
-                    f"- {pack_workspace_link(artifact['path'], artifact['title'])}"
-                    f" | format `{artifact['format'] or 'unknown'}`"
-                    f" | created `{artifact['created_at'] or 'unknown'}`"
-                )
-        lines.extend(
-            [
-                "",
-                "## Related Links",
-                f"- {pack_workspace_link(f'schema/protocols/{protocol}/index.md', f'{protocol_title(protocol)} 协议规则')}",
-                f"- {pack_workspace_link('wiki/indexes/protocols.md', '协议总览')}",
-                f"- {pack_workspace_link('wiki/indexes/output-packs.md', '输出 Pack 总览')}",
-                f"- {pack_workspace_link('wiki/indexes/review-center.md', '审阅中心')}",
-                f"- {pack_workspace_link('wiki/indexes/execution-center.md', '执行中心')}",
-            ]
-        )
-        scorecards.append(
-            {
-                "protocol": protocol,
-                "title": f"{protocol_title(protocol)} Pilot Scorecard",
-                "path": relative_path(root, destination),
-                "content": "\n".join(lines) + "\n",
-                "stage": stage,
-                "summary": stage_summary,
-                "metrics": metrics,
-                "lifecycle_summary": lifecycle_summary,
-            }
-        )
+        for protocol in sorted(PROTOCOL_LIBRARY)
+    ]
     return {
         "compiled_at": compiled_at,
         "active_protocol": active_protocol,
         "scorecards": scorecards,
+    }
+
+
+def build_domain_pilots_incremental(
+    root: Path,
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    memory: dict[str, Any],
+    protocol_state: dict[str, Any],
+    recent_outputs: list[dict[str, str]],
+    all_outputs: list[dict[str, str]],
+    output_packs: dict[str, Any],
+    execution_audit: dict[str, Any],
+    compiled_at: str,
+    *,
+    knowledge_lifecycle: dict[str, Any] | None = None,
+    material_routing: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    active_protocol = protocol_state["active_protocol"]
+    knowledge_lifecycle = knowledge_lifecycle or load_knowledge_lifecycle_state(root)
+    material_routing = material_routing or load_material_routing_state(root)
+    previous_state = load_domain_pilot_build_state(root)
+    previous_protocol_records = previous_state.get("protocol_records", {})
+    previous_scorecards_by_protocol = {
+        str(scorecard.get("protocol") or ""): scorecard
+        for scorecard in previous_state.get("scorecards", [])
+        if isinstance(scorecard, dict) and str(scorecard.get("protocol") or "")
+    }
+    scorecards: list[dict[str, Any]] = []
+    dirty_protocols: list[str] = []
+    clean_protocols: list[str] = []
+    protocol_records: dict[str, dict[str, str]] = {}
+    for protocol in sorted(PROTOCOL_LIBRARY):
+        protocol_inputs = domain_pilot_protocol_inputs(
+            protocol,
+            decisions,
+            judgments,
+            recent_outputs,
+            all_outputs,
+            output_packs,
+            execution_audit,
+            memory,
+            knowledge_lifecycle=knowledge_lifecycle,
+            material_routing=material_routing,
+            active_protocol=active_protocol,
+        )
+        signature = domain_pilot_protocol_input_signature(protocol_inputs)
+        protocol_records[protocol] = {"input_signature": signature}
+        previous_record = previous_protocol_records.get(protocol, {})
+        previous_scorecard = previous_scorecards_by_protocol.get(protocol, {})
+        reusable = (
+            isinstance(previous_record, dict)
+            and str(previous_record.get("input_signature") or "") == signature
+            and domain_pilot_scorecard_is_reusable(root, previous_scorecard)
+        )
+        if reusable:
+            reused_scorecard = dict(previous_scorecard)
+            scorecard_path = str(reused_scorecard.get("path") or "")
+            if scorecard_path:
+                reused_scorecard["content"] = (root / scorecard_path).read_text(encoding="utf-8", errors="replace")
+            scorecards.append(reused_scorecard)
+            clean_protocols.append(protocol)
+        else:
+            scorecards.append(
+                build_domain_pilot_scorecard(
+                    root,
+                    protocol_inputs,
+                    compiled_at=compiled_at,
+                )
+            )
+            dirty_protocols.append(protocol)
+    removed_protocols = sorted(set(previous_scorecards_by_protocol) - set(PROTOCOL_LIBRARY))
+    return {
+        "domain_pilots": {
+            "compiled_at": compiled_at,
+            "active_protocol": active_protocol,
+            "scorecards": scorecards,
+        },
+        "state_document": {
+            "version": 1,
+            "generated_at": compiled_at,
+            "active_protocol": active_protocol,
+            "protocol_records": protocol_records,
+            "scorecards": [domain_pilot_state_scorecard(scorecard) for scorecard in scorecards],
+        },
+        "dirty_protocols": dirty_protocols,
+        "clean_protocols": clean_protocols,
+        "removed_protocols": removed_protocols,
     }
 
 
@@ -7975,6 +8544,26 @@ def render_compile_status(
         if str(slug)
     ]
     machine_memory_core_reused = bool(compile_state.get("machine_memory_core_reused", False))
+    dirty_output_pack_groups = [
+        str(group)
+        for group in compile_state.get("dirty_output_pack_groups", [])
+        if str(group)
+    ]
+    clean_output_pack_groups = [
+        str(group)
+        for group in compile_state.get("clean_output_pack_groups", [])
+        if str(group)
+    ]
+    dirty_domain_pilot_protocols = [
+        str(protocol)
+        for protocol in compile_state.get("dirty_domain_pilot_protocols", [])
+        if str(protocol)
+    ]
+    clean_domain_pilot_protocols = [
+        str(protocol)
+        for protocol in compile_state.get("clean_domain_pilot_protocols", [])
+        if str(protocol)
+    ]
     dirty_index_artifacts = [
         str(path)
         for path in compile_state.get("dirty_index_artifacts", [])
@@ -8029,6 +8618,15 @@ def render_compile_status(
         "dirty_machine_memory_concepts": "dirty_machine_memory_concepts",
         "clean_machine_memory_concepts": "clean_machine_memory_concepts",
         "reused_core": "reused_core",
+        "pack_groups": "pack_groups",
+        "dirty_pack_groups": "dirty_pack_groups",
+        "clean_pack_groups": "clean_pack_groups",
+        "review_packs": "review_packs",
+        "decision_memos": "decision_memos",
+        "sop_drafts": "sop_drafts",
+        "pilot_protocols": "pilot_protocols",
+        "dirty_protocols": "dirty_protocols",
+        "clean_protocols": "clean_protocols",
         "tracked_artifacts": "tracked_artifacts",
         "dirty_artifacts": "dirty_artifacts",
         "clean_artifacts": "clean_artifacts",
@@ -8056,6 +8654,8 @@ def render_compile_status(
         "- Compile state：`.aiwiki/state/compile-state.json`",
         "- Concept build state：`.aiwiki/state/concept-build-state.json`",
         "- Machine memory build state：`.aiwiki/state/machine-memory-build-state.json`",
+        "- Output pack build state：`.aiwiki/state/output-pack-build-state.json`",
+        "- Domain pilot build state：`.aiwiki/state/domain-pilot-build-state.json`",
         f"- Dirty source：`{len(dirty_source_ids)}`",
         f"- Clean source：`{len(clean_source_ids)}`",
         f"- Dirty concept source：`{len(dirty_concept_source_ids)}`",
@@ -8067,6 +8667,10 @@ def render_compile_status(
         f"- Dirty machine-memory concept：`{len(dirty_machine_memory_concept_slugs)}`",
         f"- Clean machine-memory concept：`{len(clean_machine_memory_concept_slugs)}`",
         f"- Machine-memory core reused：`{machine_memory_core_reused}`",
+        f"- Dirty output pack group：`{len(dirty_output_pack_groups)}`",
+        f"- Clean output pack group：`{len(clean_output_pack_groups)}`",
+        f"- Dirty domain pilot protocol：`{len(dirty_domain_pilot_protocols)}`",
+        f"- Clean domain pilot protocol：`{len(clean_domain_pilot_protocols)}`",
         f"- Dirty index artifact：`{len(dirty_index_artifacts)}`",
         f"- Clean index artifact：`{len(clean_index_artifacts)}`",
         f"- Dirty maintenance artifact：`{len(dirty_maintenance_artifacts)}`",
@@ -8169,6 +8773,30 @@ def render_compile_status(
             lines.append(
                 f"- 其余 dirty machine-memory concept：`{len(dirty_machine_memory_concept_slugs) - 8}`"
             )
+    lines.extend(["", "## Dirty Output Pack Groups"])
+    if not dirty_output_pack_groups:
+        lines.append("- 当前没有 dirty output pack group。")
+    else:
+        for group in dirty_output_pack_groups:
+            lines.append(f"- `{group}`")
+    lines.extend(["", "## Clean Output Pack Groups"])
+    if not clean_output_pack_groups:
+        lines.append("- 当前没有 clean output pack group。")
+    else:
+        for group in clean_output_pack_groups:
+            lines.append(f"- `{group}`")
+    lines.extend(["", "## Dirty Domain Pilot Protocols"])
+    if not dirty_domain_pilot_protocols:
+        lines.append("- 当前没有 dirty domain pilot protocol。")
+    else:
+        for protocol in dirty_domain_pilot_protocols:
+            lines.append(f"- `{protocol}`")
+    lines.extend(["", "## Clean Domain Pilot Protocols"])
+    if not clean_domain_pilot_protocols:
+        lines.append("- 当前没有 clean domain pilot protocol。")
+    else:
+        for protocol in clean_domain_pilot_protocols:
+            lines.append(f"- `{protocol}`")
     lines.extend(["", "## Dirty Index Artifacts"])
     if not dirty_index_artifacts:
         lines.append("- 当前没有 dirty index artifact。")
@@ -8510,6 +9138,14 @@ def machine_memory_build_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "machine-memory-build-state.json"
 
 
+def output_pack_build_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "output-pack-build-state.json"
+
+
+def domain_pilot_build_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "domain-pilot-build-state.json"
+
+
 def material_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "material-state.json"
 
@@ -8590,6 +9226,10 @@ def default_compile_state() -> dict[str, Any]:
         "dirty_machine_memory_concept_slugs": [],
         "clean_machine_memory_concept_slugs": [],
         "machine_memory_core_reused": False,
+        "dirty_output_pack_groups": [],
+        "clean_output_pack_groups": [],
+        "dirty_domain_pilot_protocols": [],
+        "clean_domain_pilot_protocols": [],
         "dirty_index_artifacts": [],
         "clean_index_artifacts": [],
         "dirty_maintenance_artifacts": [],
@@ -8612,6 +9252,10 @@ def load_compile_state(root: Path) -> dict[str, Any]:
     clean_machine_memory_source_ids = document.get("clean_machine_memory_source_ids", [])
     dirty_machine_memory_concept_slugs = document.get("dirty_machine_memory_concept_slugs", [])
     clean_machine_memory_concept_slugs = document.get("clean_machine_memory_concept_slugs", [])
+    dirty_output_pack_groups = document.get("dirty_output_pack_groups", [])
+    clean_output_pack_groups = document.get("clean_output_pack_groups", [])
+    dirty_domain_pilot_protocols = document.get("dirty_domain_pilot_protocols", [])
+    clean_domain_pilot_protocols = document.get("clean_domain_pilot_protocols", [])
     dirty_index_artifacts = document.get("dirty_index_artifacts", [])
     clean_index_artifacts = document.get("clean_index_artifacts", [])
     dirty_maintenance_artifacts = document.get("dirty_maintenance_artifacts", [])
@@ -8628,6 +9272,10 @@ def load_compile_state(root: Path) -> dict[str, Any]:
         or not isinstance(clean_machine_memory_source_ids, list)
         or not isinstance(dirty_machine_memory_concept_slugs, list)
         or not isinstance(clean_machine_memory_concept_slugs, list)
+        or not isinstance(dirty_output_pack_groups, list)
+        or not isinstance(clean_output_pack_groups, list)
+        or not isinstance(dirty_domain_pilot_protocols, list)
+        or not isinstance(clean_domain_pilot_protocols, list)
         or not isinstance(dirty_index_artifacts, list)
         or not isinstance(clean_index_artifacts, list)
         or not isinstance(dirty_maintenance_artifacts, list)
@@ -8658,6 +9306,14 @@ def load_compile_state(root: Path) -> dict[str, Any]:
             str(slug) for slug in clean_machine_memory_concept_slugs if str(slug)
         ],
         "machine_memory_core_reused": bool(document.get("machine_memory_core_reused", False)),
+        "dirty_output_pack_groups": [str(group) for group in dirty_output_pack_groups if str(group)],
+        "clean_output_pack_groups": [str(group) for group in clean_output_pack_groups if str(group)],
+        "dirty_domain_pilot_protocols": [
+            str(protocol) for protocol in dirty_domain_pilot_protocols if str(protocol)
+        ],
+        "clean_domain_pilot_protocols": [
+            str(protocol) for protocol in clean_domain_pilot_protocols if str(protocol)
+        ],
         "dirty_index_artifacts": [str(path) for path in dirty_index_artifacts if str(path)],
         "clean_index_artifacts": [str(path) for path in clean_index_artifacts if str(path)],
         "dirty_maintenance_artifacts": [str(path) for path in dirty_maintenance_artifacts if str(path)],
@@ -8745,6 +9401,105 @@ def load_machine_memory_build_state(root: Path) -> dict[str, Any]:
 
 def save_machine_memory_build_state(root: Path, document: dict[str, Any]) -> None:
     save_json_document(machine_memory_build_state_path(root), document)
+
+
+def default_output_pack_build_state() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "generated_at": "",
+        "active_protocol": DEFAULT_PROTOCOL,
+        "group_records": {},
+        "lifecycle_summary": {},
+        "review_packs": [],
+        "decision_memos": [],
+        "sop_drafts": [],
+        "counts": {
+            "review_packs": 0,
+            "decision_memos": 0,
+            "sop_drafts": 0,
+            "execution_proposal_sops": 0,
+        },
+    }
+
+
+def load_output_pack_build_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(output_pack_build_state_path(root))
+    if not isinstance(document, dict):
+        return default_output_pack_build_state()
+    group_records = document.get("group_records")
+    lifecycle_summary = document.get("lifecycle_summary")
+    review_packs = document.get("review_packs")
+    decision_memos = document.get("decision_memos")
+    sop_drafts = document.get("sop_drafts")
+    counts = document.get("counts")
+    if (
+        not isinstance(group_records, dict)
+        or not isinstance(lifecycle_summary, dict)
+        or not isinstance(review_packs, list)
+        or not isinstance(decision_memos, list)
+        or not isinstance(sop_drafts, list)
+        or not isinstance(counts, dict)
+    ):
+        return default_output_pack_build_state()
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "generated_at": str(document.get("generated_at") or ""),
+        "active_protocol": str(document.get("active_protocol") or DEFAULT_PROTOCOL),
+        "group_records": {
+            str(group): {"input_signature": str(record.get("input_signature") or "")}
+            for group, record in group_records.items()
+            if str(group) and isinstance(record, dict)
+        },
+        "lifecycle_summary": lifecycle_summary,
+        "review_packs": [record for record in review_packs if isinstance(record, dict)],
+        "decision_memos": [record for record in decision_memos if isinstance(record, dict)],
+        "sop_drafts": [record for record in sop_drafts if isinstance(record, dict)],
+        "counts": {
+            "review_packs": int(counts.get("review_packs", 0) or 0),
+            "decision_memos": int(counts.get("decision_memos", 0) or 0),
+            "sop_drafts": int(counts.get("sop_drafts", 0) or 0),
+            "execution_proposal_sops": int(counts.get("execution_proposal_sops", 0) or 0),
+        },
+    }
+
+
+def save_output_pack_build_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(output_pack_build_state_path(root), document)
+
+
+def default_domain_pilot_build_state() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "generated_at": "",
+        "active_protocol": DEFAULT_PROTOCOL,
+        "protocol_records": {},
+        "scorecards": [],
+    }
+
+
+def load_domain_pilot_build_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(domain_pilot_build_state_path(root))
+    if not isinstance(document, dict):
+        return default_domain_pilot_build_state()
+    protocol_records = document.get("protocol_records")
+    scorecards = document.get("scorecards")
+    if not isinstance(protocol_records, dict) or not isinstance(scorecards, list):
+        return default_domain_pilot_build_state()
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "generated_at": str(document.get("generated_at") or ""),
+        "active_protocol": str(document.get("active_protocol") or DEFAULT_PROTOCOL),
+        "protocol_records": {
+            str(protocol): {"input_signature": str(record.get("input_signature") or "")}
+            for protocol, record in protocol_records.items()
+            if str(protocol) and isinstance(record, dict)
+        },
+        "scorecards": [record for record in scorecards if isinstance(record, dict)],
+    }
+
+
+def save_domain_pilot_build_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(domain_pilot_build_state_path(root), document)
 
 
 def manifest_change_summary(previous_entries: list[dict[str, Any]], current_entries: list[dict[str, Any]]) -> dict[str, int]:
@@ -14048,6 +14803,8 @@ def compile_wiki(root: Path) -> dict[str, Any]:
     concept_changed_pages = 0
     index_changed_pages = 0
     maintenance_changed_pages = 0
+    output_pack_changed_pages = 0
+    domain_pilot_changed_pages = 0
     dirty_index_artifacts: list[str] = []
     clean_index_artifacts: list[str] = []
     dirty_maintenance_artifacts: list[str] = []
@@ -14079,6 +14836,24 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             clean_maintenance_artifacts.append(relative)
         changed_pages += int(wrote)
         maintenance_changed_pages += int(wrote)
+        return int(wrote)
+
+    def write_output_pack_artifact(destination: Path, content: str) -> int:
+        nonlocal changed_pages
+        nonlocal output_pack_changed_pages
+
+        wrote, _dirty = write_if_changed_ignoring_timestamps(destination, content)
+        changed_pages += int(wrote)
+        output_pack_changed_pages += int(wrote)
+        return int(wrote)
+
+    def write_domain_pilot_artifact(destination: Path, content: str) -> int:
+        nonlocal changed_pages
+        nonlocal domain_pilot_changed_pages
+
+        wrote, _dirty = write_if_changed_ignoring_timestamps(destination, content)
+        changed_pages += int(wrote)
+        domain_pilot_changed_pages += int(wrote)
         return int(wrote)
 
     previews: dict[str, str] = {}
@@ -14284,7 +15059,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             knowledge_lifecycle=knowledge_lifecycle,
         ),
     )
-    output_packs = build_output_packs(
+    output_pack_build = build_output_packs_incremental(
         root,
         decision_pages,
         judgment_pages,
@@ -14294,29 +15069,48 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         compiled_at,
         knowledge_lifecycle=knowledge_lifecycle,
     )
-    write_index_artifact(
+    output_pack_build_state = output_pack_build.get("state_document", {})
+    if not isinstance(output_pack_build_state, dict):
+        output_pack_build_state = default_output_pack_build_state()
+    write_json_document_if_changed_ignoring_generated_timestamps(
+        output_pack_build_state_path(root),
+        output_pack_build_state,
+    )
+    output_packs = output_pack_build.get("output_packs", {})
+    if not isinstance(output_packs, dict):
+        output_packs = default_output_pack_build_state()
+    dirty_output_pack_groups = list(output_pack_build.get("dirty_groups", []))
+    clean_output_pack_groups = list(output_pack_build.get("clean_groups", []))
+    dirty_output_pack_group_set = set(dirty_output_pack_groups)
+    write_output_pack_artifact(
         output_packs_index_path(root),
         render_output_packs_index(output_packs, compiled_at, protocol_state["active_protocol"]),
     )
-    for pack in output_packs["review_packs"]:
-        write_index_artifact(root / pack["path"], pack["content"])
-    for pack in output_packs["decision_memos"]:
-        write_index_artifact(root / pack["path"], pack["content"])
-    for pack in output_packs["sop_drafts"]:
-        write_index_artifact(root / pack["path"], pack["content"])
-    removed_pages += remove_stale_generated_markdown_files(
-        review_packs_dir(root),
-        {Path(pack["path"]).stem for pack in output_packs["review_packs"]},
-    )
-    removed_pages += remove_stale_generated_markdown_files(
-        decision_memos_dir(root),
-        {Path(pack["path"]).stem for pack in output_packs["decision_memos"]},
-    )
-    removed_pages += remove_stale_generated_markdown_files(
-        sop_drafts_dir(root),
-        {Path(pack["path"]).stem for pack in output_packs["sop_drafts"]},
-    )
-    domain_pilots = build_domain_pilots(
+    if "review_packs" in dirty_output_pack_group_set:
+        for pack in output_packs.get("review_packs", []):
+            if isinstance(pack, dict) and "content" in pack:
+                write_output_pack_artifact(root / str(pack["path"]), str(pack["content"]))
+        removed_pages += remove_stale_generated_markdown_files(
+            review_packs_dir(root),
+            {Path(str(pack["path"])).stem for pack in output_packs.get("review_packs", []) if isinstance(pack, dict)},
+        )
+    if "decision_memos" in dirty_output_pack_group_set:
+        for pack in output_packs.get("decision_memos", []):
+            if isinstance(pack, dict) and "content" in pack:
+                write_output_pack_artifact(root / str(pack["path"]), str(pack["content"]))
+        removed_pages += remove_stale_generated_markdown_files(
+            decision_memos_dir(root),
+            {Path(str(pack["path"])).stem for pack in output_packs.get("decision_memos", []) if isinstance(pack, dict)},
+        )
+    if "sop_drafts" in dirty_output_pack_group_set:
+        for pack in output_packs.get("sop_drafts", []):
+            if isinstance(pack, dict) and "content" in pack:
+                write_output_pack_artifact(root / str(pack["path"]), str(pack["content"]))
+        removed_pages += remove_stale_generated_markdown_files(
+            sop_drafts_dir(root),
+            {Path(str(pack["path"])).stem for pack in output_packs.get("sop_drafts", []) if isinstance(pack, dict)},
+        )
+    domain_pilot_build = build_domain_pilots_incremental(
         root,
         decision_pages,
         judgment_pages,
@@ -14330,16 +15124,39 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         knowledge_lifecycle=knowledge_lifecycle,
         material_routing=material_routing,
     )
-    write_index_artifact(
+    domain_pilot_build_state = domain_pilot_build.get("state_document", {})
+    if not isinstance(domain_pilot_build_state, dict):
+        domain_pilot_build_state = default_domain_pilot_build_state()
+    write_json_document_if_changed_ignoring_generated_timestamps(
+        domain_pilot_build_state_path(root),
+        domain_pilot_build_state,
+    )
+    domain_pilots = domain_pilot_build.get("domain_pilots", {})
+    if not isinstance(domain_pilots, dict):
+        domain_pilots = {"compiled_at": compiled_at, "active_protocol": protocol_state["active_protocol"], "scorecards": []}
+    dirty_domain_pilot_protocols = list(domain_pilot_build.get("dirty_protocols", []))
+    clean_domain_pilot_protocols = list(domain_pilot_build.get("clean_protocols", []))
+    dirty_domain_pilot_protocol_set = set(dirty_domain_pilot_protocols)
+    write_domain_pilot_artifact(
         domain_pilots_index_path(root),
         render_domain_pilots_index(domain_pilots, compiled_at, protocol_state["active_protocol"]),
     )
-    for scorecard in domain_pilots["scorecards"]:
-        write_index_artifact(root / scorecard["path"], scorecard["content"])
-    removed_pages += remove_stale_generated_markdown_files(
-        pilot_scorecards_dir(root),
-        {Path(scorecard["path"]).stem for scorecard in domain_pilots["scorecards"]},
-    )
+    for scorecard in domain_pilots.get("scorecards", []):
+        if (
+            isinstance(scorecard, dict)
+            and str(scorecard.get("protocol") or "") in dirty_domain_pilot_protocol_set
+            and "content" in scorecard
+        ):
+            write_domain_pilot_artifact(root / str(scorecard["path"]), str(scorecard["content"]))
+    if dirty_domain_pilot_protocols or domain_pilot_build.get("removed_protocols"):
+        removed_pages += remove_stale_generated_markdown_files(
+            pilot_scorecards_dir(root),
+            {
+                Path(str(scorecard["path"])).stem
+                for scorecard in domain_pilots.get("scorecards", [])
+                if isinstance(scorecard, dict)
+            },
+        )
     agent_packs = build_agent_packs(
         root,
         entries,
@@ -14568,6 +15385,35 @@ def compile_wiki(root: Path) -> dict[str, Any]:
                 "knowledge_lifecycle_entries": len(knowledge_lifecycle.get("entries", [])),
             },
         },
+        {
+            "name": "output_pack_refresh",
+            "label": "output pack refresh",
+            "mode": "incremental",
+            "status": "completed",
+            "details": {
+                "pack_groups": 4,
+                "dirty_pack_groups": len(dirty_output_pack_groups),
+                "clean_pack_groups": len(clean_output_pack_groups),
+                "review_packs": int(output_packs.get("counts", {}).get("review_packs", 0) or 0),
+                "decision_memos": int(output_packs.get("counts", {}).get("decision_memos", 0) or 0),
+                "sop_drafts": int(output_packs.get("counts", {}).get("sop_drafts", 0) or 0),
+                "updated_artifacts": output_pack_changed_pages,
+                "skipped_artifacts": len(clean_output_pack_groups),
+            },
+        },
+        {
+            "name": "domain_pilot_refresh",
+            "label": "domain pilot refresh",
+            "mode": "incremental",
+            "status": "completed",
+            "details": {
+                "pilot_protocols": len(domain_pilots.get("scorecards", [])),
+                "dirty_protocols": len(dirty_domain_pilot_protocols),
+                "clean_protocols": len(clean_domain_pilot_protocols),
+                "updated_artifacts": domain_pilot_changed_pages,
+                "skipped_artifacts": len(clean_domain_pilot_protocols),
+            },
+        },
     ]
     compile_state = {
         "version": 1,
@@ -14584,6 +15430,10 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "dirty_machine_memory_concept_slugs": dirty_machine_memory_concept_slugs,
         "clean_machine_memory_concept_slugs": clean_machine_memory_concept_slugs,
         "machine_memory_core_reused": machine_memory_core_reused,
+        "dirty_output_pack_groups": dirty_output_pack_groups,
+        "clean_output_pack_groups": clean_output_pack_groups,
+        "dirty_domain_pilot_protocols": dirty_domain_pilot_protocols,
+        "clean_domain_pilot_protocols": clean_domain_pilot_protocols,
         "dirty_index_artifacts": dirty_index_artifacts,
         "clean_index_artifacts": clean_index_artifacts,
         "dirty_maintenance_artifacts": dirty_maintenance_artifacts,
@@ -14624,6 +15474,10 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             f"compile_dirty_machine_memory_concepts: `{len(dirty_machine_memory_concept_slugs)}`",
             f"compile_clean_machine_memory_concepts: `{len(clean_machine_memory_concept_slugs)}`",
             f"machine_memory_core_reused: `{machine_memory_core_reused}`",
+            f"compile_dirty_output_pack_groups: `{len(dirty_output_pack_groups)}`",
+            f"compile_clean_output_pack_groups: `{len(clean_output_pack_groups)}`",
+            f"compile_dirty_domain_pilot_protocols: `{len(dirty_domain_pilot_protocols)}`",
+            f"compile_clean_domain_pilot_protocols: `{len(clean_domain_pilot_protocols)}`",
             f"compile_dirty_index_artifacts: `{len(dirty_index_artifacts)}`",
             f"compile_clean_index_artifacts: `{len(clean_index_artifacts)}`",
             f"compile_dirty_maintenance_artifacts: `{len(dirty_maintenance_artifacts)}`",
@@ -14675,6 +15529,10 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "dirty_machine_memory_concept_slugs": list(dirty_machine_memory_concept_slugs),
         "clean_machine_memory_concept_slugs": list(clean_machine_memory_concept_slugs),
         "machine_memory_core_reused": machine_memory_core_reused,
+        "dirty_output_pack_groups": list(dirty_output_pack_groups),
+        "clean_output_pack_groups": list(clean_output_pack_groups),
+        "dirty_domain_pilot_protocols": list(dirty_domain_pilot_protocols),
+        "clean_domain_pilot_protocols": list(clean_domain_pilot_protocols),
         "dirty_index_artifacts": list(dirty_index_artifacts),
         "clean_index_artifacts": list(clean_index_artifacts),
         "dirty_maintenance_artifacts": list(dirty_maintenance_artifacts),
@@ -14685,6 +15543,8 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "compile_state_path": relative_path(root, compile_state_path(root)),
         "concept_build_state_path": relative_path(root, concept_build_state_path(root)),
         "machine_memory_build_state_path": relative_path(root, machine_memory_build_state_path(root)),
+        "output_pack_build_state_path": relative_path(root, output_pack_build_state_path(root)),
+        "domain_pilot_build_state_path": relative_path(root, domain_pilot_build_state_path(root)),
         "material_state_path": relative_path(root, material_state_path(root)),
         "active_corpora_path": relative_path(root, active_corpora_state_path(root)),
         "material_routing_path": relative_path(root, material_routing_state_path(root)),

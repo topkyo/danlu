@@ -507,6 +507,8 @@ class AiwikiFlowTests(unittest.TestCase):
         compile_state_path = self.root / ".aiwiki" / "state" / "compile-state.json"
         concept_build_state_path = self.root / ".aiwiki" / "state" / "concept-build-state.json"
         machine_memory_build_state_path = self.root / ".aiwiki" / "state" / "machine-memory-build-state.json"
+        output_pack_build_state_path = self.root / ".aiwiki" / "state" / "output-pack-build-state.json"
+        domain_pilot_build_state_path = self.root / ".aiwiki" / "state" / "domain-pilot-build-state.json"
         compile_status_path = self.root / "wiki" / "indexes" / "compile-status.md"
         self.assertEqual(compiled["compile_state_path"], ".aiwiki/state/compile-state.json")
         self.assertEqual(compiled["concept_build_state_path"], ".aiwiki/state/concept-build-state.json")
@@ -514,14 +516,20 @@ class AiwikiFlowTests(unittest.TestCase):
             compiled["machine_memory_build_state_path"],
             ".aiwiki/state/machine-memory-build-state.json",
         )
+        self.assertEqual(compiled["output_pack_build_state_path"], ".aiwiki/state/output-pack-build-state.json")
+        self.assertEqual(compiled["domain_pilot_build_state_path"], ".aiwiki/state/domain-pilot-build-state.json")
         self.assertTrue(compile_state_path.exists())
         self.assertTrue(concept_build_state_path.exists())
         self.assertTrue(machine_memory_build_state_path.exists())
+        self.assertTrue(output_pack_build_state_path.exists())
+        self.assertTrue(domain_pilot_build_state_path.exists())
         self.assertTrue(compile_status_path.exists())
 
         compile_state = json.loads(compile_state_path.read_text(encoding="utf-8"))
         concept_build_state = json.loads(concept_build_state_path.read_text(encoding="utf-8"))
         machine_memory_build_state = json.loads(machine_memory_build_state_path.read_text(encoding="utf-8"))
+        output_pack_build_state = json.loads(output_pack_build_state_path.read_text(encoding="utf-8"))
+        domain_pilot_build_state = json.loads(domain_pilot_build_state_path.read_text(encoding="utf-8"))
         self.assertEqual(compile_state["manifest_entry_count"], 1)
         self.assertEqual(compile_state["dirty_source_ids"], [entry["id"]])
         self.assertEqual(compile_state["clean_source_ids"], [])
@@ -534,6 +542,10 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(compile_state["dirty_machine_memory_concept_slugs"])
         self.assertEqual(compile_state["clean_machine_memory_concept_slugs"], [])
         self.assertFalse(compile_state["machine_memory_core_reused"])
+        self.assertTrue(compile_state["dirty_output_pack_groups"])
+        self.assertEqual(compile_state["clean_output_pack_groups"], [])
+        self.assertTrue(compile_state["dirty_domain_pilot_protocols"])
+        self.assertEqual(compile_state["clean_domain_pilot_protocols"], [])
         self.assertTrue(compile_state["dirty_index_artifacts"])
         self.assertEqual(compile_state["clean_index_artifacts"], [])
         self.assertTrue(compile_state["dirty_maintenance_artifacts"])
@@ -544,6 +556,10 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn(entry["id"], machine_memory_build_state["source_records"])
         self.assertTrue(machine_memory_build_state["source_records"][entry["id"]]["input_signature"])
         self.assertTrue(machine_memory_build_state["concept_records"])
+        self.assertIn("review_packs", output_pack_build_state["group_records"])
+        self.assertTrue(output_pack_build_state["group_records"]["review_packs"]["input_signature"])
+        self.assertIn("general", domain_pilot_build_state["protocol_records"])
+        self.assertTrue(domain_pilot_build_state["protocol_records"]["general"]["input_signature"])
         phase_names = [phase["name"] for phase in compile_state["phase_summary"]]
         self.assertEqual(
             phase_names,
@@ -554,6 +570,8 @@ class AiwikiFlowTests(unittest.TestCase):
                 "machine_memory_refresh",
                 "index_refresh",
                 "cold_archive_maintenance",
+                "output_pack_refresh",
+                "domain_pilot_refresh",
             ],
         )
         source_phase = next(phase for phase in compile_state["phase_summary"] if phase["name"] == "incremental_source_compile")
@@ -591,6 +609,17 @@ class AiwikiFlowTests(unittest.TestCase):
             len(compile_state["dirty_maintenance_artifacts"]),
         )
         self.assertEqual(maintenance_phase["details"]["clean_artifacts"], 0)
+        output_pack_phase = next(phase for phase in compile_state["phase_summary"] if phase["name"] == "output_pack_refresh")
+        self.assertEqual(output_pack_phase["mode"], "incremental")
+        self.assertEqual(output_pack_phase["details"]["dirty_pack_groups"], len(compile_state["dirty_output_pack_groups"]))
+        self.assertEqual(output_pack_phase["details"]["clean_pack_groups"], 0)
+        domain_pilot_phase = next(phase for phase in compile_state["phase_summary"] if phase["name"] == "domain_pilot_refresh")
+        self.assertEqual(domain_pilot_phase["mode"], "incremental")
+        self.assertEqual(
+            domain_pilot_phase["details"]["dirty_protocols"],
+            len(compile_state["dirty_domain_pilot_protocols"]),
+        )
+        self.assertEqual(domain_pilot_phase["details"]["clean_protocols"], 0)
         self.assertEqual(compiled["dirty_sources"], 1)
         self.assertEqual(compiled["clean_sources"], 0)
         self.assertEqual(compiled["dirty_source_ids"], [entry["id"]])
@@ -613,6 +642,10 @@ class AiwikiFlowTests(unittest.TestCase):
         )
         self.assertEqual(compiled["clean_machine_memory_concept_slugs"], [])
         self.assertFalse(compiled["machine_memory_core_reused"])
+        self.assertEqual(compiled["dirty_output_pack_groups"], compile_state["dirty_output_pack_groups"])
+        self.assertEqual(compiled["clean_output_pack_groups"], [])
+        self.assertEqual(compiled["dirty_domain_pilot_protocols"], compile_state["dirty_domain_pilot_protocols"])
+        self.assertEqual(compiled["clean_domain_pilot_protocols"], [])
         self.assertEqual(compiled["dirty_index_artifacts"], compile_state["dirty_index_artifacts"])
         self.assertEqual(compiled["clean_index_artifacts"], [])
         self.assertEqual(compiled["dirty_maintenance_artifacts"], compile_state["dirty_maintenance_artifacts"])
@@ -628,12 +661,19 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("dirty_machine_memory_sources=1", compile_status)
         self.assertIn("## Dirty Machine Memory Sources", compile_status)
         self.assertIn("## Dirty Machine Memory Concepts", compile_status)
+        self.assertIn("output_pack_refresh", compile_status)
+        self.assertIn("dirty_pack_groups=4", compile_status)
+        self.assertIn("## Dirty Output Pack Groups", compile_status)
+        self.assertIn("domain_pilot_refresh", compile_status)
+        self.assertIn("## Dirty Domain Pilot Protocols", compile_status)
         self.assertIn("index_refresh", compile_status)
         self.assertIn("## Dirty Concepts", compile_status)
         self.assertIn("## Dirty Index Artifacts", compile_status)
         self.assertIn("## Dirty Maintenance Artifacts", compile_status)
         self.assertIn(".aiwiki/state/concept-build-state.json", compile_status)
         self.assertIn(".aiwiki/state/machine-memory-build-state.json", compile_status)
+        self.assertIn(".aiwiki/state/output-pack-build-state.json", compile_status)
+        self.assertIn(".aiwiki/state/domain-pilot-build-state.json", compile_status)
         self.assertIn(".aiwiki/state/compile-state.json", compile_status)
 
     def test_compile_skips_clean_source_pages_on_second_run(self) -> None:
@@ -754,6 +794,68 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(compile_state["clean_machine_memory_source_ids"], [entry["id"]])
         self.assertEqual(compile_state["dirty_machine_memory_concept_slugs"], [])
         self.assertTrue(compile_state["machine_memory_core_reused"])
+
+    def test_compile_reuses_clean_output_pack_groups_on_second_run(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        output_pack_build_state_path = self.root / ".aiwiki" / "state" / "output-pack-build-state.json"
+        first_state = output_pack_build_state_path.read_text(encoding="utf-8")
+
+        with patch("aiwiki.app.build_output_pack_review_packs", side_effect=AssertionError("should reuse clean review packs")), patch(
+            "aiwiki.app.build_output_pack_decision_memos",
+            side_effect=AssertionError("should reuse clean decision memos"),
+        ), patch("aiwiki.app.build_output_pack_sop_drafts", side_effect=AssertionError("should reuse clean sop drafts")):
+            second = compile_wiki(self.root)
+
+        self.assertEqual(second["dirty_output_pack_groups"], [])
+        self.assertEqual(
+            set(second["clean_output_pack_groups"]),
+            {"lifecycle_summary", "review_packs", "decision_memos", "sop_drafts"},
+        )
+        self.assertEqual(first_state, output_pack_build_state_path.read_text(encoding="utf-8"))
+
+        output_pack_phase = next(phase for phase in second["phase_summary"] if phase["name"] == "output_pack_refresh")
+        self.assertEqual(output_pack_phase["details"]["dirty_pack_groups"], 0)
+        self.assertEqual(output_pack_phase["details"]["clean_pack_groups"], 4)
+
+        compile_state = json.loads((self.root / ".aiwiki" / "state" / "compile-state.json").read_text(encoding="utf-8"))
+        self.assertEqual(compile_state["dirty_output_pack_groups"], [])
+        self.assertEqual(
+            set(compile_state["clean_output_pack_groups"]),
+            {"lifecycle_summary", "review_packs", "decision_memos", "sop_drafts"},
+        )
+
+    def test_compile_reuses_clean_domain_pilot_scorecards_on_second_run(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        domain_pilot_build_state_path = self.root / ".aiwiki" / "state" / "domain-pilot-build-state.json"
+        first_state = domain_pilot_build_state_path.read_text(encoding="utf-8")
+
+        with patch(
+            "aiwiki.app.build_domain_pilot_scorecard",
+            side_effect=AssertionError("should reuse clean domain pilot scorecards"),
+        ):
+            second = compile_wiki(self.root)
+
+        self.assertEqual(second["dirty_domain_pilot_protocols"], [])
+        self.assertTrue(second["clean_domain_pilot_protocols"])
+        self.assertEqual(first_state, domain_pilot_build_state_path.read_text(encoding="utf-8"))
+
+        domain_pilot_phase = next(phase for phase in second["phase_summary"] if phase["name"] == "domain_pilot_refresh")
+        self.assertEqual(domain_pilot_phase["details"]["dirty_protocols"], 0)
+        self.assertEqual(
+            domain_pilot_phase["details"]["clean_protocols"],
+            len(second["clean_domain_pilot_protocols"]),
+        )
+
+        compile_state = json.loads((self.root / ".aiwiki" / "state" / "compile-state.json").read_text(encoding="utf-8"))
+        self.assertEqual(compile_state["dirty_domain_pilot_protocols"], [])
+        self.assertEqual(
+            compile_state["clean_domain_pilot_protocols"],
+            second["clean_domain_pilot_protocols"],
+        )
 
     def test_compile_skips_clean_index_artifacts_on_second_run(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
