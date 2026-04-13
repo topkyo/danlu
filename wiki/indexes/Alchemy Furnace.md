@@ -107,6 +107,19 @@ status: "active"
 
 当前它已经进入 runtime 第一版；后续增强应继续围绕协议语义深化，而不是再复制一套新的炉子。
 
+## 当前 runtime 落地形态（实现视角）
+
+上面的“分层模型”描述的是系统职责，不是文件和模块的 1:1 对应关系。当前仓库里的 `aiwiki` 实现，已经完成第一轮 `app.py` 解单体，核心落地大致映射为：
+
+- `app_utils.py` / `app_state.py`：基础设施与状态原语
+- `app_protocol.py`：协议层、runtime scaffold、review policy
+- `app_content.py`：sources / concepts / lifecycle / material / outputs 的内容编译面
+- `app_memory.py`：machine memory / execution snapshot / shell summary / audit support
+- `app_compile.py`：compile / ask / file-back / nightly / lint 等顶层 orchestration
+- `app.py`：兼容 facade，继续保留 `aiwiki.app` import surface
+
+这意味着炼丹炉当前已经不是“单个巨型 `app.py` 驱动的 runtime”，而是“统一炉子 + 模块化内核”的实现骨架。系统分层不变、对外 CLI 不变，但后续继续细分 domain module 的工程成本已经明显下降。
+
 ## 分层模型
 
 ### 1. Raw Sources

@@ -35,6 +35,20 @@
 
 Obsidian 是前端/IDE；炼丹炉是整个系统；`aiwiki` 是底层 runtime。
 
+## 当前 runtime 实现（repo 视角）
+
+当前 `aiwiki` runtime 已完成第一轮 `app.py` 解单体，仓库里的实现骨架现在是：
+
+- `src/aiwiki/app.py`：兼容入口 / facade，继续保留 `aiwiki.app` import surface
+- `src/aiwiki/app_utils.py`：runtime lock、hash、frontmatter、markdown / JSON helpers
+- `src/aiwiki/app_state.py`：path / state / json-document primitives
+- `src/aiwiki/app_protocol.py`：protocol runtime、schema/dashboard scaffold、review windows
+- `src/aiwiki/app_content.py`：source / concept / lifecycle / material / output content builders
+- `src/aiwiki/app_memory.py`：machine memory、execution snapshot、query / control surfaces
+- `src/aiwiki/app_compile.py`：compile / ask / report / file-back / lint / nightly orchestration
+
+这次重构没有改变 CLI 或 `aiwiki.app` 的外部使用方式，但把 runtime 从单文件内核推进成了更可维护的分层实现。更上层的系统分层和长期目标，仍以基线 / 终局架构文档为准。
+
 ## 更适合谁
 
 - 投资研究者：想把财报、电话会、访谈、赛道资料、判断变化和复审记录放进同一个炉子。
@@ -86,7 +100,7 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . nightly
 - Obsidian 工作台：[HOME.md](./HOME.md)
 - 炼丹炉基线架构：[Alchemy Furnace.md](<./wiki/indexes/Alchemy Furnace.md>)
 - 最终极形态：[Furnace Ultimate Architecture.md](<./wiki/indexes/Furnace Ultimate Architecture.md>)
-- 当前能力地图与下一轮 Product Shell contract：[Furnace Capability Map.md](<./wiki/indexes/Furnace Capability Map.md>)
+- 当前能力快照：[Furnace Capability Map.md](<./wiki/indexes/Furnace Capability Map.md>)
 - 增量编译计划：[Furnace Incremental Compile Plan.md](<./wiki/indexes/Furnace Incremental Compile Plan.md>)
 - Product Shell 插件设计：[Furnace Product Shell Plugin.md](<./wiki/indexes/Furnace Product Shell Plugin.md>)
 - 大规模原料处理设计：[Furnace Material Scaling.md](<./wiki/indexes/Furnace Material Scaling.md>)

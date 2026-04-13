@@ -8,7 +8,7 @@ status: "snapshot"
 
 这份文档现在主要回答一件事：
 
-1. **截至 2026-04-10，炼丹炉当前已经做到了什么**
+1. **截至 2026-04-13，炼丹炉当前已经做到了什么**
 
 它不是终局愿景稿，也不是当前 active sprint contract。
 
@@ -16,29 +16,30 @@ status: "snapshot"
 
 - 当前能力分布图
 - 当前成熟度判断
-- 截至 `2026-04-10` 的能力快照
+- 截至 `2026-04-13` 的能力快照
 
 对应关系：
 
 - 基线架构：[[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
 - 终局架构：[[wiki/indexes/Furnace Ultimate Architecture|炼丹炉最终极形态]]
 - Product Shell 设计稿：[[wiki/indexes/Furnace Product Shell Plugin|炼丹炉 Product Shell Plugin]]
-- 当前 active 实施线：[[wiki/indexes/Furnace Incremental Compile Plan|炼丹炉增量编译计划]]
+- 当前工程状态：[PROGRESS.md](<../../PROGRESS.md>)
 - 当前这份：`现在做到哪了`
 
 ## 当前角色
 
 - 这份文档保留为能力快照 / 参考文档
 - 它不再承担“下一轮 contract”职责
-- 当前实现主线已经切到 `Furnace Incremental Compile Plan`
+- 当前 active work 不再由这份文档维护；以 `PROGRESS.md` 和 active contract 为准
 
 ## 一句话判断
 
-截至 2026-04-10，炼丹炉已经是一个 **强内核 + 初代可用 Product Shell** 的系统。
+截至 2026-04-13，炼丹炉已经是一个 **强内核 + 初代可用 Product Shell** 的系统。
 
 - `aiwiki` runtime 已经完成 evidence plane、knowledge lifecycle、governance、execution 的主线闭环
+- `aiwiki` runtime 已完成 `app.py` 模块化重构，形成 `protocol / content / memory / compile / utils / state` 的实现骨架
 - Obsidian Product Shell 已经从“看板壳”推进到“带受限动作的原生工作台”
-- 当前瓶颈已经不在 runtime 主链，而在 **Product Shell 的操作深度和上下文精度**
+- 当前瓶颈已经不在 runtime 主链，而在 **Product Shell 的操作深度、对象身份和上下文精度**
 
 ## 当前能力地图
 
@@ -194,6 +195,7 @@ status: "snapshot"
 ### 已经站住的部分
 
 - 炉心分层没有被打穿
+- `aiwiki` runtime 已完成 `app.py` 解单体，并保留 `aiwiki.app` 兼容 facade
 - `aiwiki CLI` 仍然是唯一正式 runtime 接口
 - hidden `.aiwiki/state/*` 仍然没有被 Product Shell 直接升级成公共 UI 接口
 - `review / archive / apply / revert / audit` 已经能闭环
@@ -207,6 +209,7 @@ status: "snapshot"
 - 很多动作还要手填 `entry_id / action_id / page path`
 - 还缺 item-level inline action
 - 还缺更细的 action-specific context picker
+- `app_content.py` / `app_memory.py` / `app_compile.py` 仍然偏大，后续可以继续细分，但这已经不是当前主 blocker
 - `qa-review` 当前仍然是 same-context fallback，不是独立 reviewer
 
 ### 当前非目标
@@ -231,13 +234,17 @@ status: "snapshot"
 - 减少对 fallback modal 的依赖
 - 让 execution / review summary 直接服务 item-level action
 
-## 下一轮 Product Shell Contract 草案
+## 历史草案归档：曾规划的下一轮 Product Shell 方向
 
-### Goal
+下面这段保留为当时对 Product Shell 下一轮的草案归档，用来解释这份能力快照里的“下一步判断”从哪里来。
+
+它不是当前 active contract，也不代表现在正在执行的 sprint。
+
+### 当时的 Goal
 
 推进 `Product Shell Plugin` 的下一轮：把当前“第一轮 item-level action”继续推进成 **identity-aware 的细粒度控制台**，优先减少对 receipt path 推断和 fallback modal 的依赖。
 
-### Problem / Context
+### 当时的问题 / 背景
 
 当前插件已经有：
 
@@ -255,7 +262,7 @@ status: "snapshot"
 - runtime summary 对对象身份的暴露还不够细
 - 现在是“初代对象控制台”，还不是“细粒度对象控制台”
 
-### Success Criteria
+### 当时的 Success Criteria
 
 - runtime summary 显式暴露更稳定的 object identity，而不是让插件猜
 - `Review Center / Execution Center` 的 item-level action 覆盖更多对象类型
@@ -266,7 +273,7 @@ status: "snapshot"
 - 继续保持插件不直接读写 hidden `.aiwiki/state/*`
 - 补测试覆盖 identity-aware wiring 和 fallback path
 
-### Constraints
+### 当时的 Constraints
 
 - `aiwiki CLI` 仍然是唯一正式 runtime 接口
 - 不引入 daemon / server / hosted backend
@@ -274,7 +281,7 @@ status: "snapshot"
 - 第一版仍按 repo-local desktop mode 设计
 - 不重写 runtime state ownership
 
-### In Scope
+### 当时的 In Scope
 
 - `.obsidian/plugins/furnace-product-shell/main.js`
 - `tests/test_app.py`
@@ -282,7 +289,7 @@ status: "snapshot"
 - 视图内 item-level action binding
 - action-specific context picker
 
-### Out Of Scope
+### 当时的 Out Of Scope
 
 - TypeScript/build toolchain
 - hidden state direct reads
@@ -290,7 +297,7 @@ status: "snapshot"
 - mobile support
 - 新增 daemon
 
-### Verification Plan
+### 当时的 Verification Plan
 
 - 先跑插件静态契约测试
 - 跑 `node --check`
@@ -298,20 +305,20 @@ status: "snapshot"
 - 做 same-context review 或更高等级 review
 - 跑 `closed_loop`
 
-### Stop Conditions
+### 当时的 Stop Conditions
 
 - 插件为了做 item-level action 被迫直接读取 hidden `.aiwiki/state/*`
 - 插件为了少写表单而绕过 launcher/CLI
 - 为了绑定对象而把 runtime 真相搬进插件
 
-## 推荐执行顺序
+## 当时推荐的执行顺序
 
 1. 先做 Review Center 的 item-level inline action
 2. 再做 Execution Center 的 item-level inline action
 3. 然后再补 action-specific context picker
 4. 最后视情况决定是否需要更细的 execution/review summary
 
-## 总结
+## 快照结论
 
 当前炼丹炉的判断可以收敛成一句话：
 
