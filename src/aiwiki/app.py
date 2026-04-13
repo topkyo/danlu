@@ -2510,6 +2510,37 @@ def concept_source_pages(record: dict[str, Any]) -> list[str]:
     return [f"wiki/sources/{entry_id}.md" for entry_id in record["entry_ids"]]
 
 
+def machine_memory_source_input_signature(
+    root: Path,
+    entry: dict[str, Any],
+    preview: str,
+    concepts: list[str],
+) -> str:
+    payload = {
+        "entry_id": str(entry.get("id") or ""),
+        "title": str(entry.get("title") or ""),
+        "source_type": str(entry.get("source_type") or ""),
+        "kind": str(entry.get("kind") or ""),
+        "stored_path": str(entry.get("stored_path") or ""),
+        "original_path": str(entry.get("original_path") or ""),
+        "sha256": str(entry.get("sha256") or ""),
+        "summary": source_summary_or_preview(root, entry, preview),
+        "concepts": sorted(str(label) for label in concepts if str(label)),
+    }
+    return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
+def machine_memory_concept_input_signature(record: dict[str, Any]) -> str:
+    payload = {
+        "slug": str(record.get("slug") or ""),
+        "title": str(record.get("title") or ""),
+        "source_signature": str(record.get("source_signature") or ""),
+        "source_pages": concept_source_pages(record),
+        "related_slugs": sorted(str(slug) for slug in record.get("related_slugs", []) if str(slug)),
+    }
+    return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
 def concept_render_signature(root: Path, record: dict[str, Any]) -> str:
     source_contexts = [
         load_source_page_context(root, relative)
@@ -7923,6 +7954,27 @@ def render_compile_status(
         for slug in compile_state.get("clean_concept_slugs", [])
         if str(slug)
     ]
+    dirty_machine_memory_source_ids = [
+        str(entry_id)
+        for entry_id in compile_state.get("dirty_machine_memory_source_ids", [])
+        if str(entry_id)
+    ]
+    clean_machine_memory_source_ids = [
+        str(entry_id)
+        for entry_id in compile_state.get("clean_machine_memory_source_ids", [])
+        if str(entry_id)
+    ]
+    dirty_machine_memory_concept_slugs = [
+        str(slug)
+        for slug in compile_state.get("dirty_machine_memory_concept_slugs", [])
+        if str(slug)
+    ]
+    clean_machine_memory_concept_slugs = [
+        str(slug)
+        for slug in compile_state.get("clean_machine_memory_concept_slugs", [])
+        if str(slug)
+    ]
+    machine_memory_core_reused = bool(compile_state.get("machine_memory_core_reused", False))
     dirty_index_artifacts = [
         str(path)
         for path in compile_state.get("dirty_index_artifacts", [])
@@ -7970,6 +8022,13 @@ def render_compile_status(
         "concept_pages": "concepts",
         "dirty_concepts": "dirty_concepts",
         "clean_concepts": "clean_concepts",
+        "machine_memory_sources": "machine_memory_sources",
+        "dirty_machine_memory_sources": "dirty_machine_memory_sources",
+        "clean_machine_memory_sources": "clean_machine_memory_sources",
+        "machine_memory_concepts": "machine_memory_concepts",
+        "dirty_machine_memory_concepts": "dirty_machine_memory_concepts",
+        "clean_machine_memory_concepts": "clean_machine_memory_concepts",
+        "reused_core": "reused_core",
         "tracked_artifacts": "tracked_artifacts",
         "dirty_artifacts": "dirty_artifacts",
         "clean_artifacts": "clean_artifacts",
@@ -7996,12 +8055,18 @@ def render_compile_status(
         f"- 证据漂移：`{sum(1 for page in decisions + judgments if page.get('citation_drift') == 'true')}`",
         "- Compile state：`.aiwiki/state/compile-state.json`",
         "- Concept build state：`.aiwiki/state/concept-build-state.json`",
+        "- Machine memory build state：`.aiwiki/state/machine-memory-build-state.json`",
         f"- Dirty source：`{len(dirty_source_ids)}`",
         f"- Clean source：`{len(clean_source_ids)}`",
         f"- Dirty concept source：`{len(dirty_concept_source_ids)}`",
         f"- Clean concept source：`{len(clean_concept_source_ids)}`",
         f"- Dirty concept：`{len(dirty_concept_slugs)}`",
         f"- Clean concept：`{len(clean_concept_slugs)}`",
+        f"- Dirty machine-memory source：`{len(dirty_machine_memory_source_ids)}`",
+        f"- Clean machine-memory source：`{len(clean_machine_memory_source_ids)}`",
+        f"- Dirty machine-memory concept：`{len(dirty_machine_memory_concept_slugs)}`",
+        f"- Clean machine-memory concept：`{len(clean_machine_memory_concept_slugs)}`",
+        f"- Machine-memory core reused：`{machine_memory_core_reused}`",
         f"- Dirty index artifact：`{len(dirty_index_artifacts)}`",
         f"- Clean index artifact：`{len(clean_index_artifacts)}`",
         f"- Dirty maintenance artifact：`{len(dirty_maintenance_artifacts)}`",
@@ -8072,6 +8137,16 @@ def render_compile_status(
             lines.append(f"- [{title}](../sources/{entry_id}.md)")
         if len(dirty_concept_source_ids) > 8:
             lines.append(f"- 其余 dirty concept source：`{len(dirty_concept_source_ids) - 8}`")
+    lines.extend(["", "## Dirty Machine Memory Sources"])
+    if not dirty_machine_memory_source_ids:
+        lines.append("- 当前没有 dirty machine-memory source input。")
+    else:
+        for entry_id in dirty_machine_memory_source_ids[:8]:
+            entry = entry_by_id.get(entry_id, {})
+            title = str(entry.get("title") or entry_id)
+            lines.append(f"- [{title}](../sources/{entry_id}.md)")
+        if len(dirty_machine_memory_source_ids) > 8:
+            lines.append(f"- 其余 dirty machine-memory source：`{len(dirty_machine_memory_source_ids) - 8}`")
     lines.extend(["", "## Dirty Concepts"])
     if not dirty_concept_slugs:
         lines.append("- 当前没有 dirty concept page。")
@@ -8082,6 +8157,18 @@ def render_compile_status(
             lines.append(f"- [{title}](../concepts/{slug}.md)")
         if len(dirty_concept_slugs) > 8:
             lines.append(f"- 其余 dirty concept：`{len(dirty_concept_slugs) - 8}`")
+    lines.extend(["", "## Dirty Machine Memory Concepts"])
+    if not dirty_machine_memory_concept_slugs:
+        lines.append("- 当前没有 dirty machine-memory concept input。")
+    else:
+        for slug in dirty_machine_memory_concept_slugs[:8]:
+            record = concept_by_slug.get(slug, {})
+            title = str(record.get("title") or slug)
+            lines.append(f"- [{title}](../concepts/{slug}.md)")
+        if len(dirty_machine_memory_concept_slugs) > 8:
+            lines.append(
+                f"- 其余 dirty machine-memory concept：`{len(dirty_machine_memory_concept_slugs) - 8}`"
+            )
     lines.extend(["", "## Dirty Index Artifacts"])
     if not dirty_index_artifacts:
         lines.append("- 当前没有 dirty index artifact。")
@@ -8419,6 +8506,10 @@ def concept_build_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "concept-build-state.json"
 
 
+def machine_memory_build_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "machine-memory-build-state.json"
+
+
 def material_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "material-state.json"
 
@@ -8494,6 +8585,11 @@ def default_compile_state() -> dict[str, Any]:
         "clean_concept_source_ids": [],
         "dirty_concept_slugs": [],
         "clean_concept_slugs": [],
+        "dirty_machine_memory_source_ids": [],
+        "clean_machine_memory_source_ids": [],
+        "dirty_machine_memory_concept_slugs": [],
+        "clean_machine_memory_concept_slugs": [],
+        "machine_memory_core_reused": False,
         "dirty_index_artifacts": [],
         "clean_index_artifacts": [],
         "dirty_maintenance_artifacts": [],
@@ -8512,6 +8608,10 @@ def load_compile_state(root: Path) -> dict[str, Any]:
     clean_concept_source_ids = document.get("clean_concept_source_ids", [])
     dirty_concept_slugs = document.get("dirty_concept_slugs", [])
     clean_concept_slugs = document.get("clean_concept_slugs", [])
+    dirty_machine_memory_source_ids = document.get("dirty_machine_memory_source_ids", [])
+    clean_machine_memory_source_ids = document.get("clean_machine_memory_source_ids", [])
+    dirty_machine_memory_concept_slugs = document.get("dirty_machine_memory_concept_slugs", [])
+    clean_machine_memory_concept_slugs = document.get("clean_machine_memory_concept_slugs", [])
     dirty_index_artifacts = document.get("dirty_index_artifacts", [])
     clean_index_artifacts = document.get("clean_index_artifacts", [])
     dirty_maintenance_artifacts = document.get("dirty_maintenance_artifacts", [])
@@ -8524,6 +8624,10 @@ def load_compile_state(root: Path) -> dict[str, Any]:
         or not isinstance(clean_concept_source_ids, list)
         or not isinstance(dirty_concept_slugs, list)
         or not isinstance(clean_concept_slugs, list)
+        or not isinstance(dirty_machine_memory_source_ids, list)
+        or not isinstance(clean_machine_memory_source_ids, list)
+        or not isinstance(dirty_machine_memory_concept_slugs, list)
+        or not isinstance(clean_machine_memory_concept_slugs, list)
         or not isinstance(dirty_index_artifacts, list)
         or not isinstance(clean_index_artifacts, list)
         or not isinstance(dirty_maintenance_artifacts, list)
@@ -8541,6 +8645,19 @@ def load_compile_state(root: Path) -> dict[str, Any]:
         "clean_concept_source_ids": [str(entry_id) for entry_id in clean_concept_source_ids if str(entry_id)],
         "dirty_concept_slugs": [str(slug) for slug in dirty_concept_slugs if str(slug)],
         "clean_concept_slugs": [str(slug) for slug in clean_concept_slugs if str(slug)],
+        "dirty_machine_memory_source_ids": [
+            str(entry_id) for entry_id in dirty_machine_memory_source_ids if str(entry_id)
+        ],
+        "clean_machine_memory_source_ids": [
+            str(entry_id) for entry_id in clean_machine_memory_source_ids if str(entry_id)
+        ],
+        "dirty_machine_memory_concept_slugs": [
+            str(slug) for slug in dirty_machine_memory_concept_slugs if str(slug)
+        ],
+        "clean_machine_memory_concept_slugs": [
+            str(slug) for slug in clean_machine_memory_concept_slugs if str(slug)
+        ],
+        "machine_memory_core_reused": bool(document.get("machine_memory_core_reused", False)),
         "dirty_index_artifacts": [str(path) for path in dirty_index_artifacts if str(path)],
         "clean_index_artifacts": [str(path) for path in clean_index_artifacts if str(path)],
         "dirty_maintenance_artifacts": [str(path) for path in dirty_maintenance_artifacts if str(path)],
@@ -8587,6 +8704,47 @@ def load_concept_build_state(root: Path) -> dict[str, Any]:
 
 def save_concept_build_state(root: Path, document: dict[str, Any]) -> None:
     save_json_document(concept_build_state_path(root), document)
+
+
+def default_machine_memory_build_state() -> dict[str, Any]:
+    return {"version": 1, "generated_at": "", "source_records": {}, "concept_records": {}}
+
+
+def load_machine_memory_build_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(machine_memory_build_state_path(root))
+    if not isinstance(document, dict):
+        return default_machine_memory_build_state()
+    source_records = document.get("source_records")
+    concept_records = document.get("concept_records")
+    if not isinstance(source_records, dict) or not isinstance(concept_records, dict):
+        return default_machine_memory_build_state()
+
+    normalized_source_records: dict[str, dict[str, str]] = {}
+    for entry_id, record in source_records.items():
+        if not isinstance(entry_id, str) or not entry_id or not isinstance(record, dict):
+            continue
+        normalized_source_records[entry_id] = {
+            "input_signature": str(record.get("input_signature") or ""),
+        }
+
+    normalized_concept_records: dict[str, dict[str, str]] = {}
+    for slug, record in concept_records.items():
+        if not isinstance(slug, str) or not slug or not isinstance(record, dict):
+            continue
+        normalized_concept_records[slug] = {
+            "input_signature": str(record.get("input_signature") or ""),
+        }
+
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "generated_at": str(document.get("generated_at") or ""),
+        "source_records": normalized_source_records,
+        "concept_records": normalized_concept_records,
+    }
+
+
+def save_machine_memory_build_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(machine_memory_build_state_path(root), document)
 
 
 def manifest_change_summary(previous_entries: list[dict[str, Any]], current_entries: list[dict[str, Any]]) -> dict[str, int]:
@@ -10541,6 +10699,108 @@ def build_machine_memory(
             for term, payload in sorted(term_index.items())
         },
         "drift": drift,
+    }
+
+
+def plan_machine_memory_build(
+    root: Path,
+    entries: list[dict[str, Any]],
+    concepts: list[dict[str, Any]],
+    previews: dict[str, str],
+    entry_terms: dict[str, list[str]],
+    *,
+    generated_at: str,
+) -> dict[str, Any]:
+    previous_state = load_machine_memory_build_state(root)
+    previous_source_records = previous_state.get("source_records", {})
+    previous_concept_records = previous_state.get("concept_records", {})
+    if not isinstance(previous_source_records, dict):
+        previous_source_records = {}
+    if not isinstance(previous_concept_records, dict):
+        previous_concept_records = {}
+
+    source_records: dict[str, dict[str, str]] = {}
+    dirty_source_ids: list[str] = []
+    clean_source_ids: list[str] = []
+    for entry in entries:
+        entry_id = str(entry["id"])
+        input_signature = machine_memory_source_input_signature(
+            root,
+            entry,
+            previews.get(entry_id, ""),
+            entry_terms.get(entry_id, []),
+        )
+        source_records[entry_id] = {"input_signature": input_signature}
+        previous_record = previous_source_records.get(entry_id, {})
+        if (
+            isinstance(previous_record, dict)
+            and str(previous_record.get("input_signature") or "") == input_signature
+        ):
+            clean_source_ids.append(entry_id)
+        else:
+            dirty_source_ids.append(entry_id)
+
+    concept_records: dict[str, dict[str, str]] = {}
+    dirty_concept_slugs: list[str] = []
+    clean_concept_slugs: list[str] = []
+    for record in concepts:
+        slug = str(record["slug"])
+        input_signature = machine_memory_concept_input_signature(record)
+        concept_records[slug] = {"input_signature": input_signature}
+        previous_record = previous_concept_records.get(slug, {})
+        if (
+            isinstance(previous_record, dict)
+            and str(previous_record.get("input_signature") or "") == input_signature
+        ):
+            clean_concept_slugs.append(slug)
+        else:
+            dirty_concept_slugs.append(slug)
+
+    removed_source_ids = sorted(set(previous_source_records) - set(source_records))
+    removed_concept_slugs = sorted(set(previous_concept_records) - set(concept_records))
+    return {
+        "state_document": {
+            "version": 1,
+            "generated_at": generated_at,
+            "source_records": source_records,
+            "concept_records": concept_records,
+        },
+        "dirty_source_ids": dirty_source_ids,
+        "clean_source_ids": clean_source_ids,
+        "dirty_concept_slugs": dirty_concept_slugs,
+        "clean_concept_slugs": clean_concept_slugs,
+        "removed_source_ids": removed_source_ids,
+        "removed_concept_slugs": removed_concept_slugs,
+        "inputs_clean": not (
+            dirty_source_ids
+            or dirty_concept_slugs
+            or removed_source_ids
+            or removed_concept_slugs
+        ),
+    }
+
+
+def machine_memory_snapshot_is_reusable(memory: dict[str, Any]) -> bool:
+    return (
+        isinstance(memory.get("source_nodes"), list)
+        and isinstance(memory.get("concept_nodes"), list)
+        and isinstance(memory.get("edges"), dict)
+        and isinstance(memory.get("citation_map"), list)
+        and isinstance(memory.get("term_index"), dict)
+        and isinstance(memory.get("drift"), dict)
+    )
+
+
+def reuse_machine_memory_core(previous: dict[str, Any], compiled_at: str) -> dict[str, Any]:
+    return {
+        "version": int(previous.get("version", 1) or 1),
+        "compiled_at": compiled_at,
+        "source_nodes": list(previous.get("source_nodes", [])),
+        "concept_nodes": list(previous.get("concept_nodes", [])),
+        "edges": dict(previous.get("edges", {})),
+        "citation_map": list(previous.get("citation_map", [])),
+        "term_index": dict(previous.get("term_index", {})),
+        "drift": dict(previous.get("drift", {})),
     }
 
 
@@ -13915,7 +14175,33 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         concept_changed_pages += wrote
 
     removed_pages = remove_stale_generated_concept_pages(root, {record["slug"] for record in concepts})
-    memory = build_machine_memory(root, entries, concepts, previews, entry_terms, compiled_at)
+    machine_memory_build = plan_machine_memory_build(
+        root,
+        entries,
+        concepts,
+        previews,
+        entry_terms,
+        generated_at=compiled_at,
+    )
+    machine_memory_build_state = machine_memory_build.get("state_document", {})
+    if not isinstance(machine_memory_build_state, dict):
+        machine_memory_build_state = default_machine_memory_build_state()
+    write_json_document_if_changed_ignoring_generated_timestamps(
+        machine_memory_build_state_path(root),
+        machine_memory_build_state,
+    )
+    dirty_machine_memory_source_ids = list(machine_memory_build.get("dirty_source_ids", []))
+    clean_machine_memory_source_ids = list(machine_memory_build.get("clean_source_ids", []))
+    dirty_machine_memory_concept_slugs = list(machine_memory_build.get("dirty_concept_slugs", []))
+    clean_machine_memory_concept_slugs = list(machine_memory_build.get("clean_concept_slugs", []))
+    machine_memory_core_reused = bool(
+        machine_memory_build.get("inputs_clean")
+        and machine_memory_snapshot_is_reusable(previous_memory)
+    )
+    if machine_memory_core_reused:
+        memory = reuse_machine_memory_core(previous_memory, compiled_at)
+    else:
+        memory = build_machine_memory(root, entries, concepts, previews, entry_terms, compiled_at)
     memory["health"] = build_machine_memory_health(memory)
     memory["health"].update(
         reconcile_machine_memory_actions(
@@ -14237,6 +14523,21 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             },
         },
         {
+            "name": "machine_memory_refresh",
+            "label": "machine memory refresh",
+            "mode": "incremental",
+            "status": "completed",
+            "details": {
+                "machine_memory_sources": len(entries),
+                "dirty_machine_memory_sources": len(dirty_machine_memory_source_ids),
+                "clean_machine_memory_sources": len(clean_machine_memory_source_ids),
+                "machine_memory_concepts": len(concepts),
+                "dirty_machine_memory_concepts": len(dirty_machine_memory_concept_slugs),
+                "clean_machine_memory_concepts": len(clean_machine_memory_concept_slugs),
+                "reused_core": machine_memory_core_reused,
+            },
+        },
+        {
             "name": "index_refresh",
             "label": "index refresh",
             "mode": "incremental",
@@ -14278,6 +14579,11 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "clean_concept_source_ids": clean_concept_source_ids,
         "dirty_concept_slugs": dirty_concept_slugs,
         "clean_concept_slugs": clean_concept_slugs,
+        "dirty_machine_memory_source_ids": dirty_machine_memory_source_ids,
+        "clean_machine_memory_source_ids": clean_machine_memory_source_ids,
+        "dirty_machine_memory_concept_slugs": dirty_machine_memory_concept_slugs,
+        "clean_machine_memory_concept_slugs": clean_machine_memory_concept_slugs,
+        "machine_memory_core_reused": machine_memory_core_reused,
         "dirty_index_artifacts": dirty_index_artifacts,
         "clean_index_artifacts": clean_index_artifacts,
         "dirty_maintenance_artifacts": dirty_maintenance_artifacts,
@@ -14313,6 +14619,11 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             f"compile_clean_concept_sources: `{len(clean_concept_source_ids)}`",
             f"compile_dirty_concepts: `{len(dirty_concept_slugs)}`",
             f"compile_clean_concepts: `{len(clean_concept_slugs)}`",
+            f"compile_dirty_machine_memory_sources: `{len(dirty_machine_memory_source_ids)}`",
+            f"compile_clean_machine_memory_sources: `{len(clean_machine_memory_source_ids)}`",
+            f"compile_dirty_machine_memory_concepts: `{len(dirty_machine_memory_concept_slugs)}`",
+            f"compile_clean_machine_memory_concepts: `{len(clean_machine_memory_concept_slugs)}`",
+            f"machine_memory_core_reused: `{machine_memory_core_reused}`",
             f"compile_dirty_index_artifacts: `{len(dirty_index_artifacts)}`",
             f"compile_clean_index_artifacts: `{len(clean_index_artifacts)}`",
             f"compile_dirty_maintenance_artifacts: `{len(dirty_maintenance_artifacts)}`",
@@ -14355,6 +14666,15 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "clean_concepts": len(clean_concept_slugs),
         "dirty_concept_slugs": list(dirty_concept_slugs),
         "clean_concept_slugs": list(clean_concept_slugs),
+        "dirty_machine_memory_sources": len(dirty_machine_memory_source_ids),
+        "clean_machine_memory_sources": len(clean_machine_memory_source_ids),
+        "dirty_machine_memory_source_ids": list(dirty_machine_memory_source_ids),
+        "clean_machine_memory_source_ids": list(clean_machine_memory_source_ids),
+        "dirty_machine_memory_concepts": len(dirty_machine_memory_concept_slugs),
+        "clean_machine_memory_concepts": len(clean_machine_memory_concept_slugs),
+        "dirty_machine_memory_concept_slugs": list(dirty_machine_memory_concept_slugs),
+        "clean_machine_memory_concept_slugs": list(clean_machine_memory_concept_slugs),
+        "machine_memory_core_reused": machine_memory_core_reused,
         "dirty_index_artifacts": list(dirty_index_artifacts),
         "clean_index_artifacts": list(clean_index_artifacts),
         "dirty_maintenance_artifacts": list(dirty_maintenance_artifacts),
@@ -14364,6 +14684,7 @@ def compile_wiki(root: Path) -> dict[str, Any]:
         "domain_pilots": len(domain_pilots["scorecards"]),
         "compile_state_path": relative_path(root, compile_state_path(root)),
         "concept_build_state_path": relative_path(root, concept_build_state_path(root)),
+        "machine_memory_build_state_path": relative_path(root, machine_memory_build_state_path(root)),
         "material_state_path": relative_path(root, material_state_path(root)),
         "active_corpora_path": relative_path(root, active_corpora_state_path(root)),
         "material_routing_path": relative_path(root, material_routing_state_path(root)),
