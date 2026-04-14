@@ -30,6 +30,7 @@ from .app_state import (
     load_json_document,
     manifest_path,
 )
+from .app_types import ProtocolDescriptor, ProtocolState
 
 LAYOUT_DIRS = (
     "raw/inbox",
@@ -879,6 +880,12 @@ PROTOCOL_OUTPUT_GUIDANCE: dict[str, dict[str, tuple[str, ...]]] = {
             "先重述问题，再列证据、分歧、缺口和下一步问题。",
             "不要把猜测写成事实。",
         ),
+        "decision-memo": (
+            "优先组织成结论、证据、反证、失效条件和下一次复核信号。",
+        ),
+        "sop": (
+            "优先组织成前置检查、步骤、风险控制、回滚和复盘记录。",
+        ),
         "slides": (
             "每页都保留引用和关键不确定性。",
         ),
@@ -890,6 +897,12 @@ PROTOCOL_OUTPUT_GUIDANCE: dict[str, dict[str, tuple[str, ...]]] = {
         "report": (
             "优先组织成 thesis / bull-bear evidence / catalysts / risks / invalidation。",
             "把时间窗口和下一次财报或事件复审写清楚。",
+        ),
+        "decision-memo": (
+            "优先突出 thesis、bull-bear evidence、position sizing guardrail、risk 和 invalidation。",
+        ),
+        "sop": (
+            "优先突出检查仓位、催化剂窗口、风控阈值和复盘步骤。",
         ),
         "slides": (
             "优先呈现 thesis、估值/风险、催化剂和失效条件。",
@@ -903,6 +916,12 @@ PROTOCOL_OUTPUT_GUIDANCE: dict[str, dict[str, tuple[str, ...]]] = {
             "优先组织成 benchmark / experiment / tradeoff / regression risk / next experiment。",
             "把 open questions 和验证条件写清楚。",
         ),
+        "decision-memo": (
+            "优先突出假设、实验信号、反例、回归风险和下一轮验证。",
+        ),
+        "sop": (
+            "优先突出实验准备、执行步骤、度量口径、回滚和复现实验。",
+        ),
         "slides": (
             "优先呈现 benchmark、架构取舍、回归风险和下一步实验。",
         ),
@@ -914,6 +933,12 @@ PROTOCOL_OUTPUT_GUIDANCE: dict[str, dict[str, tuple[str, ...]]] = {
         "report": (
             "优先组织成 user problem / insight / bet / metric / launch risk / next validation。",
             "把关键假设、受影响用户和下一次验证窗口写清楚。",
+        ),
+        "decision-memo": (
+            "优先突出用户问题、核心 bet、指标、发布风险和验证窗口。",
+        ),
+        "sop": (
+            "优先突出发布前检查、执行步骤、监控指标、回退和复盘。",
         ),
         "slides": (
             "优先呈现 user problem、关键 insight、核心 bet、metric 和 launch readiness。",
@@ -927,12 +952,164 @@ PROTOCOL_OUTPUT_GUIDANCE: dict[str, dict[str, tuple[str, ...]]] = {
             "优先组织成 incident timeline / blast radius / mitigation / root cause / follow-up。",
             "把当前缓解状态、残余风险和下一次复查窗口写清楚。",
         ),
+        "decision-memo": (
+            "优先突出影响范围、缓解方案、残余风险、失效条件和 follow-up owner。",
+        ),
+        "sop": (
+            "优先突出告警前置检查、处置步骤、升级路径、回滚和复盘记录。",
+        ),
         "slides": (
             "优先呈现事故时间线、影响范围、缓解动作、根因判断和 follow-up。",
         ),
         "figure": (
             "优先做 incident timeline、capacity、dependency 或 SLO drift 图。",
         ),
+    },
+}
+
+
+PROTOCOL_EXECUTION_POLICY_RULES: dict[str, dict[str, dict[str, Any]]] = {
+    "general": {
+        "add-source-concept-link": {
+            "decision": "allow",
+            "execution_policy": "semi-auto-apply",
+            "execution_band": "bundle-safe-apply",
+            "capabilities": ("dry-run", "bundle-apply", "revert-safe", "history"),
+            "policy_summary": "低风险补链可直接走 safe apply，再让 compile 收敛页面链接。",
+        },
+        "refresh-citation-snapshots": {
+            "decision": "allow",
+            "execution_policy": "semi-auto-apply",
+            "execution_band": "bundle-safe-apply",
+            "capabilities": ("dry-run", "bundle-apply", "revert-safe", "history"),
+            "policy_summary": "只刷新 citation snapshot metadata，不改正文判断，可直接自动修复。",
+        },
+        "connect-isolated-source": {
+            "decision": "review",
+            "execution_policy": "manual-repair",
+            "execution_band": "manual-repair",
+            "capabilities": ("manual-edit", "review", "history"),
+            "policy_summary": "涉及概念接入判断，先 review 再人工修复。",
+        },
+        "expand-singleton-concept": {
+            "decision": "review",
+            "execution_policy": "manual-repair",
+            "execution_band": "manual-repair",
+            "capabilities": ("manual-edit", "review", "history"),
+            "policy_summary": "会改 concept synthesis，保留人工 review 边界。",
+        },
+        "split-overloaded-concept": {
+            "decision": "review",
+            "execution_policy": "manual-repair",
+            "execution_band": "manual-repair",
+            "capabilities": ("manual-edit", "review", "history"),
+            "policy_summary": "概念拆分属于高影响动作，只允许人工修复。",
+        },
+        "monitor-bridge-concept": {
+            "decision": "review",
+            "execution_policy": "manual-repair",
+            "execution_band": "review-first",
+            "capabilities": ("review", "history"),
+            "policy_summary": "桥接概念只给观察与 review 建议，不直接自动执行。",
+        },
+    },
+    "investing": {
+        "add-source-concept-link": {
+            "decision": "allow",
+            "execution_policy": "semi-auto-apply",
+            "execution_band": "bundle-safe-apply",
+            "capabilities": ("dry-run", "bundle-apply", "revert-safe", "history"),
+            "policy_summary": "仅允许 provenance 明确的低风险补链自动执行，避免 thesis 页面静默漂移。",
+        },
+        "refresh-citation-snapshots": {
+            "decision": "allow",
+            "execution_policy": "semi-auto-apply",
+            "execution_band": "bundle-safe-apply",
+            "capabilities": ("dry-run", "bundle-apply", "revert-safe", "history"),
+            "policy_summary": "可自动刷新 citation snapshot，但不自动改变 thesis / risk 结论。",
+        },
+    },
+    "research": {
+        "add-source-concept-link": {
+            "decision": "allow",
+            "execution_policy": "semi-auto-apply",
+            "execution_band": "bundle-safe-apply",
+            "capabilities": ("dry-run", "bundle-apply", "revert-safe", "history"),
+            "policy_summary": "实验 provenance 明确时允许自动补链，加快 benchmark / concept 收敛。",
+        },
+        "refresh-citation-snapshots": {
+            "decision": "allow",
+            "execution_policy": "semi-auto-apply",
+            "execution_band": "bundle-safe-apply",
+            "capabilities": ("dry-run", "bundle-apply", "revert-safe", "history"),
+            "policy_summary": "可自动刷新实验引用快照，不直接改 benchmark judgment。",
+        },
+    },
+    "product": {
+        "add-source-concept-link": {
+            "decision": "allow",
+            "execution_policy": "semi-auto-apply",
+            "execution_band": "bundle-safe-apply",
+            "capabilities": ("dry-run", "bundle-apply", "revert-safe", "history"),
+            "policy_summary": "低风险补链可自动执行，但 launch / metric 判断仍停在 review。",
+        },
+        "refresh-citation-snapshots": {
+            "decision": "allow",
+            "execution_policy": "semi-auto-apply",
+            "execution_band": "bundle-safe-apply",
+            "capabilities": ("dry-run", "bundle-apply", "revert-safe", "history"),
+            "policy_summary": "可自动刷新用户信号 snapshot，不自动改发布判断。",
+        },
+    },
+    "ops": {
+        "add-source-concept-link": {
+            "decision": "allow",
+            "execution_policy": "semi-auto-apply",
+            "execution_band": "bundle-safe-apply",
+            "capabilities": ("dry-run", "bundle-apply", "revert-safe", "history"),
+            "policy_summary": "低风险补链可自动执行，但 incident judgment 与 runbook 结论仍需人工 review。",
+        },
+        "refresh-citation-snapshots": {
+            "decision": "allow",
+            "execution_policy": "semi-auto-apply",
+            "execution_band": "bundle-safe-apply",
+            "capabilities": ("dry-run", "bundle-apply", "revert-safe", "history"),
+            "policy_summary": "可自动刷新 incident citation snapshot，避免 review 基线继续漂移。",
+        },
+    },
+}
+
+
+PROTOCOL_QUERY_ROUTE_CONFIG: dict[str, dict[str, Any]] = {
+    "general": {
+        "default_strategy": "concept-first",
+        "strategy_order": ("concept-first", "graph-walk", "source-first"),
+        "source_markers": ("source", "citation", "quote", "file", "raw", "证据", "引用", "来源", "原文"),
+        "graph_markers": ("why", "how", "impact", "dependency", "relationship", "root cause", "为什么", "因果", "关系", "根因"),
+    },
+    "investing": {
+        "default_strategy": "concept-first",
+        "strategy_order": ("concept-first", "graph-walk", "source-first"),
+        "source_markers": ("filing", "10-k", "earnings", "transcript", "财报", "电话会", "指引"),
+        "graph_markers": ("catalyst", "driver", "risk", "invalidation", "催化剂", "驱动", "风险", "失效"),
+    },
+    "research": {
+        "default_strategy": "source-first",
+        "strategy_order": ("source-first", "graph-walk", "concept-first"),
+        "source_markers": ("benchmark", "experiment", "latency", "throughput", "日志", "实验", "基准", "性能"),
+        "graph_markers": ("tradeoff", "regression", "dependency", "bottleneck", "取舍", "回归", "瓶颈"),
+    },
+    "product": {
+        "default_strategy": "concept-first",
+        "strategy_order": ("concept-first", "source-first", "graph-walk"),
+        "source_markers": ("interview", "ticket", "feedback", "session", "访谈", "反馈", "工单", "埋点"),
+        "graph_markers": ("funnel", "retention", "segment", "metric", "漏斗", "留存", "分群", "指标"),
+    },
+    "ops": {
+        "default_strategy": "graph-walk",
+        "strategy_order": ("graph-walk", "source-first", "concept-first"),
+        "source_markers": ("log", "trace", "incident", "alert", "日志", "告警", "事件", "trace"),
+        "graph_markers": ("dependency", "blast radius", "rollback", "root cause", "依赖", "影响面", "回滚", "根因"),
     },
 }
 
@@ -1174,7 +1351,7 @@ def protocol_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "protocol.json"
 
 
-def default_protocol_state() -> dict[str, Any]:
+def default_protocol_state() -> ProtocolState:
     return {"version": 1, "active_protocol": DEFAULT_PROTOCOL}
 
 
@@ -1255,6 +1432,108 @@ def render_protocol_section(slug: str, section: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def protocol_runtime_schema_path(root: Path, slug: str) -> Path:
+    return root / "schema" / "protocols" / slug / "runtime.yaml"
+
+
+def default_protocol_runtime_schema(slug: str) -> dict[str, Any]:
+    metadata = PROTOCOL_LIBRARY[slug]
+    review_windows = {
+        f"{kind}:{status}": [window[0], window[1]]
+        for (kind, status), window in PROTOCOL_REVIEW_WINDOWS.get(slug, {}).items()
+    }
+    execution_policy_rules = dict(PROTOCOL_EXECUTION_POLICY_RULES.get(DEFAULT_PROTOCOL, {}))
+    execution_policy_rules.update(PROTOCOL_EXECUTION_POLICY_RULES.get(slug, {}))
+    route_config = dict(PROTOCOL_QUERY_ROUTE_CONFIG.get(DEFAULT_PROTOCOL, {}))
+    route_config.update(PROTOCOL_QUERY_ROUTE_CONFIG.get(slug, {}))
+    return {
+        "version": 1,
+        "slug": slug,
+        "title": metadata["title"],
+        "summary": metadata["summary"],
+        "review_windows": review_windows,
+        "output_guidance": {
+            output_format: list(lines)
+            for output_format, lines in PROTOCOL_OUTPUT_GUIDANCE.get(slug, PROTOCOL_OUTPUT_GUIDANCE[DEFAULT_PROTOCOL]).items()
+        },
+        "execution_policy": {
+            "accepted_rules": execution_policy_rules,
+        },
+        "query_routes": {
+            "default_strategy": str(route_config.get("default_strategy") or "concept-first"),
+            "strategy_order": list(route_config.get("strategy_order") or ["concept-first", "graph-walk", "source-first"]),
+            "source_markers": list(route_config.get("source_markers") or []),
+            "graph_markers": list(route_config.get("graph_markers") or []),
+        },
+    }
+
+
+def load_protocol_runtime_schema(root: Path, slug: str) -> dict[str, Any]:
+    path = protocol_runtime_schema_path(root, slug)
+    default_schema = default_protocol_runtime_schema(slug)
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(default_schema, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return default_schema
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return default_schema
+    if not isinstance(payload, dict):
+        return default_schema
+    merged = dict(default_schema)
+    merged.update({key: value for key, value in payload.items() if key in merged})
+    output_guidance = payload.get("output_guidance")
+    if isinstance(output_guidance, dict):
+        merged["output_guidance"] = {
+            key: list(value)
+            for key, value in output_guidance.items()
+            if isinstance(key, str) and isinstance(value, list)
+        }
+    execution_policy = payload.get("execution_policy")
+    if isinstance(execution_policy, dict):
+        accepted_rules = execution_policy.get("accepted_rules")
+        if isinstance(accepted_rules, dict):
+            merged["execution_policy"] = {
+                "accepted_rules": {
+                    key: dict(value)
+                    for key, value in accepted_rules.items()
+                    if isinstance(key, str) and isinstance(value, dict)
+                }
+            }
+    query_routes = payload.get("query_routes")
+    if isinstance(query_routes, dict):
+        merged["query_routes"] = {
+            "default_strategy": str(query_routes.get("default_strategy") or merged["query_routes"]["default_strategy"]),
+            "strategy_order": [
+                str(item)
+                for item in query_routes.get("strategy_order", merged["query_routes"]["strategy_order"])
+                if isinstance(item, str) and item
+            ],
+            "source_markers": [
+                str(item)
+                for item in query_routes.get("source_markers", merged["query_routes"]["source_markers"])
+                if isinstance(item, str) and item
+            ],
+            "graph_markers": [
+                str(item)
+                for item in query_routes.get("graph_markers", merged["query_routes"]["graph_markers"])
+                if isinstance(item, str) and item
+            ],
+        }
+    review_windows = payload.get("review_windows")
+    if isinstance(review_windows, dict):
+        merged["review_windows"] = {
+            str(key): [int(value[0]), int(value[1])]
+            for key, value in review_windows.items()
+            if isinstance(key, str)
+            and isinstance(value, list)
+            and len(value) == 2
+            and all(isinstance(item, int) for item in value)
+        }
+    return merged
+
+
 def ensure_protocol_scaffold(root: Path) -> None:
     base = root / "schema" / "protocols"
     base.mkdir(parents=True, exist_ok=True)
@@ -1262,6 +1541,13 @@ def ensure_protocol_scaffold(root: Path) -> None:
     if not index_path.exists():
         index_path.write_text(render_protocol_library_index(), encoding="utf-8")
     for slug in sorted(PROTOCOL_LIBRARY):
+        runtime_schema = protocol_runtime_schema_path(root, slug)
+        runtime_schema.parent.mkdir(parents=True, exist_ok=True)
+        if not runtime_schema.exists():
+            runtime_schema.write_text(
+                json.dumps(default_protocol_runtime_schema(slug), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
         overview = base / slug / "index.md"
         overview.parent.mkdir(parents=True, exist_ok=True)
         if not overview.exists():
@@ -1283,7 +1569,7 @@ def available_protocols(root: Path) -> list[str]:
     return protocols
 
 
-def protocol_descriptor(root: Path, slug: str) -> dict[str, Any]:
+def protocol_descriptor(root: Path, slug: str) -> ProtocolDescriptor:
     base = root / "schema" / "protocols" / slug
     return {
         "slug": slug,
@@ -1296,7 +1582,7 @@ def protocol_descriptor(root: Path, slug: str) -> dict[str, Any]:
     }
 
 
-def load_protocol_state(root: Path) -> dict[str, Any]:
+def load_protocol_state(root: Path) -> ProtocolState:
     ensure_protocol_scaffold(root)
     path = protocol_state_path(root)
     state = load_json_document(path) if path.exists() else default_protocol_state()
@@ -1404,10 +1690,56 @@ def concept_focus_score(active_protocol: str, title: str, content: str) -> int:
     return protocol_focus_score(active_protocol, f"{title}\n{content}")
 
 
-def protocol_output_guidance(protocol: str, output_format: str) -> tuple[str, ...]:
-    default_guidance = PROTOCOL_OUTPUT_GUIDANCE.get(DEFAULT_PROTOCOL, {})
-    protocol_guidance = PROTOCOL_OUTPUT_GUIDANCE.get(protocol, default_guidance)
+def protocol_output_guidance(root: Path, protocol: str, output_format: str) -> tuple[str, ...]:
+    default_guidance = default_protocol_runtime_schema(DEFAULT_PROTOCOL).get("output_guidance", {})
+    protocol_guidance = load_protocol_runtime_schema(root, protocol).get("output_guidance", default_guidance)
+    if not isinstance(default_guidance, dict):
+        default_guidance = {}
+    if not isinstance(protocol_guidance, dict):
+        protocol_guidance = default_guidance
     return tuple(protocol_guidance.get(output_format, default_guidance.get(output_format, ())))
+
+
+def protocol_execution_policy_rule(root: Path, protocol: str, action_kind: str) -> dict[str, Any]:
+    default_rules = default_protocol_runtime_schema(DEFAULT_PROTOCOL).get("execution_policy", {}).get("accepted_rules", {})
+    protocol_rules = load_protocol_runtime_schema(root, protocol).get("execution_policy", {}).get("accepted_rules", {})
+    rule = protocol_rules.get(action_kind) or default_rules.get(action_kind) or {}
+    if not isinstance(rule, dict):
+        return {}
+    return {
+        "decision": str(rule.get("decision") or "review"),
+        "execution_policy": str(rule.get("execution_policy") or "manual-repair"),
+        "execution_band": str(rule.get("execution_band") or "manual-repair"),
+        "capabilities": [str(item) for item in rule.get("capabilities", []) if isinstance(item, str) and item],
+        "policy_summary": str(rule.get("policy_summary") or ""),
+    }
+
+
+def protocol_query_route_config(root: Path, protocol: str) -> dict[str, Any]:
+    default_config = default_protocol_runtime_schema(DEFAULT_PROTOCOL).get("query_routes", {})
+    protocol_config = load_protocol_runtime_schema(root, protocol).get("query_routes", default_config)
+    if not isinstance(default_config, dict):
+        default_config = {}
+    if not isinstance(protocol_config, dict):
+        protocol_config = default_config
+    return {
+        "default_strategy": str(protocol_config.get("default_strategy") or default_config.get("default_strategy") or "concept-first"),
+        "strategy_order": [
+            str(item)
+            for item in protocol_config.get("strategy_order", default_config.get("strategy_order", []))
+            if isinstance(item, str) and item
+        ],
+        "source_markers": [
+            str(item)
+            for item in protocol_config.get("source_markers", default_config.get("source_markers", []))
+            if isinstance(item, str) and item
+        ],
+        "graph_markers": [
+            str(item)
+            for item in protocol_config.get("graph_markers", default_config.get("graph_markers", []))
+            if isinstance(item, str) and item
+        ],
+    }
 
 
 def protocol_paths(root: Path, protocol: str | None = None) -> list[str]:
@@ -1424,8 +1756,17 @@ def schedule_review_windows(
     base_timestamp: str,
     *,
     protocol: str = DEFAULT_PROTOCOL,
+    root: Path | None = None,
 ) -> tuple[str, str]:
-    windows = PROTOCOL_REVIEW_WINDOWS.get(protocol, {}).get((kind, status), AGING_WINDOWS_DAYS.get((kind, status)))
+    windows = AGING_WINDOWS_DAYS.get((kind, status))
+    if root is not None:
+        runtime_schema = load_protocol_runtime_schema(root, protocol)
+        review_windows = runtime_schema.get("review_windows", {}) if isinstance(runtime_schema, dict) else {}
+        candidate = review_windows.get(f"{kind}:{status}") if isinstance(review_windows, dict) else None
+        if isinstance(candidate, list) and len(candidate) == 2 and all(isinstance(item, int) for item in candidate):
+            windows = (candidate[0], candidate[1])
+    elif protocol in PROTOCOL_REVIEW_WINDOWS:
+        windows = PROTOCOL_REVIEW_WINDOWS.get(protocol, {}).get((kind, status), windows)
     if not windows:
         return "", ""
     base = parse_iso_datetime(base_timestamp) or datetime.now(timezone.utc)

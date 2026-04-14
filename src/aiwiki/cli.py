@@ -6,19 +6,17 @@ import argparse
 import json
 from pathlib import Path
 
-from .app import (
+from .app_compile import (
     apply_concept_rewrite,
     apply_material_archive,
     apply_machine_memory_action,
     ask_question,
     compile_wiki,
-    ensure_layout,
     file_back,
-    ingest_source,
     lint_wiki,
-    load_protocol_state,
     nightly_health,
     reactivate_concept,
+    revert_concept_rewrite,
     revert_material_archive,
     revert_machine_memory_action,
     retire_concept,
@@ -27,7 +25,10 @@ from .app import (
     review_page,
     set_active_protocol,
     shell_status,
+    verify_concept_rewrite,
 )
+from .app_content import ingest_source
+from .app_protocol import ensure_layout, load_protocol_state
 from .drop import drop_image, drop_pdf, drop_repo, drop_url
 from .runner import auto_process_once, llm_status, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 
@@ -112,7 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
     ask_parser.add_argument("question", help="Research question to package.")
     ask_parser.add_argument(
         "--format",
-        choices=("report", "slides", "figure"),
+        choices=("report", "decision-memo", "sop", "slides", "figure"),
         default="report",
         help="Output artifact format.",
     )
@@ -125,7 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_ask_parser.add_argument("question", help="Research question to answer.")
     run_ask_parser.add_argument(
         "--format",
-        choices=("report", "slides", "figure"),
+        choices=("report", "decision-memo", "sop", "slides", "figure"),
         default="report",
         help="Output artifact format.",
     )
@@ -168,6 +169,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     apply_rewrite_parser.add_argument("slug", help="Concept slug.")
     apply_rewrite_parser.add_argument("--note", help="Optional apply note.")
+
+    verify_rewrite_parser = subparsers.add_parser(
+        "verify-rewrite",
+        help="Verify that an applied concept rewrite still matches the current concept/runtime state.",
+    )
+    verify_rewrite_parser.add_argument("slug", help="Concept slug.")
+    verify_rewrite_parser.add_argument("--note", help="Optional verification note.")
+
+    revert_rewrite_parser = subparsers.add_parser(
+        "revert-rewrite",
+        help="Revert the latest applied concept rewrite and restore the previous concept snapshot.",
+    )
+    revert_rewrite_parser.add_argument("slug", help="Concept slug.")
+    revert_rewrite_parser.add_argument("--note", help="Optional revert note.")
 
     retire_concept_parser = subparsers.add_parser(
         "retire-concept",
@@ -356,6 +371,10 @@ def main(argv: list[str] | None = None) -> int:
             result = review_concept_rewrite(root, args.slug, args.status, note=args.note)
         elif args.command == "apply-rewrite":
             result = apply_concept_rewrite(root, args.slug, note=args.note)
+        elif args.command == "verify-rewrite":
+            result = verify_concept_rewrite(root, args.slug, note=args.note)
+        elif args.command == "revert-rewrite":
+            result = revert_concept_rewrite(root, args.slug, note=args.note)
         elif args.command == "retire-concept":
             result = retire_concept(root, args.slug, note=args.note)
         elif args.command == "reactivate-concept":

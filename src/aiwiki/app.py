@@ -1,31 +1,17 @@
-"""Core application logic for the aiwiki MVP."""
+"""Static compatibility shim for the aiwiki runtime."""
 
 from __future__ import annotations
 
 from .config import LLMConfig
-from functools import wraps
-from pathlib import Path
-from typing import Any
 from . import app_compile as _app_compile
 from . import app_content as _app_content
+from . import app_execution as _app_execution
 from . import app_memory as _app_memory
 from . import app_protocol as _app_protocol
+from . import app_shell as _app_shell
 from . import app_state as _app_state
+from . import app_surfaces as _app_surfaces
 from . import app_utils as _app_utils
-
-_raw_compile_wiki = _app_compile.compile_wiki
-_raw_ask_question = _app_compile.ask_question
-_raw_build_ranking_source_record = _app_compile.build_ranking_source_record
-_raw_build_ranking_concept_record = _app_compile.build_ranking_concept_record
-_raw_transition_profile = _app_content.transition_profile
-_raw_curated_page_transition_profile = _app_content.curated_page_transition_profile
-_raw_rewrite_transition_profile = _app_content.rewrite_transition_profile
-_raw_action_transition_profile = _app_content.action_transition_profile
-_raw_archive_transition_profile = _app_content.archive_transition_profile
-_raw_shell_review_controls = _app_memory.shell_review_controls
-_raw_shell_action_control_objects = _app_memory.shell_action_control_objects
-_raw_shell_archive_control_objects = _app_memory.shell_archive_control_objects
-_raw_shell_execution_controls = _app_memory.shell_execution_controls
 
 _RUNTIME_LOCK_GUARD = _app_utils._RUNTIME_LOCK_GUARD
 _RUNTIME_LOCKS = _app_utils._RUNTIME_LOCKS
@@ -335,13 +321,13 @@ patch_summary_for_action = _app_content.patch_summary_for_action
 patch_mode_for_action = _app_content.patch_mode_for_action
 build_page_patch_plan = _app_content.build_page_patch_plan
 safe_apply_preview = _app_content.safe_apply_preview
-build_execution_bundle = _app_content.build_execution_bundle
-execution_bundle_digest = _app_content.execution_bundle_digest
-load_execution_bundle = _app_content.load_execution_bundle
-build_execution_receipt = _app_content.build_execution_receipt
-build_material_archive_bundle = _app_content.build_material_archive_bundle
-build_material_archive_receipt = _app_content.build_material_archive_receipt
-append_execution_receipt_history = _app_content.append_execution_receipt_history
+build_execution_bundle = _app_execution.build_execution_bundle
+execution_bundle_digest = _app_execution.execution_bundle_digest
+load_execution_bundle = _app_execution.load_execution_bundle
+build_execution_receipt = _app_execution.build_execution_receipt
+build_material_archive_bundle = _app_execution.build_material_archive_bundle
+build_material_archive_receipt = _app_execution.build_material_archive_receipt
+append_execution_receipt_history = _app_execution.append_execution_receipt_history
 load_execution_receipt_history = _app_content.load_execution_receipt_history
 remove_stale_generated_execution_proposal_pages = _app_content.remove_stale_generated_execution_proposal_pages
 remove_stale_generated_execution_bundle_files = _app_content.remove_stale_generated_execution_bundle_files
@@ -359,8 +345,8 @@ recurring_promotion_needs_refresh = _app_content.recurring_promotion_needs_refre
 annotate_recurring_promotion = _app_content.annotate_recurring_promotion
 render_curated_page_summary = _app_content.render_curated_page_summary
 render_curated_index = _app_content.render_curated_index
-render_judgment_assets = _app_content.render_judgment_assets
-render_cognitive_history = _app_content.render_cognitive_history
+render_judgment_assets = _app_surfaces.render_judgment_assets
+render_cognitive_history = _app_surfaces.render_cognitive_history
 compact_section_lines = _app_content.compact_section_lines
 workspace_link = _app_content.workspace_link
 pack_workspace_link = _app_content.pack_workspace_link
@@ -397,14 +383,14 @@ render_agent_pack = _app_content.render_agent_pack
 render_agent_workbench = _app_content.render_agent_workbench
 render_review_queue = _app_content.render_review_queue
 render_aging_report = _app_content.render_aging_report
-render_review_center_html = _app_content.render_review_center_html
+render_review_center_html = _app_surfaces.render_review_center_html
 protocol_scorecard = _app_content.protocol_scorecard
 protocol_output_pack_rows = _app_content.protocol_output_pack_rows
 protocol_execution_receipts = _app_content.protocol_execution_receipts
 furnace_quick_commands = _app_content.furnace_quick_commands
-render_furnace_center = _app_content.render_furnace_center
-render_furnace_center_html = _app_content.render_furnace_center_html
-render_compile_status = _app_content.render_compile_status
+render_furnace_center = _app_surfaces.render_furnace_center
+render_furnace_center_html = _app_surfaces.render_furnace_center_html
+render_compile_status = _app_surfaces.render_compile_status
 render_master_index = _app_content.render_master_index
 ensure_wiki_log = _app_content.ensure_wiki_log
 append_wiki_log = _app_content.append_wiki_log
@@ -442,17 +428,17 @@ concept_rewrite_strategy = _app_content.concept_rewrite_strategy
 repair_execution_proposals = _app_content.repair_execution_proposals
 build_concept_quality = _app_content.build_concept_quality
 
-shell_recent_runs = _app_memory.shell_recent_runs
-shell_recent_receipts = _app_memory.shell_recent_receipts
-shell_review_controls = _app_memory.shell_review_controls
-shell_action_control_objects = _app_memory.shell_action_control_objects
-shell_archive_control_objects = _app_memory.shell_archive_control_objects
-shell_execution_controls = _app_memory.shell_execution_controls
-shell_links = _app_memory.shell_links
-shell_capabilities = _app_memory.shell_capabilities
-shell_protocol_state = _app_memory.shell_protocol_state
-build_shell_summary = _app_memory.build_shell_summary
-write_shell_summary = _app_memory.write_shell_summary
+shell_recent_runs = _app_shell.shell_recent_runs
+shell_recent_receipts = _app_shell.shell_recent_receipts
+shell_review_controls = _app_shell.shell_review_controls
+shell_action_control_objects = _app_shell.shell_action_control_objects
+shell_archive_control_objects = _app_shell.shell_archive_control_objects
+shell_execution_controls = _app_shell.shell_execution_controls
+shell_links = _app_shell.shell_links
+shell_capabilities = _app_shell.shell_capabilities
+shell_protocol_state = _app_shell.shell_protocol_state
+build_shell_summary = _app_shell.build_shell_summary
+write_shell_summary = _app_shell.write_shell_summary
 concept_page_path = _app_memory.concept_page_path
 concept_lifecycle_entry = _app_memory.concept_lifecycle_entry
 question_signature = _app_memory.question_signature
@@ -489,7 +475,7 @@ build_machine_memory_health = _app_memory.build_machine_memory_health
 reconcile_machine_memory_actions = _app_memory.reconcile_machine_memory_actions
 machine_memory_digest = _app_memory.machine_memory_digest
 build_machine_memory_graph = _app_memory.build_machine_memory_graph
-render_machine_memory_graph_html = _app_memory.render_machine_memory_graph_html
+render_machine_memory_graph_html = _app_surfaces.render_machine_memory_graph_html
 build_machine_memory_adjacency = _app_memory.build_machine_memory_adjacency
 build_machine_memory_query = _app_memory.build_machine_memory_query
 build_machine_memory_query_routes = _app_memory.build_machine_memory_query_routes
@@ -506,12 +492,12 @@ render_machine_memory_topology = _app_memory.render_machine_memory_topology
 render_machine_memory_actions = _app_memory.render_machine_memory_actions
 render_machine_memory_repair_plan = _app_memory.render_machine_memory_repair_plan
 render_execution_proposal_page = _app_memory.render_execution_proposal_page
-render_execution_center = _app_memory.render_execution_center
-render_execution_center_html = _app_memory.render_execution_center_html
+render_execution_center = _app_surfaces.render_execution_center
+render_execution_center_html = _app_surfaces.render_execution_center_html
 collect_execution_consistency_signals = _app_memory.collect_execution_consistency_signals
 build_execution_audit_snapshot = _app_memory.build_execution_audit_snapshot
-render_execution_audit = _app_memory.render_execution_audit
-render_execution_audit_html = _app_memory.render_execution_audit_html
+render_execution_audit = _app_surfaces.render_execution_audit
+render_execution_audit_html = _app_surfaces.render_execution_audit_html
 render_concept_quality = _app_memory.render_concept_quality
 concept_page_snapshot = _app_memory.concept_page_snapshot
 concept_rewrite_proposal_digest = _app_memory.concept_rewrite_proposal_digest
@@ -549,6 +535,8 @@ file_back = _app_compile.file_back
 _save_machine_memory_action_records = _app_compile._save_machine_memory_action_records
 review_concept_rewrite = _app_compile.review_concept_rewrite
 apply_concept_rewrite = _app_compile.apply_concept_rewrite
+verify_concept_rewrite = _app_compile.verify_concept_rewrite
+revert_concept_rewrite = _app_compile.revert_concept_rewrite
 refresh_knowledge_lifecycle_runtime = _app_compile.refresh_knowledge_lifecycle_runtime
 retire_concept = _app_compile.retire_concept
 reactivate_concept = _app_compile.reactivate_concept
@@ -564,520 +552,3 @@ render_repair_backlog = _app_compile.render_repair_backlog
 write_nightly_health = _app_compile.write_nightly_health
 nightly_health = _app_compile.nightly_health
 shell_status = _app_compile.shell_status
-
-def _sync_facade_bindings():
-    _app_content.entry_concept_terms = entry_concept_terms
-    _app_compile.entry_concept_terms = entry_concept_terms
-    _app_content.utc_now = utc_now
-    _app_memory.utc_now = utc_now
-    _app_compile.utc_now = utc_now
-    _app_content.transition_profile = transition_profile
-    _app_content.valid_curated_statuses = valid_curated_statuses
-    _app_memory.valid_curated_statuses = valid_curated_statuses
-    _app_memory.transition_profile = transition_profile
-    _app_memory.curated_page_transition_profile = curated_page_transition_profile
-    _app_memory.rewrite_transition_profile = rewrite_transition_profile
-    _app_memory.action_transition_profile = action_transition_profile
-    _app_memory.archive_transition_profile = archive_transition_profile
-    _app_memory.shell_review_controls = shell_review_controls
-    _app_memory.shell_action_control_objects = shell_action_control_objects
-    _app_memory.shell_archive_control_objects = shell_archive_control_objects
-    _app_memory.shell_execution_controls = shell_execution_controls
-    _app_compile.compile_wiki = compile_wiki
-    _app_compile.build_machine_memory = build_machine_memory
-    _app_compile.build_ranking_source_record = build_ranking_source_record
-    _app_compile.build_ranking_concept_record = build_ranking_concept_record
-    _app_content.build_output_pack_review_packs = build_output_pack_review_packs
-    _app_content.build_output_pack_decision_memos = build_output_pack_decision_memos
-    _app_content.build_output_pack_sop_drafts = build_output_pack_sop_drafts
-    _app_content.build_domain_pilot_scorecard = build_domain_pilot_scorecard
-    _app_compile.build_output_pack_review_packs = build_output_pack_review_packs
-    _app_compile.build_output_pack_decision_memos = build_output_pack_decision_memos
-    _app_compile.build_output_pack_sop_drafts = build_output_pack_sop_drafts
-
-def _wrap_synced_export(raw_func):
-    @wraps(raw_func)
-    def wrapper(*args, **kwargs):
-        _sync_facade_bindings()
-        return raw_func(*args, **kwargs)
-    return wrapper
-
-_AUTO_SYNC_EXPORTS = (
-    "ensure_layout",
-    "ensure_runtime_schema",
-    "ensure_runtime_dashboards",
-    "protocol_state_path",
-    "default_protocol_state",
-    "protocol_title",
-    "protocol_summary",
-    "render_protocol_library_index",
-    "render_protocol_overview",
-    "render_protocol_section",
-    "ensure_protocol_scaffold",
-    "available_protocols",
-    "protocol_descriptor",
-    "load_protocol_state",
-    "resolve_protocol",
-    "protocol_runtime_summary",
-    "protocol_focus_score",
-    "page_focus_score",
-    "action_focus_score",
-    "entry_focus_score",
-    "concept_focus_score",
-    "protocol_output_guidance",
-    "protocol_paths",
-    "schedule_review_windows",
-    "save_manifest",
-    "sync_manifest_with_raw",
-    "ingest_source",
-    "render_source_page",
-    "render_source_page_with_state",
-    "concept_candidates",
-    "preserved_section",
-    "normalized_markdown_section_lines",
-    "curated_asset_placeholder_lines",
-    "render_curated_asset_sections",
-    "render_review_history_section",
-    "curated_asset_section_snapshot",
-    "append_review_history_entry",
-    "review_history_entries",
-    "concept_label_to_slug",
-    "concept_label_to_title",
-    "entry_concept_terms",
-    "source_summary_or_preview",
-    "active_manual_source_concept_links",
-    "concept_source_input_signature",
-    "build_concept_records",
-    "concept_source_signature",
-    "concept_source_pages",
-    "machine_memory_source_input_signature",
-    "machine_memory_concept_input_signature",
-    "concept_render_signature",
-    "render_concept_conflict_lines",
-    "render_concept_gap_lines",
-    "render_concept_page",
-    "render_sources_index",
-    "render_concepts_index",
-    "default_curated_status",
-    "valid_curated_statuses",
-    "page_needs_review",
-    "evaluate_page_aging",
-    "collect_aging_signals",
-    "display_curated_status",
-    "curated_page_template",
-    "action_needs_review",
-    "display_action_status",
-    "rewrite_proposal_needs_review",
-    "display_rewrite_proposal_status",
-    "rewrite_proposal_status_rank",
-    "transition_profile",
-    "curated_page_transition_profile",
-    "rewrite_transition_profile",
-    "action_transition_profile",
-    "archive_transition_profile",
-    "sort_curated_pages",
-    "collect_curated_pages",
-    "review_queue",
-    "knowledge_lifecycle_invalidation_signals",
-    "knowledge_lifecycle_active_corpus_ids",
-    "knowledge_lifecycle_classification",
-    "concept_lifecycle_invalidation_signals",
-    "concept_lifecycle_review_signals",
-    "concept_lifecycle_classification",
-    "build_knowledge_lifecycle_entry",
-    "build_concept_lifecycle_entry",
-    "apply_knowledge_lifecycle_override",
-    "knowledge_lifecycle_counts",
-    "display_knowledge_lifecycle_state",
-    "display_protocol_relevance_mode",
-    "display_protocol_relevance_ambiguity",
-    "select_knowledge_lifecycle_entries",
-    "sort_knowledge_lifecycle_entries",
-    "render_knowledge_lifecycle_entry_summary",
-    "knowledge_lifecycle_governance_summary",
-    "concept_protocol_relevance_for_source",
-    "concept_protocol_relevance",
-    "concept_protocol_ambiguity_state",
-    "concept_lifecycle_matches_protocol",
-    "protocol_related_concept_lifecycle_summary",
-    "refresh_knowledge_lifecycle_state",
-    "build_knowledge_lifecycle_document",
-    "collect_machine_memory_actions",
-    "collect_machine_memory_action_aging",
-    "action_priority_rank",
-    "action_status_rank",
-    "action_supports_low_risk_apply",
-    "execution_policy_profile",
-    "execution_band_label",
-    "patch_role_for_path",
-    "patch_sections_for_action",
-    "patch_summary_for_action",
-    "patch_mode_for_action",
-    "build_page_patch_plan",
-    "safe_apply_preview",
-    "build_execution_bundle",
-    "execution_bundle_digest",
-    "load_execution_bundle",
-    "build_execution_receipt",
-    "build_material_archive_bundle",
-    "build_material_archive_receipt",
-    "append_execution_receipt_history",
-    "load_execution_receipt_history",
-    "remove_stale_generated_execution_proposal_pages",
-    "remove_stale_generated_execution_bundle_files",
-    "remove_stale_generated_markdown_files",
-    "describe_machine_memory_action",
-    "build_machine_memory_repair_plan",
-    "normalize_query_signature",
-    "classify_recurring_output_kind",
-    "promotion_page_title",
-    "collect_output_artifacts",
-    "collect_output_density_artifacts",
-    "collect_recent_output_artifacts",
-    "find_promoted_curated_page",
-    "recurring_promotion_needs_refresh",
-    "annotate_recurring_promotion",
-    "render_curated_page_summary",
-    "render_curated_index",
-    "render_judgment_assets",
-    "render_cognitive_history",
-    "compact_section_lines",
-    "workspace_link",
-    "pack_workspace_link",
-    "load_workspace_markdown",
-    "workspace_file_signature",
-    "output_pack_review_candidates",
-    "output_pack_reviewed_candidates",
-    "output_pack_repair_plan_candidates",
-    "output_pack_state_records",
-    "output_pack_group_is_reusable",
-    "output_pack_lifecycle_summary_input_signature",
-    "output_pack_review_group_input_signature",
-    "output_pack_decision_memo_group_input_signature",
-    "output_pack_sop_group_input_signature",
-    "build_output_pack_review_packs",
-    "build_output_pack_decision_memos",
-    "build_output_pack_sop_drafts",
-    "build_output_packs",
-    "build_output_packs_incremental",
-    "render_output_packs_index",
-    "domain_pilots_index_path",
-    "pilot_scorecards_dir",
-    "pilot_scorecard_path",
-    "pilot_stage",
-    "domain_pilot_state_scorecard",
-    "domain_pilot_scorecard_is_reusable",
-    "domain_pilot_protocol_inputs",
-    "domain_pilot_protocol_input_signature",
-    "build_domain_pilot_scorecard",
-    "build_domain_pilots",
-    "build_domain_pilots_incremental",
-    "render_domain_pilots_index",
-    "render_agent_pack",
-    "render_agent_workbench",
-    "render_review_queue",
-    "render_aging_report",
-    "render_review_center_html",
-    "protocol_scorecard",
-    "protocol_output_pack_rows",
-    "protocol_execution_receipts",
-    "furnace_quick_commands",
-    "render_furnace_center",
-    "render_furnace_center_html",
-    "render_compile_status",
-    "render_master_index",
-    "ensure_wiki_log",
-    "append_wiki_log",
-    "remove_stale_generated_concept_pages",
-    "review_packs_dir",
-    "decision_memos_dir",
-    "sop_drafts_dir",
-    "pack_stem",
-    "review_pack_path",
-    "decision_memo_path",
-    "sop_draft_path",
-    "execution_proposals_dir",
-    "execution_proposal_path",
-    "execution_bundles_dir",
-    "execution_bundle_path",
-    "execution_receipts_dir",
-    "execution_receipt_path",
-    "manifest_change_summary",
-    "summarize_runtime_event_for_shell",
-    "routing_snapshot_for_protocol",
-    "entry_lookup_maps",
-    "entry_ids_from_paths",
-    "rewrite_proposal_candidate_is_current",
-    "rewrite_proposal_is_apply_ready",
-    "validate_low_risk_action_targets",
-    "placeholder_concept_slugs",
-    "concept_summary_is_placeholder",
-    "concept_quality_tokens",
-    "load_source_page_context",
-    "detect_concept_conflict_signals",
-    "detect_concept_gap_signals",
-    "concept_rewrite_priority",
-    "concept_rewrite_strategy",
-    "repair_execution_proposals",
-    "build_concept_quality",
-    "shell_recent_runs",
-    "shell_recent_receipts",
-    "shell_review_controls",
-    "shell_action_control_objects",
-    "shell_archive_control_objects",
-    "shell_execution_controls",
-    "shell_links",
-    "shell_capabilities",
-    "shell_protocol_state",
-    "build_shell_summary",
-    "write_shell_summary",
-    "concept_page_path",
-    "concept_lifecycle_entry",
-    "question_signature",
-    "timestamp_is_newer",
-    "update_latest_timestamp",
-    "protocol_hints_for_material",
-    "recency_score_for_timestamp",
-    "machine_memory_query_time_focus",
-    "machine_memory_source_runtime_record",
-    "material_protocol_score",
-    "material_graph_context",
-    "material_routing_selected_as",
-    "temperature_from_routing",
-    "source_ids_for_citations",
-    "scan_material_reference_state",
-    "build_material_routing_snapshot",
-    "material_top_protocols",
-    "cross_protocol_bridge_entry",
-    "build_material_routing_entry",
-    "archive_candidate_reactivation_signals",
-    "build_archive_candidate_state",
-    "routing_bridge_recall_ids",
-    "active_corpus_bridge_evidence_ids",
-    "reconcile_active_corpora_state",
-    "refresh_material_state",
-    "build_material_state_documents",
-    "upsert_active_corpus",
-    "build_machine_memory",
-    "plan_machine_memory_build",
-    "machine_memory_snapshot_is_reusable",
-    "reuse_machine_memory_core",
-    "build_machine_memory_health",
-    "reconcile_machine_memory_actions",
-    "machine_memory_digest",
-    "build_machine_memory_graph",
-    "render_machine_memory_graph_html",
-    "build_machine_memory_adjacency",
-    "build_machine_memory_query",
-    "build_machine_memory_query_routes",
-    "ranked_machine_memory_anchor_nodes",
-    "shortest_machine_memory_path",
-    "render_machine_memory_route",
-    "machine_memory_node_metadata",
-    "summarize_machine_memory_transition",
-    "append_machine_memory_history",
-    "render_drift_report",
-    "render_graph_health",
-    "render_machine_memory_index",
-    "render_machine_memory_topology",
-    "render_machine_memory_actions",
-    "render_machine_memory_repair_plan",
-    "render_execution_proposal_page",
-    "render_execution_center",
-    "render_execution_center_html",
-    "collect_execution_consistency_signals",
-    "build_execution_audit_snapshot",
-    "render_execution_audit",
-    "render_execution_audit_html",
-    "render_concept_quality",
-    "concept_page_snapshot",
-    "concept_rewrite_proposal_digest",
-    "reconcile_concept_rewrite_proposals",
-    "render_concept_rewrite_proposal_page",
-    "render_concept_rewrite_index",
-    "store_concept_rewrite_candidate",
-    "set_active_protocol",
-    "render_protocols_dashboard",
-    "promote_recurring_outputs",
-    "build_agent_packs",
-    "compile_wiki",
-    "ranking_source_record_is_reusable",
-    "ranking_concept_record_is_reusable",
-    "ranking_source_summary_or_preview",
-    "ranking_source_input_signature",
-    "build_ranking_source_record",
-    "ranking_concept_input_signature",
-    "build_ranking_concept_record",
-    "build_ranking_state",
-    "rank_concepts",
-    "source_page_is_stale",
-    "source_page_requires_compile",
-    "concept_page_requires_compile",
-    "wiki_requires_compile",
-    "rank_sources",
-    "machine_memory_query_plan_lines",
-    "render_report",
-    "render_slides",
-    "render_figure_brief",
-    "ask_question",
-    "file_back",
-    "review_concept_rewrite",
-    "apply_concept_rewrite",
-    "refresh_knowledge_lifecycle_runtime",
-    "retire_concept",
-    "reactivate_concept",
-    "review_machine_memory_action",
-    "apply_machine_memory_action",
-    "revert_machine_memory_action",
-    "apply_material_archive",
-    "revert_material_archive",
-    "review_page",
-    "pending_source_summary_ids",
-    "lint_wiki",
-    "render_repair_backlog",
-    "write_nightly_health",
-    "nightly_health",
-    "shell_status",
-)
-for _export_name in _AUTO_SYNC_EXPORTS:
-    globals()[_export_name] = _wrap_synced_export(globals()[_export_name])
-del _export_name
-
-def compile_wiki(*args, **kwargs):
-    _sync_facade_bindings()
-    return _raw_compile_wiki(*args, **kwargs)
-
-def ask_question(*args, **kwargs):
-    _sync_facade_bindings()
-    return _raw_ask_question(*args, **kwargs)
-
-def build_concept_records(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_content.build_concept_records(*args, **kwargs)
-
-def build_output_packs(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_content.build_output_packs(*args, **kwargs)
-
-def build_output_packs_incremental(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_content.build_output_packs_incremental(*args, **kwargs)
-
-def build_domain_pilots(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_content.build_domain_pilots(*args, **kwargs)
-
-def build_domain_pilots_incremental(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_content.build_domain_pilots_incremental(*args, **kwargs)
-
-def build_shell_summary(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_memory.build_shell_summary(*args, **kwargs)
-
-def build_ranking_source_record(*args, **kwargs):
-    _sync_facade_bindings()
-    return _raw_build_ranking_source_record(*args, **kwargs)
-
-def build_ranking_concept_record(*args, **kwargs):
-    _sync_facade_bindings()
-    return _raw_build_ranking_concept_record(*args, **kwargs)
-
-def build_ranking_state(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_compile.build_ranking_state(*args, **kwargs)
-
-def rank_concepts(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_compile.rank_concepts(*args, **kwargs)
-
-def rank_sources(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_compile.rank_sources(*args, **kwargs)
-
-def promote_recurring_outputs(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_compile.promote_recurring_outputs(*args, **kwargs)
-
-def file_back(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_compile.file_back(*args, **kwargs)
-
-def review_concept_rewrite(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_compile.review_concept_rewrite(*args, **kwargs)
-
-def apply_concept_rewrite(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_compile.apply_concept_rewrite(*args, **kwargs)
-
-def review_machine_memory_action(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_compile.review_machine_memory_action(*args, **kwargs)
-
-def apply_machine_memory_action(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_compile.apply_machine_memory_action(*args, **kwargs)
-
-def revert_machine_memory_action(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_compile.revert_machine_memory_action(*args, **kwargs)
-
-def apply_material_archive(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_compile.apply_material_archive(*args, **kwargs)
-
-def revert_material_archive(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_compile.revert_material_archive(*args, **kwargs)
-
-def review_page(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_compile.review_page(*args, **kwargs)
-
-def nightly_health(*args, **kwargs):
-    _sync_facade_bindings()
-    return _app_compile.nightly_health(*args, **kwargs)
-
-def transition_profile(*args, **kwargs):
-    return _raw_transition_profile(*args, **kwargs)
-
-def curated_page_transition_profile(*args, **kwargs):
-    _sync_facade_bindings()
-    return _raw_curated_page_transition_profile(*args, **kwargs)
-
-def rewrite_transition_profile(*args, **kwargs):
-    _sync_facade_bindings()
-    return _raw_rewrite_transition_profile(*args, **kwargs)
-
-def action_transition_profile(*args, **kwargs):
-    _sync_facade_bindings()
-    return _raw_action_transition_profile(*args, **kwargs)
-
-def archive_transition_profile(*args, **kwargs):
-    _sync_facade_bindings()
-    return _raw_archive_transition_profile(*args, **kwargs)
-
-def shell_review_controls(*args, **kwargs):
-    _sync_facade_bindings()
-    return _raw_shell_review_controls(*args, **kwargs)
-
-def shell_action_control_objects(*args, **kwargs):
-    _sync_facade_bindings()
-    return _raw_shell_action_control_objects(*args, **kwargs)
-
-def shell_archive_control_objects(*args, **kwargs):
-    _sync_facade_bindings()
-    return _raw_shell_archive_control_objects(*args, **kwargs)
-
-def shell_execution_controls(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
-    _sync_facade_bindings()
-    return _raw_shell_execution_controls(root, memory)
-
-# Product shell compatibility anchors (implementation moved to app_memory.py).
-# "current_status": str(page.get("status") or ""),
-# current["can_refresh_review"] = bool(valid_curated_statuses(str(current.get("kind") or "")))
-# "can_refresh_review": status in REWRITE_PROPOSAL_STATUSES,
-# "can_refresh_review": bool(action.get("active", True)) and status in ACTION_STATUSES,
-# "review_controls": review_controls,
-# "execution_controls": shell_execution_controls(root, memory),

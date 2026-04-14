@@ -9,28 +9,26 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
-from .app import (
-    TEXT_EXTENSIONS,
+from .app_compile import (
     ask_question,
     compile_wiki,
-    concept_summary_is_placeholder,
-    ensure_layout,
     lint_wiki,
-    load_protocol_state,
-    load_machine_memory,
     nightly_health,
-    load_manifest,
-    parse_frontmatter,
-    placeholder_concept_slugs,
     promote_recurring_outputs,
-    preserved_section,
+    write_nightly_health,
+)
+from .app_content import concept_summary_is_placeholder, placeholder_concept_slugs, preserved_section
+from .app_memory import store_concept_rewrite_candidate
+from .app_protocol import ensure_layout, load_protocol_state
+from .app_state import load_machine_memory, load_manifest
+from .app_utils import (
+    TEXT_EXTENSIONS,
+    parse_frontmatter,
     read_text_preview,
     relative_path,
     render_scalar,
     runtime_write_operation,
     sha256_bytes,
-    store_concept_rewrite_candidate,
-    write_nightly_health,
 )
 from .config import LLMConfig
 from .llm import CompletionResult, create_backend_client
@@ -733,6 +731,10 @@ def _render_machine_query(machine_memory_query: dict[str, Any]) -> str:
 
     lines = [
         f"- Matched terms: `{', '.join(matched_terms) or 'none'}`",
+        f"- Selected strategy: `{machine_memory_query.get('selected_strategy', 'concept-first')}`",
+        f"- Selection reason: `{machine_memory_query.get('selection_reason', 'default-strategy')}`",
+        f"- Source markers: `{', '.join(machine_memory_query.get('matched_source_markers', [])) or 'none'}`",
+        f"- Graph markers: `{', '.join(machine_memory_query.get('matched_graph_markers', [])) or 'none'}`",
         f"- Direct source hits: `{', '.join(direct_source_ids) or 'none'}`",
         f"- Direct concept hits: `{', '.join(direct_concept_slugs) or 'none'}`",
         f"- Ranked source candidates: `{', '.join(ranked_source_ids) or 'none'}`",
@@ -761,8 +763,15 @@ def _render_machine_query(machine_memory_query: dict[str, Any]) -> str:
             goal = route.get("goal", {})
             lines.append(
                 f"  - `{start.get('title', start.get('id', ''))}` -> `{goal.get('title', goal.get('id', ''))}`"
-                f" ({route.get('length', 0)} hop(s))"
+                f" ({route.get('length', 0)} hop(s), strategy `{route.get('strategy', machine_memory_query.get('selected_strategy', 'concept-first'))}`)"
             )
+    planner_next_action = machine_memory_query.get("planner_next_action", {})
+    if planner_next_action:
+        lines.append(
+            f"- Planner next action: `{planner_next_action.get('action_id', '')}`"
+            f" / `{planner_next_action.get('title', '')}`"
+            f" / score `{planner_next_action.get('priority_score', 0)}`"
+        )
     relevant_actions = machine_memory_query.get("relevant_actions", [])
     lines.append(f"- Relevant repair actions: `{len(relevant_actions)}`")
     if relevant_actions:
@@ -954,7 +963,7 @@ def _extract_related_concept_slugs(markdown: str) -> list[str]:
 
 
 def _validate_output_markdown(markdown: str, output_format: str, source_ids: list[str]) -> None:
-    if output_format in {"report", "figure"}:
+    if output_format in {"report", "decision-memo", "sop", "figure"}:
         frontmatter = parse_frontmatter(markdown)
         if not frontmatter:
             raise RuntimeError("Ask response is missing frontmatter.")

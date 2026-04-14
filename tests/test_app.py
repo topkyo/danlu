@@ -9,58 +9,65 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
-from aiwiki.app import (
-    active_corpus_bridge_evidence_ids,
-    append_execution_receipt_history,
+from aiwiki.app_compile import (
     apply_concept_rewrite,
     apply_material_archive,
     apply_machine_memory_action,
     ask_question,
+    compile_wiki,
+    file_back,
+    lint_wiki,
+    nightly_health,
+    rank_concepts,
+    rank_sources,
+    reactivate_concept,
+    revert_concept_rewrite,
+    retire_concept,
+    review_concept_rewrite,
+    review_machine_memory_action,
+    review_page,
+    revert_material_archive,
+    revert_machine_memory_action,
+    set_active_protocol,
+    shell_status,
+    verify_concept_rewrite,
+)
+from aiwiki.app_content import (
+    collect_machine_memory_actions,
+    entry_concept_terms,
+    ingest_source,
+    load_execution_policy_decision_history,
+    placeholder_concept_slugs,
+    protocol_related_concept_lifecycle_summary,
+)
+from aiwiki.app_execution import append_execution_receipt_history
+from aiwiki.app_memory import (
+    active_corpus_bridge_evidence_ids,
     build_archive_candidate_state,
     build_machine_memory_query,
-    collect_machine_memory_actions,
-    compile_wiki,
-    entry_concept_terms,
-    ensure_layout,
-    file_back,
-    ingest_source,
-    lint_wiki,
+)
+from aiwiki.app_protocol import ensure_layout, load_protocol_state, save_manifest
+from aiwiki.app_state import (
     load_archive_candidates_state,
-    load_knowledge_lifecycle_state,
     load_knowledge_lifecycle_override_state,
+    load_knowledge_lifecycle_state,
     load_machine_memory,
     load_machine_memory_action_state,
     load_manifest,
     load_material_routing_state,
     load_material_state,
-    load_protocol_state,
-    nightly_health,
-    parse_frontmatter,
-    placeholder_concept_slugs,
-    protocol_related_concept_lifecycle_summary,
-    render_frontmatter,
-    reactivate_concept,
-    revert_material_archive,
-    revert_machine_memory_action,
-    review_concept_rewrite,
-    review_machine_memory_action,
-    review_page,
-    runtime_write_lock,
-    rank_concepts,
-    rank_sources,
-    retire_concept,
-    save_manifest,
+    load_planner_state,
+    load_query_route_telemetry,
+    save_machine_memory_action_state,
     save_manual_link_state,
     save_material_routing_state,
     save_material_state,
-    save_machine_memory_action_state,
-    set_active_protocol,
-    shell_status,
     shell_summary_path,
-    strip_frontmatter,
 )
+from aiwiki.app_utils import parse_frontmatter, render_frontmatter, runtime_write_lock, strip_frontmatter
 from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
 from aiwiki.cli import main as cli_main
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
@@ -155,6 +162,33 @@ class AiwikiFlowTests(unittest.TestCase):
         compile_wiki(self.root)
         compile_wiki(self.root)
         return entry
+
+    def _prepare_citation_snapshot_refresh_action(self) -> tuple[dict[str, str], dict[str, Any], dict[str, Any]]:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Will transformer inference cost keep rising?", "report")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+        review_page(
+            self.root,
+            judgment["path"],
+            "confirmed",
+            note="Confirmed before evidence changed.",
+            confidence="high",
+        )
+        stored_source = self.root / entry["stored_path"]
+        stored_source.write_text(
+            "# Transformer Scaling\n\nTransformers still benefit from scale.\nNew serving optimizations changed inference cost assumptions.\n",
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+        memory = load_machine_memory(self.root)
+        action = next(
+            (item for item in memory["health"]["actions"] if item.get("kind") == "refresh-citation-snapshots"),
+            None,
+        )
+        if action is None:
+            self.fail("Expected citation snapshot refresh action.")
+        return entry, judgment, action
 
     def _seed_runtime_ranking_entries(self) -> list[dict[str, str]]:
         first = self.root / "alpha-cache.md"
@@ -281,6 +315,42 @@ class AiwikiFlowTests(unittest.TestCase):
         compile_wiki(self.root)
         return backlog_entry["title"], retired_entry["title"]
 
+    def _prepare_concept_rewrite_proposal(self, *, rewritten_phrase: str = "Rewritten synthesis") -> dict[str, object]:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        source_page.write_text(
+            source_page.read_text(encoding="utf-8").replace(
+                "- Pending LLM summary.",
+                "- Transformer scale improves capability and raises compute demand.",
+            ),
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+        for concept_page in sorted((self.root / "wiki" / "concepts").glob("*.md")):
+            concept_page.write_text(
+                concept_page.read_text(encoding="utf-8").replace(
+                    "- This concept currently appears",
+                    f"- Existing synthesis for {concept_page.stem} appears",
+                ),
+                encoding="utf-8",
+            )
+        compile_wiki(self.root)
+        memory = load_machine_memory(self.root)
+        candidate = memory["health"]["concept_quality"]["rewrite_candidates"][0]
+        concept_page = self.root / candidate["path"]
+        updated = concept_page.read_text(encoding="utf-8").replace("Existing synthesis", rewritten_phrase)
+        compile_result = run_compile(self.root, client=StubClient([updated]), limit=1)
+        proposal_path = self.root / compile_result["updated_rewrite_proposal_pages"][0]
+        return {
+            "entry": entry,
+            "candidate": candidate,
+            "concept_page": concept_page,
+            "proposal_path": proposal_path,
+            "slug": proposal_path.stem,
+            "compile_result": compile_result,
+        }
+
     def test_ingest_compile_ask_file_back_and_lint(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         manifest = load_manifest(self.root)
@@ -350,6 +420,48 @@ class AiwikiFlowTests(unittest.TestCase):
         slides = ask_question(self.root, "Summarize transformer scaling", "slides")
         slide_text = (self.root / slides["path"]).read_text(encoding="utf-8")
         self.assertIn("marp: true", slide_text)
+
+    def test_decision_memo_output_reuses_compiled_seed_pack(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+        review_page(
+            self.root,
+            judgment["path"],
+            "confirmed",
+            note="Confirmed for direct memo ask.",
+            confidence="high",
+        )
+
+        memo = ask_question(self.root, "Should we keep the scaling judgment?", "decision-memo")
+        memo_text = (self.root / memo["path"]).read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(memo_text)
+
+        self.assertEqual(frontmatter["format"], "decision-memo")
+        self.assertIn("output/packs/decision-memos/", frontmatter["source_pack"])
+        self.assertEqual(frontmatter["judgment_asset_path"], judgment["path"])
+        self.assertIn("## Seed Memo", memo_text)
+        self.assertIn("## Recommendation", memo_text)
+        self.assertIn("wiki/sources/", memo_text)
+
+    def test_sop_output_reuses_compiled_seed_pack(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        self._seed_machine_memory_actions()
+        compile_wiki(self.root)
+        review_machine_memory_action(self.root, "overloaded-concept-latency", "accepted", note="Queue SOP draft.")
+
+        sop = ask_question(self.root, "How should we execute the latency repair?", "sop")
+        sop_text = (self.root / sop["path"]).read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(sop_text)
+
+        self.assertEqual(frontmatter["format"], "sop")
+        self.assertIn("output/packs/sop-drafts/", frontmatter["source_pack"])
+        self.assertIn("## Seed SOP", sop_text)
+        self.assertIn("Pattern frequency", sop_text)
+        self.assertIn("apply-action", sop_text)
+        self.assertIn("wiki/sources/", sop_text)
 
     def test_compile_creates_concepts_master_index_and_log(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -716,14 +828,14 @@ class AiwikiFlowTests(unittest.TestCase):
     def test_compile_skips_clean_source_pages_on_second_run(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
 
-        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:00:00+00:00"):
+        with patch("aiwiki.app_compile.utc_now", return_value="2026-04-10T10:00:00+00:00"):
             first = compile_wiki(self.root)
 
         source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
         first_frontmatter = parse_frontmatter(source_page.read_text(encoding="utf-8"))
         self.assertEqual(first_frontmatter["last_compiled_at"], first["compiled_at"])
 
-        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:05:00+00:00"):
+        with patch("aiwiki.app_compile.utc_now", return_value="2026-04-10T10:05:00+00:00"):
             second = compile_wiki(self.root)
 
         second_frontmatter = parse_frontmatter(source_page.read_text(encoding="utf-8"))
@@ -745,7 +857,7 @@ class AiwikiFlowTests(unittest.TestCase):
     def test_compile_skips_clean_concept_pages_on_second_run(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
 
-        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:00:00+00:00"):
+        with patch("aiwiki.app_compile.utc_now", return_value="2026-04-10T10:00:00+00:00"):
             first = compile_wiki(self.root)
 
         concept_page = sorted((self.root / "wiki" / "concepts").glob("*.md"))[0]
@@ -753,7 +865,7 @@ class AiwikiFlowTests(unittest.TestCase):
         first_frontmatter = parse_frontmatter(concept_page.read_text(encoding="utf-8"))
         self.assertEqual(first_frontmatter["last_compiled_at"], first["compiled_at"])
 
-        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:05:00+00:00"):
+        with patch("aiwiki.app_compile.utc_now", return_value="2026-04-10T10:05:00+00:00"):
             second = compile_wiki(self.root)
 
         second_frontmatter = parse_frontmatter(concept_page.read_text(encoding="utf-8"))
@@ -780,7 +892,13 @@ class AiwikiFlowTests(unittest.TestCase):
         concept_build_state_path = self.root / ".aiwiki" / "state" / "concept-build-state.json"
         first_state = concept_build_state_path.read_text(encoding="utf-8")
 
-        with patch("aiwiki.app.entry_concept_terms", side_effect=AssertionError("should reuse clean concept source terms")):
+        with patch(
+            "aiwiki.app_content.entry_concept_terms",
+            side_effect=AssertionError("should reuse clean concept source terms"),
+        ), patch(
+            "aiwiki.app_compile.entry_concept_terms",
+            side_effect=AssertionError("should reuse clean concept source terms"),
+        ):
             second = compile_wiki(self.root)
 
         self.assertEqual(second["dirty_concept_sources"], 0)
@@ -801,7 +919,7 @@ class AiwikiFlowTests(unittest.TestCase):
         first_state = machine_memory_build_state_path.read_text(encoding="utf-8")
 
         with patch(
-            "aiwiki.app.build_machine_memory",
+            "aiwiki.app_compile.build_machine_memory",
             side_effect=AssertionError("should reuse clean machine memory core"),
         ):
             second = compile_wiki(self.root)
@@ -840,10 +958,10 @@ class AiwikiFlowTests(unittest.TestCase):
         first_state = ranking_build_state_path.read_text(encoding="utf-8")
 
         with patch(
-            "aiwiki.app.build_ranking_source_record",
+            "aiwiki.app_compile.build_ranking_source_record",
             side_effect=AssertionError("should reuse clean source ranking records"),
         ), patch(
-            "aiwiki.app.build_ranking_concept_record",
+            "aiwiki.app_compile.build_ranking_concept_record",
             side_effect=AssertionError("should reuse clean concept ranking records"),
         ):
             second = compile_wiki(self.root)
@@ -879,10 +997,10 @@ class AiwikiFlowTests(unittest.TestCase):
         output_pack_build_state_path = self.root / ".aiwiki" / "state" / "output-pack-build-state.json"
         first_state = output_pack_build_state_path.read_text(encoding="utf-8")
 
-        with patch("aiwiki.app.build_output_pack_review_packs", side_effect=AssertionError("should reuse clean review packs")), patch(
-            "aiwiki.app.build_output_pack_decision_memos",
+        with patch("aiwiki.app_content.build_output_pack_review_packs", side_effect=AssertionError("should reuse clean review packs")), patch(
+            "aiwiki.app_content.build_output_pack_decision_memos",
             side_effect=AssertionError("should reuse clean decision memos"),
-        ), patch("aiwiki.app.build_output_pack_sop_drafts", side_effect=AssertionError("should reuse clean sop drafts")):
+        ), patch("aiwiki.app_content.build_output_pack_sop_drafts", side_effect=AssertionError("should reuse clean sop drafts")):
             second = compile_wiki(self.root)
 
         self.assertEqual(second["dirty_output_pack_groups"], [])
@@ -911,7 +1029,7 @@ class AiwikiFlowTests(unittest.TestCase):
         first_state = domain_pilot_build_state_path.read_text(encoding="utf-8")
 
         with patch(
-            "aiwiki.app.build_domain_pilot_scorecard",
+            "aiwiki.app_content.build_domain_pilot_scorecard",
             side_effect=AssertionError("should reuse clean domain pilot scorecards"),
         ):
             second = compile_wiki(self.root)
@@ -937,14 +1055,14 @@ class AiwikiFlowTests(unittest.TestCase):
     def test_compile_skips_clean_index_artifacts_on_second_run(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
 
-        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:00:00+00:00"):
-            first = compile_wiki(self.root)
+        with patch("aiwiki.app_compile.utc_now", return_value="2026-04-10T10:00:00+00:00"):
+            compile_wiki(self.root)
 
         index_page = self.root / "wiki" / "indexes" / "index.md"
         first_index = index_page.read_text(encoding="utf-8")
         self.assertIn("- 最近编译时间：`2026-04-10T10:00:00+00:00`", first_index)
 
-        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:05:00+00:00"):
+        with patch("aiwiki.app_compile.utc_now", return_value="2026-04-10T10:05:00+00:00"):
             second = compile_wiki(self.root)
 
         second_index = index_page.read_text(encoding="utf-8")
@@ -965,7 +1083,7 @@ class AiwikiFlowTests(unittest.TestCase):
     def test_compile_skips_clean_maintenance_artifacts_on_second_run(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
 
-        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:00:00+00:00"):
+        with patch("aiwiki.app_compile.utc_now", return_value="2026-04-10T10:00:00+00:00"):
             compile_wiki(self.root)
 
         material_state_path = self.root / ".aiwiki" / "state" / "material-state.json"
@@ -973,7 +1091,7 @@ class AiwikiFlowTests(unittest.TestCase):
         first_material_state = material_state_path.read_text(encoding="utf-8")
         first_knowledge_lifecycle = knowledge_lifecycle_path.read_text(encoding="utf-8")
 
-        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:05:00+00:00"):
+        with patch("aiwiki.app_compile.utc_now", return_value="2026-04-10T10:05:00+00:00"):
             second = compile_wiki(self.root)
 
         self.assertEqual(first_material_state, material_state_path.read_text(encoding="utf-8"))
@@ -1736,7 +1854,7 @@ class AiwikiFlowTests(unittest.TestCase):
     def test_compile_rebuilds_dirty_concept_when_source_summary_changes(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
 
-        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:00:00+00:00"):
+        with patch("aiwiki.app_compile.utc_now", return_value="2026-04-10T10:00:00+00:00"):
             compile_wiki(self.root)
 
         source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
@@ -1766,7 +1884,7 @@ class AiwikiFlowTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        with patch("aiwiki.app.utc_now", return_value="2026-04-10T10:05:00+00:00"):
+        with patch("aiwiki.app_compile.utc_now", return_value="2026-04-10T10:05:00+00:00"):
             second = compile_wiki(self.root)
 
         refreshed = concept_page.read_text(encoding="utf-8")
@@ -1848,10 +1966,14 @@ class AiwikiFlowTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        with patch("aiwiki.app.entry_concept_terms", wraps=entry_concept_terms) as patched_terms:
+        with patch("aiwiki.app_content.entry_concept_terms", wraps=entry_concept_terms) as patched_content_terms, patch(
+            "aiwiki.app_compile.entry_concept_terms",
+            wraps=entry_concept_terms,
+        ) as patched_compile_terms:
             result = compile_wiki(self.root)
 
-        self.assertEqual(patched_terms.call_count, 2)
+        self.assertEqual(patched_content_terms.call_count, 1)
+        self.assertEqual(patched_compile_terms.call_count, 1)
         self.assertEqual(result["dirty_concept_source_ids"], [entry["id"]])
         self.assertEqual(result["dirty_ranking_source_ids"], [entry["id"]])
         self.assertIn("delta", result["dirty_concept_slugs"])
@@ -1898,10 +2020,14 @@ class AiwikiFlowTests(unittest.TestCase):
             },
         )
 
-        with patch("aiwiki.app.entry_concept_terms", wraps=entry_concept_terms) as patched_terms:
+        with patch("aiwiki.app_content.entry_concept_terms", wraps=entry_concept_terms) as patched_content_terms, patch(
+            "aiwiki.app_compile.entry_concept_terms",
+            wraps=entry_concept_terms,
+        ) as patched_compile_terms:
             result = compile_wiki(self.root)
 
-        self.assertEqual(patched_terms.call_count, 1)
+        self.assertEqual(patched_content_terms.call_count, 1)
+        self.assertEqual(patched_compile_terms.call_count, 1)
         self.assertEqual(result["dirty_concept_source_ids"], [entry["id"]])
         self.assertIn("delta", result["dirty_concept_slugs"])
         self.assertTrue((self.root / "wiki" / "concepts" / "delta.md").exists())
@@ -1994,10 +2120,10 @@ class AiwikiFlowTests(unittest.TestCase):
         compile_wiki(self.root)
 
         with patch(
-            "aiwiki.app.build_ranking_source_record",
+            "aiwiki.app_compile.build_ranking_source_record",
             side_effect=AssertionError("should reuse clean source ranking state"),
         ), patch(
-            "aiwiki.app.build_ranking_concept_record",
+            "aiwiki.app_compile.build_ranking_concept_record",
             side_effect=AssertionError("should reuse clean concept ranking state"),
         ):
             result = ask_question(self.root, "Compare transformer scale and inference cost", "report")
@@ -2427,6 +2553,34 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("dry-run, bundle-apply, revert-safe, history", audit_payload)
         self.assertIn("band `bundle-safe-apply`", actions_payload)
 
+    def test_compile_persists_planner_state_and_policy_history_for_citation_snapshot_repairs(self) -> None:
+        _, _, action = self._prepare_citation_snapshot_refresh_action()
+
+        review_machine_memory_action(self.root, action["id"], "accepted", note="Queue safe apply.")
+        compile_wiki(self.root)
+
+        planner = load_planner_state(self.root)
+        self.assertEqual(planner["state_path"], ".aiwiki/state/planner-state.json")
+        self.assertGreaterEqual(planner["counts"]["pending_proposals"], 1)
+        self.assertEqual(planner["next_action"]["action_id"], action["id"])
+        self.assertEqual(planner["priority_queue"][0]["action_id"], action["id"])
+        self.assertGreater(planner["priority_queue"][0]["priority_score"], 0)
+
+        decisions = load_execution_policy_decision_history(self.root, limit=16)
+        record = next(
+            item
+            for item in decisions
+            if item.get("action_id") == action["id"] and item.get("status") == "accepted"
+        )
+        self.assertEqual(record["policy_decision"], "allow")
+        self.assertEqual(record["policy_rule_id"], "general:refresh-citation-snapshots")
+        self.assertEqual(record["execution_band"], "bundle-safe-apply")
+
+        audit_payload = (self.root / "wiki" / "indexes" / "execution-audit.md").read_text(encoding="utf-8")
+        self.assertIn("Recent Policy Decisions", audit_payload)
+        self.assertIn(action["title"], audit_payload)
+        self.assertIn("decision `allow`", audit_payload)
+
     def test_execution_audit_surfaces_consistency_signal_for_resolved_action_without_receipt(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -2549,6 +2703,50 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("查询路径数", report_text)
         self.assertIn("触达分量", report_text)
         self.assertIn("latency", report_text.lower())
+
+    def test_ask_uses_runtime_query_route_schema_and_updates_shell_summary(self) -> None:
+        _, _, action = self._prepare_citation_snapshot_refresh_action()
+        runtime_path = self.root / "schema" / "protocols" / "research" / "runtime.yaml"
+        runtime_payload = json.loads(runtime_path.read_text(encoding="utf-8"))
+        runtime_payload["query_routes"] = {
+            "default_strategy": "graph-walk",
+            "strategy_order": ["graph-walk", "source-first", "concept-first"],
+            "source_markers": ["evidencepilot"],
+            "graph_markers": ["rootcausepilot"],
+        }
+        runtime_path.write_text(
+            json.dumps(runtime_payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        result = ask_question(self.root, "evidencepilot latency benchmark followup", "report", protocol="research")
+
+        machine_query = result["machine_memory_query"]
+        self.assertEqual(machine_query["selected_strategy"], "source-first")
+        self.assertEqual(machine_query["selection_reason"], "source-markers")
+        self.assertIn("evidencepilot", machine_query["matched_source_markers"])
+
+        telemetry = load_query_route_telemetry(self.root)
+        self.assertEqual(telemetry["state_path"], ".aiwiki/state/query-route-telemetry.json")
+        self.assertEqual(telemetry["last_entry"]["selected_strategy"], "source-first")
+        self.assertEqual(telemetry["last_entry"]["planner_next_action_id"], action["id"])
+        self.assertGreaterEqual(telemetry["strategy_counts"].get("source-first", 0), 1)
+        self.assertGreaterEqual(telemetry["protocol_counts"].get("research", 0), 1)
+
+        shell = shell_status(self.root)
+        self.assertEqual(shell["planner"]["next_action"]["action_id"], action["id"])
+        self.assertEqual(shell["route_telemetry"]["last_entry"]["selected_strategy"], "source-first")
+
+        written = json.loads(shell_summary_path(self.root).read_text(encoding="utf-8"))
+        self.assertEqual(written["planner"]["next_action"]["action_id"], action["id"])
+        self.assertEqual(written["route_telemetry"]["last_entry"]["selected_strategy"], "source-first")
+
+        product_shell = (self.root / "output" / "control" / "product-shell.html").read_text(encoding="utf-8")
+        self.assertIn("Furnace Product Shell", product_shell)
+        self.assertIn(action["title"], product_shell)
+        self.assertIn("source-first", product_shell)
+        self.assertIn("../review/review-center.html", product_shell)
+        self.assertIn("shell-summary.json", product_shell)
 
     def test_machine_memory_query_prefers_recent_sources_for_recent_questions(self) -> None:
         stale = self.root / "latency-alpha.md"
@@ -2792,10 +2990,13 @@ class AiwikiFlowTests(unittest.TestCase):
 
         self.assertEqual(review["status"], "accepted")
         self.assertEqual(applied["status"], "applied")
+        self.assertEqual(applied["verification_status"], "passed")
         refreshed = concept_page.read_text(encoding="utf-8")
         self.assertIn("Rewritten synthesis", refreshed)
         proposal_text = proposal_path.read_text(encoding="utf-8")
         self.assertIn("已应用", proposal_text)
+        self.assertIn("## Verification", proposal_text)
+        self.assertIn("`passed`", proposal_text)
 
     def test_compile_invalidates_accepted_rewrite_when_source_signature_changes(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -2850,11 +3051,98 @@ class AiwikiFlowTests(unittest.TestCase):
         proposal_text = (self.root / proposal["proposal_path"]).read_text(encoding="utf-8")
         self.assertIn("当前还没有生成候选重写内容", proposal_text)
 
+    def test_verify_concept_rewrite_detects_post_apply_drift(self) -> None:
+        prepared = self._prepare_concept_rewrite_proposal()
+        concept_page = prepared["concept_page"]
+        proposal_path = prepared["proposal_path"]
+        slug = str(prepared["slug"])
+
+        review_concept_rewrite(self.root, slug, "accepted", note="Looks grounded.")
+        apply_concept_rewrite(self.root, slug, note="Apply accepted rewrite.")
+        concept_page.write_text(
+            concept_page.read_text(encoding="utf-8").replace("Rewritten synthesis", "Post apply drifted synthesis"),
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+
+        verification = verify_concept_rewrite(self.root, slug, note="Check drift after manual edit.")
+
+        self.assertEqual(verification["status"], "failed")
+        self.assertIn("summary-not-applied", verification["issues"])
+        proposal_text = proposal_path.read_text(encoding="utf-8")
+        self.assertIn("verify -> failed", (self.root / "wiki" / "indexes" / "cognitive-history.md").read_text(encoding="utf-8"))
+        self.assertIn("`failed`", proposal_text)
+        self.assertIn("summary-not-applied", proposal_text)
+
+    def test_revert_concept_rewrite_restores_previous_summary_and_shell_controls(self) -> None:
+        prepared = self._prepare_concept_rewrite_proposal()
+        concept_page = prepared["concept_page"]
+        proposal_path = prepared["proposal_path"]
+        slug = str(prepared["slug"])
+
+        review_concept_rewrite(self.root, slug, "accepted", note="Looks grounded.")
+        apply_concept_rewrite(self.root, slug, note="Apply accepted rewrite.")
+
+        applied_shell = shell_status(self.root)
+        rewrite_controls = {proposal["slug"]: proposal for proposal in applied_shell["review_controls"]["rewrite_proposals"]}
+        self.assertTrue(rewrite_controls[slug]["can_revert"])
+        self.assertFalse(rewrite_controls[slug]["can_apply"])
+
+        reverted = revert_concept_rewrite(self.root, slug, note="Restore prior synthesis.")
+
+        self.assertEqual(reverted["status"], "accepted")
+        restored = concept_page.read_text(encoding="utf-8")
+        self.assertIn("Existing synthesis", restored)
+        self.assertNotIn("Rewritten synthesis", restored)
+
+        reverted_shell = shell_status(self.root)
+        reverted_controls = {proposal["slug"]: proposal for proposal in reverted_shell["review_controls"]["rewrite_proposals"]}
+        self.assertTrue(reverted_controls[slug]["can_apply"])
+        self.assertFalse(reverted_controls[slug]["can_revert"])
+        self.assertEqual(reverted_controls[slug]["current_status"], "accepted")
+
+        proposal_text = proposal_path.read_text(encoding="utf-8")
+        self.assertIn("Reverted at", proposal_text)
+        cognitive_history = (self.root / "wiki" / "indexes" / "cognitive-history.md").read_text(encoding="utf-8")
+        self.assertIn("Concept Rewrite 事件", cognitive_history)
+        self.assertIn("revert -> accepted", cognitive_history)
+
+    def test_cli_verify_and_revert_rewrite_commands(self) -> None:
+        prepared = self._prepare_concept_rewrite_proposal()
+        concept_page = prepared["concept_page"]
+        slug = str(prepared["slug"])
+
+        review_concept_rewrite(self.root, slug, "accepted", note="Looks grounded.")
+        with patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            self.assertEqual(
+                cli_main(["--root", str(self.root), "apply-rewrite", slug, "--note", "Apply via CLI."]),
+                0,
+            )
+            apply_payload = json.loads(stdout.getvalue())
+        self.assertEqual(apply_payload["status"], "applied")
+        self.assertEqual(apply_payload["verification_status"], "passed")
+
+        with patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            self.assertEqual(
+                cli_main(["--root", str(self.root), "verify-rewrite", slug, "--note", "Verify via CLI."]),
+                0,
+            )
+            verify_payload = json.loads(stdout.getvalue())
+        self.assertEqual(verify_payload["status"], "passed")
+
+        with patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            self.assertEqual(
+                cli_main(["--root", str(self.root), "revert-rewrite", slug, "--note", "Revert via CLI."]),
+                0,
+            )
+            revert_payload = json.loads(stdout.getvalue())
+        self.assertEqual(revert_payload["status"], "accepted")
+        self.assertIn("Existing synthesis", concept_page.read_text(encoding="utf-8"))
+
     def test_apply_machine_memory_action_writes_manual_link_state(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
 
-        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
         concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
         concept_path = self.root / "wiki" / "concepts" / f"{concept_slug}.md"
         before_signature = parse_frontmatter(concept_path.read_text(encoding="utf-8"))["source_signature"]
@@ -3197,14 +3485,26 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(judgment_path.exists())
         self.assertIn("wiki/decisions/", decision["path"])
         self.assertIn("wiki/judgments/", judgment["path"])
-        self.assertEqual(parse_frontmatter(decision_path.read_text(encoding="utf-8"))["kind"], "decision")
-        self.assertEqual(parse_frontmatter(judgment_path.read_text(encoding="utf-8"))["kind"], "judgment")
-        self.assertEqual(parse_frontmatter(decision_path.read_text(encoding="utf-8"))["status"], "proposed")
-        self.assertEqual(parse_frontmatter(judgment_path.read_text(encoding="utf-8"))["status"], "tentative")
-        self.assertIn(f"wiki/sources/{entry['id']}.md", parse_frontmatter(decision_path.read_text(encoding="utf-8"))["citations"])
-        self.assertIn(f"wiki/sources/{entry['id']}.md", parse_frontmatter(judgment_path.read_text(encoding="utf-8"))["citations"])
-        self.assertTrue(parse_frontmatter(decision_path.read_text(encoding="utf-8"))["citation_snapshots"])
-        self.assertTrue(parse_frontmatter(judgment_path.read_text(encoding="utf-8"))["citation_snapshots"])
+        decision_frontmatter = parse_frontmatter(decision_path.read_text(encoding="utf-8"))
+        judgment_frontmatter = parse_frontmatter(judgment_path.read_text(encoding="utf-8"))
+        self.assertEqual(decision_frontmatter["kind"], "decision")
+        self.assertEqual(judgment_frontmatter["kind"], "judgment")
+        self.assertEqual(decision_frontmatter["status"], "proposed")
+        self.assertEqual(judgment_frontmatter["status"], "tentative")
+        self.assertIn(f"wiki/sources/{entry['id']}.md", decision_frontmatter["citations"])
+        self.assertIn(f"wiki/sources/{entry['id']}.md", judgment_frontmatter["citations"])
+        self.assertTrue(decision_frontmatter["citation_snapshots"])
+        self.assertTrue(judgment_frontmatter["citation_snapshots"])
+        self.assertIn("counter_evidence", decision_frontmatter)
+        self.assertIn("counter_evidence", judgment_frontmatter)
+        self.assertIn("invalidation_rule", decision_frontmatter)
+        self.assertIn("invalidation_rule", judgment_frontmatter)
+        self.assertIn("next_signals", decision_frontmatter)
+        self.assertIn("next_signals", judgment_frontmatter)
+        self.assertTrue(decision_frontmatter["formed_at"])
+        self.assertTrue(judgment_frontmatter["formed_at"])
+        self.assertIn("last_reviewed", decision_frontmatter)
+        self.assertIn("last_reviewed", judgment_frontmatter)
         self.assertIn("## Decision", decision_path.read_text(encoding="utf-8"))
         self.assertIn("## Evidence", decision_path.read_text(encoding="utf-8"))
         self.assertIn("## Counter Evidence", decision_path.read_text(encoding="utf-8"))
@@ -3428,15 +3728,46 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Confirmed after follow-up checks.", judgment_text)
         self.assertEqual(parse_frontmatter(decision_text)["status"], "approved")
         self.assertTrue(parse_frontmatter(decision_text)["reviewed_at"])
+        self.assertEqual(parse_frontmatter(decision_text)["last_reviewed"], parse_frontmatter(decision_text)["reviewed_at"])
         self.assertEqual(parse_frontmatter(judgment_text)["status"], "confirmed")
         self.assertEqual(parse_frontmatter(judgment_text)["confidence"], "high")
         self.assertTrue(parse_frontmatter(judgment_text)["reviewed_at"])
+        self.assertEqual(parse_frontmatter(judgment_text)["last_reviewed"], parse_frontmatter(judgment_text)["reviewed_at"])
 
         review_queue = (self.root / "wiki" / "indexes" / "review-queue.md").read_text(encoding="utf-8")
         self.assertIn("当前没有待审决策。", review_queue)
         self.assertIn("当前没有待审判断。", review_queue)
         self.assertIn("Scaling Decision", review_queue)
         self.assertIn("Scaling Judgment", review_queue)
+
+    def test_review_page_records_judgment_lifecycle_event_in_cognitive_history(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+
+        review_page(
+            self.root,
+            judgment["path"],
+            "tracking",
+            note="Keep the thesis under active review.",
+            confidence="medium",
+        )
+
+        history_lines = (self.root / ".aiwiki" / "state" / "runtime-history.jsonl").read_text(encoding="utf-8").strip().splitlines()
+        review_events = [
+            json.loads(line)
+            for line in history_lines
+            if json.loads(line)["event_type"] == "review" and json.loads(line)["page_path"] == judgment["path"]
+        ]
+        self.assertTrue(review_events)
+        self.assertEqual(review_events[-1]["judgment_lifecycle_state"], "under-review")
+        self.assertIn("explicit-review-status", review_events[-1]["judgment_lifecycle_reason_codes"])
+
+        cognitive_history = (self.root / "wiki" / "indexes" / "cognitive-history.md").read_text(encoding="utf-8")
+        self.assertIn("Judgment 生命周期事件", cognitive_history)
+        self.assertIn("Scaling Judgment", cognitive_history)
+        self.assertIn("复审中", cognitive_history)
 
     def test_review_page_appends_review_history(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -3695,7 +4026,7 @@ class AiwikiFlowTests(unittest.TestCase):
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
         report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
-        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+        file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
         judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
         review_page(
             self.root,
@@ -3703,6 +4034,16 @@ class AiwikiFlowTests(unittest.TestCase):
             "confirmed",
             note="Confirmed for memo export.",
             confidence="high",
+        )
+        judgment_path = self.root / judgment["path"]
+        judgment_text = judgment_path.read_text(encoding="utf-8")
+        judgment_frontmatter = parse_frontmatter(judgment_text)
+        judgment_frontmatter["counter_evidence"] = ["Serving optimizations lowered inference cost."]
+        judgment_frontmatter["invalidation_rule"] = "Invalidate if cost per token keeps falling after the next benchmark."
+        judgment_frontmatter["next_signals"] = ["Watch the next latency benchmark refresh."]
+        judgment_path.write_text(
+            f"{render_frontmatter(judgment_frontmatter)}\n\n{strip_frontmatter(judgment_text).lstrip()}",
+            encoding="utf-8",
         )
         self._seed_machine_memory_actions()
         compile_wiki(self.root)
@@ -3717,11 +4058,20 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Decision Memo", packs_index)
         self.assertIn("SOP Draft", packs_index)
         self.assertIn("Scaling Decision", review_pack.read_text(encoding="utf-8"))
-        self.assertIn("Scaling Judgment", decision_memo.read_text(encoding="utf-8"))
+        decision_memo_text = decision_memo.read_text(encoding="utf-8")
+        self.assertIn("Scaling Judgment", decision_memo_text)
+        self.assertIn("## Recommendation", decision_memo_text)
+        self.assertIn("Serving optimizations lowered inference cost.", decision_memo_text)
+        self.assertIn("Invalidate if cost per token keeps falling", decision_memo_text)
+        self.assertIn("Watch the next latency benchmark refresh.", decision_memo_text)
+        self.assertIn("## Version History", decision_memo_text)
         sop_text = sop_draft.read_text(encoding="utf-8")
         self.assertIn("## Step-by-Step", sop_text)
         self.assertIn("Action id:", sop_text)
         self.assertIn("apply-action", sop_text)
+        self.assertIn("Pattern frequency", sop_text)
+        self.assertIn("## Dry Run Preview", sop_text)
+        self.assertIn("## Version History", sop_text)
 
     def test_output_packs_index_surfaces_lifecycle_governance_summary(self) -> None:
         backlog_title, retired_title = self._seed_lifecycle_governance_surface_state()
@@ -4320,6 +4670,45 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("nightly_focus", state["protocol"])
         self.assertFalse(state["llm_used"])
 
+    def test_nightly_surfaces_judgment_review_actions_from_counter_evidence(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+        review_page(
+            self.root,
+            judgment["path"],
+            "confirmed",
+            note="Initial judgment baseline.",
+            confidence="high",
+        )
+
+        conflicting = self.root / "conflicting.md"
+        conflicting.write_text(
+            "# Transformer Scaling Followup\n\nTransformers scale inference costs shifted after routing changes.\n",
+            encoding="utf-8",
+        )
+        followup = ingest_source(self.root, str(conflicting), title="Transformer Scaling Followup")
+
+        result = nightly_health(self.root)
+
+        backlog_text = (self.root / result["repair_backlog"]).read_text(encoding="utf-8")
+        state = json.loads((self.root / result["state_path"]).read_text(encoding="utf-8"))
+        memory = load_machine_memory(self.root)
+        counter_evidence_pages = memory["health"]["counter_evidence_scan"]["pages"]
+        judgment_actions = memory["health"]["judgment_review_actions"]
+        self.assertIn("Judgment Review Actions", backlog_text)
+        self.assertIn("counter-evidence-candidate", backlog_text)
+        self.assertIn("Scaling Judgment", backlog_text)
+        self.assertIn(followup["id"], backlog_text)
+        self.assertIn(judgment["path"], state["repair_backlog"]["counter_evidence_candidates"])
+        self.assertTrue(state["repair_backlog"]["judgment_review_actions"])
+        self.assertEqual(counter_evidence_pages[0]["page_path"], judgment["path"])
+        self.assertNotIn(entry["id"], counter_evidence_pages[0]["source_ids"])
+        self.assertIn(followup["id"], counter_evidence_pages[0]["source_ids"])
+        self.assertEqual(judgment_actions[0]["page_path"], judgment["path"])
+        self.assertIn("counter-evidence-candidate", judgment_actions[0]["reason_codes"])
+
     def test_nightly_state_surfaces_lifecycle_governance_summary(self) -> None:
         self._seed_lifecycle_governance_surface_state()
 
@@ -4349,6 +4738,10 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("commands", result["capabilities"])
         self.assertIn("shell-status", result["capabilities"]["commands"]["p0"])
         self.assertFalse(result["capabilities"]["supports_hidden_state_read"])
+        self.assertIn("judgment_assets", result)
+        self.assertEqual(result["judgment_assets"]["counts"]["pages"], 0)
+        self.assertEqual(result["links"]["judgment_assets_markdown"], "wiki/indexes/judgment-assets.md")
+        self.assertEqual(result["links"]["cognitive_history_markdown"], "wiki/indexes/cognitive-history.md")
         self.assertEqual(result["recent_outputs"], [])
         self.assertEqual(result["recent_receipts"], [])
         self.assertEqual(result["recent_runs"], [])
@@ -4359,6 +4752,7 @@ class AiwikiFlowTests(unittest.TestCase):
         written = json.loads(shell_summary_path(self.root).read_text(encoding="utf-8"))
         self.assertEqual(written["contract_version"], 1)
         self.assertIn("capabilities", written)
+        self.assertIn("judgment_assets", written)
 
     def test_shell_status_surfaces_recent_outputs_and_query_runs(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -4541,6 +4935,77 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(archive_controls[archive_entry["id"]]["source_path"], f"wiki/sources/{archive_entry['id']}.md")
         self.assertEqual(archive_controls[archive_entry["id"]]["allowed_transitions"], ["apply"])
         self.assertEqual(archive_controls[archive_entry["id"]]["default_transition"], "apply")
+
+    def test_shell_status_surfaces_judgment_assets_and_split_review_objects(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+
+        compile_wiki(self.root)
+
+        result = shell_status(self.root)
+
+        judgment_assets = result["judgment_assets"]
+        self.assertEqual(judgment_assets["counts"]["decisions"], 1)
+        self.assertEqual(judgment_assets["counts"]["judgments"], 1)
+        self.assertGreaterEqual(judgment_assets["counts"]["attention_pages"], 2)
+        decision_focus = {entry["path"]: entry for entry in judgment_assets["decision_focus"]}
+        judgment_focus = {entry["path"]: entry for entry in judgment_assets["judgment_focus"]}
+        self.assertIn(decision["path"], decision_focus)
+        self.assertIn(judgment["path"], judgment_focus)
+        self.assertIn("missing-counter-evidence", decision_focus[decision["path"]]["attention_reasons"])
+        self.assertIn("missing-review-history", judgment_focus[judgment["path"]]["attention_reasons"])
+
+        decision_controls = {page["path"]: page for page in result["review_controls"]["decision_pages"]}
+        judgment_controls = {page["path"]: page for page in result["review_controls"]["judgment_pages"]}
+        self.assertIn(decision["path"], decision_controls)
+        self.assertIn(judgment["path"], judgment_controls)
+        self.assertEqual(decision_controls[decision["path"]]["asset_score"], 0)
+        self.assertFalse(decision_controls[decision["path"]]["has_counter_evidence"])
+        self.assertIn("missing-counter-evidence", decision_controls[decision["path"]]["reasons"])
+        self.assertIn("missing-review-history", judgment_controls[judgment["path"]]["reasons"])
+
+    def test_shell_status_surfaces_counter_evidence_review_actions_for_judgments(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+        review_page(
+            self.root,
+            judgment["path"],
+            "confirmed",
+            note="Confirmed before follow-up evidence arrived.",
+            confidence="high",
+        )
+
+        conflicting = self.root / "conflicting.md"
+        conflicting.write_text(
+            "# Transformer Scaling Followup\n\nTransformers scale inference costs shifted after routing changes.\n",
+            encoding="utf-8",
+        )
+        followup = ingest_source(self.root, str(conflicting), title="Transformer Scaling Followup")
+
+        compile_wiki(self.root)
+        result = shell_status(self.root)
+
+        self.assertEqual(result["review_backlog_counts"]["counter_evidence_candidates"], 1)
+        self.assertEqual(result["review_backlog_counts"]["judgment_review_actions"], 1)
+        judgment_controls = {page["path"]: page for page in result["review_controls"]["judgment_pages"]}
+        self.assertIn(judgment["path"], judgment_controls)
+        self.assertIn("counter-evidence-candidate", judgment_controls[judgment["path"]]["reasons"])
+        self.assertEqual(judgment_controls[judgment["path"]]["judgment_lifecycle_state"], "active")
+
+        review_actions = result["review_controls"]["review_actions"]
+        self.assertTrue(review_actions)
+        self.assertEqual(review_actions[0]["page_path"], judgment["path"])
+        self.assertIn("counter-evidence-candidate", review_actions[0]["reason_codes"])
+
+        review_queue = (self.root / "wiki" / "indexes" / "review-queue.md").read_text(encoding="utf-8")
+        self.assertIn("Counter-evidence Candidates", review_queue)
+        self.assertIn("Scaling Judgment", review_queue)
+        self.assertIn(followup["id"], review_queue)
 
     def test_shell_status_control_objects_are_not_truncated(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -4782,7 +5247,10 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn('? "Revert archive" : "Apply archive"', content)
         self.assertIn('? "Revert action" : "Apply action"', content)
         self.assertIn('? "Reactivate concept" : "Retire concept"', content)
-        self.assertIn("Review Control Objects", content)
+        self.assertIn("Judgment Focus", content)
+        self.assertIn("Judgment Assets", content)
+        self.assertIn("Decision Objects", content)
+        self.assertIn("Judgment Objects", content)
         self.assertIn("Rewrite Proposal Objects", content)
         self.assertIn("Action Control Objects", content)
         self.assertIn("Pick Review Transition", content)
@@ -4792,6 +5260,11 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn('emptyNotice: "当前没有可见的 machine-memory action context，已回退到手动表单。"', content)
         self.assertIn('output/control/shell-summary.json', content)
         self.assertIn('review_controls', content)
+        self.assertIn('reviewControlList("decision_pages")', content)
+        self.assertIn('reviewControlList("judgment_pages")', content)
+        self.assertIn('["judgment_assets_markdown", "Judgment Assets"]', content)
+        self.assertIn("displayReviewReason(", content)
+        self.assertIn("reviewObjectMetaText(", content)
         self.assertIn('execution_controls', content)
         self.assertIn('scripts/aiwiki-launcher.sh', content)
         self.assertIn("canRefreshReview", content)
@@ -4804,23 +5277,17 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("fs.accessSync(launcherPath, fs.constants.X_OK)", content)
         self.assertIn("runUiAction(action, label = \"ui-action\")", content)
         self.assertIn("console.error(`[furnace-product-shell] ${label} failed`, error);", content)
-        app_content = Path("/home/tim/ai-wiki/src/aiwiki/app.py").read_text(encoding="utf-8")
-        self.assertIn("def transition_profile(", app_content)
-        self.assertIn("def curated_page_transition_profile(", app_content)
-        self.assertIn("def rewrite_transition_profile(", app_content)
-        self.assertIn("def action_transition_profile(", app_content)
-        self.assertIn("def archive_transition_profile(", app_content)
-        self.assertIn("def shell_review_controls(", app_content)
-        self.assertIn("def shell_action_control_objects(", app_content)
-        self.assertIn("def shell_archive_control_objects(", app_content)
-        self.assertIn("def shell_execution_controls(root: Path, memory: dict[str, Any]) -> dict[str, Any]:", app_content)
-        self.assertIn('"current_status": str(page.get("status") or ""),', app_content)
-        self.assertIn('current["can_refresh_review"] = bool(valid_curated_statuses(str(current.get("kind") or "")))', app_content)
-        self.assertIn('"can_refresh_review": status in REWRITE_PROPOSAL_STATUSES,', app_content)
-        self.assertIn('"can_refresh_review": bool(action.get("active", True)) and status in ACTION_STATUSES,', app_content)
-        self.assertIn('"review_controls": review_controls,', app_content)
-        self.assertIn('"execution_controls": shell_execution_controls(root, memory),', app_content)
-
+        app_shim = Path("/home/tim/ai-wiki/src/aiwiki/app.py").read_text(encoding="utf-8")
+        self.assertNotIn("_sync_facade_bindings", app_shim)
+        self.assertIn("transition_profile = _app_content.transition_profile", app_shim)
+        self.assertIn("curated_page_transition_profile = _app_content.curated_page_transition_profile", app_shim)
+        self.assertIn("rewrite_transition_profile = _app_content.rewrite_transition_profile", app_shim)
+        self.assertIn("action_transition_profile = _app_content.action_transition_profile", app_shim)
+        self.assertIn("archive_transition_profile = _app_content.archive_transition_profile", app_shim)
+        self.assertIn("shell_review_controls = _app_shell.shell_review_controls", app_shim)
+        self.assertIn("shell_action_control_objects = _app_shell.shell_action_control_objects", app_shim)
+        self.assertIn("shell_archive_control_objects = _app_shell.shell_archive_control_objects", app_shim)
+        self.assertIn("shell_execution_controls = _app_shell.shell_execution_controls", app_shim)
     def test_cli_shell_status_command_outputs_summary_json(self) -> None:
         with patch("sys.stdout", new_callable=io.StringIO) as stdout:
             self.assertEqual(cli_main(["--root", str(self.root), "shell-status"]), 0)
@@ -5052,6 +5519,49 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Execution proposals / Receipts: `0` / `1`", investing_scorecard)
         self.assertIn("Execution proposals / Receipts: `0` / `0`", research_scorecard)
 
+    def test_apply_and_revert_citation_snapshot_refresh_action_updates_judgment_frontmatter(self) -> None:
+        _, judgment, action = self._prepare_citation_snapshot_refresh_action()
+
+        review_machine_memory_action(self.root, action["id"], "accepted", note="Queue safe apply.")
+        judgment_path = self.root / judgment["path"]
+        before_frontmatter = parse_frontmatter(judgment_path.read_text(encoding="utf-8"))
+
+        dry_run = apply_machine_memory_action(self.root, action["id"], dry_run=True)
+        self.assertEqual(dry_run["apply_mode"], "citation-snapshot-refresh")
+        self.assertEqual(dry_run["bundle"]["policy_decision"], "allow")
+        self.assertEqual(dry_run["bundle"]["execution_band"], "bundle-safe-apply")
+        self.assertTrue(dry_run["bundle"]["rollback_summary"])
+
+        preview = dry_run["preview"]
+        self.assertEqual(preview["previous_citation_snapshots"], before_frontmatter["citation_snapshots"])
+        self.assertNotEqual(preview["updated_citation_snapshots"], before_frontmatter["citation_snapshots"])
+
+        bundle_path = self.root / dry_run["bundle_path"]
+        bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        bundle_path.write_text(
+            json.dumps(dry_run["bundle"], ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        apply_result = apply_machine_memory_action(
+            self.root,
+            action["id"],
+            note="Refresh citation snapshots.",
+            bundle_path=dry_run["bundle_path"],
+        )
+        self.assertEqual(apply_result["apply_mode"], "citation-snapshot-refresh")
+
+        applied_frontmatter = parse_frontmatter(judgment_path.read_text(encoding="utf-8"))
+        self.assertEqual(applied_frontmatter["citation_snapshots"], preview["updated_citation_snapshots"])
+
+        revert_machine_memory_action(self.root, action["id"], note="Rollback citation snapshot refresh.")
+        reverted_frontmatter = parse_frontmatter(judgment_path.read_text(encoding="utf-8"))
+        self.assertEqual(reverted_frontmatter["citation_snapshots"], preview["previous_citation_snapshots"])
+
+        state = load_machine_memory_action_state(self.root)
+        refreshed = next(item for item in state["actions"] if item["id"] == action["id"])
+        self.assertEqual(refreshed["status"], "proposed")
+
     def test_compile_generates_concept_quality_page(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
 
@@ -5061,10 +5571,12 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(concept_quality.exists())
         quality_text = concept_quality.read_text(encoding="utf-8")
         self.assertIn("## Rewrite Now", quality_text)
+        self.assertIn("## Quality Distribution", quality_text)
         self.assertIn("## Rewrite Priority", quality_text)
         self.assertIn("## Conflict Signals", quality_text)
         self.assertIn("## Evidence Gaps", quality_text)
         self.assertIn("## Merge Candidates", quality_text)
+        self.assertIn("平均质量分", quality_text)
 
     def test_compile_surfaces_concept_conflict_signals(self) -> None:
         first = self.root / "first.md"
@@ -5100,6 +5612,30 @@ class AiwikiFlowTests(unittest.TestCase):
         concept_text = matching_pages[0].read_text(encoding="utf-8")
         self.assertIn("## Conflict Signals", concept_text)
         self.assertIn("## Evidence Gaps", concept_text)
+
+    def test_compile_surfaces_concept_quality_metrics_and_scores(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        source_page = next((self.root / "wiki" / "sources").glob("*.md"))
+        source_page.write_text(
+            source_page.read_text(encoding="utf-8").replace(
+                "- Pending LLM summary.",
+                "- Transformer scale improves capability and raises compute demand.",
+            ),
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+
+        memory = load_machine_memory(self.root)
+        record = memory["health"]["concept_quality"]["all_concepts"][0]
+        self.assertIn("quality_score", record)
+        self.assertIn("quality_band", record)
+        self.assertIn("quality_metrics", record)
+        self.assertIn("source_coverage", record["quality_metrics"])
+        self.assertIn("consistency", record["quality_metrics"])
+        self.assertIn("evidence_depth", record["quality_metrics"])
+        self.assertIn("recency", record["quality_metrics"])
 
     def test_compile_generates_judgment_assets_page(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -5321,6 +5857,36 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("graphUiData", payload)
         self.assertIn("节点详情", payload)
 
+    def test_compile_attaches_judgment_assets_to_machine_memory_graph(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+
+        review_page(
+            self.root,
+            judgment["path"],
+            "confirmed",
+            note="Judgment captured into the runtime graph.",
+            confidence="high",
+        )
+
+        memory = load_machine_memory(self.root)
+        judgment_node = next(node for node in memory["judgment_nodes"] if node["path"] == judgment["path"])
+        judgment_frontmatter = parse_frontmatter((self.root / judgment["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(judgment_node["page_id"], judgment_frontmatter["id"])
+        self.assertIn(entry["id"], judgment_node["source_ids"])
+        self.assertTrue(
+            any(
+                edge["source_id"] == entry["id"] and edge["page_id"] == judgment_node["page_id"]
+                for edge in memory["edges"]["source_to_judgment"]
+            )
+        )
+
+        payload = (self.root / "output" / "graph" / "machine-memory.html").read_text(encoding="utf-8")
+        self.assertIn("Scaling Judgment", payload)
+        self.assertIn("judgment \u00b7 confirmed", payload)
+
     def test_compile_escapes_script_sensitive_text_in_machine_memory_graph_html(self) -> None:
         scripted = self.root / "scripted.md"
         scripted.write_text("# Scripted Source\n\nGraph payload should stay safe.\n", encoding="utf-8")
@@ -5403,7 +5969,7 @@ class AiwikiFlowTests(unittest.TestCase):
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
         report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
-        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+        file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
         judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
         review_page(
             self.root,

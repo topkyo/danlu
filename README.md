@@ -37,17 +37,20 @@ Obsidian 是前端/IDE；炼丹炉是整个系统；`aiwiki` 是底层 runtime�
 
 ## 当前 runtime 实现（repo 视角）
 
-当前 `aiwiki` runtime 已完成第一轮 `app.py` 解单体，仓库里的实现骨架现在是：
+当前 `aiwiki` runtime 已完成一轮更彻底的边界重构，仓库里的实现骨架现在是：
 
-- `src/aiwiki/app.py`：兼容入口 / facade，继续保留 `aiwiki.app` import surface
+- `src/aiwiki/app.py`：**静态兼容 shim**，继续保留 `aiwiki.app` import surface，但不再承担动态 sync facade
 - `src/aiwiki/app_utils.py`：runtime lock、hash、frontmatter、markdown / JSON helpers
 - `src/aiwiki/app_state.py`：path / state / json-document primitives
-- `src/aiwiki/app_protocol.py`：protocol runtime、schema/dashboard scaffold、review windows
+- `src/aiwiki/app_protocol.py`：protocol runtime、schema scaffolding、review windows
 - `src/aiwiki/app_content.py`：source / concept / lifecycle / material / output content builders
-- `src/aiwiki/app_memory.py`：machine memory、execution snapshot、query / control surfaces
-- `src/aiwiki/app_compile.py`：compile / ask / report / file-back / lint / nightly orchestration
+- `src/aiwiki/app_memory.py`：machine memory core、execution snapshot、query/state transforms
+- `src/aiwiki/app_shell.py`：shell summary、review/execution controls、shell-facing contract assembly
+- `src/aiwiki/app_surfaces.py`：dashboard / HTML / shell surface render exports
+- `src/aiwiki/app_compile.py`：compile / lint / ask / report / nightly orchestration，`compile_wiki()` / `lint_wiki()` 按显式 phase helper 编排
+- `src/aiwiki/app_types.py`：稳定 TypedDict contracts（如 `ManifestEntry` / `CompileState` / `ShellSummary`）
 
-这次重构没有改变 CLI 或 `aiwiki.app` 的外部使用方式，但把 runtime 从单文件内核推进成了更可维护的分层实现。更上层的系统分层和长期目标，仍以基线 / 终局架构文档为准。
+这次重构没有改变 CLI 或 `aiwiki.app` 的外部使用方式，但已经把 runtime 从“动态 facade + 隐式跨模块注入”推进成“静态 shim + 明确 owner 模块 + phase orchestration”的结构。更上层的系统分层和长期目标，仍以基线 / 终局架构文档为准。
 
 ## 更适合谁
 

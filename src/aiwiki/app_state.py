@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .app_utils import render_json_document, runtime_write_operation, slugify
+from .app_utils import relative_path, render_json_document, runtime_write_operation, slugify
 
 
 DEFAULT_PROTOCOL = "general"
@@ -16,6 +16,9 @@ KNOWLEDGE_LIFECYCLE_KINDS = ("concept", "decision", "judgment")
 
 
 KNOWLEDGE_LIFECYCLE_STATES = ("active", "review", "deferred", "retired", "revisit")
+
+
+JUDGMENT_LIFECYCLE_STATES = ("formed", "active", "under-review", "revised", "retired")
 
 
 def manifest_path(root: Path) -> Path:
@@ -56,6 +59,10 @@ def furnace_center_html_path(root: Path) -> Path:
 
 def shell_summary_path(root: Path) -> Path:
     return root / "output" / "control" / "shell-summary.json"
+
+
+def product_shell_html_path(root: Path) -> Path:
+    return root / "output" / "control" / "product-shell.html"
 
 
 def execution_center_html_path(root: Path) -> Path:
@@ -118,6 +125,10 @@ def execution_receipt_history_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "execution-receipts.jsonl"
 
 
+def execution_policy_log_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "execution-policy-decisions.jsonl"
+
+
 def concept_quality_path(root: Path) -> Path:
     return root / "wiki" / "indexes" / "concept-quality.md"
 
@@ -132,6 +143,14 @@ def concept_rewrite_proposal_page_path(root: Path, slug: str) -> Path:
 
 def machine_memory_action_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "machine-memory-actions.json"
+
+
+def planner_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "planner-state.json"
+
+
+def query_route_telemetry_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "query-route-telemetry.json"
 
 
 def concept_rewrite_state_path(root: Path) -> Path:
@@ -846,6 +865,94 @@ def save_machine_memory_action_state(root: Path, document: dict[str, Any]) -> No
         json.dumps(document, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+def default_planner_state() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "generated_at": "",
+        "state_path": "",
+        "active_protocol": DEFAULT_PROTOCOL,
+        "pending_proposals": [],
+        "priority_queue": [],
+        "dependency_graph": {"nodes": [], "edges": []},
+        "next_action": {},
+        "counts": {"pending_proposals": 0, "blocked": 0, "unblocked": 0},
+    }
+
+
+def load_planner_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(planner_state_path(root))
+    if not isinstance(document, dict):
+        return default_planner_state()
+    pending_proposals = document.get("pending_proposals")
+    priority_queue = document.get("priority_queue")
+    dependency_graph = document.get("dependency_graph")
+    counts = document.get("counts")
+    next_action = document.get("next_action")
+    if not isinstance(pending_proposals, list) or not isinstance(priority_queue, list):
+        return default_planner_state()
+    if not isinstance(dependency_graph, dict) or not isinstance(counts, dict):
+        return default_planner_state()
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "generated_at": str(document.get("generated_at") or ""),
+        "state_path": str(document.get("state_path") or relative_path(root, planner_state_path(root))),
+        "active_protocol": str(document.get("active_protocol") or DEFAULT_PROTOCOL),
+        "pending_proposals": [proposal for proposal in pending_proposals if isinstance(proposal, dict)],
+        "priority_queue": [item for item in priority_queue if isinstance(item, dict)],
+        "dependency_graph": {
+            "nodes": [node for node in dependency_graph.get("nodes", []) if isinstance(node, dict)],
+            "edges": [edge for edge in dependency_graph.get("edges", []) if isinstance(edge, dict)],
+        },
+        "next_action": dict(next_action) if isinstance(next_action, dict) else {},
+        "counts": {
+            "pending_proposals": int(counts.get("pending_proposals", 0) or 0),
+            "blocked": int(counts.get("blocked", 0) or 0),
+            "unblocked": int(counts.get("unblocked", 0) or 0),
+        },
+    }
+
+
+def save_planner_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(planner_state_path(root), document)
+
+
+def default_query_route_telemetry() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "updated_at": "",
+        "state_path": "",
+        "entries": [],
+        "strategy_counts": {},
+        "protocol_counts": {},
+        "last_entry": {},
+    }
+
+
+def load_query_route_telemetry(root: Path) -> dict[str, Any]:
+    document = load_json_document(query_route_telemetry_path(root))
+    if not isinstance(document, dict):
+        return default_query_route_telemetry()
+    entries = document.get("entries")
+    strategy_counts = document.get("strategy_counts")
+    protocol_counts = document.get("protocol_counts")
+    last_entry = document.get("last_entry")
+    if not isinstance(entries, list) or not isinstance(strategy_counts, dict) or not isinstance(protocol_counts, dict):
+        return default_query_route_telemetry()
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "updated_at": str(document.get("updated_at") or ""),
+        "state_path": str(document.get("state_path") or relative_path(root, query_route_telemetry_path(root))),
+        "entries": [entry for entry in entries if isinstance(entry, dict)],
+        "strategy_counts": {str(key): int(value or 0) for key, value in strategy_counts.items()},
+        "protocol_counts": {str(key): int(value or 0) for key, value in protocol_counts.items()},
+        "last_entry": dict(last_entry) if isinstance(last_entry, dict) else {},
+    }
+
+
+def save_query_route_telemetry(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(query_route_telemetry_path(root), document)
 
 
 def load_machine_memory(root: Path) -> dict[str, Any]:

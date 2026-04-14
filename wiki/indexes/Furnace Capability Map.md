@@ -38,8 +38,8 @@ status: "snapshot"
 
 - `aiwiki` runtime 已经完成 evidence plane、knowledge lifecycle、governance、execution 的主线闭环
 - `aiwiki` runtime 已完成 `app.py` 模块化重构，形成 `protocol / content / memory / compile / utils / state` 的实现骨架
-- Obsidian Product Shell 已经从“看板壳”推进到“带受限动作的原生工作台”
-- 当前瓶颈已经不在 runtime 主链，而在 **Product Shell 的操作深度、对象身份和上下文精度**
+- Obsidian Product Shell 已经从“看板壳”推进到“带 judgment/governance 对象的原生工作台”
+- 当前瓶颈已经不在 runtime 主链，而在 **更深的 object workflow、batch orchestration 与 action-specific context**
 
 ## 当前能力地图
 
@@ -84,8 +84,10 @@ status: "snapshot"
 - `file-back`
 - confidence / invalidation / revisit 语义
 - protocol-aware review window
+- `judgment-assets / cognitive-history`
+- shell-facing judgment asset summary
 
-这一层已经能承载长期判断资产，但判断质量仍然依赖上游 evidence / concept 的精度。
+这一层已经能承载长期判断资产，并把完整度 / 漂移 / 复审历史暴露给 governance 与 Product Shell；判断质量仍然依赖上游 evidence / concept 的精度。
 
 ### 4. Machine Memory
 
@@ -125,8 +127,10 @@ status: "snapshot"
 - lifecycle-driven governance surfaces
 - `review-center / review-queue / aging-report / repair-backlog`
 - `domain-pilots` 的 protocol-aware relevance / ambiguity summary
+- judgment asset focus objects
+- decision / judgment split review control objects
 
-当前最强的不是某个单页，而是这些治理视图已经开始消费统一 state。
+当前最强的不是某个单页，而是这些治理视图已经开始消费统一 state，并把 judgment asset 缺口提升成显式治理对象。
 
 ### 7. Execution Layer
 
@@ -177,18 +181,20 @@ status: "snapshot"
 - `review-action / apply-action / revert-action`
 - `Review Center / Execution Center` 的 item-level inline action
 - `review-page / review-rewrite / review-action` context picker
+- judgment asset summary / governance links
+- decision objects / judgment objects split review surface
 - context missing 时的 modal fallback
 
-这一层已经从“只读工作台”推进到“上下文感知的受限动作工作台”。
+这一层已经从“只读工作台”推进到“上下文感知、带 judgment/governance focus object 的受限动作工作台”。
 
 但它仍然是：
 
 - launcher 驱动
-- object identity 还不够紧
 - 一部分 action context 仍然依赖 fallback modal
-- 还不是完整 item-level control surface
+- 还缺 batch / queue-level orchestration
+- 还不是完整 object-specific workflow shell
 
-还没有进入“细粒度对象控制台”的状态。
+现在已经进入“identity-aware judgment/governance control surface”的阶段，但还没有到终局文档里的细粒度对象控制台。
 
 ## 当前成熟度判断
 
@@ -206,9 +212,9 @@ status: "snapshot"
 不是 runtime 主链，而是壳层交互深度：
 
 - 动作入口仍以 modal 为主
-- 很多动作还要手填 `entry_id / action_id / page path`
-- 还缺 item-level inline action
-- 还缺更细的 action-specific context picker
+- 部分 context 缺失场景仍要手填 `entry_id / action_id / page path`
+- judgment/governance object 虽已成为一等对象，但还缺更细的 action-specific context picker
+- 还缺 queue-level / batch-level workflow
 - `app_content.py` / `app_memory.py` / `app_compile.py` 仍然偏大，后续可以继续细分，但这已经不是当前主 blocker
 - `qa-review` 当前仍然是 same-context fallback，不是独立 reviewer
 

@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Any
 from urllib import parse, request
 
-from .app import append_wiki_log, ensure_layout, relative_path, render_frontmatter, slugify, utc_now
+from .app_content import append_wiki_log
+from .app_protocol import ensure_layout
+from .app_utils import relative_path, render_frontmatter, slugify, utc_now
 from .config import LLMConfig
 from .llm import LLMError, create_backend_client
 

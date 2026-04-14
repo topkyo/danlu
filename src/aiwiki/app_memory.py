@@ -21,6 +21,7 @@ from typing import Any
 from .config import LLMConfig
 
 from .app_utils import (
+    analyze_citation_snapshots,
     extract_provenance_paths,
     html_safe_json_literal,
     parse_frontmatter,
@@ -43,6 +44,7 @@ from .app_state import (
     concept_rewrite_proposal_page_path,
     concept_rewrite_state_path,
     domain_pilots_path,
+    execution_policy_log_path,
     execution_audit_html_path,
     execution_audit_path,
     execution_center_html_path,
@@ -60,12 +62,14 @@ from .app_state import (
     load_manifest,
     load_manual_link_state,
     load_material_archive_state,
+    load_query_route_telemetry,
     load_runtime_history,
     machine_memory_action_state_path,
     machine_memory_graph_html_path,
     machine_memory_history_path,
     nightly_health_state_path,
     output_packs_index_path,
+    query_route_telemetry_path,
     review_center_html_path,
     save_active_corpora_state,
     save_archive_candidates_state,
@@ -73,6 +77,7 @@ from .app_state import (
     save_machine_memory_action_state,
     save_material_routing_state,
     save_material_state,
+    save_query_route_telemetry,
     shell_summary_path,
 )
 
@@ -90,6 +95,7 @@ from .app_protocol import (
     ensure_layout,
     load_protocol_state,
     protocol_focus_score,
+    protocol_query_route_config,
     protocol_state_path,
     protocol_title,
     schedule_review_windows,
@@ -117,7 +123,11 @@ from .app_content import (
     execution_bundle_path,
     execution_policy_profile,
     execution_proposal_path,
+    judgment_asset_attention_sort_key,
+    judgment_asset_shell_record,
+    judgment_asset_summary,
     knowledge_lifecycle_governance_summary,
+    load_execution_policy_decision_history,
     load_execution_receipt_history,
     machine_memory_concept_input_signature,
     machine_memory_source_input_signature,
@@ -128,522 +138,13 @@ from .app_content import (
     rewrite_proposal_status_rank,
     rewrite_transition_profile,
     routing_snapshot_for_protocol,
+    safe_apply_preview,
     source_summary_or_preview,
     summarize_runtime_event_for_shell,
     transition_profile,
     valid_curated_statuses,
     validate_low_risk_action_targets,
 )
-
-def shell_recent_runs(root: Path, *, limit: int = 8) -> list[dict[str, Any]]:
-    history = load_runtime_history(root)
-    return [summarize_runtime_event_for_shell(event) for event in list(reversed(history))[:limit]]
-
-
-def shell_recent_receipts(root: Path, *, limit: int = 8) -> list[dict[str, Any]]:
-    receipts = load_execution_receipt_history(root)
-    return [
-        {
-            "action_id": str(receipt.get("action_id") or ""),
-            "applied_at": str(receipt.get("applied_at") or ""),
-            "operation": str(receipt.get("operation") or ""),
-            "protocol": str(receipt.get("protocol") or ""),
-            "receipt_path": str(receipt.get("receipt_path") or ""),
-            "status": str(receipt.get("status") or ""),
-            "subject_id": str(receipt.get("subject_id") or ""),
-            "subject_kind": str(receipt.get("subject_kind") or ""),
-            "title": str(receipt.get("title") or ""),
-        }
-        for receipt in receipts[:limit]
-    ]
-
-
-def shell_review_controls(
-    root: Path,
-    *,
-    queue: dict[str, list[dict[str, str]]],
-    aging: dict[str, list[dict[str, str]]],
-) -> dict[str, list[dict[str, Any]]]:
-    page_by_path: dict[str, dict[str, Any]] = {}
-
-    def add_page(page: dict[str, str], reason_code: str) -> None:
-        page_path = str(page.get("path") or "")
-        if not page_path:
-            return
-        current = page_by_path.get(page_path)
-        if current is None:
-            current = {
-                "page_id": str(page.get("page_id") or Path(page_path).stem),
-                "title": str(page.get("title") or page_path),
-                "path": page_path,
-                "kind": str(page.get("kind") or ""),
-                "status": str(page.get("status") or ""),
-                "current_status": str(page.get("status") or ""),
-                "protocol": str(page.get("protocol") or ""),
-                "confidence": str(page.get("confidence") or ""),
-                "pending_review": str(page.get("pending_review") or "") == "true",
-                "overdue_review": str(page.get("overdue_review") or "") == "true",
-                "escalation_candidate": str(page.get("escalation_candidate") or "") == "true",
-                "aging_state": str(page.get("aging_state") or ""),
-                "revisit_after": str(page.get("revisit_after") or ""),
-                "escalate_after": str(page.get("escalate_after") or ""),
-                "reviewed_at": str(page.get("reviewed_at") or ""),
-                "updated_at": str(page.get("updated_at") or ""),
-                "can_review": False,
-                "can_refresh_review": False,
-                "reasons": [],
-            }
-            page_by_path[page_path] = current
-        reasons = current.setdefault("reasons", [])
-        if reason_code and reason_code not in reasons:
-            reasons.append(reason_code)
-        profile = curated_page_transition_profile(
-            str(current.get("kind") or ""),
-            str(current.get("status") or ""),
-        )
-        current.update(profile)
-        current["can_review"] = bool(profile.get("allowed_transitions"))
-        current["can_refresh_review"] = bool(valid_curated_statuses(str(current.get("kind") or "")))
-
-    for page in queue.get("pending_decisions", []) + queue.get("pending_judgments", []):
-        add_page(page, "pending-review")
-    for page in aging.get("escalated", []):
-        add_page(page, "escalation-candidate")
-    for page in aging.get("overdue", []):
-        add_page(page, "overdue-review")
-    for page in aging.get("scheduled", []):
-        add_page(page, "scheduled-review")
-
-    review_pages = sorted(
-        page_by_path.values(),
-        key=lambda item: (
-            0 if item.get("escalation_candidate") else 1,
-            0 if item.get("overdue_review") else 1,
-            0 if item.get("pending_review") else 1,
-            str(item.get("revisit_after") or "9999"),
-            str(item.get("title") or "").lower(),
-        ),
-    )
-
-    rewrite_state = load_concept_rewrite_state(root)
-    rewrite_controls: list[dict[str, Any]] = []
-    for proposal in rewrite_state.get("proposals", []):
-        if not isinstance(proposal, dict):
-            continue
-        slug = str(proposal.get("slug") or "").strip()
-        if not slug or not bool(proposal.get("active", True)):
-            continue
-        status = str(proposal.get("status") or "proposed")
-        profile = rewrite_transition_profile(status)
-        rewrite_controls.append(
-            {
-                "slug": slug,
-                "title": str(proposal.get("title") or slug),
-                "status": status,
-                "current_status": status,
-                "priority": str(proposal.get("priority") or "medium"),
-                "score": int(proposal.get("score") or 0),
-                "proposal_path": str(proposal.get("proposal_path") or ""),
-                "target_path": str(proposal.get("target_path") or f"wiki/concepts/{slug}.md"),
-                "pending_review": str(proposal.get("pending_review") or "") == "true",
-                "apply_ready": bool(proposal.get("apply_ready", False)),
-                "can_review": bool(profile.get("allowed_transitions")),
-                "can_refresh_review": status in REWRITE_PROPOSAL_STATUSES,
-                "can_apply": bool(proposal.get("apply_ready", False)),
-                "first_proposed_at": str(proposal.get("first_proposed_at") or ""),
-                "last_proposed_at": str(proposal.get("last_proposed_at") or ""),
-                "reviewed_at": str(proposal.get("reviewed_at") or ""),
-                "issue_count": len(proposal.get("issues", [])) if isinstance(proposal.get("issues"), list) else 0,
-                "source_count": len(proposal.get("source_pages", [])) if isinstance(proposal.get("source_pages"), list) else 0,
-                **profile,
-            }
-        )
-    rewrite_controls.sort(
-        key=lambda item: (
-            0 if item.get("can_review") else 1,
-            0 if item.get("apply_ready") else 1,
-            rewrite_proposal_status_rank(str(item.get("status") or "")),
-            action_priority_rank(str(item.get("priority") or "")),
-            -int(item.get("score", 0)),
-            str(item.get("title") or "").lower(),
-        )
-    )
-    return {
-        "pages": review_pages,
-        "rewrite_proposals": rewrite_controls,
-    }
-
-
-def shell_action_control_objects(
-    root: Path,
-    memory: dict[str, Any],
-    *,
-    apply_ready_action_ids: set[str],
-    revert_ready_action_ids: set[str],
-) -> list[dict[str, Any]]:
-    health = memory.get("health", {})
-    repair_plan = health.get("repair_plan", {})
-    all_actions = [
-        action
-        for action in [
-            *health.get("actions", []),
-            *health.get("inactive_actions", []),
-            *repair_plan.get("ready_actions", []),
-            *repair_plan.get("triage_actions", []),
-            *repair_plan.get("deferred_actions", []),
-        ]
-        if isinstance(action, dict)
-    ]
-    controls: list[dict[str, Any]] = []
-    seen_ids: set[str] = set()
-    for action in all_actions:
-        action_id = str(action.get("id") or "").strip()
-        if not action_id or action_id in seen_ids:
-            continue
-        seen_ids.add(action_id)
-        status = str(action.get("status") or "proposed")
-        profile = action_transition_profile(status) if bool(action.get("active", True)) else transition_profile([])
-        can_review = bool(profile.get("allowed_transitions"))
-        can_apply = action_id in apply_ready_action_ids
-        can_revert = action_id in revert_ready_action_ids
-        proposal_path = execution_proposal_path(root, action_id)
-        bundle_path = execution_bundle_path(root, action_id)
-        controls.append(
-            {
-                "action_id": action_id,
-                "title": str(action.get("title") or action_id),
-                "status": status,
-                "current_status": status,
-                "kind": str(action.get("kind") or ""),
-                "priority": str(action.get("priority") or "medium"),
-                "protocol": str(action.get("protocol") or DEFAULT_PROTOCOL),
-                "primary_path": str(action.get("primary_path") or ""),
-                "secondary_path": str(action.get("secondary_path") or ""),
-                "component_id": str(action.get("component_id") or ""),
-                "execution_policy": str(action.get("execution_policy") or ""),
-                "execution_band": str(action.get("execution_band") or ""),
-                "policy_summary": str(action.get("policy_summary") or ""),
-                "pending_review": str(action.get("pending_review") or "") == "true",
-                "overdue_review": str(action.get("overdue_review") or "") == "true",
-                "escalation_candidate": str(action.get("escalation_candidate") or "") == "true",
-                "last_receipt_path": str(action.get("last_receipt_path") or ""),
-                "proposal_path": relative_path(root, proposal_path) if proposal_path.exists() else "",
-                "bundle_path": relative_path(root, bundle_path) if bundle_path.exists() else "",
-                "can_review": can_review,
-                "can_refresh_review": bool(action.get("active", True)) and status in ACTION_STATUSES,
-                "can_apply": can_apply,
-                "can_revert": can_revert,
-                **profile,
-            }
-        )
-    controls.sort(
-        key=lambda item: (
-            0 if item.get("can_apply") else 1,
-            0 if item.get("can_review") else 1,
-            0 if item.get("can_revert") else 1,
-            0 if item.get("escalation_candidate") else 1,
-            0 if item.get("overdue_review") else 1,
-            action_status_rank(str(item.get("status") or "")),
-            action_priority_rank(str(item.get("priority") or "")),
-            str(item.get("title") or "").lower(),
-        )
-    )
-    return controls
-
-
-def shell_archive_control_objects(
-    root: Path,
-    *,
-    apply_ready_archive_entry_ids: set[str],
-    revert_ready_archive_entry_ids: set[str],
-) -> list[dict[str, Any]]:
-    manifest = load_manifest(root)
-    manifest_by_id = {
-        str(entry.get("id") or ""): entry
-        for entry in manifest.get("entries", [])
-        if isinstance(entry, dict) and entry.get("id")
-    }
-    archive_candidates = load_archive_candidates_state(root)
-    archive_candidate_by_id = {
-        str(entry.get("entry_id") or ""): entry
-        for entry in archive_candidates.get("entries", [])
-        if isinstance(entry, dict) and entry.get("entry_id")
-    }
-    active_archives = active_material_archive_entries(load_material_archive_state(root))
-    entry_ids = sorted(
-        {
-            *archive_candidate_by_id.keys(),
-            *active_archives.keys(),
-            *apply_ready_archive_entry_ids,
-            *revert_ready_archive_entry_ids,
-        }
-    )
-    controls: list[dict[str, Any]] = []
-    for entry_id in entry_ids:
-        candidate = archive_candidate_by_id.get(entry_id, {})
-        archived = active_archives.get(entry_id, {})
-        manifest_entry = manifest_by_id.get(entry_id, {})
-        title = str(manifest_entry.get("title") or archived.get("title") or entry_id)
-        source_path = str(archived.get("source_path") or f"wiki/sources/{entry_id}.md")
-        can_apply = entry_id in apply_ready_archive_entry_ids
-        can_revert = entry_id in revert_ready_archive_entry_ids
-        profile = archive_transition_profile(can_apply=can_apply, can_revert=can_revert)
-        controls.append(
-            {
-                "entry_id": entry_id,
-                "title": title,
-                "source_path": source_path,
-                "candidate_status": str(candidate.get("status") or ""),
-                "current_temperature": str(candidate.get("current_temperature") or ("archived" if archived else "")),
-                "recommended_temperature": str(candidate.get("recommended_temperature") or archived.get("recommended_temperature") or ""),
-                "reason_codes": list(candidate.get("reason_codes", [])) if isinstance(candidate.get("reason_codes"), list) else [],
-                "blocked_by_judgment_ids": list(candidate.get("blocked_by_judgment_ids", []))
-                if isinstance(candidate.get("blocked_by_judgment_ids"), list)
-                else [],
-                "reactivation_signals": list(candidate.get("reactivation_signals", []))
-                if isinstance(candidate.get("reactivation_signals"), list)
-                else [],
-                "archived": bool(archived.get("active", False)),
-                "archived_at": str(archived.get("archived_at") or ""),
-                "last_receipt_path": str(archived.get("last_receipt_path") or ""),
-                "can_apply": can_apply,
-                "can_revert": can_revert,
-                **profile,
-            }
-        )
-    controls.sort(
-        key=lambda item: (
-            0 if item.get("can_apply") else 1,
-            0 if item.get("can_revert") else 1,
-            0 if item.get("archived") else 1,
-            str(item.get("title") or "").lower(),
-        )
-    )
-    return controls
-
-
-def shell_execution_controls(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
-    repair_plan = memory.get("health", {}).get("repair_plan", {})
-    ready_actions = [
-        action
-        for action in repair_plan.get("ready_actions", [])
-        if isinstance(action, dict)
-    ]
-    apply_ready_action_ids = [
-        str(action.get("id") or "")
-        for action in ready_actions
-        if action_supports_low_risk_apply(action) and action.get("id")
-    ]
-    all_actions = [
-        action
-        for action in [
-            *memory.get("health", {}).get("actions", []),
-            *memory.get("health", {}).get("inactive_actions", []),
-        ]
-        if isinstance(action, dict)
-    ]
-    revert_ready_action_ids = [
-        str(action.get("id") or "")
-        for action in all_actions
-        if action.get("id")
-        and action.get("last_receipt_path")
-        and str(action.get("status") or "") == "resolved"
-    ]
-    archive_candidates = load_archive_candidates_state(root)
-    apply_ready_archive_entry_ids = [
-        str(entry.get("entry_id") or "")
-        for entry in archive_candidates.get("entries", [])
-        if (
-            isinstance(entry, dict)
-            and entry.get("entry_id")
-            and str(entry.get("status") or "") == "ready"
-            and str(entry.get("recommended_temperature") or "") == "archived"
-        )
-    ]
-    revert_ready_archive_entry_ids = sorted(active_material_archive_entries(load_material_archive_state(root)).keys())
-    apply_ready_action_id_set = {item for item in apply_ready_action_ids if item}
-    revert_ready_action_id_set = {item for item in revert_ready_action_ids if item}
-    apply_ready_archive_entry_id_set = {item for item in apply_ready_archive_entry_ids if item}
-    revert_ready_archive_entry_id_set = set(revert_ready_archive_entry_ids)
-    return {
-        "apply_ready_action_ids": sorted(apply_ready_action_id_set),
-        "revert_ready_action_ids": sorted(revert_ready_action_id_set),
-        "apply_ready_archive_entry_ids": sorted(apply_ready_archive_entry_id_set),
-        "revert_ready_archive_entry_ids": revert_ready_archive_entry_ids,
-        "actions": shell_action_control_objects(
-            root,
-            memory,
-            apply_ready_action_ids=apply_ready_action_id_set,
-            revert_ready_action_ids=revert_ready_action_id_set,
-        ),
-        "archives": shell_archive_control_objects(
-            root,
-            apply_ready_archive_entry_ids=apply_ready_archive_entry_id_set,
-            revert_ready_archive_entry_ids=revert_ready_archive_entry_id_set,
-        ),
-    }
-
-
-def shell_links(root: Path) -> dict[str, str]:
-    return {
-        "summary_path": relative_path(root, shell_summary_path(root)),
-        "furnace_center_markdown": "wiki/indexes/furnace-center.md",
-        "review_center_markdown": "wiki/indexes/review-center.md",
-        "execution_center_markdown": "wiki/indexes/execution-center.md",
-        "execution_audit_markdown": "wiki/indexes/execution-audit.md",
-        "graph_view_markdown": "wiki/indexes/graph-view.md",
-        "protocols_markdown": "wiki/indexes/protocols.md",
-        "domain_pilots_markdown": "wiki/indexes/domain-pilots.md",
-        "output_packs_markdown": "wiki/indexes/output-packs.md",
-        "agent_workbench_markdown": "wiki/indexes/agent-workbench.md",
-        "furnace_center_html": relative_path(root, furnace_center_html_path(root)),
-        "review_center_html": relative_path(root, review_center_html_path(root)),
-        "execution_center_html": relative_path(root, execution_center_html_path(root)),
-        "execution_audit_html": relative_path(root, execution_audit_html_path(root)),
-        "graph_html": relative_path(root, machine_memory_graph_html_path(root)),
-        "product_shell_design": "wiki/indexes/Furnace Product Shell Plugin.md",
-        "product_shell_runtime_plan": "wiki/indexes/Furnace Product Shell Runtime Plan.md",
-    }
-
-
-def shell_capabilities(root: Path) -> dict[str, Any]:
-    return {
-        "launcher_mode": "repo-local",
-        "supports_hidden_state_read": False,
-        "commands": {
-            "p0": [
-                "shell-status",
-                "compile",
-                "ask",
-                "run-ask",
-                "nightly",
-                "protocol-status",
-                "protocol-set",
-                "llm-check",
-            ],
-            "p1": [
-                "run-compile",
-                "run-nightly",
-                "file-back",
-                "review-page",
-                "review-rewrite",
-                "apply-rewrite",
-                "retire-concept",
-                "reactivate-concept",
-                "apply-archive",
-                "revert-archive",
-            ],
-            "p2": ["review-action", "apply-action", "revert-action", "watch", "auto-once"],
-        },
-        "views": {
-            "furnace_center_markdown": (root / "wiki" / "indexes" / "furnace-center.md").exists(),
-            "review_center_markdown": (root / "wiki" / "indexes" / "review-center.md").exists(),
-            "execution_center_markdown": execution_center_path(root).exists(),
-            "execution_audit_markdown": execution_audit_path(root).exists(),
-            "domain_pilots_markdown": domain_pilots_path(root).exists(),
-            "output_packs_markdown": output_packs_index_path(root).exists(),
-            "agent_workbench_markdown": agent_workbench_path(root).exists(),
-            "furnace_center_html": furnace_center_html_path(root).exists(),
-            "review_center_html": review_center_html_path(root).exists(),
-            "execution_center_html": execution_center_html_path(root).exists(),
-            "execution_audit_html": execution_audit_html_path(root).exists(),
-            "graph_html": machine_memory_graph_html_path(root).exists(),
-        },
-    }
-
-
-def shell_protocol_state(root: Path) -> dict[str, Any]:
-    state = load_json_document(protocol_state_path(root))
-    available = sorted(PROTOCOL_LIBRARY)
-    active = str(state.get("active_protocol") or DEFAULT_PROTOCOL)
-    if active not in available:
-        active = DEFAULT_PROTOCOL if DEFAULT_PROTOCOL in available else (available[0] if available else DEFAULT_PROTOCOL)
-    return {
-        "active_protocol": active,
-        "available_protocols": available,
-        "state_path": relative_path(root, protocol_state_path(root)),
-    }
-
-
-def build_shell_summary(root: Path, *, generated_at: str | None = None) -> dict[str, Any]:
-    ensure_layout(root)
-    generated_at = generated_at or utc_now()
-    protocol_state = shell_protocol_state(root)
-    llm_status = LLMConfig.status_from_env()
-    decisions = collect_curated_pages(root, "decisions", "decision")
-    judgments = collect_curated_pages(root, "judgments", "judgment")
-    queue = review_queue(decisions, judgments, active_protocol=protocol_state["active_protocol"])
-    aging = collect_aging_signals(decisions, judgments, active_protocol=protocol_state["active_protocol"])
-    knowledge_lifecycle = load_knowledge_lifecycle_state(root)
-    lifecycle_summary = knowledge_lifecycle_governance_summary(
-        knowledge_lifecycle,
-        active_protocol=protocol_state["active_protocol"],
-    )
-    memory = load_machine_memory(root)
-    nightly_state = load_json_document(nightly_health_state_path(root))
-    review_backlog_counts = {
-        "pending_decisions": len(queue["pending_decisions"]),
-        "pending_judgments": len(queue["pending_judgments"]),
-        "overdue_reviews": len(aging["overdue"]),
-        "escalation_candidates": len(aging["escalated"]),
-        "concept_backlog": lifecycle_summary.get("counts", {}).get("concept_backlog", 0),
-        "review_concepts": lifecycle_summary.get("counts", {}).get("review_concepts", 0),
-        "revisit_concepts": lifecycle_summary.get("counts", {}).get("revisit_concepts", 0),
-        "retired_concepts": lifecycle_summary.get("counts", {}).get("retired_concepts", 0),
-        "machine_memory_actions": memory.get("health", {}).get("action_counts", {}).get("total", 0),
-        "ready_actions": memory.get("health", {}).get("repair_plan", {}).get("counts", {}).get("ready", 0),
-        "overdue_actions": len(memory.get("health", {}).get("overdue_actions", [])),
-        "escalated_actions": len(memory.get("health", {}).get("escalated_actions", [])),
-    }
-    review_controls = shell_review_controls(root, queue=queue, aging=aging)
-    return {
-        "kind": "product-shell-summary",
-        "contract_version": 1,
-        "generated_at": generated_at,
-        "generated_by": "aiwiki-shell-status",
-        "summary_path": relative_path(root, shell_summary_path(root)),
-        "active_protocol": protocol_state["active_protocol"],
-        "available_protocols": list(protocol_state.get("available_protocols", [])),
-        "llm_status": {
-            "configured": bool(llm_status.get("configured")),
-            "backend": str(llm_status.get("backend") or ""),
-            "backend_requested": str(llm_status.get("backend_requested") or ""),
-            "model": str(llm_status.get("model") or ""),
-            "available_backends": list(llm_status.get("available_backends", [])),
-            "image_analysis_supported": bool(llm_status.get("image_analysis_supported")),
-            "message": str(llm_status.get("message") or ""),
-        },
-        "review_backlog_counts": review_backlog_counts,
-        "aging_summary": {
-            "overdue_count": len(aging["overdue"]),
-            "escalated_count": len(aging["escalated"]),
-            "scheduled_count": len(aging["scheduled"]),
-            "overdue_pages": [page["path"] for page in aging["overdue"][:8]],
-            "escalated_pages": [page["path"] for page in aging["escalated"][:8]],
-            "scheduled_pages": [page["path"] for page in aging["scheduled"][:8]],
-        },
-        "review_controls": review_controls,
-        "execution_controls": shell_execution_controls(root, memory),
-        "recent_outputs": collect_recent_output_artifacts(root, limit=8),
-        "recent_receipts": shell_recent_receipts(root, limit=8),
-        "recent_runs": shell_recent_runs(root, limit=8),
-        "nightly": {
-            "available": nightly_health_state_path(root).exists(),
-            "generated_at": str(nightly_state.get("generated_at") or ""),
-            "state_path": relative_path(root, nightly_health_state_path(root)),
-            "llm_used": bool(nightly_state.get("llm_used", False)),
-            "lint_counts": dict(nightly_state.get("lint", {}).get("counts", {})),
-        },
-        "links": shell_links(root),
-        "capabilities": shell_capabilities(root),
-    }
-
-
-def write_shell_summary(root: Path, summary: dict[str, Any] | None = None) -> dict[str, Any]:
-    summary = summary or build_shell_summary(root)
-    write_if_changed(shell_summary_path(root), json.dumps(summary, indent=2, sort_keys=True) + "\n")
-    return summary
-
 
 def concept_page_path(root: Path, slug: str) -> Path:
     return root / "wiki" / "concepts" / f"{slug}.md"
@@ -1685,6 +1186,89 @@ def build_machine_memory(
     }
 
 
+def _frontmatter_string_list(frontmatter: dict[str, Any], key: str) -> list[str]:
+    value = frontmatter.get(key, [])
+    if isinstance(value, str):
+        item = value.strip()
+        return [item] if item else []
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if isinstance(item, str) and str(item).strip()]
+
+
+def attach_judgment_assets_to_machine_memory(
+    root: Path,
+    memory: dict[str, Any],
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+) -> dict[str, Any]:
+    manifest_entries = load_manifest(root).get("entries", [])
+    path_to_entry_id: dict[str, str] = {}
+    for entry in manifest_entries:
+        if not isinstance(entry, dict):
+            continue
+        entry_id = str(entry.get("id") or "")
+        if not entry_id:
+            continue
+        path_to_entry_id[f"wiki/sources/{entry_id}.md"] = entry_id
+        stored_path = str(entry.get("stored_path") or "")
+        if stored_path:
+            path_to_entry_id[stored_path] = entry_id
+    judgment_nodes: list[dict[str, Any]] = []
+    source_to_judgment: list[dict[str, str]] = []
+    for page in decisions + judgments:
+        page_path = str(page.get("path") or "")
+        if not page_path:
+            continue
+        target = root / page_path
+        content = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
+        frontmatter = parse_frontmatter(content)
+        citations = _frontmatter_string_list(frontmatter, "citations")
+        citation_snapshot_state = analyze_citation_snapshots(root, citations, frontmatter)
+        source_ids = sorted(
+            {
+                entry_id
+                for entry_id in (path_to_entry_id.get(citation) for citation in citations)
+                if isinstance(entry_id, str) and entry_id
+            }
+        )
+        page_id = str(page.get("page_id") or frontmatter.get("id") or Path(page_path).stem)
+        judgment_nodes.append(
+            {
+                "page_id": page_id,
+                "title": str(page.get("title") or frontmatter.get("title") or page_id),
+                "path": page_path,
+                "kind": str(page.get("kind") or frontmatter.get("kind") or ""),
+                "status": str(page.get("status") or frontmatter.get("status") or ""),
+                "protocol": str(page.get("protocol") or frontmatter.get("protocol") or DEFAULT_PROTOCOL),
+                "confidence": str(page.get("confidence") or frontmatter.get("confidence") or ""),
+                "citations": citations,
+                "source_ids": source_ids,
+                "counter_evidence": _frontmatter_string_list(frontmatter, "counter_evidence"),
+                "invalidation_rule": str(frontmatter.get("invalidation_rule") or "").strip(),
+                "next_signals": _frontmatter_string_list(frontmatter, "next_signals"),
+                "reviewed_at": str(page.get("reviewed_at") or frontmatter.get("reviewed_at") or ""),
+                "revisit_after": str(page.get("revisit_after") or frontmatter.get("revisit_after") or ""),
+                "escalate_after": str(page.get("escalate_after") or frontmatter.get("escalate_after") or ""),
+                "formed_at": str(page.get("formed_at") or frontmatter.get("formed_at") or frontmatter.get("last_compiled_at") or ""),
+                "last_reviewed": str(page.get("last_reviewed") or frontmatter.get("last_reviewed") or frontmatter.get("reviewed_at") or ""),
+                "asset_score": int(page.get("asset_score", "0") or 0),
+                "citation_drift": "true" if citation_snapshot_state["has_drift"] else "false",
+                "citation_drift_count": len(citation_snapshot_state["drifted"]),
+                "citation_snapshot_gap_count": len(citation_snapshot_state["missing"])
+                + len(citation_snapshot_state["stale"]),
+            }
+        )
+        for source_id in source_ids:
+            source_to_judgment.append({"source_id": source_id, "page_id": page_id})
+    updated = dict(memory)
+    updated["judgment_nodes"] = sorted(judgment_nodes, key=lambda item: (item["kind"], item["page_id"]))
+    edges = dict(memory.get("edges", {}))
+    edges["source_to_judgment"] = sorted(source_to_judgment, key=lambda item: (item["source_id"], item["page_id"]))
+    updated["edges"] = edges
+    return updated
+
+
 def plan_machine_memory_build(
     root: Path,
     entries: list[dict[str, Any]],
@@ -2060,6 +1644,41 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
+    for node in memory.get("judgment_nodes", []):
+        if not isinstance(node, dict):
+            continue
+        page_id = str(node.get("page_id") or "").strip()
+        page_path = str(node.get("path") or "").strip()
+        if not page_id or not page_path:
+            continue
+        citation_drift_count = int(node.get("citation_drift_count", 0) or 0)
+        citation_snapshot_gap_count = int(node.get("citation_snapshot_gap_count", 0) or 0)
+        if citation_drift_count <= 0 and citation_snapshot_gap_count <= 0:
+            continue
+        source_ids = [str(item) for item in node.get("source_ids", []) if isinstance(item, str) and item]
+        primary_source_id = source_ids[0] if source_ids else ""
+        reason_parts: list[str] = []
+        if citation_drift_count:
+            reason_parts.append(f"citation drift `{citation_drift_count}`")
+        if citation_snapshot_gap_count:
+            reason_parts.append(f"snapshot gap `{citation_snapshot_gap_count}`")
+        actions.append(
+            {
+                "id": f"refresh-citation-snapshots-{page_id}",
+                "kind": "refresh-citation-snapshots",
+                "priority": "high" if citation_drift_count else "medium",
+                "title": f"刷新引用快照 {node.get('title') or page_id}",
+                "primary_path": page_path,
+                "secondary_path": "",
+                "component_id": source_component_ids.get(primary_source_id, ""),
+                "reason": " / ".join(reason_parts) or "Judgment page citation snapshot metadata has drift.",
+                "score": citation_drift_count * 2 + citation_snapshot_gap_count,
+                "source_ids": source_ids,
+                "concept_slugs": [],
+                "protocol": str(node.get("protocol") or DEFAULT_PROTOCOL),
+            }
+        )
+
     priority_order = {"high": 0, "medium": 1, "low": 2}
     actions.sort(
         key=lambda item: (
@@ -2083,6 +1702,7 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
                 "expand-singleton-concept",
                 "split-overloaded-concept",
                 "monitor-bridge-concept",
+                "refresh-citation-snapshots",
             )
         },
     }
@@ -2151,7 +1771,13 @@ def reconcile_machine_memory_actions(
         if status in PENDING_ACTION_STATUSES:
             if not revisit_after and not escalate_after:
                 base_timestamp = reviewed_at or status_updated_at or first_seen_at
-                revisit_after, escalate_after = schedule_review_windows("action", status, base_timestamp)
+                revisit_after, escalate_after = schedule_review_windows(
+                    "action",
+                    status,
+                    base_timestamp,
+                    protocol=protocol,
+                    root=root,
+                )
         else:
             revisit_after, escalate_after = "", ""
         record = {
@@ -2184,12 +1810,15 @@ def reconcile_machine_memory_actions(
         preserved_pending = (
             bool(previous.get("active", True))
             and str(previous.get("status") or "") in PENDING_ACTION_STATUSES
-            and str(previous.get("kind") or "") in LOW_RISK_APPLYABLE_ACTION_KINDS
         )
         if preserved_pending:
-            try:
-                validate_low_risk_action_targets(root, previous)
-            except RuntimeError:
+            preview = safe_apply_preview(root, previous)
+            if str(previous.get("kind") or "") in LOW_RISK_APPLYABLE_ACTION_KINDS:
+                try:
+                    validate_low_risk_action_targets(root, previous)
+                except RuntimeError:
+                    preserved_pending = False
+            elif not isinstance(preview, dict):
                 preserved_pending = False
         if preserved_pending:
             status = str(previous.get("status") or "proposed")
@@ -2200,7 +1829,13 @@ def reconcile_machine_memory_actions(
             escalate_after = str(previous.get("escalate_after") or "")
             if not revisit_after and not escalate_after:
                 base_timestamp = reviewed_at or status_updated_at or first_seen_at
-                revisit_after, escalate_after = schedule_review_windows("action", status, base_timestamp)
+                revisit_after, escalate_after = schedule_review_windows(
+                    "action",
+                    status,
+                    base_timestamp,
+                    protocol=str(previous.get("protocol") or active_protocol or DEFAULT_PROTOCOL),
+                    root=root,
+                )
             record = {
                 **dict(previous),
                 "protocol": str(previous.get("protocol") or active_protocol or DEFAULT_PROTOCOL),
@@ -2244,10 +1879,10 @@ def reconcile_machine_memory_actions(
     )
     overdue_actions = [record for record in active_records if record.get("overdue_review") == "true"]
     escalated_actions = [record for record in active_records if record.get("escalation_candidate") == "true"]
-    active_records = [{**record, **describe_machine_memory_action(record)} for record in active_records]
-    inactive_records = [{**record, **describe_machine_memory_action(record)} for record in inactive_records]
-    overdue_actions = [{**record, **describe_machine_memory_action(record)} for record in overdue_actions]
-    escalated_actions = [{**record, **describe_machine_memory_action(record)} for record in escalated_actions]
+    active_records = [{**record, **describe_machine_memory_action(record, root=root)} for record in active_records]
+    inactive_records = [{**record, **describe_machine_memory_action(record, root=root)} for record in inactive_records]
+    overdue_actions = [{**record, **describe_machine_memory_action(record, root=root)} for record in overdue_actions]
+    escalated_actions = [{**record, **describe_machine_memory_action(record, root=root)} for record in escalated_actions]
     counts = {
         "total": len(active_records),
         "inactive": len(inactive_records),
@@ -2292,6 +1927,7 @@ def machine_memory_digest(memory: dict[str, Any]) -> str:
     payload = {
         "source_nodes": memory.get("source_nodes", []),
         "concept_nodes": memory.get("concept_nodes", []),
+        "judgment_nodes": memory.get("judgment_nodes", []),
         "edges": memory.get("edges", {}),
         "citation_map": memory.get("citation_map", []),
         "term_index": memory.get("term_index", {}),
@@ -2323,12 +1959,32 @@ def build_machine_memory_graph(memory: dict[str, Any]) -> dict[str, Any]:
                 "source_pages": node["source_pages"],
             }
         )
+    for node in memory.get("judgment_nodes", []):
+        nodes.append(
+            {
+                "id": f"judgment:{node['page_id']}",
+                "kind": "judgment",
+                "title": node["title"],
+                "page_path": node["path"],
+                "page_kind": node["kind"],
+                "status": node["status"],
+                "source_ids": node.get("source_ids", []),
+            }
+        )
     for edge in memory.get("edges", {}).get("source_to_concept", []):
         edges.append(
             {
                 "source": f"source:{edge['source_id']}",
                 "target": f"concept:{edge['concept_slug']}",
                 "type": "HAS_CONCEPT",
+            }
+        )
+    for edge in memory.get("edges", {}).get("source_to_judgment", []):
+        edges.append(
+            {
+                "source": f"source:{edge['source_id']}",
+                "target": f"judgment:{edge['page_id']}",
+                "type": "SUPPORTS_JUDGMENT",
             }
         )
     for edge in memory.get("edges", {}).get("concept_to_concept", []):
@@ -2353,14 +2009,24 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
     health = memory.get("health", {})
     source_nodes = {node["id"]: node for node in memory.get("source_nodes", [])}
     concept_nodes = {node["slug"]: node for node in memory.get("concept_nodes", [])}
+    judgment_nodes = {node["page_id"]: node for node in memory.get("judgment_nodes", [])}
     components = health.get("components", [])
-    if not components and (source_nodes or concept_nodes):
+    judgment_edges = memory.get("edges", {}).get("source_to_judgment", [])
+    judgment_by_source: dict[str, set[str]] = {}
+    for edge in judgment_edges:
+        source_id = str(edge.get("source_id") or "")
+        page_id = str(edge.get("page_id") or "")
+        if not source_id or not page_id:
+            continue
+        judgment_by_source.setdefault(source_id, set()).add(page_id)
+    if not components and (source_nodes or concept_nodes or judgment_nodes):
         components = [
             {
                 "id": "component-1",
                 "source_ids": sorted(source_nodes),
                 "concept_slugs": sorted(concept_nodes),
-                "size": len(source_nodes) + len(concept_nodes),
+                "judgment_ids": sorted(judgment_nodes),
+                "size": len(source_nodes) + len(concept_nodes) + len(judgment_nodes),
             }
         ]
 
@@ -2371,14 +2037,29 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
     for component in components:
         source_ids = [source_id for source_id in component.get("source_ids", []) if source_id in source_nodes]
         concept_slugs = [slug for slug in component.get("concept_slugs", []) if slug in concept_nodes]
-        if not source_ids and not concept_slugs:
+        judgment_ids = sorted(
+            {
+                page_id
+                for source_id in source_ids
+                for page_id in judgment_by_source.get(source_id, set())
+                if page_id in judgment_nodes
+            }
+            | {
+                page_id
+                for page_id in component.get("judgment_ids", [])
+                if isinstance(page_id, str) and page_id in judgment_nodes
+            }
+        )
+        if not source_ids and not concept_slugs and not judgment_ids:
             continue
-        row_count = max(len(source_ids), len(concept_slugs), 1)
+        row_count = max(len(source_ids), len(concept_slugs), len(judgment_ids), 1)
         row_gap = 68
         section_height = 96 + max(row_count - 1, 0) * row_gap
         row_top = current_y + 52
         for index, source_id in enumerate(source_ids):
-            positions[f"source:{source_id}"] = (220, row_top + index * row_gap)
+            positions[f"source:{source_id}"] = (180, row_top + index * row_gap)
+        for index, page_id in enumerate(judgment_ids):
+            positions[f"judgment:{page_id}"] = (500, row_top + index * row_gap)
         for index, concept_slug in enumerate(concept_slugs):
             positions[f"concept:{concept_slug}"] = (820, row_top + index * row_gap)
         sections.append(
@@ -2387,6 +2068,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
                 "y": current_y,
                 "height": section_height,
                 "source_ids": source_ids,
+                "judgment_ids": judgment_ids,
                 "concept_slugs": concept_slugs,
             }
         )
@@ -2411,6 +2093,9 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
         if str(edge.get("type") or "") == "RELATED_CONCEPT":
             stroke = "#f59e0b"
             dash = ' stroke-dasharray="8 6"'
+        elif str(edge.get("type") or "") == "SUPPORTS_JUDGMENT":
+            stroke = "#c2410c"
+            dash = ' stroke-dasharray="6 4"'
         else:
             stroke = "#94a3b8"
             dash = ""
@@ -2424,6 +2109,13 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
     node_records: list[dict[str, Any]] = []
     source_component_ids = health.get("source_component_ids", {})
     concept_component_ids = health.get("concept_component_ids", {})
+    judgment_component_ids: dict[str, str] = {}
+    for edge in judgment_edges:
+        source_id = str(edge.get("source_id") or "")
+        page_id = str(edge.get("page_id") or "")
+        component_id = str(source_component_ids.get(source_id, "") or "")
+        if page_id and component_id and page_id not in judgment_component_ids:
+            judgment_component_ids[page_id] = component_id
     component_label_by_id = {str(component.get("id") or ""): str(component.get("id") or "") for component in components}
     for node in graph.get("nodes", []):
         node_id = str(node.get("id") or "")
@@ -2441,6 +2133,16 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             subtitle = str(node.get("source_type") or "source")
             component_id = str(source_component_ids.get(node_id.removeprefix("source:"), "") or "")
             secondary_metric = str(node.get("stored_path") or "")
+            subtitle_fill = "#ccfbf1"
+        elif kind == "judgment":
+            fill = "#b45309"
+            stroke = "#92400e"
+            page_path = str(node.get("page_path") or "")
+            href = f"../../{html.escape(page_path)}"
+            subtitle = f"{str(node.get('page_kind') or 'judgment')} · {str(node.get('status') or 'unknown')}"
+            component_id = str(judgment_component_ids.get(node_id.removeprefix("judgment:"), "") or "")
+            secondary_metric = f"source_ids {len(node.get('source_ids', []))}"
+            subtitle_fill = "#ffedd5"
         else:
             fill = "#1d4ed8"
             stroke = "#1e40af"
@@ -2450,6 +2152,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             subtitle = "concept"
             component_id = str(concept_component_ids.get(slug, "") or "")
             secondary_metric = f"source_pages {len(node.get('source_pages', []))}"
+            subtitle_fill = "#dbeafe"
         safe_title = html.escape(title)
         label = html.escape(truncate_label(title))
         rx = x - 120
@@ -2463,7 +2166,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
                     f'    <title>{safe_title}</title>',
                     f'    <rect x="{rx}" y="{ry}" width="240" height="44" rx="14" fill="{fill}" stroke="{stroke}" stroke-width="2" />',
                     f'    <text x="{x}" y="{y - 3}" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">{label}</text>',
-                    f'    <text x="{x}" y="{y + 14}" text-anchor="middle" fill="#dbeafe" font-size="11">{html.escape(subtitle)}</text>',
+                    f'    <text x="{x}" y="{y + 14}" text-anchor="middle" fill="{subtitle_fill}" font-size="11">{html.escape(subtitle)}</text>',
                     "  </a>",
                     "</g>",
                 ]
@@ -2506,6 +2209,9 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
         section_fragments.append(
             f'<text x="44" y="{section["y"] + 48}" fill="#475569" font-size="12">sources {len(section["source_ids"])} | concepts {len(section["concept_slugs"])}</text>'
         )
+        section_fragments.append(
+            f'<text x="300" y="{section["y"] + 48}" fill="#9a3412" font-size="12">judgments {len(section.get("judgment_ids", []))}</text>'
+        )
 
     hub_concepts = health.get("hub_concepts", [])
     hub_sources = health.get("hub_sources", [])
@@ -2517,6 +2223,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
     ]
     summary_items = [
         f"来源节点 {len(memory.get('source_nodes', []))}",
+        f"判断节点 {len(memory.get('judgment_nodes', []))}",
         f"概念节点 {len(memory.get('concept_nodes', []))}",
         f"分量 {health.get('component_count', 0)}",
         f"桥接概念 {len(health.get('bridge_concept_slugs', []))}",
@@ -2761,10 +2468,80 @@ def build_machine_memory_adjacency(memory: dict[str, Any]) -> dict[str, dict[str
     return adjacency
 
 
+def fallback_query_route_config() -> dict[str, Any]:
+    return {
+        "default_strategy": "concept-first",
+        "strategy_order": ["concept-first", "graph-walk", "source-first"],
+        "source_markers": [],
+        "graph_markers": [],
+    }
+
+
+def select_machine_memory_query_strategy(
+    question: str,
+    *,
+    direct_source_scores: dict[str, int],
+    direct_concept_scores: dict[str, int],
+    protocol: str = DEFAULT_PROTOCOL,
+    root: Path | None = None,
+) -> dict[str, Any]:
+    config = protocol_query_route_config(root, protocol) if root is not None else fallback_query_route_config()
+    default_strategy = str(config.get("default_strategy") or "concept-first")
+    strategy_order = [str(item) for item in config.get("strategy_order", []) if isinstance(item, str) and item]
+    question_text = question.lower()
+    matched_source_markers = [
+        marker
+        for marker in config.get("source_markers", [])
+        if isinstance(marker, str) and marker and marker.lower() in question_text
+    ]
+    matched_graph_markers = [
+        marker
+        for marker in config.get("graph_markers", [])
+        if isinstance(marker, str) and marker and marker.lower() in question_text
+    ]
+    selected_strategy = default_strategy
+    selection_reason = "default-strategy"
+    if matched_source_markers and not matched_graph_markers:
+        selected_strategy = "source-first"
+        selection_reason = "source-markers"
+    elif matched_graph_markers and not matched_source_markers:
+        selected_strategy = "graph-walk"
+        selection_reason = "graph-markers"
+    elif direct_source_scores and not direct_concept_scores:
+        selected_strategy = "source-first"
+        selection_reason = "direct-source-hit"
+    elif direct_concept_scores and not direct_source_scores:
+        selected_strategy = "concept-first"
+        selection_reason = "direct-concept-hit"
+    elif matched_graph_markers:
+        selected_strategy = "graph-walk"
+        selection_reason = "graph-markers"
+    elif matched_source_markers:
+        selected_strategy = "source-first"
+        selection_reason = "source-markers"
+    ordered_strategies = [selected_strategy]
+    for item in strategy_order or fallback_query_route_config()["strategy_order"]:
+        if item not in ordered_strategies:
+            ordered_strategies.append(item)
+    return {
+        "config": config,
+        "selected_strategy": selected_strategy,
+        "selection_reason": selection_reason,
+        "matched_source_markers": matched_source_markers[:4],
+        "matched_graph_markers": matched_graph_markers[:4],
+        "strategy_order": ordered_strategies,
+    }
+
+
+def _route_anchor_candidates(scores: dict[str, int], prefix: str, limit: int) -> list[str]:
+    return [f"{prefix}:{item_id}" for item_id, _score in sorted(scores.items(), key=lambda item: (-item[1], item[0]))[:limit]]
+
+
 def build_machine_memory_query(
     memory: dict[str, Any],
     question: str,
     *,
+    root: Path | None = None,
     protocol: str = DEFAULT_PROTOCOL,
     material_state: dict[str, Any] | None = None,
     routing_state: dict[str, Any] | None = None,
@@ -2833,6 +2610,15 @@ def build_machine_memory_query(
             if concept_slug in concept_nodes:
                 direct_concept_scores[concept_slug] = direct_concept_scores.get(concept_slug, 0) + 4
 
+    route_strategy = select_machine_memory_query_strategy(
+        question,
+        direct_source_scores=direct_source_scores,
+        direct_concept_scores=direct_concept_scores,
+        protocol=protocol,
+        root=root,
+    )
+    selected_strategy = str(route_strategy.get("selected_strategy") or "concept-first")
+
     expanded_source_scores = dict(direct_source_scores)
     expanded_concept_scores = dict(direct_concept_scores)
     supporting_edges: set[tuple[str, str, str]] = set()
@@ -2860,6 +2646,7 @@ def build_machine_memory_query(
         direct_concept_scores,
         expanded_source_scores,
         expanded_concept_scores,
+        strategy=selected_strategy,
     )
     for route in query_routes:
         for node in route["nodes"]:
@@ -2985,16 +2772,25 @@ def build_machine_memory_query(
         for proposal in health.get("repair_plan", {}).get("execution_proposals", [])
         if proposal.get("action_id")
     }
+    action_by_id = {
+        str(action.get("id") or ""): action
+        for action in health.get("actions", [])
+        if isinstance(action, dict) and action.get("id")
+    }
     relevant_actions: list[dict[str, Any]] = []
     ranked_source_set = set(ranked_source_ids) | set(direct_source_scores)
     ranked_concept_set = set(ranked_concept_slugs) | set(direct_concept_scores)
+
+    def action_hits(action: dict[str, Any]) -> bool:
+        source_hit = bool(ranked_source_set & {str(item) for item in action.get("source_ids", []) if isinstance(item, str)})
+        concept_hit = bool(ranked_concept_set & {str(item) for item in action.get("concept_slugs", []) if isinstance(item, str)})
+        component_hit = bool(action.get("component_id")) and action.get("component_id") in touched_component_ids
+        return source_hit or concept_hit or component_hit
+
     for action in health.get("actions", []):
         if action.get("status") not in PENDING_ACTION_STATUSES:
             continue
-        source_hit = bool(ranked_source_set & set(action.get("source_ids", [])))
-        concept_hit = bool(ranked_concept_set & set(action.get("concept_slugs", [])))
-        component_hit = bool(action.get("component_id")) and action.get("component_id") in touched_component_ids
-        if not (source_hit or concept_hit or component_hit):
+        if not action_hits(action):
             continue
         proposal = proposal_by_action_id.get(str(action.get("id") or ""), {})
         relevant_actions.append(
@@ -3025,6 +2821,49 @@ def build_machine_memory_query(
             str(item.get("title") or "").lower(),
         )
     )
+    planner_state = dict(health.get("repair_plan", {}).get("planner_state") or {})
+    planner_queue: list[dict[str, Any]] = []
+    for item in planner_state.get("priority_queue", []):
+        if not isinstance(item, dict):
+            continue
+        linked_action = action_by_id.get(str(item.get("action_id") or ""), {})
+        if linked_action and not action_hits(linked_action) and planner_queue:
+            continue
+        planner_queue.append(
+            {
+                "action_id": str(item.get("action_id") or ""),
+                "title": str(item.get("title") or item.get("action_id") or ""),
+                "priority": str(item.get("priority") or "medium"),
+                "status": str(item.get("status") or "proposed"),
+                "priority_score": int(item.get("priority_score", 0) or 0),
+                "impact_score": int(item.get("impact_score", 0) or 0),
+                "blocked": bool(item.get("blocked", False)),
+                "depends_on": [str(dep) for dep in item.get("depends_on", []) if isinstance(dep, str) and dep],
+            }
+        )
+        if len(planner_queue) >= 4:
+            break
+    planner_next_action = (
+        planner_queue[0]
+        if planner_queue
+        else dict(planner_state.get("next_action") or {})
+        if isinstance(planner_state.get("next_action"), dict)
+        else {}
+    )
+    route_telemetry = {
+        "query_signature": question_signature(question),
+        "protocol": protocol,
+        "selected_strategy": selected_strategy,
+        "selection_reason": str(route_strategy.get("selection_reason") or ""),
+        "matched_source_markers": list(route_strategy.get("matched_source_markers", []) or []),
+        "matched_graph_markers": list(route_strategy.get("matched_graph_markers", []) or []),
+        "route_count": len(query_routes),
+        "matched_terms": matched_terms[:8],
+        "ranked_source_ids": ranked_source_ids[:5],
+        "ranked_concept_slugs": ranked_concept_slugs[:5],
+        "touched_component_ids": touched_component_ids[:5],
+        "planner_next_action_id": str(planner_next_action.get("action_id") or ""),
+    }
 
     return {
         "matched_terms": matched_terms,
@@ -3032,6 +2871,11 @@ def build_machine_memory_query(
         "direct_concept_slugs": sorted(direct_concept_scores),
         "time_focus": time_focus,
         "time_focus_markers": list(time_focus_state.get("markers", []) or []),
+        "route_config": dict(route_strategy.get("config") or {}),
+        "selected_strategy": selected_strategy,
+        "selection_reason": str(route_strategy.get("selection_reason") or ""),
+        "matched_source_markers": list(route_strategy.get("matched_source_markers", []) or []),
+        "matched_graph_markers": list(route_strategy.get("matched_graph_markers", []) or []),
         "ranked_source_ids": ranked_source_ids,
         "ranked_concept_slugs": ranked_concept_slugs,
         "protocol_shard_source_ids": protocol_shard_source_ids,
@@ -3046,12 +2890,65 @@ def build_machine_memory_query(
         "touched_component_ids": touched_component_ids,
         "touched_components": touched_components,
         "relevant_actions": relevant_actions[:6],
+        "planner_priority_queue": planner_queue,
+        "planner_next_action": planner_next_action,
+        "route_telemetry": route_telemetry,
         "query_subgraph": {
             "sources": query_subgraph_sources,
             "concepts": query_subgraph_concepts,
             "edges": query_subgraph_edges,
         },
     }
+
+
+def record_query_route_telemetry(
+    root: Path,
+    *,
+    question: str,
+    machine_query: dict[str, Any],
+    protocol: str = DEFAULT_PROTOCOL,
+    occurred_at: str | None = None,
+) -> dict[str, Any]:
+    occurred_at = occurred_at or utc_now()
+    telemetry_state = load_query_route_telemetry(root)
+    entries = [dict(entry) for entry in telemetry_state.get("entries", []) if isinstance(entry, dict)]
+    entry = {
+        "query_signature": question_signature(question),
+        "question_preview": question.strip()[:160],
+        "occurred_at": occurred_at,
+        "protocol": protocol,
+        "selected_strategy": str(machine_query.get("selected_strategy") or ""),
+        "selection_reason": str(machine_query.get("selection_reason") or ""),
+        "matched_terms": list(machine_query.get("matched_terms", []) or [])[:8],
+        "matched_source_markers": list(machine_query.get("matched_source_markers", []) or [])[:4],
+        "matched_graph_markers": list(machine_query.get("matched_graph_markers", []) or [])[:4],
+        "route_count": len(machine_query.get("query_routes", []) or []),
+        "ranked_source_ids": list(machine_query.get("ranked_source_ids", []) or [])[:5],
+        "ranked_concept_slugs": list(machine_query.get("ranked_concept_slugs", []) or [])[:5],
+        "touched_component_ids": list(machine_query.get("touched_component_ids", []) or [])[:5],
+        "planner_next_action_id": str((machine_query.get("planner_next_action") or {}).get("action_id") or ""),
+    }
+    entries.insert(0, entry)
+    strategy_counts: dict[str, int] = {}
+    protocol_counts: dict[str, int] = {}
+    for item in entries[:24]:
+        strategy = str(item.get("selected_strategy") or "")
+        scoped_protocol = str(item.get("protocol") or DEFAULT_PROTOCOL)
+        if strategy:
+            strategy_counts[strategy] = strategy_counts.get(strategy, 0) + 1
+        if scoped_protocol:
+            protocol_counts[scoped_protocol] = protocol_counts.get(scoped_protocol, 0) + 1
+    document = {
+        "version": 1,
+        "updated_at": occurred_at,
+        "state_path": relative_path(root, query_route_telemetry_path(root)),
+        "entries": entries[:24],
+        "strategy_counts": strategy_counts,
+        "protocol_counts": protocol_counts,
+        "last_entry": entry,
+    }
+    save_query_route_telemetry(root, document)
+    return document
 
 
 def build_machine_memory_query_routes(
@@ -3061,15 +2958,19 @@ def build_machine_memory_query_routes(
     direct_concept_scores: dict[str, int],
     expanded_source_scores: dict[str, int],
     expanded_concept_scores: dict[str, int],
+    *,
+    strategy: str = "concept-first",
 ) -> list[dict[str, Any]]:
     anchor_nodes = ranked_machine_memory_anchor_nodes(
         direct_source_scores,
         direct_concept_scores,
         expanded_source_scores,
         expanded_concept_scores,
+        strategy=strategy,
     )
     routes: list[dict[str, Any]] = []
     seen_routes: set[tuple[str, ...]] = set()
+    max_routes = 6 if strategy == "graph-walk" else 4
     for index, start in enumerate(anchor_nodes):
         for goal in anchor_nodes[index + 1 :]:
             path = shortest_machine_memory_path(adjacency, start, goal)
@@ -3079,8 +2980,10 @@ def build_machine_memory_query_routes(
             if route_key in seen_routes:
                 continue
             seen_routes.add(route_key)
-            routes.append(render_machine_memory_route(memory, adjacency, path))
-            if len(routes) >= 4:
+            route = render_machine_memory_route(memory, adjacency, path)
+            route["strategy"] = strategy
+            routes.append(route)
+            if len(routes) >= max_routes:
                 return routes
     return routes
 
@@ -3090,22 +2993,36 @@ def ranked_machine_memory_anchor_nodes(
     direct_concept_scores: dict[str, int],
     expanded_source_scores: dict[str, int],
     expanded_concept_scores: dict[str, int],
+    *,
+    strategy: str = "concept-first",
 ) -> list[str]:
     anchors: list[str] = []
-    for concept_slug, _score in sorted(direct_concept_scores.items(), key=lambda item: (-item[1], item[0]))[:4]:
-        anchors.append(f"concept:{concept_slug}")
-    for source_id, _score in sorted(direct_source_scores.items(), key=lambda item: (-item[1], item[0]))[:3]:
-        anchors.append(f"source:{source_id}")
-    if len(anchors) < 2:
-        for concept_slug, _score in sorted(expanded_concept_scores.items(), key=lambda item: (-item[1], item[0]))[:4]:
-            key = f"concept:{concept_slug}"
-            if key not in anchors:
-                anchors.append(key)
-        for source_id, _score in sorted(expanded_source_scores.items(), key=lambda item: (-item[1], item[0]))[:3]:
-            key = f"source:{source_id}"
-            if key not in anchors:
-                anchors.append(key)
-    return anchors[:4]
+    if strategy == "source-first":
+        candidate_groups = (
+            _route_anchor_candidates(direct_source_scores, "source", 4),
+            _route_anchor_candidates(direct_concept_scores, "concept", 3),
+            _route_anchor_candidates(expanded_source_scores, "source", 4),
+            _route_anchor_candidates(expanded_concept_scores, "concept", 3),
+        )
+    elif strategy == "graph-walk":
+        candidate_groups = (
+            _route_anchor_candidates(direct_concept_scores, "concept", 3),
+            _route_anchor_candidates(direct_source_scores, "source", 3),
+            _route_anchor_candidates(expanded_concept_scores, "concept", 4),
+            _route_anchor_candidates(expanded_source_scores, "source", 4),
+        )
+    else:
+        candidate_groups = (
+            _route_anchor_candidates(direct_concept_scores, "concept", 4),
+            _route_anchor_candidates(direct_source_scores, "source", 3),
+            _route_anchor_candidates(expanded_concept_scores, "concept", 4),
+            _route_anchor_candidates(expanded_source_scores, "source", 3),
+        )
+    for group in candidate_groups:
+        for anchor in group:
+            if anchor not in anchors:
+                anchors.append(anchor)
+    return anchors[:5]
 
 
 def shortest_machine_memory_path(adjacency: dict[str, dict[str, str]], start: str, goal: str) -> list[str]:
@@ -3205,11 +3122,16 @@ def summarize_machine_memory_transition(previous: dict[str, Any], current: dict[
     current_source_ids = {node["id"] for node in current.get("source_nodes", [])}
     previous_concept_slugs = {node["slug"] for node in previous.get("concept_nodes", [])}
     current_concept_slugs = {node["slug"] for node in current.get("concept_nodes", [])}
+    previous_judgment_ids = {node["page_id"] for node in previous.get("judgment_nodes", [])}
+    current_judgment_ids = {node["page_id"] for node in current.get("judgment_nodes", [])}
     previous_terms = set(previous.get("term_index", {}).keys())
     current_terms = set(current.get("term_index", {}).keys())
     previous_edges = {
         ("HAS_CONCEPT", edge["source_id"], edge["concept_slug"])
         for edge in previous.get("edges", {}).get("source_to_concept", [])
+    } | {
+        ("SUPPORTS_JUDGMENT", edge["source_id"], edge["page_id"])
+        for edge in previous.get("edges", {}).get("source_to_judgment", [])
     } | {
         ("RELATED_CONCEPT", edge["from"], edge["to"])
         for edge in previous.get("edges", {}).get("concept_to_concept", [])
@@ -3217,6 +3139,9 @@ def summarize_machine_memory_transition(previous: dict[str, Any], current: dict[
     current_edges = {
         ("HAS_CONCEPT", edge["source_id"], edge["concept_slug"])
         for edge in current.get("edges", {}).get("source_to_concept", [])
+    } | {
+        ("SUPPORTS_JUDGMENT", edge["source_id"], edge["page_id"])
+        for edge in current.get("edges", {}).get("source_to_judgment", [])
     } | {
         ("RELATED_CONCEPT", edge["from"], edge["to"])
         for edge in current.get("edges", {}).get("concept_to_concept", [])
@@ -3232,6 +3157,8 @@ def summarize_machine_memory_transition(previous: dict[str, Any], current: dict[
         "removed_source_ids": sorted(previous_source_ids - current_source_ids),
         "added_concept_slugs": sorted(current_concept_slugs - previous_concept_slugs),
         "removed_concept_slugs": sorted(previous_concept_slugs - current_concept_slugs),
+        "added_judgment_ids": sorted(current_judgment_ids - previous_judgment_ids),
+        "removed_judgment_ids": sorted(previous_judgment_ids - current_judgment_ids),
         "added_terms": sorted(current_terms - previous_terms)[:25],
         "removed_terms": sorted(previous_terms - current_terms)[:25],
         "added_edges": len(current_edges - previous_edges),
@@ -3248,11 +3175,14 @@ def append_machine_memory_history(root: Path, memory: dict[str, Any], transition
         "digest": memory["digest"],
         "sources": len(memory.get("source_nodes", [])),
         "concepts": len(memory.get("concept_nodes", [])),
+        "judgments": len(memory.get("judgment_nodes", [])),
         "terms": len(memory.get("term_index", {})),
         "added_source_ids": transition["added_source_ids"],
         "removed_source_ids": transition["removed_source_ids"],
         "added_concept_slugs": transition["added_concept_slugs"],
         "removed_concept_slugs": transition["removed_concept_slugs"],
+        "added_judgment_ids": transition["added_judgment_ids"],
+        "removed_judgment_ids": transition["removed_judgment_ids"],
         "added_edges": transition["added_edges"],
         "removed_edges": transition["removed_edges"],
     }
@@ -3365,6 +3295,7 @@ def render_graph_health(memory: dict[str, Any]) -> str:
 
 def render_machine_memory_index(memory: dict[str, Any]) -> str:
     concept_nodes = memory["concept_nodes"]
+    judgment_nodes = memory.get("judgment_nodes", [])
     edges = memory["edges"]
     drift = memory["drift"]
     health = memory.get("health", {})
@@ -3376,7 +3307,9 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         "- 图谱导出文件：`.aiwiki/cache/machine-memory-graph.json`",
         "- 漂移报告：`wiki/indexes/drift-report.md`",
         f"- 来源节点：`{len(memory['source_nodes'])}`",
+        f"- 判断节点：`{len(judgment_nodes)}`",
         f"- 概念节点：`{len(concept_nodes)}`",
+        f"- 来源到判断的边：`{len(edges.get('source_to_judgment', []))}`",
         f"- 来源到概念的边：`{len(edges['source_to_concept'])}`",
         f"- 概念到概念的边：`{len(edges['concept_to_concept'])}`",
         f"- 索引词数量：`{len(memory['term_index'])}`",
@@ -3405,6 +3338,8 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         f"- 可应用 Rewrite：`{health.get('concept_rewrite', {}).get('counts', {}).get('apply_ready', 0)}`",
         "",
         "## 判断层",
+        f"- Judgment asset 节点：`{len(judgment_nodes)}`",
+        f"- Judgment review actions：`{len(health.get('judgment_review_actions', []))}`",
         "- 决策索引：`wiki/indexes/decisions.md`",
         "- 判断索引：`wiki/indexes/judgments.md`",
         "- 审阅队列：`wiki/indexes/review-queue.md`",
@@ -3586,6 +3521,9 @@ def render_machine_memory_actions(memory: dict[str, Any]) -> str:
     inactive_actions = health.get("inactive_actions", [])
     overdue_actions = health.get("overdue_actions", [])
     escalated_actions = health.get("escalated_actions", [])
+    planner_state = health.get("repair_plan", {}).get("planner_state", {})
+    planner_queue = planner_state.get("priority_queue", [])
+    planner_next_action = planner_state.get("next_action", {})
     recent_receipts = sorted(
         [
             action
@@ -3604,6 +3542,7 @@ def render_machine_memory_actions(memory: dict[str, Any]) -> str:
         "expand-singleton-concept": "单节点概念动作",
         "split-overloaded-concept": "过载概念动作",
         "monitor-bridge-concept": "桥接概念观察",
+        "refresh-citation-snapshots": "引用快照刷新",
     }
     lines = [
         "# 机器记忆动作队列",
@@ -3622,6 +3561,29 @@ def render_machine_memory_actions(memory: dict[str, Any]) -> str:
     ]
     for status in ACTION_STATUSES:
         lines.append(f"- `{display_action_status(status)}`：`{by_status.get(status, 0)}`")
+    lines.extend(["", "## Planner"])
+    lines.append(
+        f"- Planner state：`{planner_state.get('state_path', '.aiwiki/state/planner-state.json') or '.aiwiki/state/planner-state.json'}`"
+    )
+    lines.append(f"- Pending proposals：`{planner_state.get('counts', {}).get('pending_proposals', 0)}`")
+    lines.append(f"- Blocked proposals：`{planner_state.get('counts', {}).get('blocked', 0)}`")
+    if planner_next_action:
+        lines.append(
+            f"- Next action：`{planner_next_action.get('action_id', '')}`"
+            f" | {planner_next_action.get('title', '')}"
+            f" | score `{planner_next_action.get('priority_score', 0)}`"
+        )
+    else:
+        lines.append("- Next action：`none`")
+    if planner_queue:
+        lines.append("- Planner queue:")
+        for item in planner_queue[:4]:
+            lines.append(
+                f"  - `{item.get('action_id', '')}`"
+                f" | {item.get('title', '')}"
+                f" | score `{item.get('priority_score', 0)}`"
+                f" | blocked `{item.get('blocked', False)}`"
+            )
     lines.extend(
         [
             "",
@@ -3743,6 +3705,7 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
     inactive_actions = plan.get("inactive_actions", [])
     execution_batches = plan.get("execution_batches", [])
     execution_proposals = plan.get("execution_proposals", [])
+    planner_state = plan.get("planner_state", {})
     lines = [
         "# 机器记忆修复计划",
         "",
@@ -3754,10 +3717,45 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
         f"- 执行批次：`{counts.get('batches', 0)}`",
         f"- 执行提案：`{counts.get('proposals', 0)}`",
         f"- 页级 patch step：`{counts.get('patch_steps', 0)}`",
+        f"- Blocked proposals：`{counts.get('blocked_proposals', 0)}`",
         f"- 状态文件：`{health.get('action_state_path', '.aiwiki/state/machine-memory-actions.json')}`",
         "",
-        "## Ready Now",
+        "## Planner State",
     ]
+    if not planner_state:
+        lines.append("- 当前还没有 planner state。")
+    else:
+        next_action = planner_state.get("next_action", {})
+        lines.append(
+            f"- Planner state：`{planner_state.get('state_path', '.aiwiki/state/planner-state.json') or '.aiwiki/state/planner-state.json'}`"
+        )
+        lines.append(f"- Pending proposals：`{planner_state.get('counts', {}).get('pending_proposals', 0)}`")
+        lines.append(f"- Unblocked：`{planner_state.get('counts', {}).get('unblocked', 0)}`")
+        lines.append(f"- Blocked：`{planner_state.get('counts', {}).get('blocked', 0)}`")
+        if next_action:
+            lines.append(
+                f"- Next action：`{next_action.get('action_id', '')}`"
+                f" | {next_action.get('title', '')}"
+                f" | score `{next_action.get('priority_score', 0)}`"
+                f" | blocked `{next_action.get('blocked', False)}`"
+            )
+        queue = planner_state.get("priority_queue", [])
+        if queue:
+            lines.append("- Priority queue:")
+            for item in queue[:6]:
+                lines.append(
+                    f"  - `{item.get('action_id', '')}`"
+                    f" | {item.get('title', '')}"
+                    f" | score `{item.get('priority_score', 0)}`"
+                    f" | impact `{item.get('impact_score', 0)}`"
+                    f" | blocked `{item.get('blocked', False)}`"
+                )
+    lines.extend(
+        [
+            "",
+        "## Ready Now",
+        ]
+    )
     if not ready_actions:
         lines.append("- 当前没有 ready action。")
     else:
@@ -3833,11 +3831,15 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
                 f" | status `{display_action_status(str(proposal.get('status')))}`"
                 f" | kind `{proposal.get('proposal_kind', 'manual-repair')}`"
                 f" | risk `{proposal.get('risk', 'medium')}`"
+                f" | score `{proposal.get('priority_score', 0)}`"
                 f" | targets `{', '.join(proposal.get('target_paths', [])) or 'none'}`"
                 f"{command_part}"
             )
             lines.append(f"  - strategy: {proposal.get('summary', 'n/a')}")
             lines.append(f"  - bundle: `{proposal.get('bundle_path', '') or 'none'}`")
+            lines.append(f"  - rollback: {proposal.get('rollback_summary', 'n/a')}")
+            if proposal.get("depends_on"):
+                lines.append(f"  - depends_on: `{', '.join(proposal.get('depends_on', []))}`")
             for edit in proposal.get("suggested_edits", [])[:3]:
                 lines.append(f"  - edit: {edit}")
             patch_plan = proposal.get("page_patch_plan", [])
@@ -3913,6 +3915,10 @@ def render_execution_proposal_page(proposal: dict[str, Any], *, compiled_at: str
             "risk": str(proposal.get("risk") or "medium"),
             "priority": str(proposal.get("priority") or "medium"),
             "protocol": str(proposal.get("protocol") or DEFAULT_PROTOCOL),
+            "policy_decision": str(proposal.get("policy_decision") or ""),
+            "policy_rule_id": str(proposal.get("policy_rule_id") or ""),
+            "priority_score": int(proposal.get("priority_score", 0) or 0),
+            "impact_score": int(proposal.get("impact_score", 0) or 0),
             "target_paths": list(proposal.get("target_paths", [])),
             "generated_by": "aiwiki-compile",
             "last_compiled_at": compiled_at,
@@ -3928,11 +3934,16 @@ def render_execution_proposal_page(proposal: dict[str, Any], *, compiled_at: str
         f"- Risk: `{proposal.get('risk', 'medium')}`",
         f"- Protocol: `{proposal.get('protocol', DEFAULT_PROTOCOL)}`",
         f"- Priority: `{proposal.get('priority', 'medium')}`",
+        f"- Priority score: `{proposal.get('priority_score', 0)}`",
+        f"- Impact score: `{proposal.get('impact_score', 0)}`",
+        f"- Policy decision: `{proposal.get('policy_decision', '') or 'none'}`",
+        f"- Policy rule: `{proposal.get('policy_rule_id', '') or 'none'}`",
         f"- Targets: `{', '.join(proposal.get('target_paths', [])) or 'none'}`",
         f"- Bundle: `{proposal.get('bundle_path', '') or 'none'}`",
         "",
         "## Strategy",
         f"- {proposal.get('summary', 'n/a')}",
+        f"- Rollback: {proposal.get('rollback_summary', 'n/a')}",
         "",
         "## Suggested Edits",
     ]
@@ -3972,10 +3983,18 @@ def render_execution_proposal_page(proposal: dict[str, Any], *, compiled_at: str
     else:
         entry = safe_preview.get("entry", {})
         lines.append(f"- Apply mode: `{safe_preview.get('apply_mode', 'manual')}`")
-        lines.append(f"- State path: `{safe_preview.get('state_path', '')}`")
-        lines.append(
-            f"- Manual link entry: source `{entry.get('source_id', '')}` -> concept `{entry.get('concept_slug', '')}`"
-        )
+        if safe_preview.get("state_path"):
+            lines.append(f"- State path: `{safe_preview.get('state_path', '')}`")
+        if entry:
+            lines.append(
+                f"- Manual link entry: source `{entry.get('source_id', '')}` -> concept `{entry.get('concept_slug', '')}`"
+            )
+        if safe_preview.get("page_path"):
+            lines.append(f"- Target page: `{safe_preview.get('page_path', '')}`")
+        if safe_preview.get("updated_citation_snapshots"):
+            lines.append(
+                f"- Updated citation snapshots: `{', '.join(safe_preview.get('updated_citation_snapshots', []))}`"
+            )
         lines.append(f"- Affected paths: `{', '.join(safe_preview.get('affected_paths', [])) or 'none'}`")
         lines.append(f"- Follow-up: {safe_preview.get('follow_up', 'n/a')}")
     lines.extend(
@@ -4212,14 +4231,22 @@ def collect_execution_consistency_signals(
 
     signals: list[dict[str, str]] = []
     for action in actions:
-        if str(action.get("kind") or "") not in LOW_RISK_APPLYABLE_ACTION_KINDS:
-            continue
         action_id = str(action.get("id") or "")
         if not action_id:
             continue
         status = str(action.get("status") or "proposed")
         latest = latest_receipt_by_action.get(action_id)
         latest_operation = str(latest.get("operation") or "") if latest else ""
+        latest_preview = latest.get("safe_apply_preview") if isinstance(latest, dict) else None
+        if isinstance(latest_preview, dict):
+            preview = latest_preview
+        elif str(action.get("kind") or "") in LOW_RISK_APPLYABLE_ACTION_KINDS:
+            preview = {"apply_mode": "manual-link-state"}
+        else:
+            preview = safe_apply_preview(root, action)
+        if not isinstance(preview, dict):
+            continue
+        apply_mode = str(preview.get("apply_mode") or "")
         has_active_manual_link = bool(active_manual_links.get(action_id))
         title = str(action.get("title") or action_id)
         primary_path = str(action.get("primary_path") or "")
@@ -4234,34 +4261,97 @@ def collect_execution_consistency_signals(
                     "message": "动作标记为 resolved，但最新 execution receipt 不是 apply。",
                 }
             )
-        if status == "resolved" and not has_active_manual_link:
+        if apply_mode == "manual-link-state":
+            if status == "resolved" and not has_active_manual_link:
+                signals.append(
+                    {
+                        "severity": "error",
+                        "action_id": action_id,
+                        "title": title,
+                        "path": primary_path,
+                        "message": "动作标记为 resolved，但 active manual-link state 缺失。",
+                    }
+                )
+            if latest_operation == "revert" and has_active_manual_link:
+                signals.append(
+                    {
+                        "severity": "error",
+                        "action_id": action_id,
+                        "title": title,
+                        "path": primary_path,
+                        "message": "最新 receipt 已是 revert，但 manual-link state 仍然 active。",
+                    }
+                )
+            if status in PENDING_ACTION_STATUSES and has_active_manual_link:
+                signals.append(
+                    {
+                        "severity": "warn",
+                        "action_id": action_id,
+                        "title": title,
+                        "path": primary_path,
+                        "message": "动作仍在待处理状态，但 manual-link state 仍然 active；需要确认是否应先 revert 或直接 resolve。",
+                    }
+                )
+            continue
+        if apply_mode != "citation-snapshot-refresh":
+            continue
+        page_path = str(preview.get("page_path") or primary_path)
+        current_snapshots: list[str] = []
+        if page_path and (root / page_path).exists():
+            frontmatter = parse_frontmatter((root / page_path).read_text(encoding="utf-8", errors="replace"))
+            current_snapshots = [
+                str(item)
+                for item in frontmatter.get("citation_snapshots", [])
+                if isinstance(item, str) and item.strip()
+            ]
+        expected_snapshots = [
+            str(item)
+            for item in preview.get("updated_citation_snapshots", [])
+            if isinstance(item, str) and item.strip()
+        ]
+        previous_snapshots = [
+            str(item)
+            for item in preview.get("previous_citation_snapshots", [])
+            if isinstance(item, str) and item.strip()
+        ]
+        if status == "resolved" and expected_snapshots and current_snapshots != expected_snapshots:
             signals.append(
                 {
                     "severity": "error",
                     "action_id": action_id,
                     "title": title,
-                    "path": primary_path,
-                    "message": "动作标记为 resolved，但 active manual-link state 缺失。",
+                    "path": page_path,
+                    "message": "动作标记为 resolved，但当前 judgment page 的 citation_snapshots 与 apply receipt 不一致。",
                 }
             )
-        if latest_operation == "revert" and has_active_manual_link:
+        if latest_operation == "revert" and expected_snapshots and current_snapshots == expected_snapshots:
             signals.append(
                 {
                     "severity": "error",
                     "action_id": action_id,
                     "title": title,
-                    "path": primary_path,
-                    "message": "最新 receipt 已是 revert，但 manual-link state 仍然 active。",
+                    "path": page_path,
+                    "message": "最新 receipt 已是 revert，但 judgment page 仍保留 apply 后的 citation_snapshots。",
                 }
             )
-        if status in PENDING_ACTION_STATUSES and has_active_manual_link:
+        if latest_operation == "revert" and previous_snapshots and current_snapshots != previous_snapshots:
             signals.append(
                 {
                     "severity": "warn",
                     "action_id": action_id,
                     "title": title,
-                    "path": primary_path,
-                    "message": "动作仍在待处理状态，但 manual-link state 仍然 active；需要确认是否应先 revert 或直接 resolve。",
+                    "path": page_path,
+                    "message": "最新 receipt 已是 revert，但 judgment page 的 citation_snapshots 没有恢复到 receipt 里的 previous state。",
+                }
+            )
+        if status in PENDING_ACTION_STATUSES and expected_snapshots and current_snapshots == expected_snapshots:
+            signals.append(
+                {
+                    "severity": "warn",
+                    "action_id": action_id,
+                    "title": title,
+                    "path": page_path,
+                    "message": "动作仍在待处理状态，但 judgment page 已经处于 apply 后的 citation_snapshots；需要确认是否应先 revert 或直接 resolve。",
                 }
             )
     signals.sort(
@@ -4280,6 +4370,7 @@ def build_execution_audit_snapshot(root: Path, memory: dict[str, Any], *, active
     inactive_actions = [dict(action) for action in health.get("inactive_actions", []) if isinstance(action, dict)]
     all_actions = actions + inactive_actions
     history = load_execution_receipt_history(root)
+    policy_history = load_execution_policy_decision_history(root, limit=16)
     recent_apply = [record for record in history if str(record.get("operation") or "") == "apply"][:8]
     recent_revert = [record for record in history if str(record.get("operation") or "") == "revert"][:8]
     recent_by_protocol: dict[str, dict[str, list[dict[str, Any]]]] = {
@@ -4303,7 +4394,7 @@ def build_execution_audit_snapshot(root: Path, memory: dict[str, Any], *, active
                 scoped.append(record)
     action_rows: list[dict[str, Any]] = []
     for action in all_actions:
-        profile = execution_policy_profile(action)
+        profile = execution_policy_profile(action, root=root)
         band = str(action.get("execution_band") or profile.get("execution_band") or "review-first")
         band_counts[band] = band_counts.get(band, 0) + 1
         action_id = str(action.get("id") or "")
@@ -4318,6 +4409,8 @@ def build_execution_audit_snapshot(root: Path, memory: dict[str, Any], *, active
                 "execution_band": band,
                 "execution_band_label": execution_band_label(band),
                 "execution_policy": str(action.get("execution_policy") or profile.get("execution_policy") or "triage"),
+                "policy_decision": str(action.get("policy_decision") or profile.get("policy_decision") or ""),
+                "policy_rule_id": str(action.get("policy_rule_id") or profile.get("policy_rule_id") or ""),
                 "execution_capabilities": [str(item) for item in capabilities if isinstance(item, str) and item],
                 "policy_summary": str(action.get("policy_summary") or profile.get("policy_summary") or ""),
                 "receipt_count": receipt_counts.get(action_id, 0),
@@ -4346,15 +4439,18 @@ def build_execution_audit_snapshot(root: Path, memory: dict[str, Any], *, active
         "compiled_at": str(memory.get("compiled_at") or ""),
         "active_protocol": active_protocol,
         "receipt_history_path": relative_path(root, execution_receipt_history_path(root)),
+        "policy_history_path": relative_path(root, execution_policy_log_path(root)),
         "counts": {
             "actions": len(all_actions),
             "receipts": len(history),
             "apply": len([record for record in history if str(record.get("operation") or "") == "apply"]),
             "revert": len([record for record in history if str(record.get("operation") or "") == "revert"]),
             "bundle_safe": band_counts.get("bundle-safe-apply", 0),
+            "policy_decisions": len(policy_history),
         },
         "policy_bands": band_rows,
         "protocols": protocol_rows,
+        "recent_policy_decisions": policy_history,
         "recent_apply": recent_apply,
         "recent_revert": recent_revert,
         "recent_by_protocol": recent_by_protocol,
@@ -4377,7 +4473,9 @@ def render_execution_audit(audit: dict[str, Any]) -> str:
         f"- Receipt 总数：`{audit.get('counts', {}).get('receipts', 0)}`",
         f"- Apply / Revert：`{audit.get('counts', {}).get('apply', 0)}` / `{audit.get('counts', {}).get('revert', 0)}`",
         f"- Bundle-safe actions：`{audit.get('counts', {}).get('bundle_safe', 0)}`",
+        f"- Policy decisions：`{audit.get('counts', {}).get('policy_decisions', 0)}`",
         f"- Receipt history：`{audit.get('receipt_history_path', '.aiwiki/state/execution-receipts.jsonl')}`",
+        f"- Policy history：`{audit.get('policy_history_path', '.aiwiki/state/execution-policy-decisions.jsonl')}`",
         "",
         "## Policy Bands",
     ]
@@ -4418,6 +4516,19 @@ def render_execution_audit(audit: dict[str, Any]) -> str:
     else:
         for row in protocols:
             lines.append(f"- `{row['protocol']}` ({row['title']}) | receipts `{row['count']}`")
+    lines.extend(["", "## Recent Policy Decisions"])
+    recent_policy_decisions = audit.get("recent_policy_decisions", [])
+    if not recent_policy_decisions:
+        lines.append("- 当前还没有 execution policy decision 记录。")
+    else:
+        for record in recent_policy_decisions[:8]:
+            lines.append(
+                f"- `{record.get('title', record.get('action_id', 'action'))}`"
+                f" | action `{record.get('action_id', '')}`"
+                f" | decision `{record.get('policy_decision', '') or 'none'}`"
+                f" | rule `{record.get('policy_rule_id', '') or 'none'}`"
+                f" | occurred `{record.get('occurred_at', '')}`"
+            )
     lines.extend(["", "## Consistency Signals"])
     consistency_signals = audit.get("consistency_signals", [])
     if not consistency_signals:
@@ -4441,10 +4552,13 @@ def render_execution_audit(audit: dict[str, Any]) -> str:
                 f" | status `{action['status']}`"
                 f" | band `{action['execution_band']}`"
                 f" | policy `{action['execution_policy']}`"
+                f" | decision `{action.get('policy_decision', '') or 'none'}`"
                 f" | receipts `{action['receipt_count']}`"
             )
             lines.append(f"  - capabilities: {capabilities}")
             lines.append(f"  - summary: {action.get('policy_summary', 'n/a')}")
+            if action.get("policy_rule_id"):
+                lines.append(f"  - rule: `{action['policy_rule_id']}`")
             if action.get("last_receipt_path"):
                 lines.append(f"  - last receipt: `{action['last_receipt_path']}`")
     lines.extend(
@@ -4593,9 +4707,19 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
         f"- 重写候选：`{counts.get('rewrite_candidates', 0)}`",
         f"- 冲突信号：`{counts.get('conflict_signals', 0)}`",
         f"- 证据缺口：`{counts.get('gap_signals', 0)}`",
+        f"- 平均质量分：`{quality.get('average_quality_score', 0)}`",
+        (
+            "- Quality bands："
+            f" strong `{counts.get('strong_quality', 0)}`"
+            f" / stable `{counts.get('stable_quality', 0)}`"
+            f" / watch `{counts.get('watch_quality', 0)}`"
+            f" / fragile `{counts.get('fragile_quality', 0)}`"
+        ),
         f"- Rewrite 提案：`{rewrite_state.get('counts', {}).get('active', 0)}`",
         f"- 待审提案：`{rewrite_state.get('counts', {}).get('pending_review', 0)}`",
         f"- 可应用提案：`{rewrite_state.get('counts', {}).get('apply_ready', 0)}`",
+        f"- 已验证提案：`{rewrite_state.get('counts', {}).get('verified_passed', 0)}`",
+        f"- 可回滚提案：`{rewrite_state.get('counts', {}).get('revert_ready', 0)}`",
         "",
         "## Rewrite Now",
     ]
@@ -4608,7 +4732,23 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
                 f" | issues `{', '.join(concept.get('issues', [])) or 'none'}`"
                 f" | sources `{concept.get('source_count', 0)}`"
                 f" | related `{concept.get('related_count', 0)}`"
+                f" | quality `{concept.get('quality_score', 0)}`"
+                f" | band `{concept.get('quality_band', 'n/a')}`"
             )
+            metrics = concept.get("quality_metrics", {})
+            lines.append(
+                "  - metrics: "
+                f"coverage `{metrics.get('source_coverage', 0)}`"
+                f" / consistency `{metrics.get('consistency', 0)}`"
+                f" / evidence `{metrics.get('evidence_depth', 0)}`"
+                f" / recency `{metrics.get('recency', 0)}`"
+            )
+    lines.extend(["", "## Quality Distribution"])
+    lines.append(
+        f"- Strong / Stable / Watch / Fragile："
+        f" `{counts.get('strong_quality', 0)}` / `{counts.get('stable_quality', 0)}` /"
+        f" `{counts.get('watch_quality', 0)}` / `{counts.get('fragile_quality', 0)}`"
+    )
     lines.extend(["", "## Rewrite Priority"])
     if not rewrite_candidates:
         lines.append("- 当前没有新的重写候选。")
@@ -4618,6 +4758,8 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
                 f"- [{candidate['title']}](../concepts/{candidate['slug']}.md)"
                 f" | priority `{candidate.get('priority', 'n/a')}`"
                 f" | score `{candidate.get('score', 0)}`"
+                f" | quality `{candidate.get('quality_score', 0)}`"
+                f" | band `{candidate.get('quality_band', 'n/a')}`"
                 f" | issues `{', '.join(candidate.get('issues', [])) or 'none'}`"
             )
             lines.append(f"  - strategy: {candidate.get('rewrite_strategy', 'n/a')}")
@@ -4631,6 +4773,7 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
                 f" | status `{display_rewrite_proposal_status(str(proposal.get('status') or 'proposed'))}`"
                 f" | priority `{proposal.get('priority', 'n/a')}`"
                 f" | apply_ready `{proposal.get('apply_ready', False)}`"
+                f" | verification `{proposal.get('verification_status', 'pending') or 'pending'}`"
             )
             if proposal.get("rewrite_strategy"):
                 lines.append(f"  - strategy: {proposal['rewrite_strategy']}")
@@ -4675,6 +4818,7 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
                 f"- [{concept['title']}](../concepts/{concept['slug']}.md)"
                 f" | sources `{concept.get('source_count', 0)}`"
                 f" | related `{concept.get('related_count', 0)}`"
+                f" | quality `{concept.get('quality_score', 0)}`"
             )
     lines.extend(
         [
@@ -4760,6 +4904,19 @@ def reconcile_concept_rewrite_proposals(
         reviewed_at = str(previous.get("reviewed_at") or "")
         review_note = str(previous.get("review_note") or "")
         applied_at = str(previous.get("applied_at") or "")
+        reverted_at = str(previous.get("reverted_at") or "")
+        revert_note = str(previous.get("revert_note") or "")
+        previous_markdown = str(previous.get("previous_markdown") or "")
+        previous_digest = str(previous.get("previous_digest") or "")
+        verification_status = str(previous.get("verification_status") or "")
+        verification_checked_at = str(previous.get("verification_checked_at") or "")
+        verification_summary = str(previous.get("verification_summary") or "")
+        verification_issues = [
+            str(item)
+            for item in previous.get("verification_issues", [])
+            if isinstance(item, str) and item
+        ]
+        last_applied_at = str(previous.get("last_applied_at") or applied_at)
         if signature_changed:
             status = "proposed"
             candidate_markdown = ""
@@ -4767,11 +4924,22 @@ def reconcile_concept_rewrite_proposals(
             reviewed_at = ""
             review_note = ""
             applied_at = ""
+            reverted_at = ""
+            revert_note = ""
+            previous_markdown = ""
+            previous_digest = ""
+            verification_status = ""
+            verification_checked_at = ""
+            verification_summary = ""
+            verification_issues = []
+            last_applied_at = ""
         record = {
             "slug": slug,
             "title": str(candidate.get("title") or snapshot.get("title") or slug),
             "priority": str(candidate.get("priority") or "medium"),
             "score": int(candidate.get("score") or 0),
+            "quality_score": int(candidate.get("quality_score") or 0),
+            "quality_band": str(candidate.get("quality_band") or ""),
             "issues": list(candidate.get("issues") or []),
             "rewrite_strategy": str(candidate.get("rewrite_strategy") or ""),
             "target_path": str(candidate.get("path") or snapshot.get("path") or f"wiki/concepts/{slug}.md"),
@@ -4786,11 +4954,20 @@ def reconcile_concept_rewrite_proposals(
             "reviewed_at": reviewed_at,
             "review_note": review_note,
             "applied_at": applied_at,
+            "last_applied_at": last_applied_at,
+            "reverted_at": reverted_at,
+            "revert_note": revert_note,
             "pending_review": "true" if rewrite_proposal_needs_review(status) else "false",
             "candidate_markdown": candidate_markdown,
             "candidate_digest": candidate_digest,
             "apply_ready": False,
             "current_summary": str(snapshot.get("summary") or ""),
+            "previous_markdown": previous_markdown,
+            "previous_digest": previous_digest,
+            "verification_status": verification_status,
+            "verification_checked_at": verification_checked_at,
+            "verification_summary": verification_summary,
+            "verification_issues": verification_issues,
         }
         record["apply_ready"] = rewrite_proposal_is_apply_ready(root, record)
         active_records.append(record)
@@ -4831,6 +5008,12 @@ def reconcile_concept_rewrite_proposals(
         "inactive": len(inactive_records),
         "pending_review": sum(1 for proposal in active_records if proposal.get("pending_review") == "true"),
         "apply_ready": sum(1 for proposal in active_records if proposal.get("apply_ready")),
+        "verified_passed": sum(1 for proposal in active_records + inactive_records if proposal.get("verification_status") == "passed"),
+        "revert_ready": sum(
+            1
+            for proposal in active_records + inactive_records
+            if proposal.get("status") == "applied" and str(proposal.get("previous_markdown") or "")
+        ),
         "by_status": {
             status: sum(1 for proposal in active_records if proposal.get("status") == status)
             for status in REWRITE_PROPOSAL_STATUSES
@@ -4846,6 +5029,14 @@ def reconcile_concept_rewrite_proposals(
 
 
 def render_concept_rewrite_proposal_page(proposal: dict[str, Any]) -> str:
+    verification_status = str(proposal.get("verification_status") or "")
+    if not verification_status:
+        verification_status = "pending" if proposal.get("status") == "applied" else "not-run"
+    verification_issues = [
+        str(item)
+        for item in proposal.get("verification_issues", [])
+        if isinstance(item, str) and item
+    ]
     frontmatter = render_frontmatter(
         {
             "id": f"rewrite-proposal-{proposal['slug']}",
@@ -4867,11 +5058,14 @@ def render_concept_rewrite_proposal_page(proposal: dict[str, Any]) -> str:
         f"- Status: `{display_rewrite_proposal_status(str(proposal.get('status') or 'proposed'))}`",
         f"- Priority: `{proposal.get('priority', 'n/a')}`",
         f"- Score: `{proposal.get('score', 0)}`",
+        f"- Quality score: `{proposal.get('quality_score', 0)}`",
+        f"- Quality band: `{proposal.get('quality_band', 'n/a') or 'n/a'}`",
         f"- Apply ready: `{proposal.get('apply_ready', False)}`",
         f"- First proposed: `{proposal.get('first_proposed_at', '') or 'none'}`",
         f"- Last proposed: `{proposal.get('last_proposed_at', '') or 'none'}`",
         f"- Reviewed at: `{proposal.get('reviewed_at', '') or 'none'}`",
         f"- Applied at: `{proposal.get('applied_at', '') or 'none'}`",
+        f"- Reverted at: `{proposal.get('reverted_at', '') or 'none'}`",
         "",
         "## Target",
         f"- Target page: `{proposal.get('target_path', '')}`",
@@ -4885,9 +5079,22 @@ def render_concept_rewrite_proposal_page(proposal: dict[str, Any]) -> str:
         f"- Issues: `{', '.join(proposal.get('issues', [])) or 'none'}`",
         f"- Strategy: {proposal.get('rewrite_strategy', 'n/a')}",
         "",
+        "## Verification",
+        f"- Status: `{verification_status}`",
+        f"- Checked at: `{proposal.get('verification_checked_at', '') or 'none'}`",
+        f"- Summary: {proposal.get('verification_summary', '') or 'Verification has not run yet.'}",
+        f"- Issues: `{', '.join(verification_issues) or 'none'}`",
+        "",
+        "## Rollback",
+        f"- Previous snapshot available: `{bool(proposal.get('previous_markdown'))}`",
+        f"- Last applied at: `{proposal.get('last_applied_at', '') or proposal.get('applied_at', '') or 'none'}`",
+        f"- Revert note: {proposal.get('revert_note', '') or 'none'}",
+        "",
         "## Commands",
         f"- Review: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite {proposal['slug']} --status accepted`",
         f"- Apply: `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {proposal['slug']}`",
+        f"- Verify: `PYTHONPATH=src python3 -m aiwiki.cli --root . verify-rewrite {proposal['slug']}`",
+        f"- Revert: `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-rewrite {proposal['slug']}`",
         "",
         "## Proposed Markdown",
     ]
@@ -4907,7 +5114,13 @@ def render_concept_rewrite_proposal_page(proposal: dict[str, Any]) -> str:
 def render_concept_rewrite_index(state: dict[str, Any], compiled_at: str) -> str:
     proposals = state.get("proposals", [])
     inactive = state.get("inactive_proposals", [])
+    all_proposals = state.get("all_proposals", proposals)
     counts = state.get("counts", {})
+    revert_ready = [
+        proposal
+        for proposal in all_proposals
+        if proposal.get("status") == "applied" and str(proposal.get("previous_markdown") or "")
+    ]
     lines = [
         "# Rewrite Proposals",
         "",
@@ -4915,6 +5128,8 @@ def render_concept_rewrite_index(state: dict[str, Any], compiled_at: str) -> str
         f"- Active proposals：`{counts.get('active', 0)}`",
         f"- Pending review：`{counts.get('pending_review', 0)}`",
         f"- Apply ready：`{counts.get('apply_ready', 0)}`",
+        f"- Verified passed：`{counts.get('verified_passed', 0)}`",
+        f"- Revert ready：`{counts.get('revert_ready', 0)}`",
         f"- 状态文件：`{state.get('state_path', '.aiwiki/state/concept-rewrite-proposals.json')}`",
         "",
         "## Pending Review",
@@ -4939,6 +5154,17 @@ def render_concept_rewrite_index(state: dict[str, Any], compiled_at: str) -> str
             lines.append(
                 f"- [{proposal['title']}](../rewrite-proposals/{proposal['slug']}.md)"
                 f" | command `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {proposal['slug']}`"
+            )
+    lines.extend(["", "## Revert Ready"])
+    if not revert_ready:
+        lines.append("- 当前没有可回滚的已应用 rewrite proposal。")
+    else:
+        for proposal in revert_ready[:12]:
+            lines.append(
+                f"- [{proposal['title']}](../rewrite-proposals/{proposal['slug']}.md)"
+                f" | applied `{proposal.get('applied_at', '') or 'none'}`"
+                f" | verify `{proposal.get('verification_status', '') or 'pending'}`"
+                f" | command `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-rewrite {proposal['slug']}`"
             )
     lines.extend(["", "## Recently Closed"])
     if not inactive:
@@ -4986,11 +5212,22 @@ def store_concept_rewrite_candidate(
         target["reviewed_at"] = ""
         target["review_note"] = ""
         target["applied_at"] = ""
+        target["last_applied_at"] = ""
+        target["reverted_at"] = ""
+        target["revert_note"] = ""
+        target["previous_markdown"] = ""
+        target["previous_digest"] = ""
+        target["verification_status"] = ""
+        target["verification_checked_at"] = ""
+        target["verification_summary"] = ""
+        target["verification_issues"] = []
     target.update(
         {
             "title": str(quality_record.get("title") or snapshot.get("title") or slug),
             "priority": str(quality_record.get("priority") or "medium"),
             "score": int(quality_record.get("score") or 0),
+            "quality_score": int(quality_record.get("quality_score") or 0),
+            "quality_band": str(quality_record.get("quality_band") or ""),
             "issues": list(quality_record.get("issues") or []),
             "rewrite_strategy": str(quality_record.get("rewrite_strategy") or ""),
             "target_path": str(quality_record.get("path") or snapshot.get("path") or f"wiki/concepts/{slug}.md"),

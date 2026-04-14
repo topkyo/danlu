@@ -13,6 +13,9 @@ bash -n scripts/finalize_task.sh
 bash -n scripts/configure_local_worktree.sh
 bash -n scripts/install_user_service.sh
 bash -n scripts/uninstall_user_service.sh
+python3 -m ruff check src tests
 python3 -m compileall src tests >/dev/null
-python3 -m unittest discover -s tests -p 'test_*.py'
+python3 -m coverage erase
+python3 -m coverage run --branch -m unittest discover -s tests -p 'test_*.py'
+python3 -m coverage report --skip-covered
 python3 -m aiwiki.cli --help >/dev/null

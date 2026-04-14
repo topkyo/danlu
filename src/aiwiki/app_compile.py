@@ -13,7 +13,7 @@ import os
 import re
 import shutil
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -45,6 +45,7 @@ from .app_utils import (
 
 from .app_state import (
     DEFAULT_PROTOCOL,
+    JUDGMENT_LIFECYCLE_STATES,
     KNOWLEDGE_LIFECYCLE_KINDS,
     KNOWLEDGE_LIFECYCLE_STATES,
     active_archived_material_ids,
@@ -68,6 +69,7 @@ from .app_state import (
     default_ranking_build_state,
     domain_pilot_build_state_path,
     ensure_knowledge_lifecycle_override_state,
+    execution_policy_log_path,
     execution_audit_html_path,
     execution_audit_path,
     execution_center_html_path,
@@ -106,6 +108,9 @@ from .app_state import (
     nightly_health_state_path,
     output_pack_build_state_path,
     output_packs_index_path,
+    planner_state_path,
+    product_shell_html_path,
+    query_route_telemetry_path,
     ranking_build_state_path,
     repair_backlog_path,
     review_center_html_path,
@@ -115,6 +120,7 @@ from .app_state import (
     save_machine_memory_action_state,
     save_manual_link_state,
     save_material_archive_state,
+    shell_summary_path,
 )
 
 from .app_protocol import (
@@ -134,6 +140,7 @@ from .app_protocol import (
     load_protocol_state,
     protocol_output_guidance,
     protocol_paths,
+    protocol_runtime_schema_path,
     protocol_runtime_summary,
     protocol_state_path,
     protocol_title,
@@ -143,21 +150,19 @@ from .app_protocol import (
 
 from .app_content import (
     _validate_rewrite_candidate_markdown,
+    active_manual_source_concept_links,
     action_needs_review,
     action_supports_low_risk_apply,
     annotate_recurring_promotion,
-    append_execution_receipt_history,
+    append_execution_policy_decisions,
     append_review_history_entry,
     append_wiki_log,
     build_concept_quality,
     build_concept_records,
     build_domain_pilots,
     build_domain_pilots_incremental,
-    build_execution_bundle,
-    build_execution_receipt,
     build_knowledge_lifecycle_document,
     build_machine_memory_repair_plan,
-    build_material_archive_receipt,
     build_output_packs,
     build_output_packs_incremental,
     build_page_patch_plan,
@@ -170,6 +175,7 @@ from .app_content import (
     concept_render_signature,
     concept_source_pages,
     concept_summary_is_placeholder,
+    curated_page_transition_profile,
     curated_asset_section_snapshot,
     curated_page_template,
     decision_memos_dir,
@@ -184,17 +190,19 @@ from .app_content import (
     entry_ids_from_paths,
     entry_lookup_maps,
     evaluate_page_aging,
-    execution_bundle_digest,
     execution_bundle_path,
+    execution_policy_decision_record,
     execution_proposal_path,
     execution_receipt_path,
     find_promoted_curated_page,
+    frontmatter_string_list,
+    judgment_lifecycle_profile,
     knowledge_lifecycle_governance_summary,
-    load_execution_bundle,
     load_execution_receipt_history,
     manifest_change_summary,
     pilot_scorecards_dir,
     placeholder_concept_slugs,
+    preserved_section,
     recurring_promotion_needs_refresh,
     refresh_knowledge_lifecycle_state,
     remove_stale_generated_concept_pages,
@@ -204,24 +212,19 @@ from .app_content import (
     render_agent_pack,
     render_agent_workbench,
     render_aging_report,
-    render_cognitive_history,
-    render_compile_status,
     render_concept_page,
     render_concepts_index,
     render_curated_index,
     render_domain_pilots_index,
-    render_furnace_center,
-    render_furnace_center_html,
-    render_judgment_assets,
     render_knowledge_lifecycle_entry_summary,
     render_master_index,
     render_output_packs_index,
-    render_review_center_html,
     render_review_queue,
     render_source_page_with_state,
     render_sources_index,
     repair_execution_proposals,
     review_packs_dir,
+    review_history_entries,
     review_queue,
     rewrite_proposal_candidate_is_current,
     rewrite_proposal_is_apply_ready,
@@ -234,19 +237,29 @@ from .app_content import (
     valid_curated_statuses,
     validate_low_risk_action_targets,
 )
+from .app_execution import (
+    append_execution_receipt_history,
+    build_execution_bundle,
+    build_execution_receipt,
+    build_material_archive_receipt,
+    execution_bundle_digest,
+    load_execution_bundle,
+)
 
 from .app_memory import (
     active_corpus_bridge_evidence_ids,
     append_machine_memory_history,
+    attach_judgment_assets_to_machine_memory,
     build_execution_audit_snapshot,
     build_machine_memory,
     build_machine_memory_graph,
     build_machine_memory_health,
     build_machine_memory_query,
     build_material_state_documents,
-    build_shell_summary,
     collect_execution_consistency_signals,
     concept_lifecycle_entry,
+    concept_page_snapshot,
+    concept_rewrite_proposal_digest,
     concept_page_path,
     machine_memory_digest,
     machine_memory_snapshot_is_reusable,
@@ -260,21 +273,31 @@ from .app_memory import (
     render_concept_rewrite_index,
     render_concept_rewrite_proposal_page,
     render_drift_report,
-    render_execution_audit,
-    render_execution_audit_html,
-    render_execution_center,
-    render_execution_center_html,
     render_execution_proposal_page,
     render_graph_health,
     render_machine_memory_actions,
-    render_machine_memory_graph_html,
     render_machine_memory_index,
     render_machine_memory_repair_plan,
+    record_query_route_telemetry,
     render_machine_memory_topology,
     reuse_machine_memory_core,
     summarize_machine_memory_transition,
     upsert_active_corpus,
-    write_shell_summary,
+)
+
+from .app_shell import build_shell_summary, write_shell_summary
+from .app_surfaces import (
+    render_cognitive_history,
+    render_compile_status,
+    render_execution_audit,
+    render_execution_audit_html,
+    render_execution_center,
+    render_execution_center_html,
+    render_furnace_center,
+    render_furnace_center_html,
+    render_judgment_assets,
+    render_machine_memory_graph_html,
+    render_review_center_html,
 )
 
 @dataclass
@@ -682,535 +705,884 @@ def build_agent_packs(
 
 @runtime_write_operation
 def compile_wiki(root: Path) -> dict[str, Any]:
+    context = _start_compile_context(root)
+    _compile_content_phase(context)
+    _compile_runtime_phase(context)
+    _compile_output_phase(context)
+    return _finalize_compile_phase(context)
+
+
+@dataclass
+class _CompileContext:
+    root: Path
+    previous_manifest: dict[str, Any]
+    manifest: dict[str, Any]
+    entries: list[dict[str, Any]]
+    compiled_at: str
+    protocol_state: dict[str, Any]
+    previous_memory: dict[str, Any]
+    changed_pages: int = 0
+    source_changed_pages: int = 0
+    concept_changed_pages: int = 0
+    index_changed_pages: int = 0
+    maintenance_changed_pages: int = 0
+    output_pack_changed_pages: int = 0
+    domain_pilot_changed_pages: int = 0
+    removed_pages: int = 0
+    dirty_index_artifacts: list[str] = field(default_factory=list)
+    clean_index_artifacts: list[str] = field(default_factory=list)
+    dirty_maintenance_artifacts: list[str] = field(default_factory=list)
+    clean_maintenance_artifacts: list[str] = field(default_factory=list)
+    previews: dict[str, str] = field(default_factory=dict)
+    concepts: list[dict[str, Any]] = field(default_factory=list)
+    entry_terms: dict[str, list[str]] = field(default_factory=dict)
+    decision_pages: list[dict[str, Any]] = field(default_factory=list)
+    judgment_pages: list[dict[str, Any]] = field(default_factory=list)
+    dirty_concept_source_ids: list[str] = field(default_factory=list)
+    clean_concept_source_ids: list[str] = field(default_factory=list)
+    dirty_source_ids: list[str] = field(default_factory=list)
+    clean_source_ids: list[str] = field(default_factory=list)
+    dirty_concept_slugs: list[str] = field(default_factory=list)
+    clean_concept_slugs: list[str] = field(default_factory=list)
+    dirty_machine_memory_source_ids: list[str] = field(default_factory=list)
+    clean_machine_memory_source_ids: list[str] = field(default_factory=list)
+    dirty_machine_memory_concept_slugs: list[str] = field(default_factory=list)
+    clean_machine_memory_concept_slugs: list[str] = field(default_factory=list)
+    machine_memory_core_reused: bool = False
+    memory: dict[str, Any] = field(default_factory=dict)
+    execution_audit: dict[str, Any] = field(default_factory=dict)
+    transition: dict[str, Any] = field(default_factory=dict)
+    dirty_ranking_source_ids: list[str] = field(default_factory=list)
+    clean_ranking_source_ids: list[str] = field(default_factory=list)
+    dirty_ranking_concept_slugs: list[str] = field(default_factory=list)
+    clean_ranking_concept_slugs: list[str] = field(default_factory=list)
+    all_outputs: list[dict[str, Any]] = field(default_factory=list)
+    recent_outputs: list[dict[str, Any]] = field(default_factory=list)
+    active_corpora_state: dict[str, Any] = field(default_factory=dict)
+    material_state: dict[str, Any] = field(default_factory=dict)
+    material_routing: dict[str, Any] = field(default_factory=dict)
+    archive_candidates: dict[str, Any] = field(default_factory=dict)
+    knowledge_lifecycle: dict[str, Any] = field(default_factory=dict)
+    output_packs: dict[str, Any] = field(default_factory=dict)
+    dirty_output_pack_groups: list[str] = field(default_factory=list)
+    clean_output_pack_groups: list[str] = field(default_factory=list)
+    domain_pilots: dict[str, Any] = field(default_factory=dict)
+    dirty_domain_pilot_protocols: list[str] = field(default_factory=list)
+    clean_domain_pilot_protocols: list[str] = field(default_factory=list)
+
+    def write_index_artifact(self, destination: Path, content: str) -> int:
+        wrote, dirty = write_if_changed_ignoring_timestamps(destination, content)
+        relative = relative_path(self.root, destination)
+        if dirty:
+            self.dirty_index_artifacts.append(relative)
+        else:
+            self.clean_index_artifacts.append(relative)
+        self.changed_pages += int(wrote)
+        self.index_changed_pages += int(wrote)
+        return int(wrote)
+
+    def write_maintenance_artifact(self, destination: Path, document: dict[str, Any]) -> int:
+        wrote, dirty = write_json_document_if_changed_ignoring_generated_timestamps(destination, document)
+        relative = relative_path(self.root, destination)
+        if dirty:
+            self.dirty_maintenance_artifacts.append(relative)
+        else:
+            self.clean_maintenance_artifacts.append(relative)
+        self.changed_pages += int(wrote)
+        self.maintenance_changed_pages += int(wrote)
+        return int(wrote)
+
+    def write_output_pack_artifact(self, destination: Path, content: str) -> int:
+        wrote, _dirty = write_if_changed_ignoring_timestamps(destination, content)
+        self.changed_pages += int(wrote)
+        self.output_pack_changed_pages += int(wrote)
+        return int(wrote)
+
+    def write_domain_pilot_artifact(self, destination: Path, content: str) -> int:
+        wrote, _dirty = write_if_changed_ignoring_timestamps(destination, content)
+        self.changed_pages += int(wrote)
+        self.domain_pilot_changed_pages += int(wrote)
+        return int(wrote)
+
+
+def _start_compile_context(root: Path) -> _CompileContext:
     ensure_layout(root)
     previous_manifest = load_manifest(root)
     manifest = sync_manifest_with_raw(root)
     entries: list[dict[str, Any]] = manifest["entries"]
-    compiled_at = utc_now()
-    protocol_state = load_protocol_state(root)
-    previous_memory = load_json_document(machine_memory_state_path(root))
-    changed_pages = 0
-    source_changed_pages = 0
-    concept_changed_pages = 0
-    index_changed_pages = 0
-    maintenance_changed_pages = 0
-    output_pack_changed_pages = 0
-    domain_pilot_changed_pages = 0
-    dirty_index_artifacts: list[str] = []
-    clean_index_artifacts: list[str] = []
-    dirty_maintenance_artifacts: list[str] = []
-    clean_maintenance_artifacts: list[str] = []
-
-    def write_index_artifact(destination: Path, content: str) -> int:
-        nonlocal changed_pages
-        nonlocal index_changed_pages
-
-        wrote, dirty = write_if_changed_ignoring_timestamps(destination, content)
-        relative = relative_path(root, destination)
-        if dirty:
-            dirty_index_artifacts.append(relative)
-        else:
-            clean_index_artifacts.append(relative)
-        changed_pages += int(wrote)
-        index_changed_pages += int(wrote)
-        return int(wrote)
-
-    def write_maintenance_artifact(destination: Path, document: dict[str, Any]) -> int:
-        nonlocal changed_pages
-        nonlocal maintenance_changed_pages
-
-        wrote, dirty = write_json_document_if_changed_ignoring_generated_timestamps(destination, document)
-        relative = relative_path(root, destination)
-        if dirty:
-            dirty_maintenance_artifacts.append(relative)
-        else:
-            clean_maintenance_artifacts.append(relative)
-        changed_pages += int(wrote)
-        maintenance_changed_pages += int(wrote)
-        return int(wrote)
-
-    def write_output_pack_artifact(destination: Path, content: str) -> int:
-        nonlocal changed_pages
-        nonlocal output_pack_changed_pages
-
-        wrote, _dirty = write_if_changed_ignoring_timestamps(destination, content)
-        changed_pages += int(wrote)
-        output_pack_changed_pages += int(wrote)
-        return int(wrote)
-
-    def write_domain_pilot_artifact(destination: Path, content: str) -> int:
-        nonlocal changed_pages
-        nonlocal domain_pilot_changed_pages
-
-        wrote, _dirty = write_if_changed_ignoring_timestamps(destination, content)
-        changed_pages += int(wrote)
-        domain_pilot_changed_pages += int(wrote)
-        return int(wrote)
-
-    previews: dict[str, str] = {}
-    for entry in entries:
-        source_file = root / entry["stored_path"]
-        preview = read_text_preview(source_file)
-        previews[entry["id"]] = preview
-    concepts, entry_terms, concept_build = build_concept_records(
-        root,
-        entries,
-        previews,
-        generated_at=compiled_at,
+    return _CompileContext(
+        root=root,
+        previous_manifest=previous_manifest,
+        manifest=manifest,
+        entries=entries,
+        compiled_at=utc_now(),
+        protocol_state=load_protocol_state(root),
+        previous_memory=load_json_document(machine_memory_state_path(root)),
     )
-    dirty_concept_source_ids = list(concept_build.get("dirty_concept_source_ids", []))
-    clean_concept_source_ids = list(concept_build.get("clean_concept_source_ids", []))
+
+
+def _compile_content_phase(context: _CompileContext) -> None:
+    for entry in context.entries:
+        source_file = context.root / entry["stored_path"]
+        context.previews[entry["id"]] = read_text_preview(source_file)
+    context.concepts, context.entry_terms, concept_build = build_concept_records(
+        context.root,
+        context.entries,
+        context.previews,
+        generated_at=context.compiled_at,
+    )
+    context.dirty_concept_source_ids = list(concept_build.get("dirty_concept_source_ids", []))
+    context.clean_concept_source_ids = list(concept_build.get("clean_concept_source_ids", []))
     concept_build_state = concept_build.get("state_document", {})
     if not isinstance(concept_build_state, dict):
         concept_build_state = default_concept_build_state()
-    write_json_document_if_changed_ignoring_generated_timestamps(concept_build_state_path(root), concept_build_state)
-    dirty_source_ids: list[str] = []
-    clean_source_ids: list[str] = []
+    write_json_document_if_changed_ignoring_generated_timestamps(concept_build_state_path(context.root), concept_build_state)
     dirty_source_id_set: set[str] = set()
-    for entry in entries:
+    for entry in context.entries:
         entry_id = str(entry["id"])
-        if source_page_requires_compile(root, entry, entry_terms.get(entry_id, [])):
-            dirty_source_ids.append(entry_id)
+        if source_page_requires_compile(context.root, entry, context.entry_terms.get(entry_id, [])):
+            context.dirty_source_ids.append(entry_id)
             dirty_source_id_set.add(entry_id)
         else:
-            clean_source_ids.append(entry_id)
-    for entry in entries:
+            context.clean_source_ids.append(entry_id)
+    for entry in context.entries:
         if entry["id"] not in dirty_source_id_set:
             continue
-        destination = root / "wiki" / "sources" / f"{entry['id']}.md"
+        destination = context.root / "wiki" / "sources" / f"{entry['id']}.md"
         existing_page = destination.read_text(encoding="utf-8", errors="replace") if destination.exists() else ""
         content = render_source_page_with_state(
             entry,
-            previews[entry["id"]],
-            compiled_at,
-            concepts=entry_terms.get(entry["id"], []),
+            context.previews[entry["id"]],
+            context.compiled_at,
+            concepts=context.entry_terms.get(entry["id"], []),
             existing_page=existing_page,
         )
         wrote = int(write_if_changed(destination, content))
-        source_changed_pages += wrote
-        changed_pages += wrote
+        context.source_changed_pages += wrote
+        context.changed_pages += wrote
 
-    write_index_artifact(root / "wiki" / "indexes" / "sources.md", render_sources_index(entries, compiled_at))
-    write_index_artifact(root / "wiki" / "indexes" / "concepts.md", render_concepts_index(concepts, compiled_at))
-    decision_pages = collect_curated_pages(root, "decisions", "decision")
-    judgment_pages = collect_curated_pages(root, "judgments", "judgment")
-    write_index_artifact(
-        root / "wiki" / "indexes" / "decisions.md",
-        render_curated_index("决策索引", "决策列表", decision_pages, compiled_at),
+    context.write_index_artifact(
+        context.root / "wiki" / "indexes" / "sources.md",
+        render_sources_index(context.entries, context.compiled_at),
     )
-    write_index_artifact(
-        root / "wiki" / "indexes" / "judgments.md",
-        render_curated_index("判断索引", "判断列表", judgment_pages, compiled_at),
+    context.write_index_artifact(
+        context.root / "wiki" / "indexes" / "concepts.md",
+        render_concepts_index(context.concepts, context.compiled_at),
     )
-    write_index_artifact(
-        judgment_assets_path(root),
+    context.decision_pages = collect_curated_pages(context.root, "decisions", "decision")
+    context.judgment_pages = collect_curated_pages(context.root, "judgments", "judgment")
+    context.write_index_artifact(
+        context.root / "wiki" / "indexes" / "decisions.md",
+        render_curated_index("决策索引", "决策列表", context.decision_pages, context.compiled_at),
+    )
+    context.write_index_artifact(
+        context.root / "wiki" / "indexes" / "judgments.md",
+        render_curated_index("判断索引", "判断列表", context.judgment_pages, context.compiled_at),
+    )
+    context.write_index_artifact(
+        judgment_assets_path(context.root),
         render_judgment_assets(
-            decision_pages,
-            judgment_pages,
-            compiled_at,
-            active_protocol=protocol_state["active_protocol"],
+            context.decision_pages,
+            context.judgment_pages,
+            context.compiled_at,
+            active_protocol=context.protocol_state["active_protocol"],
         ),
     )
-    write_index_artifact(
-        root / "wiki" / "indexes" / "index.md",
-        render_master_index(entries, concepts, decision_pages, judgment_pages, protocol_state, compiled_at),
+    context.write_index_artifact(
+        context.root / "wiki" / "indexes" / "index.md",
+        render_master_index(
+            context.entries,
+            context.concepts,
+            context.decision_pages,
+            context.judgment_pages,
+            context.protocol_state,
+            context.compiled_at,
+        ),
     )
-    ensure_wiki_log(root)
+    ensure_wiki_log(context.root)
 
-    concept_lookup = {record["slug"]: record for record in concepts}
-    dirty_concept_slugs: list[str] = []
-    clean_concept_slugs: list[str] = []
+    concept_lookup = {record["slug"]: record for record in context.concepts}
     dirty_concept_slug_set: set[str] = set()
-    for record in concepts:
+    for record in context.concepts:
         record["record_lookup"] = concept_lookup
-        record["root"] = root
-        record["render_signature"] = concept_render_signature(root, record)
+        record["root"] = context.root
+        record["render_signature"] = concept_render_signature(context.root, record)
         slug = str(record["slug"])
-        if concept_page_requires_compile(root, record):
-            dirty_concept_slugs.append(slug)
+        if concept_page_requires_compile(context.root, record):
+            context.dirty_concept_slugs.append(slug)
             dirty_concept_slug_set.add(slug)
         else:
-            clean_concept_slugs.append(slug)
-    for record in concepts:
+            context.clean_concept_slugs.append(slug)
+    for record in context.concepts:
         if str(record["slug"]) not in dirty_concept_slug_set:
             continue
-        destination = root / "wiki" / "concepts" / f"{record['slug']}.md"
+        destination = context.root / "wiki" / "concepts" / f"{record['slug']}.md"
         existing_page = destination.read_text(encoding="utf-8", errors="replace") if destination.exists() else ""
-        wrote = int(write_if_changed(destination, render_concept_page(record, compiled_at, existing_page)))
-        changed_pages += wrote
-        concept_changed_pages += wrote
+        wrote = int(write_if_changed(destination, render_concept_page(record, context.compiled_at, existing_page)))
+        context.changed_pages += wrote
+        context.concept_changed_pages += wrote
 
-    removed_pages = remove_stale_generated_concept_pages(root, {record["slug"] for record in concepts})
+    context.removed_pages += remove_stale_generated_concept_pages(
+        context.root,
+        {record["slug"] for record in context.concepts},
+    )
+
+
+def _curated_page_scan_record(root: Path, page: dict[str, str]) -> dict[str, Any]:
+    page_path = root / str(page.get("path") or "")
+    content = page_path.read_text(encoding="utf-8", errors="replace") if page_path.exists() else ""
+    frontmatter = parse_frontmatter(content)
+    citations = [
+        str(path)
+        for path in frontmatter.get("citations", [])
+        if isinstance(path, str) and path.strip()
+    ]
+    tokens = set(tokenize(f"{page.get('title', '')}\n{strip_frontmatter(content)}"))
+    return {
+        "citations": citations,
+        "frontmatter": frontmatter,
+        "tokens": tokens,
+    }
+
+
+def _counter_evidence_scan_phase(context: _CompileContext) -> dict[str, Any]:
+    entry_by_id = {str(entry["id"]): entry for entry in context.entries}
+    dirty_source_ids = [source_id for source_id in context.dirty_source_ids if source_id in entry_by_id]
+    if not dirty_source_ids:
+        return {"generated_at": context.compiled_at, "candidate_count": 0, "candidates": [], "pages": []}
+    path_to_entry_id = entry_lookup_maps(context.manifest.get("entries", []))[1]
+    candidates: list[dict[str, Any]] = []
+    page_summaries: list[dict[str, Any]] = []
+    for page in context.decision_pages + context.judgment_pages:
+        scan_record = _curated_page_scan_record(context.root, page)
+        cited_source_ids = set(entry_ids_from_paths(path_to_entry_id, scan_record["citations"]))
+        page_candidates: list[dict[str, Any]] = []
+        for source_id in dirty_source_ids:
+            if source_id in cited_source_ids:
+                continue
+            source_entry = entry_by_id.get(source_id, {})
+            source_terms = {
+                token
+                for label in context.entry_terms.get(source_id, [])
+                for token in tokenize(label)
+            }
+            source_terms.update(tokenize(f"{source_entry.get('title', '')}\n{context.previews.get(source_id, '')}"))
+            overlap = sorted(source_terms & scan_record["tokens"])
+            if len(overlap) < 2:
+                continue
+            candidate = {
+                "candidate_id": f"{page.get('page_id', '')}:{source_id}",
+                "page_id": str(page.get("page_id") or ""),
+                "page_path": str(page.get("path") or ""),
+                "page_title": str(page.get("title") or ""),
+                "page_kind": str(page.get("kind") or ""),
+                "page_status": str(page.get("status") or ""),
+                "protocol": str(page.get("protocol") or DEFAULT_PROTOCOL),
+                "source_id": source_id,
+                "source_title": str(source_entry.get("title") or source_id),
+                "source_page": f"wiki/sources/{source_id}.md",
+                "shared_terms": overlap[:8],
+                "shared_term_count": len(overlap),
+                "reason_code": "counter-evidence-candidate",
+            }
+            page_candidates.append(candidate)
+            candidates.append(candidate)
+        if page_candidates:
+            page_summaries.append(
+                {
+                    "page_id": str(page.get("page_id") or ""),
+                    "page_path": str(page.get("path") or ""),
+                    "page_title": str(page.get("title") or ""),
+                    "page_kind": str(page.get("kind") or ""),
+                    "page_status": str(page.get("status") or ""),
+                    "protocol": str(page.get("protocol") or DEFAULT_PROTOCOL),
+                    "candidate_count": len(page_candidates),
+                    "source_ids": [candidate["source_id"] for candidate in page_candidates],
+                    "source_pages": [candidate["source_page"] for candidate in page_candidates],
+                    "shared_terms": sorted(
+                        {
+                            term
+                            for candidate in page_candidates
+                            for term in candidate.get("shared_terms", [])
+                        }
+                    )[:10],
+                }
+            )
+    candidates.sort(
+        key=lambda item: (
+            0 if item.get("page_kind") == "judgment" else 1,
+            -int(item.get("shared_term_count", 0)),
+            str(item.get("page_title") or "").lower(),
+            str(item.get("source_title") or "").lower(),
+        )
+    )
+    page_summaries.sort(
+        key=lambda item: (
+            0 if item.get("page_kind") == "judgment" else 1,
+            -int(item.get("candidate_count", 0)),
+            str(item.get("page_title") or "").lower(),
+        )
+    )
+    return {
+        "generated_at": context.compiled_at,
+        "candidate_count": len(candidates),
+        "candidates": candidates[:32],
+        "pages": page_summaries[:16],
+    }
+
+
+def _build_judgment_review_actions(
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    *,
+    aging: dict[str, list[dict[str, str]]],
+    counter_evidence_scan: dict[str, Any],
+) -> list[dict[str, Any]]:
+    page_by_path = {
+        str(page.get("path") or ""): page
+        for page in decisions + judgments
+        if str(page.get("path") or "")
+    }
+    action_by_path: dict[str, dict[str, Any]] = {}
+    priority_rank = {"high": 0, "medium": 1, "low": 2}
+
+    def add_action(page: dict[str, str], reason_code: str, *, priority: str, candidate_count: int = 0) -> None:
+        page_path = str(page.get("path") or "")
+        if not page_path:
+            return
+        current = action_by_path.get(page_path)
+        if current is None:
+            profile = curated_page_transition_profile(
+                str(page.get("kind") or ""),
+                str(page.get("status") or ""),
+            )
+            default_transition = str(profile.get("default_transition") or page.get("status") or "")
+            current = {
+                "id": f"review-{slugify(str(page.get('page_id') or Path(page_path).stem))}",
+                "title": f"Review {str(page.get('title') or Path(page_path).stem)}",
+                "page_id": str(page.get("page_id") or Path(page_path).stem),
+                "page_path": page_path,
+                "page_kind": str(page.get("kind") or ""),
+                "protocol": str(page.get("protocol") or DEFAULT_PROTOCOL),
+                "status": "open",
+                "priority": priority,
+                "reason_codes": [],
+                "candidate_count": 0,
+                "review_command": (
+                    f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-page {page_path} --status {default_transition}"
+                    if default_transition
+                    else ""
+                ),
+            }
+            action_by_path[page_path] = current
+        if reason_code and reason_code not in current["reason_codes"]:
+            current["reason_codes"].append(reason_code)
+        current["candidate_count"] = max(int(current.get("candidate_count", 0)), candidate_count)
+        if priority_rank.get(priority, 9) < priority_rank.get(str(current.get("priority") or "medium"), 9):
+            current["priority"] = priority
+
+    for page in aging.get("escalated", []):
+        add_action(page, "escalation-candidate", priority="high")
+    for page in aging.get("overdue", []):
+        add_action(page, "overdue-review", priority="high" if page.get("kind") == "judgment" else "medium")
+    for candidate in counter_evidence_scan.get("pages", []):
+        if not isinstance(candidate, dict):
+            continue
+        page = page_by_path.get(str(candidate.get("page_path") or ""))
+        if page is None:
+            continue
+        add_action(
+            page,
+            "counter-evidence-candidate",
+            priority="high" if int(candidate.get("candidate_count", 0) or 0) > 1 else "medium",
+            candidate_count=int(candidate.get("candidate_count", 0) or 0),
+        )
+    actions = list(action_by_path.values())
+    actions.sort(
+        key=lambda item: (
+            priority_rank.get(str(item.get("priority") or "medium"), 9),
+            0 if item.get("page_kind") == "judgment" else 1,
+            -int(item.get("candidate_count", 0) or 0),
+            str(item.get("title") or "").lower(),
+        )
+    )
+    return actions
+
+
+def _compile_runtime_phase(context: _CompileContext) -> None:
     machine_memory_build = plan_machine_memory_build(
-        root,
-        entries,
-        concepts,
-        previews,
-        entry_terms,
-        generated_at=compiled_at,
+        context.root,
+        context.entries,
+        context.concepts,
+        context.previews,
+        context.entry_terms,
+        generated_at=context.compiled_at,
     )
     machine_memory_build_state = machine_memory_build.get("state_document", {})
     if not isinstance(machine_memory_build_state, dict):
         machine_memory_build_state = default_machine_memory_build_state()
     write_json_document_if_changed_ignoring_generated_timestamps(
-        machine_memory_build_state_path(root),
+        machine_memory_build_state_path(context.root),
         machine_memory_build_state,
     )
-    dirty_machine_memory_source_ids = list(machine_memory_build.get("dirty_source_ids", []))
-    clean_machine_memory_source_ids = list(machine_memory_build.get("clean_source_ids", []))
-    dirty_machine_memory_concept_slugs = list(machine_memory_build.get("dirty_concept_slugs", []))
-    clean_machine_memory_concept_slugs = list(machine_memory_build.get("clean_concept_slugs", []))
-    machine_memory_core_reused = bool(
+    context.dirty_machine_memory_source_ids = list(machine_memory_build.get("dirty_source_ids", []))
+    context.clean_machine_memory_source_ids = list(machine_memory_build.get("clean_source_ids", []))
+    context.dirty_machine_memory_concept_slugs = list(machine_memory_build.get("dirty_concept_slugs", []))
+    context.clean_machine_memory_concept_slugs = list(machine_memory_build.get("clean_concept_slugs", []))
+    context.machine_memory_core_reused = bool(
         machine_memory_build.get("inputs_clean")
-        and machine_memory_snapshot_is_reusable(previous_memory)
+        and machine_memory_snapshot_is_reusable(context.previous_memory)
     )
-    if machine_memory_core_reused:
-        memory = reuse_machine_memory_core(previous_memory, compiled_at)
+    if context.machine_memory_core_reused:
+        context.memory = reuse_machine_memory_core(context.previous_memory, context.compiled_at)
     else:
-        memory = build_machine_memory(root, entries, concepts, previews, entry_terms, compiled_at)
-    memory["health"] = build_machine_memory_health(memory)
-    memory["health"].update(
+        context.memory = build_machine_memory(
+            context.root,
+            context.entries,
+            context.concepts,
+            context.previews,
+            context.entry_terms,
+            context.compiled_at,
+        )
+    context.memory = attach_judgment_assets_to_machine_memory(
+        context.root,
+        context.memory,
+        context.decision_pages,
+        context.judgment_pages,
+    )
+    context.memory["health"] = build_machine_memory_health(context.memory)
+    context.memory["health"].update(
         reconcile_machine_memory_actions(
-            root,
-            memory["health"],
-            compiled_at=compiled_at,
-            active_protocol=protocol_state["active_protocol"],
+            context.root,
+            context.memory["health"],
+            compiled_at=context.compiled_at,
+            active_protocol=context.protocol_state["active_protocol"],
         )
     )
-    memory["health"]["repair_plan"] = build_machine_memory_repair_plan(
-        root,
-        memory["health"],
-        active_protocol=protocol_state["active_protocol"],
+    context.memory["health"]["repair_plan"] = build_machine_memory_repair_plan(
+        context.root,
+        context.memory["health"],
+        active_protocol=context.protocol_state["active_protocol"],
     )
-    memory["health"]["concept_quality"] = build_concept_quality(root, memory)
-    memory["health"]["concept_rewrite"] = reconcile_concept_rewrite_proposals(
-        root,
-        memory["health"]["concept_quality"],
-        compiled_at=compiled_at,
+    planner_state = dict(context.memory["health"]["repair_plan"].get("planner_state") or {})
+    planner_state["state_path"] = relative_path(context.root, planner_state_path(context.root))
+    planner_state["generated_at"] = str(planner_state.get("generated_at") or context.compiled_at)
+    context.memory["health"]["repair_plan"]["planner_state"] = planner_state
+    context.write_maintenance_artifact(planner_state_path(context.root), planner_state)
+    route_telemetry = load_json_document(query_route_telemetry_path(context.root))
+    if not isinstance(route_telemetry, dict):
+        route_telemetry = {}
+    route_telemetry.setdefault("version", 1)
+    route_telemetry.setdefault("entries", [])
+    route_telemetry.setdefault("strategy_counts", {})
+    route_telemetry.setdefault("protocol_counts", {})
+    route_telemetry.setdefault("last_entry", {})
+    route_telemetry["updated_at"] = str(route_telemetry.get("updated_at") or context.compiled_at)
+    route_telemetry["state_path"] = relative_path(context.root, query_route_telemetry_path(context.root))
+    context.write_maintenance_artifact(query_route_telemetry_path(context.root), route_telemetry)
+    policy_decisions = [
+        execution_policy_decision_record(
+            action,
+            occurred_at=context.compiled_at,
+            active_protocol=context.protocol_state["active_protocol"],
+        )
+        for action in [
+            *context.memory["health"].get("actions", []),
+            *context.memory["health"].get("inactive_actions", []),
+        ]
+        if isinstance(action, dict) and action.get("id")
+    ]
+    append_execution_policy_decisions(context.root, policy_decisions)
+    context.memory["health"]["concept_quality"] = build_concept_quality(context.root, context.memory)
+    context.memory["health"]["concept_rewrite"] = reconcile_concept_rewrite_proposals(
+        context.root,
+        context.memory["health"]["concept_quality"],
+        compiled_at=context.compiled_at,
     )
-    memory["digest"] = machine_memory_digest(memory)
-    graph = build_machine_memory_graph(memory)
-    memory["graph_digest"] = graph["digest"]
-    memory["graph_path"] = relative_path(root, machine_memory_graph_path(root))
-    memory["history_path"] = relative_path(root, machine_memory_history_path(root))
-    transition = summarize_machine_memory_transition(previous_memory, memory)
-    memory["transition"] = transition
-    write_index_artifact(machine_memory_state_path(root), json.dumps(memory, indent=2, sort_keys=True) + "\n")
-    write_index_artifact(machine_memory_graph_path(root), json.dumps(graph, indent=2, sort_keys=True) + "\n")
-    write_index_artifact(machine_memory_graph_html_path(root), render_machine_memory_graph_html(memory, graph))
-    append_machine_memory_history(root, memory, transition)
-    write_index_artifact(root / "wiki" / "indexes" / "machine-memory.md", render_machine_memory_index(memory))
-    write_index_artifact(machine_memory_topology_path(root), render_machine_memory_topology(memory))
-    write_index_artifact(machine_memory_actions_path(root), render_machine_memory_actions(memory))
-    write_index_artifact(machine_memory_repair_plan_path(root), render_machine_memory_repair_plan(memory))
-    write_index_artifact(
-        execution_center_path(root),
+    aging = collect_aging_signals(
+        context.decision_pages,
+        context.judgment_pages,
+        active_protocol=context.protocol_state["active_protocol"],
+    )
+    context.memory["health"]["counter_evidence_scan"] = _counter_evidence_scan_phase(context)
+    context.memory["health"]["judgment_review_actions"] = _build_judgment_review_actions(
+        context.decision_pages,
+        context.judgment_pages,
+        aging=aging,
+        counter_evidence_scan=context.memory["health"]["counter_evidence_scan"],
+    )
+    context.memory["digest"] = machine_memory_digest(context.memory)
+    graph = build_machine_memory_graph(context.memory)
+    context.memory["graph_digest"] = graph["digest"]
+    context.memory["graph_path"] = relative_path(context.root, machine_memory_graph_path(context.root))
+    context.memory["history_path"] = relative_path(context.root, machine_memory_history_path(context.root))
+    context.transition = summarize_machine_memory_transition(context.previous_memory, context.memory)
+    context.memory["transition"] = context.transition
+    context.write_index_artifact(
+        machine_memory_state_path(context.root),
+        json.dumps(context.memory, indent=2, sort_keys=True) + "\n",
+    )
+    context.write_index_artifact(
+        machine_memory_graph_path(context.root),
+        json.dumps(graph, indent=2, sort_keys=True) + "\n",
+    )
+    context.write_index_artifact(
+        machine_memory_graph_html_path(context.root),
+        render_machine_memory_graph_html(context.memory, graph),
+    )
+    append_machine_memory_history(context.root, context.memory, context.transition)
+    context.write_index_artifact(
+        context.root / "wiki" / "indexes" / "machine-memory.md",
+        render_machine_memory_index(context.memory),
+    )
+    context.write_index_artifact(machine_memory_topology_path(context.root), render_machine_memory_topology(context.memory))
+    context.write_index_artifact(machine_memory_actions_path(context.root), render_machine_memory_actions(context.memory))
+    context.write_index_artifact(
+        machine_memory_repair_plan_path(context.root),
+        render_machine_memory_repair_plan(context.memory),
+    )
+    context.write_index_artifact(
+        execution_center_path(context.root),
         render_execution_center(
-            memory,
-            compiled_at=compiled_at,
-            active_protocol=protocol_state["active_protocol"],
+            context.memory,
+            compiled_at=context.compiled_at,
+            active_protocol=context.protocol_state["active_protocol"],
         ),
     )
-    execution_audit = build_execution_audit_snapshot(
-        root,
-        memory,
-        active_protocol=protocol_state["active_protocol"],
+    context.execution_audit = build_execution_audit_snapshot(
+        context.root,
+        context.memory,
+        active_protocol=context.protocol_state["active_protocol"],
     )
-    write_index_artifact(execution_audit_path(root), render_execution_audit(execution_audit))
+    context.write_index_artifact(
+        execution_audit_path(context.root),
+        render_execution_audit(context.execution_audit),
+    )
     ranking_build = build_ranking_state(
-        root,
-        entries,
-        concepts,
-        generated_at=compiled_at,
+        context.root,
+        context.entries,
+        context.concepts,
+        generated_at=context.compiled_at,
     )
     ranking_build_state = ranking_build.get("state_document", {})
     if not isinstance(ranking_build_state, dict):
         ranking_build_state = default_ranking_build_state()
     write_json_document_if_changed_ignoring_generated_timestamps(
-        ranking_build_state_path(root),
+        ranking_build_state_path(context.root),
         ranking_build_state,
     )
-    dirty_ranking_source_ids = list(ranking_build.get("dirty_source_ids", []))
-    clean_ranking_source_ids = list(ranking_build.get("clean_source_ids", []))
-    dirty_ranking_concept_slugs = list(ranking_build.get("dirty_concept_slugs", []))
-    clean_ranking_concept_slugs = list(ranking_build.get("clean_concept_slugs", []))
-    all_outputs = collect_output_density_artifacts(root)
-    recent_outputs = collect_recent_output_artifacts(root)
+    context.dirty_ranking_source_ids = list(ranking_build.get("dirty_source_ids", []))
+    context.clean_ranking_source_ids = list(ranking_build.get("clean_source_ids", []))
+    context.dirty_ranking_concept_slugs = list(ranking_build.get("dirty_concept_slugs", []))
+    context.clean_ranking_concept_slugs = list(ranking_build.get("clean_concept_slugs", []))
+    context.all_outputs = collect_output_density_artifacts(context.root)
+    context.recent_outputs = collect_recent_output_artifacts(context.root)
     material_state_documents = build_material_state_documents(
-        root,
-        generated_at=compiled_at,
-        entries=entries,
-        active_protocol=protocol_state["active_protocol"],
+        context.root,
+        generated_at=context.compiled_at,
+        entries=context.entries,
+        active_protocol=context.protocol_state["active_protocol"],
     )
-    active_corpora_state = material_state_documents["active_corpora_state"]
-    material_state = material_state_documents["material_state"]
-    material_routing = material_state_documents["material_routing"]
-    archive_candidates = material_state_documents["archive_candidates"]
-    knowledge_lifecycle = build_knowledge_lifecycle_document(
-        root,
-        generated_at=compiled_at,
-        decisions=decision_pages,
-        judgments=judgment_pages,
-        entries=entries,
-        active_corpora_state=active_corpora_state,
-        memory=memory,
+    context.active_corpora_state = material_state_documents["active_corpora_state"]
+    context.material_state = material_state_documents["material_state"]
+    context.material_routing = material_state_documents["material_routing"]
+    context.archive_candidates = material_state_documents["archive_candidates"]
+    context.knowledge_lifecycle = build_knowledge_lifecycle_document(
+        context.root,
+        generated_at=context.compiled_at,
+        decisions=context.decision_pages,
+        judgments=context.judgment_pages,
+        entries=context.entries,
+        active_corpora_state=context.active_corpora_state,
+        memory=context.memory,
     )
-    write_maintenance_artifact(material_state_path(root), material_state)
-    write_maintenance_artifact(material_routing_state_path(root), material_routing)
-    write_maintenance_artifact(archive_candidates_state_path(root), archive_candidates)
-    write_maintenance_artifact(knowledge_lifecycle_state_path(root), knowledge_lifecycle)
-    write_index_artifact(
-        root / "wiki" / "indexes" / "protocols.md",
+    context.write_maintenance_artifact(material_state_path(context.root), context.material_state)
+    context.write_maintenance_artifact(material_routing_state_path(context.root), context.material_routing)
+    context.write_maintenance_artifact(archive_candidates_state_path(context.root), context.archive_candidates)
+    context.write_maintenance_artifact(knowledge_lifecycle_state_path(context.root), context.knowledge_lifecycle)
+    context.write_index_artifact(
+        context.root / "wiki" / "indexes" / "protocols.md",
         render_protocols_dashboard(
-            root,
-            compiled_at,
-            knowledge_lifecycle=knowledge_lifecycle,
+            context.root,
+            context.compiled_at,
+            knowledge_lifecycle=context.knowledge_lifecycle,
         ),
     )
+
+
+def _compile_output_phase(context: _CompileContext) -> None:
     output_pack_build = build_output_packs_incremental(
-        root,
-        decision_pages,
-        judgment_pages,
-        memory,
-        protocol_state,
-        recent_outputs,
-        compiled_at,
-        knowledge_lifecycle=knowledge_lifecycle,
+        context.root,
+        context.decision_pages,
+        context.judgment_pages,
+        context.memory,
+        context.protocol_state,
+        context.recent_outputs,
+        context.compiled_at,
+        knowledge_lifecycle=context.knowledge_lifecycle,
     )
     output_pack_build_state = output_pack_build.get("state_document", {})
     if not isinstance(output_pack_build_state, dict):
         output_pack_build_state = default_output_pack_build_state()
     write_json_document_if_changed_ignoring_generated_timestamps(
-        output_pack_build_state_path(root),
+        output_pack_build_state_path(context.root),
         output_pack_build_state,
     )
-    output_packs = output_pack_build.get("output_packs", {})
-    if not isinstance(output_packs, dict):
-        output_packs = default_output_pack_build_state()
-    dirty_output_pack_groups = list(output_pack_build.get("dirty_groups", []))
-    clean_output_pack_groups = list(output_pack_build.get("clean_groups", []))
-    dirty_output_pack_group_set = set(dirty_output_pack_groups)
-    write_output_pack_artifact(
-        output_packs_index_path(root),
-        render_output_packs_index(output_packs, compiled_at, protocol_state["active_protocol"]),
+    context.output_packs = output_pack_build.get("output_packs", {})
+    if not isinstance(context.output_packs, dict):
+        context.output_packs = default_output_pack_build_state()
+    context.dirty_output_pack_groups = list(output_pack_build.get("dirty_groups", []))
+    context.clean_output_pack_groups = list(output_pack_build.get("clean_groups", []))
+    dirty_output_pack_group_set = set(context.dirty_output_pack_groups)
+    context.write_output_pack_artifact(
+        output_packs_index_path(context.root),
+        render_output_packs_index(context.output_packs, context.compiled_at, context.protocol_state["active_protocol"]),
     )
     if "review_packs" in dirty_output_pack_group_set:
-        for pack in output_packs.get("review_packs", []):
+        for pack in context.output_packs.get("review_packs", []):
             if isinstance(pack, dict) and "content" in pack:
-                write_output_pack_artifact(root / str(pack["path"]), str(pack["content"]))
-        removed_pages += remove_stale_generated_markdown_files(
-            review_packs_dir(root),
-            {Path(str(pack["path"])).stem for pack in output_packs.get("review_packs", []) if isinstance(pack, dict)},
+                context.write_output_pack_artifact(context.root / str(pack["path"]), str(pack["content"]))
+        context.removed_pages += remove_stale_generated_markdown_files(
+            review_packs_dir(context.root),
+            {
+                Path(str(pack["path"])).stem
+                for pack in context.output_packs.get("review_packs", [])
+                if isinstance(pack, dict)
+            },
         )
     if "decision_memos" in dirty_output_pack_group_set:
-        for pack in output_packs.get("decision_memos", []):
+        for pack in context.output_packs.get("decision_memos", []):
             if isinstance(pack, dict) and "content" in pack:
-                write_output_pack_artifact(root / str(pack["path"]), str(pack["content"]))
-        removed_pages += remove_stale_generated_markdown_files(
-            decision_memos_dir(root),
-            {Path(str(pack["path"])).stem for pack in output_packs.get("decision_memos", []) if isinstance(pack, dict)},
+                context.write_output_pack_artifact(context.root / str(pack["path"]), str(pack["content"]))
+        context.removed_pages += remove_stale_generated_markdown_files(
+            decision_memos_dir(context.root),
+            {
+                Path(str(pack["path"])).stem
+                for pack in context.output_packs.get("decision_memos", [])
+                if isinstance(pack, dict)
+            },
         )
     if "sop_drafts" in dirty_output_pack_group_set:
-        for pack in output_packs.get("sop_drafts", []):
+        for pack in context.output_packs.get("sop_drafts", []):
             if isinstance(pack, dict) and "content" in pack:
-                write_output_pack_artifact(root / str(pack["path"]), str(pack["content"]))
-        removed_pages += remove_stale_generated_markdown_files(
-            sop_drafts_dir(root),
-            {Path(str(pack["path"])).stem for pack in output_packs.get("sop_drafts", []) if isinstance(pack, dict)},
+                context.write_output_pack_artifact(context.root / str(pack["path"]), str(pack["content"]))
+        context.removed_pages += remove_stale_generated_markdown_files(
+            sop_drafts_dir(context.root),
+            {
+                Path(str(pack["path"])).stem
+                for pack in context.output_packs.get("sop_drafts", [])
+                if isinstance(pack, dict)
+            },
         )
     domain_pilot_build = build_domain_pilots_incremental(
-        root,
-        decision_pages,
-        judgment_pages,
-        memory,
-        protocol_state,
-        recent_outputs,
-        all_outputs,
-        output_packs,
-        execution_audit,
-        compiled_at,
-        knowledge_lifecycle=knowledge_lifecycle,
-        material_routing=material_routing,
+        context.root,
+        context.decision_pages,
+        context.judgment_pages,
+        context.memory,
+        context.protocol_state,
+        context.recent_outputs,
+        context.all_outputs,
+        context.output_packs,
+        context.execution_audit,
+        context.compiled_at,
+        knowledge_lifecycle=context.knowledge_lifecycle,
+        material_routing=context.material_routing,
     )
     domain_pilot_build_state = domain_pilot_build.get("state_document", {})
     if not isinstance(domain_pilot_build_state, dict):
         domain_pilot_build_state = default_domain_pilot_build_state()
     write_json_document_if_changed_ignoring_generated_timestamps(
-        domain_pilot_build_state_path(root),
+        domain_pilot_build_state_path(context.root),
         domain_pilot_build_state,
     )
-    domain_pilots = domain_pilot_build.get("domain_pilots", {})
-    if not isinstance(domain_pilots, dict):
-        domain_pilots = {"compiled_at": compiled_at, "active_protocol": protocol_state["active_protocol"], "scorecards": []}
-    dirty_domain_pilot_protocols = list(domain_pilot_build.get("dirty_protocols", []))
-    clean_domain_pilot_protocols = list(domain_pilot_build.get("clean_protocols", []))
-    dirty_domain_pilot_protocol_set = set(dirty_domain_pilot_protocols)
-    write_domain_pilot_artifact(
-        domain_pilots_index_path(root),
-        render_domain_pilots_index(domain_pilots, compiled_at, protocol_state["active_protocol"]),
+    context.domain_pilots = domain_pilot_build.get("domain_pilots", {})
+    if not isinstance(context.domain_pilots, dict):
+        context.domain_pilots = {
+            "compiled_at": context.compiled_at,
+            "active_protocol": context.protocol_state["active_protocol"],
+            "scorecards": [],
+        }
+    context.dirty_domain_pilot_protocols = list(domain_pilot_build.get("dirty_protocols", []))
+    context.clean_domain_pilot_protocols = list(domain_pilot_build.get("clean_protocols", []))
+    dirty_domain_pilot_protocol_set = set(context.dirty_domain_pilot_protocols)
+    context.write_domain_pilot_artifact(
+        domain_pilots_index_path(context.root),
+        render_domain_pilots_index(context.domain_pilots, context.compiled_at, context.protocol_state["active_protocol"]),
     )
-    for scorecard in domain_pilots.get("scorecards", []):
+    for scorecard in context.domain_pilots.get("scorecards", []):
         if (
             isinstance(scorecard, dict)
             and str(scorecard.get("protocol") or "") in dirty_domain_pilot_protocol_set
             and "content" in scorecard
         ):
-            write_domain_pilot_artifact(root / str(scorecard["path"]), str(scorecard["content"]))
-    if dirty_domain_pilot_protocols or domain_pilot_build.get("removed_protocols"):
-        removed_pages += remove_stale_generated_markdown_files(
-            pilot_scorecards_dir(root),
+            context.write_domain_pilot_artifact(context.root / str(scorecard["path"]), str(scorecard["content"]))
+    if context.dirty_domain_pilot_protocols or domain_pilot_build.get("removed_protocols"):
+        context.removed_pages += remove_stale_generated_markdown_files(
+            pilot_scorecards_dir(context.root),
             {
                 Path(str(scorecard["path"])).stem
-                for scorecard in domain_pilots.get("scorecards", [])
+                for scorecard in context.domain_pilots.get("scorecards", [])
                 if isinstance(scorecard, dict)
             },
         )
     agent_packs = build_agent_packs(
-        root,
-        entries,
-        decision_pages,
-        judgment_pages,
-        memory,
-        protocol_state,
-        recent_outputs,
-        compiled_at,
-        knowledge_lifecycle=knowledge_lifecycle,
+        context.root,
+        context.entries,
+        context.decision_pages,
+        context.judgment_pages,
+        context.memory,
+        context.protocol_state,
+        context.recent_outputs,
+        context.compiled_at,
+        knowledge_lifecycle=context.knowledge_lifecycle,
     )
-    write_index_artifact(
-        agent_workbench_path(root),
+    context.write_index_artifact(
+        agent_workbench_path(context.root),
         render_agent_workbench(
             agent_packs,
-            compiled_at,
-            protocol_state["active_protocol"],
-            knowledge_lifecycle=knowledge_lifecycle,
+            context.compiled_at,
+            context.protocol_state["active_protocol"],
+            knowledge_lifecycle=context.knowledge_lifecycle,
         ),
     )
     for pack in agent_packs:
-        write_index_artifact(root / pack["path"], pack["content"])
-    write_index_artifact(
-        root / "wiki" / "indexes" / "furnace-center.md",
+        context.write_index_artifact(context.root / pack["path"], pack["content"])
+    context.write_index_artifact(
+        context.root / "wiki" / "indexes" / "furnace-center.md",
         render_furnace_center(
-            decision_pages,
-            judgment_pages,
-            memory,
-            compiled_at,
-            protocol_state,
-            recent_outputs,
-            output_packs,
-            domain_pilots,
-            execution_audit,
-            knowledge_lifecycle=knowledge_lifecycle,
+            context.decision_pages,
+            context.judgment_pages,
+            context.memory,
+            context.compiled_at,
+            context.protocol_state,
+            context.recent_outputs,
+            context.output_packs,
+            context.domain_pilots,
+            context.execution_audit,
+            knowledge_lifecycle=context.knowledge_lifecycle,
         ),
     )
-    write_index_artifact(
-        review_center_html_path(root),
+    context.write_index_artifact(
+        review_center_html_path(context.root),
         render_review_center_html(
-            decision_pages,
-            judgment_pages,
-            memory,
-            compiled_at,
-            active_protocol=protocol_state["active_protocol"],
-            knowledge_lifecycle=knowledge_lifecycle,
+            context.decision_pages,
+            context.judgment_pages,
+            context.memory,
+            context.compiled_at,
+            active_protocol=context.protocol_state["active_protocol"],
+            knowledge_lifecycle=context.knowledge_lifecycle,
         ),
     )
-    write_index_artifact(
-        furnace_center_html_path(root),
+    context.write_index_artifact(
+        furnace_center_html_path(context.root),
         render_furnace_center_html(
-            decision_pages,
-            judgment_pages,
-            memory,
-            compiled_at,
-            protocol_state,
-            recent_outputs,
-            output_packs,
-            domain_pilots,
-            execution_audit,
-            knowledge_lifecycle=knowledge_lifecycle,
+            context.decision_pages,
+            context.judgment_pages,
+            context.memory,
+            context.compiled_at,
+            context.protocol_state,
+            context.recent_outputs,
+            context.output_packs,
+            context.domain_pilots,
+            context.execution_audit,
+            knowledge_lifecycle=context.knowledge_lifecycle,
         ),
     )
-    write_index_artifact(
-        execution_center_html_path(root),
+    context.write_index_artifact(
+        execution_center_html_path(context.root),
         render_execution_center_html(
-            memory,
-            compiled_at=compiled_at,
-            active_protocol=protocol_state["active_protocol"],
+            context.memory,
+            compiled_at=context.compiled_at,
+            active_protocol=context.protocol_state["active_protocol"],
         ),
     )
-    write_index_artifact(execution_audit_html_path(root), render_execution_audit_html(execution_audit))
-    write_index_artifact(concept_quality_path(root), render_concept_quality(memory))
-    write_index_artifact(
-        concept_rewrite_index_path(root),
-        render_concept_rewrite_index(memory["health"]["concept_rewrite"], compiled_at),
+    context.write_index_artifact(
+        execution_audit_html_path(context.root),
+        render_execution_audit_html(context.execution_audit),
     )
-    for proposal in memory["health"]["concept_rewrite"].get("all_proposals", []):
-        write_index_artifact(root / proposal["proposal_path"], render_concept_rewrite_proposal_page(proposal))
-    removed_pages += remove_stale_generated_execution_proposal_pages(
-        root,
-        {
-            str(proposal.get("action_id") or "")
-            for proposal in memory["health"]["repair_plan"].get("execution_proposals", [])
-            if proposal.get("action_id")
-        },
+    context.write_index_artifact(concept_quality_path(context.root), render_concept_quality(context.memory))
+    context.write_index_artifact(
+        concept_rewrite_index_path(context.root),
+        render_concept_rewrite_index(context.memory["health"]["concept_rewrite"], context.compiled_at),
     )
-    removed_pages += remove_stale_generated_execution_bundle_files(
-        root,
-        {
-            str(proposal.get("action_id") or "")
-            for proposal in memory["health"]["repair_plan"].get("execution_proposals", [])
-            if proposal.get("action_id")
-        },
-    )
-    for proposal in memory["health"]["repair_plan"].get("execution_proposals", []):
-        write_index_artifact(
-            root / str(proposal["proposal_path"]),
-            render_execution_proposal_page(proposal, compiled_at=compiled_at),
+    for proposal in context.memory["health"]["concept_rewrite"].get("all_proposals", []):
+        context.write_index_artifact(
+            context.root / proposal["proposal_path"],
+            render_concept_rewrite_proposal_page(proposal),
         )
-        write_index_artifact(
-            root / str(proposal["bundle_path"]),
+    context.removed_pages += remove_stale_generated_execution_proposal_pages(
+        context.root,
+        {
+            str(proposal.get("action_id") or "")
+            for proposal in context.memory["health"]["repair_plan"].get("execution_proposals", [])
+            if proposal.get("action_id")
+        },
+    )
+    context.removed_pages += remove_stale_generated_execution_bundle_files(
+        context.root,
+        {
+            str(proposal.get("action_id") or "")
+            for proposal in context.memory["health"]["repair_plan"].get("execution_proposals", [])
+            if proposal.get("action_id")
+        },
+    )
+    for proposal in context.memory["health"]["repair_plan"].get("execution_proposals", []):
+        context.write_index_artifact(
+            context.root / str(proposal["proposal_path"]),
+            render_execution_proposal_page(proposal, compiled_at=context.compiled_at),
+        )
+        context.write_index_artifact(
+            context.root / str(proposal["bundle_path"]),
             json.dumps(
-                build_execution_bundle(root, proposal, compiled_at=compiled_at),
+                build_execution_bundle(context.root, proposal, compiled_at=context.compiled_at),
                 ensure_ascii=False,
                 indent=2,
                 sort_keys=True,
             )
             + "\n",
         )
-    write_index_artifact(graph_health_report_path(root), render_graph_health(memory))
-    write_index_artifact(machine_memory_drift_report_path(root), render_drift_report(memory, transition))
-    write_index_artifact(
-        root / "wiki" / "indexes" / "review-queue.md",
+    context.write_index_artifact(graph_health_report_path(context.root), render_graph_health(context.memory))
+    context.write_index_artifact(
+        machine_memory_drift_report_path(context.root),
+        render_drift_report(context.memory, context.transition),
+    )
+    context.write_index_artifact(
+        context.root / "wiki" / "indexes" / "review-queue.md",
         render_review_queue(
-            decision_pages,
-            judgment_pages,
-            compiled_at,
-            active_protocol=protocol_state["active_protocol"],
-            knowledge_lifecycle=knowledge_lifecycle,
+            context.decision_pages,
+            context.judgment_pages,
+            context.compiled_at,
+            active_protocol=context.protocol_state["active_protocol"],
+            knowledge_lifecycle=context.knowledge_lifecycle,
+            counter_evidence_scan=context.memory.get("health", {}).get("counter_evidence_scan", {}),
         ),
     )
-    write_index_artifact(
-        cognitive_history_path(root),
+    context.write_index_artifact(
+        cognitive_history_path(context.root),
         render_cognitive_history(
-            root,
-            decision_pages,
-            judgment_pages,
-            compiled_at,
-            active_protocol=protocol_state["active_protocol"],
-            knowledge_lifecycle=knowledge_lifecycle,
+            context.root,
+            context.decision_pages,
+            context.judgment_pages,
+            context.compiled_at,
+            active_protocol=context.protocol_state["active_protocol"],
+            knowledge_lifecycle=context.knowledge_lifecycle,
         ),
     )
-    write_index_artifact(
-        aging_report_path(root),
+    context.write_index_artifact(
+        aging_report_path(context.root),
         render_aging_report(
-            decision_pages,
-            judgment_pages,
-            compiled_at,
-            active_protocol=protocol_state["active_protocol"],
-            knowledge_lifecycle=knowledge_lifecycle,
+            context.decision_pages,
+            context.judgment_pages,
+            context.compiled_at,
+            active_protocol=context.protocol_state["active_protocol"],
+            knowledge_lifecycle=context.knowledge_lifecycle,
         ),
     )
+    write_shell_summary(context.root, build_shell_summary(context.root, generated_at=context.compiled_at))
 
-    metadata_details = manifest_change_summary(previous_manifest.get("entries", []), entries)
-    phase_summary = [
+def _build_compile_phase_summary(context: _CompileContext) -> list[dict[str, Any]]:
+    metadata_details = manifest_change_summary(context.previous_manifest.get("entries", []), context.entries)
+    return [
         {
             "name": "metadata_refresh",
             "label": "metadata refresh",
@@ -1224,11 +1596,11 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             "mode": "incremental",
             "status": "completed",
             "details": {
-                "source_pages": len(entries),
-                "dirty_sources": len(dirty_source_ids),
-                "clean_sources": len(clean_source_ids),
-                "updated_pages": source_changed_pages,
-                "skipped_pages": len(clean_source_ids),
+                "source_pages": len(context.entries),
+                "dirty_sources": len(context.dirty_source_ids),
+                "clean_sources": len(context.clean_source_ids),
+                "updated_pages": context.source_changed_pages,
+                "skipped_pages": len(context.clean_source_ids),
             },
         },
         {
@@ -1237,14 +1609,14 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             "mode": "incremental",
             "status": "completed",
             "details": {
-                "concept_sources": len(entries),
-                "dirty_concept_sources": len(dirty_concept_source_ids),
-                "clean_concept_sources": len(clean_concept_source_ids),
-                "concept_pages": len(concepts),
-                "dirty_concepts": len(dirty_concept_slugs),
-                "clean_concepts": len(clean_concept_slugs),
-                "updated_pages": concept_changed_pages,
-                "skipped_pages": len(clean_concept_slugs),
+                "concept_sources": len(context.entries),
+                "dirty_concept_sources": len(context.dirty_concept_source_ids),
+                "clean_concept_sources": len(context.clean_concept_source_ids),
+                "concept_pages": len(context.concepts),
+                "dirty_concepts": len(context.dirty_concept_slugs),
+                "clean_concepts": len(context.clean_concept_slugs),
+                "updated_pages": context.concept_changed_pages,
+                "skipped_pages": len(context.clean_concept_slugs),
             },
         },
         {
@@ -1253,13 +1625,13 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             "mode": "incremental",
             "status": "completed",
             "details": {
-                "machine_memory_sources": len(entries),
-                "dirty_machine_memory_sources": len(dirty_machine_memory_source_ids),
-                "clean_machine_memory_sources": len(clean_machine_memory_source_ids),
-                "machine_memory_concepts": len(concepts),
-                "dirty_machine_memory_concepts": len(dirty_machine_memory_concept_slugs),
-                "clean_machine_memory_concepts": len(clean_machine_memory_concept_slugs),
-                "reused_core": machine_memory_core_reused,
+                "machine_memory_sources": len(context.entries),
+                "dirty_machine_memory_sources": len(context.dirty_machine_memory_source_ids),
+                "clean_machine_memory_sources": len(context.clean_machine_memory_source_ids),
+                "machine_memory_concepts": len(context.concepts),
+                "dirty_machine_memory_concepts": len(context.dirty_machine_memory_concept_slugs),
+                "clean_machine_memory_concepts": len(context.clean_machine_memory_concept_slugs),
+                "reused_core": context.machine_memory_core_reused,
             },
         },
         {
@@ -1268,12 +1640,12 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             "mode": "incremental",
             "status": "completed",
             "details": {
-                "ranking_sources": len(entries),
-                "dirty_ranking_sources": len(dirty_ranking_source_ids),
-                "clean_ranking_sources": len(clean_ranking_source_ids),
-                "ranking_concepts": len(concepts),
-                "dirty_ranking_concepts": len(dirty_ranking_concept_slugs),
-                "clean_ranking_concepts": len(clean_ranking_concept_slugs),
+                "ranking_sources": len(context.entries),
+                "dirty_ranking_sources": len(context.dirty_ranking_source_ids),
+                "clean_ranking_sources": len(context.clean_ranking_source_ids),
+                "ranking_concepts": len(context.concepts),
+                "dirty_ranking_concepts": len(context.dirty_ranking_concept_slugs),
+                "clean_ranking_concepts": len(context.clean_ranking_concept_slugs),
             },
         },
         {
@@ -1282,11 +1654,11 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             "mode": "incremental",
             "status": "completed",
             "details": {
-                "tracked_artifacts": len(dirty_index_artifacts) + len(clean_index_artifacts),
-                "dirty_artifacts": len(dirty_index_artifacts),
-                "clean_artifacts": len(clean_index_artifacts),
-                "updated_artifacts": index_changed_pages,
-                "skipped_artifacts": len(clean_index_artifacts),
+                "tracked_artifacts": len(context.dirty_index_artifacts) + len(context.clean_index_artifacts),
+                "dirty_artifacts": len(context.dirty_index_artifacts),
+                "clean_artifacts": len(context.clean_index_artifacts),
+                "updated_artifacts": context.index_changed_pages,
+                "skipped_artifacts": len(context.clean_index_artifacts),
             },
         },
         {
@@ -1295,16 +1667,16 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             "mode": "incremental",
             "status": "completed",
             "details": {
-                "tracked_artifacts": len(dirty_maintenance_artifacts) + len(clean_maintenance_artifacts),
-                "dirty_artifacts": len(dirty_maintenance_artifacts),
-                "clean_artifacts": len(clean_maintenance_artifacts),
-                "updated_artifacts": maintenance_changed_pages,
-                "skipped_artifacts": len(clean_maintenance_artifacts),
-                "removed_generated_pages": removed_pages,
-                "material_state_entries": len(material_state["entries"]),
-                "archive_candidates": len(archive_candidates.get("entries", [])),
-                "active_corpora": len(active_corpora_state.get("corpora", [])),
-                "knowledge_lifecycle_entries": len(knowledge_lifecycle.get("entries", [])),
+                "tracked_artifacts": len(context.dirty_maintenance_artifacts) + len(context.clean_maintenance_artifacts),
+                "dirty_artifacts": len(context.dirty_maintenance_artifacts),
+                "clean_artifacts": len(context.clean_maintenance_artifacts),
+                "updated_artifacts": context.maintenance_changed_pages,
+                "skipped_artifacts": len(context.clean_maintenance_artifacts),
+                "removed_generated_pages": context.removed_pages,
+                "material_state_entries": len(context.material_state["entries"]),
+                "archive_candidates": len(context.archive_candidates.get("entries", [])),
+                "active_corpora": len(context.active_corpora_state.get("corpora", [])),
+                "knowledge_lifecycle_entries": len(context.knowledge_lifecycle.get("entries", [])),
             },
         },
         {
@@ -1314,13 +1686,13 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             "status": "completed",
             "details": {
                 "pack_groups": 4,
-                "dirty_pack_groups": len(dirty_output_pack_groups),
-                "clean_pack_groups": len(clean_output_pack_groups),
-                "review_packs": int(output_packs.get("counts", {}).get("review_packs", 0) or 0),
-                "decision_memos": int(output_packs.get("counts", {}).get("decision_memos", 0) or 0),
-                "sop_drafts": int(output_packs.get("counts", {}).get("sop_drafts", 0) or 0),
-                "updated_artifacts": output_pack_changed_pages,
-                "skipped_artifacts": len(clean_output_pack_groups),
+                "dirty_pack_groups": len(context.dirty_output_pack_groups),
+                "clean_pack_groups": len(context.clean_output_pack_groups),
+                "review_packs": int(context.output_packs.get("counts", {}).get("review_packs", 0) or 0),
+                "decision_memos": int(context.output_packs.get("counts", {}).get("decision_memos", 0) or 0),
+                "sop_drafts": int(context.output_packs.get("counts", {}).get("sop_drafts", 0) or 0),
+                "updated_artifacts": context.output_pack_changed_pages,
+                "skipped_artifacts": len(context.clean_output_pack_groups),
             },
         },
         {
@@ -1329,168 +1701,192 @@ def compile_wiki(root: Path) -> dict[str, Any]:
             "mode": "incremental",
             "status": "completed",
             "details": {
-                "pilot_protocols": len(domain_pilots.get("scorecards", [])),
-                "dirty_protocols": len(dirty_domain_pilot_protocols),
-                "clean_protocols": len(clean_domain_pilot_protocols),
-                "updated_artifacts": domain_pilot_changed_pages,
-                "skipped_artifacts": len(clean_domain_pilot_protocols),
+                "pilot_protocols": len(context.domain_pilots.get("scorecards", [])),
+                "dirty_protocols": len(context.dirty_domain_pilot_protocols),
+                "clean_protocols": len(context.clean_domain_pilot_protocols),
+                "updated_artifacts": context.domain_pilot_changed_pages,
+                "skipped_artifacts": len(context.clean_domain_pilot_protocols),
             },
         },
     ]
-    compile_state = {
+
+
+def _build_compile_state_document(
+    context: _CompileContext,
+    phase_summary: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
         "version": 1,
-        "compiled_at": compiled_at,
-        "manifest_entry_count": len(entries),
-        "dirty_source_ids": dirty_source_ids,
-        "clean_source_ids": clean_source_ids,
-        "dirty_concept_source_ids": dirty_concept_source_ids,
-        "clean_concept_source_ids": clean_concept_source_ids,
-        "dirty_concept_slugs": dirty_concept_slugs,
-        "clean_concept_slugs": clean_concept_slugs,
-        "dirty_machine_memory_source_ids": dirty_machine_memory_source_ids,
-        "clean_machine_memory_source_ids": clean_machine_memory_source_ids,
-        "dirty_machine_memory_concept_slugs": dirty_machine_memory_concept_slugs,
-        "clean_machine_memory_concept_slugs": clean_machine_memory_concept_slugs,
-        "machine_memory_core_reused": machine_memory_core_reused,
-        "dirty_ranking_source_ids": dirty_ranking_source_ids,
-        "clean_ranking_source_ids": clean_ranking_source_ids,
-        "dirty_ranking_concept_slugs": dirty_ranking_concept_slugs,
-        "clean_ranking_concept_slugs": clean_ranking_concept_slugs,
-        "dirty_output_pack_groups": dirty_output_pack_groups,
-        "clean_output_pack_groups": clean_output_pack_groups,
-        "dirty_domain_pilot_protocols": dirty_domain_pilot_protocols,
-        "clean_domain_pilot_protocols": clean_domain_pilot_protocols,
-        "dirty_index_artifacts": dirty_index_artifacts,
-        "clean_index_artifacts": clean_index_artifacts,
-        "dirty_maintenance_artifacts": dirty_maintenance_artifacts,
-        "clean_maintenance_artifacts": clean_maintenance_artifacts,
+        "compiled_at": context.compiled_at,
+        "manifest_entry_count": len(context.entries),
+        "dirty_source_ids": context.dirty_source_ids,
+        "clean_source_ids": context.clean_source_ids,
+        "dirty_concept_source_ids": context.dirty_concept_source_ids,
+        "clean_concept_source_ids": context.clean_concept_source_ids,
+        "dirty_concept_slugs": context.dirty_concept_slugs,
+        "clean_concept_slugs": context.clean_concept_slugs,
+        "dirty_machine_memory_source_ids": context.dirty_machine_memory_source_ids,
+        "clean_machine_memory_source_ids": context.clean_machine_memory_source_ids,
+        "dirty_machine_memory_concept_slugs": context.dirty_machine_memory_concept_slugs,
+        "clean_machine_memory_concept_slugs": context.clean_machine_memory_concept_slugs,
+        "machine_memory_core_reused": context.machine_memory_core_reused,
+        "dirty_ranking_source_ids": context.dirty_ranking_source_ids,
+        "clean_ranking_source_ids": context.clean_ranking_source_ids,
+        "dirty_ranking_concept_slugs": context.dirty_ranking_concept_slugs,
+        "clean_ranking_concept_slugs": context.clean_ranking_concept_slugs,
+        "dirty_output_pack_groups": context.dirty_output_pack_groups,
+        "clean_output_pack_groups": context.clean_output_pack_groups,
+        "dirty_domain_pilot_protocols": context.dirty_domain_pilot_protocols,
+        "clean_domain_pilot_protocols": context.clean_domain_pilot_protocols,
+        "dirty_index_artifacts": context.dirty_index_artifacts,
+        "clean_index_artifacts": context.clean_index_artifacts,
+        "dirty_maintenance_artifacts": context.dirty_maintenance_artifacts,
+        "clean_maintenance_artifacts": context.clean_maintenance_artifacts,
         "phase_summary": phase_summary,
     }
-    save_compile_state(root, compile_state)
+
+
+def _compile_log_details(context: _CompileContext) -> list[str]:
+    return [
+        f"compiled_at: `{context.compiled_at}`",
+        f"compile_state: `{relative_path(context.root, compile_state_path(context.root))}`",
+        f"compile_dirty_sources: `{len(context.dirty_source_ids)}`",
+        f"compile_clean_sources: `{len(context.clean_source_ids)}`",
+        f"compile_dirty_concept_sources: `{len(context.dirty_concept_source_ids)}`",
+        f"compile_clean_concept_sources: `{len(context.clean_concept_source_ids)}`",
+        f"compile_dirty_concepts: `{len(context.dirty_concept_slugs)}`",
+        f"compile_clean_concepts: `{len(context.clean_concept_slugs)}`",
+        f"compile_dirty_machine_memory_sources: `{len(context.dirty_machine_memory_source_ids)}`",
+        f"compile_clean_machine_memory_sources: `{len(context.clean_machine_memory_source_ids)}`",
+        f"compile_dirty_machine_memory_concepts: `{len(context.dirty_machine_memory_concept_slugs)}`",
+        f"compile_clean_machine_memory_concepts: `{len(context.clean_machine_memory_concept_slugs)}`",
+        f"machine_memory_core_reused: `{context.machine_memory_core_reused}`",
+        f"compile_dirty_ranking_sources: `{len(context.dirty_ranking_source_ids)}`",
+        f"compile_clean_ranking_sources: `{len(context.clean_ranking_source_ids)}`",
+        f"compile_dirty_ranking_concepts: `{len(context.dirty_ranking_concept_slugs)}`",
+        f"compile_clean_ranking_concepts: `{len(context.clean_ranking_concept_slugs)}`",
+        f"compile_dirty_output_pack_groups: `{len(context.dirty_output_pack_groups)}`",
+        f"compile_clean_output_pack_groups: `{len(context.clean_output_pack_groups)}`",
+        f"compile_dirty_domain_pilot_protocols: `{len(context.dirty_domain_pilot_protocols)}`",
+        f"compile_clean_domain_pilot_protocols: `{len(context.clean_domain_pilot_protocols)}`",
+        f"compile_dirty_index_artifacts: `{len(context.dirty_index_artifacts)}`",
+        f"compile_clean_index_artifacts: `{len(context.clean_index_artifacts)}`",
+        f"compile_dirty_maintenance_artifacts: `{len(context.dirty_maintenance_artifacts)}`",
+        f"compile_clean_maintenance_artifacts: `{len(context.clean_maintenance_artifacts)}`",
+        f"source_pages_updated: `{context.source_changed_pages}`",
+        f"source_pages: `{len(context.entries)}`",
+        f"concept_pages: `{len(context.concepts)}`",
+        f"active_protocol: `{context.protocol_state['active_protocol']}`",
+        f"machine_memory_terms: `{len(context.memory['term_index'])}`",
+        f"graph_components: `{context.memory['health']['component_count']}`",
+        f"output_packs: `{context.output_packs['counts']['review_packs']}/{context.output_packs['counts']['decision_memos']}/{context.output_packs['counts']['sop_drafts']}`",
+        f"domain_pilots: `{len(context.domain_pilots['scorecards'])}`",
+        f"material_state_entries: `{len(context.material_state['entries'])}`",
+        f"material_routing_entries: `{len(context.material_routing.get('entries', []))}`",
+        f"archive_candidates: `{len(context.archive_candidates.get('entries', []))}`",
+        f"active_corpora: `{len(context.active_corpora_state.get('corpora', []))}`",
+        f"knowledge_lifecycle_entries: `{len(context.knowledge_lifecycle.get('entries', []))}`",
+        f"machine_memory_changed: `{context.transition['changed']}`",
+        f"changed_pages: `{context.changed_pages}`",
+        f"removed_concept_pages: `{context.removed_pages}`",
+    ]
+
+
+def _build_compile_result_payload(
+    context: _CompileContext,
+    phase_summary: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "compiled_at": context.compiled_at,
+        "sources": len(context.entries),
+        "concepts": len(context.concepts),
+        "machine_memory_terms": len(context.memory["term_index"]),
+        "machine_memory_changed": context.transition["changed"],
+        "changed_pages": context.changed_pages,
+        "dirty_sources": len(context.dirty_source_ids),
+        "clean_sources": len(context.clean_source_ids),
+        "dirty_source_ids": list(context.dirty_source_ids),
+        "clean_source_ids": list(context.clean_source_ids),
+        "dirty_concept_sources": len(context.dirty_concept_source_ids),
+        "clean_concept_sources": len(context.clean_concept_source_ids),
+        "dirty_concept_source_ids": list(context.dirty_concept_source_ids),
+        "clean_concept_source_ids": list(context.clean_concept_source_ids),
+        "dirty_concepts": len(context.dirty_concept_slugs),
+        "clean_concepts": len(context.clean_concept_slugs),
+        "dirty_concept_slugs": list(context.dirty_concept_slugs),
+        "clean_concept_slugs": list(context.clean_concept_slugs),
+        "dirty_machine_memory_sources": len(context.dirty_machine_memory_source_ids),
+        "clean_machine_memory_sources": len(context.clean_machine_memory_source_ids),
+        "dirty_machine_memory_source_ids": list(context.dirty_machine_memory_source_ids),
+        "clean_machine_memory_source_ids": list(context.clean_machine_memory_source_ids),
+        "dirty_machine_memory_concepts": len(context.dirty_machine_memory_concept_slugs),
+        "clean_machine_memory_concepts": len(context.clean_machine_memory_concept_slugs),
+        "dirty_machine_memory_concept_slugs": list(context.dirty_machine_memory_concept_slugs),
+        "clean_machine_memory_concept_slugs": list(context.clean_machine_memory_concept_slugs),
+        "machine_memory_core_reused": context.machine_memory_core_reused,
+        "dirty_ranking_sources": len(context.dirty_ranking_source_ids),
+        "clean_ranking_sources": len(context.clean_ranking_source_ids),
+        "dirty_ranking_source_ids": list(context.dirty_ranking_source_ids),
+        "clean_ranking_source_ids": list(context.clean_ranking_source_ids),
+        "dirty_ranking_concepts": len(context.dirty_ranking_concept_slugs),
+        "clean_ranking_concepts": len(context.clean_ranking_concept_slugs),
+        "dirty_ranking_concept_slugs": list(context.dirty_ranking_concept_slugs),
+        "clean_ranking_concept_slugs": list(context.clean_ranking_concept_slugs),
+        "dirty_output_pack_groups": list(context.dirty_output_pack_groups),
+        "clean_output_pack_groups": list(context.clean_output_pack_groups),
+        "dirty_domain_pilot_protocols": list(context.dirty_domain_pilot_protocols),
+        "clean_domain_pilot_protocols": list(context.clean_domain_pilot_protocols),
+        "dirty_index_artifacts": list(context.dirty_index_artifacts),
+        "clean_index_artifacts": list(context.clean_index_artifacts),
+        "dirty_maintenance_artifacts": list(context.dirty_maintenance_artifacts),
+        "clean_maintenance_artifacts": list(context.clean_maintenance_artifacts),
+        "phase_summary": phase_summary,
+        "output_packs": dict(context.output_packs["counts"]),
+        "domain_pilots": len(context.domain_pilots["scorecards"]),
+        "compile_state_path": relative_path(context.root, compile_state_path(context.root)),
+        "concept_build_state_path": relative_path(context.root, concept_build_state_path(context.root)),
+        "machine_memory_build_state_path": relative_path(context.root, machine_memory_build_state_path(context.root)),
+        "ranking_build_state_path": relative_path(context.root, ranking_build_state_path(context.root)),
+        "output_pack_build_state_path": relative_path(context.root, output_pack_build_state_path(context.root)),
+        "domain_pilot_build_state_path": relative_path(context.root, domain_pilot_build_state_path(context.root)),
+        "material_state_path": relative_path(context.root, material_state_path(context.root)),
+        "active_corpora_path": relative_path(context.root, active_corpora_state_path(context.root)),
+        "material_routing_path": relative_path(context.root, material_routing_state_path(context.root)),
+        "archive_candidates_path": relative_path(context.root, archive_candidates_state_path(context.root)),
+        "knowledge_lifecycle_path": relative_path(context.root, knowledge_lifecycle_state_path(context.root)),
+        "knowledge_lifecycle_overrides_path": relative_path(
+            context.root,
+            knowledge_lifecycle_override_state_path(context.root),
+        ),
+    }
+
+
+def _finalize_compile_phase(context: _CompileContext) -> dict[str, Any]:
+    phase_summary = _build_compile_phase_summary(context)
+    compile_state = _build_compile_state_document(context, phase_summary)
+    save_compile_state(context.root, compile_state)
     compile_status_changed = int(
         write_if_changed(
-            root / "wiki" / "indexes" / "compile-status.md",
+            context.root / "wiki" / "indexes" / "compile-status.md",
             render_compile_status(
-                entries,
-                concepts,
-                decision_pages,
-                judgment_pages,
-                protocol_state,
-                compiled_at,
+                context.entries,
+                context.concepts,
+                context.decision_pages,
+                context.judgment_pages,
+                context.protocol_state,
+                context.compiled_at,
                 compile_state=compile_state,
             ),
         )
     )
-    changed_pages += compile_status_changed
+    context.changed_pages += compile_status_changed
     append_wiki_log(
-        root,
+        context.root,
         "compile",
         "wiki refresh",
-        [
-            f"compiled_at: `{compiled_at}`",
-            f"compile_state: `{relative_path(root, compile_state_path(root))}`",
-            f"compile_dirty_sources: `{len(dirty_source_ids)}`",
-            f"compile_clean_sources: `{len(clean_source_ids)}`",
-            f"compile_dirty_concept_sources: `{len(dirty_concept_source_ids)}`",
-            f"compile_clean_concept_sources: `{len(clean_concept_source_ids)}`",
-            f"compile_dirty_concepts: `{len(dirty_concept_slugs)}`",
-            f"compile_clean_concepts: `{len(clean_concept_slugs)}`",
-            f"compile_dirty_machine_memory_sources: `{len(dirty_machine_memory_source_ids)}`",
-            f"compile_clean_machine_memory_sources: `{len(clean_machine_memory_source_ids)}`",
-            f"compile_dirty_machine_memory_concepts: `{len(dirty_machine_memory_concept_slugs)}`",
-            f"compile_clean_machine_memory_concepts: `{len(clean_machine_memory_concept_slugs)}`",
-            f"machine_memory_core_reused: `{machine_memory_core_reused}`",
-            f"compile_dirty_ranking_sources: `{len(dirty_ranking_source_ids)}`",
-            f"compile_clean_ranking_sources: `{len(clean_ranking_source_ids)}`",
-            f"compile_dirty_ranking_concepts: `{len(dirty_ranking_concept_slugs)}`",
-            f"compile_clean_ranking_concepts: `{len(clean_ranking_concept_slugs)}`",
-            f"compile_dirty_output_pack_groups: `{len(dirty_output_pack_groups)}`",
-            f"compile_clean_output_pack_groups: `{len(clean_output_pack_groups)}`",
-            f"compile_dirty_domain_pilot_protocols: `{len(dirty_domain_pilot_protocols)}`",
-            f"compile_clean_domain_pilot_protocols: `{len(clean_domain_pilot_protocols)}`",
-            f"compile_dirty_index_artifacts: `{len(dirty_index_artifacts)}`",
-            f"compile_clean_index_artifacts: `{len(clean_index_artifacts)}`",
-            f"compile_dirty_maintenance_artifacts: `{len(dirty_maintenance_artifacts)}`",
-            f"compile_clean_maintenance_artifacts: `{len(clean_maintenance_artifacts)}`",
-            f"source_pages_updated: `{source_changed_pages}`",
-            f"source_pages: `{len(entries)}`",
-            f"concept_pages: `{len(concepts)}`",
-            f"active_protocol: `{protocol_state['active_protocol']}`",
-            f"machine_memory_terms: `{len(memory['term_index'])}`",
-            f"graph_components: `{memory['health']['component_count']}`",
-            f"output_packs: `{output_packs['counts']['review_packs']}/{output_packs['counts']['decision_memos']}/{output_packs['counts']['sop_drafts']}`",
-            f"domain_pilots: `{len(domain_pilots['scorecards'])}`",
-            f"material_state_entries: `{len(material_state['entries'])}`",
-            f"material_routing_entries: `{len(material_routing.get('entries', []))}`",
-            f"archive_candidates: `{len(archive_candidates.get('entries', []))}`",
-            f"active_corpora: `{len(active_corpora_state.get('corpora', []))}`",
-            f"knowledge_lifecycle_entries: `{len(knowledge_lifecycle.get('entries', []))}`",
-            f"machine_memory_changed: `{transition['changed']}`",
-            f"changed_pages: `{changed_pages}`",
-            f"removed_concept_pages: `{removed_pages}`",
-        ],
+        _compile_log_details(context),
     )
-
-    return {
-        "compiled_at": compiled_at,
-        "sources": len(entries),
-        "concepts": len(concepts),
-        "machine_memory_terms": len(memory["term_index"]),
-        "machine_memory_changed": transition["changed"],
-        "changed_pages": changed_pages,
-        "dirty_sources": len(dirty_source_ids),
-        "clean_sources": len(clean_source_ids),
-        "dirty_source_ids": list(dirty_source_ids),
-        "clean_source_ids": list(clean_source_ids),
-        "dirty_concept_sources": len(dirty_concept_source_ids),
-        "clean_concept_sources": len(clean_concept_source_ids),
-        "dirty_concept_source_ids": list(dirty_concept_source_ids),
-        "clean_concept_source_ids": list(clean_concept_source_ids),
-        "dirty_concepts": len(dirty_concept_slugs),
-        "clean_concepts": len(clean_concept_slugs),
-        "dirty_concept_slugs": list(dirty_concept_slugs),
-        "clean_concept_slugs": list(clean_concept_slugs),
-        "dirty_machine_memory_sources": len(dirty_machine_memory_source_ids),
-        "clean_machine_memory_sources": len(clean_machine_memory_source_ids),
-        "dirty_machine_memory_source_ids": list(dirty_machine_memory_source_ids),
-        "clean_machine_memory_source_ids": list(clean_machine_memory_source_ids),
-        "dirty_machine_memory_concepts": len(dirty_machine_memory_concept_slugs),
-        "clean_machine_memory_concepts": len(clean_machine_memory_concept_slugs),
-        "dirty_machine_memory_concept_slugs": list(dirty_machine_memory_concept_slugs),
-        "clean_machine_memory_concept_slugs": list(clean_machine_memory_concept_slugs),
-        "machine_memory_core_reused": machine_memory_core_reused,
-        "dirty_ranking_sources": len(dirty_ranking_source_ids),
-        "clean_ranking_sources": len(clean_ranking_source_ids),
-        "dirty_ranking_source_ids": list(dirty_ranking_source_ids),
-        "clean_ranking_source_ids": list(clean_ranking_source_ids),
-        "dirty_ranking_concepts": len(dirty_ranking_concept_slugs),
-        "clean_ranking_concepts": len(clean_ranking_concept_slugs),
-        "dirty_ranking_concept_slugs": list(dirty_ranking_concept_slugs),
-        "clean_ranking_concept_slugs": list(clean_ranking_concept_slugs),
-        "dirty_output_pack_groups": list(dirty_output_pack_groups),
-        "clean_output_pack_groups": list(clean_output_pack_groups),
-        "dirty_domain_pilot_protocols": list(dirty_domain_pilot_protocols),
-        "clean_domain_pilot_protocols": list(clean_domain_pilot_protocols),
-        "dirty_index_artifacts": list(dirty_index_artifacts),
-        "clean_index_artifacts": list(clean_index_artifacts),
-        "dirty_maintenance_artifacts": list(dirty_maintenance_artifacts),
-        "clean_maintenance_artifacts": list(clean_maintenance_artifacts),
-        "phase_summary": phase_summary,
-        "output_packs": dict(output_packs["counts"]),
-        "domain_pilots": len(domain_pilots["scorecards"]),
-        "compile_state_path": relative_path(root, compile_state_path(root)),
-        "concept_build_state_path": relative_path(root, concept_build_state_path(root)),
-        "machine_memory_build_state_path": relative_path(root, machine_memory_build_state_path(root)),
-        "ranking_build_state_path": relative_path(root, ranking_build_state_path(root)),
-        "output_pack_build_state_path": relative_path(root, output_pack_build_state_path(root)),
-        "domain_pilot_build_state_path": relative_path(root, domain_pilot_build_state_path(root)),
-        "material_state_path": relative_path(root, material_state_path(root)),
-        "active_corpora_path": relative_path(root, active_corpora_state_path(root)),
-        "material_routing_path": relative_path(root, material_routing_state_path(root)),
-        "archive_candidates_path": relative_path(root, archive_candidates_state_path(root)),
-        "knowledge_lifecycle_path": relative_path(root, knowledge_lifecycle_state_path(root)),
-        "knowledge_lifecycle_overrides_path": relative_path(root, knowledge_lifecycle_override_state_path(root)),
-    }
+    return _build_compile_result_payload(context, phase_summary)
 
 
 def ranking_source_record_is_reusable(record: dict[str, Any]) -> bool:
@@ -1517,7 +1913,11 @@ def ranking_source_summary_or_preview(root: Path, entry: dict[str, Any]) -> str:
     return source_summary_or_preview(root, entry, preview)
 
 
-def ranking_source_input_signature(entry: dict[str, Any], summary_or_preview: str) -> str:
+def ranking_source_input_signature(
+    entry: dict[str, Any],
+    summary_or_preview: str,
+    manual_slugs: list[str] | None = None,
+) -> str:
     payload = {
         "entry_id": str(entry.get("id") or ""),
         "title": str(entry.get("title") or ""),
@@ -1526,8 +1926,23 @@ def ranking_source_input_signature(entry: dict[str, Any], summary_or_preview: st
         "stored_path": str(entry.get("stored_path") or ""),
         "sha256": str(entry.get("sha256") or ""),
         "summary_or_preview": summary_or_preview,
+        "manual_slugs": sorted(str(slug) for slug in (manual_slugs or []) if str(slug)),
     }
     return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
+def ranking_source_concept_terms(
+    entry: dict[str, Any],
+    summary_or_preview: str,
+    *,
+    manual_slugs: list[str] | None = None,
+) -> list[str]:
+    terms = entry_concept_terms(entry, summary_or_preview, max_terms=4)
+    for manual_slug in sorted(str(slug) for slug in (manual_slugs or []) if str(slug)):
+        manual_label = manual_slug.replace("-", " ")
+        if manual_label not in terms:
+            terms.append(manual_label)
+    return terms
 
 
 def build_ranking_source_record(
@@ -1535,11 +1950,16 @@ def build_ranking_source_record(
     summary_or_preview: str,
     *,
     input_signature: str = "",
+    manual_slugs: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
-        "input_signature": input_signature or ranking_source_input_signature(entry, summary_or_preview),
+        "input_signature": input_signature or ranking_source_input_signature(entry, summary_or_preview, manual_slugs),
         "summary_or_preview": summary_or_preview,
-        "concept_terms": entry_concept_terms(entry, summary_or_preview, max_terms=4),
+        "concept_terms": ranking_source_concept_terms(
+            entry,
+            summary_or_preview,
+            manual_slugs=manual_slugs,
+        ),
     }
 
 
@@ -1594,12 +2014,14 @@ def build_ranking_state(
     source_records: dict[str, dict[str, Any]] = {}
     dirty_source_ids: list[str] = []
     clean_source_ids: list[str] = []
+    manual_links = active_manual_source_concept_links(root)
     for entry in entries:
         entry_id = str(entry.get("id") or "")
         if not entry_id:
             continue
         summary_or_preview = ranking_source_summary_or_preview(root, entry)
-        input_signature = ranking_source_input_signature(entry, summary_or_preview)
+        manual_slugs = sorted(manual_links.get(entry_id, set()))
+        input_signature = ranking_source_input_signature(entry, summary_or_preview, manual_slugs)
         previous_record = previous_source_records.get(entry_id, {})
         if (
             ranking_source_record_is_reusable(previous_record)
@@ -1616,6 +2038,7 @@ def build_ranking_state(
                 entry,
                 summary_or_preview,
                 input_signature=input_signature,
+                manual_slugs=manual_slugs,
             )
             dirty_source_ids.append(entry_id)
 
@@ -1813,6 +2236,7 @@ def rank_sources(
         if isinstance(item, dict) and item.get("entry_id")
     }
     archived_source_ids = active_archived_material_ids(root)
+    manual_source_links = active_manual_source_concept_links(root)
     for entry in entries:
         entry_id = str(entry.get("id") or "")
         material_entry = material_by_id.get(entry_id, {})
@@ -1824,7 +2248,11 @@ def rank_sources(
             concept_terms = [str(term) for term in ranking_record.get("concept_terms", []) if str(term)]
         else:
             summary_or_preview = ranking_source_summary_or_preview(root, entry)
-            ranking_record = build_ranking_source_record(entry, summary_or_preview)
+            ranking_record = build_ranking_source_record(
+                entry,
+                summary_or_preview,
+                manual_slugs=sorted(manual_source_links.get(entry_id, set())),
+            )
             concept_terms = [str(term) for term in ranking_record.get("concept_terms", []) if str(term)]
         haystack = " ".join([entry["title"], summary_or_preview]).lower()
         score = 0
@@ -1882,6 +2310,10 @@ def rank_sources(
 def machine_memory_query_plan_lines(machine_query: dict[str, Any]) -> list[str]:
     lines = [
         f"- 命中词：`{', '.join(machine_query.get('matched_terms', [])) or 'none'}`",
+        f"- 路由策略：`{str(machine_query.get('selected_strategy') or 'concept-first')}`",
+        f"- 路由原因：`{str(machine_query.get('selection_reason') or 'default-strategy')}`",
+        f"- 来源意图词：`{', '.join(machine_query.get('matched_source_markers', [])) or 'none'}`",
+        f"- 图谱意图词：`{', '.join(machine_query.get('matched_graph_markers', [])) or 'none'}`",
         f"- 提升权重的来源：`{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`",
         f"- 提升权重的概念：`{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`",
         f"- 协议 shard 来源：`{', '.join(machine_query.get('protocol_shard_source_ids', [])) or 'none'}`",
@@ -1906,10 +2338,20 @@ def machine_memory_query_plan_lines(machine_query: dict[str, Any]) -> list[str]:
         lines.append(f"- 归档召回提示：`{', '.join(hint_labels)}`")
     else:
         lines.append("- 归档召回提示：`none`")
+    planner_next_action = machine_query.get("planner_next_action", {}) or {}
+    if planner_next_action:
+        lines.append(
+            f"- Planner next action：`{planner_next_action.get('action_id', '')}`"
+            f" / `{planner_next_action.get('title', '')}`"
+            f" / score `{planner_next_action.get('priority_score', 0)}`"
+        )
+    else:
+        lines.append("- Planner next action：`none`")
     return lines
 
 
 def render_report(
+    root: Path,
     question: str,
     entries: list[dict[str, Any]],
     concepts: list[dict[str, Any]],
@@ -1919,7 +2361,7 @@ def render_report(
     artifact_id: str,
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
-    output_guidance = protocol_output_guidance(active_protocol, "report")
+    output_guidance = protocol_output_guidance(root, active_protocol, "report")
     frontmatter = render_frontmatter(
         {
             "id": artifact_id,
@@ -2026,6 +2468,7 @@ def render_report(
 
 
 def render_slides(
+    root: Path,
     question: str,
     entries: list[dict[str, Any]],
     concepts: list[dict[str, Any]],
@@ -2035,7 +2478,7 @@ def render_slides(
     artifact_id: str,
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
-    output_guidance = protocol_output_guidance(active_protocol, "slides")
+    output_guidance = protocol_output_guidance(root, active_protocol, "slides")
     lines = [
         "---",
         "marp: true",
@@ -2130,6 +2573,7 @@ def render_slides(
 
 
 def render_figure_brief(
+    root: Path,
     question: str,
     entries: list[dict[str, Any]],
     concepts: list[dict[str, Any]],
@@ -2139,7 +2583,7 @@ def render_figure_brief(
     artifact_id: str,
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
-    output_guidance = protocol_output_guidance(active_protocol, "figure")
+    output_guidance = protocol_output_guidance(root, active_protocol, "figure")
     frontmatter = render_frontmatter(
         {
             "id": artifact_id,
@@ -2233,6 +2677,272 @@ def render_figure_brief(
     return "\n".join(lines) + "\n"
 
 
+def _output_seed_terms(text: str) -> set[str]:
+    return {term.lower() for term in tokenize(text) if len(term) >= 3}
+
+
+def _output_seed_paths(frontmatter: dict[str, Any]) -> list[str]:
+    paths: list[str] = []
+    for key in ("source_files", "citations"):
+        raw_value = frontmatter.get(key, [])
+        if isinstance(raw_value, str):
+            raw_items = [raw_value]
+        elif isinstance(raw_value, list):
+            raw_items = raw_value
+        else:
+            raw_items = []
+        for item in raw_items:
+            if isinstance(item, str) and item.strip():
+                paths.append(item.strip())
+    return paths
+
+
+def _seed_pack_body(content: str) -> str:
+    body = strip_frontmatter(content).strip()
+    if not body.startswith("# "):
+        return body
+    lines = body.splitlines()
+    drop_count = 1
+    if len(lines) > 1 and not lines[1].strip():
+        drop_count = 2
+    return "\n".join(lines[drop_count:]).strip()
+
+
+def _select_output_seed_pack(
+    root: Path,
+    *,
+    output_format: str,
+    question: str,
+    entries: list[dict[str, Any]],
+    concepts: list[dict[str, Any]],
+    active_protocol: str,
+) -> tuple[str, dict[str, Any], str]:
+    directory = decision_memos_dir(root) if output_format == "decision-memo" else sop_drafts_dir(root)
+    if not directory.exists():
+        return "", {}, ""
+    question_terms = _output_seed_terms(question)
+    ranked_source_paths = {f"wiki/sources/{entry['id']}.md" for entry in entries}
+    ranked_concept_slugs = {str(concept.get("slug") or "").strip() for concept in concepts if concept.get("slug")}
+    best_score = -1
+    best_ref = ""
+    best_frontmatter: dict[str, Any] = {}
+    best_content = ""
+    for path in sorted(directory.glob("*.md")):
+        content = path.read_text(encoding="utf-8", errors="replace")
+        frontmatter = parse_frontmatter(content)
+        if frontmatter.get("kind") != "output-pack":
+            continue
+        body = _seed_pack_body(content)
+        title = str(frontmatter.get("title") or path.stem)
+        seed_terms = _output_seed_terms(f"{title}\n{body}")
+        source_overlap = len(ranked_source_paths.intersection(_output_seed_paths(frontmatter)))
+        concept_overlap = sum(
+            1 for slug in ranked_concept_slugs if slug and (slug in body.lower() or slug in title.lower())
+        )
+        question_overlap = len(question_terms.intersection(seed_terms))
+        protocol_bonus = 3 if str(frontmatter.get("protocol") or active_protocol) == active_protocol else 0
+        score = source_overlap * 12 + concept_overlap * 4 + question_overlap * 2 + protocol_bonus
+        if output_format == "decision-memo" and str(frontmatter.get("judgment_asset_path") or "").strip():
+            score += 2
+        relative = relative_path(root, path)
+        if score > best_score or (score == best_score and relative < best_ref):
+            best_score = score
+            best_ref = relative
+            best_frontmatter = frontmatter
+            best_content = content
+    return best_ref, best_frontmatter, best_content
+
+
+def render_decision_memo_query(
+    root: Path,
+    question: str,
+    entries: list[dict[str, Any]],
+    concepts: list[dict[str, Any]],
+    machine_query: dict[str, Any],
+    protocol_state: dict[str, Any],
+    created_at: str,
+    artifact_id: str,
+) -> str:
+    active_protocol = protocol_state["active_protocol"]
+    output_guidance = protocol_output_guidance(root, active_protocol, "decision-memo")
+    seed_ref, seed_frontmatter, seed_content = _select_output_seed_pack(
+        root,
+        output_format="decision-memo",
+        question=question,
+        entries=entries,
+        concepts=concepts,
+        active_protocol=active_protocol,
+    )
+    source_files = list(dict.fromkeys(_output_seed_paths(seed_frontmatter) + ([seed_ref] if seed_ref else [])))
+    frontmatter = render_frontmatter(
+        {
+            "id": artifact_id,
+            "kind": "output",
+            "format": "decision-memo",
+            "query": question,
+            "protocol": active_protocol,
+            "generated_by": "aiwiki-ask",
+            "created_at": created_at,
+            "source_pack": seed_ref,
+            "source_files": source_files,
+            "judgment_asset_path": str(seed_frontmatter.get("judgment_asset_path") or ""),
+        }
+    )
+    lines = [
+        frontmatter,
+        "",
+        f"# Decision Memo Request · {question}",
+        "",
+        "## Usage",
+        "- 把 seed memo 改写成这次问题要用的 decision memo。",
+        "- 保留 `wiki/sources/*.md` 级别的引用，不要删掉反证、失效条件和下一次信号。",
+        f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
+        "",
+        "## 协议输出偏置",
+    ]
+    if output_guidance:
+        lines.extend(f"- {line}" for line in output_guidance)
+    else:
+        lines.append("- 当前协议没有额外的 decision memo 偏置。")
+    lines.extend(["", "## 机器记忆查询计划", *machine_memory_query_plan_lines(machine_query), "", "## 推荐概念"])
+    if not concepts:
+        lines.append("- 暂无排好序的概念页。")
+    else:
+        lines.extend(f"- [{concept['title']}](../../{concept['path']})" for concept in concepts[:8])
+    lines.extend(["", "## 推荐来源"])
+    if not entries:
+        lines.append("- 暂无排好序的来源。")
+    else:
+        lines.extend(f"- [{entry['title']}](../../wiki/sources/{entry['id']}.md)" for entry in entries[:10])
+    lines.extend(["", "## Seed Pack"])
+    if not seed_ref:
+        lines.append("- 当前没有可复用的 compiled decision memo；请基于推荐来源直接起草。")
+    else:
+        lines.append(f"- Source pack: `../../{seed_ref}`")
+        if seed_frontmatter.get("judgment_asset_path"):
+            lines.append(f"- Judgment asset: `../../{seed_frontmatter['judgment_asset_path']}`")
+        if seed_frontmatter.get("target_path"):
+            lines.append(f"- Target page: `../../{seed_frontmatter['target_path']}`")
+    lines.extend(["", "## Seed Memo"])
+    seed_body = _seed_pack_body(seed_content)
+    if not seed_body:
+        lines.extend(
+            [
+                "## Executive Summary",
+                "- Pending synthesis.",
+                "",
+                "## Evidence",
+                "- Cite the strongest supporting signals with `wiki/sources/*.md` links.",
+                "",
+                "## Counter Evidence",
+                "- Record the strongest counter case explicitly.",
+                "",
+                "## Invalidation",
+                "- State what would break the memo.",
+                "",
+                "## Next Signals",
+                "- Note what should be checked next.",
+            ]
+        )
+    else:
+        lines.append(seed_body)
+    return "\n".join(lines) + "\n"
+
+
+def render_sop_query(
+    root: Path,
+    question: str,
+    entries: list[dict[str, Any]],
+    concepts: list[dict[str, Any]],
+    machine_query: dict[str, Any],
+    protocol_state: dict[str, Any],
+    created_at: str,
+    artifact_id: str,
+) -> str:
+    active_protocol = protocol_state["active_protocol"]
+    output_guidance = protocol_output_guidance(root, active_protocol, "sop")
+    seed_ref, seed_frontmatter, seed_content = _select_output_seed_pack(
+        root,
+        output_format="sop",
+        question=question,
+        entries=entries,
+        concepts=concepts,
+        active_protocol=active_protocol,
+    )
+    source_files = list(dict.fromkeys(_output_seed_paths(seed_frontmatter) + ([seed_ref] if seed_ref else [])))
+    frontmatter = render_frontmatter(
+        {
+            "id": artifact_id,
+            "kind": "output",
+            "format": "sop",
+            "query": question,
+            "protocol": active_protocol,
+            "generated_by": "aiwiki-ask",
+            "created_at": created_at,
+            "source_pack": seed_ref,
+            "source_files": source_files,
+            "action_id": str(seed_frontmatter.get("action_id") or ""),
+        }
+    )
+    lines = [
+        frontmatter,
+        "",
+        f"# SOP Request · {question}",
+        "",
+        "## Usage",
+        "- 把 seed SOP 改写成这次问题要用的执行草案。",
+        "- 保留前置检查、步骤、风险控制、dry-run / rollback 约束。",
+        f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
+        "",
+        "## 协议输出偏置",
+    ]
+    if output_guidance:
+        lines.extend(f"- {line}" for line in output_guidance)
+    else:
+        lines.append("- 当前协议没有额外的 SOP 偏置。")
+    lines.extend(["", "## 机器记忆查询计划", *machine_memory_query_plan_lines(machine_query), "", "## 推荐来源"])
+    if not entries:
+        lines.append("- 暂无排好序的来源。")
+    else:
+        lines.extend(f"- [{entry['title']}](../../wiki/sources/{entry['id']}.md)" for entry in entries[:10])
+    lines.extend(["", "## 相关概念"])
+    if not concepts:
+        lines.append("- 暂无排好序的概念页。")
+    else:
+        lines.extend(f"- [{concept['title']}](../../{concept['path']})" for concept in concepts[:8])
+    lines.extend(["", "## Seed Pack"])
+    if not seed_ref:
+        lines.append("- 当前没有可复用的 compiled SOP draft；请基于推荐来源直接起草。")
+    else:
+        lines.append(f"- Source pack: `../../{seed_ref}`")
+        if seed_frontmatter.get("action_id"):
+            lines.append(f"- Action id: `{seed_frontmatter['action_id']}`")
+        if seed_frontmatter.get("pattern_key"):
+            lines.append(f"- Pattern key: `{seed_frontmatter['pattern_key']}`")
+        if seed_frontmatter.get("pattern_frequency"):
+            lines.append(f"- Pattern frequency: `{seed_frontmatter['pattern_frequency']}`")
+    lines.extend(["", "## Seed SOP"])
+    seed_body = _seed_pack_body(seed_content)
+    if not seed_body:
+        lines.extend(
+            [
+                "## Preflight",
+                "- Confirm inputs, guardrails, and dry-run mode.",
+                "",
+                "## Step-by-Step",
+                "1. Capture the exact change scope.",
+                "2. Run the dry-run path first.",
+                "3. Record rollback and audit evidence.",
+                "",
+                "## Risk Controls",
+                "- State the key stop conditions and rollback path.",
+            ]
+        )
+    else:
+        lines.append(seed_body)
+    return "\n".join(lines) + "\n"
+
+
 @runtime_write_operation
 def ask_question(root: Path, question: str, output_format: str, protocol: str | None = None) -> dict[str, Any]:
     ensure_layout(root)
@@ -2257,6 +2967,7 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
     machine_query = build_machine_memory_query(
         memory,
         question,
+        root=root,
         protocol=active_protocol,
         material_state=material_state,
         routing_state=routing_state,
@@ -2282,20 +2993,49 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
         directory = root / "output" / "reports"
         artifact_id = next_available_stem(directory, artifact_seed)
         destination = directory / f"{artifact_id}.md"
-        content = render_report(question, ranked, ranked_concepts, machine_query, protocol_state, created_at, artifact_id)
+        content = render_report(root, question, ranked, ranked_concepts, machine_query, protocol_state, created_at, artifact_id)
+    elif output_format == "decision-memo":
+        directory = root / "output" / "reports"
+        artifact_id = next_available_stem(directory, f"{artifact_seed}-decision-memo")
+        destination = directory / f"{artifact_id}.md"
+        content = render_decision_memo_query(
+            root,
+            question,
+            ranked,
+            ranked_concepts,
+            machine_query,
+            protocol_state,
+            created_at,
+            artifact_id,
+        )
+    elif output_format == "sop":
+        directory = root / "output" / "reports"
+        artifact_id = next_available_stem(directory, f"{artifact_seed}-sop")
+        destination = directory / f"{artifact_id}.md"
+        content = render_sop_query(
+            root,
+            question,
+            ranked,
+            ranked_concepts,
+            machine_query,
+            protocol_state,
+            created_at,
+            artifact_id,
+        )
     elif output_format == "slides":
         directory = root / "output" / "slides"
         artifact_id = next_available_stem(directory, artifact_seed)
         destination = directory / f"{artifact_id}.md"
-        content = render_slides(question, ranked, ranked_concepts, machine_query, protocol_state, created_at, artifact_id)
+        content = render_slides(root, question, ranked, ranked_concepts, machine_query, protocol_state, created_at, artifact_id)
     elif output_format == "figure":
         directory = root / "output" / "figures"
         artifact_id = next_available_stem(directory, artifact_seed)
         destination = directory / f"{artifact_id}.md"
-        content = render_figure_brief(question, ranked, ranked_concepts, machine_query, protocol_state, created_at, artifact_id)
+        content = render_figure_brief(root, question, ranked, ranked_concepts, machine_query, protocol_state, created_at, artifact_id)
     else:
         raise ValueError(f"Unsupported format: {output_format}")
 
+    destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(content, encoding="utf-8")
     artifact_ref = relative_path(root, destination)
     bridge_evidence_ids = active_corpus_bridge_evidence_ids(
@@ -2339,6 +3079,16 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
             ],
         },
     )
+    route_telemetry = record_query_route_telemetry(
+        root,
+        question=question,
+        machine_query=machine_query,
+        protocol=active_protocol,
+        occurred_at=created_at,
+    )
+    machine_query["route_telemetry"] = dict(
+        route_telemetry.get("last_entry") or machine_query.get("route_telemetry") or {}
+    )
     refresh_material_state(root, generated_at=created_at, active_protocol=active_protocol)
     refresh_knowledge_lifecycle_state(
         root,
@@ -2347,6 +3097,7 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
         active_corpora_state=load_active_corpora_state(root),
         memory=memory,
     )
+    write_shell_summary(root, build_shell_summary(root, generated_at=created_at))
     append_wiki_log(
         root,
         "query",
@@ -2366,6 +3117,7 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
             f"archive_recall_hints: `{len(machine_query.get('archive_recall_hints', []))}`",
             f"bridge_concepts: `{len(machine_query['bridge_concept_slugs'])}`",
             f"query_routes: `{len(machine_query['query_routes'])}`",
+            f"route_strategy: `{machine_query.get('selected_strategy', 'concept-first')}`",
         ],
     )
     return {
@@ -2454,6 +3206,7 @@ def file_back(
             default_curated_status(kind),
             filed_at,
             protocol=resolved_protocol,
+            root=root,
         )
     frontmatter = render_frontmatter(
         {
@@ -2468,6 +3221,11 @@ def file_back(
             "generated_by": "aiwiki-file-back",
             "last_compiled_at": filed_at,
             "confidence": "medium",
+            "counter_evidence": [],
+            "invalidation_rule": "",
+            "next_signals": [],
+            "formed_at": filed_at,
+            "last_reviewed": "",
             "reviewed_at": "",
             "revisit_after": revisit_after,
             "escalate_after": escalate_after,
@@ -2505,6 +3263,152 @@ def _save_machine_memory_action_records(root: Path, actions: list[dict[str, Any]
     save_machine_memory_action_state(root, {"version": 1, "actions": actions})
 
 
+def _load_concept_rewrite_proposals(root: Path) -> list[dict[str, Any]]:
+    state = load_concept_rewrite_state(root)
+    return [dict(proposal) for proposal in state.get("proposals", []) if isinstance(proposal, dict)]
+
+
+def _find_concept_rewrite_proposal(proposals: list[dict[str, Any]], slug: str) -> dict[str, Any]:
+    for proposal in proposals:
+        if str(proposal.get("slug") or "") == slug:
+            return proposal
+    raise FileNotFoundError(f"Concept rewrite proposal not found: {slug}")
+
+
+def _save_concept_rewrite_proposals(root: Path, proposals: list[dict[str, Any]]) -> None:
+    save_concept_rewrite_state(root, {"version": 1, "proposals": proposals})
+
+
+def _evaluate_concept_rewrite_verification(root: Path, proposal: dict[str, Any]) -> dict[str, Any]:
+    slug = str(proposal.get("slug") or "")
+    target_path = str(proposal.get("target_path") or f"wiki/concepts/{slug}.md")
+    expected_source_signature = str(proposal.get("source_signature") or "")
+    expected_source_pages = sorted(
+        str(item)
+        for item in proposal.get("source_pages", [])
+        if isinstance(item, str) and item
+    )
+    candidate_summary = preserved_section(str(proposal.get("candidate_markdown") or ""), "Summary", "").strip()
+    snapshot = concept_page_snapshot(root, slug)
+    issues: list[str] = []
+    if not snapshot.get("content"):
+        issues.append("missing-concept-page")
+    else:
+        content = str(snapshot.get("content") or "")
+        frontmatter = parse_frontmatter(content)
+        if str(frontmatter.get("id") or "") != f"concept-{slug}":
+            issues.append("concept-id-drift")
+        if str(frontmatter.get("kind") or "") != "concept":
+            issues.append("concept-kind-drift")
+        if expected_source_signature and str(frontmatter.get("source_signature") or "") != expected_source_signature:
+            issues.append("source-signature-drift")
+        current_source_pages = sorted(
+            str(item)
+            for item in frontmatter.get("source_pages", [])
+            if isinstance(item, str) and item
+        )
+        if current_source_pages != expected_source_pages:
+            issues.append("source-pages-drift")
+        current_summary = str(snapshot.get("summary") or "").strip()
+        if candidate_summary and current_summary != candidate_summary:
+            issues.append("summary-not-applied")
+
+    memory = load_machine_memory(root)
+    concept_node = next(
+        (
+            node
+            for node in memory.get("concept_nodes", [])
+            if isinstance(node, dict) and str(node.get("slug") or "") == slug
+        ),
+        None,
+    )
+    if concept_node is None:
+        issues.append("missing-machine-memory-node")
+    else:
+        node_source_pages = sorted(
+            str(item)
+            for item in concept_node.get("source_pages", [])
+            if isinstance(item, str) and item
+        )
+        if node_source_pages != expected_source_pages:
+            issues.append("machine-memory-source-drift")
+    quality_state = memory.get("health", {}).get("concept_quality", {})
+    quality_record = next(
+        (
+            record
+            for record in quality_state.get("all_concepts", [])
+            if isinstance(record, dict) and str(record.get("slug") or "") == slug
+        ),
+        None,
+    )
+    if quality_record is None:
+        issues.append("missing-quality-record")
+    verification_status = "passed" if not issues else "failed"
+    verification_summary = (
+        "Concept page summary, source signature, machine memory node, and quality record all match the applied rewrite."
+        if verification_status == "passed"
+        else "Verification detected drift between the applied rewrite and current concept/runtime state."
+    )
+    return {
+        "slug": slug,
+        "target_path": target_path,
+        "status": verification_status,
+        "checked_at": utc_now(),
+        "summary": verification_summary,
+        "issues": issues,
+        "quality_score": int(quality_record.get("quality_score", 0)) if isinstance(quality_record, dict) else 0,
+        "quality_state": str(quality_record.get("quality_state") or "") if isinstance(quality_record, dict) else "",
+    }
+
+
+def _persist_concept_rewrite_verification(
+    root: Path,
+    slug: str,
+    *,
+    note: str | None = None,
+    compile_after: bool,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    proposals = _load_concept_rewrite_proposals(root)
+    target = _find_concept_rewrite_proposal(proposals, slug)
+    if str(target.get("status") or "") != "applied":
+        raise RuntimeError("Concept rewrite proposal must be applied before verify.")
+    verification = _evaluate_concept_rewrite_verification(root, target)
+    target["verification_status"] = verification["status"]
+    target["verification_checked_at"] = verification["checked_at"]
+    target["verification_summary"] = verification["summary"]
+    target["verification_issues"] = list(verification["issues"])
+    _save_concept_rewrite_proposals(root, proposals)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "rewrite-verify",
+            "occurred_at": str(verification["checked_at"] or ""),
+            "slug": slug,
+            "target_path": str(target.get("target_path") or f"wiki/concepts/{slug}.md"),
+            "status": str(verification["status"] or ""),
+            "issues": list(verification["issues"]),
+            "quality_score": int(verification.get("quality_score", 0) or 0),
+            "quality_state": str(verification.get("quality_state") or ""),
+            "note": note or "",
+        },
+    )
+    append_wiki_log(
+        root,
+        "rewrite-verify",
+        str(target.get("title") or slug),
+        [
+            f"slug: `{slug}`",
+            f"target: `{target.get('target_path', '')}`",
+            f"status: `{verification['status']}`",
+            f"issues: `{', '.join(verification['issues']) or 'none'}`",
+        ],
+    )
+    if compile_after:
+        compile_wiki(root)
+    return verification
+
+
 @runtime_write_operation
 def review_concept_rewrite(
     root: Path,
@@ -2516,15 +3420,8 @@ def review_concept_rewrite(
     ensure_layout(root)
     if status not in REWRITE_PROPOSAL_STATUSES:
         raise ValueError(f"Unsupported concept rewrite status: {status}")
-    state = load_concept_rewrite_state(root)
-    proposals = [dict(proposal) for proposal in state.get("proposals", []) if isinstance(proposal, dict)]
-    target: dict[str, Any] | None = None
-    for proposal in proposals:
-        if str(proposal.get("slug") or "") == slug:
-            target = proposal
-            break
-    if target is None:
-        raise FileNotFoundError(f"Concept rewrite proposal not found: {slug}")
+    proposals = _load_concept_rewrite_proposals(root)
+    target = _find_concept_rewrite_proposal(proposals, slug)
     if status == "accepted" and not rewrite_proposal_candidate_is_current(root, target):
         raise RuntimeError("Concept rewrite proposal candidate is stale or invalid. Run run-compile again before accepting.")
     reviewed_at = utc_now()
@@ -2535,7 +3432,19 @@ def review_concept_rewrite(
     target["apply_ready"] = rewrite_proposal_is_apply_ready(root, target)
     if status != "applied":
         target["applied_at"] = str(target.get("applied_at") or "")
-    save_concept_rewrite_state(root, {"version": 1, "proposals": proposals})
+    _save_concept_rewrite_proposals(root, proposals)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "rewrite-review",
+            "occurred_at": reviewed_at,
+            "slug": slug,
+            "target_path": str(target.get("target_path") or f"wiki/concepts/{slug}.md"),
+            "status": status,
+            "priority": str(target.get("priority") or ""),
+            "note": note or "",
+        },
+    )
     append_wiki_log(
         root,
         "rewrite-review",
@@ -2558,15 +3467,8 @@ def review_concept_rewrite(
 @runtime_write_operation
 def apply_concept_rewrite(root: Path, slug: str, *, note: str | None = None) -> dict[str, Any]:
     ensure_layout(root)
-    state = load_concept_rewrite_state(root)
-    proposals = [dict(proposal) for proposal in state.get("proposals", []) if isinstance(proposal, dict)]
-    target: dict[str, Any] | None = None
-    for proposal in proposals:
-        if str(proposal.get("slug") or "") == slug:
-            target = proposal
-            break
-    if target is None:
-        raise FileNotFoundError(f"Concept rewrite proposal not found: {slug}")
+    proposals = _load_concept_rewrite_proposals(root)
+    target = _find_concept_rewrite_proposal(proposals, slug)
     if str(target.get("status") or "") != "accepted":
         raise RuntimeError("Concept rewrite proposal must be accepted before apply.")
     candidate_markdown = str(target.get("candidate_markdown") or "")
@@ -2590,15 +3492,25 @@ def apply_concept_rewrite(root: Path, slug: str, *, note: str | None = None) -> 
         expected_source_signature,
         normalized_source_pages,
     )
+    previous_snapshot = concept_page_snapshot(root, slug)
     concept_path.write_text(candidate_markdown.strip() + "\n", encoding="utf-8")
     applied_at = utc_now()
     target["status"] = "applied"
     target["applied_at"] = applied_at
+    target["last_applied_at"] = applied_at
+    target["reverted_at"] = ""
+    target["revert_note"] = ""
     target["reviewed_at"] = applied_at
     target["review_note"] = note or "Applied accepted rewrite proposal."
     target["pending_review"] = "false"
     target["apply_ready"] = False
-    save_concept_rewrite_state(root, {"version": 1, "proposals": proposals})
+    target["previous_markdown"] = str(previous_snapshot.get("content") or "")
+    target["previous_digest"] = concept_rewrite_proposal_digest(str(previous_snapshot.get("content") or ""))
+    target["verification_status"] = "pending"
+    target["verification_checked_at"] = ""
+    target["verification_summary"] = ""
+    target["verification_issues"] = []
+    _save_concept_rewrite_proposals(root, proposals)
     append_wiki_log(
         root,
         "rewrite-apply",
@@ -2610,10 +3522,112 @@ def apply_concept_rewrite(root: Path, slug: str, *, note: str | None = None) -> 
         ],
     )
     compile_wiki(root)
+    verification = _persist_concept_rewrite_verification(
+        root,
+        slug,
+        note="Automatic verification after apply.",
+        compile_after=False,
+    )
+    append_runtime_history(
+        root,
+        {
+            "event_type": "rewrite-apply",
+            "occurred_at": applied_at,
+            "slug": slug,
+            "target_path": str(target.get("target_path") or f"wiki/concepts/{slug}.md"),
+            "proposal_path": str(target.get("proposal_path") or ""),
+            "source_signature": expected_source_signature,
+            "status": "applied",
+            "verification_status": str(verification.get("status") or ""),
+            "verification_issues": list(verification.get("issues", [])),
+            "note": note or "",
+        },
+    )
+    compile_wiki(root)
     return {
         "slug": slug,
         "status": "applied",
         "applied_at": applied_at,
+        "path": str(target.get("target_path") or f"wiki/concepts/{slug}.md"),
+        "verification_status": str(verification.get("status") or ""),
+    }
+
+
+@runtime_write_operation
+def verify_concept_rewrite(root: Path, slug: str, *, note: str | None = None) -> dict[str, Any]:
+    verification = _persist_concept_rewrite_verification(
+        root,
+        slug,
+        note=note or "Manual verification requested.",
+        compile_after=True,
+    )
+    return {
+        "slug": slug,
+        "status": str(verification.get("status") or ""),
+        "checked_at": str(verification.get("checked_at") or ""),
+        "issues": list(verification.get("issues", [])),
+    }
+
+
+@runtime_write_operation
+def revert_concept_rewrite(root: Path, slug: str, *, note: str | None = None) -> dict[str, Any]:
+    ensure_layout(root)
+    proposals = _load_concept_rewrite_proposals(root)
+    target = _find_concept_rewrite_proposal(proposals, slug)
+    if str(target.get("status") or "") != "applied":
+        raise RuntimeError("Concept rewrite proposal has not been applied.")
+    previous_markdown = str(target.get("previous_markdown") or "")
+    if not previous_markdown:
+        raise RuntimeError("Concept rewrite proposal has no previous concept snapshot to restore.")
+    candidate_summary = preserved_section(str(target.get("candidate_markdown") or ""), "Summary", "").strip()
+    current_summary = concept_page_snapshot(root, slug).get("summary", "").strip()
+    if candidate_summary and current_summary != candidate_summary:
+        raise RuntimeError("Only the latest applied rewrite can be reverted.")
+    concept_path = root / str(target.get("target_path") or f"wiki/concepts/{slug}.md")
+    if not concept_path.exists():
+        raise FileNotFoundError(f"Concept page not found: {concept_path}")
+    concept_path.write_text(previous_markdown.strip() + "\n", encoding="utf-8")
+    reverted_at = utc_now()
+    target["status"] = "accepted"
+    target["reviewed_at"] = reverted_at
+    target["review_note"] = note or "Reverted applied rewrite proposal."
+    target["pending_review"] = "true" if rewrite_proposal_needs_review("accepted") else "false"
+    target["applied_at"] = ""
+    target["reverted_at"] = reverted_at
+    target["revert_note"] = note or "Reverted applied rewrite proposal."
+    target["verification_status"] = ""
+    target["verification_checked_at"] = ""
+    target["verification_summary"] = ""
+    target["verification_issues"] = []
+    target["apply_ready"] = rewrite_proposal_is_apply_ready(root, target)
+    _save_concept_rewrite_proposals(root, proposals)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "rewrite-revert",
+            "occurred_at": reverted_at,
+            "slug": slug,
+            "target_path": str(target.get("target_path") or f"wiki/concepts/{slug}.md"),
+            "status": "accepted",
+            "last_applied_at": str(target.get("last_applied_at") or ""),
+            "note": note or "",
+        },
+    )
+    append_wiki_log(
+        root,
+        "rewrite-revert",
+        str(target.get("title") or slug),
+        [
+            f"slug: `{slug}`",
+            f"target: `{target.get('target_path', '')}`",
+            "status: `accepted`",
+        ],
+    )
+    compile_wiki(root)
+    return {
+        "slug": slug,
+        "status": "accepted",
+        "reverted_at": reverted_at,
         "path": str(target.get("target_path") or f"wiki/concepts/{slug}.md"),
     }
 
@@ -2696,7 +3710,7 @@ def retire_concept(root: Path, slug: str, *, note: str | None = None) -> dict[st
         [
             f"slug: `{slug}`",
             f"path: `{path_ref}`",
-            f"lifecycle_state: `retired`",
+            "lifecycle_state: `retired`",
             f"override_state: `{relative_path(root, knowledge_lifecycle_override_state_path(root))}`",
         ],
     )
@@ -2802,7 +3816,13 @@ def review_machine_memory_action(
     target["review_note"] = note or ""
     target["pending_review"] = "true" if action_needs_review(status) else "false"
     if status in PENDING_ACTION_STATUSES:
-        revisit_after, escalate_after = schedule_review_windows("action", status, reviewed_at)
+        revisit_after, escalate_after = schedule_review_windows(
+            "action",
+            status,
+            reviewed_at,
+            protocol=str(target.get("protocol") or DEFAULT_PROTOCOL),
+            root=root,
+        )
     else:
         revisit_after, escalate_after = "", ""
     target["revisit_after"] = revisit_after
@@ -2851,10 +3871,7 @@ def apply_machine_memory_action(
     if str(target.get("status") or "") != "accepted":
         raise RuntimeError("Machine-memory action must be accepted before apply.")
     kind = str(target.get("kind") or "")
-    if kind not in LOW_RISK_APPLYABLE_ACTION_KINDS:
-        raise RuntimeError("Only low-risk accepted actions support semi-auto apply.")
     protocol = str(target.get("protocol") or load_protocol_state(root)["active_protocol"] or DEFAULT_PROTOCOL)
-    source_id, concept_slug = validate_low_risk_action_targets(root, target)
     preview_proposals = repair_execution_proposals(root, [target], active_protocol=protocol)
     proposal = preview_proposals[0] if preview_proposals else {
         "action_id": action_id,
@@ -2875,12 +3892,18 @@ def apply_machine_memory_action(
         "bundle_path": relative_path(root, execution_bundle_path(root, action_id)),
         "proposal_path": relative_path(root, execution_proposal_path(root, action_id)),
     }
+    preview = proposal.get("safe_apply_preview")
+    if not isinstance(preview, dict):
+        raise RuntimeError("Only accepted actions with a safe apply preview support semi-auto apply.")
+    preview_apply_mode = str(preview.get("apply_mode") or "")
+    if not preview_apply_mode:
+        raise RuntimeError("Safe apply preview is missing an apply mode.")
     bundle = build_execution_bundle(root, proposal, compiled_at=utc_now())
     if dry_run:
         return {
             "id": action_id,
             "dry_run": True,
-            "apply_mode": "manual-link-state",
+            "apply_mode": preview_apply_mode,
             "status": str(target.get("status") or "accepted"),
             "bundle_path": proposal.get("bundle_path", ""),
             "proposal_path": proposal.get("proposal_path", ""),
@@ -2906,10 +3929,14 @@ def apply_machine_memory_action(
         raise RuntimeError("Execution bundle is stale; re-run compile or apply-action --dry-run before apply.")
 
     applied_at = utc_now()
-    apply_mode = "manual-link-state"
-    manual_state = load_manual_link_state(root)
-    manual_links = [dict(item) for item in manual_state.get("source_to_concept", []) if isinstance(item, dict)]
-    if kind == "add-source-concept-link":
+    stored_preview = stored_bundle.get("safe_apply_preview")
+    if not isinstance(stored_preview, dict):
+        raise RuntimeError("Execution bundle is missing the safe apply preview.")
+    apply_mode = str(stored_preview.get("apply_mode") or "")
+    if apply_mode == "manual-link-state":
+        source_id, concept_slug = validate_low_risk_action_targets(root, target)
+        manual_state = load_manual_link_state(root)
+        manual_links = [dict(item) for item in manual_state.get("source_to_concept", []) if isinstance(item, dict)]
         existing = next(
             (
                 item
@@ -2938,8 +3965,24 @@ def apply_machine_memory_action(
             existing["origin_action_id"] = action_id
             existing["note"] = note or str(existing.get("note") or "")
         save_manual_link_state(root, {"version": 1, "source_to_concept": manual_links})
-    else:  # pragma: no cover - guarded by allowlist above
-        raise RuntimeError(f"Unsupported apply kind: {kind}")
+    elif apply_mode == "citation-snapshot-refresh":
+        page_path = str(stored_preview.get("page_path") or target.get("primary_path") or "")
+        if not page_path:
+            raise RuntimeError("Safe apply preview is missing the judgment page path.")
+        page = root / page_path
+        if not page.exists():
+            raise FileNotFoundError(f"Judgment page not found: {page_path}")
+        content = page.read_text(encoding="utf-8", errors="replace")
+        frontmatter = parse_frontmatter(content)
+        body = strip_frontmatter(content).strip()
+        frontmatter["citation_snapshots"] = [
+            str(item)
+            for item in stored_preview.get("updated_citation_snapshots", [])
+            if isinstance(item, str) and item.strip()
+        ]
+        page.write_text(f"{render_frontmatter(frontmatter)}\n\n{body}\n", encoding="utf-8")
+    else:
+        raise RuntimeError(f"Unsupported apply mode: {apply_mode}")
 
     receipt = build_execution_receipt(root, target, applied_at=applied_at, note=note, proposal=proposal)
     receipt_path = execution_receipt_path(root, action_id)
@@ -3010,24 +4053,45 @@ def revert_machine_memory_action(
         raise RuntimeError("Only the latest apply receipt can be reverted.")
     if str(receipt.get("action_id") or "") != action_id:
         raise RuntimeError("Execution receipt action_id does not match the requested action.")
-
-    manual_state = load_manual_link_state(root)
-    manual_links = [dict(item) for item in manual_state.get("source_to_concept", []) if isinstance(item, dict)]
-    active_entry: dict[str, Any] | None = None
-    for item in manual_links:
-        if str(item.get("origin_action_id") or "") != action_id:
-            continue
-        if bool(item.get("active", True)):
-            active_entry = item
-            break
-    if active_entry is None:
-        raise RuntimeError("No active safe-apply state exists for this action.")
-
+    preview = receipt.get("safe_apply_preview")
+    if not isinstance(preview, dict):
+        raise RuntimeError("Execution receipt is missing the safe apply preview.")
     reverted_at = utc_now()
-    active_entry["active"] = False
-    active_entry["reverted_at"] = reverted_at
-    active_entry["revert_note"] = note or "Safe apply reverted."
-    save_manual_link_state(root, {"version": 1, "source_to_concept": manual_links})
+    apply_mode = str(preview.get("apply_mode") or "")
+    if apply_mode == "manual-link-state":
+        manual_state = load_manual_link_state(root)
+        manual_links = [dict(item) for item in manual_state.get("source_to_concept", []) if isinstance(item, dict)]
+        active_entry: dict[str, Any] | None = None
+        for item in manual_links:
+            if str(item.get("origin_action_id") or "") != action_id:
+                continue
+            if bool(item.get("active", True)):
+                active_entry = item
+                break
+        if active_entry is None:
+            raise RuntimeError("No active safe-apply state exists for this action.")
+        active_entry["active"] = False
+        active_entry["reverted_at"] = reverted_at
+        active_entry["revert_note"] = note or "Safe apply reverted."
+        save_manual_link_state(root, {"version": 1, "source_to_concept": manual_links})
+    elif apply_mode == "citation-snapshot-refresh":
+        page_path = str(preview.get("page_path") or target.get("primary_path") or "")
+        if not page_path:
+            raise RuntimeError("Execution receipt is missing the judgment page path.")
+        page = root / page_path
+        if not page.exists():
+            raise FileNotFoundError(f"Judgment page not found: {page_path}")
+        content = page.read_text(encoding="utf-8", errors="replace")
+        frontmatter = parse_frontmatter(content)
+        body = strip_frontmatter(content).strip()
+        frontmatter["citation_snapshots"] = [
+            str(item)
+            for item in preview.get("previous_citation_snapshots", [])
+            if isinstance(item, str) and item.strip()
+        ]
+        page.write_text(f"{render_frontmatter(frontmatter)}\n\n{body}\n", encoding="utf-8")
+    else:
+        raise RuntimeError(f"Unsupported revert apply mode: {apply_mode}")
 
     protocol = str(target.get("protocol") or load_protocol_state(root)["active_protocol"] or DEFAULT_PROTOCOL)
     reverted_target = {
@@ -3084,7 +4148,13 @@ def revert_machine_memory_action(
     target["review_note"] = str(reverted_target["review_note"])
     target["pending_review"] = str(reverted_target["pending_review"])
     target["last_receipt_path"] = str(reverted_target["last_receipt_path"])
-    revisit_after, escalate_after = schedule_review_windows("action", "proposed", reverted_at)
+    revisit_after, escalate_after = schedule_review_windows(
+        "action",
+        "proposed",
+        reverted_at,
+        protocol=str(target.get("protocol") or DEFAULT_PROTOCOL),
+        root=root,
+    )
     target["revisit_after"] = revisit_after
     target["escalate_after"] = escalate_after
     target.update(evaluate_page_aging(target))
@@ -3362,6 +4432,11 @@ def review_page(
     reviewed_at = utc_now()
     frontmatter["status"] = status
     frontmatter["reviewed_at"] = reviewed_at
+    frontmatter["formed_at"] = str(frontmatter.get("formed_at") or frontmatter.get("last_compiled_at") or reviewed_at)
+    frontmatter["last_reviewed"] = reviewed_at
+    frontmatter.setdefault("counter_evidence", [])
+    frontmatter.setdefault("invalidation_rule", "")
+    frontmatter.setdefault("next_signals", [])
     if kind == "judgment" and confidence:
         frontmatter["confidence"] = confidence
     revisit_after, escalate_after = schedule_review_windows(
@@ -3369,6 +4444,7 @@ def review_page(
         status,
         reviewed_at,
         protocol=str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
+        root=root,
     )
     frontmatter["revisit_after"] = revisit_after
     frontmatter["escalate_after"] = escalate_after
@@ -3409,6 +4485,22 @@ def review_page(
     citations = extract_provenance_paths(root, updated_body)
     frontmatter["citations"] = citations
     frontmatter["citation_snapshots"] = build_citation_snapshots(root, citations)
+    citation_snapshot_state = analyze_citation_snapshots(root, citations, frontmatter)
+    judgment_lifecycle_state, judgment_lifecycle_reason_codes = judgment_lifecycle_profile(
+        {
+            "kind": kind,
+            "status": status,
+            "reviewed_at": reviewed_at,
+            "last_reviewed": reviewed_at,
+            "overdue_review": "false",
+            "escalation_candidate": "false",
+            "citation_drift": "true" if citation_snapshot_state["has_drift"] else "false",
+            "citation_snapshot_gap_count": str(
+                len(citation_snapshot_state["missing"]) + len(citation_snapshot_state["stale"])
+            ),
+            "review_history_entries": str(len(review_history_entries(updated_body))),
+        }
+    )
     target.write_text(f"{render_frontmatter(frontmatter)}\n\n{updated_body.strip()}\n", encoding="utf-8")
     _entry_by_id, path_to_entry_id = entry_lookup_maps(load_manifest(root).get("entries", []))
     source_ids = entry_ids_from_paths(path_to_entry_id, citations)
@@ -3422,6 +4514,8 @@ def review_page(
             "page_path": relative_path(root, target),
             "page_kind": kind,
             "status": status,
+            "judgment_lifecycle_state": judgment_lifecycle_state,
+            "judgment_lifecycle_reason_codes": judgment_lifecycle_reason_codes,
             "source_ids": source_ids,
         },
     )
@@ -3460,38 +4554,55 @@ def pending_source_summary_ids(root: Path, entries: list[dict[str, Any]]) -> lis
 
 @runtime_write_operation
 def lint_wiki(root: Path) -> dict[str, Any]:
-    ensure_layout(root)
-    manifest = sync_manifest_with_raw(root)
-    findings: list[Finding] = []
+    context = _start_lint_context(root)
+    _lint_layout_phase(context)
+    _lint_runtime_phase(context)
+    _lint_governance_phase(context)
+    _lint_curated_phase(context)
+    return _write_lint_report(context)
 
-    for entry in manifest["entries"]:
-        page = root / "wiki" / "sources" / f"{entry['id']}.md"
+
+@dataclass
+class _LintContext:
+    root: Path
+    manifest: dict[str, Any]
+    findings: list[Finding] = field(default_factory=list)
+    protocol_state: dict[str, Any] = field(default_factory=dict)
+    decision_pages: list[dict[str, Any]] = field(default_factory=list)
+    judgment_pages: list[dict[str, Any]] = field(default_factory=list)
+    pack_memory: dict[str, Any] = field(default_factory=dict)
+    expected_output_packs: dict[str, Any] = field(default_factory=dict)
+    expected_domain_pilots: dict[str, Any] = field(default_factory=dict)
+
+    def add(self, severity: str, path: str | Path, message: str) -> None:
+        finding_path = relative_path(self.root, path) if isinstance(path, Path) else str(path)
+        self.findings.append(Finding(severity, finding_path, message))
+
+
+def _start_lint_context(root: Path) -> _LintContext:
+    ensure_layout(root)
+    return _LintContext(root=root, manifest=sync_manifest_with_raw(root))
+
+
+def _lint_layout_phase(context: _LintContext) -> None:
+    for entry in context.manifest["entries"]:
+        page = context.root / "wiki" / "sources" / f"{entry['id']}.md"
         if not page.exists():
-            findings.append(
-                Finding("error", relative_path(root, page), f"Missing source page for manifest entry `{entry['id']}`.")
-            )
+            context.add("error", page, f"Missing source page for manifest entry `{entry['id']}`.")
             continue
         content = page.read_text(encoding="utf-8", errors="replace")
         frontmatter = parse_frontmatter(content)
         for key in ("id", "kind", "source_files", "generated_by"):
             if key not in frontmatter or frontmatter[key] in ("", []):
-                findings.append(
-                    Finding("error", relative_path(root, page), f"Frontmatter is missing required key `{key}`.")
-                )
+                context.add("error", page, f"Frontmatter is missing required key `{key}`.")
         for source_file in frontmatter.get("source_files", []):
-            candidate = root / source_file
+            candidate = context.root / source_file
             if not candidate.exists():
-                findings.append(
-                    Finding("error", relative_path(root, page), f"Referenced source file does not exist: `{source_file}`.")
-                )
+                context.add("error", page, f"Referenced source file does not exist: `{source_file}`.")
         if "Pending LLM summary." in content:
-            findings.append(
-                Finding("warn", relative_path(root, page), "Source page still contains the placeholder summary.")
-            )
+            context.add("warn", page, "Source page still contains the placeholder summary.")
         if not frontmatter.get("concepts"):
-            findings.append(
-                Finding("warn", relative_path(root, page), "Source page has no compiled concept links.")
-            )
+            context.add("warn", page, "Source page has no compiled concept links.")
 
     required_indexes = {
         "wiki/indexes/index.md": "Missing master wiki index page.",
@@ -3524,9 +4635,9 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "wiki/indexes/log.md": "Missing wiki operation log.",
     }
     for relative, message in required_indexes.items():
-        page = root / relative
+        page = context.root / relative
         if not page.exists():
-            findings.append(Finding("error", relative, message))
+            context.add("error", relative, message)
 
     required_schema = {
         "schema/index.md": "Missing runtime schema index.",
@@ -3538,247 +4649,271 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "schema/protocols/index.md": "Missing protocol schema index.",
     }
     for relative, message in required_schema.items():
-        page = root / relative
+        page = context.root / relative
         if not page.exists():
-            findings.append(Finding("error", relative, message))
+            context.add("error", relative, message)
+    for slug in sorted(PROTOCOL_LIBRARY):
+        runtime_schema = protocol_runtime_schema_path(context.root, slug)
+        if not runtime_schema.exists():
+            context.add("error", runtime_schema, f"Missing protocol runtime schema for `{slug}`.")
+            continue
+        try:
+            runtime_document = json.loads(runtime_schema.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            context.add("error", runtime_schema, f"Protocol runtime schema for `{slug}` is not valid JSON-compatible YAML.")
+            continue
+        if not isinstance(runtime_document, dict):
+            context.add("error", runtime_schema, f"Protocol runtime schema for `{slug}` must be a mapping object.")
 
-    protocol_state = load_protocol_state(root)
-    for relative in protocol_paths(root, protocol_state["active_protocol"]):
-        page = root / relative
+    context.protocol_state = load_protocol_state(context.root)
+    for relative in protocol_paths(context.root, context.protocol_state["active_protocol"]):
+        page = context.root / relative
         if not page.exists():
-            findings.append(Finding("error", relative, f"Missing active protocol rule file: `{relative}`."))
+            context.add("error", relative, f"Missing active protocol rule file: `{relative}`.")
 
-    decision_pages = collect_curated_pages(root, "decisions", "decision")
-    judgment_pages = collect_curated_pages(root, "judgments", "judgment")
-    pack_memory: dict[str, Any] = {}
-    if machine_memory_state_path(root).exists():
-        pack_memory = load_machine_memory(root)
-    expected_output_packs = build_output_packs(
-        root,
-        decision_pages,
-        judgment_pages,
-        pack_memory,
-        protocol_state,
-        collect_recent_output_artifacts(root),
+
+def _lint_runtime_phase(context: _LintContext) -> None:
+    context.decision_pages = collect_curated_pages(context.root, "decisions", "decision")
+    context.judgment_pages = collect_curated_pages(context.root, "judgments", "judgment")
+    if machine_memory_state_path(context.root).exists():
+        context.pack_memory = load_machine_memory(context.root)
+    context.expected_output_packs = build_output_packs(
+        context.root,
+        context.decision_pages,
+        context.judgment_pages,
+        context.pack_memory,
+        context.protocol_state,
+        collect_recent_output_artifacts(context.root),
         utc_now(),
     )
     execution_audit_snapshot = build_execution_audit_snapshot(
-        root,
-        pack_memory,
-        active_protocol=protocol_state["active_protocol"],
-    ) if pack_memory else {"protocols": [], "counts": {}, "recent_apply": [], "recent_revert": []}
-    expected_domain_pilots = build_domain_pilots(
-        root,
-        decision_pages,
-        judgment_pages,
-        pack_memory,
-        protocol_state,
-        collect_recent_output_artifacts(root),
-        collect_output_density_artifacts(root),
-        expected_output_packs,
+        context.root,
+        context.pack_memory,
+        active_protocol=context.protocol_state["active_protocol"],
+    ) if context.pack_memory else {"protocols": [], "counts": {}, "recent_apply": [], "recent_revert": []}
+    context.expected_domain_pilots = build_domain_pilots(
+        context.root,
+        context.decision_pages,
+        context.judgment_pages,
+        context.pack_memory,
+        context.protocol_state,
+        collect_recent_output_artifacts(context.root),
+        collect_output_density_artifacts(context.root),
+        context.expected_output_packs,
         execution_audit_snapshot,
         utc_now(),
     )
 
-    memory_state = machine_memory_state_path(root)
-    graph_html = machine_memory_graph_html_path(root)
-    furnace_html = furnace_center_html_path(root)
-    execution_html = execution_center_html_path(root)
-    execution_audit_html = execution_audit_html_path(root)
-    review_html = review_center_html_path(root)
-    if manifest["entries"] and not memory_state.exists():
-        findings.append(Finding("error", relative_path(root, memory_state), "Missing machine memory state file."))
-    if manifest["entries"] and not graph_html.exists():
-        findings.append(Finding("error", relative_path(root, graph_html), "Missing machine memory graph HTML view."))
-    if manifest["entries"] and not furnace_html.exists():
-        findings.append(Finding("error", relative_path(root, furnace_html), "Missing furnace center HTML view."))
-    if manifest["entries"] and not execution_html.exists():
-        findings.append(Finding("error", relative_path(root, execution_html), "Missing execution center HTML view."))
-    if manifest["entries"] and not execution_audit_html.exists():
-        findings.append(Finding("error", relative_path(root, execution_audit_html), "Missing execution audit HTML view."))
-    if manifest["entries"] and not review_html.exists():
-        findings.append(Finding("error", relative_path(root, review_html), "Missing review center HTML view."))
+    memory_state = machine_memory_state_path(context.root)
+    graph_html = machine_memory_graph_html_path(context.root)
+    furnace_html = furnace_center_html_path(context.root)
+    execution_html = execution_center_html_path(context.root)
+    execution_audit_html = execution_audit_html_path(context.root)
+    shell_summary = shell_summary_path(context.root)
+    product_shell_html = product_shell_html_path(context.root)
+    planner_state = planner_state_path(context.root)
+    query_route_telemetry = query_route_telemetry_path(context.root)
+    policy_history = execution_policy_log_path(context.root)
+    review_html = review_center_html_path(context.root)
+    if context.manifest["entries"] and not memory_state.exists():
+        context.add("error", memory_state, "Missing machine memory state file.")
+    if context.manifest["entries"] and not graph_html.exists():
+        context.add("error", graph_html, "Missing machine memory graph HTML view.")
+    if context.manifest["entries"] and not furnace_html.exists():
+        context.add("error", furnace_html, "Missing furnace center HTML view.")
+    if context.manifest["entries"] and not execution_html.exists():
+        context.add("error", execution_html, "Missing execution center HTML view.")
+    if context.manifest["entries"] and not execution_audit_html.exists():
+        context.add("error", execution_audit_html, "Missing execution audit HTML view.")
+    if context.manifest["entries"] and not shell_summary.exists():
+        context.add("error", shell_summary, "Missing shell summary JSON.")
+    if context.manifest["entries"] and not product_shell_html.exists():
+        context.add("error", product_shell_html, "Missing product shell HTML view.")
+    if context.manifest["entries"] and not planner_state.exists():
+        context.add("error", planner_state, "Missing planner state file.")
+    if context.manifest["entries"] and not query_route_telemetry.exists():
+        context.add("error", query_route_telemetry, "Missing query route telemetry file.")
+    if context.manifest["entries"] and not review_html.exists():
+        context.add("error", review_html, "Missing review center HTML view.")
     for pack_group in ("review_packs", "decision_memos", "sop_drafts"):
-        for pack in expected_output_packs.get(pack_group, []):
-            pack_path = root / str(pack.get("path") or "")
+        for pack in context.expected_output_packs.get(pack_group, []):
+            pack_path = context.root / str(pack.get("path") or "")
             if not pack_path.exists():
-                findings.append(
-                    Finding(
-                        "error",
-                        relative_path(root, pack_path),
-                        f"Missing output pack `{pack_path.name}` for `{pack_group}`.",
-                    )
-                )
-    for scorecard in expected_domain_pilots.get("scorecards", []):
-        scorecard_path = root / str(scorecard.get("path") or "")
+                context.add("error", pack_path, f"Missing output pack `{pack_path.name}` for `{pack_group}`.")
+    for scorecard in context.expected_domain_pilots.get("scorecards", []):
+        scorecard_path = context.root / str(scorecard.get("path") or "")
         if not scorecard_path.exists():
-            findings.append(
-                Finding(
-                    "error",
-                    relative_path(root, scorecard_path),
-                    f"Missing domain pilot scorecard `{scorecard_path.name}`.",
-                )
-            )
-    if manifest["entries"]:
+            context.add("error", scorecard_path, f"Missing domain pilot scorecard `{scorecard_path.name}`.")
+    if context.manifest["entries"]:
         for pack in AGENT_PACK_LIBRARY:
-            pack_path = agent_pack_path(root, str(pack["role"]))
+            pack_path = agent_pack_path(context.root, str(pack["role"]))
             if not pack_path.exists():
-                findings.append(
-                    Finding("error", relative_path(root, pack_path), f"Missing agent pack for role `{pack['role']}`.")
-                )
+                context.add("error", pack_path, f"Missing agent pack for role `{pack['role']}`.")
     if memory_state.exists():
         try:
             memory = json.loads(memory_state.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            findings.append(Finding("error", relative_path(root, memory_state), "Machine memory state is not valid JSON."))
+            context.add("error", memory_state, "Machine memory state is not valid JSON.")
         else:
             if "source_nodes" not in memory or "concept_nodes" not in memory:
-                findings.append(
-                    Finding("error", relative_path(root, memory_state), "Machine memory state is missing required indexes.")
-                )
+                context.add("error", memory_state, "Machine memory state is missing required indexes.")
             if "health" not in memory:
-                findings.append(
-                    Finding("warn", relative_path(root, memory_state), "Machine memory state is missing graph health data.")
-                )
+                context.add("warn", memory_state, "Machine memory state is missing graph health data.")
             if not memory.get("digest"):
-                findings.append(
-                    Finding("warn", relative_path(root, memory_state), "Machine memory state is missing a stable digest.")
-                )
+                context.add("warn", memory_state, "Machine memory state is missing a stable digest.")
             repair_plan = memory.get("health", {}).get("repair_plan", {}) if isinstance(memory, dict) else {}
             execution_proposals = repair_plan.get("execution_proposals", []) if isinstance(repair_plan, dict) else []
             for proposal in execution_proposals:
                 if not isinstance(proposal, dict):
                     continue
                 action_id = str(proposal.get("action_id") or "")
-                proposal_path = root / str(proposal.get("proposal_path") or relative_path(root, execution_proposal_path(root, action_id)))
+                proposal_path = context.root / str(
+                    proposal.get("proposal_path")
+                    or relative_path(context.root, execution_proposal_path(context.root, action_id))
+                )
                 if action_id and not proposal_path.exists():
-                    findings.append(
-                        Finding("error", relative_path(root, proposal_path), f"Missing execution proposal page for action `{action_id}`.")
-                    )
-                bundle_path = root / str(proposal.get("bundle_path") or relative_path(root, execution_bundle_path(root, action_id)))
+                    context.add("error", proposal_path, f"Missing execution proposal page for action `{action_id}`.")
+                bundle_path = context.root / str(
+                    proposal.get("bundle_path")
+                    or relative_path(context.root, execution_bundle_path(context.root, action_id))
+                )
                 if action_id and not bundle_path.exists():
-                    findings.append(
-                        Finding("error", relative_path(root, bundle_path), f"Missing execution bundle for action `{action_id}`.")
-                    )
+                    context.add("error", bundle_path, f"Missing execution bundle for action `{action_id}`.")
+    if planner_state.exists():
+        planner_document = load_json_document(planner_state)
+        if not isinstance(planner_document, dict) or not isinstance(planner_document.get("priority_queue"), list):
+            context.add("error", planner_state, "Planner state is not valid JSON.")
+    if query_route_telemetry.exists():
+        telemetry_document = load_json_document(query_route_telemetry)
+        if not isinstance(telemetry_document, dict) or not isinstance(telemetry_document.get("entries"), list):
+            context.add("error", query_route_telemetry, "Query route telemetry is not valid JSON.")
+    if shell_summary.exists():
+        shell_document = load_json_document(shell_summary)
+        if not isinstance(shell_document, dict):
+            context.add("error", shell_summary, "Shell summary is not valid JSON.")
 
-    graph_export = machine_memory_graph_path(root)
-    if manifest["entries"] and not graph_export.exists():
-        findings.append(Finding("error", relative_path(root, graph_export), "Missing machine memory graph export."))
+    graph_export = machine_memory_graph_path(context.root)
+    if context.manifest["entries"] and not graph_export.exists():
+        context.add("error", graph_export, "Missing machine memory graph export.")
     elif graph_export.exists():
         try:
             graph = json.loads(graph_export.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            findings.append(Finding("error", relative_path(root, graph_export), "Machine memory graph export is not valid JSON."))
+            context.add("error", graph_export, "Machine memory graph export is not valid JSON.")
         else:
             if "nodes" not in graph or "edges" not in graph:
-                findings.append(
-                    Finding("error", relative_path(root, graph_export), "Machine memory graph export is missing nodes or edges.")
-                )
+                context.add("error", graph_export, "Machine memory graph export is missing nodes or edges.")
 
-    history_path = machine_memory_history_path(root)
-    if manifest["entries"] and not history_path.exists():
-        findings.append(Finding("warn", relative_path(root, history_path), "Machine memory history file has not been initialized."))
+    history_path = machine_memory_history_path(context.root)
+    if context.manifest["entries"] and not history_path.exists():
+        context.add("warn", history_path, "Machine memory history file has not been initialized.")
 
-    action_state_path = machine_memory_action_state_path(root)
-    if manifest["entries"] and not action_state_path.exists():
-        findings.append(
-            Finding("warn", relative_path(root, action_state_path), "Machine memory action state file has not been initialized.")
-        )
+    action_state_path = machine_memory_action_state_path(context.root)
+    if context.manifest["entries"] and not action_state_path.exists():
+        context.add("warn", action_state_path, "Machine memory action state file has not been initialized.")
     elif action_state_path.exists():
         action_state = load_json_document(action_state_path)
         if not isinstance(action_state, dict) or not isinstance(action_state.get("actions"), list):
-            findings.append(
-                Finding("error", relative_path(root, action_state_path), "Machine memory action state is not valid JSON.")
-            )
+            context.add("error", action_state_path, "Machine memory action state is not valid JSON.")
         else:
             for action in action_state.get("actions", []):
                 if not isinstance(action, dict):
                     continue
                 receipt_path = str(action.get("last_receipt_path") or "")
-                if receipt_path and not (root / receipt_path).exists():
-                    findings.append(
-                        Finding(
-                            "error",
-                            receipt_path,
-                            f"Referenced execution receipt does not exist for action `{action.get('id', '')}`.",
-                        )
+                if receipt_path and not (context.root / receipt_path).exists():
+                    context.add(
+                        "error",
+                        receipt_path,
+                        f"Referenced execution receipt does not exist for action `{action.get('id', '')}`.",
                     )
             consistency_signals = collect_execution_consistency_signals(
-                root,
+                context.root,
                 [dict(action) for action in action_state.get("actions", []) if isinstance(action, dict)],
-                load_execution_receipt_history(root),
+                load_execution_receipt_history(context.root),
             )
             for signal in consistency_signals:
-                findings.append(
-                    Finding(
-                        str(signal.get("severity") or "warn"),
-                        str(signal.get("path") or relative_path(root, action_state_path)),
-                        f"Execution consistency issue for action `{signal.get('action_id', '')}`: {signal.get('message', '')}",
-                    )
+                context.add(
+                    str(signal.get("severity") or "warn"),
+                    str(signal.get("path") or relative_path(context.root, action_state_path)),
+                    f"Execution consistency issue for action `{signal.get('action_id', '')}`: {signal.get('message', '')}",
                 )
+            if action_state.get("actions") and not policy_history.exists():
+                context.add("warn", policy_history, "Execution policy decision log has not been initialized.")
+    if policy_history.exists():
+        with policy_history.open("r", encoding="utf-8") as handle:
+            for line_number, raw_line in enumerate(handle, start=1):
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    context.add("error", policy_history, f"Execution policy log line `{line_number}` is not valid JSON.")
+                    break
+                if not isinstance(record, dict):
+                    context.add("error", policy_history, f"Execution policy log line `{line_number}` is not a JSON object.")
+                    break
 
-    rewrite_state_path = concept_rewrite_state_path(root)
-    if manifest["entries"] and not rewrite_state_path.exists():
-        findings.append(
-            Finding("warn", relative_path(root, rewrite_state_path), "Concept rewrite proposal state file has not been initialized.")
-        )
+    rewrite_state_path = concept_rewrite_state_path(context.root)
+    if context.manifest["entries"] and not rewrite_state_path.exists():
+        context.add("warn", rewrite_state_path, "Concept rewrite proposal state file has not been initialized.")
     elif rewrite_state_path.exists():
         rewrite_state = load_json_document(rewrite_state_path)
         proposals = rewrite_state.get("proposals") if isinstance(rewrite_state, dict) else None
         if not isinstance(proposals, list):
-            findings.append(
-                Finding("error", relative_path(root, rewrite_state_path), "Concept rewrite proposal state is not valid JSON.")
-            )
+            context.add("error", rewrite_state_path, "Concept rewrite proposal state is not valid JSON.")
         else:
             for proposal in proposals:
                 if not isinstance(proposal, dict):
                     continue
                 slug = str(proposal.get("slug") or "")
-                proposal_path = root / str(proposal.get("proposal_path") or f"wiki/rewrite-proposals/{slug}.md")
+                proposal_path = context.root / str(proposal.get("proposal_path") or f"wiki/rewrite-proposals/{slug}.md")
                 if slug and not proposal_path.exists():
-                    findings.append(
-                        Finding("error", relative_path(root, proposal_path), f"Missing rewrite proposal page for concept `{slug}`.")
-                    )
-                target_path = root / str(proposal.get("target_path") or f"wiki/concepts/{slug}.md")
+                    context.add("error", proposal_path, f"Missing rewrite proposal page for concept `{slug}`.")
+                target_path = context.root / str(proposal.get("target_path") or f"wiki/concepts/{slug}.md")
                 if slug and not target_path.exists():
-                    findings.append(
-                        Finding("error", relative_path(root, target_path), f"Rewrite proposal target concept page is missing: `{slug}`.")
-                    )
+                    context.add("error", target_path, f"Rewrite proposal target concept page is missing: `{slug}`.")
                 if proposal.get("apply_ready") and not proposal.get("candidate_markdown"):
-                    findings.append(
-                        Finding("error", relative_path(root, proposal_path), "Rewrite proposal is marked apply_ready but has no candidate markdown.")
+                    context.add("error", proposal_path, "Rewrite proposal is marked apply_ready but has no candidate markdown.")
+                if proposal.get("apply_ready") and not rewrite_proposal_is_apply_ready(context.root, proposal):
+                    context.add(
+                        "error",
+                        proposal_path,
+                        "Rewrite proposal is marked apply_ready but no longer matches the current concept sources.",
                     )
-                if proposal.get("apply_ready") and not rewrite_proposal_is_apply_ready(root, proposal):
-                    findings.append(
-                        Finding(
-                            "error",
-                            relative_path(root, proposal_path),
-                            "Rewrite proposal is marked apply_ready but no longer matches the current concept sources.",
-                        )
+                proposal_status = str(proposal.get("status") or "")
+                if proposal_status == "applied" and not str(proposal.get("previous_markdown") or ""):
+                    context.add("error", proposal_path, "Applied rewrite proposal has no rollback snapshot.")
+                verification_status = str(proposal.get("verification_status") or "")
+                if proposal_status == "applied" and not verification_status:
+                    context.add("warn", proposal_path, "Applied rewrite proposal has not been verified yet.")
+                if proposal_status == "applied" and verification_status == "failed":
+                    context.add(
+                        "warn",
+                        proposal_path,
+                        "Applied rewrite proposal failed verification and should be reverted or regenerated.",
                     )
 
-    knowledge_state_path = knowledge_lifecycle_state_path(root)
-    concept_pages = sorted((root / "wiki" / "concepts").glob("*.md"))
-    expected_lifecycle_paths = {page["path"] for page in decision_pages + judgment_pages} | {
-        relative_path(root, path) for path in concept_pages
+
+def _lint_governance_phase(context: _LintContext) -> None:
+    knowledge_state_path = knowledge_lifecycle_state_path(context.root)
+    concept_pages = sorted((context.root / "wiki" / "concepts").glob("*.md"))
+    expected_lifecycle_paths = {page["path"] for page in context.decision_pages + context.judgment_pages} | {
+        relative_path(context.root, path) for path in concept_pages
     }
     if expected_lifecycle_paths and not knowledge_state_path.exists():
-        findings.append(Finding("error", relative_path(root, knowledge_state_path), "Missing knowledge lifecycle state file."))
+        context.add("error", knowledge_state_path, "Missing knowledge lifecycle state file.")
     elif knowledge_state_path.exists():
         knowledge_state = load_json_document(knowledge_state_path)
         lifecycle_entries = knowledge_state.get("entries") if isinstance(knowledge_state, dict) else None
         if not isinstance(lifecycle_entries, list):
-            findings.append(
-                Finding("error", relative_path(root, knowledge_state_path), "Knowledge lifecycle state is not valid JSON.")
-            )
+            context.add("error", knowledge_state_path, "Knowledge lifecycle state is not valid JSON.")
         else:
             if expected_lifecycle_paths and len(lifecycle_entries) != len(expected_lifecycle_paths):
-                findings.append(
-                    Finding(
-                        "warn",
-                        relative_path(root, knowledge_state_path),
-                        f"Knowledge lifecycle state entry count `{len(lifecycle_entries)}` does not match curated page count `{len(expected_lifecycle_paths)}`.",
-                    )
+                context.add(
+                    "warn",
+                    knowledge_state_path,
+                    f"Knowledge lifecycle state entry count `{len(lifecycle_entries)}` does not match curated page count `{len(expected_lifecycle_paths)}`.",
                 )
             for entry in lifecycle_entries:
                 if not isinstance(entry, dict):
@@ -3791,131 +4926,109 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                 active_corpus_ids = entry.get("active_corpus_ids")
                 invalidation_signals = entry.get("invalidation_signals")
                 if not page_id:
-                    findings.append(
-                        Finding("error", relative_path(root, knowledge_state_path), "Knowledge lifecycle entry is missing `page_id`.")
-                    )
+                    context.add("error", knowledge_state_path, "Knowledge lifecycle entry is missing `page_id`.")
                 if kind not in set(KNOWLEDGE_LIFECYCLE_KINDS):
-                    findings.append(
-                        Finding(
-                            "error",
-                            relative_path(root, knowledge_state_path),
-                            f"Knowledge lifecycle entry has unsupported kind `{kind or 'unknown'}`.",
-                        )
+                    context.add(
+                        "error",
+                        knowledge_state_path,
+                        f"Knowledge lifecycle entry has unsupported kind `{kind or 'unknown'}`.",
                     )
                 if lifecycle_state not in KNOWLEDGE_LIFECYCLE_STATES:
-                    findings.append(
-                        Finding(
-                            "error",
-                            relative_path(root, knowledge_state_path),
-                            f"Knowledge lifecycle entry has unsupported state `{lifecycle_state or 'unknown'}`.",
-                        )
+                    context.add(
+                        "error",
+                        knowledge_state_path,
+                        f"Knowledge lifecycle entry has unsupported state `{lifecycle_state or 'unknown'}`.",
                     )
                 if not path:
-                    findings.append(
-                        Finding("error", relative_path(root, knowledge_state_path), "Knowledge lifecycle entry is missing `path`.")
-                    )
-                elif not (root / path).exists():
-                    findings.append(
-                        Finding("error", relative_path(root, knowledge_state_path), f"Knowledge lifecycle entry references missing page `{path}`.")
-                    )
+                    context.add("error", knowledge_state_path, "Knowledge lifecycle entry is missing `path`.")
+                elif not (context.root / path).exists():
+                    context.add("error", knowledge_state_path, f"Knowledge lifecycle entry references missing page `{path}`.")
                 elif expected_lifecycle_paths and path not in expected_lifecycle_paths:
-                    findings.append(
-                        Finding(
-                            "warn",
-                            relative_path(root, knowledge_state_path),
-                            f"Knowledge lifecycle entry references unmanaged page `{path}`.",
-                        )
+                    context.add(
+                        "warn",
+                        knowledge_state_path,
+                        f"Knowledge lifecycle entry references unmanaged page `{path}`.",
                     )
                 if not isinstance(source_ids, list):
-                    findings.append(
-                        Finding("error", relative_path(root, knowledge_state_path), "Knowledge lifecycle entry `source_ids` is not a list.")
-                    )
+                    context.add("error", knowledge_state_path, "Knowledge lifecycle entry `source_ids` is not a list.")
                 if not isinstance(active_corpus_ids, list):
-                    findings.append(
-                        Finding(
-                            "error",
-                            relative_path(root, knowledge_state_path),
-                            "Knowledge lifecycle entry `active_corpus_ids` is not a list.",
-                        )
+                    context.add(
+                        "error",
+                        knowledge_state_path,
+                        "Knowledge lifecycle entry `active_corpus_ids` is not a list.",
                     )
                 if not isinstance(invalidation_signals, list):
-                    findings.append(
-                        Finding(
-                            "error",
-                            relative_path(root, knowledge_state_path),
-                            "Knowledge lifecycle entry `invalidation_signals` is not a list.",
-                        )
+                    context.add(
+                        "error",
+                        knowledge_state_path,
+                        "Knowledge lifecycle entry `invalidation_signals` is not a list.",
                     )
+                if kind in {"decision", "judgment"}:
+                    judgment_lifecycle_state = str(entry.get("judgment_lifecycle_state") or "")
+                    if judgment_lifecycle_state and judgment_lifecycle_state not in JUDGMENT_LIFECYCLE_STATES:
+                        context.add(
+                            "error",
+                            knowledge_state_path,
+                            f"Knowledge lifecycle entry `{page_id}` has unsupported judgment lifecycle state `{judgment_lifecycle_state}`.",
+                        )
+                    if not isinstance(entry.get("judgment_lifecycle_reason_codes", []), list):
+                        context.add(
+                            "error",
+                            knowledge_state_path,
+                            "Curated lifecycle entry `judgment_lifecycle_reason_codes` is not a list.",
+                        )
                 if kind == "concept":
                     if not isinstance(entry.get("issues"), list):
-                        findings.append(
-                            Finding("error", relative_path(root, knowledge_state_path), "Concept lifecycle entry `issues` is not a list.")
-                        )
+                        context.add("error", knowledge_state_path, "Concept lifecycle entry `issues` is not a list.")
                     if not isinstance(entry.get("review_signal_codes"), list):
-                        findings.append(
-                            Finding(
-                                "error",
-                                relative_path(root, knowledge_state_path),
-                                "Concept lifecycle entry `review_signal_codes` is not a list.",
-                            )
+                        context.add(
+                            "error",
+                            knowledge_state_path,
+                            "Concept lifecycle entry `review_signal_codes` is not a list.",
                         )
                     if not isinstance(entry.get("source_pages"), list):
-                        findings.append(
-                            Finding(
-                                "error",
-                                relative_path(root, knowledge_state_path),
-                                "Concept lifecycle entry `source_pages` is not a list.",
-                            )
+                        context.add(
+                            "error",
+                            knowledge_state_path,
+                            "Concept lifecycle entry `source_pages` is not a list.",
                         )
                     if not str(entry.get("quality_state") or ""):
-                        findings.append(
-                            Finding(
-                                "warn",
-                                relative_path(root, knowledge_state_path),
-                                f"Concept lifecycle entry `{page_id}` is missing `quality_state`.",
-                            )
+                        context.add(
+                            "warn",
+                            knowledge_state_path,
+                            f"Concept lifecycle entry `{page_id}` is missing `quality_state`.",
                         )
                     if not isinstance(entry.get("override_reason_codes", []), list):
-                        findings.append(
-                            Finding(
-                                "error",
-                                relative_path(root, knowledge_state_path),
-                                "Concept lifecycle entry `override_reason_codes` is not a list.",
-                            )
+                        context.add(
+                            "error",
+                            knowledge_state_path,
+                            "Concept lifecycle entry `override_reason_codes` is not a list.",
                         )
                     override_state = str(entry.get("override_state") or "")
                     if override_state and override_state not in KNOWLEDGE_LIFECYCLE_STATES:
-                        findings.append(
-                            Finding(
-                                "error",
-                                relative_path(root, knowledge_state_path),
-                                f"Concept lifecycle entry `{page_id}` has unsupported override state `{override_state}`.",
-                            )
+                        context.add(
+                            "error",
+                            knowledge_state_path,
+                            f"Concept lifecycle entry `{page_id}` has unsupported override state `{override_state}`.",
                         )
                     if not isinstance(entry.get("override_active"), bool):
-                        findings.append(
-                            Finding(
-                                "error",
-                                relative_path(root, knowledge_state_path),
-                                "Concept lifecycle entry `override_active` is not a bool.",
-                            )
+                        context.add(
+                            "error",
+                            knowledge_state_path,
+                            "Concept lifecycle entry `override_active` is not a bool.",
                         )
 
-    knowledge_override_path = knowledge_lifecycle_override_state_path(root)
+    knowledge_override_path = knowledge_lifecycle_override_state_path(context.root)
     if concept_pages and not knowledge_override_path.exists():
-        findings.append(
-            Finding("error", relative_path(root, knowledge_override_path), "Missing knowledge lifecycle override state file.")
-        )
+        context.add("error", knowledge_override_path, "Missing knowledge lifecycle override state file.")
     elif knowledge_override_path.exists():
         override_state = load_json_document(knowledge_override_path)
         override_entries = override_state.get("entries") if isinstance(override_state, dict) else None
         if not isinstance(override_entries, list):
-            findings.append(
-                Finding(
-                    "error",
-                    relative_path(root, knowledge_override_path),
-                    "Knowledge lifecycle override state is not valid JSON.",
-                )
+            context.add(
+                "error",
+                knowledge_override_path,
+                "Knowledge lifecycle override state is not valid JSON.",
             )
         else:
             active_override_paths: dict[str, int] = {}
@@ -3927,104 +5040,86 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                 kind = str(entry.get("kind") or "")
                 lifecycle_state = str(entry.get("lifecycle_state") or "")
                 if not slug:
-                    findings.append(
-                        Finding(
-                            "error",
-                            relative_path(root, knowledge_override_path),
-                            "Knowledge lifecycle override entry is missing `slug`.",
-                        )
+                    context.add(
+                        "error",
+                        knowledge_override_path,
+                        "Knowledge lifecycle override entry is missing `slug`.",
                     )
                 if kind and kind != "concept":
-                    findings.append(
-                        Finding(
-                            "error",
-                            relative_path(root, knowledge_override_path),
-                            f"Knowledge lifecycle override entry has unsupported kind `{kind}`.",
-                        )
+                    context.add(
+                        "error",
+                        knowledge_override_path,
+                        f"Knowledge lifecycle override entry has unsupported kind `{kind}`.",
                     )
                 if lifecycle_state and lifecycle_state not in KNOWLEDGE_LIFECYCLE_STATES:
-                    findings.append(
-                        Finding(
-                            "error",
-                            relative_path(root, knowledge_override_path),
-                            f"Knowledge lifecycle override entry has unsupported state `{lifecycle_state}`.",
-                        )
+                    context.add(
+                        "error",
+                        knowledge_override_path,
+                        f"Knowledge lifecycle override entry has unsupported state `{lifecycle_state}`.",
                     )
                 if not isinstance(entry.get("active"), bool):
-                    findings.append(
-                        Finding(
-                            "error",
-                            relative_path(root, knowledge_override_path),
-                            "Knowledge lifecycle override entry `active` is not a bool.",
-                        )
+                    context.add(
+                        "error",
+                        knowledge_override_path,
+                        "Knowledge lifecycle override entry `active` is not a bool.",
                     )
                 if not path:
-                    findings.append(
-                        Finding(
-                            "error",
-                            relative_path(root, knowledge_override_path),
-                            "Knowledge lifecycle override entry is missing `path`.",
-                        )
+                    context.add(
+                        "error",
+                        knowledge_override_path,
+                        "Knowledge lifecycle override entry is missing `path`.",
                     )
-                elif not (root / path).exists():
-                    findings.append(
-                        Finding(
-                            "error",
-                            relative_path(root, knowledge_override_path),
-                            f"Knowledge lifecycle override entry references missing page `{path}`.",
-                        )
+                elif not (context.root / path).exists():
+                    context.add(
+                        "error",
+                        knowledge_override_path,
+                        f"Knowledge lifecycle override entry references missing page `{path}`.",
                     )
                 if bool(entry.get("active")):
                     active_override_paths[path] = active_override_paths.get(path, 0) + 1
                     if lifecycle_state != "retired":
-                        findings.append(
-                            Finding(
-                                "warn",
-                                relative_path(root, knowledge_override_path),
-                                f"Active concept lifecycle override for `{slug or path}` is `{lifecycle_state or 'unknown'}`; current workflow expects `retired`.",
-                            )
+                        context.add(
+                            "warn",
+                            knowledge_override_path,
+                            f"Active concept lifecycle override for `{slug or path}` is `{lifecycle_state or 'unknown'}`; current workflow expects `retired`.",
                         )
             for path, count in active_override_paths.items():
                 if path and count > 1:
-                    findings.append(
-                        Finding(
-                            "error",
-                            relative_path(root, knowledge_override_path),
-                            f"Multiple active knowledge lifecycle overrides reference `{path}`.",
-                        )
+                    context.add(
+                        "error",
+                        knowledge_override_path,
+                        f"Multiple active knowledge lifecycle overrides reference `{path}`.",
                     )
 
-    if manifest["entries"] and not concept_pages:
-        findings.append(Finding("warn", "wiki/concepts", "No concept pages have been compiled yet."))
+    if context.manifest["entries"] and not concept_pages:
+        context.add("warn", "wiki/concepts", "No concept pages have been compiled yet.")
 
     for page in concept_pages:
         content = page.read_text(encoding="utf-8", errors="replace")
         frontmatter = parse_frontmatter(content)
         if frontmatter.get("kind") != "concept":
-            findings.append(Finding("warn", relative_path(root, page), "Concept page kind is missing or incorrect."))
+            context.add("warn", page, "Concept page kind is missing or incorrect.")
         if concept_summary_is_placeholder(content):
-            findings.append(Finding("warn", relative_path(root, page), "Concept page still contains the fallback summary."))
+            context.add("warn", page, "Concept page still contains the fallback summary.")
         for section in ("## Conflict Signals", "## Evidence Gaps"):
             if section not in content:
-                findings.append(
-                    Finding("warn", relative_path(root, page), f"Concept page is missing section `{section}`.")
-                )
+                context.add("warn", page, f"Concept page is missing section `{section}`.")
         source_pages = frontmatter.get("source_pages", [])
         if not source_pages:
-            findings.append(Finding("warn", relative_path(root, page), "Concept page has no source-page references."))
+            context.add("warn", page, "Concept page has no source-page references.")
         for source_page in source_pages:
-            candidate = root / source_page
+            candidate = context.root / source_page
             if not candidate.exists():
-                findings.append(
-                    Finding("error", relative_path(root, page), f"Concept page references missing source page: `{source_page}`.")
-                )
+                context.add("error", page, f"Concept page references missing source page: `{source_page}`.")
 
-    for group, expected_kind, pages in (
-        ("wiki/derived", "derived", None),
-        ("wiki/decisions", "decision", decision_pages),
-        ("wiki/judgments", "judgment", judgment_pages),
+
+def _lint_curated_phase(context: _LintContext) -> None:
+    for group, expected_kind in (
+        ("wiki/derived", "derived"),
+        ("wiki/decisions", "decision"),
+        ("wiki/judgments", "judgment"),
     ):
-        for page in sorted((root / group).glob("*.md")):
+        for page in sorted((context.root / group).glob("*.md")):
             content = page.read_text(encoding="utf-8", errors="replace")
             frontmatter = parse_frontmatter(content)
             citations = [
@@ -4032,74 +5127,82 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                 for path in frontmatter.get("citations", [])
                 if isinstance(path, str) and path.strip()
             ]
-            citation_snapshot_state = analyze_citation_snapshots(root, citations, frontmatter)
+            citation_snapshot_state = analyze_citation_snapshots(context.root, citations, frontmatter)
             if frontmatter.get("kind") != expected_kind:
-                findings.append(
-                    Finding("warn", relative_path(root, page), f"{expected_kind.capitalize()} page kind is missing or incorrect.")
-                )
+                context.add("warn", page, f"{expected_kind.capitalize()} page kind is missing or incorrect.")
             if "wiki/sources/" not in content and "raw/" not in content:
-                findings.append(
-                    Finding("warn", relative_path(root, page), f"{expected_kind.capitalize()} page has no explicit source-page reference.")
-                )
+                context.add("warn", page, f"{expected_kind.capitalize()} page has no explicit source-page reference.")
             if expected_kind in {"derived", "decision", "judgment"} and not citations:
-                findings.append(
-                    Finding(
-                        "warn",
-                        relative_path(root, page),
-                        f"{expected_kind.capitalize()} page is missing structured `citations` metadata.",
-                    )
+                context.add(
+                    "warn",
+                    page,
+                    f"{expected_kind.capitalize()} page is missing structured `citations` metadata.",
                 )
             if expected_kind in {"derived", "decision", "judgment"} and citations and not frontmatter.get("citation_snapshots"):
-                findings.append(
-                    Finding(
-                        "warn",
-                        relative_path(root, page),
-                        f"{expected_kind.capitalize()} page is missing `citation_snapshots` metadata.",
-                    )
+                context.add(
+                    "warn",
+                    page,
+                    f"{expected_kind.capitalize()} page is missing `citation_snapshots` metadata.",
                 )
             for citation in citations:
-                candidate = root / citation
+                candidate = context.root / citation
                 if not candidate.exists():
-                    findings.append(
-                        Finding(
-                            "error",
-                            relative_path(root, page),
-                            f"{expected_kind.capitalize()} page references missing citation path: `{citation}`.",
-                        )
+                    context.add(
+                        "error",
+                        page,
+                        f"{expected_kind.capitalize()} page references missing citation path: `{citation}`.",
                     )
             if expected_kind in {"decision", "judgment"} and (
                 citation_snapshot_state["missing"] or citation_snapshot_state["stale"]
             ):
-                findings.append(
-                    Finding(
-                        "warn",
-                        relative_path(root, page),
-                        f"{expected_kind.capitalize()} page has citation snapshot gaps: missing `{len(citation_snapshot_state['missing'])}` stale `{len(citation_snapshot_state['stale'])}`.",
-                    )
+                context.add(
+                    "warn",
+                    page,
+                    f"{expected_kind.capitalize()} page has citation snapshot gaps: missing `{len(citation_snapshot_state['missing'])}` stale `{len(citation_snapshot_state['stale'])}`.",
                 )
             if expected_kind in {"decision", "judgment"} and not frontmatter.get("protocol"):
-                findings.append(
-                    Finding("warn", relative_path(root, page), f"{expected_kind.capitalize()} page is missing explicit `protocol` metadata.")
-                )
+                context.add("warn", page, f"{expected_kind.capitalize()} page is missing explicit `protocol` metadata.")
+            if expected_kind in {"decision", "judgment"}:
+                if not str(frontmatter.get("confidence") or "").strip():
+                    context.add("warn", page, f"{expected_kind.capitalize()} page is missing explicit confidence metadata.")
+                structured_keys = {
+                    "counter_evidence": "structured `counter_evidence` metadata",
+                    "invalidation_rule": "structured `invalidation_rule` metadata",
+                    "next_signals": "structured `next_signals` metadata",
+                    "revisit_after": "`revisit_after` metadata",
+                    "escalate_after": "`escalate_after` metadata",
+                    "formed_at": "`formed_at` metadata",
+                    "last_reviewed": "`last_reviewed` metadata",
+                }
+                for key, label in structured_keys.items():
+                    if key not in frontmatter:
+                        context.add("warn", page, f"{expected_kind.capitalize()} page is missing {label}.")
+                for key in ("counter_evidence", "next_signals"):
+                    if key in frontmatter and not isinstance(frontmatter.get(key), list):
+                        context.add("warn", page, f"{expected_kind.capitalize()} page `{key}` metadata should be a list.")
+                if "counter_evidence" in frontmatter and not frontmatter_string_list(frontmatter, "counter_evidence"):
+                    context.add("warn", page, f"{expected_kind.capitalize()} page has empty structured `counter_evidence` metadata.")
+                if "next_signals" in frontmatter and not frontmatter_string_list(frontmatter, "next_signals"):
+                    context.add("warn", page, f"{expected_kind.capitalize()} page has empty structured `next_signals` metadata.")
+                if "invalidation_rule" in frontmatter and not str(frontmatter.get("invalidation_rule") or "").strip():
+                    context.add("warn", page, f"{expected_kind.capitalize()} page has empty structured `invalidation_rule` metadata.")
+                if "formed_at" in frontmatter and not str(frontmatter.get("formed_at") or "").strip():
+                    context.add("warn", page, f"{expected_kind.capitalize()} page has empty `formed_at` metadata.")
+                if frontmatter.get("reviewed_at") and not str(frontmatter.get("last_reviewed") or "").strip():
+                    context.add("warn", page, f"Reviewed {expected_kind} page is missing `last_reviewed` metadata.")
             if expected_kind == "decision":
                 if frontmatter.get("status") not in DECISION_STATUSES:
-                    findings.append(
-                        Finding(
-                            "warn",
-                            relative_path(root, page),
-                            f"Decision page has unsupported status `{frontmatter.get('status', '')}`.",
-                        )
+                    context.add(
+                        "warn",
+                        page,
+                        f"Decision page has unsupported status `{frontmatter.get('status', '')}`.",
                     )
                 for section in ("## Decision", "## Evidence"):
                     if section not in content:
-                        findings.append(
-                            Finding("warn", relative_path(root, page), f"Decision page is missing section `{section}`.")
-                        )
+                        context.add("warn", page, f"Decision page is missing section `{section}`.")
                 for section in ("## Review Status", "## Review Notes"):
                     if section not in content:
-                        findings.append(
-                            Finding("warn", relative_path(root, page), f"Decision page is missing section `{section}`.")
-                        )
+                        context.add("warn", page, f"Decision page is missing section `{section}`.")
                 for heading in CURATED_ASSET_SECTION_ORDER:
                     snapshot = curated_asset_section_snapshot(
                         content,
@@ -4108,54 +5211,38 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                         escalate_after=str(frontmatter.get("escalate_after") or ""),
                     )
                     if not snapshot["present"]:
-                        findings.append(
-                            Finding("warn", relative_path(root, page), f"Decision page is missing section `## {heading}`.")
-                        )
+                        context.add("warn", page, f"Decision page is missing section `## {heading}`.")
                     elif (
                         heading != "Review History"
                         and frontmatter.get("status") in {"approved", "needs-revisit", "superseded"}
                         and not snapshot["meaningful"]
                     ):
-                        findings.append(
-                            Finding("warn", relative_path(root, page), f"Decision page still has placeholder `{heading}` content.")
-                        )
+                        context.add("warn", page, f"Decision page still has placeholder `{heading}` content.")
                     elif heading == "Review History" and frontmatter.get("reviewed_at") and not snapshot["meaningful"]:
-                        findings.append(
-                            Finding("warn", relative_path(root, page), "Decision page is reviewed but has no populated `Review History`.")
-                        )
+                        context.add("warn", page, "Decision page is reviewed but has no populated `Review History`.")
                 if frontmatter.get("status") in {"approved", "needs-revisit", "superseded"} and not frontmatter.get(
                     "reviewed_at"
                 ):
-                    findings.append(
-                        Finding("warn", relative_path(root, page), "Reviewed decision page is missing `reviewed_at`."),
-                    )
+                    context.add("warn", page, "Reviewed decision page is missing `reviewed_at`.")
                 if frontmatter.get("reviewed_at") and citation_snapshot_state["has_drift"]:
-                    findings.append(
-                        Finding(
-                            "warn",
-                            relative_path(root, page),
-                            f"Reviewed decision page has citation drift: drifted `{len(citation_snapshot_state['drifted'])}` missing `{len(citation_snapshot_state['missing'])}` stale `{len(citation_snapshot_state['stale'])}`.",
-                        )
+                    context.add(
+                        "warn",
+                        page,
+                        f"Reviewed decision page has citation drift: drifted `{len(citation_snapshot_state['drifted'])}` missing `{len(citation_snapshot_state['missing'])}` stale `{len(citation_snapshot_state['stale'])}`.",
                     )
             if expected_kind == "judgment":
                 if frontmatter.get("status") not in JUDGMENT_STATUSES:
-                    findings.append(
-                        Finding(
-                            "warn",
-                            relative_path(root, page),
-                            f"Judgment page has unsupported status `{frontmatter.get('status', '')}`.",
-                        )
+                    context.add(
+                        "warn",
+                        page,
+                        f"Judgment page has unsupported status `{frontmatter.get('status', '')}`.",
                     )
                 for section in ("## Judgment", "## Signals"):
                     if section not in content:
-                        findings.append(
-                            Finding("warn", relative_path(root, page), f"Judgment page is missing section `{section}`.")
-                        )
+                        context.add("warn", page, f"Judgment page is missing section `{section}`.")
                 for section in ("## Review Status", "## Review Notes"):
                     if section not in content:
-                        findings.append(
-                            Finding("warn", relative_path(root, page), f"Judgment page is missing section `{section}`.")
-                        )
+                        context.add("warn", page, f"Judgment page is missing section `{section}`.")
                 for heading in CURATED_ASSET_SECTION_ORDER:
                     snapshot = curated_asset_section_snapshot(
                         content,
@@ -4164,45 +5251,33 @@ def lint_wiki(root: Path) -> dict[str, Any]:
                         escalate_after=str(frontmatter.get("escalate_after") or ""),
                     )
                     if not snapshot["present"]:
-                        findings.append(
-                            Finding("warn", relative_path(root, page), f"Judgment page is missing section `## {heading}`.")
-                        )
+                        context.add("warn", page, f"Judgment page is missing section `## {heading}`.")
                     elif (
                         heading != "Review History"
                         and frontmatter.get("status") in {"tracking", "confirmed", "rejected"}
                         and not snapshot["meaningful"]
                     ):
-                        findings.append(
-                            Finding("warn", relative_path(root, page), f"Judgment page still has placeholder `{heading}` content.")
-                        )
+                        context.add("warn", page, f"Judgment page still has placeholder `{heading}` content.")
                     elif heading == "Review History" and frontmatter.get("reviewed_at") and not snapshot["meaningful"]:
-                        findings.append(
-                            Finding("warn", relative_path(root, page), "Judgment page is reviewed but has no populated `Review History`.")
-                        )
-                if not frontmatter.get("confidence"):
-                    findings.append(
-                        Finding("warn", relative_path(root, page), "Judgment page is missing explicit confidence metadata.")
-                    )
+                        context.add("warn", page, "Judgment page is reviewed but has no populated `Review History`.")
                 if frontmatter.get("status") in {"tracking", "confirmed", "rejected"} and not frontmatter.get(
                     "reviewed_at"
                 ):
-                    findings.append(
-                        Finding("warn", relative_path(root, page), "Reviewed judgment page is missing `reviewed_at`."),
-                    )
+                    context.add("warn", page, "Reviewed judgment page is missing `reviewed_at`.")
                 if frontmatter.get("reviewed_at") and citation_snapshot_state["has_drift"]:
-                    findings.append(
-                        Finding(
-                            "warn",
-                            relative_path(root, page),
-                            f"Reviewed judgment page has citation drift: drifted `{len(citation_snapshot_state['drifted'])}` missing `{len(citation_snapshot_state['missing'])}` stale `{len(citation_snapshot_state['stale'])}`.",
-                        )
+                    context.add(
+                        "warn",
+                        page,
+                        f"Reviewed judgment page has citation drift: drifted `{len(citation_snapshot_state['drifted'])}` missing `{len(citation_snapshot_state['missing'])}` stale `{len(citation_snapshot_state['stale'])}`.",
                     )
 
+
+def _write_lint_report(context: _LintContext) -> dict[str, Any]:
     generated_at = utc_now()
     report_name = f"lint-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.md"
-    report_path = root / "output" / "lint" / report_name
-    error_count = sum(1 for finding in findings if finding.severity == "error")
-    warn_count = sum(1 for finding in findings if finding.severity == "warn")
+    report_path = context.root / "output" / "lint" / report_name
+    error_count = sum(1 for finding in context.findings if finding.severity == "error")
+    warn_count = sum(1 for finding in context.findings if finding.severity == "warn")
     lines = [
         "# Lint 报告",
         "",
@@ -4212,28 +5287,28 @@ def lint_wiki(root: Path) -> dict[str, Any]:
         "",
         "## 发现",
     ]
-    if not findings:
+    if not context.findings:
         lines.append("- 没有发现问题。")
     else:
-        for finding in findings:
+        for finding in context.findings:
             lines.append(f"- `{finding.severity}` {finding.path}: {finding.message}")
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     append_wiki_log(
-        root,
+        context.root,
         "lint",
         "wiki health check",
         [
             f"errors: `{error_count}`",
             f"warnings: `{warn_count}`",
-            f"report: `{relative_path(root, report_path)}`",
+            f"report: `{relative_path(context.root, report_path)}`",
         ],
     )
     return {
-        "path": relative_path(root, report_path),
+        "path": relative_path(context.root, report_path),
         "counts": {"errors": error_count, "warnings": warn_count},
         "findings": [
             {"severity": finding.severity, "path": finding.path, "message": finding.message}
-            for finding in findings
+            for finding in context.findings
         ],
     }
 
@@ -4275,6 +5350,9 @@ def render_repair_backlog(
     apply_ready_rewrites = [proposal for proposal in rewrite_proposals if proposal.get("apply_ready")]
     apply_ready_actions = [action for action in actions if action_supports_low_risk_apply(action)]
     execution_proposals = repair_plan.get("execution_proposals", [])
+    counter_evidence_scan = health.get("counter_evidence_scan", {})
+    counter_evidence_pages = counter_evidence_scan.get("pages", []) if isinstance(counter_evidence_scan, dict) else []
+    judgment_review_actions = health.get("judgment_review_actions", [])
     promotions = promotion_result.get("pages", [])
     lines = [
         "# 修复待办",
@@ -4308,6 +5386,8 @@ def render_repair_backlog(
         f"- 待审 Rewrite：`{rewrite_state.get('counts', {}).get('pending_review', 0)}`",
         f"- 可应用 Rewrite：`{len(apply_ready_rewrites)}`",
         f"- 可安全执行动作：`{len(apply_ready_actions)}`",
+        f"- Counter-evidence candidates：`{len(counter_evidence_pages)}`",
+        f"- Judgment review actions：`{len(judgment_review_actions)}`",
         f"- 图谱修复候选：`{len(health.get('link_suggestions', []))}`",
         f"- 无概念覆盖来源：`{len(sources_without_concepts)}`",
         f"- 图谱分量数：`{health.get('component_count', 0)}`",
@@ -4343,6 +5423,10 @@ def render_repair_backlog(
         lines.append(f"6. 先清理 `{len(overdue_pages)}` 个已到期但还没复审的页面。")
     if escalated_pages:
         lines.append(f"7. 提升 `{len(escalated_pages)}` 个已经超过升级阈值的页面优先级。")
+    if counter_evidence_pages:
+        lines.append(f"7a. 审阅 `{len(counter_evidence_pages)}` 个新 source 触发的 counter-evidence candidate。")
+    if judgment_review_actions:
+        lines.append(f"7b. 执行 `{len(judgment_review_actions)}` 个 judgment review action，把升级项推进进显式 review workflow。")
     if promotions:
         lines.append(f"8. 检查本轮自动晋升的 `{len(promotions)}` 个页面，确认是否需要补证据和审阅。")
     if actions:
@@ -4432,6 +5516,32 @@ def render_repair_backlog(
             if page in escalated_pages[:10]:
                 continue
             lines.append(f"- 到期：`{page['path']}` | 状态 `{display_curated_status(page['status'])}`")
+    if counter_evidence_pages:
+        lines.append("")
+        lines.append("### Counter-evidence Candidates")
+        for candidate in counter_evidence_pages[:10]:
+            if not isinstance(candidate, dict):
+                continue
+            lines.append(
+                f"- `{candidate.get('page_path', '')}`"
+                f" | candidates `{candidate.get('candidate_count', 0)}`"
+                f" | sources `{', '.join(candidate.get('source_ids', [])) or 'none'}`"
+                f" | shared `{', '.join(candidate.get('shared_terms', [])) or 'none'}`"
+            )
+    if judgment_review_actions:
+        lines.append("")
+        lines.append("### Judgment Review Actions")
+        for action in judgment_review_actions[:10]:
+            if not isinstance(action, dict):
+                continue
+            command = str(action.get("review_command") or "")
+            command_suffix = f" | command `{command}`" if command else ""
+            lines.append(
+                f"- `{action.get('title', 'review action')}`"
+                f" | priority `{action.get('priority', 'medium')}`"
+                f" | reasons `{', '.join(action.get('reason_codes', [])) or 'none'}`"
+                f"{command_suffix}"
+            )
     if promotions:
         lines.append("")
         lines.append("### 本轮自动晋升")
@@ -4496,13 +5606,15 @@ def render_repair_backlog(
         lines.append("")
         lines.append("### Rewrite Proposals")
         for proposal in rewrite_proposals[:8]:
-            command = (
-                f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {proposal['slug']}"
-                if proposal.get("apply_ready")
-                else f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite {proposal['slug']} --status accepted"
-            )
+            command = f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite {proposal['slug']} --status accepted"
+            if proposal.get("status") == "applied" and str(proposal.get("previous_markdown") or ""):
+                command = f"PYTHONPATH=src python3 -m aiwiki.cli --root . revert-rewrite {proposal['slug']}"
+            elif proposal.get("apply_ready"):
+                command = f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {proposal['slug']}"
             lines.append(
                 f"- `{proposal['target_path']}` | status `{display_rewrite_proposal_status(str(proposal.get('status') or 'proposed'))}`"
+                f" | quality `{proposal.get('quality_score', 0)}`"
+                f" | verify `{proposal.get('verification_status', '') or 'pending'}`"
                 f" | strategy `{proposal.get('rewrite_strategy', 'n/a')}` | command `{command}`"
             )
     if concept_quality.get("conflict_signals"):
@@ -4861,6 +5973,16 @@ def write_nightly_health(
             "pending_review_judgments": [page["path"] for page in queue["pending_judgments"]],
             "overdue_pages": [page["path"] for page in aging["overdue"]],
             "escalated_pages": [page["path"] for page in aging["escalated"]],
+            "counter_evidence_candidates": [
+                candidate["page_path"]
+                for candidate in memory.get("health", {}).get("counter_evidence_scan", {}).get("pages", [])
+                if isinstance(candidate, dict) and candidate.get("page_path")
+            ],
+            "judgment_review_actions": [
+                action["id"]
+                for action in memory.get("health", {}).get("judgment_review_actions", [])
+                if isinstance(action, dict) and action.get("id")
+            ],
             "auto_promotions": [page["path"] for page in promotion_result.get("pages", [])],
             "weak_concept_slugs": [
                 concept["slug"] for concept in memory.get("health", {}).get("concept_quality", {}).get("weak_concepts", [])
@@ -4913,6 +6035,8 @@ def write_nightly_health(
             f"pending_judgment_reviews: `{len(queue['pending_judgments'])}`",
             f"overdue_reviews: `{len(aging['overdue'])}`",
             f"escalation_candidates: `{len(aging['escalated'])}`",
+            f"counter_evidence_candidates: `{len(memory.get('health', {}).get('counter_evidence_scan', {}).get('pages', []))}`",
+            f"judgment_review_actions: `{len(memory.get('health', {}).get('judgment_review_actions', []))}`",
             f"cooled_active_corpora: `{len(cooled_corpus_ids)}`",
             f"expired_active_corpora: `{len(expired_corpus_ids)}`",
             f"archive_candidates: `{len(archive_candidates.get('entries', []))}`",

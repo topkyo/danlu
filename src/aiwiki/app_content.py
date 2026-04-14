@@ -48,6 +48,7 @@ from .app_utils import (
 
 from .app_state import (
     DEFAULT_PROTOCOL,
+    JUDGMENT_LIFECYCLE_STATES,
     KNOWLEDGE_LIFECYCLE_KINDS,
     KNOWLEDGE_LIFECYCLE_STATES,
     active_knowledge_lifecycle_overrides,
@@ -55,6 +56,7 @@ from .app_state import (
     default_knowledge_lifecycle_state,
     default_material_routing_state,
     ensure_knowledge_lifecycle_override_state,
+    execution_policy_log_path,
     execution_receipt_history_path,
     load_active_corpora_state,
     load_concept_build_state,
@@ -75,6 +77,7 @@ from .app_state import (
     material_state_path,
     save_knowledge_lifecycle_state,
 )
+from .app_types import JudgmentAsset
 
 from .app_protocol import (
     AUTO_PROMOTION_FORMATS,
@@ -98,6 +101,7 @@ from .app_protocol import (
     ensure_layout,
     load_protocol_state,
     page_focus_score,
+    protocol_execution_policy_rule,
     protocol_title,
     save_manifest,
     schedule_review_windows,
@@ -1432,6 +1436,48 @@ def sort_curated_pages(pages: list[dict[str, str]]) -> list[dict[str, str]]:
     return sorted(pages, key=sort_key, reverse=True)
 
 
+def frontmatter_string_list(frontmatter: dict[str, Any], key: str) -> list[str]:
+    value = frontmatter.get(key, [])
+    if isinstance(value, str):
+        item = value.strip()
+        return [item] if item else []
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if isinstance(item, str) and str(item).strip()]
+
+
+def judgment_asset_frontmatter(
+    *,
+    frontmatter: dict[str, Any],
+    page_id: str,
+    title: str,
+    path: str,
+    kind: str,
+    status: str,
+    protocol: str,
+    citations: list[str],
+    revisit_after: str,
+    escalate_after: str,
+) -> JudgmentAsset:
+    return {
+        "page_id": page_id,
+        "title": title,
+        "path": path,
+        "kind": kind,
+        "status": status,
+        "protocol": protocol,
+        "citations": citations,
+        "confidence": str(frontmatter.get("confidence") or ""),
+        "counter_evidence": frontmatter_string_list(frontmatter, "counter_evidence"),
+        "invalidation_rule": str(frontmatter.get("invalidation_rule") or "").strip(),
+        "next_signals": frontmatter_string_list(frontmatter, "next_signals"),
+        "revisit_after": revisit_after,
+        "escalate_after": escalate_after,
+        "formed_at": str(frontmatter.get("formed_at") or frontmatter.get("last_compiled_at") or ""),
+        "last_reviewed": str(frontmatter.get("last_reviewed") or frontmatter.get("reviewed_at") or ""),
+    }
+
+
 def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[dict[str, str]]:
     pages: list[dict[str, str]] = []
     now = datetime.now(timezone.utc)
@@ -1451,6 +1497,7 @@ def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[d
                 status,
                 base_timestamp,
                 protocol=protocol,
+                root=root,
             )
         asset_snapshots = {
             heading: curated_asset_section_snapshot(
@@ -1466,6 +1513,18 @@ def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[d
             for path in frontmatter.get("citations", [])
             if isinstance(path, str) and path.strip()
         ]
+        asset_frontmatter = judgment_asset_frontmatter(
+            frontmatter=frontmatter,
+            page_id=str(frontmatter.get("id") or path.stem),
+            title=str(frontmatter.get("title") or path.stem),
+            path=relative_path(root, path),
+            kind=str(frontmatter.get("kind") or ""),
+            status=status,
+            protocol=protocol,
+            citations=citations,
+            revisit_after=revisit_after,
+            escalate_after=escalate_after,
+        )
         citation_snapshot_state = analyze_citation_snapshots(root, citations, frontmatter)
         review_entries = review_history_entries(content)
         asset_score = sum(1 for snapshot in asset_snapshots.values() if snapshot.get("meaningful"))
@@ -1498,6 +1557,25 @@ def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[d
                 "citation_snapshot_gap_count": str(
                     len(citation_snapshot_state["missing"]) + len(citation_snapshot_state["stale"])
                 ),
+                "formed_at": str(asset_frontmatter.get("formed_at") or ""),
+                "last_reviewed": str(asset_frontmatter.get("last_reviewed") or ""),
+                "counter_evidence_count": str(len(asset_frontmatter.get("counter_evidence", []))),
+                "next_signal_count": str(len(asset_frontmatter.get("next_signals", []))),
+                "invalidation_rule": str(asset_frontmatter.get("invalidation_rule") or ""),
+                "has_counter_evidence_metadata": "true" if "counter_evidence" in frontmatter else "false",
+                "has_invalidation_rule_metadata": "true" if "invalidation_rule" in frontmatter else "false",
+                "has_next_signals_metadata": "true" if "next_signals" in frontmatter else "false",
+                "has_formed_at_metadata": "true" if "formed_at" in frontmatter else "false",
+                "has_last_reviewed_metadata": "true" if "last_reviewed" in frontmatter else "false",
+                "has_structured_counter_evidence": "true"
+                if asset_frontmatter.get("counter_evidence")
+                else "false",
+                "has_structured_invalidation_rule": "true"
+                if str(asset_frontmatter.get("invalidation_rule") or "").strip()
+                else "false",
+                "has_structured_next_signals": "true"
+                if asset_frontmatter.get("next_signals")
+                else "false",
             }
         )
     enriched: list[dict[str, str]] = []
@@ -1545,6 +1623,32 @@ def review_queue(
         "pending_judgments": pending_judgments,
         "recently_reviewed": reviewed,
     }
+
+
+def judgment_lifecycle_profile(page: dict[str, Any]) -> tuple[str, list[str]]:
+    kind = str(page.get("kind") or "")
+    status = str(page.get("status") or "")
+    terminal_statuses = {"superseded"} if kind == "decision" else {"rejected"}
+    if status in terminal_statuses:
+        return "retired", ["terminal-status", status]
+    reasons: list[str] = []
+    if status in {"tracking", "needs-revisit"}:
+        reasons.append("explicit-review-status")
+    if str(page.get("overdue_review") or "").lower() == "true" or page.get("overdue_review") is True:
+        reasons.append("overdue-review")
+    if str(page.get("escalation_candidate") or "").lower() == "true" or page.get("escalation_candidate") is True:
+        reasons.append("escalation-candidate")
+    if str(page.get("citation_drift") or "").lower() == "true" or page.get("citation_drift") is True:
+        reasons.append("citation-drift")
+    if int(page.get("citation_snapshot_gap_count", "0") or 0) > 0:
+        reasons.append("citation-snapshot-gap")
+    if reasons:
+        return "under-review", reasons
+    if int(page.get("review_history_entries", "0") or 0) > 1:
+        return "revised", ["reviewed-multiple-times"]
+    if str(page.get("last_reviewed") or page.get("reviewed_at") or "") or status in {"approved", "confirmed"}:
+        return "active", ["reviewed-active"]
+    return "formed", ["filed-back"]
 
 
 def knowledge_lifecycle_invalidation_signals(page: dict[str, str]) -> list[str]:
@@ -1687,6 +1791,7 @@ def build_knowledge_lifecycle_entry(
         invalidation_signals=invalidation_signals,
         active_corpus_ids=active_corpus_ids,
     )
+    judgment_lifecycle_state, judgment_lifecycle_reason_codes = judgment_lifecycle_profile(page)
     return {
         "page_id": str(frontmatter.get("id") or Path(str(page.get("path") or "")).stem),
         "title": str(page.get("title") or frontmatter.get("title") or Path(str(page.get("path") or "")).stem),
@@ -1713,6 +1818,13 @@ def build_knowledge_lifecycle_entry(
         "review_history_entries": int(page.get("review_history_entries", "0") or "0"),
         "asset_score": int(page.get("asset_score", "0") or "0"),
         "confidence": str(page.get("confidence") or ""),
+        "formed_at": str(page.get("formed_at") or ""),
+        "last_reviewed": str(page.get("last_reviewed") or page.get("reviewed_at") or ""),
+        "counter_evidence_count": int(page.get("counter_evidence_count", "0") or "0"),
+        "next_signal_count": int(page.get("next_signal_count", "0") or "0"),
+        "invalidation_rule": str(page.get("invalidation_rule") or ""),
+        "judgment_lifecycle_state": judgment_lifecycle_state,
+        "judgment_lifecycle_reason_codes": judgment_lifecycle_reason_codes,
     }
 
 
@@ -1868,6 +1980,17 @@ def display_knowledge_lifecycle_state(state: str) -> str:
     return mapping.get(state, state or "unknown")
 
 
+def display_judgment_lifecycle_state(state: str) -> str:
+    mapping = {
+        "formed": "已形成",
+        "active": "活跃",
+        "under-review": "复审中",
+        "revised": "已修订",
+        "retired": "已退役",
+    }
+    return mapping.get(state, state or "unknown")
+
+
 def display_protocol_relevance_mode(mode: str) -> str:
     mapping = {
         "source-top1": "top1",
@@ -1934,6 +2057,9 @@ def render_knowledge_lifecycle_entry_summary(entry: dict[str, Any]) -> str:
         f"kind `{kind}`",
         f"state `{display_knowledge_lifecycle_state(lifecycle_state)}`",
     ]
+    judgment_lifecycle_state = str(entry.get("judgment_lifecycle_state") or "")
+    if kind in {"decision", "judgment"} and judgment_lifecycle_state:
+        parts.append(f"judgment_state `{display_judgment_lifecycle_state(judgment_lifecycle_state)}`")
     if bool(entry.get("override_active")):
         parts.append(f"override `{str(entry.get('override_state') or lifecycle_state or 'unknown')}`")
     invalidation_signals = entry.get("invalidation_signals", [])
@@ -1987,11 +2113,38 @@ def knowledge_lifecycle_governance_summary(
         .get("concept", {})
         .get("by_state", {})
     )
+    curated_entries = sort_knowledge_lifecycle_entries(
+        select_knowledge_lifecycle_entries(
+            knowledge_lifecycle,
+            kinds={"decision", "judgment"},
+        ),
+        active_protocol=active_protocol,
+    )
+    formed_judgments = [
+        entry for entry in curated_entries if str(entry.get("judgment_lifecycle_state") or "") == "formed"
+    ]
+    active_judgments = [
+        entry for entry in curated_entries if str(entry.get("judgment_lifecycle_state") or "") == "active"
+    ]
+    under_review_judgments = [
+        entry for entry in curated_entries if str(entry.get("judgment_lifecycle_state") or "") == "under-review"
+    ]
+    revised_judgments = [
+        entry for entry in curated_entries if str(entry.get("judgment_lifecycle_state") or "") == "revised"
+    ]
+    retired_judgments = [
+        entry for entry in curated_entries if str(entry.get("judgment_lifecycle_state") or "") == "retired"
+    ]
     return {
         "concept_backlog": concept_backlog,
         "review_concepts": review_concepts,
         "revisit_concepts": revisit_concepts,
         "retired_concepts": retired_concepts,
+        "formed_judgments": formed_judgments,
+        "active_judgments": active_judgments,
+        "under_review_judgments": under_review_judgments,
+        "revised_judgments": revised_judgments,
+        "retired_judgments": retired_judgments,
         "counts": {
             "concept_backlog": len(concept_backlog),
             "review_concepts": len(review_concepts),
@@ -1999,6 +2152,11 @@ def knowledge_lifecycle_governance_summary(
             "retired_concepts": len(retired_concepts),
             "active_concepts": int(concept_counts.get("active", 0) or 0),
             "deferred_concepts": int(concept_counts.get("deferred", 0) or 0),
+            "formed_judgments": len(formed_judgments),
+            "active_judgments": len(active_judgments),
+            "under_review_judgments": len(under_review_judgments),
+            "revised_judgments": len(revised_judgments),
+            "retired_judgments": len(retired_judgments),
         },
     }
 
@@ -2379,20 +2537,23 @@ def action_status_rank(status: str) -> int:
 
 
 def action_supports_low_risk_apply(action: dict[str, Any]) -> bool:
-    return (
-        bool(action.get("active", True))
-        and str(action.get("status") or "") == "accepted"
-        and str(action.get("kind") or "") in LOW_RISK_APPLYABLE_ACTION_KINDS
-    )
+    if not bool(action.get("active", True)) or str(action.get("status") or "") != "accepted":
+        return False
+    decision = str(action.get("policy_decision") or "")
+    if decision:
+        return decision == "allow"
+    return str(action.get("kind") or "") in LOW_RISK_APPLYABLE_ACTION_KINDS
 
 
-def execution_policy_profile(action: dict[str, Any]) -> dict[str, Any]:
+def execution_policy_profile(action: dict[str, Any], *, root: Path | None = None) -> dict[str, Any]:
     status = str(action.get("status") or "proposed")
     active = bool(action.get("active", True))
     if not active:
         return {
             "execution_policy": "inactive-history",
             "execution_band": "history-only",
+            "policy_decision": "history",
+            "policy_rule_id": "inactive-history",
             "capabilities": ["history"],
             "policy_summary": "信号已消失，只保留历史与审计价值。",
         }
@@ -2400,20 +2561,39 @@ def execution_policy_profile(action: dict[str, Any]) -> dict[str, Any]:
         return {
             "execution_policy": "triage",
             "execution_band": "review-first",
+            "policy_decision": "review",
+            "policy_rule_id": "proposed-triage",
             "capabilities": ["review"],
             "policy_summary": "先 review / triage，再决定是否进入 accepted。",
         }
-    if status == "accepted" and action_supports_low_risk_apply(action):
-        return {
-            "execution_policy": "semi-auto-apply",
-            "execution_band": "bundle-safe-apply",
-            "capabilities": ["dry-run", "bundle-apply", "revert-safe", "history"],
-            "policy_summary": "支持 dry-run、bundle-driven apply 和 receipt 驱动回滚。",
-        }
     if status == "accepted":
+        if root is not None:
+            protocol = str(action.get("protocol") or DEFAULT_PROTOCOL)
+            kind = str(action.get("kind") or "")
+            rule = protocol_execution_policy_rule(root, protocol, kind)
+            if rule:
+                return {
+                    "execution_policy": str(rule.get("execution_policy") or "manual-repair"),
+                    "execution_band": str(rule.get("execution_band") or "manual-repair"),
+                    "policy_decision": str(rule.get("decision") or "review"),
+                    "policy_rule_id": f"{protocol}:{kind}",
+                    "capabilities": [str(item) for item in rule.get("capabilities", []) if isinstance(item, str) and item],
+                    "policy_summary": str(rule.get("policy_summary") or ""),
+                }
+        if action_supports_low_risk_apply(action):
+            return {
+                "execution_policy": "semi-auto-apply",
+                "execution_band": "bundle-safe-apply",
+                "policy_decision": "allow",
+                "policy_rule_id": f"legacy:{str(action.get('kind') or '')}",
+                "capabilities": ["dry-run", "bundle-apply", "revert-safe", "history"],
+                "policy_summary": "支持 dry-run、bundle-driven apply 和 receipt 驱动回滚。",
+            }
         return {
             "execution_policy": "manual-repair",
             "execution_band": "manual-repair",
+            "policy_decision": "review",
+            "policy_rule_id": f"legacy:{str(action.get('kind') or '')}",
             "capabilities": ["manual-edit", "review"],
             "policy_summary": "只能走人工修复与 review，不开放 safe apply。",
         }
@@ -2421,12 +2601,16 @@ def execution_policy_profile(action: dict[str, Any]) -> dict[str, Any]:
         return {
             "execution_policy": "parked",
             "execution_band": "deferred",
+            "policy_decision": "history",
+            "policy_rule_id": "deferred-parked",
             "capabilities": ["resume-review", "history"],
             "policy_summary": "动作已暂缓，保留复查与恢复入口。",
         }
     return {
         "execution_policy": "closed",
         "execution_band": "closed",
+        "policy_decision": "history",
+        "policy_rule_id": "closed-history",
         "capabilities": ["history"],
         "policy_summary": "动作已关闭，仅保留审计与历史记录。",
     }
@@ -2532,6 +2716,16 @@ PATCH_PLAN_TEMPLATES: dict[str, dict[str, Any]] = {
             },
         },
     },
+    "refresh-citation-snapshots": {
+        "summary": "刷新判断页的 citation snapshot metadata，不改正文结论。",
+        "roles": {
+            "other": {
+                "mode": "semi-auto-apply",
+                "sections": ("frontmatter", "Citations"),
+                "summary": "重建 citation_snapshots，让 review / drift 检测重新收敛。",
+            },
+        },
+    },
 }
 
 
@@ -2621,7 +2815,11 @@ def build_page_patch_plan(root: Path, action: dict[str, Any], *, active_protocol
         seen_paths.add(path)
         ordered_paths.append(path)
     if action_supports_low_risk_apply(action):
-        ordered_paths.append(".aiwiki/state/manual-links.json")
+        preview = safe_apply_preview(root, action)
+        state_path = str(preview.get("state_path") or "") if isinstance(preview, dict) else ""
+        if state_path and state_path not in seen_paths:
+            seen_paths.add(state_path)
+            ordered_paths.append(state_path)
 
     plan: list[dict[str, Any]] = []
     for path in ordered_paths:
@@ -2652,7 +2850,28 @@ def build_page_patch_plan(root: Path, action: dict[str, Any], *, active_protocol
 
 
 def safe_apply_preview(root: Path, action: dict[str, Any]) -> dict[str, Any] | None:
-    if str(action.get("kind") or "") not in LOW_RISK_APPLYABLE_ACTION_KINDS:
+    kind = str(action.get("kind") or "")
+    if kind == "refresh-citation-snapshots":
+        page_path = str(action.get("primary_path") or "")
+        if not page_path:
+            return None
+        absolute = root / page_path
+        if not absolute.exists():
+            return None
+        content = absolute.read_text(encoding="utf-8", errors="replace")
+        frontmatter = parse_frontmatter(content)
+        citations = [str(item) for item in frontmatter.get("citations", []) if isinstance(item, str) and item.strip()]
+        if not citations:
+            return None
+        return {
+            "apply_mode": "citation-snapshot-refresh",
+            "page_path": page_path,
+            "previous_citation_snapshots": list(frontmatter.get("citation_snapshots", []) or []),
+            "updated_citation_snapshots": build_citation_snapshots(root, citations),
+            "affected_paths": [page_path],
+            "follow_up": "执行后会重跑 compile，让 judgment drift / review surface 重新收敛。",
+        }
+    if kind not in LOW_RISK_APPLYABLE_ACTION_KINDS:
         return None
     try:
         source_id, concept_slug = validate_low_risk_action_targets(root, action)
@@ -2676,243 +2895,64 @@ def safe_apply_preview(root: Path, action: dict[str, Any]) -> dict[str, Any] | N
     }
 
 
-def build_execution_bundle(
-    root: Path,
-    proposal: dict[str, Any],
-    *,
-    compiled_at: str,
-) -> dict[str, Any]:
-    patch_steps: list[dict[str, Any]] = []
-    for index, patch in enumerate(proposal.get("page_patch_plan", []), start=1):
-        patch_steps.append(
-            {
-                "step": index,
-                "path": str(patch.get("path") or ""),
-                "role": str(patch.get("role") or ""),
-                "role_label": str(patch.get("role_label") or patch.get("role") or "page"),
-                "mode": str(patch.get("mode") or "update"),
-                "sections": list(patch.get("sections") or []),
-                "summary": str(patch.get("summary") or ""),
-                "exists": bool(patch.get("exists", False)),
-                "command_hint": str(patch.get("command_hint") or ""),
-            }
-        )
-    bundle = {
-        "version": 1,
-        "kind": "execution-bundle",
-        "generated_by": "aiwiki-compile",
-        "compiled_at": compiled_at,
-        "action_id": str(proposal.get("action_id") or ""),
-        "title": str(proposal.get("title") or ""),
-        "status": str(proposal.get("status") or "proposed"),
-        "proposal_kind": str(proposal.get("proposal_kind") or "manual-repair"),
-        "risk": str(proposal.get("risk") or "medium"),
-        "priority": str(proposal.get("priority") or "medium"),
-        "protocol": str(proposal.get("protocol") or DEFAULT_PROTOCOL),
-        "summary": str(proposal.get("summary") or ""),
-        "target_paths": list(proposal.get("target_paths") or []),
-        "suggested_edits": list(proposal.get("suggested_edits") or []),
-        "proposal_path": str(proposal.get("proposal_path") or ""),
-        "bundle_path": str(proposal.get("bundle_path") or ""),
-        "page_patch_plan": patch_steps,
-        "safe_apply_preview": proposal.get("safe_apply_preview"),
-        "command_hint": str(proposal.get("command_hint") or ""),
-        "next_step": str(proposal.get("next_step") or ""),
-        "dry_run_supported": bool(proposal.get("safe_apply_preview")),
-    }
-    bundle["digest"] = execution_bundle_digest(bundle)
-    return bundle
-
-
-def execution_bundle_digest(bundle: dict[str, Any]) -> str:
-    payload = {
-        "action_id": str(bundle.get("action_id") or ""),
-        "title": str(bundle.get("title") or ""),
-        "status": str(bundle.get("status") or ""),
-        "proposal_kind": str(bundle.get("proposal_kind") or ""),
-        "risk": str(bundle.get("risk") or ""),
-        "priority": str(bundle.get("priority") or ""),
-        "protocol": str(bundle.get("protocol") or DEFAULT_PROTOCOL),
-        "summary": str(bundle.get("summary") or ""),
-        "target_paths": list(bundle.get("target_paths") or []),
-        "suggested_edits": list(bundle.get("suggested_edits") or []),
-        "page_patch_plan": list(bundle.get("page_patch_plan") or []),
-        "safe_apply_preview": bundle.get("safe_apply_preview"),
-        "command_hint": str(bundle.get("command_hint") or ""),
-        "next_step": str(bundle.get("next_step") or ""),
-        "dry_run_supported": bool(bundle.get("dry_run_supported")),
-    }
-    return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
-
-
-def load_execution_bundle(path: Path) -> dict[str, Any]:
-    document = load_json_document(path)
-    if not isinstance(document, dict) or str(document.get("kind") or "") != "execution-bundle":
-        raise RuntimeError(f"Invalid execution bundle: {path}")
-    return document
-
-
-def build_execution_receipt(
-    root: Path,
+def execution_policy_decision_record(
     action: dict[str, Any],
     *,
-    applied_at: str,
-    note: str | None,
-    proposal: dict[str, Any],
-    operation: str = "apply",
-    resulting_status: str = "resolved",
+    occurred_at: str,
+    active_protocol: str = DEFAULT_PROTOCOL,
 ) -> dict[str, Any]:
-    bundle = build_execution_bundle(root, proposal, compiled_at=applied_at)
     return {
         "version": 1,
-        "kind": "execution-receipt",
-        "generated_by": "aiwiki-apply-action",
-        "applied_at": applied_at,
-        "operation": operation,
+        "kind": "execution-policy-decision",
+        "occurred_at": occurred_at,
         "action_id": str(action.get("id") or ""),
-        "title": str(action.get("title") or ""),
-        "status": resulting_status,
-        "protocol": str(proposal.get("protocol") or DEFAULT_PROTOCOL),
-        "apply_mode": "manual-link-state" if operation == "apply" else "manual-link-state-revert",
-        "note": note or "",
+        "title": str(action.get("title") or action.get("id") or ""),
+        "action_kind": str(action.get("kind") or ""),
+        "status": str(action.get("status") or "proposed"),
+        "protocol": str(action.get("protocol") or active_protocol or DEFAULT_PROTOCOL),
+        "policy_decision": str(action.get("policy_decision") or ""),
+        "policy_rule_id": str(action.get("policy_rule_id") or ""),
+        "execution_policy": str(action.get("execution_policy") or ""),
+        "execution_band": str(action.get("execution_band") or ""),
+        "apply_ready": str(action.get("apply_ready") or "false"),
+        "active": bool(action.get("active", True)),
         "primary_path": str(action.get("primary_path") or ""),
         "secondary_path": str(action.get("secondary_path") or ""),
-        "receipt_path": relative_path(root, execution_receipt_path(root, str(action.get("id") or ""))),
-        "bundle": bundle,
-        "safe_apply_preview": proposal.get("safe_apply_preview"),
+        "component_id": str(action.get("component_id") or ""),
     }
 
 
-def build_material_archive_bundle(
-    root: Path,
-    *,
-    entry_id: str,
-    title: str,
-    source_path: str,
-    protocol: str,
-    applied_at: str,
-    operation: str,
-    current_temperature: str,
-    resulting_temperature: str,
-) -> dict[str, Any]:
-    command_hint = (
-        f"PYTHONPATH=src python3 -m aiwiki.cli --root . revert-archive {entry_id}"
-        if operation == "apply"
-        else f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-archive {entry_id}"
-    )
-    action_id = material_archive_action_id(entry_id)
-    bundle = {
-        "version": 1,
-        "kind": "execution-bundle",
-        "generated_by": "aiwiki-material-archive",
-        "compiled_at": applied_at,
-        "action_id": action_id,
-        "title": f"{'Archive' if operation == 'apply' else 'Restore'} {title}",
-        "status": "resolved" if operation == "apply" else "proposed",
-        "proposal_kind": "material-archive",
-        "risk": "low",
-        "priority": "low",
-        "protocol": protocol,
-        "summary": f"{operation} material archive override for `{entry_id}`.",
-        "target_paths": [
-            path
-            for path in (
-                source_path,
-                relative_path(root, material_archive_state_path(root)),
-                relative_path(root, material_state_path(root)),
-            )
-            if path
-        ],
-        "suggested_edits": [f"temperature `{current_temperature}` -> `{resulting_temperature}`"],
-        "proposal_path": "",
-        "bundle_path": "",
-        "page_patch_plan": [],
-        "safe_apply_preview": {
-            "apply_mode": (
-                "material-temperature-archive"
-                if operation == "apply"
-                else "material-temperature-archive-revert"
-            ),
-            "state_path": relative_path(root, material_archive_state_path(root)),
-            "entry": {
-                "entry_id": entry_id,
-                "active": operation == "apply",
-                "temperature": resulting_temperature,
-            },
-            "affected_paths": [
-                path
-                for path in (
-                    source_path,
-                    relative_path(root, material_archive_state_path(root)),
-                    relative_path(root, material_state_path(root)),
-                )
-                if path
-            ],
-            "follow_up": "执行后会重跑 compile，让 material-state / archive-candidates / ask 排序同步收敛。",
-        },
-        "command_hint": command_hint,
-        "next_step": "如需恢复材料，再执行对应的 revert-archive。",
-        "dry_run_supported": False,
-    }
-    bundle["digest"] = execution_bundle_digest(bundle)
-    return bundle
+def load_execution_policy_decision_history(root: Path, *, limit: int | None = None) -> list[dict[str, Any]]:
+    path = execution_policy_log_path(root)
+    if not path.exists():
+        return []
+    records: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(record, dict):
+                records.append(record)
+    records.reverse()
+    if limit is None:
+        return records
+    return records[:limit]
 
 
-def build_material_archive_receipt(
-    root: Path,
-    *,
-    entry_id: str,
-    title: str,
-    source_path: str,
-    protocol: str,
-    applied_at: str,
-    note: str | None,
-    operation: str,
-    current_temperature: str,
-    resulting_temperature: str,
-) -> dict[str, Any]:
-    action_id = material_archive_action_id(entry_id)
-    receipt_path = execution_receipt_path(root, action_id)
-    bundle = build_material_archive_bundle(
-        root,
-        entry_id=entry_id,
-        title=title,
-        source_path=source_path,
-        protocol=protocol,
-        applied_at=applied_at,
-        operation=operation,
-        current_temperature=current_temperature,
-        resulting_temperature=resulting_temperature,
-    )
-    return {
-        "version": 1,
-        "kind": "execution-receipt",
-        "generated_by": "aiwiki-material-archive",
-        "applied_at": applied_at,
-        "operation": operation,
-        "action_id": action_id,
-        "title": f"{'Archive' if operation == 'apply' else 'Restore'} {title}",
-        "status": "resolved" if operation == "apply" else "proposed",
-        "protocol": protocol,
-        "subject_kind": "material-archive",
-        "subject_id": entry_id,
-        "apply_mode": "material-temperature-archive" if operation == "apply" else "material-temperature-archive-revert",
-        "note": note or "",
-        "primary_path": source_path,
-        "secondary_path": "",
-        "current_temperature": current_temperature,
-        "resulting_temperature": resulting_temperature,
-        "receipt_path": relative_path(root, receipt_path),
-        "bundle": bundle,
-        "safe_apply_preview": bundle.get("safe_apply_preview"),
-    }
-
-
-def append_execution_receipt_history(root: Path, receipt: dict[str, Any]) -> None:
-    path = execution_receipt_history_path(root)
+@runtime_write_operation
+def append_execution_policy_decisions(root: Path, decisions: list[dict[str, Any]]) -> None:
+    if not decisions:
+        return
+    path = execution_policy_log_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(receipt, ensure_ascii=False, sort_keys=True) + "\n")
+        for decision in decisions:
+            handle.write(json.dumps(decision, ensure_ascii=False, sort_keys=True) + "\n")
 
 
 def load_execution_receipt_history(root: Path) -> list[dict[str, Any]]:
@@ -2976,7 +3016,7 @@ def remove_stale_generated_markdown_files(directory: Path, active_stems: set[str
     return removed
 
 
-def describe_machine_memory_action(action: dict[str, Any]) -> dict[str, str]:
+def describe_machine_memory_action(action: dict[str, Any], *, root: Path | None = None) -> dict[str, Any]:
     action_id = str(action.get("id") or "")
     kind = str(action.get("kind") or "")
     status = str(action.get("status") or "proposed")
@@ -2988,13 +3028,17 @@ def describe_machine_memory_action(action: dict[str, Any]) -> dict[str, str]:
         "expand-singleton-concept": "扩展单节点概念的相关来源或相关概念。",
         "split-overloaded-concept": "把过载概念拆成更窄的概念页或子主题。",
         "monitor-bridge-concept": "确认桥接概念仍然必要，并记录观察结论。",
+        "refresh-citation-snapshots": "刷新 citation snapshot metadata，让 drift / review surface 收敛。",
     }
     next_step = kind_steps.get(kind, "检查这个 machine-memory 动作对应的页面。")
     command_hint = ""
-    profile = execution_policy_profile(action)
+    profile = execution_policy_profile(action, root=root)
     execution_policy = str(profile.get("execution_policy") or "triage")
     execution_band = str(profile.get("execution_band") or "review-first")
+    policy_decision = str(profile.get("policy_decision") or "")
+    policy_rule_id = str(profile.get("policy_rule_id") or "")
     capabilities = [str(item) for item in profile.get("capabilities", []) if isinstance(item, str) and item]
+    action_with_policy = {**action, **profile}
     if not active:
         next_step = "信号已消失；确认是否要作为已解决归档。"
         if status in PENDING_ACTION_STATUSES:
@@ -3002,7 +3046,7 @@ def describe_machine_memory_action(action: dict[str, Any]) -> dict[str, str]:
     elif status == "proposed":
         command_hint = f'{review_prefix} --status accepted --note "Accepted for manual repair."'
     elif status == "accepted":
-        if action_supports_low_risk_apply(action):
+        if action_supports_low_risk_apply(action_with_policy):
             next_step = "这是低风险动作；可以直接通过 safe execution layer 应用，再让 compile 收敛状态。"
             command_hint = (
                 f'PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id}'
@@ -3019,12 +3063,14 @@ def describe_machine_memory_action(action: dict[str, Any]) -> dict[str, str]:
     return {
         "execution_policy": execution_policy,
         "execution_band": execution_band,
+        "policy_decision": policy_decision,
+        "policy_rule_id": policy_rule_id,
         "execution_capabilities": ", ".join(capabilities) if capabilities else "none",
         "execution_capability_list": capabilities,
         "policy_summary": str(profile.get("policy_summary") or ""),
         "next_step": next_step,
         "command_hint": command_hint,
-        "apply_ready": "true" if action_supports_low_risk_apply(action) else "false",
+        "apply_ready": "true" if action_supports_low_risk_apply(action_with_policy) else "false",
     }
 
 
@@ -3038,7 +3084,7 @@ def build_machine_memory_repair_plan(
     inactive_actions = [dict(action) for action in health.get("inactive_actions", []) if isinstance(action, dict)]
     for action in active_actions + inactive_actions:
         action["focus_score"] = action_focus_score(active_protocol, action)
-        action.update(describe_machine_memory_action(action))
+        action.update(describe_machine_memory_action(action, root=root))
     ready_actions = [action for action in active_actions if action.get("status") == "accepted"]
     triage_actions = [action for action in active_actions if action.get("status") == "proposed"]
     deferred_actions = [action for action in active_actions if action.get("status") == "deferred"]
@@ -3106,6 +3152,7 @@ def build_machine_memory_repair_plan(
         ready_actions + triage_actions + deferred_actions,
         active_protocol=active_protocol,
     )
+    planner_state = build_planner_state(execution_proposals, active_protocol=active_protocol)
 
     return {
         "ready_actions": ready_actions,
@@ -3114,6 +3161,7 @@ def build_machine_memory_repair_plan(
         "inactive_actions": inactive_actions[:12],
         "execution_batches": execution_batches[:10],
         "execution_proposals": execution_proposals,
+        "planner_state": planner_state,
         "counts": {
             "ready": len(ready_actions),
             "triage": len(triage_actions),
@@ -3122,6 +3170,7 @@ def build_machine_memory_repair_plan(
             "batches": len(execution_batches),
             "proposals": len(execution_proposals),
             "patch_steps": sum(len(proposal.get("page_patch_plan", [])) for proposal in execution_proposals),
+            "blocked_proposals": int(planner_state.get("counts", {}).get("blocked", 0) or 0),
         },
     }
 
@@ -3356,6 +3405,223 @@ def render_curated_page_summary(page: dict[str, str]) -> str:
     return f"- [{page['title']}](../../{page['path']}) | " + " | ".join(suffix_parts)
 
 
+def judgment_asset_gap_codes(page: dict[str, str]) -> list[str]:
+    if str(page.get("kind") or "") not in {"decision", "judgment"}:
+        return []
+    reasons: list[str] = []
+    if page.get("has_counter_evidence") != "true":
+        reasons.append("missing-counter-evidence")
+    if page.get("has_invalidation") != "true":
+        reasons.append("missing-invalidation")
+    if page.get("has_next_signals") != "true":
+        reasons.append("missing-next-signals")
+    if page.get("has_review_history") != "true":
+        reasons.append("missing-review-history")
+    if page.get("citation_drift") == "true":
+        reasons.append("citation-drift")
+    if int(page.get("citation_snapshot_gap_count", "0") or "0") > 0:
+        reasons.append("citation-snapshot-gap")
+    if page.get("has_counter_evidence_metadata") != "true":
+        reasons.append("missing-counter-evidence-metadata")
+    if page.get("has_invalidation_rule_metadata") != "true":
+        reasons.append("missing-invalidation-rule-metadata")
+    if page.get("has_next_signals_metadata") != "true":
+        reasons.append("missing-next-signals-metadata")
+    if page.get("has_formed_at_metadata") != "true":
+        reasons.append("missing-formed-at-metadata")
+    if page.get("has_last_reviewed_metadata") != "true":
+        reasons.append("missing-last-reviewed-metadata")
+    return reasons
+
+
+def judgment_asset_shell_record(
+    page: dict[str, str],
+    *,
+    active_protocol: str = DEFAULT_PROTOCOL,
+) -> dict[str, Any]:
+    asset_gaps = judgment_asset_gap_codes(page)
+    judgment_lifecycle_state, judgment_lifecycle_reason_codes = judgment_lifecycle_profile(page)
+    attention_reasons: list[str] = []
+    if page.get("escalation_candidate") == "true":
+        attention_reasons.append("escalation-candidate")
+    if page.get("overdue_review") == "true":
+        attention_reasons.append("overdue-review")
+    if page.get("pending_review") == "true":
+        attention_reasons.append("pending-review")
+    if page.get("aging_state") == "scheduled":
+        attention_reasons.append("scheduled-review")
+    for reason_code in asset_gaps:
+        if reason_code not in attention_reasons:
+            attention_reasons.append(reason_code)
+    return {
+        "page_id": str(page.get("page_id") or ""),
+        "title": str(page.get("title") or page.get("path") or ""),
+        "path": str(page.get("path") or ""),
+        "kind": str(page.get("kind") or ""),
+        "status": str(page.get("status") or ""),
+        "current_status": str(page.get("status") or ""),
+        "protocol": str(page.get("protocol") or ""),
+        "confidence": str(page.get("confidence") or ""),
+        "formed_at": str(page.get("formed_at") or ""),
+        "last_reviewed": str(page.get("last_reviewed") or page.get("reviewed_at") or ""),
+        "reviewed_at": str(page.get("reviewed_at") or ""),
+        "updated_at": str(page.get("updated_at") or ""),
+        "revisit_after": str(page.get("revisit_after") or ""),
+        "escalate_after": str(page.get("escalate_after") or ""),
+        "aging_state": str(page.get("aging_state") or ""),
+        "pending_review": str(page.get("pending_review") or "") == "true",
+        "overdue_review": str(page.get("overdue_review") or "") == "true",
+        "escalation_candidate": str(page.get("escalation_candidate") or "") == "true",
+        "focus_score": page_focus_score(active_protocol, page),
+        "asset_score": int(page.get("asset_score", "0") or "0"),
+        "has_counter_evidence": str(page.get("has_counter_evidence") or "") == "true",
+        "has_invalidation": str(page.get("has_invalidation") or "") == "true",
+        "has_next_signals": str(page.get("has_next_signals") or "") == "true",
+        "has_review_history": str(page.get("has_review_history") or "") == "true",
+        "has_counter_evidence_metadata": str(page.get("has_counter_evidence_metadata") or "") == "true",
+        "has_invalidation_rule_metadata": str(page.get("has_invalidation_rule_metadata") or "") == "true",
+        "has_next_signals_metadata": str(page.get("has_next_signals_metadata") or "") == "true",
+        "has_formed_at_metadata": str(page.get("has_formed_at_metadata") or "") == "true",
+        "has_last_reviewed_metadata": str(page.get("has_last_reviewed_metadata") or "") == "true",
+        "has_structured_counter_evidence": str(page.get("has_structured_counter_evidence") or "") == "true",
+        "has_structured_invalidation_rule": str(page.get("has_structured_invalidation_rule") or "") == "true",
+        "has_structured_next_signals": str(page.get("has_structured_next_signals") or "") == "true",
+        "counter_evidence_count": int(page.get("counter_evidence_count", "0") or "0"),
+        "next_signal_count": int(page.get("next_signal_count", "0") or "0"),
+        "invalidation_rule": str(page.get("invalidation_rule") or ""),
+        "review_history_entries": int(page.get("review_history_entries", "0") or "0"),
+        "latest_review_history_entry": str(page.get("latest_review_history_entry") or ""),
+        "citation_drift": str(page.get("citation_drift") or "") == "true",
+        "citation_drift_count": int(page.get("citation_drift_count", "0") or "0"),
+        "citation_snapshot_gap_count": int(page.get("citation_snapshot_gap_count", "0") or "0"),
+        "judgment_lifecycle_state": judgment_lifecycle_state,
+        "judgment_lifecycle_reason_codes": judgment_lifecycle_reason_codes,
+        "asset_gaps": asset_gaps,
+        "attention_reasons": attention_reasons,
+    }
+
+
+def judgment_asset_attention_sort_key(record: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        0 if record.get("escalation_candidate") else 1,
+        0 if record.get("overdue_review") else 1,
+        0 if record.get("pending_review") else 1,
+        0 if record.get("citation_drift") else 1,
+        0 if int(record.get("citation_snapshot_gap_count", 0) or 0) > 0 else 1,
+        -len(record.get("asset_gaps", [])),
+        int(record.get("asset_score", 0) or 0),
+        -int(record.get("focus_score", 0) or 0),
+        str(record.get("revisit_after") or record.get("escalate_after") or "9999"),
+        str(record.get("title") or "").lower(),
+    )
+
+
+def judgment_asset_summary(
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    *,
+    active_protocol: str = DEFAULT_PROTOCOL,
+) -> dict[str, Any]:
+    pages = sorted(
+        decisions + judgments,
+        key=lambda page: (
+            0 if page.get("escalation_candidate") == "true" else 1,
+            0 if page.get("overdue_review") == "true" else 1,
+            -page_focus_score(active_protocol, page),
+            -(int(page.get("asset_score", "0") or "0")),
+            page.get("title", "").lower(),
+        ),
+    )
+    strong_assets = [page for page in pages if int(page.get("asset_score", "0") or "0") >= 3]
+    missing_counter = [page for page in pages if page.get("has_counter_evidence") != "true"]
+    missing_invalidation = [page for page in pages if page.get("has_invalidation") != "true"]
+    missing_next_signals = [page for page in pages if page.get("has_next_signals") != "true"]
+    missing_history = [page for page in pages if page.get("has_review_history") != "true"]
+    drifted = [page for page in pages if page.get("citation_drift") == "true"]
+    snapshot_gaps = [page for page in pages if int(page.get("citation_snapshot_gap_count", "0") or "0") > 0]
+    missing_counter_metadata = [page for page in pages if page.get("has_counter_evidence_metadata") != "true"]
+    missing_invalidation_metadata = [page for page in pages if page.get("has_invalidation_rule_metadata") != "true"]
+    missing_next_signal_metadata = [page for page in pages if page.get("has_next_signals_metadata") != "true"]
+    missing_formed_at_metadata = [page for page in pages if page.get("has_formed_at_metadata") != "true"]
+    missing_last_reviewed_metadata = [page for page in pages if page.get("has_last_reviewed_metadata") != "true"]
+    shell_records = {
+        str(page.get("path") or ""): judgment_asset_shell_record(page, active_protocol=active_protocol)
+        for page in pages
+        if str(page.get("path") or "")
+    }
+    attention_pages = [
+        page
+        for page in pages
+        if shell_records.get(str(page.get("path") or ""), {}).get("attention_reasons")
+    ]
+    attention_records = [
+        shell_records[str(page.get("path") or "")]
+        for page in attention_pages
+        if str(page.get("path") or "") in shell_records
+    ]
+    attention_records.sort(key=judgment_asset_attention_sort_key)
+    strong_records = [
+        shell_records[str(page.get("path") or "")]
+        for page in strong_assets
+        if str(page.get("path") or "") in shell_records
+    ]
+    lifecycle_counts = {state: 0 for state in JUDGMENT_LIFECYCLE_STATES}
+    for record in shell_records.values():
+        lifecycle_state = str(record.get("judgment_lifecycle_state") or "")
+        if lifecycle_state in lifecycle_counts:
+            lifecycle_counts[lifecycle_state] += 1
+    return {
+        "counts": {
+            "pages": len(pages),
+            "decisions": len(decisions),
+            "judgments": len(judgments),
+            "strong_assets": len(strong_assets),
+            "attention_pages": len(attention_pages),
+            "missing_counter_evidence": len(missing_counter),
+            "missing_invalidation": len(missing_invalidation),
+            "missing_next_signals": len(missing_next_signals),
+            "missing_review_history": len(missing_history),
+            "missing_counter_evidence_metadata": len(missing_counter_metadata),
+            "missing_invalidation_rule_metadata": len(missing_invalidation_metadata),
+            "missing_next_signals_metadata": len(missing_next_signal_metadata),
+            "missing_formed_at_metadata": len(missing_formed_at_metadata),
+            "missing_last_reviewed_metadata": len(missing_last_reviewed_metadata),
+            "citation_drift": len(drifted),
+            "citation_snapshot_gaps": len(snapshot_gaps),
+            "pending_review": sum(1 for page in pages if page.get("pending_review") == "true"),
+            "overdue_review": sum(1 for page in pages if page.get("overdue_review") == "true"),
+            "scheduled_review": sum(1 for page in pages if page.get("aging_state") == "scheduled"),
+            "escalation_candidates": sum(1 for page in pages if page.get("escalation_candidate") == "true"),
+            "formed_lifecycle": lifecycle_counts["formed"],
+            "active_lifecycle": lifecycle_counts["active"],
+            "under_review_lifecycle": lifecycle_counts["under-review"],
+            "revised_lifecycle": lifecycle_counts["revised"],
+            "retired_lifecycle": lifecycle_counts["retired"],
+        },
+        "lists": {
+            "pages": pages,
+            "attention_pages": attention_pages,
+            "strong_assets": strong_assets,
+            "missing_counter_evidence": missing_counter,
+            "missing_invalidation": missing_invalidation,
+            "missing_next_signals": missing_next_signals,
+            "missing_review_history": missing_history,
+            "missing_counter_evidence_metadata": missing_counter_metadata,
+            "missing_invalidation_rule_metadata": missing_invalidation_metadata,
+            "missing_next_signals_metadata": missing_next_signal_metadata,
+            "missing_formed_at_metadata": missing_formed_at_metadata,
+            "missing_last_reviewed_metadata": missing_last_reviewed_metadata,
+            "citation_drift": drifted,
+            "citation_snapshot_gaps": snapshot_gaps,
+            "escalation_candidates": [page for page in pages if page.get("escalation_candidate") == "true"],
+        },
+        "attention_pages": attention_records,
+        "decision_focus": [record for record in attention_records if record.get("kind") == "decision"],
+        "judgment_focus": [record for record in attention_records if record.get("kind") == "judgment"],
+        "strong_assets": strong_records,
+    }
+
+
 def render_curated_index(
     heading: str,
     section_name: str,
@@ -3422,78 +3688,14 @@ def render_judgment_assets(
     *,
     active_protocol: str = DEFAULT_PROTOCOL,
 ) -> str:
-    pages = sorted(
-        decisions + judgments,
-        key=lambda page: (
-            0 if page.get("escalation_candidate") == "true" else 1,
-            0 if page.get("overdue_review") == "true" else 1,
-            -page_focus_score(active_protocol, page),
-            -(int(page.get("asset_score", "0") or "0")),
-            page.get("title", "").lower(),
-        ),
+    from .app_surfaces import render_judgment_assets as _render_judgment_assets
+
+    return _render_judgment_assets(
+        decisions,
+        judgments,
+        compiled_at,
+        active_protocol=active_protocol,
     )
-    strong_assets = [page for page in pages if int(page.get("asset_score", "0") or "0") >= 3]
-    missing_counter = [page for page in pages if page.get("has_counter_evidence") != "true"]
-    missing_invalidation = [page for page in pages if page.get("has_invalidation") != "true"]
-    missing_next_signals = [page for page in pages if page.get("has_next_signals") != "true"]
-    missing_history = [page for page in pages if page.get("has_review_history") != "true"]
-    lines = [
-        "# 判断资产",
-        "",
-        f"- 最近编译时间：`{compiled_at}`",
-        f"- 当前协议焦点：`{active_protocol}` ({protocol_title(active_protocol)})",
-        f"- 决策页：`{len(decisions)}`",
-        f"- 判断页：`{len(judgments)}`",
-        f"- 资产完整（>= 3/4）：`{len(strong_assets)}`",
-        f"- 缺反证：`{len(missing_counter)}`",
-        f"- 缺失效条件：`{len(missing_invalidation)}`",
-        f"- 缺下一信号：`{len(missing_next_signals)}`",
-        f"- 缺复审历史：`{len(missing_history)}`",
-        "",
-        "## 强判断资产",
-    ]
-    if not strong_assets:
-        lines.append("- 当前还没有资产完整度较高的 decision / judgment 页面。")
-    else:
-        for page in strong_assets[:12]:
-            lines.append(render_curated_page_summary(page))
-    lines.extend(["", "## 缺 Counter Evidence"])
-    if not missing_counter:
-        lines.append("- 当前所有判断资产都包含显式 counter evidence。")
-    else:
-        for page in missing_counter[:12]:
-            lines.append(render_curated_page_summary(page))
-    lines.extend(["", "## 缺 Invalidation"])
-    if not missing_invalidation:
-        lines.append("- 当前所有判断资产都包含显式 invalidation 条件。")
-    else:
-        for page in missing_invalidation[:12]:
-            lines.append(render_curated_page_summary(page))
-    lines.extend(["", "## 缺 Next Signals"])
-    if not missing_next_signals:
-        lines.append("- 当前所有判断资产都包含下一次观察信号。")
-    else:
-        for page in missing_next_signals[:12]:
-            lines.append(render_curated_page_summary(page))
-    lines.extend(["", "## 缺 Review History"])
-    if not missing_history:
-        lines.append("- 当前所有判断资产都已经积累复审历史。")
-    else:
-        for page in missing_history[:12]:
-            lines.append(render_curated_page_summary(page))
-    lines.extend(
-        [
-            "",
-            "## 相关链接",
-            "- [决策索引](./decisions.md)",
-            "- [判断索引](./judgments.md)",
-            "- [审阅队列](./review-queue.md)",
-            "- [审阅中心](./review-center.md)",
-            "- [认知历史](./cognitive-history.md)",
-            "- [Aging 报告](./aging-report.md)",
-        ]
-    )
-    return "\n".join(lines) + "\n"
 
 
 def render_cognitive_history(
@@ -3505,151 +3707,16 @@ def render_cognitive_history(
     active_protocol: str = DEFAULT_PROTOCOL,
     knowledge_lifecycle: dict[str, Any] | None = None,
 ) -> str:
-    knowledge_lifecycle = knowledge_lifecycle or load_knowledge_lifecycle_state(root)
-    pages = sort_curated_pages(decisions + judgments)
-    drifted_pages = sorted(
-        [page for page in pages if page.get("citation_drift") == "true"],
-        key=lambda page: (
-            0 if page.get("escalation_candidate") == "true" else 1,
-            0 if page.get("overdue_review") == "true" else 1,
-            -int(page.get("citation_drift_count", "0") or "0"),
-            -page_focus_score(active_protocol, page),
-            page.get("title", "").lower(),
-        ),
-    )
-    snapshot_gap_pages = sorted(
-        [page for page in pages if int(page.get("citation_snapshot_gap_count", "0") or "0") > 0],
-        key=lambda page: (
-            -int(page.get("citation_snapshot_gap_count", "0") or "0"),
-            0 if page.get("pending_review") == "true" else 1,
-            page.get("title", "").lower(),
-        ),
-    )
-    long_history_pages = sorted(
-        [page for page in pages if int(page.get("review_history_entries", "0") or "0") > 0],
-        key=lambda page: (
-            -int(page.get("review_history_entries", "0") or "0"),
-            page.get("reviewed_at", "") or "",
-            page.get("title", "").lower(),
-        ),
-        reverse=True,
-    )
-    lifecycle_revisit_entries = sort_knowledge_lifecycle_entries(
-        select_knowledge_lifecycle_entries(
-            knowledge_lifecycle,
-            states={"revisit"},
-        ),
+    from .app_surfaces import render_cognitive_history as _render_cognitive_history
+
+    return _render_cognitive_history(
+        root,
+        decisions,
+        judgments,
+        compiled_at,
         active_protocol=active_protocol,
+        knowledge_lifecycle=knowledge_lifecycle,
     )
-    lifecycle_entry_titles = {
-        str(entry.get("path") or ""): str(entry.get("title") or entry.get("page_id") or "")
-        for entry in knowledge_lifecycle.get("entries", [])
-        if isinstance(entry, dict) and entry.get("path")
-    }
-    concept_override_events: list[tuple[str, str, str, str]] = []
-    for event in load_runtime_history(root):
-        if str(event.get("event_type") or "") != "knowledge-lifecycle-override":
-            continue
-        if str(event.get("kind") or "") != "concept":
-            continue
-        occurred_at = str(event.get("occurred_at") or "")
-        path = str(event.get("path") or "")
-        title = lifecycle_entry_titles.get(path) or str(event.get("slug") or path or "unknown concept")
-        operation = str(event.get("operation") or "override")
-        lifecycle_state = str(event.get("lifecycle_state") or "")
-        concept_override_events.append((occurred_at, title, path, f"{operation} -> {lifecycle_state or 'unknown'}"))
-    concept_override_events.sort(key=lambda item: item[0], reverse=True)
-    recent_events: list[tuple[str, str, str, str]] = []
-    for page in pages:
-        page_path = root / page["path"]
-        if not page_path.exists():
-            continue
-        content = page_path.read_text(encoding="utf-8", errors="replace")
-        for entry in review_history_entries(content)[:3]:
-            match = re.match(r"- `([^`]+)`", entry)
-            reviewed_at = match.group(1) if match else ""
-            recent_events.append((reviewed_at, page["title"], page["path"], entry))
-    recent_events.sort(key=lambda item: item[0], reverse=True)
-    lines = [
-        "# 认知历史",
-        "",
-        f"- 最近编译时间：`{compiled_at}`",
-        f"- 当前协议焦点：`{active_protocol}` ({protocol_title(active_protocol)})",
-        f"- decision / judgment 页面：`{len(pages)}`",
-        f"- 证据漂移页面：`{len(drifted_pages)}`",
-        f"- snapshot 缺口页面：`{len(snapshot_gap_pages)}`",
-        f"- 有复审历史的页面：`{len(long_history_pages)}`",
-        f"- 生命周期待回看项：`{len(lifecycle_revisit_entries)}`",
-        f"- concept lifecycle 事件：`{len(concept_override_events)}`",
-        "",
-        "## 证据漂移",
-    ]
-    if not drifted_pages:
-        lines.append("- 当前没有 reviewed judgment / decision 因 citation drift 被标记。")
-    else:
-        for page in drifted_pages[:12]:
-            lines.append(render_curated_page_summary(page))
-    lines.extend(["", "## Snapshot 缺口"])
-    if not snapshot_gap_pages:
-        lines.append("- 当前没有 citation snapshot 缺口。")
-    else:
-        for page in snapshot_gap_pages[:12]:
-            lines.append(render_curated_page_summary(page))
-    lines.extend(["", "## 生命周期待回看项"])
-    if not lifecycle_revisit_entries:
-        lines.append("- 当前没有 lifecycle state 标记为 `revisit` 的知识项。")
-    else:
-        for entry in lifecycle_revisit_entries[:16]:
-            lines.append(render_knowledge_lifecycle_entry_summary(entry))
-    lines.extend(["", "## 概念生命周期事件"])
-    if not concept_override_events:
-        lines.append("- 当前还没有 concept lifecycle override 事件。")
-    else:
-        for occurred_at, title, path, detail in concept_override_events[:20]:
-            lines.append(
-                f"- [{title}](../../{path}) | occurred `{occurred_at or 'unknown'}` | {detail}"
-            )
-    lines.extend(["", "## 最近认知事件"])
-    if not recent_events:
-        lines.append("- 当前还没有 review history 事件。")
-    else:
-        for reviewed_at, title, path, entry in recent_events[:20]:
-            lines.append(
-                f"- [{title}](../../{path}) | reviewed `{reviewed_at or 'unknown'}` | {entry.replace(f'- `{reviewed_at}` | ', '') if reviewed_at else entry}"
-            )
-    lines.extend(["", "## 长历史页面"])
-    if not long_history_pages:
-        lines.append("- 当前还没有积累多轮复审历史的页面。")
-    else:
-        for page in long_history_pages[:12]:
-            lines.append(render_curated_page_summary(page))
-    lines.extend(
-        [
-            "",
-            "## 建议动作",
-        ]
-    )
-    if drifted_pages:
-        lines.append(f"- 先复查 `{len(drifted_pages)}` 个被新证据挑战的 decision / judgment。")
-    if snapshot_gap_pages:
-        lines.append(f"- 补齐 `{len(snapshot_gap_pages)}` 个缺少 citation snapshot 的页面，避免 drift 失真。")
-    if long_history_pages:
-        lines.append(f"- 从 `{min(len(long_history_pages), 5)}` 个长历史页面里提炼更稳定的 judgment pattern。")
-    if not any((drifted_pages, snapshot_gap_pages, long_history_pages)):
-        lines.append("- 当前认知历史层比较干净，继续靠 nightly 累积 review history。")
-    lines.extend(
-        [
-            "",
-            "## 相关链接",
-            "- [决策索引](./decisions.md)",
-            "- [判断索引](./judgments.md)",
-            "- [判断资产](./judgment-assets.md)",
-            "- [审阅队列](./review-queue.md)",
-            "- [审阅中心](./review-center.md)",
-            "- [Aging 报告](./aging-report.md)",
-        ]
-    )
-    return "\n".join(lines) + "\n"
 
 
 def compact_section_lines(markdown: str, heading: str, *, fallback: str, limit: int = 5) -> list[str]:
@@ -3977,6 +4044,64 @@ def build_output_pack_review_packs(
     return review_packs
 
 
+def output_pack_version_history_lines(
+    root: Path,
+    destination: Path,
+    *,
+    compiled_at: str,
+    entry_summary: str,
+    limit: int = 5,
+) -> list[str]:
+    history_lines = [f"- `{compiled_at}` | {entry_summary}"]
+    relative = relative_path(root, destination)
+    if destination.exists():
+        _, existing_content = load_workspace_markdown(root, relative)
+        for line in compact_section_lines(existing_content, "Version History", fallback="", limit=limit):
+            normalized = str(line).strip()
+            if not normalized or normalized == "- ...":
+                continue
+            if normalized not in history_lines:
+                history_lines.append(normalized)
+    return history_lines[:limit]
+
+
+def decision_memo_section_lines(
+    content: str,
+    frontmatter: dict[str, Any],
+    heading: str,
+    *,
+    structured_values: list[str] | None = None,
+    structured_scalar: str = "",
+    fallback: str,
+    limit: int = 5,
+) -> list[str]:
+    section_lines = compact_section_lines(content, heading, fallback="", limit=limit)
+    normalized = [line for line in section_lines if str(line).strip()]
+    if normalized and normalized != [fallback]:
+        return normalized
+    if structured_values:
+        return [f"- {value}" for value in structured_values[:limit]]
+    if structured_scalar:
+        return [f"- {structured_scalar}"]
+    return [fallback]
+
+
+def decision_memo_recommendation_lines(page: dict[str, str], frontmatter: dict[str, Any]) -> list[str]:
+    status = str(page.get("status") or frontmatter.get("status") or "")
+    confidence = str(frontmatter.get("confidence") or page.get("confidence") or "unknown")
+    counter_evidence = frontmatter_string_list(frontmatter, "counter_evidence")
+    next_signals = frontmatter_string_list(frontmatter, "next_signals")
+    if status in {"approved", "confirmed"} and confidence == "high" and not counter_evidence:
+        lines = ["- 当前可以把这份 memo 当作工作基线，进入执行或持续跟踪。"]
+    elif counter_evidence or status in {"tracking", "needs-revisit"}:
+        lines = ["- 当前应保持谨慎，把它视为待复核立场，而不是最终结论。"]
+    else:
+        lines = ["- 当前可以作为候选立场流转，但执行前还应补一次人工复核。"]
+    if next_signals:
+        lines.append(f"- 下一次优先验证：`{next_signals[0]}`。")
+    return lines
+
+
 def build_output_pack_decision_memos(
     root: Path,
     reviewed_candidates: list[dict[str, str]],
@@ -3995,6 +4120,31 @@ def build_output_pack_decision_memos(
         citations = [str(item) for item in frontmatter.get("citations", []) if isinstance(item, str) and item.strip()]
         destination = decision_memo_path(root, page["path"])
         protocol = str(frontmatter.get("protocol") or active_protocol)
+        counter_evidence_lines = decision_memo_section_lines(
+            content,
+            frontmatter,
+            "Counter Evidence",
+            structured_values=frontmatter_string_list(frontmatter, "counter_evidence"),
+            fallback="- Pending counter evidence.",
+            limit=5,
+        )
+        invalidation_lines = decision_memo_section_lines(
+            content,
+            frontmatter,
+            "Invalidation",
+            structured_scalar=str(frontmatter.get("invalidation_rule") or "").strip(),
+            fallback="- Pending invalidation conditions.",
+            limit=5,
+        )
+        next_signal_lines = decision_memo_section_lines(
+            content,
+            frontmatter,
+            "Next Signals",
+            structured_values=frontmatter_string_list(frontmatter, "next_signals"),
+            fallback="- Pending next signals.",
+            limit=5,
+        )
+        recommendation_lines = decision_memo_recommendation_lines(page, frontmatter)
         frontmatter_text = render_frontmatter(
             {
                 "id": f"decision-memo-{destination.stem}",
@@ -4004,8 +4154,9 @@ def build_output_pack_decision_memos(
                 "protocol": protocol,
                 "target_path": page["path"],
                 "target_kind": kind,
-                "source_files": [page["path"]],
+                "source_files": [page["path"], *citations],
                 "citations": citations,
+                "judgment_asset_path": page["path"],
                 "generated_by": "aiwiki-compile",
                 "last_compiled_at": compiled_at,
             }
@@ -4028,17 +4179,28 @@ def build_output_pack_decision_memos(
             f"## {evidence_section}",
             *compact_section_lines(content, evidence_section, fallback="- 当前还没有整理过证据。", limit=6),
             "",
+            "## Recommendation",
+            *recommendation_lines,
+            "",
             "## Counter Evidence",
-            *compact_section_lines(content, "Counter Evidence", fallback="- Pending counter evidence.", limit=5),
+            *counter_evidence_lines,
             "",
             "## Invalidation",
-            *compact_section_lines(content, "Invalidation", fallback="- Pending invalidation conditions.", limit=5),
+            *invalidation_lines,
             "",
             "## Next Signals",
-            *compact_section_lines(content, "Next Signals", fallback="- Pending next signals.", limit=5),
+            *next_signal_lines,
             "",
             "## Review History",
             *compact_section_lines(content, "Review History", fallback="- No review history yet.", limit=6),
+            "",
+            "## Version History",
+            *output_pack_version_history_lines(
+                root,
+                destination,
+                compiled_at=compiled_at,
+                entry_summary=f"status `{page.get('status', 'unknown')}` | confidence `{frontmatter.get('confidence') or page.get('confidence', '') or 'n/a'}`",
+            ),
             "",
             "## Citations",
         ]
@@ -4077,6 +4239,29 @@ def build_output_pack_decision_memos(
     return decision_memos
 
 
+def sop_pattern_key(record: dict[str, Any]) -> str:
+    proposal_kind = str(record.get("proposal_kind") or record.get("kind") or "manual-repair")
+    risk = str(record.get("risk") or "")
+    protocol = str(record.get("protocol") or DEFAULT_PROTOCOL)
+    return "|".join(part for part in (proposal_kind, risk, protocol) if part)
+
+
+def extract_sop_pattern_frequencies(
+    ready_actions: list[dict[str, Any]],
+    execution_proposals: list[dict[str, Any]],
+) -> dict[str, int]:
+    pattern_counts: dict[str, int] = {}
+    for proposal in execution_proposals:
+        key = sop_pattern_key(proposal)
+        if key:
+            pattern_counts[key] = pattern_counts.get(key, 0) + 1
+    for action in ready_actions:
+        key = sop_pattern_key(action)
+        if key:
+            pattern_counts[key] = pattern_counts.get(key, 0) + 1
+    return pattern_counts
+
+
 def build_output_pack_sop_drafts(
     root: Path,
     ready_actions: list[dict[str, Any]],
@@ -4091,6 +4276,7 @@ def build_output_pack_sop_drafts(
         for proposal in execution_proposals
         if proposal.get("action_id")
     }
+    pattern_frequencies = extract_sop_pattern_frequencies(ready_actions, execution_proposals)
     proposal_count = 0
     for proposal in execution_proposals:
         action_id = str(proposal.get("action_id") or "").strip()
@@ -4098,6 +4284,8 @@ def build_output_pack_sop_drafts(
             continue
         destination = sop_draft_path(root, action_id)
         protocol = str(proposal.get("protocol") or active_protocol)
+        pattern_key = sop_pattern_key(proposal)
+        pattern_frequency = int(pattern_frequencies.get(pattern_key, 0))
         frontmatter_text = render_frontmatter(
             {
                 "id": f"sop-draft-{destination.stem}",
@@ -4107,12 +4295,15 @@ def build_output_pack_sop_drafts(
                 "protocol": protocol,
                 "action_id": action_id,
                 "source_files": [str(proposal.get("proposal_path") or "")],
+                "pattern_key": pattern_key,
+                "pattern_frequency": pattern_frequency,
                 "generated_by": "aiwiki-compile",
                 "last_compiled_at": compiled_at,
             }
         )
         patch_plan = proposal.get("page_patch_plan", [])
         bundle_path = str(proposal.get("bundle_path") or "")
+        safe_preview = proposal.get("safe_apply_preview") if isinstance(proposal.get("safe_apply_preview"), dict) else {}
         lines = [
             frontmatter_text,
             "",
@@ -4125,6 +4316,7 @@ def build_output_pack_sop_drafts(
             f"- Protocol: `{protocol}` ({protocol_title(protocol)})",
             f"- Targets: `{', '.join(proposal.get('target_paths', [])) or 'none'}`",
             f"- Bundle: `{bundle_path or 'none'}`",
+            f"- Pattern frequency: `{pattern_frequency}`",
             "",
             "## Strategy",
             f"- {proposal.get('summary', '检查目标页面并确认是否执行。')}",
@@ -4159,8 +4351,27 @@ def build_output_pack_sop_drafts(
             lines.append("- 当前没有额外建议。")
         else:
             lines.extend(f"- {edit}" for edit in edits[:8])
+        lines.extend(["", "## Dry Run Preview"])
+        if not safe_preview:
+            lines.append("- 当前没有额外 dry-run preview。")
+        else:
+            lines.append(f"- Apply mode: `{safe_preview.get('apply_mode', 'dry-run')}`")
+            lines.append(f"- Bundle path: `{safe_preview.get('bundle_path', '') or 'none'}`")
+            lines.extend(
+                f"- {step}"
+                for step in safe_preview.get("steps", [])[:6]
+                if isinstance(step, str) and step.strip()
+            )
         lines.extend(
             [
+                "",
+                "## Version History",
+                *output_pack_version_history_lines(
+                    root,
+                    destination,
+                    compiled_at=compiled_at,
+                    entry_summary=f"pattern `{pattern_key or 'manual-repair'}` | frequency `{pattern_frequency}`",
+                ),
                 "",
                 "## Related Links",
                 f"- {pack_workspace_link(str(proposal.get('proposal_path') or ''), 'Execution Proposal')}" if proposal.get("proposal_path") else "- Execution Proposal: none",
@@ -4189,6 +4400,8 @@ def build_output_pack_sop_drafts(
         destination = sop_draft_path(root, action_id)
         band = str(action.get("execution_band") or "review-first")
         action_protocol = str(action.get("protocol") or active_protocol)
+        pattern_key = sop_pattern_key(action)
+        pattern_frequency = int(pattern_frequencies.get(pattern_key, 0))
         bundle_absolute = execution_bundle_path(root, action_id)
         bundle_relative = relative_path(root, bundle_absolute)
         bundle_path = bundle_relative if bundle_absolute.exists() else ""
@@ -4201,6 +4414,8 @@ def build_output_pack_sop_drafts(
                 "protocol": action_protocol,
                 "action_id": action_id,
                 "source_files": [str(action.get("primary_path") or "")],
+                "pattern_key": pattern_key,
+                "pattern_frequency": pattern_frequency,
                 "generated_by": "aiwiki-compile",
                 "last_compiled_at": compiled_at,
             }
@@ -4217,6 +4432,7 @@ def build_output_pack_sop_drafts(
             f"- Protocol: `{action_protocol}` ({protocol_title(action_protocol)})",
             f"- Execution band: `{band}` ({execution_band_label(band)})",
             f"- Primary / Secondary: `{action.get('primary_path', '')}` / `{action.get('secondary_path', '') or 'none'}`",
+            f"- Pattern frequency: `{pattern_frequency}`",
             "",
             "## Step-by-Step",
             f"1. 先跑 `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --dry-run`。",
@@ -4244,6 +4460,14 @@ def build_output_pack_sop_drafts(
                 f"- Reason: {action.get('reason', 'n/a')}",
                 f"- Next step: {action.get('next_step', 'n/a')}",
                 f"- Command hint: `{action.get('command_hint', '') or 'none'}`",
+                "",
+                "## Version History",
+                *output_pack_version_history_lines(
+                    root,
+                    destination,
+                    compiled_at=compiled_at,
+                    entry_summary=f"pattern `{pattern_key or band}` | frequency `{pattern_frequency}`",
+                ),
                 "",
                 "## Related Links",
                 "- [执行中心](../../../wiki/indexes/execution-center.md)",
@@ -5233,10 +5457,17 @@ def render_review_queue(
     *,
     active_protocol: str = DEFAULT_PROTOCOL,
     knowledge_lifecycle: dict[str, Any] | None = None,
+    counter_evidence_scan: dict[str, Any] | None = None,
 ) -> str:
     knowledge_lifecycle = knowledge_lifecycle or default_knowledge_lifecycle_state()
+    counter_evidence_scan = counter_evidence_scan or {}
     queue = review_queue(decisions, judgments, active_protocol=active_protocol)
     aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
+    counter_evidence_pages = [
+        dict(item)
+        for item in counter_evidence_scan.get("pages", [])
+        if isinstance(item, dict)
+    ]
     concept_backlog = sort_knowledge_lifecycle_entries(
         select_knowledge_lifecycle_entries(
             knowledge_lifecycle,
@@ -5263,6 +5494,7 @@ def render_review_queue(
         f"- 最近已审项目：`{len(queue['recently_reviewed'])}`",
         f"- 已到期复审：`{len(aging['overdue'])}`",
         f"- 需要升级处理：`{len(aging['escalated'])}`",
+        f"- Counter-evidence candidates：`{len(counter_evidence_pages)}`",
         f"- lifecycle concept backlog：`{len(concept_backlog)}`",
         f"- retired concepts：`{len(retired_concepts)}`",
         "",
@@ -5294,6 +5526,19 @@ def render_review_queue(
     else:
         for page in aging["escalated"][:12]:
             lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## Counter-evidence Candidates"])
+    if not counter_evidence_pages:
+        lines.append("- 当前没有新的 counter-evidence candidate。")
+    else:
+        for candidate in counter_evidence_pages[:12]:
+            lines.append(
+                f"- [{candidate.get('page_title') or candidate.get('page_path') or 'unknown'}](../../{candidate.get('page_path', '')})"
+                f" | kind `{candidate.get('page_kind', 'unknown')}`"
+                f" | candidates `{candidate.get('candidate_count', 0)}`"
+                f" | sources `{', '.join(candidate.get('source_ids', [])) or 'none'}`"
+                f" | shared `{', '.join(candidate.get('shared_terms', [])) or 'none'}`"
+                f" | reason `counter-evidence-candidate`"
+            )
     lines.extend(["", "## 生命周期概念待审"])
     if not concept_backlog:
         lines.append("- 当前没有 lifecycle state 标记为 `review` / `revisit` 的 concept。")
@@ -5411,218 +5656,15 @@ def render_review_center_html(
     active_protocol: str = DEFAULT_PROTOCOL,
     knowledge_lifecycle: dict[str, Any] | None = None,
 ) -> str:
-    knowledge_lifecycle = knowledge_lifecycle or default_knowledge_lifecycle_state()
-    queue = review_queue(decisions, judgments, active_protocol=active_protocol)
-    aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
-    lifecycle_summary = knowledge_lifecycle_governance_summary(
-        knowledge_lifecycle,
+    from .app_surfaces import render_review_center_html as _render_review_center_html
+
+    return _render_review_center_html(
+        decisions,
+        judgments,
+        memory,
+        compiled_at,
         active_protocol=active_protocol,
-    )
-    health = memory.get("health", {})
-    plan = health.get("repair_plan", {})
-    concept_quality = health.get("concept_quality", {})
-    rewrite_state = health.get("concept_rewrite", {})
-    pending_items = queue.get("pending_decisions", []) + queue.get("pending_judgments", [])
-    ready_actions = plan.get("ready_actions", [])
-    apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
-    rewrite_candidates = concept_quality.get("rewrite_candidates", [])
-    conflict_signals = concept_quality.get("conflict_signals", [])
-    rewrite_proposals = rewrite_state.get("proposals", [])
-    apply_ready_rewrites = [proposal for proposal in rewrite_proposals if proposal.get("apply_ready")]
-
-    def render_page_item(page: dict[str, str]) -> str:
-        path = html.escape(f"../../{page['path']}")
-        status = html.escape(display_curated_status(page.get("status", "") or "unknown"))
-        revisit = html.escape(page.get("revisit_after", "") or "none")
-        return (
-            f'<li><a href="{path}">{html.escape(page["title"])}</a>'
-            f" | status {status}"
-            f" | revisit {revisit}</li>"
-        )
-
-    def render_action_item(action: dict[str, Any]) -> str:
-        primary = html.escape(str(action.get("primary_path") or ""))
-        status = html.escape(display_action_status(str(action.get("status") or "proposed")))
-        priority = html.escape(str(action.get("priority") or "medium"))
-        detail = ""
-        if action.get("secondary_path"):
-            detail = f" | secondary <code>{html.escape(str(action['secondary_path']))}</code>"
-        command = ""
-        if action.get("command_hint"):
-            command = f" | command <code>{html.escape(str(action['command_hint']))}</code>"
-        return (
-            f"<li>{html.escape(str(action.get('title') or 'unnamed action'))}"
-            f" | priority {priority}"
-            f" | status {status}"
-            f" | primary <code>{primary}</code>{detail}{command}</li>"
-        )
-
-    def render_concept_item(item: dict[str, Any]) -> str:
-        slug = html.escape(str(item.get("slug") or ""))
-        title = html.escape(str(item.get("title") or slug))
-        issues = html.escape(", ".join(item.get("issues", [])) or "none")
-        return (
-            f'<li><a href="../../wiki/concepts/{slug}.md">{title}</a>'
-            f" | issues {issues}"
-            f" | sources {int(item.get('source_count', 0))}</li>"
-        )
-
-    def render_rewrite_item(item: dict[str, Any]) -> str:
-        slug = html.escape(str(item.get("slug") or ""))
-        title = html.escape(str(item.get("title") or slug))
-        status = html.escape(display_rewrite_proposal_status(str(item.get("status") or "proposed")))
-        return (
-            f'<li><a href="../../wiki/rewrite-proposals/{slug}.md">{title}</a>'
-            f" | status {status}"
-            f" | apply_ready {html.escape(str(bool(item.get('apply_ready'))).lower())}</li>"
-        )
-
-    def render_lifecycle_item(entry: dict[str, Any]) -> str:
-        path = str(entry.get("path") or "")
-        title = html.escape(str(entry.get("title") or entry.get("page_id") or "unknown"))
-        state = html.escape(display_knowledge_lifecycle_state(str(entry.get("lifecycle_state") or "")))
-        override = ""
-        if bool(entry.get("override_active")):
-            override = f" | override {html.escape(str(entry.get('override_state') or entry.get('lifecycle_state') or 'unknown'))}"
-        invalidation_signals = entry.get("invalidation_signals", [])
-        invalidation = ""
-        if isinstance(invalidation_signals, list) and invalidation_signals:
-            invalidation = f" | invalidation {html.escape(', '.join(str(item) for item in invalidation_signals[:3]))}"
-        active_corpus_ids = entry.get("active_corpus_ids", [])
-        active_corpora = ""
-        if isinstance(active_corpus_ids, list) and active_corpus_ids:
-            active_corpora = f" | active corpora {html.escape(str(len(active_corpus_ids)))}"
-        if path:
-            return (
-                f'<li><a href="../../{html.escape(path)}">{title}</a>'
-                f" | state {state}{override}{invalidation}{active_corpora}</li>"
-            )
-        return f"<li>{title} | state {state}{override}{invalidation}{active_corpora}</li>"
-
-    pending_list = "".join(render_page_item(page) for page in pending_items[:12]) or "<li>当前没有待审项目。</li>"
-    overdue_list = "".join(render_page_item(page) for page in aging.get("overdue", [])[:10]) or "<li>当前没有已到期待复审页面。</li>"
-    escalated_list = "".join(render_page_item(page) for page in aging.get("escalated", [])[:10]) or "<li>当前没有需要升级处理的页面。</li>"
-    lifecycle_backlog_list = (
-        "".join(render_lifecycle_item(entry) for entry in lifecycle_summary.get("concept_backlog", [])[:10])
-        or "<li>当前没有 lifecycle concept backlog。</li>"
-    )
-    retired_concept_list = (
-        "".join(render_lifecycle_item(entry) for entry in lifecycle_summary.get("retired_concepts", [])[:10])
-        or "<li>当前没有 retired concept。</li>"
-    )
-    ready_action_list = "".join(render_action_item(action) for action in ready_actions[:10]) or "<li>当前没有 ready repair action。</li>"
-    apply_ready_action_list = (
-        "".join(render_action_item(action) for action in apply_ready_actions[:8])
-        or "<li>当前没有可直接 semi-auto apply 的低风险动作。</li>"
-    )
-    rewrite_list = "".join(render_concept_item(item) for item in rewrite_candidates[:10]) or "<li>当前没有高优先级弱概念页。</li>"
-    conflict_list = "".join(render_concept_item(item) for item in conflict_signals[:10]) or "<li>当前没有显式概念冲突信号。</li>"
-    rewrite_proposal_list = "".join(render_rewrite_item(item) for item in rewrite_proposals[:10]) or "<li>当前没有 rewrite proposal。</li>"
-
-    summary_cards = [
-        ("待审项目", str(len(pending_items))),
-        ("已到期复审", str(len(aging.get("overdue", [])))),
-        ("升级项", str(len(aging.get("escalated", [])))),
-        ("生命周期待审", str(lifecycle_summary.get("counts", {}).get("concept_backlog", 0))),
-        ("已退役概念", str(lifecycle_summary.get("counts", {}).get("retired_concepts", 0))),
-        ("证据漂移", str(sum(1 for page in decisions + judgments if page.get("citation_drift") == "true"))),
-        ("ready actions", str(plan.get("counts", {}).get("ready", 0))),
-        ("重写候选", str(concept_quality.get("counts", {}).get("rewrite_candidates", 0))),
-        ("冲突信号", str(concept_quality.get("counts", {}).get("conflict_signals", 0))),
-        ("rewrite 提案", str(rewrite_state.get("counts", {}).get("active", 0))),
-        ("可应用 rewrite", str(len(apply_ready_rewrites))),
-        ("可应用动作", str(len(apply_ready_actions))),
-    ]
-
-    return "\n".join(
-        [
-            "<!doctype html>",
-            '<html lang="zh-CN">',
-            "<head>",
-            '  <meta charset="utf-8" />',
-            '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
-            "  <title>Review Center</title>",
-            "  <style>",
-            "    :root { color-scheme: light; --bg: #fffaf0; --ink: #1f2937; --muted: #6b7280; --panel: #ffffff; --line: #e5e7eb; }",
-            "    body { margin: 0; padding: 24px; background: linear-gradient(180deg, #fffaf0 0%, #f3f4f6 100%); color: var(--ink); font: 14px/1.6 'Segoe UI', 'PingFang SC', sans-serif; }",
-            "    main { max-width: 1120px; margin: 0 auto; }",
-            "    h1, h2 { margin: 0 0 12px; }",
-            "    p { margin: 0 0 12px; color: var(--muted); }",
-            "    .panel, .card { background: rgba(255,255,255,0.94); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 18px 40px rgba(15,23,42,0.06); }",
-            "    .panel { padding: 18px; margin-bottom: 18px; }",
-            "    .meta, .lists { display: grid; gap: 16px; }",
-            "    .meta { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin: 18px 0 24px; }",
-            "    .card { padding: 14px 16px; }",
-            "    .metric { font-size: 24px; font-weight: 800; color: #b45309; }",
-            "    .metric-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }",
-            "    .lists { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }",
-            "    ul { margin: 0; padding-left: 18px; }",
-            "    li { margin: 4px 0; }",
-            "    a { color: #92400e; text-decoration: none; }",
-            "    a:hover { text-decoration: underline; }",
-            "    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }",
-            "  </style>",
-            "</head>",
-            "<body>",
-            "<main>",
-            '  <section class="panel">',
-            "    <h1>Review Center</h1>",
-            f"    <p>编译时间：<code>{html.escape(compiled_at)}</code>。当前协议焦点：<code>{html.escape(active_protocol)}</code>。这是炼丹炉的人用审阅 cockpit：把 review、aging、repair 和 concept rewrite 收在一个地方。</p>",
-            '    <div class="meta">',
-            *[
-                f'      <div class="card"><div class="metric">{html.escape(value)}</div><div class="metric-label">{html.escape(label)}</div></div>'
-                for label, value in summary_cards
-            ],
-            "    </div>",
-            "  </section>",
-            '  <section class="lists">',
-            '    <div class="panel"><h2>待审项目</h2><ul>',
-            f"{pending_list}",
-            "    </ul></div>",
-            '    <div class="panel"><h2>已到期 / 需升级</h2><ul>',
-            f"{overdue_list}",
-            f"{escalated_list}",
-            "    </ul></div>",
-            '    <div class="panel"><h2>生命周期概念待审</h2><ul>',
-            f"{lifecycle_backlog_list}",
-            "    </ul></div>",
-            '    <div class="panel"><h2>已退役概念</h2><ul>',
-            f"{retired_concept_list}",
-            "    </ul></div>",
-            '    <div class="panel"><h2>Ready Repair Actions</h2><ul>',
-            f"{ready_action_list}",
-            "    </ul></div>",
-            '    <div class="panel"><h2>Safe Apply Actions</h2><ul>',
-            f"{apply_ready_action_list}",
-            "    </ul></div>",
-            '    <div class="panel"><h2>概念重写优先级</h2><ul>',
-            f"{rewrite_list}",
-            "    </ul></div>",
-            '    <div class="panel"><h2>概念冲突信号</h2><ul>',
-            f"{conflict_list}",
-            "    </ul></div>",
-            '    <div class="panel"><h2>Rewrite Proposals</h2><ul>',
-            f"{rewrite_proposal_list}",
-            "    </ul></div>",
-            '    <div class="panel"><h2>相关入口</h2><ul>',
-            '      <li><a href="../../wiki/indexes/furnace-center.md">炉心面板</a></li>',
-            '      <li><a href="../../wiki/indexes/review-center.md">Review Center Dashboard</a></li>',
-            '      <li><a href="../../wiki/indexes/review-queue.md">审阅队列</a></li>',
-            '      <li><a href="../../wiki/indexes/aging-report.md">Aging 报告</a></li>',
-            '      <li><a href="../../wiki/indexes/cognitive-history.md">认知历史</a></li>',
-            '      <li><a href="../../wiki/indexes/machine-memory-actions.md">机器记忆动作队列</a></li>',
-            '      <li><a href="../../wiki/indexes/machine-memory-repair-plan.md">机器记忆修复计划</a></li>',
-            '      <li><a href="../../wiki/indexes/judgment-assets.md">判断资产</a></li>',
-            '      <li><a href="../../wiki/indexes/execution-center.md">执行中心</a></li>',
-            '      <li><a href="../../wiki/indexes/concept-quality.md">概念质量</a></li>',
-            '      <li><a href="../../wiki/indexes/rewrite-proposals.md">Rewrite Proposals</a></li>',
-            "    </ul></div>",
-            "  </section>",
-            "</main>",
-            "</body>",
-            "</html>",
-            "",
-        ]
+        knowledge_lifecycle=knowledge_lifecycle,
     )
 
 
@@ -5746,257 +5788,20 @@ def render_furnace_center(
     *,
     knowledge_lifecycle: dict[str, Any] | None = None,
 ) -> str:
-    active_protocol = protocol_state["active_protocol"]
-    queue = review_queue(decisions, judgments, active_protocol=active_protocol)
-    aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
-    lifecycle_summary = knowledge_lifecycle_governance_summary(
-        knowledge_lifecycle,
-        active_protocol=active_protocol,
+    from .app_surfaces import render_furnace_center as _render_furnace_center
+
+    return _render_furnace_center(
+        decisions,
+        judgments,
+        memory,
+        compiled_at,
+        protocol_state,
+        recent_outputs,
+        output_packs,
+        domain_pilots,
+        execution_audit,
+        knowledge_lifecycle=knowledge_lifecycle,
     )
-    concept_backlog = lifecycle_summary.get("concept_backlog", [])
-    retired_concepts = lifecycle_summary.get("retired_concepts", [])
-    lifecycle_counts = lifecycle_summary.get("counts", {})
-    health = memory.get("health", {})
-    plan = health.get("repair_plan", {})
-    concept_quality = health.get("concept_quality", {})
-    rewrite_state = health.get("concept_rewrite", {})
-    pending_items = queue.get("pending_decisions", []) + queue.get("pending_judgments", [])
-    citation_drift_count = sum(1 for page in decisions + judgments if page.get("citation_drift") == "true")
-    ready_actions = [
-        action
-        for action in plan.get("ready_actions", [])
-        if isinstance(action, dict) and str(action.get("protocol") or DEFAULT_PROTOCOL) == active_protocol
-    ]
-    apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
-    rewrite_proposals = rewrite_state.get("proposals", [])
-    apply_ready_rewrites = [proposal for proposal in rewrite_proposals if proposal.get("apply_ready")]
-    execution_proposals = [
-        proposal
-        for proposal in plan.get("execution_proposals", [])
-        if isinstance(proposal, dict) and str(proposal.get("protocol") or DEFAULT_PROTOCOL) == active_protocol
-    ]
-    page_patch_steps = sum(len(proposal.get("page_patch_plan", [])) for proposal in execution_proposals)
-    recent_reviewed = queue.get("recently_reviewed", [])[:6]
-    scorecard = protocol_scorecard(domain_pilots, active_protocol)
-    scorecard_metrics = scorecard.get("metrics", {}) if isinstance(scorecard, dict) else {}
-    pack_rows = protocol_output_pack_rows(output_packs, active_protocol)
-    receipt_rows = protocol_execution_receipts(execution_audit, active_protocol)
-    quick_commands = furnace_quick_commands(active_protocol, apply_ready_actions, apply_ready_rewrites)
-    next_steps: list[str] = []
-    if concept_backlog:
-        next_steps.append(f"先处理 `{min(len(concept_backlog), 5)}` 个 lifecycle concept backlog。")
-    if apply_ready_actions:
-        next_steps.append(f"先处理 `{len(apply_ready_actions)}` 个可直接 `apply-action` 的低风险动作。")
-    if apply_ready_rewrites:
-        next_steps.append(f"应用 `{len(apply_ready_rewrites)}` 个已接受的 concept rewrite proposal。")
-    if aging.get("escalated"):
-        next_steps.append(f"优先复查 `{len(aging.get('escalated', []))}` 个升级项。")
-    if pending_items:
-        next_steps.append(f"继续审 `{len(pending_items)}` 个 decision / judgment 页面。")
-    if retired_concepts and not concept_backlog:
-        next_steps.append(f"检查 `{min(len(retired_concepts), 3)}` 个 retired concept 是否需要重新激活。")
-    if not next_steps:
-        next_steps.append("当前没有紧急执行项，优先看最新输出和图谱漂移。")
-
-    lines = [
-        "# 炉心面板",
-        "",
-        f"- 最近编译时间：`{compiled_at}`",
-        f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})",
-        f"- 来源节点：`{len(memory.get('source_nodes', []))}`",
-        f"- 概念节点：`{len(memory.get('concept_nodes', []))}`",
-        f"- 待审项目：`{len(pending_items)}`",
-        f"- 已到期 / 升级：`{len(aging.get('overdue', []))}` / `{len(aging.get('escalated', []))}`",
-        f"- 生命周期概念待审 / 已退役：`{lifecycle_counts.get('concept_backlog', len(concept_backlog))}` / `{lifecycle_counts.get('retired_concepts', len(retired_concepts))}`",
-        f"- 证据漂移：`{citation_drift_count}`",
-        f"- Ready repair actions：`{len(ready_actions)}`",
-        f"- 可直接 apply 的动作：`{len(apply_ready_actions)}`",
-        f"- Rewrite 提案：`{rewrite_state.get('counts', {}).get('active', 0)}`",
-        f"- 可直接 apply 的 rewrite：`{len(apply_ready_rewrites)}`",
-        f"- 页级 patch step：`{page_patch_steps}`",
-        f"- 当前协议 stage：`{scorecard.get('stage', 'seed') if scorecard else 'unknown'}`",
-        f"- 当前协议 outputs / receipts：`{scorecard_metrics.get('outputs', 0)}` / `{scorecard_metrics.get('receipts', 0)}`",
-        f"- 当前协议 review packs / memos / SOP：`{scorecard_metrics.get('review_packs', 0)}` / `{scorecard_metrics.get('decision_memos', 0)}` / `{scorecard_metrics.get('sop_drafts', 0)}`",
-        f"- 最近输出：`{len(recent_outputs)}`",
-        "- 本地控制面板：`output/control/furnace-center.html`",
-        "",
-        "## 今天先做什么",
-    ]
-    for index, step in enumerate(next_steps, start=1):
-        lines.append(f"{index}. {step}")
-
-    lines.extend(
-        [
-            "",
-            "## 即刻可执行",
-        ]
-    )
-    if apply_ready_actions:
-        lines.append("### Safe Apply Actions")
-        for action in apply_ready_actions[:8]:
-            lines.append(
-                f"- `{action['title']}` | command `{action.get('command_hint', '')}`"
-                f" | primary `{action.get('primary_path', '')}`"
-            )
-    if apply_ready_rewrites:
-        lines.append("")
-        lines.append("### Apply-Ready Rewrites")
-        for proposal in apply_ready_rewrites[:8]:
-            lines.append(
-                f"- `{proposal['target_path']}` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {proposal['slug']}`"
-            )
-    if execution_proposals:
-        lines.append("")
-        lines.append("### Execution Proposals")
-        for proposal in execution_proposals[:8]:
-            lines.append(
-                f"- `{proposal['action_id']}` | risk `{proposal.get('risk', 'medium')}`"
-                f" | targets `{', '.join(proposal.get('target_paths', [])) or 'none'}`"
-            )
-    if execution_proposals:
-        lines.append("")
-        lines.append("### Page-Level Patch Plan")
-        for proposal in execution_proposals[:4]:
-            patch_plan = proposal.get("page_patch_plan", [])
-            if not patch_plan:
-                continue
-            lines.append(f"- `{proposal['action_id']}` | patch step `{len(patch_plan)}`")
-            for patch in patch_plan[:3]:
-                lines.append(
-                    f"  - `{patch.get('path', '')}`"
-                    f" | mode `{patch.get('mode', 'update')}`"
-                    f" | sections `{', '.join(patch.get('sections', [])) or 'none'}`"
-                )
-    if not any((apply_ready_actions, apply_ready_rewrites, execution_proposals)):
-        lines.append("- 当前没有即刻可执行项。")
-
-    lines.extend(
-        [
-            "",
-            "## 最近输出",
-        ]
-    )
-    if not recent_outputs:
-        lines.append("- 当前还没有 recent outputs。")
-    else:
-        for artifact in recent_outputs:
-            lines.append(
-                f"- [{artifact['title']}](../../{artifact['path']})"
-                f" | format `{artifact['format'] or 'unknown'}`"
-                f" | protocol `{artifact['protocol'] or DEFAULT_PROTOCOL}`"
-                f" | created `{artifact['created_at'] or 'unknown'}`"
-            )
-
-    lines.extend(["", "## 当前协议 Pilot"])
-    if not scorecard:
-        lines.append("- 当前协议还没有 pilot scorecard。")
-    else:
-        lines.append(
-            f"- [{scorecard['title']}](../../{scorecard['path']})"
-            f" | stage `{scorecard.get('stage', 'seed')}`"
-            f" | {scorecard.get('summary', '')}"
-        )
-        gaps = compact_section_lines(scorecard.get("content", ""), "Gaps", fallback="- 当前没有明显结构性缺口。", limit=4)
-        lines.append("")
-        lines.append("### 当前缺口")
-        lines.extend(gaps)
-        next_moves_lines = compact_section_lines(scorecard.get("content", ""), "Next Moves", fallback="- 当前没有额外 next moves。", limit=4)
-        lines.append("")
-        lines.append("### 下一动作")
-        lines.extend(next_moves_lines)
-
-    lines.extend(["", "## Lifecycle 治理摘要"])
-    lines.extend(
-        [
-            f"- review concepts：`{lifecycle_counts.get('review_concepts', 0)}`",
-            f"- revisit concepts：`{lifecycle_counts.get('revisit_concepts', 0)}`",
-            f"- retired concepts：`{lifecycle_counts.get('retired_concepts', len(retired_concepts))}`",
-            f"- active concepts：`{lifecycle_counts.get('active_concepts', 0)}`",
-            "",
-            "### Lifecycle Concept Backlog",
-        ]
-    )
-    if not concept_backlog:
-        lines.append("- 当前没有 lifecycle-driven concept backlog。")
-    else:
-        for entry in concept_backlog[:12]:
-            lines.append(render_knowledge_lifecycle_entry_summary(entry))
-    lines.extend(["", "### Retired Concepts"])
-    if not retired_concepts:
-        lines.append("- 当前没有 retired concept。")
-    else:
-        for entry in retired_concepts[:12]:
-            lines.append(render_knowledge_lifecycle_entry_summary(entry))
-
-    lines.extend(["", "## 最新输出 Packs"])
-    if not pack_rows:
-        lines.append("- 当前协议还没有 review pack / decision memo / SOP draft。")
-    else:
-        for pack in pack_rows:
-            lines.append(
-                f"- [{pack['title']}](../../{pack['path']})"
-                f" | kind `{pack['kind']}`"
-                f" | meta `{pack['meta'] or 'n/a'}`"
-            )
-
-    lines.extend(["", "## 最近执行回执"])
-    if not receipt_rows:
-        lines.append("- 当前协议还没有 execution receipt。")
-    else:
-        for receipt in receipt_rows:
-            receipt_path = receipt["receipt_path"] or ".aiwiki/state/execution-receipts.jsonl"
-            lines.append(
-                f"- `{receipt['title']}`"
-                f" | kind `{receipt['kind']}`"
-                f" | action `{receipt['action_id']}`"
-                f" | receipt `{receipt_path}`"
-                f" | at `{receipt['applied_at'] or 'unknown'}`"
-            )
-
-    lines.extend(
-        [
-            "",
-            "## 最近已审 / 已沉淀",
-        ]
-    )
-    if recent_reviewed:
-        for page in recent_reviewed:
-            lines.append(
-                f"- [{page['title']}](../../{page['path']})"
-                f" | status `{display_curated_status(page.get('status', 'unknown'))}`"
-                f" | reviewed `{page.get('reviewed_at', '') or 'unknown'}`"
-            )
-    else:
-        lines.append("- 当前还没有最近已审项目。")
-
-    lines.extend(["", "## 快速命令"])
-    for command in quick_commands:
-        lines.append(f"- `{command}`")
-
-    lines.extend(
-        [
-            "",
-            "## 快速跳转",
-            "- [审阅中心](./review-center.md)",
-            "- [执行中心](./execution-center.md)",
-            "- [执行审计](./execution-audit.md)",
-            "- [Agent Workbench](./agent-workbench.md)",
-            "- [认知历史](./cognitive-history.md)",
-            "- [输出 Pack 总览](./output-packs.md)",
-            "- [领域 Pilot 总览](./domain-pilots.md)",
-            "- [判断资产](./judgment-assets.md)",
-            "- [图谱视图](./graph-view.md)",
-            "- [修复待办](./repair-backlog.md)",
-            "- [协议总览](./protocols.md)",
-            "- [输出面板](./Outputs.md)",
-            "- [本地审阅面板](../../output/review/review-center.html)",
-            "- [本地图谱视图](../../output/graph/machine-memory.html)",
-            "- [本地炉心面板](../../output/control/furnace-center.html)",
-            "- [本地执行面板](../../output/control/execution-center.html)",
-            "- [本地执行审计面板](../../output/control/execution-audit.html)",
-        ]
-    )
-    return "\n".join(lines) + "\n"
 
 
 def render_furnace_center_html(
@@ -6012,273 +5817,19 @@ def render_furnace_center_html(
     *,
     knowledge_lifecycle: dict[str, Any] | None = None,
 ) -> str:
-    active_protocol = protocol_state["active_protocol"]
-    queue = review_queue(decisions, judgments, active_protocol=active_protocol)
-    aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
-    lifecycle_summary = knowledge_lifecycle_governance_summary(
-        knowledge_lifecycle,
-        active_protocol=active_protocol,
-    )
-    health = memory.get("health", {})
-    plan = health.get("repair_plan", {})
-    concept_quality = health.get("concept_quality", {})
-    rewrite_state = health.get("concept_rewrite", {})
-    pending_items = queue.get("pending_decisions", []) + queue.get("pending_judgments", [])
-    ready_actions = [
-        action
-        for action in plan.get("ready_actions", [])
-        if isinstance(action, dict) and str(action.get("protocol") or DEFAULT_PROTOCOL) == active_protocol
-    ]
-    apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
-    rewrite_proposals = rewrite_state.get("proposals", [])
-    apply_ready_rewrites = [proposal for proposal in rewrite_proposals if proposal.get("apply_ready")]
-    execution_proposals = [
-        proposal
-        for proposal in plan.get("execution_proposals", [])
-        if isinstance(proposal, dict) and str(proposal.get("protocol") or DEFAULT_PROTOCOL) == active_protocol
-    ]
-    page_patch_steps = sum(len(proposal.get("page_patch_plan", [])) for proposal in execution_proposals)
-    recent_reviewed = queue.get("recently_reviewed", [])[:8]
-    scorecard = protocol_scorecard(domain_pilots, active_protocol)
-    scorecard_metrics = scorecard.get("metrics", {}) if isinstance(scorecard, dict) else {}
-    pack_rows = protocol_output_pack_rows(output_packs, active_protocol)
-    receipt_rows = protocol_execution_receipts(execution_audit, active_protocol)
-    quick_commands = furnace_quick_commands(active_protocol, apply_ready_actions, apply_ready_rewrites)
+    from .app_surfaces import render_furnace_center_html as _render_furnace_center_html
 
-    def render_page_item(page: dict[str, str]) -> str:
-        return (
-            f'<li><a href="../../{html.escape(page["path"])}">{html.escape(page["title"])}</a>'
-            f" <span class=\"item-meta\">{html.escape(display_curated_status(page.get('status', 'unknown')))}</span></li>"
-        )
-
-    def render_action_item(action: dict[str, Any]) -> str:
-        command = html.escape(str(action.get("command_hint") or ""))
-        return (
-            f"<li><strong>{html.escape(str(action.get('title') or 'unnamed action'))}</strong>"
-            f" <span class=\"item-meta\">{html.escape(str(action.get('priority') or 'medium'))} / {html.escape(display_action_status(str(action.get('status') or 'proposed')))}</span>"
-            f"<div><code>{html.escape(str(action.get('primary_path') or ''))}</code></div>"
-            f"{f'<div><code>{command}</code></div>' if command else ''}</li>"
-        )
-
-    def render_rewrite_item(proposal: dict[str, Any]) -> str:
-        slug = html.escape(str(proposal.get("slug") or ""))
-        target = html.escape(str(proposal.get("target_path") or f"wiki/concepts/{slug}.md"))
-        command = f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {slug}"
-        return (
-            f"<li><strong><a href=\"../../wiki/rewrite-proposals/{slug}.md\">{html.escape(str(proposal.get('title') or slug))}</a></strong>"
-            f" <span class=\"item-meta\">{html.escape(display_rewrite_proposal_status(str(proposal.get('status') or 'proposed')))}</span>"
-            f"<div><code>{target}</code></div><div><code>{html.escape(command)}</code></div></li>"
-        )
-
-    def render_output_item(artifact: dict[str, str]) -> str:
-        return (
-            f'<li><a href="../../{html.escape(artifact["path"])}">{html.escape(artifact["title"])}</a>'
-            f" <span class=\"item-meta\">{html.escape(artifact['format'] or 'unknown')} / {html.escape(artifact['protocol'] or DEFAULT_PROTOCOL)} / {html.escape(artifact['created_at'] or 'unknown')}</span></li>"
-        )
-
-    def render_proposal_item(proposal: dict[str, Any]) -> str:
-        patch_count = len(proposal.get("page_patch_plan", []))
-        return (
-            f"<li><strong>{html.escape(str(proposal.get('action_id') or 'proposal'))}</strong>"
-            f" <span class=\"item-meta\">risk {html.escape(str(proposal.get('risk') or 'medium'))}</span>"
-            f"<div>{html.escape(str(proposal.get('summary') or ''))}</div>"
-            f"<div><code>{html.escape(', '.join(proposal.get('target_paths', [])) or 'none')}</code></div>"
-            f"<div class=\"item-meta\">patch steps {patch_count}</div></li>"
-        )
-
-    def render_lifecycle_item(entry: dict[str, Any]) -> str:
-        path = str(entry.get("path") or "")
-        title = html.escape(str(entry.get("title") or entry.get("page_id") or "unknown"))
-        state = html.escape(display_knowledge_lifecycle_state(str(entry.get("lifecycle_state") or "")))
-        override = ""
-        if bool(entry.get("override_active")):
-            override = f" | override {html.escape(str(entry.get('override_state') or entry.get('lifecycle_state') or 'unknown'))}"
-        invalidation_signals = entry.get("invalidation_signals", [])
-        invalidation = ""
-        if isinstance(invalidation_signals, list) and invalidation_signals:
-            invalidation = f" | invalidation {html.escape(', '.join(str(item) for item in invalidation_signals[:3]))}"
-        active_corpus_ids = entry.get("active_corpus_ids", [])
-        active_corpora = ""
-        if isinstance(active_corpus_ids, list) and active_corpus_ids:
-            active_corpora = f" | active corpora {html.escape(str(len(active_corpus_ids)))}"
-        if path:
-            return (
-                f'<li><a href="../../{html.escape(path)}">{title}</a>'
-                f" | state {state}{override}{invalidation}{active_corpora}</li>"
-            )
-        return f"<li>{title} | state {state}{override}{invalidation}{active_corpora}</li>"
-
-    summary_cards = [
-        ("来源", str(len(memory.get("source_nodes", [])))),
-        ("概念", str(len(memory.get("concept_nodes", [])))),
-        ("待审", str(len(pending_items))),
-        ("到期/升级", f"{len(aging.get('overdue', []))}/{len(aging.get('escalated', []))}"),
-        ("生命周期待审", str(lifecycle_summary.get("counts", {}).get("concept_backlog", 0))),
-        ("已退役概念", str(lifecycle_summary.get("counts", {}).get("retired_concepts", 0))),
-        ("证据漂移", str(sum(1 for page in decisions + judgments if page.get("citation_drift") == "true"))),
-        ("Ready 动作", str(plan.get("counts", {}).get("ready", 0))),
-        ("可 apply 动作", str(len(apply_ready_actions))),
-        ("Rewrite 提案", str(rewrite_state.get("counts", {}).get("active", 0))),
-        ("可 apply rewrite", str(len(apply_ready_rewrites))),
-        ("Patch Steps", str(page_patch_steps)),
-        ("最近输出", str(len(recent_outputs))),
-        ("Pilot Stage", str(scorecard.get("stage", "unknown") if scorecard else "unknown")),
-        ("Review Packs", str(scorecard_metrics.get("review_packs", 0))),
-        ("Decision Memos", str(scorecard_metrics.get("decision_memos", 0))),
-        ("SOP Drafts", str(scorecard_metrics.get("sop_drafts", 0))),
-        ("Receipts", str(scorecard_metrics.get("receipts", 0))),
-    ]
-
-    protocol_focus = PROTOCOL_LIBRARY.get(active_protocol, {}).get("review", [])[:3]
-    nightly_focus = PROTOCOL_LIBRARY.get(active_protocol, {}).get("nightly", [])[:3]
-    pending_markup = "".join(render_page_item(page) for page in pending_items[:8]) or "<li>当前没有待审项目。</li>"
-    aging_markup = "".join(render_page_item(page) for page in (aging.get("escalated", []) + aging.get("overdue", []))[:8]) or "<li>当前没有已到期或升级项目。</li>"
-    apply_action_markup = "".join(render_action_item(action) for action in apply_ready_actions[:8]) or "<li>当前没有可直接 apply 的低风险动作。</li>"
-    rewrite_markup = "".join(render_rewrite_item(proposal) for proposal in apply_ready_rewrites[:8]) or "<li>当前没有可直接 apply 的 rewrite proposal。</li>"
-    proposal_markup = "".join(render_proposal_item(proposal) for proposal in execution_proposals[:8]) or "<li>当前没有 execution proposal。</li>"
-    output_markup = "".join(render_output_item(artifact) for artifact in recent_outputs[:10]) or "<li>当前还没有 recent outputs。</li>"
-    reviewed_markup = "".join(render_page_item(page) for page in recent_reviewed) or "<li>当前还没有最近已审项目。</li>"
-    focus_markup = "".join(f"<li>{html.escape(item)}</li>" for item in protocol_focus + nightly_focus) or "<li>当前协议没有额外焦点。</li>"
-    lifecycle_backlog_markup = (
-        "".join(render_lifecycle_item(entry) for entry in lifecycle_summary.get("concept_backlog", [])[:10])
-        or "<li>当前没有 lifecycle concept backlog。</li>"
-    )
-    retired_concept_markup = (
-        "".join(render_lifecycle_item(entry) for entry in lifecycle_summary.get("retired_concepts", [])[:10])
-        or "<li>当前没有 retired concept。</li>"
-    )
-    pack_markup = "".join(
-        f"<li><strong><a href=\"../../{html.escape(row['path'])}\">{html.escape(row['title'])}</a></strong>"
-        f" <span class=\"item-meta\">{html.escape(row['kind'])} / {html.escape(row['meta'] or 'n/a')}</span></li>"
-        for row in pack_rows[:10]
-    ) or "<li>当前协议还没有 review pack / decision memo / SOP draft。</li>"
-    receipt_markup = "".join(
-        f"<li><strong>{html.escape(row['title'])}</strong>"
-        f" <span class=\"item-meta\">{html.escape(row['kind'])} / {html.escape(row['action_id'])}</span>"
-        f"<div><code>{html.escape(row['receipt_path'] or '.aiwiki/state/execution-receipts.jsonl')}</code></div>"
-        f"<div class=\"item-meta\">{html.escape(row['applied_at'] or 'unknown')}</div></li>"
-        for row in receipt_rows[:10]
-    ) or "<li>当前协议还没有 execution receipt。</li>"
-    quick_command_markup = "".join(
-        f"<li><code>{html.escape(command)}</code></li>" for command in quick_commands
-    ) or "<li>当前没有额外快速命令。</li>"
-    scorecard_markup = (
-        "\n".join(
-            [
-                f'<p><strong><a href="../../{html.escape(str(scorecard.get("path") or ""))}">{html.escape(str(scorecard.get("title") or "Pilot Scorecard"))}</a></strong></p>',
-                f'<p class="item-meta">stage {html.escape(str(scorecard.get("stage") or "seed"))} · {html.escape(str(scorecard.get("summary") or ""))}</p>',
-                '<ul>'
-                + "".join(
-                    f"<li>{html.escape(line.lstrip('- ').strip())}</li>"
-                    for line in compact_section_lines(
-                        str(scorecard.get("content") or ""),
-                        "Next Moves",
-                        fallback="- 当前没有额外 next moves。",
-                        limit=4,
-                    )
-                )
-                + "</ul>",
-            ]
-        )
-        if scorecard
-        else "<p>当前协议还没有 pilot scorecard。</p>"
-    )
-
-    return "\n".join(
-        [
-            "<!doctype html>",
-            '<html lang="zh-CN">',
-            "<head>",
-            '  <meta charset="utf-8" />',
-            '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
-            "  <title>Furnace Center</title>",
-            "  <style>",
-            "    :root { color-scheme: light; --bg: #f8fafc; --ink: #0f172a; --muted: #475569; --panel: rgba(255,255,255,0.94); --line: #cbd5e1; }",
-            "    body { margin: 0; padding: 24px; background: radial-gradient(circle at top right, #dbeafe 0%, #f8fafc 40%, #fefce8 100%); color: var(--ink); font: 14px/1.6 'Segoe UI', 'PingFang SC', sans-serif; }",
-            "    main { max-width: 1180px; margin: 0 auto; }",
-            "    h1, h2 { margin: 0 0 12px; }",
-            "    p { margin: 0 0 12px; color: var(--muted); }",
-            "    .panel, .card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 18px 40px rgba(15,23,42,0.06); }",
-            "    .panel { padding: 18px; }",
-            "    .hero { margin-bottom: 18px; }",
-            "    .meta, .grid { display: grid; gap: 16px; }",
-            "    .meta { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); margin-top: 18px; }",
-            "    .grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }",
-            "    .card { padding: 14px 16px; }",
-            "    .metric { font-size: 24px; font-weight: 800; color: #1d4ed8; }",
-            "    .metric-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }",
-            "    ul { margin: 0; padding-left: 18px; }",
-            "    li { margin: 6px 0; }",
-            "    a { color: #1d4ed8; text-decoration: none; }",
-            "    a:hover { text-decoration: underline; }",
-            "    .item-meta { color: var(--muted); font-size: 12px; }",
-            "    code { background: #eff6ff; padding: 1px 6px; border-radius: 6px; }",
-            "    .quick-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }",
-            "    .quick-links a { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; background: #ffffff; }",
-            "  </style>",
-            "</head>",
-            "<body>",
-            "<main>",
-            '  <section class="panel hero">',
-            "    <h1>Furnace Center</h1>",
-            f"    <p>编译时间：<code>{html.escape(compiled_at)}</code>。当前协议：<code>{html.escape(active_protocol)}</code> ({html.escape(protocol_title(active_protocol))})。这是炼丹炉的统一入口：把 review、graph、execution 和 recent outputs 收到一个地方。</p>",
-            '    <div class="quick-links">',
-            '      <a href="../../wiki/indexes/furnace-center.md">Markdown 面板</a>',
-            '      <a href="../../wiki/indexes/review-center.md">审阅中心</a>',
-            '      <a href="../../wiki/indexes/execution-center.md">执行中心</a>',
-            '      <a href="../../wiki/indexes/execution-audit.md">执行审计</a>',
-            '      <a href="../../wiki/indexes/agent-workbench.md">Agent Workbench</a>',
-            '      <a href="../../wiki/indexes/cognitive-history.md">认知历史</a>',
-            '      <a href="../../wiki/indexes/output-packs.md">输出 Packs</a>',
-            '      <a href="../../wiki/indexes/domain-pilots.md">领域 Pilots</a>',
-            '      <a href="../../wiki/indexes/judgment-assets.md">判断资产</a>',
-            '      <a href="../../wiki/indexes/graph-view.md">图谱视图</a>',
-            '      <a href="../../wiki/indexes/repair-backlog.md">修复待办</a>',
-            '      <a href="../../wiki/indexes/protocols.md">协议总览</a>',
-            '      <a href="../../output/review/review-center.html">审阅 HTML</a>',
-            '      <a href="../../output/graph/machine-memory.html">图谱 HTML</a>',
-            '      <a href="../../output/control/execution-center.html">执行 HTML</a>',
-            '      <a href="../../output/control/execution-audit.html">审计 HTML</a>',
-            "    </div>",
-            '    <div class="meta">',
-            *[
-                f'      <div class="card"><div class="metric">{html.escape(value)}</div><div class="metric-label">{html.escape(label)}</div></div>'
-                for label, value in summary_cards
-            ],
-            "    </div>",
-            "  </section>",
-            '  <section class="grid">',
-            f'    <div class="panel"><h2>待审 / 已到期</h2><ul>{pending_markup}{aging_markup}</ul></div>',
-            '    <div class="panel"><h2>生命周期治理</h2>'
-            f'<p class="item-meta">review {html.escape(str(lifecycle_summary.get("counts", {}).get("review_concepts", 0)))}'
-            f' · revisit {html.escape(str(lifecycle_summary.get("counts", {}).get("revisit_concepts", 0)))}'
-            f' · active {html.escape(str(lifecycle_summary.get("counts", {}).get("active_concepts", 0)))}</p>'
-            f"<ul>{lifecycle_backlog_markup}</ul></div>",
-            f'    <div class="panel"><h2>已退役概念</h2><ul>{retired_concept_markup}</ul></div>',
-            f'    <div class="panel"><h2>Safe Apply</h2><ul>{apply_action_markup}</ul></div>',
-            f'    <div class="panel"><h2>Apply-Ready Rewrites</h2><ul>{rewrite_markup}</ul></div>',
-            f'    <div class="panel"><h2>Execution Proposals</h2><ul>{proposal_markup}</ul></div>',
-            f'    <div class="panel"><h2>最近输出</h2><ul>{output_markup}</ul></div>',
-            f'    <div class="panel"><h2>协议焦点</h2><ul>{focus_markup}</ul></div>',
-            f'    <div class="panel"><h2>最近已审 / 已沉淀</h2><ul>{reviewed_markup}</ul></div>',
-            f'    <div class="panel"><h2>当前协议 Pilot</h2>{scorecard_markup}</div>',
-            f'    <div class="panel"><h2>最新输出 Packs</h2><ul>{pack_markup}</ul></div>',
-            f'    <div class="panel"><h2>最近执行回执</h2><ul>{receipt_markup}</ul></div>',
-            f'    <div class="panel"><h2>快速命令</h2><ul>{quick_command_markup}</ul></div>',
-            '    <div class="panel"><h2>系统状态</h2><ul>'
-            f'<li>graph components <code>{html.escape(str(health.get("component_count", 0)))}</code></li>'
-            f'<li>bridge concepts <code>{html.escape(str(len(health.get("bridge_concept_slugs", []))))}</code></li>'
-            f'<li>conflict signals <code>{html.escape(str(concept_quality.get("counts", {}).get("conflict_signals", 0)))}</code></li>'
-            f'<li>gap signals <code>{html.escape(str(concept_quality.get("counts", {}).get("gap_signals", 0)))}</code></li>'
-            f'<li>rewrite candidates <code>{html.escape(str(concept_quality.get("counts", {}).get("rewrite_candidates", 0)))}</code></li>'
-            f'<li>ready batches <code>{html.escape(str(plan.get("counts", {}).get("batches", 0)))}</code></li>'
-            "</ul></div>",
-            "  </section>",
-            "</main>",
-            "</body>",
-            "</html>",
-            "",
-        ]
+    return _render_furnace_center_html(
+        decisions,
+        judgments,
+        memory,
+        compiled_at,
+        protocol_state,
+        recent_outputs,
+        output_packs,
+        domain_pilots,
+        execution_audit,
+        knowledge_lifecycle=knowledge_lifecycle,
     )
 
 
@@ -6292,406 +5843,17 @@ def render_compile_status(
     *,
     compile_state: dict[str, Any] | None = None,
 ) -> str:
-    queue = review_queue(decisions, judgments, active_protocol=protocol_state["active_protocol"])
-    aging = collect_aging_signals(decisions, judgments, active_protocol=protocol_state["active_protocol"])
-    compile_state = compile_state or default_compile_state()
-    phase_summary = [
-        phase
-        for phase in compile_state.get("phase_summary", [])
-        if isinstance(phase, dict) and str(phase.get("name") or "")
-    ]
-    dirty_source_ids = [
-        str(entry_id)
-        for entry_id in compile_state.get("dirty_source_ids", [])
-        if str(entry_id)
-    ]
-    clean_source_ids = [
-        str(entry_id)
-        for entry_id in compile_state.get("clean_source_ids", [])
-        if str(entry_id)
-    ]
-    dirty_concept_source_ids = [
-        str(entry_id)
-        for entry_id in compile_state.get("dirty_concept_source_ids", [])
-        if str(entry_id)
-    ]
-    clean_concept_source_ids = [
-        str(entry_id)
-        for entry_id in compile_state.get("clean_concept_source_ids", [])
-        if str(entry_id)
-    ]
-    dirty_concept_slugs = [
-        str(slug)
-        for slug in compile_state.get("dirty_concept_slugs", [])
-        if str(slug)
-    ]
-    clean_concept_slugs = [
-        str(slug)
-        for slug in compile_state.get("clean_concept_slugs", [])
-        if str(slug)
-    ]
-    dirty_machine_memory_source_ids = [
-        str(entry_id)
-        for entry_id in compile_state.get("dirty_machine_memory_source_ids", [])
-        if str(entry_id)
-    ]
-    clean_machine_memory_source_ids = [
-        str(entry_id)
-        for entry_id in compile_state.get("clean_machine_memory_source_ids", [])
-        if str(entry_id)
-    ]
-    dirty_machine_memory_concept_slugs = [
-        str(slug)
-        for slug in compile_state.get("dirty_machine_memory_concept_slugs", [])
-        if str(slug)
-    ]
-    clean_machine_memory_concept_slugs = [
-        str(slug)
-        for slug in compile_state.get("clean_machine_memory_concept_slugs", [])
-        if str(slug)
-    ]
-    machine_memory_core_reused = bool(compile_state.get("machine_memory_core_reused", False))
-    dirty_ranking_source_ids = [
-        str(entry_id)
-        for entry_id in compile_state.get("dirty_ranking_source_ids", [])
-        if str(entry_id)
-    ]
-    clean_ranking_source_ids = [
-        str(entry_id)
-        for entry_id in compile_state.get("clean_ranking_source_ids", [])
-        if str(entry_id)
-    ]
-    dirty_ranking_concept_slugs = [
-        str(slug)
-        for slug in compile_state.get("dirty_ranking_concept_slugs", [])
-        if str(slug)
-    ]
-    clean_ranking_concept_slugs = [
-        str(slug)
-        for slug in compile_state.get("clean_ranking_concept_slugs", [])
-        if str(slug)
-    ]
-    dirty_output_pack_groups = [
-        str(group)
-        for group in compile_state.get("dirty_output_pack_groups", [])
-        if str(group)
-    ]
-    clean_output_pack_groups = [
-        str(group)
-        for group in compile_state.get("clean_output_pack_groups", [])
-        if str(group)
-    ]
-    dirty_domain_pilot_protocols = [
-        str(protocol)
-        for protocol in compile_state.get("dirty_domain_pilot_protocols", [])
-        if str(protocol)
-    ]
-    clean_domain_pilot_protocols = [
-        str(protocol)
-        for protocol in compile_state.get("clean_domain_pilot_protocols", [])
-        if str(protocol)
-    ]
-    dirty_index_artifacts = [
-        str(path)
-        for path in compile_state.get("dirty_index_artifacts", [])
-        if str(path)
-    ]
-    clean_index_artifacts = [
-        str(path)
-        for path in compile_state.get("clean_index_artifacts", [])
-        if str(path)
-    ]
-    dirty_maintenance_artifacts = [
-        str(path)
-        for path in compile_state.get("dirty_maintenance_artifacts", [])
-        if str(path)
-    ]
-    clean_maintenance_artifacts = [
-        str(path)
-        for path in compile_state.get("clean_maintenance_artifacts", [])
-        if str(path)
-    ]
-    entry_by_id = {
-        str(entry.get("id") or ""): entry
-        for entry in entries
-        if isinstance(entry, dict) and str(entry.get("id") or "")
-    }
-    concept_by_slug = {
-        str(record.get("slug") or ""): record
-        for record in concepts
-        if isinstance(record, dict) and str(record.get("slug") or "")
-    }
-    detail_labels = {
-        "manifest_entries": "entries",
-        "changed_entries": "changed",
-        "added_entries": "added",
-        "updated_entries": "updated",
-        "removed_entries": "removed",
-        "source_pages": "sources",
-        "dirty_sources": "dirty",
-        "clean_sources": "clean",
-        "updated_pages": "updated_pages",
-        "skipped_pages": "skipped_pages",
-        "concept_sources": "concept_sources",
-        "dirty_concept_sources": "dirty_concept_sources",
-        "clean_concept_sources": "clean_concept_sources",
-        "concept_pages": "concepts",
-        "dirty_concepts": "dirty_concepts",
-        "clean_concepts": "clean_concepts",
-        "machine_memory_sources": "machine_memory_sources",
-        "dirty_machine_memory_sources": "dirty_machine_memory_sources",
-        "clean_machine_memory_sources": "clean_machine_memory_sources",
-        "machine_memory_concepts": "machine_memory_concepts",
-        "dirty_machine_memory_concepts": "dirty_machine_memory_concepts",
-        "clean_machine_memory_concepts": "clean_machine_memory_concepts",
-        "reused_core": "reused_core",
-        "ranking_sources": "ranking_sources",
-        "dirty_ranking_sources": "dirty_ranking_sources",
-        "clean_ranking_sources": "clean_ranking_sources",
-        "ranking_concepts": "ranking_concepts",
-        "dirty_ranking_concepts": "dirty_ranking_concepts",
-        "clean_ranking_concepts": "clean_ranking_concepts",
-        "pack_groups": "pack_groups",
-        "dirty_pack_groups": "dirty_pack_groups",
-        "clean_pack_groups": "clean_pack_groups",
-        "review_packs": "review_packs",
-        "decision_memos": "decision_memos",
-        "sop_drafts": "sop_drafts",
-        "pilot_protocols": "pilot_protocols",
-        "dirty_protocols": "dirty_protocols",
-        "clean_protocols": "clean_protocols",
-        "tracked_artifacts": "tracked_artifacts",
-        "dirty_artifacts": "dirty_artifacts",
-        "clean_artifacts": "clean_artifacts",
-        "updated_artifacts": "updated_artifacts",
-        "skipped_artifacts": "skipped_artifacts",
-        "removed_generated_pages": "removed_generated_pages",
-        "material_state_entries": "material_state_entries",
-        "archive_candidates": "archive_candidates",
-        "active_corpora": "active_corpora",
-        "knowledge_lifecycle_entries": "knowledge_lifecycle_entries",
-    }
-    lines = [
-        "# 编译状态",
-        "",
-        f"- 最近编译时间：`{compiled_at}`",
-        f"- 来源页：`{len(entries)}`",
-        f"- 概念页：`{len(concepts)}`",
-        f"- 决策页：`{len(decisions)}`",
-        f"- 判断页：`{len(judgments)}`",
-        f"- 当前 active protocol：`{protocol_state['active_protocol']}` ({protocol_title(protocol_state['active_protocol'])})",
-        f"- 待审项目：`{len(queue['pending_decisions']) + len(queue['pending_judgments'])}`",
-        f"- 已到期复审：`{len(aging['overdue'])}`",
-        f"- 需要升级：`{len(aging['escalated'])}`",
-        f"- 证据漂移：`{sum(1 for page in decisions + judgments if page.get('citation_drift') == 'true')}`",
-        "- Compile state：`.aiwiki/state/compile-state.json`",
-        "- Concept build state：`.aiwiki/state/concept-build-state.json`",
-        "- Machine memory build state：`.aiwiki/state/machine-memory-build-state.json`",
-        "- Ranking build state：`.aiwiki/state/ranking-build-state.json`",
-        "- Output pack build state：`.aiwiki/state/output-pack-build-state.json`",
-        "- Domain pilot build state：`.aiwiki/state/domain-pilot-build-state.json`",
-        f"- Dirty source：`{len(dirty_source_ids)}`",
-        f"- Clean source：`{len(clean_source_ids)}`",
-        f"- Dirty concept source：`{len(dirty_concept_source_ids)}`",
-        f"- Clean concept source：`{len(clean_concept_source_ids)}`",
-        f"- Dirty concept：`{len(dirty_concept_slugs)}`",
-        f"- Clean concept：`{len(clean_concept_slugs)}`",
-        f"- Dirty machine-memory source：`{len(dirty_machine_memory_source_ids)}`",
-        f"- Clean machine-memory source：`{len(clean_machine_memory_source_ids)}`",
-        f"- Dirty machine-memory concept：`{len(dirty_machine_memory_concept_slugs)}`",
-        f"- Clean machine-memory concept：`{len(clean_machine_memory_concept_slugs)}`",
-        f"- Machine-memory core reused：`{machine_memory_core_reused}`",
-        f"- Dirty ranking source：`{len(dirty_ranking_source_ids)}`",
-        f"- Clean ranking source：`{len(clean_ranking_source_ids)}`",
-        f"- Dirty ranking concept：`{len(dirty_ranking_concept_slugs)}`",
-        f"- Clean ranking concept：`{len(clean_ranking_concept_slugs)}`",
-        f"- Dirty output pack group：`{len(dirty_output_pack_groups)}`",
-        f"- Clean output pack group：`{len(clean_output_pack_groups)}`",
-        f"- Dirty domain pilot protocol：`{len(dirty_domain_pilot_protocols)}`",
-        f"- Clean domain pilot protocol：`{len(clean_domain_pilot_protocols)}`",
-        f"- Dirty index artifact：`{len(dirty_index_artifacts)}`",
-        f"- Clean index artifact：`{len(clean_index_artifacts)}`",
-        f"- Dirty maintenance artifact：`{len(dirty_maintenance_artifacts)}`",
-        f"- Clean maintenance artifact：`{len(clean_maintenance_artifacts)}`",
-        "- 总索引位于 `index.md`。",
-        "- 运行时规则位于 `schema/`。",
-        "- 协议规则位于 `schema/protocols/`。",
-        "- 协议总览位于 `protocols.md`。",
-        "- 炉心面板位于 `furnace-center.md`。",
-        "- 执行中心位于 `execution-center.md`。",
-        "- 输出 Pack 总览位于 `output-packs.md`。",
-        "- 领域 Pilot 总览位于 `domain-pilots.md`。",
-        "- 操作日志位于 `log.md`。",
-        "- Agent Workbench 位于 `agent-workbench.md`。",
-        "- 决策索引位于 `decisions.md`。",
-        "- 判断索引位于 `judgments.md`。",
-        "- 判断资产盘点位于 `judgment-assets.md`。",
-        "- 认知历史位于 `cognitive-history.md`。",
-        "- 审阅队列位于 `review-queue.md`。",
-        "- 审阅中心位于 `review-center.md`。",
-        "- aging 报告位于 `aging-report.md`。",
-        "- 机器记忆摘要位于 `machine-memory.md`。",
-        "- 图谱视图位于 `graph-view.md`。",
-        "- 机器记忆拓扑位于 `machine-memory-topology.md`。",
-        "- 机器记忆动作队列位于 `machine-memory-actions.md`。",
-        "- 机器记忆修复计划位于 `machine-memory-repair-plan.md`。",
-        "- Rewrite 提案队列位于 `rewrite-proposals.md`。",
-        "- 图谱健康页位于 `graph-health.md`。",
-        "- 漂移报告位于 `drift-report.md`。",
-        "- 修复待办位于 `repair-backlog.md`。",
-        "- derived、decision、judgment 页面通过 `aiwiki file-back` 显式回流。",
-        "- lint 结果输出在 `output/lint/`。",
-    ]
-    lines.extend(["", "## Compile Phases"])
-    if not phase_summary:
-        lines.append("- 当前还没有 compile phase summary。")
-    else:
-        for phase in phase_summary:
-            details = phase.get("details", {})
-            detail_chunks = []
-            if isinstance(details, dict):
-                for key, value in details.items():
-                    if key not in detail_labels:
-                        continue
-                    detail_chunks.append(f"{detail_labels[key]}={value}")
-            label = str(phase.get("label") or phase.get("name") or "")
-            mode = str(phase.get("mode") or "full")
-            status = str(phase.get("status") or "completed")
-            detail_suffix = f" | {', '.join(detail_chunks)}" if detail_chunks else ""
-            lines.append(f"- `{phase['name']}` `{label}` [{mode}/{status}]{detail_suffix}")
-    lines.extend(["", "## Dirty Sources"])
-    if not dirty_source_ids:
-        lines.append("- 当前没有 dirty source page。")
-    else:
-        for entry_id in dirty_source_ids[:8]:
-            entry = entry_by_id.get(entry_id, {})
-            title = str(entry.get("title") or entry_id)
-            lines.append(f"- [{title}](../sources/{entry_id}.md)")
-        if len(dirty_source_ids) > 8:
-            lines.append(f"- 其余 dirty source：`{len(dirty_source_ids) - 8}`")
-    lines.extend(["", "## Dirty Concept Sources"])
-    if not dirty_concept_source_ids:
-        lines.append("- 当前没有 dirty concept source。")
-    else:
-        for entry_id in dirty_concept_source_ids[:8]:
-            entry = entry_by_id.get(entry_id, {})
-            title = str(entry.get("title") or entry_id)
-            lines.append(f"- [{title}](../sources/{entry_id}.md)")
-        if len(dirty_concept_source_ids) > 8:
-            lines.append(f"- 其余 dirty concept source：`{len(dirty_concept_source_ids) - 8}`")
-    lines.extend(["", "## Dirty Machine Memory Sources"])
-    if not dirty_machine_memory_source_ids:
-        lines.append("- 当前没有 dirty machine-memory source input。")
-    else:
-        for entry_id in dirty_machine_memory_source_ids[:8]:
-            entry = entry_by_id.get(entry_id, {})
-            title = str(entry.get("title") or entry_id)
-            lines.append(f"- [{title}](../sources/{entry_id}.md)")
-        if len(dirty_machine_memory_source_ids) > 8:
-            lines.append(f"- 其余 dirty machine-memory source：`{len(dirty_machine_memory_source_ids) - 8}`")
-    lines.extend(["", "## Dirty Concepts"])
-    if not dirty_concept_slugs:
-        lines.append("- 当前没有 dirty concept page。")
-    else:
-        for slug in dirty_concept_slugs[:8]:
-            record = concept_by_slug.get(slug, {})
-            title = str(record.get("title") or slug)
-            lines.append(f"- [{title}](../concepts/{slug}.md)")
-        if len(dirty_concept_slugs) > 8:
-            lines.append(f"- 其余 dirty concept：`{len(dirty_concept_slugs) - 8}`")
-    lines.extend(["", "## Dirty Machine Memory Concepts"])
-    if not dirty_machine_memory_concept_slugs:
-        lines.append("- 当前没有 dirty machine-memory concept input。")
-    else:
-        for slug in dirty_machine_memory_concept_slugs[:8]:
-            record = concept_by_slug.get(slug, {})
-            title = str(record.get("title") or slug)
-            lines.append(f"- [{title}](../concepts/{slug}.md)")
-        if len(dirty_machine_memory_concept_slugs) > 8:
-            lines.append(
-                f"- 其余 dirty machine-memory concept：`{len(dirty_machine_memory_concept_slugs) - 8}`"
-            )
-    lines.extend(["", "## Dirty Ranking Sources"])
-    if not dirty_ranking_source_ids:
-        lines.append("- 当前没有 dirty ranking source record。")
-    else:
-        for entry_id in dirty_ranking_source_ids[:8]:
-            entry = entry_by_id.get(entry_id, {})
-            title = str(entry.get("title") or entry_id)
-            lines.append(f"- [{title}](../sources/{entry_id}.md)")
-        if len(dirty_ranking_source_ids) > 8:
-            lines.append(f"- 其余 dirty ranking source：`{len(dirty_ranking_source_ids) - 8}`")
-    lines.extend(["", "## Clean Ranking Sources"])
-    if not clean_ranking_source_ids:
-        lines.append("- 当前没有 clean ranking source record。")
-    else:
-        for entry_id in clean_ranking_source_ids[:8]:
-            entry = entry_by_id.get(entry_id, {})
-            title = str(entry.get("title") or entry_id)
-            lines.append(f"- [{title}](../sources/{entry_id}.md)")
-        if len(clean_ranking_source_ids) > 8:
-            lines.append(f"- 其余 clean ranking source：`{len(clean_ranking_source_ids) - 8}`")
-    lines.extend(["", "## Dirty Ranking Concepts"])
-    if not dirty_ranking_concept_slugs:
-        lines.append("- 当前没有 dirty ranking concept record。")
-    else:
-        for slug in dirty_ranking_concept_slugs[:8]:
-            record = concept_by_slug.get(slug, {})
-            title = str(record.get("title") or slug)
-            lines.append(f"- [{title}](../concepts/{slug}.md)")
-        if len(dirty_ranking_concept_slugs) > 8:
-            lines.append(f"- 其余 dirty ranking concept：`{len(dirty_ranking_concept_slugs) - 8}`")
-    lines.extend(["", "## Clean Ranking Concepts"])
-    if not clean_ranking_concept_slugs:
-        lines.append("- 当前没有 clean ranking concept record。")
-    else:
-        for slug in clean_ranking_concept_slugs[:8]:
-            record = concept_by_slug.get(slug, {})
-            title = str(record.get("title") or slug)
-            lines.append(f"- [{title}](../concepts/{slug}.md)")
-        if len(clean_ranking_concept_slugs) > 8:
-            lines.append(f"- 其余 clean ranking concept：`{len(clean_ranking_concept_slugs) - 8}`")
-    lines.extend(["", "## Dirty Output Pack Groups"])
-    if not dirty_output_pack_groups:
-        lines.append("- 当前没有 dirty output pack group。")
-    else:
-        for group in dirty_output_pack_groups:
-            lines.append(f"- `{group}`")
-    lines.extend(["", "## Clean Output Pack Groups"])
-    if not clean_output_pack_groups:
-        lines.append("- 当前没有 clean output pack group。")
-    else:
-        for group in clean_output_pack_groups:
-            lines.append(f"- `{group}`")
-    lines.extend(["", "## Dirty Domain Pilot Protocols"])
-    if not dirty_domain_pilot_protocols:
-        lines.append("- 当前没有 dirty domain pilot protocol。")
-    else:
-        for protocol in dirty_domain_pilot_protocols:
-            lines.append(f"- `{protocol}`")
-    lines.extend(["", "## Clean Domain Pilot Protocols"])
-    if not clean_domain_pilot_protocols:
-        lines.append("- 当前没有 clean domain pilot protocol。")
-    else:
-        for protocol in clean_domain_pilot_protocols:
-            lines.append(f"- `{protocol}`")
-    lines.extend(["", "## Dirty Index Artifacts"])
-    if not dirty_index_artifacts:
-        lines.append("- 当前没有 dirty index artifact。")
-    else:
-        for relative in dirty_index_artifacts[:12]:
-            lines.append(f"- `{relative}`")
-        if len(dirty_index_artifacts) > 12:
-            lines.append(f"- 其余 dirty artifact：`{len(dirty_index_artifacts) - 12}`")
-    lines.extend(["", "## Dirty Maintenance Artifacts"])
-    if not dirty_maintenance_artifacts:
-        lines.append("- 当前没有 dirty maintenance artifact。")
-    else:
-        for relative in dirty_maintenance_artifacts[:12]:
-            lines.append(f"- `{relative}`")
-        if len(dirty_maintenance_artifacts) > 12:
-            lines.append(f"- 其余 dirty artifact：`{len(dirty_maintenance_artifacts) - 12}`")
-    return "\n".join(lines) + "\n"
+    from .app_surfaces import render_compile_status as _render_compile_status
+
+    return _render_compile_status(
+        entries,
+        concepts,
+        decisions,
+        judgments,
+        protocol_state,
+        compiled_at,
+        compile_state=compile_state,
+    )
 
 
 def render_master_index(
@@ -6932,6 +6094,11 @@ def summarize_runtime_event_for_shell(event: dict[str, Any]) -> dict[str, Any]:
         summary["operation"] = str(event.get("operation") or "")
         summary["path"] = str(event.get("path") or "")
         summary["lifecycle_state"] = str(event.get("lifecycle_state") or "")
+    elif event_type in {"rewrite-review", "rewrite-apply", "rewrite-verify", "rewrite-revert"}:
+        summary["title"] = str(event.get("slug") or event.get("target_path") or "Concept rewrite")
+        summary["path"] = str(event.get("target_path") or "")
+        summary["status"] = str(event.get("status") or "")
+        summary["verification_status"] = str(event.get("verification_status") or "")
     elif event_type in {"archive-apply", "archive-revert"}:
         entry_id = str(event.get("source_ids", ["archive"])[0] if event.get("source_ids") else "Archive")
         summary["title"] = entry_id
@@ -7093,7 +6260,13 @@ def concept_quality_tokens(label: str) -> set[str]:
 def load_source_page_context(root: Path, relative: str) -> dict[str, str]:
     path = root / relative
     if not path.exists():
-        return {"path": relative, "title": relative.rsplit("/", 1)[-1], "summary": "", "status": "missing"}
+        return {
+            "path": relative,
+            "title": relative.rsplit("/", 1)[-1],
+            "summary": "",
+            "status": "missing",
+            "last_compiled_at": "",
+        }
     content = path.read_text(encoding="utf-8", errors="replace")
     frontmatter = parse_frontmatter(content)
     summary = preserved_section(content, "Summary", "").strip()
@@ -7103,6 +6276,7 @@ def load_source_page_context(root: Path, relative: str) -> dict[str, str]:
         "title": str(frontmatter.get("title") or path.stem),
         "summary": summary,
         "status": status,
+        "last_compiled_at": str(frontmatter.get("last_compiled_at") or ""),
     }
 
 
@@ -7164,12 +6338,93 @@ def detect_concept_gap_signals(source_contexts: list[dict[str, str]]) -> list[di
     return gaps
 
 
-def concept_rewrite_priority(score: int, issues: list[str], conflicts: list[dict[str, Any]]) -> str:
-    if score >= 6 or conflicts or "placeholder-summary" in issues:
+def concept_source_freshness_score(
+    source_contexts: list[dict[str, str]],
+    *,
+    compiled_at: str,
+) -> int:
+    compiled_dt = parse_iso_datetime(compiled_at)
+    if compiled_dt is None:
+        return 50
+    source_ages: list[float] = []
+    for context in source_contexts:
+        parsed = parse_iso_datetime(str(context.get("last_compiled_at") or ""))
+        if parsed is None:
+            continue
+        age_days = max(0.0, (compiled_dt - parsed).total_seconds() / 86400)
+        source_ages.append(age_days)
+    if not source_ages:
+        return 50
+    average_age = sum(source_ages) / len(source_ages)
+    if average_age <= 1:
+        return 100
+    if average_age <= 7:
+        return 85
+    if average_age <= 30:
+        return 70
+    if average_age <= 90:
+        return 55
+    return 35
+
+
+def concept_quality_metrics(
+    source_pages: list[str],
+    source_contexts: list[dict[str, str]],
+    conflict_signals: list[dict[str, Any]],
+    gap_signals: list[dict[str, Any]],
+    *,
+    compiled_at: str,
+) -> dict[str, int]:
+    source_count = len(source_pages)
+    ready_count = sum(1 for context in source_contexts if context.get("status") == "ready")
+    placeholder_count = sum(1 for context in source_contexts if context.get("status") == "placeholder")
+    missing_count = sum(1 for context in source_contexts if context.get("status") == "missing")
+    coverage_score = min(100, source_count * 35) if source_count else 0
+    consistency_score = max(20, 100 - len(conflict_signals) * 35) if source_count else 0
+    evidence_ratio = (ready_count / source_count) if source_count else 0.0
+    gap_penalty = len(gap_signals) * 14 + placeholder_count * 10 + missing_count * 20
+    evidence_depth_score = max(0, round(evidence_ratio * 100) - gap_penalty)
+    freshness_score = concept_source_freshness_score(source_contexts, compiled_at=compiled_at)
+    quality_score = round(
+        coverage_score * 0.28
+        + consistency_score * 0.32
+        + evidence_depth_score * 0.25
+        + freshness_score * 0.15
+    )
+    return {
+        "source_coverage": coverage_score,
+        "consistency": consistency_score,
+        "evidence_depth": evidence_depth_score,
+        "recency": freshness_score,
+        "quality_score": max(0, min(100, quality_score)),
+        "ready_sources": ready_count,
+        "placeholder_sources": placeholder_count,
+        "missing_sources": missing_count,
+    }
+
+
+def concept_quality_band(quality_score: int) -> str:
+    if quality_score >= 85:
+        return "strong"
+    if quality_score >= 70:
+        return "stable"
+    if quality_score >= 55:
+        return "watch"
+    return "fragile"
+
+
+def concept_rewrite_priority(
+    score: int,
+    issues: list[str],
+    conflicts: list[dict[str, Any]],
+    *,
+    quality_score: int,
+) -> str:
+    if score >= 6 or conflicts or "placeholder-summary" in issues or quality_score < 55:
         return "high"
-    if score >= 3:
+    if score >= 3 or quality_score < 70:
         return "medium"
-    if score > 0:
+    if score > 0 or quality_score < 85:
         return "low"
     return ""
 
@@ -7190,6 +6445,146 @@ def concept_rewrite_strategy(record: dict[str, Any]) -> str:
     if "merge-boundary" in issues:
         steps.append("检查是否需要合并或拆分概念边界。")
     return " ".join(steps[:3]) or "保持当前概念总结。"
+
+
+def proposal_rollback_summary(proposal: dict[str, Any]) -> str:
+    preview = proposal.get("safe_apply_preview")
+    if isinstance(preview, dict):
+        apply_mode = str(preview.get("apply_mode") or "")
+        if apply_mode == "manual-link-state":
+            return "禁用对应的 manual-link state 条目并重跑 compile。"
+        if apply_mode == "citation-snapshot-refresh":
+            return "恢复之前的 citation_snapshots metadata 并重跑 compile。"
+    return "回滚时需要人工恢复目标页，然后重跑 compile。"
+
+
+def proposal_impact_score(action: dict[str, Any], proposal: dict[str, Any]) -> int:
+    priority_base = {"high": 55, "medium": 35, "low": 20}.get(str(action.get("priority") or proposal.get("priority") or "medium"), 20)
+    focus_bonus = min(24, int(action.get("focus_score", 0) or 0) * 3)
+    occurrence_bonus = min(12, int(action.get("occurrences", 0) or 0) * 2)
+    accepted_bonus = 10 if str(action.get("status") or proposal.get("status") or "") == "accepted" else 0
+    escalation_bonus = 8 if str(action.get("escalation_candidate") or "") == "true" else 0
+    overdue_bonus = 6 if str(action.get("overdue_review") or "") == "true" else 0
+    policy_bonus = 6 if str(action.get("policy_decision") or proposal.get("policy_decision") or "") == "allow" else 0
+    return min(100, priority_base + focus_bonus + occurrence_bonus + accepted_bonus + escalation_bonus + overdue_bonus + policy_bonus)
+
+
+def proposal_dependency_weight(proposal: dict[str, Any]) -> tuple[int, int]:
+    kind_rank = {
+        "split-concept": 5,
+        "expand-concept": 4,
+        "connect-source": 3,
+        "cross-link": 2,
+        "refresh-snapshots": 1,
+        "monitor-bridge": 1,
+        "manual-repair": 0,
+    }
+    return (
+        kind_rank.get(str(proposal.get("proposal_kind") or "manual-repair"), 0),
+        int(proposal.get("impact_score", 0) or 0),
+    )
+
+
+def proposals_overlap(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    left_targets = {str(path) for path in left.get("target_paths", []) if isinstance(path, str) and path}
+    right_targets = {str(path) for path in right.get("target_paths", []) if isinstance(path, str) and path}
+    if left_targets and right_targets and left_targets.intersection(right_targets):
+        return True
+    left_sources = {str(item) for item in left.get("source_ids", []) if isinstance(item, str) and item}
+    right_sources = {str(item) for item in right.get("source_ids", []) if isinstance(item, str) and item}
+    left_concepts = {str(item) for item in left.get("concept_slugs", []) if isinstance(item, str) and item}
+    right_concepts = {str(item) for item in right.get("concept_slugs", []) if isinstance(item, str) and item}
+    if left_sources and right_sources and left_sources.intersection(right_sources):
+        return True
+    if left_concepts and right_concepts and left_concepts.intersection(right_concepts):
+        return True
+    component_id = str(left.get("component_id") or "")
+    return bool(component_id) and component_id == str(right.get("component_id") or "")
+
+
+def derive_proposal_dependencies(proposals: list[dict[str, Any]]) -> None:
+    for proposal in proposals:
+        current_weight = proposal_dependency_weight(proposal)
+        depends_on: list[str] = []
+        for candidate in proposals:
+            if candidate is proposal:
+                continue
+            candidate_action_id = str(candidate.get("action_id") or "")
+            if not candidate_action_id or not proposals_overlap(proposal, candidate):
+                continue
+            if proposal_dependency_weight(candidate) <= current_weight:
+                continue
+            if candidate_action_id not in depends_on:
+                depends_on.append(candidate_action_id)
+        proposal["depends_on"] = depends_on
+
+
+def build_planner_state(
+    proposals: list[dict[str, Any]],
+    *,
+    active_protocol: str = DEFAULT_PROTOCOL,
+) -> dict[str, Any]:
+    queue: list[dict[str, Any]] = []
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    for proposal in proposals:
+        action_id = str(proposal.get("action_id") or "")
+        depends_on = [str(item) for item in proposal.get("depends_on", []) if isinstance(item, str) and item]
+        blocked = bool(depends_on)
+        queue_item = {
+            "item_id": f"proposal:{action_id}",
+            "item_kind": "execution-proposal",
+            "action_id": action_id,
+            "title": str(proposal.get("title") or action_id),
+            "priority": str(proposal.get("priority") or "medium"),
+            "status": str(proposal.get("status") or "proposed"),
+            "protocol": str(proposal.get("protocol") or active_protocol),
+            "impact_score": int(proposal.get("impact_score", 0) or 0),
+            "priority_score": int(proposal.get("priority_score", 0) or 0),
+            "blocked": blocked,
+            "depends_on": depends_on,
+            "target_paths": list(proposal.get("target_paths", []) or []),
+            "command_hint": str(proposal.get("command_hint") or ""),
+            "next_step": str(proposal.get("next_step") or ""),
+        }
+        queue.append(queue_item)
+        nodes.append(
+            {
+                "action_id": action_id,
+                "title": queue_item["title"],
+                "priority_score": queue_item["priority_score"],
+                "impact_score": queue_item["impact_score"],
+                "blocked": blocked,
+            }
+        )
+        edges.extend({"from": action_id, "to": dependency} for dependency in depends_on)
+    queue.sort(
+        key=lambda item: (
+            0 if not item.get("blocked") else 1,
+            -int(item.get("priority_score", 0) or 0),
+            action_priority_rank(str(item.get("priority") or "medium")),
+            str(item.get("title") or "").lower(),
+        )
+    )
+    next_action = queue[0] if queue else {}
+    return {
+        "version": 1,
+        "generated_at": utc_now(),
+        "state_path": "",
+        "active_protocol": active_protocol,
+        "pending_proposals": proposals,
+        "priority_queue": queue[:12],
+        "dependency_graph": {
+            "nodes": nodes[:16],
+            "edges": edges[:24],
+        },
+        "next_action": next_action,
+        "counts": {
+            "pending_proposals": len(proposals),
+            "blocked": sum(1 for item in queue if item.get("blocked")),
+            "unblocked": sum(1 for item in queue if not item.get("blocked")),
+        },
+    }
 
 
 def repair_execution_proposals(
@@ -7249,6 +6644,16 @@ def repair_execution_proposals(
                 "如果桥接已经失效，再把动作转成 merge 或 split。 ",
             ],
         },
+        "refresh-citation-snapshots": {
+            "kind": "refresh-snapshots",
+            "risk": "low",
+            "summary": "刷新 judgment citation snapshot metadata，让 drift / review surface 收敛。",
+            "edits": [
+                "重建 citation_snapshots metadata，不改正文结论。",
+                "确认 provenance 仍指向现有 citation 列表。",
+                "执行后重跑 compile，验证 judgment drift 与 review window 是否收敛。",
+            ],
+        },
     }
     protocol_hints = {
         "general": {
@@ -7305,6 +6710,9 @@ def repair_execution_proposals(
             "priority": str(action.get("priority") or "medium"),
             "status": str(action.get("status") or "proposed"),
             "execution_policy": str(action.get("execution_policy") or "triage"),
+            "execution_band": str(action.get("execution_band") or "review-first"),
+            "policy_decision": str(action.get("policy_decision") or ""),
+            "policy_rule_id": str(action.get("policy_rule_id") or ""),
             "proposal_kind": str(template.get("kind") or "manual-repair"),
             "risk": str(template.get("risk") or "medium"),
             "summary": (
@@ -7318,16 +6726,40 @@ def repair_execution_proposals(
             "next_step": str(action.get("next_step") or ""),
             "protocol": proposal_protocol,
             "focus_score": int(action.get("focus_score", 0)),
+            "component_id": str(action.get("component_id") or ""),
+            "source_ids": [str(item) for item in action.get("source_ids", []) if isinstance(item, str) and item],
+            "concept_slugs": [str(item) for item in action.get("concept_slugs", []) if isinstance(item, str) and item],
+            "apply_ready": str(action.get("apply_ready") or "false"),
         }
         proposal["page_patch_plan"] = build_page_patch_plan(root, action, active_protocol=proposal_protocol)
         proposal["proposal_path"] = relative_path(root, execution_proposal_path(root, action_id))
         proposal["bundle_path"] = relative_path(root, execution_bundle_path(root, action_id))
         proposal["safe_apply_preview"] = safe_apply_preview(root, action)
+        proposal["rollback_summary"] = proposal_rollback_summary(proposal)
+        proposal["impact_score"] = proposal_impact_score(action, proposal)
+        proposal["priority_score"] = min(
+            120,
+            int(proposal["impact_score"])
+            + {"accepted": 16, "proposed": 8, "deferred": 2}.get(proposal["status"], 0)
+            + {"allow": 8, "review": 0, "history": -10}.get(proposal["policy_decision"], 0)
+            + {"bundle-safe-apply": 6, "review-first": 0, "manual-repair": -4, "deferred": -8}.get(
+                proposal["execution_band"],
+                0,
+            ),
+        )
         proposals.append(proposal)
+    derive_proposal_dependencies(proposals)
+    for proposal in proposals:
+        proposal["priority_score"] = max(
+            0,
+            int(proposal.get("priority_score", 0) or 0) - (4 * len(proposal.get("depends_on", []))),
+        )
     proposals.sort(
         key=lambda item: (
+            0 if not item.get("depends_on") else 1,
             action_status_rank(item["status"]),
-            -int(item.get("focus_score", 0)),
+            -int(item.get("priority_score", 0)),
+            -int(item.get("impact_score", 0)),
             action_priority_rank(item["priority"]),
             item["proposal_kind"],
             item["title"].lower(),
@@ -7341,6 +6773,7 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
     singleton_slugs = set(memory.get("health", {}).get("singleton_concept_slugs", []))
     concept_nodes = [dict(node) for node in memory.get("concept_nodes", []) if isinstance(node, dict)]
     concept_records: dict[str, dict[str, Any]] = {}
+    compiled_at = str(memory.get("compiled_at") or utc_now())
 
     merge_candidates: list[dict[str, Any]] = []
     for index, left in enumerate(concept_nodes):
@@ -7412,6 +6845,14 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
         if slug in merge_candidate_slugs:
             issues.append("merge-boundary")
             score += 1
+        metrics = concept_quality_metrics(
+            source_pages,
+            source_contexts,
+            conflict_signals,
+            gap_signals,
+            compiled_at=compiled_at,
+        )
+        quality_score = int(metrics.get("quality_score", 0))
         concept_records[slug] = {
             "slug": slug,
             "title": title,
@@ -7422,9 +6863,24 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
             "related_count": len(related_slugs),
             "issues": issues,
             "score": score,
+            "quality_score": quality_score,
+            "quality_band": concept_quality_band(quality_score),
+            "quality_metrics": {
+                "source_coverage": int(metrics.get("source_coverage", 0)),
+                "consistency": int(metrics.get("consistency", 0)),
+                "evidence_depth": int(metrics.get("evidence_depth", 0)),
+                "recency": int(metrics.get("recency", 0)),
+            },
+            "ready_source_count": int(metrics.get("ready_sources", 0)),
+            "placeholder_source_count": int(metrics.get("placeholder_sources", 0)),
+            "missing_source_count": int(metrics.get("missing_sources", 0)),
             "conflict_signals": conflict_signals[:4],
             "gap_signals": gap_signals[:4],
-            "quality_state": "stable" if score == 0 else ("rewrite-now" if score >= 3 else "watch"),
+            "quality_state": (
+                "stable"
+                if score == 0 and quality_score >= 75
+                else ("rewrite-now" if score >= 3 or quality_score < 55 else "watch")
+            ),
         }
 
     weak_concepts: list[dict[str, Any]] = []
@@ -7437,6 +6893,7 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
             int(record.get("score", 0)),
             list(record.get("issues", [])),
             list(record.get("conflict_signals", [])),
+            quality_score=int(record.get("quality_score", 0)),
         )
         record["rewrite_strategy"] = concept_rewrite_strategy(record)
         if record["conflict_signals"]:
@@ -7456,6 +6913,9 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
                     "priority": record["rewrite_priority"],
                     "issues": list(record.get("issues", [])),
                     "score": int(record.get("score", 0)),
+                    "quality_score": int(record.get("quality_score", 0)),
+                    "quality_band": str(record.get("quality_band") or ""),
+                    "quality_metrics": dict(record.get("quality_metrics", {})),
                     "rewrite_strategy": record["rewrite_strategy"],
                     "conflict_count": len(record.get("conflict_signals", [])),
                     "gap_count": len(record.get("gap_signals", [])),
@@ -7468,16 +6928,24 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
     weak_concepts.sort(
         key=lambda item: (
             -int(item.get("score", 0)),
+            int(item.get("quality_score", 0)),
             -len(item.get("conflict_signals", [])),
             int(item.get("source_count", 0)),
             item.get("title", "").lower(),
         )
     )
-    stable_concepts.sort(key=lambda item: (-int(item.get("source_count", 0)), item.get("title", "").lower()))
+    stable_concepts.sort(
+        key=lambda item: (
+            -int(item.get("quality_score", 0)),
+            -int(item.get("source_count", 0)),
+            item.get("title", "").lower(),
+        )
+    )
     rewrite_candidates.sort(
         key=lambda item: (
             action_priority_rank(item.get("priority", "")),
             -int(item.get("score", 0)),
+            int(item.get("quality_score", 0)),
             -int(item.get("conflict_count", 0)),
             item.get("title", "").lower(),
         )
@@ -7498,8 +6966,16 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
     )
     all_concepts = sorted(
         concept_records.values(),
-        key=lambda item: (-int(item.get("score", 0)), item.get("title", "").lower()),
+        key=lambda item: (-int(item.get("score", 0)), int(item.get("quality_score", 0)), item.get("title", "").lower()),
     )
+    average_quality_score = round(
+        sum(int(record.get("quality_score", 0)) for record in all_concepts) / len(all_concepts),
+        1,
+    ) if all_concepts else 0.0
+    quality_bands = {
+        band: sum(1 for record in all_concepts if str(record.get("quality_band") or "") == band)
+        for band in ("strong", "stable", "watch", "fragile")
+    }
     return {
         "all_concepts": all_concepts,
         "weak_concepts": weak_concepts[:20],
@@ -7509,6 +6985,8 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
         "conflict_signals": all_conflict_signals[:12],
         "gap_signals": all_gap_signals[:12],
         "placeholder_slugs": sorted(placeholder_slugs),
+        "average_quality_score": average_quality_score,
+        "quality_bands": quality_bands,
         "counts": {
             "weak": len(weak_concepts),
             "stable": len(stable_concepts),
@@ -7517,5 +6995,9 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
             "rewrite_candidates": len(rewrite_candidates),
             "conflict_signals": len(all_conflict_signals),
             "gap_signals": len(all_gap_signals),
+            "strong_quality": quality_bands["strong"],
+            "stable_quality": quality_bands["stable"],
+            "watch_quality": quality_bands["watch"],
+            "fragile_quality": quality_bands["fragile"],
         },
     }
