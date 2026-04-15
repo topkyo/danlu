@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections import deque
-from contextlib import contextmanager
 import fcntl
 import functools
 import hashlib
@@ -12,10 +10,11 @@ import json
 import os
 import re
 import threading
+from collections import deque
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-
 
 _RUNTIME_LOCK_GUARD = threading.RLock()
 
@@ -122,17 +121,15 @@ def runtime_write_lock(root: Path):
     finally:
         with _RUNTIME_LOCK_GUARD:
             state = _RUNTIME_LOCKS.get(resolved_root)
-            if state is None:
-                return
-            state["depth"] = int(state.get("depth", 0)) - 1
-            if state["depth"] > 0:
-                return
-            handle = state["handle"]
-            try:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-            finally:
-                handle.close()
-                _RUNTIME_LOCKS.pop(resolved_root, None)
+            if state is not None:
+                state["depth"] = int(state.get("depth", 0)) - 1
+                if state["depth"] <= 0:
+                    handle = state["handle"]
+                    try:
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                    finally:
+                        handle.close()
+                        _RUNTIME_LOCKS.pop(resolved_root, None)
 
 
 def runtime_write_operation(func):
