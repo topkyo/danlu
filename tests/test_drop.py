@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_utils import parse_frontmatter
-from aiwiki.drop import drop_image, drop_pdf, drop_repo, drop_url
+from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
 from aiwiki.llm import CompletionResult
 
 
@@ -117,6 +117,94 @@ class DropTests(unittest.TestCase):
         self.assertIn("- `README.md`", note)
         self.assertIn("- `src/main.py`", note)
         self.assertIn("### src/main.py", note)
+
+    def test_drop_repo_clones_remote_url_and_cleans_temp_directory(self) -> None:
+        captured: dict[str, Path] = {}
+
+        def fake_clone(source: str, destination: Path) -> None:
+            del source
+            captured["cleanup_dir"] = destination.parent
+            destination.mkdir(parents=True)
+
+        with patch("aiwiki.drop._clone_repo", side_effect=fake_clone):
+            with patch(
+                "aiwiki.drop._repo_snapshot",
+                return_value={
+                    "name": "Remote Fixture",
+                    "commit": "abc123",
+                    "origin": "https://example.test/repo.git",
+                    "readme": "Remote repo summary.",
+                    "tree": ["- `README.md`"],
+                    "files": [],
+                },
+            ):
+                result = drop_repo(self.root, "https://example.test/repo.git")
+
+        self.assertEqual(result["material"], "repo")
+        self.assertFalse(captured["cleanup_dir"].exists())
+
+    def test_fetch_url_uses_plain_text_fallback_when_html_extraction_is_not_applicable(self) -> None:
+        with patch(
+            "aiwiki.drop._http_fetch_url",
+            return_value={
+                "final_url": "https://example.test/plain",
+                "content_type": "text/plain",
+                "status": "200",
+                "text": "Plain text body",
+                "error": "",
+            },
+        ):
+            payload = _fetch_url("https://example.test/plain")
+
+        self.assertEqual(payload["title"], "plain")
+        self.assertEqual(payload["extraction_mode"], "plain-text")
+        self.assertEqual(payload["text"], "Plain text body")
+
+    def test_fetch_url_recovers_when_browser_render_raises(self) -> None:
+        with patch(
+            "aiwiki.drop._http_fetch_url",
+            return_value={
+                "final_url": "https://example.test/page",
+                "content_type": "text/html",
+                "status": "",
+                "text": "<html><title>Page</title><body>Rendered body</body></html>",
+                "error": "",
+            },
+        ):
+            with patch("aiwiki.drop._should_try_browser_render", return_value=True):
+                with patch("aiwiki.drop._render_url_in_browser", side_effect=RuntimeError("no browser")):
+                    with patch(
+                        "aiwiki.drop._extract_html_document",
+                        return_value={
+                            "title": "Recovered Page",
+                            "description": "Recovered description",
+                            "text": "Recovered body",
+                            "image_urls": ["https://example.test/a.png"],
+                            "mode": "readability",
+                        },
+                    ):
+                        payload = _fetch_url("https://example.test/page")
+
+        self.assertEqual(payload["title"], "Recovered Page")
+        self.assertEqual(payload["browser_backend"], "")
+        self.assertEqual(payload["extraction_mode"], "readability")
+        self.assertEqual(payload["status"], "browser-rendered")
+
+    def test_fetch_url_raises_when_no_text_can_be_recovered(self) -> None:
+        with patch(
+            "aiwiki.drop._http_fetch_url",
+            return_value={
+                "final_url": "https://example.test/fail",
+                "content_type": "",
+                "status": "",
+                "text": "",
+                "error": "connection reset",
+            },
+        ):
+            with self.assertRaises(RuntimeError) as ctx:
+                _fetch_url("https://example.test/fail")
+
+        self.assertIn("connection reset", str(ctx.exception))
 
 
 if __name__ == "__main__":

@@ -65,6 +65,18 @@ class ConfigTests(unittest.TestCase):
 
         self.assertIn("Unsupported AIWIKI_LLM_BACKEND", str(ctx.exception))
 
+    def test_from_env_raises_when_requested_codex_backend_is_unavailable(self) -> None:
+        with self.assertRaises(RuntimeError) as ctx:
+            self._from_env({"AIWIKI_LLM_BACKEND": BACKEND_CODEX_CLI})
+
+        self.assertIn("No usable LLM backend found", str(ctx.exception))
+
+    def test_from_env_raises_when_requested_claude_backend_is_unavailable(self) -> None:
+        with self.assertRaises(RuntimeError) as ctx:
+            self._from_env({"AIWIKI_LLM_BACKEND": BACKEND_CLAUDE_CLI})
+
+        self.assertIn("No usable LLM backend found", str(ctx.exception))
+
     def test_status_from_env_reports_requested_backend_mismatch(self) -> None:
         status = self._status_from_env(
             {
@@ -98,6 +110,17 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(status["auth_mode"], "api-key")
         self.assertTrue(status["image_analysis_supported"])
         self.assertEqual(status["message"], "")
+
+    def test_status_from_env_reports_missing_auto_backends(self) -> None:
+        status = self._status_from_env({})
+
+        self.assertFalse(status["configured"])
+        self.assertEqual(status["available_backends"], [])
+        self.assertEqual(
+            status["missing"],
+            ["OPENAI-compatible API key", "LLM model name", "CLI command `codex`", "CLI command `claude`"],
+        )
+        self.assertIn("No usable LLM backend found", str(status["message"]))
 
 
 if __name__ == "__main__":

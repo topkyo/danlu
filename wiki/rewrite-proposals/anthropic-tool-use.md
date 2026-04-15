@@ -4,9 +4,9 @@ kind: "rewrite-proposal"
 status: "proposed"
 title: "Anthropic Tool Use"
 target_path: "wiki/concepts/anthropic-tool-use.md"
-source_signature: "6a7fff4abfbe122c47fcd9c20c6fce9148ff2d7acd3674d5126511901f8d617b"
+source_signature: "66b3fcbbccf4b3ae523239235633801b245852f4e015e5c871e37b461ebfacd2"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T02:19:57+00:00"
+last_compiled_at: "2026-04-15T03:10:19+00:00"
 ---
 
 # Rewrite Proposal · Anthropic Tool Use
@@ -15,18 +15,18 @@ last_compiled_at: "2026-04-15T02:19:57+00:00"
 - Status: `待审提案`
 - Priority: `high`
 - Score: `8`
-- Quality score: `57`
-- Quality band: `watch`
+- Quality score: `78`
+- Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T01:37:58+00:00`
-- Last proposed: `2026-04-15T02:19:57+00:00`
+- Last proposed: `2026-04-15T03:10:19+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`
 
 ## Target
 - Target page: `wiki/concepts/anthropic-tool-use.md`
-- Source signature: `6a7fff4abfbe122c47fcd9c20c6fce9148ff2d7acd3674d5126511901f8d617b`
+- Source signature: `66b3fcbbccf4b3ae523239235633801b245852f4e015e5c871e37b461ebfacd2`
 - Source pages: `wiki/sources/discovered-20260415013334-anthropic-tool-use-overview.md`
 
 ## Current Summary Snapshot

@@ -1,15 +1,15 @@
 ---
-id: "rewrite-proposal-google"
+id: "rewrite-proposal-key"
 kind: "rewrite-proposal"
 status: "proposed"
-title: "Google"
-target_path: "wiki/concepts/google.md"
-source_signature: "60a1c5277da2ff3942a00a9b73b718ec17d15196fb2a49884d6bc8c8a901ca82"
+title: "Key"
+target_path: "wiki/concepts/key.md"
+source_signature: "f85bbd9f155748f1d9510579547885882667ea72b308ec8cfffec043a1f9047d"
 generated_by: "aiwiki-run-compile"
 last_compiled_at: "2026-04-15T03:08:01+00:00"
 ---
 
-# Rewrite Proposal · Google
+# Rewrite Proposal · Key
 
 ## Proposal Status
 - Status: `待审提案`
@@ -18,16 +18,16 @@ last_compiled_at: "2026-04-15T03:08:01+00:00"
 - Quality score: `57`
 - Quality band: `watch`
 - Apply ready: `False`
-- First proposed: `2026-04-15T01:49:42+00:00`
+- First proposed: `2026-04-15T03:08:01+00:00`
 - Last proposed: `2026-04-15T03:08:01+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`
 
 ## Target
-- Target page: `wiki/concepts/google.md`
-- Source signature: `60a1c5277da2ff3942a00a9b73b718ec17d15196fb2a49884d6bc8c8a901ca82`
-- Source pages: `wiki/sources/discovered-20260415013428-google-adk-agents-overview.md`
+- Target page: `wiki/concepts/key.md`
+- Source signature: `f85bbd9f155748f1d9510579547885882667ea72b308ec8cfffec043a1f9047d`
+- Source pages: `wiki/sources/discovered-20260415013529-a2a-key-concepts.md`
 
 ## Current Summary Snapshot
 - This concept currently appears in `1` source page(s).
@@ -49,10 +49,10 @@ last_compiled_at: "2026-04-15T03:08:01+00:00"
 - Revert note: none
 
 ## Commands
-- Review: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite google --status accepted`
-- Apply: `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite google`
-- Verify: `PYTHONPATH=src python3 -m aiwiki.cli --root . verify-rewrite google`
-- Revert: `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-rewrite google`
+- Review: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite key --status accepted`
+- Apply: `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite key`
+- Verify: `PYTHONPATH=src python3 -m aiwiki.cli --root . verify-rewrite key`
+- Revert: `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-rewrite key`
 
 ## Proposed Markdown
 - 当前还没有生成候选重写内容。先运行 `run-compile`。

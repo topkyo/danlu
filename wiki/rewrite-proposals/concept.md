@@ -4,9 +4,9 @@ kind: "rewrite-proposal"
 status: "proposed"
 title: "Concept"
 target_path: "wiki/concepts/concept.md"
-source_signature: "6a04c803896020c5fa6859ae53061523dc93a5d3e6faa6d5190aa31ea8871acd"
+source_signature: "d54b97b52da9de1036471a3992043fd5751a39f0e4ca024ded4f9b937a0321b6"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T02:19:57+00:00"
+last_compiled_at: "2026-04-15T03:26:22+00:00"
 ---
 
 # Rewrite Proposal · Concept
@@ -14,19 +14,19 @@ last_compiled_at: "2026-04-15T02:19:57+00:00"
 ## Proposal Status
 - Status: `待审提案`
 - Priority: `high`
-- Score: `8`
-- Quality score: `57`
-- Quality band: `watch`
+- Score: `7`
+- Quality score: `78`
+- Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T01:37:58+00:00`
-- Last proposed: `2026-04-15T02:19:57+00:00`
+- Last proposed: `2026-04-15T03:26:22+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`
 
 ## Target
 - Target page: `wiki/concepts/concept.md`
-- Source signature: `6a04c803896020c5fa6859ae53061523dc93a5d3e6faa6d5190aa31ea8871acd`
+- Source signature: `d54b97b52da9de1036471a3992043fd5751a39f0e4ca024ded4f9b937a0321b6`
 - Source pages: `wiki/sources/discovered-20260415013612-crewai-agents-concept.md`
 
 ## Current Summary Snapshot
@@ -34,7 +34,7 @@ last_compiled_at: "2026-04-15T02:19:57+00:00"
 - Use the linked source pages below to deepen or revise this synthesis.
 
 ## Rewrite Strategy
-- Issues: `placeholder-summary, single-source, evidence-gap, merge-boundary`
+- Issues: `placeholder-summary, single-source, evidence-gap`
 - Strategy: 替换占位摘要，改成 grounded synthesis。 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。
 
 ## Verification

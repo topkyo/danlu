@@ -4,9 +4,9 @@ kind: "rewrite-proposal"
 status: "proposed"
 title: "Crewai"
 target_path: "wiki/concepts/crewai.md"
-source_signature: "9648111211277ff11f660791c4a66f58569d2fe0a7c90663d15c5a5a113bb2fa"
+source_signature: "99ddf1322b2df783d19d51fa66f147479331299f053a58c5d14487bc01055161"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T02:19:57+00:00"
+last_compiled_at: "2026-04-15T03:26:22+00:00"
 ---
 
 # Rewrite Proposal · Crewai
@@ -14,19 +14,19 @@ last_compiled_at: "2026-04-15T02:19:57+00:00"
 ## Proposal Status
 - Status: `待审提案`
 - Priority: `high`
-- Score: `8`
-- Quality score: `57`
-- Quality band: `watch`
+- Score: `7`
+- Quality score: `78`
+- Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T01:37:58+00:00`
-- Last proposed: `2026-04-15T02:19:57+00:00`
+- Last proposed: `2026-04-15T03:26:22+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`
 
 ## Target
 - Target page: `wiki/concepts/crewai.md`
-- Source signature: `9648111211277ff11f660791c4a66f58569d2fe0a7c90663d15c5a5a113bb2fa`
+- Source signature: `99ddf1322b2df783d19d51fa66f147479331299f053a58c5d14487bc01055161`
 - Source pages: `wiki/sources/discovered-20260415013612-crewai-agents-concept.md`
 
 ## Current Summary Snapshot
@@ -34,7 +34,7 @@ last_compiled_at: "2026-04-15T02:19:57+00:00"
 - Use the linked source pages below to deepen or revise this synthesis.
 
 ## Rewrite Strategy
-- Issues: `placeholder-summary, single-source, evidence-gap, merge-boundary`
+- Issues: `placeholder-summary, single-source, evidence-gap`
 - Strategy: 替换占位摘要，改成 grounded synthesis。 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。
 
 ## Verification

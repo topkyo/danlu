@@ -69,6 +69,10 @@ escalate_after: ""
 ## Invalidation
 - Invalidate if direct local adapters consistently deliver the same auditability and portability as protocolized boundaries across new sources.
 
+## Signals
+- `wiki/sources/discovered-20260415013344-model-context-protocol-introduction.md` frames MCP as a stable model-tool boundary, which is a direct signal that protocol seams become useful when tools and executors diversify.
+- `wiki/sources/discovered-20260415013529-a2a-key-concepts.md` and `wiki/sources/discovered-20260415013128-building-effective-agents.md` both point to explicit contracts once agents cross service or ownership boundaries, while the local runtime still shows a simpler in-process path.
+
 ## Next Signals
 - Track whether future sources describe protocol boundaries as required for safety-critical workflows.
 - Track whether the local runtime starts crossing process or ownership boundaries often enough to justify a stricter contract seam.

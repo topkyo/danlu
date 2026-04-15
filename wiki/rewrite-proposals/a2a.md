@@ -4,38 +4,39 @@ kind: "rewrite-proposal"
 status: "proposed"
 title: "A2a"
 target_path: "wiki/concepts/a2a.md"
-source_signature: "43612331e9a6c65b4bf01729db52a9726234388024b4e46c4e7835af3aabdc7a"
+source_signature: "f66159b548a84cbe56482d260ff4f84fdd37494b1947c479af11671c2a626f17"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T02:19:57+00:00"
+last_compiled_at: "2026-04-15T03:43:15+00:00"
 ---
 
 # Rewrite Proposal · A2a
 
 ## Proposal Status
 - Status: `待审提案`
-- Priority: `high`
-- Score: `8`
-- Quality score: `57`
-- Quality band: `watch`
+- Priority: `medium`
+- Score: `5`
+- Quality score: `78`
+- Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T01:37:58+00:00`
-- Last proposed: `2026-04-15T02:19:57+00:00`
+- Last proposed: `2026-04-15T03:43:15+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`
 
 ## Target
 - Target page: `wiki/concepts/a2a.md`
-- Source signature: `43612331e9a6c65b4bf01729db52a9726234388024b4e46c4e7835af3aabdc7a`
+- Source signature: `f66159b548a84cbe56482d260ff4f84fdd37494b1947c479af11671c2a626f17`
 - Source pages: `wiki/sources/discovered-20260415013529-a2a-key-concepts.md`
 
 ## Current Summary Snapshot
-- This concept currently appears in `1` source page(s).
-- Use the linked source pages below to deepen or revise this synthesis.
+A2A 在当前证据里可被落实为一个面向 agent 间互操作的协议外部契约：`User` 提供意图，`A2A Client` 代表用户发起交互，`A2A Server` 通过 HTTP(S) 端点暴露协议能力，但其内部工具、记忆和执行方式对 client 保持黑盒。[A2A Key Concepts](../sources/discovered-20260415013529-a2a-key-concepts.md)
+
+这意味着 A2A 的核心不在 server 内部如何实现 agent，而在不同系统之间如何以统一发现、消息封装和任务执行语义互通；现有来源同时把该协议锚定在 HTTP(S) 传输和 JSON-RPC 2.0 负载之上。[A2A Key Concepts](../sources/discovered-20260415013529-a2a-key-concepts.md)
 
 ## Rewrite Strategy
-- Issues: `placeholder-summary, single-source, evidence-gap, merge-boundary`
-- Strategy: 替换占位摘要，改成 grounded synthesis。 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。
+- Issues: `single-source, evidence-gap, merge-boundary`
+- Strategy: 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。 检查是否需要合并或拆分概念边界。
 
 ## Verification
 - Status: `not-run`

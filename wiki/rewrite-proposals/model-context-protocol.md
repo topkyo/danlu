@@ -1,15 +1,15 @@
 ---
-id: "rewrite-proposal-google-adk-agents"
+id: "rewrite-proposal-model-context-protocol"
 kind: "rewrite-proposal"
 status: "proposed"
-title: "Google Adk Agents"
-target_path: "wiki/concepts/google-adk-agents.md"
-source_signature: "568cc14723922355e03151b1cb36900ddc50ae3605a35ee7473206c296fa27eb"
+title: "Model Context Protocol"
+target_path: "wiki/concepts/model-context-protocol.md"
+source_signature: "bd06ddca78bf18ab4f73a570534b73c949e2009748d26f344251ef10ec9ce5c1"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T03:14:25+00:00"
+last_compiled_at: "2026-04-15T03:18:39+00:00"
 ---
 
-# Rewrite Proposal · Google Adk Agents
+# Rewrite Proposal · Model Context Protocol
 
 ## Proposal Status
 - Status: `待审提案`
@@ -18,16 +18,16 @@ last_compiled_at: "2026-04-15T03:14:25+00:00"
 - Quality score: `78`
 - Quality band: `stable`
 - Apply ready: `False`
-- First proposed: `2026-04-15T01:49:42+00:00`
-- Last proposed: `2026-04-15T03:14:25+00:00`
+- First proposed: `2026-04-15T03:18:39+00:00`
+- Last proposed: `2026-04-15T03:18:39+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`
 
 ## Target
-- Target page: `wiki/concepts/google-adk-agents.md`
-- Source signature: `568cc14723922355e03151b1cb36900ddc50ae3605a35ee7473206c296fa27eb`
-- Source pages: `wiki/sources/discovered-20260415013428-google-adk-agents-overview.md`
+- Target page: `wiki/concepts/model-context-protocol.md`
+- Source signature: `bd06ddca78bf18ab4f73a570534b73c949e2009748d26f344251ef10ec9ce5c1`
+- Source pages: `wiki/sources/discovered-20260415013344-model-context-protocol-introduction.md`
 
 ## Current Summary Snapshot
 - This concept currently appears in `1` source page(s).
@@ -49,10 +49,10 @@ last_compiled_at: "2026-04-15T03:14:25+00:00"
 - Revert note: none
 
 ## Commands
-- Review: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite google-adk-agents --status accepted`
-- Apply: `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite google-adk-agents`
-- Verify: `PYTHONPATH=src python3 -m aiwiki.cli --root . verify-rewrite google-adk-agents`
-- Revert: `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-rewrite google-adk-agents`
+- Review: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite model-context-protocol --status accepted`
+- Apply: `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite model-context-protocol`
+- Verify: `PYTHONPATH=src python3 -m aiwiki.cli --root . verify-rewrite model-context-protocol`
+- Revert: `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-rewrite model-context-protocol`
 
 ## Proposed Markdown
 - 当前还没有生成候选重写内容。先运行 `run-compile`。

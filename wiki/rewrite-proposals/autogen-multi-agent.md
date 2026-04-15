@@ -6,7 +6,7 @@ title: "Autogen Multi Agent"
 target_path: "wiki/concepts/autogen-multi-agent.md"
 source_signature: "99700057476935ddecec83f53b627a853eb60c3bbfe5526afbe54ca3c36b7087"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T02:03:16+00:00"
+last_compiled_at: "2026-04-15T03:14:25+00:00"
 ---
 
 # Rewrite Proposal · Autogen Multi Agent
@@ -15,11 +15,11 @@ last_compiled_at: "2026-04-15T02:03:16+00:00"
 - Status: `待审提案`
 - Priority: `high`
 - Score: `8`
-- Quality score: `0`
-- Quality band: `n/a`
+- Quality score: `78`
+- Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T01:37:58+00:00`
-- Last proposed: `2026-04-15T02:03:16+00:00`
+- Last proposed: `2026-04-15T03:14:25+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`

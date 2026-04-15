@@ -5,16 +5,16 @@ status: "proposed"
 action_id: "overloaded-concept-the"
 proposal_kind: "split-concept"
 risk: "high"
-priority: "medium"
+priority: "high"
 protocol: "research"
 policy_decision: "review"
 policy_rule_id: "proposed-triage"
-priority_score: "58"
-impact_score: "50"
+priority_score: "78"
+impact_score: "70"
 target_paths:
   - "wiki/concepts/the.md"
 generated_by: "aiwiki-compile"
-last_compiled_at: "2026-04-15T02:19:57+00:00"
+last_compiled_at: "2026-04-15T03:08:01+00:00"
 ---
 
 # 拆分过载概念 The
@@ -25,9 +25,9 @@ last_compiled_at: "2026-04-15T02:19:57+00:00"
 - Kind: `split-concept`
 - Risk: `high`
 - Protocol: `research`
-- Priority: `medium`
-- Priority score: `58`
-- Impact score: `50`
+- Priority: `high`
+- Priority score: `78`
+- Impact score: `70`
 - Policy decision: `review`
 - Policy rule: `proposed-triage`
 - Targets: `wiki/concepts/the.md`

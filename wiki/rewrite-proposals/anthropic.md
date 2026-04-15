@@ -4,9 +4,9 @@ kind: "rewrite-proposal"
 status: "proposed"
 title: "Anthropic"
 target_path: "wiki/concepts/anthropic.md"
-source_signature: "8a16ceb762ec224d8165ff60ca25ed36d70196fd738abedeab439c5d0ca65781"
+source_signature: "497d7197a1644bb538bf7ec6c68553d71137bb90c7be3b537ba19bcd1b91fe43"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T02:19:57+00:00"
+last_compiled_at: "2026-04-15T03:08:01+00:00"
 ---
 
 # Rewrite Proposal · Anthropic
@@ -15,18 +15,18 @@ last_compiled_at: "2026-04-15T02:19:57+00:00"
 - Status: `待审提案`
 - Priority: `high`
 - Score: `8`
-- Quality score: `57`
-- Quality band: `watch`
+- Quality score: `78`
+- Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T01:37:58+00:00`
-- Last proposed: `2026-04-15T02:19:57+00:00`
+- Last proposed: `2026-04-15T03:08:01+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`
 
 ## Target
 - Target page: `wiki/concepts/anthropic.md`
-- Source signature: `8a16ceb762ec224d8165ff60ca25ed36d70196fd738abedeab439c5d0ca65781`
+- Source signature: `497d7197a1644bb538bf7ec6c68553d71137bb90c7be3b537ba19bcd1b91fe43`
 - Source pages: `wiki/sources/discovered-20260415013334-anthropic-tool-use-overview.md`
 
 ## Current Summary Snapshot

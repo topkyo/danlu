@@ -9,12 +9,12 @@ priority: "low"
 protocol: "research"
 policy_decision: "review"
 policy_rule_id: "proposed-triage"
-priority_score: "28"
+priority_score: "32"
 impact_score: "32"
 target_paths:
   - "wiki/concepts/and.md"
 generated_by: "aiwiki-compile"
-last_compiled_at: "2026-04-15T02:19:57+00:00"
+last_compiled_at: "2026-04-15T03:10:19+00:00"
 ---
 
 # 观察桥接概念 And
@@ -26,7 +26,7 @@ last_compiled_at: "2026-04-15T02:19:57+00:00"
 - Risk: `low`
 - Protocol: `research`
 - Priority: `low`
-- Priority score: `28`
+- Priority score: `32`
 - Impact score: `32`
 - Policy decision: `review`
 - Policy rule: `proposed-triage`

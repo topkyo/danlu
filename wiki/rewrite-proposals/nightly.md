@@ -1,15 +1,15 @@
 ---
-id: "rewrite-proposal-base"
+id: "rewrite-proposal-nightly"
 kind: "rewrite-proposal"
 status: "proposed"
-title: "Base"
-target_path: "wiki/concepts/base.md"
-source_signature: "ba18cfeac6e670f918cd5738a1e333e408b91ca03bdc3b2838f51ea9d555189f"
+title: "Nightly"
+target_path: "wiki/concepts/nightly.md"
+source_signature: "4b9ad1a571ff87f924dd151e8b5a70417008bf6d96bd13f237b236955b3a3e0c"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T03:18:39+00:00"
+last_compiled_at: "2026-04-15T03:31:30+00:00"
 ---
 
-# Rewrite Proposal · Base
+# Rewrite Proposal · Nightly
 
 ## Proposal Status
 - Status: `待审提案`
@@ -18,16 +18,16 @@ last_compiled_at: "2026-04-15T03:18:39+00:00"
 - Quality score: `78`
 - Quality band: `stable`
 - Apply ready: `False`
-- First proposed: `2026-04-15T01:49:42+00:00`
-- Last proposed: `2026-04-15T03:18:39+00:00`
+- First proposed: `2026-04-15T03:31:30+00:00`
+- Last proposed: `2026-04-15T03:31:30+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`
 
 ## Target
-- Target page: `wiki/concepts/base.md`
-- Source signature: `ba18cfeac6e670f918cd5738a1e333e408b91ca03bdc3b2838f51ea9d555189f`
-- Source pages: `wiki/sources/discovered-20260407103228-item.md`
+- Target page: `wiki/concepts/nightly.md`
+- Source signature: `4b9ad1a571ff87f924dd151e8b5a70417008bf6d96bd13f237b236955b3a3e0c`
+- Source pages: `wiki/sources/discovered-20260408053946-item.md`
 
 ## Current Summary Snapshot
 - This concept currently appears in `1` source page(s).
@@ -49,10 +49,10 @@ last_compiled_at: "2026-04-15T03:18:39+00:00"
 - Revert note: none
 
 ## Commands
-- Review: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite base --status accepted`
-- Apply: `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite base`
-- Verify: `PYTHONPATH=src python3 -m aiwiki.cli --root . verify-rewrite base`
-- Revert: `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-rewrite base`
+- Review: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite nightly --status accepted`
+- Apply: `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite nightly`
+- Verify: `PYTHONPATH=src python3 -m aiwiki.cli --root . verify-rewrite nightly`
+- Revert: `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-rewrite nightly`
 
 ## Proposed Markdown
 - 当前还没有生成候选重写内容。先运行 `run-compile`。

@@ -69,6 +69,10 @@ escalate_after: "2026-04-12T00:00:00+00:00"
 ## Invalidation
 - Invalidate if the next tranche of sources shows strong multi-tool systems succeeding without durable memory, explicit protocols, or governance controls.
 
+## Signals
+- `wiki/sources/discovered-20260415013128-building-effective-agents.md`, `wiki/sources/discovered-20260415013331-autogen-multi-agent-debate-pattern.md`, and `wiki/sources/discovered-20260415013612-crewai-agents-concept.md` all separate orchestration, tool use, and coordination concerns instead of collapsing them into one prompt loop.
+- `wiki/sources/discovered-20260408053946-item.md` and `wiki/sources/discovered-20260408053358-item.md` show protocol and governance seams becoming more valuable as a runtime grows beyond a single local execution path.
+
 ## Next Signals
 - Track whether newly added frameworks expose audit/review surfaces by default.
 - Track whether A2A/MCP style boundaries move from optional adapters to core runtime assumptions.

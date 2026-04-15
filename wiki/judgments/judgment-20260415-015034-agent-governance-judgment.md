@@ -69,6 +69,10 @@ escalate_after: ""
 ## Invalidation
 - Invalidate if autonomous repair loops succeed in the corpus without durable review, receipt, or rollback controls.
 
+## Signals
+- `wiki/sources/discovered-20260415013128-building-effective-agents.md` keeps evaluation and bounded workflows explicit, which supports adding review and rollback once agents can mutate shared state.
+- `wiki/sources/discovered-20260415013331-autogen-multi-agent-debate-pattern.md`, `wiki/sources/discovered-20260415013329-react-paper-abstract.md`, and `wiki/sources/discovered-20260415013612-crewai-agents-concept.md` all add iterative coordination or tool loops, which increases the need for audit trails and recovery surfaces.
+
 ## Next Signals
 - Watch whether new frameworks expose safe-apply or action receipt mechanisms by default.
 - Watch whether governance dashboards in the runtime continue to accumulate real pending work rather than empty scaffolding.

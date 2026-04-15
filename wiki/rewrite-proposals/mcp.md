@@ -1,15 +1,15 @@
 ---
-id: "rewrite-proposal-base"
+id: "rewrite-proposal-mcp"
 kind: "rewrite-proposal"
 status: "proposed"
-title: "Base"
-target_path: "wiki/concepts/base.md"
-source_signature: "ba18cfeac6e670f918cd5738a1e333e408b91ca03bdc3b2838f51ea9d555189f"
+title: "Mcp"
+target_path: "wiki/concepts/mcp.md"
+source_signature: "b3722c7b9e6d557bd92b3dae24bdbd13f0751f5392bae3f8fcbf47535e2f8982"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T03:18:39+00:00"
+last_compiled_at: "2026-04-15T03:31:30+00:00"
 ---
 
-# Rewrite Proposal · Base
+# Rewrite Proposal · Mcp
 
 ## Proposal Status
 - Status: `待审提案`
@@ -18,16 +18,16 @@ last_compiled_at: "2026-04-15T03:18:39+00:00"
 - Quality score: `78`
 - Quality band: `stable`
 - Apply ready: `False`
-- First proposed: `2026-04-15T01:49:42+00:00`
-- Last proposed: `2026-04-15T03:18:39+00:00`
+- First proposed: `2026-04-15T03:31:30+00:00`
+- Last proposed: `2026-04-15T03:31:30+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`
 
 ## Target
-- Target page: `wiki/concepts/base.md`
-- Source signature: `ba18cfeac6e670f918cd5738a1e333e408b91ca03bdc3b2838f51ea9d555189f`
-- Source pages: `wiki/sources/discovered-20260407103228-item.md`
+- Target page: `wiki/concepts/mcp.md`
+- Source signature: `b3722c7b9e6d557bd92b3dae24bdbd13f0751f5392bae3f8fcbf47535e2f8982`
+- Source pages: `wiki/sources/discovered-20260415013344-model-context-protocol-introduction.md`
 
 ## Current Summary Snapshot
 - This concept currently appears in `1` source page(s).
@@ -49,10 +49,10 @@ last_compiled_at: "2026-04-15T03:18:39+00:00"
 - Revert note: none
 
 ## Commands
-- Review: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite base --status accepted`
-- Apply: `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite base`
-- Verify: `PYTHONPATH=src python3 -m aiwiki.cli --root . verify-rewrite base`
-- Revert: `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-rewrite base`
+- Review: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite mcp --status accepted`
+- Apply: `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite mcp`
+- Verify: `PYTHONPATH=src python3 -m aiwiki.cli --root . verify-rewrite mcp`
+- Revert: `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-rewrite mcp`
 
 ## Proposed Markdown
 - 当前还没有生成候选重写内容。先运行 `run-compile`。
