@@ -9,6 +9,7 @@ class ManifestEntry(TypedDict, total=False):
     id: str
     title: str
     source_type: str
+    note_kind: str
     original_path: str
     stored_path: str
     kind: str
@@ -44,6 +45,7 @@ class CompileState(TypedDict, total=False):
     clean_index_artifacts: list[str]
     dirty_maintenance_artifacts: list[str]
     clean_maintenance_artifacts: list[str]
+    drift_warnings: list[dict[str, Any]]
     phase_summary: list[dict[str, Any]]
 
 
@@ -70,6 +72,36 @@ class ProtocolState(TypedDict, total=False):
     available_protocols: list[str]
     protocols: list[ProtocolDescriptor]
     state_path: str
+
+
+class ProtocolRuntimeRule(TypedDict, total=False):
+    capabilities: list[str]
+    decision: str
+    execution_band: str
+    execution_policy: str
+    policy_summary: str
+
+
+class ProtocolRuntimeExecutionPolicy(TypedDict, total=False):
+    accepted_rules: dict[str, ProtocolRuntimeRule]
+
+
+class ProtocolRuntimeQueryRoutes(TypedDict, total=False):
+    default_strategy: str
+    strategy_order: list[str]
+    source_markers: list[str]
+    graph_markers: list[str]
+
+
+class ProtocolRuntimeSchema(TypedDict, total=False):
+    version: int
+    slug: str
+    title: str
+    summary: str
+    review_windows: dict[str, list[int]]
+    output_guidance: dict[str, list[str]]
+    execution_policy: ProtocolRuntimeExecutionPolicy
+    query_routes: ProtocolRuntimeQueryRoutes
 
 
 class AgingSignal(TypedDict, total=False):
@@ -138,6 +170,11 @@ class ExecutionBundle(TypedDict, total=False):
     risk: str
     priority: str
     protocol: str
+    policy_decision: str
+    policy_rule_id: str
+    execution_band: str
+    impact_score: int
+    priority_score: int
     summary: str
     target_paths: list[str]
     suggested_edits: list[str]
@@ -145,6 +182,8 @@ class ExecutionBundle(TypedDict, total=False):
     bundle_path: str
     page_patch_plan: list[dict[str, Any]]
     safe_apply_preview: dict[str, Any] | None
+    depends_on: list[str]
+    rollback_summary: str
     command_hint: str
     next_step: str
     dry_run_supported: bool
@@ -200,6 +239,7 @@ class PlannerState(TypedDict, total=False):
     priority_queue: list[PlannerQueueItem]
     dependency_graph: dict[str, Any]
     next_action: dict[str, Any]
+    executed_actions: list[dict[str, Any]]
     counts: dict[str, int]
 
 
@@ -238,6 +278,10 @@ class ShellSummary(TypedDict, total=False):
     execution_controls: dict[str, Any]
     planner: dict[str, Any]
     route_telemetry: dict[str, Any]
+    dashboard: dict[str, Any]
+    search_results: dict[str, Any]
+    suggested_next_actions: list[dict[str, Any]]
+    drift_warnings: list[dict[str, Any]]
     recent_outputs: list[dict[str, Any]]
     recent_receipts: list[dict[str, Any]]
     recent_runs: list[dict[str, Any]]

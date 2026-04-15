@@ -17,9 +17,13 @@ from .app_compile import (
     promote_recurring_outputs,
     write_nightly_health,
 )
-from .app_content import concept_summary_is_placeholder, placeholder_concept_slugs, preserved_section
+from .app_content import (
+    concept_summary_is_placeholder,
+    placeholder_concept_slugs,
+    preserved_section,
+)
 from .app_memory import store_concept_rewrite_candidate
-from .app_protocol import ensure_layout, load_protocol_state
+from .app_protocol import CONCEPT_HARDNESS_LEVELS, ensure_layout, load_protocol_state
 from .app_state import load_machine_memory, load_manifest
 from .app_utils import (
     TEXT_EXTENSIONS,
@@ -503,6 +507,18 @@ def _build_compile_prompt(root: Path, entry: dict[str, Any], raw_path: Path, cur
     template = _load_prompt(root, "compile.md")
     raw_excerpt = _read_context(raw_path, max_chars=_context_budget())
     target_relative = relative_path(root, root / "wiki" / "sources" / f"{entry['id']}.md")
+    note_kind = str(entry.get("note_kind") or "")
+    note_kind_lines: list[str] = []
+    if note_kind:
+        note_kind_lines.append(f"- Material kind: `{note_kind}`.")
+        if note_kind == "transcript":
+            note_kind_lines.append(
+                "- This raw source is a transcript. Preserve chronology, speaker attributions, decisions, action items, and unresolved questions."
+            )
+        elif note_kind == "note":
+            note_kind_lines.append(
+                "- This raw source is an operator note. Separate observed facts, interpretations, decisions, and open questions."
+            )
     return "\n\n".join(
         [
             template,
@@ -515,6 +531,7 @@ def _build_compile_prompt(root: Path, entry: dict[str, Any], raw_path: Path, cur
             "- Preserve `kind: source`.",
             f"- Preserve `source_files: [\"{entry['stored_path']}\"]`.",
             f"- Preserve `source_sha256: {entry['sha256']}`.",
+            *note_kind_lines,
             "- Keep the `Source Record` section and update the `Summary` section with grounded prose.",
             "- If evidence is weak or truncated, say so explicitly.",
             "",
@@ -582,6 +599,7 @@ def _build_concept_compile_prompt(
             "- Preserve `kind: concept`.",
             f"- Preserve `source_signature: {frontmatter.get('source_signature', '')}`.",
             f"- Preserve `source_pages: {json.dumps(source_pages)}`.",
+            "- Keep explicit frontmatter `hardness: soft|medium|hard`; only upgrade it when the synthesis is grounded across the cited source pages.",
             "- Replace the fallback concept summary with grounded synthesis across the listed source pages.",
             "- Keep contradictions, weak evidence, and unresolved gaps explicit.",
             "- Preserve or improve explicit citations to `wiki/sources/*.md` when useful.",
@@ -928,6 +946,8 @@ def _validate_concept_page(
     for expected_source_page in expected_source_pages:
         if expected_source_page not in source_pages:
             raise RuntimeError("Concept compile response dropped a source page reference.")
+    if str(frontmatter.get("hardness") or "").strip().lower() not in CONCEPT_HARDNESS_LEVELS:
+        raise RuntimeError("Concept compile response is missing a valid `hardness` frontmatter value.")
     if concept_summary_is_placeholder(markdown):
         raise RuntimeError("Concept compile response left the concept summary in fallback state.")
 

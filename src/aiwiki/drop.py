@@ -14,7 +14,7 @@ from urllib import parse, request
 
 from .app_content import append_wiki_log
 from .app_protocol import ensure_layout
-from .app_utils import relative_path, render_frontmatter, slugify, utc_now
+from .app_utils import first_markdown_heading, relative_path, render_frontmatter, slugify, utc_now
 from .config import LLMConfig
 from .llm import LLMError, create_backend_client
 
@@ -334,6 +334,77 @@ def drop_repo(root: Path, source: str, title: str | None = None, max_files: int 
     return {
         "material": "repo",
         "note_path": relative_path(root, note_path),
+        "original_path": original_path,
+        "title": display_title,
+    }
+
+
+def drop_note(
+    root: Path,
+    source: str | None = None,
+    *,
+    title: str | None = None,
+    text: str | None = None,
+    kind: str = "note",
+) -> dict[str, Any]:
+    ensure_layout(root)
+    note_kind = kind.strip().lower()
+    if note_kind not in {"note", "transcript"}:
+        raise ValueError(f"Unsupported note kind: {kind}")
+    if source and text is not None:
+        raise ValueError("Provide either a note file path or --text, not both.")
+    if text is not None:
+        captured_text = _normalize_text(text)
+        original_path = "inline://note"
+        capture_mode = "inline-text"
+        fallback_title = note_kind.title()
+    else:
+        if not source:
+            raise ValueError("Provide a markdown/text file path or --text for drop-note.")
+        source_path = Path(source).expanduser()
+        if not source_path.exists() or not source_path.is_file():
+            raise FileNotFoundError(f"Note file not found: {source}")
+        captured_text = _normalize_text(source_path.read_text(encoding="utf-8", errors="replace"))
+        original_path = str(source)
+        capture_mode = "file"
+        fallback_title = source_path.stem or note_kind.title()
+    if not captured_text:
+        raise RuntimeError("Note capture is empty.")
+    display_title = title or _note_title(captured_text, fallback=fallback_title)
+    stem = _timestamped_stem(display_title)
+    note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
+    markdown = _render_raw_note(
+        title=display_title,
+        source_type="note-drop",
+        original_path=original_path,
+        sections=[
+            (
+                "Capture Metadata",
+                [
+                    f"- Captured at: `{utc_now()}`",
+                    f"- Capture mode: `{capture_mode}`",
+                    f"- Note kind: `{note_kind}`",
+                ],
+            ),
+            ("Captured Note", [captured_text]),
+        ],
+        extra_frontmatter={"note_kind": note_kind},
+    )
+    _write_text(note_path, markdown)
+    append_wiki_log(
+        root,
+        "ingest",
+        display_title,
+        [
+            "source_type: `note-drop`",
+            f"note_kind: `{note_kind}`",
+            f"stored_note: `{relative_path(root, note_path)}`",
+        ],
+    )
+    return {
+        "material": "note",
+        "note_path": relative_path(root, note_path),
+        "note_kind": note_kind,
         "original_path": original_path,
         "title": display_title,
     }
@@ -1076,6 +1147,17 @@ def _label_from_url(url: str) -> str:
     parsed = parse.urlparse(url)
     label = Path(parsed.path).stem or parsed.netloc or url
     return label.replace("-", " ").replace("_", " ").strip() or "web page"
+
+
+def _note_title(text: str, *, fallback: str) -> str:
+    heading = first_markdown_heading(text)
+    if heading:
+        return heading
+    for line in text.splitlines():
+        stripped = line.strip().lstrip("#").strip()
+        if stripped:
+            return stripped[:80]
+    return fallback
 
 
 def _normalize_text(text: str) -> str:

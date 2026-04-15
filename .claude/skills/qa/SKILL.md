@@ -15,11 +15,12 @@ Review from an independent reviewer perspective, not restating implementation in
   - sub-agent
   - peer agent
   - fresh session with only contract, diff, and touched-file context
+- Default model policy: prefer the strongest large model for review — Claude Opus 4.6 first; if that path is unavailable, fall back to GPT-5.4
 - Fallback: same-context self-review only when isolation is unavailable or calibration has deliberately downgraded review independence
 - If fallback is used, write `reviewer_fallback_reason` in the artifact
 - `scripts/resolve_review_mode.sh` can resolve this mode from `.claude/review-capabilities.env`; it chooses a reviewer mode, it does not schedule the reviewer for you
 - `scripts/launch_qa_review.sh` is the minimal execution bridge for this decision: it writes a handoff file and can call a configured `REVIEW_LAUNCH_COMMAND_*`
-- The bundled Claude capability template ships an opt-in `fresh-session` preset using `claude -p`; enable `REVIEW_CAPABILITY_FRESH_SESSION=yes` only when you want to use it
+- The bundled Claude capability template ships an opt-in `fresh-session` preset using `claude -p --model claude-opus-4-6`; enable `REVIEW_CAPABILITY_FRESH_SESSION=yes` only when you want to use it
 - `scripts/run_qa_review.sh` is the recommended end-to-end helper when you want one command for launch + output capture + artifact write, and it can append calibration too
 
 ## Required Check Categories

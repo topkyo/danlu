@@ -45,9 +45,95 @@ from .app_state import (
     load_knowledge_lifecycle_state,
     load_runtime_history,
 )
+from .app_utils import parse_frontmatter
+
+
+def _frontmatter_relation_values(frontmatter: dict[str, Any], key: str) -> list[str]:
+    value = frontmatter.get(key, [])
+    if isinstance(value, str):
+        item = value.strip()
+        return [item] if item else []
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if isinstance(item, str) and str(item).strip()]
+
+
+def _resolve_curated_relation_reference(
+    reference: str,
+    *,
+    current_path: str,
+    page_by_id: dict[str, dict[str, str]],
+    page_by_path: dict[str, dict[str, str]],
+) -> dict[str, str] | None:
+    candidate = reference.strip()
+    if not candidate:
+        return None
+    if candidate in page_by_id:
+        return page_by_id[candidate]
+    if candidate in page_by_path:
+        return page_by_path[candidate]
+    if candidate.endswith(".md") and not candidate.startswith("wiki/"):
+        relative_candidate = (Path(current_path).parent / candidate).as_posix()
+        if relative_candidate in page_by_path:
+            return page_by_path[relative_candidate]
+    stem = Path(candidate).stem
+    return page_by_id.get(stem) or page_by_path.get(stem)
+
+
+def _collect_curated_relation_rows(root: Path, pages: list[dict[str, str]]) -> list[dict[str, str]]:
+    page_by_id = {str(page.get("page_id") or ""): page for page in pages if page.get("page_id")}
+    page_by_path: dict[str, dict[str, str]] = {}
+    for page in pages:
+        page_path = str(page.get("path") or "")
+        if not page_path:
+            continue
+        page_by_path[page_path] = page
+        page_by_path[Path(page_path).name] = page
+        page_by_path[Path(page_path).stem] = page
+    rows: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for page in pages:
+        page_path = str(page.get("path") or "")
+        target = root / page_path
+        if not page_path or not target.exists():
+            continue
+        frontmatter = parse_frontmatter(target.read_text(encoding="utf-8", errors="replace"))
+        for key, relation in (
+            ("related_judgments", "related"),
+            ("supports", "supports"),
+            ("contradicts", "contradicts"),
+        ):
+            for reference in _frontmatter_relation_values(frontmatter, key):
+                resolved = _resolve_curated_relation_reference(
+                    reference,
+                    current_path=page_path,
+                    page_by_id=page_by_id,
+                    page_by_path=page_by_path,
+                )
+                target_id = str(resolved.get("page_id") or reference) if resolved else reference
+                row_key = (str(page.get("page_id") or ""), relation, target_id)
+                if row_key in seen:
+                    continue
+                seen.add(row_key)
+                rows.append(
+                    {
+                        "source_title": str(page.get("title") or page.get("page_id") or page_path),
+                        "source_path": page_path,
+                        "source_id": str(page.get("page_id") or ""),
+                        "relation": relation,
+                        "target_title": str(
+                            (resolved or {}).get("title") or reference or "unknown relation target"
+                        ),
+                        "target_path": str((resolved or {}).get("path") or ""),
+                        "target_id": target_id,
+                        "resolved": "true" if resolved else "false",
+                    }
+                )
+    return rows
 
 
 def render_judgment_assets(
+    root: Path,
     decisions: list[dict[str, str]],
     judgments: list[dict[str, str]],
     compiled_at: str,
@@ -57,6 +143,8 @@ def render_judgment_assets(
     summary = judgment_asset_summary(decisions, judgments, active_protocol=active_protocol)
     counts = summary["counts"]
     lists = summary["lists"]
+    relation_rows = _collect_curated_relation_rows(root, decisions + judgments)
+    unresolved_relation_rows = [row for row in relation_rows if row.get("resolved") != "true"]
     lines = [
         "# 判断资产",
         "",
@@ -76,6 +164,8 @@ def render_judgment_assets(
         f"- 缺 Next Signals metadata：`{counts['missing_next_signals_metadata']}`",
         f"- 缺 formed_at / last_reviewed metadata：`{counts['missing_formed_at_metadata']}` / `{counts['missing_last_reviewed_metadata']}`",
         f"- 升级处理项：`{counts['escalation_candidates']}`",
+        f"- 显式 judgment 关系边：`{len(relation_rows)}`",
+        f"- 未解析关系引用：`{len(unresolved_relation_rows)}`",
         "",
         "## 当前治理焦点",
     ]
@@ -95,6 +185,20 @@ def render_judgment_assets(
     else:
         for page in lists["strong_assets"][:12]:
             lines.append(render_curated_page_summary(page))
+    lines.extend(["", "## Judgment 关联图谱"])
+    if not relation_rows:
+        lines.append("- 当前还没有显式 judgment / decision 关系。")
+    else:
+        for row in relation_rows[:16]:
+            source_ref = f"[{row['source_title']}](../{row['source_path']})"
+            if row.get("target_path"):
+                target_ref = f"[{row['target_title']}](../{row['target_path']})"
+            else:
+                target_ref = f"`{row['target_title']}`"
+            relation_note = ""
+            if row.get("resolved") != "true":
+                relation_note = " | unresolved"
+            lines.append(f"- {source_ref} | {row['relation']} -> {target_ref}{relation_note}")
     lines.extend(["", "## 升级处理项"])
     if not lists["escalation_candidates"]:
         lines.append("- 当前没有需要升级处理的 judgment asset。")
@@ -208,8 +312,15 @@ def render_cognitive_history(
         for entry in knowledge_lifecycle.get("entries", [])
         if isinstance(entry, dict) and entry.get("path")
     }
+    page_titles_by_path = {
+        str(page.get("path") or ""): str(page.get("title") or page.get("page_id") or "")
+        for page in pages
+        if page.get("path")
+    }
     concept_override_events: list[tuple[str, str, str, str]] = []
     judgment_lifecycle_events: list[tuple[str, str, str, str]] = []
+    judgment_relation_events: list[tuple[str, list[dict[str, str]], list[dict[str, str]]]] = []
+    nightly_escalation_events: list[tuple[str, list[str], list[str]]] = []
     rewrite_events: list[tuple[str, str, str, str]] = []
     for event in load_runtime_history(root):
         event_type = str(event.get("event_type") or "")
@@ -232,6 +343,41 @@ def render_cognitive_history(
                 detail += f" | status {display_curated_status(status)}"
             judgment_lifecycle_events.append((occurred_at, title, path, detail))
             continue
+        if event_type == "judgment-relation-refresh":
+            occurred_at = str(event.get("occurred_at") or "")
+            added_relations = [
+                relation
+                for relation in event.get("added_relations", [])
+                if isinstance(relation, dict)
+            ]
+            removed_relations = [
+                relation
+                for relation in event.get("removed_relations", [])
+                if isinstance(relation, dict)
+            ]
+            if added_relations or removed_relations:
+                judgment_relation_events.append((occurred_at, added_relations, removed_relations))
+            continue
+        if event_type == "nightly":
+            overdue_pages = [
+                str(path)
+                for path in event.get("overdue_pages", [])
+                if isinstance(path, str) and path.strip()
+            ]
+            escalated_pages = [
+                str(path)
+                for path in event.get("escalated_pages", [])
+                if isinstance(path, str) and path.strip()
+            ]
+            if overdue_pages or escalated_pages:
+                nightly_escalation_events.append(
+                    (
+                        str(event.get("occurred_at") or ""),
+                        overdue_pages,
+                        escalated_pages,
+                    )
+                )
+            continue
         if event_type in {"rewrite-review", "rewrite-apply", "rewrite-verify", "rewrite-revert"}:
             occurred_at = str(event.get("occurred_at") or "")
             path = str(event.get("target_path") or "")
@@ -248,6 +394,8 @@ def render_cognitive_history(
             rewrite_events.append((occurred_at, title, path, detail))
     concept_override_events.sort(key=lambda item: item[0], reverse=True)
     judgment_lifecycle_events.sort(key=lambda item: item[0], reverse=True)
+    judgment_relation_events.sort(key=lambda item: item[0], reverse=True)
+    nightly_escalation_events.sort(key=lambda item: item[0], reverse=True)
     rewrite_events.sort(key=lambda item: item[0], reverse=True)
     recent_events: list[tuple[str, str, str, str]] = []
     for page in pages:
@@ -272,6 +420,8 @@ def render_cognitive_history(
         f"- 生命周期待回看项：`{len(lifecycle_revisit_entries)}`",
         f"- concept lifecycle 事件：`{len(concept_override_events)}`",
         f"- judgment lifecycle 事件：`{len(judgment_lifecycle_events)}`",
+        f"- judgment relation 事件：`{len(judgment_relation_events)}`",
+        f"- nightly 升级事件：`{len(nightly_escalation_events)}`",
         f"- concept rewrite 事件：`{len(rewrite_events)}`",
         "",
         "## 证据漂移",
@@ -309,6 +459,71 @@ def render_cognitive_history(
             lines.append(
                 f"- [{title}](../../{path}) | occurred `{occurred_at or 'unknown'}` | {detail}"
             )
+    lines.extend(["", "## Judgment 关系事件"])
+    if not judgment_relation_events:
+        lines.append("- 当前还没有 judgment relation change 事件。")
+    else:
+        for occurred_at, added_relations, removed_relations in judgment_relation_events[:20]:
+            summary_parts: list[str] = []
+            if added_relations:
+                summary_parts.append(f"added `{len(added_relations)}`")
+            if removed_relations:
+                summary_parts.append(f"removed `{len(removed_relations)}`")
+            samples: list[str] = []
+            for relation in added_relations[:2]:
+                source_ref = (
+                    f"[{relation.get('source_title') or relation.get('source_id') or 'unknown'}]"
+                    f"(../../{relation.get('source_path')})"
+                    if relation.get("source_path")
+                    else str(relation.get("source_title") or relation.get("source_id") or "unknown")
+                )
+                target_ref = (
+                    f"[{relation.get('target_title') or relation.get('target_id') or 'unknown'}]"
+                    f"(../../{relation.get('target_path')})"
+                    if relation.get("target_path")
+                    else str(relation.get("target_title") or relation.get("target_id") or "unknown")
+                )
+                samples.append(f"+ {relation.get('relation_kind') or 'judgment'}:{relation.get('relation') or 'related'} {source_ref} -> {target_ref}")
+            for relation in removed_relations[:2]:
+                source_ref = (
+                    f"[{relation.get('source_title') or relation.get('source_id') or 'unknown'}]"
+                    f"(../../{relation.get('source_path')})"
+                    if relation.get("source_path")
+                    else str(relation.get("source_title") or relation.get("source_id") or "unknown")
+                )
+                target_ref = (
+                    f"[{relation.get('target_title') or relation.get('target_id') or 'unknown'}]"
+                    f"(../../{relation.get('target_path')})"
+                    if relation.get("target_path")
+                    else str(relation.get("target_title") or relation.get("target_id") or "unknown")
+                )
+                samples.append(f"- {relation.get('relation_kind') or 'judgment'}:{relation.get('relation') or 'related'} {source_ref} -> {target_ref}")
+            detail = " | ".join(summary_parts) if summary_parts else "no relation delta"
+            if samples:
+                detail = f"{detail} | {'; '.join(samples)}"
+            lines.append(f"- occurred `{occurred_at or 'unknown'}` | {detail}")
+    lines.extend(["", "## Nightly 升级事件"])
+    if not nightly_escalation_events:
+        lines.append("- 当前还没有 nightly escalation 事件。")
+    else:
+        for occurred_at, overdue_pages, escalated_pages in nightly_escalation_events[:20]:
+            overdue_titles = [
+                f"[{page_titles_by_path.get(path, path)}](../../{path})"
+                for path in overdue_pages[:3]
+            ]
+            escalated_titles = [
+                f"[{page_titles_by_path.get(path, path)}](../../{path})"
+                for path in escalated_pages[:3]
+            ]
+            detail_parts = [
+                f"overdue `{len(overdue_pages)}`",
+                f"escalated `{len(escalated_pages)}`",
+            ]
+            if escalated_titles:
+                detail_parts.append(f"focus {'; '.join(escalated_titles)}")
+            elif overdue_titles:
+                detail_parts.append(f"focus {'; '.join(overdue_titles)}")
+            lines.append(f"- occurred `{occurred_at or 'unknown'}` | {' | '.join(detail_parts)}")
     lines.extend(["", "## Concept Rewrite 事件"])
     if not rewrite_events:
         lines.append("- 当前还没有 concept rewrite 事件。")
@@ -343,9 +558,13 @@ def render_cognitive_history(
         lines.append(f"- 补齐 `{len(snapshot_gap_pages)}` 个缺少 citation snapshot 的页面，避免 drift 失真。")
     if long_history_pages:
         lines.append(f"- 从 `{min(len(long_history_pages), 5)}` 个长历史页面里提炼更稳定的 judgment pattern。")
+    if judgment_relation_events:
+        lines.append(f"- 复查最近 `{min(len(judgment_relation_events), 5)}` 次 judgment relation 变更，确认支持/反证关系仍然有效。")
+    if nightly_escalation_events:
+        lines.append(f"- 优先处理最近 `{min(len(nightly_escalation_events), 5)}` 次 nightly 升级事件里仍然活跃的页面。")
     if rewrite_events:
         lines.append(f"- 检查最近 `{min(len(rewrite_events), 5)}` 个 concept rewrite 事件，确认 verify / revert 闭环已经跑通。")
-    if not any((drifted_pages, snapshot_gap_pages, long_history_pages)):
+    if not any((drifted_pages, snapshot_gap_pages, long_history_pages, judgment_relation_events, nightly_escalation_events)):
         lines.append("- 当前认知历史层比较干净，继续靠 nightly 累积 review history。")
     lines.extend(
         [

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections import deque
-from contextlib import contextmanager
 import fcntl
 import functools
 import hashlib
@@ -13,24 +11,24 @@ import os
 import re
 import shutil
 import threading
+from collections import deque
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-
-from .config import LLMConfig
-
-from .app_utils import (
-    parse_iso_datetime,
-    relative_path,
-)
 
 from .app_state import (
     DEFAULT_PROTOCOL,
     load_json_document,
     manifest_path,
 )
-from .app_types import ProtocolDescriptor, ProtocolState
+from .app_types import ProtocolDescriptor, ProtocolRuntimeSchema, ProtocolState
+from .app_utils import (
+    parse_iso_datetime,
+    relative_path,
+)
+from .config import LLMConfig
 
 LAYOUT_DIRS = (
     "raw/inbox",
@@ -1185,6 +1183,9 @@ PENDING_ACTION_STATUSES = {"proposed", "accepted", "deferred"}
 PENDING_REWRITE_PROPOSAL_STATUSES = {"proposed", "accepted", "deferred"}
 
 
+CONCEPT_HARDNESS_LEVELS = ("soft", "medium", "hard")
+
+
 LOW_RISK_APPLYABLE_ACTION_KINDS = {"add-source-concept-link"}
 
 
@@ -1468,69 +1469,169 @@ def default_protocol_runtime_schema(slug: str) -> dict[str, Any]:
     }
 
 
-def load_protocol_runtime_schema(root: Path, slug: str) -> dict[str, Any]:
+_PROTOCOL_RUNTIME_ALLOWED_KEYS = {
+    "version",
+    "slug",
+    "title",
+    "summary",
+    "review_windows",
+    "output_guidance",
+    "execution_policy",
+    "query_routes",
+}
+
+
+def _protocol_runtime_schema_error(path_ref: str, message: str) -> RuntimeError:
+    return RuntimeError(f"Invalid protocol runtime schema `{path_ref}`: {message}")
+
+
+def _validate_protocol_runtime_string_list(path_ref: str, field: str, value: Any) -> list[str]:
+    if not isinstance(value, list):
+        raise _protocol_runtime_schema_error(path_ref, f"`{field}` must be a list of strings.")
+    normalized: list[str] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, str) or not item.strip():
+            raise _protocol_runtime_schema_error(path_ref, f"`{field}[{index}]` must be a non-empty string.")
+        normalized.append(item.strip())
+    return normalized
+
+
+def _validate_protocol_runtime_review_windows(path_ref: str, value: Any) -> dict[str, list[int]]:
+    if not isinstance(value, dict):
+        raise _protocol_runtime_schema_error(path_ref, "`review_windows` must be an object.")
+    review_windows: dict[str, list[int]] = {}
+    for key, window in value.items():
+        if not isinstance(key, str) or not key.strip():
+            raise _protocol_runtime_schema_error(path_ref, "`review_windows` keys must be non-empty strings.")
+        if not isinstance(window, list) or len(window) != 2:
+            raise _protocol_runtime_schema_error(path_ref, f"`review_windows.{key}` must contain exactly two integers.")
+        if any(not isinstance(item, int) or isinstance(item, bool) or item < 0 for item in window):
+            raise _protocol_runtime_schema_error(path_ref, f"`review_windows.{key}` must contain non-negative integers.")
+        review_windows[key.strip()] = [int(window[0]), int(window[1])]
+    return review_windows
+
+
+def _validate_protocol_runtime_output_guidance(path_ref: str, value: Any) -> dict[str, list[str]]:
+    if not isinstance(value, dict):
+        raise _protocol_runtime_schema_error(path_ref, "`output_guidance` must be an object.")
+    return {
+        key.strip(): _validate_protocol_runtime_string_list(path_ref, f"output_guidance.{key}", lines)
+        for key, lines in value.items()
+        if isinstance(key, str) and key.strip()
+    }
+
+
+def _validate_protocol_runtime_execution_policy(path_ref: str, value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise _protocol_runtime_schema_error(path_ref, "`execution_policy` must be an object.")
+    accepted_rules = value.get("accepted_rules")
+    if not isinstance(accepted_rules, dict):
+        raise _protocol_runtime_schema_error(path_ref, "`execution_policy.accepted_rules` must be an object.")
+    normalized_rules: dict[str, dict[str, Any]] = {}
+    for rule_id, rule_payload in accepted_rules.items():
+        if not isinstance(rule_id, str) or not rule_id.strip():
+            raise _protocol_runtime_schema_error(path_ref, "Execution policy rule ids must be non-empty strings.")
+        if not isinstance(rule_payload, dict):
+            raise _protocol_runtime_schema_error(path_ref, f"`execution_policy.accepted_rules.{rule_id}` must be an object.")
+        normalized_rule = dict(rule_payload)
+        if "capabilities" in normalized_rule:
+            normalized_rule["capabilities"] = _validate_protocol_runtime_string_list(
+                path_ref,
+                f"execution_policy.accepted_rules.{rule_id}.capabilities",
+                normalized_rule["capabilities"],
+            )
+        for field in ("decision", "execution_band", "execution_policy", "policy_summary"):
+            if field in normalized_rule and not isinstance(normalized_rule[field], str):
+                raise _protocol_runtime_schema_error(
+                    path_ref,
+                    f"`execution_policy.accepted_rules.{rule_id}.{field}` must be a string.",
+                )
+        normalized_rules[rule_id.strip()] = normalized_rule
+    return {"accepted_rules": normalized_rules}
+
+
+def _validate_protocol_runtime_query_routes(
+    path_ref: str,
+    value: Any,
+    default_routes: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise _protocol_runtime_schema_error(path_ref, "`query_routes` must be an object.")
+    default_strategy = value.get("default_strategy", default_routes.get("default_strategy", "concept-first"))
+    if not isinstance(default_strategy, str) or not default_strategy.strip():
+        raise _protocol_runtime_schema_error(path_ref, "`query_routes.default_strategy` must be a non-empty string.")
+    return {
+        "default_strategy": default_strategy.strip(),
+        "strategy_order": _validate_protocol_runtime_string_list(
+            path_ref,
+            "query_routes.strategy_order",
+            value.get("strategy_order", default_routes.get("strategy_order", [])),
+        ),
+        "source_markers": _validate_protocol_runtime_string_list(
+            path_ref,
+            "query_routes.source_markers",
+            value.get("source_markers", default_routes.get("source_markers", [])),
+        ),
+        "graph_markers": _validate_protocol_runtime_string_list(
+            path_ref,
+            "query_routes.graph_markers",
+            value.get("graph_markers", default_routes.get("graph_markers", [])),
+        ),
+    }
+
+
+def load_protocol_runtime_schema(root: Path, slug: str) -> ProtocolRuntimeSchema:
     path = protocol_runtime_schema_path(root, slug)
     default_schema = default_protocol_runtime_schema(slug)
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(default_schema, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return default_schema
+    path_ref = relative_path(root, path)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return default_schema
+    except json.JSONDecodeError as exc:
+        raise _protocol_runtime_schema_error(
+            path_ref,
+            f"expected JSON-compatible YAML/JSON ({exc.msg} at line {exc.lineno} column {exc.colno}).",
+        ) from exc
     if not isinstance(payload, dict):
-        return default_schema
-    merged = dict(default_schema)
-    merged.update({key: value for key, value in payload.items() if key in merged})
-    output_guidance = payload.get("output_guidance")
-    if isinstance(output_guidance, dict):
-        merged["output_guidance"] = {
-            key: list(value)
-            for key, value in output_guidance.items()
-            if isinstance(key, str) and isinstance(value, list)
-        }
-    execution_policy = payload.get("execution_policy")
-    if isinstance(execution_policy, dict):
-        accepted_rules = execution_policy.get("accepted_rules")
-        if isinstance(accepted_rules, dict):
-            merged["execution_policy"] = {
-                "accepted_rules": {
-                    key: dict(value)
-                    for key, value in accepted_rules.items()
-                    if isinstance(key, str) and isinstance(value, dict)
-                }
-            }
-    query_routes = payload.get("query_routes")
-    if isinstance(query_routes, dict):
-        merged["query_routes"] = {
-            "default_strategy": str(query_routes.get("default_strategy") or merged["query_routes"]["default_strategy"]),
-            "strategy_order": [
-                str(item)
-                for item in query_routes.get("strategy_order", merged["query_routes"]["strategy_order"])
-                if isinstance(item, str) and item
-            ],
-            "source_markers": [
-                str(item)
-                for item in query_routes.get("source_markers", merged["query_routes"]["source_markers"])
-                if isinstance(item, str) and item
-            ],
-            "graph_markers": [
-                str(item)
-                for item in query_routes.get("graph_markers", merged["query_routes"]["graph_markers"])
-                if isinstance(item, str) and item
-            ],
-        }
-    review_windows = payload.get("review_windows")
-    if isinstance(review_windows, dict):
-        merged["review_windows"] = {
-            str(key): [int(value[0]), int(value[1])]
-            for key, value in review_windows.items()
-            if isinstance(key, str)
-            and isinstance(value, list)
-            and len(value) == 2
-            and all(isinstance(item, int) for item in value)
-        }
+        raise _protocol_runtime_schema_error(path_ref, "Top-level payload must be an object.")
+    unknown_keys = sorted(set(payload) - _PROTOCOL_RUNTIME_ALLOWED_KEYS)
+    if unknown_keys:
+        raise _protocol_runtime_schema_error(path_ref, f"Unsupported top-level keys: {', '.join(unknown_keys)}.")
+    merged: ProtocolRuntimeSchema = dict(default_schema)
+    if "version" in payload:
+        version = payload["version"]
+        if not isinstance(version, int) or isinstance(version, bool):
+            raise _protocol_runtime_schema_error(path_ref, "`version` must be an integer.")
+        merged["version"] = int(version)
+    if "slug" in payload:
+        payload_slug = payload["slug"]
+        if not isinstance(payload_slug, str) or not payload_slug.strip():
+            raise _protocol_runtime_schema_error(path_ref, "`slug` must be a non-empty string.")
+        if payload_slug != slug:
+            raise _protocol_runtime_schema_error(path_ref, f"`slug` must match the directory name `{slug}`.")
+        merged["slug"] = payload_slug
+    for field in ("title", "summary"):
+        if field not in payload:
+            continue
+        value = payload[field]
+        if not isinstance(value, str):
+            raise _protocol_runtime_schema_error(path_ref, f"`{field}` must be a string.")
+        merged[field] = value
+    if "output_guidance" in payload:
+        merged["output_guidance"] = _validate_protocol_runtime_output_guidance(path_ref, payload["output_guidance"])
+    if "execution_policy" in payload:
+        merged["execution_policy"] = _validate_protocol_runtime_execution_policy(path_ref, payload["execution_policy"])
+    if "query_routes" in payload:
+        merged["query_routes"] = _validate_protocol_runtime_query_routes(
+            path_ref,
+            payload["query_routes"],
+            dict(default_schema.get("query_routes", {})),
+        )
+    if "review_windows" in payload:
+        merged["review_windows"] = _validate_protocol_runtime_review_windows(path_ref, payload["review_windows"])
     return merged
 
 

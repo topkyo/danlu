@@ -8,52 +8,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .app_types import ProtocolState, ShellSummary
-from .config import LLMConfig
-
-from .app_utils import (
-    relative_path,
-    utc_now,
-    write_if_changed_ignoring_timestamps,
-    write_json_document_if_changed_ignoring_generated_timestamps,
-)
-
-from .app_state import (
-    DEFAULT_PROTOCOL,
-    active_material_archive_entries,
-    agent_workbench_path,
-    domain_pilots_path,
-    execution_audit_html_path,
-    execution_audit_path,
-    execution_center_html_path,
-    execution_center_path,
-    furnace_center_html_path,
-    load_archive_candidates_state,
-    load_concept_rewrite_state,
-    load_json_document,
-    load_knowledge_lifecycle_state,
-    load_machine_memory,
-    load_manifest,
-    load_material_archive_state,
-    load_planner_state,
-    load_query_route_telemetry,
-    load_runtime_history,
-    machine_memory_graph_html_path,
-    nightly_health_state_path,
-    output_packs_index_path,
-    product_shell_html_path,
-    review_center_html_path,
-    shell_summary_path,
-)
-
-from .app_protocol import (
-    ACTION_STATUSES,
-    PROTOCOL_LIBRARY,
-    REWRITE_PROPOSAL_STATUSES,
-    ensure_layout,
-    load_protocol_state,
-)
-
 from .app_content import (
     action_priority_rank,
     action_status_rank,
@@ -78,6 +32,52 @@ from .app_content import (
     transition_profile,
     valid_curated_statuses,
 )
+from .app_protocol import (
+    ACTION_STATUSES,
+    PROTOCOL_LIBRARY,
+    REWRITE_PROPOSAL_STATUSES,
+    ensure_layout,
+    load_protocol_state,
+)
+from .app_state import (
+    DEFAULT_PROTOCOL,
+    active_material_archive_entries,
+    agent_workbench_path,
+    domain_pilots_path,
+    execution_audit_html_path,
+    execution_audit_path,
+    execution_center_html_path,
+    execution_center_path,
+    furnace_center_html_path,
+    load_archive_candidates_state,
+    load_compile_state,
+    load_concept_rewrite_state,
+    load_json_document,
+    load_knowledge_lifecycle_state,
+    load_machine_memory,
+    load_manifest,
+    load_material_archive_state,
+    load_planner_state,
+    load_query_route_telemetry,
+    load_runtime_history,
+    machine_memory_graph_html_path,
+    nightly_health_state_path,
+    output_packs_index_path,
+    product_shell_html_path,
+    review_center_html_path,
+    shell_summary_path,
+)
+from .app_types import ProtocolState, ShellSummary
+from .app_utils import (
+    parse_frontmatter,
+    relative_path,
+    strip_frontmatter,
+    tokenize,
+    utc_now,
+    write_if_changed_ignoring_timestamps,
+    write_json_document_if_changed_ignoring_generated_timestamps,
+)
+from .config import LLMConfig
 
 
 def shell_recent_runs(root: Path, *, limit: int = 8) -> list[dict[str, Any]]:
@@ -101,6 +101,237 @@ def shell_recent_receipts(root: Path, *, limit: int = 8) -> list[dict[str, Any]]
         }
         for receipt in receipts[:limit]
     ]
+
+
+def shell_search_results(
+    root: Path,
+    query: str,
+    *,
+    limit: int = 12,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    normalized_query = query.strip()
+    if not normalized_query:
+        return {"query": "", "limit": limit, "result_count": 0, "results": []}
+    terms = tokenize(normalized_query) or [normalized_query.lower()]
+    directories = (
+        ("source", root / "wiki" / "sources"),
+        ("concept", root / "wiki" / "concepts"),
+        ("judgment", root / "wiki" / "judgments"),
+        ("decision", root / "wiki" / "decisions"),
+        ("derived", root / "wiki" / "derived"),
+    )
+    results: list[dict[str, Any]] = []
+    for kind, directory in directories:
+        if not directory.exists():
+            continue
+        for path in sorted(directory.glob("*.md")):
+            text = path.read_text(encoding="utf-8", errors="replace")
+            frontmatter = parse_frontmatter(text)
+            body = strip_frontmatter(text)
+            title = str(frontmatter.get("title") or "")
+            if not title:
+                for line in body.splitlines():
+                    if line.startswith("# "):
+                        title = line[2:].strip()
+                        break
+            title = title or path.stem
+            relative = relative_path(root, path)
+            haystack = f"{title}\n{relative}\n{body}".lower()
+            matched_terms = [term for term in terms if term in haystack]
+            if not matched_terms and normalized_query.lower() not in haystack:
+                continue
+            title_lower = title.lower()
+            relative_lower = relative.lower()
+            score = 0
+            for term in matched_terms or [normalized_query.lower()]:
+                if term in title_lower:
+                    score += 5
+                if term in relative_lower:
+                    score += 3
+                score += haystack.count(term)
+            preview = " ".join(line.strip() for line in body.splitlines() if line.strip())
+            results.append(
+                {
+                    "kind": kind,
+                    "title": title,
+                    "path": relative,
+                    "score": score,
+                    "matched_terms": matched_terms,
+                    "preview": preview[:220] + ("..." if len(preview) > 220 else ""),
+                }
+            )
+    results.sort(key=lambda item: (-int(item.get("score", 0) or 0), str(item.get("path") or "")))
+    return {
+        "query": normalized_query,
+        "limit": limit,
+        "result_count": len(results),
+        "results": results[:limit],
+    }
+
+
+def shell_drift_warnings(
+    memory: dict[str, Any],
+    *,
+    judgment_assets: dict[str, Any],
+    compile_state: dict[str, Any],
+) -> list[dict[str, Any]]:
+    stored_warnings = [
+        dict(item)
+        for item in compile_state.get("drift_warnings", [])
+        if isinstance(item, dict)
+    ]
+    if stored_warnings:
+        return stored_warnings[:8]
+    warnings: list[dict[str, Any]] = []
+    drift = memory.get("drift", {})
+    if isinstance(drift, dict):
+        for path in drift.get("missing_source_pages", [])[:4]:
+            warnings.append(
+                {
+                    "kind": "source-reference-break",
+                    "path": str(path),
+                    "message": f"Missing source page `{path}`.",
+                }
+            )
+        for path in drift.get("missing_concept_pages", [])[:4]:
+            warnings.append(
+                {
+                    "kind": "concept-disappear",
+                    "path": str(path),
+                    "message": f"Missing concept page `{path}`.",
+                }
+            )
+    attention_pages = judgment_assets.get("attention_pages", [])
+    if isinstance(attention_pages, list):
+        for page in attention_pages[:4]:
+            if not isinstance(page, dict):
+                continue
+            invalidation_rule = str(page.get("invalidation_rule") or "")
+            if not invalidation_rule:
+                continue
+            warnings.append(
+                {
+                    "kind": "judgment-invalidation",
+                    "path": str(page.get("path") or ""),
+                    "message": f"{str(page.get('title') or page.get('path') or 'judgment')} requires invalidation review.",
+                }
+            )
+    return warnings[:8]
+
+
+def shell_suggested_next_actions(
+    *,
+    planner_state: dict[str, Any],
+    review_controls: dict[str, Any],
+    execution_controls: dict[str, Any],
+) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    seen_commands: set[str] = set()
+
+    def add_action(kind: str, title: str, command: str, path: str, reason: str) -> None:
+        normalized_command = command.strip()
+        if not title or not normalized_command or normalized_command in seen_commands:
+            return
+        seen_commands.add(normalized_command)
+        actions.append(
+            {
+                "kind": kind,
+                "title": title,
+                "command": normalized_command,
+                "path": path,
+                "reason": reason,
+            }
+        )
+
+    next_action = planner_state.get("next_action", {}) if isinstance(planner_state, dict) else {}
+    if isinstance(next_action, dict):
+        action_id = str(next_action.get("action_id") or "")
+        title = str(next_action.get("title") or action_id)
+        if action_id and title:
+            add_action(
+                "planner",
+                title,
+                str(next_action.get("command_hint") or f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --dry-run"),
+                str((next_action.get("target_paths") or [""])[0]),
+                "planner-next-action",
+            )
+
+    for page in review_controls.get("pages", [])[:4]:
+        if not isinstance(page, dict):
+            continue
+        path = str(page.get("path") or "")
+        allowed = [str(item) for item in page.get("allowed_transitions", []) if isinstance(item, str) and item]
+        status = str(page.get("default_transition") or (allowed[0] if allowed else ""))
+        if not path or not status:
+            continue
+        add_action(
+            "review",
+            str(page.get("title") or path),
+            f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-page {path} --status {status}",
+            path,
+            ",".join(str(item) for item in page.get("reasons", [])[:2]) or "review-needed",
+        )
+
+    for action in execution_controls.get("actions", [])[:4]:
+        if not isinstance(action, dict) or not action.get("can_apply"):
+            continue
+        action_id = str(action.get("action_id") or "")
+        if not action_id:
+            continue
+        add_action(
+            "apply-action",
+            str(action.get("title") or action_id),
+            str(
+                action.get("command_hint")
+                or f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --dry-run"
+            ),
+            str(action.get("primary_path") or ""),
+            "safe-apply-ready",
+        )
+
+    for archive in execution_controls.get("archives", [])[:2]:
+        if not isinstance(archive, dict) or not archive.get("can_apply"):
+            continue
+        entry_id = str(archive.get("entry_id") or "")
+        if not entry_id:
+            continue
+        add_action(
+            "archive",
+            str(archive.get("title") or entry_id),
+            f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-archive {entry_id} --dry-run",
+            str(archive.get("source_path") or ""),
+            "archive-ready",
+        )
+
+    return actions[:8]
+
+
+def shell_dashboard(
+    summary: ShellSummary,
+    *,
+    drift_warnings: list[dict[str, Any]],
+    suggested_next_actions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    review_counts = summary.get("review_backlog_counts", {})
+    planner = summary.get("planner", {})
+    route_telemetry = summary.get("route_telemetry", {})
+    recent_runs = summary.get("recent_runs", [])
+    recent_receipts = summary.get("recent_receipts", [])
+    return {
+        "cards": [
+            {"id": "pending-review", "label": "Pending review", "value": review_counts.get("pending_decisions", 0) + review_counts.get("pending_judgments", 0)},
+            {"id": "ready-actions", "label": "Ready actions", "value": review_counts.get("ready_actions", 0)},
+            {"id": "planner-blocked", "label": "Planner blocked", "value": planner.get("counts", {}).get("blocked", 0) if isinstance(planner, dict) else 0},
+            {"id": "drift-warnings", "label": "Drift warnings", "value": len(drift_warnings)},
+        ],
+        "planner_next_action": dict(planner.get("next_action", {})) if isinstance(planner, dict) else {},
+        "last_route": dict(route_telemetry.get("last_entry", {})) if isinstance(route_telemetry, dict) else {},
+        "recent_runs": list(recent_runs[:4]),
+        "recent_receipts": list(recent_receipts[:4]),
+        "drift_warnings": list(drift_warnings[:4]),
+        "suggested_next_actions": list(suggested_next_actions[:6]),
+    }
 
 
 def shell_review_controls(
@@ -493,6 +724,8 @@ def shell_capabilities(root: Path) -> dict[str, Any]:
         "commands": {
             "p0": [
                 "shell-status",
+                "dashboard",
+                "search",
                 "compile",
                 "ask",
                 "run-ask",
@@ -563,6 +796,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         judgments,
         active_protocol=protocol_state["active_protocol"],
     )
+    compile_state = load_compile_state(root)
     knowledge_lifecycle = load_knowledge_lifecycle_state(root)
     lifecycle_summary = knowledge_lifecycle_governance_summary(
         knowledge_lifecycle,
@@ -601,7 +835,21 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         counter_evidence_scan=counter_evidence_scan if isinstance(counter_evidence_scan, dict) else {},
         review_actions=judgment_review_actions if isinstance(judgment_review_actions, list) else [],
     )
-    return {
+    execution_controls = shell_execution_controls(root, memory)
+    recent_outputs = collect_recent_output_artifacts(root, limit=8)
+    recent_receipts = shell_recent_receipts(root, limit=8)
+    recent_runs = shell_recent_runs(root, limit=8)
+    drift_warnings = shell_drift_warnings(
+        memory,
+        judgment_assets=judgment_assets,
+        compile_state=compile_state,
+    )
+    suggested_next_actions = shell_suggested_next_actions(
+        planner_state=planner_state,
+        review_controls=review_controls,
+        execution_controls=execution_controls,
+    )
+    summary: ShellSummary = {
         "kind": "product-shell-summary",
         "contract_version": 1,
         "generated_at": generated_at,
@@ -635,12 +883,15 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
             "strong_assets": list(judgment_assets.get("strong_assets", []))[:8],
         },
         "review_controls": review_controls,
-        "execution_controls": shell_execution_controls(root, memory),
-        "recent_outputs": collect_recent_output_artifacts(root, limit=8),
-        "recent_receipts": shell_recent_receipts(root, limit=8),
-        "recent_runs": shell_recent_runs(root, limit=8),
+        "execution_controls": execution_controls,
         "planner": planner_state,
         "route_telemetry": route_telemetry,
+        "recent_outputs": recent_outputs,
+        "recent_receipts": recent_receipts,
+        "recent_runs": recent_runs,
+        "search_results": {"query": "", "limit": 0, "result_count": 0, "results": []},
+        "drift_warnings": drift_warnings,
+        "suggested_next_actions": suggested_next_actions,
         "nightly": {
             "available": nightly_health_state_path(root).exists(),
             "generated_at": str(nightly_state.get("generated_at") or ""),
@@ -651,6 +902,12 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         "links": shell_links(root),
         "capabilities": shell_capabilities(root),
     }
+    summary["dashboard"] = shell_dashboard(
+        summary,
+        drift_warnings=drift_warnings,
+        suggested_next_actions=suggested_next_actions,
+    )
+    return summary
 
 
 def render_product_shell_html(summary: ShellSummary) -> str:
@@ -661,18 +918,27 @@ def render_product_shell_html(summary: ShellSummary) -> str:
 
     links = summary.get("links", {})
     review_counts = summary.get("review_backlog_counts", {})
+    dashboard = summary.get("dashboard", {})
     planner = summary.get("planner", {})
     planner_next_action = planner.get("next_action", {}) if isinstance(planner, dict) else {}
     route_telemetry = summary.get("route_telemetry", {})
     last_route = route_telemetry.get("last_entry", {}) if isinstance(route_telemetry, dict) else {}
     recent_runs = summary.get("recent_runs", [])
     recent_receipts = summary.get("recent_receipts", [])
-    summary_cards = (
+    dashboard_cards = dashboard.get("cards", []) if isinstance(dashboard, dict) else []
+    summary_cards = [
+        (
+            str(card.get("label") or ""),
+            card.get("value", 0),
+        )
+        for card in dashboard_cards
+        if isinstance(card, dict)
+    ] or [
         ("Pending review", review_counts.get("pending_decisions", 0) + review_counts.get("pending_judgments", 0)),
         ("Ready actions", review_counts.get("ready_actions", 0)),
         ("Planner blocked", planner.get("counts", {}).get("blocked", 0) if isinstance(planner, dict) else 0),
         ("Recent routes", len(route_telemetry.get("entries", [])) if isinstance(route_telemetry, dict) else 0),
-    )
+    ]
     card_markup = "".join(
         f"<article class='card'><h2>{html.escape(title)}</h2><strong>{html.escape(str(value))}</strong></article>"
         for title, value in summary_cards
@@ -720,6 +986,20 @@ def render_product_shell_html(summary: ShellSummary) -> str:
         f" · {html.escape(str(receipt.get('applied_at') or ''))}</li>"
         for receipt in recent_receipts[:6]
     ) or "<li>No execution receipts yet.</li>"
+    suggested_actions = summary.get("suggested_next_actions", [])
+    drift_warnings = summary.get("drift_warnings", [])
+    suggested_markup = "".join(
+        f"<li><strong>{html.escape(str(action.get('title') or 'action'))}</strong>"
+        f" · <code>{html.escape(str(action.get('command') or ''))}</code></li>"
+        for action in suggested_actions[:6]
+        if isinstance(action, dict)
+    ) or "<li>No suggested actions yet.</li>"
+    drift_markup = "".join(
+        f"<li><code>{html.escape(str(item.get('kind') or 'drift'))}</code>"
+        f" · {html.escape(str(item.get('message') or item.get('path') or 'warning'))}</li>"
+        for item in drift_warnings[:6]
+        if isinstance(item, dict)
+    ) or "<li>No drift warnings.</li>"
     return "\n".join(
         [
             "<!DOCTYPE html>",
@@ -767,6 +1047,14 @@ def render_product_shell_html(summary: ShellSummary) -> str:
             f"        {route_markup}",
             "      </section>",
             "      <section>",
+            "        <h2>Suggested Next Actions</h2>",
+            f"        <ul>{suggested_markup}</ul>",
+            "      </section>",
+            "      <section>",
+            "        <h2>Drift Warnings</h2>",
+            f"        <ul>{drift_markup}</ul>",
+            "      </section>",
+            "      <section>",
             "        <h2>Recent Runs</h2>",
             f"        <ul>{run_markup}</ul>",
             "      </section>",
@@ -781,6 +1069,27 @@ def render_product_shell_html(summary: ShellSummary) -> str:
             "",
         ]
     )
+
+
+def shell_status_dashboard(root: Path) -> dict[str, Any]:
+    ensure_layout(root)
+    summary = write_shell_summary(root, build_shell_summary(root))
+    return {
+        "generated_at": str(summary.get("generated_at") or ""),
+        "active_protocol": str(summary.get("active_protocol") or DEFAULT_PROTOCOL),
+        "dashboard": dict(summary.get("dashboard", {})) if isinstance(summary.get("dashboard"), dict) else {},
+        "suggested_next_actions": list(summary.get("suggested_next_actions", [])),
+        "drift_warnings": list(summary.get("drift_warnings", [])),
+        "links": dict(summary.get("links", {})) if isinstance(summary.get("links"), dict) else {},
+    }
+
+
+def shell_search(root: Path, query: str, *, limit: int = 12) -> dict[str, Any]:
+    ensure_layout(root)
+    summary = build_shell_summary(root)
+    summary["search_results"] = shell_search_results(root, query, limit=limit)
+    write_shell_summary(root, summary)
+    return dict(summary["search_results"])
 
 
 def write_shell_summary(root: Path, summary: ShellSummary | None = None) -> ShellSummary:

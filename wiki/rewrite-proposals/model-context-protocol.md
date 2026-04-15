@@ -6,7 +6,7 @@ title: "Model Context Protocol"
 target_path: "wiki/concepts/model-context-protocol.md"
 source_signature: "bd06ddca78bf18ab4f73a570534b73c949e2009748d26f344251ef10ec9ce5c1"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T03:18:39+00:00"
+last_compiled_at: "2026-04-15T09:19:10+00:00"
 ---
 
 # Rewrite Proposal · Model Context Protocol
@@ -14,12 +14,12 @@ last_compiled_at: "2026-04-15T03:18:39+00:00"
 ## Proposal Status
 - Status: `待审提案`
 - Priority: `high`
-- Score: `8`
+- Score: `9`
 - Quality score: `78`
 - Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T03:18:39+00:00`
-- Last proposed: `2026-04-15T03:18:39+00:00`
+- Last proposed: `2026-04-15T09:19:10+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`
@@ -34,7 +34,7 @@ last_compiled_at: "2026-04-15T03:18:39+00:00"
 - Use the linked source pages below to deepen or revise this synthesis.
 
 ## Rewrite Strategy
-- Issues: `placeholder-summary, single-source, evidence-gap, merge-boundary`
+- Issues: `soft-hardness, placeholder-summary, single-source, evidence-gap, merge-boundary`
 - Strategy: 替换占位摘要，改成 grounded synthesis。 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。
 
 ## Verification

@@ -1,30 +1,29 @@
 # 炉心面板
 
-- 最近编译时间：`2026-04-15T03:37:27+00:00`
+- 最近编译时间：`2026-04-15T12:39:25+00:00`
 - 当前协议：`research` (研发协议)
 - 来源节点：`15`
 - 概念节点：`30`
 - 待审项目：`0`
-- 已到期 / 升级：`1` / `1`
-- Judgment formed / active / under-review / revised / retired：`0` / `3` / `1` / `1` / `0`
+- 已到期 / 升级：`0` / `0`
+- Judgment formed / active / under-review / revised / retired：`0` / `7` / `0` / `3` / `0`
 - 生命周期概念待审 / 已退役：`30` / `0`
 - 证据漂移：`0`
-- Judgment review actions：`5`
+- Judgment review actions：`10`
 - Ready repair actions：`0`
 - 可直接 apply 的动作：`0`
 - Rewrite 提案：`12`
 - 可直接 apply 的 rewrite：`0`
 - 页级 patch step：`18`
-- 当前协议 stage：`active`
-- 当前协议 outputs / receipts：`7` / `0`
-- 当前协议 review packs / memos / SOP：`1` / `5` / `8`
-- 最近输出：`7`
+- 当前协议 stage：`compounding`
+- 当前协议 outputs / receipts：`12` / `3`
+- 当前协议 review packs / memos / SOP：`0` / `6` / `8`
+- 最近输出：`12`
 - 本地控制面板：`output/control/furnace-center.html`
 
 ## 今天先做什么
 1. 先处理 `5` 个 lifecycle concept backlog。
 2. 先清理 `5` 个 judgment review action。
-3. 优先复查 `1` 个升级项。
 
 ## 即刻可执行
 
@@ -34,7 +33,7 @@
 - `bridge-concept-abstract` | risk `low` | targets `wiki/concepts/abstract.md`
 - `bridge-concept-agents` | risk `low` | targets `wiki/concepts/agents.md`
 - `bridge-concept-and` | risk `low` | targets `wiki/concepts/and.md`
-- `bridge-concept-concepts` | risk `low` | targets `wiki/concepts/concepts.md`
+- `bridge-concept-judgment` | risk `low` | targets `wiki/concepts/judgment.md`
 - `bridge-concept-protocol` | risk `low` | targets `wiki/concepts/protocol.md`
 - `bridge-concept-the` | risk `low` | targets `wiki/concepts/the.md`
 
@@ -55,85 +54,98 @@
   - `wiki/indexes/graph-health.md` | mode `review` | sections `Bridge Concepts, Repair Signals`
 
 ## 最近输出
+- [Furnace Output Density](../../output/slides/furnace-output-density.md) | format `slides` | protocol `research` | created `2026-04-15T12:33:28+00:00`
+- [Furnace Governance Status](../../output/slides/furnace-governance-status.md) | format `slides` | protocol `research` | created `2026-04-15T12:33:28+00:00`
+- [Judgment Relation Map](../../output/figures/judgment-relation-map.md) | format `figure` | protocol `research` | created `2026-04-15T12:33:28+00:00`
+- [Governance Health Dashboard](../../output/figures/governance-health-dashboard.md) | format `figure` | protocol `research` | created `2026-04-15T12:33:28+00:00`
+- [Why should 炼丹炉 separate facts, judgments, and position decisions for investing workflows?](../../output/reports/query-20260415-111456-why-should-separate-facts-judgments-and-position.md) | format `report` | protocol `investing` | created `2026-04-15T11:14:56+00:00`
+- [Should 炼丹炉 stay one product shell with protocol-specific workflows instead of separate domain apps?](../../output/reports/query-20260415-111456-should-stay-one-product-shell-with-protocol-spec.md) | format `report` | protocol `product` | created `2026-04-15T11:14:56+00:00`
+- [Decision Memo Request · Should 炼丹炉 ship investing as a first-class protocol with explicit thesis and review primitives?](../../output/reports/query-20260415-111456-should-ship-investing-as-a-first-class-protocol--decision-memo.md) | format `decision-memo` | protocol `investing` | created `2026-04-15T11:14:56+00:00`
+- [Decision Memo Request · Should 炼丹炉 keep one core product shell and route by protocol instead of separate domain SKUs?](../../output/reports/query-20260415-111456-should-keep-one-core-product-shell-and-route-by--decision-memo.md) | format `decision-memo` | protocol `product` | created `2026-04-15T11:14:56+00:00`
+- [When should 炼丹炉 keep protocol and governance layers conditional instead of always-on?](../../output/reports/query-20260415-111455-when-should-keep-protocol-and-governance-layers-.md) | format `report` | protocol `research` | created `2026-04-15T11:14:55+00:00`
 - [What counter-evidence currently argues for keeping small agent runtimes in-process before adding heavy protocol or governance layers?](../../output/reports/query-20260415-021957-what-counter-evidence-currently-argues-for-keepi.md) | format `report` | protocol `research` | created `2026-04-15T02:19:57+00:00`
 - [Summarize the dominant architecture patterns in the current agent corpus.](../../output/slides/query-20260415-015034-summarize-the-dominant-architecture-patterns-in-.md) | format `slides` | protocol `research` | created `2026-04-15T01:50:34+00:00`
 - [Which architecture layers recur across modern LLM agent frameworks?](../../output/reports/query-20260415-015034-which-architecture-layers-recur-across-modern-ll.md) | format `report` | protocol `research` | created `2026-04-15T01:50:34+00:00`
-- [When should an agent runtime adopt MCP or A2A as explicit protocol boundaries?](../../output/reports/query-20260415-015034-when-should-an-agent-runtime-adopt-mcp-or-a2a-as.md) | format `report` | protocol `research` | created `2026-04-15T01:50:34+00:00`
-- [What governance and failure-mode controls are required for multi-agent systems?](../../output/reports/query-20260415-015034-what-governance-and-failure-mode-controls-are-re.md) | format `report` | protocol `research` | created `2026-04-15T01:50:34+00:00`
-- [Decision Memo Request · Should 炼丹炉 keep explicit protocol and governance layers inside the runtime?](../../output/reports/query-20260415-015034-should-keep-explicit-protocol-and-governance-lay-decision-memo.md) | format `decision-memo` | protocol `research` | created `2026-04-15T01:50:34+00:00`
-- [SOP Request · Draft an operator SOP for curating and reviewing agent-runtime evidence.](../../output/reports/query-20260415-015034-draft-an-operator-sop-for-curating-and-reviewing-sop.md) | format `sop` | protocol `research` | created `2026-04-15T01:50:34+00:00`
 
 ## 当前协议 Pilot
-- [研发协议 Pilot Scorecard](../../output/pilots/research.md) | stage `active` | 判断和 pack 已形成，但执行闭环还不够密。
+- [研发协议 Pilot Scorecard](../../output/pilots/research.md) | stage `compounding` | 已经出现判断、pack、执行和复审的复利迹象。
 
 ### 当前缺口
-- 有 `3` 个 protocol-related lifecycle concept backlog 尚未收敛。
-- 还没有 execution receipt，可先从 dry-run / low-risk apply 开始。
+- 有 `4` 个 protocol-related lifecycle concept backlog 尚未收敛。
 
 ### 下一动作
-- 有 `3` 个 protocol-related lifecycle concept backlog 尚未收敛。
+- 有 `4` 个 protocol-related lifecycle concept backlog 尚未收敛。
 - 围绕 paper / repo / benchmark / experiment / architecture decision 组织知识。
 - 重点审 regression、benchmark drift、过期实验结论和架构取舍。
 - 优先抬升 weak concepts、failed experiments、regression signals。
 
 ## Lifecycle 治理摘要
-- review concepts：`3`
-- revisit concepts：`27`
+- review concepts：`2`
+- revisit concepts：`28`
 - retired concepts：`0`
 - active concepts：`0`
 - formed judgments：`0`
-- active judgments：`3`
-- under-review judgments：`1`
-- revised judgments：`1`
+- active judgments：`7`
+- under-review judgments：`0`
+- revised judgments：`3`
 - retired judgments：`0`
 
 ### Lifecycle Concept Backlog
-- [And](../../wiki/concepts/and.md) | kind `concept` | state `待回看` | invalidation `concept-conflict,concept-evidence-gap` | active_corpora `7` | review_signals `rewrite-proposal-proposed,active-quality-pressure` | reasons `invalidation-signal,concept-conflict,concept-evidence-gap`
-- [The](../../wiki/concepts/the.md) | kind `concept` | state `待回看` | invalidation `concept-conflict,concept-evidence-gap` | active_corpora `7` | review_signals `rewrite-proposal-proposed,active-quality-pressure` | reasons `invalidation-signal,concept-conflict,concept-evidence-gap`
-- [Abstract](../../wiki/concepts/abstract.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `7` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Agent](../../wiki/concepts/agent.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `7` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Agents](../../wiki/concepts/agents.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `7` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Autogen Multi Agent](../../wiki/concepts/autogen-multi-agent.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `7` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Concept](../../wiki/concepts/concept.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `7` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Crewai](../../wiki/concepts/crewai.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `7` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Debate](../../wiki/concepts/debate.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `7` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Decision](../../wiki/concepts/decision.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `7` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Judgment](../../wiki/concepts/judgment.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `7` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Concepts](../../wiki/concepts/concepts.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `6` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [And](../../wiki/concepts/and.md) | kind `concept` | state `待回看` | invalidation `concept-conflict,concept-evidence-gap` | active_corpora `12` | review_signals `rewrite-proposal-proposed,active-quality-pressure` | reasons `invalidation-signal,concept-conflict,concept-evidence-gap`
+- [The](../../wiki/concepts/the.md) | kind `concept` | state `待回看` | invalidation `concept-conflict,concept-evidence-gap` | active_corpora `12` | review_signals `rewrite-proposal-proposed,active-quality-pressure` | reasons `invalidation-signal,concept-conflict,concept-evidence-gap`
+- [Abstract](../../wiki/concepts/abstract.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [Agent](../../wiki/concepts/agent.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [Agents](../../wiki/concepts/agents.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [Autogen Multi Agent](../../wiki/concepts/autogen-multi-agent.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [Concept](../../wiki/concepts/concept.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [Crewai](../../wiki/concepts/crewai.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [Debate](../../wiki/concepts/debate.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [Decision](../../wiki/concepts/decision.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [Judgment](../../wiki/concepts/judgment.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [Memory](../../wiki/concepts/memory.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
 
 ### Retired Concepts
 - 当前没有 retired concept。
 
 ### Judgment Lifecycle Focus
-- [Recurring Agent Layers Judgment](../../wiki/judgments/judgment-20260415-015034-recurring-agent-layers-judgment.md) | kind `judgment` | state `待回看` | judgment_state `复审中` | invalidation `overdue-review,escalation-candidate` | active_corpora `7` | reasons `invalidation-signal,overdue-review,escalation-candidate`
-- [Agent Governance Judgment](../../wiki/judgments/judgment-20260415-015034-agent-governance-judgment.md) | kind `judgment` | state `活跃` | judgment_state `已修订` | active_corpora `7` | reasons `active-corpus-linked`
+- [Agent Governance Judgment](../../wiki/judgments/judgment-20260415-015034-agent-governance-judgment.md) | kind `judgment` | state `活跃` | judgment_state `已修订` | active_corpora `12` | reasons `active-corpus-linked`
+- [Conditional Governance Threshold Judgment](../../wiki/judgments/judgment-20260415-111455-conditional-governance-threshold-judgment.md) | kind `judgment` | state `活跃` | judgment_state `已修订` | active_corpora `12` | reasons `active-corpus-linked`
+- [Recurring Agent Layers Judgment](../../wiki/judgments/judgment-20260415-015034-recurring-agent-layers-judgment.md) | kind `judgment` | state `活跃` | judgment_state `已修订` | active_corpora `12` | reasons `active-corpus-linked`
 
 ### Judgment Review Actions
 - `Review Agent Governance Judgment` | priority `high` | reasons `counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/judgments/judgment-20260415-015034-agent-governance-judgment.md --status tracking`
-- `Review Protocol Boundary Judgment` | priority `high` | reasons `counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/judgments/judgment-20260415-015034-protocol-boundary-judgment.md --status tracking`
-- `Review Recurring Agent Layers Judgment` | priority `high` | reasons `escalation-candidate, overdue-review, counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/judgments/judgment-20260415-015034-recurring-agent-layers-judgment.md --status tracking`
 - `Review Agent Governance Decision` | priority `high` | reasons `counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/decisions/decision-20260415-015034-agent-governance-decision.md --status needs-revisit`
-- `Review Runtime Protocol Layer Decision` | priority `high` | reasons `counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/decisions/decision-20260415-015034-runtime-protocol-layer-decision.md --status needs-revisit`
+- `Review Conditional Governance Threshold Judgment` | priority `medium` | reasons `counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/judgments/judgment-20260415-111455-conditional-governance-threshold-judgment.md --status tracking`
+- `Review Investing Layer Separation Judgment` | priority `medium` | reasons `counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/judgments/judgment-20260415-111456-investing-layer-separation-judgment.md --status tracking`
+- `Review Protocol Boundary Judgment` | priority `medium` | reasons `counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/judgments/judgment-20260415-015034-protocol-boundary-judgment.md --status tracking`
+- `Review Recurring Agent Layers Judgment` | priority `medium` | reasons `counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/judgments/judgment-20260415-015034-recurring-agent-layers-judgment.md --status tracking`
+- `Review Single Furnace Product Shell Judgment` | priority `medium` | reasons `counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/judgments/judgment-20260415-111456-single-furnace-product-shell-judgment.md --status tracking`
+- `Review Investing Protocol Decision` | priority `medium` | reasons `counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/decisions/decision-20260415-111456-investing-protocol-decision.md --status needs-revisit`
+- `Review Runtime Protocol Layer Decision` | priority `medium` | reasons `counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/decisions/decision-20260415-015034-runtime-protocol-layer-decision.md --status needs-revisit`
+- `Review Single Furnace Product Shell Decision` | priority `medium` | reasons `counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/decisions/decision-20260415-111456-single-furnace-product-shell-decision.md --status needs-revisit`
 
 ## 最新输出 Packs
 - [Decision Memo · Agent Governance Decision](../../output/packs/decision-memos/wiki-decisions-decision-20260415-015034-agent-governance-decision.md) | kind `Decision Memo` | meta `2026-04-15T01:53:07+00:00`
 - [Decision Memo · Runtime Protocol Layer Decision](../../output/packs/decision-memos/wiki-decisions-decision-20260415-015034-runtime-protocol-layer-decision.md) | kind `Decision Memo` | meta `2026-04-15T01:51:03+00:00`
 - [Judgment Memo · Agent Governance Judgment](../../output/packs/decision-memos/wiki-judgments-judgment-20260415-015034-agent-governance-judgment.md) | kind `Decision Memo` | meta `2026-04-15T02:19:57+00:00`
+- [Judgment Memo · Conditional Governance Threshold Judgment](../../output/packs/decision-memos/wiki-judgments-judgment-20260415-111455-conditional-governance-threshold-judgment.md) | kind `Decision Memo` | meta `2026-04-15T11:22:01+00:00`
 - [Judgment Memo · Protocol Boundary Judgment](../../output/packs/decision-memos/wiki-judgments-judgment-20260415-015034-protocol-boundary-judgment.md) | kind `Decision Memo` | meta `2026-04-15T01:51:03+00:00`
-- [Judgment Memo · Recurring Agent Layers Judgment](../../output/packs/decision-memos/wiki-judgments-judgment-20260415-015034-recurring-agent-layers-judgment.md) | kind `Decision Memo` | meta `2026-04-15T01:51:03+00:00`
-- [Review Pack · Recurring Agent Layers Judgment](../../output/packs/review/wiki-judgments-judgment-20260415-015034-recurring-agent-layers-judgment.md) | kind `Review Pack` | meta `overdue review, escalation candidate`
+- [Judgment Memo · Recurring Agent Layers Judgment](../../output/packs/decision-memos/wiki-judgments-judgment-20260415-015034-recurring-agent-layers-judgment.md) | kind `Decision Memo` | meta `2026-04-15T12:39:25+00:00`
 - [SOP Draft · 拆分过载概念 And](../../output/packs/sop-drafts/overloaded-concept-and.md) | kind `SOP Draft` | meta `high`
 - [SOP Draft · 拆分过载概念 The](../../output/packs/sop-drafts/overloaded-concept-the.md) | kind `SOP Draft` | meta `high`
 
 ## 最近执行回执
-- 当前协议还没有 execution receipt。
+- `刷新引用快照 Protocol Boundary Judgment` | kind `apply` | action `refresh-citation-snapshots-judgment-20260415-015034-protocol-boundary-judgment` | receipt `output/control/execution-receipts/refresh-citation-snapshots-judgment-20260415-015034-protocol-boundary-judgment.json` | at `2026-04-15T09:49:48+00:00`
+- `刷新引用快照 Protocol Boundary Judgment` | kind `apply` | action `refresh-citation-snapshots-judgment-20260415-015034-protocol-boundary-judgment` | receipt `output/control/execution-receipts/refresh-citation-snapshots-judgment-20260415-015034-protocol-boundary-judgment.json` | at `2026-04-15T09:38:52+00:00`
+- `刷新引用快照 Protocol Boundary Judgment` | kind `revert` | action `refresh-citation-snapshots-judgment-20260415-015034-protocol-boundary-judgment` | receipt `output/control/execution-receipts/refresh-citation-snapshots-judgment-20260415-015034-protocol-boundary-judgment.json` | at `2026-04-15T09:38:52+00:00`
 
 ## 最近已审 / 已沉淀
-- [Agent Governance Judgment](../../wiki/judgments/judgment-20260415-015034-agent-governance-judgment.md) | status `已确认` | reviewed `2026-04-15T02:19:57+00:00`
-- [Agent Governance Decision](../../wiki/decisions/decision-20260415-015034-agent-governance-decision.md) | status `已批准` | reviewed `2026-04-15T01:53:07+00:00`
-- [Runtime Protocol Layer Decision](../../wiki/decisions/decision-20260415-015034-runtime-protocol-layer-decision.md) | status `已批准` | reviewed `2026-04-15T01:51:03+00:00`
-- [Recurring Agent Layers Judgment](../../wiki/judgments/judgment-20260415-015034-recurring-agent-layers-judgment.md) | status `已确认` | reviewed `2026-04-15T01:51:03+00:00`
-- [Protocol Boundary Judgment](../../wiki/judgments/judgment-20260415-015034-protocol-boundary-judgment.md) | status `已确认` | reviewed `2026-04-15T01:51:03+00:00`
+- [Recurring Agent Layers Judgment](../../wiki/judgments/judgment-20260415-015034-recurring-agent-layers-judgment.md) | status `已确认` | reviewed `2026-04-15T12:39:25+00:00`
+- [Single Furnace Product Shell Judgment](../../wiki/judgments/judgment-20260415-111456-single-furnace-product-shell-judgment.md) | status `已确认` | reviewed `2026-04-15T11:22:02+00:00`
+- [Single Furnace Product Shell Decision](../../wiki/decisions/decision-20260415-111456-single-furnace-product-shell-decision.md) | status `已批准` | reviewed `2026-04-15T11:22:02+00:00`
+- [Investing Protocol Decision](../../wiki/decisions/decision-20260415-111456-investing-protocol-decision.md) | status `已批准` | reviewed `2026-04-15T11:22:02+00:00`
+- [Investing Layer Separation Judgment](../../wiki/judgments/judgment-20260415-111456-investing-layer-separation-judgment.md) | status `已确认` | reviewed `2026-04-15T11:22:01+00:00`
+- [Conditional Governance Threshold Judgment](../../wiki/judgments/judgment-20260415-111455-conditional-governance-threshold-judgment.md) | status `已确认` | reviewed `2026-04-15T11:22:01+00:00`
 
 ## 快速命令
 - `PYTHONPATH=src python3 -m aiwiki.cli --root . protocol-status`

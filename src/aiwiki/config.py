@@ -7,7 +7,6 @@ import shutil
 from dataclasses import asdict, dataclass
 from typing import Any
 
-
 DEFAULT_BACKEND = "auto"
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 BACKEND_OPENAI_API = "openai-api"

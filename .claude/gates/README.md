@@ -29,7 +29,7 @@ bash scripts/write_gate_artifact.sh qa-review --status pass --summary "no findin
 
 `--resolve-reviewer-mode` reads `.claude/review-capabilities.env`, picks the first supported mode from the configured preference order, and auto-fills `reviewer_fallback_reason` when the result degrades to `same-context`.
 If the project configured launcher hooks, `bash scripts/launch_qa_review.sh --task "<task>"` can prepare a handoff file and trigger the mode-specific launcher command before you write the final artifact.
-The bundled `.claude/review-capabilities.env` already includes an opt-in `fresh-session` launcher preset based on `claude -p`; it remains inactive until `REVIEW_CAPABILITY_FRESH_SESSION=yes`.
+The bundled `.claude/review-capabilities.env` already includes an opt-in `fresh-session` launcher preset based on `claude -p --model claude-opus-4-6`; it remains inactive until `REVIEW_CAPABILITY_FRESH_SESSION=yes`. Review 默认应优先走最强大模型：Claude Opus 4.6；若 Claude 路径不可用，再退到 Codex/GPT-5.4。
 If you want the shortest path, `bash scripts/run_qa_review.sh --task "<task>" --status auto --append-calibration --contract-scope-changed no --new-session yes --progress-read no` can launch review, capture output, write the artifact, and append calibration in one command.
 That helper also auto-records `review_findings_count`. Clean passing artifacts keep that count at `0`; if the review output includes explicit markers such as `[high]` or `Severity: medium`, `review_findings_highest_severity` is only retained on non-pass or optional artifacts that still preserve findings.
 

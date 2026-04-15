@@ -228,7 +228,7 @@ def raw_note_metadata(path: Path) -> dict[str, str]:
         return {}
     frontmatter = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
     result: dict[str, str] = {}
-    for key in ("title", "source_type", "original_path"):
+    for key in ("title", "source_type", "original_path", "note_kind"):
         value = frontmatter.get(key)
         if isinstance(value, str) and value.strip():
             result[key] = value.strip()

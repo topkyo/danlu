@@ -41,6 +41,18 @@ const REWRITE_STATUS_LABELS = {
   applied: "Applied",
   rejected: "Rejected",
 };
+const REVIEW_REASON_LABELS = {
+  "pending-review": "pending review",
+  "overdue-review": "overdue review",
+  "escalation-candidate": "escalation candidate",
+  "scheduled-review": "scheduled review",
+  "missing-counter-evidence": "missing counter evidence",
+  "missing-invalidation": "missing invalidation",
+  "missing-next-signals": "missing next signals",
+  "missing-review-history": "missing review history",
+  "citation-drift": "citation drift",
+  "citation-snapshot-gap": "citation snapshot gap",
+};
 
 function truncateText(value, limit = 240) {
   const text = String(value || "").trim();
@@ -71,6 +83,48 @@ function displayActionStatus(status) {
 
 function displayRewriteStatus(status) {
   return REWRITE_STATUS_LABELS[String(status || "").trim()] || String(status || "unknown");
+}
+
+function displayReviewReason(reason) {
+  const normalized = String(reason || "").trim();
+  return REVIEW_REASON_LABELS[normalized] || normalized;
+}
+
+function displayReviewReasonList(reasons) {
+  if (!Array.isArray(reasons) || !reasons.length) {
+    return "";
+  }
+  return reasons.map((reason) => displayReviewReason(reason)).filter(Boolean).join(", ");
+}
+
+function reviewObjectMetaText(control) {
+  const parts = [
+    String(control.kind || "").trim() || "page",
+    displayCuratedStatus(control.status),
+  ];
+  const confidence = String(control.confidence || "").trim();
+  if (confidence) {
+    parts.push(`confidence ${confidence}`);
+  }
+  if (String(control.kind || "").trim() === "decision" || String(control.kind || "").trim() === "judgment") {
+    parts.push(`asset ${Number(control.asset_score || 0)}/4`);
+  }
+  const reviewHistoryEntries = Number(control.review_history_entries || 0);
+  if (reviewHistoryEntries) {
+    parts.push(`history ${reviewHistoryEntries}`);
+  }
+  if (control.citation_drift) {
+    parts.push(`drift ${Number(control.citation_drift_count || 0) || 1}`);
+  }
+  const snapshotGapCount = Number(control.citation_snapshot_gap_count || 0);
+  if (snapshotGapCount) {
+    parts.push(`snapshot gaps ${snapshotGapCount}`);
+  }
+  const reasons = displayReviewReasonList(control.reasons);
+  if (reasons) {
+    parts.push(reasons);
+  }
+  return parts.join(" | ");
 }
 
 class AskCommandModal extends Modal {
@@ -917,13 +971,13 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     const pages = this.reviewControlList("pages");
     return this.uniqueContextOptions(
       pages.map((page) => {
-        const reasons = Array.isArray(page.reasons) && page.reasons.length ? page.reasons.join(", ") : "review object";
         const kind = String(page.kind || "").trim() || "page";
         const status = String(page.status || "").trim() || "unknown";
+        const metaText = truncateText(reviewObjectMetaText(page) || "review object", 180);
         return {
           value: page.path,
           label: page.title || page.path || "review-page",
-          description: `${kind} | ${displayCuratedStatus(status)} | ${reasons}`,
+          description: metaText || `${kind} | ${displayCuratedStatus(status)} | review object`,
           pageId: String(page.page_id || ""),
           pagePath: String(page.path || ""),
           pageKind: kind,
@@ -1927,6 +1981,14 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
     const review = this.shellSummary.review_backlog_counts || {};
     const aging = this.shellSummary.aging_summary || {};
+    const judgmentAssets = this.shellSummary.judgment_assets || {};
+    const judgmentCounts = judgmentAssets.counts || {};
+    const reviewControlObjects = this.reviewControlList("pages");
+    const reviewControlsByPath = new Map(
+      reviewControlObjects
+        .filter((page) => page && typeof page === "object" && String(page.path || "").trim())
+        .map((page) => [String(page.path || "").trim(), page])
+    );
     const llmStatus = this.shellSummary.llm_status || {};
     this.renderCardGrid(contentEl, [
       { label: "Active Protocol", value: this.shellSummary.active_protocol || "general" },
@@ -1947,6 +2009,58 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       cls: "furnace-shell-meta",
       text: `Review backlog ${Number(review.pending_decisions || 0) + Number(review.pending_judgments || 0)} | concept backlog ${review.concept_backlog || 0} | retired concepts ${review.retired_concepts || 0}`,
     });
+    summarySection.createEl("div", {
+      cls: "furnace-shell-meta",
+      text: `Judgment assets ${judgmentCounts.pages || 0} | strong assets ${judgmentCounts.strong_assets || 0} | attention ${judgmentCounts.attention_pages || 0} | citation drift ${judgmentCounts.citation_drift || 0}`,
+    });
+
+    const judgmentSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+    judgmentSection.createEl("h3", { text: "Judgment Focus" });
+    this.renderCardGrid(judgmentSection, [
+      { label: "Strong Assets", value: judgmentCounts.strong_assets || 0 },
+      { label: "Attention Pages", value: judgmentCounts.attention_pages || 0 },
+      { label: "Missing Counter Evidence", value: judgmentCounts.missing_counter_evidence || 0 },
+      { label: "Missing Invalidation", value: judgmentCounts.missing_invalidation || 0 },
+      { label: "Missing Next Signals", value: judgmentCounts.missing_next_signals || 0 },
+      { label: "Citation Drift", value: judgmentCounts.citation_drift || 0 },
+    ]);
+    const focusPages = Array.isArray(judgmentAssets.attention_pages) ? judgmentAssets.attention_pages : [];
+    if (!focusPages.length) {
+      judgmentSection.createDiv({ cls: "furnace-shell-empty", text: "当前没有 judgment asset focus object。" });
+    } else {
+      const list = judgmentSection.createEl("ul", { cls: "furnace-shell-list" });
+      focusPages.slice(0, 8).forEach((page) => {
+        const item = list.createEl("li");
+        const reviewControl = reviewControlsByPath.get(String(page.path || "").trim());
+        item.createEl("strong", { text: page.title || page.path || "judgment-asset" });
+        item.createDiv({
+          cls: "furnace-shell-meta",
+          text: reviewObjectMetaText(reviewControl || page) || "judgment asset",
+        });
+        if (page.latest_review_history_entry) {
+          item.createDiv({
+            cls: "furnace-shell-meta",
+            text: truncateText(page.latest_review_history_entry, 180),
+          });
+        }
+        const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
+        const openButton = actions.createEl("button", { text: "Open" });
+        openButton.addEventListener("click", () => {
+          this.runUiAction(() => this.openWorkspacePath(page.path), `Open judgment focus page: ${page.path}`);
+        });
+        const reviewButton = actions.createEl("button", { text: "Review" });
+        reviewButton.addEventListener("click", () => {
+          this.runUiAction(
+            () => (
+              reviewControl
+                ? this.openReviewPageTransitionPicker(reviewControl)
+                : this.openReviewPageModal({ pagePath: page.path, status: page.current_status || page.status || "", confidence: page.confidence || "" })
+            ),
+            `Review judgment focus page: ${page.path}`
+          );
+        });
+      });
+    }
 
     const outputsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
     outputsSection.createEl("h3", { text: "Recent Outputs" });
@@ -1977,6 +2091,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     [
       ["furnace_center_markdown", "Furnace Center Index"],
       ["review_center_markdown", "Review Center"],
+      ["judgment_assets_markdown", "Judgment Assets"],
+      ["cognitive_history_markdown", "Cognitive History"],
       ["protocols_markdown", "Protocols"],
       ["domain_pilots_markdown", "Domain Pilots"],
       ["output_packs_markdown", "Output Packs"],
@@ -2153,6 +2269,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
     const review = this.shellSummary.review_backlog_counts || {};
     const aging = this.shellSummary.aging_summary || {};
+    const judgmentAssets = this.shellSummary.judgment_assets || {};
+    const judgmentCounts = judgmentAssets.counts || {};
     this.renderCardGrid(contentEl, [
       { label: "Pending Decisions", value: review.pending_decisions || 0 },
       { label: "Pending Judgments", value: review.pending_judgments || 0 },
@@ -2164,25 +2282,50 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       { label: "Retired Concepts", value: review.retired_concepts || 0 },
     ]);
 
+    const judgmentSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+    judgmentSection.createEl("h3", { text: "Judgment Assets" });
+    this.renderCardGrid(judgmentSection, [
+      { label: "Strong Assets", value: judgmentCounts.strong_assets || 0 },
+      { label: "Attention Pages", value: judgmentCounts.attention_pages || 0 },
+      { label: "Missing Counter Evidence", value: judgmentCounts.missing_counter_evidence || 0 },
+      { label: "Missing Invalidation", value: judgmentCounts.missing_invalidation || 0 },
+      { label: "Missing Review History", value: judgmentCounts.missing_review_history || 0 },
+      { label: "Citation Drift", value: judgmentCounts.citation_drift || 0 },
+    ]);
+
     const reviewControlObjects = this.reviewControlList("pages");
+    const decisionControlObjects = this.reviewControlList("decision_pages").length
+      ? this.reviewControlList("decision_pages")
+      : reviewControlObjects.filter((page) => String(page.kind || "").trim() === "decision");
+    const judgmentControlObjects = this.reviewControlList("judgment_pages").length
+      ? this.reviewControlList("judgment_pages")
+      : reviewControlObjects.filter((page) => String(page.kind || "").trim() === "judgment");
     const reviewControlsByPath = new Map(
       reviewControlObjects
         .filter((page) => page && typeof page === "object" && String(page.path || "").trim())
         .map((page) => [String(page.path || "").trim(), page])
     );
-    const reviewObjectsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-    reviewObjectsSection.createEl("h3", { text: "Review Control Objects" });
-    if (!reviewControlObjects.length) {
-      reviewObjectsSection.createDiv({ cls: "furnace-shell-empty", text: "当前没有显式 review control object。" });
-    } else {
-      const list = reviewObjectsSection.createEl("ul", { cls: "furnace-shell-list" });
-      reviewControlObjects.slice(0, 10).forEach((page) => {
+    const renderReviewObjectSection = (title, pages, emptyText) => {
+      const section = contentEl.createDiv({ cls: "furnace-shell-section" });
+      section.createEl("h3", { text: title });
+      if (!pages.length) {
+        section.createDiv({ cls: "furnace-shell-empty", text: emptyText });
+        return;
+      }
+      const list = section.createEl("ul", { cls: "furnace-shell-list" });
+      pages.slice(0, 10).forEach((page) => {
         const item = list.createEl("li");
         item.createEl("strong", { text: page.title || page.path || "review-page" });
         item.createDiv({
           cls: "furnace-shell-meta",
-          text: `${page.kind || "page"} | ${displayCuratedStatus(page.status)} | ${(Array.isArray(page.reasons) ? page.reasons.join(", ") : "") || "review-object"}`,
+          text: reviewObjectMetaText(page) || "review-object",
         });
+        if (page.latest_review_history_entry) {
+          item.createDiv({
+            cls: "furnace-shell-meta",
+            text: truncateText(page.latest_review_history_entry, 180),
+          });
+        }
         const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
         const openButton = actions.createEl("button", { text: "Open page" });
         openButton.addEventListener("click", () => {
@@ -2213,7 +2356,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           });
         }
       });
-    }
+    };
+    renderReviewObjectSection("Decision Objects", decisionControlObjects, "当前没有显式 decision review object。");
+    renderReviewObjectSection("Judgment Objects", judgmentControlObjects, "当前没有显式 judgment review object。");
 
     const rewriteControlObjects = this.reviewControlList("rewrite_proposals");
     const rewriteSection = contentEl.createDiv({ cls: "furnace-shell-section" });
@@ -2354,6 +2499,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     [
       ["review_center_markdown", "Review Center Index"],
       ["review_center_html", "Review Center HTML"],
+      ["judgment_assets_markdown", "Judgment Assets"],
+      ["cognitive_history_markdown", "Cognitive History"],
       ["protocols_markdown", "Protocols"],
       ["domain_pilots_markdown", "Domain Pilots"],
       ["output_packs_markdown", "Output Packs"],

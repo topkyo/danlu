@@ -6,7 +6,7 @@ title: "Anthropic"
 target_path: "wiki/concepts/anthropic.md"
 source_signature: "497d7197a1644bb538bf7ec6c68553d71137bb90c7be3b537ba19bcd1b91fe43"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T03:08:01+00:00"
+last_compiled_at: "2026-04-15T09:19:10+00:00"
 ---
 
 # Rewrite Proposal · Anthropic
@@ -14,12 +14,12 @@ last_compiled_at: "2026-04-15T03:08:01+00:00"
 ## Proposal Status
 - Status: `待审提案`
 - Priority: `high`
-- Score: `8`
+- Score: `6`
 - Quality score: `78`
 - Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T01:37:58+00:00`
-- Last proposed: `2026-04-15T03:08:01+00:00`
+- Last proposed: `2026-04-15T09:19:10+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`
@@ -30,12 +30,11 @@ last_compiled_at: "2026-04-15T03:08:01+00:00"
 - Source pages: `wiki/sources/discovered-20260415013334-anthropic-tool-use-overview.md`
 
 ## Current Summary Snapshot
-- This concept currently appears in `1` source page(s).
-- Use the linked source pages below to deepen or revise this synthesis.
+- No summary snapshot captured.
 
 ## Rewrite Strategy
-- Issues: `placeholder-summary, single-source, evidence-gap, merge-boundary`
-- Strategy: 替换占位摘要，改成 grounded synthesis。 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。
+- Issues: `soft-hardness, single-source, evidence-gap, merge-boundary`
+- Strategy: 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。 检查是否需要合并或拆分概念边界。
 
 ## Verification
 - Status: `not-run`

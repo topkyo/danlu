@@ -20,6 +20,7 @@ from typing import Any
 
 from .app_protocol import (
     AUTO_PROMOTION_FORMATS,
+    CONCEPT_HARDNESS_LEVELS,
     CONFLICT_SIGNAL_PAIRS,
     CURATED_ASSET_SECTION_ORDER,
     DECISION_QUERY_MARKERS,
@@ -69,11 +70,13 @@ from .app_state import (
     load_manual_link_state,
     load_material_routing_state,
     load_output_pack_build_state,
+    load_planner_state,
     load_runtime_history,
     manual_link_state_path,
     material_archive_action_id,
     material_archive_state_path,
     material_state_path,
+    planner_state_path,
     save_knowledge_lifecycle_state,
 )
 from .app_types import JudgmentAsset
@@ -134,18 +137,21 @@ def sync_manifest_with_raw(root: Path) -> dict[str, Any]:
             current_kind = detect_kind(path)
             current_title = metadata.get("title") or entry["title"]
             current_source_type = metadata.get("source_type") or entry["source_type"]
+            current_note_kind = metadata.get("note_kind") or str(entry.get("note_kind") or "")
             current_original_path = metadata.get("original_path") or entry["original_path"]
             if (
                 entry.get("sha256") != current_sha
                 or entry.get("kind") != current_kind
                 or entry.get("title") != current_title
                 or entry.get("source_type") != current_source_type
+                or entry.get("note_kind") != current_note_kind
                 or entry.get("original_path") != current_original_path
             ):
                 entry["sha256"] = current_sha
                 entry["kind"] = current_kind
                 entry["title"] = current_title
                 entry["source_type"] = current_source_type
+                entry["note_kind"] = current_note_kind
                 entry["original_path"] = current_original_path
                 entry["updated_at"] = datetime.fromtimestamp(
                     path.stat().st_mtime, tz=timezone.utc
@@ -162,6 +168,7 @@ def sync_manifest_with_raw(root: Path) -> dict[str, Any]:
                 "id": entry_id,
                 "title": metadata.get("title") or path.stem,
                 "source_type": metadata.get("source_type") or "raw-drop",
+                "note_kind": metadata.get("note_kind") or "",
                 "original_path": metadata.get("original_path") or stored_path,
                 "stored_path": stored_path,
                 "kind": detect_kind(path),
@@ -649,13 +656,17 @@ def machine_memory_source_input_signature(
     return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
 
 
-def machine_memory_concept_input_signature(record: dict[str, Any]) -> str:
+def machine_memory_concept_input_signature(root: Path, record: dict[str, Any]) -> str:
+    page = root / "wiki" / "concepts" / f"{record.get('slug', '')}.md"
+    frontmatter = parse_frontmatter(page.read_text(encoding="utf-8", errors="replace")) if page.exists() else {}
     payload = {
         "slug": str(record.get("slug") or ""),
         "title": str(record.get("title") or ""),
         "source_signature": str(record.get("source_signature") or ""),
         "source_pages": concept_source_pages(record),
         "related_slugs": sorted(str(slug) for slug in record.get("related_slugs", []) if str(slug)),
+        "confidence": str(frontmatter.get("confidence") or ""),
+        "hardness": normalize_concept_hardness(frontmatter.get("hardness"), default="soft"),
     }
     return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
 
@@ -680,6 +691,25 @@ def concept_render_signature(root: Path, record: dict[str, Any]) -> str:
         ],
     }
     return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
+def normalize_concept_hardness(value: Any, *, default: str = "soft") -> str:
+    normalized_default = str(default).strip().lower()
+    if normalized_default not in CONCEPT_HARDNESS_LEVELS:
+        normalized_default = "soft"
+    if not isinstance(value, str):
+        return normalized_default
+    normalized = value.strip().lower()
+    if normalized in CONCEPT_HARDNESS_LEVELS:
+        return normalized
+    return normalized_default
+
+
+def concept_hardness_rank(value: Any) -> int:
+    return {label: index for index, label in enumerate(CONCEPT_HARDNESS_LEVELS)}.get(
+        normalize_concept_hardness(value),
+        0,
+    )
 
 
 def render_concept_conflict_lines(source_contexts: list[dict[str, str]]) -> list[str]:
@@ -713,6 +743,11 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
     confidence = existing_frontmatter.get("confidence", "medium") if not source_changed else "medium"
     if not isinstance(confidence, str) or not confidence:
         confidence = "medium"
+    hardness = (
+        normalize_concept_hardness(existing_frontmatter.get("hardness"), default="soft")
+        if not source_changed
+        else "soft"
+    )
     source_pages = concept_source_pages(record)
     render_signature = str(record.get("render_signature") or concept_render_signature(record["root"], record))
     summary_fallback = "\n".join(
@@ -751,6 +786,7 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
             "generated_by": "aiwiki-compile",
             "last_compiled_at": compiled_at,
             "confidence": confidence,
+            "hardness": hardness,
         }
     )
     lines = [
@@ -1337,7 +1373,9 @@ def remove_stale_generated_execution_bundle_files(root: Path, active_action_ids:
         return 0
     active_slugs = {slugify(action_id) for action_id in active_action_ids if action_id}
     for path in sorted(directory.glob("*.json")):
-        if path.stem in active_slugs:
+        if path.stem in active_slugs or path.stem.endswith("-dry-run"):
+            continue
+        if (directory / f"{path.stem}-dry-run.json").exists():
             continue
         path.unlink()
         removed += 1
@@ -1492,7 +1530,7 @@ def build_machine_memory_repair_plan(
         ready_actions + triage_actions + deferred_actions,
         active_protocol=active_protocol,
     )
-    planner_state = build_planner_state(execution_proposals, active_protocol=active_protocol)
+    planner_state = build_planner_state(root, execution_proposals, active_protocol=active_protocol)
 
     return {
         "ready_actions": ready_actions,
@@ -1597,6 +1635,8 @@ def collect_recent_output_artifacts(root: Path, *, limit: int = 12) -> list[dict
             content = path.read_text(encoding="utf-8", errors="replace")
             frontmatter = parse_frontmatter(content)
             if frontmatter.get("kind") != "output":
+                continue
+            if str(frontmatter.get("generated_by") or "") == "aiwiki-compile":
                 continue
             artifacts.append(
                 {
@@ -1827,7 +1867,7 @@ def manifest_change_summary(previous_entries: list[dict[str, Any]], current_entr
         current = current_by_path[stored_path]
         if any(
             previous.get(field) != current.get(field)
-            for field in ("sha256", "title", "kind", "source_type", "original_path")
+            for field in ("sha256", "title", "kind", "source_type", "note_kind", "original_path")
         ):
             updated_paths += 1
     return {
@@ -2288,10 +2328,14 @@ def derive_proposal_dependencies(proposals: list[dict[str, Any]]) -> None:
 
 
 def build_planner_state(
+    root: Path,
     proposals: list[dict[str, Any]],
     *,
     active_protocol: str = DEFAULT_PROTOCOL,
 ) -> dict[str, Any]:
+    previous_state = load_planner_state(root)
+    executed_actions = [dict(item) for item in previous_state.get("executed_actions", []) if isinstance(item, dict)]
+    proposal_records: list[dict[str, Any]] = []
     queue: list[dict[str, Any]] = []
     nodes: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
@@ -2299,13 +2343,25 @@ def build_planner_state(
         action_id = str(proposal.get("action_id") or "")
         depends_on = [str(item) for item in proposal.get("depends_on", []) if isinstance(item, str) and item]
         blocked = bool(depends_on)
+        status = str(proposal.get("status") or "proposed")
+        is_low_risk = str(proposal.get("risk") or "medium") == "low"
+        auto_bundle_candidate = is_low_risk and status == "accepted" and not blocked
+        human_required = bool(blocked or not auto_bundle_candidate)
+        proposal_record = {
+            **proposal,
+            "status": status,
+            "blocked": blocked,
+            "auto_bundle_candidate": auto_bundle_candidate,
+            "human_required": human_required,
+        }
+        proposal_records.append(proposal_record)
         queue_item = {
             "item_id": f"proposal:{action_id}",
             "item_kind": "execution-proposal",
             "action_id": action_id,
             "title": str(proposal.get("title") or action_id),
             "priority": str(proposal.get("priority") or "medium"),
-            "status": str(proposal.get("status") or "proposed"),
+            "status": status,
             "protocol": str(proposal.get("protocol") or active_protocol),
             "impact_score": int(proposal.get("impact_score", 0) or 0),
             "priority_score": int(proposal.get("priority_score", 0) or 0),
@@ -2314,6 +2370,8 @@ def build_planner_state(
             "target_paths": list(proposal.get("target_paths", []) or []),
             "command_hint": str(proposal.get("command_hint") or ""),
             "next_step": str(proposal.get("next_step") or ""),
+            "auto_bundle_candidate": auto_bundle_candidate,
+            "human_required": human_required,
         }
         queue.append(queue_item)
         nodes.append(
@@ -2338,19 +2396,21 @@ def build_planner_state(
     return {
         "version": 1,
         "generated_at": utc_now(),
-        "state_path": "",
+        "state_path": relative_path(root, planner_state_path(root)),
         "active_protocol": active_protocol,
-        "pending_proposals": proposals,
+        "pending_proposals": proposal_records,
         "priority_queue": queue[:12],
         "dependency_graph": {
             "nodes": nodes[:16],
             "edges": edges[:24],
         },
         "next_action": next_action,
+        "executed_actions": executed_actions[:16],
         "counts": {
-            "pending_proposals": len(proposals),
+            "pending_proposals": len(proposal_records),
             "blocked": sum(1 for item in queue if item.get("blocked")),
             "unblocked": sum(1 for item in queue if not item.get("blocked")),
+            "executed_actions": len(executed_actions),
         },
     }
 
@@ -2590,11 +2650,16 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
         title = str(node.get("title") or slug)
         source_pages = list(node.get("source_pages", []))
         related_slugs = list(node.get("related_slugs", []))
+        hardness = normalize_concept_hardness(node.get("hardness"), default="soft")
+        confidence = str(node.get("confidence") or "")
         source_contexts = [load_source_page_context(root, relative) for relative in source_pages]
         conflict_signals = detect_concept_conflict_signals(source_contexts)
         gap_signals = detect_concept_gap_signals(source_contexts)
         issues: list[str] = []
         score = 0
+        if hardness == "soft":
+            issues.append("soft-hardness")
+            score += 1
         if slug in placeholder_slugs:
             issues.append("placeholder-summary")
             score += 3
@@ -2629,6 +2694,8 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
             "source_signature": str(node.get("source_signature") or ""),
             "source_count": len(source_pages),
             "related_count": len(related_slugs),
+            "confidence": confidence,
+            "hardness": hardness,
             "issues": issues,
             "score": score,
             "quality_score": quality_score,
@@ -2718,6 +2785,19 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
             item.get("title", "").lower(),
         )
     )
+    hard_concepts = sorted(
+        (
+            record
+            for record in concept_records.values()
+            if concept_hardness_rank(record.get("hardness")) >= concept_hardness_rank("medium")
+        ),
+        key=lambda item: (
+            -concept_hardness_rank(item.get("hardness")),
+            -int(item.get("source_count", 0)),
+            -int(item.get("quality_score", 0)),
+            item.get("title", "").lower(),
+        ),
+    )
     all_conflict_signals.sort(
         key=lambda item: (
             -len(item.get("source_pages", [])),
@@ -2744,8 +2824,13 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
         band: sum(1 for record in all_concepts if str(record.get("quality_band") or "") == band)
         for band in ("strong", "stable", "watch", "fragile")
     }
+    hardness_counts = {
+        label: sum(1 for record in all_concepts if normalize_concept_hardness(record.get("hardness")) == label)
+        for label in CONCEPT_HARDNESS_LEVELS
+    }
     return {
         "all_concepts": all_concepts,
+        "hard_concepts": hard_concepts[:12],
         "weak_concepts": weak_concepts[:20],
         "stable_concepts": stable_concepts[:12],
         "merge_candidates": merge_candidates[:12],
@@ -2767,6 +2852,10 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
             "stable_quality": quality_bands["stable"],
             "watch_quality": quality_bands["watch"],
             "fragile_quality": quality_bands["fragile"],
+            "soft_hardness": hardness_counts["soft"],
+            "medium_hardness": hardness_counts["medium"],
+            "hard_hardness": hardness_counts["hard"],
+            "medium_or_hard": hardness_counts["medium"] + hardness_counts["hard"],
         },
     }
 

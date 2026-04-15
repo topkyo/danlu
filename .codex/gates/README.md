@@ -29,7 +29,7 @@ HARNESS_DIR=.codex bash scripts/write_gate_artifact.sh qa-review --status pass -
 
 `--resolve-reviewer-mode` reads `.codex/review-capabilities.env`, picks the first supported mode from the configured preference order, and auto-fills `reviewer_fallback_reason` when the result degrades to `same-context`.
 If the project configured launcher hooks, `HARNESS_DIR=.codex bash scripts/launch_qa_review.sh --task "<task>"` can prepare a handoff file and trigger the mode-specific launcher command before you write the final artifact.
-The bundled `.codex/review-capabilities.env` already includes an opt-in `fresh-session` launcher preset based on `codex review --uncommitted`; it remains inactive until `REVIEW_CAPABILITY_FRESH_SESSION=yes`.
+The bundled `.codex/review-capabilities.env` already includes an opt-in `fresh-session` launcher preset based on `codex review -c model="gpt-5.4" --uncommitted`; it remains inactive until `REVIEW_CAPABILITY_FRESH_SESSION=yes`. 默认策略仍应先尝试 Claude Opus 4.6；Codex preset 是 Claude 路径不可用时的 GPT-5.4 fallback。
 If you want the shortest path, `HARNESS_DIR=.codex bash scripts/run_qa_review.sh --task "<task>" --status auto --append-calibration --contract-scope-changed no --new-session yes --progress-read no` can launch review, capture output, write the artifact, and append calibration in one command.
 That helper also auto-records `review_findings_count`. Clean passing artifacts keep that count at `0`; if the review output includes explicit markers such as `[high]` or `Severity: medium`, `review_findings_highest_severity` is only retained on non-pass or optional artifacts that still preserve findings.
 

@@ -1,8 +1,8 @@
 ---
-title: "\u89c2\u5bdf\u6865\u63a5\u6982\u5ff5 Concepts"
+title: "\u89c2\u5bdf\u6865\u63a5\u6982\u5ff5 Judgment"
 kind: "execution-proposal"
 status: "proposed"
-action_id: "bridge-concept-concepts"
+action_id: "bridge-concept-judgment"
 proposal_kind: "monitor-bridge"
 risk: "low"
 priority: "low"
@@ -12,15 +12,15 @@ policy_rule_id: "proposed-triage"
 priority_score: "32"
 impact_score: "32"
 target_paths:
-  - "wiki/concepts/concepts.md"
+  - "wiki/concepts/judgment.md"
 generated_by: "aiwiki-compile"
-last_compiled_at: "2026-04-15T03:19:50+00:00"
+last_compiled_at: "2026-04-15T09:49:48+00:00"
 ---
 
-# 观察桥接概念 Concepts
+# 观察桥接概念 Judgment
 
 ## Overview
-- Action id: `bridge-concept-concepts`
+- Action id: `bridge-concept-judgment`
 - Status: `待处理`
 - Kind: `monitor-bridge`
 - Risk: `low`
@@ -30,8 +30,8 @@ last_compiled_at: "2026-04-15T03:19:50+00:00"
 - Impact score: `32`
 - Policy decision: `review`
 - Policy rule: `proposed-triage`
-- Targets: `wiki/concepts/concepts.md`
-- Bundle: `output/control/execution-bundles/bridge-concept-concepts.json`
+- Targets: `wiki/concepts/judgment.md`
+- Bundle: `output/control/execution-bundles/bridge-concept-judgment.json`
 
 ## Strategy
 - 记录桥接概念仍然必要的原因，避免误删跨簇连接。 同时检查 benchmark、experiment、tradeoff 和 regression risk 是否需要同步更新。
@@ -45,14 +45,14 @@ last_compiled_at: "2026-04-15T03:19:50+00:00"
 - 优先把 next experiment 或 validation path 写清楚。
 
 ## Page-Level Patch Plan
-- `wiki/concepts/concepts.md` | role `概念页` | mode `review` | exists `True` | sections `Summary, Related Concepts, Related Sources`
+- `wiki/concepts/judgment.md` | role `概念页` | mode `review` | exists `True` | sections `Summary, Related Concepts, Related Sources`
   - 补 bridge maintenance note，明确为什么这个桥接概念还成立。 同步检查 benchmark、experiment、tradeoff 和 regression risk 是否要一起更新。
 - `wiki/indexes/graph-health.md` | role `索引页` | mode `review` | exists `True` | sections `Bridge Concepts, Repair Signals`
   - 在图谱健康层确认桥接信号是否稳定，避免误删关键连接。 同步检查 benchmark、experiment、tradeoff 和 regression risk 是否要一起更新。
 
 ## Commands
-- Suggested apply: `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action bridge-concept-concepts --bundle output/control/execution-bundles/bridge-concept-concepts.json`
-- Suggested next step: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action bridge-concept-concepts --status accepted --note "Accepted for manual repair."`
+- Suggested apply: `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action bridge-concept-judgment --bundle output/control/execution-bundles/bridge-concept-judgment.json`
+- Suggested next step: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action bridge-concept-judgment --status accepted --note "Accepted for manual repair."`
 
 ## Safe Apply Preview
 - 当前 proposal 不支持低风险 safe apply。
@@ -62,4 +62,4 @@ last_compiled_at: "2026-04-15T03:19:50+00:00"
 - [机器记忆修复计划](../indexes/machine-memory-repair-plan.md)
 - [机器记忆动作队列](../indexes/machine-memory-actions.md)
 - [炉心面板](../indexes/furnace-center.md)
-- [Execution Bundle](../../output/control/execution-bundles/bridge-concept-concepts.json)
+- [Execution Bundle](../../output/control/execution-bundles/bridge-concept-judgment.json)

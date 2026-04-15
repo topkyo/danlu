@@ -191,3 +191,83 @@ qa-review downgrade heuristic:
 - New Session: no
 - PROGRESS Read: yes
 - Notes: auto-defaulted qa-runtime hit/miss/false-positive to 0 from write_gate_artifact pass
+
+- Date: 2026-04-15
+- Agent: Codex
+- Task: TODO tiers closure for furnace runtime refactor, content activation, and docs update
+- qa-review Mode: isolated-agent
+- qa-review Hit: 0
+- qa-review Miss: 0
+- qa-review False Positive: 0
+- qa-runtime Mode: not-run
+- qa-runtime Hit: 0
+- qa-runtime Miss: 0
+- qa-runtime False Positive: 0
+- Contract Scope Changed: not-applicable
+- New Session: yes
+- PROGRESS Read: not-applicable
+- Notes: auto-defaulted qa-review hit/miss/false-positive to 0 from write_gate_artifact pass
+
+- Date: 2026-04-15
+- Agent: code-review agent / claude-opus-4.6
+- Task: 第二轮内容提纯与覆盖率抬升
+- qa-review Mode: isolated-agent
+- qa-review Hit: 0
+- qa-review Miss: 0
+- qa-review False Positive: 0
+- qa-runtime Mode: scripted
+- qa-runtime Hit: 0
+- qa-runtime Miss: 0
+- qa-runtime False Positive: 0
+- Contract Scope Changed: no
+- New Session: yes
+- PROGRESS Read: no
+- Notes: auto-defaulted qa-review hit/miss/false-positive to 0 from write_gate_artifact pass
+
+- Date: 2026-04-15
+- Agent: same-context scripted temp-root smoke
+- Task: 第二轮内容提纯与覆盖率抬升
+- qa-review Mode: isolated-agent
+- qa-review Hit: 0
+- qa-review Miss: 0
+- qa-review False Positive: 0
+- qa-runtime Mode: scripted
+- qa-runtime Hit: 0
+- qa-runtime Miss: 0
+- qa-runtime False Positive: 0
+- Contract Scope Changed: no
+- New Session: no
+- PROGRESS Read: no
+- Notes: auto-defaulted qa-runtime hit/miss/false-positive to 0 from write_gate_artifact pass
+
+- Date: 2026-04-15
+- Agent: Codex
+- Task: 9 分冲刺第三轮 qa-review
+- qa-review Mode: isolated-agent
+- qa-review Hit: 0
+- qa-review Miss: 0
+- qa-review False Positive: 0
+- qa-runtime Mode: scripted
+- qa-runtime Hit: 0
+- qa-runtime Miss: 0
+- qa-runtime False Positive: 0
+- Contract Scope Changed: no
+- New Session: yes
+- PROGRESS Read: no
+- Notes: auto-defaulted qa-review hit/miss/false-positive to 0 from write_gate_artifact pass
+
+- Date: 2026-04-15
+- Agent: Codex
+- Task: 9 分冲刺第三轮 qa-runtime
+- qa-review Mode: isolated-agent
+- qa-review Hit: 0
+- qa-review Miss: 0
+- qa-review False Positive: 0
+- qa-runtime Mode: scripted
+- qa-runtime Hit: 0
+- qa-runtime Miss: 0
+- qa-runtime False Positive: 0
+- Contract Scope Changed: no
+- New Session: no
+- PROGRESS Read: no
+- Notes: auto-defaulted qa-runtime hit/miss/false-positive to 0 from write_gate_artifact pass

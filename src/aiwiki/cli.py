@@ -8,28 +8,33 @@ from pathlib import Path
 
 from .app_compile import (
     apply_concept_rewrite,
-    apply_material_archive,
     apply_machine_memory_action,
+    apply_machine_memory_actions_batch,
+    apply_material_archive,
     ask_question,
     compile_wiki,
     file_back,
     lint_wiki,
     nightly_health,
     reactivate_concept,
-    revert_concept_rewrite,
-    revert_material_archive,
-    revert_machine_memory_action,
     retire_concept,
+    revert_concept_rewrite,
+    revert_machine_memory_action,
+    revert_machine_memory_action_batch,
+    revert_material_archive,
     review_concept_rewrite,
     review_machine_memory_action,
     review_page,
+    review_pages_batch,
     set_active_protocol,
     shell_status,
     verify_concept_rewrite,
 )
-from .app_content import ingest_source
+from .app_content import action_supports_low_risk_apply, ingest_source
 from .app_protocol import ensure_layout, load_protocol_state
-from .drop import drop_image, drop_pdf, drop_repo, drop_url
+from .app_shell import build_shell_summary, shell_search, shell_status_dashboard
+from .app_state import load_machine_memory_action_state
+from .drop import drop_image, drop_note, drop_pdf, drop_repo, drop_url
 from .runner import auto_process_once, llm_status, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 
 
@@ -75,6 +80,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_auto_flags(drop_repo_parser)
 
+    drop_note_parser = subparsers.add_parser("drop-note", help="Capture a free-text note or transcript into raw/inbox.")
+    drop_note_parser.add_argument("source", nargs="?", help="Optional markdown or text file path.")
+    drop_note_parser.add_argument("--text", help="Inline note text. Use this instead of SOURCE for free-text capture.")
+    drop_note_parser.add_argument("--title", help="Optional display title.")
+    drop_note_parser.add_argument(
+        "--kind",
+        choices=("note", "transcript"),
+        default="note",
+        help="Capture kind. Transcript enables transcript-aware compile prompts.",
+    )
+    _add_auto_flags(drop_note_parser)
+
     subparsers.add_parser("compile", help="Compile manifest entries into wiki source pages and indexes.")
 
     protocol_status_parser = subparsers.add_parser(
@@ -97,6 +114,11 @@ def build_parser() -> argparse.ArgumentParser:
         "shell-status",
         help="Write and return the Product Shell summary contract for front-end workbench integrations.",
     )
+    subparsers.add_parser("dashboard", help="Return the Product Shell dashboard contract.")
+
+    search_parser = subparsers.add_parser("search", help="Search compiled wiki pages from the Product Shell.")
+    search_parser.add_argument("query", help="Search query.")
+    search_parser.add_argument("--limit", type=int, default=12, help="Maximum number of results to return.")
 
     run_compile_parser = subparsers.add_parser(
         "run-compile",
@@ -150,10 +172,25 @@ def build_parser() -> argparse.ArgumentParser:
         "review-page",
         help="Advance a decision or judgment page through the explicit review workflow.",
     )
-    review_parser.add_argument("page", help="Path to a decision or judgment markdown page.")
+    review_parser.add_argument("page", nargs="?", help="Path to a decision or judgment markdown page.")
     review_parser.add_argument("--status", required=True, help="Target review status for the page.")
     review_parser.add_argument("--note", help="Optional review note to store in the page.")
     review_parser.add_argument("--confidence", help="Optional confidence override for judgment pages.")
+    review_parser.add_argument(
+        "--next",
+        action="store_true",
+        help="Auto-select the highest-priority review page from the current shell summary.",
+    )
+    review_parser.add_argument(
+        "--batch",
+        nargs="+",
+        help="Review multiple pages in one batch receipt.",
+    )
+    review_parser.add_argument(
+        "--all-pending",
+        action="store_true",
+        help="Review every currently reviewable page from the shell summary.",
+    )
 
     rewrite_review_parser = subparsers.add_parser(
         "review-rewrite",
@@ -169,6 +206,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     apply_rewrite_parser.add_argument("slug", help="Concept slug.")
     apply_rewrite_parser.add_argument("--note", help="Optional apply note.")
+    apply_rewrite_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Write a rewrite preview artifact without mutating the concept page.",
+    )
 
     verify_rewrite_parser = subparsers.add_parser(
         "verify-rewrite",
@@ -202,7 +244,7 @@ def build_parser() -> argparse.ArgumentParser:
         "review-action",
         help="Advance a machine-memory repair action through the explicit action workflow.",
     )
-    action_review_parser.add_argument("action_id", help="Machine-memory action id.")
+    action_review_parser.add_argument("action_id", help="Machine-memory action id or title fragment.")
     action_review_parser.add_argument("--status", required=True, help="Target action status.")
     action_review_parser.add_argument("--note", help="Optional action review note.")
 
@@ -210,7 +252,7 @@ def build_parser() -> argparse.ArgumentParser:
         "apply-action",
         help="Apply an accepted low-risk machine-memory repair action through the safe execution layer.",
     )
-    apply_action_parser.add_argument("action_id", help="Machine-memory action id.")
+    apply_action_parser.add_argument("action_id", nargs="?", help="Machine-memory action id or title fragment.")
     apply_action_parser.add_argument("--note", help="Optional apply note.")
     apply_action_parser.add_argument(
         "--dry-run",
@@ -221,13 +263,28 @@ def build_parser() -> argparse.ArgumentParser:
         "--bundle",
         help="Optional execution bundle path to validate and consume during apply.",
     )
+    apply_action_parser.add_argument(
+        "--batch",
+        nargs="+",
+        help="Apply multiple action ids/title fragments in one batch receipt.",
+    )
+    apply_action_parser.add_argument(
+        "--all-accepted-low-risk",
+        action="store_true",
+        help="Apply every currently accepted low-risk action as a batch.",
+    )
 
     revert_action_parser = subparsers.add_parser(
         "revert-action",
         help="Revert the latest low-risk safe apply for a machine-memory action.",
     )
-    revert_action_parser.add_argument("action_id", help="Machine-memory action id.")
+    revert_action_parser.add_argument("action_id", nargs="?", help="Machine-memory action id.")
     revert_action_parser.add_argument("--note", help="Optional revert note.")
+    revert_action_parser.add_argument(
+        "--last-batch",
+        action="store_true",
+        help="Revert the most recent unreverted action apply batch.",
+    )
 
     apply_archive_parser = subparsers.add_parser(
         "apply-archive",
@@ -235,6 +292,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     apply_archive_parser.add_argument("entry_id", help="Manifest/material entry id.")
     apply_archive_parser.add_argument("--note", help="Optional apply note.")
+    apply_archive_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Write an archive bundle preview without mutating material state.",
+    )
 
     revert_archive_parser = subparsers.add_parser(
         "revert-archive",
@@ -346,6 +408,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "drop-repo":
             result = drop_repo(root, args.source, title=args.title, max_files=args.max_files)
             result = _maybe_auto_process(root, result, args)
+        elif args.command == "drop-note":
+            result = drop_note(root, args.source, title=args.title, text=args.text, kind=args.kind)
+            result = _maybe_auto_process(root, result, args)
         elif args.command == "compile":
             result = compile_wiki(root)
         elif args.command == "protocol-status":
@@ -357,6 +422,10 @@ def main(argv: list[str] | None = None) -> int:
             result = set_active_protocol(root, args.protocol)
         elif args.command == "shell-status":
             result = shell_status(root)
+        elif args.command == "dashboard":
+            result = shell_status_dashboard(root)
+        elif args.command == "search":
+            result = shell_search(root, args.query, limit=args.limit)
         elif args.command == "run-compile":
             result = run_compile(root, limit=args.limit)
         elif args.command == "ask":
@@ -366,11 +435,33 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "file-back":
             result = file_back(root, args.artifact, title=args.title, kind=args.kind, protocol=args.protocol)
         elif args.command == "review-page":
-            result = review_page(root, args.page, args.status, note=args.note, confidence=args.confidence)
+            review_pages = _resolve_review_pages(
+                root,
+                args.page,
+                use_next=args.next,
+                batch=args.batch,
+                all_pending=args.all_pending,
+            )
+            if len(review_pages) > 1 or args.batch or args.all_pending:
+                result = review_pages_batch(
+                    root,
+                    review_pages,
+                    args.status,
+                    note=args.note,
+                    confidence=args.confidence,
+                )
+            else:
+                result = review_page(
+                    root,
+                    review_pages[0],
+                    args.status,
+                    note=args.note,
+                    confidence=args.confidence,
+                )
         elif args.command == "review-rewrite":
             result = review_concept_rewrite(root, args.slug, args.status, note=args.note)
         elif args.command == "apply-rewrite":
-            result = apply_concept_rewrite(root, args.slug, note=args.note)
+            result = apply_concept_rewrite(root, args.slug, note=args.note, dry_run=args.dry_run)
         elif args.command == "verify-rewrite":
             result = verify_concept_rewrite(root, args.slug, note=args.note)
         elif args.command == "revert-rewrite":
@@ -380,19 +471,45 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "reactivate-concept":
             result = reactivate_concept(root, args.slug, note=args.note)
         elif args.command == "review-action":
-            result = review_machine_memory_action(root, args.action_id, args.status, note=args.note)
+            result = review_machine_memory_action(
+                root,
+                _resolve_action_id(root, args.action_id),
+                args.status,
+                note=args.note,
+            )
         elif args.command == "apply-action":
-            result = apply_machine_memory_action(
+            action_ids = _resolve_action_ids(
                 root,
                 args.action_id,
-                note=args.note,
-                dry_run=args.dry_run,
-                bundle_path=args.bundle,
+                batch=args.batch,
+                all_accepted_low_risk=args.all_accepted_low_risk,
             )
+            if len(action_ids) > 1 or args.batch or args.all_accepted_low_risk:
+                if args.bundle:
+                    raise ValueError("--bundle is only supported for single-action apply.")
+                result = apply_machine_memory_actions_batch(
+                    root,
+                    action_ids,
+                    note=args.note,
+                    dry_run=args.dry_run,
+                )
+            else:
+                result = apply_machine_memory_action(
+                    root,
+                    action_ids[0],
+                    note=args.note,
+                    dry_run=args.dry_run,
+                    bundle_path=args.bundle,
+                )
         elif args.command == "revert-action":
-            result = revert_machine_memory_action(root, args.action_id, note=args.note)
+            if args.last_batch:
+                result = revert_machine_memory_action_batch(root, note=args.note)
+            else:
+                if not args.action_id:
+                    raise ValueError("Provide an action id or use --last-batch.")
+                result = revert_machine_memory_action(root, _resolve_action_id(root, args.action_id), note=args.note)
         elif args.command == "apply-archive":
-            result = apply_material_archive(root, args.entry_id, note=args.note)
+            result = apply_material_archive(root, args.entry_id, note=args.note, dry_run=args.dry_run)
         elif args.command == "revert-archive":
             result = revert_material_archive(root, args.entry_id, note=args.note)
         elif args.command == "lint":
@@ -467,6 +584,113 @@ def _maybe_auto_process(root: Path, result: dict[str, object], args: argparse.Na
         **result,
         "auto_process": auto_result,
     }
+
+
+def _pending_review_pages(root: Path) -> list[str]:
+    summary = build_shell_summary(root)
+    review_controls = summary.get("review_controls", {})
+    if not isinstance(review_controls, dict):
+        review_controls = {}
+    pending: list[str] = []
+    for candidate in review_controls.get("pages", []):
+        if not isinstance(candidate, dict) or not candidate.get("can_review"):
+            continue
+        candidate_path = str(candidate.get("path") or "")
+        if candidate_path:
+            pending.append(candidate_path)
+    return pending
+
+
+def _resolve_review_pages(
+    root: Path,
+    page: str | None,
+    *,
+    use_next: bool,
+    batch: list[str] | None,
+    all_pending: bool,
+) -> list[str]:
+    selected_modes = int(bool(use_next)) + int(bool(batch)) + int(bool(all_pending))
+    if page and selected_modes:
+        raise ValueError("Use PAGE by itself, or choose exactly one of --next/--batch/--all-pending.")
+    if selected_modes > 1:
+        raise ValueError("Choose only one of --next, --batch, or --all-pending.")
+    if use_next:
+        pending = _pending_review_pages(root)
+        if not pending:
+            raise RuntimeError("No review page is ready for --next.")
+        return [pending[0]]
+    if batch:
+        return [item for item in batch if item.strip()]
+    if all_pending:
+        pending = _pending_review_pages(root)
+        if not pending:
+            raise RuntimeError("No review pages are currently pending.")
+        return pending
+    if page:
+        return [page]
+    raise ValueError("Provide a review page path or use --next/--batch/--all-pending.")
+
+
+def _resolve_action_id(root: Path, action_query: str) -> str:
+    normalized_query = action_query.strip()
+    if not normalized_query:
+        raise ValueError("Action id cannot be empty.")
+    state = load_machine_memory_action_state(root)
+    actions = [action for action in state.get("actions", []) if isinstance(action, dict)]
+    if not actions:
+        return normalized_query
+    for action in actions:
+        if str(action.get("id") or "") == normalized_query:
+            return normalized_query
+    lowered_query = normalized_query.lower()
+    exact_title_matches = [
+        action
+        for action in actions
+        if str(action.get("title") or "").strip().lower() == lowered_query
+    ]
+    if len(exact_title_matches) == 1:
+        return str(exact_title_matches[0].get("id") or normalized_query)
+    partial_matches = [
+        action
+        for action in actions
+        if lowered_query in str(action.get("id") or "").lower()
+        or lowered_query in str(action.get("title") or "").lower()
+    ]
+    if len(partial_matches) == 1:
+        return str(partial_matches[0].get("id") or normalized_query)
+    if not partial_matches:
+        raise FileNotFoundError(f"Machine-memory action not found: {action_query}")
+    candidates = ", ".join(
+        f"{str(action.get('id') or '')} ({str(action.get('title') or '')})"
+        for action in partial_matches[:5]
+    )
+    raise RuntimeError(f"Machine-memory action is ambiguous: {action_query}. Candidates: {candidates}")
+
+
+def _resolve_action_ids(
+    root: Path,
+    action_id: str | None,
+    *,
+    batch: list[str] | None,
+    all_accepted_low_risk: bool,
+) -> list[str]:
+    selected_modes = int(bool(action_id)) + int(bool(batch)) + int(bool(all_accepted_low_risk))
+    if selected_modes != 1:
+        raise ValueError("Provide one action id, or use exactly one of --batch/--all-accepted-low-risk.")
+    if action_id:
+        return [_resolve_action_id(root, action_id)]
+    if batch:
+        return [_resolve_action_id(root, item) for item in batch if item.strip()]
+    state = load_machine_memory_action_state(root)
+    action_ids = [
+        str(action.get("id") or "")
+        for action in state.get("actions", [])
+        if isinstance(action, dict)
+        and action_supports_low_risk_apply(action)
+    ]
+    if not action_ids:
+        raise RuntimeError("No accepted low-risk actions are ready for batch apply.")
+    return action_ids
 
 
 if __name__ == "__main__":

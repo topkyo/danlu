@@ -6,7 +6,7 @@ title: "Name"
 target_path: "wiki/concepts/name.md"
 source_signature: "77cda326cf6700c3ddfc7ba44871580c52010e868ff344d0d385dc3d1fdf4ff4"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T03:31:30+00:00"
+last_compiled_at: "2026-04-15T09:19:10+00:00"
 ---
 
 # Rewrite Proposal · Name
@@ -14,12 +14,12 @@ last_compiled_at: "2026-04-15T03:31:30+00:00"
 ## Proposal Status
 - Status: `待审提案`
 - Priority: `high`
-- Score: `7`
+- Score: `8`
 - Quality score: `78`
 - Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T03:31:30+00:00`
-- Last proposed: `2026-04-15T03:31:30+00:00`
+- Last proposed: `2026-04-15T09:19:10+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`
@@ -34,7 +34,7 @@ last_compiled_at: "2026-04-15T03:31:30+00:00"
 - Use the linked source pages below to deepen or revise this synthesis.
 
 ## Rewrite Strategy
-- Issues: `placeholder-summary, single-source, evidence-gap`
+- Issues: `soft-hardness, placeholder-summary, single-source, evidence-gap`
 - Strategy: 替换占位摘要，改成 grounded synthesis。 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。
 
 ## Verification

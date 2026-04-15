@@ -109,11 +109,16 @@ from .app_content import (
 )
 from .app_execution import (
     append_execution_receipt_history,
+    build_execution_batch_receipt,
     build_execution_bundle,
     build_execution_receipt,
+    build_material_archive_bundle,
     build_material_archive_receipt,
     execution_bundle_digest,
     load_execution_bundle,
+    write_execution_batch_receipt_document,
+    write_execution_bundle_document,
+    write_execution_dry_run_document,
 )
 from .app_memory import (
     active_corpus_bridge_evidence_ids,
@@ -191,6 +196,7 @@ from .app_state import (
     aging_report_path,
     append_runtime_history,
     archive_candidates_state_path,
+    archive_dry_run_path,
     cognitive_history_path,
     compile_state_path,
     concept_build_state_path,
@@ -206,8 +212,10 @@ from .app_state import (
     ensure_knowledge_lifecycle_override_state,
     execution_audit_html_path,
     execution_audit_path,
+    execution_batch_receipt_path,
     execution_center_html_path,
     execution_center_path,
+    execution_dry_run_path,
     execution_policy_log_path,
     furnace_center_html_path,
     graph_health_report_path,
@@ -216,6 +224,7 @@ from .app_state import (
     knowledge_lifecycle_state_path,
     load_active_corpora_state,
     load_archive_candidates_state,
+    load_compile_state,
     load_concept_rewrite_state,
     load_json_document,
     load_knowledge_lifecycle_state,
@@ -227,6 +236,7 @@ from .app_state import (
     load_material_routing_state,
     load_material_state,
     load_ranking_build_state,
+    load_runtime_history,
     machine_memory_action_state_path,
     machine_memory_actions_path,
     machine_memory_build_state_path,
@@ -249,6 +259,7 @@ from .app_state import (
     ranking_build_state_path,
     repair_backlog_path,
     review_center_html_path,
+    rewrite_dry_run_path,
     save_compile_state,
     save_concept_rewrite_state,
     save_knowledge_lifecycle_override_state,
@@ -311,6 +322,7 @@ class _CompileContext:
     entries: list[dict[str, Any]]
     compiled_at: str
     protocol_state: dict[str, Any]
+    previous_compile_state: dict[str, Any]
     previous_memory: dict[str, Any]
     changed_pages: int = 0
     source_changed_pages: int = 0
@@ -408,6 +420,7 @@ def _start_compile_context(root: Path) -> _CompileContext:
         entries=entries,
         compiled_at=utc_now(),
         protocol_state=load_protocol_state(root),
+        previous_compile_state=load_compile_state(root),
         previous_memory=load_json_document(machine_memory_state_path(root)),
     )
 
@@ -473,6 +486,7 @@ def _compile_content_phase(context: _CompileContext) -> None:
     context.write_index_artifact(
         judgment_assets_path(context.root),
         render_judgment_assets(
+            context.root,
             context.decision_pages,
             context.judgment_pages,
             context.compiled_at,
@@ -818,6 +832,12 @@ def _compile_runtime_phase(context: _CompileContext) -> None:
     context.memory["history_path"] = relative_path(context.root, machine_memory_history_path(context.root))
     context.transition = summarize_machine_memory_transition(context.previous_memory, context.memory)
     context.memory["transition"] = context.transition
+    _append_judgment_relation_history_event(
+        context.root,
+        context.previous_memory,
+        context.memory,
+        occurred_at=context.compiled_at,
+    )
     context.write_index_artifact(
         machine_memory_state_path(context.root),
         json.dumps(context.memory, indent=2, sort_keys=True) + "\n",
@@ -844,6 +864,7 @@ def _compile_runtime_phase(context: _CompileContext) -> None:
     context.write_index_artifact(
         execution_center_path(context.root),
         render_execution_center(
+            context.root,
             context.memory,
             compiled_at=context.compiled_at,
             active_protocol=context.protocol_state["active_protocol"],
@@ -910,7 +931,337 @@ def _compile_runtime_phase(context: _CompileContext) -> None:
     )
 
 
+def _judgment_relation_signatures(memory: dict[str, Any]) -> set[tuple[str, str, str, str]]:
+    return {
+        ("judgment", str(edge.get("relation") or "related"), str(edge.get("from") or ""), str(edge.get("to") or ""))
+        for edge in memory.get("edges", {}).get("judgment_to_judgment", [])
+        if edge.get("from") and edge.get("to")
+    } | {
+        ("decision", str(edge.get("relation") or "supports"), str(edge.get("from") or ""), str(edge.get("to") or ""))
+        for edge in memory.get("edges", {}).get("judgment_to_decision", [])
+        if edge.get("from") and edge.get("to")
+    }
+
+
+def _judgment_relation_descriptor(
+    signature: tuple[str, str, str, str],
+    node_map: dict[str, dict[str, Any]],
+) -> dict[str, str]:
+    relation_kind, relation, source_id, target_id = signature
+    source = node_map.get(source_id, {})
+    target = node_map.get(target_id, {})
+    return {
+        "relation_kind": relation_kind,
+        "relation": relation,
+        "source_id": source_id,
+        "source_title": str(source.get("title") or source_id),
+        "source_path": str(source.get("path") or ""),
+        "target_id": target_id,
+        "target_title": str(target.get("title") or target_id),
+        "target_path": str(target.get("path") or ""),
+    }
+
+
+def _append_judgment_relation_history_event(
+    root: Path,
+    previous_memory: dict[str, Any],
+    current_memory: dict[str, Any],
+    *,
+    occurred_at: str,
+) -> None:
+    previous_signatures = _judgment_relation_signatures(previous_memory)
+    current_signatures = _judgment_relation_signatures(current_memory)
+    added = sorted(current_signatures - previous_signatures)
+    removed = sorted(previous_signatures - current_signatures)
+    if not added and not removed:
+        return
+    previous_nodes = {
+        str(node.get("page_id") or ""): node
+        for node in previous_memory.get("judgment_nodes", [])
+        if isinstance(node, dict) and node.get("page_id")
+    }
+    current_nodes = {
+        str(node.get("page_id") or ""): node
+        for node in current_memory.get("judgment_nodes", [])
+        if isinstance(node, dict) and node.get("page_id")
+    }
+    append_runtime_history(
+        root,
+        {
+            "event_type": "judgment-relation-refresh",
+            "occurred_at": occurred_at,
+            "added_relations": [_judgment_relation_descriptor(signature, current_nodes) for signature in added[:12]],
+            "removed_relations": [_judgment_relation_descriptor(signature, previous_nodes) for signature in removed[:12]],
+        },
+    )
+
+
+def _stable_output_created_at(path: Path, fallback: str) -> str:
+    if not path.exists():
+        return fallback
+    frontmatter = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+    existing = str(frontmatter.get("created_at") or "").strip()
+    return existing or fallback
+
+
+def _render_auto_figure_artifact(
+    *,
+    artifact_id: str,
+    title: str,
+    query: str,
+    protocol: str,
+    created_at: str,
+    generated_at: str,
+    body_lines: list[str],
+) -> str:
+    return "\n".join(
+        [
+            render_frontmatter(
+                {
+                    "id": artifact_id,
+                    "kind": "output",
+                    "format": "figure",
+                    "query": query,
+                    "protocol": protocol,
+                    "generated_by": "aiwiki-compile",
+                    "created_at": created_at,
+                    "generated_at": generated_at,
+                    "title": title,
+                }
+            ),
+            "",
+            f"# {title}",
+            "",
+            *body_lines,
+            "",
+        ]
+    )
+
+
+def _render_auto_slides_artifact(
+    *,
+    title: str,
+    query: str,
+    protocol: str,
+    created_at: str,
+    generated_at: str,
+    slides: list[list[str]],
+) -> str:
+    lines = [
+        "---",
+        "marp: true",
+        'kind: "output"',
+        'format: "slides"',
+        f"query: {render_scalar(query)}",
+        f'protocol: "{protocol}"',
+        'generated_by: "aiwiki-compile"',
+        f'created_at: "{created_at}"',
+        f'generated_at: "{generated_at}"',
+        f"title: {render_scalar(title)}",
+        "---",
+        "",
+    ]
+    for index, slide in enumerate(slides):
+        if index:
+            lines.extend(["---", ""])
+        lines.extend(slide)
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _write_autogenerated_output_artifacts(context: _CompileContext) -> None:
+    protocol = context.protocol_state["active_protocol"]
+    pages = context.decision_pages + context.judgment_pages
+    overdue_pages = [page for page in pages if page.get("overdue_review") == "true"]
+    escalated_pages = [page for page in pages if page.get("escalation_candidate") == "true"]
+    pending_pages = [page for page in pages if page.get("pending_review") == "true"]
+    judgment_relation_edges = list(context.memory.get("edges", {}).get("judgment_to_judgment", []))
+    decision_relation_edges = list(context.memory.get("edges", {}).get("judgment_to_decision", []))
+    node_map = {
+        str(node.get("page_id") or ""): node
+        for node in context.memory.get("judgment_nodes", [])
+        if isinstance(node, dict) and node.get("page_id")
+    }
+    relation_figure_path = context.root / "output" / "figures" / "judgment-relation-map.md"
+    governance_figure_path = context.root / "output" / "figures" / "governance-health-dashboard.md"
+    status_slides_path = context.root / "output" / "slides" / "furnace-governance-status.md"
+    density_slides_path = context.root / "output" / "slides" / "furnace-output-density.md"
+    decision_memo_count = len(list((decision_memos_dir(context.root)).glob("*.md")))
+    report_count = len(list((context.root / "output" / "reports").glob("*.md")))
+    current_slide_count = len(list((context.root / "output" / "slides").glob("*.md")))
+    current_figure_count = len(list((context.root / "output" / "figures").glob("*.md")))
+    target_slide_count = current_slide_count + sum(
+        1 for path in (status_slides_path, density_slides_path) if not path.exists()
+    )
+    target_figure_count = current_figure_count + sum(
+        1 for path in (relation_figure_path, governance_figure_path) if not path.exists()
+    )
+
+    relation_mermaid: list[str] = ["## Mermaid", "```mermaid", "graph LR"]
+    relation_node_lines: list[str] = []
+    relation_edge_lines: list[str] = []
+    seen_nodes: set[str] = set()
+    for edge in (judgment_relation_edges + decision_relation_edges)[:8]:
+        left_id = str(edge.get("from") or "")
+        right_id = str(edge.get("to") or "")
+        relation = str(edge.get("relation") or "related")
+        left_node = node_map.get(left_id, {})
+        right_node = node_map.get(right_id, {})
+        left_key = f"node_{slugify(left_id).replace('-', '_')}"
+        right_key = f"node_{slugify(right_id).replace('-', '_')}"
+        if left_key not in seen_nodes:
+            seen_nodes.add(left_key)
+            left_label = str(left_node.get("title") or left_id).replace('"', "'")
+            relation_node_lines.append(
+                f'    {left_key}["{left_label}"]'
+            )
+        if right_key not in seen_nodes:
+            seen_nodes.add(right_key)
+            right_label = str(right_node.get("title") or right_id).replace('"', "'")
+            relation_node_lines.append(
+                f'    {right_key}["{right_label}"]'
+            )
+        if relation == "supports":
+            connector = "-->"
+        elif relation == "contradicts":
+            connector = "-.->"
+        else:
+            connector = "---"
+        relation_edge_lines.append(f"    {left_key} {connector}|{relation}| {right_key}")
+    if not relation_node_lines:
+        relation_mermaid.append('    placeholder["No explicit judgment relations yet"]')
+    else:
+        relation_mermaid.extend(relation_node_lines)
+        relation_mermaid.extend(relation_edge_lines)
+    relation_mermaid.append("```")
+    relation_figure_created_at = _stable_output_created_at(relation_figure_path, context.compiled_at)
+    context.write_output_pack_artifact(
+        relation_figure_path,
+        _render_auto_figure_artifact(
+            artifact_id="auto-figure-judgment-relation-map",
+            title="Judgment Relation Map",
+            query="Auto figure · judgment relation map",
+            protocol=protocol,
+            created_at=relation_figure_created_at,
+            generated_at=context.compiled_at,
+            body_lines=[
+                "## Summary",
+                f"- Judgment relation edges: `{len(judgment_relation_edges)}`",
+                f"- Judgment-decision edges: `{len(decision_relation_edges)}`",
+                f"- Reviewed judgment assets: `{len(context.memory.get('judgment_nodes', []))}`",
+                "",
+                *relation_mermaid,
+            ],
+        ),
+    )
+
+    governance_figure_created_at = _stable_output_created_at(governance_figure_path, context.compiled_at)
+    context.write_output_pack_artifact(
+        governance_figure_path,
+        _render_auto_figure_artifact(
+            artifact_id="auto-figure-governance-health-dashboard",
+            title="Governance Health Dashboard",
+            query="Auto figure · governance health dashboard",
+            protocol=protocol,
+            created_at=governance_figure_created_at,
+            generated_at=context.compiled_at,
+            body_lines=[
+                "## Health Snapshot",
+                "| Metric | Value |",
+                "| --- | --- |",
+                f"| Pending review | `{len(pending_pages)}` |",
+                f"| Overdue review | `{len(overdue_pages)}` |",
+                f"| Escalation candidates | `{len(escalated_pages)}` |",
+                f"| Drift warnings | `{len(context.previous_compile_state.get('drift_warnings', []))}` |",
+                "",
+                "## Mermaid",
+                "```mermaid",
+                "flowchart LR",
+                f'    pending["Pending {len(pending_pages)}"] --> overdue["Overdue {len(overdue_pages)}"]',
+                f'    overdue --> escalated["Escalated {len(escalated_pages)}"]',
+                f'    escalated --> relations["Relations {len(judgment_relation_edges) + len(decision_relation_edges)}"]',
+                "```",
+            ],
+        ),
+    )
+
+    status_slides_created_at = _stable_output_created_at(status_slides_path, context.compiled_at)
+    context.write_output_pack_artifact(
+        status_slides_path,
+        _render_auto_slides_artifact(
+            title="Furnace Governance Status",
+            query="Auto slides · furnace governance status",
+            protocol=protocol,
+            created_at=status_slides_created_at,
+            generated_at=context.compiled_at,
+            slides=[
+                [
+                    "# Furnace Governance Status",
+                    "",
+                    f"- Protocol: `{protocol}`",
+                    f"- Pending review: `{len(pending_pages)}`",
+                    f"- Overdue review: `{len(overdue_pages)}`",
+                    f"- Escalation candidates: `{len(escalated_pages)}`",
+                ],
+                [
+                    "## Judgment Relation Coverage",
+                    "",
+                    f"- Judgment relation edges: `{len(judgment_relation_edges)}`",
+                    f"- Judgment-decision edges: `{len(decision_relation_edges)}`",
+                    f"- Judgment assets: `{len(context.memory.get('judgment_nodes', []))}`",
+                ],
+                [
+                    "## Next Moves",
+                    "",
+                    "- Review overdue pages first.",
+                    "- Keep decision pages tied to judgment pages.",
+                    "- Use execution/review receipts to close escalations.",
+                ],
+            ],
+        ),
+    )
+
+    density_slides_created_at = _stable_output_created_at(density_slides_path, context.compiled_at)
+    context.write_output_pack_artifact(
+        density_slides_path,
+        _render_auto_slides_artifact(
+            title="Furnace Output Density",
+            query="Auto slides · furnace output density",
+            protocol=protocol,
+            created_at=density_slides_created_at,
+            generated_at=context.compiled_at,
+            slides=[
+                [
+                    "# Furnace Output Density",
+                    "",
+                    f"- Reports: `{report_count}`",
+                    f"- Decision memos: `{decision_memo_count}`",
+                    f"- Slides: `{target_slide_count}`",
+                    f"- Figures: `{target_figure_count}`",
+                ],
+                [
+                    "## Runtime Coverage",
+                    "",
+                    f"- Source nodes: `{len(context.memory.get('source_nodes', []))}`",
+                    f"- Concept nodes: `{len(context.memory.get('concept_nodes', []))}`",
+                    f"- Judgment nodes: `{len(context.memory.get('judgment_nodes', []))}`",
+                ],
+                [
+                    "## Output Focus",
+                    "",
+                    "- Keep slides tied to runtime state and review backlog.",
+                    "- Keep figures tied to machine-memory structure and governance pressure.",
+                    "- Let decision memos stay protocol-specific.",
+                ],
+            ],
+        ),
+    )
+
+
 def _compile_output_phase(context: _CompileContext) -> None:
+    _write_autogenerated_output_artifacts(context)
+    context.all_outputs = collect_output_density_artifacts(context.root)
+    context.recent_outputs = collect_recent_output_artifacts(context.root)
     output_pack_build = build_output_packs_incremental(
         context.root,
         context.decision_pages,
@@ -1091,6 +1442,7 @@ def _compile_output_phase(context: _CompileContext) -> None:
     context.write_index_artifact(
         execution_center_html_path(context.root),
         render_execution_center_html(
+            context.root,
             context.memory,
             compiled_at=context.compiled_at,
             active_protocol=context.protocol_state["active_protocol"],
@@ -1315,6 +1667,7 @@ def _build_compile_state_document(
     context: _CompileContext,
     phase_summary: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    drift_warnings = _build_compile_drift_warnings(context)
     return {
         "version": 1,
         "compiled_at": context.compiled_at,
@@ -1342,8 +1695,103 @@ def _build_compile_state_document(
         "clean_index_artifacts": context.clean_index_artifacts,
         "dirty_maintenance_artifacts": context.dirty_maintenance_artifacts,
         "clean_maintenance_artifacts": context.clean_maintenance_artifacts,
+        "drift_warnings": drift_warnings,
         "phase_summary": phase_summary,
     }
+
+
+def _compile_state_concept_slugs(document: dict[str, Any]) -> set[str]:
+    concept_slugs: set[str] = set()
+    for key in ("dirty_concept_slugs", "clean_concept_slugs"):
+        items = document.get(key, [])
+        if not isinstance(items, list):
+            continue
+        concept_slugs.update(str(slug) for slug in items if str(slug))
+    return concept_slugs
+
+
+def _build_compile_drift_warnings(context: _CompileContext) -> list[dict[str, Any]]:
+    warnings: list[dict[str, Any]] = []
+    previous_concept_slugs = _compile_state_concept_slugs(context.previous_compile_state)
+    current_concept_slugs = {
+        str(node.get("slug") or "")
+        for node in context.memory.get("concept_nodes", [])
+        if isinstance(node, dict) and str(node.get("slug") or "")
+    }
+    removed_concept_slugs = sorted(previous_concept_slugs - current_concept_slugs)
+    if removed_concept_slugs:
+        warnings.append(
+            {
+                "kind": "concept-disappear",
+                "message": f"{len(removed_concept_slugs)} concept page(s) disappeared since the previous compile.",
+                "concept_slugs": removed_concept_slugs[:8],
+            }
+        )
+
+    drift = context.memory.get("drift", {})
+    if isinstance(drift, dict):
+        missing_reference_paths = [
+            *[str(path) for path in drift.get("missing_raw_files", []) if str(path)],
+            *[str(path) for path in drift.get("missing_source_pages", []) if str(path)],
+        ]
+        for path in missing_reference_paths[:4]:
+            warnings.append(
+                {
+                    "kind": "source-reference-break",
+                    "path": path,
+                    "message": f"Missing source reference `{path}`.",
+                }
+            )
+
+    invalidated_judgments: list[dict[str, Any]] = []
+    for entry in context.knowledge_lifecycle.get("entries", []):
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("kind") or "") != "judgment":
+            continue
+        invalidation_signals = entry.get("invalidation_signals", [])
+        if not isinstance(invalidation_signals, list) or not invalidation_signals:
+            continue
+        invalidated_judgments.append(entry)
+    citation_drift_judgments = [
+        entry
+        for entry in invalidated_judgments
+        if "citation-drift" in entry.get("invalidation_signals", [])
+        or bool(entry.get("citation_drift"))
+    ]
+    for entry in citation_drift_judgments[:4]:
+        warnings.append(
+            {
+                "kind": "source-reference-break",
+                "path": str(entry.get("path") or ""),
+                "message": (
+                    f"{str(entry.get('title') or entry.get('path') or 'judgment')} cites drifted source evidence."
+                ),
+            }
+        )
+
+    invalidated_judgments.sort(
+        key=lambda item: (
+            -len(item.get("invalidation_signals", []) if isinstance(item.get("invalidation_signals"), list) else []),
+            str(item.get("path") or ""),
+        )
+    )
+    for entry in invalidated_judgments[:4]:
+        warnings.append(
+            {
+                "kind": "judgment-invalidation",
+                "path": str(entry.get("path") or ""),
+                "message": (
+                    f"{str(entry.get('title') or entry.get('path') or 'judgment')} requires invalidation review."
+                ),
+                "invalidation_signals": [
+                    str(signal)
+                    for signal in entry.get("invalidation_signals", [])
+                    if str(signal)
+                ][:4],
+            }
+        )
+    return warnings[:8]
 
 
 def _compile_log_details(context: _CompileContext) -> list[str]:
@@ -1373,6 +1821,7 @@ def _compile_log_details(context: _CompileContext) -> list[str]:
         f"compile_clean_index_artifacts: `{len(context.clean_index_artifacts)}`",
         f"compile_dirty_maintenance_artifacts: `{len(context.dirty_maintenance_artifacts)}`",
         f"compile_clean_maintenance_artifacts: `{len(context.clean_maintenance_artifacts)}`",
+        f"compile_drift_warnings: `{len(_build_compile_drift_warnings(context))}`",
         f"source_pages_updated: `{context.source_changed_pages}`",
         f"source_pages: `{len(context.entries)}`",
         f"concept_pages: `{len(context.concepts)}`",
@@ -1396,6 +1845,7 @@ def _build_compile_result_payload(
     context: _CompileContext,
     phase_summary: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    drift_warnings = _build_compile_drift_warnings(context)
     return {
         "compiled_at": context.compiled_at,
         "sources": len(context.entries),
@@ -1440,6 +1890,7 @@ def _build_compile_result_payload(
         "clean_index_artifacts": list(context.clean_index_artifacts),
         "dirty_maintenance_artifacts": list(context.dirty_maintenance_artifacts),
         "clean_maintenance_artifacts": list(context.clean_maintenance_artifacts),
+        "drift_warnings": drift_warnings,
         "phase_summary": phase_summary,
         "output_packs": dict(context.output_packs["counts"]),
         "domain_pilots": len(context.domain_pilots["scorecards"]),
@@ -2274,7 +2725,13 @@ def review_concept_rewrite(
 
 
 @runtime_write_operation
-def apply_concept_rewrite(root: Path, slug: str, *, note: str | None = None) -> dict[str, Any]:
+def apply_concept_rewrite(
+    root: Path,
+    slug: str,
+    *,
+    note: str | None = None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
     ensure_layout(root)
     proposals = _load_concept_rewrite_proposals(root)
     target = _find_concept_rewrite_proposal(proposals, slug)
@@ -2301,6 +2758,57 @@ def apply_concept_rewrite(root: Path, slug: str, *, note: str | None = None) -> 
         expected_source_signature,
         normalized_source_pages,
     )
+    if dry_run:
+        previewed_at = utc_now()
+        current_markdown = concept_path.read_text(encoding="utf-8", errors="replace")
+        dry_run_path = rewrite_dry_run_path(root, slug)
+        payload = {
+            "version": 1,
+            "kind": "rewrite-dry-run",
+            "generated_by": "aiwiki-apply-rewrite",
+            "generated_at": previewed_at,
+            "slug": slug,
+            "title": str(target.get("title") or slug),
+            "status": str(target.get("status") or "accepted"),
+            "target_path": relative_path(root, concept_path),
+            "proposal_path": str(target.get("proposal_path") or ""),
+            "source_signature": expected_source_signature,
+            "candidate_digest": concept_rewrite_proposal_digest(candidate_markdown),
+            "current_digest": concept_rewrite_proposal_digest(current_markdown),
+            "summary_before": preserved_section(current_markdown, "Summary", "").strip(),
+            "summary_after": preserved_section(candidate_markdown, "Summary", "").strip(),
+            "candidate_markdown": candidate_markdown,
+        }
+        write_execution_dry_run_document(dry_run_path, payload)
+        append_runtime_history(
+            root,
+            {
+                "event_type": "rewrite-dry-run",
+                "occurred_at": previewed_at,
+                "slug": slug,
+                "target_path": relative_path(root, concept_path),
+                "proposal_path": str(target.get("proposal_path") or ""),
+                "status": "accepted",
+                "note": note or "",
+            },
+        )
+        append_wiki_log(
+            root,
+            "rewrite-dry-run",
+            str(target.get("title") or slug),
+            [
+                f"slug: `{slug}`",
+                f"target: `{relative_path(root, concept_path)}`",
+                f"preview: `{relative_path(root, dry_run_path)}`",
+            ],
+        )
+        return {
+            "slug": slug,
+            "status": str(target.get("status") or "accepted"),
+            "dry_run": True,
+            "dry_run_path": relative_path(root, dry_run_path),
+            "path": relative_path(root, concept_path),
+        }
     previous_snapshot = concept_page_snapshot(root, slug)
     concept_path.write_text(candidate_markdown.strip() + "\n", encoding="utf-8")
     applied_at = utc_now()
@@ -2707,14 +3215,57 @@ def apply_machine_memory_action(
     preview_apply_mode = str(preview.get("apply_mode") or "")
     if not preview_apply_mode:
         raise RuntimeError("Safe apply preview is missing an apply mode.")
-    bundle = build_execution_bundle(root, proposal, compiled_at=utc_now())
+    previewed_at = utc_now()
+    bundle = build_execution_bundle(root, proposal, compiled_at=previewed_at)
     if dry_run:
+        selected_bundle_path = root / str(proposal.get("bundle_path") or relative_path(root, execution_bundle_path(root, action_id)))
+        write_execution_bundle_document(selected_bundle_path, bundle)
+        dry_run_path = execution_dry_run_path(root, action_id)
+        dry_run_payload = {
+            "version": 1,
+            "kind": "execution-dry-run",
+            "generated_by": "aiwiki-apply-action",
+            "generated_at": previewed_at,
+            "operation": "apply",
+            "action_id": action_id,
+            "title": str(target.get("title") or action_id),
+            "status": str(target.get("status") or "accepted"),
+            "apply_mode": preview_apply_mode,
+            "proposal_path": str(proposal.get("proposal_path") or ""),
+            "bundle_path": relative_path(root, selected_bundle_path),
+            "preview": proposal.get("safe_apply_preview"),
+            "bundle": bundle,
+        }
+        write_execution_dry_run_document(dry_run_path, dry_run_payload)
+        append_runtime_history(
+            root,
+            {
+                "event_type": "action-dry-run",
+                "occurred_at": previewed_at,
+                "action_id": action_id,
+                "protocol": protocol,
+                "bundle_path": relative_path(root, selected_bundle_path),
+                "preview_path": relative_path(root, dry_run_path),
+                "note": note or "",
+            },
+        )
+        append_wiki_log(
+            root,
+            "action-dry-run",
+            str(target.get("title") or action_id),
+            [
+                f"action_id: `{action_id}`",
+                f"apply_mode: `{preview_apply_mode}`",
+                f"bundle: `{relative_path(root, selected_bundle_path)}`",
+            ],
+        )
         return {
             "id": action_id,
             "dry_run": True,
             "apply_mode": preview_apply_mode,
             "status": str(target.get("status") or "accepted"),
-            "bundle_path": proposal.get("bundle_path", ""),
+            "bundle_path": relative_path(root, selected_bundle_path),
+            "dry_run_path": relative_path(root, dry_run_path),
             "proposal_path": proposal.get("proposal_path", ""),
             "preview": proposal.get("safe_apply_preview"),
             "bundle": bundle,
@@ -2993,6 +3544,7 @@ def apply_material_archive(
     entry_id: str,
     *,
     note: str | None = None,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     ensure_layout(root)
     manifest = sync_manifest_with_raw(root)
@@ -3053,6 +3605,64 @@ def apply_material_archive(
     source_path = f"wiki/sources/{entry_id}.md"
     protocol = str(load_protocol_state(root)["active_protocol"] or DEFAULT_PROTOCOL)
     applied_at = utc_now()
+    bundle = build_material_archive_bundle(
+        root,
+        entry_id=entry_id,
+        title=title,
+        source_path=source_path,
+        protocol=protocol,
+        applied_at=applied_at,
+        operation="apply",
+        current_temperature="cold",
+        resulting_temperature="archived",
+    )
+    if dry_run:
+        bundle_path = root / str(bundle.get("bundle_path") or relative_path(root, execution_bundle_path(root, material_archive_action_id(entry_id))))
+        write_execution_bundle_document(bundle_path, bundle)
+        dry_run_path = archive_dry_run_path(root, entry_id)
+        dry_run_payload = {
+            "version": 1,
+            "kind": "archive-dry-run",
+            "generated_by": "aiwiki-apply-archive",
+            "generated_at": applied_at,
+            "entry_id": entry_id,
+            "title": title,
+            "status": str(candidate.get("status") or ""),
+            "protocol": protocol,
+            "bundle_path": relative_path(root, bundle_path),
+            "preview": bundle.get("safe_apply_preview"),
+            "bundle": bundle,
+        }
+        write_execution_dry_run_document(dry_run_path, dry_run_payload)
+        append_runtime_history(
+            root,
+            {
+                "event_type": "archive-dry-run",
+                "occurred_at": applied_at,
+                "protocol": protocol,
+                "source_ids": [entry_id],
+                "bundle_path": relative_path(root, bundle_path),
+                "preview_path": relative_path(root, dry_run_path),
+                "note": note or "",
+            },
+        )
+        append_wiki_log(
+            root,
+            "archive-dry-run",
+            title,
+            [
+                f"entry_id: `{entry_id}`",
+                f"source: `{source_path}`",
+                f"bundle: `{relative_path(root, bundle_path)}`",
+            ],
+        )
+        return {
+            "id": entry_id,
+            "status": str(candidate.get("status") or ""),
+            "dry_run": True,
+            "bundle_path": relative_path(root, bundle_path),
+            "dry_run_path": relative_path(root, dry_run_path),
+        }
     receipt = build_material_archive_receipt(
         root,
         entry_id=entry_id,
@@ -3346,6 +3956,263 @@ def review_page(
         "status": status,
         "reviewed_at": reviewed_at,
         "confidence": str(frontmatter.get("confidence") or ""),
+    }
+
+
+def _build_batch_id(prefix: str, subjects: list[str]) -> str:
+    first_subject = next((subject for subject in subjects if subject), "item")
+    return f"{prefix}-{utc_now()}-{slugify(first_subject)}"
+
+
+def _load_latest_action_apply_batch_receipt(root: Path, batch_id: str | None) -> dict[str, Any]:
+    if batch_id:
+        receipt = load_json_document(execution_batch_receipt_path(root, batch_id))
+        if not isinstance(receipt, dict) or not receipt:
+            raise FileNotFoundError(f"Batch receipt not found: {batch_id}")
+        return receipt
+    history = [event for event in load_runtime_history(root) if isinstance(event, dict)]
+    reverted_batch_ids = {
+        str(event.get("reverted_batch_id") or "")
+        for event in history
+        if str(event.get("event_type") or "") == "action-revert-batch" and str(event.get("reverted_batch_id") or "")
+    }
+    for event in reversed(history):
+        if str(event.get("event_type") or "") != "action-apply-batch":
+            continue
+        candidate_batch_id = str(event.get("batch_id") or "")
+        if not candidate_batch_id or candidate_batch_id in reverted_batch_ids:
+            continue
+        receipt_path = root / str(event.get("receipt_path") or "")
+        receipt = load_json_document(receipt_path)
+        if isinstance(receipt, dict):
+            return receipt
+    raise RuntimeError("No unreverted action apply batch found.")
+
+
+@runtime_write_operation
+def review_pages_batch(
+    root: Path,
+    pages: list[str],
+    status: str,
+    *,
+    note: str | None = None,
+    confidence: str | None = None,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    ordered_pages: list[str] = []
+    seen_pages: set[str] = set()
+    for page in pages:
+        normalized = page.strip()
+        if not normalized or normalized in seen_pages:
+            continue
+        seen_pages.add(normalized)
+        ordered_pages.append(normalized)
+    if not ordered_pages:
+        raise ValueError("Batch review requires at least one page.")
+    items = [
+        review_page(root, page, status, note=note, confidence=confidence)
+        for page in ordered_pages
+    ]
+    generated_at = utc_now()
+    batch_id = _build_batch_id("review-page-batch", ordered_pages)
+    receipt = build_execution_batch_receipt(
+        root,
+        batch_id=batch_id,
+        operation="review-page-batch",
+        generated_at=generated_at,
+        items=items,
+        note=note,
+        revert_supported=False,
+    )
+    receipt_path = execution_batch_receipt_path(root, batch_id)
+    write_execution_batch_receipt_document(receipt_path, receipt)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "page-review-batch",
+            "occurred_at": generated_at,
+            "batch_id": batch_id,
+            "receipt_path": relative_path(root, receipt_path),
+            "page_paths": [str(item.get("path") or "") for item in items],
+            "status": status,
+            "count": len(items),
+        },
+    )
+    append_wiki_log(
+        root,
+        "review-batch",
+        f"{len(items)} pages",
+        [
+            f"status: `{status}`",
+            f"receipt: `{relative_path(root, receipt_path)}`",
+            f"pages: `{', '.join(str(item.get('path') or '') for item in items[:4])}`",
+        ],
+    )
+    return {
+        "batch_id": batch_id,
+        "operation": "review-page-batch",
+        "status": status,
+        "count": len(items),
+        "receipt_path": relative_path(root, receipt_path),
+        "items": items,
+    }
+
+
+@runtime_write_operation
+def apply_machine_memory_actions_batch(
+    root: Path,
+    action_ids: list[str],
+    *,
+    note: str | None = None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    ordered_ids: list[str] = []
+    seen_ids: set[str] = set()
+    for action_id in action_ids:
+        normalized = action_id.strip()
+        if not normalized or normalized in seen_ids:
+            continue
+        seen_ids.add(normalized)
+        ordered_ids.append(normalized)
+    if not ordered_ids:
+        raise ValueError("Batch apply requires at least one action.")
+    state = load_machine_memory_action_state(root)
+    actions = {
+        str(action.get("id") or ""): action
+        for action in state.get("actions", [])
+        if isinstance(action, dict) and str(action.get("id") or "")
+    }
+    missing = [action_id for action_id in ordered_ids if action_id not in actions]
+    if missing:
+        raise FileNotFoundError(f"Machine-memory action not found: {missing[0]}")
+    unsupported = [action_id for action_id in ordered_ids if not action_supports_low_risk_apply(actions[action_id])]
+    if unsupported:
+        raise RuntimeError(f"Machine-memory action is not ready for low-risk batch apply: {unsupported[0]}")
+    items: list[dict[str, Any]] = []
+    operation = "action-dry-run-batch" if dry_run else "action-apply-batch"
+    for action_id in ordered_ids:
+        preview = apply_machine_memory_action(root, action_id, note=note, dry_run=True)
+        if dry_run:
+            items.append(preview)
+            continue
+        applied = apply_machine_memory_action(
+            root,
+            action_id,
+            note=note,
+            bundle_path=str(preview.get("bundle_path") or ""),
+        )
+        items.append(applied)
+    generated_at = utc_now()
+    batch_id = _build_batch_id(operation, ordered_ids)
+    receipt = build_execution_batch_receipt(
+        root,
+        batch_id=batch_id,
+        operation=operation,
+        generated_at=generated_at,
+        items=items,
+        note=note,
+        revert_supported=not dry_run,
+    )
+    receipt_path = execution_batch_receipt_path(root, batch_id)
+    write_execution_batch_receipt_document(receipt_path, receipt)
+    append_runtime_history(
+        root,
+        {
+            "event_type": operation,
+            "occurred_at": generated_at,
+            "batch_id": batch_id,
+            "receipt_path": relative_path(root, receipt_path),
+            "action_ids": ordered_ids,
+            "count": len(items),
+            "dry_run": dry_run,
+        },
+    )
+    append_wiki_log(
+        root,
+        "action-batch",
+        f"{len(items)} actions",
+        [
+            f"operation: `{operation}`",
+            f"receipt: `{relative_path(root, receipt_path)}`",
+            f"actions: `{', '.join(ordered_ids[:5])}`",
+        ],
+    )
+    return {
+        "batch_id": batch_id,
+        "operation": operation,
+        "dry_run": dry_run,
+        "count": len(items),
+        "receipt_path": relative_path(root, receipt_path),
+        "items": items,
+    }
+
+
+@runtime_write_operation
+def revert_machine_memory_action_batch(
+    root: Path,
+    *,
+    batch_id: str | None = None,
+    note: str | None = None,
+) -> dict[str, Any]:
+    ensure_layout(root)
+    target_receipt = _load_latest_action_apply_batch_receipt(root, batch_id)
+    if str(target_receipt.get("kind") or "") != "execution-batch-receipt":
+        raise RuntimeError("Batch receipt is not valid.")
+    if str(target_receipt.get("operation") or "") != "action-apply-batch":
+        raise RuntimeError("Only action apply batches can be reverted.")
+    target_batch_id = str(target_receipt.get("batch_id") or batch_id or "")
+    action_ids = [
+        str(item.get("id") or item.get("action_id") or "")
+        for item in target_receipt.get("items", [])
+        if isinstance(item, dict) and (item.get("id") or item.get("action_id"))
+    ]
+    if not action_ids:
+        raise RuntimeError("Action apply batch receipt is empty.")
+    items = [revert_machine_memory_action(root, action_id, note=note) for action_id in reversed(action_ids)]
+    generated_at = utc_now()
+    revert_batch_id = _build_batch_id("action-revert-batch", action_ids)
+    receipt = build_execution_batch_receipt(
+        root,
+        batch_id=revert_batch_id,
+        operation="action-revert-batch",
+        generated_at=generated_at,
+        items=items,
+        note=note,
+        revert_supported=False,
+        reverted_batch_id=target_batch_id,
+    )
+    receipt_path = execution_batch_receipt_path(root, revert_batch_id)
+    write_execution_batch_receipt_document(receipt_path, receipt)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "action-revert-batch",
+            "occurred_at": generated_at,
+            "batch_id": revert_batch_id,
+            "reverted_batch_id": target_batch_id,
+            "receipt_path": relative_path(root, receipt_path),
+            "action_ids": action_ids,
+            "count": len(items),
+        },
+    )
+    append_wiki_log(
+        root,
+        "action-batch-revert",
+        f"{len(items)} actions",
+        [
+            f"reverted_batch: `{target_batch_id}`",
+            f"receipt: `{relative_path(root, receipt_path)}`",
+            f"actions: `{', '.join(action_ids[:5])}`",
+        ],
+    )
+    return {
+        "batch_id": revert_batch_id,
+        "operation": "action-revert-batch",
+        "reverted_batch_id": target_batch_id,
+        "count": len(items),
+        "receipt_path": relative_path(root, receipt_path),
+        "items": items,
     }
 
 

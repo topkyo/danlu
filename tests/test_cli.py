@@ -8,7 +8,13 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
-from aiwiki.cli import build_parser, main
+from aiwiki.cli import (
+    _resolve_action_id,
+    _resolve_action_ids,
+    _resolve_review_pages,
+    build_parser,
+    main,
+)
 
 
 class CLITests(unittest.TestCase):
@@ -43,18 +49,21 @@ class CLITests(unittest.TestCase):
             ("drop-pdf", ["drop-pdf", "paper.pdf", "--title", "Paper"], "drop_pdf", (self.root, "paper.pdf"), {"title": "Paper"}),
             ("drop-image", ["drop-image", "chart.png", "--no-vision"], "drop_image", (self.root, "chart.png"), {"title": None, "enable_vision": False}),
             ("drop-repo", ["drop-repo", "repo", "--max-files", "10"], "drop_repo", (self.root, "repo"), {"title": None, "max_files": 10}),
+            ("drop-note", ["drop-note", "--text", "meeting notes", "--kind", "transcript"], "drop_note", (self.root, None), {"title": None, "text": "meeting notes", "kind": "transcript"}),
             ("compile", ["compile"], "compile_wiki", (self.root,), {}),
             ("protocol-status", ["protocol-status"], "load_protocol_state", (self.root,), {}),
             ("protocol-status-set", ["protocol-status", "--set", "research"], "set_active_protocol", (self.root, "research"), {}),
             ("protocol-set", ["protocol-set", "ops"], "set_active_protocol", (self.root, "ops"), {}),
             ("shell-status", ["shell-status"], "shell_status", (self.root,), {}),
+            ("dashboard", ["dashboard"], "shell_status_dashboard", (self.root,), {}),
+            ("search", ["search", "latency", "--limit", "5"], "shell_search", (self.root, "latency"), {"limit": 5}),
             ("run-compile", ["run-compile", "--limit", "3"], "run_compile", (self.root,), {"limit": 3}),
             ("ask", ["ask", "What changed?", "--format", "slides", "--protocol", "research"], "ask_question", (self.root, "What changed?", "slides"), {"protocol": "research"}),
             ("run-ask", ["run-ask", "What changed?", "--format", "decision-memo"], "run_ask", (self.root, "What changed?", "decision-memo"), {"protocol": None}),
             ("file-back", ["file-back", "artifact.md", "--title", "Filed", "--kind", "decision", "--protocol", "ops"], "file_back", (self.root, "artifact.md"), {"title": "Filed", "kind": "decision", "protocol": "ops"}),
             ("review-page", ["review-page", "page.md", "--status", "approved", "--note", "ok", "--confidence", "high"], "review_page", (self.root, "page.md", "approved"), {"note": "ok", "confidence": "high"}),
             ("review-rewrite", ["review-rewrite", "latency", "--status", "accepted", "--note", "ok"], "review_concept_rewrite", (self.root, "latency", "accepted"), {"note": "ok"}),
-            ("apply-rewrite", ["apply-rewrite", "latency", "--note", "apply"], "apply_concept_rewrite", (self.root, "latency"), {"note": "apply"}),
+            ("apply-rewrite", ["apply-rewrite", "latency", "--note", "apply", "--dry-run"], "apply_concept_rewrite", (self.root, "latency"), {"note": "apply", "dry_run": True}),
             ("verify-rewrite", ["verify-rewrite", "latency", "--note", "verify"], "verify_concept_rewrite", (self.root, "latency"), {"note": "verify"}),
             ("revert-rewrite", ["revert-rewrite", "latency", "--note", "rollback"], "revert_concept_rewrite", (self.root, "latency"), {"note": "rollback"}),
             ("retire-concept", ["retire-concept", "latency", "--note", "retire"], "retire_concept", (self.root, "latency"), {"note": "retire"}),
@@ -62,7 +71,7 @@ class CLITests(unittest.TestCase):
             ("review-action", ["review-action", "act-1", "--status", "accepted", "--note", "ok"], "review_machine_memory_action", (self.root, "act-1", "accepted"), {"note": "ok"}),
             ("apply-action", ["apply-action", "act-1", "--note", "apply", "--dry-run", "--bundle", "bundle.json"], "apply_machine_memory_action", (self.root, "act-1"), {"note": "apply", "dry_run": True, "bundle_path": "bundle.json"}),
             ("revert-action", ["revert-action", "act-1", "--note", "rollback"], "revert_machine_memory_action", (self.root, "act-1"), {"note": "rollback"}),
-            ("apply-archive", ["apply-archive", "entry-1", "--note", "archive"], "apply_material_archive", (self.root, "entry-1"), {"note": "archive"}),
+            ("apply-archive", ["apply-archive", "entry-1", "--note", "archive", "--dry-run"], "apply_material_archive", (self.root, "entry-1"), {"note": "archive", "dry_run": True}),
             ("revert-archive", ["revert-archive", "entry-1", "--note", "restore"], "revert_material_archive", (self.root, "entry-1"), {"note": "restore"}),
             ("lint", ["lint"], "lint_wiki", (self.root,), {}),
             ("run-lint", ["run-lint"], "run_lint", (self.root,), {}),
@@ -130,6 +139,83 @@ class CLITests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 130)
         self.assertEqual(stdout.getvalue(), "")
         self.assertIn("interrupted", stderr.getvalue())
+
+    def test_review_page_resolution_helpers_cover_conflicts_and_empty_queue(self) -> None:
+        with self.assertRaises(ValueError):
+            _resolve_review_pages(
+                self.root,
+                "page.md",
+                use_next=True,
+                batch=None,
+                all_pending=False,
+            )
+        with self.assertRaises(ValueError):
+            _resolve_review_pages(
+                self.root,
+                None,
+                use_next=True,
+                batch=["page-a.md"],
+                all_pending=False,
+            )
+        with patch("aiwiki.cli.build_shell_summary", return_value={"review_controls": {"pages": []}}):
+            with self.assertRaises(RuntimeError):
+                _resolve_review_pages(
+                    self.root,
+                    None,
+                    use_next=True,
+                    batch=None,
+                    all_pending=False,
+                )
+            with self.assertRaises(RuntimeError):
+                _resolve_review_pages(
+                    self.root,
+                    None,
+                    use_next=False,
+                    batch=None,
+                    all_pending=True,
+                )
+
+    def test_action_resolution_helpers_cover_empty_missing_ambiguous_and_batch_paths(self) -> None:
+        with self.assertRaises(ValueError):
+            _resolve_action_id(self.root, "   ")
+
+        state = {
+            "actions": [
+                {"id": "action-a", "title": "Alpha repair", "status": "accepted", "kind": "add-source-concept-link", "active": True},
+                {"id": "action-b", "title": "Alpha audit", "status": "accepted", "kind": "add-source-concept-link", "active": True},
+            ]
+        }
+        with patch("aiwiki.cli.load_machine_memory_action_state", return_value=state):
+            self.assertEqual(_resolve_action_id(self.root, "action-a"), "action-a")
+            with self.assertRaises(RuntimeError):
+                _resolve_action_id(self.root, "Alpha")
+            with self.assertRaises(FileNotFoundError):
+                _resolve_action_id(self.root, "missing")
+            resolved = _resolve_action_ids(
+                self.root,
+                None,
+                batch=["action-a", "action-b"],
+                all_accepted_low_risk=False,
+            )
+            self.assertEqual(resolved, ["action-a", "action-b"])
+            accepted = _resolve_action_ids(
+                self.root,
+                None,
+                batch=None,
+                all_accepted_low_risk=True,
+            )
+            self.assertEqual(accepted, ["action-a", "action-b"])
+
+        with self.assertRaises(ValueError):
+            _resolve_action_ids(self.root, "action-a", batch=["action-b"], all_accepted_low_risk=False)
+        with patch("aiwiki.cli.load_machine_memory_action_state", return_value={"actions": []}):
+            with self.assertRaises(RuntimeError):
+                _resolve_action_ids(
+                    self.root,
+                    None,
+                    batch=None,
+                    all_accepted_low_risk=True,
+                )
 
 
 if __name__ == "__main__":

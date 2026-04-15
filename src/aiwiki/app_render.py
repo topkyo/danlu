@@ -437,6 +437,7 @@ def render_curated_index(
 
 
 def render_judgment_assets(
+    root: Path,
     decisions: list[dict[str, str]],
     judgments: list[dict[str, str]],
     compiled_at: str,
@@ -446,6 +447,7 @@ def render_judgment_assets(
     from .app_surfaces import render_judgment_assets as _render_judgment_assets
 
     return _render_judgment_assets(
+        root,
         decisions,
         judgments,
         compiled_at,

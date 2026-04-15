@@ -6,20 +6,20 @@ title: "A2a Key Concepts"
 target_path: "wiki/concepts/a2a-key-concepts.md"
 source_signature: "4dce5f60fca63c518922fda267aef53a59fc817cea9d80d511d90dce7fb6997c"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T03:43:15+00:00"
+last_compiled_at: "2026-04-15T09:19:10+00:00"
 ---
 
 # Rewrite Proposal · A2a Key Concepts
 
 ## Proposal Status
 - Status: `待审提案`
-- Priority: `medium`
-- Score: `5`
+- Priority: `high`
+- Score: `6`
 - Quality score: `78`
 - Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T01:37:58+00:00`
-- Last proposed: `2026-04-15T03:43:15+00:00`
+- Last proposed: `2026-04-15T09:19:10+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`
@@ -35,7 +35,7 @@ A2A 的当前可证实核心概念，是一个围绕 `User`、`A2A Client`、`A2
 这份来源同时把 A2A 描述成一个基于 HTTP(S) 与 JSON-RPC 2.0 的代理间通信协议，并明确支持三类交互模式：同步风格的 request/response（长任务可轮询）、基于 Server-Sent Events 的流式更新，以及面向长时或断连场景的 webhook 推送通知。[A2A Key Concepts](../sources/discovered-20260415013529-a2a-key-concepts.md)
 
 ## Rewrite Strategy
-- Issues: `single-source, evidence-gap, merge-boundary`
+- Issues: `soft-hardness, single-source, evidence-gap, merge-boundary`
 - Strategy: 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。 检查是否需要合并或拆分概念边界。
 
 ## Verification

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from .config import LLMConfig
 from . import app_compile as _app_compile
 from . import app_content as _app_content
 from . import app_execution as _app_execution
@@ -12,6 +11,7 @@ from . import app_shell as _app_shell
 from . import app_state as _app_state
 from . import app_surfaces as _app_surfaces
 from . import app_utils as _app_utils
+from .config import LLMConfig
 
 _RUNTIME_LOCK_GUARD = _app_utils._RUNTIME_LOCK_GUARD
 _RUNTIME_LOCKS = _app_utils._RUNTIME_LOCKS

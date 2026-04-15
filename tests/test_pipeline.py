@@ -275,12 +275,6 @@ class PipelineTests(unittest.TestCase):
 
         review = review_machine_memory_action(self.root, action["id"], "accepted", note="Queue safe apply.")
         dry_run = apply_machine_memory_action(self.root, action["id"], dry_run=True)
-        bundle_path = self.root / dry_run["bundle_path"]
-        bundle_path.parent.mkdir(parents=True, exist_ok=True)
-        bundle_path.write_text(
-            json.dumps(dry_run["bundle"], ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
         applied = apply_machine_memory_action(
             self.root,
             action["id"],
@@ -298,6 +292,8 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(state["repair_backlog"])
         self.assertEqual(review["status"], "accepted")
         self.assertEqual(dry_run["apply_mode"], "citation-snapshot-refresh")
+        self.assertTrue((self.root / dry_run["bundle_path"]).exists())
+        self.assertTrue((self.root / dry_run["dry_run_path"]).exists())
         self.assertEqual(applied["status"], "resolved")
         self.assertEqual(reverted["status"], "proposed")
         self.assertEqual(refreshed["status"], "proposed")

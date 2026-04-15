@@ -1,6 +1,6 @@
 # 协议总览
 
-- 最近编译时间：`2026-04-15T03:37:27+00:00`
+- 最近编译时间：`2026-04-15T11:14:56+00:00`
 - 当前 active protocol：`research` (研发协议)
 - 协议总数：`5`
 - 状态文件：`.aiwiki/state/protocol.json`
@@ -25,22 +25,22 @@
 
 ## Lifecycle Governance Summary
 - 以下 lifecycle backlog 是全局 knowledge plane 工作面，按当前 active protocol 排序，不伪装成 protocol-specific 指标。
-- review concepts：`3`
-- revisit concepts：`27`
+- review concepts：`2`
+- revisit concepts：`28`
 - retired concepts：`0`
 - active concepts：`0`
 
 ## Lifecycle Concept Backlog
-- [And](../../wiki/concepts/and.md) | kind `concept` | state `待回看` | invalidation `concept-conflict,concept-evidence-gap` | active_corpora `7` | review_signals `rewrite-proposal-proposed,active-quality-pressure` | reasons `invalidation-signal,concept-conflict,concept-evidence-gap`
-- [The](../../wiki/concepts/the.md) | kind `concept` | state `待回看` | invalidation `concept-conflict,concept-evidence-gap` | active_corpora `7` | review_signals `rewrite-proposal-proposed,active-quality-pressure` | reasons `invalidation-signal,concept-conflict,concept-evidence-gap`
-- [Abstract](../../wiki/concepts/abstract.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `7` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Agent](../../wiki/concepts/agent.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `7` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Agents](../../wiki/concepts/agents.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `7` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Autogen Multi Agent](../../wiki/concepts/autogen-multi-agent.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `7` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Concept](../../wiki/concepts/concept.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `7` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Crewai](../../wiki/concepts/crewai.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `7` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Debate](../../wiki/concepts/debate.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `7` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Decision](../../wiki/concepts/decision.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `7` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [And](../../wiki/concepts/and.md) | kind `concept` | state `待回看` | invalidation `concept-conflict,concept-evidence-gap` | active_corpora `12` | review_signals `rewrite-proposal-proposed,active-quality-pressure` | reasons `invalidation-signal,concept-conflict,concept-evidence-gap`
+- [The](../../wiki/concepts/the.md) | kind `concept` | state `待回看` | invalidation `concept-conflict,concept-evidence-gap` | active_corpora `12` | review_signals `rewrite-proposal-proposed,active-quality-pressure` | reasons `invalidation-signal,concept-conflict,concept-evidence-gap`
+- [Abstract](../../wiki/concepts/abstract.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [Agent](../../wiki/concepts/agent.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [Agents](../../wiki/concepts/agents.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [Autogen Multi Agent](../../wiki/concepts/autogen-multi-agent.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [Concept](../../wiki/concepts/concept.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [Crewai](../../wiki/concepts/crewai.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [Debate](../../wiki/concepts/debate.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [Decision](../../wiki/concepts/decision.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
 
 ## Retired Concepts
 - 当前没有 retired concept。

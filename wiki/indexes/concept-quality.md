@@ -1,70 +1,78 @@
 # 概念质量
 
-- 最近编译时间：`2026-04-15T03:43:15+00:00`
+- 最近编译时间：`2026-04-15T09:28:31+00:00`
 - 弱概念页：`30`
 - 稳定概念页：`0`
-- 占位概念页：`7`
+- 占位概念页：`5`
 - 合并候选：`12`
 - 重写候选：`30`
 - 冲突信号：`2`
-- 证据缺口：`39`
-- 平均质量分：`80.0`
-- Quality bands： strong `7` / stable `21` / watch `2` / fragile `0`
+- 证据缺口：`44`
+- 平均质量分：`80.3`
+- Quality bands： strong `8` / stable `20` / watch `2` / fragile `0`
+- Hardness： hard `2` / medium `3` / soft `25`
 - Rewrite 提案：`12`
 - 待审提案：`12`
 - 可应用提案：`0`
 - 已验证提案：`0`
 - 可回滚提案：`0`
 
+## Hard Concepts
+- [Protocol](../concepts/protocol.md) | hardness `hard` | confidence `medium` | sources `4` | quality `86`
+- [Agents](../concepts/agents.md) | hardness `hard` | confidence `medium` | sources `3` | quality `93`
+- [Memory](../concepts/memory.md) | hardness `medium` | confidence `medium` | sources `5` | quality `90`
+- [Judgment](../concepts/judgment.md) | hardness `medium` | confidence `medium` | sources `3` | quality `93`
+- [Abstract](../concepts/abstract.md) | hardness `medium` | confidence `medium` | sources `3` | quality `90`
+
 ## Rewrite Now
-- [The](../concepts/the.md) | issues `placeholder-summary, conflicting-source-signals, evidence-gap` | sources `12` | related `6` | quality `64` | band `watch`
+- [The](../concepts/the.md) | hardness `soft` | issues `soft-hardness, placeholder-summary, conflicting-source-signals, evidence-gap` | sources `12` | related `6` | quality `64` | band `watch`
   - metrics: coverage `100` / consistency `65` / evidence `0` / recency `100`
-- [Model Context Protocol](../concepts/model-context-protocol.md) | issues `placeholder-summary, single-source, evidence-gap, merge-boundary` | sources `1` | related `4` | quality `78` | band `stable`
+- [Model Context Protocol](../concepts/model-context-protocol.md) | hardness `soft` | issues `soft-hardness, placeholder-summary, single-source, evidence-gap, merge-boundary` | sources `1` | related `4` | quality `78` | band `stable`
   - metrics: coverage `35` / consistency `100` / evidence `86` / recency `100`
-- [Mcp](../concepts/mcp.md) | issues `placeholder-summary, single-source, evidence-gap` | sources `1` | related `4` | quality `78` | band `stable`
+- [Mcp](../concepts/mcp.md) | hardness `soft` | issues `soft-hardness, placeholder-summary, single-source, evidence-gap` | sources `1` | related `4` | quality `78` | band `stable`
   - metrics: coverage `35` / consistency `100` / evidence `86` / recency `100`
-- [Name](../concepts/name.md) | issues `placeholder-summary, single-source, evidence-gap` | sources `1` | related `1` | quality `78` | band `stable`
+- [Name](../concepts/name.md) | hardness `soft` | issues `soft-hardness, placeholder-summary, single-source, evidence-gap` | sources `1` | related `1` | quality `78` | band `stable`
   - metrics: coverage `35` / consistency `100` / evidence `86` / recency `100`
-- [Nightly](../concepts/nightly.md) | issues `placeholder-summary, single-source, evidence-gap` | sources `1` | related `2` | quality `78` | band `stable`
+- [Nightly](../concepts/nightly.md) | hardness `soft` | issues `soft-hardness, placeholder-summary, single-source, evidence-gap` | sources `1` | related `3` | quality `78` | band `stable`
   - metrics: coverage `35` / consistency `100` / evidence `86` / recency `100`
-- [Protocol](../concepts/protocol.md) | issues `placeholder-summary, evidence-gap, merge-boundary` | sources `3` | related `6` | quality `90` | band `strong`
-  - metrics: coverage `100` / consistency `100` / evidence `58` / recency `100`
-- [And](../concepts/and.md) | issues `conflicting-source-signals, evidence-gap` | sources `8` | related `6` | quality `64` | band `watch`
+- [And](../concepts/and.md) | hardness `soft` | issues `soft-hardness, conflicting-source-signals, evidence-gap` | sources `8` | related `6` | quality `64` | band `watch`
   - metrics: coverage `100` / consistency `65` / evidence `2` / recency `100`
-- [A2a](../concepts/a2a.md) | issues `single-source, evidence-gap, merge-boundary` | sources `1` | related `4` | quality `78` | band `stable`
+- [A2a](../concepts/a2a.md) | hardness `soft` | issues `soft-hardness, single-source, evidence-gap, merge-boundary` | sources `1` | related `4` | quality `78` | band `stable`
   - metrics: coverage `35` / consistency `100` / evidence `86` / recency `100`
-- [A2a Key Concepts](../concepts/a2a-key-concepts.md) | issues `single-source, evidence-gap, merge-boundary` | sources `1` | related `4` | quality `78` | band `stable`
+- [A2a Key Concepts](../concepts/a2a-key-concepts.md) | hardness `soft` | issues `soft-hardness, single-source, evidence-gap, merge-boundary` | sources `1` | related `4` | quality `78` | band `stable`
   - metrics: coverage `35` / consistency `100` / evidence `86` / recency `100`
-- [Adk](../concepts/adk.md) | issues `single-source, evidence-gap, merge-boundary` | sources `1` | related `4` | quality `78` | band `stable`
+- [Adk](../concepts/adk.md) | hardness `soft` | issues `soft-hardness, single-source, evidence-gap, merge-boundary` | sources `1` | related `4` | quality `78` | band `stable`
   - metrics: coverage `35` / consistency `100` / evidence `86` / recency `100`
-- [Agentic](../concepts/agentic.md) | issues `single-source, evidence-gap, merge-boundary` | sources `1` | related `4` | quality `78` | band `stable`
+- [Agentic](../concepts/agentic.md) | hardness `soft` | issues `soft-hardness, single-source, evidence-gap, merge-boundary` | sources `1` | related `4` | quality `78` | band `stable`
   - metrics: coverage `35` / consistency `100` / evidence `86` / recency `100`
-- [Anthropic](../concepts/anthropic.md) | issues `single-source, evidence-gap, merge-boundary` | sources `1` | related `2` | quality `78` | band `stable`
+- [Anthropic](../concepts/anthropic.md) | hardness `soft` | issues `soft-hardness, single-source, evidence-gap, merge-boundary` | sources `1` | related `2` | quality `78` | band `stable`
+  - metrics: coverage `35` / consistency `100` / evidence `86` / recency `100`
+- [Anthropic Tool Use](../concepts/anthropic-tool-use.md) | hardness `soft` | issues `soft-hardness, single-source, evidence-gap, merge-boundary` | sources `1` | related `2` | quality `78` | band `stable`
   - metrics: coverage `35` / consistency `100` / evidence `86` / recency `100`
 
 ## Quality Distribution
-- Strong / Stable / Watch / Fragile： `7` / `21` / `2` / `0`
+- Strong / Stable / Watch / Fragile： `8` / `20` / `2` / `0`
 
 ## Rewrite Priority
-- [The](../concepts/the.md) | priority `high` | score `8` | quality `64` | band `watch` | issues `placeholder-summary, conflicting-source-signals, evidence-gap`
+- [The](../concepts/the.md) | priority `high` | score `9` | quality `64` | band `watch` | issues `soft-hardness, placeholder-summary, conflicting-source-signals, evidence-gap`
   - strategy: 替换占位摘要，改成 grounded synthesis。 并列呈现冲突来源，明确分歧和适用边界。 保留证据缺口和不确定性，避免过强结论。
-- [Model Context Protocol](../concepts/model-context-protocol.md) | priority `high` | score `8` | quality `78` | band `stable` | issues `placeholder-summary, single-source, evidence-gap, merge-boundary`
+- [Model Context Protocol](../concepts/model-context-protocol.md) | priority `high` | score `9` | quality `78` | band `stable` | issues `soft-hardness, placeholder-summary, single-source, evidence-gap, merge-boundary`
   - strategy: 替换占位摘要，改成 grounded synthesis。 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。
-- [Mcp](../concepts/mcp.md) | priority `high` | score `7` | quality `78` | band `stable` | issues `placeholder-summary, single-source, evidence-gap`
+- [Mcp](../concepts/mcp.md) | priority `high` | score `8` | quality `78` | band `stable` | issues `soft-hardness, placeholder-summary, single-source, evidence-gap`
   - strategy: 替换占位摘要，改成 grounded synthesis。 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。
-- [Name](../concepts/name.md) | priority `high` | score `7` | quality `78` | band `stable` | issues `placeholder-summary, single-source, evidence-gap`
+- [Name](../concepts/name.md) | priority `high` | score `8` | quality `78` | band `stable` | issues `soft-hardness, placeholder-summary, single-source, evidence-gap`
   - strategy: 替换占位摘要，改成 grounded synthesis。 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。
-- [Nightly](../concepts/nightly.md) | priority `high` | score `7` | quality `78` | band `stable` | issues `placeholder-summary, single-source, evidence-gap`
+- [Nightly](../concepts/nightly.md) | priority `high` | score `8` | quality `78` | band `stable` | issues `soft-hardness, placeholder-summary, single-source, evidence-gap`
   - strategy: 替换占位摘要，改成 grounded synthesis。 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。
-- [Protocol](../concepts/protocol.md) | priority `high` | score `6` | quality `90` | band `strong` | issues `placeholder-summary, evidence-gap, merge-boundary`
-  - strategy: 替换占位摘要，改成 grounded synthesis。 保留证据缺口和不确定性，避免过强结论。 检查是否需要合并或拆分概念边界。
-- [And](../concepts/and.md) | priority `high` | score `5` | quality `64` | band `watch` | issues `conflicting-source-signals, evidence-gap`
+- [And](../concepts/and.md) | priority `high` | score `6` | quality `64` | band `watch` | issues `soft-hardness, conflicting-source-signals, evidence-gap`
   - strategy: 并列呈现冲突来源，明确分歧和适用边界。 保留证据缺口和不确定性，避免过强结论。
-- [Memory](../concepts/memory.md) | priority `high` | score `5` | quality `82` | band `stable` | issues `placeholder-summary, single-source`
-  - strategy: 替换占位摘要，改成 grounded synthesis。 保持保守措辞，并指出还缺哪些来源。
-- [A2a](../concepts/a2a.md) | priority `medium` | score `5` | quality `78` | band `stable` | issues `single-source, evidence-gap, merge-boundary`
+- [A2a](../concepts/a2a.md) | priority `high` | score `6` | quality `78` | band `stable` | issues `soft-hardness, single-source, evidence-gap, merge-boundary`
   - strategy: 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。 检查是否需要合并或拆分概念边界。
-- [A2a Key Concepts](../concepts/a2a-key-concepts.md) | priority `medium` | score `5` | quality `78` | band `stable` | issues `single-source, evidence-gap, merge-boundary`
+- [A2a Key Concepts](../concepts/a2a-key-concepts.md) | priority `high` | score `6` | quality `78` | band `stable` | issues `soft-hardness, single-source, evidence-gap, merge-boundary`
+  - strategy: 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。 检查是否需要合并或拆分概念边界。
+- [Adk](../concepts/adk.md) | priority `high` | score `6` | quality `78` | band `stable` | issues `soft-hardness, single-source, evidence-gap, merge-boundary`
+  - strategy: 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。 检查是否需要合并或拆分概念边界。
+- [Agentic](../concepts/agentic.md) | priority `high` | score `6` | quality `78` | band `stable` | issues `soft-hardness, single-source, evidence-gap, merge-boundary`
   - strategy: 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。 检查是否需要合并或拆分概念边界。
 
 ## Rewrite Proposals
@@ -78,16 +86,16 @@
   - strategy: 替换占位摘要，改成 grounded synthesis。 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。
 - [Nightly](../rewrite-proposals/nightly.md) | status `待审提案` | priority `high` | apply_ready `False` | verification `pending`
   - strategy: 替换占位摘要，改成 grounded synthesis。 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。
-- [Protocol](../rewrite-proposals/protocol.md) | status `待审提案` | priority `high` | apply_ready `False` | verification `pending`
-  - strategy: 替换占位摘要，改成 grounded synthesis。 保留证据缺口和不确定性，避免过强结论。 检查是否需要合并或拆分概念边界。
+- [A2a](../rewrite-proposals/a2a.md) | status `待审提案` | priority `high` | apply_ready `False` | verification `pending`
+  - strategy: 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。 检查是否需要合并或拆分概念边界。
+- [A2a Key Concepts](../rewrite-proposals/a2a-key-concepts.md) | status `待审提案` | priority `high` | apply_ready `False` | verification `pending`
+  - strategy: 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。 检查是否需要合并或拆分概念边界。
+- [Adk](../rewrite-proposals/adk.md) | status `待审提案` | priority `high` | apply_ready `False` | verification `pending`
+  - strategy: 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。 检查是否需要合并或拆分概念边界。
+- [Agentic](../rewrite-proposals/agentic.md) | status `待审提案` | priority `high` | apply_ready `False` | verification `pending`
+  - strategy: 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。 检查是否需要合并或拆分概念边界。
 - [And](../rewrite-proposals/and.md) | status `待审提案` | priority `high` | apply_ready `False` | verification `pending`
   - strategy: 并列呈现冲突来源，明确分歧和适用边界。 保留证据缺口和不确定性，避免过强结论。
-- [Memory](../rewrite-proposals/memory.md) | status `待审提案` | priority `high` | apply_ready `False` | verification `pending`
-  - strategy: 替换占位摘要，改成 grounded synthesis。 保持保守措辞，并指出还缺哪些来源。
-- [A2a](../rewrite-proposals/a2a.md) | status `待审提案` | priority `medium` | apply_ready `False` | verification `pending`
-  - strategy: 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。 检查是否需要合并或拆分概念边界。
-- [A2a Key Concepts](../rewrite-proposals/a2a-key-concepts.md) | status `待审提案` | priority `medium` | apply_ready `False` | verification `pending`
-  - strategy: 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。 检查是否需要合并或拆分概念边界。
 
 ## Conflict Signals
 - [And](../concepts/and.md) | signal `benefit-vs-risk` | sources `wiki/sources/discovered-20260415013128-building-effective-agents.md, wiki/sources/discovered-20260415013329-react-paper-abstract.md`
@@ -97,13 +105,13 @@
 - [A2A Key Concepts](../concepts/a2a.md) | kind `evidence-gap` | source `wiki/sources/discovered-20260415013529-a2a-key-concepts.md` | markers `incomplete, partial`
 - [A2A Key Concepts](../concepts/a2a-key-concepts.md) | kind `evidence-gap` | source `wiki/sources/discovered-20260415013529-a2a-key-concepts.md` | markers `incomplete, partial`
 - [A2A Key Concepts](../concepts/concepts.md) | kind `evidence-gap` | source `wiki/sources/discovered-20260415013529-a2a-key-concepts.md` | markers `incomplete, partial`
+- [A2A Key Concepts](../concepts/memory.md) | kind `evidence-gap` | source `wiki/sources/discovered-20260415013529-a2a-key-concepts.md` | markers `incomplete, partial`
+- [A2A Key Concepts](../concepts/protocol.md) | kind `evidence-gap` | source `wiki/sources/discovered-20260415013529-a2a-key-concepts.md` | markers `incomplete, partial`
 - [Anthropic Tool Use Overview](../concepts/anthropic.md) | kind `evidence-gap` | source `wiki/sources/discovered-20260415013334-anthropic-tool-use-overview.md` | markers `truncated`
 - [Anthropic Tool Use Overview](../concepts/anthropic-tool-use.md) | kind `evidence-gap` | source `wiki/sources/discovered-20260415013334-anthropic-tool-use-overview.md` | markers `truncated`
 - [Anthropic Tool Use Overview](../concepts/the.md) | kind `evidence-gap` | source `wiki/sources/discovered-20260415013334-anthropic-tool-use-overview.md` | markers `truncated`
 - [AutoGen Multi Agent Debate Pattern](../concepts/agent.md) | kind `evidence-gap` | source `wiki/sources/discovered-20260415013331-autogen-multi-agent-debate-pattern.md` | markers `incomplete, partial, truncated, weak`
 - [AutoGen Multi Agent Debate Pattern](../concepts/and.md) | kind `evidence-gap` | source `wiki/sources/discovered-20260415013331-autogen-multi-agent-debate-pattern.md` | markers `incomplete, partial, truncated, weak`
-- [AutoGen Multi Agent Debate Pattern](../concepts/autogen-multi-agent.md) | kind `evidence-gap` | source `wiki/sources/discovered-20260415013331-autogen-multi-agent-debate-pattern.md` | markers `incomplete, partial, truncated, weak`
-- [AutoGen Multi Agent Debate Pattern](../concepts/debate.md) | kind `evidence-gap` | source `wiki/sources/discovered-20260415013331-autogen-multi-agent-debate-pattern.md` | markers `incomplete, partial, truncated, weak`
 
 ## Merge Candidates
 - [A2a](../concepts/a2a.md) <-> [A2a Key Concepts](../concepts/a2a-key-concepts.md) | shared_sources `1` | shared_tokens `a2a`

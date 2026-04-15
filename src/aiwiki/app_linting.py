@@ -70,6 +70,7 @@ from .app_content import (
     knowledge_lifecycle_governance_summary,
     load_execution_receipt_history,
     manifest_change_summary,
+    normalize_concept_hardness,
     pilot_scorecards_dir,
     placeholder_concept_slugs,
     preserved_section,
@@ -114,6 +115,7 @@ from .app_execution import (
     build_material_archive_receipt,
     execution_bundle_digest,
     load_execution_bundle,
+    write_execution_bundle_document,
 )
 from .app_memory import (
     active_corpus_bridge_evidence_ids,
@@ -158,6 +160,7 @@ from .app_protocol import (
     ACTION_STATUSES,
     AGENT_PACK_LIBRARY,
     AUTO_PROMOTION_MIN_OCCURRENCES,
+    CONCEPT_HARDNESS_LEVELS,
     CURATED_ASSET_SECTION_ORDER,
     DECISION_STATUSES,
     JUDGMENT_STATUSES,
@@ -228,6 +231,7 @@ from .app_state import (
     load_material_archive_state,
     load_material_routing_state,
     load_material_state,
+    load_planner_state,
     load_ranking_build_state,
     machine_memory_action_state_path,
     machine_memory_actions_path,
@@ -257,6 +261,7 @@ from .app_state import (
     save_machine_memory_action_state,
     save_manual_link_state,
     save_material_archive_state,
+    save_planner_state,
     shell_summary_path,
 )
 from .app_surfaces import (
@@ -870,6 +875,44 @@ def _lint_governance_phase(context: _LintContext) -> None:
         source_pages = frontmatter.get("source_pages", [])
         if not source_pages:
             context.add("warn", page, "Concept page has no source-page references.")
+        if "hardness" not in frontmatter:
+            context.add("warn", page, "Concept page is missing explicit `hardness` metadata.")
+        else:
+            raw_hardness = str(frontmatter.get("hardness") or "").strip().lower()
+            hardness = normalize_concept_hardness(frontmatter.get("hardness"), default="")
+            if hardness != raw_hardness:
+                context.add(
+                    "warn",
+                    page,
+                    f"Concept page has unsupported `hardness` metadata `{frontmatter.get('hardness', '')}`; expected one of `{', '.join(CONCEPT_HARDNESS_LEVELS)}`.",
+                )
+            elif hardness == "soft":
+                context.add(
+                    "warn",
+                    page,
+                    "Concept page is still marked `hardness: soft`; keep it in the repair backlog until grounded across more evidence or explicitly scoped down.",
+                )
+            else:
+                confidence = str(frontmatter.get("confidence") or "").strip().lower()
+                if confidence not in {"medium", "high"}:
+                    context.add(
+                        "warn",
+                        page,
+                        "Concept page with `hardness >= medium` should keep `confidence` at least `medium`.",
+                    )
+                if isinstance(source_pages, list) and len(source_pages) < 3:
+                    context.add(
+                        "warn",
+                        page,
+                        "Concept page with `hardness >= medium` should be grounded by at least 3 source pages.",
+                    )
+                conflict_section = preserved_section(content, "Conflict Signals", "")
+                if "当前没有显式冲突信号" in conflict_section:
+                    context.add(
+                        "warn",
+                        page,
+                        "Concept page with `hardness >= medium` should record at least one explicit conflict or boundary signal.",
+                    )
         for source_page in source_pages:
             candidate = context.root / source_page
             if not candidate.exists():
@@ -1142,6 +1185,8 @@ def render_repair_backlog(
         f"- 执行批次：`{repair_plan.get('counts', {}).get('batches', 0)}`",
         f"- 执行提案：`{repair_plan.get('counts', {}).get('proposals', 0)}`",
         f"- 弱概念页：`{concept_quality.get('counts', {}).get('weak', 0)}`",
+        f"- Soft 概念页：`{concept_quality.get('counts', {}).get('soft_hardness', 0)}`",
+        f"- Medium+/Hard 概念页：`{concept_quality.get('counts', {}).get('medium_or_hard', 0)}`",
         f"- 概念合并候选：`{concept_quality.get('counts', {}).get('merge_candidates', 0)}`",
         f"- 概念冲突信号：`{concept_quality.get('counts', {}).get('conflict_signals', 0)}`",
         f"- 概念证据缺口：`{concept_quality.get('counts', {}).get('gap_signals', 0)}`",
@@ -1174,6 +1219,10 @@ def render_repair_backlog(
         lines.append(f"3. 重写 `{len(placeholder_concepts)}` 个仍使用回退摘要的概念页。")
     if concept_quality.get("counts", {}).get("weak", 0):
         lines.append(f"3a. 按概念质量看板优先处理 `{concept_quality.get('counts', {}).get('weak', 0)}` 个弱概念页。")
+    if concept_quality.get("counts", {}).get("soft_hardness", 0):
+        lines.append(
+            f"3d. 把 `{concept_quality.get('counts', {}).get('soft_hardness', 0)}` 个仍停留在 `hardness: soft` 的概念页提升到更可复用的结构层。"
+        )
     if rewrite_state.get("counts", {}).get("pending_review", 0):
         lines.append(f"3b. 先审 `{rewrite_state.get('counts', {}).get('pending_review', 0)}` 个 concept rewrite proposal。")
     if apply_ready_rewrites:
@@ -1535,6 +1584,8 @@ def write_nightly_health(
             "protocol": protocol_state["active_protocol"],
             "cooled_corpus_ids": cooled_corpus_ids,
             "expired_corpus_ids": expired_corpus_ids,
+            "overdue_pages": [page["path"] for page in aging["overdue"]],
+            "escalated_pages": [page["path"] for page in aging["escalated"]],
             "active_corpus_ids": [
                 str(corpus.get("corpus_id") or "")
                 for corpus in active_corpora
@@ -1550,6 +1601,12 @@ def write_nightly_health(
     )
     material_routing = load_material_routing_state(root)
     archive_candidates = load_archive_candidates_state(root)
+    planner_state = refresh_nightly_planner_execution_state(
+        root,
+        load_planner_state(root),
+        generated_at=generated_at,
+        active_protocol=protocol_state["active_protocol"],
+    )
     knowledge_lifecycle = refresh_knowledge_lifecycle_state(
         root,
         generated_at=generated_at,
@@ -1601,6 +1658,16 @@ def write_nightly_health(
                 str(entry.get("entry_id") or "")
                 for entry in archive_candidates.get("entries", [])
                 if str(entry.get("status") or "") == "deferred"
+            ],
+        },
+        "planner": {
+            "state_path": relative_path(root, planner_state_path(root)),
+            "executed_actions": int(planner_state.get("counts", {}).get("executed_actions", 0) or 0),
+            "pending_proposals": int(planner_state.get("counts", {}).get("pending_proposals", 0) or 0),
+            "recent_executed_action_ids": [
+                str(item.get("action_id") or "")
+                for item in planner_state.get("executed_actions", [])[:6]
+                if str(item.get("action_id") or "")
             ],
         },
         "active_corpora": {
@@ -1812,3 +1879,104 @@ def write_nightly_health(
         ],
     )
     return state
+
+
+def refresh_nightly_planner_execution_state(
+    root: Path,
+    planner_state: dict[str, Any],
+    *,
+    generated_at: str,
+    active_protocol: str,
+) -> dict[str, Any]:
+    queue_items = {
+        str(item.get("action_id") or ""): item
+        for item in planner_state.get("priority_queue", [])
+        if isinstance(item, dict) and str(item.get("action_id") or "")
+    }
+    executed_by_action: dict[str, dict[str, Any]] = {}
+    for item in planner_state.get("executed_actions", []):
+        if not isinstance(item, dict):
+            continue
+        action_id = str(item.get("action_id") or "")
+        if action_id:
+            executed_by_action[action_id] = dict(item)
+
+    for proposal in planner_state.get("pending_proposals", []):
+        if not isinstance(proposal, dict):
+            continue
+        action_id = str(proposal.get("action_id") or "")
+        if not action_id or action_id in executed_by_action:
+            continue
+        queue_item = queue_items.get(action_id, {})
+        blocked = bool(queue_item.get("blocked", proposal.get("blocked", False)))
+        if blocked or str(proposal.get("status") or "") != "accepted" or str(proposal.get("risk") or "") != "low":
+            continue
+        bundle = build_execution_bundle(root, proposal, compiled_at=generated_at)
+        bundle_path = root / str(proposal.get("bundle_path") or "")
+        if not str(proposal.get("bundle_path") or ""):
+            bundle_path = execution_bundle_path(root, action_id)
+        write_execution_bundle_document(bundle_path, bundle)
+        executed_by_action[action_id] = {
+            "action_id": action_id,
+            "title": str(proposal.get("title") or action_id),
+            "bundle_path": relative_path(root, bundle_path),
+            "proposal_path": str(proposal.get("proposal_path") or ""),
+            "executed_at": generated_at,
+            "execution_band": str(proposal.get("execution_band") or ""),
+            "protocol": str(proposal.get("protocol") or active_protocol),
+            "source": "nightly-auto-bundle",
+            "status": str(proposal.get("status") or ""),
+        }
+        append_runtime_history(
+            root,
+            {
+                "event_type": "nightly-auto-bundle",
+                "occurred_at": generated_at,
+                "action_id": action_id,
+                "protocol": str(proposal.get("protocol") or active_protocol),
+                "bundle_path": relative_path(root, bundle_path),
+                "proposal_path": str(proposal.get("proposal_path") or ""),
+            },
+        )
+
+    for receipt in load_execution_receipt_history(root):
+        if not isinstance(receipt, dict) or str(receipt.get("operation") or "") != "apply":
+            continue
+        action_id = str(receipt.get("action_id") or "")
+        if not action_id:
+            continue
+        bundle = receipt.get("bundle") if isinstance(receipt.get("bundle"), dict) else {}
+        current = executed_by_action.get(action_id, {})
+        current_timestamp = str(current.get("executed_at") or "")
+        receipt_timestamp = str(receipt.get("applied_at") or "")
+        if current and current_timestamp and receipt_timestamp and current_timestamp >= receipt_timestamp:
+            continue
+        executed_by_action[action_id] = {
+            "action_id": action_id,
+            "title": str(receipt.get("title") or action_id),
+            "bundle_path": str(bundle.get("bundle_path") or ""),
+            "proposal_path": str(bundle.get("proposal_path") or ""),
+            "executed_at": receipt_timestamp,
+            "execution_band": str(bundle.get("execution_band") or ""),
+            "protocol": str(receipt.get("protocol") or active_protocol),
+            "receipt_path": str(receipt.get("receipt_path") or ""),
+            "source": "receipt-history",
+            "status": str(receipt.get("status") or ""),
+        }
+
+    executed_actions = sorted(
+        executed_by_action.values(),
+        key=lambda item: (str(item.get("executed_at") or ""), str(item.get("action_id") or "")),
+        reverse=True,
+    )[:16]
+    updated_state = {
+        **planner_state,
+        "state_path": relative_path(root, planner_state_path(root)),
+        "executed_actions": executed_actions,
+        "counts": {
+            **dict(planner_state.get("counts", {})),
+            "executed_actions": len(executed_actions),
+        },
+    }
+    save_planner_state(root, updated_state)
+    return updated_state

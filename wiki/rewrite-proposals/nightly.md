@@ -4,9 +4,9 @@ kind: "rewrite-proposal"
 status: "proposed"
 title: "Nightly"
 target_path: "wiki/concepts/nightly.md"
-source_signature: "4b9ad1a571ff87f924dd151e8b5a70417008bf6d96bd13f237b236955b3a3e0c"
+source_signature: "1aa12a9941f4d3093b9f31c90dc8854db86522075f304fab8cec1216e10c05c7"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T03:31:30+00:00"
+last_compiled_at: "2026-04-15T09:19:10+00:00"
 ---
 
 # Rewrite Proposal · Nightly
@@ -14,19 +14,19 @@ last_compiled_at: "2026-04-15T03:31:30+00:00"
 ## Proposal Status
 - Status: `待审提案`
 - Priority: `high`
-- Score: `7`
+- Score: `8`
 - Quality score: `78`
 - Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T03:31:30+00:00`
-- Last proposed: `2026-04-15T03:31:30+00:00`
+- Last proposed: `2026-04-15T09:19:10+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`
 
 ## Target
 - Target page: `wiki/concepts/nightly.md`
-- Source signature: `4b9ad1a571ff87f924dd151e8b5a70417008bf6d96bd13f237b236955b3a3e0c`
+- Source signature: `1aa12a9941f4d3093b9f31c90dc8854db86522075f304fab8cec1216e10c05c7`
 - Source pages: `wiki/sources/discovered-20260408053946-item.md`
 
 ## Current Summary Snapshot
@@ -34,7 +34,7 @@ last_compiled_at: "2026-04-15T03:31:30+00:00"
 - Use the linked source pages below to deepen or revise this synthesis.
 
 ## Rewrite Strategy
-- Issues: `placeholder-summary, single-source, evidence-gap`
+- Issues: `soft-hardness, placeholder-summary, single-source, evidence-gap`
 - Strategy: 替换占位摘要，改成 grounded synthesis。 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。
 
 ## Verification

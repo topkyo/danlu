@@ -1,21 +1,21 @@
 from __future__ import annotations
 
 import base64
-from datetime import datetime
 import io
 import json
 import os
 import subprocess
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
 from aiwiki.app_compile import (
     apply_concept_rewrite,
-    apply_material_archive,
     apply_machine_memory_action,
+    apply_material_archive,
     ask_question,
     compile_wiki,
     file_back,
@@ -24,13 +24,13 @@ from aiwiki.app_compile import (
     rank_concepts,
     rank_sources,
     reactivate_concept,
-    revert_concept_rewrite,
     retire_concept,
+    revert_concept_rewrite,
+    revert_machine_memory_action,
+    revert_material_archive,
     review_concept_rewrite,
     review_machine_memory_action,
     review_page,
-    revert_material_archive,
-    revert_machine_memory_action,
     set_active_protocol,
     shell_status,
     verify_concept_rewrite,
@@ -68,8 +68,8 @@ from aiwiki.app_state import (
     shell_summary_path,
 )
 from aiwiki.app_utils import parse_frontmatter, render_frontmatter, runtime_write_lock, strip_frontmatter
-from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
 from aiwiki.cli import main as cli_main
+from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
 from aiwiki.llm import CompletionResult
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
@@ -2466,6 +2466,20 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Execution Center", html_payload)
         self.assertIn("../../wiki/indexes/execution-center.md", html_payload)
 
+    def test_execution_center_surfaces_recent_dry_runs(self) -> None:
+        _, _, action = self._prepare_citation_snapshot_refresh_action()
+        review_machine_memory_action(self.root, action["id"], "accepted", note="Ready for dry run.")
+        dry_run = apply_machine_memory_action(self.root, action["id"], dry_run=True)
+        compile_wiki(self.root)
+
+        dashboard_payload = (self.root / "wiki" / "indexes" / "execution-center.md").read_text(encoding="utf-8")
+        html_payload = (self.root / "output" / "control" / "execution-center.html").read_text(encoding="utf-8")
+
+        self.assertIn("## Recent Dry Runs", dashboard_payload)
+        self.assertIn(dry_run["dry_run_path"], dashboard_payload)
+        self.assertIn("Recent Dry Runs", html_payload)
+        self.assertIn(dry_run["dry_run_path"], html_payload)
+
     def test_compile_writes_execution_audit_markdown_and_html(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -2565,6 +2579,9 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(planner["next_action"]["action_id"], action["id"])
         self.assertEqual(planner["priority_queue"][0]["action_id"], action["id"])
         self.assertGreater(planner["priority_queue"][0]["priority_score"], 0)
+        proposal = next(item for item in planner["pending_proposals"] if item["action_id"] == action["id"])
+        self.assertTrue(proposal["auto_bundle_candidate"])
+        self.assertFalse(proposal["human_required"])
 
         decisions = load_execution_policy_decision_history(self.root, limit=16)
         record = next(
@@ -2580,6 +2597,43 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Recent Policy Decisions", audit_payload)
         self.assertIn(action["title"], audit_payload)
         self.assertIn("decision `allow`", audit_payload)
+
+    def test_nightly_health_persists_planner_execution_history_for_auto_bundle_candidates(self) -> None:
+        _, _, action = self._prepare_citation_snapshot_refresh_action()
+        review_machine_memory_action(self.root, action["id"], "accepted", note="Queue nightly auto bundle.")
+        compile_wiki(self.root)
+
+        result = nightly_health(self.root)
+        planner = load_planner_state(self.root)
+        executed = next(item for item in planner["executed_actions"] if item.get("action_id") == action["id"])
+        nightly_state = json.loads((self.root / ".aiwiki" / "state" / "nightly-health.json").read_text(encoding="utf-8"))
+
+        self.assertGreaterEqual(planner["counts"]["executed_actions"], 1)
+        self.assertEqual(executed["source"], "nightly-auto-bundle")
+        self.assertTrue((self.root / executed["bundle_path"]).exists())
+        self.assertEqual(result["state_path"], ".aiwiki/state/nightly-health.json")
+        self.assertEqual(nightly_state["planner"]["recent_executed_action_ids"][0], action["id"])
+
+    def test_compile_writes_drift_warnings_for_concept_disappear_source_break_and_judgment_invalidation(self) -> None:
+        _, _, _ = self._prepare_citation_snapshot_refresh_action()
+        compile_state_path = self.root / ".aiwiki" / "state" / "compile-state.json"
+        previous_compile_state = json.loads(compile_state_path.read_text(encoding="utf-8"))
+        previous_compile_state["clean_concept_slugs"] = sorted(
+            set(previous_compile_state.get("clean_concept_slugs", [])) | {"phantom-concept"}
+        )
+        compile_state_path.write_text(
+            json.dumps(previous_compile_state, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        result = compile_wiki(self.root)
+        compile_state = json.loads(compile_state_path.read_text(encoding="utf-8"))
+        warning_kinds = {item["kind"] for item in compile_state["drift_warnings"]}
+
+        self.assertIn("concept-disappear", warning_kinds)
+        self.assertIn("source-reference-break", warning_kinds)
+        self.assertIn("judgment-invalidation", warning_kinds)
+        self.assertEqual(result["drift_warnings"], compile_state["drift_warnings"])
 
     def test_execution_audit_surfaces_consistency_signal_for_resolved_action_without_receipt(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -4519,6 +4573,51 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Judgment page has citation snapshot gaps", report_text)
         self.assertIn("Reviewed judgment page has citation drift", report_text)
 
+    def test_cognitive_history_surfaces_nightly_escalation_events(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+        review_page(
+            self.root,
+            decision["path"],
+            "approved",
+            note="Approved before escalation window.",
+        )
+
+        decision_path = self.root / decision["path"]
+        decision_text = decision_path.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(decision_text)
+        frontmatter["revisit_after"] = "2000-01-01T00:00:00+00:00"
+        frontmatter["escalate_after"] = "2000-01-02T00:00:00+00:00"
+        decision_path.write_text(
+            f"{render_frontmatter(frontmatter)}\n\n{strip_frontmatter(decision_text).lstrip()}",
+            encoding="utf-8",
+        )
+
+        nightly_health(self.root)
+        compile_wiki(self.root)
+
+        cognitive_history = (self.root / "wiki" / "indexes" / "cognitive-history.md").read_text(encoding="utf-8")
+        self.assertIn("Nightly 升级事件", cognitive_history)
+        self.assertIn("Scaling Decision", cognitive_history)
+        self.assertIn("escalated `1`", cognitive_history)
+
+        review_page(
+            self.root,
+            decision["path"],
+            "approved",
+            note="Re-reviewed after escalation.",
+        )
+        result = nightly_health(self.root)
+        compile_wiki(self.root)
+
+        self.assertNotIn(decision["path"], result["aging"]["overdue_pages"])
+        self.assertNotIn(decision["path"], result["aging"]["escalated_pages"])
+        cognitive_history = (self.root / "wiki" / "indexes" / "cognitive-history.md").read_text(encoding="utf-8")
+        self.assertIn("Judgment 生命周期事件", cognitive_history)
+        self.assertIn("已批准", cognitive_history)
+
     def test_nightly_updates_existing_auto_promoted_page_without_duplicates(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -5853,9 +5952,11 @@ class AiwikiFlowTests(unittest.TestCase):
 
         payload = (self.root / "output" / "graph" / "machine-memory.html").read_text(encoding="utf-8")
         self.assertIn("graph-search", payload)
+        self.assertIn("graph-protocol", payload)
         self.assertIn("graph-node-browser", payload)
         self.assertIn("graphUiData", payload)
         self.assertIn("节点详情", payload)
+        self.assertIn('option value="judgment"', payload)
 
     def test_compile_attaches_judgment_assets_to_machine_memory_graph(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -5886,6 +5987,73 @@ class AiwikiFlowTests(unittest.TestCase):
         payload = (self.root / "output" / "graph" / "machine-memory.html").read_text(encoding="utf-8")
         self.assertIn("Scaling Judgment", payload)
         self.assertIn("judgment \u00b7 confirmed", payload)
+        self.assertIn("protocol", payload)
+
+    def test_compile_surfaces_judgment_relations_across_memory_and_history(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        primary_judgment = file_back(self.root, report["path"], title="Primary Judgment", kind="judgment")
+        linked_judgment = file_back(self.root, report["path"], title="Linked Judgment", kind="judgment")
+        decision = file_back(self.root, report["path"], title="Primary Decision", kind="decision")
+
+        for page_path, updates in (
+            (primary_judgment["path"], {"related_judgments": [linked_judgment["path"]]}),
+            (linked_judgment["path"], {"contradicts": [primary_judgment["path"]]}),
+            (decision["path"], {"supports": [primary_judgment["path"]]}),
+        ):
+            target = self.root / page_path
+            content = target.read_text(encoding="utf-8")
+            frontmatter = parse_frontmatter(content)
+            frontmatter.update(updates)
+            target.write_text(
+                f"{render_frontmatter(frontmatter)}\n\n{strip_frontmatter(content).lstrip()}",
+                encoding="utf-8",
+            )
+
+        compile_wiki(self.root)
+
+        memory = load_machine_memory(self.root)
+        self.assertGreaterEqual(len(memory["edges"]["judgment_to_judgment"]), 2)
+        self.assertGreaterEqual(len(memory["edges"]["judgment_to_decision"]), 1)
+        self.assertTrue(any(edge["relation"] == "supports" for edge in memory["edges"]["judgment_to_decision"]))
+
+        graph = json.loads((self.root / ".aiwiki" / "cache" / "machine-memory-graph.json").read_text(encoding="utf-8"))
+        relation_edge_types = {
+            edge["type"]
+            for edge in graph["edges"]
+            if edge["source"].startswith("judgment:") and edge["target"].startswith("judgment:")
+        }
+        self.assertTrue(any(edge_type.startswith("JUDGMENT_") for edge_type in relation_edge_types))
+        self.assertTrue(any(edge_type.startswith("DECISION_") for edge_type in relation_edge_types))
+
+        judgment_assets = (self.root / "wiki" / "indexes" / "judgment-assets.md").read_text(encoding="utf-8")
+        topology = (self.root / "wiki" / "indexes" / "machine-memory-topology.md").read_text(encoding="utf-8")
+        cognitive_history = (self.root / "wiki" / "indexes" / "cognitive-history.md").read_text(encoding="utf-8")
+        self.assertIn("## Judgment 关联图谱", judgment_assets)
+        self.assertIn("Primary Decision", judgment_assets)
+        self.assertIn("supports ->", judgment_assets)
+        self.assertIn("## Judgment Hub", topology)
+        self.assertIn("## Judgment 关系事件", cognitive_history)
+        self.assertIn("Primary Judgment", cognitive_history)
+
+    def test_compile_generates_autogenerated_figures_and_slides(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        figures = sorted(path.name for path in (self.root / "output" / "figures").glob("*.md"))
+        slides = sorted(path.name for path in (self.root / "output" / "slides").glob("*.md"))
+        self.assertIn("judgment-relation-map.md", figures)
+        self.assertIn("governance-health-dashboard.md", figures)
+        self.assertIn("furnace-governance-status.md", slides)
+        self.assertIn("furnace-output-density.md", slides)
+
+        relation_figure = (self.root / "output" / "figures" / "judgment-relation-map.md").read_text(encoding="utf-8")
+        status_slides = (self.root / "output" / "slides" / "furnace-governance-status.md").read_text(encoding="utf-8")
+        self.assertIn("Judgment Relation Map", relation_figure)
+        self.assertIn('format: "figure"', relation_figure)
+        self.assertIn("marp: true", status_slides)
+        self.assertIn("Furnace Governance Status", status_slides)
 
     def test_compile_escapes_script_sensitive_text_in_machine_memory_graph_html(self) -> None:
         scripted = self.root / "scripted.md"

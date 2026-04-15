@@ -165,6 +165,36 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
         if not source_id or not page_id:
             continue
         judgment_by_source.setdefault(source_id, set()).add(page_id)
+
+    def resolve_protocol(protocols: set[str]) -> str:
+        normalized = {protocol for protocol in protocols if protocol}
+        if not normalized:
+            return "unassigned"
+        if len(normalized) == 1:
+            return next(iter(normalized))
+        return "mixed"
+
+    judgment_protocol_by_id = {
+        page_id: str(node.get("protocol") or DEFAULT_PROTOCOL)
+        for page_id, node in judgment_nodes.items()
+    }
+    source_protocol_by_id = {
+        source_id: resolve_protocol(
+            {
+                judgment_protocol_by_id.get(page_id, "")
+                for page_id in judgment_by_source.get(source_id, set())
+            }
+        )
+        for source_id in source_nodes
+    }
+    concept_protocol_by_slug: dict[str, str] = {}
+    for slug in concept_nodes:
+        protocols = {
+            source_protocol_by_id.get(source_id, "")
+            for source_id, node in source_nodes.items()
+            if slug in [str(item) for item in node.get("concept_slugs", []) if isinstance(item, str)]
+        }
+        concept_protocol_by_slug[slug] = resolve_protocol(protocols)
     if not components and (source_nodes or concept_nodes or judgment_nodes):
         components = [
             {
@@ -236,12 +266,26 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
         degree_map[target] = degree_map.get(target, 0) + 1
         x1, y1 = positions[source]
         x2, y2 = positions[target]
-        if str(edge.get("type") or "") == "RELATED_CONCEPT":
+        edge_type = str(edge.get("type") or "")
+        if edge_type == "RELATED_CONCEPT":
             stroke = "#f59e0b"
             dash = ' stroke-dasharray="8 6"'
-        elif str(edge.get("type") or "") == "SUPPORTS_JUDGMENT":
+        elif edge_type == "SUPPORTS_JUDGMENT":
             stroke = "#c2410c"
             dash = ' stroke-dasharray="6 4"'
+        elif edge_type.startswith("JUDGMENT_"):
+            if edge_type.endswith("CONTRADICTS"):
+                stroke = "#dc2626"
+                dash = ' stroke-dasharray="4 4"'
+            elif edge_type.endswith("SUPPORTS"):
+                stroke = "#16a34a"
+                dash = ' stroke-dasharray="10 5"'
+            else:
+                stroke = "#7c3aed"
+                dash = ' stroke-dasharray="3 6"'
+        elif edge_type.startswith("DECISION_"):
+            stroke = "#2563eb" if edge_type.endswith("SUPPORTS") else "#b91c1c"
+            dash = ""
         else:
             stroke = "#94a3b8"
             dash = ""
@@ -255,7 +299,11 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
     node_records: list[dict[str, Any]] = []
     source_component_ids = health.get("source_component_ids", {})
     concept_component_ids = health.get("concept_component_ids", {})
-    judgment_component_ids: dict[str, str] = {}
+    judgment_component_ids: dict[str, str] = {
+        str(page_id): str(component_id)
+        for page_id, component_id in health.get("judgment_component_ids", {}).items()
+        if isinstance(page_id, str) and isinstance(component_id, str)
+    }
     for edge in judgment_edges:
         source_id = str(edge.get("source_id") or "")
         page_id = str(edge.get("page_id") or "")
@@ -263,6 +311,15 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
         if page_id and component_id and page_id not in judgment_component_ids:
             judgment_component_ids[page_id] = component_id
     component_label_by_id = {str(component.get("id") or ""): str(component.get("id") or "") for component in components}
+    protocol_colors = {
+        "general": "#38bdf8",
+        "research": "#a78bfa",
+        "investing": "#f59e0b",
+        "product": "#f472b6",
+        "ops": "#34d399",
+        "mixed": "#94a3b8",
+        "unassigned": "#64748b",
+    }
     for node in graph.get("nodes", []):
         node_id = str(node.get("id") or "")
         position = positions.get(node_id)
@@ -273,29 +330,32 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
         title = str(node.get("title") or node_id)
         if kind == "source":
             fill = "#0f766e"
-            stroke = "#115e59"
+            protocol = source_protocol_by_id.get(node_id.removeprefix("source:"), "unassigned")
+            stroke = protocol_colors.get(protocol, protocol_colors["unassigned"])
             page_path = str(node.get("source_page") or "")
             href = f"../../{html.escape(page_path)}"
-            subtitle = str(node.get("source_type") or "source")
+            subtitle = f"{str(node.get('source_type') or 'source')} · {protocol}"
             component_id = str(source_component_ids.get(node_id.removeprefix("source:"), "") or "")
             secondary_metric = str(node.get("stored_path") or "")
             subtitle_fill = "#ccfbf1"
         elif kind == "judgment":
             fill = "#b45309"
-            stroke = "#92400e"
+            protocol = judgment_protocol_by_id.get(node_id.removeprefix("judgment:"), DEFAULT_PROTOCOL)
+            stroke = protocol_colors.get(protocol, protocol_colors["unassigned"])
             page_path = str(node.get("page_path") or "")
             href = f"../../{html.escape(page_path)}"
-            subtitle = f"{str(node.get('page_kind') or 'judgment')} · {str(node.get('status') or 'unknown')}"
+            subtitle = f"{str(node.get('page_kind') or 'judgment')} · {str(node.get('status') or 'unknown')} · {protocol}"
             component_id = str(judgment_component_ids.get(node_id.removeprefix("judgment:"), "") or "")
             secondary_metric = f"source_ids {len(node.get('source_ids', []))}"
             subtitle_fill = "#ffedd5"
         else:
             fill = "#1d4ed8"
-            stroke = "#1e40af"
             slug = node_id.removeprefix("concept:")
+            protocol = concept_protocol_by_slug.get(slug, "unassigned")
+            stroke = protocol_colors.get(protocol, protocol_colors["unassigned"])
             page_path = f"wiki/concepts/{slug}.md"
             href = f"../../wiki/concepts/{html.escape(slug)}.md"
-            subtitle = "concept"
+            subtitle = f"concept · {protocol}"
             component_id = str(concept_component_ids.get(slug, "") or "")
             secondary_metric = f"source_pages {len(node.get('source_pages', []))}"
             subtitle_fill = "#dbeafe"
@@ -307,7 +367,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
         node_fragments.append(
             "\n".join(
                 [
-                    f'<g class="graph-node" data-node-id="{html.escape(node_id)}" data-kind="{html.escape(kind)}" data-component="{html.escape(component_id)}" data-title="{safe_title.lower()}">',
+                    f'<g class="graph-node" data-node-id="{html.escape(node_id)}" data-kind="{html.escape(kind)}" data-component="{html.escape(component_id)}" data-protocol="{html.escape(protocol)}" data-title="{safe_title.lower()}">',
                     f'  <a href="{href}">',
                     f'    <title>{safe_title}</title>',
                     f'    <rect x="{rx}" y="{ry}" width="240" height="44" rx="14" fill="{fill}" stroke="{stroke}" stroke-width="2" />',
@@ -323,6 +383,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             f" data-node-id=\"{html.escape(node_id)}\""
             f" data-kind=\"{html.escape(kind)}\""
             f" data-component=\"{html.escape(component_id)}\""
+            f" data-protocol=\"{html.escape(protocol)}\""
             f" data-title=\"{safe_title.lower()}\">"
             f"<button type=\"button\" class=\"node-detail-button\" data-node-id=\"{html.escape(node_id)}\">详情</button> "
             f"<a href=\"{href}\">{safe_title}</a>"
@@ -333,6 +394,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             {
                 "id": node_id,
                 "kind": kind,
+                "protocol": protocol,
                 "title": title,
                 "subtitle": subtitle,
                 "href": href,
@@ -400,6 +462,10 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
         f'<option value="{html.escape(str(component.get("id") or ""))}">{html.escape(str(component.get("id") or ""))} ({len(component.get("source_ids", [])) + len(component.get("concept_slugs", []))})</option>'
         for component in components
         if component.get("id")
+    )
+    protocol_options = "".join(
+        f'<option value="{html.escape(protocol)}">{html.escape(protocol)}</option>'
+        for protocol in sorted({str(record.get("protocol") or "") for record in node_records if str(record.get("protocol") or "")})
     )
     node_rows_markup = "".join(node_rows) or "<li>当前没有可浏览的节点。</li>"
     node_payload = html_safe_json_literal(
@@ -483,7 +549,8 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             '  <section class="panel">',
             '    <div class="controls">',
             '      <div><label for="graph-search">搜索节点</label><input id="graph-search" type="search" placeholder="输入标题、slug、source id" /></div>',
-            '      <div><label for="graph-kind">节点类型</label><select id="graph-kind"><option value="">全部</option><option value="source">source</option><option value="concept">concept</option></select></div>',
+            '      <div><label for="graph-kind">节点类型</label><select id="graph-kind"><option value="">全部</option><option value="source">source</option><option value="judgment">judgment</option><option value="concept">concept</option></select></div>',
+            f'      <div><label for="graph-protocol">协议</label><select id="graph-protocol"><option value="">全部协议</option>{protocol_options}</select></div>',
             f'      <div><label for="graph-component">分量</label><select id="graph-component"><option value="">全部分量</option>{component_options}</select></div>',
             "    </div>",
             '    <div class="workbench">',
@@ -527,6 +594,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "    const nodeMap = new Map((graphUiData.nodes || []).map((node) => [node.id, node]));",
             "    const searchInput = document.getElementById('graph-search');",
             "    const kindSelect = document.getElementById('graph-kind');",
+            "    const protocolSelect = document.getElementById('graph-protocol');",
             "    const componentSelect = document.getElementById('graph-component');",
             "    const nodeDetails = document.getElementById('graph-node-details');",
             "    function renderDetails(nodeId) {",
@@ -535,6 +603,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "      nodeDetails.innerHTML = [",
             "        `<div><strong>${node.title}</strong></div>`,",
             "        `<div>kind: <code>${node.kind}</code></div>`,",
+            "        `<div>protocol: <code>${node.protocol || 'unassigned'}</code></div>`,",
             "        `<div>component: <code>${node.component_label || 'none'}</code></div>`,",
             "        `<div>degree: <code>${node.degree}</code></div>`,",
             "        `<div>path: <code>${node.page_path}</code></div>`,",
@@ -545,15 +614,18 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "    function applyFilters() {",
             "      const needle = (searchInput.value || '').trim().toLowerCase();",
             "      const kind = kindSelect.value || '';",
+            "      const protocol = protocolSelect.value || '';",
             "      const component = componentSelect.value || '';",
             "      const visibleIds = new Set();",
             "      document.querySelectorAll('.graph-node').forEach((element) => {",
             "        const title = element.dataset.title || '';",
             "        const nodeKind = element.dataset.kind || '';",
+            "        const nodeProtocol = element.dataset.protocol || '';",
             "        const nodeComponent = element.dataset.component || '';",
             "        const nodeId = element.dataset.nodeId || '';",
             "        const matches = (!needle || title.includes(needle) || nodeId.toLowerCase().includes(needle))",
             "          && (!kind || nodeKind === kind)",
+            "          && (!protocol || nodeProtocol === protocol)"
             "          && (!component || nodeComponent === component);",
             "        element.classList.toggle('hidden', !matches);",
             "        if (matches) visibleIds.add(nodeId);",
@@ -565,10 +637,12 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "      document.querySelectorAll('.node-row').forEach((element) => {",
             "        const title = element.dataset.title || '';",
             "        const nodeKind = element.dataset.kind || '';",
+            "        const nodeProtocol = element.dataset.protocol || '';",
             "        const nodeComponent = element.dataset.component || '';",
             "        const nodeId = element.dataset.nodeId || '';",
             "        const matches = (!needle || title.includes(needle) || nodeId.toLowerCase().includes(needle))",
             "          && (!kind || nodeKind === kind)",
+            "          && (!protocol || nodeProtocol === protocol)"
             "          && (!component || nodeComponent === component);",
             "        element.classList.toggle('hidden', !matches);",
             "      });",
@@ -582,8 +656,8 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "    document.querySelectorAll('.node-detail-button').forEach((button) => {",
             "      button.addEventListener('click', () => renderDetails(button.dataset.nodeId || ''));",
             "    });",
-            "    [searchInput, kindSelect, componentSelect].forEach((element) => element.addEventListener('input', applyFilters));",
-            "    [kindSelect, componentSelect].forEach((element) => element.addEventListener('change', applyFilters));",
+            "    [searchInput, kindSelect, protocolSelect, componentSelect].forEach((element) => element.addEventListener('input', applyFilters));",
+            "    [kindSelect, protocolSelect, componentSelect].forEach((element) => element.addEventListener('change', applyFilters));",
             "    renderDetails(graphUiData.defaultNodeId || '');",
             "    applyFilters();",
             "  </script>",
@@ -601,16 +675,35 @@ def build_machine_memory_adjacency(memory: dict[str, Any]) -> dict[str, dict[str
         adjacency.setdefault(f"source:{node['id']}", {})
     for node in memory.get("concept_nodes", []):
         adjacency.setdefault(f"concept:{node['slug']}", {})
+    for node in memory.get("judgment_nodes", []):
+        adjacency.setdefault(f"judgment:{node['page_id']}", {})
     for edge in memory.get("edges", {}).get("source_to_concept", []):
         source_key = f"source:{edge['source_id']}"
         concept_key = f"concept:{edge['concept_slug']}"
         adjacency.setdefault(source_key, {})[concept_key] = "HAS_CONCEPT"
         adjacency.setdefault(concept_key, {})[source_key] = "HAS_CONCEPT"
+    for edge in memory.get("edges", {}).get("source_to_judgment", []):
+        source_key = f"source:{edge['source_id']}"
+        judgment_key = f"judgment:{edge['page_id']}"
+        adjacency.setdefault(source_key, {})[judgment_key] = "SUPPORTS_JUDGMENT"
+        adjacency.setdefault(judgment_key, {})[source_key] = "SUPPORTS_JUDGMENT"
     for edge in memory.get("edges", {}).get("concept_to_concept", []):
         left_key = f"concept:{edge['from']}"
         right_key = f"concept:{edge['to']}"
         adjacency.setdefault(left_key, {})[right_key] = "RELATED_CONCEPT"
         adjacency.setdefault(right_key, {})[left_key] = "RELATED_CONCEPT"
+    for edge in memory.get("edges", {}).get("judgment_to_judgment", []):
+        edge_type = f"JUDGMENT_{str(edge.get('relation') or 'related').upper()}"
+        left_key = f"judgment:{edge['from']}"
+        right_key = f"judgment:{edge['to']}"
+        adjacency.setdefault(left_key, {})[right_key] = edge_type
+        adjacency.setdefault(right_key, {})[left_key] = edge_type
+    for edge in memory.get("edges", {}).get("judgment_to_decision", []):
+        edge_type = f"DECISION_{str(edge.get('relation') or 'supports').upper()}"
+        left_key = f"judgment:{edge['from']}"
+        right_key = f"judgment:{edge['to']}"
+        adjacency.setdefault(left_key, {})[right_key] = edge_type
+        adjacency.setdefault(right_key, {})[left_key] = edge_type
     return adjacency
 
 
@@ -1224,12 +1317,29 @@ def render_machine_memory_route(
                         "right": left.removeprefix("concept:"),
                     }
                 )
+        elif edge_type == "SUPPORTS_JUDGMENT":
+            if left.startswith("source:"):
+                edges.append(
+                    {
+                        "type": edge_type,
+                        "left": left.removeprefix("source:"),
+                        "right": right.removeprefix("judgment:"),
+                    }
+                )
+            else:
+                edges.append(
+                    {
+                        "type": edge_type,
+                        "left": right.removeprefix("source:"),
+                        "right": left.removeprefix("judgment:"),
+                    }
+                )
         else:
             edges.append(
                 {
-                    "type": "RELATED_CONCEPT",
-                    "left": left.removeprefix("concept:"),
-                    "right": right.removeprefix("concept:"),
+                    "type": edge_type or "RELATED_CONCEPT",
+                    "left": left.split(":", 1)[-1],
+                    "right": right.split(":", 1)[-1],
                 }
             )
     return {
@@ -1252,6 +1362,16 @@ def machine_memory_node_metadata(memory: dict[str, Any], node_key: str) -> dict[
             "title": node.get("title", source_id),
             "path": node.get("source_page", f"wiki/sources/{source_id}.md"),
         }
+    if node_key.startswith("judgment:"):
+        page_id = node_key.removeprefix("judgment:")
+        judgment_nodes = {node["page_id"]: node for node in memory.get("judgment_nodes", [])}
+        node = judgment_nodes.get(page_id, {})
+        return {
+            "kind": "judgment",
+            "page_id": page_id,
+            "title": node.get("title", page_id),
+            "path": node.get("path", f"wiki/judgments/{page_id}.md"),
+        }
     concept_slug = node_key.removeprefix("concept:")
     concept_nodes = {node["slug"]: node for node in memory.get("concept_nodes", [])}
     node = concept_nodes.get(concept_slug, {})
@@ -1260,6 +1380,16 @@ def machine_memory_node_metadata(memory: dict[str, Any], node_key: str) -> dict[
         "slug": concept_slug,
         "title": node.get("title", concept_slug),
         "path": f"wiki/concepts/{concept_slug}.md",
+    }
+
+
+def _judgment_relation_edge_signatures(memory: dict[str, Any]) -> set[tuple[str, str, str, str]]:
+    return {
+        ("JUDGMENT_RELATION", str(edge.get("relation") or "related"), edge["from"], edge["to"])
+        for edge in memory.get("edges", {}).get("judgment_to_judgment", [])
+    } | {
+        ("DECISION_RELATION", str(edge.get("relation") or "supports"), edge["from"], edge["to"])
+        for edge in memory.get("edges", {}).get("judgment_to_decision", [])
     }
 
 
@@ -1281,7 +1411,7 @@ def summarize_machine_memory_transition(previous: dict[str, Any], current: dict[
     } | {
         ("RELATED_CONCEPT", edge["from"], edge["to"])
         for edge in previous.get("edges", {}).get("concept_to_concept", [])
-    }
+    } | _judgment_relation_edge_signatures(previous)
     current_edges = {
         ("HAS_CONCEPT", edge["source_id"], edge["concept_slug"])
         for edge in current.get("edges", {}).get("source_to_concept", [])
@@ -1291,7 +1421,7 @@ def summarize_machine_memory_transition(previous: dict[str, Any], current: dict[
     } | {
         ("RELATED_CONCEPT", edge["from"], edge["to"])
         for edge in current.get("edges", {}).get("concept_to_concept", [])
-    }
+    } | _judgment_relation_edge_signatures(current)
     previous_digest = previous.get("digest", "")
     current_digest = current["digest"]
     return {
@@ -1401,6 +1531,8 @@ def render_graph_health(memory: dict[str, Any]) -> str:
         f"- 执行批次：`{health.get('repair_plan', {}).get('counts', {}).get('batches', 0)}`",
         f"- 执行提案：`{health.get('repair_plan', {}).get('counts', {}).get('proposals', 0)}`",
         f"- 页级 patch step：`{health.get('repair_plan', {}).get('counts', {}).get('patch_steps', 0)}`",
+        f"- Judgment 关系边：`{health.get('judgment_relation_counts', {}).get('judgment_to_judgment', 0)}`",
+        f"- Judgment-Decision 边：`{health.get('judgment_relation_counts', {}).get('judgment_to_decision', 0)}`",
         "",
         "## 修复信号",
         f"- 孤立来源：`{', '.join(health.get('isolated_source_ids', [])[:10]) or 'none'}`",
@@ -1420,6 +1552,7 @@ def render_graph_health(memory: dict[str, Any]) -> str:
                 f"- `{component['id']}` size `{component['size']}`"
                 f" | sources `{', '.join(component.get('source_ids', [])[:4]) or 'none'}`"
                 f" | concepts `{', '.join(component.get('concept_slugs', [])[:4]) or 'none'}`"
+                f" | judgments `{', '.join(component.get('judgment_ids', [])[:3]) or 'none'}`"
             )
     lines.extend(
         [
@@ -1456,6 +1589,8 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         f"- 判断节点：`{len(judgment_nodes)}`",
         f"- 概念节点：`{len(concept_nodes)}`",
         f"- 来源到判断的边：`{len(edges.get('source_to_judgment', []))}`",
+        f"- Judgment 到 Judgment 的边：`{len(edges.get('judgment_to_judgment', []))}`",
+        f"- Judgment 到 Decision 的边：`{len(edges.get('judgment_to_decision', []))}`",
         f"- 来源到概念的边：`{len(edges['source_to_concept'])}`",
         f"- 概念到概念的边：`{len(edges['concept_to_concept'])}`",
         f"- 索引词数量：`{len(memory['term_index'])}`",
@@ -1549,6 +1684,35 @@ def render_machine_memory_topology(memory: dict[str, Any]) -> str:
     hub_concepts = health.get("hub_concepts", [])
     hub_sources = health.get("hub_sources", [])
     link_suggestions = health.get("link_suggestions", [])
+    judgment_nodes = {node["page_id"]: node for node in memory.get("judgment_nodes", []) if isinstance(node, dict)}
+    judgment_relation_counts: dict[str, int] = {}
+    for edge in memory.get("edges", {}).get("source_to_judgment", []):
+        page_id = str(edge.get("page_id") or "")
+        if page_id:
+            judgment_relation_counts[page_id] = judgment_relation_counts.get(page_id, 0) + 1
+    for group in ("judgment_to_judgment", "judgment_to_decision"):
+        for edge in memory.get("edges", {}).get(group, []):
+            left = str(edge.get("from") or "")
+            right = str(edge.get("to") or "")
+            if left:
+                judgment_relation_counts[left] = judgment_relation_counts.get(left, 0) + 1
+            if right:
+                judgment_relation_counts[right] = judgment_relation_counts.get(right, 0) + 1
+    hub_judgments = sorted(
+        [
+            {
+                "page_id": page_id,
+                "title": str(node.get("title") or page_id),
+                "path": str(node.get("path") or ""),
+                "relation_count": judgment_relation_counts.get(page_id, 0),
+                "source_count": len(node.get("source_ids", [])),
+                "kind": str(node.get("kind") or "judgment"),
+            }
+            for page_id, node in judgment_nodes.items()
+            if judgment_relation_counts.get(page_id, 0) > 0
+        ],
+        key=lambda item: (-item["relation_count"], -item["source_count"], item["title"].lower()),
+    )
     lines = [
         "# 机器记忆拓扑",
         "",
@@ -1556,6 +1720,7 @@ def render_machine_memory_topology(memory: dict[str, Any]) -> str:
         f"- 已索引分量：`{health.get('component_count', 0)}`",
         f"- Hub 概念：`{len(hub_concepts)}`",
         f"- Hub 来源：`{len(hub_sources)}`",
+        f"- Judgment 关系 Hub：`{len(hub_judgments)}`",
         f"- 修复候选：`{len(link_suggestions)}`",
         "",
         "## Hub 概念",
@@ -1591,12 +1756,24 @@ def render_machine_memory_topology(memory: dict[str, Any]) -> str:
                 f" | shared `{', '.join(suggestion['shared_terms'][:6])}`"
                 f" | score `{suggestion['score']}`"
             )
+    lines.extend(["", "## Judgment Hub"])
+    if not hub_judgments:
+        lines.append("- 当前还没有显式 judgment relation hub。")
+    else:
+        for item in hub_judgments[:10]:
+            lines.append(
+                f"- [{item['title']}](../{item['path']})"
+                f" | relations `{item['relation_count']}`"
+                f" | sources `{item['source_count']}`"
+                f" | kind `{item['kind']}`"
+            )
     lines.extend(["", "## Mermaid 拓扑切片", "```mermaid", "graph LR"])
     node_lines: list[str] = []
     edge_lines: list[str] = []
     added_nodes: set[str] = set()
     hub_concept_slugs = {item["slug"] for item in hub_concepts[:5]}
     hub_source_ids = {item["id"] for item in hub_sources[:5]}
+    hub_judgment_ids = {item["page_id"] for item in hub_judgments[:5]}
     concept_by_slug = {node["slug"]: node for node in memory.get("concept_nodes", [])}
     source_by_id = {node["id"]: node for node in memory.get("source_nodes", [])}
     for source_id in sorted(hub_source_ids):
@@ -1619,6 +1796,16 @@ def render_machine_memory_topology(memory: dict[str, Any]) -> str:
         added_nodes.add(node_key)
         label = str(node["title"]).replace('"', "'")
         node_lines.append(f'    {node_key}["C: {label}"]')
+    for page_id in sorted(hub_judgment_ids):
+        node = judgment_nodes.get(page_id)
+        if not node:
+            continue
+        node_key = f"judgment_{slugify(page_id).replace('-', '_')}"
+        if node_key in added_nodes:
+            continue
+        added_nodes.add(node_key)
+        label = str(node.get("title") or page_id).replace('"', "'")
+        node_lines.append(f'    {node_key}["J: {label}"]')
     for edge in memory.get("edges", {}).get("source_to_concept", []):
         source_id = edge.get("source_id")
         concept_slug = edge.get("concept_slug")
@@ -1640,11 +1827,40 @@ def render_machine_memory_topology(memory: dict[str, Any]) -> str:
         left = f"concept_{slugify(left_slug).replace('-', '_')}"
         right = f"concept_{slugify(right_slug).replace('-', '_')}"
         edge_lines.append(f"    {left} -.-> {right}")
+    for edge in memory.get("edges", {}).get("source_to_judgment", []):
+        source_id = str(edge.get("source_id") or "")
+        page_id = str(edge.get("page_id") or "")
+        if source_id not in hub_source_ids or page_id not in hub_judgment_ids:
+            continue
+        left = f"src_{slugify(source_id).replace('-', '_')}"
+        right = f"judgment_{slugify(page_id).replace('-', '_')}"
+        edge_lines.append(f"    {left} --> {right}")
+    for edge in memory.get("edges", {}).get("judgment_to_judgment", []):
+        left_id = str(edge.get("from") or "")
+        right_id = str(edge.get("to") or "")
+        if left_id not in hub_judgment_ids or right_id not in hub_judgment_ids:
+            continue
+        left = f"judgment_{slugify(left_id).replace('-', '_')}"
+        right = f"judgment_{slugify(right_id).replace('-', '_')}"
+        if str(edge.get("relation") or "") == "supports":
+            edge_lines.append(f"    {left} --> {right}")
+        elif str(edge.get("relation") or "") == "contradicts":
+            edge_lines.append(f"    {left} -.-> {right}")
+        else:
+            edge_lines.append(f"    {left} --- {right}")
+    for edge in memory.get("edges", {}).get("judgment_to_decision", []):
+        left_id = str(edge.get("from") or "")
+        right_id = str(edge.get("to") or "")
+        if left_id not in hub_judgment_ids or right_id not in hub_judgment_ids:
+            continue
+        left = f"judgment_{slugify(left_id).replace('-', '_')}"
+        right = f"judgment_{slugify(right_id).replace('-', '_')}"
+        edge_lines.append(f"    {left} ==> {right}")
     if not node_lines:
         lines.append('    placeholder["Not enough machine-memory nodes yet"]')
     else:
         lines.extend(node_lines)
-        lines.extend(edge_lines[:18])
+        lines.extend(edge_lines[:24])
     lines.extend(
         [
             "```",
@@ -2157,7 +2373,7 @@ def render_execution_proposal_page(proposal: dict[str, Any], *, compiled_at: str
     return f"{frontmatter}\n\n" + "\n".join(lines).strip() + "\n"
 
 
-def render_execution_center(memory: dict[str, Any], *, compiled_at: str, active_protocol: str) -> str:
+def render_execution_center(root: Path, memory: dict[str, Any], *, compiled_at: str, active_protocol: str) -> str:
     plan = memory.get("health", {}).get("repair_plan", {})
     proposals = plan.get("execution_proposals", [])
     ready_actions = plan.get("ready_actions", [])
@@ -2171,6 +2387,7 @@ def render_execution_center(memory: dict[str, Any], *, compiled_at: str, active_
         key=lambda item: str(item.get("status_updated_at") or item.get("reviewed_at") or ""),
         reverse=True,
     )
+    recent_dry_runs = recent_execution_dry_runs(root, limit=8)
     revert_ready_actions = [
         action for action in recent_receipts if str(action.get("status") or "") == "resolved"
     ]
@@ -2226,6 +2443,24 @@ def render_execution_center(memory: dict[str, Any], *, compiled_at: str, active_
                 f" | receipt `{action.get('last_receipt_path', '')}`"
                 f" | updated `{action.get('status_updated_at', '') or action.get('reviewed_at', '') or 'none'}`"
             )
+    lines.extend(["", "## Recent Dry Runs"])
+    if not recent_dry_runs:
+        lines.append("- 当前还没有 dry-run 历史。")
+    else:
+        for dry_run in recent_dry_runs:
+            lines.append(
+                f"- `{dry_run['title']}`"
+                f" | mode `{dry_run.get('apply_mode', '') or dry_run.get('event_type', 'dry-run')}`"
+                f" | preview `{dry_run.get('preview_path', '') or 'none'}`"
+                f" | bundle `{dry_run.get('bundle_path', '') or 'none'}`"
+                f" | updated `{dry_run.get('occurred_at', '') or 'none'}`"
+            )
+            if dry_run.get("affected_paths"):
+                lines.append(
+                    "  - affected: `"
+                    + ", ".join(str(path) for path in dry_run.get("affected_paths", [])[:3])
+                    + "`"
+                )
     lines.extend(
         [
             "",
@@ -2243,7 +2478,52 @@ def render_execution_center(memory: dict[str, Any], *, compiled_at: str, active_
     return "\n".join(lines) + "\n"
 
 
-def render_execution_center_html(memory: dict[str, Any], *, compiled_at: str, active_protocol: str) -> str:
+def recent_execution_dry_runs(root: Path, *, limit: int = 8) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for event in reversed(load_runtime_history(root)):
+        if not isinstance(event, dict):
+            continue
+        event_type = str(event.get("event_type") or "")
+        if "dry-run" not in event_type:
+            continue
+        preview_path = str(event.get("preview_path") or "")
+        payload = load_json_document(root / preview_path) if preview_path else {}
+        if not isinstance(payload, dict):
+            payload = {}
+        preview = payload.get("preview") if isinstance(payload.get("preview"), dict) else {}
+        bundle = payload.get("bundle") if isinstance(payload.get("bundle"), dict) else {}
+        safe_preview = bundle.get("safe_apply_preview") if isinstance(bundle.get("safe_apply_preview"), dict) else {}
+        affected_paths = preview.get("affected_paths") if isinstance(preview.get("affected_paths"), list) else []
+        if not affected_paths and isinstance(safe_preview.get("affected_paths"), list):
+            affected_paths = safe_preview.get("affected_paths")
+        records.append(
+            {
+                "event_type": event_type,
+                "title": str(
+                    payload.get("title")
+                    or event.get("action_id")
+                    or event.get("entry_id")
+                    or event.get("slug")
+                    or event_type
+                ),
+                "occurred_at": str(event.get("occurred_at") or payload.get("generated_at") or ""),
+                "preview_path": preview_path,
+                "bundle_path": str(event.get("bundle_path") or payload.get("bundle_path") or ""),
+                "apply_mode": str(
+                    payload.get("apply_mode")
+                    or preview.get("apply_mode")
+                    or safe_preview.get("apply_mode")
+                    or event_type
+                ),
+                "affected_paths": [str(path) for path in affected_paths if isinstance(path, str) and path],
+            }
+        )
+        if len(records) >= limit:
+            break
+    return records
+
+
+def render_execution_center_html(root: Path, memory: dict[str, Any], *, compiled_at: str, active_protocol: str) -> str:
     plan = memory.get("health", {}).get("repair_plan", {})
     proposals = plan.get("execution_proposals", [])
     ready_actions = plan.get("ready_actions", [])
@@ -2257,6 +2537,7 @@ def render_execution_center_html(memory: dict[str, Any], *, compiled_at: str, ac
         key=lambda item: str(item.get("status_updated_at") or item.get("reviewed_at") or ""),
         reverse=True,
     )
+    recent_dry_runs = recent_execution_dry_runs(root, limit=8)
     revert_ready_actions = [
         action for action in recent_receipts if str(action.get("status") or "") == "resolved"
     ]
@@ -2292,6 +2573,13 @@ def render_execution_center_html(memory: dict[str, Any], *, compiled_at: str, ac
         f"<div class=\"item-meta\"><a href=\"../../{html.escape(str(action.get('last_receipt_path') or ''))}\">Execution Receipt</a></div></li>"
         for action in recent_receipts[:8]
     ) or "<li>当前还没有 safe execution receipt。</li>"
+    dry_run_markup = "".join(
+        f"<li><strong>{html.escape(str(item.get('title') or 'dry run'))}</strong>"
+        f"<div class=\"item-meta\">mode {html.escape(str(item.get('apply_mode') or item.get('event_type') or 'dry-run'))}</div>"
+        f"<div class=\"item-meta\"><a href=\"../../{html.escape(str(item.get('preview_path') or ''))}\">Dry Run Preview</a></div>"
+        f"<div class=\"item-meta\"><a href=\"../../{html.escape(str(item.get('bundle_path') or ''))}\">Execution Bundle</a></div></li>"
+        for item in recent_dry_runs[:8]
+    ) or "<li>当前还没有 dry-run 历史。</li>"
     return "\n".join(
         [
             "<!doctype html>",
@@ -2337,6 +2625,7 @@ def render_execution_center_html(memory: dict[str, Any], *, compiled_at: str, ac
             f'    <div class="panel"><h2>Revert Safe Apply</h2><ul>{revert_markup}</ul></div>',
             f'    <div class="panel"><h2>Execution Proposals</h2><ul>{proposal_markup}</ul></div>',
             f'    <div class="panel"><h2>Recent Receipts</h2><ul>{receipt_markup}</ul></div>',
+            f'    <div class="panel"><h2>Recent Dry Runs</h2><ul>{dry_run_markup}</ul></div>',
             '    <div class="panel"><h2>相关入口</h2><ul>'
             '      <li><a href="../../wiki/indexes/execution-center.md">Markdown 执行中心</a></li>'
             '      <li><a href="../../wiki/indexes/execution-audit.md">执行审计</a></li>'
@@ -2836,6 +3125,7 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
     quality = memory.get("health", {}).get("concept_quality", {})
     rewrite_state = memory.get("health", {}).get("concept_rewrite", {})
     counts = quality.get("counts", {})
+    hard_concepts = quality.get("hard_concepts", [])
     weak_concepts = quality.get("weak_concepts", [])
     stable_concepts = quality.get("stable_concepts", [])
     merge_candidates = quality.get("merge_candidates", [])
@@ -2861,20 +3151,42 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
             f" / watch `{counts.get('watch_quality', 0)}`"
             f" / fragile `{counts.get('fragile_quality', 0)}`"
         ),
+        (
+            "- Hardness："
+            f" hard `{counts.get('hard_hardness', 0)}`"
+            f" / medium `{counts.get('medium_hardness', 0)}`"
+            f" / soft `{counts.get('soft_hardness', 0)}`"
+        ),
         f"- Rewrite 提案：`{rewrite_state.get('counts', {}).get('active', 0)}`",
         f"- 待审提案：`{rewrite_state.get('counts', {}).get('pending_review', 0)}`",
         f"- 可应用提案：`{rewrite_state.get('counts', {}).get('apply_ready', 0)}`",
         f"- 已验证提案：`{rewrite_state.get('counts', {}).get('verified_passed', 0)}`",
         f"- 可回滚提案：`{rewrite_state.get('counts', {}).get('revert_ready', 0)}`",
         "",
-        "## Rewrite Now",
+        "## Hard Concepts",
     ]
+    if not hard_concepts:
+        lines.append("- 当前还没有 `hardness` >= `medium` 的概念页。")
+    else:
+        for concept in hard_concepts[:12]:
+            lines.append(
+                f"- [{concept['title']}](../concepts/{concept['slug']}.md)"
+                f" | hardness `{concept.get('hardness', 'soft')}`"
+                f" | confidence `{concept.get('confidence', 'n/a') or 'n/a'}`"
+                f" | sources `{concept.get('source_count', 0)}`"
+                f" | quality `{concept.get('quality_score', 0)}`"
+            )
+    lines.extend([
+        "",
+        "## Rewrite Now",
+    ])
     if not weak_concepts:
         lines.append("- 当前没有需要立即重写的概念页。")
     else:
         for concept in weak_concepts[:12]:
             lines.append(
                 f"- [{concept['title']}](../concepts/{concept['slug']}.md)"
+                f" | hardness `{concept.get('hardness', 'soft')}`"
                 f" | issues `{', '.join(concept.get('issues', [])) or 'none'}`"
                 f" | sources `{concept.get('source_count', 0)}`"
                 f" | related `{concept.get('related_count', 0)}`"

@@ -6,20 +6,20 @@ title: "Adk"
 target_path: "wiki/concepts/adk.md"
 source_signature: "7c3ca775a8bd8cbd5f421cbb5bd717fb4b780a36cef671aed6d0880cbfba868e"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T03:43:15+00:00"
+last_compiled_at: "2026-04-15T09:19:10+00:00"
 ---
 
 # Rewrite Proposal · Adk
 
 ## Proposal Status
 - Status: `待审提案`
-- Priority: `medium`
-- Score: `5`
+- Priority: `high`
+- Score: `6`
 - Quality score: `78`
 - Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T01:37:58+00:00`
-- Last proposed: `2026-04-15T03:43:15+00:00`
+- Last proposed: `2026-04-15T09:19:10+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`
@@ -36,7 +36,7 @@ last_compiled_at: "2026-04-15T03:43:15+00:00"
 - 除 agent 分类外，这页还显示 ADK 提供多种能力扩展面：模型替换、artifact 管理、预置 tools / integrations、自定义 tools、plugins、skills 和 lifecycle callbacks。[Google ADK Agents Overview](../sources/discovered-20260415013428-google-adk-agents-overview.md)
 
 ## Rewrite Strategy
-- Issues: `single-source, evidence-gap, merge-boundary`
+- Issues: `soft-hardness, single-source, evidence-gap, merge-boundary`
 - Strategy: 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。 检查是否需要合并或拆分概念边界。
 
 ## Verification

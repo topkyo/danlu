@@ -8,7 +8,6 @@ from typing import Any
 
 from .app_utils import relative_path, render_json_document, runtime_write_operation, slugify
 
-
 DEFAULT_PROTOCOL = "general"
 
 
@@ -123,6 +122,22 @@ def domain_pilots_path(root: Path) -> Path:
 
 def execution_receipt_history_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "execution-receipts.jsonl"
+
+
+def execution_batch_receipt_path(root: Path, batch_id: str) -> Path:
+    return root / "output" / "control" / "execution-batches" / f"{slugify(batch_id)}.json"
+
+
+def execution_dry_run_path(root: Path, action_id: str) -> Path:
+    return root / "output" / "control" / "execution-bundles" / f"{slugify(action_id)}-dry-run.json"
+
+
+def archive_dry_run_path(root: Path, entry_id: str) -> Path:
+    return root / "output" / "control" / "execution-bundles" / f"{slugify(material_archive_action_id(entry_id))}-dry-run.json"
+
+
+def rewrite_dry_run_path(root: Path, slug: str) -> Path:
+    return root / "output" / "control" / "execution-bundles" / f"{slugify(f'rewrite-{slug}')}-dry-run.json"
 
 
 def execution_policy_log_path(root: Path) -> Path:
@@ -297,6 +312,7 @@ def default_compile_state() -> dict[str, Any]:
         "clean_index_artifacts": [],
         "dirty_maintenance_artifacts": [],
         "clean_maintenance_artifacts": [],
+        "drift_warnings": [],
         "phase_summary": [],
     }
 
@@ -327,6 +343,7 @@ def load_compile_state(root: Path) -> dict[str, Any]:
     clean_index_artifacts = document.get("clean_index_artifacts", [])
     dirty_maintenance_artifacts = document.get("dirty_maintenance_artifacts", [])
     clean_maintenance_artifacts = document.get("clean_maintenance_artifacts", [])
+    drift_warnings = document.get("drift_warnings", [])
     phase_summary = document.get("phase_summary")
     if (
         not isinstance(dirty_source_ids, list)
@@ -351,6 +368,7 @@ def load_compile_state(root: Path) -> dict[str, Any]:
         or not isinstance(clean_index_artifacts, list)
         or not isinstance(dirty_maintenance_artifacts, list)
         or not isinstance(clean_maintenance_artifacts, list)
+        or not isinstance(drift_warnings, list)
         or not isinstance(phase_summary, list)
     ):
         return default_compile_state()
@@ -393,6 +411,7 @@ def load_compile_state(root: Path) -> dict[str, Any]:
         "clean_index_artifacts": [str(path) for path in clean_index_artifacts if str(path)],
         "dirty_maintenance_artifacts": [str(path) for path in dirty_maintenance_artifacts if str(path)],
         "clean_maintenance_artifacts": [str(path) for path in clean_maintenance_artifacts if str(path)],
+        "drift_warnings": [warning for warning in drift_warnings if isinstance(warning, dict)],
         "phase_summary": [phase for phase in phase_summary if isinstance(phase, dict)],
     }
 
@@ -877,7 +896,8 @@ def default_planner_state() -> dict[str, Any]:
         "priority_queue": [],
         "dependency_graph": {"nodes": [], "edges": []},
         "next_action": {},
-        "counts": {"pending_proposals": 0, "blocked": 0, "unblocked": 0},
+        "executed_actions": [],
+        "counts": {"pending_proposals": 0, "blocked": 0, "unblocked": 0, "executed_actions": 0},
     }
 
 
@@ -890,9 +910,10 @@ def load_planner_state(root: Path) -> dict[str, Any]:
     dependency_graph = document.get("dependency_graph")
     counts = document.get("counts")
     next_action = document.get("next_action")
+    executed_actions = document.get("executed_actions")
     if not isinstance(pending_proposals, list) or not isinstance(priority_queue, list):
         return default_planner_state()
-    if not isinstance(dependency_graph, dict) or not isinstance(counts, dict):
+    if not isinstance(dependency_graph, dict) or not isinstance(counts, dict) or not isinstance(executed_actions, list):
         return default_planner_state()
     return {
         "version": int(document.get("version", 1) or 1),
@@ -906,10 +927,12 @@ def load_planner_state(root: Path) -> dict[str, Any]:
             "edges": [edge for edge in dependency_graph.get("edges", []) if isinstance(edge, dict)],
         },
         "next_action": dict(next_action) if isinstance(next_action, dict) else {},
+        "executed_actions": [item for item in executed_actions if isinstance(item, dict)],
         "counts": {
             "pending_proposals": int(counts.get("pending_proposals", 0) or 0),
             "blocked": int(counts.get("blocked", 0) or 0),
             "unblocked": int(counts.get("unblocked", 0) or 0),
+            "executed_actions": int(counts.get("executed_actions", 0) or 0),
         },
     }
 

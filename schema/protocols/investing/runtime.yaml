@@ -1,0 +1,140 @@
+{
+  "execution_policy": {
+    "accepted_rules": {
+      "add-source-concept-link": {
+        "capabilities": [
+          "dry-run",
+          "bundle-apply",
+          "revert-safe",
+          "history"
+        ],
+        "decision": "allow",
+        "execution_band": "bundle-safe-apply",
+        "execution_policy": "semi-auto-apply",
+        "policy_summary": "仅允许 provenance 明确的低风险补链自动执行，避免 thesis 页面静默漂移。"
+      },
+      "connect-isolated-source": {
+        "capabilities": [
+          "manual-edit",
+          "review",
+          "history"
+        ],
+        "decision": "review",
+        "execution_band": "manual-repair",
+        "execution_policy": "manual-repair",
+        "policy_summary": "涉及概念接入判断，先 review 再人工修复。"
+      },
+      "expand-singleton-concept": {
+        "capabilities": [
+          "manual-edit",
+          "review",
+          "history"
+        ],
+        "decision": "review",
+        "execution_band": "manual-repair",
+        "execution_policy": "manual-repair",
+        "policy_summary": "会改 concept synthesis，保留人工 review 边界。"
+      },
+      "monitor-bridge-concept": {
+        "capabilities": [
+          "review",
+          "history"
+        ],
+        "decision": "review",
+        "execution_band": "review-first",
+        "execution_policy": "manual-repair",
+        "policy_summary": "桥接概念只给观察与 review 建议，不直接自动执行。"
+      },
+      "refresh-citation-snapshots": {
+        "capabilities": [
+          "dry-run",
+          "bundle-apply",
+          "revert-safe",
+          "history"
+        ],
+        "decision": "allow",
+        "execution_band": "bundle-safe-apply",
+        "execution_policy": "semi-auto-apply",
+        "policy_summary": "可自动刷新 citation snapshot，但不自动改变 thesis / risk 结论。"
+      },
+      "split-overloaded-concept": {
+        "capabilities": [
+          "manual-edit",
+          "review",
+          "history"
+        ],
+        "decision": "review",
+        "execution_band": "manual-repair",
+        "execution_policy": "manual-repair",
+        "policy_summary": "概念拆分属于高影响动作，只允许人工修复。"
+      }
+    }
+  },
+  "output_guidance": {
+    "decision-memo": [
+      "优先突出 thesis、bull-bear evidence、position sizing guardrail、risk 和 invalidation。"
+    ],
+    "figure": [
+      "优先做 thesis、估值、风险或催化剂的对比图，而不是泛泛总结图。"
+    ],
+    "report": [
+      "优先组织成 thesis / bull-bear evidence / catalysts / risks / invalidation。",
+      "把时间窗口和下一次财报或事件复审写清楚。"
+    ],
+    "slides": [
+      "优先呈现 thesis、估值/风险、催化剂和失效条件。"
+    ],
+    "sop": [
+      "优先突出检查仓位、催化剂窗口、风控阈值和复盘步骤。"
+    ]
+  },
+  "query_routes": {
+    "default_strategy": "concept-first",
+    "graph_markers": [
+      "catalyst",
+      "driver",
+      "risk",
+      "invalidation",
+      "催化剂",
+      "驱动",
+      "风险",
+      "失效"
+    ],
+    "source_markers": [
+      "filing",
+      "10-k",
+      "earnings",
+      "transcript",
+      "财报",
+      "电话会",
+      "指引"
+    ],
+    "strategy_order": [
+      "concept-first",
+      "graph-walk",
+      "source-first"
+    ]
+  },
+  "review_windows": {
+    "decision:needs-revisit": [
+      2,
+      5
+    ],
+    "decision:proposed": [
+      3,
+      7
+    ],
+    "judgment:tentative": [
+      3,
+      7
+    ],
+    "judgment:tracking": [
+      7,
+      14
+    ]
+  },
+  "slug": "investing",
+  "summary": "面向 thesis、risk、catalyst、invalidation 和 position decision 的协议。",
+  "title": "投资协议",
+  "version": 1
+}

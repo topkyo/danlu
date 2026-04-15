@@ -8,11 +8,12 @@ Independent reviewer perspective on change risks.
   - sub-agent
   - peer agent
   - fresh session with only contract, diff, and touched-file context
+- Default model policy: prefer the strongest large model for review — Claude Opus 4.6 first; if that path is unavailable, fall back to GPT-5.4
 - Fallback: same-context self-review only when isolation is unavailable or calibration has deliberately downgraded review independence
 - If fallback is used, write `reviewer_fallback_reason` in the artifact
 - `scripts/resolve_review_mode.sh` can resolve this mode from `.codex/review-capabilities.env`; it chooses a reviewer mode, it does not schedule the reviewer for you
 - `scripts/launch_qa_review.sh` is the minimal execution bridge for this decision: it writes a handoff file and can call a configured `REVIEW_LAUNCH_COMMAND_*`
-- The bundled Codex capability template ships an opt-in `fresh-session` preset that uses `codex review --uncommitted`; enable `REVIEW_CAPABILITY_FRESH_SESSION=yes` only when you want to use it
+- The bundled Codex capability template ships an opt-in `fresh-session` preset that uses `codex review -c model="gpt-5.4" --uncommitted`; enable `REVIEW_CAPABILITY_FRESH_SESSION=yes` only when you want to use it
 - `scripts/run_qa_review.sh` is the recommended end-to-end helper when you want one command for launch + output capture + artifact write, and it can append calibration too
 - For non-pass review runs, `scripts/run_qa_review.sh --append-calibration` can conservatively infer `qa-review Hit` from explicit findings in the captured review output when you omit `--qa-review-hit`
 - That same helper also auto-records `review_findings_count`; clean passing artifacts keep that count at `0`, and `review_findings_highest_severity` is only retained on non-pass or optional artifacts that still record findings

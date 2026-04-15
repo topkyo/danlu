@@ -6,7 +6,7 @@ title: "The"
 target_path: "wiki/concepts/the.md"
 source_signature: "68f6f27445b3c6aab6786636713ab82257e23478e5c20465d5982678349a7ae8"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T03:14:25+00:00"
+last_compiled_at: "2026-04-15T09:19:10+00:00"
 ---
 
 # Rewrite Proposal · The
@@ -14,12 +14,12 @@ last_compiled_at: "2026-04-15T03:14:25+00:00"
 ## Proposal Status
 - Status: `待审提案`
 - Priority: `high`
-- Score: `8`
+- Score: `9`
 - Quality score: `64`
 - Quality band: `watch`
 - Apply ready: `False`
 - First proposed: `2026-04-15T01:54:06+00:00`
-- Last proposed: `2026-04-15T03:14:25+00:00`
+- Last proposed: `2026-04-15T09:19:10+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`
@@ -34,7 +34,7 @@ last_compiled_at: "2026-04-15T03:14:25+00:00"
 - Use the linked source pages below to deepen or revise this synthesis.
 
 ## Rewrite Strategy
-- Issues: `placeholder-summary, conflicting-source-signals, evidence-gap`
+- Issues: `soft-hardness, placeholder-summary, conflicting-source-signals, evidence-gap`
 - Strategy: 替换占位摘要，改成 grounded synthesis。 并列呈现冲突来源，明确分歧和适用边界。 保留证据缺口和不确定性，避免过强结论。
 
 ## Verification

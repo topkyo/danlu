@@ -48,6 +48,7 @@ from .app_content import (
     load_execution_receipt_history,
     machine_memory_concept_input_signature,
     machine_memory_source_input_signature,
+    normalize_concept_hardness,
     preserved_section,
     review_queue,
     rewrite_proposal_is_apply_ready,
@@ -396,13 +397,18 @@ def build_machine_memory(
             index_term(token, source_id=entry["id"])
 
     for record in concepts:
+        page = root / "wiki" / "concepts" / f"{record['slug']}.md"
+        frontmatter = parse_frontmatter(page.read_text(encoding="utf-8", errors="replace")) if page.exists() else {}
         concept_nodes.append(
             {
                 "slug": record["slug"],
                 "title": record["title"],
+                "path": f"wiki/concepts/{record['slug']}.md",
                 "source_pages": [f"wiki/sources/{entry_id}.md" for entry_id in record["entry_ids"]],
                 "related_slugs": record.get("related_slugs", []),
                 "source_signature": record["source_signature"],
+                "confidence": str(frontmatter.get("confidence") or ""),
+                "hardness": normalize_concept_hardness(frontmatter.get("hardness"), default="soft"),
             }
         )
         for related_slug in record.get("related_slugs", []):
@@ -458,6 +464,30 @@ def _frontmatter_string_list(frontmatter: dict[str, Any], key: str) -> list[str]
     return [str(item).strip() for item in value if isinstance(item, str) and str(item).strip()]
 
 
+def _resolve_curated_relation_id(
+    reference: str,
+    *,
+    current_path: str,
+    page_ids: set[str],
+    path_to_page_id: dict[str, str],
+) -> str:
+    candidate = reference.strip()
+    if not candidate:
+        return ""
+    if candidate in page_ids:
+        return candidate
+    if candidate in path_to_page_id:
+        return path_to_page_id[candidate]
+    if candidate.endswith(".md") and not candidate.startswith("wiki/"):
+        relative_candidate = (Path(current_path).parent / candidate).as_posix()
+        if relative_candidate in path_to_page_id:
+            return path_to_page_id[relative_candidate]
+    stem = Path(candidate).stem
+    if stem in path_to_page_id:
+        return path_to_page_id[stem]
+    return ""
+
+
 def attach_judgment_assets_to_machine_memory(
     root: Path,
     memory: dict[str, Any],
@@ -476,8 +506,9 @@ def attach_judgment_assets_to_machine_memory(
         stored_path = str(entry.get("stored_path") or "")
         if stored_path:
             path_to_entry_id[stored_path] = entry_id
-    judgment_nodes: list[dict[str, Any]] = []
-    source_to_judgment: list[dict[str, str]] = []
+    page_records: list[dict[str, Any]] = []
+    path_to_page_id: dict[str, str] = {}
+    page_kind_by_id: dict[str, str] = {}
     for page in decisions + judgments:
         page_path = str(page.get("path") or "")
         if not page_path:
@@ -495,38 +526,144 @@ def attach_judgment_assets_to_machine_memory(
             }
         )
         page_id = str(page.get("page_id") or frontmatter.get("id") or Path(page_path).stem)
+        page_kind = str(page.get("kind") or frontmatter.get("kind") or "")
+        record = {
+            "page_id": page_id,
+            "title": str(page.get("title") or frontmatter.get("title") or page_id),
+            "path": page_path,
+            "kind": page_kind,
+            "status": str(page.get("status") or frontmatter.get("status") or ""),
+            "protocol": str(page.get("protocol") or frontmatter.get("protocol") or DEFAULT_PROTOCOL),
+            "confidence": str(page.get("confidence") or frontmatter.get("confidence") or ""),
+            "citations": citations,
+            "source_ids": source_ids,
+            "counter_evidence": _frontmatter_string_list(frontmatter, "counter_evidence"),
+            "invalidation_rule": str(frontmatter.get("invalidation_rule") or "").strip(),
+            "next_signals": _frontmatter_string_list(frontmatter, "next_signals"),
+            "reviewed_at": str(page.get("reviewed_at") or frontmatter.get("reviewed_at") or ""),
+            "revisit_after": str(page.get("revisit_after") or frontmatter.get("revisit_after") or ""),
+            "escalate_after": str(page.get("escalate_after") or frontmatter.get("escalate_after") or ""),
+            "formed_at": str(page.get("formed_at") or frontmatter.get("formed_at") or frontmatter.get("last_compiled_at") or ""),
+            "last_reviewed": str(page.get("last_reviewed") or frontmatter.get("last_reviewed") or frontmatter.get("reviewed_at") or ""),
+            "asset_score": int(page.get("asset_score", "0") or 0),
+            "citation_drift": "true" if citation_snapshot_state["has_drift"] else "false",
+            "citation_drift_count": len(citation_snapshot_state["drifted"]),
+            "citation_snapshot_gap_count": len(citation_snapshot_state["missing"])
+            + len(citation_snapshot_state["stale"]),
+            "related_judgments_raw": _frontmatter_string_list(frontmatter, "related_judgments"),
+            "supports_raw": _frontmatter_string_list(frontmatter, "supports"),
+            "contradicts_raw": _frontmatter_string_list(frontmatter, "contradicts"),
+        }
+        page_records.append(record)
+        path_to_page_id[page_path] = page_id
+        path_to_page_id[Path(page_path).name] = page_id
+        path_to_page_id[Path(page_path).stem] = page_id
+        page_kind_by_id[page_id] = page_kind
+    judgment_nodes: list[dict[str, Any]] = []
+    source_to_judgment: list[dict[str, str]] = []
+    judgment_to_judgment: list[dict[str, str]] = []
+    judgment_to_decision: list[dict[str, str]] = []
+    page_ids = set(page_kind_by_id)
+    seen_judgment_edges: set[tuple[str, str, str]] = set()
+    seen_decision_edges: set[tuple[str, str, str]] = set()
+    for record in page_records:
+        page_id = str(record["page_id"])
+        page_path = str(record["path"])
+        related_judgments = [
+            target_id
+            for target_id in (
+                _resolve_curated_relation_id(
+                    reference,
+                    current_path=page_path,
+                    page_ids=page_ids,
+                    path_to_page_id=path_to_page_id,
+                )
+                for reference in list(record.get("related_judgments_raw") or [])
+            )
+            if target_id and target_id != page_id
+        ]
+        supports = [
+            target_id
+            for target_id in (
+                _resolve_curated_relation_id(
+                    reference,
+                    current_path=page_path,
+                    page_ids=page_ids,
+                    path_to_page_id=path_to_page_id,
+                )
+                for reference in list(record.get("supports_raw") or [])
+            )
+            if target_id and target_id != page_id
+        ]
+        contradicts = [
+            target_id
+            for target_id in (
+                _resolve_curated_relation_id(
+                    reference,
+                    current_path=page_path,
+                    page_ids=page_ids,
+                    path_to_page_id=path_to_page_id,
+                )
+                for reference in list(record.get("contradicts_raw") or [])
+            )
+            if target_id and target_id != page_id
+        ]
         judgment_nodes.append(
             {
-                "page_id": page_id,
-                "title": str(page.get("title") or frontmatter.get("title") or page_id),
-                "path": page_path,
-                "kind": str(page.get("kind") or frontmatter.get("kind") or ""),
-                "status": str(page.get("status") or frontmatter.get("status") or ""),
-                "protocol": str(page.get("protocol") or frontmatter.get("protocol") or DEFAULT_PROTOCOL),
-                "confidence": str(page.get("confidence") or frontmatter.get("confidence") or ""),
-                "citations": citations,
-                "source_ids": source_ids,
-                "counter_evidence": _frontmatter_string_list(frontmatter, "counter_evidence"),
-                "invalidation_rule": str(frontmatter.get("invalidation_rule") or "").strip(),
-                "next_signals": _frontmatter_string_list(frontmatter, "next_signals"),
-                "reviewed_at": str(page.get("reviewed_at") or frontmatter.get("reviewed_at") or ""),
-                "revisit_after": str(page.get("revisit_after") or frontmatter.get("revisit_after") or ""),
-                "escalate_after": str(page.get("escalate_after") or frontmatter.get("escalate_after") or ""),
-                "formed_at": str(page.get("formed_at") or frontmatter.get("formed_at") or frontmatter.get("last_compiled_at") or ""),
-                "last_reviewed": str(page.get("last_reviewed") or frontmatter.get("last_reviewed") or frontmatter.get("reviewed_at") or ""),
-                "asset_score": int(page.get("asset_score", "0") or 0),
-                "citation_drift": "true" if citation_snapshot_state["has_drift"] else "false",
-                "citation_drift_count": len(citation_snapshot_state["drifted"]),
-                "citation_snapshot_gap_count": len(citation_snapshot_state["missing"])
-                + len(citation_snapshot_state["stale"]),
+                **record,
+                "related_judgments": sorted(dict.fromkeys(related_judgments)),
+                "supports": sorted(dict.fromkeys(supports)),
+                "contradicts": sorted(dict.fromkeys(contradicts)),
             }
         )
-        for source_id in source_ids:
+        for source_id in list(record.get("source_ids") or []):
             source_to_judgment.append({"source_id": source_id, "page_id": page_id})
+        relation_targets = (
+            [("related", target_id) for target_id in related_judgments]
+            + [("supports", target_id) for target_id in supports]
+            + [("contradicts", target_id) for target_id in contradicts]
+        )
+        current_kind = str(record.get("kind") or "")
+        for relation, target_id in relation_targets:
+            target_kind = str(page_kind_by_id.get(target_id) or "")
+            if "decision" in {current_kind, target_kind} and "judgment" in {current_kind, target_kind}:
+                edge_key = (page_id, target_id, relation)
+                if edge_key in seen_decision_edges:
+                    continue
+                seen_decision_edges.add(edge_key)
+                judgment_to_decision.append(
+                    {
+                        "from": page_id,
+                        "to": target_id,
+                        "relation": relation,
+                        "judgment_id": page_id if current_kind == "judgment" else target_id,
+                        "decision_id": page_id if current_kind == "decision" else target_id,
+                    }
+                )
+                continue
+            edge_key = (page_id, target_id, relation)
+            if edge_key in seen_judgment_edges:
+                continue
+            seen_judgment_edges.add(edge_key)
+            judgment_to_judgment.append(
+                {
+                    "from": page_id,
+                    "to": target_id,
+                    "relation": relation,
+                }
+            )
     updated = dict(memory)
     updated["judgment_nodes"] = sorted(judgment_nodes, key=lambda item: (item["kind"], item["page_id"]))
     edges = dict(memory.get("edges", {}))
     edges["source_to_judgment"] = sorted(source_to_judgment, key=lambda item: (item["source_id"], item["page_id"]))
+    edges["judgment_to_judgment"] = sorted(
+        judgment_to_judgment,
+        key=lambda item: (item["relation"], item["from"], item["to"]),
+    )
+    edges["judgment_to_decision"] = sorted(
+        judgment_to_decision,
+        key=lambda item: (item["relation"], item["from"], item["to"]),
+    )
     updated["edges"] = edges
     return updated
 
@@ -574,7 +711,7 @@ def plan_machine_memory_build(
     clean_concept_slugs: list[str] = []
     for record in concepts:
         slug = str(record["slug"])
-        input_signature = machine_memory_concept_input_signature(record)
+        input_signature = machine_memory_concept_input_signature(root, record)
         concept_records[slug] = {"input_signature": input_signature}
         previous_record = previous_concept_records.get(slug, {})
         if (
@@ -728,15 +865,18 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
         component_sizes.append(len(members))
         source_ids = sorted(member.removeprefix("source:") for member in members if member.startswith("source:"))
         concept_slugs = sorted(member.removeprefix("concept:") for member in members if member.startswith("concept:"))
+        judgment_ids = sorted(member.removeprefix("judgment:") for member in members if member.startswith("judgment:"))
         component_records.append(
             {
                 "source_ids": source_ids,
                 "concept_slugs": concept_slugs,
+                "judgment_ids": judgment_ids,
                 "size": len(members),
                 "sort_key": (
                     -len(members),
                     source_ids[0] if source_ids else "~",
                     concept_slugs[0] if concept_slugs else "~",
+                    judgment_ids[0] if judgment_ids else "~",
                 ),
             }
         )
@@ -745,6 +885,7 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
     components: list[dict[str, Any]] = []
     source_component_ids: dict[str, str] = {}
     concept_component_ids: dict[str, str] = {}
+    judgment_component_ids: dict[str, str] = {}
     for index, record in enumerate(component_records, start=1):
         component_id = f"component-{index}"
         components.append(
@@ -753,12 +894,15 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
                 "size": record["size"],
                 "source_ids": record["source_ids"],
                 "concept_slugs": record["concept_slugs"],
+                "judgment_ids": record["judgment_ids"],
             }
         )
         for source_id in record["source_ids"]:
             source_component_ids[source_id] = component_id
         for concept_slug in record["concept_slugs"]:
             concept_component_ids[concept_slug] = component_id
+        for judgment_id in record["judgment_ids"]:
+            judgment_component_ids[judgment_id] = component_id
 
     for item in hub_concepts:
         item["component_id"] = concept_component_ids.get(item["slug"], "")
@@ -968,6 +1112,11 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
             )
         },
     }
+    judgment_relation_counts = {
+        "source_to_judgment": len(edges.get("source_to_judgment", [])),
+        "judgment_to_judgment": len(edges.get("judgment_to_judgment", [])),
+        "judgment_to_decision": len(edges.get("judgment_to_decision", [])),
+    }
 
     return {
         "isolated_source_ids": isolated_source_ids,
@@ -984,6 +1133,8 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
         "components": components,
         "source_component_ids": source_component_ids,
         "concept_component_ids": concept_component_ids,
+        "judgment_component_ids": judgment_component_ids,
+        "judgment_relation_counts": judgment_relation_counts,
     }
 
 
@@ -1247,6 +1398,24 @@ def build_machine_memory_graph(memory: dict[str, Any]) -> dict[str, Any]:
                 "source": f"source:{edge['source_id']}",
                 "target": f"judgment:{edge['page_id']}",
                 "type": "SUPPORTS_JUDGMENT",
+            }
+        )
+    for edge in memory.get("edges", {}).get("judgment_to_judgment", []):
+        relation = str(edge.get("relation") or "related").upper()
+        edges.append(
+            {
+                "source": f"judgment:{edge['from']}",
+                "target": f"judgment:{edge['to']}",
+                "type": f"JUDGMENT_{relation}",
+            }
+        )
+    for edge in memory.get("edges", {}).get("judgment_to_decision", []):
+        relation = str(edge.get("relation") or "supports").upper()
+        edges.append(
+            {
+                "source": f"judgment:{edge['from']}",
+                "target": f"judgment:{edge['to']}",
+                "type": f"DECISION_{relation}",
             }
         )
     for edge in memory.get("edges", {}).get("concept_to_concept", []):

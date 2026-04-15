@@ -6,20 +6,20 @@ title: "Agentic"
 target_path: "wiki/concepts/agentic.md"
 source_signature: "2921a14fec04ee48b4a5e95b8d01a56cd04af86c28aa6184d328cdc9391be385"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T03:43:15+00:00"
+last_compiled_at: "2026-04-15T09:19:10+00:00"
 ---
 
 # Rewrite Proposal · Agentic
 
 ## Proposal Status
 - Status: `待审提案`
-- Priority: `medium`
-- Score: `5`
+- Priority: `high`
+- Score: `6`
 - Quality score: `78`
 - Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T03:10:19+00:00`
-- Last proposed: `2026-04-15T03:43:15+00:00`
+- Last proposed: `2026-04-15T09:19:10+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`
@@ -35,7 +35,7 @@ last_compiled_at: "2026-04-15T03:43:15+00:00"
 - 因此，本页目前只能把 `agentic` 记录为“LangGraph 文档中的一个概念入口”，不能把常见业界对 agentic system 的含义直接写成这里的已证实结论。
 
 ## Rewrite Strategy
-- Issues: `single-source, evidence-gap, merge-boundary`
+- Issues: `soft-hardness, single-source, evidence-gap, merge-boundary`
 - Strategy: 保留证据缺口和不确定性，避免过强结论。 保持保守措辞，并指出还缺哪些来源。 检查是否需要合并或拆分概念边界。
 
 ## Verification

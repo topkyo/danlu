@@ -7,8 +7,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from aiwiki.app_compile import compile_wiki
-from aiwiki.app_content import ingest_source
+from aiwiki.app_content import ingest_source, sync_manifest_with_raw
 from aiwiki.app_protocol import ensure_layout
+from aiwiki.drop import drop_note
 from aiwiki.llm import CompletionResult
 from aiwiki.runner import (
     _append_log,
@@ -131,6 +132,23 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("Conflict `source-tension`", concept_prompt)
         self.assertIn("Gap `coverage-gap`", concept_prompt)
         self.assertIn("Make evidence boundaries explicit.", concept_prompt)
+        self.assertIn("hardness: soft|medium|hard", concept_prompt)
+
+    def test_compile_prompt_adds_note_kind_hints_for_transcripts(self) -> None:
+        drop_note(
+            self.root,
+            text="# Standup\n\nAlice: review backlog.\nBob: ship runtime validation.\n",
+            kind="transcript",
+        )
+        manifest = sync_manifest_with_raw(self.root)
+        entry = manifest["entries"][0]
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+
+        prompt = _build_compile_prompt(self.root, entry, self.root / entry["stored_path"], source_page.read_text(encoding="utf-8"))
+
+        self.assertIn("Material kind: `transcript`", prompt)
+        self.assertIn("Preserve chronology, speaker attributions", prompt)
 
     def test_rewrite_candidate_and_machine_query_helpers_render_expected_details(self) -> None:
         memory = {
@@ -258,6 +276,7 @@ class RunnerTests(unittest.TestCase):
                 'kind: "concept"',
                 'source_signature: "sig-1"',
                 'source_pages: ["wiki/sources/source-1.md"]',
+                'hardness: "medium"',
                 "---",
                 "",
                 "# Agent",
@@ -275,6 +294,13 @@ class RunnerTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             _validate_concept_page(
                 concept_markdown.replace("- Grounded synthesis.", "- This concept currently appears in `1` source page(s)."),
+                "agent",
+                "sig-1",
+                ["wiki/sources/source-1.md"],
+            )
+        with self.assertRaises(RuntimeError):
+            _validate_concept_page(
+                concept_markdown.replace('hardness: "medium"', 'hardness: "unknown"'),
                 "agent",
                 "sig-1",
                 ["wiki/sources/source-1.md"],

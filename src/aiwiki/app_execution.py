@@ -6,9 +6,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .app_content import execution_receipt_path
+from .app_content import execution_bundle_path, execution_receipt_path
 from .app_state import (
     DEFAULT_PROTOCOL,
+    execution_batch_receipt_path,
     execution_receipt_history_path,
     load_json_document,
     material_archive_action_id,
@@ -109,6 +110,61 @@ def load_execution_bundle(path: Path) -> ExecutionBundle:
     return document
 
 
+def write_execution_bundle_document(path: Path, bundle: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(bundle, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def write_execution_dry_run_document(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def build_execution_batch_receipt(
+    root: Path,
+    *,
+    batch_id: str,
+    operation: str,
+    generated_at: str,
+    items: list[dict[str, Any]],
+    note: str | None,
+    revert_supported: bool,
+    reverted_batch_id: str = "",
+) -> dict[str, Any]:
+    action_ids = [
+        str(item.get("id") or item.get("action_id") or "")
+        for item in items
+        if isinstance(item, dict) and (item.get("id") or item.get("action_id"))
+    ]
+    page_paths = [
+        str(item.get("path") or "")
+        for item in items
+        if isinstance(item, dict) and item.get("path")
+    ]
+    receipt_path = execution_batch_receipt_path(root, batch_id)
+    return {
+        "version": 1,
+        "kind": "execution-batch-receipt",
+        "generated_by": "aiwiki-batch-ops",
+        "generated_at": generated_at,
+        "batch_id": batch_id,
+        "operation": operation,
+        "note": note or "",
+        "count": len(items),
+        "action_ids": action_ids,
+        "page_paths": page_paths,
+        "revert_supported": revert_supported,
+        "reverted_batch_id": reverted_batch_id,
+        "items": items,
+        "receipt_path": relative_path(root, receipt_path),
+    }
+
+
+def write_execution_batch_receipt_document(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def build_execution_receipt(
     root: Path,
     action: dict[str, Any],
@@ -188,7 +244,7 @@ def build_material_archive_bundle(
         ],
         "suggested_edits": [f"temperature `{current_temperature}` -> `{resulting_temperature}`"],
         "proposal_path": "",
-        "bundle_path": "",
+        "bundle_path": relative_path(root, execution_bundle_path(root, action_id)),
         "page_patch_plan": [],
         "safe_apply_preview": {
             "apply_mode": (
@@ -215,7 +271,7 @@ def build_material_archive_bundle(
         },
         "command_hint": command_hint,
         "next_step": "如需恢复材料，再执行对应的 revert-archive。",
-        "dry_run_supported": False,
+        "dry_run_supported": True,
     }
     bundle["digest"] = execution_bundle_digest(bundle)
     return bundle

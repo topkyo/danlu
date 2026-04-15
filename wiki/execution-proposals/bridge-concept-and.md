@@ -14,7 +14,7 @@ impact_score: "32"
 target_paths:
   - "wiki/concepts/and.md"
 generated_by: "aiwiki-compile"
-last_compiled_at: "2026-04-15T03:10:19+00:00"
+last_compiled_at: "2026-04-15T09:49:48+00:00"
 ---
 
 # 观察桥接概念 And

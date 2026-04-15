@@ -36,6 +36,7 @@ Environment exported to launcher commands:
   OPEN_HARNESS_REVIEW_SCOPE
   OPEN_HARNESS_REVIEW_FALLBACK_REASON
   OPEN_HARNESS_REVIEW_IDENTITY
+  OPEN_HARNESS_REVIEW_MODEL_PREFERENCE
   OPEN_HARNESS_REVIEW_TASK
   OPEN_HARNESS_REVIEW_HANDOFF_FILE
   OPEN_HARNESS_REVIEW_OUTPUT_FILE
@@ -74,6 +75,7 @@ load_capability_defaults() {
   REVIEW_LAUNCH_COMMAND_FRESH_SESSION=""
   REVIEW_LAUNCH_COMMAND_SAME_CONTEXT=""
   REVIEW_LAUNCH_COMMAND_HUMAN=""
+  REVIEW_MODEL_PREFERENCE_DEFAULT=""
 }
 
 load_capabilities_file() {
@@ -133,9 +135,10 @@ write_handoff_file() {
   local scope="$3"
   local fallback_reason="$4"
   local identity="$5"
-  local artifact_file="$6"
-  local contract_file="$7"
-  local touched_files="$8"
+  local model_preference="$6"
+  local artifact_file="$7"
+  local contract_file="$8"
+  local touched_files="$9"
   local generated_at=""
 
   generated_at="$(date +%F)"
@@ -152,6 +155,9 @@ write_handoff_file() {
     fi
     if [[ -n "$identity" ]]; then
       printf -- '- Reviewer Identity Hint: %s\n' "$identity"
+    fi
+    if [[ -n "$model_preference" ]]; then
+      printf -- '- Preferred Review Models: %s\n' "$model_preference"
     fi
     printf -- '- Contract: %s\n' "$contract_file"
     printf -- '- Gate Artifact: %s\n' "$artifact_file"
@@ -204,6 +210,7 @@ run_launch_command() {
     export OPEN_HARNESS_REVIEW_SCOPE="$REVIEWER_SCOPE"
     export OPEN_HARNESS_REVIEW_FALLBACK_REASON="$REVIEWER_FALLBACK_REASON"
     export OPEN_HARNESS_REVIEW_IDENTITY="$REVIEWER_IDENTITY"
+    export OPEN_HARNESS_REVIEW_MODEL_PREFERENCE="$REVIEW_MODEL_PREFERENCE_DEFAULT"
     export OPEN_HARNESS_REVIEW_TASK="${TASK_NAME:-qa-review}"
     export OPEN_HARNESS_REVIEW_HANDOFF_FILE="$HANDOFF_FILE"
     export OPEN_HARNESS_REVIEW_OUTPUT_FILE="$OUTPUT_FILE"
@@ -278,7 +285,16 @@ if [[ -z "$OUTPUT_FILE" ]]; then
 fi
 
 TOUCHED_FILES="$(collect_touched_files || true)"
-write_handoff_file "$HANDOFF_FILE" "$REVIEWER_MODE" "$REVIEWER_SCOPE" "$REVIEWER_FALLBACK_REASON" "$REVIEWER_IDENTITY" "$QA_REVIEW_FILE" "$CONTRACT_FILE" "$TOUCHED_FILES"
+write_handoff_file \
+  "$HANDOFF_FILE" \
+  "$REVIEWER_MODE" \
+  "$REVIEWER_SCOPE" \
+  "$REVIEWER_FALLBACK_REASON" \
+  "$REVIEWER_IDENTITY" \
+  "$REVIEW_MODEL_PREFERENCE_DEFAULT" \
+  "$QA_REVIEW_FILE" \
+  "$CONTRACT_FILE" \
+  "$TOUCHED_FILES"
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 pass "prepared qa-review handoff at $HANDOFF_FILE"
 info "review output target: $OUTPUT_FILE"

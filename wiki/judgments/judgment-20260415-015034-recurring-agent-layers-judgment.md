@@ -9,15 +9,15 @@ source_files:
 citations:
   - "wiki/sources/discovered-20260415013128-building-effective-agents.md"
   - "wiki/sources/discovered-20260415013331-autogen-multi-agent-debate-pattern.md"
-  - "wiki/sources/discovered-20260408053358-item.md"
-  - "wiki/sources/discovered-20260408053946-item.md"
   - "wiki/sources/discovered-20260415013612-crewai-agents-concept.md"
+  - "wiki/sources/discovered-20260408053946-item.md"
+  - "wiki/sources/discovered-20260408053358-item.md"
 citation_snapshots:
   - "wiki/sources/discovered-20260415013128-building-effective-agents.md#2b9fefd6df1175acb14f2312c3e9c078398338321a27c53f5adafa2ef9a5da02"
   - "wiki/sources/discovered-20260415013331-autogen-multi-agent-debate-pattern.md#58dc9dc777e6a918cde731c940b0b836ff4b8d2de29099a771f61bd7acdf01a5"
-  - "wiki/sources/discovered-20260408053358-item.md#c13ff3a1c5fc5523b8d0452f566e257e0fce75d6eb99ff019ddc99805eb8abf1"
-  - "wiki/sources/discovered-20260408053946-item.md#0e2c327565c35311e2f2d4ee693ca3ac4ba2917e67d5541fc7de9b34dd173546"
   - "wiki/sources/discovered-20260415013612-crewai-agents-concept.md#1dff29c2fbe8e43e72cfb1e136f75f40e8a682ad0df9c2f25b69eff028adbded"
+  - "wiki/sources/discovered-20260408053946-item.md#0e2c327565c35311e2f2d4ee693ca3ac4ba2917e67d5541fc7de9b34dd173546"
+  - "wiki/sources/discovered-20260408053358-item.md#c13ff3a1c5fc5523b8d0452f566e257e0fce75d6eb99ff019ddc99805eb8abf1"
 generated_by: "aiwiki-file-back"
 last_compiled_at: "2026-04-15T01:50:34+00:00"
 confidence: "high"
@@ -29,10 +29,10 @@ next_signals:
   - "Track whether MCP or A2A become default interoperability seams rather than optional integrations."
   - "Watch whether production agent frameworks keep adding audit, review, and replay surfaces around execution."
 formed_at: "2026-04-15T01:50:34+00:00"
-last_reviewed: "2026-04-15T01:51:03+00:00"
-reviewed_at: "2026-04-15T01:51:03+00:00"
-revisit_after: "2026-04-10T00:00:00+00:00"
-escalate_after: "2026-04-12T00:00:00+00:00"
+last_reviewed: "2026-04-15T12:39:25+00:00"
+reviewed_at: "2026-04-15T12:39:25+00:00"
+revisit_after: ""
+escalate_after: ""
 ---
 
 # Recurring Agent Layers Judgment
@@ -79,15 +79,16 @@ escalate_after: "2026-04-12T00:00:00+00:00"
 
 ## Review Status
 - Current status: `confirmed`
-- Reviewed at: `2026-04-15T01:51:03+00:00`
+- Reviewed at: `2026-04-15T12:39:25+00:00`
 - Confidence: `high`
 
 ## Review Notes
 - Outcome: `confirmed`
-- Reviewed at: `2026-04-15T01:51:03+00:00`
-- Note: Cross-framework layer pattern is consistent in the corpus.
+- Reviewed at: `2026-04-15T12:39:25+00:00`
+- Note: Escalation re-review closed after governance pressure test.
 
 ## Review History
+- `2026-04-15T12:39:25+00:00` | status `confirmed` | confidence `high` | note Escalation re-review closed after governance pressure test.
 - `2026-04-15T01:51:03+00:00` | status `confirmed` | confidence `high` | note Cross-framework layer pattern is consistent in the corpus.
 - `2026-04-15T01:50:34+00:00` | status `confirmed` | confidence `high` | note Cross-framework layer pattern is consistent in the corpus.
 
