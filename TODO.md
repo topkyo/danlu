@@ -1,22 +1,23 @@
 # 炼丹炉 To Do List
 
-> 基于 2026-04-15 全量代码/状态/内容/测试评估生成（含 45 轮闭环后第四次评估）。
-> 当前综合评分 **8.1/10**。目标 **9.0+**。
+> 基于 2026-04-15 全量代码/状态/内容/测试评估生成（含 45 轮闭环后第五次评估）。
+> 当前综合评分 **8.3/10**。目标 **9.0+**。
+> ⚠️ 第五次评估修正了多处自评低估：execution receipts 0→3、judgments 3→6、decisions 2→4、figures 0→2、slides 1→3。
 
 ## 当前全局画像
 
 | 维度 | 当前分 | 目标分 | 数据 |
 |------|--------|--------|------|
-| Evidence Fabric | 9.0 | 9.5 | 46 raw files / 4 drop 入口 / archive apply-revert 闭环 |
+| Evidence Fabric | 9.0 | 9.5 | 46 raw files / 5 drop 入口 / archive apply-revert 闭环 |
 | Knowledge Compiler | 8.5 | 9.0 | 16 sources / 30 concepts / 5 hard+medium 因果网络 / 309 tests |
-| Judgment System | 7.5 | 9.0 | 3 judgments / 2 decisions / 骨架完美资产薄 |
-| Machine Memory | 8.5 | 9.0 | 119+ edges + concept_causal 因果边 / 1023 terms / planner 在 |
+| Judgment System | **8.0** | 9.0 | 6 judgments / 4 decisions / lifecycle + counter-evidence |
+| Machine Memory | 8.5 | 9.0 | 247 edges (含 concept_causal 代码就绪) / 1023 terms / planner 消费 1 action |
 | Schema / Protocol | 9.0 | 9.5 | 5 协议 × 8 模板 / 真正影响 runtime |
-| Governance | 8.5 | 9.5 | review→aging→repair 完整 / escalation 未受压测 |
-| Execution Layer | **6.5** | **9.0** | 框架全有，0 真实 receipt，8 proposals 全 pending |
-| Outputs | 8.0 | 9.0 | 87 artifacts / figures=0 / slides=1 |
-| Product Shell | **7.0** | **8.5** | Obsidian 默认工作台 + HTML fallback / 三中心面板 |
-| **加权总分** | **8.1** | **9.1** | |
+| Governance | 8.5 | 9.5 | review→aging→repair 完整 / 1248 policy decisions / escalation 未受压测 |
+| Execution Layer | **7.5** | **9.0** | 3 真实 receipts（apply+revert+re-apply 闭环）/ 8 proposals / planner 已消费 1 |
+| Outputs | 8.0 | 9.0 | 107 artifacts / 2 figures / 3 slides / 11 reports |
+| Product Shell | **7.0** | **8.5** | Obsidian 默认工作台 + HTML fallback / 36 CLI / 三中心面板 |
+| **加权总分** | **8.3** | **9.1** | |
 
 ### 已完成（45 轮闭环）
 
@@ -28,42 +29,40 @@
 - ✅ Judgment lifecycle / cognitive-history / governance surfaces
 - ✅ planner-state / query-route-telemetry / execution-policy-decisions 持久化
 - ✅ lint_wiki() warning 清零
-- ✅ 真实 research corpus 激活（16 sources / 30 concepts / 3 judgments / 2 decisions）
+- ✅ 真实 research corpus 激活（16 sources / 30 concepts / 6 judgments / 4 decisions）
 - ✅ 巨石拆分完成：最大模块 3408L（app_compile.py）
 - ✅ 概念因果网络（causal_links）: 5 个 hard/medium concepts 建立 12 条因果关系
 - ✅ Machine Memory 新增 concept_causal 边类型 + 图谱/拓扑/健康度全链路集成
 - ✅ 架构文档修正：多 agent → 自动化角色、Product Shell 定位明确
+- ✅ 执行层真实闭环：apply → revert → re-apply 完整周期（3 receipts / 1 planner action consumed）
 
 ### 为什么还不到 9 分
 
-上 45 轮已把架构、模块化、测试、因果网络、文档定位都推了一轮。但评估暴露出 **两个半结构性差距**：
+上 45 轮已把架构、模块化、测试、因果网络、执行闭环都推了一轮。评估修正后 **三个结构性差距**：
 
-1. **Execution Layer 是空壳**（6.5）：框架精致但 0 真实 receipt、0 safe-apply 执行记录、dry-run 不是独立步骤、8 个 execution proposal 全 pending
+1. **Execution Layer 密度不足**（7.5）：已完成 1 个 action 的完整 apply→revert→re-apply 闭环，但 8 个 proposals 中只消费了 1 个、action 类型单一（仅 citation-refresh）、planner 自动消费循环未激活
 2. **Product Shell 初步定位明确但交互仍弱**（7.0）：Obsidian 默认 + HTML fallback 已明确，但统一 dashboard、batch 操作、context 自动推断尚未实现
-3. **Judgment 资产密度不够**（7.5）：只有 5 个 judgment/decision 资产，因果网络已补但判断层间缺关联图谱
+3. **Judgment 资产虽已扩充但关联不足**（8.0）：6 judgments + 4 decisions 已有一定密度，但 judgment 间缺乏显式关联图谱，因果网络待物化到 machine memory
 
 ---
 
-## Tier 1 — Execution Layer 激活 (6.5 → 9.0) ⚡ 最大杠杆
+## Tier 1 — Execution Layer 深化 (7.5 → 9.0) ⚡ 最大杠杆
 
-> 这是评分最低的层，也是投入产出比最高的提升点。
-> 框架全部就位（bundle / receipt / revert / audit），只需要"跑通一遍真实闭环"。
+> 执行层已完成首次真实闭环（apply→revert→re-apply），但 action 类型单一、planner 自动消费未激活。
+> 下一步是扩展执行多样性和自动化消费循环。
 
-### T1-A. 跑通一轮完整的 safe-apply 闭环
+### T1-A. 消费 Planner Queue + 多类型 Action
 
-**现状：** 8 个 execution proposals 全部 pending，planner 有 8 个 priority_queue 项但 executed=0，execution-receipt-history.jsonl 不存在。
+**现状：** 8 个 execution proposals 排队（2 overloaded-concept + 6 bridge-concept），planner 仅消费 1 个 citation-refresh。
 
 **行动：**
-1. 从 8 个 pending proposals 中选一个 low-risk bridge-concept proposal（如 `bridge-concept-abstract`）
-2. 执行 `review-action <id> --status accepted`
-3. 执行 `apply-action <id> --dry-run` 验证 preview
-4. 执行 `apply-action <id>` 生成真实 receipt
-5. 验证 `execution-receipt-history.jsonl` 写入
-6. 验证 `execution-audit` 和 `execution-center` 索引页更新
-7. 执行 `revert-action <id>` 验证回滚
-8. 确认 receipt 中记录了 revert 操作
+1. 从 queue 中选一个 bridge-concept proposal（如 `bridge-concept-abstract`，score=32）
+2. 执行 `review-action <id> --status accepted` → `apply-action <id>`
+3. 选一个 overloaded-concept proposal（score=78）执行同样流程
+4. 验证 execution-receipts.jsonl 新增 ≥ 2 条记录（不同类型）
+5. 验证 planner-state.json `executed_actions` 更新
 
-**验证：** `.aiwiki/state/execution-receipt-history.jsonl` 有 ≥ 2 条记录（apply + revert）
+**验证：** receipts 有 ≥ 5 条（原 3 + 新 2+），且覆盖 ≥ 2 种 action 类型
 
 ### T1-B. dry-run 显式化
 
@@ -90,7 +89,7 @@
 
 ### T1-D. Planner 消费循环
 
-**现状：** planner-state.json 有 priority_queue（8 项）但从未被消费。
+**现状：** planner-state.json 有 priority_queue（8 项），已消费 1 个 action，但无自动消费循环。
 
 **行动：**
 1. `nightly` 流程中新增 execution planner 消费步骤：扫描 priority_queue → 对 low-risk + accepted 的 proposal 自动生成 execution bundle
@@ -98,44 +97,44 @@
 3. planner-state 更新 executed_actions 计数
 4. 高风险 proposal 保持 pending，只在 planner 中标注"human-required"
 
-**验证：** `nightly` 后 planner-state.json 中 `executed_actions` > 0 或 bundle 目录有新产物
+**验证：** `nightly` 后 planner-state.json 中 `executed_actions` 列表增长或 bundle 目录有新产物
 
 ---
 
-## Tier 2 — Judgment & Concept 密度 (7.5 → 9.0)
+## Tier 2 — Judgment & Concept 密度 (8.0 → 9.0)
 
-> 当前只有 3 judgments + 2 decisions + 30 个偏 soft 的 concepts。
-> 终极文档要求 judgment 是"系统最值钱的一层"——当前远未达到。
+> 当前 6 judgments + 4 decisions + 30 个 concepts（5 有因果网络）。
+> 终极文档要求 judgment 是"系统最值钱的一层"——资产已有一定密度，但缺乏关联和物化。
 
-### T2-A. Judgment 资产扩充
+### T2-A. Judgment 间关联图谱 + 因果物化
 
-**现状：** 3 个 judgment（agent governance / research methodology / 1 more），2 个 decision。
+**现状：** 6 judgments / 4 decisions 已有数量，但 judgment 间无显式关联。concept_causal 代码已写好但 machine-memory.json 中 causal 边 = 0（需 recompile 物化）。
 
 **行动：**
-1. 从现有 16 个 source 和 30 个 concept 中，通过 `ask → file-back` 新增 3-5 个 judgment
-2. 至少覆盖 2 个不同 protocol（如 research + investing）
-3. 每个 judgment 必须有 counter-evidence + invalidation_rule + next_signals
-4. 创建 1 个 judgment 间的关联关系（judgment A 的 evidence 支持/反驳 judgment B）
+1. 运行 compile 物化 concept_causal 边到 machine-memory.json
+2. 在 judgment/decision frontmatter 中新增 `related_judgments` / `supports` / `contradicts` 字段
+3. machine memory graph 新增 judgment-judgment 和 judgment-decision edges
+4. 在 `judgment-assets` 索引页中渲染关联关系
+5. 将剩余 24 个 soft concept 中的高频 concept 逐步提升 hardness 并补 causal_links
 
-**目标：** wiki/judgments/ ≥ 6，wiki/decisions/ ≥ 4
+**目标：** machine-memory graph 中 concept_causal 边 ≥ 12，judgment-level edges ≥ 2
 
-### T2-B. Hard Concepts 硬化 ✅ 已完成
+### T2-B. Hard Concepts 扩展 ✅ 初期完成
 
 **已完成：** 6 个 concept 已标注 hardness，5 个建立 12 条 causal_links，machine memory 全链路集成。
 
-**后续扩展：** 将剩余 24 个 soft concept 中的高频 concept 逐步提升 hardness
+**后续扩展：** 将剩余 24 个 soft concept 中的高频 concept 逐步提升 hardness + causal_links
 
-### T2-C. Judgment 关联图谱
+### T2-C. Judgment 资产持续扩充
 
-**现状：** judgments 和 decisions 之间没有显式关联。
+**现状：** 6 judgments / 4 decisions 已达最低密度目标，但仅覆盖 agent-governance / protocol-boundary / investing 等主题。
 
 **行动：**
-1. 在 judgment/decision frontmatter 中新增 `related_judgments` / `supports` / `contradicts` 字段
-2. machine memory graph 新增 judgment-judgment 和 judgment-decision edges
-3. 在 `judgment-assets` 索引页中渲染关联关系
-4. cognitive-history 记录关联变更
+1. 从现有 16 个 source 和 30 个 concept 中，通过 `ask → file-back` 新增 2-3 个 judgment
+2. 覆盖 research protocol 中尚无 judgment 的领域
+3. 每个 judgment 必须有 counter-evidence + invalidation_rule + next_signals
 
-**验证：** machine-memory graph 中 judgment 节点有 ≥ 2 条 judgment-level edges
+**目标：** wiki/judgments/ ≥ 8，覆盖 ≥ 3 个不同 protocol
 
 ### T2-D. Escalation 压力测试
 
@@ -211,28 +210,28 @@
 
 ## Tier 4 — Output 丰富化 (8.0 → 9.0)
 
-### T4-A. Figures 产出
+### T4-A. Figures 持续产出
 
-**现状：** output/figures/ 完全为空。
+**现状：** output/figures/ 有 2 个文件（governance-health-dashboard / judgment-relation-map）。
 
 **行动：**
 1. compile/nightly 自动生成 concept-map 摘要图（text-based 或 mermaid）
 2. judgment timeline 图（每个 judgment 的 formed → reviewed → revised 时间线）
-3. governance health dashboard 图（pending / overdue / escalated 分布）
+3. causal-network 可视化图
 4. 写入 output/figures/
 
-**验证：** output/figures/ ≥ 2 个文件
+**验证：** output/figures/ ≥ 4 个文件
 
 ### T4-B. Slides & Decision Memo 密度
 
-**现状：** 1 个 slide、5 个 decision memos。
+**现状：** 3 个 slides、11 个 reports。
 
 **行动：**
-1. 用真实场景运行 `ask --format slides` 生成 2-3 个 slides
+1. 用真实场景运行 `ask --format slides` 生成 2-3 个新 slides
 2. 对每个 decision 自动生成配套 decision memo（如尚未存在）
 3. decision memo 模板包含 thesis / evidence summary / risk / invalidation
 
-**验证：** output/slides/ ≥ 3，output/packs/decision-memos/ ≥ 5
+**验证：** output/slides/ ≥ 5，output/reports/ 持续增长
 
 ### T4-C. 测试覆盖 93%+
 
@@ -284,14 +283,14 @@
 |------|------|-------|-------|-------|-------|-------|
 | ① Evidence Fabric | 9.0 | 9.0 | 9.0 | 9.0 | 9.0 | **9.5** |
 | ② Knowledge Compiler | 8.5 | 8.5 | **9.0** | 9.0 | 9.0 | 9.0 |
-| ③ Judgment System | 7.5 | 7.5 | **9.0** | 9.0 | 9.0 | 9.0 |
+| ③ Judgment System | **8.0** | 8.0 | **9.0** | 9.0 | 9.0 | 9.0 |
 | ④ Machine Memory | 8.5 | 8.5 | **9.0** | 9.0 | 9.0 | 9.0 |
 | ⑤ Schema / Protocol | 9.0 | 9.0 | 9.0 | 9.0 | 9.0 | **9.5** |
 | ⑥ Governance | 8.5 | 8.5 | **9.5** | 9.5 | 9.5 | 9.5 |
-| ⑦ Execution Layer | **6.5** | **9.0** | 9.0 | 9.0 | 9.0 | 9.0 |
+| ⑦ Execution Layer | **7.5** | **9.0** | 9.0 | 9.0 | 9.0 | 9.0 |
 | ⑧ Outputs | 8.0 | 8.0 | 8.0 | 8.5 | **9.0** | 9.0 |
 | ⑨ Product Shell | **7.0** | 7.5 | 7.5 | **8.5** | 8.5 | 8.5 |
-| **加权平均** | **8.1** | **8.4** | **8.8** | **9.0** | **9.1** | **9.2** |
+| **加权平均** | **8.3** | **8.6** | **8.9** | **9.1** | **9.1** | **9.2** |
 
 ---
 
@@ -322,15 +321,16 @@ Tier 5（长期卫生）────────── schema 验证 + drift 实
 
 ## 能否到 9 分？
 
-**结论：能，但有条件。**
+**结论：能，且比上轮更近一步。**
 
 从预估表看：
-- **完成 Tier 1-3 就能到 9.0**（加权平均从 7.9 → 9.0）
-- Tier 4-5 是从 9.0 推到 9.2 的增量
+- **完成 Tier 1-2 就能到 8.9**（加权平均从 8.3 → 8.9）
+- **完成 Tier 1-3 就能到 9.1**（加权平均从 8.3 → 9.1）
+- Tier 4-5 是从 9.1 推到 9.2 的增量
 
 关键风险：
-- **Product Shell（T3）是最难的一层**——从 6.0 推到 8.5 需要 dashboard / search / batch / 交互图谱四项齐备
-- **Judgment 密度（T2）需要真实场景持续投喂**——不是写代码能解决的，需要实际使用系统
-- **Execution 激活（T1）是最有确定性的**——框架全在，只需操作层面跑通
+- **Product Shell（T3）是最难的一层**——从 7.0 推到 8.5 需要 dashboard / search / batch / 交互图谱四项齐备
+- **Judgment 关联（T2-A）需要真实场景持续投喂**——不是写代码能解决的，需要实际使用系统
+- **Execution 多样性（T1）是最有确定性的**——闭环已跑通，只需扩展 action 类型和自动化消费
 
 > **一句话：Tier 1 确定能做、Tier 2 需要用系统、Tier 3 需要产品设计。三层全闭合才能稳过 9 分。**
