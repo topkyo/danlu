@@ -1,43 +1,46 @@
 # 炼丹炉 To Do List
 
-> 基于 2026-04-15 全量代码/状态/内容/测试评估生成（含 42 轮闭环后第三次评估）。
-> 当前综合评分 **7.9/10**。目标 **9.0+**。
+> 基于 2026-04-15 全量代码/状态/内容/测试评估生成（含 45 轮闭环后第四次评估）。
+> 当前综合评分 **8.1/10**。目标 **9.0+**。
 
 ## 当前全局画像
 
 | 维度 | 当前分 | 目标分 | 数据 |
 |------|--------|--------|------|
 | Evidence Fabric | 9.0 | 9.5 | 46 raw files / 4 drop 入口 / archive apply-revert 闭环 |
-| Knowledge Compiler | 8.5 | 9.0 | 16 sources / 30 concepts / 8 incremental states / concepts 偏 soft |
+| Knowledge Compiler | 8.5 | 9.0 | 16 sources / 30 concepts / 5 hard+medium 因果网络 / 309 tests |
 | Judgment System | 7.5 | 9.0 | 3 judgments / 2 decisions / 骨架完美资产薄 |
-| Machine Memory | 8.0 | 9.0 | 119 edges / 1023 terms / planner 在但未被消费驱动 |
+| Machine Memory | 8.5 | 9.0 | 119+ edges + concept_causal 因果边 / 1023 terms / planner 在 |
 | Schema / Protocol | 9.0 | 9.5 | 5 协议 × 8 模板 / 真正影响 runtime |
 | Governance | 8.5 | 9.5 | review→aging→repair 完整 / escalation 未受压测 |
 | Execution Layer | **6.5** | **9.0** | 框架全有，0 真实 receipt，8 proposals 全 pending |
 | Outputs | 8.0 | 9.0 | 87 artifacts / figures=0 / slides=1 |
-| Product Shell | **6.0** | **8.5** | 分散面板集合 / 非统一工作台 |
-| **加权总分** | **7.9** | **9.1** | |
+| Product Shell | **7.0** | **8.5** | Obsidian 默认工作台 + HTML fallback / 三中心面板 |
+| **加权总分** | **8.1** | **9.1** | |
 
-### 已完成（42 轮闭环）
+### 已完成（45 轮闭环）
 
 - ✅ `app.py` 动态 facade → 静态 shim + 24 个 owner module
-- ✅ 252 tests / 90% coverage / verify 全绿
-- ✅ 42 段闭环迭代（verify + qa-review + closed_loop）
+- ✅ 309 tests / 92% coverage / verify 全绿
+- ✅ 45 段闭环迭代（verify + qa-review + closed_loop）
 - ✅ 增量编译 8 个 dirty/clean state
-- ✅ Product Shell Obsidian 原生插件 scaffold + 三中心
+- ✅ Product Shell Obsidian 默认工作台 + HTML 三中心 fallback
 - ✅ Judgment lifecycle / cognitive-history / governance surfaces
 - ✅ planner-state / query-route-telemetry / execution-policy-decisions 持久化
 - ✅ lint_wiki() warning 清零
 - ✅ 真实 research corpus 激活（16 sources / 30 concepts / 3 judgments / 2 decisions）
 - ✅ 巨石拆分完成：最大模块 3408L（app_compile.py）
+- ✅ 概念因果网络（causal_links）: 5 个 hard/medium concepts 建立 12 条因果关系
+- ✅ Machine Memory 新增 concept_causal 边类型 + 图谱/拓扑/健康度全链路集成
+- ✅ 架构文档修正：多 agent → 自动化角色、Product Shell 定位明确
 
 ### 为什么还不到 9 分
 
-上 42 轮已把架构、模块化、测试、内容都推了一轮。但评估暴露出 **三个结构性差距**：
+上 45 轮已把架构、模块化、测试、因果网络、文档定位都推了一轮。但评估暴露出 **两个半结构性差距**：
 
 1. **Execution Layer 是空壳**（6.5）：框架精致但 0 真实 receipt、0 safe-apply 执行记录、dry-run 不是独立步骤、8 个 execution proposal 全 pending
-2. **Product Shell 是面板集合不是工作台**（6.0）：没有统一入口、部分 context 要手填、没有 batch/queue 操作、graph-view 是静态 HTML
-3. **Judgment 资产密度不够**（7.5）：只有 5 个 judgment/decision 资产、concepts 偏 soft summary、judgment 间缺关联图谱
+2. **Product Shell 初步定位明确但交互仍弱**（7.0）：Obsidian 默认 + HTML fallback 已明确，但统一 dashboard、batch 操作、context 自动推断尚未实现
+3. **Judgment 资产密度不够**（7.5）：只有 5 个 judgment/decision 资产，因果网络已补但判断层间缺关联图谱
 
 ---
 
@@ -116,17 +119,11 @@
 
 **目标：** wiki/judgments/ ≥ 6，wiki/decisions/ ≥ 4
 
-### T2-B. Hard Concepts 硬化
+### T2-B. Hard Concepts 硬化 ✅ 已完成
 
-**现状：** 30 个 concepts 大多 confidence=low，更像 soft summary 而非 hard concept（因果/结构关系）。
+**已完成：** 6 个 concept 已标注 hardness，5 个建立 12 条 causal_links，machine memory 全链路集成。
 
-**行动：**
-1. 筛选 5-8 个核心 concept，手工或 LLM 辅助将其从 summary 提升为 hard concept
-2. Hard concept 标准：有明确因果关系 / 跨 ≥ 3 个 source 的共识 / 有冲突标记 / confidence ≥ medium
-3. 在 concept frontmatter 中新增 `hardness: soft|medium|hard` 字段
-4. 治理层 lint 扫描 `hardness=soft` 的 concept 进入 repair-backlog
-
-**目标：** ≥ 5 个 concept 的 `hardness` ≥ medium，且有真实跨 source 因果关系
+**后续扩展：** 将剩余 24 个 soft concept 中的高频 concept 逐步提升 hardness
 
 ### T2-C. Judgment 关联图谱
 
@@ -155,7 +152,7 @@
 
 ---
 
-## Tier 3 — Product Shell 收敛 (6.0 → 8.5)
+## Tier 3 — Product Shell 收敛 (7.0 → 8.5)
 
 > 终极文档要求"统一工作台"——当前是分散面板集合。
 > 这层的改进不只是 UI，也包括 shell contract 和 CLI surface。
@@ -239,7 +236,7 @@
 
 ### T4-C. 测试覆盖 93%+
 
-**现状：** 90% coverage，app_linting.py (74%) / drop.py (73%) 是低洼。
+**现状：** 92% coverage / 309 tests。app_queries.py (82%) / app_memory.py (83%) / config.py (82%) 仍有提升空间。
 
 **行动：**
 1. 补 `test_linting.py`：覆盖 lint rule 分支和 repair backlog 写入
@@ -288,13 +285,13 @@
 | ① Evidence Fabric | 9.0 | 9.0 | 9.0 | 9.0 | 9.0 | **9.5** |
 | ② Knowledge Compiler | 8.5 | 8.5 | **9.0** | 9.0 | 9.0 | 9.0 |
 | ③ Judgment System | 7.5 | 7.5 | **9.0** | 9.0 | 9.0 | 9.0 |
-| ④ Machine Memory | 8.0 | 8.5 | **9.0** | 9.0 | 9.0 | 9.0 |
+| ④ Machine Memory | 8.5 | 8.5 | **9.0** | 9.0 | 9.0 | 9.0 |
 | ⑤ Schema / Protocol | 9.0 | 9.0 | 9.0 | 9.0 | 9.0 | **9.5** |
 | ⑥ Governance | 8.5 | 8.5 | **9.5** | 9.5 | 9.5 | 9.5 |
 | ⑦ Execution Layer | **6.5** | **9.0** | 9.0 | 9.0 | 9.0 | 9.0 |
 | ⑧ Outputs | 8.0 | 8.0 | 8.0 | 8.5 | **9.0** | 9.0 |
-| ⑨ Product Shell | **6.0** | 6.5 | 6.5 | **8.5** | 8.5 | 8.5 |
-| **加权平均** | **7.9** | **8.3** | **8.7** | **9.0** | **9.1** | **9.2** |
+| ⑨ Product Shell | **7.0** | 7.5 | 7.5 | **8.5** | 8.5 | 8.5 |
+| **加权平均** | **8.1** | **8.4** | **8.8** | **9.0** | **9.1** | **9.2** |
 
 ---
 

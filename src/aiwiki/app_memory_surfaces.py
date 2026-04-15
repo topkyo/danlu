@@ -704,6 +704,12 @@ def build_machine_memory_adjacency(memory: dict[str, Any]) -> dict[str, dict[str
         right_key = f"judgment:{edge['to']}"
         adjacency.setdefault(left_key, {})[right_key] = edge_type
         adjacency.setdefault(right_key, {})[left_key] = edge_type
+    for edge in memory.get("edges", {}).get("concept_causal", []):
+        edge_type = f"CAUSAL_{str(edge.get('relation') or 'causes').upper()}"
+        left_key = f"concept:{edge['from']}"
+        right_key = f"concept:{edge['to']}"
+        adjacency.setdefault(left_key, {})[right_key] = edge_type
+        adjacency.setdefault(right_key, {})[left_key] = edge_type
     return adjacency
 
 

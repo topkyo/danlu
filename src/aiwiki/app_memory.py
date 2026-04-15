@@ -49,6 +49,7 @@ from .app_content import (
     machine_memory_concept_input_signature,
     machine_memory_source_input_signature,
     normalize_concept_hardness,
+    parse_causal_links,
     preserved_section,
     review_queue,
     rewrite_proposal_is_apply_ready,
@@ -357,6 +358,7 @@ def build_machine_memory(
     concept_nodes: list[dict[str, Any]] = []
     source_to_concept: list[dict[str, str]] = []
     concept_to_concept: list[dict[str, str]] = []
+    concept_causal: list[dict[str, str]] = []
     citation_map: list[dict[str, Any]] = []
 
     def index_term(term: str, *, source_id: str | None = None, concept_slug: str | None = None) -> None:
@@ -399,6 +401,7 @@ def build_machine_memory(
     for record in concepts:
         page = root / "wiki" / "concepts" / f"{record['slug']}.md"
         frontmatter = parse_frontmatter(page.read_text(encoding="utf-8", errors="replace")) if page.exists() else {}
+        causal_links = parse_causal_links(frontmatter)
         concept_nodes.append(
             {
                 "slug": record["slug"],
@@ -409,10 +412,18 @@ def build_machine_memory(
                 "source_signature": record["source_signature"],
                 "confidence": str(frontmatter.get("confidence") or ""),
                 "hardness": normalize_concept_hardness(frontmatter.get("hardness"), default="soft"),
+                "causal_links": causal_links,
             }
         )
         for related_slug in record.get("related_slugs", []):
             concept_to_concept.append({"from": record["slug"], "to": related_slug})
+        for link in causal_links:
+            concept_causal.append({
+                "from": record["slug"],
+                "to": link["target"],
+                "relation": link["relation"],
+                "evidence": link["evidence"],
+            })
         for token in tokenize(record["title"]):
             index_term(token, concept_slug=record["slug"])
 
@@ -441,6 +452,7 @@ def build_machine_memory(
         "edges": {
             "source_to_concept": sorted(source_to_concept, key=lambda item: (item["source_id"], item["concept_slug"])),
             "concept_to_concept": sorted(concept_to_concept, key=lambda item: (item["from"], item["to"])),
+            "concept_causal": sorted(concept_causal, key=lambda item: (item["from"], item["to"], item["relation"])),
         },
         "citation_map": sorted(citation_map, key=lambda item: item["source_page"]),
         "term_index": {
@@ -798,6 +810,16 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
         concept_related.setdefault(left, set()).add(right)
         concept_related.setdefault(right, set()).add(left)
 
+    concept_causal_count = 0
+    for edge in edges.get("concept_causal", []):
+        left = edge.get("from")
+        right = edge.get("to")
+        if not isinstance(left, str) or not isinstance(right, str):
+            continue
+        concept_causal_count += 1
+        concept_related.setdefault(left, set()).add(right)
+        concept_related.setdefault(right, set()).add(left)
+
     isolated_source_ids = sorted(node["id"] for node in source_nodes if not source_to_concepts.get(node["id"]))
     singleton_concept_slugs = sorted(
         node["slug"]
@@ -1135,6 +1157,7 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
         "concept_component_ids": concept_component_ids,
         "judgment_component_ids": judgment_component_ids,
         "judgment_relation_counts": judgment_relation_counts,
+        "concept_causal_count": concept_causal_count,
     }
 
 
@@ -1424,6 +1447,15 @@ def build_machine_memory_graph(memory: dict[str, Any]) -> dict[str, Any]:
                 "source": f"concept:{edge['from']}",
                 "target": f"concept:{edge['to']}",
                 "type": "RELATED_CONCEPT",
+            }
+        )
+    for edge in memory.get("edges", {}).get("concept_causal", []):
+        relation = str(edge.get("relation") or "causes").upper()
+        edges.append(
+            {
+                "source": f"concept:{edge['from']}",
+                "target": f"concept:{edge['to']}",
+                "type": f"CAUSAL_{relation}",
             }
         )
     graph = {

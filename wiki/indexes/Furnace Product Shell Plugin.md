@@ -62,6 +62,12 @@ status: "active"
 - 更细的 action-specific summary / tighter object identity
 - 更完整的 item-level coverage（当前还是第一轮，不是所有对象都已直连）
 
+## 工作台定位
+
+**Obsidian 是炼丹炉的默认工作台**——所有日常操作（投料、查询、审阅、修复、图谱、执行、审计）都应从 Obsidian 插件面板进入。
+
+HTML 控制台（`furnace-center.html`、`execution-center.html`、`review-center.html`、`machine-memory.html`）作为**备用检查面**，用于不开 Obsidian 时的轻量查看。
+
 ## 为什么要单独做这层
 
 当前炼丹炉已经有：

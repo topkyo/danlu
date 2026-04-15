@@ -1186,6 +1186,9 @@ PENDING_REWRITE_PROPOSAL_STATUSES = {"proposed", "accepted", "deferred"}
 CONCEPT_HARDNESS_LEVELS = ("soft", "medium", "hard")
 
 
+CAUSAL_RELATION_TYPES = ("causes", "enables", "constrains", "conflicts_with")
+
+
 LOW_RISK_APPLYABLE_ACTION_KINDS = {"add-source-concept-link"}
 
 

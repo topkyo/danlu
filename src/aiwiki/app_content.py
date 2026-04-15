@@ -20,6 +20,7 @@ from typing import Any
 
 from .app_protocol import (
     AUTO_PROMOTION_FORMATS,
+    CAUSAL_RELATION_TYPES,
     CONCEPT_HARDNESS_LEVELS,
     CONFLICT_SIGNAL_PAIRS,
     CURATED_ASSET_SECTION_ORDER,
@@ -659,6 +660,7 @@ def machine_memory_source_input_signature(
 def machine_memory_concept_input_signature(root: Path, record: dict[str, Any]) -> str:
     page = root / "wiki" / "concepts" / f"{record.get('slug', '')}.md"
     frontmatter = parse_frontmatter(page.read_text(encoding="utf-8", errors="replace")) if page.exists() else {}
+    causal_links = parse_causal_links(frontmatter)
     payload = {
         "slug": str(record.get("slug") or ""),
         "title": str(record.get("title") or ""),
@@ -667,6 +669,10 @@ def machine_memory_concept_input_signature(root: Path, record: dict[str, Any]) -
         "related_slugs": sorted(str(slug) for slug in record.get("related_slugs", []) if str(slug)),
         "confidence": str(frontmatter.get("confidence") or ""),
         "hardness": normalize_concept_hardness(frontmatter.get("hardness"), default="soft"),
+        "causal_links": sorted(
+            [{"target": link["target"], "relation": link["relation"]} for link in causal_links],
+            key=lambda item: (item["target"], item["relation"]),
+        ),
     }
     return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
 
@@ -712,6 +718,36 @@ def concept_hardness_rank(value: Any) -> int:
     )
 
 
+def parse_causal_links(frontmatter: dict[str, Any]) -> list[dict[str, str]]:
+    """Parse causal_links from concept frontmatter.
+
+    Supports pipe-delimited flat format compatible with the line-based parser:
+      causal_links:
+        - "memory|enables|Agent relies on memory for cross-turn continuity"
+    Returns validated list of {target, relation, evidence} dicts.
+    """
+    raw = frontmatter.get("causal_links", [])
+    if not isinstance(raw, list):
+        return []
+    result: list[dict[str, str]] = []
+    for item in raw:
+        if isinstance(item, dict):
+            target = str(item.get("target") or "").strip()
+            relation = str(item.get("relation") or "").strip().lower()
+            evidence = str(item.get("evidence") or "").strip()
+        elif isinstance(item, str) and "|" in item:
+            parts = item.split("|", 2)
+            target = parts[0].strip()
+            relation = parts[1].strip().lower() if len(parts) > 1 else ""
+            evidence = parts[2].strip() if len(parts) > 2 else ""
+        else:
+            continue
+        if not target or relation not in CAUSAL_RELATION_TYPES:
+            continue
+        result.append({"target": target, "relation": relation, "evidence": evidence})
+    return result
+
+
 def render_concept_conflict_lines(source_contexts: list[dict[str, str]]) -> list[str]:
     signals = detect_concept_conflict_signals(source_contexts)
     if not signals:
@@ -734,6 +770,37 @@ def render_concept_gap_lines(source_contexts: list[dict[str, str]]) -> list[str]
     return lines
 
 
+CAUSAL_RELATION_LABELS = {
+    "causes": "→ causes",
+    "enables": "→ enables",
+    "constrains": "⊣ constrains",
+    "conflicts_with": "⊘ conflicts with",
+}
+
+
+def render_concept_causal_lines(
+    causal_links: list[dict[str, str]],
+    record_lookup: dict[str, dict[str, Any]],
+) -> list[str]:
+    if not causal_links:
+        return ["- 当前没有显式因果关系。补充 `causal_links` frontmatter 可建立因果网络。"]
+    lines: list[str] = []
+    for link in causal_links:
+        target = link["target"]
+        relation = CAUSAL_RELATION_LABELS.get(link["relation"], link["relation"])
+        evidence = link.get("evidence", "")
+        target_record = record_lookup.get(target)
+        if target_record:
+            target_label = f"[{target_record['title']}](./{target}.md)"
+        else:
+            target_label = f"`{target}`"
+        line = f"- {relation} {target_label}"
+        if evidence:
+            line += f" — {evidence}"
+        lines.append(line)
+    return lines
+
+
 def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page: str) -> str:
     existing_frontmatter = parse_frontmatter(existing_page)
     source_changed = existing_frontmatter.get("source_signature") not in ("", record["source_signature"])
@@ -748,6 +815,7 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
         if not source_changed
         else "soft"
     )
+    causal_links = parse_causal_links(existing_frontmatter) if not source_changed else []
     source_pages = concept_source_pages(record)
     render_signature = str(record.get("render_signature") or concept_render_signature(record["root"], record))
     summary_fallback = "\n".join(
@@ -773,8 +841,7 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
         load_source_page_context(record["root"], f"wiki/sources/{entry_id}.md")
         for entry_id in record["entry_ids"]
     ]
-    frontmatter = render_frontmatter(
-        {
+    frontmatter_data: dict[str, Any] = {
             "id": f"concept-{record['slug']}",
             "kind": "concept",
             "status": "compiled",
@@ -787,8 +854,13 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
             "last_compiled_at": compiled_at,
             "confidence": confidence,
             "hardness": hardness,
-        }
-    )
+    }
+    if causal_links:
+        frontmatter_data["causal_links"] = [
+            f"{link['target']}|{link['relation']}|{link.get('evidence', '')}"
+            for link in causal_links
+        ]
+    frontmatter = render_frontmatter(frontmatter_data)
     lines = [
         frontmatter,
         "",
@@ -802,6 +874,9 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
         "",
         "## Related Concepts",
         *related_concept_lines,
+        "",
+        "## Causal Network",
+        *render_concept_causal_lines(causal_links, record.get("record_lookup", {})),
         "",
         "## Conflict Signals",
         *render_concept_conflict_lines(source_contexts),

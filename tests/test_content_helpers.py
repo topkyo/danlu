@@ -443,5 +443,83 @@ class ContentHelperTests(unittest.TestCase):
         self.assertTrue(any(signal["kind"] == "evidence-gap" for signal in quality["gap_signals"]))
 
 
+    # ------------------------------------------------------------------
+    # Causal links
+    # ------------------------------------------------------------------
+
+    def test_parse_causal_links_valid(self) -> None:
+        fm = {
+            "causal_links": [
+                "memory|enables|reason A",
+                "protocol|constrains|reason B",
+            ]
+        }
+        result = content.parse_causal_links(fm)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["target"], "memory")
+        self.assertEqual(result[0]["relation"], "enables")
+        self.assertEqual(result[1]["relation"], "constrains")
+
+    def test_parse_causal_links_filters_invalid(self) -> None:
+        fm = {
+            "causal_links": [
+                "memory|enables|ok",
+                "memory|INVALID_RELATION|bad",
+                "no-pipe-here",
+                42,
+            ]
+        }
+        result = content.parse_causal_links(fm)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["relation"], "enables")
+
+    def test_parse_causal_links_empty(self) -> None:
+        self.assertEqual(content.parse_causal_links({}), [])
+        self.assertEqual(content.parse_causal_links({"causal_links": []}), [])
+
+    def test_render_concept_causal_lines_empty(self) -> None:
+        lines = content.render_concept_causal_lines([], {})
+        self.assertEqual(len(lines), 1)
+        self.assertIn("没有显式因果关系", lines[0])
+
+    def test_render_concept_causal_lines_with_data(self) -> None:
+        links = [
+            {"target": "memory", "relation": "enables", "evidence": "reason"},
+            {"target": "protocol", "relation": "constrains", "evidence": "reason2"},
+        ]
+        lookup = {
+            "memory": {"slug": "memory", "title": "Memory"},
+            "protocol": {"slug": "protocol", "title": "Protocol"},
+        }
+        lines = content.render_concept_causal_lines(links, lookup)
+        joined = "\n".join(lines)
+        self.assertIn("Memory", joined)
+        self.assertIn("Protocol", joined)
+
+    def test_machine_memory_concept_input_signature_includes_causal(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            concept_dir = root / "wiki" / "concepts"
+            concept_dir.mkdir(parents=True)
+            # With causal links
+            (concept_dir / "x.md").write_text(
+                '---\nid: concept-x\ntitle: X\ncausal_links:\n'
+                '  - "y|causes|evidence"\n---\nbody\n',
+                encoding="utf-8",
+            )
+            sig_with = content.machine_memory_concept_input_signature(
+                root, {"slug": "x", "title": "X", "source_signature": "s", "source_pages": [], "related_slugs": [], "entry_ids": []}
+            )
+            # Without causal links
+            (concept_dir / "x.md").write_text(
+                "---\nid: concept-x\ntitle: X\n---\nbody\n",
+                encoding="utf-8",
+            )
+            sig_without = content.machine_memory_concept_input_signature(
+                root, {"slug": "x", "title": "X", "source_signature": "s", "source_pages": [], "related_slugs": [], "entry_ids": []}
+            )
+            self.assertNotEqual(sig_with, sig_without)
+
+
 if __name__ == "__main__":
     unittest.main()

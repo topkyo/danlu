@@ -268,6 +268,12 @@ status: "active"
 
 - 把分散的能力统一成一个人真正愿意天天用的工作台
 
+**默认工作台是 Obsidian**：
+
+- Obsidian 是 Product Shell 的第一工作面——投料、查询、审阅、修复、图谱、执行、审计全部从 Obsidian 插件面板进入
+- HTML 控制台（`furnace-center.html`、`execution-center.html`、`review-center.html`、`machine-memory.html`）作为**备用**，给不开 Obsidian 时的轻量检查用
+- `aiwiki CLI` 是底层 runtime 入口，Obsidian 插件通过 CLI 调度，不直接操作 state 文件
+
 实现级设计可见：
 
 - [[wiki/indexes/Furnace Product Shell Plugin|炼丹炉 Product Shell Plugin]]
@@ -283,39 +289,47 @@ status: "active"
 - 执行
 - 审计
 
-都可以从一个统一控制面板进入，而不是靠记命令和跳多个页面。
+都可以从 Obsidian 内的统一面板进入，而不是靠记命令和跳多个页面。
 
-## 多 agent 形态
+## 自动化角色（非多 agent）
 
-炼丹炉更高阶的形态，不是多人类协作优先，而是：
+炼丹炉的运行模型是 **single writer, many readers**，不是多 agent 协作系统。
 
-**一个人 + 多 agent 工作小组。**
+当前的"角色"不是独立 agent，而是**同一个 `aiwiki` runtime 内的自动化阶段**——它们共享同一把运行锁、同一份 state、同一套 CLI，只是在不同时机被触发：
 
-典型 agent 角色：
+典型自动化角色：
 
-- `ingest agent`
-  - 整理原料、补元数据、建 source page
-- `concept agent`
-  - 维护 concept、发现冲突、提 rewrite
-- `judgment agent`
-  - 把高价值 output 晋升成 `decision / judgment`
-- `review agent`
-  - 找待审、过期、冲突、失效判断
-- `repair planner`
-  - 生成 repair action、patch plan、execution bundle
-- `execution agent`
-  - 只执行被允许的低风险动作
-- `nightly agent`
-  - 夜间巡检、复审、回流、漂移检查
+- `ingest phase`
+  - 整理原料、补元数据、建 source page（`drop-*` / `ingest`）
+- `compile phase`
+  - 编译 source → concept → index → derived（`compile` / `run-compile`）
+- `judgment phase`
+  - 高价值 output 经 `file-back` 晋升为 `decision / judgment`
+- `review phase`
+  - 复审待审、过期、冲突、失效判断（`review-page` / `review-rewrite`）
+- `repair phase`
+  - 生成 repair action、patch plan、execution bundle（`lint` / `run-lint`）
+- `execution phase`
+  - 只执行被允许的低风险动作（`apply-action` / `apply-archive`）
+- `nightly phase`
+  - 夜间巡检、复审、回流、漂移检查（`nightly` / `run-nightly`）
 
-这些 agent 共享同一个：
+这些阶段共享同一个：
 
 - `raw`
 - `wiki`
 - `machine memory`
 - `decision / judgment`
 
-它们不应该各自维护私有真相。
+它们不是独立进程，也不各自维护私有真相。
+
+### 为什么不用多 agent
+
+- 炼丹炉是单人本地系统，不存在需要多 agent 并发协商的场景
+- `single writer` 模型下，所有写入都经过同一把锁，多 agent 不会带来吞吐收益
+- 当前所有"角色"已经通过 CLI 子命令 + systemd timer 覆盖，不需要 agent 间通信协议
+- 引入真正的多 agent 会增加 coordination overhead，但炼丹炉的价值在判断质量而非并发处理量
+- 如果未来出现需要并行处理大规模原料的场景，优先考虑 `worker pool + shared state` 而非 `autonomous agent swarm`
 
 ## 最终闭环
 
@@ -379,17 +393,18 @@ status: "active"
 当前版本已经具备：
 
 - 五层主线
-- 基础产品壳
-- 多协议 runtime
-- 基础 judgment layer
-- safe execution layer
+- Obsidian 插件工作台（Product Shell 默认入口）+ HTML 控制台（备用）
+- 多协议 runtime（5 套协议真正驱动 compile/query/review/nightly）
+- judgment layer + 因果网络 + judgment 关联图谱
+- safe execution layer（apply/revert/receipt/audit）
+- 自动化角色通过 CLI + systemd timer 覆盖
 
 但距离这份“最终极形态”还差的是：
 
-- 更硬的概念层
-- 更资产化的判断层
-- 更成熟的执行治理
-- 更统一的人用工作台
+- 更硬的概念层（更多 hard concepts + 更密集的因果网络）
+- 更资产化的判断层（judgment 数量和关联密度）
+- 更成熟的执行治理（更多真实 receipt 积累）
+- 更完善的 Obsidian 工作台（batch 操作 + context 自动推断）
 - 真实高密度场景的长期压实
 
 所以这份文档不是说“现在已经做到”，而是定义：
