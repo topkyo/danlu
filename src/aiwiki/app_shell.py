@@ -782,6 +782,30 @@ def shell_protocol_state(root: Path) -> ProtocolState:
     }
 
 
+def _build_knowledge_stats(
+    memory: dict,
+    compile_state: dict,
+    decisions: list,
+    judgments: list,
+) -> dict:
+    """Build knowledge base statistics for the Product Shell dashboard."""
+    edges = memory.get("edges", {})
+    edge_total = sum(len(v) for v in edges.values() if isinstance(v, list))
+    causal_count = len(edges.get("concept_causal", [])) if isinstance(edges.get("concept_causal"), list) else 0
+    return {
+        "source_nodes": len(memory.get("source_nodes", [])),
+        "concept_nodes": len(memory.get("concept_nodes", [])),
+        "judgment_nodes": len(memory.get("judgment_nodes", [])),
+        "term_index": len(memory.get("term_index", [])),
+        "edge_total": edge_total,
+        "concept_causal_edges": causal_count,
+        "decisions": len(decisions),
+        "judgments": len(judgments),
+        "compile_sources": len(compile_state.get("sources", {})),
+        "compile_concepts": len(compile_state.get("concepts", {})),
+    }
+
+
 def build_shell_summary(root: Path, *, generated_at: str | None = None) -> ShellSummary:
     ensure_layout(root)
     generated_at = generated_at or utc_now()
@@ -899,6 +923,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
             "llm_used": bool(nightly_state.get("llm_used", False)),
             "lint_counts": dict(nightly_state.get("lint", {}).get("counts", {})),
         },
+        "knowledge_stats": _build_knowledge_stats(memory, compile_state, decisions, judgments),
         "links": shell_links(root),
         "capabilities": shell_capabilities(root),
     }

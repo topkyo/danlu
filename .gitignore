@@ -35,6 +35,15 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+.coverage
+
+# Obsidian user-local (themes, community plugin list, plugin runtime state)
+.obsidian/community-plugins.json
+.obsidian/themes/
+.obsidian/plugins/*/data.json
+
+# Probe/scratch files
+probe_*.md
 
 # Harness upgrade sync
 .claude/review-handoffs/

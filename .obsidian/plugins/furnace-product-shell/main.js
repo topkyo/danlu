@@ -1484,6 +1484,40 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     await this.runPluginCommand(label, [command, ...args], { refreshAfter: true });
   }
 
+  async runLauncherCommand(fullCommandStr, label = "Suggested Action") {
+    // Extract CLI subcommand+args from a full command string like:
+    //   "PYTHONPATH=src python3 -m aiwiki.cli --root . review-action foo --status accepted"
+    // The launcher already sets PYTHONPATH and --root, so we strip the prefix.
+    let trimmed = String(fullCommandStr || "").trim();
+    const prefixPattern = /^(?:PYTHONPATH=\S+\s+)?(?:python3?\s+-m\s+aiwiki\.cli\s+)?(?:--root\s+\S+\s+)?/;
+    trimmed = trimmed.replace(prefixPattern, "").trim();
+    if (!trimmed) {
+      new Notice(`Cannot parse command: ${truncateText(fullCommandStr, 80)}`);
+      return;
+    }
+    // Simple shell-like split respecting double quotes
+    const args = [];
+    let current = "";
+    let inQuote = false;
+    for (let i = 0; i < trimmed.length; i++) {
+      const ch = trimmed[i];
+      if (ch === '"') {
+        inQuote = !inQuote;
+      } else if (ch === " " && !inQuote) {
+        if (current) {
+          args.push(current);
+          current = "";
+        }
+      } else {
+        current += ch;
+      }
+    }
+    if (current) {
+      args.push(current);
+    }
+    await this.runPluginCommand(label, args, { refreshAfter: true });
+  }
+
   openFileBackModal(prefill = {}) {
     this.openStructuredCommandModal({
       title: "File Back",
@@ -2013,6 +2047,92 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       cls: "furnace-shell-meta",
       text: `Judgment assets ${judgmentCounts.pages || 0} | strong assets ${judgmentCounts.strong_assets || 0} | attention ${judgmentCounts.attention_pages || 0} | citation drift ${judgmentCounts.citation_drift || 0}`,
     });
+
+    const knowledgeStats = this.shellSummary.knowledge_stats || {};
+    if (knowledgeStats.source_nodes || knowledgeStats.concept_nodes) {
+      const statsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+      statsSection.createEl("h3", { text: "Knowledge Base" });
+      this.renderCardGrid(statsSection, [
+        { label: "Sources", value: knowledgeStats.source_nodes || 0 },
+        { label: "Concepts", value: knowledgeStats.concept_nodes || 0 },
+        { label: "Judgments", value: knowledgeStats.judgments || 0 },
+        { label: "Decisions", value: knowledgeStats.decisions || 0 },
+        { label: "Edges", value: knowledgeStats.edge_total || 0 },
+        { label: "Causal Edges", value: knowledgeStats.concept_causal_edges || 0 },
+        { label: "Term Index", value: knowledgeStats.term_index || 0 },
+      ]);
+    }
+
+    const dashboardData = this.shellSummary.dashboard || {};
+    const dashboardCards = Array.isArray(dashboardData.cards) ? dashboardData.cards : [];
+    if (dashboardCards.length) {
+      const dashSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+      dashSection.createEl("h3", { text: "Dashboard" });
+      this.renderCardGrid(dashSection, dashboardCards.map((c) => ({
+        label: c.label || c.id || "card",
+        value: c.value != null ? c.value : 0,
+      })));
+    }
+
+    const driftWarnings = Array.isArray(this.shellSummary.drift_warnings) ? this.shellSummary.drift_warnings : [];
+    if (driftWarnings.length) {
+      const driftSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+      driftSection.createEl("h3", { text: "⚠️ Drift Warnings" });
+      const driftList = driftSection.createEl("ul", { cls: "furnace-shell-list" });
+      driftWarnings.slice(0, 8).forEach((warning) => {
+        const item = driftList.createEl("li");
+        if (typeof warning === "string") {
+          item.createEl("span", { text: warning });
+        } else {
+          item.createEl("strong", { text: warning.title || warning.kind || "drift" });
+          item.createDiv({ cls: "furnace-shell-meta", text: warning.message || warning.reason || JSON.stringify(warning) });
+        }
+      });
+    }
+
+    const suggestedActions = Array.isArray(this.shellSummary.suggested_next_actions) ? this.shellSummary.suggested_next_actions : [];
+    if (suggestedActions.length) {
+      const suggestedSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+      suggestedSection.createEl("h3", { text: "Suggested Next Actions" });
+      const suggestedList = suggestedSection.createEl("ul", { cls: "furnace-shell-list" });
+      suggestedActions.slice(0, 6).forEach((action) => {
+        const item = suggestedList.createEl("li");
+        item.createEl("strong", { text: action.title || "action" });
+        item.createDiv({
+          cls: "furnace-shell-meta",
+          text: `${action.kind || "unknown"} | ${action.reason || ""}`,
+        });
+        const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
+        if (action.path) {
+          const openButton = actions.createEl("button", { text: "Open" });
+          openButton.addEventListener("click", () => {
+            this.runUiAction(() => this.openWorkspacePath(action.path), `Open suggested: ${action.path}`);
+          });
+        }
+        if (action.command) {
+          const runButton = actions.createEl("button", { text: "Run" });
+          runButton.addEventListener("click", () => {
+            this.runUiAction(() => this.runLauncherCommand(action.command, `Suggested: ${action.title || "action"}`), `Run suggested: ${action.title || "action"}`);
+          });
+        }
+      });
+    }
+
+    const routeTelemetry = this.shellSummary.route_telemetry || {};
+    const routeEntries = Array.isArray(routeTelemetry.entries) ? routeTelemetry.entries : [];
+    if (routeEntries.length) {
+      const routeSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+      routeSection.createEl("h3", { text: "Recent Queries" });
+      const routeList = routeSection.createEl("ul", { cls: "furnace-shell-list" });
+      routeEntries.slice(0, 5).forEach((entry) => {
+        const item = routeList.createEl("li");
+        item.createEl("strong", { text: truncateText(entry.question_preview || "query", 120) });
+        item.createDiv({
+          cls: "furnace-shell-meta",
+          text: `${entry.protocol || "general"} | ${entry.selected_strategy || "default"} | ${entry.occurred_at || ""}`,
+        });
+      });
+    }
 
     const judgmentSection = contentEl.createDiv({ cls: "furnace-shell-section" });
     judgmentSection.createEl("h3", { text: "Judgment Focus" });
@@ -2578,6 +2698,50 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         value: executionEvents.filter((entry) => entry.event_type === "nightly").length,
       },
     ]);
+
+    const planner = this.shellSummary.planner || {};
+    const plannerCounts = planner.counts || {};
+    const plannerQueue = Array.isArray(planner.priority_queue) ? planner.priority_queue : [];
+    const plannerNextAction = planner.next_action || {};
+    if (plannerQueue.length || plannerCounts.pending_proposals) {
+      const plannerSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+      plannerSection.createEl("h3", { text: "Planner Queue" });
+      this.renderCardGrid(plannerSection, [
+        { label: "Pending Proposals", value: plannerCounts.pending_proposals || 0 },
+        { label: "Executed", value: plannerCounts.executed_actions || 0 },
+        { label: "Unblocked", value: plannerCounts.unblocked || 0 },
+        { label: "Blocked", value: plannerCounts.blocked || 0 },
+      ]);
+      if (plannerNextAction.action_id) {
+        const nextDiv = plannerSection.createDiv({ cls: "furnace-shell-section" });
+        nextDiv.createEl("h4", { text: "Next Action" });
+        const item = nextDiv.createDiv();
+        item.createEl("strong", { text: plannerNextAction.title || plannerNextAction.action_id });
+        item.createDiv({
+          cls: "furnace-shell-meta",
+          text: `score: ${plannerNextAction.priority_score || 0} | ${plannerNextAction.action_id || ""}`,
+        });
+        const nextActions = item.createDiv({ cls: "furnace-shell-inline-actions" });
+        const reviewBtn = nextActions.createEl("button", { text: "Review" });
+        reviewBtn.addEventListener("click", () => {
+          this.runUiAction(
+            () => this.openReviewActionModal({ actionId: plannerNextAction.action_id, status: "accepted" }),
+            `Review planner next: ${plannerNextAction.action_id}`
+          );
+        });
+      }
+      if (plannerQueue.length > 1) {
+        const queueList = plannerSection.createEl("ul", { cls: "furnace-shell-list" });
+        plannerQueue.slice(0, 8).forEach((queueItem) => {
+          const item = queueList.createEl("li");
+          item.createEl("strong", { text: queueItem.title || queueItem.action_id || "action" });
+          item.createDiv({
+            cls: "furnace-shell-meta",
+            text: `score: ${queueItem.priority_score || 0} | ${queueItem.action_id || ""}`,
+          });
+        });
+      }
+    }
 
     const actionObjectsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
     actionObjectsSection.createEl("h3", { text: "Action Control Objects" });
