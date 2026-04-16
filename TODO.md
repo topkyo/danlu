@@ -13,16 +13,16 @@
 | 指标 | 数据 |
 |------|------|
 | Python 源码 | 25 模块 / 33,416 行 |
-| 测试 | 14 文件 / 10,305 行 / 314 tests / 92% coverage |
+| 测试 | 14 文件 / 10,305 行 / 319 tests / 92% coverage |
 | CLI 命令 | 37 个（ingest × 6 / compile × 4 / query × 3 / review × 5 / execute × 5 / governance × 6 / shell × 4 / automation × 4） |
 | 原料 | 46 raw files（30 images + 16 markdown） |
 | 知识资产 | 16 sources → 30 concepts → 6 judgments → 4 decisions → 2 derived |
 | Machine Memory | 259 edges（concept_causal 12 / concept_to_concept 125 / source_to_concept 60 / source_to_judgment 58 / j→j 2 / j→d 2）/ 1,023 terms |
 | 输出产物 | 107 artifacts（lint 43 / reports 11 / decision-memos 10 / sop-drafts 8 / agents 7 / pilots 5 / slides 3 / figures 2） |
 | 协议 | 5 套（general / investing / research / product / ops）× 8 模板 |
-| Obsidian 插件 | furnace-product-shell v0.2.0（3,426 行 JS） |
+| Obsidian 插件 | furnace-product-shell v0.2.0（4,451 行 JS） |
 | 状态文件 | 27 个 JSON/JSONL（machine-memory 19K 行 / nightly-health 11K 行 / execution-policy-decisions 1,265 行） |
-| 闭环迭代 | 48 段（verify + qa-review + closed_loop） |
+| 闭环迭代 | 54 段（verify + qa-review + closed_loop） |
 
 ### 双轴打分
 
@@ -36,7 +36,7 @@
 | ⑥ Governance | 8.5 | 6.0 | **7.5** | review → aging → repair 管线完整 ✓ / **但产生工作不消化**：39 warnings + 25 rewrites + 8 proposals 全 pending |
 | ⑦ Execution Layer | 7.5 | 5.5 | **6.8** | apply→revert→re-apply 已证明 ✓ / 但仅 1 类 action、3 receipts、planner 未自动消费 |
 | ⑧ Outputs | 8.0 | 6.5 | **7.5** | 107 artifacts 格式齐全 ✓ / 但 43 是 lint 报告、高价值 output 稀疏 |
-| ⑨ Product Shell | 8.0 | 7.5 | **7.8** | Obsidian + HTML + new-vault + search + batch ✓ / 但无 context 推断、静态图谱、无 onboarding |
+| ⑨ Product Shell | 8.5 | 8.0 | **8.3** | 极简面板 + 3 drop modal + command split + HTML fallback + new-vault ✓ / 但仍无交互式图谱 |
 | **加权平均** | **8.5** | **6.9** | **8.0** | |
 
 ### 对比前次自评（8.4）的修正
@@ -54,7 +54,7 @@
 3. **增量编译成熟**：8 阶段 dirty/clean 追踪 + compile-state 持久化，编译不再是黑箱
 4. **协议体系真实**：5 protocols × 8 templates 真正影响 compile / query / review / nightly，不是装饰
 5. **Judgment 数据模型精密**：counter-evidence / invalidation / revisit / escalation / cognitive-history 全链路可追溯
-6. **Product Shell 骨架完善**：Obsidian 插件 + HTML fallback + shell-summary contract 三层联动
+6. **Product Shell 极简面板已落地**：单面板首屏（交互 / 投料 / 产出 / 简报），3 个 drop modal，命令面板 8 核心 + 高级按需注册
 
 ### 核心短板（必须解决）
 
@@ -106,8 +106,8 @@
 | 行动 | 验收标准 |
 |------|----------|
 | **C1. 交互式图谱** | machine-memory.html 升级为 vis.js/d3-force 力导向图，节点可点击跳转、按 kind 过滤、按 protocol 着色 |
-| **C2. Context 自动推断** | `review-action` / `apply-action` 支持 title 子串模糊匹配；shell-summary 暴露 `suggested_next_actions` |
-| **C3. First-run onboarding** | `new-vault` 后首次打开 Obsidian 展示引导面板（投料→编译→提问→审阅 四步走） |
+| **C2. Context 自动推断** | `review-action` / `apply-action` 支持 title 子串模糊匹配；shell-summary 暴露 `suggested_next_actions`（**部分完成**：主面板 digest 已展示建议操作） |
+| **C3. First-run onboarding** | `new-vault` 后首次打开 Obsidian 展示引导面板（投料→编译→提问→审阅 四步走）（**部分完成**：极简面板首屏已暴露核心工作流，new-vault README/HOME 已重写） |
 | **C4. Output 密度提升** | output/figures/ ≥ 6 / output/slides/ ≥ 6 / output/reports/ ≥ 15 / 高价值产物 > lint 产物 |
 | **C5. 测试 93%+** | 补 app_queries / app_memory / config 低覆盖模块测试 |
 
@@ -121,7 +121,8 @@
 - **Phase A 治理链真实推进了一步**：已接受 `overloaded-concept-and`，并推进 1 个 decision + 1 个 judgment review，nightly 刷新后当前 review backlog 为 `pending_decisions = 1`、`pending_judgments = 1`。
 - **Phase C onboarding 已补齐最小闭环**：`new-vault` 生成的 README/HOME 现在明确写出 Obsidian + CLI 双入口、`single writer` 约束、投料/提问路径。
 - **Obsidian 端新增最小投料入口**：Product Shell 新增 `Capture Note` modal 和 `Start Here` 区块；提问继续支持 Ask modal，CLI/agent 侧继续支持完整 `drop-*`。
-- **Phase B 入口结论**：`ask` 现在在 Obsidian / CLI 两边都可直接使用；投料共享同一 runtime，其中 `drop-note` 已有双入口，其他 `drop-url / drop-pdf / drop-image / drop-repo` 仍以 CLI 为主，Obsidian 侧可直接整理 `raw/inbox/`。
+- **Phase B 入口结论**：`ask` 现在在 Obsidian / CLI 两边都可直接使用；投料共享同一 runtime，`drop-note / drop-url / drop-pdf / drop-image` 已有 Obsidian 双入口（通过 3 个 drop modal），`drop-repo` 仍以 CLI 为主。
+- **Product Shell 极简改版已落地**：主面板从多视图多按钮工程面板收口为单面板极简工作台（交互 / 投料 / 产出 / 今日简报 + 折叠高级操作），命令面板从 30+ 收口为 8 个核心命令（高级命令按 `showAdvancedCommands` 按需注册），ribbon 从双按钮收口为单入口。
 
 ---
 
@@ -137,18 +138,18 @@
 | ⑥ Governance | **7.5** | **8.5** | 9.0 | 9.0 |
 | ⑦ Execution Layer | **6.8** | **8.5** | 8.5 | 9.0 |
 | ⑧ Outputs | 7.5 | 7.5 | 8.0 | **9.0** |
-| ⑨ Product Shell | 7.8 | 7.8 | 8.0 | **8.8** |
+| ⑨ Product Shell | 8.3 | 8.3 | 8.5 | **9.0** |
 | **综合** | **8.0** | **8.3** | **8.8** | **9.1** |
 
 ---
 
-## 四、已完成里程碑（48 轮闭环）
+## 四、已完成里程碑（54 轮闭环）
 
 - ✅ `app.py` 动态 facade → 静态 shim + 25 个 owner module（最大 4,275L `app_compile.py`）
-- ✅ 314 tests / 92% coverage / verify 全绿 / 无循环依赖
-- ✅ 48 段闭环迭代（verify + qa-review + closed_loop）
+- ✅ 319 tests / 92% coverage / verify 全绿 / 无循环依赖
+- ✅ 54 段闭环迭代（verify + qa-review + closed_loop）
 - ✅ 增量编译 8 阶段 dirty/clean state + compile-state.json 持久化
-- ✅ Product Shell Obsidian v0.2.0 + HTML 三中心 fallback
+- ✅ Product Shell 极简主面板改版：首屏收口为交互 / 投料 / 产出 / 今日简报 + 折叠高级操作；3 个 drop modal（URL/File/Image）；8 核心命令 + 高级命令按需注册
 - ✅ `new-vault` 脚手架：外部 runtime launcher 模式
 - ✅ Product Shell: search / batch apply / batch revert / review-next / safe batch review modal
 - ✅ Judgment lifecycle / cognitive-history / governance surfaces 全链路
@@ -167,7 +168,7 @@
 | 治理不消化 | 🔴 高 | 如果 Phase A 不清零治理积压，系统会陷入"越跑越多 warning"的死循环 |
 | 概念空中楼阁 | 🟡 中 | 30 concepts 全 soft + judgment 建在上面 = 判断资产可信度受限 |
 | 使用密度不足 | 🟡 中 | Phase B 需要持续投料和使用，不是一次性冲刺能完成的 |
-| Product Shell 体验断层 | 🟢 低 | Obsidian 插件已可用，剩余是 polish 不是 blocker |
+| Product Shell 体验断层 | 🟢 低 | 极简面板已上线，Obsidian 端投料/提问/查看产出全可用；剩余是交互式图谱 polish |
 
 ---
 

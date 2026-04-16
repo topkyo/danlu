@@ -89,7 +89,7 @@ cd ../demo-furnace-vault
 
 当前推荐把它理解成**两个入口、同一 runtime**：
 
-- Obsidian Product Shell：默认工作台，适合日常看板、Ask、Review、Execution 和快速 Capture Note
+- Obsidian Product Shell：极简工作台，首屏暴露交互（Ask）、原料投入（投网址 / 投文件 / 投图片 / 记笔记）、最新产出和今日简报；高级操作（Review、Execution、Protocol）折叠在面板底部，命令面板默认只注册 8 个核心命令；界面默认中文，可切到 English
 - `scripts/aiwiki-launcher.sh` / `aiwiki CLI`：完整命令入口，负责全量 `drop-*`、批量操作和脚本化调用
 - 两边共享同一个 `.aiwiki/state` 与 `raw/wiki/output`，所以写命令遵守 `single writer, many readers`
 
@@ -105,7 +105,7 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . drop-image /path/to/diagram.png
 PYTHONPATH=src python3 -m aiwiki.cli --root . drop-repo https://github.com/user/repo.git
 ```
 
-Obsidian 侧目前已经有 `Capture Note` modal，也可以直接把材料放进 `raw/inbox/`；其余 `drop-url / drop-pdf / drop-image / drop-repo` 仍以 launcher CLI 为主。
+Obsidian Product Shell 已内置投网址（Drop URL）、投文件（Drop File）、投图片（Drop Image）和记笔记（Capture Note）四种投料入口；也可以把材料直接放进 `raw/inbox/`。`drop-repo` 仍以 launcher CLI 为主。
 
 2. 编译
 
@@ -150,7 +150,10 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . nightly
 
 ### 控制台
 
+主入口（极简面板）：
 - 炉心面板：[furnace-center.md](<./wiki/indexes/furnace-center.md>)
+
+高级控制台（折叠在面板底部或通过命令面板打开）：
 - 执行中心：[execution-center.md](<./wiki/indexes/execution-center.md>)
 - 执行审计：[execution-audit.md](<./wiki/indexes/execution-audit.md>)
 - 审阅中心：[review-center.md](<./wiki/indexes/review-center.md>)
@@ -219,6 +222,13 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare A and B" --format rep
 - `codex-cli`
 - `claude-cli`
 - `openai-api`
+
+默认链路：
+- 如果不显式设置 `AIWIKI_LLM_BACKEND`，runtime 会按 `auto` 解析
+- 在当前默认环境里，会优先落到 `codex-cli`
+- 如果 backend 是 `codex-cli` 且没有显式设置 `AIWIKI_LLM_MODEL`，effective model 默认是 `gpt-5.4`
+- `llm-check`、`shell-summary.json`、Product Shell 会同时显示 requested/effective backend/model，以及 usage 可见性/计费口径
+- `openai-api` 路径可返回 API usage；`codex-cli` / `claude-cli` 目前仍是 CLI 黑盒，无法给出精确 token 统计
 
 检查当前后端：
 
