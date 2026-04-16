@@ -28,6 +28,10 @@ const DEFAULT_SETTINGS = {
   showAdvancedCommands: false,
   showHtmlShortcuts: true,
   locale: DEFAULT_LOCALE,
+  llmBackend: "",
+  llmModel: "",
+  llmApiKey: "",
+  llmBaseUrl: "",
 };
 const ZH_TEXT = {
   "Furnace Product Shell": "炼丹炉 Product Shell",
@@ -48,6 +52,16 @@ const ZH_TEXT = {
   "Show HTML shortcuts": "显示 HTML 快捷入口",
   "Whether advanced panels should show HTML shortcuts when the summary exposes them.": "当 summary 暴露 HTML 面板时，是否在高级面板里显示 HTML 快捷入口。",
   "Advanced command visibility refreshes after reloading Obsidian.": "高级命令可见性会在重载 Obsidian 后刷新。",
+  "LLM backend": "LLM 后端",
+  "Override the LLM backend used by run-compile / run-ask / run-nightly. Empty = auto-detect from environment.": "覆盖 run-compile / run-ask / run-nightly 使用的 LLM 后端。留空 = 自动检测。",
+  "auto (detect)": "自动检测",
+  "LLM model": "LLM 模型",
+  "Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = backend default.": "覆盖模型名称（如 gpt-5.4、claude-sonnet-4.5）。留空 = 后端默认。",
+  "LLM API key": "LLM API Key",
+  "API key for the openai-api backend. Stored locally in plugin data. Empty = use AIWIKI_LLM_API_KEY env var.": "openai-api 后端的 API Key。本地存储于插件数据中。留空 = 使用 AIWIKI_LLM_API_KEY 环境变量。",
+  "LLM base URL": "LLM Base URL",
+  "Custom API endpoint (e.g. https://api.openai.com/v1). Empty = default.": "自定义 API 端点（如 https://api.openai.com/v1）。留空 = 默认值。",
+  "LLM settings saved. New runs will use the updated configuration.": "LLM 设置已保存。新的运行将使用更新后的配置。",
   "Ask 炼丹炉": "问炼丹炉",
   Question: "问题",
   "Enter the research question...": "输入研究问题……",
@@ -1500,6 +1514,67 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
           await this.plugin.savePluginState();
           this.plugin.refreshOpenViews();
         })
+      );
+
+    // ── LLM configuration ──────────────────────────────────
+    containerEl.createEl("h3", { text: t("LLM backend") });
+
+    new Setting(containerEl)
+      .setName(t("LLM backend"))
+      .setDesc(t("Override the LLM backend used by run-compile / run-ask / run-nightly. Empty = auto-detect from environment."))
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("", t("auto (detect)"))
+          .addOption("codex-cli", "codex-cli")
+          .addOption("claude-cli", "claude-cli")
+          .addOption("openai-api", "openai-api")
+          .setValue(this.plugin.settings.llmBackend || "")
+          .onChange(async (value) => {
+            this.plugin.settings.llmBackend = value;
+            await this.plugin.savePluginState();
+            new Notice(t("LLM settings saved. New runs will use the updated configuration."));
+          })
+      );
+
+    new Setting(containerEl)
+      .setName(t("LLM model"))
+      .setDesc(t("Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = backend default."))
+      .addText((text) =>
+        text
+          .setPlaceholder("gpt-5.4")
+          .setValue(this.plugin.settings.llmModel || "")
+          .onChange(async (value) => {
+            this.plugin.settings.llmModel = String(value || "").trim();
+            await this.plugin.savePluginState();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName(t("LLM API key"))
+      .setDesc(t("API key for the openai-api backend. Stored locally in plugin data. Empty = use AIWIKI_LLM_API_KEY env var."))
+      .addText((text) => {
+        text
+          .setPlaceholder("sk-...")
+          .setValue(this.plugin.settings.llmApiKey || "")
+          .onChange(async (value) => {
+            this.plugin.settings.llmApiKey = String(value || "").trim();
+            await this.plugin.savePluginState();
+          });
+        text.inputEl.type = "password";
+        text.inputEl.autocomplete = "off";
+      });
+
+    new Setting(containerEl)
+      .setName(t("LLM base URL"))
+      .setDesc(t("Custom API endpoint (e.g. https://api.openai.com/v1). Empty = default."))
+      .addText((text) =>
+        text
+          .setPlaceholder("https://api.openai.com/v1")
+          .setValue(this.plugin.settings.llmBaseUrl || "")
+          .onChange(async (value) => {
+            this.plugin.settings.llmBaseUrl = String(value || "").trim();
+            await this.plugin.savePluginState();
+          })
       );
   }
 }
@@ -3659,9 +3734,22 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       throw new Error(this.t("Missing runtime paths: {missing}", { missing: this.repoState.missingPaths.join(", ") }));
     }
     return await new Promise((resolve, reject) => {
+      const env = Object.assign({}, process.env);
+      if (this.settings.llmBackend) {
+        env.AIWIKI_LLM_BACKEND = this.settings.llmBackend;
+      }
+      if (this.settings.llmModel) {
+        env.AIWIKI_LLM_MODEL = this.settings.llmModel;
+      }
+      if (this.settings.llmApiKey) {
+        env.AIWIKI_LLM_API_KEY = this.settings.llmApiKey;
+      }
+      if (this.settings.llmBaseUrl) {
+        env.AIWIKI_LLM_BASE_URL = this.settings.llmBaseUrl;
+      }
       const child = spawn(this.repoState.launcherPath, args, {
         cwd: this.repoState.root,
-        env: Object.assign({}, process.env),
+        env,
       });
       let stdout = "";
       let stderr = "";

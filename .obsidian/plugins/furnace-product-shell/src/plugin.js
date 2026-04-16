@@ -936,9 +936,22 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       throw new Error(this.t("Missing runtime paths: {missing}", { missing: this.repoState.missingPaths.join(", ") }));
     }
     return await new Promise((resolve, reject) => {
+      const env = Object.assign({}, process.env);
+      if (this.settings.llmBackend) {
+        env.AIWIKI_LLM_BACKEND = this.settings.llmBackend;
+      }
+      if (this.settings.llmModel) {
+        env.AIWIKI_LLM_MODEL = this.settings.llmModel;
+      }
+      if (this.settings.llmApiKey) {
+        env.AIWIKI_LLM_API_KEY = this.settings.llmApiKey;
+      }
+      if (this.settings.llmBaseUrl) {
+        env.AIWIKI_LLM_BASE_URL = this.settings.llmBaseUrl;
+      }
       const child = spawn(this.repoState.launcherPath, args, {
         cwd: this.repoState.root,
-        env: Object.assign({}, process.env),
+        env,
       });
       let stdout = "";
       let stderr = "";

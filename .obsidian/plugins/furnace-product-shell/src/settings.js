@@ -107,5 +107,66 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
           this.plugin.refreshOpenViews();
         })
       );
+
+    // ── LLM configuration ──────────────────────────────────
+    containerEl.createEl("h3", { text: t("LLM backend") });
+
+    new Setting(containerEl)
+      .setName(t("LLM backend"))
+      .setDesc(t("Override the LLM backend used by run-compile / run-ask / run-nightly. Empty = auto-detect from environment."))
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("", t("auto (detect)"))
+          .addOption("codex-cli", "codex-cli")
+          .addOption("claude-cli", "claude-cli")
+          .addOption("openai-api", "openai-api")
+          .setValue(this.plugin.settings.llmBackend || "")
+          .onChange(async (value) => {
+            this.plugin.settings.llmBackend = value;
+            await this.plugin.savePluginState();
+            new Notice(t("LLM settings saved. New runs will use the updated configuration."));
+          })
+      );
+
+    new Setting(containerEl)
+      .setName(t("LLM model"))
+      .setDesc(t("Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = backend default."))
+      .addText((text) =>
+        text
+          .setPlaceholder("gpt-5.4")
+          .setValue(this.plugin.settings.llmModel || "")
+          .onChange(async (value) => {
+            this.plugin.settings.llmModel = String(value || "").trim();
+            await this.plugin.savePluginState();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName(t("LLM API key"))
+      .setDesc(t("API key for the openai-api backend. Stored locally in plugin data. Empty = use AIWIKI_LLM_API_KEY env var."))
+      .addText((text) => {
+        text
+          .setPlaceholder("sk-...")
+          .setValue(this.plugin.settings.llmApiKey || "")
+          .onChange(async (value) => {
+            this.plugin.settings.llmApiKey = String(value || "").trim();
+            await this.plugin.savePluginState();
+          });
+        text.inputEl.type = "password";
+        text.inputEl.autocomplete = "off";
+      });
+
+    new Setting(containerEl)
+      .setName(t("LLM base URL"))
+      .setDesc(t("Custom API endpoint (e.g. https://api.openai.com/v1). Empty = default."))
+      .addText((text) =>
+        text
+          .setPlaceholder("https://api.openai.com/v1")
+          .setValue(this.plugin.settings.llmBaseUrl || "")
+          .onChange(async (value) => {
+            this.plugin.settings.llmBaseUrl = String(value || "").trim();
+            await this.plugin.savePluginState();
+          })
+      );
   }
 }
