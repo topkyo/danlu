@@ -6,12 +6,14 @@ import unittest
 from pathlib import Path
 
 from aiwiki.app_linting import (
+    _LINT_REPORT_KEEP,
     Finding,
     _lint_curated_phase,
     _lint_governance_phase,
     _lint_layout_phase,
     _lint_runtime_phase,
     _LintContext,
+    _rotate_lint_reports,
     _write_lint_report,
     render_repair_backlog,
 )
@@ -538,6 +540,23 @@ class LintingTests(unittest.TestCase):
         self.assertTrue(any("`hardness >= medium` should keep `confidence` at least `medium`" in message for message in messages))
         self.assertTrue(any("`hardness >= medium` should be grounded by at least 3 source pages" in message for message in messages))
         self.assertTrue(any("`hardness >= medium` should record at least one explicit conflict or boundary signal" in message for message in messages))
+
+    def test_lint_report_rotation_keeps_latest(self) -> None:
+        """Lint reports should be rotated to keep only the most recent N."""
+        lint_dir = self.root / "output" / "lint"
+        lint_dir.mkdir(parents=True, exist_ok=True)
+        # Create more than _LINT_REPORT_KEEP reports
+        total = _LINT_REPORT_KEEP + 5
+        names = [f"lint-20260415-{100000 + i}.md" for i in range(total)]
+        for name in names:
+            (lint_dir / name).write_text("# report\n")
+        self.assertEqual(len(list(lint_dir.glob("lint-*.md"))), total)
+        _rotate_lint_reports(lint_dir)
+        remaining = sorted(lint_dir.glob("lint-*.md"))
+        self.assertEqual(len(remaining), _LINT_REPORT_KEEP)
+        # The most recent files should be kept
+        expected_kept = sorted(names[-_LINT_REPORT_KEEP:])
+        self.assertEqual([r.name for r in remaining], expected_kept)
 
 
 if __name__ == "__main__":

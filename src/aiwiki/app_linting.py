@@ -1078,10 +1078,23 @@ def _lint_curated_phase(context: _LintContext) -> None:
                     )
 
 
+_LINT_REPORT_KEEP = 10
+
+
+def _rotate_lint_reports(lint_dir: Path) -> None:
+    """Keep only the most recent _LINT_REPORT_KEEP lint reports."""
+    reports = sorted(lint_dir.glob("lint-*.md"))
+    if len(reports) <= _LINT_REPORT_KEEP:
+        return
+    for old in reports[: len(reports) - _LINT_REPORT_KEEP]:
+        old.unlink(missing_ok=True)
+
+
 def _write_lint_report(context: _LintContext) -> dict[str, Any]:
     generated_at = utc_now()
     report_name = f"lint-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.md"
-    report_path = context.root / "output" / "lint" / report_name
+    lint_dir = context.root / "output" / "lint"
+    report_path = lint_dir / report_name
     error_count = sum(1 for finding in context.findings if finding.severity == "error")
     warn_count = sum(1 for finding in context.findings if finding.severity == "warn")
     lines = [
@@ -1099,6 +1112,7 @@ def _write_lint_report(context: _LintContext) -> dict[str, Any]:
         for finding in context.findings:
             lines.append(f"- `{finding.severity}` {finding.path}: {finding.message}")
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _rotate_lint_reports(lint_dir)
     append_wiki_log(
         context.root,
         "lint",

@@ -13,16 +13,16 @@
 | 指标 | 数据 |
 |------|------|
 | Python 源码 | 25 模块 / 33,416 行 |
-| 测试 | 14 文件 / 10,400+ 行 / 326 tests / 93% coverage |
+| 测试 | 14 文件 / 10,500+ 行 / 328 tests / 93% coverage |
 | CLI 命令 | 37 个（ingest × 6 / compile × 4 / query × 3 / review × 5 / execute × 5 / governance × 6 / shell × 4 / automation × 4） |
-| 原料 | 46 raw files（30 images + 16 markdown） |
+| 原料 | 46 raw files（28 images + 14 markdown + 4 other） |
 | 知识资产 | 16 sources → 30 concepts → 6 judgments → 4 decisions → 2 derived |
-| Machine Memory | 259 edges（concept_causal 12 / concept_to_concept 125 / source_to_concept 60 / source_to_judgment 58 / j→j 2 / j→d 2）/ 1,023 terms |
-| 输出产物 | 107 artifacts（lint 43 / reports 11 / decision-memos 10 / sop-drafts 8 / agents 7 / pilots 5 / slides 3 / figures 2） |
+| Machine Memory | 259 edges（concept_causal 12 / concept_to_concept 125 / source_to_concept 60 / source_to_judgment 58 / j→j 2 / j→d 2）/ 0 terms（terms 字段已清空） |
+| 输出产物 | 41 artifacts（reports 11 / agents 7 / control 7 / pilots 5 / packs 3 / slides 3 / figures 2 / design 1 / review 1 / graph 1）+ lint ≤10（已加轮转） |
 | 协议 | 5 套（general / investing / research / product / ops）× 8 模板 |
-| Obsidian 插件 | furnace-product-shell v0.2.0（4,451 行 JS） |
-| 状态文件 | 27 个 JSON/JSONL（machine-memory 19K 行 / nightly-health 11K 行 / execution-policy-decisions 1,265 行） |
-| 闭环迭代 | 57 段（verify + qa-review + closed_loop） |
+| Obsidian 插件 | furnace-product-shell v0.2.0（4,532 行 JS / 7 源文件） |
+| 状态文件 | 26 个 JSON/JSONL（machine-memory 20K 行 / nightly-health 11K 行 / execution-policy-decisions 1,452 行） |
+| 闭环迭代 | 58 段（verify + qa-review + closed_loop） |
 
 ### 双轴打分
 
@@ -31,11 +31,11 @@
 | ① Evidence Fabric | 9.0 | 7.5 | **8.5** | 5 drop 入口 + archive 闭环 ✓ / 但 46 raw → 16 compiled 量不大 |
 | ② Knowledge Compiler | 9.0 | 7.0 | **8.3** | 增量 8 阶段 + dirty/clean 全链路 ✓ / 概念硬度提升至 1 hard + 5 medium + 24 soft |
 | ③ Judgment System | 8.5 | 7.0 | **8.0** | lifecycle + counter-evidence + revisit 完整 ✓ / 但仅 2 条 j→j 边、全 medium confidence |
-| ④ Machine Memory | 8.5 | 8.0 | **8.5** | topology + planner + health 全链路 ✓ / 18 actions 全部 resolved、18 execution receipts |
+| ④ Machine Memory | 8.5 | 8.0 | **8.5** | topology + planner + health 全链路 ✓ / danlu 18 actions 全 resolved；dev repo 17 actions（1 resolved + 6 accepted + 10 proposed）/ terms 字段待重建 |
 | ⑤ Schema / Protocol | 9.0 | 8.5 | **8.8** | 5 protocols 真正驱动 runtime ✓ / 仅 research 被深度运行 |
 | ⑥ Governance | 8.5 | 7.5 | **8.2** | review → aging → repair 管线完整 ✓ / 18 actions 全部闭合、nightly auto-consume 上线、rewrite proposals 仍需 LLM |
 | ⑦ Execution Layer | 8.5 | 7.5 | **8.2** | apply→revert→re-apply 已证明 ✓ / 4 种 action 类型、18 receipts、planner 自动消费已上线 |
-| ⑧ Outputs | 8.0 | 6.5 | **7.5** | 107 artifacts 格式齐全 ✓ / 但 43 是 lint 报告、高价值 output 稀疏 |
+| ⑧ Outputs | 8.0 | 6.5 | **7.5** | 41 non-lint artifacts 格式齐全 ✓ / lint 已加轮转上限 10 / 高价值 output 需继续增加 |
 | ⑨ Product Shell | 8.5 | 8.0 | **8.3** | 极简面板 + 3 drop modal + command split + HTML fallback + new-vault ✓ / 但仍无交互式图谱 |
 | **加权平均** | **8.6** | **7.3** | **8.3** | |
 
@@ -58,10 +58,11 @@
 
 ### 核心短板（必须解决）
 
-1. **治理只产不消**：系统非常擅长"发现问题"（lint warnings / rewrite proposals / execution proposals / aging reports），nightly auto-consume 已上线、18 个 execution actions 已全部闭合；但 12 个 rewrite proposals 仍需 LLM 生成 candidate_markdown 才能消费
+1. **治理只产不消**：系统非常擅长"发现问题"（lint warnings / rewrite proposals / execution proposals / aging reports），nightly auto-consume 已上线；danlu vault 18 个 execution actions 已全部闭合，dev repo 仍有 16 个未 resolved；12 个 rewrite proposals 仍需 LLM 生成 candidate_markdown 才能消费
 2. **概念层偏弱**：30 concepts 中 1 hard + 5 medium + 24 soft，比之前全 soft 有明显进步但多数仍待加固
-3. **执行层已拓宽**：4 种 action 类型（bridge-concept / overloaded-concept / singleton-concept / isolated-source）被真实执行，18 receipts，planner 自动消费已上线
+3. **执行层已拓宽**：4 种 action 类型（bridge-concept / overloaded-concept / singleton-concept / isolated-source）被真实执行，3 receipts（dev repo），planner 自动消费已上线
 4. **内容密度低**：16 sources → 30 concepts 几乎 1:2，很多 concept 只有 1-2 个 source 支撑；有效知识内容约 4,000 行，元数据 overhead 高
+5. **Lint 轮转已修复**：之前 lint 报告 append-only 导致 50 份累积，现已加 _LINT_REPORT_KEEP=10 轮转
 
 ---
 
@@ -105,8 +106,8 @@
 
 | 行动 | 验收标准 |
 |------|----------|
-| **C1. 交互式图谱** | machine-memory.html 升级为 vis.js/d3-force 力导向图，节点可点击跳转、按 kind 过滤、按 protocol 着色 |
-| **C2. Context 自动推断** | `review-action` / `apply-action` 支持 title 子串模糊匹配；shell-summary 暴露 `suggested_next_actions`（**部分完成**：主面板 digest 已展示建议操作） |
+| **C1. 交互式图谱** | machine-memory.html 当前已支持节点跳转、按 kind/filter/protocol 过滤、节点详情、缩放 / 聚焦 / 重置视图；后续若继续推进，再考虑 force-directed 布局 |
+| **C2. Context 自动推断** | `review-action` / `apply-action` / `revert-action` 现已在 CLI + runtime 统一支持 title 子串模糊匹配；shell-summary 已暴露 `suggested_next_actions`（**本轮收口完成**） |
 | **C3. First-run onboarding** | `new-vault` 后首次打开 Obsidian 展示引导面板（投料→编译→提问→审阅 四步走）（**部分完成**：极简面板首屏已暴露核心工作流，new-vault README/HOME 已重写） |
 | **C4. Output 密度提升** | output/figures/ ≥ 6 / output/slides/ ≥ 6 / output/reports/ ≥ 15 / 高价值产物 > lint 产物 |
 | **C5. 测试 93%+** | 补 app_queries / app_memory / config 低覆盖模块测试 |
@@ -132,6 +133,13 @@
 - **nightly planner 自动消费上线**：`nightly_health()` 自动扫描 accepted low-risk + resolvable-monitor actions 并 dry-run→apply，治理链从"发现"走到"自动解决"。
 - **Phase C 覆盖率推进**：321 tests / 93% coverage（+2 tests, +1% coverage），新增 monitor apply + nightly auto-consume 测试。
 
+### 2026-04-16 第三轮更新（review + Phase C 收口）
+
+- **recent review 已完成**：回看最近两轮改动，未发现新的阻断级回归；本轮顺手修掉 1 个真实不一致——CLI 已支持 action title/substring 匹配，但 runtime entrypoint 仍 exact-id only。
+- **Phase C context matching 收口**：`review_machine_memory_action()` / `apply_machine_memory_action()` / `revert_machine_memory_action()` 现在与 CLI 共享同一套 action query 解析，支持 exact id / exact title / unique prefix / unique substring，并在歧义时返回候选列表。
+- **Phase C graph polish 推进**：`machine-memory.html` 在原有搜索 / 过滤 / 节点详情基础上，新增缩放、重置视图、聚焦当前节点与 active node/edge 高亮，图谱可扫读性继续提升。
+- **测试继续推进**：328 tests / 93% coverage，新增 runtime action fragment matching + graph controls 覆盖，`bash scripts/verify.sh` 全绿。
+
 ---
 
 ## 三、得分推演
@@ -151,11 +159,11 @@
 
 ---
 
-## 四、已完成里程碑（57 轮闭环）
+## 四、已完成里程碑（58 轮闭环）
 
 - ✅ `app.py` 动态 facade → 静态 shim + 25 个 owner module（最大 4,275L `app_compile.py`）
-- ✅ 326 tests / 93% coverage / verify 全绿 / 无循环依赖
-- ✅ 57 段闭环迭代（verify + qa-review + closed_loop）
+- ✅ 328 tests / 93% coverage / verify 全绿 / 无循环依赖
+- ✅ 58 段闭环迭代（verify + qa-review + closed_loop）
 - ✅ 增量编译 8 阶段 dirty/clean state + compile-state.json 持久化
 - ✅ Product Shell 模块化重构：7 源文件 + build.sh + 极简主面板
 - ✅ `new-vault` 脚手架：外部 runtime launcher 模式
@@ -163,8 +171,10 @@
 - ✅ Judgment lifecycle / cognitive-history / governance surfaces 全链路
 - ✅ planner-state / query-route-telemetry / execution-policy-decisions 持久化（1,265 policy decisions）
 - ✅ 概念因果网络：1 hard + 5 medium concepts / 12 causal_links / machine memory 全链路
-- ✅ 执行层全链路闭环：18 receipts / 4 种 action 类型 / nightly auto-consume / escalation / resolve-monitor apply mode
-- ✅ 治理积压清零：18/18 execution actions resolved，0 pending
+- ✅ 执行层全链路闭环：danlu 18 resolved / dev repo 3 receipts / 4 种 action 类型 / nightly auto-consume / escalation / resolve-monitor apply mode
+- ✅ 治理积压清零（danlu vault）：18/18 execution actions resolved；dev repo 仍有 16 个 pending/accepted（拆库后重编译新生成）
+- ✅ action query 一致性：CLI + runtime 统一支持 title/substring 匹配与歧义提示
+- ✅ machine-memory graph：搜索/过滤/详情 之外再补缩放 / 聚焦 / 高亮
 - ✅ 架构文档：九层终极形态 + 自动化角色 + Product Shell 定位明确
 - ✅ 5 protocols × 8 templates 真正驱动 compile / query / review / nightly
 
@@ -174,13 +184,14 @@
 
 | 风险 | 等级 | 说明 |
 |------|------|------|
-| 治理不消化 | 🟢 低 | 18 个 execution actions 全部 resolved，nightly auto-consume 上线；rewrite proposals 仍需 LLM 生成 candidate |
+| 治理不消化 | 🟢 低 | danlu 18 actions 全 resolved；dev repo 16 未 resolved 是因拆库后重编译生成了新 proposals；rewrite proposals 仍需 LLM 生成 candidate |
 | 概念空中楼阁 | 🟡 中 | 1 hard + 5 medium + 24 soft，有进步但多数仍 soft |
 | 使用密度不足 | 🟡 中 | Phase B 需要持续投料和使用，不是一次性冲刺能完成的 |
 | Product Shell 体验断层 | 🟢 低 | 极简面板已上线，Obsidian 端投料/提问/查看产出全可用；剩余是交互式图谱 polish |
+| Lint 膨胀 | 🟢 已修 | lint 报告已加 _LINT_REPORT_KEEP=10 轮转，不再无限累积 |
 
 ---
 
 ## 六、一句话结论
 
-> **炼丹炉的基建已经到了同类项目的天花板（8.6），内容牵引力稳步提升（7.3）。治理积压清零、4 种 action 全链路闭合、概念硬度从全 soft 提升至 6 个 medium+ ——Phase A 核心目标已基本达成。下一步重点是 Phase B 内容密实（需真实使用投料）和 Phase C 产品打磨。**
+> **炼丹炉的基建已经到了同类项目的天花板（8.6），内容牵引力稳步提升（7.3）。治理积压在 danlu vault 已清零、4 种 action 全链路闭合、概念硬度从全 soft 提升至 6 个 medium+——Phase A 核心目标已基本达成。lint 报告轮转已修复（上限 10）。下一步重点是 Phase B 内容密实（需真实使用投料）和 Phase C 产品打磨。**
