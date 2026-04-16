@@ -26,9 +26,18 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         workspace = json.loads((self.root / ".obsidian" / "workspace.json").read_text(encoding="utf-8"))
         main_children = workspace["main"]["children"][0]["children"]
         self.assertEqual(main_children[0]["state"]["state"]["file"], "HOME.md")
+        left_children = workspace["left"]["children"][0]["children"]
+        left_titles = [child["state"]["title"] for child in left_children]
+        self.assertEqual(
+            left_titles,
+            ["文件列表", "原料 raw", "wiki 知识", "输出 output", "规则 schema", "书签"],
+        )
         right_children = workspace["right"]["children"][0]["children"]
         view_types = [child["state"]["type"] for child in right_children]
         self.assertIn("furnace-product-shell-furnace-center", view_types)
+        self.assertIn("furnace-product-shell-review-center", view_types)
+        self.assertIn("furnace-product-shell-execution-center", view_types)
+        self.assertIn("furnace-product-shell-recent-runs", view_types)
 
     def test_home_dashboard_links_key_index_notes(self) -> None:
         home = (self.root / "HOME.md").read_text(encoding="utf-8")
