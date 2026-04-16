@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from aiwiki.config import (
+    BACKEND_ANTHROPIC_API,
     BACKEND_CLAUDE_CLI,
     BACKEND_CODEX_CLI,
     BACKEND_OPENAI_API,
@@ -153,9 +154,61 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(status["usage_accounting"], "")
         self.assertEqual(
             status["missing"],
-            ["OPENAI-compatible API key", "LLM model name", "CLI command `codex`", "CLI command `claude`"],
+            ["OPENAI-compatible API key", "Anthropic API key", "LLM model name", "CLI command `codex`", "CLI command `claude`"],
         )
         self.assertIn("No usable LLM backend found", str(status["message"]))
+
+    def test_from_env_resolves_anthropic_api_backend(self) -> None:
+        config = self._from_env(
+            {
+                "AIWIKI_LLM_BACKEND": BACKEND_ANTHROPIC_API,
+                "AIWIKI_LLM_MODEL": "claude-sonnet-4-20250514",
+                "ANTHROPIC_API_KEY": "sk-ant-test-key",
+            },
+        )
+
+        self.assertEqual(config.backend, BACKEND_ANTHROPIC_API)
+        self.assertEqual(config.model, "claude-sonnet-4-20250514")
+        self.assertEqual(config.anthropic_api_key, "sk-ant-test-key")
+        self.assertIn("api.anthropic.com", config.anthropic_base_url)
+
+    def test_status_from_env_reports_anthropic_api_properties(self) -> None:
+        status = self._status_from_env(
+            {
+                "AIWIKI_LLM_BACKEND": BACKEND_ANTHROPIC_API,
+                "AIWIKI_LLM_MODEL": "claude-sonnet-4-20250514",
+                "AIWIKI_ANTHROPIC_API_KEY": "sk-ant-test-key",
+            },
+        )
+
+        self.assertTrue(status["configured"])
+        self.assertEqual(status["backend"], BACKEND_ANTHROPIC_API)
+        self.assertEqual(status["auth_mode"], "api-key")
+        self.assertEqual(status["usage_visibility"], "response-usage")
+        self.assertEqual(status["usage_accounting"], "provider-api")
+        self.assertTrue(status["image_analysis_supported"])
+
+    def test_from_env_raises_when_anthropic_api_key_missing(self) -> None:
+        with self.assertRaises(RuntimeError) as ctx:
+            self._from_env(
+                {
+                    "AIWIKI_LLM_BACKEND": BACKEND_ANTHROPIC_API,
+                    "AIWIKI_LLM_MODEL": "claude-sonnet-4-20250514",
+                },
+            )
+
+        self.assertIn("No usable LLM backend found", str(ctx.exception))
+
+    def test_from_env_codex_path_override(self) -> None:
+        config = self._from_env(
+            {
+                "AIWIKI_LLM_BACKEND": BACKEND_CODEX_CLI,
+                "AIWIKI_CODEX_PATH": "/opt/custom/codex",
+            },
+        )
+
+        self.assertEqual(config.backend, BACKEND_CODEX_CLI)
+        self.assertEqual(config.codex_path, "/opt/custom/codex")
 
 
 if __name__ == "__main__":

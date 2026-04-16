@@ -31,6 +31,7 @@ const DEFAULT_SETTINGS = {
   llmBackend: "",
   llmModel: "",
   llmApiKey: "",
+  llmAnthropicApiKey: "",
   llmBaseUrl: "",
 };
 const ZH_TEXT = {
@@ -59,6 +60,8 @@ const ZH_TEXT = {
   "Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = backend default.": "覆盖模型名称（如 gpt-5.4、claude-sonnet-4.5）。留空 = 后端默认。",
   "LLM API key": "LLM API Key",
   "API key for the openai-api backend. Stored locally in plugin data. Empty = use AIWIKI_LLM_API_KEY env var.": "openai-api 后端的 API Key。本地存储于插件数据中。留空 = 使用 AIWIKI_LLM_API_KEY 环境变量。",
+  "Anthropic API key": "Anthropic API Key",
+  "API key for the anthropic-api backend. Stored locally in plugin data. Empty = use ANTHROPIC_API_KEY env var.": "anthropic-api 后端的 API Key。本地存储于插件数据中。留空 = 使用 ANTHROPIC_API_KEY 环境变量。",
   "LLM base URL": "LLM Base URL",
   "Custom API endpoint (e.g. https://api.openai.com/v1). Empty = default.": "自定义 API 端点（如 https://api.openai.com/v1）。留空 = 默认值。",
   "LLM settings saved. New runs will use the updated configuration.": "LLM 设置已保存。新的运行将使用更新后的配置。",
@@ -1528,6 +1531,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
           .addOption("codex-cli", "codex-cli")
           .addOption("claude-cli", "claude-cli")
           .addOption("openai-api", "openai-api")
+          .addOption("anthropic-api", "anthropic-api")
           .setValue(this.plugin.settings.llmBackend || "")
           .onChange(async (value) => {
             this.plugin.settings.llmBackend = value;
@@ -1558,6 +1562,21 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.llmApiKey || "")
           .onChange(async (value) => {
             this.plugin.settings.llmApiKey = String(value || "").trim();
+            await this.plugin.savePluginState();
+          });
+        text.inputEl.type = "password";
+        text.inputEl.autocomplete = "off";
+      });
+
+    new Setting(containerEl)
+      .setName(t("Anthropic API key"))
+      .setDesc(t("API key for the anthropic-api backend. Stored locally in plugin data. Empty = use ANTHROPIC_API_KEY env var."))
+      .addText((text) => {
+        text
+          .setPlaceholder("sk-ant-...")
+          .setValue(this.plugin.settings.llmAnthropicApiKey || "")
+          .onChange(async (value) => {
+            this.plugin.settings.llmAnthropicApiKey = String(value || "").trim();
             await this.plugin.savePluginState();
           });
         text.inputEl.type = "password";
@@ -3743,6 +3762,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       }
       if (this.settings.llmApiKey) {
         env.AIWIKI_LLM_API_KEY = this.settings.llmApiKey;
+      }
+      if (this.settings.llmAnthropicApiKey) {
+        env.AIWIKI_ANTHROPIC_API_KEY = this.settings.llmAnthropicApiKey;
       }
       if (this.settings.llmBaseUrl) {
         env.AIWIKI_LLM_BASE_URL = this.settings.llmBaseUrl;

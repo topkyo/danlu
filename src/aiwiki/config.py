@@ -9,11 +9,13 @@ from typing import Any
 
 DEFAULT_BACKEND = "auto"
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
+DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 DEFAULT_CODEX_MODEL = "gpt-5.4"
 BACKEND_OPENAI_API = "openai-api"
+BACKEND_ANTHROPIC_API = "anthropic-api"
 BACKEND_CODEX_CLI = "codex-cli"
 BACKEND_CLAUDE_CLI = "claude-cli"
-SUPPORTED_BACKENDS = {BACKEND_OPENAI_API, BACKEND_CODEX_CLI, BACKEND_CLAUDE_CLI}
+SUPPORTED_BACKENDS = {BACKEND_OPENAI_API, BACKEND_ANTHROPIC_API, BACKEND_CODEX_CLI, BACKEND_CLAUDE_CLI}
 
 
 @dataclass
@@ -21,7 +23,9 @@ class LLMConfig:
     backend: str
     model: str = ""
     api_key: str = ""
+    anthropic_api_key: str = ""
     base_url: str = DEFAULT_BASE_URL
+    anthropic_base_url: str = DEFAULT_ANTHROPIC_BASE_URL
     timeout_seconds: int = 120
     temperature: float = 0.2
     max_context_chars: int = 24000
@@ -43,6 +47,14 @@ class LLMConfig:
                 missing.append("AIWIKI_LLM_API_KEY or OPENAI_API_KEY")
             if missing:
                 raise RuntimeError(f"Missing LLM configuration: {', '.join(missing)}")
+        elif backend == BACKEND_ANTHROPIC_API:
+            missing = []
+            if not values["model"]:
+                missing.append("AIWIKI_LLM_MODEL")
+            if not values["anthropic_api_key"]:
+                missing.append("AIWIKI_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY")
+            if missing:
+                raise RuntimeError(f"Missing LLM configuration: {', '.join(missing)}")
         elif backend == BACKEND_CODEX_CLI:
             if not values["codex_path"]:
                 raise RuntimeError(
@@ -60,7 +72,9 @@ class LLMConfig:
             backend=backend,
             model=effective_model,
             api_key=values["api_key"],
+            anthropic_api_key=values["anthropic_api_key"],
             base_url=values["base_url"],
+            anthropic_base_url=values["anthropic_base_url"],
             timeout_seconds=values["timeout_seconds"],
             temperature=values["temperature"],
             max_context_chars=values["max_context_chars"],
@@ -96,7 +110,9 @@ class LLMConfig:
             "model": effective_model or values["model"],
             "effective_model": effective_model,
             "api_key_present": bool(values["api_key"]),
+            "anthropic_api_key_present": bool(values["anthropic_api_key"]),
             "base_url": values["base_url"],
+            "anthropic_base_url": values["anthropic_base_url"],
             "timeout_seconds": values["timeout_seconds"],
             "temperature": values["temperature"],
             "max_context_chars": values["max_context_chars"],
@@ -117,6 +133,8 @@ class LLMConfig:
         data = asdict(self)
         if data["api_key"]:
             data["api_key"] = "***"
+        if data["anthropic_api_key"]:
+            data["anthropic_api_key"] = "***"
         return data
 
 
@@ -124,21 +142,31 @@ def _read_env() -> dict[str, Any]:
     requested_backend = (os.environ.get("AIWIKI_LLM_BACKEND") or DEFAULT_BACKEND).strip().lower()
     model = (os.environ.get("AIWIKI_LLM_MODEL") or os.environ.get("OPENAI_MODEL") or "").strip()
     api_key = (os.environ.get("AIWIKI_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY") or "").strip()
+    anthropic_api_key = (
+        os.environ.get("AIWIKI_ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY") or ""
+    ).strip()
     base_url = (
         os.environ.get("AIWIKI_LLM_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or DEFAULT_BASE_URL
+    ).rstrip("/")
+    anthropic_base_url = (
+        os.environ.get("AIWIKI_ANTHROPIC_BASE_URL") or DEFAULT_ANTHROPIC_BASE_URL
     ).rstrip("/")
     timeout_seconds = int(os.environ.get("AIWIKI_LLM_TIMEOUT", "120"))
     temperature = float(os.environ.get("AIWIKI_LLM_TEMPERATURE", "0.2"))
     max_context_chars = int(os.environ.get("AIWIKI_LLM_MAX_CONTEXT_CHARS", "24000"))
     codex_command = (os.environ.get("AIWIKI_CODEX_COMMAND") or "codex").strip()
     claude_command = (os.environ.get("AIWIKI_CLAUDE_COMMAND") or "claude").strip()
-    codex_path = shutil.which(codex_command) or ""
-    claude_path = shutil.which(claude_command) or ""
+    explicit_codex_path = (os.environ.get("AIWIKI_CODEX_PATH") or "").strip()
+    explicit_claude_path = (os.environ.get("AIWIKI_CLAUDE_PATH") or "").strip()
+    codex_path = explicit_codex_path or shutil.which(codex_command) or ""
+    claude_path = explicit_claude_path or shutil.which(claude_command) or ""
     return {
         "requested_backend": requested_backend,
         "model": model,
         "api_key": api_key,
+        "anthropic_api_key": anthropic_api_key,
         "base_url": base_url,
+        "anthropic_base_url": anthropic_base_url,
         "timeout_seconds": timeout_seconds,
         "temperature": temperature,
         "max_context_chars": max_context_chars,
@@ -159,6 +187,8 @@ def _resolve_backend(values: dict[str, Any]) -> str:
 
     if values["api_key"] and values["model"]:
         return BACKEND_OPENAI_API
+    if values["anthropic_api_key"] and values["model"]:
+        return BACKEND_ANTHROPIC_API
     if values["codex_path"]:
         return BACKEND_CODEX_CLI
     if values["claude_path"]:
@@ -169,6 +199,10 @@ def _resolve_backend(values: dict[str, Any]) -> str:
 def _validate_requested_backend(requested: str, values: dict[str, Any]) -> str:
     if requested == BACKEND_OPENAI_API:
         if not values["model"] or not values["api_key"]:
+            raise RuntimeError(_missing_backend_message(values))
+        return requested
+    if requested == BACKEND_ANTHROPIC_API:
+        if not values["model"] or not values["anthropic_api_key"]:
             raise RuntimeError(_missing_backend_message(values))
         return requested
     if requested == BACKEND_CODEX_CLI:
@@ -195,6 +229,8 @@ def _available_backends(values: dict[str, Any]) -> list[str]:
     available: list[str] = []
     if values["api_key"] and values["model"]:
         available.append(BACKEND_OPENAI_API)
+    if values["anthropic_api_key"] and values["model"]:
+        available.append(BACKEND_ANTHROPIC_API)
     if values["codex_path"]:
         available.append(BACKEND_CODEX_CLI)
     if values["claude_path"]:
@@ -208,6 +244,8 @@ def _missing_items(values: dict[str, Any]) -> list[str]:
     if requested in ("", DEFAULT_BACKEND):
         if not values["api_key"]:
             missing.append("OPENAI-compatible API key")
+        if not values["anthropic_api_key"]:
+            missing.append("Anthropic API key")
         if not values["model"]:
             missing.append("LLM model name")
         if not values["codex_path"]:
@@ -220,6 +258,11 @@ def _missing_items(values: dict[str, Any]) -> list[str]:
             missing.append("AIWIKI_LLM_MODEL or OPENAI_MODEL")
         if not values["api_key"]:
             missing.append("AIWIKI_LLM_API_KEY or OPENAI_API_KEY")
+    elif requested == BACKEND_ANTHROPIC_API:
+        if not values["model"]:
+            missing.append("AIWIKI_LLM_MODEL")
+        if not values["anthropic_api_key"]:
+            missing.append("AIWIKI_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY")
     elif requested == BACKEND_CODEX_CLI and not values["codex_path"]:
         missing.append(f"CLI command `{values['codex_command']}`")
     elif requested == BACKEND_CLAUDE_CLI and not values["claude_path"]:
@@ -242,7 +285,7 @@ def _missing_backend_message(values: dict[str, Any]) -> str:
 
 
 def _auth_mode_for_backend(backend: str) -> str:
-    if backend == BACKEND_OPENAI_API:
+    if backend in {BACKEND_OPENAI_API, BACKEND_ANTHROPIC_API}:
         return "api-key"
     if backend in {BACKEND_CODEX_CLI, BACKEND_CLAUDE_CLI}:
         return "cli-session"
@@ -250,7 +293,7 @@ def _auth_mode_for_backend(backend: str) -> str:
 
 
 def _usage_visibility_for_backend(backend: str) -> str:
-    if backend == BACKEND_OPENAI_API:
+    if backend in {BACKEND_OPENAI_API, BACKEND_ANTHROPIC_API}:
         return "response-usage"
     if backend in {BACKEND_CODEX_CLI, BACKEND_CLAUDE_CLI}:
         return "opaque-cli"
@@ -258,7 +301,7 @@ def _usage_visibility_for_backend(backend: str) -> str:
 
 
 def _usage_accounting_for_backend(backend: str) -> str:
-    if backend == BACKEND_OPENAI_API:
+    if backend in {BACKEND_OPENAI_API, BACKEND_ANTHROPIC_API}:
         return "provider-api"
     if backend == BACKEND_CODEX_CLI:
         return "copilot-cli-session"
@@ -268,4 +311,4 @@ def _usage_accounting_for_backend(backend: str) -> str:
 
 
 def _backend_supports_image_analysis(backend: str) -> bool:
-    return backend in {BACKEND_OPENAI_API, BACKEND_CODEX_CLI}
+    return backend in {BACKEND_OPENAI_API, BACKEND_ANTHROPIC_API, BACKEND_CODEX_CLI}

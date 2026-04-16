@@ -946,6 +946,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       if (this.settings.llmApiKey) {
         env.AIWIKI_LLM_API_KEY = this.settings.llmApiKey;
       }
+      if (this.settings.llmAnthropicApiKey) {
+        env.AIWIKI_ANTHROPIC_API_KEY = this.settings.llmAnthropicApiKey;
+      }
       if (this.settings.llmBaseUrl) {
         env.AIWIKI_LLM_BASE_URL = this.settings.llmBaseUrl;
       }

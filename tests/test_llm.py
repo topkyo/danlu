@@ -9,8 +9,15 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib import error
 
-from aiwiki.config import BACKEND_CLAUDE_CLI, BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
-from aiwiki.llm import ClaudeCLIClient, CodexCLIClient, LLMError, OpenAICompatClient, create_backend_client
+from aiwiki.config import BACKEND_ANTHROPIC_API, BACKEND_CLAUDE_CLI, BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
+from aiwiki.llm import (
+    AnthropicClient,
+    ClaudeCLIClient,
+    CodexCLIClient,
+    LLMError,
+    OpenAICompatClient,
+    create_backend_client,
+)
 
 
 class FakeHTTPResponse:
@@ -312,10 +319,139 @@ class LLMClientTests(unittest.TestCase):
                 LLMConfig(backend=BACKEND_CLAUDE_CLI, claude_path="/usr/bin/claude"),
                 root,
             )
+            anthropic = create_backend_client(
+                LLMConfig(backend=BACKEND_ANTHROPIC_API, model="claude-sonnet-4-20250514", anthropic_api_key="sk-ant-test"),
+                root,
+            )
 
         self.assertIsInstance(openai, OpenAICompatClient)
         self.assertIsInstance(codex, CodexCLIClient)
         self.assertIsInstance(claude, ClaudeCLIClient)
+        self.assertIsInstance(anthropic, AnthropicClient)
+
+    def test_anthropic_complete_basic(self) -> None:
+        config = LLMConfig(
+            backend=BACKEND_ANTHROPIC_API,
+            model="claude-sonnet-4-20250514",
+            anthropic_api_key="sk-ant-test-key",
+            anthropic_base_url="https://api.anthropic.com",
+        )
+        client = AnthropicClient(config)
+
+        captured: dict[str, object] = {}
+
+        def fake_urlopen(http_request, timeout: int):
+            del timeout
+            captured["url"] = http_request.full_url
+            captured["headers"] = dict(http_request.headers)
+            captured["body"] = json.loads(http_request.data.decode("utf-8"))
+            return FakeHTTPResponse(
+                {
+                    "id": "msg_123",
+                    "content": [{"type": "text", "text": "Hello from Claude."}],
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                }
+            )
+
+        with patch("aiwiki.llm.request.urlopen", side_effect=fake_urlopen):
+            result = client.complete("System prompt", "User prompt")
+
+        self.assertEqual(captured["url"], "https://api.anthropic.com/v1/messages")
+        self.assertEqual(captured["headers"]["X-api-key"], "sk-ant-test-key")
+        self.assertEqual(captured["headers"]["Anthropic-version"], "2023-06-01")
+        self.assertEqual(captured["body"]["model"], "claude-sonnet-4-20250514")
+        self.assertEqual(captured["body"]["system"], "System prompt")
+        self.assertEqual(result.text, "Hello from Claude.")
+        self.assertEqual(result.response_id, "msg_123")
+        self.assertEqual(result.usage["input_tokens"], 10)
+        self.assertEqual(result.usage["output_tokens"], 5)
+
+    def test_anthropic_complete_rejects_empty_content(self) -> None:
+        config = LLMConfig(
+            backend=BACKEND_ANTHROPIC_API,
+            model="claude-sonnet-4-20250514",
+            anthropic_api_key="sk-ant-test-key",
+        )
+        client = AnthropicClient(config)
+
+        with patch(
+            "aiwiki.llm.request.urlopen",
+            return_value=FakeHTTPResponse(
+                {"id": "msg_x", "content": [{"type": "text", "text": "   "}], "usage": {}}
+            ),
+        ):
+            with self.assertRaises(LLMError) as ctx:
+                client.complete("System", "User")
+
+        self.assertIn("empty content", str(ctx.exception))
+
+    def test_anthropic_complete_rejects_invalid_json(self) -> None:
+        config = LLMConfig(
+            backend=BACKEND_ANTHROPIC_API,
+            model="claude-sonnet-4-20250514",
+            anthropic_api_key="sk-ant-test-key",
+        )
+        client = AnthropicClient(config)
+
+        with patch("aiwiki.llm.request.urlopen", return_value=RawHTTPResponse(b"not-json")):
+            with self.assertRaises(LLMError) as ctx:
+                client.complete("System", "User")
+
+        self.assertIn("invalid JSON", str(ctx.exception))
+
+    def test_anthropic_complete_rejects_missing_content(self) -> None:
+        config = LLMConfig(
+            backend=BACKEND_ANTHROPIC_API,
+            model="claude-sonnet-4-20250514",
+            anthropic_api_key="sk-ant-test-key",
+        )
+        client = AnthropicClient(config)
+
+        with patch("aiwiki.llm.request.urlopen", return_value=FakeHTTPResponse({"id": "msg_x"})):
+            with self.assertRaises(LLMError) as ctx:
+                client.complete("System", "User")
+
+        self.assertIn("missing `content`", str(ctx.exception))
+
+    def test_anthropic_analyze_image(self) -> None:
+        config = LLMConfig(
+            backend=BACKEND_ANTHROPIC_API,
+            model="claude-sonnet-4-20250514",
+            anthropic_api_key="sk-ant-test-key",
+            anthropic_base_url="https://api.anthropic.com",
+        )
+        client = AnthropicClient(config)
+        image_bytes = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z3ioAAAAASUVORK5CYII="
+        )
+        captured: dict[str, object] = {}
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            image_path = Path(tempdir) / "tiny.png"
+            image_path.write_bytes(image_bytes)
+
+            def fake_urlopen(http_request, timeout: int):
+                del timeout
+                captured["body"] = json.loads(http_request.data.decode("utf-8"))
+                return FakeHTTPResponse(
+                    {
+                        "id": "msg_img",
+                        "content": [{"type": "text", "text": "Image analysis."}],
+                        "usage": {"input_tokens": 100, "output_tokens": 20},
+                    }
+                )
+
+            with patch("aiwiki.llm.request.urlopen", side_effect=fake_urlopen):
+                result = client.analyze_image("System prompt", "Describe image", image_path)
+
+        body = captured["body"]
+        content = body["messages"][0]["content"]
+        self.assertEqual(content[0]["type"], "image")
+        self.assertEqual(content[0]["source"]["type"], "base64")
+        self.assertEqual(content[0]["source"]["media_type"], "image/png")
+        self.assertEqual(content[1]["type"], "text")
+        self.assertEqual(content[1]["text"], "Describe image")
+        self.assertEqual(result.text, "Image analysis.")
 
 
 if __name__ == "__main__":

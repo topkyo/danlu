@@ -120,6 +120,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
           .addOption("codex-cli", "codex-cli")
           .addOption("claude-cli", "claude-cli")
           .addOption("openai-api", "openai-api")
+          .addOption("anthropic-api", "anthropic-api")
           .setValue(this.plugin.settings.llmBackend || "")
           .onChange(async (value) => {
             this.plugin.settings.llmBackend = value;
@@ -150,6 +151,21 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.llmApiKey || "")
           .onChange(async (value) => {
             this.plugin.settings.llmApiKey = String(value || "").trim();
+            await this.plugin.savePluginState();
+          });
+        text.inputEl.type = "password";
+        text.inputEl.autocomplete = "off";
+      });
+
+    new Setting(containerEl)
+      .setName(t("Anthropic API key"))
+      .setDesc(t("API key for the anthropic-api backend. Stored locally in plugin data. Empty = use ANTHROPIC_API_KEY env var."))
+      .addText((text) => {
+        text
+          .setPlaceholder("sk-ant-...")
+          .setValue(this.plugin.settings.llmAnthropicApiKey || "")
+          .onChange(async (value) => {
+            this.plugin.settings.llmAnthropicApiKey = String(value || "").trim();
             await this.plugin.savePluginState();
           });
         text.inputEl.type = "password";

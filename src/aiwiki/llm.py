@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from urllib import error, request
 
-from .config import BACKEND_CLAUDE_CLI, BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
+from .config import BACKEND_ANTHROPIC_API, BACKEND_CLAUDE_CLI, BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
 
 
 class LLMError(RuntimeError):
@@ -300,9 +300,83 @@ class ClaudeCLIClient:
         raise LLMError("Claude CLI image analysis is not supported by aiwiki yet.")
 
 
+class AnthropicClient:
+    """Call the Anthropic Messages API directly."""
+
+    ANTHROPIC_VERSION = "2023-06-01"
+
+    def __init__(self, config: LLMConfig) -> None:
+        self.config = config
+
+    def _call_messages(self, system_prompt: str, content: list[dict[str, Any]] | str) -> CompletionResult:
+        payload: dict[str, Any] = {
+            "model": self.config.model,
+            "max_tokens": 4096,
+            "temperature": self.config.temperature,
+            "system": system_prompt,
+            "messages": [{"role": "user", "content": content}],
+        }
+        endpoint = f"{self.config.anthropic_base_url}/v1/messages"
+        body = json.dumps(payload).encode("utf-8")
+        http_request = request.Request(
+            endpoint,
+            data=body,
+            headers={
+                "x-api-key": self.config.anthropic_api_key,
+                "anthropic-version": self.ANTHROPIC_VERSION,
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+
+        try:
+            with request.urlopen(http_request, timeout=self.config.timeout_seconds) as response:
+                raw = response.read().decode("utf-8")
+        except error.HTTPError as exc:  # pragma: no cover - exercised via CLI/network usage
+            details = exc.read().decode("utf-8", errors="replace")
+            raise LLMError(f"HTTP {exc.code} from Anthropic endpoint: {details}") from exc
+        except error.URLError as exc:  # pragma: no cover - exercised via CLI/network usage
+            raise LLMError(f"Unable to reach Anthropic endpoint: {exc.reason}") from exc
+
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise LLMError("Anthropic endpoint returned invalid JSON.") from exc
+
+        text = _extract_anthropic_content(parsed)
+        if not text.strip():
+            raise LLMError("Anthropic endpoint returned empty content.")
+        return CompletionResult(
+            text=text,
+            response_id=str(parsed.get("id", "")),
+            usage=parsed.get("usage") or {},
+        )
+
+    def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+        return self._call_messages(system_prompt, user_prompt)
+
+    def analyze_image(self, system_prompt: str, user_prompt: str, image_path: Path) -> CompletionResult:
+        mime_type = _guess_image_mime_type(image_path)
+        encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
+        content: list[dict[str, Any]] = [
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": mime_type,
+                    "data": encoded,
+                },
+            },
+            {"type": "text", "text": user_prompt},
+        ]
+        return self._call_messages(system_prompt, content)
+
+
 def create_backend_client(config: LLMConfig, workdir: Path) -> Any:
     if config.backend == BACKEND_OPENAI_API:
         return OpenAICompatClient(config)
+    if config.backend == BACKEND_ANTHROPIC_API:
+        return AnthropicClient(config)
     if config.backend == BACKEND_CODEX_CLI:
         return CodexCLIClient(config, workdir)
     if config.backend == BACKEND_CLAUDE_CLI:
@@ -329,6 +403,19 @@ def _extract_content(payload: dict[str, Any]) -> str:
                     parts.append(text)
         return "".join(parts)
     raise LLMError("Unsupported message content format from LLM endpoint.")
+
+
+def _extract_anthropic_content(payload: dict[str, Any]) -> str:
+    content = payload.get("content")
+    if not isinstance(content, list) or not content:
+        raise LLMError("Anthropic response is missing `content`.")
+    parts: list[str] = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "text":
+            text = block.get("text")
+            if isinstance(text, str):
+                parts.append(text)
+    return "".join(parts)
 
 
 def _guess_image_mime_type(image_path: Path) -> str:
