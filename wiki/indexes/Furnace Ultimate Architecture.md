@@ -273,6 +273,7 @@ status: "active"
 - Obsidian 是 Product Shell 的第一工作面——投料、查询、审阅、修复、图谱、执行、审计全部从 Obsidian 插件面板进入
 - HTML 控制台（`furnace-center.html`、`execution-center.html`、`review-center.html`、`machine-memory.html`）作为**备用**，给不开 Obsidian 时的轻量检查用
 - `aiwiki CLI` 是底层 runtime 入口，Obsidian 插件通过 CLI 调度，不直接操作 state 文件
+- 现在可以用 `aiwiki new-vault <target>` 直接起一个新的炼丹炉 Obsidian vault；vault 内 launcher 回指 runtime root，不要求 vault 自己包含源码
 
 实现级设计可见：
 
@@ -388,28 +389,102 @@ status: "active"
 - 所有执行都必须可审计、可回滚
 - 协议层可以变化，但统一炉子不能分裂成多个私有真相
 
+## 演化路线
+
+从当前版本到最终形态，分三个阶段。每个阶段解决一个结构性问题。
+
+### Phase A — 治理消化 + 执行闭合
+
+> 核心命题：**证明系统不只会发现问题，还会解决问题。**
+
+当前系统的治理层（review / aging / repair / lint）非常擅长发现问题：39 lint warnings、25 rewrite proposals、8 execution proposals——但几乎没有一个被真正闭合。30 个 concepts 全标"待回看"，25 个 rewrite proposals 全 pending，8 个 execution proposals 全 proposed。
+
+如果不解决这个"治理只产不消"的问题，系统会陷入"越跑越多 warning"的死循环，治理层从资产变成负债。
+
+这个阶段的目标是：
+
+- 清零 lint warnings
+- Apply 至少 3 个 rewrite proposals，证明概念修复链可闭合
+- 消费 ≥ 3 个 execution proposals（覆盖 ≥ 2 种 action 类型），证明执行层不只是 citation-refresh
+- 激活 planner 自动消费循环（nightly 扫描 → low-risk accepted → auto bundle）
+- dry-run 产出结构化 JSON artifact
+- 触发至少 1 次真实 escalation → review → resolve 全链路
+
+完成后，系统从"管线能跑"推进到"管线能自维护"。
+
+### Phase B — 内容密实 + 判断资产化
+
+> 核心命题：**从"管线能跑"推进到"管线产出有价值的知识"。**
+
+Phase A 解决的是工程问题；Phase B 解决的是内容问题——需要真实使用系统，不是写代码能完成的。
+
+当前 30 个 concepts 全部 soft、judgment 建在弱概念上、judgment 间关联稀疏（仅 2 条 j→j 边）。终极形态要求"judgment 是系统最值钱的一层"，但现在这一层的资产密度不足以支撑这个定位。
+
+这个阶段的目标是：
+
+- Hard concepts 从 5 → 15，concept_causal 边从 12 → 30+
+- Judgments 从 6 → 12，覆盖 research / investing / product 三个 protocol
+- Judgment→judgment + judgment→decision 关联边 ≥ 6 条
+- 30 concepts "待回看" 状态清零（review 通过或 retire）
+- Evidence 补强：raw 46 → 80+，sources 16 → 30+，高 hardness concept 至少 3 source 支撑
+- Escalation 被真实压力测试并成功 resolve
+
+完成后，系统从"基建完善的原型"推进到"有真实知识价值的认知系统"。
+
+### Phase C — 产品收敛 + 日常可用
+
+> 核心命题：**让炼丹炉真正成为"每天想打开的工具"而非"每天需要维护的系统"。**
+
+这个阶段是产品打磨，不改变系统能力边界，但大幅提升日常使用体验。
+
+目标包括：
+
+- 交互式知识图谱（vis.js / d3-force，节点可点击、按 kind 过滤、按 protocol 着色）
+- Context 自动推断（模糊匹配 action/entry、suggested_next_actions、active note awareness）
+- First-run onboarding（new-vault 首次打开的引导面板）
+- Output 密度（figures ≥ 6 / slides ≥ 6 / reports ≥ 15，高价值产物 > lint 产物）
+- 测试 93%+
+
+完成后，系统从"能用"推进到"好用"。
+
+### 阶段边界
+
+```text
+Phase A（治理消化 + 执行闭合）
+  │  全部是代码 + 操作，最有确定性
+  │  综合 8.0 → 8.6
+  ▼
+Phase B（内容密实 + 判断资产化）
+  │  需要真实使用系统，持续投料/提问/审阅
+  │  综合 8.6 → 9.0
+  ▼
+Phase C（产品收敛 + 日常可用）
+  │  产品打磨 + 体验优化
+  │  综合 9.0 → 9.3
+```
+
+**关键判断**：Phase A 确定能做、Phase B 需要持续使用、Phase C 需要产品设计。三阶段全闭合才能稳到终极形态。
+
 ## 与当前版本的关系
 
-当前版本已经具备：
+当前版本（2026-04-16 评估，综合 **8.0/10**）已经具备：
 
-- 五层主线
-- Obsidian 插件工作台（Product Shell 默认入口）+ HTML 控制台（备用）
-- 多协议 runtime（5 套协议真正驱动 compile/query/review/nightly）
+- 九层架构全部存在且功能闭环
+- 25 个 owner module / 33,416 行 Python / 314 tests / 92% coverage
+- Obsidian 插件工作台（Product Shell v0.2.0）+ HTML 控制台备用
+- 多协议 runtime（5 套协议 × 8 模板真正驱动 compile/query/review/nightly）
 - judgment layer + 因果网络 + judgment 关联图谱
-- safe execution layer（apply/revert/receipt/audit）
+- safe execution layer（apply/revert/receipt/audit，3 receipts 已证明）
+- 增量编译 8 阶段 dirty/clean + compile-state 持久化
 - 自动化角色通过 CLI + systemd timer 覆盖
 
-但距离这份“最终极形态”还差的是：
+**基建完成度 8.5 / 内容牵引力 6.9。**
 
-- 更硬的概念层（更多 hard concepts + 更密集的因果网络）
-- 更资产化的判断层（judgment 数量和关联密度）
-- 更成熟的执行治理（更多真实 receipt 积累）
-- 更完善的 Obsidian 工作台（batch 操作 + context 自动推断）
-- 真实高密度场景的长期压实
+基建已经到了同类项目的天花板；瓶颈不在管线，在于管线还没有产出足够密度的真实知识、治理链还没有从"发现"走到"解决"。
 
-所以这份文档不是说“现在已经做到”，而是定义：
+所以这份文档不是说"现在已经做到"，而是定义：
 
-**炼丹炉真正值得追求的最终形态。**
+**炼丹炉真正值得追求的最终形态，以及从现在到那里的三个阶段。**
 
 ## 一句话总结
 

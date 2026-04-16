@@ -9,12 +9,12 @@ priority: "high"
 protocol: "research"
 policy_decision: "review"
 policy_rule_id: "proposed-triage"
-priority_score: "78"
+priority_score: "74"
 impact_score: "70"
 target_paths:
   - "wiki/concepts/the.md"
 generated_by: "aiwiki-compile"
-last_compiled_at: "2026-04-15T03:08:01+00:00"
+last_compiled_at: "2026-04-16T02:09:52+00:00"
 ---
 
 # 拆分过载概念 The
@@ -26,7 +26,7 @@ last_compiled_at: "2026-04-15T03:08:01+00:00"
 - Risk: `high`
 - Protocol: `research`
 - Priority: `high`
-- Priority score: `78`
+- Priority score: `74`
 - Impact score: `70`
 - Policy decision: `review`
 - Policy rule: `proposed-triage`

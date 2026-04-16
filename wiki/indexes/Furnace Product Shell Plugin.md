@@ -64,9 +64,12 @@ status: "active"
 
 ## 工作台定位
 
-**Obsidian 是炼丹炉的默认工作台**——所有日常操作（投料、查询、审阅、修复、图谱、执行、审计）都应从 Obsidian 插件面板进入。
+**Obsidian 是炼丹炉的默认工作台**，但当前落地形态是“**Obsidian + launcher CLI 双入口，共用同一 runtime**”，不是“所有动作都已经有插件按钮”。
 
-HTML 控制台（`furnace-center.html`、`execution-center.html`、`review-center.html`、`machine-memory.html`）作为**备用检查面**，用于不开 Obsidian 时的轻量查看。
+- 插件内已经覆盖：`Ask`、`Compile`、`Nightly`、`Review / Execution`、`Suggested Next Actions`、`Capture Note`
+- `drop-note` 已有 Obsidian 入口；`drop-url / drop-pdf / drop-image / drop-repo` 目前仍以 launcher CLI 为主，或由用户直接整理 `raw/inbox/`
+- HTML 控制台（`furnace-center.html`、`execution-center.html`、`review-center.html`、`machine-memory.html`）作为**备用检查面**
+- 所有写命令继续遵守 `single writer, many readers`
 
 ## 为什么要单独做这层
 
@@ -212,7 +215,13 @@ Obsidian App
 
 - `output/control/shell-summary.json`
 - `aiwiki shell-status`
-- repo-local launcher
+- vault-local launcher（可回指外部 runtime root）
+
+当前已补上：
+
+- `aiwiki new-vault <target>`：生成新 vault 脚手架
+- `scripts/aiwiki-launcher.sh`：落在 vault 内，但显式指向当前 runtime root
+- Product Shell 插件不再要求 vault 本身包含 `src/aiwiki/cli.py`
 
 ### 1. `output/control/shell-summary.json`
 
@@ -257,16 +266,16 @@ Obsidian App
 
 `PYTHONPATH=src python -m aiwiki.cli --root <vault>`
 
-而应该优先调用 repo 内显式 launcher，例如：
+而应该优先调用 vault 内显式 launcher，例如：
 
 - `scripts/aiwiki-launcher.sh`
 - 或 `bin/aiwiki`
 
 这样：
 
-- Python 路径、`PYTHONPATH` 和启动细节由 repo 侧维护
+- Python 路径、`PYTHONPATH` 和启动细节由 runtime 侧维护
 - 插件只负责传命令和参数
-- 后续如果要支持全局安装，再扩展成 `configured command -> repo-local launcher -> PATH aiwiki` 的 fallback 链
+- 后续如果要支持全局安装，再扩展成 `configured launcher -> absolute launcher -> PATH aiwiki` 的 fallback 链
 
 ## MVP 命令面
 
@@ -360,19 +369,23 @@ Obsidian App
 
 ### 命令执行
 
-- 插件通过 repo-local launcher 调用 `aiwiki CLI`
+- 插件通过 vault-local 或绝对路径 launcher 调用 `aiwiki CLI`
 - stdout 按 JSON 解析
 - stderr 保留给用户排错
 - 长任务要有 running / success / failed 三态
-- 第一版默认要求 vault 根目录就是 `aiwiki` repo 根目录
-- 启动时应显式检查 repo 结构是否成立，再决定是否启用 Product Shell
+- 当前版本允许 **vault ≠ runtime repo**；launcher 负责把 vault root 和 runtime root 绑在一起
+- 启动时应显式检查 vault scaffold 与 launcher 是否成立，再决定是否启用 Product Shell
+- 当前推荐模式是：插件承接默认工作流与轻交互，launcher 负责完整 `drop-*` / 脚本化调用 / 批量操作
+- 插件与 CLI 共享同一状态目录，因此 `compile / nightly / apply / revert` 不应在两个入口并发触发
 
 推荐检查：
 
-- `src/aiwiki/cli.py`
 - `raw/`
 - `wiki/`
 - `schema/`
+- `output/`
+- `.aiwiki/`
+- `scripts/aiwiki-launcher.sh`
 
 ### 状态读取
 

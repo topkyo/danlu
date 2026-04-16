@@ -1,12 +1,12 @@
 # 判断资产
 
-- 最近编译时间：`2026-04-15T12:39:25+00:00`
+- 最近编译时间：`2026-04-16T02:09:53+00:00`
 - 当前协议焦点：`research` (研发协议)
 - 决策页：`4`
 - 判断页：`6`
 - 资产完整（>= 3/4）：`10`
-- 治理焦点：`0`
-- 生命周期 formed / active / under-review / revised / retired：`0` / `7` / `0` / `3` / `0`
+- 治理焦点：`2`
+- 生命周期 formed / active / under-review / revised / retired：`0` / `6` / `2` / `2` / `0`
 - 缺反证：`0`
 - 缺失效条件：`0`
 - 缺下一信号：`0`
@@ -20,11 +20,12 @@
 - 未解析关系引用：`0`
 
 ## 当前治理焦点
-- 当前没有需要额外关注的 decision / judgment 页面。
+- [Agent Governance Decision](../../wiki/decisions/decision-20260415-015034-agent-governance-decision.md) | 状态 `待复审` | 协议 `research` | 置信度 `high` | 审阅时间 `2026-04-16T02:09:52+00:00` | 复审截止 `2026-04-18T02:09:52+00:00` | 资产 `4/4` | 复审历史 `2`
+- [Agent Governance Judgment](../../wiki/judgments/judgment-20260415-015034-agent-governance-judgment.md) | 状态 `持续观察` | 协议 `research` | 置信度 `medium` | 审阅时间 `2026-04-16T02:09:53+00:00` | 复审截止 `2026-04-23T02:09:53+00:00` | 资产 `4/4` | 复审历史 `3`
 
 ## 强判断资产
-- [Agent Governance Decision](../../wiki/decisions/decision-20260415-015034-agent-governance-decision.md) | 状态 `已批准` | 协议 `research` | 置信度 `high` | 审阅时间 `2026-04-15T01:53:07+00:00` | 资产 `4/4` | 复审历史 `1`
-- [Agent Governance Judgment](../../wiki/judgments/judgment-20260415-015034-agent-governance-judgment.md) | 状态 `已确认` | 协议 `research` | 置信度 `medium` | 审阅时间 `2026-04-15T02:19:57+00:00` | 资产 `4/4` | 复审历史 `2`
+- [Agent Governance Decision](../../wiki/decisions/decision-20260415-015034-agent-governance-decision.md) | 状态 `待复审` | 协议 `research` | 置信度 `high` | 审阅时间 `2026-04-16T02:09:52+00:00` | 复审截止 `2026-04-18T02:09:52+00:00` | 资产 `4/4` | 复审历史 `2`
+- [Agent Governance Judgment](../../wiki/judgments/judgment-20260415-015034-agent-governance-judgment.md) | 状态 `持续观察` | 协议 `research` | 置信度 `medium` | 审阅时间 `2026-04-16T02:09:53+00:00` | 复审截止 `2026-04-23T02:09:53+00:00` | 资产 `4/4` | 复审历史 `3`
 - [Conditional Governance Threshold Judgment](../../wiki/judgments/judgment-20260415-111455-conditional-governance-threshold-judgment.md) | 状态 `已确认` | 协议 `research` | 置信度 `medium` | 审阅时间 `2026-04-15T11:22:01+00:00` | 资产 `4/4` | 复审历史 `2`
 - [Protocol Boundary Judgment](../../wiki/judgments/judgment-20260415-015034-protocol-boundary-judgment.md) | 状态 `已确认` | 协议 `research` | 置信度 `medium` | 审阅时间 `2026-04-15T01:51:03+00:00` | 资产 `4/4` | 复审历史 `1`
 - [Recurring Agent Layers Judgment](../../wiki/judgments/judgment-20260415-015034-recurring-agent-layers-judgment.md) | 状态 `已确认` | 协议 `research` | 置信度 `high` | 审阅时间 `2026-04-15T12:39:25+00:00` | 资产 `4/4` | 复审历史 `3`

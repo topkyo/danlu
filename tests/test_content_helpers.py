@@ -6,6 +6,7 @@ from pathlib import Path
 
 import aiwiki.app_compile as app_compile
 import aiwiki.app_content as content
+import aiwiki.app_queries as queries
 import aiwiki.app_state as state
 import aiwiki.app_utils as utils
 from aiwiki.app_protocol import ensure_layout
@@ -152,6 +153,86 @@ class ContentHelperTests(unittest.TestCase):
         )
         self.assertFalse(content.rewrite_proposal_candidate_is_current(self.root, proposal))
         self.assertFalse(content.rewrite_proposal_candidate_is_current(self.root, {"slug": "", "candidate_markdown": ""}))
+
+    def test_concept_page_requires_compile_when_render_signature_changes(self) -> None:
+        self._write_markdown(
+            self.root / "wiki" / "sources" / "entry-a.md",
+            {"id": "entry-a", "kind": "source", "title": "MCP Runtime", "status": "active"},
+            "# MCP Runtime\n\n## Summary\n- MCP keeps tools and prompts structured across clients.\n",
+        )
+        record = {
+            "slug": "mcp",
+            "title": "MCP",
+            "root": self.root,
+            "entry_ids": ["entry-a"],
+            "entries": [{"id": "entry-a", "title": "MCP Runtime"}],
+            "source_signature": "source-sig",
+            "record_lookup": {},
+        }
+        concept_path = self.root / "wiki" / "concepts" / "mcp.md"
+        concept_path.parent.mkdir(parents=True, exist_ok=True)
+        concept_path.write_text(
+            utils.render_frontmatter(
+                {
+                    "id": "concept-mcp",
+                    "kind": "concept",
+                    "title": "MCP",
+                    "source_pages": ["wiki/sources/entry-a.md"],
+                    "source_signature": "source-sig",
+                    "render_signature": "legacy-render-signature",
+                    "generated_by": "aiwiki-compile",
+                    "hardness": "hard",
+                }
+            )
+            + "\n\n# MCP\n",
+            encoding="utf-8",
+        )
+
+        self.assertTrue(queries.concept_page_requires_compile(self.root, record))
+
+    def test_render_concept_page_replaces_placeholder_summary_and_restores_hardness(self) -> None:
+        self._write_markdown(
+            self.root / "wiki" / "sources" / "entry-a.md",
+            {"id": "entry-a", "kind": "source", "title": "MCP Runtime", "status": "active"},
+            "# MCP Runtime\n\n## Summary\n- MCP keeps tools, prompts, and context envelopes structured across clients.\n",
+        )
+        record = {
+            "slug": "mcp",
+            "title": "MCP",
+            "root": self.root,
+            "entry_ids": ["entry-a"],
+            "entries": [{"id": "entry-a", "title": "MCP Runtime"}],
+            "source_signature": "source-sig",
+            "record_lookup": {},
+            "related_slugs": [],
+        }
+        existing_page = (
+            utils.render_frontmatter(
+                {
+                    "id": "concept-mcp",
+                    "kind": "concept",
+                    "title": "MCP",
+                    "source_pages": ["wiki/sources/entry-a.md"],
+                    "source_signature": "source-sig",
+                    "render_signature": "legacy-render-signature",
+                    "generated_by": "aiwiki-compile",
+                }
+            )
+            + "\n\n"
+            + "# MCP\n\n"
+            + "## Summary\n"
+            + "- This concept currently appears in `1` source page(s).\n"
+            + "- Use the linked source pages below to deepen or revise this synthesis.\n"
+        )
+
+        rendered = content.render_concept_page(record, "2026-04-16T00:00:00+00:00", existing_page)
+        frontmatter = content.parse_frontmatter(rendered)
+        summary = content.preserved_section(rendered, "Summary", "").strip()
+
+        self.assertEqual(frontmatter.get("hardness"), "soft")
+        self.assertIn("../sources/entry-a.md", summary)
+        self.assertIn("MCP keeps tools, prompts, and context envelopes structured across clients.", summary)
+        self.assertNotIn("This concept currently appears in", summary)
 
     def test_low_risk_target_and_quality_signal_helpers(self) -> None:
         sample = self.root / "sample.md"

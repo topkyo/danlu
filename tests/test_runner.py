@@ -84,11 +84,16 @@ class RunnerTests(unittest.TestCase):
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
         concept_page = self.root / "wiki" / "concepts" / "transformer-scaling.md"
+        text = concept_page.read_text(encoding="utf-8")
+        before, marker, after = text.partition("## Summary\n")
+        _, related_marker, remainder = after.partition("\n## Related Sources\n")
         concept_page.write_text(
-            concept_page.read_text(encoding="utf-8").replace(
-                "- This concept currently appears",
-                "- Existing synthesis for transformer-scaling appears",
-            ),
+            before
+            + marker
+            + "- Existing synthesis for transformer-scaling appears\n"
+            + "- Keep the current synthesis grounded in the linked sources.\n"
+            + related_marker
+            + remainder,
             encoding="utf-8",
         )
         compile_wiki(self.root)
@@ -96,7 +101,8 @@ class RunnerTests(unittest.TestCase):
         result = run_compile(self.root, client=_DummyClient(), limit=0)
 
         self.assertEqual(result["pending_pages"], 1)
-        self.assertGreaterEqual(result["pending_concept_pages"], 1)
+        self.assertEqual(result["pending_concept_pages"], 0)
+        self.assertGreaterEqual(result["pending_rewrite_concept_pages"], 1)
         self.assertEqual(result["updated_pages"], [])
         self.assertEqual(result["updated_concept_pages"], [])
         self.assertIn(entry["id"], result["compile"]["clean_source_ids"] + result["compile"]["dirty_source_ids"])

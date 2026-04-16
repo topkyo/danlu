@@ -31,3 +31,35 @@ qa-review downgrade heuristic:
 - New Session:
 - PROGRESS Read:
 - Notes:
+
+- Date: 2026-04-16
+- Agent: Claude
+- Task: Review Next / Batch Review Product Shell UX
+- qa-review Mode: isolated-agent
+- qa-review Hit: 0
+- qa-review Miss: 0
+- qa-review False Positive: 0
+- qa-runtime Mode: not-run
+- qa-runtime Hit: 0
+- qa-runtime Miss: 0
+- qa-runtime False Positive: 0
+- Contract Scope Changed: no
+- New Session: yes
+- PROGRESS Read: no
+- Notes: n/a
+
+- Date: 2026-04-16
+- Agent: Claude
+- Task: Phase A compile invalidation + Product Shell onboarding
+- qa-review Mode: isolated-agent
+- qa-review Hit: 0
+- qa-review Miss: 0
+- qa-review False Positive: 0
+- qa-runtime Mode: not-run
+- qa-runtime Hit: 0
+- qa-runtime Miss: 0
+- qa-runtime False Positive: 0
+- Contract Scope Changed: no
+- New Session: yes
+- PROGRESS Read: no
+- Notes: Independent code-review agent review; initial medium finding on hardness reset was fixed before final pass.; auto-defaulted qa-review hit/miss/false-positive to 0 from write_gate_artifact pass

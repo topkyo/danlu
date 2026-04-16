@@ -677,12 +677,16 @@ def machine_memory_concept_input_signature(root: Path, record: dict[str, Any]) -
     return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
 
 
+CONCEPT_RENDER_SCHEMA_VERSION = 2
+
+
 def concept_render_signature(root: Path, record: dict[str, Any]) -> str:
     source_contexts = [
         load_source_page_context(root, relative)
         for relative in concept_source_pages(record)
     ]
     payload = {
+        "render_schema_version": CONCEPT_RENDER_SCHEMA_VERSION,
         "title": record["title"],
         "source_signature": record["source_signature"],
         "source_pages": concept_source_pages(record),
@@ -697,6 +701,62 @@ def concept_render_signature(root: Path, record: dict[str, Any]) -> str:
         ],
     }
     return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
+def _normalize_summary_snippet(text: Any, *, limit: int = 200) -> str:
+    if not isinstance(text, str):
+        return ""
+    snippet = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    snippet = snippet.replace("\r", "\n")
+    snippet = re.sub(r"^[#>\-\*\d\.\s]+", "", snippet, flags=re.MULTILINE)
+    snippet = re.sub(r"[`*_]", "", snippet)
+    snippet = re.sub(r"\s+", " ", snippet).strip()
+    if len(snippet) <= limit:
+        return snippet
+    return snippet[: limit - 1].rstrip() + "…"
+
+
+def _concept_summary_matches_legacy_placeholder(summary: Any) -> bool:
+    normalized = _normalize_summary_snippet(summary).lower()
+    if not normalized.startswith("this concept currently appears in"):
+        return False
+    return (
+        "use the linked source pages below to deepen or revise this synthesis" in normalized
+        or "source page" in normalized
+        or "wiki/sources/" in normalized
+    )
+
+
+def render_concept_summary_fallback(record: dict[str, Any], source_contexts: list[dict[str, str]]) -> str:
+    source_links: list[str] = []
+    for context in source_contexts[:4]:
+        source_path = str(context.get("path") or "").strip()
+        source_title = str(context.get("title") or "").strip() or Path(source_path or "source").stem
+        if source_path:
+            source_links.append(f"[{source_title}](../sources/{Path(source_path).name})")
+        else:
+            source_links.append(f"`{source_title}`")
+    source_count = len(record.get("entries", []))
+    summary_lines = [
+        f"- 当前概念汇总了 `{source_count}` 个 source page：{', '.join(source_links) or '暂无来源链接'}。",
+    ]
+    first_signal = next(
+        (_normalize_summary_snippet(context.get("summary", "")) for context in source_contexts if _normalize_summary_snippet(context.get("summary", ""))),
+        "",
+    )
+    if first_signal:
+        extra_sources = max(len(source_contexts) - 1, 0)
+        detail_suffix = f"；另外 `{extra_sources}` 个来源补充了边界或上下文。" if extra_sources else ""
+        summary_lines.append(f"- 当前最直接的线索：{first_signal}{detail_suffix}")
+    elif source_contexts:
+        summary_lines.append("- 当前 source page 仍以原始材料为主，建议补充更明确的摘要后再抬高 hardness。")
+    else:
+        summary_lines.append("- 目前还没有可引用的 source page 摘要，先补材料再进行稳定归纳。")
+    if len(source_contexts) <= 1:
+        summary_lines.append("- 这还是单来源概念页；继续补充证据、冲突和例外后再升级为更硬的判断。")
+    else:
+        summary_lines.append("- 下一步优先收敛多来源共识、冲突点与适用边界，再把稳定结论沉淀到这里。")
+    return "\n".join(summary_lines)
 
 
 def normalize_concept_hardness(value: Any, *, default: str = "soft") -> str:
@@ -818,13 +878,19 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
     causal_links = parse_causal_links(existing_frontmatter) if not source_changed else []
     source_pages = concept_source_pages(record)
     render_signature = str(record.get("render_signature") or concept_render_signature(record["root"], record))
-    summary_fallback = "\n".join(
-        [
-            f"- This concept currently appears in `{len(record['entries'])}` source page(s).",
-            "- Use the linked source pages below to deepen or revise this synthesis.",
-        ]
-    )
-    summary = preserved_section(existing_page, "Summary", summary_fallback) if not source_changed else summary_fallback
+    source_contexts = [
+        load_source_page_context(record["root"], f"wiki/sources/{entry_id}.md")
+        for entry_id in record["entry_ids"]
+    ]
+    summary_fallback = render_concept_summary_fallback(record, source_contexts)
+    existing_summary = preserved_section(existing_page, "Summary", "").strip() if not source_changed else ""
+    legacy_placeholder_summary = _concept_summary_matches_legacy_placeholder(existing_summary)
+    if source_changed or not existing_summary or legacy_placeholder_summary:
+        summary = summary_fallback
+        if legacy_placeholder_summary and not source_changed:
+            hardness = "soft"
+    else:
+        summary = existing_summary
     related_source_lines = [
         f"- [{entry['title']}](../sources/{entry['id']}.md)"
         for entry in sorted(record["entries"], key=lambda item: item["title"].lower())
@@ -837,10 +903,6 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
             key=lambda item: item["title"].lower(),
         )
     ] or ["- No related concepts yet."]
-    source_contexts = [
-        load_source_page_context(record["root"], f"wiki/sources/{entry_id}.md")
-        for entry_id in record["entry_ids"]
-    ]
     frontmatter_data: dict[str, Any] = {
             "id": f"concept-{record['slug']}",
             "kind": "concept",
@@ -2133,7 +2195,7 @@ def placeholder_concept_slugs(root: Path) -> list[str]:
 
 def concept_summary_is_placeholder(markdown: str) -> bool:
     summary = preserved_section(markdown, "Summary", "")
-    return summary.startswith("- This concept currently appears in `")
+    return _concept_summary_matches_legacy_placeholder(summary)
 
 
 def concept_quality_tokens(label: str) -> set[str]:

@@ -1,7 +1,7 @@
 ---
 id: "decision-20260415-015034-agent-governance-decision"
 kind: "decision"
-status: "approved"
+status: "needs-revisit"
 title: "Agent Governance Decision"
 protocol: "research"
 source_files:
@@ -29,10 +29,10 @@ next_signals:
   - "Track how often nightly produces actionable governance items."
   - "Track whether safe-apply/revert flows reduce rollback time for operator-facing repairs."
 formed_at: "2026-04-15T01:50:34+00:00"
-last_reviewed: "2026-04-15T01:53:07+00:00"
-reviewed_at: "2026-04-15T01:53:07+00:00"
-revisit_after: ""
-escalate_after: ""
+last_reviewed: "2026-04-16T02:09:52+00:00"
+reviewed_at: "2026-04-16T02:09:52+00:00"
+revisit_after: "2026-04-18T02:09:52+00:00"
+escalate_after: "2026-04-23T02:09:52+00:00"
 ---
 
 # Agent Governance Decision
@@ -73,15 +73,16 @@ escalate_after: ""
 - Watch whether execution receipts and revert flows remain necessary once the runtime stabilizes.
 
 ## Review Status
-- Current status: `approved`
-- Reviewed at: `2026-04-15T01:53:07+00:00`
+- Current status: `needs-revisit`
+- Reviewed at: `2026-04-16T02:09:52+00:00`
 
 ## Review Notes
-- Outcome: `approved`
-- Reviewed at: `2026-04-15T01:53:07+00:00`
-- Note: Governance-by-default is justified for stateful agent workflows.
+- Outcome: `needs-revisit`
+- Reviewed at: `2026-04-16T02:09:52+00:00`
+- Note: Phase A governance digestion: revisit after broader runtime evidence.
 
 ## Review History
+- `2026-04-16T02:09:52+00:00` | status `needs-revisit` | note Phase A governance digestion: revisit after broader runtime evidence.
 - `2026-04-15T01:53:07+00:00` | status `approved` | note Governance-by-default is justified for stateful agent workflows.
 
 ## Supporting Artifact
@@ -167,5 +168,5 @@ escalate_after: ""
 - 在最终答案里加入 source-page 内联引用。
 
 ## Aging
-- Revisit after: `none`
-- Escalate after: `none`
+- Revisit after: `2026-04-18T02:09:52+00:00`
+- Escalate after: `2026-04-23T02:09:52+00:00`

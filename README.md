@@ -66,16 +66,46 @@ Obsidian 是前端/IDE；炼丹炉是整个系统；`aiwiki` 是底层 runtime�
 
 如果你更关心通用产品入口，而不是投资/研发场景，可以回到 `main` 分支。
 
+## 创建新的 vault
+
+如果你想基于当前 runtime 快速起一个新的 Obsidian 炼丹炉工作区：
+
+```bash
+PYTHONPATH=src python3 -m aiwiki.cli --root . new-vault ../demo-furnace-vault
+cd ../demo-furnace-vault
+./scripts/aiwiki-launcher.sh shell-status
+./scripts/aiwiki-launcher.sh compile
+```
+
+它会一次性生成：
+
+- `raw / wiki / schema / output / .aiwiki`
+- `HOME.md` + `README.md`
+- `.obsidian/` 基础工作台配置
+- `Furnace Product Shell` 插件文件
+- `scripts/aiwiki-launcher.sh`
+
+这个新 vault **不需要复制** `src/aiwiki/`；launcher 会把 vault 当成 `--root`，再回到当前 runtime root 执行 `aiwiki CLI`。
+
+当前推荐把它理解成**两个入口、同一 runtime**：
+
+- Obsidian Product Shell：默认工作台，适合日常看板、Ask、Review、Execution 和快速 Capture Note
+- `scripts/aiwiki-launcher.sh` / `aiwiki CLI`：完整命令入口，负责全量 `drop-*`、批量操作和脚本化调用
+- 两边共享同一个 `.aiwiki/state` 与 `raw/wiki/output`，所以写命令遵守 `single writer, many readers`
+
 ## 最小工作流
 
 1. 投料
 
 ```bash
+PYTHONPATH=src python3 -m aiwiki.cli --root . drop-note --title "Morning note" --text "Capture the latest signal."
 PYTHONPATH=src python3 -m aiwiki.cli --root . drop-url https://example.com/article
 PYTHONPATH=src python3 -m aiwiki.cli --root . drop-pdf /path/to/paper.pdf
 PYTHONPATH=src python3 -m aiwiki.cli --root . drop-image /path/to/diagram.png
 PYTHONPATH=src python3 -m aiwiki.cli --root . drop-repo https://github.com/user/repo.git
 ```
+
+Obsidian 侧目前已经有 `Capture Note` modal，也可以直接把材料放进 `raw/inbox/`；其余 `drop-url / drop-pdf / drop-image / drop-repo` 仍以 launcher CLI 为主。
 
 2. 编译
 
@@ -115,6 +145,8 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . nightly
 - Product Shell 插件设计：[Furnace Product Shell Plugin.md](<./wiki/indexes/Furnace Product Shell Plugin.md>)
 - 大规模原料处理设计：[Furnace Material Scaling.md](<./wiki/indexes/Furnace Material Scaling.md>)
 - 统一炉子 + 多协议：[Furnace Protocols.md](<./wiki/indexes/Furnace Protocols.md>)
+
+日常使用时，Obsidian 与 CLI 共享同一个 runtime；不要同时在两边各跑一个 `compile / nightly / apply / revert`。
 
 ### 控制台
 

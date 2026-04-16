@@ -1,35 +1,35 @@
 ---
 title: "\u62c6\u5206\u8fc7\u8f7d\u6982\u5ff5 And"
 kind: "execution-proposal"
-status: "proposed"
+status: "accepted"
 action_id: "overloaded-concept-and"
 proposal_kind: "split-concept"
 risk: "high"
 priority: "high"
 protocol: "research"
 policy_decision: "review"
-policy_rule_id: "proposed-triage"
-priority_score: "78"
-impact_score: "70"
+policy_rule_id: "research:split-overloaded-concept"
+priority_score: "92"
+impact_score: "80"
 target_paths:
   - "wiki/concepts/and.md"
 generated_by: "aiwiki-compile"
-last_compiled_at: "2026-04-15T03:10:19+00:00"
+last_compiled_at: "2026-04-16T02:09:52+00:00"
 ---
 
 # 拆分过载概念 And
 
 ## Overview
 - Action id: `overloaded-concept-and`
-- Status: `待处理`
+- Status: `已接受`
 - Kind: `split-concept`
 - Risk: `high`
 - Protocol: `research`
 - Priority: `high`
-- Priority score: `78`
-- Impact score: `70`
+- Priority score: `92`
+- Impact score: `80`
 - Policy decision: `review`
-- Policy rule: `proposed-triage`
+- Policy rule: `research:split-overloaded-concept`
 - Targets: `wiki/concepts/and.md`
 - Bundle: `output/control/execution-bundles/overloaded-concept-and.json`
 
@@ -54,7 +54,7 @@ last_compiled_at: "2026-04-15T03:10:19+00:00"
 
 ## Commands
 - Suggested apply: `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action overloaded-concept-and --bundle output/control/execution-bundles/overloaded-concept-and.json`
-- Suggested next step: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-and --status accepted --note "Accepted for manual repair."`
+- Suggested next step: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-and --status resolved --note "Repair completed."`
 
 ## Safe Apply Preview
 - 当前 proposal 不支持低风险 safe apply。

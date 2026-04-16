@@ -34,6 +34,7 @@ from .app_content import action_supports_low_risk_apply, ingest_source
 from .app_protocol import ensure_layout, load_protocol_state
 from .app_shell import build_shell_summary, shell_search, shell_status_dashboard
 from .app_state import load_machine_memory_action_state
+from .app_vault import bootstrap_new_vault
 from .drop import drop_image, drop_note, drop_pdf, drop_repo, drop_url
 from .runner import auto_process_once, llm_status, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 
@@ -44,6 +45,17 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("layout", help="Create the expected directory layout.")
+
+    new_vault_parser = subparsers.add_parser(
+        "new-vault",
+        help="Scaffold a new Obsidian 炼丹炉 vault that points back to this runtime root.",
+    )
+    new_vault_parser.add_argument("target", help="Target directory for the new vault.")
+    new_vault_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Allow writing managed scaffold files into an existing non-empty directory.",
+    )
 
     ingest_parser = subparsers.add_parser("ingest", help="Ingest a local file or URL stub.")
     ingest_parser.add_argument("source", help="Local file path or URL.")
@@ -394,6 +406,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "layout":
             ensure_layout(root)
             result = {"root": str(root), "status": "ok"}
+        elif args.command == "new-vault":
+            result = bootstrap_new_vault(root, Path(args.target).resolve(), force=args.force)
         elif args.command == "ingest":
             result = ingest_source(root, args.source, title=args.title)
         elif args.command == "drop-url":

@@ -1,336 +1,176 @@
 # 炼丹炉 To Do List
 
-> 基于 2026-04-15 全量代码/状态/内容/测试评估生成（含 45 轮闭环后第五次评估）。
-> 当前综合评分 **8.3/10**。目标 **9.0+**。
-> ⚠️ 第五次评估修正了多处自评低估：execution receipts 0→3、judgments 3→6、decisions 2→4、figures 0→2、slides 1→3。
-
-## 当前全局画像
-
-| 维度 | 当前分 | 目标分 | 数据 |
-|------|--------|--------|------|
-| Evidence Fabric | 9.0 | 9.5 | 46 raw files / 5 drop 入口 / archive apply-revert 闭环 |
-| Knowledge Compiler | 8.5 | 9.0 | 16 sources / 30 concepts / 5 hard+medium 因果网络 / 309 tests |
-| Judgment System | **8.0** | 9.0 | 6 judgments / 4 decisions / lifecycle + counter-evidence |
-| Machine Memory | 8.5 | 9.0 | 247 edges (含 concept_causal 代码就绪) / 1023 terms / planner 消费 1 action |
-| Schema / Protocol | 9.0 | 9.5 | 5 协议 × 8 模板 / 真正影响 runtime |
-| Governance | 8.5 | 9.5 | review→aging→repair 完整 / 1248 policy decisions / escalation 未受压测 |
-| Execution Layer | **7.5** | **9.0** | 3 真实 receipts（apply+revert+re-apply 闭环）/ 8 proposals / planner 已消费 1 |
-| Outputs | 8.0 | 9.0 | 107 artifacts / 2 figures / 3 slides / 11 reports |
-| Product Shell | **7.0** | **8.5** | Obsidian 默认工作台 + HTML fallback / 36 CLI / 三中心面板 |
-| **加权总分** | **8.3** | **9.1** | |
-
-### 已完成（45 轮闭环）
-
-- ✅ `app.py` 动态 facade → 静态 shim + 24 个 owner module
-- ✅ 309 tests / 92% coverage / verify 全绿
-- ✅ 45 段闭环迭代（verify + qa-review + closed_loop）
-- ✅ 增量编译 8 个 dirty/clean state
-- ✅ Product Shell Obsidian 默认工作台 + HTML 三中心 fallback
-- ✅ Judgment lifecycle / cognitive-history / governance surfaces
-- ✅ planner-state / query-route-telemetry / execution-policy-decisions 持久化
-- ✅ lint_wiki() warning 清零
-- ✅ 真实 research corpus 激活（16 sources / 30 concepts / 6 judgments / 4 decisions）
-- ✅ 巨石拆分完成：最大模块 3408L（app_compile.py）
-- ✅ 概念因果网络（causal_links）: 5 个 hard/medium concepts 建立 12 条因果关系
-- ✅ Machine Memory 新增 concept_causal 边类型 + 图谱/拓扑/健康度全链路集成
-- ✅ 架构文档修正：多 agent → 自动化角色、Product Shell 定位明确
-- ✅ 执行层真实闭环：apply → revert → re-apply 完整周期（3 receipts / 1 planner action consumed）
-
-### 为什么还不到 9 分
-
-上 45 轮已把架构、模块化、测试、因果网络、执行闭环都推了一轮。评估修正后 **三个结构性差距**：
-
-1. **Execution Layer 密度不足**（7.5）：已完成 1 个 action 的完整 apply→revert→re-apply 闭环，但 8 个 proposals 中只消费了 1 个、action 类型单一（仅 citation-refresh）、planner 自动消费循环未激活
-2. **Product Shell 初步定位明确但交互仍弱**（7.0）：Obsidian 默认 + HTML fallback 已明确，但统一 dashboard、batch 操作、context 自动推断尚未实现
-3. **Judgment 资产虽已扩充但关联不足**（8.0）：6 judgments + 4 decisions 已有一定密度，但 judgment 间缺乏显式关联图谱，因果网络待物化到 machine memory
+> 基于 2026-04-16 全量代码 / 状态 / 内容 / 测试 / 运行态独立评估。
+> 评估方法论：**双轴打分**——基建完成度（代码/架构/管线）× 内容牵引力（真实知识密度/治理闭合/执行落地）。
+> 当前综合评分 **8.0 / 10**（基建 8.5 / 内容 6.9）。目标 **9.0+**。
 
 ---
 
-## Tier 1 — Execution Layer 深化 (7.5 → 9.0) ⚡ 最大杠杆
+## 一、全量评估快照（2026-04-16）
 
-> 执行层已完成首次真实闭环（apply→revert→re-apply），但 action 类型单一、planner 自动消费未激活。
-> 下一步是扩展执行多样性和自动化消费循环。
+### 规模指标
 
-### T1-A. 消费 Planner Queue + 多类型 Action
+| 指标 | 数据 |
+|------|------|
+| Python 源码 | 25 模块 / 33,416 行 |
+| 测试 | 14 文件 / 10,305 行 / 314 tests / 92% coverage |
+| CLI 命令 | 37 个（ingest × 6 / compile × 4 / query × 3 / review × 5 / execute × 5 / governance × 6 / shell × 4 / automation × 4） |
+| 原料 | 46 raw files（30 images + 16 markdown） |
+| 知识资产 | 16 sources → 30 concepts → 6 judgments → 4 decisions → 2 derived |
+| Machine Memory | 259 edges（concept_causal 12 / concept_to_concept 125 / source_to_concept 60 / source_to_judgment 58 / j→j 2 / j→d 2）/ 1,023 terms |
+| 输出产物 | 107 artifacts（lint 43 / reports 11 / decision-memos 10 / sop-drafts 8 / agents 7 / pilots 5 / slides 3 / figures 2） |
+| 协议 | 5 套（general / investing / research / product / ops）× 8 模板 |
+| Obsidian 插件 | furnace-product-shell v0.2.0（3,426 行 JS） |
+| 状态文件 | 27 个 JSON/JSONL（machine-memory 19K 行 / nightly-health 11K 行 / execution-policy-decisions 1,265 行） |
+| 闭环迭代 | 48 段（verify + qa-review + closed_loop） |
 
-**现状：** 8 个 execution proposals 排队（2 overloaded-concept + 6 bridge-concept），planner 仅消费 1 个 citation-refresh。
+### 双轴打分
 
-**行动：**
-1. 从 queue 中选一个 bridge-concept proposal（如 `bridge-concept-abstract`，score=32）
-2. 执行 `review-action <id> --status accepted` → `apply-action <id>`
-3. 选一个 overloaded-concept proposal（score=78）执行同样流程
-4. 验证 execution-receipts.jsonl 新增 ≥ 2 条记录（不同类型）
-5. 验证 planner-state.json `executed_actions` 更新
+| 维度 | 基建分 | 内容分 | 综合 | 关键证据 |
+|------|--------|--------|------|----------|
+| ① Evidence Fabric | 9.0 | 7.5 | **8.5** | 5 drop 入口 + archive 闭环 ✓ / 但 46 raw → 16 compiled 量不大 |
+| ② Knowledge Compiler | 9.0 | 6.5 | **8.0** | 增量 8 阶段 + dirty/clean 全链路 ✓ / 但 30 concepts 全 soft、0 rewrite 被 apply |
+| ③ Judgment System | 8.5 | 7.0 | **8.0** | lifecycle + counter-evidence + revisit 完整 ✓ / 但仅 2 条 j→j 边、全 medium confidence |
+| ④ Machine Memory | 8.5 | 7.0 | **8.0** | topology + planner + health 全链路 ✓ / 但 8 actions 全 proposed、仅消费 1 |
+| ⑤ Schema / Protocol | 9.0 | 8.5 | **8.8** | 5 protocols 真正驱动 runtime ✓ / 仅 research 被深度运行 |
+| ⑥ Governance | 8.5 | 6.0 | **7.5** | review → aging → repair 管线完整 ✓ / **但产生工作不消化**：39 warnings + 25 rewrites + 8 proposals 全 pending |
+| ⑦ Execution Layer | 7.5 | 5.5 | **6.8** | apply→revert→re-apply 已证明 ✓ / 但仅 1 类 action、3 receipts、planner 未自动消费 |
+| ⑧ Outputs | 8.0 | 6.5 | **7.5** | 107 artifacts 格式齐全 ✓ / 但 43 是 lint 报告、高价值 output 稀疏 |
+| ⑨ Product Shell | 8.0 | 7.5 | **7.8** | Obsidian + HTML + new-vault + search + batch ✓ / 但无 context 推断、静态图谱、无 onboarding |
+| **加权平均** | **8.5** | **6.9** | **8.0** | |
 
-**验证：** receipts 有 ≥ 5 条（原 3 + 新 2+），且覆盖 ≥ 2 种 action 类型
+### 对比前次自评（8.4）的修正
 
-### T1-B. dry-run 显式化
+前次自评 8.4 主要高估了三处：
 
-**现状：** `--dry-run` 已在 CLI 参数中，但只在 apply-action 可用，且不生成独立的 dry-run artifact。
+1. **Governance 高估**（8.5 → 7.5）：管线完整不等于管线消化——39 lint warnings 未清、25 rewrite proposals 零 apply、8 execution proposals 零自动消费，治理层产生了大量工作但几乎没有闭合
+2. **Execution 高估**（7.5 → 6.8）：3 receipts 仅证明路径可通，但 action 类型单一（仅 citation-refresh）、planner 自动消费完全未激活
+3. **Output 高估**（8.0 → 7.5）：107 artifacts 数量可观，但 43 是 lint 报告、有效高价值输出（真实 reports/slides/figures）偏少
 
-**行动：**
-1. `apply-action --dry-run` 输出结构化的 dry-run report（JSON），包含 affected paths / expected changes / risk assessment
-2. dry-run report 写入 `output/control/execution-bundles/` 供 Product Shell 消费
-3. apply-archive / apply-rewrite 也加 `--dry-run` 参数
-4. 在 execution-center 索引页中显示 dry-run 历史
+### 核心优势（值得保持）
 
-**验证：** `output/control/execution-bundles/` 有 ≥ 1 个 dry-run artifact
+1. **架构完整性极高**：九层全部存在且功能闭环，在同类项目中罕见
+2. **测试纪律过硬**：314 tests / 92% coverage / 无循环依赖 / verify 一键可跑
+3. **增量编译成熟**：8 阶段 dirty/clean 追踪 + compile-state 持久化，编译不再是黑箱
+4. **协议体系真实**：5 protocols × 8 templates 真正影响 compile / query / review / nightly，不是装饰
+5. **Judgment 数据模型精密**：counter-evidence / invalidation / revisit / escalation / cognitive-history 全链路可追溯
+6. **Product Shell 骨架完善**：Obsidian 插件 + HTML fallback + shell-summary contract 三层联动
 
-### T1-C. Execution 端到端测试
+### 核心短板（必须解决）
 
-**行动：**
-1. 新建 `tests/test_execution.py`
-2. 场景 1：build_execution_bundle → build_execution_receipt → append_execution_receipt_history 完整链
-3. 场景 2：build_material_archive_bundle → apply → revert 双向
-4. 场景 3：dry-run flag 不产生 side effect
-5. 场景 4：receipt history JSONL 追加与读回
-
-**验证：** `test_execution.py` ≥ 8 个 tests 全绿
-
-### T1-D. Planner 消费循环
-
-**现状：** planner-state.json 有 priority_queue（8 项），已消费 1 个 action，但无自动消费循环。
-
-**行动：**
-1. `nightly` 流程中新增 execution planner 消费步骤：扫描 priority_queue → 对 low-risk + accepted 的 proposal 自动生成 execution bundle
-2. 生成的 bundle 写入 `output/control/execution-bundles/`
-3. planner-state 更新 executed_actions 计数
-4. 高风险 proposal 保持 pending，只在 planner 中标注"human-required"
-
-**验证：** `nightly` 后 planner-state.json 中 `executed_actions` 列表增长或 bundle 目录有新产物
-
----
-
-## Tier 2 — Judgment & Concept 密度 (8.0 → 9.0)
-
-> 当前 6 judgments + 4 decisions + 30 个 concepts（5 有因果网络）。
-> 终极文档要求 judgment 是"系统最值钱的一层"——资产已有一定密度，但缺乏关联和物化。
-
-### T2-A. Judgment 间关联图谱 + 因果物化
-
-**现状：** 6 judgments / 4 decisions 已有数量，但 judgment 间无显式关联。concept_causal 代码已写好但 machine-memory.json 中 causal 边 = 0（需 recompile 物化）。
-
-**行动：**
-1. 运行 compile 物化 concept_causal 边到 machine-memory.json
-2. 在 judgment/decision frontmatter 中新增 `related_judgments` / `supports` / `contradicts` 字段
-3. machine memory graph 新增 judgment-judgment 和 judgment-decision edges
-4. 在 `judgment-assets` 索引页中渲染关联关系
-5. 将剩余 24 个 soft concept 中的高频 concept 逐步提升 hardness 并补 causal_links
-
-**目标：** machine-memory graph 中 concept_causal 边 ≥ 12，judgment-level edges ≥ 2
-
-### T2-B. Hard Concepts 扩展 ✅ 初期完成
-
-**已完成：** 6 个 concept 已标注 hardness，5 个建立 12 条 causal_links，machine memory 全链路集成。
-
-**后续扩展：** 将剩余 24 个 soft concept 中的高频 concept 逐步提升 hardness + causal_links
-
-### T2-C. Judgment 资产持续扩充
-
-**现状：** 6 judgments / 4 decisions 已达最低密度目标，但仅覆盖 agent-governance / protocol-boundary / investing 等主题。
-
-**行动：**
-1. 从现有 16 个 source 和 30 个 concept 中，通过 `ask → file-back` 新增 2-3 个 judgment
-2. 覆盖 research protocol 中尚无 judgment 的领域
-3. 每个 judgment 必须有 counter-evidence + invalidation_rule + next_signals
-
-**目标：** wiki/judgments/ ≥ 8，覆盖 ≥ 3 个不同 protocol
-
-### T2-D. Escalation 压力测试
-
-**现状：** escalation 逻辑存在但从未被真实压力触发。
-
-**行动：**
-1. 手工设置 1 个 judgment 的 `revisit_after` 为过期时间
-2. 运行 `nightly`，验证 aging-report 正确标记
-3. 验证 escalation scan 提升 review priority
-4. 执行 review-page 完成复审闭环
-5. 验证 cognitive-history 记录了整个 escalation → review → resolve 链
-
-**验证：** cognitive-history 有 ≥ 1 条包含 escalation 触发记录的 entry
+1. **治理只产不消**：系统非常擅长"发现问题"（lint warnings / rewrite proposals / execution proposals / aging reports），但没有一个闭合——30 concepts 全标"待回看"、25 rewrite proposals 全 pending、8 execution proposals 全 proposed
+2. **概念层全弱**：30 concepts 全部 soft hardness / low-medium confidence / evidence-gap 标记，judgment 层建在弱概念上的"空中楼阁"风险
+3. **执行层窄且浅**：仅 1 种 action 类型被真实执行、planner 无自动消费循环、dry-run 不产出结构化产物
+4. **内容密度低**：16 sources → 30 concepts 几乎 1:2，很多 concept 只有 1-2 个 source 支撑；有效知识内容约 4,000 行，元数据 overhead 高
 
 ---
 
-## Tier 3 — Product Shell 收敛 (7.0 → 8.5)
+## 二、演化三阶段
 
-> 终极文档要求"统一工作台"——当前是分散面板集合。
-> 这层的改进不只是 UI，也包括 shell contract 和 CLI surface。
+### Phase A — 治理消化 + 执行闭合（8.0 → 8.6）
 
-### T3-A. 统一入口 CLI 命令
+> **核心命题**：证明系统不只会发现问题，还会解决问题。
 
-**现状：** 需要记住 furnace-center / review-center / execution-center 等多个入口。
+这是最有确定性的阶段——全部是代码 + 操作，不依赖外部输入。
 
-**行动：**
-1. 新增 `aiwiki dashboard` 命令：输出一页式结构化摘要，包含
-   - 当前协议 + 知识库统计
-   - 待审 judgment / pending proposals / repair items 的计数和链接
-   - 最近 5 次操作记录
-   - 下一步建议（来自 planner next_action）
-2. 新增 `aiwiki search <query>` 命令：在 sources / concepts / judgments / decisions 中全文搜索，返回排序结果
-3. shell-summary.json 新增 `dashboard` 和 `search_results` sections 供 Obsidian 消费
+| 行动 | 验收标准 |
+|------|----------|
+| **A1. 清零治理积压** | lint warnings 从 39 → 0；至少 apply 3 个 rewrite proposals |
+| **A2. 消费执行队列** | 从 8 proposals 中消费 ≥ 3 个（覆盖 ≥ 2 种 action 类型：bridge-concept + overloaded-concept）；receipts 从 3 → 6+ |
+| **A3. 激活 planner 自动消费** | nightly 自动扫描 low-risk + accepted proposals 并生成 bundle；planner-state `executed_actions` 自增 |
+| **A4. dry-run 结构化** | `apply-action --dry-run` 输出 JSON report（affected paths / risk / expected changes）写入 execution-bundles/ |
+| **A5. 触发 1 次真实 escalation** | 设置 1 个 judgment `revisit_after` 过期 → nightly 触发 escalation → review 闭合 → cognitive-history 记录完整链 |
 
-**验证：** `aiwiki dashboard` 输出包含所有 5 个 section
+**预估得分影响**：Governance 7.5→8.5 / Execution 6.8→8.5 / 综合 8.0→8.6
 
-### T3-B. 批量操作支持
+### Phase B — 内容密实 + 判断资产化（8.6 → 9.0）
 
-**现状：** 所有操作都是单项的（review-page / apply-action 一次一个）。
+> **核心命题**：从"管线能跑"推进到"管线产出有价值的知识"。
 
-**行动：**
-1. `review-page --batch`：接受 page 列表或 `--all-pending`，批量执行 review
-2. `apply-action --batch`：接受 `--all-accepted-low-risk`，批量执行已通过的低风险 proposals
-3. 批量操作生成合并 receipt（记录批量执行的所有 action）
-4. 批量 revert 支持（revert 上一次批量操作的所有 actions）
+这阶段需要**真实使用系统**——投料、提问、file-back、review，不是写代码能完成的。
 
-**验证：** 至少一个 `--batch` 命令能成功执行 ≥ 2 个操作
+| 行动 | 验收标准 |
+|------|----------|
+| **B1. Hard concepts 从 5 → 15** | 从现有 30 soft concepts 中提升 10 个高频概念的 hardness + 补 causal_links；concept_causal 边从 12 → 30+ |
+| **B2. Judgments 从 6 → 12** | 通过 `ask → file-back` 在 research / investing / product 三个 protocol 各新增 2+ judgments；每个必须有 counter-evidence + invalidation |
+| **B3. Judgment 间关联图谱** | machine memory 新增 judgment→judgment + judgment→decision 显式关联边 ≥ 6 条 |
+| **B4. 概念积压清零** | 30 concepts "待回看" 状态清零——review 通过或 retire |
+| **B5. Evidence 补强** | raw files 从 46 → 80+，sources 从 16 → 30+，每个 high-hardness concept 至少 3 个 source 支撑 |
 
-### T3-C. Context 自动推断
+**预估得分影响**：Knowledge Compiler 8.0→9.0 / Judgment 8.0→9.0 / Machine Memory 8.0→9.0 / 综合 8.6→9.0
 
-**现状：** 部分操作需要手填 entry_id / action_id / page path。
+### Phase C — 产品收敛 + 日常可用（9.0 → 9.3）
 
-**行动：**
-1. `review-action` / `apply-action` 支持模糊匹配（不需要精确 action_id，接受 title 子串）
-2. `review-page` 支持 `--next`：自动选择 review-queue 中优先级最高的 page
-3. 在 shell-summary.json 中暴露 `suggested_next_actions` 列表
+> **核心命题**：让炼丹炉真正成为"每天想打开的工具"而非"每天需要维护的系统"。
 
-**验证：** `review-page --next` 能自动选中一个待审页面
+| 行动 | 验收标准 |
+|------|----------|
+| **C1. 交互式图谱** | machine-memory.html 升级为 vis.js/d3-force 力导向图，节点可点击跳转、按 kind 过滤、按 protocol 着色 |
+| **C2. Context 自动推断** | `review-action` / `apply-action` 支持 title 子串模糊匹配；shell-summary 暴露 `suggested_next_actions` |
+| **C3. First-run onboarding** | `new-vault` 后首次打开 Obsidian 展示引导面板（投料→编译→提问→审阅 四步走） |
+| **C4. Output 密度提升** | output/figures/ ≥ 6 / output/slides/ ≥ 6 / output/reports/ ≥ 15 / 高价值产物 > lint 产物 |
+| **C5. 测试 93%+** | 补 app_queries / app_memory / config 低覆盖模块测试 |
 
-### T3-D. Graph View 交互化
+**预估得分影响**：Product Shell 7.8→8.8 / Outputs 7.5→9.0 / 综合 9.0→9.3
 
-**现状：** `output/graph/machine-memory.html` 是静态 HTML 页面。
+### 2026-04-16 本轮执行更新（Phase A + Phase C）
 
-**行动：**
-1. 基于 vis.js 或 d3-force 将 machine-memory graph 渲染为可交互力导向图
-2. 节点可点击跳转到对应 wiki page
-3. 支持按 kind（source/concept/judgment）过滤
-4. 支持按 protocol 着色
-
-**验证：** graph HTML 文件包含交互式图谱，节点可点击
-
----
-
-## Tier 4 — Output 丰富化 (8.0 → 9.0)
-
-### T4-A. Figures 持续产出
-
-**现状：** output/figures/ 有 2 个文件（governance-health-dashboard / judgment-relation-map）。
-
-**行动：**
-1. compile/nightly 自动生成 concept-map 摘要图（text-based 或 mermaid）
-2. judgment timeline 图（每个 judgment 的 formed → reviewed → revised 时间线）
-3. causal-network 可视化图
-4. 写入 output/figures/
-
-**验证：** output/figures/ ≥ 4 个文件
-
-### T4-B. Slides & Decision Memo 密度
-
-**现状：** 3 个 slides、11 个 reports。
-
-**行动：**
-1. 用真实场景运行 `ask --format slides` 生成 2-3 个新 slides
-2. 对每个 decision 自动生成配套 decision memo（如尚未存在）
-3. decision memo 模板包含 thesis / evidence summary / risk / invalidation
-
-**验证：** output/slides/ ≥ 5，output/reports/ 持续增长
-
-### T4-C. 测试覆盖 93%+
-
-**现状：** 92% coverage / 309 tests。app_queries.py (82%) / app_memory.py (83%) / config.py (82%) 仍有提升空间。
-
-**行动：**
-1. 补 `test_linting.py`：覆盖 lint rule 分支和 repair backlog 写入
-2. 扩展 `test_drop.py`：覆盖 PDF/image content-type 判断、error path、URL 下载 fallback
-3. 扩展 `test_execution.py`：覆盖 bundle digest、receipt history append、material archive 双向
-
-**验证：** `bash scripts/verify.sh` 报告 coverage ≥ 93%
+- **Phase A 编译根因已修**：concept render signature 现在显式包含 renderer/frontmatter schema version；老 concept page 会被重新编译，`hardness` frontmatter 已批量补回。
+- **旧占位摘要已清零**：legacy `This concept currently appears ...` 摘要会被 deterministic summary 替换；如果命中旧占位，`hardness` 会自动回落到 `soft`，避免“弱摘要 + 硬结论”并存。
+- **39 个 lint warnings 仍在，但性质已变化**：现在剩余 warning 基本都是内容债（`hardness: soft`、缺边界/冲突信号），不再是编译器漏刷 generated frontmatter / placeholder summary。
+- **Phase A 治理链真实推进了一步**：已接受 `overloaded-concept-and`，并推进 1 个 decision + 1 个 judgment review，nightly 刷新后当前 review backlog 为 `pending_decisions = 1`、`pending_judgments = 1`。
+- **Phase C onboarding 已补齐最小闭环**：`new-vault` 生成的 README/HOME 现在明确写出 Obsidian + CLI 双入口、`single writer` 约束、投料/提问路径。
+- **Obsidian 端新增最小投料入口**：Product Shell 新增 `Capture Note` modal 和 `Start Here` 区块；提问继续支持 Ask modal，CLI/agent 侧继续支持完整 `drop-*`。
+- **Phase B 入口结论**：`ask` 现在在 Obsidian / CLI 两边都可直接使用；投料共享同一 runtime，其中 `drop-note` 已有双入口，其他 `drop-url / drop-pdf / drop-image / drop-repo` 仍以 CLI 为主，Obsidian 侧可直接整理 `raw/inbox/`。
 
 ---
 
-## Tier 5 — 细节收口与长期卫生
+## 三、得分推演
 
-### T5-A. runtime.yaml Schema 验证
-
-**现状：** `runtime.yaml` 用 `json.loads` 解析，无 schema 校验。
-
-**行动：**
-1. 在 `app_protocol.py` 中定义 runtime.yaml 期望字段的 TypedDict
-2. load 时做字段存在性和类型检查
-3. 无效 schema 给出 clear error message 而非静默 fallback
-
-### T5-B. Drift 实时感知
-
-**现状：** drift 检测依赖 nightly 被动扫描。
-
-**行动：**
-1. compile 时新增 drift pre-check：对比本次 compile 的 concept set 与上次 compile state
-2. 如果检测到 concept 消失 / source 引用断裂 / judgment 失效，立即写入 warning 而非等 nightly
-3. warning 写入 shell-summary.json 的 `drift_warnings` section
-
-### T5-C. Capture 模板丰富
-
-**现状：** drop 入口只有 url/pdf/image/repo，缺少 meeting notes / transcript 模板。
-
-**行动：**
-1. 新增 `drop-note` 命令：接受自由文本或 markdown 文件，作为 meeting note / transcript 投料
-2. 生成的 raw note 自动标记 `kind: transcript` 或 `kind: note`
-3. compile 时识别 transcript kind 并使用专门的 extraction prompt
+| 维度 | 当前 | Phase A 后 | Phase B 后 | Phase C 后 |
+|------|------|-----------|-----------|-----------|
+| ① Evidence Fabric | 8.5 | 8.5 | **9.0** | 9.0 |
+| ② Knowledge Compiler | 8.0 | 8.0 | **9.0** | 9.0 |
+| ③ Judgment System | 8.0 | 8.0 | **9.0** | 9.0 |
+| ④ Machine Memory | 8.0 | 8.5 | **9.0** | 9.0 |
+| ⑤ Schema / Protocol | 8.8 | 8.8 | 9.0 | **9.5** |
+| ⑥ Governance | **7.5** | **8.5** | 9.0 | 9.0 |
+| ⑦ Execution Layer | **6.8** | **8.5** | 8.5 | 9.0 |
+| ⑧ Outputs | 7.5 | 7.5 | 8.0 | **9.0** |
+| ⑨ Product Shell | 7.8 | 7.8 | 8.0 | **8.8** |
+| **综合** | **8.0** | **8.3** | **8.8** | **9.1** |
 
 ---
 
-## 得分预估
+## 四、已完成里程碑（48 轮闭环）
 
-| 层级 | 当前 | T1 后 | T2 后 | T3 后 | T4 后 | T5 后 |
-|------|------|-------|-------|-------|-------|-------|
-| ① Evidence Fabric | 9.0 | 9.0 | 9.0 | 9.0 | 9.0 | **9.5** |
-| ② Knowledge Compiler | 8.5 | 8.5 | **9.0** | 9.0 | 9.0 | 9.0 |
-| ③ Judgment System | **8.0** | 8.0 | **9.0** | 9.0 | 9.0 | 9.0 |
-| ④ Machine Memory | 8.5 | 8.5 | **9.0** | 9.0 | 9.0 | 9.0 |
-| ⑤ Schema / Protocol | 9.0 | 9.0 | 9.0 | 9.0 | 9.0 | **9.5** |
-| ⑥ Governance | 8.5 | 8.5 | **9.5** | 9.5 | 9.5 | 9.5 |
-| ⑦ Execution Layer | **7.5** | **9.0** | 9.0 | 9.0 | 9.0 | 9.0 |
-| ⑧ Outputs | 8.0 | 8.0 | 8.0 | 8.5 | **9.0** | 9.0 |
-| ⑨ Product Shell | **7.0** | 7.5 | 7.5 | **8.5** | 8.5 | 8.5 |
-| **加权平均** | **8.3** | **8.6** | **8.9** | **9.1** | **9.1** | **9.2** |
-
----
-
-## 执行顺序与依赖
-
-```
-Tier 1（Execution 激活）──── 跑通执行闭环，消灭最大得分洼地
-       │
-       ▼
-Tier 2（Judgment 密度）───── 扩充资产 + 硬化概念 + 压力测试
-       │                     escalation
-       ▼
-Tier 3（Shell 收敛）──────── 统一入口 + 批量操作 + 上下文推断
-       │                     + 交互图谱
-       ▼
-Tier 4（Output 丰富化）───── figures + slides + coverage
-       │
-       ▼
-Tier 5（长期卫生）────────── schema 验证 + drift 实时化 + 模板
-```
-
-- **Tier 1** 是纯代码+操作，不需要外部依赖，能独立拉分最大
-- **Tier 2** 需要用炉子产出真实 judgment——是"用系统"而非"改系统"
-- **Tier 3** 需要 CLI + shell-summary 改动，Obsidian 插件可滞后
-- **Tier 4-5** 是收口层，不影响核心得分
+- ✅ `app.py` 动态 facade → 静态 shim + 25 个 owner module（最大 4,275L `app_compile.py`）
+- ✅ 314 tests / 92% coverage / verify 全绿 / 无循环依赖
+- ✅ 48 段闭环迭代（verify + qa-review + closed_loop）
+- ✅ 增量编译 8 阶段 dirty/clean state + compile-state.json 持久化
+- ✅ Product Shell Obsidian v0.2.0 + HTML 三中心 fallback
+- ✅ `new-vault` 脚手架：外部 runtime launcher 模式
+- ✅ Product Shell: search / batch apply / batch revert / review-next / safe batch review modal
+- ✅ Judgment lifecycle / cognitive-history / governance surfaces 全链路
+- ✅ planner-state / query-route-telemetry / execution-policy-decisions 持久化（1,265 policy decisions）
+- ✅ 概念因果网络：5 hard/medium concepts / 12 causal_links / machine memory 全链路
+- ✅ 执行层真实闭环：apply → revert → re-apply（3 receipts / 1 planner action consumed）
+- ✅ 架构文档：九层终极形态 + 自动化角色 + Product Shell 定位明确
+- ✅ 5 protocols × 8 templates 真正驱动 compile / query / review / nightly
 
 ---
 
-## 能否到 9 分？
+## 五、关键风险
 
-**结论：能，且比上轮更近一步。**
+| 风险 | 等级 | 说明 |
+|------|------|------|
+| 治理不消化 | 🔴 高 | 如果 Phase A 不清零治理积压，系统会陷入"越跑越多 warning"的死循环 |
+| 概念空中楼阁 | 🟡 中 | 30 concepts 全 soft + judgment 建在上面 = 判断资产可信度受限 |
+| 使用密度不足 | 🟡 中 | Phase B 需要持续投料和使用，不是一次性冲刺能完成的 |
+| Product Shell 体验断层 | 🟢 低 | Obsidian 插件已可用，剩余是 polish 不是 blocker |
 
-从预估表看：
-- **完成 Tier 1-2 就能到 8.9**（加权平均从 8.3 → 8.9）
-- **完成 Tier 1-3 就能到 9.1**（加权平均从 8.3 → 9.1）
-- Tier 4-5 是从 9.1 推到 9.2 的增量
+---
 
-关键风险：
-- **Product Shell（T3）是最难的一层**——从 7.0 推到 8.5 需要 dashboard / search / batch / 交互图谱四项齐备
-- **Judgment 关联（T2-A）需要真实场景持续投喂**——不是写代码能解决的，需要实际使用系统
-- **Execution 多样性（T1）是最有确定性的**——闭环已跑通，只需扩展 action 类型和自动化消费
+## 六、一句话结论
 
-> **一句话：Tier 1 确定能做、Tier 2 需要用系统、Tier 3 需要产品设计。三层全闭合才能稳过 9 分。**
+> **炼丹炉的基建已经到了同类项目的天花板（8.5），但内容牵引力还在起步期（6.9）。当务之急不是继续修管线，而是清零积压、用系统产出真实知识、让治理链从"发现"走到"解决"。Phase A 确定能做，Phase B 需要持续使用，Phase C 是产品打磨——三阶段走完就稳过 9 分。**

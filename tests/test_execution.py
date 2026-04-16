@@ -102,11 +102,16 @@ class ExecutionTests(unittest.TestCase):
         )
         compile_wiki(self.root)
         for concept_page in sorted((self.root / "wiki" / "concepts").glob("*.md")):
+            text = concept_page.read_text(encoding="utf-8")
+            before, marker, after = text.partition("## Summary\n")
+            _, related_marker, remainder = after.partition("\n## Related Sources\n")
             concept_page.write_text(
-                concept_page.read_text(encoding="utf-8").replace(
-                    "- This concept currently appears",
-                    f"- Existing synthesis for {concept_page.stem} appears",
-                ),
+                before
+                + marker
+                + f"- Existing synthesis for {concept_page.stem} appears\n"
+                + "- Keep the current synthesis grounded in the linked sources.\n"
+                + related_marker
+                + remainder,
                 encoding="utf-8",
             )
         compile_wiki(self.root)

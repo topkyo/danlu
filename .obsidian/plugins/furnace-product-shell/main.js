@@ -206,6 +206,75 @@ class AskCommandModal extends Modal {
   }
 }
 
+class CaptureNoteModal extends Modal {
+  constructor(app, plugin) {
+    super(app);
+    this.plugin = plugin;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("furnace-shell-view");
+    contentEl.createEl("h2", { text: "Capture Note" });
+
+    const titleSetting = new Setting(contentEl).setName("Title");
+    const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
+    titleInput.placeholder = "Optional note title...";
+    titleInput.addClass("furnace-shell-code");
+
+    const kindSetting = new Setting(contentEl).setName("Kind");
+    const kindSelect = kindSetting.controlEl.createEl("select");
+    [
+      ["note", "note"],
+      ["transcript", "transcript"],
+    ].forEach(([value, label]) => {
+      const option = kindSelect.createEl("option", { text: label, value });
+      option.value = value;
+    });
+    kindSelect.value = "note";
+
+    const textSetting = new Setting(contentEl).setName("Text");
+    const textInput = textSetting.controlEl.createEl("textarea");
+    textInput.rows = 10;
+    textInput.placeholder = "Capture a note, meeting log, or quick observation...";
+    textInput.addClass("furnace-shell-code");
+
+    const hint = contentEl.createDiv({ cls: "furnace-shell-meta" });
+    hint.setText("This writes into raw/inbox through the same launcher/runtime used by CLI commands.");
+
+    const actionSetting = new Setting(contentEl);
+    actionSetting.addButton((button) =>
+      button.setButtonText("Capture").setCta().onClick(async () => {
+        const text = String(textInput.value || "").trim();
+        if (!text) {
+          new Notice("Text 不能为空。");
+          return;
+        }
+        const title = String(titleInput.value || "").trim();
+        const kind = String(kindSelect.value || "note");
+        this.close();
+        this.plugin.runUiAction(
+          () =>
+            this.plugin.runDropNoteCommand({
+              text,
+              title,
+              kind,
+            }),
+          "Capture note modal"
+        );
+      })
+    );
+    actionSetting.addButton((button) =>
+      button.setButtonText("Cancel").onClick(() => {
+        this.close();
+      })
+    );
+
+    textInput.focus();
+  }
+}
+
 class ProtocolCommandModal extends Modal {
   constructor(app, plugin) {
     super(app);
@@ -245,6 +314,55 @@ class ProtocolCommandModal extends Modal {
     );
 
     select.focus();
+  }
+}
+
+class SearchCommandModal extends Modal {
+  constructor(app, plugin) {
+    super(app);
+    this.plugin = plugin;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("furnace-shell-view");
+    contentEl.createEl("h2", { text: "Search 炼丹炉" });
+
+    const querySetting = new Setting(contentEl).setName("Query");
+    const queryInput = querySetting.controlEl.createEl("textarea");
+    queryInput.rows = 4;
+    queryInput.placeholder = "Search wiki/sources, concepts, judgments, decisions, and derived pages...";
+    queryInput.addClass("furnace-shell-code");
+
+    const limitSetting = new Setting(contentEl).setName("Limit");
+    const limitInput = limitSetting.controlEl.createEl("input", { type: "text" });
+    limitInput.value = "8";
+    limitInput.addClass("furnace-shell-code");
+
+    const actionSetting = new Setting(contentEl);
+    actionSetting.addButton((button) =>
+      button.setButtonText("Search").setCta().onClick(async () => {
+        const query = String(queryInput.value || "").trim();
+        if (!query) {
+          new Notice("Search query 不能为空。");
+          return;
+        }
+        const parsedLimit = Number.parseInt(String(limitInput.value || "8"), 10);
+        this.close();
+        this.plugin.runUiAction(
+          () => this.plugin.runShellSearchCommand(query, Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 8),
+          "Search modal"
+        );
+      })
+    );
+    actionSetting.addButton((button) =>
+      button.setButtonText("Cancel").onClick(() => {
+        this.close();
+      })
+    );
+
+    queryInput.focus();
   }
 }
 
@@ -526,7 +644,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Aiwiki launcher")
-      .setDesc("Repo-local launcher path, relative to the vault root by default.")
+      .setDesc("Vault-local or absolute launcher path. This vault may point at an external runtime root.")
       .addText((text) =>
         text
           .setPlaceholder("scripts/aiwiki-launcher.sh")
@@ -668,6 +786,20 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       },
     });
     this.addCommand({
+      id: "capture-note",
+      name: "Capture Note",
+      callback: () => {
+        new CaptureNoteModal(this.app, this).open();
+      },
+    });
+    this.addCommand({
+      id: "search-workspace",
+      name: "Search Workspace",
+      callback: () => {
+        new SearchCommandModal(this.app, this).open();
+      },
+    });
+    this.addCommand({
       id: "run-nightly",
       name: "Nightly",
       callback: () => {
@@ -693,6 +825,20 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       name: "Review Page",
       callback: () => {
         this.openReviewPageContextPicker();
+      },
+    });
+    this.addCommand({
+      id: "review-next-page",
+      name: "Review Next Page",
+      callback: () => {
+        this.openReviewNextTransitionPicker();
+      },
+    });
+    this.addCommand({
+      id: "batch-review-pages",
+      name: "Batch Review Pages",
+      callback: () => {
+        this.openReviewBatchSuggestionPicker();
       },
     });
     this.addCommand({
@@ -756,6 +902,27 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       name: "Revert Action",
       callback: () => {
         this.openRevertActionContextPicker();
+      },
+    });
+    this.addCommand({
+      id: "apply-all-accepted-low-risk",
+      name: "Apply All Accepted Low-Risk Actions",
+      callback: () => {
+        this.runUiAction(() => this.runApplyAllAcceptedLowRiskCommand(), "Apply All Accepted Low-Risk Actions");
+      },
+    });
+    this.addCommand({
+      id: "revert-last-action-batch",
+      name: "Revert Last Action Batch",
+      callback: () => {
+        this.runUiAction(() => this.runRevertLastBatchCommand(), "Revert Last Action Batch");
+      },
+    });
+    this.addCommand({
+      id: "open-home-note",
+      name: "Open Home Note",
+      callback: () => {
+        this.runUiAction(() => this.openHomeNote(), "Open Home Note");
       },
     });
 
@@ -829,10 +996,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       missingPaths.push("vault-root");
     } else {
       [
-        "src/aiwiki/cli.py",
         "raw",
         "wiki",
         "schema",
+        "output",
+        ".aiwiki",
       ].forEach((relativePath) => {
         if (!fs.existsSync(path.join(root, relativePath))) {
           missingPaths.push(relativePath);
@@ -915,6 +1083,17 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return args;
   }
 
+  parseLineList(value) {
+    return Array.from(
+      new Set(
+        String(value || "")
+          .split(/\r?\n/)
+          .map((item) => String(item || "").trim())
+          .filter(Boolean)
+      )
+    );
+  }
+
   openStructuredCommandModal(spec) {
     new StructuredCommandModal(this.app, this, spec).open();
   }
@@ -991,6 +1170,111 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       }),
       "pagePath"
     );
+  }
+
+  nextReviewCandidate() {
+    const candidates = this.visibleReviewPageCandidates();
+    return candidates.length ? candidates[0] : null;
+  }
+
+  reviewKindLabel(kind, count = 1) {
+    const normalized = String(kind || "").trim();
+    if (normalized === "decision") {
+      return count === 1 ? "decision" : "decisions";
+    }
+    if (normalized === "judgment") {
+      return count === 1 ? "judgment" : "judgments";
+    }
+    return count === 1 ? "page" : "pages";
+  }
+
+  commonReviewTransitionOptions(pages) {
+    const controls = Array.isArray(pages) ? pages.filter((page) => page && typeof page === "object") : [];
+    if (!controls.length) {
+      return [];
+    }
+    const stats = new Map();
+    controls.forEach((page) => {
+      const seen = new Set();
+      this.transitionOptions("page", page).forEach((option) => {
+        if (seen.has(option.value)) {
+          return;
+        }
+        seen.add(option.value);
+        const current = stats.get(option.value) || {
+          value: option.value,
+          label: option.label,
+          sharedCount: 0,
+          preferredCount: 0,
+          defaultCount: 0,
+        };
+        current.label = option.label;
+        current.sharedCount += 1;
+        if (option.isPreferred) {
+          current.preferredCount += 1;
+        }
+        if (option.isDefault) {
+          current.defaultCount += 1;
+        }
+        stats.set(option.value, current);
+      });
+    });
+    return Array.from(stats.values())
+      .filter((option) => option.sharedCount === controls.length)
+      .sort((left, right) => {
+        if (left.defaultCount !== right.defaultCount) {
+          return right.defaultCount - left.defaultCount;
+        }
+        if (left.preferredCount !== right.preferredCount) {
+          return right.preferredCount - left.preferredCount;
+        }
+        return String(left.label || "").localeCompare(String(right.label || ""));
+      });
+  }
+
+  reviewBatchSuggestions() {
+    const groups = new Map();
+    this.visibleReviewPageCandidates().forEach((page) => {
+      const prioritized = this.preferredTransitionOptions("page", page);
+      const selectedOptions = prioritized.length
+        ? prioritized
+        : this.transitionOptions("page", page).filter((option) => option.isDefault).slice(0, 1);
+      selectedOptions.forEach((transition) => {
+        const kind = String(page.pageKind || "page").trim() || "page";
+        const key = `${kind}::${transition.value}`;
+        const current = groups.get(key) || {
+          key,
+          kind,
+          status: transition.value,
+          transitionLabel: transition.label,
+          pages: [],
+        };
+        current.pages.push(page);
+        groups.set(key, current);
+      });
+    });
+    return Array.from(groups.values())
+      .filter((group) => group.pages.length >= 2)
+      .map((group) => {
+        const count = group.pages.length;
+        const kindLabel = this.reviewKindLabel(group.kind, count);
+        return {
+          key: group.key,
+          kind: group.kind,
+          status: group.status,
+          label: `${group.transitionLabel} · ${count} ${kindLabel}`,
+          description: `${count} ${kindLabel} share the recommended ${String(group.transitionLabel || "").toLowerCase()} transition.`,
+          pagePaths: group.pages.map((page) => page.pagePath).filter(Boolean),
+          pages: group.pages,
+          statusOptions: this.commonReviewTransitionOptions(group.pages),
+        };
+      })
+      .sort((left, right) => {
+        if (right.pagePaths.length !== left.pagePaths.length) {
+          return right.pagePaths.length - left.pagePaths.length;
+        }
+        return String(left.label || "").localeCompare(String(right.label || ""));
+      });
   }
 
   rewriteControlItems(mode = "review") {
@@ -1205,6 +1489,19 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async runReviewPageTransition(pagePath, status) {
     await this.runCliAction(`Review Page: ${status}`, "review-page", [pagePath, "--status", status]);
+  }
+
+  async runReviewPageBatchTransition(pagePaths, status, note = "", confidence = "") {
+    const normalizedPaths = Array.isArray(pagePaths)
+      ? Array.from(new Set(pagePaths.map((pagePath) => String(pagePath || "").trim()).filter(Boolean)))
+      : [];
+    if (!normalizedPaths.length) {
+      throw new Error("Batch review requires at least one page path.");
+    }
+    const args = ["--batch", ...normalizedPaths, "--status", status];
+    this.appendOptionalArg(args, "--note", note);
+    this.appendOptionalArg(args, "--confidence", confidence);
+    await this.runCliAction(`Batch Review: ${status}`, "review-page", args);
   }
 
   async runReviewRewriteTransition(slug, status) {
@@ -1468,6 +1765,34 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     await this.runPluginCommand("Nightly", ["nightly"], { refreshAfter: true });
   }
 
+  async runShellSearchCommand(query, limit = 8) {
+    const normalizedQuery = String(query || "").trim();
+    if (!normalizedQuery) {
+      new Notice("Search query 不能为空。");
+      return;
+    }
+    const parsedLimit = Number.parseInt(String(limit || 8), 10);
+    await this.runPluginCommand(
+      `Search: ${truncateText(normalizedQuery, 48)}`,
+      ["search", normalizedQuery, "--limit", String(Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 8)],
+      { refreshAfter: false, notice: false }
+    );
+    await this.loadShellSummaryFromDisk();
+    new Notice(`Search completed: ${truncateText(normalizedQuery, 60)}`);
+  }
+
+  async runApplyAllAcceptedLowRiskCommand() {
+    await this.runCliAction("Apply All Accepted Low-Risk", "apply-action", ["--all-accepted-low-risk"]);
+  }
+
+  async runRevertLastBatchCommand() {
+    await this.runCliAction("Revert Last Action Batch", "revert-action", ["--last-batch"]);
+  }
+
+  async openHomeNote() {
+    await this.openWorkspacePath("HOME.md");
+  }
+
   async runProtocolSetCommand(protocol) {
     await this.runPluginCommand(`Set Protocol: ${protocol}`, ["protocol-set", protocol], { refreshAfter: true });
   }
@@ -1478,6 +1803,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       args.push("--protocol", protocol);
     }
     await this.runPluginCommand(`Ask: ${truncateText(question, 48)}`, args, { refreshAfter: true });
+  }
+
+  async runDropNoteCommand({ text, title, kind }) {
+    const args = ["drop-note", "--text", text];
+    if (title) {
+      args.push("--title", title);
+    }
+    args.push("--kind", kind || "note");
+    await this.runPluginCommand(`Capture Note: ${truncateText(title || text, 48)}`, args, { refreshAfter: true });
   }
 
   async runCliAction(label, command, args = []) {
@@ -1772,6 +2106,102 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
+  openReviewNextTransitionPicker() {
+    const nextReview = this.nextReviewCandidate();
+    if (!nextReview) {
+      new Notice("当前没有可 review 的页面。");
+      return;
+    }
+    this.openReviewPageTransitionPicker(nextReview);
+  }
+
+  openReviewPageBatchModal(prefill = {}) {
+    const pagePaths = Array.isArray(prefill.pagePaths) ? prefill.pagePaths : [];
+    const statusOptions = Array.isArray(prefill.statusOptions) ? prefill.statusOptions : [];
+    const normalizedStatusOptions = statusOptions.map((option) => ({
+      value: option.value,
+      label: option.label || this.transitionLabel("page", option.value),
+    }));
+    const statusField = normalizedStatusOptions.length
+      ? {
+          key: "status",
+          label: "Status",
+          required: true,
+          kind: "select",
+          initialValue: prefill.status || normalizedStatusOptions[0].value || "",
+          options: normalizedStatusOptions,
+        }
+      : {
+          key: "status",
+          label: "Status",
+          required: true,
+          placeholder: "tracking / needs-revisit / approved ...",
+          initialValue: prefill.status || "",
+        };
+    this.openStructuredCommandModal({
+      title: "Batch Review Pages",
+      description: prefill.description || "Advance multiple review pages that share a safe common transition.",
+      submitLabel: "Run batch",
+      fields: [
+        {
+          key: "pages",
+          label: "Page paths",
+          required: true,
+          kind: "textarea",
+          rows: 6,
+          placeholder: "wiki/judgments/... (one per line)",
+          initialValue: pagePaths.join("\n"),
+        },
+        statusField,
+        {
+          key: "note",
+          label: "Note",
+          kind: "textarea",
+          rows: 4,
+          placeholder: "Optional shared batch note",
+          initialValue: prefill.note || "",
+        },
+        {
+          key: "confidence",
+          label: "Confidence",
+          placeholder: "Optional shared confidence override",
+          initialValue: prefill.confidence || "",
+        },
+      ],
+      onSubmit: async (values) => {
+        const paths = this.parseLineList(values.pages);
+        if (!paths.length) {
+          throw new Error("Batch review requires at least one page path.");
+        }
+        await this.runReviewPageBatchTransition(paths, values.status, values.note, values.confidence);
+      },
+    });
+  }
+
+  openReviewBatchSuggestionPicker() {
+    const suggestions = this.reviewBatchSuggestions();
+    if (!suggestions.length) {
+      new Notice("当前没有共享推荐状态的批量 review 建议。");
+      return;
+    }
+    if (suggestions.length === 1) {
+      this.openReviewPageBatchModal(suggestions[0]);
+      return;
+    }
+    this.openContextPicker({
+      title: "Pick Batch Review",
+      description: "Batch review is only offered when multiple pages share the same preferred or default transition.",
+      submitLabel: "Batch review",
+      options: suggestions.map((suggestion) => ({
+        value: suggestion.key,
+        label: suggestion.label,
+        description: suggestion.description,
+        suggestion,
+      })),
+      onSubmit: (option) => this.openReviewPageBatchModal(option.suggestion || option),
+    });
+  }
+
   openReviewRewriteContextPicker(options = this.visibleRewriteCandidates()) {
     this.openContextAwareAction({
       title: "Pick Rewrite Context",
@@ -1981,6 +2411,25 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
+  renderGettingStartedSection(container) {
+    const section = container.createDiv({ cls: "furnace-shell-section" });
+    section.createEl("h3", { text: "Start Here" });
+    section.createDiv({
+      cls: "furnace-shell-meta",
+      text: "Obsidian Product Shell 与 launcher CLI 共用同一个 runtime：Ask 两边都能跑，投料可走 Capture Note / raw/inbox / drop-*。",
+    });
+    const steps = section.createEl("ol");
+    steps.createEl("li", { text: "先点 Refresh，确认 shell-summary 已生成。" });
+    steps.createEl("li", { text: "在 Obsidian 里用 Capture Note，或在终端里用 drop-note / drop-url / drop-pdf / drop-image / drop-repo 投料。" });
+    steps.createEl("li", { text: "需要提问时用 Ask modal，或运行 ./scripts/aiwiki-launcher.sh ask ..." });
+    steps.createEl("li", { text: "写操作遵守 single writer：不要同时在 Obsidian 和终端里各跑一个 compile / nightly / apply / revert。" });
+    this.renderActionButtons(section, [
+      { label: "Capture Note", cta: true, onClick: async () => new CaptureNoteModal(this.app, this).open() },
+      { label: "Ask", onClick: async () => new AskCommandModal(this.app, this).open() },
+      { label: "Compile", onClick: async () => this.runCompileCommand() },
+    ]);
+  }
+
   renderFurnaceCenter(contentEl) {
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
@@ -1989,21 +2438,29 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (!this.repoState.valid) {
       contentEl.createDiv({
         cls: "furnace-shell-empty",
-        text: `Repo-local runtime unavailable. Missing: ${this.repoState.missingPaths.join(", ")}`,
+        text: `Vault runtime unavailable. Missing scaffold or launcher: ${this.repoState.missingPaths.join(", ")}`,
+      });
+      contentEl.createDiv({
+        cls: "furnace-shell-meta",
+        text: "Expected a vault scaffold (`raw/wiki/schema/output/.aiwiki`) plus an executable launcher script.",
       });
       return;
     }
 
     this.renderActionButtons(contentEl, [
+      { label: "Home", onClick: async () => this.openHomeNote() },
       { label: "Refresh", cta: true, onClick: async () => this.refreshShellSummaryCommand() },
       { label: "Compile", onClick: async () => this.runCompileCommand() },
+      { label: "Capture Note", onClick: async () => new CaptureNoteModal(this.app, this).open() },
       { label: "Ask", onClick: async () => new AskCommandModal(this.app, this).open() },
+      { label: "Search", onClick: async () => new SearchCommandModal(this.app, this).open() },
       { label: "Nightly", onClick: async () => this.runNightlyCommand() },
       { label: "Set Protocol", onClick: async () => new ProtocolCommandModal(this.app, this).open() },
       { label: "Review Center", onClick: async () => this.openReviewCenterView() },
       { label: "Execution Center", onClick: async () => this.openExecutionCenterView() },
       { label: "Recent Runs", onClick: async () => this.openRecentRunsView() },
     ]);
+    this.renderGettingStartedSection(contentEl);
 
     if (!this.shellSummary) {
       contentEl.createDiv({
@@ -2116,6 +2573,40 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           });
         }
       });
+    }
+
+    const searchResults = this.shellSummary.search_results || {};
+    const searchItems = Array.isArray(searchResults.results) ? searchResults.results : [];
+    if (String(searchResults.query || "").trim()) {
+      const searchSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+      searchSection.createEl("h3", { text: "Search Results" });
+      searchSection.createDiv({
+        cls: "furnace-shell-meta",
+        text: `Query: ${searchResults.query || ""} | results ${searchResults.result_count || 0}`,
+      });
+      if (!searchItems.length) {
+        searchSection.createDiv({ cls: "furnace-shell-empty", text: "No matching pages in the compiled workspace." });
+      } else {
+        const searchList = searchSection.createEl("ul", { cls: "furnace-shell-list" });
+        searchItems.slice(0, 8).forEach((result) => {
+          const item = searchList.createEl("li");
+          item.createEl("strong", { text: result.title || result.path || "result" });
+          item.createDiv({
+            cls: "furnace-shell-meta",
+            text: `${result.kind || "page"} | score ${result.score || 0} | ${result.path || ""}`,
+          });
+          if (result.preview) {
+            item.createDiv({ cls: "furnace-shell-meta", text: truncateText(result.preview, 180) });
+          }
+          if (result.path) {
+            const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
+            const openBtn = actions.createEl("button", { text: "Open" });
+            openBtn.addEventListener("click", () => {
+              this.runUiAction(() => this.openWorkspacePath(result.path), `Open search result: ${result.path}`);
+            });
+          }
+        });
+      }
     }
 
     const routeTelemetry = this.shellSummary.route_telemetry || {};
@@ -2360,7 +2851,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (!this.repoState.valid) {
       contentEl.createDiv({
         cls: "furnace-shell-empty",
-        text: `Repo-local runtime unavailable. Missing: ${this.repoState.missingPaths.join(", ")}`,
+        text: `Vault runtime unavailable. Missing scaffold or launcher: ${this.repoState.missingPaths.join(", ")}`,
       });
       return;
     }
@@ -2371,6 +2862,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       { label: "Execution Center", onClick: async () => this.openExecutionCenterView() },
     ]);
     this.renderActionButtons(contentEl, [
+      { label: "Review Next", onClick: async () => this.openReviewNextTransitionPicker() },
+      { label: "Batch Review", onClick: async () => this.openReviewBatchSuggestionPicker() },
       { label: "Review Page", onClick: async () => this.openReviewPageContextPicker() },
       { label: "Review Rewrite", onClick: async () => this.openReviewRewriteContextPicker() },
       { label: "Apply Rewrite", onClick: async () => this.openApplyRewriteModal() },
@@ -2401,6 +2894,77 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       { label: "Revisit Concepts", value: review.revisit_concepts || 0 },
       { label: "Retired Concepts", value: review.retired_concepts || 0 },
     ]);
+
+    const nextReview = this.nextReviewCandidate();
+    const batchSuggestions = this.reviewBatchSuggestions();
+
+    const nextSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+    nextSection.createEl("h3", { text: "Next Review" });
+    if (!nextReview) {
+      nextSection.createDiv({ cls: "furnace-shell-empty", text: "当前没有显式 next review item。" });
+    } else {
+      const nextCard = nextSection.createDiv({ cls: "furnace-shell-card" });
+      nextCard.createEl("strong", { text: nextReview.label || nextReview.pagePath || "review-page" });
+      nextCard.createDiv({
+        cls: "furnace-shell-meta",
+        text: nextReview.description || "review object",
+      });
+      if (nextReview.pagePath) {
+        nextCard.createDiv({ cls: "furnace-shell-meta furnace-shell-code", text: nextReview.pagePath });
+      }
+      const actions = nextCard.createDiv({ cls: "furnace-shell-inline-actions" });
+      const openButton = actions.createEl("button", { text: "Open page" });
+      openButton.addEventListener("click", () => {
+        this.runUiAction(() => this.openWorkspacePath(nextReview.pagePath), `Open next review page: ${nextReview.pagePath}`);
+      });
+      this.preferredTransitionOptions("page", nextReview).forEach((transition) => {
+        const transitionButton = actions.createEl("button", { text: transition.label });
+        transitionButton.addEventListener("click", () => {
+          this.runUiAction(
+            () => this.runReviewPageTransition(nextReview.pagePath, transition.value),
+            `Next review quick action: ${nextReview.pagePath} -> ${transition.value}`
+          );
+        });
+      });
+      const moreButton = actions.createEl("button", { text: "More" });
+      moreButton.addEventListener("click", () => {
+        this.runUiAction(() => this.openReviewPageTransitionPicker(nextReview), `Open next review transitions: ${nextReview.pagePath}`);
+      });
+    }
+
+    const batchSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+    batchSection.createEl("h3", { text: "Batch Suggestions" });
+    if (!batchSuggestions.length) {
+      batchSection.createDiv({ cls: "furnace-shell-empty", text: "当前没有共享推荐状态的批量 review 组。" });
+    } else {
+      const list = batchSection.createEl("ul", { cls: "furnace-shell-list" });
+      batchSuggestions.slice(0, 6).forEach((suggestion) => {
+        const item = list.createEl("li");
+        item.createEl("strong", { text: suggestion.label });
+        item.createDiv({ cls: "furnace-shell-meta", text: suggestion.description });
+        const preview = suggestion.pages
+          .slice(0, 3)
+          .map((page) => page.label || page.pagePath)
+          .filter(Boolean)
+          .join(" · ");
+        if (preview) {
+          item.createDiv({ cls: "furnace-shell-meta", text: truncateText(preview, 180) });
+        }
+        const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
+        const batchButton = actions.createEl("button", { text: "Batch review" });
+        batchButton.addEventListener("click", () => {
+          this.runUiAction(() => this.openReviewPageBatchModal(suggestion), `Open batch review modal: ${suggestion.key}`);
+        });
+        const openFirstButton = actions.createEl("button", { text: "Open first" });
+        openFirstButton.addEventListener("click", () => {
+          const firstPath = suggestion.pagePaths[0] || "";
+          if (!firstPath) {
+            return;
+          }
+          this.runUiAction(() => this.openWorkspacePath(firstPath), `Open first batch review page: ${firstPath}`);
+        });
+      });
+    }
 
     const judgmentSection = contentEl.createDiv({ cls: "furnace-shell-section" });
     judgmentSection.createEl("h3", { text: "Judgment Assets" });
@@ -2661,6 +3225,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       { label: "Review Action", onClick: async () => this.openReviewActionContextPicker() },
       { label: "Apply Action", onClick: async () => this.openApplyActionContextPicker() },
       { label: "Revert Action", onClick: async () => this.openRevertActionContextPicker() },
+      { label: "Apply All Low-Risk", onClick: async () => this.runApplyAllAcceptedLowRiskCommand() },
+      { label: "Revert Last Batch", onClick: async () => this.runRevertLastBatchCommand() },
       { label: "Apply Archive", onClick: async () => this.openApplyArchiveContextPicker() },
       { label: "Revert Archive", onClick: async () => this.openRevertArchiveContextPicker() },
     ]);

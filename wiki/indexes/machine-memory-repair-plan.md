@@ -1,35 +1,34 @@
 # 机器记忆修复计划
 
-- 最近编译时间：`2026-04-15T09:49:48+00:00`
-- Ready 动作：`0`
-- 待分流动作：`8`
+- 最近编译时间：`2026-04-16T02:09:52+00:00`
+- Ready 动作：`1`
+- 待分流动作：`7`
 - 暂缓动作：`0`
 - 最近清除：`9`
-- 执行批次：`0`
+- 执行批次：`1`
 - 执行提案：`8`
 - 页级 patch step：`18`
-- Blocked proposals：`6`
+- Blocked proposals：`7`
 - 状态文件：`.aiwiki/state/machine-memory-actions.json`
 
 ## Planner State
 - Planner state：`.aiwiki/state/planner-state.json`
 - Pending proposals：`8`
-- Unblocked：`2`
-- Blocked：`6`
-- Next action：`overloaded-concept-and` | 拆分过载概念 And | score `78` | blocked `False`
+- Unblocked：`1`
+- Blocked：`7`
+- Next action：`overloaded-concept-and` | 拆分过载概念 And | score `92` | blocked `False`
 - Priority queue:
-  - `overloaded-concept-and` | 拆分过载概念 And | score `78` | impact `70` | blocked `False`
-  - `overloaded-concept-the` | 拆分过载概念 The | score `78` | impact `70` | blocked `False`
+  - `overloaded-concept-and` | 拆分过载概念 And | score `92` | impact `80` | blocked `False`
+  - `overloaded-concept-the` | 拆分过载概念 The | score `74` | impact `70` | blocked `True`
   - `bridge-concept-abstract` | 观察桥接概念 Abstract | score `32` | impact `32` | blocked `True`
   - `bridge-concept-agents` | 观察桥接概念 Agents | score `32` | impact `32` | blocked `True`
   - `bridge-concept-and` | 观察桥接概念 And | score `32` | impact `32` | blocked `True`
   - `bridge-concept-judgment` | 观察桥接概念 Judgment | score `32` | impact `32` | blocked `True`
 
 ## Ready Now
-- 当前没有 ready action。
+- [high] 拆分过载概念 And | primary `wiki/concepts/and.md` | band `manual-repair` | next 把过载概念拆成更窄的概念页或子主题。 完成后将动作标为 resolved。 | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-and --status resolved --note "Repair completed."`
 
 ## Need Triage
-- [high] 拆分过载概念 And | primary `wiki/concepts/and.md` | band `review-first` | next 把过载概念拆成更窄的概念页或子主题。 | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-and --status accepted --note "Accepted for manual repair."`
 - [high] 拆分过载概念 The | primary `wiki/concepts/the.md` | band `review-first` | next 把过载概念拆成更窄的概念页或子主题。 | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-the --status accepted --note "Accepted for manual repair."`
 - [low] 观察桥接概念 Agents | primary `wiki/concepts/agents.md` | band `review-first` | next 确认桥接概念仍然必要，并记录观察结论。 | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action bridge-concept-agents --status accepted --note "Accepted for manual repair."`
 - [low] 观察桥接概念 Abstract | primary `wiki/concepts/abstract.md` | band `review-first` | next 确认桥接概念仍然必要，并记录观察结论。 | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action bridge-concept-abstract --status accepted --note "Accepted for manual repair."`
@@ -42,10 +41,11 @@
 - 当前没有暂缓动作。
 
 ## Execution Batches
-- 当前没有可执行批次。
+- component `component-1` | actions `1` | escalated `False` | overdue `False` | primary `wiki/concepts/and.md`
+  action [high] 拆分过载概念 And | status `已接受` | next 把过载概念拆成更窄的概念页或子主题。 完成后将动作标为 resolved。 | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-and --status resolved --note "Repair completed."`
 
 ## Execution Proposals
-- [high] 拆分过载概念 And | status `待处理` | kind `split-concept` | risk `high` | score `78` | targets `wiki/concepts/and.md` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-and --status accepted --note "Accepted for manual repair."`
+- [high] 拆分过载概念 And | status `已接受` | kind `split-concept` | risk `high` | score `92` | targets `wiki/concepts/and.md` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-and --status resolved --note "Repair completed."`
   - strategy: 拆分过载概念，明确子概念边界和来源分流。 同时检查 benchmark、experiment、tradeoff 和 regression risk 是否需要同步更新。
   - bundle: `output/control/execution-bundles/overloaded-concept-and.json`
   - rollback: 回滚时需要人工恢复目标页，然后重跑 compile。
@@ -55,10 +55,11 @@
   - patch `wiki/concepts/and.md` | role `概念页` | mode `rewrite` | sections `Summary, Related Sources, Related Concepts`
   - patch `wiki/indexes/concept-quality.md` | role `索引页` | mode `review` | sections `Merge Candidates, Rewrite Priority`
   - patch `wiki/indexes/rewrite-proposals.md` | role `索引页` | mode `review` | sections `Merge Candidates, Rewrite Priority`
-- [high] 拆分过载概念 The | status `待处理` | kind `split-concept` | risk `high` | score `78` | targets `wiki/concepts/the.md` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-the --status accepted --note "Accepted for manual repair."`
+- [high] 拆分过载概念 The | status `待处理` | kind `split-concept` | risk `high` | score `74` | targets `wiki/concepts/the.md` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-the --status accepted --note "Accepted for manual repair."`
   - strategy: 拆分过载概念，明确子概念边界和来源分流。 同时检查 benchmark、experiment、tradeoff 和 regression risk 是否需要同步更新。
   - bundle: `output/control/execution-bundles/overloaded-concept-the.json`
   - rollback: 回滚时需要人工恢复目标页，然后重跑 compile。
+  - depends_on: `overloaded-concept-and`
   - edit: 先定义更窄的子概念名称和边界。
   - edit: 把 source pages 重新分流到更具体的概念页。
   - edit: 在原概念页保留拆分说明和跳转链接。
@@ -132,13 +133,13 @@
 - Risk: `high` | Protocol: `research`
 - `wiki/concepts/and.md` | role `概念页` | mode `rewrite` | sections `Summary, Related Sources, Related Concepts` | exists `True`
   - 缩窄概念边界、保留拆分说明，并给出后续子概念方向。 同步检查 benchmark、experiment、tradeoff 和 regression risk 是否要一起更新。
-  - command: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-and --status accepted --note "Accepted for manual repair."`
+  - command: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-and --status resolved --note "Repair completed."`
 - `wiki/indexes/concept-quality.md` | role `索引页` | mode `review` | sections `Merge Candidates, Rewrite Priority` | exists `True`
   - 在概念质量层复核拆分理由和后续子概念候选。 同步检查 benchmark、experiment、tradeoff 和 regression risk 是否要一起更新。
-  - command: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-and --status accepted --note "Accepted for manual repair."`
+  - command: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-and --status resolved --note "Repair completed."`
 - `wiki/indexes/rewrite-proposals.md` | role `索引页` | mode `review` | sections `Merge Candidates, Rewrite Priority` | exists `True`
   - 在概念质量层复核拆分理由和后续子概念候选。 同步检查 benchmark、experiment、tradeoff 和 regression risk 是否要一起更新。
-  - command: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-and --status accepted --note "Accepted for manual repair."`
+  - command: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-and --status resolved --note "Repair completed."`
 ### `overloaded-concept-the` · 拆分过载概念 The
 - Summary: 拆分过载概念，明确子概念边界和来源分流。 同时检查 benchmark、experiment、tradeoff 和 regression risk 是否需要同步更新。
 - Risk: `high` | Protocol: `research`

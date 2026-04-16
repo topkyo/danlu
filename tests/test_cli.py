@@ -44,6 +44,7 @@ class CLITests(unittest.TestCase):
     def test_main_dispatches_command_handlers(self) -> None:
         cases = [
             ("layout", ["layout"], "ensure_layout", (self.root,), {}),
+            ("new-vault", ["new-vault", "child-vault", "--force"], "bootstrap_new_vault", (self.root, Path("child-vault").resolve()), {"force": True}),
             ("ingest", ["ingest", "input.md", "--title", "Input"], "ingest_source", (self.root, "input.md"), {"title": "Input"}),
             ("drop-url", ["drop-url", "https://example.com"], "drop_url", (self.root, "https://example.com"), {"title": None}),
             ("drop-pdf", ["drop-pdf", "paper.pdf", "--title", "Paper"], "drop_pdf", (self.root, "paper.pdf"), {"title": "Paper"}),
@@ -88,6 +89,10 @@ class CLITests(unittest.TestCase):
                 with patch("sys.stdout", new=stdout):
                     if target == "ensure_layout":
                         with patch("aiwiki.cli.ensure_layout") as mocked:
+                            code = main(["--root", str(self.root), *argv])
+                            mocked.assert_called_once_with(*expected_args, **expected_kwargs)
+                    elif target == "bootstrap_new_vault":
+                        with patch("aiwiki.cli.bootstrap_new_vault", return_value={"command": name}) as mocked:
                             code = main(["--root", str(self.root), *argv])
                             mocked.assert_called_once_with(*expected_args, **expected_kwargs)
                     else:

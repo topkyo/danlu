@@ -6,7 +6,7 @@ title: "Anthropic Tool Use"
 target_path: "wiki/concepts/anthropic-tool-use.md"
 source_signature: "66b3fcbbccf4b3ae523239235633801b245852f4e015e5c871e37b461ebfacd2"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T09:28:31+00:00"
+last_compiled_at: "2026-04-16T02:08:48+00:00"
 ---
 
 # Rewrite Proposal · Anthropic Tool Use
@@ -19,7 +19,7 @@ last_compiled_at: "2026-04-15T09:28:31+00:00"
 - Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T01:37:58+00:00`
-- Last proposed: `2026-04-15T09:28:31+00:00`
+- Last proposed: `2026-04-16T02:08:48+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`
@@ -30,7 +30,9 @@ last_compiled_at: "2026-04-15T09:28:31+00:00"
 - Source pages: `wiki/sources/discovered-20260415013334-anthropic-tool-use-overview.md`
 
 ## Current Summary Snapshot
-- No summary snapshot captured.
+- 当前概念汇总了 `1` 个 source page：[Anthropic Tool Use Overview](../sources/discovered-20260415013334-anthropic-tool-use-overview.md)。
+- 当前最直接的线索：This source is an Anthropic overview page for Claude tool use. The extracted content frames tool use as a mechanism where Claude can invoke either user-defined functions or Anthropic-provided tools,…
+- 这还是单来源概念页；继续补充证据、冲突和例外后再升级为更硬的判断。
 
 ## Rewrite Strategy
 - Issues: `soft-hardness, single-source, evidence-gap, merge-boundary`

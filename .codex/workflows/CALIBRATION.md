@@ -271,3 +271,35 @@ qa-review downgrade heuristic:
 - New Session: no
 - PROGRESS Read: no
 - Notes: auto-defaulted qa-runtime hit/miss/false-positive to 0 from write_gate_artifact pass
+
+- Date: 2026-04-16
+- Agent: Codex
+- Task: new-vault scaffold + Product Shell UX
+- qa-review Mode: isolated-agent
+- qa-review Hit: 0
+- qa-review Miss: 0
+- qa-review False Positive: 0
+- qa-runtime Mode: scripted
+- qa-runtime Hit: 0
+- qa-runtime Miss: 0
+- qa-runtime False Positive: 0
+- Contract Scope Changed: no
+- New Session: yes
+- PROGRESS Read: yes
+- Notes: auto-defaulted qa-review hit/miss/false-positive to 0 from write_gate_artifact pass
+
+- Date: 2026-04-16
+- Agent: Codex
+- Task: new-vault scaffold + Product Shell UX
+- qa-review Mode: isolated-agent
+- qa-review Hit: 0
+- qa-review Miss: 0
+- qa-review False Positive: 0
+- qa-runtime Mode: scripted
+- qa-runtime Hit: 0
+- qa-runtime Miss: 0
+- qa-runtime False Positive: 0
+- Contract Scope Changed: no
+- New Session: no
+- PROGRESS Read: yes
+- Notes: auto-defaulted qa-runtime hit/miss/false-positive to 0 from write_gate_artifact pass

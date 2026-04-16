@@ -1,7 +1,7 @@
 ---
 id: "judgment-20260415-015034-agent-governance-judgment"
 kind: "judgment"
-status: "confirmed"
+status: "tracking"
 title: "Agent Governance Judgment"
 protocol: "research"
 source_files:
@@ -10,14 +10,14 @@ citations:
   - "wiki/sources/discovered-20260415013128-building-effective-agents.md"
   - "wiki/sources/discovered-20260415013331-autogen-multi-agent-debate-pattern.md"
   - "wiki/sources/discovered-20260415013329-react-paper-abstract.md"
-  - "wiki/sources/discovered-20260408053358-item.md"
   - "wiki/sources/discovered-20260415013612-crewai-agents-concept.md"
+  - "wiki/sources/discovered-20260408053358-item.md"
 citation_snapshots:
   - "wiki/sources/discovered-20260415013128-building-effective-agents.md#2b9fefd6df1175acb14f2312c3e9c078398338321a27c53f5adafa2ef9a5da02"
   - "wiki/sources/discovered-20260415013331-autogen-multi-agent-debate-pattern.md#58dc9dc777e6a918cde731c940b0b836ff4b8d2de29099a771f61bd7acdf01a5"
   - "wiki/sources/discovered-20260415013329-react-paper-abstract.md#bbb5de6cff747a0a40dd1112ecbdd76a9e57c06d85802e72a14f88e8a35d44f8"
-  - "wiki/sources/discovered-20260408053358-item.md#c13ff3a1c5fc5523b8d0452f566e257e0fce75d6eb99ff019ddc99805eb8abf1"
   - "wiki/sources/discovered-20260415013612-crewai-agents-concept.md#1dff29c2fbe8e43e72cfb1e136f75f40e8a682ad0df9c2f25b69eff028adbded"
+  - "wiki/sources/discovered-20260408053358-item.md#c13ff3a1c5fc5523b8d0452f566e257e0fce75d6eb99ff019ddc99805eb8abf1"
 generated_by: "aiwiki-file-back"
 last_compiled_at: "2026-04-15T01:50:34+00:00"
 confidence: "medium"
@@ -29,10 +29,10 @@ next_signals:
   - "Track whether execution receipts and replay logs remain standard in production agent systems."
   - "Track whether repair backlog and aging signals continue to surface real operator work instead of empty dashboards."
 formed_at: "2026-04-15T01:50:34+00:00"
-last_reviewed: "2026-04-15T02:19:57+00:00"
-reviewed_at: "2026-04-15T02:19:57+00:00"
-revisit_after: ""
-escalate_after: ""
+last_reviewed: "2026-04-16T02:09:53+00:00"
+reviewed_at: "2026-04-16T02:09:53+00:00"
+revisit_after: "2026-04-23T02:09:53+00:00"
+escalate_after: "2026-05-07T02:09:53+00:00"
 ---
 
 # Agent Governance Judgment
@@ -78,16 +78,16 @@ escalate_after: ""
 - Watch whether governance dashboards in the runtime continue to accumulate real pending work rather than empty scaffolding.
 
 ## Review Status
-- Current status: `confirmed`
-- Reviewed at: `2026-04-15T02:19:57+00:00`
-- Confidence: `medium`
+- Current status: `tracking`
+- Reviewed at: `2026-04-16T02:09:53+00:00`
 
 ## Review Notes
-- Outcome: `confirmed`
-- Reviewed at: `2026-04-15T02:19:57+00:00`
-- Note: QA runtime review pass over the activated governance corpus.
+- Outcome: `tracking`
+- Reviewed at: `2026-04-16T02:09:53+00:00`
+- Note: Phase A governance digestion: keep monitoring boundary conditions.
 
 ## Review History
+- `2026-04-16T02:09:53+00:00` | status `tracking` | note Phase A governance digestion: keep monitoring boundary conditions.
 - `2026-04-15T02:19:57+00:00` | status `confirmed` | confidence `medium` | note QA runtime review pass over the activated governance corpus.
 - `2026-04-15T01:53:07+00:00` | status `confirmed` | confidence `high` | note Governance controls should stay default once actions can mutate shared state.
 
@@ -174,5 +174,5 @@ escalate_after: ""
 - 在最终答案里加入 source-page 内联引用。
 
 ## Aging
-- Revisit after: `none`
-- Escalate after: `none`
+- Revisit after: `2026-04-23T02:09:53+00:00`
+- Escalate after: `2026-05-07T02:09:53+00:00`

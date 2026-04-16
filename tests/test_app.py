@@ -146,6 +146,36 @@ class AiwikiFlowTests(unittest.TestCase):
             source.write_text(f"# Latency Node {index}\n\nLatency throughput node {index}.\n", encoding="utf-8")
             ingest_source(self.root, str(source), title=f"Latency Node {index}")
 
+    def _rewrite_concept_summary(self, concept_page: Path, summary_lines: list[str]) -> None:
+        text = concept_page.read_text(encoding="utf-8")
+        before, marker, after = text.partition("## Summary\n")
+        self.assertTrue(marker)
+        _, related_marker, remainder = after.partition("\n## Related Sources\n")
+        self.assertTrue(related_marker)
+        concept_page.write_text(
+            before + marker + "\n".join(summary_lines) + "\n" + related_marker + remainder,
+            encoding="utf-8",
+        )
+
+    def _seed_existing_concept_summaries(self) -> None:
+        for concept_page in sorted((self.root / "wiki" / "concepts").glob("*.md")):
+            self._rewrite_concept_summary(
+                concept_page,
+                [
+                    f"- Existing synthesis for {concept_page.stem} appears",
+                    "- Keep the current synthesis grounded in the linked sources.",
+                ],
+            )
+
+    def _seed_legacy_placeholder_summary(self, concept_page: Path) -> None:
+        self._rewrite_concept_summary(
+            concept_page,
+            [
+                "- This concept currently appears in `1` source page(s).",
+                "- Use the linked source pages below to deepen or revise this synthesis.",
+            ],
+        )
+
     def _prepare_ready_archive_candidate(self) -> dict[str, str]:
         archive_source = self.root / "archive-candidate.md"
         archive_source.write_text("# Obscure Legacy Note\n\nMisc.\n", encoding="utf-8")
@@ -327,14 +357,7 @@ class AiwikiFlowTests(unittest.TestCase):
             encoding="utf-8",
         )
         compile_wiki(self.root)
-        for concept_page in sorted((self.root / "wiki" / "concepts").glob("*.md")):
-            concept_page.write_text(
-                concept_page.read_text(encoding="utf-8").replace(
-                    "- This concept currently appears",
-                    f"- Existing synthesis for {concept_page.stem} appears",
-                ),
-                encoding="utf-8",
-            )
+        self._seed_existing_concept_summaries()
         compile_wiki(self.root)
         memory = load_machine_memory(self.root)
         candidate = memory["health"]["concept_quality"]["rewrite_candidates"][0]
@@ -1829,13 +1852,7 @@ class AiwikiFlowTests(unittest.TestCase):
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
         concept_page = self.root / "wiki" / "concepts" / "transformer-scaling.md"
-        concept_page.write_text(
-            concept_page.read_text(encoding="utf-8").replace(
-                "- This concept currently appears in `1` source page(s).",
-                "- OLD CONCEPT SUMMARY",
-            ),
-            encoding="utf-8",
-        )
+        self._rewrite_concept_summary(concept_page, ["- OLD CONCEPT SUMMARY"])
         stored_source = self.root / entry["stored_path"]
         stored_source.write_text(
             "# Transformer Scaling\n\nLatency throughput cache locality.\n",
@@ -1847,7 +1864,7 @@ class AiwikiFlowTests(unittest.TestCase):
         refreshed = concept_page.read_text(encoding="utf-8")
         frontmatter = parse_frontmatter(refreshed)
         self.assertNotIn("OLD CONCEPT SUMMARY", refreshed)
-        self.assertIn("This concept currently appears", refreshed)
+        self.assertIn("当前概念汇总了 `1` 个 source page", refreshed)
         self.assertTrue(frontmatter["source_signature"])
         self.assertTrue(frontmatter["render_signature"])
 
@@ -1868,12 +1885,12 @@ class AiwikiFlowTests(unittest.TestCase):
         compile_wiki(self.root)
 
         concept_page = self.root / "wiki" / "concepts" / "transformer-scaling.md"
-        concept_page.write_text(
-            concept_page.read_text(encoding="utf-8").replace(
-                "This concept currently appears",
-                "Custom concept summary stays and currently appears",
-            ),
-            encoding="utf-8",
+        self._rewrite_concept_summary(
+            concept_page,
+            [
+                "- Custom concept summary stays and currently appears",
+                "- Keep the current synthesis grounded in the linked sources.",
+            ],
         )
         before_frontmatter = parse_frontmatter(concept_page.read_text(encoding="utf-8"))
         source_page.write_text(
@@ -2933,6 +2950,8 @@ class AiwikiFlowTests(unittest.TestCase):
             encoding="utf-8",
         )
         compile_wiki(self.root)
+        concept_page = sorted((self.root / "wiki" / "concepts").glob("*.md"))[0]
+        self._seed_legacy_placeholder_summary(concept_page)
         target_slug = placeholder_concept_slugs(self.root)[0]
         concept_page = self.root / "wiki" / "concepts" / f"{target_slug}.md"
         current = concept_page.read_text(encoding="utf-8")
@@ -2941,7 +2960,7 @@ class AiwikiFlowTests(unittest.TestCase):
         result = run_compile(self.root, client=StubClient([updated]), limit=1)
 
         self.assertEqual(result["pending_pages"], 0)
-        self.assertEqual(result["pending_concept_pages"], 5)
+        self.assertEqual(result["pending_concept_pages"], 1)
         self.assertEqual(len(result["updated_concept_pages"]), 1)
         refreshed = concept_page.read_text(encoding="utf-8")
         self.assertIn("Enriched concept synthesis appears", refreshed)
@@ -2958,6 +2977,8 @@ class AiwikiFlowTests(unittest.TestCase):
             encoding="utf-8",
         )
         compile_wiki(self.root)
+        concept_page = sorted((self.root / "wiki" / "concepts").glob("*.md"))[0]
+        self._seed_legacy_placeholder_summary(concept_page)
         target_slug = placeholder_concept_slugs(self.root)[0]
         concept_page = self.root / "wiki" / "concepts" / f"{target_slug}.md"
         current = concept_page.read_text(encoding="utf-8")
@@ -2978,14 +2999,7 @@ class AiwikiFlowTests(unittest.TestCase):
         )
         compile_wiki(self.root)
 
-        for concept_page in sorted((self.root / "wiki" / "concepts").glob("*.md")):
-            concept_page.write_text(
-                concept_page.read_text(encoding="utf-8").replace(
-                    "- This concept currently appears",
-                    f"- Existing synthesis for {concept_page.stem} appears",
-                ),
-                encoding="utf-8",
-            )
+        self._seed_existing_concept_summaries()
         compile_wiki(self.root)
 
         memory = load_machine_memory(self.root)
@@ -3019,14 +3033,7 @@ class AiwikiFlowTests(unittest.TestCase):
         )
         compile_wiki(self.root)
 
-        for concept_page in sorted((self.root / "wiki" / "concepts").glob("*.md")):
-            concept_page.write_text(
-                concept_page.read_text(encoding="utf-8").replace(
-                    "- This concept currently appears",
-                    f"- Existing synthesis for {concept_page.stem} appears",
-                ),
-                encoding="utf-8",
-            )
+        self._seed_existing_concept_summaries()
         compile_wiki(self.root)
 
         memory = load_machine_memory(self.root)
@@ -3065,14 +3072,7 @@ class AiwikiFlowTests(unittest.TestCase):
         )
         compile_wiki(self.root)
 
-        for concept_page in sorted((self.root / "wiki" / "concepts").glob("*.md")):
-            concept_page.write_text(
-                concept_page.read_text(encoding="utf-8").replace(
-                    "- This concept currently appears",
-                    f"- Existing synthesis for {concept_page.stem} appears",
-                ),
-                encoding="utf-8",
-            )
+        self._seed_existing_concept_summaries()
         compile_wiki(self.root)
 
         memory = load_machine_memory(self.root)
@@ -4958,14 +4958,7 @@ class AiwikiFlowTests(unittest.TestCase):
             encoding="utf-8",
         )
         compile_wiki(self.root)
-        for concept_page in sorted((self.root / "wiki" / "concepts").glob("*.md")):
-            concept_page.write_text(
-                concept_page.read_text(encoding="utf-8").replace(
-                    "- This concept currently appears",
-                    f"- Existing synthesis for {concept_page.stem} appears",
-                ),
-                encoding="utf-8",
-            )
+        self._seed_existing_concept_summaries()
         compile_wiki(self.root)
         memory = load_machine_memory(self.root)
         candidate = memory["health"]["concept_quality"]["rewrite_candidates"][0]
@@ -5278,10 +5271,14 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn('id: "refresh-furnace-shell"', content)
         self.assertIn('id: "run-compile"', content)
         self.assertIn('id: "run-ask"', content)
+        self.assertIn('id: "search-workspace"', content)
         self.assertIn('id: "run-nightly"', content)
         self.assertIn('id: "set-protocol"', content)
+        self.assertIn('id: "open-home-note"', content)
         self.assertIn('id: "file-back"', content)
         self.assertIn('id: "review-page"', content)
+        self.assertIn('id: "review-next-page"', content)
+        self.assertIn('id: "batch-review-pages"', content)
         self.assertIn('id: "review-rewrite"', content)
         self.assertIn('id: "apply-rewrite"', content)
         self.assertIn('id: "retire-concept"', content)
@@ -5291,8 +5288,17 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn('id: "review-action"', content)
         self.assertIn('id: "apply-action"', content)
         self.assertIn('id: "revert-action"', content)
+        self.assertIn('id: "apply-all-accepted-low-risk"', content)
+        self.assertIn('id: "revert-last-action-batch"', content)
         self.assertIn('renderReviewCenter(this.contentEl);', content)
         self.assertIn('renderExecutionCenter(this.contentEl);', content)
+
+    def test_product_shell_plugin_supports_external_runtime_launcher_mode(self) -> None:
+        plugin_path = Path("/home/tim/ai-wiki/.obsidian/plugins/furnace-product-shell/main.js")
+        content = plugin_path.read_text(encoding="utf-8")
+        self.assertNotIn('"src/aiwiki/cli.py"', content)
+        self.assertIn("Vault-local or absolute launcher path.", content)
+        self.assertIn("Missing scaffold or launcher", content)
         self.assertIn('Open Review Center', content)
         self.assertIn('Open Execution Center', content)
         self.assertIn("class StructuredCommandModal extends Modal", content)
@@ -5311,6 +5317,9 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("runReviewActionTransition(actionId, status)", content)
         self.assertIn("openContextAwareAction(spec)", content)
         self.assertIn("visibleReviewPageCandidates()", content)
+        self.assertIn("nextReviewCandidate()", content)
+        self.assertIn("reviewBatchSuggestions()", content)
+        self.assertIn("commonReviewTransitionOptions(pages)", content)
         self.assertIn("visibleRewriteCandidates()", content)
         self.assertIn('visibleActionCandidates(mode = "review")', content)
         self.assertIn('visibleArchiveCandidates(mode = "apply")', content)
@@ -5321,6 +5330,9 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("actionControlsById()", content)
         self.assertIn("archiveControlsById()", content)
         self.assertIn("openReviewPageContextPicker(options = this.visibleReviewPageCandidates())", content)
+        self.assertIn("openReviewNextTransitionPicker()", content)
+        self.assertIn("openReviewPageBatchModal(prefill = {})", content)
+        self.assertIn("openReviewBatchSuggestionPicker()", content)
         self.assertIn("openReviewRewriteContextPicker(options = this.visibleRewriteCandidates())", content)
         self.assertIn('openReviewActionContextPicker(options = this.visibleActionCandidates("review"))', content)
         self.assertIn("openReviewPageTransitionPicker(control)", content)
@@ -5336,6 +5348,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("getActiveConceptSlug()", content)
         self.assertIn("this.runPluginCommand(label, [command, ...args], { refreshAfter: true });", content)
         self.assertIn('label: "Review Page"', content)
+        self.assertIn('label: "Review Next"', content)
+        self.assertIn('label: "Batch Review"', content)
         self.assertIn('label: "File Back"', content)
         self.assertIn('label: "Review Action"', content)
         self.assertIn('label: "Apply Archive"', content)
@@ -5348,11 +5362,15 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn('? "Reactivate concept" : "Retire concept"', content)
         self.assertIn("Judgment Focus", content)
         self.assertIn("Judgment Assets", content)
+        self.assertIn("Next Review", content)
+        self.assertIn("Batch Suggestions", content)
         self.assertIn("Decision Objects", content)
         self.assertIn("Judgment Objects", content)
         self.assertIn("Rewrite Proposal Objects", content)
         self.assertIn("Action Control Objects", content)
+        self.assertIn("runReviewPageBatchTransition(pagePaths, status, note = \"\", confidence = \"\")", content)
         self.assertIn("Pick Review Transition", content)
+        self.assertIn("Pick Batch Review", content)
         self.assertIn("Pick Rewrite Transition", content)
         self.assertIn("Pick Action Transition", content)
         self.assertIn('emptyNotice: "当前没有可见的 review backlog 条目，已回退到手动表单。"', content)

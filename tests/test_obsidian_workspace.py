@@ -22,6 +22,14 @@ class ObsidianWorkspaceTests(unittest.TestCase):
                 payload = json.load(handle)
             self.assertIsNotNone(payload)
 
+    def test_workspace_defaults_open_home_and_furnace_center(self) -> None:
+        workspace = json.loads((self.root / ".obsidian" / "workspace.json").read_text(encoding="utf-8"))
+        main_children = workspace["main"]["children"][0]["children"]
+        self.assertEqual(main_children[0]["state"]["state"]["file"], "HOME.md")
+        right_children = workspace["right"]["children"][0]["children"]
+        view_types = [child["state"]["type"] for child in right_children]
+        self.assertIn("furnace-product-shell-furnace-center", view_types)
+
     def test_home_dashboard_links_key_index_notes(self) -> None:
         home = (self.root / "HOME.md").read_text(encoding="utf-8")
         self.assertIn("[[wiki/indexes/Raw Inbox|", home)
