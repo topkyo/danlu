@@ -6,7 +6,7 @@ title: "Google Adk Agents"
 target_path: "wiki/concepts/google-adk-agents.md"
 source_signature: "568cc14723922355e03151b1cb36900ddc50ae3605a35ee7473206c296fa27eb"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-16T02:08:48+00:00"
+last_compiled_at: "2026-04-16T14:24:31+00:00"
 ---
 
 # Rewrite Proposal · Google Adk Agents
@@ -15,11 +15,11 @@ last_compiled_at: "2026-04-16T02:08:48+00:00"
 - Status: `待审提案`
 - Priority: `high`
 - Score: `6`
-- Quality score: `78`
+- Quality score: `76`
 - Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T01:49:42+00:00`
-- Last proposed: `2026-04-16T02:08:48+00:00`
+- Last proposed: `2026-04-16T14:24:31+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`

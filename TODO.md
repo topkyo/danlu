@@ -13,7 +13,7 @@
 | 指标 | 数据 |
 |------|------|
 | Python 源码 | 25 模块 / 33,416 行 |
-| 测试 | 14 文件 / 10,305 行 / 319 tests / 92% coverage |
+| 测试 | 14 文件 / 10,305 行 / 321 tests / 93% coverage |
 | CLI 命令 | 37 个（ingest × 6 / compile × 4 / query × 3 / review × 5 / execute × 5 / governance × 6 / shell × 4 / automation × 4） |
 | 原料 | 46 raw files（30 images + 16 markdown） |
 | 知识资产 | 16 sources → 30 concepts → 6 judgments → 4 decisions → 2 derived |
@@ -50,7 +50,7 @@
 ### 核心优势（值得保持）
 
 1. **架构完整性极高**：九层全部存在且功能闭环，在同类项目中罕见
-2. **测试纪律过硬**：314 tests / 92% coverage / 无循环依赖 / verify 一键可跑
+2. **测试纪律过硬**：321 tests / 93% coverage / 无循环依赖 / verify 一键可跑
 3. **增量编译成熟**：8 阶段 dirty/clean 追踪 + compile-state 持久化，编译不再是黑箱
 4. **协议体系真实**：5 protocols × 8 templates 真正影响 compile / query / review / nightly，不是装饰
 5. **Judgment 数据模型精密**：counter-evidence / invalidation / revisit / escalation / cognitive-history 全链路可追溯
@@ -124,6 +124,14 @@
 - **Phase B 入口结论**：`ask` 现在在 Obsidian / CLI 两边都可直接使用；投料共享同一 runtime，`drop-note / drop-url / drop-pdf / drop-image` 已有 Obsidian 双入口（通过 3 个 drop modal），`drop-repo` 仍以 CLI 为主。
 - **Product Shell 极简改版已落地**：主面板从多视图多按钮工程面板收口为单面板极简工作台（交互 / 投料 / 产出 / 今日简报 + 折叠高级操作），命令面板从 30+ 收口为 8 个核心命令（高级命令按 `showAdvancedCommands` 按需注册），ribbon 从双按钮收口为单入口。
 
+### 2026-04-16 第二轮更新（四线并进执行）
+
+- **Product Shell 模块化重构完成**：4,451 行单文件 `main.js` 拆分为 7 个源文件（constants / helpers / modals / views / settings / render / plugin）+ `build.sh` 构建脚本，`node --check` 通过，Obsidian 兼容。
+- **Phase A 治理消化真正闭环**：接受并 apply 7 个 execution proposals（5 bridge-concept + 2 overloaded-concept），全部生成 execution receipts；触发 1 次真实 escalation（`bridge-concept-and` aging_state=escalated）。
+- **resolve-monitor apply mode 上线**：新增 `RESOLVABLE_MONITOR_ACTION_KINDS` 集合（monitor-bridge-concept / split-overloaded-concept / expand-singleton-concept / connect-isolated-source），支持 accept→dry-run→apply→revert 全链路。
+- **nightly planner 自动消费上线**：`nightly_health()` 自动扫描 accepted low-risk + resolvable-monitor actions 并 dry-run→apply，治理链从"发现"走到"自动解决"。
+- **Phase C 覆盖率推进**：321 tests / 93% coverage（+2 tests, +1% coverage），新增 monitor apply + nightly auto-consume 测试。
+
 ---
 
 ## 三、得分推演
@@ -135,27 +143,27 @@
 | ③ Judgment System | 8.0 | 8.0 | **9.0** | 9.0 |
 | ④ Machine Memory | 8.0 | 8.5 | **9.0** | 9.0 |
 | ⑤ Schema / Protocol | 8.8 | 8.8 | 9.0 | **9.5** |
-| ⑥ Governance | **7.5** | **8.5** | 9.0 | 9.0 |
-| ⑦ Execution Layer | **6.8** | **8.5** | 8.5 | 9.0 |
+| ⑥ Governance | **8.2** | **8.5** | 9.0 | 9.0 |
+| ⑦ Execution Layer | **7.8** | **8.5** | 8.5 | 9.0 |
 | ⑧ Outputs | 7.5 | 7.5 | 8.0 | **9.0** |
-| ⑨ Product Shell | 8.3 | 8.3 | 8.5 | **9.0** |
-| **综合** | **8.0** | **8.3** | **8.8** | **9.1** |
+| ⑨ Product Shell | 8.5 | 8.5 | 8.5 | **9.0** |
+| **综合** | **8.2** | **8.4** | **8.8** | **9.1** |
 
 ---
 
-## 四、已完成里程碑（54 轮闭环）
+## 四、已完成里程碑（56 轮闭环）
 
 - ✅ `app.py` 动态 facade → 静态 shim + 25 个 owner module（最大 4,275L `app_compile.py`）
-- ✅ 319 tests / 92% coverage / verify 全绿 / 无循环依赖
-- ✅ 54 段闭环迭代（verify + qa-review + closed_loop）
+- ✅ 321 tests / 93% coverage / verify 全绿 / 无循环依赖
+- ✅ 56 段闭环迭代（verify + qa-review + closed_loop）
 - ✅ 增量编译 8 阶段 dirty/clean state + compile-state.json 持久化
-- ✅ Product Shell 极简主面板改版：首屏收口为交互 / 投料 / 产出 / 今日简报 + 折叠高级操作；3 个 drop modal（URL/File/Image）；8 核心命令 + 高级命令按需注册
+- ✅ Product Shell 模块化重构：7 源文件 + build.sh + 极简主面板
 - ✅ `new-vault` 脚手架：外部 runtime launcher 模式
 - ✅ Product Shell: search / batch apply / batch revert / review-next / safe batch review modal
 - ✅ Judgment lifecycle / cognitive-history / governance surfaces 全链路
 - ✅ planner-state / query-route-telemetry / execution-policy-decisions 持久化（1,265 policy decisions）
 - ✅ 概念因果网络：5 hard/medium concepts / 12 causal_links / machine memory 全链路
-- ✅ 执行层真实闭环：apply → revert → re-apply（3 receipts / 1 planner action consumed）
+- ✅ 执行层真实闭环：7 receipts / nightly auto-consume / escalation / resolve-monitor apply mode
 - ✅ 架构文档：九层终极形态 + 自动化角色 + Product Shell 定位明确
 - ✅ 5 protocols × 8 templates 真正驱动 compile / query / review / nightly
 
@@ -165,7 +173,7 @@
 
 | 风险 | 等级 | 说明 |
 |------|------|------|
-| 治理不消化 | 🔴 高 | 如果 Phase A 不清零治理积压，系统会陷入"越跑越多 warning"的死循环 |
+| 治理不消化 | 🟡 中 | Phase A 已消化 7 个 execution proposals，nightly auto-consume 上线，但 rewrite proposals 仍需 LLM 生成 candidate |
 | 概念空中楼阁 | 🟡 中 | 30 concepts 全 soft + judgment 建在上面 = 判断资产可信度受限 |
 | 使用密度不足 | 🟡 中 | Phase B 需要持续投料和使用，不是一次性冲刺能完成的 |
 | Product Shell 体验断层 | 🟢 低 | 极简面板已上线，Obsidian 端投料/提问/查看产出全可用；剩余是交互式图谱 polish |

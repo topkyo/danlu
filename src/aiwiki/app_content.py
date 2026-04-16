@@ -38,6 +38,7 @@ from .app_protocol import (
     PROTOCOL_CLASSIFICATION_MARKERS,
     PROTOCOL_LIBRARY,
     PROTOCOL_PROMOTION_PREFIXES,
+    RESOLVABLE_MONITOR_ACTION_KINDS,
     action_focus_score,
     ensure_layout,
     load_protocol_state,
@@ -1055,7 +1056,8 @@ def action_supports_low_risk_apply(action: dict[str, Any]) -> bool:
     decision = str(action.get("policy_decision") or "")
     if decision:
         return decision == "allow"
-    return str(action.get("kind") or "") in LOW_RISK_APPLYABLE_ACTION_KINDS
+    kind = str(action.get("kind") or "")
+    return kind in LOW_RISK_APPLYABLE_ACTION_KINDS or kind in RESOLVABLE_MONITOR_ACTION_KINDS
 
 
 def execution_policy_profile(action: dict[str, Any], *, root: Path | None = None) -> dict[str, Any]:
@@ -1383,6 +1385,16 @@ def safe_apply_preview(root: Path, action: dict[str, Any]) -> dict[str, Any] | N
             "updated_citation_snapshots": build_citation_snapshots(root, citations),
             "affected_paths": [page_path],
             "follow_up": "执行后会重跑 compile，让 judgment drift / review surface 重新收敛。",
+        }
+    if kind in RESOLVABLE_MONITOR_ACTION_KINDS:
+        primary_path = str(action.get("primary_path") or "")
+        return {
+            "apply_mode": "resolve-monitor",
+            "action_kind": kind,
+            "action_id": str(action.get("id") or ""),
+            "primary_path": primary_path,
+            "affected_paths": [p for p in (primary_path,) if p],
+            "follow_up": "标记为已确认并关闭；后续 compile 会刷新 repair plan。",
         }
     if kind not in LOW_RISK_APPLYABLE_ACTION_KINDS:
         return None

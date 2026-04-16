@@ -885,9 +885,14 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
             "configured": bool(llm_status.get("configured")),
             "backend": str(llm_status.get("backend") or ""),
             "backend_requested": str(llm_status.get("backend_requested") or ""),
+            "model_requested": str(llm_status.get("model_requested") or ""),
             "model": str(llm_status.get("model") or ""),
+            "effective_model": str(llm_status.get("effective_model") or ""),
             "available_backends": list(llm_status.get("available_backends", [])),
             "image_analysis_supported": bool(llm_status.get("image_analysis_supported")),
+            "auth_mode": str(llm_status.get("auth_mode") or ""),
+            "usage_visibility": str(llm_status.get("usage_visibility") or ""),
+            "usage_accounting": str(llm_status.get("usage_accounting") or ""),
             "message": str(llm_status.get("message") or ""),
         },
         "review_backlog_counts": review_backlog_counts,
@@ -940,6 +945,91 @@ def render_product_shell_html(summary: ShellSummary) -> str:
         if not target:
             return ""
         return os.path.relpath(target, start="output/control").replace(os.sep, "/")
+    locale_text = {
+        "zh": {
+            "Furnace Product Shell": "炼丹炉 Product Shell",
+            "Protocol": "协议",
+            "Generated": "生成于",
+            "Quick Links": "快捷链接",
+            "Planner": "规划器",
+            "Query Routing": "查询路由",
+            "Suggested Next Actions": "建议下一步动作",
+            "Drift Warnings": "漂移告警",
+            "Recent Runs": "最近运行",
+            "Recent Receipts": "最近回执",
+            "Furnace Center": "炉心面板",
+            "Review Center": "审阅中心",
+            "Execution Center": "执行中心",
+            "Execution Audit": "执行审计",
+            "Graph View": "图谱视图",
+            "Shell Summary": "Shell 摘要",
+            "LLM backend (effective)": "LLM 后端（生效）",
+            "LLM backend (requested)": "LLM 后端（请求）",
+            "LLM model (effective)": "LLM 模型（生效）",
+            "LLM model (requested)": "LLM 模型（请求）",
+            "Usage visibility": "Usage 可见性",
+            "Usage accounting": "Usage 计费口径",
+            "Auth mode": "认证方式",
+            "Message": "提示",
+            "action": "动作",
+            "score": "分数",
+            "reason": "原因",
+            "query": "查询",
+            "none": "无",
+            "warning": "告警",
+            "drift": "漂移",
+            "runtime": "运行",
+            "receipt": "回执",
+            "review": "审阅",
+            "Pending review": "待审阅",
+            "Ready actions": "可执行动作",
+            "Planner blocked": "规划阻塞",
+            "Recent routes": "最近路由",
+            "No planner action is queued yet.": "当前还没有排队中的规划动作。",
+            "No query route telemetry has been recorded yet.": "当前还没有记录查询路由遥测。",
+            "No runtime events yet.": "当前还没有运行事件。",
+            "No execution receipts yet.": "当前还没有执行回执。",
+            "No suggested actions yet.": "当前还没有建议动作。",
+            "No drift warnings.": "当前没有漂移告警。",
+            "general": "通用",
+            "investing": "投资",
+            "research": "研究",
+            "product": "产品",
+            "ops": "运维",
+            "opaque-cli": "CLI 不透明",
+            "response-usage": "返回 usage",
+            "result-usage": "返回 usage",
+            "provider-api": "Provider API 计费",
+            "copilot-cli-session": "Copilot CLI 会话",
+            "claude-cli-session": "Claude CLI 会话",
+            "api-key": "API Key",
+            "cli-session": "CLI 会话",
+            "apply": "应用",
+            "review-page": "审阅页面",
+            "archive-apply": "归档应用",
+            "archive-revert": "归档回滚",
+            "knowledge-lifecycle-override": "生命周期覆盖",
+            "nightly": "夜间巡检",
+            "default": "默认",
+            "success": "成功",
+            "failed": "失败",
+            "running": "运行中",
+        }
+    }
+
+    def text(locale: str, key: str) -> str:
+        base = str(key or "")
+        if locale == "zh":
+            return locale_text["zh"].get(base, base)
+        return base
+
+    def value_text(locale: str, value: Any, *, fallback: str = "none") -> str:
+        raw = str(value or "").strip()
+        token = raw or fallback
+        return text(locale, token)
+
+    def escape_value(locale: str, value: Any, *, fallback: str = "none") -> str:
+        return html.escape(value_text(locale, value, fallback=fallback))
 
     links = summary.get("links", {})
     review_counts = summary.get("review_backlog_counts", {})
@@ -950,6 +1040,7 @@ def render_product_shell_html(summary: ShellSummary) -> str:
     last_route = route_telemetry.get("last_entry", {}) if isinstance(route_telemetry, dict) else {}
     recent_runs = summary.get("recent_runs", [])
     recent_receipts = summary.get("recent_receipts", [])
+    llm_status = summary.get("llm_status", {})
     dashboard_cards = dashboard.get("cards", []) if isinstance(dashboard, dict) else []
     summary_cards = [
         (
@@ -964,10 +1055,6 @@ def render_product_shell_html(summary: ShellSummary) -> str:
         ("Planner blocked", planner.get("counts", {}).get("blocked", 0) if isinstance(planner, dict) else 0),
         ("Recent routes", len(route_telemetry.get("entries", [])) if isinstance(route_telemetry, dict) else 0),
     ]
-    card_markup = "".join(
-        f"<article class='card'><h2>{html.escape(title)}</h2><strong>{html.escape(str(value))}</strong></article>"
-        for title, value in summary_cards
-    )
     quick_links = [
         ("Furnace Center", str(links.get("furnace_center_html") or "")),
         ("Review Center", str(links.get("review_center_html") or "")),
@@ -976,67 +1063,162 @@ def render_product_shell_html(summary: ShellSummary) -> str:
         ("Graph View", str(links.get("graph_html") or "")),
         ("Shell Summary", str(links.get("summary_path") or "")),
     ]
-    link_markup = "".join(
-        f"<li><a href='{html.escape(shell_href(target))}'>{html.escape(label)}</a></li>"
-        for label, target in quick_links
-        if target
-    )
-    planner_markup = (
-        (
-            f"<p><strong>{html.escape(str(planner_next_action.get('title') or 'none'))}</strong>"
-            f" · action <code>{html.escape(str(planner_next_action.get('action_id') or 'none'))}</code>"
-            f" · score <code>{html.escape(str(planner_next_action.get('priority_score', 0)))}</code></p>"
-        )
-        if planner_next_action
-        else "<p>No planner action is queued yet.</p>"
-    )
-    route_markup = (
-        (
-            f"<p><strong>{html.escape(str(last_route.get('selected_strategy') or 'none'))}</strong>"
-            f" · reason <code>{html.escape(str(last_route.get('selection_reason') or 'none'))}</code>"
-            f" · query <code>{html.escape(str(last_route.get('query_signature') or 'none'))}</code></p>"
-        )
-        if last_route
-        else "<p>No query route telemetry has been recorded yet.</p>"
-    )
-    run_markup = "".join(
-        f"<li><code>{html.escape(str(run.get('event_type') or 'runtime'))}</code>"
-        f" · {html.escape(str(run.get('occurred_at') or ''))}"
-        f" · {html.escape(str(run.get('title') or run.get('summary') or ''))}</li>"
-        for run in recent_runs[:6]
-    ) or "<li>No runtime events yet.</li>"
-    receipt_markup = "".join(
-        f"<li><code>{html.escape(str(receipt.get('operation') or 'apply'))}</code>"
-        f" · {html.escape(str(receipt.get('title') or receipt.get('action_id') or 'receipt'))}"
-        f" · {html.escape(str(receipt.get('applied_at') or ''))}</li>"
-        for receipt in recent_receipts[:6]
-    ) or "<li>No execution receipts yet.</li>"
     suggested_actions = summary.get("suggested_next_actions", [])
     drift_warnings = summary.get("drift_warnings", [])
-    suggested_markup = "".join(
-        f"<li><strong>{html.escape(str(action.get('title') or 'action'))}</strong>"
-        f" · <code>{html.escape(str(action.get('command') or ''))}</code></li>"
-        for action in suggested_actions[:6]
-        if isinstance(action, dict)
-    ) or "<li>No suggested actions yet.</li>"
-    drift_markup = "".join(
-        f"<li><code>{html.escape(str(item.get('kind') or 'drift'))}</code>"
-        f" · {html.escape(str(item.get('message') or item.get('path') or 'warning'))}</li>"
-        for item in drift_warnings[:6]
-        if isinstance(item, dict)
-    ) or "<li>No drift warnings.</li>"
+
+    def render_cards(locale: str) -> str:
+        return "".join(
+            f"<article class='card'><h2>{html.escape(text(locale, title))}</h2><strong>{html.escape(str(value))}</strong></article>"
+            for title, value in summary_cards
+        )
+
+    def render_links(locale: str) -> str:
+        return "".join(
+            f"<li><a href='{html.escape(shell_href(target))}'>{html.escape(text(locale, label))}</a></li>"
+            for label, target in quick_links
+            if target
+        )
+
+    def render_planner(locale: str) -> str:
+        if planner_next_action:
+            return (
+                f"<p><strong>{html.escape(str(planner_next_action.get('title') or text(locale, 'none')))}</strong>"
+                f" · {html.escape(text(locale, 'action'))} <code>{escape_value(locale, planner_next_action.get('action_id'))}</code>"
+                f" · {html.escape(text(locale, 'score'))} <code>{html.escape(str(planner_next_action.get('priority_score', 0)))}</code></p>"
+            )
+        return f"<p>{html.escape(text(locale, 'No planner action is queued yet.'))}</p>"
+
+    def render_route(locale: str) -> str:
+        if last_route:
+            return (
+                f"<p><strong>{escape_value(locale, last_route.get('selected_strategy'))}</strong>"
+                f" · {html.escape(text(locale, 'reason'))} <code>{escape_value(locale, last_route.get('selection_reason'))}</code>"
+                f" · {html.escape(text(locale, 'query'))} <code>{escape_value(locale, last_route.get('query_signature'))}</code></p>"
+            )
+        return f"<p>{html.escape(text(locale, 'No query route telemetry has been recorded yet.'))}</p>"
+
+    def render_runs(locale: str) -> str:
+        return "".join(
+            f"<li><code>{escape_value(locale, run.get('event_type'), fallback='runtime')}</code>"
+            f" · {html.escape(str(run.get('occurred_at') or ''))}"
+            f" · {html.escape(str(run.get('title') or run.get('summary') or ''))}</li>"
+            for run in recent_runs[:6]
+            if isinstance(run, dict)
+        ) or f"<li>{html.escape(text(locale, 'No runtime events yet.'))}</li>"
+
+    def render_receipts(locale: str) -> str:
+        return "".join(
+            f"<li><code>{escape_value(locale, receipt.get('operation'), fallback='apply')}</code>"
+            f" · {html.escape(str(receipt.get('title') or receipt.get('action_id') or text(locale, 'receipt')))}"
+            f" · {html.escape(str(receipt.get('applied_at') or ''))}</li>"
+            for receipt in recent_receipts[:6]
+            if isinstance(receipt, dict)
+        ) or f"<li>{html.escape(text(locale, 'No execution receipts yet.'))}</li>"
+
+    def render_suggested(locale: str) -> str:
+        return "".join(
+            f"<li><strong>{html.escape(str(action.get('title') or text(locale, 'action')))}</strong>"
+            f" · <code>{html.escape(str(action.get('command') or ''))}</code></li>"
+            for action in suggested_actions[:6]
+            if isinstance(action, dict)
+        ) or f"<li>{html.escape(text(locale, 'No suggested actions yet.'))}</li>"
+
+    def render_drift(locale: str) -> str:
+        return "".join(
+            f"<li><code>{escape_value(locale, item.get('kind'), fallback='drift')}</code>"
+            f" · {html.escape(str(item.get('message') or item.get('path') or text(locale, 'warning')))}</li>"
+            for item in drift_warnings[:6]
+            if isinstance(item, dict)
+        ) or f"<li>{html.escape(text(locale, 'No drift warnings.'))}</li>"
+
+    def render_llm(locale: str) -> str:
+        rows = [
+            ("LLM backend (effective)", llm_status.get("backend")),
+            ("LLM backend (requested)", llm_status.get("backend_requested")),
+            ("LLM model (effective)", llm_status.get("effective_model") or llm_status.get("model")),
+            ("LLM model (requested)", llm_status.get("model_requested")),
+            ("Usage visibility", llm_status.get("usage_visibility")),
+            ("Usage accounting", llm_status.get("usage_accounting")),
+            ("Auth mode", llm_status.get("auth_mode")),
+        ]
+        if llm_status.get("message"):
+            rows.append(("Message", llm_status.get("message")))
+        return "".join(
+            f"<p><span class='meta-label'>{html.escape(text(locale, label))}</span> <code>{escape_value(locale, value)}</code></p>"
+            for label, value in rows
+        )
+
+    def render_panel(locale: str) -> str:
+        return "\n".join(
+            [
+                "      <div class='hero'>",
+                "        <div>",
+                f"          <h1>{html.escape(text(locale, 'Furnace Product Shell'))}</h1>",
+                (
+                    f"          <p>{html.escape(text(locale, 'Protocol'))} "
+                    f"<code>{escape_value(locale, summary.get('active_protocol') or DEFAULT_PROTOCOL)}</code>"
+                    f" · {html.escape(text(locale, 'Generated'))} "
+                    f"<code>{html.escape(str(summary.get('generated_at') or ''))}</code></p>"
+                ),
+                "        </div>",
+                "        <div class='llm-box'>",
+                render_llm(locale),
+                "        </div>",
+                "      </div>",
+                f"      <div class='cards'>{render_cards(locale)}</div>",
+                "      <div class='grid'>",
+                "        <section>",
+                f"          <h2>{html.escape(text(locale, 'Quick Links'))}</h2>",
+                f"          <ul>{render_links(locale)}</ul>",
+                "        </section>",
+                "        <section>",
+                f"          <h2>{html.escape(text(locale, 'Planner'))}</h2>",
+                f"          {render_planner(locale)}",
+                "        </section>",
+                "        <section>",
+                f"          <h2>{html.escape(text(locale, 'Query Routing'))}</h2>",
+                f"          {render_route(locale)}",
+                "        </section>",
+                "        <section>",
+                f"          <h2>{html.escape(text(locale, 'Suggested Next Actions'))}</h2>",
+                f"          <ul>{render_suggested(locale)}</ul>",
+                "        </section>",
+                "        <section>",
+                f"          <h2>{html.escape(text(locale, 'Drift Warnings'))}</h2>",
+                f"          <ul>{render_drift(locale)}</ul>",
+                "        </section>",
+                "        <section>",
+                f"          <h2>{html.escape(text(locale, 'Recent Runs'))}</h2>",
+                f"          <ul>{render_runs(locale)}</ul>",
+                "        </section>",
+                "        <section>",
+                f"          <h2>{html.escape(text(locale, 'Recent Receipts'))}</h2>",
+                f"          <ul>{render_receipts(locale)}</ul>",
+                "        </section>",
+                "      </div>",
+            ]
+        )
+
     return "\n".join(
         [
             "<!DOCTYPE html>",
-            "<html lang='en'>",
+            "<html lang='zh' data-default-locale='zh'>",
             "<head>",
             "  <meta charset='utf-8' />",
             "  <meta name='viewport' content='width=device-width, initial-scale=1' />",
-            "  <title>Furnace Product Shell</title>",
+            "  <title>炼丹炉 Product Shell</title>",
             "  <style>",
             "    body { font-family: Inter, system-ui, sans-serif; margin: 0; background: #0b1020; color: #e5eefc; }",
-            "    main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 48px; }",
+            "    main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 48px; }",
+            "    .toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }",
+            "    .locale-switch { display: inline-flex; gap: 8px; }",
+            "    .locale-switch button { background: #111833; color: #e5eefc; border: 1px solid #243255; border-radius: 999px; padding: 6px 12px; cursor: pointer; }",
+            "    .locale-switch button.active { background: #2f6feb; border-color: #2f6feb; }",
+            "    .locale-panel { display: none; }",
+            "    .locale-panel.active { display: block; }",
             "    .hero { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin-bottom: 24px; }",
+            "    .llm-box { min-width: 280px; }",
+            "    .meta-label { display: inline-block; min-width: 160px; color: #aebbd6; }",
             "    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 20px 0 28px; }",
             "    .card, section { background: #111833; border: 1px solid #243255; border-radius: 14px; padding: 16px; }",
             "    h1, h2 { margin: 0 0 12px; }",
@@ -1048,47 +1230,36 @@ def render_product_shell_html(summary: ShellSummary) -> str:
             "</head>",
             "<body>",
             "  <main>",
-            "    <div class='hero'>",
-            "      <div>",
-            "        <h1>Furnace Product Shell</h1>",
-            f"        <p>Protocol <code>{html.escape(str(summary.get('active_protocol') or DEFAULT_PROTOCOL))}</code> · generated <code>{html.escape(str(summary.get('generated_at') or ''))}</code></p>",
-            "      </div>",
-            "      <div>",
-            f"        <p>LLM backend <code>{html.escape(str((summary.get('llm_status') or {}).get('backend') or 'none'))}</code></p>",
+            "    <div class='toolbar'>",
+            "      <div class='locale-switch'>",
+            "        <button type='button' data-locale-btn='zh' class='active'>中文</button>",
+            "        <button type='button' data-locale-btn='en'>English</button>",
             "      </div>",
             "    </div>",
-            f"    <div class='cards'>{card_markup}</div>",
-            "    <div class='grid'>",
-            "      <section>",
-            "        <h2>Quick Links</h2>",
-            f"        <ul>{link_markup}</ul>",
-            "      </section>",
-            "      <section>",
-            "        <h2>Planner</h2>",
-            f"        {planner_markup}",
-            "      </section>",
-            "      <section>",
-            "        <h2>Query Routing</h2>",
-            f"        {route_markup}",
-            "      </section>",
-            "      <section>",
-            "        <h2>Suggested Next Actions</h2>",
-            f"        <ul>{suggested_markup}</ul>",
-            "      </section>",
-            "      <section>",
-            "        <h2>Drift Warnings</h2>",
-            f"        <ul>{drift_markup}</ul>",
-            "      </section>",
-            "      <section>",
-            "        <h2>Recent Runs</h2>",
-            f"        <ul>{run_markup}</ul>",
-            "      </section>",
-            "      <section>",
-            "        <h2>Recent Receipts</h2>",
-            f"        <ul>{receipt_markup}</ul>",
-            "      </section>",
-            "    </div>",
+            "    <section class='locale-panel active' data-locale-panel='zh'>",
+            render_panel("zh"),
+            "    </section>",
+            "    <section class='locale-panel' data-locale-panel='en'>",
+            render_panel("en"),
+            "    </section>",
             "  </main>",
+            "  <script>",
+            "    (() => {",
+            "      const setLocale = (locale) => {",
+            "        document.querySelectorAll('[data-locale-panel]').forEach((panel) => {",
+            "          panel.classList.toggle('active', panel.getAttribute('data-locale-panel') === locale);",
+            "        });",
+            "        document.querySelectorAll('[data-locale-btn]').forEach((button) => {",
+            "          button.classList.toggle('active', button.getAttribute('data-locale-btn') === locale);",
+            "        });",
+            "        document.documentElement.lang = locale === 'en' ? 'en' : 'zh';",
+            "      };",
+            "      document.querySelectorAll('[data-locale-btn]').forEach((button) => {",
+            "        button.addEventListener('click', () => setLocale(button.getAttribute('data-locale-btn') || 'zh'));",
+            "      });",
+            "      setLocale(document.documentElement.getAttribute('data-default-locale') || 'zh');",
+            "    })();",
+            "  </script>",
             "</body>",
             "</html>",
             "",

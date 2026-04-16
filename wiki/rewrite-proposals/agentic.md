@@ -6,7 +6,7 @@ title: "Agentic"
 target_path: "wiki/concepts/agentic.md"
 source_signature: "2921a14fec04ee48b4a5e95b8d01a56cd04af86c28aa6184d328cdc9391be385"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T09:19:10+00:00"
+last_compiled_at: "2026-04-16T14:24:31+00:00"
 ---
 
 # Rewrite Proposal · Agentic
@@ -15,11 +15,11 @@ last_compiled_at: "2026-04-15T09:19:10+00:00"
 - Status: `待审提案`
 - Priority: `high`
 - Score: `6`
-- Quality score: `78`
+- Quality score: `76`
 - Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T03:10:19+00:00`
-- Last proposed: `2026-04-15T09:19:10+00:00`
+- Last proposed: `2026-04-16T14:24:31+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`

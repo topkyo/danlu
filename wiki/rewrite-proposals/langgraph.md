@@ -6,7 +6,7 @@ title: "Langgraph"
 target_path: "wiki/concepts/langgraph.md"
 source_signature: "db00c329eb979ee33c15aaff37fac1f3307a7a43ab04220169f060f1f909242a"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-16T02:08:48+00:00"
+last_compiled_at: "2026-04-16T14:24:31+00:00"
 ---
 
 # Rewrite Proposal · Langgraph
@@ -15,11 +15,11 @@ last_compiled_at: "2026-04-16T02:08:48+00:00"
 - Status: `待审提案`
 - Priority: `high`
 - Score: `6`
-- Quality score: `78`
+- Quality score: `76`
 - Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T03:14:25+00:00`
-- Last proposed: `2026-04-16T02:08:48+00:00`
+- Last proposed: `2026-04-16T14:24:31+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`

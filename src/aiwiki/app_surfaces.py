@@ -1125,11 +1125,11 @@ def render_furnace_center(
             "- [修复待办](./repair-backlog.md)",
             "- [协议总览](./protocols.md)",
             "- [输出面板](./Outputs.md)",
-            "- [本地审阅面板](../../output/review/review-center.html)",
-            "- [本地图谱视图](../../output/graph/machine-memory.html)",
-            "- [本地炉心面板](../../output/control/furnace-center.html)",
-            "- [本地执行面板](../../output/control/execution-center.html)",
-            "- [本地执行审计面板](../../output/control/execution-audit.html)",
+            "- `output/review/review-center.html`：本地审阅面板（浏览器 / 系统 HTML 入口）",
+            "- `output/graph/machine-memory.html`：本地图谱视图（若点开变成 Mihomo/Clash，说明系统接管了 `text/html`）",
+            "- `output/control/furnace-center.html`：本地炉心面板（浏览器 / 系统 HTML 入口）",
+            "- `output/control/execution-center.html`：本地执行面板（浏览器 / 系统 HTML 入口）",
+            "- `output/control/execution-audit.html`：本地执行审计面板（浏览器 / 系统 HTML 入口）",
         ]
     )
     return "\n".join(lines) + "\n"

@@ -6,7 +6,7 @@ title: "Langgraph Agentic Concepts"
 target_path: "wiki/concepts/langgraph-agentic-concepts.md"
 source_signature: "e453e0e437cdb1fb3ad5791b20fef0bcc1e7427d708b7783e399de6013f14ef7"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-16T02:08:48+00:00"
+last_compiled_at: "2026-04-16T14:24:31+00:00"
 ---
 
 # Rewrite Proposal · Langgraph Agentic Concepts
@@ -15,11 +15,11 @@ last_compiled_at: "2026-04-16T02:08:48+00:00"
 - Status: `待审提案`
 - Priority: `high`
 - Score: `6`
-- Quality score: `78`
+- Quality score: `76`
 - Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T03:14:25+00:00`
-- Last proposed: `2026-04-16T02:08:48+00:00`
+- Last proposed: `2026-04-16T14:24:31+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`

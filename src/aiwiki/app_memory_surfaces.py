@@ -2477,8 +2477,8 @@ def render_execution_center(root: Path, memory: dict[str, Any], *, compiled_at: 
             "- [认知历史](./cognitive-history.md)",
             "- [审阅中心](./review-center.md)",
             "- [炉心面板](./furnace-center.md)",
-            "- [本地执行面板](../../output/control/execution-center.html)",
-            "- [本地执行审计面板](../../output/control/execution-audit.html)",
+            "- `output/control/execution-center.html`：本地执行面板（浏览器 / 系统 HTML 入口）",
+            "- `output/control/execution-audit.html`：本地执行审计面板（浏览器 / 系统 HTML 入口）",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -3011,7 +3011,7 @@ def render_execution_audit(audit: dict[str, Any]) -> str:
             "- [机器记忆动作队列](./machine-memory-actions.md)",
             "- [认知历史](./cognitive-history.md)",
             "- [炉心面板](./furnace-center.md)",
-            "- [本地执行审计面板](../../output/control/execution-audit.html)",
+            "- `output/control/execution-audit.html`：本地执行审计面板（浏览器 / 系统 HTML 入口）",
         ]
     )
     return "\n".join(lines) + "\n"

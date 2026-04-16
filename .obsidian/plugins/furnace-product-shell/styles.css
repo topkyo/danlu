@@ -104,3 +104,255 @@
   padding: 2px 10px;
   cursor: pointer;
 }
+
+.furnace-shell-main-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.furnace-shell-main-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.furnace-shell-main-copy h2 {
+  margin-bottom: 4px;
+}
+
+.furnace-shell-main-subtitle {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  word-break: break-all;
+}
+
+.furnace-shell-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.furnace-shell-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: 0.82em;
+}
+
+.furnace-shell-pill.is-running {
+  color: var(--color-orange);
+}
+
+.furnace-shell-panel,
+.furnace-shell-subpanel {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.furnace-shell-subpanel {
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.furnace-shell-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.furnace-shell-panel-copy {
+  min-width: 0;
+}
+
+.furnace-shell-panel-title,
+.furnace-shell-subpanel h4 {
+  margin: 0;
+}
+
+.furnace-shell-panel-description {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.furnace-shell-panel-link,
+.furnace-shell-output-item button,
+.furnace-shell-inline-item button {
+  background: transparent;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  color: var(--text-normal);
+  cursor: pointer;
+  padding: 6px 12px;
+}
+
+.furnace-shell-composer-input {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+  border-radius: 14px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.furnace-shell-panel-actions,
+.furnace-shell-subpanel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.furnace-shell-ghost-button {
+  background: transparent;
+}
+
+.furnace-shell-panel-note {
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-size: 0.88em;
+}
+
+.furnace-shell-material-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.furnace-shell-material-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 112px;
+  border-radius: 14px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.furnace-shell-material-button:hover {
+  transform: translateY(-1px);
+  border-color: var(--interactive-accent);
+}
+
+.furnace-shell-material-icon {
+  font-size: 1.6em;
+}
+
+.furnace-shell-material-label {
+  font-weight: 600;
+}
+
+.furnace-shell-output-list,
+.furnace-shell-inline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.furnace-shell-output-item,
+.furnace-shell-inline-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.furnace-shell-output-copy {
+  min-width: 0;
+}
+
+.furnace-shell-inline-heading {
+  color: var(--text-muted);
+  font-size: 0.88em;
+}
+
+.furnace-shell-digest-row {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.furnace-shell-digest-row:last-of-type {
+  border-bottom: 0;
+}
+
+.furnace-shell-digest-label {
+  color: var(--text-muted);
+  font-size: 0.88em;
+}
+
+.furnace-shell-digest-value {
+  font-size: 0.92em;
+  line-height: 1.45;
+}
+
+.furnace-shell-advanced {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 16px;
+  background: var(--background-secondary);
+  padding: 0;
+}
+
+.furnace-shell-advanced-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  padding: 14px 16px;
+}
+
+.furnace-shell-advanced-summary::-webkit-details-marker {
+  display: none;
+}
+
+.furnace-shell-advanced-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.furnace-shell-advanced-title {
+  font-weight: 600;
+}
+
+.furnace-shell-advanced-description {
+  color: var(--text-muted);
+  font-size: 0.88em;
+}
+
+.furnace-shell-advanced-body {
+  padding: 0 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.furnace-shell-advanced-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}

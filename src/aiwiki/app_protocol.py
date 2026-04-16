@@ -191,7 +191,7 @@ DEFAULT_DASHBOARD_FILES = {
             "- [机器记忆动作队列](./machine-memory-actions.md)：看 machine-memory action lifecycle",
             "- [机器记忆修复计划](./machine-memory-repair-plan.md)：看 execution batch 和 execution proposal",
             "- [修复待办](./repair-backlog.md)：看 nightly 汇总出来的优先级队列",
-            "- [本地审阅面板](../../output/review/review-center.html)：直接看审阅 cockpit",
+            "- `output/review/review-center.html`：本地审阅面板；这是浏览器 / 系统 HTML 入口，不是 Obsidian 内部页面。",
             "",
             "## 推荐顺序",
             "",
@@ -220,7 +220,7 @@ DEFAULT_DASHBOARD_FILES = {
             "- [图谱视图](./graph-view.md)：看 machine-memory 图层和 graph health",
             "- [修复待办](./repair-backlog.md)：看 nightly 汇总出的优先级队列",
             "- [协议总览](./protocols.md)：看当前 active protocol",
-            "- [本地炉心面板](../../output/control/furnace-center.html)：直接看统一控制面板",
+            "- `output/control/furnace-center.html`：本地炉心面板；这是浏览器 / 系统 HTML 入口，不是 Obsidian 内部页面。",
             "",
             "## 怎么用",
             "",
@@ -249,7 +249,7 @@ DEFAULT_DASHBOARD_FILES = {
             "- [认知历史](./cognitive-history.md)：看哪些 judgment 已因证据漂移需要拉回复审",
             "- [执行审计](./execution-audit.md)：看 apply / revert 历史和策略分级",
             "- [炉心面板](./furnace-center.md)：看统一产品壳入口",
-            "- [本地执行面板](../../output/control/execution-center.html)：直接看执行 cockpit",
+            "- `output/control/execution-center.html`：本地执行面板；这是浏览器 / 系统 HTML 入口，不是 Obsidian 内部页面。",
             "",
             "## 怎么用",
             "",
@@ -276,7 +276,7 @@ DEFAULT_DASHBOARD_FILES = {
             "- [认知历史](./cognitive-history.md)：对照 judgment drift 和 review history 决定是否升级修复",
             "- [机器记忆修复计划](./machine-memory-repair-plan.md)：看 execution batch 和页级 patch plan",
             "- [机器记忆动作队列](./machine-memory-actions.md)：看 action lifecycle 和 policy",
-            "- [本地执行审计面板](../../output/control/execution-audit.html)：直接看 execution audit cockpit",
+            "- `output/control/execution-audit.html`：本地执行审计面板；这是浏览器 / 系统 HTML 入口，不是 Obsidian 内部页面。",
             "",
             "## 怎么用",
             "",
@@ -316,13 +316,14 @@ DEFAULT_DASHBOARD_FILES = {
             "- [图谱健康](./graph-health.md)：看 component、isolated/singleton/bridge 信号",
             "- [漂移报告](./drift-report.md)：看最近一次 machine-memory 结构变化",
             "- [概念质量](./concept-quality.md)：看图谱问题如何传导到 concept rewrite",
-            "- [本地图谱 HTML](../../output/graph/machine-memory.html)：直接看可视化图谱产物",
+            "- `output/graph/machine-memory.html`：本地图谱 HTML 产物；若在 Obsidian 里点开后跳到 Mihomo/Clash，说明系统把 `text/html` 默认程序绑到了它，不是炼丹炉把链接路由错了。",
             "",
             "## 怎么读",
             "",
             "1. 先看 component、hub 和 drift 是否稳定。",
             "2. 再看 link suggestion、action queue 和 repair proposal。",
             "3. 最后回到具体 `wiki/concepts/` 或 `wiki/sources/` 页面处理。",
+            "4. 需要真正看 HTML 图时，优先在浏览器里打开 `output/graph/machine-memory.html`。",
             "",
             "## 边界",
             "",
@@ -1190,6 +1191,14 @@ CAUSAL_RELATION_TYPES = ("causes", "enables", "constrains", "conflicts_with")
 
 
 LOW_RISK_APPLYABLE_ACTION_KINDS = {"add-source-concept-link"}
+
+# Monitoring action kinds that can be resolved with an acknowledge-and-close preview.
+RESOLVABLE_MONITOR_ACTION_KINDS = {
+    "monitor-bridge-concept",
+    "split-overloaded-concept",
+    "expand-singleton-concept",
+    "connect-isolated-source",
+}
 
 
 ACTIVE_CORPUS_TTL = timedelta(days=3)

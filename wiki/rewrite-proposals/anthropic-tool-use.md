@@ -6,7 +6,7 @@ title: "Anthropic Tool Use"
 target_path: "wiki/concepts/anthropic-tool-use.md"
 source_signature: "66b3fcbbccf4b3ae523239235633801b245852f4e015e5c871e37b461ebfacd2"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-16T02:08:48+00:00"
+last_compiled_at: "2026-04-16T14:24:31+00:00"
 ---
 
 # Rewrite Proposal · Anthropic Tool Use
@@ -15,11 +15,11 @@ last_compiled_at: "2026-04-16T02:08:48+00:00"
 - Status: `待审提案`
 - Priority: `high`
 - Score: `6`
-- Quality score: `78`
+- Quality score: `76`
 - Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T01:37:58+00:00`
-- Last proposed: `2026-04-16T02:08:48+00:00`
+- Last proposed: `2026-04-16T14:24:31+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`

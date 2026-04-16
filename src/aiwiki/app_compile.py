@@ -168,6 +168,7 @@ from .app_protocol import (
     LOW_RISK_APPLYABLE_ACTION_KINDS,
     PENDING_ACTION_STATUSES,
     PROTOCOL_LIBRARY,
+    RESOLVABLE_MONITOR_ACTION_KINDS,
     REWRITE_PROPOSAL_STATUSES,
     concept_focus_score,
     ensure_layout,
@@ -3341,6 +3342,8 @@ def apply_machine_memory_action(
             if isinstance(item, str) and item.strip()
         ]
         page.write_text(f"{render_frontmatter(frontmatter)}\n\n{body}\n", encoding="utf-8")
+    elif apply_mode == "resolve-monitor":
+        pass  # no state mutation needed; receipt + status change is the outcome
     else:
         raise RuntimeError(f"Unsupported apply mode: {apply_mode}")
 
@@ -3450,6 +3453,8 @@ def revert_machine_memory_action(
             if isinstance(item, str) and item.strip()
         ]
         page.write_text(f"{render_frontmatter(frontmatter)}\n\n{body}\n", encoding="utf-8")
+    elif apply_mode == "resolve-monitor":
+        pass  # no state to revert; status change below handles it
     else:
         raise RuntimeError(f"Unsupported revert apply mode: {apply_mode}")
 
@@ -4223,6 +4228,37 @@ def nightly_health(root: Path) -> dict[str, Any]:
     if promotion_result["count"]:
         compile_result = compile_wiki(root)
     lint_result = lint_wiki(root)
+
+    # Auto-consume accepted low-risk actions (planner auto-consumption)
+    auto_applied: list[dict[str, Any]] = []
+    try:
+        action_state = load_machine_memory_action_state(root)
+        accepted_ids = [
+            str(a.get("id") or "")
+            for a in action_state.get("actions", [])
+            if isinstance(a, dict)
+            and str(a.get("status") or "") == "accepted"
+            and bool(a.get("active", True))
+            and (
+                str(a.get("kind") or "") in LOW_RISK_APPLYABLE_ACTION_KINDS
+                or str(a.get("kind") or "") in RESOLVABLE_MONITOR_ACTION_KINDS
+            )
+        ]
+        for aid in accepted_ids:
+            try:
+                dry = apply_machine_memory_action(root, aid, note="nightly auto-consume", dry_run=True)
+                result = apply_machine_memory_action(
+                    root, aid, note="nightly auto-consume",
+                    bundle_path=str(dry.get("bundle_path") or ""),
+                )
+                auto_applied.append(result)
+            except Exception:
+                pass  # skip individual failures; don't block nightly
+        if auto_applied:
+            compile_result = compile_wiki(root)
+    except Exception:
+        pass  # don't let auto-consumption errors block nightly
+
     state = write_nightly_health(
         root,
         compile_result,
@@ -4237,6 +4273,7 @@ def nightly_health(root: Path) -> dict[str, Any]:
         "promotions": promotion_result,
         "aging": state["aging"],
         "repair_backlog": state["repair_backlog"]["path"],
+        "auto_applied": auto_applied,
         "state_path": relative_path(root, nightly_health_state_path(root)),
     }
 

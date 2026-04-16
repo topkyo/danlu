@@ -2244,10 +2244,23 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(html_path.exists())
         self.assertIn("今天先做什么", dashboard_payload)
         self.assertIn("本地炉心面板", dashboard_payload)
+        self.assertIn("`output/control/furnace-center.html`", dashboard_payload)
+        self.assertNotIn("[本地炉心面板](", dashboard_payload)
         self.assertIn("Compare transformer scale and inference cost", dashboard_payload)
         self.assertIn("Furnace Center", html_payload)
         self.assertIn("../../wiki/indexes/furnace-center.md", html_payload)
         self.assertIn("Compare transformer scale and inference cost", html_payload)
+
+    def test_compile_graph_view_note_explains_local_html_behavior(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        graph_view = (self.root / "wiki" / "indexes" / "graph-view.md").read_text(encoding="utf-8")
+
+        self.assertIn("`output/graph/machine-memory.html`", graph_view)
+        self.assertIn("text/html", graph_view)
+        self.assertIn("Mihomo/Clash", graph_view)
+        self.assertNotIn("[本地图谱 HTML](", graph_view)
 
     def test_furnace_center_surfaces_pilots_packs_receipts_and_commands(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -2631,6 +2644,21 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(result["state_path"], ".aiwiki/state/nightly-health.json")
         self.assertEqual(nightly_state["planner"]["recent_executed_action_ids"][0], action["id"])
 
+    def test_nightly_auto_consumes_accepted_monitor_actions(self) -> None:
+        self._seed_machine_memory_actions()
+        compile_wiki(self.root)
+
+        state = load_machine_memory_action_state(self.root)
+        bridge = next(a for a in state["actions"] if a["kind"] == "monitor-bridge-concept" and a["active"])
+        review_machine_memory_action(self.root, bridge["id"], "accepted", note="Queue nightly auto.")
+        compile_wiki(self.root)
+
+        result = nightly_health(self.root)
+        auto_applied = result.get("auto_applied", [])
+        self.assertGreaterEqual(len(auto_applied), 1)
+        resolved_ids = {a["id"] for a in auto_applied if a.get("status") == "resolved"}
+        self.assertIn(bridge["id"], resolved_ids)
+
     def test_compile_writes_drift_warnings_for_concept_disappear_source_break_and_judgment_invalidation(self) -> None:
         _, _, _ = self._prepare_citation_snapshot_refresh_action()
         compile_state_path = self.root / ".aiwiki" / "state" / "compile-state.json"
@@ -2814,6 +2842,9 @@ class AiwikiFlowTests(unittest.TestCase):
 
         product_shell = (self.root / "output" / "control" / "product-shell.html").read_text(encoding="utf-8")
         self.assertIn("Furnace Product Shell", product_shell)
+        self.assertIn("data-default-locale='zh'", product_shell)
+        self.assertIn("中文", product_shell)
+        self.assertIn("English", product_shell)
         self.assertIn(action["title"], product_shell)
         self.assertIn("source-first", product_shell)
         self.assertIn("../review/review-center.html", product_shell)
@@ -4837,6 +4868,11 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("commands", result["capabilities"])
         self.assertIn("shell-status", result["capabilities"]["commands"]["p0"])
         self.assertFalse(result["capabilities"]["supports_hidden_state_read"])
+        self.assertIn("llm_status", result)
+        self.assertIn("model_requested", result["llm_status"])
+        self.assertIn("effective_model", result["llm_status"])
+        self.assertIn("usage_visibility", result["llm_status"])
+        self.assertIn("usage_accounting", result["llm_status"])
         self.assertIn("judgment_assets", result)
         self.assertEqual(result["judgment_assets"]["counts"]["pages"], 0)
         self.assertEqual(result["links"]["judgment_assets_markdown"], "wiki/indexes/judgment-assets.md")
@@ -5169,7 +5205,10 @@ class AiwikiFlowTests(unittest.TestCase):
                 status = LLMConfig.status_from_env()
         self.assertTrue(status["configured"])
         self.assertEqual(status["backend"], BACKEND_CODEX_CLI)
+        self.assertEqual(status["effective_model"], "gpt-5.4")
         self.assertEqual(status["auth_mode"], "cli-session")
+        self.assertEqual(status["usage_visibility"], "opaque-cli")
+        self.assertEqual(status["usage_accounting"], "copilot-cli-session")
         self.assertTrue(status["image_analysis_supported"])
 
     def test_llm_config_uses_openai_backend_when_explicitly_configured(self) -> None:
@@ -5347,19 +5386,21 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("getActiveCuratedPagePath()", content)
         self.assertIn("getActiveConceptSlug()", content)
         self.assertIn("this.runPluginCommand(label, [command, ...args], { refreshAfter: true });", content)
+        self.assertIn('const DEFAULT_LOCALE = "zh";', content)
+        self.assertIn('locale: DEFAULT_LOCALE', content)
         self.assertIn('label: "Review Page"', content)
         self.assertIn('label: "Review Next"', content)
         self.assertIn('label: "Batch Review"', content)
         self.assertIn('label: "File Back"', content)
         self.assertIn('label: "Review Action"', content)
         self.assertIn('label: "Apply Archive"', content)
-        self.assertIn('text: "Re-review"', content)
+        self.assertIn('.t("Re-review")', content)
         self.assertIn('Manual review...', content)
-        self.assertIn('text: "Review"', content)
-        self.assertIn('text: "Review action"', content)
-        self.assertIn('? "Revert archive" : "Apply archive"', content)
-        self.assertIn('? "Revert action" : "Apply action"', content)
-        self.assertIn('? "Reactivate concept" : "Retire concept"', content)
+        self.assertIn('.t("Review")', content)
+        self.assertIn('.t("Review action")', content)
+        self.assertIn('.t(archiveControl.can_revert ? "Revert archive" : "Apply archive")', content)
+        self.assertIn('.t(actionControl.can_revert ? "Revert action" : "Apply action")', content)
+        self.assertIn('.t(String(entry.lifecycle_state || "") === "retired" ? "Reactivate concept" : "Retire concept")', content)
         self.assertIn("Judgment Focus", content)
         self.assertIn("Judgment Assets", content)
         self.assertIn("Next Review", content)
@@ -5369,12 +5410,12 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Rewrite Proposal Objects", content)
         self.assertIn("Action Control Objects", content)
         self.assertIn("runReviewPageBatchTransition(pagePaths, status, note = \"\", confidence = \"\")", content)
-        self.assertIn("Pick Review Transition", content)
-        self.assertIn("Pick Batch Review", content)
-        self.assertIn("Pick Rewrite Transition", content)
-        self.assertIn("Pick Action Transition", content)
-        self.assertIn('emptyNotice: "当前没有可见的 review backlog 条目，已回退到手动表单。"', content)
-        self.assertIn('emptyNotice: "当前没有可见的 machine-memory action context，已回退到手动表单。"', content)
+        self.assertIn('this.t("Pick Review Transition")', content)
+        self.assertIn('this.t("Pick Batch Review")', content)
+        self.assertIn('this.t("Pick Rewrite Transition")', content)
+        self.assertIn('this.t("Pick Action Transition")', content)
+        self.assertIn('emptyNotice: this.t("No visible review backlog item is available; fell back to the manual form.")', content)
+        self.assertIn('emptyNotice: this.t("No visible machine-memory action context is available; fell back to the manual form.")', content)
         self.assertIn('output/control/shell-summary.json', content)
         self.assertIn('review_controls', content)
         self.assertIn('reviewControlList("decision_pages")', content)
@@ -5418,6 +5459,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("aiwiki-nightly.service", content)
         self.assertIn("aiwiki-nightly.timer", content)
         self.assertIn("AIWIKI_NIGHTLY_COMPILE_LIMIT", content)
+        self.assertIn("AIWIKI_LLM_MODEL=gpt-5.4", content)
 
     def test_nightly_systemd_templates_exist(self) -> None:
         service_template = Path("/home/tim/ai-wiki/systemd/aiwiki-nightly.service.template")
@@ -5678,6 +5720,45 @@ class AiwikiFlowTests(unittest.TestCase):
         state = load_machine_memory_action_state(self.root)
         refreshed = next(item for item in state["actions"] if item["id"] == action["id"])
         self.assertEqual(refreshed["status"], "proposed")
+
+    def test_apply_and_revert_monitor_bridge_concept_action(self) -> None:
+        self._seed_machine_memory_actions()
+        compile_wiki(self.root)
+
+        state = load_machine_memory_action_state(self.root)
+        bridge_action = next(
+            (a for a in state["actions"] if a["kind"] == "monitor-bridge-concept" and a["active"]),
+            None,
+        )
+        self.assertIsNotNone(bridge_action, "Expected at least one active bridge-concept action.")
+
+        review_machine_memory_action(self.root, bridge_action["id"], "accepted", note="Accept bridge monitor.")
+
+        dry_run = apply_machine_memory_action(self.root, bridge_action["id"], dry_run=True)
+        self.assertEqual(dry_run["apply_mode"], "resolve-monitor")
+        self.assertTrue(dry_run["dry_run"])
+
+        bundle_path = self.root / dry_run["bundle_path"]
+        bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        bundle_path.write_text(
+            json.dumps(dry_run["bundle"], ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        apply_result = apply_machine_memory_action(
+            self.root,
+            bridge_action["id"],
+            note="Resolve bridge concept monitor.",
+            bundle_path=dry_run["bundle_path"],
+        )
+        self.assertEqual(apply_result["status"], "resolved")
+        self.assertEqual(apply_result["apply_mode"], "resolve-monitor")
+        self.assertTrue((self.root / apply_result["receipt_path"]).exists())
+
+        revert_machine_memory_action(self.root, bridge_action["id"], note="Undo resolve.")
+        state_after = load_machine_memory_action_state(self.root)
+        reverted = next(a for a in state_after["actions"] if a["id"] == bridge_action["id"])
+        self.assertEqual(reverted["status"], "proposed")
 
     def test_compile_generates_concept_quality_page(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

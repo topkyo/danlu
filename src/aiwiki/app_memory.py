@@ -73,6 +73,7 @@ from .app_protocol import (
     LOW_RISK_APPLYABLE_ACTION_KINDS,
     PENDING_ACTION_STATUSES,
     PROTOCOL_LIBRARY,
+    RESOLVABLE_MONITOR_ACTION_KINDS,
     REWRITE_PROPOSAL_STATUSES,
     action_focus_score,
     ensure_layout,
@@ -1249,11 +1250,16 @@ def reconcile_machine_memory_actions(
         )
         if preserved_pending:
             preview = safe_apply_preview(root, previous)
-            if str(previous.get("kind") or "") in LOW_RISK_APPLYABLE_ACTION_KINDS:
+            kind = str(previous.get("kind") or "")
+            if kind in LOW_RISK_APPLYABLE_ACTION_KINDS:
                 try:
                     validate_low_risk_action_targets(root, previous)
                 except RuntimeError:
                     preserved_pending = False
+            elif kind in RESOLVABLE_MONITOR_ACTION_KINDS:
+                # Monitor actions are signal-driven: if they disappear from the
+                # current candidate set the underlying signal is gone.
+                preserved_pending = False
             elif not isinstance(preview, dict):
                 preserved_pending = False
         if preserved_pending:

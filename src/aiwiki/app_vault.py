@@ -71,6 +71,89 @@ DEFAULT_PLUGIN_DATA = {
     "recentRuns": [],
 }
 
+FOLDER_LABEL_SNIPPET_NAME = "danlu-zh-folders"
+
+DEFAULT_OBSIDIAN_APPEARANCE = {
+    "enabledCssSnippets": [FOLDER_LABEL_SNIPPET_NAME],
+}
+
+FOLDER_LABEL_OVERRIDES: tuple[tuple[str, str], ...] = (
+    ("raw", "原料 raw"),
+    ("output", "输出 output"),
+    ("schema", "规则 schema"),
+    ("scripts", "脚本 scripts"),
+    ("prompts", "提示词 prompts"),
+    ("raw/inbox", "收件箱 inbox"),
+    ("raw/assets", "附件 assets"),
+    ("raw/normalized", "标准化 normalized"),
+    ("wiki/sources", "来源 sources"),
+    ("wiki/concepts", "概念 concepts"),
+    ("wiki/derived", "派生 derived"),
+    ("wiki/decisions", "决策 decisions"),
+    ("wiki/judgments", "判断 judgments"),
+    ("wiki/indexes", "索引 indexes"),
+    ("wiki/execution-proposals", "执行提案 execution-proposals"),
+    ("wiki/rewrite-proposals", "改写提案 rewrite-proposals"),
+    ("output/agents", "智能体 agents"),
+    ("output/control", "控制面板 control"),
+    ("output/control/execution-bundles", "执行包 execution-bundles"),
+    ("output/control/execution-receipts", "执行回执 execution-receipts"),
+    ("output/graph", "图谱 graph"),
+    ("output/lint", "检查 lint"),
+    ("output/packs", "输出包 packs"),
+    ("output/packs/review", "审阅包 review"),
+    ("output/packs/decision-memos", "决策备忘 decision-memos"),
+    ("output/packs/sop-drafts", "SOP 草稿 sop-drafts"),
+    ("output/pilots", "协议评分 pilots"),
+    ("output/reports", "报告 reports"),
+    ("output/review", "审阅 review"),
+    ("output/figures", "图表 figures"),
+    ("output/slides", "幻灯片 slides"),
+    ("schema/protocols", "协议 protocols"),
+    ("schema/protocols/research", "研发协议 research"),
+    ("schema/protocols/general", "通用协议 general"),
+    ("schema/protocols/investing", "投资协议 investing"),
+    ("schema/protocols/product", "产品协议 product"),
+    ("schema/protocols/ops", "运维协议 ops"),
+)
+
+
+def _folder_label_selectors(path: str) -> tuple[str, ...]:
+    return (
+        f'.nav-folder[data-path="{path}"] > .nav-folder-title > .nav-folder-title-content',
+        f'.nav-folder-title[data-path="{path}"] > .nav-folder-title-content',
+        f'.tree-item[data-path="{path}"] > .tree-item-self > .tree-item-inner',
+        f'.tree-item-self[data-path="{path}"] > .tree-item-inner',
+    )
+
+
+def _render_folder_label_snippet() -> str:
+    lines = [
+        "/*",
+        " * 炼丹炉 vault — 文件浏览器中文化",
+        " * 保留运行时英文路径不变，只覆盖 Obsidian 左侧文件树显示文本。",
+        " * 同时兼容旧结构（data-path 在父级）和新结构（data-path 在 title/self）两种 DOM。",
+        " */",
+        "",
+    ]
+    for path, label in FOLDER_LABEL_OVERRIDES:
+        selectors = _folder_label_selectors(path)
+        pseudo_selectors = tuple(f"{selector}::after" for selector in selectors)
+        lines.extend(
+            [
+                f"/* {path} -> {label} */",
+                ",\n".join(selectors) + " {",
+                "  font-size: 0 !important;",
+                "}",
+                ",\n".join(pseudo_selectors) + " {",
+                f'  content: "{label}";',
+                "  font-size: var(--nav-item-size, 13px) !important;",
+                "}",
+                "",
+            ]
+        )
+    return "\n".join(lines)
+
 
 def _default_workspace_document() -> dict[str, Any]:
     return {
@@ -488,6 +571,7 @@ def bootstrap_new_vault(runtime_root: Path, target_root: Path, *, force: bool = 
         "README.md": _render_vault_readme(runtime_root),
         "HOME.md": _render_vault_home(),
         "scripts/aiwiki-launcher.sh": _render_launcher_script(runtime_root),
+        f".obsidian/snippets/{FOLDER_LABEL_SNIPPET_NAME}.css": _render_folder_label_snippet(),
     }
     for relative, content in managed_text_files.items():
         path = target_root / relative
@@ -499,6 +583,7 @@ def bootstrap_new_vault(runtime_root: Path, target_root: Path, *, force: bool = 
     os.chmod(launcher_path, current_mode | 0o111)
 
     json_files: dict[str, dict[str, Any]] = {
+        ".obsidian/appearance.json": DEFAULT_OBSIDIAN_APPEARANCE,
         ".obsidian/app.json": DEFAULT_OBSIDIAN_APP,
         ".obsidian/core-plugins.json": DEFAULT_OBSIDIAN_CORE_PLUGINS,
         ".obsidian/workspace.json": _default_workspace_document(),

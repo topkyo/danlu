@@ -9,6 +9,7 @@ from typing import Any
 
 DEFAULT_BACKEND = "auto"
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
+DEFAULT_CODEX_MODEL = "gpt-5.4"
 BACKEND_OPENAI_API = "openai-api"
 BACKEND_CODEX_CLI = "codex-cli"
 BACKEND_CLAUDE_CLI = "claude-cli"
@@ -33,6 +34,7 @@ class LLMConfig:
     def from_env(cls) -> "LLMConfig":
         values = _read_env()
         backend = _resolve_backend(values)
+        effective_model = _effective_model(values["model"], backend)
         if backend == BACKEND_OPENAI_API:
             missing: list[str] = []
             if not values["model"]:
@@ -56,7 +58,7 @@ class LLMConfig:
 
         return cls(
             backend=backend,
-            model=values["model"],
+            model=effective_model,
             api_key=values["api_key"],
             base_url=values["base_url"],
             timeout_seconds=values["timeout_seconds"],
@@ -77,18 +79,22 @@ class LLMConfig:
             configured = True
             missing = []
             message = ""
+            effective_model = _effective_model(values["model"], backend)
         except RuntimeError as exc:
             backend = ""
             configured = False
             missing = _missing_items(values)
             message = str(exc)
+            effective_model = ""
         return {
             "configured": configured,
             "backend_requested": requested,
             "backend": backend,
             "image_analysis_supported": _backend_supports_image_analysis(backend),
             "available_backends": _available_backends(values),
-            "model": values["model"],
+            "model_requested": values["model"],
+            "model": effective_model or values["model"],
+            "effective_model": effective_model,
             "api_key_present": bool(values["api_key"]),
             "base_url": values["base_url"],
             "timeout_seconds": values["timeout_seconds"],
@@ -101,6 +107,8 @@ class LLMConfig:
             "claude_available": bool(values["claude_path"]),
             "claude_path": values["claude_path"],
             "auth_mode": _auth_mode_for_backend(backend),
+            "usage_visibility": _usage_visibility_for_backend(backend),
+            "usage_accounting": _usage_accounting_for_backend(backend),
             "missing": missing,
             "message": message,
         }
@@ -174,6 +182,15 @@ def _validate_requested_backend(requested: str, values: dict[str, Any]) -> str:
     raise RuntimeError(_missing_backend_message(values))
 
 
+def _effective_model(requested_model: str, backend: str) -> str:
+    model = requested_model.strip()
+    if model:
+        return model
+    if backend == BACKEND_CODEX_CLI:
+        return DEFAULT_CODEX_MODEL
+    return ""
+
+
 def _available_backends(values: dict[str, Any]) -> list[str]:
     available: list[str] = []
     if values["api_key"] and values["model"]:
@@ -229,6 +246,24 @@ def _auth_mode_for_backend(backend: str) -> str:
         return "api-key"
     if backend in {BACKEND_CODEX_CLI, BACKEND_CLAUDE_CLI}:
         return "cli-session"
+    return ""
+
+
+def _usage_visibility_for_backend(backend: str) -> str:
+    if backend == BACKEND_OPENAI_API:
+        return "response-usage"
+    if backend in {BACKEND_CODEX_CLI, BACKEND_CLAUDE_CLI}:
+        return "opaque-cli"
+    return ""
+
+
+def _usage_accounting_for_backend(backend: str) -> str:
+    if backend == BACKEND_OPENAI_API:
+        return "provider-api"
+    if backend == BACKEND_CODEX_CLI:
+        return "copilot-cli-session"
+    if backend == BACKEND_CLAUDE_CLI:
+        return "claude-cli-session"
     return ""
 
 

@@ -63,3 +63,51 @@ qa-review downgrade heuristic:
 - New Session: yes
 - PROGRESS Read: no
 - Notes: Independent code-review agent review; initial medium finding on hardness reset was fixed before final pass.; auto-defaulted qa-review hit/miss/false-positive to 0 from write_gate_artifact pass
+
+- Date: 2026-04-16
+- Agent: Claude
+- Task: danlu workspace 中文导航 + HTML link safety
+- qa-review Mode: isolated-agent
+- qa-review Hit: 0
+- qa-review Miss: 0
+- qa-review False Positive: 0
+- qa-runtime Mode: not-run
+- qa-runtime Hit: 0
+- qa-runtime Miss: 0
+- qa-runtime False Positive: 0
+- Contract Scope Changed: no
+- New Session: yes
+- PROGRESS Read: no
+- Notes: n/a
+
+- Date: 2026-04-16
+- Agent: code-review agent
+- Task: danlu research-only cleanup + folder labels
+- qa-review Mode: isolated-agent
+- qa-review Hit: 0
+- qa-review Miss: 0
+- qa-review False Positive: 0
+- qa-runtime Mode: not-run
+- qa-runtime Hit: 0
+- qa-runtime Miss: 0
+- qa-runtime False Positive: 0
+- Contract Scope Changed: no
+- New Session: yes
+- PROGRESS Read: yes
+- Notes: auto-defaulted qa-review hit/miss/false-positive to 0 from write_gate_artifact pass
+
+- Date: 2026-04-16
+- Agent: Claude
+- Task: Product Shell UI simplification
+- qa-review Mode: isolated-agent
+- qa-review Hit: 0
+- qa-review Miss: 0
+- qa-review False Positive: 0
+- qa-runtime Mode: not-run
+- qa-runtime Hit: 0
+- qa-runtime Miss: 0
+- qa-runtime False Positive: 0
+- Contract Scope Changed: no
+- New Session: yes
+- PROGRESS Read: no
+- Notes: Independent code-review agent used after same-context helper could not auto-capture a body file.; auto-defaulted qa-review hit/miss/false-positive to 0 from write_gate_artifact pass

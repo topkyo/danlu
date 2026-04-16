@@ -6,7 +6,7 @@ title: "A2a"
 target_path: "wiki/concepts/a2a.md"
 source_signature: "f66159b548a84cbe56482d260ff4f84fdd37494b1947c479af11671c2a626f17"
 generated_by: "aiwiki-run-compile"
-last_compiled_at: "2026-04-15T09:19:10+00:00"
+last_compiled_at: "2026-04-16T14:24:31+00:00"
 ---
 
 # Rewrite Proposal · A2a
@@ -15,11 +15,11 @@ last_compiled_at: "2026-04-15T09:19:10+00:00"
 - Status: `待审提案`
 - Priority: `high`
 - Score: `6`
-- Quality score: `78`
+- Quality score: `76`
 - Quality band: `stable`
 - Apply ready: `False`
 - First proposed: `2026-04-15T01:37:58+00:00`
-- Last proposed: `2026-04-15T09:19:10+00:00`
+- Last proposed: `2026-04-16T14:24:31+00:00`
 - Reviewed at: `none`
 - Applied at: `none`
 - Reverted at: `none`

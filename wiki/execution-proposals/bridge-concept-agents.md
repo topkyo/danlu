@@ -1,35 +1,35 @@
 ---
 title: "\u89c2\u5bdf\u6865\u63a5\u6982\u5ff5 Agents"
 kind: "execution-proposal"
-status: "proposed"
+status: "accepted"
 action_id: "bridge-concept-agents"
 proposal_kind: "monitor-bridge"
 risk: "low"
 priority: "low"
 protocol: "research"
 policy_decision: "review"
-policy_rule_id: "proposed-triage"
-priority_score: "32"
-impact_score: "32"
+policy_rule_id: "research:monitor-bridge-concept"
+priority_score: "50"
+impact_score: "42"
 target_paths:
   - "wiki/concepts/agents.md"
 generated_by: "aiwiki-compile"
-last_compiled_at: "2026-04-15T09:49:48+00:00"
+last_compiled_at: "2026-04-16T14:24:38+00:00"
 ---
 
 # 观察桥接概念 Agents
 
 ## Overview
 - Action id: `bridge-concept-agents`
-- Status: `待处理`
+- Status: `已接受`
 - Kind: `monitor-bridge`
 - Risk: `low`
 - Protocol: `research`
 - Priority: `low`
-- Priority score: `32`
-- Impact score: `32`
+- Priority score: `50`
+- Impact score: `42`
 - Policy decision: `review`
-- Policy rule: `proposed-triage`
+- Policy rule: `research:monitor-bridge-concept`
 - Targets: `wiki/concepts/agents.md`
 - Bundle: `output/control/execution-bundles/bridge-concept-agents.json`
 
@@ -52,7 +52,7 @@ last_compiled_at: "2026-04-15T09:49:48+00:00"
 
 ## Commands
 - Suggested apply: `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action bridge-concept-agents --bundle output/control/execution-bundles/bridge-concept-agents.json`
-- Suggested next step: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action bridge-concept-agents --status accepted --note "Accepted for manual repair."`
+- Suggested next step: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action bridge-concept-agents --status resolved --note "Repair completed."`
 
 ## Safe Apply Preview
 - 当前 proposal 不支持低风险 safe apply。

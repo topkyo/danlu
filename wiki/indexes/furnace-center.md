@@ -1,6 +1,6 @@
 # 炉心面板
 
-- 最近编译时间：`2026-04-16T02:09:53+00:00`
+- 最近编译时间：`2026-04-16T14:24:39+00:00`
 - 当前协议：`research` (研发协议)
 - 来源节点：`15`
 - 概念节点：`30`
@@ -10,7 +10,7 @@
 - 生命周期概念待审 / 已退役：`30` / `0`
 - 证据漂移：`0`
 - Judgment review actions：`10`
-- Ready repair actions：`1`
+- Ready repair actions：`6`
 - 可直接 apply 的动作：`0`
 - Rewrite 提案：`12`
 - 可直接 apply 的 rewrite：`0`
@@ -31,12 +31,12 @@
 ### Execution Proposals
 - `overloaded-concept-and` | risk `high` | targets `wiki/concepts/and.md`
 - `overloaded-concept-the` | risk `high` | targets `wiki/concepts/the.md`
+- `bridge-concept-and` | risk `low` | targets `wiki/concepts/and.md`
+- `bridge-concept-the` | risk `low` | targets `wiki/concepts/the.md`
 - `bridge-concept-abstract` | risk `low` | targets `wiki/concepts/abstract.md`
 - `bridge-concept-agents` | risk `low` | targets `wiki/concepts/agents.md`
-- `bridge-concept-and` | risk `low` | targets `wiki/concepts/and.md`
 - `bridge-concept-judgment` | risk `low` | targets `wiki/concepts/judgment.md`
 - `bridge-concept-protocol` | risk `low` | targets `wiki/concepts/protocol.md`
-- `bridge-concept-the` | risk `low` | targets `wiki/concepts/the.md`
 
 ### Page-Level Patch Plan
 - `overloaded-concept-and` | patch step `3`
@@ -47,11 +47,11 @@
   - `wiki/concepts/the.md` | mode `rewrite` | sections `Summary, Related Sources, Related Concepts`
   - `wiki/indexes/concept-quality.md` | mode `review` | sections `Merge Candidates, Rewrite Priority`
   - `wiki/indexes/rewrite-proposals.md` | mode `review` | sections `Merge Candidates, Rewrite Priority`
-- `bridge-concept-abstract` | patch step `2`
-  - `wiki/concepts/abstract.md` | mode `review` | sections `Summary, Related Concepts, Related Sources`
+- `bridge-concept-and` | patch step `2`
+  - `wiki/concepts/and.md` | mode `review` | sections `Summary, Related Concepts, Related Sources`
   - `wiki/indexes/graph-health.md` | mode `review` | sections `Bridge Concepts, Repair Signals`
-- `bridge-concept-agents` | patch step `2`
-  - `wiki/concepts/agents.md` | mode `review` | sections `Summary, Related Concepts, Related Sources`
+- `bridge-concept-the` | patch step `2`
+  - `wiki/concepts/the.md` | mode `review` | sections `Summary, Related Concepts, Related Sources`
   - `wiki/indexes/graph-health.md` | mode `review` | sections `Bridge Concepts, Repair Signals`
 
 ## 最近输出
@@ -167,8 +167,8 @@
 - [修复待办](./repair-backlog.md)
 - [协议总览](./protocols.md)
 - [输出面板](./Outputs.md)
-- [本地审阅面板](../../output/review/review-center.html)
-- [本地图谱视图](../../output/graph/machine-memory.html)
-- [本地炉心面板](../../output/control/furnace-center.html)
-- [本地执行面板](../../output/control/execution-center.html)
-- [本地执行审计面板](../../output/control/execution-audit.html)
+- `output/review/review-center.html`：本地审阅面板（浏览器 / 系统 HTML 入口）
+- `output/graph/machine-memory.html`：本地图谱视图（若点开变成 Mihomo/Clash，说明系统接管了 `text/html`）
+- `output/control/furnace-center.html`：本地炉心面板（浏览器 / 系统 HTML 入口）
+- `output/control/execution-center.html`：本地执行面板（浏览器 / 系统 HTML 入口）
+- `output/control/execution-audit.html`：本地执行审计面板（浏览器 / 系统 HTML 入口）
