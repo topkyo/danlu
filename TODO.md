@@ -2,7 +2,7 @@
 
 > 基于 2026-04-16 全量代码 / 状态 / 内容 / 测试 / 运行态独立评估。
 > 评估方法论：**双轴打分**——基建完成度（代码/架构/管线）× 内容牵引力（真实知识密度/治理闭合/执行落地）。
-> 当前综合评分 **8.0 / 10**（基建 8.5 / 内容 6.9）。目标 **9.0+**。
+> 当前综合评分 **8.3 / 10**（基建 8.6 / 内容 7.3）。目标 **9.0+**。
 
 ---
 
@@ -13,7 +13,7 @@
 | 指标 | 数据 |
 |------|------|
 | Python 源码 | 25 模块 / 33,416 行 |
-| 测试 | 14 文件 / 10,305 行 / 321 tests / 93% coverage |
+| 测试 | 14 文件 / 10,400+ 行 / 326 tests / 93% coverage |
 | CLI 命令 | 37 个（ingest × 6 / compile × 4 / query × 3 / review × 5 / execute × 5 / governance × 6 / shell × 4 / automation × 4） |
 | 原料 | 46 raw files（30 images + 16 markdown） |
 | 知识资产 | 16 sources → 30 concepts → 6 judgments → 4 decisions → 2 derived |
@@ -22,29 +22,29 @@
 | 协议 | 5 套（general / investing / research / product / ops）× 8 模板 |
 | Obsidian 插件 | furnace-product-shell v0.2.0（4,451 行 JS） |
 | 状态文件 | 27 个 JSON/JSONL（machine-memory 19K 行 / nightly-health 11K 行 / execution-policy-decisions 1,265 行） |
-| 闭环迭代 | 54 段（verify + qa-review + closed_loop） |
+| 闭环迭代 | 57 段（verify + qa-review + closed_loop） |
 
 ### 双轴打分
 
 | 维度 | 基建分 | 内容分 | 综合 | 关键证据 |
 |------|--------|--------|------|----------|
 | ① Evidence Fabric | 9.0 | 7.5 | **8.5** | 5 drop 入口 + archive 闭环 ✓ / 但 46 raw → 16 compiled 量不大 |
-| ② Knowledge Compiler | 9.0 | 6.5 | **8.0** | 增量 8 阶段 + dirty/clean 全链路 ✓ / 但 30 concepts 全 soft、0 rewrite 被 apply |
+| ② Knowledge Compiler | 9.0 | 7.0 | **8.3** | 增量 8 阶段 + dirty/clean 全链路 ✓ / 概念硬度提升至 1 hard + 5 medium + 24 soft |
 | ③ Judgment System | 8.5 | 7.0 | **8.0** | lifecycle + counter-evidence + revisit 完整 ✓ / 但仅 2 条 j→j 边、全 medium confidence |
-| ④ Machine Memory | 8.5 | 7.0 | **8.0** | topology + planner + health 全链路 ✓ / 但 8 actions 全 proposed、仅消费 1 |
+| ④ Machine Memory | 8.5 | 8.0 | **8.5** | topology + planner + health 全链路 ✓ / 18 actions 全部 resolved、18 execution receipts |
 | ⑤ Schema / Protocol | 9.0 | 8.5 | **8.8** | 5 protocols 真正驱动 runtime ✓ / 仅 research 被深度运行 |
-| ⑥ Governance | 8.5 | 6.0 | **7.5** | review → aging → repair 管线完整 ✓ / **但产生工作不消化**：39 warnings + 25 rewrites + 8 proposals 全 pending |
-| ⑦ Execution Layer | 7.5 | 5.5 | **6.8** | apply→revert→re-apply 已证明 ✓ / 但仅 1 类 action、3 receipts、planner 未自动消费 |
+| ⑥ Governance | 8.5 | 7.5 | **8.2** | review → aging → repair 管线完整 ✓ / 18 actions 全部闭合、nightly auto-consume 上线、rewrite proposals 仍需 LLM |
+| ⑦ Execution Layer | 8.5 | 7.5 | **8.2** | apply→revert→re-apply 已证明 ✓ / 4 种 action 类型、18 receipts、planner 自动消费已上线 |
 | ⑧ Outputs | 8.0 | 6.5 | **7.5** | 107 artifacts 格式齐全 ✓ / 但 43 是 lint 报告、高价值 output 稀疏 |
 | ⑨ Product Shell | 8.5 | 8.0 | **8.3** | 极简面板 + 3 drop modal + command split + HTML fallback + new-vault ✓ / 但仍无交互式图谱 |
-| **加权平均** | **8.5** | **6.9** | **8.0** | |
+| **加权平均** | **8.6** | **7.3** | **8.3** | |
 
 ### 对比前次自评（8.4）的修正
 
-前次自评 8.4 主要高估了三处：
+前次自评 8.4 主要高估了三处（本轮已部分修复）：
 
-1. **Governance 高估**（8.5 → 7.5）：管线完整不等于管线消化——39 lint warnings 未清、25 rewrite proposals 零 apply、8 execution proposals 零自动消费，治理层产生了大量工作但几乎没有闭合
-2. **Execution 高估**（7.5 → 6.8）：3 receipts 仅证明路径可通，但 action 类型单一（仅 citation-refresh）、planner 自动消费完全未激活
+1. **Governance 高估**（8.5 → 7.5 → 修正后 8.2）：Phase A 治理积压已清零——18 个 execution actions 全部 resolved，nightly auto-consume 上线；但 12 个 rewrite proposals 仍需 LLM 生成 candidate
+2. **Execution 高估**（7.5 → 6.8 → 修正后 8.2）：现已拓宽至 4 种 action 类型、18 receipts、planner 自动消费已上线
 3. **Output 高估**（8.0 → 7.5）：107 artifacts 数量可观，但 43 是 lint 报告、有效高价值输出（真实 reports/slides/figures）偏少
 
 ### 核心优势（值得保持）
@@ -58,9 +58,9 @@
 
 ### 核心短板（必须解决）
 
-1. **治理只产不消**：系统非常擅长"发现问题"（lint warnings / rewrite proposals / execution proposals / aging reports），但没有一个闭合——30 concepts 全标"待回看"、25 rewrite proposals 全 pending、8 execution proposals 全 proposed
-2. **概念层全弱**：30 concepts 全部 soft hardness / low-medium confidence / evidence-gap 标记，judgment 层建在弱概念上的"空中楼阁"风险
-3. **执行层窄且浅**：仅 1 种 action 类型被真实执行、planner 无自动消费循环、dry-run 不产出结构化产物
+1. **治理只产不消**：系统非常擅长"发现问题"（lint warnings / rewrite proposals / execution proposals / aging reports），nightly auto-consume 已上线、18 个 execution actions 已全部闭合；但 12 个 rewrite proposals 仍需 LLM 生成 candidate_markdown 才能消费
+2. **概念层偏弱**：30 concepts 中 1 hard + 5 medium + 24 soft，比之前全 soft 有明显进步但多数仍待加固
+3. **执行层已拓宽**：4 种 action 类型（bridge-concept / overloaded-concept / singleton-concept / isolated-source）被真实执行，18 receipts，planner 自动消费已上线
 4. **内容密度低**：16 sources → 30 concepts 几乎 1:2，很多 concept 只有 1-2 个 source 支撑；有效知识内容约 4,000 行，元数据 overhead 高
 
 ---
@@ -139,31 +139,32 @@
 | 维度 | 当前 | Phase A 后 | Phase B 后 | Phase C 后 |
 |------|------|-----------|-----------|-----------|
 | ① Evidence Fabric | 8.5 | 8.5 | **9.0** | 9.0 |
-| ② Knowledge Compiler | 8.0 | 8.0 | **9.0** | 9.0 |
+| ② Knowledge Compiler | 8.3 | 8.5 | **9.0** | 9.0 |
 | ③ Judgment System | 8.0 | 8.0 | **9.0** | 9.0 |
-| ④ Machine Memory | 8.0 | 8.5 | **9.0** | 9.0 |
+| ④ Machine Memory | 8.5 | 8.5 | **9.0** | 9.0 |
 | ⑤ Schema / Protocol | 8.8 | 8.8 | 9.0 | **9.5** |
 | ⑥ Governance | **8.2** | **8.5** | 9.0 | 9.0 |
-| ⑦ Execution Layer | **7.8** | **8.5** | 8.5 | 9.0 |
+| ⑦ Execution Layer | **8.2** | **8.5** | 8.5 | 9.0 |
 | ⑧ Outputs | 7.5 | 7.5 | 8.0 | **9.0** |
 | ⑨ Product Shell | 8.5 | 8.5 | 8.5 | **9.0** |
-| **综合** | **8.2** | **8.4** | **8.8** | **9.1** |
+| **综合** | **8.3** | **8.5** | **8.8** | **9.1** |
 
 ---
 
-## 四、已完成里程碑（56 轮闭环）
+## 四、已完成里程碑（57 轮闭环）
 
 - ✅ `app.py` 动态 facade → 静态 shim + 25 个 owner module（最大 4,275L `app_compile.py`）
-- ✅ 321 tests / 93% coverage / verify 全绿 / 无循环依赖
-- ✅ 56 段闭环迭代（verify + qa-review + closed_loop）
+- ✅ 326 tests / 93% coverage / verify 全绿 / 无循环依赖
+- ✅ 57 段闭环迭代（verify + qa-review + closed_loop）
 - ✅ 增量编译 8 阶段 dirty/clean state + compile-state.json 持久化
 - ✅ Product Shell 模块化重构：7 源文件 + build.sh + 极简主面板
 - ✅ `new-vault` 脚手架：外部 runtime launcher 模式
 - ✅ Product Shell: search / batch apply / batch revert / review-next / safe batch review modal
 - ✅ Judgment lifecycle / cognitive-history / governance surfaces 全链路
 - ✅ planner-state / query-route-telemetry / execution-policy-decisions 持久化（1,265 policy decisions）
-- ✅ 概念因果网络：5 hard/medium concepts / 12 causal_links / machine memory 全链路
-- ✅ 执行层真实闭环：7 receipts / nightly auto-consume / escalation / resolve-monitor apply mode
+- ✅ 概念因果网络：1 hard + 5 medium concepts / 12 causal_links / machine memory 全链路
+- ✅ 执行层全链路闭环：18 receipts / 4 种 action 类型 / nightly auto-consume / escalation / resolve-monitor apply mode
+- ✅ 治理积压清零：18/18 execution actions resolved，0 pending
 - ✅ 架构文档：九层终极形态 + 自动化角色 + Product Shell 定位明确
 - ✅ 5 protocols × 8 templates 真正驱动 compile / query / review / nightly
 
@@ -173,8 +174,8 @@
 
 | 风险 | 等级 | 说明 |
 |------|------|------|
-| 治理不消化 | 🟡 中 | Phase A 已消化 7 个 execution proposals，nightly auto-consume 上线，但 rewrite proposals 仍需 LLM 生成 candidate |
-| 概念空中楼阁 | 🟡 中 | 30 concepts 全 soft + judgment 建在上面 = 判断资产可信度受限 |
+| 治理不消化 | 🟢 低 | 18 个 execution actions 全部 resolved，nightly auto-consume 上线；rewrite proposals 仍需 LLM 生成 candidate |
+| 概念空中楼阁 | 🟡 中 | 1 hard + 5 medium + 24 soft，有进步但多数仍 soft |
 | 使用密度不足 | 🟡 中 | Phase B 需要持续投料和使用，不是一次性冲刺能完成的 |
 | Product Shell 体验断层 | 🟢 低 | 极简面板已上线，Obsidian 端投料/提问/查看产出全可用；剩余是交互式图谱 polish |
 
@@ -182,4 +183,4 @@
 
 ## 六、一句话结论
 
-> **炼丹炉的基建已经到了同类项目的天花板（8.5），但内容牵引力还在起步期（6.9）。当务之急不是继续修管线，而是清零积压、用系统产出真实知识、让治理链从"发现"走到"解决"。Phase A 确定能做，Phase B 需要持续使用，Phase C 是产品打磨——三阶段走完就稳过 9 分。**
+> **炼丹炉的基建已经到了同类项目的天花板（8.6），内容牵引力稳步提升（7.3）。治理积压清零、4 种 action 全链路闭合、概念硬度从全 soft 提升至 6 个 medium+ ——Phase A 核心目标已基本达成。下一步重点是 Phase B 内容密实（需真实使用投料）和 Phase C 产品打磨。**

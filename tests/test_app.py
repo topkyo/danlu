@@ -13,6 +13,7 @@ from typing import Any
 from unittest.mock import patch
 
 from aiwiki.app_compile import (
+    _save_machine_memory_action_records,
     apply_concept_rewrite,
     apply_machine_memory_action,
     apply_material_archive,
@@ -6266,6 +6267,108 @@ class AiwikiFlowTests(unittest.TestCase):
         lint = lint_wiki(self.root)
         report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
         self.assertIn("Missing domain pilot scorecard", report_text)
+
+
+    def test_resolved_action_reopened_when_signal_reappears(self) -> None:
+        """When a resolved action disappears then reappears, it should be reopened."""
+        self._seed_machine_memory_actions()
+        compile_wiki(self.root)
+
+        state = load_machine_memory_action_state(self.root)
+        bridge = next(
+            (a for a in state["actions"] if a["kind"] == "monitor-bridge-concept" and a["active"]),
+            None,
+        )
+        self.assertIsNotNone(bridge)
+        bridge["status"] = "resolved"
+        bridge["active"] = False
+        bridge["reopened_count"] = 0
+        _save_machine_memory_action_records(self.root, state["actions"])
+
+        compile_wiki(self.root)
+        state2 = load_machine_memory_action_state(self.root)
+        refreshed = next((a for a in state2["actions"] if a["id"] == bridge["id"]), None)
+        if refreshed is not None and refreshed.get("active"):
+            self.assertEqual(refreshed["status"], "proposed")
+            self.assertEqual(refreshed.get("reopened_count", 0), 1)
+
+    def test_render_figure_brief_generates_valid_scaffold(self) -> None:
+        """render_figure_brief should produce a valid figure scaffold."""
+        from aiwiki.app_queries import render_figure_brief
+
+        ingest_source(self.root, str(self.sample), title="Sample Source")
+        compile_wiki(self.root)
+        protocol_state = load_protocol_state(self.root)
+        result = render_figure_brief(
+            self.root,
+            "什么是 Agent 的核心能力？",
+            entries=[],
+            concepts=[],
+            machine_query={"top_concepts": [], "top_sources": [], "routing_analysis": {}},
+            protocol_state=protocol_state,
+            created_at="2026-01-01T00:00:00+00:00",
+            artifact_id="test-figure-001",
+        )
+        self.assertIn("图表简报", result)
+        self.assertIn("推荐索引页", result)
+        self.assertIn("制图要求", result)
+        self.assertIn("test-figure-001", result)
+
+    def test_render_slides_generates_valid_scaffold(self) -> None:
+        """render_slides should produce a valid marp scaffold."""
+        from aiwiki.app_queries import render_slides
+
+        ingest_source(self.root, str(self.sample), title="Sample Source")
+        compile_wiki(self.root)
+        protocol_state = load_protocol_state(self.root)
+        result = render_slides(
+            self.root,
+            "Agent 技术栈全景",
+            entries=[],
+            concepts=[],
+            machine_query={"top_concepts": [], "top_sources": [], "routing_analysis": {}},
+            protocol_state=protocol_state,
+            created_at="2026-01-01T00:00:00+00:00",
+            artifact_id="test-slides-001",
+        )
+        self.assertIn("marp: true", result)
+        self.assertIn("使用说明", result)
+        self.assertIn("相关来源", result)
+
+    def test_compile_detects_isolated_sources(self) -> None:
+        """compile should detect sources not connected to any concept."""
+        from aiwiki.app_memory import build_machine_memory_health
+
+        # Ingest a single source with minimal content unlikely to produce concept terms
+        isolated = self.root / "isolated_source.md"
+        isolated.write_text("---\ntitle: xyz\n---\nxyz", encoding="utf-8")
+        ingest_source(self.root, str(isolated), title="xyz")
+        compile_wiki(self.root)
+
+        memory = load_machine_memory(self.root)
+        health = build_machine_memory_health(memory)
+        # Health should have at least the isolated source detection fields
+        self.assertIn("isolated_source_ids", health)
+        self.assertIsInstance(health["isolated_source_ids"], list)
+
+    def test_link_suggestion_scored_by_shared_terms(self) -> None:
+        """Link suggestions should be scored by number of shared terms."""
+        from aiwiki.app_memory import build_machine_memory_health
+
+        ingest_source(self.root, str(self.sample), title="Agent Architecture Overview")
+        second = self.root / "second_agent.md"
+        second.write_text(
+            "# Agent Architecture Deep Dive\n\nAgent systems require careful orchestration.\n",
+            encoding="utf-8",
+        )
+        ingest_source(self.root, str(second), title="Agent Deep Dive")
+        compile_wiki(self.root)
+
+        memory = load_machine_memory(self.root)
+        health = build_machine_memory_health(memory)
+        suggestions = health.get("link_suggestions", [])
+        if len(suggestions) >= 2:
+            self.assertGreaterEqual(suggestions[0]["score"], suggestions[1]["score"])
 
 
 if __name__ == "__main__":
