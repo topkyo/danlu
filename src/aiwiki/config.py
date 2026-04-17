@@ -11,6 +11,8 @@ DEFAULT_BACKEND = "auto"
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 DEFAULT_CODEX_MODEL = "gpt-5.4"
+DEFAULT_OPENAI_API_MODEL = "gpt-4.1-mini"
+DEFAULT_ANTHROPIC_API_MODEL = "claude-sonnet-4-20250514"
 BACKEND_OPENAI_API = "openai-api"
 BACKEND_ANTHROPIC_API = "anthropic-api"
 BACKEND_CODEX_CLI = "codex-cli"
@@ -40,21 +42,11 @@ class LLMConfig:
         backend = _resolve_backend(values)
         effective_model = _effective_model(values["model"], backend)
         if backend == BACKEND_OPENAI_API:
-            missing: list[str] = []
-            if not values["model"]:
-                missing.append("AIWIKI_LLM_MODEL or OPENAI_MODEL")
             if not values["api_key"]:
-                missing.append("AIWIKI_LLM_API_KEY or OPENAI_API_KEY")
-            if missing:
-                raise RuntimeError(f"Missing LLM configuration: {', '.join(missing)}")
+                raise RuntimeError("Missing LLM configuration: AIWIKI_LLM_API_KEY or OPENAI_API_KEY")
         elif backend == BACKEND_ANTHROPIC_API:
-            missing = []
-            if not values["model"]:
-                missing.append("AIWIKI_LLM_MODEL")
             if not values["anthropic_api_key"]:
-                missing.append("AIWIKI_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY")
-            if missing:
-                raise RuntimeError(f"Missing LLM configuration: {', '.join(missing)}")
+                raise RuntimeError("Missing LLM configuration: AIWIKI_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY")
         elif backend == BACKEND_CODEX_CLI:
             if not values["codex_path"]:
                 raise RuntimeError(
@@ -185,9 +177,9 @@ def _resolve_backend(values: dict[str, Any]) -> str:
             raise RuntimeError(f"Unsupported AIWIKI_LLM_BACKEND `{requested}`. Expected one of: {supported}, auto.")
         return _validate_requested_backend(requested, values)
 
-    if values["api_key"] and values["model"]:
+    if values["api_key"]:
         return BACKEND_OPENAI_API
-    if values["anthropic_api_key"] and values["model"]:
+    if values["anthropic_api_key"]:
         return BACKEND_ANTHROPIC_API
     if values["codex_path"]:
         return BACKEND_CODEX_CLI
@@ -198,11 +190,11 @@ def _resolve_backend(values: dict[str, Any]) -> str:
 
 def _validate_requested_backend(requested: str, values: dict[str, Any]) -> str:
     if requested == BACKEND_OPENAI_API:
-        if not values["model"] or not values["api_key"]:
+        if not values["api_key"]:
             raise RuntimeError(_missing_backend_message(values))
         return requested
     if requested == BACKEND_ANTHROPIC_API:
-        if not values["model"] or not values["anthropic_api_key"]:
+        if not values["anthropic_api_key"]:
             raise RuntimeError(_missing_backend_message(values))
         return requested
     if requested == BACKEND_CODEX_CLI:
@@ -222,14 +214,18 @@ def _effective_model(requested_model: str, backend: str) -> str:
         return model
     if backend == BACKEND_CODEX_CLI:
         return DEFAULT_CODEX_MODEL
+    if backend == BACKEND_OPENAI_API:
+        return DEFAULT_OPENAI_API_MODEL
+    if backend == BACKEND_ANTHROPIC_API:
+        return DEFAULT_ANTHROPIC_API_MODEL
     return ""
 
 
 def _available_backends(values: dict[str, Any]) -> list[str]:
     available: list[str] = []
-    if values["api_key"] and values["model"]:
+    if values["api_key"]:
         available.append(BACKEND_OPENAI_API)
-    if values["anthropic_api_key"] and values["model"]:
+    if values["anthropic_api_key"]:
         available.append(BACKEND_ANTHROPIC_API)
     if values["codex_path"]:
         available.append(BACKEND_CODEX_CLI)
@@ -246,21 +242,15 @@ def _missing_items(values: dict[str, Any]) -> list[str]:
             missing.append("OPENAI-compatible API key")
         if not values["anthropic_api_key"]:
             missing.append("Anthropic API key")
-        if not values["model"]:
-            missing.append("LLM model name")
         if not values["codex_path"]:
             missing.append(f"CLI command `{values['codex_command']}`")
         if not values["claude_path"]:
             missing.append(f"CLI command `{values['claude_command']}`")
         return missing
     if requested == BACKEND_OPENAI_API:
-        if not values["model"]:
-            missing.append("AIWIKI_LLM_MODEL or OPENAI_MODEL")
         if not values["api_key"]:
             missing.append("AIWIKI_LLM_API_KEY or OPENAI_API_KEY")
     elif requested == BACKEND_ANTHROPIC_API:
-        if not values["model"]:
-            missing.append("AIWIKI_LLM_MODEL")
         if not values["anthropic_api_key"]:
             missing.append("AIWIKI_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY")
     elif requested == BACKEND_CODEX_CLI and not values["codex_path"]:

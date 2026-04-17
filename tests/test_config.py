@@ -154,7 +154,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(status["usage_accounting"], "")
         self.assertEqual(
             status["missing"],
-            ["OPENAI-compatible API key", "Anthropic API key", "LLM model name", "CLI command `codex`", "CLI command `claude`"],
+            ["OPENAI-compatible API key", "Anthropic API key", "CLI command `codex`", "CLI command `claude`"],
         )
         self.assertIn("No usable LLM backend found", str(status["message"]))
 
