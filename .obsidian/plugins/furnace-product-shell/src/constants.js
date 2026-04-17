@@ -10,7 +10,7 @@ const DEFAULT_PROTOCOLS = ["general", "investing", "research", "product", "ops"]
 const DEFAULT_LOCALE = "zh";
 const DEFAULT_SETTINGS = {
   launcherPath: "scripts/aiwiki-launcher.sh",
-  defaultAskMode: "ask",
+  defaultAskMode: "run-ask",
   defaultAskFormat: "report",
   recentRunsLimit: 8,
   showAdvancedCommands: false,
@@ -46,6 +46,8 @@ const ZH_TEXT = {
   "auto (detect)": "自动检测",
   "LLM model": "LLM 模型",
   "Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = backend default.": "覆盖模型名称（如 gpt-5.4、claude-sonnet-4.5）。留空 = 后端默认。",
+  "route only (no LLM)": "仅路由（无 LLM）",
+  "LLM answer (recommended)": "LLM 深度回答（推荐）",
   "LLM API key": "LLM API Key",
   "API key for the openai-api backend. Stored locally in plugin data. Empty = use AIWIKI_LLM_API_KEY env var.": "openai-api 后端的 API Key。本地存储于插件数据中。留空 = 使用 AIWIKI_LLM_API_KEY 环境变量。",
   "Anthropic API key": "Anthropic API Key",

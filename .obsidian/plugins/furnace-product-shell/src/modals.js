@@ -31,8 +31,8 @@ class AskCommandModal extends Modal {
     const modeSetting = new Setting(contentEl).setName(t("Mode"));
     const modeSelect = modeSetting.controlEl.createEl("select");
     [
-      ["ask", "ask"],
-      ["run-ask", "run-ask"],
+      ["ask", t("route only (no LLM)")],
+      ["run-ask", t("LLM answer (recommended)")],
     ].forEach(([value, label]) => {
       const option = modeSelect.createEl("option", { text: label, value });
       option.value = value;

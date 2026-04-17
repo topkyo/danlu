@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from datetime import datetime, timezone
@@ -376,9 +377,20 @@ def auto_process_once(
 ) -> dict[str, Any]:
     ensure_layout(root)
     llm_enabled = bool(client) or (not deterministic_only and llm_status()["configured"])
+    llm_failed = False
 
     if llm_enabled and not deterministic_only:
-        compile_result = run_compile(root, client=client, limit=compile_limit)
+        try:
+            compile_result = run_compile(root, client=client, limit=compile_limit)
+        except Exception as exc:
+            logging.getLogger("aiwiki").warning("LLM compile failed, falling back to deterministic: %s", exc)
+            llm_failed = True
+            compile_result = {
+                "compile": compile_wiki(root),
+                "updated_pages": [],
+                "pending_pages": _pending_summary_count(root),
+                "skipped_pages": 0,
+            }
     else:
         compile_result = {
             "compile": compile_wiki(root),
@@ -387,8 +399,16 @@ def auto_process_once(
             "skipped_pages": 0,
         }
 
-    if semantic_lint and llm_enabled and not deterministic_only:
-        lint_result = run_lint(root, client=client)
+    if semantic_lint and llm_enabled and not deterministic_only and not llm_failed:
+        try:
+            lint_result = run_lint(root, client=client)
+        except Exception as exc:
+            logging.getLogger("aiwiki").warning("LLM lint failed, falling back to deterministic: %s", exc)
+            llm_failed = True
+            lint_result = {
+                "deterministic": lint_wiki(root),
+                "semantic_report": "",
+            }
     else:
         lint_result = {
             "deterministic": lint_wiki(root),
@@ -396,9 +416,11 @@ def auto_process_once(
         }
 
     snapshot = inbox_snapshot(root)
+    actually_used_llm = bool(llm_enabled and not deterministic_only and not llm_failed)
     result = {
         "processed_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-        "llm_used": bool(llm_enabled and not deterministic_only),
+        "llm_used": actually_used_llm,
+        "llm_fallback": llm_failed,
         "compile": compile_result,
         "lint": lint_result,
         "inbox_snapshot": snapshot,
@@ -409,6 +431,7 @@ def auto_process_once(
         {
             "event": "auto-process",
             "llm_used": result["llm_used"],
+            "llm_fallback": llm_failed,
             "compile_limit": compile_limit,
             "inbox_digest": snapshot["digest"],
         },
