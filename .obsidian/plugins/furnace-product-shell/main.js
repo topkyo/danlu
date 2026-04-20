@@ -38,9 +38,8 @@ const DEFAULT_SETTINGS = {
   locale: DEFAULT_LOCALE,
   llmBackend: "",
   llmModel: "",
-  llmApiKey: "",
-  llmAnthropicApiKey: "",
-  llmBaseUrl: "",
+  llmGithubToken: "",
+  llmGithubModelsBaseUrl: "",
 };
 const ZH_TEXT = {
   "Furnace Product Shell": "炼丹炉 Product Shell",
@@ -68,12 +67,10 @@ const ZH_TEXT = {
   "Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = backend default.": "覆盖模型名称（如 gpt-5.4、claude-sonnet-4.5）。留空 = 后端默认。",
   "route only (no LLM)": "仅路由（无 LLM）",
   "LLM answer (recommended)": "LLM 深度回答（推荐）",
-  "LLM API key": "LLM API Key",
-  "API key for the openai-api backend. Stored locally in plugin data. Empty = use AIWIKI_LLM_API_KEY env var.": "openai-api 后端的 API Key。本地存储于插件数据中。留空 = 使用 AIWIKI_LLM_API_KEY 环境变量。",
-  "Anthropic API key": "Anthropic API Key",
-  "API key for the anthropic-api backend. Stored locally in plugin data. Empty = use ANTHROPIC_API_KEY env var.": "anthropic-api 后端的 API Key。本地存储于插件数据中。留空 = 使用 ANTHROPIC_API_KEY 环境变量。",
-  "LLM base URL": "LLM Base URL",
-  "Custom API endpoint (e.g. https://api.openai.com/v1). Empty = default.": "自定义 API 端点（如 https://api.openai.com/v1）。留空 = 默认值。",
+  "GitHub token": "GitHub Token",
+  "Optional token for github-models-api. Stored locally in plugin data. Empty = use AIWIKI_GITHUB_TOKEN / GH_TOKEN / gh auth token.": "github-models-api 的可选 GitHub token。本地存储于插件数据中。留空 = 使用 AIWIKI_GITHUB_TOKEN / GH_TOKEN / gh auth token。",
+  "GitHub Models base URL": "GitHub Models Base URL",
+  "Override the GitHub Models endpoint. Empty = https://models.github.ai.": "覆盖 GitHub Models 端点。留空 = https://models.github.ai。",
   "LLM settings saved. New runs will use the updated configuration.": "LLM 设置已保存。新的运行将使用更新后的配置。",
   "Ask 炼丹炉": "问炼丹炉",
   Question: "问题",
@@ -1635,9 +1632,9 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
         dropdown
           .addOption("", t("auto (detect)"))
           .addOption("codex-cli", "codex-cli")
+          .addOption("github-models-api", "github-models-api")
+          .addOption("copilot-cli", "copilot-cli")
           .addOption("claude-cli", "claude-cli")
-          .addOption("openai-api", "openai-api")
-          .addOption("anthropic-api", "anthropic-api")
           .setValue(this.plugin.settings.llmBackend || "")
           .onChange(async (value) => {
             this.plugin.settings.llmBackend = value;
@@ -1660,14 +1657,14 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName(t("LLM API key"))
-      .setDesc(t("API key for the openai-api backend. Stored locally in plugin data. Empty = use AIWIKI_LLM_API_KEY env var."))
+      .setName(t("GitHub token"))
+      .setDesc(t("Optional token for github-models-api. Stored locally in plugin data. Empty = use AIWIKI_GITHUB_TOKEN / GH_TOKEN / gh auth token."))
       .addText((text) => {
         text
-          .setPlaceholder("sk-...")
-          .setValue(this.plugin.settings.llmApiKey || "")
+          .setPlaceholder("gho_...")
+          .setValue(this.plugin.settings.llmGithubToken || "")
           .onChange(async (value) => {
-            this.plugin.settings.llmApiKey = String(value || "").trim();
+            this.plugin.settings.llmGithubToken = String(value || "").trim();
             await this.plugin.savePluginState();
           });
         text.inputEl.type = "password";
@@ -1675,29 +1672,14 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName(t("Anthropic API key"))
-      .setDesc(t("API key for the anthropic-api backend. Stored locally in plugin data. Empty = use ANTHROPIC_API_KEY env var."))
-      .addText((text) => {
-        text
-          .setPlaceholder("sk-ant-...")
-          .setValue(this.plugin.settings.llmAnthropicApiKey || "")
-          .onChange(async (value) => {
-            this.plugin.settings.llmAnthropicApiKey = String(value || "").trim();
-            await this.plugin.savePluginState();
-          });
-        text.inputEl.type = "password";
-        text.inputEl.autocomplete = "off";
-      });
-
-    new Setting(containerEl)
-      .setName(t("LLM base URL"))
-      .setDesc(t("Custom API endpoint (e.g. https://api.openai.com/v1). Empty = default."))
+      .setName(t("GitHub Models base URL"))
+      .setDesc(t("Override the GitHub Models endpoint. Empty = https://models.github.ai."))
       .addText((text) =>
         text
-          .setPlaceholder("https://api.openai.com/v1")
-          .setValue(this.plugin.settings.llmBaseUrl || "")
+          .setPlaceholder("https://models.github.ai")
+          .setValue(this.plugin.settings.llmGithubModelsBaseUrl || "")
           .onChange(async (value) => {
-            this.plugin.settings.llmBaseUrl = String(value || "").trim();
+            this.plugin.settings.llmGithubModelsBaseUrl = String(value || "").trim();
             await this.plugin.savePluginState();
           })
       );
@@ -4621,14 +4603,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       if (this.settings.llmModel) {
         env.AIWIKI_LLM_MODEL = this.settings.llmModel;
       }
-      if (this.settings.llmApiKey) {
-        env.AIWIKI_LLM_API_KEY = this.settings.llmApiKey;
+      if (this.settings.llmGithubToken) {
+        env.AIWIKI_GITHUB_TOKEN = this.settings.llmGithubToken;
       }
-      if (this.settings.llmAnthropicApiKey) {
-        env.AIWIKI_ANTHROPIC_API_KEY = this.settings.llmAnthropicApiKey;
-      }
-      if (this.settings.llmBaseUrl) {
-        env.AIWIKI_LLM_BASE_URL = this.settings.llmBaseUrl;
+      if (this.settings.llmGithubModelsBaseUrl) {
+        env.AIWIKI_GITHUB_MODELS_BASE_URL = this.settings.llmGithubModelsBaseUrl;
       }
       const child = spawn(this.repoState.launcherPath, args, {
         cwd: this.repoState.root,

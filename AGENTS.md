@@ -27,7 +27,7 @@
 ## 当前方向
 
 - 维护炼丹炉五层主线：`raw / wiki / machine memory / schema / outputs`
-- 维持 deterministic baseline + 多后端 LLM 执行层（`codex-cli` / `claude-cli` / `openai-api`）
+- 维持 deterministic baseline + 多后端 LLM 执行层（`codex-cli` / `github-models-api` / `copilot-cli` / `claude-cli`）
 - 维持直接投喂入口：`drop-url` / `drop-pdf` / `drop-image` / `drop-repo`
 - 维持协议 runtime：`general / investing / research / product / ops`
 - 维持治理与执行层：`review / aging / escalation / repair / nightly / apply / revert / audit`

@@ -1358,14 +1358,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       if (this.settings.llmModel) {
         env.AIWIKI_LLM_MODEL = this.settings.llmModel;
       }
-      if (this.settings.llmApiKey) {
-        env.AIWIKI_LLM_API_KEY = this.settings.llmApiKey;
+      if (this.settings.llmGithubToken) {
+        env.AIWIKI_GITHUB_TOKEN = this.settings.llmGithubToken;
       }
-      if (this.settings.llmAnthropicApiKey) {
-        env.AIWIKI_ANTHROPIC_API_KEY = this.settings.llmAnthropicApiKey;
-      }
-      if (this.settings.llmBaseUrl) {
-        env.AIWIKI_LLM_BASE_URL = this.settings.llmBaseUrl;
+      if (this.settings.llmGithubModelsBaseUrl) {
+        env.AIWIKI_GITHUB_MODELS_BASE_URL = this.settings.llmGithubModelsBaseUrl;
       }
       const child = spawn(this.repoState.launcherPath, args, {
         cwd: this.repoState.root,

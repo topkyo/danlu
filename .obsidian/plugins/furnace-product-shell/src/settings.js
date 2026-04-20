@@ -118,9 +118,9 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
         dropdown
           .addOption("", t("auto (detect)"))
           .addOption("codex-cli", "codex-cli")
+          .addOption("github-models-api", "github-models-api")
+          .addOption("copilot-cli", "copilot-cli")
           .addOption("claude-cli", "claude-cli")
-          .addOption("openai-api", "openai-api")
-          .addOption("anthropic-api", "anthropic-api")
           .setValue(this.plugin.settings.llmBackend || "")
           .onChange(async (value) => {
             this.plugin.settings.llmBackend = value;
@@ -143,14 +143,14 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName(t("LLM API key"))
-      .setDesc(t("API key for the openai-api backend. Stored locally in plugin data. Empty = use AIWIKI_LLM_API_KEY env var."))
+      .setName(t("GitHub token"))
+      .setDesc(t("Optional token for github-models-api. Stored locally in plugin data. Empty = use AIWIKI_GITHUB_TOKEN / GH_TOKEN / gh auth token."))
       .addText((text) => {
         text
-          .setPlaceholder("sk-...")
-          .setValue(this.plugin.settings.llmApiKey || "")
+          .setPlaceholder("gho_...")
+          .setValue(this.plugin.settings.llmGithubToken || "")
           .onChange(async (value) => {
-            this.plugin.settings.llmApiKey = String(value || "").trim();
+            this.plugin.settings.llmGithubToken = String(value || "").trim();
             await this.plugin.savePluginState();
           });
         text.inputEl.type = "password";
@@ -158,29 +158,14 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName(t("Anthropic API key"))
-      .setDesc(t("API key for the anthropic-api backend. Stored locally in plugin data. Empty = use ANTHROPIC_API_KEY env var."))
-      .addText((text) => {
-        text
-          .setPlaceholder("sk-ant-...")
-          .setValue(this.plugin.settings.llmAnthropicApiKey || "")
-          .onChange(async (value) => {
-            this.plugin.settings.llmAnthropicApiKey = String(value || "").trim();
-            await this.plugin.savePluginState();
-          });
-        text.inputEl.type = "password";
-        text.inputEl.autocomplete = "off";
-      });
-
-    new Setting(containerEl)
-      .setName(t("LLM base URL"))
-      .setDesc(t("Custom API endpoint (e.g. https://api.openai.com/v1). Empty = default."))
+      .setName(t("GitHub Models base URL"))
+      .setDesc(t("Override the GitHub Models endpoint. Empty = https://models.github.ai."))
       .addText((text) =>
         text
-          .setPlaceholder("https://api.openai.com/v1")
-          .setValue(this.plugin.settings.llmBaseUrl || "")
+          .setPlaceholder("https://models.github.ai")
+          .setValue(this.plugin.settings.llmGithubModelsBaseUrl || "")
           .onChange(async (value) => {
-            this.plugin.settings.llmBaseUrl = String(value || "").trim();
+            this.plugin.settings.llmGithubModelsBaseUrl = String(value || "").trim();
             await this.plugin.savePluginState();
           })
       );
