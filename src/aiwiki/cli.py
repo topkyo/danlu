@@ -17,6 +17,7 @@ from .app_compile import (
     lint_wiki,
     nightly_health,
     reactivate_concept,
+    resolve_machine_memory_action_query,
     retire_concept,
     revert_concept_rewrite,
     revert_machine_memory_action,
@@ -36,7 +37,7 @@ from .app_shell import build_shell_summary, shell_search, shell_status_dashboard
 from .app_state import load_machine_memory_action_state
 from .app_vault import bootstrap_new_vault
 from .drop import drop_image, drop_note, drop_pdf, drop_repo, drop_url
-from .runner import auto_process_once, llm_status, run_ask, run_compile, run_lint, run_nightly, watch_inbox
+from .runner import auto_process_once, llm_probe, llm_status, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -165,6 +166,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output artifact format.",
     )
     run_ask_parser.add_argument("--protocol", help="Optional protocol override for this query.")
+    run_ask_parser.add_argument(
+        "--lean",
+        action="store_true",
+        help="Start with a smaller prompt profile for stability instead of waiting for timeout retry.",
+    )
+    run_ask_parser.add_argument(
+        "--timeout",
+        type=int,
+        help="Override the LLM timeout seconds for this run only.",
+    )
 
     file_back_parser = subparsers.add_parser(
         "file-back",
@@ -335,7 +346,23 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip the semantic lint pass and write deterministic nightly artifacts only.",
     )
-    subparsers.add_parser("llm-check", help="Show whether the LLM runner is configured.")
+    llm_check_parser = subparsers.add_parser("llm-check", help="Show whether the LLM runner is configured.")
+    llm_check_parser.add_argument(
+        "--probe",
+        action="store_true",
+        help="Run a tiny real completion against the current effective backend.",
+    )
+    llm_check_parser.add_argument(
+        "--probe-all",
+        action="store_true",
+        help="Probe every discovered CLI backend individually. Implies --probe.",
+    )
+    llm_check_parser.add_argument(
+        "--probe-timeout",
+        type=int,
+        default=20,
+        help="Timeout in seconds for each LLM probe request.",
+    )
 
     auto_once_parser = subparsers.add_parser(
         "auto-once",
@@ -445,7 +472,14 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "ask":
             result = ask_question(root, args.question, args.format, protocol=args.protocol)
         elif args.command == "run-ask":
-            result = run_ask(root, args.question, args.format, protocol=args.protocol)
+            result = run_ask(
+                root,
+                args.question,
+                args.format,
+                protocol=args.protocol,
+                lean=args.lean,
+                timeout_seconds=args.timeout,
+            )
         elif args.command == "file-back":
             result = file_back(root, args.artifact, title=args.title, kind=args.kind, protocol=args.protocol)
         elif args.command == "review-page":
@@ -539,7 +573,10 @@ def main(argv: list[str] | None = None) -> int:
                 semantic_lint=not args.no_semantic_lint,
             )
         elif args.command == "llm-check":
-            result = llm_status()
+            if args.probe or args.probe_all:
+                result = llm_probe(root, probe_all=args.probe_all, timeout_seconds=args.probe_timeout)
+            else:
+                result = llm_status()
         elif args.command == "auto-once":
             result = auto_process_once(
                 root,
@@ -653,32 +690,7 @@ def _resolve_action_id(root: Path, action_query: str) -> str:
     actions = [action for action in state.get("actions", []) if isinstance(action, dict)]
     if not actions:
         return normalized_query
-    for action in actions:
-        if str(action.get("id") or "") == normalized_query:
-            return normalized_query
-    lowered_query = normalized_query.lower()
-    exact_title_matches = [
-        action
-        for action in actions
-        if str(action.get("title") or "").strip().lower() == lowered_query
-    ]
-    if len(exact_title_matches) == 1:
-        return str(exact_title_matches[0].get("id") or normalized_query)
-    partial_matches = [
-        action
-        for action in actions
-        if lowered_query in str(action.get("id") or "").lower()
-        or lowered_query in str(action.get("title") or "").lower()
-    ]
-    if len(partial_matches) == 1:
-        return str(partial_matches[0].get("id") or normalized_query)
-    if not partial_matches:
-        raise FileNotFoundError(f"Machine-memory action not found: {action_query}")
-    candidates = ", ".join(
-        f"{str(action.get('id') or '')} ({str(action.get('title') or '')})"
-        for action in partial_matches[:5]
-    )
-    raise RuntimeError(f"Machine-memory action is ambiguous: {action_query}. Candidates: {candidates}")
+    return str(resolve_machine_memory_action_query(actions, normalized_query).get("id") or normalized_query)
 
 
 def _resolve_action_ids(

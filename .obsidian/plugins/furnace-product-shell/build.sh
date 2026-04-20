@@ -26,6 +26,14 @@ const { Plugin, PluginSettingTab, Setting, ItemView, Modal, Notice } = require("
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+let electron = null;
+try {
+  electron = require("electron");
+} catch (error) {
+  electron = null;
+}
+const clipboard = electron && electron.clipboard ? electron.clipboard : null;
+const shell = electron && electron.shell ? electron.shell : null;
 
 HEADER
 

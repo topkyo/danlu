@@ -540,10 +540,10 @@ class DropTests(unittest.TestCase):
         self.assertEqual(_jpeg_dimensions(jpeg), (3, 2))
         self.assertEqual(_image_dimensions(jpeg), (3, 2))
 
-        bad_client = type("ConfigHolder", (), {"backend": "anthropic-cli"})()
+        bad_client = type("ConfigHolder", (), {"backend": "copilot-cli"})()
         with patch("aiwiki.drop.LLMConfig.from_env", return_value=bad_client):
             self.assertIsNone(_maybe_create_image_client(self.root))
-        good_client = type("ConfigHolder", (), {"backend": "openai-api"})()
+        good_client = type("ConfigHolder", (), {"backend": "codex-cli"})()
         with patch("aiwiki.drop.LLMConfig.from_env", return_value=good_client):
             with patch("aiwiki.drop.create_backend_client", return_value="client") as factory:
                 self.assertEqual(_maybe_create_image_client(self.root), "client")

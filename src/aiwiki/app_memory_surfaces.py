@@ -403,6 +403,8 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
                 "component_label": component_label,
                 "degree": degree_map.get(node_id, 0),
                 "secondary_metric": secondary_metric,
+                "x": x,
+                "y": y,
             }
         )
 
@@ -472,6 +474,8 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
         {
             "nodes": node_records,
             "defaultNodeId": node_records[0]["id"] if node_records else "",
+            "viewBoxWidth": 1020,
+            "viewBoxHeight": view_height,
         }
     )
 
@@ -505,6 +509,9 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "    label { display: block; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }",
             "    input, select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; font: inherit; background: #fff; }",
             "    .canvas { overflow-x: auto; }",
+            "    .graph-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }",
+            "    .graph-toolbar button { border: 1px solid var(--line); background: #eff6ff; color: #1d4ed8; border-radius: 999px; padding: 6px 12px; cursor: pointer; font: inherit; }",
+            "    .graph-status { color: var(--muted); font-size: 12px; }",
             "    svg { width: 100%; min-width: 1020px; height: auto; display: block; }",
             "    ul { margin: 0; padding-left: 18px; }",
             "    li { margin: 4px 0; }",
@@ -514,11 +521,14 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "    .workbench { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); gap: 18px; align-items: start; }",
             "    .node-browser { max-height: 560px; overflow: auto; }",
             "    .node-browser ul { list-style: none; padding-left: 0; }",
-            "    .node-row { padding: 10px 0; border-bottom: 1px solid #e2e8f0; }",
+            "    .node-row { padding: 10px 0; border-bottom: 1px solid #e2e8f0; border-radius: 12px; }",
             "    .node-row:last-child { border-bottom: 0; }",
+            "    .node-row.active { background: #eff6ff; padding-left: 10px; padding-right: 10px; }",
             "    .node-meta { color: var(--muted); font-size: 12px; }",
             "    .node-detail-button { margin-right: 8px; border: 1px solid var(--line); background: #eff6ff; color: #1d4ed8; border-radius: 999px; padding: 2px 10px; cursor: pointer; }",
             "    .graph-node.hidden, .graph-edge.hidden, .node-row.hidden { display: none; }",
+            "    .graph-node.active rect { stroke-width: 4; filter: drop-shadow(0 0 10px rgba(37,99,235,0.35)); }",
+            "    .graph-edge.active { opacity: 1; stroke-width: 4; }",
             "    .details-grid { display: grid; gap: 10px; }",
             "    .details-grid code { background: #eff6ff; padding: 2px 6px; border-radius: 8px; }",
             "    .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; color: var(--muted); }",
@@ -555,8 +565,17 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "    </div>",
             '    <div class="workbench">',
             '      <div class="panel canvas">',
-            f'        <svg viewBox="0 0 1020 {view_height}" role="img" aria-label="machine memory graph">',
+            '        <div class="graph-toolbar">',
+            '          <button type="button" id="graph-zoom-out">缩小</button>',
+            '          <button type="button" id="graph-zoom-in">放大</button>',
+            '          <button type="button" id="graph-focus-node">聚焦当前节点</button>',
+            '          <button type="button" id="graph-reset-view">重置视图</button>',
+            '          <span id="graph-status" class="graph-status">100%</span>',
+            "        </div>",
+            f'        <svg id="graph-canvas" viewBox="0 0 1020 {view_height}" role="img" aria-label="machine memory graph">',
+            '          <g id="graph-viewport">',
             f"{svg_body}",
+            "          </g>",
             "        </svg>",
             "      </div>",
             '      <div class="details-grid">',
@@ -597,9 +616,54 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "    const protocolSelect = document.getElementById('graph-protocol');",
             "    const componentSelect = document.getElementById('graph-component');",
             "    const nodeDetails = document.getElementById('graph-node-details');",
+            "    const graphViewport = document.getElementById('graph-viewport');",
+            "    const graphStatus = document.getElementById('graph-status');",
+            "    const zoomOutButton = document.getElementById('graph-zoom-out');",
+            "    const zoomInButton = document.getElementById('graph-zoom-in');",
+            "    const focusNodeButton = document.getElementById('graph-focus-node');",
+            "    const resetViewButton = document.getElementById('graph-reset-view');",
+            "    let activeNodeId = '';",
+            "    let scale = 1;",
+            "    let translateX = 0;",
+            "    let translateY = 0;",
+            "    function updateViewport() {",
+            "      if (graphViewport) {",
+            "        graphViewport.setAttribute('transform', `translate(${translateX} ${translateY}) scale(${scale})`);",
+            "      }",
+            "      if (graphStatus) {",
+            "        graphStatus.textContent = `缩放 ${Math.round(scale * 100)}%`;",
+            "      }",
+            "    }",
+            "    function setActiveNode(nodeId) {",
+            "      activeNodeId = nodeId;",
+            "      document.querySelectorAll('.graph-node').forEach((element) => {",
+            "        const isActive = (element.dataset.nodeId || '') === nodeId && !element.classList.contains('hidden');",
+            "        element.classList.toggle('active', isActive);",
+            "      });",
+            "      document.querySelectorAll('.node-row').forEach((element) => {",
+            "        const isActive = (element.dataset.nodeId || '') === nodeId && !element.classList.contains('hidden');",
+            "        element.classList.toggle('active', isActive);",
+            "        if (isActive) element.scrollIntoView({ block: 'nearest' });",
+            "      });",
+            "      document.querySelectorAll('.graph-edge').forEach((element) => {",
+            "        const source = element.dataset.source || '';",
+            "        const target = element.dataset.target || '';",
+            "        const isActive = Boolean(nodeId) && !element.classList.contains('hidden') && (source === nodeId || target === nodeId);",
+            "        element.classList.toggle('active', isActive);",
+            "      });",
+            "    }",
+            "    function focusNode(nodeId) {",
+            "      const node = nodeMap.get(nodeId);",
+            "      if (!node) return;",
+            "      const viewBoxWidth = Number(graphUiData.viewBoxWidth || 1020);",
+            "      const viewBoxHeight = Number(graphUiData.viewBoxHeight || 480);",
+            "      translateX = Math.round(viewBoxWidth / 2 - Number(node.x || 0) * scale);",
+            "      translateY = Math.round(viewBoxHeight / 2 - Number(node.y || 0) * scale);",
+            "      updateViewport();",
+            "    }",
             "    function renderDetails(nodeId) {",
             "      const node = nodeMap.get(nodeId);",
-            "      if (!node) { nodeDetails.innerHTML = '当前没有可展示的节点详情。'; return; }",
+            "      if (!node) { nodeDetails.innerHTML = '当前没有可展示的节点详情。'; setActiveNode(''); return; }",
             "      nodeDetails.innerHTML = [",
             "        `<div><strong>${node.title}</strong></div>`,",
             "        `<div>kind: <code>${node.kind}</code></div>`,",
@@ -610,6 +674,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "        `<div>${node.secondary_metric || ''}</div>`,",
             "        `<div><a href=\"${node.href}\">打开页面</a></div>`",
             "      ].join('');",
+            "      setActiveNode(nodeId);",
             "    }",
             "    function applyFilters() {",
             "      const needle = (searchInput.value || '').trim().toLowerCase();",
@@ -648,6 +713,12 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "      });",
             "      if (!visibleIds.size) {",
             "        nodeDetails.innerHTML = '当前筛选条件下没有节点。';",
+            "        setActiveNode('');",
+            "        return;",
+            "      }",
+            "      const preferredNodeId = activeNodeId && visibleIds.has(activeNodeId) ? activeNodeId : '';",
+            "      if (preferredNodeId) {",
+            "        renderDetails(preferredNodeId);",
             "        return;",
             "      }",
             "      const firstVisible = document.querySelector('.node-row:not(.hidden)');",
@@ -656,8 +727,13 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "    document.querySelectorAll('.node-detail-button').forEach((button) => {",
             "      button.addEventListener('click', () => renderDetails(button.dataset.nodeId || ''));",
             "    });",
+            "    if (zoomOutButton) zoomOutButton.addEventListener('click', () => { scale = Math.max(0.6, scale - 0.2); if (activeNodeId) { focusNode(activeNodeId); } else { updateViewport(); } });",
+            "    if (zoomInButton) zoomInButton.addEventListener('click', () => { scale = Math.min(2.4, scale + 0.2); if (activeNodeId) { focusNode(activeNodeId); } else { updateViewport(); } });",
+            "    if (focusNodeButton) focusNodeButton.addEventListener('click', () => focusNode(activeNodeId || graphUiData.defaultNodeId || ''));",
+            "    if (resetViewButton) resetViewButton.addEventListener('click', () => { scale = 1; translateX = 0; translateY = 0; updateViewport(); });",
             "    [searchInput, kindSelect, protocolSelect, componentSelect].forEach((element) => element.addEventListener('input', applyFilters));",
             "    [kindSelect, protocolSelect, componentSelect].forEach((element) => element.addEventListener('change', applyFilters));",
+            "    updateViewport();",
             "    renderDetails(graphUiData.defaultNodeId || '');",
             "    applyFilters();",
             "  </script>",
@@ -895,10 +971,15 @@ def build_machine_memory_query(
     )
     for route in query_routes:
         for node in route["nodes"]:
-            if node["kind"] == "source":
-                expanded_source_scores[node["id"]] = expanded_source_scores.get(node["id"], 0) + 2
-            else:
-                expanded_concept_scores[node["slug"]] = expanded_concept_scores.get(node["slug"], 0) + 2
+            if node.get("kind") == "source":
+                source_id = str(node.get("id") or "")
+                if source_id:
+                    expanded_source_scores[source_id] = expanded_source_scores.get(source_id, 0) + 2
+                continue
+            if node.get("kind") == "concept":
+                concept_slug = str(node.get("slug") or "")
+                if concept_slug:
+                    expanded_concept_scores[concept_slug] = expanded_concept_scores.get(concept_slug, 0) + 2
         for edge in route["edges"]:
             if edge["type"] == "HAS_CONCEPT":
                 supporting_edges.add(("HAS_CONCEPT", edge["left"], edge["right"]))

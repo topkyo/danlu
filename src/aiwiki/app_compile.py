@@ -2405,6 +2405,7 @@ def ask_question(root: Path, question: str, output_format: str, protocol: str | 
             "wiki/indexes/review-center.md",
             "wiki/indexes/aging-report.md",
             "wiki/indexes/compile-status.md",
+            "wiki/indexes/concept-quality.md",
             "wiki/indexes/machine-memory.md",
             "wiki/indexes/graph-view.md",
             "wiki/indexes/machine-memory-topology.md",
@@ -3107,6 +3108,65 @@ def reactivate_concept(root: Path, slug: str, *, note: str | None = None) -> dic
     }
 
 
+def resolve_machine_memory_action_query(
+    actions: list[dict[str, Any]],
+    action_query: str,
+) -> dict[str, Any]:
+    normalized_query = action_query.strip()
+    if not normalized_query:
+        raise ValueError("Action id cannot be empty.")
+    lowered_query = normalized_query.lower()
+
+    def _match_stage(
+        predicate: Any,
+        *,
+        skip_exact_id: bool = False,
+        skip_exact_title: bool = False,
+    ) -> dict[str, Any] | None:
+        matches: list[dict[str, Any]] = []
+        for action in actions:
+            action_id = str(action.get("id") or "")
+            action_title = str(action.get("title") or "").strip()
+            lowered_id = action_id.lower()
+            lowered_title = action_title.lower()
+            if skip_exact_id and lowered_id == lowered_query:
+                continue
+            if skip_exact_title and lowered_title == lowered_query:
+                continue
+            if predicate(lowered_id, lowered_title):
+                matches.append(action)
+        if len(matches) == 1:
+            return matches[0]
+        if matches:
+            candidates = ", ".join(
+                f"{str(action.get('id') or '')} ({str(action.get('title') or '')})"
+                for action in matches[:5]
+            )
+            raise RuntimeError(f"Machine-memory action is ambiguous: {action_query}. Candidates: {candidates}")
+        return None
+
+    exact_id_match = _match_stage(lambda lowered_id, lowered_title: lowered_id == lowered_query)
+    if exact_id_match is not None:
+        return exact_id_match
+    exact_title_match = _match_stage(lambda lowered_id, lowered_title: lowered_title == lowered_query)
+    if exact_title_match is not None:
+        return exact_title_match
+    prefix_match = _match_stage(
+        lambda lowered_id, lowered_title: lowered_id.startswith(lowered_query) or lowered_title.startswith(lowered_query),
+        skip_exact_title=True,
+    )
+    if prefix_match is not None:
+        return prefix_match
+    partial_match = _match_stage(
+        lambda lowered_id, lowered_title: lowered_query in lowered_id or lowered_query in lowered_title,
+        skip_exact_id=True,
+        skip_exact_title=True,
+    )
+    if partial_match is not None:
+        return partial_match
+    raise FileNotFoundError(f"Machine-memory action not found: {action_query}")
+
+
 @runtime_write_operation
 def review_machine_memory_action(
     root: Path,
@@ -3120,13 +3180,8 @@ def review_machine_memory_action(
         raise ValueError(f"Unsupported machine-memory action status: {status}")
     state = load_machine_memory_action_state(root)
     actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
-    target: dict[str, Any] | None = None
-    for action in actions:
-        if str(action.get("id") or "") == action_id:
-            target = action
-            break
-    if target is None:
-        raise FileNotFoundError(f"Machine-memory action not found: {action_id}")
+    target = resolve_machine_memory_action_query(actions, action_id)
+    resolved_action_id = str(target.get("id") or action_id.strip())
     reviewed_at = utc_now()
     target["status"] = status
     target["reviewed_at"] = reviewed_at
@@ -3150,9 +3205,9 @@ def review_machine_memory_action(
     append_wiki_log(
         root,
         "action-review",
-        str(target.get("title") or action_id),
+        str(target.get("title") or resolved_action_id),
         [
-            f"action_id: `{action_id}`",
+            f"action_id: `{resolved_action_id}`",
             f"status: `{status}`",
             f"primary: `{target.get('primary_path', '')}`",
             f"priority: `{target.get('priority', '')}`",
@@ -3160,7 +3215,7 @@ def review_machine_memory_action(
     )
     compile_wiki(root)
     return {
-        "id": action_id,
+        "id": resolved_action_id,
         "status": status,
         "reviewed_at": reviewed_at,
         "active": bool(target.get("active", True)),
@@ -3179,21 +3234,16 @@ def apply_machine_memory_action(
     ensure_layout(root)
     state = load_machine_memory_action_state(root)
     actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
-    target: dict[str, Any] | None = None
-    for action in actions:
-        if str(action.get("id") or "") == action_id:
-            target = action
-            break
-    if target is None:
-        raise FileNotFoundError(f"Machine-memory action not found: {action_id}")
+    target = resolve_machine_memory_action_query(actions, action_id)
+    resolved_action_id = str(target.get("id") or action_id.strip())
     if str(target.get("status") or "") != "accepted":
         raise RuntimeError("Machine-memory action must be accepted before apply.")
     kind = str(target.get("kind") or "")
     protocol = str(target.get("protocol") or load_protocol_state(root)["active_protocol"] or DEFAULT_PROTOCOL)
     preview_proposals = repair_execution_proposals(root, [target], active_protocol=protocol)
     proposal = preview_proposals[0] if preview_proposals else {
-        "action_id": action_id,
-        "title": str(target.get("title") or action_id),
+        "action_id": resolved_action_id,
+        "title": str(target.get("title") or resolved_action_id),
         "proposal_kind": "manual-repair",
         "risk": "low",
         "priority": str(target.get("priority") or "medium"),
@@ -3207,8 +3257,8 @@ def apply_machine_memory_action(
         "page_patch_plan": build_page_patch_plan(root, target, active_protocol=protocol),
         "safe_apply_preview": safe_apply_preview(root, target),
         "command_hint": str(target.get("command_hint") or ""),
-        "bundle_path": relative_path(root, execution_bundle_path(root, action_id)),
-        "proposal_path": relative_path(root, execution_proposal_path(root, action_id)),
+        "bundle_path": relative_path(root, execution_bundle_path(root, resolved_action_id)),
+        "proposal_path": relative_path(root, execution_proposal_path(root, resolved_action_id)),
     }
     preview = proposal.get("safe_apply_preview")
     if not isinstance(preview, dict):
@@ -3219,17 +3269,19 @@ def apply_machine_memory_action(
     previewed_at = utc_now()
     bundle = build_execution_bundle(root, proposal, compiled_at=previewed_at)
     if dry_run:
-        selected_bundle_path = root / str(proposal.get("bundle_path") or relative_path(root, execution_bundle_path(root, action_id)))
+        selected_bundle_path = root / str(
+            proposal.get("bundle_path") or relative_path(root, execution_bundle_path(root, resolved_action_id))
+        )
         write_execution_bundle_document(selected_bundle_path, bundle)
-        dry_run_path = execution_dry_run_path(root, action_id)
+        dry_run_path = execution_dry_run_path(root, resolved_action_id)
         dry_run_payload = {
             "version": 1,
             "kind": "execution-dry-run",
             "generated_by": "aiwiki-apply-action",
             "generated_at": previewed_at,
             "operation": "apply",
-            "action_id": action_id,
-            "title": str(target.get("title") or action_id),
+            "action_id": resolved_action_id,
+            "title": str(target.get("title") or resolved_action_id),
             "status": str(target.get("status") or "accepted"),
             "apply_mode": preview_apply_mode,
             "proposal_path": str(proposal.get("proposal_path") or ""),
@@ -3243,7 +3295,7 @@ def apply_machine_memory_action(
             {
                 "event_type": "action-dry-run",
                 "occurred_at": previewed_at,
-                "action_id": action_id,
+                "action_id": resolved_action_id,
                 "protocol": protocol,
                 "bundle_path": relative_path(root, selected_bundle_path),
                 "preview_path": relative_path(root, dry_run_path),
@@ -3253,15 +3305,15 @@ def apply_machine_memory_action(
         append_wiki_log(
             root,
             "action-dry-run",
-            str(target.get("title") or action_id),
+            str(target.get("title") or resolved_action_id),
             [
-                f"action_id: `{action_id}`",
+                f"action_id: `{resolved_action_id}`",
                 f"apply_mode: `{preview_apply_mode}`",
                 f"bundle: `{relative_path(root, selected_bundle_path)}`",
             ],
         )
         return {
-            "id": action_id,
+            "id": resolved_action_id,
             "dry_run": True,
             "apply_mode": preview_apply_mode,
             "status": str(target.get("status") or "accepted"),
@@ -3282,7 +3334,7 @@ def apply_machine_memory_action(
             f"Execution bundle not found: {relative_path(root, selected_bundle_path)}. Run compile or apply-action --dry-run first."
         )
     stored_bundle = load_execution_bundle(selected_bundle_path)
-    if str(stored_bundle.get("action_id") or "") != action_id:
+    if str(stored_bundle.get("action_id") or "") != resolved_action_id:
         raise RuntimeError("Execution bundle action_id does not match the requested action.")
     if str(stored_bundle.get("digest") or "") != execution_bundle_digest(stored_bundle):
         raise RuntimeError("Execution bundle digest is invalid; regenerate the bundle before apply.")
@@ -3316,14 +3368,14 @@ def apply_machine_memory_action(
                     "active": True,
                     "created_at": applied_at,
                     "applied_at": applied_at,
-                    "origin_action_id": action_id,
+                    "origin_action_id": resolved_action_id,
                     "note": note or "Applied accepted low-risk repair action.",
                 }
             )
         else:
             existing["active"] = True
             existing["applied_at"] = applied_at
-            existing["origin_action_id"] = action_id
+            existing["origin_action_id"] = resolved_action_id
             existing["note"] = note or str(existing.get("note") or "")
         save_manual_link_state(root, {"version": 1, "source_to_concept": manual_links})
     elif apply_mode == "citation-snapshot-refresh":
@@ -3348,7 +3400,7 @@ def apply_machine_memory_action(
         raise RuntimeError(f"Unsupported apply mode: {apply_mode}")
 
     receipt = build_execution_receipt(root, target, applied_at=applied_at, note=note, proposal=proposal)
-    receipt_path = execution_receipt_path(root, action_id)
+    receipt_path = execution_receipt_path(root, resolved_action_id)
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
     receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     append_execution_receipt_history(root, receipt)
@@ -3368,9 +3420,9 @@ def apply_machine_memory_action(
     append_wiki_log(
         root,
         "action-apply",
-        str(target.get("title") or action_id),
+        str(target.get("title") or resolved_action_id),
         [
-            f"action_id: `{action_id}`",
+            f"action_id: `{resolved_action_id}`",
             f"kind: `{kind}`",
             f"apply_mode: `{apply_mode}`",
             f"primary: `{target.get('primary_path', '')}`",
@@ -3378,7 +3430,7 @@ def apply_machine_memory_action(
     )
     compile_wiki(root)
     return {
-        "id": action_id,
+        "id": resolved_action_id,
         "status": "resolved",
         "applied_at": applied_at,
         "apply_mode": apply_mode,
@@ -3396,13 +3448,8 @@ def revert_machine_memory_action(
     ensure_layout(root)
     state = load_machine_memory_action_state(root)
     actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
-    target: dict[str, Any] | None = None
-    for action in actions:
-        if str(action.get("id") or "") == action_id:
-            target = action
-            break
-    if target is None:
-        raise FileNotFoundError(f"Machine-memory action not found: {action_id}")
+    target = resolve_machine_memory_action_query(actions, action_id)
+    resolved_action_id = str(target.get("id") or action_id.strip())
     receipt_relative = str(target.get("last_receipt_path") or "")
     if not receipt_relative:
         raise RuntimeError("Machine-memory action has no execution receipt to revert.")
@@ -3414,7 +3461,7 @@ def revert_machine_memory_action(
         raise RuntimeError("Execution receipt is not valid.")
     if str(receipt.get("operation") or "") != "apply":
         raise RuntimeError("Only the latest apply receipt can be reverted.")
-    if str(receipt.get("action_id") or "") != action_id:
+    if str(receipt.get("action_id") or "") != resolved_action_id:
         raise RuntimeError("Execution receipt action_id does not match the requested action.")
     preview = receipt.get("safe_apply_preview")
     if not isinstance(preview, dict):
@@ -3426,7 +3473,7 @@ def revert_machine_memory_action(
         manual_links = [dict(item) for item in manual_state.get("source_to_concept", []) if isinstance(item, dict)]
         active_entry: dict[str, Any] | None = None
         for item in manual_links:
-            if str(item.get("origin_action_id") or "") != action_id:
+            if str(item.get("origin_action_id") or "") != resolved_action_id:
                 continue
             if bool(item.get("active", True)):
                 active_entry = item
@@ -3470,13 +3517,13 @@ def revert_machine_memory_action(
         "review_note": note or "Safe apply reverted.",
         "pending_review": "true",
         "last_receipt_path": relative_path(root, receipt_path),
-        "command_hint": f'PYTHONPATH=src python3 -m aiwiki.cli --root . review-action {action_id} --status accepted --note "Resume reverted repair."',
+        "command_hint": f'PYTHONPATH=src python3 -m aiwiki.cli --root . review-action {resolved_action_id} --status accepted --note "Resume reverted repair."',
         "next_step": "回滚后重新 review，确认是否要再次 accepted 再执行。",
     }
     preview_proposals = repair_execution_proposals(root, [reverted_target], active_protocol=protocol)
     proposal = preview_proposals[0] if preview_proposals else {
-        "action_id": action_id,
-        "title": str(reverted_target.get("title") or action_id),
+        "action_id": resolved_action_id,
+        "title": str(reverted_target.get("title") or resolved_action_id),
         "proposal_kind": "manual-repair",
         "risk": "low",
         "priority": str(reverted_target.get("priority") or "medium"),
@@ -3492,8 +3539,8 @@ def revert_machine_memory_action(
         "page_patch_plan": build_page_patch_plan(root, reverted_target, active_protocol=protocol),
         "safe_apply_preview": safe_apply_preview(root, reverted_target),
         "command_hint": str(reverted_target.get("command_hint") or ""),
-        "bundle_path": relative_path(root, execution_bundle_path(root, action_id)),
-        "proposal_path": relative_path(root, execution_proposal_path(root, action_id)),
+        "bundle_path": relative_path(root, execution_bundle_path(root, resolved_action_id)),
+        "proposal_path": relative_path(root, execution_proposal_path(root, resolved_action_id)),
     }
     revert_receipt = build_execution_receipt(
         root,
@@ -3527,16 +3574,16 @@ def revert_machine_memory_action(
     append_wiki_log(
         root,
         "action-revert",
-        str(target.get("title") or action_id),
+        str(target.get("title") or resolved_action_id),
         [
-            f"action_id: `{action_id}`",
+            f"action_id: `{resolved_action_id}`",
             f"receipt: `{relative_path(root, receipt_path)}`",
             f"primary: `{target.get('primary_path', '')}`",
         ],
     )
     compile_wiki(root)
     return {
-        "id": action_id,
+        "id": resolved_action_id,
         "status": "proposed",
         "reverted_at": reverted_at,
         "receipt_path": relative_path(root, receipt_path),

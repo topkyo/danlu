@@ -212,7 +212,7 @@ def drop_image(
     dimension_text = f"{width}x{height}" if width and height else "unknown"
     extracted_text = ocr_text or "OCR is unavailable on this machine or no text was detected. Treat this as an image reference source."
     visual_lines = [visual_analysis] if visual_analysis else [
-        "Visual analysis was not generated. Configure `openai-api` or `codex-cli` if you want LLM-backed image understanding."
+        "Visual analysis was not generated. Configure `codex-cli` if you want LLM-backed image understanding."
     ]
     markdown = _render_raw_note(
         title=display_title,
@@ -985,7 +985,7 @@ def _maybe_create_image_client(root: Path) -> Any | None:
         config = LLMConfig.from_env()
     except RuntimeError:
         return None
-    if config.backend not in {"codex-cli", "openai-api"}:
+    if config.backend != "codex-cli":
         return None
     return create_backend_client(config, root)
 

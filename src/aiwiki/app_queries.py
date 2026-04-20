@@ -503,6 +503,75 @@ def machine_memory_query_plan_lines(machine_query: dict[str, Any]) -> list[str]:
     return lines
 
 
+def compact_output_guidance_lines(
+    output_guidance: list[str],
+    default_line: str,
+    *,
+    limit: int = 3,
+) -> list[str]:
+    guidance = [str(line).strip() for line in output_guidance if str(line).strip()]
+    return guidance[:limit] if guidance else [default_line]
+
+
+def compact_machine_memory_focus_lines(machine_query: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    matched_terms = [str(term).strip() for term in machine_query.get("matched_terms", []) if str(term).strip()]
+    if matched_terms:
+        lines.append(f"- 命中词：`{', '.join(matched_terms[:5])}`")
+    strategy = str(machine_query.get("selected_strategy") or "").strip()
+    reason = str(machine_query.get("selection_reason") or "").strip()
+    if strategy:
+        suffix = f" / `{reason}`" if reason else ""
+        lines.append(f"- 查询入口：`{strategy}`{suffix}")
+    bridge_concepts = [
+        str(slug).strip() for slug in machine_query.get("bridge_concept_slugs", []) if str(slug).strip()
+    ]
+    if bridge_concepts:
+        lines.append(f"- 桥接概念：`{', '.join(bridge_concepts[:4])}`")
+    archive_hints = machine_query.get("archive_recall_hints", []) or []
+    if archive_hints:
+        hint_labels = []
+        for hint in archive_hints[:2]:
+            title = str(hint.get("title") or hint.get("entry_id") or "").strip()
+            temperature = str(hint.get("temperature") or "").strip()
+            archive_status = str(hint.get("archive_status") or "").strip()
+            state_label = "/".join(part for part in (temperature, archive_status) if part) or "hint"
+            if title:
+                hint_labels.append(f"{title} [{state_label}]")
+        if hint_labels:
+            lines.append(f"- 归档召回提示：`{', '.join(hint_labels)}`")
+    planner_next_action = machine_query.get("planner_next_action", {}) or {}
+    if not bridge_concepts:
+        planner_title = str(planner_next_action.get("title") or planner_next_action.get("action_id") or "").strip()
+        if planner_title:
+            lines.append(f"- 下一动作提示：`{planner_title}`")
+    if not lines:
+        return ["- 当前没有明显的机器记忆命中，先从优先来源开始。"]
+    return lines[:4]
+
+
+def compact_concept_link_lines(
+    concepts: list[dict[str, Any]],
+    *,
+    limit: int = 5,
+    empty_message: str = "- 还没有排好序的概念页。",
+) -> list[str]:
+    if not concepts:
+        return [empty_message]
+    return [f"- [{concept['title']}](../../{concept['path']})" for concept in concepts[:limit]]
+
+
+def compact_source_link_lines(
+    entries: list[dict[str, Any]],
+    *,
+    limit: int = 5,
+    empty_message: str = "- 还没有排好序的来源。先在 ingest 后运行 `aiwiki compile`。",
+) -> list[str]:
+    if not entries:
+        return [empty_message]
+    return [f"- [{entry['title']}](../../wiki/sources/{entry['id']}.md)" for entry in entries[:limit]]
+
+
 def render_report(
     root: Path,
     question: str,
@@ -515,6 +584,7 @@ def render_report(
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
     output_guidance = protocol_output_guidance(root, active_protocol, "report")
+    focus_lines = compact_machine_memory_focus_lines(machine_query)
     frontmatter = render_frontmatter(
         {
             "id": artifact_id,
@@ -531,90 +601,43 @@ def render_report(
         "",
         f"# {question}",
         "",
-        "## 回答约束",
-        "- 所有重要结论都要落回 `wiki/sources/*.md`。",
-        "- 有不确定性就直接写出来，不要补洞。",
-        "- 优先使用文件路径引用，而不是模糊转述。",
+        "## 当前线索",
         f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
+        "- 先直接回答问题本身，再补背景和延伸。",
+        "- 所有重要结论都要落回 `wiki/sources/*.md`。",
+    ]
+    lines.extend(focus_lines)
+    lines.extend(
+        [
         "",
         "## 协议输出偏置",
-    ]
-    if output_guidance:
-        for line in output_guidance:
-            lines.append(f"- {line}")
-    else:
-        lines.append("- 当前协议没有额外的报告偏置。")
-    lines.extend(
-        [
-            "",
-            "## 推荐索引页",
-            "- [知识库总索引](../../wiki/indexes/index.md)",
-            "- [来源索引](../../wiki/indexes/sources.md)",
-            "- [概念索引](../../wiki/indexes/concepts.md)",
-            "- [决策索引](../../wiki/indexes/decisions.md)",
-            "- [判断索引](../../wiki/indexes/judgments.md)",
-            "- [判断资产](../../wiki/indexes/judgment-assets.md)",
-            "- [Agent Workbench](../../wiki/indexes/agent-workbench.md)",
-            "- [认知历史](../../wiki/indexes/cognitive-history.md)",
-            "- [输出 Pack 总览](../../wiki/indexes/output-packs.md)",
-            "- [领域 Pilot 总览](../../wiki/indexes/domain-pilots.md)",
-            "- [协议总览](../../wiki/indexes/protocols.md)",
-            "- [审阅队列](../../wiki/indexes/review-queue.md)",
-            "- [审阅中心](../../wiki/indexes/review-center.md)",
-            "- [Aging 报告](../../wiki/indexes/aging-report.md)",
-            "- [概念质量](../../wiki/indexes/concept-quality.md)",
-            "- [机器记忆](../../wiki/indexes/machine-memory.md)",
-            "- [图谱视图](../../wiki/indexes/graph-view.md)",
-            "- [拓扑视图](../../wiki/indexes/machine-memory-topology.md)",
-            "- [动作队列](../../wiki/indexes/machine-memory-actions.md)",
-            "- [修复计划](../../wiki/indexes/machine-memory-repair-plan.md)",
-            "- [图谱健康](../../wiki/indexes/graph-health.md)",
-            "- [漂移报告](../../wiki/indexes/drift-report.md)",
-            "- [修复待办](../../wiki/indexes/repair-backlog.md)",
-            "- [运行时规则](../../schema/index.md)",
-            f"- [当前协议规则](../../schema/protocols/{active_protocol}/index.md)",
-            "",
-            "## 机器记忆查询计划",
         ]
     )
-    matched_terms = machine_query.get("matched_terms", [])
-    if matched_terms:
-        lines.append(f"- 命中词：`{', '.join(matched_terms)}`")
-    else:
-        lines.append("- 当前还没有直接命中的机器记忆词。")
-    lines.extend(machine_memory_query_plan_lines(machine_query)[1:])
+    lines.extend(
+        f"- {line}"
+        for line in compact_output_guidance_lines(output_guidance, "当前协议没有额外的报告偏置。")
+    )
     lines.extend(
         [
             "",
-        "## 推荐概念",
+            "## 优先来源",
         ]
     )
-    if not concepts:
-        lines.append("- 还没有排好序的概念页。")
-    else:
-        for concept in concepts:
-            lines.append(f"- [{concept['title']}](../../{concept['path']})")
+    lines.extend(compact_source_link_lines(entries))
     lines.extend(
         [
             "",
-        "## 推荐来源",
+            "## 优先概念",
         ]
     )
-    if not entries:
-        lines.append("- 还没有排好序的来源。先在 ingest 后运行 `aiwiki compile`。")
-    else:
-        for entry in entries:
-            lines.append(f"- [{entry['title']}](../../wiki/sources/{entry['id']}.md)")
+    lines.extend(compact_concept_link_lines(concepts))
     lines.extend(
         [
             "",
-        "## 草稿提纲",
-        "1. 重新表述研究问题。",
-        "2. 按当前协议优先组织最相关来源和概念。",
-        "3. 写出分歧、证据缺口和下一步问题。",
-        "",
-        "## 引用要求",
-        "- 在最终答案里加入 source-page 内联引用。",
+            "## 下一步",
+            "1. 用最强来源先写 2 到 4 句直接回答。",
+            "2. 明确列出反证、缺口和不确定性。",
+            "3. 在正文里保留 source-page 内联引用。",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -647,72 +670,40 @@ def render_slides(
         "",
         f"# {question}",
         "",
-        "## 使用说明",
-        "- 把排好序的来源页整理成 5 到 7 页幻灯片。",
-        "- 每页正文都保留引用。",
+        "## 本稿用途",
         f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
+        "- 把问题压成 5 到 7 页幻灯片，先结论，再证据，再风险。",
+        "- 每页正文都保留引用。",
         "",
         "## 协议输出偏置",
     ]
-    if output_guidance:
-        for line in output_guidance:
-            lines.append(f"- {line}")
-    else:
-        lines.append("- 当前协议没有额外的幻灯片偏置。")
+    lines.extend(
+        f"- {line}"
+        for line in compact_output_guidance_lines(output_guidance, "当前协议没有额外的幻灯片偏置。")
+    )
     lines.extend(
         [
             "",
-            "## 相关索引",
-            "- `wiki/indexes/index.md`",
-            "- `wiki/indexes/sources.md`",
-            "- `wiki/indexes/concepts.md`",
-            "- `wiki/indexes/decisions.md`",
-            "- `wiki/indexes/judgments.md`",
-            "- `wiki/indexes/judgment-assets.md`",
-            "- `wiki/indexes/agent-workbench.md`",
-            "- `wiki/indexes/cognitive-history.md`",
-            "- `wiki/indexes/output-packs.md`",
-            "- `wiki/indexes/domain-pilots.md`",
-            "- `wiki/indexes/protocols.md`",
-            "- `wiki/indexes/review-queue.md`",
-            "- `wiki/indexes/review-center.md`",
-            "- `wiki/indexes/aging-report.md`",
-            "- `wiki/indexes/concept-quality.md`",
-            "- `wiki/indexes/machine-memory.md`",
-            "- `wiki/indexes/graph-view.md`",
-            "- `wiki/indexes/machine-memory-topology.md`",
-            "- `wiki/indexes/machine-memory-actions.md`",
-            "- `wiki/indexes/machine-memory-repair-plan.md`",
-            "- `wiki/indexes/graph-health.md`",
-            "- `wiki/indexes/drift-report.md`",
-            "- `wiki/indexes/repair-backlog.md`",
-            "- `schema/index.md`",
-            f"- `schema/protocols/{active_protocol}/index.md`",
-            "",
-            "## 机器记忆查询计划",
-            "",
-            "## 相关概念",
+            "## 优先来源",
         ]
     )
-    lines[-2:-2] = machine_memory_query_plan_lines(machine_query)
-    if not concepts:
-        lines.append("- 暂无排好序的概念页。")
-    else:
-        for concept in concepts:
-            lines.append(f"- `{concept['path']}`")
+    lines.extend(compact_source_link_lines(entries, empty_message="- 暂无排好序的来源。"))
     lines.extend(
         [
             "",
-        "## 相关来源",
+            "## 优先概念",
         ]
     )
-    if not entries:
-        lines.append("- 暂无排好序的来源。")
-    else:
-        for entry in entries:
-            lines.append(f"- `wiki/sources/{entry['id']}.md`")
+    lines.extend(compact_concept_link_lines(concepts, empty_message="- 暂无排好序的概念页。"))
     lines.extend(
         [
+            "",
+            "## 建议页结构",
+            "1. 结论页：一句话结论 + 1 个核心证据。",
+            "2. 证据页：2 到 3 条关键事实。",
+            "3. 机制页：解释为什么成立。",
+            "4. 风险页：反证、限制和失效条件。",
+            "5. 下一步：需要补的实验或决策。",
             "",
             "---",
             "",
@@ -737,6 +728,7 @@ def render_figure_brief(
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
     output_guidance = protocol_output_guidance(root, active_protocol, "figure")
+    focus_lines = compact_machine_memory_focus_lines(machine_query)
     frontmatter = render_frontmatter(
         {
             "id": artifact_id,
@@ -753,76 +745,42 @@ def render_figure_brief(
         "",
         f"# 图表简报：{question}",
         "",
-        "## 目标",
-        "- 描述这张图应该表达什么。",
+        "## 这张图先回答什么",
         f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
+        "- 先用一张图回答一个问题，不要把多个结论塞进同一张图。",
+    ]
+    lines.extend(focus_lines)
+    lines.extend(
+        [
         "",
         "## 协议输出偏置",
-    ]
-    if output_guidance:
-        for line in output_guidance:
-            lines.append(f"- {line}")
-    else:
-        lines.append("- 当前协议没有额外的图表偏置。")
+        ]
+    )
+    lines.extend(
+        f"- {line}"
+        for line in compact_output_guidance_lines(output_guidance, "当前协议没有额外的图表偏置。")
+    )
     lines.extend(
         [
             "",
-            "## 推荐索引页",
-            "- [知识库总索引](../../wiki/indexes/index.md)",
-            "- [来源索引](../../wiki/indexes/sources.md)",
-            "- [概念索引](../../wiki/indexes/concepts.md)",
-            "- [决策索引](../../wiki/indexes/decisions.md)",
-            "- [判断索引](../../wiki/indexes/judgments.md)",
-            "- [判断资产](../../wiki/indexes/judgment-assets.md)",
-            "- [Agent Workbench](../../wiki/indexes/agent-workbench.md)",
-            "- [认知历史](../../wiki/indexes/cognitive-history.md)",
-            "- [输出 Pack 总览](../../wiki/indexes/output-packs.md)",
-            "- [领域 Pilot 总览](../../wiki/indexes/domain-pilots.md)",
-            "- [协议总览](../../wiki/indexes/protocols.md)",
-            "- [审阅队列](../../wiki/indexes/review-queue.md)",
-            "- [审阅中心](../../wiki/indexes/review-center.md)",
-            "- [Aging 报告](../../wiki/indexes/aging-report.md)",
-            "- [概念质量](../../wiki/indexes/concept-quality.md)",
-            "- [机器记忆](../../wiki/indexes/machine-memory.md)",
-            "- [图谱视图](../../wiki/indexes/graph-view.md)",
-            "- [拓扑视图](../../wiki/indexes/machine-memory-topology.md)",
-            "- [动作队列](../../wiki/indexes/machine-memory-actions.md)",
-            "- [修复计划](../../wiki/indexes/machine-memory-repair-plan.md)",
-            "- [图谱健康](../../wiki/indexes/graph-health.md)",
-            "- [漂移报告](../../wiki/indexes/drift-report.md)",
-            "- [修复待办](../../wiki/indexes/repair-backlog.md)",
-            "- [运行时规则](../../schema/index.md)",
-            f"- [当前协议规则](../../schema/protocols/{active_protocol}/index.md)",
-            "",
-            "## 机器记忆查询计划",
-            "",
-            "## 推荐概念",
+            "## 优先来源",
         ]
     )
-    lines[-2:-2] = machine_memory_query_plan_lines(machine_query)
-    if not concepts:
-        lines.append("- 暂无排好序的概念页。")
-    else:
-        for concept in concepts:
-            lines.append(f"- [{concept['title']}](../../{concept['path']})")
+    lines.extend(compact_source_link_lines(entries, empty_message="- 暂无排好序的来源。"))
     lines.extend(
         [
             "",
-            "## 推荐来源",
+            "## 优先概念",
         ]
     )
-    if not entries:
-        lines.append("- 暂无排好序的来源。")
-    else:
-        for entry in entries:
-            lines.append(f"- [{entry['title']}](../../wiki/sources/{entry['id']}.md)")
+    lines.extend(compact_concept_link_lines(concepts, empty_message="- 暂无排好序的概念页。"))
     lines.extend(
         [
             "",
             "## 制图要求",
-            "- 写明图表类型。",
-            "- 列出变量或对比维度。",
-            "- 在图注里包含 source-page 引用。",
+            "- 写明图表类型和横纵轴。",
+            "- 变量或对比维度只保留最关键的 2 到 4 个。",
+            "- 在图注里包含 source-page 引用和结论边界。",
             "",
             f"<!-- artifact_id: {artifact_id} -->",
         ]
@@ -918,6 +876,7 @@ def render_decision_memo_query(
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
     output_guidance = protocol_output_guidance(root, active_protocol, "decision-memo")
+    focus_lines = compact_machine_memory_focus_lines(machine_query)
     seed_ref, seed_frontmatter, seed_content = _select_output_seed_pack(
         root,
         output_format="decision-memo",
@@ -946,27 +905,21 @@ def render_decision_memo_query(
         "",
         f"# Decision Memo Request · {question}",
         "",
-        "## Usage",
-        "- 把 seed memo 改写成这次问题要用的 decision memo。",
+        "## 任务",
+        "- 把这次问题压成一页可执行的 decision memo。",
         "- 保留 `wiki/sources/*.md` 级别的引用，不要删掉反证、失效条件和下一次信号。",
         f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
         "",
         "## 协议输出偏置",
     ]
-    if output_guidance:
-        lines.extend(f"- {line}" for line in output_guidance)
-    else:
-        lines.append("- 当前协议没有额外的 decision memo 偏置。")
-    lines.extend(["", "## 机器记忆查询计划", *machine_memory_query_plan_lines(machine_query), "", "## 推荐概念"])
-    if not concepts:
-        lines.append("- 暂无排好序的概念页。")
-    else:
-        lines.extend(f"- [{concept['title']}](../../{concept['path']})" for concept in concepts[:8])
-    lines.extend(["", "## 推荐来源"])
-    if not entries:
-        lines.append("- 暂无排好序的来源。")
-    else:
-        lines.extend(f"- [{entry['title']}](../../wiki/sources/{entry['id']}.md)" for entry in entries[:10])
+    lines.extend(
+        f"- {line}"
+        for line in compact_output_guidance_lines(output_guidance, "当前协议没有额外的 decision memo 偏置。")
+    )
+    lines.extend(["", "## 当前线索", *focus_lines, "", "## 优先来源"])
+    lines.extend(compact_source_link_lines(entries, empty_message="- 暂无排好序的来源。"))
+    lines.extend(["", "## 优先概念"])
+    lines.extend(compact_concept_link_lines(concepts, empty_message="- 暂无排好序的概念页。"))
     lines.extend(["", "## Seed Pack"])
     if not seed_ref:
         lines.append("- 当前没有可复用的 compiled decision memo；请基于推荐来源直接起草。")
@@ -1014,6 +967,7 @@ def render_sop_query(
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
     output_guidance = protocol_output_guidance(root, active_protocol, "sop")
+    focus_lines = compact_machine_memory_focus_lines(machine_query)
     seed_ref, seed_frontmatter, seed_content = _select_output_seed_pack(
         root,
         output_format="sop",
@@ -1042,27 +996,21 @@ def render_sop_query(
         "",
         f"# SOP Request · {question}",
         "",
-        "## Usage",
-        "- 把 seed SOP 改写成这次问题要用的执行草案。",
+        "## 任务",
+        "- 把这次问题压成可执行的 SOP 草案。",
         "- 保留前置检查、步骤、风险控制、dry-run / rollback 约束。",
         f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
         "",
         "## 协议输出偏置",
     ]
-    if output_guidance:
-        lines.extend(f"- {line}" for line in output_guidance)
-    else:
-        lines.append("- 当前协议没有额外的 SOP 偏置。")
-    lines.extend(["", "## 机器记忆查询计划", *machine_memory_query_plan_lines(machine_query), "", "## 推荐来源"])
-    if not entries:
-        lines.append("- 暂无排好序的来源。")
-    else:
-        lines.extend(f"- [{entry['title']}](../../wiki/sources/{entry['id']}.md)" for entry in entries[:10])
-    lines.extend(["", "## 相关概念"])
-    if not concepts:
-        lines.append("- 暂无排好序的概念页。")
-    else:
-        lines.extend(f"- [{concept['title']}](../../{concept['path']})" for concept in concepts[:8])
+    lines.extend(
+        f"- {line}"
+        for line in compact_output_guidance_lines(output_guidance, "当前协议没有额外的 SOP 偏置。")
+    )
+    lines.extend(["", "## 当前线索", *focus_lines, "", "## 优先来源"])
+    lines.extend(compact_source_link_lines(entries, empty_message="- 暂无排好序的来源。"))
+    lines.extend(["", "## 优先概念"])
+    lines.extend(compact_concept_link_lines(concepts, empty_message="- 暂无排好序的概念页。"))
     lines.extend(["", "## Seed Pack"])
     if not seed_ref:
         lines.append("- 当前没有可复用的 compiled SOP draft；请基于推荐来源直接起草。")

@@ -36,6 +36,7 @@ class VaultBootstrapTests(unittest.TestCase):
 
         launcher = self.target / "scripts" / "aiwiki-launcher.sh"
         self.assertTrue(os.access(launcher, os.X_OK))
+        launcher_text = launcher.read_text(encoding="utf-8")
 
         home = (self.target / "HOME.md").read_text(encoding="utf-8")
         readme = (self.target / "README.md").read_text(encoding="utf-8")
@@ -54,6 +55,8 @@ class VaultBootstrapTests(unittest.TestCase):
         self.assertIn("gpt-5.4", readme)
         self.assertIn("drop-note --title", readme)
         self.assertIn("runtime contract", readme)
+        self.assertIn('$HOME/.local/npm/bin', launcher_text)
+        self.assertIn("export PATH", launcher_text)
         self.assertEqual(appearance["enabledCssSnippets"], ["danlu-zh-folders"])
         self.assertIn('.tree-item-self[data-path="raw"] > .tree-item-inner', snippet)
         self.assertIn('.nav-folder-title[data-path="output/control"] > .nav-folder-title-content', snippet)

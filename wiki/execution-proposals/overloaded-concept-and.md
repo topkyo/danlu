@@ -14,7 +14,7 @@ impact_score: "80"
 target_paths:
   - "wiki/concepts/and.md"
 generated_by: "aiwiki-compile"
-last_compiled_at: "2026-04-16T02:09:52+00:00"
+last_compiled_at: "2026-04-16T19:11:45+00:00"
 ---
 
 # 拆分过载概念 And
@@ -57,7 +57,9 @@ last_compiled_at: "2026-04-16T02:09:52+00:00"
 - Suggested next step: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-and --status resolved --note "Repair completed."`
 
 ## Safe Apply Preview
-- 当前 proposal 不支持低风险 safe apply。
+- Apply mode: `resolve-monitor`
+- Affected paths: `wiki/concepts/and.md`
+- Follow-up: 标记为已确认并关闭；后续 compile 会刷新 repair plan。
 
 ## Related Links
 - [执行中心](../indexes/execution-center.md)

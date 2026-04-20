@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import time
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
@@ -35,8 +36,157 @@ from .app_utils import (
     runtime_write_operation,
     sha256_bytes,
 )
-from .config import LLMConfig
-from .llm import CompletionResult, create_backend_client
+from .config import BACKEND_GITHUB_MODELS_API, LLMConfig
+from .llm import CompletionResult, LLMError, create_backend_client, probe_available_backends, probe_backend
+
+ASK_INDEX_PAGES_BASE = (
+    "wiki/indexes/index.md",
+    "wiki/indexes/sources.md",
+    "wiki/indexes/concepts.md",
+    "wiki/indexes/concept-quality.md",
+    "wiki/indexes/machine-memory.md",
+    "wiki/indexes/log.md",
+    "schema/index.md",
+    "schema/protocols/index.md",
+)
+ASK_INDEX_PAGES_BY_FORMAT = {
+    "decision-memo": ("wiki/indexes/decisions.md", "wiki/indexes/judgments.md"),
+    "sop": ("wiki/indexes/decisions.md", "wiki/indexes/judgments.md"),
+    "report": (),
+    "slides": (),
+    "figure": (),
+}
+ASK_PROTOCOL_PAGE_NAMES_BASE = ("index.md", "taxonomy.md", "query.md")
+ASK_PROTOCOL_PAGE_NAMES_BY_FORMAT = {
+    "decision-memo": ("decision.md", "judgment.md"),
+    "sop": ("decision.md",),
+    "report": (),
+    "slides": (),
+    "figure": (),
+}
+ASK_PROMPT_PROFILES = {
+    "balanced": {
+        "max_total_chars": 48000,
+        "index_page_chars": 2200,
+        "log_page_chars": 1800,
+        "protocol_page_chars": 1600,
+        "concept_page_chars": 2200,
+        "source_page_chars": 2800,
+        "max_index_pages": 8,
+        "max_protocol_pages": 4,
+        "max_concepts": 4,
+        "max_sources": 5,
+    },
+    "lean": {
+        "max_total_chars": 30000,
+        "index_page_chars": 1400,
+        "log_page_chars": 1200,
+        "protocol_page_chars": 1200,
+        "concept_page_chars": 1600,
+        "source_page_chars": 2200,
+        "max_index_pages": 5,
+        "max_protocol_pages": 3,
+        "max_concepts": 3,
+        "max_sources": 4,
+    },
+    "github-models": {
+        "max_total_chars": 14000,
+        "index_page_chars": 900,
+        "log_page_chars": 700,
+        "protocol_page_chars": 900,
+        "concept_page_chars": 900,
+        "source_page_chars": 1200,
+        "max_index_pages": 4,
+        "max_protocol_pages": 2,
+        "max_concepts": 2,
+        "max_sources": 3,
+    },
+    "github-models-minimal": {
+        "max_total_chars": 9000,
+        "index_page_chars": 650,
+        "log_page_chars": 500,
+        "protocol_page_chars": 700,
+        "concept_page_chars": 700,
+        "source_page_chars": 900,
+        "max_index_pages": 3,
+        "max_protocol_pages": 2,
+        "max_concepts": 2,
+        "max_sources": 2,
+    },
+}
+COMPILE_PROMPT_PROFILES = {
+    "balanced": {
+        "max_total_chars": 24000,
+        "current_page_chars": 3200,
+        "raw_excerpt_chars": 4200,
+        "schema_page_chars": 1600,
+        "protocol_page_chars": 1400,
+        "source_page_chars": 2200,
+        "related_concept_chars": 1600,
+        "max_source_pages": 3,
+        "max_related_concepts": 3,
+        "max_quality_signals": 4,
+    },
+    "github-models": {
+        "max_total_chars": 14000,
+        "current_page_chars": 1600,
+        "raw_excerpt_chars": 1800,
+        "schema_page_chars": 750,
+        "protocol_page_chars": 750,
+        "source_page_chars": 1100,
+        "related_concept_chars": 900,
+        "max_source_pages": 2,
+        "max_related_concepts": 2,
+        "max_quality_signals": 3,
+    },
+    "github-models-minimal": {
+        "max_total_chars": 9000,
+        "current_page_chars": 1100,
+        "raw_excerpt_chars": 1200,
+        "schema_page_chars": 600,
+        "protocol_page_chars": 600,
+        "source_page_chars": 800,
+        "related_concept_chars": 700,
+        "max_source_pages": 2,
+        "max_related_concepts": 1,
+        "max_quality_signals": 2,
+    },
+}
+LINT_PROMPT_PROFILES = {
+    "balanced": {
+        "max_total_chars": 24000,
+        "deterministic_report_chars": 3200,
+        "schema_page_chars": 1300,
+        "protocol_page_chars": 1100,
+        "index_page_chars": 1400,
+        "log_page_chars": 1100,
+        "wiki_page_chars": 1400,
+        "max_index_pages": 8,
+        "max_wiki_pages": 5,
+    },
+    "github-models": {
+        "max_total_chars": 14000,
+        "deterministic_report_chars": 1800,
+        "schema_page_chars": 700,
+        "protocol_page_chars": 700,
+        "index_page_chars": 800,
+        "log_page_chars": 650,
+        "wiki_page_chars": 850,
+        "max_index_pages": 6,
+        "max_wiki_pages": 3,
+    },
+    "github-models-minimal": {
+        "max_total_chars": 9000,
+        "deterministic_report_chars": 1200,
+        "schema_page_chars": 550,
+        "protocol_page_chars": 550,
+        "index_page_chars": 650,
+        "log_page_chars": 500,
+        "wiki_page_chars": 650,
+        "max_index_pages": 4,
+        "max_wiki_pages": 2,
+    },
+}
 
 
 class SupportsComplete(Protocol):
@@ -48,8 +198,30 @@ def llm_status() -> dict[str, Any]:
     return LLMConfig.status_from_env()
 
 
-def create_client(root: Path) -> SupportsComplete:
-    return create_backend_client(LLMConfig.from_env(), root)
+def llm_probe(root: Path, probe_all: bool = False, timeout_seconds: int = 20) -> dict[str, Any]:
+    status = llm_status()
+    result = dict(status)
+    result["probe_timeout_seconds"] = timeout_seconds
+    if not status.get("configured"):
+        result["probe"] = None
+        result["probes"] = []
+        return result
+    config = LLMConfig.from_env()
+    if probe_all:
+        probes = probe_available_backends(config, root, timeout_seconds=timeout_seconds)
+        result["probes"] = probes
+        result["probe"] = next((probe for probe in probes if probe.get("backend") == config.backend), probes[0] if probes else None)
+        return result
+    result["probe"] = probe_backend(config, root, timeout_seconds=timeout_seconds)
+    result["probes"] = []
+    return result
+
+
+def create_client(root: Path, timeout_seconds: int | None = None) -> SupportsComplete:
+    config = LLMConfig.from_env()
+    if timeout_seconds is not None:
+        config = replace(config, timeout_seconds=timeout_seconds)
+    return create_backend_client(config, root)
 
 
 @runtime_write_operation
@@ -89,16 +261,37 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             "updated_rewrite_proposal_pages": updated_rewrite_proposal_pages,
             "pending_rewrite_concept_pages": len(pending_rewrite_candidates),
             "skipped_rewrite_concept_pages": skipped_rewrite_candidates,
+            "prompt_profile": "",
+            "retry_prompt_profile": "",
         }
 
     effective_client = client or create_client(root)
+    prompt_profile = _initial_compile_prompt_profile(effective_client)
+    retry_prompt_profile = ""
 
     for entry in pending[:limit]:
         target = root / "wiki" / "sources" / f"{entry['id']}.md"
         raw_path = root / entry["stored_path"]
         current_page = target.read_text(encoding="utf-8", errors="replace")
-        prompt = _build_compile_prompt(root, entry, raw_path, current_page)
-        result = effective_client.complete(_system_prompt("compile"), prompt)
+        item_profile = prompt_profile
+        prompt = _build_compile_prompt(root, entry, raw_path, current_page, prompt_profile=item_profile)
+        item_retry_profile = ""
+        try:
+            result = effective_client.complete(_system_prompt("compile"), prompt)
+        except LLMError as exc:
+            item_retry_profile = _retry_compile_prompt_profile(exc, item_profile, effective_client)
+            if not item_retry_profile:
+                raise
+            logging.getLogger("aiwiki").warning(
+                "run-compile failed with %s prompt; retrying with %s prompt",
+                item_profile,
+                item_retry_profile,
+            )
+            prompt = _build_compile_prompt(root, entry, raw_path, current_page, prompt_profile=item_retry_profile)
+            result = effective_client.complete(_system_prompt("compile"), prompt)
+            prompt_profile = item_retry_profile
+            retry_prompt_profile = item_retry_profile
+        used_profile = item_retry_profile or item_profile
         updated = _normalize_markdown(result.text)
         _validate_source_page(updated, entry["id"], entry["stored_path"], entry["sha256"])
         target.write_text(updated, encoding="utf-8")
@@ -110,6 +303,8 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                 "target": relative_path(root, target),
                 "source": entry["stored_path"],
                 "model": _client_model_name(effective_client),
+                "prompt_profile": used_profile,
+                "retry_prompt_profile": item_retry_profile,
                 "response_id": result.response_id,
                 "usage": result.usage,
             },
@@ -134,8 +329,39 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
         if not isinstance(source_pages, list):
             source_pages = []
         related_slugs = _extract_related_concept_slugs(current_page)
-        prompt = _build_concept_compile_prompt(root, target, current_page, source_pages, related_slugs)
-        result = effective_client.complete(_system_prompt("compile"), prompt)
+        item_profile = prompt_profile
+        prompt = _build_concept_compile_prompt(
+            root,
+            target,
+            current_page,
+            source_pages,
+            related_slugs,
+            prompt_profile=item_profile,
+        )
+        item_retry_profile = ""
+        try:
+            result = effective_client.complete(_system_prompt("compile"), prompt)
+        except LLMError as exc:
+            item_retry_profile = _retry_compile_prompt_profile(exc, item_profile, effective_client)
+            if not item_retry_profile:
+                raise
+            logging.getLogger("aiwiki").warning(
+                "run-compile concept failed with %s prompt; retrying with %s prompt",
+                item_profile,
+                item_retry_profile,
+            )
+            prompt = _build_concept_compile_prompt(
+                root,
+                target,
+                current_page,
+                source_pages,
+                related_slugs,
+                prompt_profile=item_retry_profile,
+            )
+            result = effective_client.complete(_system_prompt("compile"), prompt)
+            prompt_profile = item_retry_profile
+            retry_prompt_profile = item_retry_profile
+        used_profile = item_retry_profile or item_profile
         updated = _normalize_markdown(result.text)
         _validate_concept_page(updated, slug, frontmatter.get("source_signature", ""), source_pages)
         target.write_text(updated, encoding="utf-8")
@@ -147,6 +373,8 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                 "target": relative_path(root, target),
                 "source_pages": source_pages,
                 "model": _client_model_name(effective_client),
+                "prompt_profile": used_profile,
+                "retry_prompt_profile": item_retry_profile,
                 "response_id": result.response_id,
                 "usage": result.usage,
             },
@@ -174,6 +402,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             source_pages = []
         related_slugs = _extract_related_concept_slugs(current_page)
         quality_record = _rewrite_candidate_record(memory, slug)
+        item_profile = prompt_profile
         prompt = _build_concept_compile_prompt(
             root,
             target,
@@ -181,8 +410,33 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             source_pages,
             related_slugs,
             quality_record=quality_record,
+            prompt_profile=item_profile,
         )
-        result = effective_client.complete(_system_prompt("compile"), prompt)
+        item_retry_profile = ""
+        try:
+            result = effective_client.complete(_system_prompt("compile"), prompt)
+        except LLMError as exc:
+            item_retry_profile = _retry_compile_prompt_profile(exc, item_profile, effective_client)
+            if not item_retry_profile:
+                raise
+            logging.getLogger("aiwiki").warning(
+                "run-compile rewrite failed with %s prompt; retrying with %s prompt",
+                item_profile,
+                item_retry_profile,
+            )
+            prompt = _build_concept_compile_prompt(
+                root,
+                target,
+                current_page,
+                source_pages,
+                related_slugs,
+                quality_record=quality_record,
+                prompt_profile=item_retry_profile,
+            )
+            result = effective_client.complete(_system_prompt("compile"), prompt)
+            prompt_profile = item_retry_profile
+            retry_prompt_profile = item_retry_profile
+        used_profile = item_retry_profile or item_profile
         updated = _normalize_markdown(result.text)
         _validate_concept_page(updated, slug, frontmatter.get("source_signature", ""), source_pages)
         proposal = store_concept_rewrite_candidate(
@@ -203,6 +457,8 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                 "quality_priority": quality_record.get("priority", ""),
                 "quality_issues": quality_record.get("issues", []),
                 "model": _client_model_name(effective_client),
+                "prompt_profile": used_profile,
+                "retry_prompt_profile": item_retry_profile,
                 "response_id": result.response_id,
                 "usage": result.usage,
             },
@@ -223,6 +479,8 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
         "updated_rewrite_proposal_pages": updated_rewrite_proposal_pages,
         "pending_rewrite_concept_pages": len(pending_rewrite_candidates),
         "skipped_rewrite_concept_pages": skipped_rewrite_candidates,
+        "prompt_profile": prompt_profile,
+        "retry_prompt_profile": retry_prompt_profile,
     }
 
 
@@ -233,8 +491,12 @@ def run_ask(
     output_format: str,
     protocol: str | None = None,
     client: SupportsComplete | None = None,
+    lean: bool = False,
+    timeout_seconds: int | None = None,
 ) -> dict[str, Any]:
     ensure_layout(root)
+    if timeout_seconds is not None and timeout_seconds <= 0:
+        raise ValueError("run-ask timeout_seconds must be greater than 0.")
     artifact = ask_question(root, question, output_format, protocol=protocol)
     manifest = load_manifest(root)
     entry_map = {entry["id"]: entry for entry in manifest["entries"]}
@@ -265,6 +527,8 @@ def run_ask(
 
     target = root / artifact["path"]
     current_artifact = target.read_text(encoding="utf-8", errors="replace")
+    effective_client = client or create_client(root, timeout_seconds=timeout_seconds)
+    prompt_profile = _select_initial_ask_prompt_profile(effective_client, lean=lean)
     prompt = _build_ask_prompt(
         root,
         target,
@@ -276,9 +540,34 @@ def run_ask(
         protocol_pages,
         index_pages,
         artifact.get("machine_memory_query", {}),
+        prompt_profile=prompt_profile,
     )
-    effective_client = client or create_client(root)
-    result = effective_client.complete(_system_prompt("ask"), prompt)
+    retry_profile = ""
+    try:
+        result = effective_client.complete(_system_prompt("ask"), prompt)
+    except LLMError as exc:
+        retry_profile = _retry_ask_prompt_profile(exc, prompt_profile, effective_client)
+        if not retry_profile:
+            raise
+        logging.getLogger("aiwiki").warning(
+            "run-ask failed with %s prompt; retrying with %s prompt",
+            prompt_profile,
+            retry_profile,
+        )
+        prompt = _build_ask_prompt(
+            root,
+            target,
+            question,
+            output_format,
+            current_artifact,
+            source_pages,
+            concept_pages,
+            protocol_pages,
+            index_pages,
+            artifact.get("machine_memory_query", {}),
+            prompt_profile=retry_profile,
+        )
+        result = effective_client.complete(_system_prompt("ask"), prompt)
     updated = _normalize_markdown(result.text)
     _validate_output_markdown(updated, output_format, source_ids)
     target.write_text(updated, encoding="utf-8")
@@ -292,11 +581,19 @@ def run_ask(
             "protocol": artifact.get("protocol", ""),
             "ranked_sources": source_ids,
             "model": _client_model_name(effective_client),
+            "prompt_profile": retry_profile or prompt_profile,
+            "retry_prompt_profile": retry_profile,
+            "timeout_seconds": getattr(getattr(effective_client, "config", None), "timeout_seconds", timeout_seconds),
             "response_id": result.response_id,
             "usage": result.usage,
         },
     )
-    return artifact
+    return {
+        **artifact,
+        "prompt_profile": retry_profile or prompt_profile,
+        "retry_prompt_profile": retry_profile,
+        "timeout_seconds": getattr(getattr(effective_client, "config", None), "timeout_seconds", timeout_seconds),
+    }
 
 
 @runtime_write_operation
@@ -305,9 +602,24 @@ def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, An
     deterministic = lint_wiki(root)
     report_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     target = root / "output" / "lint" / f"semantic-lint-{report_id}.md"
-    prompt = _build_lint_prompt(root, deterministic["path"])
     effective_client = client or create_client(root)
-    result = effective_client.complete(_system_prompt("lint"), prompt)
+    prompt_profile = _initial_lint_prompt_profile(effective_client)
+    prompt = _build_lint_prompt(root, deterministic["path"], prompt_profile=prompt_profile)
+    retry_prompt_profile = ""
+    try:
+        result = effective_client.complete(_system_prompt("lint"), prompt)
+    except LLMError as exc:
+        retry_prompt_profile = _retry_lint_prompt_profile(exc, prompt_profile, effective_client)
+        if not retry_prompt_profile:
+            raise
+        logging.getLogger("aiwiki").warning(
+            "run-lint failed with %s prompt; retrying with %s prompt",
+            prompt_profile,
+            retry_prompt_profile,
+        )
+        prompt = _build_lint_prompt(root, deterministic["path"], prompt_profile=retry_prompt_profile)
+        result = effective_client.complete(_system_prompt("lint"), prompt)
+        prompt_profile = retry_prompt_profile
     updated = _normalize_markdown(result.text)
     if not updated.startswith("#") and not updated.startswith("---"):
         raise RuntimeError("Semantic lint response must be markdown.")
@@ -319,6 +631,8 @@ def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, An
             "target": relative_path(root, target),
             "deterministic_report": deterministic["path"],
             "model": _client_model_name(effective_client),
+            "prompt_profile": prompt_profile,
+            "retry_prompt_profile": retry_prompt_profile,
             "response_id": result.response_id,
             "usage": result.usage,
         },
@@ -326,6 +640,8 @@ def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, An
     return {
         "deterministic": deterministic,
         "semantic_report": relative_path(root, target),
+        "prompt_profile": prompt_profile,
+        "retry_prompt_profile": retry_prompt_profile,
     }
 
 
@@ -526,9 +842,16 @@ def _system_prompt(kind: str) -> str:
     )
 
 
-def _build_compile_prompt(root: Path, entry: dict[str, Any], raw_path: Path, current_page: str) -> str:
+def _build_compile_prompt(
+    root: Path,
+    entry: dict[str, Any],
+    raw_path: Path,
+    current_page: str,
+    prompt_profile: str = "balanced",
+) -> str:
     template = _load_prompt(root, "compile.md")
-    raw_excerpt = _read_context(raw_path, max_chars=_context_budget())
+    profile = _compile_prompt_profile(prompt_profile)
+    raw_excerpt = _read_context(raw_path, max_chars=profile["raw_excerpt_chars"])
     target_relative = relative_path(root, root / "wiki" / "sources" / f"{entry['id']}.md")
     note_kind = str(entry.get("note_kind") or "")
     note_kind_lines: list[str] = []
@@ -559,13 +882,17 @@ def _build_compile_prompt(root: Path, entry: dict[str, Any], raw_path: Path, cur
             "- If evidence is weak or truncated, say so explicitly.",
             "",
             "## Runtime Schema",
-            _schema_context(root, ("index.md", "citations.md", "conflicts.md")),
+            _schema_context(root, ("index.md", "citations.md", "conflicts.md"), max_chars=profile["schema_page_chars"]),
             "",
             "## Active Protocol",
-            _protocol_context(root, ("index.md", "taxonomy.md", "query.md")),
+            _protocol_context(
+                root,
+                ("index.md", "taxonomy.md", "query.md"),
+                max_chars=profile["protocol_page_chars"],
+            ),
             "",
             "## Current Page",
-            current_page,
+            _fit_prompt_section(current_page, max_chars=profile["current_page_chars"]),
             "",
             "## Raw Source Excerpt",
             raw_excerpt,
@@ -580,20 +907,46 @@ def _build_concept_compile_prompt(
     source_pages: list[str],
     related_slugs: list[str],
     quality_record: dict[str, Any] | None = None,
+    prompt_profile: str = "balanced",
 ) -> str:
     template = _load_prompt(root, "compile.md")
+    profile = _compile_prompt_profile(prompt_profile)
     source_sections: list[str] = []
-    for relative in source_pages:
+    for relative in source_pages[: profile["max_source_pages"]]:
         page = root / relative
         if not page.exists():
             continue
-        source_sections.extend([f"### {relative}", _fit_prompt_section(page.read_text(encoding='utf-8', errors='replace'), max_chars=3200), ""])
+        source_sections.extend(
+            [
+                f"### {relative}",
+                _fit_prompt_section(
+                    page.read_text(encoding="utf-8", errors="replace"),
+                    max_chars=profile["source_page_chars"],
+                ),
+                "",
+            ]
+        )
+    omitted_source_pages = max(0, len(source_pages) - profile["max_source_pages"])
+    if omitted_source_pages:
+        source_sections.append(f"- Omitted `{omitted_source_pages}` additional source page(s) for prompt profile `{prompt_profile}`.")
     related_sections: list[str] = []
-    for slug in related_slugs[:4]:
+    for slug in related_slugs[: profile["max_related_concepts"]]:
         page = root / "wiki" / "concepts" / f"{slug}.md"
         if not page.exists():
             continue
-        related_sections.extend([f"### wiki/concepts/{slug}.md", _fit_prompt_section(page.read_text(encoding='utf-8', errors='replace'), max_chars=2200), ""])
+        related_sections.extend(
+            [
+                f"### wiki/concepts/{slug}.md",
+                _fit_prompt_section(
+                    page.read_text(encoding="utf-8", errors="replace"),
+                    max_chars=profile["related_concept_chars"],
+                ),
+                "",
+            ]
+        )
+    omitted_related = max(0, len(related_slugs) - profile["max_related_concepts"])
+    if omitted_related:
+        related_sections.append(f"- Omitted `{omitted_related}` additional related concept(s) for prompt profile `{prompt_profile}`.")
     frontmatter = parse_frontmatter(current_page)
     quality_lines = [
         f"- Rewrite priority: `{quality_record.get('priority', 'n/a')}`",
@@ -601,12 +954,12 @@ def _build_concept_compile_prompt(
         f"- Strategy: {quality_record.get('rewrite_strategy', 'Keep the concept grounded and explicit.')}",
     ] if quality_record else ["- No extra concept-quality signal was attached."]
     if quality_record and quality_record.get("conflict_signals"):
-        for signal in quality_record.get("conflict_signals", [])[:4]:
+        for signal in quality_record.get("conflict_signals", [])[: profile["max_quality_signals"]]:
             quality_lines.append(
                 f"- Conflict `{signal.get('label', 'n/a')}` from `{', '.join(signal.get('source_pages', [])) or 'none'}`"
             )
     if quality_record and quality_record.get("gap_signals"):
-        for gap in quality_record.get("gap_signals", [])[:4]:
+        for gap in quality_record.get("gap_signals", [])[: profile["max_quality_signals"]]:
             quality_lines.append(
                 f"- Gap `{gap.get('kind', 'n/a')}` on `{gap.get('path', 'n/a')}`"
                 f" with markers `{', '.join(gap.get('markers', [])) or 'none'}`"
@@ -628,16 +981,24 @@ def _build_concept_compile_prompt(
             "- Preserve or improve explicit citations to `wiki/sources/*.md` when useful.",
             "",
             "## Runtime Schema",
-            _schema_context(root, ("index.md", "citations.md", "conflicts.md", "taxonomy.md")),
+            _schema_context(
+                root,
+                ("index.md", "citations.md", "conflicts.md", "taxonomy.md"),
+                max_chars=profile["schema_page_chars"],
+            ),
             "",
             "## Active Protocol",
-            _protocol_context(root, ("index.md", "taxonomy.md", "query.md")),
+            _protocol_context(
+                root,
+                ("index.md", "taxonomy.md", "query.md"),
+                max_chars=profile["protocol_page_chars"],
+            ),
             "",
             "## Concept Quality Signals",
             "\n".join(quality_lines),
             "",
             "## Current Concept Page",
-            current_page,
+            _fit_prompt_section(current_page, max_chars=profile["current_page_chars"]),
             "",
             "## Related Source Pages",
             "\n".join(source_sections) if source_sections else "- No source pages were available.",
@@ -690,8 +1051,10 @@ def _build_ask_prompt(
     protocol_pages: list[tuple[str, str]],
     index_pages: list[tuple[str, str]],
     machine_memory_query: dict[str, Any],
+    prompt_profile: str = "balanced",
 ) -> str:
     template = _load_prompt(root, "ask.md")
+    profile = _ask_prompt_profile(prompt_profile)
     sections = [
         template,
         "## Target",
@@ -713,53 +1076,191 @@ def _build_ask_prompt(
         "",
         "## Index Pages",
     ]
-    if not index_pages:
+    included_chars = sum(len(section) for section in sections)
+    selected_index_pages = _select_ask_index_pages(index_pages, machine_memory_query, output_format)
+    if not selected_index_pages:
         sections.append("- No index pages were available.")
     else:
-        for relative, content in index_pages:
+        included_chars += len(sections[-1])
+        omitted = 0
+        for index, (relative, content) in enumerate(selected_index_pages):
+            if index >= profile["max_index_pages"]:
+                omitted = len(selected_index_pages) - index
+                break
             excerpt = (
-                _fit_log_prompt_section(content, max_chars=3000)
+                _fit_log_prompt_section(content, max_chars=profile["log_page_chars"])
                 if relative.endswith("/log.md")
-                else _fit_prompt_section(content, max_chars=3500)
+                else _fit_prompt_section(content, max_chars=profile["index_page_chars"])
             )
-            sections.extend([f"### {relative}", excerpt, ""])
+            block = "\n".join([f"### {relative}", excerpt, ""])
+            if included_chars + len(block) > profile["max_total_chars"]:
+                omitted = len(selected_index_pages) - index
+                break
+            sections.append(block)
+            included_chars += len(block)
+        if omitted:
+            sections.append(f"- Omitted `{omitted}` additional index page(s) for prompt profile `{prompt_profile}`.")
     sections.extend(
         [
             "## Protocol Pages",
         ]
     )
-    if not protocol_pages:
+    included_chars += len(sections[-1])
+    selected_protocol_pages = _select_ask_protocol_pages(protocol_pages, output_format)
+    if not selected_protocol_pages:
         sections.append("- No protocol pages were available.")
     else:
-        for relative, content in protocol_pages:
-            sections.extend([f"### {relative}", _fit_prompt_section(content, max_chars=2200), ""])
+        omitted = 0
+        for index, (relative, content) in enumerate(selected_protocol_pages):
+            if index >= profile["max_protocol_pages"]:
+                omitted = len(selected_protocol_pages) - index
+                break
+            block = "\n".join([f"### {relative}", _fit_prompt_section(content, max_chars=profile["protocol_page_chars"]), ""])
+            if included_chars + len(block) > profile["max_total_chars"]:
+                omitted = len(selected_protocol_pages) - index
+                break
+            sections.append(block)
+            included_chars += len(block)
+        if omitted:
+            sections.append(f"- Omitted `{omitted}` additional protocol page(s) for prompt profile `{prompt_profile}`.")
     sections.extend(
         [
             "## Concept Pages",
         ]
     )
+    included_chars += len(sections[-1])
     if not concept_pages:
         sections.append("- No ranked concept pages were available.")
     else:
-        for slug, content in concept_pages:
-            sections.extend([f"### wiki/concepts/{slug}.md", _fit_prompt_section(content, max_chars=3200), ""])
-    sections.extend(
-        [
-        "## Source Pages",
-        ]
-    )
-    if not source_pages:
-        sections.append("- No ranked source pages were available. Keep the artifact cautious and explicit about missing evidence.")
-    else:
-        for entry, content in source_pages:
-            sections.extend(
+        omitted = 0
+        for index, (slug, content) in enumerate(concept_pages):
+            if index >= profile["max_concepts"]:
+                omitted = len(concept_pages) - index
+                break
+            block = "\n".join(
                 [
-                    f"### wiki/sources/{entry['id']}.md",
-                    _fit_prompt_section(content, max_chars=4200),
+                    f"### wiki/concepts/{slug}.md",
+                    _fit_prompt_section(content, max_chars=profile["concept_page_chars"]),
                     "",
                 ]
             )
+            if included_chars + len(block) > profile["max_total_chars"]:
+                omitted = len(concept_pages) - index
+                break
+            sections.append(block)
+            included_chars += len(block)
+        if omitted:
+            sections.append(f"- Omitted `{omitted}` additional concept page(s) for prompt profile `{prompt_profile}`.")
+    sections.extend(
+        [
+            "## Source Pages",
+        ]
+    )
+    included_chars += len(sections[-1])
+    if not source_pages:
+        sections.append("- No ranked source pages were available. Keep the artifact cautious and explicit about missing evidence.")
+    else:
+        omitted = 0
+        for index, (entry, content) in enumerate(source_pages):
+            if index >= profile["max_sources"]:
+                omitted = len(source_pages) - index
+                break
+            block = "\n".join(
+                [
+                    f"### wiki/sources/{entry['id']}.md",
+                    _fit_prompt_section(content, max_chars=profile["source_page_chars"]),
+                    "",
+                ]
+            )
+            if included_chars + len(block) > profile["max_total_chars"]:
+                omitted = len(source_pages) - index
+                break
+            sections.append(block)
+            included_chars += len(block)
+        if omitted:
+            sections.append(
+                "- Additional ranked source pages were omitted to keep the prompt responsive. "
+                "Use the cited source pages already provided and stay explicit about uncertainty."
+            )
     return "\n".join(sections)
+
+
+def _ask_prompt_profile(name: str) -> dict[str, int]:
+    profile = ASK_PROMPT_PROFILES.get(name) or ASK_PROMPT_PROFILES["balanced"]
+    adjusted = dict(profile)
+    adjusted["max_total_chars"] = max(int(profile["max_total_chars"]), _context_budget())
+    return adjusted
+
+
+def _select_ask_index_pages(
+    index_pages: list[tuple[str, str]],
+    machine_memory_query: dict[str, Any],
+    output_format: str,
+) -> list[tuple[str, str]]:
+    available = {relative: (relative, content) for relative, content in index_pages}
+    preferred: list[str] = list(ASK_INDEX_PAGES_BASE)
+    preferred.extend(ASK_INDEX_PAGES_BY_FORMAT.get(output_format, ()))
+    if machine_memory_query.get("relevant_actions"):
+        preferred.extend(
+            [
+                "wiki/indexes/machine-memory-actions.md",
+                "wiki/indexes/machine-memory-repair-plan.md",
+            ]
+        )
+    if machine_memory_query.get("archive_recall_hints"):
+        preferred.append("wiki/indexes/cognitive-history.md")
+    selected: list[tuple[str, str]] = []
+    for relative in preferred:
+        item = available.get(relative)
+        if item and item not in selected:
+            selected.append(item)
+    return selected
+
+
+def _select_ask_protocol_pages(protocol_pages: list[tuple[str, str]], output_format: str) -> list[tuple[str, str]]:
+    available = {relative.rsplit("/", 1)[-1]: (relative, content) for relative, content in protocol_pages}
+    preferred_names = list(ASK_PROTOCOL_PAGE_NAMES_BASE)
+    preferred_names.extend(ASK_PROTOCOL_PAGE_NAMES_BY_FORMAT.get(output_format, ()))
+    selected: list[tuple[str, str]] = []
+    for name in preferred_names:
+        item = available.get(name)
+        if item and item not in selected:
+            selected.append(item)
+    return selected
+
+
+def _initial_ask_prompt_profile(client: SupportsComplete) -> str:
+    backend = str(getattr(getattr(client, "config", None), "backend", "") or "")
+    if backend == BACKEND_GITHUB_MODELS_API:
+        return "github-models"
+    return "balanced"
+
+
+def _lean_ask_prompt_profile(client: SupportsComplete) -> str:
+    backend = str(getattr(getattr(client, "config", None), "backend", "") or "")
+    if backend == BACKEND_GITHUB_MODELS_API:
+        return "github-models-minimal"
+    return "lean"
+
+
+def _select_initial_ask_prompt_profile(client: SupportsComplete, lean: bool = False) -> str:
+    if lean:
+        return _lean_ask_prompt_profile(client)
+    return _initial_ask_prompt_profile(client)
+
+
+def _retry_ask_prompt_profile(exc: Exception, current_profile: str, client: SupportsComplete) -> str:
+    text = str(exc or "").lower()
+    backend = str(getattr(getattr(client, "config", None), "backend", "") or "")
+    if backend == BACKEND_GITHUB_MODELS_API:
+        if current_profile == "github-models" and any(
+            marker in text for marker in ("tokens_limit_reached", "request body too large", "http 413", "timed out", "timeout")
+        ):
+            return "github-models-minimal"
+        return ""
+    if current_profile == "balanced" and ("timed out" in text or "timeout" in text):
+        return "lean"
+    return ""
 
 
 def _render_machine_query(machine_memory_query: dict[str, Any]) -> str:
@@ -842,19 +1343,22 @@ def _render_machine_query(machine_memory_query: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _build_lint_prompt(root: Path, deterministic_report: str) -> str:
+def _build_lint_prompt(root: Path, deterministic_report: str, prompt_profile: str = "balanced") -> str:
     template = _load_prompt(root, "lint.md")
+    profile = _lint_prompt_profile(prompt_profile)
+    max_total_chars = min(int(profile["max_total_chars"]), _context_budget())
     sections = [
         template,
         "## Deterministic Lint Report",
-        _read_context(root / deterministic_report, max_chars=_context_budget()),
+        _read_context(root / deterministic_report, max_chars=profile["deterministic_report_chars"]),
         "",
         "## Active Protocol",
-        _protocol_context(root, ("index.md", "review.md", "nightly.md")),
+        _protocol_context(root, ("index.md", "review.md", "nightly.md"), max_chars=profile["protocol_page_chars"]),
         "",
         "## Wiki Indexes",
     ]
-    for relative in (
+    included_chars = sum(len(section) for section in sections)
+    index_pages = (
         "wiki/indexes/index.md",
         "wiki/indexes/sources.md",
         "wiki/indexes/concepts.md",
@@ -865,44 +1369,79 @@ def _build_lint_prompt(root: Path, deterministic_report: str) -> str:
         "wiki/indexes/graph-health.md",
         "wiki/indexes/drift-report.md",
         "wiki/indexes/log.md",
-    ):
+    )
+    omitted_indexes = 0
+    for index, relative in enumerate(index_pages):
         path = root / relative
         if path.exists():
-            sections.extend([f"### {relative}", _read_context(path, max_chars=4000), ""])
+            if index >= profile["max_index_pages"]:
+                omitted_indexes += 1
+                continue
+            excerpt = _read_context(
+                path,
+                max_chars=profile["log_page_chars"] if relative.endswith("/log.md") else profile["index_page_chars"],
+            )
+            block = f"### {relative}\n{excerpt}\n"
+            if included_chars + len(block) > max_total_chars:
+                omitted_indexes += 1
+                continue
+            sections.append(block)
+            included_chars += len(block)
+    if omitted_indexes:
+        sections.append(f"- Omitted `{omitted_indexes}` additional index page(s) for prompt profile `{prompt_profile}`.")
 
-    schema_context = _schema_context(root, ("index.md", "citations.md", "conflicts.md", "writeback.md"))
+    schema_context = _schema_context(
+        root,
+        ("index.md", "citations.md", "conflicts.md", "writeback.md"),
+        max_chars=profile["schema_page_chars"],
+    )
     if schema_context:
-        sections.extend(["## Runtime Schema", schema_context, ""])
+        block = "\n".join(["## Runtime Schema", schema_context, ""])
+        if included_chars + len(block) <= max_total_chars:
+            sections.append(block)
+            included_chars += len(block)
 
-    included_chars = sum(len(section) for section in sections)
+    wiki_pages_added = 0
+    omitted_wiki_pages = 0
     for group in ("wiki/concepts", "wiki/sources", "wiki/derived"):
         for path in sorted((root / group).glob("*.md")):
-            excerpt = _read_context(path, max_chars=3500)
+            if wiki_pages_added >= profile["max_wiki_pages"]:
+                omitted_wiki_pages += 1
+                continue
+            excerpt = _read_context(path, max_chars=profile["wiki_page_chars"])
             next_block = f"### {relative_path(root, path)}\n{excerpt}\n"
-            if included_chars + len(next_block) > _context_budget() * 2:
-                sections.append("- Additional wiki files omitted due to context budget.")
-                return "\n".join(sections)
+            if included_chars + len(next_block) > max_total_chars:
+                omitted_wiki_pages += 1
+                continue
             sections.append(next_block)
             included_chars += len(next_block)
+            wiki_pages_added += 1
+    if omitted_wiki_pages:
+        sections.append("- Additional wiki files were omitted to keep the lint prompt within the backend budget.")
     return "\n".join(sections)
 
 
 def _load_prompt(root: Path, name: str) -> str:
     path = root / "prompts" / name
-    return path.read_text(encoding="utf-8")
+    if path.exists():
+        return path.read_text(encoding="utf-8")
+    fallback = Path(__file__).resolve().parents[2] / "prompts" / name
+    if fallback.exists():
+        return fallback.read_text(encoding="utf-8")
+    raise FileNotFoundError(f"Missing prompt template `{name}` in `{path}` or runtime fallback `{fallback}`.")
 
 
-def _schema_context(root: Path, names: tuple[str, ...]) -> str:
+def _schema_context(root: Path, names: tuple[str, ...], max_chars: int = 2200) -> str:
     sections: list[str] = []
     for name in names:
         path = root / "schema" / name
         if not path.exists():
             continue
-        sections.extend([f"### schema/{name}", _read_context(path, max_chars=2200), ""])
+        sections.extend([f"### schema/{name}", _read_context(path, max_chars=max_chars), ""])
     return "\n".join(sections).strip()
 
 
-def _protocol_context(root: Path, names: tuple[str, ...]) -> str:
+def _protocol_context(root: Path, names: tuple[str, ...], max_chars: int = 2200) -> str:
     state = load_protocol_state(root)
     active = state["active_protocol"]
     sections: list[str] = [f"- Active protocol: `{active}` ({state['state_path']})", ""]
@@ -910,7 +1449,7 @@ def _protocol_context(root: Path, names: tuple[str, ...]) -> str:
         path = root / "schema" / "protocols" / active / name
         if not path.exists():
             continue
-        sections.extend([f"### schema/protocols/{active}/{name}", _read_context(path, max_chars=2200), ""])
+        sections.extend([f"### schema/protocols/{active}/{name}", _read_context(path, max_chars=max_chars), ""])
     return "\n".join(sections).strip()
 
 
@@ -1027,6 +1566,55 @@ def _append_log(root: Path, event: dict[str, Any]) -> None:
 
 def _context_budget() -> int:
     return LLMConfig.status_from_env()["max_context_chars"]
+
+
+def _compile_prompt_profile(name: str) -> dict[str, int]:
+    profile = COMPILE_PROMPT_PROFILES.get(name) or COMPILE_PROMPT_PROFILES["balanced"]
+    adjusted = dict(profile)
+    adjusted["max_total_chars"] = min(int(profile["max_total_chars"]), _context_budget())
+    return adjusted
+
+
+def _lint_prompt_profile(name: str) -> dict[str, int]:
+    profile = LINT_PROMPT_PROFILES.get(name) or LINT_PROMPT_PROFILES["balanced"]
+    adjusted = dict(profile)
+    adjusted["max_total_chars"] = min(int(profile["max_total_chars"]), _context_budget())
+    return adjusted
+
+
+def _initial_compile_prompt_profile(client: SupportsComplete) -> str:
+    backend = str(getattr(getattr(client, "config", None), "backend", "") or "")
+    if backend == BACKEND_GITHUB_MODELS_API:
+        return "github-models"
+    return "balanced"
+
+
+def _initial_lint_prompt_profile(client: SupportsComplete) -> str:
+    backend = str(getattr(getattr(client, "config", None), "backend", "") or "")
+    if backend == BACKEND_GITHUB_MODELS_API:
+        return "github-models"
+    return "balanced"
+
+
+def _retry_compile_prompt_profile(exc: Exception, current_profile: str, client: SupportsComplete) -> str:
+    backend = str(getattr(getattr(client, "config", None), "backend", "") or "")
+    if backend == BACKEND_GITHUB_MODELS_API and current_profile == "github-models" and _is_budget_retryable_error(exc):
+        return "github-models-minimal"
+    return ""
+
+
+def _retry_lint_prompt_profile(exc: Exception, current_profile: str, client: SupportsComplete) -> str:
+    backend = str(getattr(getattr(client, "config", None), "backend", "") or "")
+    if backend == BACKEND_GITHUB_MODELS_API and current_profile == "github-models" and _is_budget_retryable_error(exc):
+        return "github-models-minimal"
+    return ""
+
+
+def _is_budget_retryable_error(exc: Exception) -> bool:
+    text = str(exc or "").lower()
+    return any(
+        marker in text for marker in ("tokens_limit_reached", "request body too large", "http 413", "timed out", "timeout")
+    )
 
 
 def _client_model_name(client: SupportsComplete) -> str:

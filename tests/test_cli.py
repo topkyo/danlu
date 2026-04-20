@@ -60,7 +60,20 @@ class CLITests(unittest.TestCase):
             ("search", ["search", "latency", "--limit", "5"], "shell_search", (self.root, "latency"), {"limit": 5}),
             ("run-compile", ["run-compile", "--limit", "3"], "run_compile", (self.root,), {"limit": 3}),
             ("ask", ["ask", "What changed?", "--format", "slides", "--protocol", "research"], "ask_question", (self.root, "What changed?", "slides"), {"protocol": "research"}),
-            ("run-ask", ["run-ask", "What changed?", "--format", "decision-memo"], "run_ask", (self.root, "What changed?", "decision-memo"), {"protocol": None}),
+            (
+                "run-ask",
+                ["run-ask", "What changed?", "--format", "decision-memo"],
+                "run_ask",
+                (self.root, "What changed?", "decision-memo"),
+                {"protocol": None, "lean": False, "timeout_seconds": None},
+            ),
+            (
+                "run-ask-lean-timeout",
+                ["run-ask", "What changed?", "--format", "report", "--lean", "--timeout", "45"],
+                "run_ask",
+                (self.root, "What changed?", "report"),
+                {"protocol": None, "lean": True, "timeout_seconds": 45},
+            ),
             ("file-back", ["file-back", "artifact.md", "--title", "Filed", "--kind", "decision", "--protocol", "ops"], "file_back", (self.root, "artifact.md"), {"title": "Filed", "kind": "decision", "protocol": "ops"}),
             ("review-page", ["review-page", "page.md", "--status", "approved", "--note", "ok", "--confidence", "high"], "review_page", (self.root, "page.md", "approved"), {"note": "ok", "confidence": "high"}),
             ("review-rewrite", ["review-rewrite", "latency", "--status", "accepted", "--note", "ok"], "review_concept_rewrite", (self.root, "latency", "accepted"), {"note": "ok"}),
@@ -106,6 +119,23 @@ class CLITests(unittest.TestCase):
                     self.assertEqual(payload["root"], str(self.root))
                 else:
                     self.assertEqual(payload["command"], name)
+
+    def test_main_dispatches_llm_check_probe_variants(self) -> None:
+        with patch("aiwiki.cli.llm_probe", return_value={"probe": {"ok": True}}) as mocked:
+            code, payload, stderr = self._run_main(["llm-check", "--probe", "--probe-timeout", "9"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        mocked.assert_called_once_with(self.root, probe_all=False, timeout_seconds=9)
+        self.assertTrue(payload["probe"]["ok"])
+
+        with patch("aiwiki.cli.llm_probe", return_value={"probes": [{"backend": "codex-cli"}]}) as mocked_all:
+            code, payload, stderr = self._run_main(["llm-check", "--probe-all", "--probe-timeout", "14"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        mocked_all.assert_called_once_with(self.root, probe_all=True, timeout_seconds=14)
+        self.assertEqual(payload["probes"][0]["backend"], "codex-cli")
 
     def test_main_merges_auto_process_result_for_drop_commands(self) -> None:
         with patch("aiwiki.cli.drop_url", return_value={"material": "url", "note_path": "raw/inbox/note.md"}) as drop_mock:

@@ -70,7 +70,7 @@ from aiwiki.app_state import (
 )
 from aiwiki.app_utils import parse_frontmatter, render_frontmatter, runtime_write_lock, strip_frontmatter
 from aiwiki.cli import main as cli_main
-from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
+from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, BACKEND_GITHUB_MODELS_API, LLMConfig
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
 from aiwiki.llm import CompletionResult
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
@@ -2123,15 +2123,12 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("schema/index.md", result["index_pages"])
 
         report_text = (self.root / result["path"]).read_text(encoding="utf-8")
-        self.assertIn("推荐概念", report_text)
-        self.assertIn("推荐索引页", report_text)
-        self.assertIn("机器记忆", report_text)
-        self.assertIn("漂移报告", report_text)
-        self.assertIn("决策索引", report_text)
-        self.assertIn("判断索引", report_text)
-        self.assertIn("审阅中心", report_text)
-        self.assertIn("图谱视图", report_text)
-        self.assertIn("运行时规则", report_text)
+        self.assertIn("优先概念", report_text)
+        self.assertIn("优先来源", report_text)
+        self.assertIn("## 当前线索", report_text)
+        self.assertIn("## 下一步", report_text)
+        self.assertNotIn("推荐索引页", report_text)
+        self.assertNotIn("机器记忆查询计划", report_text)
 
     def test_ask_reuses_clean_ranking_build_state(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -2798,10 +2795,9 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(machine_query["touched_component_ids"])
         self.assertTrue(machine_query["touched_components"])
         self.assertTrue(machine_query["query_subgraph"]["edges"])
-        self.assertIn("机器记忆查询计划", report_text)
+        self.assertIn("## 当前线索", report_text)
         self.assertIn("桥接概念", report_text)
-        self.assertIn("查询路径数", report_text)
-        self.assertIn("触达分量", report_text)
+        self.assertIn("查询入口", report_text)
         self.assertIn("latency", report_text.lower())
 
     def test_ask_uses_runtime_query_route_schema_and_updates_shell_summary(self) -> None:
@@ -2910,6 +2906,54 @@ class AiwikiFlowTests(unittest.TestCase):
 
         self.assertEqual(investing_query["protocol_shard_source_ids"][0], investing_entry["id"])
         self.assertEqual(research_query["protocol_shard_source_ids"][0], research_entry["id"])
+
+    def test_machine_memory_query_ignores_judgment_nodes_when_expanding_route_scores(self) -> None:
+        memory = {
+            "term_index": {"agent": {"concept_slugs": ["agent"]}},
+            "source_nodes": [
+                {"id": "src-1", "title": "Source 1", "source_page": "wiki/sources/src-1.md"},
+            ],
+            "concept_nodes": [
+                {"slug": "agent", "title": "Agent"},
+            ],
+            "judgment_nodes": [
+                {"page_id": "judgment-1", "title": "Judgment 1", "path": "wiki/judgments/judgment-1.md"},
+            ],
+            "edges": {
+                "source_to_concept": [],
+                "concept_to_concept": [],
+            },
+            "health": {
+                "repair_plan": {},
+                "actions": [],
+                "components": [],
+                "source_component_ids": {},
+                "concept_component_ids": {},
+            },
+        }
+        patched_routes = [
+            {
+                "start": {"kind": "source", "id": "src-1", "title": "Source 1"},
+                "goal": {"kind": "concept", "slug": "agent", "title": "Agent"},
+                "length": 2,
+                "nodes": [
+                    {"kind": "source", "id": "src-1", "title": "Source 1"},
+                    {"kind": "judgment", "page_id": "judgment-1", "title": "Judgment 1"},
+                    {"kind": "concept", "slug": "agent", "title": "Agent"},
+                ],
+                "edges": [
+                    {"type": "SUPPORTS_JUDGMENT", "left": "src-1", "right": "judgment-1"},
+                    {"type": "JUDGMENT_RELATION", "left": "judgment-1", "right": "agent"},
+                ],
+            }
+        ]
+
+        with patch("aiwiki.app_memory_surfaces.build_machine_memory_query_routes", return_value=patched_routes):
+            machine_query = build_machine_memory_query(memory, "agent workflow", protocol="research")
+
+        self.assertEqual(machine_query["query_routes"], patched_routes)
+        self.assertIn("agent", machine_query["ranked_concept_slugs"])
+        self.assertIn("src-1", machine_query["ranked_source_ids"])
 
     def test_historical_query_surfaces_archive_recall_hints_without_reintroducing_archived_source(self) -> None:
         legacy = self.root / "legacy-latency.md"
@@ -4427,13 +4471,14 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Query routes", client.prompt)
         self.assertIn("Touched components", client.prompt)
         self.assertIn("wiki/indexes/concept-quality.md", client.prompt)
-        self.assertIn("wiki/indexes/agent-workbench.md", client.prompt)
-        self.assertIn("wiki/indexes/cognitive-history.md", client.prompt)
-        self.assertIn("wiki/indexes/output-packs.md", client.prompt)
-        self.assertIn("wiki/indexes/domain-pilots.md", client.prompt)
-        self.assertIn("wiki/indexes/machine-memory-topology.md", client.prompt)
-        self.assertIn("wiki/indexes/machine-memory-actions.md", client.prompt)
-        self.assertIn("wiki/indexes/machine-memory-repair-plan.md", client.prompt)
+        self.assertIn("### wiki/indexes/machine-memory.md", client.prompt)
+        self.assertIn("### wiki/indexes/log.md", client.prompt)
+        self.assertNotIn("### wiki/indexes/agent-workbench.md", client.prompt)
+        self.assertNotIn("### wiki/indexes/output-packs.md", client.prompt)
+        self.assertNotIn("### wiki/indexes/domain-pilots.md", client.prompt)
+        self.assertNotIn("### wiki/indexes/machine-memory-topology.md", client.prompt)
+        self.assertNotIn("### wiki/indexes/machine-memory-actions.md", client.prompt)
+        self.assertNotIn("### wiki/indexes/machine-memory-repair-plan.md", client.prompt)
         self.assertIn("schema/protocols/investing/index.md", client.prompt)
         self.assertIn("schema/protocols/investing/query.md", client.prompt)
         self.assertIn("Relevant repair actions", client.prompt)
@@ -4872,6 +4917,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("llm_status", result)
         self.assertIn("model_requested", result["llm_status"])
         self.assertIn("effective_model", result["llm_status"])
+        self.assertIn("codex_reasoning_effort", result["llm_status"])
         self.assertIn("usage_visibility", result["llm_status"])
         self.assertIn("usage_accounting", result["llm_status"])
         self.assertIn("judgment_assets", result)
@@ -5199,7 +5245,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(state["semantic_report"], result["lint"]["semantic_report"])
         self.assertIn("语义 lint", backlog_path.read_text(encoding="utf-8"))
 
-    def test_llm_status_auto_prefers_codex_cli_when_api_is_absent(self) -> None:
+    def test_llm_status_auto_prefers_codex_cli_when_other_cli_backends_are_absent(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             with patch("aiwiki.config.shutil.which") as which_mock:
                 which_mock.side_effect = lambda name: "/usr/bin/codex" if name == "codex" else ""
@@ -5207,22 +5253,46 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(status["configured"])
         self.assertEqual(status["backend"], BACKEND_CODEX_CLI)
         self.assertEqual(status["effective_model"], "gpt-5.4")
+        self.assertEqual(status["codex_reasoning_effort"], "medium")
         self.assertEqual(status["auth_mode"], "cli-session")
         self.assertEqual(status["usage_visibility"], "opaque-cli")
-        self.assertEqual(status["usage_accounting"], "copilot-cli-session")
+        self.assertEqual(status["usage_accounting"], "codex-cli-session")
         self.assertTrue(status["image_analysis_supported"])
 
-    def test_llm_config_uses_openai_backend_when_explicitly_configured(self) -> None:
+    def test_llm_config_uses_copilot_backend_when_explicitly_configured(self) -> None:
         env = {
-            "AIWIKI_LLM_BACKEND": "openai-api",
-            "AIWIKI_LLM_MODEL": "gpt-4.1-mini",
-            "AIWIKI_LLM_API_KEY": "secret",
+            "AIWIKI_LLM_BACKEND": "copilot-cli",
+            "AIWIKI_LLM_MODEL": "claude-haiku-4.5",
         }
         with patch.dict(os.environ, env, clear=True):
-            with patch("aiwiki.config.shutil.which", return_value=""):
+            with patch("aiwiki.config.shutil.which", side_effect=lambda name: "/usr/bin/copilot" if name == "copilot" else ""):
                 config = LLMConfig.from_env()
-        self.assertEqual(config.backend, BACKEND_OPENAI_API)
-        self.assertEqual(config.model, "gpt-4.1-mini")
+        self.assertEqual(config.backend, BACKEND_COPILOT_CLI)
+        self.assertEqual(config.model, "claude-haiku-4.5")
+
+    def test_llm_status_auto_falls_back_to_copilot_cli(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("aiwiki.config.shutil.which") as which_mock:
+                which_mock.side_effect = lambda name: "/usr/bin/copilot" if name == "copilot" else ""
+                status = LLMConfig.status_from_env()
+        self.assertTrue(status["configured"])
+        self.assertEqual(status["backend"], BACKEND_COPILOT_CLI)
+        self.assertEqual(status["usage_accounting"], "copilot-cli-session")
+        self.assertFalse(status["image_analysis_supported"])
+
+    def test_llm_status_auto_keeps_copilot_before_github_models_when_gh_token_exists(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("aiwiki.config.shutil.which") as which_mock:
+                which_mock.side_effect = lambda name: "/usr/bin/copilot" if name in {"copilot", "gh"} else ""
+                with patch(
+                    "aiwiki.config.subprocess.run",
+                    return_value=type("Completed", (), {"returncode": 0, "stdout": "gho_test_token\n", "stderr": ""})(),
+                ):
+                    status = LLMConfig.status_from_env()
+        self.assertTrue(status["configured"])
+        self.assertEqual(status["backend"], BACKEND_COPILOT_CLI)
+        self.assertEqual(status["usage_accounting"], "copilot-cli-session")
+        self.assertFalse(status["image_analysis_supported"])
 
     def test_llm_status_marks_claude_image_analysis_as_unsupported(self) -> None:
         with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "claude-cli"}, clear=True):
@@ -6057,6 +6127,11 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("graphUiData", payload)
         self.assertIn("节点详情", payload)
         self.assertIn('option value="judgment"', payload)
+        self.assertIn("graph-zoom-in", payload)
+        self.assertIn("graph-focus-node", payload)
+        self.assertIn("graph-reset-view", payload)
+        self.assertIn("graph-viewport", payload)
+        self.assertIn("setActiveNode", payload)
 
     def test_compile_attaches_judgment_assets_to_machine_memory_graph(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -6310,8 +6385,10 @@ class AiwikiFlowTests(unittest.TestCase):
             artifact_id="test-figure-001",
         )
         self.assertIn("图表简报", result)
-        self.assertIn("推荐索引页", result)
+        self.assertIn("优先来源", result)
+        self.assertIn("优先概念", result)
         self.assertIn("制图要求", result)
+        self.assertNotIn("推荐索引页", result)
         self.assertIn("test-figure-001", result)
 
     def test_render_slides_generates_valid_scaffold(self) -> None:
@@ -6332,8 +6409,9 @@ class AiwikiFlowTests(unittest.TestCase):
             artifact_id="test-slides-001",
         )
         self.assertIn("marp: true", result)
-        self.assertIn("使用说明", result)
-        self.assertIn("相关来源", result)
+        self.assertIn("本稿用途", result)
+        self.assertIn("优先来源", result)
+        self.assertIn("建议页结构", result)
 
     def test_compile_detects_isolated_sources(self) -> None:
         """compile should detect sources not connected to any concept."""
@@ -6369,6 +6447,69 @@ class AiwikiFlowTests(unittest.TestCase):
         suggestions = health.get("link_suggestions", [])
         if len(suggestions) >= 2:
             self.assertGreaterEqual(suggestions[0]["score"], suggestions[1]["score"])
+
+    def test_machine_memory_action_runtime_functions_allow_title_fragment_matching(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "manual-link-action",
+                        "kind": "add-source-concept-link",
+                        "title": "Transformer Scaling link repair",
+                        "reason": "Backfill source/concept link.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "proposed",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                    }
+                ],
+            },
+        )
+
+        review_result = review_machine_memory_action(self.root, "Transformer Scaling", "accepted", note="Resolve by fragment.")
+        self.assertEqual(review_result["id"], "manual-link-action")
+        dry_run = apply_machine_memory_action(self.root, "Scaling link repair", dry_run=True)
+        self.assertTrue(dry_run["dry_run"])
+        self.assertEqual(dry_run["id"], "manual-link-action")
+        apply_result = apply_machine_memory_action(self.root, "Transformer Scaling", note="Apply by fragment.")
+        self.assertEqual(apply_result["id"], "manual-link-action")
+        revert_result = revert_machine_memory_action(self.root, "Scaling link repair", note="Revert by fragment.")
+        self.assertEqual(revert_result["id"], "manual-link-action")
+
+    def test_review_machine_memory_action_rejects_ambiguous_title_fragment(self) -> None:
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "alpha-repair",
+                        "kind": "add-source-concept-link",
+                        "title": "Alpha repair",
+                        "status": "proposed",
+                        "active": True,
+                    },
+                    {
+                        "id": "alpha-audit",
+                        "kind": "add-source-concept-link",
+                        "title": "Alpha audit",
+                        "status": "proposed",
+                        "active": True,
+                    },
+                ],
+            },
+        )
+
+        with self.assertRaises(RuntimeError):
+            review_machine_memory_action(self.root, "Alpha", "accepted", note="Should fail.")
 
 
 if __name__ == "__main__":

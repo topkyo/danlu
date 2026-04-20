@@ -3,20 +3,34 @@ from __future__ import annotations
 import base64
 import io
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 from urllib import error
 
-from aiwiki.config import BACKEND_ANTHROPIC_API, BACKEND_CLAUDE_CLI, BACKEND_CODEX_CLI, BACKEND_OPENAI_API, LLMConfig
+from aiwiki.config import (
+    BACKEND_ANTHROPIC_API,
+    BACKEND_CLAUDE_CLI,
+    BACKEND_CODEX_CLI,
+    BACKEND_COPILOT_CLI,
+    BACKEND_GITHUB_MODELS_API,
+    BACKEND_OPENAI_API,
+    LLMConfig,
+)
 from aiwiki.llm import (
     AnthropicClient,
+    AutoFallbackClient,
     ClaudeCLIClient,
     CodexCLIClient,
+    CopilotCLIClient,
+    GitHubModelsClient,
     LLMError,
     OpenAICompatClient,
     create_backend_client,
+    probe_available_backends,
+    probe_backend,
 )
 
 
@@ -138,6 +152,7 @@ class LLMClientTests(unittest.TestCase):
         config = LLMConfig(
             backend=BACKEND_CODEX_CLI,
             model="gpt-5-codex",
+            codex_reasoning_effort="medium",
             codex_command="codex",
             codex_path="/usr/bin/codex",
         )
@@ -163,8 +178,66 @@ class LLMClientTests(unittest.TestCase):
 
         command = captured["command"]
         self.assertIn("--image", command)
+        self.assertIn("-c", command)
+        self.assertIn('model_reasoning_effort="medium"', command)
         self.assertIn(str(image_path), command)
         self.assertEqual(result.text, "- Visual summary\n- Confidence: low")
+
+    def test_github_models_complete_uses_github_api_headers(self) -> None:
+        config = LLMConfig(
+            backend=BACKEND_GITHUB_MODELS_API,
+            model="openai/gpt-4.1",
+            github_token="gho_test_token",
+            github_models_base_url="https://models.github.ai",
+        )
+        client = GitHubModelsClient(config)
+        captured: dict[str, object] = {}
+
+        def fake_urlopen(http_request, timeout: int):
+            del timeout
+            captured["url"] = http_request.full_url
+            captured["headers"] = dict(http_request.headers)
+            captured["body"] = json.loads(http_request.data.decode("utf-8"))
+            return FakeHTTPResponse(
+                {
+                    "id": "chatcmpl_test",
+                    "choices": [{"message": {"content": "OK"}}],
+                    "usage": {"total_tokens": 14},
+                }
+            )
+
+        with patch("aiwiki.llm.request.urlopen", side_effect=fake_urlopen):
+            result = client.complete("System prompt", "User prompt")
+
+        self.assertEqual(captured["url"], "https://models.github.ai/inference/chat/completions")
+        self.assertEqual(captured["headers"]["Authorization"], "Bearer gho_test_token")
+        self.assertEqual(captured["headers"]["X-github-api-version"], "2026-03-10")
+        self.assertEqual(captured["body"]["model"], "openai/gpt-4.1")
+        self.assertEqual(result.text, "OK")
+        self.assertEqual(result.usage["total_tokens"], 14)
+
+    def test_github_models_complete_wraps_http_error(self) -> None:
+        config = LLMConfig(
+            backend=BACKEND_GITHUB_MODELS_API,
+            model="openai/gpt-4.1",
+            github_token="gho_test_token",
+            github_models_base_url="https://models.github.ai",
+        )
+        client = GitHubModelsClient(config)
+        http_error = error.HTTPError(
+            url="https://models.github.ai/inference/chat/completions",
+            code=403,
+            msg="Forbidden",
+            hdrs=None,
+            fp=io.BytesIO(b'{"message":"Resource not accessible by integration"}'),
+        )
+
+        with patch("aiwiki.llm.request.urlopen", side_effect=http_error):
+            with self.assertRaises(LLMError) as ctx:
+                client.complete("System prompt", "User prompt")
+
+        self.assertIn("HTTP 403", str(ctx.exception))
+        self.assertIn("Resource not accessible", str(ctx.exception))
 
     def test_openai_compat_complete_wraps_http_error(self) -> None:
         config = LLMConfig(
@@ -241,14 +314,17 @@ class LLMClientTests(unittest.TestCase):
         config = LLMConfig(
             backend=BACKEND_CODEX_CLI,
             model="gpt-5-codex",
+            codex_reasoning_effort="high",
             codex_command="codex",
             codex_path="/usr/bin/codex",
         )
         with tempfile.TemporaryDirectory() as tempdir:
             root = Path(tempdir)
             client = CodexCLIClient(config, root)
+            captured: dict[str, object] = {}
 
             def fake_run(command, **kwargs):
+                captured["command"] = command
                 output_path = Path(command[command.index("--output-last-message") + 1])
                 output_path.write_text("", encoding="utf-8")
                 return type("Completed", (), {"returncode": 0, "stdout": "fallback text\n", "stderr": ""})()
@@ -257,6 +333,7 @@ class LLMClientTests(unittest.TestCase):
                 result = client.complete("System prompt", "User prompt")
 
         self.assertEqual(result.text, "fallback text")
+        self.assertIn('model_reasoning_effort="high"', captured["command"])
 
     def test_codex_cli_complete_raises_on_nonzero_exit(self) -> None:
         config = LLMConfig(
@@ -293,7 +370,14 @@ class LLMClientTests(unittest.TestCase):
             client = ClaudeCLIClient(config, root)
 
             completed = type("Completed", (), {"returncode": 0, "stdout": "claude answer\n", "stderr": ""})()
-            with patch("aiwiki.llm.subprocess.run", return_value=completed):
+            captured: dict[str, object] = {}
+
+            def fake_run(command, **kwargs):
+                captured["command"] = command
+                captured["stdin"] = kwargs.get("stdin")
+                return completed
+
+            with patch("aiwiki.llm.subprocess.run", side_effect=fake_run):
                 result = client.complete("System prompt", "User prompt")
 
             image_path = root / "tiny.png"
@@ -302,6 +386,39 @@ class LLMClientTests(unittest.TestCase):
                 client.analyze_image("System prompt", "User prompt", image_path)
 
         self.assertEqual(result.text, "claude answer")
+        self.assertIs(captured["stdin"], subprocess.DEVNULL)
+        self.assertIn("not supported", str(ctx.exception))
+
+    def test_copilot_cli_complete_and_image_support_contract(self) -> None:
+        config = LLMConfig(
+            backend=BACKEND_COPILOT_CLI,
+            model="gpt-5.3-codex",
+            copilot_command="copilot",
+            copilot_path="/usr/bin/copilot",
+        )
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            client = CopilotCLIClient(config, root)
+            captured: dict[str, object] = {}
+
+            def fake_run(command, **kwargs):
+                captured["command"] = command
+                return type("Completed", (), {"returncode": 0, "stdout": "copilot answer\n", "stderr": ""})()
+
+            with patch("aiwiki.llm.subprocess.run", side_effect=fake_run):
+                result = client.complete("System prompt", "User prompt")
+
+            image_path = root / "tiny.png"
+            image_path.write_bytes(b"png")
+            with self.assertRaises(LLMError) as ctx:
+                client.analyze_image("System prompt", "User prompt", image_path)
+
+        command = captured["command"]
+        self.assertIn("--prompt", command)
+        self.assertIn("--allow-tool=read", command)
+        self.assertIn("--add-dir", command)
+        self.assertIn(str(root), command)
+        self.assertEqual(result.text, "copilot answer")
         self.assertIn("not supported", str(ctx.exception))
 
     def test_create_backend_client_returns_backend_specific_client(self) -> None:
@@ -315,6 +432,14 @@ class LLMClientTests(unittest.TestCase):
                 LLMConfig(backend=BACKEND_CODEX_CLI, codex_path="/usr/bin/codex"),
                 root,
             )
+            copilot = create_backend_client(
+                LLMConfig(backend=BACKEND_COPILOT_CLI, copilot_path="/usr/bin/copilot"),
+                root,
+            )
+            github_models = create_backend_client(
+                LLMConfig(backend=BACKEND_GITHUB_MODELS_API, github_token="gho_test_token"),
+                root,
+            )
             claude = create_backend_client(
                 LLMConfig(backend=BACKEND_CLAUDE_CLI, claude_path="/usr/bin/claude"),
                 root,
@@ -326,8 +451,216 @@ class LLMClientTests(unittest.TestCase):
 
         self.assertIsInstance(openai, OpenAICompatClient)
         self.assertIsInstance(codex, CodexCLIClient)
+        self.assertIsInstance(copilot, CopilotCLIClient)
+        self.assertIsInstance(github_models, GitHubModelsClient)
         self.assertIsInstance(claude, ClaudeCLIClient)
         self.assertIsInstance(anthropic, AnthropicClient)
+
+    def test_create_backend_client_auto_falls_back_when_codex_session_is_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            client = create_backend_client(
+                LLMConfig(
+                    backend=BACKEND_CODEX_CLI,
+                    backend_requested="auto",
+                    model="gpt-5.4",
+                    model_requested="",
+                    codex_path="/usr/bin/codex",
+                    copilot_path="/usr/bin/copilot",
+                    claude_path="/usr/bin/claude",
+                ),
+                root,
+            )
+            self.assertIsInstance(client, AutoFallbackClient)
+
+            def fake_run(command, **kwargs):
+                binary = Path(command[0]).name
+                if binary == "codex":
+                    output_path = Path(command[command.index("--output-last-message") + 1])
+                    output_path.write_text("", encoding="utf-8")
+                    return type(
+                        "Completed",
+                        (),
+                        {
+                            "returncode": 1,
+                            "stdout": "",
+                            "stderr": "ERROR: You've hit your usage limit. Upgrade to Pro.",
+                        },
+                    )()
+                if binary == "copilot":
+                    return type("Completed", (), {"returncode": 0, "stdout": "copilot fallback\n", "stderr": ""})()
+                raise AssertionError(f"unexpected backend invocation: {command}")
+
+            with patch("aiwiki.llm.subprocess.run", side_effect=fake_run):
+                result = client.complete("System prompt", "User prompt")
+
+        self.assertEqual(result.text, "copilot fallback")
+        self.assertEqual(client.config.backend, BACKEND_COPILOT_CLI)
+
+    def test_create_backend_client_auto_keeps_copilot_before_github_models(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            client = create_backend_client(
+                LLMConfig(
+                    backend=BACKEND_CODEX_CLI,
+                    backend_requested="auto",
+                    model="gpt-5.4",
+                    model_requested="",
+                    codex_path="/usr/bin/codex",
+                    github_token="gho_test_token",
+                    copilot_path="/usr/bin/copilot",
+                    claude_path="/usr/bin/claude",
+                ),
+                root,
+            )
+            self.assertIsInstance(client, AutoFallbackClient)
+
+            def fake_run(command, **kwargs):
+                binary = Path(command[0]).name
+                if binary == "codex":
+                    output_path = Path(command[command.index("--output-last-message") + 1])
+                    output_path.write_text("", encoding="utf-8")
+                    return type(
+                        "Completed",
+                        (),
+                        {
+                            "returncode": 1,
+                            "stdout": "",
+                            "stderr": "ERROR: You've hit your usage limit. Upgrade to Pro.",
+                        },
+                    )()
+                if binary == "copilot":
+                    return type("Completed", (), {"returncode": 0, "stdout": "copilot fallback\n", "stderr": ""})()
+                raise AssertionError(f"unexpected CLI backend invocation: {command}")
+
+            with patch("aiwiki.llm.subprocess.run", side_effect=fake_run):
+                result = client.complete("System prompt", "User prompt")
+
+        self.assertEqual(result.text, "copilot fallback")
+        self.assertEqual(client.config.backend, BACKEND_COPILOT_CLI)
+
+    def test_probe_backend_reports_success_and_expected_output_match(self) -> None:
+        config = LLMConfig(
+            backend=BACKEND_CODEX_CLI,
+            backend_requested=BACKEND_CODEX_CLI,
+            model="gpt-5.4",
+            codex_command="codex",
+            codex_path="/usr/bin/codex",
+        )
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+
+            def fake_run(command, **kwargs):
+                output_path = Path(command[command.index("--output-last-message") + 1])
+                output_path.write_text("OK\n", encoding="utf-8")
+                self.assertEqual(kwargs["timeout"], 11)
+                return type("Completed", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+            with patch("aiwiki.llm.subprocess.run", side_effect=fake_run):
+                probe = probe_backend(config, root, timeout_seconds=11)
+
+        self.assertTrue(probe["ok"])
+        self.assertEqual(probe["status"], "ok")
+        self.assertEqual(probe["backend"], BACKEND_CODEX_CLI)
+        self.assertEqual(probe["backend_requested"], BACKEND_CODEX_CLI)
+        self.assertEqual(probe["model"], "gpt-5.4")
+        self.assertTrue(probe["matched_expected_output"])
+        self.assertEqual(probe["response_preview"], "OK")
+        self.assertEqual(probe["error"], "")
+
+    def test_probe_backend_classifies_quota_failures(self) -> None:
+        config = LLMConfig(
+            backend=BACKEND_COPILOT_CLI,
+            backend_requested=BACKEND_COPILOT_CLI,
+            model="gpt-5.3-codex",
+            copilot_command="copilot",
+            copilot_path="/usr/bin/copilot",
+        )
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+
+            def fake_run(command, **kwargs):
+                del command
+                del kwargs
+                return type(
+                    "Completed",
+                    (),
+                    {"returncode": 1, "stdout": "", "stderr": "402 You have no quota"},
+                )()
+
+            with patch("aiwiki.llm.subprocess.run", side_effect=fake_run):
+                probe = probe_backend(config, root, timeout_seconds=7)
+
+        self.assertFalse(probe["ok"])
+        self.assertEqual(probe["status"], "quota")
+        self.assertEqual(probe["backend"], BACKEND_COPILOT_CLI)
+        self.assertIn("no quota", probe["error"].lower())
+
+    def test_copilot_cli_complete_wraps_timeout_as_llm_error(self) -> None:
+        config = LLMConfig(
+            backend=BACKEND_COPILOT_CLI,
+            model="gpt-5.3-codex",
+            copilot_command="copilot",
+            copilot_path="/usr/bin/copilot",
+            timeout_seconds=7,
+        )
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            client = CopilotCLIClient(config, root)
+
+            with patch("aiwiki.llm.subprocess.run", side_effect=subprocess.TimeoutExpired("copilot", 7)):
+                with self.assertRaises(LLMError) as ctx:
+                    client.complete("System prompt", "User prompt")
+
+        self.assertIn("timed out after 7 seconds", str(ctx.exception))
+
+    def test_probe_available_backends_probes_each_available_backend(self) -> None:
+        config = LLMConfig(
+            backend=BACKEND_CODEX_CLI,
+            backend_requested="auto",
+            model="gpt-5.4",
+            model_requested="",
+            codex_path="/usr/bin/codex",
+            github_token="gho_test_token",
+            copilot_path="/usr/bin/copilot",
+            claude_path="/usr/bin/claude",
+        )
+        seen: list[tuple[str, str]] = []
+
+        def fake_probe(probe_config, workdir, timeout_seconds=None):
+            del workdir
+            seen.append((probe_config.backend_requested, probe_config.backend))
+            return {
+                "ok": True,
+                "status": "ok",
+                "backend_requested": probe_config.backend_requested,
+                "backend": probe_config.backend,
+                "model_requested": probe_config.model_requested,
+                "model": probe_config.model,
+                "duration_ms": timeout_seconds or 0,
+                "response_preview": "OK",
+                "matched_expected_output": True,
+                "error": "",
+            }
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            with patch("aiwiki.llm.probe_backend", side_effect=fake_probe):
+                probes = probe_available_backends(config, root, timeout_seconds=9)
+
+        self.assertEqual(
+            seen,
+            [
+                (BACKEND_CODEX_CLI, BACKEND_CODEX_CLI),
+                (BACKEND_COPILOT_CLI, BACKEND_COPILOT_CLI),
+                (BACKEND_CLAUDE_CLI, BACKEND_CLAUDE_CLI),
+                (BACKEND_GITHUB_MODELS_API, BACKEND_GITHUB_MODELS_API),
+            ],
+        )
+        self.assertEqual(
+            [probe["backend"] for probe in probes],
+            [BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, BACKEND_CLAUDE_CLI, BACKEND_GITHUB_MODELS_API],
+        )
 
     def test_anthropic_complete_basic(self) -> None:
         config = LLMConfig(

@@ -220,21 +220,49 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare A and B" --format rep
 
 支持：
 - `codex-cli`
+- `github-models-api`
+- `copilot-cli`
 - `claude-cli`
-- `openai-api`
 
 默认链路：
 - 如果不显式设置 `AIWIKI_LLM_BACKEND`，runtime 会按 `auto` 解析
-- 在当前默认环境里，会优先落到 `codex-cli`
+- `auto` 会按 `codex-cli -> copilot-cli -> claude-cli` 的顺序解析
 - 如果 backend 是 `codex-cli` 且没有显式设置 `AIWIKI_LLM_MODEL`，effective model 默认是 `gpt-5.4`
+- 如果 backend 是 `github-models-api` 且没有显式设置 `AIWIKI_LLM_MODEL`，effective model 默认是 `openai/gpt-4.1`
+- `codex-cli` 默认会附带 `AIWIKI_CODEX_REASONING_EFFORT=medium`，避免非交互 `run-ask` / `run-compile` / `run-lint` 被 CLI 默认的高推理档位拖慢
 - `llm-check`、`shell-summary.json`、Product Shell 会同时显示 requested/effective backend/model，以及 usage 可见性/计费口径
-- `openai-api` 路径可返回 API usage；`codex-cli` / `claude-cli` 目前仍是 CLI 黑盒，无法给出精确 token 统计
+- 默认 `llm-check` 只做静态路由检查；显式加 `--probe` 后才会发一个极小真实请求，区分“backend 能解析出来”和“当前账号真能跑”
+- CLI 路径当前都无法给出精确 token usage，`usage_visibility` 会显示 `opaque-cli`；`github-models-api` 会直接返回 usage
+- `github-models-api` 是显式可选 backend，不参与 `auto` 主链路；如果要走这条 GitHub OAuth 直连 API 路，请显式设置 `AIWIKI_LLM_BACKEND=github-models-api`
+- `run-ask` 现在会先用 balanced prompt；如果碰到 timeout，会自动再试一次 lean prompt，只有 lean retry 也失败时，外层 Product Shell 才会做 deterministic fallback
+- `run-ask` 现在也支持显式 `--lean` 与 `--timeout <seconds>`，用于直接选择稳优先 prompt 或覆盖单次调用 timeout，而不改动全局环境变量
+
+常见配置：
+
+```bash
+AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
+AIWIKI_LLM_BACKEND=github-models-api PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
+AIWIKI_LLM_BACKEND=copilot-cli PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
+AIWIKI_LLM_BACKEND=claude-cli PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
+```
 
 检查当前后端：
 
 ```bash
 PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
+PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check --probe
+PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check --probe-all --probe-timeout 20
 ```
+
+认证说明：
+
+- `codex-cli`：走 `codex login` 的本地会话；当前环境可用 `codex login status` 查看状态
+- `codex-cli`：可以通过 `AIWIKI_CODEX_REASONING_EFFORT=medium|high|xhigh` 调节非交互推理档位；当前默认是 `medium`
+- `github-models-api`：优先复用 `AIWIKI_GITHUB_TOKEN -> COPILOT_GITHUB_TOKEN -> GH_TOKEN -> GITHUB_TOKEN -> gh auth token`；不要求手动复制 API key，只要你已经 `gh auth login`
+- `github-models-api`：当前仓库已在真实环境验证 `gh auth token -> https://models.github.ai/inference/chat/completions` 可用
+- `copilot-cli`：官方推荐 `copilot login` 的浏览器设备码 OAuth；也支持 `COPILOT_GITHUB_TOKEN -> GH_TOKEN -> GITHUB_TOKEN -> stored OAuth token -> gh auth token` 的优先链
+- `copilot-cli` 的 GitHub OAuth 路径“可行”不等于“当前账号可用”；seat / org policy / quota 不足时，probe 仍会失败
+- 当前这台机器上的真实结论是：`copilot-cli` 返回 `402 no quota`，但 `github-models-api` 通过 `gh auth token` 可直接成功；因此它被保留为显式备用路，而不是塞进 `auto`
 
 ## 使用边界
 
