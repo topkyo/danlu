@@ -20,6 +20,7 @@ PROGRESS.md
 .aiwiki/state/*.json
 .aiwiki/state/*.jsonl
 .aiwiki/state/runtime.lock
+.aiwiki/cache.db
 .aiwiki/cache/
 .aiwiki/logs/*.jsonl
 output/

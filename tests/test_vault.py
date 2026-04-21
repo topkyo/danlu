@@ -57,6 +57,8 @@ class VaultBootstrapTests(unittest.TestCase):
         self.assertIn("runtime contract", readme)
         self.assertIn('$HOME/.local/npm/bin', launcher_text)
         self.assertIn("export PATH", launcher_text)
+        self.assertIn('PLUGIN_DATA="$VAULT_ROOT/.obsidian/plugins/furnace-product-shell/data.json"', launcher_text)
+        self.assertIn('AIWIKI_NVIDIA_NIM_API_KEY', launcher_text)
         self.assertEqual(appearance["enabledCssSnippets"], ["danlu-zh-folders"])
         self.assertIn('.tree-item-self[data-path="raw"] > .tree-item-inner', snippet)
         self.assertIn('.nav-folder-title[data-path="output/control"] > .nav-folder-title-content', snippet)
@@ -88,6 +90,29 @@ class VaultBootstrapTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["active_protocol"], "general")
         self.assertTrue((self.target / "output" / "control" / "product-shell.html").exists())
+
+    def test_bootstrap_new_vault_launcher_inherits_plugin_llm_settings(self) -> None:
+        bootstrap_new_vault(self.runtime_root, self.target)
+        plugin_data_path = self.target / ".obsidian" / "plugins" / "furnace-product-shell" / "data.json"
+        plugin_data = json.loads(plugin_data_path.read_text(encoding="utf-8"))
+        plugin_data["settings"]["llmBackend"] = "nvidia-nim-api"
+        plugin_data["settings"]["llmNvidiaNimApiKey"] = "nvapi_fake_key"
+        plugin_data_path.write_text(json.dumps(plugin_data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        result = subprocess.run(
+            [str(self.target / "scripts" / "aiwiki-launcher.sh"), "llm-check"],
+            cwd=self.target,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload["configured"])
+        self.assertEqual(payload["backend_requested"], "nvidia-nim-api")
+        self.assertEqual(payload["backend"], "nvidia-nim-api")
+        self.assertEqual(payload["effective_model"], "moonshotai/kimi-k2.5")
 
     def test_bootstrap_new_vault_rejects_non_empty_target_without_force(self) -> None:
         self.target.mkdir(parents=True, exist_ok=True)

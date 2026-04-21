@@ -15,18 +15,17 @@ from aiwiki.config import (
     BACKEND_CLAUDE_CLI,
     BACKEND_CODEX_CLI,
     BACKEND_COPILOT_CLI,
-    BACKEND_GITHUB_MODELS_API,
+    BACKEND_NVIDIA_NIM_API,
     BACKEND_OPENAI_API,
     LLMConfig,
 )
 from aiwiki.llm import (
     AnthropicClient,
-    AutoFallbackClient,
     ClaudeCLIClient,
     CodexCLIClient,
     CopilotCLIClient,
-    GitHubModelsClient,
     LLMError,
+    ModelFallbackClient,
     OpenAICompatClient,
     create_backend_client,
     probe_available_backends,
@@ -183,14 +182,16 @@ class LLMClientTests(unittest.TestCase):
         self.assertIn(str(image_path), command)
         self.assertEqual(result.text, "- Visual summary\n- Confidence: low")
 
-    def test_github_models_complete_uses_github_api_headers(self) -> None:
+    def test_nvidia_nim_complete_uses_openai_compat_endpoint_and_headers(self) -> None:
         config = LLMConfig(
-            backend=BACKEND_GITHUB_MODELS_API,
-            model="openai/gpt-4.1",
-            github_token="gho_test_token",
-            github_models_base_url="https://models.github.ai",
+            backend=BACKEND_NVIDIA_NIM_API,
+            model="moonshotai/kimi-k2.5",
+            api_key="nvapi_test_key",
+            nvidia_nim_api_key="nvapi_test_key",
+            base_url="https://integrate.api.nvidia.com/v1",
+            nvidia_nim_base_url="https://integrate.api.nvidia.com/v1",
         )
-        client = GitHubModelsClient(config)
+        client = OpenAICompatClient(config)
         captured: dict[str, object] = {}
 
         def fake_urlopen(http_request, timeout: int):
@@ -200,44 +201,20 @@ class LLMClientTests(unittest.TestCase):
             captured["body"] = json.loads(http_request.data.decode("utf-8"))
             return FakeHTTPResponse(
                 {
-                    "id": "chatcmpl_test",
+                    "id": "nim_resp",
                     "choices": [{"message": {"content": "OK"}}],
-                    "usage": {"total_tokens": 14},
+                    "usage": {"total_tokens": 17},
                 }
             )
 
         with patch("aiwiki.llm.request.urlopen", side_effect=fake_urlopen):
             result = client.complete("System prompt", "User prompt")
 
-        self.assertEqual(captured["url"], "https://models.github.ai/inference/chat/completions")
-        self.assertEqual(captured["headers"]["Authorization"], "Bearer gho_test_token")
-        self.assertEqual(captured["headers"]["X-github-api-version"], "2026-03-10")
-        self.assertEqual(captured["body"]["model"], "openai/gpt-4.1")
+        self.assertEqual(captured["url"], "https://integrate.api.nvidia.com/v1/chat/completions")
+        self.assertEqual(captured["headers"]["Authorization"], "Bearer nvapi_test_key")
+        self.assertEqual(captured["body"]["model"], "moonshotai/kimi-k2.5")
         self.assertEqual(result.text, "OK")
-        self.assertEqual(result.usage["total_tokens"], 14)
-
-    def test_github_models_complete_wraps_http_error(self) -> None:
-        config = LLMConfig(
-            backend=BACKEND_GITHUB_MODELS_API,
-            model="openai/gpt-4.1",
-            github_token="gho_test_token",
-            github_models_base_url="https://models.github.ai",
-        )
-        client = GitHubModelsClient(config)
-        http_error = error.HTTPError(
-            url="https://models.github.ai/inference/chat/completions",
-            code=403,
-            msg="Forbidden",
-            hdrs=None,
-            fp=io.BytesIO(b'{"message":"Resource not accessible by integration"}'),
-        )
-
-        with patch("aiwiki.llm.request.urlopen", side_effect=http_error):
-            with self.assertRaises(LLMError) as ctx:
-                client.complete("System prompt", "User prompt")
-
-        self.assertIn("HTTP 403", str(ctx.exception))
-        self.assertIn("Resource not accessible", str(ctx.exception))
+        self.assertEqual(result.usage["total_tokens"], 17)
 
     def test_openai_compat_complete_wraps_http_error(self) -> None:
         config = LLMConfig(
@@ -436,8 +413,14 @@ class LLMClientTests(unittest.TestCase):
                 LLMConfig(backend=BACKEND_COPILOT_CLI, copilot_path="/usr/bin/copilot"),
                 root,
             )
-            github_models = create_backend_client(
-                LLMConfig(backend=BACKEND_GITHUB_MODELS_API, github_token="gho_test_token"),
+            nvidia_nim = create_backend_client(
+                LLMConfig(
+                    backend=BACKEND_NVIDIA_NIM_API,
+                    api_key="nvapi_test_key",
+                    nvidia_nim_api_key="nvapi_test_key",
+                    base_url="https://integrate.api.nvidia.com/v1",
+                    nvidia_nim_base_url="https://integrate.api.nvidia.com/v1",
+                ),
                 root,
             )
             claude = create_backend_client(
@@ -452,92 +435,55 @@ class LLMClientTests(unittest.TestCase):
         self.assertIsInstance(openai, OpenAICompatClient)
         self.assertIsInstance(codex, CodexCLIClient)
         self.assertIsInstance(copilot, CopilotCLIClient)
-        self.assertIsInstance(github_models, GitHubModelsClient)
+        self.assertIsInstance(nvidia_nim, ModelFallbackClient)
         self.assertIsInstance(claude, ClaudeCLIClient)
         self.assertIsInstance(anthropic, AnthropicClient)
 
-    def test_create_backend_client_auto_falls_back_when_codex_session_is_unavailable(self) -> None:
+    def test_create_backend_client_nvidia_nim_falls_back_across_default_models(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             root = Path(tempdir)
             client = create_backend_client(
                 LLMConfig(
-                    backend=BACKEND_CODEX_CLI,
-                    backend_requested="auto",
-                    model="gpt-5.4",
-                    model_requested="",
-                    codex_path="/usr/bin/codex",
-                    copilot_path="/usr/bin/copilot",
-                    claude_path="/usr/bin/claude",
+                    backend=BACKEND_NVIDIA_NIM_API,
+                    backend_requested=BACKEND_NVIDIA_NIM_API,
+                    api_key="nvapi_test_key",
+                    nvidia_nim_api_key="nvapi_test_key",
+                    base_url="https://integrate.api.nvidia.com/v1",
+                    nvidia_nim_base_url="https://integrate.api.nvidia.com/v1",
                 ),
                 root,
             )
-            self.assertIsInstance(client, AutoFallbackClient)
+            self.assertIsInstance(client, ModelFallbackClient)
 
-            def fake_run(command, **kwargs):
-                binary = Path(command[0]).name
-                if binary == "codex":
-                    output_path = Path(command[command.index("--output-last-message") + 1])
-                    output_path.write_text("", encoding="utf-8")
-                    return type(
-                        "Completed",
-                        (),
-                        {
-                            "returncode": 1,
-                            "stdout": "",
-                            "stderr": "ERROR: You've hit your usage limit. Upgrade to Pro.",
-                        },
-                    )()
-                if binary == "copilot":
-                    return type("Completed", (), {"returncode": 0, "stdout": "copilot fallback\n", "stderr": ""})()
-                raise AssertionError(f"unexpected backend invocation: {command}")
+            attempts: list[str] = []
 
-            with patch("aiwiki.llm.subprocess.run", side_effect=fake_run):
+            def fake_urlopen(http_request, timeout: int):
+                del timeout
+                payload = json.loads(http_request.data.decode("utf-8"))
+                attempts.append(payload["model"])
+                if len(attempts) == 1:
+                    raise error.HTTPError(
+                        url=http_request.full_url,
+                        code=404,
+                        msg="Not Found",
+                        hdrs=None,
+                        fp=io.BytesIO(b'{"error":{"message":"Unknown model"}}'),
+                    )
+                return FakeHTTPResponse(
+                    {
+                        "id": "chatcmpl_nim_fallback",
+                        "choices": [{"message": {"content": "OK"}}],
+                        "usage": {"total_tokens": 12},
+                    }
+                )
+
+            with patch("aiwiki.llm.request.urlopen", side_effect=fake_urlopen):
                 result = client.complete("System prompt", "User prompt")
 
-        self.assertEqual(result.text, "copilot fallback")
-        self.assertEqual(client.config.backend, BACKEND_COPILOT_CLI)
-
-    def test_create_backend_client_auto_keeps_copilot_before_github_models(self) -> None:
-        with tempfile.TemporaryDirectory() as tempdir:
-            root = Path(tempdir)
-            client = create_backend_client(
-                LLMConfig(
-                    backend=BACKEND_CODEX_CLI,
-                    backend_requested="auto",
-                    model="gpt-5.4",
-                    model_requested="",
-                    codex_path="/usr/bin/codex",
-                    github_token="gho_test_token",
-                    copilot_path="/usr/bin/copilot",
-                    claude_path="/usr/bin/claude",
-                ),
-                root,
-            )
-            self.assertIsInstance(client, AutoFallbackClient)
-
-            def fake_run(command, **kwargs):
-                binary = Path(command[0]).name
-                if binary == "codex":
-                    output_path = Path(command[command.index("--output-last-message") + 1])
-                    output_path.write_text("", encoding="utf-8")
-                    return type(
-                        "Completed",
-                        (),
-                        {
-                            "returncode": 1,
-                            "stdout": "",
-                            "stderr": "ERROR: You've hit your usage limit. Upgrade to Pro.",
-                        },
-                    )()
-                if binary == "copilot":
-                    return type("Completed", (), {"returncode": 0, "stdout": "copilot fallback\n", "stderr": ""})()
-                raise AssertionError(f"unexpected CLI backend invocation: {command}")
-
-            with patch("aiwiki.llm.subprocess.run", side_effect=fake_run):
-                result = client.complete("System prompt", "User prompt")
-
-        self.assertEqual(result.text, "copilot fallback")
-        self.assertEqual(client.config.backend, BACKEND_COPILOT_CLI)
+        self.assertEqual(result.text, "OK")
+        self.assertEqual(attempts[0], "moonshotai/kimi-k2.5")
+        self.assertEqual(attempts[1], "z-ai/glm-5.1")
+        self.assertEqual(client.config.model, "z-ai/glm-5.1")
 
     def test_probe_backend_reports_success_and_expected_output_match(self) -> None:
         config = LLMConfig(
@@ -617,11 +563,12 @@ class LLMClientTests(unittest.TestCase):
     def test_probe_available_backends_probes_each_available_backend(self) -> None:
         config = LLMConfig(
             backend=BACKEND_CODEX_CLI,
-            backend_requested="auto",
+            backend_requested=BACKEND_CODEX_CLI,
             model="gpt-5.4",
             model_requested="",
             codex_path="/usr/bin/codex",
-            github_token="gho_test_token",
+            nvidia_nim_api_key="nvapi_test_key",
+            nvidia_nim_base_url="https://integrate.api.nvidia.com/v1",
             copilot_path="/usr/bin/copilot",
             claude_path="/usr/bin/claude",
         )
@@ -654,12 +601,12 @@ class LLMClientTests(unittest.TestCase):
                 (BACKEND_CODEX_CLI, BACKEND_CODEX_CLI),
                 (BACKEND_COPILOT_CLI, BACKEND_COPILOT_CLI),
                 (BACKEND_CLAUDE_CLI, BACKEND_CLAUDE_CLI),
-                (BACKEND_GITHUB_MODELS_API, BACKEND_GITHUB_MODELS_API),
+                (BACKEND_NVIDIA_NIM_API, BACKEND_NVIDIA_NIM_API),
             ],
         )
         self.assertEqual(
             [probe["backend"] for probe in probes],
-            [BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, BACKEND_CLAUDE_CLI, BACKEND_GITHUB_MODELS_API],
+            [BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, BACKEND_CLAUDE_CLI, BACKEND_NVIDIA_NIM_API],
         )
 
     def test_anthropic_complete_basic(self) -> None:

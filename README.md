@@ -220,28 +220,27 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare A and B" --format rep
 
 支持：
 - `codex-cli`
-- `github-models-api`
+- `nvidia-nim-api`
 - `copilot-cli`
 - `claude-cli`
 
-默认链路：
-- 如果不显式设置 `AIWIKI_LLM_BACKEND`，runtime 会按 `auto` 解析
-- `auto` 会按 `codex-cli -> copilot-cli -> claude-cli` 的顺序解析
+当前语义：
+- `AIWIKI_LLM_BACKEND` 现在必须显式设置；runtime 不再做 `auto` 解析
 - 如果 backend 是 `codex-cli` 且没有显式设置 `AIWIKI_LLM_MODEL`，effective model 默认是 `gpt-5.4`
-- 如果 backend 是 `github-models-api` 且没有显式设置 `AIWIKI_LLM_MODEL`，effective model 默认是 `openai/gpt-4.1`
+- 如果 backend 是 `nvidia-nim-api` 且没有显式设置 `AIWIKI_LLM_MODEL`，effective model 默认首选是 `moonshotai/kimi-k2.5`
 - `codex-cli` 默认会附带 `AIWIKI_CODEX_REASONING_EFFORT=medium`，避免非交互 `run-ask` / `run-compile` / `run-lint` 被 CLI 默认的高推理档位拖慢
 - `llm-check`、`shell-summary.json`、Product Shell 会同时显示 requested/effective backend/model，以及 usage 可见性/计费口径
 - 默认 `llm-check` 只做静态路由检查；显式加 `--probe` 后才会发一个极小真实请求，区分“backend 能解析出来”和“当前账号真能跑”
-- CLI 路径当前都无法给出精确 token usage，`usage_visibility` 会显示 `opaque-cli`；`github-models-api` 会直接返回 usage
-- `github-models-api` 是显式可选 backend，不参与 `auto` 主链路；如果要走这条 GitHub OAuth 直连 API 路，请显式设置 `AIWIKI_LLM_BACKEND=github-models-api`
+- CLI 路径当前都无法给出精确 token usage，`usage_visibility` 会显示 `opaque-cli`；`nvidia-nim-api` 会直接返回 usage
 - `run-ask` 现在会先用 balanced prompt；如果碰到 timeout，会自动再试一次 lean prompt，只有 lean retry 也失败时，外层 Product Shell 才会做 deterministic fallback
 - `run-ask` 现在也支持显式 `--lean` 与 `--timeout <seconds>`，用于直接选择稳优先 prompt 或覆盖单次调用 timeout，而不改动全局环境变量
+- `nvidia-nim-api` 在模型留空时会按 `moonshotai/kimi-k2.5 -> z-ai/glm-5.1 -> minimaxai/minimax-m2.7` 依次尝试；不仅 API/timeout 类错误会切下一模型，`run-ask / run-compile / run-lint` 的产物校验失败也会切下一模型
 
 常见配置：
 
 ```bash
 AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
-AIWIKI_LLM_BACKEND=github-models-api PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
+AIWIKI_LLM_BACKEND=nvidia-nim-api AIWIKI_NVIDIA_NIM_API_KEY=nvapi-... PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
 AIWIKI_LLM_BACKEND=copilot-cli PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
 AIWIKI_LLM_BACKEND=claude-cli PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
 ```
@@ -258,11 +257,12 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check --probe-all --probe-time
 
 - `codex-cli`：走 `codex login` 的本地会话；当前环境可用 `codex login status` 查看状态
 - `codex-cli`：可以通过 `AIWIKI_CODEX_REASONING_EFFORT=medium|high|xhigh` 调节非交互推理档位；当前默认是 `medium`
-- `github-models-api`：优先复用 `AIWIKI_GITHUB_TOKEN -> COPILOT_GITHUB_TOKEN -> GH_TOKEN -> GITHUB_TOKEN -> gh auth token`；不要求手动复制 API key，只要你已经 `gh auth login`
-- `github-models-api`：当前仓库已在真实环境验证 `gh auth token -> https://models.github.ai/inference/chat/completions` 可用
+- `nvidia-nim-api`：走 `AIWIKI_NVIDIA_NIM_API_KEY` 或 `NVIDIA_NIM_API_KEY`；base URL 默认 `https://integrate.api.nvidia.com/v1`
+- `nvidia-nim-api`：当前按 OpenAI-compatible `/v1/chat/completions` 接入；模型留空会按 `moonshotai/kimi-k2.5 -> z-ai/glm-5.1 -> minimaxai/minimax-m2.7` 依次尝试
+- `nvidia-nim-api`：如果你要钉死某个模型，直接显式设置 `AIWIKI_LLM_MODEL=moonshotai/kimi-k2.5` 或 `AIWIKI_LLM_MODEL=minimaxai/minimax-m2.7`
 - `copilot-cli`：官方推荐 `copilot login` 的浏览器设备码 OAuth；也支持 `COPILOT_GITHUB_TOKEN -> GH_TOKEN -> GITHUB_TOKEN -> stored OAuth token -> gh auth token` 的优先链
 - `copilot-cli` 的 GitHub OAuth 路径“可行”不等于“当前账号可用”；seat / org policy / quota 不足时，probe 仍会失败
-- 当前这台机器上的真实结论是：`copilot-cli` 返回 `402 no quota`，但 `github-models-api` 通过 `gh auth token` 可直接成功；因此它被保留为显式备用路，而不是塞进 `auto`
+- 当前这台机器上的真实结论是：`copilot-cli` 仍可能返回 `402 no quota`；如果你要稳定跑 API 路，优先显式切到 `nvidia-nim-api`
 
 ## 使用边界
 

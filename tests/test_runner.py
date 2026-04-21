@@ -289,45 +289,66 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(client.prompts, ["balanced prompt", "lean prompt"])
         self.assertIn("# Answer", artifact_path.read_text(encoding="utf-8"))
 
-    def test_run_ask_retries_with_github_models_minimal_profile_on_size_limit(self) -> None:
-        artifact_path = self.root / "output" / "reports" / "query-github-models.md"
+    def test_run_ask_advances_to_next_model_when_first_model_returns_invalid_frontmatter(self) -> None:
+        artifact_path = self.root / "output" / "reports" / "query-nim-fallback.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text("---\nid: query-github-models\nkind: report\n---\n\n# Placeholder\n", encoding="utf-8")
+        artifact_path.write_text("---\nid: query-nim-fallback\nkind: output\n---\n\n# Placeholder\n", encoding="utf-8")
         artifact = {
-            "path": "output/reports/query-github-models.md",
+            "path": "output/reports/query-nim-fallback.md",
             "format": "report",
             "protocol": "general",
-            "ranked_sources": [],
+            "ranked_sources": ["source-1"],
             "ranked_concepts": [],
             "protocol_pages": [],
             "index_pages": [],
             "machine_memory_query": {},
         }
 
-        class _GitHubModelsRetryClient:
+        class _ModelFallbackAskClient:
             def __init__(self) -> None:
-                self.config = type("Config", (), {"model": "openai/gpt-4.1", "backend": "github-models-api"})()
-                self.prompts: list[str] = []
+                self.models = ["moonshotai/kimi-k2.5", "z-ai/glm-5.1"]
+                self.index = 0
+                self.config = type(
+                    "Config",
+                    (),
+                    {"model": self.models[self.index], "backend": "nvidia-nim-api", "timeout_seconds": 120},
+                )()
+
+            def advance_model(self) -> bool:
+                if self.index >= len(self.models) - 1:
+                    return False
+                self.index += 1
+                self.config = type(
+                    "Config",
+                    (),
+                    {"model": self.models[self.index], "backend": "nvidia-nim-api", "timeout_seconds": 120},
+                )()
+                return True
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
                 del system_prompt
-                self.prompts.append(user_prompt)
-                if len(self.prompts) == 1:
-                    raise LLMError("HTTP 413 from GitHub Models endpoint: tokens_limit_reached")
+                del user_prompt
+                if self.config.model == "moonshotai/kimi-k2.5":
+                    return CompletionResult(
+                        text='--- id: "query-nim-fallback" kind: "output" format: "report" ---\n\nMissing real frontmatter.\nwiki/sources/source-1.md\n',
+                        response_id="resp_glm",
+                        usage={},
+                    )
                 return CompletionResult(
-                    text="---\nid: query-github-models\nkind: report\n---\n\n# Answer\n\nRecovered.\n",
-                    response_id="resp_retry",
+                    text='---\nid: "query-nim-fallback"\nkind: "output"\nformat: "report"\n---\n\n# Answer\n\nGrounded result `wiki/sources/source-1.md`.\n',
+                    response_id="resp_kimi",
                     usage={},
                 )
 
-        client = _GitHubModelsRetryClient()
+        client = _ModelFallbackAskClient()
         with patch("aiwiki.runner.ask_question", return_value=artifact):
-            with patch("aiwiki.runner._build_ask_prompt", side_effect=["github-models prompt", "github-models-minimal prompt"]):
+            with patch("aiwiki.runner._build_ask_prompt", return_value="nim prompt"):
                 result = run_ask(self.root, "测试", "report", client=client)
 
-        self.assertEqual(result["prompt_profile"], "github-models-minimal")
-        self.assertEqual(result["retry_prompt_profile"], "github-models-minimal")
-        self.assertEqual(client.prompts, ["github-models prompt", "github-models-minimal prompt"])
+        self.assertEqual(result["prompt_profile"], "balanced")
+        self.assertEqual(result["retry_prompt_profile"], "")
+        self.assertEqual(client.config.model, "z-ai/glm-5.1")
+        self.assertIn("# Answer", artifact_path.read_text(encoding="utf-8"))
 
     def test_run_compile_limit_zero_reports_pending_source_and_concept_pages(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -389,65 +410,6 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("Make evidence boundaries explicit.", concept_prompt)
         self.assertIn("hardness: soft|medium|hard", concept_prompt)
 
-    def test_github_models_prompt_profiles_trim_compile_and_lint_inputs(self) -> None:
-        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
-        compile_wiki(self.root)
-        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
-        concept_page = self.root / "wiki" / "concepts" / "transformer-scaling.md"
-        giant = ("## Section\n\n" + ("signal " * 300) + "\n\n") * 10
-        for relative in (
-            "wiki/indexes/index.md",
-            "wiki/indexes/sources.md",
-            "wiki/indexes/concepts.md",
-            "wiki/indexes/compile-status.md",
-            "wiki/indexes/machine-memory.md",
-            "wiki/indexes/machine-memory-topology.md",
-            "wiki/indexes/machine-memory-actions.md",
-            "wiki/indexes/graph-health.md",
-            "wiki/indexes/drift-report.md",
-            "wiki/indexes/log.md",
-        ):
-            path = self.root / relative
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(giant, encoding="utf-8")
-        deterministic_report = self.root / "output" / "lint" / "deterministic.md"
-        deterministic_report.parent.mkdir(parents=True, exist_ok=True)
-        deterministic_report.write_text(giant, encoding="utf-8")
-
-        compile_prompt = _build_compile_prompt(
-            self.root,
-            entry,
-            self.root / entry["stored_path"],
-            source_page.read_text(encoding="utf-8"),
-            prompt_profile="github-models",
-        )
-        concept_prompt = _build_concept_compile_prompt(
-            self.root,
-            concept_page,
-            concept_page.read_text(encoding="utf-8"),
-            [f"wiki/sources/{entry['id']}.md", f"wiki/sources/{entry['id']}.md", f"wiki/sources/{entry['id']}.md"],
-            ["transformer-scaling", "transformer-scaling", "transformer-scaling"],
-            quality_record={
-                "priority": "high",
-                "issues": ["conflict", "gap"],
-                "rewrite_strategy": "Keep it short.",
-                "conflict_signals": [{"label": "source-tension", "source_pages": [f"wiki/sources/{entry['id']}.md"]}] * 4,
-                "gap_signals": [{"kind": "coverage-gap", "path": str(concept_page), "markers": ["missing-benchmark"]}] * 4,
-            },
-            prompt_profile="github-models",
-        )
-        lint_prompt = _build_lint_prompt(
-            self.root,
-            relative_path(self.root, deterministic_report),
-            prompt_profile="github-models",
-        )
-
-        self.assertLess(len(compile_prompt), 14000)
-        self.assertLess(len(concept_prompt), 14000)
-        self.assertLess(len(lint_prompt), 14000)
-        self.assertIn("Omitted", concept_prompt)
-        self.assertIn("Additional wiki files were omitted", lint_prompt)
-
     def test_load_prompt_falls_back_to_runtime_templates_when_vault_prompt_is_missing(self) -> None:
         (self.root / "prompts" / "ask.md").unlink()
 
@@ -470,64 +432,6 @@ class RunnerTests(unittest.TestCase):
 
         self.assertIn("Material kind: `transcript`", prompt)
         self.assertIn("Preserve chronology, speaker attributions", prompt)
-
-    def test_run_compile_retries_with_github_models_minimal_profile_on_size_limit(self) -> None:
-        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
-        compile_wiki(self.root)
-        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
-        updated_markdown = source_page.read_text(encoding="utf-8").replace(
-            "- Pending LLM summary.",
-            "- Grounded summary from GitHub Models.",
-        )
-
-        class _GitHubModelsCompileRetryClient:
-            def __init__(self) -> None:
-                self.config = type("Config", (), {"model": "openai/gpt-4.1", "backend": "github-models-api"})()
-                self.prompts: list[str] = []
-
-            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
-                del system_prompt
-                self.prompts.append(user_prompt)
-                if len(self.prompts) == 1:
-                    raise LLMError("HTTP 413 from GitHub Models endpoint: tokens_limit_reached")
-                return CompletionResult(text=updated_markdown, response_id="resp_compile_retry", usage={})
-
-        client = _GitHubModelsCompileRetryClient()
-        with patch("aiwiki.runner._build_compile_prompt", side_effect=["github-models prompt", "github-models-minimal prompt"]):
-            result = run_compile(self.root, client=client, limit=1)
-
-        self.assertEqual(result["prompt_profile"], "github-models-minimal")
-        self.assertEqual(result["retry_prompt_profile"], "github-models-minimal")
-        self.assertEqual(client.prompts, ["github-models prompt", "github-models-minimal prompt"])
-        self.assertIn("Grounded summary from GitHub Models.", source_page.read_text(encoding="utf-8"))
-
-    def test_run_lint_retries_with_github_models_minimal_profile_on_size_limit(self) -> None:
-        deterministic_report = self.root / "output" / "lint" / "deterministic.md"
-        deterministic_report.parent.mkdir(parents=True, exist_ok=True)
-        deterministic_report.write_text("# Deterministic\n\n- issue\n", encoding="utf-8")
-
-        class _GitHubModelsLintRetryClient:
-            def __init__(self) -> None:
-                self.config = type("Config", (), {"model": "openai/gpt-4.1", "backend": "github-models-api"})()
-                self.prompts: list[str] = []
-
-            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
-                del system_prompt
-                self.prompts.append(user_prompt)
-                if len(self.prompts) == 1:
-                    raise LLMError("HTTP 413 from GitHub Models endpoint: tokens_limit_reached")
-                return CompletionResult(text="# Semantic Lint\n\n- Recovered.\n", response_id="resp_lint_retry", usage={})
-
-        client = _GitHubModelsLintRetryClient()
-        with patch("aiwiki.runner.lint_wiki", return_value={"path": relative_path(self.root, deterministic_report)}):
-            with patch("aiwiki.runner._build_lint_prompt", side_effect=["github-models lint", "github-models-minimal lint"]):
-                result = run_lint(self.root, client=client)
-
-        self.assertEqual(result["prompt_profile"], "github-models-minimal")
-        self.assertEqual(result["retry_prompt_profile"], "github-models-minimal")
-        self.assertEqual(client.prompts, ["github-models lint", "github-models-minimal lint"])
-        semantic_report = self.root / result["semantic_report"]
-        self.assertIn("# Semantic Lint", semantic_report.read_text(encoding="utf-8"))
 
     def test_rewrite_candidate_and_machine_query_helpers_render_expected_details(self) -> None:
         memory = {

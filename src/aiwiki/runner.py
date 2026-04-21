@@ -36,8 +36,15 @@ from .app_utils import (
     runtime_write_operation,
     sha256_bytes,
 )
-from .config import BACKEND_GITHUB_MODELS_API, LLMConfig
-from .llm import CompletionResult, LLMError, create_backend_client, probe_available_backends, probe_backend
+from .config import LLMConfig
+from .llm import (
+    CompletionResult,
+    LLMError,
+    advance_client_model,
+    create_backend_client,
+    probe_available_backends,
+    probe_backend,
+)
 
 ASK_INDEX_PAGES_BASE = (
     "wiki/indexes/index.md",
@@ -89,30 +96,6 @@ ASK_PROMPT_PROFILES = {
         "max_concepts": 3,
         "max_sources": 4,
     },
-    "github-models": {
-        "max_total_chars": 14000,
-        "index_page_chars": 900,
-        "log_page_chars": 700,
-        "protocol_page_chars": 900,
-        "concept_page_chars": 900,
-        "source_page_chars": 1200,
-        "max_index_pages": 4,
-        "max_protocol_pages": 2,
-        "max_concepts": 2,
-        "max_sources": 3,
-    },
-    "github-models-minimal": {
-        "max_total_chars": 9000,
-        "index_page_chars": 650,
-        "log_page_chars": 500,
-        "protocol_page_chars": 700,
-        "concept_page_chars": 700,
-        "source_page_chars": 900,
-        "max_index_pages": 3,
-        "max_protocol_pages": 2,
-        "max_concepts": 2,
-        "max_sources": 2,
-    },
 }
 COMPILE_PROMPT_PROFILES = {
     "balanced": {
@@ -127,30 +110,6 @@ COMPILE_PROMPT_PROFILES = {
         "max_related_concepts": 3,
         "max_quality_signals": 4,
     },
-    "github-models": {
-        "max_total_chars": 14000,
-        "current_page_chars": 1600,
-        "raw_excerpt_chars": 1800,
-        "schema_page_chars": 750,
-        "protocol_page_chars": 750,
-        "source_page_chars": 1100,
-        "related_concept_chars": 900,
-        "max_source_pages": 2,
-        "max_related_concepts": 2,
-        "max_quality_signals": 3,
-    },
-    "github-models-minimal": {
-        "max_total_chars": 9000,
-        "current_page_chars": 1100,
-        "raw_excerpt_chars": 1200,
-        "schema_page_chars": 600,
-        "protocol_page_chars": 600,
-        "source_page_chars": 800,
-        "related_concept_chars": 700,
-        "max_source_pages": 2,
-        "max_related_concepts": 1,
-        "max_quality_signals": 2,
-    },
 }
 LINT_PROMPT_PROFILES = {
     "balanced": {
@@ -163,28 +122,6 @@ LINT_PROMPT_PROFILES = {
         "wiki_page_chars": 1400,
         "max_index_pages": 8,
         "max_wiki_pages": 5,
-    },
-    "github-models": {
-        "max_total_chars": 14000,
-        "deterministic_report_chars": 1800,
-        "schema_page_chars": 700,
-        "protocol_page_chars": 700,
-        "index_page_chars": 800,
-        "log_page_chars": 650,
-        "wiki_page_chars": 850,
-        "max_index_pages": 6,
-        "max_wiki_pages": 3,
-    },
-    "github-models-minimal": {
-        "max_total_chars": 9000,
-        "deterministic_report_chars": 1200,
-        "schema_page_chars": 550,
-        "protocol_page_chars": 550,
-        "index_page_chars": 650,
-        "log_page_chars": 500,
-        "wiki_page_chars": 650,
-        "max_index_pages": 4,
-        "max_wiki_pages": 2,
     },
 }
 
@@ -276,24 +213,42 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
         item_profile = prompt_profile
         prompt = _build_compile_prompt(root, entry, raw_path, current_page, prompt_profile=item_profile)
         item_retry_profile = ""
-        try:
-            result = effective_client.complete(_system_prompt("compile"), prompt)
-        except LLMError as exc:
-            item_retry_profile = _retry_compile_prompt_profile(exc, item_profile, effective_client)
-            if not item_retry_profile:
+        while True:
+            try:
+                result = effective_client.complete(_system_prompt("compile"), prompt)
+            except LLMError as exc:
+                next_retry_profile = _retry_compile_prompt_profile(exc, item_profile, effective_client)
+                if next_retry_profile:
+                    item_retry_profile = next_retry_profile
+                    logging.getLogger("aiwiki").warning(
+                        "run-compile failed with %s prompt; retrying with %s prompt",
+                        item_profile,
+                        item_retry_profile,
+                    )
+                    prompt = _build_compile_prompt(
+                        root,
+                        entry,
+                        raw_path,
+                        current_page,
+                        prompt_profile=item_retry_profile,
+                    )
+                    item_profile = item_retry_profile
+                    prompt_profile = item_retry_profile
+                    retry_prompt_profile = item_retry_profile
+                    continue
+                if _fallback_to_next_model(effective_client, "run-compile", exc):
+                    continue
                 raise
-            logging.getLogger("aiwiki").warning(
-                "run-compile failed with %s prompt; retrying with %s prompt",
-                item_profile,
-                item_retry_profile,
-            )
-            prompt = _build_compile_prompt(root, entry, raw_path, current_page, prompt_profile=item_retry_profile)
-            result = effective_client.complete(_system_prompt("compile"), prompt)
-            prompt_profile = item_retry_profile
-            retry_prompt_profile = item_retry_profile
+            used_profile = item_retry_profile or item_profile
+            updated = _normalize_markdown(result.text)
+            try:
+                _validate_source_page(updated, entry["id"], entry["stored_path"], entry["sha256"])
+            except RuntimeError as exc:
+                if _fallback_to_next_model(effective_client, "run-compile", exc):
+                    continue
+                raise
+            break
         used_profile = item_retry_profile or item_profile
-        updated = _normalize_markdown(result.text)
-        _validate_source_page(updated, entry["id"], entry["stored_path"], entry["sha256"])
         target.write_text(updated, encoding="utf-8")
         updated_pages.append(relative_path(root, target))
         _append_log(
@@ -339,31 +294,43 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             prompt_profile=item_profile,
         )
         item_retry_profile = ""
-        try:
-            result = effective_client.complete(_system_prompt("compile"), prompt)
-        except LLMError as exc:
-            item_retry_profile = _retry_compile_prompt_profile(exc, item_profile, effective_client)
-            if not item_retry_profile:
+        while True:
+            try:
+                result = effective_client.complete(_system_prompt("compile"), prompt)
+            except LLMError as exc:
+                next_retry_profile = _retry_compile_prompt_profile(exc, item_profile, effective_client)
+                if next_retry_profile:
+                    item_retry_profile = next_retry_profile
+                    logging.getLogger("aiwiki").warning(
+                        "run-compile concept failed with %s prompt; retrying with %s prompt",
+                        item_profile,
+                        item_retry_profile,
+                    )
+                    prompt = _build_concept_compile_prompt(
+                        root,
+                        target,
+                        current_page,
+                        source_pages,
+                        related_slugs,
+                        prompt_profile=item_retry_profile,
+                    )
+                    item_profile = item_retry_profile
+                    prompt_profile = item_retry_profile
+                    retry_prompt_profile = item_retry_profile
+                    continue
+                if _fallback_to_next_model(effective_client, "run-compile-concept", exc):
+                    continue
                 raise
-            logging.getLogger("aiwiki").warning(
-                "run-compile concept failed with %s prompt; retrying with %s prompt",
-                item_profile,
-                item_retry_profile,
-            )
-            prompt = _build_concept_compile_prompt(
-                root,
-                target,
-                current_page,
-                source_pages,
-                related_slugs,
-                prompt_profile=item_retry_profile,
-            )
-            result = effective_client.complete(_system_prompt("compile"), prompt)
-            prompt_profile = item_retry_profile
-            retry_prompt_profile = item_retry_profile
+            used_profile = item_retry_profile or item_profile
+            updated = _normalize_markdown(result.text)
+            try:
+                _validate_concept_page(updated, slug, frontmatter.get("source_signature", ""), source_pages)
+            except RuntimeError as exc:
+                if _fallback_to_next_model(effective_client, "run-compile-concept", exc):
+                    continue
+                raise
+            break
         used_profile = item_retry_profile or item_profile
-        updated = _normalize_markdown(result.text)
-        _validate_concept_page(updated, slug, frontmatter.get("source_signature", ""), source_pages)
         target.write_text(updated, encoding="utf-8")
         updated_placeholder_concept_pages.append(relative_path(root, target))
         _append_log(
@@ -413,32 +380,44 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             prompt_profile=item_profile,
         )
         item_retry_profile = ""
-        try:
-            result = effective_client.complete(_system_prompt("compile"), prompt)
-        except LLMError as exc:
-            item_retry_profile = _retry_compile_prompt_profile(exc, item_profile, effective_client)
-            if not item_retry_profile:
+        while True:
+            try:
+                result = effective_client.complete(_system_prompt("compile"), prompt)
+            except LLMError as exc:
+                next_retry_profile = _retry_compile_prompt_profile(exc, item_profile, effective_client)
+                if next_retry_profile:
+                    item_retry_profile = next_retry_profile
+                    logging.getLogger("aiwiki").warning(
+                        "run-compile rewrite failed with %s prompt; retrying with %s prompt",
+                        item_profile,
+                        item_retry_profile,
+                    )
+                    prompt = _build_concept_compile_prompt(
+                        root,
+                        target,
+                        current_page,
+                        source_pages,
+                        related_slugs,
+                        quality_record=quality_record,
+                        prompt_profile=item_retry_profile,
+                    )
+                    item_profile = item_retry_profile
+                    prompt_profile = item_retry_profile
+                    retry_prompt_profile = item_retry_profile
+                    continue
+                if _fallback_to_next_model(effective_client, "run-compile-rewrite", exc):
+                    continue
                 raise
-            logging.getLogger("aiwiki").warning(
-                "run-compile rewrite failed with %s prompt; retrying with %s prompt",
-                item_profile,
-                item_retry_profile,
-            )
-            prompt = _build_concept_compile_prompt(
-                root,
-                target,
-                current_page,
-                source_pages,
-                related_slugs,
-                quality_record=quality_record,
-                prompt_profile=item_retry_profile,
-            )
-            result = effective_client.complete(_system_prompt("compile"), prompt)
-            prompt_profile = item_retry_profile
-            retry_prompt_profile = item_retry_profile
+            used_profile = item_retry_profile or item_profile
+            updated = _normalize_markdown(result.text)
+            try:
+                _validate_concept_page(updated, slug, frontmatter.get("source_signature", ""), source_pages)
+            except RuntimeError as exc:
+                if _fallback_to_next_model(effective_client, "run-compile-rewrite", exc):
+                    continue
+                raise
+            break
         used_profile = item_retry_profile or item_profile
-        updated = _normalize_markdown(result.text)
-        _validate_concept_page(updated, slug, frontmatter.get("source_signature", ""), source_pages)
         proposal = store_concept_rewrite_candidate(
             root,
             slug,
@@ -543,33 +522,44 @@ def run_ask(
         prompt_profile=prompt_profile,
     )
     retry_profile = ""
-    try:
-        result = effective_client.complete(_system_prompt("ask"), prompt)
-    except LLMError as exc:
-        retry_profile = _retry_ask_prompt_profile(exc, prompt_profile, effective_client)
-        if not retry_profile:
+    while True:
+        try:
+            result = effective_client.complete(_system_prompt("ask"), prompt)
+        except LLMError as exc:
+            next_retry_profile = _retry_ask_prompt_profile(exc, prompt_profile, effective_client)
+            if next_retry_profile:
+                retry_profile = next_retry_profile
+                logging.getLogger("aiwiki").warning(
+                    "run-ask failed with %s prompt; retrying with %s prompt",
+                    prompt_profile,
+                    retry_profile,
+                )
+                prompt = _build_ask_prompt(
+                    root,
+                    target,
+                    question,
+                    output_format,
+                    current_artifact,
+                    source_pages,
+                    concept_pages,
+                    protocol_pages,
+                    index_pages,
+                    artifact.get("machine_memory_query", {}),
+                    prompt_profile=retry_profile,
+                )
+                prompt_profile = retry_profile
+                continue
+            if _fallback_to_next_model(effective_client, "run-ask", exc):
+                continue
             raise
-        logging.getLogger("aiwiki").warning(
-            "run-ask failed with %s prompt; retrying with %s prompt",
-            prompt_profile,
-            retry_profile,
-        )
-        prompt = _build_ask_prompt(
-            root,
-            target,
-            question,
-            output_format,
-            current_artifact,
-            source_pages,
-            concept_pages,
-            protocol_pages,
-            index_pages,
-            artifact.get("machine_memory_query", {}),
-            prompt_profile=retry_profile,
-        )
-        result = effective_client.complete(_system_prompt("ask"), prompt)
-    updated = _normalize_markdown(result.text)
-    _validate_output_markdown(updated, output_format, source_ids)
+        updated = _normalize_markdown(result.text)
+        try:
+            _validate_output_markdown(updated, output_format, source_ids)
+        except RuntimeError as exc:
+            if _fallback_to_next_model(effective_client, "run-ask", exc):
+                continue
+            raise
+        break
     target.write_text(updated, encoding="utf-8")
     _append_log(
         root,
@@ -606,23 +596,31 @@ def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, An
     prompt_profile = _initial_lint_prompt_profile(effective_client)
     prompt = _build_lint_prompt(root, deterministic["path"], prompt_profile=prompt_profile)
     retry_prompt_profile = ""
-    try:
-        result = effective_client.complete(_system_prompt("lint"), prompt)
-    except LLMError as exc:
-        retry_prompt_profile = _retry_lint_prompt_profile(exc, prompt_profile, effective_client)
-        if not retry_prompt_profile:
+    while True:
+        try:
+            result = effective_client.complete(_system_prompt("lint"), prompt)
+        except LLMError as exc:
+            next_retry_prompt_profile = _retry_lint_prompt_profile(exc, prompt_profile, effective_client)
+            if next_retry_prompt_profile:
+                retry_prompt_profile = next_retry_prompt_profile
+                logging.getLogger("aiwiki").warning(
+                    "run-lint failed with %s prompt; retrying with %s prompt",
+                    prompt_profile,
+                    retry_prompt_profile,
+                )
+                prompt = _build_lint_prompt(root, deterministic["path"], prompt_profile=retry_prompt_profile)
+                prompt_profile = retry_prompt_profile
+                continue
+            if _fallback_to_next_model(effective_client, "run-lint", exc):
+                continue
             raise
-        logging.getLogger("aiwiki").warning(
-            "run-lint failed with %s prompt; retrying with %s prompt",
-            prompt_profile,
-            retry_prompt_profile,
-        )
-        prompt = _build_lint_prompt(root, deterministic["path"], prompt_profile=retry_prompt_profile)
-        result = effective_client.complete(_system_prompt("lint"), prompt)
-        prompt_profile = retry_prompt_profile
-    updated = _normalize_markdown(result.text)
-    if not updated.startswith("#") and not updated.startswith("---"):
-        raise RuntimeError("Semantic lint response must be markdown.")
+        updated = _normalize_markdown(result.text)
+        if not updated.startswith("#") and not updated.startswith("---"):
+            exc = RuntimeError("Semantic lint response must be markdown.")
+            if _fallback_to_next_model(effective_client, "run-lint", exc):
+                continue
+            raise exc
+        break
     target.write_text(updated, encoding="utf-8")
     _append_log(
         root,
@@ -1230,16 +1228,11 @@ def _select_ask_protocol_pages(protocol_pages: list[tuple[str, str]], output_for
 
 
 def _initial_ask_prompt_profile(client: SupportsComplete) -> str:
-    backend = str(getattr(getattr(client, "config", None), "backend", "") or "")
-    if backend == BACKEND_GITHUB_MODELS_API:
-        return "github-models"
     return "balanced"
 
 
 def _lean_ask_prompt_profile(client: SupportsComplete) -> str:
-    backend = str(getattr(getattr(client, "config", None), "backend", "") or "")
-    if backend == BACKEND_GITHUB_MODELS_API:
-        return "github-models-minimal"
+    del client
     return "lean"
 
 
@@ -1251,13 +1244,7 @@ def _select_initial_ask_prompt_profile(client: SupportsComplete, lean: bool = Fa
 
 def _retry_ask_prompt_profile(exc: Exception, current_profile: str, client: SupportsComplete) -> str:
     text = str(exc or "").lower()
-    backend = str(getattr(getattr(client, "config", None), "backend", "") or "")
-    if backend == BACKEND_GITHUB_MODELS_API:
-        if current_profile == "github-models" and any(
-            marker in text for marker in ("tokens_limit_reached", "request body too large", "http 413", "timed out", "timeout")
-        ):
-            return "github-models-minimal"
-        return ""
+    del client
     if current_profile == "balanced" and ("timed out" in text or "timeout" in text):
         return "lean"
     return ""
@@ -1583,44 +1570,48 @@ def _lint_prompt_profile(name: str) -> dict[str, int]:
 
 
 def _initial_compile_prompt_profile(client: SupportsComplete) -> str:
-    backend = str(getattr(getattr(client, "config", None), "backend", "") or "")
-    if backend == BACKEND_GITHUB_MODELS_API:
-        return "github-models"
+    del client
     return "balanced"
 
 
 def _initial_lint_prompt_profile(client: SupportsComplete) -> str:
-    backend = str(getattr(getattr(client, "config", None), "backend", "") or "")
-    if backend == BACKEND_GITHUB_MODELS_API:
-        return "github-models"
+    del client
     return "balanced"
 
 
 def _retry_compile_prompt_profile(exc: Exception, current_profile: str, client: SupportsComplete) -> str:
-    backend = str(getattr(getattr(client, "config", None), "backend", "") or "")
-    if backend == BACKEND_GITHUB_MODELS_API and current_profile == "github-models" and _is_budget_retryable_error(exc):
-        return "github-models-minimal"
+    del exc
+    del current_profile
+    del client
     return ""
 
 
 def _retry_lint_prompt_profile(exc: Exception, current_profile: str, client: SupportsComplete) -> str:
-    backend = str(getattr(getattr(client, "config", None), "backend", "") or "")
-    if backend == BACKEND_GITHUB_MODELS_API and current_profile == "github-models" and _is_budget_retryable_error(exc):
-        return "github-models-minimal"
+    del exc
+    del current_profile
+    del client
     return ""
-
-
-def _is_budget_retryable_error(exc: Exception) -> bool:
-    text = str(exc or "").lower()
-    return any(
-        marker in text for marker in ("tokens_limit_reached", "request body too large", "http 413", "timed out", "timeout")
-    )
 
 
 def _client_model_name(client: SupportsComplete) -> str:
     config = getattr(client, "config", None)
     model = getattr(config, "model", None)
     return str(model or "")
+
+
+def _fallback_to_next_model(client: SupportsComplete, operation: str, exc: Exception) -> bool:
+    current_model = _client_model_name(client)
+    if not advance_client_model(client):
+        return False
+    next_model = _client_model_name(client)
+    logging.getLogger("aiwiki").warning(
+        "%s failed with model %s: %s; retrying with model %s",
+        operation,
+        current_model or "(default)",
+        exc,
+        next_model or "(default)",
+    )
+    return True
 
 
 def _pending_summary_count(root: Path) -> int:

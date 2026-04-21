@@ -518,7 +518,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     const health = this.currentLlmHealth();
     const latestLlmRun = this.latestLlmRun();
     const availableBackends = Array.isArray(llmStatus.available_backends) ? llmStatus.available_backends.filter(Boolean) : [];
-    const requestedBackend = String(llmStatus.backend_requested || this.settings.llmBackend || "auto").trim() || "auto";
+    const requestedBackend = String(llmStatus.backend_requested || this.settings.llmBackend || "").trim();
     const effectiveBackend = String(llmStatus.backend || "").trim();
     const selected = this.currentLlmSelection();
     const summaryTimestamp = this.parseTimestampMs(this.shellSummary && this.shellSummary.generated_at);
@@ -554,23 +554,31 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
     items.push({
       key: "route",
-      status: effectiveBackend && (!availableBackends.length || availableBackends.includes(effectiveBackend)) ? "healthy" : "failed",
+      status: requestedBackend && effectiveBackend && (!availableBackends.length || availableBackends.includes(effectiveBackend)) ? "healthy" : "failed",
       title: "LLM route",
       detail: this.t("requested {requested} · effective {effective} · available {available}", {
-        requested: requestedBackend,
+        requested: requestedBackend || this.t("unconfigured"),
         effective: effectiveBackend || this.t("unconfigured"),
         available: availableBackends.length ? availableBackends.join(", ") : this.t("none"),
       }),
     });
 
-    if (requestedBackend === "auto") {
+    if (!requestedBackend) {
       items.push({
         key: "backend-discovery",
-        status: availableBackends.includes("codex-cli") ? "healthy" : "warning",
+        status: "warning",
         title: "Backend discovery",
-        detail: availableBackends.includes("codex-cli")
-          ? this.t("Product Shell runtime can see codex-cli.")
-          : this.t("Product Shell runtime cannot see codex-cli. GUI PATH may differ from terminal PATH."),
+        detail: this.t("No explicit LLM backend is selected. Choose one in Product Shell settings or set AIWIKI_LLM_BACKEND."),
+      });
+    } else {
+      const backendVisible = availableBackends.includes(requestedBackend);
+      items.push({
+        key: "backend-discovery",
+        status: backendVisible ? "healthy" : "warning",
+        title: "Backend discovery",
+        detail: backendVisible
+          ? this.t("Product Shell runtime can see the selected backend {backend}.", { backend: requestedBackend })
+          : this.t("Product Shell runtime cannot see the selected backend {backend}.", { backend: requestedBackend }),
       });
     }
 
@@ -1358,11 +1366,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       if (this.settings.llmModel) {
         env.AIWIKI_LLM_MODEL = this.settings.llmModel;
       }
-      if (this.settings.llmGithubToken) {
-        env.AIWIKI_GITHUB_TOKEN = this.settings.llmGithubToken;
+      if (this.settings.llmNvidiaNimApiKey) {
+        env.AIWIKI_NVIDIA_NIM_API_KEY = this.settings.llmNvidiaNimApiKey;
       }
-      if (this.settings.llmGithubModelsBaseUrl) {
-        env.AIWIKI_GITHUB_MODELS_BASE_URL = this.settings.llmGithubModelsBaseUrl;
+      if (this.settings.llmNvidiaNimBaseUrl) {
+        env.AIWIKI_NVIDIA_NIM_BASE_URL = this.settings.llmNvidiaNimBaseUrl;
       }
       const child = spawn(this.repoState.launcherPath, args, {
         cwd: this.repoState.root,

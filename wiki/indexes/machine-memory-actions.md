@@ -1,11 +1,11 @@
 # 机器记忆动作队列
 
-- 最近编译时间：`2026-04-17T02:06:03+00:00`
+- 最近编译时间：`2026-04-21T01:55:15+00:00`
 - 动作总数：`8`
 - 高优先级：`2`
 - 中优先级：`0`
 - 低优先级：`6`
-- 已到期：`0`
+- 已到期：`2`
 - 已升级：`0`
 - 已清除：`9`
 - 状态文件：`.aiwiki/state/machine-memory-actions.json`
@@ -32,17 +32,18 @@
 - 当前没有需要升级处理的动作。
 
 ## 已到期动作
-- 当前没有已到期待处理的动作。
+- [待处理] 观察桥接概念 The | primary `wiki/concepts/the.md` | revisit `2026-04-18T01:49:42+00:00`
+- [待处理] 观察桥接概念 And | primary `wiki/concepts/and.md` | revisit `2026-04-18T01:49:42+00:00`
 
 ## 优先队列
-- [low] 观察桥接概念 The | status `待处理` | band `review-first` | policy `triage` | primary `wiki/concepts/the.md` | occurrences `301` | component `component-1`
-- [low] 观察桥接概念 And | status `待处理` | band `review-first` | policy `triage` | primary `wiki/concepts/and.md` | occurrences `301` | component `component-1`
-- [high] 拆分过载概念 And | status `已接受` | band `manual-repair` | policy `manual-repair` | primary `wiki/concepts/and.md` | occurrences `284` | component `component-1`
-- [high] 拆分过载概念 The | status `已接受` | band `manual-repair` | policy `manual-repair` | primary `wiki/concepts/the.md` | occurrences `281` | component `component-1`
-- [low] 观察桥接概念 Agents | status `已接受` | band `review-first` | policy `manual-repair` | primary `wiki/concepts/agents.md` | occurrences `304` | component `component-1`
-- [low] 观察桥接概念 Abstract | status `已接受` | band `review-first` | policy `manual-repair` | primary `wiki/concepts/abstract.md` | occurrences `304` | component `component-1`
-- [low] 观察桥接概念 Protocol | status `已接受` | band `review-first` | policy `manual-repair` | primary `wiki/concepts/protocol.md` | occurrences `284` | component `component-1`
-- [low] 观察桥接概念 Judgment | status `已接受` | band `review-first` | policy `manual-repair` | primary `wiki/concepts/judgment.md` | occurrences `246` | component `component-1`
+- [low] 观察桥接概念 The | status `待处理` | band `review-first` | policy `triage` | primary `wiki/concepts/the.md` | occurrences `306` | component `component-1`
+- [low] 观察桥接概念 And | status `待处理` | band `review-first` | policy `triage` | primary `wiki/concepts/and.md` | occurrences `306` | component `component-1`
+- [high] 拆分过载概念 And | status `已接受` | band `manual-repair` | policy `manual-repair` | primary `wiki/concepts/and.md` | occurrences `289` | component `component-1`
+- [high] 拆分过载概念 The | status `已接受` | band `manual-repair` | policy `manual-repair` | primary `wiki/concepts/the.md` | occurrences `286` | component `component-1`
+- [low] 观察桥接概念 Agents | status `已接受` | band `review-first` | policy `manual-repair` | primary `wiki/concepts/agents.md` | occurrences `309` | component `component-1`
+- [low] 观察桥接概念 Abstract | status `已接受` | band `review-first` | policy `manual-repair` | primary `wiki/concepts/abstract.md` | occurrences `309` | component `component-1`
+- [low] 观察桥接概念 Protocol | status `已接受` | band `review-first` | policy `manual-repair` | primary `wiki/concepts/protocol.md` | occurrences `289` | component `component-1`
+- [low] 观察桥接概念 Judgment | status `已接受` | band `review-first` | policy `manual-repair` | primary `wiki/concepts/judgment.md` | occurrences `251` | component `component-1`
 
 ## 补链动作
 - 当前没有此类动作。
@@ -54,16 +55,16 @@
 - 当前没有此类动作。
 
 ## 过载概念动作
-- [high] 拆分过载概念 And | status `已接受` | band `manual-repair` | policy `manual-repair` | primary `wiki/concepts/and.md` | first `2026-04-15T01:54:06+00:00` | seen `284` | 当前挂接 `8` 个来源，可能过宽。
-- [high] 拆分过载概念 The | status `已接受` | band `manual-repair` | policy `manual-repair` | primary `wiki/concepts/the.md` | first `2026-04-15T01:54:46+00:00` | seen `281` | 当前挂接 `12` 个来源，可能过宽。
+- [high] 拆分过载概念 And | status `已接受` | band `manual-repair` | policy `manual-repair` | primary `wiki/concepts/and.md` | first `2026-04-15T01:54:06+00:00` | seen `289` | 当前挂接 `8` 个来源，可能过宽。
+- [high] 拆分过载概念 The | status `已接受` | band `manual-repair` | policy `manual-repair` | primary `wiki/concepts/the.md` | first `2026-04-15T01:54:46+00:00` | seen `286` | 当前挂接 `12` 个来源，可能过宽。
 
 ## 桥接概念观察
-- [low] 观察桥接概念 The | status `待处理` | band `review-first` | policy `triage` | primary `wiki/concepts/the.md` | first `2026-04-15T01:49:42+00:00` | seen `301` | 概念连接 `24` 个相关概念，属于图谱桥接点。
-- [low] 观察桥接概念 And | status `待处理` | band `review-first` | policy `triage` | primary `wiki/concepts/and.md` | first `2026-04-15T01:49:42+00:00` | seen `301` | 概念连接 `19` 个相关概念，属于图谱桥接点。
-- [low] 观察桥接概念 Agents | status `已接受` | band `review-first` | policy `manual-repair` | primary `wiki/concepts/agents.md` | first `2026-04-15T01:37:58+00:00` | seen `304` | 概念连接 `11` 个相关概念，属于图谱桥接点。
-- [low] 观察桥接概念 Abstract | status `已接受` | band `review-first` | policy `manual-repair` | primary `wiki/concepts/abstract.md` | first `2026-04-15T01:37:58+00:00` | seen `304` | 概念连接 `4` 个相关概念，属于图谱桥接点。
-- [low] 观察桥接概念 Protocol | status `已接受` | band `review-first` | policy `manual-repair` | primary `wiki/concepts/protocol.md` | first `2026-04-15T01:54:06+00:00` | seen `284` | 概念连接 `11` 个相关概念，属于图谱桥接点。
-- [low] 观察桥接概念 Judgment | status `已接受` | band `review-first` | policy `manual-repair` | primary `wiki/concepts/judgment.md` | first `2026-04-15T09:19:10+00:00` | seen `246` | 概念连接 `8` 个相关概念，属于图谱桥接点。
+- [low] 观察桥接概念 The | status `待处理` | band `review-first` | policy `triage` | primary `wiki/concepts/the.md` | first `2026-04-15T01:49:42+00:00` | seen `306` | 概念连接 `24` 个相关概念，属于图谱桥接点。
+- [low] 观察桥接概念 And | status `待处理` | band `review-first` | policy `triage` | primary `wiki/concepts/and.md` | first `2026-04-15T01:49:42+00:00` | seen `306` | 概念连接 `19` 个相关概念，属于图谱桥接点。
+- [low] 观察桥接概念 Agents | status `已接受` | band `review-first` | policy `manual-repair` | primary `wiki/concepts/agents.md` | first `2026-04-15T01:37:58+00:00` | seen `309` | 概念连接 `11` 个相关概念，属于图谱桥接点。
+- [low] 观察桥接概念 Abstract | status `已接受` | band `review-first` | policy `manual-repair` | primary `wiki/concepts/abstract.md` | first `2026-04-15T01:37:58+00:00` | seen `309` | 概念连接 `4` 个相关概念，属于图谱桥接点。
+- [low] 观察桥接概念 Protocol | status `已接受` | band `review-first` | policy `manual-repair` | primary `wiki/concepts/protocol.md` | first `2026-04-15T01:54:06+00:00` | seen `289` | 概念连接 `11` 个相关概念，属于图谱桥接点。
+- [low] 观察桥接概念 Judgment | status `已接受` | band `review-first` | policy `manual-repair` | primary `wiki/concepts/judgment.md` | first `2026-04-15T09:19:10+00:00` | seen `251` | 概念连接 `8` 个相关概念，属于图谱桥接点。
 
 ## 引用快照刷新
 - 当前没有此类动作。

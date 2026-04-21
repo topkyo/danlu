@@ -110,31 +110,33 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     // ── LLM configuration ──────────────────────────────────
     containerEl.createEl("h3", { text: t("LLM backend") });
+    const selectedBackend = String(this.plugin.settings.llmBackend || "").trim();
 
     new Setting(containerEl)
       .setName(t("LLM backend"))
-      .setDesc(t("Override the LLM backend used by run-compile / run-ask / run-nightly. Empty = auto-detect from environment."))
+      .setDesc(t("Select the explicit LLM backend used by run-compile / run-ask / run-nightly. Empty = unconfigured."))
       .addDropdown((dropdown) =>
         dropdown
-          .addOption("", t("auto (detect)"))
+          .addOption("", t("unconfigured"))
           .addOption("codex-cli", "codex-cli")
-          .addOption("github-models-api", "github-models-api")
+          .addOption("nvidia-nim-api", "nvidia-nim-api")
           .addOption("copilot-cli", "copilot-cli")
           .addOption("claude-cli", "claude-cli")
           .setValue(this.plugin.settings.llmBackend || "")
           .onChange(async (value) => {
             this.plugin.settings.llmBackend = value;
             await this.plugin.savePluginState();
+            this.display();
             new Notice(t("LLM settings saved. New runs will use the updated configuration."));
           })
       );
 
     new Setting(containerEl)
       .setName(t("LLM model"))
-      .setDesc(t("Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = backend default."))
+      .setDesc(t("Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = selected backend default strategy (`codex-cli`: `gpt-5.4`; `nvidia-nim-api`: `z-ai/glm-5.1 -> moonshotai/kimi-k2.5 -> minimaxai/minimax-m2.7`)."))
       .addText((text) =>
         text
-          .setPlaceholder("gpt-5.4")
+          .setPlaceholder("gpt-5.4 / z-ai/glm-5.1 / claude-sonnet-4.5")
           .setValue(this.plugin.settings.llmModel || "")
           .onChange(async (value) => {
             this.plugin.settings.llmModel = String(value || "").trim();
@@ -142,32 +144,34 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl)
-      .setName(t("GitHub token"))
-      .setDesc(t("Optional token for github-models-api. Stored locally in plugin data. Empty = use AIWIKI_GITHUB_TOKEN / GH_TOKEN / gh auth token."))
-      .addText((text) => {
-        text
-          .setPlaceholder("gho_...")
-          .setValue(this.plugin.settings.llmGithubToken || "")
-          .onChange(async (value) => {
-            this.plugin.settings.llmGithubToken = String(value || "").trim();
-            await this.plugin.savePluginState();
-          });
-        text.inputEl.type = "password";
-        text.inputEl.autocomplete = "off";
-      });
+    if (selectedBackend === "nvidia-nim-api") {
+      new Setting(containerEl)
+        .setName(t("NVIDIA NIM API key"))
+        .setDesc(t("Optional key for nvidia-nim-api. Stored locally in plugin data. Empty = use AIWIKI_NVIDIA_NIM_API_KEY / NVIDIA_NIM_API_KEY."))
+        .addText((text) => {
+          text
+            .setPlaceholder("nvapi-...")
+            .setValue(this.plugin.settings.llmNvidiaNimApiKey || "")
+            .onChange(async (value) => {
+              this.plugin.settings.llmNvidiaNimApiKey = String(value || "").trim();
+              await this.plugin.savePluginState();
+            });
+          text.inputEl.type = "password";
+          text.inputEl.autocomplete = "off";
+        });
 
-    new Setting(containerEl)
-      .setName(t("GitHub Models base URL"))
-      .setDesc(t("Override the GitHub Models endpoint. Empty = https://models.github.ai."))
-      .addText((text) =>
-        text
-          .setPlaceholder("https://models.github.ai")
-          .setValue(this.plugin.settings.llmGithubModelsBaseUrl || "")
-          .onChange(async (value) => {
-            this.plugin.settings.llmGithubModelsBaseUrl = String(value || "").trim();
-            await this.plugin.savePluginState();
-          })
-      );
+      new Setting(containerEl)
+        .setName(t("NVIDIA NIM base URL"))
+        .setDesc(t("Override the NVIDIA NIM endpoint. Empty = https://integrate.api.nvidia.com/v1."))
+        .addText((text) =>
+          text
+            .setPlaceholder("https://integrate.api.nvidia.com/v1")
+            .setValue(this.plugin.settings.llmNvidiaNimBaseUrl || "")
+            .onChange(async (value) => {
+              this.plugin.settings.llmNvidiaNimBaseUrl = String(value || "").trim();
+              await this.plugin.savePluginState();
+            })
+        );
+    }
   }
 }

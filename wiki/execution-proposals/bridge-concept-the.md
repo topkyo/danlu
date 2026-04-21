@@ -9,12 +9,12 @@ priority: "low"
 protocol: "research"
 policy_decision: "review"
 policy_rule_id: "proposed-triage"
-priority_score: "16"
-impact_score: "32"
+priority_score: "22"
+impact_score: "38"
 target_paths:
   - "wiki/concepts/the.md"
 generated_by: "aiwiki-compile"
-last_compiled_at: "2026-04-16T19:11:45+00:00"
+last_compiled_at: "2026-04-21T01:45:55+00:00"
 ---
 
 # 观察桥接概念 The
@@ -26,8 +26,8 @@ last_compiled_at: "2026-04-16T19:11:45+00:00"
 - Risk: `low`
 - Protocol: `research`
 - Priority: `low`
-- Priority score: `16`
-- Impact score: `32`
+- Priority score: `22`
+- Impact score: `38`
 - Policy decision: `review`
 - Policy rule: `proposed-triage`
 - Targets: `wiki/concepts/the.md`

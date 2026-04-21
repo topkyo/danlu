@@ -1,6 +1,6 @@
 # 机器记忆修复计划
 
-- 最近编译时间：`2026-04-16T14:24:39+00:00`
+- 最近编译时间：`2026-04-21T01:45:55+00:00`
 - Ready 动作：`6`
 - 待分流动作：`2`
 - 暂缓动作：`0`
@@ -68,7 +68,7 @@
   - patch `wiki/concepts/the.md` | role `概念页` | mode `rewrite` | sections `Summary, Related Sources, Related Concepts`
   - patch `wiki/indexes/concept-quality.md` | role `索引页` | mode `review` | sections `Merge Candidates, Rewrite Priority`
   - patch `wiki/indexes/rewrite-proposals.md` | role `索引页` | mode `review` | sections `Merge Candidates, Rewrite Priority`
-- [low] 观察桥接概念 And | status `待处理` | kind `monitor-bridge` | risk `low` | score `16` | targets `wiki/concepts/and.md` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action bridge-concept-and --status accepted --note "Accepted for manual repair."`
+- [low] 观察桥接概念 And | status `待处理` | kind `monitor-bridge` | risk `low` | score `22` | targets `wiki/concepts/and.md` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action bridge-concept-and --status accepted --note "Accepted for manual repair."`
   - strategy: 记录桥接概念仍然必要的原因，避免误删跨簇连接。 同时检查 benchmark、experiment、tradeoff 和 regression risk 是否需要同步更新。
   - bundle: `output/control/execution-bundles/bridge-concept-and.json`
   - rollback: 回滚时需要人工恢复目标页，然后重跑 compile。
@@ -78,7 +78,7 @@
   - edit: 如果桥接已经失效，再把动作转成 merge 或 split。 
   - patch `wiki/concepts/and.md` | role `概念页` | mode `review` | sections `Summary, Related Concepts, Related Sources`
   - patch `wiki/indexes/graph-health.md` | role `索引页` | mode `review` | sections `Bridge Concepts, Repair Signals`
-- [low] 观察桥接概念 The | status `待处理` | kind `monitor-bridge` | risk `low` | score `16` | targets `wiki/concepts/the.md` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action bridge-concept-the --status accepted --note "Accepted for manual repair."`
+- [low] 观察桥接概念 The | status `待处理` | kind `monitor-bridge` | risk `low` | score `22` | targets `wiki/concepts/the.md` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-action bridge-concept-the --status accepted --note "Accepted for manual repair."`
   - strategy: 记录桥接概念仍然必要的原因，避免误删跨簇连接。 同时检查 benchmark、experiment、tradeoff 和 regression risk 是否需要同步更新。
   - bundle: `output/control/execution-bundles/bridge-concept-the.json`
   - rollback: 回滚时需要人工恢复目标页，然后重跑 compile。

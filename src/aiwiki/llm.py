@@ -18,12 +18,12 @@ from .config import (
     BACKEND_CLAUDE_CLI,
     BACKEND_CODEX_CLI,
     BACKEND_COPILOT_CLI,
-    BACKEND_GITHUB_MODELS_API,
+    BACKEND_NVIDIA_NIM_API,
     BACKEND_OPENAI_API,
-    DEFAULT_BACKEND,
     DEFAULT_CODEX_MODEL,
-    DEFAULT_GITHUB_MODELS_MODEL,
+    DEFAULT_NVIDIA_NIM_MODEL,
     LLMConfig,
+    _default_model_chain,
 )
 
 
@@ -38,7 +38,6 @@ class CompletionResult:
     usage: dict[str, Any]
 
 
-AUTO_BACKENDS = (BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, BACKEND_CLAUDE_CLI)
 PROBE_SYSTEM_PROMPT = "You are a backend health probe. Reply with exactly OK."
 PROBE_USER_PROMPT = "Reply with exactly OK."
 
@@ -149,67 +148,6 @@ class OpenAICompatClient:
             response_id=str(parsed.get("id", "")),
             usage=parsed.get("usage") or {},
         )
-
-
-class GitHubModelsClient:
-    """Call the GitHub Models inference API using a GitHub token or gh auth session."""
-
-    API_VERSION = "2026-03-10"
-
-    def __init__(self, config: LLMConfig) -> None:
-        self.config = config
-
-    def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
-        payload = {
-            "model": self.config.model,
-            "temperature": self.config.temperature,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-        }
-        endpoint = f"{self.config.github_models_base_url}/inference/chat/completions"
-        body = json.dumps(payload).encode("utf-8")
-        http_request = request.Request(
-            endpoint,
-            data=body,
-            headers={
-                "Accept": "application/vnd.github+json",
-                "Authorization": f"Bearer {self.config.github_token}",
-                "Content-Type": "application/json",
-                "X-GitHub-Api-Version": self.API_VERSION,
-            },
-            method="POST",
-        )
-
-        try:
-            with request.urlopen(http_request, timeout=self.config.timeout_seconds) as response:
-                raw = response.read().decode("utf-8")
-        except error.HTTPError as exc:  # pragma: no cover - exercised via CLI/network usage
-            details = exc.read().decode("utf-8", errors="replace")
-            raise LLMError(f"HTTP {exc.code} from GitHub Models endpoint: {details}") from exc
-        except error.URLError as exc:  # pragma: no cover - exercised via CLI/network usage
-            raise LLMError(f"Unable to reach GitHub Models endpoint: {exc.reason}") from exc
-
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise LLMError("GitHub Models endpoint returned invalid JSON.") from exc
-
-        text = _extract_content(parsed)
-        if not text.strip():
-            raise LLMError("GitHub Models endpoint returned empty content.")
-        return CompletionResult(
-            text=text,
-            response_id=str(parsed.get("id", "")),
-            usage=parsed.get("usage") or {},
-        )
-
-    def analyze_image(self, system_prompt: str, user_prompt: str, image_path: Path) -> CompletionResult:
-        del system_prompt
-        del user_prompt
-        del image_path
-        raise LLMError("GitHub Models image analysis is not supported by aiwiki yet.")
 
 
 class CodexCLIClient:
@@ -524,15 +462,16 @@ class AnthropicClient:
         return self._call_messages(system_prompt, content)
 
 
-class AutoFallbackClient:
-    """Retry auto-selected CLI backends when the primary session is unavailable."""
+class ModelFallbackClient:
+    """Retry the same backend with alternate default models when the primary model is unavailable or invalid."""
 
-    def __init__(self, config: LLMConfig, workdir: Path, backends: list[str]) -> None:
+    def __init__(self, config: LLMConfig, workdir: Path, configs: list[LLMConfig]) -> None:
         self.primary_config = config
-        self.config = config
+        self.config = configs[0] if configs else config
         self.workdir = workdir
-        self.backends = backends
-        self.clients = [_instantiate_cli_client(_config_for_backend(config, backend), workdir) for backend in backends]
+        self.client_configs = configs or [config]
+        self.clients = [_instantiate_cli_client(candidate, workdir) for candidate in self.client_configs]
+        self.index = 0
 
     def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
         return self._run_with_fallback("complete", system_prompt, user_prompt)
@@ -540,35 +479,43 @@ class AutoFallbackClient:
     def analyze_image(self, system_prompt: str, user_prompt: str, image_path: Path) -> CompletionResult:
         return self._run_with_fallback("analyze_image", system_prompt, user_prompt, image_path)
 
+    def advance_model(self) -> bool:
+        if self.index >= len(self.clients) - 1:
+            return False
+        self.index += 1
+        self.config = getattr(self.clients[self.index], "config", self.client_configs[self.index])
+        return True
+
     def _run_with_fallback(self, method_name: str, *args: Any) -> CompletionResult:
         last_error: LLMError | None = None
-        for index, client in enumerate(self.clients):
+        while self.index < len(self.clients):
+            client = self.clients[self.index]
             method = getattr(client, method_name)
             try:
                 result = method(*args)
             except LLMError as exc:
                 last_error = exc
-                if index == len(self.clients) - 1 or not _is_backend_unavailable_error(str(exc)):
+                if self.index == len(self.clients) - 1 or not _is_model_fallback_error(str(exc)):
                     raise
+                self.advance_model()
                 continue
-            self.config = getattr(client, "config", self.config)
+            self.config = getattr(client, "config", self.client_configs[self.index])
             return result
         if last_error is not None:
             raise last_error
-        raise LLMError("No usable auto fallback backend was configured.")
+        raise LLMError("No usable model fallback candidate was configured.")
 
 
 def create_backend_client(config: LLMConfig, workdir: Path) -> Any:
-    if config.backend_requested == DEFAULT_BACKEND and config.backend in AUTO_BACKENDS:
-        auto_backends = _available_auto_backends(config)
-        if len(auto_backends) > 1:
-            return AutoFallbackClient(config, workdir, auto_backends)
+    model_fallback_configs = _model_fallback_configs(config)
+    if len(model_fallback_configs) > 1:
+        return ModelFallbackClient(config, workdir, model_fallback_configs)
     if config.backend == BACKEND_OPENAI_API:
         return OpenAICompatClient(config)
     if config.backend == BACKEND_ANTHROPIC_API:
         return AnthropicClient(config)
-    if config.backend == BACKEND_GITHUB_MODELS_API:
-        return GitHubModelsClient(config)
+    if config.backend == BACKEND_NVIDIA_NIM_API:
+        return OpenAICompatClient(config)
     if config.backend == BACKEND_CODEX_CLI:
         return CodexCLIClient(config, workdir)
     if config.backend == BACKEND_COPILOT_CLI:
@@ -628,23 +575,15 @@ def probe_available_backends(config: LLMConfig, workdir: Path, timeout_seconds: 
     return probes
 
 
-def _available_auto_backends(config: LLMConfig) -> list[str]:
-    ordered: list[str] = []
-    for backend in (config.backend, BACKEND_COPILOT_CLI, BACKEND_CLAUDE_CLI, BACKEND_CODEX_CLI):
-        if backend in ordered or backend not in AUTO_BACKENDS:
-            continue
-        if backend == BACKEND_CODEX_CLI and config.codex_path:
-            ordered.append(backend)
-        elif backend == BACKEND_COPILOT_CLI and config.copilot_path:
-            ordered.append(backend)
-        elif backend == BACKEND_CLAUDE_CLI and config.claude_path:
-            ordered.append(backend)
-    return ordered
-
-
 def _available_probe_backends(config: LLMConfig) -> list[str]:
     ordered: list[str] = []
-    for backend in (config.backend, BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, BACKEND_CLAUDE_CLI, BACKEND_GITHUB_MODELS_API):
+    for backend in (
+        config.backend,
+        BACKEND_CODEX_CLI,
+        BACKEND_COPILOT_CLI,
+        BACKEND_CLAUDE_CLI,
+        BACKEND_NVIDIA_NIM_API,
+    ):
         if backend in ordered:
             continue
         if backend == BACKEND_CODEX_CLI and config.codex_path:
@@ -653,7 +592,7 @@ def _available_probe_backends(config: LLMConfig) -> list[str]:
             ordered.append(backend)
         elif backend == BACKEND_CLAUDE_CLI and config.claude_path:
             ordered.append(backend)
-        elif backend == BACKEND_GITHUB_MODELS_API and config.github_token:
+        elif backend == BACKEND_NVIDIA_NIM_API and config.nvidia_nim_api_key:
             ordered.append(backend)
     return ordered
 
@@ -664,27 +603,57 @@ def _config_for_backend(config: LLMConfig, backend: str) -> LLMConfig:
         model = model_requested
     elif backend == BACKEND_CODEX_CLI:
         model = DEFAULT_CODEX_MODEL
-    elif backend == BACKEND_GITHUB_MODELS_API:
-        model = DEFAULT_GITHUB_MODELS_MODEL
+    elif backend == BACKEND_NVIDIA_NIM_API:
+        model = DEFAULT_NVIDIA_NIM_MODEL
     else:
         model = ""
+    if backend == BACKEND_NVIDIA_NIM_API:
+        return replace(
+            config,
+            backend=backend,
+            model=model,
+            api_key=config.nvidia_nim_api_key,
+            base_url=config.nvidia_nim_base_url,
+        )
     return replace(config, backend=backend, model=model)
 
 
 def _instantiate_cli_client(config: LLMConfig, workdir: Path) -> Any:
     if config.backend == BACKEND_CODEX_CLI:
         return CodexCLIClient(config, workdir)
-    if config.backend == BACKEND_GITHUB_MODELS_API:
-        return GitHubModelsClient(config)
+    if config.backend == BACKEND_NVIDIA_NIM_API:
+        return OpenAICompatClient(config)
     if config.backend == BACKEND_COPILOT_CLI:
         return CopilotCLIClient(config, workdir)
     if config.backend == BACKEND_CLAUDE_CLI:
         return ClaudeCLIClient(config, workdir)
-    raise LLMError(f"Unsupported CLI backend `{config.backend}`.")
+    raise LLMError(f"Unsupported backend `{config.backend}`.")
 
 
-def _is_backend_unavailable_error(message: str) -> bool:
-    return _classify_backend_error(message) in {"quota", "timeout", "auth", "unavailable"}
+def _model_fallback_configs(config: LLMConfig) -> list[LLMConfig]:
+    if config.model_requested.strip():
+        return [_config_for_backend(config, config.backend)]
+    if config.backend != BACKEND_NVIDIA_NIM_API:
+        return [_config_for_backend(config, config.backend)]
+    candidate_models = list(_default_model_chain(config.backend, config.model_requested))
+    if len(candidate_models) <= 1:
+        return [_config_for_backend(config, config.backend)]
+    base_config = _config_for_backend(config, config.backend)
+    return [replace(base_config, model=model) for model in candidate_models]
+
+
+def _is_model_fallback_error(message: str) -> bool:
+    text = str(message or "").lower()
+    if _classify_backend_error(text) in {"quota", "timeout", "unavailable"}:
+        return True
+    return any(pattern in text for pattern in ("unknown model", "unsupported model", "model_not_found"))
+
+
+def advance_client_model(client: Any) -> bool:
+    advance = getattr(client, "advance_model", None)
+    if callable(advance):
+        return bool(advance())
+    return False
 
 
 def _classify_backend_error(message: str) -> str:

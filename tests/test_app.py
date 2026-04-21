@@ -70,7 +70,7 @@ from aiwiki.app_state import (
 )
 from aiwiki.app_utils import parse_frontmatter, render_frontmatter, runtime_write_lock, strip_frontmatter
 from aiwiki.cli import main as cli_main
-from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, BACKEND_GITHUB_MODELS_API, LLMConfig
+from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, LLMConfig
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
 from aiwiki.llm import CompletionResult
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
@@ -5245,19 +5245,15 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(state["semantic_report"], result["lint"]["semantic_report"])
         self.assertIn("语义 lint", backlog_path.read_text(encoding="utf-8"))
 
-    def test_llm_status_auto_prefers_codex_cli_when_other_cli_backends_are_absent(self) -> None:
+    def test_llm_status_requires_explicit_backend_selection(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             with patch("aiwiki.config.shutil.which") as which_mock:
                 which_mock.side_effect = lambda name: "/usr/bin/codex" if name == "codex" else ""
                 status = LLMConfig.status_from_env()
-        self.assertTrue(status["configured"])
-        self.assertEqual(status["backend"], BACKEND_CODEX_CLI)
-        self.assertEqual(status["effective_model"], "gpt-5.4")
-        self.assertEqual(status["codex_reasoning_effort"], "medium")
-        self.assertEqual(status["auth_mode"], "cli-session")
-        self.assertEqual(status["usage_visibility"], "opaque-cli")
-        self.assertEqual(status["usage_accounting"], "codex-cli-session")
-        self.assertTrue(status["image_analysis_supported"])
+        self.assertFalse(status["configured"])
+        self.assertEqual(status["backend"], "")
+        self.assertEqual(status["available_backends"], [BACKEND_CODEX_CLI])
+        self.assertIn("No LLM backend selected", str(status["message"]))
 
     def test_llm_config_uses_copilot_backend_when_explicitly_configured(self) -> None:
         env = {
@@ -5269,30 +5265,6 @@ class AiwikiFlowTests(unittest.TestCase):
                 config = LLMConfig.from_env()
         self.assertEqual(config.backend, BACKEND_COPILOT_CLI)
         self.assertEqual(config.model, "claude-haiku-4.5")
-
-    def test_llm_status_auto_falls_back_to_copilot_cli(self) -> None:
-        with patch.dict(os.environ, {}, clear=True):
-            with patch("aiwiki.config.shutil.which") as which_mock:
-                which_mock.side_effect = lambda name: "/usr/bin/copilot" if name == "copilot" else ""
-                status = LLMConfig.status_from_env()
-        self.assertTrue(status["configured"])
-        self.assertEqual(status["backend"], BACKEND_COPILOT_CLI)
-        self.assertEqual(status["usage_accounting"], "copilot-cli-session")
-        self.assertFalse(status["image_analysis_supported"])
-
-    def test_llm_status_auto_keeps_copilot_before_github_models_when_gh_token_exists(self) -> None:
-        with patch.dict(os.environ, {}, clear=True):
-            with patch("aiwiki.config.shutil.which") as which_mock:
-                which_mock.side_effect = lambda name: "/usr/bin/copilot" if name in {"copilot", "gh"} else ""
-                with patch(
-                    "aiwiki.config.subprocess.run",
-                    return_value=type("Completed", (), {"returncode": 0, "stdout": "gho_test_token\n", "stderr": ""})(),
-                ):
-                    status = LLMConfig.status_from_env()
-        self.assertTrue(status["configured"])
-        self.assertEqual(status["backend"], BACKEND_COPILOT_CLI)
-        self.assertEqual(status["usage_accounting"], "copilot-cli-session")
-        self.assertFalse(status["image_analysis_supported"])
 
     def test_llm_status_marks_claude_image_analysis_as_unsupported(self) -> None:
         with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "claude-cli"}, clear=True):

@@ -1,13 +1,13 @@
 # 炉心面板
 
-- 最近编译时间：`2026-04-16T14:24:39+00:00`
+- 最近编译时间：`2026-04-21T01:45:55+00:00`
 - 当前协议：`research` (研发协议)
 - 来源节点：`15`
 - 概念节点：`30`
 - 待审项目：`2`
-- 已到期 / 升级：`0` / `0`
+- 已到期 / 升级：`1` / `0`
 - Judgment formed / active / under-review / revised / retired：`0` / `6` / `2` / `2` / `0`
-- 生命周期概念待审 / 已退役：`30` / `0`
+- 生命周期概念待审 / 已退役：`28` / `0`
 - 证据漂移：`0`
 - Judgment review actions：`10`
 - Ready repair actions：`6`
@@ -81,7 +81,7 @@
 - 优先抬升 weak concepts、failed experiments、regression signals。
 
 ## Lifecycle 治理摘要
-- review concepts：`2`
+- review concepts：`0`
 - revisit concepts：`28`
 - retired concepts：`0`
 - active concepts：`0`
@@ -92,31 +92,31 @@
 - retired judgments：`0`
 
 ### Lifecycle Concept Backlog
-- [And](../../wiki/concepts/and.md) | kind `concept` | state `待回看` | invalidation `concept-conflict,concept-evidence-gap` | active_corpora `12` | review_signals `rewrite-proposal-proposed,active-quality-pressure` | reasons `invalidation-signal,concept-conflict,concept-evidence-gap`
-- [The](../../wiki/concepts/the.md) | kind `concept` | state `待回看` | invalidation `concept-conflict,concept-evidence-gap` | active_corpora `12` | review_signals `rewrite-proposal-proposed,active-quality-pressure` | reasons `invalidation-signal,concept-conflict,concept-evidence-gap`
-- [Abstract](../../wiki/concepts/abstract.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Agent](../../wiki/concepts/agent.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Agents](../../wiki/concepts/agents.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Autogen Multi Agent](../../wiki/concepts/autogen-multi-agent.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `rewrite-proposal-proposed,active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Concept](../../wiki/concepts/concept.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Crewai](../../wiki/concepts/crewai.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Debate](../../wiki/concepts/debate.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Decision](../../wiki/concepts/decision.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Judgment](../../wiki/concepts/judgment.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
-- [Memory](../../wiki/concepts/memory.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | active_corpora `12` | review_signals `active-quality-pressure` | reasons `invalidation-signal,concept-evidence-gap`
+- [And](../../wiki/concepts/and.md) | kind `concept` | state `待回看` | invalidation `concept-conflict,concept-evidence-gap` | review_signals `rewrite-proposal-proposed` | reasons `invalidation-signal,concept-conflict,concept-evidence-gap`
+- [The](../../wiki/concepts/the.md) | kind `concept` | state `待回看` | invalidation `concept-conflict,concept-evidence-gap` | review_signals `rewrite-proposal-proposed` | reasons `invalidation-signal,concept-conflict,concept-evidence-gap`
+- [A2a](../../wiki/concepts/a2a.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | review_signals `rewrite-proposal-proposed` | reasons `invalidation-signal,concept-evidence-gap`
+- [A2a Key Concepts](../../wiki/concepts/a2a-key-concepts.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | review_signals `rewrite-proposal-proposed` | reasons `invalidation-signal,concept-evidence-gap`
+- [Abstract](../../wiki/concepts/abstract.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | reasons `invalidation-signal,concept-evidence-gap`
+- [Adk](../../wiki/concepts/adk.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | review_signals `rewrite-proposal-proposed` | reasons `invalidation-signal,concept-evidence-gap`
+- [Agent](../../wiki/concepts/agent.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | reasons `invalidation-signal,concept-evidence-gap`
+- [Agentic](../../wiki/concepts/agentic.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | review_signals `rewrite-proposal-proposed` | reasons `invalidation-signal,concept-evidence-gap`
+- [Agents](../../wiki/concepts/agents.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | reasons `invalidation-signal,concept-evidence-gap`
+- [Anthropic](../../wiki/concepts/anthropic.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | review_signals `rewrite-proposal-proposed` | reasons `invalidation-signal,concept-evidence-gap`
+- [Anthropic Tool Use](../../wiki/concepts/anthropic-tool-use.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | review_signals `rewrite-proposal-proposed` | reasons `invalidation-signal,concept-evidence-gap`
+- [Autogen Multi Agent](../../wiki/concepts/autogen-multi-agent.md) | kind `concept` | state `待回看` | invalidation `concept-evidence-gap` | review_signals `rewrite-proposal-proposed` | reasons `invalidation-signal,concept-evidence-gap`
 
 ### Retired Concepts
 - 当前没有 retired concept。
 
 ### Judgment Lifecycle Focus
-- [Agent Governance Decision](../../wiki/decisions/decision-20260415-015034-agent-governance-decision.md) | kind `decision` | state `待回看` | judgment_state `复审中` | invalidation `explicit-needs-revisit` | active_corpora `12` | reasons `invalidation-signal,explicit-needs-revisit`
-- [Agent Governance Judgment](../../wiki/judgments/judgment-20260415-015034-agent-governance-judgment.md) | kind `judgment` | state `待审` | judgment_state `复审中` | active_corpora `12` | reasons `pending-review-status`
-- [Conditional Governance Threshold Judgment](../../wiki/judgments/judgment-20260415-111455-conditional-governance-threshold-judgment.md) | kind `judgment` | state `活跃` | judgment_state `已修订` | active_corpora `12` | reasons `active-corpus-linked`
-- [Recurring Agent Layers Judgment](../../wiki/judgments/judgment-20260415-015034-recurring-agent-layers-judgment.md) | kind `judgment` | state `活跃` | judgment_state `已修订` | active_corpora `12` | reasons `active-corpus-linked`
+- [Agent Governance Decision](../../wiki/decisions/decision-20260415-015034-agent-governance-decision.md) | kind `decision` | state `待回看` | judgment_state `复审中` | invalidation `explicit-needs-revisit,overdue-review` | reasons `invalidation-signal,explicit-needs-revisit,overdue-review`
+- [Agent Governance Judgment](../../wiki/judgments/judgment-20260415-015034-agent-governance-judgment.md) | kind `judgment` | state `待审` | judgment_state `复审中` | reasons `pending-review-status`
+- [Conditional Governance Threshold Judgment](../../wiki/judgments/judgment-20260415-111455-conditional-governance-threshold-judgment.md) | kind `judgment` | state `暂挂` | judgment_state `已修订` | reasons `reviewed-idle`
+- [Recurring Agent Layers Judgment](../../wiki/judgments/judgment-20260415-015034-recurring-agent-layers-judgment.md) | kind `judgment` | state `暂挂` | judgment_state `已修订` | reasons `reviewed-idle`
 
 ### Judgment Review Actions
 - `Review Agent Governance Judgment` | priority `high` | reasons `counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/judgments/judgment-20260415-015034-agent-governance-judgment.md --status confirmed`
-- `Review Agent Governance Decision` | priority `high` | reasons `counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/decisions/decision-20260415-015034-agent-governance-decision.md --status approved`
+- `Review Agent Governance Decision` | priority `high` | reasons `overdue-review, counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/decisions/decision-20260415-015034-agent-governance-decision.md --status approved`
 - `Review Conditional Governance Threshold Judgment` | priority `medium` | reasons `counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/judgments/judgment-20260415-111455-conditional-governance-threshold-judgment.md --status tracking`
 - `Review Investing Layer Separation Judgment` | priority `medium` | reasons `counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/judgments/judgment-20260415-111456-investing-layer-separation-judgment.md --status tracking`
 - `Review Protocol Boundary Judgment` | priority `medium` | reasons `counter-evidence-candidate` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/judgments/judgment-20260415-015034-protocol-boundary-judgment.md --status tracking`
@@ -131,7 +131,7 @@
 - [Judgment Memo · Conditional Governance Threshold Judgment](../../output/packs/decision-memos/wiki-judgments-judgment-20260415-111455-conditional-governance-threshold-judgment.md) | kind `Decision Memo` | meta `2026-04-15T11:22:01+00:00`
 - [Judgment Memo · Protocol Boundary Judgment](../../output/packs/decision-memos/wiki-judgments-judgment-20260415-015034-protocol-boundary-judgment.md) | kind `Decision Memo` | meta `2026-04-15T01:51:03+00:00`
 - [Judgment Memo · Recurring Agent Layers Judgment](../../output/packs/decision-memos/wiki-judgments-judgment-20260415-015034-recurring-agent-layers-judgment.md) | kind `Decision Memo` | meta `2026-04-15T12:39:25+00:00`
-- [Review Pack · Agent Governance Decision](../../output/packs/review/wiki-decisions-decision-20260415-015034-agent-governance-decision.md) | kind `Review Pack` | meta `pending review`
+- [Review Pack · Agent Governance Decision](../../output/packs/review/wiki-decisions-decision-20260415-015034-agent-governance-decision.md) | kind `Review Pack` | meta `pending review, overdue review`
 - [Review Pack · Agent Governance Judgment](../../output/packs/review/wiki-judgments-judgment-20260415-015034-agent-governance-judgment.md) | kind `Review Pack` | meta `pending review`
 - [SOP Draft · 拆分过载概念 And](../../output/packs/sop-drafts/overloaded-concept-and.md) | kind `SOP Draft` | meta `high`
 - [SOP Draft · 拆分过载概念 The](../../output/packs/sop-drafts/overloaded-concept-the.md) | kind `SOP Draft` | meta `high`

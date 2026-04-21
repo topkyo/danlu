@@ -38,8 +38,8 @@ const DEFAULT_SETTINGS = {
   locale: DEFAULT_LOCALE,
   llmBackend: "",
   llmModel: "",
-  llmGithubToken: "",
-  llmGithubModelsBaseUrl: "",
+  llmNvidiaNimApiKey: "",
+  llmNvidiaNimBaseUrl: "",
 };
 const ZH_TEXT = {
   "Furnace Product Shell": "炼丹炉 Product Shell",
@@ -61,16 +61,15 @@ const ZH_TEXT = {
   "Whether advanced panels should show HTML shortcuts when the summary exposes them.": "当 summary 暴露 HTML 面板时，是否在高级面板里显示 HTML 快捷入口。",
   "Advanced command visibility refreshes after reloading Obsidian.": "高级命令可见性会在重载 Obsidian 后刷新。",
   "LLM backend": "LLM 后端",
-  "Override the LLM backend used by run-compile / run-ask / run-nightly. Empty = auto-detect from environment.": "覆盖 run-compile / run-ask / run-nightly 使用的 LLM 后端。留空 = 自动检测。",
-  "auto (detect)": "自动检测",
+  "Select the explicit LLM backend used by run-compile / run-ask / run-nightly. Empty = unconfigured.": "为 run-compile / run-ask / run-nightly 显式选择 LLM 后端。留空 = 未配置。",
   "LLM model": "LLM 模型",
-  "Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = backend default.": "覆盖模型名称（如 gpt-5.4、claude-sonnet-4.5）。留空 = 后端默认。",
+  "Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = selected backend default strategy (`codex-cli`: `gpt-5.4`; `nvidia-nim-api`: `z-ai/glm-5.1 -> moonshotai/kimi-k2.5 -> minimaxai/minimax-m2.7`).": "覆盖模型名称（如 gpt-5.4、claude-sonnet-4.5）。留空 = 所选后端默认策略（`codex-cli`: `gpt-5.4`；`nvidia-nim-api`: `z-ai/glm-5.1 -> moonshotai/kimi-k2.5 -> minimaxai/minimax-m2.7`）。",
   "route only (no LLM)": "仅路由（无 LLM）",
   "LLM answer (recommended)": "LLM 深度回答（推荐）",
-  "GitHub token": "GitHub Token",
-  "Optional token for github-models-api. Stored locally in plugin data. Empty = use AIWIKI_GITHUB_TOKEN / GH_TOKEN / gh auth token.": "github-models-api 的可选 GitHub token。本地存储于插件数据中。留空 = 使用 AIWIKI_GITHUB_TOKEN / GH_TOKEN / gh auth token。",
-  "GitHub Models base URL": "GitHub Models Base URL",
-  "Override the GitHub Models endpoint. Empty = https://models.github.ai.": "覆盖 GitHub Models 端点。留空 = https://models.github.ai。",
+  "NVIDIA NIM API key": "NVIDIA NIM API Key",
+  "Optional key for nvidia-nim-api. Stored locally in plugin data. Empty = use AIWIKI_NVIDIA_NIM_API_KEY / NVIDIA_NIM_API_KEY.": "nvidia-nim-api 的可选 API key。本地存储于插件数据中。留空 = 使用 AIWIKI_NVIDIA_NIM_API_KEY / NVIDIA_NIM_API_KEY。",
+  "NVIDIA NIM base URL": "NVIDIA NIM Base URL",
+  "Override the NVIDIA NIM endpoint. Empty = https://integrate.api.nvidia.com/v1.": "覆盖 NVIDIA NIM 端点。留空 = https://integrate.api.nvidia.com/v1。",
   "LLM settings saved. New runs will use the updated configuration.": "LLM 设置已保存。新的运行将使用更新后的配置。",
   "Ask 炼丹炉": "问炼丹炉",
   Question: "问题",
@@ -109,6 +108,9 @@ const ZH_TEXT = {
   "requested {requested} · effective {effective} · available {available}": "请求 {requested} · 生效 {effective} · 可见 {available}",
   "Product Shell runtime can see codex-cli.": "Product Shell 当前 runtime 能看到 codex-cli。",
   "Product Shell runtime cannot see codex-cli. GUI PATH may differ from terminal PATH.": "Product Shell 当前 runtime 看不到 codex-cli，GUI 进程的 PATH 很可能和终端不一致。",
+  "No explicit LLM backend is selected. Choose one in Product Shell settings or set AIWIKI_LLM_BACKEND.": "当前没有显式选择 LLM 后端。请在 Product Shell 设置里选择，或设置 AIWIKI_LLM_BACKEND。",
+  "Product Shell runtime can see the selected backend {backend}.": "Product Shell 当前 runtime 能看到所选后端 {backend}。",
+  "Product Shell runtime cannot see the selected backend {backend}.": "Product Shell 当前 runtime 看不到所选后端 {backend}。",
   "Summary is stale; refresh before trusting the home surface.": "shell-summary 已过期，先 Refresh，再相信首页状态。",
   "Generated {time}": "生成于 {time}",
   "launcher {launcher} · root {root}": "launcher {launcher} · 根目录 {root}",
@@ -1624,31 +1626,33 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     // ── LLM configuration ──────────────────────────────────
     containerEl.createEl("h3", { text: t("LLM backend") });
+    const selectedBackend = String(this.plugin.settings.llmBackend || "").trim();
 
     new Setting(containerEl)
       .setName(t("LLM backend"))
-      .setDesc(t("Override the LLM backend used by run-compile / run-ask / run-nightly. Empty = auto-detect from environment."))
+      .setDesc(t("Select the explicit LLM backend used by run-compile / run-ask / run-nightly. Empty = unconfigured."))
       .addDropdown((dropdown) =>
         dropdown
-          .addOption("", t("auto (detect)"))
+          .addOption("", t("unconfigured"))
           .addOption("codex-cli", "codex-cli")
-          .addOption("github-models-api", "github-models-api")
+          .addOption("nvidia-nim-api", "nvidia-nim-api")
           .addOption("copilot-cli", "copilot-cli")
           .addOption("claude-cli", "claude-cli")
           .setValue(this.plugin.settings.llmBackend || "")
           .onChange(async (value) => {
             this.plugin.settings.llmBackend = value;
             await this.plugin.savePluginState();
+            this.display();
             new Notice(t("LLM settings saved. New runs will use the updated configuration."));
           })
       );
 
     new Setting(containerEl)
       .setName(t("LLM model"))
-      .setDesc(t("Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = backend default."))
+      .setDesc(t("Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = selected backend default strategy (`codex-cli`: `gpt-5.4`; `nvidia-nim-api`: `z-ai/glm-5.1 -> moonshotai/kimi-k2.5 -> minimaxai/minimax-m2.7`)."))
       .addText((text) =>
         text
-          .setPlaceholder("gpt-5.4")
+          .setPlaceholder("gpt-5.4 / z-ai/glm-5.1 / claude-sonnet-4.5")
           .setValue(this.plugin.settings.llmModel || "")
           .onChange(async (value) => {
             this.plugin.settings.llmModel = String(value || "").trim();
@@ -1656,33 +1660,35 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl)
-      .setName(t("GitHub token"))
-      .setDesc(t("Optional token for github-models-api. Stored locally in plugin data. Empty = use AIWIKI_GITHUB_TOKEN / GH_TOKEN / gh auth token."))
-      .addText((text) => {
-        text
-          .setPlaceholder("gho_...")
-          .setValue(this.plugin.settings.llmGithubToken || "")
-          .onChange(async (value) => {
-            this.plugin.settings.llmGithubToken = String(value || "").trim();
-            await this.plugin.savePluginState();
-          });
-        text.inputEl.type = "password";
-        text.inputEl.autocomplete = "off";
-      });
+    if (selectedBackend === "nvidia-nim-api") {
+      new Setting(containerEl)
+        .setName(t("NVIDIA NIM API key"))
+        .setDesc(t("Optional key for nvidia-nim-api. Stored locally in plugin data. Empty = use AIWIKI_NVIDIA_NIM_API_KEY / NVIDIA_NIM_API_KEY."))
+        .addText((text) => {
+          text
+            .setPlaceholder("nvapi-...")
+            .setValue(this.plugin.settings.llmNvidiaNimApiKey || "")
+            .onChange(async (value) => {
+              this.plugin.settings.llmNvidiaNimApiKey = String(value || "").trim();
+              await this.plugin.savePluginState();
+            });
+          text.inputEl.type = "password";
+          text.inputEl.autocomplete = "off";
+        });
 
-    new Setting(containerEl)
-      .setName(t("GitHub Models base URL"))
-      .setDesc(t("Override the GitHub Models endpoint. Empty = https://models.github.ai."))
-      .addText((text) =>
-        text
-          .setPlaceholder("https://models.github.ai")
-          .setValue(this.plugin.settings.llmGithubModelsBaseUrl || "")
-          .onChange(async (value) => {
-            this.plugin.settings.llmGithubModelsBaseUrl = String(value || "").trim();
-            await this.plugin.savePluginState();
-          })
-      );
+      new Setting(containerEl)
+        .setName(t("NVIDIA NIM base URL"))
+        .setDesc(t("Override the NVIDIA NIM endpoint. Empty = https://integrate.api.nvidia.com/v1."))
+        .addText((text) =>
+          text
+            .setPlaceholder("https://integrate.api.nvidia.com/v1")
+            .setValue(this.plugin.settings.llmNvidiaNimBaseUrl || "")
+            .onChange(async (value) => {
+              this.plugin.settings.llmNvidiaNimBaseUrl = String(value || "").trim();
+              await this.plugin.savePluginState();
+            })
+        );
+    }
   }
 }
 
@@ -3763,7 +3769,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     const health = this.currentLlmHealth();
     const latestLlmRun = this.latestLlmRun();
     const availableBackends = Array.isArray(llmStatus.available_backends) ? llmStatus.available_backends.filter(Boolean) : [];
-    const requestedBackend = String(llmStatus.backend_requested || this.settings.llmBackend || "auto").trim() || "auto";
+    const requestedBackend = String(llmStatus.backend_requested || this.settings.llmBackend || "").trim();
     const effectiveBackend = String(llmStatus.backend || "").trim();
     const selected = this.currentLlmSelection();
     const summaryTimestamp = this.parseTimestampMs(this.shellSummary && this.shellSummary.generated_at);
@@ -3799,23 +3805,31 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
     items.push({
       key: "route",
-      status: effectiveBackend && (!availableBackends.length || availableBackends.includes(effectiveBackend)) ? "healthy" : "failed",
+      status: requestedBackend && effectiveBackend && (!availableBackends.length || availableBackends.includes(effectiveBackend)) ? "healthy" : "failed",
       title: "LLM route",
       detail: this.t("requested {requested} · effective {effective} · available {available}", {
-        requested: requestedBackend,
+        requested: requestedBackend || this.t("unconfigured"),
         effective: effectiveBackend || this.t("unconfigured"),
         available: availableBackends.length ? availableBackends.join(", ") : this.t("none"),
       }),
     });
 
-    if (requestedBackend === "auto") {
+    if (!requestedBackend) {
       items.push({
         key: "backend-discovery",
-        status: availableBackends.includes("codex-cli") ? "healthy" : "warning",
+        status: "warning",
         title: "Backend discovery",
-        detail: availableBackends.includes("codex-cli")
-          ? this.t("Product Shell runtime can see codex-cli.")
-          : this.t("Product Shell runtime cannot see codex-cli. GUI PATH may differ from terminal PATH."),
+        detail: this.t("No explicit LLM backend is selected. Choose one in Product Shell settings or set AIWIKI_LLM_BACKEND."),
+      });
+    } else {
+      const backendVisible = availableBackends.includes(requestedBackend);
+      items.push({
+        key: "backend-discovery",
+        status: backendVisible ? "healthy" : "warning",
+        title: "Backend discovery",
+        detail: backendVisible
+          ? this.t("Product Shell runtime can see the selected backend {backend}.", { backend: requestedBackend })
+          : this.t("Product Shell runtime cannot see the selected backend {backend}.", { backend: requestedBackend }),
       });
     }
 
@@ -4603,11 +4617,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       if (this.settings.llmModel) {
         env.AIWIKI_LLM_MODEL = this.settings.llmModel;
       }
-      if (this.settings.llmGithubToken) {
-        env.AIWIKI_GITHUB_TOKEN = this.settings.llmGithubToken;
+      if (this.settings.llmNvidiaNimApiKey) {
+        env.AIWIKI_NVIDIA_NIM_API_KEY = this.settings.llmNvidiaNimApiKey;
       }
-      if (this.settings.llmGithubModelsBaseUrl) {
-        env.AIWIKI_GITHUB_MODELS_BASE_URL = this.settings.llmGithubModelsBaseUrl;
+      if (this.settings.llmNvidiaNimBaseUrl) {
+        env.AIWIKI_NVIDIA_NIM_BASE_URL = this.settings.llmNvidiaNimBaseUrl;
       }
       const child = spawn(this.repoState.launcherPath, args, {
         cwd: this.repoState.root,
