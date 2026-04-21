@@ -280,7 +280,15 @@ bash scripts/verify.sh
 
 ## 开发说明
 
-`open-harness` 只负责本仓库的工程闭环和质量护栏，不属于 `aiwiki` runtime 本身。
+`open-harness` 只负责本仓库的工程闭环和质量护栏，不属于 `aiwiki` runtime 本身；generic harness scaffold 不再作为仓库事实提交。
+
+如需在当前工作区启用本地工程脚手架，执行：
+
+```bash
+bash scripts/setup_local_harness.sh --apply
+```
+
+该命令会从 `/home/tim/open-harness` 在当前目录生成 local-only harness，并通过 `.git/info/exclude` 屏蔽 generic scaffold，不让它污染仓库提交边界。
 
 ### Developer Guide
 

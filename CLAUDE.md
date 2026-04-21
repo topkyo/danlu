@@ -1,48 +1,112 @@
 # CLAUDE.md
 
-## Scope
+## 作用域与分层
 
-- This repository implements `aiwiki`, the local-first runtime / CLI behind 炼丹炉.
-- 炼丹炉 is the product/system name; `aiwiki` is the runtime, command name, and repository name.
-- `open-harness` provides the engineering loop and gate scaffolding around the project.
-- Dynamic task state lives in `PROGRESS.md`.
-- Current scope, acceptance criteria, and gate requirements live in `.codex/contracts/active.md`.
+- 本文件同时承担 Claude 侧的 agent protocol 和项目事实，默认不依赖任何用户 home 目录配置
+- `open-harness` 是外部模板源；炼丹炉仓库不提交 generic harness scaffold
+- 当前工作区如需工程脚手架，使用 `bash scripts/setup_local_harness.sh --apply` 从 `/home/tim/open-harness` 本地生成
+- 本仓库实现 `aiwiki`，即“炼丹炉”的 local-first runtime / CLI / 仓库本体
+- “炼丹炉”是产品/系统名；`aiwiki` 是实现内核、命令名和仓库名
+- 动态任务状态写 `PROGRESS.md`
+- 设计边界和本轮执行约束写本地生成的 `.codex/contracts/active.md`
+- 跨对话仍然成立的项目知识写 `MEMORY.md` 或等价记忆
 
-## Project Summary
+禁止长期写进本文件:
+- 临时调试日志
+- 只在单轮任务成立的中间结论
+- 会频繁变化的执行过程细节
 
-- `aiwiki` compiles raw sources into structured wiki artifacts, machine memory, judgment assets, and reviewable execution outputs.
+## 风格
 
-## Current Direction
+- 与用户沟通默认中文；代码、命令、路径和 schema 保持原文
+- 直率务实，KISS。优先根因级、可验证的最小实现
+- 不确定时直说；如果先做过渡实现，必须写明升级路径和删除条件
+- 能做的不问，该问的不猜；可逆本地操作直接做，不可逆或影响共享状态的操作先确认
+- 只改当前目标所必需的范围，不默认扩 scope
 
-- Maintain the five-layer furnace runtime: `raw / wiki / machine memory / schema / outputs`.
-- Keep the deterministic baseline plus multi-backend execution (`codex-cli`, `claude-cli`, `openai-api`).
-- Keep direct material drop entry points for URLs, PDFs, images, and repositories.
-- Maintain protocol-aware runtime behavior for `general / investing / research / product / ops`.
-- Maintain the governance and execution layers: `review / aging / escalation / repair / nightly / apply / revert / audit`.
+## 调试
+
+- 并行优先，但只并行彼此独立、可单独验证的问题
+- 默认小步试探；连续无新证据时停止扩查并汇报
+- 优先否证当前假设，不做确认偏误
+
+## 错误处理
+
+- 不得静默吞错；边界层允许捕获、转换、记录并显式暴露失败
+- 使用具体错误类型
+- 错误消息应清晰且可操作
+- 默认不做隐式降级；若必须降级，需写明触发条件、行为边界和退出条件
+
+## 项目一句话
+
+- `aiwiki` is the file-based runtime that powers 炼丹炉, compiling raw sources into structured wiki, machine memory, and reviewable outputs.
+
+## 当前方向
+
+- 维护炼丹炉五层主线：`raw / wiki / machine memory / schema / outputs`
+- 维持 deterministic baseline + 多后端 LLM 执行层（`codex-cli` / `nvidia-nim-api` / `copilot-cli` / `claude-cli`），并保持显式手动 backend 选择
+- 维持直接投喂入口：`drop-url` / `drop-pdf` / `drop-image` / `drop-repo`
+- 维持协议 runtime：`general / investing / research / product / ops`
+- 维持治理与执行层：`review / aging / escalation / repair / nightly / apply / revert / audit`
+- 保持 `raw/ -> wiki/ -> output/` 分层，不引入 hosted service、multi-user sync、heavy RAG infra 或 fine-tuning
 
 ## Source Of Truth
 
-- Product and operator overview: `README.md`
-- Current sprint scope: `.codex/contracts/active.md`
-- Task state: `PROGRESS.md`
-- Local verification entry point: `bash scripts/verify.sh`
-- Runtime validation: fixture-driven tests in `tests/`
-- Deploy entry point: none
+- 项目规范: `README.md`
+- 设计与本轮范围: `.codex/contracts/active.md`
+- 任务状态: `PROGRESS.md`
+- 本地验证入口: `bash scripts/verify.sh`
+- 运行态验证入口: 目前使用 `tests/` 中的 fixture-driven CLI smoke tests
+- 部署入口: none
 
-## Stable Constraints
+## 稳定约束
 
-- Python 3.10+, stdlib-first, file-based state
-- Runtime model: `single writer, many readers`
-- `raw/` is the only fact input layer
-- `wiki/sources/` and `wiki/derived/` stay separate
-- Derived outputs never overwrite source pages
-- Judgment and execution artifacts must remain auditable, reversible, and provenance-aware
-- No hosted service, multi-user sync, heavy RAG infrastructure, or fine-tuning
+- 技术栈: Python 3.10+, stdlib-first, markdown + JSON manifest
+- 运行模型: `single writer, many readers`
+- `raw/` 是唯一事实输入层；`wiki/sources/` 与 `wiki/derived/` 必须严格分层
+- 派生输出不能覆盖原始 source pages；所有结论都应保留 provenance
+- `decision / judgment / execution` 层必须保持可审计、可回滚、可追溯
+- 非目标: hosted service, multi-user sync, heavy RAG infra, fine-tuning
 
-## Working Rules
+## 自主权边界
 
-- Prefer concrete, reversible local changes
-- Keep provenance explicit in generated artifacts
-- Record any same-context review fallback in the gate artifact
-- User-level service wiring is allowed when it stays within the current user's session scope
-- Use “炼丹炉” for the product/system and `aiwiki` only for repo/runtime/CLI contexts
+可直接做:
+- 本地代码、文档、测试修改
+- 本地 harness 的生成、清理和重建（不提交 generic scaffold）
+- 目录结构调整与无副作用的本地验证
+- 当前用户范围内的 `systemd --user` 服务安装与更新
+- 在当前执行环境允许且本地已生成 harness 时，使用 `closed_loop` / `finalize_task.sh` 收口本地闭环
+
+需要先确认:
+- 共享环境 / 远端环境操作
+- 外部模型/服务接入
+- 会改变 repo 事实分层规则的架构调整
+- 发布 / 数据迁移 / 凭据相关操作
+- `push`、远端发布、PR 创建
+
+## 默认实现闭环
+
+- 默认自主执行 `开发 -> 验证 -> debug -> 再验证`
+- 本地、可逆、无外部副作用的操作直接做，不逐步请求确认
+- `verify` 或等价检查失败时，先自行 `debug -> 修复 -> re-verify`
+- 沟通用于开工对齐、blocker 升级和收口汇报，不作为每一轮实现循环节点
+- 默认 `ask_policy = blockers-only`
+- 默认停止条件是共享/远端操作、发布/迁移/凭据、外部高风险变更、目标不清高误判风险、连续 3 轮调试未收敛
+
+## 默认工程闭环
+
+- 开工前先读 `README.md`、`PROGRESS.md` 和本地生成的 `.codex/contracts/active.md`
+- 默认顺序: `项目规范 -> 读取已有状态 -> 验收标准 -> 非 trivial 则写 contract -> 实现闭环 -> 按 contract 跑 gate -> 回写状态`
+- 多文件、跨模块或运行态变更默认维护本地生成的 `.codex/contracts/active.md`
+- 若当前工作区尚未生成 local harness，先执行 `bash scripts/setup_local_harness.sh --apply`
+- 优先走项目本地入口：`bash scripts/verify.sh`；若 local harness 已生成，再用 `bash scripts/run_qa_review.sh`、`bash scripts/closed_loop.sh`
+- `verify` 失败时默认继续本地调试和重复验证，不把每一轮失败都升级成用户确认
+- Standard tier 默认要求 `qa-review`；当前没有独立 reviewer 时要记录 fallback 原因
+
+## 沟通
+
+- 先结论，再证据，再建议
+- 默认不主动 `commit` / `push`，除非任务要求或当前闭环协议明确允许
+- 使用“炼丹炉”指产品/系统，使用 `aiwiki` 指 repo / runtime / CLI
+- 发现事实层污染、无来源结论或越层写入时必须明确指出
+- 关键假设、限制和风险必须明确说明
