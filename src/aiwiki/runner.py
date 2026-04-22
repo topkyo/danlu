@@ -185,7 +185,37 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
     memory = load_machine_memory(root)
     pending_rewrite_candidates = _rewrite_candidate_slugs(memory, exclude=set(pending_concept_slugs))
     skipped_rewrite_candidates = max(0, len(pending_rewrite_candidates) - remaining_budget)
+    started = time.monotonic()
+    prompt_profile = ""
+    retry_prompt_profile = ""
+
+    def summary_base_event(duration_ms: int) -> dict[str, Any]:
+        return {
+            "event": "run-compile-summary",
+            "limit": limit,
+            "updated_pages": list(updated_pages),
+            "pending_pages": len(pending),
+            "skipped_pages": skipped,
+            "updated_concept_pages": list(updated_placeholder_concept_pages),
+            "pending_concept_pages": len(pending_concept_slugs),
+            "skipped_concept_pages": skipped_concepts,
+            "updated_rewrite_concept_pages": [],
+            "updated_rewrite_proposal_pages": list(updated_rewrite_proposal_pages),
+            "pending_rewrite_concept_pages": len(pending_rewrite_candidates),
+            "skipped_rewrite_concept_pages": skipped_rewrite_candidates,
+            "prompt_profile": prompt_profile,
+            "retry_prompt_profile": retry_prompt_profile,
+            "duration_ms": duration_ms,
+        }
+
     if (not pending and not pending_concept_slugs and not pending_rewrite_candidates) or limit <= 0:
+        llm_audit = _empty_llm_audit()
+        _append_llm_receipt_and_log(
+            root,
+            summary_base_event(int((time.monotonic() - started) * 1000)),
+            llm_audit,
+            status="success",
+        )
         return {
             "compile": compile_result,
             "updated_pages": updated_pages,
@@ -198,254 +228,433 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             "updated_rewrite_proposal_pages": updated_rewrite_proposal_pages,
             "pending_rewrite_concept_pages": len(pending_rewrite_candidates),
             "skipped_rewrite_concept_pages": skipped_rewrite_candidates,
+            **llm_audit,
             "prompt_profile": "",
             "retry_prompt_profile": "",
         }
 
     effective_client = client or create_client(root)
+    model_selected = _client_model_name(effective_client)
+    aggregate_audit = _empty_llm_audit()
     prompt_profile = _initial_compile_prompt_profile(effective_client)
     retry_prompt_profile = ""
+    try:
+        for entry in pending[:limit]:
+            target = root / "wiki" / "sources" / f"{entry['id']}.md"
+            raw_path = root / entry["stored_path"]
+            current_page = target.read_text(encoding="utf-8", errors="replace")
+            item_profile = prompt_profile
+            prompt = _build_compile_prompt(root, entry, raw_path, current_page, prompt_profile=item_profile)
+            item_retry_profile = ""
+            item_model_selected = _client_model_name(effective_client)
+            item_fallback_stages: list[str] = []
+            item_fallback_reason = ""
+            item_result: CompletionResult | None = None
+            item_started = time.monotonic()
+            try:
+                while True:
+                    try:
+                        item_result = effective_client.complete(_system_prompt("compile"), prompt)
+                    except LLMError as exc:
+                        next_retry_profile = _retry_compile_prompt_profile(exc, item_profile, effective_client)
+                        if next_retry_profile:
+                            item_retry_profile = next_retry_profile
+                            item_fallback_reason = str(exc)
+                            _append_fallback_stage(item_fallback_stages, "prompt-profile")
+                            logging.getLogger("aiwiki").warning(
+                                "run-compile failed with %s prompt; retrying with %s prompt",
+                                item_profile,
+                                item_retry_profile,
+                            )
+                            prompt = _build_compile_prompt(
+                                root,
+                                entry,
+                                raw_path,
+                                current_page,
+                                prompt_profile=item_retry_profile,
+                            )
+                            item_profile = item_retry_profile
+                            prompt_profile = item_retry_profile
+                            retry_prompt_profile = item_retry_profile
+                            continue
+                        if _fallback_to_next_model(effective_client, "run-compile", exc):
+                            item_fallback_reason = str(exc)
+                            _append_fallback_stage(item_fallback_stages, "model-chain")
+                            continue
+                        raise
+                    updated = _normalize_markdown(item_result.text)
+                    try:
+                        _validate_source_page(updated, entry["id"], entry["stored_path"], entry["sha256"])
+                    except RuntimeError as exc:
+                        if _fallback_to_next_model(effective_client, "run-compile", exc):
+                            item_fallback_reason = str(exc)
+                            _append_fallback_stage(item_fallback_stages, "model-chain")
+                            continue
+                        raise
+                    break
+                used_profile = item_retry_profile or item_profile
+                target.write_text(updated, encoding="utf-8")
+                updated_pages.append(relative_path(root, target))
+                item_audit = _build_llm_audit(
+                    effective_client,
+                    model_selected=item_model_selected,
+                    fallback_stages=item_fallback_stages,
+                    fallback_reason=item_fallback_reason,
+                    contract_validated=True,
+                )
+                aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
+                _append_llm_receipt_and_log(
+                    root,
+                    {
+                        "event": "run-compile",
+                        "target": relative_path(root, target),
+                        "source": entry["stored_path"],
+                        "prompt_profile": used_profile,
+                        "retry_prompt_profile": item_retry_profile,
+                        "duration_ms": int((time.monotonic() - item_started) * 1000),
+                    },
+                    item_audit,
+                    status="success",
+                    response_id=item_result.response_id,
+                    usage=item_result.usage,
+                )
+            except Exception as exc:
+                used_profile = item_retry_profile or item_profile
+                item_audit = _build_llm_audit(
+                    effective_client,
+                    model_selected=item_model_selected,
+                    fallback_stages=item_fallback_stages,
+                    fallback_reason=item_fallback_reason or str(exc),
+                    contract_validated=False,
+                )
+                aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
+                _append_llm_receipt_and_log(
+                    root,
+                    {
+                        "event": "run-compile",
+                        "target": relative_path(root, target),
+                        "source": entry["stored_path"],
+                        "prompt_profile": used_profile,
+                        "retry_prompt_profile": item_retry_profile,
+                        "duration_ms": int((time.monotonic() - item_started) * 1000),
+                    },
+                    item_audit,
+                    status="failed",
+                    error=str(exc),
+                    response_id=getattr(item_result, "response_id", "") if item_result is not None else "",
+                    usage=getattr(item_result, "usage", {}) if item_result is not None else {},
+                )
+                raise
 
-    for entry in pending[:limit]:
-        target = root / "wiki" / "sources" / f"{entry['id']}.md"
-        raw_path = root / entry["stored_path"]
-        current_page = target.read_text(encoding="utf-8", errors="replace")
-        item_profile = prompt_profile
-        prompt = _build_compile_prompt(root, entry, raw_path, current_page, prompt_profile=item_profile)
-        item_retry_profile = ""
-        while True:
+        if updated_pages:
+            compile_result = compile_wiki(root)
+            pending_concept_slugs = placeholder_concept_slugs(root)
+            memory = load_machine_memory(root)
+        remaining_budget = max(0, limit - len(updated_pages))
+        skipped_concepts = max(0, len(pending_concept_slugs) - remaining_budget)
+
+        for slug in pending_concept_slugs[:remaining_budget]:
+            target = root / "wiki" / "concepts" / f"{slug}.md"
+            if not target.exists():
+                continue
+            current_page = target.read_text(encoding="utf-8", errors="replace")
+            if not concept_summary_is_placeholder(current_page):
+                continue
+            frontmatter = parse_frontmatter(current_page)
+            source_pages = frontmatter.get("source_pages", [])
+            if not isinstance(source_pages, list):
+                source_pages = []
+            related_slugs = _extract_related_concept_slugs(current_page)
+            item_profile = prompt_profile
+            prompt = _build_concept_compile_prompt(
+                root,
+                target,
+                current_page,
+                source_pages,
+                related_slugs,
+                prompt_profile=item_profile,
+            )
+            item_retry_profile = ""
+            item_model_selected = _client_model_name(effective_client)
+            item_fallback_stages: list[str] = []
+            item_fallback_reason = ""
+            item_result: CompletionResult | None = None
+            item_started = time.monotonic()
             try:
-                result = effective_client.complete(_system_prompt("compile"), prompt)
-            except LLMError as exc:
-                next_retry_profile = _retry_compile_prompt_profile(exc, item_profile, effective_client)
-                if next_retry_profile:
-                    item_retry_profile = next_retry_profile
-                    logging.getLogger("aiwiki").warning(
-                        "run-compile failed with %s prompt; retrying with %s prompt",
-                        item_profile,
-                        item_retry_profile,
-                    )
-                    prompt = _build_compile_prompt(
-                        root,
-                        entry,
-                        raw_path,
-                        current_page,
-                        prompt_profile=item_retry_profile,
-                    )
-                    item_profile = item_retry_profile
-                    prompt_profile = item_retry_profile
-                    retry_prompt_profile = item_retry_profile
-                    continue
-                if _fallback_to_next_model(effective_client, "run-compile", exc):
-                    continue
+                while True:
+                    try:
+                        item_result = effective_client.complete(_system_prompt("compile"), prompt)
+                    except LLMError as exc:
+                        next_retry_profile = _retry_compile_prompt_profile(exc, item_profile, effective_client)
+                        if next_retry_profile:
+                            item_retry_profile = next_retry_profile
+                            item_fallback_reason = str(exc)
+                            _append_fallback_stage(item_fallback_stages, "prompt-profile")
+                            logging.getLogger("aiwiki").warning(
+                                "run-compile concept failed with %s prompt; retrying with %s prompt",
+                                item_profile,
+                                item_retry_profile,
+                            )
+                            prompt = _build_concept_compile_prompt(
+                                root,
+                                target,
+                                current_page,
+                                source_pages,
+                                related_slugs,
+                                prompt_profile=item_retry_profile,
+                            )
+                            item_profile = item_retry_profile
+                            prompt_profile = item_retry_profile
+                            retry_prompt_profile = item_retry_profile
+                            continue
+                        if _fallback_to_next_model(effective_client, "run-compile-concept", exc):
+                            item_fallback_reason = str(exc)
+                            _append_fallback_stage(item_fallback_stages, "model-chain")
+                            continue
+                        raise
+                    updated = _normalize_markdown(item_result.text)
+                    try:
+                        _validate_concept_page(updated, slug, frontmatter.get("source_signature", ""), source_pages)
+                    except RuntimeError as exc:
+                        if _fallback_to_next_model(effective_client, "run-compile-concept", exc):
+                            item_fallback_reason = str(exc)
+                            _append_fallback_stage(item_fallback_stages, "model-chain")
+                            continue
+                        raise
+                    break
+                used_profile = item_retry_profile or item_profile
+                target.write_text(updated, encoding="utf-8")
+                updated_placeholder_concept_pages.append(relative_path(root, target))
+                item_audit = _build_llm_audit(
+                    effective_client,
+                    model_selected=item_model_selected,
+                    fallback_stages=item_fallback_stages,
+                    fallback_reason=item_fallback_reason,
+                    contract_validated=True,
+                )
+                aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
+                _append_llm_receipt_and_log(
+                    root,
+                    {
+                        "event": "run-compile-concept",
+                        "target": relative_path(root, target),
+                        "source_pages": source_pages,
+                        "prompt_profile": used_profile,
+                        "retry_prompt_profile": item_retry_profile,
+                        "duration_ms": int((time.monotonic() - item_started) * 1000),
+                    },
+                    item_audit,
+                    status="success",
+                    response_id=item_result.response_id,
+                    usage=item_result.usage,
+                )
+            except Exception as exc:
+                used_profile = item_retry_profile or item_profile
+                item_audit = _build_llm_audit(
+                    effective_client,
+                    model_selected=item_model_selected,
+                    fallback_stages=item_fallback_stages,
+                    fallback_reason=item_fallback_reason or str(exc),
+                    contract_validated=False,
+                )
+                aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
+                _append_llm_receipt_and_log(
+                    root,
+                    {
+                        "event": "run-compile-concept",
+                        "target": relative_path(root, target),
+                        "source_pages": source_pages,
+                        "prompt_profile": used_profile,
+                        "retry_prompt_profile": item_retry_profile,
+                        "duration_ms": int((time.monotonic() - item_started) * 1000),
+                    },
+                    item_audit,
+                    status="failed",
+                    error=str(exc),
+                    response_id=getattr(item_result, "response_id", "") if item_result is not None else "",
+                    usage=getattr(item_result, "usage", {}) if item_result is not None else {},
+                )
                 raise
-            used_profile = item_retry_profile or item_profile
-            updated = _normalize_markdown(result.text)
-            try:
-                _validate_source_page(updated, entry["id"], entry["stored_path"], entry["sha256"])
-            except RuntimeError as exc:
-                if _fallback_to_next_model(effective_client, "run-compile", exc):
-                    continue
-                raise
-            break
-        used_profile = item_retry_profile or item_profile
-        target.write_text(updated, encoding="utf-8")
-        updated_pages.append(relative_path(root, target))
-        _append_log(
-            root,
-            {
-                "event": "run-compile",
-                "target": relative_path(root, target),
-                "source": entry["stored_path"],
-                "model": _client_model_name(effective_client),
-                "prompt_profile": used_profile,
-                "retry_prompt_profile": item_retry_profile,
-                "response_id": result.response_id,
-                "usage": result.usage,
-            },
+
+        if updated_placeholder_concept_pages:
+            compile_result = compile_wiki(root)
+            memory = load_machine_memory(root)
+
+        remaining_budget = max(0, limit - len(updated_pages) - len(updated_placeholder_concept_pages))
+        pending_rewrite_candidates = _rewrite_candidate_slugs(
+            memory,
+            exclude=set(pending_concept_slugs) | {Path(path).stem for path in updated_placeholder_concept_pages},
         )
+        skipped_rewrite_candidates = max(0, len(pending_rewrite_candidates) - remaining_budget)
 
-    if updated_pages:
-        compile_result = compile_wiki(root)
-        pending_concept_slugs = placeholder_concept_slugs(root)
-        memory = load_machine_memory(root)
-    remaining_budget = max(0, limit - len(updated_pages))
-    skipped_concepts = max(0, len(pending_concept_slugs) - remaining_budget)
-
-    for slug in pending_concept_slugs[:remaining_budget]:
-        target = root / "wiki" / "concepts" / f"{slug}.md"
-        if not target.exists():
-            continue
-        current_page = target.read_text(encoding="utf-8", errors="replace")
-        if not concept_summary_is_placeholder(current_page):
-            continue
-        frontmatter = parse_frontmatter(current_page)
-        source_pages = frontmatter.get("source_pages", [])
-        if not isinstance(source_pages, list):
-            source_pages = []
-        related_slugs = _extract_related_concept_slugs(current_page)
-        item_profile = prompt_profile
-        prompt = _build_concept_compile_prompt(
-            root,
-            target,
-            current_page,
-            source_pages,
-            related_slugs,
-            prompt_profile=item_profile,
-        )
-        item_retry_profile = ""
-        while True:
+        for slug in pending_rewrite_candidates[:remaining_budget]:
+            target = root / "wiki" / "concepts" / f"{slug}.md"
+            if not target.exists():
+                continue
+            current_page = target.read_text(encoding="utf-8", errors="replace")
+            frontmatter = parse_frontmatter(current_page)
+            source_pages = frontmatter.get("source_pages", [])
+            if not isinstance(source_pages, list):
+                source_pages = []
+            related_slugs = _extract_related_concept_slugs(current_page)
+            quality_record = _rewrite_candidate_record(memory, slug)
+            item_profile = prompt_profile
+            prompt = _build_concept_compile_prompt(
+                root,
+                target,
+                current_page,
+                source_pages,
+                related_slugs,
+                quality_record=quality_record,
+                prompt_profile=item_profile,
+            )
+            item_retry_profile = ""
+            item_model_selected = _client_model_name(effective_client)
+            item_fallback_stages: list[str] = []
+            item_fallback_reason = ""
+            item_result: CompletionResult | None = None
+            item_started = time.monotonic()
             try:
-                result = effective_client.complete(_system_prompt("compile"), prompt)
-            except LLMError as exc:
-                next_retry_profile = _retry_compile_prompt_profile(exc, item_profile, effective_client)
-                if next_retry_profile:
-                    item_retry_profile = next_retry_profile
-                    logging.getLogger("aiwiki").warning(
-                        "run-compile concept failed with %s prompt; retrying with %s prompt",
-                        item_profile,
-                        item_retry_profile,
-                    )
-                    prompt = _build_concept_compile_prompt(
-                        root,
-                        target,
-                        current_page,
-                        source_pages,
-                        related_slugs,
-                        prompt_profile=item_retry_profile,
-                    )
-                    item_profile = item_retry_profile
-                    prompt_profile = item_retry_profile
-                    retry_prompt_profile = item_retry_profile
-                    continue
-                if _fallback_to_next_model(effective_client, "run-compile-concept", exc):
-                    continue
+                while True:
+                    try:
+                        item_result = effective_client.complete(_system_prompt("compile"), prompt)
+                    except LLMError as exc:
+                        next_retry_profile = _retry_compile_prompt_profile(exc, item_profile, effective_client)
+                        if next_retry_profile:
+                            item_retry_profile = next_retry_profile
+                            item_fallback_reason = str(exc)
+                            _append_fallback_stage(item_fallback_stages, "prompt-profile")
+                            logging.getLogger("aiwiki").warning(
+                                "run-compile rewrite failed with %s prompt; retrying with %s prompt",
+                                item_profile,
+                                item_retry_profile,
+                            )
+                            prompt = _build_concept_compile_prompt(
+                                root,
+                                target,
+                                current_page,
+                                source_pages,
+                                related_slugs,
+                                quality_record=quality_record,
+                                prompt_profile=item_retry_profile,
+                            )
+                            item_profile = item_retry_profile
+                            prompt_profile = item_retry_profile
+                            retry_prompt_profile = item_retry_profile
+                            continue
+                        if _fallback_to_next_model(effective_client, "run-compile-rewrite", exc):
+                            item_fallback_reason = str(exc)
+                            _append_fallback_stage(item_fallback_stages, "model-chain")
+                            continue
+                        raise
+                    updated = _normalize_markdown(item_result.text)
+                    try:
+                        _validate_concept_page(updated, slug, frontmatter.get("source_signature", ""), source_pages)
+                    except RuntimeError as exc:
+                        if _fallback_to_next_model(effective_client, "run-compile-rewrite", exc):
+                            item_fallback_reason = str(exc)
+                            _append_fallback_stage(item_fallback_stages, "model-chain")
+                            continue
+                        raise
+                    break
+                used_profile = item_retry_profile or item_profile
+                proposal = store_concept_rewrite_candidate(
+                    root,
+                    slug,
+                    quality_record=quality_record,
+                    candidate_markdown=updated,
+                    generated_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+                )
+                updated_rewrite_proposal_pages.append(str(proposal["proposal_path"]))
+                item_audit = _build_llm_audit(
+                    effective_client,
+                    model_selected=item_model_selected,
+                    fallback_stages=item_fallback_stages,
+                    fallback_reason=item_fallback_reason,
+                    contract_validated=True,
+                )
+                aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
+                _append_llm_receipt_and_log(
+                    root,
+                    {
+                        "event": "run-compile-concept-rewrite-proposal",
+                        "target": str(proposal["proposal_path"]),
+                        "concept_page": relative_path(root, target),
+                        "source_pages": source_pages,
+                        "quality_priority": quality_record.get("priority", ""),
+                        "quality_issues": quality_record.get("issues", []),
+                        "prompt_profile": used_profile,
+                        "retry_prompt_profile": item_retry_profile,
+                        "duration_ms": int((time.monotonic() - item_started) * 1000),
+                    },
+                    item_audit,
+                    status="success",
+                    response_id=item_result.response_id,
+                    usage=item_result.usage,
+                )
+            except Exception as exc:
+                used_profile = item_retry_profile or item_profile
+                item_audit = _build_llm_audit(
+                    effective_client,
+                    model_selected=item_model_selected,
+                    fallback_stages=item_fallback_stages,
+                    fallback_reason=item_fallback_reason or str(exc),
+                    contract_validated=False,
+                )
+                aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
+                _append_llm_receipt_and_log(
+                    root,
+                    {
+                        "event": "run-compile-concept-rewrite-proposal",
+                        "target": f"wiki/rewrite-proposals/{slug}.md",
+                        "concept_page": relative_path(root, target),
+                        "source_pages": source_pages,
+                        "quality_priority": quality_record.get("priority", ""),
+                        "quality_issues": quality_record.get("issues", []),
+                        "prompt_profile": used_profile,
+                        "retry_prompt_profile": item_retry_profile,
+                        "duration_ms": int((time.monotonic() - item_started) * 1000),
+                    },
+                    item_audit,
+                    status="failed",
+                    error=str(exc),
+                    response_id=getattr(item_result, "response_id", "") if item_result is not None else "",
+                    usage=getattr(item_result, "usage", {}) if item_result is not None else {},
+                )
                 raise
-            used_profile = item_retry_profile or item_profile
-            updated = _normalize_markdown(result.text)
-            try:
-                _validate_concept_page(updated, slug, frontmatter.get("source_signature", ""), source_pages)
-            except RuntimeError as exc:
-                if _fallback_to_next_model(effective_client, "run-compile-concept", exc):
-                    continue
-                raise
-            break
-        used_profile = item_retry_profile or item_profile
-        target.write_text(updated, encoding="utf-8")
-        updated_placeholder_concept_pages.append(relative_path(root, target))
-        _append_log(
-            root,
-            {
-                "event": "run-compile-concept",
-                "target": relative_path(root, target),
-                "source_pages": source_pages,
-                "model": _client_model_name(effective_client),
-                "prompt_profile": used_profile,
-                "retry_prompt_profile": item_retry_profile,
-                "response_id": result.response_id,
-                "usage": result.usage,
-            },
+
+        if updated_rewrite_proposal_pages:
+            compile_result = compile_wiki(root)
+    except Exception as exc:
+        failed_audit = _merge_llm_audits(
+            _build_llm_audit(effective_client, model_selected=model_selected, contract_validated=False),
+            aggregate_audit,
         )
+        failed_audit["fallback_reason"] = str(exc)
+        failed_audit["contract_validated"] = False
+        _append_llm_receipt_and_log(
+            root,
+            summary_base_event(int((time.monotonic() - started) * 1000)),
+            failed_audit,
+            status="failed",
+            error=str(exc),
+        )
+        raise
 
-    if updated_placeholder_concept_pages:
-        compile_result = compile_wiki(root)
-        memory = load_machine_memory(root)
-
-    remaining_budget = max(0, limit - len(updated_pages) - len(updated_placeholder_concept_pages))
-    pending_rewrite_candidates = _rewrite_candidate_slugs(
-        memory,
-        exclude=set(pending_concept_slugs) | {Path(path).stem for path in updated_placeholder_concept_pages},
+    llm_audit = _merge_llm_audits(
+        _build_llm_audit(
+            effective_client,
+            model_selected=model_selected,
+            contract_validated=bool(aggregate_audit.get("contract_validated")),
+        ),
+        aggregate_audit,
     )
-    skipped_rewrite_candidates = max(0, len(pending_rewrite_candidates) - remaining_budget)
-
-    for slug in pending_rewrite_candidates[:remaining_budget]:
-        target = root / "wiki" / "concepts" / f"{slug}.md"
-        if not target.exists():
-            continue
-        current_page = target.read_text(encoding="utf-8", errors="replace")
-        frontmatter = parse_frontmatter(current_page)
-        source_pages = frontmatter.get("source_pages", [])
-        if not isinstance(source_pages, list):
-            source_pages = []
-        related_slugs = _extract_related_concept_slugs(current_page)
-        quality_record = _rewrite_candidate_record(memory, slug)
-        item_profile = prompt_profile
-        prompt = _build_concept_compile_prompt(
-            root,
-            target,
-            current_page,
-            source_pages,
-            related_slugs,
-            quality_record=quality_record,
-            prompt_profile=item_profile,
-        )
-        item_retry_profile = ""
-        while True:
-            try:
-                result = effective_client.complete(_system_prompt("compile"), prompt)
-            except LLMError as exc:
-                next_retry_profile = _retry_compile_prompt_profile(exc, item_profile, effective_client)
-                if next_retry_profile:
-                    item_retry_profile = next_retry_profile
-                    logging.getLogger("aiwiki").warning(
-                        "run-compile rewrite failed with %s prompt; retrying with %s prompt",
-                        item_profile,
-                        item_retry_profile,
-                    )
-                    prompt = _build_concept_compile_prompt(
-                        root,
-                        target,
-                        current_page,
-                        source_pages,
-                        related_slugs,
-                        quality_record=quality_record,
-                        prompt_profile=item_retry_profile,
-                    )
-                    item_profile = item_retry_profile
-                    prompt_profile = item_retry_profile
-                    retry_prompt_profile = item_retry_profile
-                    continue
-                if _fallback_to_next_model(effective_client, "run-compile-rewrite", exc):
-                    continue
-                raise
-            used_profile = item_retry_profile or item_profile
-            updated = _normalize_markdown(result.text)
-            try:
-                _validate_concept_page(updated, slug, frontmatter.get("source_signature", ""), source_pages)
-            except RuntimeError as exc:
-                if _fallback_to_next_model(effective_client, "run-compile-rewrite", exc):
-                    continue
-                raise
-            break
-        used_profile = item_retry_profile or item_profile
-        proposal = store_concept_rewrite_candidate(
-            root,
-            slug,
-            quality_record=quality_record,
-            candidate_markdown=updated,
-            generated_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-        )
-        updated_rewrite_proposal_pages.append(str(proposal["proposal_path"]))
-        _append_log(
-            root,
-            {
-                "event": "run-compile-concept-rewrite-proposal",
-                "target": str(proposal["proposal_path"]),
-                "concept_page": relative_path(root, target),
-                "source_pages": source_pages,
-                "quality_priority": quality_record.get("priority", ""),
-                "quality_issues": quality_record.get("issues", []),
-                "model": _client_model_name(effective_client),
-                "prompt_profile": used_profile,
-                "retry_prompt_profile": item_retry_profile,
-                "response_id": result.response_id,
-                "usage": result.usage,
-            },
-        )
-
-    if updated_rewrite_proposal_pages:
-        compile_result = compile_wiki(root)
-
+    _append_llm_receipt_and_log(
+        root,
+        summary_base_event(int((time.monotonic() - started) * 1000)),
+        llm_audit,
+        status="success",
+    )
     return {
         "compile": compile_result,
         "updated_pages": updated_pages,
@@ -458,6 +667,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
         "updated_rewrite_proposal_pages": updated_rewrite_proposal_pages,
         "pending_rewrite_concept_pages": len(pending_rewrite_candidates),
         "skipped_rewrite_concept_pages": skipped_rewrite_candidates,
+        **llm_audit,
         "prompt_profile": prompt_profile,
         "retry_prompt_profile": retry_prompt_profile,
     }
@@ -472,11 +682,12 @@ def run_ask(
     client: SupportsComplete | None = None,
     lean: bool = False,
     timeout_seconds: int | None = None,
+    no_cache: bool = False,
 ) -> dict[str, Any]:
     ensure_layout(root)
     if timeout_seconds is not None and timeout_seconds <= 0:
         raise ValueError("run-ask timeout_seconds must be greater than 0.")
-    artifact = ask_question(root, question, output_format, protocol=protocol)
+    artifact = ask_question(root, question, output_format, protocol=protocol, no_cache=no_cache)
     manifest = load_manifest(root)
     entry_map = {entry["id"]: entry for entry in manifest["entries"]}
     source_ids = artifact["ranked_sources"]
@@ -507,6 +718,8 @@ def run_ask(
     target = root / artifact["path"]
     current_artifact = target.read_text(encoding="utf-8", errors="replace")
     effective_client = client or create_client(root, timeout_seconds=timeout_seconds)
+    backend_requested = _client_backend_requested(effective_client)
+    model_selected = _client_selected_model_name(effective_client)
     prompt_profile = _select_initial_ask_prompt_profile(effective_client, lean=lean)
     prompt = _build_ask_prompt(
         root,
@@ -522,45 +735,138 @@ def run_ask(
         prompt_profile=prompt_profile,
     )
     retry_profile = ""
-    while True:
-        try:
-            result = effective_client.complete(_system_prompt("ask"), prompt)
-        except LLMError as exc:
-            next_retry_profile = _retry_ask_prompt_profile(exc, prompt_profile, effective_client)
-            if next_retry_profile:
-                retry_profile = next_retry_profile
-                logging.getLogger("aiwiki").warning(
-                    "run-ask failed with %s prompt; retrying with %s prompt",
-                    prompt_profile,
-                    retry_profile,
-                )
-                prompt = _build_ask_prompt(
-                    root,
-                    target,
-                    question,
-                    output_format,
-                    current_artifact,
-                    source_pages,
-                    concept_pages,
-                    protocol_pages,
-                    index_pages,
-                    artifact.get("machine_memory_query", {}),
-                    prompt_profile=retry_profile,
-                )
-                prompt_profile = retry_profile
-                continue
-            if _fallback_to_next_model(effective_client, "run-ask", exc):
-                continue
-            raise
-        updated = _normalize_markdown(result.text)
-        try:
-            _validate_output_markdown(updated, output_format, source_ids)
-        except RuntimeError as exc:
-            if _fallback_to_next_model(effective_client, "run-ask", exc):
-                continue
-            raise
-        break
+    fallback_stages: list[str] = []
+    fallback_reason = ""
+    started = time.monotonic()
+    result: CompletionResult | None = None
+    try:
+        while True:
+            try:
+                result = effective_client.complete(_system_prompt("ask"), prompt)
+            except LLMError as exc:
+                next_retry_profile = _retry_ask_prompt_profile(exc, prompt_profile, effective_client)
+                if next_retry_profile:
+                    retry_profile = next_retry_profile
+                    fallback_reason = str(exc)
+                    _append_fallback_stage(fallback_stages, "prompt-profile")
+                    logging.getLogger("aiwiki").warning(
+                        "run-ask failed with %s prompt; retrying with %s prompt",
+                        prompt_profile,
+                        retry_profile,
+                    )
+                    prompt = _build_ask_prompt(
+                        root,
+                        target,
+                        question,
+                        output_format,
+                        current_artifact,
+                        source_pages,
+                        concept_pages,
+                        protocol_pages,
+                        index_pages,
+                        artifact.get("machine_memory_query", {}),
+                        prompt_profile=retry_profile,
+                    )
+                    prompt_profile = retry_profile
+                    continue
+                if _fallback_to_next_model(effective_client, "run-ask", exc):
+                    fallback_reason = str(exc)
+                    _append_fallback_stage(fallback_stages, "model-chain")
+                    continue
+                raise
+            updated = _normalize_markdown(result.text)
+            try:
+                _validate_output_markdown(updated, output_format, source_ids)
+            except RuntimeError as exc:
+                if _fallback_to_next_model(effective_client, "run-ask", exc):
+                    fallback_reason = str(exc)
+                    _append_fallback_stage(fallback_stages, "model-chain")
+                    continue
+                raise
+            break
+    except Exception as exc:
+        failed_audit = {
+            "backend_requested": backend_requested,
+            "backend_effective": _client_backend_name(effective_client),
+            "model_selected": model_selected,
+            "model_final": _client_model_name(effective_client),
+            "fallback_stage": _fallback_stage_label(fallback_stages),
+            "fallback_reason": fallback_reason or str(exc),
+            "contract_validated": False,
+        }
+        _append_llm_receipt(
+            root,
+            {
+                "event": "run-ask",
+                "target": artifact["path"],
+                "question": question,
+                "format": output_format,
+                "protocol": artifact.get("protocol", ""),
+                **failed_audit,
+                "duration_ms": int((time.monotonic() - started) * 1000),
+                "prompt_profile": retry_profile or prompt_profile,
+                "retry_prompt_profile": retry_profile,
+                "status": "failed",
+                "error": str(exc),
+                "response_id": getattr(result, "response_id", "") if result is not None else "",
+                "usage": getattr(result, "usage", {}) if result is not None else {},
+                "no_cache": no_cache,
+            },
+        )
+        _append_log(
+            root,
+            {
+                "event": "run-ask",
+                "target": artifact["path"],
+                "question": question,
+                "format": output_format,
+                "protocol": artifact.get("protocol", ""),
+                "ranked_sources": source_ids,
+                "backend": failed_audit["backend_effective"],
+                "model": failed_audit["model_final"],
+                **failed_audit,
+                "prompt_profile": retry_profile or prompt_profile,
+                "retry_prompt_profile": retry_profile,
+                "timeout_seconds": getattr(getattr(effective_client, "config", None), "timeout_seconds", timeout_seconds),
+                "no_cache": no_cache,
+                "status": "failed",
+                "error": str(exc),
+                "response_id": getattr(result, "response_id", "") if result is not None else "",
+                "usage": getattr(result, "usage", {}) if result is not None else {},
+            },
+        )
+        raise
     target.write_text(updated, encoding="utf-8")
+    backend_effective = _client_backend_name(effective_client)
+    model_final = _client_model_name(effective_client)
+    fallback_stage = _fallback_stage_label(fallback_stages)
+    llm_audit = {
+        "backend_requested": backend_requested,
+        "backend_effective": backend_effective,
+        "model_selected": model_selected,
+        "model_final": model_final,
+        "fallback_stage": fallback_stage,
+        "fallback_reason": fallback_reason,
+        "contract_validated": True,
+    }
+    _append_llm_receipt(
+        root,
+        {
+            "event": "run-ask",
+            "target": artifact["path"],
+            "question": question,
+            "format": output_format,
+            "protocol": artifact.get("protocol", ""),
+            **llm_audit,
+            "duration_ms": int((time.monotonic() - started) * 1000),
+            "prompt_profile": retry_profile or prompt_profile,
+            "retry_prompt_profile": retry_profile,
+            "status": "success",
+            "response_id": result.response_id,
+            "usage": result.usage,
+            "no_cache": no_cache,
+        },
+    )
     _append_log(
         root,
         {
@@ -570,19 +876,24 @@ def run_ask(
             "format": output_format,
             "protocol": artifact.get("protocol", ""),
             "ranked_sources": source_ids,
-            "model": _client_model_name(effective_client),
+            "backend": backend_effective,
+            "model": model_final,
+            **llm_audit,
             "prompt_profile": retry_profile or prompt_profile,
             "retry_prompt_profile": retry_profile,
             "timeout_seconds": getattr(getattr(effective_client, "config", None), "timeout_seconds", timeout_seconds),
+            "no_cache": no_cache,
             "response_id": result.response_id,
             "usage": result.usage,
         },
     )
     return {
         **artifact,
+        **llm_audit,
         "prompt_profile": retry_profile or prompt_profile,
         "retry_prompt_profile": retry_profile,
         "timeout_seconds": getattr(getattr(effective_client, "config", None), "timeout_seconds", timeout_seconds),
+        "no_cache": no_cache,
     }
 
 
@@ -593,51 +904,98 @@ def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, An
     report_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     target = root / "output" / "lint" / f"semantic-lint-{report_id}.md"
     effective_client = client or create_client(root)
+    model_selected = _client_model_name(effective_client)
     prompt_profile = _initial_lint_prompt_profile(effective_client)
     prompt = _build_lint_prompt(root, deterministic["path"], prompt_profile=prompt_profile)
     retry_prompt_profile = ""
-    while True:
-        try:
-            result = effective_client.complete(_system_prompt("lint"), prompt)
-        except LLMError as exc:
-            next_retry_prompt_profile = _retry_lint_prompt_profile(exc, prompt_profile, effective_client)
-            if next_retry_prompt_profile:
-                retry_prompt_profile = next_retry_prompt_profile
-                logging.getLogger("aiwiki").warning(
-                    "run-lint failed with %s prompt; retrying with %s prompt",
-                    prompt_profile,
-                    retry_prompt_profile,
-                )
-                prompt = _build_lint_prompt(root, deterministic["path"], prompt_profile=retry_prompt_profile)
-                prompt_profile = retry_prompt_profile
-                continue
-            if _fallback_to_next_model(effective_client, "run-lint", exc):
-                continue
-            raise
-        updated = _normalize_markdown(result.text)
-        if not updated.startswith("#") and not updated.startswith("---"):
-            exc = RuntimeError("Semantic lint response must be markdown.")
-            if _fallback_to_next_model(effective_client, "run-lint", exc):
-                continue
-            raise exc
-        break
+    fallback_stages: list[str] = []
+    fallback_reason = ""
+    result: CompletionResult | None = None
+    started = time.monotonic()
+    try:
+        while True:
+            try:
+                result = effective_client.complete(_system_prompt("lint"), prompt)
+            except LLMError as exc:
+                next_retry_prompt_profile = _retry_lint_prompt_profile(exc, prompt_profile, effective_client)
+                if next_retry_prompt_profile:
+                    retry_prompt_profile = next_retry_prompt_profile
+                    fallback_reason = str(exc)
+                    _append_fallback_stage(fallback_stages, "prompt-profile")
+                    logging.getLogger("aiwiki").warning(
+                        "run-lint failed with %s prompt; retrying with %s prompt",
+                        prompt_profile,
+                        retry_prompt_profile,
+                    )
+                    prompt = _build_lint_prompt(root, deterministic["path"], prompt_profile=retry_prompt_profile)
+                    prompt_profile = retry_prompt_profile
+                    continue
+                if _fallback_to_next_model(effective_client, "run-lint", exc):
+                    fallback_reason = str(exc)
+                    _append_fallback_stage(fallback_stages, "model-chain")
+                    continue
+                raise
+            updated = _normalize_markdown(result.text)
+            if not updated.startswith("#") and not updated.startswith("---"):
+                exc = RuntimeError("Semantic lint response must be markdown.")
+                if _fallback_to_next_model(effective_client, "run-lint", exc):
+                    fallback_reason = str(exc)
+                    _append_fallback_stage(fallback_stages, "model-chain")
+                    continue
+                raise exc
+            break
+    except Exception as exc:
+        failed_audit = _build_llm_audit(
+            effective_client,
+            model_selected=model_selected,
+            fallback_stages=fallback_stages,
+            fallback_reason=fallback_reason or str(exc),
+            contract_validated=False,
+        )
+        _append_llm_receipt_and_log(
+            root,
+            {
+                "event": "run-lint",
+                "target": relative_path(root, target),
+                "deterministic_report": deterministic["path"],
+                "prompt_profile": prompt_profile,
+                "retry_prompt_profile": retry_prompt_profile,
+                "duration_ms": int((time.monotonic() - started) * 1000),
+            },
+            failed_audit,
+            status="failed",
+            error=str(exc),
+            response_id=getattr(result, "response_id", "") if result is not None else "",
+            usage=getattr(result, "usage", {}) if result is not None else {},
+        )
+        raise
     target.write_text(updated, encoding="utf-8")
-    _append_log(
+    llm_audit = _build_llm_audit(
+        effective_client,
+        model_selected=model_selected,
+        fallback_stages=fallback_stages,
+        fallback_reason=fallback_reason,
+        contract_validated=True,
+    )
+    _append_llm_receipt_and_log(
         root,
         {
             "event": "run-lint",
             "target": relative_path(root, target),
             "deterministic_report": deterministic["path"],
-            "model": _client_model_name(effective_client),
             "prompt_profile": prompt_profile,
             "retry_prompt_profile": retry_prompt_profile,
-            "response_id": result.response_id,
-            "usage": result.usage,
+            "duration_ms": int((time.monotonic() - started) * 1000),
         },
+        llm_audit,
+        status="success",
+        response_id=result.response_id,
+        usage=result.usage,
     )
     return {
         "deterministic": deterministic,
         "semantic_report": relative_path(root, target),
+        **llm_audit,
         "prompt_profile": prompt_profile,
         "retry_prompt_profile": retry_prompt_profile,
     }
@@ -652,24 +1010,75 @@ def run_nightly(
 ) -> dict[str, Any]:
     ensure_layout(root)
     effective_client = client or create_client(root)
-    compile_result = run_compile(root, client=effective_client, limit=compile_limit)
-    promotion_result = promote_recurring_outputs(root)
-    if promotion_result["count"]:
-        compile_result["compile"] = compile_wiki(root)
-    if semantic_lint:
-        lint_result = run_lint(root, client=effective_client)
-    else:
-        lint_result = {
-            "deterministic": lint_wiki(root),
-            "semantic_report": "",
-        }
-    state = write_nightly_health(
+    started = time.monotonic()
+    compile_result: dict[str, Any] | None = None
+    lint_result: dict[str, Any] | None = None
+    model_selected = _client_model_name(effective_client)
+    try:
+        compile_result = run_compile(root, client=effective_client, limit=compile_limit)
+        promotion_result = promote_recurring_outputs(root)
+        if promotion_result["count"]:
+            compile_result["compile"] = compile_wiki(root)
+        if semantic_lint:
+            lint_result = run_lint(root, client=effective_client)
+        else:
+            lint_result = {
+                "deterministic": lint_wiki(root),
+                "semantic_report": "",
+                **_empty_llm_audit(),
+                "prompt_profile": "",
+                "retry_prompt_profile": "",
+            }
+        llm_audit = _merge_llm_audits(
+            _llm_audit_from_result(compile_result),
+            _llm_audit_from_result(lint_result),
+        )
+        llm_used = bool(compile_result.get("contract_validated") or lint_result.get("contract_validated"))
+        state = write_nightly_health(
+            root,
+            compile_result["compile"],
+            lint_result["deterministic"],
+            promotion_result=promotion_result,
+            semantic_report=lint_result["semantic_report"],
+            llm_used=llm_used,
+        )
+    except Exception as exc:
+        failed_audit = _merge_llm_audits(
+            _build_llm_audit(effective_client, model_selected=model_selected, contract_validated=False),
+            _merge_llm_audits(_llm_audit_from_result(compile_result or {}), _llm_audit_from_result(lint_result or {})),
+        )
+        failed_audit["fallback_reason"] = str(exc)
+        failed_audit["contract_validated"] = False
+        _append_llm_receipt_and_log(
+            root,
+            {
+                "event": "run-nightly",
+                "compile_limit": compile_limit,
+                "semantic_lint": semantic_lint,
+                "duration_ms": int((time.monotonic() - started) * 1000),
+            },
+            failed_audit,
+            status="failed",
+            error=str(exc),
+        )
+        raise
+    _append_llm_receipt_and_log(
         root,
-        compile_result["compile"],
-        lint_result["deterministic"],
-        promotion_result=promotion_result,
-        semantic_report=lint_result["semantic_report"],
-        llm_used=True,
+        {
+            "event": "run-nightly",
+            "compile_limit": compile_limit,
+            "semantic_lint": semantic_lint,
+            "compile_prompt_profile": str(compile_result.get("prompt_profile") or ""),
+            "compile_retry_prompt_profile": str(compile_result.get("retry_prompt_profile") or ""),
+            "lint_prompt_profile": str(lint_result.get("prompt_profile") or ""),
+            "lint_retry_prompt_profile": str(lint_result.get("retry_prompt_profile") or ""),
+            "llm_used": llm_used,
+            "repair_backlog": state["repair_backlog"]["path"],
+            "state_path": relative_path(root, root / ".aiwiki" / "state" / "nightly-health.json"),
+            "duration_ms": int((time.monotonic() - started) * 1000),
+        },
+        llm_audit,
+        status="success",
     )
     return {
         "compile": compile_result,
@@ -678,6 +1087,8 @@ def run_nightly(
         "aging": state["aging"],
         "repair_backlog": state["repair_backlog"]["path"],
         "state_path": relative_path(root, root / ".aiwiki" / "state" / "nightly-health.json"),
+        "llm_used": llm_used,
+        **llm_audit,
     }
 
 
@@ -1541,12 +1952,21 @@ def _validate_output_markdown(markdown: str, output_format: str, source_ids: lis
 
 
 def _append_log(root: Path, event: dict[str, Any]) -> None:
+    _append_jsonl_log(root, ".aiwiki/logs/runs.jsonl", event)
+
+
+def _append_llm_receipt(root: Path, event: dict[str, Any]) -> None:
+    _append_jsonl_log(root, ".aiwiki/logs/llm-receipts.jsonl", event)
+
+
+def _append_jsonl_log(root: Path, relative_log_path: str, event: dict[str, Any]) -> None:
     ensure_layout(root)
     payload = {
         "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         **event,
     }
-    log_path = root / ".aiwiki" / "logs" / "runs.jsonl"
+    log_path = root / relative_log_path
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
@@ -1597,6 +2017,152 @@ def _client_model_name(client: SupportsComplete) -> str:
     config = getattr(client, "config", None)
     model = getattr(config, "model", None)
     return str(model or "")
+
+
+def _client_selected_model_name(client: SupportsComplete) -> str:
+    configs = getattr(client, "client_configs", None)
+    if isinstance(configs, list) and configs:
+        return str(getattr(configs[0], "model", "") or "")
+    primary_config = getattr(client, "primary_config", None)
+    if primary_config is not None:
+        return str(getattr(primary_config, "model", "") or "")
+    return _client_model_name(client)
+
+
+def _client_backend_requested(client: SupportsComplete) -> str:
+    for config in (getattr(client, "primary_config", None), getattr(client, "config", None)):
+        if config is None:
+            continue
+        requested = getattr(config, "backend_requested", None) or getattr(config, "backend", None)
+        if requested:
+            return str(requested)
+    return ""
+
+
+def _client_backend_name(client: SupportsComplete) -> str:
+    for config in (getattr(client, "config", None), getattr(client, "primary_config", None)):
+        if config is None:
+            continue
+        backend = getattr(config, "backend", None)
+        if backend:
+            return str(backend)
+    return ""
+
+
+def _append_fallback_stage(stages: list[str], stage: str) -> None:
+    if stage and stage not in stages:
+        stages.append(stage)
+
+
+def _fallback_stage_label(stages: list[str]) -> str:
+    return "+".join(stage for stage in stages if stage)
+
+
+def _empty_llm_audit() -> dict[str, Any]:
+    return {
+        "backend_requested": "",
+        "backend_effective": "",
+        "model_selected": "",
+        "model_final": "",
+        "fallback_stage": "",
+        "fallback_reason": "",
+        "contract_validated": False,
+    }
+
+
+def _build_llm_audit(
+    client: SupportsComplete | None,
+    *,
+    model_selected: str = "",
+    fallback_stages: list[str] | None = None,
+    fallback_reason: str = "",
+    contract_validated: bool = False,
+) -> dict[str, Any]:
+    audit = _empty_llm_audit()
+    stages = fallback_stages or []
+    audit["model_selected"] = model_selected
+    audit["fallback_stage"] = _fallback_stage_label(stages)
+    audit["fallback_reason"] = fallback_reason
+    audit["contract_validated"] = contract_validated
+    if client is None:
+        return audit
+    audit["backend_requested"] = _client_backend_requested(client)
+    audit["backend_effective"] = _client_backend_name(client)
+    audit["model_selected"] = model_selected or _client_model_name(client)
+    audit["model_final"] = _client_model_name(client)
+    return audit
+
+
+def _merge_llm_audits(current: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]:
+    merged = _empty_llm_audit()
+    if isinstance(current, dict):
+        merged.update(current)
+    if not isinstance(update, dict):
+        return merged
+    if not merged["backend_requested"]:
+        merged["backend_requested"] = str(update.get("backend_requested") or "")
+    if str(update.get("backend_effective") or ""):
+        merged["backend_effective"] = str(update.get("backend_effective") or "")
+    if not merged["model_selected"]:
+        merged["model_selected"] = str(update.get("model_selected") or "")
+    if str(update.get("model_final") or ""):
+        merged["model_final"] = str(update.get("model_final") or "")
+    stages: list[str] = []
+    for label in (str(merged.get("fallback_stage") or ""), str(update.get("fallback_stage") or "")):
+        for stage in label.split("+"):
+            _append_fallback_stage(stages, stage)
+    merged["fallback_stage"] = _fallback_stage_label(stages)
+    if str(update.get("fallback_reason") or ""):
+        merged["fallback_reason"] = str(update.get("fallback_reason") or "")
+    merged["contract_validated"] = bool(merged.get("contract_validated")) or bool(update.get("contract_validated"))
+    return merged
+
+
+def _llm_audit_from_result(result: dict[str, Any]) -> dict[str, Any]:
+    audit = _empty_llm_audit()
+    if not isinstance(result, dict):
+        return audit
+    for key in audit:
+        if key == "contract_validated":
+            audit[key] = bool(result.get(key))
+        else:
+            audit[key] = str(result.get(key) or "")
+    return audit
+
+
+def _append_llm_receipt_and_log(
+    root: Path,
+    base_event: dict[str, Any],
+    llm_audit: dict[str, Any],
+    *,
+    status: str,
+    error: str = "",
+    response_id: str = "",
+    usage: dict[str, Any] | None = None,
+) -> None:
+    usage_payload = usage if isinstance(usage, dict) else {}
+    receipt_event = {
+        **base_event,
+        **llm_audit,
+        "status": status,
+        "response_id": response_id,
+        "usage": usage_payload,
+    }
+    if error:
+        receipt_event["error"] = error
+    _append_llm_receipt(root, receipt_event)
+    run_event = {
+        **base_event,
+        "backend": str(llm_audit.get("backend_effective") or ""),
+        "model": str(llm_audit.get("model_final") or ""),
+        **llm_audit,
+        "status": status,
+        "response_id": response_id,
+        "usage": usage_payload,
+    }
+    if error:
+        run_event["error"] = error
+    _append_log(root, run_event)
 
 
 def _fallback_to_next_model(client: SupportsComplete, operation: str, exc: Exception) -> bool:

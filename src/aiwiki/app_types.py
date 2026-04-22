@@ -271,6 +271,8 @@ class ShellSummary(TypedDict, total=False):
     active_protocol: str
     available_protocols: list[str]
     llm_status: dict[str, Any]
+    latest_llm_run: dict[str, Any]
+    llm_health: dict[str, Any]
     review_backlog_counts: dict[str, Any]
     aging_summary: dict[str, Any]
     judgment_assets: dict[str, Any]

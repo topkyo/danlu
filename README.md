@@ -288,7 +288,28 @@ bash scripts/verify.sh
 bash scripts/setup_local_harness.sh --apply
 ```
 
-该命令会从 `/home/tim/open-harness` 在当前目录生成 local-only harness，并通过 `.git/info/exclude` 屏蔽 generic scaffold，不让它污染仓库提交边界。
+该命令只是 ai-wiki 的本地便捷别名，实际等价于：
+
+```bash
+bash /home/tim/open-harness/scripts/bootstrap_local_scaffold.sh --apply --tier standard
+```
+
+现在 local-only scaffold 的“不入库 / 不改项目 `.gitignore` / 不删项目自带 wrapper”行为已经统一收敛到 `open-harness` 本体；ai-wiki 保留 `scripts/setup_local_harness.sh` 只是为了维持项目内统一入口。
+
+如果上游输入是一份较大的架构文档，推荐先写本地 `engineering plan`，再直接用 milestone runner 推进当前轮：
+
+```bash
+HARNESS_DIR=.codex bash scripts/run_plan.sh \
+  --plan-file .codex/plans/active.md
+```
+
+如果需要强制指定某个 milestone，再显式物化 active contract：
+
+```bash
+HARNESS_DIR=.codex bash scripts/materialize_contract.sh \
+  --plan-file .codex/plans/active.md \
+  --milestone EP-001
+```
 
 ### Developer Guide
 

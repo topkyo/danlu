@@ -4,6 +4,7 @@ import base64
 import io
 import json
 import os
+import sqlite3
 import subprocess
 import tempfile
 import unittest
@@ -12,6 +13,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+from aiwiki.app_cache import drop_query_cache
 from aiwiki.app_compile import (
     _save_machine_memory_action_records,
     apply_concept_rewrite,
@@ -53,6 +55,7 @@ from aiwiki.app_memory import (
 from aiwiki.app_protocol import ensure_layout, load_protocol_state, save_manifest
 from aiwiki.app_state import (
     load_archive_candidates_state,
+    load_cache_status,
     load_knowledge_lifecycle_override_state,
     load_knowledge_lifecycle_state,
     load_machine_memory,
@@ -70,6 +73,7 @@ from aiwiki.app_state import (
 )
 from aiwiki.app_utils import parse_frontmatter, render_frontmatter, runtime_write_lock, strip_frontmatter
 from aiwiki.cli import main as cli_main
+from aiwiki.compile import compile_wiki as compile_wiki_owner
 from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, LLMConfig
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
 from aiwiki.llm import CompletionResult
@@ -77,9 +81,17 @@ from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run
 
 
 class StubClient:
-    def __init__(self, responses: list[str]) -> None:
+    def __init__(self, responses: list[str], *, backend: str = "", backend_requested: str = "") -> None:
         self.responses = list(responses)
-        self.config = type("Config", (), {"model": "stub-model"})()
+        self.config = type(
+            "Config",
+            (),
+            {
+                "model": "stub-model",
+                "backend": backend,
+                "backend_requested": backend_requested or backend,
+            },
+        )()
 
     def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
         del system_prompt
@@ -646,8 +658,10 @@ class AiwikiFlowTests(unittest.TestCase):
         ranking_build_state_path = self.root / ".aiwiki" / "state" / "ranking-build-state.json"
         output_pack_build_state_path = self.root / ".aiwiki" / "state" / "output-pack-build-state.json"
         domain_pilot_build_state_path = self.root / ".aiwiki" / "state" / "domain-pilot-build-state.json"
+        cache_status_file_path = self.root / ".aiwiki" / "state" / "cache-status.json"
         compile_status_path = self.root / "wiki" / "indexes" / "compile-status.md"
         self.assertEqual(compiled["compile_state_path"], ".aiwiki/state/compile-state.json")
+        self.assertEqual(compiled["cache_status_path"], ".aiwiki/state/cache-status.json")
         self.assertEqual(compiled["concept_build_state_path"], ".aiwiki/state/concept-build-state.json")
         self.assertEqual(
             compiled["machine_memory_build_state_path"],
@@ -662,6 +676,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(ranking_build_state_path.exists())
         self.assertTrue(output_pack_build_state_path.exists())
         self.assertTrue(domain_pilot_build_state_path.exists())
+        self.assertTrue(cache_status_file_path.exists())
         self.assertTrue(compile_status_path.exists())
 
         compile_state = json.loads(compile_state_path.read_text(encoding="utf-8"))
@@ -670,6 +685,7 @@ class AiwikiFlowTests(unittest.TestCase):
         ranking_build_state = json.loads(ranking_build_state_path.read_text(encoding="utf-8"))
         output_pack_build_state = json.loads(output_pack_build_state_path.read_text(encoding="utf-8"))
         domain_pilot_build_state = json.loads(domain_pilot_build_state_path.read_text(encoding="utf-8"))
+        cache_status = json.loads(cache_status_file_path.read_text(encoding="utf-8"))
         self.assertEqual(compile_state["manifest_entry_count"], 1)
         self.assertEqual(compile_state["dirty_source_ids"], [entry["id"]])
         self.assertEqual(compile_state["clean_source_ids"], [])
@@ -709,6 +725,10 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(output_pack_build_state["group_records"]["review_packs"]["input_signature"])
         self.assertIn("general", domain_pilot_build_state["protocol_records"])
         self.assertTrue(domain_pilot_build_state["protocol_records"]["general"]["input_signature"])
+        self.assertTrue(cache_status["enabled"])
+        self.assertEqual(cache_status["schema_version"], 1)
+        self.assertIn("cache_nodes", cache_status["row_counts"])
+        self.assertGreater(cache_status["row_counts"]["cache_nodes"], 0)
         phase_names = [phase["name"] for phase in compile_state["phase_summary"]]
         self.assertEqual(
             phase_names,
@@ -746,6 +766,8 @@ class AiwikiFlowTests(unittest.TestCase):
         )
         self.assertEqual(machine_memory_phase["details"]["clean_machine_memory_concepts"], 0)
         self.assertFalse(machine_memory_phase["details"]["reused_core"])
+        self.assertTrue(machine_memory_phase["details"]["cache_enabled"])
+        self.assertGreater(machine_memory_phase["details"]["cache_row_count"], 0)
         ranking_phase = next(phase for phase in compile_state["phase_summary"] if phase["name"] == "ranking_refresh")
         self.assertEqual(ranking_phase["mode"], "incremental")
         self.assertEqual(ranking_phase["details"]["dirty_ranking_sources"], 1)
@@ -848,6 +870,9 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn(".aiwiki/state/output-pack-build-state.json", compile_status)
         self.assertIn(".aiwiki/state/domain-pilot-build-state.json", compile_status)
         self.assertIn(".aiwiki/state/compile-state.json", compile_status)
+
+    def test_compile_wiki_facade_reexports_compile_owner(self) -> None:
+        self.assertIs(compile_wiki, compile_wiki_owner)
 
     def test_compile_skips_clean_source_pages_on_second_run(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -1913,6 +1938,38 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(after_frontmatter["last_compiled_at"], second["compiled_at"])
         self.assertIn("transformer-scaling", second["dirty_concept_slugs"])
 
+    def test_compile_preserves_concept_render_signature_update_after_step_migration(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        source_page.write_text(
+            source_page.read_text(encoding="utf-8").replace(
+                "- Pending LLM summary.",
+                "- Transformer scaling also rise.",
+            ),
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+
+        concept_page = self.root / "wiki" / "concepts" / "transformer-scaling.md"
+        before_frontmatter = parse_frontmatter(concept_page.read_text(encoding="utf-8"))
+        source_page.write_text(
+            source_page.read_text(encoding="utf-8").replace(
+                "- Transformer scaling also rise.",
+                "- TRANSFORMER scaling also rise!",
+            ),
+            encoding="utf-8",
+        )
+
+        second = compile_wiki(self.root)
+        after_frontmatter = parse_frontmatter(concept_page.read_text(encoding="utf-8"))
+
+        self.assertTrue(before_frontmatter["render_signature"])
+        self.assertTrue(after_frontmatter["render_signature"])
+        self.assertNotEqual(before_frontmatter["render_signature"], after_frontmatter["render_signature"])
+        self.assertIn("transformer-scaling", second["dirty_concept_slugs"])
+
     def test_compile_removes_stale_concept_pages_when_concepts_disappear(self) -> None:
         removable = self.root / "removable.md"
         removable.write_text("# Note\n\nAlpha beta gamma.\n", encoding="utf-8")
@@ -2955,6 +3012,106 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("agent", machine_query["ranked_concept_slugs"])
         self.assertIn("src-1", machine_query["ranked_source_ids"])
 
+    def test_ask_cache_and_no_cache_paths_match_for_machine_query(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        cached = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        bypassed = ask_question(self.root, "Compare transformer scale and inference cost", "report", no_cache=True)
+
+        cached_query = cached["machine_memory_query"]
+        bypassed_query = bypassed["machine_memory_query"]
+        self.assertEqual(cached_query, bypassed_query)
+
+        cache_status = load_cache_status(self.root)
+        self.assertGreaterEqual(cache_status["stats"]["query_hits"] + cache_status["stats"]["query_misses"], 1)
+        self.assertGreaterEqual(cache_status["stats"]["query_bypasses"], 1)
+        self.assertEqual(cache_status["last_query"]["bypass"], True)
+        self.assertEqual(cache_status["last_query"]["reason"], "no-cache")
+
+    def test_machine_memory_query_ignores_stale_cache_snapshot(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        cache_db = self.root / ".aiwiki" / "cache.db"
+        with sqlite3.connect(cache_db) as connection:
+            connection.execute("UPDATE cache_meta SET value = ? WHERE key = ?", ("stale-hash", "memory_hash"))
+            connection.commit()
+
+        query = build_machine_memory_query(
+            load_machine_memory(self.root),
+            "transformer scale",
+            root=self.root,
+            protocol="general",
+            material_state=load_material_state(self.root),
+            routing_state=load_material_routing_state(self.root),
+            archive_candidates=load_archive_candidates_state(self.root),
+        )
+
+        self.assertTrue(query["ranked_source_ids"])
+        cache_status = load_cache_status(self.root)
+        self.assertEqual(cache_status["last_query"]["reason"], "json-fallback")
+
+    def test_drop_query_cache_removes_db_and_marks_status_disabled(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        db_path = self.root / ".aiwiki" / "cache.db"
+        self.assertTrue(db_path.exists())
+
+        result = drop_query_cache(self.root)
+
+        self.assertFalse(db_path.exists())
+        self.assertTrue(result["dropped"])
+        cache_status = load_cache_status(self.root)
+        self.assertFalse(cache_status["enabled"])
+        self.assertGreaterEqual(cache_status["stats"]["drops"], 1)
+
+    def test_machine_memory_query_recreates_query_result_cache_after_drop(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        drop_query_cache(self.root)
+
+        memory = load_machine_memory(self.root)
+        material_state = load_material_state(self.root)
+        routing_state = load_material_routing_state(self.root)
+        archive_candidates = load_archive_candidates_state(self.root)
+
+        first = build_machine_memory_query(
+            memory,
+            "transformer scale",
+            root=self.root,
+            protocol="general",
+            material_state=material_state,
+            routing_state=routing_state,
+            archive_candidates=archive_candidates,
+        )
+        second = build_machine_memory_query(
+            memory,
+            "transformer scale",
+            root=self.root,
+            protocol="general",
+            material_state=material_state,
+            routing_state=routing_state,
+            archive_candidates=archive_candidates,
+        )
+
+        self.assertEqual(first, second)
+        cache_status = load_cache_status(self.root)
+        self.assertTrue(cache_status["enabled"])
+        self.assertEqual(cache_status["schema_version"], 1)
+        self.assertGreaterEqual(cache_status["row_counts"].get("cache_query_results", 0), 1)
+        self.assertGreaterEqual(cache_status["stats"]["query_hits"], 1)
+        self.assertEqual(cache_status["last_query"]["reason"], "query-result")
+
+    def test_cli_cache_drop_removes_db(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        code = cli_main(["--root", str(self.root), "cache", "--drop"])
+
+        self.assertEqual(code, 0)
+        self.assertFalse((self.root / ".aiwiki" / "cache.db").exists())
+
     def test_historical_query_surfaces_archive_recall_hints_without_reintroducing_archived_source(self) -> None:
         legacy = self.root / "legacy-latency.md"
         legacy.write_text("# Legacy Latency Notes\n\nLatency notes.\n", encoding="utf-8")
@@ -3003,7 +3160,16 @@ class AiwikiFlowTests(unittest.TestCase):
         updated = current.replace("- Pending LLM summary.", "- Transformers benefit from scale, but cost rises with inference demand.")
         result = run_compile(self.root, client=StubClient([updated]), limit=1)
         self.assertEqual(result["pending_pages"], 1)
+        self.assertEqual(result["model_selected"], "stub-model")
+        self.assertEqual(result["model_final"], "stub-model")
+        self.assertTrue(result["contract_validated"])
         self.assertIn("Transformers benefit from scale", source_page.read_text(encoding="utf-8"))
+        llm_receipts = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(llm_receipts[-1]["event"], "run-compile-summary")
+        self.assertEqual(llm_receipts[-1]["model_selected"], "stub-model")
 
     def test_run_compile_rejects_source_response_that_keeps_placeholder(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -4047,12 +4213,38 @@ class AiwikiFlowTests(unittest.TestCase):
         )
         report_path = self.root / ask_result["path"]
         self.assertIn(f"wiki/sources/{entry['id']}.md", report_path.read_text(encoding="utf-8"))
+        self.assertEqual(ask_result["model_selected"], "stub-model")
+        self.assertEqual(ask_result["model_final"], "stub-model")
+        self.assertTrue(ask_result["contract_validated"])
+
+        llm_receipts_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
+        self.assertTrue(llm_receipts_path.exists())
+        llm_receipt = json.loads(llm_receipts_path.read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertEqual(llm_receipt["event"], "run-ask")
+        self.assertEqual(llm_receipt["model_selected"], "stub-model")
+        self.assertEqual(llm_receipt["model_final"], "stub-model")
+        self.assertTrue(llm_receipt["contract_validated"])
+
+        runs_log_path = self.root / ".aiwiki" / "logs" / "runs.jsonl"
+        self.assertTrue(runs_log_path.exists())
+        run_log = json.loads(runs_log_path.read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertEqual(run_log["event"], "run-ask")
+        self.assertEqual(run_log["model_selected"], "stub-model")
+        self.assertEqual(run_log["model_final"], "stub-model")
+        self.assertTrue(run_log["contract_validated"])
 
         lint_markdown = "# Semantic Lint Report\n\n- No semantic contradictions detected.\n"
         lint_result = run_lint(self.root, client=StubClient([lint_markdown]))
         semantic_path = self.root / lint_result["semantic_report"]
         self.assertTrue(semantic_path.exists())
         self.assertIn("Semantic Lint Report", semantic_path.read_text(encoding="utf-8"))
+        self.assertEqual(lint_result["model_selected"], "stub-model")
+        self.assertEqual(lint_result["model_final"], "stub-model")
+        self.assertTrue(lint_result["contract_validated"])
+        llm_receipt = json.loads(llm_receipts_path.read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertEqual(llm_receipt["event"], "run-lint")
+        self.assertEqual(llm_receipt["model_selected"], "stub-model")
+        self.assertTrue(llm_receipt["contract_validated"])
 
     def test_run_ask_truncates_append_only_log_context(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -4949,6 +5141,97 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(result["recent_runs"][0]["event_type"], "query")
         self.assertEqual(result["recent_runs"][0]["output_path"], report["path"])
 
+    def test_shell_status_surfaces_latest_llm_run_and_llm_health(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        report_markdown = "\n".join(
+            [
+                "---",
+                'id: "query-health"',
+                'kind: "output"',
+                'format: "report"',
+                'query: "Check shell summary llm health"',
+                'generated_by: "aiwiki-ask"',
+                'created_at: "2026-04-05T00:00:00+00:00"',
+                "---",
+                "",
+                "# Check shell summary llm health",
+                "",
+                f"Grounded in `wiki/sources/{entry['id']}.md`.",
+            ]
+        )
+
+        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "codex-cli"}, clear=False):
+            ask_result = run_ask(
+                self.root,
+                "Check shell summary llm health",
+                "report",
+                client=StubClient([report_markdown], backend="codex-cli", backend_requested="codex-cli"),
+            )
+            result = shell_status(self.root)
+
+        self.assertEqual(result["latest_llm_run"]["event"], "run-ask")
+        self.assertEqual(result["latest_llm_run"]["status"], "success")
+        self.assertEqual(result["latest_llm_run"]["backend_requested"], "codex-cli")
+        self.assertEqual(result["latest_llm_run"]["backend_effective"], "codex-cli")
+        self.assertEqual(result["latest_llm_run"]["model_selected"], "stub-model")
+        self.assertEqual(result["latest_llm_run"]["model_final"], "stub-model")
+        self.assertTrue(result["latest_llm_run"]["contract_validated"])
+        self.assertEqual(result["latest_llm_run"]["result_path"], ask_result["path"])
+        self.assertEqual(result["latest_llm_run"]["receipt_path"], ".aiwiki/logs/llm-receipts.jsonl")
+        self.assertEqual(result["latest_llm_run"]["log_path"], ".aiwiki/logs/runs.jsonl")
+        self.assertIn("./scripts/aiwiki-launcher.sh run-ask", result["latest_llm_run"]["recovery_command"])
+
+        self.assertEqual(result["llm_health"]["status"], "healthy")
+        self.assertEqual(result["llm_health"]["backend_requested"], "codex-cli")
+        self.assertEqual(result["llm_health"]["backend_effective"], "codex-cli")
+        self.assertEqual(result["llm_health"]["model_selected"], "stub-model")
+        self.assertEqual(result["llm_health"]["model_final"], "stub-model")
+        self.assertFalse(result["llm_health"]["route_drift"])
+        self.assertEqual(result["llm_health"]["result_path"], ask_result["path"])
+        self.assertEqual(result["llm_health"]["receipt_path"], ".aiwiki/logs/llm-receipts.jsonl")
+        self.assertEqual(result["llm_health"]["log_path"], ".aiwiki/logs/runs.jsonl")
+
+    def test_shell_status_marks_llm_route_drift_when_current_route_differs(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        report_markdown = "\n".join(
+            [
+                "---",
+                'id: "query-drift"',
+                'kind: "output"',
+                'format: "report"',
+                'query: "Check llm route drift"',
+                'generated_by: "aiwiki-ask"',
+                'created_at: "2026-04-05T00:00:00+00:00"',
+                "---",
+                "",
+                "# Check llm route drift",
+                "",
+                f"Grounded in `wiki/sources/{entry['id']}.md`.",
+            ]
+        )
+
+        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "codex-cli"}, clear=False):
+            run_ask(
+                self.root,
+                "Check llm route drift",
+                "report",
+                client=StubClient([report_markdown], backend="codex-cli", backend_requested="codex-cli"),
+            )
+
+        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "copilot-cli"}, clear=False):
+            with patch("aiwiki.config.shutil.which", side_effect=lambda name: "/usr/bin/copilot" if name == "copilot" else ""):
+                result = shell_status(self.root)
+
+        self.assertTrue(result["llm_health"]["route_drift"])
+        self.assertEqual(result["llm_health"]["status"], "unknown")
+        self.assertEqual(result["llm_health"]["backend"], "copilot-cli")
+        self.assertEqual(result["llm_health"]["backend_effective"], "codex-cli")
+        self.assertIn("Current route changed", result["llm_health"]["reason"])
+
     def test_shell_status_surfaces_recent_receipts_and_nightly_snapshot(self) -> None:
         entry = self._prepare_ready_archive_candidate()
         archive_result = apply_material_archive(self.root, entry["id"], note="Archive for shell summary.")
@@ -5244,6 +5527,13 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(state["llm_used"])
         self.assertEqual(state["semantic_report"], result["lint"]["semantic_report"])
         self.assertIn("语义 lint", backlog_path.read_text(encoding="utf-8"))
+        self.assertEqual(result["model_selected"], "stub-model")
+        self.assertEqual(result["model_final"], "stub-model")
+        self.assertTrue(result["contract_validated"])
+        llm_receipt = json.loads((self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl").read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertEqual(llm_receipt["event"], "run-nightly")
+        self.assertTrue(llm_receipt["llm_used"])
+        self.assertEqual(llm_receipt["model_selected"], "stub-model")
 
     def test_llm_status_requires_explicit_backend_selection(self) -> None:
         with patch.dict(os.environ, {}, clear=True):

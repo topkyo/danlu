@@ -133,7 +133,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(t("LLM model"))
-      .setDesc(t("Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = selected backend default strategy (`codex-cli`: `gpt-5.4`; `nvidia-nim-api`: `z-ai/glm-5.1 -> moonshotai/kimi-k2.5 -> minimaxai/minimax-m2.7`)."))
+      .setDesc(t("Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = selected backend default strategy (`codex-cli`: `gpt-5.4`; `nvidia-nim-api`: `moonshotai/kimi-k2.5 -> z-ai/glm-5.1 -> minimaxai/minimax-m2.7`)."))
       .addText((text) =>
         text
           .setPlaceholder("gpt-5.4 / z-ai/glm-5.1 / claude-sonnet-4.5")

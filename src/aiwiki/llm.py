@@ -681,6 +681,12 @@ def _classify_backend_error(message: str) -> str:
     return "error"
 
 
+def classify_backend_error(message: str) -> str:
+    """Expose stable backend error classification for shell-facing summaries."""
+
+    return _classify_backend_error(message)
+
+
 def _response_preview(text: str, limit: int = 120) -> str:
     compact = " ".join(text.split())
     if len(compact) <= limit:

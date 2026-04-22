@@ -44,6 +44,7 @@ from aiwiki.runner import (
     run_ask,
     run_compile,
     run_lint,
+    run_nightly,
 )
 
 
@@ -177,6 +178,42 @@ class RunnerTests(unittest.TestCase):
         create_client_mock.assert_called_once_with(self.root, timeout_seconds=33)
         self.assertEqual(result["timeout_seconds"], 33)
 
+    def test_run_ask_passes_no_cache_to_ask_question(self) -> None:
+        artifact_path = self.root / "output" / "reports" / "query-no-cache.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text("---\nid: query-no-cache\nkind: report\n---\n\n# Placeholder\n", encoding="utf-8")
+        artifact = {
+            "path": "output/reports/query-no-cache.md",
+            "format": "report",
+            "protocol": "general",
+            "ranked_sources": [],
+            "ranked_concepts": [],
+            "protocol_pages": [],
+            "index_pages": [],
+            "machine_memory_query": {},
+            "no_cache": True,
+        }
+
+        class _NoCacheClient:
+            def __init__(self) -> None:
+                self.config = type("Config", (), {"model": "gpt-5.4", "timeout_seconds": 120})()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                del user_prompt
+                return CompletionResult(
+                    text="---\nid: query-no-cache\nkind: report\n---\n\n# Answer\n\nNo cache.\n",
+                    response_id="resp_no_cache",
+                    usage={},
+                )
+
+        with patch("aiwiki.runner.ask_question", return_value=artifact) as ask_mock:
+            with patch("aiwiki.runner._build_ask_prompt", return_value="prompt"):
+                result = run_ask(self.root, "测试", "report", client=_NoCacheClient(), no_cache=True)
+
+        ask_mock.assert_called_once_with(self.root, "测试", "report", protocol=None, no_cache=True)
+        self.assertTrue(result["no_cache"])
+
     def test_llm_probe_returns_static_status_when_unconfigured(self) -> None:
         fake_status = {"configured": False, "message": "missing backend"}
         with patch("aiwiki.runner.LLMConfig.status_from_env", return_value=fake_status):
@@ -286,6 +323,10 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(result["path"], "output/reports/query-timeout.md")
         self.assertEqual(result["prompt_profile"], "lean")
         self.assertEqual(result["retry_prompt_profile"], "lean")
+        self.assertEqual(result["fallback_stage"], "prompt-profile")
+        self.assertEqual(result["model_selected"], "gpt-5.4")
+        self.assertEqual(result["model_final"], "gpt-5.4")
+        self.assertTrue(result["contract_validated"])
         self.assertEqual(client.prompts, ["balanced prompt", "lean prompt"])
         self.assertIn("# Answer", artifact_path.read_text(encoding="utf-8"))
 
@@ -347,8 +388,131 @@ class RunnerTests(unittest.TestCase):
 
         self.assertEqual(result["prompt_profile"], "balanced")
         self.assertEqual(result["retry_prompt_profile"], "")
+        self.assertEqual(result["backend_requested"], "nvidia-nim-api")
+        self.assertEqual(result["backend_effective"], "nvidia-nim-api")
+        self.assertEqual(result["model_selected"], "moonshotai/kimi-k2.5")
+        self.assertEqual(result["model_final"], "z-ai/glm-5.1")
+        self.assertEqual(result["fallback_stage"], "model-chain")
+        self.assertTrue(result["contract_validated"])
         self.assertEqual(client.config.model, "z-ai/glm-5.1")
         self.assertIn("# Answer", artifact_path.read_text(encoding="utf-8"))
+
+        llm_receipts_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
+        self.assertTrue(llm_receipts_path.exists())
+        receipt = json.loads(llm_receipts_path.read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertEqual(receipt["model_selected"], "moonshotai/kimi-k2.5")
+        self.assertEqual(receipt["model_final"], "z-ai/glm-5.1")
+        self.assertEqual(receipt["fallback_stage"], "model-chain")
+        self.assertTrue(receipt["contract_validated"])
+
+    def test_run_ask_failed_attempt_is_written_to_runs_log_and_llm_receipts(self) -> None:
+        artifact_path = self.root / "output" / "reports" / "query-failed-log.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text("---\nid: query-failed-log\nkind: output\n---\n\n# Placeholder\n", encoding="utf-8")
+        artifact = {
+            "path": "output/reports/query-failed-log.md",
+            "format": "report",
+            "protocol": "general",
+            "ranked_sources": ["source-1"],
+            "ranked_concepts": [],
+            "protocol_pages": [],
+            "index_pages": [],
+            "machine_memory_query": {},
+        }
+
+        class _FailingAskClient:
+            def __init__(self) -> None:
+                self.config = type(
+                    "Config",
+                    (),
+                    {"model": "moonshotai/kimi-k2.5", "backend": "nvidia-nim-api", "timeout_seconds": 120},
+                )()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                del user_prompt
+                return CompletionResult(
+                    text='--- id: "query-failed-log" kind: "output" format: "report" ---\n\nMissing real frontmatter.\nwiki/sources/source-1.md\n',
+                    response_id="resp_failed",
+                    usage={"prompt_tokens": 1},
+                )
+
+        with patch("aiwiki.runner.ask_question", return_value=artifact):
+            with patch("aiwiki.runner._build_ask_prompt", return_value="failing prompt"):
+                with self.assertRaises(RuntimeError) as ctx:
+                    run_ask(self.root, "测试", "report", client=_FailingAskClient())
+
+        self.assertIn("frontmatter", str(ctx.exception))
+
+        llm_receipts_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
+        self.assertTrue(llm_receipts_path.exists())
+        receipt = json.loads(llm_receipts_path.read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertEqual(receipt["status"], "failed")
+        self.assertEqual(receipt["backend_requested"], "nvidia-nim-api")
+        self.assertEqual(receipt["backend_effective"], "nvidia-nim-api")
+        self.assertEqual(receipt["model_selected"], "moonshotai/kimi-k2.5")
+        self.assertEqual(receipt["model_final"], "moonshotai/kimi-k2.5")
+        self.assertEqual(receipt["fallback_reason"], "Ask response is missing frontmatter.")
+        self.assertFalse(receipt["no_cache"])
+        self.assertFalse(receipt["contract_validated"])
+
+        runs_log_path = self.root / ".aiwiki" / "logs" / "runs.jsonl"
+        self.assertTrue(runs_log_path.exists())
+        run_log = json.loads(runs_log_path.read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertEqual(run_log["status"], "failed")
+        self.assertEqual(run_log["event"], "run-ask")
+        self.assertEqual(run_log["backend_requested"], "nvidia-nim-api")
+        self.assertEqual(run_log["backend_effective"], "nvidia-nim-api")
+        self.assertEqual(run_log["model_selected"], "moonshotai/kimi-k2.5")
+        self.assertEqual(run_log["model_final"], "moonshotai/kimi-k2.5")
+        self.assertEqual(run_log["fallback_reason"], "Ask response is missing frontmatter.")
+        self.assertFalse(run_log["contract_validated"])
+
+    def test_run_ask_failed_attempt_records_no_cache_flag(self) -> None:
+        artifact_path = self.root / "output" / "reports" / "query-failed-no-cache.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text("---\nid: query-failed-no-cache\nkind: output\n---\n\n# Placeholder\n", encoding="utf-8")
+        artifact = {
+            "path": "output/reports/query-failed-no-cache.md",
+            "format": "report",
+            "protocol": "general",
+            "ranked_sources": ["source-1"],
+            "ranked_concepts": [],
+            "protocol_pages": [],
+            "index_pages": [],
+            "machine_memory_query": {},
+            "no_cache": True,
+        }
+
+        class _FailingNoCacheAskClient:
+            def __init__(self) -> None:
+                self.config = type(
+                    "Config",
+                    (),
+                    {"model": "moonshotai/kimi-k2.5", "backend": "nvidia-nim-api", "timeout_seconds": 120},
+                )()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                del user_prompt
+                return CompletionResult(
+                    text='--- id: "query-failed-no-cache" kind: "output" format: "report" ---\n\nMissing real frontmatter.\nwiki/sources/source-1.md\n',
+                    response_id="resp_failed_no_cache",
+                    usage={"prompt_tokens": 1},
+                )
+
+        with patch("aiwiki.runner.ask_question", return_value=artifact):
+            with patch("aiwiki.runner._build_ask_prompt", return_value="failing prompt"):
+                with self.assertRaises(RuntimeError):
+                    run_ask(self.root, "测试", "report", client=_FailingNoCacheAskClient(), no_cache=True)
+
+        llm_receipts_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
+        receipt = json.loads(llm_receipts_path.read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertTrue(receipt["no_cache"])
+
+        runs_log_path = self.root / ".aiwiki" / "logs" / "runs.jsonl"
+        run_log = json.loads(runs_log_path.read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertTrue(run_log["no_cache"])
 
     def test_run_compile_limit_zero_reports_pending_source_and_concept_pages(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -376,6 +540,181 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(result["updated_pages"], [])
         self.assertEqual(result["updated_concept_pages"], [])
         self.assertIn(entry["id"], result["compile"]["clean_source_ids"] + result["compile"]["dirty_source_ids"])
+        self.assertEqual(result["backend_requested"], "")
+        self.assertEqual(result["model_selected"], "")
+        self.assertFalse(result["contract_validated"])
+
+        llm_receipts_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
+        self.assertTrue(llm_receipts_path.exists())
+        summary_receipt = json.loads(llm_receipts_path.read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertEqual(summary_receipt["event"], "run-compile-summary")
+        self.assertEqual(summary_receipt["status"], "success")
+        self.assertEqual(summary_receipt["prompt_profile"], "")
+        self.assertEqual(summary_receipt["retry_prompt_profile"], "")
+
+    def test_run_compile_records_audit_fields_for_success_and_summary(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        updated = source_page.read_text(encoding="utf-8").replace(
+            "- Pending LLM summary.",
+            "- Transformers benefit from scale, but cost rises with inference demand.",
+        )
+
+        class _CompileFallbackClient:
+            def __init__(self) -> None:
+                self.models = ["moonshotai/kimi-k2.5", "z-ai/glm-5.1"]
+                self.index = 0
+                self.config = type("Config", (), {"model": self.models[self.index], "backend": "nvidia-nim-api"})()
+
+            def advance_model(self) -> bool:
+                if self.index >= len(self.models) - 1:
+                    return False
+                self.index += 1
+                self.config = type("Config", (), {"model": self.models[self.index], "backend": "nvidia-nim-api"})()
+                return True
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                del user_prompt
+                if self.config.model == "moonshotai/kimi-k2.5":
+                    return CompletionResult(text="# not a source page\n", response_id="resp-bad", usage={"prompt_tokens": 1})
+                return CompletionResult(text=updated, response_id="resp-good", usage={"prompt_tokens": 2})
+
+        result = run_compile(self.root, client=_CompileFallbackClient(), limit=1)
+
+        self.assertEqual(result["backend_requested"], "nvidia-nim-api")
+        self.assertEqual(result["backend_effective"], "nvidia-nim-api")
+        self.assertEqual(result["model_selected"], "moonshotai/kimi-k2.5")
+        self.assertEqual(result["model_final"], "z-ai/glm-5.1")
+        self.assertEqual(result["fallback_stage"], "model-chain")
+        self.assertTrue(result["contract_validated"])
+
+        llm_receipts_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
+        receipts = [json.loads(line) for line in llm_receipts_path.read_text(encoding="utf-8").splitlines()]
+        item_receipt = next(receipt for receipt in receipts if receipt["event"] == "run-compile")
+        summary_receipt = receipts[-1]
+        self.assertEqual(item_receipt["model_selected"], "moonshotai/kimi-k2.5")
+        self.assertEqual(item_receipt["model_final"], "z-ai/glm-5.1")
+        self.assertEqual(item_receipt["fallback_stage"], "model-chain")
+        self.assertTrue(item_receipt["contract_validated"])
+        self.assertEqual(summary_receipt["event"], "run-compile-summary")
+        self.assertEqual(summary_receipt["model_selected"], "moonshotai/kimi-k2.5")
+        self.assertEqual(summary_receipt["model_final"], "z-ai/glm-5.1")
+        self.assertEqual(summary_receipt["fallback_stage"], "model-chain")
+        self.assertTrue(summary_receipt["contract_validated"])
+
+    def test_run_compile_failed_attempt_is_written_to_runs_log_and_llm_receipts(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        current = source_page.read_text(encoding="utf-8")
+
+        class _FailingCompileClient:
+            def __init__(self) -> None:
+                self.config = type("Config", (), {"model": "moonshotai/kimi-k2.5", "backend": "nvidia-nim-api"})()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                del user_prompt
+                return CompletionResult(text=current, response_id="resp-failed", usage={"prompt_tokens": 1})
+
+        with self.assertRaisesRegex(RuntimeError, "placeholder state"):
+            run_compile(self.root, client=_FailingCompileClient(), limit=1)
+
+        llm_receipts_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
+        receipts = [json.loads(line) for line in llm_receipts_path.read_text(encoding="utf-8").splitlines()]
+        item_receipt = next(receipt for receipt in receipts if receipt["event"] == "run-compile")
+        summary_receipt = receipts[-1]
+        self.assertEqual(item_receipt["status"], "failed")
+        self.assertEqual(item_receipt["backend_requested"], "nvidia-nim-api")
+        self.assertEqual(item_receipt["model_selected"], "moonshotai/kimi-k2.5")
+        self.assertEqual(item_receipt["model_final"], "moonshotai/kimi-k2.5")
+        self.assertFalse(item_receipt["contract_validated"])
+        self.assertEqual(summary_receipt["event"], "run-compile-summary")
+        self.assertEqual(summary_receipt["status"], "failed")
+        self.assertFalse(summary_receipt["contract_validated"])
+
+        runs_log_path = self.root / ".aiwiki" / "logs" / "runs.jsonl"
+        run_log = json.loads(runs_log_path.read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertEqual(run_log["event"], "run-compile-summary")
+        self.assertEqual(run_log["status"], "failed")
+        self.assertEqual(run_log["backend_requested"], "nvidia-nim-api")
+        self.assertEqual(run_log["model_selected"], "moonshotai/kimi-k2.5")
+        self.assertFalse(run_log["contract_validated"])
+
+    def test_run_lint_records_audit_fields_and_summary(self) -> None:
+        class _LintFallbackClient:
+            def __init__(self) -> None:
+                self.models = ["moonshotai/kimi-k2.5", "z-ai/glm-5.1"]
+                self.index = 0
+                self.config = type("Config", (), {"model": self.models[self.index], "backend": "nvidia-nim-api"})()
+
+            def advance_model(self) -> bool:
+                if self.index >= len(self.models) - 1:
+                    return False
+                self.index += 1
+                self.config = type("Config", (), {"model": self.models[self.index], "backend": "nvidia-nim-api"})()
+                return True
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                del user_prompt
+                if self.config.model == "moonshotai/kimi-k2.5":
+                    return CompletionResult(text="not markdown enough", response_id="resp-bad", usage={})
+                return CompletionResult(text="# Semantic Lint Report\n\n- No semantic contradictions detected.\n", response_id="resp-good", usage={})
+
+        result = run_lint(self.root, client=_LintFallbackClient())
+
+        self.assertEqual(result["backend_requested"], "nvidia-nim-api")
+        self.assertEqual(result["backend_effective"], "nvidia-nim-api")
+        self.assertEqual(result["model_selected"], "moonshotai/kimi-k2.5")
+        self.assertEqual(result["model_final"], "z-ai/glm-5.1")
+        self.assertEqual(result["fallback_stage"], "model-chain")
+        self.assertTrue(result["contract_validated"])
+
+        llm_receipts_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
+        receipt = json.loads(llm_receipts_path.read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertEqual(receipt["event"], "run-lint")
+        self.assertEqual(receipt["model_selected"], "moonshotai/kimi-k2.5")
+        self.assertEqual(receipt["model_final"], "z-ai/glm-5.1")
+        self.assertEqual(receipt["fallback_stage"], "model-chain")
+
+    def test_run_nightly_returns_top_level_audit_summary(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        updated_source = source_page.read_text(encoding="utf-8").replace(
+            "- Pending LLM summary.",
+            "- Transformer scale improves capability and raises compute demand.",
+        )
+        semantic_lint = "# Semantic Lint Report\n\n- Review placeholder concept summaries next.\n"
+
+        result = run_nightly(self.root, client=type(
+            "NightlyClient",
+            (),
+            {
+                "__init__": lambda self: setattr(self, "config", type("Config", (), {"model": "stub-model", "backend": "codex-cli"})()),
+                "complete": lambda self, system_prompt, user_prompt: CompletionResult(
+                    text=updated_source if "Replace file:" in user_prompt else semantic_lint,
+                    response_id="resp-nightly",
+                    usage={},
+                ),
+            },
+        )(), compile_limit=1)
+
+        self.assertEqual(result["backend_requested"], "codex-cli")
+        self.assertEqual(result["backend_effective"], "codex-cli")
+        self.assertEqual(result["model_selected"], "stub-model")
+        self.assertEqual(result["model_final"], "stub-model")
+        self.assertTrue(result["llm_used"])
+        self.assertTrue(result["contract_validated"])
+
+        llm_receipts_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
+        receipt = json.loads(llm_receipts_path.read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertEqual(receipt["event"], "run-nightly")
+        self.assertTrue(receipt["llm_used"])
+        self.assertEqual(receipt["compile_prompt_profile"], "balanced")
 
     def test_prompt_helpers_include_schema_protocol_and_quality_signals(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -598,6 +937,8 @@ class RunnerTests(unittest.TestCase):
         _append_log(self.root, {"event": "runner-test"})
         log_path = self.root / ".aiwiki" / "logs" / "runs.jsonl"
         self.assertTrue(log_path.exists())
+        llm_receipt_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
+        self.assertFalse(llm_receipt_path.exists())
         _write_automation_state(self.root, {"status": "ok"})
         state_path = self.root / ".aiwiki" / "state" / "automation.json"
         self.assertEqual(json.loads(state_path.read_text(encoding="utf-8"))["status"], "ok")

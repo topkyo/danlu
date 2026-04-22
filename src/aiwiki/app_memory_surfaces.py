@@ -18,6 +18,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from .app_cache import (
+    load_cached_query_result,
+    load_query_cache_snapshot,
+    query_cache_key,
+    query_cache_memory_hash,
+    record_query_cache_event,
+    save_cached_query_result,
+)
 from .app_content import (
     action_needs_review,
     action_priority_rank,
@@ -858,7 +866,35 @@ def _route_anchor_candidates(scores: dict[str, int], prefix: str, limit: int) ->
     return [f"{prefix}:{item_id}" for item_id, _score in sorted(scores.items(), key=lambda item: (-item[1], item[0]))[:limit]]
 
 
-def build_machine_memory_query(
+def _machine_memory_query_payload_hash(
+    *,
+    memory: dict[str, Any],
+    question: str,
+    protocol: str,
+    material_state: dict[str, Any],
+    routing_state: dict[str, Any],
+    archive_candidates: dict[str, Any],
+) -> str:
+    payload = {
+        "compiled_at": str(memory.get("compiled_at") or ""),
+        "question": question,
+        "protocol": protocol,
+        "memory_digest": str(memory.get("digest") or ""),
+        "memory_graph_digest": str(memory.get("graph_digest") or ""),
+        "memory_source_count": len(memory.get("source_nodes", [])),
+        "memory_concept_count": len(memory.get("concept_nodes", [])),
+        "memory_judgment_count": len(memory.get("judgment_nodes", [])),
+        "material_generated_at": str(material_state.get("generated_at") or ""),
+        "material_entries": material_state.get("entries", []),
+        "routing_computed_at": str(routing_state.get("computed_at") or ""),
+        "routing_entries": routing_state.get("entries", []),
+        "archive_generated_at": str(archive_candidates.get("generated_at") or ""),
+        "archive_entries": archive_candidates.get("entries", []),
+    }
+    return f"sha256:{sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8'))}"
+
+
+def _build_machine_memory_query_json(
     memory: dict[str, Any],
     question: str,
     *,
@@ -1225,6 +1261,97 @@ def build_machine_memory_query(
             "edges": query_subgraph_edges,
         },
     }
+
+
+def build_machine_memory_query(
+    memory: dict[str, Any],
+    question: str,
+    *,
+    root: Path | None = None,
+    protocol: str = DEFAULT_PROTOCOL,
+    material_state: dict[str, Any] | None = None,
+    routing_state: dict[str, Any] | None = None,
+    archive_candidates: dict[str, Any] | None = None,
+    no_cache: bool = False,
+) -> dict[str, Any]:
+    material_state = material_state or {"entries": []}
+    routing_state = routing_state or {"entries": []}
+    archive_candidates = archive_candidates or {"entries": []}
+    payload_hash = _machine_memory_query_payload_hash(
+        memory=memory,
+        question=question,
+        protocol=protocol,
+        material_state=material_state,
+        routing_state=routing_state,
+        archive_candidates=archive_candidates,
+    )
+    query_key = query_cache_key(question=question, protocol=protocol)
+    if root is not None and no_cache:
+        record_query_cache_event(
+            root,
+            hit=False,
+            bypass=True,
+            query_key=query_key,
+            payload_hash=payload_hash,
+            reason="no-cache",
+        )
+    if root is not None and not no_cache:
+        cached_result = load_cached_query_result(root, query_key, payload_hash)
+        if cached_result is not None:
+            record_query_cache_event(
+                root,
+                hit=True,
+                query_key=query_key,
+                payload_hash=payload_hash,
+                reason="query-result",
+            )
+            return cached_result
+        snapshot = load_query_cache_snapshot(root)
+        if snapshot is not None:
+            cached_memory = snapshot.get("memory")
+            cached_memory_hash = str(snapshot.get("memory_hash") or "")
+            if (
+                isinstance(cached_memory, dict)
+                and cached_memory_hash == query_cache_memory_hash(memory)
+            ):
+                result = _build_machine_memory_query_json(
+                    cached_memory,
+                    question,
+                    root=root,
+                    protocol=protocol,
+                    material_state=material_state,
+                    routing_state=routing_state,
+                    archive_candidates=archive_candidates,
+                )
+                save_cached_query_result(root, query_key, payload_hash, result)
+                record_query_cache_event(
+                    root,
+                    hit=False,
+                    query_key=query_key,
+                    payload_hash=payload_hash,
+                    reason="snapshot-rebuild",
+                )
+                return result
+
+    result = _build_machine_memory_query_json(
+        memory,
+        question,
+        root=root,
+        protocol=protocol,
+        material_state=material_state,
+        routing_state=routing_state,
+        archive_candidates=archive_candidates,
+    )
+    if root is not None and not no_cache:
+        save_cached_query_result(root, query_key, payload_hash, result)
+        record_query_cache_event(
+            root,
+            hit=False,
+            query_key=query_key,
+            payload_hash=payload_hash,
+            reason="json-fallback",
+        )
+    return result
 
 
 def record_query_route_telemetry(

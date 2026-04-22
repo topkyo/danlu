@@ -370,6 +370,27 @@ function renderStatusPanel(plugin, container) {
     text: plugin.t(llmHealth.reason || "No recent LLM health check yet."),
   });
   const healthActions = [];
+  if (llmHealth.recoveryCommand) {
+    healthActions.push({
+      label: "Copy command",
+      kind: "ghost",
+      onClick: async () => plugin.copyText(llmHealth.recoveryCommand),
+    });
+  }
+  if (llmHealth.resultPath) {
+    healthActions.push({
+      label: "Copy result path",
+      kind: "ghost",
+      onClick: async () => plugin.copyText(llmHealth.resultPath),
+    });
+  }
+  if (llmHealth.receiptPath) {
+    healthActions.push({
+      label: "Copy receipt path",
+      kind: "ghost",
+      onClick: async () => plugin.copyText(llmHealth.receiptPath),
+    });
+  }
   if (llmHealth.stderrRaw || llmHealth.stderrSummary) {
     healthActions.push({
       label: "Copy stderr",
@@ -739,6 +760,9 @@ function renderRunDetail(plugin, container, record, options = {}) {
   if (record.model) {
     contextParts.push(plugin.t("model {value}", { value: record.model }));
   }
+  if (!compact && record.modelSelected && record.modelFinal && record.modelSelected !== record.modelFinal) {
+    contextParts.push(`${plugin.t("selected")} ${record.modelSelected} -> ${plugin.t("final")} ${record.modelFinal}`);
+  }
   if (contextParts.length) {
     detail.createDiv({ cls: "furnace-shell-meta", text: contextParts.join(" | ") });
   }
@@ -753,6 +777,9 @@ function renderRunDetail(plugin, container, record, options = {}) {
     }
     if (record.retryPromptProfile) {
       diagnosticParts.push(plugin.t("retry {value}", { value: record.retryPromptProfile }));
+    }
+    if (record.fallbackStage) {
+      diagnosticParts.push(plugin.t("fallback {value}", { value: record.fallbackStage }));
     }
     if (diagnosticParts.length) {
       detail.createDiv({ cls: "furnace-shell-meta", text: diagnosticParts.join(" | ") });

@@ -18,7 +18,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from .app_compile import file_back
 from .app_content import (
     _validate_rewrite_candidate_markdown,
     action_needs_review,
@@ -403,6 +402,8 @@ def render_protocols_dashboard(
 
 @runtime_write_operation
 def promote_recurring_outputs(root: Path) -> dict[str, Any]:
+    from . import app_compile as compile_facade
+
     ensure_layout(root)
     groups: dict[tuple[str, str], list[dict[str, str]]] = {}
     for artifact in collect_output_artifacts(root):
@@ -421,7 +422,7 @@ def promote_recurring_outputs(root: Path) -> dict[str, Any]:
             continue
         existing = find_promoted_curated_page(root, kind, query_signature, protocol)
         if existing is None:
-            result = file_back(
+            result = compile_facade.file_back(
                 root,
                 artifacts[-1]["path"],
                 title=f"{kind}-{query_signature}",

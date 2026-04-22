@@ -40,6 +40,14 @@ def machine_memory_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "machine-memory.json"
 
 
+def cache_db_path(root: Path) -> Path:
+    return root / ".aiwiki" / "cache.db"
+
+
+def cache_status_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "cache-status.json"
+
+
 def machine_memory_graph_path(root: Path) -> Path:
     return root / ".aiwiki" / "cache" / "machine-memory-graph.json"
 
@@ -122,6 +130,14 @@ def domain_pilots_path(root: Path) -> Path:
 
 def execution_receipt_history_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "execution-receipts.jsonl"
+
+
+def run_log_path(root: Path) -> Path:
+    return root / ".aiwiki" / "logs" / "runs.jsonl"
+
+
+def llm_receipt_log_path(root: Path) -> Path:
+    return root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
 
 
 def execution_batch_receipt_path(root: Path, batch_id: str) -> Path:
@@ -317,6 +333,29 @@ def default_compile_state() -> dict[str, Any]:
     }
 
 
+def default_cache_status() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "enabled": False,
+        "schema_version": 0,
+        "updated_at": "",
+        "db_path": "",
+        "state_path": "",
+        "row_counts": {},
+        "stats": {
+            "query_hits": 0,
+            "query_misses": 0,
+            "query_bypasses": 0,
+            "compile_syncs": 0,
+            "rebuilds": 0,
+            "drops": 0,
+        },
+        "last_sync": {},
+        "last_query": {},
+        "last_drop": {},
+    }
+
+
 def load_compile_state(root: Path) -> dict[str, Any]:
     document = load_json_document(compile_state_path(root))
     if not isinstance(document, dict):
@@ -418,6 +457,45 @@ def load_compile_state(root: Path) -> dict[str, Any]:
 
 def save_compile_state(root: Path, document: dict[str, Any]) -> None:
     save_json_document(compile_state_path(root), document)
+
+
+def load_cache_status(root: Path) -> dict[str, Any]:
+    document = load_json_document(cache_status_path(root))
+    if not isinstance(document, dict):
+        return default_cache_status()
+    row_counts = document.get("row_counts")
+    stats = document.get("stats")
+    last_sync = document.get("last_sync")
+    last_query = document.get("last_query")
+    last_drop = document.get("last_drop")
+    if not isinstance(row_counts, dict) or not isinstance(stats, dict):
+        return default_cache_status()
+    if not isinstance(last_sync, dict) or not isinstance(last_query, dict) or not isinstance(last_drop, dict):
+        return default_cache_status()
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "enabled": bool(document.get("enabled", False)),
+        "schema_version": int(document.get("schema_version", 0) or 0),
+        "updated_at": str(document.get("updated_at") or ""),
+        "db_path": str(document.get("db_path") or relative_path(root, cache_db_path(root))),
+        "state_path": str(document.get("state_path") or relative_path(root, cache_status_path(root))),
+        "row_counts": {str(key): int(value or 0) for key, value in row_counts.items()},
+        "stats": {
+            "query_hits": int(stats.get("query_hits", 0) or 0),
+            "query_misses": int(stats.get("query_misses", 0) or 0),
+            "query_bypasses": int(stats.get("query_bypasses", 0) or 0),
+            "compile_syncs": int(stats.get("compile_syncs", 0) or 0),
+            "rebuilds": int(stats.get("rebuilds", 0) or 0),
+            "drops": int(stats.get("drops", 0) or 0),
+        },
+        "last_sync": dict(last_sync),
+        "last_query": dict(last_query),
+        "last_drop": dict(last_drop),
+    }
+
+
+def save_cache_status(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(cache_status_path(root), document)
 
 
 def default_concept_build_state() -> dict[str, Any]:
@@ -695,6 +773,14 @@ def save_active_corpora_state(root: Path, document: dict[str, Any]) -> None:
 
 def load_runtime_history(root: Path) -> list[dict[str, Any]]:
     return load_jsonl_documents(runtime_history_path(root))
+
+
+def load_run_log_history(root: Path) -> list[dict[str, Any]]:
+    return load_jsonl_documents(run_log_path(root))
+
+
+def load_llm_receipt_history(root: Path) -> list[dict[str, Any]]:
+    return load_jsonl_documents(llm_receipt_log_path(root))
 
 
 def append_runtime_history(root: Path, event: dict[str, Any]) -> None:

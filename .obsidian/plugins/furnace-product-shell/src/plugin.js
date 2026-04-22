@@ -295,10 +295,17 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           command: String(record.command || (Array.isArray(record.argv) && record.argv.length ? record.argv[0] : "")),
           protocol: String(record.protocol || ""),
           backend: String(record.backend || ""),
+          backendRequested: String(record.backendRequested || ""),
+          backendEffective: String(record.backendEffective || ""),
           model: String(record.model || ""),
+          modelSelected: String(record.modelSelected || ""),
+          modelFinal: String(record.modelFinal || ""),
           codexReasoningEffort: String(record.codexReasoningEffort || ""),
           promptProfile: String(record.promptProfile || ""),
           retryPromptProfile: String(record.retryPromptProfile || ""),
+          fallbackStage: String(record.fallbackStage || ""),
+          fallbackReason: String(record.fallbackReason || ""),
+          contractValidated: Boolean(record.contractValidated),
           rewriteProposalPaths: this.normalizeRelativePathList(record.rewriteProposalPaths),
           rewriteProposalSlugs: this.normalizeRelativePathList(record.rewriteProposalSlugs),
           fallbackFrom: String(record.fallbackFrom || ""),
@@ -357,16 +364,28 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return {
       status,
       backend: String(value.backend || "").trim(),
+      backendRequested: String(value.backendRequested || value.backend_requested || "").trim(),
+      backendEffective: String(value.backendEffective || value.backend_effective || "").trim(),
       model: String(value.model || "").trim(),
+      modelSelected: String(value.modelSelected || value.model_selected || "").trim(),
+      modelFinal: String(value.modelFinal || value.model_final || "").trim(),
       reason: String(value.reason || "").trim(),
-      checkedAt: String(value.checkedAt || "").trim(),
+      checkedAt: String(value.checkedAt || value.checked_at || "").trim(),
       source: String(value.source || "").trim(),
-      fallbackCommand: String(value.fallbackCommand || "").trim(),
-      logPath: String(value.logPath || "").trim(),
-      resultPath: String(value.resultPath || "").trim(),
-      receiptPath: String(value.receiptPath || "").trim(),
-      stderrSummary: String(value.stderrSummary || "").trim(),
-      stderrRaw: this.trimDiagnosticText(value.stderrRaw || ""),
+      fallbackCommand: String(value.fallbackCommand || value.fallback_command || "").trim(),
+      fallbackStage: String(value.fallbackStage || value.fallback_stage || "").trim(),
+      fallbackReason: String(value.fallbackReason || value.fallback_reason || "").trim(),
+      contractValidated: Object.prototype.hasOwnProperty.call(value, "contractValidated")
+        ? Boolean(value.contractValidated)
+        : Boolean(value.contract_validated),
+      recoveryCommand: String(value.recoveryCommand || value.recovery_command || "").trim(),
+      routeDrift: Boolean(value.routeDrift || value.route_drift),
+      routeDriftReason: String(value.routeDriftReason || value.route_drift_reason || "").trim(),
+      logPath: String(value.logPath || value.log_path || "").trim(),
+      resultPath: String(value.resultPath || value.result_path || "").trim(),
+      receiptPath: String(value.receiptPath || value.receipt_path || "").trim(),
+      stderrSummary: String(value.stderrSummary || value.stderr_summary || "").trim(),
+      stderrRaw: this.trimDiagnosticText(value.stderrRaw || value.stderr_raw || ""),
     };
   }
 
@@ -389,10 +408,17 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         return this.normalizeLlmHealthState({
           status: "healthy",
           backend: record.backend,
-          model: record.model,
+          backendRequested: record.backendRequested,
+          backendEffective: record.backendEffective,
+          model: record.modelFinal || record.model,
+          modelSelected: record.modelSelected,
+          modelFinal: record.modelFinal,
           reason: "Recent run-ask succeeded.",
           checkedAt: record.finishedAt || record.startedAt,
           source: command,
+          fallbackStage: record.fallbackStage,
+          fallbackReason: record.fallbackReason,
+          contractValidated: record.contractValidated,
           logPath: record.logPath,
           resultPath: record.resultPath,
           receiptPath: record.receiptPath,
@@ -402,11 +428,18 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         return this.normalizeLlmHealthState({
           status: "degraded",
           backend: record.backend,
-          model: record.model,
+          backendRequested: record.backendRequested,
+          backendEffective: record.backendEffective,
+          model: record.modelFinal || record.model,
+          modelSelected: record.modelSelected,
+          modelFinal: record.modelFinal,
           reason: record.errorSummary || record.stderrSummary || "Recent run-ask fell back to deterministic ask.",
           checkedAt: record.finishedAt || record.startedAt,
           source: command,
           fallbackCommand: "ask",
+          fallbackStage: record.fallbackStage,
+          fallbackReason: record.fallbackReason,
+          contractValidated: record.contractValidated,
           logPath: record.logPath,
           stderrSummary: record.stderrSummary,
           stderrRaw: record.stderrRaw,
@@ -416,11 +449,18 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         return this.normalizeLlmHealthState({
           status: "degraded",
           backend: record.backend,
-          model: record.model,
+          backendRequested: record.backendRequested,
+          backendEffective: record.backendEffective,
+          model: record.modelFinal || record.model,
+          modelSelected: record.modelSelected,
+          modelFinal: record.modelFinal,
           reason: "Recent run-ask fell back to deterministic ask.",
           checkedAt: record.finishedAt || record.startedAt,
           source: "run-ask",
           fallbackCommand: command,
+          fallbackStage: record.fallbackStage,
+          fallbackReason: record.fallbackReason,
+          contractValidated: record.contractValidated,
           logPath: record.logPath,
           resultPath: record.resultPath,
         });
@@ -431,10 +471,24 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   currentLlmHealth() {
     const llmStatus = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary.llm_status || {} : {};
+    const summaryHealth = this.shellSummary && typeof this.shellSummary === "object"
+      ? this.normalizeLlmHealthState(this.shellSummary.llm_health)
+      : null;
     const selected = this.currentLlmSelection();
     const persisted = this.normalizeLlmHealthState(this.pluginState.llmHealth);
     const inferred = this.inferLlmHealthFromRecentRuns(this.pluginState.recentRuns);
-    let health = inferred || persisted || {
+    const localHealth = inferred || persisted || null;
+    let health = summaryHealth
+      ? {
+        ...(localHealth || {}),
+        ...summaryHealth,
+        fallbackCommand: summaryHealth.fallbackCommand || (localHealth && localHealth.fallbackCommand) || "",
+        resultPath: summaryHealth.resultPath || (localHealth && localHealth.resultPath) || "",
+        receiptPath: summaryHealth.receiptPath || (localHealth && localHealth.receiptPath) || "",
+        stderrSummary: summaryHealth.stderrSummary || (localHealth && localHealth.stderrSummary) || "",
+        stderrRaw: summaryHealth.stderrRaw || (localHealth && localHealth.stderrRaw) || "",
+      }
+      : localHealth || {
       status: "unknown",
       backend: selected.backend || String(llmStatus.backend || ""),
       model: selected.model || String(llmStatus.effective_model || llmStatus.model || ""),
@@ -448,7 +502,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       stderrSummary: "",
       stderrRaw: "",
     };
-    if (health.backend && selected.backend && health.backend !== selected.backend) {
+    if (!summaryHealth && health.backend && selected.backend && health.backend !== selected.backend) {
       health = {
         ...health,
         status: "unknown",
@@ -466,6 +520,20 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   latestLlmRun() {
+    if (this.shellSummary && typeof this.shellSummary === "object" && this.shellSummary.latest_llm_run && typeof this.shellSummary.latest_llm_run === "object") {
+      const summaryRun = this.shellSummary.latest_llm_run;
+      return {
+        ...summaryRun,
+        command: String(summaryRun.command || summaryRun.event || "").trim(),
+        backend: String(summaryRun.backend || summaryRun.backend_effective || summaryRun.backend_requested || "").trim(),
+        model: String(summaryRun.model || summaryRun.model_final || summaryRun.model_selected || "").trim(),
+        resultPath: String(summaryRun.resultPath || summaryRun.result_path || "").trim(),
+        receiptPath: String(summaryRun.receiptPath || summaryRun.receipt_path || "").trim(),
+        logPath: String(summaryRun.logPath || summaryRun.log_path || "").trim(),
+        errorSummary: String(summaryRun.errorSummary || summaryRun.error || summaryRun.fallback_reason || "").trim(),
+        fallbackFrom: String(summaryRun.fallbackFrom || "").trim(),
+      };
+    }
     return this.pluginState.recentRuns.find((record) => this.isLlmRelevantRecord(record)) || null;
   }
 
@@ -653,11 +721,18 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.updateLlmHealth({
       status: overrides.status || "unknown",
       backend: overrides.backend || record.backend,
-      model: overrides.model || record.model,
+      backendRequested: overrides.backendRequested || record.backendRequested || "",
+      backendEffective: overrides.backendEffective || record.backendEffective || record.backend || "",
+      model: overrides.model || record.modelFinal || record.model,
+      modelSelected: overrides.modelSelected || record.modelSelected || "",
+      modelFinal: overrides.modelFinal || record.modelFinal || record.model || "",
       reason: overrides.reason || record.errorSummary || "",
       checkedAt: overrides.checkedAt || record.finishedAt || record.startedAt || new Date().toISOString(),
       source: overrides.source || record.command || "",
       fallbackCommand: overrides.fallbackCommand || record.fallbackFrom || "",
+      fallbackStage: overrides.fallbackStage || record.fallbackStage || "",
+      fallbackReason: overrides.fallbackReason || record.fallbackReason || "",
+      contractValidated: Object.prototype.hasOwnProperty.call(overrides, "contractValidated") ? Boolean(overrides.contractValidated) : Boolean(record.contractValidated),
       logPath: overrides.logPath || record.logPath || "",
       resultPath: overrides.resultPath || record.resultPath || "",
       receiptPath: overrides.receiptPath || record.receiptPath || "",
@@ -1458,10 +1533,17 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       `- ${this.t("Status")}: ${this.t(record.status || "unknown")}`,
       `- ${this.t("Protocol")}: ${record.protocol ? this.t(record.protocol) : this.t("unknown")}`,
       `- ${this.t("LLM Backend")}: ${record.backend || this.t("unconfigured")}`,
+      `- backend requested: ${record.backendRequested || "-"}`,
+      `- backend effective: ${record.backendEffective || record.backend || "-"}`,
       `- ${this.t("LLM Model")}: ${record.model || this.t("default")}`,
+      `- model selected: ${record.modelSelected || "-"}`,
+      `- model final: ${record.modelFinal || record.model || "-"}`,
       `- ${this.t("Codex effort")}: ${record.codexReasoningEffort || "-"}`,
       `- ${this.t("Prompt profile")}: ${record.promptProfile || "-"}`,
       `- ${this.t("Retry prompt")}: ${record.retryPromptProfile || "-"}`,
+      `- fallback stage: ${record.fallbackStage || "-"}`,
+      `- fallback reason: ${record.fallbackReason || "-"}`,
+      `- contract validated: ${record.contractValidated ? "yes" : "no"}`,
       `- ${this.t("Working directory")}: ${this.repoState.root || "."}`,
       `- ${this.t("Arguments")}: ${record.args || record.command || ""}`,
       `- ${this.t("Fallback from")}: ${record.fallbackFrom || "-"}`,
@@ -1582,10 +1664,17 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       finishedAt: "",
       protocol,
       backend: llm.backend,
+      backendRequested: llm.backend,
+      backendEffective: llm.backend,
       model: llm.model,
+      modelSelected: llm.model,
+      modelFinal: llm.model,
       codexReasoningEffort: llm.codexReasoningEffort || "",
       promptProfile: "",
       retryPromptProfile: "",
+      fallbackStage: "",
+      fallbackReason: "",
+      contractValidated: false,
       rewriteProposalPaths: [],
       rewriteProposalSlugs: [],
       stdoutSummary: "",
@@ -1679,12 +1768,27 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         status: "success",
         finishedAt: new Date().toISOString(),
         exitCode: 0,
-        backend: llm.backend || record.backend,
-        model: llm.model || record.model,
+        backend: result.payload && typeof result.payload.backend_effective === "string" ? result.payload.backend_effective : (llm.backend || record.backend),
+        backendRequested:
+          result.payload && typeof result.payload.backend_requested === "string" ? result.payload.backend_requested : (record.backendRequested || llm.backend || record.backend),
+        backendEffective:
+          result.payload && typeof result.payload.backend_effective === "string" ? result.payload.backend_effective : (llm.backend || record.backend),
+        model:
+          result.payload && typeof result.payload.model_final === "string" ? result.payload.model_final : (llm.model || record.model),
+        modelSelected:
+          result.payload && typeof result.payload.model_selected === "string" ? result.payload.model_selected : (record.modelSelected || llm.model || record.model),
+        modelFinal:
+          result.payload && typeof result.payload.model_final === "string" ? result.payload.model_final : (llm.model || record.model),
         codexReasoningEffort: llm.codexReasoningEffort || record.codexReasoningEffort,
         promptProfile: result.payload && typeof result.payload.prompt_profile === "string" ? result.payload.prompt_profile : record.promptProfile,
         retryPromptProfile:
           result.payload && typeof result.payload.retry_prompt_profile === "string" ? result.payload.retry_prompt_profile : record.retryPromptProfile,
+        fallbackStage: result.payload && typeof result.payload.fallback_stage === "string" ? result.payload.fallback_stage : record.fallbackStage,
+        fallbackReason: result.payload && typeof result.payload.fallback_reason === "string" ? result.payload.fallback_reason : record.fallbackReason,
+        contractValidated:
+          result.payload && Object.prototype.hasOwnProperty.call(result.payload, "contract_validated")
+            ? Boolean(result.payload.contract_validated)
+            : record.contractValidated,
         rewriteProposalPaths,
         rewriteProposalSlugs,
         stdoutSummary: truncateText(result.stdout),
@@ -1699,6 +1803,13 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           status: "healthy",
           reason: "Recent run-ask succeeded.",
           source: "run-ask",
+          backendRequested: record.backendRequested,
+          backendEffective: record.backendEffective,
+          modelSelected: record.modelSelected,
+          modelFinal: record.modelFinal,
+          fallbackStage: record.fallbackStage,
+          fallbackReason: record.fallbackReason,
+          contractValidated: record.contractValidated,
         });
       }
       this.persistRunLog(record, { stdoutRaw: result.stdout, stderrRaw: result.stderr });
@@ -1724,6 +1835,13 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           reason: truncateText(error.message || error.stderr || error.stdout || "LLM backend unavailable", 240),
           source: "run-ask",
           fallbackCommand: "ask",
+          backendRequested: record.backendRequested,
+          backendEffective: record.backendEffective,
+          modelSelected: record.modelSelected,
+          modelFinal: record.modelFinal,
+          fallbackStage: record.fallbackStage,
+          fallbackReason: record.fallbackReason,
+          contractValidated: record.contractValidated,
           stderrSummary: truncateText(error.stderr || ""),
           stderrRaw: this.trimDiagnosticText(error.stderr || error.stdout || ""),
         });

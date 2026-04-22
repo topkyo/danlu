@@ -1,9 +1,9 @@
 # 炼丹炉 (aiwiki) 下一代架构演进与优化设计
 
-**文档状态**: 提议 (Draft, Review v3)
+**文档状态**: 提议 (Draft, Review v6)
 **作者**: 架构师 (AI)
 **目标系统**: `aiwiki` 本地优先知识复利操作系统
-**修订说明**: 本版在 v2 基础上继续修正 6 个高优先级问题：保留显式 backend 选择、把 `serve` 收口为插件专用 local control plane、明确 compile/execution owner 边界、按现有 CLI 语义重写 API 形状、补齐 `cache.db` 的 Git 忽略对齐、上调 P1 的真实改动范围；同时吸收最新 LLM 现实调研，把成功样本中的模型级 fallback、route/probe/contract health 区分与观测一致性问题写回架构。
+**修订说明**: 本版在 v5 基础上继续消除与当前工程事实的偏差：保留 KISS 与 Obsidian 插件“黑盒瘦客户端”的产品原则，但把 P4 从 `serve/RPC` 路线收回到当前已落地的 `launcher + aiwiki CLI + shell-summary` 契约；同时修正 execution owner、deterministic fallback 语义与测试基线，使本文可以直接作为后续工程 contract 的依据。
 
 ## 0. 本轮优化的"非目标"（Non-Goals）
 
@@ -12,15 +12,15 @@
 - **不引入 hosted service / multi-user sync** — 严守 `AGENTS.md` 的稳定约束。
 - **不做跨 backend 自动故障转移** — requested backend 始终以 `AIWIKI_LLM_BACKEND` 为准；只允许 backend 内既有的 model-chain fallback。
 - **不把 SQLite 升级为事实来源** — SQLite 只做易失性索引，Markdown + JSON manifest 仍是唯一 source of truth。
-- **不引入外部 Web 框架**（FastAPI / Flask 等） — Headless Daemon 只使用标准库。
-- **不把 `aiwiki serve` 做成通用浏览器 API** — 它只服务 Obsidian 插件集成，不承诺给浏览器 tab / 第三方前端直连。
+- **不引入外部 Web 框架**（FastAPI / Flask 等） — 当前插件继续走 `launcher + aiwiki CLI`，不新增 Web 运行面。
+- **本轮不引入 daemon / service / server** — Obsidian 插件继续通过 vault-local launcher、`aiwiki CLI` 与 `shell-summary` 和 runtime 交互；如后续要评估 local control plane，必须另开 contract。
 - **不改变 `raw / wiki / machine memory / schema / outputs` 五层分层** — 只优化各层内部实现。
 - **不替换现有的 `apply / revert / receipt / audit` 协议** — 新架构必须 **100% 兼容** 现存的治理与执行层。
 - **不追求极致性能** — 目标是"在 10 万级文件量下仍可在单次 compile 内收敛"，而不是毫秒级查询。
 
 ## 1. 架构演进背景
 
-当前 `aiwiki` 已完成第一阶段解耦重构（`app.py` → 协议/编译/内存/渲染多模块），并实现增量编译基线与 92% 测试覆盖率（309 tests）。系统稳定性与护栏纪律已达高位。
+当前 `aiwiki` 已完成第一阶段解耦重构（`app.py` → 协议/编译/内存/渲染多模块），并把 `verify` 基线提升到当前约 `355 tests / 92% coverage`（以 `README.md` / `PROGRESS.md` 为准）。系统稳定性与护栏纪律已达高位。
 
 但随着本地知识资产（Raw、Wiki、Machine Memory、Judgment）规模扩张，以下瓶颈正在显现：
 
@@ -52,7 +52,7 @@
 
 **不可变底线**：`Local-first` / `Single writer, many readers` / `Markdown as Source of Truth` / `deterministic baseline 必须可用` / `显式 backend 选择不可被 Gateway 改写` / `apply-revert-audit 必须闭环`。
 
-在此底线之上，引入三个新结构：**微内核管道**、**易失性索引**、**Headless API**。
+在此底线之上，引入三个核心演进方向：**微内核管道**、**易失性索引**、**LLM Gateway 审计收口**；同时继续收紧 Obsidian 插件的前台契约。
 
 ### 2.1 微内核 + 管道模式 (Pipeline Pattern) 拆解巨石模块
 
@@ -70,8 +70,9 @@
   - Pipeline 本身是无状态的 step 列表；`compile_wiki()` 负责构造 pipeline 并驱动执行。
 - **owner 边界（关键修正）**：
   - `apply / revert / bundle / receipt` **不并入** `compile/`；它们继续归 execution owner 管理。
-  - 当前最小正确步骤是保留 `app_execution.py` 作为 execution owner；如果后续 `serve`、batch execution 与 receipt 逻辑继续膨胀，再独立演进为 `src/aiwiki/execution/` 子包。
-  - 换句话说：P2 先拆 compile，不强推 execution 同步子包化；compile/execution 两条线解耦推进。
+  - **当前代码事实** 是：`app_compile.py` 仍然承载对外的 `apply_* / revert_*` 入口，`app_execution.py` 目前只负责 bundle / receipt helper。
+  - 因此当前最小正确步骤是：先把 compile owner 拆出去，同时维持 apply/revert 入口留在 `app_compile.py`；如后续 execution 逻辑继续膨胀，再单独演进为 `app_execution.py` owner 扩张或 `src/aiwiki/execution/` 子包。
+  - 换句话说：P2 先拆 compile，不假设 execution owner 已经稳定落在 `app_execution.py`。
 - **兼容性约束**：
   - `app_compile.py` 保留为 facade shim；`apply_concept_rewrite`、`apply_machine_memory_action`、`apply_material_archive` 等公开函数签名必须**零变更**。
   - 即使未来把 execution 实现迁到 `app_execution.py` 或 `execution/` 子包，`app_compile.py` 的 import surface 仍保持稳定。
@@ -115,26 +116,26 @@
   - **三层防线（从内到外）**：
     1. **Invocation Normalization**：统一 subprocess/API 调用、timeout/auth/rate-limit 错误分类和结构化返回。
     2. **Backend-local Retry**：保留现有 prompt-profile retry 在 `runner.py`；只在 backend 已有语义允许时做 model-chain fallback（当前主要是 `nvidia-nim-api`）。
-    3. **Deterministic Fallback**：保持为上层 orchestration 契约（`run-ask / run-compile / run-lint` / Product Shell）；Gateway 只提供可分类错误，不擅自切 backend。
+    3. **Deterministic Fallback**：Gateway 只提供可分类错误，不擅自切 backend。**当前现实语义** 是：`run-ask` 的 deterministic fallback 仍在 Product Shell 外层；compile/lint 的 deterministic 收口当前主要发生在 `auto_process_once()`，不是所有 `run-*` 命令的通用契约。
   - **可选防抖**：可在单次 run 内加入 backend-local circuit breaker，避免同一个显式 backend 在连续 auth/timeout 失败后被无意义重试，但它只负责“尽快失败”，**不**负责“偷偷换 backend”。
   - **审计**：每次 invoke 追加 `.aiwiki/logs/llm-receipts.jsonl` 一行记录，至少包含 `backend_requested`、`backend_effective`、`model_selected`、`model_final`、`duration_ms`、`fallback_stage`、`fallback_reason`、`prompt_profile`、`retry_prompt_profile`、`contract_validated`，喂给现有 audit 链路。
-- **收益**：Nightly 任务在 API 抖动下不中断；requested/effective backend 语义保持可预测；与现有 receipt/audit 协议天然对齐。
+  - **收益**：requested/effective backend 语义保持可预测；`run-ask` 的初始选路模型与最终成功模型可审计；为后续再把 compile/lint/nightly 扩到同一套 receipt 体系打基础。
 
-### 2.4 Plugin Control Plane 与 Obsidian 融合
+### 2.4 Plugin-facing Contract 与 Obsidian 融合
 
-收敛 Obsidian ↔ Product Shell 的体验割裂。
+收敛 Obsidian ↔ Product Shell 的体验割裂，并**严格贯彻 KISS (Keep It Simple, Stupid) 原则**。
 
-- **现状**：Product Shell 生成静态 HTML，批量操作靠离散本地脚本。
+- **现状**：Product Shell 已经是“Obsidian + launcher CLI 双入口，共用同一 runtime”；插件侧的正式接口是 vault-local launcher、`aiwiki CLI` 和 `shell-summary`，而不是 daemon/RPC。底层仍会生成大量 `wiki/derived/`、`machine memory/`、JSON 等面向机器和审计的中间态，用户感知过载。
 - **设计**：
-  - 新增 `aiwiki serve` 命令，但把它定义为**插件专用 local control plane**，不是通用浏览器 API；实现仍然只用标准库 `http.server` + `socketserver`。
-  - **绝对约束**：仅绑定 `127.0.0.1`；默认关闭；由 Obsidian 插件按需拉起/探活。
-  - **认证约束**：启动时生成一次性 session token（例如写入 `.aiwiki/state/plugin-session.json` 或通过 stdout 交给 launcher），所有读写请求都必须带 `X-Aiwiki-Session`；不接受无 token 调用。
-  - 接口形状采用**CLI 对等 local RPC**，而不是泛化的 REST 资源：
-    - 读：`shell-status`、`dashboard`、`search`、`review-next`、`review-batch`
+  - **产品哲学 (单输入 / 单输出)**：Obsidian 插件必须设计为绝对的**“黑盒瘦客户端 (Thin Client)”**。插件不关心底层文件解析、SQLite 缓存或 LLM 调用逻辑，只负责极简的单一输入（发请求）和单一输出（呈现决策、报告或通知）。
+  - **当前正式契约继续保持 CLI-first**：插件通过 vault-local launcher 调 `aiwiki CLI`，并用 `shell-status` / `shell-summary` 读取前台摘要；不新增 RPC 协议，也不把 hidden `.aiwiki/state/*` 暴露成前端长期接口。
+  - **屏蔽中间态**：在产品交互面上彻底隐藏底层复杂的运行记录。只有生成最终的报告 (Outputs) 或需要人工介入的决策 (Judgment/Review) 时，才通过 `shell-summary`、CLI payload 或结果路径把最少必要信息暴露给插件。
+  - 当前推荐的插件-facing 命令面保持为：
+    - 读：`shell-status`、`dashboard`、`search`
     - 写：`review-page`、`review-pages-batch`、`apply-action`、`revert-action`、`apply-archive`、`revert-archive`、`apply-rewrite`、`revert-rewrite`
-  - 所有写 RPC 必须复用现有 owner 函数与 `runtime_write_operation`；禁止直写 `.aiwiki/state/*.json`。
-  - HTML Product Shell 继续保留为 fallback；`serve` 只为插件侧交互增强，不承诺浏览器 tab 直连。
-- **收益**：UI 与 runtime 解耦，同时不破坏现有 CLI/治理语义；插件可以复用 runtime，而不必重新实现安全写路径。
+  - 所有写操作继续复用现有 owner 函数与 `runtime_write_operation`；禁止插件直写 `.aiwiki/state/*.json`。
+  - HTML Product Shell 继续保留为 fallback；如果未来 CLI-first 方案在交互延迟或状态同步上成为真实瓶颈，再单开 contract 评估 local control plane。
+- **收益**：UI 与 runtime 解耦，同时不破坏现有 CLI/治理语义；用户感知大幅净化，专注价值输出；插件可以无缝复用底层，而免受未来架构演进的影响。
 
 ## 3. 演进路线图 (Implementation Phasing)
 
@@ -147,16 +148,17 @@
 | **P1** | LLM Gateway（2.3） | 中 | 高（稳定性立竿见影） | 改动主要集中在 `llm.py` + `runner.py`；回滚时同时恢复 Gateway 适配层与现有 retry/orchestration |
 | **P2** | Pipeline Refactor（2.1） | 中 | 中（治理技术债） | facade shim 保留旧签名；回滚即删 `compile/` 子包并恢复 compile owner 映射 |
 | **P3** | SQLite Cache（2.2） | 中高 | 高（性能） | `aiwiki cache --drop` + 去掉缓存读取分支即可 |
-| **P4** | Plugin Control Plane（2.4） | 中 | 中（UX） | 纯增量新 CLI 子命令；关闭 `serve` 即回到静态 HTML + CLI 路径 |
+| **P4** | Plugin-facing Contract Tightening（2.4） | 低中 | 中（UX） | 纯收紧现有 launcher + CLI + shell-summary 契约；回滚即恢复旧摘要/旧插件 wiring |
 
 **详细步骤：**
 
-### Phase 1: LLM Gateway & Resilience（推荐优先）
-- 在 `llm.py` 与 `runner.py` 之间重新收口职责：Gateway 负责调用与错误分类，`runner.py` 保留 prompt-profile retry / deterministic fallback orchestration。
+### Phase 1: LLM Gateway & Audit Consistency（推荐优先）
+- 在 `llm.py` 与 `runner.py` 之间重新收口职责：Gateway 负责调用与错误分类，`runner.py` 保留 prompt-profile retry / model fallback orchestration。
 - 保持 `AIWIKI_LLM_BACKEND` 显式契约；不做跨 backend 自动切换。
 - 保留 `nvidia-nim-api` 现有 model-chain fallback；其他 backend 失败时返回分类错误给上层。
+- **P1A 当前最小实现面**：先收口 `run-ask` 的调用审计与最终模型一致性；`run-compile / run-lint / run-nightly` 的完整 receipt 统一化后续再开子阶段。
 - 新增 `.aiwiki/logs/llm-receipts.jsonl` 审计流。
-- **验收**：`bash scripts/verify.sh` 全绿；新增 fallback / schema-validate 单元测试；`llm-check`、Product Shell 和 README 中 requested/effective backend 语义不回退成 auto。
+- **验收**：`bash scripts/verify.sh` 全绿；新增 fallback / schema-validate 单元测试；`llm-check`、Product Shell 和 README 中 requested/effective backend 语义不回退成 auto；`run-ask` 返回与审计能区分 `model_selected / model_final`。
 
 **新增 canary 要求：**
 
@@ -168,9 +170,9 @@
 ### Phase 2: Pipeline Refactor
 - 冻结 `app_compile.py` 新特性。
 - 建立 `src/aiwiki/compile/` 子包并逐 Step 迁移；`app_compile.py` 收口为 facade。
-- `apply / revert / bundle / receipt` 不进入 `compile/`；execution owner 继续留在 `app_execution.py`，如后续因 Plugin Control Plane 扩张，再单独开启 execution 子包 contract。
+- `apply / revert / bundle / receipt` 不进入 `compile/`；当前对外 apply/revert 入口仍留在 `app_compile.py`，`app_execution.py` 继续只承接 bundle/receipt helper；如后续 execution owner 真正膨胀，再单独开启 execution 子包 contract。
 - **关键兼容性验证**：所有 `apply_*` / `revert_*` 公开函数签名零变更。
-- **验收**：309 个测试用例 100% 通过（不允许新增跳过项）；compile-only 实现不再与 execution 实现混居；若要继续把 `app_compile.py` 压到更低行数，再另开 execution owner refactor。
+- **验收**：当前主线 `verify` 基线 100% 通过（现为约 `355 tests / 92% coverage`，以当时 `README.md / PROGRESS.md` 为准，不允许新增跳过项）；compile-only 实现不再与 execution 实现混居；若要继续把 `app_compile.py` 压到更低行数，再另开 execution owner refactor。
 
 ### Phase 3: Volatile SQLite Cache
 - 引入 `sqlite3` 标准库构建 `.aiwiki/cache.db`。
@@ -181,11 +183,11 @@
   - 必须加入 `aiwiki cache --drop` 逃生口。
 - **验收**：测试全绿 + 对拍一致 + 新增 benchmark 脚本（至少展示因果图谱遍历 >5x 加速）；`.aiwiki/cache.db` 已被 Git 忽略。
 
-### Phase 4: Plugin Control Plane
-- 引入标准库 `http.server`，新增 `aiwiki serve` 命令，但仅面向 Obsidian 插件。
-- 接口采用 CLI 对等 local RPC；写操作必须复用现有 owner 函数与 runtime lock。
-- 增加 session token 握手；默认拒绝无 token 请求。
-- **验收**：CLI / plugin smoke test 全绿；端口绑定仅 127.0.0.1（加 assert）；未携带 session token 的写请求被拒绝；静态 HTML fallback 继续可用。
+### Phase 4: Plugin-facing Contract Tightening
+- 继续坚持 Obsidian 插件通过 vault-local launcher 调 `aiwiki CLI`，并以 `shell-status` / `shell-summary` 作为唯一正式前台摘要契约。
+- 逐步把插件仍在猜测的对象身份、LLM 运行结果与恢复动作，从 runtime payload / summary 中显式暴露出来，而不是让插件继续读 hidden state 或自行猜测。
+- 写操作继续复用现有 owner 函数与 runtime lock；不增加 daemon / server / RPC。
+- **验收**：CLI / plugin smoke test 全绿；插件仍只通过 launcher + CLI 工作；静态 HTML fallback 继续可用；插件不需要直接读取 `.aiwiki/state/*` 才能完成主路径交互。
 
 ## 4. 风险矩阵与缓解
 
@@ -196,12 +198,12 @@
 | Gateway 过度吞错，掩盖真实问题 | 中 | 中 | receipt 必写；fallback 必进 Review Center |
 | 显式 backend 契约被 Gateway 偷偷改写 | 低 | 高 | requested/effective backend contract tests + 禁止 cross-backend failover |
 | 初始选路模型与最终成功模型记录不一致 | 中 | 中 | 审计拆分 `model_selected / model_final`，Product Shell 与 runtime 共用同一份最终视图 |
-| Plugin Control Plane 被浏览器/本地进程误调用 | 中 | 高 | 127.0.0.1 + 一次性 session token + 默认关闭 + 仅插件拉起 |
+| 插件前台契约漂移，重新逼迫插件读取 hidden state | 中 | 高 | 继续以 `launcher + aiwiki CLI + shell-summary` 为唯一正式前台契约 |
 | 缓存数据库意外提交到 git | 低 | 低 | `.gitignore` 显式列入 `.aiwiki/cache.db`；如后续启用 pre-commit，再加二次拦截 |
 
 ## 5. 权衡与取舍
 
-- **牺牲**：少量运行时复杂性（维护易失性 SQLite 缓存、本地 daemon、Gateway 状态机）。
+- **牺牲**：少量运行时复杂性（维护易失性 SQLite 缓存、Gateway 状态机、额外审计流）。
 - **保卫**：Local-first、Markdown 作为唯一事实来源、deterministic baseline 可用、apply/revert/audit 闭环——**这四项是绝对不可妥协的底线**。
 - **长期价值**：为"炼丹炉"从个人 10 万级知识资产扩张到 50 万级+ 提供一次性架构空间，且每一层优化都可独立回滚。
 
@@ -235,3 +237,11 @@
   - 补充 `model_selected / model_final` 的审计一致性要求。
   - 新增 canary 设计：`llm-check` / `llm-check --probe` / 最小 `run-ask` 三段式验证。
   - 根据最近成功样本，把 `nvidia-nim-api` 的默认首选模型调整为 `moonshotai/kimi-k2.5`，同时保留 `z-ai/glm-5.1` 在同 backend fallback 链中。
+- **v5 (当前版本)**：
+  - 吸收产品与交互层面的 KISS 原则：在产品感知面上严格区分“机器内部态”（Wiki/JSON）与“用户关注产出”（Output/Judgment），只把最少必要信息通过通知抛给用户。
+  - 在 P4 (Plugin Control Plane) 补充了“单输入/单输出”和“黑盒瘦客户端 (Thin Client)”的设计哲学。
+- **v6 (当前版本)**：
+  - 把 P4 从 `serve/RPC` 收回到当前已落地的 `launcher + aiwiki CLI + shell-summary` 契约，避免与 Product Shell 既有设计稿和 runtime plan 冲突。
+  - 修正 execution owner 事实：当前 `app_compile.py` 仍是 apply/revert 对外入口，`app_execution.py` 只承接 bundle/receipt helper。
+  - 修正 deterministic fallback 语义：当前只把 `run-ask` 的外层 fallback 和 `auto_process_once()` 的 compile/lint fallback 当成既有事实，不再把它写成所有 `run-*` 的现状契约。
+  - 更新测试基线表述，不再把 Phase 2 验收写死在过时的 `309 tests`。

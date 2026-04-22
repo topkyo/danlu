@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
+from .app_cache import drop_query_cache
 from .app_compile import (
     apply_concept_rewrite,
     apply_machine_memory_action,
@@ -153,6 +154,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output artifact format.",
     )
     ask_parser.add_argument("--protocol", help="Optional protocol override for this query.")
+    ask_parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass volatile SQLite query cache and force deterministic JSON scan.",
+    )
 
     run_ask_parser = subparsers.add_parser(
         "run-ask",
@@ -166,6 +172,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output artifact format.",
     )
     run_ask_parser.add_argument("--protocol", help="Optional protocol override for this query.")
+    run_ask_parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass volatile SQLite query cache and force deterministic JSON scan.",
+    )
     run_ask_parser.add_argument(
         "--lean",
         action="store_true",
@@ -364,6 +375,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Timeout in seconds for each LLM probe request.",
     )
 
+    cache_parser = subparsers.add_parser("cache", help="Inspect or drop the volatile SQLite query cache.")
+    cache_parser.add_argument(
+        "--drop",
+        action="store_true",
+        help="Delete `.aiwiki/cache.db` unconditionally.",
+    )
+
     auto_once_parser = subparsers.add_parser(
         "auto-once",
         help="Automatically process the inbox once: compile, summarize, and lint.",
@@ -470,7 +488,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "run-compile":
             result = run_compile(root, limit=args.limit)
         elif args.command == "ask":
-            result = ask_question(root, args.question, args.format, protocol=args.protocol)
+            result = ask_question(root, args.question, args.format, protocol=args.protocol, no_cache=args.no_cache)
         elif args.command == "run-ask":
             result = run_ask(
                 root,
@@ -479,6 +497,7 @@ def main(argv: list[str] | None = None) -> int:
                 protocol=args.protocol,
                 lean=args.lean,
                 timeout_seconds=args.timeout,
+                no_cache=args.no_cache,
             )
         elif args.command == "file-back":
             result = file_back(root, args.artifact, title=args.title, kind=args.kind, protocol=args.protocol)
@@ -577,6 +596,10 @@ def main(argv: list[str] | None = None) -> int:
                 result = llm_probe(root, probe_all=args.probe_all, timeout_seconds=args.probe_timeout)
             else:
                 result = llm_status()
+        elif args.command == "cache":
+            if not args.drop:
+                raise ValueError("Provide --drop to delete the volatile cache database.")
+            result = drop_query_cache(root)
         elif args.command == "auto-once":
             result = auto_process_once(
                 root,

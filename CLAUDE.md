@@ -4,11 +4,12 @@
 
 - 本文件同时承担 Claude 侧的 agent protocol 和项目事实，默认不依赖任何用户 home 目录配置
 - `open-harness` 是外部模板源；炼丹炉仓库不提交 generic harness scaffold
-- 当前工作区如需工程脚手架，使用 `bash scripts/setup_local_harness.sh --apply` 从 `/home/tim/open-harness` 本地生成
+- 当前工作区如需工程脚手架，优先使用 `bash scripts/setup_local_harness.sh --apply`；它只是 `/home/tim/open-harness/scripts/bootstrap_local_scaffold.sh --apply --tier standard` 的项目内便捷别名
 - 本仓库实现 `aiwiki`，即“炼丹炉”的 local-first runtime / CLI / 仓库本体
 - “炼丹炉”是产品/系统名；`aiwiki` 是实现内核、命令名和仓库名
 - 动态任务状态写 `PROGRESS.md`
-- 设计边界和本轮执行约束写本地生成的 `.codex/contracts/active.md`
+- 设计边界和本轮执行约束默认写本地生成的 `.codex/contracts/active.md`
+- 如果输入是一份过大的架构文档，先写本地生成的 `.codex/plans/active.md`，再物化当前 milestone 到 `.codex/contracts/active.md`
 - 跨对话仍然成立的项目知识写 `MEMORY.md` 或等价记忆
 
 禁止长期写进本文件:
@@ -53,7 +54,7 @@
 ## Source Of Truth
 
 - 项目规范: `README.md`
-- 设计与本轮范围: `.codex/contracts/active.md`
+- 设计与本轮范围: `.codex/contracts/active.md`；若架构文档过大，则先看 `.codex/plans/active.md`
 - 任务状态: `PROGRESS.md`
 - 本地验证入口: `bash scripts/verify.sh`
 - 运行态验证入口: 目前使用 `tests/` 中的 fixture-driven CLI smoke tests
@@ -96,9 +97,10 @@
 ## 默认工程闭环
 
 - 开工前先读 `README.md`、`PROGRESS.md` 和本地生成的 `.codex/contracts/active.md`
-- 默认顺序: `项目规范 -> 读取已有状态 -> 验收标准 -> 非 trivial 则写 contract -> 实现闭环 -> 按 contract 跑 gate -> 回写状态`
+- 默认顺序: `项目规范 -> 读取已有状态 -> 验收标准 -> 能直接收敛时写 contract；若架构文档过大则先写 .codex/plans/active.md 再物化 contract -> 实现闭环 -> 按 contract 跑 gate -> 回写状态`
 - 多文件、跨模块或运行态变更默认维护本地生成的 `.codex/contracts/active.md`
-- 若当前工作区尚未生成 local harness，先执行 `bash scripts/setup_local_harness.sh --apply`
+- 若当前工作区尚未生成 local harness，先执行 `bash scripts/setup_local_harness.sh --apply`；若需要直接验证上游入口，等价命令是 `bash /home/tim/open-harness/scripts/bootstrap_local_scaffold.sh --apply --tier standard`
+- 如果已经有 `.codex/plans/active.md`，优先执行 `HARNESS_DIR=.codex bash scripts/run_plan.sh --plan-file .codex/plans/active.md` 自动推进当前 milestone；只有需要强制指定某一轮时，才回退到 `HARNESS_DIR=.codex bash scripts/materialize_contract.sh --plan-file .codex/plans/active.md --milestone <ID>`
 - 优先走项目本地入口：`bash scripts/verify.sh`；若 local harness 已生成，再用 `bash scripts/run_qa_review.sh`、`bash scripts/closed_loop.sh`
 - `verify` 失败时默认继续本地调试和重复验证，不把每一轮失败都升级成用户确认
 - Standard tier 默认要求 `qa-review`；当前没有独立 reviewer 时要记录 fallback 原因

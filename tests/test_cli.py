@@ -59,20 +59,26 @@ class CLITests(unittest.TestCase):
             ("dashboard", ["dashboard"], "shell_status_dashboard", (self.root,), {}),
             ("search", ["search", "latency", "--limit", "5"], "shell_search", (self.root, "latency"), {"limit": 5}),
             ("run-compile", ["run-compile", "--limit", "3"], "run_compile", (self.root,), {"limit": 3}),
-            ("ask", ["ask", "What changed?", "--format", "slides", "--protocol", "research"], "ask_question", (self.root, "What changed?", "slides"), {"protocol": "research"}),
+            (
+                "ask",
+                ["ask", "What changed?", "--format", "slides", "--protocol", "research", "--no-cache"],
+                "ask_question",
+                (self.root, "What changed?", "slides"),
+                {"protocol": "research", "no_cache": True},
+            ),
             (
                 "run-ask",
                 ["run-ask", "What changed?", "--format", "decision-memo"],
                 "run_ask",
                 (self.root, "What changed?", "decision-memo"),
-                {"protocol": None, "lean": False, "timeout_seconds": None},
+                {"protocol": None, "lean": False, "timeout_seconds": None, "no_cache": False},
             ),
             (
                 "run-ask-lean-timeout",
-                ["run-ask", "What changed?", "--format", "report", "--lean", "--timeout", "45"],
+                ["run-ask", "What changed?", "--format", "report", "--lean", "--timeout", "45", "--no-cache"],
                 "run_ask",
                 (self.root, "What changed?", "report"),
-                {"protocol": None, "lean": True, "timeout_seconds": 45},
+                {"protocol": None, "lean": True, "timeout_seconds": 45, "no_cache": True},
             ),
             ("file-back", ["file-back", "artifact.md", "--title", "Filed", "--kind", "decision", "--protocol", "ops"], "file_back", (self.root, "artifact.md"), {"title": "Filed", "kind": "decision", "protocol": "ops"}),
             ("review-page", ["review-page", "page.md", "--status", "approved", "--note", "ok", "--confidence", "high"], "review_page", (self.root, "page.md", "approved"), {"note": "ok", "confidence": "high"}),
@@ -92,6 +98,7 @@ class CLITests(unittest.TestCase):
             ("nightly", ["nightly"], "nightly_health", (self.root,), {}),
             ("run-nightly", ["run-nightly", "--compile-limit", "7", "--no-semantic-lint"], "run_nightly", (self.root,), {"compile_limit": 7, "semantic_lint": False}),
             ("llm-check", ["llm-check"], "llm_status", (), {}),
+            ("cache-drop", ["cache", "--drop"], "drop_query_cache", (self.root,), {}),
             ("auto-once", ["auto-once", "--compile-limit", "4", "--deterministic-only", "--no-semantic-lint"], "auto_process_once", (self.root,), {"compile_limit": 4, "deterministic_only": True, "semantic_lint": False}),
             ("watch", ["watch", "--interval", "2.5", "--compile-limit", "4", "--deterministic-only", "--no-semantic-lint", "--skip-initial", "--max-cycles", "3"], "watch_inbox", (self.root,), {"interval_seconds": 2.5, "compile_limit": 4, "deterministic_only": True, "semantic_lint": False, "process_initial": False, "max_cycles": 3}),
         ]
@@ -162,6 +169,17 @@ class CLITests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 1)
         self.assertEqual(stdout.getvalue(), "")
         self.assertIn("error: boom", stderr.getvalue())
+
+    def test_cache_command_requires_drop_flag(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
+            with self.assertRaises(SystemExit) as ctx:
+                main(["--root", str(self.root), "cache"])
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("Provide --drop", stderr.getvalue())
 
     def test_main_exits_with_interrupt_status_on_keyboard_interrupt(self) -> None:
         stdout = io.StringIO()

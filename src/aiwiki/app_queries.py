@@ -18,11 +18,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from .app_compile import (
-    build_ranking_source_record,
-    ranking_source_record_is_reusable,
-    ranking_source_summary_or_preview,
-)
 from .app_content import (
     _validate_rewrite_candidate_markdown,
     action_needs_review,
@@ -306,6 +301,16 @@ from .app_utils import (
 from .config import LLMConfig
 
 
+def _ranking_helpers() -> tuple[Any, Any, Any]:
+    from . import app_compile as compile_facade
+
+    return (
+        compile_facade.build_ranking_source_record,
+        compile_facade.ranking_source_record_is_reusable,
+        compile_facade.ranking_source_summary_or_preview,
+    )
+
+
 def source_page_is_stale(root: Path, entry: dict[str, Any]) -> bool:
     page = root / "wiki" / "sources" / f"{entry['id']}.md"
     if not page.exists():
@@ -369,6 +374,9 @@ def rank_sources(
     *,
     protocol: str = DEFAULT_PROTOCOL,
 ) -> list[dict[str, Any]]:
+    build_ranking_source_record, ranking_source_record_is_reusable, ranking_source_summary_or_preview = (
+        _ranking_helpers()
+    )
     question_tokens = tokenize(question)
     scored: list[tuple[float, int, float, dict[str, Any]]] = []
     boost_source_ids = boost_source_ids or set()

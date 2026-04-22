@@ -49,11 +49,13 @@ from .app_state import (
     execution_center_html_path,
     execution_center_path,
     furnace_center_html_path,
+    llm_receipt_log_path,
     load_archive_candidates_state,
     load_compile_state,
     load_concept_rewrite_state,
     load_json_document,
     load_knowledge_lifecycle_state,
+    load_llm_receipt_history,
     load_machine_memory,
     load_manifest,
     load_material_archive_state,
@@ -65,6 +67,7 @@ from .app_state import (
     output_packs_index_path,
     product_shell_html_path,
     review_center_html_path,
+    run_log_path,
     shell_summary_path,
 )
 from .app_types import ProtocolState, ShellSummary
@@ -78,6 +81,7 @@ from .app_utils import (
     write_json_document_if_changed_ignoring_generated_timestamps,
 )
 from .config import LLMConfig
+from .llm import classify_backend_error
 
 
 def shell_recent_runs(root: Path, *, limit: int = 8) -> list[dict[str, Any]]:
@@ -101,6 +105,209 @@ def shell_recent_receipts(root: Path, *, limit: int = 8) -> list[dict[str, Any]]
         }
         for receipt in receipts[:limit]
     ]
+
+
+LLM_FRONTDOOR_EVENTS = {
+    "run-ask",
+    "run-compile",
+    "run-compile-concept",
+    "run-compile-concept-rewrite-proposal",
+    "run-compile-summary",
+    "run-lint",
+    "run-nightly",
+}
+LLM_PRIMARY_HEALTH_EVENTS = ("run-ask",)
+
+
+def _latest_llm_receipt(root: Path, *, preferred_events: tuple[str, ...] = ()) -> dict[str, Any]:
+    history = load_llm_receipt_history(root)
+    if preferred_events:
+        for event in reversed(history):
+            if not isinstance(event, dict):
+                continue
+            if str(event.get("event") or "") in preferred_events:
+                return dict(event)
+    for event in reversed(history):
+        if not isinstance(event, dict):
+            continue
+        if str(event.get("event") or "") in LLM_FRONTDOOR_EVENTS:
+            return dict(event)
+    return {}
+
+
+def _first_non_empty(event: dict[str, Any], keys: list[str]) -> str:
+    for key in keys:
+        value = event.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _build_llm_recovery_command(event: dict[str, Any]) -> str:
+    event_name = str(event.get("event") or "")
+    target = str(event.get("target") or "")
+    prompt_profile = str(event.get("prompt_profile") or "")
+    command_parts = ["./scripts/aiwiki-launcher.sh"]
+    if event_name == "run-ask":
+        question = str(event.get("question") or "").strip()
+        output_format = str(event.get("format") or "report").strip() or "report"
+        protocol = str(event.get("protocol") or "").strip()
+        if not question:
+            return ""
+        command_parts.extend(["run-ask", json.dumps(question), "--format", output_format])
+        if protocol:
+            command_parts.extend(["--protocol", protocol])
+        if prompt_profile == "lean":
+            command_parts.append("--lean")
+        return " ".join(command_parts)
+    if event_name == "run-compile-summary":
+        limit = int(event.get("limit", 5) or 5)
+        command_parts.extend(["run-compile", "--limit", str(limit)])
+        return " ".join(command_parts)
+    if event_name == "run-lint":
+        command_parts.append("run-lint")
+        return " ".join(command_parts)
+    if event_name == "run-nightly":
+        limit = int(event.get("compile_limit", 5) or 5)
+        command_parts.extend(["run-nightly", "--compile-limit", str(limit)])
+        if not bool(event.get("semantic_lint", True)):
+            command_parts.append("--no-semantic-lint")
+        return " ".join(command_parts)
+    if target:
+        return f"./scripts/aiwiki-launcher.sh {event_name}"
+    return ""
+
+
+def shell_latest_llm_run(root: Path) -> dict[str, Any]:
+    receipt = _latest_llm_receipt(root, preferred_events=LLM_PRIMARY_HEALTH_EVENTS)
+    if not receipt:
+        return {}
+    event_name = str(receipt.get("event") or "")
+    status = str(receipt.get("status") or "unknown")
+    error = _first_non_empty(receipt, ["error", "fallback_reason"])
+    target = str(receipt.get("target") or "").strip()
+    result_path = ""
+    if event_name == "run-ask":
+        result_path = target
+    elif event_name == "run-lint":
+        result_path = str(receipt.get("target") or "").strip()
+    elif event_name == "run-nightly":
+        result_path = str(receipt.get("state_path") or "").strip()
+    elif event_name == "run-compile-summary":
+        updated_pages = receipt.get("updated_pages")
+        if isinstance(updated_pages, list) and updated_pages:
+            result_path = str(updated_pages[0] or "").strip()
+    return {
+        "event": event_name,
+        "status": status,
+        "checked_at": _first_non_empty(receipt, ["created_at"]),
+        "backend_requested": str(receipt.get("backend_requested") or ""),
+        "backend_effective": str(receipt.get("backend_effective") or ""),
+        "model_selected": str(receipt.get("model_selected") or ""),
+        "model_final": str(receipt.get("model_final") or ""),
+        "fallback_stage": str(receipt.get("fallback_stage") or ""),
+        "fallback_reason": str(receipt.get("fallback_reason") or ""),
+        "contract_validated": bool(receipt.get("contract_validated")),
+        "prompt_profile": str(receipt.get("prompt_profile") or ""),
+        "retry_prompt_profile": str(receipt.get("retry_prompt_profile") or ""),
+        "duration_ms": int(receipt.get("duration_ms", 0) or 0),
+        "error": error,
+        "result_path": result_path,
+        "receipt_path": relative_path(root, llm_receipt_log_path(root)),
+        "log_path": relative_path(root, run_log_path(root)),
+        "run_log_path": relative_path(root, run_log_path(root)),
+        "recovery_command": _build_llm_recovery_command(receipt),
+        "target": target,
+    }
+
+
+def shell_llm_health(root: Path, llm_status: dict[str, Any], *, latest_llm_run: dict[str, Any]) -> dict[str, Any]:
+    configured = bool(llm_status.get("configured"))
+    current_backend = str(llm_status.get("backend") or "")
+    current_model = str(llm_status.get("effective_model") or llm_status.get("model") or "")
+    latest_backend = str(latest_llm_run.get("backend_effective") or latest_llm_run.get("backend_requested") or "")
+    latest_model = str(latest_llm_run.get("model_final") or latest_llm_run.get("model_selected") or "")
+    latest_status = str(latest_llm_run.get("status") or "")
+    route_drift = bool(current_backend and latest_backend and current_backend != latest_backend)
+    if not configured:
+        return {
+            "status": "unknown",
+            "reason": "LLM is not configured.",
+            "backend": current_backend,
+            "model": current_model,
+            "backend_requested": str(llm_status.get("backend_requested") or ""),
+            "backend_effective": current_backend,
+            "model_selected": latest_model,
+            "model_final": latest_model or current_model,
+            "checked_at": str(latest_llm_run.get("checked_at") or ""),
+            "source": str(latest_llm_run.get("event") or ""),
+            "fallback_command": "",
+            "fallback_stage": str(latest_llm_run.get("fallback_stage") or ""),
+            "fallback_reason": str(latest_llm_run.get("fallback_reason") or ""),
+            "contract_validated": bool(latest_llm_run.get("contract_validated")),
+            "log_path": str(latest_llm_run.get("log_path") or ""),
+            "result_path": str(latest_llm_run.get("result_path") or ""),
+            "receipt_path": str(latest_llm_run.get("receipt_path") or ""),
+            "recovery_command": str(latest_llm_run.get("recovery_command") or ""),
+            "route_drift": False,
+            "route_drift_reason": "",
+        }
+    if not latest_llm_run:
+        return {
+            "status": "unknown",
+            "reason": "No recent LLM health check yet.",
+            "backend": current_backend,
+            "model": current_model,
+            "backend_requested": str(llm_status.get("backend_requested") or ""),
+            "backend_effective": current_backend,
+            "model_selected": "",
+            "model_final": current_model,
+            "checked_at": "",
+            "source": "",
+            "fallback_command": "",
+            "fallback_stage": "",
+            "fallback_reason": "",
+            "contract_validated": False,
+            "log_path": "",
+            "result_path": "",
+            "receipt_path": "",
+            "recovery_command": "",
+            "route_drift": False,
+            "route_drift_reason": "",
+        }
+    error_text = _first_non_empty(latest_llm_run, ["error", "fallback_reason"])
+    error_kind = classify_backend_error(error_text) if error_text else ""
+    status = "healthy"
+    reason = "Recent run-ask succeeded." if latest_status == "success" else error_text
+    if latest_status != "success":
+        status = "degraded" if error_kind in {"quota", "timeout", "auth", "unavailable"} else "failed"
+        if not reason:
+            reason = "Latest LLM run failed."
+    elif route_drift:
+        status = "unknown"
+        reason = "Current route changed since the last recorded ask."
+    return {
+        "status": status,
+        "reason": reason,
+        "backend": current_backend or latest_backend,
+        "model": current_model or latest_model,
+        "backend_requested": str(latest_llm_run.get("backend_requested") or llm_status.get("backend_requested") or ""),
+        "backend_effective": latest_backend or current_backend,
+        "model_selected": str(latest_llm_run.get("model_selected") or ""),
+        "model_final": latest_model or current_model,
+        "checked_at": str(latest_llm_run.get("checked_at") or ""),
+        "source": str(latest_llm_run.get("event") or ""),
+        "fallback_command": "",
+        "fallback_stage": str(latest_llm_run.get("fallback_stage") or ""),
+        "fallback_reason": str(latest_llm_run.get("fallback_reason") or ""),
+        "contract_validated": bool(latest_llm_run.get("contract_validated")),
+        "log_path": str(latest_llm_run.get("log_path") or ""),
+        "result_path": str(latest_llm_run.get("result_path") or ""),
+        "receipt_path": str(latest_llm_run.get("receipt_path") or ""),
+        "recovery_command": str(latest_llm_run.get("recovery_command") or ""),
+        "route_drift": route_drift,
+        "route_drift_reason": "Current route changed since the last recorded ask." if route_drift else "",
+    }
 
 
 def shell_search_results(
@@ -873,6 +1080,8 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         review_controls=review_controls,
         execution_controls=execution_controls,
     )
+    latest_llm_run = shell_latest_llm_run(root)
+    llm_health = shell_llm_health(root, llm_status, latest_llm_run=latest_llm_run)
     summary: ShellSummary = {
         "kind": "product-shell-summary",
         "contract_version": 1,
@@ -884,6 +1093,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         "llm_status": {
             "configured": bool(llm_status.get("configured")),
             "backend": str(llm_status.get("backend") or ""),
+            "effective_backend": str(llm_status.get("backend") or ""),
             "backend_requested": str(llm_status.get("backend_requested") or ""),
             "model_requested": str(llm_status.get("model_requested") or ""),
             "model": str(llm_status.get("model") or ""),
@@ -896,6 +1106,8 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
             "usage_accounting": str(llm_status.get("usage_accounting") or ""),
             "message": str(llm_status.get("message") or ""),
         },
+        "latest_llm_run": latest_llm_run,
+        "llm_health": llm_health,
         "review_backlog_counts": review_backlog_counts,
         "aging_summary": {
             "overdue_count": len(aging["overdue"]),
