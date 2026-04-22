@@ -353,6 +353,7 @@ def default_cache_status() -> dict[str, Any]:
         "last_sync": {},
         "last_query": {},
         "last_drop": {},
+        "last_rebuild": {},
     }
 
 
@@ -468,9 +469,15 @@ def load_cache_status(root: Path) -> dict[str, Any]:
     last_sync = document.get("last_sync")
     last_query = document.get("last_query")
     last_drop = document.get("last_drop")
+    last_rebuild = document.get("last_rebuild", {})
     if not isinstance(row_counts, dict) or not isinstance(stats, dict):
         return default_cache_status()
-    if not isinstance(last_sync, dict) or not isinstance(last_query, dict) or not isinstance(last_drop, dict):
+    if (
+        not isinstance(last_sync, dict)
+        or not isinstance(last_query, dict)
+        or not isinstance(last_drop, dict)
+        or not isinstance(last_rebuild, dict)
+    ):
         return default_cache_status()
     return {
         "version": int(document.get("version", 1) or 1),
@@ -491,6 +498,7 @@ def load_cache_status(root: Path) -> dict[str, Any]:
         "last_sync": dict(last_sync),
         "last_query": dict(last_query),
         "last_drop": dict(last_drop),
+        "last_rebuild": dict(last_rebuild),
     }
 
 

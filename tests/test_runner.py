@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +11,7 @@ from unittest.mock import patch
 from aiwiki.app_compile import compile_wiki
 from aiwiki.app_content import ingest_source, sync_manifest_with_raw
 from aiwiki.app_protocol import ensure_layout
+from aiwiki.app_state import load_machine_memory
 from aiwiki.app_utils import relative_path
 from aiwiki.config import LLMConfig
 from aiwiki.drop import drop_note
@@ -213,6 +216,97 @@ class RunnerTests(unittest.TestCase):
 
         ask_mock.assert_called_once_with(self.root, "测试", "report", protocol=None, no_cache=True)
         self.assertTrue(result["no_cache"])
+
+    def test_run_ask_frontdoor_returns_deterministic_fallback_payload_when_backend_unavailable(self) -> None:
+        artifact_path = self.root / "output" / "reports" / "query-frontdoor-fallback.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text("---\nid: query-frontdoor-fallback\nkind: report\n---\n\n# Placeholder\n", encoding="utf-8")
+        artifact = {
+            "path": "output/reports/query-frontdoor-fallback.md",
+            "format": "report",
+            "protocol": "general",
+            "ranked_sources": ["source-1"],
+            "ranked_concepts": [],
+            "protocol_pages": [],
+            "index_pages": [],
+            "machine_memory_query": {},
+        }
+
+        class _UnavailableAskClient:
+            def __init__(self) -> None:
+                self.config = type(
+                    "Config",
+                    (),
+                    {"model": "gpt-5.4", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 120},
+                )()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                del user_prompt
+                raise LLMError("usage limit exceeded")
+
+        with patch("aiwiki.runner.ask_question", return_value=artifact):
+            with patch("aiwiki.runner._build_ask_prompt", return_value="prompt"):
+                result = run_ask(self.root, "测试", "report", client=_UnavailableAskClient(), fallback_to_ask=True)
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["delivery_mode"], "deterministic-fallback")
+        self.assertEqual(result["primary_attempt_status"], "failed")
+        self.assertTrue(result["fallback_used"])
+        self.assertEqual(result["fallback_from"], "run-ask")
+        self.assertEqual(result["fallback_command"], "ask")
+        self.assertFalse(result["contract_validated"])
+        self.assertEqual(result["path"], "output/reports/query-frontdoor-fallback.md")
+
+        llm_receipts = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(llm_receipts[-1]["event"], "run-ask-frontdoor")
+        self.assertEqual(llm_receipts[-1]["delivery_mode"], "deterministic-fallback")
+        self.assertTrue(llm_receipts[-1]["fallback_used"])
+
+    def test_run_ask_frontdoor_hard_fail_still_raises(self) -> None:
+        artifact_path = self.root / "output" / "reports" / "query-frontdoor-hard-fail.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text("---\nid: query-frontdoor-hard-fail\nkind: report\n---\n\n# Placeholder\n", encoding="utf-8")
+        artifact = {
+            "path": "output/reports/query-frontdoor-hard-fail.md",
+            "format": "report",
+            "protocol": "general",
+            "ranked_sources": ["source-1"],
+            "ranked_concepts": [],
+            "protocol_pages": [],
+            "index_pages": [],
+            "machine_memory_query": {},
+        }
+
+        class _HardFailAskClient:
+            def __init__(self) -> None:
+                self.config = type(
+                    "Config",
+                    (),
+                    {"model": "gpt-5.4", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 120},
+                )()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                del user_prompt
+                raise LLMError("unexpected schema mismatch")
+
+        with patch("aiwiki.runner.ask_question", return_value=artifact):
+            with patch("aiwiki.runner._build_ask_prompt", return_value="prompt"):
+                with self.assertRaisesRegex(LLMError, "schema mismatch"):
+                    run_ask(self.root, "测试", "report", client=_HardFailAskClient(), fallback_to_ask=True)
+
+        llm_receipts = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(llm_receipts[-1]["event"], "run-ask-frontdoor")
+        self.assertEqual(llm_receipts[-1]["status"], "failed")
+        self.assertEqual(llm_receipts[-1]["delivery_mode"], "llm-failed")
+        self.assertFalse(llm_receipts[-1]["fallback_used"])
 
     def test_llm_probe_returns_static_status_when_unconfigured(self) -> None:
         fake_status = {"configured": False, "message": "missing backend"}
@@ -604,6 +698,66 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(summary_receipt["fallback_stage"], "model-chain")
         self.assertTrue(summary_receipt["contract_validated"])
 
+    def test_run_compile_returns_runtime_owned_rewrite_recovery_objects(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        source_page.write_text(
+            source_page.read_text(encoding="utf-8").replace(
+                "- Pending LLM summary.",
+                "- Transformer scale improves capability and raises compute demand.",
+            ),
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+        for concept_page in sorted((self.root / "wiki" / "concepts").glob("*.md")):
+            text = concept_page.read_text(encoding="utf-8")
+            before, marker, after = text.partition("## Summary\n")
+            _, related_marker, remainder = after.partition("\n## Related Sources\n")
+            concept_page.write_text(
+                before
+                + marker
+                + f"- Existing synthesis for {concept_page.stem} appears\n"
+                + "- Keep the current synthesis grounded in the linked sources.\n"
+                + related_marker
+                + remainder,
+                encoding="utf-8",
+            )
+        text = concept_page.read_text(encoding="utf-8")
+        compile_wiki(self.root)
+
+        memory = load_machine_memory(self.root)
+        candidate = memory["health"]["concept_quality"]["rewrite_candidates"][0]
+        concept_page = self.root / candidate["path"]
+        slug = concept_page.stem
+
+        rewritten = concept_page.read_text(encoding="utf-8").replace("Existing synthesis", "Rewritten synthesis")
+        result = run_compile(
+            self.root,
+            client=type(
+                "_RewriteClient",
+                (),
+                {
+                    "config": type("Config", (), {"model": "gpt-5.4", "backend": "codex-cli", "backend_requested": "codex-cli"})(),
+                    "complete": lambda self, system_prompt, user_prompt: CompletionResult(
+                        text=rewritten,
+                        response_id="resp-rewrite",
+                        usage={},
+                    ),
+                },
+            )(),
+            limit=1,
+        )
+
+        self.assertEqual(len(result["updated_rewrite_proposals"]), 1)
+        proposal = result["updated_rewrite_proposals"][0]
+        self.assertEqual(proposal["slug"], slug)
+        self.assertEqual(proposal["proposal_path"], f"wiki/rewrite-proposals/{slug}.md")
+        self.assertTrue(proposal["can_review"])
+        self.assertEqual(result["rewrite_recovery_actions"][0]["kind"], "review-rewrite")
+        self.assertEqual(result["rewrite_recovery_actions"][0]["slug"], slug)
+        self.assertIn(f"review-rewrite {slug} --status accepted", result["rewrite_recovery_actions"][0]["command"])
+
     def test_run_compile_failed_attempt_is_written_to_runs_log_and_llm_receipts(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -642,6 +796,37 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(run_log["backend_requested"], "nvidia-nim-api")
         self.assertEqual(run_log["model_selected"], "moonshotai/kimi-k2.5")
         self.assertFalse(run_log["contract_validated"])
+
+    def test_cache_benchmark_script_outputs_status_and_timings(self) -> None:
+        script = Path(__file__).resolve().parent.parent / "scripts" / "cache_benchmark.py"
+
+        completed = subprocess.run(
+            [
+                "python3",
+                str(script),
+                "--fixture-count",
+                "6",
+                "--question",
+                "Compare cache rebuild observability",
+            ],
+            cwd=self.root,
+            check=True,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "PYTHONPATH": str((Path(__file__).resolve().parent.parent / "src").resolve())},
+        )
+
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["fixture_count"], 6)
+        self.assertIn("cold_cache", payload["timings_ms"])
+        self.assertIn("warm_cache", payload["timings_ms"])
+        self.assertIn("no_cache", payload["timings_ms"])
+        self.assertIn("query_shapes", payload)
+        self.assertIn("cold_cache_sources", payload["query_shapes"])
+        self.assertTrue(payload["cache_status"]["enabled"])
+        self.assertGreaterEqual(payload["cache_status"]["schema_version"], 1)
+        self.assertIn("stats", payload["cache_status"])
+        self.assertIn("last_query", payload["cache_status"])
 
     def test_run_lint_records_audit_fields_and_summary(self) -> None:
         class _LintFallbackClient:

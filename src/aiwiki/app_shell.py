@@ -108,6 +108,7 @@ def shell_recent_receipts(root: Path, *, limit: int = 8) -> list[dict[str, Any]]
 
 
 LLM_FRONTDOOR_EVENTS = {
+    "run-ask-frontdoor",
     "run-ask",
     "run-compile",
     "run-compile-concept",
@@ -116,7 +117,7 @@ LLM_FRONTDOOR_EVENTS = {
     "run-lint",
     "run-nightly",
 }
-LLM_PRIMARY_HEALTH_EVENTS = ("run-ask",)
+LLM_PRIMARY_HEALTH_EVENTS = ("run-ask-frontdoor", "run-ask")
 
 
 def _latest_llm_receipt(root: Path, *, preferred_events: tuple[str, ...] = ()) -> dict[str, Any]:
@@ -148,7 +149,7 @@ def _build_llm_recovery_command(event: dict[str, Any]) -> str:
     target = str(event.get("target") or "")
     prompt_profile = str(event.get("prompt_profile") or "")
     command_parts = ["./scripts/aiwiki-launcher.sh"]
-    if event_name == "run-ask":
+    if event_name in {"run-ask", "run-ask-frontdoor"}:
         question = str(event.get("question") or "").strip()
         output_format = str(event.get("format") or "report").strip() or "report"
         protocol = str(event.get("protocol") or "").strip()
@@ -159,6 +160,8 @@ def _build_llm_recovery_command(event: dict[str, Any]) -> str:
             command_parts.extend(["--protocol", protocol])
         if prompt_profile == "lean":
             command_parts.append("--lean")
+        if event_name == "run-ask-frontdoor" or bool(event.get("fallback_used")):
+            command_parts.append("--fallback-to-ask")
         return " ".join(command_parts)
     if event_name == "run-compile-summary":
         limit = int(event.get("limit", 5) or 5)
@@ -186,8 +189,11 @@ def shell_latest_llm_run(root: Path) -> dict[str, Any]:
     status = str(receipt.get("status") or "unknown")
     error = _first_non_empty(receipt, ["error", "fallback_reason"])
     target = str(receipt.get("target") or "").strip()
+    delivery_mode = str(receipt.get("delivery_mode") or "")
+    fallback_used = bool(receipt.get("fallback_used"))
+    fallback_from = str(receipt.get("fallback_from") or "")
     result_path = ""
-    if event_name == "run-ask":
+    if event_name in {"run-ask", "run-ask-frontdoor"}:
         result_path = target
     elif event_name == "run-lint":
         result_path = str(receipt.get("target") or "").strip()
@@ -212,6 +218,12 @@ def shell_latest_llm_run(root: Path) -> dict[str, Any]:
         "retry_prompt_profile": str(receipt.get("retry_prompt_profile") or ""),
         "duration_ms": int(receipt.get("duration_ms", 0) or 0),
         "error": error,
+        "delivery_mode": delivery_mode,
+        "primary_attempt_status": str(receipt.get("primary_attempt_status") or status),
+        "primary_error": str(receipt.get("primary_error") or error),
+        "fallback_used": fallback_used,
+        "fallback_from": fallback_from,
+        "fallback_command": str(receipt.get("fallback_command") or ""),
         "result_path": result_path,
         "receipt_path": relative_path(root, llm_receipt_log_path(root)),
         "log_path": relative_path(root, run_log_path(root)),
@@ -228,6 +240,7 @@ def shell_llm_health(root: Path, llm_status: dict[str, Any], *, latest_llm_run: 
     latest_backend = str(latest_llm_run.get("backend_effective") or latest_llm_run.get("backend_requested") or "")
     latest_model = str(latest_llm_run.get("model_final") or latest_llm_run.get("model_selected") or "")
     latest_status = str(latest_llm_run.get("status") or "")
+    delivery_mode = str(latest_llm_run.get("delivery_mode") or "")
     route_drift = bool(current_backend and latest_backend and current_backend != latest_backend)
     if not configured:
         return {
@@ -279,11 +292,16 @@ def shell_llm_health(root: Path, llm_status: dict[str, Any], *, latest_llm_run: 
     error_kind = classify_backend_error(error_text) if error_text else ""
     status = "healthy"
     reason = "Recent run-ask succeeded." if latest_status == "success" else error_text
+    fallback_command = str(latest_llm_run.get("fallback_command") or "")
+    if delivery_mode == "deterministic-fallback":
+        status = "degraded"
+        reason = "Recent run-ask fell back to deterministic ask."
+        fallback_command = fallback_command or "ask"
     if latest_status != "success":
         status = "degraded" if error_kind in {"quota", "timeout", "auth", "unavailable"} else "failed"
         if not reason:
             reason = "Latest LLM run failed."
-    elif route_drift:
+    elif route_drift and delivery_mode != "deterministic-fallback":
         status = "unknown"
         reason = "Current route changed since the last recorded ask."
     return {
@@ -297,7 +315,7 @@ def shell_llm_health(root: Path, llm_status: dict[str, Any], *, latest_llm_run: 
         "model_final": latest_model or current_model,
         "checked_at": str(latest_llm_run.get("checked_at") or ""),
         "source": str(latest_llm_run.get("event") or ""),
-        "fallback_command": "",
+        "fallback_command": fallback_command,
         "fallback_stage": str(latest_llm_run.get("fallback_stage") or ""),
         "fallback_reason": str(latest_llm_run.get("fallback_reason") or ""),
         "contract_validated": bool(latest_llm_run.get("contract_validated")),
@@ -436,20 +454,29 @@ def shell_suggested_next_actions(
     actions: list[dict[str, Any]] = []
     seen_commands: set[str] = set()
 
-    def add_action(kind: str, title: str, command: str, path: str, reason: str) -> None:
+    def add_action(
+        kind: str,
+        title: str,
+        command: str,
+        path: str,
+        reason: str,
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
         normalized_command = command.strip()
         if not title or not normalized_command or normalized_command in seen_commands:
             return
         seen_commands.add(normalized_command)
-        actions.append(
-            {
-                "kind": kind,
-                "title": title,
-                "command": normalized_command,
-                "path": path,
-                "reason": reason,
-            }
-        )
+        action = {
+            "kind": kind,
+            "title": title,
+            "command": normalized_command,
+            "path": path,
+            "reason": reason,
+        }
+        if details:
+            action.update(details)
+        actions.append(action)
 
     next_action = planner_state.get("next_action", {}) if isinstance(planner_state, dict) else {}
     if isinstance(next_action, dict):
@@ -478,6 +505,21 @@ def shell_suggested_next_actions(
             f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-page {path} --status {status}",
             path,
             ",".join(str(item) for item in page.get("reasons", [])[:2]) or "review-needed",
+        )
+
+    for proposal in review_controls.get("rewrite_proposals", [])[:4]:
+        if not isinstance(proposal, dict):
+            continue
+        action = rewrite_recovery_action(proposal)
+        if action is None:
+            continue
+        add_action(
+            str(action.get("kind") or "review-rewrite"),
+            str(action.get("title") or action.get("slug") or "rewrite-proposal"),
+            str(action.get("command") or ""),
+            str(action.get("path") or ""),
+            str(action.get("reason") or "rewrite-review-needed"),
+            details=action,
         )
 
     for action in execution_controls.get("actions", [])[:4]:
@@ -630,46 +672,9 @@ def shell_review_controls(
     rewrite_state = load_concept_rewrite_state(root)
     rewrite_controls: list[dict[str, Any]] = []
     for proposal in rewrite_state.get("proposals", []):
-        if not isinstance(proposal, dict):
-            continue
-        slug = str(proposal.get("slug") or "").strip()
-        can_revert = str(proposal.get("status") or "") == "applied" and bool(proposal.get("previous_markdown"))
-        if not slug or (not bool(proposal.get("active", True)) and not can_revert):
-            continue
-        status = str(proposal.get("status") or "proposed")
-        profile = rewrite_transition_profile(status)
-        rewrite_controls.append(
-            {
-                "slug": slug,
-                "title": str(proposal.get("title") or slug),
-                "status": status,
-                "current_status": status,
-                "priority": str(proposal.get("priority") or "medium"),
-                "score": int(proposal.get("score") or 0),
-                "quality_score": int(proposal.get("quality_score") or 0),
-                "quality_band": str(proposal.get("quality_band") or ""),
-                "proposal_path": str(proposal.get("proposal_path") or ""),
-                "target_path": str(proposal.get("target_path") or f"wiki/concepts/{slug}.md"),
-                "pending_review": str(proposal.get("pending_review") or "") == "true",
-                "apply_ready": bool(proposal.get("apply_ready", False)),
-                "can_review": bool(profile.get("allowed_transitions")),
-                "can_refresh_review": status in REWRITE_PROPOSAL_STATUSES,
-                "can_apply": bool(proposal.get("apply_ready", False)),
-                "can_revert": can_revert,
-                "first_proposed_at": str(proposal.get("first_proposed_at") or ""),
-                "last_proposed_at": str(proposal.get("last_proposed_at") or ""),
-                "reviewed_at": str(proposal.get("reviewed_at") or ""),
-                "applied_at": str(proposal.get("applied_at") or ""),
-                "reverted_at": str(proposal.get("reverted_at") or ""),
-                "verification_status": str(proposal.get("verification_status") or ""),
-                "verification_checked_at": str(proposal.get("verification_checked_at") or ""),
-                "issue_count": len(proposal.get("issues", [])) if isinstance(proposal.get("issues"), list) else 0,
-                "source_count": len(proposal.get("source_pages", []))
-                if isinstance(proposal.get("source_pages"), list)
-                else 0,
-                **profile,
-            }
-        )
+        control = rewrite_control_object(root, proposal)
+        if control is not None:
+            rewrite_controls.append(control)
     rewrite_controls.sort(
         key=lambda item: (
             0 if item.get("can_review") else 1,
@@ -688,6 +693,152 @@ def shell_review_controls(
         "judgment_pages": [page for page in review_pages if str(page.get("kind") or "") == "judgment"],
         "review_actions": [dict(action) for action in review_actions if isinstance(action, dict)],
         "rewrite_proposals": rewrite_controls,
+    }
+
+
+def rewrite_control_object(root: Path, proposal: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(proposal, dict):
+        return None
+    slug = str(proposal.get("slug") or "").strip()
+    status = str(proposal.get("status") or "proposed")
+    can_revert = status == "applied" and bool(proposal.get("previous_markdown"))
+    if not slug or (not bool(proposal.get("active", True)) and not can_revert):
+        return None
+    profile = rewrite_transition_profile(status)
+    return {
+        "slug": slug,
+        "title": str(proposal.get("title") or slug),
+        "status": status,
+        "current_status": status,
+        "priority": str(proposal.get("priority") or "medium"),
+        "score": int(proposal.get("score") or 0),
+        "quality_score": int(proposal.get("quality_score") or 0),
+        "quality_band": str(proposal.get("quality_band") or ""),
+        "proposal_path": str(proposal.get("proposal_path") or ""),
+        "target_path": str(proposal.get("target_path") or f"wiki/concepts/{slug}.md"),
+        "pending_review": str(proposal.get("pending_review") or "") == "true",
+        "has_candidate_markdown": bool(str(proposal.get("candidate_markdown") or "").strip()),
+        "apply_ready": bool(proposal.get("apply_ready", False)),
+        "can_review": bool(profile.get("allowed_transitions")),
+        "can_refresh_review": status in REWRITE_PROPOSAL_STATUSES,
+        "can_apply": bool(proposal.get("apply_ready", False)),
+        "can_revert": can_revert,
+        "first_proposed_at": str(proposal.get("first_proposed_at") or ""),
+        "last_proposed_at": str(proposal.get("last_proposed_at") or ""),
+        "reviewed_at": str(proposal.get("reviewed_at") or ""),
+        "applied_at": str(proposal.get("applied_at") or ""),
+        "reverted_at": str(proposal.get("reverted_at") or ""),
+        "verification_status": str(proposal.get("verification_status") or ""),
+        "verification_checked_at": str(proposal.get("verification_checked_at") or ""),
+        "issue_count": len(proposal.get("issues", [])) if isinstance(proposal.get("issues"), list) else 0,
+        "source_count": len(proposal.get("source_pages", [])) if isinstance(proposal.get("source_pages"), list) else 0,
+        **profile,
+    }
+
+
+def rewrite_control_objects_for_paths(root: Path, proposal_paths: list[str]) -> list[dict[str, Any]]:
+    normalized_paths = [str(path).strip() for path in proposal_paths if str(path).strip()]
+    if not normalized_paths:
+        return []
+    controls_by_path: dict[str, dict[str, Any]] = {}
+    for proposal in load_concept_rewrite_state(root).get("proposals", []):
+        control = rewrite_control_object(root, proposal)
+        if control is None:
+            continue
+        proposal_path = str(control.get("proposal_path") or "")
+        if proposal_path:
+            controls_by_path[proposal_path] = control
+    controls: list[dict[str, Any]] = []
+    seen_slugs: set[str] = set()
+    for proposal_path in normalized_paths:
+        control = controls_by_path.get(proposal_path)
+        if control is None:
+            continue
+        slug = str(control.get("slug") or "")
+        if slug and slug in seen_slugs:
+            continue
+        if slug:
+            seen_slugs.add(slug)
+        controls.append(control)
+    return controls
+
+
+def rewrite_recovery_action(control: dict[str, Any]) -> dict[str, Any] | None:
+    slug = str(control.get("slug") or "").strip()
+    if not slug:
+        return None
+    title = str(control.get("title") or slug)
+    status = str(control.get("current_status") or control.get("status") or "").strip()
+    proposal_path = str(control.get("proposal_path") or "").strip()
+    target_path = str(control.get("target_path") or "").strip()
+    allowed_transitions = [
+        str(item)
+        for item in control.get("allowed_transitions", [])
+        if isinstance(item, str) and item.strip()
+    ]
+    preferred_transitions = [
+        str(item)
+        for item in control.get("preferred_transitions", [])
+        if isinstance(item, str) and item.strip()
+    ]
+    default_transition = str(control.get("default_transition") or (allowed_transitions[0] if allowed_transitions else "")).strip()
+    base = {
+        "slug": slug,
+        "status": status,
+        "current_status": status,
+        "proposal_path": proposal_path,
+        "target_path": target_path,
+        "allowed_transitions": allowed_transitions,
+        "preferred_transitions": preferred_transitions,
+        "default_transition": default_transition,
+        "can_review": bool(control.get("can_review")),
+        "can_apply": bool(control.get("can_apply")),
+        "can_revert": bool(control.get("can_revert")),
+    }
+    if bool(control.get("can_apply")):
+        return {
+            **base,
+            "kind": "apply-rewrite",
+            "title": title,
+            "command": f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {slug} --dry-run",
+            "path": proposal_path or target_path,
+            "reason": "rewrite-apply-ready",
+        }
+    if bool(control.get("can_review")) and bool(control.get("has_candidate_markdown")) and default_transition:
+        return {
+            **base,
+            "kind": "review-rewrite",
+            "title": title,
+            "command": f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite {slug} --status {default_transition}",
+            "path": proposal_path or target_path,
+            "reason": "rewrite-review-needed" if bool(control.get("pending_review")) else f"rewrite-{status or 'review'}",
+            "transition": default_transition,
+        }
+    return None
+
+
+def rewrite_recovery_actions_for_controls(rewrite_controls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    seen_commands: set[str] = set()
+    for control in rewrite_controls:
+        if not isinstance(control, dict):
+            continue
+        action = rewrite_recovery_action(control)
+        if action is None:
+            continue
+        command = str(action.get("command") or "").strip()
+        if not command or command in seen_commands:
+            continue
+        seen_commands.add(command)
+        actions.append(action)
+    return actions
+
+
+def rewrite_recovery_payload_for_paths(root: Path, proposal_paths: list[str]) -> dict[str, Any]:
+    rewrite_controls = rewrite_control_objects_for_paths(root, proposal_paths)
+    return {
+        "updated_rewrite_proposals": rewrite_controls,
+        "rewrite_recovery_actions": rewrite_recovery_actions_for_controls(rewrite_controls),
     }
 
 
@@ -1067,6 +1218,11 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         review_actions=judgment_review_actions if isinstance(judgment_review_actions, list) else [],
     )
     execution_controls = shell_execution_controls(root, memory)
+    rewrite_recovery_actions = rewrite_recovery_actions_for_controls(
+        list(review_controls.get("rewrite_proposals", []))
+        if isinstance(review_controls.get("rewrite_proposals", []), list)
+        else []
+    )
     recent_outputs = collect_recent_output_artifacts(root, limit=8)
     recent_receipts = shell_recent_receipts(root, limit=8)
     recent_runs = shell_recent_runs(root, limit=8)
@@ -1125,6 +1281,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
             "strong_assets": list(judgment_assets.get("strong_assets", []))[:8],
         },
         "review_controls": review_controls,
+        "rewrite_recovery_actions": rewrite_recovery_actions,
         "execution_controls": execution_controls,
         "planner": planner_state,
         "route_telemetry": route_telemetry,

@@ -26,6 +26,7 @@ from .app_content import (
 )
 from .app_memory import store_concept_rewrite_candidate
 from .app_protocol import CONCEPT_HARDNESS_LEVELS, ensure_layout, load_protocol_state
+from .app_shell import rewrite_recovery_payload_for_paths
 from .app_state import load_machine_memory, load_manifest
 from .app_utils import (
     TEXT_EXTENSIONS,
@@ -41,10 +42,14 @@ from .llm import (
     CompletionResult,
     LLMError,
     advance_client_model,
+    classify_backend_error,
     create_backend_client,
     probe_available_backends,
     probe_backend,
 )
+
+RUN_ASK_FRONTDOOR_EVENT = "run-ask-frontdoor"
+RUN_ASK_FALLBACK_ERROR_KINDS = {"quota", "timeout", "auth", "unavailable"}
 
 ASK_INDEX_PAGES_BASE = (
     "wiki/indexes/index.md",
@@ -210,6 +215,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
 
     if (not pending and not pending_concept_slugs and not pending_rewrite_candidates) or limit <= 0:
         llm_audit = _empty_llm_audit()
+        rewrite_payload = rewrite_recovery_payload_for_paths(root, updated_rewrite_proposal_pages)
         _append_llm_receipt_and_log(
             root,
             summary_base_event(int((time.monotonic() - started) * 1000)),
@@ -226,6 +232,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             "skipped_concept_pages": skipped_concepts,
             "updated_rewrite_concept_pages": [],
             "updated_rewrite_proposal_pages": updated_rewrite_proposal_pages,
+            **rewrite_payload,
             "pending_rewrite_concept_pages": len(pending_rewrite_candidates),
             "skipped_rewrite_concept_pages": skipped_rewrite_candidates,
             **llm_audit,
@@ -655,6 +662,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
         llm_audit,
         status="success",
     )
+    rewrite_payload = rewrite_recovery_payload_for_paths(root, updated_rewrite_proposal_pages)
     return {
         "compile": compile_result,
         "updated_pages": updated_pages,
@@ -665,6 +673,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
         "skipped_concept_pages": skipped_concepts,
         "updated_rewrite_concept_pages": [],
         "updated_rewrite_proposal_pages": updated_rewrite_proposal_pages,
+        **rewrite_payload,
         "pending_rewrite_concept_pages": len(pending_rewrite_candidates),
         "skipped_rewrite_concept_pages": skipped_rewrite_candidates,
         **llm_audit,
@@ -683,6 +692,7 @@ def run_ask(
     lean: bool = False,
     timeout_seconds: int | None = None,
     no_cache: bool = False,
+    fallback_to_ask: bool = False,
 ) -> dict[str, Any]:
     ensure_layout(root)
     if timeout_seconds is not None and timeout_seconds <= 0:
@@ -739,6 +749,8 @@ def run_ask(
     fallback_reason = ""
     started = time.monotonic()
     result: CompletionResult | None = None
+    used_prompt_profile = prompt_profile
+    effective_timeout_seconds = getattr(getattr(effective_client, "config", None), "timeout_seconds", timeout_seconds)
     try:
         while True:
             try:
@@ -768,6 +780,7 @@ def run_ask(
                         prompt_profile=retry_profile,
                     )
                     prompt_profile = retry_profile
+                    used_prompt_profile = retry_profile
                     continue
                 if _fallback_to_next_model(effective_client, "run-ask", exc):
                     fallback_reason = str(exc)
@@ -785,6 +798,7 @@ def run_ask(
                 raise
             break
     except Exception as exc:
+        duration_ms = int((time.monotonic() - started) * 1000)
         failed_audit = {
             "backend_requested": backend_requested,
             "backend_effective": _client_backend_name(effective_client),
@@ -794,7 +808,7 @@ def run_ask(
             "fallback_reason": fallback_reason or str(exc),
             "contract_validated": False,
         }
-        _append_llm_receipt(
+        _append_llm_receipt_and_log(
             root,
             {
                 "event": "run-ask",
@@ -802,39 +816,78 @@ def run_ask(
                 "question": question,
                 "format": output_format,
                 "protocol": artifact.get("protocol", ""),
-                **failed_audit,
-                "duration_ms": int((time.monotonic() - started) * 1000),
-                "prompt_profile": retry_profile or prompt_profile,
+                "duration_ms": duration_ms,
+                "prompt_profile": retry_profile or used_prompt_profile,
                 "retry_prompt_profile": retry_profile,
-                "status": "failed",
-                "error": str(exc),
-                "response_id": getattr(result, "response_id", "") if result is not None else "",
-                "usage": getattr(result, "usage", {}) if result is not None else {},
                 "no_cache": no_cache,
             },
+            failed_audit,
+            status="failed",
+            error=str(exc),
+            response_id=getattr(result, "response_id", "") if result is not None else "",
+            usage=getattr(result, "usage", {}) if result is not None else {},
         )
-        _append_log(
-            root,
-            {
-                "event": "run-ask",
+        if fallback_to_ask:
+            frontdoor_base_event = {
+                "event": RUN_ASK_FRONTDOOR_EVENT,
                 "target": artifact["path"],
                 "question": question,
                 "format": output_format,
                 "protocol": artifact.get("protocol", ""),
-                "ranked_sources": source_ids,
-                "backend": failed_audit["backend_effective"],
-                "model": failed_audit["model_final"],
-                **failed_audit,
-                "prompt_profile": retry_profile or prompt_profile,
+                "duration_ms": duration_ms,
+                "prompt_profile": retry_profile or used_prompt_profile,
                 "retry_prompt_profile": retry_profile,
-                "timeout_seconds": getattr(getattr(effective_client, "config", None), "timeout_seconds", timeout_seconds),
+                "timeout_seconds": effective_timeout_seconds,
                 "no_cache": no_cache,
-                "status": "failed",
-                "error": str(exc),
-                "response_id": getattr(result, "response_id", "") if result is not None else "",
-                "usage": getattr(result, "usage", {}) if result is not None else {},
-            },
-        )
+                "primary_attempt_status": "failed",
+                "primary_error": str(exc),
+            }
+            if classify_backend_error(str(exc)) in RUN_ASK_FALLBACK_ERROR_KINDS:
+                _append_llm_receipt_and_log(
+                    root,
+                    {
+                        **frontdoor_base_event,
+                        "delivery_mode": "deterministic-fallback",
+                        "fallback_used": True,
+                        "fallback_from": "run-ask",
+                        "fallback_command": "ask",
+                    },
+                    failed_audit,
+                    status="success",
+                    error=str(exc),
+                    response_id=getattr(result, "response_id", "") if result is not None else "",
+                    usage=getattr(result, "usage", {}) if result is not None else {},
+                )
+                return {
+                    **artifact,
+                    **failed_audit,
+                    "status": "success",
+                    "prompt_profile": retry_profile or used_prompt_profile,
+                    "retry_prompt_profile": retry_profile,
+                    "timeout_seconds": effective_timeout_seconds,
+                    "no_cache": no_cache,
+                    "delivery_mode": "deterministic-fallback",
+                    "primary_attempt_status": "failed",
+                    "primary_error": str(exc),
+                    "fallback_used": True,
+                    "fallback_from": "run-ask",
+                    "fallback_command": "ask",
+                }
+            _append_llm_receipt_and_log(
+                root,
+                {
+                    **frontdoor_base_event,
+                    "delivery_mode": "llm-failed",
+                    "fallback_used": False,
+                    "fallback_from": "",
+                    "fallback_command": "",
+                },
+                failed_audit,
+                status="failed",
+                error=str(exc),
+                response_id=getattr(result, "response_id", "") if result is not None else "",
+                usage=getattr(result, "usage", {}) if result is not None else {},
+            )
         raise
     target.write_text(updated, encoding="utf-8")
     backend_effective = _client_backend_name(effective_client)
@@ -849,7 +902,7 @@ def run_ask(
         "fallback_reason": fallback_reason,
         "contract_validated": True,
     }
-    _append_llm_receipt(
+    _append_llm_receipt_and_log(
         root,
         {
             "event": "run-ask",
@@ -857,44 +910,61 @@ def run_ask(
             "question": question,
             "format": output_format,
             "protocol": artifact.get("protocol", ""),
-            **llm_audit,
             "duration_ms": int((time.monotonic() - started) * 1000),
-            "prompt_profile": retry_profile or prompt_profile,
+            "prompt_profile": retry_profile or used_prompt_profile,
             "retry_prompt_profile": retry_profile,
-            "status": "success",
-            "response_id": result.response_id,
-            "usage": result.usage,
             "no_cache": no_cache,
         },
+        llm_audit,
+        status="success",
+        response_id=result.response_id,
+        usage=result.usage,
     )
-    _append_log(
-        root,
-        {
-            "event": "run-ask",
-            "target": artifact["path"],
-            "question": question,
-            "format": output_format,
-            "protocol": artifact.get("protocol", ""),
-            "ranked_sources": source_ids,
-            "backend": backend_effective,
-            "model": model_final,
-            **llm_audit,
-            "prompt_profile": retry_profile or prompt_profile,
-            "retry_prompt_profile": retry_profile,
-            "timeout_seconds": getattr(getattr(effective_client, "config", None), "timeout_seconds", timeout_seconds),
-            "no_cache": no_cache,
-            "response_id": result.response_id,
-            "usage": result.usage,
-        },
-    )
-    return {
+    payload = {
         **artifact,
         **llm_audit,
-        "prompt_profile": retry_profile or prompt_profile,
+        "prompt_profile": retry_profile or used_prompt_profile,
         "retry_prompt_profile": retry_profile,
-        "timeout_seconds": getattr(getattr(effective_client, "config", None), "timeout_seconds", timeout_seconds),
+        "timeout_seconds": effective_timeout_seconds,
         "no_cache": no_cache,
     }
+    if fallback_to_ask:
+        _append_llm_receipt_and_log(
+            root,
+            {
+                "event": RUN_ASK_FRONTDOOR_EVENT,
+                "target": artifact["path"],
+                "question": question,
+                "format": output_format,
+                "protocol": artifact.get("protocol", ""),
+                "duration_ms": int((time.monotonic() - started) * 1000),
+                "prompt_profile": retry_profile or used_prompt_profile,
+                "retry_prompt_profile": retry_profile,
+                "timeout_seconds": effective_timeout_seconds,
+                "no_cache": no_cache,
+                "delivery_mode": "llm",
+                "primary_attempt_status": "success",
+                "primary_error": "",
+                "fallback_used": False,
+                "fallback_from": "",
+                "fallback_command": "",
+            },
+            llm_audit,
+            status="success",
+            response_id=result.response_id,
+            usage=result.usage,
+        )
+        return {
+            **payload,
+            "status": "success",
+            "delivery_mode": "llm",
+            "primary_attempt_status": "success",
+            "primary_error": "",
+            "fallback_used": False,
+            "fallback_from": "",
+            "fallback_command": "",
+        }
+    return payload
 
 
 @runtime_write_operation

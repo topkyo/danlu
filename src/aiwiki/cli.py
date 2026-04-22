@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .app_cache import drop_query_cache
+from .app_cache import cache_status_summary, drop_query_cache, force_rebuild_query_cache
 from .app_compile import (
     apply_concept_rewrite,
     apply_machine_memory_action,
@@ -34,7 +34,7 @@ from .app_compile import (
 )
 from .app_content import action_supports_low_risk_apply, ingest_source
 from .app_protocol import ensure_layout, load_protocol_state
-from .app_shell import build_shell_summary, shell_search, shell_status_dashboard
+from .app_shell import build_shell_summary, rewrite_recovery_payload_for_paths, shell_search, shell_status_dashboard
 from .app_state import load_machine_memory_action_state
 from .app_vault import bootstrap_new_vault
 from .drop import drop_image, drop_note, drop_pdf, drop_repo, drop_url
@@ -186,6 +186,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--timeout",
         type=int,
         help="Override the LLM timeout seconds for this run only.",
+    )
+    run_ask_parser.add_argument(
+        "--fallback-to-ask",
+        action="store_true",
+        help="If the LLM backend is unavailable, return the deterministic ask artifact from the same runtime call.",
     )
 
     file_back_parser = subparsers.add_parser(
@@ -375,7 +380,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Timeout in seconds for each LLM probe request.",
     )
 
-    cache_parser = subparsers.add_parser("cache", help="Inspect or drop the volatile SQLite query cache.")
+    cache_parser = subparsers.add_parser("cache", help="Inspect, rebuild, or drop the volatile SQLite query cache.")
+    cache_parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Show the current cache status summary.",
+    )
+    cache_parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Force a rebuild of the volatile cache from the latest snapshot.",
+    )
     cache_parser.add_argument(
         "--drop",
         action="store_true",
@@ -472,6 +487,17 @@ def main(argv: list[str] | None = None) -> int:
             result = _maybe_auto_process(root, result, args)
         elif args.command == "compile":
             result = compile_wiki(root)
+            rewrite_state = result.get("concept_rewrite") or {}
+            proposal_paths = [
+                str(path or "")
+                for path in rewrite_state.get("proposal_paths", [])
+                if str(path or "")
+            ]
+            if proposal_paths:
+                result = {
+                    **result,
+                    **rewrite_recovery_payload_for_paths(root, proposal_paths),
+                }
         elif args.command == "protocol-status":
             if args.set_protocol:
                 result = set_active_protocol(root, args.set_protocol)
@@ -498,6 +524,7 @@ def main(argv: list[str] | None = None) -> int:
                 lean=args.lean,
                 timeout_seconds=args.timeout,
                 no_cache=args.no_cache,
+                fallback_to_ask=args.fallback_to_ask,
             )
         elif args.command == "file-back":
             result = file_back(root, args.artifact, title=args.title, kind=args.kind, protocol=args.protocol)
@@ -597,9 +624,15 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 result = llm_status()
         elif args.command == "cache":
-            if not args.drop:
-                raise ValueError("Provide --drop to delete the volatile cache database.")
-            result = drop_query_cache(root)
+            selected_actions = int(bool(args.status)) + int(bool(args.rebuild)) + int(bool(args.drop))
+            if selected_actions != 1:
+                raise ValueError("Provide exactly one of --status, --rebuild, or --drop.")
+            if args.status:
+                result = cache_status_summary(root)
+            elif args.rebuild:
+                result = force_rebuild_query_cache(root)
+            else:
+                result = drop_query_cache(root)
         elif args.command == "auto-once":
             result = auto_process_once(
                 root,

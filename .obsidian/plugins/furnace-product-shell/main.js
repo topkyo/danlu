@@ -2516,7 +2516,10 @@ function renderRunDetail(plugin, container, record, options = {}) {
   }
 
   const actions = detail.createDiv({ cls: "furnace-shell-inline-actions" });
-  const rewriteProposalPaths = Array.isArray(record.rewriteProposalPaths) ? record.rewriteProposalPaths : [];
+  const rewriteProposalObjects = Array.isArray(record.rewriteProposalObjects) ? record.rewriteProposalObjects : [];
+  const rewriteProposalPaths = rewriteProposalObjects.length
+    ? plugin.rewriteProposalPathsFromObjects(rewriteProposalObjects)
+    : (Array.isArray(record.rewriteProposalPaths) ? record.rewriteProposalPaths : []);
   if (!compact && Array.isArray(record.argv) && record.argv.length) {
     const rerunButton = actions.createEl("button", { text: plugin.t("Re-run") });
     rerunButton.addEventListener("click", () => {
@@ -2528,9 +2531,12 @@ function renderRunDetail(plugin, container, record, options = {}) {
     });
   }
   if (rewriteProposalPaths.length && !compact) {
+    const firstProposalPath = rewriteProposalObjects[0] && rewriteProposalObjects[0].proposalPath
+      ? rewriteProposalObjects[0].proposalPath
+      : rewriteProposalPaths[0];
     const proposalButton = actions.createEl("button", { text: plugin.t("Open proposal") });
     proposalButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.openWorkspacePath(rewriteProposalPaths[0]), `Open rewrite proposal: ${rewriteProposalPaths[0]}`);
+      plugin.runUiAction(() => plugin.openWorkspacePath(firstProposalPath), `Open rewrite proposal: ${firstProposalPath}`);
     });
   }
   if (rewriteProposalPaths.length) {
@@ -3570,43 +3576,58 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     const recentRuns = Array.isArray(data.recentRuns)
       ? data.recentRuns
         .filter((record) => record && typeof record === "object")
-        .map((record) => ({
-          ...record,
-          argv: Array.isArray(record.argv) ? record.argv.map((value) => String(value || "")) : [],
-          command: String(record.command || (Array.isArray(record.argv) && record.argv.length ? record.argv[0] : "")),
-          protocol: String(record.protocol || ""),
-          backend: String(record.backend || ""),
-          backendRequested: String(record.backendRequested || ""),
-          backendEffective: String(record.backendEffective || ""),
-          model: String(record.model || ""),
-          modelSelected: String(record.modelSelected || ""),
-          modelFinal: String(record.modelFinal || ""),
-          codexReasoningEffort: String(record.codexReasoningEffort || ""),
-          promptProfile: String(record.promptProfile || ""),
-          retryPromptProfile: String(record.retryPromptProfile || ""),
-          fallbackStage: String(record.fallbackStage || ""),
-          fallbackReason: String(record.fallbackReason || ""),
-          contractValidated: Boolean(record.contractValidated),
-          rewriteProposalPaths: this.normalizeRelativePathList(record.rewriteProposalPaths),
-          rewriteProposalSlugs: this.normalizeRelativePathList(record.rewriteProposalSlugs),
-          fallbackFrom: String(record.fallbackFrom || ""),
-          logPath: String(record.logPath || ""),
-          stdoutRaw: this.trimDiagnosticText(record.stdoutRaw || ""),
-          stderrRaw: this.trimDiagnosticText(record.stderrRaw || ""),
-          exitCode: record.exitCode === 0 || Number.isFinite(Number(record.exitCode || NaN))
-            ? Number(record.exitCode)
-            : "",
-          timeline: Array.isArray(record.timeline)
-            ? record.timeline
-              .filter((event) => event && typeof event === "object")
-              .map((event) => ({
-                stage: String(event.stage || ""),
-                at: String(event.at || ""),
-                summary: String(event.summary || ""),
-                status: String(event.status || ""),
-              }))
-            : [],
-        }))
+        .map((record) => {
+          const rewriteProposalObjects = this.normalizeRewriteProposalObjects(record.rewriteProposalObjects || record.updatedRewriteProposals || []);
+          const rewriteRecoveryActions = this.normalizeRewriteRecoveryActions(record.rewriteRecoveryActions || []);
+          const rewriteProposalPaths = this.normalizeRelativePathList(
+            record.rewriteProposalPaths || this.rewriteProposalPathsFromObjects(rewriteProposalObjects)
+          );
+          const rewriteProposalSlugs = this.normalizeRelativePathList(
+            record.rewriteProposalSlugs || this.rewriteProposalSlugsFromObjects(rewriteProposalObjects)
+          );
+          return {
+            ...record,
+            argv: Array.isArray(record.argv) ? record.argv.map((value) => String(value || "")) : [],
+            command: String(record.command || (Array.isArray(record.argv) && record.argv.length ? record.argv[0] : "")),
+            protocol: String(record.protocol || ""),
+            backend: String(record.backend || ""),
+            backendRequested: String(record.backendRequested || ""),
+            backendEffective: String(record.backendEffective || ""),
+            model: String(record.model || ""),
+            modelSelected: String(record.modelSelected || ""),
+            modelFinal: String(record.modelFinal || ""),
+            codexReasoningEffort: String(record.codexReasoningEffort || ""),
+            promptProfile: String(record.promptProfile || ""),
+            retryPromptProfile: String(record.retryPromptProfile || ""),
+            fallbackStage: String(record.fallbackStage || ""),
+            fallbackReason: String(record.fallbackReason || ""),
+            contractValidated: Boolean(record.contractValidated),
+            rewriteProposalObjects,
+            rewriteRecoveryActions,
+            rewriteProposalPaths,
+            rewriteProposalSlugs,
+            fallbackFrom: String(record.fallbackFrom || ""),
+            fallbackCommand: String(record.fallbackCommand || ""),
+            fallbackUsed: Boolean(record.fallbackUsed),
+            deliveryMode: String(record.deliveryMode || ""),
+            logPath: String(record.logPath || ""),
+            stdoutRaw: this.trimDiagnosticText(record.stdoutRaw || ""),
+            stderrRaw: this.trimDiagnosticText(record.stderrRaw || ""),
+            exitCode: record.exitCode === 0 || Number.isFinite(Number(record.exitCode || NaN))
+              ? Number(record.exitCode)
+              : "",
+            timeline: Array.isArray(record.timeline)
+              ? record.timeline
+                .filter((event) => event && typeof event === "object")
+                .map((event) => ({
+                  stage: String(event.stage || ""),
+                  at: String(event.at || ""),
+                  summary: String(event.summary || ""),
+                  status: String(event.status || ""),
+                }))
+              : [],
+          };
+        })
       : [];
     const llmHealth = this.normalizeLlmHealthState(data.llmHealth) || this.inferLlmHealthFromRecentRuns(recentRuns);
     this.pluginState = { recentRuns, llmHealth };
@@ -3675,7 +3696,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       return false;
     }
     const command = String(record.command || "").trim();
-    return command === "run-ask" || String(record.fallbackFrom || "").trim() === "run-ask";
+    return command === "run-ask" || command === "run-ask-frontdoor" || String(record.fallbackFrom || "").trim() === "run-ask";
   }
 
   inferLlmHealthFromRecentRuns(records = []) {
@@ -3685,18 +3706,20 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         continue;
       }
       const command = String(record.command || "").trim();
-      if (command === "run-ask" && record.status === "success") {
+      const usedFallback = Boolean(record.fallbackUsed) || String(record.deliveryMode || "").trim() === "deterministic-fallback";
+      if ((command === "run-ask" || command === "run-ask-frontdoor") && record.status === "success") {
         return this.normalizeLlmHealthState({
-          status: "healthy",
+          status: usedFallback ? "degraded" : "healthy",
           backend: record.backend,
           backendRequested: record.backendRequested,
           backendEffective: record.backendEffective,
           model: record.modelFinal || record.model,
           modelSelected: record.modelSelected,
           modelFinal: record.modelFinal,
-          reason: "Recent run-ask succeeded.",
+          reason: usedFallback ? "Recent run-ask fell back to deterministic ask." : "Recent run-ask succeeded.",
           checkedAt: record.finishedAt || record.startedAt,
-          source: command,
+          source: "run-ask",
+          fallbackCommand: usedFallback ? (record.fallbackCommand || "ask") : "",
           fallbackStage: record.fallbackStage,
           fallbackReason: record.fallbackReason,
           contractValidated: record.contractValidated,
@@ -3705,7 +3728,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           receiptPath: record.receiptPath,
         });
       }
-      if (command === "run-ask" && record.status === "failed" && this.llmBackendUnavailable(record.errorSummary || record.stderrSummary || "")) {
+      if (
+        (command === "run-ask" || command === "run-ask-frontdoor")
+        && record.status === "failed"
+        && this.llmBackendUnavailable(record.errorSummary || record.stderrSummary || "")
+      ) {
         return this.normalizeLlmHealthState({
           status: "degraded",
           backend: record.backend,
@@ -3716,8 +3743,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           modelFinal: record.modelFinal,
           reason: record.errorSummary || record.stderrSummary || "Recent run-ask fell back to deterministic ask.",
           checkedAt: record.finishedAt || record.startedAt,
-          source: command,
-          fallbackCommand: "ask",
+          source: "run-ask",
+          fallbackCommand: record.fallbackCommand || "ask",
           fallbackStage: record.fallbackStage,
           fallbackReason: record.fallbackReason,
           contractValidated: record.contractValidated,
@@ -3812,7 +3839,10 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         receiptPath: String(summaryRun.receiptPath || summaryRun.receipt_path || "").trim(),
         logPath: String(summaryRun.logPath || summaryRun.log_path || "").trim(),
         errorSummary: String(summaryRun.errorSummary || summaryRun.error || summaryRun.fallback_reason || "").trim(),
-        fallbackFrom: String(summaryRun.fallbackFrom || "").trim(),
+        fallbackFrom: String(summaryRun.fallbackFrom || summaryRun.fallback_from || "").trim(),
+        fallbackCommand: String(summaryRun.fallbackCommand || summaryRun.fallback_command || "").trim(),
+        fallbackUsed: Boolean(summaryRun.fallbackUsed || summaryRun.fallback_used),
+        deliveryMode: String(summaryRun.deliveryMode || summaryRun.delivery_mode || "").trim(),
       };
     }
     return this.pluginState.recentRuns.find((record) => this.isLlmRelevantRecord(record)) || null;
@@ -3939,10 +3969,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         detail: this.t("No Product Shell ask has been recorded yet."),
       });
     } else {
-      const latestStatus = latestLlmRun.status === "success"
-        ? "healthy"
-        : String(latestLlmRun.fallbackFrom || "").trim() === "run-ask"
-          ? "warning"
+      const usedFallback = Boolean(latestLlmRun.fallbackUsed) || String(latestLlmRun.deliveryMode || "").trim() === "deterministic-fallback";
+      const latestStatus = usedFallback
+        ? "warning"
+        : latestLlmRun.status === "success"
+          ? "healthy"
           : "failed";
       const latestDetail = latestStatus === "healthy"
         ? this.t("Latest run-ask succeeded.")
@@ -4010,7 +4041,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       reason: overrides.reason || record.errorSummary || "",
       checkedAt: overrides.checkedAt || record.finishedAt || record.startedAt || new Date().toISOString(),
       source: overrides.source || record.command || "",
-      fallbackCommand: overrides.fallbackCommand || record.fallbackFrom || "",
+      fallbackCommand: overrides.fallbackCommand || record.fallbackCommand || record.fallbackFrom || "",
       fallbackStage: overrides.fallbackStage || record.fallbackStage || "",
       fallbackReason: overrides.fallbackReason || record.fallbackReason || "",
       contractValidated: Object.prototype.hasOwnProperty.call(overrides, "contractValidated") ? Boolean(overrides.contractValidated) : Boolean(record.contractValidated),
@@ -4152,11 +4183,139 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     );
   }
 
+  normalizeRewriteProposalObject(value) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+    const slug = String(value.slug || "").trim();
+    if (!slug) {
+      return null;
+    }
+    return {
+      slug,
+      title: String(value.title || slug).trim(),
+      status: String(value.status || value.current_status || "").trim(),
+      currentStatus: String(value.currentStatus || value.current_status || value.status || "").trim(),
+      proposalPath: String(value.proposalPath || value.proposal_path || "").trim(),
+      targetPath: String(value.targetPath || value.target_path || "").trim(),
+      canApply: Boolean(value.canApply || value.can_apply),
+      canReview: Boolean(value.canReview || value.can_review),
+      canRevert: Boolean(value.canRevert || value.can_revert),
+      canRefreshReview: Boolean(value.canRefreshReview || value.can_refresh_review),
+      allowedTransitions: Array.isArray(value.allowedTransitions || value.allowed_transitions)
+        ? (value.allowedTransitions || value.allowed_transitions).map((item) => String(item || "").trim()).filter(Boolean)
+        : [],
+      preferredTransitions: Array.isArray(value.preferredTransitions || value.preferred_transitions)
+        ? (value.preferredTransitions || value.preferred_transitions).map((item) => String(item || "").trim()).filter(Boolean)
+        : [],
+      defaultTransition: String(value.defaultTransition || value.default_transition || "").trim(),
+      reason: String(value.reason || "").trim(),
+      command: String(value.command || "").trim(),
+    };
+  }
+
+  normalizeRewriteProposalObjects(value) {
+    const items = Array.isArray(value) ? value : [value];
+    const seen = new Set();
+    return items
+      .map((item) => this.normalizeRewriteProposalObject(item))
+      .filter((item) => {
+        if (!item) {
+          return false;
+        }
+        if (seen.has(item.slug)) {
+          return false;
+        }
+        seen.add(item.slug);
+        return true;
+      });
+  }
+
+  normalizeRewriteRecoveryAction(value) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+    const slug = String(value.slug || "").trim();
+    const command = String(value.command || "").trim();
+    if (!slug || !command) {
+      return null;
+    }
+    return {
+      slug,
+      kind: String(value.kind || "review-rewrite").trim(),
+      title: String(value.title || slug).trim(),
+      command,
+      path: String(value.path || value.proposal_path || value.target_path || "").trim(),
+      reason: String(value.reason || "").trim(),
+      transition: String(value.transition || value.default_transition || "").trim(),
+      status: String(value.status || value.current_status || "").trim(),
+      currentStatus: String(value.currentStatus || value.current_status || value.status || "").trim(),
+      proposalPath: String(value.proposalPath || value.proposal_path || "").trim(),
+      targetPath: String(value.targetPath || value.target_path || "").trim(),
+      canApply: Boolean(value.canApply || value.can_apply),
+      canReview: Boolean(value.canReview || value.can_review),
+      canRevert: Boolean(value.canRevert || value.can_revert),
+      allowedTransitions: Array.isArray(value.allowedTransitions || value.allowed_transitions)
+        ? (value.allowedTransitions || value.allowed_transitions).map((item) => String(item || "").trim()).filter(Boolean)
+        : [],
+      preferredTransitions: Array.isArray(value.preferredTransitions || value.preferred_transitions)
+        ? (value.preferredTransitions || value.preferred_transitions).map((item) => String(item || "").trim()).filter(Boolean)
+        : [],
+      defaultTransition: String(value.defaultTransition || value.default_transition || "").trim(),
+    };
+  }
+
+  normalizeRewriteRecoveryActions(value) {
+    const items = Array.isArray(value) ? value : [value];
+    const seen = new Set();
+    return items
+      .map((item) => this.normalizeRewriteRecoveryAction(item))
+      .filter((item) => {
+        if (!item) {
+          return false;
+        }
+        if (seen.has(item.command)) {
+          return false;
+        }
+        seen.add(item.command);
+        return true;
+      });
+  }
+
+  rewriteProposalPathsFromObjects(objects) {
+    return this.normalizeRelativePathList(
+      (Array.isArray(objects) ? objects : []).map((item) => item && item.proposalPath ? item.proposalPath : "")
+    );
+  }
+
+  rewriteProposalSlugsFromObjects(objects) {
+    return this.normalizeRelativePathList(
+      (Array.isArray(objects) ? objects : []).map((item) => item && item.slug ? item.slug : "")
+    );
+  }
+
+  extractRewriteProposalObjects(payload) {
+    if (!payload || typeof payload !== "object") {
+      return [];
+    }
+    return this.normalizeRewriteProposalObjects(payload.updated_rewrite_proposals || []);
+  }
+
+  extractRewriteRecoveryActions(payload) {
+    if (!payload || typeof payload !== "object") {
+      return [];
+    }
+    return this.normalizeRewriteRecoveryActions(payload.rewrite_recovery_actions || []);
+  }
+
   extractRewriteProposalPaths(payload) {
     if (!payload || typeof payload !== "object") {
       return [];
     }
-    return this.normalizeRelativePathList(payload.updated_rewrite_proposal_pages);
+    const objects = this.extractRewriteProposalObjects(payload);
+    return objects.length
+      ? this.rewriteProposalPathsFromObjects(objects)
+      : this.normalizeRelativePathList(payload.updated_rewrite_proposal_pages);
   }
 
   extractRewriteProposalSlugs(paths) {
@@ -4172,7 +4331,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   rewriteProposalSummary(record) {
-    const count = Array.isArray(record && record.rewriteProposalPaths) ? record.rewriteProposalPaths.length : 0;
+    const count = Array.isArray(record && record.rewriteProposalObjects) && record.rewriteProposalObjects.length
+      ? record.rewriteProposalObjects.length
+      : (Array.isArray(record && record.rewriteProposalPaths) ? record.rewriteProposalPaths.length : 0);
     if (!count) {
       return "";
     }
@@ -4180,6 +4341,41 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   openRewriteRecovery(record) {
+    const recoveryActions = Array.isArray(record && record.rewriteRecoveryActions)
+      ? this.normalizeRewriteRecoveryActions(record.rewriteRecoveryActions)
+      : [];
+    const proposalObjects = Array.isArray(record && record.rewriteProposalObjects)
+      ? this.normalizeRewriteProposalObjects(record.rewriteProposalObjects)
+      : [];
+    if (recoveryActions.length === 1) {
+      const action = recoveryActions[0];
+      const control = proposalObjects.find((item) => item.slug === action.slug) || action;
+      if (action.kind === "apply-rewrite") {
+        this.openApplyRewriteModal({ slug: action.slug });
+        return;
+      }
+      this.openReviewRewriteTransitionPicker({
+        ...control,
+        slug: action.slug,
+        status: action.status || control.status || control.currentStatus || "",
+        currentStatus: action.currentStatus || control.currentStatus || control.status || "",
+        allowedTransitions: action.allowedTransitions || control.allowedTransitions || [],
+        preferredTransitions: action.preferredTransitions || control.preferredTransitions || [],
+        defaultTransition: action.transition || action.defaultTransition || control.defaultTransition || "",
+      });
+      return;
+    }
+    if (proposalObjects.length > 1) {
+      this.openReviewRewriteContextPicker(
+        proposalObjects.map((proposal) => ({
+          ...proposal,
+          value: proposal.slug,
+          label: proposal.title || proposal.slug || "rewrite-proposal",
+          description: `${displayRewriteStatus(proposal.status || proposal.currentStatus || "unknown", this.locale())} | ${proposal.proposalPath || proposal.targetPath || ""}`,
+        }))
+      );
+      return;
+    }
     const rewriteControls = this.rewriteCandidatesForSlugs(record && record.rewriteProposalSlugs, "review");
     if (rewriteControls.length === 1) {
       this.openReviewRewriteTransitionPicker(rewriteControls[0]);
@@ -4805,7 +5001,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     record.logPath = logPath;
     const stdoutText = String(details.stdoutRaw || record.stdoutRaw || "").trim();
     const stderrText = String(details.stderrRaw || record.stderrRaw || "").trim();
-    const rewriteProposalCount = Array.isArray(record.rewriteProposalPaths) ? record.rewriteProposalPaths.length : 0;
+    const rewriteProposalObjects = this.normalizeRewriteProposalObjects(record.rewriteProposalObjects || []);
+    const rewriteProposalCount = rewriteProposalObjects.length || (Array.isArray(record.rewriteProposalPaths) ? record.rewriteProposalPaths.length : 0);
     const lines = [
       "# Product Shell Run Log",
       "",
@@ -4860,7 +5057,12 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       if (record.errorSummary) {
         lines.push(`- error: ${record.errorSummary}`);
       }
-      if (Array.isArray(record.rewriteProposalPaths) && record.rewriteProposalPaths.length) {
+      if (rewriteProposalObjects.length) {
+        lines.push(`- ${this.t("rewrite proposals: {count}", { count: rewriteProposalObjects.length })}`);
+        rewriteProposalObjects.forEach((proposal) => {
+          lines.push(`  - ${proposal.title || proposal.slug}: ${proposal.proposalPath || proposal.targetPath || proposal.slug}`);
+        });
+      } else if (Array.isArray(record.rewriteProposalPaths) && record.rewriteProposalPaths.length) {
         lines.push(`- ${this.t("rewrite proposals: {count}", { count: record.rewriteProposalPaths.length })}`);
         record.rewriteProposalPaths.forEach((proposalPath) => {
           lines.push(`  - ${proposalPath}`);
@@ -4956,6 +5158,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       fallbackStage: "",
       fallbackReason: "",
       contractValidated: false,
+      rewriteProposalObjects: [],
+      rewriteRecoveryActions: [],
       rewriteProposalPaths: [],
       rewriteProposalSlugs: [],
       stdoutSummary: "",
@@ -4968,6 +5172,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       exitCode: "",
       errorSummary: "",
       fallbackFrom: "",
+      fallbackCommand: "",
+      fallbackUsed: false,
+      deliveryMode: "",
       timeline: [],
     };
     this.appendRunEvent(record, "Submitted", label || record.args || "command", "running");
@@ -5028,8 +5235,12 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       const result = await this.execLauncher(args);
       const primaryPath = this.extractPrimaryPath(result.payload);
       const receiptPath = result.payload && typeof result.payload.receipt_path === "string" ? result.payload.receipt_path : "";
+      const rewriteProposalObjects = this.extractRewriteProposalObjects(result.payload);
+      const rewriteRecoveryActions = this.extractRewriteRecoveryActions(result.payload);
       const rewriteProposalPaths = this.extractRewriteProposalPaths(result.payload);
-      const rewriteProposalSlugs = this.extractRewriteProposalSlugs(rewriteProposalPaths);
+      const rewriteProposalSlugs = rewriteProposalObjects.length
+        ? this.rewriteProposalSlugsFromObjects(rewriteProposalObjects)
+        : this.extractRewriteProposalSlugs(rewriteProposalPaths);
       if (options.updateSummaryFromPayload && result.payload && result.payload.kind === "product-shell-summary") {
         this.shellSummary = result.payload;
         this.updateStatusBar();
@@ -5066,10 +5277,18 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           result.payload && typeof result.payload.retry_prompt_profile === "string" ? result.payload.retry_prompt_profile : record.retryPromptProfile,
         fallbackStage: result.payload && typeof result.payload.fallback_stage === "string" ? result.payload.fallback_stage : record.fallbackStage,
         fallbackReason: result.payload && typeof result.payload.fallback_reason === "string" ? result.payload.fallback_reason : record.fallbackReason,
+        fallbackFrom: result.payload && typeof result.payload.fallback_from === "string" ? result.payload.fallback_from : record.fallbackFrom,
+        fallbackCommand: result.payload && typeof result.payload.fallback_command === "string" ? result.payload.fallback_command : (record.fallbackCommand || ""),
+        fallbackUsed: result.payload && Object.prototype.hasOwnProperty.call(result.payload, "fallback_used")
+          ? Boolean(result.payload.fallback_used)
+          : Boolean(record.fallbackUsed),
+        deliveryMode: result.payload && typeof result.payload.delivery_mode === "string" ? result.payload.delivery_mode : (record.deliveryMode || ""),
         contractValidated:
           result.payload && Object.prototype.hasOwnProperty.call(result.payload, "contract_validated")
             ? Boolean(result.payload.contract_validated)
             : record.contractValidated,
+        rewriteProposalObjects,
+        rewriteRecoveryActions,
         rewriteProposalPaths,
         rewriteProposalSlugs,
         stdoutSummary: truncateText(result.stdout),
@@ -5080,10 +5299,12 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         receiptPath,
       });
       if (record.command === "run-ask") {
+        const usedFallback = Boolean(record.fallbackUsed) || String(record.deliveryMode || "").trim() === "deterministic-fallback";
         this.recordLlmHealthFromRun(record, {
-          status: "healthy",
-          reason: "Recent run-ask succeeded.",
+          status: usedFallback ? "degraded" : "healthy",
+          reason: usedFallback ? "Recent run-ask fell back to deterministic ask." : "Recent run-ask succeeded.",
           source: "run-ask",
+          fallbackCommand: usedFallback ? (record.fallbackCommand || "ask") : "",
           backendRequested: record.backendRequested,
           backendEffective: record.backendEffective,
           modelSelected: record.modelSelected,
@@ -5226,31 +5447,10 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (protocol) {
       args.push("--protocol", protocol);
     }
-    try {
-      await this.runPluginCommand(`${this.t("Ask")}: ${truncateText(question, 48)}`, args, { refreshAfter: true });
-    } catch (error) {
-      if (mode === "run-ask" && this.llmBackendUnavailable(error)) {
-        new Notice(this.t("LLM backend unavailable; retried with deterministic ask."));
-        const fallbackArgs = ["ask", question, "--format", format];
-        if (protocol) {
-          fallbackArgs.push("--protocol", protocol);
-        }
-        await this.runPluginCommand(`${this.t("Ask")}: ${truncateText(question, 48)} · ${this.t("Deterministic fallback")}`, fallbackArgs, { refreshAfter: true });
-        const fallbackRecord = this.latestPluginRun();
-        if (fallbackRecord) {
-          this.appendRunEvent(fallbackRecord, "Fallback", this.t("Recent run-ask fell back to deterministic ask."), "success");
-          this.updateRunRecord(fallbackRecord, { fallbackFrom: "run-ask" });
-          this.recordLlmHealthFromRun(fallbackRecord, {
-            status: "degraded",
-            source: "run-ask",
-            fallbackCommand: "ask",
-            reason: "Recent run-ask fell back to deterministic ask.",
-          });
-        }
-        return;
-      }
-      throw error;
+    if (mode === "run-ask") {
+      args.push("--fallback-to-ask");
     }
+    await this.runPluginCommand(`${this.t("Ask")}: ${truncateText(question, 48)}`, args, { refreshAfter: true });
   }
 
   async runDropUrlCommand({ url, title }) {

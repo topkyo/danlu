@@ -817,7 +817,10 @@ function renderRunDetail(plugin, container, record, options = {}) {
   }
 
   const actions = detail.createDiv({ cls: "furnace-shell-inline-actions" });
-  const rewriteProposalPaths = Array.isArray(record.rewriteProposalPaths) ? record.rewriteProposalPaths : [];
+  const rewriteProposalObjects = Array.isArray(record.rewriteProposalObjects) ? record.rewriteProposalObjects : [];
+  const rewriteProposalPaths = rewriteProposalObjects.length
+    ? plugin.rewriteProposalPathsFromObjects(rewriteProposalObjects)
+    : (Array.isArray(record.rewriteProposalPaths) ? record.rewriteProposalPaths : []);
   if (!compact && Array.isArray(record.argv) && record.argv.length) {
     const rerunButton = actions.createEl("button", { text: plugin.t("Re-run") });
     rerunButton.addEventListener("click", () => {
@@ -829,9 +832,12 @@ function renderRunDetail(plugin, container, record, options = {}) {
     });
   }
   if (rewriteProposalPaths.length && !compact) {
+    const firstProposalPath = rewriteProposalObjects[0] && rewriteProposalObjects[0].proposalPath
+      ? rewriteProposalObjects[0].proposalPath
+      : rewriteProposalPaths[0];
     const proposalButton = actions.createEl("button", { text: plugin.t("Open proposal") });
     proposalButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.openWorkspacePath(rewriteProposalPaths[0]), `Open rewrite proposal: ${rewriteProposalPaths[0]}`);
+      plugin.runUiAction(() => plugin.openWorkspacePath(firstProposalPath), `Open rewrite proposal: ${firstProposalPath}`);
     });
   }
   if (rewriteProposalPaths.length) {

@@ -284,6 +284,7 @@ class ShellSummary(TypedDict, total=False):
     search_results: dict[str, Any]
     suggested_next_actions: list[dict[str, Any]]
     drift_warnings: list[dict[str, Any]]
+    rewrite_recovery_actions: list[dict[str, Any]]
     recent_outputs: list[dict[str, Any]]
     recent_receipts: list[dict[str, Any]]
     recent_runs: list[dict[str, Any]]

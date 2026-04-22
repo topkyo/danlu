@@ -1258,9 +1258,15 @@ def ask_question(
         protocol=active_protocol,
         occurred_at=created_at,
     )
-    machine_query["route_telemetry"] = dict(
-        route_telemetry.get("last_entry") or machine_query.get("route_telemetry") or {}
-    )
+    last_route_entry = route_telemetry.get("last_entry") if isinstance(route_telemetry, dict) else {}
+    if isinstance(last_route_entry, dict):
+        machine_query["route_telemetry"] = {
+            key: value
+            for key, value in last_route_entry.items()
+            if key not in {"occurred_at", "question_preview"}
+        }
+    else:
+        machine_query["route_telemetry"] = dict(machine_query.get("route_telemetry") or {})
     refresh_material_state(root, generated_at=created_at, active_protocol=active_protocol)
     refresh_knowledge_lifecycle_state(
         root,

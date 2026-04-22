@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from aiwiki.app_cache import drop_query_cache
+from aiwiki.app_cache import CACHE_SCHEMA_VERSION, drop_query_cache, force_rebuild_query_cache
 from aiwiki.app_compile import (
     _save_machine_memory_action_records,
     apply_concept_rewrite,
@@ -3066,6 +3066,47 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertFalse(cache_status["enabled"])
         self.assertGreaterEqual(cache_status["stats"]["drops"], 1)
 
+    def test_force_rebuild_query_cache_updates_status_reason(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        result = force_rebuild_query_cache(self.root)
+
+        self.assertTrue(result["rebuilt"])
+        self.assertEqual(result["reason"], "forced")
+        self.assertEqual(result["rebuild_reason"], "forced")
+        self.assertEqual(result["last_rebuild"]["reason"], "forced")
+        cache_status = load_cache_status(self.root)
+        self.assertEqual(cache_status["last_sync"]["rebuild_reason"], "forced")
+        self.assertEqual(cache_status["last_rebuild"]["reason"], "forced")
+        self.assertGreaterEqual(cache_status["stats"]["rebuilds"], 1)
+
+    def test_force_rebuild_query_cache_reports_missing_state_when_uninitialized(self) -> None:
+        result = force_rebuild_query_cache(self.root)
+
+        self.assertFalse(result["rebuilt"])
+        self.assertEqual(result["reason"], "missing-state")
+
+    def test_compile_rebuilds_cache_on_schema_mismatch(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        cache_db = self.root / ".aiwiki" / "cache.db"
+        with sqlite3.connect(cache_db) as connection:
+            connection.execute(
+                "UPDATE cache_meta SET value = ? WHERE key = ?",
+                (str(CACHE_SCHEMA_VERSION - 1), "schema_version"),
+            )
+            connection.commit()
+
+        compile_wiki(self.root)
+
+        cache_status = load_cache_status(self.root)
+        self.assertEqual(cache_status["schema_version"], CACHE_SCHEMA_VERSION)
+        self.assertEqual(cache_status["last_sync"]["rebuild_reason"], "schema-mismatch")
+        self.assertEqual(cache_status["last_rebuild"]["reason"], "schema-mismatch")
+        self.assertGreaterEqual(cache_status["stats"]["rebuilds"], 1)
+
     def test_machine_memory_query_recreates_query_result_cache_after_drop(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -5232,6 +5273,55 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(result["llm_health"]["backend_effective"], "codex-cli")
         self.assertIn("Current route changed", result["llm_health"]["reason"])
 
+    def test_shell_status_surfaces_runtime_owned_deterministic_ask_fallback_lineage(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "codex-cli"}, clear=False):
+            with patch(
+                "aiwiki.app_shell.load_llm_receipt_history",
+                return_value=[
+                    {
+                        "created_at": "2026-04-22T00:00:00+00:00",
+                        "event": "run-ask-frontdoor",
+                        "status": "success",
+                        "question": "Check frontdoor fallback lineage",
+                        "format": "report",
+                        "protocol": "general",
+                        "target": "output/reports/query-frontdoor.md",
+                        "backend_requested": "codex-cli",
+                        "backend_effective": "codex-cli",
+                        "model_selected": "stub-model",
+                        "model_final": "stub-model",
+                        "fallback_stage": "",
+                        "fallback_reason": "usage limit exceeded",
+                        "contract_validated": False,
+                        "delivery_mode": "deterministic-fallback",
+                        "primary_attempt_status": "failed",
+                        "primary_error": "usage limit exceeded",
+                        "fallback_used": True,
+                        "fallback_from": "run-ask",
+                        "fallback_command": "ask",
+                        "prompt_profile": "balanced",
+                        "retry_prompt_profile": "",
+                    }
+                ],
+            ):
+                result = shell_status(self.root)
+
+        self.assertEqual(result["latest_llm_run"]["event"], "run-ask-frontdoor")
+        self.assertEqual(result["latest_llm_run"]["delivery_mode"], "deterministic-fallback")
+        self.assertTrue(result["latest_llm_run"]["fallback_used"])
+        self.assertEqual(result["latest_llm_run"]["fallback_from"], "run-ask")
+        self.assertEqual(result["latest_llm_run"]["fallback_command"], "ask")
+        self.assertEqual(result["latest_llm_run"]["result_path"], "output/reports/query-frontdoor.md")
+        self.assertIn("--fallback-to-ask", result["latest_llm_run"]["recovery_command"])
+
+        self.assertEqual(result["llm_health"]["status"], "degraded")
+        self.assertEqual(result["llm_health"]["fallback_command"], "ask")
+        self.assertEqual(result["llm_health"]["result_path"], "output/reports/query-frontdoor.md")
+        self.assertIn("fell back to deterministic ask", result["llm_health"]["reason"])
+
     def test_shell_status_surfaces_recent_receipts_and_nightly_snapshot(self) -> None:
         entry = self._prepare_ready_archive_candidate()
         archive_result = apply_material_archive(self.root, entry["id"], note="Archive for shell summary.")
@@ -5393,6 +5483,26 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(archive_controls[archive_entry["id"]]["source_path"], f"wiki/sources/{archive_entry['id']}.md")
         self.assertEqual(archive_controls[archive_entry["id"]]["allowed_transitions"], ["apply"])
         self.assertEqual(archive_controls[archive_entry["id"]]["default_transition"], "apply")
+
+    def test_shell_status_surfaces_runtime_owned_rewrite_next_action(self) -> None:
+        prepared = self._prepare_concept_rewrite_proposal()
+        slug = str(prepared["slug"])
+
+        result = shell_status(self.root)
+
+        rewrite_actions = [
+            action
+            for action in result["suggested_next_actions"]
+            if action.get("kind") == "review-rewrite"
+        ]
+        self.assertTrue(rewrite_actions)
+        rewrite_action = rewrite_actions[0]
+        self.assertEqual(rewrite_action["slug"], slug)
+        self.assertEqual(rewrite_action["transition"], "accepted")
+        self.assertEqual(rewrite_action["path"], f"wiki/rewrite-proposals/{slug}.md")
+        self.assertIn(f"review-rewrite {slug} --status accepted", rewrite_action["command"])
+        self.assertTrue(result["rewrite_recovery_actions"])
+        self.assertEqual(result["rewrite_recovery_actions"][0]["slug"], slug)
 
     def test_shell_status_surfaces_judgment_assets_and_split_review_objects(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

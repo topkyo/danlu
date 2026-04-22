@@ -68,17 +68,17 @@ class CLITests(unittest.TestCase):
             ),
             (
                 "run-ask",
-                ["run-ask", "What changed?", "--format", "decision-memo"],
+                ["run-ask", "What changed?", "--format", "decision-memo", "--fallback-to-ask"],
                 "run_ask",
                 (self.root, "What changed?", "decision-memo"),
-                {"protocol": None, "lean": False, "timeout_seconds": None, "no_cache": False},
+                {"protocol": None, "lean": False, "timeout_seconds": None, "no_cache": False, "fallback_to_ask": True},
             ),
             (
                 "run-ask-lean-timeout",
                 ["run-ask", "What changed?", "--format", "report", "--lean", "--timeout", "45", "--no-cache"],
                 "run_ask",
                 (self.root, "What changed?", "report"),
-                {"protocol": None, "lean": True, "timeout_seconds": 45, "no_cache": True},
+                {"protocol": None, "lean": True, "timeout_seconds": 45, "no_cache": True, "fallback_to_ask": False},
             ),
             ("file-back", ["file-back", "artifact.md", "--title", "Filed", "--kind", "decision", "--protocol", "ops"], "file_back", (self.root, "artifact.md"), {"title": "Filed", "kind": "decision", "protocol": "ops"}),
             ("review-page", ["review-page", "page.md", "--status", "approved", "--note", "ok", "--confidence", "high"], "review_page", (self.root, "page.md", "approved"), {"note": "ok", "confidence": "high"}),
@@ -98,6 +98,8 @@ class CLITests(unittest.TestCase):
             ("nightly", ["nightly"], "nightly_health", (self.root,), {}),
             ("run-nightly", ["run-nightly", "--compile-limit", "7", "--no-semantic-lint"], "run_nightly", (self.root,), {"compile_limit": 7, "semantic_lint": False}),
             ("llm-check", ["llm-check"], "llm_status", (), {}),
+            ("cache-status", ["cache", "--status"], "cache_status_summary", (self.root,), {}),
+            ("cache-rebuild", ["cache", "--rebuild"], "force_rebuild_query_cache", (self.root,), {}),
             ("cache-drop", ["cache", "--drop"], "drop_query_cache", (self.root,), {}),
             ("auto-once", ["auto-once", "--compile-limit", "4", "--deterministic-only", "--no-semantic-lint"], "auto_process_once", (self.root,), {"compile_limit": 4, "deterministic_only": True, "semantic_lint": False}),
             ("watch", ["watch", "--interval", "2.5", "--compile-limit", "4", "--deterministic-only", "--no-semantic-lint", "--skip-initial", "--max-cycles", "3"], "watch_inbox", (self.root,), {"interval_seconds": 2.5, "compile_limit": 4, "deterministic_only": True, "semantic_lint": False, "process_initial": False, "max_cycles": 3}),
@@ -158,6 +160,29 @@ class CLITests(unittest.TestCase):
         self.assertEqual(payload["auto_process"], {"compiled": 1})
         self.assertEqual(payload["material"], "url")
 
+    def test_compile_command_wraps_runtime_owned_rewrite_recovery_payload(self) -> None:
+        compile_payload = {
+            "compiled_at": "2026-04-22T00:00:00+00:00",
+            "concept_rewrite": {
+                "proposal_paths": ["wiki/rewrite-proposals/transformer-scaling.md"],
+            },
+        }
+        rewrite_payload = {
+            "updated_rewrite_proposals": [{"slug": "transformer-scaling", "proposal_path": "wiki/rewrite-proposals/transformer-scaling.md"}],
+            "rewrite_recovery_actions": [{"slug": "transformer-scaling", "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite transformer-scaling --status accepted"}],
+        }
+
+        with patch("aiwiki.cli.compile_wiki", return_value=compile_payload) as compile_mock:
+            with patch("aiwiki.cli.rewrite_recovery_payload_for_paths", return_value=rewrite_payload) as recovery_mock:
+                code, payload, stderr = self._run_main(["compile"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        compile_mock.assert_called_once_with(self.root)
+        recovery_mock.assert_called_once_with(self.root, ["wiki/rewrite-proposals/transformer-scaling.md"])
+        self.assertEqual(payload["updated_rewrite_proposals"][0]["slug"], "transformer-scaling")
+        self.assertEqual(payload["rewrite_recovery_actions"][0]["slug"], "transformer-scaling")
+
     def test_main_exits_with_error_message_on_handler_failure(self) -> None:
         stdout = io.StringIO()
         stderr = io.StringIO()
@@ -170,7 +195,7 @@ class CLITests(unittest.TestCase):
         self.assertEqual(stdout.getvalue(), "")
         self.assertIn("error: boom", stderr.getvalue())
 
-    def test_cache_command_requires_drop_flag(self) -> None:
+    def test_cache_command_requires_single_action_flag(self) -> None:
         stdout = io.StringIO()
         stderr = io.StringIO()
         with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
@@ -179,7 +204,18 @@ class CLITests(unittest.TestCase):
 
         self.assertEqual(ctx.exception.code, 1)
         self.assertEqual(stdout.getvalue(), "")
-        self.assertIn("Provide --drop", stderr.getvalue())
+        self.assertIn("exactly one of --status, --rebuild, or --drop", stderr.getvalue())
+
+    def test_cache_command_rejects_multiple_action_flags(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
+            with self.assertRaises(SystemExit) as ctx:
+                main(["--root", str(self.root), "cache", "--status", "--drop"])
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("exactly one of --status, --rebuild, or --drop", stderr.getvalue())
 
     def test_main_exits_with_interrupt_status_on_keyboard_interrupt(self) -> None:
         stdout = io.StringIO()

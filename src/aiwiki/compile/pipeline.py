@@ -35,11 +35,11 @@ CompileStep = Callable[[CompileContext], None]
 
 
 @runtime_write_operation
-def compile_wiki(root: Path) -> dict[str, Any]:
+def compile_wiki(root: Path, *, force_cache_rebuild: bool = False) -> dict[str, Any]:
     context = start_compile_context(root)
     for step in _compile_steps():
         step(context)
-    return _finalize_compile_phase(context)
+    return _finalize_compile_phase(context, force_cache_rebuild=force_cache_rebuild)
 
 
 def _compile_steps() -> tuple[CompileStep, ...]:
@@ -370,6 +370,12 @@ def _build_compile_result_payload(
     phase_summary: list[dict[str, Any]],
 ) -> dict[str, Any]:
     drift_warnings = _build_compile_drift_warnings(context)
+    concept_rewrite = context.memory.get("health", {}).get("concept_rewrite", {})
+    concept_rewrite_proposals = [
+        proposal
+        for proposal in concept_rewrite.get("proposals", [])
+        if isinstance(proposal, dict)
+    ]
     return {
         "compiled_at": context.compiled_at,
         "sources": len(context.entries),
@@ -434,10 +440,19 @@ def _build_compile_result_payload(
             context.root,
             knowledge_lifecycle_override_state_path(context.root),
         ),
+        "concept_rewrite": {
+            "counts": dict(concept_rewrite.get("counts", {})) if isinstance(concept_rewrite.get("counts"), dict) else {},
+            "state_path": str(concept_rewrite.get("state_path") or ""),
+            "proposal_paths": [
+                str(proposal.get("proposal_path") or "")
+                for proposal in concept_rewrite_proposals
+                if str(proposal.get("proposal_path") or "")
+            ],
+        },
     }
 
 
-def _finalize_compile_phase(context: CompileContext) -> dict[str, Any]:
+def _finalize_compile_phase(context: CompileContext, *, force_cache_rebuild: bool = False) -> dict[str, Any]:
     context.cache_status = sync_query_cache(
         context.root,
         memory=context.memory,
@@ -446,6 +461,7 @@ def _finalize_compile_phase(context: CompileContext) -> dict[str, Any]:
         knowledge_lifecycle=context.knowledge_lifecycle,
         archive_candidates=context.archive_candidates,
         compiled_at=context.compiled_at,
+        force_rebuild=force_cache_rebuild,
     )
     phase_summary = _build_compile_phase_summary(context)
     compile_state = _build_compile_state_document(context, phase_summary)
