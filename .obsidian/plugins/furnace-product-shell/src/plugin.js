@@ -460,82 +460,22 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return null;
   }
 
-  latestShellSyncRun() {
-    // recentRuns is ordered newest-first (unshift on append), so find() returns
-    // the most recent shell-status record regardless of status.
-    const latestRecent = this.pluginState.recentRuns.find(
-      (record) => record && record.command === "shell-status"
-    );
-    // Extract CLI snapshot once — needed both to synthesize a record and to
-    // invalidate stale recentRuns entries.
-    const snapshot = (this.shellSummary && typeof this.shellSummary === "object")
-      ? this.shellSummary.latest_shell_sync_run
-      : null;
-    const hasSnapshot = snapshot && typeof snapshot === "object" && Object.keys(snapshot).length;
-    const snapshotGeneratedAt = hasSnapshot ? String(snapshot.generated_at || "") : "";
-    const snapshotFileMtimeEpoch = hasSnapshot ? Number(snapshot.file_mtime_epoch) : NaN;
-    // Prefer the real filesystem mtime when present because it preserves
-    // sub-second freshness ordering and avoids same-second ties between the
-    // CLI-generated timestamp and plugin-side finishedAt values. Fall back to
-    // generated_at only when the snapshot does not expose a finite mtime.
-    const snapshotEpoch = Number.isFinite(snapshotFileMtimeEpoch)
-      ? snapshotFileMtimeEpoch * 1000
-      : (hasSnapshot ? Date.parse(snapshotGeneratedAt) : NaN);
-
-    // If the latest recentRuns record is in-flight (running), trust it —
-    // the CLI snapshot cannot represent in-flight state.
-    if (latestRecent && latestRecent.status === "running") {
-      return latestRecent;
-    }
-    // If the latest recentRuns record is failed, trust it ONLY if the CLI
-    // snapshot is not newer-or-equal. tie => snapshot wins, consistent with
-    // option B contract. A newer snapshot means some later writer (e.g.
-    // silent refresh after compile/nightly) succeeded and the failed record
-    // is stale.
-    if (latestRecent && latestRecent.status === "failed") {
-      const failedFinishedAt = String(latestRecent.finishedAt || latestRecent.startedAt || "");
-      const failedEpoch = Date.parse(failedFinishedAt);
-      const snapshotInvalidates = hasSnapshot
-        && Number.isFinite(snapshotEpoch)
-        && (!Number.isFinite(failedEpoch) || snapshotEpoch >= failedEpoch);
-      if (!snapshotInvalidates) {
-        return latestRecent;
-      }
-      // fall through to return the CLI snapshot
-    }
-    // Prefer the CLI snapshot when available.
-    if (hasSnapshot) {
-      // If the latest recentRuns success record is strictly newer than the
-      // snapshot, prefer it (plugin ran shell-status and the file hasn't
-      // been re-read yet). Use parsed epoch, not string compare.
-      if (latestRecent && latestRecent.status === "success") {
-        const recentFinishedAt = String(latestRecent.finishedAt || latestRecent.startedAt || "");
-        const recentEpoch = Date.parse(recentFinishedAt);
-        if (Number.isFinite(recentEpoch) && Number.isFinite(snapshotEpoch) && recentEpoch > snapshotEpoch) {
-          return latestRecent;
-        }
-      }
-      return {
-        command: "shell-status",
-        status: "success",
-        generatedAt: snapshotGeneratedAt,
-        generatedBy: String(snapshot.generated_by || ""),
-        summaryPath: String(snapshot.summary_path || ""),
-        fileMtimeEpoch: Number.isFinite(snapshotFileMtimeEpoch) ? snapshotFileMtimeEpoch : Number(0),
-        contractVersion: Number(snapshot.contract_version || 0),
-        activeProtocol: String(snapshot.active_protocol || ""),
-        startedAt: snapshotGeneratedAt,
-        finishedAt: snapshotGeneratedAt,
-        logPath: "",
-        errorSummary: "",
-      };
-    }
-    // No CLI snapshot yet → fall back to the most recent recentRuns record.
-    return latestRecent || null;
-  }
-
+  // EP-015: latestShellSyncRun() removed. The sole authoritative source for
+  // the last persisted shell-summary metadata is `shellSummary.latest_shell_sync_run`;
+  // consumers should read it directly rather than going through a plugin
+  // helper that could drift back into merging plugin-local recentRuns.
   currentShellSyncState() {
-    const runningRecord = this.pluginState.recentRuns.find((record) => record && record.command === "shell-status" && record.status === "running");
+    // EP-015 Path 3: summary-only domain state.
+    // 1. Own in-flight shell-status → running (only state recentRuns can
+    //    legitimately contribute, since CLI snapshot cannot represent
+    //    in-flight work).
+    // 2. CLI snapshot present → healthy, using snapshot.generated_at.
+    // 3. Otherwise → unknown.
+    // We no longer synthesize a "failed" domain state from recentRuns;
+    // recentRuns is plugin-local command history, not authoritative health.
+    const runningRecord = this.pluginState.recentRuns.find(
+      (record) => record && record.command === "shell-status" && record.status === "running"
+    );
     if (runningRecord) {
       return {
         status: "running",
@@ -544,28 +484,24 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         logPath: runningRecord.logPath || "",
       };
     }
-    const latestRecord = this.latestShellSyncRun();
-    if (latestRecord && latestRecord.status === "failed") {
+    if (this.shellSummary && typeof this.shellSummary === "object") {
+      const snapshot = this.shellSummary.latest_shell_sync_run;
+      const hasSnapshot = snapshot && typeof snapshot === "object" && Object.keys(snapshot).length;
+      const checkedAt = hasSnapshot
+        ? String(snapshot.generated_at || this.shellSummary.generated_at || "")
+        : String(this.shellSummary.generated_at || "");
       return {
-        status: "failed",
-        reason: latestRecord.errorSummary || this.t("Latest refresh failed."),
-        checkedAt: latestRecord.finishedAt || latestRecord.startedAt || "",
-        logPath: latestRecord.logPath || "",
-      };
-    }
-    if (!this.shellSummary) {
-      return {
-        status: "unknown",
-        reason: this.t("shell-summary.json has not been generated yet. Run Refresh, Compile, or Nightly first."),
-        checkedAt: "",
-        logPath: latestRecord && latestRecord.logPath ? latestRecord.logPath : "",
+        status: "healthy",
+        reason: this.t("Summary ready."),
+        checkedAt,
+        logPath: "",
       };
     }
     return {
-      status: "healthy",
-      reason: this.t("Summary ready."),
-      checkedAt: String(this.shellSummary.generated_at || (latestRecord && (latestRecord.finishedAt || latestRecord.startedAt)) || ""),
-      logPath: latestRecord && latestRecord.logPath ? latestRecord.logPath : "",
+      status: "unknown",
+      reason: this.t("shell-summary.json has not been generated yet. Run Refresh, Compile, or Nightly first."),
+      checkedAt: "",
+      logPath: "",
     };
   }
 
@@ -841,11 +777,23 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   getActiveCuratedPagePath() {
     const activePath = this.getActiveFilePath();
-    if (
-      activePath.endsWith(".md")
-      && (activePath.startsWith("wiki/decisions/") || activePath.startsWith("wiki/judgments/"))
-    ) {
-      return activePath;
+    if (!activePath.endsWith(".md")) {
+      return "";
+    }
+    // Curated-page prefixes come from the CLI summary (EP-015). Plugin no
+    // longer hardcodes "wiki/decisions/" / "wiki/judgments/"; CLI is the
+    // single source of truth for which repo-relative roots count as curated.
+    const roots = (this.shellSummary && typeof this.shellSummary === "object")
+      ? this.shellSummary.curated_page_roots
+      : null;
+    if (!roots || typeof roots !== "object") {
+      return "";
+    }
+    for (const key of Object.keys(roots)) {
+      const prefix = roots[key];
+      if (typeof prefix === "string" && prefix && activePath.startsWith(prefix)) {
+        return activePath;
+      }
     }
     return "";
   }

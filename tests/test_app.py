@@ -5234,6 +5234,33 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(result["llm_health"]["receipt_path"], ".aiwiki/logs/llm-receipts.jsonl")
         self.assertEqual(result["llm_health"]["log_path"], ".aiwiki/logs/runs.jsonl")
 
+    def test_shell_status_surfaces_curated_page_roots(self) -> None:
+        # EP-015: curated_page_roots is a single source of truth for which
+        # repo-relative prefixes count as curated pages. The plugin uses
+        # these prefixes (instead of hardcoded strings) to detect whether
+        # the active file is a curated page.
+        result = shell_status(self.root)
+        roots = result["curated_page_roots"]
+        self.assertIsInstance(roots, dict)
+        self.assertEqual(roots.get("decisions"), "wiki/decisions/")
+        self.assertEqual(roots.get("judgments"), "wiki/judgments/")
+        # Prefixes must be repo-relative and directory-terminated so the
+        # plugin can use startswith() without dealing with vault-absolute paths.
+        for prefix in roots.values():
+            self.assertIsInstance(prefix, str)
+            self.assertTrue(prefix.endswith("/"))
+            self.assertFalse(prefix.startswith("/"))
+
+        # Indirect writers (compile_wiki) must also persist curated_page_roots
+        # so the plugin sees it regardless of which entry point refreshed
+        # shell-summary.json.
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        persisted = json.loads((self.root / "output" / "control" / "shell-summary.json").read_text(encoding="utf-8"))
+        self.assertIn("curated_page_roots", persisted)
+        self.assertEqual(persisted["curated_page_roots"].get("decisions"), "wiki/decisions/")
+        self.assertEqual(persisted["curated_page_roots"].get("judgments"), "wiki/judgments/")
+
     def test_shell_status_surfaces_latest_shell_sync_run(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)

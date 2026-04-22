@@ -300,9 +300,8 @@ function syncToneClass(status) {
   if (status === "running") {
     return "is-running";
   }
-  if (status === "failed") {
-    return "is-degraded";
-  }
+  // EP-015: currentShellSyncState() is summary-only and only returns
+  // running / healthy / unknown. There is no "failed" domain state anymore.
   return "is-unknown";
 }
 
@@ -362,7 +361,8 @@ function renderStatusPanel(plugin, container) {
     healthBox.createDiv({ cls: "furnace-shell-meta", text: routeParts.join(" | ") });
   }
   healthBox.createDiv({
-    cls: syncState.status === "failed" ? "furnace-shell-panel-note furnace-shell-status-failed" : "furnace-shell-panel-note",
+    // EP-015: syncState.status ∈ {running, healthy, unknown}; no failed branch.
+    cls: "furnace-shell-panel-note",
     text: plugin.t(syncState.reason || "Summary unavailable. The panel will sync automatically when possible."),
   });
   healthBox.createDiv({

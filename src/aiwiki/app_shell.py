@@ -95,15 +95,18 @@ def shell_latest_shell_sync_run(root: Path) -> dict[str, Any]:
     Reads the previously-persisted summary artifact (if any) and returns a
     trimmed record describing *when it was written and by which writer label*.
 
-    Semantics (per EP-012 contract, option B):
+    Semantics (per EP-012 contract, option B; reaffirmed by EP-015 Path 3):
     - This is NOT strictly "the last successful shell-status run". Any CLI
       entrypoint that calls `write_shell_summary` (shell-status itself,
       compile / compile_wiki, dashboard, shell-search, nightly, plus indirect
       callers via `--auto` / `auto_process_once`) leaves the same file on
       disk with `generated_by = "aiwiki-shell-status"`. The plugin must treat
       this as a metadata snapshot of whatever summary is currently persisted.
-    - In-flight states (running / failed shell-status invocations) are NOT
-      represented here; the plugin overlays those from its local recentRuns.
+    - In-flight states (running shell-status invocations) are surfaced by
+      the plugin itself from its own command history (own in-flight only,
+      not a domain health source). Failure states are NOT synthesized from
+      the plugin's recentRuns anymore; the plugin relies on this snapshot
+      as the single domain source and only overlays its own running work.
 
     Returned fields:
     - `generated_at`: ISO UTC timestamp string from the prior summary
@@ -1143,6 +1146,25 @@ def shell_links(root: Path) -> dict[str, str]:
     }
 
 
+def shell_curated_page_roots(root: Path) -> dict[str, str]:
+    """Return repo-relative prefixes for curated-page categories.
+
+    Exposed in ShellSummary as the single source of truth for which path
+    prefixes count as "curated pages" (decisions / judgments). The plugin
+    reads this instead of hardcoding `wiki/decisions/` / `wiki/judgments/`
+    so that CLI remains authoritative and the plugin stays a thin client.
+
+    Values are repo-relative directory prefixes ending in "/". They are
+    NOT vault-absolute paths: the plugin resolves the active file's
+    repo-relative path and checks `startswith(prefix)`.
+    """
+    _ = root  # kept in signature for symmetry with other shell_* helpers
+    return {
+        "decisions": "wiki/decisions/",
+        "judgments": "wiki/judgments/",
+    }
+
+
 def shell_capabilities(root: Path) -> dict[str, Any]:
     return {
         "launcher_mode": "repo-local",
@@ -1306,6 +1328,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
     )
     latest_llm_run = shell_latest_llm_run(root)
     latest_shell_sync_run = shell_latest_shell_sync_run(root)
+    curated_page_roots = shell_curated_page_roots(root)
     llm_health = shell_llm_health(root, llm_status, latest_llm_run=latest_llm_run)
     summary: ShellSummary = {
         "kind": "product-shell-summary",
@@ -1333,6 +1356,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         },
         "latest_llm_run": latest_llm_run,
         "latest_shell_sync_run": latest_shell_sync_run,
+        "curated_page_roots": curated_page_roots,
         "llm_health": llm_health,
         "review_backlog_counts": review_backlog_counts,
         "aging_summary": {
