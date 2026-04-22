@@ -183,6 +183,11 @@ def sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def question_signature(question: str) -> str:
+    normalized = " ".join(question.lower().split())
+    return f"sha256:{sha256_bytes(normalized.encode('utf-8'))}"
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:

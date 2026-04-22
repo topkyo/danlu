@@ -221,6 +221,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             summary_base_event(int((time.monotonic() - started) * 1000)),
             llm_audit,
             status="success",
+            skipped=True,
         )
         return {
             "compile": compile_result,
@@ -236,6 +237,8 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             "pending_rewrite_concept_pages": len(pending_rewrite_candidates),
             "skipped_rewrite_concept_pages": skipped_rewrite_candidates,
             **llm_audit,
+            "delivery_mode": llm_audit["delivery_mode"],
+            "fallback_used": llm_audit["fallback_used"],
             "prompt_profile": "",
             "retry_prompt_profile": "",
         }
@@ -852,7 +855,7 @@ def run_ask(
                         "fallback_from": "run-ask",
                         "fallback_command": "ask",
                     },
-                    failed_audit,
+                    {**failed_audit, "delivery_mode": "deterministic-fallback", "fallback_used": True, "fallback_from": "run-ask", "fallback_command": "ask"},
                     status="success",
                     error=str(exc),
                     response_id=getattr(result, "response_id", "") if result is not None else "",
@@ -875,13 +878,7 @@ def run_ask(
                 }
             _append_llm_receipt_and_log(
                 root,
-                {
-                    **frontdoor_base_event,
-                    "delivery_mode": "llm-failed",
-                    "fallback_used": False,
-                    "fallback_from": "",
-                    "fallback_command": "",
-                },
+                frontdoor_base_event,
                 failed_audit,
                 status="failed",
                 error=str(exc),
@@ -1159,6 +1156,12 @@ def run_nightly(
         "state_path": relative_path(root, root / ".aiwiki" / "state" / "nightly-health.json"),
         "llm_used": llm_used,
         **llm_audit,
+        "delivery_mode": llm_audit.get("delivery_mode", ""),
+        "fallback_used": bool(llm_audit.get("fallback_used", False)),
+        "fallback_from": str(llm_audit.get("fallback_from") or ""),
+        "fallback_command": str(llm_audit.get("fallback_command") or ""),
+        "primary_attempt_status": str(llm_audit.get("primary_attempt_status") or ""),
+        "primary_error": str(llm_audit.get("primary_error") or ""),
     }
 
 
@@ -2128,6 +2131,20 @@ def _fallback_stage_label(stages: list[str]) -> str:
     return "+".join(stage for stage in stages if stage)
 
 
+def _infer_delivery_mode(status: str, error: str = "", fallback_stage: str = "", explicit: str = "", skipped: bool = False) -> str:
+    if explicit:
+        return explicit
+    if skipped:
+        return "skipped"
+    if status == "failed" or error:
+        return "llm-failed"
+    if status == "success" and fallback_stage:
+        return "llm-fallback-chain"
+    if status == "success":
+        return "llm-success"
+    return ""
+
+
 def _empty_llm_audit() -> dict[str, Any]:
     return {
         "backend_requested": "",
@@ -2209,26 +2226,41 @@ def _append_llm_receipt_and_log(
     error: str = "",
     response_id: str = "",
     usage: dict[str, Any] | None = None,
+    skipped: bool = False,
 ) -> None:
     usage_payload = usage if isinstance(usage, dict) else {}
-    receipt_event = {
-        **base_event,
-        **llm_audit,
-        "status": status,
-        "response_id": response_id,
-        "usage": usage_payload,
-    }
+    normalized_event = {**llm_audit, **base_event}
+    normalized_event["delivery_mode"] = _infer_delivery_mode(
+        status,
+        error=error,
+        fallback_stage=str(normalized_event.get("fallback_stage") or ""),
+        explicit=str(normalized_event.get("delivery_mode") or ""),
+        skipped=skipped,
+    )
+    normalized_event.setdefault("fallback_used", False)
+    if not normalized_event["fallback_used"]:
+        normalized_event["fallback_used"] = bool(normalized_event.get("delivery_mode") == "deterministic-fallback" or str(normalized_event.get("fallback_stage") or ""))
+    normalized_event.setdefault("fallback_from", "")
+    normalized_event.setdefault("fallback_command", "")
+    normalized_event.setdefault("primary_attempt_status", "")
+    normalized_event.setdefault("primary_error", "")
+    normalized_event.update({"status": status, "response_id": response_id, "usage": usage_payload})
     if error:
-        receipt_event["error"] = error
-    _append_llm_receipt(root, receipt_event)
+        normalized_event["error"] = error
+    llm_audit.update({
+        "delivery_mode": normalized_event.get("delivery_mode", ""),
+        "fallback_used": bool(normalized_event.get("fallback_used", False)),
+        "fallback_from": str(normalized_event.get("fallback_from") or ""),
+        "fallback_command": str(normalized_event.get("fallback_command") or ""),
+        "primary_attempt_status": str(normalized_event.get("primary_attempt_status") or ""),
+        "primary_error": str(normalized_event.get("primary_error") or ""),
+    })
+    _append_llm_receipt(root, normalized_event)
     run_event = {
         **base_event,
         "backend": str(llm_audit.get("backend_effective") or ""),
         "model": str(llm_audit.get("model_final") or ""),
-        **llm_audit,
-        "status": status,
-        "response_id": response_id,
-        "usage": usage_payload,
+        **normalized_event,
     }
     if error:
         run_event["error"] = error

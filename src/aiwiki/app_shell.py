@@ -89,6 +89,57 @@ def shell_recent_runs(root: Path, *, limit: int = 8) -> list[dict[str, Any]]:
     return [summarize_runtime_event_for_shell(event) for event in list(reversed(history))[:limit]]
 
 
+def shell_latest_shell_sync_run(root: Path) -> dict[str, Any]:
+    """Return a metadata snapshot of the on-disk shell-summary.json.
+
+    Reads the previously-persisted summary artifact (if any) and returns a
+    trimmed record describing *when it was written and by which writer label*.
+
+    Semantics (per EP-012 contract, option B):
+    - This is NOT strictly "the last successful shell-status run". Any CLI
+      entrypoint that calls `write_shell_summary` (shell-status itself,
+      compile / compile_wiki, dashboard, shell-search, nightly, plus indirect
+      callers via `--auto` / `auto_process_once`) leaves the same file on
+      disk with `generated_by = "aiwiki-shell-status"`. The plugin must treat
+      this as a metadata snapshot of whatever summary is currently persisted.
+    - In-flight states (running / failed shell-status invocations) are NOT
+      represented here; the plugin overlays those from its local recentRuns.
+
+    Returned fields:
+    - `generated_at`: ISO UTC timestamp string from the prior summary
+    - `generated_by`: writer label string (always "aiwiki-shell-status" today)
+    - `summary_path`: repo-relative path string
+    - `file_mtime_epoch`: POSIX seconds (float) since epoch from `Path.stat().st_mtime`
+    - `contract_version`: int
+    - `active_protocol`: str
+
+    This is always called *before* the current build writes a new summary, so
+    it reports the *prior* on-disk record rather than the in-flight one.
+    Returns `{}` when no summary file exists yet (fresh vault).
+    """
+    summary_path = shell_summary_path(root)
+    if not summary_path.exists():
+        return {}
+    document = load_json_document(summary_path)
+    if not isinstance(document, dict) or not document:
+        return {}
+    generated_at = str(document.get("generated_at") or "")
+    generated_by = str(document.get("generated_by") or "")
+    relative_summary_path = str(document.get("summary_path") or relative_path(root, summary_path))
+    try:
+        mtime_epoch = summary_path.stat().st_mtime
+    except OSError:
+        mtime_epoch = 0.0
+    return {
+        "generated_at": generated_at,
+        "generated_by": generated_by,
+        "summary_path": relative_summary_path,
+        "file_mtime_epoch": float(mtime_epoch),
+        "contract_version": int(document.get("contract_version") or 0),
+        "active_protocol": str(document.get("active_protocol") or ""),
+    }
+
+
 def shell_recent_receipts(root: Path, *, limit: int = 8) -> list[dict[str, Any]]:
     receipts = load_execution_receipt_history(root)
     return [
@@ -297,6 +348,22 @@ def shell_llm_health(root: Path, llm_status: dict[str, Any], *, latest_llm_run: 
         status = "degraded"
         reason = "Recent run-ask fell back to deterministic ask."
         fallback_command = fallback_command or "ask"
+    elif delivery_mode == "skipped":
+        reason = f"Recent {str(latest_llm_run.get('event') or 'LLM run')} skipped (no LLM invocation)."
+    elif delivery_mode == "llm-fallback-chain":
+        status = "degraded"
+        stage = str(latest_llm_run.get("fallback_stage") or "")
+        if stage == "model-chain":
+            reason = "LLM completed via model-chain fallback."
+        elif stage == "prompt-profile":
+            reason = "LLM completed via prompt-profile retry."
+        elif stage:
+            reason = f"LLM completed via fallback ({stage})."
+        else:
+            reason = "LLM completed via fallback chain."
+    elif delivery_mode == "llm-failed":
+        status = "degraded"
+        reason = "LLM failed before completing the primary route."
     if latest_status != "success":
         status = "degraded" if error_kind in {"quota", "timeout", "auth", "unavailable"} else "failed"
         if not reason:
@@ -307,6 +374,7 @@ def shell_llm_health(root: Path, llm_status: dict[str, Any], *, latest_llm_run: 
     return {
         "status": status,
         "reason": reason,
+        "delivery_mode": delivery_mode,
         "backend": current_backend or latest_backend,
         "model": current_model or latest_model,
         "backend_requested": str(latest_llm_run.get("backend_requested") or llm_status.get("backend_requested") or ""),
@@ -1237,6 +1305,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         execution_controls=execution_controls,
     )
     latest_llm_run = shell_latest_llm_run(root)
+    latest_shell_sync_run = shell_latest_shell_sync_run(root)
     llm_health = shell_llm_health(root, llm_status, latest_llm_run=latest_llm_run)
     summary: ShellSummary = {
         "kind": "product-shell-summary",
@@ -1263,6 +1332,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
             "message": str(llm_status.get("message") or ""),
         },
         "latest_llm_run": latest_llm_run,
+        "latest_shell_sync_run": latest_shell_sync_run,
         "llm_health": llm_health,
         "review_backlog_counts": review_backlog_counts,
         "aging_summary": {

@@ -3291,7 +3291,7 @@ function renderExecutionCenter(plugin, contentEl) {
 module.exports = class FurnaceProductShellPlugin extends Plugin {
   async onload() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
-    this.pluginState = { recentRuns: [], llmHealth: null };
+    this.pluginState = { recentRuns: [] };
     this.shellSummary = null;
     this.repoState = { valid: false, root: "", launcherPath: "", missingPaths: ["vault-root"] };
     this.openViews = new Set();
@@ -3629,8 +3629,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           };
         })
       : [];
-    const llmHealth = this.normalizeLlmHealthState(data.llmHealth) || this.inferLlmHealthFromRecentRuns(recentRuns);
-    this.pluginState = { recentRuns, llmHealth };
+    this.pluginState = { recentRuns };
     this.trimRecentRuns();
   }
 
@@ -3638,7 +3637,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     await this.saveData({
       settings: this.settings,
       recentRuns: this.pluginState.recentRuns,
-      llmHealth: this.pluginState.llmHealth,
     });
   }
 
@@ -3699,131 +3697,32 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return command === "run-ask" || command === "run-ask-frontdoor" || String(record.fallbackFrom || "").trim() === "run-ask";
   }
 
-  inferLlmHealthFromRecentRuns(records = []) {
-    const recentRuns = Array.isArray(records) ? records : [];
-    for (const record of recentRuns) {
-      if (!this.isLlmRelevantRecord(record)) {
-        continue;
-      }
-      const command = String(record.command || "").trim();
-      const usedFallback = Boolean(record.fallbackUsed) || String(record.deliveryMode || "").trim() === "deterministic-fallback";
-      if ((command === "run-ask" || command === "run-ask-frontdoor") && record.status === "success") {
-        return this.normalizeLlmHealthState({
-          status: usedFallback ? "degraded" : "healthy",
-          backend: record.backend,
-          backendRequested: record.backendRequested,
-          backendEffective: record.backendEffective,
-          model: record.modelFinal || record.model,
-          modelSelected: record.modelSelected,
-          modelFinal: record.modelFinal,
-          reason: usedFallback ? "Recent run-ask fell back to deterministic ask." : "Recent run-ask succeeded.",
-          checkedAt: record.finishedAt || record.startedAt,
-          source: "run-ask",
-          fallbackCommand: usedFallback ? (record.fallbackCommand || "ask") : "",
-          fallbackStage: record.fallbackStage,
-          fallbackReason: record.fallbackReason,
-          contractValidated: record.contractValidated,
-          logPath: record.logPath,
-          resultPath: record.resultPath,
-          receiptPath: record.receiptPath,
-        });
-      }
-      if (
-        (command === "run-ask" || command === "run-ask-frontdoor")
-        && record.status === "failed"
-        && this.llmBackendUnavailable(record.errorSummary || record.stderrSummary || "")
-      ) {
-        return this.normalizeLlmHealthState({
-          status: "degraded",
-          backend: record.backend,
-          backendRequested: record.backendRequested,
-          backendEffective: record.backendEffective,
-          model: record.modelFinal || record.model,
-          modelSelected: record.modelSelected,
-          modelFinal: record.modelFinal,
-          reason: record.errorSummary || record.stderrSummary || "Recent run-ask fell back to deterministic ask.",
-          checkedAt: record.finishedAt || record.startedAt,
-          source: "run-ask",
-          fallbackCommand: record.fallbackCommand || "ask",
-          fallbackStage: record.fallbackStage,
-          fallbackReason: record.fallbackReason,
-          contractValidated: record.contractValidated,
-          logPath: record.logPath,
-          stderrSummary: record.stderrSummary,
-          stderrRaw: record.stderrRaw,
-        });
-      }
-      if (command === "ask" && String(record.fallbackFrom || "").trim() === "run-ask") {
-        return this.normalizeLlmHealthState({
-          status: "degraded",
-          backend: record.backend,
-          backendRequested: record.backendRequested,
-          backendEffective: record.backendEffective,
-          model: record.modelFinal || record.model,
-          modelSelected: record.modelSelected,
-          modelFinal: record.modelFinal,
-          reason: "Recent run-ask fell back to deterministic ask.",
-          checkedAt: record.finishedAt || record.startedAt,
-          source: "run-ask",
-          fallbackCommand: command,
-          fallbackStage: record.fallbackStage,
-          fallbackReason: record.fallbackReason,
-          contractValidated: record.contractValidated,
-          logPath: record.logPath,
-          resultPath: record.resultPath,
-        });
-      }
-    }
-    return null;
-  }
-
   currentLlmHealth() {
     const llmStatus = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary.llm_status || {} : {};
     const summaryHealth = this.shellSummary && typeof this.shellSummary === "object"
       ? this.normalizeLlmHealthState(this.shellSummary.llm_health)
       : null;
     const selected = this.currentLlmSelection();
-    const persisted = this.normalizeLlmHealthState(this.pluginState.llmHealth);
-    const inferred = this.inferLlmHealthFromRecentRuns(this.pluginState.recentRuns);
-    const localHealth = inferred || persisted || null;
-    let health = summaryHealth
-      ? {
-        ...(localHealth || {}),
-        ...summaryHealth,
-        fallbackCommand: summaryHealth.fallbackCommand || (localHealth && localHealth.fallbackCommand) || "",
-        resultPath: summaryHealth.resultPath || (localHealth && localHealth.resultPath) || "",
-        receiptPath: summaryHealth.receiptPath || (localHealth && localHealth.receiptPath) || "",
-        stderrSummary: summaryHealth.stderrSummary || (localHealth && localHealth.stderrSummary) || "",
-        stderrRaw: summaryHealth.stderrRaw || (localHealth && localHealth.stderrRaw) || "",
-      }
-      : localHealth || {
-      status: "unknown",
-      backend: selected.backend || String(llmStatus.backend || ""),
-      model: selected.model || String(llmStatus.effective_model || llmStatus.model || ""),
-      reason: llmStatus.configured ? "No recent LLM health check yet." : "LLM is not configured.",
-      checkedAt: "",
-      source: "",
-      fallbackCommand: "",
-      logPath: "",
-      resultPath: "",
-      receiptPath: "",
-      stderrSummary: "",
-      stderrRaw: "",
-    };
-    if (!summaryHealth && health.backend && selected.backend && health.backend !== selected.backend) {
-      health = {
-        ...health,
+    if (!summaryHealth) {
+      return {
         status: "unknown",
-        backend: selected.backend,
-        model: selected.model || health.model,
-        reason: "Current route changed since the last recorded ask.",
+        backend: selected.backend || String(llmStatus.backend || ""),
+        model: selected.model || String(llmStatus.effective_model || llmStatus.model || ""),
+        reason: llmStatus.configured ? "No summary LLM health data available yet." : "LLM is not configured.",
+        checkedAt: "",
+        source: "",
         fallbackCommand: "",
+        logPath: "",
+        resultPath: "",
+        receiptPath: "",
+        stderrSummary: "",
+        stderrRaw: "",
       };
     }
     return {
-      ...health,
-      backend: health.backend || selected.backend || String(llmStatus.backend || ""),
-      model: health.model || selected.model || String(llmStatus.effective_model || llmStatus.model || ""),
+      ...summaryHealth,
+      backend: summaryHealth.backend || selected.backend || String(llmStatus.backend || ""),
+      model: summaryHealth.model || selected.model || String(llmStatus.effective_model || llmStatus.model || ""),
     };
   }
 
@@ -3845,11 +3744,81 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         deliveryMode: String(summaryRun.deliveryMode || summaryRun.delivery_mode || "").trim(),
       };
     }
-    return this.pluginState.recentRuns.find((record) => this.isLlmRelevantRecord(record)) || null;
+    return null;
   }
 
   latestShellSyncRun() {
-    return this.pluginState.recentRuns.find((record) => record && record.command === "shell-status") || null;
+    // recentRuns is ordered newest-first (unshift on append), so find() returns
+    // the most recent shell-status record regardless of status.
+    const latestRecent = this.pluginState.recentRuns.find(
+      (record) => record && record.command === "shell-status"
+    );
+    // Extract CLI snapshot once — needed both to synthesize a record and to
+    // invalidate stale recentRuns entries.
+    const snapshot = (this.shellSummary && typeof this.shellSummary === "object")
+      ? this.shellSummary.latest_shell_sync_run
+      : null;
+    const hasSnapshot = snapshot && typeof snapshot === "object" && Object.keys(snapshot).length;
+    const snapshotGeneratedAt = hasSnapshot ? String(snapshot.generated_at || "") : "";
+    const snapshotFileMtimeEpoch = hasSnapshot ? Number(snapshot.file_mtime_epoch) : NaN;
+    // Prefer the real filesystem mtime when present because it preserves
+    // sub-second freshness ordering and avoids same-second ties between the
+    // CLI-generated timestamp and plugin-side finishedAt values. Fall back to
+    // generated_at only when the snapshot does not expose a finite mtime.
+    const snapshotEpoch = Number.isFinite(snapshotFileMtimeEpoch)
+      ? snapshotFileMtimeEpoch * 1000
+      : (hasSnapshot ? Date.parse(snapshotGeneratedAt) : NaN);
+
+    // If the latest recentRuns record is in-flight (running), trust it —
+    // the CLI snapshot cannot represent in-flight state.
+    if (latestRecent && latestRecent.status === "running") {
+      return latestRecent;
+    }
+    // If the latest recentRuns record is failed, trust it ONLY if the CLI
+    // snapshot is not newer-or-equal. tie => snapshot wins, consistent with
+    // option B contract. A newer snapshot means some later writer (e.g.
+    // silent refresh after compile/nightly) succeeded and the failed record
+    // is stale.
+    if (latestRecent && latestRecent.status === "failed") {
+      const failedFinishedAt = String(latestRecent.finishedAt || latestRecent.startedAt || "");
+      const failedEpoch = Date.parse(failedFinishedAt);
+      const snapshotInvalidates = hasSnapshot
+        && Number.isFinite(snapshotEpoch)
+        && (!Number.isFinite(failedEpoch) || snapshotEpoch >= failedEpoch);
+      if (!snapshotInvalidates) {
+        return latestRecent;
+      }
+      // fall through to return the CLI snapshot
+    }
+    // Prefer the CLI snapshot when available.
+    if (hasSnapshot) {
+      // If the latest recentRuns success record is strictly newer than the
+      // snapshot, prefer it (plugin ran shell-status and the file hasn't
+      // been re-read yet). Use parsed epoch, not string compare.
+      if (latestRecent && latestRecent.status === "success") {
+        const recentFinishedAt = String(latestRecent.finishedAt || latestRecent.startedAt || "");
+        const recentEpoch = Date.parse(recentFinishedAt);
+        if (Number.isFinite(recentEpoch) && Number.isFinite(snapshotEpoch) && recentEpoch > snapshotEpoch) {
+          return latestRecent;
+        }
+      }
+      return {
+        command: "shell-status",
+        status: "success",
+        generatedAt: snapshotGeneratedAt,
+        generatedBy: String(snapshot.generated_by || ""),
+        summaryPath: String(snapshot.summary_path || ""),
+        fileMtimeEpoch: Number.isFinite(snapshotFileMtimeEpoch) ? snapshotFileMtimeEpoch : Number(0),
+        contractVersion: Number(snapshot.contract_version || 0),
+        activeProtocol: String(snapshot.active_protocol || ""),
+        startedAt: snapshotGeneratedAt,
+        finishedAt: snapshotGeneratedAt,
+        logPath: "",
+        errorSummary: "",
+      };
+    }
+    // No CLI snapshot yet → fall back to the most recent recentRuns record.
+    return latestRecent || null;
   }
 
   currentShellSyncState() {
@@ -3892,6 +3861,13 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return Number.isFinite(timestamp) ? timestamp : NaN;
   }
 
+  /**
+   * Builds diagnostic items for the Product Shell self-check panel.
+   *
+   * NOTE (EP-012): currently not wired to any UI call site. Kept so that
+   * future self-check surfaces stay semantically correct (summary-only,
+   * no repo-truth inference from recentRuns). See PROGRESS.md §96.
+   */
   selfCheckItems() {
     const llmStatus = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary.llm_status || {} : {};
     const health = this.currentLlmHealth();
@@ -3966,7 +3942,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         key: "latest-ask",
         status: "unknown",
         title: "Latest ask execution",
-        detail: this.t("No Product Shell ask has been recorded yet."),
+        detail: this.t("No summary latest LLM run data available."),
       });
     } else {
       const usedFallback = Boolean(latestLlmRun.fallbackUsed) || String(latestLlmRun.deliveryMode || "").trim() === "deterministic-fallback";
@@ -3998,12 +3974,22 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           current: selected.backend,
         }),
       });
-    } else {
+    } else if (latestLlmRun && latestLlmRun.backend && selected.backend) {
+      // Have data from both sides and they match — healthy.
       items.push({
         key: "route-drift",
         status: "healthy",
         title: "Route drift",
-        detail: this.t("Product Shell ask history matches the current route."),
+        detail: this.t("Latest Product Shell ask matches current route."),
+      });
+    } else {
+      // Missing summary.latest_llm_run or its backend — cannot assert health.
+      // Must not claim "healthy" just because we have no data (oracle round 6).
+      items.push({
+        key: "route-drift",
+        status: "unknown",
+        title: "Route drift",
+        detail: this.t("No summary latest LLM run data available."),
       });
     }
 
@@ -4020,7 +4006,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   updateLlmHealth(nextState) {
-    this.pluginState.llmHealth = this.normalizeLlmHealthState(nextState);
     this.updateStatusBar();
     this.refreshOpenViews();
     void this.savePluginState();

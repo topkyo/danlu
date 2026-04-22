@@ -272,6 +272,7 @@ class ShellSummary(TypedDict, total=False):
     available_protocols: list[str]
     llm_status: dict[str, Any]
     latest_llm_run: dict[str, Any]
+    latest_shell_sync_run: dict[str, Any]
     llm_health: dict[str, Any]
     review_backlog_counts: dict[str, Any]
     aging_summary: dict[str, Any]

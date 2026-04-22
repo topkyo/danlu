@@ -643,8 +643,15 @@ class RunnerTests(unittest.TestCase):
         summary_receipt = json.loads(llm_receipts_path.read_text(encoding="utf-8").strip().splitlines()[-1])
         self.assertEqual(summary_receipt["event"], "run-compile-summary")
         self.assertEqual(summary_receipt["status"], "success")
+        self.assertEqual(summary_receipt["delivery_mode"], "skipped")
+        self.assertFalse(summary_receipt["fallback_used"])
         self.assertEqual(summary_receipt["prompt_profile"], "")
         self.assertEqual(summary_receipt["retry_prompt_profile"], "")
+
+        runs_log = json.loads((self.root / ".aiwiki" / "logs" / "runs.jsonl").read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertEqual(runs_log["event"], "run-compile-summary")
+        self.assertEqual(runs_log["delivery_mode"], "skipped")
+        self.assertFalse(runs_log["fallback_used"])
 
     def test_run_compile_records_audit_fields_for_success_and_summary(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -697,6 +704,8 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(summary_receipt["model_final"], "z-ai/glm-5.1")
         self.assertEqual(summary_receipt["fallback_stage"], "model-chain")
         self.assertTrue(summary_receipt["contract_validated"])
+        self.assertEqual(summary_receipt["delivery_mode"], "llm-fallback-chain")
+        self.assertTrue(summary_receipt["fallback_used"])
 
     def test_run_compile_returns_runtime_owned_rewrite_recovery_objects(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -788,6 +797,8 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(summary_receipt["event"], "run-compile-summary")
         self.assertEqual(summary_receipt["status"], "failed")
         self.assertFalse(summary_receipt["contract_validated"])
+        self.assertEqual(summary_receipt["delivery_mode"], "llm-failed")
+        self.assertFalse(summary_receipt["fallback_used"])
 
         runs_log_path = self.root / ".aiwiki" / "logs" / "runs.jsonl"
         run_log = json.loads(runs_log_path.read_text(encoding="utf-8").strip().splitlines()[-1])
@@ -796,6 +807,8 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(run_log["backend_requested"], "nvidia-nim-api")
         self.assertEqual(run_log["model_selected"], "moonshotai/kimi-k2.5")
         self.assertFalse(run_log["contract_validated"])
+        self.assertEqual(run_log["delivery_mode"], "llm-failed")
+        self.assertFalse(run_log["fallback_used"])
 
     def test_cache_benchmark_script_outputs_status_and_timings(self) -> None:
         script = Path(__file__).resolve().parent.parent / "scripts" / "cache_benchmark.py"
@@ -857,6 +870,8 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(result["model_final"], "z-ai/glm-5.1")
         self.assertEqual(result["fallback_stage"], "model-chain")
         self.assertTrue(result["contract_validated"])
+        self.assertEqual(result["delivery_mode"], "llm-fallback-chain")
+        self.assertTrue(result["fallback_used"])
 
         llm_receipts_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
         receipt = json.loads(llm_receipts_path.read_text(encoding="utf-8").strip().splitlines()[-1])
@@ -864,6 +879,10 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(receipt["model_selected"], "moonshotai/kimi-k2.5")
         self.assertEqual(receipt["model_final"], "z-ai/glm-5.1")
         self.assertEqual(receipt["fallback_stage"], "model-chain")
+        runs_log = json.loads((self.root / ".aiwiki" / "logs" / "runs.jsonl").read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertEqual(runs_log["event"], "run-lint")
+        self.assertEqual(runs_log["delivery_mode"], "llm-fallback-chain")
+        self.assertTrue(runs_log["fallback_used"])
 
     def test_run_nightly_returns_top_level_audit_summary(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -894,12 +913,18 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(result["model_final"], "stub-model")
         self.assertTrue(result["llm_used"])
         self.assertTrue(result["contract_validated"])
+        self.assertEqual(result["delivery_mode"], "llm-success")
+        self.assertFalse(result["fallback_used"])
 
         llm_receipts_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
         receipt = json.loads(llm_receipts_path.read_text(encoding="utf-8").strip().splitlines()[-1])
         self.assertEqual(receipt["event"], "run-nightly")
         self.assertTrue(receipt["llm_used"])
         self.assertEqual(receipt["compile_prompt_profile"], "balanced")
+        runs_log = json.loads((self.root / ".aiwiki" / "logs" / "runs.jsonl").read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertEqual(runs_log["event"], "run-nightly")
+        self.assertEqual(runs_log["delivery_mode"], "llm-success")
+        self.assertFalse(runs_log["fallback_used"])
 
     def test_prompt_helpers_include_schema_protocol_and_quality_signals(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")

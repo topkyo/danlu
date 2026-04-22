@@ -5234,6 +5234,37 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(result["llm_health"]["receipt_path"], ".aiwiki/logs/llm-receipts.jsonl")
         self.assertEqual(result["llm_health"]["log_path"], ".aiwiki/logs/runs.jsonl")
 
+    def test_shell_status_surfaces_latest_shell_sync_run(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        # First shell_status call persists a summary; the returned
+        # latest_shell_sync_run reflects whatever summary existed beforehand
+        # (e.g. one written by compile_wiki).
+        first = shell_status(self.root)
+
+        # Second shell_status call: the previous summary on disk is the one
+        # written by `first`. build_shell_summary must surface a snapshot of it.
+        second = shell_status(self.root)
+        snapshot = second["latest_shell_sync_run"]
+        self.assertIsInstance(snapshot, dict)
+        self.assertTrue(snapshot, "expected non-empty snapshot on second run")
+        self.assertEqual(snapshot["generated_by"], "aiwiki-shell-status")
+        self.assertEqual(snapshot["generated_at"], first["generated_at"])
+        self.assertEqual(snapshot["summary_path"], first["summary_path"])
+        self.assertEqual(snapshot["contract_version"], first["contract_version"])
+        self.assertEqual(snapshot["active_protocol"], first["active_protocol"])
+        self.assertIsInstance(snapshot["file_mtime_epoch"], float)
+        self.assertGreater(snapshot["file_mtime_epoch"], 0.0)
+
+        # Missing on-disk summary → empty snapshot (contract for fresh vaults).
+        shell_summary_file = self.root / "output" / "control" / "shell-summary.json"
+        shell_summary_file.unlink()
+        third = shell_status(self.root)
+        # `third` just wrote a new summary; but its own latest_shell_sync_run
+        # was computed before write, when the file was absent → {}.
+        self.assertEqual(third["latest_shell_sync_run"], {})
+
     def test_shell_status_marks_llm_route_drift_when_current_route_differs(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -5321,6 +5352,124 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(result["llm_health"]["fallback_command"], "ask")
         self.assertEqual(result["llm_health"]["result_path"], "output/reports/query-frontdoor.md")
         self.assertIn("fell back to deterministic ask", result["llm_health"]["reason"])
+
+    def test_shell_status_marks_compile_summary_chain_fallback_as_degraded(self) -> None:
+        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "codex-cli"}, clear=False):
+            with patch(
+                "aiwiki.app_shell.load_llm_receipt_history",
+                return_value=[
+                    {
+                        "created_at": "2026-04-22T00:00:00+00:00",
+                        "event": "run-compile-summary",
+                        "status": "success",
+                        "backend_requested": "codex-cli",
+                        "backend_effective": "codex-cli",
+                        "model_selected": "stub-model",
+                        "model_final": "stub-model",
+                        "fallback_stage": "model-chain",
+                        "fallback_reason": "model validation failed",
+                        "contract_validated": True,
+                        "delivery_mode": "llm-fallback-chain",
+                        "fallback_used": True,
+                        "fallback_from": "run-compile",
+                        "fallback_command": "compile",
+                        "primary_attempt_status": "failed",
+                        "primary_error": "model validation failed",
+                        "prompt_profile": "balanced",
+                        "retry_prompt_profile": "",
+                    }
+                ],
+            ):
+                result = shell_status(self.root)
+
+        self.assertEqual(result["llm_health"]["status"], "degraded")
+        self.assertEqual(result["llm_health"]["reason"], "LLM completed via model-chain fallback.")
+
+    def test_shell_status_marks_compile_summary_skip_as_healthy(self) -> None:
+        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "codex-cli"}, clear=False):
+            with patch(
+                "aiwiki.app_shell.load_llm_receipt_history",
+                return_value=[
+                    {
+                        "created_at": "2026-04-22T00:00:00+00:00",
+                        "event": "run-compile-summary",
+                        "status": "success",
+                        "backend_requested": "codex-cli",
+                        "backend_effective": "codex-cli",
+                        "model_selected": "stub-model",
+                        "model_final": "stub-model",
+                        "delivery_mode": "skipped",
+                        "fallback_used": False,
+                    }
+                ],
+            ):
+                result = shell_status(self.root)
+
+        self.assertEqual(result["llm_health"]["status"], "healthy")
+        self.assertEqual(result["llm_health"]["reason"], "Recent run-compile-summary skipped (no LLM invocation).")
+
+    def test_shell_status_uses_prompt_profile_reason_for_fallback_chain(self) -> None:
+        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "codex-cli"}, clear=False):
+            with patch(
+                "aiwiki.app_shell.load_llm_receipt_history",
+                return_value=[
+                    {
+                        "created_at": "2026-04-22T00:00:00+00:00",
+                        "event": "run-lint",
+                        "status": "success",
+                        "backend_requested": "codex-cli",
+                        "backend_effective": "codex-cli",
+                        "model_selected": "stub-model",
+                        "model_final": "stub-model",
+                        "fallback_stage": "prompt-profile",
+                        "fallback_reason": "prompt validation failed",
+                        "contract_validated": True,
+                        "delivery_mode": "llm-fallback-chain",
+                        "fallback_used": True,
+                        "fallback_from": "run-lint",
+                        "fallback_command": "lint",
+                        "primary_attempt_status": "failed",
+                        "primary_error": "prompt validation failed",
+                        "prompt_profile": "balanced",
+                        "retry_prompt_profile": "strict",
+                    }
+                ],
+            ):
+                result = shell_status(self.root)
+
+        self.assertEqual(result["llm_health"]["status"], "degraded")
+        self.assertEqual(result["llm_health"]["reason"], "LLM completed via prompt-profile retry.")
+
+    def test_shell_status_uses_custom_fallback_stage_reason(self) -> None:
+        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "codex-cli"}, clear=False):
+            with patch(
+                "aiwiki.app_shell.load_llm_receipt_history",
+                return_value=[
+                    {
+                        "created_at": "2026-04-22T00:00:00+00:00",
+                        "event": "run-compile",
+                        "status": "success",
+                        "backend_requested": "codex-cli",
+                        "backend_effective": "codex-cli",
+                        "model_selected": "stub-model",
+                        "model_final": "stub-model",
+                        "fallback_stage": "prompt-profile+model-chain",
+                        "fallback_reason": "validation failed",
+                        "contract_validated": True,
+                        "delivery_mode": "llm-fallback-chain",
+                        "fallback_used": True,
+                        "fallback_from": "run-compile",
+                        "fallback_command": "compile",
+                        "primary_attempt_status": "failed",
+                        "primary_error": "validation failed",
+                        "prompt_profile": "balanced",
+                        "retry_prompt_profile": "strict",
+                    }
+                ],
+            ):
+                result = shell_status(self.root)
+
+        self.assertEqual(result["llm_health"]["reason"], "LLM completed via fallback (prompt-profile+model-chain).")
 
     def test_shell_status_surfaces_recent_receipts_and_nightly_snapshot(self) -> None:
         entry = self._prepare_ready_archive_candidate()

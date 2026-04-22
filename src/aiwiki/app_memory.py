@@ -134,6 +134,7 @@ from .app_utils import (
     html_safe_json_literal,
     parse_frontmatter,
     parse_iso_datetime,
+    question_signature,
     read_text_preview,
     relative_path,
     render_frontmatter,
@@ -162,11 +163,6 @@ def concept_lifecycle_entry(lifecycle_state: dict[str, Any], slug: str) -> dict[
         ),
         {},
     )
-
-
-def question_signature(question: str) -> str:
-    normalized = " ".join(question.lower().split())
-    return f"sha256:{sha256_bytes(normalized.encode('utf-8'))}"
 
 
 def timestamp_is_newer(candidate: str, current: str) -> bool:
@@ -784,6 +780,10 @@ def reuse_machine_memory_core(previous: dict[str, Any], compiled_at: str) -> dic
 
 
 def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
+    # Local import breaks the historical app_memory <-> app_memory_surfaces cycle:
+    # helpers live in app_memory_query now, but this function still belongs here.
+    from . import app_memory_query as _memory_query
+
     source_nodes = memory.get("source_nodes", [])
     concept_nodes = memory.get("concept_nodes", [])
     edges = memory.get("edges", {})
@@ -868,7 +868,7 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
     ]
     hub_sources.sort(key=lambda item: (-item["concept_count"], item["title"].lower()))
 
-    adjacency = build_machine_memory_adjacency(memory)
+    adjacency = _memory_query.build_machine_memory_adjacency(memory)
 
     visited: set[str] = set()
     component_sizes: list[int] = []
@@ -1482,8 +1482,14 @@ def store_concept_rewrite_candidate(
     candidate_markdown: str,
     generated_at: str,
 ) -> dict[str, Any]:
+    # Local import: concept_page_snapshot lives in app_memory_query;
+    # concept_rewrite_proposal_digest / render_concept_rewrite_proposal_page live
+    # in app_memory_surfaces. Local import avoids the module-level cycle.
+    from . import app_memory_query as _memory_query
+    from . import app_memory_surfaces as _memory_surfaces
+
     ensure_layout(root)
-    snapshot = concept_page_snapshot(root, slug)
+    snapshot = _memory_query.concept_page_snapshot(root, slug)
     state = load_concept_rewrite_state(root)
     proposals = [dict(proposal) for proposal in state.get("proposals", []) if isinstance(proposal, dict)]
     target: dict[str, Any] | None = None
@@ -1499,7 +1505,7 @@ def store_concept_rewrite_candidate(
             "first_proposed_at": generated_at,
         }
         proposals.append(target)
-    digest = concept_rewrite_proposal_digest(candidate_markdown)
+    digest = _memory_surfaces.concept_rewrite_proposal_digest(candidate_markdown)
     previous_digest = str(target.get("candidate_digest") or "")
     previous_status = str(target.get("status") or "proposed")
     if previous_digest and previous_digest != digest and previous_status != "proposed":
@@ -1540,7 +1546,7 @@ def store_concept_rewrite_candidate(
     target["pending_review"] = "true" if rewrite_proposal_needs_review(str(target.get("status") or "proposed")) else "false"
     target["apply_ready"] = rewrite_proposal_is_apply_ready(root, target)
     save_concept_rewrite_state(root, {"version": 1, "proposals": proposals})
-    write_if_changed(root / str(target["proposal_path"]), render_concept_rewrite_proposal_page(target))
+    write_if_changed(root / str(target["proposal_path"]), _memory_surfaces.render_concept_rewrite_proposal_page(target))
     return {
         "slug": slug,
         "proposal_path": str(target["proposal_path"]),
@@ -1548,57 +1554,89 @@ def store_concept_rewrite_candidate(
         "candidate_digest": digest,
     }
 
-from .app_memory_surfaces import (  # noqa: E402
-    append_machine_memory_history,
-    build_execution_audit_snapshot,
-    build_machine_memory_adjacency,
-    build_machine_memory_query,
-    build_machine_memory_query_routes,
-    collect_execution_consistency_signals,
-    concept_page_snapshot,
-    concept_rewrite_proposal_digest,
-    fallback_query_route_config,
-    machine_memory_node_metadata,
-    ranked_machine_memory_anchor_nodes,
-    reconcile_concept_rewrite_proposals,
-    record_query_route_telemetry,
-    render_concept_quality,
-    render_concept_rewrite_index,
-    render_concept_rewrite_proposal_page,
-    render_drift_report,
-    render_execution_audit,
-    render_execution_audit_html,
-    render_execution_center,
-    render_execution_center_html,
-    render_execution_proposal_page,
-    render_graph_health,
-    render_machine_memory_actions,
-    render_machine_memory_graph_html,
-    render_machine_memory_index,
-    render_machine_memory_repair_plan,
-    render_machine_memory_route,
-    render_machine_memory_topology,
-    select_machine_memory_query_strategy,
-    shortest_machine_memory_path,
-    summarize_machine_memory_transition,
-)
-from .app_routing import (  # noqa: E402
-    active_corpus_bridge_evidence_ids,
-    archive_candidate_reactivation_signals,
-    build_archive_candidate_state,
-    build_material_routing_entry,
-    build_material_routing_snapshot,
-    build_material_state_documents,
-    cross_protocol_bridge_entry,
-    material_graph_context,
-    material_protocol_score,
-    material_routing_selected_as,
-    material_top_protocols,
-    reconcile_active_corpora_state,
-    refresh_material_state,
-    routing_bridge_recall_ids,
-    scan_material_reference_state,
-    source_ids_for_citations,
-    temperature_from_routing,
-    upsert_active_corpus,
-)
+
+# ---------------------------------------------------------------------------
+# Lazy compatibility re-exports (EP-011 round 3).
+#
+# Historical code (src/aiwiki/app.py, scripts/, tests/) accesses machine-memory
+# surface/query/routing helpers via ``aiwiki.app_memory.<name>`` as if this
+# module were a flat facade. The previous eager ``from .app_memory_surfaces
+# import ...`` block here created a real import-time cycle — surfaces imports
+# app_memory at its top, so cold ``import aiwiki.app_memory_surfaces`` raised
+# ImportError for names not yet bound in the half-initialized module.
+#
+# PEP 562 ``__getattr__`` gives us the flat namespace without the cycle: names
+# are resolved on first access, after both modules have finished loading.
+# Owner modules remain the single source of truth; this facade only forwards.
+# ---------------------------------------------------------------------------
+
+_LAZY_OWNERS: dict[str, str] = {
+    # Owned by app_memory_surfaces
+    "append_machine_memory_history": "aiwiki.app_memory_surfaces",
+    "build_execution_audit_snapshot": "aiwiki.app_memory_surfaces",
+    "build_machine_memory_query": "aiwiki.app_memory_surfaces",
+    "collect_execution_consistency_signals": "aiwiki.app_memory_surfaces",
+    "concept_rewrite_proposal_digest": "aiwiki.app_memory_surfaces",
+    "reconcile_concept_rewrite_proposals": "aiwiki.app_memory_surfaces",
+    "render_concept_quality": "aiwiki.app_memory_surfaces",
+    "render_concept_rewrite_index": "aiwiki.app_memory_surfaces",
+    "render_concept_rewrite_proposal_page": "aiwiki.app_memory_surfaces",
+    "render_drift_report": "aiwiki.app_memory_surfaces",
+    "render_execution_audit": "aiwiki.app_memory_surfaces",
+    "render_execution_audit_html": "aiwiki.app_memory_surfaces",
+    "render_execution_center": "aiwiki.app_memory_surfaces",
+    "render_execution_center_html": "aiwiki.app_memory_surfaces",
+    "render_execution_proposal_page": "aiwiki.app_memory_surfaces",
+    "render_graph_health": "aiwiki.app_memory_surfaces",
+    "render_machine_memory_actions": "aiwiki.app_memory_surfaces",
+    "render_machine_memory_graph_html": "aiwiki.app_memory_surfaces",
+    "render_machine_memory_index": "aiwiki.app_memory_surfaces",
+    "render_machine_memory_repair_plan": "aiwiki.app_memory_surfaces",
+    "render_machine_memory_topology": "aiwiki.app_memory_surfaces",
+    "summarize_machine_memory_transition": "aiwiki.app_memory_surfaces",
+    # Owned by app_memory_query (EP-011 split)
+    "_machine_memory_query_payload_hash": "aiwiki.app_memory_query",
+    "_route_anchor_candidates": "aiwiki.app_memory_query",
+    "build_machine_memory_adjacency": "aiwiki.app_memory_query",
+    "build_machine_memory_query_routes": "aiwiki.app_memory_query",
+    "concept_page_snapshot": "aiwiki.app_memory_query",
+    "fallback_query_route_config": "aiwiki.app_memory_query",
+    "machine_memory_node_metadata": "aiwiki.app_memory_query",
+    "ranked_machine_memory_anchor_nodes": "aiwiki.app_memory_query",
+    "recent_execution_dry_runs": "aiwiki.app_memory_query",
+    "record_query_route_telemetry": "aiwiki.app_memory_query",
+    "render_machine_memory_route": "aiwiki.app_memory_query",
+    "select_machine_memory_query_strategy": "aiwiki.app_memory_query",
+    "shortest_machine_memory_path": "aiwiki.app_memory_query",
+    # Owned by app_routing
+    "active_corpus_bridge_evidence_ids": "aiwiki.app_routing",
+    "archive_candidate_reactivation_signals": "aiwiki.app_routing",
+    "build_archive_candidate_state": "aiwiki.app_routing",
+    "build_material_routing_entry": "aiwiki.app_routing",
+    "build_material_routing_snapshot": "aiwiki.app_routing",
+    "build_material_state_documents": "aiwiki.app_routing",
+    "cross_protocol_bridge_entry": "aiwiki.app_routing",
+    "material_graph_context": "aiwiki.app_routing",
+    "material_protocol_score": "aiwiki.app_routing",
+    "material_routing_selected_as": "aiwiki.app_routing",
+    "material_top_protocols": "aiwiki.app_routing",
+    "reconcile_active_corpora_state": "aiwiki.app_routing",
+    "refresh_material_state": "aiwiki.app_routing",
+    "routing_bridge_recall_ids": "aiwiki.app_routing",
+    "scan_material_reference_state": "aiwiki.app_routing",
+    "source_ids_for_citations": "aiwiki.app_routing",
+    "temperature_from_routing": "aiwiki.app_routing",
+    "upsert_active_corpus": "aiwiki.app_routing",
+}
+
+
+def __getattr__(name: str) -> Any:
+    owner_path = _LAZY_OWNERS.get(name)
+    if owner_path is None:
+        raise AttributeError(f"module 'aiwiki.app_memory' has no attribute {name!r}")
+    import importlib
+
+    owner = importlib.import_module(owner_path)
+    value = getattr(owner, name)
+    globals()[name] = value  # cache for subsequent accesses
+    return value
