@@ -2741,3 +2741,94 @@ from .app_queries import (  # noqa: E402
     source_page_requires_compile,
     wiki_requires_compile,
 )
+
+# ---------------------------------------------------------------------------
+# EP-018A: execution owner lazy compat seam (PEP 562)
+#
+# Goal: expose a stable ``aiwiki.app_compile.<name>`` surface for all
+# execution-layer helpers that EP-018B will migrate into the
+# ``aiwiki.execution`` subpackage group-by-group. Today every execution name
+# is still defined directly in this module, so each ``_LAZY_OWNERS`` entry
+# self-references ``"aiwiki.app_compile"``. When EP-018B moves a function
+# (e.g. ``ask_question``) to ``aiwiki.execution.ask``, the only code change
+# required is to flip that one ``_LAZY_OWNERS`` entry — callers and tests
+# keep importing from ``aiwiki.app_compile`` unchanged.
+#
+# Hot names that ``tests/test_app.py`` currently ``patch("aiwiki.app_compile.
+# <name>")`` on (``utc_now``, ``entry_concept_terms``, ``build_machine_memory``,
+# ``build_ranking_source_record``, ``build_ranking_concept_record``) are
+# deliberately **not** listed here — they stay directly bound to this module's
+# globals so ``unittest.mock.patch`` resolves them immediately, with no
+# first-access / caching subtlety.
+# ---------------------------------------------------------------------------
+
+_LAZY_OWNERS: dict[str, str] = {
+    # Ask / file-back (EP-018B group 2)
+    "ask_question": "aiwiki.app_compile",
+    "file_back": "aiwiki.app_compile",
+    # Concept rewrite pipeline (EP-018B group 5) — public surface + private helpers
+    "review_concept_rewrite": "aiwiki.app_compile",
+    "apply_concept_rewrite": "aiwiki.app_compile",
+    "verify_concept_rewrite": "aiwiki.app_compile",
+    "revert_concept_rewrite": "aiwiki.app_compile",
+    "_load_concept_rewrite_proposals": "aiwiki.app_compile",
+    "_find_concept_rewrite_proposal": "aiwiki.app_compile",
+    "_save_concept_rewrite_proposals": "aiwiki.app_compile",
+    "_evaluate_concept_rewrite_verification": "aiwiki.app_compile",
+    "_persist_concept_rewrite_verification": "aiwiki.app_compile",
+    # Knowledge lifecycle (EP-018B group 3)
+    "refresh_knowledge_lifecycle_runtime": "aiwiki.app_compile",
+    "retire_concept": "aiwiki.app_compile",
+    "reactivate_concept": "aiwiki.app_compile",
+    # Machine-memory action (EP-018B group 6)
+    "resolve_machine_memory_action_query": "aiwiki.app_compile",
+    "review_machine_memory_action": "aiwiki.app_compile",
+    "apply_machine_memory_action": "aiwiki.app_compile",
+    "revert_machine_memory_action": "aiwiki.app_compile",
+    "_save_machine_memory_action_records": "aiwiki.app_compile",
+    # Archive (EP-018B group 4)
+    "apply_material_archive": "aiwiki.app_compile",
+    "revert_material_archive": "aiwiki.app_compile",
+    # Review page & batch (EP-018B group 7)
+    "review_page": "aiwiki.app_compile",
+    "review_pages_batch": "aiwiki.app_compile",
+    "apply_machine_memory_actions_batch": "aiwiki.app_compile",
+    "revert_machine_memory_action_batch": "aiwiki.app_compile",
+    "_build_batch_id": "aiwiki.app_compile",
+    "_load_latest_action_apply_batch_receipt": "aiwiki.app_compile",
+    # Runtime surfaces (EP-018B group 1)
+    "nightly_health": "aiwiki.app_compile",
+    "shell_status": "aiwiki.app_compile",
+}
+
+
+# Note: intentionally no module-level ``__all__`` here. Defining one would
+# replace the implicit ``*``-export surface (currently all public globals)
+# and both drop existing public names (e.g. ``compile_wiki``, ``lint_wiki``)
+# and expose private ``_LAZY_OWNERS`` helpers. EP-018A only needs attribute
+# forwarding, not a star-import contract change.
+
+
+def __getattr__(name: str) -> Any:
+    owner_path = _LAZY_OWNERS.get(name)
+    if owner_path is None:
+        raise AttributeError(
+            f"module 'aiwiki.app_compile' has no attribute {name!r}"
+        )
+    if owner_path == __name__:
+        # Self-reference during EP-018A: the real definition lives in this
+        # module. Python only calls __getattr__ when the name is NOT in
+        # globals, so reaching this branch means the concrete binding is
+        # missing — surface it rather than silently returning ``None``.
+        if name not in globals():
+            raise AttributeError(
+                f"'aiwiki.app_compile.{name}' is registered in _LAZY_OWNERS "
+                f"but has no concrete binding; owner migration may be incomplete"
+            )
+        return globals()[name]
+    import importlib
+
+    owner = importlib.import_module(owner_path)
+    value = getattr(owner, name)
+    globals()[name] = value  # cache for subsequent accesses
+    return value
