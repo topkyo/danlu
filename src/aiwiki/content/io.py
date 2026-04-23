@@ -286,7 +286,8 @@ def annotate_recurring_promotion(root: Path, page_path: Path, *, kind: str, prot
                     seen_citations.add(citation)
                     citations.append(citation)
     formats = sorted({artifact["format"] for artifact in artifacts})
-    title = f"{kind}:{query}"
+    from .. import app_content as _facade
+    title = _facade.promotion_page_title(kind, query, protocol)
     citation_snapshots = build_citation_snapshots(root, citations)
     frontmatter.update({"title": title, "protocol": protocol, "source_files": source_files, "citations": citations, "citation_snapshots": citation_snapshots, "promotion_origin": "nightly-recurring-output", "promotion_query": query, "promotion_query_signature": query_signature, "promotion_count": str(len(artifacts)), "promotion_formats": formats, "promotion_last_artifact": artifacts[-1]["path"], "last_compiled_at": generated_at})
     body = replace_first_markdown_heading(strip_frontmatter(content).strip(), title).strip()
