@@ -121,11 +121,12 @@ from .content.outputs import (  # noqa: F401
     promotion_page_title,
 )
 
-# Sentinel barrier: prevents ruff/isort from hoisting the following
-# `from .app_lifecycle` / `from .app_render` late re-exports above this line.
-# These two modules import from `app_content` at module load time, so their
-# re-exports MUST execute AFTER this module's top-level imports have resolved.
-_LATE_REEXPORT_BARRIER = True
+# The following `from .app_lifecycle` / `from .app_render` late re-exports must
+# execute AFTER this module's top-level imports have resolved, since those two
+# modules import from `app_content` at module load time. The explicit isort split
+# prevents ruff/isort from hoisting the late `from ...` statements above this line.
+
+# isort: split
 
 
 from .app_lifecycle import (  # noqa: E402
