@@ -685,6 +685,48 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
     }
 
 
+def _reinject_candidate_frontmatter(target: Path, *, corpus_id: str = "") -> None:
+    """LLM 覆盖 artifact 后，重新注入 candidate_state 与 corpus_id 字段。
+
+    用插入式改写，不做 round-trip，避免破坏 raw YAML literal（如 slides 的 ``marp: true``）。
+    若 LLM 返回的内容没有 frontmatter，则合成一个最小 frontmatter 以保证 candidate_state 不丢失。
+    """
+    content = target.read_text(encoding="utf-8")
+    lines = content.splitlines()
+    has_frontmatter = bool(lines) and lines[0].strip() == "---"
+    close_idx: int | None = None
+    if has_frontmatter:
+        for idx in range(1, len(lines)):
+            if lines[idx].strip() == "---":
+                close_idx = idx
+                break
+    if not has_frontmatter or close_idx is None:
+        # 合成最小 frontmatter，避免 candidate_state 丢失
+        header = ["---", 'candidate_state: "pending"']
+        if corpus_id:
+            header.append(f'corpus_id: "{corpus_id}"')
+        header.append("---")
+        synthesized = header + lines
+        target.write_text("\n".join(synthesized).rstrip() + "\n", encoding="utf-8")
+        return
+    # 移除已有的 candidate_state / corpus_id（如果 LLM 输出里碰巧有），避免重复
+    filtered = lines[:1] + [
+        line
+        for line in lines[1:close_idx]
+        if not line.startswith("candidate_state:") and not line.startswith("corpus_id:")
+    ]
+    new_close_idx = len(filtered)
+    filtered.append(lines[close_idx])
+    filtered.extend(lines[close_idx + 1:])
+    # 在 frontmatter 闭合前插入新字段
+    insertions = ['candidate_state: "pending"']
+    if corpus_id:
+        insertions.append(f'corpus_id: "{corpus_id}"')
+    for offset, line in enumerate(insertions):
+        filtered.insert(new_close_idx + offset, line)
+    target.write_text("\n".join(filtered).rstrip() + "\n", encoding="utf-8")
+
+
 @runtime_write_operation
 def run_ask(
     root: Path,
@@ -696,11 +738,15 @@ def run_ask(
     timeout_seconds: int | None = None,
     no_cache: bool = False,
     fallback_to_ask: bool = False,
+    corpus_id_override: str | None = None,
 ) -> dict[str, Any]:
     ensure_layout(root)
     if timeout_seconds is not None and timeout_seconds <= 0:
         raise ValueError("run-ask timeout_seconds must be greater than 0.")
-    artifact = ask_question(root, question, output_format, protocol=protocol, no_cache=no_cache)
+    ask_kwargs = {"protocol": protocol, "no_cache": no_cache}
+    if corpus_id_override is not None:
+        ask_kwargs["corpus_id_override"] = corpus_id_override
+    artifact = ask_question(root, question, output_format, **ask_kwargs)
     manifest = load_manifest(root)
     entry_map = {entry["id"]: entry for entry in manifest["entries"]}
     source_ids = artifact["ranked_sources"]
@@ -734,6 +780,12 @@ def run_ask(
     backend_requested = _client_backend_requested(effective_client)
     model_selected = _client_selected_model_name(effective_client)
     prompt_profile = _select_initial_ask_prompt_profile(effective_client, lean=lean)
+    previous_output_summary = None
+    corpus_id = str(artifact.get("active_corpus_id") or "")
+    if corpus_id:
+        from .execution.ask import load_previous_output_summary
+
+        previous_output_summary = load_previous_output_summary(root, corpus_id, exclude_artifact_ref=artifact.get("path"))
     prompt = _build_ask_prompt(
         root,
         target,
@@ -745,6 +797,7 @@ def run_ask(
         protocol_pages,
         index_pages,
         artifact.get("machine_memory_query", {}),
+        previous_output_summary=previous_output_summary,
         prompt_profile=prompt_profile,
     )
     retry_profile = ""
@@ -780,6 +833,7 @@ def run_ask(
                         protocol_pages,
                         index_pages,
                         artifact.get("machine_memory_query", {}),
+                        previous_output_summary=previous_output_summary,
                         prompt_profile=retry_profile,
                     )
                     prompt_profile = retry_profile
@@ -887,6 +941,9 @@ def run_ask(
             )
         raise
     target.write_text(updated, encoding="utf-8")
+    # LLM 覆盖了整个 artifact，需要重新注入 candidate_state 与 corpus_id frontmatter 字段
+    # 让 EP-029 candidate 队列语义在 run-ask 全链路保持一致（与 ask_question 内的插入逻辑同款）。
+    _reinject_candidate_frontmatter(target, corpus_id=corpus_id)
     backend_effective = _client_backend_name(effective_client)
     model_final = _client_model_name(effective_client)
     fallback_stage = _fallback_stage_label(fallback_stages)
@@ -962,6 +1019,20 @@ def run_ask(
             "fallback_command": "",
         }
     return payload
+
+
+@runtime_write_operation
+def run_promote(root: Path, artifact_ref: str) -> dict[str, Any]:
+    from .execution.candidates import promote_candidate
+
+    return promote_candidate(root, artifact_ref)
+
+
+@runtime_write_operation
+def run_demote(root: Path, artifact_ref: str) -> dict[str, Any]:
+    from .execution.candidates import demote_candidate
+
+    return demote_candidate(root, artifact_ref)
 
 
 @runtime_write_operation
@@ -1084,8 +1155,6 @@ def run_nightly(
     try:
         compile_result = run_compile(root, client=effective_client, limit=compile_limit)
         promotion_result = promote_recurring_outputs(root)
-        if promotion_result["count"]:
-            compile_result["compile"] = compile_wiki(root)
         if semantic_lint:
             lint_result = run_lint(root, client=effective_client)
         else:
@@ -1533,6 +1602,7 @@ def _build_ask_prompt(
     protocol_pages: list[tuple[str, str]],
     index_pages: list[tuple[str, str]],
     machine_memory_query: dict[str, Any],
+    previous_output_summary: str | None = None,
     prompt_profile: str = "balanced",
 ) -> str:
     template = _load_prompt(root, "ask.md")
@@ -1553,11 +1623,15 @@ def _build_ask_prompt(
         "## Current Artifact",
         current_artifact,
         "",
+    ]
+    if previous_output_summary:
+        sections.extend(["## Previous Output In Corpus", previous_output_summary, ""])
+    sections.extend([
         "## Machine Memory Query Plan",
         _render_machine_query(machine_memory_query),
         "",
         "## Index Pages",
-    ]
+    ])
     included_chars = sum(len(section) for section in sections)
     selected_index_pages = _select_ask_index_pages(index_pages, machine_memory_query, output_format)
     if not selected_index_pages:

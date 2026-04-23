@@ -227,6 +227,7 @@ class PipelineTests(unittest.TestCase):
         entry = ingest_source(self.root, str(self.sample), title="Agent Governance Runtime")
         compile_wiki(self.root)
         judgment_path = self.root / "wiki" / "judgments" / "judgment-runtime-governance.md"
+        judgment_path.parent.mkdir(parents=True, exist_ok=True)
         judgment_path.write_text(
             "\n".join(
                 [

@@ -39,8 +39,6 @@ LAYOUT_DIRS = (
     "wiki/sources",
     "wiki/concepts",
     "wiki/rewrite-proposals",
-    "wiki/decisions",
-    "wiki/judgments",
     "wiki/indexes",
     "wiki/derived",
     "output/reports",

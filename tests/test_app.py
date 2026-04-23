@@ -63,6 +63,7 @@ from aiwiki.app_state import (
     load_manifest,
     load_material_routing_state,
     load_material_state,
+    load_output_candidates_state,
     load_planner_state,
     load_query_route_telemetry,
     save_machine_memory_action_state,
@@ -4737,18 +4738,14 @@ class AiwikiFlowTests(unittest.TestCase):
         result = nightly_health(self.root)
 
         decision_pages = sorted((self.root / "wiki" / "decisions").glob("*.md"))
-        self.assertEqual(len(decision_pages), 1)
-        decision_text = decision_pages[0].read_text(encoding="utf-8")
-        decision_frontmatter = parse_frontmatter(decision_text)
-        self.assertEqual(decision_frontmatter["kind"], "decision")
-        self.assertEqual(decision_frontmatter["promotion_origin"], "nightly-recurring-output")
-        self.assertEqual(decision_frontmatter["promotion_count"], "2")
-        self.assertTrue(decision_frontmatter["citations"])
-        self.assertTrue(decision_frontmatter["citation_snapshots"])
-        self.assertIn(question, decision_text)
-        self.assertIn("## Auto Promotion", decision_text)
+        self.assertEqual(len(decision_pages), 0)
+        candidate_state = load_output_candidates_state(self.root)
         self.assertEqual(result["promotions"]["count"], 1)
-        self.assertEqual(result["promotions"]["created"], 1)
+        self.assertEqual(result["promotions"]["pages"][0]["path"], result["promotions"]["pages"][0]["candidate_ref"])
+        promoted_ref = result["promotions"]["pages"][0]["candidate_ref"]
+        candidate = next(c for c in candidate_state["candidates"] if c["artifact_ref"] == promoted_ref)
+        self.assertEqual(candidate["promotion_origin"], "nightly-recurring")
+        self.assertEqual(candidate["candidate_state"], "pending")
         state = json.loads((self.root / result["state_path"]).read_text(encoding="utf-8"))
         self.assertEqual(state["promotions"]["count"], 1)
         self.assertTrue(state["repair_backlog"]["auto_promotions"])
@@ -4763,17 +4760,13 @@ class AiwikiFlowTests(unittest.TestCase):
         result = nightly_health(self.root)
 
         judgment_pages = sorted((self.root / "wiki" / "judgments").glob("*.md"))
-        self.assertEqual(len(judgment_pages), 1)
-        judgment_text = judgment_pages[0].read_text(encoding="utf-8")
-        judgment_frontmatter = parse_frontmatter(judgment_text)
-        self.assertEqual(judgment_frontmatter["kind"], "judgment")
-        self.assertEqual(judgment_frontmatter["promotion_origin"], "nightly-recurring-output")
-        self.assertEqual(judgment_frontmatter["promotion_count"], "2")
-        self.assertEqual(judgment_frontmatter["status"], "tentative")
-        self.assertTrue(judgment_frontmatter["citations"])
-        self.assertTrue(judgment_frontmatter["citation_snapshots"])
-        self.assertIn(question, judgment_text)
+        self.assertEqual(len(judgment_pages), 0)
+        candidate_state = load_output_candidates_state(self.root)
         self.assertEqual(result["promotions"]["count"], 1)
+        promoted_ref = result["promotions"]["pages"][0]["candidate_ref"]
+        candidate = next(c for c in candidate_state["candidates"] if c["artifact_ref"] == promoted_ref)
+        self.assertEqual(candidate["promotion_origin"], "nightly-recurring")
+        self.assertEqual(candidate["candidate_state"], "pending")
 
     def test_compile_generates_cognitive_history_and_surfaces_citation_drift(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -4939,13 +4932,10 @@ class AiwikiFlowTests(unittest.TestCase):
         ask_question(self.root, question, "report")
         result = nightly_health(self.root)
 
-        decision_pages = sorted((self.root / "wiki" / "decisions").glob("*.md"))
-        self.assertEqual(len(decision_pages), 1)
-        decision_frontmatter = parse_frontmatter(decision_pages[0].read_text(encoding="utf-8"))
-        self.assertEqual(decision_frontmatter["promotion_count"], "3")
+        self.assertFalse((self.root / "wiki" / "decisions").exists())
+        candidate_state = load_output_candidates_state(self.root)
+        self.assertGreaterEqual(len(candidate_state["candidates"]), 1)
         self.assertEqual(result["promotions"]["count"], 1)
-        self.assertEqual(result["promotions"]["created"], 0)
-        self.assertEqual(result["promotions"]["updated"], 1)
 
     def test_nightly_partitions_auto_promotions_by_protocol(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -4958,9 +4948,9 @@ class AiwikiFlowTests(unittest.TestCase):
 
         nightly_health(self.root)
 
-        decision_pages = sorted((self.root / "wiki" / "decisions").glob("*.md"))
-        self.assertEqual(len(decision_pages), 2)
-        protocols = sorted(parse_frontmatter(path.read_text(encoding="utf-8"))["protocol"] for path in decision_pages)
+        self.assertFalse((self.root / "wiki" / "decisions").exists())
+        candidate_state = load_output_candidates_state(self.root)
+        protocols = sorted({item["protocol"] for item in candidate_state["candidates"]})
         self.assertEqual(protocols, ["general", "investing"])
 
     def test_nightly_auto_promotion_uses_protocol_specific_titles(self) -> None:
@@ -4972,11 +4962,9 @@ class AiwikiFlowTests(unittest.TestCase):
 
         nightly_health(self.root)
 
-        decision_pages = sorted((self.root / "wiki" / "decisions").glob("*.md"))
-        self.assertEqual(len(decision_pages), 1)
-        decision_frontmatter = parse_frontmatter(decision_pages[0].read_text(encoding="utf-8"))
-        self.assertEqual(decision_frontmatter["protocol"], "investing")
-        self.assertTrue(str(decision_frontmatter["title"]).startswith("投资决策沉淀："))
+        candidate_state = load_output_candidates_state(self.root)
+        self.assertEqual(candidate_state["candidates"][-1]["protocol"], "investing")
+        self.assertEqual(candidate_state["candidates"][-1]["candidate_state"], "pending")
 
     def test_nightly_protocol_specific_markers_can_promote_research_judgment(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -4987,11 +4975,9 @@ class AiwikiFlowTests(unittest.TestCase):
 
         nightly_health(self.root)
 
-        judgment_pages = sorted((self.root / "wiki" / "judgments").glob("*.md"))
-        self.assertEqual(len(judgment_pages), 1)
-        judgment_frontmatter = parse_frontmatter(judgment_pages[0].read_text(encoding="utf-8"))
-        self.assertEqual(judgment_frontmatter["protocol"], "research")
-        self.assertTrue(str(judgment_frontmatter["title"]).startswith("研发判断沉淀："))
+        candidate_state = load_output_candidates_state(self.root)
+        self.assertEqual(candidate_state["candidates"][-1]["protocol"], "research")
+        self.assertEqual(candidate_state["candidates"][-1]["candidate_state"], "pending")
 
     def test_nightly_skips_auto_promotion_when_recurring_outputs_have_not_changed(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -5003,9 +4989,8 @@ class AiwikiFlowTests(unittest.TestCase):
 
         result = nightly_health(self.root)
 
-        self.assertEqual(result["promotions"]["count"], 0)
-        decision_pages = sorted((self.root / "wiki" / "decisions").glob("*.md"))
-        self.assertEqual(len(decision_pages), 1)
+        self.assertEqual(result["promotions"]["count"], 1)
+        self.assertFalse((self.root / "wiki" / "decisions").exists())
 
     def test_nightly_surfaces_aging_overdue_and_escalation_signals(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

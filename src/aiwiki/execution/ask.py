@@ -71,6 +71,9 @@ from ..app_state import (
     load_manifest,
     load_material_routing_state,
     load_material_state,
+    load_output_candidates_state,
+    load_runtime_history,
+    upsert_output_candidate,
 )
 from ..app_utils import (
     build_citation_snapshots,
@@ -111,6 +114,7 @@ def ask_question(
     protocol: str | None = None,
     *,
     no_cache: bool = False,
+    corpus_id_override: str | None = None,
 ) -> dict[str, Any]:
     from .. import app_compile as _app_compile
 
@@ -224,6 +228,29 @@ def ask_question(
         bridge_evidence_ids=bridge_evidence_ids,
         output_ref=artifact_ref,
         changed_at=created_at,
+        corpus_id_override=corpus_id_override,
+    )
+    original_content = destination.read_text(encoding="utf-8")
+    # 在已有 frontmatter 闭合前插入 candidate_state，避免 round-trip 破坏
+    # raw YAML literal（如 slides 的 `marp: true`）。
+    lines = original_content.splitlines()
+    if lines and lines[0].strip() == "---":
+        for idx in range(1, len(lines)):
+            if lines[idx].strip() == "---":
+                lines.insert(idx, f'corpus_id: "{active_corpus["corpus_id"]}"')
+                lines.insert(idx, 'candidate_state: "pending"')
+                break
+        destination.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    upsert_output_candidate(
+        root,
+        artifact_ref=artifact_ref,
+        candidate_state="pending",
+        created_at=created_at,
+        updated_at=created_at,
+        format=output_format,
+        protocol=active_protocol,
+        corpus_id=active_corpus["corpus_id"],
+        question=question,
     )
     append_runtime_history(
         root,
@@ -338,6 +365,45 @@ def ask_question(
     }
 
 
+def load_previous_output_summary(root: Path, corpus_id: str, *, exclude_artifact_ref: str | None = None) -> str | None:
+    """从 runtime history 找 corpus_id 最近一轮 output，读出摘要（frontmatter + 首段）。"""
+
+    for event in reversed(load_runtime_history(root)):
+        if not isinstance(event, dict):
+            continue
+        if str(event.get("corpus_id") or "") != corpus_id:
+            continue
+        output_ref = str(event.get("output_ref") or "")
+        if not output_ref or output_ref == exclude_artifact_ref:
+            continue
+        output_path = root / output_ref
+        if not output_path.exists():
+            continue
+        text = output_path.read_text(encoding="utf-8", errors="replace")
+        body = strip_frontmatter(text)
+        lines_text = text.splitlines()
+        frontmatter_lines: list[str] = []
+        if lines_text and lines_text[0].strip() == "---":
+            for index, line in enumerate(lines_text[1:], start=1):
+                if line.strip() == "---":
+                    frontmatter_lines = lines_text[1:index]
+                    break
+        lines = [f"来源：{output_ref}", "---", "\n".join(frontmatter_lines).strip() or "(no frontmatter)", "---"]
+        paragraph: list[str] = []
+        for line in body.splitlines():
+            if line.startswith("#"):
+                if paragraph:
+                    break
+                continue
+            if line.strip():
+                paragraph.append(line)
+            elif paragraph:
+                break
+        lines.extend(paragraph[:20] or ["(no body)"])
+        return "\n".join(lines)
+    return None
+
+
 @runtime_write_operation
 def file_back(
     root: Path,
@@ -376,6 +442,7 @@ def file_back(
         "decision": root / "wiki" / "decisions",
         "judgment": root / "wiki" / "judgments",
     }[kind]
+    directory.mkdir(parents=True, exist_ok=True)
     entry_id = next_available_stem(directory, entry_seed)
     destination = directory / f"{entry_id}.md"
     revisit_after = ""
@@ -424,6 +491,24 @@ def file_back(
     )
     payload = "\n".join([frontmatter, "", *body_lines]).rstrip() + "\n"
     destination.write_text(payload, encoding="utf-8")
+    candidate_state = load_output_candidates_state(root)
+    for candidate in candidate_state.get("candidates", []):
+        if candidate.get("artifact_ref") == artifact_ref:
+            upsert_output_candidate(
+                root,
+                artifact_ref=artifact_ref,
+                candidate_state="promoted",
+                created_at=str(candidate.get("created_at") or filed_at),
+                updated_at=filed_at,
+                format=str(candidate.get("format") or ""),
+                protocol=str(candidate.get("protocol") or resolved_protocol),
+                corpus_id=str(candidate.get("corpus_id") or ""),
+                question=str(candidate.get("question") or ""),
+                promoted_to=relative_path(root, destination),
+                promoted_at=filed_at,
+                promotion_origin=str(candidate.get("promotion_origin") or "manual"),
+            )
+            break
     append_wiki_log(
         root,
         "file-back",

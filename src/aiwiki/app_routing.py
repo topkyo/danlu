@@ -847,14 +847,18 @@ def upsert_active_corpus(
     bridge_evidence_ids: list[str],
     output_ref: str,
     changed_at: str,
+    corpus_id_override: str | None = None,
 ) -> dict[str, Any]:
     ensure_layout(root)
     state = reconcile_active_corpora_state(root, changed_at=changed_at)
     corpora = [dict(corpus) for corpus in state.get("corpora", [])]
     base_timestamp = parse_iso_datetime(changed_at) or datetime.now(timezone.utc)
     signature = question_signature(question)
-    seed = slugify(question)[:40] or "question"
-    corpus_id = f"{protocol}-{seed}-{signature.split(':', 1)[1][:8]}"
+    if corpus_id_override:
+        corpus_id = corpus_id_override
+    else:
+        seed = slugify(question)[:40] or "question"
+        corpus_id = f"{protocol}-{seed}-{signature.split(':', 1)[1][:8]}"
     target: dict[str, Any] | None = None
     for corpus in corpora:
         if str(corpus.get("corpus_id") or "") == corpus_id:

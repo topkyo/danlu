@@ -11,10 +11,11 @@ from unittest.mock import patch
 from aiwiki.app_compile import compile_wiki
 from aiwiki.app_content import ingest_source, sync_manifest_with_raw
 from aiwiki.app_protocol import ensure_layout
-from aiwiki.app_state import load_machine_memory
+from aiwiki.app_state import load_machine_memory, load_output_candidates_state
 from aiwiki.app_utils import relative_path
 from aiwiki.config import LLMConfig
 from aiwiki.drop import drop_note
+from aiwiki.execution.ask import ask_question
 from aiwiki.llm import CompletionResult, LLMError
 from aiwiki.runner import (
     _append_log,
@@ -32,6 +33,7 @@ from aiwiki.runner import (
     _pending_summary_count,
     _protocol_context,
     _read_context,
+    _reinject_candidate_frontmatter,
     _render_machine_query,
     _rewrite_candidate_record,
     _rewrite_candidate_slugs,
@@ -44,6 +46,7 @@ from aiwiki.runner import (
     create_client,
     llm_probe,
     llm_status,
+    promote_recurring_outputs,
     run_ask,
     run_compile,
     run_lint,
@@ -921,10 +924,57 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(receipt["event"], "run-nightly")
         self.assertTrue(receipt["llm_used"])
         self.assertEqual(receipt["compile_prompt_profile"], "balanced")
+        self.assertEqual(result["promotions"]["count"], 0)
         runs_log = json.loads((self.root / ".aiwiki" / "logs" / "runs.jsonl").read_text(encoding="utf-8").strip().splitlines()[-1])
         self.assertEqual(runs_log["event"], "run-nightly")
         self.assertEqual(runs_log["delivery_mode"], "llm-success")
         self.assertFalse(runs_log["fallback_used"])
+
+    def test_promote_recurring_outputs_enqueues_candidates_instead_of_filing_back(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        question = "Should we adopt transformer caching for inference?"
+        ask_question(self.root, question, "report")
+        ask_question(self.root, question, "report")
+
+        result = promote_recurring_outputs(self.root)
+
+        self.assertEqual(result["count"], 1)
+        self.assertFalse((self.root / "wiki" / "decisions").exists())
+        self.assertFalse((self.root / "wiki" / "judgments").exists())
+        state = load_output_candidates_state(self.root)
+        self.assertTrue(state["candidates"])
+        promoted_ref = result["pages"][0]["candidate_ref"]
+        candidate = next(c for c in state["candidates"] if c["artifact_ref"] == promoted_ref)
+        self.assertEqual(candidate["candidate_state"], "pending")
+        self.assertEqual(candidate["promotion_origin"], "nightly-recurring")
+        self.assertIn("recurring_kind", candidate)
+
+    def test_reinject_candidate_frontmatter_synthesizes_when_llm_strips_frontmatter(self) -> None:
+        target = self.root / "output" / "reports" / "stripped.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("# Naked body\n\nNo frontmatter at all.\n", encoding="utf-8")
+
+        _reinject_candidate_frontmatter(target, corpus_id="investing-foo-abc12345")
+
+        content = target.read_text(encoding="utf-8")
+        self.assertTrue(content.startswith("---\n"))
+        self.assertIn('candidate_state: "pending"', content)
+        self.assertIn('corpus_id: "investing-foo-abc12345"', content)
+        self.assertIn("# Naked body", content)
+
+    def test_reinject_candidate_frontmatter_preserves_slides_marp_literal(self) -> None:
+        target = self.root / "output" / "slides" / "deck.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("---\nmarp: true\ntitle: Deck\n---\n\n# Slide 1\n", encoding="utf-8")
+
+        _reinject_candidate_frontmatter(target, corpus_id="research-foo-deadbeef")
+
+        content = target.read_text(encoding="utf-8")
+        # marp: true 保留原始字面，不被 YAML round-trip 成 True
+        self.assertIn("marp: true", content)
+        self.assertIn('candidate_state: "pending"', content)
+        self.assertIn('corpus_id: "research-foo-deadbeef"', content)
 
     def test_prompt_helpers_include_schema_protocol_and_quality_signals(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")

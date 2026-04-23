@@ -244,6 +244,10 @@ def active_corpora_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "active-corpora.json"
 
 
+def output_candidates_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "output-candidates.json"
+
+
 def runtime_history_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "runtime-history.jsonl"
 
@@ -777,6 +781,79 @@ def load_active_corpora_state(root: Path) -> dict[str, Any]:
 
 def save_active_corpora_state(root: Path, document: dict[str, Any]) -> None:
     save_json_document(active_corpora_state_path(root), document)
+
+
+def default_output_candidates_state() -> dict[str, Any]:
+    return {"version": 1, "candidates": []}
+
+
+def load_output_candidates_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(output_candidates_state_path(root))
+    if not isinstance(document, dict):
+        return default_output_candidates_state()
+    candidates = document.get("candidates")
+    if not isinstance(candidates, list):
+        return default_output_candidates_state()
+    return {"version": int(document.get("version", 1) or 1), "candidates": [item for item in candidates if isinstance(item, dict)]}
+
+
+def save_output_candidates_state(root: Path, state: dict[str, Any]) -> None:
+    save_json_document(output_candidates_state_path(root), state)
+
+
+def upsert_output_candidate(
+    root: Path,
+    *,
+    artifact_ref: str,
+    candidate_state: str,
+    created_at: str,
+    updated_at: str,
+    format: str,
+    protocol: str,
+    corpus_id: str,
+    question: str,
+    promoted_to: str = "",
+    promoted_at: str = "",
+    demoted_at: str = "",
+    promotion_origin: str = "manual",
+) -> dict[str, Any]:
+    state = load_output_candidates_state(root)
+    candidates = list(state.get("candidates", []))
+    target = None
+    for candidate in candidates:
+        if str(candidate.get("artifact_ref") or "") == artifact_ref:
+            target = candidate
+            break
+    if target is None:
+        target = {"artifact_ref": artifact_ref, "created_at": created_at}
+        candidates.append(target)
+    target.update(
+        {
+            "artifact_ref": artifact_ref,
+            "candidate_state": candidate_state,
+            "created_at": created_at,
+            "updated_at": updated_at,
+            "format": format,
+            "protocol": protocol,
+            "corpus_id": corpus_id,
+            "question": question,
+            "promoted_to": promoted_to,
+            "promoted_at": promoted_at,
+            "demoted_at": demoted_at,
+            "promotion_origin": promotion_origin or "manual",
+        }
+    )
+    state = {"version": 1, "candidates": candidates}
+    save_output_candidates_state(root, state)
+    return target
+
+
+def remove_output_candidate(root: Path, artifact_ref: str) -> bool:
+    state = load_output_candidates_state(root)
+    candidates = [c for c in state.get("candidates", []) if str(c.get("artifact_ref") or "") != artifact_ref]
+    removed = len(candidates) != len(state.get("candidates", []))
+    save_output_candidates_state(root, {"version": 1, "candidates": candidates})
+    return removed
 
 
 def load_runtime_history(root: Path) -> list[dict[str, Any]]:

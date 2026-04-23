@@ -159,6 +159,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Bypass volatile SQLite query cache and force deterministic JSON scan.",
     )
+    ask_parser.add_argument("--corpus", help="Optional active corpus id to reuse across ask rounds.")
 
     run_ask_parser = subparsers.add_parser(
         "run-ask",
@@ -192,6 +193,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="If the LLM backend is unavailable, return the deterministic ask artifact from the same runtime call.",
     )
+    run_ask_parser.add_argument("--corpus", help="Optional active corpus id to reuse across ask rounds.")
 
     file_back_parser = subparsers.add_parser(
         "file-back",
@@ -206,6 +208,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Filed-back page kind.",
     )
     file_back_parser.add_argument("--protocol", help="Optional protocol override for the filed-back page.")
+
+    promote_parser = subparsers.add_parser("promote", help="Promote an output candidate into wiki/derived.")
+    promote_parser.add_argument("artifact_ref", help="Output candidate artifact_ref.")
+
+    demote_parser = subparsers.add_parser("demote", help="Mark an output candidate as demoted.")
+    demote_parser.add_argument("artifact_ref", help="Output candidate artifact_ref.")
 
     review_parser = subparsers.add_parser(
         "review-page",
@@ -514,20 +522,31 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "run-compile":
             result = run_compile(root, limit=args.limit)
         elif args.command == "ask":
-            result = ask_question(root, args.question, args.format, protocol=args.protocol, no_cache=args.no_cache)
+            ask_kwargs = {"protocol": args.protocol, "no_cache": args.no_cache}
+            if getattr(args, "corpus", None) is not None:
+                ask_kwargs["corpus_id_override"] = args.corpus
+            result = ask_question(root, args.question, args.format, **ask_kwargs)
         elif args.command == "run-ask":
-            result = run_ask(
-                root,
-                args.question,
-                args.format,
-                protocol=args.protocol,
-                lean=args.lean,
-                timeout_seconds=args.timeout,
-                no_cache=args.no_cache,
-                fallback_to_ask=args.fallback_to_ask,
-            )
+            ask_kwargs = {
+                "protocol": args.protocol,
+                "lean": args.lean,
+                "timeout_seconds": args.timeout,
+                "no_cache": args.no_cache,
+                "fallback_to_ask": args.fallback_to_ask,
+            }
+            if hasattr(args, "corpus") and args.corpus is not None:
+                ask_kwargs["corpus_id_override"] = args.corpus
+            result = run_ask(root, args.question, args.format, **ask_kwargs)
         elif args.command == "file-back":
             result = file_back(root, args.artifact, title=args.title, kind=args.kind, protocol=args.protocol)
+        elif args.command == "promote":
+            from .execution.candidates import promote_candidate
+
+            result = promote_candidate(root, args.artifact_ref)
+        elif args.command == "demote":
+            from .execution.candidates import demote_candidate
+
+            result = demote_candidate(root, args.artifact_ref)
         elif args.command == "review-page":
             review_pages = _resolve_review_pages(
                 root,

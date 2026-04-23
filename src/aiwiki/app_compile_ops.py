@@ -229,6 +229,7 @@ from .app_state import (
     load_material_archive_state,
     load_material_routing_state,
     load_material_state,
+    load_output_candidates_state,
     load_ranking_build_state,
     machine_memory_action_state_path,
     machine_memory_actions_path,
@@ -258,7 +259,9 @@ from .app_state import (
     save_machine_memory_action_state,
     save_manual_link_state,
     save_material_archive_state,
+    save_output_candidates_state,
     shell_summary_path,
+    upsert_output_candidate,
 )
 from .app_surfaces import (
     render_cognitive_history,
@@ -402,16 +405,13 @@ def render_protocols_dashboard(
 
 @runtime_write_operation
 def promote_recurring_outputs(root: Path) -> dict[str, Any]:
-    from . import app_compile as compile_facade
-
     ensure_layout(root)
     groups: dict[tuple[str, str], list[dict[str, str]]] = {}
     for artifact in collect_output_artifacts(root):
         groups.setdefault((artifact["protocol"], artifact["query_signature"]), []).append(artifact)
 
     generated_at = utc_now()
-    created = 0
-    updated = 0
+    enqueued = 0
     promotions: list[dict[str, str]] = []
     for (protocol, query_signature), artifacts in sorted(groups.items()):
         if len(artifacts) < AUTO_PROMOTION_MIN_OCCURRENCES:
@@ -420,39 +420,32 @@ def promote_recurring_outputs(root: Path) -> dict[str, Any]:
         kind = classify_recurring_output_kind(query, protocol)
         if kind not in {"decision", "judgment"}:
             continue
-        existing = find_promoted_curated_page(root, kind, query_signature, protocol)
-        if existing is None:
-            result = compile_facade.file_back(
-                root,
-                artifacts[-1]["path"],
-                title=f"{kind}-{query_signature}",
-                kind=kind,
-                protocol=protocol,
-            )
-            page_path = root / result["path"]
-            action = "created"
-            created += 1
-        else:
-            if not recurring_promotion_needs_refresh(existing, artifacts):
-                continue
-            page_path = existing
-            action = "updated"
-            updated += 1
-        annotate_recurring_promotion(
+        candidate = upsert_output_candidate(
             root,
-            page_path,
-            kind=kind,
+            artifact_ref=artifacts[-1]["path"],
+            candidate_state="pending",
+            created_at=generated_at,
+            updated_at=generated_at,
+            format=artifacts[-1].get("format", ""),
             protocol=protocol,
-            query=query,
-            query_signature=query_signature,
-            artifacts=artifacts,
-            generated_at=generated_at,
+            corpus_id=artifacts[-1].get("corpus_id", ""),
+            question=query,
+            promotion_origin="nightly-recurring",
         )
+        candidate["recurring_kind"] = kind
+        state = load_output_candidates_state(root)
+        for item in state.get("candidates", []):
+            if str(item.get("artifact_ref") or "") == artifacts[-1]["path"]:
+                item["recurring_kind"] = kind
+                break
+        save_output_candidates_state(root, state)
+        enqueued += 1
         promotions.append(
             {
                 "kind": kind,
-                "action": action,
-                "path": relative_path(root, page_path),
+                "action": "enqueued",
+                "path": candidate["artifact_ref"],
+                "candidate_ref": candidate["artifact_ref"],
                 "protocol": protocol,
                 "query": query,
                 "query_signature": query_signature,
@@ -462,22 +455,22 @@ def promote_recurring_outputs(root: Path) -> dict[str, Any]:
         )
         append_wiki_log(
             root,
-            "promote",
+            "enqueue",
             query,
             [
                 f"kind: `{kind}`",
                 f"protocol: `{protocol}`",
-                f"action: `{action}`",
+                "action: `enqueued`",
                 f"occurrences: `{len(artifacts)}`",
-                f"page: `{relative_path(root, page_path)}`",
+                f"candidate_ref: `{candidate['artifact_ref']}`",
                 f"latest_artifact: `{artifacts[-1]['path']}`",
             ],
         )
 
     return {
-        "count": len(promotions),
-        "created": created,
-        "updated": updated,
+        "count": enqueued,
+        "created": 0,
+        "updated": 0,
         "pages": promotions,
     }
 

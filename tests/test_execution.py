@@ -27,11 +27,14 @@ from aiwiki.app_state import (
     load_machine_memory,
     load_manifest,
     load_material_archive_state,
+    load_output_candidates_state,
     save_machine_memory_action_state,
 )
+from aiwiki.app_utils import parse_frontmatter
 from aiwiki.cli import main as cli_main
+from aiwiki.execution.candidates import demote_candidate, promote_candidate
 from aiwiki.llm import CompletionResult
-from aiwiki.runner import run_compile
+from aiwiki.runner import run_ask, run_compile
 
 
 class _StubClient:
@@ -229,6 +232,158 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(stderr, "")
         self.assertEqual(payload["status"], "confirmed")
         self.assertIn("wiki/judgments/", payload["path"])
+
+    def test_load_output_candidates_state_returns_default(self) -> None:
+        state = load_output_candidates_state(self.root)
+
+        self.assertEqual(state, {"version": 1, "candidates": []})
+
+    def test_ask_question_marks_candidate_pending(self) -> None:
+        result = ask_question(self.root, "Should we increase transformer training spend?", "report")
+        page = (self.root / result["path"]).read_text(encoding="utf-8")
+
+        self.assertEqual(parse_frontmatter(page).get("candidate_state"), "pending")
+        state = load_output_candidates_state(self.root)
+        self.assertEqual(len(state["candidates"]), 1)
+        self.assertEqual(state["candidates"][0]["artifact_ref"], result["path"])
+        self.assertEqual(state["candidates"][0]["candidate_state"], "pending")
+
+    def test_ask_with_corpus_flag_reuses_corpus_id(self) -> None:
+        first = run_ask(self.root, "First question?", "report", client=_StubClient(["---\nfront: yes\n---\n# Title\n\nBody.\n"]))
+        second = run_ask(
+            self.root,
+            "Second question?",
+            "report",
+            client=_StubClient(["---\nfront: yes\n---\n# Title\n\nBody.\n"]),
+            corpus_id_override=first["active_corpus_id"],
+        )
+
+        self.assertEqual(first["active_corpus_id"], second["active_corpus_id"])
+        first_frontmatter = parse_frontmatter((self.root / first["path"]).read_text(encoding="utf-8"))
+        second_frontmatter = parse_frontmatter((self.root / second["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(first_frontmatter.get("candidate_state"), "pending")
+        self.assertEqual(second_frontmatter.get("candidate_state"), "pending")
+
+    def test_ask_second_round_injects_previous_output_summary(self) -> None:
+        first = run_ask(self.root, "First question?", "report", client=_StubClient(["---\nfront: yes\n---\n# Title\n\nBody.\n"]))
+        captured: dict[str, str] = {}
+
+        from aiwiki import runner as runner_module
+
+        original = runner_module._build_ask_prompt
+
+        def spy(*args, **kwargs):
+            captured["prompt"] = original(*args, **kwargs)
+            return captured["prompt"]
+
+        with patch.object(runner_module, "_build_ask_prompt", side_effect=spy):
+            run_ask(
+                self.root,
+                "Second question?",
+                "report",
+                client=_StubClient([
+                    "---\nfront: yes\n---\n# Title\n\nBody.\n",
+                    "---\nfront: yes\n---\n# Title\n\nBody.\n",
+                ]),
+                corpus_id_override=first["active_corpus_id"],
+            )
+
+        self.assertIn("## Previous Output In Corpus", captured["prompt"])
+        self.assertIn(first["path"], captured["prompt"])
+
+    def test_ask_first_round_no_previous_output_section(self) -> None:
+        captured: dict[str, str] = {}
+
+        from aiwiki import runner as runner_module
+
+        original = runner_module._build_ask_prompt
+
+        def spy(*args, **kwargs):
+            captured["prompt"] = original(*args, **kwargs)
+            return captured["prompt"]
+
+        with patch.object(runner_module, "_build_ask_prompt", side_effect=spy):
+            run_ask(self.root, "First question?", "report", client=_StubClient(["---\nfront: yes\n---\n# Title\n\nBody.\n"]))
+
+        self.assertNotIn("## Previous Output In Corpus", captured["prompt"])
+
+    def test_file_back_marks_candidate_promoted(self) -> None:
+        result = ask_question(self.root, "Should we increase transformer training spend?", "report")
+        file_back(self.root, result["path"], title="Scaling Judgment", kind="judgment", protocol="investing")
+
+        state = load_output_candidates_state(self.root)
+        self.assertEqual(len(state["candidates"]), 1)
+        candidate = state["candidates"][0]
+        self.assertEqual(candidate["candidate_state"], "promoted")
+        self.assertTrue(candidate["promoted_to"])
+        self.assertTrue(candidate["promoted_at"])
+
+    def test_promote_candidate_moves_to_wiki_derived(self) -> None:
+        result = ask_question(self.root, "Should we increase transformer training spend?", "report")
+
+        promoted = promote_candidate(self.root, result["path"])
+
+        self.assertEqual(promoted["status"], "promoted")
+        self.assertTrue((self.root / promoted["promoted_path"]).exists())
+        self.assertTrue(promoted["promoted_path"].startswith("wiki/derived/"))
+        page = (self.root / result["path"]).read_text(encoding="utf-8")
+        self.assertEqual(parse_frontmatter(page).get("candidate_state"), "promoted")
+        state = load_output_candidates_state(self.root)
+        self.assertEqual(state["candidates"][0]["candidate_state"], "promoted")
+
+    def test_promote_recurring_candidate_still_lands_in_wiki_derived(self) -> None:
+        # contract SC4: 阶段 1 所有 promote 都去 wiki/derived/，
+        # nightly 登记的 recurring_kind=decision/judgment 不应把 promote 目标改走
+        result = ask_question(self.root, "Should we tune the scaling ladder?", "report")
+        from aiwiki.app_state import upsert_output_candidate  # 局部 import 避免污染全局
+        upsert_output_candidate(
+            self.root,
+            artifact_ref=result["path"],
+            candidate_state="pending",
+            created_at="2026-04-24T00:00:00Z",
+            updated_at="2026-04-24T00:00:00Z",
+            format="report",
+            protocol="investing",
+            corpus_id="",
+            question="Should we tune the scaling ladder?",
+            promotion_origin="nightly-recurring",
+        )
+        # 手工把 recurring_kind 注入到 state 里（模拟 nightly 入队后的记录）
+        state = load_output_candidates_state(self.root)
+        for candidate in state["candidates"]:
+            if candidate["artifact_ref"] == result["path"]:
+                candidate["recurring_kind"] = "decision"
+        from aiwiki.app_state import save_output_candidates_state
+        save_output_candidates_state(self.root, state)
+
+        promoted = promote_candidate(self.root, result["path"])
+
+        self.assertTrue(promoted["promoted_path"].startswith("wiki/derived/"))
+        self.assertFalse((self.root / "wiki" / "decisions").exists())
+
+    def test_promote_candidate_not_found_raises(self) -> None:
+        with self.assertRaises(FileNotFoundError):
+            promote_candidate(self.root, "output/reports/missing.md")
+
+    def test_demote_candidate_marks_frontmatter(self) -> None:
+        result = ask_question(self.root, "Should we increase transformer training spend?", "report")
+
+        demoted = demote_candidate(self.root, result["path"])
+
+        self.assertEqual(demoted["status"], "demoted")
+        page = (self.root / result["path"]).read_text(encoding="utf-8")
+        self.assertEqual(parse_frontmatter(page).get("candidate_state"), "demoted")
+
+    def test_demote_candidate_idempotent_via_state(self) -> None:
+        result = ask_question(self.root, "Should we increase transformer training spend?", "report")
+
+        demote_candidate(self.root, result["path"])
+        state = load_output_candidates_state(self.root)
+
+        # demote 从队列索引移除（contract line 20），frontmatter 仍保留 demoted 标记
+        self.assertFalse(
+            any(c.get("artifact_ref") == result["path"] for c in state["candidates"])
+        )
 
     def test_review_page_all_pending_writes_batch_receipt(self) -> None:
         first = ask_question(self.root, "Should we revise scaling assumptions?", "report")
