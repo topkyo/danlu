@@ -6,7 +6,7 @@ status: "active"
 
 # 炼丹炉原料状态模型
 
-这份文档不是新的架构层，而是对 [[wiki/indexes/Furnace Material Scaling|大规模原料处理设计]] 的进一步收敛：
+这份文档不是新的架构层，而是对 [[docs/Furnace Material Scaling|大规模原料处理设计]] 的进一步收敛：
 
 **把 `temperature / active corpus / archive` 压成更接近 runtime 的最小状态模型。**
 
@@ -14,9 +14,9 @@ status: "active"
 
 对应关系：
 
-- 基线架构：[[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
-- 规模化设计：[[wiki/indexes/Furnace Material Scaling|大规模原料处理设计]]
-- 终局形态：[[wiki/indexes/Furnace Ultimate Architecture|炼丹炉最终极形态]]
+- 基线架构：[[docs/Alchemy Furnace|炼丹炉架构]]
+- 规模化设计：[[docs/Furnace Material Scaling|大规模原料处理设计]]
+- 终局形态：[[docs/Furnace Ultimate Architecture|炼丹炉最终极形态]]
 
 ## 目标
 

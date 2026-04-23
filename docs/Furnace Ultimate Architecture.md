@@ -12,7 +12,7 @@ status: "active"
 
 对应关系：
 
-- 基线架构：[[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
+- 基线架构：[[docs/Alchemy Furnace|炼丹炉架构]]
 - 最终形态：当前这份文档
 
 ## 核心定义
@@ -51,7 +51,7 @@ status: "active"
 
 ## 总体架构
 
-为了和 [[wiki/indexes/Alchemy Furnace|炼丹炉架构]] 保持一致，这份终局草图继续显式保留：
+为了和 [[docs/Alchemy Furnace|炼丹炉架构]] 保持一致，这份终局草图继续显式保留：
 
 - `Schema / Protocol` 作为独立的运行时层
 - `Outputs` 作为独立的产物层

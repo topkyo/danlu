@@ -31,9 +31,9 @@ status: "active"
 
 对应设计文档：
 
-- [[wiki/indexes/Furnace Material Scaling|大规模原料处理]]
-- [[wiki/indexes/Furnace Material State Model|原料状态模型]]
-- [[wiki/indexes/Furnace Capability Map|能力地图]]
+- [[docs/Furnace Material Scaling|大规模原料处理]]
+- [[docs/Furnace Material State Model|原料状态模型]]
+- [[docs/Furnace Capability Map|能力地图]]
 
 ## 当前问题
 

@@ -20,8 +20,8 @@ status: "snapshot"
 
 对应关系：
 
-- 基线架构：[[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
-- 终局架构：[[wiki/indexes/Furnace Ultimate Architecture|炼丹炉最终极形态]]
+- 基线架构：[[docs/Alchemy Furnace|炼丹炉架构]]
+- 终局架构：[[docs/Furnace Ultimate Architecture|炼丹炉最终极形态]]
 - Product Shell 设计稿：[[wiki/indexes/Furnace Product Shell Plugin|炼丹炉 Product Shell Plugin]]
 - 当前工程状态：[PROGRESS.md](<../../PROGRESS.md>)
 - 当前这份：`现在做到哪了`

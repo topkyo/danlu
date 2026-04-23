@@ -545,7 +545,7 @@ def build_agent_packs(
                 actions = ["继续观察新投料，并保持 source page 和 raw evidence 对齐。"]
             links = [
                 "[来源索引](../../wiki/indexes/sources.md)",
-                "[原料收件箱](../../wiki/indexes/Raw Inbox.md)",
+                "[原料收件箱](../../docs/Raw Inbox.md)",
                 "[采集规则](../../schema/ingest.md)",
             ]
         elif role == "concept-agent":

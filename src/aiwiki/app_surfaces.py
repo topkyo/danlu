@@ -1124,7 +1124,7 @@ def render_furnace_center(
             "- [图谱视图](./graph-view.md)",
             "- [修复待办](./repair-backlog.md)",
             "- [协议总览](./protocols.md)",
-            "- [输出面板](./Outputs.md)",
+            "- [输出面板](../../docs/Outputs.md)",
             "- `output/review/review-center.html`：本地审阅面板（浏览器 / 系统 HTML 入口）",
             "- `output/graph/machine-memory.html`：本地图谱视图（若点开变成 Mihomo/Clash，说明系统接管了 `text/html`）",
             "- `output/control/furnace-center.html`：本地炉心面板（浏览器 / 系统 HTML 入口）",

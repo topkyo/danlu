@@ -34,11 +34,11 @@ kind: "dashboard"
 
 ## 今日入口
 
-- [[wiki/indexes/Raw Inbox|原料收件箱]]
-- [[wiki/indexes/Wiki Hub|知识中枢]]
-- [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
-- [[wiki/indexes/Furnace Ultimate Architecture|最终极形态]]
-- [[wiki/indexes/Furnace Material Scaling|大规模原料处理]]
+- [[docs/Raw Inbox|原料收件箱]]
+- [[docs/Wiki Hub|知识中枢]]
+- [[docs/Alchemy Furnace|炼丹炉架构]]
+- [[docs/Furnace Ultimate Architecture|最终极形态]]
+- [[docs/Furnace Material Scaling|大规模原料处理]]
 - [[wiki/indexes/furnace-center|炉心面板]]
 - [[wiki/indexes/execution-center|执行中心]]
 - [[wiki/indexes/execution-audit|执行审计]]
@@ -50,8 +50,8 @@ kind: "dashboard"
 - [[wiki/indexes/review-center|审阅中心]]
 - [[wiki/indexes/judgment-assets|判断资产]]
 - [[wiki/indexes/graph-view|图谱视图]]
-- [[wiki/indexes/Outputs|输出面板]]
-- [[wiki/indexes/Search Presets|搜索预设]]
+- [[docs/Outputs|输出面板]]
+- [[docs/Search Presets|搜索预设]]
 
 ## 今日信号
 
@@ -118,4 +118,4 @@ kind: "dashboard"
 - 新建笔记默认进 `raw/inbox/`
 - 新建附件默认进 `raw/assets/`
 - 详细运行说明看 [README.md](./README.md)
-- 详细架构看 [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
+- 详细架构看 [[docs/Alchemy Furnace|炼丹炉架构]]

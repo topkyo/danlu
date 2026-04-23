@@ -18,8 +18,8 @@ status: "active"
 
 对应关系：
 
-- 基线架构：[[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
-- 终局架构：[[wiki/indexes/Furnace Ultimate Architecture|炼丹炉最终极形态]]
+- 基线架构：[[docs/Alchemy Furnace|炼丹炉架构]]
+- 终局架构：[[docs/Furnace Ultimate Architecture|炼丹炉最终极形态]]
 - runtime 实施计划：[[wiki/indexes/Furnace Product Shell Runtime Plan|Product Shell Runtime Plan]]
 - 当前这份：`Product Shell` 的实现级设计稿
 

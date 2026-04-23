@@ -14,9 +14,9 @@ status: "active"
 
 对应关系：
 
-- 基线架构：[[wiki/indexes/Alchemy Furnace|炼丹炉架构]]
-- 终局形态：[[wiki/indexes/Furnace Ultimate Architecture|炼丹炉最终极形态]]
-- 状态模型：[[wiki/indexes/Furnace Material State Model|原料状态模型]]
+- 基线架构：[[docs/Alchemy Furnace|炼丹炉架构]]
+- 终局形态：[[docs/Furnace Ultimate Architecture|炼丹炉最终极形态]]
+- 状态模型：[[docs/Furnace Material State Model|原料状态模型]]
 
 ## 核心原则
 
@@ -295,4 +295,4 @@ query 未来应遵循：
 
 如果后续要继续往实现层推进，下一步直接读：
 
-- [[wiki/indexes/Furnace Material State Model|炼丹炉原料状态模型]]
+- [[docs/Furnace Material State Model|炼丹炉原料状态模型]]

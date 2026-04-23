@@ -41,15 +41,15 @@ class ObsidianWorkspaceTests(unittest.TestCase):
 
     def test_home_dashboard_links_key_index_notes(self) -> None:
         home = (self.root / "HOME.md").read_text(encoding="utf-8")
-        self.assertIn("[[wiki/indexes/Raw Inbox|", home)
-        self.assertIn("[[wiki/indexes/Wiki Hub|", home)
-        self.assertIn("[[wiki/indexes/Alchemy Furnace|", home)
-        self.assertIn("[[wiki/indexes/Furnace Ultimate Architecture|", home)
-        self.assertIn("[[wiki/indexes/Furnace Material Scaling|", home)
+        self.assertIn("[[docs/Raw Inbox|", home)
+        self.assertIn("[[docs/Wiki Hub|", home)
+        self.assertIn("[[docs/Alchemy Furnace|", home)
+        self.assertIn("[[docs/Furnace Ultimate Architecture|", home)
+        self.assertIn("[[docs/Furnace Material Scaling|", home)
         self.assertIn("[[wiki/indexes/furnace-center|", home)
         self.assertIn("[[wiki/indexes/protocols|", home)
-        self.assertIn("[[wiki/indexes/Furnace Protocols|", (self.root / "wiki" / "indexes" / "Wiki Hub.md").read_text(encoding="utf-8"))
-        self.assertIn("[[wiki/indexes/Furnace Material State Model|", (self.root / "wiki" / "indexes" / "Wiki Hub.md").read_text(encoding="utf-8"))
+        self.assertIn("[[wiki/indexes/Furnace Protocols|", (self.root / "docs" / "Wiki Hub.md").read_text(encoding="utf-8"))
+        self.assertIn("[[docs/Furnace Material State Model|", (self.root / "docs" / "Wiki Hub.md").read_text(encoding="utf-8"))
         self.assertIn("[[wiki/indexes/review-center|", home)
         self.assertIn("[[wiki/indexes/graph-view|", home)
         self.assertIn("[[wiki/indexes/machine-memory|", home)
@@ -59,17 +59,17 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         self.assertIn("[[wiki/indexes/review-queue|", home)
         self.assertIn("[[schema/index|", home)
         self.assertIn("[[schema/protocols/index|", home)
-        self.assertIn("[[wiki/indexes/Outputs|", home)
-        self.assertIn("[[wiki/indexes/Search Presets|", home)
+        self.assertIn("[[docs/Outputs|", home)
+        self.assertIn("[[docs/Search Presets|", home)
 
     def test_index_notes_exist(self) -> None:
         for relative in (
-            "wiki/indexes/Raw Inbox.md",
-            "wiki/indexes/Wiki Hub.md",
-            "wiki/indexes/Alchemy Furnace.md",
-            "wiki/indexes/Furnace Ultimate Architecture.md",
-            "wiki/indexes/Furnace Material Scaling.md",
-            "wiki/indexes/Furnace Material State Model.md",
+            "docs/Raw Inbox.md",
+            "docs/Wiki Hub.md",
+            "docs/Alchemy Furnace.md",
+            "docs/Furnace Ultimate Architecture.md",
+            "docs/Furnace Material Scaling.md",
+            "docs/Furnace Material State Model.md",
             "wiki/indexes/Furnace Protocols.md",
             "wiki/indexes/furnace-center.md",
             "wiki/indexes/protocols.md",
@@ -78,26 +78,20 @@ class ObsidianWorkspaceTests(unittest.TestCase):
             "wiki/indexes/graph-health.md",
             "wiki/indexes/repair-backlog.md",
             "wiki/indexes/review-queue.md",
-            "wiki/indexes/Outputs.md",
-            "wiki/indexes/Search Presets.md",
+            "docs/Outputs.md",
+            "docs/Search Presets.md",
         ):
             self.assertTrue((self.root / relative).exists(), relative)
 
     def test_ultimate_architecture_keeps_core_layers_visible(self) -> None:
-        text = (self.root / "wiki" / "indexes" / "Furnace Ultimate Architecture.md").read_text(
-            encoding="utf-8"
-        )
+        text = (self.root / "docs" / "Furnace Ultimate Architecture.md").read_text(encoding="utf-8")
         self.assertIn("Schema / Protocol Layer", text)
         self.assertIn("Outputs Layer", text)
         self.assertIn("execution-center", text)
 
     def test_material_scaling_docs_keep_runtime_state_guards(self) -> None:
-        state_model = (
-            self.root / "wiki" / "indexes" / "Furnace Material State Model.md"
-        ).read_text(encoding="utf-8")
-        scaling = (
-            self.root / "wiki" / "indexes" / "Furnace Material Scaling.md"
-        ).read_text(encoding="utf-8")
+        state_model = (self.root / "docs" / "Furnace Material State Model.md").read_text(encoding="utf-8")
+        scaling = (self.root / "docs" / "Furnace Material Scaling.md").read_text(encoding="utf-8")
         self.assertIn("manifest `entries[*].id`", state_model)
         self.assertIn("runtime-history.jsonl", state_model)
         self.assertIn("active_corpus_ids", state_model)
