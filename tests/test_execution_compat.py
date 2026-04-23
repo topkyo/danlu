@@ -132,6 +132,13 @@ class ExecutionCompatSeamTests(unittest.TestCase):
             "apply_machine_memory_action": "aiwiki.execution.machine_memory_actions",
             "revert_machine_memory_action": "aiwiki.execution.machine_memory_actions",
             "_save_machine_memory_action_records": "aiwiki.execution.machine_memory_actions",
+            # B7 — review page & machine-memory batch
+            "review_page": "aiwiki.execution.review",
+            "review_pages_batch": "aiwiki.execution.machine_memory_batch",
+            "apply_machine_memory_actions_batch": "aiwiki.execution.machine_memory_batch",
+            "revert_machine_memory_action_batch": "aiwiki.execution.machine_memory_batch",
+            "_build_batch_id": "aiwiki.execution.machine_memory_batch",
+            "_load_latest_action_apply_batch_receipt": "aiwiki.execution.machine_memory_batch",
         }
         for name, owner in app_compile._LAZY_OWNERS.items():
             expected = migrated.get(name, "aiwiki.app_compile")
@@ -1512,6 +1519,369 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
         self.assertTrue(
             observed,
             msg="revert_machine_memory_action did not route utc_now through aiwiki.app_compile; B6 lazy-lookup seam regressed.",
+        )
+
+    # ------------------------------------------------------------------
+    # EP-018B7 — review page & machine-memory batch
+    # ------------------------------------------------------------------
+
+    def test_b7_review_module_resolves_to_execution_module(self) -> None:
+        import importlib
+
+        review_mod = importlib.import_module("aiwiki.execution.review")
+        name = "review_page"
+        app_compile.__dict__.pop(name, None)
+        self.assertIs(
+            getattr(app_compile, name),
+            review_mod.review_page,
+            msg="B7 seam for 'review_page' did not resolve to aiwiki.execution.review",
+        )
+
+    def test_b7_machine_memory_batch_module_resolves_to_execution_module(self) -> None:
+        import importlib
+
+        batch_mod = importlib.import_module("aiwiki.execution.machine_memory_batch")
+        migrated_names = (
+            "review_pages_batch",
+            "apply_machine_memory_actions_batch",
+            "revert_machine_memory_action_batch",
+            "_build_batch_id",
+            "_load_latest_action_apply_batch_receipt",
+        )
+        for name in migrated_names:
+            app_compile.__dict__.pop(name, None)
+        for name in migrated_names:
+            self.assertIs(
+                getattr(app_compile, name),
+                getattr(batch_mod, name),
+                msg=f"B7 seam for {name!r} did not resolve to aiwiki.execution.machine_memory_batch",
+            )
+
+    def test_b7_from_import_works(self) -> None:
+        import importlib
+
+        review_mod = importlib.import_module("aiwiki.execution.review")
+        batch_mod = importlib.import_module("aiwiki.execution.machine_memory_batch")
+        expected = {
+            "review_page": review_mod.review_page,
+            "review_pages_batch": batch_mod.review_pages_batch,
+            "apply_machine_memory_actions_batch": batch_mod.apply_machine_memory_actions_batch,
+            "revert_machine_memory_action_batch": batch_mod.revert_machine_memory_action_batch,
+        }
+        for name in expected:
+            app_compile.__dict__.pop(name, None)
+        local_ns: dict[str, object] = {}
+        exec(
+            "from aiwiki.app_compile import (\n"
+            "    review_page,\n"
+            "    review_pages_batch,\n"
+            "    apply_machine_memory_actions_batch,\n"
+            "    revert_machine_memory_action_batch,\n"
+            ")",
+            {"__builtins__": __builtins__},
+            local_ns,
+        )
+        for name, target in expected.items():
+            self.assertIs(
+                local_ns[name],
+                target,
+                msg=f"B7 from-import for {name!r} did not resolve to migrated function",
+            )
+
+    def test_b7_review_page_uses_patched_utc_now(self) -> None:
+        import contextlib
+        import importlib
+        import tempfile
+
+        review_mod = importlib.import_module("aiwiki.execution.review")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target_path = root / "page.md"
+            target_path.write_text(
+                "---\nkind: judgment\nstatus: draft\n---\n\nBody.\n",
+                encoding="utf-8",
+            )
+            stubs = {
+                "ensure_layout": None,
+                "parse_frontmatter": {"kind": "judgment", "status": "draft"},
+                "strip_frontmatter": "Body.",
+                "valid_curated_statuses": ("active",),
+                "schedule_review_windows": ("", ""),
+                "upsert_markdown_section": "Body.",
+                "append_review_history_entry": "Body.",
+                "extract_provenance_paths": [],
+                "build_citation_snapshots": [],
+                "analyze_citation_snapshots": {"has_drift": False, "missing": [], "stale": []},
+                "judgment_lifecycle_profile": ("active", []),
+                "render_frontmatter": "---\nkind: judgment\n---",
+                "review_history_entries": [],
+                "entry_lookup_maps": ({}, {}),
+                "load_manifest": {"entries": []},
+                "entry_ids_from_paths": [],
+                "append_runtime_history": None,
+                "append_wiki_log": None,
+                "compile_wiki": None,
+                "relative_path": "page.md",
+            }
+            with contextlib.ExitStack() as stack:
+                for name, return_value in stubs.items():
+                    stack.enter_context(patch.object(review_mod, name, return_value=return_value))
+                stack.enter_context(patch("aiwiki.app_compile.utc_now", side_effect=_fake_utc))
+                review_mod.review_page(root, str(target_path), "active", confidence="medium")
+
+        self.assertEqual(
+            len(observed),
+            1,
+            msg=(
+                "review_page must reach exactly one utc_now call site; got "
+                f"{len(observed)} observed stamps: {observed!r}. B7 lazy-lookup "
+                "seam regressed (double-call or missing call)."
+            ),
+        )
+
+    def test_b7_build_batch_id_uses_patched_utc_now(self) -> None:
+        import importlib
+
+        batch_mod = importlib.import_module("aiwiki.execution.machine_memory_batch")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        with patch("aiwiki.app_compile.utc_now", side_effect=_fake_utc):
+            result = batch_mod._build_batch_id("review-page-batch", ["pages/foo.md"])
+
+        self.assertEqual(
+            len(observed),
+            1,
+            msg=(
+                "_build_batch_id must reach exactly one utc_now call site; got "
+                f"{len(observed)} observed stamps: {observed!r}. B7 lazy-lookup "
+                "seam regressed."
+            ),
+        )
+        self.assertIn(
+            "patched-utc-0",
+            result,
+            msg=(
+                "_build_batch_id did not route the timestamp through the "
+                "patched aiwiki.app_compile.utc_now; B7 lazy-lookup seam regressed."
+            ),
+        )
+
+    def test_b7_review_pages_batch_uses_patched_utc_now(self) -> None:
+        import contextlib
+        import importlib
+
+        batch_mod = importlib.import_module("aiwiki.execution.machine_memory_batch")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        stubs = {
+            "ensure_layout": None,
+            "build_execution_batch_receipt": {"kind": "execution-batch-receipt", "batch_id": "b1"},
+            "execution_batch_receipt_path": Path("receipt.json"),
+            "write_execution_batch_receipt_document": None,
+            "append_runtime_history": None,
+            "append_wiki_log": None,
+            "relative_path": "receipt.json",
+        }
+        with contextlib.ExitStack() as stack:
+            for name, return_value in stubs.items():
+                stack.enter_context(patch.object(batch_mod, name, return_value=return_value))
+            # review_page is invoked via _app_compile.review_page(...) lazy
+            # seam (B7 MF1 fix); patch must target the app_compile namespace,
+            # NOT batch_mod (where the symbol no longer exists).
+            stack.enter_context(
+                patch("aiwiki.app_compile.review_page", return_value={"path": "page.md", "status": "active"})
+            )
+            stack.enter_context(patch("aiwiki.app_compile.utc_now", side_effect=_fake_utc))
+            batch_mod.review_pages_batch(Path("/tmp"), ["page.md"], "active")
+
+        # review_pages_batch reaches TWO utc_now sites: its own
+        # ``generated_at`` AND ``_build_batch_id``'s site. Lock both.
+        self.assertEqual(
+            len(observed),
+            2,
+            msg=(
+                "review_pages_batch must reach both utc_now call sites "
+                "(generated_at + _build_batch_id); got "
+                f"{len(observed)} observed stamps: {observed!r}. B7 "
+                "lazy-lookup seam regressed."
+            ),
+        )
+
+    def test_b7_apply_machine_memory_actions_batch_dry_run_uses_patched_utc_now(self) -> None:
+        import contextlib
+        import importlib
+
+        batch_mod = importlib.import_module("aiwiki.execution.machine_memory_batch")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        action = {"id": "a1", "title": "A1", "status": "accepted"}
+        preview = {"id": "a1", "bundle_path": "bundle.json"}
+        stubs = {
+            "ensure_layout": None,
+            "load_machine_memory_action_state": {"actions": [action]},
+            "action_supports_low_risk_apply": True,
+            "build_execution_batch_receipt": {"kind": "execution-batch-receipt", "batch_id": "b1"},
+            "execution_batch_receipt_path": Path("receipt.json"),
+            "write_execution_batch_receipt_document": None,
+            "append_runtime_history": None,
+            "append_wiki_log": None,
+            "relative_path": "receipt.json",
+        }
+        with contextlib.ExitStack() as stack:
+            for name, return_value in stubs.items():
+                stack.enter_context(patch.object(batch_mod, name, return_value=return_value))
+            # apply_machine_memory_action goes through _app_compile.<name>(...)
+            # lazy seam (B7 MF1 fix); patch in app_compile namespace.
+            stack.enter_context(
+                patch("aiwiki.app_compile.apply_machine_memory_action", return_value=preview)
+            )
+            stack.enter_context(patch("aiwiki.app_compile.utc_now", side_effect=_fake_utc))
+            batch_mod.apply_machine_memory_actions_batch(Path("/tmp"), ["a1"], dry_run=True)
+
+        # dry_run=True reaches TWO utc_now sites: ``generated_at`` +
+        # ``_build_batch_id``.
+        self.assertEqual(
+            len(observed),
+            2,
+            msg=(
+                "apply_machine_memory_actions_batch(dry_run=True) must reach "
+                "both utc_now call sites (generated_at + _build_batch_id); got "
+                f"{len(observed)} observed stamps: {observed!r}. B7 "
+                "lazy-lookup seam regressed."
+            ),
+        )
+
+    def test_b7_apply_machine_memory_actions_batch_real_uses_patched_utc_now(self) -> None:
+        import contextlib
+        import importlib
+
+        batch_mod = importlib.import_module("aiwiki.execution.machine_memory_batch")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        action = {"id": "a1", "title": "A1", "status": "accepted"}
+        preview = {"id": "a1", "bundle_path": "bundle.json"}
+        applied = {"id": "a1", "applied_at": "real-applied"}
+        # apply_machine_memory_action is called TWICE in non-dry-run path
+        # (preview + real). Stub returns in sequence.
+        apply_sequence = [preview, applied]
+        stubs = {
+            "ensure_layout": None,
+            "load_machine_memory_action_state": {"actions": [action]},
+            "action_supports_low_risk_apply": True,
+            "build_execution_batch_receipt": {"kind": "execution-batch-receipt", "batch_id": "b1"},
+            "execution_batch_receipt_path": Path("receipt.json"),
+            "write_execution_batch_receipt_document": None,
+            "append_runtime_history": None,
+            "append_wiki_log": None,
+            "relative_path": "receipt.json",
+        }
+        with contextlib.ExitStack() as stack:
+            for name, return_value in stubs.items():
+                stack.enter_context(patch.object(batch_mod, name, return_value=return_value))
+            # apply_machine_memory_action is invoked twice via
+            # _app_compile.apply_machine_memory_action(...) lazy seam (B7
+            # MF1 fix); patch in app_compile namespace, NOT batch_mod.
+            stack.enter_context(
+                patch("aiwiki.app_compile.apply_machine_memory_action", side_effect=apply_sequence)
+            )
+            stack.enter_context(patch("aiwiki.app_compile.utc_now", side_effect=_fake_utc))
+            batch_mod.apply_machine_memory_actions_batch(Path("/tmp"), ["a1"], dry_run=False)
+
+        # dry_run=False reaches the same TWO utc_now sites as dry_run=True.
+        # The B6 ``apply_machine_memory_action`` it calls has its own utc_now
+        # sites, but those are mocked out here.
+        self.assertEqual(
+            len(observed),
+            2,
+            msg=(
+                "apply_machine_memory_actions_batch(dry_run=False) must reach "
+                "both utc_now call sites (generated_at + _build_batch_id); got "
+                f"{len(observed)} observed stamps: {observed!r}. B7 "
+                "lazy-lookup seam regressed."
+            ),
+        )
+
+    def test_b7_revert_machine_memory_action_batch_uses_patched_utc_now(self) -> None:
+        import contextlib
+        import importlib
+
+        batch_mod = importlib.import_module("aiwiki.execution.machine_memory_batch")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        target_receipt = {
+            "kind": "execution-batch-receipt",
+            "operation": "action-apply-batch",
+            "batch_id": "b-apply-1",
+            "items": [{"id": "a1"}],
+        }
+        stubs = {
+            "ensure_layout": None,
+            "_load_latest_action_apply_batch_receipt": target_receipt,
+            "build_execution_batch_receipt": {"kind": "execution-batch-receipt", "batch_id": "b-revert-1"},
+            "execution_batch_receipt_path": Path("receipt.json"),
+            "write_execution_batch_receipt_document": None,
+            "append_runtime_history": None,
+            "append_wiki_log": None,
+            "relative_path": "receipt.json",
+        }
+        with contextlib.ExitStack() as stack:
+            for name, return_value in stubs.items():
+                stack.enter_context(patch.object(batch_mod, name, return_value=return_value))
+            # revert_machine_memory_action is invoked via
+            # _app_compile.revert_machine_memory_action(...) lazy seam (B7
+            # MF1 fix); patch in app_compile namespace, NOT batch_mod.
+            stack.enter_context(
+                patch(
+                    "aiwiki.app_compile.revert_machine_memory_action",
+                    return_value={"id": "a1", "reverted": True},
+                )
+            )
+            stack.enter_context(patch("aiwiki.app_compile.utc_now", side_effect=_fake_utc))
+            batch_mod.revert_machine_memory_action_batch(Path("/tmp"))
+
+        # revert_machine_memory_action_batch reaches TWO utc_now sites:
+        # ``generated_at`` + ``_build_batch_id``.
+        self.assertEqual(
+            len(observed),
+            2,
+            msg=(
+                "revert_machine_memory_action_batch must reach both utc_now "
+                "call sites (generated_at + _build_batch_id); got "
+                f"{len(observed)} observed stamps: {observed!r}. B7 "
+                "lazy-lookup seam regressed."
+            ),
         )
 
 
