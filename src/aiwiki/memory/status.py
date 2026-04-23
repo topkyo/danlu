@@ -6,7 +6,6 @@ facade at aiwiki.app_memory_surfaces for backward compatibility.
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from ..app_content import display_action_status

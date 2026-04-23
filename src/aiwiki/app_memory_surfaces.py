@@ -10,13 +10,10 @@ resolve against these re-export bindings.
 
 from __future__ import annotations
 
-# ---------------------------------------------------------------------------
-# Legacy re-exports (EP-011): machine-memory query helpers moved to
-# ``aiwiki.app_memory_query``. Imported at end-of-file so ruff/isort do not
-# reorder them into the top import block; monkey-patch seams targeting
-# ``aiwiki.app_memory_surfaces.<name>`` continue to work via this alias bind.
-# ---------------------------------------------------------------------------
-from .app_memory_query import (  # noqa: E402,F401
+# EP-011 legacy re-exports: machine-memory query helpers live in
+# ``aiwiki.app_memory_query``. Monkey-patch seams targeting
+# ``aiwiki.app_memory_surfaces.<name>`` bind against this facade.
+from .app_memory_query import (  # noqa: F401
     _machine_memory_query_payload_hash,
     _route_anchor_candidates,
     build_machine_memory_adjacency,
@@ -33,8 +30,8 @@ from .app_memory_query import (  # noqa: E402,F401
 )
 
 # EP-017B step 4: execution center / audit + concept quality / rewrite
-# proposal renderers extracted to aiwiki.memory.execution_surfaces.
-from .memory.execution_surfaces import (  # noqa: E402,F401
+# proposal renderers extracted to ``aiwiki.memory.execution_surfaces``.
+from .memory.execution_surfaces import (  # noqa: F401
     build_execution_audit_snapshot,
     collect_execution_consistency_signals,
     concept_rewrite_proposal_digest,
@@ -50,10 +47,8 @@ from .memory.execution_surfaces import (  # noqa: E402,F401
 )
 
 # EP-017B step 1: graph/query/transition/history surfaces extracted to
-# aiwiki.memory.graph. Re-exported here to preserve
-# `from aiwiki.app_memory_surfaces import <name>` for external callers
-# (app_queries) and test patch seams.
-from .memory.graph import (  # noqa: E402,F401
+# ``aiwiki.memory.graph``.
+from .memory.graph import (  # noqa: F401
     _build_machine_memory_query_json,
     _judgment_relation_edge_signatures,
     append_machine_memory_history,
@@ -63,8 +58,8 @@ from .memory.graph import (  # noqa: E402,F401
 )
 
 # EP-017B step 3: status / health / index / actions / repair-plan renderers
-# extracted to aiwiki.memory.status.
-from .memory.status import (  # noqa: E402,F401
+# extracted to ``aiwiki.memory.status``.
+from .memory.status import (  # noqa: F401
     render_drift_report,
     render_graph_health,
     render_machine_memory_actions,
@@ -72,5 +67,6 @@ from .memory.status import (  # noqa: E402,F401
     render_machine_memory_repair_plan,
 )
 
-# EP-017B step 2: topology slice renderer extracted to aiwiki.memory.topology.
-from .memory.topology import render_machine_memory_topology  # noqa: E402,F401
+# EP-017B step 2: topology slice renderer extracted to
+# ``aiwiki.memory.topology``.
+from .memory.topology import render_machine_memory_topology  # noqa: F401
