@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from ..app_protocol import AUTO_PROMOTION_FORMATS, ensure_layout
-from ..app_state import load_manifest, load_manual_link_state
+from ..app_state import DEFAULT_PROTOCOL, load_manifest, load_manual_link_state
 from ..app_utils import (
     build_citation_snapshots,
     compiled_source_sha,
@@ -34,6 +34,7 @@ from ..app_utils import (
     upsert_markdown_section,
     utc_now,
 )
+from .outputs import normalize_query_signature
 
 
 def sync_manifest_with_raw(root: Path) -> dict[str, Any]:
@@ -107,6 +108,17 @@ def ingest_source(root: Path, source: str, title: str | None = None) -> dict[str
     manifest["entries"].append(entry)
     from .. import app_content as _facade
     _facade.save_manifest(root, manifest)
+    from ..app_render import append_wiki_log as _append_wiki_log
+    _append_wiki_log(
+        root,
+        "ingest",
+        display_title,
+        [
+            f"source_type: `{source_type}`",
+            f"stored_path: `{entry['stored_path']}`",
+            f"original_path: `{original_path}`",
+        ],
+    )
     return entry
 
 
@@ -221,7 +233,7 @@ def collect_output_artifacts(root: Path) -> list[dict[str, str]]:
             output_format = str(frontmatter.get("format") or "").strip()
             if not query or output_format not in AUTO_PROMOTION_FORMATS:
                 continue
-            artifacts.append({"path": relative_path(root, path), "query": query, "query_signature": normalize_workspace_path(query), "protocol": str(frontmatter.get("protocol") or "general"), "format": output_format, "created_at": str(frontmatter.get("created_at") or ""), "title": first_markdown_heading(content) or path.stem})
+            artifacts.append({"path": relative_path(root, path), "query": query, "query_signature": normalize_query_signature(query), "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL), "format": output_format, "created_at": str(frontmatter.get("created_at") or ""), "title": first_markdown_heading(content) or path.stem})
     return sorted(artifacts, key=lambda item: (item["query_signature"], item["created_at"], item["path"]))
 
 
@@ -232,7 +244,7 @@ def collect_output_density_artifacts(root: Path) -> list[dict[str, str]]:
             content = path.read_text(encoding="utf-8", errors="replace")
             frontmatter = parse_frontmatter(content)
             if frontmatter.get("kind") == "output":
-                artifacts.append({"path": relative_path(root, path), "query": str(frontmatter.get("query") or "").strip(), "format": str(frontmatter.get("format") or "").strip(), "protocol": str(frontmatter.get("protocol") or "general"), "created_at": str(frontmatter.get("created_at") or ""), "title": first_markdown_heading(content) or path.stem})
+                artifacts.append({"path": relative_path(root, path), "query": str(frontmatter.get("query") or "").strip(), "format": str(frontmatter.get("format") or "").strip(), "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL), "created_at": str(frontmatter.get("created_at") or ""), "title": first_markdown_heading(content) or path.stem})
     return sorted(artifacts, key=lambda item: (item["created_at"], item["path"]))
 
 
@@ -243,7 +255,7 @@ def collect_recent_output_artifacts(root: Path, *, limit: int = 12) -> list[dict
             content = path.read_text(encoding="utf-8", errors="replace")
             frontmatter = parse_frontmatter(content)
             if frontmatter.get("kind") == "output" and str(frontmatter.get("generated_by") or "") != "aiwiki-compile":
-                artifacts.append({"path": relative_path(root, path), "query": str(frontmatter.get("query") or "").strip(), "format": str(frontmatter.get("format") or "").strip(), "protocol": str(frontmatter.get("protocol") or "general"), "created_at": str(frontmatter.get("created_at") or ""), "title": first_markdown_heading(content) or path.stem})
+                artifacts.append({"path": relative_path(root, path), "query": str(frontmatter.get("query") or "").strip(), "format": str(frontmatter.get("format") or "").strip(), "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL), "created_at": str(frontmatter.get("created_at") or ""), "title": first_markdown_heading(content) or path.stem})
     return sorted(artifacts, key=lambda item: (item["created_at"], item["path"]), reverse=True)[:limit]
 
 
@@ -253,7 +265,7 @@ def find_promoted_curated_page(root: Path, kind: str, query_signature: str, prot
         frontmatter = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
         if frontmatter.get("kind") == kind and str(frontmatter.get("promotion_query_signature") or "") == query_signature:
             page_protocol = str(frontmatter.get("protocol") or "")
-            if page_protocol == protocol or (not page_protocol and protocol == "general"):
+            if page_protocol == protocol or (not page_protocol and protocol == DEFAULT_PROTOCOL):
                 return path
     return None
 

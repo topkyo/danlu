@@ -73,7 +73,10 @@ from .content.io import (  # noqa: F401
     sync_manifest_with_raw,
 )
 from .content.memory import (  # noqa: F401
+    PATCH_PLAN_AUXILIARY_PATHS,
+    PATCH_PLAN_TEMPLATES,
     PATCH_ROLE_LABELS,
+    PROTOCOL_PATCH_HINTS,
     _validate_rewrite_candidate_markdown,
     action_priority_rank,
     action_status_rank,
