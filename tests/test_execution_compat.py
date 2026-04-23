@@ -116,6 +116,16 @@ class ExecutionCompatSeamTests(unittest.TestCase):
             # B4 — material archive
             "apply_material_archive": "aiwiki.execution.archive",
             "revert_material_archive": "aiwiki.execution.archive",
+            # B5 — concept rewrite
+            "review_concept_rewrite": "aiwiki.execution.concept_rewrite",
+            "apply_concept_rewrite": "aiwiki.execution.concept_rewrite",
+            "verify_concept_rewrite": "aiwiki.execution.concept_rewrite",
+            "revert_concept_rewrite": "aiwiki.execution.concept_rewrite",
+            "_load_concept_rewrite_proposals": "aiwiki.execution.concept_rewrite",
+            "_find_concept_rewrite_proposal": "aiwiki.execution.concept_rewrite",
+            "_save_concept_rewrite_proposals": "aiwiki.execution.concept_rewrite",
+            "_evaluate_concept_rewrite_verification": "aiwiki.execution.concept_rewrite",
+            "_persist_concept_rewrite_verification": "aiwiki.execution.concept_rewrite",
         }
         for name, owner in app_compile._LAZY_OWNERS.items():
             expected = migrated.get(name, "aiwiki.app_compile")
@@ -875,6 +885,368 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
             observed,
             msg="revert_material_archive did not route utc_now through "
             "aiwiki.app_compile; B4 lazy-lookup seam regressed.",
+        )
+
+    def test_b5_concept_rewrite_module_resolves_to_execution_module(self) -> None:
+        import importlib
+
+        concept_mod = importlib.import_module("aiwiki.execution.concept_rewrite")
+        migrated_names = (
+            "review_concept_rewrite",
+            "apply_concept_rewrite",
+            "verify_concept_rewrite",
+            "revert_concept_rewrite",
+            "_load_concept_rewrite_proposals",
+            "_find_concept_rewrite_proposal",
+            "_save_concept_rewrite_proposals",
+            "_evaluate_concept_rewrite_verification",
+            "_persist_concept_rewrite_verification",
+        )
+        for name in migrated_names:
+            app_compile.__dict__.pop(name, None)
+        for name in migrated_names:
+            self.assertIs(
+                getattr(app_compile, name),
+                getattr(concept_mod, name),
+                msg=f"B5 seam for {name!r} did not resolve to aiwiki.execution.concept_rewrite",
+            )
+
+    def test_b5_from_import_works(self) -> None:
+        import importlib
+
+        concept_mod = importlib.import_module("aiwiki.execution.concept_rewrite")
+        public_names = (
+            "review_concept_rewrite",
+            "apply_concept_rewrite",
+            "verify_concept_rewrite",
+            "revert_concept_rewrite",
+        )
+        for name in public_names:
+            app_compile.__dict__.pop(name, None)
+        local_ns: dict[str, object] = {}
+        exec(
+            "from aiwiki.app_compile import (\n"
+            "    review_concept_rewrite,\n"
+            "    apply_concept_rewrite,\n"
+            "    verify_concept_rewrite,\n"
+            "    revert_concept_rewrite,\n"
+            ")",
+            {"__builtins__": __builtins__},
+            local_ns,
+        )
+        for name in public_names:
+            self.assertIs(
+                local_ns[name],
+                getattr(concept_mod, name),
+                msg=f"B5 from-import for {name!r} did not resolve to migrated function",
+            )
+
+    def test_b5_review_concept_rewrite_uses_patched_utc_now(self) -> None:
+        # ``review_concept_rewrite`` lazy-resolves ``utc_now`` for its
+        # ``reviewed_at`` stamp. Verify the hot-patch seam.
+        import contextlib
+        import importlib
+
+        concept_mod = importlib.import_module("aiwiki.execution.concept_rewrite")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        proposal = {
+            "slug": "c1",
+            "title": "C1",
+            "status": "proposed",
+            "target_path": "wiki/concepts/c1.md",
+        }
+        stubs = {
+            "ensure_layout": None,
+            "_load_concept_rewrite_proposals": [proposal],
+            "_find_concept_rewrite_proposal": proposal,
+            "rewrite_proposal_candidate_is_current": True,
+            "rewrite_proposal_is_apply_ready": False,
+            "rewrite_proposal_needs_review": False,
+            "_save_concept_rewrite_proposals": None,
+            "append_runtime_history": None,
+            "append_wiki_log": None,
+            "compile_wiki": None,
+        }
+        with contextlib.ExitStack() as stack:
+            for name, return_value in stubs.items():
+                stack.enter_context(
+                    patch.object(concept_mod, name, return_value=return_value)
+                )
+            stack.enter_context(
+                patch("aiwiki.app_compile.utc_now", side_effect=_fake_utc)
+            )
+            concept_mod.review_concept_rewrite(Path("/tmp"), "c1", "accepted")
+
+        self.assertTrue(
+            observed,
+            msg="review_concept_rewrite did not route utc_now through "
+            "aiwiki.app_compile; B5 lazy-lookup seam regressed.",
+        )
+
+    def test_b5_apply_concept_rewrite_dry_run_uses_patched_utc_now(self) -> None:
+        # ``apply_concept_rewrite`` dry-run path lazy-resolves ``utc_now``
+        # for its ``previewed_at`` / ``generated_at`` stamp.
+        import contextlib
+        import importlib
+        import tempfile
+
+        concept_mod = importlib.import_module("aiwiki.execution.concept_rewrite")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            concept_path = root / "wiki" / "concepts"
+            concept_path.mkdir(parents=True, exist_ok=True)
+            target_file = concept_path / "c1.md"
+            target_file.write_text(
+                "---\nid: concept-c1\nkind: concept\n---\n\n## Summary\n\nOld summary\n",
+                encoding="utf-8",
+            )
+
+            proposal = {
+                "slug": "c1",
+                "title": "C1",
+                "status": "accepted",
+                "target_path": "wiki/concepts/c1.md",
+                "candidate_markdown": (
+                    "---\nid: concept-c1\nkind: concept\n---\n\n"
+                    "## Summary\n\nNew summary\n"
+                ),
+                "source_signature": "",
+                "proposal_path": "wiki/review/c1.md",
+            }
+            stubs = {
+                "ensure_layout": None,
+                "_load_concept_rewrite_proposals": [proposal],
+                "_find_concept_rewrite_proposal": proposal,
+                "_validate_rewrite_candidate_markdown": None,
+                "rewrite_dry_run_path": root / "dry.json",
+                "write_execution_dry_run_document": None,
+                "append_runtime_history": None,
+                "append_wiki_log": None,
+            }
+            with contextlib.ExitStack() as stack:
+                for name, return_value in stubs.items():
+                    stack.enter_context(
+                        patch.object(concept_mod, name, return_value=return_value)
+                    )
+                stack.enter_context(
+                    patch("aiwiki.app_compile.utc_now", side_effect=_fake_utc)
+                )
+                concept_mod.apply_concept_rewrite(root, "c1", dry_run=True)
+
+        self.assertTrue(
+            observed,
+            msg="apply_concept_rewrite(dry_run=True) did not route utc_now "
+            "through aiwiki.app_compile; B5 lazy-lookup seam regressed.",
+        )
+
+    def test_b5_apply_concept_rewrite_real_uses_patched_utc_now(self) -> None:
+        # ``apply_concept_rewrite`` non-dry-run path lazy-resolves
+        # ``utc_now`` for its ``applied_at`` stamp. Distinct from the
+        # dry-run canary because the two branches reach different
+        # utc_now call sites in the same function.
+        import contextlib
+        import importlib
+        import tempfile
+
+        concept_mod = importlib.import_module("aiwiki.execution.concept_rewrite")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            concept_path = root / "wiki" / "concepts"
+            concept_path.mkdir(parents=True, exist_ok=True)
+            target_file = concept_path / "c1.md"
+            target_file.write_text(
+                "---\nid: concept-c1\nkind: concept\n---\n\n## Summary\n\nOld summary\n",
+                encoding="utf-8",
+            )
+
+            proposal = {
+                "slug": "c1",
+                "title": "C1",
+                "status": "accepted",
+                "target_path": "wiki/concepts/c1.md",
+                "candidate_markdown": (
+                    "---\nid: concept-c1\nkind: concept\n---\n\n"
+                    "## Summary\n\nNew summary\n"
+                ),
+                "source_signature": "",
+                "proposal_path": "wiki/review/c1.md",
+            }
+            stubs = {
+                "ensure_layout": None,
+                "_load_concept_rewrite_proposals": [proposal],
+                "_find_concept_rewrite_proposal": proposal,
+                "_validate_rewrite_candidate_markdown": None,
+                "concept_page_snapshot": {"content": "old"},
+                "_save_concept_rewrite_proposals": None,
+                "append_wiki_log": None,
+                "compile_wiki": None,
+                "_persist_concept_rewrite_verification": {
+                    "status": "pending",
+                    "summary": "",
+                    "issues": [],
+                    "checked_at": "",
+                },
+            }
+            with contextlib.ExitStack() as stack:
+                for name, return_value in stubs.items():
+                    stack.enter_context(
+                        patch.object(concept_mod, name, return_value=return_value)
+                    )
+                stack.enter_context(
+                    patch("aiwiki.app_compile.utc_now", side_effect=_fake_utc)
+                )
+                concept_mod.apply_concept_rewrite(root, "c1", dry_run=False)
+
+        self.assertTrue(
+            observed,
+            msg="apply_concept_rewrite(dry_run=False) did not route utc_now "
+            "through aiwiki.app_compile; B5 lazy-lookup seam regressed.",
+        )
+
+    def test_b5_evaluate_verification_uses_patched_utc_now(self) -> None:
+        # ``_evaluate_concept_rewrite_verification`` lazy-resolves
+        # ``utc_now`` for its ``checked_at`` stamp. This covers the code
+        # path that ``verify_concept_rewrite`` reaches via
+        # ``_persist_concept_rewrite_verification``.
+        import contextlib
+        import importlib
+
+        concept_mod = importlib.import_module("aiwiki.execution.concept_rewrite")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        proposal = {
+            "slug": "c1",
+            "target_path": "wiki/concepts/c1.md",
+            "source_signature": "sig-x",
+            "source_pages": ["a.md"],
+            "candidate_markdown": "## Summary\n\nBody\n",
+        }
+        stubs = {
+            "preserved_section": "Body",
+            "concept_page_snapshot": {
+                "content": (
+                    "---\nid: concept-c1\nkind: concept\n"
+                    "source_signature: sig-x\nsource_pages:\n- a.md\n---\n\n"
+                    "## Summary\n\nBody\n"
+                ),
+                "summary": "Body",
+            },
+            "parse_frontmatter": {
+                "id": "concept-c1",
+                "kind": "concept",
+                "source_signature": "sig-x",
+                "source_pages": ["a.md"],
+            },
+            "load_machine_memory": {
+                "concept_nodes": [{"slug": "c1", "source_pages": ["a.md"]}],
+                "health": {
+                    "concept_quality": {
+                        "all_concepts": [
+                            {"slug": "c1", "quality_score": 90, "quality_state": "good"}
+                        ]
+                    }
+                },
+            },
+        }
+        with contextlib.ExitStack() as stack:
+            for name, return_value in stubs.items():
+                stack.enter_context(
+                    patch.object(concept_mod, name, return_value=return_value)
+                )
+            stack.enter_context(
+                patch("aiwiki.app_compile.utc_now", side_effect=_fake_utc)
+            )
+            concept_mod._evaluate_concept_rewrite_verification(Path("/tmp"), proposal)
+
+        self.assertTrue(
+            observed,
+            msg="_evaluate_concept_rewrite_verification did not route utc_now "
+            "through aiwiki.app_compile; B5 lazy-lookup seam regressed.",
+        )
+
+    def test_b5_revert_concept_rewrite_uses_patched_utc_now(self) -> None:
+        # ``revert_concept_rewrite`` lazy-resolves ``utc_now`` for its
+        # ``reverted_at`` stamp.
+        import contextlib
+        import importlib
+        import tempfile
+
+        concept_mod = importlib.import_module("aiwiki.execution.concept_rewrite")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            concept_dir = root / "wiki" / "concepts"
+            concept_dir.mkdir(parents=True, exist_ok=True)
+            target_file = concept_dir / "c1.md"
+            target_file.write_text("current\n", encoding="utf-8")
+
+            proposal = {
+                "slug": "c1",
+                "title": "C1",
+                "status": "applied",
+                "target_path": "wiki/concepts/c1.md",
+                "candidate_markdown": "## Summary\n\nNew\n",
+                "previous_markdown": "## Summary\n\nOld\n",
+                "last_applied_at": "2026-04-23T00:00:00Z",
+            }
+            stubs = {
+                "ensure_layout": None,
+                "_load_concept_rewrite_proposals": [proposal],
+                "_find_concept_rewrite_proposal": proposal,
+                "preserved_section": "New",
+                "concept_page_snapshot": {"summary": "New"},
+                "rewrite_proposal_needs_review": False,
+                "rewrite_proposal_is_apply_ready": False,
+                "_save_concept_rewrite_proposals": None,
+                "append_runtime_history": None,
+                "append_wiki_log": None,
+                "compile_wiki": None,
+            }
+            with contextlib.ExitStack() as stack:
+                for name, return_value in stubs.items():
+                    stack.enter_context(
+                        patch.object(concept_mod, name, return_value=return_value)
+                    )
+                stack.enter_context(
+                    patch("aiwiki.app_compile.utc_now", side_effect=_fake_utc)
+                )
+                concept_mod.revert_concept_rewrite(root, "c1")
+
+        self.assertTrue(
+            observed,
+            msg="revert_concept_rewrite did not route utc_now through "
+            "aiwiki.app_compile; B5 lazy-lookup seam regressed.",
         )
 
 
