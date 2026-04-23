@@ -1,9 +1,60 @@
+---
+title: "炼丹炉 (aiwiki) 下一代架构演进与优化设计"
+kind: archive
+status: superseded
+superseded_at: 2026-04-23
+superseded_by: PROGRESS.md
+---
+
 # 炼丹炉 (aiwiki) 下一代架构演进与优化设计
 
-**文档状态**: 提议 (Draft, Review v6)
+**文档状态**: 已归档 (Archived, v7 rebaseline)
 **作者**: 架构师 (AI)
 **目标系统**: `aiwiki` 本地优先知识复利操作系统
-**修订说明**: 本版在 v5 基础上继续消除与当前工程事实的偏差：保留 KISS 与 Obsidian 插件“黑盒瘦客户端”的产品原则，但把 P4 从 `serve/RPC` 路线收回到当前已落地的 `launcher + aiwiki CLI + shell-summary` 契约；同时修正 execution owner、deterministic fallback 语义与测试基线，使本文可以直接作为后续工程 contract 的依据。
+**修订说明**: 本版 v7 起正式归档。v1-v6 作为 P1-P4 主线演进的过渡蓝图曾驱动约 20 个 EP 的真实落地；但截至 `2026-04-23`，文档里描述的所有主要 Phase 要么已完成、要么已被后续 milestone superseded。继续把它当 active 架构文档会误导优先级，因此本轮做归档式 rebaseline（frontmatter + 顶部导言 + 主章节状态注记），保留正文作史料，**执行真相源以 `PROGRESS.md` 为准**。
+
+## 0. 当前角色（v7 起生效）
+
+- **本文档不再是 active 架构路线图**
+- **不再驱动下一轮 contract**
+- **执行真相源：`PROGRESS.md`**
+- **能力快照：`docs/Furnace Capability Map.md`**
+- **基线架构：`docs/Alchemy Furnace.md`**
+- **终局架构：`docs/Furnace Ultimate Architecture.md`**
+
+### 原 Phase → 实际落地映射
+
+| 原 v6 Phase | 实际落地状态 | 对应 milestone |
+|---|---|---|
+| **P1** LLM Gateway & Audit Consistency | **已落地**（但不是以"LLMGateway 抽象类"形式，而是以 `runner.py` + `llm.py` 协同 + `llm-receipts.jsonl` + `model_selected/model_final` 审计一致性形式） | EP-001 / EP-005 / EP-006 / EP-010；EP-014 `superseded-by EP-001 + EP-005 + EP-006 + EP-010` |
+| **P2** Pipeline Refactor | **已落地**（`src/aiwiki/compile/` 子包 + `pipeline.py` 33 行 + `content_step/runtime_step/output_step/persist_step` 4 owner；`app_compile.py` 717 行 facade + ranking） | EP-002 / EP-003 / EP-009；EP-013 `superseded-by EP-009` |
+| **P3** Volatile SQLite Cache | **已落地**（`.aiwiki/cache.db` volatile + `--no-cache` deterministic 对拍 + `aiwiki cache --drop/--rebuild/--status`） | EP-004 / EP-008；EP-016 `superseded-by EP-008` |
+| **P4** Plugin-facing Contract Tightening | **已落地**（`launcher + aiwiki CLI + shell-summary` 作为唯一正式前台契约；hidden state merge 清除；Product Shell thin-client） | EP-005 / EP-007 / EP-012 / EP-015 |
+| **§2.1** 拆 `app_compile.py` 巨石 | **已完成**（4,359 行 → 717 行 facade + ranking） | compile-owner：EP-002 / EP-003 / EP-009；execution-owner 迁出：EP-018A / EP-018B1-B7；facade 收口：EP-021 |
+| **§2.1** 拆 `app_memory_surfaces.py` 巨石 | **已完成**（3,728 行 → 72 行 facade） | 前序拆分：EP-011；最终收口：EP-017B |
+| **§2.1** execution owner 迁出 | **已完成**（29 函数 → `execution/` 子包 8 owner） | EP-018A / EP-018B1-B7；EP-019 `superseded-by EP-018B`（46 facade re-export 判为架构规范非技术债） |
+| **§2.3** `LLMGateway` 抽象类 | **已 superseded**（当前真复杂度在 `runner.py` 2303 行 owner 边界，而非"缺接口名"；先拆 owner 比先造抽象更值，oracle 2026-04-23 评估判 YAGNI） | —— |
+| **§2.1** compile pipeline 继续细拆（parse/link/causal/lint/persist 五步）| **已 superseded**（EP-003 已完成最小拆分 pipeline.py 33 行；再细拆 YAGNI，未见 churn 信号） | —— |
+
+### 现状数字纠正
+
+- 原文 §1 测试基线 `355 tests / 92% coverage` → **当前真实：`439 tests / 93% coverage / 0 lint errors`**
+- 原文 §1 巨石行数 `app_compile.py 4,359 行 / app_memory_surfaces.py 3,728 行` → **当前真实：`app_compile.py 717 行（facade + ranking）/ app_memory_surfaces.py 72 行（facade）/ app_render.py 106 行 / app_content.py 257 行`**
+- 原文 §2.1 owner 边界 "apply/revert 仍在 `app_compile.py`，`execution/` 子包未启" → **当前真实：`execution/` 子包已存在 8 owner（`ask / archive / concept_rewrite / lifecycle / machine_memory_actions / machine_memory_batch / review / runtime_surfaces`），29 函数已迁出**
+
+### v7 之后的下一批 milestone 候选
+
+本文档不承载新 milestone 设计；oracle 2026-04-23 gap 分析推荐的候选（仅列清单，不展开设计，另开独立 contract 处理）：
+
+- **EP-026**：`route / probe / contract` 三层 LLM 健康契约收口（当前 `llm-check --probe` 未持久化，`shell-summary` 未暴露三层独立字段）
+- **EP-027**：`runner.py` 2303 行拆分（抽 `runner_audit` + `run_ask` owner）
+- **EP-028**：本文档 rebaseline（即本轮）
+
+---
+
+## 原文保留（v1-v6 归档史料）
+
+以下章节为 v1-v6 原文，保留作归档史料；每节顶部补充 v7 状态注记。
 
 ## 0. 本轮优化的"非目标"（Non-Goals）
 
@@ -20,13 +71,15 @@
 
 ## 1. 架构演进背景
 
-当前 `aiwiki` 已完成第一阶段解耦重构（`app.py` → 协议/编译/内存/渲染多模块），并把 `verify` 基线提升到当前约 `355 tests / 92% coverage`（以 `README.md` / `PROGRESS.md` 为准）。系统稳定性与护栏纪律已达高位。
+> **当前状态（2026-04-23）**：本节所有"当前"数值均为 v1-v6 撰写时的**历史事实**，v7 起不再是现状。真实当前基线：`439 tests / 93% coverage / 0 lint errors`，`app_compile.py 717 行 facade + ranking`、`app_memory_surfaces.py 72 行 facade`。详见 §0 "现状数字纠正"。
+
+当前 `aiwiki` 已完成第一阶段解耦重构（`app.py` → 协议/编译/内存/渲染多模块），并把 `verify` 基线提升到**当时**约 `355 tests / 92% coverage`（以 `README.md` / `PROGRESS.md` 为准）。系统稳定性与护栏纪律已达高位。
 
 但随着本地知识资产（Raw、Wiki、Machine Memory、Judgment）规模扩张，以下瓶颈正在显现：
 
-1. **巨石模块残留**（经代码核对）：
-   - `app_compile.py`：**4,359 行**（~180KB）
-   - `app_memory_surfaces.py`：**3,728 行**
+1. **巨石模块残留**（v1-v6 撰写时经代码核对）：
+   - `app_compile.py`：**4,359 行**（~180KB）→ *v7 现状：717 行 facade*
+   - `app_memory_surfaces.py`：**3,728 行** → *v7 现状：72 行 facade*
    - 拓展新协议或新生命周期状态时认知负荷极高，容易引发跨模块回归。
 2. **I/O 瓶颈显现**：重度依赖 Markdown + JSON manifest 的纯文件系统遍历，在因果图谱（Causal Graph）跨文件校验时性能衰减明显。
 3. **LLM 边界脆弱**：经代码核对，`llm.py` 内有 **4 处** 核心 `subprocess.run` 调用负责外部 CLI 交互；而 prompt-profile retry、model fallback 与 deterministic fallback 编排同时分布在 `runner.py`。这层语义目前分散，后续若继续加 backend/guardrail，维护成本会继续上升。
@@ -56,6 +109,8 @@
 
 ### 2.1 微内核 + 管道模式 (Pipeline Pattern) 拆解巨石模块
 
+> **当前状态（2026-04-23）**：**已落地 + 部分 superseded**。巨石已拆：`app_compile.py` 4,359 → 717 行 facade + ranking（compile-owner EP-002 / EP-003 / EP-009；execution-owner 迁出 EP-018A / EP-018B1-B7；facade 收口 EP-021），`app_memory_surfaces.py` 3,728 → 72 行 facade（前序 EP-011；最终 EP-017B）。`src/aiwiki/compile/` 子包已建 + `pipeline.py` 33 行 + 4 owner（EP-003）。execution owner 已迁出：`execution/` 子包 8 owner / 29 函数（EP-018A / EP-018B1-B7），不再留在 `app_compile.py`。**superseded**：继续把 pipeline 细拆为 `parse/link_resolve/causal_graph/lint/persist` 五步为 YAGNI（oracle 2026-04-23 评估，未见 churn 信号）；46 facade re-export 在 EP-019 被判为架构规范非技术债（`superseded-by EP-018B`）。
+
 将 `app_compile.py` 拆解为声明式 Pipeline。
 
 - **现状**：4,359 行的过程式长函数，耦合了 AST 解析、链接解析、实体提取、因果图校验、持久化等多个关注点。内含 `apply_concept_rewrite / apply_machine_memory_action / apply_material_archive` 等一大批 apply/revert 函数——**这是现有治理层的核心**。
@@ -81,6 +136,8 @@
 
 ### 2.2 易失性图谱缓存层 (Volatile Indexing) — SQLite
 
+> **当前状态（2026-04-23）**：**已落地**。`.aiwiki/cache.db` volatile SQLite 已实现，`--no-cache` deterministic 回退路径 + CI 对拍已建，`aiwiki cache --drop/--rebuild/--status` 逃生口已暴露，已加入 `.gitignore`。EP-004 / EP-008 完成主线；EP-016 `superseded-by EP-008`（plan bookkeeping，不产生代码变更）。
+
 坚决不把 SQLite 升级为 source of truth，只做**非事实、可随时重建、可随时丢弃**的索引层。
 
 - **现状**：每次查询/增量编译都要反序列化 `.aiwiki/` 下的大量 JSON。跨文件图谱遍历（尤其是因果边传递闭包）是纯 O(N*M) 的文件扫描。
@@ -98,6 +155,8 @@
 - **收益**：图谱遍历和跨文件 Query 提速 1-2 个数量级，不牺牲事实主权。
 
 ### 2.3 LLM Gateway 容错网关
+
+> **当前状态（2026-04-23）**：**已落地（不同形式）+ 部分 superseded**。**已落地**：`llm-receipts.jsonl` 审计流、`model_selected/model_final` 双字段、`route health / probe health / contract health` 分层概念、`AIWIKI_LLM_BACKEND` 显式契约、`nvidia-nim-api` 同 backend model-chain fallback、`run-ask` deterministic fallback，全部以 `llm.py` + `runner.py` 协同 + Product Shell 审计的形式存在（EP-001 / EP-005 / EP-006 / EP-010；EP-014 `superseded-by EP-001 + EP-005 + EP-006 + EP-010`）。**superseded**：`LLMGateway` 抽象类基于当前真复杂度（`runner.py` 2303 行 owner 边界、audit/receipt/delivery_mode/fallback 混居）判为 YAGNI——先拆 owner 比先造抽象更值（oracle 2026-04-23 评估）。**部分 gap（EP-026 候选）**：`route/probe/contract` 三层健康字段在 `shell-summary` 仅以单体 `llm_health` 形式暴露，`llm-check --probe` 不持久化；另开 milestone 处理，不在本文 scope。
 
 把 `llm.py` 中 4 处 CLI 调用统一收口为 backend-local Gateway，但**不**改写“显式 backend 选择”这条用户契约。
 
@@ -123,6 +182,8 @@
 
 ### 2.4 Plugin-facing Contract 与 Obsidian 融合
 
+> **当前状态（2026-04-23）**：**已落地**。`launcher + aiwiki CLI + shell-summary` 作为唯一正式前台契约已稳定；hidden `.aiwiki/state/*` 不再作为插件长期接口；Product Shell 以 thin-client 形式运行（EP-005 / EP-007 / EP-012 / EP-015）。未引入 daemon / RPC / Web 框架，符合 v6 非目标。
+
 收敛 Obsidian ↔ Product Shell 的体验割裂，并**严格贯彻 KISS (Keep It Simple, Stupid) 原则**。
 
 - **现状**：Product Shell 已经是“Obsidian + launcher CLI 双入口，共用同一 runtime”；插件侧的正式接口是 vault-local launcher、`aiwiki CLI` 和 `shell-summary`，而不是 daemon/RPC。底层仍会生成大量 `wiki/derived/`、`machine memory/`、JSON 等面向机器和审计的中间态，用户感知过载。
@@ -138,6 +199,8 @@
 - **收益**：UI 与 runtime 解耦，同时不破坏现有 CLI/治理语义；用户感知大幅净化，专注价值输出；插件可以无缝复用底层，而免受未来架构演进的影响。
 
 ## 3. 演进路线图 (Implementation Phasing)
+
+> **当前状态（2026-04-23）**：**全部 Phase 已落地**。P1 → EP-001 / EP-005 / EP-006 / EP-010；P2 → EP-002 / EP-003 / EP-009；P3 → EP-004 / EP-008；P4 → EP-005 / EP-007 / EP-012 / EP-015。另加持续深化 follow-up：EP-011 / EP-017A-C / EP-018A / EP-018B1-B7 / EP-021 / EP-022 / EP-023 / EP-024 / EP-025。superseded 的 milestone：**EP-013** `superseded-by EP-009`、**EP-014** `superseded-by EP-001 + EP-005 + EP-006 + EP-010`、**EP-016** `superseded-by EP-008`、**EP-019** `superseded-by EP-018B`——均为 plan bookkeeping，不产生代码变更。测试基线 `439 tests / 93% coverage / 0 lint errors`（原 v6 写的 `355 tests / 92%` 已过期）。下一批 milestone 见本文 §0 "v7 之后的下一批 milestone 候选"，不在本表范围。
 
 严格遵守 `AGENTS.md` 规定的 `open-harness` 闭环护栏：`contract -> implement -> verify -> qa-review -> update PROGRESS`。
 
@@ -240,8 +303,15 @@
 - **v5 (当前版本)**：
   - 吸收产品与交互层面的 KISS 原则：在产品感知面上严格区分“机器内部态”（Wiki/JSON）与“用户关注产出”（Output/Judgment），只把最少必要信息通过通知抛给用户。
   - 在 P4 (Plugin Control Plane) 补充了“单输入/单输出”和“黑盒瘦客户端 (Thin Client)”的设计哲学。
-- **v6 (当前版本)**：
+- **v6 (历史版本)**：
   - 把 P4 从 `serve/RPC` 收回到当前已落地的 `launcher + aiwiki CLI + shell-summary` 契约，避免与 Product Shell 既有设计稿和 runtime plan 冲突。
   - 修正 execution owner 事实：当前 `app_compile.py` 仍是 apply/revert 对外入口，`app_execution.py` 只承接 bundle/receipt helper。
   - 修正 deterministic fallback 语义：当前只把 `run-ask` 的外层 fallback 和 `auto_process_once()` 的 compile/lint fallback 当成既有事实，不再把它写成所有 `run-*` 的现状契约。
   - 更新测试基线表述，不再把 Phase 2 验收写死在过时的 `309 tests`。
+- **v7 (当前版本，归档)**：
+  - 正式归档：frontmatter 改 `status: superseded` + `kind: archive` + `superseded_at: 2026-04-23`。
+  - 加入 §0 "当前角色" 章节：原 v6 Phase → 实际落地 EP 映射表 + 现状数字纠正 + v7 之后下一批 milestone 候选。
+  - 在 §2.1 / §2.2 / §2.3 / §2.4 / §3 顶部各加"当前状态"注记，标记已落地 / 已 superseded / 部分 gap。
+  - 修正数字事实：测试基线 `355 → 439 tests / 92% → 93% coverage`；巨石行数 `4,359 → 717`（app_compile） / `3,728 → 72`（app_memory_surfaces）；execution owner 迁出状态由"未启"改为"已完成 8 owner / 29 函数"。
+  - 把 `LLMGateway` 抽象类与 compile pipeline 五步细拆标为 `superseded (YAGNI)`。
+  - 保留 v1-v6 正文作史料；执行真相源明确切换为 `PROGRESS.md`；本文不再承载下一轮 contract。
