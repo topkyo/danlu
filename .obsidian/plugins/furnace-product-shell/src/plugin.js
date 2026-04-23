@@ -6,6 +6,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
     this.pluginState = { recentRuns: [] };
     this.shellSummary = null;
+    this.hasNotifiedThisSession = false;
     this.repoState = { valid: false, root: "", launcherPath: "", missingPaths: ["vault-root"] };
     this.openViews = new Set();
     this.statusBarItem = this.addStatusBarItem();
@@ -40,6 +41,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     }));
 
     await this.loadShellSummaryFromDisk();
+
+    await this.maybeShowOnboarding();
     this.updateStatusBar();
   }
 
@@ -284,6 +287,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async loadPluginState() {
     const data = (await this.loadData()) || {};
+    this.rawPluginData = data;
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings || {});
     this.settings.locale = normalizeLocale(this.settings.locale);
     const recentRuns = Array.isArray(data.recentRuns)
@@ -1543,6 +1547,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     try {
       const text = await this.app.vault.cachedRead(summaryFile);
       this.shellSummary = readJsonText(text);
+      this.processShellSummaryUpdates(this.shellSummary);
     } catch (error) {
       console.error("[furnace-product-shell] failed to read shell summary", error);
       this.shellSummary = null;
@@ -1889,6 +1894,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         : this.extractRewriteProposalSlugs(rewriteProposalPaths);
       if (options.updateSummaryFromPayload && result.payload && result.payload.kind === "product-shell-summary") {
         this.shellSummary = result.payload;
+        this.processShellSummaryUpdates(this.shellSummary);
         this.updateStatusBar();
         this.refreshOpenViews();
       } else if (options.refreshAfter !== false) {
@@ -2008,6 +2014,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       const result = await this.execLauncher(["shell-status"]);
       if (result.payload && result.payload.kind === "product-shell-summary") {
         this.shellSummary = result.payload;
+        this.processShellSummaryUpdates(this.shellSummary);
         this.updateStatusBar();
         this.refreshOpenViews();
         return result.payload;
@@ -2016,6 +2023,64 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       console.error("[furnace-product-shell] shell-status refresh failed", error);
     }
     return await this.loadShellSummaryFromDisk();
+  }
+
+  
+  processShellSummaryUpdates(summary) {
+    if (!summary || !Array.isArray(summary.recent_outputs)) return;
+    const outputs = summary.recent_outputs.filter((item) => item && typeof item === "object");
+    const currentIds = outputs.map((r) => r.path || r.title || r.created_at).filter(Boolean);
+    const lastIds = Array.isArray(this.settings.lastKnownReportIds) ? this.settings.lastKnownReportIds.filter(Boolean) : [];
+
+    if (!currentIds.length) {
+      this.settings.lastKnownReportIds = [];
+      void this.savePluginState();
+      return;
+    }
+
+    if (!lastIds.length && outputs.length > 0) {
+      this.settings.lastKnownReportIds = currentIds;
+      void this.savePluginState();
+      return;
+    }
+
+    const newIds = currentIds.filter((id) => !lastIds.includes(id));
+    if (!newIds.length) {
+      if (currentIds.length !== lastIds.length || currentIds.some((id, i) => id !== lastIds[i])) {
+        this.settings.lastKnownReportIds = currentIds;
+        void this.savePluginState();
+      }
+      return;
+    }
+
+    this.settings.lastKnownReportIds = currentIds;
+    void this.savePluginState();
+    if (!this.hasNotifiedThisSession) {
+      new Notice(this.t("{count} new reports available", { count: newIds.length }));
+      this.hasNotifiedThisSession = true;
+    }
+  }
+
+  async maybeShowOnboarding() {
+    if (this.settings.onboardingShown) {
+      return;
+    }
+    const data = this.rawPluginData;
+    const isFreshInstall = !data || Object.keys(data).length === 0;
+    if (isFreshInstall) {
+      this.settings.onboardingShown = true;
+      await this.savePluginState();
+      return;
+    }
+    const hadLegacyFields = Object.prototype.hasOwnProperty.call(data, "recentRuns") || Object.prototype.hasOwnProperty.call(data, "settings");
+    if (!hadLegacyFields) {
+      this.settings.onboardingShown = true;
+      await this.savePluginState();
+      return;
+    }
+    new Notice(this.t("Product Shell UI refreshed. All previous dashboards have moved to 'Advanced' section at the bottom. Click to expand."), 10000);
+    this.settings.onboardingShown = true;
+    await this.savePluginState();
   }
 
   async refreshShellSummaryCommand() {
@@ -2064,7 +2129,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async openOutputsHub() {
     const links = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary.links || {} : {};
-    const preferredPath = String(links.output_packs_markdown || "wiki/indexes/Outputs.md").trim();
+    const preferredPath = String(links.output_packs_markdown || "docs/Outputs.md").trim();
     await this.openWorkspacePath(preferredPath);
   }
 
@@ -2105,6 +2170,10 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       args.push("--title", title);
     }
     await this.runPluginCommand(`${this.t("Drop URL")}: ${truncateText(title || url, 48)}`, args, { refreshAfter: true });
+  }
+
+  openDropUrlModal(initialUrl = "") {
+    new DropUrlModal(this.app, this).setInitialUrl(initialUrl).open();
   }
 
   async runDropFileCommand({ mode, source, title, maxFiles }) {
@@ -2777,8 +2846,22 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     renderDigestPanel(this, container);
   }
 
-  renderAdvancedPanel(container) {
-    renderAdvancedPanel(this, container);
+  
+  renderAskBox(container, unreadCount) {
+    renderAskBox(this, container, unreadCount);
+  }
+  renderReportsGroup(container, title, reports) {
+    renderReportsGroup(this, container, title, reports);
+  }
+  renderDropZone(container) {
+    renderDropZone(this, container);
+  }
+  renderAdvancedDrawer(container) {
+    renderAdvancedDrawer(this, container);
+  }
+
+  renderLegacyAdvancedPanel(container) {
+    renderLegacyAdvancedPanel(this, container);
   }
 
   renderFurnaceCenter(contentEl) {

@@ -248,6 +248,12 @@ class DropUrlModal extends Modal {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
+    this.initialUrl = "";
+  }
+
+  setInitialUrl(value) {
+    this.initialUrl = String(value || "").trim();
+    return this;
   }
 
   onOpen() {
@@ -264,6 +270,7 @@ class DropUrlModal extends Modal {
     const sourceInput = sourceSetting.controlEl.createEl("input", { type: "text" });
     sourceInput.placeholder = "https://example.com/article";
     sourceInput.addClass("furnace-shell-code");
+    sourceInput.value = this.initialUrl;
 
     const titleSetting = new Setting(contentEl).setName(t("Title"));
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
@@ -300,6 +307,12 @@ class DropFileModal extends Modal {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
+    this.initialMode = "pdf";
+  }
+
+  setInitialMode(value) {
+    this.initialMode = String(value || "pdf").trim() === "repo" ? "repo" : "pdf";
+    return this;
   }
 
   onOpen() {
@@ -321,7 +334,7 @@ class DropFileModal extends Modal {
       const option = kindSelect.createEl("option", { text: label, value });
       option.value = value;
     });
-    kindSelect.value = "pdf";
+    kindSelect.value = this.initialMode;
 
     const sourceSetting = new Setting(contentEl).setName(t("Source"));
     const sourceInput = sourceSetting.controlEl.createEl("input", { type: "text" });

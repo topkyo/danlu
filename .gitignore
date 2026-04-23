@@ -59,3 +59,6 @@ build/
 
 # Probe/scratch files
 probe_*.md
+
+# Local design reference material (embedded git repo, not for redistribution)
+awesome-design-md/

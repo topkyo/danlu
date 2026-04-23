@@ -516,7 +516,7 @@ function renderDigestPanel(plugin, container) {
   });
 }
 
-function renderAdvancedPanel(plugin, container) {
+function renderLegacyAdvancedPanel(plugin, container) {
   const details = container.createEl("details", { cls: "furnace-shell-advanced" });
   const summary = details.createEl("summary", { cls: "furnace-shell-advanced-summary" });
   const summaryCopy = summary.createDiv({ cls: "furnace-shell-advanced-copy" });
@@ -594,10 +594,12 @@ function renderAdvancedPanel(plugin, container) {
   ], "furnace-shell-subpanel-actions");
 }
 
+
 function renderFurnaceCenter(plugin, contentEl) {
   contentEl.empty();
   contentEl.addClass("furnace-shell-view");
   contentEl.addClass("furnace-shell-main-view");
+  contentEl.addClass("furnace-shell-v3");
 
   if (!plugin.repoState.valid) {
     contentEl.createDiv({
@@ -606,19 +608,179 @@ function renderFurnaceCenter(plugin, contentEl) {
         missing: plugin.repoState.missingPaths.join(", "),
       }),
     });
-    contentEl.createDiv({
-      cls: "furnace-shell-meta",
-      text: plugin.t("Expected a vault scaffold (`raw/wiki/schema/output/.aiwiki`) plus an executable launcher script."),
-    });
     return;
   }
 
-  plugin.renderMainHeader(contentEl);
-  plugin.renderStatusPanel(contentEl);
-  plugin.renderInteractionPanel(contentEl);
-  plugin.renderMaterialPanel(contentEl);
-  plugin.renderOutputsPanel(contentEl);
-  plugin.renderAdvancedPanel(contentEl);
+  const reports = plugin.shellSummary && typeof plugin.shellSummary === "object" && Array.isArray(plugin.shellSummary.recent_outputs)
+    ? plugin.shellSummary.recent_outputs
+    : [];
+
+  const unreadCount = countUnreadReports(reports, plugin.settings.lastViewedTimestamp || 0);
+
+  // 1. AskBox
+  renderAskBox(plugin, contentEl, unreadCount);
+
+  // 2. Reports
+  const groupedReports = groupReportsByDate(reports);
+  if (groupedReports.length > 0) {
+    const todayStr = new Date().toISOString().split("T")[0];
+    
+    // Find today's reports
+    const todayIndex = groupedReports.findIndex(g => g.date === todayStr);
+    if (todayIndex !== -1) {
+      const todayGroup = groupedReports[todayIndex];
+      renderReportsGroup(plugin, contentEl, "Today's Reports", todayGroup.items);
+      groupedReports.splice(todayIndex, 1);
+    }
+    
+    if (groupedReports.length > 0) {
+      const prevSection = contentEl.createDiv({ cls: "furnace-shell-previous-reports" });
+      prevSection.createEl("h3", { text: plugin.t("Previous Reports") });
+      groupedReports.forEach(group => {
+        const groupEl = prevSection.createDiv({ cls: "furnace-shell-date-group" });
+        const dateHeader = groupEl.createDiv({ cls: "furnace-shell-date-header", text: group.date });
+        groupEl.appendChild(dateHeader);
+        renderReportsGroup(plugin, groupEl, null, group.items);
+      });
+    }
+  } else {
+    contentEl.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent outputs yet. Drop material or run a compile.") });
+  }
+
+  // 3. DropZone
+  renderDropZone(plugin, contentEl);
+
+  // 4. Advanced Drawer
+  renderAdvancedDrawer(plugin, contentEl);
+}
+
+function renderAskBox(plugin, container, unreadCount) {
+  const wrapper = container.createDiv({ cls: "furnace-shell-askbox-wrapper" });
+  const input = wrapper.createEl("input", { cls: "furnace-shell-askbox", type: "text" });
+  input.placeholder = plugin.t("Ask / Command... (Type / to see more)");
+  
+  if (unreadCount > 0) {
+    const badge = wrapper.createDiv({ cls: "furnace-shell-unread-badge", text: String(unreadCount) });
+    badge.addEventListener("click", async () => {
+      plugin.settings.lastViewedTimestamp = Date.now();
+      await plugin.savePluginState();
+      plugin.refreshOpenViews(); // re-render
+    });
+  }
+
+  input.addEventListener("keydown", async (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const question = String(input.value || "").trim();
+      if (!question) return;
+      if (question.startsWith("/")) {
+        // Open modal or standard palette
+        new AskCommandModal(plugin.app, plugin).open();
+      } else {
+        await plugin.runAskCommand({
+          question,
+          format: plugin.settings.defaultAskFormat,
+          mode: plugin.settings.defaultAskMode,
+          protocol: "",
+        });
+        input.value = "";
+      }
+    }
+  });
+}
+
+function renderReportsGroup(plugin, container, title, reports) {
+  if (title) {
+    container.createEl("h3", { text: plugin.t(title) });
+  }
+  const list = container.createDiv({ cls: "furnace-shell-report-list" });
+  reports.forEach(report => {
+    const isUnread = report.created_at && (new Date(report.created_at).getTime() > (plugin.settings.lastViewedTimestamp || 0));
+    
+    const card = list.createDiv({ cls: "furnace-shell-report-card" });
+    if (isUnread) card.addClass("is-unread");
+    
+    const content = card.createDiv({ cls: "furnace-shell-report-content" });
+    
+    // Left edge accent bar handled by css .is-unread border-left
+    const protocolPill = content.createEl("span", { cls: "furnace-shell-pill", text: plugin.t(report.protocol || "general") });
+    
+    const titleText = report.title || report.path || plugin.t("output");
+    content.createEl("span", { cls: "furnace-shell-report-title", text: titleText });
+    
+    const meta = card.createDiv({ cls: "furnace-shell-report-meta" });
+    meta.createEl("span", { text: formatDisplayTime(report.created_at, plugin.locale()) });
+    
+    const openBtn = card.createEl("button", { text: plugin.t("Open") });
+    openBtn.addEventListener("click", () => {
+      plugin.runUiAction(() => plugin.openWorkspacePath(report.path), `Open output: ${report.path}`);
+      // Update unread locally if needed, but per-report read tracking isn't required by design docs, just global "mark all"
+    });
+  });
+}
+
+function renderDropZone(plugin, container) {
+  const zone = container.createDiv({ cls: "furnace-shell-dropzone" });
+  zone.createDiv({ cls: "furnace-shell-dropzone-text", text: plugin.t("Drop URL / PDF / Image / Repo") });
+  const actions = zone.createDiv({ cls: "furnace-shell-inline-actions furnace-shell-inline-actions-compact" });
+  [
+    { label: "Drop URL", onClick: () => plugin.openDropUrlModal() },
+    { label: "Drop PDF", onClick: () => new DropFileModal(plugin.app, plugin).setInitialMode("pdf").open() },
+    { label: "Drop Image", onClick: () => new DropImageModal(plugin.app, plugin).open() },
+    { label: "Drop Repo", onClick: () => new DropFileModal(plugin.app, plugin).setInitialMode("repo").open() },
+  ].forEach((item) => {
+    const button = actions.createEl("button", { text: plugin.t(item.label) });
+    button.addEventListener("click", () => plugin.runUiAction(() => item.onClick(), plugin.t(item.label)));
+  });
+  zone.addEventListener("click", () => plugin.openDropUrlModal());
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.addClass("is-drag-over");
+  });
+  zone.addEventListener("dragleave", () => zone.removeClass("is-drag-over"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.removeClass("is-drag-over");
+    const dataTransfer = e.dataTransfer;
+    if (!dataTransfer) {
+      new Notice(plugin.t("Unsupported drop type"));
+      return;
+    }
+    const file = dataTransfer.files && dataTransfer.files[0];
+    if (file) {
+      if (file.type === "application/pdf") {
+        new DropFileModal(plugin.app, plugin).setInitialMode("pdf").open();
+        return;
+      }
+      if (String(file.type || "").startsWith("image/")) {
+        new DropImageModal(plugin.app, plugin).open();
+        return;
+      }
+      if (file.type === "") {
+        new DropFileModal(plugin.app, plugin).setInitialMode("repo").open();
+        return;
+      }
+      new Notice(plugin.t(`Unsupported file type: ${file.type}`));
+      return;
+    }
+    const text = String(dataTransfer.getData("text/plain") || "").trim();
+    if (/^https?:\/\//i.test(text)) {
+      plugin.openDropUrlModal(text);
+      return;
+    }
+    new Notice(plugin.t("Nothing dropped"));
+  });
+}
+
+function renderAdvancedDrawer(plugin, container) {
+  const details = container.createEl("details", { cls: "furnace-shell-advanced-drawer" });
+  const summary = details.createEl("summary", { text: plugin.t("Advanced") });
+  const body = details.createDiv({ cls: "furnace-shell-advanced-drawer-body" });
+  
+  // Render legacy content
+  plugin.renderMainHeader(body);
+  plugin.renderStatusPanel(body);
+  plugin.renderLegacyAdvancedPanel(body);
 }
 
 function renderRecentRuns(plugin, contentEl) {
