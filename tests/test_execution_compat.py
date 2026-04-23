@@ -126,6 +126,12 @@ class ExecutionCompatSeamTests(unittest.TestCase):
             "_save_concept_rewrite_proposals": "aiwiki.execution.concept_rewrite",
             "_evaluate_concept_rewrite_verification": "aiwiki.execution.concept_rewrite",
             "_persist_concept_rewrite_verification": "aiwiki.execution.concept_rewrite",
+            # B6 — machine-memory action
+            "resolve_machine_memory_action_query": "aiwiki.execution.machine_memory_actions",
+            "review_machine_memory_action": "aiwiki.execution.machine_memory_actions",
+            "apply_machine_memory_action": "aiwiki.execution.machine_memory_actions",
+            "revert_machine_memory_action": "aiwiki.execution.machine_memory_actions",
+            "_save_machine_memory_action_records": "aiwiki.execution.machine_memory_actions",
         }
         for name, owner in app_compile._LAZY_OWNERS.items():
             expected = migrated.get(name, "aiwiki.app_compile")
@@ -1247,6 +1253,265 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
             observed,
             msg="revert_concept_rewrite did not route utc_now through "
             "aiwiki.app_compile; B5 lazy-lookup seam regressed.",
+        )
+
+    def test_b6_machine_memory_actions_module_resolves_to_execution_module(self) -> None:
+        import importlib
+
+
+        mm_mod = importlib.import_module("aiwiki.execution.machine_memory_actions")
+        migrated_names = (
+            "resolve_machine_memory_action_query",
+            "review_machine_memory_action",
+            "apply_machine_memory_action",
+            "revert_machine_memory_action",
+            "_save_machine_memory_action_records",
+        )
+        for name in migrated_names:
+            app_compile.__dict__.pop(name, None)
+        for name in migrated_names:
+            self.assertIs(
+                getattr(app_compile, name),
+                getattr(mm_mod, name),
+                msg=f"B6 seam for {name!r} did not resolve to aiwiki.execution.machine_memory_actions",
+            )
+
+    def test_b6_from_import_works(self) -> None:
+        import importlib
+
+
+        mm_mod = importlib.import_module("aiwiki.execution.machine_memory_actions")
+        public_names = (
+            "resolve_machine_memory_action_query",
+            "review_machine_memory_action",
+            "apply_machine_memory_action",
+            "revert_machine_memory_action",
+        )
+        for name in public_names:
+            app_compile.__dict__.pop(name, None)
+        local_ns: dict[str, object] = {}
+        exec(
+            "from aiwiki.app_compile import (\n"
+            "    resolve_machine_memory_action_query,\n"
+            "    review_machine_memory_action,\n"
+            "    apply_machine_memory_action,\n"
+            "    revert_machine_memory_action,\n"
+            ")",
+            {"__builtins__": __builtins__},
+            local_ns,
+        )
+        for name in public_names:
+            self.assertIs(
+                local_ns[name],
+                getattr(mm_mod, name),
+                msg=f"B6 from-import for {name!r} did not resolve to migrated function",
+            )
+
+    def test_b6_review_machine_memory_action_uses_patched_utc_now(self) -> None:
+        import contextlib
+        import importlib
+
+
+        mm_mod = importlib.import_module("aiwiki.execution.machine_memory_actions")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        stubs = {
+            "ensure_layout": None,
+            "load_machine_memory_action_state": {"actions": [{"id": "a1", "title": "A1", "protocol": "general"}]},
+            "resolve_machine_memory_action_query": {"id": "a1", "title": "A1", "protocol": "general"},
+            "schedule_review_windows": ("", ""),
+            "evaluate_page_aging": {},
+            "save_machine_memory_action_state": None,
+            "append_wiki_log": None,
+            "compile_wiki": None,
+        }
+        with contextlib.ExitStack() as stack:
+            for name, return_value in stubs.items():
+                stack.enter_context(patch.object(mm_mod, name, return_value=return_value))
+            stack.enter_context(patch("aiwiki.app_compile.utc_now", side_effect=_fake_utc))
+            mm_mod.review_machine_memory_action(Path("/tmp"), "a1", "accepted")
+
+        self.assertTrue(
+            observed,
+            msg="review_machine_memory_action did not route utc_now through aiwiki.app_compile; B6 lazy-lookup seam regressed.",
+        )
+
+    def test_b6_apply_machine_memory_action_dry_run_uses_patched_utc_now(self) -> None:
+        import contextlib
+        import importlib
+
+        mm_mod = importlib.import_module("aiwiki.execution.machine_memory_actions")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        target = {"id": "a1", "title": "A1", "status": "accepted", "protocol": "general"}
+        proposal = {"bundle_path": "bundle.json", "proposal_path": "proposal.json", "safe_apply_preview": {"apply_mode": "resolve-monitor"}}
+        stubs = {
+            "ensure_layout": None,
+            "load_machine_memory_action_state": {"actions": [target]},
+            "resolve_machine_memory_action_query": target,
+            "load_protocol_state": {"active_protocol": "general"},
+            "repair_execution_proposals": [proposal],
+            "build_page_patch_plan": {},
+            "safe_apply_preview": {"apply_mode": "resolve-monitor"},
+            "execution_bundle_path": Path("bundle.json"),
+            "execution_proposal_path": Path("proposal.json"),
+            "relative_path": "bundle.json",
+            "build_execution_bundle": {"digest": "d1"},
+            "write_execution_bundle_document": None,
+            "execution_dry_run_path": Path("dry-run.json"),
+            "write_execution_dry_run_document": None,
+            "append_runtime_history": None,
+            "append_wiki_log": None,
+        }
+        with contextlib.ExitStack() as stack:
+            for name, return_value in stubs.items():
+                stack.enter_context(patch.object(mm_mod, name, return_value=return_value))
+            stack.enter_context(patch("aiwiki.app_compile.utc_now", side_effect=_fake_utc))
+            mm_mod.apply_machine_memory_action(Path("/tmp"), "a1", dry_run=True)
+
+        self.assertTrue(
+            observed,
+            msg="apply_machine_memory_action(dry_run=True) did not route utc_now through aiwiki.app_compile; B6 lazy-lookup seam regressed.",
+        )
+
+    def test_b6_apply_machine_memory_action_real_uses_patched_utc_now(self) -> None:
+        import contextlib
+        import importlib
+        import json
+        import tempfile
+
+        mm_mod = importlib.import_module("aiwiki.execution.machine_memory_actions")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            receipt_path = root / "receipt.json"
+            receipt_path.write_text(
+                json.dumps({"kind": "execution-receipt", "operation": "apply", "action_id": "a1", "safe_apply_preview": {"apply_mode": "resolve-monitor"}}),
+                encoding="utf-8",
+            )
+            target = {"id": "a1", "title": "A1", "status": "accepted", "protocol": "general", "last_receipt_path": "receipt.json"}
+            bundle = {"action_id": "a1", "digest": "digest-1", "safe_apply_preview": {"apply_mode": "resolve-monitor"}}
+            stubs = {
+                "ensure_layout": None,
+                "load_machine_memory_action_state": {"actions": [target]},
+                "resolve_machine_memory_action_query": target,
+                "load_protocol_state": {"active_protocol": "general"},
+                "repair_execution_proposals": [bundle],
+                "build_page_patch_plan": {},
+                "safe_apply_preview": {"apply_mode": "resolve-monitor"},
+                "execution_bundle_path": root / "bundle.json",
+                "execution_proposal_path": root / "proposal.json",
+                "relative_path": "receipt.json",
+                "build_execution_bundle": {"digest": "digest-1", "safe_apply_preview": {"apply_mode": "resolve-monitor"}},
+                "load_execution_bundle": bundle,
+                "execution_bundle_digest": "digest-1",
+                "build_execution_receipt": {"kind": "execution-receipt"},
+                "append_execution_receipt_history": None,
+                "execution_receipt_path": receipt_path,
+                "append_runtime_history": None,
+                "append_wiki_log": None,
+                "compile_wiki": None,
+                "_save_machine_memory_action_records": None,
+            }
+            with contextlib.ExitStack() as stack:
+                for name, return_value in stubs.items():
+                    stack.enter_context(patch.object(mm_mod, name, return_value=return_value))
+                stack.enter_context(patch("aiwiki.app_compile.utc_now", side_effect=_fake_utc))
+                result = mm_mod.apply_machine_memory_action(root, "a1", dry_run=False)
+
+        # Distinct-call-site proof: dry_run=False reaches TWO utc_now call
+        # sites — line ~257 ``previewed_at`` (shared with dry_run) AND line
+        # ~332 ``applied_at`` (unique to the real branch). If the second
+        # site regresses to an unpatched lookup, a mere truthy assertion
+        # on ``observed`` still passes because the first site fired. Lock
+        # both sites individually.
+        self.assertEqual(
+            len(observed),
+            2,
+            msg=(
+                "apply_machine_memory_action(dry_run=False) must reach both "
+                "utc_now call sites (previewed_at + applied_at); got "
+                f"{len(observed)} observed stamps: {observed!r}. B6 "
+                "lazy-lookup seam regressed on the applied_at site."
+            ),
+        )
+        self.assertEqual(
+            result.get("applied_at"),
+            "patched-utc-1",
+            msg=(
+                "apply_machine_memory_action(dry_run=False) did not route "
+                "the applied_at stamp through the patched aiwiki.app_compile.utc_now; "
+                "B6 lazy-lookup seam regressed on the second utc_now call site."
+            ),
+        )
+
+    def test_b6_revert_machine_memory_action_uses_patched_utc_now(self) -> None:
+        import contextlib
+        import importlib
+        import json
+        import tempfile
+
+        mm_mod = importlib.import_module("aiwiki.execution.machine_memory_actions")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            receipt_path = root / "receipt.json"
+            receipt_path.write_text(
+                json.dumps({"kind": "execution-receipt", "operation": "apply", "action_id": "a1", "safe_apply_preview": {"apply_mode": "resolve-monitor"}}),
+                encoding="utf-8",
+            )
+            target = {"id": "a1", "title": "A1", "status": "resolved", "protocol": "general", "last_receipt_path": "receipt.json"}
+            stubs = {
+                "ensure_layout": None,
+                "load_machine_memory_action_state": {"actions": [target]},
+                "resolve_machine_memory_action_query": target,
+                "load_json_document": {"kind": "execution-receipt", "operation": "apply", "action_id": "a1", "safe_apply_preview": {"apply_mode": "resolve-monitor"}},
+                "load_protocol_state": {"active_protocol": "general"},
+                "repair_execution_proposals": [{"safe_apply_preview": {"apply_mode": "resolve-monitor"}}],
+                "build_page_patch_plan": {},
+                "safe_apply_preview": {"apply_mode": "resolve-monitor"},
+                "execution_bundle_path": root / "bundle.json",
+                "execution_proposal_path": root / "proposal.json",
+                "relative_path": "receipt.json",
+                "build_execution_receipt": {"kind": "execution-receipt"},
+                "append_execution_receipt_history": None,
+                "schedule_review_windows": ("", ""),
+                "evaluate_page_aging": {},
+                "_save_machine_memory_action_records": None,
+                "append_wiki_log": None,
+                "compile_wiki": None,
+            }
+            with contextlib.ExitStack() as stack:
+                for name, return_value in stubs.items():
+                    stack.enter_context(patch.object(mm_mod, name, return_value=return_value))
+                stack.enter_context(patch("aiwiki.app_compile.utc_now", side_effect=_fake_utc))
+                mm_mod.revert_machine_memory_action(root, "a1")
+
+        self.assertTrue(
+            observed,
+            msg="revert_machine_memory_action did not route utc_now through aiwiki.app_compile; B6 lazy-lookup seam regressed.",
         )
 
 
