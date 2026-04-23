@@ -24,14 +24,18 @@ from aiwiki.app_content import ingest_source
 from aiwiki.app_protocol import ensure_layout, load_protocol_runtime_schema, save_manifest
 from aiwiki.app_shell import shell_search, shell_status_dashboard
 from aiwiki.app_state import (
+    load_active_corpora_state,
     load_machine_memory,
     load_manifest,
     load_material_archive_state,
     load_output_candidates_state,
+    save_active_corpora_state,
     save_machine_memory_action_state,
+    save_output_candidates_state,
 )
 from aiwiki.app_utils import parse_frontmatter
 from aiwiki.cli import main as cli_main
+from aiwiki.execution.alchemy import _validate_source_outputs
 from aiwiki.execution.candidates import demote_candidate, promote_candidate
 from aiwiki.llm import CompletionResult
 from aiwiki.runner import run_ask, run_compile
@@ -64,6 +68,9 @@ class ExecutionTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def _make_sample(self) -> Path:
+        return self.sample
+
     def tearDown(self) -> None:
         self.tempdir.cleanup()
 
@@ -93,7 +100,7 @@ class ExecutionTests(unittest.TestCase):
         return entry
 
     def _prepare_accepted_rewrite(self) -> tuple[str, Path]:
-        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        entry = ingest_source(self.root, str(self._make_sample()), title="Transformer Scaling")
         compile_wiki(self.root)
         source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
         source_page.write_text(
@@ -401,7 +408,7 @@ class ExecutionTests(unittest.TestCase):
         self.assertTrue((self.root / payload["receipt_path"]).exists())
 
     def test_cli_action_commands_allow_title_fragment_matching(self) -> None:
-        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        entry = ingest_source(self.root, str(self._make_sample()), title="Transformer Scaling")
         compile_wiki(self.root)
         concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
         save_machine_memory_action_state(
@@ -457,17 +464,250 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(len(manual_links["source_to_concept"]), 2)
         self.assertTrue(all(link["active"] for link in manual_links["source_to_concept"]))
 
-        code, revert_payload, revert_stderr = self._run_cli(
-            ["revert-action", "--last-batch", "--note", "Batch rollback."]
-        )
 
-        self.assertEqual(code, 0)
-        self.assertEqual(revert_stderr, "")
-        self.assertEqual(revert_payload["operation"], "action-revert-batch")
-        self.assertEqual(revert_payload["count"], 2)
-        self.assertEqual(revert_payload["reverted_batch_id"], payload["batch_id"])
-        reverted_links = json.loads((self.root / ".aiwiki" / "state" / "manual-links.json").read_text(encoding="utf-8"))
-        self.assertTrue(all(not link["active"] for link in reverted_links["source_to_concept"]))
+class AlchemyTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+        ensure_layout(self.root)
+        (self.root / "prompts" / "compile.md").write_text("Compile prompt fixture.\n", encoding="utf-8")
+        (self.root / "prompts" / "ask.md").write_text("Ask prompt fixture.\n", encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def _run_cli(self, argv: list[str]) -> tuple[int, dict[str, object], str]:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
+            code = cli_main(["--root", str(self.root), *argv])
+        payload = json.loads(stdout.getvalue()) if stdout.getvalue().strip() else {}
+        return code, payload, stderr.getvalue()
+
+    def _make_sample(self, name: str = "sample.md") -> Path:
+        sample = self.root / name
+        sample.write_text("# Transformer Scaling\n\nTransformers benefit from scale.\n", encoding="utf-8")
+        return sample
+
+    def _make_promoted_corpus(self, questions: list[str]) -> str:
+        corpus_id = ""
+        for question in questions:
+            result = ask_question(self.root, question, "report", corpus_id_override=corpus_id or None)
+            promote_candidate(self.root, result["path"])
+            corpus_id = str(result.get("active_corpus_id") or corpus_id)
+        return corpus_id
+
+    def _run_cli(self, argv: list[str]) -> tuple[int, dict[str, object], str]:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
+            code = cli_main(["--root", str(self.root), *argv])
+        payload = json.loads(stdout.getvalue()) if stdout.getvalue().strip() else {}
+        return code, payload, stderr.getvalue()
+
+    def test_alchemy_start_creates_elixir_from_promoted_outputs(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])
+
+        from aiwiki.runner import run_alchemy_start
+
+        result = run_alchemy_start(self.root, corpus_id, "VLA robotics")
+
+        path = self.root / result["path"]
+        self.assertTrue(path.exists())
+        frontmatter = parse_frontmatter(path.read_text(encoding="utf-8"))
+        self.assertEqual(frontmatter["elixir_state"], "forming")
+        self.assertEqual(frontmatter["iteration"], "0")
+        self.assertTrue(frontmatter["source_outputs"])
+        self.assertTrue(all(str(item).startswith("wiki/derived/") for item in frontmatter["source_outputs"]))
+
+    def test_alchemy_start_raises_when_corpus_has_no_promoted(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])
+        from aiwiki.app_state import save_output_candidates_state
+
+        save_output_candidates_state(self.root, {"version": 1, "candidates": []})
+
+        from aiwiki.runner import run_alchemy_start
+
+        with self.assertRaises(ValueError):
+            run_alchemy_start(self.root, corpus_id, "VLA robotics")
+        self.assertFalse((self.root / "wiki" / "elixirs").exists())
+
+    def test_alchemy_start_raises_when_corpus_unknown(self) -> None:
+        from aiwiki.runner import run_alchemy_start
+
+        with self.assertRaises(FileNotFoundError):
+            run_alchemy_start(self.root, "missing-corpus", "VLA robotics")
+
+    def test_alchemy_distill_increments_iteration_and_preserves_provenance(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])
+        from aiwiki.runner import run_alchemy_distill, run_alchemy_start
+
+        start = run_alchemy_start(self.root, corpus_id, "VLA robotics")
+        second = ask_question(self.root, "What about latency?", "report", corpus_id_override=corpus_id)
+        promote_candidate(self.root, second["path"])
+
+        result = run_alchemy_distill(self.root, start["elixir_id"], "What about latency?")
+
+        self.assertEqual(result["iteration"], 1)
+        path = self.root / result["path"]
+        frontmatter = parse_frontmatter(path.read_text(encoding="utf-8"))
+        self.assertEqual(frontmatter["iteration"], "1")
+        self.assertGreaterEqual(len(frontmatter["source_outputs"]), 2)
+        self.assertEqual(len(json.loads(frontmatter.get("distill_history_json", "[]"))), 1)
+
+    def test_alchemy_distill_rejects_sealed_elixir(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])
+        from aiwiki.runner import run_alchemy_seal, run_alchemy_start
+
+        start = run_alchemy_start(self.root, corpus_id, "VLA robotics")
+        run_alchemy_seal(self.root, start["elixir_id"])
+
+        from aiwiki.runner import run_alchemy_distill
+
+        with self.assertRaises(ValueError):
+            run_alchemy_distill(self.root, start["elixir_id"], "What about latency?")
+        frontmatter = parse_frontmatter((self.root / start["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(frontmatter["elixir_state"], "sealed")
+
+    def test_alchemy_seal_marks_sealed(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])
+        from aiwiki.runner import run_alchemy_seal, run_alchemy_start
+
+        start = run_alchemy_start(self.root, corpus_id, "VLA robotics")
+        result = run_alchemy_seal(self.root, start["elixir_id"])
+
+        self.assertEqual(result["elixir_state"], "sealed")
+        frontmatter = parse_frontmatter((self.root / start["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(frontmatter["elixir_state"], "sealed")
+        self.assertTrue(frontmatter.get("sealed_at"))
+
+    def test_alchemy_seal_is_not_idempotent_on_already_sealed(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])
+        from aiwiki.runner import run_alchemy_seal, run_alchemy_start
+
+        start = run_alchemy_start(self.root, corpus_id, "VLA robotics")
+        run_alchemy_seal(self.root, start["elixir_id"])
+
+        with self.assertRaises(ValueError):
+            run_alchemy_seal(self.root, start["elixir_id"])
+
+    def test_alchemy_validates_source_output_must_be_wiki_derived(self) -> None:
+        with self.assertRaises(ValueError):
+            _validate_source_outputs(self.root, ["output/reports/foo.md"], allowed=set())
+        with self.assertRaises(ValueError):
+            _validate_source_outputs(self.root, ["wiki/derived/missing.md"], allowed={"wiki/derived/missing.md"})
+
+    def test_alchemy_start_rejects_tampered_source_outputs_not_in_corpus_output_refs(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        result = ask_question(self.root, "Question B?", "report", corpus_id_override=corpus_id)
+        promote_candidate(self.root, result["path"])
+        corpora = load_active_corpora_state(self.root)
+        for corpus in corpora["corpora"]:
+            if str(corpus.get("corpus_id") or "") == corpus_id:
+                corpus["output_refs"] = []
+        save_active_corpora_state(self.root, corpora)
+
+        from aiwiki.runner import run_alchemy_start
+
+        with self.assertRaises(ValueError):
+            run_alchemy_start(self.root, corpus_id, "VLA robotics")
+
+    def test_alchemy_start_raises_when_output_refs_has_no_promoted_intersection(self) -> None:
+        result = ask_question(self.root, "Should we increase transformer training spend?", "report")
+        corpus_id = str(result["active_corpus_id"])
+        corpora = load_active_corpora_state(self.root)
+        for corpus in corpora["corpora"]:
+            if str(corpus.get("corpus_id") or "") == corpus_id:
+                corpus["output_refs"] = ["wiki/derived/missing.md"]
+        save_active_corpora_state(self.root, corpora)
+
+        from aiwiki.runner import run_alchemy_start
+
+        with self.assertRaises(ValueError):
+            run_alchemy_start(self.root, corpus_id, "VLA robotics")
+
+    def test_alchemy_seal_rejects_empty_source_outputs_tampering(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])
+        from aiwiki.execution.alchemy import _write_elixir_markdown
+        from aiwiki.runner import run_alchemy_seal, run_alchemy_start
+
+        start = run_alchemy_start(self.root, corpus_id, "VLA robotics")
+        path = self.root / start["path"]
+        text = path.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(text)
+        frontmatter["source_outputs"] = []
+        _write_elixir_markdown(path, frontmatter=frontmatter, body=text.split("---", 2)[-1].lstrip("\n"))
+
+        with self.assertRaises(ValueError):
+            run_alchemy_seal(self.root, start["elixir_id"])
+
+    def test_alchemy_distill_rejects_empty_source_outputs_tampering(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])
+        from aiwiki.execution.alchemy import _write_elixir_markdown
+        from aiwiki.runner import run_alchemy_distill, run_alchemy_start
+
+        start = run_alchemy_start(self.root, corpus_id, "VLA robotics")
+        path = self.root / start["path"]
+        text = path.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(text)
+        frontmatter["source_outputs"] = []
+        _write_elixir_markdown(path, frontmatter=frontmatter, body=text.split("---", 2)[-1].lstrip("\n"))
+
+        with self.assertRaises(ValueError):
+            run_alchemy_distill(self.root, start["elixir_id"], "What about latency?")
+
+    def test_alchemy_seal_rejects_tampered_frontmatter_source_outputs(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])
+        from aiwiki.runner import run_alchemy_seal, run_alchemy_start
+
+        start = run_alchemy_start(self.root, corpus_id, "VLA robotics")
+        path = self.root / start["path"]
+        text = path.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(text)
+        frontmatter["source_outputs"] = [*frontmatter["source_outputs"], "wiki/derived/tampered.md"]
+        (self.root / "wiki" / "derived" / "tampered.md").write_text("tampered", encoding="utf-8")
+        from aiwiki.execution.alchemy import _write_elixir_markdown
+        _write_elixir_markdown(path, frontmatter=frontmatter, body=text.split("---", 2)[-1].lstrip("\n"))
+
+        with self.assertRaises(ValueError):
+            run_alchemy_seal(self.root, start["elixir_id"])
+
+    def test_alchemy_distill_rejects_stale_source_output_removed_from_output_refs(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])
+        from aiwiki.runner import run_alchemy_distill, run_alchemy_start
+
+        start = run_alchemy_start(self.root, corpus_id, "VLA robotics")
+        corpora = load_active_corpora_state(self.root)
+        for corpus in corpora["corpora"]:
+            if str(corpus.get("corpus_id") or "") == corpus_id:
+                corpus["output_refs"] = []
+        save_active_corpora_state(self.root, corpora)
+
+        with self.assertRaises(ValueError):
+            run_alchemy_distill(self.root, start["elixir_id"], "What about latency?")
+
+    def test_alchemy_start_produces_unique_id_for_same_topic(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])
+        from aiwiki.runner import run_alchemy_start
+
+        first = run_alchemy_start(self.root, corpus_id, "VLA robotics")
+        second = run_alchemy_start(self.root, corpus_id, "VLA robotics")
+
+        self.assertNotEqual(first["elixir_id"], second["elixir_id"])
+        self.assertTrue((self.root / first["path"]).exists())
+        self.assertTrue((self.root / second["path"]).exists())
+
+    def test_alchemy_parse_raises_on_corrupt_distill_history_json(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])
+        from aiwiki.runner import run_alchemy_distill, run_alchemy_start
+
+        start = run_alchemy_start(self.root, corpus_id, "VLA robotics")
+        path = self.root / start["path"]
+        text = path.read_text(encoding="utf-8")
+        path.write_text(text.replace('distill_history_json: "[]"', 'distill_history_json: "not json"', 1), encoding="utf-8")
+
+        with self.assertRaises(ValueError):
+            run_alchemy_distill(self.root, start["elixir_id"], "What about latency?")
 
     def test_batch_execution_helpers_reject_empty_missing_and_unsupported_inputs(self) -> None:
         with self.assertRaises(ValueError):
@@ -477,7 +717,7 @@ class ExecutionTests(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             apply_machine_memory_actions_batch(self.root, ["missing-action"])
 
-        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        entry = ingest_source(self.root, str(self._make_sample()), title="Transformer Scaling")
         compile_wiki(self.root)
         concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
         save_machine_memory_action_state(

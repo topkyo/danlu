@@ -38,7 +38,19 @@ from .app_shell import build_shell_summary, rewrite_recovery_payload_for_paths, 
 from .app_state import load_machine_memory_action_state
 from .app_vault import bootstrap_new_vault
 from .drop import drop_image, drop_note, drop_pdf, drop_repo, drop_url
-from .runner import auto_process_once, llm_probe, llm_status, run_ask, run_compile, run_lint, run_nightly, watch_inbox
+from .runner import (
+    auto_process_once,
+    llm_probe,
+    llm_status,
+    run_alchemy_distill,
+    run_alchemy_seal,
+    run_alchemy_start,
+    run_ask,
+    run_compile,
+    run_lint,
+    run_nightly,
+    watch_inbox,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -214,6 +226,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     demote_parser = subparsers.add_parser("demote", help="Mark an output candidate as demoted.")
     demote_parser.add_argument("artifact_ref", help="Output candidate artifact_ref.")
+
+    alchemy_start_parser = subparsers.add_parser("alchemy-start", help="Start a new elixir from a corpus.")
+    alchemy_start_parser.add_argument("corpus_id")
+    alchemy_start_parser.add_argument("--topic", required=True)
+
+    alchemy_distill_parser = subparsers.add_parser("alchemy-distill", help="Distill an existing forming elixir.")
+    alchemy_distill_parser.add_argument("elixir_id")
+    alchemy_distill_parser.add_argument("--question", required=True)
+
+    alchemy_seal_parser = subparsers.add_parser("alchemy-seal", help="Seal a forming elixir (terminal state).")
+    alchemy_seal_parser.add_argument("elixir_id")
 
     review_parser = subparsers.add_parser(
         "review-page",
@@ -547,6 +570,12 @@ def main(argv: list[str] | None = None) -> int:
             from .execution.candidates import demote_candidate
 
             result = demote_candidate(root, args.artifact_ref)
+        elif args.command == "alchemy-start":
+            result = run_alchemy_start(root, args.corpus_id, args.topic)
+        elif args.command == "alchemy-distill":
+            result = run_alchemy_distill(root, args.elixir_id, args.question)
+        elif args.command == "alchemy-seal":
+            result = run_alchemy_seal(root, args.elixir_id)
         elif args.command == "review-page":
             review_pages = _resolve_review_pages(
                 root,
