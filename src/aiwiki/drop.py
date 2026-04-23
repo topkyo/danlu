@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Any
 from urllib import parse, request
 
-from .app_content import append_wiki_log
 from .app_protocol import ensure_layout
+from .app_render import append_wiki_log
 from .app_utils import first_markdown_heading, relative_path, render_frontmatter, slugify, utc_now
 from .config import LLMConfig
 from .llm import LLMError, create_backend_client
