@@ -1324,6 +1324,24 @@ def run_alchemy_seal(root: Path, elixir_id: str) -> dict[str, Any]:
     return seal_elixir(root, elixir_id)
 
 
+def run_protocol_learn_add(root: Path, protocol: str, title: str, source_refs: list[str] | None) -> dict[str, Any]:
+    from .execution.protocol_learnings import add_learning
+
+    return add_learning(root, protocol, title=title, source_refs=source_refs)
+
+
+def run_protocol_learn_list(root: Path, protocol: str | None = None) -> list[dict[str, Any]]:
+    from .execution.protocol_learnings import list_learnings
+
+    return list_learnings(root, protocol)
+
+
+def run_protocol_learn_show(root: Path, learning_id: str) -> dict[str, Any]:
+    from .execution.protocol_learnings import show_learning
+
+    return show_learning(root, learning_id)
+
+
 def watch_inbox(
     root: Path,
     interval_seconds: float = 5.0,

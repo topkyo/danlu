@@ -88,6 +88,7 @@ from ..app_utils import (
     strip_frontmatter,
 )
 from ..compile import compile_wiki
+from .protocol_learnings import load_learnings_for_protocol
 
 # ``utc_now`` and ``rank_concepts`` are resolved lazily via
 # ``aiwiki.app_compile`` inside each function body. Reasons:
@@ -115,6 +116,7 @@ def ask_question(
     *,
     no_cache: bool = False,
     corpus_id_override: str | None = None,
+    load_protocol_learnings: bool = False,
 ) -> dict[str, Any]:
     from .. import app_compile as _app_compile
 
@@ -208,6 +210,19 @@ def ask_question(
         content = render_figure_brief(root, question, ranked, ranked_concepts, machine_query, protocol_state, created_at, artifact_id)
     else:
         raise ValueError(f"Unsupported format: {output_format}")
+
+    if load_protocol_learnings:
+        learnings = load_learnings_for_protocol(root, active_protocol)
+        if learnings:
+            block_lines = ["", "## Protocol Learnings", ""]
+            for learning in learnings:
+                block_lines.append(f"- [{learning['learning_id']}] {learning['title']}: {learning['lesson']}")
+            block = "\n".join(block_lines) + "\n"
+            insert_at = content.find("\n## ")
+            if insert_at >= 0:
+                content = content[:insert_at] + block + content[insert_at:]
+            else:
+                content += block
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(content, encoding="utf-8")

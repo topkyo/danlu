@@ -37,6 +37,7 @@ from aiwiki.app_utils import parse_frontmatter
 from aiwiki.cli import main as cli_main
 from aiwiki.execution.alchemy import _validate_source_outputs
 from aiwiki.execution.candidates import demote_candidate, promote_candidate
+from aiwiki.execution.protocol_learnings import add_learning, list_learnings, show_learning
 from aiwiki.llm import CompletionResult
 from aiwiki.runner import run_ask, run_compile
 
@@ -757,6 +758,119 @@ class AlchemyTests(unittest.TestCase):
 
         with self.assertRaises(RuntimeError):
             revert_machine_memory_action_batch(self.root, batch_id="review-page-batch")
+
+
+class ProtocolLearningsTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+        ensure_layout(self.root)
+        (self.root / "prompts" / "compile.md").write_text("Compile prompt fixture.\n", encoding="utf-8")
+        (self.root / "prompts" / "ask.md").write_text("Ask prompt fixture.\n", encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def _make_promoted_derived(self) -> str:
+        result = ask_question(self.root, "Should we increase transformer training spend?", "report")
+        promoted = promote_candidate(self.root, result["path"])
+        return promoted["promoted_path"]
+
+    def test_protocol_learn_add_creates_learning(self) -> None:
+        result = add_learning(self.root, "general", title="My lesson")
+        path = self.root / result["path"]
+        text = path.read_text(encoding="utf-8")
+        fm = parse_frontmatter(text)
+        self.assertTrue(path.exists())
+        self.assertEqual(fm["learning_id"], result["learning_id"])
+        self.assertEqual(fm["protocol"], "general")
+        self.assertIn("# Protocol Learning", text)
+        self.assertIn("## Lesson", text)
+        self.assertIn("## When to apply", text)
+        self.assertIn("## Evidence", text)
+
+    def test_protocol_learn_add_with_source_refs_validates_and_writes(self) -> None:
+        promoted_path = self._make_promoted_derived()
+        result = add_learning(self.root, "general", title="Anchored lesson", source_refs=[promoted_path])
+        self.assertTrue((self.root / result["path"]).exists())
+
+    def test_protocol_learn_add_rejects_unknown_protocol(self) -> None:
+        with self.assertRaises(ValueError):
+            add_learning(self.root, "nonexistent", title="bad")
+
+    def test_protocol_learn_add_rejects_source_ref_outside_allowed_prefixes(self) -> None:
+        with self.assertRaises(ValueError):
+            add_learning(self.root, "general", title="bad", source_refs=["raw/foo.md"])
+        with self.assertRaises(ValueError):
+            add_learning(self.root, "general", title="bad", source_refs=["wiki/sources/foo.md"])
+
+    def test_protocol_learn_add_rejects_missing_source_ref(self) -> None:
+        with self.assertRaises(ValueError):
+            add_learning(self.root, "general", title="bad", source_refs=["wiki/derived/not-there.md"])
+
+    def test_protocol_learn_add_rejects_source_ref_traversal_escape(self) -> None:
+        # Attempt to escape wiki/derived/ via ".." segments; must be rejected
+        # even though the prefix string technically matches.
+        (self.root / "wiki" / "sources" / "sneaky.md").parent.mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "sources" / "sneaky.md").write_text("evil", encoding="utf-8")
+        with self.assertRaises(ValueError):
+            add_learning(self.root, "general", title="bad", source_refs=["wiki/derived/../sources/sneaky.md"])
+
+    def test_protocol_learn_add_accepts_wiki_elixirs_source_ref(self) -> None:
+        (self.root / "wiki" / "elixirs").mkdir(parents=True, exist_ok=True)
+        elixir_path = self.root / "wiki" / "elixirs" / "elixir-sample.md"
+        elixir_path.write_text("---\nelixir_id: \"elixir-sample\"\n---\n\n# stub\n", encoding="utf-8")
+        result = add_learning(self.root, "general", title="cites elixir", source_refs=["wiki/elixirs/elixir-sample.md"])
+        self.assertTrue((self.root / result["path"]).exists())
+
+    def test_protocol_learn_list_rejects_unknown_protocol(self) -> None:
+        with self.assertRaises(ValueError):
+            list_learnings(self.root, "nonexistent")
+
+    def test_protocol_learn_list_returns_empty_when_no_learnings(self) -> None:
+        self.assertEqual(list_learnings(self.root), [])
+
+    def test_protocol_learn_list_groups_across_protocols(self) -> None:
+        add_learning(self.root, "general", title="g1")
+        add_learning(self.root, "investing", title="i1")
+        listed = list_learnings(self.root)
+        self.assertEqual([item["protocol"] for item in listed], ["general", "investing"])
+
+    def test_protocol_learn_list_filters_by_protocol(self) -> None:
+        add_learning(self.root, "general", title="g1")
+        add_learning(self.root, "investing", title="i1")
+        listed = list_learnings(self.root, "general")
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(listed[0]["protocol"], "general")
+
+    def test_protocol_learn_show_returns_frontmatter_and_body(self) -> None:
+        result = add_learning(self.root, "general", title="show me")
+        shown = show_learning(self.root, result["learning_id"])
+        self.assertIn("frontmatter", shown)
+        self.assertIn("body", shown)
+        self.assertEqual(shown["frontmatter"]["title"], "show me")
+
+    def test_protocol_learn_show_raises_for_unknown_id(self) -> None:
+        with self.assertRaises(FileNotFoundError):
+            show_learning(self.root, "missing")
+
+    def test_protocol_learn_add_produces_unique_id_for_same_title(self) -> None:
+        first = add_learning(self.root, "general", title="same")
+        second = add_learning(self.root, "general", title="same")
+        self.assertNotEqual(first["learning_id"], second["learning_id"])
+
+    def test_ask_injects_protocol_learnings_when_flag_on(self) -> None:
+        add_learning(self.root, "general", title="foo-bar-unique")
+        result = ask_question(self.root, "What changed?", "report", load_protocol_learnings=True)
+        text = (self.root / result["path"]).read_text(encoding="utf-8")
+        self.assertIn("## Protocol Learnings", text)
+        self.assertIn("foo-bar-unique", text)
+
+    def test_ask_does_not_inject_protocol_learnings_by_default(self) -> None:
+        add_learning(self.root, "general", title="foo-bar-unique")
+        result = ask_question(self.root, "What changed?", "report")
+        text = (self.root / result["path"]).read_text(encoding="utf-8")
+        self.assertNotIn("## Protocol Learnings", text)
 
 
 if __name__ == "__main__":

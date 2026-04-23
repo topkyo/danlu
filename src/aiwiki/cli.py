@@ -49,6 +49,9 @@ from .runner import (
     run_compile,
     run_lint,
     run_nightly,
+    run_protocol_learn_add,
+    run_protocol_learn_list,
+    run_protocol_learn_show,
     watch_inbox,
 )
 
@@ -172,6 +175,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Bypass volatile SQLite query cache and force deterministic JSON scan.",
     )
     ask_parser.add_argument("--corpus", help="Optional active corpus id to reuse across ask rounds.")
+    ask_parser.add_argument("--load-learnings", action="store_true", help="Load protocol learnings into the prompt.")
+
+    protocol_learn_add_parser = subparsers.add_parser("protocol-learn-add", help="Add a protocol learning.")
+    protocol_learn_add_parser.add_argument("protocol", help="Protocol slug.")
+    protocol_learn_add_parser.add_argument("--title", required=True, help="Learning title.")
+    protocol_learn_add_parser.add_argument("--source-ref", action="append", dest="source_refs", help="Source reference.")
+
+    protocol_learn_list_parser = subparsers.add_parser("protocol-learn-list", help="List protocol learnings.")
+    protocol_learn_list_parser.add_argument("protocol", nargs="?", help="Optional protocol slug.")
+
+    protocol_learn_show_parser = subparsers.add_parser("protocol-learn-show", help="Show a protocol learning.")
+    protocol_learn_show_parser.add_argument("learning_id", help="Learning id.")
 
     run_ask_parser = subparsers.add_parser(
         "run-ask",
@@ -545,7 +560,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "run-compile":
             result = run_compile(root, limit=args.limit)
         elif args.command == "ask":
-            ask_kwargs = {"protocol": args.protocol, "no_cache": args.no_cache}
+            ask_kwargs = {"protocol": args.protocol, "no_cache": args.no_cache, "load_protocol_learnings": args.load_learnings}
             if getattr(args, "corpus", None) is not None:
                 ask_kwargs["corpus_id_override"] = args.corpus
             result = ask_question(root, args.question, args.format, **ask_kwargs)
@@ -576,6 +591,12 @@ def main(argv: list[str] | None = None) -> int:
             result = run_alchemy_distill(root, args.elixir_id, args.question)
         elif args.command == "alchemy-seal":
             result = run_alchemy_seal(root, args.elixir_id)
+        elif args.command == "protocol-learn-add":
+            result = run_protocol_learn_add(root, args.protocol, args.title, args.source_refs)
+        elif args.command == "protocol-learn-list":
+            result = run_protocol_learn_list(root, args.protocol)
+        elif args.command == "protocol-learn-show":
+            result = run_protocol_learn_show(root, args.learning_id)
         elif args.command == "review-page":
             review_pages = _resolve_review_pages(
                 root,
