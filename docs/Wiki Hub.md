@@ -27,7 +27,7 @@ kind: "dashboard"
 - [[wiki/indexes/Furnace Product Shell Plugin|Product Shell 插件]]：把当前 markdown/html 控制面升级成 Obsidian 内的桌面工作台
 - [[docs/Furnace Material Scaling|大规模原料处理]]：原料越来越多时的冷热分层、活动工作集和归档设计
 - [[docs/Furnace Material State Model|原料状态模型]]：把 `temperature / active corpus / archive` 压成实现级 schema
-- [[wiki/indexes/Furnace Protocols|统一炼丹协议]]：一个炉子，多种领域协议
+- [[docs/Furnace Protocols|统一炼丹协议]]：一个炉子，多种领域协议
 - [[wiki/indexes/protocols|协议总览]]：当前 active protocol 和可用协议库
 - [[wiki/indexes/furnace-center|炉心面板]]：统一入口，先看今天该处理什么
 - [[schema/index|运行时规则]]：compile、ask、lint 共同遵循的规则层

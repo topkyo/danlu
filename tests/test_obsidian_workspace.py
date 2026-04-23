@@ -48,7 +48,7 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         self.assertIn("[[docs/Furnace Material Scaling|", home)
         self.assertIn("[[wiki/indexes/furnace-center|", home)
         self.assertIn("[[wiki/indexes/protocols|", home)
-        self.assertIn("[[wiki/indexes/Furnace Protocols|", (self.root / "docs" / "Wiki Hub.md").read_text(encoding="utf-8"))
+        self.assertIn("[[docs/Furnace Protocols|", (self.root / "docs" / "Wiki Hub.md").read_text(encoding="utf-8"))
         self.assertIn("[[docs/Furnace Material State Model|", (self.root / "docs" / "Wiki Hub.md").read_text(encoding="utf-8"))
         self.assertIn("[[wiki/indexes/review-center|", home)
         self.assertIn("[[wiki/indexes/graph-view|", home)
@@ -70,7 +70,7 @@ class ObsidianWorkspaceTests(unittest.TestCase):
             "docs/Furnace Ultimate Architecture.md",
             "docs/Furnace Material Scaling.md",
             "docs/Furnace Material State Model.md",
-            "wiki/indexes/Furnace Protocols.md",
+            "docs/Furnace Protocols.md",
             "wiki/indexes/furnace-center.md",
             "wiki/indexes/protocols.md",
             "wiki/indexes/review-center.md",
