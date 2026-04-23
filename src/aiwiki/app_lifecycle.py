@@ -18,18 +18,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from .app_content import (
-    build_concept_quality,
-    curated_asset_section_snapshot,
-    entry_ids_from_paths,
-    entry_lookup_maps,
-    preserved_section,
-    render_curated_asset_sections,
-    render_review_history_section,
-    review_history_entries,
-    routing_snapshot_for_protocol,
-    source_summary_or_preview,
-)
 from .app_protocol import (
     AUTO_PROMOTION_FORMATS,
     CONFLICT_SIGNAL_PAIRS,
@@ -115,6 +103,18 @@ from .app_utils import (
     utc_now,
 )
 from .config import LLMConfig
+from .content.concepts import build_concept_quality
+from .content.io import (
+    curated_asset_section_snapshot,
+    entry_ids_from_paths,
+    entry_lookup_maps,
+    preserved_section,
+    render_curated_asset_sections,
+    render_review_history_section,
+    review_history_entries,
+    routing_snapshot_for_protocol,
+    source_summary_or_preview,
+)
 
 
 def default_curated_status(kind: str) -> str:
