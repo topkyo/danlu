@@ -108,232 +108,34 @@ from .app_utils import (
     utc_now,
 )
 from .config import LLMConfig
-
-
-def sync_manifest_with_raw(root: Path) -> dict[str, Any]:
-    ensure_layout(root)
-    manifest = load_manifest(root)
-    entries: list[dict[str, Any]] = manifest["entries"]
-    existing_entries = [
-        entry
-        for entry in entries
-        if (root / str(entry.get("stored_path") or "")).is_file()
-    ]
-    if len(existing_entries) != len(entries):
-        entries[:] = existing_entries
-        changed = True
-    else:
-        changed = False
-    entry_by_path = {entry["stored_path"]: entry for entry in entries}
-    known_paths = set(entry_by_path)
-    existing_ids = {entry["id"] for entry in entries}
-
-    for path in sorted((root / "raw" / "inbox").iterdir()):
-        if not path.is_file():
-            continue
-        stored_path = relative_path(root, path)
-        metadata = raw_note_metadata(path)
-        if stored_path in known_paths:
-            entry = entry_by_path[stored_path]
-            current_sha = sha256_file(path)
-            current_kind = detect_kind(path)
-            current_title = metadata.get("title") or entry["title"]
-            current_source_type = metadata.get("source_type") or entry["source_type"]
-            current_note_kind = metadata.get("note_kind") or str(entry.get("note_kind") or "")
-            current_original_path = metadata.get("original_path") or entry["original_path"]
-            if (
-                entry.get("sha256") != current_sha
-                or entry.get("kind") != current_kind
-                or entry.get("title") != current_title
-                or entry.get("source_type") != current_source_type
-                or entry.get("note_kind") != current_note_kind
-                or entry.get("original_path") != current_original_path
-            ):
-                entry["sha256"] = current_sha
-                entry["kind"] = current_kind
-                entry["title"] = current_title
-                entry["source_type"] = current_source_type
-                entry["note_kind"] = current_note_kind
-                entry["original_path"] = current_original_path
-                entry["updated_at"] = datetime.fromtimestamp(
-                    path.stat().st_mtime, tz=timezone.utc
-                ).replace(microsecond=0).isoformat()
-                changed = True
-            continue
-        stamp = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).strftime("%Y%m%d%H%M%S")
-        seed_label = metadata.get("title") or path.stem
-        seed = f"discovered-{stamp}-{slugify(seed_label)}"
-        entry_id = next_identifier(existing_ids, seed)
-        existing_ids.add(entry_id)
-        entries.append(
-            {
-                "id": entry_id,
-                "title": metadata.get("title") or path.stem,
-                "source_type": metadata.get("source_type") or "raw-drop",
-                "note_kind": metadata.get("note_kind") or "",
-                "original_path": metadata.get("original_path") or stored_path,
-                "stored_path": stored_path,
-                "kind": detect_kind(path),
-                "sha256": sha256_file(path),
-                "imported_at": datetime.fromtimestamp(
-                    path.stat().st_mtime, tz=timezone.utc
-                ).replace(microsecond=0).isoformat(),
-                "updated_at": datetime.fromtimestamp(
-                    path.stat().st_mtime, tz=timezone.utc
-                ).replace(microsecond=0).isoformat(),
-            }
-        )
-        known_paths.add(stored_path)
-        changed = True
-
-    if changed:
-        save_manifest(root, manifest)
-    return manifest
-
-
-@runtime_write_operation
-def ingest_source(root: Path, source: str, title: str | None = None) -> dict[str, Any]:
-    ensure_layout(root)
-    manifest = sync_manifest_with_raw(root)
-    existing_ids = {entry["id"] for entry in manifest["entries"]}
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-    label = title or Path(source).stem or source
-    display_title = title or label
-    entry_id = next_identifier(existing_ids, f"{stamp}-{slugify(label)}")
-
-    if source.startswith("http://") or source.startswith("https://"):
-        destination = root / "raw" / "inbox" / f"{entry_id}.md"
-        stub_title = title or source
-        stub = "\n".join(
-            [
-                f"# {stub_title}",
-                "",
-                "## 来源 URL",
-                f"- {source}",
-                "",
-                "## 采集状态",
-                "- 这个 URL 目前只是一个占位 stub。",
-                "- 在把它当作事实来源前，请先用剪藏 markdown 或本地附件替换成更完整材料。",
-                "",
-                "## 备注",
-                "- 在补充更完整材料之前，编译器会把这个文件视为占位来源。",
-            ]
-        )
-        destination.write_text(stub + "\n", encoding="utf-8")
-        original_path = source
-        source_type = "url"
-    else:
-        source_path = Path(source).expanduser().resolve()
-        if not source_path.is_file():
-            raise FileNotFoundError(f"Source not found: {source}")
-        destination = root / "raw" / "inbox" / f"{entry_id}{source_path.suffix.lower()}"
-        shutil.copy2(source_path, destination)
-        original_path = str(source_path)
-        source_type = "file"
-
-    entry = {
-        "id": entry_id,
-        "title": display_title,
-        "source_type": source_type,
-        "original_path": original_path,
-        "stored_path": relative_path(root, destination),
-        "kind": detect_kind(destination),
-        "sha256": sha256_file(destination),
-        "imported_at": utc_now(),
-    }
-    manifest["entries"].append(entry)
-    save_manifest(root, manifest)
-    append_wiki_log(
-        root,
-        "ingest",
-        display_title,
-        [
-            f"source_type: `{source_type}`",
-            f"stored_path: `{entry['stored_path']}`",
-            f"original_path: `{original_path}`",
-        ],
-    )
-    return entry
-
-
-def render_source_page(entry: dict[str, Any], preview: str, compiled_at: str) -> str:
-    return render_source_page_with_state(entry, preview, compiled_at, concepts=[], existing_page="")
-
-
-def render_source_page_with_state(
-    entry: dict[str, Any],
-    preview: str,
-    compiled_at: str,
-    *,
-    concepts: list[str],
-    existing_page: str,
-) -> str:
-    existing_frontmatter = parse_frontmatter(existing_page)
-    source_changed = compiled_source_sha(existing_page) not in ("", entry["sha256"])
-    citations = existing_frontmatter.get("citations", []) if not source_changed else []
-    if not isinstance(citations, list):
-        citations = []
-    confidence = existing_frontmatter.get("confidence", "low") if not source_changed else "low"
-    if not isinstance(confidence, str) or not confidence:
-        confidence = "low"
-    summary = (
-        preserved_section(existing_page, "Summary", "- Pending LLM summary.")
-        if not source_changed
-        else "- Pending LLM summary."
-    )
-    concept_links = ["- No concept links yet."] if not concepts else [
-        f"- [{concept_label_to_title(label)}](../concepts/{concept_label_to_slug(label)}.md)"
-        for label in concepts
-    ]
-    frontmatter = render_frontmatter(
-        {
-            "id": entry["id"],
-            "kind": "source",
-            "status": "compiled",
-            "title": entry["title"],
-            "source_files": [entry["stored_path"]],
-            "source_sha256": entry["sha256"],
-            "citations": citations,
-            "concepts": concepts,
-            "generated_by": "aiwiki-compile",
-            "last_compiled_at": compiled_at,
-            "confidence": confidence,
-        }
-    )
-    body = "\n".join(
-        [
-            frontmatter,
-            "",
-            f"# {entry['title']}",
-            "",
-            "## Source Record",
-            f"- Source type: `{entry['source_type']}`",
-            f"- Original path: `{entry['original_path']}`",
-            f"- Stored path: `{entry['stored_path']}`",
-            f"- Imported at: `{entry['imported_at']}`",
-            f"- SHA256: `{entry['sha256']}`",
-            "",
-            "## Summary",
-            summary,
-            "",
-            "## Concept Links",
-            *concept_links,
-            "",
-            "## Enrichment TODO",
-            "- Refresh concept links when new sources shift the synthesis.",
-            "- Add backlinks from derived outputs that cite this page.",
-            "- Preserve provenance when replacing placeholder text.",
-            "",
-            "## Preview",
-            "```text",
-            preview,
-            "```",
-            "",
-            "## Citation Anchor",
-            f"- Cite this page as `wiki/sources/{entry['id']}.md`.",
-        ]
-    )
-    return body + "\n"
+from .content.io import (  # noqa: F401
+    active_manual_source_concept_links,
+    annotate_recurring_promotion,
+    append_review_history_entry,
+    collect_output_artifacts,
+    collect_output_density_artifacts,
+    collect_recent_output_artifacts,
+    curated_asset_placeholder_lines,
+    curated_asset_section_snapshot,
+    entry_ids_from_paths,
+    entry_lookup_maps,
+    find_promoted_curated_page,
+    ingest_source,
+    load_source_page_context,
+    manifest_change_summary,
+    normalized_markdown_section_lines,
+    preserved_section,
+    recurring_promotion_needs_refresh,
+    render_curated_asset_sections,
+    render_review_history_section,
+    render_source_page,
+    render_source_page_with_state,
+    review_history_entries,
+    routing_snapshot_for_protocol,
+    source_summary_or_preview,
+    summarize_runtime_event_for_shell,
+    sync_manifest_with_raw,
+)
 
 
 def concept_candidates(entries: list[dict[str, Any]]) -> list[str]:
@@ -345,128 +147,6 @@ def concept_candidates(entries: list[dict[str, Any]]) -> list[str]:
             counts[token] = counts.get(token, 0) + 1
     ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     return [token for token, _count in ranked[:10]]
-
-
-def preserved_section(markdown: str, heading: str, fallback: str) -> str:
-    if not markdown:
-        return fallback
-    pattern = rf"(?ms)^## {re.escape(heading)}\n(.*?)(?=^## |\Z)"
-    match = re.search(pattern, markdown)
-    if not match:
-        return fallback
-    section = match.group(1).strip()
-    return section or fallback
-
-
-def normalized_markdown_section_lines(markdown: str, heading: str) -> list[str]:
-    section = preserved_section(markdown, heading, "").strip()
-    if not section:
-        return []
-    return [line.strip() for line in section.splitlines() if line.strip()]
-
-
-def curated_asset_placeholder_lines(
-    heading: str,
-    *,
-    revisit_after: str = "",
-    escalate_after: str = "",
-) -> list[str]:
-    placeholders = {
-        "Counter Evidence": ["- Pending counter evidence."],
-        "Invalidation": ["- Pending invalidation conditions."],
-        "Next Signals": [
-            "- Pending next signals.",
-            f"- Default revisit window: `{revisit_after or 'none'}`",
-            f"- Default escalation window: `{escalate_after or 'none'}`",
-        ],
-        "Review History": ["- No review history yet."],
-    }
-    return placeholders.get(heading, [])
-
-
-def render_curated_asset_sections(
-    *,
-    revisit_after: str,
-    escalate_after: str,
-) -> list[str]:
-    sections: list[str] = []
-    for heading in CURATED_ASSET_SECTION_ORDER:
-        if heading == "Review History":
-            continue
-        sections.extend(
-            [
-                "",
-                f"## {heading}",
-                *curated_asset_placeholder_lines(
-                    heading,
-                    revisit_after=revisit_after,
-                    escalate_after=escalate_after,
-                ),
-            ]
-        )
-    return sections
-
-
-def render_review_history_section() -> list[str]:
-    return [
-        "",
-        "## Review History",
-        *curated_asset_placeholder_lines("Review History"),
-    ]
-
-
-def curated_asset_section_snapshot(
-    markdown: str,
-    heading: str,
-    *,
-    revisit_after: str = "",
-    escalate_after: str = "",
-) -> dict[str, Any]:
-    lines = normalized_markdown_section_lines(markdown, heading)
-    placeholders = curated_asset_placeholder_lines(
-        heading,
-        revisit_after=revisit_after,
-        escalate_after=escalate_after,
-    )
-    meaningful_lines = [line for line in lines if line not in placeholders]
-    review_history_entries = 0
-    if heading == "Review History":
-        review_history_entries = sum(1 for line in meaningful_lines if line.startswith("- `"))
-    return {
-        "present": bool(lines),
-        "meaningful": bool(meaningful_lines),
-        "placeholder_only": bool(lines) and not meaningful_lines,
-        "review_history_entries": review_history_entries,
-    }
-
-
-def append_review_history_entry(
-    markdown: str,
-    *,
-    reviewed_at: str,
-    status: str,
-    note: str | None = None,
-    confidence: str | None = None,
-) -> str:
-    existing_lines = normalized_markdown_section_lines(markdown, "Review History")
-    history_lines = [line for line in existing_lines if line != "- No review history yet."]
-    entry_parts = [f"- `{reviewed_at}` | status `{status}`"]
-    if confidence:
-        entry_parts.append(f"confidence `{confidence}`")
-    if note:
-        entry_parts.append(f"note {note}")
-    else:
-        entry_parts.append("note none")
-    history_lines.insert(0, " | ".join(entry_parts))
-    return upsert_markdown_section(markdown, "Review History", "\n".join(history_lines))
-
-
-def review_history_entries(markdown: str) -> list[str]:
-    return [
-        line
-        for line in normalized_markdown_section_lines(markdown, "Review History")
-        if line != "- No review history yet."
-    ]
 
 
 def concept_label_to_slug(label: str) -> str:
@@ -494,28 +174,6 @@ def entry_concept_terms(entry: dict[str, Any], context: str, max_terms: int = 5)
     ranked = sorted(scores.items(), key=lambda item: (-item[1], len(item[0]), item[0]))
     return [label for label, _score in ranked[:max_terms]]
 
-
-def source_summary_or_preview(root: Path, entry: dict[str, Any], preview: str) -> str:
-    page = root / "wiki" / "sources" / f"{entry['id']}.md"
-    if page.exists():
-        content = page.read_text(encoding="utf-8", errors="replace")
-        summary = preserved_section(content, "Summary", "")
-        if compiled_source_sha(content) in ("", entry["sha256"]) and summary and "Pending LLM summary." not in summary:
-            return summary
-    return preview
-
-
-def active_manual_source_concept_links(root: Path) -> dict[str, set[str]]:
-    state = load_manual_link_state(root)
-    mapping: dict[str, set[str]] = {}
-    for item in state.get("source_to_concept", []):
-        source_id = str(item.get("source_id") or "").strip()
-        concept_slug = str(item.get("concept_slug") or "").strip()
-        active = bool(item.get("active", True))
-        if not source_id or not concept_slug or not active:
-            continue
-        mapping.setdefault(source_id, set()).add(concept_slug)
-    return mapping
 
 
 def concept_source_input_signature(entry: dict[str, Any], context: str, manual_slugs: list[str]) -> str:
@@ -1729,31 +1387,6 @@ def promotion_page_title(kind: str, query: str, protocol: str = DEFAULT_PROTOCOL
     )
     return f"{prefix}：{query}"
 
-
-def collect_output_artifacts(root: Path) -> list[dict[str, str]]:
-    artifacts: list[dict[str, str]] = []
-    for relative in ("output/reports", "output/figures"):
-        for path in sorted((root / relative).glob("*.md")):
-            content = path.read_text(encoding="utf-8", errors="replace")
-            frontmatter = parse_frontmatter(content)
-            if frontmatter.get("kind") != "output":
-                continue
-            query = str(frontmatter.get("query") or "").strip()
-            output_format = str(frontmatter.get("format") or "").strip()
-            if not query or output_format not in AUTO_PROMOTION_FORMATS:
-                continue
-            artifacts.append(
-                {
-                    "path": relative_path(root, path),
-                    "query": query,
-                    "query_signature": normalize_query_signature(query),
-                    "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
-                    "format": output_format,
-                    "created_at": str(frontmatter.get("created_at") or ""),
-                    "title": first_markdown_heading(content) or path.stem,
-                }
-            )
-    return sorted(artifacts, key=lambda item: (item["query_signature"], item["created_at"], item["path"]))
 
 
 def collect_output_density_artifacts(root: Path) -> list[dict[str, str]]:
