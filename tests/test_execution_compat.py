@@ -109,6 +109,10 @@ class ExecutionCompatSeamTests(unittest.TestCase):
             # B2 — ask / file-back
             "ask_question": "aiwiki.execution.ask",
             "file_back": "aiwiki.execution.ask",
+            # B3 — lifecycle
+            "refresh_knowledge_lifecycle_runtime": "aiwiki.execution.lifecycle",
+            "retire_concept": "aiwiki.execution.lifecycle",
+            "reactivate_concept": "aiwiki.execution.lifecycle",
         }
         for name, owner in app_compile._LAZY_OWNERS.items():
             expected = migrated.get(name, "aiwiki.app_compile")
@@ -470,6 +474,225 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
         # Two calls per accepted id: one dry-run, one real.
         self.assertEqual(len(observed), 2)
         self.assertEqual(len(result["auto_applied"]), 1)
+
+    def test_b3_lifecycle_module_resolves_to_execution_module(self) -> None:
+        import importlib
+
+        lifecycle_mod = importlib.import_module("aiwiki.execution.lifecycle")
+        for name in (
+            "refresh_knowledge_lifecycle_runtime",
+            "retire_concept",
+            "reactivate_concept",
+        ):
+            app_compile.__dict__.pop(name, None)
+        self.assertIs(
+            app_compile.refresh_knowledge_lifecycle_runtime,
+            lifecycle_mod.refresh_knowledge_lifecycle_runtime,
+        )
+        self.assertIs(app_compile.retire_concept, lifecycle_mod.retire_concept)
+        self.assertIs(app_compile.reactivate_concept, lifecycle_mod.reactivate_concept)
+
+    def test_b3_from_import_works(self) -> None:
+        for name in (
+            "refresh_knowledge_lifecycle_runtime",
+            "retire_concept",
+            "reactivate_concept",
+        ):
+            app_compile.__dict__.pop(name, None)
+        local_ns: dict[str, object] = {}
+        exec(
+            "from aiwiki.app_compile import (\n"
+            "    refresh_knowledge_lifecycle_runtime,\n"
+            "    retire_concept,\n"
+            "    reactivate_concept,\n"
+            ")",
+            {"__builtins__": __builtins__},
+            local_ns,
+        )
+        self.assertIn("refresh_knowledge_lifecycle_runtime", local_ns)
+        self.assertIn("retire_concept", local_ns)
+        self.assertIn("reactivate_concept", local_ns)
+        self.assertTrue(callable(local_ns["refresh_knowledge_lifecycle_runtime"]))
+        self.assertTrue(callable(local_ns["retire_concept"]))
+        self.assertTrue(callable(local_ns["reactivate_concept"]))
+
+    def test_b3_refresh_knowledge_lifecycle_runtime_uses_patched_utc_now(self) -> None:
+        # When ``generated_at`` is not supplied, the function lazy-resolves
+        # ``utc_now`` via ``aiwiki.app_compile``. A ``patch`` on that seam
+        # must intercept the call after the B3 migration.
+        import importlib
+        import tempfile
+
+        lifecycle_mod = importlib.import_module("aiwiki.execution.lifecycle")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch.object(
+                lifecycle_mod,
+                "sync_manifest_with_raw",
+                return_value={"entries": []},
+            ), patch.object(
+                lifecycle_mod,
+                "refresh_knowledge_lifecycle_state",
+                return_value={"entries": []},
+            ), patch.object(
+                lifecycle_mod, "load_active_corpora_state", return_value={}
+            ), patch.object(
+                lifecycle_mod, "load_machine_memory", return_value={}
+            ), patch(
+                "aiwiki.app_compile.utc_now", side_effect=_fake_utc
+            ):
+                lifecycle_mod.refresh_knowledge_lifecycle_runtime(root)
+
+        self.assertTrue(
+            observed,
+            msg="refresh_knowledge_lifecycle_runtime did not route utc_now "
+            "through aiwiki.app_compile; B3 lazy-lookup seam regressed.",
+        )
+
+    def test_b3_retire_concept_uses_patched_utc_now(self) -> None:
+        # ``retire_concept`` lazy-resolves ``utc_now`` for the timestamp it
+        # stamps onto the override record. Stub the surrounding heavy work
+        # so we reach that lazy call and assert the patched sentinel fires.
+        import importlib
+        import tempfile
+
+        lifecycle_mod = importlib.import_module("aiwiki.execution.lifecycle")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # ``concept_page_path`` returns a real path; we create the file
+            # so ``path.exists()`` is True.
+            concept_file = root / "concept.md"
+            concept_file.write_text("x", encoding="utf-8")
+
+            with patch.object(lifecycle_mod, "ensure_layout"), patch.object(
+                lifecycle_mod, "concept_page_path", return_value=concept_file
+            ), patch.object(
+                lifecycle_mod, "relative_path", return_value="wiki/concepts/x.md"
+            ), patch.object(
+                lifecycle_mod,
+                "refresh_knowledge_lifecycle_runtime",
+                return_value={"entries": []},
+            ), patch.object(
+                lifecycle_mod,
+                "concept_lifecycle_entry",
+                side_effect=[
+                    {"page_id": "concept-x", "title": "X", "lifecycle_state": "active"},
+                    {"lifecycle_state": "retired"},
+                ],
+            ), patch.object(
+                lifecycle_mod,
+                "ensure_knowledge_lifecycle_override_state",
+                return_value={"entries": []},
+            ), patch.object(
+                lifecycle_mod, "save_knowledge_lifecycle_override_state"
+            ), patch.object(
+                lifecycle_mod, "append_runtime_history"
+            ), patch.object(
+                lifecycle_mod, "append_wiki_log"
+            ), patch.object(
+                lifecycle_mod,
+                "knowledge_lifecycle_override_state_path",
+                return_value=root / "override.json",
+            ), patch.object(
+                lifecycle_mod,
+                "knowledge_lifecycle_state_path",
+                return_value=root / "lifecycle.json",
+            ), patch(
+                "aiwiki.app_compile.utc_now", side_effect=_fake_utc
+            ):
+                lifecycle_mod.retire_concept(root, "x", note="probe")
+
+        self.assertTrue(
+            observed,
+            msg="retire_concept did not route utc_now through "
+            "aiwiki.app_compile; B3 lazy-lookup seam regressed.",
+        )
+
+    def test_b3_reactivate_concept_uses_patched_utc_now(self) -> None:
+        # Same hot-patch seam check for ``reactivate_concept``.
+        import importlib
+        import tempfile
+
+        lifecycle_mod = importlib.import_module("aiwiki.execution.lifecycle")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            concept_file = root / "concept.md"
+            concept_file.write_text("x", encoding="utf-8")
+            # ``reactivate_concept`` requires an active retired override
+            # entry matching the concept path, so seed one.
+            override_state = {
+                "entries": [
+                    {
+                        "active": True,
+                        "kind": "concept",
+                        "path": "wiki/concepts/x.md",
+                        "lifecycle_state": "retired",
+                        "page_id": "concept-x",
+                    }
+                ]
+            }
+
+            with patch.object(lifecycle_mod, "ensure_layout"), patch.object(
+                lifecycle_mod, "concept_page_path", return_value=concept_file
+            ), patch.object(
+                lifecycle_mod, "relative_path", return_value="wiki/concepts/x.md"
+            ), patch.object(
+                lifecycle_mod,
+                "ensure_knowledge_lifecycle_override_state",
+                return_value=override_state,
+            ), patch.object(
+                lifecycle_mod, "save_knowledge_lifecycle_override_state"
+            ), patch.object(
+                lifecycle_mod,
+                "refresh_knowledge_lifecycle_runtime",
+                return_value={"entries": []},
+            ), patch.object(
+                lifecycle_mod,
+                "concept_lifecycle_entry",
+                return_value={"lifecycle_state": "active", "title": "X"},
+            ), patch.object(
+                lifecycle_mod, "append_runtime_history"
+            ), patch.object(
+                lifecycle_mod, "append_wiki_log"
+            ), patch.object(
+                lifecycle_mod,
+                "knowledge_lifecycle_override_state_path",
+                return_value=root / "override.json",
+            ), patch.object(
+                lifecycle_mod,
+                "knowledge_lifecycle_state_path",
+                return_value=root / "lifecycle.json",
+            ), patch(
+                "aiwiki.app_compile.utc_now", side_effect=_fake_utc
+            ):
+                lifecycle_mod.reactivate_concept(root, "x", note="probe")
+
+        self.assertTrue(
+            observed,
+            msg="reactivate_concept did not route utc_now through "
+            "aiwiki.app_compile; B3 lazy-lookup seam regressed.",
+        )
 
 
 class ExecutionCompatSeamMigrationSimulationTests(unittest.TestCase):

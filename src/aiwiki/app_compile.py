@@ -1008,161 +1008,11 @@ def revert_concept_rewrite(root: Path, slug: str, *, note: str | None = None) ->
     }
 
 
-def refresh_knowledge_lifecycle_runtime(root: Path, *, generated_at: str | None = None) -> dict[str, Any]:
-    manifest = sync_manifest_with_raw(root)
-    return refresh_knowledge_lifecycle_state(
-        root,
-        generated_at=generated_at or utc_now(),
-        entries=manifest["entries"],
-        active_corpora_state=load_active_corpora_state(root),
-        memory=load_machine_memory(root),
-    )
-
-
-@runtime_write_operation
-def retire_concept(root: Path, slug: str, *, note: str | None = None) -> dict[str, Any]:
-    ensure_layout(root)
-    path = concept_page_path(root, slug)
-    if not path.exists():
-        raise FileNotFoundError(f"Concept page not found: {relative_path(root, path)}")
-    lifecycle = refresh_knowledge_lifecycle_runtime(root)
-    current_entry = concept_lifecycle_entry(lifecycle, slug)
-    if not current_entry:
-        raise RuntimeError(f"Concept lifecycle entry not found: {slug}")
-    if current_entry.get("active_corpus_ids"):
-        raise RuntimeError("Active-corpus concept cannot transition to retired.")
-    if str(current_entry.get("lifecycle_state") or "") == "retired" and current_entry.get("override_active"):
-        raise RuntimeError(f"Concept is already retired: {slug}")
-
-    override_state = ensure_knowledge_lifecycle_override_state(root)
-    override_entries = [dict(entry) for entry in override_state.get("entries", []) if isinstance(entry, dict)]
-    retired_at = utc_now()
-    path_ref = relative_path(root, path)
-    page_id = str(current_entry.get("page_id") or f"concept-{slug}")
-    for entry in override_entries:
-        if (
-            bool(entry.get("active"))
-            and str(entry.get("kind") or "") == "concept"
-            and str(entry.get("path") or "") == path_ref
-        ):
-            entry["active"] = False
-            entry["cleared_at"] = retired_at
-            entry["cleared_note"] = "Superseded by newer concept lifecycle override."
-    override_entries.append(
-        {
-            "page_id": page_id,
-            "slug": slug,
-            "path": path_ref,
-            "kind": "concept",
-            "lifecycle_state": "retired",
-            "active": True,
-            "operation": "retire",
-            "reason_codes": ["manual-retire"],
-            "applied_at": retired_at,
-            "updated_at": retired_at,
-            "note": note or "Concept retired from the active knowledge plane.",
-        }
-    )
-    save_knowledge_lifecycle_override_state(root, {"version": 1, "entries": override_entries})
-    updated_lifecycle = refresh_knowledge_lifecycle_runtime(root, generated_at=retired_at)
-    append_runtime_history(
-        root,
-        {
-            "event_type": "knowledge-lifecycle-override",
-            "occurred_at": retired_at,
-            "operation": "retire",
-            "kind": "concept",
-            "page_id": page_id,
-            "slug": slug,
-            "path": path_ref,
-            "lifecycle_state": "retired",
-            "note": note or "",
-        },
-    )
-    append_wiki_log(
-        root,
-        "concept-retire",
-        str(current_entry.get("title") or slug),
-        [
-            f"slug: `{slug}`",
-            f"path: `{path_ref}`",
-            "lifecycle_state: `retired`",
-            f"override_state: `{relative_path(root, knowledge_lifecycle_override_state_path(root))}`",
-        ],
-    )
-    final_entry = concept_lifecycle_entry(updated_lifecycle, slug)
-    return {
-        "slug": slug,
-        "path": path_ref,
-        "status": str(final_entry.get("lifecycle_state") or "retired"),
-        "override_path": relative_path(root, knowledge_lifecycle_override_state_path(root)),
-        "knowledge_lifecycle_path": relative_path(root, knowledge_lifecycle_state_path(root)),
-        "updated_at": retired_at,
-    }
-
-
-@runtime_write_operation
-def reactivate_concept(root: Path, slug: str, *, note: str | None = None) -> dict[str, Any]:
-    ensure_layout(root)
-    path = concept_page_path(root, slug)
-    if not path.exists():
-        raise FileNotFoundError(f"Concept page not found: {relative_path(root, path)}")
-    override_state = ensure_knowledge_lifecycle_override_state(root)
-    override_entries = [dict(entry) for entry in override_state.get("entries", []) if isinstance(entry, dict)]
-    path_ref = relative_path(root, path)
-    target: dict[str, Any] | None = None
-    for entry in override_entries:
-        if (
-            bool(entry.get("active"))
-            and str(entry.get("kind") or "") == "concept"
-            and str(entry.get("path") or "") == path_ref
-            and str(entry.get("lifecycle_state") or "") == "retired"
-        ):
-            target = entry
-            break
-    if target is None:
-        raise RuntimeError(f"No active retired concept override exists for slug: {slug}")
-    reactivated_at = utc_now()
-    target["active"] = False
-    target["reactivated_at"] = reactivated_at
-    target["reactivate_note"] = note or "Concept reactivated into heuristic lifecycle routing."
-    target["updated_at"] = reactivated_at
-    save_knowledge_lifecycle_override_state(root, {"version": 1, "entries": override_entries})
-    updated_lifecycle = refresh_knowledge_lifecycle_runtime(root, generated_at=reactivated_at)
-    final_entry = concept_lifecycle_entry(updated_lifecycle, slug)
-    append_runtime_history(
-        root,
-        {
-            "event_type": "knowledge-lifecycle-override",
-            "occurred_at": reactivated_at,
-            "operation": "reactivate",
-            "kind": "concept",
-            "page_id": str(target.get("page_id") or f"concept-{slug}"),
-            "slug": slug,
-            "path": path_ref,
-            "lifecycle_state": str(final_entry.get("lifecycle_state") or ""),
-            "note": note or "",
-        },
-    )
-    append_wiki_log(
-        root,
-        "concept-reactivate",
-        str(final_entry.get("title") or slug),
-        [
-            f"slug: `{slug}`",
-            f"path: `{path_ref}`",
-            f"lifecycle_state: `{str(final_entry.get('lifecycle_state') or 'unknown')}`",
-            f"override_state: `{relative_path(root, knowledge_lifecycle_override_state_path(root))}`",
-        ],
-    )
-    return {
-        "slug": slug,
-        "path": path_ref,
-        "status": str(final_entry.get("lifecycle_state") or ""),
-        "override_path": relative_path(root, knowledge_lifecycle_override_state_path(root)),
-        "knowledge_lifecycle_path": relative_path(root, knowledge_lifecycle_state_path(root)),
-        "updated_at": reactivated_at,
-    }
+# EP-018B group 3 (B3): ``refresh_knowledge_lifecycle_runtime``,
+# ``retire_concept`` and ``reactivate_concept`` moved to
+# ``aiwiki.execution.lifecycle``. The ``_LAZY_OWNERS`` table below
+# still resolves ``aiwiki.app_compile.<name>`` lazily for backward
+# compatibility (see EP-018A/B1/B2 for the mechanism).
 
 
 def resolve_machine_memory_action_query(
@@ -2391,9 +2241,9 @@ _LAZY_OWNERS: dict[str, str] = {
     "_evaluate_concept_rewrite_verification": "aiwiki.app_compile",
     "_persist_concept_rewrite_verification": "aiwiki.app_compile",
     # Knowledge lifecycle (EP-018B group 3)
-    "refresh_knowledge_lifecycle_runtime": "aiwiki.app_compile",
-    "retire_concept": "aiwiki.app_compile",
-    "reactivate_concept": "aiwiki.app_compile",
+    "refresh_knowledge_lifecycle_runtime": "aiwiki.execution.lifecycle",
+    "retire_concept": "aiwiki.execution.lifecycle",
+    "reactivate_concept": "aiwiki.execution.lifecycle",
     # Machine-memory action (EP-018B group 6)
     "resolve_machine_memory_action_query": "aiwiki.app_compile",
     "review_machine_memory_action": "aiwiki.app_compile",
