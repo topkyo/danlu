@@ -168,6 +168,11 @@ from .content.io import (  # noqa: F401
     summarize_runtime_event_for_shell,
     sync_manifest_with_raw,
 )
+from .content.outputs import (  # noqa: F401
+    classify_recurring_output_kind,
+    normalize_query_signature,
+    promotion_page_title,
+)
 
 
 def machine_memory_source_input_signature(
@@ -946,35 +951,6 @@ def build_machine_memory_repair_plan(
             "blocked_proposals": int(planner_state.get("counts", {}).get("blocked", 0) or 0),
         },
     }
-
-
-def normalize_query_signature(query: str) -> str:
-    tokens = re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]+", query.lower())
-    signature = "-".join(tokens).strip("-")
-    return signature[:160] or "query"
-
-
-def classify_recurring_output_kind(query: str, protocol: str = DEFAULT_PROTOCOL) -> str:
-    normalized = " ".join(re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]+", query.lower()))
-    protocol_markers = PROTOCOL_CLASSIFICATION_MARKERS.get(protocol, PROTOCOL_CLASSIFICATION_MARKERS[DEFAULT_PROTOCOL])
-    decision_markers = DECISION_QUERY_MARKERS + tuple(protocol_markers.get("decision", ()))
-    judgment_markers = JUDGMENT_QUERY_MARKERS + tuple(protocol_markers.get("judgment", ()))
-    decision_score = sum(1 for marker in decision_markers if marker in normalized)
-    judgment_score = sum(1 for marker in judgment_markers if marker in normalized)
-    if decision_score <= 0 and judgment_score <= 0:
-        return ""
-    if decision_score >= judgment_score:
-        return "decision"
-    return "judgment"
-
-
-def promotion_page_title(kind: str, query: str, protocol: str = DEFAULT_PROTOCOL) -> str:
-    prefix = PROTOCOL_PROMOTION_PREFIXES.get(protocol, PROTOCOL_PROMOTION_PREFIXES[DEFAULT_PROTOCOL]).get(
-        kind,
-        "决策沉淀" if kind == "decision" else "判断沉淀",
-    )
-    return f"{prefix}：{query}"
-
 
 
 def _validate_rewrite_candidate_markdown(
