@@ -1,113 +1,17 @@
-"""Content/source/lifecycle logic extracted from aiwiki.app."""
+"""Content/source/lifecycle logic extracted from aiwiki.app.
+
+EP-017C step 5: fully migrated. This module is now a thin facade that re-exports
+symbols from `.content.*` (primary owners), plus late re-exports from
+`.app_lifecycle` and `.app_render`. The only non-re-export imports below are
+facade patch seams kept so that `content.*` submodules can access them via
+`from .. import app_content as _facade; _facade.<name>(...)` (see e.g.
+`content/io.py::save_manifest` and `content/memory.py::PENDING_ACTION_STATUSES`).
+"""
 
 from __future__ import annotations
 
-import fcntl
-import functools
-import hashlib
-import html
-import json
-import os
-import re
-import shutil
-import threading
-from collections import deque
-from contextlib import contextmanager
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import Any
-
-from .app_protocol import (
-    AUTO_PROMOTION_FORMATS,
-    CAUSAL_RELATION_TYPES,
-    CONCEPT_HARDNESS_LEVELS,
-    CONFLICT_SIGNAL_PAIRS,
-    CURATED_ASSET_SECTION_ORDER,
-    DECISION_QUERY_MARKERS,
-    DECISION_STATUSES,
-    EVIDENCE_GAP_MARKERS,
-    EXECUTION_BAND_LABELS,
-    JUDGMENT_QUERY_MARKERS,
-    JUDGMENT_STATUSES,
-    LOW_RISK_APPLYABLE_ACTION_KINDS,
-    PENDING_ACTION_STATUSES,
-    PENDING_DECISION_REVIEW_STATUSES,
-    PENDING_JUDGMENT_REVIEW_STATUSES,
-    PENDING_REWRITE_PROPOSAL_STATUSES,
-    PROTOCOL_CLASSIFICATION_MARKERS,
-    PROTOCOL_LIBRARY,
-    PROTOCOL_PROMOTION_PREFIXES,
-    RESOLVABLE_MONITOR_ACTION_KINDS,
-    action_focus_score,
-    ensure_layout,
-    load_protocol_state,
-    page_focus_score,
-    protocol_execution_policy_rule,
-    protocol_title,
-    save_manifest,
-    schedule_review_windows,
-)
-from .app_state import (
-    DEFAULT_PROTOCOL,
-    JUDGMENT_LIFECYCLE_STATES,
-    KNOWLEDGE_LIFECYCLE_KINDS,
-    KNOWLEDGE_LIFECYCLE_STATES,
-    active_knowledge_lifecycle_overrides,
-    default_compile_state,
-    default_knowledge_lifecycle_state,
-    default_material_routing_state,
-    ensure_knowledge_lifecycle_override_state,
-    execution_policy_log_path,
-    execution_receipt_history_path,
-    load_active_corpora_state,
-    load_concept_build_state,
-    load_concept_rewrite_state,
-    load_domain_pilot_build_state,
-    load_json_document,
-    load_knowledge_lifecycle_state,
-    load_machine_memory,
-    load_machine_memory_action_state,
-    load_manifest,
-    load_manual_link_state,
-    load_material_routing_state,
-    load_output_pack_build_state,
-    load_planner_state,
-    load_runtime_history,
-    manual_link_state_path,
-    material_archive_action_id,
-    material_archive_state_path,
-    material_state_path,
-    planner_state_path,
-    save_knowledge_lifecycle_state,
-)
-from .app_types import JudgmentAsset
-from .app_utils import (
-    STOP_WORDS,
-    analyze_citation_snapshots,
-    build_citation_snapshots,
-    compiled_source_sha,
-    detect_kind,
-    extract_provenance_paths,
-    first_markdown_heading,
-    next_identifier,
-    normalize_workspace_path,
-    parse_frontmatter,
-    parse_iso_datetime,
-    raw_note_metadata,
-    relative_path,
-    render_frontmatter,
-    replace_first_markdown_heading,
-    runtime_write_operation,
-    sha256_bytes,
-    sha256_file,
-    slugify,
-    strip_frontmatter,
-    tokenize,
-    upsert_markdown_section,
-    utc_now,
-)
-from .config import LLMConfig
+from .app_protocol import PENDING_ACTION_STATUSES, save_manifest  # noqa: F401
+from .app_utils import parse_frontmatter  # noqa: F401
 from .content.concepts import (  # noqa: F401
     _concept_summary_matches_legacy_placeholder,
     _normalize_summary_snippet,
