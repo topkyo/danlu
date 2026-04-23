@@ -113,6 +113,9 @@ class ExecutionCompatSeamTests(unittest.TestCase):
             "refresh_knowledge_lifecycle_runtime": "aiwiki.execution.lifecycle",
             "retire_concept": "aiwiki.execution.lifecycle",
             "reactivate_concept": "aiwiki.execution.lifecycle",
+            # B4 — material archive
+            "apply_material_archive": "aiwiki.execution.archive",
+            "revert_material_archive": "aiwiki.execution.archive",
         }
         for name, owner in app_compile._LAZY_OWNERS.items():
             expected = migrated.get(name, "aiwiki.app_compile")
@@ -692,6 +695,186 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
             observed,
             msg="reactivate_concept did not route utc_now through "
             "aiwiki.app_compile; B3 lazy-lookup seam regressed.",
+        )
+
+    def test_b4_archive_module_resolves_to_execution_module(self) -> None:
+        import importlib
+
+        archive_mod = importlib.import_module("aiwiki.execution.archive")
+        for name in ("apply_material_archive", "revert_material_archive"):
+            app_compile.__dict__.pop(name, None)
+        self.assertIs(
+            app_compile.apply_material_archive, archive_mod.apply_material_archive
+        )
+        self.assertIs(
+            app_compile.revert_material_archive, archive_mod.revert_material_archive
+        )
+
+    def test_b4_from_import_works(self) -> None:
+        import importlib
+
+        archive_mod = importlib.import_module("aiwiki.execution.archive")
+        for name in ("apply_material_archive", "revert_material_archive"):
+            app_compile.__dict__.pop(name, None)
+        local_ns: dict[str, object] = {}
+        exec(
+            "from aiwiki.app_compile import (\n"
+            "    apply_material_archive,\n"
+            "    revert_material_archive,\n"
+            ")",
+            {"__builtins__": __builtins__},
+            local_ns,
+        )
+        self.assertIs(
+            local_ns["apply_material_archive"], archive_mod.apply_material_archive
+        )
+        self.assertIs(
+            local_ns["revert_material_archive"], archive_mod.revert_material_archive
+        )
+
+    def test_b4_apply_material_archive_uses_patched_utc_now(self) -> None:
+        # ``apply_material_archive`` lazy-resolves ``utc_now`` for its
+        # ``applied_at`` timestamp. Stub surrounding heavy surfaces and
+        # verify ``patch("aiwiki.app_compile.utc_now")`` is honored.
+        # Use ExitStack to avoid Python's 20-level nested-block limit.
+        import contextlib
+        import importlib
+        import tempfile
+
+        archive_mod = importlib.import_module("aiwiki.execution.archive")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "wiki" / "state").mkdir(parents=True, exist_ok=True)
+            material_state_file = root / "material_state.json"
+            material_state_file.write_text("{}", encoding="utf-8")
+            archive_candidates_file = root / "archive_candidates.json"
+            archive_candidates_file.write_text("{}", encoding="utf-8")
+
+            candidate = {
+                "entry_id": "e1",
+                "status": "ready",
+                "recommended_temperature": "archived",
+            }
+            material_entry = {
+                "entry_id": "e1",
+                "temperature": "cold",
+                "active_corpus_ids": [],
+            }
+
+            stubs = {
+                "ensure_layout": None,
+                "sync_manifest_with_raw": {"entries": []},
+                "wiki_requires_compile": False,
+                "material_state_path": material_state_file,
+                "archive_candidates_state_path": archive_candidates_file,
+                "compile_wiki": None,
+                "load_manifest": {"entries": []},
+                "load_archive_candidates_state": {"entries": [candidate]},
+                "load_material_state": {"entries": [material_entry]},
+                "load_material_archive_state": {"entries": []},
+                "active_material_archive_entries": {},
+                "load_protocol_state": {"active_protocol": "general"},
+                "build_material_archive_bundle": {
+                    "bundle_path": "wiki/bundles/e1.json"
+                },
+                "write_execution_bundle_document": None,
+                "archive_dry_run_path": root / "dry.json",
+                "write_execution_dry_run_document": None,
+                "relative_path": "wiki/bundles/e1.json",
+                "append_runtime_history": None,
+                "append_wiki_log": None,
+                "material_archive_action_id": "archive-e1",
+            }
+            with contextlib.ExitStack() as stack:
+                for name, return_value in stubs.items():
+                    stack.enter_context(
+                        patch.object(archive_mod, name, return_value=return_value)
+                    )
+                stack.enter_context(
+                    patch("aiwiki.app_compile.utc_now", side_effect=_fake_utc)
+                )
+                archive_mod.apply_material_archive(root, "e1", dry_run=True)
+
+        self.assertTrue(
+            observed,
+            msg="apply_material_archive did not route utc_now through "
+            "aiwiki.app_compile; B4 lazy-lookup seam regressed.",
+        )
+
+    def test_b4_revert_material_archive_uses_patched_utc_now(self) -> None:
+        # Same hot-patch seam check for ``revert_material_archive``.
+        # Use ExitStack to avoid Python's 20-level nested-block limit.
+        import contextlib
+        import importlib
+        import tempfile
+
+        archive_mod = importlib.import_module("aiwiki.execution.archive")
+        observed: list[str] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            material_state_file = root / "material_state.json"
+            material_state_file.write_text("{}", encoding="utf-8")
+            receipt_file = root / "receipt.json"
+            receipt_file.write_text("{}", encoding="utf-8")
+
+            active_entry = {
+                "entry_id": "e1",
+                "title": "E1",
+                "source_path": "wiki/sources/e1.md",
+                "active": True,
+                "last_receipt_path": "receipt.json",
+            }
+            valid_receipt = {
+                "kind": "execution-receipt",
+                "operation": "apply",
+                "subject_id": "e1",
+            }
+
+            stubs = {
+                "ensure_layout": None,
+                "sync_manifest_with_raw": {"entries": []},
+                "wiki_requires_compile": False,
+                "material_state_path": material_state_file,
+                "compile_wiki": None,
+                "load_manifest": {"entries": []},
+                "load_material_archive_state": {"entries": [active_entry]},
+                "load_json_document": valid_receipt,
+                "load_protocol_state": {"active_protocol": "general"},
+                "build_material_archive_receipt": {"kind": "execution-receipt"},
+                "append_execution_receipt_history": None,
+                "relative_path": "receipt.json",
+                "save_material_archive_state": None,
+                "append_runtime_history": None,
+                "append_wiki_log": None,
+                "material_archive_action_id": "archive-e1",
+            }
+            with contextlib.ExitStack() as stack:
+                for name, return_value in stubs.items():
+                    stack.enter_context(
+                        patch.object(archive_mod, name, return_value=return_value)
+                    )
+                stack.enter_context(
+                    patch("aiwiki.app_compile.utc_now", side_effect=_fake_utc)
+                )
+                archive_mod.revert_material_archive(root, "e1")
+
+        self.assertTrue(
+            observed,
+            msg="revert_material_archive did not route utc_now through "
+            "aiwiki.app_compile; B4 lazy-lookup seam regressed.",
         )
 
 
