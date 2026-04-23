@@ -32,7 +32,7 @@ from __future__ import annotations
 import sys
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from aiwiki import app_compile
 
@@ -98,11 +98,20 @@ class ExecutionCompatSeamTests(unittest.TestCase):
         self.assertEqual(len(private), 8)
 
     def test_all_lazy_owners_self_reference_in_ep_018a(self) -> None:
+        # EP-018B flips these owner paths group-by-group to point at concrete
+        # ``aiwiki.execution.<submodule>`` modules. Any name listed here has
+        # completed migration and is exempt from the self-reference invariant.
+        migrated = {
+            # B1 — runtime surfaces
+            "nightly_health": "aiwiki.execution.runtime_surfaces",
+            "shell_status": "aiwiki.execution.runtime_surfaces",
+        }
         for name, owner in app_compile._LAZY_OWNERS.items():
+            expected = migrated.get(name, "aiwiki.app_compile")
             self.assertEqual(
                 owner,
-                "aiwiki.app_compile",
-                msg=f"EP-018A expects {name!r} to self-reference; got {owner!r}",
+                expected,
+                msg=f"{name!r} owner expected {expected!r}; got {owner!r}",
             )
 
     def test_module_does_not_define_dunder_all(self) -> None:
@@ -157,6 +166,112 @@ class ExecutionCompatSeamTests(unittest.TestCase):
             self.assertIn("no concrete binding", str(cm.exception))
         finally:
             app_compile._LAZY_OWNERS.pop(fake, None)
+
+
+class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
+    """Smoke tests for EP-018B groups that have completed migration.
+
+    Each assertion proves the real migrated module (not a stub) is what
+    callers see via ``aiwiki.app_compile.<name>``. This is the regression
+    canary the migration-simulation tests cannot provide on their own:
+    they only exercise the seam's forwarding mechanics against a synthetic
+    stub, not the actual post-migration wiring.
+    """
+
+    def test_b1_runtime_surfaces_resolve_to_execution_module(self) -> None:
+        import importlib
+
+        runtime_surfaces = importlib.import_module(
+            "aiwiki.execution.runtime_surfaces"
+        )
+        # Drop any cached binding so the seam forwards freshly.
+        for name in ("nightly_health", "shell_status"):
+            app_compile.__dict__.pop(name, None)
+        try:
+            self.assertIs(app_compile.nightly_health, runtime_surfaces.nightly_health)
+            self.assertIs(app_compile.shell_status, runtime_surfaces.shell_status)
+        finally:
+            # Re-prime the cache; no need to clean up since the resolution
+            # above already cached the real migrated targets.
+            pass
+
+    def test_b1_from_import_works(self) -> None:
+        # Pop any cached bindings so the seam forwards freshly during this
+        # test; otherwise a prior test that already resolved these names
+        # could make this one pass via cache alone, weakening the proof.
+        for name in ("nightly_health", "shell_status"):
+            app_compile.__dict__.pop(name, None)
+        local_ns: dict[str, object] = {}
+        exec(
+            "from aiwiki.app_compile import nightly_health, shell_status",
+            {"__builtins__": __builtins__},
+            local_ns,
+        )
+        self.assertIn("nightly_health", local_ns)
+        self.assertIn("shell_status", local_ns)
+        self.assertTrue(callable(local_ns["nightly_health"]))
+        self.assertTrue(callable(local_ns["shell_status"]))
+
+    def test_b1_nightly_health_resolves_apply_action_lazily(self) -> None:
+        # ``nightly_health`` calls ``app_compile.apply_machine_memory_action``
+        # through the seam so future B6 owner flips do not require editing
+        # this module. Verify by patching the attribute on ``app_compile``
+        # and confirming ``nightly_health`` picks up the patched callable.
+        # This also guards the ``except Exception: pass`` swallow block: if
+        # the lazy resolution ever silently returned a broken value, this
+        # test would fail because the patched sentinel would never fire.
+        import importlib
+
+        runtime_surfaces = importlib.import_module(
+            "aiwiki.execution.runtime_surfaces"
+        )
+        observed: list[tuple[tuple, dict]] = []
+
+        def _fake_apply(*args, **kwargs):
+            observed.append((args, kwargs))
+            return {"bundle_path": ""}
+
+        # Arrange a minimal state so the auto-consume loop actually reaches
+        # ``apply_machine_memory_action``. We stub the surrounding heavy
+        # calls to keep this a focused seam test.
+        with patch.object(runtime_surfaces, "ensure_layout"), patch.object(
+            runtime_surfaces, "compile_wiki", return_value={"status": "ok"}
+        ), patch.object(
+            runtime_surfaces, "promote_recurring_outputs", return_value={"count": 0}
+        ), patch.object(
+            runtime_surfaces, "lint_wiki", return_value={}
+        ), patch.object(
+            runtime_surfaces,
+            "load_machine_memory_action_state",
+            return_value={
+                "actions": [
+                    {
+                        "id": "act-1",
+                        "status": "accepted",
+                        "active": True,
+                        "kind": next(
+                            iter(runtime_surfaces.LOW_RISK_APPLYABLE_ACTION_KINDS)
+                        ),
+                    }
+                ]
+            },
+        ), patch.object(
+            runtime_surfaces,
+            "write_nightly_health",
+            return_value={"aging": {}, "repair_backlog": {"path": "x"}},
+        ), patch.object(
+            runtime_surfaces, "nightly_health_state_path", return_value=MagicMock()
+        ), patch.object(
+            runtime_surfaces, "relative_path", return_value="x"
+        ), patch(
+            "aiwiki.app_compile.apply_machine_memory_action",
+            side_effect=_fake_apply,
+        ):
+            result = runtime_surfaces.nightly_health(MagicMock())
+
+        # Two calls per accepted id: one dry-run, one real.
+        self.assertEqual(len(observed), 2)
+        self.assertEqual(len(result["auto_applied"]), 1)
 
 
 class ExecutionCompatSeamMigrationSimulationTests(unittest.TestCase):
