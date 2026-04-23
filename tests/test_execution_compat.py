@@ -32,6 +32,7 @@ from __future__ import annotations
 import sys
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from aiwiki import app_compile
@@ -105,6 +106,9 @@ class ExecutionCompatSeamTests(unittest.TestCase):
             # B1 — runtime surfaces
             "nightly_health": "aiwiki.execution.runtime_surfaces",
             "shell_status": "aiwiki.execution.runtime_surfaces",
+            # B2 — ask / file-back
+            "ask_question": "aiwiki.execution.ask",
+            "file_back": "aiwiki.execution.ask",
         }
         for name, owner in app_compile._LAZY_OWNERS.items():
             expected = migrated.get(name, "aiwiki.app_compile")
@@ -211,6 +215,200 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
         self.assertIn("shell_status", local_ns)
         self.assertTrue(callable(local_ns["nightly_health"]))
         self.assertTrue(callable(local_ns["shell_status"]))
+
+    def test_b2_ask_module_resolves_to_execution_module(self) -> None:
+        import importlib
+
+        ask_mod = importlib.import_module("aiwiki.execution.ask")
+        for name in ("ask_question", "file_back"):
+            app_compile.__dict__.pop(name, None)
+        self.assertIs(app_compile.ask_question, ask_mod.ask_question)
+        self.assertIs(app_compile.file_back, ask_mod.file_back)
+
+    def test_b2_from_import_works(self) -> None:
+        for name in ("ask_question", "file_back"):
+            app_compile.__dict__.pop(name, None)
+        local_ns: dict[str, object] = {}
+        exec(
+            "from aiwiki.app_compile import ask_question, file_back",
+            {"__builtins__": __builtins__},
+            local_ns,
+        )
+        self.assertIn("ask_question", local_ns)
+        self.assertIn("file_back", local_ns)
+        self.assertTrue(callable(local_ns["ask_question"]))
+        self.assertTrue(callable(local_ns["file_back"]))
+
+    def test_b2_ask_question_uses_patched_utc_now_and_rank_concepts(self) -> None:
+        # Mirror the file_back test: verify that patches on
+        # ``aiwiki.app_compile.utc_now`` AND ``aiwiki.app_compile.rank_concepts``
+        # are picked up by ``ask_question`` after the B2 migration. This
+        # guards against regressions where either name gets bound at module
+        # top of ``execution/ask.py`` and defeats the hot-patch seam.
+        import importlib
+        import tempfile
+
+        ask_mod = importlib.import_module("aiwiki.execution.ask")
+        utc_calls: list[str] = []
+        rank_calls: list[tuple] = []
+
+        def _fake_utc() -> str:
+            stamp = f"patched-utc-{len(utc_calls)}"
+            utc_calls.append(stamp)
+            return stamp
+
+        def _fake_rank(*args, **kwargs):
+            rank_calls.append((args, kwargs))
+            # Return a stub with the shape ``ask_question`` unpacks later.
+            return [
+                {
+                    "slug": "stub-concept",
+                    "source_pages": [],
+                }
+            ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "output" / "reports").mkdir(parents=True, exist_ok=True)
+            # Stub every surface ``ask_question`` calls before and around
+            # the ``utc_now`` + ``rank_concepts`` sites. We only need to
+            # reach those two lazy calls; downstream work can return
+            # whatever the first checkpoint needs. Use ExitStack to avoid
+            # Python's 20-level nested-block limit.
+            import contextlib
+
+            mm_query = {
+                "ranked_concept_slugs": [],
+                "ranked_source_ids": [],
+                "matched_terms": [],
+                "bridge_concept_slugs": [],
+                "query_routes": [],
+            }
+            stubs = {
+                "ensure_layout": None,
+                "sync_manifest_with_raw": {"entries": []},
+                "wiki_requires_compile": False,
+                "load_protocol_state": {"active_protocol": "general"},
+                "resolve_protocol": "general",
+                "active_archived_material_ids": set(),
+                "load_material_state": {},
+                "load_material_routing_state": {},
+                "load_archive_candidates_state": {},
+                "load_machine_memory": {},
+                "build_machine_memory_query": mm_query,
+                "rank_sources": [],
+                "slugify": "q",
+                "next_available_stem": "q-1",
+                "render_report": "body",
+                "relative_path": "output/reports/q-1.md",
+                "active_corpus_bridge_evidence_ids": [],
+                "upsert_active_corpus": {"corpus_id": "corpus-1"},
+                "append_runtime_history": None,
+                "record_query_route_telemetry": {"last_entry": {}},
+                "question_signature": "hash",
+                "refresh_material_state": None,
+                "refresh_knowledge_lifecycle_state": None,
+                "load_active_corpora_state": {},
+                "build_shell_summary": {},
+                "write_shell_summary": None,
+                "append_wiki_log": None,
+                "protocol_paths": [],
+                "compile_wiki": None,
+            }
+            with contextlib.ExitStack() as stack:
+                for name, return_value in stubs.items():
+                    stack.enter_context(
+                        patch.object(ask_mod, name, return_value=return_value)
+                    )
+                stack.enter_context(
+                    patch("aiwiki.app_compile.utc_now", side_effect=_fake_utc)
+                )
+                stack.enter_context(
+                    patch(
+                        "aiwiki.app_compile.rank_concepts",
+                        side_effect=_fake_rank,
+                    )
+                )
+                ask_mod.ask_question(
+                    root, "what", "report", protocol="general"
+                )
+
+        # If either name ever regresses to a module-top binding in ask.py,
+        # one of these assertions would fail because the patched sentinel
+        # would not fire.
+        self.assertTrue(
+            utc_calls,
+            msg="ask_question did not route utc_now through aiwiki.app_compile",
+        )
+        self.assertTrue(
+            rank_calls,
+            msg="ask_question did not route rank_concepts through "
+            "aiwiki.app_compile",
+        )
+
+    def test_b2_file_back_uses_patched_utc_now(self) -> None:
+        # ``file_back`` resolves ``utc_now`` lazily via
+        # ``aiwiki.app_compile`` so that hot-patch sites like
+        # ``patch("aiwiki.app_compile.utc_now", ...)`` in tests/test_app.py
+        # still take effect after the B2 migration. Stub the surrounding
+        # heavy work and assert the patched sentinel fires.
+        import importlib
+        import tempfile
+
+        ask_mod = importlib.import_module("aiwiki.execution.ask")
+        observed: list[str] = []
+
+        def _fake_utc_now() -> str:
+            stamp = f"patched-utc-{len(observed)}"
+            observed.append(stamp)
+            return stamp
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            artifact = root / "output" / "reports" / "stub.md"
+            artifact.parent.mkdir(parents=True, exist_ok=True)
+            artifact.write_text("body\n", encoding="utf-8")
+            # ``file_back`` writes into ``wiki/derived`` after the
+            # ``ensure_layout`` stub skips directory creation.
+            (root / "wiki" / "derived").mkdir(parents=True, exist_ok=True)
+
+            with patch.object(ask_mod, "ensure_layout"), patch.object(
+                ask_mod, "resolve_protocol", return_value="general"
+            ), patch.object(
+                ask_mod, "parse_frontmatter", return_value={}
+            ), patch.object(
+                ask_mod, "extract_provenance_paths", return_value=[]
+            ), patch.object(
+                ask_mod, "build_citation_snapshots", return_value=[]
+            ), patch.object(
+                ask_mod, "relative_path", return_value="wiki/derived/x.md"
+            ), patch.object(
+                ask_mod, "slugify", return_value="stub"
+            ), patch.object(
+                ask_mod, "next_available_stem", return_value="derived-1"
+            ), patch.object(
+                ask_mod, "render_frontmatter", return_value="---\nid: x\n---"
+            ), patch.object(
+                ask_mod, "strip_frontmatter", return_value="body"
+            ), patch.object(
+                ask_mod, "curated_page_template", return_value=["# title"]
+            ), patch.object(
+                ask_mod, "append_wiki_log"
+            ), patch.object(
+                ask_mod, "compile_wiki", return_value={}
+            ), patch(
+                "aiwiki.app_compile.utc_now", side_effect=_fake_utc_now
+            ):
+                ask_mod.file_back(root, str(artifact), title="Stub", kind="derived")
+
+        # If the lazy lookup ever regresses to a module-level
+        # ``from ..app_compile import utc_now`` binding, the patch above
+        # would NOT affect this call and ``observed`` would stay empty.
+        self.assertTrue(
+            observed,
+            msg="file_back did not route utc_now through aiwiki.app_compile; "
+            "the B2 lazy-lookup seam regressed.",
+        )
 
     def test_b1_nightly_health_resolves_apply_action_lazily(self) -> None:
         # ``nightly_health`` calls ``app_compile.apply_machine_memory_action``
