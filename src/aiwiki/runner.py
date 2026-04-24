@@ -36,6 +36,7 @@ from .app_utils import (
     render_scalar,
     runtime_write_operation,
     sha256_bytes,
+    utc_now,
 )
 from .config import LLMConfig
 from .llm import (
@@ -1134,6 +1135,42 @@ def run_nightly(
                 "prompt_profile": "",
                 "retry_prompt_profile": "",
             }
+        # contract EP-029 Step 3 §5: nightly auto-applies active -> stale, never demote/archive.
+        # Non-fatal: aging failure is logged but does not block nightly; audit file always emitted.
+        try:
+            from .execution.protocol_learnings import age_learnings
+
+            protocol_learnings_age = age_learnings(root, apply=True)
+        except Exception as age_exc:  # noqa: BLE001 - aging must not break nightly
+            from .execution.protocol_learnings import AUDIT_STATE_PATH as _AUDIT_PATH
+            from .execution.protocol_learnings import _atomic_write_text as _age_atomic_write
+
+            protocol_learnings_age = {
+                "apply": True,
+                "run_at": utc_now(),
+                "aged": [],
+                "aged_ids": [],
+                "skipped": [],
+                "errors": [{"reason": f"aging failed: {age_exc}"}],
+                "error": str(age_exc),
+            }
+            try:
+                audit_path = root / _AUDIT_PATH
+                audit_path.parent.mkdir(parents=True, exist_ok=True)
+                _age_atomic_write(
+                    audit_path,
+                    json.dumps(protocol_learnings_age, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+                )
+            except Exception as audit_exc:  # noqa: BLE001 - last-ditch audit write
+                # AGENTS.md: no silent swallow. Surface on stderr + retain in-memory payload
+                # so the nightly result dict carries the failure reason for downstream visibility.
+                import sys as _sys
+
+                print(
+                    f"[nightly] protocol-learnings aging audit write failed: {audit_exc}",
+                    file=_sys.stderr,
+                )
+                protocol_learnings_age["audit_write_error"] = str(audit_exc)
         llm_audit = _merge_llm_audits(
             _llm_audit_from_result(compile_result),
             _llm_audit_from_result(lint_result),
@@ -1189,6 +1226,7 @@ def run_nightly(
         "compile": compile_result,
         "lint": lint_result,
         "promotions": promotion_result,
+        "protocol_learnings_age": protocol_learnings_age,
         "aging": state["aging"],
         "repair_backlog": state["repair_backlog"]["path"],
         "state_path": relative_path(root, root / ".aiwiki" / "state" / "nightly-health.json"),
@@ -1303,16 +1341,50 @@ def run_protocol_learn_add(root: Path, protocol: str, title: str, source_refs: l
     return add_learning(root, protocol, title=title, source_refs=source_refs)
 
 
-def run_protocol_learn_list(root: Path, protocol: str | None = None) -> list[dict[str, Any]]:
+def run_protocol_learn_list(
+    root: Path,
+    protocol: str | None = None,
+    *,
+    state_filter: str | None = None,
+    include_archived: bool = False,
+) -> list[dict[str, Any]]:
     from .execution.protocol_learnings import list_learnings
 
-    return list_learnings(root, protocol)
+    return list_learnings(root, protocol, state_filter=state_filter, include_archived=include_archived)
 
 
 def run_protocol_learn_show(root: Path, learning_id: str) -> dict[str, Any]:
     from .execution.protocol_learnings import show_learning
 
     return show_learning(root, learning_id)
+
+
+@runtime_write_operation
+def run_protocol_learn_age(root: Path, protocol: str | None = None, apply: bool = False) -> dict[str, Any]:
+    from .execution.protocol_learnings import age_learnings
+
+    return age_learnings(root, protocol=protocol, apply=apply)
+
+
+@runtime_write_operation
+def run_protocol_learn_verify(root: Path, learning_id: str) -> dict[str, Any]:
+    from .execution.protocol_learnings import verify_learning
+
+    return verify_learning(root, learning_id)
+
+
+@runtime_write_operation
+def run_protocol_learn_demote(root: Path, learning_id: str) -> dict[str, Any]:
+    from .execution.protocol_learnings import demote_learning
+
+    return demote_learning(root, learning_id)
+
+
+@runtime_write_operation
+def run_protocol_learn_archive(root: Path, learning_id: str) -> dict[str, Any]:
+    from .execution.protocol_learnings import archive_learning
+
+    return archive_learning(root, learning_id)
 
 
 def watch_inbox(

@@ -52,8 +52,12 @@ from .runner import (
     run_nightly,
     run_promote,
     run_protocol_learn_add,
+    run_protocol_learn_age,
+    run_protocol_learn_archive,
+    run_protocol_learn_demote,
     run_protocol_learn_list,
     run_protocol_learn_show,
+    run_protocol_learn_verify,
     watch_inbox,
 )
 
@@ -186,9 +190,48 @@ def build_parser() -> argparse.ArgumentParser:
 
     protocol_learn_list_parser = subparsers.add_parser("protocol-learn-list", help="List protocol learnings.")
     protocol_learn_list_parser.add_argument("protocol", nargs="?", help="Optional protocol slug.")
+    protocol_learn_list_parser.add_argument(
+        "--state",
+        choices=("active", "stale", "demoted", "archived"),
+        help="可选：仅显示指定 state 的 learning。",
+    )
+    protocol_learn_list_parser.add_argument(
+        "--include-archived",
+        action="store_true",
+        help="包含 archived learning；默认隐藏 archived。",
+    )
 
     protocol_learn_show_parser = subparsers.add_parser("protocol-learn-show", help="Show a protocol learning.")
     protocol_learn_show_parser.add_argument("learning_id", help="Learning id.")
+
+    protocol_learn_age_parser = subparsers.add_parser(
+        "protocol-learn-age",
+        help="Scan protocol learnings for aging and optionally apply stale transitions.",
+    )
+    protocol_learn_age_parser.add_argument("--protocol", help="可选：仅扫描指定 protocol。")
+    protocol_learn_age_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="实际写入 active → stale 变更；默认仅 dry-run。",
+    )
+
+    protocol_learn_verify_parser = subparsers.add_parser(
+        "protocol-learn-verify",
+        help="Verify a protocol learning and restore it to active.",
+    )
+    protocol_learn_verify_parser.add_argument("learning_id", help="Learning id.")
+
+    protocol_learn_demote_parser = subparsers.add_parser(
+        "protocol-learn-demote",
+        help="Demote a protocol learning.",
+    )
+    protocol_learn_demote_parser.add_argument("learning_id", help="Learning id.")
+
+    protocol_learn_archive_parser = subparsers.add_parser(
+        "protocol-learn-archive",
+        help="Archive a protocol learning.",
+    )
+    protocol_learn_archive_parser.add_argument("learning_id", help="Learning id.")
 
     run_ask_parser = subparsers.add_parser(
         "run-ask",
@@ -606,9 +649,22 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "protocol-learn-add":
             result = run_protocol_learn_add(root, args.protocol, args.title, args.source_refs)
         elif args.command == "protocol-learn-list":
-            result = run_protocol_learn_list(root, args.protocol)
+            result = run_protocol_learn_list(
+                root,
+                args.protocol,
+                state_filter=args.state,
+                include_archived=args.include_archived,
+            )
         elif args.command == "protocol-learn-show":
             result = run_protocol_learn_show(root, args.learning_id)
+        elif args.command == "protocol-learn-age":
+            result = run_protocol_learn_age(root, protocol=args.protocol, apply=args.apply)
+        elif args.command == "protocol-learn-verify":
+            result = run_protocol_learn_verify(root, args.learning_id)
+        elif args.command == "protocol-learn-demote":
+            result = run_protocol_learn_demote(root, args.learning_id)
+        elif args.command == "protocol-learn-archive":
+            result = run_protocol_learn_archive(root, args.learning_id)
         elif args.command == "review-page":
             review_pages = _resolve_review_pages(
                 root,
@@ -772,6 +828,10 @@ def _maybe_auto_process(root: Path, result: dict[str, object], args: argparse.Na
         **result,
         "auto_process": auto_result,
     }
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    return build_parser()
 
 
 def _pending_review_pages(root: Path) -> list[str]:

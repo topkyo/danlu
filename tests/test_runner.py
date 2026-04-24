@@ -929,6 +929,84 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(runs_log["event"], "run-nightly")
         self.assertEqual(runs_log["delivery_mode"], "llm-success")
         self.assertFalse(runs_log["fallback_used"])
+        # EP-029 Step 3 AC #13: nightly integrates protocol_learnings_age stage.
+        self.assertIn("protocol_learnings_age", result)
+        self.assertTrue(result["protocol_learnings_age"].get("apply"))
+
+    def test_run_nightly_applies_protocol_learnings_aging(self) -> None:
+        from datetime import datetime, timedelta
+        from datetime import timezone as _tz
+
+        from aiwiki.execution.protocol_learnings import (
+            AUDIT_STATE_PATH,
+            LEARNINGS_DIR,
+            _atomic_write_text,
+            _render_inserted_frontmatter,
+            add_learning,
+        )
+
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / "transformer-scaling.md"
+        # Fallback: find any existing source page so we can serve a compile response.
+        if not source_page.is_file():
+            source_page = next((self.root / "wiki" / "sources").glob("*.md"))
+        updated_source = source_page.read_text(encoding="utf-8").replace(
+            "- Pending LLM summary.",
+            "- Transformer scale improves capability.",
+        )
+        # Seed one derived page under wiki/derived so learning source_ref is valid.
+        derived_dir = self.root / "wiki" / "derived"
+        derived_dir.mkdir(parents=True, exist_ok=True)
+        derived_page = derived_dir / "nightly-aging-fixture.md"
+        derived_page.write_text("# fixture\n", encoding="utf-8")
+        learning = add_learning(
+            self.root,
+            "general",
+            title="Nightly aging fixture",
+            source_refs=[f"wiki/derived/{derived_page.name}"],
+        )
+        # Backdate last_verified_at to > 90 days so aging marks it stale.
+        learning_path = self.root / learning["path"]
+        text = learning_path.read_text(encoding="utf-8")
+        old = (datetime.now(_tz.utc) - timedelta(days=100)).replace(microsecond=0).isoformat()
+        from aiwiki.app_utils import parse_frontmatter as _pfm
+
+        fm = _pfm(text)
+        fm["last_verified_at"] = old
+        parts = text.split("---", 2)
+        body = parts[-1].lstrip("\n") if len(parts) >= 3 else text
+        _atomic_write_text(learning_path, _render_inserted_frontmatter(fm) + body)
+
+        semantic_lint = "# Semantic Lint Report\n\n- Nothing to review.\n"
+        run_nightly(
+            self.root,
+            client=type(
+                "NightlyClient2",
+                (),
+                {
+                    "__init__": lambda self: setattr(self, "config", type("Config", (), {"model": "stub-model", "backend": "codex-cli"})()),
+                    "complete": lambda self, system_prompt, user_prompt: CompletionResult(
+                        text=updated_source if "Replace file:" in user_prompt else semantic_lint,
+                        response_id="resp-nightly-aging",
+                        usage={},
+                    ),
+                },
+            )(),
+            compile_limit=1,
+        )
+
+        # Aged: learning should be marked stale and audit dropped.
+        audit_path = self.root / AUDIT_STATE_PATH
+        self.assertTrue(audit_path.is_file())
+        audit = json.loads(audit_path.read_text(encoding="utf-8"))
+        self.assertTrue(audit["apply"])
+        self.assertGreaterEqual(len(audit["aged"]), 1)
+        aged_ids = [e["learning_id"] for e in audit["aged"]]
+        self.assertIn(learning["learning_id"], aged_ids)
+        final_fm = _pfm(learning_path.read_text(encoding="utf-8"))
+        self.assertEqual(final_fm.get("state"), "stale")
+        self.assertTrue(learning["path"].startswith(LEARNINGS_DIR))
 
     def test_promote_recurring_outputs_enqueues_candidates_instead_of_filing_back(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

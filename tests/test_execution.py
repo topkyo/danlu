@@ -4,6 +4,7 @@ import io
 import json
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -33,11 +34,23 @@ from aiwiki.app_state import (
     save_machine_memory_action_state,
     save_output_candidates_state,
 )
-from aiwiki.app_utils import parse_frontmatter
+from aiwiki.app_utils import parse_frontmatter, utc_now
 from aiwiki.cli import main as cli_main
 from aiwiki.execution.alchemy import _validate_source_outputs, _write_elixir_markdown
 from aiwiki.execution.candidates import demote_candidate, promote_candidate
-from aiwiki.execution.protocol_learnings import add_learning, list_learnings, show_learning
+from aiwiki.execution.protocol_learnings import (
+    AUDIT_STATE_PATH,
+    LEARNINGS_DIR,
+    _atomic_write_text,
+    add_learning,
+    age_learnings,
+    archive_learning,
+    demote_learning,
+    list_learnings,
+    load_learnings_for_protocol,
+    show_learning,
+    verify_learning,
+)
 from aiwiki.llm import CompletionResult
 from aiwiki.runner import run_alchemy_distill, run_ask, run_compile
 
@@ -1256,6 +1269,344 @@ class ProtocolLearningsTests(unittest.TestCase):
         result = ask_question(self.root, "What changed?", "report")
         text = (self.root / result["path"]).read_text(encoding="utf-8")
         self.assertNotIn("## Protocol Learnings", text)
+
+
+class ProtocolLearningsLifecycleTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+        ensure_layout(self.root)
+        (self.root / "prompts" / "compile.md").write_text("Compile prompt fixture.\n", encoding="utf-8")
+        (self.root / "prompts" / "ask.md").write_text("Ask prompt fixture.\n", encoding="utf-8")
+        (self.root / "wiki" / "derived").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "derived" / "source.md").write_text("# source\n", encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def _old_timestamp(self, *, days: int = 100) -> str:
+        return (datetime.now(timezone.utc) - timedelta(days=days)).replace(microsecond=0).isoformat()
+
+    def _write_learning(
+        self,
+        learning_id: str,
+        *,
+        protocol: str = "general",
+        title: str | None = None,
+        source_refs: list[str] | None = None,
+        state: str | None = "active",
+        last_verified_at: str | None = None,
+        updated_at: str | None = None,
+        archived_at: str | None = None,
+        lesson: str = "Pending.",
+    ) -> Path:
+        created_at = updated_at or utc_now()
+        lines = [
+            "---",
+            f'learning_id: {json.dumps(learning_id)}',
+            f'protocol: {json.dumps(protocol)}',
+            f'title: {json.dumps(title or learning_id)}',
+            "source_refs:",
+        ]
+        for ref in source_refs or ["wiki/derived/source.md"]:
+            lines.append(f"  - {json.dumps(ref)}")
+        if state is not None:
+            lines.append(f'state: {json.dumps(state)}')
+        lines.append(f'created_at: {json.dumps(created_at)}')
+        lines.append(f'updated_at: {json.dumps(updated_at or created_at)}')
+        if last_verified_at is not None:
+            lines.append(f'last_verified_at: {json.dumps(last_verified_at)}')
+        if archived_at is not None:
+            lines.append(f'archived_at: {json.dumps(archived_at)}')
+        lines.extend([
+            "---",
+            "# Protocol Learning",
+            "",
+            "## Lesson",
+            f"- {lesson}",
+            "",
+            "## When to apply",
+            "- Pending.",
+            "",
+            "## Evidence",
+            "- Pending.",
+            "",
+        ])
+        path = self.root / LEARNINGS_DIR / protocol / f"{learning_id}.md"
+        _atomic_write_text(path, "\n".join(lines))
+        return path
+
+    def _write_elixir(self, elixir_id: str, *, state: str = "settled") -> str:
+        path = self.root / "wiki" / "elixirs" / f"{elixir_id}.md"
+        _atomic_write_text(
+            path,
+            "\n".join([
+                "---",
+                f'elixir_id: {json.dumps(elixir_id)}',
+                f'elixir_state: {json.dumps(state)}',
+                "derived_from:",
+                '  - "wiki/derived/source.md"',
+                "---",
+                "# Elixir",
+                "",
+            ]),
+        )
+        return f"wiki/elixirs/{elixir_id}.md"
+
+    def test_add_writes_state_and_last_verified_at(self) -> None:
+        result = add_learning(self.root, "general", title="fresh", source_refs=["wiki/derived/source.md"])
+
+        frontmatter = parse_frontmatter((self.root / result["path"]).read_text(encoding="utf-8"))
+
+        self.assertEqual(frontmatter["state"], "active")
+        self.assertTrue(frontmatter["last_verified_at"])
+
+    def test_legacy_file_without_state_treated_as_active(self) -> None:
+        self._write_learning("legacy-x", state=None, last_verified_at=utc_now(), lesson="legacy")
+
+        listed = list_learnings(self.root, "general")
+        shown = show_learning(self.root, "legacy-x")
+        loaded = load_learnings_for_protocol(self.root, "general")
+
+        self.assertEqual([item["learning_id"] for item in listed], ["legacy-x"])
+        self.assertEqual(listed[0]["state"], "active")
+        self.assertEqual(shown["state"], "active")
+        self.assertNotIn("state", shown["frontmatter"])
+        self.assertEqual([item["learning_id"] for item in loaded], ["legacy-x"])
+
+    def test_list_filters_by_state(self) -> None:
+        self._write_learning("active-one", state="active", last_verified_at=utc_now())
+        self._write_learning("stale-one", state="stale", last_verified_at=self._old_timestamp())
+        self._write_learning("demoted-one", state="demoted", last_verified_at=utc_now())
+
+        listed = list_learnings(self.root, state_filter="stale")
+
+        self.assertEqual([item["learning_id"] for item in listed], ["stale-one"])
+
+    def test_list_hides_archived_by_default(self) -> None:
+        self._write_learning("active-one", state="active", last_verified_at=utc_now())
+        self._write_learning("archived-one", state="archived", last_verified_at=utc_now(), archived_at=utc_now())
+
+        default_list = list_learnings(self.root)
+        with_archived = list_learnings(self.root, include_archived=True)
+        archived_only = list_learnings(self.root, state_filter="archived")
+
+        self.assertEqual([item["learning_id"] for item in default_list], ["active-one"])
+        self.assertEqual([item["learning_id"] for item in with_archived], ["active-one", "archived-one"])
+        self.assertEqual([item["learning_id"] for item in archived_only], ["archived-one"])
+
+    def test_list_rejects_unknown_state(self) -> None:
+        with self.assertRaises(ValueError):
+            list_learnings(self.root, state_filter="bogus")
+
+    def test_age_dry_run_does_not_mutate(self) -> None:
+        path = self._write_learning("old-active", state="active", last_verified_at=self._old_timestamp(), updated_at=self._old_timestamp())
+        before = path.read_text(encoding="utf-8")
+
+        result = age_learnings(self.root, apply=False)
+
+        self.assertIn("old-active", [item["learning_id"] for item in result["aged"]])
+        self.assertEqual(path.read_text(encoding="utf-8"), before)
+
+    def test_age_apply_transitions_active_to_stale(self) -> None:
+        self._write_learning("old-active", state="active", last_verified_at=self._old_timestamp(), updated_at=self._old_timestamp())
+
+        result = age_learnings(self.root, apply=True)
+
+        frontmatter = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "old-active.md").read_text(encoding="utf-8"))
+        audit = json.loads((self.root / ".aiwiki" / "state" / "protocol_learnings_age.json").read_text(encoding="utf-8"))
+        self.assertIn("old-active", [item["learning_id"] for item in result["aged"]])
+        self.assertEqual(frontmatter["state"], "stale")
+        self.assertIn("old-active", [item["learning_id"] for item in audit["aged"]])
+
+    def test_age_source_ref_missing_marks_stale(self) -> None:
+        self._write_learning("missing-ref", state="active", last_verified_at=utc_now())
+        (self.root / "wiki" / "derived" / "source.md").unlink()
+
+        result = age_learnings(self.root, apply=True)
+
+        frontmatter = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "missing-ref.md").read_text(encoding="utf-8"))
+        aged = next(item for item in result["aged"] if item["learning_id"] == "missing-ref")
+        self.assertEqual(frontmatter["state"], "stale")
+        self.assertTrue(any("source_ref 缺失" in reason for reason in aged["reasons"]))
+
+    def test_age_source_ref_non_settled_elixir_marks_stale(self) -> None:
+        draft_ref = self._write_elixir("draft-one", state="draft")
+        self._write_learning("draft-ref", state="active", source_refs=[draft_ref], last_verified_at=utc_now())
+
+        result = age_learnings(self.root, apply=True)
+
+        frontmatter = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "draft-ref.md").read_text(encoding="utf-8"))
+        aged = next(item for item in result["aged"] if item["learning_id"] == "draft-ref")
+        self.assertEqual(frontmatter["state"], "stale")
+        self.assertTrue(any("elixir 非 settled" in reason for reason in aged["reasons"]))
+
+    def test_age_illegal_ref_goes_to_errors_not_stale(self) -> None:
+        self._write_learning("illegal-ref", state="active", source_refs=["../etc/passwd"], last_verified_at=self._old_timestamp())
+
+        result = age_learnings(self.root, apply=True)
+
+        frontmatter = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "illegal-ref.md").read_text(encoding="utf-8"))
+        self.assertEqual(frontmatter["state"], "active")
+        self.assertNotIn("illegal-ref", [item["learning_id"] for item in result["aged"]])
+        self.assertIn("illegal-ref", [item["learning_id"] for item in result["errors"]])
+
+    def test_verify_transitions_to_active_and_refreshes_last_verified_at(self) -> None:
+        old = self._old_timestamp()
+        self._write_learning("needs-verify", state="stale", last_verified_at=old, updated_at=old)
+
+        result = verify_learning(self.root, "needs-verify")
+
+        frontmatter = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "needs-verify.md").read_text(encoding="utf-8"))
+        self.assertEqual(frontmatter["state"], "active")
+        self.assertGreater(datetime.fromisoformat(frontmatter["last_verified_at"]), datetime.fromisoformat(old))
+        self.assertEqual(frontmatter["last_verified_at"], result["last_verified_at"])
+
+    def test_verify_rejects_when_source_ref_missing(self) -> None:
+        self._write_learning("missing-verify", state="stale", last_verified_at=self._old_timestamp())
+        (self.root / "wiki" / "derived" / "source.md").unlink()
+
+        with self.assertRaises(ValueError):
+            verify_learning(self.root, "missing-verify")
+
+        frontmatter = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "missing-verify.md").read_text(encoding="utf-8"))
+        self.assertEqual(frontmatter["state"], "stale")
+
+    def test_verify_rejects_when_elixir_non_settled(self) -> None:
+        draft_ref = self._write_elixir("draft-verify", state="draft")
+        self._write_learning("verify-draft", state="stale", source_refs=[draft_ref], last_verified_at=self._old_timestamp())
+
+        with self.assertRaises(ValueError):
+            verify_learning(self.root, "verify-draft")
+
+        frontmatter = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "verify-draft.md").read_text(encoding="utf-8"))
+        self.assertEqual(frontmatter["state"], "stale")
+
+    def test_demote_from_active(self) -> None:
+        self._write_learning("demote-me", state="active", last_verified_at=utc_now())
+
+        demote_learning(self.root, "demote-me")
+
+        frontmatter = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "demote-me.md").read_text(encoding="utf-8"))
+        loaded = load_learnings_for_protocol(self.root, "general")
+        self.assertEqual(frontmatter["state"], "demoted")
+        self.assertEqual(loaded, [])
+
+    def test_demote_from_archived_rejected(self) -> None:
+        self._write_learning("archived-demote", state="archived", last_verified_at=utc_now(), archived_at=utc_now())
+
+        with self.assertRaises(ValueError):
+            demote_learning(self.root, "archived-demote")
+
+    def test_archive_writes_archived_at(self) -> None:
+        self._write_learning("archive-me", state="active", last_verified_at=utc_now())
+
+        archive_learning(self.root, "archive-me")
+
+        shown = show_learning(self.root, "archive-me")
+        self.assertEqual(shown["state"], "archived")
+        self.assertTrue(shown["frontmatter"]["archived_at"])
+
+    def test_archive_already_archived_rejected(self) -> None:
+        self._write_learning("already-archived", state="archived", last_verified_at=utc_now(), archived_at=utc_now())
+
+        with self.assertRaises(ValueError):
+            archive_learning(self.root, "already-archived")
+
+    def test_load_learnings_for_protocol_only_returns_active(self) -> None:
+        self._write_learning("active-one", state="active", last_verified_at=utc_now(), lesson="active lesson")
+        self._write_learning("stale-one", state="stale", last_verified_at=utc_now())
+        self._write_learning("demoted-one", state="demoted", last_verified_at=utc_now())
+        self._write_learning("archived-one", state="archived", last_verified_at=utc_now(), archived_at=utc_now())
+
+        loaded = load_learnings_for_protocol(self.root, "general")
+
+        self.assertEqual([item["learning_id"] for item in loaded], ["active-one"])
+        self.assertEqual(loaded[0]["lesson"], "active lesson")
+
+    def test_cross_protocol_age_scans_all(self) -> None:
+        old = self._old_timestamp()
+        self._write_learning("general-old", protocol="general", state="active", last_verified_at=old, updated_at=old)
+        self._write_learning("investing-old", protocol="investing", state="active", last_verified_at=old, updated_at=old)
+
+        result = age_learnings(self.root, protocol=None, apply=True)
+
+        general_fm = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "general-old.md").read_text(encoding="utf-8"))
+        investing_fm = parse_frontmatter((self.root / LEARNINGS_DIR / "investing" / "investing-old.md").read_text(encoding="utf-8"))
+        self.assertEqual(general_fm["state"], "stale")
+        self.assertEqual(investing_fm["state"], "stale")
+        self.assertEqual(
+            {item["learning_id"] for item in result["aged"]},
+            {"general-old", "investing-old"},
+        )
+
+    def test_age_skips_non_active_states(self) -> None:
+        old = self._old_timestamp()
+        self._write_learning("demoted-old", state="demoted", last_verified_at=old, updated_at=old)
+        self._write_learning("archived-old", state="archived", last_verified_at=old, updated_at=old, archived_at=utc_now())
+
+        result = age_learnings(self.root, apply=True)
+
+        demoted_fm = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "demoted-old.md").read_text(encoding="utf-8"))
+        archived_fm = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "archived-old.md").read_text(encoding="utf-8"))
+        skipped = {item["learning_id"]: item["state"] for item in result["skipped"]}
+        self.assertEqual(demoted_fm["state"], "demoted")
+        self.assertEqual(archived_fm["state"], "archived")
+        self.assertEqual(skipped["demoted-old"], "demoted")
+        self.assertEqual(skipped["archived-old"], "archived")
+
+    def test_verify_rejects_archived_learning(self) -> None:
+        # contract Acceptance #8: archived 终态，verify 不能反向迁移。
+        self._write_elixir("settled-fixture")
+        self._write_learning(
+            "archived-terminal",
+            state="archived",
+            source_refs=["wiki/elixirs/settled-fixture.md"],
+            archived_at=utc_now(),
+        )
+        with self.assertRaises(ValueError) as ctx:
+            verify_learning(self.root, "archived-terminal")
+        self.assertIn("archived", str(ctx.exception))
+        fm = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "archived-terminal.md").read_text(encoding="utf-8"))
+        self.assertEqual(fm["state"], "archived")
+
+    def test_age_corrupt_frontmatter_goes_to_errors(self) -> None:
+        # contract Acceptance #11: 坏 frontmatter 必须显式进 errors，不静默降级。
+        corrupt_path = self.root / LEARNINGS_DIR / "general" / "corrupt.md"
+        corrupt_path.parent.mkdir(parents=True, exist_ok=True)
+        # frontmatter 分隔符存在，但没有任何 key: value，parse 返回 {}
+        corrupt_path.write_text("---\n(not valid yaml content at all)\n---\n# body\n", encoding="utf-8")
+
+        result = age_learnings(self.root, apply=True)
+
+        error_ids = [e["learning_id"] for e in result["errors"]]
+        self.assertIn("corrupt", error_ids)
+        # 未被当 stale 处理
+        aged_ids = [e["learning_id"] for e in result["aged"]]
+        self.assertNotIn("corrupt", aged_ids)
+
+    def test_age_audit_payload_includes_aged_ids(self) -> None:
+        # contract Acceptance #13: audit 必须包含 aged_ids 字段。
+        old = self._old_timestamp()
+        self._write_elixir("settled-fixture")
+        self._write_learning(
+            "aging-candidate",
+            state="active",
+            source_refs=["wiki/elixirs/settled-fixture.md"],
+            last_verified_at=old,
+            updated_at=old,
+        )
+
+        result = age_learnings(self.root, apply=True)
+
+        self.assertIn("aged_ids", result)
+        self.assertIn("aging-candidate", result["aged_ids"])
+        # audit 文件内容也要一致
+        audit_path = self.root / AUDIT_STATE_PATH
+        self.assertTrue(audit_path.is_file())
+        audit = json.loads(audit_path.read_text(encoding="utf-8"))
+        self.assertIn("aged_ids", audit)
+        self.assertIn("aging-candidate", audit["aged_ids"])
 
 
 if __name__ == "__main__":
