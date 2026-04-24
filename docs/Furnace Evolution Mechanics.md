@@ -51,7 +51,9 @@ related_docs:
 
 ```json
 {
+  "schema_version": 1,
   "signal_id": "sig-20260424-abc123",
+  "dedupe_key": "raw_added:research:raw/inbox/example.md",
   "kind": "raw_added | counter_evidence | drift | review_feedback | runtime_failure | schedule_tick | learning_threshold | elixir_dependency_break",
   "scope": {
     "protocol": "research",
@@ -68,7 +70,9 @@ related_docs:
     "max_tokens": 4000
   },
   "emitted_at": "2026-04-24T12:00:00+08:00",
-  "emitted_by": "nightly | user | compile | external"
+  "emitted_by": "nightly | user | compile | external",
+  "source_event_ref": ".aiwiki/state/runtime-history.jsonl#L42",
+  "trace_id": "trace-20260424-abc123"
 }
 ```
 
@@ -88,6 +92,13 @@ Signal kinds（本轮最小集）：
 Signal **从不直接触发 phase**，必须经过 planner 决策。
 
 当前状态：runtime 已有 `runtime-history.jsonl`、LLM receipts、review / execution receipts、planner-state 等可观测输入，但尚未统一归一化为 append-only signal stream。
+
+落地约束：
+
+- `schema_version` 必须随不兼容变更递增。
+- `dedupe_key` 是同一事件重复写入时的幂等边界；planner 必须按它去重。
+- `source_event_ref` 保留到原始 receipt / history 的回链，signal 自身不替代原始审计。
+- `trace_id` 贯穿 signal、planner-log、receipt，便于重放和调试。
 
 ## 3. Planner Routing Rules and Locking
 
@@ -128,9 +139,11 @@ planner 接收 signal，产出以下之一的决策：
 
 - `.aiwiki/state/planner-log.jsonl`（append-only）
 
-每条决策包含：`signal_id / decision / reason_codes / budget_used / locks_acquired / decided_at`。
+每条决策包含：`schema_version / signal_id / dedupe_key / decision / mode / reason_codes / budget_used / locks_acquired / primitive_refs / side_effects_allowed / decided_at`。
 
 当前已落地的 planner 状态文件是 `.aiwiki/state/planner-state.json`，它不是 append-only decision log。
+
+首版 planner-log 必须以 `mode=observe_only` 落地，且 `side_effects_allowed=false`；只有 signal replay、去重和 scope 计算连续通过 gate 后，才能开放 `dry_run`，最后才允许 `execute`。
 
 ## 4. Heavy Alchemy Contract
 
@@ -168,7 +181,7 @@ heavy 的默认执行序列：
 
 heavy 是目标**调度层**，底层仍复用现有 primitives：
 
-- `compile` / `lint` / `nightly` / `review` / `apply` / `revert` 保持现有 CLI 可单独运行。
+- `compile` / `lint` / `nightly` / `review` 与现有 scoped apply/revert primitives 保持可单独运行。
 - heavy 落地后只是按 planner 决策**组合**这些 primitives，并共享锁与 audit。
 - 既有命令的语义**不变**。
 
@@ -278,6 +291,13 @@ light **不允许**触发 `judge`、`distill`、`propose`、`apply`。
 | 持久（当前与目标） | `wiki/elixirs/<elixir-id>.md` |
 
 目标契约要求候选平面与持久平面**物理隔离**，避免一个字段同时表达两种语义。当前最小实现暂时由 `alchemy-start` 直接写入 `wiki/elixirs/` 的 `draft` 金丹，再由 `alchemy-distill` 推进 `distilling`，最后由 `alchemy-seal` 标记 `settled`。
+
+迁移策略：
+
+- 旧 `wiki/elixirs/` 文件继续按当前 schema 读取，不做强制搬迁。
+- 新候选入口落地后，默认只对新金丹写入 `output/_candidates/elixirs/`。
+- `alchemy-seal` 继续兼容旧 draft / distilling 文件；新 promote gate 稳定后，再把默认入口切到 candidate flow。
+- 任一候选 promote 失败必须保持 source candidate 不变，并写明失败原因；不得半写入 `wiki/elixirs/`。
 
 ### 7.2 Frontmatter（最小集）
 
@@ -563,11 +583,28 @@ revert **不可以**：
 
 - 既有 `compile / lint / nightly` 与 scoped apply/revert CLI（如 `apply-rewrite / revert-rewrite`、`apply-action / revert-action`、`apply-archive / revert-archive`）**不变**，仍作为 operator-visible primitives。
 - 本文档引入的新机制都是**叠加**在现有 primitives 之上的调度与 proposal 层。
-- 首轮 rollout 建议顺序：
-  1. 已落 `active-corpora.json`；下一步补 `.aiwiki/state/planner-log.jsonl` 与 normalized signal stream
-  2. 已落最小 `wiki/elixirs/` + `alchemy-start/distill/seal`；下一步补 `output/_candidates/elixirs/` 与 promote/demote/revert
-  3. 再落 `output/_proposals/` 与 `aiwiki review proposals / apply`
-  4. 最后把 heavy/light 的调度封装成独立入口
+
+### 12.4 9+ Rollout Gate Matrix
+
+| Milestone | 新增能力 | 禁止事项 | 验收 gate |
+|---|---|---|---|
+| **M0 Baseline Freeze** | 固化当前 active corpus、output candidates、L2 learning、最小金丹、scoped apply/revert。 | 不新增自动调度；不迁移旧金丹。 | `verify` 全绿；docs 与 CLI 语义一致；Product Shell 只读事实不回退。 |
+| **M1 Signal Observability** | 新增 `.aiwiki/state/signals.jsonl` 与 `.aiwiki/state/planner-log.jsonl`，从 runtime-history / receipts 归一化 signal。 | `mode` 只能是 `observe_only`；不得触发 phase。 | signal schema fixture、dedupe replay、trace 回链、坏 schema fail-fast。 |
+| **M2 Elixir Candidate Plane** | 新增 `output/_candidates/elixirs/`、candidate frontmatter、promote/demote/revert receipt。 | 不强制迁移旧 `wiki/elixirs/`；不绕过 DAG / provenance gate。 | promote hash gate、revert clean/stale 分支、DAG 环路拒绝、路径穿越拒绝。 |
+| **M3 L3 Manual Proposal** | 新增 prompt/policy proposal kind，先支持手工/fixture 创建、review、apply、revert。 | 不自动生成 proposal；不写 `src/aiwiki/**`、schema core 或 protocol core。 | before_hash mismatch 退为 stale；receipt 可 clean revert；冲突生成 human_merge_required。 |
+| **M4 Heavy/Light Dry-run Wrapper** | `alchemy heavy/light --dry-run` 只计算 signal scope、primitive plan、预算与锁结果。 | 默认不 execute；light 不升级 heavy；全量 heavy 不自动授权。 | scope preview 稳定；预算超限可解释；锁冲突 skip；primitive plan 可复现。 |
+| **M5 Controlled Execution** | heavy/light 允许显式 `--apply` 组合 scoped primitives。 | 不允许 hidden backend choice；不允许无 receipt 写回。 | 每个 phase 有 trace_id、receipt、audit entry；失败可从上一稳定点恢复。 |
+
+达到 9+ 可行性的条件不是“自动化更多”，而是每个 milestone 都满足：可重放、可 dry-run、可回滚、可停用、可用现有 gate 验证。
+
+### 12.5 Stop Lines and Kill Switches
+
+- Signal replay 不能稳定去重时，planner 停留在 `observe_only`。
+- 任一 proposal / candidate 无法产生 clean receipt 时，不允许进入默认 apply。
+- 任一写回目标 hash 不匹配时，必须转为 `stale` 或 `human_merge_required`。
+- Heavy/light wrapper 在没有 dry-run plan 的情况下不得执行。
+- LLM backend 未显式配置或 receipt 缺失 usage/accounting 时，不得作为自动 proposal 依据。
+- 新机制导致 `compile / lint / nightly` deterministic baseline 回归时，必须局部禁用该机制，而不是修改 baseline 迁就它。
 
 ## 13. Risks and Mitigations
 

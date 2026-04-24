@@ -83,6 +83,21 @@ related_docs:
 | heavy/light alchemy lane | planned | 当前 `nightly / compile / lint / review` primitives 已在，但尚未形成统一 heavy/light 调度入口。 |
 | L3 prompt/policy proposal | planned | 架构允许生成 `output/_proposals/prompt|policy`，但 runtime 入口、review queue 接线和 apply/revert 尚待实现。 |
 
+## 2.2 9+ Feasibility Contract
+
+为了把本轮重构从“合理愿景”推进到可落地性 9 分以上，终局架构必须遵守以下实施约束：
+
+| 约束 | 决策 | 提升可行性的原因 |
+|---|---|---|
+| **Observe before schedule** | 先落 normalized signal stream 与 planner-log，只记录不自动调度。 | 先验证 signal schema、去重、scope 与 severity，不改变 runtime 行为。 |
+| **Manual-first before automation** | L3 proposal、elixir candidate promote、heavy/light lane 都先支持手动触发与 dry-run。 | 人工 gate 先跑通 receipt / revert / stale hash，避免把自动化风险混入 schema 风险。 |
+| **Scoped primitives only** | 新调度层只能组合现有 scoped primitives；不得引入绕过 `apply-rewrite / apply-action / apply-archive` 等链路的通用写回。 | 保留当前可审计、可回滚的执行边界，降低迁移复杂度。 |
+| **Compatibility adapters over migration** | 旧 `wiki/elixirs/` 最小链路继续可读；新增 candidate plane 不强制迁移旧文件。 | 避免一次性数据迁移，把风险限制在新入口。 |
+| **No hidden backend choice** | planner、heavy、light、proposal generator 都不得自动切换 LLM backend。 | 保持成本、隐私和失败模式可解释。 |
+| **Kill switch by design** | 每个 planned 机制必须有 `--dry-run`、禁用开关或只读 fallback。 | 任何阶段出现坏 proposal / 坏 signal / 锁异常时可局部停用，不影响 deterministic baseline。 |
+
+判断标准：只要某个新增能力还不能证明以上六条，就不能宣称进入“默认可用”状态，只能保持 planned 或 experimental。
+
 ## 3. Stable Invariants and Non-Goals
 
 下列不变量在本轮重构后继续生效，任何新机制都必须证明与其兼容：
@@ -303,6 +318,12 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
 | **Review / apply / revert / audit** | 既有 execution / rewrite / candidate 写回继续走 review / receipt / audit；L3 proposal 落地时必须接入同一语义。 |
 
 **结论**：新架构不要求改变任何现有 CLI 命令的语义，也不要求新增任何破坏性迁移。完整 planner 和 L3 proposal 是在既有 primitives 之上的增量调度层。
+
+可行性判定：
+
+- 当前文档版可作为 9+ 落地蓝图，但不是宣称 runtime 已达到 9+ 自动化成熟度。
+- 9+ 的工程条件是：signal / planner-log 可重放，candidate / proposal 可 dry-run，所有写回均有 receipt + hash gate + revert，heavy/light 默认只组合 scoped primitives。
+- 若后续实现需要突破任一条件，必须回到本文档修订，而不是在代码里隐式扩权。
 
 ## 11. What This Document Does Not Define
 
