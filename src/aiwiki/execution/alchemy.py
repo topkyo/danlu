@@ -60,8 +60,8 @@ def _scaffold_elixir_markdown(*, elixir_id: str, topic: str, corpus_id: str, sou
         "elixir_id": elixir_id,
         "elixir_state": elixir_state,
         "iteration": iteration,
-        "source_corpus": corpus_id,
-        "source_outputs": source_outputs,
+        "provenance_corpus": corpus_id,
+        "derived_from": source_outputs,
         "topic": topic,
         "created_at": created_at,
         "updated_at": updated_at,
@@ -138,8 +138,8 @@ def start_elixir(root: Path, corpus_id: str, *, topic: str) -> dict[str, Any]:
     elixir_id = next_available_stem(path, seed)
     path = path / f"{elixir_id}.md"
     now = utc_now()
-    path.write_text(_scaffold_elixir_markdown(elixir_id=elixir_id, topic=topic, corpus_id=corpus_id, source_outputs=source_outputs, iteration=0, elixir_state="forming", created_at=now, updated_at=now), encoding="utf-8")
-    return {"elixir_id": elixir_id, "path": f"{ELIXIR_DIR}/{elixir_id}.md", "source_outputs": source_outputs, "iteration": 0, "elixir_state": "forming"}
+    path.write_text(_scaffold_elixir_markdown(elixir_id=elixir_id, topic=topic, corpus_id=corpus_id, source_outputs=source_outputs, iteration=0, elixir_state="draft", created_at=now, updated_at=now), encoding="utf-8")
+    return {"elixir_id": elixir_id, "path": f"{ELIXIR_DIR}/{elixir_id}.md", "derived_from": source_outputs, "iteration": 0, "elixir_state": "draft"}
 
 
 def distill_elixir(root: Path, elixir_id: str, *, question: str) -> dict[str, Any]:
@@ -147,18 +147,18 @@ def distill_elixir(root: Path, elixir_id: str, *, question: str) -> dict[str, An
     if not path.exists():
         raise FileNotFoundError(f"elixir not found: {elixir_id}")
     frontmatter = _parse_elixir_frontmatter(path)
-    if str(frontmatter.get("elixir_state") or "") == "sealed":
+    if str(frontmatter.get("elixir_state") or "") == "settled":
         raise ValueError(f"sealed elixir cannot be distilled: {elixir_id}")
-    corpus_id = str(frontmatter.get("source_corpus") or "")
+    corpus_id = str(frontmatter.get("provenance_corpus") or "")
     _find_corpus(root, corpus_id)
     promoted = list_promoted_outputs_for_corpus(root, corpus_id)
     allowed = {item["promoted_to"] for item in promoted if item.get("promoted_to")}
-    existing = [str(item) for item in frontmatter.get("source_outputs", []) if isinstance(item, str)]
+    existing = [str(item) for item in frontmatter.get("derived_from", []) if isinstance(item, str)]
     # Defense-in-depth: refuse to distill an elixir whose existing provenance was
     # tampered empty or points outside the current corpus allowlist. Prevents
     # silent provenance loss via frontmatter edits.
     if not existing:
-        raise ValueError(f"elixir has empty source_outputs, refusing to distill: {elixir_id}")
+        raise ValueError(f"elixir has empty derived_from, refusing to distill: {elixir_id}")
     _validate_source_outputs(root, existing, allowed=allowed)
     merged = list(dict.fromkeys([*existing, *allowed]))
     _validate_source_outputs(root, merged, allowed=allowed)
@@ -166,12 +166,12 @@ def distill_elixir(root: Path, elixir_id: str, *, question: str) -> dict[str, An
     history = frontmatter.get("distill_history") if isinstance(frontmatter.get("distill_history"), list) else []
     history = list(history)
     history.append({"iteration": iteration, "question": question, "at": utc_now()})
-    frontmatter.update({"iteration": iteration, "source_outputs": merged, "elixir_state": "forming", "updated_at": utc_now(), "distill_history": history})
+    frontmatter.update({"iteration": iteration, "derived_from": merged, "elixir_state": "distilling", "updated_at": utc_now(), "distill_history": history})
     original = path.read_text(encoding="utf-8", errors="replace")
     body = original.split("---", 2)[-1]
     body = body.lstrip("\n")
     _write_elixir_markdown(path, frontmatter=frontmatter, body=body)
-    return {"elixir_id": elixir_id, "path": f"{ELIXIR_DIR}/{elixir_id}.md", "iteration": iteration, "source_outputs": merged, "elixir_state": "forming"}
+    return {"elixir_id": elixir_id, "path": f"{ELIXIR_DIR}/{elixir_id}.md", "iteration": iteration, "derived_from": merged, "elixir_state": "distilling"}
 
 
 def seal_elixir(root: Path, elixir_id: str) -> dict[str, Any]:
@@ -179,17 +179,17 @@ def seal_elixir(root: Path, elixir_id: str) -> dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"elixir not found: {elixir_id}")
     frontmatter = _parse_elixir_frontmatter(path)
-    if str(frontmatter.get("elixir_state") or "") == "sealed":
+    if str(frontmatter.get("elixir_state") or "") == "settled":
         raise ValueError(f"elixir already sealed: {elixir_id}")
-    corpus_id = str(frontmatter.get("source_corpus") or "")
+    corpus_id = str(frontmatter.get("provenance_corpus") or "")
     _find_corpus(root, corpus_id)
     promoted = list_promoted_outputs_for_corpus(root, corpus_id)
     allowed = {item["promoted_to"] for item in promoted if item.get("promoted_to")}
-    source_outputs = [str(item) for item in frontmatter.get("source_outputs", []) if isinstance(item, str)]
+    source_outputs = [str(item) for item in frontmatter.get("derived_from", []) if isinstance(item, str)]
     _validate_source_outputs(root, source_outputs, allowed=allowed)
     sealed_at = utc_now()
-    frontmatter.update({"elixir_state": "sealed", "sealed_at": sealed_at, "updated_at": utc_now()})
+    frontmatter.update({"elixir_state": "settled", "sealed_at": sealed_at, "updated_at": utc_now()})
     original = path.read_text(encoding="utf-8", errors="replace")
     body = original.split("---", 2)[-1].lstrip("\n")
     _write_elixir_markdown(path, frontmatter=frontmatter, body=body)
-    return {"elixir_id": elixir_id, "path": f"{ELIXIR_DIR}/{elixir_id}.md", "elixir_state": "sealed", "sealed_at": sealed_at}
+    return {"elixir_id": elixir_id, "path": f"{ELIXIR_DIR}/{elixir_id}.md", "elixir_state": "settled", "sealed_at": sealed_at}

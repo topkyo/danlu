@@ -248,11 +248,11 @@ def build_parser() -> argparse.ArgumentParser:
     alchemy_start_parser.add_argument("corpus_id")
     alchemy_start_parser.add_argument("--topic", required=True)
 
-    alchemy_distill_parser = subparsers.add_parser("alchemy-distill", help="Distill an existing forming elixir.")
+    alchemy_distill_parser = subparsers.add_parser("alchemy-distill", help="Distill an existing draft elixir.")
     alchemy_distill_parser.add_argument("elixir_id")
     alchemy_distill_parser.add_argument("--question", required=True)
 
-    alchemy_seal_parser = subparsers.add_parser("alchemy-seal", help="Seal a forming elixir (terminal state).")
+    alchemy_seal_parser = subparsers.add_parser("alchemy-seal", help="Seal a draft elixir (terminal state).")
     alchemy_seal_parser.add_argument("elixir_id")
 
     review_parser = subparsers.add_parser(

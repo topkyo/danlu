@@ -516,10 +516,10 @@ class AlchemyTests(unittest.TestCase):
         path = self.root / result["path"]
         self.assertTrue(path.exists())
         frontmatter = parse_frontmatter(path.read_text(encoding="utf-8"))
-        self.assertEqual(frontmatter["elixir_state"], "forming")
+        self.assertEqual(frontmatter["elixir_state"], "draft")
         self.assertEqual(frontmatter["iteration"], "0")
-        self.assertTrue(frontmatter["source_outputs"])
-        self.assertTrue(all(str(item).startswith("wiki/derived/") for item in frontmatter["source_outputs"]))
+        self.assertTrue(frontmatter["derived_from"])
+        self.assertTrue(all(str(item).startswith("wiki/derived/") for item in frontmatter["derived_from"]))
 
     def test_alchemy_start_raises_when_corpus_has_no_promoted(self) -> None:
         corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])
@@ -553,7 +553,7 @@ class AlchemyTests(unittest.TestCase):
         path = self.root / result["path"]
         frontmatter = parse_frontmatter(path.read_text(encoding="utf-8"))
         self.assertEqual(frontmatter["iteration"], "1")
-        self.assertGreaterEqual(len(frontmatter["source_outputs"]), 2)
+        self.assertGreaterEqual(len(frontmatter["derived_from"]), 2)
         self.assertEqual(len(json.loads(frontmatter.get("distill_history_json", "[]"))), 1)
 
     def test_alchemy_distill_rejects_sealed_elixir(self) -> None:
@@ -568,7 +568,7 @@ class AlchemyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             run_alchemy_distill(self.root, start["elixir_id"], "What about latency?")
         frontmatter = parse_frontmatter((self.root / start["path"]).read_text(encoding="utf-8"))
-        self.assertEqual(frontmatter["elixir_state"], "sealed")
+        self.assertEqual(frontmatter["elixir_state"], "settled")
 
     def test_alchemy_seal_marks_sealed(self) -> None:
         corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])
@@ -577,9 +577,9 @@ class AlchemyTests(unittest.TestCase):
         start = run_alchemy_start(self.root, corpus_id, "VLA robotics")
         result = run_alchemy_seal(self.root, start["elixir_id"])
 
-        self.assertEqual(result["elixir_state"], "sealed")
+        self.assertEqual(result["elixir_state"], "settled")
         frontmatter = parse_frontmatter((self.root / start["path"]).read_text(encoding="utf-8"))
-        self.assertEqual(frontmatter["elixir_state"], "sealed")
+        self.assertEqual(frontmatter["elixir_state"], "settled")
         self.assertTrue(frontmatter.get("sealed_at"))
 
     def test_alchemy_seal_is_not_idempotent_on_already_sealed(self) -> None:
@@ -642,7 +642,7 @@ class AlchemyTests(unittest.TestCase):
         path = self.root / start["path"]
         text = path.read_text(encoding="utf-8")
         frontmatter = parse_frontmatter(text)
-        frontmatter["source_outputs"] = []
+        frontmatter["derived_from"] = []
         _write_elixir_markdown(path, frontmatter=frontmatter, body=text.split("---", 2)[-1].lstrip("\n"))
 
         with self.assertRaises(ValueError):
@@ -657,7 +657,7 @@ class AlchemyTests(unittest.TestCase):
         path = self.root / start["path"]
         text = path.read_text(encoding="utf-8")
         frontmatter = parse_frontmatter(text)
-        frontmatter["source_outputs"] = []
+        frontmatter["derived_from"] = []
         _write_elixir_markdown(path, frontmatter=frontmatter, body=text.split("---", 2)[-1].lstrip("\n"))
 
         with self.assertRaises(ValueError):
@@ -671,7 +671,7 @@ class AlchemyTests(unittest.TestCase):
         path = self.root / start["path"]
         text = path.read_text(encoding="utf-8")
         frontmatter = parse_frontmatter(text)
-        frontmatter["source_outputs"] = [*frontmatter["source_outputs"], "wiki/derived/tampered.md"]
+        frontmatter["derived_from"] = [*frontmatter["derived_from"], "wiki/derived/tampered.md"]
         (self.root / "wiki" / "derived" / "tampered.md").write_text("tampered", encoding="utf-8")
         from aiwiki.execution.alchemy import _write_elixir_markdown
         _write_elixir_markdown(path, frontmatter=frontmatter, body=text.split("---", 2)[-1].lstrip("\n"))
