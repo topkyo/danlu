@@ -61,6 +61,7 @@ from .runner import (
     run_protocol_learn_verify,
     watch_inbox,
 )
+from .signals import collect_signals
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -467,6 +468,20 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip the semantic lint pass and write deterministic nightly artifacts only.",
     )
+    signals_replay_parser = subparsers.add_parser(
+        "signals-replay",
+        help="Replay runtime signal sources into .aiwiki/state/signals.jsonl.",
+    )
+    signals_replay_parser.add_argument(
+        "--source",
+        action="append",
+        choices=("runtime_history", "llm_receipt", "archive"),
+        help="Signal source to replay; may be repeated. Defaults to all sources.",
+    )
+    signals_replay_parser.add_argument(
+        "--trace-id",
+        help="Optional lowercase UUIDv4 trace id for this replay batch.",
+    )
     llm_check_parser = subparsers.add_parser("llm-check", help="Show whether the LLM runner is configured.")
     llm_check_parser.add_argument(
         "--probe",
@@ -769,6 +784,8 @@ def main(argv: list[str] | None = None) -> int:
                 compile_limit=args.compile_limit,
                 semantic_lint=not args.no_semantic_lint,
             )
+        elif args.command == "signals-replay":
+            result = collect_signals(root, sources=args.source, trace_id=args.trace_id)
         elif args.command == "llm-check":
             if args.probe or args.probe_all:
                 result = llm_probe(root, probe_all=args.probe_all, timeout_seconds=args.probe_timeout)

@@ -508,6 +508,30 @@ class TestValidateErrorPaths(unittest.TestCase):
             ".aiwiki/state/protocol_learnings_age.json:some_key",
         )
 
+    def test_validate_source_event_ref_runtime_history_row_id_rejected(self) -> None:
+        self._assert_source_event_ref_rejected(
+            "runtime_history",
+            ".aiwiki/state/runtime-history.jsonl:row-1",
+        )
+
+    def test_validate_source_event_ref_llm_receipt_row_id_rejected(self) -> None:
+        self._assert_source_event_ref_rejected(
+            "llm_receipt",
+            ".aiwiki/logs/llm-receipts.jsonl:row-1",
+        )
+
+    def test_validate_source_event_ref_archive_event_row_id_rejected(self) -> None:
+        self._assert_source_event_ref_rejected(
+            "archive_event",
+            ".aiwiki/state/execution-receipts.jsonl:row-1",
+        )
+
+    def test_validate_source_event_ref_review_outcome_row_id_rejected(self) -> None:
+        self._assert_source_event_ref_rejected(
+            "review_outcome",
+            ".aiwiki/state/review-outcome.jsonl:row-1",
+        )
+
     def test_validate_source_event_ref_empty_string_rejected(self) -> None:
         self._assert_source_event_ref_rejected("runtime_history", "")
 
@@ -531,6 +555,14 @@ class TestValidateErrorPaths(unittest.TestCase):
 
     def test_validate_source_event_ref_absolute_path_rejected(self) -> None:
         self._assert_source_event_ref_rejected("runtime_history", "/etc/passwd#L1")
+
+    def test_validate_source_event_ref_absolute_path_with_allowed_substring_rejected(self) -> None:
+        record = self._valid_record()
+        record["source_kind"] = "runtime_history"
+        record["source_event_ref"] = "/foo/runtime-history.jsonl#L1"
+        result = validate(record)
+        self.assertFalse(result.ok)
+        self.assertTrue(any("absolute" in error or "relative" in error for error in result.errors))
 
     def test_validate_source_event_ref_source_kind_mismatch_rejected(self) -> None:
         self._assert_source_event_ref_rejected("llm_receipt", "runtime-history.jsonl#L1")

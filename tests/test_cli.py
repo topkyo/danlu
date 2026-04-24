@@ -119,6 +119,13 @@ class CLITests(unittest.TestCase):
             ("run-lint", ["run-lint"], "run_lint", (self.root,), {}),
             ("nightly", ["nightly"], "nightly_health", (self.root,), {}),
             ("run-nightly", ["run-nightly", "--compile-limit", "7", "--no-semantic-lint"], "run_nightly", (self.root,), {"compile_limit": 7, "semantic_lint": False}),
+            (
+                "signals-replay",
+                ["signals-replay", "--source", "runtime_history", "--source", "archive", "--trace-id", "550e8400-e29b-41d4-a716-446655440000"],
+                "collect_signals",
+                (self.root,),
+                {"sources": ["runtime_history", "archive"], "trace_id": "550e8400-e29b-41d4-a716-446655440000"},
+            ),
             ("llm-check", ["llm-check"], "llm_status", (), {}),
             ("cache-status", ["cache", "--status"], "cache_status_summary", (self.root,), {}),
             ("cache-rebuild", ["cache", "--rebuild"], "force_rebuild_query_cache", (self.root,), {}),

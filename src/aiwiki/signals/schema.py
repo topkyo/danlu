@@ -321,7 +321,7 @@ def _validate_budget_hint(budget_hint: dict[str, Any], errors: list[str]) -> Non
 
 
 def _validate_source_event_ref(source_kind: str, source_event_ref: str, errors: list[str]) -> None:
-    path = _parse_source_event_ref_path(source_event_ref, errors)
+    path = _parse_source_event_ref_path(source_kind, source_event_ref, errors)
     if path is None:
         return
 
@@ -354,16 +354,22 @@ def _validate_source_event_ref(source_kind: str, source_event_ref: str, errors: 
         errors.append(f"source_event_ref mismatches source_kind={source_kind}")
 
 
-def _parse_source_event_ref_path(source_event_ref: str, errors: list[str]) -> str | None:
+def _parse_source_event_ref_path(source_kind: str, source_event_ref: str, errors: list[str]) -> str | None:
     line_match = _SOURCE_EVENT_REF_LINE_RE.fullmatch(source_event_ref)
     if line_match is not None:
         return line_match.group("path")
 
     row_match = _SOURCE_EVENT_REF_ROW_RE.fullmatch(source_event_ref)
     if row_match is not None:
+        if source_kind != "protocol_learning_event":
+            errors.append("source_event_ref must end with #L<positive integer> for this source_kind")
+            return None
         return row_match.group("path")
 
-    errors.append("source_event_ref must end with #L<positive integer> or :<row_or_id>")
+    if source_kind == "protocol_learning_event":
+        errors.append("source_event_ref must end with #L<positive integer> or :<row_or_id>")
+    else:
+        errors.append("source_event_ref must end with #L<positive integer>")
     return None
 
 

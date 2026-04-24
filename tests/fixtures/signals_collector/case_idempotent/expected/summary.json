@@ -1,0 +1,21 @@
+{
+  "status": "ok",
+  "trace_id": "550e8400-e29b-41d4-a716-446655440000",
+  "signals_path": ".aiwiki/state/signals.jsonl",
+  "sources": [
+    "runtime_history",
+    "llm_receipt",
+    "archive"
+  ],
+  "scanned_count": 8,
+  "new_count": 0,
+  "duplicate_count": 3,
+  "unmapped_count": 5,
+  "invalid_count": 0,
+  "emitted_by_kind": {
+    "review_feedback": 0,
+    "schedule_tick": 0,
+    "runtime_failure": 0
+  },
+  "skip_examples": []
+}
