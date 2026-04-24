@@ -277,7 +277,7 @@ status: "active"
 
 实现级设计可见：
 
-- [[wiki/indexes/Furnace Product Shell Plugin|炼丹炉 Product Shell Plugin]]
+- [[docs/Furnace Product Shell Plugin|炼丹炉 Product Shell Plugin]]
 
 最终理想状态：
 

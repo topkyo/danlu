@@ -41,15 +41,16 @@ class ObsidianWorkspaceTests(unittest.TestCase):
 
     def test_home_dashboard_links_key_index_notes(self) -> None:
         home = (self.root / "HOME.md").read_text(encoding="utf-8")
-        self.assertIn("[[docs/Raw Inbox|", home)
-        self.assertIn("[[docs/Wiki Hub|", home)
+        self.assertIn("[[wiki/indexes/Raw Inbox|", home)
+        self.assertIn("[[wiki/indexes/Wiki Hub|", home)
         self.assertIn("[[docs/Alchemy Furnace|", home)
         self.assertIn("[[docs/Furnace Ultimate Architecture|", home)
         self.assertIn("[[docs/Furnace Material Scaling|", home)
         self.assertIn("[[wiki/indexes/furnace-center|", home)
         self.assertIn("[[wiki/indexes/protocols|", home)
-        self.assertIn("[[docs/Furnace Protocols|", (self.root / "docs" / "Wiki Hub.md").read_text(encoding="utf-8"))
-        self.assertIn("[[docs/Furnace Material State Model|", (self.root / "docs" / "Wiki Hub.md").read_text(encoding="utf-8"))
+        wiki_hub = (self.root / "wiki" / "indexes" / "Wiki Hub.md").read_text(encoding="utf-8")
+        self.assertIn("[[docs/Furnace Protocols|", wiki_hub)
+        self.assertIn("[[docs/Furnace Material State Model|", wiki_hub)
         self.assertIn("[[wiki/indexes/review-center|", home)
         self.assertIn("[[wiki/indexes/graph-view|", home)
         self.assertIn("[[wiki/indexes/machine-memory|", home)
@@ -59,13 +60,13 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         self.assertIn("[[wiki/indexes/review-queue|", home)
         self.assertIn("[[schema/index|", home)
         self.assertIn("[[schema/protocols/index|", home)
-        self.assertIn("[[docs/Outputs|", home)
-        self.assertIn("[[docs/Search Presets|", home)
+        self.assertIn("[[wiki/indexes/Outputs|", home)
+        self.assertIn("[[wiki/indexes/Search Presets|", home)
 
     def test_index_notes_exist(self) -> None:
         for relative in (
-            "docs/Raw Inbox.md",
-            "docs/Wiki Hub.md",
+            "wiki/indexes/Raw Inbox.md",
+            "wiki/indexes/Wiki Hub.md",
             "docs/Alchemy Furnace.md",
             "docs/Furnace Ultimate Architecture.md",
             "docs/Furnace Material Scaling.md",
@@ -78,8 +79,8 @@ class ObsidianWorkspaceTests(unittest.TestCase):
             "wiki/indexes/graph-health.md",
             "wiki/indexes/repair-backlog.md",
             "wiki/indexes/review-queue.md",
-            "docs/Outputs.md",
-            "docs/Search Presets.md",
+            "wiki/indexes/Outputs.md",
+            "wiki/indexes/Search Presets.md",
         ):
             self.assertTrue((self.root / relative).exists(), relative)
 

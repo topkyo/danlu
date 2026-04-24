@@ -20,7 +20,7 @@ status: "active"
 
 - 基线架构：[[docs/Alchemy Furnace|炼丹炉架构]]
 - 终局架构：[[docs/Furnace Ultimate Architecture|炼丹炉最终极形态]]
-- runtime 实施计划：[[wiki/indexes/Furnace Product Shell Runtime Plan|Product Shell Runtime Plan]]
+- runtime 实施计划：[[docs/Furnace Product Shell Runtime Plan|Product Shell Runtime Plan]]
 - 当前这份：`Product Shell` 的实现级设计稿
 
 ## 一句话定义

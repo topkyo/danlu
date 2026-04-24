@@ -33,7 +33,6 @@ status: "active"
 
 - [[docs/Furnace Material Scaling|大规模原料处理]]
 - [[docs/Furnace Material State Model|原料状态模型]]
-- [[docs/Furnace Capability Map|能力地图]]
 
 ## 当前问题
 

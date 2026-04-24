@@ -22,9 +22,8 @@ kind: "dashboard"
 
 - [[docs/Alchemy Furnace|炼丹炉架构]]：炼丹炉的基线架构，建立在 `aiwiki` runtime 之上
 - [[docs/Furnace Ultimate Architecture|最终极形态]]：这套系统最终想长成的认知操作系统形态
-- [[docs/Furnace Capability Map|能力地图]]：当前已经做到了什么，以及下一轮 Product Shell contract 的建议
 - [[docs/Furnace Incremental Compile Plan|增量编译计划]]：把 compile 从黑箱大刷新推进到可观察的最小分段 baseline
-- [[wiki/indexes/Furnace Product Shell Plugin|Product Shell 插件]]：把当前 markdown/html 控制面升级成 Obsidian 内的桌面工作台
+- [[docs/Furnace Product Shell Plugin|Product Shell 插件]]：把当前 markdown/html 控制面升级成 Obsidian 内的桌面工作台
 - [[docs/Furnace Material Scaling|大规模原料处理]]：原料越来越多时的冷热分层、活动工作集和归档设计
 - [[docs/Furnace Material State Model|原料状态模型]]：把 `temperature / active corpus / archive` 压成实现级 schema
 - [[docs/Furnace Protocols|统一炼丹协议]]：一个炉子，多种领域协议

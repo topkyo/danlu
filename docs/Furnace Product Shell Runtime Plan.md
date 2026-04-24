@@ -16,7 +16,7 @@ status: "active"
 
 对应关系：
 
-- Product Shell 设计稿：[[wiki/indexes/Furnace Product Shell Plugin|炼丹炉 Product Shell Plugin]]
+- Product Shell 设计稿：[[docs/Furnace Product Shell Plugin|炼丹炉 Product Shell Plugin]]
 - 当前这份：Product Shell 所依赖的 runtime contract 实施计划
 
 ## 背景

@@ -1141,8 +1141,8 @@ def shell_links(root: Path) -> dict[str, str]:
         "execution_center_html": relative_path(root, execution_center_html_path(root)),
         "execution_audit_html": relative_path(root, execution_audit_html_path(root)),
         "graph_html": relative_path(root, machine_memory_graph_html_path(root)),
-        "product_shell_design": "wiki/indexes/Furnace Product Shell Plugin.md",
-        "product_shell_runtime_plan": "wiki/indexes/Furnace Product Shell Runtime Plan.md",
+        "product_shell_design": "docs/Furnace Product Shell Plugin.md",
+        "product_shell_runtime_plan": "docs/Furnace Product Shell Runtime Plan.md",
     }
 
 

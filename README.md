@@ -142,7 +142,7 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . nightly
 - 最终极形态：[Furnace Ultimate Architecture.md](<./docs/Furnace Ultimate Architecture.md>)
 - 当前能力快照：[Furnace Capability Map.md](<./docs/Furnace Capability Map.md>)
 - 增量编译计划：[Furnace Incremental Compile Plan.md](<./docs/Furnace Incremental Compile Plan.md>)
-- Product Shell 插件设计：[Furnace Product Shell Plugin.md](<./wiki/indexes/Furnace Product Shell Plugin.md>)
+- Product Shell 插件设计：[Furnace Product Shell Plugin.md](<./docs/Furnace Product Shell Plugin.md>)
 - 大规模原料处理设计：[Furnace Material Scaling.md](<./docs/Furnace Material Scaling.md>)
 - 统一炉子 + 多协议：[Furnace Protocols.md](<./docs/Furnace Protocols.md>)
 
