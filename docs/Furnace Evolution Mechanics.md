@@ -228,7 +228,10 @@ planner 接收 signal，产出以下之一的决策：
 
 - `.aiwiki/state/planner-log.jsonl`（append-only）
 
-每条决策包含：`schema_version / signal_id / dedupe_key / decision / mode / reason_codes / budget_used / locks_acquired / primitive_refs / side_effects_allowed / decided_at`。
+每条决策包含：`schema_version / signal_id / dedupe_key / trace_id / decision / mode / reason_codes / budget_used / locks_acquired / primitive_refs / side_effects_allowed / decided_at`。
+
+注：`trace_id` 按 §2.4 必须逐字复用上游 signal 的 trace_id；字段原先遗漏，
+此处澄清，不触发 schema version bump（属于 §2.6 "纯文案澄清"）。
 
 当前已落地的 planner 状态文件是 `.aiwiki/state/planner-state.json`，它不是 append-only decision log。
 

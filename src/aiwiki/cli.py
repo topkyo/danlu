@@ -38,6 +38,7 @@ from .app_shell import build_shell_summary, rewrite_recovery_payload_for_paths, 
 from .app_state import load_machine_memory_action_state
 from .app_vault import bootstrap_new_vault
 from .drop import drop_image, drop_note, drop_pdf, drop_repo, drop_url
+from .planner import write_planner_log
 from .runner import (
     auto_process_once,
     llm_probe,
@@ -482,6 +483,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--trace-id",
         help="Optional lowercase UUIDv4 trace id for this replay batch.",
     )
+    planner_log_replay_parser = subparsers.add_parser(
+        "planner-log-replay",
+        help="Replay signals to planner-log (observe-only).",
+    )
+    planner_log_replay_parser.add_argument("--signals-path", type=Path, default=None)
     llm_check_parser = subparsers.add_parser("llm-check", help="Show whether the LLM runner is configured.")
     llm_check_parser.add_argument(
         "--probe",
@@ -786,6 +792,8 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif args.command == "signals-replay":
             result = collect_signals(root, sources=args.source, trace_id=args.trace_id)
+        elif args.command == "planner-log-replay":
+            result = write_planner_log(root, signals_path=args.signals_path)
         elif args.command == "llm-check":
             if args.probe or args.probe_all:
                 result = llm_probe(root, probe_all=args.probe_all, timeout_seconds=args.probe_timeout)
