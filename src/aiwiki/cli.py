@@ -47,8 +47,10 @@ from .runner import (
     run_alchemy_start,
     run_ask,
     run_compile,
+    run_demote,
     run_lint,
     run_nightly,
+    run_promote,
     run_protocol_learn_add,
     run_protocol_learn_list,
     run_protocol_learn_show,
@@ -578,13 +580,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "file-back":
             result = file_back(root, args.artifact, title=args.title, kind=args.kind, protocol=args.protocol)
         elif args.command == "promote":
-            from .execution.candidates import promote_candidate
-
-            result = promote_candidate(root, args.artifact_ref)
+            result = run_promote(root, args.artifact_ref)
         elif args.command == "demote":
-            from .execution.candidates import demote_candidate
-
-            result = demote_candidate(root, args.artifact_ref)
+            result = run_demote(root, args.artifact_ref)
         elif args.command == "alchemy-start":
             result = run_alchemy_start(root, args.corpus_id, args.topic)
         elif args.command == "alchemy-distill":
