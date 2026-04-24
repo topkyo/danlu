@@ -16,6 +16,8 @@ related_docs:
 
 这份文档定义炼丹炉“如何进化”的实现契约：signal 如何路由到 heavy / light 炼丹、active corpus 如何持久化、金丹如何炼成与复利、L2 protocol-learning 如何衔接既有实装、L3 prompt/policy proposal 如何受控写回。
 
+> **实现状态说明（2026-04-24）**：本文是“目标契约 + 当前差距”的 SoT。当前已落地 active corpus / output candidates、L2 protocol-learning 生命周期、repair planner state、nightly low-risk auto-consume、显式 backend 选择、最小金丹 `alchemy-start / alchemy-distill / alchemy-seal`。完整 signal stream、append-only `planner-log.jsonl`、heavy/light 调度入口、`output/_candidates/elixirs/` 候选平面、L3 prompt/policy proposal 的 review/apply/revert 链路尚未完整实现，以下章节用 `implemented / partial / planned` 标记区分。
+
 它同时取代：
 
 - `Furnace Material Scaling.md`（规模化设计）
@@ -28,14 +30,14 @@ related_docs:
 
 本文档**只**定义：
 
-- signal 的标准化结构与 taxonomy
-- planner 的路由规则与锁策略
-- heavy / light alchemy 的执行契约
-- `active_corpus` 的持久化 schema 与生命周期
-- `wiki/elixirs/` 的 frontmatter 与 DAG 约束
-- Chaining / Distillation / Compounding 三阶段 CLI 语义
+- signal 的标准化结构与 taxonomy（target contract）
+- planner 的路由规则与锁策略（target contract；当前仅有 repair planner state）
+- heavy / light alchemy 的执行契约（target contract；当前由 existing primitives 局部承担）
+- `active_corpus` 的持久化 schema 与生命周期（implemented）
+- `wiki/elixirs/` 的 frontmatter 与 DAG 约束（partial）
+- Chaining / Distillation / Compounding 三阶段 CLI 语义（当前 CLI + 目标 CLI delta）
 - L2 protocol-learning 与现有 EP-029 Step 4 的衔接
-- L3 prompt/policy proposal 的触发、产物、审批、写回、revert 契约
+- L3 prompt/policy proposal 的触发、产物、审批、写回、revert 契约（planned）
 
 本文档**不**定义：
 
@@ -45,7 +47,7 @@ related_docs:
 
 ## 2. Signal Taxonomy
 
-所有进入 planner 的信号必须标准化为：
+目标契约：所有进入完整 planner 的信号必须标准化为：
 
 ```json
 {
@@ -85,7 +87,11 @@ Signal kinds（本轮最小集）：
 
 Signal **从不直接触发 phase**，必须经过 planner 决策。
 
+当前状态：runtime 已有 `runtime-history.jsonl`、LLM receipts、review / execution receipts、planner-state 等可观测输入，但尚未统一归一化为 append-only signal stream。
+
 ## 3. Planner Routing Rules and Locking
+
+当前状态：已落地 `.aiwiki/state/planner-state.json`，用于 repair / execution proposals 的 priority queue、dependency graph、next action 和 nightly auto-consume 记录。下述 `signal -> planner -> heavy/light` 是下一阶段完整 planner 契约，不等同于当前 `planner-state.json` 的全部能力。
 
 ### 3.1 Routing 决策
 
@@ -118,11 +124,13 @@ planner 接收 signal，产出以下之一的决策：
 
 ### 3.4 Planner 状态
 
-planner 的决策日志写入：
+目标 planner 的决策日志写入：
 
 - `.aiwiki/state/planner-log.jsonl`（append-only）
 
 每条决策包含：`signal_id / decision / reason_codes / budget_used / locks_acquired / decided_at`。
+
+当前已落地的 planner 状态文件是 `.aiwiki/state/planner-state.json`，它不是 append-only decision log。
 
 ## 4. Heavy Alchemy Contract
 
@@ -136,7 +144,7 @@ heavy 是**事件驱动的深度重炼**，面向“知识意义可能被改变�
 - `drift`（命中 active judgment 或 active corpus）
 - `elixir_dependency_break`
 - `learning_threshold` 达到结构调整条件
-- 用户显式触发（`aiwiki alchemy heavy <scope>`）
+- 用户显式触发（目标入口：`aiwiki alchemy heavy <scope>`；当前尚未落地）
 
 ### 4.3 动作序列
 
@@ -158,10 +166,10 @@ heavy 的默认执行序列：
 
 ### 4.5 与现有 CLI 的关系
 
-heavy 是**调度层**，底层仍复用现有 primitives：
+heavy 是目标**调度层**，底层仍复用现有 primitives：
 
 - `compile` / `lint` / `nightly` / `review` / `apply` / `revert` 保持现有 CLI 可单独运行。
-- heavy 只是按 planner 决策**组合**这些 primitives，并共享锁与 audit。
+- heavy 落地后只是按 planner 决策**组合**这些 primitives，并共享锁与 audit。
 - 既有命令的语义**不变**。
 
 ## 5. Light Alchemy Contract
@@ -186,7 +194,7 @@ light 是**定时、限额、低扰动**的维护周期，只做知识卫生。
 - `max_tokens_consumed`（若触发 LLM，建议 ≤ 10k）
 - `max_wall_time`（建议 ≤ 10min）
 
-超出预算即停止并记录 `budget_exceeded` 到 planner-log，剩余工作进入下一轮。
+超出预算即停止并记录 `budget_exceeded` 到目标 planner-log，剩余工作进入下一轮。
 
 ### 5.4 与 heavy 的互斥规则
 
@@ -233,7 +241,7 @@ light **不允许**触发 `judge`、`distill`、`propose`、`apply`。
   "judgment_refs": ["judgment-foo"],
   "elixir_refs": ["elixir-bar"],
   "bridge_evidence_ids": ["src-bridge-1"],
-  "output_refs": ["output/_candidates/reports/report-123.md"],
+  "output_refs": ["output/reports/query-123.md"],
   "budget": {
     "max_context_tokens": 8000,
     "max_turns": 20
@@ -249,7 +257,7 @@ light **不允许**触发 `judge`、`distill`、`propose`、`apply`。
 
 | 状态 | 触发 |
 |---|---|
-| `active` | `alchemy start` / `ask --corpus` 命中 / 显式引用 |
+| `active` | 当前 `ask --corpus` 命中 / 显式引用；目标 `alchemy-start` 或 future `alchemy start` wrapper 创建 |
 | `cooling` | nightly 把长期未用的 active 降温 |
 | `expired` | 超过 `expires_at` 且无命中 |
 | `active` ← `expired` | 被重新命中时允许回升 |
@@ -266,12 +274,14 @@ light **不允许**触发 `judge`、`distill`、`propose`、`apply`。
 
 | 阶段 | 路径 |
 |---|---|
-| 候选（未 promote） | `output/_candidates/elixirs/<elixir-id>.md` |
-| 持久（已 promote） | `wiki/elixirs/<elixir-id>.md` |
+| 候选（目标，未 promote） | `output/_candidates/elixirs/<elixir-id>.md` |
+| 持久（当前与目标） | `wiki/elixirs/<elixir-id>.md` |
 
-候选平面与持久平面**物理隔离**，避免一个字段同时表达两种语义。
+目标契约要求候选平面与持久平面**物理隔离**，避免一个字段同时表达两种语义。当前最小实现暂时由 `alchemy-start` 直接写入 `wiki/elixirs/` 的 `draft` 金丹，再由 `alchemy-distill` 推进 `distilling`，最后由 `alchemy-seal` 标记 `settled`。
 
 ### 7.2 Frontmatter（最小集）
+
+目标 frontmatter 最小集：
 
 ```yaml
 ---
@@ -283,7 +293,7 @@ corpus_id: research-transformer-scaling
 derived_from:
   - wiki/judgments/scaling-law-baseline.md
   - wiki/decisions/inference-compute-tradeoff.md
-  - output/_candidates/reports/report-123.md
+  - output/reports/query-123.md
 judgment_refs:
   - judgment-scaling-law-baseline
 decision_refs:
@@ -301,26 +311,30 @@ promoted_at: null
 ---
 ```
 
+当前最小实现已落地字段：`elixir_id`、`elixir_state`、`iteration`、`provenance_corpus`、`derived_from`、`topic`、`created_at`、`updated_at`、`distill_history_json`，`settled` 时补 `sealed_at`。`judgment_refs / decision_refs / counter_evidence / confidence_level / promoted_at` 仍属于目标 schema。
+
 ### 7.3 生命周期
 
 | 状态 | 位置 | 入口 |
 |---|---|---|
-| `draft` | `output/_candidates/elixirs/` | `alchemy distill` 初稿 |
-| `distilling` | `output/_candidates/elixirs/` | 多轮炼化中 |
-| `candidate` | `output/_candidates/elixirs/` | 准备提交人工评审 |
-| `settled` | `wiki/elixirs/` | `aiwiki promote` 后 |
-| `superseded` | `wiki/elixirs/`（保留） | 被新金丹显式 supersede |
+| `draft` | 当前 `wiki/elixirs/`；目标 `output/_candidates/elixirs/` | 当前 `alchemy-start <corpus_id> --topic ...` |
+| `distilling` | 当前 `wiki/elixirs/`；目标 `output/_candidates/elixirs/` | 当前 `alchemy-distill <elixir_id> --question ...` |
+| `candidate` | 目标 `output/_candidates/elixirs/` | planned：准备提交人工评审 |
+| `settled` | `wiki/elixirs/` | 当前 `alchemy-seal <elixir_id>`；目标 `promote` 后 |
+| `superseded` | `wiki/elixirs/`（保留） | planned：被新金丹显式 supersede |
 
 ### 7.4 DAG 约束
 
 - 金丹引用链（`elixir_refs`）**必须**构成有向无环图。
 - 新金丹**不得**只依赖旧金丹的结论自举——必须同时锚定至少一条 `raw/` 或 `wiki/sources/` / `wiki/judgments/` 的底层证据。
-- promote 时校验：若发现循环依赖或缺失底层锚定，拒绝 promote 并报错。
+- 当前 `alchemy-distill / alchemy-seal` 已校验金丹 DAG、自引用、路径穿越和底层 `wiki/derived/` 锚定；目标 promote gate 继续执行同类校验。
 
 ### 7.5 Counter-evidence 强制
 
-- `counter_evidence` 字段**不得为空**（promote gate）。
+- 目标 promote gate 中 `counter_evidence` 字段**不得为空**。
 - 若真的没有反证，显式写 `counter_evidence: [NONE_FOUND]` 并记录 `confidence_level: low`。
+
+当前最小金丹实现尚未强制 `counter_evidence / confidence_level`。
 
 ## 8. Chaining → Distillation → Compounding
 
@@ -329,16 +343,16 @@ promoted_at: null
 ### 8.1 阶段 1：Chaining（串主题）
 
 ```bash
-aiwiki alchemy start "VLA 机器人架构" --protocol research
-# → 创建 corpus_id，写入 active-corpora.json，status=active
+aiwiki ask "VLA 的核心设计权衡是什么" --protocol research --corpus research-vla-2026q2
+# → 当前：创建/命中 corpus，写入 active-corpora.json，status=active
 
-aiwiki ask "VLA 的核心设计权衡是什么" --corpus <id>
-aiwiki ask "和传统 HLA 相比有哪些优劣" --corpus <id>
-# → 每轮 output 进 output/_candidates/，output_refs 追加到 corpus
+aiwiki ask "和传统 HLA 相比有哪些优劣" --corpus research-vla-2026q2
+# → 当前：每轮 output 写入 output/reports、output/slides、output/figures 等可见产物
+# → 当前：.aiwiki/state/output-candidates.json 记录候选状态，output_refs 追加到 corpus
 # → 绝不自动写入 wiki/
 
 aiwiki drop-url https://example.com/vla-paper
-aiwiki ask "结合新 paper 重新评估权衡" --corpus <id>
+aiwiki ask "结合新 paper 重新评估权衡" --corpus research-vla-2026q2
 ```
 
 **验收准则**：第二轮 `ask` 能无缝读取前轮 output；`wiki/` 不被自动写入。
@@ -346,32 +360,35 @@ aiwiki ask "结合新 paper 重新评估权衡" --corpus <id>
 ### 8.2 阶段 2：Distillation（凝丹）
 
 ```bash
-aiwiki review candidates --corpus <id>
-# → 列出当前 corpus 下的所有 candidate output
+aiwiki promote output/reports/query-20260424-example.md
+# → 当前：把 output candidate promote 到 wiki/derived/，供金丹引用
 
-aiwiki alchemy distill <corpus_id>
-# → 生成 output/_candidates/elixirs/<elixir-id>.md，state=candidate
-# → 包含 provenance / derived_from / judgment_refs / counter_evidence
+aiwiki alchemy-start research-vla-2026q2 --topic "VLA 机器人架构"
+# → 当前：从该 corpus 下已 promoted 的 wiki/derived/ 输出生成 wiki/elixirs/<elixir-id>.md，state=draft
 
-aiwiki promote <elixir-id>
-# → 人工确认后写入 wiki/elixirs/，state=settled
-# → promote gate 校验 DAG、底层锚定、counter_evidence
+aiwiki alchemy-distill <elixir-id> --question "延迟约束如何改变架构权衡？"
+# → 当前：推进 iteration，保留 provenance，state=distilling
+
+aiwiki alchemy-seal <elixir-id>
+# → 当前：校验 DAG 与底层 wiki/derived/ 锚定后标记 state=settled
 ```
 
-**验收准则**：能成功生成 elixir 文件并走完 promote / demote / revert 生命周期；每一步可审计。
+**当前验收准则**：能从已 promoted output 生成 elixir，能多轮 distill，能 seal，并拒绝空 provenance、自引用、路径穿越和 DAG 环路。
+
+**目标验收准则**：能成功生成 candidate elixir 文件并走完 promote / demote / revert 生命周期；每一步可审计。
 
 ### 8.3 阶段 3：Compounding（复利）
 
 ```bash
-aiwiki ask "下一代 VLA 应该怎么演进" --elixir elixir-vla-2026q1 --elixir elixir-foundation-arch-2025q4
-# → 显式加载旧金丹作为上下文起点
-# → 新 corpus 的 elixir_refs 自动记录被引用的旧金丹
+aiwiki alchemy-start research-vla-2026q2 --topic "下一代 VLA 架构" --include-elixir elixir-vla-2026q1
+aiwiki alchemy-distill <new-elixir-id> --question "如何吸收旧金丹结论？" --include-elixir elixir-foundation-arch-2025q4
+# → 当前：显式引用 settled 金丹，写入 derived_from，并执行 DAG 校验
 ```
 
 **验收准则**：
 
 - 同 protocol 的 ask 能显式加载 `protocol-learnings`（L2）
-- 新金丹能引用旧金丹（DAG 校验通过）
+- 新金丹能显式引用旧金丹（DAG 校验通过）
 - 引用链不形成无限自循环
 
 ## 9. L2 Protocol-Learning Contract
@@ -393,21 +410,21 @@ L2 layer 已在 EP-029 Step 4 落地。本文档**继承**现有实现，不引�
 
 ### 9.3 触发 learning 候选生成
 
-新增 signal→proposal 路径：
+目标 signal→proposal 路径：
 
 - `review_feedback` 聚类出 recurring pattern（同一 protocol、同类 reject 理由、≥ 3 次）
 - `drift` 反复命中同一类 judgment
 - `runtime_failure` 聚类出稳定失败模式
 
-planner 可发出 `generate-proposal`（targeting `wiki/protocol-learnings/<protocol>/_candidates/`）。人工 accept 后转为 `active`。
+完整 planner 落地后可发出 `generate-proposal`（targeting `wiki/protocol-learnings/<protocol>/_candidates/`）。人工 accept 后转为 `active`。当前可通过 `protocol-learn-add` 显式新增 learning，再用 `protocol-learn-age / verify / demote / archive / supersede` 治理生命周期。
 
 ## 10. L3 Prompt/Policy Proposal Contract
 
-**本轮最关键的新增能力**。agent 可生成对 `prompts/*.md` 和 `schema/policies/*` 的修改提案，但**必须人工 accept** 才写回。
+**架构授权的 planned 能力**。agent 可生成对 `prompts/*.md` 和 `schema/policies/*` 的修改提案，但**必须人工 accept** 才写回。当前 runtime 尚未提供 `prompt_proposal / policy_proposal` 的生成、review、apply、revert 入口；现有成熟 proposal 类型是 execution proposal 与 concept rewrite proposal。
 
 ### 10.1 触发条件
 
-L3 proposal 只在以下条件之一成立时触发：
+目标 L3 proposal 只在以下条件之一成立时触发：
 
 1. **Failure pattern 聚类**：同一 prompt / policy 下反复出现 ≥ N 次同类失败（建议 N=5），且归因指向 prompt / policy 本身。
 2. **Recurring feedback**：同一 prompt 下用户反复 reject / rewrite（≥ 3 次），且 feedback 有共同语义。
@@ -456,7 +473,7 @@ created_at: 2026-04-24T12:00:00+08:00
 
 ### 10.4 审批流程
 
-L3 proposal **物理目录独立**，但**逻辑接入现有 review queue**：
+目标 L3 proposal **物理目录独立**，但**逻辑接入现有 review queue**：
 
 ```
 propose (auto) → review queue (human) → accept? 
@@ -464,7 +481,7 @@ propose (auto) → review queue (human) → accept?
                                          └─ no  → rejected (保留记录)
 ```
 
-- 复用现有 `review / apply / revert / audit` 语义。
+- 复用现有 `review / scoped apply / scoped revert / audit` 语义。
 - proposal 作为独立 proposal kind，避免与普通 rewrite proposal 混淆。
 - **Accept 前绝不写回**目标文件。
 
@@ -502,52 +519,53 @@ L3 proposal **只允许**写入以下文件：
 
 | 命令 | 语义 | 写目标 |
 |---|---|---|
-| `aiwiki alchemy start "<topic>" --protocol <p>` | 创建 corpus，初始化 budget / expires | `.aiwiki/state/active-corpora.json` |
-| `aiwiki ask "<q>" --corpus <id>` | 绑定 corpus 的 turn；追加 output_refs | `output/_candidates/`、`active-corpora.json` |
-| `aiwiki ask "<q>" --elixir <old-id>` | 显式加载旧金丹进入上下文 | 同上，且记录 elixir_refs |
-| `aiwiki review candidates --corpus <id>` | 列出 corpus 下候选 | 读 only |
-| `aiwiki alchemy distill <corpus-id>` | 生成 candidate elixir | `output/_candidates/elixirs/` |
-| `aiwiki promote <elixir-id>` | 候选 → 持久 | `wiki/elixirs/` + receipt + audit |
-| `aiwiki alchemy heavy <scope>` | 手动触发 heavy 炼丹 | 按 scope |
-| `aiwiki review proposals` | 查看 L3 proposal 队列 | 读 only |
-| `aiwiki apply <proposal-id>` | 人工 accept L3 proposal | `prompts/*.md` 或 `schema/policies/*` |
-| `aiwiki revert <receipt-id>` | 按 receipt 回滚 | 恢复 target 文件 |
+| `aiwiki ask "<q>" --corpus <id>` | 当前：绑定或创建 corpus turn；追加 output_refs | `output/reports` / `output/slides` / `output/figures` 等产物 + `.aiwiki/state/output-candidates.json` + `.aiwiki/state/active-corpora.json` |
+| `aiwiki promote <artifact_ref>` | 当前：output candidate → `wiki/derived/` | `wiki/derived/` + candidate state |
+| `aiwiki demote <artifact_ref>` | 当前：demote output candidate | `.aiwiki/state/output-candidates.json` |
+| `aiwiki alchemy-start <corpus-id> --topic <topic>` | 当前：从该 corpus 的已 promoted output 创建 draft elixir | `wiki/elixirs/` |
+| `aiwiki alchemy-distill <elixir-id> --question <q>` | 当前：推进 draft/distilling elixir iteration | `wiki/elixirs/` |
+| `aiwiki alchemy-seal <elixir-id>` | 当前：校验后标记 settled | `wiki/elixirs/` |
+| `aiwiki protocol-learn-add/list/show/age/verify/demote/archive/supersede` | 当前：L2 learning 生命周期治理 | `wiki/protocol-learnings/` |
+| `aiwiki alchemy heavy <scope>` | planned：手动触发 heavy 炼丹 | 按 scope |
+| `aiwiki review proposals` | planned：查看 L3 proposal 队列 | 读 only |
+| `aiwiki apply <proposal-id>` | planned：人工 accept L3 proposal | `prompts/*.md` 或 `schema/policies/*` |
+| `aiwiki revert <receipt-id>` | planned：按 receipt 回滚 L3 accept | 恢复 target 文件 |
 
 ## 12. Audit, Revert, and Backward Compatibility
 
 ### 12.1 统一 audit 语义
 
-以下动作**全部**产生 audit entry：
+以下目标动作**全部**需要产生 audit entry：
 
-- heavy alchemy 启动 / 完成
-- light alchemy 启动 / 完成（含 budget_exceeded）
-- elixir promotion / demotion / supersede
-- L2 learning 状态变更
-- L3 proposal generation / accept / reject / revert
+- heavy alchemy 启动 / 完成（planned）
+- light alchemy 启动 / 完成（含 budget_exceeded；planned）
+- elixir promotion / demotion / supersede（candidate promote chain planned；当前 seal 直接更新 elixir state）
+- L2 learning 状态变更（当前已有 protocol-learning aging audit / 状态文件）
+- L3 proposal generation / accept / reject / revert（planned）
 
-audit 写入：`.aiwiki/state/audit.jsonl`（append-only）。
+当前审计仍是分散日志：execution receipts、LLM receipts、runtime history、protocol-learning aging audit 等分别承担各自领域的审计语义。目标通用审计流为 `.aiwiki/state/audit.jsonl`（append-only，planned）。
 
 ### 12.2 Revert 适用范围
 
 revert **可以**：
 
-- 回滚 L3 accept（按 before_hash）
-- 回滚 elixir promotion（回到 candidate）
+- 回滚 L3 accept（按 before_hash；planned）
+- 回滚 elixir promotion（回到 candidate；planned）
 - 回滚 L2 learning activate（回到 stale）
 
 revert **不可以**：
 
 - 回滚 `raw/` 的历史事实
 - 回滚 audit entry 本身
-- 回滚 planner 决策日志
+- 回滚 planner 决策日志（planned；当前 `planner-state.json` 不是 append-only log）
 
 ### 12.3 向后兼容
 
-- 既有 `compile / lint / nightly / apply / revert` CLI **不变**，仍作为 operator-visible primitives。
+- 既有 `compile / lint / nightly` 与 scoped apply/revert CLI（如 `apply-rewrite / revert-rewrite`、`apply-action / revert-action`、`apply-archive / revert-archive`）**不变**，仍作为 operator-visible primitives。
 - 本文档引入的新机制都是**叠加**在现有 primitives 之上的调度与 proposal 层。
 - 首轮 rollout 建议顺序：
-  1. 先落 `.aiwiki/state/planner-log.jsonl` 与 `active-corpora.json`
-  2. 再落 `output/_candidates/elixirs/` 与 `aiwiki alchemy start/ask/distill/promote`
+  1. 已落 `active-corpora.json`；下一步补 `.aiwiki/state/planner-log.jsonl` 与 normalized signal stream
+  2. 已落最小 `wiki/elixirs/` + `alchemy-start/distill/seal`；下一步补 `output/_candidates/elixirs/` 与 promote/demote/revert
   3. 再落 `output/_proposals/` 与 `aiwiki review proposals / apply`
   4. 最后把 heavy/light 的调度封装成独立入口
 

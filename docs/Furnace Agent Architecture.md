@@ -10,13 +10,15 @@ supersedes:
 related_docs:
   - docs/Furnace Evolution Mechanics.md
   - docs/Furnace Elixir.md
-  - docs/Furnace Product Shell Plugin.md
-  - docs/Furnace Product Shell Runtime Plan.md
+  - docs/archive/Furnace Product Shell Plugin.md
+  - docs/archive/Furnace Product Shell Runtime Plan.md
 ---
 
 # 炼丹炉 Agent 架构
 
 这份文档是炼丹炉（aiwiki runtime）当前终局架构的唯一 SoT。
+
+> **实现状态说明（2026-04-24）**：本文定义终局架构边界，不等同于所有机制均已完整落地。当前 runtime 已落地五层文件平面、显式 LLM backend、Product Shell shell-facing contract、L2 protocol-learning 生命周期、active corpus / output candidate state、repair planner state，以及最小金丹 `alchemy-start / alchemy-distill / alchemy-seal` 链路。完整 signal planner、`.aiwiki/state/planner-log.jsonl`、heavy/light lane 调度器、L3 prompt/policy proposal 仍属于架构授权的待落地机制。
 
 它同时取代：
 
@@ -64,8 +66,22 @@ related_docs:
 **结论**：
 
 - **叙事上**：从“九层静态模型”替换为“持久化平面 + agent loop + autonomy boundary”。
-- **实现上**：当前目录结构（`raw / wiki / .aiwiki/state / schema / output`）、治理链、执行层全部保留，只在其上方新增 planner 和 proposal 两个机制。
+- **实现上**：当前目录结构（`raw / wiki / .aiwiki/state / schema / output`）、治理链、执行层全部保留，并允许在其上方逐步新增完整 planner 和 proposal 机制。
 - **本文档不要求推翻任何现有 CLI 命令**。
+
+## 2.1 Current Implementation Map
+
+| 能力 | 当前状态 | 说明 |
+|---|---|---|
+| 文件平面与 deterministic baseline | implemented | `raw / wiki / .aiwiki/state / schema / output` 已是 runtime 主结构，核心 `compile / lint / nightly` 与 scoped apply/revert 写回语义不依赖 LLM。 |
+| 显式 backend 选择 | implemented | `AIWIKI_LLM_BACKEND` 必须显式设置；planner 不做 backend auto-routing。 |
+| Product Shell surface | implemented | 插件通过 launcher CLI 与 `output/control/shell-summary.json` 工作，不直接拥有 runtime state。 |
+| L2 protocol-learning | implemented | 已有 `active / stale / demoted / archived / superseded` 生命周期与 replacement DAG 校验。 |
+| active corpus / output candidates | implemented | `.aiwiki/state/active-corpora.json` 与 `.aiwiki/state/output-candidates.json` 已作为运行态工作集与候选状态。 |
+| 金丹最小链路 | partial | 当前 CLI 为 `alchemy-start / alchemy-distill / alchemy-seal`，已落 `wiki/elixirs/`、provenance 与 DAG 校验；候选目录、promote/demote/revert 语义仍待收口。 |
+| planner | partial | 当前已有 `.aiwiki/state/planner-state.json` 的 repair/execution proposal planner；完整 signal planner 与 append-only planner log 未落地。 |
+| heavy/light alchemy lane | planned | 当前 `nightly / compile / lint / review` primitives 已在，但尚未形成统一 heavy/light 调度入口。 |
+| L3 prompt/policy proposal | planned | 架构允许生成 `output/_proposals/prompt|policy`，但 runtime 入口、review queue 接线和 apply/revert 尚待实现。 |
 
 ## 3. Stable Invariants and Non-Goals
 
@@ -74,7 +90,7 @@ related_docs:
 - **Single writer, many readers**：同一时刻只允许一个 writer 触碰 `wiki/` / `.aiwiki/state/` / `output/control/` / `output/packs/`。
 - **`raw/` 是唯一事实输入层**：任何派生层都不得覆盖或改写 `raw/`。
 - **Provenance 必须保留**：所有派生资产都应回溯到 `raw/` 或上游 wiki 证据。
-- **Deterministic baseline**：核心 runtime 行为不依赖 LLM；LLM 只在显式 `ask / run-ask / alchemy` 路径下被调用。
+- **Deterministic baseline**：核心 runtime 行为不依赖 LLM；LLM 只在显式 `run-*`、可选 vision 分析或未来 LLM-backed alchemy 路径下被调用。
 - **Backend 显式手动选择**：`codex-cli / nvidia-nim-api / copilot-cli / claude-cli` 之间的切换由操作者控制，planner 不做 backend auto-routing。
 - **Review / apply / revert / audit 闭环不破坏**：任何写回 `wiki/` 或 `prompts/` 或 `schema/policies/` 的动作都必须产生可回滚的 receipt 和 audit。
 
@@ -99,7 +115,7 @@ signal → planner → phase → feedback → learning
 
 ### 4.1 Signal（感知）
 
-signal 是 planner 的唯一输入来源。当前接受的 signal 包括（非穷举）：
+signal 是完整 planner 的唯一输入来源。目标 signal 包括（非穷举）：
 
 - `raw/` 变化（drop-url / drop-pdf / drop-image / drop-repo / 手工添加）
 - `counter-evidence` 出现（判断被证据反驳）
@@ -125,7 +141,7 @@ planner 在 signal 和当前系统状态（active_corpus、aging、review backlo
 - `ignore`（信号不值得处理）
 - `enqueue-light`（收入 light 炼丹队列）
 - `enqueue-heavy`（触发 heavy 炼丹）
-- `generate-proposal`（生成 L2/L3 proposal）
+- `generate-proposal`（生成 L2/L3 proposal；L3 当前为 planned）
 - `escalate-human`（需要人工介入）
 
 planner **只能调度已被允许的 phase 集合**，不允许发明新的写回路径。planner 的决策全程可审计。
@@ -144,7 +160,7 @@ phase 是一组受控的执行原子，当前集合：
 - `apply`（accept 后写回目标文件）
 - `revert`（按 receipt 回滚）
 
-所有 phase 都对应已有 CLI primitive；本轮架构不新增 phase 的物理执行路径，只在其上方加调度。
+所有 phase 都必须映射到已有或待补的受控 CLI primitive；本轮架构不新增绕过 CLI / receipt / audit 的物理执行路径，只在既有 primitives 上方加调度。
 
 ### 4.4 Feedback（反哺）
 
@@ -164,7 +180,7 @@ learning 是 loop 的唯一合法“进化出口”。它只允许落到三个�
 
 - **L1 runtime state**（`.aiwiki/state/*`、temperature、active corpus 降温）
 - **L2 protocol-learning**（`wiki/protocol-learnings/` 的候选/老化/supersede）
-- **L3 prompt/policy proposal**（`output/_proposals/prompt/`、`output/_proposals/policy/`）
+- **L3 prompt/policy proposal**（`output/_proposals/prompt/`、`output/_proposals/policy/`，当前为 planned）
 
 learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心结构，不允许越过 review 链直接写入 `prompts/*.md` 或 `schema/policies/*`。
 
@@ -227,9 +243,9 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
 - **复合资产**：金丹不是更高级的 judgment，它是对多个 judgment / decision / source 的综合凝结。
 - **知识复利节点**：新金丹可以引用旧金丹，形成真正的长期杠杆；但引用链必须是 DAG，且不能只靠旧金丹的结论自举，必须继续锚定底层证据。
 - **独立生命周期**：与 judgment 的状态机完全分离。
-  - 候选平面：`output/_candidates/elixirs/`（未通过人工 promote）
-  - 持久平面：`wiki/elixirs/`（已 promote）
-- **Provenance 强制**：每个金丹必须携带 `derived_from`、`judgment_refs`、`counter_evidence`、`confidence_level` 和 `corpus_id`。
+  - 目标候选平面：`output/_candidates/elixirs/`（未通过人工 promote；planned）
+  - 当前持久平面：`wiki/elixirs/`（当前最小链路直接写入，`settled` 由 `alchemy-seal` 产生）
+- **Provenance 强制**：目标 schema 要求每个金丹携带 `derived_from`、`judgment_refs`、`counter_evidence`、`confidence_level` 和 `corpus_id`；当前最小实现已强制 `derived_from` 与 corpus provenance，并校验必须包含底层 `wiki/derived/` 源条目。
 
 存储决策（本轮最终结论）：
 
@@ -240,7 +256,7 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
 
 ## 8. Autonomy Boundaries: L1 / L2 / L3
 
-本轮重构最关键的决策：**L3 红线开一条缝——agent 可生成对 `prompts/*.md` 和 `schema/policies/*` 的 proposal，但必须人工 accept 才能写回。**
+本轮架构最关键的边界决策：**L3 红线只开 proposal-only 一条缝——agent 可生成对 `prompts/*.md` 和 `schema/policies/*` 的 proposal，但必须人工 accept 才能写回。** 当前 runtime 尚未落地 L3 prompt/policy proposal 执行链；本文只定义授权范围与红线。
 
 红线表：
 
@@ -248,7 +264,7 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
 |---|---|---|---|
 | **L1 知识 / 运行态自维护** | `.aiwiki/state/*` 更新、active corpus 收敛、targeted compile / lint、索引刷新、候选产物生成 | 正式写入高价值长期资产（promote elixir）、高风险 apply | 覆盖 `raw/`；绕过 receipt / audit；隐式切换 backend |
 | **L2 Protocol-learning** | 聚类 review 反馈、生成 learning 候选、老化、supersede；replacement graph 校验 | 将新 learning 置为 `active`；默认装载到 ask 路径 | 隐式改 prompt / policy；跨 protocol 污染；破坏 replacement DAG |
-| **L3 Prompt/Policy Proposal**（本轮新增） | 生成 proposal 到 `output/_proposals/prompt/`、`output/_proposals/policy/`，附证据、patch 说明和 revert 信息 | 写回 `prompts/*.md`、`schema/policies/*` | 自动修改 `src/aiwiki/**`；自动修改 schema 核心结构；自动改 protocol core contract |
+| **L3 Prompt/Policy Proposal**（planned） | 生成 proposal 到 `output/_proposals/prompt/`、`output/_proposals/policy/`，附证据、patch 说明和 revert 信息 | 写回 `prompts/*.md`、`schema/policies/*` | 自动修改 `src/aiwiki/**`；自动修改 schema 核心结构；自动改 protocol core contract |
 
 补充规则：
 
@@ -270,7 +286,7 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
 
 操作者控制：
 
-- Backend 选择始终显式手动，不在 planner 决策范围内。
+- Backend 选择始终通过环境变量或 Product Shell / launcher settings 显式手动配置，不在 planner 决策范围内。
 - 人工 accept / reject 是跨边界写回（L1 promote / L2 activate / L3 apply）的唯一最终门槛。
 
 ## 10. Compatibility Proof with the Current Runtime
@@ -279,14 +295,14 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
 
 | 不变量 | 兼容性 |
 |---|---|
-| **Single writer** | planner 本身不写文件；所有写操作仍走现有 phase primitives，共享同一锁。 |
+| **Single writer** | 完整 planner 落地后不直接写业务文件；所有写操作仍走现有 phase primitives，共享同一锁。 |
 | **`raw/` 不可覆盖** | agent loop 所有学习出口（L1/L2/L3）都在派生平面或规则平面，`raw/` 永远不是写目标。 |
-| **Provenance** | 每条 feedback、每个金丹、每个 proposal 都强制携带证据锚点与 corpus_id。 |
-| **Deterministic baseline** | core runtime（compile / lint / nightly / apply / revert）保持决定论，LLM 只在显式 ask / alchemy 路径被调用。 |
-| **Backend 显式选择** | planner 不做 backend routing；backend 切换仍由 CLI 参数显式指定。 |
-| **Review / apply / revert / audit** | L3 proposal 接入既有 review queue；所有写回均生成 receipt 与 audit，支持 revert。 |
+| **Provenance** | 已落地资产继续保留 evidence / corpus provenance；目标金丹与 L3 proposal schema 进一步强制证据锚点。 |
+| **Deterministic baseline** | core runtime（compile / lint / nightly 与 scoped apply/revert 写回语义）保持决定论，LLM 只在显式 `run-*`、可选 vision 分析或未来 LLM-backed alchemy 路径被调用。 |
+| **Backend 显式选择** | planner 不做 backend routing；backend 切换仍由 operator 通过 env / launcher settings 显式指定。 |
+| **Review / apply / revert / audit** | 既有 execution / rewrite / candidate 写回继续走 review / receipt / audit；L3 proposal 落地时必须接入同一语义。 |
 
-**结论**：新架构不要求改变任何现有 CLI 命令的语义，也不要求新增任何破坏性迁移。planner 和 proposal 是在既有 primitives 之上的新调度层。
+**结论**：新架构不要求改变任何现有 CLI 命令的语义，也不要求新增任何破坏性迁移。完整 planner 和 L3 proposal 是在既有 primitives 之上的增量调度层。
 
 ## 11. What This Document Does Not Define
 
@@ -294,7 +310,7 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
 
 - 具体 signal schema、planner routing rule、phase 契约细节 → 见 [[docs/Furnace Evolution Mechanics|炼丹炉进化机制]]
 - active corpus / elixir / learning / proposal 的 frontmatter 详细字段 → 见进化机制文档
-- Product Shell surface / UI contract → 见 [[docs/Furnace Product Shell Plugin|产品壳插件]] / [[docs/Furnace Product Shell Runtime Plan|产品壳 runtime 计划]]
+- Product Shell surface / UI contract → 当前参考归档史料 [[docs/archive/Furnace Product Shell Plugin|产品壳插件]] / [[docs/archive/Furnace Product Shell Runtime Plan|产品壳 runtime 计划]]
 - 具体 EP 实施路线 / 时间表 → 见 `PROGRESS.md` 与 `.codex/plans/active.md`
 
 ## 12. Document Status and Supersede Map
@@ -311,5 +327,5 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
 
 - [[docs/Furnace Evolution Mechanics|炼丹炉进化机制]]：实现契约 SoT
 - [[docs/Furnace Elixir|金丹机制 thesis]]：金丹产品思路（仍 accepted）
-- [[docs/Furnace Product Shell Plugin|产品壳插件]]：surface 契约
-- [[docs/Furnace Product Shell Runtime Plan|产品壳 runtime 计划]]：shell-runtime 契约
+- [[docs/archive/Furnace Product Shell Plugin|产品壳插件]]：surface 契约史料
+- [[docs/archive/Furnace Product Shell Runtime Plan|产品壳 runtime 计划]]：shell-runtime 契约史料

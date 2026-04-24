@@ -141,7 +141,7 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . nightly
 - 炼丹炉 Agent 架构（终局 SoT）：[Furnace Agent Architecture.md](<./docs/Furnace Agent Architecture.md>)
 - 炼丹炉进化机制（实现契约 SoT）：[Furnace Evolution Mechanics.md](<./docs/Furnace Evolution Mechanics.md>)
 - 金丹机制 thesis：[Furnace Elixir.md](<./docs/Furnace Elixir.md>)
-- Product Shell 插件设计：[Furnace Product Shell Plugin.md](<./docs/Furnace Product Shell Plugin.md>)
+- Product Shell 插件设计史料：[Furnace Product Shell Plugin.md](<./docs/archive/Furnace Product Shell Plugin.md>)
 - 归档文档索引：[docs/archive/](./docs/archive/)
 
 日常使用时，Obsidian 与 CLI 共享同一个 runtime；不要同时在两边各跑一个 `compile / nightly / apply / revert`。
