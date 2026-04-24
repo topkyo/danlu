@@ -1276,17 +1276,17 @@ def auto_process_once(
 
 
 @runtime_write_operation
-def run_alchemy_start(root: Path, corpus_id: str, topic: str) -> dict[str, Any]:
+def run_alchemy_start(root: Path, corpus_id: str, topic: str, include_elixir_ids: list[str] | None = None) -> dict[str, Any]:
     from .execution.alchemy import start_elixir
 
-    return start_elixir(root, corpus_id, topic=topic)
+    return start_elixir(root, corpus_id, topic=topic, include_elixir_ids=include_elixir_ids)
 
 
 @runtime_write_operation
-def run_alchemy_distill(root: Path, elixir_id: str, question: str) -> dict[str, Any]:
+def run_alchemy_distill(root: Path, elixir_id: str, question: str, include_elixir_ids: list[str] | None = None) -> dict[str, Any]:
     from .execution.alchemy import distill_elixir
 
-    return distill_elixir(root, elixir_id, question=question)
+    return distill_elixir(root, elixir_id, question=question, include_elixir_ids=include_elixir_ids)
 
 
 @runtime_write_operation

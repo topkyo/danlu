@@ -47,12 +47,98 @@ def _validate_source_outputs(root: Path, refs: list[str], *, allowed: set[str]) 
     for ref in refs:
         if not isinstance(ref, str) or not ref.strip():
             raise ValueError("source output must be a non-empty wiki/derived ref")
-        if not ref.startswith("wiki/derived/"):
-            raise ValueError(f"source output must be under wiki/derived/: {ref}")
-        if not (root / ref).is_file():
-            raise ValueError(f"source output missing: {ref}")
-        if ref not in allowed:
-            raise ValueError(f"source output is not a promoted candidate for this corpus: {ref}")
+        if ref.startswith("wiki/derived/"):
+            if not (root / ref).is_file():
+                raise ValueError(f"source output missing: {ref}")
+            if ref not in allowed:
+                raise ValueError(f"source output is not a promoted candidate for this corpus: {ref}")
+            continue
+        if ref.startswith("wiki/elixirs/"):
+            path = root / ref
+            if not path.is_file():
+                raise ValueError(f"source output missing: {ref}")
+            frontmatter = _parse_elixir_frontmatter(path)
+            if str(frontmatter.get("elixir_state") or "") != "settled":
+                raise ValueError(f"引用金丹 {ref} 当前状态为 {frontmatter.get('elixir_state') or 'unknown'}，只能引用 settled 金丹")
+            continue
+        raise ValueError(f"source output must be under wiki/derived/ or wiki/elixirs/: {ref}")
+
+
+def _resolve_elixir_id(root: Path, elixir_id: str) -> Path:
+    elixir_id = elixir_id.strip()
+    if not elixir_id:
+        raise ValueError("金丹 id 不能为空")
+    if "/" in elixir_id or "\\" in elixir_id:
+        raise ValueError(f"金丹 id 不允许包含路径分隔符: {elixir_id!r}")
+    if elixir_id in {".", ".."}:
+        raise ValueError(f"金丹 id 非法: {elixir_id!r}")
+    elixir_root = (root / ELIXIR_DIR)
+    candidate = elixir_root / f"{elixir_id}.md"
+    if candidate.resolve().parent != elixir_root.resolve():
+        raise ValueError(f"金丹 id 非法: {elixir_id!r}")
+    return candidate
+
+
+def _detect_elixir_cycle(root: Path, new_elixir_path: str | Path, derived_from: list[str]) -> list[str] | None:
+    def _norm(p: str | Path, root: Path = root) -> str:
+        s = str(p).replace("\\", "/")
+        if s.startswith("./"):
+            s = s[2:]
+        path = Path(s)
+        if path.is_absolute():
+            try:
+                path = path.relative_to(root)
+            except ValueError:
+                return str(path).replace("\\", "/")
+        return path.as_posix()
+
+    def _elixir_deps(abs_path: Path) -> list[str]:
+        try:
+            frontmatter = _parse_elixir_frontmatter(abs_path)
+        except (OSError, ValueError) as e:
+            raise ValueError(f"金丹文件无法解析: {abs_path} ({e})") from e
+        deps = frontmatter.get("derived_from", [])
+        if not isinstance(deps, list):
+            return []
+        return [_norm(item) for item in deps if isinstance(item, str) and _norm(item).startswith("wiki/elixirs/")]
+
+    graph: dict[str, list[str]] = {}
+    elixir_root = root / "wiki" / "elixirs"
+    if elixir_root.exists():
+        for f in elixir_root.rglob("*.md"):
+            rel = _norm(f.relative_to(root))
+            try:
+                frontmatter = _parse_elixir_frontmatter(f)
+            except (OSError, ValueError) as e:
+                raise ValueError(f"金丹文件无法解析: {f} ({e})") from e
+            if str(frontmatter.get("elixir_state") or "") != "settled":
+                continue
+            graph[rel] = _elixir_deps(f)
+
+    start = _norm(new_elixir_path)
+    graph[start] = [_norm(d) for d in derived_from if isinstance(d, str) and _norm(d).startswith("wiki/elixirs/")]
+
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color: dict[str, int] = {}
+    stack: list[str] = []
+
+    def dfs(node: str) -> list[str] | None:
+        color[node] = GRAY
+        stack.append(node)
+        for nxt in graph.get(node, []):
+            c = color.get(nxt, WHITE)
+            if c == GRAY:
+                i = stack.index(nxt)
+                return stack[i:] + [nxt]
+            if c == WHITE:
+                cyc = dfs(nxt)
+                if cyc:
+                    return cyc
+        stack.pop()
+        color[node] = BLACK
+        return None
+
+    return dfs(start)
 
 
 def _scaffold_elixir_markdown(*, elixir_id: str, topic: str, corpus_id: str, source_outputs: list[str], iteration: int, elixir_state: str, created_at: str, updated_at: str, distill_history: list[dict[str, Any]] | None = None) -> str:
@@ -124,26 +210,44 @@ def _find_corpus(root: Path, corpus_id: str) -> dict[str, Any]:
     raise FileNotFoundError(f"corpus not found: {corpus_id}")
 
 
-def start_elixir(root: Path, corpus_id: str, *, topic: str) -> dict[str, Any]:
+def start_elixir(root: Path, corpus_id: str, *, topic: str, include_elixir_ids: list[str] | None = None) -> dict[str, Any]:
     _find_corpus(root, corpus_id)  # validate corpus exists
     promoted = list_promoted_outputs_for_corpus(root, corpus_id)
     if not promoted:
         raise ValueError(f"no promoted outputs for corpus {corpus_id}")
     source_outputs = [item["promoted_to"] for item in promoted if item.get("promoted_to")]
     allowed = {item["promoted_to"] for item in promoted if item.get("promoted_to")}
+    include_elixir_ids = list(dict.fromkeys(include_elixir_ids or []))
+    include_paths: list[str] = []
+    for elixir_id in include_elixir_ids:
+        include_path = _resolve_elixir_id(root, elixir_id)
+        include_ref = f"wiki/elixirs/{elixir_id}.md"
+        if not include_path.is_file():
+            raise FileNotFoundError(f"指定的金丹 {elixir_id} 不存在: {include_ref}")
+        include_paths.append(include_ref)
+    source_outputs = list(dict.fromkeys([*source_outputs, *include_paths]))
     _validate_source_outputs(root, source_outputs, allowed=allowed)
+    if not any(ref.startswith("wiki/derived/") for ref in source_outputs):
+        raise ValueError("金丹 derived_from 必须至少包含一个 wiki/derived/ 源条目（当前仅包含 elixir 引用）")
     path = root / ELIXIR_DIR
     path.mkdir(parents=True, exist_ok=True)
     seed = f"elixir-{slugify(topic)[:40]}-{sha256_bytes(topic.encode())[:8]}"
     elixir_id = next_available_stem(path, seed)
-    path = path / f"{elixir_id}.md"
+    new_path = path / f"{elixir_id}.md"
+    _norm = str(new_path.relative_to(root))
+    if _norm in {str(Path(ref)) for ref in source_outputs}:
+        raise ValueError(f"cannot reference self: {_norm}")
+    cycle = _detect_elixir_cycle(root, new_path, source_outputs)
+    if cycle:
+        raise ValueError("金丹引用形成环路: " + " → ".join(cycle))
+    path = new_path
     now = utc_now()
     path.write_text(_scaffold_elixir_markdown(elixir_id=elixir_id, topic=topic, corpus_id=corpus_id, source_outputs=source_outputs, iteration=0, elixir_state="draft", created_at=now, updated_at=now), encoding="utf-8")
     return {"elixir_id": elixir_id, "path": f"{ELIXIR_DIR}/{elixir_id}.md", "derived_from": source_outputs, "iteration": 0, "elixir_state": "draft"}
 
 
-def distill_elixir(root: Path, elixir_id: str, *, question: str) -> dict[str, Any]:
-    path = root / ELIXIR_DIR / f"{elixir_id}.md"
+def distill_elixir(root: Path, elixir_id: str, *, question: str, include_elixir_ids: list[str] | None = None) -> dict[str, Any]:
+    path = _resolve_elixir_id(root, elixir_id)
     if not path.exists():
         raise FileNotFoundError(f"elixir not found: {elixir_id}")
     frontmatter = _parse_elixir_frontmatter(path)
@@ -160,8 +264,23 @@ def distill_elixir(root: Path, elixir_id: str, *, question: str) -> dict[str, An
     if not existing:
         raise ValueError(f"elixir has empty derived_from, refusing to distill: {elixir_id}")
     _validate_source_outputs(root, existing, allowed=allowed)
-    merged = list(dict.fromkeys([*existing, *allowed]))
+    include_elixir_ids = list(dict.fromkeys(include_elixir_ids or []))
+    include_paths: list[str] = []
+    for include_id in include_elixir_ids:
+        include_path = _resolve_elixir_id(root, include_id)
+        include_ref = f"wiki/elixirs/{include_id}.md"
+        if not include_path.is_file():
+            raise FileNotFoundError(f"指定的金丹 {include_id} 不存在: {include_ref}")
+        include_paths.append(include_ref)
+    merged = list(dict.fromkeys([*existing, *allowed, *include_paths]))
     _validate_source_outputs(root, merged, allowed=allowed)
+    if not any(ref.startswith("wiki/derived/") for ref in merged):
+        raise ValueError("金丹 derived_from 必须至少包含一个 wiki/derived/ 源条目（当前仅包含 elixir 引用）")
+    if any(str(Path(ref)) == str(path.relative_to(root)) for ref in merged if isinstance(ref, str)):
+        raise ValueError(f"cannot reference self: {path.relative_to(root)}")
+    cycle = _detect_elixir_cycle(root, path, merged)
+    if cycle:
+        raise ValueError("金丹引用形成环路: " + " → ".join(cycle))
     iteration = int(frontmatter.get("iteration", 0) or 0) + 1
     history = frontmatter.get("distill_history") if isinstance(frontmatter.get("distill_history"), list) else []
     history = list(history)
@@ -187,6 +306,13 @@ def seal_elixir(root: Path, elixir_id: str) -> dict[str, Any]:
     allowed = {item["promoted_to"] for item in promoted if item.get("promoted_to")}
     source_outputs = [str(item) for item in frontmatter.get("derived_from", []) if isinstance(item, str)]
     _validate_source_outputs(root, source_outputs, allowed=allowed)
+    if not any(ref.startswith("wiki/derived/") for ref in source_outputs):
+        raise ValueError("金丹 derived_from 必须至少包含一个 wiki/derived/ 源条目（当前仅包含 elixir 引用）")
+    if any(str(Path(ref)) == str(path.relative_to(root)) for ref in source_outputs if isinstance(ref, str)):
+        raise ValueError(f"cannot reference self: {path.relative_to(root)}")
+    cycle = _detect_elixir_cycle(root, path, source_outputs)
+    if cycle:
+        raise ValueError("金丹引用形成环路: " + " → ".join(cycle))
     sealed_at = utc_now()
     frontmatter.update({"elixir_state": "settled", "sealed_at": sealed_at, "updated_at": utc_now()})
     original = path.read_text(encoding="utf-8", errors="replace")

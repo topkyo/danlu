@@ -247,10 +247,12 @@ def build_parser() -> argparse.ArgumentParser:
     alchemy_start_parser = subparsers.add_parser("alchemy-start", help="Start a new elixir from a corpus.")
     alchemy_start_parser.add_argument("corpus_id")
     alchemy_start_parser.add_argument("--topic", required=True)
+    alchemy_start_parser.add_argument("--include-elixir", type=str, default=None, help="可选：额外包含的金丹 id，多个用逗号分隔。")
 
     alchemy_distill_parser = subparsers.add_parser("alchemy-distill", help="Distill an existing draft elixir.")
     alchemy_distill_parser.add_argument("elixir_id")
     alchemy_distill_parser.add_argument("--question", required=True)
+    alchemy_distill_parser.add_argument("--include-elixir", type=str, default=None, help="可选：额外包含的金丹 id，多个用逗号分隔。")
 
     alchemy_seal_parser = subparsers.add_parser("alchemy-seal", help="Seal a draft elixir (terminal state).")
     alchemy_seal_parser.add_argument("elixir_id")
@@ -584,9 +586,21 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "demote":
             result = run_demote(root, args.artifact_ref)
         elif args.command == "alchemy-start":
-            result = run_alchemy_start(root, args.corpus_id, args.topic)
+            include_elixir_ids = None
+            if args.include_elixir is not None:
+                include_elixir_ids = [item.strip() for item in args.include_elixir.split(",")]
+            kwargs = {}
+            if include_elixir_ids is not None:
+                kwargs["include_elixir_ids"] = include_elixir_ids
+            result = run_alchemy_start(root, args.corpus_id, args.topic, **kwargs)
         elif args.command == "alchemy-distill":
-            result = run_alchemy_distill(root, args.elixir_id, args.question)
+            include_elixir_ids = None
+            if args.include_elixir is not None:
+                include_elixir_ids = [item.strip() for item in args.include_elixir.split(",")]
+            kwargs = {}
+            if include_elixir_ids is not None:
+                kwargs["include_elixir_ids"] = include_elixir_ids
+            result = run_alchemy_distill(root, args.elixir_id, args.question, **kwargs)
         elif args.command == "alchemy-seal":
             result = run_alchemy_seal(root, args.elixir_id)
         elif args.command == "protocol-learn-add":

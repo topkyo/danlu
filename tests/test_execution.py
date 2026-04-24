@@ -35,11 +35,11 @@ from aiwiki.app_state import (
 )
 from aiwiki.app_utils import parse_frontmatter
 from aiwiki.cli import main as cli_main
-from aiwiki.execution.alchemy import _validate_source_outputs
+from aiwiki.execution.alchemy import _validate_source_outputs, _write_elixir_markdown
 from aiwiki.execution.candidates import demote_candidate, promote_candidate
 from aiwiki.execution.protocol_learnings import add_learning, list_learnings, show_learning
 from aiwiki.llm import CompletionResult
-from aiwiki.runner import run_ask, run_compile
+from aiwiki.runner import run_alchemy_distill, run_ask, run_compile
 
 
 class _StubClient:
@@ -79,7 +79,10 @@ class ExecutionTests(unittest.TestCase):
         stdout = io.StringIO()
         stderr = io.StringIO()
         with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
-            code = cli_main(["--root", str(self.root), *argv])
+            try:
+                code = cli_main(["--root", str(self.root), *argv])
+            except SystemExit as exc:
+                code = int(exc.code or 0)
         payload = json.loads(stdout.getvalue()) if stdout.getvalue().strip() else {}
         return code, payload, stderr.getvalue()
 
@@ -481,7 +484,10 @@ class AlchemyTests(unittest.TestCase):
         stdout = io.StringIO()
         stderr = io.StringIO()
         with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
-            code = cli_main(["--root", str(self.root), *argv])
+            try:
+                code = cli_main(["--root", str(self.root), *argv])
+            except SystemExit as exc:
+                code = int(exc.code or 0)
         payload = json.loads(stdout.getvalue()) if stdout.getvalue().strip() else {}
         return code, payload, stderr.getvalue()
 
@@ -502,7 +508,10 @@ class AlchemyTests(unittest.TestCase):
         stdout = io.StringIO()
         stderr = io.StringIO()
         with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
-            code = cli_main(["--root", str(self.root), *argv])
+            try:
+                code = cli_main(["--root", str(self.root), *argv])
+            except SystemExit as exc:
+                code = int(exc.code or 0)
         payload = json.loads(stdout.getvalue()) if stdout.getvalue().strip() else {}
         return code, payload, stderr.getvalue()
 
@@ -709,6 +718,370 @@ class AlchemyTests(unittest.TestCase):
         self.assertNotEqual(first["elixir_id"], second["elixir_id"])
         self.assertTrue((self.root / first["path"]).exists())
         self.assertTrue((self.root / second["path"]).exists())
+
+    def test_start_elixir_rejects_derived_from_without_wiki_derived_anchor(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        elixir_root = self.root / "wiki" / "elixirs"
+        elixir_root.mkdir(parents=True, exist_ok=True)
+        ref = elixir_root / "ref.md"
+        ref.write_text("---\nelixir_id: \"ref\"\nelixir_state: \"settled\"\nderived_from:\n  - \"wiki/derived/base.md\"\n---\n# stub\n", encoding="utf-8")
+        from aiwiki.app_state import load_output_candidates_state, save_output_candidates_state
+
+        state = load_output_candidates_state(self.root)
+        for cand in state["candidates"]:
+            if str(cand.get("corpus_id") or "") == corpus_id and str(cand.get("candidate_state") or "") == "promoted":
+                cand["promoted_to"] = "wiki/elixirs/ref.md"
+        save_output_candidates_state(self.root, state)
+
+        from aiwiki.runner import run_alchemy_start
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_start(self.root, corpus_id, "VLA robotics")
+        self.assertIn("必须至少包含一个 wiki/derived/", str(ctx.exception))
+
+    def test_start_elixir_accepts_settled_elixir_reference(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        (self.root / "wiki" / "derived").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "derived" / "base.md").write_text("base", encoding="utf-8")
+        settled = self.root / "wiki" / "elixirs" / "settled.md"
+        settled.parent.mkdir(parents=True, exist_ok=True)
+        settled.write_text("---\nelixir_id: \"settled\"\nelixir_state: \"settled\"\nderived_from:\n  - \"wiki/derived/base.md\"\n---\n# stub\n", encoding="utf-8")
+        from aiwiki.execution import alchemy as alchemy_module
+        from aiwiki.runner import run_alchemy_start
+
+        with patch.object(alchemy_module, "list_promoted_outputs_for_corpus", return_value=[
+            {"promoted_to": "wiki/derived/base.md"},
+            {"promoted_to": f"wiki/elixirs/{settled.name}"},
+        ]):
+            result = run_alchemy_start(self.root, corpus_id, "VLA robotics")
+        self.assertTrue((self.root / result["path"]).exists())
+
+    def test_start_elixir_with_include_elixir_cli_reference_settled(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        from aiwiki.runner import run_alchemy_start
+
+        first = run_alchemy_start(self.root, corpus_id, "A")
+        self._run_cli(["alchemy-seal", first["elixir_id"]])
+
+        code, payload, stderr = self._run_cli(["alchemy-start", corpus_id, "--topic", "B", "--include-elixir", first["elixir_id"]])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        new_path = self.root / payload["path"]
+        fm = parse_frontmatter(new_path.read_text(encoding="utf-8"))
+        self.assertIn(f"wiki/elixirs/{first['elixir_id']}.md", fm["derived_from"])
+
+    def test_start_elixir_rejects_non_settled_elixir_reference(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        (self.root / "wiki" / "derived").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "derived" / "base.md").write_text("base", encoding="utf-8")
+        draft = self.root / "wiki" / "elixirs" / "draft.md"
+        draft.parent.mkdir(parents=True, exist_ok=True)
+        draft.write_text("---\nelixir_id: \"draft\"\nelixir_state: \"draft\"\nderived_from:\n  - \"wiki/derived/base.md\"\n---\n# stub\n", encoding="utf-8")
+        from aiwiki.app_state import load_output_candidates_state, save_output_candidates_state
+
+        state = load_output_candidates_state(self.root)
+        for cand in state["candidates"]:
+            if str(cand.get("corpus_id") or "") == corpus_id and str(cand.get("candidate_state") or "") == "promoted":
+                cand["promoted_to"] = f"wiki/elixirs/{draft.name}"
+        save_output_candidates_state(self.root, state)
+
+        from aiwiki.runner import run_alchemy_start
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_start(self.root, corpus_id, "VLA robotics")
+        self.assertIn("只能引用 settled 金丹", str(ctx.exception))
+
+    def test_start_elixir_rejects_self_reference(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        (self.root / "wiki" / "derived").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "derived" / "base.md").write_text("base", encoding="utf-8")
+        (self.root / "wiki" / "elixirs").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "elixirs" / "self-ref.md").write_text("---\nelixir_id: \"self-ref\"\nelixir_state: \"settled\"\nderived_from:\n  - \"wiki/derived/base.md\"\n---\n# stub\n", encoding="utf-8")
+        from aiwiki.execution import alchemy as alchemy_module
+
+        with patch.object(alchemy_module, "next_available_stem", return_value="self-ref"):
+            with patch.object(alchemy_module, "list_promoted_outputs_for_corpus", return_value=[
+                {"promoted_to": "wiki/derived/base.md"},
+                {"promoted_to": "wiki/elixirs/self-ref.md"},
+            ]):
+                with self.assertRaises(ValueError) as ctx:
+                    alchemy_module.start_elixir(self.root, corpus_id, topic="VLA robotics")
+        self.assertIn("cannot reference self", str(ctx.exception))
+
+    def test_distill_elixir_rejects_cycle_two_nodes(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        (self.root / "wiki" / "derived").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "derived" / "base.md").write_text("base", encoding="utf-8")
+        from aiwiki.execution import alchemy as alchemy_module
+        from aiwiki.runner import run_alchemy_start
+
+        a = run_alchemy_start(self.root, corpus_id, "A")
+        b = run_alchemy_start(self.root, corpus_id, "B")
+        # A 走真实 CLI seal 流程变为 settled；B 保持 draft，后续对 B distill。
+        self._run_cli(["alchemy-seal", a["elixir_id"]])
+        # 外部篡改 A 的 derived_from 注入 A→B 边（脏数据模拟）。
+        a_path = self.root / a["path"]
+        a_text = a_path.read_text(encoding="utf-8")
+        a_fm = parse_frontmatter(a_text)
+        a_fm["derived_from"] = [a_fm["derived_from"][0], f"wiki/elixirs/{b['elixir_id']}.md"]
+        _write_elixir_markdown(a_path, frontmatter=a_fm, body=a_text.split("---", 2)[-1].lstrip("\n"))
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_distill(self.root, b["elixir_id"], "cycle?", include_elixir_ids=[a["elixir_id"]])
+        self.assertIn("金丹引用形成环路", str(ctx.exception))
+        self.assertIn("→", str(ctx.exception))
+
+    def test_distill_elixir_rejects_cycle_three_nodes(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        (self.root / "wiki" / "derived").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "derived" / "base.md").write_text("base", encoding="utf-8")
+        from aiwiki.runner import run_alchemy_start
+
+        a = run_alchemy_start(self.root, corpus_id, "A")
+        b = run_alchemy_start(self.root, corpus_id, "B")
+        c = run_alchemy_start(self.root, corpus_id, "C")
+        for current, nxt in [(a, b), (b, c), (c, a)]:
+            path = self.root / current["path"]
+            text = path.read_text(encoding="utf-8")
+            fm = parse_frontmatter(text)
+            if current["elixir_id"] != a["elixir_id"]:
+                fm["elixir_state"] = "settled"
+            fm["derived_from"] = [fm["derived_from"][0], f"wiki/elixirs/{nxt['elixir_id']}.md"]
+            _write_elixir_markdown(path, frontmatter=fm, body=text.split("---", 2)[-1].lstrip("\n"))
+
+        from aiwiki.execution import alchemy as alchemy_module
+
+        with self.assertRaises(ValueError) as ctx:
+            alchemy_module.distill_elixir(self.root, a["elixir_id"], question="cycle?")
+        self.assertIn(a["elixir_id"], str(ctx.exception))
+
+    def test_distill_elixir_error_includes_cycle_path(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        (self.root / "wiki" / "derived").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "derived" / "base.md").write_text("base", encoding="utf-8")
+        from aiwiki.runner import run_alchemy_start
+
+        a = run_alchemy_start(self.root, corpus_id, "A")
+        b = run_alchemy_start(self.root, corpus_id, "B")
+        # B 走真实 CLI seal 变 settled；A 保持 draft，后续 distill A。
+        self._run_cli(["alchemy-seal", b["elixir_id"]])
+        # 外部篡改 B 的 derived_from 注入 B→A 边；A 保持 draft 但磁盘上挂上 A→B 边。
+        b_path = self.root / b["path"]
+        a_path = self.root / a["path"]
+        for path, nxt in [(a_path, b), (b_path, a)]:
+            text = path.read_text(encoding="utf-8")
+            fm = parse_frontmatter(text)
+            fm["derived_from"] = [fm["derived_from"][0], f"wiki/elixirs/{nxt['elixir_id']}.md"]
+            _write_elixir_markdown(path, frontmatter=fm, body=text.split("---", 2)[-1].lstrip("\n"))
+
+        from aiwiki.runner import run_alchemy_distill
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_distill(self.root, a["elixir_id"], "cycle?")
+        self.assertIn("金丹引用形成环路", str(ctx.exception))
+        self.assertIn(f"wiki/elixirs/{a['elixir_id']}.md → wiki/elixirs/{b['elixir_id']}.md → wiki/elixirs/{a['elixir_id']}.md", str(ctx.exception))
+
+    def test_seal_elixir_rejects_cycle_formed_externally(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        promoted = self._make_promoted_corpus(["Question B?"])
+        from aiwiki.runner import run_alchemy_start
+
+        a = run_alchemy_start(self.root, corpus_id, "A")
+        b = run_alchemy_start(self.root, promoted, "B")
+        a_path = self.root / a["path"]
+        a_text = a_path.read_text(encoding="utf-8")
+        a_fm = parse_frontmatter(a_text)
+        a_fm["elixir_state"] = "settled"
+        b_path = self.root / b["path"]
+        b_text = b_path.read_text(encoding="utf-8")
+        b_fm = parse_frontmatter(b_text)
+        anchor = str(b_fm["derived_from"][0])
+        a_fm["derived_from"] = [anchor, f"wiki/elixirs/{b['elixir_id']}.md"]
+        _write_elixir_markdown(a_path, frontmatter=a_fm, body=a_text.split("---", 2)[-1].lstrip("\n"))
+        b_fm["derived_from"] = [anchor, f"wiki/elixirs/{a['elixir_id']}.md"]
+        _write_elixir_markdown(b_path, frontmatter=b_fm, body=b_text.split("---", 2)[-1].lstrip("\n"))
+
+        from aiwiki.runner import run_alchemy_seal
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_seal(self.root, b["elixir_id"])
+        self.assertIn("→", str(ctx.exception))
+
+    def test_detect_cycle_handles_update_elixir_overrides_old_edges(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        (self.root / "wiki" / "derived").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "derived" / "base.md").write_text("base", encoding="utf-8")
+        from aiwiki.execution import alchemy as alchemy_module
+        from aiwiki.runner import run_alchemy_start
+
+        a = run_alchemy_start(self.root, corpus_id, "A")
+        b = run_alchemy_start(self.root, corpus_id, "B")
+        # 让 A 和 B 都走 CLI seal 到 settled，才能参与 DAG 图（contract 规定非 settled 不入图）。
+        self._run_cli(["alchemy-seal", a["elixir_id"]])
+        self._run_cli(["alchemy-seal", b["elixir_id"]])
+        # 磁盘上把 B 写成 B→A（脏边）。
+        b_path = self.root / b["path"]
+        b_text = b_path.read_text(encoding="utf-8")
+        b_fm = parse_frontmatter(b_text)
+        b_base = b_fm["derived_from"][0]
+        b_fm["derived_from"] = [b_base, f"wiki/elixirs/{a['elixir_id']}.md"]
+        _write_elixir_markdown(b_path, frontmatter=b_fm, body=b_text.split("---", 2)[-1].lstrip("\n"))
+
+        # 否定：传入的新 derived_from 只含 base，覆盖磁盘上 B→A 旧边 → 无环。
+        cycle = alchemy_module._detect_elixir_cycle(self.root, b_path, [b_base])
+        self.assertIsNone(cycle)
+
+        # 磁盘上再追加 A→B（脏边），形成 A↔B。
+        a_path = self.root / a["path"]
+        a_text = a_path.read_text(encoding="utf-8")
+        a_fm = parse_frontmatter(a_text)
+        a_fm["derived_from"] = [a_fm["derived_from"][0], f"wiki/elixirs/{b['elixir_id']}.md"]
+        _write_elixir_markdown(a_path, frontmatter=a_fm, body=a_text.split("---", 2)[-1].lstrip("\n"))
+
+        # 肯定：传入新 derived_from 包含 B→A 时，A↔B 环成立。
+        cycle = alchemy_module._detect_elixir_cycle(self.root, b_path, b_fm["derived_from"])
+        self.assertIsNotNone(cycle)
+
+    def test_include_elixir_rejects_path_traversal_id(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        from aiwiki.runner import run_alchemy_start
+
+        run_alchemy_start(self.root, corpus_id, "seed")
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_start(self.root, corpus_id, "new", include_elixir_ids=["../derived/base"])
+        self.assertIn("不允许包含路径分隔符", str(ctx.exception))
+
+    def test_include_elixir_rejects_empty_id(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        from aiwiki.runner import run_alchemy_start
+
+        run_alchemy_start(self.root, corpus_id, "seed")
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_start(self.root, corpus_id, "new", include_elixir_ids=["   "])
+        self.assertIn("金丹 id 不能为空", str(ctx.exception))
+
+    def test_include_elixir_rejects_dotdot_id(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        from aiwiki.runner import run_alchemy_start
+
+        run_alchemy_start(self.root, corpus_id, "seed")
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_start(self.root, corpus_id, "new", include_elixir_ids=[".."])
+        self.assertIn("金丹 id 非法", str(ctx.exception))
+
+    def test_detect_cycle_normalizes_dot_slash_path(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        (self.root / "wiki" / "derived").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "derived" / "base.md").write_text("base", encoding="utf-8")
+        from aiwiki.execution import alchemy as alchemy_module
+        from aiwiki.runner import run_alchemy_start
+
+        a = run_alchemy_start(self.root, corpus_id, "A")
+        b = run_alchemy_start(self.root, corpus_id, "B")
+        # 两边都 seal 到 settled 才能入图；本测试专门验证归一化（./ 前缀）。
+        self._run_cli(["alchemy-seal", a["elixir_id"]])
+        self._run_cli(["alchemy-seal", b["elixir_id"]])
+        a_path = self.root / a["path"]
+        a_text = a_path.read_text(encoding="utf-8")
+        a_fm = parse_frontmatter(a_text)
+        a_fm["derived_from"] = [a_fm["derived_from"][0], f"wiki/elixirs/{b['elixir_id']}.md"]
+        _write_elixir_markdown(a_path, frontmatter=a_fm, body=a_text.split("---", 2)[-1].lstrip("\n"))
+        b_path = self.root / b["path"]
+        b_text = b_path.read_text(encoding="utf-8")
+        b_fm = parse_frontmatter(b_text)
+        b_fm["derived_from"] = [b_fm["derived_from"][0], "./wiki/elixirs/%s.md" % a["elixir_id"]]
+        _write_elixir_markdown(b_path, frontmatter=b_fm, body=b_text.split("---", 2)[-1].lstrip("\n"))
+
+        cycle = alchemy_module._detect_elixir_cycle(self.root, b_path, b_fm["derived_from"])
+        self.assertIsNotNone(cycle)
+
+    def test_detect_cycle_normalizes_backslash_path(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        (self.root / "wiki" / "derived").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "derived" / "base.md").write_text("base", encoding="utf-8")
+        from aiwiki.execution import alchemy as alchemy_module
+        from aiwiki.runner import run_alchemy_start
+
+        a = run_alchemy_start(self.root, corpus_id, "A")
+        b = run_alchemy_start(self.root, corpus_id, "B")
+        self._run_cli(["alchemy-seal", a["elixir_id"]])
+        self._run_cli(["alchemy-seal", b["elixir_id"]])
+        a_path = self.root / a["path"]
+        a_text = a_path.read_text(encoding="utf-8")
+        a_fm = parse_frontmatter(a_text)
+        a_fm["derived_from"] = [a_fm["derived_from"][0], f"wiki/elixirs/{b['elixir_id']}.md"]
+        _write_elixir_markdown(a_path, frontmatter=a_fm, body=a_text.split("---", 2)[-1].lstrip("\n"))
+        b_path = self.root / b["path"]
+        b_text = b_path.read_text(encoding="utf-8")
+        b_fm = parse_frontmatter(b_text)
+        b_fm["derived_from"] = [b_fm["derived_from"][0], "wiki\\elixirs\\%s.md" % a["elixir_id"]]
+        _write_elixir_markdown(b_path, frontmatter=b_fm, body=b_text.split("---", 2)[-1].lstrip("\n"))
+
+        cycle = alchemy_module._detect_elixir_cycle(self.root, b_path, b_fm["derived_from"])
+        self.assertIsNotNone(cycle)
+
+    def test_detect_cycle_ignores_non_settled_elixir_edges(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        (self.root / "wiki" / "derived").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "derived" / "base.md").write_text("base", encoding="utf-8")
+        from aiwiki.execution import alchemy as alchemy_module
+        from aiwiki.runner import run_alchemy_start
+
+        a = run_alchemy_start(self.root, corpus_id, "A")
+        b = run_alchemy_start(self.root, corpus_id, "B")
+        self._run_cli(["alchemy-seal", a["elixir_id"]])
+        b_path = self.root / b["path"]
+        b_text = b_path.read_text(encoding="utf-8")
+        b_fm = parse_frontmatter(b_text)
+        b_fm["derived_from"] = [b_fm["derived_from"][0], f"wiki/elixirs/{a['elixir_id']}.md"]
+        _write_elixir_markdown(b_path, frontmatter=b_fm, body=b_text.split("---", 2)[-1].lstrip("\n"))
+
+        cycle = alchemy_module._detect_elixir_cycle(self.root, self.root / a["path"], [b_fm["derived_from"][0], f"wiki/elixirs/{b['elixir_id']}.md"])
+        self.assertIsNone(cycle)
+
+    def test_include_elixir_rejects_nonexistent_id(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        from aiwiki.runner import run_alchemy_start
+
+        with self.assertRaises(FileNotFoundError) as ctx:
+            run_alchemy_start(self.root, corpus_id, "VLA robotics", include_elixir_ids=["missing"])
+        self.assertIn("指定的金丹 missing 不存在", str(ctx.exception))
+
+    def test_include_elixir_cli_rejects_trailing_comma(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        from aiwiki.runner import run_alchemy_start
+
+        first = run_alchemy_start(self.root, corpus_id, "seed")
+        self._run_cli(["alchemy-seal", first["elixir_id"]])
+
+        code, _payload, stderr = self._run_cli(["alchemy-start", corpus_id, "--topic", "new", "--include-elixir", f"{first['elixir_id']},"])
+
+        self.assertNotEqual(code, 0)
+        self.assertIn("金丹 id 不能为空", stderr)
+
+    def test_include_elixir_cli_rejects_empty_middle(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        from aiwiki.runner import run_alchemy_start
+
+        first = run_alchemy_start(self.root, corpus_id, "seed")
+        second = run_alchemy_start(self.root, corpus_id, "seed-2")
+        self._run_cli(["alchemy-seal", first["elixir_id"]])
+        self._run_cli(["alchemy-seal", second["elixir_id"]])
+
+        code, _payload, stderr = self._run_cli(["alchemy-start", corpus_id, "--topic", "new", "--include-elixir", f"{first['elixir_id']},,{second['elixir_id']}"])
+
+        self.assertNotEqual(code, 0)
+        self.assertIn("金丹 id 不能为空", stderr)
+
+    def test_include_elixir_rejects_draft_elixir(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Question A?"])
+        from aiwiki.runner import run_alchemy_start
+
+        draft = run_alchemy_start(self.root, corpus_id, "draft")
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_start(self.root, corpus_id, "new", include_elixir_ids=[draft["elixir_id"]])
+        self.assertIn("只能引用 settled 金丹", str(ctx.exception))
 
     def test_alchemy_parse_raises_on_corrupt_distill_history_json(self) -> None:
         corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])
