@@ -253,6 +253,22 @@ class TestValidateErrorPaths(unittest.TestCase):
     def _valid_record(self) -> dict[str, object]:
         return _fixture_records("valid_signal_v1.jsonl")[0]
 
+    def _assert_source_event_ref_valid(self, source_kind: str, source_event_ref: str) -> None:
+        record = self._valid_record()
+        record["source_kind"] = source_kind
+        record["source_event_ref"] = source_event_ref
+        result = validate(record)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.errors, ())
+
+    def _assert_source_event_ref_rejected(self, source_kind: str, source_event_ref: object) -> None:
+        record = self._valid_record()
+        record["source_kind"] = source_kind
+        record["source_event_ref"] = source_event_ref
+        result = validate(record)
+        self.assertFalse(result.ok)
+        self.assertTrue(any("source_event_ref" in error for error in result.errors))
+
     def test_validate_rejects_non_object(self) -> None:
         result = validate("not-an-object")  # type: ignore[arg-type]
         self.assertFalse(result.ok)
@@ -458,11 +474,11 @@ class TestValidateErrorPaths(unittest.TestCase):
 
     def test_validate_source_event_ref_mismatch_rules(self) -> None:
         cases = [
-            ("runtime_history", "raw/inbox/a.md"),
-            ("llm_receipt", "wiki/judgments/a.md"),
-            ("review_outcome", "wiki/sources/a.md"),
-            ("archive_event", "wiki/sources/a.md"),
-            ("protocol_learning_event", "wiki/sources/a.md"),
+            ("runtime_history", "raw/inbox/a.md#L1"),
+            ("llm_receipt", "runtime-history.jsonl#L1"),
+            ("review_outcome", "wiki/sources/a.md#L1"),
+            ("archive_event", "wiki/sources/a.md#L1"),
+            ("protocol_learning_event", "wiki/sources/a.md#L1"),
         ]
         for source_kind, source_ref in cases:
             record = self._valid_record()
@@ -470,6 +486,66 @@ class TestValidateErrorPaths(unittest.TestCase):
             record["source_event_ref"] = source_ref
             errors = validate(record).errors
             self.assertTrue(any("source_event_ref mismatches" in error for error in errors))
+
+    def test_validate_source_event_ref_runtime_history_hyphen_valid(self) -> None:
+        self._assert_source_event_ref_valid("runtime_history", "runtime-history.jsonl#L42")
+
+    def test_validate_source_event_ref_runtime_history_underscore_valid(self) -> None:
+        self._assert_source_event_ref_valid("runtime_history", "runtime_history.jsonl#L42")
+
+    def test_validate_source_event_ref_llm_receipt_hyphen_plural_valid(self) -> None:
+        self._assert_source_event_ref_valid("llm_receipt", "llm-receipts.jsonl#L7")
+
+    def test_validate_source_event_ref_llm_receipt_underscore_plural_valid(self) -> None:
+        self._assert_source_event_ref_valid("llm_receipt", "llm_receipts.jsonl#L7")
+
+    def test_validate_source_event_ref_llm_receipt_hyphen_singular_valid(self) -> None:
+        self._assert_source_event_ref_valid("llm_receipt", "llm-receipt.jsonl#L7")
+
+    def test_validate_source_event_ref_protocol_learning_colon_row_id_valid(self) -> None:
+        self._assert_source_event_ref_valid(
+            "protocol_learning_event",
+            ".aiwiki/state/protocol_learnings_age.json:some_key",
+        )
+
+    def test_validate_source_event_ref_empty_string_rejected(self) -> None:
+        self._assert_source_event_ref_rejected("runtime_history", "")
+
+    def test_validate_source_event_ref_none_rejected(self) -> None:
+        self._assert_source_event_ref_rejected("runtime_history", None)
+
+    def test_validate_source_event_ref_non_string_int_rejected(self) -> None:
+        self._assert_source_event_ref_rejected("runtime_history", 123)
+
+    def test_validate_source_event_ref_non_string_list_rejected(self) -> None:
+        self._assert_source_event_ref_rejected("runtime_history", ["runtime-history.jsonl#L1"])
+
+    def test_validate_source_event_ref_missing_path_rejected(self) -> None:
+        self._assert_source_event_ref_rejected("runtime_history", "#L42")
+
+    def test_validate_source_event_ref_path_traversal_rejected(self) -> None:
+        self._assert_source_event_ref_rejected("runtime_history", "../../etc/passwd#L1")
+
+    def test_validate_source_event_ref_path_traversal_with_allowed_fragment_rejected(self) -> None:
+        self._assert_source_event_ref_rejected("runtime_history", "../../runtime-history.jsonl#L1")
+
+    def test_validate_source_event_ref_absolute_path_rejected(self) -> None:
+        self._assert_source_event_ref_rejected("runtime_history", "/etc/passwd#L1")
+
+    def test_validate_source_event_ref_source_kind_mismatch_rejected(self) -> None:
+        self._assert_source_event_ref_rejected("llm_receipt", "runtime-history.jsonl#L1")
+
+    def test_validate_source_event_ref_missing_line_suffix_rejected(self) -> None:
+        self._assert_source_event_ref_rejected("runtime_history", "runtime-history.jsonl")
+
+    def test_validate_source_event_ref_non_positive_line_rejected(self) -> None:
+        self._assert_source_event_ref_rejected("runtime_history", "runtime-history.jsonl#L0")
+
+    def test_validate_source_event_ref_negative_line_rejected(self) -> None:
+        self._assert_source_event_ref_rejected("runtime_history", "runtime-history.jsonl#L-1")
+
+    def test_validate_source_event_ref_non_numeric_line_rejected(self) -> None:
+        self._assert_source_event_ref_rejected("runtime_history", "runtime-history.jsonl#Labc")
 
 
 class TestCanonicalDumpsFallbackPaths(unittest.TestCase):

@@ -119,6 +119,8 @@ OPTIONAL_TOP_LEVEL: frozenset[str] = frozenset({"budget_hint"})
 SIGNAL_ID_RE: re.Pattern[str] = re.compile(r"^sig-[0-9]{8}-[a-z0-9]{6,32}$")
 TRACE_ID_RE: re.Pattern[str] = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 EMITTED_AT_RE: re.Pattern[str] = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+_SOURCE_EVENT_REF_LINE_RE: re.Pattern[str] = re.compile(r"^(?P<path>.+)#L(?P<line>[1-9][0-9]*)$")
+_SOURCE_EVENT_REF_ROW_RE: re.Pattern[str] = re.compile(r"^(?P<path>.+):(?P<row_or_id>[^:#\s][^#\s]*)$")
 
 _SCOPE_REQUIRED: frozenset[str] = frozenset(
     {
@@ -319,22 +321,61 @@ def _validate_budget_hint(budget_hint: dict[str, Any], errors: list[str]) -> Non
 
 
 def _validate_source_event_ref(source_kind: str, source_event_ref: str, errors: list[str]) -> None:
-    ref = source_event_ref.lower()
-    if source_kind == "runtime_history":
-        if not ref.startswith(".aiwiki/state/runtime-history.jsonl"):
-            errors.append("source_event_ref mismatches source_kind=runtime_history")
-    elif source_kind == "llm_receipt":
-        if ".aiwiki/logs/llm_receipts" not in ref and "llm_receipt" not in ref:
-            errors.append("source_event_ref mismatches source_kind=llm_receipt")
-    elif source_kind == "review_outcome":
-        if "review" not in ref and ".aiwiki/state/review" not in ref:
-            errors.append("source_event_ref mismatches source_kind=review_outcome")
-    elif source_kind == "archive_event":
-        if "archive" not in ref and "wiki/archive" not in ref:
-            errors.append("source_event_ref mismatches source_kind=archive_event")
-    elif source_kind == "protocol_learning_event":
-        if "protocol_learning" not in ref and "learning" not in ref:
-            errors.append("source_event_ref mismatches source_kind=protocol_learning_event")
+    path = _parse_source_event_ref_path(source_event_ref, errors)
+    if path is None:
+        return
+
+    if _is_unsafe_source_event_ref_path(path):
+        errors.append("source_event_ref path must be relative and cannot contain '..'")
+        return
+
+    ref = path.lower()
+    allowed_substrings = {
+        "runtime_history": ("runtime-history.jsonl", "runtime_history.jsonl"),
+        "llm_receipt": (
+            "llm-receipts.jsonl",
+            "llm_receipts.jsonl",
+            "llm-receipt.jsonl",
+            "llm_receipt.jsonl",
+        ),
+        "review_outcome": ("review",),
+        "archive_event": ("archive",),
+        "protocol_learning_event": (
+            "protocol_learning",
+            "protocol-learning",
+            "protocol_learnings",
+        ),
+    }
+
+    allowed = allowed_substrings.get(source_kind)
+    if allowed is None:
+        return
+    if not any(fragment in ref for fragment in allowed):
+        errors.append(f"source_event_ref mismatches source_kind={source_kind}")
+
+
+def _parse_source_event_ref_path(source_event_ref: str, errors: list[str]) -> str | None:
+    line_match = _SOURCE_EVENT_REF_LINE_RE.fullmatch(source_event_ref)
+    if line_match is not None:
+        return line_match.group("path")
+
+    row_match = _SOURCE_EVENT_REF_ROW_RE.fullmatch(source_event_ref)
+    if row_match is not None:
+        return row_match.group("path")
+
+    errors.append("source_event_ref must end with #L<positive integer> or :<row_or_id>")
+    return None
+
+
+def _is_unsafe_source_event_ref_path(path: str) -> bool:
+    if path.startswith("/"):
+        return True
+
+    for segment in path.split("/"):
+        if segment == "..":
+            return True
+
+    return False
 
 
 def _validate_string_field(record: dict[str, Any], field: str, errors: list[str]) -> None:
