@@ -561,41 +561,25 @@ def rank_concepts(
     return [item for _score, item in ranked[:5]]
 
 
- # EP-018B group 2 (B2): ``ask_question`` and ``file_back`` moved to
- # ``aiwiki.execution.ask``. The compat seam at the bottom of this module
- # still resolves ``aiwiki.app_compile.ask_question`` / ``file_back`` lazily.
-
-
-# EP-018B group 6 (B6): ``resolve_machine_memory_action_query``,
-# ``review_machine_memory_action``, ``apply_machine_memory_action``,
-# ``revert_machine_memory_action`` and ``_save_machine_memory_action_records``
-# moved to ``aiwiki.execution.machine_memory_actions``. The ``_LAZY_OWNERS``
-# table below still resolves ``aiwiki.app_compile.<name>`` lazily for
-# backward compatibility.
-
-
-
-# EP-018B group 4 (B4): apply_material_archive and
-# revert_material_archive moved to aiwiki.execution.archive.
-# The _LAZY_OWNERS table below still resolves
-# aiwiki.app_compile.<name> lazily for backward compatibility.
-
-
-# EP-018B group 7 (B7): ``review_page``, ``review_pages_batch``,
-# ``apply_machine_memory_actions_batch``, ``revert_machine_memory_action_batch``,
-# ``_build_batch_id``, and ``_load_latest_action_apply_batch_receipt`` moved
-# to ``aiwiki.execution.review`` (``review_page`` only) and
-# ``aiwiki.execution.machine_memory_batch`` (the other five). They remain
-# importable from ``aiwiki.app_compile`` via the ``_LAZY_OWNERS`` / PEP 562
-# compat seam below. With B7 landed, every execution entry point that used
-# to live in ``app_compile`` has moved under ``aiwiki.execution.*``.
-
-
-
-
-# EP-018B group 1 (B1): ``nightly_health`` and ``shell_status`` moved to
-# ``aiwiki.execution.runtime_surfaces``. They remain importable from
-# ``aiwiki.app_compile`` via the PEP 562 compat seam below.
+# ---------------------------------------------------------------------------
+# EP-018B migration complete: every execution-layer entry point that used to
+# live in this module now has a dedicated owner under ``aiwiki.execution.*``.
+# The _LAZY_OWNERS table + PEP 562 ``__getattr__`` seam below keep the legacy
+# ``aiwiki.app_compile.<name>`` import surface working for external callers
+# (tests, scripts, third-party integrations) by forwarding attribute access
+# to the owner module. No new execution logic should be added here; extend
+# the relevant ``aiwiki.execution.*`` owner instead.
+#
+# Owner mapping (see ``_LAZY_OWNERS`` below for the exact name list):
+#   - B1 runtime surfaces       -> aiwiki.execution.runtime_surfaces
+#   - B2 ask / file-back        -> aiwiki.execution.ask
+#   - B3 lifecycle              -> aiwiki.execution.lifecycle
+#   - B4 material archive       -> aiwiki.execution.archive
+#   - B5 concept rewrite        -> aiwiki.execution.concept_rewrite
+#   - B6 machine-memory action  -> aiwiki.execution.machine_memory_actions
+#   - B7 review / batch         -> aiwiki.execution.review /
+#                                   aiwiki.execution.machine_memory_batch
+# ---------------------------------------------------------------------------
 
 from .app_compile_ops import (  # noqa: E402
     build_agent_packs,
@@ -625,16 +609,13 @@ from .app_queries import (  # noqa: E402
 )
 
 # ---------------------------------------------------------------------------
-# EP-018A: execution owner lazy compat seam (PEP 562)
+# Execution owner lazy compat seam (PEP 562)
 #
-# Goal: expose a stable ``aiwiki.app_compile.<name>`` surface for all
-# execution-layer helpers that EP-018B will migrate into the
-# ``aiwiki.execution`` subpackage group-by-group. Today every execution name
-# is still defined directly in this module, so each ``_LAZY_OWNERS`` entry
-# self-references ``"aiwiki.app_compile"``. When EP-018B moves a function
-# (e.g. ``ask_question``) to ``aiwiki.execution.ask``, the only code change
-# required is to flip that one ``_LAZY_OWNERS`` entry — callers and tests
-# keep importing from ``aiwiki.app_compile`` unchanged.
+# Goal: keep ``aiwiki.app_compile.<name>`` importable after EP-018B migrated
+# every execution function into dedicated ``aiwiki.execution.*`` owner
+# modules. Each ``_LAZY_OWNERS`` entry below names the real owner module;
+# ``__getattr__`` imports it on first access and caches the resolved binding
+# back onto this module's globals for subsequent lookups.
 #
 # Hot names that ``tests/test_app.py`` currently ``patch("aiwiki.app_compile.
 # <name>")`` on (``utc_now``, ``entry_concept_terms``, ``build_machine_memory``,
@@ -699,10 +680,11 @@ def __getattr__(name: str) -> Any:
             f"module 'aiwiki.app_compile' has no attribute {name!r}"
         )
     if owner_path == __name__:
-        # Self-reference during EP-018A: the real definition lives in this
-        # module. Python only calls __getattr__ when the name is NOT in
-        # globals, so reaching this branch means the concrete binding is
-        # missing — surface it rather than silently returning ``None``.
+        # Defensive branch: no entry in _LAZY_OWNERS currently self-references
+        # this module (EP-018B migrated every execution name to an
+        # aiwiki.execution.* owner). If a future entry is ever reintroduced
+        # with a self-reference and no concrete binding in globals, surface
+        # that mistake instead of silently returning ``None``.
         if name not in globals():
             raise AttributeError(
                 f"'aiwiki.app_compile.{name}' is registered in _LAZY_OWNERS "
