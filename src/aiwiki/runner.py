@@ -688,43 +688,12 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
 def _reinject_candidate_frontmatter(target: Path, *, corpus_id: str = "") -> None:
     """LLM 覆盖 artifact 后，重新注入 candidate_state 与 corpus_id 字段。
 
-    用插入式改写，不做 round-trip，避免破坏 raw YAML literal（如 slides 的 ``marp: true``）。
-    若 LLM 返回的内容没有 frontmatter，则合成一个最小 frontmatter 以保证 candidate_state 不丢失。
+    薄 wrapper：委托给 ``execution.candidates.write_candidate_frontmatter``，
+    保留既有调用点接口不变。frontmatter 写入的唯一权威入口在 candidates 模块。
     """
-    content = target.read_text(encoding="utf-8")
-    lines = content.splitlines()
-    has_frontmatter = bool(lines) and lines[0].strip() == "---"
-    close_idx: int | None = None
-    if has_frontmatter:
-        for idx in range(1, len(lines)):
-            if lines[idx].strip() == "---":
-                close_idx = idx
-                break
-    if not has_frontmatter or close_idx is None:
-        # 合成最小 frontmatter，避免 candidate_state 丢失
-        header = ["---", 'candidate_state: "pending"']
-        if corpus_id:
-            header.append(f'corpus_id: "{corpus_id}"')
-        header.append("---")
-        synthesized = header + lines
-        target.write_text("\n".join(synthesized).rstrip() + "\n", encoding="utf-8")
-        return
-    # 移除已有的 candidate_state / corpus_id（如果 LLM 输出里碰巧有），避免重复
-    filtered = lines[:1] + [
-        line
-        for line in lines[1:close_idx]
-        if not line.startswith("candidate_state:") and not line.startswith("corpus_id:")
-    ]
-    new_close_idx = len(filtered)
-    filtered.append(lines[close_idx])
-    filtered.extend(lines[close_idx + 1:])
-    # 在 frontmatter 闭合前插入新字段
-    insertions = ['candidate_state: "pending"']
-    if corpus_id:
-        insertions.append(f'corpus_id: "{corpus_id}"')
-    for offset, line in enumerate(insertions):
-        filtered.insert(new_close_idx + offset, line)
-    target.write_text("\n".join(filtered).rstrip() + "\n", encoding="utf-8")
+    from .execution.candidates import write_candidate_frontmatter
+
+    write_candidate_frontmatter(target, candidate_state="pending", corpus_id=corpus_id)
 
 
 @runtime_write_operation

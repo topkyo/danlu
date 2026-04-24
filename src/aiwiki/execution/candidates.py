@@ -18,22 +18,60 @@ def _find_candidate(root: Path, artifact_ref: str) -> dict[str, Any]:
     raise FileNotFoundError(f"candidate not found: {artifact_ref}")
 
 
-def _insert_candidate_state(path: Path, state_value: str) -> None:
+def write_candidate_frontmatter(
+    path: Path,
+    *,
+    candidate_state: str,
+    corpus_id: str = "",
+) -> None:
+    """Write/update ``candidate_state`` (and optional ``corpus_id``) into the artifact frontmatter.
+
+    Single authoritative writer for candidate audit markers. Behavior:
+
+    - If the file has an existing frontmatter block, update ``candidate_state`` in place
+      (and upsert ``corpus_id`` when provided); do not round-trip the YAML (preserves raw
+      literals like ``marp: true``).
+    - If the file has no frontmatter, synthesize a minimal one rather than silently skip.
+      Silent no-op would drop the audit marker and violate AGENTS.md "do not swallow
+      errors" + "single writer, many readers".
+
+    This helper is the only sanctioned path to stamp candidate markers onto artifacts;
+    ``ask``, ``promote`` and ``demote`` all route through here.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"candidate artifact not found: {path}")
     original = path.read_text(encoding="utf-8", errors="replace")
     lines = original.splitlines()
-    if lines and lines[0].strip() == "---":
+    has_frontmatter = bool(lines) and lines[0].strip() == "---"
+    close_idx: int | None = None
+    if has_frontmatter:
         for idx in range(1, len(lines)):
             if lines[idx].strip() == "---":
-                replaced = list(lines)
-                if any(line.startswith("candidate_state:") for line in replaced[1:idx]):
-                    for j in range(1, idx):
-                        if replaced[j].startswith("candidate_state:"):
-                            replaced[j] = f'candidate_state: "{state_value}"'
-                            break
-                else:
-                    replaced.insert(idx, f'candidate_state: "{state_value}"')
-                path.write_text("\n".join(replaced).rstrip() + "\n", encoding="utf-8")
-                return
+                close_idx = idx
+                break
+    if not has_frontmatter or close_idx is None:
+        header = ["---", f'candidate_state: "{candidate_state}"']
+        if corpus_id:
+            header.append(f'corpus_id: "{corpus_id}"')
+        header.append("---")
+        synthesized = header + lines
+        path.write_text("\n".join(synthesized).rstrip() + "\n", encoding="utf-8")
+        return
+    filtered = lines[:1] + [
+        line
+        for line in lines[1:close_idx]
+        if not line.startswith("candidate_state:")
+        and not (corpus_id and line.startswith("corpus_id:"))
+    ]
+    new_close_idx = len(filtered)
+    filtered.append(lines[close_idx])
+    filtered.extend(lines[close_idx + 1 :])
+    insertions = [f'candidate_state: "{candidate_state}"']
+    if corpus_id:
+        insertions.append(f'corpus_id: "{corpus_id}"')
+    for offset, line in enumerate(insertions):
+        filtered.insert(new_close_idx + offset, line)
+    path.write_text("\n".join(filtered).rstrip() + "\n", encoding="utf-8")
 
 
 def promote_candidate(root: Path, artifact_ref: str) -> dict[str, Any]:
@@ -47,7 +85,7 @@ def promote_candidate(root: Path, artifact_ref: str) -> dict[str, Any]:
     # nightly 登记的 recurring_kind（decision/judgment）只作为元数据保留在 candidate 里，
     # 真正分流到 wiki/decisions|judgments 是阶段 3 的 L2 协议沉淀能力。
     kind = "derived"
-    _insert_candidate_state(artifact_path, "promoted")
+    write_candidate_frontmatter(artifact_path, candidate_state="promoted")
     result = file_back(root, artifact_ref, title=title, kind=kind)
     promoted_path = result["path"]
     filed_at = _app_compile.utc_now()
@@ -72,6 +110,6 @@ def demote_candidate(root: Path, artifact_ref: str) -> dict[str, Any]:
     ensure_layout(root)
     _find_candidate(root, artifact_ref)
     artifact_path = root / artifact_ref
-    _insert_candidate_state(artifact_path, "demoted")
+    write_candidate_frontmatter(artifact_path, candidate_state="demoted")
     remove_output_candidate(root, artifact_ref)
     return {"artifact_ref": artifact_ref, "status": "demoted"}

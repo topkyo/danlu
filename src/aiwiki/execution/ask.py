@@ -245,17 +245,15 @@ def ask_question(
         changed_at=created_at,
         corpus_id_override=corpus_id_override,
     )
-    original_content = destination.read_text(encoding="utf-8")
     # 在已有 frontmatter 闭合前插入 candidate_state，避免 round-trip 破坏
-    # raw YAML literal（如 slides 的 `marp: true`）。
-    lines = original_content.splitlines()
-    if lines and lines[0].strip() == "---":
-        for idx in range(1, len(lines)):
-            if lines[idx].strip() == "---":
-                lines.insert(idx, f'corpus_id: "{active_corpus["corpus_id"]}"')
-                lines.insert(idx, 'candidate_state: "pending"')
-                break
-        destination.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    # raw YAML literal（如 slides 的 `marp: true`）；无 frontmatter 时合成最小 header。
+    from .candidates import write_candidate_frontmatter
+
+    write_candidate_frontmatter(
+        destination,
+        candidate_state="pending",
+        corpus_id=active_corpus["corpus_id"],
+    )
     upsert_output_candidate(
         root,
         artifact_ref=artifact_ref,
