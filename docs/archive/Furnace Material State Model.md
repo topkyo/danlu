@@ -1,8 +1,12 @@
 ---
 title: "炼丹炉原料状态模型"
 kind: "design"
-status: "active"
+status: "superseded"
+superseded_at: 2026-04-24
+superseded_by: docs/Furnace Evolution Mechanics.md
 ---
+
+> **已归档**：状态模型（active corpus / material state / routing）已被 [[docs/Furnace Evolution Mechanics|炼丹炉进化机制]] §6 吸收。正文保留作史料。
 
 # 炼丹炉原料状态模型
 

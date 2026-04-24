@@ -1,8 +1,12 @@
 ---
 title: "炼丹炉架构"
 kind: "architecture"
-status: "active"
+status: "superseded"
+superseded_at: 2026-04-24
+superseded_by: docs/Furnace Agent Architecture.md
 ---
+
+> **已归档**：本文档的架构叙事已被 [[docs/Furnace Agent Architecture|炼丹炉 Agent 架构]] 取代。正文保留作史料。
 
 # 炼丹炉架构
 

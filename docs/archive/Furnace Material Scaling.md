@@ -1,8 +1,12 @@
 ---
 title: "炼丹炉大规模原料处理设计"
 kind: "design"
-status: "active"
+status: "superseded"
+superseded_at: 2026-04-24
+superseded_by: docs/Furnace Evolution Mechanics.md
 ---
+
+> **已归档**：规模化设计已被 [[docs/Furnace Evolution Mechanics|炼丹炉进化机制]] §2 / §3 / §5 / §6 吸收。正文保留作史料。
 
 # 炼丹炉大规模原料处理设计
 

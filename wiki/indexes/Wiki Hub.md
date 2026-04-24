@@ -20,13 +20,11 @@ kind: "dashboard"
 
 ## 架构入口
 
-- [[docs/Alchemy Furnace|炼丹炉架构]]：炼丹炉的基线架构，建立在 `aiwiki` runtime 之上
-- [[docs/Furnace Ultimate Architecture|最终极形态]]：这套系统最终想长成的认知操作系统形态
-- [[docs/Furnace Incremental Compile Plan|增量编译计划]]：把 compile 从黑箱大刷新推进到可观察的最小分段 baseline
+- [[docs/Furnace Agent Architecture|炼丹炉 Agent 架构]]：终局架构 SoT，定义 agent loop、persistent planes 与 L1/L2/L3 自主权边界
+- [[docs/Furnace Evolution Mechanics|进化机制]]：实现契约 SoT，定义 heavy/light alchemy、active corpus、金丹生命周期、L3 proposal
+- [[docs/Furnace Elixir|金丹机制]]：金丹产品思路 thesis
 - [[docs/Furnace Product Shell Plugin|Product Shell 插件]]：把当前 markdown/html 控制面升级成 Obsidian 内的桌面工作台
-- [[docs/Furnace Material Scaling|大规模原料处理]]：原料越来越多时的冷热分层、活动工作集和归档设计
-- [[docs/Furnace Material State Model|原料状态模型]]：把 `temperature / active corpus / archive` 压成实现级 schema
-- [[docs/Furnace Protocols|统一炼丹协议]]：一个炉子，多种领域协议
+- [[wiki/indexes/protocols|协议总览]]：当前 active protocol 和可用协议库
 - [[wiki/indexes/protocols|协议总览]]：当前 active protocol 和可用协议库
 - [[wiki/indexes/furnace-center|炉心面板]]：统一入口，先看今天该处理什么
 - [[schema/index|运行时规则]]：compile、ask、lint 共同遵循的规则层

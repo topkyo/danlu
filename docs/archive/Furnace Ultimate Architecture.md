@@ -1,8 +1,12 @@
 ---
 title: "炼丹炉最终极形态"
 kind: "architecture"
-status: "active"
+status: "superseded"
+superseded_at: 2026-04-24
+superseded_by: docs/Furnace Agent Architecture.md
 ---
+
+> **已归档**：九层终局叙事已被 [[docs/Furnace Agent Architecture|炼丹炉 Agent 架构]] 的 loop-first + persistent planes 模型取代。正文保留作史料。
 
 # 炼丹炉最终极形态
 

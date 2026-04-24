@@ -1,8 +1,12 @@
 ---
 title: "统一炼丹协议"
 kind: "guide"
-status: "active"
+status: "superseded"
+superseded_at: 2026-04-24
+superseded_by: docs/Furnace Agent Architecture.md
 ---
+
+> **已归档**：一个炉子多协议的主论证已合入 [[docs/Furnace Agent Architecture|炼丹炉 Agent 架构]] §9。正文保留作史料。
 
 # 统一炼丹协议
 

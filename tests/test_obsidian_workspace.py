@@ -43,14 +43,14 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         home = (self.root / "HOME.md").read_text(encoding="utf-8")
         self.assertIn("[[wiki/indexes/Raw Inbox|", home)
         self.assertIn("[[wiki/indexes/Wiki Hub|", home)
-        self.assertIn("[[docs/Alchemy Furnace|", home)
-        self.assertIn("[[docs/Furnace Ultimate Architecture|", home)
-        self.assertIn("[[docs/Furnace Material Scaling|", home)
+        self.assertIn("[[docs/Furnace Agent Architecture|", home)
+        self.assertIn("[[docs/Furnace Evolution Mechanics|", home)
+        self.assertIn("[[docs/Furnace Elixir|", home)
         self.assertIn("[[wiki/indexes/furnace-center|", home)
         self.assertIn("[[wiki/indexes/protocols|", home)
         wiki_hub = (self.root / "wiki" / "indexes" / "Wiki Hub.md").read_text(encoding="utf-8")
-        self.assertIn("[[docs/Furnace Protocols|", wiki_hub)
-        self.assertIn("[[docs/Furnace Material State Model|", wiki_hub)
+        self.assertIn("[[docs/Furnace Agent Architecture|", wiki_hub)
+        self.assertIn("[[docs/Furnace Evolution Mechanics|", wiki_hub)
         self.assertIn("[[wiki/indexes/review-center|", home)
         self.assertIn("[[wiki/indexes/graph-view|", home)
         self.assertIn("[[wiki/indexes/machine-memory|", home)
@@ -67,11 +67,9 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         for relative in (
             "wiki/indexes/Raw Inbox.md",
             "wiki/indexes/Wiki Hub.md",
-            "docs/Alchemy Furnace.md",
-            "docs/Furnace Ultimate Architecture.md",
-            "docs/Furnace Material Scaling.md",
-            "docs/Furnace Material State Model.md",
-            "docs/Furnace Protocols.md",
+            "docs/Furnace Agent Architecture.md",
+            "docs/Furnace Evolution Mechanics.md",
+            "docs/Furnace Elixir.md",
             "wiki/indexes/furnace-center.md",
             "wiki/indexes/protocols.md",
             "wiki/indexes/review-center.md",
@@ -84,20 +82,19 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         ):
             self.assertTrue((self.root / relative).exists(), relative)
 
-    def test_ultimate_architecture_keeps_core_layers_visible(self) -> None:
-        text = (self.root / "docs" / "Furnace Ultimate Architecture.md").read_text(encoding="utf-8")
-        self.assertIn("Schema / Protocol Layer", text)
-        self.assertIn("Outputs Layer", text)
-        self.assertIn("execution-center", text)
+    def test_agent_architecture_keeps_core_invariants_visible(self) -> None:
+        text = (self.root / "docs" / "Furnace Agent Architecture.md").read_text(encoding="utf-8")
+        self.assertIn("Single writer", text)
+        self.assertIn("raw/", text)
+        self.assertIn("Agent Loop", text)
+        self.assertIn("L3", text)
 
-    def test_material_scaling_docs_keep_runtime_state_guards(self) -> None:
-        state_model = (self.root / "docs" / "Furnace Material State Model.md").read_text(encoding="utf-8")
-        scaling = (self.root / "docs" / "Furnace Material Scaling.md").read_text(encoding="utf-8")
-        self.assertIn("manifest `entries[*].id`", state_model)
-        self.assertIn("runtime-history.jsonl", state_model)
-        self.assertIn("active_corpus_ids", state_model)
-        self.assertIn("空/缺省", state_model)
-        self.assertIn("统一落在 machine-readable 的 runtime history 文件里", scaling)
+    def test_evolution_mechanics_keeps_runtime_state_guards(self) -> None:
+        evolution = (self.root / "docs" / "Furnace Evolution Mechanics.md").read_text(encoding="utf-8")
+        self.assertIn("active-corpora.json", evolution)
+        self.assertIn("runtime-history.jsonl", evolution)
+        self.assertIn("wiki/elixirs/", evolution)
+        self.assertIn("output/_proposals/", evolution)
 
 
 if __name__ == "__main__":

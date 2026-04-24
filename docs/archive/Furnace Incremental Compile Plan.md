@@ -1,8 +1,12 @@
 ---
 title: "炼丹炉增量编译计划"
 kind: "roadmap"
-status: "active"
+status: "superseded"
+superseded_at: 2026-04-24
+superseded_by: docs/Furnace Evolution Mechanics.md
 ---
+
+> **已归档**：增量 compile 的 phase 设计与 dirty set 语义已被 [[docs/Furnace Evolution Mechanics|炼丹炉进化机制]] §4 / §5 吸收。正文保留作史料。
 
 # 炼丹炉增量编译计划
 

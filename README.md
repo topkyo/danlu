@@ -138,13 +138,11 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . nightly
 ## 日常入口
 
 - Obsidian 工作台：[HOME.md](./HOME.md)
-- 炼丹炉基线架构：[Alchemy Furnace.md](<./docs/Alchemy Furnace.md>)
-- 最终极形态：[Furnace Ultimate Architecture.md](<./docs/Furnace Ultimate Architecture.md>)
-- 当前能力快照：[Furnace Capability Map.md](<./docs/Furnace Capability Map.md>)
-- 增量编译计划：[Furnace Incremental Compile Plan.md](<./docs/Furnace Incremental Compile Plan.md>)
+- 炼丹炉 Agent 架构（终局 SoT）：[Furnace Agent Architecture.md](<./docs/Furnace Agent Architecture.md>)
+- 炼丹炉进化机制（实现契约 SoT）：[Furnace Evolution Mechanics.md](<./docs/Furnace Evolution Mechanics.md>)
+- 金丹机制 thesis：[Furnace Elixir.md](<./docs/Furnace Elixir.md>)
 - Product Shell 插件设计：[Furnace Product Shell Plugin.md](<./docs/Furnace Product Shell Plugin.md>)
-- 大规模原料处理设计：[Furnace Material Scaling.md](<./docs/Furnace Material Scaling.md>)
-- 统一炉子 + 多协议：[Furnace Protocols.md](<./docs/Furnace Protocols.md>)
+- 归档文档索引：[docs/archive/](./docs/archive/)
 
 日常使用时，Obsidian 与 CLI 共享同一个 runtime；不要同时在两边各跑一个 `compile / nightly / apply / revert`。
 

@@ -3,9 +3,8 @@ kind: thesis
 status: accepted
 owner: tim
 related_docs:
-  - docs/Alchemy Furnace.md
-  - docs/Furnace Ultimate Architecture.md
-  - docs/Furnace Material State Model.md
+  - docs/Furnace Agent Architecture.md
+  - docs/Furnace Evolution Mechanics.md
   - docs/Outputs.md
 ---
 

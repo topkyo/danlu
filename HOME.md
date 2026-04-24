@@ -36,9 +36,9 @@ kind: "dashboard"
 
 - [[wiki/indexes/Raw Inbox|原料收件箱]]
 - [[wiki/indexes/Wiki Hub|知识中枢]]
-- [[docs/Alchemy Furnace|炼丹炉架构]]
-- [[docs/Furnace Ultimate Architecture|最终极形态]]
-- [[docs/Furnace Material Scaling|大规模原料处理]]
+- [[docs/Furnace Agent Architecture|炼丹炉 Agent 架构]]
+- [[docs/Furnace Evolution Mechanics|进化机制]]
+- [[docs/Furnace Elixir|金丹机制]]
 - [[wiki/indexes/furnace-center|炉心面板]]
 - [[wiki/indexes/execution-center|执行中心]]
 - [[wiki/indexes/execution-audit|执行审计]]
@@ -118,4 +118,4 @@ kind: "dashboard"
 - 新建笔记默认进 `raw/inbox/`
 - 新建附件默认进 `raw/assets/`
 - 详细运行说明看 [README.md](./README.md)
-- 详细架构看 [[docs/Alchemy Furnace|炼丹炉架构]]
+- 详细架构看 [[docs/Furnace Agent Architecture|炼丹炉 Agent 架构]]
