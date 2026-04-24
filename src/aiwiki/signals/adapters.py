@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -145,10 +146,86 @@ def _archive_receipt_to_signals(
     receipt_rel_path: str,
     history_line_no: int | None,
 ) -> list[SignalSeed]:
-    del receipt
-    del receipt_rel_path
-    del history_line_no
-    return []
+    if receipt.get("kind") != "execution-receipt" or receipt.get("subject_kind") != "material-archive":
+        return []
+
+    if history_line_no is None:
+        raise ValueError("archive adapter requires history_line_no")
+
+    operation = str(receipt.get("operation") or "")
+    action_id = str(receipt.get("action_id") or "")
+    raw_protocol = receipt.get("protocol")
+    if not isinstance(raw_protocol, str) or not raw_protocol:
+        return []
+    protocol = raw_protocol
+
+    subject_kind = str(receipt.get("subject_kind") or "")
+    raw_subject_id = receipt.get("subject_id")
+    if not isinstance(raw_subject_id, str) or not raw_subject_id:
+        return []
+    subject_id = raw_subject_id
+
+    applied_at = str(receipt.get("applied_at") or "")
+    primary_path = str(receipt.get("primary_path") or "")
+    generated_by = str(receipt.get("generated_by") or "")
+    current_temperature = str(receipt.get("current_temperature") or "")
+    resulting_temperature = str(receipt.get("resulting_temperature") or "")
+
+    transition = (current_temperature, resulting_temperature)
+    if transition == ("cold", "archived"):
+        severity = "high"
+    elif transition == ("archived", "cold"):
+        severity = "medium"
+    else:
+        return []
+
+    identity = "|".join(
+        [
+            str(receipt.get("kind") or ""),
+            generated_by,
+            protocol,
+            operation,
+            action_id,
+            subject_kind,
+            subject_id,
+            current_temperature,
+            resulting_temperature,
+            applied_at,
+            primary_path,
+        ]
+    )
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
+
+    trace_digest = hashlib.sha256((identity + "|trace").encode("utf-8")).digest()
+    raw = bytearray(trace_digest[:16])
+    raw[6] = (raw[6] & 0x0F) | 0x40
+    raw[8] = (raw[8] & 0x3F) | 0x80
+    trace_id = str(uuid.UUID(bytes=bytes(raw)))
+
+    source_event_ref = f"{receipt_rel_path}#L{history_line_no}"
+
+    return [
+        SignalSeed(
+            record_base={
+                "kind": "drift",
+                "scope": {
+                    "protocol": protocol,
+                    "source_ids": [subject_id],
+                    "concept_slugs": [],
+                    "elixir_refs": [],
+                    "judgment_refs": [],
+                },
+                "severity": severity,
+                "evidence_refs": _unique_sorted_strings([primary_path]),
+                "emitted_at": applied_at,
+                "emitted_by": "compile",
+                "source_kind": "archive_event",
+                "source_event_ref": source_event_ref,
+                "trace_id": trace_id,
+            },
+            source_identity=f"sha256-{digest}",
+        )
+    ]
 
 
 def _source_identity(payload: dict[str, Any]) -> str:

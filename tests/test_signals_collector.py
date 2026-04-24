@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import io
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -13,6 +14,7 @@ from unittest.mock import patch
 import aiwiki.signals.adapters as adapters
 import aiwiki.signals.collector as collector
 from aiwiki.cli import build_parser, main
+from aiwiki.planner.log_writer import write_planner_log
 from aiwiki.signals import collect_signals
 from aiwiki.signals.schema import parse_trace_id, validate
 
@@ -200,21 +202,6 @@ class TestIdempotency(_FixtureCase):
         self.assertEqual(result["scanned_count"], 2)
         self.assertEqual(result["unmapped_count"], 1)
 
-    def test_archive_source_is_wired_but_noop(self) -> None:
-        root = self.temp_root / "archive-only"
-        path = root / ".aiwiki/state/execution-receipts.jsonl"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"kind": "execution-receipt"}, sort_keys=True) + "\n", encoding="utf-8")
-
-        result = collect_signals(
-            root,
-            sources=["archive"],
-            trace_id="550e8400-e29b-41d4-a716-446655440000",
-        )
-        self.assertEqual(result["new_count"], 0)
-        self.assertEqual(result["unmapped_count"], 1)
-        self.assertEqual(result["scanned_count"], 1)
-
     def test_skip_examples_are_capped_at_five(self) -> None:
         root = self.temp_root / "skip-cap"
         path = root / ".aiwiki/state/runtime-history.jsonl"
@@ -365,6 +352,206 @@ class TestBadEventTolerance(_FixtureCase):
             collect_signals(root, trace_id="NOT-A-UUID")
 
 
+class TestArchiveAdapter(_FixtureCase):
+    def test_archive_apply_emits_drift_high_signal(self) -> None:
+        root = self._copy_case_root("case_archive_apply_revert")
+        expected_summary = json.loads(
+            (FIXTURE_DIR / "case_archive_apply_revert" / "expected" / "summary.json").read_text(encoding="utf-8")
+        )
+        result = collect_signals(root, sources=["archive"], trace_id=expected_summary["trace_id"])
+        self.assertEqual(result, expected_summary)
+        records = _read_jsonl(root / ".aiwiki/state/signals.jsonl")
+        expected_records = _read_jsonl(FIXTURE_DIR / "case_archive_apply_revert" / "expected" / "signals.jsonl")
+        self.assertEqual(_normalized_signal_records(records), _normalized_signal_records(expected_records))
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0]["kind"], "drift")
+        self.assertEqual(records[0]["severity"], "high")
+
+    def test_archive_revert_emits_drift_medium_signal(self) -> None:
+        root = self._copy_case_root("case_archive_apply_revert")
+        collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+        records = _read_jsonl(root / ".aiwiki/state/signals.jsonl")
+        self.assertEqual(records[1]["kind"], "drift")
+        self.assertEqual(records[1]["severity"], "medium")
+
+    def test_non_archive_execution_receipt_ignored(self) -> None:
+        root = self._copy_case_root("case_archive_apply_revert")
+        result = collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+        self.assertEqual(result["scanned_count"], 3)
+        self.assertEqual(result["new_count"], 2)
+        self.assertEqual(result["unmapped_count"], 1)
+
+    def test_archive_unknown_transition_is_invalid(self) -> None:
+        root = self._copy_case_root("case_archive_unknown_transition")
+        expected = json.loads(
+            (FIXTURE_DIR / "case_archive_unknown_transition" / "expected" / "summary.json").read_text(encoding="utf-8")
+        )
+        result = collect_signals(root, sources=["archive"], trace_id=expected["trace_id"])
+        self.assertEqual(result, expected)
+
+    def test_archive_missing_protocol_is_invalid(self) -> None:
+        root = self._copy_case_root("case_archive_missing_protocol")
+        expected = json.loads(
+            (FIXTURE_DIR / "case_archive_missing_protocol" / "expected" / "summary.json").read_text(encoding="utf-8")
+        )
+        result = collect_signals(root, sources=["archive"], trace_id=expected["trace_id"])
+        self.assertEqual(result, expected)
+
+    def test_archive_missing_subject_id_is_invalid(self) -> None:
+        root = self.temp_root / "archive-missing-subject-id"
+        path = root / ".aiwiki/state/execution-receipts.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "kind": "execution-receipt",
+                    "subject_kind": "material-archive",
+                    "protocol": "research",
+                    "current_temperature": "cold",
+                    "resulting_temperature": "archived",
+                    "applied_at": "2026-04-24T11:20:00Z",
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        result = collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+        self.assertEqual(result["new_count"], 0)
+        self.assertEqual(result["invalid_count"], 1)
+        self.assertEqual(result["skip_examples"], [{"reason": "archive_missing_subject_id", "source": "archive", "line": 1}])
+
+    def test_archive_subject_id_non_string_is_invalid(self) -> None:
+        root = self.temp_root / "archive-subject-id-non-string"
+        path = root / ".aiwiki/state/execution-receipts.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "kind": "execution-receipt",
+                    "subject_kind": "material-archive",
+                    "protocol": "research",
+                    "subject_id": 123,
+                    "current_temperature": "cold",
+                    "resulting_temperature": "archived",
+                    "applied_at": "2026-04-24T11:20:30Z",
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        result = collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+        self.assertEqual(result["new_count"], 0)
+        self.assertEqual(result["invalid_count"], 1)
+        self.assertEqual(result["skip_examples"], [{"reason": "archive_missing_subject_id", "source": "archive", "line": 1}])
+
+    def test_archive_protocol_non_string_is_invalid(self) -> None:
+        root = self.temp_root / "archive-protocol-non-string"
+        path = root / ".aiwiki/state/execution-receipts.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "kind": "execution-receipt",
+                    "subject_kind": "material-archive",
+                    "protocol": None,
+                    "subject_id": "entry-1",
+                    "current_temperature": "cold",
+                    "resulting_temperature": "archived",
+                    "applied_at": "2026-04-24T11:21:00Z",
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        result = collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+        self.assertEqual(result["new_count"], 0)
+        self.assertEqual(result["invalid_count"], 1)
+        self.assertEqual(result["skip_examples"], [{"reason": "archive_missing_protocol", "source": "archive", "line": 1}])
+
+    def test_archive_replay_idempotent(self) -> None:
+        root = self._copy_case_root("case_archive_apply_revert")
+        signals_path = root / ".aiwiki/state/signals.jsonl"
+        first = collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+        second = collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+        self.assertEqual(first["new_count"], 2)
+        self.assertEqual(second["new_count"], 0)
+        self.assertEqual(second["duplicate_count"], 2)
+        self.assertEqual(len(_read_jsonl(signals_path)), 2)
+
+    def test_archive_trace_id_deterministic(self) -> None:
+        receipt_a = {
+            "kind": "execution-receipt",
+            "generated_by": "apply_material_archive",
+            "protocol": "research",
+            "operation": "archive-apply",
+            "action_id": "act-archive-001",
+            "subject_kind": "material-archive",
+            "subject_id": "entry-001",
+            "current_temperature": "cold",
+            "resulting_temperature": "archived",
+            "applied_at": "2026-04-24T10:00:00Z",
+            "primary_path": "wiki/archives/research/entry-001.md",
+        }
+        receipt_b = dict(receipt_a)
+        receipt_b["applied_at"] = "2026-04-24T10:00:01Z"
+        seed1 = adapters._archive_receipt_to_signals(
+            receipt_a,
+            receipt_rel_path=".aiwiki/state/execution-receipts.jsonl",
+            history_line_no=1,
+        )[0]
+        seed2 = adapters._archive_receipt_to_signals(
+            receipt_a,
+            receipt_rel_path=".aiwiki/state/execution-receipts.jsonl",
+            history_line_no=1,
+        )[0]
+        seed3 = adapters._archive_receipt_to_signals(
+            receipt_b,
+            receipt_rel_path=".aiwiki/state/execution-receipts.jsonl",
+            history_line_no=2,
+        )[0]
+        self.assertEqual(seed1.record_base["trace_id"], seed2.record_base["trace_id"])
+        self.assertNotEqual(seed1.record_base["trace_id"], seed3.record_base["trace_id"])
+
+    def test_archive_dedupe_key_format(self) -> None:
+        root = self._copy_case_root("case_archive_apply_revert")
+        collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+        records = _read_jsonl(root / ".aiwiki/state/signals.jsonl")
+        for record in records:
+            dedupe_key = str(record["dedupe_key"])
+            self.assertRegex(dedupe_key, r"^drift:[^:]+:archive_event:sha256-[0-9a-f]{16}$")
+
+    def test_archive_trace_id_is_lowercase_uuidv4(self) -> None:
+        root = self._copy_case_root("case_archive_apply_revert")
+        collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+        records = _read_jsonl(root / ".aiwiki/state/signals.jsonl")
+        pattern = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+        for record in records:
+            trace_id = str(record["trace_id"])
+            self.assertRegex(trace_id, pattern)
+
+    def test_archive_source_event_ref_points_to_history_line(self) -> None:
+        root = self._copy_case_root("case_archive_apply_revert")
+        collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+        records = _read_jsonl(root / ".aiwiki/state/signals.jsonl")
+        self.assertEqual(records[0]["source_event_ref"], ".aiwiki/state/execution-receipts.jsonl#L1")
+        self.assertEqual(records[1]["source_event_ref"], ".aiwiki/state/execution-receipts.jsonl#L2")
+
+    def test_archive_apply_revert_end_to_end_signals_to_planner_log(self) -> None:
+        root = self._copy_case_root("case_archive_apply_revert")
+        result = collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+        self.assertEqual(result["new_count"], 2)
+        planner = write_planner_log(root)
+        self.assertEqual(planner["new_count"], 2)
+        planner_records = _read_jsonl(root / ".aiwiki/state/planner-log.jsonl")
+        self.assertEqual(len(planner_records), 2)
+        decisions = {str(item["decision"]) for item in planner_records}
+        self.assertTrue(decisions.issubset({"enqueue-heavy", "enqueue-light"}))
+        self.assertFalse(any("unmapped_kind" in item.get("reason_codes", []) for item in planner_records))
+
+
 class TestObserveOnlyAST(unittest.TestCase):
     _ALLOWED_PREFIXES = {
         "aiwiki.signals",
@@ -421,6 +608,12 @@ class TestObserveOnlyAST(unittest.TestCase):
         src_root = Path(__file__).resolve().parent.parent / "src" / "aiwiki" / "signals"
         adapters_imports = self._collect_imports(src_root / "adapters.py", "aiwiki.signals.adapters")
         self.assertTrue(all(not name.startswith("aiwiki.app_utils") for name in adapters_imports))
+
+    def test_adapters_does_not_import_execution_layer_modules(self) -> None:
+        src_root = Path(__file__).resolve().parent.parent / "src" / "aiwiki" / "signals"
+        adapters_imports = self._collect_imports(src_root / "adapters.py", "aiwiki.signals.adapters")
+        banned_prefixes = ("aiwiki.app_execution", "aiwiki.execution", "aiwiki.app_types")
+        self.assertTrue(all(not name.startswith(prefix) for name in adapters_imports for prefix in banned_prefixes))
 
     def test_from_aiwiki_runner_is_rejected_by_allowlist(self) -> None:
         imports = self._collect_imports_from_source("from aiwiki import runner\n", "aiwiki.signals.collector")
@@ -808,11 +1001,72 @@ class TestAdapters(unittest.TestCase):
             [],
         )
 
-    def test_archive_adapter_returns_empty(self) -> None:
+    def test_archive_adapter_requires_history_line_no(self) -> None:
+        receipt = {
+            "kind": "execution-receipt",
+            "subject_kind": "material-archive",
+            "protocol": "research",
+            "subject_id": "entry-1",
+            "current_temperature": "cold",
+            "resulting_temperature": "archived",
+            "applied_at": "2026-04-24T11:22:00Z",
+        }
+        with self.assertRaisesRegex(ValueError, "history_line_no"):
+            adapters._archive_receipt_to_signals(
+                receipt,
+                receipt_rel_path=".aiwiki/state/execution-receipts.jsonl",
+                history_line_no=None,
+            )
+
+    def test_archive_adapter_filters_non_material_archive_subject(self) -> None:
+        receipt = {
+            "kind": "execution-receipt",
+            "subject_kind": "machine-memory-action",
+            "protocol": "research",
+            "subject_id": "act-1",
+            "current_temperature": "cold",
+            "resulting_temperature": "archived",
+        }
         self.assertEqual(
-            adapters._archive_receipt_to_signals({"a": 1}, receipt_rel_path=".aiwiki/state/execution-receipts.jsonl", history_line_no=None),
+            adapters._archive_receipt_to_signals(
+                receipt,
+                receipt_rel_path=".aiwiki/state/execution-receipts.jsonl",
+                history_line_no=1,
+            ),
             [],
         )
+
+    def test_archive_adapter_unknown_transition_returns_empty(self) -> None:
+        receipt = {
+            "kind": "execution-receipt",
+            "subject_kind": "material-archive",
+            "protocol": "research",
+            "subject_id": "entry-x",
+            "current_temperature": "warm",
+            "resulting_temperature": "archived",
+            "applied_at": "2026-04-24T03:06:00Z",
+        }
+        self.assertEqual(
+            adapters._archive_receipt_to_signals(
+                receipt,
+                receipt_rel_path=".aiwiki/state/execution-receipts.jsonl",
+                history_line_no=1,
+            ),
+            [],
+        )
+
+    def test_archive_mapped_invalid_reason_for_missing_protocol(self) -> None:
+        reason = collector._mapped_invalid_reason(
+            "archive",
+            {
+                "kind": "execution-receipt",
+                "subject_kind": "material-archive",
+                "subject_id": "entry-1",
+                "current_temperature": "cold",
+                "resulting_temperature": "archived",
+            },
+        )
+        self.assertEqual(reason, "archive_missing_protocol")
 
     def test_source_identity_is_stable_with_sorted_json(self) -> None:
         left = adapters._source_identity({"b": 1, "a": 2})

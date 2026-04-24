@@ -526,6 +526,18 @@ class TestValidateErrorPaths(unittest.TestCase):
             ".aiwiki/state/execution-receipts.jsonl:row-1",
         )
 
+    def test_archive_event_source_event_ref_accepts_execution_receipts_path(self) -> None:
+        self._assert_source_event_ref_valid(
+            "archive_event",
+            ".aiwiki/state/execution-receipts.jsonl#L12",
+        )
+
+    def test_archive_event_source_event_ref_still_accepts_archive_substring(self) -> None:
+        self._assert_source_event_ref_valid(
+            "archive_event",
+            "wiki/archives/material-entry.md#L3",
+        )
+
     def test_validate_source_event_ref_review_outcome_row_id_rejected(self) -> None:
         self._assert_source_event_ref_rejected(
             "review_outcome",

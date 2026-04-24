@@ -309,6 +309,17 @@ def _derive_decision(kind: str, severity: str) -> tuple[str, list[str]]:
             return "escalate-human", ["runtime_failure_critical"]
         return "ignore", ["unmapped_kind"]
 
+    if kind == "drift":
+        if severity == "low":
+            return "ignore", ["drift_routine"]
+        if severity == "medium":
+            return "enqueue-light", ["drift_routine"]
+        if severity == "high":
+            return "enqueue-heavy", ["drift_high_severity"]
+        if severity == "critical":
+            return "enqueue-heavy", ["drift_critical"]
+        return "ignore", ["unmapped_kind"]
+
     return "ignore", ["unmapped_kind"]
 
 

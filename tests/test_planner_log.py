@@ -255,6 +255,18 @@ class TestDecisionDerivation(unittest.TestCase):
     def test_runtime_failure_low_is_unmapped(self) -> None:
         self.assertEqual(log_writer._derive_decision("runtime_failure", "low"), ("ignore", ["unmapped_kind"]))
 
+    def test_drift_low_maps_to_ignore(self) -> None:
+        self.assertEqual(log_writer._derive_decision("drift", "low"), ("ignore", ["drift_routine"]))
+
+    def test_drift_medium_maps_to_enqueue_light(self) -> None:
+        self.assertEqual(log_writer._derive_decision("drift", "medium"), ("enqueue-light", ["drift_routine"]))
+
+    def test_drift_high_maps_to_enqueue_heavy(self) -> None:
+        self.assertEqual(log_writer._derive_decision("drift", "high"), ("enqueue-heavy", ["drift_high_severity"]))
+
+    def test_drift_critical_maps_to_enqueue_heavy(self) -> None:
+        self.assertEqual(log_writer._derive_decision("drift", "critical"), ("enqueue-heavy", ["drift_critical"]))
+
 
 class TestIdempotency(_FixtureCase):
     def test_case_basic_matches_expected_payload_and_summary(self) -> None:

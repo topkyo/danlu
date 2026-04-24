@@ -14,7 +14,7 @@ from .schema import PROTOCOLS, SCHEMA_VERSION, canonical_dumps, compute_dedupe_k
 SIGNALS_REL_PATH = ".aiwiki/state/signals.jsonl"
 SKIP_EXAMPLES_LIMIT = 5
 SUPPORTED_SOURCES: tuple[str, str, str] = adapters.SUPPORTED_SOURCES
-MAPPED_KINDS: tuple[str, str, str] = ("review_feedback", "schedule_tick", "runtime_failure")
+MAPPED_KINDS: tuple[str, str, str, str] = ("review_feedback", "schedule_tick", "runtime_failure", "drift")
 
 
 def collect_signals(
@@ -96,7 +96,7 @@ def collect_signals(
                         "schema_version": SCHEMA_VERSION,
                         "signal_id": _new_signal_id(),
                         "dedupe_key": dedupe_key,
-                        "trace_id": resolved_trace_id,
+                        "trace_id": _seed_trace_id_or_default(seed, resolved_trace_id),
                     }
                     validation = validate(full_record)
                     if not validation.ok:
@@ -196,7 +196,7 @@ def _to_signal_seeds(source: str, event: dict[str, Any], *, line_no: int, rel_pa
         return adapters._archive_receipt_to_signals(
             event,
             receipt_rel_path=rel_path,
-            history_line_no=None,
+            history_line_no=line_no,
         )
     raise ValueError(f"unsupported source: {source}")
 
@@ -223,6 +223,24 @@ def _mapped_invalid_reason(source: str, event: dict[str, Any]) -> str | None:
         return None
 
     if source == "archive":
+        if event.get("kind") != "execution-receipt" or event.get("subject_kind") != "material-archive":
+            return None
+
+        protocol = event.get("protocol")
+        if not isinstance(protocol, str) or not protocol:
+            return "archive_missing_protocol"
+
+        subject_id = event.get("subject_id")
+        if not isinstance(subject_id, str) or not subject_id:
+            return "archive_missing_subject_id"
+
+        current_temperature = str(event.get("current_temperature") or "")
+        resulting_temperature = str(event.get("resulting_temperature") or "")
+        if (current_temperature, resulting_temperature) not in {
+            ("cold", "archived"),
+            ("archived", "cold"),
+        }:
+            return "archive_unknown_transition"
         return None
 
     return None
@@ -247,3 +265,10 @@ def _new_signal_id() -> str:
     day = datetime.now(timezone.utc).strftime("%Y%m%d")
     suffix = uuid.uuid4().hex[:12]
     return f"sig-{day}-{suffix}"
+
+
+def _seed_trace_id_or_default(seed: adapters.SignalSeed, default_trace_id: str) -> str:
+    seed_trace_id = seed.record_base.get("trace_id")
+    if isinstance(seed_trace_id, str) and seed_trace_id:
+        return seed_trace_id
+    return default_trace_id

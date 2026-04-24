@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import shutil
 import tempfile
 import unittest
 from contextlib import ExitStack
@@ -15,6 +16,8 @@ from aiwiki.cli import (
     build_parser,
     main,
 )
+
+SIGNALS_FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "signals_collector"
 
 
 class CLITests(unittest.TestCase):
@@ -32,6 +35,10 @@ class CLITests(unittest.TestCase):
             code = main(["--root", str(self.root), *argv])
         payload = json.loads(stdout.getvalue()) if stdout.getvalue().strip() else {}
         return code, payload, stderr.getvalue()
+
+    def _copy_signals_fixture_root(self, case_name: str) -> None:
+        fixture_root = SIGNALS_FIXTURE_DIR / case_name / "root"
+        shutil.copytree(fixture_root, self.root, dirs_exist_ok=True)
 
     def test_build_parser_includes_extended_ask_formats(self) -> None:
         parser = build_parser()
@@ -334,6 +341,31 @@ class CLITests(unittest.TestCase):
                     batch=None,
                     all_accepted_low_risk=True,
                 )
+
+    def test_archive_cli_smoke_signals_replay_then_planner_log_replay(self) -> None:
+        self._copy_signals_fixture_root("case_archive_apply_revert")
+
+        sig_code, sig_payload, sig_stderr = self._run_main(
+            ["signals-replay", "--source", "archive", "--trace-id", "550e8400-e29b-41d4-a716-446655440000"]
+        )
+        self.assertEqual(sig_code, 0)
+        self.assertEqual(sig_stderr, "")
+        self.assertEqual(sig_payload["scanned_count"], 3)
+        self.assertEqual(sig_payload["new_count"], 2)
+        self.assertEqual(sig_payload["emitted_by_kind"]["drift"], 2)
+
+        pl_code, pl_payload, pl_stderr = self._run_main(["planner-log-replay"])
+        self.assertEqual(pl_code, 0)
+        self.assertEqual(pl_stderr, "")
+        self.assertEqual(pl_payload["scanned_count"], 2)
+        self.assertEqual(pl_payload["new_count"], 2)
+        self.assertEqual(pl_payload["emitted_by_decision"]["enqueue-heavy"], 1)
+        self.assertEqual(pl_payload["emitted_by_decision"]["enqueue-light"], 1)
+
+        planner_log_path = self.root / ".aiwiki/state/planner-log.jsonl"
+        records = [json.loads(line) for line in planner_log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        self.assertEqual(len(records), 2)
+        self.assertFalse(any("unmapped_kind" in record.get("reason_codes", []) for record in records))
 
 
 if __name__ == "__main__":

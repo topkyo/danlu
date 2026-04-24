@@ -15,7 +15,8 @@
   "emitted_by_kind": {
     "review_feedback": 1,
     "schedule_tick": 0,
-    "runtime_failure": 1
+    "runtime_failure": 1,
+    "drift": 0
   },
   "skip_examples": [
     {
