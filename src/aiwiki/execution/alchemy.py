@@ -14,7 +14,19 @@ ELIXIR_DIR = "wiki/elixirs"
 # helpers in app_utils do not round-trip nested list-of-maps structures reliably.
 
 
-def list_promoted_outputs_for_corpus(root: Path, corpus_id: str, *, allowed_artifact_refs: set[str] | None = None) -> list[dict[str, Any]]:
+def list_promoted_outputs_for_corpus(root: Path, corpus_id: str) -> list[dict[str, Any]]:
+    """List every currently-promoted candidate belonging to ``corpus_id``.
+
+    Authoritative provenance allowlist for elixir distill/seal: walks the full
+    ``output_candidates`` state and returns every row whose ``corpus_id`` matches and
+    whose ``candidate_state == "promoted"``.
+
+    Deliberately does NOT use ``active_corpora.output_refs`` as an allowlist:
+    ``output_refs`` is a recent-context ring buffer (last 8) maintained by
+    ``upsert_active_corpus``; using it as a provenance allowlist would silently
+    invalidate legitimate older promoted provenance once the corpus ran more than
+    8 rounds. See oracle maintainability review EP-029 MUST-FIX #3.
+    """
     state = load_output_candidates_state(root)
     results: list[dict[str, Any]] = []
     for candidate in state.get("candidates", []):
@@ -23,8 +35,6 @@ def list_promoted_outputs_for_corpus(root: Path, corpus_id: str, *, allowed_arti
         if str(candidate.get("candidate_state") or "") != "promoted":
             continue
         artifact_ref = str(candidate.get("artifact_ref") or "")
-        if allowed_artifact_refs is not None and artifact_ref not in allowed_artifact_refs:
-            continue
         promoted_to = str(candidate.get("promoted_to") or "")
         if promoted_to:
             results.append({"artifact_ref": artifact_ref, "promoted_to": promoted_to, "question": str(candidate.get("question") or "")})
@@ -115,9 +125,8 @@ def _find_corpus(root: Path, corpus_id: str) -> dict[str, Any]:
 
 
 def start_elixir(root: Path, corpus_id: str, *, topic: str) -> dict[str, Any]:
-    corpus = _find_corpus(root, corpus_id)
-    allowed_artifact_refs = {str(x) for x in corpus.get("output_refs", []) if isinstance(x, str)}
-    promoted = list_promoted_outputs_for_corpus(root, corpus_id, allowed_artifact_refs=allowed_artifact_refs)
+    _find_corpus(root, corpus_id)  # validate corpus exists
+    promoted = list_promoted_outputs_for_corpus(root, corpus_id)
     if not promoted:
         raise ValueError(f"no promoted outputs for corpus {corpus_id}")
     source_outputs = [item["promoted_to"] for item in promoted if item.get("promoted_to")]
@@ -141,14 +150,13 @@ def distill_elixir(root: Path, elixir_id: str, *, question: str) -> dict[str, An
     if str(frontmatter.get("elixir_state") or "") == "sealed":
         raise ValueError(f"sealed elixir cannot be distilled: {elixir_id}")
     corpus_id = str(frontmatter.get("source_corpus") or "")
-    corpus = _find_corpus(root, corpus_id)
-    allowed_artifact_refs = {str(x) for x in corpus.get("output_refs", []) if isinstance(x, str)}
-    promoted = list_promoted_outputs_for_corpus(root, corpus_id, allowed_artifact_refs=allowed_artifact_refs)
+    _find_corpus(root, corpus_id)
+    promoted = list_promoted_outputs_for_corpus(root, corpus_id)
     allowed = {item["promoted_to"] for item in promoted if item.get("promoted_to")}
     existing = [str(item) for item in frontmatter.get("source_outputs", []) if isinstance(item, str)]
     # Defense-in-depth: refuse to distill an elixir whose existing provenance was
     # tampered empty or points outside the current corpus allowlist. Prevents
-    # silent provenance loss via frontmatter edits or output_refs drift.
+    # silent provenance loss via frontmatter edits.
     if not existing:
         raise ValueError(f"elixir has empty source_outputs, refusing to distill: {elixir_id}")
     _validate_source_outputs(root, existing, allowed=allowed)
@@ -174,9 +182,8 @@ def seal_elixir(root: Path, elixir_id: str) -> dict[str, Any]:
     if str(frontmatter.get("elixir_state") or "") == "sealed":
         raise ValueError(f"elixir already sealed: {elixir_id}")
     corpus_id = str(frontmatter.get("source_corpus") or "")
-    corpus = _find_corpus(root, corpus_id)
-    allowed_artifact_refs = {str(x) for x in corpus.get("output_refs", []) if isinstance(x, str)}
-    promoted = list_promoted_outputs_for_corpus(root, corpus_id, allowed_artifact_refs=allowed_artifact_refs)
+    _find_corpus(root, corpus_id)
+    promoted = list_promoted_outputs_for_corpus(root, corpus_id)
     allowed = {item["promoted_to"] for item in promoted if item.get("promoted_to")}
     source_outputs = [str(item) for item in frontmatter.get("source_outputs", []) if isinstance(item, str)]
     _validate_source_outputs(root, source_outputs, allowed=allowed)

@@ -598,15 +598,21 @@ class AlchemyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             _validate_source_outputs(self.root, ["wiki/derived/missing.md"], allowed={"wiki/derived/missing.md"})
 
-    def test_alchemy_start_rejects_tampered_source_outputs_not_in_corpus_output_refs(self) -> None:
+    def test_alchemy_start_rejects_when_all_candidates_demoted(self) -> None:
+        """Allowlist 来源已从 output_refs ring buffer 迁到 candidate.candidate_state 权威。
+
+        tamper surface 不再是 corpus.output_refs（那只是最近上下文 ring buffer，轮数一多
+        合法旧 provenance 会被截断失效，见 EP-029 MUST-FIX #3）。真正的 allowlist =
+        corpus_id 下 candidate_state == "promoted" 的候选。demote 所有候选后 allowlist 空。
+        """
         corpus_id = self._make_promoted_corpus(["Question A?"])
         result = ask_question(self.root, "Question B?", "report", corpus_id_override=corpus_id)
         promote_candidate(self.root, result["path"])
-        corpora = load_active_corpora_state(self.root)
-        for corpus in corpora["corpora"]:
-            if str(corpus.get("corpus_id") or "") == corpus_id:
-                corpus["output_refs"] = []
-        save_active_corpora_state(self.root, corpora)
+        # demote 所有 promoted candidate，allowlist 应变空
+        candidates_state = load_output_candidates_state(self.root)
+        for cand in candidates_state.get("candidates", []):
+            if str(cand.get("corpus_id") or "") == corpus_id and str(cand.get("candidate_state") or "") == "promoted":
+                demote_candidate(self.root, str(cand["artifact_ref"]))
 
         from aiwiki.runner import run_alchemy_start
 
@@ -673,16 +679,22 @@ class AlchemyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             run_alchemy_seal(self.root, start["elixir_id"])
 
-    def test_alchemy_distill_rejects_stale_source_output_removed_from_output_refs(self) -> None:
+    def test_alchemy_distill_rejects_stale_source_output_when_candidate_demoted(self) -> None:
+        """distill 应拒绝指向已被 demote 的 source_outputs。
+
+        权威 allowlist = `candidate_state == "promoted"` 的候选。demote 后 candidate row
+        被删除，allowlist 不再包含该 promoted_to → existing provenance 校验失败。
+        替代旧版依赖 corpus.output_refs 清空的 tamper 模型（MUST-FIX #3 已解耦）。
+        """
         corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])
         from aiwiki.runner import run_alchemy_distill, run_alchemy_start
 
         start = run_alchemy_start(self.root, corpus_id, "VLA robotics")
-        corpora = load_active_corpora_state(self.root)
-        for corpus in corpora["corpora"]:
-            if str(corpus.get("corpus_id") or "") == corpus_id:
-                corpus["output_refs"] = []
-        save_active_corpora_state(self.root, corpora)
+        # demote 掉所有 promoted candidate，使 existing source_outputs 落到 allowlist 之外
+        candidates_state = load_output_candidates_state(self.root)
+        for cand in candidates_state.get("candidates", []):
+            if str(cand.get("corpus_id") or "") == corpus_id and str(cand.get("candidate_state") or "") == "promoted":
+                demote_candidate(self.root, str(cand["artifact_ref"]))
 
         with self.assertRaises(ValueError):
             run_alchemy_distill(self.root, start["elixir_id"], "What about latency?")
