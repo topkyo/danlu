@@ -1387,6 +1387,13 @@ def run_protocol_learn_archive(root: Path, learning_id: str) -> dict[str, Any]:
     return archive_learning(root, learning_id)
 
 
+@runtime_write_operation
+def run_protocol_learn_supersede(root: Path, replacement_id: str, superseded_ids: list[str]) -> dict[str, Any]:
+    from .execution.protocol_learnings import supersede_learning
+
+    return supersede_learning(root, replacement_id, superseded_ids)
+
+
 def watch_inbox(
     root: Path,
     interval_seconds: float = 5.0,

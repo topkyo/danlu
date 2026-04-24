@@ -9,12 +9,20 @@ from pathlib import Path
 from typing import Any
 
 from ..app_protocol import PROTOCOL_LIBRARY
-from ..app_utils import next_available_stem, parse_frontmatter, parse_iso_datetime, sha256_bytes, slugify, utc_now
+from ..app_utils import (
+    next_available_stem,
+    parse_frontmatter,
+    parse_iso_datetime,
+    relative_path,
+    sha256_bytes,
+    slugify,
+    utc_now,
+)
 
 LEARNINGS_DIR = "wiki/protocol-learnings"
 AUDIT_STATE_PATH = ".aiwiki/state/protocol_learnings_age.json"
 AGING_THRESHOLD_DAYS = 90
-LEARNING_STATES = ("active", "stale", "demoted", "archived")
+LEARNING_STATES = ("active", "stale", "demoted", "superseded", "archived")
 
 
 def _known_protocols() -> set[str]:
@@ -191,6 +199,182 @@ def _effective_last_verified_at(fm: dict[str, Any]) -> str:
     return str(fm.get("updated_at") or "")
 
 
+def _has_frontmatter_fence(text: str) -> bool:
+    stripped = text.lstrip()
+    return stripped.startswith("---\n") or stripped.startswith("---\r")
+
+
+def _normalize_optional_learning_ref(value: Any, *, field_name: str, owner_id: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"learning graph inconsistent: {owner_id}.{field_name} must be string")
+    raw = value.strip()
+    if not raw:
+        raise ValueError(f"learning graph inconsistent: {owner_id}.{field_name} must not be blank")
+    return _resolve_learning_id(raw)
+
+
+def _normalize_learning_ref_list(value: Any, *, field_name: str, owner_id: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"learning graph inconsistent: {owner_id}.{field_name} must be list")
+    refs: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, str):
+            raise ValueError(f"learning graph inconsistent: {owner_id}.{field_name} entries must be strings")
+        ref = _resolve_learning_id(item)
+        if ref in seen:
+            raise ValueError(f"learning graph inconsistent: duplicate {field_name} edge on {owner_id}: {ref}")
+        seen.add(ref)
+        refs.append(ref)
+    return refs
+
+
+def _assert_acyclic_supersede_graph(records: dict[str, dict[str, Any]]) -> None:
+    visiting: list[str] = []
+    visited: set[str] = set()
+
+    def visit(node: str) -> None:
+        if node in visiting:
+            cycle = visiting[visiting.index(node):] + [node]
+            raise ValueError("learning graph inconsistent: supersede cycle detected: " + " -> ".join(cycle))
+        if node in visited:
+            return
+        visiting.append(node)
+        for child in records[node].get("supersedes", []):
+            visit(child)
+        visiting.pop()
+        visited.add(node)
+
+    for learning_id in sorted(records):
+        visit(learning_id)
+
+
+def _load_learning_records(root: Path) -> dict[str, dict[str, Any]]:
+    base = root / LEARNINGS_DIR
+    records: dict[str, dict[str, Any]] = {}
+    if not base.is_dir():
+        return records
+
+    for pdir in sorted(base.iterdir()):
+        if not pdir.is_dir():
+            continue
+        for md in sorted(pdir.glob("*.md")):
+            text = md.read_text(encoding="utf-8", errors="replace")
+            fm, body = _split_frontmatter_body(text)
+            if not _has_frontmatter_fence(text):
+                raise ValueError(f"learning graph inconsistent: missing frontmatter fence: {relative_path(root, md)}")
+            if not fm:
+                raise ValueError(f"learning graph inconsistent: empty/corrupt frontmatter: {relative_path(root, md)}")
+
+            learning_id = _resolve_learning_id(str(fm.get("learning_id") or md.stem))
+            if learning_id != md.stem:
+                raise ValueError(
+                    f"learning graph inconsistent: learning_id/path mismatch: {learning_id} vs {md.stem}"
+                )
+            protocol = str(fm.get("protocol") or "").strip()
+            if not protocol:
+                raise ValueError(f"learning graph inconsistent: missing protocol on {learning_id}")
+            if protocol != pdir.name:
+                raise ValueError(
+                    f"learning graph inconsistent: protocol/path mismatch on {learning_id}: {protocol} vs {pdir.name}"
+                )
+            raw_state = str(fm.get("state") or "").strip()
+            if raw_state and raw_state not in LEARNING_STATES:
+                raise ValueError(f"learning graph inconsistent: unknown state on {learning_id}: {raw_state}")
+            state = _effective_state(fm)
+            superseded_by = _normalize_optional_learning_ref(
+                fm.get("superseded_by"),
+                field_name="superseded_by",
+                owner_id=learning_id,
+            )
+            supersedes = _normalize_learning_ref_list(
+                fm.get("supersedes"),
+                field_name="supersedes",
+                owner_id=learning_id,
+            )
+            superseded_at = str(fm.get("superseded_at") or "").strip()
+
+            if superseded_by == learning_id or learning_id in supersedes:
+                raise ValueError(f"learning graph inconsistent: self-loop detected on {learning_id}")
+            if state == "superseded":
+                if superseded_by is None:
+                    raise ValueError(f"learning graph inconsistent: superseded learning missing superseded_by: {learning_id}")
+                if not superseded_at:
+                    raise ValueError(f"learning graph inconsistent: superseded learning missing superseded_at: {learning_id}")
+            else:
+                if superseded_by is not None:
+                    raise ValueError(
+                        f"learning graph inconsistent: non-superseded learning carries superseded_by: {learning_id}"
+                    )
+                if superseded_at:
+                    raise ValueError(
+                        f"learning graph inconsistent: non-superseded learning carries superseded_at: {learning_id}"
+                    )
+
+            if learning_id in records:
+                raise ValueError(f"learning graph inconsistent: duplicate learning_id across protocols: {learning_id}")
+            records[learning_id] = {
+                "learning_id": learning_id,
+                "protocol": protocol,
+                "state": state,
+                "path": md,
+                "frontmatter": fm,
+                "body": body,
+                "superseded_by": superseded_by,
+                "supersedes": supersedes,
+            }
+
+    for learning_id, record in records.items():
+        for target_id in record["supersedes"]:
+            target = records.get(target_id)
+            if target is None:
+                raise ValueError(
+                    f"learning graph inconsistent: supersedes target missing: {learning_id} -> {target_id}"
+                )
+            if target["protocol"] != record["protocol"]:
+                raise ValueError(
+                    f"learning graph inconsistent: cross-protocol supersede edge: {learning_id} -> {target_id}"
+                )
+            if target["state"] != "superseded":
+                raise ValueError(
+                    f"learning graph inconsistent: supersedes target not marked superseded: {learning_id} -> {target_id}"
+                )
+            if target["superseded_by"] != learning_id:
+                raise ValueError(
+                    f"learning graph inconsistent: missing/incorrect backref: {learning_id} -> {target_id}"
+                )
+        if record["superseded_by"] is not None:
+            replacement = records.get(record["superseded_by"])
+            if replacement is None:
+                raise ValueError(
+                    f"learning graph inconsistent: superseded_by target missing: {learning_id} -> {record['superseded_by']}"
+                )
+            if replacement["protocol"] != record["protocol"]:
+                raise ValueError(
+                    f"learning graph inconsistent: cross-protocol superseded_by edge: {learning_id} -> {record['superseded_by']}"
+                )
+            if learning_id not in replacement["supersedes"]:
+                raise ValueError(
+                    f"learning graph inconsistent: missing replacement edge for backref: {learning_id} -> {record['superseded_by']}"
+                )
+
+    _assert_acyclic_supersede_graph(records)
+    return records
+
+
+def _get_validated_learning_record(root: Path, learning_id: str) -> dict[str, Any]:
+    resolved_id = _resolve_learning_id(learning_id)
+    records = _load_learning_records(root)
+    record = records.get(resolved_id)
+    if record is None:
+        raise FileNotFoundError(f"learning not found: {resolved_id}")
+    return record
+
+
 # -----------------------------------------------------------------------------
 # Public API
 # -----------------------------------------------------------------------------
@@ -287,16 +471,16 @@ def show_learning(root: Path, learning_id: str) -> dict[str, Any]:
 
 
 def load_learnings_for_protocol(root: Path, protocol: str) -> list[dict[str, Any]]:
-    base = root / LEARNINGS_DIR / protocol
-    if not base.is_dir():
-        return []
+    records = _load_learning_records(root)
     results: list[dict[str, Any]] = []
-    for md in sorted(base.glob("*.md")):
-        text = md.read_text(encoding="utf-8", errors="replace")
-        fm = parse_frontmatter(text)
-        if _effective_state(fm) != "active":
+    for record in sorted(
+        (item for item in records.values() if item["protocol"] == protocol),
+        key=lambda item: item["path"].name,
+    ):
+        if record["state"] != "active":
             continue  # contract §8: only active learnings injected into ask
-        body = text.split("---", 2)[-1].lstrip("\n")
+        fm = record["frontmatter"]
+        body = record["body"]
         lesson = ""
         if "## Lesson" in body:
             lesson_part = body.split("## Lesson", 1)[1]
@@ -307,7 +491,7 @@ def load_learnings_for_protocol(root: Path, protocol: str) -> list[dict[str, Any
             lesson = lesson.lstrip("\n").strip()
             if lesson.startswith("-"):
                 lesson = lesson[1:].strip()
-        results.append({"learning_id": str(fm.get("learning_id") or md.stem), "title": str(fm.get("title") or ""), "lesson": lesson})
+        results.append({"learning_id": record["learning_id"], "title": str(fm.get("title") or ""), "lesson": lesson})
     return results
 
 
@@ -316,14 +500,15 @@ def load_learnings_for_protocol(root: Path, protocol: str) -> list[dict[str, Any
 # -----------------------------------------------------------------------------
 
 def verify_learning(root: Path, learning_id: str) -> dict[str, Any]:
-    path = _find_learning_path(root, learning_id)
-    text = path.read_text(encoding="utf-8", errors="replace")
-    fm, body = _split_frontmatter_body(text)
-    # contract Acceptance #8: archived 是终态，verify 不能把它拉回 active。
+    record = _get_validated_learning_record(root, learning_id)
+    path = record["path"]
+    fm = dict(record["frontmatter"])
+    body = record["body"]
+    # archived / superseded are terminal in protocol-learning lifecycle.
     prev_state_raw = _effective_state(_materialize_legacy_fields(dict(fm)))
-    if prev_state_raw == "archived":
+    if prev_state_raw in {"archived", "superseded"}:
         raise ValueError(
-            f"verify 拒绝: learning {learning_id} 已 archived，archived 为终态，不允许反向迁移"
+            f"verify 拒绝: learning {learning_id} 当前 state={prev_state_raw}，terminal state 不允许反向迁移"
         )
     refs = [r for r in (fm.get("source_refs") or []) if isinstance(r, str)]
     # contract Acceptance #6: verify must re-check source_refs; reject on hard failures.
@@ -353,11 +538,16 @@ def verify_learning(root: Path, learning_id: str) -> dict[str, Any]:
 
 
 def demote_learning(root: Path, learning_id: str) -> dict[str, Any]:
-    path = _find_learning_path(root, learning_id)
-    text = path.read_text(encoding="utf-8", errors="replace")
-    fm, body = _split_frontmatter_body(text)
+    record = _get_validated_learning_record(root, learning_id)
+    path = record["path"]
+    fm = dict(record["frontmatter"])
+    body = record["body"]
     fm = _materialize_legacy_fields(fm)
     prev_state = _effective_state(fm)
+    if prev_state == "superseded":
+        raise ValueError(
+            f"demote 拒绝: learning {learning_id} 当前 state=superseded，superseded 为终态"
+        )
     if prev_state not in ("active", "stale"):
         raise ValueError(
             f"demote 拒绝: learning {learning_id} 当前 state={prev_state}，只能从 active 或 stale 迁移"
@@ -376,13 +566,18 @@ def demote_learning(root: Path, learning_id: str) -> dict[str, Any]:
 
 
 def archive_learning(root: Path, learning_id: str) -> dict[str, Any]:
-    path = _find_learning_path(root, learning_id)
-    text = path.read_text(encoding="utf-8", errors="replace")
-    fm, body = _split_frontmatter_body(text)
+    record = _get_validated_learning_record(root, learning_id)
+    path = record["path"]
+    fm = dict(record["frontmatter"])
+    body = record["body"]
     fm = _materialize_legacy_fields(fm)
     prev_state = _effective_state(fm)
     if prev_state == "archived":
         raise ValueError(f"archive 拒绝: learning {learning_id} 已是 archived")
+    if prev_state == "superseded":
+        raise ValueError(
+            f"archive 拒绝: learning {learning_id} 当前 state=superseded，superseded 为终态"
+        )
     now = utc_now()
     fm["state"] = "archived"
     fm["archived_at"] = now
@@ -395,6 +590,100 @@ def archive_learning(root: Path, learning_id: str) -> dict[str, Any]:
         "previous_state": prev_state,
         "state": "archived",
         "archived_at": now,
+    }
+
+
+def supersede_learning(root: Path, replacement_id: str, superseded_ids: list[str]) -> dict[str, Any]:
+    replacement_id = _resolve_learning_id(replacement_id)
+    targets: list[str] = []
+    seen: set[str] = set()
+    for raw in superseded_ids:
+        target_id = _resolve_learning_id(raw)
+        if target_id in seen:
+            raise ValueError(f"supersede 拒绝: duplicate target id: {target_id}")
+        seen.add(target_id)
+        targets.append(target_id)
+    if not targets:
+        raise ValueError("supersede 拒绝: 至少提供一个 target learning id")
+    if replacement_id in seen:
+        raise ValueError(f"supersede 拒绝: replacement {replacement_id} 不能 supersede 自己")
+
+    records = _load_learning_records(root)
+    replacement = records.get(replacement_id)
+    if replacement is None:
+        raise FileNotFoundError(f"learning not found: {replacement_id}")
+    replacement_state = replacement["state"]
+    if replacement_state != "active":
+        raise ValueError(
+            f"supersede 拒绝: replacement learning {replacement_id} 当前 state={replacement_state}，必须是 active"
+        )
+
+    for target_id in targets:
+        target = records.get(target_id)
+        if target is None:
+            raise FileNotFoundError(f"learning not found: {target_id}")
+        if target["protocol"] != replacement["protocol"]:
+            raise ValueError(
+                f"supersede 拒绝: cross-protocol 不允许: {replacement_id}({replacement['protocol']}) -> {target_id}({target['protocol']})"
+            )
+        if target["state"] in {"superseded", "archived"}:
+            raise ValueError(
+                f"supersede 拒绝: target learning {target_id} 当前 state={target['state']}，不能再次 supersede"
+            )
+        if target_id in replacement["supersedes"]:
+            raise ValueError(
+                f"supersede 拒绝: duplicate edge 已存在: {replacement_id} -> {target_id}"
+            )
+
+    now = utc_now()
+    replacement_fm = dict(replacement["frontmatter"])
+    replacement_supersedes = list(replacement["supersedes"])
+    replacement_supersedes.extend(targets)
+    replacement_fm["supersedes"] = replacement_supersedes
+    replacement_fm["updated_at"] = now
+
+    updated_targets: list[dict[str, Any]] = []
+    for target_id in targets:
+        target = records[target_id]
+        fm = dict(target["frontmatter"])
+        fm["state"] = "superseded"
+        fm["superseded_by"] = replacement_id
+        fm["superseded_at"] = now
+        fm["updated_at"] = now
+        updated_targets.append({"record": target, "frontmatter": fm})
+
+    preview_records = {
+        learning_id: {
+            **record,
+            "frontmatter": dict(record["frontmatter"]),
+            "superseded_by": record["superseded_by"],
+            "supersedes": list(record["supersedes"]),
+            "state": record["state"],
+        }
+        for learning_id, record in records.items()
+    }
+    preview_records[replacement_id]["frontmatter"] = replacement_fm
+    preview_records[replacement_id]["supersedes"] = list(replacement_supersedes)
+    for item in updated_targets:
+        target_record = item["record"]
+        target_id = target_record["learning_id"]
+        preview_records[target_id]["frontmatter"] = item["frontmatter"]
+        preview_records[target_id]["state"] = "superseded"
+        preview_records[target_id]["superseded_by"] = replacement_id
+    _assert_acyclic_supersede_graph(preview_records)
+
+    _rewrite_learning(replacement["path"], replacement_fm, replacement["body"])
+    for item in updated_targets:
+        target_record = item["record"]
+        _rewrite_learning(target_record["path"], item["frontmatter"], target_record["body"])
+
+    return {
+        "replacement_learning_id": replacement_id,
+        "protocol": replacement["protocol"],
+        "state": replacement_state,
+        "superseded_ids": list(targets),
+        "supersedes": list(replacement_supersedes),
+        "updated_at": now,
     }
 
 
@@ -422,51 +711,36 @@ def age_learnings(
     run_at = now_dt.isoformat()
     threshold_delta = timedelta(days=threshold_days)
 
+    try:
+        records = _load_learning_records(root)
+    except ValueError as exc:
+        result = {
+            "apply": apply,
+            "run_at": run_at,
+            "threshold_days": threshold_days,
+            "aged": [],
+            "aged_ids": [],
+            "skipped": [],
+            "errors": [{"reason": str(exc)}],
+        }
+        if apply:
+            audit_path = root / AUDIT_STATE_PATH
+            audit_path.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_write_text(audit_path, json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
+        return result
+
     if base.is_dir():
         protocols = [protocol] if protocol else sorted([p.name for p in base.iterdir() if p.is_dir()])
         for proto in protocols:
-            pdir = base / proto
-            if not pdir.is_dir():
-                continue
-            for md in sorted(pdir.glob("*.md")):
-                rel_path = f"{LEARNINGS_DIR}/{proto}/{md.name}"
-                try:
-                    text = md.read_text(encoding="utf-8", errors="replace")
-                    fm, body = _split_frontmatter_body(text)
-                except Exception as exc:
-                    errors.append({
-                        "learning_id": md.stem,
-                        "protocol": proto,
-                        "path": rel_path,
-                        "reason": f"解析失败: {exc}",
-                    })
-                    continue
-
-                # contract Acceptance #11: frontmatter 结构损坏（有 --- 分隔但 parse 为空 / 关键字段缺失）
-                # 必须进 errors 通道，禁止静默当成 stale/unknown。
-                stripped = text.lstrip()
-                has_fm_fence = stripped.startswith("---\n") or stripped.startswith("---\r")
-                if has_fm_fence and not fm:
-                    errors.append({
-                        "learning_id": md.stem,
-                        "protocol": proto,
-                        "path": rel_path,
-                        "reason": "frontmatter 解析为空 dict（可能 YAML 损坏）",
-                    })
-                    continue
-                if not has_fm_fence:
-                    errors.append({
-                        "learning_id": md.stem,
-                        "protocol": proto,
-                        "path": rel_path,
-                        "reason": "缺失 frontmatter 分隔符",
-                    })
-                    continue
-
+            for record in sorted(
+                (item for item in records.values() if item["protocol"] == proto),
+                key=lambda item: item["path"].name,
+            ):
+                rel_path = f"{LEARNINGS_DIR}/{proto}/{record['path'].name}"
+                fm = dict(record["frontmatter"])
+                body = record["body"]
                 refs = [r for r in (fm.get("source_refs") or []) if isinstance(r, str)]
-                # Structural validation (path traversal / bad prefix) -> error channel, not stale.
                 try:
-                    # Only validate structural constraints; missing-file is demoted to aging signal below.
                     for ref in refs:
                         if not ref.strip():
                             raise ValueError(f"空 source_ref in {rel_path}")
@@ -478,17 +752,17 @@ def age_learnings(
                             raise ValueError(f"source_ref 越界: {ref}")
                 except ValueError as exc:
                     errors.append({
-                        "learning_id": str(fm.get("learning_id") or md.stem),
+                        "learning_id": record["learning_id"],
                         "protocol": proto,
                         "path": rel_path,
                         "reason": str(exc),
                     })
                     continue
 
-                state = _effective_state(fm)
+                state = record["state"]
                 if state != "active":
                     skipped.append({
-                        "learning_id": str(fm.get("learning_id") or md.stem),
+                        "learning_id": record["learning_id"],
                         "protocol": proto,
                         "path": rel_path,
                         "state": state,
@@ -496,9 +770,7 @@ def age_learnings(
                     continue
 
                 reasons: list[str] = []
-                # Freshness signal 1: source_ref aging
                 reasons.extend(_check_source_refs_aging(root, refs))
-                # Freshness signal 2: last_verified_at age
                 last_verified_str = _effective_last_verified_at(fm)
                 last_verified_dt = parse_iso_datetime(last_verified_str) if last_verified_str else None
                 if last_verified_dt is None:
@@ -512,7 +784,7 @@ def age_learnings(
                     continue
 
                 entry = {
-                    "learning_id": str(fm.get("learning_id") or md.stem),
+                    "learning_id": record["learning_id"],
                     "protocol": proto,
                     "path": rel_path,
                     "previous_state": state,
@@ -525,7 +797,7 @@ def age_learnings(
                     fm = _materialize_legacy_fields(fm)
                     fm["state"] = "stale"
                     fm["updated_at"] = run_at
-                    _rewrite_learning(md, fm, body)
+                    _rewrite_learning(record["path"], fm, body)
 
     result = {
         "apply": apply,

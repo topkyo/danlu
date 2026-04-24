@@ -49,6 +49,7 @@ from aiwiki.execution.protocol_learnings import (
     list_learnings,
     load_learnings_for_protocol,
     show_learning,
+    supersede_learning,
     verify_learning,
 )
 from aiwiki.llm import CompletionResult
@@ -1298,6 +1299,9 @@ class ProtocolLearningsLifecycleTests(unittest.TestCase):
         last_verified_at: str | None = None,
         updated_at: str | None = None,
         archived_at: str | None = None,
+        superseded_by: str | None = None,
+        superseded_at: str | None = None,
+        supersedes: list[str] | None = None,
         lesson: str = "Pending.",
     ) -> Path:
         created_at = updated_at or utc_now()
@@ -1318,6 +1322,14 @@ class ProtocolLearningsLifecycleTests(unittest.TestCase):
             lines.append(f'last_verified_at: {json.dumps(last_verified_at)}')
         if archived_at is not None:
             lines.append(f'archived_at: {json.dumps(archived_at)}')
+        if superseded_by is not None:
+            lines.append(f'superseded_by: {json.dumps(superseded_by)}')
+        if superseded_at is not None:
+            lines.append(f'superseded_at: {json.dumps(superseded_at)}')
+        if supersedes is not None:
+            lines.append("supersedes:")
+            for item in supersedes:
+                lines.append(f"  - {json.dumps(item)}")
         lines.extend([
             "---",
             "# Protocol Learning",
@@ -1513,11 +1525,182 @@ class ProtocolLearningsLifecycleTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             archive_learning(self.root, "already-archived")
 
+    def test_supersede_marks_targets_and_replacement_graph(self) -> None:
+        self._write_learning("replacement", state="active", last_verified_at=utc_now())
+        self._write_learning("old-one", state="active", last_verified_at=utc_now())
+        self._write_learning("old-two", state="stale", last_verified_at=self._old_timestamp())
+
+        result = supersede_learning(self.root, "replacement", ["old-one", "old-two"])
+
+        replacement_fm = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "replacement.md").read_text(encoding="utf-8"))
+        old_one_fm = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "old-one.md").read_text(encoding="utf-8"))
+        old_two_fm = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "old-two.md").read_text(encoding="utf-8"))
+        self.assertEqual(result["replacement_learning_id"], "replacement")
+        self.assertEqual(result["superseded_ids"], ["old-one", "old-two"])
+        self.assertEqual(replacement_fm["supersedes"], ["old-one", "old-two"])
+        self.assertEqual(old_one_fm["state"], "superseded")
+        self.assertEqual(old_one_fm["superseded_by"], "replacement")
+        self.assertTrue(old_one_fm["superseded_at"])
+        self.assertEqual(old_two_fm["state"], "superseded")
+        self.assertEqual(old_two_fm["superseded_by"], "replacement")
+
+    def test_list_filters_superseded_state(self) -> None:
+        now = utc_now()
+        self._write_learning("replacement", state="active", last_verified_at=now, supersedes=["old-one"])
+        self._write_learning("old-one", state="superseded", last_verified_at=now, superseded_by="replacement", superseded_at=now)
+
+        listed = list_learnings(self.root, state_filter="superseded")
+
+        self.assertEqual([item["learning_id"] for item in listed], ["old-one"])
+        self.assertEqual(listed[0]["state"], "superseded")
+
+    def test_load_learnings_for_protocol_skips_superseded(self) -> None:
+        now = utc_now()
+        self._write_learning(
+            "replacement",
+            state="active",
+            last_verified_at=now,
+            lesson="replacement lesson",
+            supersedes=["old-one"],
+        )
+        self._write_learning("old-one", state="superseded", last_verified_at=now, superseded_by="replacement", superseded_at=now)
+
+        loaded = load_learnings_for_protocol(self.root, "general")
+
+        self.assertEqual([item["learning_id"] for item in loaded], ["replacement"])
+
+    def test_supersede_rejects_non_active_replacement(self) -> None:
+        self._write_learning("replacement", state="stale", last_verified_at=self._old_timestamp())
+        self._write_learning("old-one", state="active", last_verified_at=utc_now())
+
+        with self.assertRaises(ValueError) as ctx:
+            supersede_learning(self.root, "replacement", ["old-one"])
+        self.assertIn("必须是 active", str(ctx.exception))
+
+    def test_supersede_rejects_archived_or_superseded_target(self) -> None:
+        now = utc_now()
+        self._write_learning("replacement", state="active", last_verified_at=now)
+        self._write_learning("archived-target", state="archived", last_verified_at=now, archived_at=now)
+        self._write_learning("superseded-target", state="superseded", last_verified_at=now, superseded_by="replacement-2", superseded_at=now)
+        self._write_learning("replacement-2", state="active", last_verified_at=now, supersedes=["superseded-target"])
+
+        with self.assertRaises(ValueError):
+            supersede_learning(self.root, "replacement", ["archived-target"])
+        with self.assertRaises(ValueError):
+            supersede_learning(self.root, "replacement", ["superseded-target"])
+
+    def test_supersede_rejects_cross_protocol(self) -> None:
+        self._write_learning("replacement", protocol="general", state="active", last_verified_at=utc_now())
+        self._write_learning("ops-old", protocol="ops", state="active", last_verified_at=utc_now())
+
+        with self.assertRaises(ValueError) as ctx:
+            supersede_learning(self.root, "replacement", ["ops-old"])
+        self.assertIn("cross-protocol", str(ctx.exception))
+
+    def test_supersede_rejects_self_loop_duplicate_ids_and_duplicate_edge(self) -> None:
+        now = utc_now()
+        self._write_learning("replacement", state="active", last_verified_at=now, supersedes=["old-one"])
+        self._write_learning("old-one", state="superseded", last_verified_at=now, superseded_by="replacement", superseded_at=now)
+        self._write_learning("fresh-old", state="active", last_verified_at=now)
+
+        with self.assertRaises(ValueError):
+            supersede_learning(self.root, "replacement", ["replacement"])
+        with self.assertRaises(ValueError):
+            supersede_learning(self.root, "replacement", ["fresh-old", "fresh-old"])
+        with self.assertRaises(ValueError) as ctx:
+            supersede_learning(self.root, "replacement", ["old-one"])
+        self.assertTrue(
+            "duplicate edge" in str(ctx.exception) or "不能再次 supersede" in str(ctx.exception)
+        )
+
+    def test_supersede_rejects_dirty_graph_and_cycle(self) -> None:
+        now = utc_now()
+        self._write_learning("replacement", state="active", last_verified_at=now, supersedes=["old-one"])
+        self._write_learning("old-one", state="active", last_verified_at=now)
+        self._write_learning("cycle-a", state="active", last_verified_at=now, supersedes=["cycle-b"])
+        self._write_learning("cycle-b", state="active", last_verified_at=now, supersedes=["cycle-a"])
+
+        with self.assertRaises(ValueError) as dirty_ctx:
+            supersede_learning(self.root, "replacement", ["old-one"])
+        self.assertIn("learning graph inconsistent", str(dirty_ctx.exception))
+
+        # Reset to isolate cycle case.
+        self.tempdir.cleanup()
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+        ensure_layout(self.root)
+        (self.root / "prompts" / "compile.md").write_text("Compile prompt fixture.\n", encoding="utf-8")
+        (self.root / "prompts" / "ask.md").write_text("Ask prompt fixture.\n", encoding="utf-8")
+        (self.root / "wiki" / "derived").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "derived" / "source.md").write_text("# source\n", encoding="utf-8")
+        self._write_learning("replacement", state="active", last_verified_at=now)
+        self._write_learning("cycle-a", state="active", last_verified_at=now, supersedes=["cycle-b"])
+        self._write_learning("cycle-b", state="active", last_verified_at=now, supersedes=["cycle-a"])
+
+        with self.assertRaises(ValueError) as cycle_ctx:
+            supersede_learning(self.root, "replacement", ["cycle-a"])
+        self.assertIn("cycle", str(cycle_ctx.exception))
+
+    def test_verify_demote_archive_reject_superseded(self) -> None:
+        now = utc_now()
+        self._write_learning("replacement", state="active", last_verified_at=now, supersedes=["old-one"])
+        self._write_learning("old-one", state="superseded", last_verified_at=now, superseded_by="replacement", superseded_at=now)
+
+        with self.assertRaises(ValueError):
+            verify_learning(self.root, "old-one")
+        with self.assertRaises(ValueError):
+            demote_learning(self.root, "old-one")
+        with self.assertRaises(ValueError):
+            archive_learning(self.root, "old-one")
+
+    def test_load_learnings_rejects_dirty_supersede_graph(self) -> None:
+        now = utc_now()
+        self._write_learning("replacement", state="active", last_verified_at=now, supersedes=["old-one"])
+        self._write_learning("old-one", state="active", last_verified_at=now)
+
+        with self.assertRaises(ValueError) as ctx:
+            load_learnings_for_protocol(self.root, "general")
+        self.assertIn("learning graph inconsistent", str(ctx.exception))
+
+    def test_ask_with_load_learnings_rejects_dirty_supersede_graph(self) -> None:
+        now = utc_now()
+        self._write_learning("replacement", state="active", last_verified_at=now, supersedes=["old-one"])
+        self._write_learning("old-one", state="active", last_verified_at=now)
+
+        with self.assertRaises(ValueError) as ctx:
+            ask_question(self.root, "What changed?", "report", load_protocol_learnings=True)
+        self.assertIn("learning graph inconsistent", str(ctx.exception))
+
+    def test_verify_demote_archive_fail_fast_on_dirty_supersede_graph(self) -> None:
+        now = utc_now()
+        self._write_learning("replacement", state="active", last_verified_at=now, supersedes=["old-one"])
+        self._write_learning("old-one", state="active", last_verified_at=now)
+
+        with self.assertRaises(ValueError):
+            verify_learning(self.root, "replacement")
+        with self.assertRaises(ValueError):
+            demote_learning(self.root, "replacement")
+        with self.assertRaises(ValueError):
+            archive_learning(self.root, "replacement")
+
     def test_load_learnings_for_protocol_only_returns_active(self) -> None:
-        self._write_learning("active-one", state="active", last_verified_at=utc_now(), lesson="active lesson")
+        self._write_learning(
+            "active-one",
+            state="active",
+            last_verified_at=utc_now(),
+            lesson="active lesson",
+            supersedes=["superseded-one"],
+        )
         self._write_learning("stale-one", state="stale", last_verified_at=utc_now())
         self._write_learning("demoted-one", state="demoted", last_verified_at=utc_now())
         self._write_learning("archived-one", state="archived", last_verified_at=utc_now(), archived_at=utc_now())
+        self._write_learning(
+            "superseded-one",
+            state="superseded",
+            last_verified_at=utc_now(),
+            superseded_by="active-one",
+            superseded_at=utc_now(),
+        )
 
         loaded = load_learnings_for_protocol(self.root, "general")
 
@@ -1543,17 +1726,36 @@ class ProtocolLearningsLifecycleTests(unittest.TestCase):
     def test_age_skips_non_active_states(self) -> None:
         old = self._old_timestamp()
         self._write_learning("demoted-old", state="demoted", last_verified_at=old, updated_at=old)
+        now = utc_now()
+        self._write_learning("replacement", state="active", last_verified_at=now, supersedes=["superseded-old"])
+        self._write_learning("superseded-old", state="superseded", last_verified_at=old, updated_at=old, superseded_by="replacement", superseded_at=now)
         self._write_learning("archived-old", state="archived", last_verified_at=old, updated_at=old, archived_at=utc_now())
 
         result = age_learnings(self.root, apply=True)
 
         demoted_fm = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "demoted-old.md").read_text(encoding="utf-8"))
+        superseded_fm = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "superseded-old.md").read_text(encoding="utf-8"))
         archived_fm = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "archived-old.md").read_text(encoding="utf-8"))
         skipped = {item["learning_id"]: item["state"] for item in result["skipped"]}
         self.assertEqual(demoted_fm["state"], "demoted")
+        self.assertEqual(superseded_fm["state"], "superseded")
         self.assertEqual(archived_fm["state"], "archived")
         self.assertEqual(skipped["demoted-old"], "demoted")
+        self.assertEqual(skipped["superseded-old"], "superseded")
         self.assertEqual(skipped["archived-old"], "archived")
+
+    def test_age_dirty_supersede_graph_goes_to_errors_without_mutation(self) -> None:
+        old = self._old_timestamp()
+        self._write_learning("replacement", state="active", last_verified_at=old, updated_at=old, supersedes=["old-one"])
+        target_path = self._write_learning("old-one", state="active", last_verified_at=old, updated_at=old)
+        before = target_path.read_text(encoding="utf-8")
+
+        result = age_learnings(self.root, apply=True)
+
+        self.assertEqual(result["aged"], [])
+        self.assertTrue(result["errors"])
+        self.assertIn("learning graph inconsistent", result["errors"][0]["reason"])
+        self.assertEqual(target_path.read_text(encoding="utf-8"), before)
 
     def test_verify_rejects_archived_learning(self) -> None:
         # contract Acceptance #8: archived 终态，verify 不能反向迁移。
@@ -1579,8 +1781,8 @@ class ProtocolLearningsLifecycleTests(unittest.TestCase):
 
         result = age_learnings(self.root, apply=True)
 
-        error_ids = [e["learning_id"] for e in result["errors"]]
-        self.assertIn("corrupt", error_ids)
+        self.assertTrue(result["errors"])
+        self.assertIn("learning graph inconsistent", result["errors"][0]["reason"])
         # 未被当 stale 处理
         aged_ids = [e["learning_id"] for e in result["aged"]]
         self.assertNotIn("corrupt", aged_ids)

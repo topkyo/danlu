@@ -57,6 +57,7 @@ from .runner import (
     run_protocol_learn_demote,
     run_protocol_learn_list,
     run_protocol_learn_show,
+    run_protocol_learn_supersede,
     run_protocol_learn_verify,
     watch_inbox,
 )
@@ -192,7 +193,7 @@ def build_parser() -> argparse.ArgumentParser:
     protocol_learn_list_parser.add_argument("protocol", nargs="?", help="Optional protocol slug.")
     protocol_learn_list_parser.add_argument(
         "--state",
-        choices=("active", "stale", "demoted", "archived"),
+        choices=("active", "stale", "demoted", "superseded", "archived"),
         help="可选：仅显示指定 state 的 learning。",
     )
     protocol_learn_list_parser.add_argument(
@@ -232,6 +233,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Archive a protocol learning.",
     )
     protocol_learn_archive_parser.add_argument("learning_id", help="Learning id.")
+
+    protocol_learn_supersede_parser = subparsers.add_parser(
+        "protocol-learn-supersede",
+        help="Supersede one or more protocol learnings with an active replacement learning.",
+    )
+    protocol_learn_supersede_parser.add_argument("replacement_id", help="Active replacement learning id.")
+    protocol_learn_supersede_parser.add_argument(
+        "superseded_ids",
+        nargs="+",
+        help="One or more target learning ids to mark as superseded.",
+    )
 
     run_ask_parser = subparsers.add_parser(
         "run-ask",
@@ -665,6 +677,8 @@ def main(argv: list[str] | None = None) -> int:
             result = run_protocol_learn_demote(root, args.learning_id)
         elif args.command == "protocol-learn-archive":
             result = run_protocol_learn_archive(root, args.learning_id)
+        elif args.command == "protocol-learn-supersede":
+            result = run_protocol_learn_supersede(root, args.replacement_id, args.superseded_ids)
         elif args.command == "review-page":
             review_pages = _resolve_review_pages(
                 root,

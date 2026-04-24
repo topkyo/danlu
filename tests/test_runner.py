@@ -1008,6 +1008,76 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(final_fm.get("state"), "stale")
         self.assertTrue(learning["path"].startswith(LEARNINGS_DIR))
 
+    def test_run_nightly_reports_dirty_protocol_learning_graph_in_audit(self) -> None:
+        from aiwiki.execution.protocol_learnings import AUDIT_STATE_PATH, _atomic_write_text
+
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        learning_dir = self.root / "wiki" / "protocol-learnings" / "general"
+        learning_dir.mkdir(parents=True, exist_ok=True)
+        _atomic_write_text(
+            learning_dir / "replacement.md",
+            "\n".join([
+                "---",
+                'learning_id: "replacement"',
+                'protocol: "general"',
+                'title: "replacement"',
+                "source_refs:",
+                '  - "wiki/derived/source.md"',
+                'state: "active"',
+                f'created_at: {json.dumps("2026-01-01T00:00:00+00:00")}',
+                f'updated_at: {json.dumps("2026-01-01T00:00:00+00:00")}',
+                f'last_verified_at: {json.dumps("2026-01-01T00:00:00+00:00")}',
+                "supersedes:",
+                '  - "old-one"',
+                "---",
+                "# Protocol Learning",
+                "",
+            ]),
+        )
+        _atomic_write_text(
+            learning_dir / "old-one.md",
+            "\n".join([
+                "---",
+                'learning_id: "old-one"',
+                'protocol: "general"',
+                'title: "old-one"',
+                "source_refs:",
+                '  - "wiki/derived/source.md"',
+                'state: "active"',
+                f'created_at: {json.dumps("2026-01-01T00:00:00+00:00")}',
+                f'updated_at: {json.dumps("2026-01-01T00:00:00+00:00")}',
+                f'last_verified_at: {json.dumps("2026-01-01T00:00:00+00:00")}',
+                "---",
+                "# Protocol Learning",
+                "",
+            ]),
+        )
+        semantic_lint = "# Semantic Lint Report\n\n- Nothing to review.\n"
+
+        result = run_nightly(
+            self.root,
+            client=type(
+                "NightlyClient3",
+                (),
+                {
+                    "__init__": lambda self: setattr(self, "config", type("Config", (), {"model": "stub-model", "backend": "codex-cli"})()),
+                    "complete": lambda self, system_prompt, user_prompt: CompletionResult(
+                        text=semantic_lint,
+                        response_id="resp-nightly-dirty-graph",
+                        usage={},
+                    ),
+                },
+            )(),
+            compile_limit=0,
+        )
+
+        self.assertIn("protocol_learnings_age", result)
+        self.assertTrue(result["protocol_learnings_age"]["errors"])
+        self.assertIn("learning graph inconsistent", result["protocol_learnings_age"]["errors"][0]["reason"])
+        audit = json.loads((self.root / AUDIT_STATE_PATH).read_text(encoding="utf-8"))
+        self.assertIn("learning graph inconsistent", audit["errors"][0]["reason"])
+
     def test_promote_recurring_outputs_enqueues_candidates_instead_of_filing_back(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
