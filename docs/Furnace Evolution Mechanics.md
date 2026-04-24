@@ -47,14 +47,44 @@ related_docs:
 
 ## 2. Signal Taxonomy
 
-目标契约：所有进入完整 planner 的信号必须标准化为：
+目标契约：所有进入完整 planner 的 signal 都必须先被标准化为 append-only JSONL record。Signal 只描述“发生了什么”，**从不直接触发 phase**；是否进入 heavy / light / proposal，必须经过 planner 决策。
+
+### 2.1 Field specification
+
+`volatile` 表示该字段**不得参与 dedupe identity**；它可以持久化，但不构成幂等边界。
+
+| name | type | required | volatile | 说明 |
+|---|---|---|---|---|
+| `schema_version` | integer | yes | no | 当前固定为 `1`。仅按显式 version parser 解释。 |
+| `signal_id` | string | yes | yes | signal stream 内唯一；格式 `^sig-[0-9]{8}-[a-z0-9]{6,32}$`。由 collector 在写入 `signals.jsonl` 时生成。 |
+| `dedupe_key` | string | yes | no | signal 的唯一幂等边界；格式见 §2.3。planner / replay 只按精确字符串相等去重。 |
+| `kind` | enum | yes | no | `raw_added / counter_evidence / drift / review_feedback / runtime_failure / schedule_tick / learning_threshold / elixir_dependency_break`。 |
+| `scope` | object | yes | no | 归一化作用域；用于 planner scope 计算，不等同于 trigger source。 |
+| `scope.protocol` | enum | yes | no | `general / investing / research / product / ops`。 |
+| `scope.corpus_id` | string | no | no | corpus 级信号时填写；未知时省略，不得写 `null`。 |
+| `scope.source_ids` | array[string] | yes | no | 规范化后的 source id 列表；无则写 `[]`。 |
+| `scope.concept_slugs` | array[string] | yes | no | 规范化后的 concept slug 列表；无则写 `[]`。 |
+| `scope.elixir_refs` | array[string] | yes | no | 规范化后的 elixir ref 列表；无则写 `[]`。 |
+| `scope.judgment_refs` | array[string] | yes | no | 规范化后的 judgment ref 列表；无则写 `[]`。 |
+| `severity` | enum | yes | yes | `low / medium / high / critical`。kind 表中的默认值只用于 emitter defaulting；落盘时必须显式写出。 |
+| `evidence_refs` | array[string] | yes | yes | 证据回链；可为空 `[]`，但字段必须存在。 |
+| `budget_hint` | object | no | yes | planner 预算提示；仅作 hint，不改变 signal identity。 |
+| `budget_hint.max_pages` | integer | no | yes | 正整数。 |
+| `budget_hint.max_tokens` | integer | no | yes | 正整数。 |
+| `emitted_at` | string | yes | yes | RFC 3339 UTC 时间戳；格式固定 `YYYY-MM-DDTHH:MM:SSZ`。 |
+| `emitted_by` | enum | yes | yes | 谁 emit 了这条 normalized signal：`nightly / user / compile / external`。 |
+| `source_kind` | enum | yes | no | 原始事件所属 artifact class：`runtime_history / llm_receipt / review_outcome / archive_event / protocol_learning_event`。 |
+| `source_event_ref` | string | yes | yes | 指向原始 artifact 的精确回链；用于审计，不用于 dedupe。 |
+| `trace_id` | string | yes | yes | 跨 signal → planner-log → receipt 的链路 id；格式见 §2.4。 |
+
+目标 schema：
 
 ```json
 {
   "schema_version": 1,
   "signal_id": "sig-20260424-abc123",
-  "dedupe_key": "raw_added:research:raw/inbox/example.md",
-  "kind": "raw_added | counter_evidence | drift | review_feedback | runtime_failure | schedule_tick | learning_threshold | elixir_dependency_break",
+  "dedupe_key": "raw_added:research:runtime_history:raw/inbox/example.md",
+  "kind": "raw_added",
   "scope": {
     "protocol": "research",
     "corpus_id": "research-transformer-scaling",
@@ -63,18 +93,21 @@ related_docs:
     "elixir_refs": [],
     "judgment_refs": ["judgment-foo"]
   },
-  "severity": "low | medium | high | critical",
+  "severity": "medium",
   "evidence_refs": ["raw/inbox/example.md#L12", "wiki/judgments/foo.md"],
   "budget_hint": {
     "max_pages": 20,
     "max_tokens": 4000
   },
-  "emitted_at": "2026-04-24T12:00:00+08:00",
-  "emitted_by": "nightly | user | compile | external",
+  "emitted_at": "2026-04-24T04:00:00Z",
+  "emitted_by": "nightly",
+  "source_kind": "runtime_history",
   "source_event_ref": ".aiwiki/state/runtime-history.jsonl#L42",
-  "trace_id": "trace-20260424-abc123"
+  "trace_id": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
+
+`emitted_by` 与 `source_kind` 是两个正交维度：前者回答“**谁 emit 了 signal**”，后者回答“**原始事件来自哪个 artifact**”。二者不得混用，也不得互相替代。
 
 Signal kinds（本轮最小集）：
 
@@ -83,13 +116,69 @@ Signal kinds（本轮最小集）：
 | `raw_added` | drop-url / drop-pdf / drop-image / drop-repo / 手工添加 | medium |
 | `counter_evidence` | 新证据与既有 judgment 冲突 | high |
 | `drift` | nightly 发现 judgment 证据基础已变 | high |
-| `review_feedback` | 用户 accept / reject / rewrite | low-high（随裁决） |
+| `review_feedback` | 用户 accept / reject / rewrite | low-high（按裁决映射） |
 | `runtime_failure` | contract validation / lint 持续失败 | medium |
 | `schedule_tick` | nightly / weekly / periodic light tick | low |
 | `learning_threshold` | protocol-learning 候选累积到阈值 | medium |
 | `elixir_dependency_break` | 被引用 elixir 被 demote / superseded | high |
 
 Signal **从不直接触发 phase**，必须经过 planner 决策。
+
+### 2.2 Canonical JSON rules
+
+- 持久化格式固定为 **UTF-8 JSONL**；一行一个 JSON object；不做 multiline pretty-print。
+- top-level 字段按以下顺序序列化：  
+  `schema_version, signal_id, dedupe_key, kind, scope, severity, evidence_refs, budget_hint, emitted_at, emitted_by, source_kind, source_event_ref, trace_id`
+- `scope` 内字段按以下顺序序列化：  
+  `protocol, corpus_id, source_ids, concept_slugs, elixir_refs, judgment_refs`
+- `budget_hint` 内字段按以下顺序序列化：  
+  `max_pages, max_tokens`
+- `scope.source_ids / scope.concept_slugs / scope.elixir_refs / scope.judgment_refs / evidence_refs` 必须去重并按字典序升序写出。
+- 时间戳必须使用 **RFC 3339 UTC**，格式固定为 `YYYY-MM-DDTHH:MM:SSZ`；timezone 必填；v1 不允许 offset form，不允许小数秒。
+- v1 **禁止 `null`**。可选字段未知时省略；已知为空的 list 字段必须写 `[]`。
+- v1 **禁止浮点数**。所有 numeric 字段都必须是十进制整数。
+
+### 2.3 Dedupe identity
+
+- `dedupe_key` 是 signal 的**唯一持久化幂等边界**；不得再引入平行的 `(source_kind, source_id, event_hash)` 对外 schema。
+- `dedupe_key` 由 **collector / normalizer** 在 signal materialization 时生成；planner 不得重写。
+- v1 格式固定为：  
+  `<kind>:<scope.protocol>:<source_kind>:<source_identity>`
+- `source_identity` 必须是 source artifact 内的稳定标识，**不得**包含行号、offset、mtime、重放时间戳等 append-only 噪音。  
+  - 例：`raw/inbox/example.md`
+  - 若 source artifact 无短且稳定的业务 id，则写为 `sha256-<16 lowercase hex>`，其输入是**去除 source 侧 volatile 字段后的 canonical source payload**。
+- 以下字段不得参与 dedupe identity：  
+  `signal_id`, `severity`, `evidence_refs`, `budget_hint`, `emitted_at`, `emitted_by`, `source_event_ref`, `trace_id`，以及 source artifact 内的行号 / offset / mtime / replay timestamp。
+
+### 2.4 trace_id lifecycle
+
+- `trace_id` 格式固定为 **lowercase UUIDv4**：  
+  `^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`
+- 若原始 source artifact 已带合法 `trace_id`，signal 必须沿用；否则由 collector 在首次 signal materialization 时生成。
+- 同一条处理链中的 `signal / planner-log / receipt / audit entry` 必须逐字复用同一个 `trace_id`。
+- 对同一 `dedupe_key`，若重放输入携带不同 `trace_id`，视为 `trace_id_conflict`：保留已落盘记录，拒绝新记录，不做静默覆盖。
+
+### 2.5 Fail-fast rules
+
+以下情况必须立即拒绝写入 `signals.jsonl`：
+
+- 任一 required 字段缺失、为 `null`、类型错误。
+- `schema_version != 1`。
+- `signal_id` 不匹配 `^sig-[0-9]{8}-[a-z0-9]{6,32}$`。
+- `trace_id` 不是 lowercase UUIDv4。
+- `emitted_at` 不是 `YYYY-MM-DDTHH:MM:SSZ`。
+- enum 字段不在闭集内。
+- list 字段含非字符串元素、重复值，或未按 canonical 顺序写出。
+- `budget_hint` 存在但两个子字段都缺失，或任一值不是正整数。
+- 出现未知 top-level 字段或未知 nested 字段。v1 对 unknown fields 采用 **strict**；forward-compat 仅通过新 `schema_version` 实现。
+- `source_kind` 与 `source_event_ref` 明显不一致（例如 `source_kind=runtime_history`，但 ref 不指向 runtime-history artifact class）。
+
+### 2.6 Schema evolution
+
+- 以下任一变化都必须递增 `schema_version`：  
+  新增 / 删除 / 重命名字段；变更 requiredness；变更 type；变更 enum 闭集；变更 canonical JSON 规则；变更 `dedupe_key` 生成规则；变更 `trace_id` 格式或传播语义。
+- 纯文案澄清、注释增强、对**原本就非法**数据的更明确报错，不触发 version bump。
+- reader / validator 必须先按 `schema_version` 选择 parser，再做字段校验；不允许 best-effort 混读，不允许 silent downgrade。
 
 当前状态：runtime 已有 `runtime-history.jsonl`、LLM receipts、review / execution receipts、planner-state 等可观测输入，但尚未统一归一化为 append-only signal stream。
 
