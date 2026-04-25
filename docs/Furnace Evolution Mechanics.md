@@ -73,7 +73,7 @@ related_docs:
 | `budget_hint.max_tokens` | integer | no | yes | 正整数。 |
 | `emitted_at` | string | yes | yes | RFC 3339 UTC 时间戳；格式固定 `YYYY-MM-DDTHH:MM:SSZ`。 |
 | `emitted_by` | enum | yes | yes | 谁 emit 了这条 normalized signal：`nightly / user / compile / external`。 |
-| `source_kind` | enum | yes | no | 原始事件所属 artifact class：`runtime_history / llm_receipt / review_outcome / archive_event / protocol_learning_event`。 |
+| `source_kind` | enum | yes | no | 原始事件所属 artifact class：`runtime_history / llm_receipt / review_outcome / archive_event / protocol_learning_event / execution_receipt`。 |
 | `source_event_ref` | string | yes | yes | 指向原始 artifact 的精确回链；用于审计，不用于 dedupe。 |
 | `trace_id` | string | yes | yes | 跨 signal → planner-log → receipt 的链路 id；格式见 §2.4。 |
 
@@ -182,7 +182,7 @@ Signal **从不直接触发 phase**，必须经过 planner 决策。
 - 纯文案澄清、注释增强、对**原本就非法**数据的更明确报错，不触发 version bump。
 - reader / validator 必须先按 `schema_version` 选择 parser，再做字段校验；不允许 best-effort 混读，不允许 silent downgrade。
 
-当前状态：runtime 已有 `runtime-history.jsonl`、LLM receipts、review / execution receipts、planner-state 等可观测输入；`signals-replay` 已能从 runtime history、LLM receipts 和 execution receipt history 中归一化部分 signal。`raw_added` 当前由 `ingest_source` 与 `drop-*` 投料入口先写 `runtime-history.jsonl` 的 `raw-added` 事件，再由 collector observe-only 映射；不直接扫描 `raw/` 作为事件源。`learning_threshold` 当前由 protocol-learning aging apply 写入 runtime-history `learning-threshold` 事件，再由 collector observe-only 映射；不直接扫描 `wiki/protocol-learnings/`。`archive_event` 的 `source_event_ref` 当前只允许指向 execution receipt history（如 `.aiwiki/state/execution-receipts.jsonl#L12`），避免把 `wiki/archives/` 事实页误当事件源。`review_outcome` 作为 future source_kind 只允许明确的 review outcome event log path；当前 review 事件仍通过 runtime history 映射。
+当前状态：runtime 已有 `runtime-history.jsonl`、LLM receipts、review / execution receipts、planner-state 等可观测输入；`signals-replay` 已能从 runtime history、LLM receipts 和 execution receipt history 中归一化部分 signal。`raw_added` 当前由 `ingest_source` 与 `drop-*` 投料入口先写 `runtime-history.jsonl` 的 `raw-added` 事件，再由 collector observe-only 映射；不直接扫描 `raw/` 作为事件源。`learning_threshold` 当前由 protocol-learning aging apply 写入 runtime-history `learning-threshold` 事件，再由 collector observe-only 映射；不直接扫描 `wiki/protocol-learnings/`。`archive_event` 的 `source_event_ref` 当前只允许指向 execution receipt history（如 `.aiwiki/state/execution-receipts.jsonl#L12`），避免把 `wiki/archives/` 事实页误当事件源。`review_outcome` 作为 future source_kind 只允许明确的 review outcome event log path；当前 review 事件仍通过 runtime history 映射，不新增第二套 writer。`.aiwiki/logs/runs.jsonl` 是 runner health/logging artifact，v1 不定义 `run_log` source_kind，不能伪装成现有 source_kind 接入 `signals-replay`。
 
 落地约束：
 

@@ -69,6 +69,27 @@ class _FixtureCase(unittest.TestCase):
 
 
 class TestIdempotency(_FixtureCase):
+    def test_supported_sources_are_current_v1_replay_boundary(self) -> None:
+        self.assertEqual(
+            adapters.SUPPORTED_SOURCES,
+            ("runtime_history", "llm_receipt", "archive"),
+        )
+        self.assertEqual(collector.SUPPORTED_SOURCES, adapters.SUPPORTED_SOURCES)
+
+    def test_run_log_source_is_not_supported_without_schema_version(self) -> None:
+        root = self.temp_root / "run-log-source"
+        root.mkdir(parents=True, exist_ok=True)
+
+        with self.assertRaisesRegex(ValueError, "unsupported source: run_log"):
+            collect_signals(root, sources=["run_log"])
+
+    def test_review_outcome_source_is_not_supported_without_writer_contract(self) -> None:
+        root = self.temp_root / "review-outcome-source"
+        root.mkdir(parents=True, exist_ok=True)
+
+        with self.assertRaisesRegex(ValueError, "unsupported source: review_outcome"):
+            collect_signals(root, sources=["review_outcome"])
+
     def test_full_replay_then_idempotent_then_append_new_event(self) -> None:
         root = self._copy_case_root("case_basic")
         trace_id = "550e8400-e29b-41d4-a716-446655440000"
