@@ -69,6 +69,10 @@ class _StubClient:
         return CompletionResult(text=self.responses.pop(0), response_id="stub-response", usage={})
 
 
+def _settled_elixir_path(root: Path, elixir_id: str) -> Path:
+    return root / "wiki" / "elixirs" / f"{elixir_id}.md"
+
+
 class ExecutionTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
@@ -590,7 +594,7 @@ class AlchemyTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             run_alchemy_distill(self.root, start["elixir_id"], "What about latency?")
-        frontmatter = parse_frontmatter((self.root / start["path"]).read_text(encoding="utf-8"))
+        frontmatter = parse_frontmatter(_settled_elixir_path(self.root, start["elixir_id"]).read_text(encoding="utf-8"))
         self.assertEqual(frontmatter["elixir_state"], "settled")
 
     def test_alchemy_seal_marks_sealed(self) -> None:
@@ -601,7 +605,7 @@ class AlchemyTests(unittest.TestCase):
         result = run_alchemy_seal(self.root, start["elixir_id"])
 
         self.assertEqual(result["elixir_state"], "settled")
-        frontmatter = parse_frontmatter((self.root / start["path"]).read_text(encoding="utf-8"))
+        frontmatter = parse_frontmatter(_settled_elixir_path(self.root, start["elixir_id"]).read_text(encoding="utf-8"))
         self.assertEqual(frontmatter["elixir_state"], "settled")
         self.assertTrue(frontmatter.get("sealed_at"))
 
@@ -777,7 +781,9 @@ class AlchemyTests(unittest.TestCase):
         first = run_alchemy_start(self.root, corpus_id, "A")
         self._run_cli(["alchemy-seal", first["elixir_id"]])
 
-        code, payload, stderr = self._run_cli(["alchemy-start", corpus_id, "--topic", "B", "--include-elixir", first["elixir_id"]])
+        code, payload, stderr = self._run_cli(
+            ["alchemy-start", corpus_id, "--topic", "B", "--protocol", "general", "--include-elixir", first["elixir_id"]]
+        )
 
         self.assertEqual(code, 0)
         self.assertEqual(stderr, "")
@@ -835,7 +841,7 @@ class AlchemyTests(unittest.TestCase):
         # A 走真实 CLI seal 流程变为 settled；B 保持 draft，后续对 B distill。
         self._run_cli(["alchemy-seal", a["elixir_id"]])
         # 外部篡改 A 的 derived_from 注入 A→B 边（脏数据模拟）。
-        a_path = self.root / a["path"]
+        a_path = _settled_elixir_path(self.root, a["elixir_id"])
         a_text = a_path.read_text(encoding="utf-8")
         a_fm = parse_frontmatter(a_text)
         a_fm["derived_from"] = [a_fm["derived_from"][0], f"wiki/elixirs/{b['elixir_id']}.md"]
@@ -850,19 +856,31 @@ class AlchemyTests(unittest.TestCase):
         corpus_id = self._make_promoted_corpus(["Question A?"])
         (self.root / "wiki" / "derived").mkdir(parents=True, exist_ok=True)
         (self.root / "wiki" / "derived" / "base.md").write_text("base", encoding="utf-8")
-        from aiwiki.runner import run_alchemy_start
+        from aiwiki.runner import run_alchemy_seal, run_alchemy_start
 
         a = run_alchemy_start(self.root, corpus_id, "A")
         b = run_alchemy_start(self.root, corpus_id, "B")
         c = run_alchemy_start(self.root, corpus_id, "C")
-        for current, nxt in [(a, b), (b, c), (c, a)]:
-            path = self.root / current["path"]
-            text = path.read_text(encoding="utf-8")
-            fm = parse_frontmatter(text)
-            if current["elixir_id"] != a["elixir_id"]:
-                fm["elixir_state"] = "settled"
-            fm["derived_from"] = [fm["derived_from"][0], f"wiki/elixirs/{nxt['elixir_id']}.md"]
-            _write_elixir_markdown(path, frontmatter=fm, body=text.split("---", 2)[-1].lstrip("\n"))
+        run_alchemy_seal(self.root, b["elixir_id"])
+        run_alchemy_seal(self.root, c["elixir_id"])
+
+        a_path = self.root / a["path"]
+        a_text = a_path.read_text(encoding="utf-8")
+        a_fm = parse_frontmatter(a_text)
+        a_fm["derived_from"] = [a_fm["derived_from"][0], f"wiki/elixirs/{b['elixir_id']}.md"]
+        _write_elixir_markdown(a_path, frontmatter=a_fm, body=a_text.split("---", 2)[-1].lstrip("\n"))
+
+        b_path = _settled_elixir_path(self.root, b["elixir_id"])
+        b_text = b_path.read_text(encoding="utf-8")
+        b_fm = parse_frontmatter(b_text)
+        b_fm["derived_from"] = [b_fm["derived_from"][0], f"wiki/elixirs/{c['elixir_id']}.md"]
+        _write_elixir_markdown(b_path, frontmatter=b_fm, body=b_text.split("---", 2)[-1].lstrip("\n"))
+
+        c_path = _settled_elixir_path(self.root, c["elixir_id"])
+        c_text = c_path.read_text(encoding="utf-8")
+        c_fm = parse_frontmatter(c_text)
+        c_fm["derived_from"] = [c_fm["derived_from"][0], f"wiki/elixirs/{a['elixir_id']}.md"]
+        _write_elixir_markdown(c_path, frontmatter=c_fm, body=c_text.split("---", 2)[-1].lstrip("\n"))
 
         from aiwiki.execution import alchemy as alchemy_module
 
@@ -881,7 +899,7 @@ class AlchemyTests(unittest.TestCase):
         # B 走真实 CLI seal 变 settled；A 保持 draft，后续 distill A。
         self._run_cli(["alchemy-seal", b["elixir_id"]])
         # 外部篡改 B 的 derived_from 注入 B→A 边；A 保持 draft 但磁盘上挂上 A→B 边。
-        b_path = self.root / b["path"]
+        b_path = _settled_elixir_path(self.root, b["elixir_id"])
         a_path = self.root / a["path"]
         for path, nxt in [(a_path, b), (b_path, a)]:
             text = path.read_text(encoding="utf-8")
@@ -899,11 +917,12 @@ class AlchemyTests(unittest.TestCase):
     def test_seal_elixir_rejects_cycle_formed_externally(self) -> None:
         corpus_id = self._make_promoted_corpus(["Question A?"])
         promoted = self._make_promoted_corpus(["Question B?"])
-        from aiwiki.runner import run_alchemy_start
+        from aiwiki.runner import run_alchemy_seal, run_alchemy_start
 
         a = run_alchemy_start(self.root, corpus_id, "A")
         b = run_alchemy_start(self.root, promoted, "B")
-        a_path = self.root / a["path"]
+        run_alchemy_seal(self.root, a["elixir_id"])
+        a_path = _settled_elixir_path(self.root, a["elixir_id"])
         a_text = a_path.read_text(encoding="utf-8")
         a_fm = parse_frontmatter(a_text)
         a_fm["elixir_state"] = "settled"
@@ -935,7 +954,7 @@ class AlchemyTests(unittest.TestCase):
         self._run_cli(["alchemy-seal", a["elixir_id"]])
         self._run_cli(["alchemy-seal", b["elixir_id"]])
         # 磁盘上把 B 写成 B→A（脏边）。
-        b_path = self.root / b["path"]
+        b_path = _settled_elixir_path(self.root, b["elixir_id"])
         b_text = b_path.read_text(encoding="utf-8")
         b_fm = parse_frontmatter(b_text)
         b_base = b_fm["derived_from"][0]
@@ -947,7 +966,7 @@ class AlchemyTests(unittest.TestCase):
         self.assertIsNone(cycle)
 
         # 磁盘上再追加 A→B（脏边），形成 A↔B。
-        a_path = self.root / a["path"]
+        a_path = _settled_elixir_path(self.root, a["elixir_id"])
         a_text = a_path.read_text(encoding="utf-8")
         a_fm = parse_frontmatter(a_text)
         a_fm["derived_from"] = [a_fm["derived_from"][0], f"wiki/elixirs/{b['elixir_id']}.md"]
@@ -996,12 +1015,12 @@ class AlchemyTests(unittest.TestCase):
         # 两边都 seal 到 settled 才能入图；本测试专门验证归一化（./ 前缀）。
         self._run_cli(["alchemy-seal", a["elixir_id"]])
         self._run_cli(["alchemy-seal", b["elixir_id"]])
-        a_path = self.root / a["path"]
+        a_path = _settled_elixir_path(self.root, a["elixir_id"])
         a_text = a_path.read_text(encoding="utf-8")
         a_fm = parse_frontmatter(a_text)
         a_fm["derived_from"] = [a_fm["derived_from"][0], f"wiki/elixirs/{b['elixir_id']}.md"]
         _write_elixir_markdown(a_path, frontmatter=a_fm, body=a_text.split("---", 2)[-1].lstrip("\n"))
-        b_path = self.root / b["path"]
+        b_path = _settled_elixir_path(self.root, b["elixir_id"])
         b_text = b_path.read_text(encoding="utf-8")
         b_fm = parse_frontmatter(b_text)
         b_fm["derived_from"] = [b_fm["derived_from"][0], "./wiki/elixirs/%s.md" % a["elixir_id"]]
@@ -1021,12 +1040,12 @@ class AlchemyTests(unittest.TestCase):
         b = run_alchemy_start(self.root, corpus_id, "B")
         self._run_cli(["alchemy-seal", a["elixir_id"]])
         self._run_cli(["alchemy-seal", b["elixir_id"]])
-        a_path = self.root / a["path"]
+        a_path = _settled_elixir_path(self.root, a["elixir_id"])
         a_text = a_path.read_text(encoding="utf-8")
         a_fm = parse_frontmatter(a_text)
         a_fm["derived_from"] = [a_fm["derived_from"][0], f"wiki/elixirs/{b['elixir_id']}.md"]
         _write_elixir_markdown(a_path, frontmatter=a_fm, body=a_text.split("---", 2)[-1].lstrip("\n"))
-        b_path = self.root / b["path"]
+        b_path = _settled_elixir_path(self.root, b["elixir_id"])
         b_text = b_path.read_text(encoding="utf-8")
         b_fm = parse_frontmatter(b_text)
         b_fm["derived_from"] = [b_fm["derived_from"][0], "wiki\\elixirs\\%s.md" % a["elixir_id"]]
@@ -1051,7 +1070,11 @@ class AlchemyTests(unittest.TestCase):
         b_fm["derived_from"] = [b_fm["derived_from"][0], f"wiki/elixirs/{a['elixir_id']}.md"]
         _write_elixir_markdown(b_path, frontmatter=b_fm, body=b_text.split("---", 2)[-1].lstrip("\n"))
 
-        cycle = alchemy_module._detect_elixir_cycle(self.root, self.root / a["path"], [b_fm["derived_from"][0], f"wiki/elixirs/{b['elixir_id']}.md"])
+        cycle = alchemy_module._detect_elixir_cycle(
+            self.root,
+            _settled_elixir_path(self.root, a["elixir_id"]),
+            [b_fm["derived_from"][0], f"wiki/elixirs/{b['elixir_id']}.md"],
+        )
         self.assertIsNone(cycle)
 
     def test_include_elixir_rejects_nonexistent_id(self) -> None:
@@ -1069,7 +1092,9 @@ class AlchemyTests(unittest.TestCase):
         first = run_alchemy_start(self.root, corpus_id, "seed")
         self._run_cli(["alchemy-seal", first["elixir_id"]])
 
-        code, _payload, stderr = self._run_cli(["alchemy-start", corpus_id, "--topic", "new", "--include-elixir", f"{first['elixir_id']},"])
+        code, _payload, stderr = self._run_cli(
+            ["alchemy-start", corpus_id, "--topic", "new", "--protocol", "general", "--include-elixir", f"{first['elixir_id']},"]
+        )
 
         self.assertNotEqual(code, 0)
         self.assertIn("金丹 id 不能为空", stderr)
@@ -1083,7 +1108,18 @@ class AlchemyTests(unittest.TestCase):
         self._run_cli(["alchemy-seal", first["elixir_id"]])
         self._run_cli(["alchemy-seal", second["elixir_id"]])
 
-        code, _payload, stderr = self._run_cli(["alchemy-start", corpus_id, "--topic", "new", "--include-elixir", f"{first['elixir_id']},,{second['elixir_id']}"])
+        code, _payload, stderr = self._run_cli(
+            [
+                "alchemy-start",
+                corpus_id,
+                "--topic",
+                "new",
+                "--protocol",
+                "general",
+                "--include-elixir",
+                f"{first['elixir_id']},,{second['elixir_id']}",
+            ]
+        )
 
         self.assertNotEqual(code, 0)
         self.assertIn("金丹 id 不能为空", stderr)

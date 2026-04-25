@@ -390,6 +390,8 @@ light **不允许**触发 `judge`、`distill`、`propose`、`apply`。
 - 新候选入口落地后，默认只对新金丹写入 `output/_candidates/elixirs/`。
 - `alchemy-seal` 继续兼容旧 draft / distilling 文件；新 promote gate 稳定后，再把默认入口切到 candidate flow。
 - 任一候选 promote 失败必须保持 source candidate 不变，并写明失败原因；不得半写入 `wiki/elixirs/`。
+- 任一候选 promote 成功后也保留 candidate（墓碑 / tombstone）：不删除候选文件，原地改写 frontmatter 为 `elixir_state: superseded`，并写入 `superseded_by: wiki/elixirs/<elixir-id>.md` 与 `promoted_at: <iso8601>`。
+- 对应 revert 时，将 candidate 从 `superseded` 恢复为 `candidate`，清除 `superseded_by / promoted_at`，并删除 `wiki/elixirs/<elixir-id>.md` 的 promoted 文件。
 
 ### 7.2 Frontmatter（最小集）
 
@@ -425,6 +427,8 @@ promoted_at: null
 
 当前最小实现已落地字段：`elixir_id`、`elixir_state`、`iteration`、`provenance_corpus`、`derived_from`、`topic`、`created_at`、`updated_at`、`distill_history_json`，`settled` 时补 `sealed_at`。`judgment_refs / decision_refs / counter_evidence / confidence_level / promoted_at` 仍属于目标 schema。
 
+确认分阶段约束：`M2.1` 起，新建 candidate frontmatter 默认写入 `counter_evidence: [NONE_FOUND]` 与 `confidence_level: low`；旧 `wiki/elixirs/` 直写文件不做强制迁移补字段。
+
 ### 7.3 生命周期
 
 | 状态 | 位置 | 入口 |
@@ -445,8 +449,17 @@ promoted_at: null
 
 - 目标 promote gate 中 `counter_evidence` 字段**不得为空**。
 - 若真的没有反证，显式写 `counter_evidence: [NONE_FOUND]` 并记录 `confidence_level: low`。
+- `M2.3` promote gate 强制规则：`counter_evidence` 必须存在且非空；`[NONE_FOUND]` 视为“显式声明无反证”，允许 promote。
+- 当 `counter_evidence == [NONE_FOUND]` 时，`confidence_level` 必须为 `low`；否则 `confidence_level` 可为 `low / medium / high`。
 
-当前最小金丹实现尚未强制 `counter_evidence / confidence_level`。
+分阶段落地：`M2.1` 负责 candidate 默认写入，`M2.3` 负责 promote gate 强制校验。
+
+### 7.6 Elixir 生命周期 Receipt（复用 ExecutionReceipt）
+
+- Elixir `promote / demote / revert` 复用现有 `build_execution_receipt` 基底（`src/aiwiki/app_execution.py:168`），不引入 elixir 专用第二套 receipt 物理层。
+- `subject_kind` 明确新增：`elixir_promotion` / `elixir_demotion` / `elixir_revert`。
+- 写入路径保持不变：History 写 `.aiwiki/state/execution-receipts.jsonl`；Single 写 `output/control/execution-receipts/<action_id>.json`。
+- payload 至少包含：`elixir_id`、`protocol`、`from_state`、`to_state`、`candidate_path`、`wiki_path`；`demote/revert` 需补失败原因或来源 receipt id。
 
 ## 8. Chaining → Distillation → Compounding
 
@@ -693,6 +706,7 @@ revert **不可以**：
 
 - Signal replay 不能稳定去重时，planner 停留在 `observe_only`。
 - 任一 proposal / candidate 无法产生 clean receipt 时，不允许进入默认 apply。
+- M2 `elixir promote` 属于 in-process 不可逆操作；未生成 `elixir_promotion` clean receipt 前，不允许进入默认 apply（`elixir_demotion / elixir_revert` 同理需 receipt）。
 - 任一写回目标 hash 不匹配时，必须转为 `stale` 或 `human_merge_required`。
 - Heavy/light wrapper 在没有 dry-run plan 的情况下不得执行。
 - LLM backend 未显式配置或 receipt 缺失 usage/accounting 时，不得作为自动 proposal 依据。

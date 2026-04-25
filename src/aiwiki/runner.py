@@ -1314,10 +1314,17 @@ def auto_process_once(
 
 
 @runtime_write_operation
-def run_alchemy_start(root: Path, corpus_id: str, topic: str, include_elixir_ids: list[str] | None = None) -> dict[str, Any]:
+def run_alchemy_start(
+    root: Path,
+    corpus_id: str,
+    topic: str,
+    *,
+    protocol: str | None = None,
+    include_elixir_ids: list[str] | None = None,
+) -> dict[str, Any]:
     from .execution.alchemy import start_elixir
 
-    return start_elixir(root, corpus_id, topic=topic, include_elixir_ids=include_elixir_ids)
+    return start_elixir(root, corpus_id, protocol=protocol, topic=topic, include_elixir_ids=include_elixir_ids)
 
 
 @runtime_write_operation

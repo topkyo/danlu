@@ -9,6 +9,9 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
+from aiwiki.app_compile import ask_question
+from aiwiki.app_protocol import ensure_layout
+from aiwiki.app_utils import parse_frontmatter
 from aiwiki.cli import (
     _resolve_action_id,
     _resolve_action_ids,
@@ -16,6 +19,7 @@ from aiwiki.cli import (
     build_parser,
     main,
 )
+from aiwiki.execution.candidates import promote_candidate
 
 SIGNALS_FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "signals_collector"
 
@@ -103,7 +107,13 @@ class CLITests(unittest.TestCase):
                 {"protocol": None, "no_cache": False, "load_protocol_learnings": False, "corpus_id_override": "investing-foo-abc12345"},
             ),
             ("file-back", ["file-back", "artifact.md", "--title", "Filed", "--kind", "decision", "--protocol", "ops"], "file_back", (self.root, "artifact.md"), {"title": "Filed", "kind": "decision", "protocol": "ops"}),
-            ("alchemy-start", ["alchemy-start", "investing-foo-abc12345", "--topic", "VLA robotics"], "run_alchemy_start", (self.root, "investing-foo-abc12345", "VLA robotics"), {}),
+            (
+                "alchemy-start",
+                ["alchemy-start", "investing-foo-abc12345", "--topic", "VLA robotics", "--protocol", "investing"],
+                "run_alchemy_start",
+                (self.root, "investing-foo-abc12345", "VLA robotics"),
+                {"protocol": "investing"},
+            ),
             ("alchemy-distill", ["alchemy-distill", "elixir-vla-robotics-deadbeef", "--question", "What about latency?"], "run_alchemy_distill", (self.root, "elixir-vla-robotics-deadbeef", "What about latency?"), {}),
             ("alchemy-seal", ["alchemy-seal", "elixir-vla-robotics-deadbeef"], "run_alchemy_seal", (self.root, "elixir-vla-robotics-deadbeef"), {}),
             ("protocol-learn-add", ["protocol-learn-add", "general", "--title", "Learning", "--source-ref", "wiki/derived/a.md"], "run_protocol_learn_add", (self.root, "general", "Learning", ["wiki/derived/a.md"]), {}),
@@ -181,6 +191,30 @@ class CLITests(unittest.TestCase):
         self.assertEqual(stderr, "")
         mocked_all.assert_called_once_with(self.root, probe_all=True, timeout_seconds=14)
         self.assertEqual(payload["probes"][0]["backend"], "codex-cli")
+
+    def test_alchemy_start_requires_protocol_arg(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["alchemy-start", "investing-foo-abc12345", "--topic", "VLA robotics"])
+
+    def test_alchemy_start_propagates_protocol_to_frontmatter(self) -> None:
+        ensure_layout(self.root)
+        (self.root / "prompts" / "compile.md").write_text("Compile prompt fixture.\n", encoding="utf-8")
+        (self.root / "prompts" / "ask.md").write_text("Ask prompt fixture.\n", encoding="utf-8")
+        ask_result = ask_question(self.root, "Should we increase transformer training spend?", "report")
+        promote_candidate(self.root, ask_result["path"])
+        corpus_id = str(ask_result["active_corpus_id"])
+
+        code, payload, stderr = self._run_main(
+            ["alchemy-start", corpus_id, "--topic", "VLA robotics", "--protocol", "research"]
+        )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        path = self.root / str(payload["path"])
+        self.assertTrue(path.exists())
+        frontmatter = parse_frontmatter(path.read_text(encoding="utf-8"))
+        self.assertEqual(frontmatter["protocol"], "research")
 
     def test_main_merges_auto_process_result_for_drop_commands(self) -> None:
         with patch("aiwiki.cli.drop_url", return_value={"material": "url", "note_path": "raw/inbox/note.md"}) as drop_mock:

@@ -304,6 +304,7 @@ def build_parser() -> argparse.ArgumentParser:
     alchemy_start_parser = subparsers.add_parser("alchemy-start", help="Start a new elixir from a corpus.")
     alchemy_start_parser.add_argument("corpus_id")
     alchemy_start_parser.add_argument("--topic", required=True)
+    alchemy_start_parser.add_argument("--protocol", required=True)
     alchemy_start_parser.add_argument("--include-elixir", type=str, default=None, help="可选：额外包含的金丹 id，多个用逗号分隔。")
 
     alchemy_distill_parser = subparsers.add_parser("alchemy-distill", help="Distill an existing draft elixir.")
@@ -665,7 +666,7 @@ def main(argv: list[str] | None = None) -> int:
             include_elixir_ids = None
             if args.include_elixir is not None:
                 include_elixir_ids = [item.strip() for item in args.include_elixir.split(",")]
-            kwargs = {}
+            kwargs = {"protocol": args.protocol}
             if include_elixir_ids is not None:
                 kwargs["include_elixir_ids"] = include_elixir_ids
             result = run_alchemy_start(root, args.corpus_id, args.topic, **kwargs)
