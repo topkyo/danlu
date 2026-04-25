@@ -207,7 +207,6 @@ class CLITests(unittest.TestCase):
                 (self.root,),
                 {"elixir_id": "elixir-vla-robotics-deadbeef", "note": "ship it"},
             ),
-            ("alchemy-seal", ["alchemy-seal", "elixir-vla-robotics-deadbeef"], "run_alchemy_seal", (self.root, "elixir-vla-robotics-deadbeef"), {}),
             ("protocol-learn-add", ["protocol-learn-add", "general", "--title", "Learning", "--source-ref", "wiki/derived/a.md"], "run_protocol_learn_add", (self.root, "general", "Learning", ["wiki/derived/a.md"]), {}),
             ("protocol-learn-list", ["protocol-learn-list", "general"], "run_protocol_learn_list", (self.root, "general"), {"state_filter": None, "include_archived": False}),
             ("protocol-learn-show", ["protocol-learn-show", "learn-general-abc"], "run_protocol_learn_show", (self.root, "learn-general-abc"), {}),

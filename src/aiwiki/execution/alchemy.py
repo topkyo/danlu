@@ -885,22 +885,3 @@ def demote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
         logging.getLogger("aiwiki").exception("failed to persist elixir demotion receipt: %s", normalized_id)
 
     return candidate_path
-
-
-def seal_elixir(root: Path, elixir_id: str) -> dict[str, Any]:
-    """Alias of ``promote_elixir`` for candidate → settled transition.
-
-    ``alchemy-seal`` is retained as a compatibility alias and now only accepts
-    ``candidate`` source state.
-    """
-    normalized_id = _resolve_elixir_id(root, elixir_id)
-    _, frontmatter = _read_elixir_anywhere(root, normalized_id)
-    source_state = str(frontmatter.get("elixir_state") or "")
-    if source_state == "candidate":
-        return promote_elixir(root, elixir_id=normalized_id)
-    if source_state in {"draft", "distilling"}:
-        raise ValueError(
-            f"unsupported_source_state: seal requires state=candidate (got {source_state!r}); "
-            "run alchemy-finalize then alchemy-promote"
-        )
-    raise ValueError(f"unsupported_source_state: {source_state!r}")

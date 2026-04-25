@@ -31,7 +31,6 @@ from aiwiki.execution.alchemy import (
     list_promoted_outputs_for_corpus,
     promote_elixir,
     revert_elixir,
-    seal_elixir,
     start_elixir,
 )
 from aiwiki.execution.candidates import promote_candidate
@@ -43,7 +42,6 @@ from aiwiki.runner import (
     run_alchemy_finalize,
     run_alchemy_promote,
     run_alchemy_revert,
-    run_alchemy_seal,
     run_alchemy_start,
 )
 
@@ -505,17 +503,6 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         self.assertEqual(len(history_after), len(history_before) + 1)
         self.assertEqual(str(history_after[-1].get("question") or ""), question)
 
-    def test_seal_accepts_candidate_source(self) -> None:
-        corpus_id = self._make_promoted_corpus()
-        started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
-        run_alchemy_finalize(self.root, elixir_id=started["elixir_id"])
-
-        result = run_alchemy_seal(self.root, started["elixir_id"])
-
-        self.assertEqual(result["elixir_state"], "settled")
-        settled = _settled_path(self.root, started["elixir_id"])
-        self.assertTrue(settled.exists())
-
     def test_promote_writes_settled_and_tombstone(self) -> None:
         elixir_id = self._start_candidate_elixir()
 
@@ -868,52 +855,6 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         latest = _latest_receipt_by_subject(self.root, subject_kind="elixir_promotion", subject_id=elixir_id)
         self.assertIsNone(latest)
 
-    def test_seal_candidate_internally_calls_promote(self) -> None:
-        elixir_id = self._start_candidate_elixir()
-
-        result = run_alchemy_seal(self.root, elixir_id)
-
-        self.assertEqual(result["elixir_state"], "settled")
-        self.assertTrue(result.get("receipt_path"))
-        self.assertTrue((self.root / str(result["receipt_path"])).exists())
-        settled = parse_frontmatter(_settled_path(self.root, elixir_id).read_text(encoding="utf-8"))
-        candidate = parse_frontmatter(_candidate_path(self.root, elixir_id).read_text(encoding="utf-8"))
-        self.assertEqual(settled["elixir_state"], "settled")
-        self.assertEqual(candidate["elixir_state"], "superseded")
-        self.assertIn("promoted_at", settled)
-        self.assertNotIn("sealed_at", settled)
-
-    def test_seal_candidate_respects_promote_gate(self) -> None:
-        elixir_id = self._start_candidate_elixir()
-        self._update_candidate_frontmatter(elixir_id, counter_evidence=[])
-
-        with self.assertRaises(ValueError) as ctx:
-            run_alchemy_seal(self.root, elixir_id)
-
-        self.assertIn("counter_evidence_required", str(ctx.exception))
-        self.assertFalse(_settled_path(self.root, elixir_id).exists())
-
-    def test_seal_draft_rejects_with_migration_hint(self) -> None:
-        corpus_id = self._make_promoted_corpus()
-        started = run_alchemy_start(self.root, corpus_id, "seal draft reject", protocol="general")
-
-        with self.assertRaises(ValueError) as ctx:
-            run_alchemy_seal(self.root, started["elixir_id"])
-
-        self.assertIn("unsupported_source_state", str(ctx.exception))
-        self.assertIn("alchemy-finalize", str(ctx.exception))
-
-    def test_seal_distilling_rejects_with_migration_hint(self) -> None:
-        corpus_id = self._make_promoted_corpus()
-        started = run_alchemy_start(self.root, corpus_id, "seal distilling reject", protocol="general")
-        run_alchemy_distill(self.root, started["elixir_id"], "refine")
-
-        with self.assertRaises(ValueError) as ctx:
-            run_alchemy_seal(self.root, started["elixir_id"])
-
-        self.assertIn("unsupported_source_state", str(ctx.exception))
-        self.assertIn("alchemy-finalize", str(ctx.exception))
-
     def test_finalize_missing_candidate_file_raises_file_not_found(self) -> None:
         with self.assertRaises(FileNotFoundError):
             finalize_elixir(self.root, elixir_id="missing-candidate")
@@ -941,15 +882,6 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             distill_elixir(self.root, elixir_id, question="q")
         self.assertIn("unsupported_source_state", str(ctx.exception))
-
-    def test_seal_rejects_superseded_source_state(self) -> None:
-        elixir_id = "candidate-superseded-seal"
-        self._write_stub_elixir(_candidate_path(self.root, elixir_id), elixir_id=elixir_id, state="superseded")
-
-        with self.assertRaises(ValueError) as ctx:
-            seal_elixir(self.root, elixir_id)
-        self.assertIn("unsupported_source_state", str(ctx.exception))
-        self.assertIn("'superseded'", str(ctx.exception))
 
     def test_distill_include_reports_missing_settled_reference(self) -> None:
         corpus_id = self._make_promoted_corpus()

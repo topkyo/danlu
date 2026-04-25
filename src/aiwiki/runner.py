@@ -1336,13 +1336,6 @@ def run_alchemy_distill(root: Path, elixir_id: str, question: str, include_elixi
 
 
 @runtime_write_operation
-def run_alchemy_seal(root: Path, elixir_id: str) -> dict[str, Any]:
-    from .execution.alchemy import seal_elixir
-
-    return seal_elixir(root, elixir_id)
-
-
-@runtime_write_operation
 def run_alchemy_finalize(root: Path, *, elixir_id: str) -> dict[str, Any]:
     from .execution.alchemy import finalize_elixir
 

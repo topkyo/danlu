@@ -48,7 +48,6 @@ from .runner import (
     run_alchemy_finalize,
     run_alchemy_promote,
     run_alchemy_revert,
-    run_alchemy_seal,
     run_alchemy_start,
     run_ask,
     run_compile,
@@ -340,12 +339,6 @@ def build_parser() -> argparse.ArgumentParser:
     alchemy_distill_parser.add_argument("elixir_id")
     alchemy_distill_parser.add_argument("--question", required=True)
     alchemy_distill_parser.add_argument("--include-elixir", type=str, default=None, help="可选：额外包含的金丹 id，多个用逗号分隔。")
-
-    alchemy_seal_parser = subparsers.add_parser(
-        "alchemy-seal",
-        help="Alias of alchemy-promote (seal candidate -> settled). Accepts candidate only.",
-    )
-    alchemy_seal_parser.add_argument("elixir_id")
 
     alchemy_finalize_parser = subparsers.add_parser(
         "alchemy-finalize",
@@ -738,8 +731,6 @@ def main(argv: list[str] | None = None) -> int:
             if include_elixir_ids is not None:
                 kwargs["include_elixir_ids"] = include_elixir_ids
             result = run_alchemy_distill(root, args.elixir_id, args.question, **kwargs)
-        elif args.command == "alchemy-seal":
-            result = run_alchemy_seal(root, args.elixir_id)
         elif args.command == "alchemy-finalize":
             result = run_alchemy_finalize(root, elixir_id=args.elixir_id)
         elif args.command == "alchemy-promote":
