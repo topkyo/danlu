@@ -1168,6 +1168,25 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         assert latest is not None
         self.assertRegex(str(latest.get("action_id") or ""), rf"^elixir-revert-{slugify(elixir_id)}-\d{{13}}(?:-\d+)?$")
 
+    def test_revert_action_id_collision_fallback(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="revert-collision")
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        fixed_dt = datetime(2026, 1, 1, 0, 0, 0, 456000, tzinfo=timezone.utc)
+        base = f"elixir-revert-{slugify(elixir_id)}"
+        occupied_action_id = f"{base}-{int(fixed_dt.timestamp() * 1000)}"
+        occupied_path = execution_receipt_path(self.root, occupied_action_id)
+        occupied_path.parent.mkdir(parents=True, exist_ok=True)
+        occupied_path.write_text("{}\n", encoding="utf-8")
+
+        with patch("aiwiki.execution.alchemy.datetime") as mocked_datetime:
+            mocked_datetime.now.return_value = fixed_dt
+            run_alchemy_revert(self.root, elixir_id=elixir_id)
+
+        latest = _latest_receipt_by_subject(self.root, subject_kind="elixir_revert", subject_id=elixir_id)
+        self.assertIsNotNone(latest)
+        assert latest is not None
+        self.assertEqual(latest.get("action_id"), f"{occupied_action_id}-2")
+
     def test_demote_action_id_includes_epoch_ms_suffix(self) -> None:
         elixir_id = self._start_candidate_elixir(topic="demote-action-id-ms")
         run_alchemy_promote(self.root, elixir_id=elixir_id)
@@ -1178,6 +1197,25 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         self.assertIsNotNone(latest)
         assert latest is not None
         self.assertRegex(str(latest.get("action_id") or ""), rf"^elixir-demote-{slugify(elixir_id)}-\d{{13}}(?:-\d+)?$")
+
+    def test_demote_action_id_collision_fallback(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="demote-collision")
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        fixed_dt = datetime(2026, 1, 1, 0, 0, 0, 789000, tzinfo=timezone.utc)
+        base = f"elixir-demote-{slugify(elixir_id)}"
+        occupied_action_id = f"{base}-{int(fixed_dt.timestamp() * 1000)}"
+        occupied_path = execution_receipt_path(self.root, occupied_action_id)
+        occupied_path.parent.mkdir(parents=True, exist_ok=True)
+        occupied_path.write_text("{}\n", encoding="utf-8")
+
+        with patch("aiwiki.execution.alchemy.datetime") as mocked_datetime:
+            mocked_datetime.now.return_value = fixed_dt
+            run_alchemy_demote(self.root, elixir_id=elixir_id)
+
+        latest = _latest_receipt_by_subject(self.root, subject_kind="elixir_demotion", subject_id=elixir_id)
+        self.assertIsNotNone(latest)
+        assert latest is not None
+        self.assertEqual(latest.get("action_id"), f"{occupied_action_id}-2")
 
     def test_revert_uses_hash_first_when_receipt_has_hashes(self) -> None:
         elixir_id = self._start_candidate_elixir(topic="revert-hash-first")
