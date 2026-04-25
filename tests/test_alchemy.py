@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,25 +8,34 @@ from unittest.mock import patch
 
 from aiwiki.app_compile import ask_question
 from aiwiki.app_protocol import ensure_layout
-from aiwiki.app_utils import parse_frontmatter
+from aiwiki.app_utils import parse_frontmatter, slugify
 from aiwiki.execution.alchemy import (
     CANDIDATE_ELIXIR_DIR,
     ELIXIR_DIR,
     ELIXIR_STATE_VALUES,
+    PromoteHalfWriteError,
     _detect_elixir_cycle,
     _parse_elixir_frontmatter,
     _read_elixir_anywhere,
     _validate_source_outputs,
     _validate_state_for_path,
+    _write_elixir_markdown,
     distill_elixir,
     finalize_elixir,
     list_promoted_outputs_for_corpus,
+    promote_elixir,
     seal_elixir,
     start_elixir,
 )
 from aiwiki.execution.candidates import promote_candidate
 from aiwiki.execution.protocol_learnings import add_learning
-from aiwiki.runner import run_alchemy_distill, run_alchemy_finalize, run_alchemy_seal, run_alchemy_start
+from aiwiki.runner import (
+    run_alchemy_distill,
+    run_alchemy_finalize,
+    run_alchemy_promote,
+    run_alchemy_seal,
+    run_alchemy_start,
+)
 
 
 def _settled_path(root: Path, elixir_id: str) -> Path:
@@ -34,6 +44,10 @@ def _settled_path(root: Path, elixir_id: str) -> Path:
 
 def _candidate_path(root: Path, elixir_id: str) -> Path:
     return root / CANDIDATE_ELIXIR_DIR / f"{elixir_id}.md"
+
+
+def _promotion_receipt_path(root: Path, elixir_id: str) -> Path:
+    return root / "output" / "control" / "execution-receipts" / f"elixir-promote-{slugify(elixir_id)}.json"
 
 
 class AlchemyCandidatePlaneTests(unittest.TestCase):
@@ -80,6 +94,19 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
+
+    def _start_candidate_elixir(self, *, topic: str = "VLA robotics") -> str:
+        corpus_id = self._make_promoted_corpus()
+        started = run_alchemy_start(self.root, corpus_id, topic, protocol="general")
+        run_alchemy_finalize(self.root, elixir_id=started["elixir_id"])
+        return str(started["elixir_id"])
+
+    def _update_candidate_frontmatter(self, elixir_id: str, **updates: object) -> None:
+        path = _candidate_path(self.root, elixir_id)
+        original = path.read_text(encoding="utf-8")
+        frontmatter = _parse_elixir_frontmatter(path)
+        frontmatter.update(updates)
+        _write_elixir_markdown(path, frontmatter=frontmatter, body=original.split("---", 2)[-1].lstrip("\n"))
 
     def test_start_writes_to_candidate_plane(self) -> None:
         corpus_id = self._make_promoted_corpus()
@@ -460,6 +487,323 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         self.assertEqual(result["elixir_state"], "settled")
         settled = _settled_path(self.root, started["elixir_id"])
         self.assertTrue(settled.exists())
+
+    def test_promote_writes_settled_and_tombstone(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+
+        result = run_alchemy_promote(self.root, elixir_id=elixir_id)
+
+        self.assertEqual(result["elixir_state"], "settled")
+        settled = _settled_path(self.root, elixir_id)
+        candidate = _candidate_path(self.root, elixir_id)
+        self.assertTrue(settled.exists())
+        self.assertTrue(candidate.exists())
+        settled_frontmatter = parse_frontmatter(settled.read_text(encoding="utf-8"))
+        tombstone_frontmatter = parse_frontmatter(candidate.read_text(encoding="utf-8"))
+        self.assertEqual(settled_frontmatter["elixir_state"], "settled")
+        self.assertEqual(tombstone_frontmatter["elixir_state"], "superseded")
+        self.assertEqual(tombstone_frontmatter["superseded_by"], f"wiki/elixirs/{elixir_id}.md")
+        self.assertEqual(settled_frontmatter["promoted_at"], tombstone_frontmatter["promoted_at"])
+        self.assertNotIn("sealed_at", settled_frontmatter)
+
+    def test_promote_writes_receipt_and_history(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+
+        result = run_alchemy_promote(self.root, elixir_id=elixir_id, note="promote now")
+
+        receipt_path = self.root / result["receipt_path"]
+        self.assertTrue(receipt_path.exists())
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        self.assertEqual(receipt["subject_kind"], "elixir_promotion")
+        self.assertEqual(receipt["subject_id"], elixir_id)
+        self.assertEqual(receipt["apply_mode"], "elixir-promote")
+        self.assertEqual(receipt["operation"], "promote")
+        self.assertEqual(receipt["generated_by"], "aiwiki-elixir-promote")
+        self.assertEqual(receipt["action_id"], f"elixir-promote-{slugify(elixir_id)}")
+        self.assertEqual(receipt["primary_path"], f"wiki/elixirs/{elixir_id}.md")
+        self.assertEqual(receipt["secondary_path"], f"output/_candidates/elixirs/{elixir_id}.md")
+        self.assertEqual(receipt["bundle"], {})
+        self.assertIsNone(receipt["safe_apply_preview"])
+        self.assertEqual(receipt["note"], "promote now")
+
+        history_path = self.root / ".aiwiki" / "state" / "execution-receipts.jsonl"
+        self.assertTrue(history_path.exists())
+        last = json.loads(history_path.read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertEqual(last["action_id"], receipt["action_id"])
+        self.assertEqual(last["receipt_path"], receipt["receipt_path"])
+
+    def test_promote_preserves_frontmatter_fields(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        self._update_candidate_frontmatter(
+            elixir_id,
+            counter_evidence=["wiki/derived/evidence-a.md", "wiki/derived/evidence-b.md"],
+            confidence_level="medium",
+            iteration="7",
+            distill_history=[{"iteration": 1, "question": "q", "at": "2026-01-02T00:00:00+00:00"}],
+            custom_tag="keep-me",
+        )
+        before = _parse_elixir_frontmatter(_candidate_path(self.root, elixir_id))
+
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+
+        settled = _parse_elixir_frontmatter(_settled_path(self.root, elixir_id))
+        self.assertEqual(settled["provenance_corpus"], before["provenance_corpus"])
+        self.assertEqual(settled["counter_evidence"], before["counter_evidence"])
+        self.assertEqual(settled["confidence_level"], before["confidence_level"])
+        self.assertEqual(settled["iteration"], before["iteration"])
+        self.assertEqual(settled.get("distill_history"), before.get("distill_history"))
+        self.assertEqual(settled["custom_tag"], "keep-me")
+
+    def test_promote_rejects_empty_counter_evidence(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        self._update_candidate_frontmatter(elixir_id, counter_evidence=[])
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_promote(self.root, elixir_id=elixir_id)
+        self.assertIn("counter_evidence_required", str(ctx.exception))
+
+    def test_promote_rejects_counter_evidence_with_empty_string_item(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        self._update_candidate_frontmatter(elixir_id, counter_evidence=["wiki/derived/evidence.md", "   "])
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_promote(self.root, elixir_id=elixir_id)
+        self.assertIn("counter_evidence_invalid_format", str(ctx.exception))
+
+    def test_promote_rejects_missing_counter_evidence(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        candidate_path = _candidate_path(self.root, elixir_id)
+        original = candidate_path.read_text(encoding="utf-8")
+        frontmatter = _parse_elixir_frontmatter(candidate_path)
+        frontmatter.pop("counter_evidence", None)
+        _write_elixir_markdown(candidate_path, frontmatter=frontmatter, body=original.split("---", 2)[-1].lstrip("\n"))
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_promote(self.root, elixir_id=elixir_id)
+        self.assertIn("counter_evidence_required", str(ctx.exception))
+
+    def test_promote_rejects_non_list_counter_evidence(self) -> None:
+        for invalid_value in ["string", {}]:
+            with self.subTest(counter_evidence=type(invalid_value).__name__):
+                elixir_id = self._start_candidate_elixir(topic=f"non-list-{type(invalid_value).__name__}")
+                self._update_candidate_frontmatter(elixir_id, counter_evidence=invalid_value)
+
+                with self.assertRaises(ValueError) as ctx:
+                    run_alchemy_promote(self.root, elixir_id=elixir_id)
+                self.assertIn("counter_evidence_invalid_format", str(ctx.exception))
+
+    def test_promote_rejects_missing_confidence_level(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        candidate_path = _candidate_path(self.root, elixir_id)
+        original = candidate_path.read_text(encoding="utf-8")
+        frontmatter = _parse_elixir_frontmatter(candidate_path)
+        frontmatter["counter_evidence"] = ["wiki/derived/some-evidence.md"]
+        frontmatter.pop("confidence_level", None)
+        _write_elixir_markdown(candidate_path, frontmatter=frontmatter, body=original.split("---", 2)[-1].lstrip("\n"))
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_promote(self.root, elixir_id=elixir_id)
+        self.assertIn("confidence_level_required", str(ctx.exception))
+
+    def test_promote_accepts_none_found_with_low_confidence(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        self._update_candidate_frontmatter(elixir_id, counter_evidence=["NONE_FOUND"], confidence_level="low")
+
+        result = run_alchemy_promote(self.root, elixir_id=elixir_id)
+
+        self.assertEqual(result["elixir_state"], "settled")
+
+    def test_promote_rejects_none_found_with_medium_confidence(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        self._update_candidate_frontmatter(elixir_id, counter_evidence=["NONE_FOUND"], confidence_level="medium")
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_promote(self.root, elixir_id=elixir_id)
+        self.assertIn("none_found_requires_low_confidence", str(ctx.exception))
+
+    def test_promote_rejects_none_found_mixed_with_other_evidence(self) -> None:
+        for level in ["low", "medium", "high"]:
+            with self.subTest(confidence_level=level):
+                elixir_id = self._start_candidate_elixir(topic=f"mixed-none-found-{level}")
+                self._update_candidate_frontmatter(
+                    elixir_id,
+                    counter_evidence=["NONE_FOUND", "some real evidence"],
+                    confidence_level=level,
+                )
+
+                with self.assertRaises(ValueError) as ctx:
+                    run_alchemy_promote(self.root, elixir_id=elixir_id)
+                self.assertIn("counter_evidence_invalid_format", str(ctx.exception))
+
+    def test_promote_rejects_none_found_at_non_first_position(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        self._update_candidate_frontmatter(
+            elixir_id,
+            counter_evidence=["evidence", "NONE_FOUND"],
+            confidence_level="low",
+        )
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_promote(self.root, elixir_id=elixir_id)
+        self.assertIn("counter_evidence_invalid_format", str(ctx.exception))
+
+    def test_promote_rejects_invalid_confidence_level(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        self._update_candidate_frontmatter(elixir_id, counter_evidence=["wiki/derived/evidence.md"], confidence_level="invalid")
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_promote(self.root, elixir_id=elixir_id)
+        self.assertIn("confidence_level_required", str(ctx.exception))
+
+    def test_promote_rejects_already_promoted(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_promote(self.root, elixir_id=elixir_id)
+        self.assertIn("already_promoted", str(ctx.exception))
+
+    def test_promote_rejects_draft_source(self) -> None:
+        corpus_id = self._make_promoted_corpus()
+        started = run_alchemy_start(self.root, corpus_id, "draft source", protocol="general")
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_promote(self.root, elixir_id=started["elixir_id"])
+        self.assertIn("unsupported_source_state", str(ctx.exception))
+
+    def test_promote_rejects_distilling_source(self) -> None:
+        corpus_id = self._make_promoted_corpus()
+        started = run_alchemy_start(self.root, corpus_id, "distilling source", protocol="general")
+        run_alchemy_distill(self.root, started["elixir_id"], "refine")
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_promote(self.root, elixir_id=started["elixir_id"])
+        self.assertIn("unsupported_source_state", str(ctx.exception))
+
+    def test_promote_rejects_superseded_source(self) -> None:
+        elixir_id = "candidate-superseded-promote"
+        self._write_stub_elixir(_candidate_path(self.root, elixir_id), elixir_id=elixir_id, state="superseded")
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_promote(self.root, elixir_id=elixir_id)
+        self.assertIn("unsupported_source_state", str(ctx.exception))
+
+    def test_promote_raises_filenotfound_when_candidate_missing(self) -> None:
+        with self.assertRaises(FileNotFoundError):
+            run_alchemy_promote(self.root, elixir_id="missing-candidate")
+
+    def test_promote_failure_after_settled_write_rolls_back_settled(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        candidate_path = _candidate_path(self.root, elixir_id)
+        before = candidate_path.read_text(encoding="utf-8")
+        from aiwiki.execution import alchemy as alchemy_module
+
+        original_write = alchemy_module._write_atomic_text
+        calls = {"count": 0}
+
+        def _flaky_write(path: Path, content: str) -> None:
+            calls["count"] += 1
+            if calls["count"] == 2:
+                raise OSError("tombstone write failed")
+            original_write(path, content)
+
+        with patch("aiwiki.execution.alchemy._write_atomic_text", side_effect=_flaky_write):
+            with self.assertRaises(OSError):
+                promote_elixir(self.root, elixir_id=elixir_id)
+
+        self.assertFalse(_settled_path(self.root, elixir_id).exists())
+        self.assertEqual(candidate_path.read_text(encoding="utf-8"), before)
+        self.assertFalse(_promotion_receipt_path(self.root, elixir_id).exists())
+
+    def test_promote_raises_halfwriteerror_when_unlink_also_fails(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        settled_path = _settled_path(self.root, elixir_id)
+        candidate_path = _candidate_path(self.root, elixir_id)
+        from aiwiki.execution import alchemy as alchemy_module
+
+        original_write = alchemy_module._write_atomic_text
+        calls = {"count": 0}
+
+        def _flaky_write(path: Path, content: str) -> None:
+            calls["count"] += 1
+            if calls["count"] == 2:
+                raise OSError("tombstone write failed")
+            original_write(path, content)
+
+        with patch("aiwiki.execution.alchemy._write_atomic_text", side_effect=_flaky_write):
+            with patch.object(Path, "unlink", autospec=True, side_effect=OSError("rollback unlink failed")):
+                with self.assertRaises(PromoteHalfWriteError) as ctx:
+                    promote_elixir(self.root, elixir_id=elixir_id)
+
+        self.assertIn(str(settled_path), str(ctx.exception))
+        self.assertIn(str(candidate_path), str(ctx.exception))
+
+    def test_promote_does_not_rollback_when_receipt_write_fails(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+
+        with patch("aiwiki.execution.alchemy.append_execution_receipt_history", side_effect=RuntimeError("history write failed")):
+            result = run_alchemy_promote(self.root, elixir_id=elixir_id)
+
+        settled_path = _settled_path(self.root, elixir_id)
+        candidate_path = _candidate_path(self.root, elixir_id)
+        self.assertEqual(result["elixir_state"], "settled")
+        self.assertTrue(settled_path.exists())
+        self.assertTrue(candidate_path.exists())
+        settled_frontmatter = parse_frontmatter(settled_path.read_text(encoding="utf-8"))
+        tombstone_frontmatter = parse_frontmatter(candidate_path.read_text(encoding="utf-8"))
+        self.assertEqual(settled_frontmatter["elixir_state"], "settled")
+        self.assertEqual(tombstone_frontmatter["elixir_state"], "superseded")
+        self.assertTrue(_promotion_receipt_path(self.root, elixir_id).exists())
+
+    def test_promote_failure_before_any_write_keeps_candidate_intact(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        candidate_path = _candidate_path(self.root, elixir_id)
+        self._update_candidate_frontmatter(elixir_id, counter_evidence=[])
+        expected = candidate_path.read_text(encoding="utf-8")
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_promote(self.root, elixir_id=elixir_id)
+
+        self.assertIn("counter_evidence_required", str(ctx.exception))
+        self.assertEqual(candidate_path.read_text(encoding="utf-8"), expected)
+        self.assertFalse(_settled_path(self.root, elixir_id).exists())
+        self.assertFalse(_promotion_receipt_path(self.root, elixir_id).exists())
+
+    def test_seal_candidate_internally_calls_promote(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+
+        result = run_alchemy_seal(self.root, elixir_id)
+
+        self.assertEqual(result["elixir_state"], "settled")
+        self.assertTrue(result.get("receipt_path"))
+        self.assertTrue((self.root / str(result["receipt_path"])).exists())
+        settled = parse_frontmatter(_settled_path(self.root, elixir_id).read_text(encoding="utf-8"))
+        candidate = parse_frontmatter(_candidate_path(self.root, elixir_id).read_text(encoding="utf-8"))
+        self.assertEqual(settled["elixir_state"], "settled")
+        self.assertEqual(candidate["elixir_state"], "superseded")
+        self.assertIn("promoted_at", settled)
+        self.assertNotIn("sealed_at", settled)
+
+    def test_seal_candidate_respects_promote_gate(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        self._update_candidate_frontmatter(elixir_id, counter_evidence=[])
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_seal(self.root, elixir_id)
+
+        self.assertIn("counter_evidence_required", str(ctx.exception))
+        self.assertFalse(_settled_path(self.root, elixir_id).exists())
+
+    def test_seal_draft_emits_deprecation_warning(self) -> None:
+        corpus_id = self._make_promoted_corpus()
+        started = run_alchemy_start(self.root, corpus_id, "deprecated seal", protocol="general")
+
+        with self.assertWarns(DeprecationWarning):
+            result = run_alchemy_seal(self.root, started["elixir_id"])
+
+        self.assertEqual(result["elixir_state"], "settled")
+        settled = parse_frontmatter(_settled_path(self.root, started["elixir_id"]).read_text(encoding="utf-8"))
+        self.assertTrue(settled.get("sealed_at"))
 
     def test_finalize_missing_candidate_file_raises_file_not_found(self) -> None:
         with self.assertRaises(FileNotFoundError):

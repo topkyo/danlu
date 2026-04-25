@@ -116,6 +116,13 @@ class CLITests(unittest.TestCase):
             ),
             ("alchemy-distill", ["alchemy-distill", "elixir-vla-robotics-deadbeef", "--question", "What about latency?"], "run_alchemy_distill", (self.root, "elixir-vla-robotics-deadbeef", "What about latency?"), {}),
             ("alchemy-finalize", ["alchemy-finalize", "--elixir-id", "elixir-vla-robotics-deadbeef"], "run_alchemy_finalize", (self.root,), {"elixir_id": "elixir-vla-robotics-deadbeef"}),
+            (
+                "alchemy-promote",
+                ["alchemy-promote", "--elixir-id", "elixir-vla-robotics-deadbeef", "--note", "ship it"],
+                "run_alchemy_promote",
+                (self.root,),
+                {"elixir_id": "elixir-vla-robotics-deadbeef", "note": "ship it"},
+            ),
             ("alchemy-seal", ["alchemy-seal", "elixir-vla-robotics-deadbeef"], "run_alchemy_seal", (self.root, "elixir-vla-robotics-deadbeef"), {}),
             ("protocol-learn-add", ["protocol-learn-add", "general", "--title", "Learning", "--source-ref", "wiki/derived/a.md"], "run_protocol_learn_add", (self.root, "general", "Learning", ["wiki/derived/a.md"]), {}),
             ("protocol-learn-list", ["protocol-learn-list", "general"], "run_protocol_learn_list", (self.root, "general"), {"state_filter": None, "include_archived": False}),
@@ -211,6 +218,26 @@ class CLITests(unittest.TestCase):
         parser = build_parser()
         with self.assertRaises(SystemExit):
             parser.parse_args(["alchemy-finalize"])
+
+    def test_alchemy_promote_cli_smoke(self) -> None:
+        with patch("aiwiki.cli.run_alchemy_promote", return_value={"command": "alchemy-promote"}) as mocked:
+            code, payload, stderr = self._run_main(
+                ["alchemy-promote", "--elixir-id", "elixir-vla-robotics-deadbeef", "--note", "ship it"]
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload.get("command"), "alchemy-promote")
+        mocked.assert_called_once_with(
+            self.root,
+            elixir_id="elixir-vla-robotics-deadbeef",
+            note="ship it",
+        )
+
+    def test_alchemy_promote_requires_elixir_id(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["alchemy-promote"])
 
     def test_alchemy_start_propagates_protocol_to_frontmatter(self) -> None:
         ensure_layout(self.root)

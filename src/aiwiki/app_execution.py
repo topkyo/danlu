@@ -17,7 +17,7 @@ from .app_state import (
     material_state_path,
 )
 from .app_types import ExecutionBundle, ExecutionReceipt
-from .app_utils import relative_path, sha256_bytes
+from .app_utils import relative_path, sha256_bytes, slugify
 
 
 def build_execution_bundle(
@@ -324,6 +324,40 @@ def build_material_archive_receipt(
         "receipt_path": relative_path(root, receipt_path),
         "bundle": bundle,
         "safe_apply_preview": bundle.get("safe_apply_preview"),
+    }
+
+
+def build_elixir_promotion_receipt(
+    root: Path,
+    *,
+    elixir_id: str,
+    settled_path: Path,
+    candidate_path: Path,
+    protocol: str,
+    applied_at: str,
+    note: str | None,
+) -> ExecutionReceipt:
+    action_id = f"elixir-promote-{slugify(elixir_id)}"
+    receipt_path = execution_receipt_path(root, action_id)
+    return {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-elixir-promote",
+        "applied_at": applied_at,
+        "operation": "promote",
+        "action_id": action_id,
+        "title": f"Promote elixir {elixir_id}",
+        "status": "resolved",
+        "protocol": protocol,
+        "subject_kind": "elixir_promotion",
+        "subject_id": elixir_id,
+        "apply_mode": "elixir-promote",
+        "note": note or "",
+        "primary_path": relative_path(root, settled_path),
+        "secondary_path": relative_path(root, candidate_path),
+        "receipt_path": relative_path(root, receipt_path),
+        "bundle": {},
+        "safe_apply_preview": None,
     }
 
 

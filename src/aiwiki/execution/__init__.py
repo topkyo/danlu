@@ -13,7 +13,7 @@ dedicated owner module in this subpackage:
 - :mod:`aiwiki.execution.machine_memory_batch`   — nightly batch orchestration
 - :mod:`aiwiki.execution.review`           — ``review`` primitive
 - :mod:`aiwiki.execution.protocol_learnings` — L2 protocol-learning lifecycle
-- :mod:`aiwiki.execution.alchemy`          — ``alchemy-start/distill/seal``
+- :mod:`aiwiki.execution.alchemy`          — ``alchemy-start/distill/finalize/promote/seal``
 - :mod:`aiwiki.execution.runtime_surfaces` — runtime primitive surfaces
 
 These modules implement the **scoped primitives** protected by the 9+

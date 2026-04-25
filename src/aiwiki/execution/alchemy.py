@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import warnings
 from pathlib import Path
 from typing import Any
 
+from ..app_execution import append_execution_receipt_history, build_elixir_promotion_receipt
 from ..app_state import load_active_corpora_state, load_output_candidates_state
 from ..app_utils import next_available_stem, parse_frontmatter, sha256_bytes, slugify, utc_now
 
@@ -12,6 +15,17 @@ ELIXIR_DIR = "wiki/elixirs"
 CANDIDATE_ELIXIR_DIR = "output/_candidates/elixirs"
 ELIXIR_STATE_VALUES = {"draft", "distilling", "candidate", "settled", "superseded"}
 _ACTIVE_ELIXIR_STATES = {"draft", "distilling", "candidate"}
+_CONFIDENCE_LEVELS = {"low", "medium", "high"}
+
+
+class PromoteHalfWriteError(RuntimeError):
+    def __init__(self, *, settled_path: Path, candidate_path: Path) -> None:
+        self.settled_path = settled_path
+        self.candidate_path = candidate_path
+        super().__init__(
+            "promote_half_write_error: failed to rollback settled after tombstone write failure; "
+            f"manual repair required (settled={settled_path}, candidate={candidate_path})"
+        )
 
 
 # distill_history is stored as a JSON string in frontmatter because the simple YAML
@@ -260,9 +274,45 @@ def _write_elixir_markdown(path: Path, *, frontmatter: dict[str, Any], body: str
     serializable = dict(frontmatter)
     serializable["distill_history_json"] = json.dumps(serializable.pop("distill_history", []), ensure_ascii=False)
     content = _render_inserted_frontmatter(serializable) + body
+    _write_atomic_text(path, content)
+
+
+def _write_atomic_text(path: Path, content: str) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(content, encoding="utf-8")
     os.replace(tmp, path)
+
+
+def _render_elixir_document(frontmatter: dict[str, Any], body: str) -> str:
+    serializable = dict(frontmatter)
+    serializable["distill_history_json"] = json.dumps(serializable.pop("distill_history", []), ensure_ascii=False)
+    return _render_inserted_frontmatter(serializable) + body
+
+
+def _validate_promote_gate(frontmatter: dict[str, Any]) -> None:
+    if "counter_evidence" not in frontmatter:
+        raise ValueError("counter_evidence_required: counter_evidence is required")
+    counter_evidence = frontmatter.get("counter_evidence")
+    if not isinstance(counter_evidence, list):
+        raise ValueError("counter_evidence_invalid_format: counter_evidence must be a list")
+    if not counter_evidence:
+        raise ValueError("counter_evidence_required: counter_evidence cannot be empty")
+    for item in counter_evidence:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError("counter_evidence_invalid_format: counter_evidence items must be non-empty strings")
+
+    confidence_level = str(frontmatter.get("confidence_level") or "").strip()
+    has_none_found = any(item.strip() == "NONE_FOUND" for item in counter_evidence)
+    if has_none_found:
+        if len(counter_evidence) > 1:
+            raise ValueError("counter_evidence_invalid_format: NONE_FOUND must be the only counter_evidence item")
+        if counter_evidence[0].strip() != "NONE_FOUND":
+            raise ValueError("counter_evidence_invalid_format: NONE_FOUND must be the only counter_evidence item")
+        if confidence_level != "low":
+            raise ValueError("none_found_requires_low_confidence: [NONE_FOUND] requires confidence_level=low")
+        return
+    if confidence_level not in _CONFIDENCE_LEVELS:
+        raise ValueError("confidence_level_required: confidence_level must be one of low/medium/high")
 
 
 def _find_corpus(root: Path, corpus_id: str) -> dict[str, Any]:
@@ -461,13 +511,117 @@ def finalize_elixir(root: Path, *, elixir_id: str) -> dict[str, Any]:
     }
 
 
+def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> dict[str, Any]:
+    normalized_id = _resolve_elixir_id(root, elixir_id)
+    settled_path = _settled_path(root, normalized_id)
+    if settled_path.is_file():
+        raise ValueError("already_promoted: settled elixir already exists")
+
+    candidate_path = _candidate_path(root, normalized_id)
+    if not candidate_path.is_file():
+        raise FileNotFoundError(f"elixir not found: {normalized_id}")
+
+    frontmatter = _parse_elixir_frontmatter(candidate_path)
+    source_state = str(frontmatter.get("elixir_state") or "")
+    _validate_state_for_path(root, source_state, candidate_path)
+    if source_state != "candidate":
+        raise ValueError(f"unsupported_source_state: cannot promote elixir from state={source_state or 'unknown'}")
+
+    corpus_id = str(frontmatter.get("provenance_corpus") or "")
+    _find_corpus(root, corpus_id)
+    promoted = list_promoted_outputs_for_corpus(root, corpus_id)
+    allowed = {item["promoted_to"] for item in promoted if item.get("promoted_to")}
+    source_outputs = [str(item) for item in frontmatter.get("derived_from", []) if isinstance(item, str)]
+    _validate_source_outputs(root, source_outputs, allowed=allowed)
+    if not any(ref.startswith("wiki/derived/") for ref in source_outputs):
+        raise ValueError("金丹 derived_from 必须至少包含一个 wiki/derived/ 源条目（当前仅包含 elixir 引用）")
+
+    canonical = _settled_path(root, normalized_id)
+    if any(str(Path(ref)) == str(canonical.relative_to(root)) for ref in source_outputs if isinstance(ref, str)):
+        raise ValueError(f"cannot reference self: {canonical.relative_to(root)}")
+    cycle = _detect_elixir_cycle(root, canonical, source_outputs)
+    if cycle:
+        raise ValueError("金丹引用形成环路: " + " → ".join(cycle))
+
+    _validate_promote_gate(frontmatter)
+
+    original = candidate_path.read_text(encoding="utf-8", errors="replace")
+    body = original.split("---", 2)[-1].lstrip("\n")
+    applied_at = utc_now()
+
+    settled_frontmatter = dict(frontmatter)
+    settled_frontmatter.pop("sealed_at", None)
+    settled_frontmatter.update({"elixir_state": "settled", "promoted_at": applied_at})
+    tombstone_frontmatter = dict(frontmatter)
+    tombstone_frontmatter.pop("sealed_at", None)
+    tombstone_frontmatter.update(
+        {
+            "elixir_state": "superseded",
+            "superseded_by": f"{ELIXIR_DIR}/{normalized_id}.md",
+            "promoted_at": applied_at,
+        }
+    )
+
+    settled_text = _render_elixir_document(settled_frontmatter, body)
+    tombstone_text = _render_elixir_document(tombstone_frontmatter, body)
+    protocol = str(frontmatter.get("protocol") or "")
+    receipt = build_elixir_promotion_receipt(
+        root,
+        elixir_id=normalized_id,
+        settled_path=settled_path,
+        candidate_path=candidate_path,
+        protocol=protocol,
+        applied_at=applied_at,
+        note=note,
+    )
+
+    settled_path.parent.mkdir(parents=True, exist_ok=True)
+    candidate_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_atomic_text(settled_path, settled_text)
+    try:
+        _write_atomic_text(candidate_path, tombstone_text)
+    except Exception as exc:
+        try:
+            settled_path.unlink(missing_ok=True)
+        except Exception as rollback_exc:
+            raise PromoteHalfWriteError(settled_path=settled_path, candidate_path=candidate_path) from rollback_exc
+        raise exc
+
+    _validate_state_for_path(root, "settled", settled_path)
+    _validate_state_for_path(root, "superseded", candidate_path)
+
+    receipt_path = root / str(receipt.get("receipt_path") or "")
+    try:
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        append_execution_receipt_history(root, receipt)
+    except Exception:
+        logging.getLogger("aiwiki").exception("failed to persist elixir promotion receipt: %s", normalized_id)
+
+    return {
+        "elixir_id": normalized_id,
+        "path": f"{ELIXIR_DIR}/{normalized_id}.md",
+        "elixir_state": "settled",
+        "promoted_at": applied_at,
+        "receipt_path": str(receipt.get("receipt_path") or ""),
+    }
+
+
 def seal_elixir(root: Path, elixir_id: str) -> dict[str, Any]:
     normalized_id = _resolve_elixir_id(root, elixir_id)
     source_path, frontmatter = _read_elixir_anywhere(root, normalized_id)
     source_state = str(frontmatter.get("elixir_state") or "")
     if source_state == "settled":
         raise ValueError(f"elixir already sealed: {elixir_id}")
-    if source_state not in _ACTIVE_ELIXIR_STATES:
+    if source_state == "candidate":
+        return promote_elixir(root, elixir_id=normalized_id)
+    if source_state in {"draft", "distilling"}:
+        warnings.warn(
+            "alchemy-seal is deprecated; use alchemy-finalize then alchemy-promote",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    if source_state not in {"draft", "distilling"}:
         raise ValueError(f"unsupported_source_state: cannot seal elixir from state={source_state or 'unknown'}")
     corpus_id = str(frontmatter.get("provenance_corpus") or "")
     _find_corpus(root, corpus_id)
