@@ -147,6 +147,13 @@ class CLITests(unittest.TestCase):
         self.assertFalse(hasattr(runner, "run_alchemy_" + "seal"))
         self.assertFalse(hasattr(alchemy, "seal_" + "elixir"))
 
+    def test_removed_settled_alias_parse_is_rejected(self) -> None:
+        parser = build_parser()
+        removed_command = "alchemy-" + "seal"
+
+        with self.assertRaises(SystemExit):
+            parser.parse_args([removed_command, "elixir-vla-robotics-deadbeef"])
+
     def test_main_dispatches_command_handlers(self) -> None:
         cases = [
             ("layout", ["layout"], "ensure_layout", (self.root,), {}),
