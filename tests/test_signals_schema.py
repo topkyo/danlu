@@ -534,6 +534,24 @@ class TestValidateErrorPaths(unittest.TestCase):
             ".aiwiki/state/execution-receipts.jsonl:row-1",
         )
 
+    def test_review_outcome_source_event_ref_accepts_event_log_path(self) -> None:
+        self._assert_source_event_ref_valid(
+            "review_outcome",
+            ".aiwiki/state/review-outcome.jsonl#L4",
+        )
+
+    def test_review_outcome_source_event_ref_accepts_plural_event_log_path(self) -> None:
+        self._assert_source_event_ref_valid(
+            "review_outcome",
+            ".aiwiki/state/review-outcomes.jsonl#L4",
+        )
+
+    def test_review_outcome_source_event_ref_rejects_review_page_path(self) -> None:
+        self._assert_source_event_ref_rejected(
+            "review_outcome",
+            "wiki/reviews/review-center.md#L4",
+        )
+
     def test_archive_event_source_event_ref_accepts_execution_receipts_path(self) -> None:
         self._assert_source_event_ref_valid(
             "archive_event",
