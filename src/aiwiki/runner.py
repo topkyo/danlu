@@ -1342,6 +1342,13 @@ def run_alchemy_seal(root: Path, elixir_id: str) -> dict[str, Any]:
 
 
 @runtime_write_operation
+def run_alchemy_finalize(root: Path, *, elixir_id: str) -> dict[str, Any]:
+    from .execution.alchemy import finalize_elixir
+
+    return finalize_elixir(root, elixir_id=elixir_id)
+
+
+@runtime_write_operation
 def run_protocol_learn_add(root: Path, protocol: str, title: str, source_refs: list[str] | None) -> dict[str, Any]:
     from .execution.protocol_learnings import add_learning
 

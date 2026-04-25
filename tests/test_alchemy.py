@@ -18,12 +18,14 @@ from aiwiki.execution.alchemy import (
     _validate_source_outputs,
     _validate_state_for_path,
     distill_elixir,
+    finalize_elixir,
+    list_promoted_outputs_for_corpus,
     seal_elixir,
     start_elixir,
 )
 from aiwiki.execution.candidates import promote_candidate
 from aiwiki.execution.protocol_learnings import add_learning
-from aiwiki.runner import run_alchemy_distill, run_alchemy_seal, run_alchemy_start
+from aiwiki.runner import run_alchemy_distill, run_alchemy_finalize, run_alchemy_seal, run_alchemy_start
 
 
 def _settled_path(root: Path, elixir_id: str) -> Path:
@@ -323,6 +325,205 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
                 with self.assertRaises(ValueError) as ctx:
                     seal_elixir(self.root, target_id)
         self.assertIn("必须至少包含一个 wiki/derived/", str(ctx.exception))
+
+    def test_finalize_writes_candidate_state(self) -> None:
+        corpus_id = self._make_promoted_corpus()
+        started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
+        before = parse_frontmatter((_candidate_path(self.root, started["elixir_id"])).read_text(encoding="utf-8"))
+
+        result = finalize_elixir(self.root, elixir_id=started["elixir_id"])
+
+        self.assertEqual(result["elixir_state"], "candidate")
+        frontmatter = parse_frontmatter((_candidate_path(self.root, started["elixir_id"])).read_text(encoding="utf-8"))
+        self.assertEqual(frontmatter["elixir_state"], "candidate")
+        self.assertEqual(frontmatter["iteration"], before["iteration"])
+        self.assertEqual(frontmatter["confidence_level"], before["confidence_level"])
+
+    def test_finalize_from_distilling_to_candidate(self) -> None:
+        corpus_id = self._make_promoted_corpus()
+        started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
+        run_alchemy_distill(self.root, started["elixir_id"], "What about latency?")
+
+        result = finalize_elixir(self.root, elixir_id=started["elixir_id"])
+
+        self.assertEqual(result["elixir_state"], "candidate")
+        frontmatter = parse_frontmatter((_candidate_path(self.root, started["elixir_id"])).read_text(encoding="utf-8"))
+        self.assertEqual(frontmatter["elixir_state"], "candidate")
+
+    def test_finalize_rejects_already_candidate(self) -> None:
+        corpus_id = self._make_promoted_corpus()
+        started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
+        finalize_elixir(self.root, elixir_id=started["elixir_id"])
+
+        with self.assertRaises(ValueError) as ctx:
+            finalize_elixir(self.root, elixir_id=started["elixir_id"])
+        self.assertIn("already_candidate", str(ctx.exception))
+
+    def test_finalize_rejects_settled(self) -> None:
+        corpus_id = self._make_promoted_corpus()
+        started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
+        run_alchemy_seal(self.root, started["elixir_id"])
+
+        with self.assertRaises(ValueError) as ctx:
+            finalize_elixir(self.root, elixir_id=started["elixir_id"])
+        self.assertIn("unsupported_source_state", str(ctx.exception))
+
+    def test_finalize_rejects_superseded(self) -> None:
+        elixir_id = "candidate-superseded"
+        self._write_stub_elixir(_candidate_path(self.root, elixir_id), elixir_id=elixir_id, state="superseded")
+
+        with self.assertRaises(ValueError) as ctx:
+            finalize_elixir(self.root, elixir_id=elixir_id)
+        self.assertIn("unsupported_source_state", str(ctx.exception))
+
+    def test_finalize_runs_provenance_validation(self) -> None:
+        corpus_id = self._make_promoted_corpus()
+        started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
+        candidate = _candidate_path(self.root, started["elixir_id"])
+        fm = parse_frontmatter(candidate.read_text(encoding="utf-8"))
+        current_ref = str(fm["derived_from"][0])
+        updated = candidate.read_text(encoding="utf-8").replace(
+            f'  - "{current_ref}"',
+            '  - "wiki/derived/missing-finalize-anchor.md"',
+            1,
+        )
+        candidate.write_text(updated, encoding="utf-8")
+
+        with self.assertRaises(ValueError) as ctx:
+            finalize_elixir(self.root, elixir_id=started["elixir_id"])
+        self.assertIn("source output missing", str(ctx.exception))
+
+    def test_finalize_runs_dag_validation(self) -> None:
+        corpus_id = self._make_promoted_corpus()
+        started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
+        target_ref = f"wiki/elixirs/{started['elixir_id']}.md"
+        cycle_id = "cycle-parent"
+        cycle_path = _settled_path(self.root, cycle_id)
+        self._write_stub_elixir(cycle_path, elixir_id=cycle_id, state="settled")
+        cycle_text = cycle_path.read_text(encoding="utf-8")
+        cycle_path.write_text(cycle_text.replace('  - "wiki/derived/base.md"', f'  - "{target_ref}"', 1), encoding="utf-8")
+        candidate = _candidate_path(self.root, started["elixir_id"])
+        text = candidate.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(text)
+        anchor_ref = str(frontmatter["derived_from"][0])
+        text = text.replace(
+            f'  - "{anchor_ref}"',
+            f'  - "{anchor_ref}"\n  - "wiki/elixirs/{cycle_id}.md"',
+            1,
+        )
+        candidate.write_text(text, encoding="utf-8")
+
+        with self.assertRaises(ValueError) as ctx:
+            finalize_elixir(self.root, elixir_id=started["elixir_id"])
+        self.assertIn("金丹引用形成环路", str(ctx.exception))
+
+    def test_finalize_does_not_enforce_counter_evidence_nonempty(self) -> None:
+        corpus_id = self._make_promoted_corpus()
+        started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
+        candidate = _candidate_path(self.root, started["elixir_id"])
+        text = candidate.read_text(encoding="utf-8")
+        text = text.replace('  - "NONE_FOUND"\n', "", 1)
+        candidate.write_text(text, encoding="utf-8")
+
+        result = finalize_elixir(self.root, elixir_id=started["elixir_id"])
+
+        self.assertEqual(result["elixir_state"], "candidate")
+
+    def test_distill_can_reopen_candidate(self) -> None:
+        corpus_id = self._make_promoted_corpus()
+        started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
+        run_alchemy_finalize(self.root, elixir_id=started["elixir_id"])
+        candidate_path = _candidate_path(self.root, started["elixir_id"])
+        before = _parse_elixir_frontmatter(candidate_path)
+        iteration_before = int(before.get("iteration", 0) or 0)
+        history_before = before.get("distill_history") if isinstance(before.get("distill_history"), list) else []
+        question = "What changed since finalize?"
+
+        result = run_alchemy_distill(self.root, started["elixir_id"], question)
+
+        self.assertEqual(result["elixir_state"], "distilling")
+        frontmatter = _parse_elixir_frontmatter(candidate_path)
+        self.assertEqual(frontmatter["elixir_state"], "distilling")
+        iteration_after = int(frontmatter.get("iteration", 0) or 0)
+        history_after = frontmatter.get("distill_history") if isinstance(frontmatter.get("distill_history"), list) else []
+        self.assertEqual(iteration_after, iteration_before + 1)
+        self.assertEqual(len(history_after), len(history_before) + 1)
+        self.assertEqual(str(history_after[-1].get("question") or ""), question)
+
+    def test_seal_accepts_candidate_source(self) -> None:
+        corpus_id = self._make_promoted_corpus()
+        started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
+        run_alchemy_finalize(self.root, elixir_id=started["elixir_id"])
+
+        result = run_alchemy_seal(self.root, started["elixir_id"])
+
+        self.assertEqual(result["elixir_state"], "settled")
+        settled = _settled_path(self.root, started["elixir_id"])
+        self.assertTrue(settled.exists())
+
+    def test_finalize_missing_candidate_file_raises_file_not_found(self) -> None:
+        with self.assertRaises(FileNotFoundError):
+            finalize_elixir(self.root, elixir_id="missing-candidate")
+
+    def test_finalize_rejects_without_wiki_derived_anchor(self) -> None:
+        ref_id = "ref-for-finalize"
+        self._write_stub_elixir(_settled_path(self.root, ref_id), elixir_id=ref_id, state="settled")
+        target_id = "candidate-no-derived-finalize"
+        self._write_stub_elixir(_candidate_path(self.root, target_id), elixir_id=target_id, state="draft")
+        target = _candidate_path(self.root, target_id)
+        text = target.read_text(encoding="utf-8")
+        text = text.replace('  - "wiki/derived/base.md"', f'  - "wiki/elixirs/{ref_id}.md"', 1)
+        target.write_text(text, encoding="utf-8")
+
+        with patch("aiwiki.execution.alchemy._find_corpus", return_value={"corpus_id": "corp"}):
+            with patch("aiwiki.execution.alchemy.list_promoted_outputs_for_corpus", return_value=[]):
+                with self.assertRaises(ValueError) as ctx:
+                    finalize_elixir(self.root, elixir_id=target_id)
+        self.assertIn("必须至少包含一个 wiki/derived/", str(ctx.exception))
+
+    def test_distill_rejects_superseded_source_state(self) -> None:
+        elixir_id = "candidate-superseded-distill"
+        self._write_stub_elixir(_candidate_path(self.root, elixir_id), elixir_id=elixir_id, state="superseded")
+
+        with self.assertRaises(ValueError) as ctx:
+            distill_elixir(self.root, elixir_id, question="q")
+        self.assertIn("unsupported_source_state", str(ctx.exception))
+
+    def test_seal_rejects_superseded_source_state(self) -> None:
+        elixir_id = "candidate-superseded-seal"
+        self._write_stub_elixir(_candidate_path(self.root, elixir_id), elixir_id=elixir_id, state="superseded")
+
+        with self.assertRaises(ValueError) as ctx:
+            seal_elixir(self.root, elixir_id)
+        self.assertIn("unsupported_source_state", str(ctx.exception))
+
+    def test_distill_include_reports_missing_settled_reference(self) -> None:
+        corpus_id = self._make_promoted_corpus()
+        started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
+
+        with self.assertRaises(FileNotFoundError):
+            run_alchemy_distill(self.root, started["elixir_id"], "q", include_elixir_ids=["missing-settled-elixir"])
+
+    def test_detect_cycle_skips_non_settled_entries_in_wiki_plane(self) -> None:
+        self._write_stub_elixir(_settled_path(self.root, "draft-in-wiki"), elixir_id="draft-in-wiki", state="draft")
+        cycle = _detect_elixir_cycle(self.root, _settled_path(self.root, "new"), [])
+        self.assertIsNone(cycle)
+
+    def test_list_promoted_outputs_ignores_empty_promoted_to(self) -> None:
+        mocked_state = {
+            "candidates": [
+                {"corpus_id": "corp", "candidate_state": "promoted", "artifact_ref": "a", "promoted_to": "wiki/derived/a.md"},
+                {"corpus_id": "corp", "candidate_state": "promoted", "artifact_ref": "b", "promoted_to": ""},
+                {"corpus_id": "corp", "candidate_state": "pending", "artifact_ref": "c", "promoted_to": "wiki/derived/c.md"},
+            ]
+        }
+        with patch("aiwiki.execution.alchemy.load_output_candidates_state", return_value=mocked_state):
+            rows = list_promoted_outputs_for_corpus(self.root, "corp")
+        self.assertEqual(rows, [{"artifact_ref": "a", "promoted_to": "wiki/derived/a.md", "question": ""}])
+
+    def test_validate_source_outputs_rejects_blank_ref(self) -> None:
+        with self.assertRaises(ValueError):
+            _validate_source_outputs(self.root, [""], allowed=set())
 
 
 if __name__ == "__main__":

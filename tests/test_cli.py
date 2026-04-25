@@ -115,6 +115,7 @@ class CLITests(unittest.TestCase):
                 {"protocol": "investing"},
             ),
             ("alchemy-distill", ["alchemy-distill", "elixir-vla-robotics-deadbeef", "--question", "What about latency?"], "run_alchemy_distill", (self.root, "elixir-vla-robotics-deadbeef", "What about latency?"), {}),
+            ("alchemy-finalize", ["alchemy-finalize", "--elixir-id", "elixir-vla-robotics-deadbeef"], "run_alchemy_finalize", (self.root,), {"elixir_id": "elixir-vla-robotics-deadbeef"}),
             ("alchemy-seal", ["alchemy-seal", "elixir-vla-robotics-deadbeef"], "run_alchemy_seal", (self.root, "elixir-vla-robotics-deadbeef"), {}),
             ("protocol-learn-add", ["protocol-learn-add", "general", "--title", "Learning", "--source-ref", "wiki/derived/a.md"], "run_protocol_learn_add", (self.root, "general", "Learning", ["wiki/derived/a.md"]), {}),
             ("protocol-learn-list", ["protocol-learn-list", "general"], "run_protocol_learn_list", (self.root, "general"), {"state_filter": None, "include_archived": False}),
@@ -196,6 +197,20 @@ class CLITests(unittest.TestCase):
         parser = build_parser()
         with self.assertRaises(SystemExit):
             parser.parse_args(["alchemy-start", "investing-foo-abc12345", "--topic", "VLA robotics"])
+
+    def test_alchemy_finalize_cli_smoke(self) -> None:
+        with patch("aiwiki.cli.run_alchemy_finalize", return_value={"command": "alchemy-finalize"}) as mocked:
+            code, payload, stderr = self._run_main(["alchemy-finalize", "--elixir-id", "elixir-vla-robotics-deadbeef"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload.get("command"), "alchemy-finalize")
+        mocked.assert_called_once_with(self.root, elixir_id="elixir-vla-robotics-deadbeef")
+
+    def test_alchemy_finalize_requires_elixir_id(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["alchemy-finalize"])
 
     def test_alchemy_start_propagates_protocol_to_frontmatter(self) -> None:
         ensure_layout(self.root)

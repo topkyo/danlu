@@ -379,16 +379,16 @@ light **不允许**触发 `judge`、`distill`、`propose`、`apply`。
 
 | 阶段 | 路径 |
 |---|---|
-| 候选（目标，未 promote） | `output/_candidates/elixirs/<elixir-id>.md` |
+| 候选（当前与目标，未 promote） | `output/_candidates/elixirs/<elixir-id>.md` |
 | 持久（当前与目标） | `wiki/elixirs/<elixir-id>.md` |
 
-目标契约要求候选平面与持久平面**物理隔离**，避免一个字段同时表达两种语义。当前最小实现暂时由 `alchemy-start` 直接写入 `wiki/elixirs/` 的 `draft` 金丹，再由 `alchemy-distill` 推进 `distilling`，最后由 `alchemy-seal` 标记 `settled`。
+目标契约要求候选平面与持久平面**物理隔离**，避免一个字段同时表达两种语义。`M2.1` 起，`alchemy-start / alchemy-distill` 已写入 `output/_candidates/elixirs/`（`draft / distilling`）；`alchemy-seal` 仍是 legacy 跨平面入口，直接写 `wiki/elixirs/` 的 `settled`，`M2.3` 重构为 `promote`。
 
 迁移策略：
 
 - 旧 `wiki/elixirs/` 文件继续按当前 schema 读取，不做强制搬迁。
 - 新候选入口落地后，默认只对新金丹写入 `output/_candidates/elixirs/`。
-- `alchemy-seal` 继续兼容旧 draft / distilling 文件；新 promote gate 稳定后，再把默认入口切到 candidate flow。
+- `alchemy-seal` 继续兼容旧 draft / distilling 文件（legacy）；新 promote gate 稳定后，以 `alchemy-promote` 作为默认 settled 入口。
 - 任一候选 promote 失败必须保持 source candidate 不变，并写明失败原因；不得半写入 `wiki/elixirs/`。
 - 任一候选 promote 成功后也保留 candidate（墓碑 / tombstone）：不删除候选文件，原地改写 frontmatter 为 `elixir_state: superseded`，并写入 `superseded_by: wiki/elixirs/<elixir-id>.md` 与 `promoted_at: <iso8601>`。
 - 对应 revert 时，将 candidate 从 `superseded` 恢复为 `candidate`，清除 `superseded_by / promoted_at`，并删除 `wiki/elixirs/<elixir-id>.md` 的 promoted 文件。
@@ -425,19 +425,28 @@ promoted_at: null
 ---
 ```
 
-当前最小实现已落地字段：`elixir_id`、`elixir_state`、`iteration`、`provenance_corpus`、`derived_from`、`topic`、`created_at`、`updated_at`、`distill_history_json`，`settled` 时补 `sealed_at`。`judgment_refs / decision_refs / counter_evidence / confidence_level / promoted_at` 仍属于目标 schema。
+当前最小实现已落地字段：`kind / elixir_id / elixir_state / protocol / iteration / provenance_corpus / derived_from / topic / counter_evidence / confidence_level / created_at / updated_at / distill_history_json`，`settled` 时补 `sealed_at`。
 
-确认分阶段约束：`M2.1` 起，新建 candidate frontmatter 默认写入 `counter_evidence: [NONE_FOUND]` 与 `confidence_level: low`；旧 `wiki/elixirs/` 直写文件不做强制迁移补字段。
+仍属于目标 schema（`M2.3+`）：`promoted_at / supersedes / superseded_by / judgment_refs / decision_refs / elixir_refs / corpus_id / review_after`。
+
+确认分阶段约束：`M2.1` 起，新建 candidate frontmatter 默认写入 `counter_evidence: [NONE_FOUND]` 与 `confidence_level: low`；`counter_evidence` 的“必须存在且非空”强制仍在 `M2.3` promote gate 执行。旧 `wiki/elixirs/` 直写文件不做强制迁移补字段。
 
 ### 7.3 生命周期
 
 | 状态 | 位置 | 入口 |
 |---|---|---|
-| `draft` | 当前 `wiki/elixirs/`；目标 `output/_candidates/elixirs/` | 当前 `alchemy-start <corpus_id> --topic ...` |
-| `distilling` | 当前 `wiki/elixirs/`；目标 `output/_candidates/elixirs/` | 当前 `alchemy-distill <elixir_id> --question ...` |
-| `candidate` | 目标 `output/_candidates/elixirs/` | planned：准备提交人工评审 |
-| `settled` | `wiki/elixirs/` | 当前 `alchemy-seal <elixir_id>`；目标 `promote` 后 |
-| `superseded` | `wiki/elixirs/`（保留） | planned：被新金丹显式 supersede |
+| `draft` | `output/_candidates/elixirs/` | `alchemy-start <corpus_id> --topic ...` |
+| `distilling` | `output/_candidates/elixirs/` | `alchemy-distill <elixir_id> --question ...` |
+| `candidate` | `output/_candidates/elixirs/` | `alchemy-finalize <elixir-id>`（作者显式 finalize，ready-for-promote） |
+| `settled` | `wiki/elixirs/` | 当前（legacy）`alchemy-seal <elixir_id>`；目标 `alchemy-promote` 后 |
+| `superseded` | `output/_candidates/elixirs/`（tombstone 保留） | planned：候选 promote 成功后原地墓碑化 |
+
+状态转移（`M2.2`）：
+
+- `draft -> candidate`：`alchemy-finalize <elixir-id>`。
+- `distilling -> candidate`：`alchemy-finalize <elixir-id>`。
+- `candidate -> distilling`：再次 `alchemy-distill <elixir-id> --question ...`（回退，允许人工改稿）。
+- `candidate -> settled`：`M2.3` `alchemy-promote`；`M2.2` 暂时仍可走 legacy `alchemy-seal`。
 
 ### 7.4 DAG 约束
 
@@ -447,6 +456,7 @@ promoted_at: null
 
 ### 7.5 Counter-evidence 强制
 
+- `M2.2` `alchemy-finalize` 只执行结构性校验（provenance / DAG / `wiki/derived/` anchor / 路径穿越），不强制 `counter_evidence` 非空。
 - 目标 promote gate 中 `counter_evidence` 字段**不得为空**。
 - 若真的没有反证，显式写 `counter_evidence: [NONE_FOUND]` 并记录 `confidence_level: low`。
 - `M2.3` promote gate 强制规则：`counter_evidence` 必须存在且非空；`[NONE_FOUND]` 视为“显式声明无反证”，允许 promote。
@@ -707,6 +717,7 @@ revert **不可以**：
 - Signal replay 不能稳定去重时，planner 停留在 `observe_only`。
 - 任一 proposal / candidate 无法产生 clean receipt 时，不允许进入默认 apply。
 - M2 `elixir promote` 属于 in-process 不可逆操作；未生成 `elixir_promotion` clean receipt 前，不允许进入默认 apply（`elixir_demotion / elixir_revert` 同理需 receipt）。
+- `M2.2` `alchemy-finalize` 属于 candidate plane 内可逆操作，不要求 receipt；但若执行失败，必须保证 candidate 文件不出现半写状态。
 - 任一写回目标 hash 不匹配时，必须转为 `stale` 或 `human_merge_required`。
 - Heavy/light wrapper 在没有 dry-run plan 的情况下不得执行。
 - LLM backend 未显式配置或 receipt 缺失 usage/accounting 时，不得作为自动 proposal 依据。

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,7 @@ from ..app_utils import next_available_stem, parse_frontmatter, sha256_bytes, sl
 ELIXIR_DIR = "wiki/elixirs"
 CANDIDATE_ELIXIR_DIR = "output/_candidates/elixirs"
 ELIXIR_STATE_VALUES = {"draft", "distilling", "candidate", "settled", "superseded"}
+_ACTIVE_ELIXIR_STATES = {"draft", "distilling", "candidate"}
 
 
 # distill_history is stored as a JSON string in frontmatter because the simple YAML
@@ -257,7 +259,10 @@ def _write_elixir_markdown(path: Path, *, frontmatter: dict[str, Any], body: str
     # Preserve distill_history as JSON string so the lightweight YAML parser remains usable.
     serializable = dict(frontmatter)
     serializable["distill_history_json"] = json.dumps(serializable.pop("distill_history", []), ensure_ascii=False)
-    path.write_text(_render_inserted_frontmatter(serializable) + body, encoding="utf-8")
+    content = _render_inserted_frontmatter(serializable) + body
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(content, encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def _find_corpus(root: Path, corpus_id: str) -> dict[str, Any]:
@@ -348,8 +353,11 @@ def distill_elixir(root: Path, elixir_id: str, *, question: str, include_elixir_
     source_path, frontmatter = _read_elixir_anywhere(root, normalized_id)
     if source_path.resolve().parent == (root / ELIXIR_DIR).resolve():
         raise ValueError(f"sealed elixir cannot be distilled: {elixir_id}")
-    if str(frontmatter.get("elixir_state") or "") == "settled":
+    source_state = str(frontmatter.get("elixir_state") or "")
+    if source_state == "settled":
         raise ValueError(f"sealed elixir cannot be distilled: {elixir_id}")
+    if source_state not in _ACTIVE_ELIXIR_STATES:
+        raise ValueError(f"unsupported_source_state: cannot distill elixir from state={source_state or 'unknown'}")
     corpus_id = str(frontmatter.get("provenance_corpus") or "")
     _find_corpus(root, corpus_id)
     promoted = list_promoted_outputs_for_corpus(root, corpus_id)
@@ -406,11 +414,61 @@ def distill_elixir(root: Path, elixir_id: str, *, question: str, include_elixir_
     }
 
 
+def finalize_elixir(root: Path, *, elixir_id: str) -> dict[str, Any]:
+    normalized_id = _resolve_elixir_id(root, elixir_id)
+    settled_path = _settled_path(root, normalized_id)
+    if settled_path.is_file():
+        raise ValueError("unsupported_source_state: cannot finalize settled elixir")
+
+    candidate_path = _candidate_path(root, normalized_id)
+    if not candidate_path.is_file():
+        raise FileNotFoundError(f"elixir not found: {normalized_id}")
+
+    frontmatter = _parse_elixir_frontmatter(candidate_path)
+    source_state = str(frontmatter.get("elixir_state") or "")
+    _validate_state_for_path(root, source_state, candidate_path)
+
+    if source_state == "candidate":
+        raise ValueError("already_candidate: elixir already finalized")
+    if source_state not in {"draft", "distilling"}:
+        raise ValueError(f"unsupported_source_state: cannot finalize elixir from state={source_state or 'unknown'}")
+
+    corpus_id = str(frontmatter.get("provenance_corpus") or "")
+    _find_corpus(root, corpus_id)
+    promoted = list_promoted_outputs_for_corpus(root, corpus_id)
+    allowed = {item["promoted_to"] for item in promoted if item.get("promoted_to")}
+    source_outputs = [str(item) for item in frontmatter.get("derived_from", []) if isinstance(item, str)]
+    _validate_source_outputs(root, source_outputs, allowed=allowed)
+    if not any(ref.startswith("wiki/derived/") for ref in source_outputs):
+        raise ValueError("金丹 derived_from 必须至少包含一个 wiki/derived/ 源条目（当前仅包含 elixir 引用）")
+
+    canonical = _settled_path(root, normalized_id)
+    if any(str(Path(ref)) == str(canonical.relative_to(root)) for ref in source_outputs if isinstance(ref, str)):
+        raise ValueError(f"cannot reference self: {canonical.relative_to(root)}")
+    cycle = _detect_elixir_cycle(root, canonical, source_outputs)
+    if cycle:
+        raise ValueError("金丹引用形成环路: " + " → ".join(cycle))
+
+    frontmatter.update({"elixir_state": "candidate", "updated_at": utc_now()})
+    original = candidate_path.read_text(encoding="utf-8", errors="replace")
+    body = original.split("---", 2)[-1].lstrip("\n")
+    _write_elixir_markdown(candidate_path, frontmatter=frontmatter, body=body)
+    _validate_state_for_path(root, "candidate", candidate_path)
+    return {
+        "elixir_id": normalized_id,
+        "path": f"{CANDIDATE_ELIXIR_DIR}/{normalized_id}.md",
+        "elixir_state": "candidate",
+    }
+
+
 def seal_elixir(root: Path, elixir_id: str) -> dict[str, Any]:
     normalized_id = _resolve_elixir_id(root, elixir_id)
     source_path, frontmatter = _read_elixir_anywhere(root, normalized_id)
-    if str(frontmatter.get("elixir_state") or "") == "settled":
+    source_state = str(frontmatter.get("elixir_state") or "")
+    if source_state == "settled":
         raise ValueError(f"elixir already sealed: {elixir_id}")
+    if source_state not in _ACTIVE_ELIXIR_STATES:
+        raise ValueError(f"unsupported_source_state: cannot seal elixir from state={source_state or 'unknown'}")
     corpus_id = str(frontmatter.get("provenance_corpus") or "")
     _find_corpus(root, corpus_id)
     promoted = list_promoted_outputs_for_corpus(root, corpus_id)

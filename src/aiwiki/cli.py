@@ -44,6 +44,7 @@ from .runner import (
     llm_probe,
     llm_status,
     run_alchemy_distill,
+    run_alchemy_finalize,
     run_alchemy_seal,
     run_alchemy_start,
     run_ask,
@@ -314,6 +315,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     alchemy_seal_parser = subparsers.add_parser("alchemy-seal", help="Seal a draft elixir (terminal state).")
     alchemy_seal_parser.add_argument("elixir_id")
+
+    alchemy_finalize_parser = subparsers.add_parser(
+        "alchemy-finalize",
+        help="Finalize a draft/distilling elixir into candidate state.",
+    )
+    alchemy_finalize_parser.add_argument("--elixir-id", required=True)
 
     review_parser = subparsers.add_parser(
         "review-page",
@@ -680,6 +687,8 @@ def main(argv: list[str] | None = None) -> int:
             result = run_alchemy_distill(root, args.elixir_id, args.question, **kwargs)
         elif args.command == "alchemy-seal":
             result = run_alchemy_seal(root, args.elixir_id)
+        elif args.command == "alchemy-finalize":
+            result = run_alchemy_finalize(root, elixir_id=args.elixir_id)
         elif args.command == "protocol-learn-add":
             result = run_protocol_learn_add(root, args.protocol, args.title, args.source_refs)
         elif args.command == "protocol-learn-list":
