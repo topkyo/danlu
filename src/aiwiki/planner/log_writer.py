@@ -320,6 +320,9 @@ def _derive_decision(kind: str, severity: str) -> tuple[str, list[str]]:
             return "enqueue-heavy", ["drift_critical"]
         return "ignore", ["unmapped_kind"]
 
+    if kind == "elixir_dependency_break":
+        return "enqueue-heavy", ["elixir_dependency_break_observed"]
+
     return "ignore", ["unmapped_kind"]
 
 

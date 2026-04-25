@@ -18,6 +18,7 @@ from aiwiki.execution.alchemy import (
     ELIXIR_STATE_VALUES,
     PromoteHalfWriteError,
     RevertHalfWriteError,
+    _collect_dependent_elixir_ids,
     _detect_elixir_cycle,
     _parse_elixir_frontmatter,
     _read_elixir_anywhere,
@@ -163,6 +164,12 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
 
     def _update_candidate_frontmatter(self, elixir_id: str, **updates: object) -> None:
         path = _candidate_path(self.root, elixir_id)
+        original = path.read_text(encoding="utf-8")
+        frontmatter = _parse_elixir_frontmatter(path)
+        frontmatter.update(updates)
+        _write_elixir_markdown(path, frontmatter=frontmatter, body=original.split("---", 2)[-1].lstrip("\n"))
+
+    def _update_frontmatter(self, path: Path, **updates: object) -> None:
         original = path.read_text(encoding="utf-8")
         frontmatter = _parse_elixir_frontmatter(path)
         frontmatter.update(updates)
@@ -994,6 +1001,118 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
             rows = list_promoted_outputs_for_corpus(self.root, "corp")
         self.assertEqual(rows, [{"artifact_ref": "a", "promoted_to": "wiki/derived/a.md", "question": ""}])
 
+    def test_collect_dependent_elixir_ids_finds_settled_dependents(self) -> None:
+        source_id = "source-elixir"
+        self._write_stub_elixir(_settled_path(self.root, source_id), elixir_id=source_id, state="settled")
+        self._write_stub_elixir(_settled_path(self.root, "dependent-b"), elixir_id="dependent-b", state="settled")
+        self._write_stub_elixir(_settled_path(self.root, "dependent-c"), elixir_id="dependent-c", state="settled")
+        self._update_frontmatter(
+            _settled_path(self.root, "dependent-b"),
+            derived_from=["wiki/derived/base.md", f"wiki/elixirs/{source_id}.md"],
+        )
+        self._update_frontmatter(
+            _settled_path(self.root, "dependent-c"),
+            derived_from=[f"wiki/elixirs/{source_id}.md", "wiki/derived/base.md"],
+        )
+
+        dependent_ids = _collect_dependent_elixir_ids(self.root, source_elixir_id=source_id)
+
+        self.assertEqual(dependent_ids, ["dependent-b", "dependent-c"])
+
+    def test_collect_dependent_elixir_ids_excludes_self(self) -> None:
+        source_id = "self-elixir"
+        self._write_stub_elixir(_settled_path(self.root, source_id), elixir_id=source_id, state="settled")
+        self._update_frontmatter(
+            _settled_path(self.root, source_id),
+            derived_from=["wiki/derived/base.md", f"wiki/elixirs/{source_id}.md"],
+        )
+
+        dependent_ids = _collect_dependent_elixir_ids(self.root, source_elixir_id=source_id)
+
+        self.assertEqual(dependent_ids, [])
+
+    def test_collect_dependent_elixir_ids_ignores_candidate_plane(self) -> None:
+        source_id = "source-for-candidate-ignore"
+        self._write_stub_elixir(_settled_path(self.root, source_id), elixir_id=source_id, state="settled")
+        candidate_like = self.root / "wiki" / "elixirs" / "candidates" / "dependent-candidate.md"
+        candidate_like.parent.mkdir(parents=True, exist_ok=True)
+        candidate_like.write_text(
+            "\n".join(
+                [
+                    "---",
+                    'kind: "elixir"',
+                    'elixir_id: "dependent-candidate"',
+                    'elixir_state: "settled"',
+                    'protocol: "general"',
+                    'iteration: "0"',
+                    'provenance_corpus: "corp"',
+                    "derived_from:",
+                    f'  - "wiki/elixirs/{source_id}.md"',
+                    'topic: "topic"',
+                    "counter_evidence:",
+                    '  - "NONE_FOUND"',
+                    'confidence_level: "low"',
+                    'created_at: "2026-01-01T00:00:00+00:00"',
+                    'updated_at: "2026-01-01T00:00:00+00:00"',
+                    'distill_history_json: "[]"',
+                    "---",
+                    "# Elixir",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        dependent_ids = _collect_dependent_elixir_ids(self.root, source_elixir_id=source_id)
+
+        self.assertEqual(dependent_ids, [])
+
+    def test_collect_dependent_elixir_ids_handles_missing_frontmatter(self) -> None:
+        source_id = "source-missing-frontmatter"
+        self._write_stub_elixir(_settled_path(self.root, source_id), elixir_id=source_id, state="settled")
+        self._write_stub_elixir(_settled_path(self.root, "good-dependent"), elixir_id="good-dependent", state="settled")
+        self._update_frontmatter(
+            _settled_path(self.root, "good-dependent"),
+            derived_from=[f"wiki/elixirs/{source_id}.md"],
+        )
+        (_settled_path(self.root, "broken-frontmatter")).write_text("# broken\n", encoding="utf-8")
+
+        dependent_ids = _collect_dependent_elixir_ids(self.root, source_elixir_id=source_id)
+
+        self.assertEqual(dependent_ids, ["good-dependent"])
+
+    def test_collect_dependent_elixir_ids_returns_sorted(self) -> None:
+        source_id = "source-sorted"
+        self._write_stub_elixir(_settled_path(self.root, source_id), elixir_id=source_id, state="settled")
+        for dependent_id in ["zeta-dependent", "alpha-dependent", "beta-dependent"]:
+            self._write_stub_elixir(_settled_path(self.root, dependent_id), elixir_id=dependent_id, state="settled")
+            self._update_frontmatter(
+                _settled_path(self.root, dependent_id),
+                derived_from=[f"wiki/elixirs/{source_id}.md"],
+            )
+
+        dependent_ids = _collect_dependent_elixir_ids(self.root, source_elixir_id=source_id)
+
+        self.assertEqual(dependent_ids, ["alpha-dependent", "beta-dependent", "zeta-dependent"])
+
+    def test_collect_dependent_elixir_ids_returns_empty_when_settled_dir_missing(self) -> None:
+        dependent_ids = _collect_dependent_elixir_ids(self.root, source_elixir_id="missing-source")
+
+        self.assertEqual(dependent_ids, [])
+
+    def test_collect_dependent_elixir_ids_ignores_non_list_derived_from(self) -> None:
+        source_id = "source-non-list-derived-from"
+        self._write_stub_elixir(_settled_path(self.root, source_id), elixir_id=source_id, state="settled")
+        dependent_id = "dependent-with-string-derived-from"
+        self._write_stub_elixir(_settled_path(self.root, dependent_id), elixir_id=dependent_id, state="settled")
+        self._update_frontmatter(
+            _settled_path(self.root, dependent_id),
+            derived_from=f"wiki/elixirs/{source_id}.md",
+        )
+
+        dependent_ids = _collect_dependent_elixir_ids(self.root, source_elixir_id=source_id)
+
+        self.assertEqual(dependent_ids, [])
+
     def test_validate_source_outputs_rejects_blank_ref(self) -> None:
         with self.assertRaises(ValueError):
             _validate_source_outputs(self.root, [""], allowed=set())
@@ -1042,6 +1161,44 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         self.assertEqual(receipt["bundle"].get("source_receipt_applied_at"), promote_receipt["applied_at"])
         self.assertEqual(receipt["bundle"].get("source_receipt_action_id"), promote_receipt["action_id"])
         self.assertEqual(receipt["note"], "undo")
+
+    def test_revert_writes_dependency_breaks_in_bundle(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="revert-break-source")
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        dependent_id = "dependent-for-revert"
+        self._write_stub_elixir(_settled_path(self.root, dependent_id), elixir_id=dependent_id, state="settled")
+        self._update_frontmatter(
+            _settled_path(self.root, dependent_id),
+            derived_from=["wiki/derived/base.md", f"wiki/elixirs/{elixir_id}.md"],
+        )
+
+        run_alchemy_revert(self.root, elixir_id=elixir_id)
+
+        latest = _latest_receipt_by_subject(self.root, subject_kind="elixir_revert", subject_id=elixir_id)
+        self.assertIsNotNone(latest)
+        assert latest is not None
+        bundle = latest.get("bundle")
+        self.assertIsInstance(bundle, dict)
+        assert isinstance(bundle, dict)
+        self.assertEqual(
+            bundle.get("dependency_breaks"),
+            [{"dependent_elixir_id": dependent_id, "break_reason": "source_reverted"}],
+        )
+
+    def test_revert_dependency_break_collection_failure_falls_back_to_empty_list(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="revert-break-collector-failure")
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+
+        with patch("aiwiki.execution.alchemy._collect_dependent_elixir_ids", side_effect=RuntimeError("boom")):
+            run_alchemy_revert(self.root, elixir_id=elixir_id)
+
+        latest = _latest_receipt_by_subject(self.root, subject_kind="elixir_revert", subject_id=elixir_id)
+        self.assertIsNotNone(latest)
+        assert latest is not None
+        bundle = latest.get("bundle")
+        self.assertIsInstance(bundle, dict)
+        assert isinstance(bundle, dict)
+        self.assertEqual(bundle.get("dependency_breaks"), [])
 
     def test_revert_rejects_missing_promotion_receipt(self) -> None:
         elixir_id = self._start_candidate_elixir()
@@ -1349,8 +1506,71 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         self.assertEqual(receipt["operation"], "demote")
         self.assertEqual(receipt["generated_by"], "aiwiki-elixir-demote")
         self.assertRegex(str(receipt["action_id"]), rf"^elixir-demote-{slugify(elixir_id)}-\d{{13}}(?:-\d+)?$")
-        self.assertEqual(receipt["bundle"], {})
+        self.assertEqual(receipt["bundle"], {"dependency_breaks": []})
         self.assertEqual(receipt["note"], "demote")
+
+    def test_demote_writes_dependency_breaks_in_bundle(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="demote-break-source")
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        dependent_id = "dependent-for-demote"
+        self._write_stub_elixir(_settled_path(self.root, dependent_id), elixir_id=dependent_id, state="settled")
+        self._update_frontmatter(
+            _settled_path(self.root, dependent_id),
+            derived_from=[f"wiki/elixirs/{elixir_id}.md", "wiki/derived/base.md"],
+        )
+
+        run_alchemy_demote(self.root, elixir_id=elixir_id)
+
+        latest = _latest_receipt_by_subject(self.root, subject_kind="elixir_demotion", subject_id=elixir_id)
+        self.assertIsNotNone(latest)
+        assert latest is not None
+        bundle = latest.get("bundle")
+        self.assertIsInstance(bundle, dict)
+        assert isinstance(bundle, dict)
+        self.assertEqual(
+            bundle.get("dependency_breaks"),
+            [{"dependent_elixir_id": dependent_id, "break_reason": "source_demoted"}],
+        )
+
+    def test_demote_with_no_dependents_writes_empty_breaks(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="demote-no-dependent")
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+
+        run_alchemy_demote(self.root, elixir_id=elixir_id)
+
+        latest = _latest_receipt_by_subject(self.root, subject_kind="elixir_demotion", subject_id=elixir_id)
+        self.assertIsNotNone(latest)
+        assert latest is not None
+        bundle = latest.get("bundle")
+        self.assertIsInstance(bundle, dict)
+        assert isinstance(bundle, dict)
+        self.assertEqual(bundle.get("dependency_breaks"), [])
+
+    def test_demote_dependency_break_collection_failure_falls_back_to_empty_list(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="demote-break-collector-failure")
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+
+        with patch("aiwiki.execution.alchemy._collect_dependent_elixir_ids", side_effect=RuntimeError("boom")):
+            run_alchemy_demote(self.root, elixir_id=elixir_id)
+
+        latest = _latest_receipt_by_subject(self.root, subject_kind="elixir_demotion", subject_id=elixir_id)
+        self.assertIsNotNone(latest)
+        assert latest is not None
+        bundle = latest.get("bundle")
+        self.assertIsInstance(bundle, dict)
+        assert isinstance(bundle, dict)
+        self.assertEqual(bundle.get("dependency_breaks"), [])
+
+    def test_promote_does_not_write_dependency_breaks(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="promote-no-breaks")
+
+        result = run_alchemy_promote(self.root, elixir_id=elixir_id)
+
+        receipt = json.loads((self.root / str(result["receipt_path"])).read_text(encoding="utf-8"))
+        bundle = receipt.get("bundle")
+        self.assertIsInstance(bundle, dict)
+        assert isinstance(bundle, dict)
+        self.assertNotIn("dependency_breaks", bundle)
 
     def test_demote_accepts_externally_modified_settled(self) -> None:
         elixir_id = self._start_candidate_elixir()

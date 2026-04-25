@@ -23,6 +23,7 @@ CANDIDATE_ELIXIR_DIR = "output/_candidates/elixirs"
 ELIXIR_STATE_VALUES = {"draft", "distilling", "candidate", "settled", "superseded"}
 _ACTIVE_ELIXIR_STATES = {"draft", "distilling", "candidate"}
 _CONFIDENCE_LEVELS = {"low", "medium", "high"}
+logger = logging.getLogger("aiwiki")
 
 
 class PromoteHalfWriteError(RuntimeError):
@@ -180,6 +181,43 @@ def _read_elixir_both_planes(
         return frontmatter, body
 
     return _read(settled), _read(candidate)
+
+
+def _collect_dependent_elixir_ids(root: Path, *, source_elixir_id: str) -> list[str]:
+    """Return settled elixir ids whose derived_from references source elixir."""
+    source_ref = f"wiki/elixirs/{source_elixir_id}.md"
+    elixir_root = root / ELIXIR_DIR
+    if not elixir_root.exists():
+        return []
+
+    dependent_ids: set[str] = set()
+    for path in elixir_root.glob("*.md"):
+        try:
+            frontmatter = _parse_elixir_frontmatter(path)
+        except (OSError, ValueError) as exc:
+            logger.warning(
+                "skip elixir during dependency scan: path=%s source_elixir_id=%s error=%s",
+                path,
+                source_elixir_id,
+                exc,
+            )
+            continue
+
+        if str(frontmatter.get("elixir_state") or "") != "settled":
+            continue
+
+        elixir_id = str(frontmatter.get("elixir_id") or "").strip()
+        if not elixir_id or elixir_id == source_elixir_id:
+            continue
+
+        derived_from = frontmatter.get("derived_from")
+        if not isinstance(derived_from, list):
+            continue
+
+        if any(isinstance(item, str) and item == source_ref for item in derived_from):
+            dependent_ids.add(elixir_id)
+
+    return sorted(dependent_ids)
 
 
 def _detect_elixir_cycle(root: Path, new_elixir_path: str | Path, derived_from: list[str]) -> list[str] | None:
@@ -712,6 +750,23 @@ def revert_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
         if tombstone_promoted_at != source_applied_at:
             raise ValueError("revert_conflict_candidate_modified: candidate tombstone no longer matches promotion receipt")
 
+    dependency_breaks: list[dict[str, str]]
+    try:
+        dependent_ids = _collect_dependent_elixir_ids(root, source_elixir_id=normalized_id)
+        dependency_breaks = [
+            {
+                "dependent_elixir_id": dependent_id,
+                "break_reason": "source_reverted",
+            }
+            for dependent_id in dependent_ids
+        ]
+    except Exception:
+        logging.getLogger("aiwiki").exception(
+            "failed to collect elixir dependency breaks for revert: %s",
+            normalized_id,
+        )
+        dependency_breaks = []
+
     tombstone_original_text = candidate_path.read_text(encoding="utf-8", errors="replace")
     candidate_frontmatter = dict(tombstone_frontmatter)
     candidate_frontmatter["elixir_state"] = "candidate"
@@ -742,6 +797,7 @@ def revert_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
         note=note,
         source_receipt_applied_at=source_applied_at,
         source_receipt_action_id=source_action_id,
+        dependency_breaks=dependency_breaks,
     )
     receipt_path = root / str(receipt.get("receipt_path") or "")
     try:
@@ -782,6 +838,23 @@ def demote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
     demoted_frontmatter.pop("superseded_by", None)
     demoted_text = _render_elixir_document(demoted_frontmatter, settled_body)
 
+    dependency_breaks: list[dict[str, str]]
+    try:
+        dependent_ids = _collect_dependent_elixir_ids(root, source_elixir_id=normalized_id)
+        dependency_breaks = [
+            {
+                "dependent_elixir_id": dependent_id,
+                "break_reason": "source_demoted",
+            }
+            for dependent_id in dependent_ids
+        ]
+    except Exception:
+        logging.getLogger("aiwiki").exception(
+            "failed to collect elixir dependency breaks for demote: %s",
+            normalized_id,
+        )
+        dependency_breaks = []
+
     _write_atomic_text(candidate_path, demoted_text)
     try:
         settled_path.unlink()
@@ -806,6 +879,7 @@ def demote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
         protocol=protocol,
         applied_at=applied_at,
         note=note,
+        dependency_breaks=dependency_breaks,
     )
     receipt_path = root / str(receipt.get("receipt_path") or "")
     try:

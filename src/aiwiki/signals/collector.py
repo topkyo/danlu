@@ -14,7 +14,13 @@ from .schema import PROTOCOLS, SCHEMA_VERSION, canonical_dumps, compute_dedupe_k
 SIGNALS_REL_PATH = ".aiwiki/state/signals.jsonl"
 SKIP_EXAMPLES_LIMIT = 5
 SUPPORTED_SOURCES: tuple[str, str, str] = adapters.SUPPORTED_SOURCES
-MAPPED_KINDS: tuple[str, str, str, str] = ("review_feedback", "schedule_tick", "runtime_failure", "drift")
+MAPPED_KINDS: tuple[str, str, str, str, str] = (
+    "review_feedback",
+    "schedule_tick",
+    "runtime_failure",
+    "drift",
+    "elixir_dependency_break",
+)
 
 
 def collect_signals(
@@ -193,11 +199,18 @@ def _to_signal_seeds(source: str, event: dict[str, Any], *, line_no: int, rel_pa
             allowed_protocols=set(PROTOCOLS),
         )
     if source == "archive":
-        return adapters._archive_receipt_to_signals(
-            event,
-            receipt_rel_path=rel_path,
-            history_line_no=line_no,
-        )
+        return [
+            *adapters._archive_receipt_to_signals(
+                event,
+                receipt_rel_path=rel_path,
+                history_line_no=line_no,
+            ),
+            *adapters._elixir_dependency_break_to_signals(
+                event,
+                receipt_rel_path=rel_path,
+                history_line_no=line_no,
+            ),
+        ]
     raise ValueError(f"unsupported source: {source}")
 
 
@@ -223,7 +236,33 @@ def _mapped_invalid_reason(source: str, event: dict[str, Any]) -> str | None:
         return None
 
     if source == "archive":
-        if event.get("kind") != "execution-receipt" or event.get("subject_kind") != "material-archive":
+        if event.get("kind") != "execution-receipt":
+            return None
+
+        subject_kind = str(event.get("subject_kind") or "")
+        if subject_kind in {"elixir_revert", "elixir_demotion"}:
+            protocol = event.get("protocol")
+            if not isinstance(protocol, str) or not protocol:
+                return "archive_missing_protocol"
+
+            bundle = event.get("bundle")
+            if not isinstance(bundle, dict):
+                return None
+            dependency_breaks = bundle.get("dependency_breaks")
+            if dependency_breaks is None:
+                return None
+            if not isinstance(dependency_breaks, list):
+                return "archive_elixir_breaks_invalid"
+
+            for item in dependency_breaks:
+                if not isinstance(item, dict):
+                    return "archive_elixir_break_item_invalid"
+                dependent_elixir_id = item.get("dependent_elixir_id")
+                if not isinstance(dependent_elixir_id, str) or not dependent_elixir_id:
+                    return "archive_elixir_break_item_invalid"
+            return None
+
+        if subject_kind != "material-archive":
             return None
 
         protocol = event.get("protocol")

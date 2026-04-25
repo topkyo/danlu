@@ -358,6 +358,14 @@ class TestValidateErrorPaths(unittest.TestCase):
         errors = validate(record).errors
         self.assertTrue(any("source_kind" in error for error in errors))
 
+    def test_signals_schema_accepts_execution_receipt_source_kind(self) -> None:
+        record = self._valid_record()
+        record["source_kind"] = "execution_receipt"
+        record["source_event_ref"] = ".aiwiki/state/execution-receipts.jsonl#L12"
+        result = validate(record)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.errors, ())
+
     def test_validate_trace_id_invalid(self) -> None:
         record = self._valid_record()
         record["trace_id"] = "not-a-uuid"

@@ -398,11 +398,19 @@ def build_elixir_revert_receipt(
     note: str | None,
     source_receipt_applied_at: str,
     source_receipt_action_id: str,
+    dependency_breaks: list[dict[str, Any]] | None = None,
 ) -> ExecutionReceipt:
     applied_at_value = applied_at or datetime.now(timezone.utc)
     applied_at_iso = applied_at_value.isoformat()
     action_id = _unique_elixir_action_id(root, f"elixir-revert-{slug}", applied_at_value)
     receipt_path = execution_receipt_path(root, action_id)
+    bundle: dict[str, Any] = {
+        "source_receipt_applied_at": source_receipt_applied_at,
+        "source_receipt_action_id": source_receipt_action_id,
+    }
+    if dependency_breaks is not None:
+        bundle["dependency_breaks"] = list(dependency_breaks)
+
     return {
         "version": 1,
         "kind": "execution-receipt",
@@ -420,10 +428,7 @@ def build_elixir_revert_receipt(
         "primary_path": relative_path(root, candidate_path),
         "secondary_path": relative_path(root, wiki_path),
         "receipt_path": relative_path(root, receipt_path),
-        "bundle": {
-            "source_receipt_applied_at": source_receipt_applied_at,
-            "source_receipt_action_id": source_receipt_action_id,
-        },
+        "bundle": bundle,
         "safe_apply_preview": None,
     }
 
@@ -438,11 +443,16 @@ def build_elixir_demotion_receipt(
     protocol: str,
     applied_at: datetime | None = None,
     note: str | None,
+    dependency_breaks: list[dict[str, Any]] | None = None,
 ) -> ExecutionReceipt:
     applied_at_value = applied_at or datetime.now(timezone.utc)
     applied_at_iso = applied_at_value.isoformat()
     action_id = _unique_elixir_action_id(root, f"elixir-demote-{slug}", applied_at_value)
     receipt_path = execution_receipt_path(root, action_id)
+    bundle: dict[str, Any] = {}
+    if dependency_breaks is not None:
+        bundle["dependency_breaks"] = list(dependency_breaks)
+
     return {
         "version": 1,
         "kind": "execution-receipt",
@@ -460,7 +470,7 @@ def build_elixir_demotion_receipt(
         "primary_path": relative_path(root, candidate_path),
         "secondary_path": relative_path(root, wiki_path),
         "receipt_path": relative_path(root, receipt_path),
-        "bundle": {},
+        "bundle": bundle,
         "safe_apply_preview": None,
     }
 

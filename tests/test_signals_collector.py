@@ -551,6 +551,117 @@ class TestArchiveAdapter(_FixtureCase):
         self.assertTrue(decisions.issubset({"enqueue-heavy", "enqueue-light"}))
         self.assertFalse(any("unmapped_kind" in item.get("reason_codes", []) for item in planner_records))
 
+    def test_signals_collector_emits_elixir_dependency_break_from_demote(self) -> None:
+        root = self.temp_root / "archive-elixir-demote"
+        receipts_path = root / ".aiwiki/state/execution-receipts.jsonl"
+        receipts_path.parent.mkdir(parents=True, exist_ok=True)
+        receipts_path.write_text(
+            json.dumps(
+                {
+                    "kind": "execution-receipt",
+                    "subject_kind": "elixir_demotion",
+                    "subject_id": "elixir-a",
+                    "protocol": "research",
+                    "action_id": "elixir-demote-a-1714000000000",
+                    "applied_at": "2026-04-24T11:23:00+00:00",
+                    "bundle": {
+                        "dependency_breaks": [
+                            {
+                                "dependent_elixir_id": "elixir-b",
+                                "break_reason": "source_demoted",
+                            }
+                        ]
+                    },
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+
+        self.assertEqual(result["new_count"], 1)
+        self.assertEqual(result["emitted_by_kind"]["elixir_dependency_break"], 1)
+        records = _read_jsonl(root / ".aiwiki/state/signals.jsonl")
+        self.assertEqual(len(records), 1)
+        signal = records[0]
+        self.assertEqual(signal["kind"], "elixir_dependency_break")
+        self.assertEqual(signal["source_kind"], "execution_receipt")
+        self.assertEqual(signal["severity"], "high")
+        self.assertEqual(signal["source_event_ref"], ".aiwiki/state/execution-receipts.jsonl#L1")
+        self.assertEqual(signal["scope"]["elixir_refs"], ["wiki/elixirs/elixir-b.md"])
+
+    def test_signals_collector_emits_elixir_dependency_break_from_revert(self) -> None:
+        root = self.temp_root / "archive-elixir-revert"
+        receipts_path = root / ".aiwiki/state/execution-receipts.jsonl"
+        receipts_path.parent.mkdir(parents=True, exist_ok=True)
+        receipts_path.write_text(
+            json.dumps(
+                {
+                    "kind": "execution-receipt",
+                    "subject_kind": "elixir_revert",
+                    "subject_id": "elixir-a",
+                    "protocol": "research",
+                    "action_id": "elixir-revert-a-1714000000000",
+                    "applied_at": "2026-04-24T11:24:00Z",
+                    "bundle": {
+                        "dependency_breaks": [
+                            {
+                                "dependent_elixir_id": "elixir-c",
+                                "break_reason": "source_reverted",
+                            }
+                        ]
+                    },
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+
+        self.assertEqual(result["new_count"], 1)
+        self.assertEqual(result["emitted_by_kind"]["elixir_dependency_break"], 1)
+        signal = _read_jsonl(root / ".aiwiki/state/signals.jsonl")[0]
+        self.assertEqual(signal["kind"], "elixir_dependency_break")
+        self.assertEqual(signal["scope"]["elixir_refs"], ["wiki/elixirs/elixir-c.md"])
+        self.assertEqual(signal["evidence_refs"], ["elixir-revert-a-1714000000000"])
+
+    def test_signals_collector_dedupes_elixir_dependency_break_replay(self) -> None:
+        root = self.temp_root / "archive-elixir-dedupe"
+        receipts_path = root / ".aiwiki/state/execution-receipts.jsonl"
+        receipts_path.parent.mkdir(parents=True, exist_ok=True)
+        receipts_path.write_text(
+            json.dumps(
+                {
+                    "kind": "execution-receipt",
+                    "subject_kind": "elixir_demotion",
+                    "subject_id": "elixir-a",
+                    "protocol": "research",
+                    "action_id": "elixir-demote-a-1714000000001",
+                    "applied_at": "2026-04-24T11:25:00+00:00",
+                    "bundle": {
+                        "dependency_breaks": [
+                            {"dependent_elixir_id": "elixir-b", "break_reason": "source_demoted"}
+                        ]
+                    },
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        first = collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+        second = collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+
+        self.assertEqual(first["new_count"], 1)
+        self.assertEqual(second["new_count"], 0)
+        self.assertEqual(second["duplicate_count"], 1)
+        self.assertEqual(len(_read_jsonl(root / ".aiwiki/state/signals.jsonl")), 1)
+
 
 class TestObserveOnlyAST(unittest.TestCase):
     _ALLOWED_PREFIXES = {

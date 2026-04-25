@@ -35,6 +35,7 @@ SOURCE_KINDS: frozenset[str] = frozenset(
         "review_outcome",
         "archive_event",
         "protocol_learning_event",
+        "execution_receipt",
     }
 )
 
@@ -340,6 +341,7 @@ def _validate_source_event_ref(source_kind: str, source_event_ref: str, errors: 
         ),
         "review_outcome": ("review",),
         "archive_event": ("archive", "execution-receipts", "execution_receipts"),
+        "execution_receipt": ("execution-receipts", "execution_receipts"),
         "protocol_learning_event": (
             "protocol_learning",
             "protocol-learning",

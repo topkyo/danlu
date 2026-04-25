@@ -14,7 +14,8 @@
     "review_feedback": 0,
     "schedule_tick": 0,
     "runtime_failure": 0,
-    "drift": 0
+    "drift": 0,
+    "elixir_dependency_break": 0
   },
   "skip_examples": [
     {

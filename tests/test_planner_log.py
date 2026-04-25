@@ -267,6 +267,12 @@ class TestDecisionDerivation(unittest.TestCase):
     def test_drift_critical_maps_to_enqueue_heavy(self) -> None:
         self.assertEqual(log_writer._derive_decision("drift", "critical"), ("enqueue-heavy", ["drift_critical"]))
 
+    def test_planner_log_maps_elixir_dependency_break_to_enqueue_heavy(self) -> None:
+        self.assertEqual(
+            log_writer._derive_decision("elixir_dependency_break", "high"),
+            ("enqueue-heavy", ["elixir_dependency_break_observed"]),
+        )
+
 
 class TestIdempotency(_FixtureCase):
     def test_case_basic_matches_expected_payload_and_summary(self) -> None:
@@ -348,6 +354,51 @@ class TestIdempotency(_FixtureCase):
         self.assertEqual(result["new_count"], 1)
         self.assertEqual(len(records), before_count + 1)
         self.assertEqual(records[-1]["decision"], "escalate-human")
+
+    def test_write_planner_log_maps_elixir_dependency_break_end_to_end(self) -> None:
+        root = self.temp_root / "elixir-break-mapping"
+        signals_path = root / ".aiwiki/state/signals.jsonl"
+        signals_path.parent.mkdir(parents=True, exist_ok=True)
+        signals_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "signal_id": "sig-20260424-elixir0001",
+                    "dedupe_key": "elixir_dependency_break:research:execution_receipt:elixir-demote-a-1::elixir-b",
+                    "kind": "elixir_dependency_break",
+                    "scope": {
+                        "protocol": "research",
+                        "source_ids": [],
+                        "concept_slugs": [],
+                        "elixir_refs": ["wiki/elixirs/elixir-b.md"],
+                        "judgment_refs": [],
+                    },
+                    "severity": "high",
+                    "evidence_refs": ["elixir-demote-a-1"],
+                    "emitted_at": "2026-04-24T11:30:00Z",
+                    "emitted_by": "compile",
+                    "source_kind": "execution_receipt",
+                    "source_event_ref": ".aiwiki/state/execution-receipts.jsonl#L1",
+                    "trace_id": "550e8400-e29b-41d4-a716-446655440000",
+                },
+                separators=(",", ":"),
+                sort_keys=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = write_planner_log(root, _now=_fixed_now)
+
+        self.assertEqual(result["new_count"], 1)
+        planner_records = _read_jsonl(root / ".aiwiki/state/planner-log.jsonl")
+        self.assertEqual(len(planner_records), 1)
+        record = planner_records[0]
+        self.assertEqual(record["decision"], "enqueue-heavy")
+        self.assertEqual(record["mode"], "observe_only")
+        self.assertEqual(record["reason_codes"], ["elixir_dependency_break_observed"])
+        self.assertNotEqual(record["decision"], "ignore")
+        self.assertNotIn("unmapped_kind", record["reason_codes"])
 
     def test_default_signals_path_missing_is_noop(self) -> None:
         root = self.temp_root / "empty-signals"
