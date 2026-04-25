@@ -180,7 +180,7 @@ Signal **从不直接触发 phase**，必须经过 planner 决策。
 - 纯文案澄清、注释增强、对**原本就非法**数据的更明确报错，不触发 version bump。
 - reader / validator 必须先按 `schema_version` 选择 parser，再做字段校验；不允许 best-effort 混读，不允许 silent downgrade。
 
-当前状态：runtime 已有 `runtime-history.jsonl`、LLM receipts、review / execution receipts、planner-state 等可观测输入，但尚未统一归一化为 append-only signal stream。
+当前状态：runtime 已有 `runtime-history.jsonl`、LLM receipts、review / execution receipts、planner-state 等可观测输入；`signals-replay` 已能从 runtime history、LLM receipts 和 execution receipt history 中归一化部分 signal。`archive_event` 的 `source_event_ref` 当前只允许指向 execution receipt history（如 `.aiwiki/state/execution-receipts.jsonl#L12`），避免把 `wiki/archives/` 事实页误当事件源。
 
 落地约束：
 

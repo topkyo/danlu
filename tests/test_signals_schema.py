@@ -540,8 +540,8 @@ class TestValidateErrorPaths(unittest.TestCase):
             ".aiwiki/state/execution-receipts.jsonl#L12",
         )
 
-    def test_archive_event_source_event_ref_still_accepts_archive_substring(self) -> None:
-        self._assert_source_event_ref_valid(
+    def test_archive_event_source_event_ref_rejects_archive_page_path(self) -> None:
+        self._assert_source_event_ref_rejected(
             "archive_event",
             "wiki/archives/material-entry.md#L3",
         )

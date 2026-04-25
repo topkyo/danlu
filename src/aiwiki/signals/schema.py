@@ -340,7 +340,7 @@ def _validate_source_event_ref(source_kind: str, source_event_ref: str, errors: 
             "llm_receipt.jsonl",
         ),
         "review_outcome": ("review",),
-        "archive_event": ("archive", "execution-receipts", "execution_receipts"),
+        "archive_event": ("execution-receipts", "execution_receipts"),
         "execution_receipt": ("execution-receipts", "execution_receipts"),
         "protocol_learning_event": (
             "protocol_learning",
