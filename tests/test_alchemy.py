@@ -612,6 +612,21 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         self.assertEqual(bundle.get("primary_path_sha256"), compute_file_sha256(_settled_path(self.root, elixir_id)))
         self.assertEqual(bundle.get("secondary_path_sha256"), compute_file_sha256(_candidate_path(self.root, elixir_id)))
 
+    def test_promote_receipt_records_counter_evidence_gate_fields(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="promote-gate-receipt")
+        self._update_candidate_frontmatter(
+            elixir_id,
+            counter_evidence=["wiki/derived/evidence-a.md", "wiki/derived/evidence-b.md"],
+            confidence_level="medium",
+        )
+
+        result = run_alchemy_promote(self.root, elixir_id=elixir_id)
+
+        receipt = json.loads((self.root / str(result["receipt_path"])).read_text(encoding="utf-8"))
+        bundle = receipt.get("bundle") or {}
+        self.assertEqual(bundle.get("counter_evidence"), ["wiki/derived/evidence-a.md", "wiki/derived/evidence-b.md"])
+        self.assertEqual(bundle.get("confidence_level"), "medium")
+
     def test_promote_preserves_frontmatter_fields(self) -> None:
         elixir_id = self._start_candidate_elixir()
         self._update_candidate_frontmatter(

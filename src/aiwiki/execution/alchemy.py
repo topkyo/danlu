@@ -681,6 +681,8 @@ def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> di
             note=note,
             primary_path_sha256=primary_hash,
             secondary_path_sha256=secondary_hash,
+            counter_evidence=[str(item).strip() for item in frontmatter.get("counter_evidence", [])],
+            confidence_level=str(frontmatter.get("confidence_level") or "").strip(),
         )
         receipt_result_path = str(receipt.get("receipt_path") or "")
         receipt_path = root / receipt_result_path

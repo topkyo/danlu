@@ -465,6 +465,7 @@ promoted_at: null
 - 若真的没有反证，显式写 `counter_evidence: [NONE_FOUND]` 并记录 `confidence_level: low`。
 - `M2.3` promote gate 强制规则：`counter_evidence` 必须存在且非空；`[NONE_FOUND]` 视为“显式声明无反证”，允许 promote。
 - 当 `counter_evidence == [NONE_FOUND]` 时，`confidence_level` 必须为 `low`；否则 `confidence_level` 可为 `low / medium / high`。
+- M2.3 起，promotion receipt 的 `bundle` 同步记录当次 gate 通过的 `counter_evidence` 与 `confidence_level`，使 execution receipt history 可直接审计 promote evidence。
 
 分阶段落地：`M2.1` 负责 candidate 默认写入，`M2.3` 负责 promote gate 强制校验。
 
