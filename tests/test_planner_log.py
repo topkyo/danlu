@@ -298,6 +298,21 @@ class TestDecisionDerivation(unittest.TestCase):
         self.assertEqual(decision, "enqueue-heavy")
         self.assertEqual(set(reason_codes), {"learning_threshold_observed", "heavy_lane_recommended"})
 
+    def test_counter_evidence_high_maps_to_generate_proposal(self) -> None:
+        decision, reason_codes = log_writer._derive_decision("counter_evidence", "high")
+        self.assertEqual(decision, "generate-proposal")
+        self.assertEqual(set(reason_codes), {"counter_evidence_observed", "proposal_recommended"})
+
+    def test_counter_evidence_critical_maps_to_heavy_lane(self) -> None:
+        decision, reason_codes = log_writer._derive_decision("counter_evidence", "critical")
+        self.assertEqual(decision, "enqueue-heavy")
+        self.assertEqual(set(reason_codes), {"counter_evidence_observed", "heavy_lane_recommended"})
+
+    def test_counter_evidence_medium_is_routine_ignore(self) -> None:
+        decision, reason_codes = log_writer._derive_decision("counter_evidence", "medium")
+        self.assertEqual(decision, "ignore")
+        self.assertEqual(set(reason_codes), {"counter_evidence_routine"})
+
 
 class TestGenerateProposalRouting(_FixtureCase):
     def test_derive_decision_runtime_failure_high_severity_emits_generate_proposal(self) -> None:
@@ -537,6 +552,50 @@ class TestIdempotency(_FixtureCase):
         self.assertFalse(record["side_effects_allowed"])
         self.assertEqual(record["decision"], "generate-proposal")
         self.assertEqual(set(record["reason_codes"]), {"learning_threshold_observed", "proposal_recommended"})
+        self.assertNotIn("unmapped_kind", record["reason_codes"])
+
+    def test_write_planner_log_maps_counter_evidence_end_to_end(self) -> None:
+        root = self.temp_root / "counter-evidence-mapping"
+        signals_path = root / ".aiwiki/state/signals.jsonl"
+        signals_path.parent.mkdir(parents=True, exist_ok=True)
+        signals_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "signal_id": "sig-20260424-counter001",
+                    "dedupe_key": "counter_evidence:research:runtime_history:judgment-alpha:src-followup",
+                    "kind": "counter_evidence",
+                    "scope": {
+                        "protocol": "research",
+                        "source_ids": ["src-followup"],
+                        "concept_slugs": [],
+                        "elixir_refs": [],
+                        "judgment_refs": ["wiki/judgments/judgment-alpha.md"],
+                    },
+                    "severity": "high",
+                    "evidence_refs": ["wiki/judgments/judgment-alpha.md", "wiki/sources/src-followup.md"],
+                    "emitted_at": "2026-04-24T11:46:00Z",
+                    "emitted_by": "compile",
+                    "source_kind": "runtime_history",
+                    "source_event_ref": ".aiwiki/state/runtime-history.jsonl#L2",
+                    "trace_id": "550e8400-e29b-41d4-a716-446655440000",
+                },
+                separators=(",", ":"),
+                sort_keys=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = write_planner_log(root, _now=_fixed_now)
+
+        self.assertEqual(result["new_count"], 1)
+        planner_records = _read_jsonl(root / ".aiwiki/state/planner-log.jsonl")
+        record = planner_records[0]
+        self.assertEqual(record["mode"], "observe_only")
+        self.assertFalse(record["side_effects_allowed"])
+        self.assertEqual(record["decision"], "generate-proposal")
+        self.assertEqual(set(record["reason_codes"]), {"counter_evidence_observed", "proposal_recommended"})
         self.assertNotIn("unmapped_kind", record["reason_codes"])
 
     def test_default_signals_path_missing_is_noop(self) -> None:

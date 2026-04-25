@@ -320,6 +320,15 @@ def _derive_decision(kind: str, severity: str) -> tuple[str, list[str]]:
             return "enqueue-heavy", ["drift_critical"]
         return "ignore", ["unmapped_kind"]
 
+    if kind == "counter_evidence":
+        if severity in {"low", "medium"}:
+            return "ignore", ["counter_evidence_routine"]
+        if severity == "high":
+            return "generate-proposal", ["counter_evidence_observed", "proposal_recommended"]
+        if severity == "critical":
+            return "enqueue-heavy", ["counter_evidence_observed", "heavy_lane_recommended"]
+        return "ignore", ["unmapped_kind"]
+
     if kind == "elixir_dependency_break":
         if severity == "high":
             return "generate-proposal", ["elixir_dependency_break_observed", "proposal_recommended"]
