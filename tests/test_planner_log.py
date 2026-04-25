@@ -22,6 +22,7 @@ from aiwiki.planner.schema import (
     compute_planner_log_dedupe_key,
     validate_planner_log_record,
 )
+from aiwiki.signals.schema import KINDS
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "planner_log"
 
@@ -247,6 +248,15 @@ class TestDecisionDerivation(unittest.TestCase):
         decision, reason_codes = log_writer._derive_decision("unknown_kind", "medium")
         self.assertEqual(decision, "ignore")
         self.assertEqual(set(reason_codes), {"unmapped_kind"})
+
+    def test_all_v1_signal_kinds_have_explicit_routing(self) -> None:
+        severities = ("low", "medium", "high", "critical")
+        missing: list[str] = []
+        for kind in sorted(KINDS):
+            decisions = [log_writer._derive_decision(kind, severity) for severity in severities]
+            if not any("unmapped_kind" not in reason_codes for _decision, reason_codes in decisions):
+                missing.append(kind)
+        self.assertEqual(missing, [])
 
     def test_review_feedback_low_is_unmapped(self) -> None:
         decision, reason_codes = log_writer._derive_decision("review_feedback", "low")
