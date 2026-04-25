@@ -409,6 +409,11 @@ def build_elixir_revert_receipt(
     action_id = _unique_elixir_action_id(root, f"elixir-revert-{slug}", applied_at_value)
     receipt_path = execution_receipt_path(root, action_id)
     bundle: dict[str, Any] = {
+        "from_state": "settled",
+        "tombstone_from_state": "superseded",
+        "to_state": "candidate",
+        "candidate_path": relative_path(root, candidate_path),
+        "wiki_path": relative_path(root, wiki_path),
         "source_receipt_applied_at": source_receipt_applied_at,
         "source_receipt_action_id": source_receipt_action_id,
     }
@@ -453,7 +458,12 @@ def build_elixir_demotion_receipt(
     applied_at_iso = applied_at_value.isoformat()
     action_id = _unique_elixir_action_id(root, f"elixir-demote-{slug}", applied_at_value)
     receipt_path = execution_receipt_path(root, action_id)
-    bundle: dict[str, Any] = {}
+    bundle: dict[str, Any] = {
+        "from_state": "settled",
+        "to_state": "candidate",
+        "candidate_path": relative_path(root, candidate_path),
+        "wiki_path": relative_path(root, wiki_path),
+    }
     if dependency_breaks is not None:
         bundle["dependency_breaks"] = list(dependency_breaks)
 

@@ -475,6 +475,7 @@ promoted_at: null
 - `subject_kind` 明确新增：`elixir_promotion` / `elixir_demotion` / `elixir_revert`。
 - 写入路径保持不变：History 写 `.aiwiki/state/execution-receipts.jsonl`；Single 写 `output/control/execution-receipts/<action_id>.json`。
 - payload 至少包含：`elixir_id`、`protocol`、`from_state`、`to_state`、`candidate_path`、`wiki_path`；`demote/revert` 需补失败原因或来源 receipt id。
+- M2.4 起，`elixir_revert` / `elixir_demotion` receipt 的 `bundle` 显式记录状态迁移与双平面路径；已有 `dependency_breaks` 与 source promotion receipt anchor 保持在同一 bundle 内。
 
 ## 8. Chaining → Distillation → Compounding
 
