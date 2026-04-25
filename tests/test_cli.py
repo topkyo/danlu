@@ -40,6 +40,90 @@ class CLITests(unittest.TestCase):
         payload = json.loads(stdout.getvalue()) if stdout.getvalue().strip() else {}
         return code, payload, stderr.getvalue()
 
+    def _run_main_raw(self, argv: list[str]) -> tuple[int, str, str]:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
+            code = main(["--root", str(self.root), *argv])
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def _write_jsonl(self, relative_path: str, records: list[dict[str, object]]) -> None:
+        path = self.root / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "".join(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n" for record in records),
+            encoding="utf-8",
+        )
+
+    def _read_jsonl(self, relative_path: str) -> list[dict[str, object]]:
+        path = self.root / relative_path
+        if not path.exists():
+            return []
+        records: list[dict[str, object]] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            payload = json.loads(line)
+            if isinstance(payload, dict):
+                records.append(payload)
+        return records
+
+    @staticmethod
+    def _signal_record(
+        signal_id: str,
+        *,
+        kind: str,
+        trace_id: str,
+        emitted_at: str,
+        severity: str = "medium",
+        source_event_ref: str = ".aiwiki/state/runtime-history.jsonl#L1",
+    ) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "signal_id": signal_id,
+            "dedupe_key": f"{kind}:research:runtime_history:{signal_id}",
+            "kind": kind,
+            "scope": {
+                "protocol": "research",
+                "source_ids": [],
+                "concept_slugs": [],
+                "elixir_refs": [],
+                "judgment_refs": [],
+            },
+            "severity": severity,
+            "evidence_refs": [],
+            "emitted_at": emitted_at,
+            "emitted_by": "compile",
+            "source_kind": "runtime_history",
+            "source_event_ref": source_event_ref,
+            "trace_id": trace_id,
+        }
+
+    @staticmethod
+    def _planner_record(
+        signal_id: str,
+        *,
+        decision: str,
+        trace_id: str,
+        decided_at: str,
+        mode: str = "observe_only",
+        reason_codes: list[str] | None = None,
+    ) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "signal_id": signal_id,
+            "dedupe_key": f"{signal_id}:{mode}",
+            "trace_id": trace_id,
+            "decision": decision,
+            "mode": mode,
+            "reason_codes": reason_codes or ["review_feedback_routine"],
+            "budget_used": {},
+            "locks_acquired": [],
+            "primitive_refs": [],
+            "side_effects_allowed": False,
+            "decided_at": decided_at,
+        }
+
     def _copy_signals_fixture_root(self, case_name: str) -> None:
         fixture_root = SIGNALS_FIXTURE_DIR / case_name / "root"
         shutil.copytree(fixture_root, self.root, dirs_exist_ok=True)
@@ -127,6 +211,45 @@ class CLITests(unittest.TestCase):
             ("protocol-learn-add", ["protocol-learn-add", "general", "--title", "Learning", "--source-ref", "wiki/derived/a.md"], "run_protocol_learn_add", (self.root, "general", "Learning", ["wiki/derived/a.md"]), {}),
             ("protocol-learn-list", ["protocol-learn-list", "general"], "run_protocol_learn_list", (self.root, "general"), {"state_filter": None, "include_archived": False}),
             ("protocol-learn-show", ["protocol-learn-show", "learn-general-abc"], "run_protocol_learn_show", (self.root, "learn-general-abc"), {}),
+            (
+                "signals-list",
+                ["signals-list", "--kind", "drift", "--trace-id", "550e8400-e29b-41d4-a716-446655440000", "--since", "2026-04-24T00:00:00Z", "--limit", "7", "--json"],
+                "run_signals_list",
+                (self.root,),
+                {
+                    "kind": "drift",
+                    "trace_id": "550e8400-e29b-41d4-a716-446655440000",
+                    "since": "2026-04-24T00:00:00Z",
+                    "limit": 7,
+                },
+            ),
+            ("signals-show", ["signals-show", "sig-20260424-abc123", "--json"], "run_signals_show", (self.root, "sig-20260424-abc123"), {}),
+            (
+                "planner-log-list",
+                [
+                    "planner-log-list",
+                    "--decision",
+                    "enqueue-heavy",
+                    "--signal-id",
+                    "sig-20260424-abc123",
+                    "--trace-id",
+                    "550e8400-e29b-41d4-a716-446655440000",
+                    "--since",
+                    "2026-04-24T00:00:00Z",
+                    "--limit",
+                    "9",
+                    "--json",
+                ],
+                "run_planner_log_list",
+                (self.root,),
+                {
+                    "decision": "enqueue-heavy",
+                    "signal_id": "sig-20260424-abc123",
+                    "trace_id": "550e8400-e29b-41d4-a716-446655440000",
+                    "since": "2026-04-24T00:00:00Z",
+                    "limit": 9,
+                },
+            ),
             ("protocol-learn-supersede", ["protocol-learn-supersede", "replacement", "old-one", "old-two"], "run_protocol_learn_supersede", (self.root, "replacement", ["old-one", "old-two"]), {}),
             ("review-page", ["review-page", "page.md", "--status", "approved", "--note", "ok", "--confidence", "high"], "review_page", (self.root, "page.md", "approved"), {"note": "ok", "confidence": "high"}),
             ("review-rewrite", ["review-rewrite", "latency", "--status", "accepted", "--note", "ok"], "review_concept_rewrite", (self.root, "latency", "accepted"), {"note": "ok"}),
@@ -490,6 +613,236 @@ class CLITests(unittest.TestCase):
         records = [json.loads(line) for line in planner_log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
         self.assertEqual(len(records), 2)
         self.assertFalse(any("unmapped_kind" in record.get("reason_codes", []) for record in records))
+
+    def test_signals_list_cli_text_output(self) -> None:
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [
+                self._signal_record(
+                    "sig-20260424-txt0001",
+                    kind="drift",
+                    severity="high",
+                    trace_id="550e8400-e29b-41d4-a716-446655440000",
+                    emitted_at="2026-04-24T12:00:00Z",
+                    source_event_ref=".aiwiki/state/execution-receipts.jsonl#L1",
+                ),
+                self._signal_record(
+                    "sig-20260424-txt0002",
+                    kind="review_feedback",
+                    trace_id="550e8400-e29b-41d4-a716-446655440001",
+                    emitted_at="2026-04-24T12:01:00Z",
+                ),
+            ],
+        )
+
+        code, stdout, stderr = self._run_main_raw(
+            [
+                "signals-list",
+                "--kind",
+                "drift",
+                "--trace-id",
+                "550e8400-e29b-41d4-a716-446655440000",
+            ]
+        )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertIn("sig-20260424-txt0001", stdout)
+        self.assertIn("drift", stdout)
+        self.assertIn("high", stdout)
+        self.assertNotIn("sig-20260424-txt0002", stdout)
+
+    def test_signals_list_cli_json_output(self) -> None:
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [
+                self._signal_record(
+                    "sig-20260424-json0001",
+                    kind="runtime_failure",
+                    trace_id="550e8400-e29b-41d4-a716-446655440000",
+                    emitted_at="2026-04-24T12:05:00Z",
+                )
+            ],
+        )
+
+        code, payload, stderr = self._run_main(["signals-list", "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["signal_id"], "sig-20260424-json0001")
+        self.assertEqual(payload[0]["kind"], "runtime_failure")
+
+    def test_signals_show_cli_includes_planner_decisions(self) -> None:
+        signal_id = "sig-20260424-show0001"
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [
+                self._signal_record(
+                    signal_id,
+                    kind="elixir_dependency_break",
+                    severity="high",
+                    trace_id="550e8400-e29b-41d4-a716-446655440000",
+                    emitted_at="2026-04-24T12:10:00Z",
+                    source_event_ref=".aiwiki/state/execution-receipts.jsonl#L9",
+                )
+            ],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [
+                self._planner_record(
+                    signal_id,
+                    decision="enqueue-heavy",
+                    trace_id="550e8400-e29b-41d4-a716-446655440000",
+                    decided_at="2026-04-24T12:11:00Z",
+                    reason_codes=["elixir_dependency_break_observed"],
+                )
+            ],
+        )
+
+        code, stdout, stderr = self._run_main_raw(["signals-show", signal_id])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertIn("Signal:", stdout)
+        self.assertIn("kind: elixir_dependency_break", stdout)
+        self.assertIn("Related planner decisions:", stdout)
+        self.assertIn("enqueue-heavy", stdout)
+
+    def test_signals_show_cli_not_found_exits_nonzero(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
+            with self.assertRaises(SystemExit) as ctx:
+                main(["--root", str(self.root), "signals-show", "sig-20260424-missing"])
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("signal not found: sig-20260424-missing", stderr.getvalue())
+
+    def test_planner_log_list_cli_text_output(self) -> None:
+        signal_id = "sig-20260424-pltxt001"
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [
+                self._planner_record(
+                    signal_id,
+                    decision="enqueue-heavy",
+                    trace_id="550e8400-e29b-41d4-a716-446655440000",
+                    decided_at="2026-04-24T12:20:00Z",
+                    reason_codes=["elixir_dependency_break_observed"],
+                ),
+                self._planner_record(
+                    "sig-20260424-pltxt002",
+                    decision="enqueue-light",
+                    trace_id="550e8400-e29b-41d4-a716-446655440001",
+                    decided_at="2026-04-24T12:19:00Z",
+                    reason_codes=["review_feedback_routine"],
+                ),
+            ],
+        )
+
+        code, stdout, stderr = self._run_main_raw(["planner-log-list", "--decision", "enqueue-heavy"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertIn("enqueue-heavy", stdout)
+        self.assertIn(signal_id, stdout)
+        self.assertNotIn("enqueue-light", stdout)
+
+    def test_planner_log_list_cli_json_output(self) -> None:
+        signal_id = "sig-20260424-pljson001"
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [
+                self._planner_record(
+                    signal_id,
+                    decision="ignore",
+                    trace_id="550e8400-e29b-41d4-a716-446655440000",
+                    decided_at="2026-04-24T12:25:00Z",
+                    reason_codes=["schedule_tick_routine"],
+                )
+            ],
+        )
+
+        code, payload, stderr = self._run_main(["planner-log-list", "--signal-id", signal_id, "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["signal_id"], signal_id)
+        self.assertEqual(payload[0]["decision"], "ignore")
+
+    def test_signals_list_invalid_since_exits_nonzero(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
+            with self.assertRaises(SystemExit) as ctx:
+                main(["--root", str(self.root), "signals-list", "--since", "not-a-datetime"])
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("Invalid since datetime", stderr.getvalue())
+
+    def test_signals_list_invalid_limit_exits_nonzero(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
+            with self.assertRaises(SystemExit) as ctx:
+                main(["--root", str(self.root), "signals-list", "--limit", "0"])
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("limit must be greater than 0", stderr.getvalue())
+
+    def test_signals_show_elixir_dependency_break_end_to_end(self) -> None:
+        receipts_path = self.root / ".aiwiki/state/execution-receipts.jsonl"
+        receipts_path.parent.mkdir(parents=True, exist_ok=True)
+        receipts_path.write_text(
+            json.dumps(
+                {
+                    "kind": "execution-receipt",
+                    "subject_kind": "elixir_demotion",
+                    "subject_id": "elixir-a",
+                    "protocol": "research",
+                    "action_id": "elixir-demote-a-1714000000000",
+                    "applied_at": "2026-04-24T11:23:00+00:00",
+                    "bundle": {
+                        "dependency_breaks": [
+                            {
+                                "dependent_elixir_id": "elixir-b",
+                                "break_reason": "source_demoted",
+                            }
+                        ]
+                    },
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        sig_code, sig_payload, sig_stderr = self._run_main(
+            ["signals-replay", "--source", "archive", "--trace-id", "550e8400-e29b-41d4-a716-446655440000"]
+        )
+        self.assertEqual(sig_code, 0)
+        self.assertEqual(sig_stderr, "")
+        self.assertEqual(sig_payload["new_count"], 1)
+
+        planner_code, planner_payload, planner_stderr = self._run_main(["planner-log-replay"])
+        self.assertEqual(planner_code, 0)
+        self.assertEqual(planner_stderr, "")
+        self.assertEqual(planner_payload["new_count"], 1)
+
+        records = self._read_jsonl(".aiwiki/state/signals.jsonl")
+        self.assertEqual(len(records), 1)
+        signal_id = str(records[0]["signal_id"])
+
+        show_code, show_stdout, show_stderr = self._run_main_raw(["signals-show", signal_id])
+        self.assertEqual(show_code, 0)
+        self.assertEqual(show_stderr, "")
+        self.assertIn(signal_id, show_stdout)
+        self.assertIn("elixir_dependency_break", show_stdout)
+        self.assertIn("Related planner decisions:", show_stdout)
+        self.assertIn("enqueue-heavy", show_stdout)
 
 
 if __name__ == "__main__":

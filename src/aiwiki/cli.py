@@ -55,6 +55,7 @@ from .runner import (
     run_demote,
     run_lint,
     run_nightly,
+    run_planner_log_list,
     run_promote,
     run_protocol_learn_add,
     run_protocol_learn_age,
@@ -64,6 +65,8 @@ from .runner import (
     run_protocol_learn_show,
     run_protocol_learn_supersede,
     run_protocol_learn_verify,
+    run_signals_list,
+    run_signals_show,
     watch_inbox,
 )
 from .signals import collect_signals
@@ -210,6 +213,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     protocol_learn_show_parser = subparsers.add_parser("protocol-learn-show", help="Show a protocol learning.")
     protocol_learn_show_parser.add_argument("learning_id", help="Learning id.")
+
+    signals_list_parser = subparsers.add_parser("signals-list", help="List runtime signals (read-only inspection).")
+    signals_list_parser.add_argument("--kind", help="Optional exact signal kind filter.")
+    signals_list_parser.add_argument("--trace-id", help="Optional exact trace_id filter.")
+    signals_list_parser.add_argument("--since", help="Optional ISO datetime lower bound (inclusive).")
+    signals_list_parser.add_argument("--limit", type=int, default=20, help="Maximum number of results (recent first).")
+    signals_list_parser.add_argument("--json", action="store_true", help="Return full JSON records.")
+
+    signals_show_parser = subparsers.add_parser("signals-show", help="Show one signal and related planner decisions.")
+    signals_show_parser.add_argument("signal_id", help="Signal id.")
+    signals_show_parser.add_argument("--json", action="store_true", help="Return full JSON payload.")
+
+    planner_log_list_parser = subparsers.add_parser(
+        "planner-log-list",
+        help="List planner log records (read-only inspection).",
+    )
+    planner_log_list_parser.add_argument("--decision", help="Optional exact planner decision filter.")
+    planner_log_list_parser.add_argument("--signal-id", help="Optional exact signal_id filter.")
+    planner_log_list_parser.add_argument("--trace-id", help="Optional exact trace_id filter.")
+    planner_log_list_parser.add_argument("--since", help="Optional ISO datetime lower bound (inclusive).")
+    planner_log_list_parser.add_argument("--limit", type=int, default=20, help="Maximum number of results (recent first).")
+    planner_log_list_parser.add_argument("--json", action="store_true", help="Return full JSON records.")
 
     protocol_learn_age_parser = subparsers.add_parser(
         "protocol-learn-age",
@@ -622,6 +647,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     root = Path(args.root).resolve()
+    text_output: str | None = None
 
     try:
         if args.command == "layout":
@@ -735,6 +761,40 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif args.command == "protocol-learn-show":
             result = run_protocol_learn_show(root, args.learning_id)
+        elif args.command == "signals-list":
+            result = run_signals_list(
+                root,
+                kind=args.kind,
+                trace_id=args.trace_id,
+                since=args.since,
+                limit=args.limit,
+            )
+            if not args.json:
+                text_output = "\n".join(_format_signal_summary_line(item) for item in result) or "(no signals)"
+        elif args.command == "signals-show":
+            result = run_signals_show(root, args.signal_id)
+            if result.get("status") == "not_found":
+                raise ValueError(f"signal not found: {args.signal_id}")
+            if not args.json:
+                signal = result.get("signal")
+                planner_decisions = result.get("planner_decisions")
+                if not isinstance(signal, dict) or not isinstance(planner_decisions, list):
+                    raise ValueError("Invalid runner payload for signals-show.")
+                text_output = _format_signal_show_text(signal, planner_decisions)
+        elif args.command == "planner-log-list":
+            result = run_planner_log_list(
+                root,
+                decision=args.decision,
+                signal_id=args.signal_id,
+                trace_id=args.trace_id,
+                since=args.since,
+                limit=args.limit,
+            )
+            if not args.json:
+                text_output = (
+                    "\n".join(_format_planner_decision_summary_line(item) for item in result)
+                    or "(no planner decisions)"
+                )
         elif args.command == "protocol-learn-age":
             result = run_protocol_learn_age(root, protocol=args.protocol, apply=args.apply)
         elif args.command == "protocol-learn-verify":
@@ -878,8 +938,65 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # pragma: no cover - exercised in CLI usage
         parser.exit(1, f"error: {exc}\n")
 
+    if text_output is not None:
+        print(text_output)
+        return 0
+
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
+
+
+def _format_signal_summary_line(record: dict[str, object]) -> str:
+    scope_protocol = ""
+    scope = record.get("scope")
+    if isinstance(scope, dict):
+        scope_protocol = str(scope.get("protocol") or "")
+    return "  ".join(
+        [
+            str(record.get("signal_id") or ""),
+            str(record.get("kind") or ""),
+            str(record.get("severity") or ""),
+            str(record.get("emitted_at") or ""),
+            scope_protocol,
+            str(record.get("source_event_ref") or ""),
+        ]
+    )
+
+
+def _format_planner_decision_summary_line(record: dict[str, object]) -> str:
+    reason_codes = record.get("reason_codes")
+    if isinstance(reason_codes, list):
+        rendered_reasons = json.dumps(reason_codes, ensure_ascii=False)
+    else:
+        rendered_reasons = str(reason_codes or "[]")
+    return "  ".join(
+        [
+            str(record.get("decided_at") or ""),
+            str(record.get("decision") or ""),
+            str(record.get("mode") or ""),
+            str(record.get("signal_id") or ""),
+            rendered_reasons,
+        ]
+    )
+
+
+def _format_signal_show_text(signal: dict[str, object], planner_decisions: list[object]) -> str:
+    lines = [f"Signal: {str(signal.get('signal_id') or '')}"]
+    for key in sorted(signal):
+        value = signal[key]
+        if isinstance(value, (dict, list)):
+            rendered = json.dumps(value, ensure_ascii=False, sort_keys=True)
+        else:
+            rendered = str(value)
+        lines.append(f"  {key}: {rendered}")
+    lines.append("Related planner decisions:")
+    decisions = [item for item in planner_decisions if isinstance(item, dict)]
+    if not decisions:
+        lines.append("  (none)")
+    else:
+        for decision in decisions:
+            lines.append(f"  - {_format_planner_decision_summary_line(decision)}")
+    return "\n".join(lines)
 
 
 def _add_auto_flags(parser: argparse.ArgumentParser) -> None:

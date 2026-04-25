@@ -1395,6 +1395,60 @@ def run_protocol_learn_show(root: Path, learning_id: str) -> dict[str, Any]:
     return show_learning(root, learning_id)
 
 
+def run_signals_list(
+    root: Path,
+    *,
+    kind: str | None = None,
+    trace_id: str | None = None,
+    since: str | None = None,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    from .inspection import read_signals
+
+    return read_signals(
+        root,
+        kind=kind,
+        trace_id=trace_id,
+        since=since,
+        limit=limit,
+    )
+
+
+def run_signals_show(root: Path, signal_id: str) -> dict[str, Any]:
+    from .inspection import find_planner_decisions_for_signal, find_signal_by_id
+
+    signal = find_signal_by_id(root, signal_id)
+    if signal is None:
+        return {"status": "not_found", "signal_id": signal_id}
+    decisions = find_planner_decisions_for_signal(root, signal_id)
+    return {
+        "status": "ok",
+        "signal": signal,
+        "planner_decisions": decisions,
+    }
+
+
+def run_planner_log_list(
+    root: Path,
+    *,
+    decision: str | None = None,
+    signal_id: str | None = None,
+    trace_id: str | None = None,
+    since: str | None = None,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    from .inspection import read_planner_decisions
+
+    return read_planner_decisions(
+        root,
+        decision=decision,
+        signal_id=signal_id,
+        trace_id=trace_id,
+        since=since,
+        limit=limit,
+    )
+
+
 @runtime_write_operation
 def run_protocol_learn_age(root: Path, protocol: str | None = None, apply: bool = False) -> dict[str, Any]:
     from .execution.protocol_learnings import age_learnings
