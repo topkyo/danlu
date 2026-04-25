@@ -151,7 +151,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["selected_count"], 1)
         self.assertEqual(result["scope_preview"]["protocols"], ["ops"])
-        self.assertEqual([step["primitive"] for step in result["primitive_plan"]], ["route", "compile", "lint"])
+        self.assertEqual([step["primitive"] for step in result["primitive_plan"]], ["route", "compile", "lint", "nightly"])
         self.assertEqual(result["scope_preview"]["signal_ids"], ["sig-20260425-light01"])
 
     def test_scope_selector_filters_by_protocol(self) -> None:
@@ -201,10 +201,10 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         after = _snapshot_files(self.root)
         self.assertEqual(after, before)
 
-    def test_apply_rejects_missing_action_ids(self) -> None:
+    def test_apply_rejects_missing_action_ids_and_primitives(self) -> None:
         self._seed_lane_records()
 
-        with self.assertRaisesRegex(ValueError, "requires at least one --action-id"):
+        with self.assertRaisesRegex(ValueError, "requires at least one --action-id or --primitive"):
             run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[])
 
     def test_apply_rejects_empty_dry_run_plan(self) -> None:
@@ -229,7 +229,48 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(result["action_ids"], ["act-1", "act-2"])
         self.assertEqual(result["plan"]["selected_count"], 1)
         self.assertEqual(result["apply_result"], {"receipt_path": "receipt.json"})
+        self.assertEqual(result["primitive_results"], [])
         mocked.assert_called_once_with(self.root, ["act-1", "act-2"], note="ship", dry_run=False)
+
+    def test_apply_writes_receipt_for_deterministic_primitive(self) -> None:
+        self._seed_lane_records()
+
+        with patch("aiwiki.runner.compile_wiki", return_value={"updated_source_pages": ["wiki/sources/a.md"]}) as mocked:
+            result = run_alchemy_lane_apply(
+                self.root,
+                lane="heavy",
+                scope="all",
+                action_ids=[],
+                primitives=["compile"],
+                note="compile lane",
+            )
+
+        self.assertEqual(result["status"], "applied")
+        self.assertEqual(result["primitives"], ["compile"])
+        self.assertIsNone(result["apply_result"])
+        mocked.assert_called_once_with(self.root)
+        primitive_result = result["primitive_results"][0]
+        receipt_path = self.root / primitive_result["receipt_path"]
+        self.assertTrue(receipt_path.exists())
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        self.assertEqual(receipt["kind"], "execution-receipt")
+        self.assertEqual(receipt["generated_by"], "aiwiki-alchemy-lane")
+        self.assertEqual(receipt["operation"], "alchemy-lane-primitive")
+        self.assertEqual(receipt["primitive"], "compile")
+        self.assertEqual(receipt["lane"], "heavy")
+        self.assertFalse(receipt["revert_supported"])
+        history = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/execution-receipts.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(history[-1]["action_id"], receipt["action_id"])
+
+    def test_apply_rejects_primitive_absent_from_lane_plan(self) -> None:
+        self._seed_lane_records()
+
+        with self.assertRaisesRegex(RuntimeError, "not present in the dry-run plan"):
+            run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[], primitives=["nightly"])
 
 
 class AlchemyLaneCLITests(unittest.TestCase):

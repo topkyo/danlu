@@ -37,6 +37,7 @@ from .app_utils import (
     runtime_write_lock,
     runtime_write_operation,
     sha256_bytes,
+    slugify,
     utc_now,
 )
 from .config import LLMConfig
@@ -1472,7 +1473,8 @@ def run_alchemy_lane_apply(
     *,
     lane: str,
     scope: str,
-    action_ids: list[str],
+    action_ids: list[str] | None = None,
+    primitives: list[str] | None = None,
     note: str | None = None,
     planner_log_path: Path | None = None,
     signals_path: Path | None = None,
@@ -1483,9 +1485,10 @@ def run_alchemy_lane_apply(
     from .app_compile import apply_machine_memory_actions_batch
     from .planner import preview_alchemy_lane
 
-    normalized_action_ids = [item.strip() for item in action_ids if item.strip()]
-    if not normalized_action_ids:
-        raise ValueError("alchemy lane --apply requires at least one --action-id")
+    normalized_action_ids = [item.strip() for item in (action_ids or []) if item.strip()]
+    normalized_primitives = _normalize_lane_primitives(primitives or [])
+    if not normalized_action_ids and not normalized_primitives:
+        raise ValueError("alchemy lane --apply requires at least one --action-id or --primitive")
 
     plan = preview_alchemy_lane(
         root,
@@ -1503,20 +1506,175 @@ def run_alchemy_lane_apply(
     if int(plan.get("selected_count") or 0) <= 0:
         raise RuntimeError("alchemy lane apply requires a non-empty dry-run plan")
 
-    apply_result = apply_machine_memory_actions_batch(
-        root,
-        normalized_action_ids,
-        note=note or f"alchemy {lane} apply for scope {scope}",
-        dry_run=False,
-    )
+    primitive_results = [
+        _run_receipted_lane_primitive(
+            root,
+            lane=str(plan.get("lane") or lane),
+            scope=str(plan.get("scope") or scope),
+            primitive=primitive,
+            plan=plan,
+            note=note,
+        )
+        for primitive in normalized_primitives
+    ]
+    apply_result = None
+    if normalized_action_ids:
+        apply_result = apply_machine_memory_actions_batch(
+            root,
+            normalized_action_ids,
+            note=note or f"alchemy {lane} apply for scope {scope}",
+            dry_run=False,
+        )
     return {
         "status": "applied",
         "lane": str(plan.get("lane") or lane),
         "scope": str(plan.get("scope") or scope),
         "action_ids": normalized_action_ids,
+        "primitives": normalized_primitives,
         "plan": plan,
+        "primitive_results": primitive_results,
         "apply_result": apply_result,
     }
+
+
+def _normalize_lane_primitives(primitives: list[str]) -> list[str]:
+    allowed = {"compile", "lint", "nightly"}
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in primitives:
+        primitive = item.strip().lower()
+        if not primitive:
+            continue
+        if primitive not in allowed:
+            raise ValueError(f"unsupported alchemy lane primitive: {item}")
+        if primitive in seen:
+            continue
+        seen.add(primitive)
+        normalized.append(primitive)
+    return normalized
+
+
+def _run_receipted_lane_primitive(
+    root: Path,
+    *,
+    lane: str,
+    scope: str,
+    primitive: str,
+    plan: dict[str, Any],
+    note: str | None,
+) -> dict[str, Any]:
+    planned_primitives = {
+        str(item.get("primitive") or "")
+        for item in plan.get("primitive_plan", [])
+        if isinstance(item, dict)
+    }
+    if primitive not in planned_primitives:
+        raise RuntimeError(f"primitive {primitive!r} is not present in the dry-run plan for lane {lane!r}")
+
+    if primitive == "compile":
+        result = compile_wiki(root)
+    elif primitive == "lint":
+        result = lint_wiki(root)
+    elif primitive == "nightly":
+        result = nightly_health(root)
+    else:  # pragma: no cover - guarded by _normalize_lane_primitives
+        raise ValueError(f"unsupported alchemy lane primitive: {primitive}")
+
+    applied_at = utc_now()
+    action_id = _unique_lane_primitive_action_id(root, lane=lane, primitive=primitive, applied_at=applied_at)
+    from .app_execution import append_execution_receipt_history
+    from .render.paths import execution_receipt_path
+
+    receipt_path = execution_receipt_path(root, action_id)
+    receipt = {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-alchemy-lane",
+        "applied_at": applied_at,
+        "operation": "alchemy-lane-primitive",
+        "action_id": action_id,
+        "title": f"Alchemy {lane} {primitive}",
+        "status": "applied",
+        "protocol": _first_plan_protocol(plan),
+        "subject_kind": "alchemy_lane_primitive",
+        "subject_id": f"{lane}:{scope}:{primitive}",
+        "apply_mode": f"alchemy-{lane}-{primitive}",
+        "note": note or "",
+        "primary_path": _primary_result_path(result),
+        "secondary_path": "",
+        "receipt_path": relative_path(root, receipt_path),
+        "lane": lane,
+        "scope": scope,
+        "primitive": primitive,
+        "revert_supported": False,
+        "source_plan": _lane_receipt_plan_summary(plan),
+        "result_summary": _lane_receipt_result_summary(result),
+    }
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    append_execution_receipt_history(root, receipt)
+    return {
+        "primitive": primitive,
+        "receipt_path": relative_path(root, receipt_path),
+        "result": result,
+    }
+
+
+def _unique_lane_primitive_action_id(root: Path, *, lane: str, primitive: str, applied_at: str) -> str:
+    from .render.paths import execution_receipt_path
+
+    timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
+    base = slugify(f"alchemy-{lane}-{primitive}-{timestamp}")
+    candidate = base
+    n = 2
+    while execution_receipt_path(root, candidate).exists():
+        candidate = f"{base}-{n}"
+        n += 1
+    return candidate
+
+
+def _first_plan_protocol(plan: dict[str, Any]) -> str:
+    scope_preview = plan.get("scope_preview")
+    if isinstance(scope_preview, dict):
+        protocols = scope_preview.get("protocols")
+        if isinstance(protocols, list) and protocols:
+            return str(protocols[0])
+    return ""
+
+
+def _primary_result_path(result: dict[str, Any]) -> str:
+    for key in ("state_path", "path", "semantic_report"):
+        value = result.get(key)
+        if isinstance(value, str) and value:
+            return value
+    repair_backlog = result.get("repair_backlog")
+    if isinstance(repair_backlog, str) and repair_backlog:
+        return repair_backlog
+    return ""
+
+
+def _lane_receipt_plan_summary(plan: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "lane": str(plan.get("lane") or ""),
+        "scope": str(plan.get("scope") or ""),
+        "selected_count": int(plan.get("selected_count") or 0),
+        "scope_preview": plan.get("scope_preview") if isinstance(plan.get("scope_preview"), dict) else {},
+        "primitive_plan": list(plan.get("primitive_plan") or []),
+    }
+
+
+def _lane_receipt_result_summary(result: dict[str, Any]) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    for key in ("state_path", "repair_backlog", "semantic_report", "llm_used"):
+        if key in result:
+            summary[key] = result[key]
+    if "updated_source_pages" in result:
+        summary["updated_source_pages_count"] = len(result.get("updated_source_pages") or [])
+    if "updated_concept_pages" in result:
+        summary["updated_concept_pages_count"] = len(result.get("updated_concept_pages") or [])
+    if "counts" in result and isinstance(result.get("counts"), dict):
+        summary["counts"] = result["counts"]
+    return summary
 
 
 @runtime_write_operation

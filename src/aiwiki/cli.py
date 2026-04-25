@@ -386,6 +386,13 @@ def build_parser() -> argparse.ArgumentParser:
         lane_parser.add_argument("--dry-run", action="store_true", help="Preview without executing primitives.")
         lane_parser.add_argument("--apply", action="store_true", help="M5 controlled apply bridge for explicit receipted action ids.")
         lane_parser.add_argument("--action-id", action="append", default=[], help="Machine-memory action id to apply; may be repeated.")
+        lane_parser.add_argument(
+            "--primitive",
+            action="append",
+            default=[],
+            choices=("compile", "lint", "nightly"),
+            help="Deterministic receipted lane primitive to apply; may be repeated.",
+        )
         lane_parser.add_argument("--note", default=None)
         lane_parser.add_argument("--planner-log-path", type=Path, default=None)
         lane_parser.add_argument("--signals-path", type=Path, default=None)
@@ -785,6 +792,7 @@ def main(argv: list[str] | None = None) -> int:
                 result = run_alchemy_lane_apply(
                     root,
                     action_ids=args.action_id,
+                    primitives=args.primitive,
                     note=args.note,
                     **lane_kwargs,
                 )

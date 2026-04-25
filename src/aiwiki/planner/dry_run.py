@@ -44,6 +44,7 @@ _PRIMITIVE_PLANS = {
         ("route", "Preview active corpus cooling and maintenance scope."),
         ("compile", "Preview metadata and index refresh only."),
         ("lint", "Preview read-only drift and aging checks."),
+        ("nightly", "Preview deterministic nightly health refresh."),
     ),
 }
 

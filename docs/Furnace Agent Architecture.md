@@ -18,7 +18,7 @@ related_docs:
 
 这份文档是炼丹炉（aiwiki runtime）当前终局架构的唯一 SoT。
 
-> **实现状态说明（2026-04-24）**：本文定义终局架构边界，不等同于所有机制均已完整落地。当前 runtime 已落地五层文件平面、显式 LLM backend、Product Shell shell-facing contract、L2 protocol-learning 生命周期、active corpus / output candidate state、repair planner state，最小金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 链路，以及 heavy/light lane 的 read-only dry-run preview 和显式 receipted action apply bridge。完整 signal planner、heavy/light 执行调度器、L3 prompt/policy proposal 仍属于架构授权的待落地机制。
+> **实现状态说明（2026-04-24）**：本文定义终局架构边界，不等同于所有机制均已完整落地。当前 runtime 已落地五层文件平面、显式 LLM backend、Product Shell shell-facing contract、L2 protocol-learning 生命周期、active corpus / output candidate state、repair planner state，最小金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 链路，以及 heavy/light lane 的 read-only dry-run preview、显式 receipted action apply bridge 和 deterministic primitive receipt wrapper。完整 signal planner、heavy/light 自动执行调度器、L3 prompt/policy proposal 仍属于架构授权的待落地机制。
 
 它同时取代：
 
@@ -80,7 +80,7 @@ related_docs:
 | active corpus / output candidates | implemented | `.aiwiki/state/active-corpora.json` 与 `.aiwiki/state/output-candidates.json` 已作为运行态工作集与候选状态。 |
 | 金丹最小链路 | partial | 当前 CLI 为 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote`，已落 `wiki/elixirs/`、provenance 与 DAG 校验；候选目录、promote/demote/revert 语义仍待收口。 |
 | planner | partial | 当前已有 `.aiwiki/state/planner-state.json` 的 repair/execution proposal planner；完整 signal planner 与 append-only planner log 未落地。 |
-| heavy/light alchemy lane | partial | 已有 `aiwiki alchemy heavy|light <scope> --dry-run` 只读 preview，以及 `--apply --action-id ...` 到既有 receipted low-risk action batch 的显式桥接；当前尚未执行 compile/lint/nightly/review/distill lane 序列。 |
+| heavy/light alchemy lane | partial | 已有 `aiwiki alchemy heavy|light <scope> --dry-run` 只读 preview，`--apply --action-id ...` 到既有 receipted low-risk action batch 的显式桥接，以及 `--apply --primitive compile|lint|nightly` 的 deterministic receipt wrapper；当前尚未执行 LLM-backed 或 proposal/distill lane 序列。 |
 | L3 prompt/policy proposal | planned | 架构允许生成 `output/_proposals/prompt|policy`，但 runtime 入口、review queue 接线和 apply/revert 尚待实现。 |
 
 ## 2.2 9+ Feasibility Contract
