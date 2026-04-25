@@ -460,7 +460,7 @@ promoted_at: null
 
 ### 7.5 Counter-evidence 强制
 
-- `M2.2` `alchemy-finalize` 只执行结构性校验（provenance / DAG / `wiki/derived/` anchor / 路径穿越），不强制 `counter_evidence` 非空。
+- `M2.2` `alchemy-finalize` 只执行结构性校验（provenance / DAG / `wiki/derived/` anchor / 路径穿越），不强制 `counter_evidence` 非空；校验失败必须保持 candidate 文件不变，不得半写成 `candidate` 状态。
 - 目标 promote gate 中 `counter_evidence` 字段**不得为空**。
 - 若真的没有反证，显式写 `counter_evidence: [NONE_FOUND]` 并记录 `confidence_level: low`。
 - `M2.3` promote gate 强制规则：`counter_evidence` 必须存在且非空；`[NONE_FOUND]` 视为“显式声明无反证”，允许 promote。

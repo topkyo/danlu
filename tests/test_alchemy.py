@@ -451,10 +451,12 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
             1,
         )
         candidate.write_text(updated, encoding="utf-8")
+        before = candidate.read_text(encoding="utf-8")
 
         with self.assertRaises(ValueError) as ctx:
             finalize_elixir(self.root, elixir_id=started["elixir_id"])
         self.assertIn("source output missing", str(ctx.exception))
+        self.assertEqual(candidate.read_text(encoding="utf-8"), before)
 
     def test_finalize_runs_dag_validation(self) -> None:
         corpus_id = self._make_promoted_corpus()
