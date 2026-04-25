@@ -237,7 +237,7 @@ planner 接收 signal，产出以下之一的决策：
 
 当前已落地的 planner 状态文件是 `.aiwiki/state/planner-state.json`，它不是 append-only decision log。
 
-首版 planner-log 必须以 `mode=observe_only` 落地，且 `side_effects_allowed=false`；只有 signal replay、去重和 scope 计算连续通过 gate 后，才能开放 `dry_run`，最后才允许 `execute`。当前 `counter_evidence` / `learning_threshold` 的 planner-log routing 只写 `generate-proposal` / `enqueue-heavy` 的 observe-only decision，不直接启动 proposal generation 或 lane apply。
+首版 planner-log 必须以 `mode=observe_only` 落地，且 `side_effects_allowed=false`；只有 signal replay、去重和 scope 计算连续通过 gate 后，才能开放 `dry_run`，最后才允许 `execute`。当前 `raw_added` 只写 light-lane observe-only decision；`counter_evidence` / `learning_threshold` 只写 `generate-proposal` / `enqueue-heavy` 的 observe-only decision，不直接启动 compile、proposal generation 或 lane apply。
 
 ## 4. Heavy Alchemy Contract
 

@@ -233,8 +233,18 @@ class TestDecisionDerivation(unittest.TestCase):
         self.assertEqual(decision, "escalate-human")
         self.assertEqual(set(reason_codes), {"runtime_failure_critical"})
 
-    def test_unmapped_kind_fallback(self) -> None:
+    def test_raw_added_medium_maps_to_enqueue_light(self) -> None:
         decision, reason_codes = log_writer._derive_decision("raw_added", "medium")
+        self.assertEqual(decision, "enqueue-light")
+        self.assertEqual(set(reason_codes), {"raw_added_observed"})
+
+    def test_raw_added_low_is_routine_ignore(self) -> None:
+        decision, reason_codes = log_writer._derive_decision("raw_added", "low")
+        self.assertEqual(decision, "ignore")
+        self.assertEqual(set(reason_codes), {"raw_added_routine"})
+
+    def test_unknown_kind_fallback(self) -> None:
+        decision, reason_codes = log_writer._derive_decision("unknown_kind", "medium")
         self.assertEqual(decision, "ignore")
         self.assertEqual(set(reason_codes), {"unmapped_kind"})
 
@@ -596,6 +606,50 @@ class TestIdempotency(_FixtureCase):
         self.assertFalse(record["side_effects_allowed"])
         self.assertEqual(record["decision"], "generate-proposal")
         self.assertEqual(set(record["reason_codes"]), {"counter_evidence_observed", "proposal_recommended"})
+        self.assertNotIn("unmapped_kind", record["reason_codes"])
+
+    def test_write_planner_log_maps_raw_added_end_to_end(self) -> None:
+        root = self.temp_root / "raw-added-mapping"
+        signals_path = root / ".aiwiki/state/signals.jsonl"
+        signals_path.parent.mkdir(parents=True, exist_ok=True)
+        signals_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "signal_id": "sig-20260424-rawadd001",
+                    "dedupe_key": "raw_added:general:runtime_history:raw/inbox/src-note-1.md",
+                    "kind": "raw_added",
+                    "scope": {
+                        "protocol": "general",
+                        "source_ids": ["src-note-1"],
+                        "concept_slugs": [],
+                        "elixir_refs": [],
+                        "judgment_refs": [],
+                    },
+                    "severity": "medium",
+                    "evidence_refs": ["raw/inbox/src-note-1.md"],
+                    "emitted_at": "2026-04-24T11:47:00Z",
+                    "emitted_by": "user",
+                    "source_kind": "runtime_history",
+                    "source_event_ref": ".aiwiki/state/runtime-history.jsonl#L3",
+                    "trace_id": "550e8400-e29b-41d4-a716-446655440000",
+                },
+                separators=(",", ":"),
+                sort_keys=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = write_planner_log(root, _now=_fixed_now)
+
+        self.assertEqual(result["new_count"], 1)
+        planner_records = _read_jsonl(root / ".aiwiki/state/planner-log.jsonl")
+        record = planner_records[0]
+        self.assertEqual(record["mode"], "observe_only")
+        self.assertFalse(record["side_effects_allowed"])
+        self.assertEqual(record["decision"], "enqueue-light")
+        self.assertEqual(set(record["reason_codes"]), {"raw_added_observed"})
         self.assertNotIn("unmapped_kind", record["reason_codes"])
 
     def test_default_signals_path_missing_is_noop(self) -> None:

@@ -286,6 +286,13 @@ def _validate_signal_min_shape(signal: dict[str, Any]) -> str | None:
 
 
 def _derive_decision(kind: str, severity: str) -> tuple[str, list[str]]:
+    if kind == "raw_added":
+        if severity == "low":
+            return "ignore", ["raw_added_routine"]
+        if severity in {"medium", "high", "critical"}:
+            return "enqueue-light", ["raw_added_observed"]
+        return "ignore", ["unmapped_kind"]
+
     if kind == "review_feedback":
         if severity == "medium":
             return "enqueue-light", ["review_feedback_routine"]
