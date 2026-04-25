@@ -14,6 +14,7 @@ dedicated owner module in this subpackage:
 - :mod:`aiwiki.execution.review`           — ``review`` primitive
 - :mod:`aiwiki.execution.protocol_learnings` — L2 protocol-learning lifecycle
 - :mod:`aiwiki.execution.alchemy`          — ``alchemy-start/distill/finalize/promote/revert/demote/seal``
+                                              (``seal`` is a compatibility alias of ``promote``)
 - :mod:`aiwiki.execution.runtime_surfaces` — runtime primitive surfaces
 
 These modules implement the **scoped primitives** protected by the 9+

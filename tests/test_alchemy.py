@@ -168,35 +168,11 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
     def test_distill_rejects_source_in_wiki_plane(self) -> None:
         corpus_id = self._make_promoted_corpus()
         started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
-        run_alchemy_seal(self.root, started["elixir_id"])
+        run_alchemy_finalize(self.root, elixir_id=started["elixir_id"])
+        run_alchemy_promote(self.root, elixir_id=started["elixir_id"])
 
         with self.assertRaises(ValueError):
             run_alchemy_distill(self.root, started["elixir_id"], "What about latency?")
-
-    def test_seal_reads_from_candidate_writes_to_wiki(self) -> None:
-        corpus_id = self._make_promoted_corpus()
-        started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
-        run_alchemy_distill(self.root, started["elixir_id"], "What about latency?")
-
-        result = run_alchemy_seal(self.root, started["elixir_id"])
-
-        self.assertTrue(result["path"].startswith(f"{ELIXIR_DIR}/"))
-        settled = _settled_path(self.root, started["elixir_id"])
-        self.assertTrue(settled.exists())
-        frontmatter = parse_frontmatter(settled.read_text(encoding="utf-8"))
-        self.assertEqual(frontmatter["elixir_state"], "settled")
-        self.assertEqual(frontmatter["iteration"], "1")
-
-    def test_seal_keeps_candidate_file_untouched(self) -> None:
-        corpus_id = self._make_promoted_corpus()
-        started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
-        run_alchemy_distill(self.root, started["elixir_id"], "What about latency?")
-        candidate = _candidate_path(self.root, started["elixir_id"])
-        before = candidate.read_text(encoding="utf-8")
-
-        run_alchemy_seal(self.root, started["elixir_id"])
-
-        self.assertEqual(candidate.read_text(encoding="utf-8"), before)
 
     def test_read_elixir_anywhere_settled_priority_over_candidate(self) -> None:
         elixir_id = "elixir-priority"
@@ -240,7 +216,8 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
     def test_protocol_learnings_can_still_reference_settled_elixir(self) -> None:
         corpus_id = self._make_promoted_corpus()
         started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
-        run_alchemy_seal(self.root, started["elixir_id"])
+        run_alchemy_finalize(self.root, elixir_id=started["elixir_id"])
+        run_alchemy_promote(self.root, elixir_id=started["elixir_id"])
 
         result = add_learning(
             self.root,
@@ -336,6 +313,15 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             distill_elixir(self.root, elixir_id, question="q")
 
+    def test_distill_explicitly_rejects_settled_with_specific_message(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="distill-settled-reject")
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+
+        with self.assertRaises(ValueError) as ctx:
+            distill_elixir(self.root, elixir_id, question="q")
+
+        self.assertIn("sealed elixir cannot be distilled", str(ctx.exception))
+
     def test_distill_include_rejects_candidate_reference(self) -> None:
         corpus_id = self._make_promoted_corpus()
         base = run_alchemy_start(self.root, corpus_id, "Base", protocol="general")
@@ -344,22 +330,6 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             run_alchemy_distill(self.root, base["elixir_id"], "q", include_elixir_ids=[include["elixir_id"]])
         self.assertIn("只能引用 settled 金丹", str(ctx.exception))
-
-    def test_seal_rejects_without_wiki_derived_anchor(self) -> None:
-        ref_id = "ref-settled"
-        self._write_stub_elixir(_settled_path(self.root, ref_id), elixir_id=ref_id, state="settled")
-        target_id = "candidate-no-derived"
-        self._write_stub_elixir(_candidate_path(self.root, target_id), elixir_id=target_id, state="distilling")
-        target = _candidate_path(self.root, target_id)
-        text = target.read_text(encoding="utf-8")
-        text = text.replace('  - "wiki/derived/base.md"', f'  - "wiki/elixirs/{ref_id}.md"', 1)
-        target.write_text(text, encoding="utf-8")
-
-        with patch("aiwiki.execution.alchemy._find_corpus", return_value={"corpus_id": "corp"}):
-            with patch("aiwiki.execution.alchemy.list_promoted_outputs_for_corpus", return_value=[]):
-                with self.assertRaises(ValueError) as ctx:
-                    seal_elixir(self.root, target_id)
-        self.assertIn("必须至少包含一个 wiki/derived/", str(ctx.exception))
 
     def test_finalize_writes_candidate_state(self) -> None:
         corpus_id = self._make_promoted_corpus()
@@ -397,11 +367,28 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
     def test_finalize_rejects_settled(self) -> None:
         corpus_id = self._make_promoted_corpus()
         started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
-        run_alchemy_seal(self.root, started["elixir_id"])
+        run_alchemy_finalize(self.root, elixir_id=started["elixir_id"])
+        run_alchemy_promote(self.root, elixir_id=started["elixir_id"])
 
         with self.assertRaises(ValueError) as ctx:
             finalize_elixir(self.root, elixir_id=started["elixir_id"])
         self.assertIn("unsupported_source_state", str(ctx.exception))
+
+    def test_finalize_rejects_self_reference(self) -> None:
+        corpus_id = self._make_promoted_corpus()
+        started = run_alchemy_start(self.root, corpus_id, "finalize self ref", protocol="general")
+        candidate_path = _candidate_path(self.root, started["elixir_id"])
+        text = candidate_path.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(text)
+        anchor = str(frontmatter["derived_from"][0])
+        frontmatter["derived_from"] = [anchor, f"wiki/elixirs/{started['elixir_id']}.md"]
+        _write_elixir_markdown(candidate_path, frontmatter=frontmatter, body=text.split("---", 2)[-1].lstrip("\n"))
+
+        with patch("aiwiki.execution.alchemy._validate_source_outputs", return_value=None):
+            with self.assertRaises(ValueError) as ctx:
+                finalize_elixir(self.root, elixir_id=started["elixir_id"])
+
+        self.assertIn("cannot reference self", str(ctx.exception))
 
     def test_finalize_rejects_superseded(self) -> None:
         elixir_id = "candidate-superseded"
@@ -688,6 +675,21 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
             run_alchemy_promote(self.root, elixir_id=started["elixir_id"])
         self.assertIn("unsupported_source_state", str(ctx.exception))
 
+    def test_promote_rejects_self_reference(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="promote-self-ref")
+        candidate_path = _candidate_path(self.root, elixir_id)
+        text = candidate_path.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(text)
+        anchor = str(frontmatter["derived_from"][0])
+        frontmatter["derived_from"] = [anchor, f"wiki/elixirs/{elixir_id}.md"]
+        _write_elixir_markdown(candidate_path, frontmatter=frontmatter, body=text.split("---", 2)[-1].lstrip("\n"))
+
+        with patch("aiwiki.execution.alchemy._validate_source_outputs", return_value=None):
+            with self.assertRaises(ValueError) as ctx:
+                promote_elixir(self.root, elixir_id=elixir_id)
+
+        self.assertIn("cannot reference self", str(ctx.exception))
+
     def test_promote_rejects_superseded_source(self) -> None:
         elixir_id = "candidate-superseded-promote"
         self._write_stub_elixir(_candidate_path(self.root, elixir_id), elixir_id=elixir_id, state="superseded")
@@ -802,16 +804,26 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         self.assertIn("counter_evidence_required", str(ctx.exception))
         self.assertFalse(_settled_path(self.root, elixir_id).exists())
 
-    def test_seal_draft_emits_deprecation_warning(self) -> None:
+    def test_seal_draft_rejects_with_migration_hint(self) -> None:
         corpus_id = self._make_promoted_corpus()
-        started = run_alchemy_start(self.root, corpus_id, "deprecated seal", protocol="general")
+        started = run_alchemy_start(self.root, corpus_id, "seal draft reject", protocol="general")
 
-        with self.assertWarns(DeprecationWarning):
-            result = run_alchemy_seal(self.root, started["elixir_id"])
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_seal(self.root, started["elixir_id"])
 
-        self.assertEqual(result["elixir_state"], "settled")
-        settled = parse_frontmatter(_settled_path(self.root, started["elixir_id"]).read_text(encoding="utf-8"))
-        self.assertTrue(settled.get("sealed_at"))
+        self.assertIn("unsupported_source_state", str(ctx.exception))
+        self.assertIn("alchemy-finalize", str(ctx.exception))
+
+    def test_seal_distilling_rejects_with_migration_hint(self) -> None:
+        corpus_id = self._make_promoted_corpus()
+        started = run_alchemy_start(self.root, corpus_id, "seal distilling reject", protocol="general")
+        run_alchemy_distill(self.root, started["elixir_id"], "refine")
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_seal(self.root, started["elixir_id"])
+
+        self.assertIn("unsupported_source_state", str(ctx.exception))
+        self.assertIn("alchemy-finalize", str(ctx.exception))
 
     def test_finalize_missing_candidate_file_raises_file_not_found(self) -> None:
         with self.assertRaises(FileNotFoundError):
@@ -848,6 +860,7 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             seal_elixir(self.root, elixir_id)
         self.assertIn("unsupported_source_state", str(ctx.exception))
+        self.assertIn("'superseded'", str(ctx.exception))
 
     def test_distill_include_reports_missing_settled_reference(self) -> None:
         corpus_id = self._make_promoted_corpus()

@@ -16,7 +16,7 @@ related_docs:
 
 这份文档定义炼丹炉“如何进化”的实现契约：signal 如何路由到 heavy / light 炼丹、active corpus 如何持久化、金丹如何炼成与复利、L2 protocol-learning 如何衔接既有实装、L3 prompt/policy proposal 如何受控写回。
 
-> **实现状态说明（2026-04-24）**：本文是“目标契约 + 当前差距”的 SoT。当前已落地 active corpus / output candidates、L2 protocol-learning 生命周期、repair planner state、nightly low-risk auto-consume、显式 backend 选择、最小金丹 `alchemy-start / alchemy-distill / alchemy-seal`。完整 signal stream、append-only `planner-log.jsonl`、heavy/light 调度入口、`output/_candidates/elixirs/` 候选平面、L3 prompt/policy proposal 的 review/apply/revert 链路尚未完整实现，以下章节用 `implemented / partial / planned` 标记区分。
+> **实现状态说明（2026-04-24）**：本文是“目标契约 + 当前差距”的 SoT。当前已落地 active corpus / output candidates、L2 protocol-learning 生命周期、repair planner state、nightly low-risk auto-consume、显式 backend 选择、最小金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote`（`alchemy-seal` 为兼容别名）。完整 signal stream、append-only `planner-log.jsonl`、heavy/light 调度入口、`output/_candidates/elixirs/` 候选平面、L3 prompt/policy proposal 的 review/apply/revert 链路尚未完整实现，以下章节用 `implemented / partial / planned` 标记区分。
 
 它同时取代：
 
@@ -382,13 +382,13 @@ light **不允许**触发 `judge`、`distill`、`propose`、`apply`。
 | 候选（当前与目标，未 promote） | `output/_candidates/elixirs/<elixir-id>.md` |
 | 持久（当前与目标） | `wiki/elixirs/<elixir-id>.md` |
 
-目标契约要求候选平面与持久平面**物理隔离**，避免一个字段同时表达两种语义。`M2.1` 起，`alchemy-start / alchemy-distill` 已写入 `output/_candidates/elixirs/`（`draft / distilling`）；`alchemy-seal` 仍是 legacy 跨平面入口，直接写 `wiki/elixirs/` 的 `settled`，`M2.3` 重构为 `promote`。
+目标契约要求候选平面与持久平面**物理隔离**，避免一个字段同时表达两种语义。`M2.1` 起，`alchemy-start / alchemy-distill` 已写入 `output/_candidates/elixirs/`（`draft / distilling`）；`alchemy-finalize / alchemy-promote` 为主路径，`alchemy-seal` 保留为 `alchemy-promote` 的兼容别名。
 
 迁移策略：
 
 - 旧 `wiki/elixirs/` 文件继续按当前 schema 读取，不做强制搬迁。
 - 新候选入口落地后，默认只对新金丹写入 `output/_candidates/elixirs/`。
-- `alchemy-seal` 继续兼容旧 draft / distilling 文件（legacy）；新 promote gate 稳定后，以 `alchemy-promote` 作为默认 settled 入口。
+- `alchemy-seal` 作为兼容别名保留，仅接受 `candidate`，行为与 `alchemy-promote` 一致。
 - 任一候选 promote 失败必须保持 source candidate 不变，并写明失败原因；不得半写入 `wiki/elixirs/`。
 - 任一候选 promote 成功后也保留 candidate（墓碑 / tombstone）：不删除候选文件，原地改写 frontmatter 为 `elixir_state: superseded`，并写入 `superseded_by: wiki/elixirs/<elixir-id>.md` 与 `promoted_at: <iso8601>`。
 - 对应 revert 时，将 candidate 从 `superseded` 恢复为 `candidate`，清除 `superseded_by / promoted_at`，并删除 `wiki/elixirs/<elixir-id>.md` 的 promoted 文件。
@@ -438,7 +438,7 @@ promoted_at: null
 | `draft` | `output/_candidates/elixirs/` | `alchemy-start <corpus_id> --topic ...` |
 | `distilling` | `output/_candidates/elixirs/` | `alchemy-distill <elixir_id> --question ...` |
 | `candidate` | `output/_candidates/elixirs/` | `alchemy-finalize <elixir-id>`（作者显式 finalize，ready-for-promote） |
-| `settled` | `wiki/elixirs/` | 当前（legacy）`alchemy-seal <elixir_id>`；目标 `alchemy-promote` 后 |
+| `settled` | `wiki/elixirs/` | `alchemy-promote --elixir-id <elixir_id>`（`alchemy-seal <elixir_id>` 兼容别名） |
 | `superseded` | `output/_candidates/elixirs/`（tombstone 保留） | planned：候选 promote 成功后原地墓碑化 |
 
 状态转移（`M2.2`）：
@@ -446,13 +446,13 @@ promoted_at: null
 - `draft -> candidate`：`alchemy-finalize <elixir-id>`。
 - `distilling -> candidate`：`alchemy-finalize <elixir-id>`。
 - `candidate -> distilling`：再次 `alchemy-distill <elixir-id> --question ...`（回退，允许人工改稿）。
-- `candidate -> settled`：`M2.3` `alchemy-promote`；`M2.2` 暂时仍可走 legacy `alchemy-seal`。
+- `candidate -> settled`：`alchemy-promote --elixir-id <elixir-id>`（`alchemy-seal <elixir-id>` 为兼容别名）。
 
 ### 7.4 DAG 约束
 
 - 金丹引用链（`elixir_refs`）**必须**构成有向无环图。
 - 新金丹**不得**只依赖旧金丹的结论自举——必须同时锚定至少一条 `raw/` 或 `wiki/sources/` / `wiki/judgments/` 的底层证据。
-- 当前 `alchemy-distill / alchemy-seal` 已校验金丹 DAG、自引用、路径穿越和底层 `wiki/derived/` 锚定；目标 promote gate 继续执行同类校验。
+- 当前 `alchemy-distill / alchemy-finalize / alchemy-promote` 已校验金丹 DAG、自引用、路径穿越和底层 `wiki/derived/` 锚定；`alchemy-seal` 兼容别名复用 `alchemy-promote` 校验。
 
 ### 7.5 Counter-evidence 强制
 
@@ -499,16 +499,18 @@ aiwiki promote output/reports/query-20260424-example.md
 # → 当前：把 output candidate promote 到 wiki/derived/，供金丹引用
 
 aiwiki alchemy-start research-vla-2026q2 --topic "VLA 机器人架构"
-# → 当前：从该 corpus 下已 promoted 的 wiki/derived/ 输出生成 wiki/elixirs/<elixir-id>.md，state=draft
+# → 当前：从该 corpus 下已 promoted 的 wiki/derived/ 输出生成 output/_candidates/elixirs/<elixir-id>.md，state=draft
 
 aiwiki alchemy-distill <elixir-id> --question "延迟约束如何改变架构权衡？"
-# → 当前：推进 iteration，保留 provenance，state=distilling
+# → 当前：在 output/_candidates/elixirs/ 上推进 iteration，保留 provenance，state=distilling
 
-aiwiki alchemy-seal <elixir-id>
-# → 当前：校验 DAG 与底层 wiki/derived/ 锚定后标记 state=settled
+aiwiki alchemy-promote --elixir-id <elixir-id>
+# → 当前：校验 gate（含 counter_evidence）与 DAG / wiki/derived/ 锚定后写入 settled
 ```
 
-**当前验收准则**：能从已 promoted output 生成 elixir，能多轮 distill，能 seal，并拒绝空 provenance、自引用、路径穿越和 DAG 环路。
+**当前验收准则**：能从已 promoted output 生成 elixir，能多轮 distill，能 finalize+promote，并拒绝空 provenance、自引用、路径穿越和 DAG 环路。
+
+> 兼容性说明：`alchemy-seal` 目前是 `alchemy-promote` 的兼容别名，仅接受 `candidate`。
 
 **目标验收准则**：能成功生成 candidate elixir 文件并走完 promote / demote / revert 生命周期；每一步可审计。
 
@@ -657,9 +659,9 @@ L3 proposal **只允许**写入以下文件：
 | `aiwiki ask "<q>" --corpus <id>` | 当前：绑定或创建 corpus turn；追加 output_refs | `output/reports` / `output/slides` / `output/figures` 等产物 + `.aiwiki/state/output-candidates.json` + `.aiwiki/state/active-corpora.json` |
 | `aiwiki promote <artifact_ref>` | 当前：output candidate → `wiki/derived/` | `wiki/derived/` + candidate state |
 | `aiwiki demote <artifact_ref>` | 当前：demote output candidate | `.aiwiki/state/output-candidates.json` |
-| `aiwiki alchemy-start <corpus-id> --topic <topic>` | 当前：从该 corpus 的已 promoted output 创建 draft elixir | `wiki/elixirs/` |
-| `aiwiki alchemy-distill <elixir-id> --question <q>` | 当前：推进 draft/distilling elixir iteration | `wiki/elixirs/` |
-| `aiwiki alchemy-seal <elixir-id>` | 当前：校验后标记 settled | `wiki/elixirs/` |
+| `aiwiki alchemy-start <corpus-id> --topic <topic>` | 当前：从该 corpus 的已 promoted output 创建 draft elixir | `output/_candidates/elixirs/` |
+| `aiwiki alchemy-distill <elixir-id> --question <q>` | 当前：推进 draft/distilling elixir iteration | `output/_candidates/elixirs/` |
+| `aiwiki alchemy-promote --elixir-id <elixir-id>` | 当前：candidate promote 为 settled（`alchemy-seal` 为兼容别名） | `wiki/elixirs/` + `output/_candidates/elixirs/` tombstone + receipts |
 | `aiwiki protocol-learn-add/list/show/age/verify/demote/archive/supersede` | 当前：L2 learning 生命周期治理 | `wiki/protocol-learnings/` |
 | `aiwiki alchemy heavy <scope>` | planned：手动触发 heavy 炼丹 | 按 scope |
 | `aiwiki review proposals` | planned：查看 L3 proposal 队列 | 读 only |
@@ -674,7 +676,7 @@ L3 proposal **只允许**写入以下文件：
 
 - heavy alchemy 启动 / 完成（planned）
 - light alchemy 启动 / 完成（含 budget_exceeded；planned）
-- elixir promotion / demotion / supersede（candidate promote chain planned；当前 seal 直接更新 elixir state）
+- elixir promotion / demotion / supersede（candidate promote chain）
 - L2 learning 状态变更（当前已有 protocol-learning aging audit / 状态文件）
 - L3 proposal generation / accept / reject / revert（planned）
 

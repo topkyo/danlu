@@ -316,7 +316,10 @@ def build_parser() -> argparse.ArgumentParser:
     alchemy_distill_parser.add_argument("--question", required=True)
     alchemy_distill_parser.add_argument("--include-elixir", type=str, default=None, help="可选：额外包含的金丹 id，多个用逗号分隔。")
 
-    alchemy_seal_parser = subparsers.add_parser("alchemy-seal", help="Seal a draft elixir (terminal state).")
+    alchemy_seal_parser = subparsers.add_parser(
+        "alchemy-seal",
+        help="Alias of alchemy-promote (seal candidate -> settled). Accepts candidate only.",
+    )
     alchemy_seal_parser.add_argument("elixir_id")
 
     alchemy_finalize_parser = subparsers.add_parser(

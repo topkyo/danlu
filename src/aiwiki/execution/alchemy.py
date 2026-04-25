@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import warnings
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -789,45 +788,19 @@ def demote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
 
 
 def seal_elixir(root: Path, elixir_id: str) -> dict[str, Any]:
+    """Alias of ``promote_elixir`` for candidate → settled transition.
+
+    ``alchemy-seal`` is retained as a compatibility alias and now only accepts
+    ``candidate`` source state.
+    """
     normalized_id = _resolve_elixir_id(root, elixir_id)
-    source_path, frontmatter = _read_elixir_anywhere(root, normalized_id)
+    _, frontmatter = _read_elixir_anywhere(root, normalized_id)
     source_state = str(frontmatter.get("elixir_state") or "")
-    if source_state == "settled":
-        raise ValueError(f"elixir already sealed: {elixir_id}")
     if source_state == "candidate":
         return promote_elixir(root, elixir_id=normalized_id)
     if source_state in {"draft", "distilling"}:
-        warnings.warn(
-            "alchemy-seal is deprecated; use alchemy-finalize then alchemy-promote",
-            DeprecationWarning,
-            stacklevel=2,
+        raise ValueError(
+            f"unsupported_source_state: seal requires state=candidate (got {source_state!r}); "
+            "run alchemy-finalize then alchemy-promote"
         )
-    if source_state not in {"draft", "distilling"}:
-        raise ValueError(f"unsupported_source_state: cannot seal elixir from state={source_state or 'unknown'}")
-    corpus_id = str(frontmatter.get("provenance_corpus") or "")
-    _find_corpus(root, corpus_id)
-    promoted = list_promoted_outputs_for_corpus(root, corpus_id)
-    allowed = {item["promoted_to"] for item in promoted if item.get("promoted_to")}
-    source_outputs = [str(item) for item in frontmatter.get("derived_from", []) if isinstance(item, str)]
-    _validate_source_outputs(root, source_outputs, allowed=allowed)
-    if not any(ref.startswith("wiki/derived/") for ref in source_outputs):
-        raise ValueError("金丹 derived_from 必须至少包含一个 wiki/derived/ 源条目（当前仅包含 elixir 引用）")
-    target_path = _settled_path(root, normalized_id)
-    target_path.parent.mkdir(parents=True, exist_ok=True)
-    if any(str(Path(ref)) == str(target_path.relative_to(root)) for ref in source_outputs if isinstance(ref, str)):
-        raise ValueError(f"cannot reference self: {target_path.relative_to(root)}")
-    cycle = _detect_elixir_cycle(root, target_path, source_outputs)
-    if cycle:
-        raise ValueError("金丹引用形成环路: " + " → ".join(cycle))
-    sealed_at = utc_now()
-    frontmatter.update({"elixir_state": "settled", "sealed_at": sealed_at, "updated_at": utc_now()})
-    original = source_path.read_text(encoding="utf-8", errors="replace")
-    body = original.split("---", 2)[-1].lstrip("\n")
-    _write_elixir_markdown(target_path, frontmatter=frontmatter, body=body)
-    _validate_state_for_path(root, "settled", target_path)
-    return {
-        "elixir_id": normalized_id,
-        "path": f"{ELIXIR_DIR}/{normalized_id}.md",
-        "elixir_state": "settled",
-        "sealed_at": sealed_at,
-    }
+    raise ValueError(f"unsupported_source_state: {source_state!r}")
