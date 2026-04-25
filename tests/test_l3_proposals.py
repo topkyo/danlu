@@ -11,6 +11,7 @@ from aiwiki.execution.l3_proposals import (
     apply_l3_proposal,
     create_l3_proposal,
     list_l3_proposals,
+    reject_l3_proposal,
     revert_l3_proposal,
 )
 
@@ -94,6 +95,39 @@ class L3ProposalTests(unittest.TestCase):
         stored = self._state_proposal("prop-stale")
         self.assertEqual(stored["state"], "stale")
         self.assertEqual(stored["stale_reason"], "before_hash_mismatch")
+
+    def test_reject_candidate_marks_state_without_touching_target_or_receipt_history(self) -> None:
+        create_l3_proposal(
+            self.root,
+            kind="prompt_proposal",
+            proposal_id="prop-reject",
+            target_file="prompts/ask.md",
+            content="Updated ask prompt.\n",
+        )
+
+        result = reject_l3_proposal(self.root, "prop-reject", note="not useful")
+
+        self.assertEqual(result["state"], "rejected")
+        self.assertEqual((self.root / "prompts" / "ask.md").read_text(encoding="utf-8"), "Original ask prompt.\n")
+        self.assertFalse((self.root / ".aiwiki" / "state" / "execution-receipts.jsonl").exists())
+        stored = self._state_proposal("prop-reject")
+        self.assertEqual(stored["state"], "rejected")
+        self.assertEqual(stored["reject_note"], "not useful")
+        page_text = (self.root / str(stored["proposal_path"])).read_text(encoding="utf-8")
+        self.assertIn("state: \"rejected\"", page_text)
+
+    def test_reject_requires_candidate_state(self) -> None:
+        create_l3_proposal(
+            self.root,
+            kind="prompt_proposal",
+            proposal_id="prop-no-reject",
+            target_file="prompts/ask.md",
+            content="Updated ask prompt.\n",
+        )
+        apply_l3_proposal(self.root, "prop-no-reject")
+
+        with self.assertRaisesRegex(RuntimeError, "Only candidate"):
+            reject_l3_proposal(self.root, "prop-no-reject")
 
     def test_apply_writes_target_and_receipt_then_clean_revert_restores_before_content(self) -> None:
         create_l3_proposal(

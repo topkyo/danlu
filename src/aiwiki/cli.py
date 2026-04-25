@@ -57,6 +57,7 @@ from .runner import (
     run_l3_proposal_apply,
     run_l3_proposal_create,
     run_l3_proposal_list,
+    run_l3_proposal_reject,
     run_l3_proposal_revert,
     run_lint,
     run_nightly,
@@ -433,6 +434,13 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("candidate", "accepted", "rejected", "reverted", "stale", "revert_conflict"),
     )
     review_proposals_parser.add_argument("--json", action="store_true", help="Return full JSON records.")
+    review_proposal_parser = review_group_subparsers.add_parser(
+        "proposal",
+        help="Review one L3 prompt/policy proposal.",
+    )
+    review_proposal_parser.add_argument("proposal_id")
+    review_proposal_parser.add_argument("--status", required=True, choices=("rejected",))
+    review_proposal_parser.add_argument("--note")
 
     apply_parser = subparsers.add_parser("apply", help="Accept and apply a manual L3 proposal by id.")
     apply_parser.add_argument("proposal_id")
@@ -851,11 +859,16 @@ def main(argv: list[str] | None = None) -> int:
                 pattern=args.pattern,
             )
         elif args.command == "review":
-            if args.review_command != "proposals":
+            if args.review_command == "proposals":
+                result = run_l3_proposal_list(root, kind=args.kind, state=args.state)
+                if not args.json:
+                    text_output = "\n".join(_format_l3_proposal_summary_line(item) for item in result) or "(no L3 proposals)"
+            elif args.review_command == "proposal":
+                if args.status != "rejected":
+                    raise ValueError(f"Unsupported L3 proposal review status: {args.status}")
+                result = run_l3_proposal_reject(root, args.proposal_id, note=args.note)
+            else:
                 raise ValueError(f"Unsupported review command: {args.review_command}")
-            result = run_l3_proposal_list(root, kind=args.kind, state=args.state)
-            if not args.json:
-                text_output = "\n".join(_format_l3_proposal_summary_line(item) for item in result) or "(no L3 proposals)"
         elif args.command == "apply":
             result = run_l3_proposal_apply(root, args.proposal_id, note=args.note)
         elif args.command == "revert":

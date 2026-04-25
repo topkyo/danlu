@@ -312,6 +312,13 @@ class CLITests(unittest.TestCase):
                 {"kind": "prompt_proposal", "state": "candidate"},
             ),
             (
+                "review-proposal-reject",
+                ["review", "proposal", "prop-ask", "--status", "rejected", "--note", "skip"],
+                "run_l3_proposal_reject",
+                (self.root, "prop-ask"),
+                {"note": "skip"},
+            ),
+            (
                 "apply-l3-proposal",
                 ["apply", "prop-ask", "--note", "accept"],
                 "run_l3_proposal_apply",

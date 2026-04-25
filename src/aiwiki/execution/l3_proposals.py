@@ -172,6 +172,51 @@ def list_l3_proposals(
 
 
 @runtime_write_operation
+def reject_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) -> dict[str, Any]:
+    proposals = [dict(item) for item in load_l3_proposal_state(root).get("proposals", []) if isinstance(item, dict)]
+    proposal = _find_l3_proposal(proposals, proposal_id)
+    if str(proposal.get("state") or "") != "candidate":
+        raise RuntimeError("Only candidate L3 proposals can be rejected.")
+    rejected_at = utc_now()
+    proposal["state"] = "rejected"
+    proposal["rejected_at"] = rejected_at
+    proposal["reject_note"] = note or ""
+    save_l3_proposal_state(root, proposals)
+    _persist_l3_proposal_page(root, proposal)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "l3-proposal-reject",
+            "occurred_at": rejected_at,
+            "proposal_id": proposal_id,
+            "kind": str(proposal.get("kind") or ""),
+            "target_file": str(proposal.get("target_file") or ""),
+            "proposal_path": str(proposal.get("proposal_path") or ""),
+            "state": "rejected",
+            "note": note or "",
+        },
+    )
+    append_wiki_log(
+        root,
+        "l3-proposal-reject",
+        proposal_id,
+        [
+            f"kind: `{proposal.get('kind', '')}`",
+            f"target: `{proposal.get('target_file', '')}`",
+            "state: `rejected`",
+        ],
+    )
+    return {
+        "proposal_id": proposal_id,
+        "kind": str(proposal.get("kind") or ""),
+        "state": "rejected",
+        "target_file": str(proposal.get("target_file") or ""),
+        "proposal_path": str(proposal.get("proposal_path") or ""),
+        "rejected_at": rejected_at,
+    }
+
+
+@runtime_write_operation
 def create_l3_proposal(
     root: Path,
     *,

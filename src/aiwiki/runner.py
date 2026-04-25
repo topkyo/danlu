@@ -201,6 +201,12 @@ def run_l3_proposal_apply(root: Path, proposal_id: str, *, note: str | None = No
     return apply_l3_proposal(root, proposal_id, note=note)
 
 
+def run_l3_proposal_reject(root: Path, proposal_id: str, *, note: str | None = None) -> dict[str, Any]:
+    from .execution.l3_proposals import reject_l3_proposal
+
+    return reject_l3_proposal(root, proposal_id, note=note)
+
+
 def run_l3_proposal_revert(root: Path, receipt_id: str, *, note: str | None = None) -> dict[str, Any]:
     from .execution.l3_proposals import revert_l3_proposal
 

@@ -665,6 +665,7 @@ _LAZY_OWNERS: dict[str, str] = {
     "create_l3_proposal": "aiwiki.execution.l3_proposals",
     "list_l3_proposals": "aiwiki.execution.l3_proposals",
     "apply_l3_proposal": "aiwiki.execution.l3_proposals",
+    "reject_l3_proposal": "aiwiki.execution.l3_proposals",
     "revert_l3_proposal": "aiwiki.execution.l3_proposals",
     "load_l3_proposal_state": "aiwiki.execution.l3_proposals",
     "save_l3_proposal_state": "aiwiki.execution.l3_proposals",

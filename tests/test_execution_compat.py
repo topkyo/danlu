@@ -4,8 +4,8 @@ Guards (post independent oracle review):
 
 1. Every execution name listed in ``aiwiki.app_compile._LAZY_OWNERS`` is
    resolvable via ``getattr`` and is a real callable.
-2. The count and shape match the plan: 27 public execution functions +
-   8 private helpers = 35 total.
+2. The count and shape match the plan: 28 public execution functions +
+   8 private helpers = 36 total.
 3. Hot patch targets used by ``tests/test_app.py`` (``utc_now``,
    ``entry_concept_terms``, ``build_machine_memory``,
    ``build_ranking_source_record``, ``build_ranking_concept_record``) are
@@ -78,6 +78,7 @@ EXPECTED_LAZY_NAMES = {
     "create_l3_proposal",
     "list_l3_proposals",
     "apply_l3_proposal",
+    "reject_l3_proposal",
     "revert_l3_proposal",
     "load_l3_proposal_state",
     "save_l3_proposal_state",
@@ -97,12 +98,12 @@ class ExecutionCompatSeamTests(unittest.TestCase):
         self.assertEqual(set(app_compile._LAZY_OWNERS.keys()), EXPECTED_LAZY_NAMES)
 
     def test_lazy_owners_count_matches_plan(self) -> None:
-        # Plan promises 27 public + 8 private helpers = 35.
+        # Plan promises 28 public + 8 private helpers = 36.
         keys = list(app_compile._LAZY_OWNERS.keys())
         public = [k for k in keys if not k.startswith("_")]
         private = [k for k in keys if k.startswith("_")]
-        self.assertEqual(len(keys), 35)
-        self.assertEqual(len(public), 27)
+        self.assertEqual(len(keys), 36)
+        self.assertEqual(len(public), 28)
         self.assertEqual(len(private), 8)
 
     def test_all_lazy_owners_self_reference_in_ep_018a(self) -> None:
@@ -150,6 +151,7 @@ class ExecutionCompatSeamTests(unittest.TestCase):
             "create_l3_proposal": "aiwiki.execution.l3_proposals",
             "list_l3_proposals": "aiwiki.execution.l3_proposals",
             "apply_l3_proposal": "aiwiki.execution.l3_proposals",
+            "reject_l3_proposal": "aiwiki.execution.l3_proposals",
             "revert_l3_proposal": "aiwiki.execution.l3_proposals",
             "load_l3_proposal_state": "aiwiki.execution.l3_proposals",
             "save_l3_proposal_state": "aiwiki.execution.l3_proposals",
