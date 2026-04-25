@@ -147,6 +147,10 @@ class L3ProposalTests(unittest.TestCase):
         self.assertEqual(receipt["subject_kind"], "l3_proposal")
         self.assertEqual(receipt["operation"], "apply")
         self.assertTrue(receipt["revert_supported"])
+        self.assertEqual(receipt["audit_stream"], "execution_receipts")
+        self.assertEqual(receipt["audit_event"], "execution_receipt_history_append")
+        self.assertEqual(receipt["audit_path"], ".aiwiki/state/execution-receipts.jsonl")
+        self.assertEqual(applied["audit_path"], ".aiwiki/state/execution-receipts.jsonl")
         history = (self.root / ".aiwiki" / "state" / "execution-receipts.jsonl").read_text(encoding="utf-8")
         self.assertIn('"subject_kind": "l3_proposal"', history)
 
@@ -156,7 +160,11 @@ class L3ProposalTests(unittest.TestCase):
         self.assertEqual((self.root / "prompts" / "ask.md").read_text(encoding="utf-8"), "Original ask prompt.\n")
         stored = self._state_proposal("prop-apply")
         self.assertEqual(stored["state"], "reverted")
-        self.assertTrue((self.root / str(reverted["receipt_path"])).exists())
+        revert_receipt = json.loads((self.root / str(reverted["receipt_path"])).read_text(encoding="utf-8"))
+        self.assertEqual(revert_receipt["audit_stream"], "execution_receipts")
+        self.assertEqual(revert_receipt["audit_event"], "execution_receipt_history_append")
+        self.assertEqual(revert_receipt["audit_path"], ".aiwiki/state/execution-receipts.jsonl")
+        self.assertEqual(reverted["audit_path"], ".aiwiki/state/execution-receipts.jsonl")
 
     def test_revert_conflict_writes_human_merge_hint_without_overwriting_target(self) -> None:
         create_l3_proposal(

@@ -9,7 +9,13 @@ from typing import Any
 from ..app_execution import append_execution_receipt_history
 from ..app_protocol import ensure_layout
 from ..app_render import append_wiki_log
-from ..app_state import append_runtime_history, l3_proposal_state_path, load_json_document, save_json_document
+from ..app_state import (
+    append_runtime_history,
+    execution_receipt_history_path,
+    l3_proposal_state_path,
+    load_json_document,
+    save_json_document,
+)
 from ..app_utils import (
     next_available_stem,
     relative_path,
@@ -154,6 +160,14 @@ def _unique_l3_action_id(root: Path, prefix: str, proposal_id: str) -> str:
     seed = f"{prefix}-{slugify(proposal_id)}"
     stem = next_available_stem(execution_receipt_path(root, seed).parent, seed, ".json")
     return stem
+
+
+def _receipt_audit_metadata(root: Path) -> dict[str, str]:
+    return {
+        "audit_stream": "execution_receipts",
+        "audit_event": "execution_receipt_history_append",
+        "audit_path": relative_path(root, execution_receipt_history_path(root)),
+    }
 
 
 def list_l3_proposals(
@@ -367,6 +381,7 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
         "note": note or "",
         "revert_supported": True,
         "receipt_path": relative_path(root, receipt_path),
+        **_receipt_audit_metadata(root),
     }
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
     receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -406,6 +421,7 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
         "receipt_path": relative_path(root, receipt_path),
         "before_hash": expected_before_hash,
         "after_hash": after_hash,
+        "audit_path": relative_path(root, execution_receipt_history_path(root)),
     }
 
 
@@ -505,6 +521,7 @@ def revert_l3_proposal(root: Path, receipt_id: str, *, note: str | None = None) 
         "note": note or "",
         "revert_supported": False,
         "receipt_path": relative_path(root, revert_receipt_path),
+        **_receipt_audit_metadata(root),
     }
     revert_receipt_path.parent.mkdir(parents=True, exist_ok=True)
     revert_receipt_path.write_text(json.dumps(revert_receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -543,4 +560,5 @@ def revert_l3_proposal(root: Path, receipt_id: str, *, note: str | None = None) 
         "source_receipt_path": relative_path(root, receipt_path),
         "receipt_path": relative_path(root, revert_receipt_path),
         "restored_hash": restored_hash,
+        "audit_path": relative_path(root, execution_receipt_history_path(root)),
     }
