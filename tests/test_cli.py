@@ -136,6 +136,17 @@ class CLITests(unittest.TestCase):
         format_action = next(item for item in ask_parser._actions if item.dest == "format")
         self.assertEqual(format_action.choices, ("report", "decision-memo", "sop", "slides", "figure"))
 
+    def test_legacy_settled_alias_is_absent(self) -> None:
+        from aiwiki import runner
+        from aiwiki.execution import alchemy
+
+        parser = build_parser()
+        action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
+        legacy_command = "alchemy-" + "seal"
+        self.assertNotIn(legacy_command, action.choices)
+        self.assertFalse(hasattr(runner, "run_alchemy_" + "seal"))
+        self.assertFalse(hasattr(alchemy, "seal_" + "elixir"))
+
     def test_main_dispatches_command_handlers(self) -> None:
         cases = [
             ("layout", ["layout"], "ensure_layout", (self.root,), {}),

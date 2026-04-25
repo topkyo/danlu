@@ -451,6 +451,7 @@ promoted_at: null
 - `distilling -> candidate`：`alchemy-finalize <elixir-id>`。
 - `candidate -> distilling`：再次 `alchemy-distill <elixir-id> --question ...`（回退，允许人工改稿）。
 - `candidate -> settled`：`alchemy-promote --elixir-id <elixir-id>`。
+- M2.5 起，旧 seal alias/API 保持删除状态；candidate 进入 settled 只走 `alchemy-promote`。
 
 ### 7.4 DAG 约束
 
