@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..app_protocol import PROTOCOL_LIBRARY
+from ..app_state import append_runtime_history
 from ..app_utils import (
     next_available_stem,
     parse_frontmatter,
@@ -251,6 +252,48 @@ def _assert_acyclic_supersede_graph(records: dict[str, dict[str, Any]]) -> None:
 
     for learning_id in sorted(records):
         visit(learning_id)
+
+
+def _append_learning_threshold_history(root: Path, result: dict[str, Any], *, emitted_by: str) -> None:
+    aged = result.get("aged")
+    if not isinstance(aged, list) or not aged:
+        return
+
+    by_protocol: dict[str, list[dict[str, Any]]] = {}
+    for item in aged:
+        if not isinstance(item, dict):
+            continue
+        protocol = item.get("protocol")
+        learning_id = item.get("learning_id")
+        if not isinstance(protocol, str) or not protocol:
+            continue
+        if not isinstance(learning_id, str) or not learning_id:
+            continue
+        by_protocol.setdefault(protocol, []).append(item)
+
+    for protocol, items in sorted(by_protocol.items()):
+        learning_ids = sorted({str(item["learning_id"]) for item in items})
+        learning_paths = sorted(
+            {
+                str(item.get("path") or "")
+                for item in items
+                if isinstance(item.get("path"), str) and str(item.get("path") or "")
+            }
+        )
+        append_runtime_history(
+            root,
+            {
+                "event_type": "learning-threshold",
+                "occurred_at": result.get("run_at"),
+                "protocol": protocol,
+                "threshold_days": result.get("threshold_days"),
+                "learning_ids": learning_ids,
+                "aged_ids": learning_ids,
+                "learning_paths": learning_paths,
+                "audit_path": AUDIT_STATE_PATH,
+                "emitted_by": emitted_by,
+            },
+        )
 
 
 def _load_learning_records(root: Path) -> dict[str, dict[str, Any]]:
@@ -693,6 +736,7 @@ def age_learnings(
     *,
     apply: bool = False,
     threshold_days: int = AGING_THRESHOLD_DAYS,
+    emitted_by: str = "user",
 ) -> dict[str, Any]:
     """Scan learnings and mark stale ones. dry-run by default.
 
@@ -813,5 +857,6 @@ def age_learnings(
         audit_path = root / AUDIT_STATE_PATH
         audit_path.parent.mkdir(parents=True, exist_ok=True)
         _atomic_write_text(audit_path, json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
+        _append_learning_threshold_history(root, result, emitted_by=emitted_by)
 
     return result

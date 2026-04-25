@@ -122,6 +122,8 @@ Signal kinds（本轮最小集）：
 | `learning_threshold` | protocol-learning 候选累积到阈值 | medium |
 | `elixir_dependency_break` | 被引用 elixir 被 demote / superseded | high |
 
+当前实现中，`learning_threshold` 来自 `protocol-learn-age --apply` / nightly protocol-learning aging 的 runtime-history `learning-threshold` 事件；collector 不直接扫描 `wiki/protocol-learnings/` 页面。
+
 Signal **从不直接触发 phase**，必须经过 planner 决策。
 
 ### 2.2 Canonical JSON rules
@@ -180,7 +182,7 @@ Signal **从不直接触发 phase**，必须经过 planner 决策。
 - 纯文案澄清、注释增强、对**原本就非法**数据的更明确报错，不触发 version bump。
 - reader / validator 必须先按 `schema_version` 选择 parser，再做字段校验；不允许 best-effort 混读，不允许 silent downgrade。
 
-当前状态：runtime 已有 `runtime-history.jsonl`、LLM receipts、review / execution receipts、planner-state 等可观测输入；`signals-replay` 已能从 runtime history、LLM receipts 和 execution receipt history 中归一化部分 signal。`raw_added` 当前由 `ingest_source` 与 `drop-*` 投料入口先写 `runtime-history.jsonl` 的 `raw-added` 事件，再由 collector observe-only 映射；不直接扫描 `raw/` 作为事件源。`archive_event` 的 `source_event_ref` 当前只允许指向 execution receipt history（如 `.aiwiki/state/execution-receipts.jsonl#L12`），避免把 `wiki/archives/` 事实页误当事件源。`review_outcome` 作为 future source_kind 只允许明确的 review outcome event log path；当前 review 事件仍通过 runtime history 映射。
+当前状态：runtime 已有 `runtime-history.jsonl`、LLM receipts、review / execution receipts、planner-state 等可观测输入；`signals-replay` 已能从 runtime history、LLM receipts 和 execution receipt history 中归一化部分 signal。`raw_added` 当前由 `ingest_source` 与 `drop-*` 投料入口先写 `runtime-history.jsonl` 的 `raw-added` 事件，再由 collector observe-only 映射；不直接扫描 `raw/` 作为事件源。`learning_threshold` 当前由 protocol-learning aging apply 写入 runtime-history `learning-threshold` 事件，再由 collector observe-only 映射；不直接扫描 `wiki/protocol-learnings/`。`archive_event` 的 `source_event_ref` 当前只允许指向 execution receipt history（如 `.aiwiki/state/execution-receipts.jsonl#L12`），避免把 `wiki/archives/` 事实页误当事件源。`review_outcome` 作为 future source_kind 只允许明确的 review outcome event log path；当前 review 事件仍通过 runtime history 映射。
 
 落地约束：
 
@@ -679,7 +681,7 @@ L3 proposal **只允许**写入以下文件：
 - heavy alchemy 启动 / 完成（planned）
 - light alchemy 启动 / 完成（含 budget_exceeded；planned）
 - elixir promotion / demotion / supersede（candidate promote chain）
-- L2 learning 状态变更（当前已有 protocol-learning aging audit / 状态文件）
+- L2 learning 状态变更（当前已有 protocol-learning aging audit / 状态文件；threshold signal 通过 runtime history 观察映射）
 - L3 proposal generation / accept / reject / revert（planned）
 
 当前审计仍是分散日志：execution receipts、LLM receipts、runtime history、protocol-learning aging audit 等分别承担各自领域的审计语义。目标通用审计流为 `.aiwiki/state/audit.jsonl`（append-only，planned）。

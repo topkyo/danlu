@@ -52,6 +52,8 @@ def _runtime_history_to_signals(event: dict[str, Any], *, line_no: int, rel_path
     event_type = str(event.get("event_type") or "")
     if event_type == "raw-added":
         return _runtime_history_raw_added_to_signals(event, line_no=line_no, rel_path=rel_path)
+    if event_type == "learning-threshold":
+        return _runtime_history_learning_threshold_to_signals(event, line_no=line_no, rel_path=rel_path)
     if event_type not in {"review", "nightly"}:
         return []
 
@@ -142,6 +144,58 @@ def _runtime_history_raw_added_to_signals(
                 "source_event_ref": f"{rel_path}#L{line_no}",
             },
             source_identity=stored_path,
+        )
+    ]
+
+
+def _runtime_history_learning_threshold_to_signals(
+    event: dict[str, Any],
+    *,
+    line_no: int,
+    rel_path: str,
+) -> list[SignalSeed]:
+    protocol = event.get("protocol")
+    emitted_at = _normalize_emitted_at(event.get("occurred_at"))
+    learning_ids = _unique_sorted_strings(
+        _string_list(event.get("learning_ids")) + _string_list(event.get("aged_ids"))
+    )
+    if not isinstance(protocol, str) or not protocol or emitted_at is None or not learning_ids:
+        return []
+
+    emitted_by = event.get("emitted_by")
+    if emitted_by not in {"nightly", "user", "compile", "external"}:
+        emitted_by = "compile"
+
+    threshold_days = event.get("threshold_days")
+    threshold_identity = str(threshold_days) if isinstance(threshold_days, (int, str)) else ""
+    evidence = _unique_sorted_strings(
+        _string_list(event.get("learning_paths")) + [event.get("audit_path")]
+    )
+
+    scope: dict[str, Any] = {
+        "protocol": protocol,
+        "source_ids": learning_ids,
+        "concept_slugs": [],
+        "elixir_refs": [],
+        "judgment_refs": [],
+    }
+    corpus_id = event.get("corpus_id")
+    if isinstance(corpus_id, str) and corpus_id:
+        scope["corpus_id"] = corpus_id
+
+    return [
+        SignalSeed(
+            record_base={
+                "kind": "learning_threshold",
+                "scope": scope,
+                "severity": "medium",
+                "evidence_refs": evidence,
+                "emitted_at": emitted_at,
+                "emitted_by": emitted_by,
+                "source_kind": "runtime_history",
+                "source_event_ref": f"{rel_path}#L{line_no}",
+            },
+            source_identity=f"learning-threshold::{protocol}::{threshold_identity}::{','.join(learning_ids)}",
         )
     ]
 

@@ -14,8 +14,9 @@ from .schema import PROTOCOLS, SCHEMA_VERSION, canonical_dumps, compute_dedupe_k
 SIGNALS_REL_PATH = ".aiwiki/state/signals.jsonl"
 SKIP_EXAMPLES_LIMIT = 5
 SUPPORTED_SOURCES: tuple[str, str, str] = adapters.SUPPORTED_SOURCES
-MAPPED_KINDS: tuple[str, str, str, str, str, str] = (
+MAPPED_KINDS: tuple[str, str, str, str, str, str, str] = (
     "raw_added",
+    "learning_threshold",
     "review_feedback",
     "schedule_tick",
     "runtime_failure",
@@ -226,6 +227,14 @@ def _mapped_invalid_reason(source: str, event: dict[str, Any]) -> str | None:
             if not isinstance(stored_path, str) or not stored_path:
                 return "runtime_history_raw_added_missing_stored_path"
             return "runtime_history_raw_added_invalid"
+        if event_type == "learning-threshold":
+            protocol = event.get("protocol")
+            if not isinstance(protocol, str) or not protocol:
+                return "runtime_history_learning_threshold_missing_protocol"
+            learning_ids = event.get("learning_ids") or event.get("aged_ids")
+            if not isinstance(learning_ids, list) or not any(isinstance(item, str) and item for item in learning_ids):
+                return "runtime_history_learning_threshold_missing_learning_ids"
+            return "runtime_history_learning_threshold_invalid"
         if event_type in {"review", "nightly"}:
             protocol = event.get("protocol")
             if not isinstance(protocol, str) or not protocol:

@@ -30,6 +30,7 @@ from aiwiki.app_state import (
     load_manifest,
     load_material_archive_state,
     load_output_candidates_state,
+    load_runtime_history,
     save_active_corpora_state,
     save_machine_memory_action_state,
     save_output_candidates_state,
@@ -1402,6 +1403,40 @@ class ProtocolLearningsLifecycleTests(unittest.TestCase):
         self.assertIn("old-active", [item["learning_id"] for item in result["aged"]])
         self.assertEqual(frontmatter["state"], "stale")
         self.assertIn("old-active", [item["learning_id"] for item in audit["aged"]])
+
+    def test_age_apply_writes_learning_threshold_runtime_history(self) -> None:
+        old = self._old_timestamp()
+        self._write_learning("old-active", state="active", last_verified_at=old, updated_at=old)
+
+        result = age_learnings(self.root, apply=True, threshold_days=30)
+
+        events = [
+            event
+            for event in load_runtime_history(self.root)
+            if event.get("event_type") == "learning-threshold"
+        ]
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["protocol"], "general")
+        self.assertEqual(events[0]["threshold_days"], 30)
+        self.assertEqual(events[0]["learning_ids"], ["old-active"])
+        self.assertEqual(events[0]["aged_ids"], ["old-active"])
+        self.assertEqual(events[0]["learning_paths"], [f"{LEARNINGS_DIR}/general/old-active.md"])
+        self.assertEqual(events[0]["audit_path"], AUDIT_STATE_PATH)
+        self.assertEqual(events[0]["emitted_by"], "user")
+        self.assertEqual(events[0]["occurred_at"], result["run_at"])
+
+    def test_age_dry_run_does_not_write_learning_threshold_runtime_history(self) -> None:
+        old = self._old_timestamp()
+        self._write_learning("old-active", state="active", last_verified_at=old, updated_at=old)
+
+        age_learnings(self.root, apply=False, threshold_days=30)
+
+        events = [
+            event
+            for event in load_runtime_history(self.root)
+            if event.get("event_type") == "learning-threshold"
+        ]
+        self.assertEqual(events, [])
 
     def test_age_source_ref_missing_marks_stale(self) -> None:
         self._write_learning("missing-ref", state="active", last_verified_at=utc_now())

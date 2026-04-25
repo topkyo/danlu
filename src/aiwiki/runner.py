@@ -1142,7 +1142,7 @@ def run_nightly(
         try:
             from .execution.protocol_learnings import age_learnings
 
-            protocol_learnings_age = age_learnings(root, apply=True)
+            protocol_learnings_age = age_learnings(root, apply=True, emitted_by="nightly")
         except Exception as age_exc:  # noqa: BLE001 - aging must not break nightly
             from .execution.protocol_learnings import AUDIT_STATE_PATH as _AUDIT_PATH
             from .execution.protocol_learnings import _atomic_write_text as _age_atomic_write

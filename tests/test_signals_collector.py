@@ -379,6 +379,44 @@ class TestBadEventTolerance(_FixtureCase):
         self.assertEqual(records[0]["kind"], "raw_added")
         self.assertEqual(records[0]["dedupe_key"], "raw_added:general:runtime_history:raw/inbox/src-note-1.md")
 
+    def test_runtime_learning_threshold_collects_signal(self) -> None:
+        root = self.temp_root / "runtime-learning-threshold"
+        runtime_path = root / ".aiwiki/state/runtime-history.jsonl"
+        runtime_path.parent.mkdir(parents=True, exist_ok=True)
+        runtime_path.write_text(
+            json.dumps(
+                {
+                    "event_type": "learning-threshold",
+                    "occurred_at": "2026-04-24T01:05:00Z",
+                    "protocol": "general",
+                    "threshold_days": 30,
+                    "learning_ids": ["old-active"],
+                    "aged_ids": ["old-active"],
+                    "learning_paths": ["wiki/protocol-learnings/general/old-active.md"],
+                    "audit_path": ".aiwiki/state/protocol_learnings_age.json",
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = collect_signals(
+            root,
+            sources=["runtime_history"],
+            trace_id="550e8400-e29b-41d4-a716-446655440000",
+        )
+
+        self.assertEqual(result["new_count"], 1)
+        self.assertEqual(result["emitted_by_kind"]["learning_threshold"], 1)
+        records = _read_jsonl(root / ".aiwiki/state/signals.jsonl")
+        self.assertEqual(records[0]["kind"], "learning_threshold")
+        self.assertEqual(records[0]["scope"]["source_ids"], ["old-active"])
+        self.assertEqual(
+            records[0]["dedupe_key"],
+            "learning_threshold:general:runtime_history:learning-threshold::general::30::old-active",
+        )
+
     def test_invalid_trace_id_input_is_rejected(self) -> None:
         root = self._copy_case_root("case_basic")
         with self.assertRaises(ValueError):
@@ -817,6 +855,30 @@ class TestKindMapping(unittest.TestCase):
         self.assertEqual(seeds[0].record_base["scope"]["source_ids"], ["src-raw-1"])
         self.assertEqual(seeds[0].source_identity, "raw/inbox/src-raw-1.md")
 
+    def test_runtime_learning_threshold_maps_to_learning_threshold(self) -> None:
+        seeds = adapters._runtime_history_to_signals(
+            {
+                "event_type": "learning-threshold",
+                "occurred_at": "2026-04-24T02:00:00Z",
+                "protocol": "general",
+                "threshold_days": 30,
+                "learning_ids": ["old-active"],
+                "learning_paths": ["wiki/protocol-learnings/general/old-active.md"],
+                "audit_path": ".aiwiki/state/protocol_learnings_age.json",
+                "emitted_by": "nightly",
+            },
+            line_no=2,
+            rel_path=".aiwiki/state/runtime-history.jsonl",
+        )
+        self.assertEqual(seeds[0].record_base["kind"], "learning_threshold")
+        self.assertEqual(seeds[0].record_base["severity"], "medium")
+        self.assertEqual(seeds[0].record_base["emitted_by"], "nightly")
+        self.assertEqual(seeds[0].record_base["scope"]["source_ids"], ["old-active"])
+        self.assertEqual(
+            seeds[0].source_identity,
+            "learning-threshold::general::30::old-active",
+        )
+
     def test_runtime_review_maps_to_review_feedback(self) -> None:
         seeds = adapters._runtime_history_to_signals(
             {
@@ -911,6 +973,13 @@ class TestKindMapping(unittest.TestCase):
             {"event_type": "raw-added", "protocol": "general"},
         )
         self.assertEqual(reason, "runtime_history_raw_added_missing_stored_path")
+
+    def test_mapped_invalid_reason_for_learning_threshold_missing_learning_ids(self) -> None:
+        reason = collector._mapped_invalid_reason(
+            "runtime_history",
+            {"event_type": "learning-threshold", "protocol": "general"},
+        )
+        self.assertEqual(reason, "runtime_history_learning_threshold_missing_learning_ids")
 
     def test_mapped_invalid_reason_for_llm_missing_protocol(self) -> None:
         reason = collector._mapped_invalid_reason("llm_receipt", {"status": "failed"})
