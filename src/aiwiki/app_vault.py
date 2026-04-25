@@ -110,6 +110,7 @@ FOLDER_LABEL_OVERRIDES: tuple[tuple[str, str], ...] = (
     ("output/figures", "图表 figures"),
     ("output/slides", "幻灯片 slides"),
     ("schema/protocols", "协议 protocols"),
+    ("schema/policies", "策略 policies"),
     ("schema/protocols/research", "研发协议 research"),
     ("schema/protocols/general", "通用协议 general"),
     ("schema/protocols/investing", "投资协议 investing"),

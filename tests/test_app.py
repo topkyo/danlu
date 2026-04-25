@@ -2241,6 +2241,7 @@ class AiwikiFlowTests(unittest.TestCase):
     def test_ensure_layout_bootstraps_runtime_schema_files(self) -> None:
         for relative in (
             "schema/index.md",
+            "schema/policies",
             "schema/ingest.md",
             "schema/citations.md",
             "schema/conflicts.md",
@@ -2252,6 +2253,7 @@ class AiwikiFlowTests(unittest.TestCase):
         schema_index = (self.root / "schema" / "index.md").read_text(encoding="utf-8")
         self.assertIn("运行时规则", schema_index)
         self.assertIn("产品运行时", schema_index)
+        self.assertIn("schema/policies/", schema_index)
 
     def test_ensure_layout_bootstraps_protocol_library_and_state(self) -> None:
         for relative in (

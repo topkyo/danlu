@@ -62,6 +62,7 @@ class VaultBootstrapTests(unittest.TestCase):
         self.assertEqual(appearance["enabledCssSnippets"], ["danlu-zh-folders"])
         self.assertIn('.tree-item-self[data-path="raw"] > .tree-item-inner', snippet)
         self.assertIn('.nav-folder-title[data-path="output/control"] > .nav-folder-title-content', snippet)
+        self.assertIn('content: "策略 policies";', snippet)
         self.assertIn('content: "研发协议 research";', snippet)
         self.assertIn("Capture Note", plugin_source)
         self.assertIn("drop-note", plugin_source)

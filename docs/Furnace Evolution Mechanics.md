@@ -652,7 +652,7 @@ propose (auto) → review queue (human) → accept?
 L3 proposal **只允许**写入以下文件：
 
 - `prompts/*.md`
-- `schema/policies/*`
+- `schema/policies/*`（`ensure_layout` 与新 vault bootstrap 会创建该目录，但不生成默认 policy 文件）
 
 **永不**允许：
 
