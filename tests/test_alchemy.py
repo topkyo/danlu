@@ -1244,6 +1244,24 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
             run_alchemy_revert(self.root, elixir_id=elixir_id)
         self.assertIn("revert_conflict_candidate_modified", str(ctx.exception))
 
+    def test_revert_ignores_receipt_applied_at_when_hashes_match(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="revert-hash-only")
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        entries = _receipt_history_entries(self.root)
+        for index in range(len(entries) - 1, -1, -1):
+            entry = entries[index]
+            if entry.get("subject_kind") == "elixir_promotion" and entry.get("subject_id") == elixir_id:
+                rewritten = dict(entry)
+                rewritten["applied_at"] = "1999-01-01T00:00:00+00:00"
+                entries[index] = rewritten
+                break
+        _write_receipt_history_entries(self.root, entries)
+
+        result_path = run_alchemy_revert(self.root, elixir_id=elixir_id)
+
+        self.assertEqual(result_path, _candidate_path(self.root, elixir_id))
+        self.assertFalse(_settled_path(self.root, elixir_id).exists())
+
     def test_revert_elixir_missing_primary_hash_returns_promotion_receipt_missing_hash(self) -> None:
         elixir_id = self._start_candidate_elixir(topic="revert-missing-primary-hash")
         run_alchemy_promote(self.root, elixir_id=elixir_id)

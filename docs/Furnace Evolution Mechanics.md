@@ -479,6 +479,7 @@ promoted_at: null
 - M2.4 起，`elixir_revert` / `elixir_demotion` receipt 的 `bundle` 显式记录状态迁移与双平面路径；已有 `dependency_breaks` 与 source promotion receipt anchor 保持在同一 bundle 内。
 - M3.1 起，`dependency_breaks[].break_reason` 是闭集：`source_demoted / source_reverted`；非法 reason 不得进入 `elixir_dependency_break` signal。
 - M2.6 起，elixir lifecycle receipt 的 `action_id` 使用 `elixir-<op>-<slug>-<epoch_ms>` 事件级 id；同毫秒文件冲突时追加数字后缀，避免覆盖已有 receipt。
+- M3.4 起，`alchemy-revert` 的 clean/stale 判定只依赖 promotion receipt 中的 settled/tombstone sha256 hash anchors；`applied_at` 与 tombstone `promoted_at` 不再作为 fallback 判据。
 
 ## 8. Chaining → Distillation → Compounding
 
