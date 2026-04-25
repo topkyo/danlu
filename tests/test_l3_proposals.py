@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from aiwiki.app_protocol import ensure_layout
+from aiwiki.app_shell import build_shell_summary
 from aiwiki.app_state import l3_proposal_state_path
 from aiwiki.execution.l3_proposals import (
     apply_l3_proposal,
@@ -177,3 +178,52 @@ class L3ProposalTests(unittest.TestCase):
         self.assertIn("human_merge_required", hint_path.read_text(encoding="utf-8"))
         stored = self._state_proposal("prop-conflict")
         self.assertEqual(stored["state"], "revert_conflict")
+
+    def test_shell_summary_surfaces_l3_proposal_review_controls(self) -> None:
+        create_l3_proposal(
+            self.root,
+            kind="prompt_proposal",
+            proposal_id="prop-shell-candidate",
+            target_file="prompts/ask.md",
+            content="Candidate prompt.\n",
+        )
+        create_l3_proposal(
+            self.root,
+            kind="prompt_proposal",
+            proposal_id="prop-shell-accepted",
+            target_file="prompts/ask.md",
+            content="Accepted prompt.\n",
+        )
+        accepted = apply_l3_proposal(self.root, "prop-shell-accepted")
+        create_l3_proposal(
+            self.root,
+            kind="prompt_proposal",
+            proposal_id="prop-shell-conflict",
+            target_file="prompts/ask.md",
+            content="Conflict prompt.\n",
+        )
+        conflict = apply_l3_proposal(self.root, "prop-shell-conflict")
+        (self.root / "prompts" / "ask.md").write_text("Human edit after apply.\n", encoding="utf-8")
+        revert_l3_proposal(self.root, str(conflict["receipt_path"]))
+
+        summary = build_shell_summary(self.root)
+        controls = {
+            str(item.get("proposal_id") or ""): item
+            for item in summary["review_controls"]["l3_proposals"]
+        }
+
+        candidate = controls["prop-shell-candidate"]
+        self.assertTrue(candidate["can_apply"])
+        self.assertTrue(candidate["can_reject"])
+        self.assertFalse(candidate["can_revert"])
+        self.assertIn("apply", candidate["command_hints"])
+        accepted_control = controls["prop-shell-accepted"]
+        self.assertFalse(accepted_control["can_apply"])
+        self.assertTrue(accepted_control["can_revert"])
+        self.assertEqual(accepted_control["last_receipt_path"], accepted["receipt_path"])
+        conflict_control = controls["prop-shell-conflict"]
+        self.assertEqual(conflict_control["state"], "revert_conflict")
+        self.assertTrue(conflict_control["needs_attention"])
+        self.assertIn("human_merge_required", (self.root / conflict_control["revert_hint_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(summary["review_backlog_counts"]["l3_proposals"], 3)
+        self.assertEqual(summary["review_backlog_counts"]["l3_proposal_attention"], 2)

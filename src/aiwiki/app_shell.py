@@ -81,6 +81,7 @@ from .app_utils import (
     write_json_document_if_changed_ignoring_generated_timestamps,
 )
 from .config import LLMConfig
+from .execution.l3_proposals import list_l3_proposals
 from .llm import classify_backend_error
 
 
@@ -643,6 +644,7 @@ def shell_dashboard(
             {"id": "pending-review", "label": "Pending review", "value": review_counts.get("pending_decisions", 0) + review_counts.get("pending_judgments", 0)},
             {"id": "ready-actions", "label": "Ready actions", "value": review_counts.get("ready_actions", 0)},
             {"id": "planner-blocked", "label": "Planner blocked", "value": planner.get("counts", {}).get("blocked", 0) if isinstance(planner, dict) else 0},
+            {"id": "l3-proposals", "label": "L3 proposals", "value": review_counts.get("l3_proposal_attention", 0)},
             {"id": "drift-warnings", "label": "Drift warnings", "value": len(drift_warnings)},
         ],
         "planner_next_action": dict(planner.get("next_action", {})) if isinstance(planner, dict) else {},
@@ -758,12 +760,57 @@ def shell_review_controls(
             str(item.get("title") or "").lower(),
         )
     )
+    l3_controls = [l3_proposal_control_object(proposal) for proposal in list_l3_proposals(root)]
     return {
         "pages": review_pages,
         "decision_pages": [page for page in review_pages if str(page.get("kind") or "") == "decision"],
         "judgment_pages": [page for page in review_pages if str(page.get("kind") or "") == "judgment"],
         "review_actions": [dict(action) for action in review_actions if isinstance(action, dict)],
         "rewrite_proposals": rewrite_controls,
+        "l3_proposals": l3_controls,
+    }
+
+
+def l3_proposal_control_object(proposal: dict[str, Any]) -> dict[str, Any]:
+    proposal_id = str(proposal.get("proposal_id") or "")
+    kind = str(proposal.get("kind") or "")
+    state = str(proposal.get("state") or "candidate")
+    target_file = str(proposal.get("target_file") or "")
+    proposal_path = str(proposal.get("proposal_path") or "")
+    last_receipt_path = str(proposal.get("last_receipt_path") or "")
+    can_reject = state == "candidate"
+    can_apply = state == "candidate"
+    can_revert = state == "accepted" and bool(last_receipt_path)
+    needs_attention = state in {"candidate", "stale", "revert_conflict"}
+    command_hints: dict[str, str] = {}
+    if can_reject:
+        command_hints["reject"] = f"PYTHONPATH=src python3 -m aiwiki.cli --root . review proposal {proposal_id} --status rejected"
+    if can_apply:
+        command_hints["apply"] = f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply {proposal_id}"
+    if can_revert:
+        command_hints["revert"] = f"PYTHONPATH=src python3 -m aiwiki.cli --root . revert {last_receipt_path}"
+    return {
+        "proposal_id": proposal_id,
+        "kind": kind,
+        "state": state,
+        "current_status": state,
+        "target_file": target_file,
+        "proposal_path": proposal_path,
+        "review_queue_entry_id": str(proposal.get("review_queue_entry_id") or ""),
+        "created_at": str(proposal.get("created_at") or ""),
+        "accepted_at": str(proposal.get("accepted_at") or ""),
+        "rejected_at": str(proposal.get("rejected_at") or ""),
+        "reverted_at": str(proposal.get("reverted_at") or ""),
+        "stale_at": str(proposal.get("stale_at") or ""),
+        "revert_conflict_at": str(proposal.get("revert_conflict_at") or ""),
+        "last_receipt_path": last_receipt_path,
+        "revert_hint_path": str(proposal.get("revert_hint_path") or ""),
+        "can_review": can_reject,
+        "can_reject": can_reject,
+        "can_apply": can_apply,
+        "can_revert": can_revert,
+        "needs_attention": needs_attention,
+        "command_hints": command_hints,
     }
 
 
@@ -1306,6 +1353,15 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         judgment_assets=judgment_assets,
         counter_evidence_scan=counter_evidence_scan if isinstance(counter_evidence_scan, dict) else {},
         review_actions=judgment_review_actions if isinstance(judgment_review_actions, list) else [],
+    )
+    l3_review_controls = (
+        list(review_controls.get("l3_proposals", []))
+        if isinstance(review_controls.get("l3_proposals", []), list)
+        else []
+    )
+    review_backlog_counts["l3_proposals"] = len(l3_review_controls)
+    review_backlog_counts["l3_proposal_attention"] = sum(
+        1 for proposal in l3_review_controls if isinstance(proposal, dict) and proposal.get("needs_attention")
     )
     execution_controls = shell_execution_controls(root, memory)
     rewrite_recovery_actions = rewrite_recovery_actions_for_controls(

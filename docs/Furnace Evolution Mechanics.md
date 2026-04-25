@@ -16,7 +16,7 @@ related_docs:
 
 这份文档定义炼丹炉“如何进化”的实现契约：signal 如何路由到 heavy / light 炼丹、active corpus 如何持久化、金丹如何炼成与复利、L2 protocol-learning 如何衔接既有实装、L3 prompt/policy proposal 如何受控写回。
 
-> **实现状态说明（2026-04-26）**：本文是“目标契约 + 当前差距”的 SoT。当前已落地 active corpus / output candidates、L2 protocol-learning 生命周期、repair planner state、nightly low-risk auto-consume、显式 backend 选择、最小金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote`，heavy/light lane read-only dry-run preview、显式 receipted action apply bridge、deterministic primitive receipt wrapper、lane primitive trace/audit metadata 和 `judge/distill/review/propose` deferred metadata，以及 L3 prompt/policy proposal 的手工/fixture 创建、只读队列查看、人工 reject、hash-gated apply 和 receipt-gated revert baseline。完整 signal planner、heavy/light 自动执行调度入口、`output/_candidates/elixirs/` 候选平面、L3 proposal 自动生成尚未完整实现，以下章节用 `implemented / partial / planned` 标记区分。
+> **实现状态说明（2026-04-26）**：本文是“目标契约 + 当前差距”的 SoT。当前已落地 active corpus / output candidates、L2 protocol-learning 生命周期、repair planner state、nightly low-risk auto-consume、显式 backend 选择、最小金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote`，heavy/light lane read-only dry-run preview、显式 receipted action apply bridge、deterministic primitive receipt wrapper、lane primitive trace/audit metadata 和 `judge/distill/review/propose` deferred metadata，以及 L3 prompt/policy proposal 的手工/fixture 创建、Shell review surface、人工 reject、hash-gated apply 和 receipt-gated revert baseline。完整 signal planner、heavy/light 自动执行调度入口、`output/_candidates/elixirs/` 候选平面、L3 proposal 自动生成尚未完整实现，以下章节用 `implemented / partial / planned` 标记区分。
 
 它同时取代：
 
@@ -565,7 +565,7 @@ L2 layer 已在 EP-029 Step 4 落地。本文档**继承**现有实现，不引�
 
 ## 10. L3 Prompt/Policy Proposal Contract
 
-**架构授权的 partial 能力**。agent 可生成对 `prompts/*.md` 和 `schema/policies/*` 的修改提案，但**必须人工 accept** 才写回。当前 runtime 已提供 manual baseline：`l3-proposal-create` 创建 `prompt_proposal / policy_proposal` fixture，`review proposals` 只读查看队列，`review proposal <proposal-id> --status rejected` 显式否决，`apply <proposal-id>` 执行人工 accept + hash-gated 写回，`revert <receipt-id>` 按 receipt clean revert 或生成 `human_merge_required` hint。自动 proposal generation 仍未开放；现有成熟 proposal 类型仍包括 execution proposal 与 concept rewrite proposal。
+**架构授权的 partial 能力**。agent 可生成对 `prompts/*.md` 和 `schema/policies/*` 的修改提案，但**必须人工 accept** 才写回。当前 runtime 已提供 manual baseline：`l3-proposal-create` 创建 `prompt_proposal / policy_proposal` fixture，`review proposals` 与 Product Shell `review_controls.l3_proposals` 只读查看队列，`review proposal <proposal-id> --status rejected` 显式否决，`apply <proposal-id>` 执行人工 accept + hash-gated 写回，`revert <receipt-id>` 按 receipt clean revert 或生成 `human_merge_required` hint。自动 proposal generation 仍未开放；现有成熟 proposal 类型仍包括 execution proposal 与 concept rewrite proposal。
 
 ### 10.1 触发条件
 
@@ -677,6 +677,7 @@ L3 proposal **只允许**写入以下文件：
 | `aiwiki alchemy heavy|light <scope> --apply --primitive compile|lint|nightly` | 当前：仅执行 deterministic primitives 并写 lane primitive execution receipt；receipt 顶层携带 planner `trace_id/trace_ids` 与 execution receipt history audit metadata；不调用 LLM-backed `run-*` | `output/control/execution-receipts/` + `.aiwiki/state/execution-receipts.jsonl` |
 | `aiwiki l3-proposal-create --kind prompt_proposal\|policy_proposal ...` | 当前：手工/fixture 创建 L3 proposal；只写 proposal 平面和 state，不写目标文件 | `output/_proposals/prompt\|policy/` + `.aiwiki/state/l3-proposals.json` |
 | `aiwiki review proposals` | 当前：查看 L3 proposal 队列 | 读 only |
+| `aiwiki shell-status` | 当前：在 `review_controls.l3_proposals` 暴露 L3 proposal review controls 与 command hints | 读 `.aiwiki/state/l3-proposals.json` |
 | `aiwiki review proposal <proposal-id> --status rejected` | 当前：人工 reject L3 proposal；只更新 proposal state/page，不写目标文件，不生成 apply receipt | `output/_proposals/prompt\|policy/` + `.aiwiki/state/l3-proposals.json` |
 | `aiwiki apply <proposal-id>` | 当前：人工 accept L3 proposal；`before_hash` mismatch 时转 `stale` 并拒绝半写 | `prompts/*.md` 或 `schema/policies/*` + execution receipt |
 | `aiwiki revert <receipt-id>` | 当前：按 L3 apply receipt 回滚；`after_hash` mismatch 时生成 `human_merge_required` hint，不覆盖目标文件 | 恢复 target 文件或写 `output/_proposals/*/*-revert-hint.md` |
@@ -727,7 +728,7 @@ revert **不可以**：
 
 M5 当前收敛状态：`--apply --action-id` 只桥接既有 receipted low-risk action batch；`--apply --primitive` 只支持 dry-run step 明确 `apply_supported=true` 的 `compile/lint/nightly` deterministic receipts。任一 `--apply` 必须先得到 `status=ok` 且 `selected_count>0` 的 dry-run preview；非 `ok` preview 会在 action bridge 或 primitive implementation 调用前 abort。lane primitive receipt 顶层已暴露 planner trace 与 execution receipt history audit metadata。`judge/distill/review/propose` 已完成可行性评估并保持 deferred，直到各自拥有独立 scoped primitive contract。
 
-M3 当前收敛状态：manual baseline 已支持 `l3-proposal-create`、`review proposals`、`review proposal <proposal-id> --status rejected`、`apply <proposal-id>` 与 `revert <receipt-id>`；写回范围限定为 `prompts/*.md` 与 `schema/policies/*`。`reject` 只更新 proposal state/page 与 runtime history，不写目标文件、不生成 apply receipt。`apply` 必须通过 proposal `before_hash`，失败时 proposal 转 `stale` 且不写目标；`revert` 必须通过 receipt `after_hash`，失败时转 `revert_conflict` 并生成 `human_merge_required` hint。自动 proposal generation 和通用 audit stream 仍 deferred。
+M3 当前收敛状态：manual baseline 已支持 `l3-proposal-create`、`review proposals`、`shell-status` 的 `review_controls.l3_proposals`、`review proposal <proposal-id> --status rejected`、`apply <proposal-id>` 与 `revert <receipt-id>`；写回范围限定为 `prompts/*.md` 与 `schema/policies/*`。`reject` 只更新 proposal state/page 与 runtime history，不写目标文件、不生成 apply receipt。`apply` 必须通过 proposal `before_hash`，失败时 proposal 转 `stale` 且不写目标；`revert` 必须通过 receipt `after_hash`，失败时转 `revert_conflict` 并生成 `human_merge_required` hint。自动 proposal generation 和通用 audit stream 仍 deferred。
 
 达到 9+ 可行性的条件不是“自动化更多”，而是每个 milestone 都满足：可重放、可 dry-run、可回滚、可停用、可用现有 gate 验证。
 
