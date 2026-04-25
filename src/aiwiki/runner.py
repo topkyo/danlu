@@ -195,6 +195,17 @@ def run_l3_proposal_list(root: Path, *, kind: str | None = None, state: str | No
     return list_l3_proposals(root, kind=kind, state=state)
 
 
+def run_l3_proposal_generation_preview(
+    root: Path,
+    *,
+    planner_log_path: Path | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
+    from .execution.l3_proposals import preview_l3_proposal_generation
+
+    return preview_l3_proposal_generation(root, planner_log_path=planner_log_path, limit=limit)
+
+
 def run_l3_proposal_apply(root: Path, proposal_id: str, *, note: str | None = None) -> dict[str, Any]:
     from .execution.l3_proposals import apply_l3_proposal
 

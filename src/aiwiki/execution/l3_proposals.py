@@ -30,6 +30,7 @@ from ..render.paths import execution_receipt_path
 L3_PROPOSAL_KINDS = ("prompt_proposal", "policy_proposal")
 L3_PROPOSAL_STATES = ("candidate", "accepted", "rejected", "reverted", "stale", "revert_conflict")
 L3_TRIGGER_PATTERNS = ("failure_cluster", "recurring_feedback", "drift", "contract_failure", "manual_fixture")
+_PLANNER_LOG_REL_PATH = ".aiwiki/state/planner-log.jsonl"
 
 
 def default_l3_proposal_state() -> dict[str, Any]:
@@ -92,6 +93,15 @@ def _target_path(root: Path, kind: str, target_file: str) -> Path:
     else:
         raise ValueError(f"Unsupported L3 proposal kind: {kind}")
     return root / target.as_posix()
+
+
+def _resolve_workspace_path(root: Path, path: Path) -> Path:
+    resolved = path if path.is_absolute() else root / path
+    try:
+        resolved.resolve().relative_to(root.resolve())
+    except ValueError as exc:
+        raise ValueError("path must stay within the workspace.") from exc
+    return resolved
 
 
 def _find_l3_proposal(proposals: list[dict[str, Any]], proposal_id: str) -> dict[str, Any]:
@@ -183,6 +193,85 @@ def list_l3_proposals(
         proposals = [item for item in proposals if str(item.get("state") or "") == state]
     proposals.sort(key=lambda item: (str(item.get("created_at") or ""), str(item.get("proposal_id") or "")), reverse=True)
     return proposals
+
+
+def preview_l3_proposal_generation(
+    root: Path,
+    *,
+    planner_log_path: Path | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
+    if limit < 1:
+        raise ValueError("limit must be a positive integer.")
+    resolved_path = _resolve_workspace_path(root, planner_log_path or Path(_PLANNER_LOG_REL_PATH))
+    if not resolved_path.exists():
+        return {
+            "status": "ok",
+            "generation_mode": "preview",
+            "automatic_generation_enabled": False,
+            "side_effects_allowed": False,
+            "planner_log_path": relative_path(root, resolved_path),
+            "candidate_count": 0,
+            "blocked_count": 0,
+            "returned_count": 0,
+            "candidates": [],
+            "limit": limit,
+        }
+
+    candidates: list[dict[str, Any]] = []
+    matched_count = 0
+    scanned_count = 0
+    with resolved_path.open("r", encoding="utf-8") as handle:
+        for line_no, raw_line in enumerate(handle, start=1):
+            payload = raw_line.strip()
+            if not payload:
+                continue
+            scanned_count += 1
+            try:
+                record = json.loads(payload)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"invalid planner-log.jsonl JSON at line {line_no}: {exc.msg}") from exc
+            if not isinstance(record, dict):
+                raise ValueError(f"invalid planner-log.jsonl record at line {line_no}: expected object")
+            if str(record.get("decision") or "") != "generate-proposal":
+                continue
+            reason_codes = [str(item) for item in record.get("reason_codes", []) if isinstance(item, str)]
+            if "proposal_recommended" not in reason_codes:
+                continue
+            matched_count += 1
+            if len(candidates) >= limit:
+                continue
+            candidates.append(
+                {
+                    "signal_id": str(record.get("signal_id") or ""),
+                    "trace_id": str(record.get("trace_id") or ""),
+                    "dedupe_key": str(record.get("dedupe_key") or ""),
+                    "mode": str(record.get("mode") or ""),
+                    "decided_at": str(record.get("decided_at") or ""),
+                    "reason_codes": reason_codes,
+                    "eligible": False,
+                    "proposal_kind": "unknown",
+                    "blockers": [
+                        "automatic_generation_disabled",
+                        "threshold_clustering_not_implemented",
+                        "manual_review_required",
+                    ],
+                }
+            )
+
+    return {
+        "status": "ok",
+        "generation_mode": "preview",
+        "automatic_generation_enabled": False,
+        "side_effects_allowed": False,
+        "planner_log_path": relative_path(root, resolved_path),
+        "scanned_count": scanned_count,
+        "candidate_count": matched_count,
+        "blocked_count": matched_count,
+        "returned_count": len(candidates),
+        "candidates": candidates,
+        "limit": limit,
+    }
 
 
 @runtime_write_operation

@@ -12,6 +12,7 @@ from aiwiki.execution.l3_proposals import (
     apply_l3_proposal,
     create_l3_proposal,
     list_l3_proposals,
+    preview_l3_proposal_generation,
     reject_l3_proposal,
     revert_l3_proposal,
 )
@@ -235,3 +236,72 @@ class L3ProposalTests(unittest.TestCase):
         self.assertIn("human_merge_required", (self.root / conflict_control["revert_hint_path"]).read_text(encoding="utf-8"))
         self.assertEqual(summary["review_backlog_counts"]["l3_proposals"], 3)
         self.assertEqual(summary["review_backlog_counts"]["l3_proposal_attention"], 2)
+
+    def test_generation_preview_lists_blocked_planner_candidates_without_writes(self) -> None:
+        planner_log = self.root / ".aiwiki" / "state" / "planner-log.jsonl"
+        planner_log.parent.mkdir(parents=True, exist_ok=True)
+        planner_log.write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "schema_version": 1,
+                            "signal_id": "sig-20260424-l3prev01",
+                            "dedupe_key": "sig-20260424-l3prev01:observe_only",
+                            "trace_id": "550e8400-e29b-41d4-a716-446655440000",
+                            "decision": "generate-proposal",
+                            "mode": "observe_only",
+                            "reason_codes": ["runtime_failure_observed", "proposal_recommended"],
+                            "budget_used": {},
+                            "locks_acquired": [],
+                            "primitive_refs": [],
+                            "side_effects_allowed": False,
+                            "decided_at": "2026-04-24T12:00:00Z",
+                        },
+                        separators=(",", ":"),
+                    ),
+                    json.dumps(
+                        {
+                            "schema_version": 1,
+                            "signal_id": "sig-20260424-light01",
+                            "dedupe_key": "sig-20260424-light01:observe_only",
+                            "trace_id": "550e8400-e29b-41d4-a716-446655440000",
+                            "decision": "enqueue-light",
+                            "mode": "observe_only",
+                            "reason_codes": ["raw_added_observed"],
+                            "budget_used": {},
+                            "locks_acquired": [],
+                            "primitive_refs": [],
+                            "side_effects_allowed": False,
+                            "decided_at": "2026-04-24T12:00:01Z",
+                        },
+                        separators=(",", ":"),
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = preview_l3_proposal_generation(self.root)
+
+        self.assertFalse(result["automatic_generation_enabled"])
+        self.assertFalse(result["side_effects_allowed"])
+        self.assertEqual(result["planner_log_path"], ".aiwiki/state/planner-log.jsonl")
+        self.assertEqual(result["candidate_count"], 1)
+        self.assertEqual(result["blocked_count"], 1)
+        self.assertEqual(result["returned_count"], 1)
+        candidate = result["candidates"][0]
+        self.assertEqual(candidate["signal_id"], "sig-20260424-l3prev01")
+        self.assertFalse(candidate["eligible"])
+        self.assertIn("automatic_generation_disabled", candidate["blockers"])
+        self.assertFalse(l3_proposal_state_path(self.root).exists())
+        self.assertFalse((self.root / "output" / "_proposals").exists())
+
+    def test_generation_preview_missing_planner_log_is_read_only_empty(self) -> None:
+        result = preview_l3_proposal_generation(self.root)
+
+        self.assertEqual(result["candidate_count"], 0)
+        self.assertEqual(result["returned_count"], 0)
+        self.assertEqual(result["candidates"], [])
+        self.assertFalse(l3_proposal_state_path(self.root).exists())

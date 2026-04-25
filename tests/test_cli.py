@@ -312,6 +312,13 @@ class CLITests(unittest.TestCase):
                 {"kind": "prompt_proposal", "state": "candidate"},
             ),
             (
+                "review-proposal-generation",
+                ["review", "proposal-generation", "--planner-log-path", "custom/planner-log.jsonl", "--limit", "3", "--json"],
+                "run_l3_proposal_generation_preview",
+                (self.root,),
+                {"planner_log_path": Path("custom/planner-log.jsonl"), "limit": 3},
+            ),
+            (
                 "review-proposal-reject",
                 ["review", "proposal", "prop-ask", "--status", "rejected", "--note", "skip"],
                 "run_l3_proposal_reject",

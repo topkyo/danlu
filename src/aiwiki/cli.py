@@ -56,6 +56,7 @@ from .runner import (
     run_demote,
     run_l3_proposal_apply,
     run_l3_proposal_create,
+    run_l3_proposal_generation_preview,
     run_l3_proposal_list,
     run_l3_proposal_reject,
     run_l3_proposal_revert,
@@ -434,6 +435,13 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("candidate", "accepted", "rejected", "reverted", "stale", "revert_conflict"),
     )
     review_proposals_parser.add_argument("--json", action="store_true", help="Return full JSON records.")
+    review_proposal_generation_parser = review_group_subparsers.add_parser(
+        "proposal-generation",
+        help="Preview blocked L3 proposal generation candidates from planner-log.",
+    )
+    review_proposal_generation_parser.add_argument("--planner-log-path", type=Path, default=None)
+    review_proposal_generation_parser.add_argument("--limit", type=int, default=20)
+    review_proposal_generation_parser.add_argument("--json", action="store_true", help="Return full JSON payload.")
     review_proposal_parser = review_group_subparsers.add_parser(
         "proposal",
         help="Review one L3 prompt/policy proposal.",
@@ -863,6 +871,15 @@ def main(argv: list[str] | None = None) -> int:
                 result = run_l3_proposal_list(root, kind=args.kind, state=args.state)
                 if not args.json:
                     text_output = "\n".join(_format_l3_proposal_summary_line(item) for item in result) or "(no L3 proposals)"
+            elif args.review_command == "proposal-generation":
+                result = run_l3_proposal_generation_preview(
+                    root,
+                    planner_log_path=args.planner_log_path,
+                    limit=args.limit,
+                )
+                if not args.json:
+                    candidates = result.get("candidates", []) if isinstance(result, dict) else []
+                    text_output = "\n".join(_format_l3_generation_preview_line(item) for item in candidates) or "(no L3 proposal generation candidates)"
             elif args.review_command == "proposal":
                 if args.status != "rejected":
                     raise ValueError(f"Unsupported L3 proposal review status: {args.status}")
@@ -1111,6 +1128,23 @@ def _format_l3_proposal_summary_line(record: dict[str, object]) -> str:
             str(record.get("state") or ""),
             str(record.get("target_file") or ""),
             str(record.get("proposal_path") or ""),
+        ]
+    )
+
+
+def _format_l3_generation_preview_line(record: dict[str, object]) -> str:
+    blockers = record.get("blockers")
+    if isinstance(blockers, list):
+        rendered_blockers = json.dumps(blockers, ensure_ascii=False)
+    else:
+        rendered_blockers = str(blockers or "[]")
+    return "  ".join(
+        [
+            str(record.get("decided_at") or ""),
+            str(record.get("signal_id") or ""),
+            str(record.get("proposal_kind") or "unknown"),
+            "blocked",
+            rendered_blockers,
         ]
     )
 

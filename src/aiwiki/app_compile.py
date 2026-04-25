@@ -664,6 +664,7 @@ _LAZY_OWNERS: dict[str, str] = {
     # L3 prompt/policy proposals (M3.6)
     "create_l3_proposal": "aiwiki.execution.l3_proposals",
     "list_l3_proposals": "aiwiki.execution.l3_proposals",
+    "preview_l3_proposal_generation": "aiwiki.execution.l3_proposals",
     "apply_l3_proposal": "aiwiki.execution.l3_proposals",
     "reject_l3_proposal": "aiwiki.execution.l3_proposals",
     "revert_l3_proposal": "aiwiki.execution.l3_proposals",

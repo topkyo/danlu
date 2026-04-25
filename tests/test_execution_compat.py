@@ -77,6 +77,7 @@ EXPECTED_LAZY_NAMES = {
     # L3 prompt/policy proposals
     "create_l3_proposal",
     "list_l3_proposals",
+    "preview_l3_proposal_generation",
     "apply_l3_proposal",
     "reject_l3_proposal",
     "revert_l3_proposal",
@@ -98,12 +99,12 @@ class ExecutionCompatSeamTests(unittest.TestCase):
         self.assertEqual(set(app_compile._LAZY_OWNERS.keys()), EXPECTED_LAZY_NAMES)
 
     def test_lazy_owners_count_matches_plan(self) -> None:
-        # Plan promises 28 public + 8 private helpers = 36.
+        # Plan promises 29 public + 8 private helpers = 37.
         keys = list(app_compile._LAZY_OWNERS.keys())
         public = [k for k in keys if not k.startswith("_")]
         private = [k for k in keys if k.startswith("_")]
-        self.assertEqual(len(keys), 36)
-        self.assertEqual(len(public), 28)
+        self.assertEqual(len(keys), 37)
+        self.assertEqual(len(public), 29)
         self.assertEqual(len(private), 8)
 
     def test_all_lazy_owners_self_reference_in_ep_018a(self) -> None:
@@ -150,6 +151,7 @@ class ExecutionCompatSeamTests(unittest.TestCase):
             # M3.6 — L3 prompt/policy proposals
             "create_l3_proposal": "aiwiki.execution.l3_proposals",
             "list_l3_proposals": "aiwiki.execution.l3_proposals",
+            "preview_l3_proposal_generation": "aiwiki.execution.l3_proposals",
             "apply_l3_proposal": "aiwiki.execution.l3_proposals",
             "reject_l3_proposal": "aiwiki.execution.l3_proposals",
             "revert_l3_proposal": "aiwiki.execution.l3_proposals",
