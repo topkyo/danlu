@@ -4,8 +4,8 @@ Guards (post independent oracle review):
 
 1. Every execution name listed in ``aiwiki.app_compile._LAZY_OWNERS`` is
    resolvable via ``getattr`` and is a real callable.
-2. The count and shape match the plan: 21 public execution functions +
-   8 private helpers = 29 total.
+2. The count and shape match the plan: 27 public execution functions +
+   8 private helpers = 35 total.
 3. Hot patch targets used by ``tests/test_app.py`` (``utc_now``,
    ``entry_concept_terms``, ``build_machine_memory``,
    ``build_ranking_source_record``, ``build_ranking_concept_record``) are
@@ -74,6 +74,13 @@ EXPECTED_LAZY_NAMES = {
     # Runtime surfaces
     "nightly_health",
     "shell_status",
+    # L3 prompt/policy proposals
+    "create_l3_proposal",
+    "list_l3_proposals",
+    "apply_l3_proposal",
+    "revert_l3_proposal",
+    "load_l3_proposal_state",
+    "save_l3_proposal_state",
 }
 
 PATCH_SEAM_NAMES = {
@@ -90,12 +97,12 @@ class ExecutionCompatSeamTests(unittest.TestCase):
         self.assertEqual(set(app_compile._LAZY_OWNERS.keys()), EXPECTED_LAZY_NAMES)
 
     def test_lazy_owners_count_matches_plan(self) -> None:
-        # Plan promises 21 public + 8 private helpers = 29.
+        # Plan promises 27 public + 8 private helpers = 35.
         keys = list(app_compile._LAZY_OWNERS.keys())
         public = [k for k in keys if not k.startswith("_")]
         private = [k for k in keys if k.startswith("_")]
-        self.assertEqual(len(keys), 29)
-        self.assertEqual(len(public), 21)
+        self.assertEqual(len(keys), 35)
+        self.assertEqual(len(public), 27)
         self.assertEqual(len(private), 8)
 
     def test_all_lazy_owners_self_reference_in_ep_018a(self) -> None:
@@ -139,6 +146,13 @@ class ExecutionCompatSeamTests(unittest.TestCase):
             "revert_machine_memory_action_batch": "aiwiki.execution.machine_memory_batch",
             "_build_batch_id": "aiwiki.execution.machine_memory_batch",
             "_load_latest_action_apply_batch_receipt": "aiwiki.execution.machine_memory_batch",
+            # M3.6 — L3 prompt/policy proposals
+            "create_l3_proposal": "aiwiki.execution.l3_proposals",
+            "list_l3_proposals": "aiwiki.execution.l3_proposals",
+            "apply_l3_proposal": "aiwiki.execution.l3_proposals",
+            "revert_l3_proposal": "aiwiki.execution.l3_proposals",
+            "load_l3_proposal_state": "aiwiki.execution.l3_proposals",
+            "save_l3_proposal_state": "aiwiki.execution.l3_proposals",
         }
         for name, owner in app_compile._LAZY_OWNERS.items():
             expected = migrated.get(name, "aiwiki.app_compile")

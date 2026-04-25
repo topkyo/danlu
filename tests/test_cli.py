@@ -155,6 +155,7 @@ class CLITests(unittest.TestCase):
             parser.parse_args([removed_command, "elixir-vla-robotics-deadbeef"])
 
     def test_main_dispatches_command_handlers(self) -> None:
+        (self.root / "proposal-content.md").write_text("Updated prompt.\n", encoding="utf-8")
         cases = [
             ("layout", ["layout"], "ensure_layout", (self.root,), {}),
             ("new-vault", ["new-vault", "child-vault", "--force"], "bootstrap_new_vault", (self.root, Path("child-vault").resolve()), {"force": True}),
@@ -270,6 +271,59 @@ class CLITests(unittest.TestCase):
                     "primitives": ["compile"],
                     "note": "ship",
                 },
+            ),
+            (
+                "l3-proposal-create",
+                [
+                    "l3-proposal-create",
+                    "--kind",
+                    "prompt_proposal",
+                    "--proposal-id",
+                    "prop-ask",
+                    "--target-file",
+                    "prompts/ask.md",
+                    "--content-file",
+                    "proposal-content.md",
+                    "--rationale",
+                    "tighten",
+                    "--evidence-ref",
+                    "receipt-1",
+                    "--signal-id",
+                    "sig-1",
+                ],
+                "run_l3_proposal_create",
+                (self.root,),
+                {
+                    "kind": "prompt_proposal",
+                    "proposal_id": "prop-ask",
+                    "target_file": "prompts/ask.md",
+                    "content": "Updated prompt.\n",
+                    "rationale": "tighten",
+                    "evidence_refs": ["receipt-1"],
+                    "signal_ids": ["sig-1"],
+                    "pattern": "manual_fixture",
+                },
+            ),
+            (
+                "review-proposals",
+                ["review", "proposals", "--kind", "prompt_proposal", "--state", "candidate", "--json"],
+                "run_l3_proposal_list",
+                (self.root,),
+                {"kind": "prompt_proposal", "state": "candidate"},
+            ),
+            (
+                "apply-l3-proposal",
+                ["apply", "prop-ask", "--note", "accept"],
+                "run_l3_proposal_apply",
+                (self.root, "prop-ask"),
+                {"note": "accept"},
+            ),
+            (
+                "revert-l3-proposal",
+                ["revert", "l3-proposal-apply-prop-ask", "--note", "undo"],
+                "run_l3_proposal_revert",
+                (self.root, "l3-proposal-apply-prop-ask"),
+                {"note": "undo"},
             ),
             ("protocol-learn-add", ["protocol-learn-add", "general", "--title", "Learning", "--source-ref", "wiki/derived/a.md"], "run_protocol_learn_add", (self.root, "general", "Learning", ["wiki/derived/a.md"]), {}),
             ("protocol-learn-list", ["protocol-learn-list", "general"], "run_protocol_learn_list", (self.root, "general"), {"state_filter": None, "include_archived": False}),

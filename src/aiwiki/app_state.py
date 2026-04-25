@@ -188,6 +188,10 @@ def concept_rewrite_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "concept-rewrite-proposals.json"
 
 
+def l3_proposal_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "l3-proposals.json"
+
+
 def manual_link_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "manual-links.json"
 

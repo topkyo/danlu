@@ -579,6 +579,7 @@ def rank_concepts(
 #   - B6 machine-memory action  -> aiwiki.execution.machine_memory_actions
 #   - B7 review / batch         -> aiwiki.execution.review /
 #                                   aiwiki.execution.machine_memory_batch
+#   - M3.6 L3 proposals         -> aiwiki.execution.l3_proposals
 # ---------------------------------------------------------------------------
 
 from .app_compile_ops import (  # noqa: E402
@@ -660,6 +661,13 @@ _LAZY_OWNERS: dict[str, str] = {
     "revert_machine_memory_action_batch": "aiwiki.execution.machine_memory_batch",
     "_build_batch_id": "aiwiki.execution.machine_memory_batch",
     "_load_latest_action_apply_batch_receipt": "aiwiki.execution.machine_memory_batch",
+    # L3 prompt/policy proposals (M3.6)
+    "create_l3_proposal": "aiwiki.execution.l3_proposals",
+    "list_l3_proposals": "aiwiki.execution.l3_proposals",
+    "apply_l3_proposal": "aiwiki.execution.l3_proposals",
+    "revert_l3_proposal": "aiwiki.execution.l3_proposals",
+    "load_l3_proposal_state": "aiwiki.execution.l3_proposals",
+    "save_l3_proposal_state": "aiwiki.execution.l3_proposals",
     # Runtime surfaces (EP-018B group 1) — migrated to aiwiki.execution.runtime_surfaces
     "nightly_health": "aiwiki.execution.runtime_surfaces",
     "shell_status": "aiwiki.execution.runtime_surfaces",

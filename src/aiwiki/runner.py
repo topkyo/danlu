@@ -162,6 +162,51 @@ def llm_probe(root: Path, probe_all: bool = False, timeout_seconds: int = 20) ->
     return result
 
 
+def run_l3_proposal_create(
+    root: Path,
+    *,
+    kind: str,
+    target_file: str,
+    content: str,
+    proposal_id: str | None = None,
+    rationale: str = "",
+    evidence_refs: list[str] | None = None,
+    signal_ids: list[str] | None = None,
+    pattern: str = "manual_fixture",
+) -> dict[str, Any]:
+    from .execution.l3_proposals import create_l3_proposal
+
+    return create_l3_proposal(
+        root,
+        kind=kind,
+        target_file=target_file,
+        content=content,
+        proposal_id=proposal_id,
+        rationale=rationale,
+        evidence_refs=evidence_refs,
+        signal_ids=signal_ids,
+        pattern=pattern,
+    )
+
+
+def run_l3_proposal_list(root: Path, *, kind: str | None = None, state: str | None = None) -> list[dict[str, Any]]:
+    from .execution.l3_proposals import list_l3_proposals
+
+    return list_l3_proposals(root, kind=kind, state=state)
+
+
+def run_l3_proposal_apply(root: Path, proposal_id: str, *, note: str | None = None) -> dict[str, Any]:
+    from .execution.l3_proposals import apply_l3_proposal
+
+    return apply_l3_proposal(root, proposal_id, note=note)
+
+
+def run_l3_proposal_revert(root: Path, receipt_id: str, *, note: str | None = None) -> dict[str, Any]:
+    from .execution.l3_proposals import revert_l3_proposal
+
+    return revert_l3_proposal(root, receipt_id, note=note)
+
+
 def create_client(root: Path, timeout_seconds: int | None = None) -> SupportsComplete:
     config = LLMConfig.from_env()
     if timeout_seconds is not None:

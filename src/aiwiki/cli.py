@@ -54,6 +54,10 @@ from .runner import (
     run_ask,
     run_compile,
     run_demote,
+    run_l3_proposal_apply,
+    run_l3_proposal_create,
+    run_l3_proposal_list,
+    run_l3_proposal_revert,
     run_lint,
     run_nightly,
     run_planner_log_list,
@@ -399,6 +403,44 @@ def build_parser() -> argparse.ArgumentParser:
         lane_parser.add_argument("--max-signals", type=int, default=None)
         lane_parser.add_argument("--max-pages", type=int, default=None)
         lane_parser.add_argument("--max-tokens", type=int, default=None)
+
+    l3_create_parser = subparsers.add_parser(
+        "l3-proposal-create",
+        help="Create a manual L3 prompt/policy proposal fixture without applying it.",
+    )
+    l3_create_parser.add_argument("--kind", required=True, choices=("prompt_proposal", "policy_proposal"))
+    l3_create_parser.add_argument("--proposal-id", default=None)
+    l3_create_parser.add_argument("--target-file", required=True)
+    l3_create_parser.add_argument("--content-file", required=True)
+    l3_create_parser.add_argument("--rationale", default="")
+    l3_create_parser.add_argument("--evidence-ref", action="append", dest="evidence_refs", default=[])
+    l3_create_parser.add_argument("--signal-id", action="append", dest="signal_ids", default=[])
+    l3_create_parser.add_argument(
+        "--pattern",
+        default="manual_fixture",
+        choices=("failure_cluster", "recurring_feedback", "drift", "contract_failure", "manual_fixture"),
+    )
+
+    review_group_parser = subparsers.add_parser("review", help="Review queue inspection commands.")
+    review_group_subparsers = review_group_parser.add_subparsers(dest="review_command", required=True)
+    review_proposals_parser = review_group_subparsers.add_parser(
+        "proposals",
+        help="List L3 prompt/policy proposals without mutating targets.",
+    )
+    review_proposals_parser.add_argument("--kind", choices=("prompt_proposal", "policy_proposal"))
+    review_proposals_parser.add_argument(
+        "--state",
+        choices=("candidate", "accepted", "rejected", "reverted", "stale", "revert_conflict"),
+    )
+    review_proposals_parser.add_argument("--json", action="store_true", help="Return full JSON records.")
+
+    apply_parser = subparsers.add_parser("apply", help="Accept and apply a manual L3 proposal by id.")
+    apply_parser.add_argument("proposal_id")
+    apply_parser.add_argument("--note")
+
+    revert_parser = subparsers.add_parser("revert", help="Revert an L3 proposal apply receipt.")
+    revert_parser.add_argument("receipt_id")
+    revert_parser.add_argument("--note")
 
     review_parser = subparsers.add_parser(
         "review-page",
@@ -796,6 +838,28 @@ def main(argv: list[str] | None = None) -> int:
                     note=args.note,
                     **lane_kwargs,
                 )
+        elif args.command == "l3-proposal-create":
+            result = run_l3_proposal_create(
+                root,
+                kind=args.kind,
+                proposal_id=args.proposal_id,
+                target_file=args.target_file,
+                content=_read_text_argument(root, args.content_file),
+                rationale=args.rationale,
+                evidence_refs=args.evidence_refs,
+                signal_ids=args.signal_ids,
+                pattern=args.pattern,
+            )
+        elif args.command == "review":
+            if args.review_command != "proposals":
+                raise ValueError(f"Unsupported review command: {args.review_command}")
+            result = run_l3_proposal_list(root, kind=args.kind, state=args.state)
+            if not args.json:
+                text_output = "\n".join(_format_l3_proposal_summary_line(item) for item in result) or "(no L3 proposals)"
+        elif args.command == "apply":
+            result = run_l3_proposal_apply(root, args.proposal_id, note=args.note)
+        elif args.command == "revert":
+            result = run_l3_proposal_revert(root, args.receipt_id, note=args.note)
         elif args.command == "protocol-learn-add":
             result = run_protocol_learn_add(root, args.protocol, args.title, args.source_refs)
         elif args.command == "protocol-learn-list":
@@ -1026,6 +1090,18 @@ def _format_planner_decision_summary_line(record: dict[str, object]) -> str:
     )
 
 
+def _format_l3_proposal_summary_line(record: dict[str, object]) -> str:
+    return "  ".join(
+        [
+            str(record.get("proposal_id") or ""),
+            str(record.get("kind") or ""),
+            str(record.get("state") or ""),
+            str(record.get("target_file") or ""),
+            str(record.get("proposal_path") or ""),
+        ]
+    )
+
+
 def _format_signal_show_text(signal: dict[str, object], planner_decisions: list[object]) -> str:
     lines = [f"Signal: {str(signal.get('signal_id') or '')}"]
     for key in sorted(signal):
@@ -1075,6 +1151,16 @@ def _maybe_auto_process(root: Path, result: dict[str, object], args: argparse.Na
         **result,
         "auto_process": auto_result,
     }
+
+
+def _read_text_argument(root: Path, value: str) -> str:
+    path = Path(value)
+    if path.is_absolute():
+        return path.read_text(encoding="utf-8")
+    workspace_path = root / value
+    if workspace_path.exists():
+        return workspace_path.read_text(encoding="utf-8")
+    return path.read_text(encoding="utf-8")
 
 
 def _build_parser() -> argparse.ArgumentParser:
