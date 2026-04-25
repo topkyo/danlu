@@ -433,7 +433,7 @@ promoted_at: null
 
 仍属于目标 schema（`M2.3+`）：`promoted_at / supersedes / superseded_by / judgment_refs / decision_refs / elixir_refs / corpus_id / review_after`。
 
-确认分阶段约束：`M2.1` 起，新建 candidate frontmatter 默认写入 `counter_evidence: [NONE_FOUND]` 与 `confidence_level: low`；`counter_evidence` 的“必须存在且非空”强制仍在 `M2.3` promote gate 执行。旧 `wiki/elixirs/` 直写文件不做强制迁移补字段。
+确认分阶段约束：`M2.1` 起，新建 candidate frontmatter 默认写入 `counter_evidence: [NONE_FOUND]` 与 `confidence_level: low`，并覆盖 `alchemy-start` 与 `alchemy-distill` 的 candidate rewrite path；`counter_evidence` 的“必须存在且非空”强制仍在 `M2.3` promote gate 执行。旧 `wiki/elixirs/` 直写文件不做强制迁移补字段。
 
 ### 7.3 生命周期
 

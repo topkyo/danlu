@@ -196,6 +196,16 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         frontmatter = parse_frontmatter((self.root / result["path"]).read_text(encoding="utf-8"))
         self.assertEqual(frontmatter["elixir_state"], "distilling")
 
+    def test_distill_preserves_counter_evidence_defaults(self) -> None:
+        corpus_id = self._make_promoted_corpus()
+        started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
+
+        result = run_alchemy_distill(self.root, started["elixir_id"], "What about latency?")
+
+        frontmatter = parse_frontmatter((self.root / result["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(frontmatter["counter_evidence"], ["NONE_FOUND"])
+        self.assertEqual(frontmatter["confidence_level"], "low")
+
     def test_distill_rejects_source_in_wiki_plane(self) -> None:
         corpus_id = self._make_promoted_corpus()
         started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
