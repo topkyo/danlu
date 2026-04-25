@@ -14,7 +14,8 @@ from .schema import PROTOCOLS, SCHEMA_VERSION, canonical_dumps, compute_dedupe_k
 SIGNALS_REL_PATH = ".aiwiki/state/signals.jsonl"
 SKIP_EXAMPLES_LIMIT = 5
 SUPPORTED_SOURCES: tuple[str, str, str] = adapters.SUPPORTED_SOURCES
-MAPPED_KINDS: tuple[str, str, str, str, str] = (
+MAPPED_KINDS: tuple[str, str, str, str, str, str] = (
+    "raw_added",
     "review_feedback",
     "schedule_tick",
     "runtime_failure",
@@ -217,6 +218,14 @@ def _to_signal_seeds(source: str, event: dict[str, Any], *, line_no: int, rel_pa
 def _mapped_invalid_reason(source: str, event: dict[str, Any]) -> str | None:
     if source == "runtime_history":
         event_type = str(event.get("event_type") or "")
+        if event_type == "raw-added":
+            protocol = event.get("protocol")
+            if not isinstance(protocol, str) or not protocol:
+                return "runtime_history_raw_added_missing_protocol"
+            stored_path = event.get("stored_path") or event.get("note_path") or event.get("raw_path")
+            if not isinstance(stored_path, str) or not stored_path:
+                return "runtime_history_raw_added_missing_stored_path"
+            return "runtime_history_raw_added_invalid"
         if event_type in {"review", "nightly"}:
             protocol = event.get("protocol")
             if not isinstance(protocol, str) or not protocol:

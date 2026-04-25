@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..app_protocol import AUTO_PROMOTION_FORMATS, ensure_layout
-from ..app_state import DEFAULT_PROTOCOL, load_manifest, load_manual_link_state
+from ..app_state import DEFAULT_PROTOCOL, append_runtime_history, load_manifest, load_manual_link_state
 from ..app_utils import (
     build_citation_snapshots,
     compiled_source_sha,
@@ -103,10 +103,25 @@ def ingest_source(root: Path, source: str, title: str | None = None) -> dict[str
         shutil.copy2(source_path, destination)
         original_path = str(source_path)
         source_type = "file"
-    entry = {"id": entry_id, "title": display_title, "source_type": source_type, "original_path": original_path, "stored_path": relative_path(root, destination), "kind": detect_kind(destination), "sha256": sha256_file(destination), "imported_at": utc_now()}
+    imported_at = utc_now()
+    entry = {"id": entry_id, "title": display_title, "source_type": source_type, "original_path": original_path, "stored_path": relative_path(root, destination), "kind": detect_kind(destination), "sha256": sha256_file(destination), "imported_at": imported_at}
     manifest["entries"].append(entry)
     from .. import app_content as _facade
     _facade.save_manifest(root, manifest)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "raw-added",
+            "occurred_at": imported_at,
+            "protocol": DEFAULT_PROTOCOL,
+            "entry_id": entry_id,
+            "source_ids": [entry_id],
+            "stored_path": entry["stored_path"],
+            "original_path": original_path,
+            "source_type": source_type,
+            "title": display_title,
+        },
+    )
     from ..app_render import append_wiki_log as _append_wiki_log
     _append_wiki_log(
         root,

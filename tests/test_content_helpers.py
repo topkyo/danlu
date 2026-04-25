@@ -76,6 +76,18 @@ class ContentHelperTests(unittest.TestCase):
         self.assertEqual(content.execution_receipts_dir(self.root), self.root / "output" / "control" / "execution-receipts")
         self.assertEqual(content.execution_receipt_path(self.root, "repair-action").name, "repair-action.json")
 
+    def test_ingest_source_writes_raw_added_runtime_history(self) -> None:
+        sample = self.root / "sample.md"
+        sample.write_text("# Runtime Source\n\nNew material.\n", encoding="utf-8")
+
+        entry = content.ingest_source(self.root, str(sample), title="Runtime Source")
+
+        history = state.load_runtime_history(self.root)
+        self.assertEqual(history[-1]["event_type"], "raw-added")
+        self.assertEqual(history[-1]["entry_id"], entry["id"])
+        self.assertEqual(history[-1]["source_ids"], [entry["id"]])
+        self.assertEqual(history[-1]["stored_path"], entry["stored_path"])
+
     def test_routing_lookup_and_rewrite_candidate_helpers(self) -> None:
         self.assertEqual(content.routing_snapshot_for_protocol({}, "ops"), {})
         direct = {"protocol": "ops", "title": "Ops"}

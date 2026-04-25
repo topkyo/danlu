@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import subprocess
 import tempfile
 import unittest
@@ -193,6 +194,14 @@ class DropTests(unittest.TestCase):
         self.assertEqual(frontmatter["note_kind"], "transcript")
         self.assertEqual(frontmatter["original_path"], "inline://note")
         self.assertIn("Alice: Ship review queue.", note)
+        history = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(history[-1]["event_type"], "raw-added")
+        self.assertEqual(history[-1]["stored_path"], result["note_path"])
+        self.assertEqual(history[-1]["source_type"], "note-drop")
 
     def test_drop_note_reads_markdown_file_and_derives_title(self) -> None:
         source = self.root / "meeting.md"

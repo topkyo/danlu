@@ -14,6 +14,7 @@ from urllib import parse, request
 
 from .app_protocol import ensure_layout
 from .app_render import append_wiki_log
+from .app_state import DEFAULT_PROTOCOL, append_runtime_history
 from .app_utils import first_markdown_heading, relative_path, render_frontmatter, slugify, utc_now
 from .config import LLMConfig
 from .llm import LLMError, create_backend_client
@@ -117,6 +118,14 @@ def drop_url(root: Path, url: str, title: str | None = None) -> dict[str, Any]:
             f"asset_files: `{len(asset_paths)}`",
         ],
     )
+    _append_raw_added_history(
+        root,
+        material="url",
+        note_path=note_path,
+        original_path=url,
+        source_type="url-drop",
+        title=display_title,
+    )
     return {
         "material": "url",
         "note_path": relative_path(root, note_path),
@@ -171,6 +180,14 @@ def drop_pdf(root: Path, source: str, title: str | None = None) -> dict[str, Any
             f"stored_note: `{relative_path(root, note_path)}`",
             f"asset_path: `{relative_path(root, asset_path)}`",
         ],
+    )
+    _append_raw_added_history(
+        root,
+        material="pdf",
+        note_path=note_path,
+        original_path=original_path,
+        source_type="pdf-drop",
+        title=display_title,
     )
     return {
         "material": "pdf",
@@ -257,6 +274,14 @@ def drop_image(
             f"vision_status: `{vision_status}`",
         ],
     )
+    _append_raw_added_history(
+        root,
+        material="image",
+        note_path=note_path,
+        original_path=original_path,
+        source_type="image-drop",
+        title=display_title,
+    )
     return {
         "material": "image",
         "note_path": relative_path(root, note_path),
@@ -331,6 +356,14 @@ def drop_repo(root: Path, source: str, title: str | None = None, max_files: int 
             f"source: `{original_path}`",
         ],
     )
+    _append_raw_added_history(
+        root,
+        material="repo",
+        note_path=note_path,
+        original_path=original_path,
+        source_type="repo-drop",
+        title=display_title,
+    )
     return {
         "material": "repo",
         "note_path": relative_path(root, note_path),
@@ -401,6 +434,14 @@ def drop_note(
             f"stored_note: `{relative_path(root, note_path)}`",
         ],
     )
+    _append_raw_added_history(
+        root,
+        material="note",
+        note_path=note_path,
+        original_path=original_path,
+        source_type="note-drop",
+        title=display_title,
+    )
     return {
         "material": "note",
         "note_path": relative_path(root, note_path),
@@ -408,6 +449,30 @@ def drop_note(
         "original_path": original_path,
         "title": display_title,
     }
+
+
+def _append_raw_added_history(
+    root: Path,
+    *,
+    material: str,
+    note_path: Path,
+    original_path: str,
+    source_type: str,
+    title: str,
+) -> None:
+    append_runtime_history(
+        root,
+        {
+            "event_type": "raw-added",
+            "occurred_at": utc_now(),
+            "protocol": DEFAULT_PROTOCOL,
+            "material": material,
+            "stored_path": relative_path(root, note_path),
+            "original_path": original_path,
+            "source_type": source_type,
+            "title": title,
+        },
+    )
 
 
 def _fetch_url(url: str) -> dict[str, Any]:

@@ -50,6 +50,8 @@ def iter_source_lines(root: Path, source: str) -> Iterator[tuple[int, str, str]]
 
 def _runtime_history_to_signals(event: dict[str, Any], *, line_no: int, rel_path: str) -> list[SignalSeed]:
     event_type = str(event.get("event_type") or "")
+    if event_type == "raw-added":
+        return _runtime_history_raw_added_to_signals(event, line_no=line_no, rel_path=rel_path)
     if event_type not in {"review", "nightly"}:
         return []
 
@@ -95,6 +97,51 @@ def _runtime_history_to_signals(event: dict[str, Any], *, line_no: int, rel_path
                 "source_event_ref": f"{rel_path}#L{line_no}",
             },
             source_identity=_source_identity(event),
+        )
+    ]
+
+
+def _runtime_history_raw_added_to_signals(
+    event: dict[str, Any],
+    *,
+    line_no: int,
+    rel_path: str,
+) -> list[SignalSeed]:
+    protocol = event.get("protocol")
+    emitted_at = _normalize_emitted_at(event.get("occurred_at") or event.get("imported_at"))
+    stored_path = event.get("stored_path") or event.get("note_path") or event.get("raw_path")
+    if not isinstance(protocol, str) or not protocol or emitted_at is None or not isinstance(stored_path, str) or not stored_path:
+        return []
+
+    source_ids = _string_list(event.get("source_ids"))
+    entry_id = event.get("entry_id")
+    if isinstance(entry_id, str) and entry_id:
+        source_ids.append(entry_id)
+
+    scope: dict[str, Any] = {
+        "protocol": protocol,
+        "source_ids": _unique_sorted_strings(source_ids),
+        "concept_slugs": [],
+        "elixir_refs": [],
+        "judgment_refs": [],
+    }
+    corpus_id = event.get("corpus_id")
+    if isinstance(corpus_id, str) and corpus_id:
+        scope["corpus_id"] = corpus_id
+
+    return [
+        SignalSeed(
+            record_base={
+                "kind": "raw_added",
+                "scope": scope,
+                "severity": "medium",
+                "evidence_refs": _unique_sorted_strings([stored_path, event.get("original_path")]),
+                "emitted_at": emitted_at,
+                "emitted_by": "user",
+                "source_kind": "runtime_history",
+                "source_event_ref": f"{rel_path}#L{line_no}",
+            },
+            source_identity=stored_path,
         )
     ]
 
