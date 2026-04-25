@@ -312,6 +312,23 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "not present in the dry-run plan"):
             run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[], primitives=["nightly"])
 
+    def test_apply_rejects_primitive_when_plan_step_is_not_apply_supported(self) -> None:
+        self._seed_lane_records()
+        plan = preview_alchemy_lane(self.root, lane="heavy", scope="all")
+        for step in plan["primitive_plan"]:
+            if step["primitive"] == "compile":
+                step["apply_supported"] = False
+                step["apply_blocker"] = "blocked-by-test"
+
+        with (
+            patch("aiwiki.planner.preview_alchemy_lane", return_value=plan),
+            patch("aiwiki.runner.compile_wiki") as mocked_compile,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "not apply-supported.*blocked-by-test"):
+                run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[], primitives=["compile"])
+
+        mocked_compile.assert_not_called()
+
     def test_apply_rejects_deferred_primitives(self) -> None:
         self._seed_lane_records()
 

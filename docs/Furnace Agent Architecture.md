@@ -177,7 +177,7 @@ phase 是一组受控的执行原子，当前集合：
 
 所有 phase 都必须映射到已有或待补的受控 CLI primitive；本轮架构不新增绕过 CLI / receipt / audit 的物理执行路径，只在既有 primitives 上方加调度。
 
-当前 lane apply 白名单只包含已具备 deterministic receipt wrapper 的 `compile / lint / nightly`。`judge / distill / review / propose` 属于目标 phase，但在 scoped dry-run、receipt、audit 和 revert/不可回滚声明齐备前，只能出现在 dry-run deferred metadata 中。
+当前 lane apply 白名单只包含已具备 deterministic receipt wrapper 的 `compile / lint / nightly`，且 runner 必须看到对应 dry-run step 明确 `apply_supported=true` 才能执行。`judge / distill / review / propose` 属于目标 phase，但在 scoped dry-run、receipt、audit 和 revert/不可回滚声明齐备前，只能出现在 dry-run deferred metadata 中。
 
 ### 4.4 Feedback（反哺）
 

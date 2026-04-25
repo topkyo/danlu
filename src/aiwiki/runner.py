@@ -1563,13 +1563,12 @@ def _run_receipted_lane_primitive(
     plan: dict[str, Any],
     note: str | None,
 ) -> dict[str, Any]:
-    planned_primitives = {
-        str(item.get("primitive") or "")
-        for item in plan.get("primitive_plan", [])
-        if isinstance(item, dict)
-    }
-    if primitive not in planned_primitives:
+    plan_step = _lane_primitive_plan_step(plan, primitive)
+    if plan_step is None:
         raise RuntimeError(f"primitive {primitive!r} is not present in the dry-run plan for lane {lane!r}")
+    if plan_step.get("apply_supported") is not True:
+        blocker = str(plan_step.get("apply_blocker") or "not_apply_supported")
+        raise RuntimeError(f"primitive {primitive!r} is not apply-supported in the dry-run plan for lane {lane!r}: {blocker}")
 
     if primitive == "compile":
         result = compile_wiki(root)
@@ -1642,6 +1641,15 @@ def _unique_lane_primitive_action_id(root: Path, *, lane: str, primitive: str, a
         candidate = f"{base}-{n}"
         n += 1
     return candidate
+
+
+def _lane_primitive_plan_step(plan: dict[str, Any], primitive: str) -> dict[str, Any] | None:
+    for item in plan.get("primitive_plan", []):
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("primitive") or "") == primitive:
+            return item
+    return None
 
 
 def _first_plan_protocol(plan: dict[str, Any]) -> str:

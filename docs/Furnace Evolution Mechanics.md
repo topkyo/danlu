@@ -264,7 +264,7 @@ heavy 的默认执行序列：
 6. review      : 有 high severity 产物时入 review queue
 ```
 
-当前实现状态：dry-run 可以预览上述目标序列，但 lane `--apply --primitive` 只支持已 receipt 化的 deterministic primitives。`judge / distill / review / propose` 会在 dry-run `deferred_primitives` 中显式列出；在它们拥有独立 scoped dry-run、receipt、audit 和 revert/不可回滚声明前，不得加入 lane apply 白名单。
+当前实现状态：dry-run 可以预览上述目标序列，但 lane `--apply --primitive` 只支持已 receipt 化的 deterministic primitives。Runner 执行前必须确认对应 dry-run step 存在且 `apply_supported=true`；`judge / distill / review / propose` 会在 dry-run `deferred_primitives` 中显式列出；在它们拥有独立 scoped dry-run、receipt、audit 和 revert/不可回滚声明前，不得加入 lane apply 白名单。
 
 ### 4.4 作用范围约束
 
@@ -714,7 +714,7 @@ revert **不可以**：
 | **M4 Heavy/Light Dry-run Wrapper** | `alchemy heavy/light --dry-run` 只计算 signal scope、primitive plan、预算与锁结果。 | 默认不 execute；light 不升级 heavy；全量 heavy 不自动授权。 | scope preview 稳定；预算超限可解释；锁冲突 skip；primitive plan 可复现。 |
 | **M5 Controlled Execution** | heavy/light 允许显式 `--apply` 组合 scoped primitives。 | 不允许 hidden backend choice；不允许无 receipt 写回。 | 每个 phase 有 trace_id、receipt、audit entry；失败可从上一稳定点恢复。 |
 
-M5 当前收敛状态：`--apply --action-id` 只桥接既有 receipted low-risk action batch；`--apply --primitive` 只支持 `compile/lint/nightly` deterministic receipts，且 lane primitive receipt 顶层已暴露 planner trace 与 execution receipt history audit metadata。`judge/distill/review/propose` 已完成可行性评估并保持 deferred，直到各自拥有独立 scoped primitive contract。
+M5 当前收敛状态：`--apply --action-id` 只桥接既有 receipted low-risk action batch；`--apply --primitive` 只支持 dry-run step 明确 `apply_supported=true` 的 `compile/lint/nightly` deterministic receipts，且 lane primitive receipt 顶层已暴露 planner trace 与 execution receipt history audit metadata。`judge/distill/review/propose` 已完成可行性评估并保持 deferred，直到各自拥有独立 scoped primitive contract。
 
 达到 9+ 可行性的条件不是“自动化更多”，而是每个 milestone 都满足：可重放、可 dry-run、可回滚、可停用、可用现有 gate 验证。
 
