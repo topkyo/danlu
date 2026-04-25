@@ -78,8 +78,8 @@ related_docs:
 | Product Shell surface | implemented | 插件通过 launcher CLI 与 `output/control/shell-summary.json` 工作，不直接拥有 runtime state。 |
 | L2 protocol-learning | implemented | 已有 `active / stale / demoted / archived / superseded` 生命周期与 replacement DAG 校验。 |
 | active corpus / output candidates | implemented | `.aiwiki/state/active-corpora.json` 与 `.aiwiki/state/output-candidates.json` 已作为运行态工作集与候选状态。 |
-| 金丹最小链路 | partial | 当前 CLI 为 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote`，已落 `wiki/elixirs/`、provenance 与 DAG 校验；候选目录、promote/demote/revert 语义仍待收口。 |
-| planner | partial | 当前已有 `.aiwiki/state/planner-state.json` 的 repair/execution proposal planner；完整 signal planner 与 append-only planner log 未落地。 |
+| 金丹最小链路 | partial | 当前 CLI 为 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote`，已落 `output/_candidates/elixirs/` 候选平面、`wiki/elixirs/` 持久平面、provenance、DAG 校验与 promote/revert/demote receipt；legacy migration 与 superseded 清理仍待收口。 |
+| planner | partial | 当前已有 `.aiwiki/state/planner-state.json` 的 repair/execution proposal planner，以及 `.aiwiki/state/planner-log.jsonl` 的 signal observe-only decision log；完整 scheduler execute mode 未落地。 |
 | heavy/light alchemy lane | partial | 已有 `aiwiki alchemy heavy|light <scope> --dry-run` 只读 preview，`--apply --action-id ...` 到既有 receipted low-risk action batch 的显式桥接，以及 `--apply --primitive compile|lint|nightly` 的 deterministic receipt wrapper；lane primitive receipt 已显式携带 planner trace 与 execution receipt history audit metadata；`judge/distill/review/propose` 已显式 deferred，当前尚未执行 LLM-backed 或 proposal/distill/review lane 序列。 |
 | L3 prompt/policy proposal | partial | 已有 manual baseline：`l3-proposal-create` 写入 `output/_proposals/prompt|policy`，`review proposals`、`review proposal-generation` blocked preview 和 `shell-status` 的 `review_controls.l3_proposals` 只读列队，`review proposal <id> --status rejected` 显式否决，`apply <proposal-id>` 通过 `before_hash` 写回 `prompts/*.md` / `schema/policies/*` 并生成 receipt，`revert <receipt-id>` 通过 `after_hash` clean revert，冲突时生成 `human_merge_required` hint；自动 proposal generation 尚未实现。 |
 
@@ -156,7 +156,7 @@ planner 在 signal 和当前系统状态（active_corpus、aging、review backlo
 - `ignore`（信号不值得处理）
 - `enqueue-light`（收入 light 炼丹队列）
 - `enqueue-heavy`（触发 heavy 炼丹）
-- `generate-proposal`（生成 L2/L3 proposal；L3 当前为 planned）
+- `generate-proposal`（生成 L2/L3 proposal；L3 当前仅支持 blocked preview，自动生成仍 deferred）
 - `escalate-human`（需要人工介入）
 
 planner **只能调度已被允许的 phase 集合**，不允许发明新的写回路径。planner 的决策全程可审计。
@@ -197,7 +197,7 @@ learning 是 loop 的唯一合法“进化出口”。它只允许落到三个�
 
 - **L1 runtime state**（`.aiwiki/state/*`、temperature、active corpus 降温）
 - **L2 protocol-learning**（`wiki/protocol-learnings/` 的候选/老化/supersede）
-- **L3 prompt/policy proposal**（`output/_proposals/prompt/`、`output/_proposals/policy/`，当前为 planned）
+- **L3 prompt/policy proposal**（`output/_proposals/prompt/`、`output/_proposals/policy/`，当前为 manual baseline + blocked preview）
 
 learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心结构，不允许越过 review 链直接写入 `prompts/*.md` 或 `schema/policies/*`。
 
@@ -260,7 +260,7 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
 - **复合资产**：金丹不是更高级的 judgment，它是对多个 judgment / decision / source 的综合凝结。
 - **知识复利节点**：新金丹可以引用旧金丹，形成真正的长期杠杆；但引用链必须是 DAG，且不能只靠旧金丹的结论自举，必须继续锚定底层证据。
 - **独立生命周期**：与 judgment 的状态机完全分离。
-  - 目标候选平面：`output/_candidates/elixirs/`（未通过人工 promote；planned）
+  - 候选平面：`output/_candidates/elixirs/`（未通过人工 promote；当前 draft / distilling / candidate / tombstone 主路径）
   - 当前持久平面：`wiki/elixirs/`（当前最小链路由 `alchemy-promote` 产生 `settled`）
 - **Provenance 强制**：目标 schema 要求每个金丹携带 `derived_from`、`judgment_refs`、`counter_evidence`、`confidence_level` 和 `corpus_id`；当前最小实现已强制 `derived_from` 与 corpus provenance，并校验必须包含底层 `wiki/derived/` 源条目。
 
@@ -281,7 +281,7 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
 |---|---|---|---|
 | **L1 知识 / 运行态自维护** | `.aiwiki/state/*` 更新、active corpus 收敛、targeted compile / lint、索引刷新、候选产物生成 | 正式写入高价值长期资产（promote elixir）、高风险 apply | 覆盖 `raw/`；绕过 receipt / audit；隐式切换 backend |
 | **L2 Protocol-learning** | 聚类 review 反馈、生成 learning 候选、老化、supersede；replacement graph 校验 | 将新 learning 置为 `active`；默认装载到 ask 路径 | 隐式改 prompt / policy；跨 protocol 污染；破坏 replacement DAG |
-| **L3 Prompt/Policy Proposal**（planned） | 生成 proposal 到 `output/_proposals/prompt/`、`output/_proposals/policy/`，附证据、patch 说明和 revert 信息 | 写回 `prompts/*.md`、`schema/policies/*` | 自动修改 `src/aiwiki/**`；自动修改 schema 核心结构；自动改 protocol core contract |
+| **L3 Prompt/Policy Proposal**（partial） | 当前可手工创建 proposal，并可只读 preview blocked generation candidates；目标自动生成仍 deferred | 写回 `prompts/*.md`、`schema/policies/*` | 自动修改 `src/aiwiki/**`；自动修改 schema 核心结构；自动改 protocol core contract |
 
 补充规则：
 
