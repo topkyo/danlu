@@ -606,8 +606,9 @@ class CLITests(unittest.TestCase):
         self.assertEqual(pl_stderr, "")
         self.assertEqual(pl_payload["scanned_count"], 2)
         self.assertEqual(pl_payload["new_count"], 2)
-        self.assertEqual(pl_payload["emitted_by_decision"]["enqueue-heavy"], 1)
+        self.assertEqual(pl_payload["emitted_by_decision"]["enqueue-heavy"], 0)
         self.assertEqual(pl_payload["emitted_by_decision"]["enqueue-light"], 1)
+        self.assertEqual(pl_payload["emitted_by_decision"]["generate-proposal"], 1)
 
         planner_log_path = self.root / ".aiwiki/state/planner-log.jsonl"
         records = [json.loads(line) for line in planner_log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -692,10 +693,10 @@ class CLITests(unittest.TestCase):
             [
                 self._planner_record(
                     signal_id,
-                    decision="enqueue-heavy",
+                    decision="generate-proposal",
                     trace_id="550e8400-e29b-41d4-a716-446655440000",
                     decided_at="2026-04-24T12:11:00Z",
-                    reason_codes=["elixir_dependency_break_observed"],
+                    reason_codes=["elixir_dependency_break_observed", "proposal_recommended"],
                 )
             ],
         )
@@ -706,7 +707,7 @@ class CLITests(unittest.TestCase):
         self.assertIn("Signal:", stdout)
         self.assertIn("kind: elixir_dependency_break", stdout)
         self.assertIn("Related planner decisions:", stdout)
-        self.assertIn("enqueue-heavy", stdout)
+        self.assertIn("generate-proposal", stdout)
 
     def test_signals_show_cli_not_found_exits_nonzero(self) -> None:
         stdout = io.StringIO()
@@ -726,10 +727,10 @@ class CLITests(unittest.TestCase):
             [
                 self._planner_record(
                     signal_id,
-                    decision="enqueue-heavy",
+                    decision="generate-proposal",
                     trace_id="550e8400-e29b-41d4-a716-446655440000",
                     decided_at="2026-04-24T12:20:00Z",
-                    reason_codes=["elixir_dependency_break_observed"],
+                    reason_codes=["elixir_dependency_break_observed", "proposal_recommended"],
                 ),
                 self._planner_record(
                     "sig-20260424-pltxt002",
@@ -741,10 +742,10 @@ class CLITests(unittest.TestCase):
             ],
         )
 
-        code, stdout, stderr = self._run_main_raw(["planner-log-list", "--decision", "enqueue-heavy"])
+        code, stdout, stderr = self._run_main_raw(["planner-log-list", "--decision", "generate-proposal"])
         self.assertEqual(code, 0)
         self.assertEqual(stderr, "")
-        self.assertIn("enqueue-heavy", stdout)
+        self.assertIn("generate-proposal", stdout)
         self.assertIn(signal_id, stdout)
         self.assertNotIn("enqueue-light", stdout)
 
@@ -842,7 +843,7 @@ class CLITests(unittest.TestCase):
         self.assertIn(signal_id, show_stdout)
         self.assertIn("elixir_dependency_break", show_stdout)
         self.assertIn("Related planner decisions:", show_stdout)
-        self.assertIn("enqueue-heavy", show_stdout)
+        self.assertIn("generate-proposal", show_stdout)
 
 
 if __name__ == "__main__":

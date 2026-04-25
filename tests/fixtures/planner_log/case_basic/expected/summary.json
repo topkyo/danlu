@@ -7,10 +7,10 @@
   "duplicate_count": 0,
   "invalid_count": 0,
   "emitted_by_decision": {
-    "enqueue-heavy": 1,
+    "enqueue-heavy": 0,
     "enqueue-light": 1,
     "escalate-human": 0,
-    "generate-proposal": 0,
+    "generate-proposal": 1,
     "ignore": 1
   },
   "skip_examples": []

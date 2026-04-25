@@ -304,7 +304,7 @@ def _derive_decision(kind: str, severity: str) -> tuple[str, list[str]]:
         if severity == "medium":
             return "enqueue-light", ["runtime_failure_routine"]
         if severity == "high":
-            return "enqueue-heavy", ["runtime_failure_high_severity"]
+            return "generate-proposal", ["proposal_recommended", "runtime_failure_observed"]
         if severity == "critical":
             return "escalate-human", ["runtime_failure_critical"]
         return "ignore", ["unmapped_kind"]
@@ -315,12 +315,14 @@ def _derive_decision(kind: str, severity: str) -> tuple[str, list[str]]:
         if severity == "medium":
             return "enqueue-light", ["drift_routine"]
         if severity == "high":
-            return "enqueue-heavy", ["drift_high_severity"]
+            return "generate-proposal", ["drift_observed", "proposal_recommended"]
         if severity == "critical":
             return "enqueue-heavy", ["drift_critical"]
         return "ignore", ["unmapped_kind"]
 
     if kind == "elixir_dependency_break":
+        if severity == "high":
+            return "generate-proposal", ["elixir_dependency_break_observed", "proposal_recommended"]
         return "enqueue-heavy", ["elixir_dependency_break_observed"]
 
     return "ignore", ["unmapped_kind"]

@@ -548,7 +548,7 @@ class TestArchiveAdapter(_FixtureCase):
         planner_records = _read_jsonl(root / ".aiwiki/state/planner-log.jsonl")
         self.assertEqual(len(planner_records), 2)
         decisions = {str(item["decision"]) for item in planner_records}
-        self.assertTrue(decisions.issubset({"enqueue-heavy", "enqueue-light"}))
+        self.assertTrue(decisions.issubset({"enqueue-heavy", "enqueue-light", "generate-proposal"}))
         self.assertFalse(any("unmapped_kind" in item.get("reason_codes", []) for item in planner_records))
 
     def test_signals_collector_emits_elixir_dependency_break_from_demote(self) -> None:

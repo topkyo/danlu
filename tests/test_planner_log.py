@@ -184,94 +184,168 @@ class TestSchemaValidation(unittest.TestCase):
 
 class TestDecisionDerivation(unittest.TestCase):
     def test_review_feedback_medium(self) -> None:
-        self.assertEqual(
-            log_writer._derive_decision("review_feedback", "medium"),
-            ("enqueue-light", ["review_feedback_routine"]),
-        )
+        decision, reason_codes = log_writer._derive_decision("review_feedback", "medium")
+        self.assertEqual(decision, "enqueue-light")
+        self.assertEqual(set(reason_codes), {"review_feedback_routine"})
 
     def test_review_feedback_high(self) -> None:
-        self.assertEqual(
-            log_writer._derive_decision("review_feedback", "high"),
-            ("enqueue-heavy", ["review_feedback_high_severity"]),
-        )
+        decision, reason_codes = log_writer._derive_decision("review_feedback", "high")
+        self.assertEqual(decision, "enqueue-heavy")
+        self.assertEqual(set(reason_codes), {"review_feedback_high_severity"})
 
     def test_review_feedback_critical(self) -> None:
-        self.assertEqual(
-            log_writer._derive_decision("review_feedback", "critical"),
-            ("enqueue-heavy", ["review_feedback_high_severity"]),
-        )
+        decision, reason_codes = log_writer._derive_decision("review_feedback", "critical")
+        self.assertEqual(decision, "enqueue-heavy")
+        self.assertEqual(set(reason_codes), {"review_feedback_high_severity"})
 
     def test_schedule_tick_low(self) -> None:
-        self.assertEqual(
-            log_writer._derive_decision("schedule_tick", "low"),
-            ("ignore", ["schedule_tick_routine"]),
-        )
+        decision, reason_codes = log_writer._derive_decision("schedule_tick", "low")
+        self.assertEqual(decision, "ignore")
+        self.assertEqual(set(reason_codes), {"schedule_tick_routine"})
 
     def test_schedule_tick_medium(self) -> None:
-        self.assertEqual(
-            log_writer._derive_decision("schedule_tick", "medium"),
-            ("enqueue-light", ["schedule_tick_escalated"]),
-        )
+        decision, reason_codes = log_writer._derive_decision("schedule_tick", "medium")
+        self.assertEqual(decision, "enqueue-light")
+        self.assertEqual(set(reason_codes), {"schedule_tick_escalated"})
 
     def test_schedule_tick_high(self) -> None:
-        self.assertEqual(
-            log_writer._derive_decision("schedule_tick", "high"),
-            ("enqueue-light", ["schedule_tick_escalated"]),
-        )
+        decision, reason_codes = log_writer._derive_decision("schedule_tick", "high")
+        self.assertEqual(decision, "enqueue-light")
+        self.assertEqual(set(reason_codes), {"schedule_tick_escalated"})
 
     def test_schedule_tick_critical(self) -> None:
-        self.assertEqual(
-            log_writer._derive_decision("schedule_tick", "critical"),
-            ("enqueue-light", ["schedule_tick_escalated"]),
-        )
+        decision, reason_codes = log_writer._derive_decision("schedule_tick", "critical")
+        self.assertEqual(decision, "enqueue-light")
+        self.assertEqual(set(reason_codes), {"schedule_tick_escalated"})
 
     def test_runtime_failure_medium(self) -> None:
-        self.assertEqual(
-            log_writer._derive_decision("runtime_failure", "medium"),
-            ("enqueue-light", ["runtime_failure_routine"]),
-        )
+        decision, reason_codes = log_writer._derive_decision("runtime_failure", "medium")
+        self.assertEqual(decision, "enqueue-light")
+        self.assertEqual(set(reason_codes), {"runtime_failure_routine"})
 
     def test_runtime_failure_high(self) -> None:
-        self.assertEqual(
-            log_writer._derive_decision("runtime_failure", "high"),
-            ("enqueue-heavy", ["runtime_failure_high_severity"]),
-        )
+        decision, reason_codes = log_writer._derive_decision("runtime_failure", "high")
+        self.assertEqual(decision, "generate-proposal")
+        self.assertEqual(set(reason_codes), {"runtime_failure_observed", "proposal_recommended"})
 
     def test_runtime_failure_critical(self) -> None:
-        self.assertEqual(
-            log_writer._derive_decision("runtime_failure", "critical"),
-            ("escalate-human", ["runtime_failure_critical"]),
-        )
+        decision, reason_codes = log_writer._derive_decision("runtime_failure", "critical")
+        self.assertEqual(decision, "escalate-human")
+        self.assertEqual(set(reason_codes), {"runtime_failure_critical"})
 
     def test_unmapped_kind_fallback(self) -> None:
-        self.assertEqual(log_writer._derive_decision("raw_added", "medium"), ("ignore", ["unmapped_kind"]))
+        decision, reason_codes = log_writer._derive_decision("raw_added", "medium")
+        self.assertEqual(decision, "ignore")
+        self.assertEqual(set(reason_codes), {"unmapped_kind"})
 
     def test_review_feedback_low_is_unmapped(self) -> None:
-        self.assertEqual(log_writer._derive_decision("review_feedback", "low"), ("ignore", ["unmapped_kind"]))
+        decision, reason_codes = log_writer._derive_decision("review_feedback", "low")
+        self.assertEqual(decision, "ignore")
+        self.assertEqual(set(reason_codes), {"unmapped_kind"})
 
     def test_schedule_tick_unknown_severity_is_unmapped(self) -> None:
-        self.assertEqual(log_writer._derive_decision("schedule_tick", "unknown"), ("ignore", ["unmapped_kind"]))
+        decision, reason_codes = log_writer._derive_decision("schedule_tick", "unknown")
+        self.assertEqual(decision, "ignore")
+        self.assertEqual(set(reason_codes), {"unmapped_kind"})
 
     def test_runtime_failure_low_is_unmapped(self) -> None:
-        self.assertEqual(log_writer._derive_decision("runtime_failure", "low"), ("ignore", ["unmapped_kind"]))
+        decision, reason_codes = log_writer._derive_decision("runtime_failure", "low")
+        self.assertEqual(decision, "ignore")
+        self.assertEqual(set(reason_codes), {"unmapped_kind"})
 
     def test_drift_low_maps_to_ignore(self) -> None:
-        self.assertEqual(log_writer._derive_decision("drift", "low"), ("ignore", ["drift_routine"]))
+        decision, reason_codes = log_writer._derive_decision("drift", "low")
+        self.assertEqual(decision, "ignore")
+        self.assertEqual(set(reason_codes), {"drift_routine"})
 
     def test_drift_medium_maps_to_enqueue_light(self) -> None:
-        self.assertEqual(log_writer._derive_decision("drift", "medium"), ("enqueue-light", ["drift_routine"]))
+        decision, reason_codes = log_writer._derive_decision("drift", "medium")
+        self.assertEqual(decision, "enqueue-light")
+        self.assertEqual(set(reason_codes), {"drift_routine"})
 
-    def test_drift_high_maps_to_enqueue_heavy(self) -> None:
-        self.assertEqual(log_writer._derive_decision("drift", "high"), ("enqueue-heavy", ["drift_high_severity"]))
+    def test_drift_high_maps_to_generate_proposal(self) -> None:
+        decision, reason_codes = log_writer._derive_decision("drift", "high")
+        self.assertEqual(decision, "generate-proposal")
+        self.assertEqual(set(reason_codes), {"drift_observed", "proposal_recommended"})
 
     def test_drift_critical_maps_to_enqueue_heavy(self) -> None:
-        self.assertEqual(log_writer._derive_decision("drift", "critical"), ("enqueue-heavy", ["drift_critical"]))
+        decision, reason_codes = log_writer._derive_decision("drift", "critical")
+        self.assertEqual(decision, "enqueue-heavy")
+        self.assertEqual(set(reason_codes), {"drift_critical"})
 
-    def test_planner_log_maps_elixir_dependency_break_to_enqueue_heavy(self) -> None:
-        self.assertEqual(
-            log_writer._derive_decision("elixir_dependency_break", "high"),
-            ("enqueue-heavy", ["elixir_dependency_break_observed"]),
-        )
+    def test_planner_log_maps_elixir_dependency_break_to_generate_proposal(self) -> None:
+        decision, reason_codes = log_writer._derive_decision("elixir_dependency_break", "high")
+        self.assertEqual(decision, "generate-proposal")
+        self.assertEqual(set(reason_codes), {"elixir_dependency_break_observed", "proposal_recommended"})
+
+
+class TestGenerateProposalRouting(_FixtureCase):
+    def test_derive_decision_runtime_failure_high_severity_emits_generate_proposal(self) -> None:
+        decision, reason_codes = log_writer._derive_decision("runtime_failure", "high")
+        self.assertEqual(decision, "generate-proposal")
+        self.assertEqual(set(reason_codes), {"runtime_failure_observed", "proposal_recommended"})
+
+    def test_derive_decision_runtime_failure_low_severity_not_upgraded(self) -> None:
+        decision, reason_codes = log_writer._derive_decision("runtime_failure", "low")
+        self.assertEqual(decision, "ignore")
+        self.assertEqual(set(reason_codes), {"unmapped_kind"})
+        self.assertNotEqual(decision, "generate-proposal")
+
+    def test_derive_decision_drift_high_severity_emits_generate_proposal(self) -> None:
+        decision, reason_codes = log_writer._derive_decision("drift", "high")
+        self.assertEqual(decision, "generate-proposal")
+        self.assertEqual(set(reason_codes), {"drift_observed", "proposal_recommended"})
+
+    def test_derive_decision_drift_medium_severity_still_enqueue_light(self) -> None:
+        decision, reason_codes = log_writer._derive_decision("drift", "medium")
+        self.assertEqual(decision, "enqueue-light")
+        self.assertEqual(set(reason_codes), {"drift_routine"})
+
+    def test_derive_decision_elixir_dependency_break_emits_generate_proposal(self) -> None:
+        decision, reason_codes = log_writer._derive_decision("elixir_dependency_break", "high")
+        self.assertEqual(decision, "generate-proposal")
+        self.assertEqual(set(reason_codes), {"elixir_dependency_break_observed", "proposal_recommended"})
+
+    def test_derive_decision_review_feedback_unchanged(self) -> None:
+        decision, reason_codes = log_writer._derive_decision("review_feedback", "medium")
+        self.assertEqual(decision, "enqueue-light")
+        self.assertEqual(set(reason_codes), {"review_feedback_routine"})
+
+    def test_derive_decision_schedule_tick_unchanged(self) -> None:
+        decision, reason_codes = log_writer._derive_decision("schedule_tick", "low")
+        self.assertEqual(decision, "ignore")
+        self.assertEqual(set(reason_codes), {"schedule_tick_routine"})
+
+    def test_planner_log_record_mode_remains_observe_only_when_generate_proposal(self) -> None:
+        root = self._copy_case_root("case_basic")
+        write_planner_log(root, _now=_fixed_now)
+        planner_records = _read_jsonl(root / ".aiwiki/state/planner-log.jsonl")
+        target = next(item for item in planner_records if item["signal_id"] == "sig-20260424-pln000003")
+        self.assertEqual(target["decision"], "generate-proposal")
+        self.assertEqual(target["mode"], "observe_only")
+
+    def test_planner_log_record_side_effects_allowed_false_when_generate_proposal(self) -> None:
+        root = self._copy_case_root("case_basic")
+        write_planner_log(root, _now=_fixed_now)
+        planner_records = _read_jsonl(root / ".aiwiki/state/planner-log.jsonl")
+        target = next(item for item in planner_records if item["signal_id"] == "sig-20260424-pln000003")
+        self.assertEqual(target["decision"], "generate-proposal")
+        self.assertIs(target["side_effects_allowed"], False)
+
+    def test_planner_log_dedupe_key_unchanged_for_generate_proposal(self) -> None:
+        root = self._copy_case_root("case_basic")
+        write_planner_log(root, _now=_fixed_now)
+        planner_records = _read_jsonl(root / ".aiwiki/state/planner-log.jsonl")
+        target = next(item for item in planner_records if item["signal_id"] == "sig-20260424-pln000003")
+        self.assertEqual(target["decision"], "generate-proposal")
+        self.assertEqual(compute_planner_log_dedupe_key(target), "sig-20260424-pln000003:observe_only")
+
+    def test_planner_log_replay_summary_emitted_by_decision_includes_generate_proposal(self) -> None:
+        root = self._copy_case_root("case_basic")
+        result = write_planner_log(root, _now=_fixed_now)
+        self.assertEqual(result["new_count"], 3)
+        self.assertEqual(result["emitted_by_decision"]["generate-proposal"], 1)
+        self.assertEqual(result["emitted_by_decision"]["enqueue-heavy"], 0)
 
 
 class TestIdempotency(_FixtureCase):
@@ -394,9 +468,9 @@ class TestIdempotency(_FixtureCase):
         planner_records = _read_jsonl(root / ".aiwiki/state/planner-log.jsonl")
         self.assertEqual(len(planner_records), 1)
         record = planner_records[0]
-        self.assertEqual(record["decision"], "enqueue-heavy")
         self.assertEqual(record["mode"], "observe_only")
-        self.assertEqual(record["reason_codes"], ["elixir_dependency_break_observed"])
+        self.assertEqual(record["decision"], "generate-proposal")
+        self.assertEqual(set(record["reason_codes"]), {"elixir_dependency_break_observed", "proposal_recommended"})
         self.assertNotEqual(record["decision"], "ignore")
         self.assertNotIn("unmapped_kind", record["reason_codes"])
 
@@ -1071,7 +1145,8 @@ class TestCanonicalDumps(unittest.TestCase):
         dumped = canonical_dumps_planner_log(record)
         loaded = json.loads(dumped)
         self.assertEqual(tuple(loaded.keys()), TOP_LEVEL_FIELD_ORDER)
-        self.assertEqual(loaded["reason_codes"], ["a", "b"])
+        self.assertEqual(set(loaded["reason_codes"]), {"a", "b"})
+        self.assertEqual(len(loaded["reason_codes"]), 2)
         self.assertEqual(canonical_dumps_planner_log(loaded), dumped)
 
     def test_canonical_dumps_unknown_field_sorted_tail(self) -> None:
@@ -1132,7 +1207,9 @@ class TestCanonicalDumps(unittest.TestCase):
             "decided_at": "2026-04-24T12:00:00Z",
         }
         loaded = json.loads(canonical_dumps_planner_log(record))
-        self.assertEqual(loaded["reason_codes"], ["ok", 1])
+        self.assertEqual(len(loaded["reason_codes"]), 2)
+        self.assertIn("ok", loaded["reason_codes"])
+        self.assertIn(1, loaded["reason_codes"])
 
     def test_canonical_dumps_unknown_field_with_reason_codes_name_is_passthrough(self) -> None:
         record = {
