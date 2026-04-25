@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -83,32 +83,6 @@ def _latest_receipt_by_subject(root: Path, *, subject_kind: str, subject_id: str
         if entry.get("subject_kind") == subject_kind and entry.get("subject_id") == subject_id:
             return entry
     return None
-
-
-def _rewrite_latest_promotion_receipt_as_legacy(
-    root: Path,
-    *,
-    elixir_id: str,
-    applied_at: str | None = None,
-) -> dict[str, object]:
-    entries = _receipt_history_entries(root)
-    for index in range(len(entries) - 1, -1, -1):
-        entry = entries[index]
-        if entry.get("subject_kind") != "elixir_promotion" or entry.get("subject_id") != elixir_id:
-            continue
-        rewritten = dict(entry)
-        bundle = rewritten.get("bundle")
-        rewritten["bundle"] = dict(bundle) if isinstance(bundle, dict) else {}
-        rewritten_bundle = rewritten["bundle"]
-        assert isinstance(rewritten_bundle, dict)
-        rewritten_bundle.pop("primary_path_sha256", None)
-        rewritten_bundle.pop("secondary_path_sha256", None)
-        if applied_at is not None:
-            rewritten["applied_at"] = applied_at
-        entries[index] = rewritten
-        _write_receipt_history_entries(root, entries)
-        return rewritten
-    raise AssertionError("missing promotion receipt in history")
 
 
 class AlchemyCandidatePlaneTests(unittest.TestCase):
@@ -1208,7 +1182,7 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
 
         with self.assertRaises(ValueError) as ctx:
             run_alchemy_revert(self.root, elixir_id=elixir_id)
-        self.assertIn("promotion_receipt_missing", str(ctx.exception))
+        self.assertIn("promotion_receipt_missing:", str(ctx.exception))
 
     def test_revert_rejects_missing_tombstone(self) -> None:
         elixir_id = self._start_candidate_elixir()
@@ -1218,39 +1192,6 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             run_alchemy_revert(self.root, elixir_id=elixir_id)
         self.assertIn("revert_tombstone_missing", str(ctx.exception))
-
-    def test_revert_rejects_stale_settled(self) -> None:
-        elixir_id = self._start_candidate_elixir()
-        promote_result = run_alchemy_promote(self.root, elixir_id=elixir_id)
-        promote_receipt = json.loads((self.root / str(promote_result["receipt_path"])).read_text(encoding="utf-8"))
-        _rewrite_latest_promotion_receipt_as_legacy(self.root, elixir_id=elixir_id)
-        applied_at = datetime.fromisoformat(str(promote_receipt["applied_at"]))
-        stale_epoch = (applied_at + timedelta(seconds=3)).timestamp()
-        os.utime(_settled_path(self.root, elixir_id), (stale_epoch, stale_epoch))
-
-        with self.assertRaises(ValueError) as ctx:
-            run_alchemy_revert(self.root, elixir_id=elixir_id)
-        self.assertIn("revert_conflict_settled_modified", str(ctx.exception))
-
-    def test_revert_succeeds_when_promotion_receipt_applied_at_has_z_suffix(self) -> None:
-        elixir_id = self._start_candidate_elixir()
-        applied_at_z = (datetime.now(timezone.utc) + timedelta(seconds=10)).replace(microsecond=123000).isoformat().replace("+00:00", "Z")
-        fixed_dt = datetime.fromisoformat(applied_at_z.replace("Z", "+00:00"))
-        with patch("aiwiki.execution.alchemy.datetime") as mocked_datetime:
-            mocked_datetime.now.return_value = fixed_dt
-            run_alchemy_promote(self.root, elixir_id=elixir_id)
-        _rewrite_latest_promotion_receipt_as_legacy(self.root, elixir_id=elixir_id, applied_at=applied_at_z)
-        candidate = _candidate_path(self.root, elixir_id)
-        candidate_text = candidate.read_text(encoding="utf-8")
-        candidate_frontmatter = _parse_elixir_frontmatter(candidate)
-        candidate_frontmatter["promoted_at"] = applied_at_z
-        _write_elixir_markdown(candidate, frontmatter=candidate_frontmatter, body=candidate_text.split("---", 2)[-1].lstrip("\n"))
-
-        result_path = run_alchemy_revert(self.root, elixir_id=elixir_id)
-
-        self.assertEqual(result_path, _candidate_path(self.root, elixir_id))
-        self.assertFalse(_settled_path(self.root, elixir_id).exists())
-        self.assertTrue(_candidate_path(self.root, elixir_id).exists())
 
     def test_revert_action_id_includes_epoch_ms_suffix(self) -> None:
         elixir_id = self._start_candidate_elixir(topic="revert-action-id-ms")
@@ -1301,73 +1242,102 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
             run_alchemy_revert(self.root, elixir_id=elixir_id)
         self.assertIn("revert_conflict_candidate_modified", str(ctx.exception))
 
-    def test_revert_falls_back_to_mtime_for_legacy_receipt(self) -> None:
-        elixir_id = self._start_candidate_elixir(topic="revert-legacy-fallback")
-        run_alchemy_promote(self.root, elixir_id=elixir_id)
-        legacy = _rewrite_latest_promotion_receipt_as_legacy(self.root, elixir_id=elixir_id)
-        candidate = _candidate_path(self.root, elixir_id)
-        candidate_text = candidate.read_text(encoding="utf-8")
-        candidate_frontmatter = _parse_elixir_frontmatter(candidate)
-        candidate_frontmatter["promoted_at"] = str(legacy.get("applied_at") or "")
-        _write_elixir_markdown(candidate, frontmatter=candidate_frontmatter, body=candidate_text.split("---", 2)[-1].lstrip("\n"))
-
-        result_path = run_alchemy_revert(self.root, elixir_id=elixir_id)
-
-        self.assertEqual(result_path, _candidate_path(self.root, elixir_id))
-        self.assertFalse(_settled_path(self.root, elixir_id).exists())
-
-    def test_revert_legacy_fallback_rejects_stale_settled(self) -> None:
-        elixir_id = self._start_candidate_elixir(topic="revert-legacy-stale")
-        run_alchemy_promote(self.root, elixir_id=elixir_id)
-        legacy = _rewrite_latest_promotion_receipt_as_legacy(self.root, elixir_id=elixir_id)
-        applied_at = datetime.fromisoformat(str(legacy["applied_at"]).replace("Z", "+00:00"))
-        stale_epoch = (applied_at + timedelta(seconds=5)).timestamp()
-        settled = _settled_path(self.root, elixir_id)
-        os.utime(settled, (stale_epoch, stale_epoch))
-
-        with self.assertRaises(ValueError) as ctx:
-            run_alchemy_revert(self.root, elixir_id=elixir_id)
-        self.assertIn("revert_conflict_settled_modified", str(ctx.exception))
-
-    def test_revert_legacy_fallback_rejects_invalid_applied_at(self) -> None:
-        elixir_id = self._start_candidate_elixir(topic="revert-legacy-invalid-applied")
-        run_alchemy_promote(self.root, elixir_id=elixir_id)
-        _rewrite_latest_promotion_receipt_as_legacy(self.root, elixir_id=elixir_id, applied_at="not-a-datetime")
-
-        with self.assertRaises(ValueError) as ctx:
-            run_alchemy_revert(self.root, elixir_id=elixir_id)
-        self.assertIn("promotion_receipt_missing", str(ctx.exception))
-
-    def test_revert_legacy_fallback_rejects_tombstone_promoted_at_mismatch(self) -> None:
-        elixir_id = self._start_candidate_elixir(topic="revert-legacy-promoted-at-mismatch")
-        run_alchemy_promote(self.root, elixir_id=elixir_id)
-        _rewrite_latest_promotion_receipt_as_legacy(self.root, elixir_id=elixir_id)
-        candidate = _candidate_path(self.root, elixir_id)
-        candidate_text = candidate.read_text(encoding="utf-8")
-        frontmatter = _parse_elixir_frontmatter(candidate)
-        frontmatter["promoted_at"] = "2099-01-01T00:00:00+00:00"
-        _write_elixir_markdown(candidate, frontmatter=frontmatter, body=candidate_text.split("---", 2)[-1].lstrip("\n"))
-
-        with self.assertRaises(ValueError) as ctx:
-            run_alchemy_revert(self.root, elixir_id=elixir_id)
-        self.assertIn("revert_conflict_candidate_modified", str(ctx.exception))
-
-    def test_revert_legacy_fallback_when_bundle_is_not_dict(self) -> None:
-        elixir_id = self._start_candidate_elixir(topic="revert-legacy-bundle-not-dict")
+    def test_revert_elixir_missing_primary_hash_returns_promotion_receipt_missing_hash(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="revert-missing-primary-hash")
         run_alchemy_promote(self.root, elixir_id=elixir_id)
         entries = _receipt_history_entries(self.root)
         for index in range(len(entries) - 1, -1, -1):
             entry = entries[index]
             if entry.get("subject_kind") == "elixir_promotion" and entry.get("subject_id") == elixir_id:
-                entry = dict(entry)
-                entry["bundle"] = []
-                entries[index] = entry
+                rewritten = dict(entry)
+                bundle = rewritten.get("bundle")
+                rewritten_bundle = dict(bundle) if isinstance(bundle, dict) else {}
+                rewritten_bundle.pop("primary_path_sha256", None)
+                rewritten["bundle"] = rewritten_bundle
+                entries[index] = rewritten
                 break
         _write_receipt_history_entries(self.root, entries)
 
-        result_path = run_alchemy_revert(self.root, elixir_id=elixir_id)
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_revert(self.root, elixir_id=elixir_id)
+        self.assertIn("promotion_receipt_missing_hash", str(ctx.exception))
 
-        self.assertEqual(result_path, _candidate_path(self.root, elixir_id))
+    def test_revert_elixir_missing_secondary_hash_returns_promotion_receipt_missing_hash(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="revert-missing-secondary-hash")
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        entries = _receipt_history_entries(self.root)
+        for index in range(len(entries) - 1, -1, -1):
+            entry = entries[index]
+            if entry.get("subject_kind") == "elixir_promotion" and entry.get("subject_id") == elixir_id:
+                rewritten = dict(entry)
+                bundle = rewritten.get("bundle")
+                rewritten_bundle = dict(bundle) if isinstance(bundle, dict) else {}
+                rewritten_bundle.pop("secondary_path_sha256", None)
+                rewritten["bundle"] = rewritten_bundle
+                entries[index] = rewritten
+                break
+        _write_receipt_history_entries(self.root, entries)
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_revert(self.root, elixir_id=elixir_id)
+        self.assertIn("promotion_receipt_missing_hash", str(ctx.exception))
+
+    def test_revert_elixir_bundle_not_dict_returns_promotion_receipt_missing_hash(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="revert-bundle-not-dict")
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        entries = _receipt_history_entries(self.root)
+        for index in range(len(entries) - 1, -1, -1):
+            entry = entries[index]
+            if entry.get("subject_kind") == "elixir_promotion" and entry.get("subject_id") == elixir_id:
+                rewritten = dict(entry)
+                rewritten["bundle"] = []
+                entries[index] = rewritten
+                break
+        _write_receipt_history_entries(self.root, entries)
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_revert(self.root, elixir_id=elixir_id)
+        self.assertIn("promotion_receipt_missing_hash", str(ctx.exception))
+
+    def test_revert_elixir_empty_string_hash_returns_promotion_receipt_missing_hash(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="revert-empty-string-hash")
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        entries = _receipt_history_entries(self.root)
+        for index in range(len(entries) - 1, -1, -1):
+            entry = entries[index]
+            if entry.get("subject_kind") == "elixir_promotion" and entry.get("subject_id") == elixir_id:
+                rewritten = dict(entry)
+                bundle = rewritten.get("bundle")
+                rewritten_bundle = dict(bundle) if isinstance(bundle, dict) else {}
+                rewritten_bundle["primary_path_sha256"] = ""
+                rewritten["bundle"] = rewritten_bundle
+                entries[index] = rewritten
+                break
+        _write_receipt_history_entries(self.root, entries)
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_revert(self.root, elixir_id=elixir_id)
+        self.assertIn("promotion_receipt_missing_hash", str(ctx.exception))
+
+    def test_revert_elixir_whitespace_only_hash_returns_promotion_receipt_missing_hash(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="revert-whitespace-hash")
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        entries = _receipt_history_entries(self.root)
+        for index in range(len(entries) - 1, -1, -1):
+            entry = entries[index]
+            if entry.get("subject_kind") == "elixir_promotion" and entry.get("subject_id") == elixir_id:
+                rewritten = dict(entry)
+                bundle = rewritten.get("bundle")
+                rewritten_bundle = dict(bundle) if isinstance(bundle, dict) else {}
+                rewritten_bundle["primary_path_sha256"] = "   "
+                rewritten["bundle"] = rewritten_bundle
+                entries[index] = rewritten
+                break
+        _write_receipt_history_entries(self.root, entries)
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_revert(self.root, elixir_id=elixir_id)
+        self.assertIn("promotion_receipt_missing_hash", str(ctx.exception))
 
     def test_revert_missing_settled_raises_file_not_found(self) -> None:
         with self.assertRaises(FileNotFoundError):

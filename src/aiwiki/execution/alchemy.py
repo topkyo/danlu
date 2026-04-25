@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -16,13 +16,14 @@ from ..app_execution import (
     find_latest_elixir_promotion_receipt,
 )
 from ..app_state import load_active_corpora_state, load_output_candidates_state
-from ..app_utils import next_available_stem, parse_frontmatter, parse_iso_datetime, sha256_bytes, slugify, utc_now
+from ..app_utils import next_available_stem, parse_frontmatter, sha256_bytes, slugify, utc_now
 
 ELIXIR_DIR = "wiki/elixirs"
 CANDIDATE_ELIXIR_DIR = "output/_candidates/elixirs"
 ELIXIR_STATE_VALUES = {"draft", "distilling", "candidate", "settled", "superseded"}
 _ACTIVE_ELIXIR_STATES = {"draft", "distilling", "candidate"}
 _CONFIDENCE_LEVELS = {"low", "medium", "high"}
+_PROMOTION_TS_FIELD = "promoted_at"
 logger = logging.getLogger("aiwiki")
 
 
@@ -708,14 +709,7 @@ def revert_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
     settled_data, candidate_data = _read_elixir_both_planes(root, normalized_id)
     if settled_data is None:
         raise FileNotFoundError(f"elixir not found: {normalized_id}")
-    if candidate_data is None:
-        raise ValueError("revert_tombstone_missing: superseded tombstone is required")
-
     settled_frontmatter, _settled_body = settled_data
-    tombstone_frontmatter, tombstone_body = candidate_data
-    tombstone_state = str(tombstone_frontmatter.get("elixir_state") or "")
-    if tombstone_state != "superseded":
-        raise ValueError(f"unsupported_source_state: cannot revert elixir from state={tombstone_state or 'unknown'}")
 
     latest_promotion = find_latest_elixir_promotion_receipt(root, elixir_id=normalized_id)
     if latest_promotion is None:
@@ -723,32 +717,33 @@ def revert_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
 
     source_applied_at = str(latest_promotion.get("applied_at") or "")
     source_action_id = str(latest_promotion.get("action_id") or "")
-    bundle = latest_promotion.get("bundle") or {}
+    bundle = latest_promotion.get("bundle")
     if not isinstance(bundle, dict):
-        bundle = {}
-    expected_settled_hash = str(bundle.get("primary_path_sha256") or "")
-    expected_tombstone_hash = str(bundle.get("secondary_path_sha256") or "")
-    has_hash_anchor = bool(expected_settled_hash and expected_tombstone_hash)
+        raise ValueError("promotion_receipt_missing_hash: promotion receipt bundle/hash anchors are missing")
+    expected_settled_hash = bundle.get("primary_path_sha256")
+    expected_tombstone_hash = bundle.get("secondary_path_sha256")
+    if (
+        not isinstance(expected_settled_hash, str)
+        or not expected_settled_hash.strip()
+        or not isinstance(expected_tombstone_hash, str)
+        or not expected_tombstone_hash.strip()
+    ):
+        raise ValueError("promotion_receipt_missing_hash: promotion receipt bundle/hash anchors are missing")
 
-    if has_hash_anchor:
-        actual_settled_hash = compute_file_sha256(settled_path)
-        if actual_settled_hash != expected_settled_hash:
-            raise ValueError("revert_conflict_settled_modified: settled elixir was modified after promotion")
-        actual_tombstone_hash = compute_file_sha256(candidate_path)
-        if actual_tombstone_hash != expected_tombstone_hash:
-            raise ValueError("revert_conflict_candidate_modified: candidate tombstone no longer matches promotion receipt")
-    else:
-        source_applied_at_dt = parse_iso_datetime(source_applied_at)
-        if source_applied_at_dt is None:
-            raise ValueError("promotion_receipt_missing: promotion receipt applied_at is invalid")
+    actual_settled_hash = compute_file_sha256(settled_path)
+    if actual_settled_hash != expected_settled_hash:
+        raise ValueError("revert_conflict_settled_modified: settled elixir was modified after promotion")
 
-        settled_mtime = settled_path.stat().st_mtime
-        if settled_mtime > (source_applied_at_dt + timedelta(seconds=2)).timestamp():
-            raise ValueError("revert_conflict_settled_modified: settled elixir was modified after promotion")
+    if candidate_data is None:
+        raise ValueError("revert_tombstone_missing: superseded tombstone is required")
+    tombstone_frontmatter, tombstone_body = candidate_data
+    tombstone_state = str(tombstone_frontmatter.get("elixir_state") or "")
+    if tombstone_state != "superseded":
+        raise ValueError(f"unsupported_source_state: cannot revert elixir from state={tombstone_state or 'unknown'}")
 
-        tombstone_promoted_at = str(tombstone_frontmatter.get("promoted_at") or "")
-        if tombstone_promoted_at != source_applied_at:
-            raise ValueError("revert_conflict_candidate_modified: candidate tombstone no longer matches promotion receipt")
+    actual_tombstone_hash = compute_file_sha256(candidate_path)
+    if actual_tombstone_hash != expected_tombstone_hash:
+        raise ValueError("revert_conflict_candidate_modified: candidate tombstone no longer matches promotion receipt")
 
     dependency_breaks: list[dict[str, str]]
     try:
@@ -771,7 +766,7 @@ def revert_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
     candidate_frontmatter = dict(tombstone_frontmatter)
     candidate_frontmatter["elixir_state"] = "candidate"
     candidate_frontmatter.pop("superseded_by", None)
-    candidate_frontmatter.pop("promoted_at", None)
+    candidate_frontmatter.pop(_PROMOTION_TS_FIELD, None)
     candidate_text = _render_elixir_document(candidate_frontmatter, tombstone_body)
 
     _write_atomic_text(candidate_path, candidate_text)
