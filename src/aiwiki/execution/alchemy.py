@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +12,7 @@ from ..app_execution import (
     build_elixir_demotion_receipt,
     build_elixir_promotion_receipt,
     build_elixir_revert_receipt,
+    compute_file_sha256,
     find_latest_elixir_promotion_receipt,
 )
 from ..app_state import load_active_corpora_state, load_output_candidates_state
@@ -591,7 +592,8 @@ def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> di
 
     original = candidate_path.read_text(encoding="utf-8", errors="replace")
     body = original.split("---", 2)[-1].lstrip("\n")
-    applied_at = utc_now()
+    applied_at_dt = datetime.now(timezone.utc)
+    applied_at = applied_at_dt.isoformat()
 
     settled_frontmatter = dict(frontmatter)
     settled_frontmatter.pop("sealed_at", None)
@@ -609,15 +611,6 @@ def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> di
     settled_text = _render_elixir_document(settled_frontmatter, body)
     tombstone_text = _render_elixir_document(tombstone_frontmatter, body)
     protocol = str(frontmatter.get("protocol") or "")
-    receipt = build_elixir_promotion_receipt(
-        root,
-        elixir_id=normalized_id,
-        settled_path=settled_path,
-        candidate_path=candidate_path,
-        protocol=protocol,
-        applied_at=applied_at,
-        note=note,
-    )
 
     settled_path.parent.mkdir(parents=True, exist_ok=True)
     candidate_path.parent.mkdir(parents=True, exist_ok=True)
@@ -634,11 +627,29 @@ def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> di
     _validate_state_for_path(root, "settled", settled_path)
     _validate_state_for_path(root, "superseded", candidate_path)
 
-    receipt_path = root / str(receipt.get("receipt_path") or "")
+    receipt_result_path = ""
     try:
+        primary_hash = compute_file_sha256(settled_path)
+        secondary_hash = compute_file_sha256(candidate_path)
+        receipt = build_elixir_promotion_receipt(
+            root,
+            elixir_id=normalized_id,
+            slug=slugify(normalized_id),
+            settled_path=settled_path,
+            candidate_path=candidate_path,
+            protocol=protocol,
+            applied_at=applied_at_dt,
+            note=note,
+            primary_path_sha256=primary_hash,
+            secondary_path_sha256=secondary_hash,
+        )
+        receipt_result_path = str(receipt.get("receipt_path") or "")
+        receipt_path = root / receipt_result_path
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
         receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         append_execution_receipt_history(root, receipt)
+    except FileNotFoundError:
+        logging.getLogger("aiwiki").exception("failed to compute elixir promotion receipt hash anchors: %s", normalized_id)
     except Exception:
         logging.getLogger("aiwiki").exception("failed to persist elixir promotion receipt: %s", normalized_id)
 
@@ -647,7 +658,7 @@ def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> di
         "path": f"{ELIXIR_DIR}/{normalized_id}.md",
         "elixir_state": "settled",
         "promoted_at": applied_at,
-        "receipt_path": str(receipt.get("receipt_path") or ""),
+        "receipt_path": receipt_result_path,
     }
 
 
@@ -671,18 +682,35 @@ def revert_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
     latest_promotion = find_latest_elixir_promotion_receipt(root, elixir_id=normalized_id)
     if latest_promotion is None:
         raise ValueError("promotion_receipt_missing: latest promotion receipt not found")
+
     source_applied_at = str(latest_promotion.get("applied_at") or "")
-    source_applied_at_dt = parse_iso_datetime(source_applied_at)
-    if source_applied_at_dt is None:
-        raise ValueError("promotion_receipt_missing: promotion receipt applied_at is invalid")
+    source_action_id = str(latest_promotion.get("action_id") or "")
+    bundle = latest_promotion.get("bundle") or {}
+    if not isinstance(bundle, dict):
+        bundle = {}
+    expected_settled_hash = str(bundle.get("primary_path_sha256") or "")
+    expected_tombstone_hash = str(bundle.get("secondary_path_sha256") or "")
+    has_hash_anchor = bool(expected_settled_hash and expected_tombstone_hash)
 
-    settled_mtime = settled_path.stat().st_mtime
-    if settled_mtime > (source_applied_at_dt + timedelta(seconds=2)).timestamp():
-        raise ValueError("revert_conflict_settled_modified: settled elixir was modified after promotion")
+    if has_hash_anchor:
+        actual_settled_hash = compute_file_sha256(settled_path)
+        if actual_settled_hash != expected_settled_hash:
+            raise ValueError("revert_conflict_settled_modified: settled elixir was modified after promotion")
+        actual_tombstone_hash = compute_file_sha256(candidate_path)
+        if actual_tombstone_hash != expected_tombstone_hash:
+            raise ValueError("revert_conflict_candidate_modified: candidate tombstone no longer matches promotion receipt")
+    else:
+        source_applied_at_dt = parse_iso_datetime(source_applied_at)
+        if source_applied_at_dt is None:
+            raise ValueError("promotion_receipt_missing: promotion receipt applied_at is invalid")
 
-    tombstone_promoted_at = str(tombstone_frontmatter.get("promoted_at") or "")
-    if tombstone_promoted_at != source_applied_at:
-        raise ValueError("revert_conflict_candidate_modified: candidate tombstone no longer matches promotion receipt")
+        settled_mtime = settled_path.stat().st_mtime
+        if settled_mtime > (source_applied_at_dt + timedelta(seconds=2)).timestamp():
+            raise ValueError("revert_conflict_settled_modified: settled elixir was modified after promotion")
+
+        tombstone_promoted_at = str(tombstone_frontmatter.get("promoted_at") or "")
+        if tombstone_promoted_at != source_applied_at:
+            raise ValueError("revert_conflict_candidate_modified: candidate tombstone no longer matches promotion receipt")
 
     tombstone_original_text = candidate_path.read_text(encoding="utf-8", errors="replace")
     candidate_frontmatter = dict(tombstone_frontmatter)
@@ -702,16 +730,18 @@ def revert_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
         raise exc
 
     protocol = str(settled_frontmatter.get("protocol") or tombstone_frontmatter.get("protocol") or "")
-    applied_at = utc_now()
+    applied_at = datetime.now(timezone.utc)
     receipt = build_elixir_revert_receipt(
         root,
         elixir_id=normalized_id,
+        slug=slugify(normalized_id),
         wiki_path=settled_path,
         candidate_path=candidate_path,
         protocol=protocol,
         applied_at=applied_at,
         note=note,
         source_receipt_applied_at=source_applied_at,
+        source_receipt_action_id=source_action_id,
     )
     receipt_path = root / str(receipt.get("receipt_path") or "")
     try:
@@ -766,10 +796,11 @@ def demote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
         raise exc
 
     protocol = str(settled_frontmatter.get("protocol") or "")
-    applied_at = utc_now()
+    applied_at = datetime.now(timezone.utc)
     receipt = build_elixir_demotion_receipt(
         root,
         elixir_id=normalized_id,
+        slug=slugify(normalized_id),
         wiki_path=settled_path,
         candidate_path=candidate_path,
         protocol=protocol,

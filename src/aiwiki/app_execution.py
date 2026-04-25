@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .app_content import execution_bundle_path, execution_receipt_path
+from .app_content import execution_bundle_path
 from .app_state import (
     DEFAULT_PROTOCOL,
     execution_batch_receipt_path,
@@ -18,6 +20,7 @@ from .app_state import (
 )
 from .app_types import ExecutionBundle, ExecutionReceipt
 from .app_utils import relative_path, sha256_bytes, slugify
+from .render.paths import execution_receipt_path
 
 
 def build_execution_bundle(
@@ -101,6 +104,20 @@ def execution_bundle_digest(bundle: dict[str, Any]) -> str:
         "dry_run_supported": bool(bundle.get("dry_run_supported")),
     }
     return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
+def compute_file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _unique_elixir_action_id(root: Path, base: str, applied_at: datetime) -> str:
+    epoch_ms = int(applied_at.timestamp() * 1000)
+    candidate = f"{base}-{epoch_ms}"
+    n = 2
+    while execution_receipt_path(root, candidate).exists():
+        candidate = f"{base}-{epoch_ms}-{n}"
+        n += 1
+    return candidate
 
 
 def load_execution_bundle(path: Path) -> ExecutionBundle:
@@ -331,19 +348,24 @@ def build_elixir_promotion_receipt(
     root: Path,
     *,
     elixir_id: str,
+    slug: str,
     settled_path: Path,
     candidate_path: Path,
     protocol: str,
-    applied_at: str,
+    applied_at: datetime | None = None,
     note: str | None,
+    primary_path_sha256: str,
+    secondary_path_sha256: str,
 ) -> ExecutionReceipt:
-    action_id = f"elixir-promote-{slugify(elixir_id)}"
+    applied_at_value = applied_at or datetime.now(timezone.utc)
+    applied_at_iso = applied_at_value.isoformat()
+    action_id = _unique_elixir_action_id(root, f"elixir-promote-{slug}", applied_at_value)
     receipt_path = execution_receipt_path(root, action_id)
     return {
         "version": 1,
         "kind": "execution-receipt",
         "generated_by": "aiwiki-elixir-promote",
-        "applied_at": applied_at,
+        "applied_at": applied_at_iso,
         "operation": "promote",
         "action_id": action_id,
         "title": f"Promote elixir {elixir_id}",
@@ -356,7 +378,10 @@ def build_elixir_promotion_receipt(
         "primary_path": relative_path(root, settled_path),
         "secondary_path": relative_path(root, candidate_path),
         "receipt_path": relative_path(root, receipt_path),
-        "bundle": {},
+        "bundle": {
+            "primary_path_sha256": primary_path_sha256,
+            "secondary_path_sha256": secondary_path_sha256,
+        },
         "safe_apply_preview": None,
     }
 
@@ -365,20 +390,24 @@ def build_elixir_revert_receipt(
     root: Path,
     *,
     elixir_id: str,
+    slug: str,
     wiki_path: Path,
     candidate_path: Path,
     protocol: str,
-    applied_at: str,
+    applied_at: datetime | None = None,
     note: str | None,
     source_receipt_applied_at: str,
+    source_receipt_action_id: str,
 ) -> ExecutionReceipt:
-    action_id = f"elixir-revert-{slugify(elixir_id)}"
+    applied_at_value = applied_at or datetime.now(timezone.utc)
+    applied_at_iso = applied_at_value.isoformat()
+    action_id = _unique_elixir_action_id(root, f"elixir-revert-{slug}", applied_at_value)
     receipt_path = execution_receipt_path(root, action_id)
     return {
         "version": 1,
         "kind": "execution-receipt",
         "generated_by": "aiwiki-elixir-revert",
-        "applied_at": applied_at,
+        "applied_at": applied_at_iso,
         "operation": "revert",
         "action_id": action_id,
         "title": f"Revert elixir {elixir_id}",
@@ -391,7 +420,10 @@ def build_elixir_revert_receipt(
         "primary_path": relative_path(root, candidate_path),
         "secondary_path": relative_path(root, wiki_path),
         "receipt_path": relative_path(root, receipt_path),
-        "bundle": {"source_receipt_applied_at": source_receipt_applied_at},
+        "bundle": {
+            "source_receipt_applied_at": source_receipt_applied_at,
+            "source_receipt_action_id": source_receipt_action_id,
+        },
         "safe_apply_preview": None,
     }
 
@@ -400,19 +432,22 @@ def build_elixir_demotion_receipt(
     root: Path,
     *,
     elixir_id: str,
+    slug: str,
     wiki_path: Path,
     candidate_path: Path,
     protocol: str,
-    applied_at: str,
+    applied_at: datetime | None = None,
     note: str | None,
 ) -> ExecutionReceipt:
-    action_id = f"elixir-demote-{slugify(elixir_id)}"
+    applied_at_value = applied_at or datetime.now(timezone.utc)
+    applied_at_iso = applied_at_value.isoformat()
+    action_id = _unique_elixir_action_id(root, f"elixir-demote-{slug}", applied_at_value)
     receipt_path = execution_receipt_path(root, action_id)
     return {
         "version": 1,
         "kind": "execution-receipt",
         "generated_by": "aiwiki-elixir-demote",
-        "applied_at": applied_at,
+        "applied_at": applied_at_iso,
         "operation": "demote",
         "action_id": action_id,
         "title": f"Demote elixir {elixir_id}",
