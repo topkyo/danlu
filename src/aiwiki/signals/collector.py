@@ -14,8 +14,9 @@ from .schema import PROTOCOLS, SCHEMA_VERSION, canonical_dumps, compute_dedupe_k
 SIGNALS_REL_PATH = ".aiwiki/state/signals.jsonl"
 SKIP_EXAMPLES_LIMIT = 5
 SUPPORTED_SOURCES: tuple[str, str, str] = adapters.SUPPORTED_SOURCES
-MAPPED_KINDS: tuple[str, str, str, str, str, str, str] = (
+MAPPED_KINDS: tuple[str, str, str, str, str, str, str, str] = (
     "raw_added",
+    "counter_evidence",
     "learning_threshold",
     "review_feedback",
     "schedule_tick",
@@ -235,6 +236,17 @@ def _mapped_invalid_reason(source: str, event: dict[str, Any]) -> str | None:
             if not isinstance(learning_ids, list) or not any(isinstance(item, str) and item for item in learning_ids):
                 return "runtime_history_learning_threshold_missing_learning_ids"
             return "runtime_history_learning_threshold_invalid"
+        if event_type == "counter-evidence":
+            protocol = event.get("protocol")
+            if not isinstance(protocol, str) or not protocol:
+                return "runtime_history_counter_evidence_missing_protocol"
+            candidate_id = event.get("candidate_id")
+            if not isinstance(candidate_id, str) or not candidate_id:
+                return "runtime_history_counter_evidence_missing_candidate_id"
+            source_ids = event.get("source_ids")
+            if not isinstance(source_ids, list) or not any(isinstance(item, str) and item for item in source_ids):
+                return "runtime_history_counter_evidence_missing_source_ids"
+            return "runtime_history_counter_evidence_invalid"
         if event_type in {"review", "nightly"}:
             protocol = event.get("protocol")
             if not isinstance(protocol, str) or not protocol:

@@ -14,6 +14,7 @@
   "invalid_count": 2,
   "emitted_by_kind": {
     "raw_added": 0,
+    "counter_evidence": 0,
     "learning_threshold": 0,
     "review_feedback": 1,
     "schedule_tick": 0,

@@ -47,6 +47,7 @@ from ..app_memory_surfaces import (
 )
 from ..app_state import (
     DEFAULT_PROTOCOL,
+    append_runtime_history,
     archive_candidates_state_path,
     default_machine_memory_build_state,
     default_ranking_build_state,
@@ -185,6 +186,48 @@ def _counter_evidence_scan_phase(context: CompileContext) -> dict[str, Any]:
         "candidates": candidates[:32],
         "pages": page_summaries[:16],
     }
+
+
+def _append_counter_evidence_runtime_history(context: CompileContext, counter_evidence_scan: dict[str, Any]) -> None:
+    dirty_source_ids = {source_id for source_id in context.dirty_source_ids if isinstance(source_id, str) and source_id}
+    if not dirty_source_ids:
+        return
+
+    candidates = counter_evidence_scan.get("candidates")
+    if not isinstance(candidates, list):
+        return
+
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        source_id = candidate.get("source_id")
+        candidate_id = candidate.get("candidate_id")
+        protocol = candidate.get("protocol")
+        if not isinstance(source_id, str) or source_id not in dirty_source_ids:
+            continue
+        if not isinstance(candidate_id, str) or not candidate_id:
+            continue
+        if not isinstance(protocol, str) or not protocol:
+            continue
+        append_runtime_history(
+            context.root,
+            {
+                "event_type": "counter-evidence",
+                "occurred_at": context.compiled_at,
+                "protocol": protocol,
+                "candidate_id": candidate_id,
+                "page_id": candidate.get("page_id"),
+                "page_path": candidate.get("page_path"),
+                "page_kind": candidate.get("page_kind"),
+                "page_status": candidate.get("page_status"),
+                "source_ids": [source_id],
+                "source_page": candidate.get("source_page"),
+                "shared_terms": candidate.get("shared_terms"),
+                "shared_term_count": candidate.get("shared_term_count"),
+                "reason_code": candidate.get("reason_code"),
+                "emitted_by": "compile",
+            },
+        )
 
 
 def _build_judgment_review_actions(
@@ -441,6 +484,7 @@ def compile_runtime_phase(context: CompileContext) -> None:
         active_protocol=context.protocol_state["active_protocol"],
     )
     context.memory["health"]["counter_evidence_scan"] = _counter_evidence_scan_phase(context)
+    _append_counter_evidence_runtime_history(context, context.memory["health"]["counter_evidence_scan"])
     context.memory["health"]["judgment_review_actions"] = _build_judgment_review_actions(
         context.decision_pages,
         context.judgment_pages,

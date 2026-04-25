@@ -438,6 +438,46 @@ class TestBadEventTolerance(_FixtureCase):
             "learning_threshold:general:runtime_history:learning-threshold::general::30::old-active",
         )
 
+    def test_runtime_counter_evidence_collects_signal(self) -> None:
+        root = self.temp_root / "runtime-counter-evidence"
+        runtime_path = root / ".aiwiki/state/runtime-history.jsonl"
+        runtime_path.parent.mkdir(parents=True, exist_ok=True)
+        runtime_path.write_text(
+            json.dumps(
+                {
+                    "event_type": "counter-evidence",
+                    "occurred_at": "2026-04-24T01:06:00Z",
+                    "protocol": "research",
+                    "candidate_id": "judgment-alpha:src-followup",
+                    "page_kind": "judgment",
+                    "page_path": "wiki/judgments/judgment-alpha.md",
+                    "source_ids": ["src-followup"],
+                    "source_page": "wiki/sources/src-followup.md",
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = collect_signals(
+            root,
+            sources=["runtime_history"],
+            trace_id="550e8400-e29b-41d4-a716-446655440000",
+        )
+
+        self.assertEqual(result["new_count"], 1)
+        self.assertEqual(result["emitted_by_kind"]["counter_evidence"], 1)
+        records = _read_jsonl(root / ".aiwiki/state/signals.jsonl")
+        self.assertEqual(records[0]["kind"], "counter_evidence")
+        self.assertEqual(records[0]["severity"], "high")
+        self.assertEqual(records[0]["scope"]["source_ids"], ["src-followup"])
+        self.assertEqual(records[0]["scope"]["judgment_refs"], ["wiki/judgments/judgment-alpha.md"])
+        self.assertEqual(
+            records[0]["dedupe_key"],
+            "counter_evidence:research:runtime_history:judgment-alpha:src-followup",
+        )
+
     def test_invalid_trace_id_input_is_rejected(self) -> None:
         root = self._copy_case_root("case_basic")
         with self.assertRaises(ValueError):
@@ -900,6 +940,28 @@ class TestKindMapping(unittest.TestCase):
             "learning-threshold::general::30::old-active",
         )
 
+    def test_runtime_counter_evidence_maps_to_counter_evidence(self) -> None:
+        seeds = adapters._runtime_history_to_signals(
+            {
+                "event_type": "counter-evidence",
+                "occurred_at": "2026-04-24T02:01:00Z",
+                "protocol": "research",
+                "candidate_id": "judgment-alpha:src-followup",
+                "page_kind": "judgment",
+                "page_path": "wiki/judgments/judgment-alpha.md",
+                "source_ids": ["src-followup"],
+                "source_page": "wiki/sources/src-followup.md",
+            },
+            line_no=3,
+            rel_path=".aiwiki/state/runtime-history.jsonl",
+        )
+        self.assertEqual(seeds[0].record_base["kind"], "counter_evidence")
+        self.assertEqual(seeds[0].record_base["severity"], "high")
+        self.assertEqual(seeds[0].record_base["emitted_by"], "compile")
+        self.assertEqual(seeds[0].record_base["scope"]["source_ids"], ["src-followup"])
+        self.assertEqual(seeds[0].record_base["scope"]["judgment_refs"], ["wiki/judgments/judgment-alpha.md"])
+        self.assertEqual(seeds[0].source_identity, "judgment-alpha:src-followup")
+
     def test_runtime_review_maps_to_review_feedback(self) -> None:
         seeds = adapters._runtime_history_to_signals(
             {
@@ -1001,6 +1063,17 @@ class TestKindMapping(unittest.TestCase):
             {"event_type": "learning-threshold", "protocol": "general"},
         )
         self.assertEqual(reason, "runtime_history_learning_threshold_missing_learning_ids")
+
+    def test_mapped_invalid_reason_for_counter_evidence_missing_source_ids(self) -> None:
+        reason = collector._mapped_invalid_reason(
+            "runtime_history",
+            {
+                "event_type": "counter-evidence",
+                "protocol": "research",
+                "candidate_id": "judgment-alpha:src-followup",
+            },
+        )
+        self.assertEqual(reason, "runtime_history_counter_evidence_missing_source_ids")
 
     def test_mapped_invalid_reason_for_llm_missing_protocol(self) -> None:
         reason = collector._mapped_invalid_reason("llm_receipt", {"status": "failed"})

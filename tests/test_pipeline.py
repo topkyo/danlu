@@ -23,7 +23,12 @@ from aiwiki.app_compile import (
 )
 from aiwiki.app_content import ingest_source, sync_manifest_with_raw
 from aiwiki.app_protocol import ensure_layout
-from aiwiki.app_state import load_concept_rewrite_state, load_machine_memory, load_machine_memory_action_state
+from aiwiki.app_state import (
+    load_concept_rewrite_state,
+    load_machine_memory,
+    load_machine_memory_action_state,
+    load_runtime_history,
+)
 from aiwiki.app_utils import parse_frontmatter
 from aiwiki.drop import drop_url
 from aiwiki.llm import CompletionResult
@@ -270,6 +275,15 @@ class PipelineTests(unittest.TestCase):
         compile_wiki(self.root)
         first_scan = load_machine_memory(self.root)["health"]["counter_evidence_scan"]
         self.assertGreater(first_scan["candidate_count"], 0)
+        counter_events = [
+            event
+            for event in load_runtime_history(self.root)
+            if event.get("event_type") == "counter-evidence"
+        ]
+        self.assertTrue(counter_events)
+        self.assertEqual(counter_events[0]["candidate_id"], first_scan["candidates"][0]["candidate_id"])
+        self.assertEqual(counter_events[0]["source_ids"], [first_scan["candidates"][0]["source_id"]])
+        self.assertEqual(counter_events[0]["page_path"], first_scan["candidates"][0]["page_path"])
 
         compile_wiki(self.root)
         second_scan = load_machine_memory(self.root)["health"]["counter_evidence_scan"]

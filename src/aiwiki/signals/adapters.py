@@ -54,6 +54,8 @@ def _runtime_history_to_signals(event: dict[str, Any], *, line_no: int, rel_path
         return _runtime_history_raw_added_to_signals(event, line_no=line_no, rel_path=rel_path)
     if event_type == "learning-threshold":
         return _runtime_history_learning_threshold_to_signals(event, line_no=line_no, rel_path=rel_path)
+    if event_type == "counter-evidence":
+        return _runtime_history_counter_evidence_to_signals(event, line_no=line_no, rel_path=rel_path)
     if event_type not in {"review", "nightly"}:
         return []
 
@@ -196,6 +198,53 @@ def _runtime_history_learning_threshold_to_signals(
                 "source_event_ref": f"{rel_path}#L{line_no}",
             },
             source_identity=f"learning-threshold::{protocol}::{threshold_identity}::{','.join(learning_ids)}",
+        )
+    ]
+
+
+def _runtime_history_counter_evidence_to_signals(
+    event: dict[str, Any],
+    *,
+    line_no: int,
+    rel_path: str,
+) -> list[SignalSeed]:
+    protocol = event.get("protocol")
+    emitted_at = _normalize_emitted_at(event.get("occurred_at"))
+    candidate_id = event.get("candidate_id")
+    source_ids = _unique_sorted_strings(_string_list(event.get("source_ids")))
+    if (
+        not isinstance(protocol, str)
+        or not protocol
+        or emitted_at is None
+        or not isinstance(candidate_id, str)
+        or not candidate_id
+        or not source_ids
+    ):
+        return []
+
+    page_path = event.get("page_path")
+    page_kind = event.get("page_kind")
+    judgment_refs = [page_path] if page_kind == "judgment" and isinstance(page_path, str) and page_path else []
+
+    return [
+        SignalSeed(
+            record_base={
+                "kind": "counter_evidence",
+                "scope": {
+                    "protocol": protocol,
+                    "source_ids": source_ids,
+                    "concept_slugs": [],
+                    "elixir_refs": [],
+                    "judgment_refs": judgment_refs,
+                },
+                "severity": "high",
+                "evidence_refs": _unique_sorted_strings([page_path, event.get("source_page")]),
+                "emitted_at": emitted_at,
+                "emitted_by": "compile",
+                "source_kind": "runtime_history",
+                "source_event_ref": f"{rel_path}#L{line_no}",
+            },
+            source_identity=candidate_id,
         )
     ]
 
