@@ -113,11 +113,8 @@ def validate_planner_log_record(record: dict[str, Any]) -> ValidationResult:
             if _REASON_CODE_RE.fullmatch(item) is None:
                 errors.append(f"reason_codes[{index}] format is invalid")
         if all(isinstance(item, str) for item in reason_codes):
-            unique_sorted = sorted(set(reason_codes))
-            if len(unique_sorted) != len(reason_codes):
+            if len(set(reason_codes)) != len(reason_codes):
                 errors.append("reason_codes contains duplicate values")
-            if list(reason_codes) != unique_sorted:
-                errors.append("reason_codes must be sorted lexicographically with duplicates removed")
 
     budget_used = record.get("budget_used")
     if not isinstance(budget_used, dict):
@@ -181,7 +178,7 @@ def _canonicalize_reason_codes(value: Any) -> Any:
         return value
     if not all(isinstance(item, str) for item in value):
         return value
-    return sorted(set(value))
+    return list(dict.fromkeys(value))
 
 
 __all__ = [

@@ -138,12 +138,14 @@ class TestSchemaValidation(unittest.TestCase):
         record["reason_codes"] = ["Bad-Reason"]
         self.assertFalse(validate_planner_log_record(record).ok)
 
-    def test_reason_codes_must_be_sorted_unique(self) -> None:
+    def test_reason_codes_must_be_unique_but_may_preserve_semantic_order(self) -> None:
         record = self._base_record()
         record["reason_codes"] = ["b", "a", "a"]
         errors = validate_planner_log_record(record).errors
         self.assertTrue(any("duplicate" in item for item in errors))
-        self.assertTrue(any("sorted" in item for item in errors))
+
+        record["reason_codes"] = ["b", "a"]
+        self.assertTrue(validate_planner_log_record(record).ok)
 
     def test_budget_used_must_be_empty_dict(self) -> None:
         record = self._base_record()
@@ -338,7 +340,7 @@ class TestGenerateProposalRouting(_FixtureCase):
     def test_derive_decision_runtime_failure_high_severity_emits_generate_proposal(self) -> None:
         decision, reason_codes = log_writer._derive_decision("runtime_failure", "high")
         self.assertEqual(decision, "generate-proposal")
-        self.assertEqual(set(reason_codes), {"runtime_failure_observed", "proposal_recommended"})
+        self.assertEqual(reason_codes, ["runtime_failure_observed", "proposal_recommended"])
 
     def test_derive_decision_runtime_failure_low_severity_not_upgraded(self) -> None:
         decision, reason_codes = log_writer._derive_decision("runtime_failure", "low")
@@ -1333,8 +1335,7 @@ class TestCanonicalDumps(unittest.TestCase):
         dumped = canonical_dumps_planner_log(record)
         loaded = json.loads(dumped)
         self.assertEqual(tuple(loaded.keys()), TOP_LEVEL_FIELD_ORDER)
-        self.assertEqual(set(loaded["reason_codes"]), {"a", "b"})
-        self.assertEqual(len(loaded["reason_codes"]), 2)
+        self.assertEqual(loaded["reason_codes"], ["b", "a"])
         self.assertEqual(canonical_dumps_planner_log(loaded), dumped)
 
     def test_canonical_dumps_unknown_field_sorted_tail(self) -> None:

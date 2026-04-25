@@ -311,7 +311,7 @@ def _derive_decision(kind: str, severity: str) -> tuple[str, list[str]]:
         if severity == "medium":
             return "enqueue-light", ["runtime_failure_routine"]
         if severity == "high":
-            return "generate-proposal", ["proposal_recommended", "runtime_failure_observed"]
+            return "generate-proposal", ["runtime_failure_observed", "proposal_recommended"]
         if severity == "critical":
             return "escalate-human", ["runtime_failure_critical"]
         return "ignore", ["unmapped_kind"]
