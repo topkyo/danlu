@@ -670,6 +670,7 @@ L3 proposal **只允许**写入以下文件：
 | `aiwiki alchemy-distill <elixir-id> --question <q>` | 当前：推进 draft/distilling elixir iteration | `output/_candidates/elixirs/` |
 | `aiwiki alchemy-promote --elixir-id <elixir-id>` | 当前：candidate promote 为 settled | `wiki/elixirs/` + `output/_candidates/elixirs/` tombstone + receipts |
 | `aiwiki protocol-learn-add/list/show/age/verify/demote/archive/supersede` | 当前：L2 learning 生命周期治理 | `wiki/protocol-learnings/` |
+| `aiwiki signals-list/show` / `aiwiki planner-log-list` | 当前：只读 inspection；`--since` 必须为 ISO datetime，`--limit` 必须大于 0 | 读 `.aiwiki/state/signals.jsonl` / `.aiwiki/state/planner-log.jsonl` |
 | `aiwiki alchemy heavy <scope> --dry-run` / `aiwiki alchemy light <scope> --dry-run` | 当前：只读 preview lane scope、primitive plan、预算、锁结果和 deferred primitive metadata；不 execute | 读 `.aiwiki/state/planner-log.jsonl` + `.aiwiki/state/signals.jsonl` |
 | `aiwiki alchemy heavy|light <scope> --apply --action-id <id>` | 当前：仅在 dry-run plan 非空时，显式桥接到既有 receipted low-risk action batch apply；不执行 receipt-less lane 序列 | `apply_machine_memory_actions_batch` receipts |
 | `aiwiki alchemy heavy|light <scope> --apply --primitive compile|lint|nightly` | 当前：仅执行 deterministic primitives 并写 lane primitive execution receipt；receipt 顶层携带 planner `trace_id/trace_ids` 与 execution receipt history audit metadata；不调用 LLM-backed `run-*` | `output/control/execution-receipts/` + `.aiwiki/state/execution-receipts.jsonl` |

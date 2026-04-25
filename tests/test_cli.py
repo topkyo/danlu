@@ -849,6 +849,28 @@ class CLITests(unittest.TestCase):
         self.assertEqual(stdout.getvalue(), "")
         self.assertIn("limit must be greater than 0", stderr.getvalue())
 
+    def test_planner_log_list_invalid_since_exits_nonzero(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
+            with self.assertRaises(SystemExit) as ctx:
+                main(["--root", str(self.root), "planner-log-list", "--since", "not-a-datetime"])
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("Invalid since datetime", stderr.getvalue())
+
+    def test_planner_log_list_invalid_limit_exits_nonzero(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
+            with self.assertRaises(SystemExit) as ctx:
+                main(["--root", str(self.root), "planner-log-list", "--limit", "0"])
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("limit must be greater than 0", stderr.getvalue())
+
     def test_signals_show_elixir_dependency_break_end_to_end(self) -> None:
         receipts_path = self.root / ".aiwiki/state/execution-receipts.jsonl"
         receipts_path.parent.mkdir(parents=True, exist_ok=True)
