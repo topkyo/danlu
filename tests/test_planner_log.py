@@ -313,12 +313,12 @@ class TestDecisionDerivation(unittest.TestCase):
     def test_learning_threshold_high_maps_to_heavy_lane(self) -> None:
         decision, reason_codes = log_writer._derive_decision("learning_threshold", "high")
         self.assertEqual(decision, "enqueue-heavy")
-        self.assertEqual(set(reason_codes), {"learning_threshold_observed", "heavy_lane_recommended"})
+        self.assertEqual(reason_codes, ["learning_threshold_observed", "heavy_lane_recommended"])
 
     def test_learning_threshold_critical_maps_to_heavy_lane(self) -> None:
         decision, reason_codes = log_writer._derive_decision("learning_threshold", "critical")
         self.assertEqual(decision, "enqueue-heavy")
-        self.assertEqual(set(reason_codes), {"learning_threshold_observed", "heavy_lane_recommended"})
+        self.assertEqual(reason_codes, ["learning_threshold_observed", "heavy_lane_recommended"])
 
     def test_counter_evidence_high_maps_to_generate_proposal(self) -> None:
         decision, reason_codes = log_writer._derive_decision("counter_evidence", "high")

@@ -347,7 +347,7 @@ def _derive_decision(kind: str, severity: str) -> tuple[str, list[str]]:
         if severity == "medium":
             return "generate-proposal", ["learning_threshold_observed", "proposal_recommended"]
         if severity in {"high", "critical"}:
-            return "enqueue-heavy", ["heavy_lane_recommended", "learning_threshold_observed"]
+            return "enqueue-heavy", ["learning_threshold_observed", "heavy_lane_recommended"]
         return "ignore", ["unmapped_kind"]
 
     return "ignore", ["unmapped_kind"]
