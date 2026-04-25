@@ -156,6 +156,34 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         )
         self.assertEqual(result["primitive_plan"][2]["apply_blocker"], "missing_receipted_scoped_contract")
 
+    def test_heavy_lane_does_not_consume_generate_proposal_decisions(self) -> None:
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [
+                self._signal(
+                    "sig-20260425-proposal01",
+                    severity="high",
+                    protocol="research",
+                    source_ids=["src-proposal"],
+                    concept_slugs=["proposal-scope"],
+                )
+            ],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [self._planner("sig-20260425-proposal01", decision="generate-proposal")],
+        )
+
+        result = preview_alchemy_lane(self.root, lane="heavy", scope="all")
+
+        self.assertEqual(result["status"], "ok")
+        self.assertTrue(result["dry_run"])
+        self.assertFalse(result["side_effects_allowed"])
+        self.assertEqual(result["selected_count"], 0)
+        self.assertEqual(result["skipped_count"], 1)
+        self.assertEqual(result["scope_preview"]["signal_ids"], [])
+        self.assertTrue(all(step["signal_ids"] == [] for step in result["primitive_plan"]))
+
     def test_light_lane_does_not_consume_heavy_or_generate_proposal(self) -> None:
         self._seed_lane_records()
 
