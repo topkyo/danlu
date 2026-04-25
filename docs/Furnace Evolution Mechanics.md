@@ -16,7 +16,7 @@ related_docs:
 
 这份文档定义炼丹炉“如何进化”的实现契约：signal 如何路由到 heavy / light 炼丹、active corpus 如何持久化、金丹如何炼成与复利、L2 protocol-learning 如何衔接既有实装、L3 prompt/policy proposal 如何受控写回。
 
-> **实现状态说明（2026-04-24）**：本文是“目标契约 + 当前差距”的 SoT。当前已落地 active corpus / output candidates、L2 protocol-learning 生命周期、repair planner state、nightly low-risk auto-consume、显式 backend 选择、最小金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote`。完整 signal stream、append-only `planner-log.jsonl`、heavy/light 调度入口、`output/_candidates/elixirs/` 候选平面、L3 prompt/policy proposal 的 review/apply/revert 链路尚未完整实现，以下章节用 `implemented / partial / planned` 标记区分。
+> **实现状态说明（2026-04-24）**：本文是“目标契约 + 当前差距”的 SoT。当前已落地 active corpus / output candidates、L2 protocol-learning 生命周期、repair planner state、nightly low-risk auto-consume、显式 backend 选择、最小金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote`，以及 heavy/light lane read-only dry-run preview。完整 signal planner、heavy/light 执行调度入口、`output/_candidates/elixirs/` 候选平面、L3 prompt/policy proposal 的 review/apply/revert 链路尚未完整实现，以下章节用 `implemented / partial / planned` 标记区分。
 
 它同时取代：
 
@@ -249,7 +249,7 @@ heavy 是**事件驱动的深度重炼**，面向“知识意义可能被改变�
 - `drift`（命中 active judgment 或 active corpus）
 - `elixir_dependency_break`
 - `learning_threshold` 达到结构调整条件
-- 用户显式触发（目标入口：`aiwiki alchemy heavy <scope>`；当前尚未落地）
+- 用户显式触发（当前已支持 `aiwiki alchemy heavy <scope> --dry-run` preview；执行留到 M5）
 
 ### 4.3 动作序列
 
@@ -660,7 +660,7 @@ L3 proposal **只允许**写入以下文件：
 | `aiwiki alchemy-distill <elixir-id> --question <q>` | 当前：推进 draft/distilling elixir iteration | `output/_candidates/elixirs/` |
 | `aiwiki alchemy-promote --elixir-id <elixir-id>` | 当前：candidate promote 为 settled | `wiki/elixirs/` + `output/_candidates/elixirs/` tombstone + receipts |
 | `aiwiki protocol-learn-add/list/show/age/verify/demote/archive/supersede` | 当前：L2 learning 生命周期治理 | `wiki/protocol-learnings/` |
-| `aiwiki alchemy heavy <scope>` | planned：手动触发 heavy 炼丹 | 按 scope |
+| `aiwiki alchemy heavy <scope> --dry-run` / `aiwiki alchemy light <scope> --dry-run` | 当前：只读 preview lane scope、primitive plan、预算与锁结果；不 execute | 读 `.aiwiki/state/planner-log.jsonl` + `.aiwiki/state/signals.jsonl` |
 | `aiwiki review proposals` | planned：查看 L3 proposal 队列 | 读 only |
 | `aiwiki apply <proposal-id>` | planned：人工 accept L3 proposal | `prompts/*.md` 或 `schema/policies/*` |
 | `aiwiki revert <receipt-id>` | planned：按 receipt 回滚 L3 accept | 恢复 target 文件 |

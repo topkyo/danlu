@@ -1442,6 +1442,31 @@ def run_planner_log_list(
     )
 
 
+def run_alchemy_lane_dry_run(
+    root: Path,
+    *,
+    lane: str,
+    scope: str,
+    planner_log_path: Path | None = None,
+    signals_path: Path | None = None,
+    max_signals: int | None = None,
+    max_pages: int | None = None,
+    max_tokens: int | None = None,
+) -> dict[str, Any]:
+    from .planner import preview_alchemy_lane
+
+    return preview_alchemy_lane(
+        root,
+        lane=lane,
+        scope=scope,
+        planner_log_path=planner_log_path,
+        signals_path=signals_path,
+        max_signals=max_signals,
+        max_pages=max_pages,
+        max_tokens=max_tokens,
+    )
+
+
 @runtime_write_operation
 def run_protocol_learn_age(root: Path, protocol: str | None = None, apply: bool = False) -> dict[str, Any]:
     from .execution.protocol_learnings import age_learnings
