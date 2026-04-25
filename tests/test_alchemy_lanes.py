@@ -282,12 +282,19 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertIsNone(result["apply_result"])
         mocked.assert_called_once_with(self.root)
         primitive_result = result["primitive_results"][0]
+        self.assertEqual(primitive_result["trace_id"], "550e8400-e29b-41d4-a716-446655440000")
+        self.assertEqual(primitive_result["audit_path"], ".aiwiki/state/execution-receipts.jsonl")
         receipt_path = self.root / primitive_result["receipt_path"]
         self.assertTrue(receipt_path.exists())
         receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
         self.assertEqual(receipt["kind"], "execution-receipt")
         self.assertEqual(receipt["generated_by"], "aiwiki-alchemy-lane")
         self.assertEqual(receipt["operation"], "alchemy-lane-primitive")
+        self.assertEqual(receipt["trace_id"], "550e8400-e29b-41d4-a716-446655440000")
+        self.assertEqual(receipt["trace_ids"], ["550e8400-e29b-41d4-a716-446655440000"])
+        self.assertEqual(receipt["audit_stream"], "execution_receipts")
+        self.assertEqual(receipt["audit_event"], "execution_receipt_history_append")
+        self.assertEqual(receipt["audit_path"], ".aiwiki/state/execution-receipts.jsonl")
         self.assertEqual(receipt["primitive"], "compile")
         self.assertEqual(receipt["lane"], "heavy")
         self.assertFalse(receipt["revert_supported"])
@@ -297,6 +304,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
             if line.strip()
         ]
         self.assertEqual(history[-1]["action_id"], receipt["action_id"])
+        self.assertEqual(history[-1]["trace_id"], receipt["trace_id"])
 
     def test_apply_rejects_primitive_absent_from_lane_plan(self) -> None:
         self._seed_lane_records()

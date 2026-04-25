@@ -1583,9 +1583,13 @@ def _run_receipted_lane_primitive(
     applied_at = utc_now()
     action_id = _unique_lane_primitive_action_id(root, lane=lane, primitive=primitive, applied_at=applied_at)
     from .app_execution import append_execution_receipt_history
+    from .app_state import execution_receipt_history_path
     from .render.paths import execution_receipt_path
 
     receipt_path = execution_receipt_path(root, action_id)
+    audit_path = relative_path(root, execution_receipt_history_path(root))
+    trace_ids = _lane_receipt_trace_ids(plan)
+    trace_id = trace_ids[0] if trace_ids else ""
     receipt = {
         "version": 1,
         "kind": "execution-receipt",
@@ -1593,6 +1597,8 @@ def _run_receipted_lane_primitive(
         "applied_at": applied_at,
         "operation": "alchemy-lane-primitive",
         "action_id": action_id,
+        "trace_id": trace_id,
+        "trace_ids": trace_ids,
         "title": f"Alchemy {lane} {primitive}",
         "status": "applied",
         "protocol": _first_plan_protocol(plan),
@@ -1607,6 +1613,9 @@ def _run_receipted_lane_primitive(
         "scope": scope,
         "primitive": primitive,
         "revert_supported": False,
+        "audit_stream": "execution_receipts",
+        "audit_event": "execution_receipt_history_append",
+        "audit_path": audit_path,
         "source_plan": _lane_receipt_plan_summary(plan),
         "result_summary": _lane_receipt_result_summary(result),
     }
@@ -1615,6 +1624,8 @@ def _run_receipted_lane_primitive(
     append_execution_receipt_history(root, receipt)
     return {
         "primitive": primitive,
+        "trace_id": trace_id,
+        "audit_path": audit_path,
         "receipt_path": relative_path(root, receipt_path),
         "result": result,
     }
@@ -1640,6 +1651,17 @@ def _first_plan_protocol(plan: dict[str, Any]) -> str:
         if isinstance(protocols, list) and protocols:
             return str(protocols[0])
     return ""
+
+
+def _lane_receipt_trace_ids(plan: dict[str, Any]) -> list[str]:
+    scope_preview = plan.get("scope_preview")
+    if not isinstance(scope_preview, dict):
+        return []
+    trace_ids = scope_preview.get("trace_ids")
+    if not isinstance(trace_ids, list):
+        return []
+    normalized = sorted({item.strip() for item in trace_ids if isinstance(item, str) and item.strip()})
+    return normalized
 
 
 def _primary_result_path(result: dict[str, Any]) -> str:

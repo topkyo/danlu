@@ -16,7 +16,7 @@ related_docs:
 
 这份文档定义炼丹炉“如何进化”的实现契约：signal 如何路由到 heavy / light 炼丹、active corpus 如何持久化、金丹如何炼成与复利、L2 protocol-learning 如何衔接既有实装、L3 prompt/policy proposal 如何受控写回。
 
-> **实现状态说明（2026-04-25）**：本文是“目标契约 + 当前差距”的 SoT。当前已落地 active corpus / output candidates、L2 protocol-learning 生命周期、repair planner state、nightly low-risk auto-consume、显式 backend 选择、最小金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote`，以及 heavy/light lane read-only dry-run preview、显式 receipted action apply bridge、deterministic primitive receipt wrapper 和 `judge/distill/review/propose` deferred metadata。完整 signal planner、heavy/light 自动执行调度入口、`output/_candidates/elixirs/` 候选平面、L3 prompt/policy proposal 的 review/apply/revert 链路尚未完整实现，以下章节用 `implemented / partial / planned` 标记区分。
+> **实现状态说明（2026-04-25）**：本文是“目标契约 + 当前差距”的 SoT。当前已落地 active corpus / output candidates、L2 protocol-learning 生命周期、repair planner state、nightly low-risk auto-consume、显式 backend 选择、最小金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote`，以及 heavy/light lane read-only dry-run preview、显式 receipted action apply bridge、deterministic primitive receipt wrapper、lane primitive trace/audit metadata 和 `judge/distill/review/propose` deferred metadata。完整 signal planner、heavy/light 自动执行调度入口、`output/_candidates/elixirs/` 候选平面、L3 prompt/policy proposal 的 review/apply/revert 链路尚未完整实现，以下章节用 `implemented / partial / planned` 标记区分。
 
 它同时取代：
 
@@ -665,7 +665,7 @@ L3 proposal **只允许**写入以下文件：
 | `aiwiki protocol-learn-add/list/show/age/verify/demote/archive/supersede` | 当前：L2 learning 生命周期治理 | `wiki/protocol-learnings/` |
 | `aiwiki alchemy heavy <scope> --dry-run` / `aiwiki alchemy light <scope> --dry-run` | 当前：只读 preview lane scope、primitive plan、预算、锁结果和 deferred primitive metadata；不 execute | 读 `.aiwiki/state/planner-log.jsonl` + `.aiwiki/state/signals.jsonl` |
 | `aiwiki alchemy heavy|light <scope> --apply --action-id <id>` | 当前：仅在 dry-run plan 非空时，显式桥接到既有 receipted low-risk action batch apply；不执行 receipt-less lane 序列 | `apply_machine_memory_actions_batch` receipts |
-| `aiwiki alchemy heavy|light <scope> --apply --primitive compile|lint|nightly` | 当前：仅执行 deterministic primitives 并写 lane primitive execution receipt；不调用 LLM-backed `run-*` | `output/control/execution-receipts/` + `.aiwiki/state/execution-receipts.jsonl` |
+| `aiwiki alchemy heavy|light <scope> --apply --primitive compile|lint|nightly` | 当前：仅执行 deterministic primitives 并写 lane primitive execution receipt；receipt 顶层携带 planner `trace_id/trace_ids` 与 execution receipt history audit metadata；不调用 LLM-backed `run-*` | `output/control/execution-receipts/` + `.aiwiki/state/execution-receipts.jsonl` |
 | `aiwiki review proposals` | planned：查看 L3 proposal 队列 | 读 only |
 | `aiwiki apply <proposal-id>` | planned：人工 accept L3 proposal | `prompts/*.md` 或 `schema/policies/*` |
 | `aiwiki revert <receipt-id>` | planned：按 receipt 回滚 L3 accept | 恢复 target 文件 |
@@ -714,7 +714,7 @@ revert **不可以**：
 | **M4 Heavy/Light Dry-run Wrapper** | `alchemy heavy/light --dry-run` 只计算 signal scope、primitive plan、预算与锁结果。 | 默认不 execute；light 不升级 heavy；全量 heavy 不自动授权。 | scope preview 稳定；预算超限可解释；锁冲突 skip；primitive plan 可复现。 |
 | **M5 Controlled Execution** | heavy/light 允许显式 `--apply` 组合 scoped primitives。 | 不允许 hidden backend choice；不允许无 receipt 写回。 | 每个 phase 有 trace_id、receipt、audit entry；失败可从上一稳定点恢复。 |
 
-M5 当前收敛状态：`--apply --action-id` 只桥接既有 receipted low-risk action batch；`--apply --primitive` 只支持 `compile/lint/nightly` deterministic receipts。`judge/distill/review/propose` 已完成可行性评估并保持 deferred，直到各自拥有独立 scoped primitive contract。
+M5 当前收敛状态：`--apply --action-id` 只桥接既有 receipted low-risk action batch；`--apply --primitive` 只支持 `compile/lint/nightly` deterministic receipts，且 lane primitive receipt 顶层已暴露 planner trace 与 execution receipt history audit metadata。`judge/distill/review/propose` 已完成可行性评估并保持 deferred，直到各自拥有独立 scoped primitive contract。
 
 达到 9+ 可行性的条件不是“自动化更多”，而是每个 milestone 都满足：可重放、可 dry-run、可回滚、可停用、可用现有 gate 验证。
 
