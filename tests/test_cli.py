@@ -239,6 +239,54 @@ class CLITests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             parser.parse_args(["alchemy-promote"])
 
+    def test_alchemy_revert_cli_smoke(self) -> None:
+        with patch(
+            "aiwiki.cli.run_alchemy_revert",
+            return_value=self.root / "output" / "_candidates" / "elixirs" / "elixir-vla-robotics-deadbeef.md",
+        ) as mocked:
+            code, payload, stderr = self._run_main(
+                ["alchemy-revert", "--elixir-id", "elixir-vla-robotics-deadbeef", "--note", "undo"]
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload.get("elixir_id"), "elixir-vla-robotics-deadbeef")
+        self.assertEqual(payload.get("path"), "output/_candidates/elixirs/elixir-vla-robotics-deadbeef.md")
+        mocked.assert_called_once_with(
+            self.root,
+            elixir_id="elixir-vla-robotics-deadbeef",
+            note="undo",
+        )
+
+    def test_alchemy_revert_requires_elixir_id(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["alchemy-revert"])
+
+    def test_alchemy_demote_cli_smoke(self) -> None:
+        with patch(
+            "aiwiki.cli.run_alchemy_demote",
+            return_value=self.root / "output" / "_candidates" / "elixirs" / "elixir-vla-robotics-deadbeef.md",
+        ) as mocked:
+            code, payload, stderr = self._run_main(
+                ["alchemy-demote", "--elixir-id", "elixir-vla-robotics-deadbeef", "--note", "reopen"]
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload.get("elixir_id"), "elixir-vla-robotics-deadbeef")
+        self.assertEqual(payload.get("path"), "output/_candidates/elixirs/elixir-vla-robotics-deadbeef.md")
+        mocked.assert_called_once_with(
+            self.root,
+            elixir_id="elixir-vla-robotics-deadbeef",
+            note="reopen",
+        )
+
+    def test_alchemy_demote_requires_elixir_id(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["alchemy-demote"])
+
     def test_alchemy_start_propagates_protocol_to_frontmatter(self) -> None:
         ensure_layout(self.root)
         (self.root / "prompts" / "compile.md").write_text("Compile prompt fixture.\n", encoding="utf-8")

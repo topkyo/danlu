@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
 from aiwiki.app_compile import ask_question
+from aiwiki.app_execution import find_latest_elixir_promotion_receipt
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_utils import parse_frontmatter, slugify
 from aiwiki.execution.alchemy import (
@@ -14,25 +17,30 @@ from aiwiki.execution.alchemy import (
     ELIXIR_DIR,
     ELIXIR_STATE_VALUES,
     PromoteHalfWriteError,
+    RevertHalfWriteError,
     _detect_elixir_cycle,
     _parse_elixir_frontmatter,
     _read_elixir_anywhere,
     _validate_source_outputs,
     _validate_state_for_path,
     _write_elixir_markdown,
+    demote_elixir,
     distill_elixir,
     finalize_elixir,
     list_promoted_outputs_for_corpus,
     promote_elixir,
+    revert_elixir,
     seal_elixir,
     start_elixir,
 )
 from aiwiki.execution.candidates import promote_candidate
 from aiwiki.execution.protocol_learnings import add_learning
 from aiwiki.runner import (
+    run_alchemy_demote,
     run_alchemy_distill,
     run_alchemy_finalize,
     run_alchemy_promote,
+    run_alchemy_revert,
     run_alchemy_seal,
     run_alchemy_start,
 )
@@ -868,6 +876,297 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
     def test_validate_source_outputs_rejects_blank_ref(self) -> None:
         with self.assertRaises(ValueError):
             _validate_source_outputs(self.root, [""], allowed=set())
+
+    def test_revert_deletes_settled_and_restores_candidate(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+
+        result_path = run_alchemy_revert(self.root, elixir_id=elixir_id)
+
+        self.assertEqual(result_path, _candidate_path(self.root, elixir_id))
+        self.assertFalse(_settled_path(self.root, elixir_id).exists())
+        self.assertTrue(_candidate_path(self.root, elixir_id).exists())
+        frontmatter = _parse_elixir_frontmatter(_candidate_path(self.root, elixir_id))
+        self.assertEqual(frontmatter["elixir_state"], "candidate")
+
+    def test_revert_clears_superseded_by_and_promoted_at(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+
+        run_alchemy_revert(self.root, elixir_id=elixir_id)
+
+        frontmatter = _parse_elixir_frontmatter(_candidate_path(self.root, elixir_id))
+        self.assertNotIn("superseded_by", frontmatter)
+        self.assertNotIn("promoted_at", frontmatter)
+        self.assertEqual(frontmatter["elixir_state"], "candidate")
+
+    def test_revert_writes_receipt_with_source_receipt_applied_at(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        promote_result = run_alchemy_promote(self.root, elixir_id=elixir_id)
+        promote_receipt = json.loads((self.root / str(promote_result["receipt_path"])).read_text(encoding="utf-8"))
+
+        run_alchemy_revert(self.root, elixir_id=elixir_id, note="undo")
+
+        receipt_path = self.root / "output" / "control" / "execution-receipts" / f"elixir-revert-{slugify(elixir_id)}.json"
+        self.assertTrue(receipt_path.exists())
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        self.assertEqual(receipt["subject_kind"], "elixir_revert")
+        self.assertEqual(receipt["apply_mode"], "elixir-revert")
+        self.assertEqual(receipt["operation"], "revert")
+        self.assertEqual(receipt["generated_by"], "aiwiki-elixir-revert")
+        self.assertEqual(receipt["action_id"], f"elixir-revert-{slugify(elixir_id)}")
+        self.assertEqual(receipt["bundle"].get("source_receipt_applied_at"), promote_receipt["applied_at"])
+        self.assertEqual(receipt["note"], "undo")
+
+    def test_revert_rejects_missing_promotion_receipt(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        history_path = self.root / ".aiwiki" / "state" / "execution-receipts.jsonl"
+        history_path.unlink(missing_ok=True)
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_revert(self.root, elixir_id=elixir_id)
+        self.assertIn("promotion_receipt_missing", str(ctx.exception))
+
+    def test_revert_rejects_missing_tombstone(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        _candidate_path(self.root, elixir_id).unlink()
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_revert(self.root, elixir_id=elixir_id)
+        self.assertIn("revert_tombstone_missing", str(ctx.exception))
+
+    def test_revert_rejects_stale_settled(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        promote_result = run_alchemy_promote(self.root, elixir_id=elixir_id)
+        promote_receipt = json.loads((self.root / str(promote_result["receipt_path"])).read_text(encoding="utf-8"))
+        applied_at = datetime.fromisoformat(str(promote_receipt["applied_at"]))
+        stale_epoch = (applied_at + timedelta(seconds=3)).timestamp()
+        os.utime(_settled_path(self.root, elixir_id), (stale_epoch, stale_epoch))
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_revert(self.root, elixir_id=elixir_id)
+        self.assertIn("revert_conflict_settled_modified", str(ctx.exception))
+
+    def test_revert_succeeds_when_promotion_receipt_applied_at_has_z_suffix(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        applied_at_z = (datetime.utcnow() + timedelta(seconds=10)).replace(microsecond=0).isoformat() + "Z"
+        with patch("aiwiki.execution.alchemy.utc_now", return_value=applied_at_z):
+            promote_result = run_alchemy_promote(self.root, elixir_id=elixir_id)
+        promote_receipt = json.loads((self.root / str(promote_result["receipt_path"])).read_text(encoding="utf-8"))
+        self.assertEqual(promote_receipt["applied_at"], applied_at_z)
+
+        result_path = run_alchemy_revert(self.root, elixir_id=elixir_id)
+
+        self.assertEqual(result_path, _candidate_path(self.root, elixir_id))
+        self.assertFalse(_settled_path(self.root, elixir_id).exists())
+        self.assertTrue(_candidate_path(self.root, elixir_id).exists())
+
+    def test_revert_rejects_modified_tombstone(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        candidate = _candidate_path(self.root, elixir_id)
+        original = candidate.read_text(encoding="utf-8")
+        frontmatter = _parse_elixir_frontmatter(candidate)
+        frontmatter["promoted_at"] = "2099-01-01T00:00:00+00:00"
+        _write_elixir_markdown(candidate, frontmatter=frontmatter, body=original.split("---", 2)[-1].lstrip("\n"))
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_revert(self.root, elixir_id=elixir_id)
+        self.assertIn("revert_conflict_candidate_modified", str(ctx.exception))
+
+    def test_revert_rejects_non_superseded_tombstone_state(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        candidate = _candidate_path(self.root, elixir_id)
+        original = candidate.read_text(encoding="utf-8")
+        frontmatter = _parse_elixir_frontmatter(candidate)
+        frontmatter["elixir_state"] = "candidate"
+        _write_elixir_markdown(candidate, frontmatter=frontmatter, body=original.split("---", 2)[-1].lstrip("\n"))
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_revert(self.root, elixir_id=elixir_id)
+        self.assertIn("unsupported_source_state", str(ctx.exception))
+
+    def test_revert_failure_after_candidate_write_rolls_back_to_tombstone(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        candidate_path = _candidate_path(self.root, elixir_id)
+        tombstone_before = candidate_path.read_text(encoding="utf-8")
+
+        with patch.object(Path, "unlink", autospec=True, side_effect=OSError("unlink failed")):
+            with self.assertRaises(OSError):
+                revert_elixir(self.root, elixir_id=elixir_id)
+
+        self.assertEqual(candidate_path.read_text(encoding="utf-8"), tombstone_before)
+        self.assertTrue(_settled_path(self.root, elixir_id).exists())
+
+    def test_revert_raises_halfwriteerror_when_rollback_also_fails(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        settled_path = _settled_path(self.root, elixir_id)
+        candidate_path = _candidate_path(self.root, elixir_id)
+        from aiwiki.execution import alchemy as alchemy_module
+
+        original_write = alchemy_module._write_atomic_text
+        calls = {"count": 0}
+
+        def _flaky_write(path: Path, content: str) -> None:
+            calls["count"] += 1
+            if calls["count"] == 2:
+                raise OSError("rollback candidate write failed")
+            original_write(path, content)
+
+        with patch("aiwiki.execution.alchemy._write_atomic_text", side_effect=_flaky_write):
+            with patch.object(Path, "unlink", autospec=True, side_effect=OSError("unlink failed")):
+                with self.assertRaises(RevertHalfWriteError) as ctx:
+                    revert_elixir(self.root, elixir_id=elixir_id)
+
+        self.assertIn(str(settled_path), str(ctx.exception))
+        self.assertIn(str(candidate_path), str(ctx.exception))
+
+    def test_demote_deletes_settled_and_creates_candidate(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+
+        result_path = run_alchemy_demote(self.root, elixir_id=elixir_id)
+
+        self.assertEqual(result_path, _candidate_path(self.root, elixir_id))
+        self.assertFalse(_settled_path(self.root, elixir_id).exists())
+        self.assertTrue(_candidate_path(self.root, elixir_id).exists())
+        frontmatter = _parse_elixir_frontmatter(_candidate_path(self.root, elixir_id))
+        self.assertEqual(frontmatter["elixir_state"], "candidate")
+
+    def test_demote_preserves_settled_content_as_candidate_body(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        settled = _settled_path(self.root, elixir_id)
+        settled_text = settled.read_text(encoding="utf-8")
+        settled.write_text(settled_text + "\nDemote body sentinel.\n", encoding="utf-8")
+
+        run_alchemy_demote(self.root, elixir_id=elixir_id)
+
+        candidate_text = _candidate_path(self.root, elixir_id).read_text(encoding="utf-8")
+        self.assertIn("Demote body sentinel.", candidate_text)
+
+    def test_demote_writes_receipt(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+
+        run_alchemy_demote(self.root, elixir_id=elixir_id, note="demote")
+
+        receipt_path = self.root / "output" / "control" / "execution-receipts" / f"elixir-demote-{slugify(elixir_id)}.json"
+        self.assertTrue(receipt_path.exists())
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        self.assertEqual(receipt["subject_kind"], "elixir_demotion")
+        self.assertEqual(receipt["apply_mode"], "elixir-demote")
+        self.assertEqual(receipt["operation"], "demote")
+        self.assertEqual(receipt["generated_by"], "aiwiki-elixir-demote")
+        self.assertEqual(receipt["action_id"], f"elixir-demote-{slugify(elixir_id)}")
+        self.assertEqual(receipt["bundle"], {})
+        self.assertEqual(receipt["note"], "demote")
+
+    def test_demote_accepts_externally_modified_settled(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        settled = _settled_path(self.root, elixir_id)
+        text = settled.read_text(encoding="utf-8")
+        settled.write_text(text + "\nExternally edited settled text.\n", encoding="utf-8")
+
+        result = run_alchemy_demote(self.root, elixir_id=elixir_id)
+
+        self.assertEqual(result, _candidate_path(self.root, elixir_id))
+        self.assertIn("Externally edited settled text.", _candidate_path(self.root, elixir_id).read_text(encoding="utf-8"))
+
+    def test_demote_accepts_missing_tombstone(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        _candidate_path(self.root, elixir_id).unlink()
+
+        result = run_alchemy_demote(self.root, elixir_id=elixir_id)
+
+        self.assertEqual(result, _candidate_path(self.root, elixir_id))
+        self.assertTrue(_candidate_path(self.root, elixir_id).exists())
+        self.assertFalse(_settled_path(self.root, elixir_id).exists())
+
+    def test_demote_rejects_non_settled_source(self) -> None:
+        elixir_id = "demote-non-settled"
+        self._write_stub_elixir(_settled_path(self.root, elixir_id), elixir_id=elixir_id, state="draft")
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_demote(self.root, elixir_id=elixir_id)
+        self.assertIn("unsupported_source_state", str(ctx.exception))
+
+    def test_demote_rejects_conflicting_candidate_plane_state(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        candidate = _candidate_path(self.root, elixir_id)
+        original = candidate.read_text(encoding="utf-8")
+        frontmatter = _parse_elixir_frontmatter(candidate)
+        frontmatter["elixir_state"] = "candidate"
+        _write_elixir_markdown(candidate, frontmatter=frontmatter, body=original.split("---", 2)[-1].lstrip("\n"))
+
+        with self.assertRaises(ValueError) as ctx:
+            run_alchemy_demote(self.root, elixir_id=elixir_id)
+        self.assertIn("demote_conflict_candidate_exists", str(ctx.exception))
+
+    def test_demote_failure_after_candidate_write_rolls_back(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        candidate_path = _candidate_path(self.root, elixir_id)
+        before = candidate_path.read_text(encoding="utf-8")
+
+        with patch.object(Path, "unlink", autospec=True, side_effect=OSError("unlink failed")):
+            with self.assertRaises(OSError):
+                demote_elixir(self.root, elixir_id=elixir_id)
+
+        self.assertEqual(candidate_path.read_text(encoding="utf-8"), before)
+        self.assertTrue(_settled_path(self.root, elixir_id).exists())
+
+    def test_find_latest_elixir_promotion_receipt_returns_most_recent(self) -> None:
+        history_path = self.root / ".aiwiki" / "state" / "execution-receipts.jsonl"
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        rows = [
+            "not-json",
+            json.dumps({"subject_kind": "other", "subject_id": "x", "applied_at": "2026-01-01T00:00:00+00:00"}),
+            json.dumps({"subject_kind": "elixir_promotion", "subject_id": "elixir-a", "applied_at": "2026-01-01T00:00:00+00:00"}),
+            json.dumps({"subject_kind": "elixir_promotion", "subject_id": "elixir-a", "applied_at": "2026-01-01T00:01:00+00:00"}),
+        ]
+        history_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+        latest = find_latest_elixir_promotion_receipt(self.root, elixir_id="elixir-a")
+
+        self.assertIsNotNone(latest)
+        assert latest is not None
+        self.assertEqual(latest["applied_at"], "2026-01-01T00:01:00+00:00")
+
+    def test_find_latest_elixir_promotion_receipt_skips_non_dict_lines(self) -> None:
+        history_path = self.root / ".aiwiki" / "state" / "execution-receipts.jsonl"
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        expected = {
+            "subject_kind": "elixir_promotion",
+            "subject_id": "elixir-a",
+            "applied_at": "2026-01-01T00:02:00+00:00",
+        }
+        rows = [
+            "[]",
+            "null",
+            json.dumps(expected),
+        ]
+        history_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+        latest = find_latest_elixir_promotion_receipt(self.root, elixir_id="elixir-a")
+
+        self.assertEqual(latest, expected)
+
+    def test_find_latest_elixir_promotion_receipt_handles_missing_history_file(self) -> None:
+        history_path = self.root / ".aiwiki" / "state" / "execution-receipts.jsonl"
+        history_path.unlink(missing_ok=True)
+
+        latest = find_latest_elixir_promotion_receipt(self.root, elixir_id="elixir-a")
+
+        self.assertIsNone(latest)
 
 
 if __name__ == "__main__":

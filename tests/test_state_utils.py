@@ -393,6 +393,13 @@ class AppUtilsTests(unittest.TestCase):
         self.assertEqual(utils.raw_note_metadata(note)["note_kind"], "transcript")
         self.assertEqual(utils.raw_note_metadata(image_path), {})
 
+    def test_parse_iso_datetime_accepts_z_suffix(self) -> None:
+        parsed = utils.parse_iso_datetime("2025-01-01T00:00:00Z")
+        self.assertIsNotNone(parsed)
+        assert parsed is not None
+        self.assertEqual(parsed.tzinfo.utcoffset(None).total_seconds(), 0)
+        self.assertEqual(parsed.isoformat(), "2025-01-01T00:00:00+00:00")
+
     def test_frontmatter_section_and_path_helpers(self) -> None:
         self.assertEqual(utils.parse_scalar('"hello"'), "hello")
         self.assertEqual(utils.parse_scalar('"broken'), '"broken')

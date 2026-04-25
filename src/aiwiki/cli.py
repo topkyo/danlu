@@ -43,9 +43,11 @@ from .runner import (
     auto_process_once,
     llm_probe,
     llm_status,
+    run_alchemy_demote,
     run_alchemy_distill,
     run_alchemy_finalize,
     run_alchemy_promote,
+    run_alchemy_revert,
     run_alchemy_seal,
     run_alchemy_start,
     run_ask,
@@ -329,6 +331,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     alchemy_promote_parser.add_argument("--elixir-id", required=True)
     alchemy_promote_parser.add_argument("--note", default=None)
+
+    alchemy_revert_parser = subparsers.add_parser(
+        "alchemy-revert",
+        help="Revert the latest elixir promote from settled back to candidate.",
+    )
+    alchemy_revert_parser.add_argument("--elixir-id", required=True)
+    alchemy_revert_parser.add_argument("--note", default=None)
+
+    alchemy_demote_parser = subparsers.add_parser(
+        "alchemy-demote",
+        help="Demote a settled elixir back to candidate using current settled content.",
+    )
+    alchemy_demote_parser.add_argument("--elixir-id", required=True)
+    alchemy_demote_parser.add_argument("--note", default=None)
 
     review_parser = subparsers.add_parser(
         "review-page",
@@ -699,6 +715,12 @@ def main(argv: list[str] | None = None) -> int:
             result = run_alchemy_finalize(root, elixir_id=args.elixir_id)
         elif args.command == "alchemy-promote":
             result = run_alchemy_promote(root, elixir_id=args.elixir_id, note=args.note)
+        elif args.command == "alchemy-revert":
+            path = run_alchemy_revert(root, elixir_id=args.elixir_id, note=args.note)
+            result = {"elixir_id": args.elixir_id, "path": str(path.relative_to(root))}
+        elif args.command == "alchemy-demote":
+            path = run_alchemy_demote(root, elixir_id=args.elixir_id, note=args.note)
+            result = {"elixir_id": args.elixir_id, "path": str(path.relative_to(root))}
         elif args.command == "protocol-learn-add":
             result = run_protocol_learn_add(root, args.protocol, args.title, args.source_refs)
         elif args.command == "protocol-learn-list":

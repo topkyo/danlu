@@ -34,6 +34,7 @@ from .app_utils import (
     read_text_preview,
     relative_path,
     render_scalar,
+    runtime_write_lock,
     runtime_write_operation,
     sha256_bytes,
     utc_now,
@@ -1353,6 +1354,20 @@ def run_alchemy_promote(root: Path, *, elixir_id: str, note: str | None = None) 
     from .execution.alchemy import promote_elixir
 
     return promote_elixir(root, elixir_id=elixir_id, note=note)
+
+
+def run_alchemy_revert(root: Path, *, elixir_id: str, note: str | None = None) -> Path:
+    from .execution.alchemy import revert_elixir
+
+    with runtime_write_lock(root):
+        return revert_elixir(root, elixir_id=elixir_id, note=note)
+
+
+def run_alchemy_demote(root: Path, *, elixir_id: str, note: str | None = None) -> Path:
+    from .execution.alchemy import demote_elixir
+
+    with runtime_write_lock(root):
+        return demote_elixir(root, elixir_id=elixir_id, note=note)
 
 
 @runtime_write_operation

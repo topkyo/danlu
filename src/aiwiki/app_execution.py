@@ -361,6 +361,95 @@ def build_elixir_promotion_receipt(
     }
 
 
+def build_elixir_revert_receipt(
+    root: Path,
+    *,
+    elixir_id: str,
+    wiki_path: Path,
+    candidate_path: Path,
+    protocol: str,
+    applied_at: str,
+    note: str | None,
+    source_receipt_applied_at: str,
+) -> ExecutionReceipt:
+    action_id = f"elixir-revert-{slugify(elixir_id)}"
+    receipt_path = execution_receipt_path(root, action_id)
+    return {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-elixir-revert",
+        "applied_at": applied_at,
+        "operation": "revert",
+        "action_id": action_id,
+        "title": f"Revert elixir {elixir_id}",
+        "status": "resolved",
+        "protocol": protocol,
+        "subject_kind": "elixir_revert",
+        "subject_id": elixir_id,
+        "apply_mode": "elixir-revert",
+        "note": note or "",
+        "primary_path": relative_path(root, candidate_path),
+        "secondary_path": relative_path(root, wiki_path),
+        "receipt_path": relative_path(root, receipt_path),
+        "bundle": {"source_receipt_applied_at": source_receipt_applied_at},
+        "safe_apply_preview": None,
+    }
+
+
+def build_elixir_demotion_receipt(
+    root: Path,
+    *,
+    elixir_id: str,
+    wiki_path: Path,
+    candidate_path: Path,
+    protocol: str,
+    applied_at: str,
+    note: str | None,
+) -> ExecutionReceipt:
+    action_id = f"elixir-demote-{slugify(elixir_id)}"
+    receipt_path = execution_receipt_path(root, action_id)
+    return {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-elixir-demote",
+        "applied_at": applied_at,
+        "operation": "demote",
+        "action_id": action_id,
+        "title": f"Demote elixir {elixir_id}",
+        "status": "resolved",
+        "protocol": protocol,
+        "subject_kind": "elixir_demotion",
+        "subject_id": elixir_id,
+        "apply_mode": "elixir-demote",
+        "note": note or "",
+        "primary_path": relative_path(root, candidate_path),
+        "secondary_path": relative_path(root, wiki_path),
+        "receipt_path": relative_path(root, receipt_path),
+        "bundle": {},
+        "safe_apply_preview": None,
+    }
+
+
+def find_latest_elixir_promotion_receipt(root: Path, *, elixir_id: str) -> dict[str, Any] | None:
+    path = execution_receipt_history_path(root)
+    if not path.exists():
+        return None
+    latest: dict[str, Any] | None = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        row = line.strip()
+        if not row:
+            continue
+        try:
+            entry = json.loads(row)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("subject_kind") == "elixir_promotion" and entry.get("subject_id") == elixir_id:
+            latest = entry
+    return latest
+
+
 def append_execution_receipt_history(root: Path, receipt: dict[str, Any]) -> None:
     path = execution_receipt_history_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)

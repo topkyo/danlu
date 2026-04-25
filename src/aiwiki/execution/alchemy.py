@@ -4,12 +4,19 @@ import json
 import logging
 import os
 import warnings
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
-from ..app_execution import append_execution_receipt_history, build_elixir_promotion_receipt
+from ..app_execution import (
+    append_execution_receipt_history,
+    build_elixir_demotion_receipt,
+    build_elixir_promotion_receipt,
+    build_elixir_revert_receipt,
+    find_latest_elixir_promotion_receipt,
+)
 from ..app_state import load_active_corpora_state, load_output_candidates_state
-from ..app_utils import next_available_stem, parse_frontmatter, sha256_bytes, slugify, utc_now
+from ..app_utils import next_available_stem, parse_frontmatter, parse_iso_datetime, sha256_bytes, slugify, utc_now
 
 ELIXIR_DIR = "wiki/elixirs"
 CANDIDATE_ELIXIR_DIR = "output/_candidates/elixirs"
@@ -24,6 +31,26 @@ class PromoteHalfWriteError(RuntimeError):
         self.candidate_path = candidate_path
         super().__init__(
             "promote_half_write_error: failed to rollback settled after tombstone write failure; "
+            f"manual repair required (settled={settled_path}, candidate={candidate_path})"
+        )
+
+
+class RevertHalfWriteError(RuntimeError):
+    def __init__(self, *, settled_path: Path, candidate_path: Path) -> None:
+        self.settled_path = settled_path
+        self.candidate_path = candidate_path
+        super().__init__(
+            "revert_half_write_error: failed to rollback candidate after settled delete failure; "
+            f"manual repair required (settled={settled_path}, candidate={candidate_path})"
+        )
+
+
+class DemoteHalfWriteError(RuntimeError):
+    def __init__(self, *, settled_path: Path, candidate_path: Path) -> None:
+        self.settled_path = settled_path
+        self.candidate_path = candidate_path
+        super().__init__(
+            "demote_half_write_error: failed to rollback candidate after settled delete failure; "
             f"manual repair required (settled={settled_path}, candidate={candidate_path})"
         )
 
@@ -135,6 +162,24 @@ def _read_elixir_anywhere(root: Path, elixir_id: str) -> tuple[Path, dict[str, A
         _validate_state_for_path(root, str(frontmatter.get("elixir_state") or ""), candidate)
         return candidate, frontmatter
     raise FileNotFoundError(f"elixir not found: {normalized_id}")
+
+
+def _read_elixir_both_planes(
+    root: Path, elixir_id: str
+) -> tuple[tuple[dict[str, Any], str] | None, tuple[dict[str, Any], str] | None]:
+    normalized_id = _resolve_elixir_id(root, elixir_id)
+    settled = _settled_path(root, normalized_id)
+    candidate = _candidate_path(root, normalized_id)
+
+    def _read(path: Path) -> tuple[dict[str, Any], str] | None:
+        if not path.is_file():
+            return None
+        text = path.read_text(encoding="utf-8", errors="replace")
+        frontmatter = _parse_elixir_frontmatter(path)
+        body = text.split("---", 2)[-1].lstrip("\n")
+        return frontmatter, body
+
+    return _read(settled), _read(candidate)
 
 
 def _detect_elixir_cycle(root: Path, new_elixir_path: str | Path, derived_from: list[str]) -> list[str] | None:
@@ -605,6 +650,142 @@ def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> di
         "promoted_at": applied_at,
         "receipt_path": str(receipt.get("receipt_path") or ""),
     }
+
+
+def revert_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Path:
+    normalized_id = _resolve_elixir_id(root, elixir_id)
+    settled_path = _settled_path(root, normalized_id)
+    candidate_path = _candidate_path(root, normalized_id)
+
+    settled_data, candidate_data = _read_elixir_both_planes(root, normalized_id)
+    if settled_data is None:
+        raise FileNotFoundError(f"elixir not found: {normalized_id}")
+    if candidate_data is None:
+        raise ValueError("revert_tombstone_missing: superseded tombstone is required")
+
+    settled_frontmatter, _settled_body = settled_data
+    tombstone_frontmatter, tombstone_body = candidate_data
+    tombstone_state = str(tombstone_frontmatter.get("elixir_state") or "")
+    if tombstone_state != "superseded":
+        raise ValueError(f"unsupported_source_state: cannot revert elixir from state={tombstone_state or 'unknown'}")
+
+    latest_promotion = find_latest_elixir_promotion_receipt(root, elixir_id=normalized_id)
+    if latest_promotion is None:
+        raise ValueError("promotion_receipt_missing: latest promotion receipt not found")
+    source_applied_at = str(latest_promotion.get("applied_at") or "")
+    source_applied_at_dt = parse_iso_datetime(source_applied_at)
+    if source_applied_at_dt is None:
+        raise ValueError("promotion_receipt_missing: promotion receipt applied_at is invalid")
+
+    settled_mtime = settled_path.stat().st_mtime
+    if settled_mtime > (source_applied_at_dt + timedelta(seconds=2)).timestamp():
+        raise ValueError("revert_conflict_settled_modified: settled elixir was modified after promotion")
+
+    tombstone_promoted_at = str(tombstone_frontmatter.get("promoted_at") or "")
+    if tombstone_promoted_at != source_applied_at:
+        raise ValueError("revert_conflict_candidate_modified: candidate tombstone no longer matches promotion receipt")
+
+    tombstone_original_text = candidate_path.read_text(encoding="utf-8", errors="replace")
+    candidate_frontmatter = dict(tombstone_frontmatter)
+    candidate_frontmatter["elixir_state"] = "candidate"
+    candidate_frontmatter.pop("superseded_by", None)
+    candidate_frontmatter.pop("promoted_at", None)
+    candidate_text = _render_elixir_document(candidate_frontmatter, tombstone_body)
+
+    _write_atomic_text(candidate_path, candidate_text)
+    try:
+        settled_path.unlink()
+    except Exception as exc:
+        try:
+            _write_atomic_text(candidate_path, tombstone_original_text)
+        except Exception as rollback_exc:
+            raise RevertHalfWriteError(settled_path=settled_path, candidate_path=candidate_path) from rollback_exc
+        raise exc
+
+    protocol = str(settled_frontmatter.get("protocol") or tombstone_frontmatter.get("protocol") or "")
+    applied_at = utc_now()
+    receipt = build_elixir_revert_receipt(
+        root,
+        elixir_id=normalized_id,
+        wiki_path=settled_path,
+        candidate_path=candidate_path,
+        protocol=protocol,
+        applied_at=applied_at,
+        note=note,
+        source_receipt_applied_at=source_applied_at,
+    )
+    receipt_path = root / str(receipt.get("receipt_path") or "")
+    try:
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        append_execution_receipt_history(root, receipt)
+    except Exception:
+        logging.getLogger("aiwiki").exception("failed to persist elixir revert receipt: %s", normalized_id)
+
+    return candidate_path
+
+
+def demote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Path:
+    normalized_id = _resolve_elixir_id(root, elixir_id)
+    settled_path = _settled_path(root, normalized_id)
+    candidate_path = _candidate_path(root, normalized_id)
+
+    settled_data, candidate_data = _read_elixir_both_planes(root, normalized_id)
+    if settled_data is None:
+        raise FileNotFoundError(f"elixir not found: {normalized_id}")
+    settled_frontmatter, settled_body = settled_data
+    settled_state = str(settled_frontmatter.get("elixir_state") or "")
+    if settled_state != "settled":
+        raise ValueError(f"unsupported_source_state: cannot demote elixir from state={settled_state or 'unknown'}")
+
+    had_candidate_before = candidate_data is not None
+    candidate_original_text = candidate_path.read_text(encoding="utf-8", errors="replace") if had_candidate_before else ""
+    if candidate_data is not None:
+        candidate_frontmatter, _candidate_body = candidate_data
+        candidate_state = str(candidate_frontmatter.get("elixir_state") or "")
+        if candidate_state != "superseded":
+            raise ValueError("demote_conflict_candidate_exists: candidate plane has conflicting non-superseded state")
+
+    demoted_frontmatter = dict(settled_frontmatter)
+    demoted_frontmatter["elixir_state"] = "candidate"
+    demoted_frontmatter.pop("promoted_at", None)
+    demoted_frontmatter.pop("sealed_at", None)
+    demoted_frontmatter.pop("superseded_by", None)
+    demoted_text = _render_elixir_document(demoted_frontmatter, settled_body)
+
+    _write_atomic_text(candidate_path, demoted_text)
+    try:
+        settled_path.unlink()
+    except Exception as exc:
+        try:
+            if had_candidate_before:
+                _write_atomic_text(candidate_path, candidate_original_text)
+            else:
+                candidate_path.unlink(missing_ok=True)
+        except Exception as rollback_exc:
+            raise DemoteHalfWriteError(settled_path=settled_path, candidate_path=candidate_path) from rollback_exc
+        raise exc
+
+    protocol = str(settled_frontmatter.get("protocol") or "")
+    applied_at = utc_now()
+    receipt = build_elixir_demotion_receipt(
+        root,
+        elixir_id=normalized_id,
+        wiki_path=settled_path,
+        candidate_path=candidate_path,
+        protocol=protocol,
+        applied_at=applied_at,
+        note=note,
+    )
+    receipt_path = root / str(receipt.get("receipt_path") or "")
+    try:
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        append_execution_receipt_history(root, receipt)
+    except Exception:
+        logging.getLogger("aiwiki").exception("failed to persist elixir demotion receipt: %s", normalized_id)
+
+    return candidate_path
 
 
 def seal_elixir(root: Path, elixir_id: str) -> dict[str, Any]:

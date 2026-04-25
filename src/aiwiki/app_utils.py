@@ -148,8 +148,9 @@ def utc_now() -> str:
 def parse_iso_datetime(value: str) -> datetime | None:
     if not value:
         return None
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
     try:
-        parsed = datetime.fromisoformat(value)
+        parsed = datetime.fromisoformat(normalized)
     except ValueError:
         return None
     if parsed.tzinfo is None:
