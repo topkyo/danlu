@@ -325,6 +325,15 @@ def _derive_decision(kind: str, severity: str) -> tuple[str, list[str]]:
             return "generate-proposal", ["elixir_dependency_break_observed", "proposal_recommended"]
         return "enqueue-heavy", ["elixir_dependency_break_observed"]
 
+    if kind == "learning_threshold":
+        if severity == "low":
+            return "ignore", ["learning_threshold_routine"]
+        if severity == "medium":
+            return "generate-proposal", ["learning_threshold_observed", "proposal_recommended"]
+        if severity in {"high", "critical"}:
+            return "enqueue-heavy", ["heavy_lane_recommended", "learning_threshold_observed"]
+        return "ignore", ["unmapped_kind"]
+
     return "ignore", ["unmapped_kind"]
 
 
