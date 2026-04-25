@@ -1557,6 +1557,7 @@ def write_nightly_health(
     promotion_result: dict[str, Any] | None = None,
     semantic_report: str = "",
     llm_used: bool = False,
+    runtime_history_extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     ensure_layout(root)
     promotion_result = promotion_result or {"count": 0, "created": 0, "updated": 0, "pages": []}
@@ -1590,23 +1591,27 @@ def write_nightly_health(
         if str(corpus.get("status") or "") == "expired"
         and previous_status_by_corpus.get(str(corpus.get("corpus_id") or "")) != "expired"
     ]
-    append_runtime_history(
-        root,
-        {
-            "event_type": "nightly",
-            "occurred_at": generated_at,
-            "protocol": protocol_state["active_protocol"],
-            "cooled_corpus_ids": cooled_corpus_ids,
-            "expired_corpus_ids": expired_corpus_ids,
-            "overdue_pages": [page["path"] for page in aging["overdue"]],
-            "escalated_pages": [page["path"] for page in aging["escalated"]],
-            "active_corpus_ids": [
-                str(corpus.get("corpus_id") or "")
-                for corpus in active_corpora
-                if str(corpus.get("status") or "") == "active"
-            ],
-        },
-    )
+    runtime_history_event = {
+        "event_type": "nightly",
+        "occurred_at": generated_at,
+        "protocol": protocol_state["active_protocol"],
+        "cooled_corpus_ids": cooled_corpus_ids,
+        "expired_corpus_ids": expired_corpus_ids,
+        "overdue_pages": [page["path"] for page in aging["overdue"]],
+        "escalated_pages": [page["path"] for page in aging["escalated"]],
+        "state_path": relative_path(root, nightly_health_state_path(root)),
+        "repair_backlog": relative_path(root, repair_backlog_path(root)),
+        "active_corpus_ids": [
+            str(corpus.get("corpus_id") or "")
+            for corpus in active_corpora
+            if str(corpus.get("status") or "") == "active"
+        ],
+    }
+    if runtime_history_extra:
+        for key, value in runtime_history_extra.items():
+            if key not in {"event_type", "occurred_at", "protocol"}:
+                runtime_history_event[str(key)] = value
+    append_runtime_history(root, runtime_history_event)
     material_state = refresh_material_state(
         root,
         generated_at=generated_at,

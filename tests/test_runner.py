@@ -929,6 +929,19 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(runs_log["event"], "run-nightly")
         self.assertEqual(runs_log["delivery_mode"], "llm-success")
         self.assertFalse(runs_log["fallback_used"])
+        runtime_history = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki" / "state" / "runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        nightly_events = [event for event in runtime_history if event.get("event_type") == "nightly"]
+        self.assertEqual(len(nightly_events), 1)
+        self.assertEqual(nightly_events[0]["protocol"], "general")
+        self.assertEqual(nightly_events[0]["compile_limit"], 1)
+        self.assertTrue(nightly_events[0]["semantic_lint"])
+        self.assertTrue(nightly_events[0]["llm_used"])
+        self.assertEqual(nightly_events[0]["state_path"], ".aiwiki/state/nightly-health.json")
+        self.assertEqual(nightly_events[0]["repair_backlog"], result["repair_backlog"])
         # EP-029 Step 3 AC #13: nightly integrates protocol_learnings_age stage.
         self.assertIn("protocol_learnings_age", result)
         self.assertTrue(result["protocol_learnings_age"].get("apply"))

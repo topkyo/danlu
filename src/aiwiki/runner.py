@@ -1247,6 +1247,11 @@ def run_nightly(
             promotion_result=promotion_result,
             semantic_report=lint_result["semantic_report"],
             llm_used=llm_used,
+            runtime_history_extra={
+                "compile_limit": compile_limit,
+                "semantic_lint": semantic_lint,
+                "llm_used": llm_used,
+            },
         )
     except Exception as exc:
         failed_audit = _merge_llm_audits(
