@@ -142,6 +142,19 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(result["scope_preview"]["concept_slugs"], ["alpha", "zeta"])
         self.assertEqual(result["scope_preview"]["elixir_refs"], ["elixir-z"])
         self.assertEqual([step["primitive"] for step in result["primitive_plan"]], ["route", "compile", "judge", "distill", "lint", "review"])
+        apply_support = {step["primitive"]: step["apply_supported"] for step in result["primitive_plan"]}
+        self.assertEqual(
+            apply_support,
+            {
+                "route": False,
+                "compile": True,
+                "judge": False,
+                "distill": False,
+                "lint": True,
+                "review": False,
+            },
+        )
+        self.assertEqual(result["primitive_plan"][2]["apply_blocker"], "missing_receipted_scoped_contract")
 
     def test_light_lane_does_not_consume_heavy_or_generate_proposal(self) -> None:
         self._seed_lane_records()
@@ -153,6 +166,25 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(result["scope_preview"]["protocols"], ["ops"])
         self.assertEqual([step["primitive"] for step in result["primitive_plan"]], ["route", "compile", "lint", "nightly"])
         self.assertEqual(result["scope_preview"]["signal_ids"], ["sig-20260425-light01"])
+        apply_support = {step["primitive"]: step["apply_supported"] for step in result["primitive_plan"]}
+        self.assertEqual(apply_support, {"route": False, "compile": True, "lint": True, "nightly": True})
+
+    def test_dry_run_reports_deferred_high_risk_primitives(self) -> None:
+        self._seed_lane_records()
+
+        heavy = preview_alchemy_lane(self.root, lane="heavy", scope="all")
+        light = preview_alchemy_lane(self.root, lane="light", scope="all")
+
+        self.assertEqual(
+            [item["primitive"] for item in heavy["deferred_primitives"]],
+            ["judge", "distill", "review", "propose"],
+        )
+        self.assertEqual({item["reason_code"] for item in heavy["deferred_primitives"]}, {"missing_receipted_scoped_contract"})
+        self.assertEqual(
+            [item["primitive"] for item in light["deferred_primitives"]],
+            ["judge", "distill", "review", "propose"],
+        )
+        self.assertEqual({item["reason_code"] for item in light["deferred_primitives"]}, {"not_allowed_for_light_lane"})
 
     def test_scope_selector_filters_by_protocol(self) -> None:
         self._seed_lane_records()
@@ -272,6 +304,12 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "not present in the dry-run plan"):
             run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[], primitives=["nightly"])
 
+    def test_apply_rejects_deferred_primitives(self) -> None:
+        self._seed_lane_records()
+
+        with self.assertRaisesRegex(ValueError, "unsupported alchemy lane primitive"):
+            run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[], primitives=["judge"])
+
 
 class AlchemyLaneCLITests(unittest.TestCase):
     def setUp(self) -> None:
@@ -347,3 +385,10 @@ class AlchemyLaneCLITests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(payload, {})
         self.assertIn("requires exactly one of --dry-run or --apply", stderr)
+
+    def test_alchemy_lane_rejects_deferred_primitive_at_parser(self) -> None:
+        code, payload, stderr = self._run_main(["alchemy", "heavy", "all", "--apply", "--primitive", "judge"])
+
+        self.assertEqual(code, 2)
+        self.assertEqual(payload, {})
+        self.assertIn("invalid choice", stderr)

@@ -48,6 +48,66 @@ _PRIMITIVE_PLANS = {
     ),
 }
 
+_APPLY_SUPPORTED_PRIMITIVES = {
+    "heavy": {"compile", "lint"},
+    "light": {"compile", "lint", "nightly"},
+}
+
+_DEFERRED_PRIMITIVES = {
+    "heavy": (
+        (
+            "judge",
+            "Refresh dirty-scope judgment and decision assets.",
+            "missing_receipted_scoped_contract",
+            "Define a scoped judgment refresh primitive with dry-run, receipt, audit, and revert semantics.",
+        ),
+        (
+            "distill",
+            "Refresh candidate elixir iterations from dirty-scope evidence.",
+            "missing_receipted_scoped_contract",
+            "Define a scoped elixir distillation primitive that preserves candidate provenance and writes receipts.",
+        ),
+        (
+            "review",
+            "Generate or update review queue entries for high-severity outputs.",
+            "missing_receipted_scoped_contract",
+            "Define a scoped review enqueue primitive with idempotent receipts and audit linkage.",
+        ),
+        (
+            "propose",
+            "Generate prompt or policy proposals from recurring failures and feedback.",
+            "missing_receipted_scoped_contract",
+            "Land the L3 proposal schema, review queue integration, apply, revert, and receipts first.",
+        ),
+    ),
+    "light": (
+        (
+            "judge",
+            "Refresh judgment and decision assets.",
+            "not_allowed_for_light_lane",
+            "Route meaning-changing judgment work through heavy lane after a receipted scoped contract exists.",
+        ),
+        (
+            "distill",
+            "Refresh candidate elixir iterations.",
+            "not_allowed_for_light_lane",
+            "Route elixir distillation through explicit elixir lifecycle commands or heavy lane contracts.",
+        ),
+        (
+            "review",
+            "Generate or update review queue entries.",
+            "not_allowed_for_light_lane",
+            "Keep light lane to low-risk hygiene until review enqueue has an idempotent scoped receipt.",
+        ),
+        (
+            "propose",
+            "Generate prompt or policy proposals.",
+            "not_allowed_for_light_lane",
+            "Keep L3 proposal generation out of light lane until proposal review/apply/revert is implemented.",
+        ),
+    ),
+}
+
 
 def preview_alchemy_lane(
     root: Path,
@@ -100,6 +160,7 @@ def preview_alchemy_lane(
             "skipped_count": len(decisions),
             "scope_preview": _empty_scope_preview(),
             "primitive_plan": [],
+            "deferred_primitives": _deferred_primitives(normalized_lane),
             "budget": {
                 "limits": budget_limits,
                 "used": _empty_budget_used(),
@@ -127,6 +188,7 @@ def preview_alchemy_lane(
         "skipped_count": skipped_count,
         "scope_preview": scope_preview,
         "primitive_plan": _primitive_plan(normalized_lane, scope_preview),
+        "deferred_primitives": _deferred_primitives(normalized_lane),
         "budget": {
             "limits": budget_limits,
             "used": budget_used,
@@ -318,17 +380,42 @@ def _primitive_plan(lane: str, scope_preview: dict[str, Any]) -> list[dict[str, 
     protocols = list(scope_preview.get("protocols") or [])
     plan: list[dict[str, Any]] = []
     for index, (primitive, description) in enumerate(_PRIMITIVE_PLANS[lane], start=1):
+        apply_supported = primitive in _APPLY_SUPPORTED_PRIMITIVES[lane]
         plan.append(
             {
                 "order": index,
                 "primitive": primitive,
                 "description": description,
                 "dry_run_only": True,
+                "apply_supported": apply_supported,
+                "apply_blocker": "" if apply_supported else _apply_blocker_for_primitive(lane, primitive),
                 "signal_ids": signal_ids,
                 "protocols": protocols,
             }
         )
     return plan
+
+
+def _apply_blocker_for_primitive(lane: str, primitive: str) -> str:
+    if primitive == "route":
+        return "route_is_dry_run_scope_planning"
+    for item in _DEFERRED_PRIMITIVES[lane]:
+        if item[0] == primitive:
+            return item[2]
+    return "not_in_lane_apply_contract"
+
+
+def _deferred_primitives(lane: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "primitive": primitive,
+            "description": description,
+            "reason_code": reason_code,
+            "unlock_condition": unlock_condition,
+            "apply_supported": False,
+        }
+        for primitive, description, reason_code, unlock_condition in _DEFERRED_PRIMITIVES[lane]
+    ]
 
 
 def _build_budget_used(selected: list[dict[str, Any]]) -> dict[str, int]:
