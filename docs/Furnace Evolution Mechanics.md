@@ -723,7 +723,7 @@ revert **不可以**：
 | **M4 Heavy/Light Dry-run Wrapper** | `alchemy heavy/light --dry-run` 只计算 signal scope、primitive plan、预算与锁结果。 | 默认不 execute；light 不升级 heavy；全量 heavy 不自动授权。 | scope preview 稳定；预算超限可解释；锁冲突 skip；primitive plan 可复现。 |
 | **M5 Controlled Execution** | heavy/light 允许显式 `--apply` 组合 scoped primitives。 | 不允许 hidden backend choice；不允许无 receipt 写回。 | 每个 phase 有 trace_id、receipt、audit entry；失败可从上一稳定点恢复。 |
 
-M5 当前收敛状态：`--apply --action-id` 只桥接既有 receipted low-risk action batch；`--apply --primitive` 只支持 dry-run step 明确 `apply_supported=true` 的 `compile/lint/nightly` deterministic receipts，且 lane primitive receipt 顶层已暴露 planner trace 与 execution receipt history audit metadata。`judge/distill/review/propose` 已完成可行性评估并保持 deferred，直到各自拥有独立 scoped primitive contract。
+M5 当前收敛状态：`--apply --action-id` 只桥接既有 receipted low-risk action batch；`--apply --primitive` 只支持 dry-run step 明确 `apply_supported=true` 的 `compile/lint/nightly` deterministic receipts。任一 `--apply` 必须先得到 `status=ok` 且 `selected_count>0` 的 dry-run preview；非 `ok` preview 会在 action bridge 或 primitive implementation 调用前 abort。lane primitive receipt 顶层已暴露 planner trace 与 execution receipt history audit metadata。`judge/distill/review/propose` 已完成可行性评估并保持 deferred，直到各自拥有独立 scoped primitive contract。
 
 达到 9+ 可行性的条件不是“自动化更多”，而是每个 milestone 都满足：可重放、可 dry-run、可回滚、可停用、可用现有 gate 验证。
 

@@ -273,6 +273,26 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "non-empty dry-run plan"):
             run_alchemy_lane_apply(self.root, lane="heavy", scope="protocol:ops", action_ids=["act-1"])
 
+    def test_apply_aborts_non_ok_preview_before_any_write_surface(self) -> None:
+        self._seed_lane_records()
+
+        with (
+            patch("aiwiki.app_compile.apply_machine_memory_actions_batch") as mocked_action_batch,
+            patch("aiwiki.runner.compile_wiki") as mocked_compile,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "requires an ok dry-run plan"):
+                run_alchemy_lane_apply(
+                    self.root,
+                    lane="heavy",
+                    scope="all",
+                    action_ids=["act-1"],
+                    primitives=["compile"],
+                    max_pages=10,
+                )
+
+        mocked_action_batch.assert_not_called()
+        mocked_compile.assert_not_called()
+
     def test_apply_dispatches_to_receipted_action_batch_after_preview(self) -> None:
         self._seed_lane_records()
 
