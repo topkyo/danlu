@@ -477,6 +477,7 @@ promoted_at: null
 - 写入路径保持不变：History 写 `.aiwiki/state/execution-receipts.jsonl`；Single 写 `output/control/execution-receipts/<action_id>.json`。
 - payload 至少包含：`elixir_id`、`protocol`、`from_state`、`to_state`、`candidate_path`、`wiki_path`；`demote/revert` 需补失败原因或来源 receipt id。
 - M2.4 起，`elixir_revert` / `elixir_demotion` receipt 的 `bundle` 显式记录状态迁移与双平面路径；已有 `dependency_breaks` 与 source promotion receipt anchor 保持在同一 bundle 内。
+- M3.1 起，`dependency_breaks[].break_reason` 是闭集：`source_demoted / source_reverted`；非法 reason 不得进入 `elixir_dependency_break` signal。
 - M2.6 起，elixir lifecycle receipt 的 `action_id` 使用 `elixir-<op>-<slug>-<epoch_ms>` 事件级 id；同毫秒文件冲突时追加数字后缀，避免覆盖已有 receipt。
 
 ## 8. Chaining → Distillation → Compounding

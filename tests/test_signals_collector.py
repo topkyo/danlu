@@ -794,6 +794,38 @@ class TestArchiveAdapter(_FixtureCase):
         self.assertEqual(second["duplicate_count"], 1)
         self.assertEqual(len(_read_jsonl(root / ".aiwiki/state/signals.jsonl")), 1)
 
+    def test_signals_collector_rejects_invalid_elixir_dependency_break_reason(self) -> None:
+        root = self.temp_root / "archive-elixir-invalid-break-reason"
+        receipts_path = root / ".aiwiki/state/execution-receipts.jsonl"
+        receipts_path.parent.mkdir(parents=True, exist_ok=True)
+        receipts_path.write_text(
+            json.dumps(
+                {
+                    "kind": "execution-receipt",
+                    "subject_kind": "elixir_demotion",
+                    "subject_id": "elixir-a",
+                    "protocol": "research",
+                    "action_id": "elixir-demote-a-1714000000002",
+                    "applied_at": "2026-04-24T11:26:00+00:00",
+                    "bundle": {
+                        "dependency_breaks": [
+                            {"dependent_elixir_id": "elixir-b", "break_reason": "unknown_reason"}
+                        ]
+                    },
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+
+        self.assertEqual(result["new_count"], 0)
+        self.assertEqual(result["invalid_count"], 1)
+        self.assertTrue(any(item["reason"] == "archive_elixir_break_item_invalid" for item in result["skip_examples"]))
+        self.assertFalse((root / ".aiwiki/state/signals.jsonl").exists())
+
 
 class TestObserveOnlyAST(unittest.TestCase):
     _ALLOWED_PREFIXES = {

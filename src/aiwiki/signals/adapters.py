@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 SUPPORTED_SOURCES: tuple[str, str, str] = ("runtime_history", "llm_receipt", "archive")
+ELIXIR_DEPENDENCY_BREAK_REASONS: frozenset[str] = frozenset({"source_demoted", "source_reverted"})
 
 RUNTIME_HISTORY_REL_PATH = ".aiwiki/state/runtime-history.jsonl"
 LLM_RECEIPTS_REL_PATH = ".aiwiki/logs/llm-receipts.jsonl"
@@ -423,6 +424,9 @@ def _elixir_dependency_break_to_signals(
             continue
         dependent_elixir_id = item.get("dependent_elixir_id")
         if not isinstance(dependent_elixir_id, str) or not dependent_elixir_id:
+            continue
+        break_reason = item.get("break_reason")
+        if break_reason not in ELIXIR_DEPENDENCY_BREAK_REASONS:
             continue
 
         evidence_refs: list[str] = []
