@@ -46,6 +46,7 @@ from .runner import (
     run_alchemy_demote,
     run_alchemy_distill,
     run_alchemy_finalize,
+    run_alchemy_lane_apply,
     run_alchemy_lane_dry_run,
     run_alchemy_promote,
     run_alchemy_revert,
@@ -382,7 +383,10 @@ def build_parser() -> argparse.ArgumentParser:
             "scope",
             help="Scope selector: all, protocol:<name>, source:<id>, concept:<slug>, elixir:<ref>, or judgment:<ref>.",
         )
-        lane_parser.add_argument("--dry-run", action="store_true", help="Required in M4; no primitives are executed.")
+        lane_parser.add_argument("--dry-run", action="store_true", help="Preview without executing primitives.")
+        lane_parser.add_argument("--apply", action="store_true", help="M5 controlled apply bridge for explicit receipted action ids.")
+        lane_parser.add_argument("--action-id", action="append", default=[], help="Machine-memory action id to apply; may be repeated.")
+        lane_parser.add_argument("--note", default=None)
         lane_parser.add_argument("--planner-log-path", type=Path, default=None)
         lane_parser.add_argument("--signals-path", type=Path, default=None)
         lane_parser.add_argument("--max-signals", type=int, default=None)
@@ -764,18 +768,26 @@ def main(argv: list[str] | None = None) -> int:
             path = run_alchemy_demote(root, elixir_id=args.elixir_id, note=args.note)
             result = {"elixir_id": args.elixir_id, "path": str(path.relative_to(root))}
         elif args.command == "alchemy":
-            if not args.dry_run:
-                raise ValueError("alchemy heavy/light supports only --dry-run in M4")
-            result = run_alchemy_lane_dry_run(
-                root,
-                lane=args.alchemy_lane,
-                scope=args.scope,
-                planner_log_path=args.planner_log_path,
-                signals_path=args.signals_path,
-                max_signals=args.max_signals,
-                max_pages=args.max_pages,
-                max_tokens=args.max_tokens,
-            )
+            if args.dry_run == args.apply:
+                raise ValueError("alchemy heavy/light requires exactly one of --dry-run or --apply")
+            lane_kwargs = {
+                "lane": args.alchemy_lane,
+                "scope": args.scope,
+                "planner_log_path": args.planner_log_path,
+                "signals_path": args.signals_path,
+                "max_signals": args.max_signals,
+                "max_pages": args.max_pages,
+                "max_tokens": args.max_tokens,
+            }
+            if args.dry_run:
+                result = run_alchemy_lane_dry_run(root, **lane_kwargs)
+            else:
+                result = run_alchemy_lane_apply(
+                    root,
+                    action_ids=args.action_id,
+                    note=args.note,
+                    **lane_kwargs,
+                )
         elif args.command == "protocol-learn-add":
             result = run_protocol_learn_add(root, args.protocol, args.title, args.source_refs)
         elif args.command == "protocol-learn-list":

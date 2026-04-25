@@ -1467,6 +1467,58 @@ def run_alchemy_lane_dry_run(
     )
 
 
+def run_alchemy_lane_apply(
+    root: Path,
+    *,
+    lane: str,
+    scope: str,
+    action_ids: list[str],
+    note: str | None = None,
+    planner_log_path: Path | None = None,
+    signals_path: Path | None = None,
+    max_signals: int | None = None,
+    max_pages: int | None = None,
+    max_tokens: int | None = None,
+) -> dict[str, Any]:
+    from .app_compile import apply_machine_memory_actions_batch
+    from .planner import preview_alchemy_lane
+
+    normalized_action_ids = [item.strip() for item in action_ids if item.strip()]
+    if not normalized_action_ids:
+        raise ValueError("alchemy lane --apply requires at least one --action-id")
+
+    plan = preview_alchemy_lane(
+        root,
+        lane=lane,
+        scope=scope,
+        planner_log_path=planner_log_path,
+        signals_path=signals_path,
+        max_signals=max_signals,
+        max_pages=max_pages,
+        max_tokens=max_tokens,
+    )
+    status = str(plan.get("status") or "")
+    if status != "ok":
+        raise RuntimeError(f"alchemy lane apply requires an ok dry-run plan (got {status})")
+    if int(plan.get("selected_count") or 0) <= 0:
+        raise RuntimeError("alchemy lane apply requires a non-empty dry-run plan")
+
+    apply_result = apply_machine_memory_actions_batch(
+        root,
+        normalized_action_ids,
+        note=note or f"alchemy {lane} apply for scope {scope}",
+        dry_run=False,
+    )
+    return {
+        "status": "applied",
+        "lane": str(plan.get("lane") or lane),
+        "scope": str(plan.get("scope") or scope),
+        "action_ids": normalized_action_ids,
+        "plan": plan,
+        "apply_result": apply_result,
+    }
+
+
 @runtime_write_operation
 def run_protocol_learn_age(root: Path, protocol: str | None = None, apply: bool = False) -> dict[str, Any]:
     from .execution.protocol_learnings import age_learnings

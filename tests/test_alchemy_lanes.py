@@ -10,6 +10,7 @@ from unittest.mock import patch
 from aiwiki.app_utils import runtime_write_lock
 from aiwiki.cli import build_parser, main
 from aiwiki.planner.dry_run import preview_alchemy_lane
+from aiwiki.runner import run_alchemy_lane_apply
 
 
 def _snapshot_files(root: Path) -> dict[str, bytes]:
@@ -200,6 +201,36 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         after = _snapshot_files(self.root)
         self.assertEqual(after, before)
 
+    def test_apply_rejects_missing_action_ids(self) -> None:
+        self._seed_lane_records()
+
+        with self.assertRaisesRegex(ValueError, "requires at least one --action-id"):
+            run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[])
+
+    def test_apply_rejects_empty_dry_run_plan(self) -> None:
+        self._seed_lane_records()
+
+        with self.assertRaisesRegex(RuntimeError, "non-empty dry-run plan"):
+            run_alchemy_lane_apply(self.root, lane="heavy", scope="protocol:ops", action_ids=["act-1"])
+
+    def test_apply_dispatches_to_receipted_action_batch_after_preview(self) -> None:
+        self._seed_lane_records()
+
+        with patch("aiwiki.app_compile.apply_machine_memory_actions_batch", return_value={"receipt_path": "receipt.json"}) as mocked:
+            result = run_alchemy_lane_apply(
+                self.root,
+                lane="heavy",
+                scope="all",
+                action_ids=[" act-1 ", "", "act-2"],
+                note="ship",
+            )
+
+        self.assertEqual(result["status"], "applied")
+        self.assertEqual(result["action_ids"], ["act-1", "act-2"])
+        self.assertEqual(result["plan"]["selected_count"], 1)
+        self.assertEqual(result["apply_result"], {"receipt_path": "receipt.json"})
+        mocked.assert_called_once_with(self.root, ["act-1", "act-2"], note="ship", dry_run=False)
+
 
 class AlchemyLaneCLITests(unittest.TestCase):
     def setUp(self) -> None:
@@ -262,9 +293,16 @@ class AlchemyLaneCLITests(unittest.TestCase):
             max_tokens=7,
         )
 
-    def test_alchemy_lane_rejects_missing_dry_run(self) -> None:
+    def test_alchemy_lane_rejects_missing_mode(self) -> None:
         code, payload, stderr = self._run_main(["alchemy", "light", "all"])
 
         self.assertEqual(code, 1)
         self.assertEqual(payload, {})
-        self.assertIn("supports only --dry-run", stderr)
+        self.assertIn("requires exactly one of --dry-run or --apply", stderr)
+
+    def test_alchemy_lane_rejects_dry_run_apply_conflict(self) -> None:
+        code, payload, stderr = self._run_main(["alchemy", "light", "all", "--dry-run", "--apply", "--action-id", "act-1"])
+
+        self.assertEqual(code, 1)
+        self.assertEqual(payload, {})
+        self.assertIn("requires exactly one of --dry-run or --apply", stderr)
