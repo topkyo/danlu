@@ -287,6 +287,22 @@ class CLITests(unittest.TestCase):
                 },
             ),
             (
+                "alchemy-review-apply",
+                ["alchemy", "review", "all", "--apply", "--max-signals", "3", "--max-pages", "5", "--max-tokens", "7", "--limit", "11", "--note", "queue"],
+                "run_alchemy_review_apply",
+                (self.root,),
+                {
+                    "scope": "all",
+                    "planner_log_path": None,
+                    "signals_path": None,
+                    "max_signals": 3,
+                    "max_pages": 5,
+                    "max_tokens": 7,
+                    "limit": 11,
+                    "note": "queue",
+                },
+            ),
+            (
                 "alchemy-propose-preview",
                 ["alchemy", "propose", "all", "--dry-run", "--max-signals", "3", "--max-pages", "5", "--max-tokens", "7", "--limit", "11"],
                 "run_alchemy_propose_preview",

@@ -70,8 +70,8 @@ _DEFERRED_PRIMITIVES = {
         (
             "review",
             "Generate or update review queue entries for high-severity outputs.",
-            "missing_receipted_scoped_contract",
-            "Define a scoped review enqueue primitive with idempotent receipts and audit linkage.",
+            "not_integrated_into_lane_apply_contract",
+            "Direct scoped review apply exists; lane/auto integration remains deferred until explicitly promoted.",
         ),
         (
             "propose",
@@ -97,7 +97,7 @@ _DEFERRED_PRIMITIVES = {
             "review",
             "Generate or update review queue entries.",
             "not_allowed_for_light_lane",
-            "Keep light lane to low-risk hygiene until review enqueue has an idempotent scoped receipt.",
+            "Keep light lane to low-risk hygiene; scoped review apply stays explicit and heavy-only.",
         ),
         (
             "propose",
@@ -143,20 +143,19 @@ _DEFERRED_APPLY_CONTRACTS = {
         "backend_policy": "no hidden backend choice; any LLM use must come from explicit operator configuration",
     },
     "review": {
-        "status": "deferred",
+        "status": "executable",
         "primitive": "review",
         "write_surfaces": [
             "wiki/indexes/review-queue.md",
-            "output/review/",
             "output/control/execution-receipts/",
             ".aiwiki/state/execution-receipts.jsonl",
             ".aiwiki/state/runtime-history.jsonl",
             ".aiwiki/state/audit.jsonl",
         ],
-        "receipt_schema": "execution-receipt v1; subject_kind=alchemy_lane_primitive; operation=alchemy-lane-primitive",
+        "receipt_schema": "execution-receipt v1; subject_kind=alchemy_review_queue; operation=alchemy-review-enqueue",
         "audit_event_schema": "execution_receipt_history_append plus runtime_history direct append",
-        "revert_policy": "required_before_apply: define idempotent dequeue/mark-superseded behavior or explicit non-revertible declaration",
-        "idempotency_key": "primitive + lane + scope + target_ref + trace_ids",
+        "revert_policy": "non_revertible_derived_index: rerun compile or apply a newer review preview to replace managed queue section",
+        "idempotency_key": "primitive + scope + candidate_ids + trace_ids",
         "backend_policy": "no LLM required for enqueue; any optional model use must be explicit",
     },
     "propose": {
@@ -444,7 +443,6 @@ def preview_review_primitive(
         max_pages=max_pages,
         max_tokens=max_tokens,
     )
-    blocker = _apply_blocker_for_primitive("heavy", "review")
     scope_preview = lane_plan.get("scope_preview") if isinstance(lane_plan.get("scope_preview"), dict) else _empty_scope_preview()
     all_candidates = _review_preview_candidates(str(lane_plan.get("scope") or scope), scope_preview)
     candidates = all_candidates[:limit]
@@ -456,8 +454,10 @@ def preview_review_primitive(
         "scope": lane_plan.get("scope") or (scope.strip() or "all"),
         "dry_run": True,
         "side_effects_allowed": False,
-        "apply_supported": False,
-        "apply_blocker": blocker,
+        "apply_supported": True,
+        "apply_blocker": "",
+        "lane_apply_supported": False,
+        "lane_apply_blocker": _apply_blocker_for_primitive("heavy", "review"),
         "llm_required_for_apply": False,
         "receipt_required_for_apply": True,
         "audit_required_for_apply": True,
@@ -905,9 +905,11 @@ def _review_preview_candidates(scope: str, scope_preview: dict[str, Any]) -> lis
         return []
 
     common = {
-        "reason_codes": ["heavy_lane_dirty_scope", "missing_receipted_scoped_contract"],
-        "apply_supported": False,
-        "apply_blocker": _apply_blocker_for_primitive("heavy", "review"),
+        "reason_codes": ["heavy_lane_dirty_scope", "scoped_review_apply_supported"],
+        "apply_supported": True,
+        "apply_blocker": "",
+        "lane_apply_supported": False,
+        "lane_apply_blocker": _apply_blocker_for_primitive("heavy", "review"),
         "llm_required_for_apply": False,
         "receipt_required_for_apply": True,
         "audit_required_for_apply": True,

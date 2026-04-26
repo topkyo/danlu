@@ -1693,6 +1693,122 @@ def run_alchemy_review_preview(
     )
 
 
+def run_alchemy_review_apply(
+    root: Path,
+    *,
+    scope: str,
+    planner_log_path: Path | None = None,
+    signals_path: Path | None = None,
+    decision_mode: str | None = None,
+    max_signals: int | None = None,
+    max_pages: int | None = None,
+    max_tokens: int | None = None,
+    limit: int = 50,
+    note: str | None = None,
+) -> dict[str, Any]:
+    preview = run_alchemy_review_preview(
+        root,
+        scope=scope,
+        planner_log_path=planner_log_path,
+        signals_path=signals_path,
+        decision_mode=decision_mode,
+        max_signals=max_signals,
+        max_pages=max_pages,
+        max_tokens=max_tokens,
+        limit=limit,
+    )
+    status = str(preview.get("status") or "")
+    if status != "ok":
+        raise RuntimeError(f"alchemy review apply requires an ok dry-run preview (got {status})")
+    candidates = [item for item in preview.get("candidates", []) if isinstance(item, dict)]
+    if not candidates:
+        raise RuntimeError("alchemy review apply requires a non-empty dry-run preview")
+
+    queue_result = _materialize_alchemy_review_queue(root, preview=preview, candidates=candidates)
+    applied_at = utc_now()
+    action_id = _unique_alchemy_review_action_id(root, applied_at=applied_at)
+
+    from .app_execution import append_execution_receipt_history
+    from .app_state import execution_receipt_history_path
+    from .render.paths import execution_receipt_path
+
+    receipt_path = execution_receipt_path(root, action_id)
+    audit_path = relative_path(root, execution_receipt_history_path(root))
+    trace_ids = _preview_trace_ids(preview)
+    trace_id = trace_ids[0] if trace_ids else ""
+    candidate_ids = [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")]
+    idempotency_key = _alchemy_review_idempotency_key(scope=scope, candidate_ids=candidate_ids, trace_ids=trace_ids)
+    receipt = {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-alchemy-review",
+        "applied_at": applied_at,
+        "operation": "alchemy-review-enqueue",
+        "action_id": action_id,
+        "trace_id": trace_id,
+        "trace_ids": trace_ids,
+        "title": f"Alchemy review enqueue {scope}",
+        "status": "applied",
+        "protocol": _first_preview_protocol(preview),
+        "subject_kind": "alchemy_review_queue",
+        "subject_id": f"review:{scope}",
+        "apply_mode": "alchemy-review",
+        "note": note or "",
+        "primary_path": queue_result["path"],
+        "secondary_path": "",
+        "receipt_path": relative_path(root, receipt_path),
+        "scope": scope,
+        "primitive": "review",
+        "candidate_ids": candidate_ids,
+        "candidate_count": len(candidates),
+        "idempotency_key": idempotency_key,
+        "before_hash": queue_result["before_hash"],
+        "after_hash": queue_result["after_hash"],
+        "changed": queue_result["changed"],
+        "revert_supported": False,
+        "revert_policy": "non_revertible_derived_index: rerun compile or reapply a newer review preview to replace the managed section",
+        "audit_stream": "execution_receipts",
+        "audit_event": "execution_receipt_history_append",
+        "audit_path": audit_path,
+        "source_preview": _review_preview_receipt_summary(preview, candidates),
+        "result_summary": queue_result,
+    }
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    append_execution_receipt_history(root, receipt)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "alchemy-review-enqueued",
+            "recorded_at": applied_at,
+            "status": "completed",
+            "scope": scope,
+            "candidate_count": len(candidates),
+            "candidate_ids": candidate_ids,
+            "review_queue_path": queue_result["path"],
+            "receipt_path": relative_path(root, receipt_path),
+            "trace_id": trace_id,
+            "trace_ids": trace_ids,
+            "subject_kind": "alchemy_review_queue",
+            "subject_id": f"review:{scope}",
+        },
+    )
+    return {
+        "status": "applied",
+        "primitive": "review",
+        "scope": scope,
+        "candidate_count": len(candidates),
+        "candidate_ids": candidate_ids,
+        "review_queue_path": queue_result["path"],
+        "receipt_path": relative_path(root, receipt_path),
+        "trace_id": trace_id,
+        "trace_ids": trace_ids,
+        "idempotency_key": idempotency_key,
+        "changed": queue_result["changed"],
+        "preview": preview,
+    }
+
+
 def run_alchemy_propose_preview(
     root: Path,
     *,
@@ -2020,6 +2136,144 @@ def _append_alchemy_lane_runtime_event(
     if apply_result is not None:
         event["action_batch_receipt"] = str(apply_result.get("receipt_path") or apply_result.get("batch_receipt_path") or "")
     append_runtime_history(root, event)
+
+
+_ALCHEMY_REVIEW_QUEUE_START = "<!-- aiwiki:alchemy-review-enqueue:start -->"
+_ALCHEMY_REVIEW_QUEUE_END = "<!-- aiwiki:alchemy-review-enqueue:end -->"
+
+
+def _materialize_alchemy_review_queue(
+    root: Path,
+    *,
+    preview: dict[str, Any],
+    candidates: list[dict[str, Any]],
+) -> dict[str, Any]:
+    path = root / "wiki" / "indexes" / "review-queue.md"
+    before = path.read_text(encoding="utf-8") if path.exists() else ""
+    before_hash = sha256_bytes(before.encode("utf-8")) if path.exists() else ""
+    section = _render_alchemy_review_queue_section(preview=preview, candidates=candidates)
+    after = _replace_managed_section(before, section)
+    changed = after != before
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if changed or not path.exists():
+        path.write_text(after, encoding="utf-8")
+    after_hash = sha256_bytes(after.encode("utf-8"))
+    return {
+        "path": relative_path(root, path),
+        "before_hash": before_hash,
+        "after_hash": after_hash,
+        "changed": changed,
+        "candidate_count": len(candidates),
+    }
+
+
+def _render_alchemy_review_queue_section(*, preview: dict[str, Any], candidates: list[dict[str, Any]]) -> str:
+    scope = str(preview.get("scope") or "")
+    trace_ids = _preview_trace_ids(preview)
+    lines = [
+        _ALCHEMY_REVIEW_QUEUE_START,
+        "## Alchemy scoped review enqueue",
+        "",
+        f"- scope: `{_markdown_cell(scope)}`",
+        f"- candidate_count: `{len(candidates)}`",
+        f"- trace_ids: `{', '.join(trace_ids)}`",
+        "",
+        "| Candidate | Kind | Protocol | Target | Signals |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for candidate in candidates:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    _markdown_cell(str(candidate.get("candidate_id") or "")),
+                    _markdown_cell(str(candidate.get("kind") or "")),
+                    _markdown_cell(str(candidate.get("protocol") or "")),
+                    _markdown_cell(str(candidate.get("target_ref") or "")),
+                    _markdown_cell(", ".join(_string_values(candidate.get("signal_ids")))),
+                ]
+            )
+            + " |"
+        )
+    lines.extend(["", _ALCHEMY_REVIEW_QUEUE_END, ""])
+    return "\n".join(lines)
+
+
+def _replace_managed_section(existing: str, section: str) -> str:
+    if _ALCHEMY_REVIEW_QUEUE_START in existing and _ALCHEMY_REVIEW_QUEUE_END in existing:
+        before, rest = existing.split(_ALCHEMY_REVIEW_QUEUE_START, 1)
+        _, after = rest.split(_ALCHEMY_REVIEW_QUEUE_END, 1)
+        return before.rstrip() + "\n\n" + section + after.lstrip()
+    if existing.strip():
+        return existing.rstrip() + "\n\n" + section
+    return "# Review Queue\n\n" + section
+
+
+def _review_preview_receipt_summary(preview: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "status": str(preview.get("status") or ""),
+        "scope": str(preview.get("scope") or ""),
+        "selected_count": int(preview.get("selected_count") or 0),
+        "candidate_count": len(candidates),
+        "candidate_ids": [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")],
+        "scope_preview": preview.get("scope_preview") if isinstance(preview.get("scope_preview"), dict) else {},
+        "apply_contract": preview.get("apply_contract") if isinstance(preview.get("apply_contract"), dict) else {},
+    }
+
+
+def _preview_trace_ids(preview: dict[str, Any]) -> list[str]:
+    scope_preview = preview.get("scope_preview")
+    if not isinstance(scope_preview, dict):
+        return []
+    return _string_values(scope_preview.get("trace_ids"))
+
+
+def _first_preview_protocol(preview: dict[str, Any]) -> str:
+    scope_preview = preview.get("scope_preview")
+    if isinstance(scope_preview, dict):
+        protocols = _string_values(scope_preview.get("protocols"))
+        if protocols:
+            return protocols[0]
+    candidates = preview.get("candidates")
+    if isinstance(candidates, list):
+        for candidate in candidates:
+            if isinstance(candidate, dict) and candidate.get("protocol"):
+                return str(candidate.get("protocol") or "")
+    return ""
+
+
+def _alchemy_review_idempotency_key(*, scope: str, candidate_ids: list[str], trace_ids: list[str]) -> str:
+    payload = {
+        "primitive": "review",
+        "scope": scope,
+        "candidate_ids": sorted(candidate_ids),
+        "trace_ids": sorted(trace_ids),
+    }
+    digest = sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    return f"alchemy-review:{digest}"
+
+
+def _unique_alchemy_review_action_id(root: Path, *, applied_at: str) -> str:
+    from .render.paths import execution_receipt_path
+
+    timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
+    base = slugify(f"alchemy-review-{timestamp}")
+    candidate = base
+    n = 2
+    while execution_receipt_path(root, candidate).exists():
+        candidate = f"{base}-{n}"
+        n += 1
+    return candidate
+
+
+def _string_values(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return sorted({item.strip() for item in value if isinstance(item, str) and item.strip()})
+
+
+def _markdown_cell(value: str) -> str:
+    return value.replace("\n", " ").replace("|", "\\|")
 
 
 def _normalize_lane_primitives(primitives: list[str]) -> list[str]:

@@ -56,6 +56,7 @@ from .runner import (
     run_alchemy_promote,
     run_alchemy_propose_preview,
     run_alchemy_revert,
+    run_alchemy_review_apply,
     run_alchemy_review_preview,
     run_alchemy_start,
     run_alchemy_superseded_cleanup_apply,
@@ -496,12 +497,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     review_preview_mode = review_preview_parser.add_mutually_exclusive_group(required=True)
     review_preview_mode.add_argument("--dry-run", action="store_true", help="Preview only.")
+    review_preview_mode.add_argument("--apply", action="store_true", help="Apply scoped review enqueue with receipt/audit.")
     review_preview_parser.add_argument("--planner-log-path", type=Path, default=None)
     review_preview_parser.add_argument("--signals-path", type=Path, default=None)
     review_preview_parser.add_argument("--max-signals", type=int, default=None)
     review_preview_parser.add_argument("--max-pages", type=int, default=None)
     review_preview_parser.add_argument("--max-tokens", type=int, default=None)
     review_preview_parser.add_argument("--limit", type=int, default=50)
+    review_preview_parser.add_argument("--note", default=None)
     propose_preview_parser = alchemy_subparsers.add_parser(
         "propose",
         help="Preview scoped proposal opportunities without applying them.",
@@ -1028,16 +1031,29 @@ def main(argv: list[str] | None = None) -> int:
                     limit=args.limit,
                 )
             elif args.alchemy_lane == "review":
-                result = run_alchemy_review_preview(
-                    root,
-                    scope=args.scope,
-                    planner_log_path=args.planner_log_path,
-                    signals_path=args.signals_path,
-                    max_signals=args.max_signals,
-                    max_pages=args.max_pages,
-                    max_tokens=args.max_tokens,
-                    limit=args.limit,
-                )
+                if args.apply:
+                    result = run_alchemy_review_apply(
+                        root,
+                        scope=args.scope,
+                        planner_log_path=args.planner_log_path,
+                        signals_path=args.signals_path,
+                        max_signals=args.max_signals,
+                        max_pages=args.max_pages,
+                        max_tokens=args.max_tokens,
+                        limit=args.limit,
+                        note=args.note,
+                    )
+                else:
+                    result = run_alchemy_review_preview(
+                        root,
+                        scope=args.scope,
+                        planner_log_path=args.planner_log_path,
+                        signals_path=args.signals_path,
+                        max_signals=args.max_signals,
+                        max_pages=args.max_pages,
+                        max_tokens=args.max_tokens,
+                        limit=args.limit,
+                    )
             elif args.alchemy_lane == "propose":
                 result = run_alchemy_propose_preview(
                     root,

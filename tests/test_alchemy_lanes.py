@@ -16,7 +16,7 @@ from aiwiki.planner.dry_run import (
     preview_propose_primitive,
     preview_review_primitive,
 )
-from aiwiki.runner import run_alchemy_auto, run_alchemy_lane_apply
+from aiwiki.runner import run_alchemy_auto, run_alchemy_lane_apply, run_alchemy_review_apply
 
 
 def _snapshot_files(root: Path) -> dict[str, bytes]:
@@ -162,6 +162,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
             },
         )
         self.assertEqual(result["primitive_plan"][2]["apply_blocker"], "missing_receipted_scoped_contract")
+        self.assertEqual(result["primitive_plan"][5]["apply_blocker"], "not_integrated_into_lane_apply_contract")
 
     def test_heavy_lane_does_not_consume_generate_proposal_decisions(self) -> None:
         self._write_jsonl(
@@ -296,15 +297,22 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
             [item["primitive"] for item in heavy["deferred_primitives"]],
             ["judge", "distill", "review", "propose"],
         )
-        self.assertEqual({item["reason_code"] for item in heavy["deferred_primitives"]}, {"missing_receipted_scoped_contract"})
+        self.assertEqual(
+            {item["reason_code"] for item in heavy["deferred_primitives"]},
+            {"missing_receipted_scoped_contract", "not_integrated_into_lane_apply_contract"},
+        )
         for item in heavy["deferred_primitives"]:
             contract = item["apply_contract"]
-            self.assertEqual(contract["status"], "deferred")
+            expected_status = "executable" if item["primitive"] == "review" else "deferred"
+            self.assertEqual(contract["status"], expected_status)
             self.assertEqual(contract["primitive"], item["primitive"])
             self.assertTrue(contract["write_surfaces"])
             self.assertIn("execution-receipt v1", contract["receipt_schema"])
             self.assertIn("execution_receipt_history_append", contract["audit_event_schema"])
-            self.assertIn("required_before_apply", contract["revert_policy"])
+            if item["primitive"] == "review":
+                self.assertIn("non_revertible_derived_index", contract["revert_policy"])
+            else:
+                self.assertIn("required_before_apply", contract["revert_policy"])
             self.assertIn("trace_ids", contract["idempotency_key"])
             self.assertTrue(contract["backend_policy"])
         self.assertEqual(
@@ -312,7 +320,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
             ["judge", "distill", "review", "propose"],
         )
         self.assertEqual({item["reason_code"] for item in light["deferred_primitives"]}, {"not_allowed_for_light_lane"})
-        self.assertEqual({item["apply_contract"]["status"] for item in light["deferred_primitives"]}, {"deferred"})
+        self.assertEqual({item["apply_contract"]["status"] for item in light["deferred_primitives"]}, {"deferred", "executable"})
 
     def test_scope_selector_filters_by_protocol(self) -> None:
         self._seed_lane_records()
@@ -697,8 +705,10 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(result["lane"], "heavy")
         self.assertTrue(result["dry_run"])
         self.assertFalse(result["side_effects_allowed"])
-        self.assertFalse(result["apply_supported"])
-        self.assertEqual(result["apply_blocker"], "missing_receipted_scoped_contract")
+        self.assertTrue(result["apply_supported"])
+        self.assertEqual(result["apply_blocker"], "")
+        self.assertFalse(result["lane_apply_supported"])
+        self.assertEqual(result["lane_apply_blocker"], "not_integrated_into_lane_apply_contract")
         self.assertFalse(result["llm_required_for_apply"])
         self.assertTrue(result["receipt_required_for_apply"])
         self.assertTrue(result["audit_required_for_apply"])
@@ -713,8 +723,69 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(result["candidates"][0]["target_ref"], "wiki/judgments/thesis.md")
         self.assertEqual(result["candidates"][1]["candidate_id"], "review-elixir-elixir-z")
         self.assertEqual(result["candidates"][1]["target_ref"], "elixir-z")
-        self.assertEqual(result["candidates"][0]["apply_contract"]["status"], "deferred")
+        self.assertEqual(result["candidates"][0]["apply_contract"]["status"], "executable")
         self.assertEqual(_snapshot_files(self.root), before)
+
+    def test_review_apply_writes_idempotent_queue_receipt_and_audit(self) -> None:
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [
+                self._signal(
+                    "sig-20260425-heavy01",
+                    severity="high",
+                    protocol="research",
+                    source_ids=["src-b", "src-a"],
+                    concept_slugs=["zeta", "alpha"],
+                    elixir_refs=["elixir-z"],
+                    judgment_refs=["wiki/judgments/thesis.md"],
+                    max_pages=12,
+                    max_tokens=3000,
+                )
+            ],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [self._planner("sig-20260425-heavy01", decision="enqueue-heavy")],
+        )
+
+        first = run_alchemy_review_apply(self.root, scope="all", note="queue it")
+        second = run_alchemy_review_apply(self.root, scope="all", note="queue it again")
+
+        self.assertEqual(first["status"], "applied")
+        self.assertEqual(first["candidate_count"], 2)
+        self.assertTrue(first["changed"])
+        self.assertFalse(second["changed"])
+        self.assertEqual(first["idempotency_key"], second["idempotency_key"])
+        queue_path = self.root / first["review_queue_path"]
+        queue_text = queue_path.read_text(encoding="utf-8")
+        self.assertIn("<!-- aiwiki:alchemy-review-enqueue:start -->", queue_text)
+        self.assertIn("review-judgment-wiki-judgments-thesis-md", queue_text)
+        self.assertIn("review-elixir-elixir-z", queue_text)
+        receipt = json.loads((self.root / first["receipt_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(receipt["operation"], "alchemy-review-enqueue")
+        self.assertEqual(receipt["subject_kind"], "alchemy_review_queue")
+        self.assertEqual(receipt["candidate_ids"], first["candidate_ids"])
+        self.assertFalse(receipt["revert_supported"])
+        self.assertEqual(receipt["primary_path"], "wiki/indexes/review-queue.md")
+        history = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/execution-receipts.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(history[-2]["action_id"], first["receipt_path"].split("/")[-1].removesuffix(".json"))
+        runtime = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(runtime[-1]["event_type"], "alchemy-review-enqueued")
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertIn("execution_receipts", {item["source_stream"] for item in audit_records})
+        self.assertIn("runtime_history", {item["source_stream"] for item in audit_records})
 
     def test_review_preview_uses_scope_candidates_when_no_target_refs_exist(self) -> None:
         self._write_jsonl(
@@ -947,6 +1018,46 @@ class AlchemyLaneCLITests(unittest.TestCase):
             max_pages=5,
             max_tokens=7,
             limit=11,
+        )
+
+    def test_main_dispatches_alchemy_review_apply(self) -> None:
+        with patch("aiwiki.cli.run_alchemy_review_apply", return_value={"status": "applied", "primitive": "review"}) as mocked:
+            code, payload, stderr = self._run_main(
+                [
+                    "alchemy",
+                    "review",
+                    "all",
+                    "--apply",
+                    "--planner-log-path",
+                    "custom/planner-log.jsonl",
+                    "--signals-path",
+                    "custom/signals.jsonl",
+                    "--max-signals",
+                    "3",
+                    "--max-pages",
+                    "5",
+                    "--max-tokens",
+                    "7",
+                    "--limit",
+                    "11",
+                    "--note",
+                    "queue",
+                ]
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["primitive"], "review")
+        mocked.assert_called_once_with(
+            self.root,
+            scope="all",
+            planner_log_path=Path("custom/planner-log.jsonl"),
+            signals_path=Path("custom/signals.jsonl"),
+            max_signals=3,
+            max_pages=5,
+            max_tokens=7,
+            limit=11,
+            note="queue",
         )
 
     def test_main_dispatches_alchemy_propose_preview(self) -> None:
