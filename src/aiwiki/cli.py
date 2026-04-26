@@ -53,6 +53,7 @@ from .runner import (
     run_alchemy_revert,
     run_alchemy_start,
     run_ask,
+    run_audit_backfill,
     run_audit_preview,
     run_compile,
     run_demote,
@@ -251,6 +252,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     audit_preview_parser.add_argument("--dry-run", action="store_true", help="Required; preview only.")
     audit_preview_parser.add_argument("--limit", type=int, default=50)
+
+    audit_backfill_parser = subparsers.add_parser(
+        "audit-backfill",
+        help="Backfill the universal audit stream from existing audit sources.",
+    )
+    audit_backfill_mode = audit_backfill_parser.add_mutually_exclusive_group(required=True)
+    audit_backfill_mode.add_argument("--dry-run", action="store_true", help="Preview without writing audit.jsonl.")
+    audit_backfill_mode.add_argument("--apply", action="store_true", help="Append missing audit records.")
+    audit_backfill_parser.add_argument("--limit", type=int, default=50)
 
     protocol_learn_age_parser = subparsers.add_parser(
         "protocol-learn-age",
@@ -959,6 +969,8 @@ def main(argv: list[str] | None = None) -> int:
             if not args.dry_run:
                 raise ValueError("audit-preview requires --dry-run")
             result = run_audit_preview(root, limit=args.limit)
+        elif args.command == "audit-backfill":
+            result = run_audit_backfill(root, limit=args.limit, apply=args.apply)
         elif args.command == "protocol-learn-age":
             result = run_protocol_learn_age(root, protocol=args.protocol, apply=args.apply)
         elif args.command == "protocol-learn-verify":

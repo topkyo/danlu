@@ -236,6 +236,12 @@ def run_audit_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
     return preview_universal_audit_stream(root, limit=limit)
 
 
+def run_audit_backfill(root: Path, *, limit: int = 50, apply: bool = False) -> dict[str, Any]:
+    from .execution.audit_preview import backfill_universal_audit_stream
+
+    return backfill_universal_audit_stream(root, limit=limit, apply=apply)
+
+
 def create_client(root: Path, timeout_seconds: int | None = None) -> SupportsComplete:
     config = LLMConfig.from_env()
     if timeout_seconds is not None:

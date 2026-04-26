@@ -16,7 +16,7 @@ related_docs:
 
 这份文档定义炼丹炉“如何进化”的实现契约：signal 如何路由到 heavy / light 炼丹、active corpus 如何持久化、金丹如何炼成与复利、L2 protocol-learning 如何衔接既有实装、L3 prompt/policy proposal 如何受控写回。
 
-> **实现状态说明（2026-04-26）**：本文是“目标契约 + 当前差距”的 SoT。当前已落地 active corpus / output candidates、L2 protocol-learning 生命周期、repair planner state、nightly low-risk auto-consume、显式 backend 选择、金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 候选主路径，legacy elixir migration read-only preview，heavy/light lane read-only dry-run preview、显式 receipted action apply bridge、deterministic primitive receipt wrapper、lane primitive trace/audit metadata 和 `judge/distill/review/propose` deferred metadata，以及 L3 prompt/policy proposal 的手工/fixture 创建、generation blocked preview、Shell review surface、人工 reject、hash-gated apply、receipt-gated revert 与 execution receipt history audit metadata baseline，并提供通用 audit stream read-only preview。完整 signal planner execute mode、heavy/light 自动执行调度入口、legacy elixir actual migration / superseded 清理、L3 proposal 自动生成尚未完整实现，以下章节用 `implemented / partial / planned` 标记区分。
+> **实现状态说明（2026-04-26）**：本文是“目标契约 + 当前差距”的 SoT。当前已落地 active corpus / output candidates、L2 protocol-learning 生命周期、repair planner state、nightly low-risk auto-consume、显式 backend 选择、金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 候选主路径，legacy elixir migration read-only preview，heavy/light lane read-only dry-run preview、显式 receipted action apply bridge、deterministic primitive receipt wrapper、lane primitive trace/audit metadata 和 `judge/distill/review/propose` deferred metadata，以及 L3 prompt/policy proposal 的手工/fixture 创建、generation blocked preview、Shell review surface、人工 reject、hash-gated apply、receipt-gated revert 与 execution receipt history audit metadata baseline，并提供通用 audit stream preview 与显式 append-only backfill baseline。完整 signal planner execute mode、heavy/light 自动执行调度入口、legacy elixir actual migration / superseded 清理、L3 proposal 自动生成尚未完整实现，以下章节用 `implemented / partial / planned` 标记区分。
 
 它同时取代：
 
@@ -675,6 +675,7 @@ L3 proposal **只允许**写入以下文件：
 | `aiwiki protocol-learn-add/list/show/age/verify/demote/archive/supersede` | 当前：L2 learning 生命周期治理 | `wiki/protocol-learnings/` |
 | `aiwiki signals-list/show` / `aiwiki planner-log-list` | 当前：只读 inspection；`--since` 必须为 ISO datetime，`--limit` 必须大于 0 | 读 `.aiwiki/state/signals.jsonl` / `.aiwiki/state/planner-log.jsonl` |
 | `aiwiki audit-preview --dry-run` | 当前：只读预览分散审计来源归一化后的目标 audit stream 记录；不写 `audit.jsonl` | 读 execution receipts / LLM receipts / runtime history / protocol-learning aging audit |
+| `aiwiki audit-backfill --apply` | 当前：显式 append-only backfill 缺失的 universal audit records；按 `audit_event_id` 幂等跳过已有记录 | `.aiwiki/state/audit.jsonl` |
 | `aiwiki alchemy heavy <scope> --dry-run` / `aiwiki alchemy light <scope> --dry-run` | 当前：只读 preview lane scope、primitive plan、预算、锁结果和 deferred primitive metadata；不 execute | 读 `.aiwiki/state/planner-log.jsonl` + `.aiwiki/state/signals.jsonl` |
 | `aiwiki alchemy heavy|light <scope> --apply --action-id <id>` | 当前：仅在 dry-run plan 非空时，显式桥接到既有 receipted low-risk action batch apply；不执行 receipt-less lane 序列 | `apply_machine_memory_actions_batch` receipts |
 | `aiwiki alchemy heavy|light <scope> --apply --primitive compile|lint|nightly` | 当前：仅执行 deterministic primitives 并写 lane primitive execution receipt；receipt 顶层携带 planner `trace_id/trace_ids` 与 execution receipt history audit metadata；不调用 LLM-backed `run-*` | `output/control/execution-receipts/` + `.aiwiki/state/execution-receipts.jsonl` |
@@ -698,7 +699,7 @@ L3 proposal **只允许**写入以下文件：
 - L2 learning 状态变更（当前已有 protocol-learning aging audit / 状态文件；threshold signal 通过 runtime history 观察映射）
 - L3 proposal manual create / reject / accept / revert（当前已有 manual baseline）；automatic generation（planned）
 
-当前审计仍是分散日志：execution receipts、LLM receipts、runtime history、protocol-learning aging audit 等分别承担各自领域的审计语义。`aiwiki audit-preview --dry-run` 可只读预览这些来源归一化后的目标 audit record（含 source stream/ref、event type、trace、subject、revert_supported），但不创建 `.aiwiki/state/audit.jsonl`。目标通用审计流为 `.aiwiki/state/audit.jsonl`（append-only，planned）。
+当前审计仍以分散日志为源：execution receipts、LLM receipts、runtime history、protocol-learning aging audit 等分别承担各自领域的审计语义。`aiwiki audit-preview --dry-run` 可只读预览这些来源归一化后的目标 audit record（含 source stream/ref、event type、trace、subject、revert_supported）。`aiwiki audit-backfill --apply` 可显式把缺失记录 append 到 `.aiwiki/state/audit.jsonl`，并按稳定 `audit_event_id` 幂等跳过已存在记录；该 backfill 不改造 source writers，也不自动运行。
 
 ### 12.2 Revert 适用范围
 

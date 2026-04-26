@@ -395,6 +395,13 @@ class CLITests(unittest.TestCase):
                 (self.root,),
                 {"limit": 6},
             ),
+            (
+                "audit-backfill",
+                ["audit-backfill", "--apply", "--limit", "6"],
+                "run_audit_backfill",
+                (self.root,),
+                {"limit": 6, "apply": True},
+            ),
             ("protocol-learn-supersede", ["protocol-learn-supersede", "replacement", "old-one", "old-two"], "run_protocol_learn_supersede", (self.root, "replacement", ["old-one", "old-two"]), {}),
             ("review-page", ["review-page", "page.md", "--status", "approved", "--note", "ok", "--confidence", "high"], "review_page", (self.root, "page.md", "approved"), {"note": "ok", "confidence": "high"}),
             ("review-rewrite", ["review-rewrite", "latency", "--status", "accepted", "--note", "ok"], "review_concept_rewrite", (self.root, "latency", "accepted"), {"note": "ok"}),

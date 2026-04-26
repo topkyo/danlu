@@ -59,6 +59,43 @@ def preview_universal_audit_stream(root: Path, *, limit: int = 50) -> dict[str, 
     }
 
 
+def backfill_universal_audit_stream(root: Path, *, limit: int = 50, apply: bool = False) -> dict[str, Any]:
+    preview = preview_universal_audit_stream(root, limit=limit)
+    audit_path = root / AUDIT_STREAM_PATH
+    existing_ids = _existing_audit_event_ids(audit_path)
+    appendable = [
+        record
+        for record in preview["records"]
+        if isinstance(record, dict) and str(record.get("audit_event_id") or "") not in existing_ids
+    ]
+    result = {
+        **preview,
+        "apply": apply,
+        "appended_count": 0,
+        "skipped_existing_count": len(preview["records"]) - len(appendable),
+    }
+    if not apply:
+        return result
+
+    if appendable:
+        audit_path.parent.mkdir(parents=True, exist_ok=True)
+        with audit_path.open("a", encoding="utf-8") as handle:
+            for record in appendable:
+                handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+        result["appended_count"] = len(appendable)
+        result["audit_stream_exists"] = True
+    return result
+
+
+def _existing_audit_event_ids(path: Path) -> set[str]:
+    ids: set[str] = set()
+    for _, document in _iter_jsonl_documents(path):
+        audit_event_id = document.get("audit_event_id")
+        if isinstance(audit_event_id, str) and audit_event_id:
+            ids.add(audit_event_id)
+    return ids
+
+
 def _iter_jsonl_documents(path: Path) -> list[tuple[int, dict[str, Any]]]:
     if not path.exists():
         return []
