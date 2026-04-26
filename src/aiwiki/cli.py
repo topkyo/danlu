@@ -447,7 +447,7 @@ def build_parser() -> argparse.ArgumentParser:
             "--primitive",
             action="append",
             default=[],
-            choices=("compile", "lint", "nightly", "review"),
+        choices=("compile", "lint", "nightly", "review", "propose"),
             help="Receipted lane primitive to apply; may be repeated.",
         )
         lane_parser.add_argument("--note", default=None)

@@ -148,7 +148,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(result["scope_preview"]["source_ids"], ["src-a", "src-b"])
         self.assertEqual(result["scope_preview"]["concept_slugs"], ["alpha", "zeta"])
         self.assertEqual(result["scope_preview"]["elixir_refs"], ["elixir-z"])
-        self.assertEqual([step["primitive"] for step in result["primitive_plan"]], ["route", "compile", "judge", "distill", "lint", "review"])
+        self.assertEqual([step["primitive"] for step in result["primitive_plan"]], ["route", "compile", "judge", "distill", "lint", "review", "propose"])
         apply_support = {step["primitive"]: step["apply_supported"] for step in result["primitive_plan"]}
         self.assertEqual(
             apply_support,
@@ -159,10 +159,12 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
                 "distill": False,
                 "lint": True,
                 "review": True,
+                "propose": True,
             },
         )
         self.assertEqual(result["primitive_plan"][2]["apply_blocker"], "missing_receipted_scoped_contract")
         self.assertEqual(result["primitive_plan"][5]["apply_blocker"], "")
+        self.assertEqual(result["primitive_plan"][6]["apply_blocker"], "")
 
     def test_heavy_lane_does_not_consume_generate_proposal_decisions(self) -> None:
         self._write_jsonl(
@@ -287,6 +289,23 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(lane["reason"], "no_apply_supported_primitives")
         self.assertEqual(lane["selected_primitives"], [])
 
+    def test_auto_scheduler_does_not_select_propose_for_heavy_lane(self) -> None:
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [self._signal("sig-20260425-heavy01", severity="high", protocol="research")],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [self._planner("sig-20260425-heavy01", decision="enqueue-heavy", mode="execute")],
+        )
+
+        result = run_alchemy_auto(self.root, apply=False, lanes=["heavy"], primitives=["propose"])
+
+        lane = result["lane_results"][0]
+        self.assertEqual(lane["status"], "skipped")
+        self.assertEqual(lane["reason"], "no_apply_supported_primitives")
+        self.assertEqual(lane["selected_primitives"], [])
+
     def test_auto_scheduler_apply_invokes_requested_heavy_review(self) -> None:
         self._write_jsonl(
             ".aiwiki/state/signals.jsonl",
@@ -353,7 +372,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
 
         self.assertEqual(
             [item["primitive"] for item in heavy["deferred_primitives"]],
-            ["judge", "distill", "propose"],
+            ["judge", "distill"],
         )
         self.assertEqual(
             {item["reason_code"] for item in heavy["deferred_primitives"]},
@@ -625,6 +644,44 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         )
         self.assertEqual(runtime[-1]["primitive_receipts"], [review_result["receipt_path"]])
 
+    def test_apply_writes_proposal_via_explicit_heavy_lane_primitive(self) -> None:
+        self._seed_lane_records()
+        prompt_path = self.root / "prompts/ask.md"
+        prompt_path.parent.mkdir(parents=True, exist_ok=True)
+        prompt_path.write_text("# Ask\n\nBaseline prompt.\n", encoding="utf-8")
+
+        result = run_alchemy_lane_apply(
+            self.root,
+            lane="heavy",
+            scope="all",
+            action_ids=[],
+            primitives=["propose"],
+            note="lane propose",
+        )
+
+        self.assertEqual(result["status"], "applied")
+        self.assertEqual(result["primitives"], ["propose"])
+        primitive_result = result["primitive_results"][0]
+        self.assertEqual(primitive_result["primitive"], "propose")
+        self.assertEqual(primitive_result["audit_path"], ".aiwiki/state/execution-receipts.jsonl")
+        propose_result = primitive_result["result"]
+        self.assertEqual(propose_result["status"], "applied")
+        self.assertEqual(propose_result["proposal_ids"], ["alchemy-propose-scope-research-1"])
+        receipt = json.loads((self.root / propose_result["receipt_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(receipt["operation"], "alchemy-propose-generate")
+        self.assertEqual(receipt["subject_kind"], "alchemy_proposal_plane")
+        self.assertNotIn("aiwiki:alchemy-propose:start", prompt_path.read_text(encoding="utf-8"))
+        runtime = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(
+            [item["event_type"] for item in runtime],
+            ["alchemy-lane-started", "l3-proposal-create", "alchemy-propose-generated", "alchemy-lane-completed"],
+        )
+        self.assertEqual(runtime[-1]["primitive_receipts"], [propose_result["receipt_path"]])
+
     def test_apply_rejects_primitive_absent_from_lane_plan(self) -> None:
         self._seed_lane_records()
 
@@ -655,8 +712,12 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
             run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[], primitives=["judge"])
         with self.assertRaisesRegex(ValueError, "unsupported alchemy lane primitive"):
             run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[], primitives=["distill"])
-        with self.assertRaisesRegex(ValueError, "unsupported alchemy lane primitive"):
-            run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[], primitives=["propose"])
+
+    def test_light_lane_rejects_propose_primitive(self) -> None:
+        self._seed_lane_records()
+
+        with self.assertRaisesRegex(RuntimeError, "primitive 'propose' is not present"):
+            run_alchemy_lane_apply(self.root, lane="light", scope="all", action_ids=[], primitives=["propose"])
 
     def test_judge_preview_reports_scoped_candidates_without_writes(self) -> None:
         self._write_jsonl(
@@ -933,8 +994,8 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertFalse(result["side_effects_allowed"])
         self.assertTrue(result["apply_supported"])
         self.assertEqual(result["apply_blocker"], "")
-        self.assertFalse(result["lane_apply_supported"])
-        self.assertEqual(result["lane_apply_blocker"], "missing_receipted_scoped_contract")
+        self.assertTrue(result["lane_apply_supported"])
+        self.assertEqual(result["lane_apply_blocker"], "")
         self.assertFalse(result["llm_required_for_apply"])
         self.assertTrue(result["receipt_required_for_apply"])
         self.assertTrue(result["audit_required_for_apply"])

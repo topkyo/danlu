@@ -39,6 +39,7 @@ _PRIMITIVE_PLANS = {
         ("distill", "Preview optional candidate elixir refresh."),
         ("lint", "Preview scoped drift and contract checks."),
         ("review", "Preview review queue entries for high-severity outputs."),
+        ("propose", "Preview L3 proposal candidates for recurring failures and feedback."),
     ),
     "light": (
         ("route", "Preview active corpus cooling and maintenance scope."),
@@ -49,7 +50,7 @@ _PRIMITIVE_PLANS = {
 }
 
 _APPLY_SUPPORTED_PRIMITIVES = {
-    "heavy": {"compile", "lint", "review"},
+    "heavy": {"compile", "lint", "review", "propose"},
     "light": {"compile", "lint", "nightly"},
 }
 
@@ -66,12 +67,6 @@ _DEFERRED_PRIMITIVES = {
             "Refresh candidate elixir iterations from dirty-scope evidence.",
             "missing_receipted_scoped_contract",
             "Define a scoped elixir distillation primitive that preserves candidate provenance and writes receipts.",
-        ),
-        (
-            "propose",
-            "Generate prompt or policy proposals from recurring failures and feedback.",
-            "missing_receipted_scoped_contract",
-            "Scoped propose apply is direct-only; keep lane apply deferred until lane receipt/revert semantics are explicit.",
         ),
     ),
     "light": (
@@ -522,8 +517,8 @@ def preview_propose_primitive(
         "side_effects_allowed": False,
         "apply_supported": True,
         "apply_blocker": "",
-        "lane_apply_supported": False,
-        "lane_apply_blocker": _apply_blocker_for_primitive("heavy", "propose"),
+        "lane_apply_supported": True,
+        "lane_apply_blocker": "",
         "llm_required_for_apply": False,
         "receipt_required_for_apply": True,
         "audit_required_for_apply": True,
@@ -977,8 +972,8 @@ def _propose_preview_candidates(scope: str, scope_preview: dict[str, Any]) -> li
         "reason_codes": ["heavy_lane_dirty_scope", "scoped_propose_apply_supported"],
         "apply_supported": True,
         "apply_blocker": "",
-        "lane_apply_supported": False,
-        "lane_apply_blocker": _apply_blocker_for_primitive("heavy", "propose"),
+        "lane_apply_supported": True,
+        "lane_apply_blocker": "",
         "llm_required_for_apply": False,
         "receipt_required_for_apply": True,
         "audit_required_for_apply": True,
