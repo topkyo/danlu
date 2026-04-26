@@ -18,6 +18,7 @@ from aiwiki.drop import drop_note
 from aiwiki.execution.ask import ask_question
 from aiwiki.llm import CompletionResult, LLMError
 from aiwiki.runner import (
+    _append_llm_receipt,
     _append_log,
     _build_ask_prompt,
     _build_compile_prompt,
@@ -102,6 +103,40 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(calls[1].args[0].timeout_seconds, 45)
         self.assertEqual(calls[0].args[1], self.root)
         self.assertEqual(calls[1].args[1], self.root)
+
+    def test_append_llm_receipt_writes_universal_audit(self) -> None:
+        event = {
+            "event": "run-ask",
+            "status": "failed",
+            "protocol": "research",
+            "run_id": "run-1",
+            "trace_id": "trace-llm",
+            "model_selected": "stub-model",
+        }
+
+        _append_llm_receipt(self.root, event)
+        _append_llm_receipt(self.root, event)
+
+        receipt_lines = (self.root / ".aiwiki/logs/llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        receipt_records = [json.loads(line) for line in receipt_lines if line.strip()]
+        self.assertEqual(len(receipt_records), 2)
+        self.assertTrue(all(record["event"] == "run-ask" for record in receipt_records))
+        self.assertTrue(all(record["created_at"] for record in receipt_records))
+        self.assertEqual(len(audit_records), 2)
+        self.assertEqual(audit_records[0]["source_stream"], "llm_receipts")
+        self.assertEqual(audit_records[0]["source_ref"], ".aiwiki/logs/llm-receipts.jsonl#L1")
+        self.assertEqual(audit_records[0]["event_type"], "failed")
+        self.assertEqual(audit_records[0]["occurred_at"], receipt_records[0]["created_at"])
+        self.assertEqual(audit_records[0]["trace_id"], "trace-llm")
+        self.assertEqual(audit_records[0]["subject"], {"kind": "failed", "id": "run-1"})
+        self.assertFalse(audit_records[0]["revert_supported"])
+        self.assertEqual(audit_records[1]["source_ref"], ".aiwiki/logs/llm-receipts.jsonl#L2")
+        self.assertNotEqual(audit_records[0]["audit_event_id"], audit_records[1]["audit_event_id"])
 
     def test_run_ask_uses_lean_prompt_immediately_when_requested(self) -> None:
         artifact_path = self.root / "output" / "reports" / "query-lean.md"

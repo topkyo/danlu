@@ -2649,10 +2649,18 @@ def _append_log(root: Path, event: dict[str, Any]) -> None:
 
 
 def _append_llm_receipt(root: Path, event: dict[str, Any]) -> None:
-    _append_jsonl_log(root, ".aiwiki/logs/llm-receipts.jsonl", event)
+    payload, line_number = _append_jsonl_log(root, ".aiwiki/logs/llm-receipts.jsonl", event)
+    from .execution.audit_preview import append_universal_audit_record
+
+    append_universal_audit_record(
+        root,
+        source_stream="llm_receipts",
+        source_ref=f".aiwiki/logs/llm-receipts.jsonl#L{line_number}",
+        document=payload,
+    )
 
 
-def _append_jsonl_log(root: Path, relative_log_path: str, event: dict[str, Any]) -> None:
+def _append_jsonl_log(root: Path, relative_log_path: str, event: dict[str, Any]) -> tuple[dict[str, Any], int]:
     ensure_layout(root)
     payload = {
         "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
@@ -2660,8 +2668,21 @@ def _append_jsonl_log(root: Path, relative_log_path: str, event: dict[str, Any])
     }
     log_path = root / relative_log_path
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    line_number = _next_jsonl_line_number(log_path)
     with log_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, sort_keys=True) + "\n")
+    return payload, line_number
+
+
+def _next_jsonl_line_number(path: Path) -> int:
+    if not path.exists():
+        return 1
+    count = 0
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                count += 1
+    return count + 1
 
 
 def _context_budget() -> int:
