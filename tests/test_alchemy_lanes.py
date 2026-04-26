@@ -16,7 +16,7 @@ from aiwiki.planner.dry_run import (
     preview_propose_primitive,
     preview_review_primitive,
 )
-from aiwiki.runner import run_alchemy_auto, run_alchemy_lane_apply, run_alchemy_review_apply
+from aiwiki.runner import run_alchemy_auto, run_alchemy_lane_apply, run_alchemy_propose_apply, run_alchemy_review_apply
 
 
 def _snapshot_files(root: Path) -> dict[str, bytes]:
@@ -361,14 +361,18 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         )
         for item in heavy["deferred_primitives"]:
             contract = item["apply_contract"]
-            self.assertEqual(contract["status"], "deferred")
             self.assertEqual(contract["primitive"], item["primitive"])
             self.assertTrue(contract["write_surfaces"])
             self.assertIn("execution-receipt v1", contract["receipt_schema"])
             self.assertIn("execution_receipt_history_append", contract["audit_event_schema"])
-            self.assertIn("required_before_apply", contract["revert_policy"])
             self.assertIn("trace_ids", contract["idempotency_key"])
             self.assertTrue(contract["backend_policy"])
+            if item["primitive"] == "propose":
+                self.assertEqual(contract["status"], "executable")
+                self.assertIn("non_revertible_proposal_generation", contract["revert_policy"])
+            else:
+                self.assertEqual(contract["status"], "deferred")
+                self.assertIn("required_before_apply", contract["revert_policy"])
         self.assertEqual(
             [item["primitive"] for item in light["deferred_primitives"]],
             ["judge", "distill", "review", "propose"],
@@ -927,9 +931,11 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(result["lane"], "heavy")
         self.assertTrue(result["dry_run"])
         self.assertFalse(result["side_effects_allowed"])
-        self.assertFalse(result["apply_supported"])
-        self.assertEqual(result["apply_blocker"], "missing_receipted_scoped_contract")
-        self.assertTrue(result["llm_required_for_apply"])
+        self.assertTrue(result["apply_supported"])
+        self.assertEqual(result["apply_blocker"], "")
+        self.assertFalse(result["lane_apply_supported"])
+        self.assertEqual(result["lane_apply_blocker"], "missing_receipted_scoped_contract")
+        self.assertFalse(result["llm_required_for_apply"])
         self.assertTrue(result["receipt_required_for_apply"])
         self.assertTrue(result["audit_required_for_apply"])
         self.assertTrue(result["proposal_plane_write_required_for_apply"])
@@ -945,8 +951,55 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(candidate["source_decision"], "enqueue-heavy")
         self.assertFalse(candidate["consumes_generate_proposal_decisions"])
         self.assertEqual(candidate["signal_ids"], ["sig-20260425-heavy01"])
-        self.assertEqual(candidate["apply_contract"]["status"], "deferred")
+        self.assertTrue(candidate["apply_supported"])
+        self.assertEqual(candidate["apply_target_file"], "prompts/ask.md")
+        self.assertEqual(candidate["apply_contract"]["status"], "executable")
         self.assertEqual(_snapshot_files(self.root), before)
+
+    def test_propose_apply_writes_l3_proposal_receipt_and_audit(self) -> None:
+        self._seed_lane_records()
+        prompt_path = self.root / "prompts/ask.md"
+        prompt_path.parent.mkdir(parents=True, exist_ok=True)
+        prompt_path.write_text("# Ask\n\nBaseline prompt.\n", encoding="utf-8")
+
+        first = run_alchemy_propose_apply(self.root, scope="all", note="draft proposal")
+        second = run_alchemy_propose_apply(self.root, scope="all", note="repeat")
+
+        self.assertEqual(first["status"], "applied")
+        self.assertEqual(first["generated_count"], 1)
+        self.assertEqual(first["proposal_ids"], ["alchemy-propose-scope-research-1"])
+        self.assertEqual(first["candidate_ids"], ["propose-scope-research-1"])
+        self.assertTrue(first["changed"])
+        self.assertFalse(second["changed"])
+        self.assertEqual(second["generated_count"], 0)
+        self.assertEqual(second["skipped"][0]["reason"], "already_exists")
+        self.assertEqual(first["idempotency_key"], second["idempotency_key"])
+        state = json.loads((self.root / ".aiwiki/state/l3-proposals.json").read_text(encoding="utf-8"))
+        proposal = state["proposals"][0]
+        self.assertEqual(proposal["proposal_id"], "alchemy-propose-scope-research-1")
+        self.assertEqual(proposal["target_file"], "prompts/ask.md")
+        self.assertEqual(proposal["state"], "candidate")
+        self.assertIn("aiwiki:alchemy-propose:start", proposal["patch"]["content"])
+        self.assertIn("propose-scope-research-1", proposal["patch"]["content"])
+        self.assertNotIn("aiwiki:alchemy-propose:start", (self.root / "prompts/ask.md").read_text(encoding="utf-8"))
+        receipt = json.loads((self.root / first["receipt_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(receipt["operation"], "alchemy-propose-generate")
+        self.assertEqual(receipt["subject_kind"], "alchemy_proposal_plane")
+        self.assertEqual(receipt["proposal_ids"], first["proposal_ids"])
+        self.assertFalse(receipt["revert_supported"])
+        runtime = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(runtime[-1]["event_type"], "alchemy-propose-generated")
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertIn("execution_receipts", {item["source_stream"] for item in audit_records})
+        self.assertIn("runtime_history", {item["source_stream"] for item in audit_records})
 
 
 class AlchemyLaneCLITests(unittest.TestCase):
@@ -1196,6 +1249,46 @@ class AlchemyLaneCLITests(unittest.TestCase):
             max_pages=5,
             max_tokens=7,
             limit=11,
+        )
+
+    def test_main_dispatches_alchemy_propose_apply(self) -> None:
+        with patch("aiwiki.cli.run_alchemy_propose_apply", return_value={"status": "applied", "primitive": "propose"}) as mocked:
+            code, payload, stderr = self._run_main(
+                [
+                    "alchemy",
+                    "propose",
+                    "all",
+                    "--apply",
+                    "--planner-log-path",
+                    "custom/planner-log.jsonl",
+                    "--signals-path",
+                    "custom/signals.jsonl",
+                    "--max-signals",
+                    "3",
+                    "--max-pages",
+                    "5",
+                    "--max-tokens",
+                    "7",
+                    "--limit",
+                    "11",
+                    "--note",
+                    "proposal",
+                ]
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["primitive"], "propose")
+        mocked.assert_called_once_with(
+            self.root,
+            scope="all",
+            planner_log_path=Path("custom/planner-log.jsonl"),
+            signals_path=Path("custom/signals.jsonl"),
+            max_signals=3,
+            max_pages=5,
+            max_tokens=7,
+            limit=11,
+            note="proposal",
         )
 
     def test_alchemy_lane_rejects_missing_mode(self) -> None:

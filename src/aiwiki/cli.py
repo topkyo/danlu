@@ -54,6 +54,7 @@ from .runner import (
     run_alchemy_legacy_migration_apply,
     run_alchemy_legacy_migration_preview,
     run_alchemy_promote,
+    run_alchemy_propose_apply,
     run_alchemy_propose_preview,
     run_alchemy_revert,
     run_alchemy_review_apply,
@@ -515,12 +516,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     propose_preview_mode = propose_preview_parser.add_mutually_exclusive_group(required=True)
     propose_preview_mode.add_argument("--dry-run", action="store_true", help="Preview only.")
+    propose_preview_mode.add_argument("--apply", action="store_true", help="Create scoped L3 proposal candidates.")
     propose_preview_parser.add_argument("--planner-log-path", type=Path, default=None)
     propose_preview_parser.add_argument("--signals-path", type=Path, default=None)
     propose_preview_parser.add_argument("--max-signals", type=int, default=None)
     propose_preview_parser.add_argument("--max-pages", type=int, default=None)
     propose_preview_parser.add_argument("--max-tokens", type=int, default=None)
     propose_preview_parser.add_argument("--limit", type=int, default=50)
+    propose_preview_parser.add_argument("--note", default=None)
     legacy_migration_parser = alchemy_subparsers.add_parser(
         "legacy-migration",
         help="Preview legacy wiki/elixirs entries that lack candidate tombstones.",
@@ -1055,16 +1058,29 @@ def main(argv: list[str] | None = None) -> int:
                         limit=args.limit,
                     )
             elif args.alchemy_lane == "propose":
-                result = run_alchemy_propose_preview(
-                    root,
-                    scope=args.scope,
-                    planner_log_path=args.planner_log_path,
-                    signals_path=args.signals_path,
-                    max_signals=args.max_signals,
-                    max_pages=args.max_pages,
-                    max_tokens=args.max_tokens,
-                    limit=args.limit,
-                )
+                if args.apply:
+                    result = run_alchemy_propose_apply(
+                        root,
+                        scope=args.scope,
+                        planner_log_path=args.planner_log_path,
+                        signals_path=args.signals_path,
+                        max_signals=args.max_signals,
+                        max_pages=args.max_pages,
+                        max_tokens=args.max_tokens,
+                        limit=args.limit,
+                        note=args.note,
+                    )
+                else:
+                    result = run_alchemy_propose_preview(
+                        root,
+                        scope=args.scope,
+                        planner_log_path=args.planner_log_path,
+                        signals_path=args.signals_path,
+                        max_signals=args.max_signals,
+                        max_pages=args.max_pages,
+                        max_tokens=args.max_tokens,
+                        limit=args.limit,
+                    )
             elif args.alchemy_lane == "auto":
                 result = run_alchemy_auto(
                     root,

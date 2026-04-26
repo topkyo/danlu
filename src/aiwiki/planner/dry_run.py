@@ -71,7 +71,7 @@ _DEFERRED_PRIMITIVES = {
             "propose",
             "Generate prompt or policy proposals from recurring failures and feedback.",
             "missing_receipted_scoped_contract",
-            "Land the L3 proposal schema, review queue integration, apply, revert, and receipts first.",
+            "Scoped propose apply is direct-only; keep lane apply deferred until lane receipt/revert semantics are explicit.",
         ),
     ),
     "light": (
@@ -153,7 +153,7 @@ _DEFERRED_APPLY_CONTRACTS = {
         "backend_policy": "no LLM required for enqueue; any optional model use must be explicit",
     },
     "propose": {
-        "status": "deferred",
+        "status": "executable",
         "primitive": "propose",
         "write_surfaces": [
             "output/_proposals/prompt/",
@@ -164,11 +164,11 @@ _DEFERRED_APPLY_CONTRACTS = {
             ".aiwiki/state/runtime-history.jsonl",
             ".aiwiki/state/audit.jsonl",
         ],
-        "receipt_schema": "execution-receipt v1; subject_kind=alchemy_lane_primitive; operation=alchemy-lane-primitive",
+        "receipt_schema": "execution-receipt v1; subject_kind=alchemy_proposal_plane; operation=alchemy-propose-generate",
         "audit_event_schema": "execution_receipt_history_append plus runtime_history direct append",
-        "revert_policy": "required_before_apply: define proposal-plane cleanup/reject semantics or explicit non-revertible declaration",
-        "idempotency_key": "primitive + lane + scope + target_ref + trace_ids",
-        "backend_policy": "no hidden backend choice; L3 target writes still require human accept after proposal generation",
+        "revert_policy": "non_revertible_proposal_generation: reject generated L3 proposal candidates through the existing review proposal workflow; target-file apply remains receipt-gated",
+        "idempotency_key": "primitive + scope + candidate_ids + trace_ids",
+        "backend_policy": "no LLM required for deterministic scoped proposal candidate generation; L3 target writes still require human accept",
     },
 }
 
@@ -509,7 +509,6 @@ def preview_propose_primitive(
         max_pages=max_pages,
         max_tokens=max_tokens,
     )
-    blocker = _apply_blocker_for_primitive("heavy", "propose")
     scope_preview = lane_plan.get("scope_preview") if isinstance(lane_plan.get("scope_preview"), dict) else _empty_scope_preview()
     all_candidates = _propose_preview_candidates(str(lane_plan.get("scope") or scope), scope_preview)
     candidates = all_candidates[:limit]
@@ -521,12 +520,14 @@ def preview_propose_primitive(
         "scope": lane_plan.get("scope") or (scope.strip() or "all"),
         "dry_run": True,
         "side_effects_allowed": False,
-        "apply_supported": False,
-        "apply_blocker": blocker,
-        "llm_required_for_apply": True,
+        "apply_supported": True,
+        "apply_blocker": "",
+        "lane_apply_supported": False,
+        "lane_apply_blocker": _apply_blocker_for_primitive("heavy", "propose"),
+        "llm_required_for_apply": False,
         "receipt_required_for_apply": True,
         "audit_required_for_apply": True,
-        "revert_policy_required_for_apply": True,
+        "revert_policy_required_for_apply": False,
         "proposal_plane_write_required_for_apply": True,
         "human_accept_required_after_apply": True,
         "apply_contract": _deferred_apply_contract("propose"),
@@ -973,15 +974,19 @@ def _propose_preview_candidates(scope: str, scope_preview: dict[str, Any]) -> li
 
     protocols = list(scope_preview.get("protocols") or [])
     common = {
-        "reason_codes": ["heavy_lane_dirty_scope", "missing_receipted_scoped_contract"],
-        "apply_supported": False,
-        "apply_blocker": _apply_blocker_for_primitive("heavy", "propose"),
-        "llm_required_for_apply": True,
+        "reason_codes": ["heavy_lane_dirty_scope", "scoped_propose_apply_supported"],
+        "apply_supported": True,
+        "apply_blocker": "",
+        "lane_apply_supported": False,
+        "lane_apply_blocker": _apply_blocker_for_primitive("heavy", "propose"),
+        "llm_required_for_apply": False,
         "receipt_required_for_apply": True,
         "audit_required_for_apply": True,
-        "revert_policy_required_for_apply": True,
+        "revert_policy_required_for_apply": False,
         "proposal_plane_write_required_for_apply": True,
         "human_accept_required_after_apply": True,
+        "apply_proposal_kind": "prompt_proposal",
+        "apply_target_file": "prompts/ask.md",
         "apply_contract": _deferred_apply_contract("propose"),
         "signal_ids": list(scope_preview.get("signal_ids") or []),
         "trace_ids": list(scope_preview.get("trace_ids") or []),

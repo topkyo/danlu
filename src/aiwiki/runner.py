@@ -1837,6 +1837,164 @@ def run_alchemy_propose_preview(
     )
 
 
+def run_alchemy_propose_apply(
+    root: Path,
+    *,
+    scope: str,
+    planner_log_path: Path | None = None,
+    signals_path: Path | None = None,
+    decision_mode: str | None = None,
+    max_signals: int | None = None,
+    max_pages: int | None = None,
+    max_tokens: int | None = None,
+    limit: int = 50,
+    note: str | None = None,
+) -> dict[str, Any]:
+    preview = run_alchemy_propose_preview(
+        root,
+        scope=scope,
+        planner_log_path=planner_log_path,
+        signals_path=signals_path,
+        decision_mode=decision_mode,
+        max_signals=max_signals,
+        max_pages=max_pages,
+        max_tokens=max_tokens,
+        limit=limit,
+    )
+    status = str(preview.get("status") or "")
+    if status != "ok":
+        raise RuntimeError(f"alchemy propose apply requires an ok dry-run preview (got {status})")
+    candidates = [item for item in preview.get("candidates", []) if isinstance(item, dict)]
+    if not candidates:
+        raise RuntimeError("alchemy propose apply requires a non-empty dry-run preview")
+
+    from .app_execution import append_execution_receipt_history
+    from .app_state import execution_receipt_history_path
+    from .execution.l3_proposals import create_l3_proposal, load_l3_proposal_state
+    from .render.paths import execution_receipt_path
+
+    ensure_layout(root)
+    existing_ids = {
+        str(item.get("proposal_id") or "")
+        for item in load_l3_proposal_state(root).get("proposals", [])
+        if isinstance(item, dict)
+    }
+    generated: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    planner_log_ref = str(preview.get("planner_log_path") or "")
+
+    for candidate in candidates:
+        candidate_id = str(candidate.get("candidate_id") or "")
+        proposal_id = slugify(f"alchemy-{candidate_id or 'propose'}")
+        if proposal_id in existing_ids:
+            skipped.append({"candidate_id": candidate_id, "proposal_id": proposal_id, "reason": "already_exists"})
+            continue
+        target_file = str(candidate.get("apply_target_file") or "prompts/ask.md")
+        signal_ids = [str(item) for item in candidate.get("signal_ids", []) if isinstance(item, str) and item.strip()]
+        evidence_refs = [f"{planner_log_ref}#{signal_id}" for signal_id in signal_ids if planner_log_ref]
+        content = _alchemy_propose_prompt_content(root, target_file=target_file, candidate=candidate, scope=scope)
+        result = create_l3_proposal(
+            root,
+            kind=str(candidate.get("apply_proposal_kind") or "prompt_proposal"),
+            proposal_id=proposal_id,
+            target_file=target_file,
+            content=content,
+            rationale=f"Generated from scoped alchemy propose preview candidate {candidate_id}. Manual accept is required.",
+            evidence_refs=evidence_refs,
+            signal_ids=signal_ids,
+            pattern="failure_cluster",
+        )
+        result["candidate_id"] = candidate_id
+        generated.append(result)
+        existing_ids.add(proposal_id)
+
+    applied_at = utc_now()
+    action_id = _unique_alchemy_propose_action_id(root, applied_at=applied_at)
+    receipt_path = execution_receipt_path(root, action_id)
+    audit_path = relative_path(root, execution_receipt_history_path(root))
+    trace_ids = _preview_trace_ids(preview)
+    trace_id = trace_ids[0] if trace_ids else ""
+    candidate_ids = [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")]
+    proposal_ids = [str(item.get("proposal_id") or "") for item in generated if item.get("proposal_id")]
+    idempotency_key = _alchemy_propose_idempotency_key(scope=scope, candidate_ids=candidate_ids, trace_ids=trace_ids)
+    receipt = {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-alchemy-propose",
+        "applied_at": applied_at,
+        "operation": "alchemy-propose-generate",
+        "action_id": action_id,
+        "trace_id": trace_id,
+        "trace_ids": trace_ids,
+        "title": f"Alchemy propose generate {scope}",
+        "status": "applied",
+        "protocol": _first_preview_protocol(preview),
+        "subject_kind": "alchemy_proposal_plane",
+        "subject_id": f"propose:{scope}",
+        "apply_mode": "alchemy-propose",
+        "note": note or "",
+        "primary_path": "output/_proposals/prompt",
+        "secondary_path": ".aiwiki/state/l3-proposals.json",
+        "receipt_path": relative_path(root, receipt_path),
+        "scope": scope,
+        "primitive": "propose",
+        "candidate_ids": candidate_ids,
+        "candidate_count": len(candidates),
+        "proposal_ids": proposal_ids,
+        "generated_count": len(generated),
+        "skipped_count": len(skipped),
+        "skipped": skipped,
+        "idempotency_key": idempotency_key,
+        "changed": bool(generated),
+        "revert_supported": False,
+        "revert_policy": "non_revertible_proposal_generation: reject generated L3 proposal candidates through review proposal workflow; target-file apply remains receipt-gated",
+        "audit_stream": "execution_receipts",
+        "audit_event": "execution_receipt_history_append",
+        "audit_path": audit_path,
+        "source_preview": _propose_preview_receipt_summary(preview, candidates),
+        "result_summary": {"generated": generated, "skipped": skipped},
+    }
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    append_execution_receipt_history(root, receipt)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "alchemy-propose-generated",
+            "recorded_at": applied_at,
+            "status": "completed",
+            "scope": scope,
+            "candidate_count": len(candidates),
+            "candidate_ids": candidate_ids,
+            "generated_count": len(generated),
+            "proposal_ids": proposal_ids,
+            "receipt_path": relative_path(root, receipt_path),
+            "trace_id": trace_id,
+            "trace_ids": trace_ids,
+            "subject_kind": "alchemy_proposal_plane",
+            "subject_id": f"propose:{scope}",
+        },
+    )
+    return {
+        "status": "applied",
+        "primitive": "propose",
+        "scope": scope,
+        "candidate_count": len(candidates),
+        "candidate_ids": candidate_ids,
+        "generated_count": len(generated),
+        "proposal_ids": proposal_ids,
+        "skipped_count": len(skipped),
+        "skipped": skipped,
+        "receipt_path": relative_path(root, receipt_path),
+        "audit_path": audit_path,
+        "trace_id": trace_id,
+        "trace_ids": trace_ids,
+        "idempotency_key": idempotency_key,
+        "changed": bool(generated),
+        "preview": preview,
+    }
+
+
 def run_alchemy_lane_apply(
     root: Path,
     *,
@@ -2235,6 +2393,19 @@ def _review_preview_receipt_summary(preview: dict[str, Any], candidates: list[di
     }
 
 
+def _propose_preview_receipt_summary(preview: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "status": str(preview.get("status") or ""),
+        "scope": str(preview.get("scope") or ""),
+        "selected_count": int(preview.get("selected_count") or 0),
+        "candidate_count": len(candidates),
+        "candidate_ids": [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")],
+        "scope_preview": preview.get("scope_preview") if isinstance(preview.get("scope_preview"), dict) else {},
+        "apply_contract": preview.get("apply_contract") if isinstance(preview.get("apply_contract"), dict) else {},
+        "human_accept_required_after_apply": True,
+    }
+
+
 def _preview_trace_ids(preview: dict[str, Any]) -> list[str]:
     scope_preview = preview.get("scope_preview")
     if not isinstance(scope_preview, dict):
@@ -2265,6 +2436,51 @@ def _alchemy_review_idempotency_key(*, scope: str, candidate_ids: list[str], tra
     }
     digest = sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
     return f"alchemy-review:{digest}"
+
+
+def _alchemy_propose_idempotency_key(*, scope: str, candidate_ids: list[str], trace_ids: list[str]) -> str:
+    payload = {
+        "primitive": "propose",
+        "scope": scope,
+        "candidate_ids": sorted(candidate_ids),
+        "trace_ids": sorted(trace_ids),
+    }
+    digest = sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    return f"alchemy-propose:{digest}"
+
+
+def _alchemy_propose_prompt_content(root: Path, *, target_file: str, candidate: dict[str, Any], scope: str) -> str:
+    target = root / target_file
+    current = target.read_text(encoding="utf-8", errors="replace")
+    signal_ids = ", ".join(_string_values(candidate.get("signal_ids"))) or "none"
+    candidate_id = str(candidate.get("candidate_id") or "")
+    target_ref = str(candidate.get("target_ref") or "")
+    block = "\n".join(
+        [
+            "",
+            "<!-- aiwiki:alchemy-propose:start -->",
+            f"<!-- scope: {scope} -->",
+            f"<!-- candidate_id: {candidate_id} -->",
+            f"<!-- target_ref: {target_ref} -->",
+            f"<!-- signal_ids: {signal_ids} -->",
+            "<!-- Manual review is required before accepting this proposal. -->",
+            "<!-- aiwiki:alchemy-propose:end -->",
+        ]
+    )
+    return current.rstrip() + block + "\n"
+
+
+def _unique_alchemy_propose_action_id(root: Path, *, applied_at: str) -> str:
+    from .render.paths import execution_receipt_path
+
+    timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
+    base = slugify(f"alchemy-propose-{timestamp}")
+    candidate = base
+    n = 2
+    while execution_receipt_path(root, candidate).exists():
+        candidate = f"{base}-{n}"
+        n += 1
+    return candidate
 
 
 def _unique_alchemy_review_action_id(root: Path, *, applied_at: str) -> str:
