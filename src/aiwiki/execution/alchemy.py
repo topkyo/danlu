@@ -169,6 +169,113 @@ def preview_legacy_elixir_migration(root: Path, *, limit: int = 50) -> dict[str,
     }
 
 
+def apply_legacy_elixir_migration(root: Path, *, limit: int = 50, note: str | None = None) -> dict[str, Any]:
+    preview = preview_legacy_elixir_migration(root, limit=limit)
+    targets = [record for record in preview["records"] if record.get("migration_required")]
+    applied_at_dt = datetime.now(timezone.utc)
+    applied_at = applied_at_dt.isoformat()
+    migrated: list[dict[str, Any]] = []
+
+    for record in targets:
+        elixir_id = _resolve_elixir_id(root, str(record.get("elixir_id") or ""))
+        settled_path = _settled_path(root, elixir_id)
+        candidate_path = _candidate_path(root, elixir_id)
+        if candidate_path.exists():
+            continue
+        frontmatter = _parse_elixir_frontmatter(settled_path)
+        if str(frontmatter.get("elixir_state") or "") != "settled":
+            continue
+        original = settled_path.read_text(encoding="utf-8", errors="replace")
+        body = original.split("---", 2)[-1].lstrip("\n")
+        promoted_at = str(frontmatter.get("promoted_at") or "").strip() or applied_at
+        tombstone_frontmatter = dict(frontmatter)
+        tombstone_frontmatter.pop("sealed_at", None)
+        tombstone_frontmatter.update(
+            {
+                "elixir_state": "superseded",
+                "superseded_by": f"{ELIXIR_DIR}/{elixir_id}.md",
+                "promoted_at": promoted_at,
+            }
+        )
+        candidate_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_atomic_text(candidate_path, _render_elixir_document(tombstone_frontmatter, body))
+        _validate_state_for_path(root, "superseded", candidate_path)
+        migrated.append(
+            {
+                "elixir_id": elixir_id,
+                "wiki_path": relative_path(root, settled_path),
+                "candidate_path": relative_path(root, candidate_path),
+                "promoted_at": promoted_at,
+                "candidate_sha256": compute_file_sha256(candidate_path),
+            }
+        )
+
+    receipt_path = ""
+    if migrated:
+        receipt = _build_legacy_migration_receipt(root, migrated=migrated, applied_at=applied_at_dt, note=note)
+        receipt_path = str(receipt.get("receipt_path") or "")
+        path = root / receipt_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        append_execution_receipt_history(root, receipt)
+
+    return {
+        **preview,
+        "mode": "apply",
+        "apply": True,
+        "side_effects_allowed": True,
+        "applied_at": applied_at,
+        "migrated_count": len(migrated),
+        "migrated": migrated,
+        "receipt_path": receipt_path,
+    }
+
+
+def _build_legacy_migration_receipt(
+    root: Path,
+    *,
+    migrated: list[dict[str, Any]],
+    applied_at: datetime,
+    note: str | None,
+) -> dict[str, Any]:
+    action_id = _unique_legacy_migration_action_id(root, applied_at)
+    receipt_path = root / "output" / "control" / "execution-receipts" / f"{action_id}.json"
+    return {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-elixir-legacy-migration",
+        "applied_at": applied_at.isoformat(),
+        "operation": "legacy-migrate",
+        "action_id": action_id,
+        "title": "Migrate legacy elixir tombstones",
+        "status": "resolved",
+        "protocol": "",
+        "subject_kind": "elixir_legacy_migration",
+        "subject_id": action_id,
+        "apply_mode": "elixir-legacy-migration",
+        "note": note or "",
+        "primary_path": "",
+        "secondary_path": "",
+        "receipt_path": relative_path(root, receipt_path),
+        "bundle": {
+            "created_tombstones": migrated,
+            "created_count": len(migrated),
+        },
+        "safe_apply_preview": None,
+        "revert_supported": False,
+    }
+
+
+def _unique_legacy_migration_action_id(root: Path, applied_at: datetime) -> str:
+    epoch_ms = int(applied_at.timestamp() * 1000)
+    candidate = f"elixir-legacy-migration-{epoch_ms}"
+    n = 2
+    while (root / "output" / "control" / "execution-receipts" / f"{candidate}.json").exists():
+        candidate = f"elixir-legacy-migration-{epoch_ms}-{n}"
+        n += 1
+    return candidate
+
+
 def _validate_source_outputs(root: Path, refs: list[str], *, allowed: set[str]) -> None:
     if not refs:
         raise ValueError("source outputs cannot be empty")

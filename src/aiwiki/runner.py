@@ -230,6 +230,12 @@ def run_alchemy_legacy_migration_preview(root: Path, *, limit: int = 50) -> dict
     return preview_legacy_elixir_migration(root, limit=limit)
 
 
+def run_alchemy_legacy_migration_apply(root: Path, *, limit: int = 50, note: str | None = None) -> dict[str, Any]:
+    from .execution.alchemy import apply_legacy_elixir_migration
+
+    return apply_legacy_elixir_migration(root, limit=limit, note=note)
+
+
 def run_audit_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
     from .execution.audit_preview import preview_universal_audit_stream
 

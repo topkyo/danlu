@@ -280,6 +280,13 @@ class CLITests(unittest.TestCase):
                 {"limit": 4},
             ),
             (
+                "alchemy-legacy-migration-apply",
+                ["alchemy", "legacy-migration", "--apply", "--limit", "4", "--note", "migrate"],
+                "run_alchemy_legacy_migration_apply",
+                (self.root,),
+                {"limit": 4, "note": "migrate"},
+            ),
+            (
                 "l3-proposal-create",
                 [
                     "l3-proposal-create",

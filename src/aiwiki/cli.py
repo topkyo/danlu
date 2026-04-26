@@ -48,6 +48,7 @@ from .runner import (
     run_alchemy_finalize,
     run_alchemy_lane_apply,
     run_alchemy_lane_dry_run,
+    run_alchemy_legacy_migration_apply,
     run_alchemy_legacy_migration_preview,
     run_alchemy_promote,
     run_alchemy_revert,
@@ -441,8 +442,11 @@ def build_parser() -> argparse.ArgumentParser:
         "legacy-migration",
         help="Preview legacy wiki/elixirs entries that lack candidate tombstones.",
     )
-    legacy_migration_parser.add_argument("--dry-run", action="store_true", help="Required; preview only.")
+    legacy_migration_mode = legacy_migration_parser.add_mutually_exclusive_group(required=True)
+    legacy_migration_mode.add_argument("--dry-run", action="store_true", help="Preview only.")
+    legacy_migration_mode.add_argument("--apply", action="store_true", help="Create missing candidate tombstones.")
     legacy_migration_parser.add_argument("--limit", type=int, default=50)
+    legacy_migration_parser.add_argument("--note", default=None)
 
     l3_create_parser = subparsers.add_parser(
         "l3-proposal-create",
@@ -872,9 +876,10 @@ def main(argv: list[str] | None = None) -> int:
             result = {"elixir_id": args.elixir_id, "path": str(path.relative_to(root))}
         elif args.command == "alchemy":
             if args.alchemy_lane == "legacy-migration":
-                if not args.dry_run:
-                    raise ValueError("alchemy legacy-migration requires --dry-run")
-                result = run_alchemy_legacy_migration_preview(root, limit=args.limit)
+                if args.dry_run:
+                    result = run_alchemy_legacy_migration_preview(root, limit=args.limit)
+                else:
+                    result = run_alchemy_legacy_migration_apply(root, limit=args.limit, note=args.note)
             else:
                 if args.dry_run == args.apply:
                     raise ValueError("alchemy heavy/light requires exactly one of --dry-run or --apply")

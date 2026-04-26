@@ -25,6 +25,7 @@ from aiwiki.execution.alchemy import (
     _validate_source_outputs,
     _validate_state_for_path,
     _write_elixir_markdown,
+    apply_legacy_elixir_migration,
     demote_elixir,
     distill_elixir,
     finalize_elixir,
@@ -565,6 +566,46 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         self.assertEqual(records[conflict_id]["status"], "candidate_conflict")
         self.assertFalse(_candidate_path(self.root, legacy_id).exists())
         self.assertFalse((self.root / ".aiwiki" / "state" / "execution-receipts.jsonl").exists())
+
+    def test_legacy_migration_apply_creates_tombstone_and_receipt(self) -> None:
+        legacy_id = "legacy-settled"
+        conflict_id = "conflict-settled"
+        self._write_stub_elixir(_settled_path(self.root, legacy_id), elixir_id=legacy_id, state="settled")
+        self._write_stub_elixir(_settled_path(self.root, conflict_id), elixir_id=conflict_id, state="settled")
+        self._write_stub_elixir(_candidate_path(self.root, conflict_id), elixir_id=conflict_id, state="candidate")
+        settled_before = _settled_path(self.root, legacy_id).read_text(encoding="utf-8")
+
+        result = apply_legacy_elixir_migration(self.root, note="migrate legacy tombstones")
+
+        candidate_path = _candidate_path(self.root, legacy_id)
+        candidate_frontmatter = _parse_elixir_frontmatter(candidate_path)
+        self.assertEqual(result["mode"], "apply")
+        self.assertTrue(result["side_effects_allowed"])
+        self.assertEqual(result["migrated_count"], 1)
+        self.assertEqual(result["migrated"][0]["elixir_id"], legacy_id)
+        self.assertEqual(_settled_path(self.root, legacy_id).read_text(encoding="utf-8"), settled_before)
+        self.assertEqual(candidate_frontmatter["elixir_state"], "superseded")
+        self.assertEqual(candidate_frontmatter["superseded_by"], f"wiki/elixirs/{legacy_id}.md")
+        self.assertTrue(candidate_frontmatter["promoted_at"])
+        self.assertEqual(_parse_elixir_frontmatter(_candidate_path(self.root, conflict_id))["elixir_state"], "candidate")
+
+        receipt = json.loads((self.root / result["receipt_path"]).read_text(encoding="utf-8"))
+        history = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki" / "state" / "execution-receipts.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki" / "state" / "audit.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(receipt["operation"], "legacy-migrate")
+        self.assertEqual(receipt["subject_kind"], "elixir_legacy_migration")
+        self.assertEqual(receipt["bundle"]["created_count"], 1)
+        self.assertEqual(receipt["bundle"]["created_tombstones"][0]["candidate_path"], f"output/_candidates/elixirs/{legacy_id}.md")
+        self.assertEqual(history[-1]["action_id"], receipt["action_id"])
+        self.assertTrue(any(record["source_stream"] == "execution_receipts" and record["subject"]["id"] == receipt["action_id"] for record in audit_records))
 
     def test_promote_writes_receipt_and_history(self) -> None:
         elixir_id = self._start_candidate_elixir()
