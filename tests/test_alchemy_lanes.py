@@ -345,6 +345,39 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(lane["reason"], "no_apply_supported_primitives")
         self.assertEqual(lane["selected_primitives"], [])
 
+    def test_auto_scheduler_selects_distill_only_when_heavy_requested(self) -> None:
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [self._signal("sig-20260425-heavy01", severity="high", protocol="research", elixir_refs=["elixir-z"])],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [self._planner("sig-20260425-heavy01", decision="enqueue-heavy", mode="execute")],
+        )
+
+        result = run_alchemy_auto(self.root, apply=False, lanes=["heavy"], primitives=["distill"])
+
+        lane = result["lane_results"][0]
+        self.assertEqual(lane["status"], "ready")
+        self.assertEqual(lane["selected_primitives"], ["distill"])
+
+    def test_auto_scheduler_does_not_select_distill_for_light_lane(self) -> None:
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [self._signal("sig-20260425-light01", severity="medium", protocol="ops", elixir_refs=["elixir-z"])],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [self._planner("sig-20260425-light01", decision="enqueue-light", mode="execute")],
+        )
+
+        result = run_alchemy_auto(self.root, apply=False, lanes=["light"], primitives=["distill"])
+
+        lane = result["lane_results"][0]
+        self.assertEqual(lane["status"], "skipped")
+        self.assertEqual(lane["reason"], "no_apply_supported_primitives")
+        self.assertEqual(lane["selected_primitives"], [])
+
     def test_auto_scheduler_apply_invokes_requested_heavy_review(self) -> None:
         self._write_jsonl(
             ".aiwiki/state/signals.jsonl",
@@ -394,6 +427,31 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(mocked.call_args.kwargs["primitives"], ["propose"])
         self.assertEqual(result["status"], "applied")
         self.assertEqual(result["lane_results"][0]["selected_primitives"], ["propose"])
+
+    def test_auto_scheduler_apply_invokes_requested_heavy_distill(self) -> None:
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [self._signal("sig-20260425-heavy01", severity="high", protocol="research", elixir_refs=["elixir-z"])],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [self._planner("sig-20260425-heavy01", decision="enqueue-heavy", mode="execute")],
+        )
+        applied = {
+            "status": "applied",
+            "lane": "heavy",
+            "scope": "all",
+            "primitives": ["distill"],
+            "plan": {"scope_preview": {"trace_ids": ["550e8400-e29b-41d4-a716-446655440000"]}},
+        }
+
+        with patch("aiwiki.runner.run_alchemy_lane_apply", return_value=applied) as mocked:
+            result = run_alchemy_auto(self.root, apply=True, lanes=["heavy"], primitives=["distill"], note="auto distill")
+
+        mocked.assert_called_once()
+        self.assertEqual(mocked.call_args.kwargs["primitives"], ["distill"])
+        self.assertEqual(result["status"], "applied")
+        self.assertEqual(result["lane_results"][0]["selected_primitives"], ["distill"])
 
     def test_auto_scheduler_apply_invokes_supported_primitives_and_writes_runtime_history(self) -> None:
         self._write_jsonl(

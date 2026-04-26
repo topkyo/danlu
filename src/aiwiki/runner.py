@@ -2371,6 +2371,7 @@ def _auto_primitives_for_lane(
     wanted = requested_primitives or defaults
     auto_supported_primitives = {"compile", "lint", "nightly"}
     if requested_primitives and lane == "heavy":
+        auto_supported_primitives.add("distill")
         auto_supported_primitives.add("review")
         auto_supported_primitives.add("propose")
     supported = {
