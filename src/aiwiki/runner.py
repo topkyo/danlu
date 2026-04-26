@@ -254,6 +254,19 @@ def run_planner_log_rollback_preview(
     return preview_planner_log_rollback(root, signal_id=signal_id, trace_id=trace_id, limit=limit)
 
 
+def run_planner_log_rollback(
+    root: Path,
+    *,
+    signal_id: str | None = None,
+    trace_id: str | None = None,
+    limit: int = 20,
+    apply: bool = False,
+) -> dict[str, Any]:
+    from .planner.rollback import apply_planner_log_rollback_marker
+
+    return apply_planner_log_rollback_marker(root, signal_id=signal_id, trace_id=trace_id, limit=limit, apply=apply)
+
+
 def create_client(root: Path, timeout_seconds: int | None = None) -> SupportsComplete:
     config = LLMConfig.from_env()
     if timeout_seconds is not None:

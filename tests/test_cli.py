@@ -392,7 +392,7 @@ class CLITests(unittest.TestCase):
                 "planner-log-rollback",
                 [
                     "planner-log-rollback",
-                    "--dry-run",
+                    "--apply",
                     "--signal-id",
                     "sig-20260424-abc123",
                     "--trace-id",
@@ -400,12 +400,13 @@ class CLITests(unittest.TestCase):
                     "--limit",
                     "5",
                 ],
-                "run_planner_log_rollback_preview",
+                "run_planner_log_rollback",
                 (self.root,),
                 {
                     "signal_id": "sig-20260424-abc123",
                     "trace_id": "550e8400-e29b-41d4-a716-446655440000",
                     "limit": 5,
+                    "apply": True,
                 },
             ),
             (

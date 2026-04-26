@@ -66,6 +66,7 @@ from .runner import (
     run_lint,
     run_nightly,
     run_planner_log_list,
+    run_planner_log_rollback,
     run_planner_log_rollback_preview,
     run_promote,
     run_protocol_learn_add,
@@ -251,7 +252,9 @@ def build_parser() -> argparse.ArgumentParser:
         "planner-log-rollback",
         help="Preview append-only planner-log rollback markers without writing them.",
     )
-    planner_log_rollback_parser.add_argument("--dry-run", action="store_true", help="Required; preview only.")
+    planner_log_rollback_mode = planner_log_rollback_parser.add_mutually_exclusive_group(required=True)
+    planner_log_rollback_mode.add_argument("--dry-run", action="store_true", help="Preview without writing rollback markers.")
+    planner_log_rollback_mode.add_argument("--apply", action="store_true", help="Append missing rollback markers.")
     planner_log_rollback_parser.add_argument("--signal-id", default=None)
     planner_log_rollback_parser.add_argument("--trace-id", default=None)
     planner_log_rollback_parser.add_argument("--limit", type=int, default=20)
@@ -976,14 +979,21 @@ def main(argv: list[str] | None = None) -> int:
                     or "(no planner decisions)"
                 )
         elif args.command == "planner-log-rollback":
-            if not args.dry_run:
-                raise ValueError("planner-log-rollback requires --dry-run")
-            result = run_planner_log_rollback_preview(
-                root,
-                signal_id=args.signal_id,
-                trace_id=args.trace_id,
-                limit=args.limit,
-            )
+            if args.dry_run:
+                result = run_planner_log_rollback_preview(
+                    root,
+                    signal_id=args.signal_id,
+                    trace_id=args.trace_id,
+                    limit=args.limit,
+                )
+            else:
+                result = run_planner_log_rollback(
+                    root,
+                    signal_id=args.signal_id,
+                    trace_id=args.trace_id,
+                    limit=args.limit,
+                    apply=True,
+                )
         elif args.command == "audit-preview":
             if not args.dry_run:
                 raise ValueError("audit-preview requires --dry-run")

@@ -4,8 +4,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ..app_utils import sha256_bytes
 from .log_writer import _PLANNER_LOG_REL_PATH
 from .schema import compute_planner_log_dedupe_key, validate_planner_log_record
+
+_ROLLBACK_LOG_REL_PATH = ".aiwiki/state/planner-log-rollback.jsonl"
 
 
 def preview_planner_log_rollback(
@@ -52,6 +55,39 @@ def preview_planner_log_rollback(
     }
 
 
+def apply_planner_log_rollback_marker(
+    root: Path,
+    *,
+    signal_id: str | None = None,
+    trace_id: str | None = None,
+    limit: int = 20,
+    apply: bool = False,
+) -> dict[str, Any]:
+    preview = preview_planner_log_rollback(root, signal_id=signal_id, trace_id=trace_id, limit=limit)
+    marker_path = root / _ROLLBACK_LOG_REL_PATH
+    markers = [_marker_from_preview_record(record) for record in preview["records"] if isinstance(record, dict)]
+    existing_ids = _existing_marker_ids(marker_path)
+    appendable = [marker for marker in markers if marker["rollback_marker_id"] not in existing_ids]
+    result = {
+        **preview,
+        "apply": apply,
+        "rollback_log_path": _ROLLBACK_LOG_REL_PATH,
+        "appended_count": 0,
+        "skipped_existing_count": len(markers) - len(appendable),
+        "markers": markers,
+    }
+    if not apply:
+        return result
+
+    if appendable:
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        with marker_path.open("a", encoding="utf-8") as handle:
+            for marker in appendable:
+                handle.write(json.dumps(marker, ensure_ascii=False, sort_keys=True) + "\n")
+        result["appended_count"] = len(appendable)
+    return result
+
+
 def _iter_planner_log(path: Path) -> list[tuple[int, dict[str, Any]]]:
     if not path.exists():
         return []
@@ -87,3 +123,44 @@ def _rollback_preview_record(line_number: int, record: dict[str, Any]) -> dict[s
         "rollback_strategy": "append_marker",
         "marker_planned": True,
     }
+
+
+def _marker_from_preview_record(record: dict[str, Any]) -> dict[str, Any]:
+    payload = {
+        "source_ref": str(record.get("source_ref") or ""),
+        "signal_id": str(record.get("signal_id") or ""),
+        "trace_id": str(record.get("trace_id") or ""),
+        "decision": str(record.get("decision") or ""),
+        "mode": str(record.get("mode") or ""),
+    }
+    digest = sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))[:20]
+    return {
+        "schema_version": 1,
+        "rollback_marker_id": f"planner-rollback-{digest}",
+        **payload,
+        "dedupe_key": str(record.get("dedupe_key") or ""),
+        "decided_at": str(record.get("decided_at") or ""),
+        "rollback_strategy": "append_marker",
+        "delete_supported": False,
+    }
+
+
+def _existing_marker_ids(path: Path) -> set[str]:
+    ids: set[str] = set()
+    if not path.exists():
+        return ids
+    with path.open("r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            payload = raw_line.strip()
+            if not payload:
+                continue
+            try:
+                record = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(record, dict):
+                continue
+            rollback_marker_id = record.get("rollback_marker_id")
+            if isinstance(rollback_marker_id, str) and rollback_marker_id:
+                ids.add(rollback_marker_id)
+    return ids

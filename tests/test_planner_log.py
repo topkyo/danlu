@@ -14,7 +14,7 @@ from unittest.mock import patch
 import aiwiki.planner.log_writer as log_writer
 from aiwiki.cli import build_parser, main
 from aiwiki.planner.log_writer import write_planner_log
-from aiwiki.planner.rollback import preview_planner_log_rollback
+from aiwiki.planner.rollback import apply_planner_log_rollback_marker, preview_planner_log_rollback
 from aiwiki.planner.schema import (
     DECISIONS,
     MODES,
@@ -766,6 +766,31 @@ class TestPlannerLogRollbackPreview(unittest.TestCase):
     def test_preview_rejects_non_positive_limit(self) -> None:
         with self.assertRaisesRegex(ValueError, "limit must be a positive integer"):
             preview_planner_log_rollback(self.root, limit=0)
+
+    def test_apply_writes_rollback_markers_idempotently_without_mutating_planner_log(self) -> None:
+        before = self._write_planner_log(
+            [
+                self._record("sig-20260424-rollback01", "550e8400-e29b-41d4-a716-446655440000"),
+                self._record("sig-20260424-rollback02", "550e8400-e29b-41d4-a716-446655440001"),
+            ]
+        )
+
+        dry_run = apply_planner_log_rollback_marker(self.root, limit=10, apply=False)
+        self.assertEqual(dry_run["appended_count"], 0)
+        self.assertFalse((self.root / ".aiwiki/state/planner-log-rollback.jsonl").exists())
+        first = apply_planner_log_rollback_marker(self.root, limit=10, apply=True)
+        second = apply_planner_log_rollback_marker(self.root, limit=10, apply=True)
+
+        self.assertEqual(first["appended_count"], 2)
+        self.assertEqual(first["skipped_existing_count"], 0)
+        self.assertEqual(second["appended_count"], 0)
+        self.assertEqual(second["skipped_existing_count"], 2)
+        markers = _read_jsonl(self.root / ".aiwiki/state/planner-log-rollback.jsonl")
+        self.assertEqual(len(markers), 2)
+        self.assertEqual(len({marker["rollback_marker_id"] for marker in markers}), 2)
+        self.assertEqual(markers[0]["rollback_strategy"], "append_marker")
+        self.assertFalse(markers[0]["delete_supported"])
+        self.assertEqual((self.root / ".aiwiki/state/planner-log.jsonl").read_text(encoding="utf-8"), before)
 
 
 class TestCorruptFailFast(_FixtureCase):
