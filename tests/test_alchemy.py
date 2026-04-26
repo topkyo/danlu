@@ -1218,6 +1218,19 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         self.assertEqual(receipt["bundle"].get("source_receipt_applied_at"), promote_receipt["applied_at"])
         self.assertEqual(receipt["bundle"].get("source_receipt_action_id"), promote_receipt["action_id"])
         self.assertEqual(receipt["note"], "undo")
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki" / "state" / "audit.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        revert_audit = [
+            record
+            for record in audit_records
+            if record["source_stream"] == "execution_receipts" and record["subject"] == {"kind": "elixir_revert", "id": elixir_id}
+        ]
+        self.assertEqual(len(revert_audit), 1)
+        self.assertEqual(revert_audit[0]["event_type"], "revert")
+        self.assertEqual(revert_audit[0]["source_ref"], ".aiwiki/state/execution-receipts.jsonl#L2")
 
     def test_revert_writes_dependency_breaks_in_bundle(self) -> None:
         elixir_id = self._start_candidate_elixir(topic="revert-break-source")
