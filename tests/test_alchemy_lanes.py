@@ -312,6 +312,62 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(result["primitive_results"], [])
         mocked.assert_called_once_with(self.root, ["act-1", "act-2"], note="ship", dry_run=False)
 
+    def test_apply_writes_lane_runtime_history_audit_events(self) -> None:
+        self._seed_lane_records()
+
+        with patch("aiwiki.app_compile.apply_machine_memory_actions_batch", return_value={"receipt_path": "receipt.json"}):
+            result = run_alchemy_lane_apply(
+                self.root,
+                lane="heavy",
+                scope="all",
+                action_ids=["act-1"],
+                primitives=[],
+                note="ship",
+            )
+
+        self.assertEqual(result["status"], "applied")
+        history = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual([item["event_type"] for item in history], ["alchemy-lane-started", "alchemy-lane-completed"])
+        self.assertEqual([item["status"] for item in history], ["started", "completed"])
+        for event in history:
+            self.assertEqual(event["lane"], "heavy")
+            self.assertEqual(event["scope"], "all")
+            self.assertEqual(event["action_ids"], ["act-1"])
+            self.assertEqual(event["primitives"], [])
+            self.assertEqual(event["selected_count"], 1)
+            self.assertEqual(event["trace_id"], "550e8400-e29b-41d4-a716-446655440000")
+            self.assertEqual(event["trace_ids"], ["550e8400-e29b-41d4-a716-446655440000"])
+            self.assertEqual(event["subject_kind"], "alchemy_lane")
+            self.assertEqual(event["subject_id"], "heavy:all")
+        self.assertEqual(history[-1]["action_batch_receipt"], "receipt.json")
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        runtime_audit = [item for item in audit_records if item["source_stream"] == "runtime_history"]
+        self.assertEqual([item["event_type"] for item in runtime_audit], ["alchemy-lane-started", "alchemy-lane-completed"])
+        self.assertEqual([item["source_ref"] for item in runtime_audit], [
+            ".aiwiki/state/runtime-history.jsonl#L1",
+            ".aiwiki/state/runtime-history.jsonl#L2",
+        ])
+        self.assertEqual(runtime_audit[0]["subject"], {"kind": "alchemy_lane", "id": "heavy:all"})
+
+    def test_apply_preflight_failures_do_not_write_lane_runtime_history(self) -> None:
+        self._seed_lane_records()
+
+        with self.assertRaisesRegex(ValueError, "requires at least one --action-id or --primitive"):
+            run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[])
+        with self.assertRaisesRegex(RuntimeError, "requires an ok dry-run plan"):
+            run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=["act-1"], max_pages=10)
+
+        self.assertFalse((self.root / ".aiwiki/state/runtime-history.jsonl").exists())
+        self.assertFalse((self.root / ".aiwiki/state/audit.jsonl").exists())
+
     def test_apply_writes_receipt_for_deterministic_primitive(self) -> None:
         self._seed_lane_records()
 

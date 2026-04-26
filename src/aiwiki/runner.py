@@ -27,7 +27,7 @@ from .app_content import (
 from .app_memory import store_concept_rewrite_candidate
 from .app_protocol import CONCEPT_HARDNESS_LEVELS, ensure_layout, load_protocol_state
 from .app_shell import rewrite_recovery_payload_for_paths
-from .app_state import load_machine_memory, load_manifest
+from .app_state import append_runtime_history, load_machine_memory, load_manifest
 from .app_utils import (
     TEXT_EXTENSIONS,
     parse_frontmatter,
@@ -1628,6 +1628,16 @@ def run_alchemy_lane_apply(
     if int(plan.get("selected_count") or 0) <= 0:
         raise RuntimeError("alchemy lane apply requires a non-empty dry-run plan")
 
+    _append_alchemy_lane_runtime_event(
+        root,
+        event_type="alchemy-lane-started",
+        lane=str(plan.get("lane") or lane),
+        scope=str(plan.get("scope") or scope),
+        action_ids=normalized_action_ids,
+        primitives=normalized_primitives,
+        plan=plan,
+        status="started",
+    )
     primitive_results = [
         _run_receipted_lane_primitive(
             root,
@@ -1647,6 +1657,18 @@ def run_alchemy_lane_apply(
             note=note or f"alchemy {lane} apply for scope {scope}",
             dry_run=False,
         )
+    _append_alchemy_lane_runtime_event(
+        root,
+        event_type="alchemy-lane-completed",
+        lane=str(plan.get("lane") or lane),
+        scope=str(plan.get("scope") or scope),
+        action_ids=normalized_action_ids,
+        primitives=normalized_primitives,
+        plan=plan,
+        status="completed",
+        primitive_results=primitive_results,
+        apply_result=apply_result,
+    )
     return {
         "status": "applied",
         "lane": str(plan.get("lane") or lane),
@@ -1657,6 +1679,44 @@ def run_alchemy_lane_apply(
         "primitive_results": primitive_results,
         "apply_result": apply_result,
     }
+
+
+def _append_alchemy_lane_runtime_event(
+    root: Path,
+    *,
+    event_type: str,
+    lane: str,
+    scope: str,
+    action_ids: list[str],
+    primitives: list[str],
+    plan: dict[str, Any],
+    status: str,
+    primitive_results: list[dict[str, Any]] | None = None,
+    apply_result: dict[str, Any] | None = None,
+) -> None:
+    trace_ids = _lane_receipt_trace_ids(plan)
+    event: dict[str, Any] = {
+        "event_type": event_type,
+        "recorded_at": utc_now(),
+        "status": status,
+        "lane": lane,
+        "scope": scope,
+        "action_ids": action_ids,
+        "primitives": primitives,
+        "selected_count": int(plan.get("selected_count") or 0),
+        "trace_id": trace_ids[0] if trace_ids else "",
+        "trace_ids": trace_ids,
+        "subject_kind": "alchemy_lane",
+        "subject_id": f"{lane}:{scope}",
+    }
+    if primitive_results is not None:
+        event["primitive_count"] = len(primitive_results)
+        event["primitive_receipts"] = [
+            str(item.get("receipt_path") or "") for item in primitive_results if isinstance(item, dict) and item.get("receipt_path")
+        ]
+    if apply_result is not None:
+        event["action_batch_receipt"] = str(apply_result.get("receipt_path") or apply_result.get("batch_receipt_path") or "")
+    append_runtime_history(root, event)
 
 
 def _normalize_lane_primitives(primitives: list[str]) -> list[str]:

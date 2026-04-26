@@ -697,8 +697,8 @@ L3 proposal **只允许**写入以下文件：
 
 以下目标动作**全部**需要产生 audit entry：
 
-- heavy alchemy 启动 / 完成（planned）
-- light alchemy 启动 / 完成（含 budget_exceeded；planned）
+- heavy alchemy 显式 apply 启动 / 完成（当前通过 `alchemy-lane-started / alchemy-lane-completed` runtime history 进入 universal audit）
+- light alchemy 显式 apply 启动 / 完成（当前通过 `alchemy-lane-started / alchemy-lane-completed` runtime history 进入 universal audit；budget_exceeded 仍由 dry-run status 表达，不写执行事件）
 - elixir promotion / demotion / supersede（candidate promote chain）
 - L2 learning 状态变更（当前已有 protocol-learning aging audit / 状态文件；threshold signal 通过 runtime history 观察映射）
 - L3 proposal manual create / reject / accept / revert（当前已有 manual baseline）；automatic generation（planned）
@@ -735,7 +735,7 @@ revert **不可以**：
 | **M4 Heavy/Light Dry-run Wrapper** | `alchemy heavy/light --dry-run` 只计算 signal scope、primitive plan、预算与锁结果。 | 默认不 execute；light 不升级 heavy；全量 heavy 不自动授权。 | scope preview 稳定；预算超限可解释；锁冲突 skip；primitive plan 可复现。 |
 | **M5 Controlled Execution** | heavy/light 允许显式 `--apply` 组合 scoped primitives。 | 不允许 hidden backend choice；不允许无 receipt 写回。 | 每个 phase 有 trace_id、receipt、audit entry；失败可从上一稳定点恢复。 |
 
-M5 当前收敛状态：`--apply --action-id` 只桥接既有 receipted low-risk action batch；`--apply --primitive` 只支持 dry-run step 明确 `apply_supported=true` 的 `compile/lint/nightly` deterministic receipts。任一 `--apply` 必须先得到 `status=ok` 且 `selected_count>0` 的 dry-run preview；非 `ok` preview 会在 action bridge 或 primitive implementation 调用前 abort。lane primitive receipt 顶层已暴露 planner trace 与 execution receipt history audit metadata。`judge/distill/review/propose` 已完成可行性评估并保持 deferred，直到各自拥有独立 scoped primitive contract。
+M5 当前收敛状态：`--apply --action-id` 只桥接既有 receipted low-risk action batch；`--apply --primitive` 只支持 dry-run step 明确 `apply_supported=true` 的 `compile/lint/nightly` deterministic receipts。任一 `--apply` 必须先得到 `status=ok` 且 `selected_count>0` 的 dry-run preview；非 `ok` preview 会在 action bridge 或 primitive implementation 调用前 abort，且不会写 lane start/complete runtime history。显式 lane apply 成功路径会写 `alchemy-lane-started / alchemy-lane-completed` runtime-history events，并通过 runtime-history direct append 进入 universal audit stream。lane primitive receipt 顶层已暴露 planner trace 与 execution receipt history audit metadata。`judge/distill/review/propose` 已完成可行性评估并保持 deferred，直到各自拥有独立 scoped primitive contract。
 
 M3 当前收敛状态：manual baseline 已支持 `l3-proposal-create`、`review proposals`、`review proposal-generation` blocked preview、`shell-status` 的 `review_controls.l3_proposals`、`review proposal <proposal-id> --status rejected`、`apply <proposal-id>` 与 `revert <receipt-id>`；写回范围限定为 `prompts/*.md` 与 `schema/policies/*`。`reject` 只更新 proposal state/page 与 runtime history，不写目标文件、不生成 apply receipt；runtime history 写入会同步 append universal audit record。`apply` 必须通过 proposal `before_hash`，失败时 proposal 转 `stale` 且不写目标；`revert` 必须通过 receipt `after_hash`，失败时转 `revert_conflict` 并生成 `human_merge_required` hint。L3 apply/revert receipt 顶层暴露 `audit_stream=execution_receipts`、`audit_event=execution_receipt_history_append`、`audit_path=.aiwiki/state/execution-receipts.jsonl`。`review proposal-generation` 只读 planner-log，不写 `_proposals` 或 `.aiwiki/state/l3-proposals.json`，并固定返回 `automatic_generation_enabled=false`。自动 proposal generation 仍 deferred；通用 audit stream 已有 preview/backfill 与 execution receipt/runtime history/LLM receipt/protocol-learning aging direct append baseline。
 
