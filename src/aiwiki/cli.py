@@ -55,6 +55,7 @@ from .runner import (
     run_alchemy_legacy_migration_preview,
     run_alchemy_promote,
     run_alchemy_revert,
+    run_alchemy_review_preview,
     run_alchemy_start,
     run_alchemy_superseded_cleanup_apply,
     run_alchemy_superseded_cleanup_preview,
@@ -484,6 +485,22 @@ def build_parser() -> argparse.ArgumentParser:
     distill_preview_parser.add_argument("--max-pages", type=int, default=None)
     distill_preview_parser.add_argument("--max-tokens", type=int, default=None)
     distill_preview_parser.add_argument("--limit", type=int, default=50)
+    review_preview_parser = alchemy_subparsers.add_parser(
+        "review",
+        help="Preview scoped review enqueue candidates without applying them.",
+    )
+    review_preview_parser.add_argument(
+        "scope",
+        help="Scope selector: all, protocol:<name>, source:<id>, concept:<slug>, elixir:<ref>, or judgment:<ref>.",
+    )
+    review_preview_mode = review_preview_parser.add_mutually_exclusive_group(required=True)
+    review_preview_mode.add_argument("--dry-run", action="store_true", help="Preview only.")
+    review_preview_parser.add_argument("--planner-log-path", type=Path, default=None)
+    review_preview_parser.add_argument("--signals-path", type=Path, default=None)
+    review_preview_parser.add_argument("--max-signals", type=int, default=None)
+    review_preview_parser.add_argument("--max-pages", type=int, default=None)
+    review_preview_parser.add_argument("--max-tokens", type=int, default=None)
+    review_preview_parser.add_argument("--limit", type=int, default=50)
     legacy_migration_parser = alchemy_subparsers.add_parser(
         "legacy-migration",
         help="Preview legacy wiki/elixirs entries that lack candidate tombstones.",
@@ -984,6 +1001,17 @@ def main(argv: list[str] | None = None) -> int:
                 )
             elif args.alchemy_lane == "distill":
                 result = run_alchemy_distill_preview(
+                    root,
+                    scope=args.scope,
+                    planner_log_path=args.planner_log_path,
+                    signals_path=args.signals_path,
+                    max_signals=args.max_signals,
+                    max_pages=args.max_pages,
+                    max_tokens=args.max_tokens,
+                    limit=args.limit,
+                )
+            elif args.alchemy_lane == "review":
+                result = run_alchemy_review_preview(
                     root,
                     scope=args.scope,
                     planner_log_path=args.planner_log_path,
