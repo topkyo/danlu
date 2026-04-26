@@ -50,7 +50,7 @@ _PRIMITIVE_PLANS = {
 }
 
 _APPLY_SUPPORTED_PRIMITIVES = {
-    "heavy": {"compile", "lint", "review", "propose"},
+    "heavy": {"compile", "distill", "lint", "review", "propose"},
     "light": {"compile", "lint", "nightly"},
 }
 
@@ -61,12 +61,6 @@ _DEFERRED_PRIMITIVES = {
             "Refresh dirty-scope judgment and decision assets.",
             "missing_receipted_scoped_contract",
             "Define a scoped judgment refresh primitive with dry-run, receipt, audit, and revert semantics.",
-        ),
-        (
-            "distill",
-            "Refresh candidate elixir iterations from dirty-scope evidence.",
-            "missing_receipted_scoped_contract",
-            "Define a scoped elixir distillation primitive that preserves candidate provenance and writes receipts.",
         ),
     ),
     "light": (
@@ -375,8 +369,8 @@ def preview_distill_primitive(
         "side_effects_allowed": False,
         "apply_supported": True,
         "apply_blocker": "",
-        "lane_apply_supported": False,
-        "lane_apply_blocker": _apply_blocker_for_primitive("heavy", "distill"),
+        "lane_apply_supported": True,
+        "lane_apply_blocker": "",
         "llm_required_for_apply": False,
         "receipt_required_for_apply": True,
         "audit_required_for_apply": True,
@@ -865,8 +859,8 @@ def _distill_preview_candidates(scope: str, scope_preview: dict[str, Any]) -> li
                 "reason_codes": ["heavy_lane_dirty_scope", "scoped_distill_apply_supported"],
                 "apply_supported": True,
                 "apply_blocker": "",
-                "lane_apply_supported": False,
-                "lane_apply_blocker": _apply_blocker_for_primitive("heavy", "distill"),
+                "lane_apply_supported": True,
+                "lane_apply_blocker": "",
                 "candidate_id": f"distill-refresh-{slugify(ref)}",
                 "kind": "elixir_candidate_refresh",
                 "target_ref": ref,

@@ -179,7 +179,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
                 "route": False,
                 "compile": True,
                 "judge": False,
-                "distill": False,
+                "distill": True,
                 "lint": True,
                 "review": True,
                 "propose": True,
@@ -436,7 +436,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
 
         self.assertEqual(
             [item["primitive"] for item in heavy["deferred_primitives"]],
-            ["judge", "distill"],
+            ["judge"],
         )
         self.assertEqual(
             {item["reason_code"] for item in heavy["deferred_primitives"]},
@@ -711,6 +711,57 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         )
         self.assertEqual(runtime[-1]["primitive_receipts"], [review_result["receipt_path"]])
 
+    def test_apply_writes_distill_refresh_via_explicit_heavy_lane_primitive(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [
+                self._signal(
+                    "sig-20260425-heavy01",
+                    severity="high",
+                    protocol="research",
+                    source_ids=["src-a"],
+                    concept_slugs=["alpha"],
+                    elixir_refs=[elixir_id],
+                )
+            ],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [self._planner("sig-20260425-heavy01", decision="enqueue-heavy")],
+        )
+
+        result = run_alchemy_lane_apply(
+            self.root,
+            lane="heavy",
+            scope="all",
+            action_ids=[],
+            primitives=["distill"],
+            note="lane distill",
+        )
+
+        self.assertEqual(result["status"], "applied")
+        self.assertEqual(result["primitives"], ["distill"])
+        primitive_result = result["primitive_results"][0]
+        self.assertEqual(primitive_result["primitive"], "distill")
+        self.assertEqual(primitive_result["audit_path"], ".aiwiki/state/execution-receipts.jsonl")
+        distill_result = primitive_result["result"]
+        self.assertEqual(distill_result["status"], "applied")
+        self.assertEqual(distill_result["refreshed_count"], 1)
+        receipt = json.loads((self.root / distill_result["receipt_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(receipt["operation"], "alchemy-distill-refresh")
+        self.assertEqual(receipt["subject_kind"], "alchemy_elixir_candidate")
+        runtime = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(
+            [item["event_type"] for item in runtime[-3:]],
+            ["alchemy-lane-started", "alchemy-distill-refreshed", "alchemy-lane-completed"],
+        )
+        self.assertEqual(runtime[-1]["primitive_receipts"], [distill_result["receipt_path"]])
+
     def test_apply_writes_proposal_via_explicit_heavy_lane_primitive(self) -> None:
         self._seed_lane_records()
         prompt_path = self.root / "prompts/ask.md"
@@ -777,12 +828,12 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "unsupported alchemy lane primitive"):
             run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[], primitives=["judge"])
-        with self.assertRaisesRegex(ValueError, "unsupported alchemy lane primitive"):
-            run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[], primitives=["distill"])
 
-    def test_light_lane_rejects_propose_primitive(self) -> None:
+    def test_light_lane_rejects_distill_and_propose_primitives(self) -> None:
         self._seed_lane_records()
 
+        with self.assertRaisesRegex(RuntimeError, "primitive 'distill' is not present"):
+            run_alchemy_lane_apply(self.root, lane="light", scope="all", action_ids=[], primitives=["distill"])
         with self.assertRaisesRegex(RuntimeError, "primitive 'propose' is not present"):
             run_alchemy_lane_apply(self.root, lane="light", scope="all", action_ids=[], primitives=["propose"])
 
@@ -860,8 +911,8 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertFalse(result["side_effects_allowed"])
         self.assertTrue(result["apply_supported"])
         self.assertEqual(result["apply_blocker"], "")
-        self.assertFalse(result["lane_apply_supported"])
-        self.assertEqual(result["lane_apply_blocker"], "missing_receipted_scoped_contract")
+        self.assertTrue(result["lane_apply_supported"])
+        self.assertEqual(result["lane_apply_blocker"], "")
         self.assertFalse(result["llm_required_for_apply"])
         self.assertTrue(result["receipt_required_for_apply"])
         self.assertTrue(result["audit_required_for_apply"])

@@ -2576,8 +2576,8 @@ def _distill_preview_receipt_summary(preview: dict[str, Any], candidates: list[d
         "candidate_ids": [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")],
         "scope_preview": preview.get("scope_preview") if isinstance(preview.get("scope_preview"), dict) else {},
         "apply_contract": preview.get("apply_contract") if isinstance(preview.get("apply_contract"), dict) else {},
-        "direct_apply_only": True,
-        "lane_apply_supported": False,
+        "direct_apply_only": False,
+        "lane_apply_supported": True,
     }
 
 
@@ -2739,7 +2739,7 @@ def _markdown_cell(value: str) -> str:
 
 
 def _normalize_lane_primitives(primitives: list[str]) -> list[str]:
-    allowed = {"compile", "lint", "nightly", "review", "propose"}
+    allowed = {"compile", "distill", "lint", "nightly", "review", "propose"}
     normalized: list[str] = []
     seen: set[str] = set()
     for item in primitives:
@@ -2779,6 +2779,25 @@ def _run_receipted_lane_primitive(
 
     if primitive == "review":
         result = run_alchemy_review_apply(
+            root,
+            scope=scope,
+            planner_log_path=planner_log_path,
+            signals_path=signals_path,
+            decision_mode=decision_mode,
+            max_signals=max_signals,
+            max_pages=max_pages,
+            max_tokens=max_tokens,
+            note=note,
+        )
+        return {
+            "primitive": primitive,
+            "trace_id": str(result.get("trace_id") or ""),
+            "audit_path": str(result.get("audit_path") or ""),
+            "receipt_path": str(result.get("receipt_path") or ""),
+            "result": result,
+        }
+    if primitive == "distill":
+        result = run_alchemy_distill_apply(
             root,
             scope=scope,
             planner_log_path=planner_log_path,
