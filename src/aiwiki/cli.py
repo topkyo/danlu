@@ -531,7 +531,7 @@ def build_parser() -> argparse.ArgumentParser:
     review_proposals_parser.add_argument("--json", action="store_true", help="Return full JSON records.")
     review_proposal_generation_parser = review_group_subparsers.add_parser(
         "proposal-generation",
-        help="Preview blocked L3 proposal generation candidates from planner-log.",
+        help="Preview L3 proposal generation candidates from planner-log.",
     )
     review_proposal_generation_parser.add_argument("--planner-log-path", type=Path, default=None)
     review_proposal_generation_parser.add_argument("--limit", type=int, default=20)

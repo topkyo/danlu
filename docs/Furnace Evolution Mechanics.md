@@ -266,7 +266,7 @@ heavy 的默认执行序列：
 6. review      : 有 high severity 产物时入 review queue
 ```
 
-当前实现状态：dry-run 可以预览上述目标序列，但 lane `--apply --primitive` 只支持已 receipt 化的 deterministic primitives。Runner 执行前必须确认对应 dry-run step 存在且 `apply_supported=true`；`alchemy auto --dry-run|--apply` 只消费 `mode=execute` planner-log decisions，并只调度已有 apply-supported deterministic primitives；`judge / distill / review / propose` 会在 dry-run `deferred_primitives` 中显式列出；在它们拥有独立 scoped dry-run、receipt、audit 和 revert/不可回滚声明前，不得加入 lane apply 白名单。
+当前实现状态：dry-run 可以预览上述目标序列，但 lane `--apply --primitive` 只支持已 receipt 化的 deterministic primitives。Runner 执行前必须确认对应 dry-run step 存在且 `apply_supported=true`；`alchemy auto --dry-run|--apply` 只消费 `mode=execute` planner-log decisions，并只调度已有 apply-supported deterministic primitives；L3 proposal 生成通过独立的 `l3-proposal-generate --dry-run|--apply` 消费 execute-mode `generate-proposal` decisions，不由 heavy/light lane 消费；`judge / distill / review / propose` 会在 dry-run `deferred_primitives` 中显式列出；在它们拥有独立 scoped dry-run、receipt、audit 和 revert/不可回滚声明前，不得加入 lane apply 白名单。
 
 ### 4.4 作用范围约束
 
@@ -280,7 +280,7 @@ heavy 是目标**调度层**，底层仍复用现有 primitives：
 - `compile` / `lint` / `nightly` / `review` 与现有 scoped apply/revert primitives 保持可单独运行。
 - heavy 落地后只是按 planner 决策**组合**这些 primitives，并共享锁与 audit。
 - 既有命令的语义**不变**。
-- 当前 lane apply 只允许 `compile / lint / nightly` 中已在对应 dry-run plan 出现的 deterministic primitives；`judge / distill / review / propose` 仍为 deferred。
+- 当前 lane apply 只允许 `compile / lint / nightly` 中已在对应 dry-run plan 出现的 deterministic primitives；`judge / distill / review / propose` 仍为 heavy/light lane 的 deferred primitives。L3 prompt proposal candidate generation 已由独立 `l3-proposal-generate` baseline 承接，保持 proposal-only 与人工 accept 边界。
 
 ## 5. Light Alchemy Contract
 
@@ -738,7 +738,7 @@ revert **不可以**：
 | **M4 Heavy/Light Dry-run Wrapper** | `alchemy heavy/light --dry-run` 只计算 signal scope、primitive plan、预算与锁结果。 | 默认不 execute；light 不升级 heavy；全量 heavy 不自动授权。 | scope preview 稳定；预算超限可解释；锁冲突 skip；primitive plan 可复现。 |
 | **M5 Controlled Execution** | heavy/light 允许显式 `--apply` 组合 scoped primitives。 | 不允许 hidden backend choice；不允许无 receipt 写回。 | 每个 phase 有 trace_id、receipt、audit entry；失败可从上一稳定点恢复。 |
 
-M5 当前收敛状态：`--apply --action-id` 只桥接既有 receipted low-risk action batch；`--apply --primitive` 只支持 dry-run step 明确 `apply_supported=true` 的 `compile/lint/nightly` deterministic receipts。任一 `--apply` 必须先得到 `status=ok` 且 `selected_count>0` 的 dry-run preview；非 `ok` preview 会在 action bridge 或 primitive implementation 调用前 abort，且不会写 lane start/complete runtime history。显式 lane apply 成功路径会写 `alchemy-lane-started / alchemy-lane-completed` runtime-history events，并通过 runtime-history direct append 进入 universal audit stream。lane primitive receipt 顶层已暴露 planner trace 与 execution receipt history audit metadata。`judge/distill/review/propose` 已完成可行性评估并保持 deferred，直到各自拥有独立 scoped primitive contract。
+M5 当前收敛状态：`--apply --action-id` 只桥接既有 receipted low-risk action batch；`--apply --primitive` 只支持 dry-run step 明确 `apply_supported=true` 的 `compile/lint/nightly` deterministic receipts。任一 `--apply` 必须先得到 `status=ok` 且 `selected_count>0` 的 dry-run preview；非 `ok` preview 会在 action bridge 或 primitive implementation 调用前 abort，且不会写 lane start/complete runtime history。显式 lane apply 成功路径会写 `alchemy-lane-started / alchemy-lane-completed` runtime-history events，并通过 runtime-history direct append 进入 universal audit stream。lane primitive receipt 顶层已暴露 planner trace 与 execution receipt history audit metadata。`alchemy auto` 已提供 execute-mode deterministic scheduler consumption；L3 proposal generation 已通过独立 `l3-proposal-generate` baseline 承接。`judge/distill/review/propose` 作为 heavy/light lane primitive 已完成可行性评估并保持 deferred，直到各自拥有独立 scoped primitive contract。
 
 M3 当前收敛状态：manual baseline 已支持 `l3-proposal-create`、`review proposals`、`review proposal-generation` candidate preview、`l3-proposal-generate --dry-run|--apply` execute-mode deterministic candidate generation、`shell-status` 的 `review_controls.l3_proposals`、`review proposal <proposal-id> --status rejected`、`apply <proposal-id>` 与 `revert <receipt-id>`；写回范围限定为 `prompts/*.md` 与 `schema/policies/*`。`l3-proposal-generate --apply` 只消费 `mode=execute` 且含 `proposal_recommended` 的 planner-log `generate-proposal` records，写 `output/_proposals/prompt/` 与 `.aiwiki/state/l3-proposals.json`，并通过 runtime history / universal audit 暴露创建事件；observe-only records 只在 preview 中标为 blocked。`reject` 只更新 proposal state/page 与 runtime history，不写目标文件、不生成 apply receipt；runtime history 写入会同步 append universal audit record。`apply` 必须通过 proposal `before_hash`，失败时 proposal 转 `stale` 且不写目标；`revert` 必须通过 receipt `after_hash`，失败时转 `revert_conflict` 并生成 `human_merge_required` hint。L3 apply/revert receipt 顶层暴露 `audit_stream=execution_receipts`、`audit_event=execution_receipt_history_append`、`audit_path=.aiwiki/state/execution-receipts.jsonl`。自动 generation 不调用 LLM、不写 target、不自动 accept；通用 audit stream 已有 preview/backfill 与 execution receipt/runtime history/LLM receipt/protocol-learning aging direct append baseline。
 
