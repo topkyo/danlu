@@ -16,7 +16,7 @@ related_docs:
 
 这份文档定义炼丹炉“如何进化”的实现契约：signal 如何路由到 heavy / light 炼丹、active corpus 如何持久化、金丹如何炼成与复利、L2 protocol-learning 如何衔接既有实装、L3 prompt/policy proposal 如何受控写回。
 
-> **实现状态说明（2026-04-26）**：本文是“目标契约 + 当前差距”的 SoT。当前已落地 active corpus / output candidates、L2 protocol-learning 生命周期、repair planner state、nightly low-risk auto-consume、显式 backend 选择、金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 候选主路径，legacy elixir migration read-only preview 与显式 apply baseline，planner-log rollback marker baseline，heavy/light lane read-only dry-run preview、显式 receipted action apply bridge、deterministic primitive receipt wrapper、lane primitive trace/audit metadata 和 `judge/distill/review/propose` deferred metadata，以及 L3 prompt/policy proposal 的手工/fixture 创建、generation blocked preview、Shell review surface、人工 reject、hash-gated apply、receipt-gated revert 与 execution receipt history audit metadata baseline，并提供通用 audit stream preview、显式 append-only backfill baseline，与 execution receipt / runtime history / LLM receipt / protocol-learning aging writer 直接 audit append。完整 signal planner execute mode、heavy/light 自动执行调度入口、legacy elixir superseded 清理、L3 proposal 自动生成尚未完整实现，以下章节用 `implemented / partial / planned` 标记区分。
+> **实现状态说明（2026-04-26）**：本文是“目标契约 + 当前差距”的 SoT。当前已落地 active corpus / output candidates、L2 protocol-learning 生命周期、repair planner state、nightly low-risk auto-consume、显式 backend 选择、金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 候选主路径，legacy elixir migration read-only preview 与显式 apply baseline、superseded cleanup read-only preview，planner-log rollback marker baseline，heavy/light lane read-only dry-run preview、显式 receipted action apply bridge、deterministic primitive receipt wrapper、lane primitive trace/audit metadata 和 `judge/distill/review/propose` deferred metadata，以及 L3 prompt/policy proposal 的手工/fixture 创建、generation blocked preview、Shell review surface、人工 reject、hash-gated apply、receipt-gated revert 与 execution receipt history audit metadata baseline，并提供通用 audit stream preview、显式 append-only backfill baseline，与 execution receipt / runtime history / LLM receipt / protocol-learning aging writer 直接 audit append。完整 signal planner execute mode、heavy/light 自动执行调度入口、legacy elixir superseded cleanup deletion apply、L3 proposal 自动生成尚未完整实现，以下章节用 `implemented / partial / planned` 标记区分。
 
 它同时取代：
 
@@ -393,6 +393,7 @@ light **不允许**触发 `judge`、`distill`、`propose`、`apply`。
 
 - 旧 `wiki/elixirs/` 文件继续按当前 schema 读取，不做强制搬迁。
 - 当前可用 `aiwiki alchemy legacy-migration --dry-run` 只读盘点缺少 candidate tombstone 的 legacy settled elixir；`aiwiki alchemy legacy-migration --apply` 会为 `migration_required=true` 的 legacy settled elixir 创建缺失 candidate tombstone，并写 execution receipt / universal audit；apply 不修改 `wiki/elixirs/`，不迁移 conflict candidate，不执行 superseded cleanup。
+- 当前可用 `aiwiki alchemy superseded-cleanup --dry-run` 只读盘点 candidate plane 中 superseded tombstone 的清理状态；该 preview 不删除 tombstone、不改 settled 文件，deletion apply 仍 deferred。
 - 新候选入口落地后，默认只对新金丹写入 `output/_candidates/elixirs/`。
 - 任一候选 promote 失败必须保持 source candidate 不变，并写明失败原因；不得半写入 `wiki/elixirs/`。
 - 任一候选 promote 成功后也保留 candidate（墓碑 / tombstone）：不删除候选文件，原地改写 frontmatter 为 `elixir_state: superseded`，并写入 `superseded_by: wiki/elixirs/<elixir-id>.md` 与 `promoted_at: <iso8601>`。
@@ -673,6 +674,7 @@ L3 proposal **只允许**写入以下文件：
 | `aiwiki alchemy-promote --elixir-id <elixir-id>` | 当前：candidate promote 为 settled | `wiki/elixirs/` + `output/_candidates/elixirs/` tombstone + receipts |
 | `aiwiki alchemy legacy-migration --dry-run` | 当前：只读盘点 legacy settled elixir 的 candidate tombstone 状态 | 读 `wiki/elixirs/` + `output/_candidates/elixirs/` |
 | `aiwiki alchemy legacy-migration --apply` | 当前：显式为缺失 tombstone 的 legacy settled elixir 创建 candidate tombstone，并写 receipt / audit；不改 settled source，不做 cleanup | `output/_candidates/elixirs/` + execution receipt |
+| `aiwiki alchemy superseded-cleanup --dry-run` | 当前：只读盘点 superseded tombstone 的未来清理候选和阻塞原因；不删除 | 读 `output/_candidates/elixirs/` + `wiki/elixirs/` |
 | `aiwiki protocol-learn-add/list/show/age/verify/demote/archive/supersede` | 当前：L2 learning 生命周期治理 | `wiki/protocol-learnings/` |
 | `aiwiki signals-list/show` / `aiwiki planner-log-list` | 当前：只读 inspection；`--since` 必须为 ISO datetime，`--limit` 必须大于 0 | 读 `.aiwiki/state/signals.jsonl` / `.aiwiki/state/planner-log.jsonl` |
 | `aiwiki planner-log-rollback --dry-run\|--apply` | 当前：预览或显式追加 rollback marker；planner-log 本体保持 append-only，不删除不重写 | 读 `.aiwiki/state/planner-log.jsonl`；写 `.aiwiki/state/planner-log-rollback.jsonl` |

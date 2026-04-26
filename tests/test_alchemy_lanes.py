@@ -408,7 +408,7 @@ class AlchemyLaneCLITests(unittest.TestCase):
         action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
         alchemy_parser = action.choices["alchemy"]
         lane_action = next(item for item in alchemy_parser._actions if getattr(item, "dest", "") == "alchemy_lane")
-        self.assertEqual(set(lane_action.choices), {"heavy", "light", "legacy-migration"})
+        self.assertEqual(set(lane_action.choices), {"heavy", "light", "legacy-migration", "superseded-cleanup"})
 
     def test_main_dispatches_alchemy_lane_dry_run(self) -> None:
         with patch("aiwiki.cli.run_alchemy_lane_dry_run", return_value={"status": "ok", "lane": "heavy"}) as mocked:

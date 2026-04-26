@@ -236,6 +236,12 @@ def run_alchemy_legacy_migration_apply(root: Path, *, limit: int = 50, note: str
     return apply_legacy_elixir_migration(root, limit=limit, note=note)
 
 
+def run_alchemy_superseded_cleanup_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
+    from .execution.alchemy import preview_superseded_elixir_cleanup
+
+    return preview_superseded_elixir_cleanup(root, limit=limit)
+
+
 def run_audit_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
     from .execution.audit_preview import preview_universal_audit_stream
 

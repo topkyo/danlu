@@ -53,6 +53,7 @@ from .runner import (
     run_alchemy_promote,
     run_alchemy_revert,
     run_alchemy_start,
+    run_alchemy_superseded_cleanup_preview,
     run_ask,
     run_audit_backfill,
     run_audit_preview,
@@ -447,6 +448,12 @@ def build_parser() -> argparse.ArgumentParser:
     legacy_migration_mode.add_argument("--apply", action="store_true", help="Create missing candidate tombstones.")
     legacy_migration_parser.add_argument("--limit", type=int, default=50)
     legacy_migration_parser.add_argument("--note", default=None)
+    superseded_cleanup_parser = alchemy_subparsers.add_parser(
+        "superseded-cleanup",
+        help="Preview superseded elixir candidate tombstones for future cleanup.",
+    )
+    superseded_cleanup_parser.add_argument("--dry-run", action="store_true", required=True, help="Required; preview only.")
+    superseded_cleanup_parser.add_argument("--limit", type=int, default=50)
 
     l3_create_parser = subparsers.add_parser(
         "l3-proposal-create",
@@ -880,6 +887,8 @@ def main(argv: list[str] | None = None) -> int:
                     result = run_alchemy_legacy_migration_preview(root, limit=args.limit)
                 else:
                     result = run_alchemy_legacy_migration_apply(root, limit=args.limit, note=args.note)
+            elif args.alchemy_lane == "superseded-cleanup":
+                result = run_alchemy_superseded_cleanup_preview(root, limit=args.limit)
             else:
                 if args.dry_run == args.apply:
                     raise ValueError("alchemy heavy/light requires exactly one of --dry-run or --apply")

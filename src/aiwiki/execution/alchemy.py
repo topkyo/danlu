@@ -276,6 +276,111 @@ def _unique_legacy_migration_action_id(root: Path, applied_at: datetime) -> str:
     return candidate
 
 
+def preview_superseded_elixir_cleanup(root: Path, *, limit: int = 50) -> dict[str, Any]:
+    if limit < 1:
+        raise ValueError("limit must be a positive integer.")
+    candidate_root = root / CANDIDATE_ELIXIR_DIR
+    records: list[dict[str, Any]] = []
+    counts = {
+        "cleanup_candidate": 0,
+        "missing_superseded_target": 0,
+        "non_settled_target": 0,
+        "candidate_conflict": 0,
+        "non_superseded": 0,
+    }
+    scanned_count = 0
+    if candidate_root.exists():
+        for path in sorted(candidate_root.rglob("*.md")):
+            scanned_count += 1
+            try:
+                frontmatter = _parse_elixir_frontmatter(path)
+            except (OSError, ValueError) as exc:
+                status = "candidate_conflict"
+                record = {
+                    "elixir_id": path.stem,
+                    "candidate_path": relative_path(root, path),
+                    "superseded_by": "",
+                    "status": status,
+                    "reason": f"parse_error: {exc}",
+                    "cleanup_supported": False,
+                }
+            else:
+                elixir_id = str(frontmatter.get("elixir_id") or path.stem)
+                state = str(frontmatter.get("elixir_state") or "")
+                superseded_by = str(frontmatter.get("superseded_by") or "")
+                if state != "superseded":
+                    status = "non_superseded"
+                    record = {
+                        "elixir_id": elixir_id,
+                        "candidate_path": relative_path(root, path),
+                        "superseded_by": superseded_by,
+                        "status": status,
+                        "reason": f"candidate state is {state or 'unknown'}",
+                        "cleanup_supported": False,
+                    }
+                elif not superseded_by:
+                    status = "candidate_conflict"
+                    record = {
+                        "elixir_id": elixir_id,
+                        "candidate_path": relative_path(root, path),
+                        "superseded_by": "",
+                        "status": status,
+                        "reason": "superseded tombstone missing superseded_by",
+                        "cleanup_supported": False,
+                    }
+                else:
+                    target_path = (root / superseded_by).resolve()
+                    settled_root = (root / ELIXIR_DIR).resolve()
+                    if not (target_path == settled_root or settled_root in target_path.parents) or target_path.suffix != ".md":
+                        status = "candidate_conflict"
+                        reason = f"superseded_by outside settled elixir plane: {superseded_by}"
+                        cleanup_supported = False
+                    elif not target_path.exists():
+                        status = "missing_superseded_target"
+                        reason = "superseded target is missing"
+                        cleanup_supported = False
+                    else:
+                        try:
+                            target_frontmatter = _parse_elixir_frontmatter(target_path)
+                        except (OSError, ValueError) as exc:
+                            status = "candidate_conflict"
+                            reason = f"target_parse_error: {exc}"
+                            cleanup_supported = False
+                        else:
+                            target_state = str(target_frontmatter.get("elixir_state") or "")
+                            if target_state != "settled":
+                                status = "non_settled_target"
+                                reason = f"superseded target state is {target_state or 'unknown'}"
+                                cleanup_supported = False
+                            else:
+                                status = "cleanup_candidate"
+                                reason = "valid superseded tombstone; deletion apply remains deferred"
+                                cleanup_supported = False
+                    record = {
+                        "elixir_id": elixir_id,
+                        "candidate_path": relative_path(root, path),
+                        "superseded_by": superseded_by,
+                        "status": status,
+                        "reason": reason,
+                        "cleanup_supported": cleanup_supported,
+                    }
+            counts[status] += 1
+            if len(records) < limit:
+                records.append(record)
+
+    return {
+        "status": "ok",
+        "mode": "dry_run",
+        "side_effects_allowed": False,
+        "delete_supported": False,
+        "scanned_count": scanned_count,
+        "returned_count": len(records),
+        "limit": limit,
+        "counts": counts,
+        "records": records,
+    }
+
+
 def _validate_source_outputs(root: Path, refs: list[str], *, allowed: set[str]) -> None:
     if not refs:
         raise ValueError("source outputs cannot be empty")
