@@ -297,11 +297,22 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
             ["judge", "distill", "review", "propose"],
         )
         self.assertEqual({item["reason_code"] for item in heavy["deferred_primitives"]}, {"missing_receipted_scoped_contract"})
+        for item in heavy["deferred_primitives"]:
+            contract = item["apply_contract"]
+            self.assertEqual(contract["status"], "deferred")
+            self.assertEqual(contract["primitive"], item["primitive"])
+            self.assertTrue(contract["write_surfaces"])
+            self.assertIn("execution-receipt v1", contract["receipt_schema"])
+            self.assertIn("execution_receipt_history_append", contract["audit_event_schema"])
+            self.assertIn("required_before_apply", contract["revert_policy"])
+            self.assertIn("trace_ids", contract["idempotency_key"])
+            self.assertTrue(contract["backend_policy"])
         self.assertEqual(
             [item["primitive"] for item in light["deferred_primitives"]],
             ["judge", "distill", "review", "propose"],
         )
         self.assertEqual({item["reason_code"] for item in light["deferred_primitives"]}, {"not_allowed_for_light_lane"})
+        self.assertEqual({item["apply_contract"]["status"] for item in light["deferred_primitives"]}, {"deferred"})
 
     def test_scope_selector_filters_by_protocol(self) -> None:
         self._seed_lane_records()
@@ -568,6 +579,8 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertTrue(result["llm_required_for_apply"])
         self.assertTrue(result["receipt_required_for_apply"])
         self.assertTrue(result["audit_required_for_apply"])
+        self.assertEqual(result["apply_contract"]["primitive"], "judge")
+        self.assertIn("wiki/judgments/", result["apply_contract"]["write_surfaces"])
         self.assertEqual(result["selected_count"], 1)
         self.assertEqual(result["candidate_count"], 1)
         candidate = result["candidates"][0]
@@ -578,6 +591,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(candidate["source_ids"], ["src-a", "src-b"])
         self.assertEqual(candidate["concept_slugs"], ["alpha", "zeta"])
         self.assertFalse(candidate["apply_supported"])
+        self.assertEqual(candidate["apply_contract"]["status"], "deferred")
         self.assertEqual(_snapshot_files(self.root), before)
 
     def test_judge_preview_uses_scope_candidates_when_no_judgment_ref_exists(self) -> None:
@@ -609,6 +623,8 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertTrue(result["receipt_required_for_apply"])
         self.assertTrue(result["audit_required_for_apply"])
         self.assertTrue(result["candidate_plane_required_for_apply"])
+        self.assertEqual(result["apply_contract"]["primitive"], "distill")
+        self.assertIn("output/_candidates/elixirs/", result["apply_contract"]["write_surfaces"])
         self.assertEqual(result["selected_count"], 1)
         self.assertEqual(result["candidate_count"], 1)
         candidate = result["candidates"][0]
@@ -620,6 +636,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(candidate["concept_slugs"], ["alpha", "zeta"])
         self.assertEqual(candidate["elixir_refs"], ["elixir-z"])
         self.assertFalse(candidate["apply_supported"])
+        self.assertEqual(candidate["apply_contract"]["status"], "deferred")
         self.assertEqual(_snapshot_files(self.root), before)
 
     def test_distill_preview_uses_scope_candidates_when_no_elixir_ref_exists(self) -> None:
@@ -686,6 +703,8 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertTrue(result["receipt_required_for_apply"])
         self.assertTrue(result["audit_required_for_apply"])
         self.assertTrue(result["review_queue_write_required_for_apply"])
+        self.assertEqual(result["apply_contract"]["primitive"], "review")
+        self.assertIn("wiki/indexes/review-queue.md", result["apply_contract"]["write_surfaces"])
         self.assertEqual(result["selected_count"], 1)
         self.assertEqual(result["candidate_count"], 2)
         kinds = [candidate["kind"] for candidate in result["candidates"]]
@@ -694,6 +713,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(result["candidates"][0]["target_ref"], "wiki/judgments/thesis.md")
         self.assertEqual(result["candidates"][1]["candidate_id"], "review-elixir-elixir-z")
         self.assertEqual(result["candidates"][1]["target_ref"], "elixir-z")
+        self.assertEqual(result["candidates"][0]["apply_contract"]["status"], "deferred")
         self.assertEqual(_snapshot_files(self.root), before)
 
     def test_review_preview_uses_scope_candidates_when_no_target_refs_exist(self) -> None:
@@ -742,6 +762,8 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertTrue(result["audit_required_for_apply"])
         self.assertTrue(result["proposal_plane_write_required_for_apply"])
         self.assertTrue(result["human_accept_required_after_apply"])
+        self.assertEqual(result["apply_contract"]["primitive"], "propose")
+        self.assertIn("output/_proposals/prompt/", result["apply_contract"]["write_surfaces"])
         self.assertEqual(result["selected_count"], 1)
         self.assertEqual(result["candidate_count"], 1)
         candidate = result["candidates"][0]
@@ -751,6 +773,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(candidate["source_decision"], "enqueue-heavy")
         self.assertFalse(candidate["consumes_generate_proposal_decisions"])
         self.assertEqual(candidate["signal_ids"], ["sig-20260425-heavy01"])
+        self.assertEqual(candidate["apply_contract"]["status"], "deferred")
         self.assertEqual(_snapshot_files(self.root), before)
 
 

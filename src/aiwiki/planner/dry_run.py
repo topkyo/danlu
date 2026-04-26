@@ -108,6 +108,77 @@ _DEFERRED_PRIMITIVES = {
     ),
 }
 
+_DEFERRED_APPLY_CONTRACTS = {
+    "judge": {
+        "status": "deferred",
+        "primitive": "judge",
+        "write_surfaces": [
+            "wiki/judgments/",
+            "wiki/decisions/",
+            "output/control/execution-receipts/",
+            ".aiwiki/state/execution-receipts.jsonl",
+            ".aiwiki/state/runtime-history.jsonl",
+            ".aiwiki/state/audit.jsonl",
+        ],
+        "receipt_schema": "execution-receipt v1; subject_kind=alchemy_lane_primitive; operation=alchemy-lane-primitive",
+        "audit_event_schema": "execution_receipt_history_append plus runtime_history direct append",
+        "revert_policy": "required_before_apply: define receipt-gated clean revert or explicit non-revertible declaration",
+        "idempotency_key": "primitive + lane + scope + target_ref + trace_ids",
+        "backend_policy": "no hidden backend choice; any LLM use must come from explicit operator configuration",
+    },
+    "distill": {
+        "status": "deferred",
+        "primitive": "distill",
+        "write_surfaces": [
+            "output/_candidates/elixirs/",
+            "output/control/execution-receipts/",
+            ".aiwiki/state/execution-receipts.jsonl",
+            ".aiwiki/state/runtime-history.jsonl",
+            ".aiwiki/state/audit.jsonl",
+        ],
+        "receipt_schema": "execution-receipt v1; subject_kind=alchemy_lane_primitive; operation=alchemy-lane-primitive",
+        "audit_event_schema": "execution_receipt_history_append plus runtime_history direct append",
+        "revert_policy": "required_before_apply: define candidate-plane rollback or explicit non-revertible declaration",
+        "idempotency_key": "primitive + lane + scope + target_ref + trace_ids",
+        "backend_policy": "no hidden backend choice; any LLM use must come from explicit operator configuration",
+    },
+    "review": {
+        "status": "deferred",
+        "primitive": "review",
+        "write_surfaces": [
+            "wiki/indexes/review-queue.md",
+            "output/review/",
+            "output/control/execution-receipts/",
+            ".aiwiki/state/execution-receipts.jsonl",
+            ".aiwiki/state/runtime-history.jsonl",
+            ".aiwiki/state/audit.jsonl",
+        ],
+        "receipt_schema": "execution-receipt v1; subject_kind=alchemy_lane_primitive; operation=alchemy-lane-primitive",
+        "audit_event_schema": "execution_receipt_history_append plus runtime_history direct append",
+        "revert_policy": "required_before_apply: define idempotent dequeue/mark-superseded behavior or explicit non-revertible declaration",
+        "idempotency_key": "primitive + lane + scope + target_ref + trace_ids",
+        "backend_policy": "no LLM required for enqueue; any optional model use must be explicit",
+    },
+    "propose": {
+        "status": "deferred",
+        "primitive": "propose",
+        "write_surfaces": [
+            "output/_proposals/prompt/",
+            "output/_proposals/policy/",
+            ".aiwiki/state/l3-proposals.json",
+            "output/control/execution-receipts/",
+            ".aiwiki/state/execution-receipts.jsonl",
+            ".aiwiki/state/runtime-history.jsonl",
+            ".aiwiki/state/audit.jsonl",
+        ],
+        "receipt_schema": "execution-receipt v1; subject_kind=alchemy_lane_primitive; operation=alchemy-lane-primitive",
+        "audit_event_schema": "execution_receipt_history_append plus runtime_history direct append",
+        "revert_policy": "required_before_apply: define proposal-plane cleanup/reject semantics or explicit non-revertible declaration",
+        "idempotency_key": "primitive + lane + scope + target_ref + trace_ids",
+        "backend_policy": "no hidden backend choice; L3 target writes still require human accept after proposal generation",
+    },
+}
+
 
 def preview_alchemy_lane(
     root: Path,
@@ -250,6 +321,7 @@ def preview_judge_primitive(
         "receipt_required_for_apply": True,
         "audit_required_for_apply": True,
         "revert_policy_required_for_apply": True,
+        "apply_contract": _deferred_apply_contract("judge"),
         "planner_log_path": lane_plan.get("planner_log_path"),
         "signals_path": lane_plan.get("signals_path"),
         "decision_mode": lane_plan.get("decision_mode") or "",
@@ -320,6 +392,7 @@ def preview_distill_primitive(
         "audit_required_for_apply": True,
         "revert_policy_required_for_apply": True,
         "candidate_plane_required_for_apply": True,
+        "apply_contract": _deferred_apply_contract("distill"),
         "planner_log_path": lane_plan.get("planner_log_path"),
         "signals_path": lane_plan.get("signals_path"),
         "decision_mode": lane_plan.get("decision_mode") or "",
@@ -390,6 +463,7 @@ def preview_review_primitive(
         "audit_required_for_apply": True,
         "revert_policy_required_for_apply": True,
         "review_queue_write_required_for_apply": True,
+        "apply_contract": _deferred_apply_contract("review"),
         "planner_log_path": lane_plan.get("planner_log_path"),
         "signals_path": lane_plan.get("signals_path"),
         "decision_mode": lane_plan.get("decision_mode") or "",
@@ -461,6 +535,7 @@ def preview_propose_primitive(
         "revert_policy_required_for_apply": True,
         "proposal_plane_write_required_for_apply": True,
         "human_accept_required_after_apply": True,
+        "apply_contract": _deferred_apply_contract("propose"),
         "planner_log_path": lane_plan.get("planner_log_path"),
         "signals_path": lane_plan.get("signals_path"),
         "decision_mode": lane_plan.get("decision_mode") or "",
@@ -699,9 +774,17 @@ def _deferred_primitives(lane: str) -> list[dict[str, Any]]:
             "reason_code": reason_code,
             "unlock_condition": unlock_condition,
             "apply_supported": False,
+            "apply_contract": _deferred_apply_contract(primitive),
         }
         for primitive, description, reason_code, unlock_condition in _DEFERRED_PRIMITIVES[lane]
     ]
+
+
+def _deferred_apply_contract(primitive: str) -> dict[str, Any]:
+    contract = _DEFERRED_APPLY_CONTRACTS.get(primitive, {})
+    if not contract:
+        return {}
+    return json.loads(json.dumps(contract, ensure_ascii=False))
 
 
 def _judge_preview_candidates(scope: str, scope_preview: dict[str, Any]) -> list[dict[str, Any]]:
@@ -716,6 +799,7 @@ def _judge_preview_candidates(scope: str, scope_preview: dict[str, Any]) -> list
         "receipt_required_for_apply": True,
         "audit_required_for_apply": True,
         "revert_policy_required_for_apply": True,
+        "apply_contract": _deferred_apply_contract("judge"),
         "signal_ids": list(scope_preview.get("signal_ids") or []),
         "trace_ids": list(scope_preview.get("trace_ids") or []),
         "source_ids": list(scope_preview.get("source_ids") or []),
@@ -772,6 +856,7 @@ def _distill_preview_candidates(scope: str, scope_preview: dict[str, Any]) -> li
         "audit_required_for_apply": True,
         "revert_policy_required_for_apply": True,
         "candidate_plane_required_for_apply": True,
+        "apply_contract": _deferred_apply_contract("distill"),
         "signal_ids": list(scope_preview.get("signal_ids") or []),
         "trace_ids": list(scope_preview.get("trace_ids") or []),
         "source_ids": list(scope_preview.get("source_ids") or []),
@@ -828,6 +913,7 @@ def _review_preview_candidates(scope: str, scope_preview: dict[str, Any]) -> lis
         "audit_required_for_apply": True,
         "revert_policy_required_for_apply": True,
         "review_queue_write_required_for_apply": True,
+        "apply_contract": _deferred_apply_contract("review"),
         "signal_ids": list(scope_preview.get("signal_ids") or []),
         "trace_ids": list(scope_preview.get("trace_ids") or []),
         "source_ids": list(scope_preview.get("source_ids") or []),
@@ -900,6 +986,7 @@ def _propose_preview_candidates(scope: str, scope_preview: dict[str, Any]) -> li
         "revert_policy_required_for_apply": True,
         "proposal_plane_write_required_for_apply": True,
         "human_accept_required_after_apply": True,
+        "apply_contract": _deferred_apply_contract("propose"),
         "signal_ids": list(scope_preview.get("signal_ids") or []),
         "trace_ids": list(scope_preview.get("trace_ids") or []),
         "source_ids": list(scope_preview.get("source_ids") or []),
