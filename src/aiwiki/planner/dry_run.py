@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .. import app_utils
-from ..app_utils import relative_path, runtime_lock_path
+from ..app_utils import relative_path, runtime_lock_path, slugify
 from .schema import validate_planner_log_record
 
 _PLANNER_LOG_REL_PATH = ".aiwiki/state/planner-log.jsonl"
@@ -203,6 +203,75 @@ def preview_alchemy_lane(
         },
         "lock": lock,
         "skip_examples": _limited_examples(signal_skip_examples + decision_skip_examples),
+    }
+
+
+def preview_judge_primitive(
+    root: Path,
+    *,
+    scope: str,
+    planner_log_path: Path | None = None,
+    signals_path: Path | None = None,
+    decision_mode: str | None = None,
+    max_signals: int | None = None,
+    max_pages: int | None = None,
+    max_tokens: int | None = None,
+    limit: int = 50,
+) -> dict[str, Any]:
+    if limit < 0:
+        raise ValueError("limit must be non-negative")
+
+    lane_plan = preview_alchemy_lane(
+        root,
+        lane="heavy",
+        scope=scope,
+        planner_log_path=planner_log_path,
+        signals_path=signals_path,
+        decision_mode=decision_mode,
+        max_signals=max_signals,
+        max_pages=max_pages,
+        max_tokens=max_tokens,
+    )
+    blocker = _apply_blocker_for_primitive("heavy", "judge")
+    scope_preview = lane_plan.get("scope_preview") if isinstance(lane_plan.get("scope_preview"), dict) else _empty_scope_preview()
+    all_candidates = _judge_preview_candidates(str(lane_plan.get("scope") or scope), scope_preview)
+    candidates = all_candidates[:limit]
+
+    return {
+        "status": lane_plan.get("status"),
+        "primitive": "judge",
+        "lane": "heavy",
+        "scope": lane_plan.get("scope") or (scope.strip() or "all"),
+        "dry_run": True,
+        "side_effects_allowed": False,
+        "apply_supported": False,
+        "apply_blocker": blocker,
+        "llm_required_for_apply": True,
+        "receipt_required_for_apply": True,
+        "audit_required_for_apply": True,
+        "revert_policy_required_for_apply": True,
+        "planner_log_path": lane_plan.get("planner_log_path"),
+        "signals_path": lane_plan.get("signals_path"),
+        "decision_mode": lane_plan.get("decision_mode") or "",
+        "selected_count": lane_plan.get("selected_count", 0),
+        "skipped_count": lane_plan.get("skipped_count", 0),
+        "scope_preview": scope_preview,
+        "candidate_count": len(all_candidates),
+        "returned_count": len(candidates),
+        "truncated": len(candidates) < len(all_candidates),
+        "candidates": candidates,
+        "budget": lane_plan.get("budget", {}),
+        "lock": lane_plan.get("lock", {}),
+        "source_lane_preview": {
+            "status": lane_plan.get("status"),
+            "selected_count": lane_plan.get("selected_count", 0),
+            "deferred_primitives": [
+                item
+                for item in lane_plan.get("deferred_primitives", [])
+                if isinstance(item, dict) and item.get("primitive") == "judge"
+            ],
+        },
+        "skip_examples": lane_plan.get("skip_examples", []),
     }
 
 
@@ -424,6 +493,61 @@ def _deferred_primitives(lane: str) -> list[dict[str, Any]]:
     ]
 
 
+def _judge_preview_candidates(scope: str, scope_preview: dict[str, Any]) -> list[dict[str, Any]]:
+    if not list(scope_preview.get("signal_ids") or []):
+        return []
+
+    common = {
+        "reason_codes": ["heavy_lane_dirty_scope", "missing_receipted_scoped_contract"],
+        "apply_supported": False,
+        "apply_blocker": _apply_blocker_for_primitive("heavy", "judge"),
+        "llm_required_for_apply": True,
+        "receipt_required_for_apply": True,
+        "audit_required_for_apply": True,
+        "revert_policy_required_for_apply": True,
+        "signal_ids": list(scope_preview.get("signal_ids") or []),
+        "trace_ids": list(scope_preview.get("trace_ids") or []),
+        "source_ids": list(scope_preview.get("source_ids") or []),
+        "concept_slugs": list(scope_preview.get("concept_slugs") or []),
+        "elixir_refs": list(scope_preview.get("elixir_refs") or []),
+        "severities": list(scope_preview.get("severities") or []),
+    }
+    judgment_refs = list(scope_preview.get("judgment_refs") or [])
+    protocols = list(scope_preview.get("protocols") or [])
+
+    candidates: list[dict[str, Any]] = []
+    for ref in judgment_refs:
+        candidates.append(
+            {
+                **common,
+                "candidate_id": f"judge-refresh-{slugify(ref)}",
+                "kind": "judgment_refresh",
+                "target_ref": ref,
+                "protocol": "",
+                "judgment_refs": [ref],
+            }
+        )
+
+    if candidates:
+        return candidates
+
+    protocol_items = protocols or [""]
+    scope_slug = slugify(scope)
+    for index, protocol in enumerate(protocol_items, start=1):
+        target = protocol or scope
+        candidates.append(
+            {
+                **common,
+                "candidate_id": f"judge-scope-{slugify(target) or scope_slug}-{index}",
+                "kind": "judgment_scope_refresh",
+                "target_ref": target,
+                "protocol": protocol,
+                "judgment_refs": [],
+            }
+        )
+    return candidates
+
+
 def _build_budget_used(selected: list[dict[str, Any]]) -> dict[str, int]:
     max_pages = 0
     max_tokens = 0
@@ -538,4 +662,4 @@ def _limited_examples(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return items[:_SKIP_EXAMPLES_LIMIT]
 
 
-__all__ = ["preview_alchemy_lane"]
+__all__ = ["preview_alchemy_lane", "preview_judge_primitive"]
