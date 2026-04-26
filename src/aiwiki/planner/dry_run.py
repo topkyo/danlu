@@ -116,7 +116,7 @@ _DEFERRED_APPLY_CONTRACTS = {
         "backend_policy": "no hidden backend choice; any LLM use must come from explicit operator configuration",
     },
     "distill": {
-        "status": "deferred",
+        "status": "executable",
         "primitive": "distill",
         "write_surfaces": [
             "output/_candidates/elixirs/",
@@ -125,11 +125,11 @@ _DEFERRED_APPLY_CONTRACTS = {
             ".aiwiki/state/runtime-history.jsonl",
             ".aiwiki/state/audit.jsonl",
         ],
-        "receipt_schema": "execution-receipt v1; subject_kind=alchemy_lane_primitive; operation=alchemy-lane-primitive",
+        "receipt_schema": "execution-receipt v1; subject_kind=alchemy_elixir_candidate; operation=alchemy-distill-refresh",
         "audit_event_schema": "execution_receipt_history_append plus runtime_history direct append",
-        "revert_policy": "required_before_apply: define candidate-plane rollback or explicit non-revertible declaration",
-        "idempotency_key": "primitive + lane + scope + target_ref + trace_ids",
-        "backend_policy": "no hidden backend choice; any LLM use must come from explicit operator configuration",
+        "revert_policy": "non_revertible_candidate_iteration: re-run distill/finalize/promote lifecycle with receipt evidence; before/after hashes document each refreshed candidate",
+        "idempotency_key": "primitive + scope + candidate_ids + deterministic_question + trace_ids",
+        "backend_policy": "no LLM required for deterministic scoped refresh question; any future model-generated question must be explicit",
     },
     "review": {
         "status": "executable",
@@ -361,10 +361,10 @@ def preview_distill_primitive(
         max_pages=max_pages,
         max_tokens=max_tokens,
     )
-    blocker = _apply_blocker_for_primitive("heavy", "distill")
     scope_preview = lane_plan.get("scope_preview") if isinstance(lane_plan.get("scope_preview"), dict) else _empty_scope_preview()
     all_candidates = _distill_preview_candidates(str(lane_plan.get("scope") or scope), scope_preview)
     candidates = all_candidates[:limit]
+    applicable_count = sum(1 for item in all_candidates if item.get("apply_supported") is True)
 
     return {
         "status": lane_plan.get("status"),
@@ -373,12 +373,14 @@ def preview_distill_primitive(
         "scope": lane_plan.get("scope") or (scope.strip() or "all"),
         "dry_run": True,
         "side_effects_allowed": False,
-        "apply_supported": False,
-        "apply_blocker": blocker,
-        "llm_required_for_apply": True,
+        "apply_supported": True,
+        "apply_blocker": "",
+        "lane_apply_supported": False,
+        "lane_apply_blocker": _apply_blocker_for_primitive("heavy", "distill"),
+        "llm_required_for_apply": False,
         "receipt_required_for_apply": True,
         "audit_required_for_apply": True,
-        "revert_policy_required_for_apply": True,
+        "revert_policy_required_for_apply": False,
         "candidate_plane_required_for_apply": True,
         "apply_contract": _deferred_apply_contract("distill"),
         "planner_log_path": lane_plan.get("planner_log_path"),
@@ -388,6 +390,7 @@ def preview_distill_primitive(
         "skipped_count": lane_plan.get("skipped_count", 0),
         "scope_preview": scope_preview,
         "candidate_count": len(all_candidates),
+        "applicable_candidate_count": applicable_count,
         "returned_count": len(candidates),
         "truncated": len(candidates) < len(all_candidates),
         "candidates": candidates,
@@ -838,13 +841,10 @@ def _distill_preview_candidates(scope: str, scope_preview: dict[str, Any]) -> li
         return []
 
     common = {
-        "reason_codes": ["heavy_lane_dirty_scope", "missing_receipted_scoped_contract"],
-        "apply_supported": False,
-        "apply_blocker": _apply_blocker_for_primitive("heavy", "distill"),
-        "llm_required_for_apply": True,
+        "llm_required_for_apply": False,
         "receipt_required_for_apply": True,
         "audit_required_for_apply": True,
-        "revert_policy_required_for_apply": True,
+        "revert_policy_required_for_apply": False,
         "candidate_plane_required_for_apply": True,
         "apply_contract": _deferred_apply_contract("distill"),
         "signal_ids": list(scope_preview.get("signal_ids") or []),
@@ -862,6 +862,11 @@ def _distill_preview_candidates(scope: str, scope_preview: dict[str, Any]) -> li
         candidates.append(
             {
                 **common,
+                "reason_codes": ["heavy_lane_dirty_scope", "scoped_distill_apply_supported"],
+                "apply_supported": True,
+                "apply_blocker": "",
+                "lane_apply_supported": False,
+                "lane_apply_blocker": _apply_blocker_for_primitive("heavy", "distill"),
                 "candidate_id": f"distill-refresh-{slugify(ref)}",
                 "kind": "elixir_candidate_refresh",
                 "target_ref": ref,
@@ -880,6 +885,11 @@ def _distill_preview_candidates(scope: str, scope_preview: dict[str, Any]) -> li
         candidates.append(
             {
                 **common,
+                "reason_codes": ["heavy_lane_dirty_scope", "missing_elixir_ref_for_direct_apply"],
+                "apply_supported": False,
+                "apply_blocker": "missing_elixir_ref_for_direct_apply",
+                "lane_apply_supported": False,
+                "lane_apply_blocker": _apply_blocker_for_primitive("heavy", "distill"),
                 "candidate_id": f"distill-scope-{slugify(target) or scope_slug}-{index}",
                 "kind": "elixir_scope_refresh",
                 "target_ref": target,

@@ -7,8 +7,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from aiwiki.app_utils import runtime_write_lock
+from aiwiki.app_compile import ask_question
+from aiwiki.app_protocol import ensure_layout
+from aiwiki.app_utils import parse_frontmatter, runtime_write_lock
 from aiwiki.cli import build_parser, main
+from aiwiki.execution.candidates import promote_candidate
 from aiwiki.planner.dry_run import (
     preview_alchemy_lane,
     preview_distill_primitive,
@@ -16,7 +19,14 @@ from aiwiki.planner.dry_run import (
     preview_propose_primitive,
     preview_review_primitive,
 )
-from aiwiki.runner import run_alchemy_auto, run_alchemy_lane_apply, run_alchemy_propose_apply, run_alchemy_review_apply
+from aiwiki.runner import (
+    run_alchemy_auto,
+    run_alchemy_distill_apply,
+    run_alchemy_lane_apply,
+    run_alchemy_propose_apply,
+    run_alchemy_review_apply,
+    run_alchemy_start,
+)
 
 
 def _snapshot_files(root: Path) -> dict[str, bytes]:
@@ -134,6 +144,19 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
                 self._planner("sig-20260425-heavy01", decision="generate-proposal"),
             ],
         )
+
+    def _make_promoted_corpus(self) -> str:
+        ensure_layout(self.root)
+        (self.root / "prompts" / "compile.md").write_text("Compile prompt fixture.\n", encoding="utf-8")
+        (self.root / "prompts" / "ask.md").write_text("Ask prompt fixture.\n", encoding="utf-8")
+        result = ask_question(self.root, "Should we increase transformer training spend?", "report")
+        promote_candidate(self.root, result["path"])
+        return str(result["active_corpus_id"])
+
+    def _start_candidate_elixir(self) -> str:
+        corpus_id = self._make_promoted_corpus()
+        started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
+        return str(started["elixir_id"])
 
     def test_heavy_lane_dry_run_filters_enqueue_heavy_and_stabilizes_scope(self) -> None:
         self._seed_lane_records()
@@ -430,6 +453,9 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
             if item["primitive"] == "propose":
                 self.assertEqual(contract["status"], "executable")
                 self.assertIn("non_revertible_proposal_generation", contract["revert_policy"])
+            elif item["primitive"] == "distill":
+                self.assertEqual(contract["status"], "executable")
+                self.assertIn("non_revertible_candidate_iteration", contract["revert_policy"])
             else:
                 self.assertEqual(contract["status"], "deferred")
                 self.assertIn("required_before_apply", contract["revert_policy"])
@@ -832,16 +858,20 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(result["lane"], "heavy")
         self.assertTrue(result["dry_run"])
         self.assertFalse(result["side_effects_allowed"])
-        self.assertFalse(result["apply_supported"])
-        self.assertEqual(result["apply_blocker"], "missing_receipted_scoped_contract")
-        self.assertTrue(result["llm_required_for_apply"])
+        self.assertTrue(result["apply_supported"])
+        self.assertEqual(result["apply_blocker"], "")
+        self.assertFalse(result["lane_apply_supported"])
+        self.assertEqual(result["lane_apply_blocker"], "missing_receipted_scoped_contract")
+        self.assertFalse(result["llm_required_for_apply"])
         self.assertTrue(result["receipt_required_for_apply"])
         self.assertTrue(result["audit_required_for_apply"])
+        self.assertFalse(result["revert_policy_required_for_apply"])
         self.assertTrue(result["candidate_plane_required_for_apply"])
         self.assertEqual(result["apply_contract"]["primitive"], "distill")
         self.assertIn("output/_candidates/elixirs/", result["apply_contract"]["write_surfaces"])
         self.assertEqual(result["selected_count"], 1)
         self.assertEqual(result["candidate_count"], 1)
+        self.assertEqual(result["applicable_candidate_count"], 1)
         candidate = result["candidates"][0]
         self.assertEqual(candidate["candidate_id"], "distill-refresh-elixir-z")
         self.assertEqual(candidate["kind"], "elixir_candidate_refresh")
@@ -850,8 +880,8 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(candidate["source_ids"], ["src-a", "src-b"])
         self.assertEqual(candidate["concept_slugs"], ["alpha", "zeta"])
         self.assertEqual(candidate["elixir_refs"], ["elixir-z"])
-        self.assertFalse(candidate["apply_supported"])
-        self.assertEqual(candidate["apply_contract"]["status"], "deferred")
+        self.assertTrue(candidate["apply_supported"])
+        self.assertEqual(candidate["apply_contract"]["status"], "executable")
         self.assertEqual(_snapshot_files(self.root), before)
 
     def test_distill_preview_uses_scope_candidates_when_no_elixir_ref_exists(self) -> None:
@@ -881,6 +911,68 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertFalse(result["truncated"])
         self.assertEqual(result["candidates"][0]["kind"], "elixir_scope_refresh")
         self.assertEqual(result["candidates"][0]["protocol"], "research")
+        self.assertFalse(result["candidates"][0]["apply_supported"])
+        self.assertEqual(result["candidates"][0]["apply_blocker"], "missing_elixir_ref_for_direct_apply")
+
+    def test_distill_apply_refreshes_existing_candidate_receipt_and_audit(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [
+                self._signal(
+                    "sig-20260425-heavy01",
+                    severity="high",
+                    protocol="research",
+                    source_ids=["src-a"],
+                    concept_slugs=["alpha"],
+                    elixir_refs=[elixir_id],
+                )
+            ],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [self._planner("sig-20260425-heavy01", decision="enqueue-heavy")],
+        )
+
+        first = run_alchemy_distill_apply(self.root, scope="all", note="refresh it")
+        second = run_alchemy_distill_apply(self.root, scope="all", note="repeat")
+
+        self.assertEqual(first["status"], "applied")
+        self.assertEqual(first["candidate_count"], 1)
+        self.assertEqual(first["refreshed_count"], 1)
+        self.assertTrue(first["changed"])
+        self.assertFalse(second["changed"])
+        self.assertEqual(second["refreshed_count"], 0)
+        self.assertEqual(second["skipped"][0]["reason"], "already_distilled")
+        self.assertEqual(first["idempotency_key"], second["idempotency_key"])
+        candidate_path = self.root / "output" / "_candidates" / "elixirs" / f"{elixir_id}.md"
+        frontmatter = parse_frontmatter(candidate_path.read_text(encoding="utf-8"))
+        self.assertEqual(frontmatter["elixir_state"], "distilling")
+        history = json.loads(str(frontmatter["distill_history_json"]))
+        self.assertEqual(len(history), 1)
+        self.assertIn("Alchemy scoped distill refresh", history[0]["question"])
+        receipt = json.loads((self.root / first["receipt_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(receipt["operation"], "alchemy-distill-refresh")
+        self.assertEqual(receipt["subject_kind"], "alchemy_elixir_candidate")
+        self.assertEqual(receipt["candidate_ids"], first["candidate_ids"])
+        self.assertFalse(receipt["revert_supported"])
+        self.assertEqual(receipt["primary_path"], "output/_candidates/elixirs")
+        self.assertEqual(receipt["result_summary"]["refreshed"][0]["elixir_id"], elixir_id)
+        self.assertTrue(receipt["result_summary"]["refreshed"][0]["before_hash"])
+        self.assertTrue(receipt["result_summary"]["refreshed"][0]["after_hash"])
+        runtime = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(runtime[-1]["event_type"], "alchemy-distill-refreshed")
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertIn("execution_receipts", {item["source_stream"] for item in audit_records})
+        self.assertIn("runtime_history", {item["source_stream"] for item in audit_records})
 
     def test_review_preview_reports_scoped_candidates_without_writes(self) -> None:
         self._write_jsonl(
@@ -1237,6 +1329,46 @@ class AlchemyLaneCLITests(unittest.TestCase):
             max_pages=5,
             max_tokens=7,
             limit=11,
+        )
+
+    def test_main_dispatches_alchemy_distill_apply(self) -> None:
+        with patch("aiwiki.cli.run_alchemy_distill_apply", return_value={"status": "applied", "primitive": "distill"}) as mocked:
+            code, payload, stderr = self._run_main(
+                [
+                    "alchemy",
+                    "distill",
+                    "all",
+                    "--apply",
+                    "--planner-log-path",
+                    "custom/planner-log.jsonl",
+                    "--signals-path",
+                    "custom/signals.jsonl",
+                    "--max-signals",
+                    "3",
+                    "--max-pages",
+                    "5",
+                    "--max-tokens",
+                    "7",
+                    "--limit",
+                    "11",
+                    "--note",
+                    "refresh",
+                ]
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["primitive"], "distill")
+        mocked.assert_called_once_with(
+            self.root,
+            scope="all",
+            planner_log_path=Path("custom/planner-log.jsonl"),
+            signals_path=Path("custom/signals.jsonl"),
+            max_signals=3,
+            max_pages=5,
+            max_tokens=7,
+            limit=11,
+            note="refresh",
         )
 
     def test_main_dispatches_alchemy_review_preview(self) -> None:

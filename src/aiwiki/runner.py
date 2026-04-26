@@ -1666,6 +1666,166 @@ def run_alchemy_distill_preview(
     )
 
 
+def run_alchemy_distill_apply(
+    root: Path,
+    *,
+    scope: str,
+    planner_log_path: Path | None = None,
+    signals_path: Path | None = None,
+    decision_mode: str | None = None,
+    max_signals: int | None = None,
+    max_pages: int | None = None,
+    max_tokens: int | None = None,
+    limit: int = 50,
+    note: str | None = None,
+) -> dict[str, Any]:
+    preview = run_alchemy_distill_preview(
+        root,
+        scope=scope,
+        planner_log_path=planner_log_path,
+        signals_path=signals_path,
+        decision_mode=decision_mode,
+        max_signals=max_signals,
+        max_pages=max_pages,
+        max_tokens=max_tokens,
+        limit=limit,
+    )
+    status = str(preview.get("status") or "")
+    if status != "ok":
+        raise RuntimeError(f"alchemy distill apply requires an ok dry-run preview (got {status})")
+    candidates = [
+        item
+        for item in preview.get("candidates", [])
+        if isinstance(item, dict) and item.get("apply_supported") is True and item.get("kind") == "elixir_candidate_refresh"
+    ]
+    if not candidates:
+        raise RuntimeError("alchemy distill apply requires at least one apply-supported elixir candidate")
+
+    from .app_execution import append_execution_receipt_history, compute_file_sha256
+    from .app_state import execution_receipt_history_path
+    from .render.paths import execution_receipt_path
+
+    ensure_layout(root)
+    refreshed: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+
+    for candidate in candidates:
+        candidate_id = str(candidate.get("candidate_id") or "")
+        target_ref = str(candidate.get("target_ref") or "")
+        target_id = _alchemy_distill_target_id(target_ref)
+        if not target_id:
+            skipped.append({"candidate_id": candidate_id, "target_ref": target_ref, "reason": "missing_target_ref"})
+            continue
+        candidate_path = root / "output" / "_candidates" / "elixirs" / f"{target_id}.md"
+        if not candidate_path.exists():
+            skipped.append({"candidate_id": candidate_id, "target_ref": target_ref, "elixir_id": target_id, "reason": "target_missing"})
+            continue
+        question = _alchemy_distill_question(candidate)
+        if question in _alchemy_distill_history_questions(candidate_path):
+            skipped.append({"candidate_id": candidate_id, "target_ref": target_ref, "elixir_id": target_id, "reason": "already_distilled"})
+            continue
+        before_hash = compute_file_sha256(candidate_path)
+        result = run_alchemy_distill(root, target_id, question)
+        result_path = root / str(result.get("path") or relative_path(root, candidate_path))
+        after_hash = compute_file_sha256(result_path)
+        refreshed.append(
+            {
+                "candidate_id": candidate_id,
+                "target_ref": target_ref,
+                "elixir_id": target_id,
+                "path": relative_path(root, result_path),
+                "question": question,
+                "before_hash": before_hash,
+                "after_hash": after_hash,
+                "iteration": result.get("iteration"),
+            }
+        )
+
+    applied_at = utc_now()
+    action_id = _unique_alchemy_distill_action_id(root, applied_at=applied_at)
+    receipt_path = execution_receipt_path(root, action_id)
+    audit_path = relative_path(root, execution_receipt_history_path(root))
+    trace_ids = _preview_trace_ids(preview)
+    trace_id = trace_ids[0] if trace_ids else ""
+    candidate_ids = [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")]
+    idempotency_key = _alchemy_distill_idempotency_key(scope=scope, candidate_ids=candidate_ids, trace_ids=trace_ids)
+    receipt = {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-alchemy-distill",
+        "applied_at": applied_at,
+        "operation": "alchemy-distill-refresh",
+        "action_id": action_id,
+        "trace_id": trace_id,
+        "trace_ids": trace_ids,
+        "title": f"Alchemy distill refresh {scope}",
+        "status": "applied",
+        "protocol": _first_preview_protocol(preview),
+        "subject_kind": "alchemy_elixir_candidate",
+        "subject_id": f"distill:{scope}",
+        "apply_mode": "alchemy-distill",
+        "note": note or "",
+        "primary_path": "output/_candidates/elixirs",
+        "secondary_path": "",
+        "receipt_path": relative_path(root, receipt_path),
+        "scope": scope,
+        "primitive": "distill",
+        "candidate_ids": candidate_ids,
+        "candidate_count": len(candidates),
+        "refreshed_count": len(refreshed),
+        "skipped_count": len(skipped),
+        "skipped": skipped,
+        "idempotency_key": idempotency_key,
+        "changed": bool(refreshed),
+        "revert_supported": False,
+        "revert_policy": "non_revertible_candidate_iteration: re-run distill/finalize/promote lifecycle with receipt evidence; before/after hashes document refreshed candidates",
+        "audit_stream": "execution_receipts",
+        "audit_event": "execution_receipt_history_append",
+        "audit_path": audit_path,
+        "source_preview": _distill_preview_receipt_summary(preview, candidates),
+        "result_summary": {"refreshed": refreshed, "skipped": skipped},
+    }
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    append_execution_receipt_history(root, receipt)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "alchemy-distill-refreshed",
+            "recorded_at": applied_at,
+            "status": "completed",
+            "scope": scope,
+            "candidate_count": len(candidates),
+            "candidate_ids": candidate_ids,
+            "refreshed_count": len(refreshed),
+            "skipped_count": len(skipped),
+            "receipt_path": relative_path(root, receipt_path),
+            "trace_id": trace_id,
+            "trace_ids": trace_ids,
+            "subject_kind": "alchemy_elixir_candidate",
+            "subject_id": f"distill:{scope}",
+        },
+    )
+    return {
+        "status": "applied",
+        "primitive": "distill",
+        "scope": scope,
+        "candidate_count": len(candidates),
+        "candidate_ids": candidate_ids,
+        "refreshed_count": len(refreshed),
+        "refreshed": refreshed,
+        "skipped_count": len(skipped),
+        "skipped": skipped,
+        "receipt_path": relative_path(root, receipt_path),
+        "audit_path": audit_path,
+        "trace_id": trace_id,
+        "trace_ids": trace_ids,
+        "idempotency_key": idempotency_key,
+        "changed": bool(refreshed),
+        "preview": preview,
+    }
+
+
 def run_alchemy_review_preview(
     root: Path,
     *,
@@ -2407,6 +2567,20 @@ def _propose_preview_receipt_summary(preview: dict[str, Any], candidates: list[d
     }
 
 
+def _distill_preview_receipt_summary(preview: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "status": str(preview.get("status") or ""),
+        "scope": str(preview.get("scope") or ""),
+        "selected_count": int(preview.get("selected_count") or 0),
+        "candidate_count": len(candidates),
+        "candidate_ids": [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")],
+        "scope_preview": preview.get("scope_preview") if isinstance(preview.get("scope_preview"), dict) else {},
+        "apply_contract": preview.get("apply_contract") if isinstance(preview.get("apply_contract"), dict) else {},
+        "direct_apply_only": True,
+        "lane_apply_supported": False,
+    }
+
+
 def _preview_trace_ids(preview: dict[str, Any]) -> list[str]:
     scope_preview = preview.get("scope_preview")
     if not isinstance(scope_preview, dict):
@@ -2450,6 +2624,50 @@ def _alchemy_propose_idempotency_key(*, scope: str, candidate_ids: list[str], tr
     return f"alchemy-propose:{digest}"
 
 
+def _alchemy_distill_idempotency_key(*, scope: str, candidate_ids: list[str], trace_ids: list[str]) -> str:
+    payload = {
+        "primitive": "distill",
+        "scope": scope,
+        "candidate_ids": sorted(candidate_ids),
+        "question_template": "scoped_elixir_candidate_refresh",
+        "trace_ids": sorted(trace_ids),
+    }
+    digest = sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    return f"alchemy-distill:{digest}"
+
+
+def _alchemy_distill_target_id(target_ref: str) -> str:
+    normalized = target_ref.strip()
+    if not normalized:
+        return ""
+    return Path(normalized).stem
+
+
+def _alchemy_distill_question(candidate: dict[str, Any]) -> str:
+    candidate_id = str(candidate.get("candidate_id") or "distill")
+    target_ref = str(candidate.get("target_ref") or "")
+    signal_ids = ",".join(_string_values(candidate.get("signal_ids"))) or "none"
+    return f"Alchemy scoped distill refresh for {candidate_id} ({target_ref}); signals={signal_ids}"
+
+
+def _alchemy_distill_history_questions(path: Path) -> set[str]:
+    frontmatter = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+    raw = frontmatter.get("distill_history_json")
+    if not isinstance(raw, str) or not raw.strip():
+        return set()
+    try:
+        decoded = json.loads(raw)
+    except json.JSONDecodeError:
+        return set()
+    if not isinstance(decoded, list):
+        return set()
+    questions: set[str] = set()
+    for item in decoded:
+        if isinstance(item, dict) and isinstance(item.get("question"), str):
+            questions.add(str(item["question"]))
+    return questions
+
+
 def _alchemy_propose_prompt_content(root: Path, *, target_file: str, candidate: dict[str, Any], scope: str) -> str:
     target = root / target_file
     current = target.read_text(encoding="utf-8", errors="replace")
@@ -2476,6 +2694,19 @@ def _unique_alchemy_propose_action_id(root: Path, *, applied_at: str) -> str:
 
     timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
     base = slugify(f"alchemy-propose-{timestamp}")
+    candidate = base
+    n = 2
+    while execution_receipt_path(root, candidate).exists():
+        candidate = f"{base}-{n}"
+        n += 1
+    return candidate
+
+
+def _unique_alchemy_distill_action_id(root: Path, *, applied_at: str) -> str:
+    from .render.paths import execution_receipt_path
+
+    timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
+    base = slugify(f"alchemy-distill-{timestamp}")
     candidate = base
     n = 2
     while execution_receipt_path(root, candidate).exists():

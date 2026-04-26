@@ -46,6 +46,7 @@ from .runner import (
     run_alchemy_auto,
     run_alchemy_demote,
     run_alchemy_distill,
+    run_alchemy_distill_apply,
     run_alchemy_distill_preview,
     run_alchemy_finalize,
     run_alchemy_judge_preview,
@@ -482,12 +483,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     distill_preview_mode = distill_preview_parser.add_mutually_exclusive_group(required=True)
     distill_preview_mode.add_argument("--dry-run", action="store_true", help="Preview only.")
+    distill_preview_mode.add_argument("--apply", action="store_true", help="Refresh existing scoped elixir candidates with receipt/audit.")
     distill_preview_parser.add_argument("--planner-log-path", type=Path, default=None)
     distill_preview_parser.add_argument("--signals-path", type=Path, default=None)
     distill_preview_parser.add_argument("--max-signals", type=int, default=None)
     distill_preview_parser.add_argument("--max-pages", type=int, default=None)
     distill_preview_parser.add_argument("--max-tokens", type=int, default=None)
     distill_preview_parser.add_argument("--limit", type=int, default=50)
+    distill_preview_parser.add_argument("--note", default=None)
     review_preview_parser = alchemy_subparsers.add_parser(
         "review",
         help="Preview scoped review enqueue candidates without applying them.",
@@ -1023,16 +1026,29 @@ def main(argv: list[str] | None = None) -> int:
                     limit=args.limit,
                 )
             elif args.alchemy_lane == "distill":
-                result = run_alchemy_distill_preview(
-                    root,
-                    scope=args.scope,
-                    planner_log_path=args.planner_log_path,
-                    signals_path=args.signals_path,
-                    max_signals=args.max_signals,
-                    max_pages=args.max_pages,
-                    max_tokens=args.max_tokens,
-                    limit=args.limit,
-                )
+                if args.apply:
+                    result = run_alchemy_distill_apply(
+                        root,
+                        scope=args.scope,
+                        planner_log_path=args.planner_log_path,
+                        signals_path=args.signals_path,
+                        max_signals=args.max_signals,
+                        max_pages=args.max_pages,
+                        max_tokens=args.max_tokens,
+                        limit=args.limit,
+                        note=args.note,
+                    )
+                else:
+                    result = run_alchemy_distill_preview(
+                        root,
+                        scope=args.scope,
+                        planner_log_path=args.planner_log_path,
+                        signals_path=args.signals_path,
+                        max_signals=args.max_signals,
+                        max_pages=args.max_pages,
+                        max_tokens=args.max_tokens,
+                        limit=args.limit,
+                    )
             elif args.alchemy_lane == "review":
                 if args.apply:
                     result = run_alchemy_review_apply(
