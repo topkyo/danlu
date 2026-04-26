@@ -389,6 +389,26 @@ class CLITests(unittest.TestCase):
                 },
             ),
             (
+                "planner-log-rollback",
+                [
+                    "planner-log-rollback",
+                    "--dry-run",
+                    "--signal-id",
+                    "sig-20260424-abc123",
+                    "--trace-id",
+                    "550e8400-e29b-41d4-a716-446655440000",
+                    "--limit",
+                    "5",
+                ],
+                "run_planner_log_rollback_preview",
+                (self.root,),
+                {
+                    "signal_id": "sig-20260424-abc123",
+                    "trace_id": "550e8400-e29b-41d4-a716-446655440000",
+                    "limit": 5,
+                },
+            ),
+            (
                 "audit-preview",
                 ["audit-preview", "--dry-run", "--limit", "6"],
                 "run_audit_preview",

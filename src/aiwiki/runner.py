@@ -242,6 +242,18 @@ def run_audit_backfill(root: Path, *, limit: int = 50, apply: bool = False) -> d
     return backfill_universal_audit_stream(root, limit=limit, apply=apply)
 
 
+def run_planner_log_rollback_preview(
+    root: Path,
+    *,
+    signal_id: str | None = None,
+    trace_id: str | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
+    from .planner.rollback import preview_planner_log_rollback
+
+    return preview_planner_log_rollback(root, signal_id=signal_id, trace_id=trace_id, limit=limit)
+
+
 def create_client(root: Path, timeout_seconds: int | None = None) -> SupportsComplete:
     config = LLMConfig.from_env()
     if timeout_seconds is not None:

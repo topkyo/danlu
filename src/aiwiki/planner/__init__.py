@@ -2,5 +2,6 @@
 
 from .dry_run import preview_alchemy_lane
 from .log_writer import write_planner_log
+from .rollback import preview_planner_log_rollback
 
-__all__ = ["preview_alchemy_lane", "write_planner_log"]
+__all__ = ["preview_alchemy_lane", "preview_planner_log_rollback", "write_planner_log"]

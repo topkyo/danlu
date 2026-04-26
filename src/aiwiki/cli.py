@@ -66,6 +66,7 @@ from .runner import (
     run_lint,
     run_nightly,
     run_planner_log_list,
+    run_planner_log_rollback_preview,
     run_promote,
     run_protocol_learn_add,
     run_protocol_learn_age,
@@ -245,6 +246,15 @@ def build_parser() -> argparse.ArgumentParser:
     planner_log_list_parser.add_argument("--since", help="Optional ISO datetime lower bound (inclusive).")
     planner_log_list_parser.add_argument("--limit", type=int, default=20, help="Maximum number of results (recent first).")
     planner_log_list_parser.add_argument("--json", action="store_true", help="Return full JSON records.")
+
+    planner_log_rollback_parser = subparsers.add_parser(
+        "planner-log-rollback",
+        help="Preview append-only planner-log rollback markers without writing them.",
+    )
+    planner_log_rollback_parser.add_argument("--dry-run", action="store_true", help="Required; preview only.")
+    planner_log_rollback_parser.add_argument("--signal-id", default=None)
+    planner_log_rollback_parser.add_argument("--trace-id", default=None)
+    planner_log_rollback_parser.add_argument("--limit", type=int, default=20)
 
     audit_preview_parser = subparsers.add_parser(
         "audit-preview",
@@ -965,6 +975,15 @@ def main(argv: list[str] | None = None) -> int:
                     "\n".join(_format_planner_decision_summary_line(item) for item in result)
                     or "(no planner decisions)"
                 )
+        elif args.command == "planner-log-rollback":
+            if not args.dry_run:
+                raise ValueError("planner-log-rollback requires --dry-run")
+            result = run_planner_log_rollback_preview(
+                root,
+                signal_id=args.signal_id,
+                trace_id=args.trace_id,
+                limit=args.limit,
+            )
         elif args.command == "audit-preview":
             if not args.dry_run:
                 raise ValueError("audit-preview requires --dry-run")

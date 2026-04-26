@@ -14,6 +14,7 @@ from unittest.mock import patch
 import aiwiki.planner.log_writer as log_writer
 from aiwiki.cli import build_parser, main
 from aiwiki.planner.log_writer import write_planner_log
+from aiwiki.planner.rollback import preview_planner_log_rollback
 from aiwiki.planner.schema import (
     DECISIONS,
     MODES,
@@ -692,6 +693,79 @@ class TestIdempotency(_FixtureCase):
         abs_result = write_planner_log(abs_root, signals_path=abs_path, _now=_fixed_now)
         self.assertEqual(abs_result["new_count"], 3)
         self.assertEqual(abs_result["signals_path"], str(abs_path))
+
+
+class TestPlannerLogRollbackPreview(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name).resolve()
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def _record(self, signal_id: str, trace_id: str, decision: str = "enqueue-heavy") -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "signal_id": signal_id,
+            "dedupe_key": f"review_feedback:research:runtime_history:{signal_id}",
+            "trace_id": trace_id,
+            "decision": decision,
+            "mode": "observe_only",
+            "reason_codes": ["review_feedback_observed", "heavy_lane_recommended"],
+            "budget_used": {},
+            "locks_acquired": [],
+            "primitive_refs": [],
+            "side_effects_allowed": False,
+            "decided_at": "2026-04-24T12:00:00Z",
+        }
+
+    def _write_planner_log(self, records: list[dict[str, object]]) -> str:
+        path = self.root / ".aiwiki/state/planner-log.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        content = "".join(canonical_dumps_planner_log(record) + "\n" for record in records)
+        path.write_text(content, encoding="utf-8")
+        return content
+
+    def test_preview_filters_and_does_not_mutate_planner_log(self) -> None:
+        before = self._write_planner_log(
+            [
+                self._record("sig-20260424-rollback01", "550e8400-e29b-41d4-a716-446655440000"),
+                self._record("sig-20260424-rollback02", "550e8400-e29b-41d4-a716-446655440001", "generate-proposal"),
+            ]
+        )
+
+        result = preview_planner_log_rollback(
+            self.root,
+            trace_id="550e8400-e29b-41d4-a716-446655440001",
+        )
+
+        self.assertFalse(result["side_effects_allowed"])
+        self.assertFalse(result["delete_supported"])
+        self.assertEqual(result["rollback_strategy"], "append_marker")
+        self.assertTrue(result["marker_planned"])
+        self.assertEqual(result["scanned_count"], 2)
+        self.assertEqual(result["matched_count"], 1)
+        self.assertEqual(result["records"][0]["source_ref"], ".aiwiki/state/planner-log.jsonl#L2")
+        self.assertEqual(result["records"][0]["decision"], "generate-proposal")
+        self.assertFalse(result["records"][0]["delete_supported"])
+        self.assertEqual((self.root / ".aiwiki/state/planner-log.jsonl").read_text(encoding="utf-8"), before)
+
+    def test_preview_limit_caps_returned_records(self) -> None:
+        self._write_planner_log(
+            [
+                self._record("sig-20260424-rollback01", "550e8400-e29b-41d4-a716-446655440000"),
+                self._record("sig-20260424-rollback02", "550e8400-e29b-41d4-a716-446655440001"),
+            ]
+        )
+
+        result = preview_planner_log_rollback(self.root, limit=1)
+
+        self.assertEqual(result["matched_count"], 2)
+        self.assertEqual(result["returned_count"], 1)
+
+    def test_preview_rejects_non_positive_limit(self) -> None:
+        with self.assertRaisesRegex(ValueError, "limit must be a positive integer"):
+            preview_planner_log_rollback(self.root, limit=0)
 
 
 class TestCorruptFailFast(_FixtureCase):
