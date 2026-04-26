@@ -446,8 +446,8 @@ def build_parser() -> argparse.ArgumentParser:
             "--primitive",
             action="append",
             default=[],
-            choices=("compile", "lint", "nightly"),
-            help="Deterministic receipted lane primitive to apply; may be repeated.",
+            choices=("compile", "lint", "nightly", "review"),
+            help="Receipted lane primitive to apply; may be repeated.",
         )
         lane_parser.add_argument("--note", default=None)
         lane_parser.add_argument("--planner-log-path", type=Path, default=None)

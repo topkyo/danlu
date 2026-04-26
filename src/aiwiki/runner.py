@@ -1801,6 +1801,7 @@ def run_alchemy_review_apply(
         "candidate_ids": candidate_ids,
         "review_queue_path": queue_result["path"],
         "receipt_path": relative_path(root, receipt_path),
+        "audit_path": audit_path,
         "trace_id": trace_id,
         "trace_ids": trace_ids,
         "idempotency_key": idempotency_key,
@@ -1894,6 +1895,12 @@ def run_alchemy_lane_apply(
             primitive=primitive,
             plan=plan,
             note=note,
+            planner_log_path=planner_log_path,
+            signals_path=signals_path,
+            decision_mode=decision_mode,
+            max_signals=max_signals,
+            max_pages=max_pages,
+            max_tokens=max_tokens,
         )
         for primitive in normalized_primitives
     ]
@@ -2044,10 +2051,15 @@ def _auto_primitives_for_lane(
 ) -> list[str]:
     defaults = {"heavy": ["compile", "lint"], "light": ["compile", "lint", "nightly"]}[lane]
     wanted = requested_primitives or defaults
+    auto_supported_primitives = {"compile", "lint", "nightly"}
     supported = {
         str(item.get("primitive") or "")
         for item in plan.get("primitive_plan", [])
-        if isinstance(item, dict) and item.get("apply_supported") is True
+        if (
+            isinstance(item, dict)
+            and item.get("apply_supported") is True
+            and str(item.get("primitive") or "") in auto_supported_primitives
+        )
     }
     return [primitive for primitive in wanted if primitive in supported]
 
@@ -2277,7 +2289,7 @@ def _markdown_cell(value: str) -> str:
 
 
 def _normalize_lane_primitives(primitives: list[str]) -> list[str]:
-    allowed = {"compile", "lint", "nightly"}
+    allowed = {"compile", "lint", "nightly", "review"}
     normalized: list[str] = []
     seen: set[str] = set()
     for item in primitives:
@@ -2301,6 +2313,12 @@ def _run_receipted_lane_primitive(
     primitive: str,
     plan: dict[str, Any],
     note: str | None,
+    planner_log_path: Path | None = None,
+    signals_path: Path | None = None,
+    decision_mode: str | None = None,
+    max_signals: int | None = None,
+    max_pages: int | None = None,
+    max_tokens: int | None = None,
 ) -> dict[str, Any]:
     plan_step = _lane_primitive_plan_step(plan, primitive)
     if plan_step is None:
@@ -2309,6 +2327,25 @@ def _run_receipted_lane_primitive(
         blocker = str(plan_step.get("apply_blocker") or "not_apply_supported")
         raise RuntimeError(f"primitive {primitive!r} is not apply-supported in the dry-run plan for lane {lane!r}: {blocker}")
 
+    if primitive == "review":
+        result = run_alchemy_review_apply(
+            root,
+            scope=scope,
+            planner_log_path=planner_log_path,
+            signals_path=signals_path,
+            decision_mode=decision_mode,
+            max_signals=max_signals,
+            max_pages=max_pages,
+            max_tokens=max_tokens,
+            note=note,
+        )
+        return {
+            "primitive": primitive,
+            "trace_id": str(result.get("trace_id") or ""),
+            "audit_path": str(result.get("audit_path") or ""),
+            "receipt_path": str(result.get("receipt_path") or ""),
+            "result": result,
+        }
     if primitive == "compile":
         result = compile_wiki(root)
     elif primitive == "lint":

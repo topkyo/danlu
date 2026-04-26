@@ -158,11 +158,11 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
                 "judge": False,
                 "distill": False,
                 "lint": True,
-                "review": False,
+                "review": True,
             },
         )
         self.assertEqual(result["primitive_plan"][2]["apply_blocker"], "missing_receipted_scoped_contract")
-        self.assertEqual(result["primitive_plan"][5]["apply_blocker"], "not_integrated_into_lane_apply_contract")
+        self.assertEqual(result["primitive_plan"][5]["apply_blocker"], "")
 
     def test_heavy_lane_does_not_consume_generate_proposal_decisions(self) -> None:
         self._write_jsonl(
@@ -254,6 +254,23 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(lanes["light"]["status"], "ready")
         self.assertEqual(lanes["light"]["selected_primitives"], ["compile", "lint", "nightly"])
 
+    def test_auto_scheduler_does_not_select_review_even_when_requested(self) -> None:
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [self._signal("sig-20260425-heavy01", severity="high", protocol="research")],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [self._planner("sig-20260425-heavy01", decision="enqueue-heavy", mode="execute")],
+        )
+
+        result = run_alchemy_auto(self.root, apply=False, lanes=["heavy"], primitives=["review"])
+
+        lane = result["lane_results"][0]
+        self.assertEqual(lane["status"], "skipped")
+        self.assertEqual(lane["reason"], "no_apply_supported_primitives")
+        self.assertEqual(lane["selected_primitives"], [])
+
     def test_auto_scheduler_apply_invokes_supported_primitives_and_writes_runtime_history(self) -> None:
         self._write_jsonl(
             ".aiwiki/state/signals.jsonl",
@@ -295,24 +312,20 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
 
         self.assertEqual(
             [item["primitive"] for item in heavy["deferred_primitives"]],
-            ["judge", "distill", "review", "propose"],
+            ["judge", "distill", "propose"],
         )
         self.assertEqual(
             {item["reason_code"] for item in heavy["deferred_primitives"]},
-            {"missing_receipted_scoped_contract", "not_integrated_into_lane_apply_contract"},
+            {"missing_receipted_scoped_contract"},
         )
         for item in heavy["deferred_primitives"]:
             contract = item["apply_contract"]
-            expected_status = "executable" if item["primitive"] == "review" else "deferred"
-            self.assertEqual(contract["status"], expected_status)
+            self.assertEqual(contract["status"], "deferred")
             self.assertEqual(contract["primitive"], item["primitive"])
             self.assertTrue(contract["write_surfaces"])
             self.assertIn("execution-receipt v1", contract["receipt_schema"])
             self.assertIn("execution_receipt_history_append", contract["audit_event_schema"])
-            if item["primitive"] == "review":
-                self.assertIn("non_revertible_derived_index", contract["revert_policy"])
-            else:
-                self.assertIn("required_before_apply", contract["revert_policy"])
+            self.assertIn("required_before_apply", contract["revert_policy"])
             self.assertIn("trace_ids", contract["idempotency_key"])
             self.assertTrue(contract["backend_policy"])
         self.assertEqual(
@@ -518,6 +531,55 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(history[-1]["action_id"], receipt["action_id"])
         self.assertEqual(history[-1]["trace_id"], receipt["trace_id"])
 
+    def test_apply_writes_review_queue_via_explicit_heavy_lane_primitive(self) -> None:
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [
+                self._signal(
+                    "sig-20260425-heavy01",
+                    severity="high",
+                    protocol="research",
+                    elixir_refs=["elixir-z"],
+                    judgment_refs=["wiki/judgments/thesis.md"],
+                )
+            ],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [self._planner("sig-20260425-heavy01", decision="enqueue-heavy")],
+        )
+
+        result = run_alchemy_lane_apply(
+            self.root,
+            lane="heavy",
+            scope="all",
+            action_ids=[],
+            primitives=["review"],
+            note="lane review",
+        )
+
+        self.assertEqual(result["status"], "applied")
+        self.assertEqual(result["primitives"], ["review"])
+        primitive_result = result["primitive_results"][0]
+        self.assertEqual(primitive_result["primitive"], "review")
+        self.assertEqual(primitive_result["audit_path"], ".aiwiki/state/execution-receipts.jsonl")
+        review_result = primitive_result["result"]
+        self.assertEqual(review_result["status"], "applied")
+        queue_text = (self.root / review_result["review_queue_path"]).read_text(encoding="utf-8")
+        self.assertIn("review-judgment-wiki-judgments-thesis-md", queue_text)
+        receipt = json.loads((self.root / review_result["receipt_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(receipt["operation"], "alchemy-review-enqueue")
+        runtime = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(
+            [item["event_type"] for item in runtime],
+            ["alchemy-lane-started", "alchemy-review-enqueued", "alchemy-lane-completed"],
+        )
+        self.assertEqual(runtime[-1]["primitive_receipts"], [review_result["receipt_path"]])
+
     def test_apply_rejects_primitive_absent_from_lane_plan(self) -> None:
         self._seed_lane_records()
 
@@ -548,8 +610,6 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
             run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[], primitives=["judge"])
         with self.assertRaisesRegex(ValueError, "unsupported alchemy lane primitive"):
             run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[], primitives=["distill"])
-        with self.assertRaisesRegex(ValueError, "unsupported alchemy lane primitive"):
-            run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[], primitives=["review"])
         with self.assertRaisesRegex(ValueError, "unsupported alchemy lane primitive"):
             run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[], primitives=["propose"])
 
@@ -707,8 +767,8 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertFalse(result["side_effects_allowed"])
         self.assertTrue(result["apply_supported"])
         self.assertEqual(result["apply_blocker"], "")
-        self.assertFalse(result["lane_apply_supported"])
-        self.assertEqual(result["lane_apply_blocker"], "not_integrated_into_lane_apply_contract")
+        self.assertTrue(result["lane_apply_supported"])
+        self.assertEqual(result["lane_apply_blocker"], "")
         self.assertFalse(result["llm_required_for_apply"])
         self.assertTrue(result["receipt_required_for_apply"])
         self.assertTrue(result["audit_required_for_apply"])
