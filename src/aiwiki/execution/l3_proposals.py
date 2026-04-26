@@ -208,7 +208,7 @@ def preview_l3_proposal_generation(
         return {
             "status": "ok",
             "generation_mode": "preview",
-            "automatic_generation_enabled": False,
+            "automatic_generation_enabled": True,
             "side_effects_allowed": False,
             "planner_log_path": relative_path(root, resolved_path),
             "candidate_count": 0,
@@ -221,6 +221,7 @@ def preview_l3_proposal_generation(
     candidates: list[dict[str, Any]] = []
     matched_count = 0
     scanned_count = 0
+    blocked_count = 0
     with resolved_path.open("r", encoding="utf-8") as handle:
         for line_no, raw_line in enumerate(handle, start=1):
             payload = raw_line.strip()
@@ -239,6 +240,17 @@ def preview_l3_proposal_generation(
             if "proposal_recommended" not in reason_codes:
                 continue
             matched_count += 1
+            target_file = "prompts/ask.md"
+            target_exists = (root / target_file).is_file()
+            mode = str(record.get("mode") or "")
+            eligible = mode == "execute" and target_exists
+            blockers: list[str] = []
+            if mode != "execute":
+                blockers.append("requires_execute_mode")
+            if not target_exists:
+                blockers.append("target_missing")
+            if blockers:
+                blocked_count += 1
             if len(candidates) >= limit:
                 continue
             candidates.append(
@@ -246,32 +258,113 @@ def preview_l3_proposal_generation(
                     "signal_id": str(record.get("signal_id") or ""),
                     "trace_id": str(record.get("trace_id") or ""),
                     "dedupe_key": str(record.get("dedupe_key") or ""),
-                    "mode": str(record.get("mode") or ""),
+                    "mode": mode,
                     "decided_at": str(record.get("decided_at") or ""),
                     "reason_codes": reason_codes,
-                    "eligible": False,
-                    "proposal_kind": "unknown",
-                    "blockers": [
-                        "automatic_generation_disabled",
-                        "threshold_clustering_not_implemented",
-                        "manual_review_required",
-                    ],
+                    "eligible": eligible,
+                    "proposal_kind": "prompt_proposal",
+                    "proposal_id": _automatic_l3_proposal_id(str(record.get("signal_id") or "")),
+                    "target_file": target_file,
+                    "blockers": blockers,
                 }
             )
 
     return {
         "status": "ok",
         "generation_mode": "preview",
-        "automatic_generation_enabled": False,
+        "automatic_generation_enabled": True,
         "side_effects_allowed": False,
         "planner_log_path": relative_path(root, resolved_path),
         "scanned_count": scanned_count,
         "candidate_count": matched_count,
-        "blocked_count": matched_count,
+        "blocked_count": blocked_count,
         "returned_count": len(candidates),
         "candidates": candidates,
         "limit": limit,
     }
+
+
+@runtime_write_operation
+def generate_l3_proposals_from_planner(
+    root: Path,
+    *,
+    planner_log_path: Path | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
+    preview = preview_l3_proposal_generation(root, planner_log_path=planner_log_path, limit=limit)
+    proposals = [dict(item) for item in load_l3_proposal_state(root).get("proposals", []) if isinstance(item, dict)]
+    existing_ids = {str(item.get("proposal_id") or "") for item in proposals}
+    generated: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+
+    for candidate in preview.get("candidates", []):
+        if not isinstance(candidate, dict):
+            continue
+        proposal_id = str(candidate.get("proposal_id") or "")
+        if not candidate.get("eligible"):
+            skipped.append({"proposal_id": proposal_id, "reason": "not_eligible"})
+            continue
+        if proposal_id in existing_ids:
+            skipped.append({"proposal_id": proposal_id, "reason": "already_exists"})
+            continue
+        kind = str(candidate.get("proposal_kind") or "prompt_proposal")
+        target_file = str(candidate.get("target_file") or "")
+        target = _target_path(root, kind, target_file)
+        current_content = target.read_text(encoding="utf-8", errors="replace")
+        signal_id = str(candidate.get("signal_id") or "")
+        content = _automatic_l3_prompt_content(current_content, signal_id=signal_id)
+        result = create_l3_proposal(
+            root,
+            kind=kind,
+            proposal_id=proposal_id,
+            target_file=target_file,
+            content=content,
+            rationale=f"Automatically generated from execute-mode planner decision {signal_id}. Manual accept is still required.",
+            evidence_refs=[f"{preview.get('planner_log_path')}#{signal_id}"],
+            signal_ids=[signal_id],
+            pattern=_automatic_l3_pattern(candidate),
+        )
+        generated.append(result)
+        existing_ids.add(proposal_id)
+
+    return {
+        **preview,
+        "generation_mode": "apply",
+        "side_effects_allowed": True,
+        "generated_count": len(generated),
+        "skipped_count": len(skipped),
+        "generated": generated,
+        "skipped": skipped,
+    }
+
+
+def _automatic_l3_proposal_id(signal_id: str) -> str:
+    return slugify(f"auto-{signal_id or 'planner-signal'}")
+
+
+def _automatic_l3_prompt_content(current_content: str, *, signal_id: str) -> str:
+    base = current_content.rstrip()
+    section = "\n".join(
+        [
+            "",
+            "<!-- aiwiki:auto-proposal:start -->",
+            f"<!-- signal_id: {signal_id} -->",
+            "<!-- Review this candidate before accepting. -->",
+            "<!-- aiwiki:auto-proposal:end -->",
+        ]
+    )
+    return base + section + "\n"
+
+
+def _automatic_l3_pattern(candidate: dict[str, Any]) -> str:
+    reason_codes = [str(item) for item in candidate.get("reason_codes", []) if isinstance(item, str)]
+    if "drift_observed" in reason_codes:
+        return "drift"
+    if "runtime_failure_observed" in reason_codes:
+        return "contract_failure"
+    if "learning_threshold_observed" in reason_codes:
+        return "recurring_feedback"
+    return "failure_cluster"
 
 
 @runtime_write_operation

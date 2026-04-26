@@ -363,6 +363,13 @@ class CLITests(unittest.TestCase):
                 },
             ),
             (
+                "l3-proposal-generate",
+                ["l3-proposal-generate", "--apply", "--planner-log-path", "custom/planner-log.jsonl", "--limit", "3"],
+                "run_l3_proposal_generate",
+                (self.root,),
+                {"planner_log_path": Path("custom/planner-log.jsonl"), "limit": 3, "apply": True},
+            ),
+            (
                 "review-proposals",
                 ["review", "proposals", "--kind", "prompt_proposal", "--state", "candidate", "--json"],
                 "run_l3_proposal_list",

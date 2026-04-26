@@ -63,6 +63,7 @@ from .runner import (
     run_demote,
     run_l3_proposal_apply,
     run_l3_proposal_create,
+    run_l3_proposal_generate,
     run_l3_proposal_generation_preview,
     run_l3_proposal_list,
     run_l3_proposal_reject,
@@ -506,6 +507,15 @@ def build_parser() -> argparse.ArgumentParser:
         default="manual_fixture",
         choices=("failure_cluster", "recurring_feedback", "drift", "contract_failure", "manual_fixture"),
     )
+    l3_generate_parser = subparsers.add_parser(
+        "l3-proposal-generate",
+        help="Generate L3 proposal candidates from execute-mode planner decisions.",
+    )
+    l3_generate_mode = l3_generate_parser.add_mutually_exclusive_group(required=True)
+    l3_generate_mode.add_argument("--dry-run", action="store_true", help="Preview generation candidates only.")
+    l3_generate_mode.add_argument("--apply", action="store_true", help="Create eligible proposal candidates.")
+    l3_generate_parser.add_argument("--planner-log-path", type=Path, default=None)
+    l3_generate_parser.add_argument("--limit", type=int, default=20)
 
     review_group_parser = subparsers.add_parser("review", help="Review queue inspection commands.")
     review_group_subparsers = review_group_parser.add_subparsers(dest="review_command", required=True)
@@ -979,6 +989,13 @@ def main(argv: list[str] | None = None) -> int:
                 evidence_refs=args.evidence_refs,
                 signal_ids=args.signal_ids,
                 pattern=args.pattern,
+            )
+        elif args.command == "l3-proposal-generate":
+            result = run_l3_proposal_generate(
+                root,
+                planner_log_path=args.planner_log_path,
+                limit=args.limit,
+                apply=args.apply,
             )
         elif args.command == "review":
             if args.review_command == "proposals":

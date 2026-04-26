@@ -11,6 +11,7 @@ from aiwiki.app_state import l3_proposal_state_path
 from aiwiki.execution.l3_proposals import (
     apply_l3_proposal,
     create_l3_proposal,
+    generate_l3_proposals_from_planner,
     list_l3_proposals,
     preview_l3_proposal_generation,
     reject_l3_proposal,
@@ -261,7 +262,7 @@ class L3ProposalTests(unittest.TestCase):
         self.assertEqual(summary["review_backlog_counts"]["l3_proposals"], 3)
         self.assertEqual(summary["review_backlog_counts"]["l3_proposal_attention"], 2)
 
-    def test_generation_preview_lists_blocked_planner_candidates_without_writes(self) -> None:
+    def _write_l3_planner_log(self, *, mode: str = "observe_only", signal_id: str = "sig-20260424-l3prev01") -> None:
         planner_log = self.root / ".aiwiki" / "state" / "planner-log.jsonl"
         planner_log.parent.mkdir(parents=True, exist_ok=True)
         planner_log.write_text(
@@ -270,16 +271,16 @@ class L3ProposalTests(unittest.TestCase):
                     json.dumps(
                         {
                             "schema_version": 1,
-                            "signal_id": "sig-20260424-l3prev01",
-                            "dedupe_key": "sig-20260424-l3prev01:observe_only",
+                            "signal_id": signal_id,
+                            "dedupe_key": f"{signal_id}:{mode}",
                             "trace_id": "550e8400-e29b-41d4-a716-446655440000",
                             "decision": "generate-proposal",
-                            "mode": "observe_only",
-                            "reason_codes": ["runtime_failure_observed", "proposal_recommended"],
+                            "mode": mode,
+                            "reason_codes": ["runtime_failure_observed", "proposal_recommended"] if mode == "observe_only" else ["runtime_failure_observed", "proposal_recommended", "execute_mode_requested"],
                             "budget_used": {},
                             "locks_acquired": [],
                             "primitive_refs": [],
-                            "side_effects_allowed": False,
+                            "side_effects_allowed": mode == "execute",
                             "decided_at": "2026-04-24T12:00:00Z",
                         },
                         separators=(",", ":"),
@@ -307,9 +308,12 @@ class L3ProposalTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def test_generation_preview_lists_blocked_planner_candidates_without_writes(self) -> None:
+        self._write_l3_planner_log(mode="observe_only")
+
         result = preview_l3_proposal_generation(self.root)
 
-        self.assertFalse(result["automatic_generation_enabled"])
+        self.assertTrue(result["automatic_generation_enabled"])
         self.assertFalse(result["side_effects_allowed"])
         self.assertEqual(result["planner_log_path"], ".aiwiki/state/planner-log.jsonl")
         self.assertEqual(result["candidate_count"], 1)
@@ -318,9 +322,45 @@ class L3ProposalTests(unittest.TestCase):
         candidate = result["candidates"][0]
         self.assertEqual(candidate["signal_id"], "sig-20260424-l3prev01")
         self.assertFalse(candidate["eligible"])
-        self.assertIn("automatic_generation_disabled", candidate["blockers"])
+        self.assertIn("requires_execute_mode", candidate["blockers"])
         self.assertFalse(l3_proposal_state_path(self.root).exists())
         self.assertFalse((self.root / "output" / "_proposals").exists())
+
+    def test_generation_preview_marks_execute_mode_candidate_eligible(self) -> None:
+        self._write_l3_planner_log(mode="execute", signal_id="sig-20260424-l3exec01")
+
+        result = preview_l3_proposal_generation(self.root)
+
+        candidate = result["candidates"][0]
+        self.assertTrue(candidate["eligible"])
+        self.assertEqual(candidate["proposal_kind"], "prompt_proposal")
+        self.assertEqual(candidate["proposal_id"], "auto-sig-20260424-l3exec01")
+        self.assertEqual(candidate["target_file"], "prompts/ask.md")
+        self.assertEqual(candidate["blockers"], [])
+
+    def test_generate_l3_proposals_from_execute_mode_planner_is_idempotent_and_does_not_touch_target(self) -> None:
+        self._write_l3_planner_log(mode="execute", signal_id="sig-20260424-l3exec02")
+        before = (self.root / "prompts" / "ask.md").read_text(encoding="utf-8")
+
+        result = generate_l3_proposals_from_planner(self.root)
+        second = generate_l3_proposals_from_planner(self.root)
+
+        self.assertEqual(result["generated_count"], 1)
+        generated = result["generated"][0]
+        self.assertEqual(generated["proposal_id"], "auto-sig-20260424-l3exec02")
+        self.assertEqual((self.root / "prompts" / "ask.md").read_text(encoding="utf-8"), before)
+        stored = self._state_proposal("auto-sig-20260424-l3exec02")
+        self.assertEqual(stored["state"], "candidate")
+        self.assertEqual(stored["target_file"], "prompts/ask.md")
+        self.assertIn("aiwiki:auto-proposal:start", stored["patch"]["content"])
+        self.assertEqual(second["generated_count"], 0)
+        self.assertEqual(second["skipped"][0]["reason"], "already_exists")
+        runtime_history = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(runtime_history[-1]["event_type"], "l3-proposal-create")
 
     def test_generation_preview_missing_planner_log_is_read_only_empty(self) -> None:
         result = preview_l3_proposal_generation(self.root)

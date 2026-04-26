@@ -206,6 +206,20 @@ def run_l3_proposal_generation_preview(
     return preview_l3_proposal_generation(root, planner_log_path=planner_log_path, limit=limit)
 
 
+def run_l3_proposal_generate(
+    root: Path,
+    *,
+    planner_log_path: Path | None = None,
+    limit: int = 20,
+    apply: bool = False,
+) -> dict[str, Any]:
+    if not apply:
+        return run_l3_proposal_generation_preview(root, planner_log_path=planner_log_path, limit=limit)
+    from .execution.l3_proposals import generate_l3_proposals_from_planner
+
+    return generate_l3_proposals_from_planner(root, planner_log_path=planner_log_path, limit=limit)
+
+
 def run_l3_proposal_apply(root: Path, proposal_id: str, *, note: str | None = None) -> dict[str, Any]:
     from .execution.l3_proposals import apply_l3_proposal
 
