@@ -38,6 +38,36 @@ class AppStateTests(unittest.TestCase):
         jsonl_path.write_text('{"a":1}\n\nnot-json\n["skip"]\n{"b":2}\n', encoding="utf-8")
         self.assertEqual(state.load_jsonl_documents(jsonl_path), [{"a": 1}, {"b": 2}])
 
+    def test_append_runtime_history_writes_universal_audit(self) -> None:
+        event = {
+            "event_type": "nightly",
+            "recorded_at": "2026-04-26T10:02:00+00:00",
+            "trace_id": "trace-runtime",
+            "protocol": "research",
+        }
+
+        state.append_runtime_history(self.root, event)
+        state.append_runtime_history(self.root, event)
+
+        history_lines = (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        history_records = [json.loads(line) for line in history_lines if line.strip()]
+        self.assertEqual(history_records, [event, event])
+        self.assertEqual(len(audit_records), 2)
+        self.assertEqual(audit_records[0]["source_stream"], "runtime_history")
+        self.assertEqual(audit_records[0]["source_ref"], ".aiwiki/state/runtime-history.jsonl#L1")
+        self.assertEqual(audit_records[0]["event_type"], "nightly")
+        self.assertEqual(audit_records[0]["occurred_at"], "2026-04-26T10:02:00+00:00")
+        self.assertEqual(audit_records[0]["trace_id"], "trace-runtime")
+        self.assertEqual(audit_records[0]["subject"], {"kind": "nightly", "id": ""})
+        self.assertFalse(audit_records[0]["revert_supported"])
+        self.assertEqual(audit_records[1]["source_ref"], ".aiwiki/state/runtime-history.jsonl#L2")
+        self.assertNotEqual(audit_records[0]["audit_event_id"], audit_records[1]["audit_event_id"])
+
     def test_build_state_loaders_normalize_and_fallback(self) -> None:
         self._write_json(
             state.compile_state_path(self.root),

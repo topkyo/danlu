@@ -308,6 +308,17 @@ def load_jsonl_documents(path: Path) -> list[dict[str, Any]]:
     return documents
 
 
+def _next_jsonl_line_number(path: Path) -> int:
+    if not path.exists():
+        return 1
+    count = 0
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                count += 1
+    return count + 1
+
+
 def default_compile_state() -> dict[str, Any]:
     return {
         "version": 1,
@@ -874,9 +885,18 @@ def load_llm_receipt_history(root: Path) -> list[dict[str, Any]]:
 
 def append_runtime_history(root: Path, event: dict[str, Any]) -> None:
     path = runtime_history_path(root)
+    line_number = _next_jsonl_line_number(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
+    from .execution.audit_preview import append_universal_audit_record
+
+    append_universal_audit_record(
+        root,
+        source_stream="runtime_history",
+        source_ref=f"{relative_path(root, path)}#L{line_number}",
+        document=event,
+    )
 
 
 def default_material_routing_state() -> dict[str, Any]:
