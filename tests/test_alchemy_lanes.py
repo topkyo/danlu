@@ -13,6 +13,7 @@ from aiwiki.planner.dry_run import (
     preview_alchemy_lane,
     preview_distill_primitive,
     preview_judge_primitive,
+    preview_propose_primitive,
     preview_review_primitive,
 )
 from aiwiki.runner import run_alchemy_auto, run_alchemy_lane_apply
@@ -530,6 +531,8 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
             run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[], primitives=["distill"])
         with self.assertRaisesRegex(ValueError, "unsupported alchemy lane primitive"):
             run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[], primitives=["review"])
+        with self.assertRaisesRegex(ValueError, "unsupported alchemy lane primitive"):
+            run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[], primitives=["propose"])
 
     def test_judge_preview_reports_scoped_candidates_without_writes(self) -> None:
         self._write_jsonl(
@@ -721,6 +724,35 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(result["candidates"][0]["kind"], "scope_review_enqueue")
         self.assertEqual(result["candidates"][0]["protocol"], "research")
 
+    def test_propose_preview_reports_scoped_candidates_without_writes(self) -> None:
+        self._seed_lane_records()
+        before = _snapshot_files(self.root)
+
+        result = preview_propose_primitive(self.root, scope="all")
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["primitive"], "propose")
+        self.assertEqual(result["lane"], "heavy")
+        self.assertTrue(result["dry_run"])
+        self.assertFalse(result["side_effects_allowed"])
+        self.assertFalse(result["apply_supported"])
+        self.assertEqual(result["apply_blocker"], "missing_receipted_scoped_contract")
+        self.assertTrue(result["llm_required_for_apply"])
+        self.assertTrue(result["receipt_required_for_apply"])
+        self.assertTrue(result["audit_required_for_apply"])
+        self.assertTrue(result["proposal_plane_write_required_for_apply"])
+        self.assertTrue(result["human_accept_required_after_apply"])
+        self.assertEqual(result["selected_count"], 1)
+        self.assertEqual(result["candidate_count"], 1)
+        candidate = result["candidates"][0]
+        self.assertEqual(candidate["candidate_id"], "propose-scope-research-1")
+        self.assertEqual(candidate["kind"], "proposal_opportunity")
+        self.assertEqual(candidate["proposal_kinds"], ["prompt_proposal", "policy_proposal"])
+        self.assertEqual(candidate["source_decision"], "enqueue-heavy")
+        self.assertFalse(candidate["consumes_generate_proposal_decisions"])
+        self.assertEqual(candidate["signal_ids"], ["sig-20260425-heavy01"])
+        self.assertEqual(_snapshot_files(self.root), before)
+
 
 class AlchemyLaneCLITests(unittest.TestCase):
     def setUp(self) -> None:
@@ -746,7 +778,7 @@ class AlchemyLaneCLITests(unittest.TestCase):
         action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
         alchemy_parser = action.choices["alchemy"]
         lane_action = next(item for item in alchemy_parser._actions if getattr(item, "dest", "") == "alchemy_lane")
-        self.assertEqual(set(lane_action.choices), {"heavy", "light", "judge", "distill", "review", "legacy-migration", "auto", "superseded-cleanup"})
+        self.assertEqual(set(lane_action.choices), {"heavy", "light", "judge", "distill", "review", "propose", "legacy-migration", "auto", "superseded-cleanup"})
 
     def test_main_dispatches_alchemy_lane_dry_run(self) -> None:
         with patch("aiwiki.cli.run_alchemy_lane_dry_run", return_value={"status": "ok", "lane": "heavy"}) as mocked:
@@ -883,6 +915,43 @@ class AlchemyLaneCLITests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(stderr, "")
         self.assertEqual(payload["primitive"], "review")
+        mocked.assert_called_once_with(
+            self.root,
+            scope="all",
+            planner_log_path=Path("custom/planner-log.jsonl"),
+            signals_path=Path("custom/signals.jsonl"),
+            max_signals=3,
+            max_pages=5,
+            max_tokens=7,
+            limit=11,
+        )
+
+    def test_main_dispatches_alchemy_propose_preview(self) -> None:
+        with patch("aiwiki.cli.run_alchemy_propose_preview", return_value={"status": "ok", "primitive": "propose"}) as mocked:
+            code, payload, stderr = self._run_main(
+                [
+                    "alchemy",
+                    "propose",
+                    "all",
+                    "--dry-run",
+                    "--planner-log-path",
+                    "custom/planner-log.jsonl",
+                    "--signals-path",
+                    "custom/signals.jsonl",
+                    "--max-signals",
+                    "3",
+                    "--max-pages",
+                    "5",
+                    "--max-tokens",
+                    "7",
+                    "--limit",
+                    "11",
+                ]
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["primitive"], "propose")
         mocked.assert_called_once_with(
             self.root,
             scope="all",
