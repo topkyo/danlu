@@ -5,7 +5,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from aiwiki.execution.audit_preview import backfill_universal_audit_stream, preview_universal_audit_stream
+from aiwiki.execution.audit_preview import (
+    append_universal_audit_record,
+    backfill_universal_audit_stream,
+    preview_universal_audit_stream,
+)
 
 
 class AuditPreviewTests(unittest.TestCase):
@@ -178,4 +182,38 @@ class AuditPreviewTests(unittest.TestCase):
         ]
         self.assertEqual(len(audit_records), 2)
         self.assertEqual(len({record["audit_event_id"] for record in audit_records}), 2)
+        self.assertEqual((self.root / ".aiwiki/state/execution-receipts.jsonl").read_text(encoding="utf-8"), source_before)
+
+    def test_backfill_skips_records_already_written_by_direct_append(self) -> None:
+        source_record = {
+            "operation": "apply",
+            "action_id": "act-direct",
+            "applied_at": "2026-04-26T10:00:00+00:00",
+            "trace_id": "trace-direct",
+            "subject_kind": "machine_memory_action",
+            "subject_id": "act-direct",
+            "revert_supported": True,
+        }
+        self._write_jsonl(".aiwiki/state/execution-receipts.jsonl", [source_record])
+        source_before = (self.root / ".aiwiki/state/execution-receipts.jsonl").read_text(encoding="utf-8")
+
+        direct = append_universal_audit_record(
+            self.root,
+            source_stream="execution_receipts",
+            source_ref=".aiwiki/state/execution-receipts.jsonl#L1",
+            document=source_record,
+        )
+        preview = preview_universal_audit_stream(self.root, limit=10)
+        backfill = backfill_universal_audit_stream(self.root, limit=10, apply=True)
+
+        self.assertEqual(direct["status"], "appended")
+        self.assertEqual(preview["records"][0]["audit_event_id"], direct["record"]["audit_event_id"])
+        self.assertEqual(backfill["appended_count"], 0)
+        self.assertEqual(backfill["skipped_existing_count"], 1)
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(audit_records, [direct["record"]])
         self.assertEqual((self.root / ".aiwiki/state/execution-receipts.jsonl").read_text(encoding="utf-8"), source_before)
