@@ -1578,6 +1578,7 @@ def run_alchemy_lane_dry_run(
     scope: str,
     planner_log_path: Path | None = None,
     signals_path: Path | None = None,
+    decision_mode: str | None = None,
     max_signals: int | None = None,
     max_pages: int | None = None,
     max_tokens: int | None = None,
@@ -1590,6 +1591,7 @@ def run_alchemy_lane_dry_run(
         scope=scope,
         planner_log_path=planner_log_path,
         signals_path=signals_path,
+        decision_mode=decision_mode,
         max_signals=max_signals,
         max_pages=max_pages,
         max_tokens=max_tokens,
@@ -1606,6 +1608,7 @@ def run_alchemy_lane_apply(
     note: str | None = None,
     planner_log_path: Path | None = None,
     signals_path: Path | None = None,
+    decision_mode: str | None = None,
     max_signals: int | None = None,
     max_pages: int | None = None,
     max_tokens: int | None = None,
@@ -1624,6 +1627,7 @@ def run_alchemy_lane_apply(
         scope=scope,
         planner_log_path=planner_log_path,
         signals_path=signals_path,
+        decision_mode=decision_mode,
         max_signals=max_signals,
         max_pages=max_pages,
         max_tokens=max_tokens,
@@ -1685,6 +1689,177 @@ def run_alchemy_lane_apply(
         "primitive_results": primitive_results,
         "apply_result": apply_result,
     }
+
+
+def run_alchemy_auto(
+    root: Path,
+    *,
+    apply: bool = False,
+    lanes: list[str] | None = None,
+    scope: str = "all",
+    primitives: list[str] | None = None,
+    note: str | None = None,
+    planner_log_path: Path | None = None,
+    signals_path: Path | None = None,
+    max_signals: int | None = None,
+    max_pages: int | None = None,
+    max_tokens: int | None = None,
+) -> dict[str, Any]:
+    normalized_lanes = _normalize_auto_lanes(lanes or ["heavy", "light"])
+    requested_primitives = _normalize_lane_primitives(primitives or []) if primitives else []
+    lane_results: list[dict[str, Any]] = []
+    applied_results: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+
+    for lane in normalized_lanes:
+        plan = run_alchemy_lane_dry_run(
+            root,
+            lane=lane,
+            scope=scope,
+            planner_log_path=planner_log_path,
+            signals_path=signals_path,
+            decision_mode="execute",
+            max_signals=max_signals,
+            max_pages=max_pages,
+            max_tokens=max_tokens,
+        )
+        selected_primitives = _auto_primitives_for_lane(lane, plan, requested_primitives=requested_primitives)
+        lane_result: dict[str, Any] = {
+            "lane": lane,
+            "scope": scope,
+            "plan": plan,
+            "selected_primitives": selected_primitives,
+        }
+        skip_reason = _auto_skip_reason(plan, selected_primitives)
+        if skip_reason:
+            lane_result["status"] = "skipped"
+            lane_result["reason"] = skip_reason
+            skipped.append({"lane": lane, "reason": skip_reason})
+        elif apply:
+            apply_result = run_alchemy_lane_apply(
+                root,
+                lane=lane,
+                scope=scope,
+                primitives=selected_primitives,
+                note=note or "alchemy auto scheduler",
+                planner_log_path=planner_log_path,
+                signals_path=signals_path,
+                decision_mode="execute",
+                max_signals=max_signals,
+                max_pages=max_pages,
+                max_tokens=max_tokens,
+            )
+            lane_result["status"] = "applied"
+            lane_result["apply_result"] = apply_result
+            applied_results.append(apply_result)
+        else:
+            lane_result["status"] = "ready"
+        lane_results.append(lane_result)
+
+    if apply:
+        _append_alchemy_auto_runtime_event(
+            root,
+            scope=scope,
+            lanes=normalized_lanes,
+            primitives=requested_primitives,
+            lane_results=lane_results,
+            applied_results=applied_results,
+            skipped=skipped,
+        )
+
+    return {
+        "status": "applied" if apply and applied_results else ("noop" if apply else "preview"),
+        "mode": "apply" if apply else "dry_run",
+        "dry_run": not apply,
+        "side_effects_allowed": apply,
+        "scope": scope,
+        "decision_mode": "execute",
+        "lanes": normalized_lanes,
+        "requested_primitives": requested_primitives,
+        "applied_count": len(applied_results),
+        "skipped_count": len(skipped),
+        "lane_results": lane_results,
+    }
+
+
+def _normalize_auto_lanes(lanes: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in lanes:
+        lane = item.strip().lower()
+        if lane not in {"heavy", "light"}:
+            raise ValueError(f"unsupported alchemy auto lane: {item}")
+        if lane in seen:
+            continue
+        seen.add(lane)
+        normalized.append(lane)
+    if not normalized:
+        raise ValueError("alchemy auto requires at least one lane")
+    return normalized
+
+
+def _auto_primitives_for_lane(
+    lane: str,
+    plan: dict[str, Any],
+    *,
+    requested_primitives: list[str],
+) -> list[str]:
+    defaults = {"heavy": ["compile", "lint"], "light": ["compile", "lint", "nightly"]}[lane]
+    wanted = requested_primitives or defaults
+    supported = {
+        str(item.get("primitive") or "")
+        for item in plan.get("primitive_plan", [])
+        if isinstance(item, dict) and item.get("apply_supported") is True
+    }
+    return [primitive for primitive in wanted if primitive in supported]
+
+
+def _auto_skip_reason(plan: dict[str, Any], selected_primitives: list[str]) -> str:
+    status = str(plan.get("status") or "")
+    if status != "ok":
+        return f"plan_{status or 'unknown'}"
+    if int(plan.get("selected_count") or 0) <= 0:
+        return "empty_execute_plan"
+    if not selected_primitives:
+        return "no_apply_supported_primitives"
+    return ""
+
+
+def _append_alchemy_auto_runtime_event(
+    root: Path,
+    *,
+    scope: str,
+    lanes: list[str],
+    primitives: list[str],
+    lane_results: list[dict[str, Any]],
+    applied_results: list[dict[str, Any]],
+    skipped: list[dict[str, Any]],
+) -> None:
+    trace_ids: set[str] = set()
+    for lane_result in lane_results:
+        plan = lane_result.get("plan")
+        if not isinstance(plan, dict):
+            continue
+        trace_ids.update(_lane_receipt_trace_ids(plan))
+    sorted_trace_ids = sorted(trace_ids)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "alchemy-auto-scheduler",
+            "recorded_at": utc_now(),
+            "status": "completed",
+            "scope": scope,
+            "lanes": lanes,
+            "requested_primitives": primitives,
+            "applied_count": len(applied_results),
+            "skipped_count": len(skipped),
+            "skipped": skipped,
+            "trace_id": sorted_trace_ids[0] if sorted_trace_ids else "",
+            "trace_ids": sorted_trace_ids,
+            "subject_kind": "alchemy_auto_scheduler",
+            "subject_id": scope,
+        },
+    )
 
 
 def _append_alchemy_lane_runtime_event(

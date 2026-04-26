@@ -16,7 +16,7 @@ related_docs:
 
 这份文档定义炼丹炉“如何进化”的实现契约：signal 如何路由到 heavy / light 炼丹、active corpus 如何持久化、金丹如何炼成与复利、L2 protocol-learning 如何衔接既有实装、L3 prompt/policy proposal 如何受控写回。
 
-> **实现状态说明（2026-04-26）**：本文是“目标契约 + 当前差距”的 SoT。当前已落地 active corpus / output candidates、L2 protocol-learning 生命周期与显式 activation revert baseline、repair planner state、nightly low-risk auto-consume、显式 backend 选择、金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 候选主路径，legacy elixir migration read-only preview 与显式 apply baseline、superseded cleanup read-only preview 与显式 deletion apply baseline，planner-log observe-only / execute-mode decision log 与 rollback marker baseline，heavy/light lane read-only dry-run preview、显式 receipted action apply bridge、deterministic primitive receipt wrapper、lane primitive trace/audit metadata 和 `judge/distill/review/propose` deferred metadata，以及 L3 prompt/policy proposal 的手工/fixture 创建、generation blocked preview、Shell review surface、人工 reject、hash-gated apply、receipt-gated revert 与 execution receipt history audit metadata baseline；通用 audit stream 已提供 preview、显式 append-only backfill，并已接入 execution receipt / runtime history / LLM receipt / protocol-learning aging writer direct append，backfill 对 direct append 已写入的同一 source event 幂等跳过。heavy/light 自动执行调度入口、L3 proposal 自动生成尚未完整实现，以下章节用 `implemented / partial / planned` 标记区分。
+> **实现状态说明（2026-04-26）**：本文是“目标契约 + 当前差距”的 SoT。当前已落地 active corpus / output candidates、L2 protocol-learning 生命周期与显式 activation revert baseline、repair planner state、nightly low-risk auto-consume、显式 backend 选择、金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 候选主路径，legacy elixir migration read-only preview 与显式 apply baseline、superseded cleanup read-only preview 与显式 deletion apply baseline，planner-log observe-only / execute-mode decision log 与 rollback marker baseline，heavy/light lane read-only dry-run preview、显式 receipted action apply bridge、deterministic primitive receipt wrapper、execute-mode `alchemy auto` 调度入口、lane primitive trace/audit metadata 和 `judge/distill/review/propose` deferred metadata，以及 L3 prompt/policy proposal 的手工/fixture 创建、generation blocked preview、Shell review surface、人工 reject、hash-gated apply、receipt-gated revert 与 execution receipt history audit metadata baseline；通用 audit stream 已提供 preview、显式 append-only backfill，并已接入 execution receipt / runtime history / LLM receipt / protocol-learning aging writer direct append，backfill 对 direct append 已写入的同一 source event 幂等跳过。L3 proposal 自动生成尚未完整实现，以下章节用 `implemented / partial / planned` 标记区分。
 
 它同时取代：
 
@@ -266,7 +266,7 @@ heavy 的默认执行序列：
 6. review      : 有 high severity 产物时入 review queue
 ```
 
-当前实现状态：dry-run 可以预览上述目标序列，但 lane `--apply --primitive` 只支持已 receipt 化的 deterministic primitives。Runner 执行前必须确认对应 dry-run step 存在且 `apply_supported=true`；`judge / distill / review / propose` 会在 dry-run `deferred_primitives` 中显式列出；在它们拥有独立 scoped dry-run、receipt、audit 和 revert/不可回滚声明前，不得加入 lane apply 白名单。
+当前实现状态：dry-run 可以预览上述目标序列，但 lane `--apply --primitive` 只支持已 receipt 化的 deterministic primitives。Runner 执行前必须确认对应 dry-run step 存在且 `apply_supported=true`；`alchemy auto --dry-run|--apply` 只消费 `mode=execute` planner-log decisions，并只调度已有 apply-supported deterministic primitives；`judge / distill / review / propose` 会在 dry-run `deferred_primitives` 中显式列出；在它们拥有独立 scoped dry-run、receipt、audit 和 revert/不可回滚声明前，不得加入 lane apply 白名单。
 
 ### 4.4 作用范围约束
 
@@ -684,6 +684,7 @@ L3 proposal **只允许**写入以下文件：
 | `aiwiki alchemy heavy <scope> --dry-run` / `aiwiki alchemy light <scope> --dry-run` | 当前：只读 preview lane scope、primitive plan、预算、锁结果和 deferred primitive metadata；不 execute | 读 `.aiwiki/state/planner-log.jsonl` + `.aiwiki/state/signals.jsonl` |
 | `aiwiki alchemy heavy|light <scope> --apply --action-id <id>` | 当前：仅在 dry-run plan 非空时，显式桥接到既有 receipted low-risk action batch apply；不执行 receipt-less lane 序列 | `apply_machine_memory_actions_batch` receipts |
 | `aiwiki alchemy heavy|light <scope> --apply --primitive compile|lint|nightly` | 当前：仅执行 deterministic primitives 并写 lane primitive execution receipt；receipt 顶层携带 planner `trace_id/trace_ids` 与 execution receipt history audit metadata；不调用 LLM-backed `run-*` | `output/control/execution-receipts/` + `.aiwiki/state/execution-receipts.jsonl` |
+| `aiwiki alchemy auto --dry-run\|--apply` | 当前：显式消费 `mode=execute` planner decisions，并只调度已有 apply-supported deterministic lane primitives；不消费 observe-only decisions | lane primitive receipts + runtime history |
 | `aiwiki l3-proposal-create --kind prompt_proposal\|policy_proposal ...` | 当前：手工/fixture 创建 L3 proposal；只写 proposal 平面和 state，不写目标文件 | `output/_proposals/prompt\|policy/` + `.aiwiki/state/l3-proposals.json` |
 | `aiwiki review proposals` | 当前：查看 L3 proposal 队列 | 读 only |
 | `aiwiki review proposal-generation` | 当前：只读预览 planner-log 中的 blocked `generate-proposal` candidates；`automatic_generation_enabled=false` | 读 `.aiwiki/state/planner-log.jsonl` |

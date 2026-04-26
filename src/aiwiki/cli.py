@@ -43,6 +43,7 @@ from .runner import (
     auto_process_once,
     llm_probe,
     llm_status,
+    run_alchemy_auto,
     run_alchemy_demote,
     run_alchemy_distill,
     run_alchemy_finalize,
@@ -457,6 +458,28 @@ def build_parser() -> argparse.ArgumentParser:
     legacy_migration_mode.add_argument("--apply", action="store_true", help="Create missing candidate tombstones.")
     legacy_migration_parser.add_argument("--limit", type=int, default=50)
     legacy_migration_parser.add_argument("--note", default=None)
+    auto_parser = alchemy_subparsers.add_parser(
+        "auto",
+        help="Preview or apply execute-mode planner decisions through safe alchemy lanes.",
+    )
+    auto_mode = auto_parser.add_mutually_exclusive_group(required=True)
+    auto_mode.add_argument("--dry-run", action="store_true", help="Preview scheduler decisions only.")
+    auto_mode.add_argument("--apply", action="store_true", help="Run deterministic apply-supported lane primitives.")
+    auto_parser.add_argument("--scope", default="all")
+    auto_parser.add_argument("--lane", action="append", choices=("heavy", "light"), default=[])
+    auto_parser.add_argument(
+        "--primitive",
+        action="append",
+        choices=("compile", "lint", "nightly"),
+        default=[],
+        help="Restrict automatic execution to one or more deterministic primitives.",
+    )
+    auto_parser.add_argument("--note", default=None)
+    auto_parser.add_argument("--planner-log-path", type=Path, default=None)
+    auto_parser.add_argument("--signals-path", type=Path, default=None)
+    auto_parser.add_argument("--max-signals", type=int, default=None)
+    auto_parser.add_argument("--max-pages", type=int, default=None)
+    auto_parser.add_argument("--max-tokens", type=int, default=None)
     superseded_cleanup_parser = alchemy_subparsers.add_parser(
         "superseded-cleanup",
         help="Preview or apply superseded elixir candidate tombstone cleanup.",
@@ -904,6 +927,20 @@ def main(argv: list[str] | None = None) -> int:
                     result = run_alchemy_legacy_migration_preview(root, limit=args.limit)
                 else:
                     result = run_alchemy_legacy_migration_apply(root, limit=args.limit, note=args.note)
+            elif args.alchemy_lane == "auto":
+                result = run_alchemy_auto(
+                    root,
+                    apply=args.apply,
+                    lanes=args.lane or None,
+                    scope=args.scope,
+                    primitives=args.primitive or None,
+                    note=args.note,
+                    planner_log_path=args.planner_log_path,
+                    signals_path=args.signals_path,
+                    max_signals=args.max_signals,
+                    max_pages=args.max_pages,
+                    max_tokens=args.max_tokens,
+                )
             elif args.alchemy_lane == "superseded-cleanup":
                 if args.dry_run:
                     result = run_alchemy_superseded_cleanup_preview(root, limit=args.limit)

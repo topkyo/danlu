@@ -10,7 +10,7 @@ from unittest.mock import patch
 from aiwiki.app_utils import runtime_write_lock
 from aiwiki.cli import build_parser, main
 from aiwiki.planner.dry_run import preview_alchemy_lane
-from aiwiki.runner import run_alchemy_lane_apply
+from aiwiki.runner import run_alchemy_auto, run_alchemy_lane_apply
 
 
 def _snapshot_files(root: Path) -> dict[str, bytes]:
@@ -78,19 +78,19 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
             record["budget_hint"] = budget_hint
         return record
 
-    def _planner(self, signal_id: str, *, decision: str) -> dict[str, object]:
+    def _planner(self, signal_id: str, *, decision: str, mode: str = "observe_only") -> dict[str, object]:
         return {
             "schema_version": 1,
             "signal_id": signal_id,
-            "dedupe_key": f"{signal_id}:observe_only",
+            "dedupe_key": f"{signal_id}:{mode}",
             "trace_id": "550e8400-e29b-41d4-a716-446655440000",
             "decision": decision,
-            "mode": "observe_only",
-            "reason_codes": ["runtime_failure_routine"],
+            "mode": mode,
+            "reason_codes": ["runtime_failure_routine"] if mode == "observe_only" else ["runtime_failure_routine", "execute_mode_requested"],
             "budget_used": {},
             "locks_acquired": [],
             "primitive_refs": [],
-            "side_effects_allowed": False,
+            "side_effects_allowed": mode == "execute" and decision in {"enqueue-heavy", "enqueue-light"},
             "decided_at": "2026-04-25T00:01:00Z",
         }
 
@@ -196,6 +196,88 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(result["scope_preview"]["signal_ids"], ["sig-20260425-light01"])
         apply_support = {step["primitive"]: step["apply_supported"] for step in result["primitive_plan"]}
         self.assertEqual(apply_support, {"route": False, "compile": True, "lint": True, "nightly": True})
+
+    def test_lane_dry_run_can_filter_execute_mode_decisions(self) -> None:
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [
+                self._signal("sig-20260425-light01", severity="medium", protocol="ops"),
+                self._signal("sig-20260425-light02", severity="medium", protocol="ops"),
+            ],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [
+                self._planner("sig-20260425-light01", decision="enqueue-light"),
+                self._planner("sig-20260425-light02", decision="enqueue-light", mode="execute"),
+            ],
+        )
+
+        result = preview_alchemy_lane(self.root, lane="light", scope="all", decision_mode="execute")
+
+        self.assertEqual(result["decision_mode"], "execute")
+        self.assertEqual(result["selected_count"], 1)
+        self.assertEqual(result["scope_preview"]["signal_ids"], ["sig-20260425-light02"])
+
+    def test_auto_scheduler_preview_consumes_only_execute_mode(self) -> None:
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [
+                self._signal("sig-20260425-heavy01", severity="high", protocol="research"),
+                self._signal("sig-20260425-light01", severity="medium", protocol="ops"),
+            ],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [
+                self._planner("sig-20260425-heavy01", decision="enqueue-heavy"),
+                self._planner("sig-20260425-light01", decision="enqueue-light", mode="execute"),
+            ],
+        )
+
+        result = run_alchemy_auto(self.root, apply=False)
+
+        self.assertEqual(result["status"], "preview")
+        self.assertFalse(result["side_effects_allowed"])
+        self.assertEqual(result["decision_mode"], "execute")
+        lanes = {item["lane"]: item for item in result["lane_results"]}
+        self.assertEqual(lanes["heavy"]["status"], "skipped")
+        self.assertEqual(lanes["heavy"]["reason"], "empty_execute_plan")
+        self.assertEqual(lanes["light"]["status"], "ready")
+        self.assertEqual(lanes["light"]["selected_primitives"], ["compile", "lint", "nightly"])
+
+    def test_auto_scheduler_apply_invokes_supported_primitives_and_writes_runtime_history(self) -> None:
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [self._signal("sig-20260425-light01", severity="medium", protocol="ops")],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [self._planner("sig-20260425-light01", decision="enqueue-light", mode="execute")],
+        )
+        applied = {
+            "status": "applied",
+            "lane": "light",
+            "scope": "all",
+            "primitives": ["compile"],
+            "plan": {"scope_preview": {"trace_ids": ["550e8400-e29b-41d4-a716-446655440000"]}},
+        }
+
+        with patch("aiwiki.runner.run_alchemy_lane_apply", return_value=applied) as mocked:
+            result = run_alchemy_auto(self.root, apply=True, lanes=["light"], primitives=["compile"], note="auto")
+
+        mocked.assert_called_once()
+        kwargs = mocked.call_args.kwargs
+        self.assertEqual(kwargs["decision_mode"], "execute")
+        self.assertEqual(kwargs["primitives"], ["compile"])
+        self.assertEqual(result["status"], "applied")
+        history = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki" / "state" / "runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(history[-1]["event_type"], "alchemy-auto-scheduler")
+        self.assertEqual(history[-1]["applied_count"], 1)
 
     def test_dry_run_reports_deferred_high_risk_primitives(self) -> None:
         self._seed_lane_records()
@@ -464,7 +546,7 @@ class AlchemyLaneCLITests(unittest.TestCase):
         action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
         alchemy_parser = action.choices["alchemy"]
         lane_action = next(item for item in alchemy_parser._actions if getattr(item, "dest", "") == "alchemy_lane")
-        self.assertEqual(set(lane_action.choices), {"heavy", "light", "legacy-migration", "superseded-cleanup"})
+        self.assertEqual(set(lane_action.choices), {"heavy", "light", "legacy-migration", "auto", "superseded-cleanup"})
 
     def test_main_dispatches_alchemy_lane_dry_run(self) -> None:
         with patch("aiwiki.cli.run_alchemy_lane_dry_run", return_value={"status": "ok", "lane": "heavy"}) as mocked:

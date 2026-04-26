@@ -116,6 +116,7 @@ def preview_alchemy_lane(
     scope: str,
     planner_log_path: Path | None = None,
     signals_path: Path | None = None,
+    decision_mode: str | None = None,
     max_signals: int | None = None,
     max_pages: int | None = None,
     max_tokens: int | None = None,
@@ -133,6 +134,9 @@ def preview_alchemy_lane(
     target_decision = _LANE_DECISION[normalized_lane]
 
     for decision in decisions:
+        if decision_mode is not None and decision.get("mode") != decision_mode:
+            skipped_count += 1
+            continue
         if decision.get("decision") != target_decision:
             skipped_count += 1
             continue
@@ -156,6 +160,7 @@ def preview_alchemy_lane(
             "side_effects_allowed": False,
             "planner_log_path": _path_label(root, planner_path),
             "signals_path": _path_label(root, signal_path),
+            "decision_mode": decision_mode or "",
             "selected_count": 0,
             "skipped_count": len(decisions),
             "scope_preview": _empty_scope_preview(),
@@ -184,6 +189,7 @@ def preview_alchemy_lane(
         "side_effects_allowed": False,
         "planner_log_path": _path_label(root, planner_path),
         "signals_path": _path_label(root, signal_path),
+        "decision_mode": decision_mode or "",
         "selected_count": len(selected),
         "skipped_count": skipped_count,
         "scope_preview": scope_preview,
