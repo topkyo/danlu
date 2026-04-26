@@ -42,7 +42,7 @@ def preview_universal_audit_stream(root: Path, *, limit: int = 50) -> dict[str, 
         if document:
             source_counts["protocol_learnings_age"] += 1
             if len(records) < limit:
-                records.append(_audit_record("protocol_learnings_age", AUDIT_STATE_PATH, document))
+                records.append(_audit_record("protocol_learnings_age", protocol_learnings_age_source_ref(document), document))
 
     scanned_count = sum(source_counts.values())
     return {
@@ -96,6 +96,13 @@ def append_universal_audit_record(root: Path, *, source_stream: str, source_ref:
     with audit_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
     return {"status": "appended", "record": record, "audit_stream_path": AUDIT_STREAM_PATH}
+
+
+def protocol_learnings_age_source_ref(document: dict[str, Any]) -> str:
+    run_at = document.get("run_at")
+    if isinstance(run_at, str) and run_at.strip():
+        return f"{AUDIT_STATE_PATH}#run_at={run_at.strip()}"
+    return AUDIT_STATE_PATH
 
 
 def _existing_audit_event_ids(path: Path) -> set[str]:

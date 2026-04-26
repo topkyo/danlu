@@ -1817,6 +1817,36 @@ class ProtocolLearningsLifecycleTests(unittest.TestCase):
         self.assertIn("aged_ids", audit)
         self.assertIn("aging-candidate", audit["aged_ids"])
 
+    def test_age_apply_writes_universal_audit(self) -> None:
+        old = self._old_timestamp()
+        self._write_elixir("settled-fixture")
+        self._write_learning(
+            "aging-candidate",
+            state="active",
+            source_refs=["wiki/elixirs/settled-fixture.md"],
+            last_verified_at=old,
+            updated_at=old,
+        )
+
+        result = age_learnings(self.root, apply=True)
+
+        age_audit = json.loads((self.root / AUDIT_STATE_PATH).read_text(encoding="utf-8"))
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        age_records = [record for record in audit_records if record["source_stream"] == "protocol_learnings_age"]
+        self.assertEqual(age_audit, result)
+        self.assertEqual(len(age_records), 1)
+        self.assertEqual(age_records[0]["source_ref"], f"{AUDIT_STATE_PATH}#run_at={result['run_at']}")
+        self.assertEqual(age_records[0]["event_type"], "protocol_learnings_age")
+        self.assertEqual(age_records[0]["occurred_at"], result["run_at"])
+        self.assertEqual(age_records[0]["subject"], {"kind": "protocol_learnings_age", "id": ""})
+        self.assertFalse(age_records[0]["revert_supported"])
+        runtime_records = [record for record in audit_records if record["source_stream"] == "runtime_history"]
+        self.assertEqual(len(runtime_records), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -768,9 +768,7 @@ def age_learnings(
             "errors": [{"reason": str(exc)}],
         }
         if apply:
-            audit_path = root / AUDIT_STATE_PATH
-            audit_path.parent.mkdir(parents=True, exist_ok=True)
-            _atomic_write_text(audit_path, json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
+            _write_age_audit(root, result)
         return result
 
     if base.is_dir():
@@ -854,9 +852,21 @@ def age_learnings(
     }
 
     if apply:
-        audit_path = root / AUDIT_STATE_PATH
-        audit_path.parent.mkdir(parents=True, exist_ok=True)
-        _atomic_write_text(audit_path, json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
+        _write_age_audit(root, result)
         _append_learning_threshold_history(root, result, emitted_by=emitted_by)
 
     return result
+
+
+def _write_age_audit(root: Path, result: dict[str, Any]) -> None:
+    audit_path = root / AUDIT_STATE_PATH
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write_text(audit_path, json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
+    from .audit_preview import append_universal_audit_record, protocol_learnings_age_source_ref
+
+    append_universal_audit_record(
+        root,
+        source_stream="protocol_learnings_age",
+        source_ref=protocol_learnings_age_source_ref(result),
+        document=result,
+    )
