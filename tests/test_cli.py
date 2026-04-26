@@ -388,6 +388,13 @@ class CLITests(unittest.TestCase):
                     "limit": 9,
                 },
             ),
+            (
+                "audit-preview",
+                ["audit-preview", "--dry-run", "--limit", "6"],
+                "run_audit_preview",
+                (self.root,),
+                {"limit": 6},
+            ),
             ("protocol-learn-supersede", ["protocol-learn-supersede", "replacement", "old-one", "old-two"], "run_protocol_learn_supersede", (self.root, "replacement", ["old-one", "old-two"]), {}),
             ("review-page", ["review-page", "page.md", "--status", "approved", "--note", "ok", "--confidence", "high"], "review_page", (self.root, "page.md", "approved"), {"note": "ok", "confidence": "high"}),
             ("review-rewrite", ["review-rewrite", "latency", "--status", "accepted", "--note", "ok"], "review_concept_rewrite", (self.root, "latency", "accepted"), {"note": "ok"}),

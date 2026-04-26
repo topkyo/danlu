@@ -53,6 +53,7 @@ from .runner import (
     run_alchemy_revert,
     run_alchemy_start,
     run_ask,
+    run_audit_preview,
     run_compile,
     run_demote,
     run_l3_proposal_apply,
@@ -243,6 +244,13 @@ def build_parser() -> argparse.ArgumentParser:
     planner_log_list_parser.add_argument("--since", help="Optional ISO datetime lower bound (inclusive).")
     planner_log_list_parser.add_argument("--limit", type=int, default=20, help="Maximum number of results (recent first).")
     planner_log_list_parser.add_argument("--json", action="store_true", help="Return full JSON records.")
+
+    audit_preview_parser = subparsers.add_parser(
+        "audit-preview",
+        help="Preview a universal audit stream backfill without writing audit.jsonl.",
+    )
+    audit_preview_parser.add_argument("--dry-run", action="store_true", help="Required; preview only.")
+    audit_preview_parser.add_argument("--limit", type=int, default=50)
 
     protocol_learn_age_parser = subparsers.add_parser(
         "protocol-learn-age",
@@ -947,6 +955,10 @@ def main(argv: list[str] | None = None) -> int:
                     "\n".join(_format_planner_decision_summary_line(item) for item in result)
                     or "(no planner decisions)"
                 )
+        elif args.command == "audit-preview":
+            if not args.dry_run:
+                raise ValueError("audit-preview requires --dry-run")
+            result = run_audit_preview(root, limit=args.limit)
         elif args.command == "protocol-learn-age":
             result = run_protocol_learn_age(root, protocol=args.protocol, apply=args.apply)
         elif args.command == "protocol-learn-verify":
