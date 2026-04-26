@@ -76,6 +76,7 @@ from .runner import (
     run_protocol_learn_archive,
     run_protocol_learn_demote,
     run_protocol_learn_list,
+    run_protocol_learn_revert_activate,
     run_protocol_learn_show,
     run_protocol_learn_supersede,
     run_protocol_learn_verify,
@@ -293,6 +294,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Verify a protocol learning and restore it to active.",
     )
     protocol_learn_verify_parser.add_argument("learning_id", help="Learning id.")
+
+    protocol_learn_revert_activate_parser = subparsers.add_parser(
+        "protocol-learn-revert-activate",
+        help="Revert the latest supported stale -> active protocol learning activation.",
+    )
+    protocol_learn_revert_activate_parser.add_argument("learning_id", help="Learning id.")
+    protocol_learn_revert_activate_parser.add_argument("--note", help="Optional revert note.")
 
     protocol_learn_demote_parser = subparsers.add_parser(
         "protocol-learn-demote",
@@ -1018,6 +1026,8 @@ def main(argv: list[str] | None = None) -> int:
             result = run_protocol_learn_age(root, protocol=args.protocol, apply=args.apply)
         elif args.command == "protocol-learn-verify":
             result = run_protocol_learn_verify(root, args.learning_id)
+        elif args.command == "protocol-learn-revert-activate":
+            result = run_protocol_learn_revert_activate(root, args.learning_id, note=args.note)
         elif args.command == "protocol-learn-demote":
             result = run_protocol_learn_demote(root, args.learning_id)
         elif args.command == "protocol-learn-archive":

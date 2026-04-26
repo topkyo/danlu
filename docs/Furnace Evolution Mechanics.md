@@ -16,7 +16,7 @@ related_docs:
 
 这份文档定义炼丹炉“如何进化”的实现契约：signal 如何路由到 heavy / light 炼丹、active corpus 如何持久化、金丹如何炼成与复利、L2 protocol-learning 如何衔接既有实装、L3 prompt/policy proposal 如何受控写回。
 
-> **实现状态说明（2026-04-26）**：本文是“目标契约 + 当前差距”的 SoT。当前已落地 active corpus / output candidates、L2 protocol-learning 生命周期、repair planner state、nightly low-risk auto-consume、显式 backend 选择、金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 候选主路径，legacy elixir migration read-only preview 与显式 apply baseline、superseded cleanup read-only preview，planner-log rollback marker baseline，heavy/light lane read-only dry-run preview、显式 receipted action apply bridge、deterministic primitive receipt wrapper、lane primitive trace/audit metadata 和 `judge/distill/review/propose` deferred metadata，以及 L3 prompt/policy proposal 的手工/fixture 创建、generation blocked preview、Shell review surface、人工 reject、hash-gated apply、receipt-gated revert 与 execution receipt history audit metadata baseline；通用 audit stream 已提供 preview、显式 append-only backfill，并已接入 execution receipt / runtime history / LLM receipt / protocol-learning aging writer direct append，backfill 对 direct append 已写入的同一 source event 幂等跳过。完整 signal planner execute mode、heavy/light 自动执行调度入口、legacy elixir superseded cleanup deletion apply、L3 proposal 自动生成尚未完整实现，以下章节用 `implemented / partial / planned` 标记区分。
+> **实现状态说明（2026-04-26）**：本文是“目标契约 + 当前差距”的 SoT。当前已落地 active corpus / output candidates、L2 protocol-learning 生命周期与显式 activation revert baseline、repair planner state、nightly low-risk auto-consume、显式 backend 选择、金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 候选主路径，legacy elixir migration read-only preview 与显式 apply baseline、superseded cleanup read-only preview，planner-log rollback marker baseline，heavy/light lane read-only dry-run preview、显式 receipted action apply bridge、deterministic primitive receipt wrapper、lane primitive trace/audit metadata 和 `judge/distill/review/propose` deferred metadata，以及 L3 prompt/policy proposal 的手工/fixture 创建、generation blocked preview、Shell review surface、人工 reject、hash-gated apply、receipt-gated revert 与 execution receipt history audit metadata baseline；通用 audit stream 已提供 preview、显式 append-only backfill，并已接入 execution receipt / runtime history / LLM receipt / protocol-learning aging writer direct append，backfill 对 direct append 已写入的同一 source event 幂等跳过。完整 signal planner execute mode、heavy/light 自动执行调度入口、legacy elixir superseded cleanup deletion apply、L3 proposal 自动生成尚未完整实现，以下章节用 `implemented / partial / planned` 标记区分。
 
 它同时取代：
 
@@ -675,7 +675,7 @@ L3 proposal **只允许**写入以下文件：
 | `aiwiki alchemy legacy-migration --dry-run` | 当前：只读盘点 legacy settled elixir 的 candidate tombstone 状态 | 读 `wiki/elixirs/` + `output/_candidates/elixirs/` |
 | `aiwiki alchemy legacy-migration --apply` | 当前：显式为缺失 tombstone 的 legacy settled elixir 创建 candidate tombstone，并写 receipt / audit；不改 settled source，不做 cleanup | `output/_candidates/elixirs/` + execution receipt |
 | `aiwiki alchemy superseded-cleanup --dry-run` | 当前：只读盘点 superseded tombstone 的未来清理候选和阻塞原因；不删除 | 读 `output/_candidates/elixirs/` + `wiki/elixirs/` |
-| `aiwiki protocol-learn-add/list/show/age/verify/demote/archive/supersede` | 当前：L2 learning 生命周期治理 | `wiki/protocol-learnings/` |
+| `aiwiki protocol-learn-add/list/show/age/verify/revert-activate/demote/archive/supersede` | 当前：L2 learning 生命周期治理；`revert-activate` 只回滚带 metadata 的最近一次 `stale -> active` verify activation | `wiki/protocol-learnings/` + runtime history |
 | `aiwiki signals-list/show` / `aiwiki planner-log-list` | 当前：只读 inspection；`--since` 必须为 ISO datetime，`--limit` 必须大于 0 | 读 `.aiwiki/state/signals.jsonl` / `.aiwiki/state/planner-log.jsonl` |
 | `aiwiki planner-log-rollback --dry-run\|--apply` | 当前：预览或显式追加 rollback marker；planner-log 本体保持 append-only，不删除不重写 | 读 `.aiwiki/state/planner-log.jsonl`；写 `.aiwiki/state/planner-log-rollback.jsonl` |
 | `aiwiki audit-preview --dry-run` | 当前：只读预览分散审计来源归一化后的目标 audit stream 记录；不写 `audit.jsonl` | 读 execution receipts / LLM receipts / runtime history / protocol-learning aging audit |
@@ -700,7 +700,7 @@ L3 proposal **只允许**写入以下文件：
 - heavy alchemy 显式 apply 启动 / 完成（当前通过 `alchemy-lane-started / alchemy-lane-completed` runtime history 进入 universal audit）
 - light alchemy 显式 apply 启动 / 完成（当前通过 `alchemy-lane-started / alchemy-lane-completed` runtime history 进入 universal audit；budget_exceeded 仍由 dry-run status 表达，不写执行事件）
 - elixir promotion / demotion / supersede（candidate promote chain）
-- L2 learning 状态变更（当前已有 protocol-learning aging audit / 状态文件；threshold signal 通过 runtime history 观察映射）
+- L2 learning 状态变更（当前已有 protocol-learning aging audit / 状态文件；threshold signal 与 activation revert 通过 runtime history 观察映射）
 - L3 proposal manual create / reject / accept / revert（当前已有 manual baseline）；automatic generation（planned）
 
 当前审计仍以分散日志为源：execution receipts、LLM receipts、runtime history、protocol-learning aging audit 等分别承担各自领域的审计语义。`aiwiki audit-preview --dry-run` 可只读预览这些来源归一化后的目标 audit record（含 source stream/ref、event type、trace、subject、revert_supported）。`aiwiki audit-backfill --apply` 可显式把缺失记录 append 到 `.aiwiki/state/audit.jsonl`，并按稳定 `audit_event_id` 幂等跳过已存在记录。M5.9 起，`append_execution_receipt_history` 在写 execution receipt history 后会直接 append 对应 universal audit record；M5.10 起，`append_runtime_history` 在写 runtime history 后也会直接 append 对应 universal audit record；M5.11 起，LLM receipt log 写入后也会直接 append 对应 universal audit record；M5.12 起，protocol-learning aging audit 写入后也会直接 append 对应 universal audit record。因为 protocol-learning aging audit 是覆盖写 JSON snapshot，其 universal audit `source_ref` 带 `run_at` fragment 以区分多次 aging run。
@@ -711,7 +711,7 @@ revert **可以**：
 
 - 回滚 L3 accept（当前已支持 receipt-gated clean revert：按 apply receipt `after_hash` 校验当前目标，再恢复 `before_content`；冲突时写 `human_merge_required` hint）
 - 回滚 elixir promotion（当前已支持 receipt/hash-gated revert：删除 settled elixir、恢复 candidate tombstone 为 candidate，并写 `elixir_revert` execution receipt / universal audit）
-- 回滚 L2 learning activate（回到 stale）
+- 回滚 L2 learning activate（当前已支持显式 `protocol-learn-revert-activate`，仅回滚带 metadata 的最近一次 `stale -> active` verify activation，并写 runtime-history / universal audit）
 
 revert **不可以**：
 

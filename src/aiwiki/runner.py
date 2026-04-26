@@ -1904,6 +1904,13 @@ def run_protocol_learn_verify(root: Path, learning_id: str) -> dict[str, Any]:
 
 
 @runtime_write_operation
+def run_protocol_learn_revert_activate(root: Path, learning_id: str, *, note: str | None = None) -> dict[str, Any]:
+    from .execution.protocol_learnings import revert_learning_activation
+
+    return revert_learning_activation(root, learning_id, note=note)
+
+
+@runtime_write_operation
 def run_protocol_learn_demote(root: Path, learning_id: str) -> dict[str, Any]:
     from .execution.protocol_learnings import demote_learning
 

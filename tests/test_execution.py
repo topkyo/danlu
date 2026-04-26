@@ -49,6 +49,7 @@ from aiwiki.execution.protocol_learnings import (
     demote_learning,
     list_learnings,
     load_learnings_for_protocol,
+    revert_learning_activation,
     show_learning,
     supersede_learning,
     verify_learning,
@@ -1480,6 +1481,68 @@ class ProtocolLearningsLifecycleTests(unittest.TestCase):
         self.assertEqual(frontmatter["state"], "active")
         self.assertGreater(datetime.fromisoformat(frontmatter["last_verified_at"]), datetime.fromisoformat(old))
         self.assertEqual(frontmatter["last_verified_at"], result["last_verified_at"])
+        self.assertEqual(frontmatter["activation_previous_state"], "stale")
+        self.assertEqual(frontmatter["activation_previous_updated_at"], old)
+        self.assertEqual(frontmatter["activation_previous_last_verified_at"], old)
+        self.assertEqual(frontmatter["activation_verified_at"], result["last_verified_at"])
+
+    def test_revert_learning_activation_restores_stale_and_writes_audit(self) -> None:
+        old = self._old_timestamp()
+        self._write_learning("needs-revert", state="stale", last_verified_at=old, updated_at=old)
+        verify_learning(self.root, "needs-revert")
+
+        result = revert_learning_activation(self.root, "needs-revert", note="Undo activation.")
+
+        learning_path = self.root / LEARNINGS_DIR / "general" / "needs-revert.md"
+        frontmatter = parse_frontmatter(learning_path.read_text(encoding="utf-8"))
+        self.assertEqual(result["state"], "stale")
+        self.assertEqual(frontmatter["state"], "stale")
+        self.assertEqual(frontmatter["last_verified_at"], old)
+        self.assertNotIn("activation_previous_state", frontmatter)
+        self.assertNotIn("activation_verified_at", frontmatter)
+
+        events = [
+            event
+            for event in load_runtime_history(self.root)
+            if event.get("event_type") == "protocol-learning-activation-reverted"
+        ]
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["learning_id"], "needs-revert")
+        self.assertEqual(events[0]["previous_state"], "active")
+        self.assertEqual(events[0]["state"], "stale")
+        self.assertEqual(events[0]["note"], "Undo activation.")
+
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki" / "state" / "audit.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        runtime_audit = [
+            record
+            for record in audit_records
+            if record["source_stream"] == "runtime_history"
+            and record["event_type"] == "protocol-learning-activation-reverted"
+        ]
+        self.assertEqual(len(runtime_audit), 1)
+        self.assertEqual(runtime_audit[0]["subject"], {"kind": "protocol_learning", "id": "needs-revert"})
+
+    def test_revert_learning_activation_rejects_without_stale_activation_metadata(self) -> None:
+        self._write_learning("already-active", state="active", last_verified_at=utc_now())
+
+        with self.assertRaises(ValueError):
+            revert_learning_activation(self.root, "already-active")
+
+        frontmatter = parse_frontmatter((self.root / LEARNINGS_DIR / "general" / "already-active.md").read_text(encoding="utf-8"))
+        self.assertEqual(frontmatter["state"], "active")
+
+    def test_revert_learning_activation_rejects_after_later_verify(self) -> None:
+        old = self._old_timestamp()
+        self._write_learning("changed-after-verify", state="stale", last_verified_at=old, updated_at=old)
+        verify_learning(self.root, "changed-after-verify")
+        verify_learning(self.root, "changed-after-verify")
+
+        with self.assertRaises(ValueError):
+            revert_learning_activation(self.root, "changed-after-verify")
 
     def test_verify_rejects_when_source_ref_missing(self) -> None:
         self._write_learning("missing-verify", state="stale", last_verified_at=self._old_timestamp())

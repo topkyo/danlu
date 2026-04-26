@@ -363,6 +363,7 @@ class CLITests(unittest.TestCase):
             ("protocol-learn-add", ["protocol-learn-add", "general", "--title", "Learning", "--source-ref", "wiki/derived/a.md"], "run_protocol_learn_add", (self.root, "general", "Learning", ["wiki/derived/a.md"]), {}),
             ("protocol-learn-list", ["protocol-learn-list", "general"], "run_protocol_learn_list", (self.root, "general"), {"state_filter": None, "include_archived": False}),
             ("protocol-learn-show", ["protocol-learn-show", "learn-general-abc"], "run_protocol_learn_show", (self.root, "learn-general-abc"), {}),
+            ("protocol-learn-revert-activate", ["protocol-learn-revert-activate", "learn-general-abc", "--note", "undo"], "run_protocol_learn_revert_activate", (self.root, "learn-general-abc"), {"note": "undo"}),
             (
                 "signals-list",
                 ["signals-list", "--kind", "drift", "--trace-id", "550e8400-e29b-41d4-a716-446655440000", "--since", "2026-04-24T00:00:00Z", "--limit", "7", "--json"],

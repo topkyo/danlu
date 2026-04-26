@@ -24,6 +24,12 @@ LEARNINGS_DIR = "wiki/protocol-learnings"
 AUDIT_STATE_PATH = ".aiwiki/state/protocol_learnings_age.json"
 AGING_THRESHOLD_DAYS = 90
 LEARNING_STATES = ("active", "stale", "demoted", "superseded", "archived")
+ACTIVATION_REVERT_KEYS = (
+    "activation_previous_state",
+    "activation_previous_updated_at",
+    "activation_previous_last_verified_at",
+    "activation_verified_at",
+)
 
 
 def _known_protocols() -> set[str]:
@@ -565,10 +571,19 @@ def verify_learning(root: Path, learning_id: str) -> dict[str, Any]:
         )
     fm = _materialize_legacy_fields(fm)
     prev_state = _effective_state(fm)
+    previous_updated_at = str(fm.get("updated_at") or "")
+    previous_last_verified_at = str(fm.get("last_verified_at") or "")
     now = utc_now()
     fm["state"] = "active"
     fm["last_verified_at"] = now
     fm["updated_at"] = now
+    for key in ACTIVATION_REVERT_KEYS:
+        fm.pop(key, None)
+    if prev_state == "stale":
+        fm["activation_previous_state"] = "stale"
+        fm["activation_previous_updated_at"] = previous_updated_at
+        fm["activation_previous_last_verified_at"] = previous_last_verified_at
+        fm["activation_verified_at"] = now
     _rewrite_learning(path, fm, body)
     return {
         "learning_id": learning_id,
@@ -577,6 +592,69 @@ def verify_learning(root: Path, learning_id: str) -> dict[str, Any]:
         "previous_state": prev_state,
         "state": "active",
         "last_verified_at": now,
+    }
+
+
+def revert_learning_activation(root: Path, learning_id: str, *, note: str | None = None) -> dict[str, Any]:
+    record = _get_validated_learning_record(root, learning_id)
+    path = record["path"]
+    fm = dict(record["frontmatter"])
+    body = record["body"]
+    fm = _materialize_legacy_fields(fm)
+    current_state = _effective_state(fm)
+    if current_state != "active":
+        raise ValueError(
+            f"revert activate 拒绝: learning {learning_id} 当前 state={current_state}，只能回滚 active learning"
+        )
+    previous_state = str(fm.get("activation_previous_state") or "").strip()
+    if previous_state != "stale":
+        raise ValueError(
+            f"revert activate 拒绝: learning {learning_id} 缺少 stale -> active activation metadata"
+        )
+    activation_verified_at = str(fm.get("activation_verified_at") or "").strip()
+    if not activation_verified_at:
+        raise ValueError(
+            f"revert activate 拒绝: learning {learning_id} 缺少 activation_verified_at"
+        )
+    if str(fm.get("last_verified_at") or "") != activation_verified_at:
+        raise ValueError(
+            f"revert activate 拒绝: learning {learning_id} 已在 activation 后再次 verify，不能自动回滚"
+        )
+
+    now = utc_now()
+    previous_last_verified_at = str(fm.get("activation_previous_last_verified_at") or "")
+    fm["state"] = "stale"
+    if previous_last_verified_at:
+        fm["last_verified_at"] = previous_last_verified_at
+    fm["updated_at"] = now
+    for key in ACTIVATION_REVERT_KEYS:
+        fm.pop(key, None)
+    _rewrite_learning(path, fm, body)
+
+    rel_path = f"{LEARNINGS_DIR}/{path.parent.name}/{path.name}"
+    event: dict[str, Any] = {
+        "event_type": "protocol-learning-activation-reverted",
+        "subject_kind": "protocol_learning",
+        "occurred_at": now,
+        "protocol": path.parent.name,
+        "learning_id": learning_id,
+        "path": rel_path,
+        "previous_state": "active",
+        "state": "stale",
+        "activation_verified_at": activation_verified_at,
+    }
+    if note:
+        event["note"] = note
+    append_runtime_history(root, event)
+    return {
+        "learning_id": learning_id,
+        "protocol": path.parent.name,
+        "path": rel_path,
+        "previous_state": "active",
+        "state": "stale",
+        "activation_verified_at": activation_verified_at,
+        "reverted_at": now,
+        "runtime_history_event": event["event_type"],
     }
 
 
