@@ -273,6 +273,13 @@ class CLITests(unittest.TestCase):
                 },
             ),
             (
+                "alchemy-legacy-migration-preview",
+                ["alchemy", "legacy-migration", "--dry-run", "--limit", "4"],
+                "run_alchemy_legacy_migration_preview",
+                (self.root,),
+                {"limit": 4},
+            ),
+            (
                 "l3-proposal-create",
                 [
                     "l3-proposal-create",

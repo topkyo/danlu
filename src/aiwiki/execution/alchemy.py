@@ -16,7 +16,7 @@ from ..app_execution import (
     find_latest_elixir_promotion_receipt,
 )
 from ..app_state import load_active_corpora_state, load_output_candidates_state
-from ..app_utils import next_available_stem, parse_frontmatter, sha256_bytes, slugify, utc_now
+from ..app_utils import next_available_stem, parse_frontmatter, relative_path, sha256_bytes, slugify, utc_now
 
 ELIXIR_DIR = "wiki/elixirs"
 CANDIDATE_ELIXIR_DIR = "output/_candidates/elixirs"
@@ -86,6 +86,87 @@ def list_promoted_outputs_for_corpus(root: Path, corpus_id: str) -> list[dict[st
         if promoted_to:
             results.append({"artifact_ref": artifact_ref, "promoted_to": promoted_to, "question": str(candidate.get("question") or "")})
     return results
+
+
+def preview_legacy_elixir_migration(root: Path, *, limit: int = 50) -> dict[str, Any]:
+    if limit < 1:
+        raise ValueError("limit must be a positive integer.")
+    settled_root = root / ELIXIR_DIR
+    records: list[dict[str, Any]] = []
+    counts = {
+        "legacy_missing_tombstone": 0,
+        "current_tombstone": 0,
+        "candidate_conflict": 0,
+        "non_settled": 0,
+    }
+    scanned_count = 0
+    if settled_root.exists():
+        for path in sorted(settled_root.rglob("*.md")):
+            scanned_count += 1
+            try:
+                frontmatter = _parse_elixir_frontmatter(path)
+            except (OSError, ValueError) as exc:
+                status = "candidate_conflict"
+                record = {
+                    "elixir_id": path.stem,
+                    "wiki_path": relative_path(root, path),
+                    "candidate_path": "",
+                    "status": status,
+                    "reason": f"parse_error: {exc}",
+                    "migration_required": False,
+                }
+            else:
+                elixir_id = str(frontmatter.get("elixir_id") or path.stem)
+                state = str(frontmatter.get("elixir_state") or "")
+                candidate_path = _candidate_path(root, elixir_id)
+                if state != "settled":
+                    status = "non_settled"
+                    reason = f"wiki elixir state is {state or 'unknown'}"
+                    migration_required = False
+                elif not candidate_path.exists():
+                    status = "legacy_missing_tombstone"
+                    reason = "settled elixir has no candidate tombstone"
+                    migration_required = True
+                else:
+                    try:
+                        candidate_frontmatter = _parse_elixir_frontmatter(candidate_path)
+                    except (OSError, ValueError) as exc:
+                        status = "candidate_conflict"
+                        reason = f"candidate_parse_error: {exc}"
+                        migration_required = False
+                    else:
+                        candidate_state = str(candidate_frontmatter.get("elixir_state") or "")
+                        superseded_by = str(candidate_frontmatter.get("superseded_by") or "")
+                        if candidate_state == "superseded" and superseded_by == relative_path(root, path):
+                            status = "current_tombstone"
+                            reason = "candidate tombstone already matches settled elixir"
+                            migration_required = False
+                        else:
+                            status = "candidate_conflict"
+                            reason = f"candidate plane has state={candidate_state or 'unknown'}"
+                            migration_required = False
+                record = {
+                    "elixir_id": elixir_id,
+                    "wiki_path": relative_path(root, path),
+                    "candidate_path": relative_path(root, candidate_path),
+                    "status": status,
+                    "reason": reason,
+                    "migration_required": migration_required,
+                }
+            counts[status] += 1
+            if len(records) < limit:
+                records.append(record)
+
+    return {
+        "status": "ok",
+        "mode": "dry_run",
+        "side_effects_allowed": False,
+        "scanned_count": scanned_count,
+        "returned_count": len(records),
+        "limit": limit,
+        "counts": counts,
+        "records": records,
+    }
 
 
 def _validate_source_outputs(root: Path, refs: list[str], *, allowed: set[str]) -> None:

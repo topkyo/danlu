@@ -48,6 +48,7 @@ from .runner import (
     run_alchemy_finalize,
     run_alchemy_lane_apply,
     run_alchemy_lane_dry_run,
+    run_alchemy_legacy_migration_preview,
     run_alchemy_promote,
     run_alchemy_revert,
     run_alchemy_start,
@@ -405,6 +406,12 @@ def build_parser() -> argparse.ArgumentParser:
         lane_parser.add_argument("--max-signals", type=int, default=None)
         lane_parser.add_argument("--max-pages", type=int, default=None)
         lane_parser.add_argument("--max-tokens", type=int, default=None)
+    legacy_migration_parser = alchemy_subparsers.add_parser(
+        "legacy-migration",
+        help="Preview legacy wiki/elixirs entries that lack candidate tombstones.",
+    )
+    legacy_migration_parser.add_argument("--dry-run", action="store_true", help="Required; preview only.")
+    legacy_migration_parser.add_argument("--limit", type=int, default=50)
 
     l3_create_parser = subparsers.add_parser(
         "l3-proposal-create",
@@ -833,27 +840,32 @@ def main(argv: list[str] | None = None) -> int:
             path = run_alchemy_demote(root, elixir_id=args.elixir_id, note=args.note)
             result = {"elixir_id": args.elixir_id, "path": str(path.relative_to(root))}
         elif args.command == "alchemy":
-            if args.dry_run == args.apply:
-                raise ValueError("alchemy heavy/light requires exactly one of --dry-run or --apply")
-            lane_kwargs = {
-                "lane": args.alchemy_lane,
-                "scope": args.scope,
-                "planner_log_path": args.planner_log_path,
-                "signals_path": args.signals_path,
-                "max_signals": args.max_signals,
-                "max_pages": args.max_pages,
-                "max_tokens": args.max_tokens,
-            }
-            if args.dry_run:
-                result = run_alchemy_lane_dry_run(root, **lane_kwargs)
+            if args.alchemy_lane == "legacy-migration":
+                if not args.dry_run:
+                    raise ValueError("alchemy legacy-migration requires --dry-run")
+                result = run_alchemy_legacy_migration_preview(root, limit=args.limit)
             else:
-                result = run_alchemy_lane_apply(
-                    root,
-                    action_ids=args.action_id,
-                    primitives=args.primitive,
-                    note=args.note,
-                    **lane_kwargs,
-                )
+                if args.dry_run == args.apply:
+                    raise ValueError("alchemy heavy/light requires exactly one of --dry-run or --apply")
+                lane_kwargs = {
+                    "lane": args.alchemy_lane,
+                    "scope": args.scope,
+                    "planner_log_path": args.planner_log_path,
+                    "signals_path": args.signals_path,
+                    "max_signals": args.max_signals,
+                    "max_pages": args.max_pages,
+                    "max_tokens": args.max_tokens,
+                }
+                if args.dry_run:
+                    result = run_alchemy_lane_dry_run(root, **lane_kwargs)
+                else:
+                    result = run_alchemy_lane_apply(
+                        root,
+                        action_ids=args.action_id,
+                        primitives=args.primitive,
+                        note=args.note,
+                        **lane_kwargs,
+                    )
         elif args.command == "l3-proposal-create":
             result = run_l3_proposal_create(
                 root,

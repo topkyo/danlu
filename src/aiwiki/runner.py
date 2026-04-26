@@ -224,6 +224,12 @@ def run_l3_proposal_revert(root: Path, receipt_id: str, *, note: str | None = No
     return revert_l3_proposal(root, receipt_id, note=note)
 
 
+def run_alchemy_legacy_migration_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
+    from .execution.alchemy import preview_legacy_elixir_migration
+
+    return preview_legacy_elixir_migration(root, limit=limit)
+
+
 def create_client(root: Path, timeout_seconds: int | None = None) -> SupportsComplete:
     config = LLMConfig.from_env()
     if timeout_seconds is not None:

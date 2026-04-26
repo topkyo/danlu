@@ -392,6 +392,7 @@ light **不允许**触发 `judge`、`distill`、`propose`、`apply`。
 迁移策略：
 
 - 旧 `wiki/elixirs/` 文件继续按当前 schema 读取，不做强制搬迁。
+- 当前可用 `aiwiki alchemy legacy-migration --dry-run` 只读盘点缺少 candidate tombstone 的 legacy settled elixir；该 preview 不创建 tombstone、不写 receipt、不修改 `wiki/elixirs/`。
 - 新候选入口落地后，默认只对新金丹写入 `output/_candidates/elixirs/`。
 - 任一候选 promote 失败必须保持 source candidate 不变，并写明失败原因；不得半写入 `wiki/elixirs/`。
 - 任一候选 promote 成功后也保留 candidate（墓碑 / tombstone）：不删除候选文件，原地改写 frontmatter 为 `elixir_state: superseded`，并写入 `superseded_by: wiki/elixirs/<elixir-id>.md` 与 `promoted_at: <iso8601>`。
@@ -670,6 +671,7 @@ L3 proposal **只允许**写入以下文件：
 | `aiwiki alchemy-start <corpus-id> --topic <topic>` | 当前：从该 corpus 的已 promoted output 创建 draft elixir | `output/_candidates/elixirs/` |
 | `aiwiki alchemy-distill <elixir-id> --question <q>` | 当前：推进 draft/distilling elixir iteration | `output/_candidates/elixirs/` |
 | `aiwiki alchemy-promote --elixir-id <elixir-id>` | 当前：candidate promote 为 settled | `wiki/elixirs/` + `output/_candidates/elixirs/` tombstone + receipts |
+| `aiwiki alchemy legacy-migration --dry-run` | 当前：只读盘点 legacy settled elixir 的 candidate tombstone 状态 | 读 `wiki/elixirs/` + `output/_candidates/elixirs/` |
 | `aiwiki protocol-learn-add/list/show/age/verify/demote/archive/supersede` | 当前：L2 learning 生命周期治理 | `wiki/protocol-learnings/` |
 | `aiwiki signals-list/show` / `aiwiki planner-log-list` | 当前：只读 inspection；`--since` 必须为 ISO datetime，`--limit` 必须大于 0 | 读 `.aiwiki/state/signals.jsonl` / `.aiwiki/state/planner-log.jsonl` |
 | `aiwiki alchemy heavy <scope> --dry-run` / `aiwiki alchemy light <scope> --dry-run` | 当前：只读 preview lane scope、primitive plan、预算、锁结果和 deferred primitive metadata；不 execute | 读 `.aiwiki/state/planner-log.jsonl` + `.aiwiki/state/signals.jsonl` |
