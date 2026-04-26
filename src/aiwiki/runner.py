@@ -33,11 +33,13 @@ from .app_utils import (
     parse_frontmatter,
     read_text_preview,
     relative_path,
+    render_frontmatter,
     render_scalar,
     runtime_write_lock,
     runtime_write_operation,
     sha256_bytes,
     slugify,
+    strip_frontmatter,
     utc_now,
 )
 from .config import LLMConfig
@@ -1639,6 +1641,139 @@ def run_alchemy_judge_preview(
     )
 
 
+def run_alchemy_judge_apply(
+    root: Path,
+    *,
+    scope: str,
+    planner_log_path: Path | None = None,
+    signals_path: Path | None = None,
+    decision_mode: str | None = None,
+    max_signals: int | None = None,
+    max_pages: int | None = None,
+    max_tokens: int | None = None,
+    limit: int = 50,
+    note: str | None = None,
+) -> dict[str, Any]:
+    preview = run_alchemy_judge_preview(
+        root,
+        scope=scope,
+        planner_log_path=planner_log_path,
+        signals_path=signals_path,
+        decision_mode=decision_mode,
+        max_signals=max_signals,
+        max_pages=max_pages,
+        max_tokens=max_tokens,
+        limit=limit,
+    )
+    status = str(preview.get("status") or "")
+    if status != "ok":
+        raise RuntimeError(f"alchemy judge apply requires an ok dry-run preview (got {status})")
+    candidates = [
+        item
+        for item in preview.get("candidates", [])
+        if isinstance(item, dict) and item.get("apply_supported") is True and item.get("kind") == "judgment_refresh"
+    ]
+    if not candidates:
+        raise RuntimeError("alchemy judge apply requires at least one apply-supported judgment candidate")
+
+    from .app_execution import append_execution_receipt_history
+    from .app_state import execution_receipt_history_path
+    from .render.paths import execution_receipt_path
+
+    refreshed: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for candidate in candidates:
+        result = _materialize_alchemy_judge_refresh(root, preview=preview, candidate=candidate)
+        if result["status"] == "skipped":
+            skipped.append(result)
+        else:
+            refreshed.append(result)
+
+    applied_at = utc_now()
+    action_id = _unique_alchemy_judge_action_id(root, applied_at=applied_at)
+    receipt_path = execution_receipt_path(root, action_id)
+    audit_path = relative_path(root, execution_receipt_history_path(root))
+    trace_ids = _preview_trace_ids(preview)
+    trace_id = trace_ids[0] if trace_ids else ""
+    candidate_ids = [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")]
+    idempotency_key = _alchemy_judge_idempotency_key(scope=scope, candidate_ids=candidate_ids, trace_ids=trace_ids)
+    receipt = {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-alchemy-judge",
+        "applied_at": applied_at,
+        "operation": "alchemy-judge-refresh",
+        "action_id": action_id,
+        "trace_id": trace_id,
+        "trace_ids": trace_ids,
+        "title": f"Alchemy judge refresh {scope}",
+        "status": "applied",
+        "protocol": _first_preview_protocol(preview),
+        "subject_kind": "alchemy_judgment_page",
+        "subject_id": f"judge:{scope}",
+        "apply_mode": "alchemy-judge",
+        "note": note or "",
+        "primary_path": "wiki/judgments",
+        "secondary_path": "wiki/decisions",
+        "receipt_path": relative_path(root, receipt_path),
+        "scope": scope,
+        "primitive": "judge",
+        "candidate_ids": candidate_ids,
+        "candidate_count": len(candidates),
+        "refreshed_count": len(refreshed),
+        "skipped_count": len(skipped),
+        "skipped": skipped,
+        "idempotency_key": idempotency_key,
+        "changed": any(item.get("changed") for item in refreshed),
+        "revert_supported": False,
+        "revert_policy": "non_revertible_refresh_marker: reapply a newer judge preview to replace the managed marker; semantic judgment edits remain explicit",
+        "audit_stream": "execution_receipts",
+        "audit_event": "execution_receipt_history_append",
+        "audit_path": audit_path,
+        "source_preview": _judge_preview_receipt_summary(preview, candidates),
+        "result_summary": {"refreshed": refreshed, "skipped": skipped},
+    }
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    append_execution_receipt_history(root, receipt)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "alchemy-judge-refreshed",
+            "recorded_at": applied_at,
+            "status": "completed",
+            "scope": scope,
+            "candidate_count": len(candidates),
+            "candidate_ids": candidate_ids,
+            "refreshed_count": len(refreshed),
+            "skipped_count": len(skipped),
+            "receipt_path": relative_path(root, receipt_path),
+            "trace_id": trace_id,
+            "trace_ids": trace_ids,
+            "subject_kind": "alchemy_judgment_page",
+            "subject_id": f"judge:{scope}",
+        },
+    )
+    return {
+        "status": "applied",
+        "primitive": "judge",
+        "scope": scope,
+        "candidate_count": len(candidates),
+        "candidate_ids": candidate_ids,
+        "refreshed_count": len(refreshed),
+        "refreshed": refreshed,
+        "skipped_count": len(skipped),
+        "skipped": skipped,
+        "receipt_path": relative_path(root, receipt_path),
+        "audit_path": audit_path,
+        "trace_id": trace_id,
+        "trace_ids": trace_ids,
+        "idempotency_key": idempotency_key,
+        "changed": any(item.get("changed") for item in refreshed),
+        "preview": preview,
+    }
+
+
 def run_alchemy_distill_preview(
     root: Path,
     *,
@@ -2474,6 +2609,83 @@ def _append_alchemy_lane_runtime_event(
 
 _ALCHEMY_REVIEW_QUEUE_START = "<!-- aiwiki:alchemy-review-enqueue:start -->"
 _ALCHEMY_REVIEW_QUEUE_END = "<!-- aiwiki:alchemy-review-enqueue:end -->"
+_ALCHEMY_JUDGE_REFRESH_START = "<!-- aiwiki:alchemy-judge-refresh:start -->"
+_ALCHEMY_JUDGE_REFRESH_END = "<!-- aiwiki:alchemy-judge-refresh:end -->"
+
+
+def _materialize_alchemy_judge_refresh(
+    root: Path,
+    *,
+    preview: dict[str, Any],
+    candidate: dict[str, Any],
+) -> dict[str, Any]:
+    target_ref = str(candidate.get("target_ref") or "")
+    candidate_id = str(candidate.get("candidate_id") or "")
+    target = (root / target_ref).resolve()
+    try:
+        target.relative_to(root.resolve())
+    except ValueError:
+        return {"status": "skipped", "candidate_id": candidate_id, "target_ref": target_ref, "reason": "target_outside_root"}
+    if not target.exists():
+        return {"status": "skipped", "candidate_id": candidate_id, "target_ref": target_ref, "reason": "target_missing"}
+    original = target.read_text(encoding="utf-8", errors="replace")
+    frontmatter = parse_frontmatter(original)
+    kind = str(frontmatter.get("kind") or "")
+    if kind not in {"decision", "judgment"}:
+        return {"status": "skipped", "candidate_id": candidate_id, "target_ref": target_ref, "reason": "not_judgment_asset"}
+    before_hash = sha256_bytes(original.encode("utf-8"))
+    body = strip_frontmatter(original).strip()
+    section = _render_alchemy_judge_refresh_section(preview=preview, candidate=candidate)
+    updated_body = _replace_marker_section(
+        body,
+        section,
+        start_marker=_ALCHEMY_JUDGE_REFRESH_START,
+        end_marker=_ALCHEMY_JUDGE_REFRESH_END,
+    )
+    updated = f"{render_frontmatter(frontmatter)}\n\n{updated_body.strip()}\n"
+    changed = updated != original
+    if changed:
+        target.write_text(updated, encoding="utf-8")
+    after_hash = sha256_bytes(updated.encode("utf-8"))
+    return {
+        "status": "refreshed",
+        "candidate_id": candidate_id,
+        "target_ref": target_ref,
+        "path": relative_path(root, target),
+        "kind": kind,
+        "before_hash": before_hash,
+        "after_hash": after_hash,
+        "changed": changed,
+    }
+
+
+def _render_alchemy_judge_refresh_section(*, preview: dict[str, Any], candidate: dict[str, Any]) -> str:
+    lines = [
+        _ALCHEMY_JUDGE_REFRESH_START,
+        "## Alchemy Judge Refresh",
+        "",
+        f"- candidate_id: `{_markdown_cell(str(candidate.get('candidate_id') or ''))}`",
+        f"- target_ref: `{_markdown_cell(str(candidate.get('target_ref') or ''))}`",
+        f"- signal_ids: `{_markdown_cell(', '.join(_string_values(candidate.get('signal_ids'))) or 'none')}`",
+        f"- trace_ids: `{_markdown_cell(', '.join(_string_values(candidate.get('trace_ids'))) or 'none')}`",
+        f"- source_ids: `{_markdown_cell(', '.join(_string_values(candidate.get('source_ids'))) or 'none')}`",
+        f"- concept_slugs: `{_markdown_cell(', '.join(_string_values(candidate.get('concept_slugs'))) or 'none')}`",
+        "",
+        "This marker records a scoped judge refresh opportunity. It does not rewrite the judgment conclusion.",
+        _ALCHEMY_JUDGE_REFRESH_END,
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _replace_marker_section(existing: str, section: str, *, start_marker: str, end_marker: str) -> str:
+    if start_marker in existing and end_marker in existing:
+        before, rest = existing.split(start_marker, 1)
+        _, after = rest.split(end_marker, 1)
+        return before.rstrip() + "\n\n" + section + after.lstrip()
+    if existing.strip():
+        return existing.rstrip() + "\n\n" + section
+    return section
 
 
 def _materialize_alchemy_review_queue(
@@ -2582,6 +2794,20 @@ def _distill_preview_receipt_summary(preview: dict[str, Any], candidates: list[d
     }
 
 
+def _judge_preview_receipt_summary(preview: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "status": str(preview.get("status") or ""),
+        "scope": str(preview.get("scope") or ""),
+        "selected_count": int(preview.get("selected_count") or 0),
+        "candidate_count": len(candidates),
+        "candidate_ids": [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")],
+        "scope_preview": preview.get("scope_preview") if isinstance(preview.get("scope_preview"), dict) else {},
+        "apply_contract": preview.get("apply_contract") if isinstance(preview.get("apply_contract"), dict) else {},
+        "semantic_rewrite": False,
+        "lane_apply_supported": False,
+    }
+
+
 def _preview_trace_ids(preview: dict[str, Any]) -> list[str]:
     scope_preview = preview.get("scope_preview")
     if not isinstance(scope_preview, dict):
@@ -2635,6 +2861,18 @@ def _alchemy_distill_idempotency_key(*, scope: str, candidate_ids: list[str], tr
     }
     digest = sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
     return f"alchemy-distill:{digest}"
+
+
+def _alchemy_judge_idempotency_key(*, scope: str, candidate_ids: list[str], trace_ids: list[str]) -> str:
+    payload = {
+        "primitive": "judge",
+        "scope": scope,
+        "candidate_ids": sorted(candidate_ids),
+        "marker": "scoped_judge_refresh_marker",
+        "trace_ids": sorted(trace_ids),
+    }
+    digest = sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    return f"alchemy-judge:{digest}"
 
 
 def _alchemy_distill_target_id(target_ref: str) -> str:
@@ -2708,6 +2946,19 @@ def _unique_alchemy_distill_action_id(root: Path, *, applied_at: str) -> str:
 
     timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
     base = slugify(f"alchemy-distill-{timestamp}")
+    candidate = base
+    n = 2
+    while execution_receipt_path(root, candidate).exists():
+        candidate = f"{base}-{n}"
+        n += 1
+    return candidate
+
+
+def _unique_alchemy_judge_action_id(root: Path, *, applied_at: str) -> str:
+    from .render.paths import execution_receipt_path
+
+    timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
+    base = slugify(f"alchemy-judge-{timestamp}")
     candidate = base
     n = 2
     while execution_receipt_path(root, candidate).exists():

@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from aiwiki.app_compile import ask_question
 from aiwiki.app_protocol import ensure_layout
-from aiwiki.app_utils import parse_frontmatter, runtime_write_lock
+from aiwiki.app_utils import parse_frontmatter, render_frontmatter, runtime_write_lock
 from aiwiki.cli import build_parser, main
 from aiwiki.execution.candidates import promote_candidate
 from aiwiki.planner.dry_run import (
@@ -22,6 +22,7 @@ from aiwiki.planner.dry_run import (
 from aiwiki.runner import (
     run_alchemy_auto,
     run_alchemy_distill_apply,
+    run_alchemy_judge_apply,
     run_alchemy_lane_apply,
     run_alchemy_propose_apply,
     run_alchemy_review_apply,
@@ -157,6 +158,22 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         corpus_id = self._make_promoted_corpus()
         started = run_alchemy_start(self.root, corpus_id, "VLA robotics", protocol="general")
         return str(started["elixir_id"])
+
+    def _write_judgment_page(self, rel: str = "wiki/judgments/thesis.md") -> str:
+        path = self.root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        frontmatter = render_frontmatter(
+            {
+                "id": "thesis",
+                "kind": "judgment",
+                "status": "tentative",
+                "title": "Thesis",
+                "protocol": "research",
+                "confidence": "medium",
+            }
+        )
+        path.write_text(frontmatter + "\n\n# Thesis\n\n## Judgment\n- Existing conclusion.\n", encoding="utf-8")
+        return rel
 
     def test_heavy_lane_dry_run_filters_enqueue_heavy_and_stabilizes_scope(self) -> None:
         self._seed_lane_records()
@@ -514,6 +531,9 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
             elif item["primitive"] == "distill":
                 self.assertEqual(contract["status"], "executable")
                 self.assertIn("non_revertible_candidate_iteration", contract["revert_policy"])
+            elif item["primitive"] == "judge":
+                self.assertEqual(contract["status"], "executable")
+                self.assertIn("non_revertible_refresh_marker", contract["revert_policy"])
             else:
                 self.assertEqual(contract["status"], "deferred")
                 self.assertIn("required_before_apply", contract["revert_policy"])
@@ -522,7 +542,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
             ["judge", "distill", "review", "propose"],
         )
         self.assertEqual({item["reason_code"] for item in light["deferred_primitives"]}, {"not_allowed_for_light_lane"})
-        self.assertEqual({item["apply_contract"]["status"] for item in light["deferred_primitives"]}, {"deferred", "executable"})
+        self.assertEqual({item["apply_contract"]["status"] for item in light["deferred_primitives"]}, {"executable"})
 
     def test_scope_selector_filters_by_protocol(self) -> None:
         self._seed_lane_records()
@@ -924,15 +944,19 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(result["lane"], "heavy")
         self.assertTrue(result["dry_run"])
         self.assertFalse(result["side_effects_allowed"])
-        self.assertFalse(result["apply_supported"])
-        self.assertEqual(result["apply_blocker"], "missing_receipted_scoped_contract")
-        self.assertTrue(result["llm_required_for_apply"])
+        self.assertTrue(result["apply_supported"])
+        self.assertEqual(result["apply_blocker"], "")
+        self.assertFalse(result["lane_apply_supported"])
+        self.assertEqual(result["lane_apply_blocker"], "missing_receipted_scoped_contract")
+        self.assertFalse(result["llm_required_for_apply"])
         self.assertTrue(result["receipt_required_for_apply"])
         self.assertTrue(result["audit_required_for_apply"])
+        self.assertFalse(result["revert_policy_required_for_apply"])
         self.assertEqual(result["apply_contract"]["primitive"], "judge")
         self.assertIn("wiki/judgments/", result["apply_contract"]["write_surfaces"])
         self.assertEqual(result["selected_count"], 1)
         self.assertEqual(result["candidate_count"], 1)
+        self.assertEqual(result["applicable_candidate_count"], 1)
         candidate = result["candidates"][0]
         self.assertEqual(candidate["candidate_id"], "judge-refresh-wiki-judgments-thesis-md")
         self.assertEqual(candidate["kind"], "judgment_refresh")
@@ -940,8 +964,8 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(candidate["signal_ids"], ["sig-20260425-heavy01"])
         self.assertEqual(candidate["source_ids"], ["src-a", "src-b"])
         self.assertEqual(candidate["concept_slugs"], ["alpha", "zeta"])
-        self.assertFalse(candidate["apply_supported"])
-        self.assertEqual(candidate["apply_contract"]["status"], "deferred")
+        self.assertTrue(candidate["apply_supported"])
+        self.assertEqual(candidate["apply_contract"]["status"], "executable")
         self.assertEqual(_snapshot_files(self.root), before)
 
     def test_judge_preview_uses_scope_candidates_when_no_judgment_ref_exists(self) -> None:
@@ -955,6 +979,64 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertFalse(result["truncated"])
         self.assertEqual(result["candidates"][0]["kind"], "judgment_scope_refresh")
         self.assertEqual(result["candidates"][0]["protocol"], "research")
+        self.assertFalse(result["candidates"][0]["apply_supported"])
+        self.assertEqual(result["candidates"][0]["apply_blocker"], "missing_judgment_ref_for_direct_apply")
+
+    def test_judge_apply_writes_idempotent_marker_receipt_and_audit(self) -> None:
+        judgment_ref = self._write_judgment_page()
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [
+                self._signal(
+                    "sig-20260425-heavy01",
+                    severity="high",
+                    protocol="research",
+                    source_ids=["src-a"],
+                    concept_slugs=["alpha"],
+                    judgment_refs=[judgment_ref],
+                )
+            ],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [self._planner("sig-20260425-heavy01", decision="enqueue-heavy")],
+        )
+
+        first = run_alchemy_judge_apply(self.root, scope="all", note="mark it")
+        second = run_alchemy_judge_apply(self.root, scope="all", note="repeat")
+
+        self.assertEqual(first["status"], "applied")
+        self.assertEqual(first["candidate_count"], 1)
+        self.assertEqual(first["refreshed_count"], 1)
+        self.assertTrue(first["changed"])
+        self.assertFalse(second["changed"])
+        self.assertEqual(first["idempotency_key"], second["idempotency_key"])
+        page_text = (self.root / judgment_ref).read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(page_text)
+        self.assertEqual(frontmatter["status"], "tentative")
+        self.assertEqual(frontmatter["confidence"], "medium")
+        self.assertIn("aiwiki:alchemy-judge-refresh:start", page_text)
+        self.assertIn("judge-refresh-wiki-judgments-thesis-md", page_text)
+        self.assertIn("Existing conclusion.", page_text)
+        receipt = json.loads((self.root / first["receipt_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(receipt["operation"], "alchemy-judge-refresh")
+        self.assertEqual(receipt["subject_kind"], "alchemy_judgment_page")
+        self.assertEqual(receipt["candidate_ids"], first["candidate_ids"])
+        self.assertFalse(receipt["revert_supported"])
+        self.assertEqual(receipt["result_summary"]["refreshed"][0]["path"], judgment_ref)
+        runtime = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(runtime[-1]["event_type"], "alchemy-judge-refreshed")
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertIn("execution_receipts", {item["source_stream"] for item in audit_records})
+        self.assertIn("runtime_history", {item["source_stream"] for item in audit_records})
 
     def test_distill_preview_reports_scoped_candidates_without_writes(self) -> None:
         self._seed_lane_records()
@@ -1401,6 +1483,46 @@ class AlchemyLaneCLITests(unittest.TestCase):
             max_pages=5,
             max_tokens=7,
             limit=11,
+        )
+
+    def test_main_dispatches_alchemy_judge_apply(self) -> None:
+        with patch("aiwiki.cli.run_alchemy_judge_apply", return_value={"status": "applied", "primitive": "judge"}) as mocked:
+            code, payload, stderr = self._run_main(
+                [
+                    "alchemy",
+                    "judge",
+                    "all",
+                    "--apply",
+                    "--planner-log-path",
+                    "custom/planner-log.jsonl",
+                    "--signals-path",
+                    "custom/signals.jsonl",
+                    "--max-signals",
+                    "3",
+                    "--max-pages",
+                    "5",
+                    "--max-tokens",
+                    "7",
+                    "--limit",
+                    "11",
+                    "--note",
+                    "mark",
+                ]
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["primitive"], "judge")
+        mocked.assert_called_once_with(
+            self.root,
+            scope="all",
+            planner_log_path=Path("custom/planner-log.jsonl"),
+            signals_path=Path("custom/signals.jsonl"),
+            max_signals=3,
+            max_pages=5,
+            max_tokens=7,
+            limit=11,
+            note="mark",
         )
 
     def test_main_dispatches_alchemy_distill_preview(self) -> None:
