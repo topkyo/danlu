@@ -26,6 +26,7 @@ from aiwiki.execution.alchemy import (
     _validate_state_for_path,
     _write_elixir_markdown,
     apply_legacy_elixir_migration,
+    apply_superseded_elixir_cleanup,
     demote_elixir,
     distill_elixir,
     finalize_elixir,
@@ -639,18 +640,70 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
 
         records = {record["elixir_id"]: record for record in result["records"]}
         self.assertFalse(result["side_effects_allowed"])
-        self.assertFalse(result["delete_supported"])
+        self.assertTrue(result["delete_supported"])
         self.assertEqual(result["counts"]["cleanup_candidate"], 1)
         self.assertEqual(result["counts"]["missing_superseded_target"], 1)
         self.assertEqual(result["counts"]["non_settled_target"], 1)
         self.assertEqual(result["counts"]["non_superseded"], 1)
         self.assertEqual(records[current_id]["status"], "cleanup_candidate")
+        self.assertTrue(records[current_id]["cleanup_supported"])
         self.assertEqual(records[missing_id]["status"], "missing_superseded_target")
         self.assertEqual(records[non_settled_id]["status"], "non_settled_target")
         self.assertEqual(records[active_id]["status"], "non_superseded")
         for path, before in snapshots.items():
             self.assertEqual(path.read_text(encoding="utf-8"), before)
         self.assertFalse((self.root / ".aiwiki" / "state" / "execution-receipts.jsonl").exists())
+
+    def test_superseded_cleanup_apply_deletes_supported_tombstones_and_writes_receipt(self) -> None:
+        current_id = "current-settled"
+        missing_id = "missing-target"
+        active_id = "active-candidate"
+        non_settled_id = "non-settled-target"
+        self._write_stub_elixir(_settled_path(self.root, current_id), elixir_id=current_id, state="settled")
+        self._write_stub_elixir(_candidate_path(self.root, current_id), elixir_id=current_id, state="superseded")
+        self._write_stub_elixir(_candidate_path(self.root, missing_id), elixir_id=missing_id, state="superseded")
+        self._write_stub_elixir(_candidate_path(self.root, active_id), elixir_id=active_id, state="candidate")
+        self._write_stub_elixir(_settled_path(self.root, non_settled_id), elixir_id=non_settled_id, state="draft")
+        self._write_stub_elixir(_candidate_path(self.root, non_settled_id), elixir_id=non_settled_id, state="superseded")
+        for elixir_id in (current_id, missing_id, non_settled_id):
+            frontmatter = _parse_elixir_frontmatter(_candidate_path(self.root, elixir_id))
+            frontmatter["superseded_by"] = f"wiki/elixirs/{elixir_id}.md"
+            _write_elixir_markdown(_candidate_path(self.root, elixir_id), frontmatter=frontmatter, body="# Elixir\n\n")
+        settled_before = _settled_path(self.root, current_id).read_text(encoding="utf-8")
+
+        result = apply_superseded_elixir_cleanup(self.root, note="cleanup tombstones")
+
+        self.assertEqual(result["mode"], "apply")
+        self.assertTrue(result["side_effects_allowed"])
+        self.assertEqual(result["deleted_count"], 1)
+        self.assertEqual(result["deleted"][0]["elixir_id"], current_id)
+        self.assertFalse(_candidate_path(self.root, current_id).exists())
+        self.assertTrue(_candidate_path(self.root, missing_id).exists())
+        self.assertTrue(_candidate_path(self.root, active_id).exists())
+        self.assertTrue(_candidate_path(self.root, non_settled_id).exists())
+        self.assertEqual(_settled_path(self.root, current_id).read_text(encoding="utf-8"), settled_before)
+
+        receipt = json.loads((self.root / result["receipt_path"]).read_text(encoding="utf-8"))
+        history = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki" / "state" / "execution-receipts.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki" / "state" / "audit.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(receipt["operation"], "superseded-cleanup")
+        self.assertEqual(receipt["subject_kind"], "elixir_superseded_cleanup")
+        self.assertEqual(receipt["bundle"]["deleted_count"], 1)
+        self.assertEqual(receipt["bundle"]["deleted_tombstones"][0]["candidate_path"], f"output/_candidates/elixirs/{current_id}.md")
+        self.assertEqual(history[-1]["action_id"], receipt["action_id"])
+        self.assertTrue(any(record["source_stream"] == "execution_receipts" and record["subject"]["id"] == receipt["action_id"] for record in audit_records))
+
+        no_op = apply_superseded_elixir_cleanup(self.root)
+        self.assertEqual(no_op["deleted_count"], 0)
+        self.assertEqual(no_op["receipt_path"], "")
 
     def test_promote_writes_receipt_and_history(self) -> None:
         elixir_id = self._start_candidate_elixir()

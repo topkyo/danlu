@@ -294,6 +294,13 @@ class CLITests(unittest.TestCase):
                 {"limit": 4},
             ),
             (
+                "alchemy-superseded-cleanup-apply",
+                ["alchemy", "superseded-cleanup", "--apply", "--limit", "4", "--note", "cleanup"],
+                "run_alchemy_superseded_cleanup_apply",
+                (self.root,),
+                {"limit": 4, "note": "cleanup"},
+            ),
+            (
                 "l3-proposal-create",
                 [
                     "l3-proposal-create",

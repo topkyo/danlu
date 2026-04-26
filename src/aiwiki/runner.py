@@ -242,6 +242,12 @@ def run_alchemy_superseded_cleanup_preview(root: Path, *, limit: int = 50) -> di
     return preview_superseded_elixir_cleanup(root, limit=limit)
 
 
+def run_alchemy_superseded_cleanup_apply(root: Path, *, limit: int = 50, note: str | None = None) -> dict[str, Any]:
+    from .execution.alchemy import apply_superseded_elixir_cleanup
+
+    return apply_superseded_elixir_cleanup(root, limit=limit, note=note)
+
+
 def run_audit_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
     from .execution.audit_preview import preview_universal_audit_stream
 

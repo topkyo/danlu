@@ -354,8 +354,8 @@ def preview_superseded_elixir_cleanup(root: Path, *, limit: int = 50) -> dict[st
                                 cleanup_supported = False
                             else:
                                 status = "cleanup_candidate"
-                                reason = "valid superseded tombstone; deletion apply remains deferred"
-                                cleanup_supported = False
+                                reason = "valid superseded tombstone; deletion apply supported"
+                                cleanup_supported = True
                     record = {
                         "elixir_id": elixir_id,
                         "candidate_path": relative_path(root, path),
@@ -372,13 +372,116 @@ def preview_superseded_elixir_cleanup(root: Path, *, limit: int = 50) -> dict[st
         "status": "ok",
         "mode": "dry_run",
         "side_effects_allowed": False,
-        "delete_supported": False,
+        "delete_supported": True,
         "scanned_count": scanned_count,
         "returned_count": len(records),
         "limit": limit,
         "counts": counts,
         "records": records,
     }
+
+
+def apply_superseded_elixir_cleanup(root: Path, *, limit: int = 50, note: str | None = None) -> dict[str, Any]:
+    preview = preview_superseded_elixir_cleanup(root, limit=limit)
+    targets = [record for record in preview["records"] if record.get("cleanup_supported")]
+    applied_at_dt = datetime.now(timezone.utc)
+    applied_at = applied_at_dt.isoformat()
+    deleted: list[dict[str, Any]] = []
+
+    for record in targets:
+        elixir_id = _resolve_elixir_id(root, str(record.get("elixir_id") or ""))
+        candidate_path = _candidate_path(root, elixir_id)
+        settled_path = _settled_path(root, elixir_id)
+        if not candidate_path.exists():
+            continue
+        candidate_frontmatter = _parse_elixir_frontmatter(candidate_path)
+        if str(candidate_frontmatter.get("elixir_state") or "") != "superseded":
+            continue
+        superseded_by = str(candidate_frontmatter.get("superseded_by") or "")
+        if superseded_by != relative_path(root, settled_path):
+            continue
+        if not settled_path.exists():
+            continue
+        settled_frontmatter = _parse_elixir_frontmatter(settled_path)
+        if str(settled_frontmatter.get("elixir_state") or "") != "settled":
+            continue
+        candidate_sha256 = compute_file_sha256(candidate_path)
+        settled_sha256 = compute_file_sha256(settled_path)
+        candidate_path.unlink()
+        deleted.append(
+            {
+                "elixir_id": elixir_id,
+                "candidate_path": relative_path(root, candidate_path),
+                "settled_path": relative_path(root, settled_path),
+                "candidate_sha256": candidate_sha256,
+                "settled_sha256": settled_sha256,
+            }
+        )
+
+    receipt_path = ""
+    if deleted:
+        receipt = _build_superseded_cleanup_receipt(root, deleted=deleted, applied_at=applied_at_dt, note=note)
+        receipt_path = str(receipt.get("receipt_path") or "")
+        path = root / receipt_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        append_execution_receipt_history(root, receipt)
+
+    return {
+        **preview,
+        "mode": "apply",
+        "apply": True,
+        "side_effects_allowed": True,
+        "applied_at": applied_at,
+        "deleted_count": len(deleted),
+        "deleted": deleted,
+        "receipt_path": receipt_path,
+    }
+
+
+def _build_superseded_cleanup_receipt(
+    root: Path,
+    *,
+    deleted: list[dict[str, Any]],
+    applied_at: datetime,
+    note: str | None,
+) -> dict[str, Any]:
+    action_id = _unique_superseded_cleanup_action_id(root, applied_at)
+    receipt_path = root / "output" / "control" / "execution-receipts" / f"{action_id}.json"
+    return {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-elixir-superseded-cleanup",
+        "applied_at": applied_at.isoformat(),
+        "operation": "superseded-cleanup",
+        "action_id": action_id,
+        "title": "Delete superseded elixir candidate tombstones",
+        "status": "resolved",
+        "protocol": "",
+        "subject_kind": "elixir_superseded_cleanup",
+        "subject_id": action_id,
+        "apply_mode": "elixir-superseded-cleanup",
+        "note": note or "",
+        "primary_path": "",
+        "secondary_path": "",
+        "receipt_path": relative_path(root, receipt_path),
+        "bundle": {
+            "deleted_tombstones": deleted,
+            "deleted_count": len(deleted),
+        },
+        "safe_apply_preview": None,
+        "revert_supported": False,
+    }
+
+
+def _unique_superseded_cleanup_action_id(root: Path, applied_at: datetime) -> str:
+    epoch_ms = int(applied_at.timestamp() * 1000)
+    candidate = f"elixir-superseded-cleanup-{epoch_ms}"
+    n = 2
+    while (root / "output" / "control" / "execution-receipts" / f"{candidate}.json").exists():
+        candidate = f"elixir-superseded-cleanup-{epoch_ms}-{n}"
+        n += 1
+    return candidate
 
 
 def _validate_source_outputs(root: Path, refs: list[str], *, allowed: set[str]) -> None:
