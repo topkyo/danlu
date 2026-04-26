@@ -443,7 +443,7 @@ promoted_at: null
 | `distilling` | `output/_candidates/elixirs/` | `alchemy-distill <elixir_id> --question ...` |
 | `candidate` | `output/_candidates/elixirs/` | `alchemy-finalize <elixir-id>`（作者显式 finalize，ready-for-promote） |
 | `settled` | `wiki/elixirs/` | `alchemy-promote --elixir-id <elixir_id>` |
-| `superseded` | `output/_candidates/elixirs/`（tombstone 保留） | planned：候选 promote 成功后原地墓碑化 |
+| `superseded` | `output/_candidates/elixirs/`（tombstone 保留） | 当前：候选 promote 成功后原地墓碑化 |
 
 状态转移（`M2.2`）：
 

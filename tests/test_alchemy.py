@@ -530,6 +530,7 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         self.assertEqual(settled_frontmatter["elixir_state"], "settled")
         self.assertEqual(tombstone_frontmatter["elixir_state"], "superseded")
         self.assertEqual(tombstone_frontmatter["superseded_by"], f"wiki/elixirs/{elixir_id}.md")
+        self.assertTrue(tombstone_frontmatter["promoted_at"])
         self.assertEqual(settled_frontmatter["promoted_at"], tombstone_frontmatter["promoted_at"])
         self.assertNotIn("sealed_at", settled_frontmatter)
 
