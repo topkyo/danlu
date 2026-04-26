@@ -163,10 +163,24 @@ class TestSchemaValidation(unittest.TestCase):
         record["primitive_refs"] = ["compile"]
         self.assertFalse(validate_planner_log_record(record).ok)
 
-    def test_side_effects_allowed_must_be_strict_bool_false(self) -> None:
+    def test_side_effects_allowed_must_be_strict_bool_and_false_for_observe_only(self) -> None:
         record = self._base_record()
         record["side_effects_allowed"] = 0
         self.assertFalse(validate_planner_log_record(record).ok)
+        record["side_effects_allowed"] = True
+        self.assertFalse(validate_planner_log_record(record).ok)
+
+    def test_execute_mode_allows_side_effects_for_executable_decisions(self) -> None:
+        record = self._base_record()
+        record["mode"] = "execute"
+        record["decision"] = "enqueue-light"
+        record["side_effects_allowed"] = True
+        self.assertTrue(validate_planner_log_record(record).ok)
+
+    def test_execute_mode_rejects_side_effects_for_non_executable_decisions(self) -> None:
+        record = self._base_record()
+        record["mode"] = "execute"
+        record["decision"] = "ignore"
         record["side_effects_allowed"] = True
         self.assertFalse(validate_planner_log_record(record).ok)
 
@@ -404,6 +418,29 @@ class TestGenerateProposalRouting(_FixtureCase):
         self.assertEqual(result["new_count"], 3)
         self.assertEqual(result["emitted_by_decision"]["generate-proposal"], 1)
         self.assertEqual(result["emitted_by_decision"]["enqueue-heavy"], 0)
+
+    def test_execute_mode_writes_separate_executable_decisions(self) -> None:
+        root = self._copy_case_root("case_basic")
+        write_planner_log(root, _now=_fixed_now)
+
+        result = write_planner_log(root, mode="execute", _now=_fixed_now)
+
+        planner_records = _read_jsonl(root / ".aiwiki/state/planner-log.jsonl")
+        execute_records = [item for item in planner_records if item["mode"] == "execute"]
+        self.assertEqual(result["new_count"], 3)
+        self.assertEqual(len(execute_records), 3)
+        by_signal = {item["signal_id"]: item for item in execute_records}
+        self.assertEqual(compute_planner_log_dedupe_key(by_signal["sig-20260424-pln000003"]), "sig-20260424-pln000003:execute")
+        self.assertIn("execute_mode_requested", by_signal["sig-20260424-pln000003"]["reason_codes"])
+        self.assertIs(by_signal["sig-20260424-pln000001"]["side_effects_allowed"], True)
+        self.assertIs(by_signal["sig-20260424-pln000003"]["side_effects_allowed"], True)
+        self.assertIs(by_signal["sig-20260424-pln000002"]["side_effects_allowed"], False)
+
+    def test_invalid_planner_mode_rejected(self) -> None:
+        root = self._copy_case_root("case_basic")
+
+        with self.assertRaises(ValueError):
+            write_planner_log(root, mode="dry_run", _now=_fixed_now)
 
 
 class TestIdempotency(_FixtureCase):
@@ -1384,7 +1421,19 @@ class TestCLI(_FixtureCase):
 
         self.assertEqual(code, 0)
         self.assertEqual(stderr, "")
-        mocked.assert_called_once_with(self.temp_root, signals_path=Path("custom/signals.jsonl"))
+        mocked.assert_called_once_with(self.temp_root, signals_path=Path("custom/signals.jsonl"), mode="observe_only")
+        self.assertEqual(payload["status"], "ok")
+
+    def test_main_dispatches_planner_log_replay_execute(self) -> None:
+        with patch("aiwiki.cli.write_planner_log", return_value={"status": "ok"}) as mocked:
+            code, payload, stderr = self._run_main(
+                self.temp_root,
+                ["planner-log-replay", "--signals-path", "custom/signals.jsonl", "--execute"],
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        mocked.assert_called_once_with(self.temp_root, signals_path=Path("custom/signals.jsonl"), mode="execute")
         self.assertEqual(payload["status"], "ok")
 
     def test_parser_planner_log_replay_flags(self) -> None:
@@ -1392,7 +1441,9 @@ class TestCLI(_FixtureCase):
         action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
         replay_parser = action.choices["planner-log-replay"]
         signals_action = next(item for item in replay_parser._actions if item.dest == "signals_path")
+        execute_action = next(item for item in replay_parser._actions if item.dest == "execute")
         self.assertEqual(signals_action.option_strings, ["--signals-path"])
+        self.assertEqual(execute_action.option_strings, ["--execute"])
 
     def test_cli_end_to_end_summary_fixed_keys(self) -> None:
         root = self._copy_case_root("case_basic")
@@ -1521,7 +1572,7 @@ class TestCanonicalDumps(unittest.TestCase):
 
 class TestPublicContracts(unittest.TestCase):
     def test_closed_sets_stable(self) -> None:
-        self.assertEqual(MODES, frozenset({"observe_only"}))
+        self.assertEqual(MODES, frozenset({"observe_only", "execute"}))
         self.assertEqual(
             DECISIONS,
             frozenset(

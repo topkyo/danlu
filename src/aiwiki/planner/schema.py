@@ -17,7 +17,7 @@ DECISIONS: frozenset[str] = frozenset(
     }
 )
 
-MODES: frozenset[str] = frozenset({"observe_only"})
+MODES: frozenset[str] = frozenset({"observe_only", "execute"})
 
 TOP_LEVEL_FIELD_ORDER: tuple[str, ...] = (
     "schema_version",
@@ -137,8 +137,10 @@ def validate_planner_log_record(record: dict[str, Any]) -> ValidationResult:
     side_effects_allowed = record.get("side_effects_allowed")
     if type(side_effects_allowed) is not bool:
         errors.append("side_effects_allowed must be a strict boolean")
-    elif side_effects_allowed is not False:
-        errors.append("side_effects_allowed must be false in v1")
+    elif mode == "observe_only" and side_effects_allowed is not False:
+        errors.append("side_effects_allowed must be false in observe_only mode")
+    elif mode == "execute" and decision in {"ignore", "escalate-human"} and side_effects_allowed is not False:
+        errors.append("side_effects_allowed must be false for non-executable decisions")
 
     decided_at = record.get("decided_at")
     if not isinstance(decided_at, str):

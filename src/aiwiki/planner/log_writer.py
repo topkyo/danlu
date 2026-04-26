@@ -10,6 +10,7 @@ from typing import Any, Callable
 from ..app_utils import runtime_write_lock
 from .schema import (
     DECISIONS,
+    MODES,
     PLANNER_LOG_SCHEMA_VERSION,
     canonical_dumps_planner_log,
     compute_planner_log_dedupe_key,
@@ -28,8 +29,11 @@ def write_planner_log(
     root: Path,
     *,
     signals_path: Path | None = None,
+    mode: str = "observe_only",
     _now: Callable[[], datetime] | None = None,
 ) -> dict[str, Any]:
+    if mode not in MODES:
+        raise ValueError(f"planner mode must be one of {sorted(MODES)}")
     with runtime_write_lock(root):
         explicit_signals_path = signals_path is not None
         resolved_signals_path = _resolve_signals_path(root, signals_path)
@@ -111,6 +115,9 @@ def write_planner_log(
                 kind = str(signal["kind"])
                 severity = str(signal["severity"])
                 decision, reason_codes = _derive_decision(kind, severity)
+                reason_codes = list(reason_codes)
+                if mode == "execute":
+                    reason_codes.append("execute_mode_requested")
 
                 decided_at = now_provider().strftime("%Y-%m-%dT%H:%M:%SZ")
                 record = {
@@ -119,12 +126,12 @@ def write_planner_log(
                     "dedupe_key": signal.get("dedupe_key"),
                     "trace_id": signal.get("trace_id"),
                     "decision": decision,
-                    "mode": "observe_only",
+                    "mode": mode,
                     "reason_codes": reason_codes,
                     "budget_used": {},
                     "locks_acquired": [],
                     "primitive_refs": [],
-                    "side_effects_allowed": False,
+                    "side_effects_allowed": _decision_allows_side_effects(decision, mode),
                     "decided_at": decided_at,
                 }
 
@@ -351,6 +358,12 @@ def _derive_decision(kind: str, severity: str) -> tuple[str, list[str]]:
         return "ignore", ["unmapped_kind"]
 
     return "ignore", ["unmapped_kind"]
+
+
+def _decision_allows_side_effects(decision: str, mode: str) -> bool:
+    if mode != "execute":
+        return False
+    return decision in {"enqueue-light", "enqueue-heavy", "generate-proposal"}
 
 
 __all__ = ["write_planner_log"]
