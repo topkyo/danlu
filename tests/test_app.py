@@ -2436,6 +2436,36 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Research receipt", dashboard_payload)
         self.assertIn("Research receipt", html_payload)
 
+    def test_append_execution_receipt_history_writes_universal_audit(self) -> None:
+        receipt = {
+            "kind": "execution-receipt",
+            "operation": "apply",
+            "protocol": "research",
+            "action_id": "research-action",
+            "title": "Research receipt",
+            "receipt_path": "output/control/execution-receipts/research-action.json",
+            "applied_at": "2026-04-09T10:00:00+08:00",
+            "revert_supported": True,
+        }
+
+        append_execution_receipt_history(self.root, receipt)
+        append_execution_receipt_history(self.root, receipt)
+
+        receipt_lines = (self.root / ".aiwiki/state/execution-receipts.jsonl").read_text(encoding="utf-8").splitlines()
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(len(receipt_lines), 2)
+        self.assertEqual(len(audit_records), 2)
+        self.assertEqual(audit_records[0]["source_stream"], "execution_receipts")
+        self.assertEqual(audit_records[0]["source_ref"], ".aiwiki/state/execution-receipts.jsonl#L1")
+        self.assertEqual(audit_records[0]["event_type"], "apply")
+        self.assertEqual(audit_records[0]["subject"], {"kind": "execution-receipt", "id": "research-action"})
+        self.assertTrue(audit_records[0]["revert_supported"])
+        self.assertNotEqual(audit_records[0]["audit_event_id"], audit_records[1]["audit_event_id"])
+
     def test_furnace_center_filters_actions_and_proposals_to_active_protocol(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         self._seed_machine_memory_actions()

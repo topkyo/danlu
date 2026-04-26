@@ -1,4 +1,4 @@
-"""Read-only universal audit stream preview."""
+"""Universal audit stream preview, backfill, and append helpers."""
 
 from __future__ import annotations
 
@@ -85,6 +85,17 @@ def backfill_universal_audit_stream(root: Path, *, limit: int = 50, apply: bool 
         result["appended_count"] = len(appendable)
         result["audit_stream_exists"] = True
     return result
+
+
+def append_universal_audit_record(root: Path, *, source_stream: str, source_ref: str, document: dict[str, Any]) -> dict[str, Any]:
+    audit_path = root / AUDIT_STREAM_PATH
+    record = _audit_record(source_stream, source_ref, document)
+    if record["audit_event_id"] in _existing_audit_event_ids(audit_path):
+        return {"status": "skipped_existing", "record": record, "audit_stream_path": AUDIT_STREAM_PATH}
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    with audit_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+    return {"status": "appended", "record": record, "audit_stream_path": AUDIT_STREAM_PATH}
 
 
 def _existing_audit_event_ids(path: Path) -> set[str]:

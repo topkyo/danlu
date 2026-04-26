@@ -512,5 +512,25 @@ def find_latest_elixir_promotion_receipt(root: Path, *, elixir_id: str) -> dict[
 def append_execution_receipt_history(root: Path, receipt: dict[str, Any]) -> None:
     path = execution_receipt_history_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
+    line_number = _next_jsonl_line_number(path)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(receipt, ensure_ascii=False, sort_keys=True) + "\n")
+    from .execution.audit_preview import append_universal_audit_record
+
+    append_universal_audit_record(
+        root,
+        source_stream="execution_receipts",
+        source_ref=f"{relative_path(root, path)}#L{line_number}",
+        document=receipt,
+    )
+
+
+def _next_jsonl_line_number(path: Path) -> int:
+    if not path.exists():
+        return 1
+    count = 0
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                count += 1
+    return count + 1
