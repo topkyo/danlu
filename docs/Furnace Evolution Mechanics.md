@@ -709,7 +709,7 @@ L3 proposal **只允许**写入以下文件：
 
 revert **可以**：
 
-- 回滚 L3 accept（按 before_hash；planned）
+- 回滚 L3 accept（当前已支持 receipt-gated clean revert：按 apply receipt `after_hash` 校验当前目标，再恢复 `before_content`；冲突时写 `human_merge_required` hint）
 - 回滚 elixir promotion（回到 candidate；planned）
 - 回滚 L2 learning activate（回到 stale）
 

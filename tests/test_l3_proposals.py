@@ -131,7 +131,7 @@ class L3ProposalTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Only candidate"):
             reject_l3_proposal(self.root, "prop-no-reject")
 
-    def test_apply_writes_target_and_receipt_then_clean_revert_restores_before_content(self) -> None:
+    def test_apply_and_clean_revert_write_receipts_and_audit_metadata(self) -> None:
         create_l3_proposal(
             self.root,
             kind="prompt_proposal",
@@ -166,6 +166,30 @@ class L3ProposalTests(unittest.TestCase):
         self.assertEqual(revert_receipt["audit_event"], "execution_receipt_history_append")
         self.assertEqual(revert_receipt["audit_path"], ".aiwiki/state/execution-receipts.jsonl")
         self.assertEqual(reverted["audit_path"], ".aiwiki/state/execution-receipts.jsonl")
+        runtime_history = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(
+            [item["event_type"] for item in runtime_history],
+            ["l3-proposal-create", "l3-proposal-apply", "l3-proposal-revert"],
+        )
+        self.assertEqual(runtime_history[-1]["proposal_id"], "prop-apply")
+        self.assertEqual(runtime_history[-1]["receipt_path"], str(reverted["receipt_path"]))
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        execution_audit = [item for item in audit_records if item["source_stream"] == "execution_receipts"]
+        runtime_audit = [item for item in audit_records if item["source_stream"] == "runtime_history"]
+        self.assertEqual([item["event_type"] for item in execution_audit], ["apply", "revert"])
+        self.assertEqual(
+            [item["event_type"] for item in runtime_audit],
+            ["l3-proposal-create", "l3-proposal-apply", "l3-proposal-revert"],
+        )
+        self.assertEqual(runtime_audit[-1]["subject"], {"kind": "l3-proposal-revert", "id": "prop-apply"})
 
     def test_revert_conflict_writes_human_merge_hint_without_overwriting_target(self) -> None:
         create_l3_proposal(
