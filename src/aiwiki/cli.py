@@ -46,6 +46,7 @@ from .runner import (
     run_alchemy_auto,
     run_alchemy_demote,
     run_alchemy_distill,
+    run_alchemy_distill_preview,
     run_alchemy_finalize,
     run_alchemy_judge_preview,
     run_alchemy_lane_apply,
@@ -467,6 +468,22 @@ def build_parser() -> argparse.ArgumentParser:
     judge_parser.add_argument("--max-pages", type=int, default=None)
     judge_parser.add_argument("--max-tokens", type=int, default=None)
     judge_parser.add_argument("--limit", type=int, default=50)
+    distill_preview_parser = alchemy_subparsers.add_parser(
+        "distill",
+        help="Preview scoped elixir distillation candidates without applying them.",
+    )
+    distill_preview_parser.add_argument(
+        "scope",
+        help="Scope selector: all, protocol:<name>, source:<id>, concept:<slug>, elixir:<ref>, or judgment:<ref>.",
+    )
+    distill_preview_mode = distill_preview_parser.add_mutually_exclusive_group(required=True)
+    distill_preview_mode.add_argument("--dry-run", action="store_true", help="Preview only.")
+    distill_preview_parser.add_argument("--planner-log-path", type=Path, default=None)
+    distill_preview_parser.add_argument("--signals-path", type=Path, default=None)
+    distill_preview_parser.add_argument("--max-signals", type=int, default=None)
+    distill_preview_parser.add_argument("--max-pages", type=int, default=None)
+    distill_preview_parser.add_argument("--max-tokens", type=int, default=None)
+    distill_preview_parser.add_argument("--limit", type=int, default=50)
     legacy_migration_parser = alchemy_subparsers.add_parser(
         "legacy-migration",
         help="Preview legacy wiki/elixirs entries that lack candidate tombstones.",
@@ -956,6 +973,17 @@ def main(argv: list[str] | None = None) -> int:
                     result = run_alchemy_legacy_migration_apply(root, limit=args.limit, note=args.note)
             elif args.alchemy_lane == "judge":
                 result = run_alchemy_judge_preview(
+                    root,
+                    scope=args.scope,
+                    planner_log_path=args.planner_log_path,
+                    signals_path=args.signals_path,
+                    max_signals=args.max_signals,
+                    max_pages=args.max_pages,
+                    max_tokens=args.max_tokens,
+                    limit=args.limit,
+                )
+            elif args.alchemy_lane == "distill":
+                result = run_alchemy_distill_preview(
                     root,
                     scope=args.scope,
                     planner_log_path=args.planner_log_path,

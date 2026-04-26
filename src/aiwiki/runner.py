@@ -1639,6 +1639,33 @@ def run_alchemy_judge_preview(
     )
 
 
+def run_alchemy_distill_preview(
+    root: Path,
+    *,
+    scope: str,
+    planner_log_path: Path | None = None,
+    signals_path: Path | None = None,
+    decision_mode: str | None = None,
+    max_signals: int | None = None,
+    max_pages: int | None = None,
+    max_tokens: int | None = None,
+    limit: int = 50,
+) -> dict[str, Any]:
+    from .planner import preview_distill_primitive
+
+    return preview_distill_primitive(
+        root,
+        scope=scope,
+        planner_log_path=planner_log_path,
+        signals_path=signals_path,
+        decision_mode=decision_mode,
+        max_signals=max_signals,
+        max_pages=max_pages,
+        max_tokens=max_tokens,
+        limit=limit,
+    )
+
+
 def run_alchemy_lane_apply(
     root: Path,
     *,
