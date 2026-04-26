@@ -2052,6 +2052,8 @@ def _auto_primitives_for_lane(
     defaults = {"heavy": ["compile", "lint"], "light": ["compile", "lint", "nightly"]}[lane]
     wanted = requested_primitives or defaults
     auto_supported_primitives = {"compile", "lint", "nightly"}
+    if requested_primitives and lane == "heavy":
+        auto_supported_primitives.add("review")
     supported = {
         str(item.get("primitive") or "")
         for item in plan.get("primitive_plan", [])
