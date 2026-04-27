@@ -6,6 +6,13 @@
 
 ## 状态
 
+- **M6.6.3 app_linting subpackage split — 完成**
+  - **实现**: `src/aiwiki/app_linting.py`（2001 LOC）拆为 `src/aiwiki/app_linting/`：`__init__.py` 61 LOC、`core.py` 410 LOC、`phases.py` 1029 LOC、`repair.py` 717 LOC、`nightly.py` 757 LOC；原单文件已删除
+  - **兼容性**: 4 个外部 importer 0 修改；`aiwiki.app_linting` 通过 `__init__.py` re-export 保持 `Finding/lint_wiki/nightly` 与 `_` internals import surface
+  - **Mock seam**: 保留并补齐 `aiwiki.app_linting.datetime` monkeypatch seam，同步转发到 `core.datetime`，acceptance 固定时钟恢复通过
+  - **Gates**: import 兼容 smoke pass；`tests/test_linting.py -v` 8 pass；`bash scripts/verify.sh` pass（1314 tests / 93% coverage）；`bash scripts/run_acceptance.sh -v` 12 pass；acceptance 稳定性 5/5 pass
+  - **Stop Lines**: 函数 body 未做行为改写（仅模块级 import / re-export / compat seam）；protected importer diff 为空；contract 已归档到 `.codex/contracts/archive/M6.6.3-app-linting-subpackage.md`
+
 - **M0 Baseline Freeze（已完成，4 commit 未 push）**
   - `83eff68` Furnace SoT 首轮重构（docs 归并到两份 SoT + 物理归档 7 份旧设计）
   - `6f1016f` `e3df4fb` SoT 再加固（§2.1 Current Implementation Map / §2.2 9+ Feasibility Contract / §12.3 scoped primitive 保护清单 / §12.4 Rollout Gate Matrix / §12.5 Stop Lines）
