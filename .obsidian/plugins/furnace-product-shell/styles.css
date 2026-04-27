@@ -788,3 +788,30 @@
 .furnace-shell-v3 > .furnace-shell-advanced {
   margin-top: 8px;
 }
+
+.furnace-shell-needs-section {
+  margin: 16px 0 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+}
+
+.furnace-shell-needs-section h3 {
+  margin: 0 0 10px;
+  font-size: var(--font-ui-medium);
+  color: var(--text-normal);
+}
+
+.furnace-shell-needs-backlog {
+  margin-top: 8px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.furnace-shell-needs-more {
+  margin-top: 6px;
+  font-size: var(--font-ui-small);
+  color: var(--text-faint);
+  font-style: italic;
+}

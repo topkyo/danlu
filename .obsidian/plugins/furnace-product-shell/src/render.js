@@ -456,6 +456,83 @@ function renderSuggestedNextActionsBlock(plugin, container, options = {}) {
   return true;
 }
 
+function renderNeedsDecisionSection(plugin, container) {
+  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
+  if (!summary) {
+    return;
+  }
+  const suggested = Array.isArray(summary.suggested_next_actions) ? summary.suggested_next_actions : [];
+  const drifts = Array.isArray(summary.drift_warnings) ? summary.drift_warnings : [];
+  const rewrites = Array.isArray(summary.rewrite_recovery_actions) ? summary.rewrite_recovery_actions : [];
+  const backlog = summary.review_backlog_counts && typeof summary.review_backlog_counts === "object" ? summary.review_backlog_counts : {};
+  const backlogTotal = Object.values(backlog).reduce((acc, v) => acc + (Number.isFinite(Number(v)) ? Number(v) : 0), 0);
+
+  if (!suggested.length && !drifts.length && !rewrites.length && backlogTotal <= 0) {
+    return;
+  }
+
+  const section = container.createDiv({ cls: "furnace-shell-needs-section" });
+  section.createEl("h3", { text: plugin.t("Needs your decision") });
+
+  const maxItems = 5;
+  if (suggested.length) {
+    renderSuggestedNextActionsBlock(plugin, section, { maxItems: Math.min(suggested.length, maxItems) });
+  }
+
+  const renderItem = (item, kindLabel) => {
+    const wrapper = section.createDiv({ cls: "furnace-shell-inline-list" });
+    const row = wrapper.createDiv({ cls: "furnace-shell-inline-item" });
+    const copy = row.createDiv({ cls: "furnace-shell-output-copy" });
+    copy.createEl("strong", { text: item.title || item.path || item.message || plugin.t(kindLabel) });
+    const metaParts = [plugin.t(kindLabel)];
+    if (item.reason) {
+      metaParts.push(plugin.t("reason {value}", { value: item.reason }));
+    }
+    if (item.path) {
+      metaParts.push(item.path);
+    }
+    if (metaParts.length) {
+      copy.createDiv({ cls: "furnace-shell-meta", text: metaParts.join(" | ") });
+    }
+    if (item.path) {
+      const buttons = row.createDiv({ cls: "furnace-shell-inline-actions furnace-shell-inline-actions-compact" });
+      const openButton = buttons.createEl("button", { text: plugin.t("Open") });
+      openButton.addEventListener("click", () => {
+        plugin.runUiAction(() => plugin.openWorkspacePath(item.path), `Open needs item: ${item.path}`);
+      });
+    }
+  };
+
+  let used = Math.min(suggested.length, maxItems);
+  let truncated = Math.max(0, suggested.length - maxItems);
+  for (const item of drifts) {
+    if (used >= maxItems) {
+      truncated += 1;
+      continue;
+    }
+    renderItem(item, "drift warning");
+    used += 1;
+  }
+  for (const item of rewrites) {
+    if (used >= maxItems) {
+      truncated += 1;
+      continue;
+    }
+    renderItem(item, "rewrite recovery");
+    used += 1;
+  }
+
+  if (backlogTotal > 0) {
+    const backlogRow = section.createDiv({ cls: "furnace-shell-needs-backlog" });
+    backlogRow.setText(plugin.t("Review backlog: {value} pending", { value: String(backlogTotal) }));
+  }
+
+  if (truncated > 0) {
+    const more = section.createDiv({ cls: "furnace-shell-needs-more" });
+    more.setText(plugin.t("+{value} more in Advanced", { value: String(truncated) }));
+  }
+}
+
 function renderNextActionsPanel(plugin, container) {
   const panel = plugin.renderPanel(container, "Suggested Next Actions", "Keep the next safe action visible from the main surface.");
   if (!renderSuggestedNextActionsBlock(plugin, panel, { maxItems: 3 })) {
@@ -617,6 +694,8 @@ function renderFurnaceCenter(plugin, contentEl) {
 
   // 1. AskBox
   renderAskBox(plugin, contentEl);
+
+  renderNeedsDecisionSection(plugin, contentEl);
 
   // 2. Today's Reports + Previous Reports
   renderReportsPanel(plugin, contentEl, reports);
