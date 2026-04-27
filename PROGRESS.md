@@ -6,6 +6,17 @@
 
 ## 状态
 
+- **M7.4b2 + M7.4b3 Kill Switch Hooks → Alchemy Auto + L3 Generate — 完成**
+  - **目的**: 完成 M7.4 拆分序列剩余 2 个 hook，4 个 disable flag 全部接到唯一 chokepoint。
+  - **核心做法**:
+    - b2: `src/aiwiki/runner/alchemy.py:run_alchemy_propose_apply` 入口 hook `disable_alchemy_auto` → skipped dict
+    - b3: `src/aiwiki/execution/l3_proposals.py:create_l3_proposal` 入口 hook `disable_l3_generate` → skipped dict（先于 ensure_layout / target validation：kill switch 胜过 validation）
+  - **shape**: 与 M7.4b1 对称 — `{"status":"skipped","flag":...,"reason":...,<入口语义字段>}`。
+  - **测试**: 加 2 cases（b2 / b3），各覆盖 disabled → skipped dict + 不写盘。
+  - **Gates**: `bash scripts/verify.sh` 5/5 稳定 pass（1342 unit + 12 acceptance / 93% coverage）。
+  - **Stop Lines**: 0 acceptance golden 漂移 / 0 receipt 字段改 / 0 success-path 字段改。
+  - **价值**: 9+ Contract 第 6 条 "Kill switch by design" 4/4 hook 完整覆盖：8.5 → 9.0+。
+
 - **M7.4b1 Kill Switch → Lane Apply Hook — 完成**
   - **目的**: M7.4 拆分序列第 2 步。把 `disable_lane_apply` 接到 `run_alchemy_lane_apply` 唯一 chokepoint。
   - **核心做法**: `src/aiwiki/runner/alchemy.py:run_alchemy_lane_apply` 函数最早处先调 `autonomy_policy.disabled_reason("disable_lane_apply")`；disabled → early-return `{"status":"skipped","flag":"disable_lane_apply","reason":...,"lane":...,"scope":...}` dict，不写 receipt / lane history / nightly artifact。

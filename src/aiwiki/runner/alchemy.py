@@ -918,6 +918,18 @@ def run_alchemy_propose_apply(
     limit: int = 50,
     note: str | None = None,
 ) -> dict[str, Any]:
+    from aiwiki import autonomy_policy
+
+    # M7.4b2 Kill Switch: alchemy auto hook. disabled → no propose / apply.
+    reason = autonomy_policy.disabled_reason(root, "disable_alchemy_auto")
+    if reason is not None:
+        return {
+            "status": "skipped",
+            "flag": "disable_alchemy_auto",
+            "reason": reason,
+            "scope": scope,
+        }
+
     preview = run_alchemy_propose_preview(
         root,
         scope=scope,

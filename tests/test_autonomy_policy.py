@@ -154,6 +154,46 @@ class AutonomyPolicyTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 run_alchemy_lane_apply(root, lane="general", scope="raw")
 
+    def test_run_alchemy_propose_apply_returns_skipped_when_disabled(self) -> None:
+        # M7.4b2: alchemy auto (propose+apply) hook. disabled → skipped dict,
+        # no propose preview / apply / receipts.
+        from aiwiki.runner.alchemy import run_alchemy_propose_apply
+
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            path = autonomy_policy.policy_path(root)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"disable_alchemy_auto": True}), encoding="utf-8")
+
+            result = run_alchemy_propose_apply(root, scope="raw")
+            self.assertEqual(result.get("status"), "skipped")
+            self.assertEqual(result.get("flag"), "disable_alchemy_auto")
+            self.assertIn("disable_alchemy_auto", result.get("reason", ""))
+            self.assertEqual(result.get("scope"), "raw")
+
+    def test_create_l3_proposal_returns_skipped_when_disabled(self) -> None:
+        # M7.4b3: l3 generate hook. disabled → skipped dict, no proposal write
+        # and no FileNotFoundError despite missing target (hook fires first).
+        from aiwiki.execution.l3_proposals import create_l3_proposal
+
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            path = autonomy_policy.policy_path(root)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"disable_l3_generate": True}), encoding="utf-8")
+
+            # Even with bogus target_file, hook short-circuits before any
+            # validation / write. This is a feature: kill switch wins.
+            result = create_l3_proposal(
+                root,
+                kind="rewrite",
+                target_file="does-not-exist.md",
+                content="ignored",
+            )
+            self.assertEqual(result.get("status"), "skipped")
+            self.assertEqual(result.get("flag"), "disable_l3_generate")
+            self.assertIn("disable_l3_generate", result.get("reason", ""))
+
 
 if __name__ == "__main__":
     unittest.main()

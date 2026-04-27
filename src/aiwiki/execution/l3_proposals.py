@@ -425,6 +425,19 @@ def create_l3_proposal(
     signal_ids: list[str] | None = None,
     pattern: str = "manual_fixture",
 ) -> dict[str, Any]:
+    from aiwiki import autonomy_policy
+
+    # M7.4b3 Kill Switch: l3 generate hook. disabled → no proposal write.
+    reason = autonomy_policy.disabled_reason(root, "disable_l3_generate")
+    if reason is not None:
+        return {
+            "status": "skipped",
+            "flag": "disable_l3_generate",
+            "reason": reason,
+            "kind": kind,
+            "target_file": target_file,
+        }
+
     ensure_layout(root)
     if kind not in L3_PROPOSAL_KINDS:
         raise ValueError(f"Unsupported L3 proposal kind: {kind}")
