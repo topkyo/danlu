@@ -523,6 +523,15 @@
     padding: 10px;
   }
 
+  .furnace-shell-v3 .furnace-shell-dropzone {
+    padding: 22px 14px;
+  }
+
+  .furnace-shell-v3 .furnace-shell-dropzone-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .furnace-shell-composer-input {
     min-height: 80px;
     padding: 10px;
@@ -646,19 +655,50 @@
 
 .furnace-shell-v3 .furnace-shell-dropzone {
   border: 2px dashed var(--background-modifier-border);
-  border-radius: 8px;
+  border-radius: 14px;
   padding: 32px;
   text-align: center;
-  color: var(--text-muted);
+  background: var(--background-primary);
+  color: var(--text-normal);
   cursor: pointer;
   margin-bottom: 24px;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
-.furnace-shell-v3 .furnace-shell-dropzone:hover {
+.furnace-shell-v3 .furnace-shell-dropzone:hover,
+.furnace-shell-v3 .furnace-shell-dropzone.is-drag-over {
   border-color: var(--interactive-accent);
   background: var(--background-secondary);
+}
+
+.furnace-shell-v3 .furnace-shell-dropzone.is-drag-over {
+  box-shadow: 0 0 0 2px var(--background-modifier-border);
+}
+
+.furnace-shell-v3 .furnace-shell-dropzone-title {
+  font-size: 1.05em;
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+
+.furnace-shell-v3 .furnace-shell-dropzone-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.furnace-shell-v3 .furnace-shell-dropzone-actions button {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  background: var(--background-secondary);
   color: var(--text-normal);
+  cursor: pointer;
+  padding: 6px 14px;
+}
+
+.furnace-shell-v3 .furnace-shell-dropzone-actions button:hover {
+  border-color: var(--interactive-accent);
 }
 
 .furnace-shell-v3 .furnace-shell-advanced-drawer {

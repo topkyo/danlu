@@ -2465,55 +2465,72 @@ function renderReportsGroup(plugin, container, title, reports) {
 
 function renderDropZone(plugin, container) {
   const zone = container.createDiv({ cls: "furnace-shell-dropzone" });
-  zone.createDiv({ cls: "furnace-shell-dropzone-text", text: plugin.t("Drop URL / PDF / Image / Repo") });
-  const actions = zone.createDiv({ cls: "furnace-shell-inline-actions furnace-shell-inline-actions-compact" });
+  zone.createDiv({ cls: "furnace-shell-dropzone-title", text: plugin.t("Drop URL / PDF / Image / Repo") });
+  const actions = zone.createDiv({ cls: "furnace-shell-dropzone-actions" });
   [
-    { label: "Drop URL", onClick: () => plugin.openDropUrlModal() },
-    { label: "Drop PDF", onClick: () => new DropFileModal(plugin.app, plugin).setInitialMode("pdf").open() },
-    { label: "Drop Image", onClick: () => new DropImageModal(plugin.app, plugin).open() },
-    { label: "Drop Repo", onClick: () => new DropFileModal(plugin.app, plugin).setInitialMode("repo").open() },
+    { label: "URL", actionLabel: "Drop URL", onClick: () => plugin.openDropUrlModal() },
+    { label: "PDF", actionLabel: "Drop PDF", onClick: () => new DropFileModal(plugin.app, plugin).setInitialMode("pdf").open() },
+    { label: "Image", actionLabel: "Drop Image", onClick: () => new DropImageModal(plugin.app, plugin).open() },
+    { label: "Repo", actionLabel: "Drop Repo", onClick: () => new DropFileModal(plugin.app, plugin).setInitialMode("repo").open() },
   ].forEach((item) => {
     const button = actions.createEl("button", { text: plugin.t(item.label) });
-    button.addEventListener("click", () => plugin.runUiAction(() => item.onClick(), plugin.t(item.label)));
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      plugin.runUiAction(() => item.onClick(), plugin.t(item.actionLabel));
+    });
   });
-  zone.addEventListener("click", () => plugin.openDropUrlModal());
-  zone.addEventListener("dragover", (e) => {
-    e.preventDefault();
+  zone.addEventListener("click", () => {
+    plugin.runUiAction(() => plugin.openDropUrlModal(), plugin.t("Drop URL"));
+  });
+  zone.addEventListener("dragover", (event) => {
+    event.preventDefault();
     zone.addClass("is-drag-over");
   });
-  zone.addEventListener("dragleave", () => zone.removeClass("is-drag-over"));
-  zone.addEventListener("drop", (e) => {
-    e.preventDefault();
+  zone.addEventListener("dragleave", (event) => {
+    if (!zone.contains(event.relatedTarget)) {
+      zone.removeClass("is-drag-over");
+    }
+  });
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
     zone.removeClass("is-drag-over");
-    const dataTransfer = e.dataTransfer;
+    const dataTransfer = event.dataTransfer;
     if (!dataTransfer) {
-      new Notice(plugin.t("Unsupported drop type"));
       return;
     }
     const file = dataTransfer.files && dataTransfer.files[0];
     if (file) {
-      if (file.type === "application/pdf") {
-        new DropFileModal(plugin.app, plugin).setInitialMode("pdf").open();
+      const fileName = String(file.name || file.path || "").toLowerCase();
+      const fileType = String(file.type || "").toLowerCase();
+      if (fileType === "application/pdf" || fileName.endsWith(".pdf")) {
+        plugin.runUiAction(() => new DropFileModal(plugin.app, plugin).setInitialMode("pdf").open(), plugin.t("Drop PDF"));
         return;
       }
-      if (String(file.type || "").startsWith("image/")) {
-        new DropImageModal(plugin.app, plugin).open();
+      if (fileType.startsWith("image/")) {
+        plugin.runUiAction(() => new DropImageModal(plugin.app, plugin).open(), plugin.t("Drop Image"));
         return;
       }
-      if (file.type === "") {
-        new DropFileModal(plugin.app, plugin).setInitialMode("repo").open();
-        return;
-      }
-      new Notice(plugin.t(`Unsupported file type: ${file.type}`));
       return;
     }
-    const text = String(dataTransfer.getData("text/plain") || "").trim();
-    if (/^https?:\/\//i.test(text)) {
-      plugin.openDropUrlModal(text);
+    const uriList = String(dataTransfer.getData("text/uri-list") || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"));
+    const text = uriList[0] || String(dataTransfer.getData("text/plain") || "").trim();
+    if (isHttpUrl(text)) {
+      plugin.runUiAction(() => plugin.openDropUrlModal(text), plugin.t("Drop URL"));
       return;
     }
-    new Notice(plugin.t("Nothing dropped"));
   });
+}
+
+function isHttpUrl(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch (error) {
+    return false;
+  }
 }
 
 function renderAdvancedDrawer(plugin, container) {
