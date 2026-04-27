@@ -52,6 +52,6 @@ class ProductShellMetricsContractTests(unittest.TestCase):
 
     def test_advanced_drawer_invokes_metrics_panel(self) -> None:
         """Advanced 抽屉调用 renderAdvancedMetricsPanel。"""
-        text = (PLUGIN / "src/render.js").read_text(encoding="utf-8")
+        text = (PLUGIN / "src/render_advanced.js").read_text(encoding="utf-8")
         body = _function_body_after(text, "renderAdvancedDrawer")
         self.assertIn("renderAdvancedMetricsPanel", body)
