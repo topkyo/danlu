@@ -310,10 +310,10 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         .map((record) => {
           const rewriteProposalObjects = this.normalizeRewriteProposalObjects(record.rewriteProposalObjects || record.updatedRewriteProposals || []);
           const rewriteRecoveryActions = this.normalizeRewriteRecoveryActions(record.rewriteRecoveryActions || []);
-          const rewriteProposalPaths = this.normalizeRelativePathList(
+          const rewriteProposalPaths = normalizeRelativePathList(
             record.rewriteProposalPaths || this.rewriteProposalPathsFromObjects(rewriteProposalObjects)
           );
-          const rewriteProposalSlugs = this.normalizeRelativePathList(
+          const rewriteProposalSlugs = normalizeRelativePathList(
             record.rewriteProposalSlugs || this.rewriteProposalSlugsFromObjects(rewriteProposalObjects)
           );
           return {
@@ -342,8 +342,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
             fallbackUsed: Boolean(record.fallbackUsed),
             deliveryMode: String(record.deliveryMode || ""),
             logPath: String(record.logPath || ""),
-            stdoutRaw: this.trimDiagnosticText(record.stdoutRaw || ""),
-            stderrRaw: this.trimDiagnosticText(record.stderrRaw || ""),
+            stdoutRaw: trimDiagnosticText(record.stdoutRaw || ""),
+            stderrRaw: trimDiagnosticText(record.stderrRaw || ""),
             exitCode: record.exitCode === 0 || Number.isFinite(Number(record.exitCode || NaN))
               ? Number(record.exitCode)
               : "",
@@ -379,17 +379,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.pluginState.recentRuns = this.pluginState.recentRuns.slice(0, limit);
   }
 
-  trimDiagnosticText(value, limit = 16000) {
-    const text = String(value || "");
-    if (!text) {
-      return "";
-    }
-    if (text.length <= limit) {
-      return text;
-    }
-    return `${text.slice(0, limit)}\n...[truncated]`;
-  }
-
   normalizeLlmHealthState(value) {
     if (!value || typeof value !== "object") {
       return null;
@@ -419,16 +408,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       resultPath: String(value.resultPath || value.result_path || "").trim(),
       receiptPath: String(value.receiptPath || value.receipt_path || "").trim(),
       stderrSummary: String(value.stderrSummary || value.stderr_summary || "").trim(),
-      stderrRaw: this.trimDiagnosticText(value.stderrRaw || value.stderr_raw || ""),
+      stderrRaw: trimDiagnosticText(value.stderrRaw || value.stderr_raw || ""),
     };
-  }
-
-  isLlmRelevantRecord(record) {
-    if (!record || typeof record !== "object") {
-      return false;
-    }
-    const command = String(record.command || "").trim();
-    return command === "run-ask" || command === "run-ask-frontdoor" || String(record.fallbackFrom || "").trim() === "run-ask";
   }
 
   currentLlmHealth() {
@@ -526,11 +507,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     };
   }
 
-  parseTimestampMs(value) {
-    const timestamp = Date.parse(String(value || ""));
-    return Number.isFinite(timestamp) ? timestamp : NaN;
-  }
-
   /**
    * Builds diagnostic items for the Product Shell self-check panel.
    *
@@ -546,7 +522,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     const requestedBackend = String(llmStatus.backend_requested || this.settings.llmBackend || "").trim();
     const effectiveBackend = String(llmStatus.backend || "").trim();
     const selected = this.currentLlmSelection();
-    const summaryTimestamp = this.parseTimestampMs(this.shellSummary && this.shellSummary.generated_at);
+    const summaryTimestamp = parseTimestampMs(this.shellSummary && this.shellSummary.generated_at);
     const summaryAgeMs = Number.isFinite(summaryTimestamp) ? Date.now() - summaryTimestamp : NaN;
     const items = [];
 
@@ -708,18 +684,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
-  launcherIsExecutable(launcherPath) {
-    if (!launcherPath || !fs.existsSync(launcherPath)) {
-      return false;
-    }
-    try {
-      fs.accessSync(launcherPath, fs.constants.X_OK);
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
-
   refreshRepoState() {
     const adapter = this.app.vault && this.app.vault.adapter;
     const root = adapter && typeof adapter.basePath === "string" ? adapter.basePath : "";
@@ -739,7 +703,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           missingPaths.push(relativePath);
         }
       });
-      if (!this.launcherIsExecutable(launcherPath)) {
+      if (!launcherIsExecutable(launcherPath)) {
         missingPaths.push(this.settings.launcherPath);
       }
     }
@@ -819,73 +783,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return "";
   }
 
-  appendOptionalArg(args, flag, value) {
-    const normalized = String(value || "").trim();
-    if (!normalized) {
-      return args;
-    }
-    args.push(flag, normalized);
-    return args;
-  }
-
-  parseLineList(value) {
-    return Array.from(
-      new Set(
-        String(value || "")
-          .split(/\r?\n/)
-          .map((item) => String(item || "").trim())
-          .filter(Boolean)
-      )
-    );
-  }
-
-  normalizeRelativePathList(value) {
-    const items = Array.isArray(value) ? value : [value];
-    return Array.from(
-      new Set(
-        items
-          .map((item) => String(item || "").trim())
-          .filter(Boolean)
-      )
-    );
-  }
-
-  normalizeRewriteProposalObject(value) {
-    if (!value || typeof value !== "object") {
-      return null;
-    }
-    const slug = String(value.slug || "").trim();
-    if (!slug) {
-      return null;
-    }
-    return {
-      slug,
-      title: String(value.title || slug).trim(),
-      status: String(value.status || value.current_status || "").trim(),
-      currentStatus: String(value.currentStatus || value.current_status || value.status || "").trim(),
-      proposalPath: String(value.proposalPath || value.proposal_path || "").trim(),
-      targetPath: String(value.targetPath || value.target_path || "").trim(),
-      canApply: Boolean(value.canApply || value.can_apply),
-      canReview: Boolean(value.canReview || value.can_review),
-      canRevert: Boolean(value.canRevert || value.can_revert),
-      canRefreshReview: Boolean(value.canRefreshReview || value.can_refresh_review),
-      allowedTransitions: Array.isArray(value.allowedTransitions || value.allowed_transitions)
-        ? (value.allowedTransitions || value.allowed_transitions).map((item) => String(item || "").trim()).filter(Boolean)
-        : [],
-      preferredTransitions: Array.isArray(value.preferredTransitions || value.preferred_transitions)
-        ? (value.preferredTransitions || value.preferred_transitions).map((item) => String(item || "").trim()).filter(Boolean)
-        : [],
-      defaultTransition: String(value.defaultTransition || value.default_transition || "").trim(),
-      reason: String(value.reason || "").trim(),
-      command: String(value.command || "").trim(),
-    };
-  }
-
   normalizeRewriteProposalObjects(value) {
     const items = Array.isArray(value) ? value : [value];
     const seen = new Set();
     return items
-      .map((item) => this.normalizeRewriteProposalObject(item))
+      .map((item) => normalizeRewriteProposalObject(item))
       .filter((item) => {
         if (!item) {
           return false;
@@ -898,45 +800,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       });
   }
 
-  normalizeRewriteRecoveryAction(value) {
-    if (!value || typeof value !== "object") {
-      return null;
-    }
-    const slug = String(value.slug || "").trim();
-    const command = String(value.command || "").trim();
-    if (!slug || !command) {
-      return null;
-    }
-    return {
-      slug,
-      kind: String(value.kind || "review-rewrite").trim(),
-      title: String(value.title || slug).trim(),
-      command,
-      path: String(value.path || value.proposal_path || value.target_path || "").trim(),
-      reason: String(value.reason || "").trim(),
-      transition: String(value.transition || value.default_transition || "").trim(),
-      status: String(value.status || value.current_status || "").trim(),
-      currentStatus: String(value.currentStatus || value.current_status || value.status || "").trim(),
-      proposalPath: String(value.proposalPath || value.proposal_path || "").trim(),
-      targetPath: String(value.targetPath || value.target_path || "").trim(),
-      canApply: Boolean(value.canApply || value.can_apply),
-      canReview: Boolean(value.canReview || value.can_review),
-      canRevert: Boolean(value.canRevert || value.can_revert),
-      allowedTransitions: Array.isArray(value.allowedTransitions || value.allowed_transitions)
-        ? (value.allowedTransitions || value.allowed_transitions).map((item) => String(item || "").trim()).filter(Boolean)
-        : [],
-      preferredTransitions: Array.isArray(value.preferredTransitions || value.preferred_transitions)
-        ? (value.preferredTransitions || value.preferred_transitions).map((item) => String(item || "").trim()).filter(Boolean)
-        : [],
-      defaultTransition: String(value.defaultTransition || value.default_transition || "").trim(),
-    };
-  }
-
   normalizeRewriteRecoveryActions(value) {
     const items = Array.isArray(value) ? value : [value];
     const seen = new Set();
     return items
-      .map((item) => this.normalizeRewriteRecoveryAction(item))
+      .map((item) => normalizeRewriteRecoveryAction(item))
       .filter((item) => {
         if (!item) {
           return false;
@@ -950,13 +818,13 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   rewriteProposalPathsFromObjects(objects) {
-    return this.normalizeRelativePathList(
+    return normalizeRelativePathList(
       (Array.isArray(objects) ? objects : []).map((item) => item && item.proposalPath ? item.proposalPath : "")
     );
   }
 
   rewriteProposalSlugsFromObjects(objects) {
-    return this.normalizeRelativePathList(
+    return normalizeRelativePathList(
       (Array.isArray(objects) ? objects : []).map((item) => item && item.slug ? item.slug : "")
     );
   }
@@ -982,15 +850,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     const objects = this.extractRewriteProposalObjects(payload);
     return objects.length
       ? this.rewriteProposalPathsFromObjects(objects)
-      : this.normalizeRelativePathList(payload.updated_rewrite_proposal_pages);
+      : normalizeRelativePathList(payload.updated_rewrite_proposal_pages);
   }
 
   extractRewriteProposalSlugs(paths) {
-    return this.normalizeRelativePathList(paths).map((proposalPath) => path.basename(proposalPath, ".md"));
+    return normalizeRelativePathList(paths).map((proposalPath) => path.basename(proposalPath, ".md"));
   }
 
   rewriteCandidatesForSlugs(slugs, mode = "review") {
-    const normalized = new Set(this.normalizeRelativePathList(slugs));
+    const normalized = new Set(normalizeRelativePathList(slugs));
     if (!normalized.size) {
       return [];
     }
@@ -1052,7 +920,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       this.openReviewRewriteContextPicker(rewriteControls);
       return;
     }
-    const rewriteSlugs = this.normalizeRelativePathList(record && record.rewriteProposalSlugs);
+    const rewriteSlugs = normalizeRelativePathList(record && record.rewriteProposalSlugs);
     if (rewriteSlugs.length === 1) {
       this.openReviewRewriteModal({ slug: rewriteSlugs[0] });
       return;
@@ -1090,31 +958,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return executionControls && Array.isArray(executionControls[key]) ? executionControls[key] : [];
   }
 
-  uniqueContextOptions(options, keyName = "value") {
-    const seen = new Set();
-    return (Array.isArray(options) ? options : []).filter((option) => {
-      if (!option || typeof option !== "object") {
-        return false;
-      }
-      const key = String(option[keyName] || option.value || option.pagePath || option.actionId || option.entryId || "").trim();
-      if (!key || seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
-  }
-
-  inferActionIdFromReceipt(receipt) {
-    if (!receipt || typeof receipt !== "object") {
-      return "";
-    }
-    return String(receipt.action_id || "").trim();
-  }
-
   reviewPageControlItems() {
     const pages = this.reviewControlList("pages");
-    return this.uniqueContextOptions(
+    return uniqueContextOptions(
       pages.map((page) => {
         const kind = String(page.kind || "").trim() || "page";
         const status = String(page.status || "").trim() || "unknown";
@@ -1245,7 +1091,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   rewriteControlItems(mode = "review") {
     const proposals = this.reviewControlList("rewrite_proposals");
-    return this.uniqueContextOptions(
+    return uniqueContextOptions(
       proposals
         .filter((proposal) => (mode === "apply" ? Boolean(proposal.can_apply) : Boolean(proposal.can_review)))
         .map((proposal) => {
@@ -1272,7 +1118,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   actionControlItems(mode = "review") {
-    return this.uniqueContextOptions(
+    return uniqueContextOptions(
       this.executionControlList("actions")
         .filter((action) => {
           if (mode === "apply") {
@@ -1306,7 +1152,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   archiveControlItems(mode = "apply") {
-    return this.uniqueContextOptions(
+    return uniqueContextOptions(
       this.executionControlList("archives")
         .filter((entry) => (mode === "revert" ? Boolean(entry.can_revert) : Boolean(entry.can_apply)))
         .map((entry) => {
@@ -1465,8 +1311,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       throw new Error(this.t("Batch review requires at least one page path."));
     }
     const args = ["--batch", ...normalizedPaths, "--status", status];
-    this.appendOptionalArg(args, "--note", note);
-    this.appendOptionalArg(args, "--confidence", confidence);
+    appendOptionalArg(args, "--note", note);
+    appendOptionalArg(args, "--confidence", confidence);
     await this.runCliAction(`Batch Review: ${status}`, "review-page", args);
   }
 
@@ -1495,7 +1341,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   openContextAwareAction(spec) {
-    const options = this.uniqueContextOptions(spec.options || [], spec.keyName || "value");
+    const options = uniqueContextOptions(spec.options || [], spec.keyName || "value");
     if (!options.length) {
       new Notice(spec.emptyNotice || this.t("No context is currently available; fell back to the manual form."));
       spec.onFallback();
@@ -1654,15 +1500,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return path.join(this.repoState.root, normalized);
   }
 
-  runLogRelativePath(record) {
-    return `output/control/plugin-runs/${String(record && record.id ? record.id : "").trim()}.md`;
-  }
-
   persistRunLog(record, details = {}) {
     if (!record || typeof record !== "object") {
       return;
     }
-    const logPath = String(record.logPath || this.runLogRelativePath(record)).trim();
+    const logPath = String(record.logPath || runLogRelativePath(record)).trim();
     const absolutePath = this.resolveAbsoluteWorkspacePath(logPath);
     if (!logPath || !absolutePath) {
       return;
@@ -1786,21 +1628,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     new Notice(this.t("Unable to reveal {path}", { path: normalized }));
   }
 
-  appendRunEvent(record, stage, summary = "", status = "") {
-    if (!record || typeof record !== "object") {
-      return;
-    }
-    if (!Array.isArray(record.timeline)) {
-      record.timeline = [];
-    }
-    record.timeline.push({
-      stage: String(stage || "").trim(),
-      at: new Date().toISOString(),
-      summary: String(summary || "").trim(),
-      status: String(status || "").trim(),
-    });
-  }
-
   createRunRecord(label, args) {
     const llm = this.currentLlmSelection();
     const protocol = this.getActiveProtocol();
@@ -1846,10 +1673,10 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       deliveryMode: "",
       timeline: [],
     };
-    this.appendRunEvent(record, "Submitted", label || record.args || "command", "running");
+    appendRunEvent(record, "Submitted", label || record.args || "command", "running");
     if (record.protocol || record.backend || record.model) {
       const context = [record.protocol, record.backend, record.model].filter(Boolean).join(" · ");
-      this.appendRunEvent(record, "Runtime selected", context, "running");
+      appendRunEvent(record, "Runtime selected", context, "running");
     }
     this.pluginState.recentRuns.unshift(record);
     this.trimRecentRuns();
@@ -1869,20 +1696,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     void this.savePluginState();
   }
 
-  extractPrimaryPath(payload) {
-    if (!payload || typeof payload !== "object") {
-      return "";
-    }
-    const candidateKeys = ["path", "output_path", "receipt_path", "state_path", "index_path", "report_path"];
-    for (const key of candidateKeys) {
-      const value = payload[key];
-      if (typeof value === "string" && value.trim()) {
-        return value.trim();
-      }
-    }
-    return "";
-  }
-
   latestPluginRun() {
     return this.pluginState.recentRuns.length ? this.pluginState.recentRuns[0] : null;
   }
@@ -1898,11 +1711,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async runPluginCommand(label, args, options = {}) {
     const record = this.createRunRecord(label, args);
-    this.appendRunEvent(record, "Executing", args.join(" "), "running");
+    appendRunEvent(record, "Executing", args.join(" "), "running");
     this.updateRunRecord(record, {});
     try {
       const result = await this.execLauncher(args);
-      const primaryPath = this.extractPrimaryPath(result.payload);
+      const primaryPath = extractPrimaryPath(result.payload);
       const receiptPath = result.payload && typeof result.payload.receipt_path === "string" ? result.payload.receipt_path : "";
       const rewriteProposalObjects = this.extractRewriteProposalObjects(result.payload);
       const rewriteRecoveryActions = this.extractRewriteRecoveryActions(result.payload);
@@ -1919,12 +1732,12 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         await this.refreshShellSummarySilently();
       }
       const llm = this.currentLlmSelection();
-      this.appendRunEvent(record, "Completed", primaryPath || receiptPath || this.t("Command completed successfully."), "success");
+      appendRunEvent(record, "Completed", primaryPath || receiptPath || this.t("Command completed successfully."), "success");
       if (primaryPath || receiptPath) {
-        this.appendRunEvent(record, "Artifacts", [primaryPath, receiptPath].filter(Boolean).join(" · "), "success");
+        appendRunEvent(record, "Artifacts", [primaryPath, receiptPath].filter(Boolean).join(" · "), "success");
       }
       if (rewriteProposalPaths.length) {
-        this.appendRunEvent(record, "Rewrite proposals", this.rewriteProposalSummary({ rewriteProposalPaths }), "success");
+        appendRunEvent(record, "Rewrite proposals", this.rewriteProposalSummary({ rewriteProposalPaths }), "success");
       }
       this.updateRunRecord(record, {
         status: "success",
@@ -1963,8 +1776,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         rewriteProposalSlugs,
         stdoutSummary: truncateText(result.stdout),
         stderrSummary: truncateText(result.stderr),
-        stdoutRaw: this.trimDiagnosticText(result.stdout),
-        stderrRaw: this.trimDiagnosticText(result.stderr),
+        stdoutRaw: trimDiagnosticText(result.stdout),
+        stderrRaw: trimDiagnosticText(result.stderr),
         resultPath: primaryPath,
         receiptPath,
       });
@@ -1990,18 +1803,18 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       }
       return result.payload;
     } catch (error) {
-      this.appendRunEvent(record, "Failed", truncateText(error.message || "Command failed", 180), "failed");
+      appendRunEvent(record, "Failed", truncateText(error.message || "Command failed", 180), "failed");
       this.updateRunRecord(record, {
         status: "failed",
         finishedAt: new Date().toISOString(),
         exitCode: Number.isFinite(Number(error.code)) ? Number(error.code) : "",
         stdoutSummary: truncateText(error.stdout || ""),
         stderrSummary: truncateText(error.stderr || ""),
-        stdoutRaw: this.trimDiagnosticText(error.stdout || ""),
-        stderrRaw: this.trimDiagnosticText(error.stderr || ""),
+        stdoutRaw: trimDiagnosticText(error.stdout || ""),
+        stderrRaw: trimDiagnosticText(error.stderr || ""),
         errorSummary: truncateText(error.message || "Command failed"),
       });
-      if (record.command === "run-ask" && this.llmBackendUnavailable(error)) {
+      if (record.command === "run-ask" && llmBackendUnavailable(error)) {
         this.recordLlmHealthFromRun(record, {
           status: "degraded",
           reason: truncateText(error.message || error.stderr || error.stdout || "LLM backend unavailable", 240),
@@ -2015,7 +1828,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           fallbackReason: record.fallbackReason,
           contractValidated: record.contractValidated,
           stderrSummary: truncateText(error.stderr || ""),
-          stderrRaw: this.trimDiagnosticText(error.stderr || error.stdout || ""),
+          stderrRaw: trimDiagnosticText(error.stderr || error.stdout || ""),
         });
       }
       this.persistRunLog(record, {
@@ -2127,22 +1940,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async runProtocolSetCommand(protocol) {
     await this.runPluginCommand(`${this.t("Set Protocol")}: ${protocol}`, ["protocol-set", protocol], { refreshAfter: true });
-  }
-
-  llmBackendUnavailable(error) {
-    const text = String(error && error.message ? error.message : error || "").toLowerCase();
-    return [
-      "usage limit",
-      "no quota",
-      "upgrade to pro",
-      "purchase more credits",
-      "organization does not have access",
-      "login again",
-      "timed out",
-      "timeout",
-      "authentication",
-      "auth",
-    ].some((pattern) => text.includes(pattern));
   }
 
   async runUniversalInputCommand({ route, payload, reason }) {
@@ -2288,9 +2085,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       ],
       onSubmit: async (values) => {
         const args = [values.artifact];
-        this.appendOptionalArg(args, "--title", values.title);
-        this.appendOptionalArg(args, "--kind", values.kind);
-        this.appendOptionalArg(args, "--protocol", values.protocol);
+        appendOptionalArg(args, "--title", values.title);
+        appendOptionalArg(args, "--kind", values.kind);
+        appendOptionalArg(args, "--protocol", values.protocol);
         await this.runCliAction(`File Back: ${values.kind}`, "file-back", args);
       },
     });
@@ -2332,8 +2129,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       ],
       onSubmit: async (values) => {
         const args = [values.page, "--status", values.status];
-        this.appendOptionalArg(args, "--note", values.note);
-        this.appendOptionalArg(args, "--confidence", values.confidence);
+        appendOptionalArg(args, "--note", values.note);
+        appendOptionalArg(args, "--confidence", values.confidence);
         await this.runCliAction(`Review Page: ${values.status}`, "review-page", args);
       },
     });
@@ -2350,7 +2147,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       ],
       onSubmit: async (values) => {
         const args = [values.slug, "--status", values.status];
-        this.appendOptionalArg(args, "--note", values.note);
+        appendOptionalArg(args, "--note", values.note);
         await this.runCliAction(`Review Rewrite: ${values.slug}`, "review-rewrite", args);
       },
     });
@@ -2366,7 +2163,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       ],
       onSubmit: async (values) => {
         const args = [values.slug];
-        this.appendOptionalArg(args, "--note", values.note);
+        appendOptionalArg(args, "--note", values.note);
         await this.runCliAction(`Apply Rewrite: ${values.slug}`, "apply-rewrite", args);
       },
     });
@@ -2382,7 +2179,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       ],
       onSubmit: async (values) => {
         const args = [values.slug];
-        this.appendOptionalArg(args, "--note", values.note);
+        appendOptionalArg(args, "--note", values.note);
         await this.runCliAction(`Retire Concept: ${values.slug}`, "retire-concept", args);
       },
     });
@@ -2398,7 +2195,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       ],
       onSubmit: async (values) => {
         const args = [values.slug];
-        this.appendOptionalArg(args, "--note", values.note);
+        appendOptionalArg(args, "--note", values.note);
         await this.runCliAction(`Reactivate Concept: ${values.slug}`, "reactivate-concept", args);
       },
     });
@@ -2414,7 +2211,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       ],
       onSubmit: async (values) => {
         const args = [values.entry_id];
-        this.appendOptionalArg(args, "--note", values.note);
+        appendOptionalArg(args, "--note", values.note);
         await this.runCliAction(`Apply Archive: ${values.entry_id}`, "apply-archive", args);
       },
     });
@@ -2430,7 +2227,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       ],
       onSubmit: async (values) => {
         const args = [values.entry_id];
-        this.appendOptionalArg(args, "--note", values.note);
+        appendOptionalArg(args, "--note", values.note);
         await this.runCliAction(`Revert Archive: ${values.entry_id}`, "revert-archive", args);
       },
     });
@@ -2447,7 +2244,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       ],
       onSubmit: async (values) => {
         const args = [values.action_id, "--status", values.status];
-        this.appendOptionalArg(args, "--note", values.note);
+        appendOptionalArg(args, "--note", values.note);
         await this.runCliAction(`Review Action: ${values.action_id}`, "review-action", args);
       },
     });
@@ -2465,8 +2262,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       ],
       onSubmit: async (values) => {
         const args = [values.action_id];
-        this.appendOptionalArg(args, "--note", values.note);
-        this.appendOptionalArg(args, "--bundle", values.bundle);
+        appendOptionalArg(args, "--note", values.note);
+        appendOptionalArg(args, "--bundle", values.bundle);
         if (values.dry_run) {
           args.push("--dry-run");
         }
@@ -2485,7 +2282,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       ],
       onSubmit: async (values) => {
         const args = [values.action_id];
-        this.appendOptionalArg(args, "--note", values.note);
+        appendOptionalArg(args, "--note", values.note);
         await this.runCliAction(`Revert Action: ${values.action_id}`, "revert-action", args);
       },
     });
@@ -2566,7 +2363,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         },
       ],
       onSubmit: async (values) => {
-        const paths = this.parseLineList(values.pages);
+        const paths = parseLineList(values.pages);
         if (!paths.length) {
           throw new Error(this.t("Batch review requires at least one page path."));
         }

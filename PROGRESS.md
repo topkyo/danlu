@@ -726,6 +726,13 @@
   - **Critical Notes**: 新增 8 个 render 子模块 + 1 次 `build.sh` concat 顺序最终化；B1 test 路径引用 metrics→`render_today`，B2 metrics→`render_advanced`，B3 未调整 test 路径引用；contract 已归档到 `.codex/contracts/archive/M6.6.1-render-js-split.md`
   - **Gates**: `bash .obsidian/plugins/furnace-product-shell/build.sh` pass；`node --check .obsidian/plugins/furnace-product-shell/main.js` pass；product_shell 29 passed；`bash scripts/verify.sh` pass（1314 tests / 93% coverage）；`bash scripts/run_acceptance.sh -v` pass（12 passed）；5 次 acceptance 12/12 passed
 
+- **M6.6.2 Module Size Reduction — plugin.js pure helpers — 完成（本地待 push）**
+  - **抽离清单**: `trimDiagnosticText`(10) / `isLlmRelevantRecord`(7) / `parseTimestampMs`(4) / `launcherIsExecutable`(11) / `appendOptionalArg`(8) / `parseLineList`(10) / `normalizeRelativePathList`(10) / `normalizeRewriteProposalObject`(30) / `normalizeRewriteRecoveryAction`(33) / `uniqueContextOptions`(14) / `inferActionIdFromReceipt`(6) / `runLogRelativePath`(3) / `extractPrimaryPath`(13) / `llmBackendUnavailable`(15) / `appendRunEvent`(14)；oracle 中含 `this.` 的 aggregate/extract wrapper 保留在 class 内
+  - **指标**: 新增 `src/plugin_helpers.js` 219 LOC；`plugin.js` 2896→2693，净减 203 LOC；`main.js` 7226→7245，+19 LOC；收益判定 ≥200 LOC，继续收口
+  - **Gates**: build pass；`node --check main.js` pass；product_shell 29 passed；`bash scripts/verify.sh` pass（1314 tests / 93% coverage）；`bash scripts/run_acceptance.sh -v` pass（12 passed）；5 次 acceptance 稳定性 5/5 pass
+  - **Stop Lines**: helper 内 `this.` 0 命中；抽离函数调用 `this.fn(...)` 0 残留；未引入 mixin / prototype assign / module.exports；保持 class 单一身份与 concat 全局函数 KISS
+  - **Critical Notes**: 拒绝 mixin；仅做字面移动和调用点 `this.fn`→`fn`；`normalizeRewriteProposalObjects` / `normalizeRewriteRecoveryActions` / `extractRewrite*` / `rewriteProposal*FromObjects` 因 body 含 `this.` 未抽离
+
 ## Next Steps
 
 > 后续执行入口已固化到 `docs/Furnace Next Execution Plan.md`。下一轮默认先物化 M6.1 Deterministic Loop Acceptance Pack 到 `.codex/contracts/active.md`，再按该文档继续；M6.1 通过后优先进入 M6.1b LLM Golden Loop，用 GPT / Claude / 显式 backend 验证真实产品黄金闭环。
