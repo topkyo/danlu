@@ -105,6 +105,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--root", default=".", help="Project root. Defaults to the current directory.")
     subparsers = parser.add_subparsers(dest="command", required=True)
     _register_legacy_top_level_parsers(subparsers)
+    advanced_parser = subparsers.add_parser(
+        "advanced",
+        help="高级抽屉：系统状态、receipts、audit、repair、lanes、调试入口",
+    )
+    advanced_subparsers = advanced_parser.add_subparsers(dest="advanced_command", required=True)
+    _register_legacy_top_level_parsers(advanced_subparsers)
     return parser
 
 

@@ -154,6 +154,94 @@ class CLITests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             parser.parse_args([removed_command, "elixir-vla-robotics-deadbeef"])
 
+    def test_advanced_subcommand_exists(self) -> None:
+        parser = build_parser()
+        action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
+
+        self.assertIn("advanced", action.choices)
+        advanced_parser = action.choices["advanced"]
+        advanced_action = next(item for item in advanced_parser._actions if getattr(item, "dest", "") == "advanced_command")
+        self.assertIn("compile", advanced_action.choices)
+
+    def test_advanced_compile_dispatches_to_compile_handler(self) -> None:
+        parser = build_parser()
+
+        legacy_args = parser.parse_args(["compile"])
+        advanced_args = parser.parse_args(["advanced", "compile"])
+
+        self.assertEqual(legacy_args.handler_command, "compile")
+        self.assertEqual(advanced_args.handler_command, legacy_args.handler_command)
+
+    def test_advanced_drop_url_dispatches_to_drop_url_handler(self) -> None:
+        parser = build_parser()
+
+        legacy_args = parser.parse_args(["drop-url", "https://example.com", "--title", "Example"])
+        advanced_args = parser.parse_args(["advanced", "drop-url", "https://example.com", "--title", "Example"])
+
+        self.assertEqual(legacy_args.handler_command, "drop-url")
+        self.assertEqual(advanced_args.handler_command, legacy_args.handler_command)
+        self.assertEqual(advanced_args.url, legacy_args.url)
+        self.assertEqual(advanced_args.title, legacy_args.title)
+
+    def test_advanced_alchemy_nested_dispatch(self) -> None:
+        parser = build_parser()
+
+        legacy_args = parser.parse_args(["alchemy", "heavy", "all", "--dry-run", "--max-signals", "3"])
+        advanced_args = parser.parse_args(["advanced", "alchemy", "heavy", "all", "--dry-run", "--max-signals", "3"])
+
+        self.assertEqual(legacy_args.handler_command, "alchemy")
+        self.assertEqual(advanced_args.handler_command, legacy_args.handler_command)
+        self.assertEqual(advanced_args.alchemy_lane, legacy_args.alchemy_lane)
+        self.assertEqual(advanced_args.scope, legacy_args.scope)
+        self.assertEqual(advanced_args.max_signals, legacy_args.max_signals)
+
+    def test_advanced_review_nested_dispatch(self) -> None:
+        parser = build_parser()
+
+        legacy_args = parser.parse_args(["review", "proposals", "--kind", "prompt_proposal", "--state", "candidate", "--json"])
+        advanced_args = parser.parse_args(
+            ["advanced", "review", "proposals", "--kind", "prompt_proposal", "--state", "candidate", "--json"]
+        )
+
+        self.assertEqual(legacy_args.handler_command, "review")
+        self.assertEqual(advanced_args.handler_command, legacy_args.handler_command)
+        self.assertEqual(advanced_args.review_command, legacy_args.review_command)
+        self.assertEqual(advanced_args.kind, legacy_args.kind)
+        self.assertEqual(advanced_args.state, legacy_args.state)
+        self.assertEqual(advanced_args.json, legacy_args.json)
+
+    def test_advanced_no_deprecation_warning(self) -> None:
+        with patch("aiwiki.cli.drop_url", return_value={"material": "url"}):
+            code, payload, stderr = self._run_main(["advanced", "drop-url", "https://example.com"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["material"], "url")
+        self.assertNotIn("deprecation", stderr.lower())
+
+    def test_advanced_audit_backfill_dispatch(self) -> None:
+        parser = build_parser()
+
+        legacy_args = parser.parse_args(["audit-backfill", "--dry-run", "--limit", "6"])
+        advanced_args = parser.parse_args(["advanced", "audit-backfill", "--dry-run", "--limit", "6"])
+
+        self.assertEqual(legacy_args.handler_command, "audit-backfill")
+        self.assertEqual(advanced_args.handler_command, legacy_args.handler_command)
+        self.assertEqual(advanced_args.dry_run, legacy_args.dry_run)
+        self.assertEqual(advanced_args.limit, legacy_args.limit)
+
+    def test_advanced_alchemy_revert_dispatch(self) -> None:
+        parser = build_parser()
+
+        legacy_args = parser.parse_args(["alchemy-revert", "--elixir-id", "elixir-vla-robotics-deadbeef", "--note", "undo"])
+        advanced_args = parser.parse_args(
+            ["advanced", "alchemy-revert", "--elixir-id", "elixir-vla-robotics-deadbeef", "--note", "undo"]
+        )
+
+        self.assertEqual(legacy_args.handler_command, "alchemy-revert")
+        self.assertEqual(advanced_args.handler_command, legacy_args.handler_command)
+        self.assertEqual(advanced_args.elixir_id, legacy_args.elixir_id)
+        self.assertEqual(advanced_args.note, legacy_args.note)
+
     def test_main_dispatches_command_handlers(self) -> None:
         parser = build_parser()
         (self.root / "proposal-content.md").write_text("Updated prompt.\n", encoding="utf-8")
