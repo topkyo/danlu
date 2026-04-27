@@ -90,11 +90,11 @@ class RunnerTests(unittest.TestCase):
     def test_llm_status_and_create_client_delegate_to_backend_layers(self) -> None:
         fake_status = {"configured": True, "max_context_chars": 12345}
         fake_client = object()
-        with patch("aiwiki.runner.LLMConfig.status_from_env", return_value=fake_status):
+        with patch("aiwiki.runner.clients.LLMConfig.status_from_env", return_value=fake_status):
             self.assertEqual(llm_status(), fake_status)
         fake_config = LLMConfig(backend="codex-cli", timeout_seconds=120)
-        with patch("aiwiki.runner.LLMConfig.from_env", return_value=fake_config):
-            with patch("aiwiki.runner.create_backend_client", return_value=fake_client) as create_backend_client:
+        with patch("aiwiki.runner.clients.LLMConfig.from_env", return_value=fake_config):
+            with patch("aiwiki.runner.clients.create_backend_client", return_value=fake_client) as create_backend_client:
                 self.assertIs(create_client(self.root), fake_client)
                 self.assertIs(create_client(self.root, timeout_seconds=45), fake_client)
         calls = create_backend_client.call_args_list
@@ -348,7 +348,7 @@ class RunnerTests(unittest.TestCase):
 
     def test_llm_probe_returns_static_status_when_unconfigured(self) -> None:
         fake_status = {"configured": False, "message": "missing backend"}
-        with patch("aiwiki.runner.LLMConfig.status_from_env", return_value=fake_status):
+        with patch("aiwiki.runner.clients.LLMConfig.status_from_env", return_value=fake_status):
             result = llm_probe(self.root, probe_all=False, timeout_seconds=17)
 
         self.assertFalse(result["configured"])
@@ -359,12 +359,12 @@ class RunnerTests(unittest.TestCase):
     def test_llm_probe_delegates_to_single_or_all_backend_probes(self) -> None:
         fake_status = {"configured": True, "backend": "codex-cli"}
         fake_config = type("Config", (), {"backend": "codex-cli"})()
-        with patch("aiwiki.runner.LLMConfig.status_from_env", return_value=fake_status):
-            with patch("aiwiki.runner.LLMConfig.from_env", return_value=fake_config):
-                with patch("aiwiki.runner.probe_backend", return_value={"backend": "codex-cli", "ok": True}) as probe_one:
+        with patch("aiwiki.runner.clients.LLMConfig.status_from_env", return_value=fake_status):
+            with patch("aiwiki.runner.clients.LLMConfig.from_env", return_value=fake_config):
+                with patch("aiwiki.runner.clients.probe_backend", return_value={"backend": "codex-cli", "ok": True}) as probe_one:
                     single = llm_probe(self.root, probe_all=False, timeout_seconds=13)
                 with patch(
-                    "aiwiki.runner.probe_available_backends",
+                    "aiwiki.runner.clients.probe_available_backends",
                     return_value=[{"backend": "codex-cli", "ok": True}, {"backend": "copilot-cli", "ok": False}],
                 ) as probe_all:
                     all_backends = llm_probe(self.root, probe_all=True, timeout_seconds=19)

@@ -6,10 +6,9 @@ import json
 import logging
 import re
 import time
-from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 from aiwiki.app_compile import (
     ask_question,
@@ -46,11 +45,32 @@ from aiwiki.config import LLMConfig
 from aiwiki.llm import (
     CompletionResult,
     LLMError,
-    advance_client_model,
     classify_backend_error,
-    create_backend_client,
-    probe_available_backends,
-    probe_backend,
+)
+from aiwiki.runner.clients import (  # noqa: F401
+    _append_fallback_stage,
+    _client_backend_name,
+    _client_backend_requested,
+    _client_model_name,
+    _client_selected_model_name,
+    _fallback_stage_label,
+    _fallback_to_next_model,
+    create_client,
+    llm_probe,
+    llm_status,
+)
+from aiwiki.runner.interfaces import SupportsComplete  # noqa: F401
+from aiwiki.runner.receipts import (  # noqa: F401
+    _append_jsonl_log,
+    _append_llm_receipt,
+    _append_llm_receipt_and_log,
+    _append_log,
+    _build_llm_audit,
+    _empty_llm_audit,
+    _infer_delivery_mode,
+    _llm_audit_from_result,
+    _merge_llm_audits,
+    _next_jsonl_line_number,
 )
 
 RUN_ASK_FRONTDOOR_EVENT = "run-ask-frontdoor"
@@ -134,34 +154,6 @@ LINT_PROMPT_PROFILES = {
         "max_wiki_pages": 5,
     },
 }
-
-
-class SupportsComplete(Protocol):
-    def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
-        ...
-
-
-def llm_status() -> dict[str, Any]:
-    return LLMConfig.status_from_env()
-
-
-def llm_probe(root: Path, probe_all: bool = False, timeout_seconds: int = 20) -> dict[str, Any]:
-    status = llm_status()
-    result = dict(status)
-    result["probe_timeout_seconds"] = timeout_seconds
-    if not status.get("configured"):
-        result["probe"] = None
-        result["probes"] = []
-        return result
-    config = LLMConfig.from_env()
-    if probe_all:
-        probes = probe_available_backends(config, root, timeout_seconds=timeout_seconds)
-        result["probes"] = probes
-        result["probe"] = next((probe for probe in probes if probe.get("backend") == config.backend), probes[0] if probes else None)
-        return result
-    result["probe"] = probe_backend(config, root, timeout_seconds=timeout_seconds)
-    result["probes"] = []
-    return result
 
 
 def run_l3_proposal_create(
@@ -299,13 +291,6 @@ def run_planner_log_rollback(
     from aiwiki.planner.rollback import apply_planner_log_rollback_marker
 
     return apply_planner_log_rollback_marker(root, signal_id=signal_id, trace_id=trace_id, limit=limit, apply=apply)
-
-
-def create_client(root: Path, timeout_seconds: int | None = None) -> SupportsComplete:
-    config = LLMConfig.from_env()
-    if timeout_seconds is not None:
-        config = replace(config, timeout_seconds=timeout_seconds)
-    return create_backend_client(config, root)
 
 
 @runtime_write_operation
@@ -4583,47 +4568,6 @@ def _validate_output_markdown(markdown: str, output_format: str, source_ids: lis
         raise RuntimeError("Ask response is missing explicit source-page citations.")
 
 
-def _append_log(root: Path, event: dict[str, Any]) -> None:
-    _append_jsonl_log(root, ".aiwiki/logs/runs.jsonl", event)
-
-
-def _append_llm_receipt(root: Path, event: dict[str, Any]) -> None:
-    payload, line_number = _append_jsonl_log(root, ".aiwiki/logs/llm-receipts.jsonl", event)
-    from aiwiki.execution.audit_preview import append_universal_audit_record
-
-    append_universal_audit_record(
-        root,
-        source_stream="llm_receipts",
-        source_ref=f".aiwiki/logs/llm-receipts.jsonl#L{line_number}",
-        document=payload,
-    )
-
-
-def _append_jsonl_log(root: Path, relative_log_path: str, event: dict[str, Any]) -> tuple[dict[str, Any], int]:
-    ensure_layout(root)
-    payload = {
-        "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-        **event,
-    }
-    log_path = root / relative_log_path
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    line_number = _next_jsonl_line_number(log_path)
-    with log_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload, sort_keys=True) + "\n")
-    return payload, line_number
-
-
-def _next_jsonl_line_number(path: Path) -> int:
-    if not path.exists():
-        return 1
-    count = 0
-    with path.open("r", encoding="utf-8") as handle:
-        for line in handle:
-            if line.strip():
-                count += 1
-    return count + 1
-
-
 def _context_budget() -> int:
     return LLMConfig.status_from_env()["max_context_chars"]
 
@@ -4664,202 +4608,6 @@ def _retry_lint_prompt_profile(exc: Exception, current_profile: str, client: Sup
     del current_profile
     del client
     return ""
-
-
-def _client_model_name(client: SupportsComplete) -> str:
-    config = getattr(client, "config", None)
-    model = getattr(config, "model", None)
-    return str(model or "")
-
-
-def _client_selected_model_name(client: SupportsComplete) -> str:
-    configs = getattr(client, "client_configs", None)
-    if isinstance(configs, list) and configs:
-        return str(getattr(configs[0], "model", "") or "")
-    primary_config = getattr(client, "primary_config", None)
-    if primary_config is not None:
-        return str(getattr(primary_config, "model", "") or "")
-    return _client_model_name(client)
-
-
-def _client_backend_requested(client: SupportsComplete) -> str:
-    for config in (getattr(client, "primary_config", None), getattr(client, "config", None)):
-        if config is None:
-            continue
-        requested = getattr(config, "backend_requested", None) or getattr(config, "backend", None)
-        if requested:
-            return str(requested)
-    return ""
-
-
-def _client_backend_name(client: SupportsComplete) -> str:
-    for config in (getattr(client, "config", None), getattr(client, "primary_config", None)):
-        if config is None:
-            continue
-        backend = getattr(config, "backend", None)
-        if backend:
-            return str(backend)
-    return ""
-
-
-def _append_fallback_stage(stages: list[str], stage: str) -> None:
-    if stage and stage not in stages:
-        stages.append(stage)
-
-
-def _fallback_stage_label(stages: list[str]) -> str:
-    return "+".join(stage for stage in stages if stage)
-
-
-def _infer_delivery_mode(status: str, error: str = "", fallback_stage: str = "", explicit: str = "", skipped: bool = False) -> str:
-    if explicit:
-        return explicit
-    if skipped:
-        return "skipped"
-    if status == "failed" or error:
-        return "llm-failed"
-    if status == "success" and fallback_stage:
-        return "llm-fallback-chain"
-    if status == "success":
-        return "llm-success"
-    return ""
-
-
-def _empty_llm_audit() -> dict[str, Any]:
-    return {
-        "backend_requested": "",
-        "backend_effective": "",
-        "model_selected": "",
-        "model_final": "",
-        "fallback_stage": "",
-        "fallback_reason": "",
-        "contract_validated": False,
-    }
-
-
-def _build_llm_audit(
-    client: SupportsComplete | None,
-    *,
-    model_selected: str = "",
-    fallback_stages: list[str] | None = None,
-    fallback_reason: str = "",
-    contract_validated: bool = False,
-) -> dict[str, Any]:
-    audit = _empty_llm_audit()
-    stages = fallback_stages or []
-    audit["model_selected"] = model_selected
-    audit["fallback_stage"] = _fallback_stage_label(stages)
-    audit["fallback_reason"] = fallback_reason
-    audit["contract_validated"] = contract_validated
-    if client is None:
-        return audit
-    audit["backend_requested"] = _client_backend_requested(client)
-    audit["backend_effective"] = _client_backend_name(client)
-    audit["model_selected"] = model_selected or _client_model_name(client)
-    audit["model_final"] = _client_model_name(client)
-    return audit
-
-
-def _merge_llm_audits(current: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]:
-    merged = _empty_llm_audit()
-    if isinstance(current, dict):
-        merged.update(current)
-    if not isinstance(update, dict):
-        return merged
-    if not merged["backend_requested"]:
-        merged["backend_requested"] = str(update.get("backend_requested") or "")
-    if str(update.get("backend_effective") or ""):
-        merged["backend_effective"] = str(update.get("backend_effective") or "")
-    if not merged["model_selected"]:
-        merged["model_selected"] = str(update.get("model_selected") or "")
-    if str(update.get("model_final") or ""):
-        merged["model_final"] = str(update.get("model_final") or "")
-    stages: list[str] = []
-    for label in (str(merged.get("fallback_stage") or ""), str(update.get("fallback_stage") or "")):
-        for stage in label.split("+"):
-            _append_fallback_stage(stages, stage)
-    merged["fallback_stage"] = _fallback_stage_label(stages)
-    if str(update.get("fallback_reason") or ""):
-        merged["fallback_reason"] = str(update.get("fallback_reason") or "")
-    merged["contract_validated"] = bool(merged.get("contract_validated")) or bool(update.get("contract_validated"))
-    return merged
-
-
-def _llm_audit_from_result(result: dict[str, Any]) -> dict[str, Any]:
-    audit = _empty_llm_audit()
-    if not isinstance(result, dict):
-        return audit
-    for key in audit:
-        if key == "contract_validated":
-            audit[key] = bool(result.get(key))
-        else:
-            audit[key] = str(result.get(key) or "")
-    return audit
-
-
-def _append_llm_receipt_and_log(
-    root: Path,
-    base_event: dict[str, Any],
-    llm_audit: dict[str, Any],
-    *,
-    status: str,
-    error: str = "",
-    response_id: str = "",
-    usage: dict[str, Any] | None = None,
-    skipped: bool = False,
-) -> None:
-    usage_payload = usage if isinstance(usage, dict) else {}
-    normalized_event = {**llm_audit, **base_event}
-    normalized_event["delivery_mode"] = _infer_delivery_mode(
-        status,
-        error=error,
-        fallback_stage=str(normalized_event.get("fallback_stage") or ""),
-        explicit=str(normalized_event.get("delivery_mode") or ""),
-        skipped=skipped,
-    )
-    normalized_event.setdefault("fallback_used", False)
-    if not normalized_event["fallback_used"]:
-        normalized_event["fallback_used"] = bool(normalized_event.get("delivery_mode") == "deterministic-fallback" or str(normalized_event.get("fallback_stage") or ""))
-    normalized_event.setdefault("fallback_from", "")
-    normalized_event.setdefault("fallback_command", "")
-    normalized_event.setdefault("primary_attempt_status", "")
-    normalized_event.setdefault("primary_error", "")
-    normalized_event.update({"status": status, "response_id": response_id, "usage": usage_payload})
-    if error:
-        normalized_event["error"] = error
-    llm_audit.update({
-        "delivery_mode": normalized_event.get("delivery_mode", ""),
-        "fallback_used": bool(normalized_event.get("fallback_used", False)),
-        "fallback_from": str(normalized_event.get("fallback_from") or ""),
-        "fallback_command": str(normalized_event.get("fallback_command") or ""),
-        "primary_attempt_status": str(normalized_event.get("primary_attempt_status") or ""),
-        "primary_error": str(normalized_event.get("primary_error") or ""),
-    })
-    _append_llm_receipt(root, normalized_event)
-    run_event = {
-        **base_event,
-        "backend": str(llm_audit.get("backend_effective") or ""),
-        "model": str(llm_audit.get("model_final") or ""),
-        **normalized_event,
-    }
-    if error:
-        run_event["error"] = error
-    _append_log(root, run_event)
-
-
-def _fallback_to_next_model(client: SupportsComplete, operation: str, exc: Exception) -> bool:
-    current_model = _client_model_name(client)
-    if not advance_client_model(client):
-        return False
-    next_model = _client_model_name(client)
-    logging.getLogger("aiwiki").warning(
-        "%s failed with model %s: %s; retrying with model %s",
-        operation,
-        current_model or "(default)",
-        exc,
-        next_model or "(default)",
-    )
-    return True
 
 
 def _pending_summary_count(root: Path) -> int:
