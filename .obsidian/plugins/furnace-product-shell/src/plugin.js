@@ -285,9 +285,22 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async loadPluginState() {
     const data = (await this.loadData()) || {};
+    const rawSettings = data.settings && typeof data.settings === "object" ? data.settings : {};
     this.rawPluginData = data;
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings || {});
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, rawSettings);
     this.settings.locale = normalizeLocale(this.settings.locale);
+    const migratedFeishuWebhookUrl = String(this.settings.feishuWebhookUrl || this.settings.feishu_webhook_url || "").trim();
+    const feishuWebhookUrlMigrated = this.settings.feishuWebhookUrl !== migratedFeishuWebhookUrl;
+    this.settings.feishuWebhookUrl = migratedFeishuWebhookUrl;
+    const migratedWecomWebhookUrl = String(this.settings.wecomWebhookUrl || this.settings.wecom_webhook_url || "").trim();
+    const wecomWebhookUrlMigrated = this.settings.wecomWebhookUrl !== migratedWecomWebhookUrl;
+    this.settings.wecomWebhookUrl = migratedWecomWebhookUrl;
+    const rawEnabledChannels = Array.isArray(rawSettings.enabledChannels)
+      ? rawSettings.enabledChannels
+      : rawSettings.enabled_channels;
+    const migratedEnabledChannels = normalizeEnabledChannels(rawEnabledChannels);
+    const enabledChannelsMigrated = JSON.stringify(this.settings.enabledChannels || []) !== JSON.stringify(migratedEnabledChannels);
+    this.settings.enabledChannels = migratedEnabledChannels;
     const migratedLastViewedTimestamp = normalizeLastViewedTimestamp(this.settings.lastViewedTimestamp);
     const lastViewedTimestampMigrated = this.settings.lastViewedTimestamp !== migratedLastViewedTimestamp;
     this.settings.lastViewedTimestamp = migratedLastViewedTimestamp;
@@ -349,7 +362,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       : [];
     this.pluginState = { recentRuns };
     this.trimRecentRuns();
-    if (lastViewedTimestampMigrated) {
+    if (feishuWebhookUrlMigrated || wecomWebhookUrlMigrated || enabledChannelsMigrated || lastViewedTimestampMigrated) {
       await this.savePluginState();
     }
   }

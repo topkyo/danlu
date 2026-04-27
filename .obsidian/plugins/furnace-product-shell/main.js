@@ -40,6 +40,9 @@ const DEFAULT_SETTINGS = {
   llmModel: "",
   llmNvidiaNimApiKey: "",
   llmNvidiaNimBaseUrl: "",
+  feishuWebhookUrl: "",
+  wecomWebhookUrl: "",
+  enabledChannels: [],
   lastViewedTimestamp: "",
   lastKnownReportIds: [],
   onboardingShown: false,
@@ -75,6 +78,12 @@ const ZH_TEXT = {
   "NVIDIA NIM base URL": "NVIDIA NIM Base URL",
   "Override the NVIDIA NIM endpoint. Empty = https://integrate.api.nvidia.com/v1.": "覆盖 NVIDIA NIM 端点。留空 = https://integrate.api.nvidia.com/v1。",
   "LLM settings saved. New runs will use the updated configuration.": "LLM 设置已保存。新的运行将使用更新后的配置。",
+  "Notifications (webhook)": "通知（webhook）",
+  "Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports.": "Webhook 设置仅保存在本地插件数据中。失败不会重试。通知只用于新报告。",
+  "Feishu webhook URL": "飞书 webhook URL",
+  "WeCom webhook URL": "企业微信 webhook URL",
+  "Enable Feishu": "启用飞书",
+  "Enable WeCom": "启用企业微信",
   "Ask 炼丹炉": "问炼丹炉",
   Question: "问题",
   "Enter the research question...": "输入研究问题……",
@@ -770,6 +779,18 @@ function normalizeLastViewedTimestamp(value) {
     return value;
   }
   return "";
+}
+
+function normalizeEnabledChannels(value) {
+  const allowed = new Set(["feishu", "wecom"]);
+  const items = Array.isArray(value) ? value : [];
+  return Array.from(
+    new Set(
+      items
+        .map((item) => String(item || "").trim())
+        .filter((item) => allowed.has(item))
+    )
+  );
 }
 
 function reportDate(value) {
@@ -1795,6 +1816,68 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
             })
         );
     }
+
+    // ── Notifications (webhook) ──────────────────────────────
+    containerEl.createEl("h3", { text: t("Notifications (webhook)") });
+    containerEl.createEl("p", {
+      text: t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."),
+      cls: "setting-item-description",
+    });
+
+    new Setting(containerEl)
+      .setName(t("Feishu webhook URL"))
+      .setDesc(t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."))
+      .addText((text) => {
+        text
+          .setPlaceholder("https://open.feishu.cn/open-apis/bot/v2/hook/...")
+          .setValue(this.plugin.settings.feishuWebhookUrl || "")
+          .onChange(async (value) => {
+            this.plugin.settings.feishuWebhookUrl = String(value || "").trim();
+            await this.plugin.savePluginState();
+          });
+        text.inputEl.autocomplete = "off";
+      });
+
+    new Setting(containerEl)
+      .setName(t("WeCom webhook URL"))
+      .setDesc(t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."))
+      .addText((text) => {
+        text
+          .setPlaceholder("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...")
+          .setValue(this.plugin.settings.wecomWebhookUrl || "")
+          .onChange(async (value) => {
+            this.plugin.settings.wecomWebhookUrl = String(value || "").trim();
+            await this.plugin.savePluginState();
+          });
+        text.inputEl.autocomplete = "off";
+      });
+
+    const updateEnabledChannel = async (channel, enabled) => {
+      const channels = new Set(normalizeEnabledChannels(this.plugin.settings.enabledChannels));
+      if (enabled) {
+        channels.add(channel);
+      } else {
+        channels.delete(channel);
+      }
+      this.plugin.settings.enabledChannels = normalizeEnabledChannels(Array.from(channels));
+      await this.plugin.savePluginState();
+    };
+
+    new Setting(containerEl)
+      .setName(t("Enable Feishu"))
+      .addToggle((toggle) =>
+        toggle.setValue(normalizeEnabledChannels(this.plugin.settings.enabledChannels).includes("feishu")).onChange(async (value) => {
+          await updateEnabledChannel("feishu", Boolean(value));
+        })
+      );
+
+    new Setting(containerEl)
+      .setName(t("Enable WeCom"))
+      .addToggle((toggle) =>
+        toggle.setValue(normalizeEnabledChannels(this.plugin.settings.enabledChannels).includes("wecom")).onChange(async (value) => {
+          await updateEnabledChannel("wecom", Boolean(value));
+        })
+      );
   }
 }
 
@@ -3882,9 +3965,22 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async loadPluginState() {
     const data = (await this.loadData()) || {};
+    const rawSettings = data.settings && typeof data.settings === "object" ? data.settings : {};
     this.rawPluginData = data;
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings || {});
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, rawSettings);
     this.settings.locale = normalizeLocale(this.settings.locale);
+    const migratedFeishuWebhookUrl = String(this.settings.feishuWebhookUrl || this.settings.feishu_webhook_url || "").trim();
+    const feishuWebhookUrlMigrated = this.settings.feishuWebhookUrl !== migratedFeishuWebhookUrl;
+    this.settings.feishuWebhookUrl = migratedFeishuWebhookUrl;
+    const migratedWecomWebhookUrl = String(this.settings.wecomWebhookUrl || this.settings.wecom_webhook_url || "").trim();
+    const wecomWebhookUrlMigrated = this.settings.wecomWebhookUrl !== migratedWecomWebhookUrl;
+    this.settings.wecomWebhookUrl = migratedWecomWebhookUrl;
+    const rawEnabledChannels = Array.isArray(rawSettings.enabledChannels)
+      ? rawSettings.enabledChannels
+      : rawSettings.enabled_channels;
+    const migratedEnabledChannels = normalizeEnabledChannels(rawEnabledChannels);
+    const enabledChannelsMigrated = JSON.stringify(this.settings.enabledChannels || []) !== JSON.stringify(migratedEnabledChannels);
+    this.settings.enabledChannels = migratedEnabledChannels;
     const migratedLastViewedTimestamp = normalizeLastViewedTimestamp(this.settings.lastViewedTimestamp);
     const lastViewedTimestampMigrated = this.settings.lastViewedTimestamp !== migratedLastViewedTimestamp;
     this.settings.lastViewedTimestamp = migratedLastViewedTimestamp;
@@ -3946,7 +4042,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       : [];
     this.pluginState = { recentRuns };
     this.trimRecentRuns();
-    if (lastViewedTimestampMigrated) {
+    if (feishuWebhookUrlMigrated || wecomWebhookUrlMigrated || enabledChannelsMigrated || lastViewedTimestampMigrated) {
       await this.savePluginState();
     }
   }

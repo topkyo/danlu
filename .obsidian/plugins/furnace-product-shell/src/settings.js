@@ -173,5 +173,67 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
             })
         );
     }
+
+    // ── Notifications (webhook) ──────────────────────────────
+    containerEl.createEl("h3", { text: t("Notifications (webhook)") });
+    containerEl.createEl("p", {
+      text: t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."),
+      cls: "setting-item-description",
+    });
+
+    new Setting(containerEl)
+      .setName(t("Feishu webhook URL"))
+      .setDesc(t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."))
+      .addText((text) => {
+        text
+          .setPlaceholder("https://open.feishu.cn/open-apis/bot/v2/hook/...")
+          .setValue(this.plugin.settings.feishuWebhookUrl || "")
+          .onChange(async (value) => {
+            this.plugin.settings.feishuWebhookUrl = String(value || "").trim();
+            await this.plugin.savePluginState();
+          });
+        text.inputEl.autocomplete = "off";
+      });
+
+    new Setting(containerEl)
+      .setName(t("WeCom webhook URL"))
+      .setDesc(t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."))
+      .addText((text) => {
+        text
+          .setPlaceholder("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...")
+          .setValue(this.plugin.settings.wecomWebhookUrl || "")
+          .onChange(async (value) => {
+            this.plugin.settings.wecomWebhookUrl = String(value || "").trim();
+            await this.plugin.savePluginState();
+          });
+        text.inputEl.autocomplete = "off";
+      });
+
+    const updateEnabledChannel = async (channel, enabled) => {
+      const channels = new Set(normalizeEnabledChannels(this.plugin.settings.enabledChannels));
+      if (enabled) {
+        channels.add(channel);
+      } else {
+        channels.delete(channel);
+      }
+      this.plugin.settings.enabledChannels = normalizeEnabledChannels(Array.from(channels));
+      await this.plugin.savePluginState();
+    };
+
+    new Setting(containerEl)
+      .setName(t("Enable Feishu"))
+      .addToggle((toggle) =>
+        toggle.setValue(normalizeEnabledChannels(this.plugin.settings.enabledChannels).includes("feishu")).onChange(async (value) => {
+          await updateEnabledChannel("feishu", Boolean(value));
+        })
+      );
+
+    new Setting(containerEl)
+      .setName(t("Enable WeCom"))
+      .addToggle((toggle) =>
+        toggle.setValue(normalizeEnabledChannels(this.plugin.settings.enabledChannels).includes("wecom")).onChange(async (value) => {
+          await updateEnabledChannel("wecom", Boolean(value));
+        })
+      );
   }
 }

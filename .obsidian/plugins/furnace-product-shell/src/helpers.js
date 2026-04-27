@@ -118,6 +118,18 @@ function normalizeLastViewedTimestamp(value) {
   return "";
 }
 
+function normalizeEnabledChannels(value) {
+  const allowed = new Set(["feishu", "wecom"]);
+  const items = Array.isArray(value) ? value : [];
+  return Array.from(
+    new Set(
+      items
+        .map((item) => String(item || "").trim())
+        .filter((item) => allowed.has(item))
+    )
+  );
+}
+
 function reportDate(value) {
   const date = new Date(String(value || ""));
   return Number.isNaN(date.getTime()) ? null : date;
