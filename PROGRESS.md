@@ -702,6 +702,15 @@
   - **指标**: acceptance 10 → 11；`bash scripts/verify.sh` pass（1247 tests / 93% coverage）；`bash scripts/run_acceptance.sh -v` 11 passed；`PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py -v` 11 passed；`node --check .obsidian/plugins/furnace-product-shell/main.js` pass
   - **Stop Lines**: 0 `src/aiwiki/*` 改动；未改 `ShellSummary` / receipt / audit / planner-log / signal schema；无第三方依赖；未删 Advanced 入口或 typed CLI 命令；baseline / M6.1 / M6.1b / M6.2 acceptance 无回归；contract 已归档到 `.codex/contracts/archive/M6.3-single-today-feed.md`
 
+- **M6.4 Knowledge Compounding Metrics — 完成（4 commits，本地待 push）**
+  - **目的**: 提供本地即时计算的 7 个知识复利指标，只作为 CLI / ShellSummary / Advanced 抽屉观测报告，不作为自动调度、lane judge 或 proposal auto-accept 输入
+  - **批次**: B1 `220d2c5` `metrics.py` pure builder + 4 simple metrics（197 LOC / 100% cov）；B2 `6c9c659` `metrics_io.py` + 剩余 3 指标 + CLI `aiwiki metrics [--json]` + `ShellSummary.metrics`；B3 `ac3de9b` Product Shell Advanced Metrics panel；B4 acceptance + DOM contract + 收口（本 commit）
+  - **Acceptance / Product Shell**: 新增 `tests/fixtures/acceptance/M6.4/case_metrics_report/`（`README.md` + `.aiwiki/state/manifest.json` 空 vault smoke）与 `test_metrics_report`，断言 text 输出含 7 个 key、JSON 输出 7 条且 `value/unit/reason/sample_size` 合法；新增 `tests/test_product_shell_metrics.py` 5 个 DOM/style contract tests，冻结 built `main.js` metrics panel、unit handling、CSS marker、Today feed 不暴露 metrics、Advanced drawer 调用 panel
+  - **新增模块 / contract 字段**: `src/aiwiki/metrics.py`、`src/aiwiki/metrics_io.py`；`aiwiki metrics [--json]` 新命令；`build_shell_summary` 只新增向后兼容字段 `metrics`，未删除或改动既有 ShellSummary 字段；B3 未新增 `today_feed.js` mirror
+  - **Critical Notes**: 最简 fixture 下 7 个指标均可产出；数据不足时允许 `value=None`，但必须带非空 `reason`，有值时 `reason==""`；`review_closure_rate` 等历史不足指标不静默 fallback 为 0
+  - **指标**: acceptance 11 → 12；`bash scripts/verify.sh` pass（1298 tests / 93% coverage）；`bash scripts/run_acceptance.sh -v` 12 passed；`PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py -v` 12 passed；`PYTHONPATH=src python3 -m pytest tests/test_product_shell_metrics.py -v` 5 passed；5 次 acceptance 稳定性 5/5 pass；`node --check .obsidian/plugins/furnace-product-shell/main.js` pass
+  - **Stop Lines**: 0 `src/aiwiki/*` B4 改动；未改 receipt / audit / planner-log / signal schema；未改 ShellSummary 既有字段 schema；指标未接入自动调度 / lane judge / auto-accept；无指标 DB / 时序服务 / LLM / 网络 / 第三方依赖；baseline / 既有 acceptance 无回归；contract 已归档到 `.codex/contracts/archive/M6.4-knowledge-compounding-metrics.md`
+
 ## Next Steps
 
 > 后续执行入口已固化到 `docs/Furnace Next Execution Plan.md`。下一轮默认先物化 M6.1 Deterministic Loop Acceptance Pack 到 `.codex/contracts/active.md`，再按该文档继续；M6.1 通过后优先进入 M6.1b LLM Golden Loop，用 GPT / Claude / 显式 backend 验证真实产品黄金闭环。

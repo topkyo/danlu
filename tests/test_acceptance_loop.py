@@ -690,3 +690,39 @@ def test_light_primitives_nightly_acceptance(  # pragma: no cover - explicit pyt
     )
     if REFRESH:
         pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
+
+
+def test_metrics_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """M6.4 B4: aiwiki metrics 输出 7 条指标 + JSON 路径合法。"""
+    _case, vault = _copy_case_and_fix_clock_from("M6.4", "case_metrics_report", tmp_path, monkeypatch)
+
+    out = _run_cli(vault, ["metrics"]).decode("utf-8")
+    assert "炼丹炉 Knowledge Compounding Metrics" in out
+    keys = [
+        "provenance_completeness",
+        "stale_ratio",
+        "review_closure_rate",
+        "proposal_acceptance_rate",
+        "judgment_revisit_rate",
+        "output_file_back_rate",
+        "elixir_reuse_count",
+    ]
+    for key in keys:
+        assert key in out, f"metric key missing: {key}"
+
+    out_json = _run_cli(vault, ["metrics", "--json"])
+    parsed = json.loads(out_json)
+    assert isinstance(parsed, list)
+    assert len(parsed) == 7
+    parsed_keys = {metric["key"] for metric in parsed}
+    assert parsed_keys == set(keys)
+    for metric in parsed:
+        assert "value" in metric
+        assert "unit" in metric
+        assert "reason" in metric
+        assert "sample_size" in metric
+        assert metric["unit"] in {"ratio", "count", "percent"}
+        if metric["value"] is None:
+            assert metric["reason"], f"{metric['key']} unavailable but reason empty"
+        else:
+            assert metric["reason"] == "", f"{metric['key']} has value but reason='{metric['reason']}'"
