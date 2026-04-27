@@ -107,8 +107,9 @@ related_docs:
 - **`raw/` 是唯一事实输入层**：任何派生层都不得覆盖或改写 `raw/`。
 - **Provenance 必须保留**：所有派生资产都应回溯到 `raw/` 或上游 wiki 证据。
 - **Deterministic baseline**：核心 runtime 行为不依赖 LLM；LLM 只在显式 `run-*`、可选 vision 分析或未来 LLM-backed alchemy 路径下被调用。
-- **Backend 显式手动选择**：`codex-cli / nvidia-nim-api / copilot-cli / claude-cli` 之间的切换由操作者控制，planner 不做 backend auto-routing。
+- **Backend 与 model 显式手动选择**：`codex-cli / nvidia-nim-api / copilot-cli / claude-cli` 之间的切换由操作者控制，planner 不做 backend auto-routing。Model 选择同样由操作者显式控制：runtime 不在 backend 内部做隐式 model fallback chain；要换 model 必须通过显式 `--model` / `AIWIKI_LLM_MODEL` 或显式 `--model-fallback model_a,model_b` 指定。任何 backend 内部的"留空时按链尝试"策略都被视为 hidden routing，不允许默认开启。
 - **Review / apply / revert / audit 闭环不破坏**：任何写回 `wiki/` 或 `prompts/` 或 `schema/policies/` 的动作都必须产生可回滚的 receipt 和 audit。
+- **Runtime 不生成语义判断/学习/提示内容**：`judge / distill / review / propose` 等 phase 的 runtime 实现只负责 deterministic 调度、scoped preview、proposal-preview artifact、managed marker、accepted block 落盘等结构性写入；语义内容（判断结论、distill summary、review verdict、prompt body）必须由 human 或显式被调用的 external model 在 proposal/accepted block 中提供。runtime 不在这些 phase 内部隐式调用 LLM 生成结论。要让 LLM 介入语义生成，必须走显式 `run-*` 或 propose-preview → human/external accept 链路，且每一步都留 receipt 和 audit。
 
 非目标（明确不在架构边界内）：
 
@@ -300,7 +301,7 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
   - review cadence（不同 protocol 的老化速度不同）
   - elixir compounding（同 protocol 内的金丹复利优先）
   - output 模板与 judgment 字段
-- Protocol **不是硬隔离**：跨协议证据（bridge evidence）在 graph / judgment / drift 信号触发时允许被召回。
+- Protocol **不是硬隔离**，但当前 runtime 只做 deterministic cross-protocol match：跨协议证据是否被纳入工作集，由 graph / judgment / drift 信号在 deterministic 规则下决定，runtime 不做语义召回（不基于 LLM 相似度判断"另一个协议的 evidence 是否相关"）。任何跨协议召回必须留可追溯的 deterministic 触发依据（signal id、graph edge、ref 关系），并随 receipt/audit 一起记录。基于语义/向量的跨协议证据召回不在默认可用边界内。
 
 操作者控制：
 
