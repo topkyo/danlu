@@ -21,6 +21,7 @@ from aiwiki.cli import (
     main,
 )
 from aiwiki.execution.candidates import promote_candidate
+from aiwiki.today_feed import build_today_feed as real_build_today_feed
 
 SIGNALS_FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "signals_collector"
 
@@ -203,6 +204,49 @@ class CLITests(unittest.TestCase):
         self.assertIn("Suggested Next Actions", stdout)
         self.assertIn("Advanced", stdout)
 
+    def test_today_command_uses_feed_builder(self) -> None:
+        """today_command 输出仍含 5 个 section heading 与 Advanced 提示。"""
+        summary = {"generated_at": "2026-04-27T10:00:00+00:00", "active_protocol": "research"}
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            with patch("aiwiki.cli.build_today_feed", wraps=real_build_today_feed) as feed_builder:
+                code, stdout, stderr = self._run_main_raw(["today"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        feed_builder.assert_called_once_with(summary)
+        self.assertIn("Today's Reports", stdout)
+        self.assertIn("Needs Review", stdout)
+        self.assertIn("Completed Elixirs", stdout)
+        self.assertIn("L3 Proposals", stdout)
+        self.assertIn("Suggested Next Actions", stdout)
+        self.assertIn("Advanced", stdout)
+
+    def test_today_command_no_mechanism_words(self) -> None:
+        """首屏不暴露具体技术 artifact 名。"""
+        summary = {
+            "generated_at": "2026-04-27T10:00:00+00:00",
+            "active_protocol": "research",
+            "review_backlog_counts": {"decision": 2},
+            "suggested_next_actions": [{"title": "Review next page", "command": "aiwiki review-page --next"}],
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, stdout, stderr = self._run_main_raw(["today"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        for word in {"shell-summary", "review_backlog_counts", "planner-log", "audit.jsonl", "execution-receipts"}:
+            self.assertNotIn(word, stdout)
+
+    def test_today_command_advanced_hint_present(self) -> None:
+        """Advanced 提示行保留。"""
+        summary = {"generated_at": "2026-04-27T10:00:00+00:00", "active_protocol": "research"}
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, stdout, stderr = self._run_main_raw(["today"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertIn("Run `aiwiki advanced ...`", stdout)
+
     def test_today_does_not_mutate_shell_summary(self) -> None:
         summary = {
             "generated_at": "2026-04-27T10:00:00+00:00",
@@ -294,7 +338,7 @@ class CLITests(unittest.TestCase):
 
         self.assertEqual(code, 0)
         self.assertEqual(stderr, "")
-        self.assertIn("- [research] Daily Report — report — output/reports/daily.md", stdout)
+        self.assertIn("- [research] Daily Report — report 输出 — output/reports/daily.md", stdout)
 
     def test_today_filters_non_today_reports(self) -> None:
         summary = {
