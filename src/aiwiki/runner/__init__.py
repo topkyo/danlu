@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
-from .app_compile import (
+from aiwiki.app_compile import (
     ask_question,
     compile_wiki,
     lint_wiki,
@@ -19,16 +19,16 @@ from .app_compile import (
     promote_recurring_outputs,
     write_nightly_health,
 )
-from .app_content import (
+from aiwiki.app_content import (
     concept_summary_is_placeholder,
     placeholder_concept_slugs,
     preserved_section,
 )
-from .app_memory import store_concept_rewrite_candidate
-from .app_protocol import CONCEPT_HARDNESS_LEVELS, ensure_layout, load_protocol_state
-from .app_shell import rewrite_recovery_payload_for_paths
-from .app_state import append_runtime_history, load_machine_memory, load_manifest
-from .app_utils import (
+from aiwiki.app_memory import store_concept_rewrite_candidate
+from aiwiki.app_protocol import CONCEPT_HARDNESS_LEVELS, ensure_layout, load_protocol_state
+from aiwiki.app_shell import rewrite_recovery_payload_for_paths
+from aiwiki.app_state import append_runtime_history, load_machine_memory, load_manifest
+from aiwiki.app_utils import (
     TEXT_EXTENSIONS,
     parse_frontmatter,
     read_text_preview,
@@ -42,8 +42,8 @@ from .app_utils import (
     strip_frontmatter,
     utc_now,
 )
-from .config import LLMConfig
-from .llm import (
+from aiwiki.config import LLMConfig
+from aiwiki.llm import (
     CompletionResult,
     LLMError,
     advance_client_model,
@@ -176,7 +176,7 @@ def run_l3_proposal_create(
     signal_ids: list[str] | None = None,
     pattern: str = "manual_fixture",
 ) -> dict[str, Any]:
-    from .execution.l3_proposals import create_l3_proposal
+    from aiwiki.execution.l3_proposals import create_l3_proposal
 
     return create_l3_proposal(
         root,
@@ -192,7 +192,7 @@ def run_l3_proposal_create(
 
 
 def run_l3_proposal_list(root: Path, *, kind: str | None = None, state: str | None = None) -> list[dict[str, Any]]:
-    from .execution.l3_proposals import list_l3_proposals
+    from aiwiki.execution.l3_proposals import list_l3_proposals
 
     return list_l3_proposals(root, kind=kind, state=state)
 
@@ -203,7 +203,7 @@ def run_l3_proposal_generation_preview(
     planner_log_path: Path | None = None,
     limit: int = 20,
 ) -> dict[str, Any]:
-    from .execution.l3_proposals import preview_l3_proposal_generation
+    from aiwiki.execution.l3_proposals import preview_l3_proposal_generation
 
     return preview_l3_proposal_generation(root, planner_log_path=planner_log_path, limit=limit)
 
@@ -217,61 +217,61 @@ def run_l3_proposal_generate(
 ) -> dict[str, Any]:
     if not apply:
         return run_l3_proposal_generation_preview(root, planner_log_path=planner_log_path, limit=limit)
-    from .execution.l3_proposals import generate_l3_proposals_from_planner
+    from aiwiki.execution.l3_proposals import generate_l3_proposals_from_planner
 
     return generate_l3_proposals_from_planner(root, planner_log_path=planner_log_path, limit=limit)
 
 
 def run_l3_proposal_apply(root: Path, proposal_id: str, *, note: str | None = None) -> dict[str, Any]:
-    from .execution.l3_proposals import apply_l3_proposal
+    from aiwiki.execution.l3_proposals import apply_l3_proposal
 
     return apply_l3_proposal(root, proposal_id, note=note)
 
 
 def run_l3_proposal_reject(root: Path, proposal_id: str, *, note: str | None = None) -> dict[str, Any]:
-    from .execution.l3_proposals import reject_l3_proposal
+    from aiwiki.execution.l3_proposals import reject_l3_proposal
 
     return reject_l3_proposal(root, proposal_id, note=note)
 
 
 def run_l3_proposal_revert(root: Path, receipt_id: str, *, note: str | None = None) -> dict[str, Any]:
-    from .execution.l3_proposals import revert_l3_proposal
+    from aiwiki.execution.l3_proposals import revert_l3_proposal
 
     return revert_l3_proposal(root, receipt_id, note=note)
 
 
 def run_alchemy_legacy_migration_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
-    from .execution.alchemy import preview_legacy_elixir_migration
+    from aiwiki.execution.alchemy import preview_legacy_elixir_migration
 
     return preview_legacy_elixir_migration(root, limit=limit)
 
 
 def run_alchemy_legacy_migration_apply(root: Path, *, limit: int = 50, note: str | None = None) -> dict[str, Any]:
-    from .execution.alchemy import apply_legacy_elixir_migration
+    from aiwiki.execution.alchemy import apply_legacy_elixir_migration
 
     return apply_legacy_elixir_migration(root, limit=limit, note=note)
 
 
 def run_alchemy_superseded_cleanup_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
-    from .execution.alchemy import preview_superseded_elixir_cleanup
+    from aiwiki.execution.alchemy import preview_superseded_elixir_cleanup
 
     return preview_superseded_elixir_cleanup(root, limit=limit)
 
 
 def run_alchemy_superseded_cleanup_apply(root: Path, *, limit: int = 50, note: str | None = None) -> dict[str, Any]:
-    from .execution.alchemy import apply_superseded_elixir_cleanup
+    from aiwiki.execution.alchemy import apply_superseded_elixir_cleanup
 
     return apply_superseded_elixir_cleanup(root, limit=limit, note=note)
 
 
 def run_audit_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
-    from .execution.audit_preview import preview_universal_audit_stream
+    from aiwiki.execution.audit_preview import preview_universal_audit_stream
 
     return preview_universal_audit_stream(root, limit=limit)
 
 
 def run_audit_backfill(root: Path, *, limit: int = 50, apply: bool = False) -> dict[str, Any]:
-    from .execution.audit_preview import backfill_universal_audit_stream
+    from aiwiki.execution.audit_preview import backfill_universal_audit_stream
 
     return backfill_universal_audit_stream(root, limit=limit, apply=apply)
 
@@ -283,7 +283,7 @@ def run_planner_log_rollback_preview(
     trace_id: str | None = None,
     limit: int = 20,
 ) -> dict[str, Any]:
-    from .planner.rollback import preview_planner_log_rollback
+    from aiwiki.planner.rollback import preview_planner_log_rollback
 
     return preview_planner_log_rollback(root, signal_id=signal_id, trace_id=trace_id, limit=limit)
 
@@ -296,7 +296,7 @@ def run_planner_log_rollback(
     limit: int = 20,
     apply: bool = False,
 ) -> dict[str, Any]:
-    from .planner.rollback import apply_planner_log_rollback_marker
+    from aiwiki.planner.rollback import apply_planner_log_rollback_marker
 
     return apply_planner_log_rollback_marker(root, signal_id=signal_id, trace_id=trace_id, limit=limit, apply=apply)
 
@@ -833,7 +833,7 @@ def _reinject_candidate_frontmatter(target: Path, *, corpus_id: str = "") -> Non
     薄 wrapper：委托给 ``execution.candidates.write_candidate_frontmatter``，
     保留既有调用点接口不变。frontmatter 写入的唯一权威入口在 candidates 模块。
     """
-    from .execution.candidates import write_candidate_frontmatter
+    from aiwiki.execution.candidates import write_candidate_frontmatter
 
     write_candidate_frontmatter(target, candidate_state="pending", corpus_id=corpus_id)
 
@@ -894,7 +894,7 @@ def run_ask(
     previous_output_summary = None
     corpus_id = str(artifact.get("active_corpus_id") or "")
     if corpus_id:
-        from .execution.ask import load_previous_output_summary
+        from aiwiki.execution.ask import load_previous_output_summary
 
         previous_output_summary = load_previous_output_summary(root, corpus_id, exclude_artifact_ref=artifact.get("path"))
     prompt = _build_ask_prompt(
@@ -1134,14 +1134,14 @@ def run_ask(
 
 @runtime_write_operation
 def run_promote(root: Path, artifact_ref: str) -> dict[str, Any]:
-    from .execution.candidates import promote_candidate
+    from aiwiki.execution.candidates import promote_candidate
 
     return promote_candidate(root, artifact_ref)
 
 
 @runtime_write_operation
 def run_demote(root: Path, artifact_ref: str) -> dict[str, Any]:
-    from .execution.candidates import demote_candidate
+    from aiwiki.execution.candidates import demote_candidate
 
     return demote_candidate(root, artifact_ref)
 
@@ -1279,12 +1279,12 @@ def run_nightly(
         # contract EP-029 Step 3 §5: nightly auto-applies active -> stale, never demote/archive.
         # Non-fatal: aging failure is logged but does not block nightly; audit file always emitted.
         try:
-            from .execution.protocol_learnings import age_learnings
+            from aiwiki.execution.protocol_learnings import age_learnings
 
             protocol_learnings_age = age_learnings(root, apply=True, emitted_by="nightly")
         except Exception as age_exc:  # noqa: BLE001 - aging must not break nightly
-            from .execution.protocol_learnings import AUDIT_STATE_PATH as _AUDIT_PATH
-            from .execution.protocol_learnings import _atomic_write_text as _age_atomic_write
+            from aiwiki.execution.protocol_learnings import AUDIT_STATE_PATH as _AUDIT_PATH
+            from aiwiki.execution.protocol_learnings import _atomic_write_text as _age_atomic_write
 
             protocol_learnings_age = {
                 "apply": True,
@@ -1468,41 +1468,41 @@ def run_alchemy_start(
     protocol: str | None = None,
     include_elixir_ids: list[str] | None = None,
 ) -> dict[str, Any]:
-    from .execution.alchemy import start_elixir
+    from aiwiki.execution.alchemy import start_elixir
 
     return start_elixir(root, corpus_id, protocol=protocol, topic=topic, include_elixir_ids=include_elixir_ids)
 
 
 @runtime_write_operation
 def run_alchemy_distill(root: Path, elixir_id: str, question: str, include_elixir_ids: list[str] | None = None) -> dict[str, Any]:
-    from .execution.alchemy import distill_elixir
+    from aiwiki.execution.alchemy import distill_elixir
 
     return distill_elixir(root, elixir_id, question=question, include_elixir_ids=include_elixir_ids)
 
 
 @runtime_write_operation
 def run_alchemy_finalize(root: Path, *, elixir_id: str) -> dict[str, Any]:
-    from .execution.alchemy import finalize_elixir
+    from aiwiki.execution.alchemy import finalize_elixir
 
     return finalize_elixir(root, elixir_id=elixir_id)
 
 
 @runtime_write_operation
 def run_alchemy_promote(root: Path, *, elixir_id: str, note: str | None = None) -> dict[str, Any]:
-    from .execution.alchemy import promote_elixir
+    from aiwiki.execution.alchemy import promote_elixir
 
     return promote_elixir(root, elixir_id=elixir_id, note=note)
 
 
 def run_alchemy_revert(root: Path, *, elixir_id: str, note: str | None = None) -> Path:
-    from .execution.alchemy import revert_elixir
+    from aiwiki.execution.alchemy import revert_elixir
 
     with runtime_write_lock(root):
         return revert_elixir(root, elixir_id=elixir_id, note=note)
 
 
 def run_alchemy_demote(root: Path, *, elixir_id: str, note: str | None = None) -> Path:
-    from .execution.alchemy import demote_elixir
+    from aiwiki.execution.alchemy import demote_elixir
 
     with runtime_write_lock(root):
         return demote_elixir(root, elixir_id=elixir_id, note=note)
@@ -1510,7 +1510,7 @@ def run_alchemy_demote(root: Path, *, elixir_id: str, note: str | None = None) -
 
 @runtime_write_operation
 def run_protocol_learn_add(root: Path, protocol: str, title: str, source_refs: list[str] | None) -> dict[str, Any]:
-    from .execution.protocol_learnings import add_learning
+    from aiwiki.execution.protocol_learnings import add_learning
 
     return add_learning(root, protocol, title=title, source_refs=source_refs)
 
@@ -1522,13 +1522,13 @@ def run_protocol_learn_list(
     state_filter: str | None = None,
     include_archived: bool = False,
 ) -> list[dict[str, Any]]:
-    from .execution.protocol_learnings import list_learnings
+    from aiwiki.execution.protocol_learnings import list_learnings
 
     return list_learnings(root, protocol, state_filter=state_filter, include_archived=include_archived)
 
 
 def run_protocol_learn_show(root: Path, learning_id: str) -> dict[str, Any]:
-    from .execution.protocol_learnings import show_learning
+    from aiwiki.execution.protocol_learnings import show_learning
 
     return show_learning(root, learning_id)
 
@@ -1541,7 +1541,7 @@ def run_signals_list(
     since: str | None = None,
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
-    from .inspection import read_signals
+    from aiwiki.inspection import read_signals
 
     return read_signals(
         root,
@@ -1553,7 +1553,7 @@ def run_signals_list(
 
 
 def run_signals_show(root: Path, signal_id: str) -> dict[str, Any]:
-    from .inspection import find_planner_decisions_for_signal, find_signal_by_id
+    from aiwiki.inspection import find_planner_decisions_for_signal, find_signal_by_id
 
     signal = find_signal_by_id(root, signal_id)
     if signal is None:
@@ -1575,7 +1575,7 @@ def run_planner_log_list(
     since: str | None = None,
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
-    from .inspection import read_planner_decisions
+    from aiwiki.inspection import read_planner_decisions
 
     return read_planner_decisions(
         root,
@@ -1599,7 +1599,7 @@ def run_alchemy_lane_dry_run(
     max_pages: int | None = None,
     max_tokens: int | None = None,
 ) -> dict[str, Any]:
-    from .planner import preview_alchemy_lane
+    from aiwiki.planner import preview_alchemy_lane
 
     return preview_alchemy_lane(
         root,
@@ -1626,7 +1626,7 @@ def run_alchemy_judge_preview(
     max_tokens: int | None = None,
     limit: int = 50,
 ) -> dict[str, Any]:
-    from .planner import preview_judge_primitive
+    from aiwiki.planner import preview_judge_primitive
 
     return preview_judge_primitive(
         root,
@@ -1676,9 +1676,9 @@ def run_alchemy_judge_apply(
     if not candidates:
         raise RuntimeError("alchemy judge apply requires at least one apply-supported judgment candidate")
 
-    from .app_execution import append_execution_receipt_history
-    from .app_state import execution_receipt_history_path
-    from .render.paths import execution_receipt_path
+    from aiwiki.app_execution import append_execution_receipt_history
+    from aiwiki.app_state import execution_receipt_history_path
+    from aiwiki.render.paths import execution_receipt_path
 
     refreshed: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
@@ -1809,9 +1809,9 @@ def run_alchemy_judge_propose(
     if not candidates:
         raise RuntimeError("alchemy judge propose requires at least one existing judgment candidate")
 
-    from .app_execution import append_execution_receipt_history
-    from .app_state import execution_receipt_history_path
-    from .render.paths import execution_receipt_path
+    from aiwiki.app_execution import append_execution_receipt_history
+    from aiwiki.app_state import execution_receipt_history_path
+    from aiwiki.render.paths import execution_receipt_path
 
     generated: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
@@ -1929,9 +1929,9 @@ def run_alchemy_judge_proposal_apply(
     *,
     note: str | None = None,
 ) -> dict[str, Any]:
-    from .app_execution import append_execution_receipt_history
-    from .app_state import execution_receipt_history_path
-    from .render.paths import execution_receipt_path
+    from aiwiki.app_execution import append_execution_receipt_history
+    from aiwiki.app_state import execution_receipt_history_path
+    from aiwiki.render.paths import execution_receipt_path
 
     proposal_path = _resolve_alchemy_judge_proposal_path(root, proposal)
     original_proposal = proposal_path.read_text(encoding="utf-8", errors="replace")
@@ -2076,7 +2076,7 @@ def run_alchemy_distill_preview(
     max_tokens: int | None = None,
     limit: int = 50,
 ) -> dict[str, Any]:
-    from .planner import preview_distill_primitive
+    from aiwiki.planner import preview_distill_primitive
 
     return preview_distill_primitive(
         root,
@@ -2126,9 +2126,9 @@ def run_alchemy_distill_apply(
     if not candidates:
         raise RuntimeError("alchemy distill apply requires at least one apply-supported elixir candidate")
 
-    from .app_execution import append_execution_receipt_history, compute_file_sha256
-    from .app_state import execution_receipt_history_path
-    from .render.paths import execution_receipt_path
+    from aiwiki.app_execution import append_execution_receipt_history, compute_file_sha256
+    from aiwiki.app_state import execution_receipt_history_path
+    from aiwiki.render.paths import execution_receipt_path
 
     ensure_layout(root)
     refreshed: list[dict[str, Any]] = []
@@ -2263,7 +2263,7 @@ def run_alchemy_review_preview(
     max_tokens: int | None = None,
     limit: int = 50,
 ) -> dict[str, Any]:
-    from .planner import preview_review_primitive
+    from aiwiki.planner import preview_review_primitive
 
     return preview_review_primitive(
         root,
@@ -2313,9 +2313,9 @@ def run_alchemy_review_apply(
     applied_at = utc_now()
     action_id = _unique_alchemy_review_action_id(root, applied_at=applied_at)
 
-    from .app_execution import append_execution_receipt_history
-    from .app_state import execution_receipt_history_path
-    from .render.paths import execution_receipt_path
+    from aiwiki.app_execution import append_execution_receipt_history
+    from aiwiki.app_state import execution_receipt_history_path
+    from aiwiki.render.paths import execution_receipt_path
 
     receipt_path = execution_receipt_path(root, action_id)
     audit_path = relative_path(root, execution_receipt_history_path(root))
@@ -2407,7 +2407,7 @@ def run_alchemy_propose_preview(
     max_tokens: int | None = None,
     limit: int = 50,
 ) -> dict[str, Any]:
-    from .planner import preview_propose_primitive
+    from aiwiki.planner import preview_propose_primitive
 
     return preview_propose_primitive(
         root,
@@ -2453,10 +2453,10 @@ def run_alchemy_propose_apply(
     if not candidates:
         raise RuntimeError("alchemy propose apply requires a non-empty dry-run preview")
 
-    from .app_execution import append_execution_receipt_history
-    from .app_state import execution_receipt_history_path
-    from .execution.l3_proposals import create_l3_proposal, load_l3_proposal_state
-    from .render.paths import execution_receipt_path
+    from aiwiki.app_execution import append_execution_receipt_history
+    from aiwiki.app_state import execution_receipt_history_path
+    from aiwiki.execution.l3_proposals import create_l3_proposal, load_l3_proposal_state
+    from aiwiki.render.paths import execution_receipt_path
 
     ensure_layout(root)
     existing_ids = {
@@ -2595,8 +2595,8 @@ def run_alchemy_lane_apply(
     max_pages: int | None = None,
     max_tokens: int | None = None,
 ) -> dict[str, Any]:
-    from .app_compile import apply_machine_memory_actions_batch
-    from .planner import preview_alchemy_lane
+    from aiwiki.app_compile import apply_machine_memory_actions_batch
+    from aiwiki.planner import preview_alchemy_lane
 
     normalized_action_ids = [item.strip() for item in (action_ids or []) if item.strip()]
     normalized_primitives = _normalize_lane_primitives(primitives or [])
@@ -3429,7 +3429,7 @@ def _alchemy_propose_prompt_content(root: Path, *, target_file: str, candidate: 
 
 
 def _unique_alchemy_propose_action_id(root: Path, *, applied_at: str) -> str:
-    from .render.paths import execution_receipt_path
+    from aiwiki.render.paths import execution_receipt_path
 
     timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
     base = slugify(f"alchemy-propose-{timestamp}")
@@ -3442,7 +3442,7 @@ def _unique_alchemy_propose_action_id(root: Path, *, applied_at: str) -> str:
 
 
 def _unique_alchemy_distill_action_id(root: Path, *, applied_at: str) -> str:
-    from .render.paths import execution_receipt_path
+    from aiwiki.render.paths import execution_receipt_path
 
     timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
     base = slugify(f"alchemy-distill-{timestamp}")
@@ -3455,7 +3455,7 @@ def _unique_alchemy_distill_action_id(root: Path, *, applied_at: str) -> str:
 
 
 def _unique_alchemy_judge_action_id(root: Path, *, applied_at: str) -> str:
-    from .render.paths import execution_receipt_path
+    from aiwiki.render.paths import execution_receipt_path
 
     timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
     base = slugify(f"alchemy-judge-{timestamp}")
@@ -3468,7 +3468,7 @@ def _unique_alchemy_judge_action_id(root: Path, *, applied_at: str) -> str:
 
 
 def _unique_alchemy_judge_proposal_action_id(root: Path, *, applied_at: str) -> str:
-    from .render.paths import execution_receipt_path
+    from aiwiki.render.paths import execution_receipt_path
 
     timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
     base = slugify(f"alchemy-judge-proposal-{timestamp}")
@@ -3481,7 +3481,7 @@ def _unique_alchemy_judge_proposal_action_id(root: Path, *, applied_at: str) -> 
 
 
 def _unique_alchemy_judge_proposal_apply_action_id(root: Path, *, applied_at: str) -> str:
-    from .render.paths import execution_receipt_path
+    from aiwiki.render.paths import execution_receipt_path
 
     timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
     base = slugify(f"alchemy-judge-proposal-apply-{timestamp}")
@@ -3494,7 +3494,7 @@ def _unique_alchemy_judge_proposal_apply_action_id(root: Path, *, applied_at: st
 
 
 def _unique_alchemy_review_action_id(root: Path, *, applied_at: str) -> str:
-    from .render.paths import execution_receipt_path
+    from aiwiki.render.paths import execution_receipt_path
 
     timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
     base = slugify(f"alchemy-review-{timestamp}")
@@ -3623,9 +3623,9 @@ def _run_receipted_lane_primitive(
 
     applied_at = utc_now()
     action_id = _unique_lane_primitive_action_id(root, lane=lane, primitive=primitive, applied_at=applied_at)
-    from .app_execution import append_execution_receipt_history
-    from .app_state import execution_receipt_history_path
-    from .render.paths import execution_receipt_path
+    from aiwiki.app_execution import append_execution_receipt_history
+    from aiwiki.app_state import execution_receipt_history_path
+    from aiwiki.render.paths import execution_receipt_path
 
     receipt_path = execution_receipt_path(root, action_id)
     audit_path = relative_path(root, execution_receipt_history_path(root))
@@ -3673,7 +3673,7 @@ def _run_receipted_lane_primitive(
 
 
 def _unique_lane_primitive_action_id(root: Path, *, lane: str, primitive: str, applied_at: str) -> str:
-    from .render.paths import execution_receipt_path
+    from aiwiki.render.paths import execution_receipt_path
 
     timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
     base = slugify(f"alchemy-{lane}-{primitive}-{timestamp}")
@@ -3751,42 +3751,42 @@ def _lane_receipt_result_summary(result: dict[str, Any]) -> dict[str, Any]:
 
 @runtime_write_operation
 def run_protocol_learn_age(root: Path, protocol: str | None = None, apply: bool = False) -> dict[str, Any]:
-    from .execution.protocol_learnings import age_learnings
+    from aiwiki.execution.protocol_learnings import age_learnings
 
     return age_learnings(root, protocol=protocol, apply=apply)
 
 
 @runtime_write_operation
 def run_protocol_learn_verify(root: Path, learning_id: str) -> dict[str, Any]:
-    from .execution.protocol_learnings import verify_learning
+    from aiwiki.execution.protocol_learnings import verify_learning
 
     return verify_learning(root, learning_id)
 
 
 @runtime_write_operation
 def run_protocol_learn_revert_activate(root: Path, learning_id: str, *, note: str | None = None) -> dict[str, Any]:
-    from .execution.protocol_learnings import revert_learning_activation
+    from aiwiki.execution.protocol_learnings import revert_learning_activation
 
     return revert_learning_activation(root, learning_id, note=note)
 
 
 @runtime_write_operation
 def run_protocol_learn_demote(root: Path, learning_id: str) -> dict[str, Any]:
-    from .execution.protocol_learnings import demote_learning
+    from aiwiki.execution.protocol_learnings import demote_learning
 
     return demote_learning(root, learning_id)
 
 
 @runtime_write_operation
 def run_protocol_learn_archive(root: Path, learning_id: str) -> dict[str, Any]:
-    from .execution.protocol_learnings import archive_learning
+    from aiwiki.execution.protocol_learnings import archive_learning
 
     return archive_learning(root, learning_id)
 
 
 @runtime_write_operation
 def run_protocol_learn_supersede(root: Path, replacement_id: str, superseded_ids: list[str]) -> dict[str, Any]:
-    from .execution.protocol_learnings import supersede_learning
+    from aiwiki.execution.protocol_learnings import supersede_learning
 
     return supersede_learning(root, replacement_id, superseded_ids)
 
@@ -4455,7 +4455,7 @@ def _load_prompt(root: Path, name: str) -> str:
     path = root / "prompts" / name
     if path.exists():
         return path.read_text(encoding="utf-8")
-    fallback = Path(__file__).resolve().parents[2] / "prompts" / name
+    fallback = Path(__file__).resolve().parents[3] / "prompts" / name
     if fallback.exists():
         return fallback.read_text(encoding="utf-8")
     raise FileNotFoundError(f"Missing prompt template `{name}` in `{path}` or runtime fallback `{fallback}`.")
@@ -4589,7 +4589,7 @@ def _append_log(root: Path, event: dict[str, Any]) -> None:
 
 def _append_llm_receipt(root: Path, event: dict[str, Any]) -> None:
     payload, line_number = _append_jsonl_log(root, ".aiwiki/logs/llm-receipts.jsonl", event)
-    from .execution.audit_preview import append_universal_audit_record
+    from aiwiki.execution.audit_preview import append_universal_audit_record
 
     append_universal_audit_record(
         root,
