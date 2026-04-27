@@ -14,8 +14,6 @@ DEFAULT_NVIDIA_NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MAX_CONTEXT_CHARS = 24000
 DEFAULT_CODEX_MODEL = "gpt-5.4"
 DEFAULT_NVIDIA_NIM_MODEL = "moonshotai/kimi-k2.5"
-DEFAULT_NVIDIA_NIM_FALLBACK_MODEL = "z-ai/glm-5.1"
-DEFAULT_NVIDIA_NIM_LAST_RESORT_MODEL = "minimaxai/minimax-m2.7"
 DEFAULT_CODEX_REASONING_EFFORT = "medium"
 DEFAULT_OPENAI_API_MODEL = "gpt-4.1-mini"
 DEFAULT_ANTHROPIC_API_MODEL = "claude-sonnet-4-20250514"
@@ -32,19 +30,13 @@ SUPPORTED_BACKENDS = {
     BACKEND_CLAUDE_CLI,
 }
 
-DEFAULT_NVIDIA_NIM_MODEL_CHAIN = (
-    DEFAULT_NVIDIA_NIM_MODEL,
-    DEFAULT_NVIDIA_NIM_FALLBACK_MODEL,
-    DEFAULT_NVIDIA_NIM_LAST_RESORT_MODEL,
-)
-
-
 @dataclass
 class LLMConfig:
     backend: str
     backend_requested: str = DEFAULT_BACKEND
     model: str = ""
     model_requested: str = ""
+    model_fallback_chain: tuple[str, ...] = ()
     api_key: str = ""
     anthropic_api_key: str = ""
     nvidia_nim_api_key: str = ""
@@ -64,11 +56,17 @@ class LLMConfig:
     claude_path: str = ""
 
     @classmethod
-    def from_env(cls) -> "LLMConfig":
+    def from_env(cls, *, model_fallback: Any | None = None) -> "LLMConfig":
         values = _read_env()
+        if model_fallback is not None:
+            values["model_fallback"] = model_fallback
         requested = values["requested_backend"]
         backend = _resolve_backend(values)
         effective_model = _effective_model(values["model"], backend)
+        effective_model_fallback_chain = _effective_model_fallback_chain(
+            effective_model,
+            _resolve_model_fallback_chain(values),
+        )
         effective_max_context_chars = _effective_max_context_chars(values["max_context_chars_override"])
         if backend == BACKEND_CODEX_CLI:
             if not values["codex_path"]:
@@ -105,6 +103,7 @@ class LLMConfig:
             backend_requested=requested,
             model=effective_model,
             model_requested=values["model"],
+            model_fallback_chain=effective_model_fallback_chain,
             api_key=effective_api_key,
             anthropic_api_key=values["anthropic_api_key"],
             nvidia_nim_api_key=values["nvidia_nim_api_key"],
@@ -136,6 +135,10 @@ class LLMConfig:
             missing = []
             message = ""
             effective_model = _effective_model(values["model"], backend)
+            effective_model_fallback_chain = _effective_model_fallback_chain(
+                effective_model,
+                _resolve_model_fallback_chain(values),
+            )
             effective_max_context_chars = _effective_max_context_chars(values["max_context_chars_override"])
             if backend == BACKEND_NVIDIA_NIM_API:
                 effective_api_key_present = bool(values["nvidia_nim_api_key"])
@@ -146,6 +149,10 @@ class LLMConfig:
             missing = _missing_items(values)
             message = str(exc)
             effective_model = ""
+            effective_model_fallback_chain = _effective_model_fallback_chain(
+                effective_model,
+                _resolve_model_fallback_chain(values),
+            )
             effective_max_context_chars = _effective_max_context_chars(values["max_context_chars_override"])
         return {
             "configured": configured,
@@ -156,7 +163,7 @@ class LLMConfig:
             "model_requested": values["model"],
             "model": effective_model or values["model"],
             "effective_model": effective_model,
-            "model_fallback_chain": list(_default_model_chain(backend, values["model"])),
+            "model_fallback_chain": list(effective_model_fallback_chain),
             "api_key_present": effective_api_key_present,
             "anthropic_api_key_present": bool(values["anthropic_api_key"]),
             "nvidia_nim_api_key_present": bool(values["nvidia_nim_api_key"]),
@@ -198,6 +205,7 @@ class LLMConfig:
 def _read_env() -> dict[str, Any]:
     requested_backend = (os.environ.get("AIWIKI_LLM_BACKEND") or DEFAULT_BACKEND).strip().lower()
     model = (os.environ.get("AIWIKI_LLM_MODEL") or os.environ.get("OPENAI_MODEL") or "").strip()
+    env_model_fallback = os.environ.get("AIWIKI_MODEL_FALLBACK")
     api_key = (os.environ.get("AIWIKI_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY") or "").strip()
     anthropic_api_key = (
         os.environ.get("AIWIKI_ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY") or ""
@@ -228,6 +236,8 @@ def _read_env() -> dict[str, Any]:
     return {
         "requested_backend": requested_backend,
         "model": model,
+        "model_fallback": None,
+        "env_model_fallback": env_model_fallback,
         "api_key": api_key,
         "anthropic_api_key": anthropic_api_key,
         "nvidia_nim_api_key": nvidia_nim_api_key,
@@ -282,6 +292,8 @@ def _effective_model(requested_model: str, backend: str) -> str:
     model = requested_model.strip()
     if model:
         return model
+    if backend == BACKEND_NVIDIA_NIM_API:
+        return DEFAULT_NVIDIA_NIM_MODEL
     defaults = _default_model_chain(backend, requested_model)
     if defaults:
         return defaults[0]
@@ -294,9 +306,37 @@ def _default_model_chain(backend: str, requested_model: str = "") -> tuple[str, 
         return (model,)
     if backend == BACKEND_CODEX_CLI:
         return (DEFAULT_CODEX_MODEL,)
-    if backend == BACKEND_NVIDIA_NIM_API:
-        return DEFAULT_NVIDIA_NIM_MODEL_CHAIN
     return ()
+
+
+def _resolve_model_fallback_chain(values: dict[str, Any]) -> tuple[str, ...]:
+    if values.get("model_fallback") is not None:
+        return _parse_model_fallback_chain(values.get("model_fallback"))
+    return _parse_model_fallback_chain(values.get("env_model_fallback"))
+
+
+def _parse_model_fallback_chain(raw: Any) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    raw_items: list[Any]
+    if isinstance(raw, (list, tuple)):
+        raw_items = list(raw)
+    else:
+        raw_items = [raw]
+    models: list[str] = []
+    seen: set[str] = set()
+    for item in raw_items:
+        for candidate in str(item or "").split(","):
+            model = candidate.strip()
+            if not model or model in seen:
+                continue
+            seen.add(model)
+            models.append(model)
+    return tuple(models)
+
+
+def _effective_model_fallback_chain(effective_model: str, fallback_chain: tuple[str, ...]) -> tuple[str, ...]:
+    return _parse_model_fallback_chain((effective_model, *fallback_chain))
 
 
 def _effective_max_context_chars(raw_override: str) -> int:

@@ -232,8 +232,7 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare A and B" --format rep
 - CLI 路径当前都无法给出精确 token usage，`usage_visibility` 会显示 `opaque-cli`；`nvidia-nim-api` 会直接返回 usage
 - `run-ask` 现在会先用 balanced prompt；如果碰到 timeout，会自动再试一次 lean prompt，只有 lean retry 也失败时，外层 Product Shell 才会做 deterministic fallback
 - `run-ask` 现在也支持显式 `--lean` 与 `--timeout <seconds>`，用于直接选择稳优先 prompt 或覆盖单次调用 timeout，而不改动全局环境变量
-- `nvidia-nim-api` 在模型留空时会按 `moonshotai/kimi-k2.5 -> z-ai/glm-5.1 -> minimaxai/minimax-m2.7` 依次尝试；不仅 API/timeout 类错误会切下一模型，`run-ask / run-compile / run-lint` 的产物校验失败也会切下一模型
-  - **过渡行为，计划去除**：该 backend 内置 model fallback chain 与 SoT §3 "Backend 与 model 显式手动选择" 不变量冲突。后续会改为：默认不做隐式 fallback；要 fallback 必须显式 `--model-fallback model_a,model_b` 或 `AIWIKI_LLM_MODEL_FALLBACK=...`。在迁移完成前请显式设置 `AIWIKI_LLM_MODEL` 钉死单个模型，避免依赖隐式 chain。
+- 默认不做隐式 model fallback；需要 fallback 时必须显式传 `--model-fallback model_a,model_b`（可重复）或设置 `AIWIKI_MODEL_FALLBACK=model_a,model_b`，CLI 参数优先于 env
 
 常见配置：
 
@@ -257,8 +256,8 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check --probe-all --probe-time
 - `codex-cli`：走 `codex login` 的本地会话；当前环境可用 `codex login status` 查看状态
 - `codex-cli`：可以通过 `AIWIKI_CODEX_REASONING_EFFORT=medium|high|xhigh` 调节非交互推理档位；当前默认是 `medium`
 - `nvidia-nim-api`：走 `AIWIKI_NVIDIA_NIM_API_KEY` 或 `NVIDIA_NIM_API_KEY`；base URL 默认 `https://integrate.api.nvidia.com/v1`
-- `nvidia-nim-api`：当前按 OpenAI-compatible `/v1/chat/completions` 接入；模型留空会按 `moonshotai/kimi-k2.5 -> z-ai/glm-5.1 -> minimaxai/minimax-m2.7` 依次尝试（**过渡行为；详见上文 SoT 不一致说明**）
-- `nvidia-nim-api`：建议显式设置 `AIWIKI_LLM_MODEL=moonshotai/kimi-k2.5` 或 `AIWIKI_LLM_MODEL=minimaxai/minimax-m2.7` 钉死单个模型，避免依赖隐式 chain
+- `nvidia-nim-api`：当前按 OpenAI-compatible `/v1/chat/completions` 接入；模型留空默认使用 `moonshotai/kimi-k2.5`，不会自动扩展为 fallback chain
+- `nvidia-nim-api`：如需多模型重试，显式设置 `AIWIKI_LLM_MODEL=moonshotai/kimi-k2.5` 并追加 `--model-fallback z-ai/glm-5.1,minimaxai/minimax-m2.7`，或设置 `AIWIKI_MODEL_FALLBACK=z-ai/glm-5.1,minimaxai/minimax-m2.7`
 - `copilot-cli`：官方推荐 `copilot login` 的浏览器设备码 OAuth；也支持 `COPILOT_GITHUB_TOKEN -> GH_TOKEN -> GITHUB_TOKEN -> stored OAuth token -> gh auth token` 的优先链
 - `copilot-cli` 的 GitHub OAuth 路径“可行”不等于“当前账号可用”；seat / org policy / quota 不足时，probe 仍会失败
 - 当前这台机器上的真实结论是：`copilot-cli` 仍可能返回 `402 no quota`；如果你要稳定跑 API 路，优先显式切到 `nvidia-nim-api`

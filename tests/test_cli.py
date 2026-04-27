@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shutil
 import tempfile
 import unittest
@@ -229,6 +230,50 @@ class CLITests(unittest.TestCase):
         self.assertIn("(no completed elixirs today)", stdout)
         self.assertIn("(no L3 proposals need attention)", stdout)
         self.assertIn("(no suggested next actions)", stdout)
+
+    def test_cli_model_fallback_single(self) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_status() -> dict[str, object]:
+            captured["fallback"] = os.environ.get("AIWIKI_MODEL_FALLBACK")
+            return {"status": "ok"}
+
+        with patch.dict(os.environ, {"AIWIKI_MODEL_FALLBACK": "env-fallback"}, clear=False):
+            with patch("aiwiki.cli.llm_status", side_effect=fake_status) as mocked_status:
+                code, payload, stderr = self._run_main(["--model-fallback", "foo", "llm-check"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload, {"status": "ok"})
+        mocked_status.assert_called_once()
+        self.assertEqual(captured["fallback"], "foo")
+
+    def test_cli_model_fallback_repeated(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["--model-fallback", "a", "--model-fallback", "b", "llm-check"])
+
+        self.assertEqual(args.model_fallback, ["a", "b"])
+
+    def test_cli_model_fallback_comma(self) -> None:
+        from aiwiki.cli import _flatten_model_fallback_args
+
+        self.assertEqual(_flatten_model_fallback_args(["a,b,c"]), ["a", "b", "c"])
+
+    def test_cli_overrides_env(self) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_status() -> dict[str, object]:
+            captured["fallback"] = os.environ.get("AIWIKI_MODEL_FALLBACK")
+            return {"status": "ok"}
+
+        with patch.dict(os.environ, {"AIWIKI_MODEL_FALLBACK": "env-a,env-b"}, clear=False):
+            with patch("aiwiki.cli.llm_status", side_effect=fake_status):
+                code, payload, stderr = self._run_main(["--model-fallback", "cli-a,cli-b", "llm-check"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload, {"status": "ok"})
+        self.assertEqual(captured["fallback"], "cli-a,cli-b")
 
     def test_today_renders_today_reports(self) -> None:
         summary = {

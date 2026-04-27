@@ -78,6 +78,18 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.nvidia_nim_api_key_source, "AIWIKI_NVIDIA_NIM_API_KEY")
         self.assertEqual(config.api_key, "nvapi_test_key")
         self.assertEqual(config.base_url, DEFAULT_NVIDIA_NIM_BASE_URL)
+        self.assertEqual(config.model_fallback_chain, (DEFAULT_NVIDIA_NIM_MODEL,))
+
+    def test_env_model_fallback(self) -> None:
+        config = self._from_env(
+            {
+                "AIWIKI_LLM_BACKEND": BACKEND_NVIDIA_NIM_API,
+                "AIWIKI_NVIDIA_NIM_API_KEY": "nvapi_test_key",
+                "AIWIKI_MODEL_FALLBACK": "fallback-a, fallback-b,,fallback-a",
+            }
+        )
+
+        self.assertEqual(config.model_fallback_chain, (DEFAULT_NVIDIA_NIM_MODEL, "fallback-a", "fallback-b"))
 
     def test_from_env_uses_requested_copilot_backend_when_available(self) -> None:
         config = self._from_env(
@@ -174,10 +186,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(status["backend"], BACKEND_NVIDIA_NIM_API)
         self.assertEqual(status["available_backends"], [BACKEND_NVIDIA_NIM_API])
         self.assertEqual(status["effective_model"], DEFAULT_NVIDIA_NIM_MODEL)
-        self.assertEqual(
-            status["model_fallback_chain"],
-            [DEFAULT_NVIDIA_NIM_MODEL, "z-ai/glm-5.1", "minimaxai/minimax-m2.7"],
-        )
+        self.assertEqual(status["model_fallback_chain"], [DEFAULT_NVIDIA_NIM_MODEL])
         self.assertTrue(status["api_key_present"])
         self.assertEqual(status["base_url"], DEFAULT_NVIDIA_NIM_BASE_URL)
         self.assertEqual(status["nvidia_nim_base_url"], DEFAULT_NVIDIA_NIM_BASE_URL)

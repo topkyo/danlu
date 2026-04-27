@@ -23,7 +23,6 @@ from .config import (
     DEFAULT_CODEX_MODEL,
     DEFAULT_NVIDIA_NIM_MODEL,
     LLMConfig,
-    _default_model_chain,
 )
 
 
@@ -631,11 +630,7 @@ def _instantiate_cli_client(config: LLMConfig, workdir: Path) -> Any:
 
 
 def _model_fallback_configs(config: LLMConfig) -> list[LLMConfig]:
-    if config.model_requested.strip():
-        return [_config_for_backend(config, config.backend)]
-    if config.backend != BACKEND_NVIDIA_NIM_API:
-        return [_config_for_backend(config, config.backend)]
-    candidate_models = list(_default_model_chain(config.backend, config.model_requested))
+    candidate_models = list(config.model_fallback_chain)
     if len(candidate_models) <= 1:
         return [_config_for_backend(config, config.backend)]
     base_config = _config_for_backend(config, config.backend)
@@ -650,6 +645,12 @@ def _is_model_fallback_error(message: str) -> bool:
 
 
 def advance_client_model(client: Any) -> bool:
+    clients = getattr(client, "clients", None)
+    client_configs = getattr(client, "client_configs", None)
+    if isinstance(clients, list) and len(clients) <= 1:
+        return False
+    if isinstance(client_configs, list) and len(client_configs) <= 1:
+        return False
     advance = getattr(client, "advance_model", None)
     if callable(advance):
         return bool(advance())

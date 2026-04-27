@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -104,6 +105,12 @@ from .signals import collect_signals
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aiwiki", description="Local-first knowledge compiler scaffold")
     parser.add_argument("--root", default=".", help="Project root. Defaults to the current directory.")
+    parser.add_argument(
+        "--model-fallback",
+        action="append",
+        dest="model_fallback",
+        help="Fallback model to try when current model fails. Repeatable or comma-separated. Overrides AIWIKI_MODEL_FALLBACK env.",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
     _register_legacy_top_level_parsers(subparsers)
     today_parser = subparsers.add_parser("today", help="炼丹炉今日产出 / 待办 / 建议")
@@ -987,6 +994,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     root = Path(args.root).resolve()
     text_output: str | None = None
+    fallback_env_was_set = "AIWIKI_MODEL_FALLBACK" in os.environ
+    previous_fallback_env = os.environ.get("AIWIKI_MODEL_FALLBACK", "")
+    if args.model_fallback is not None:
+        os.environ["AIWIKI_MODEL_FALLBACK"] = ",".join(_flatten_model_fallback_args(args.model_fallback))
 
     try:
         _emit_legacy_drop_deprecation_warning(args)
@@ -1505,6 +1516,12 @@ def main(argv: list[str] | None = None) -> int:
         parser.exit(130, "interrupted\n")
     except Exception as exc:  # pragma: no cover - exercised in CLI usage
         parser.exit(1, f"error: {exc}\n")
+    finally:
+        if args.model_fallback is not None:
+            if fallback_env_was_set:
+                os.environ["AIWIKI_MODEL_FALLBACK"] = previous_fallback_env
+            else:
+                os.environ.pop("AIWIKI_MODEL_FALLBACK", None)
 
     if text_output is not None:
         print(text_output)
@@ -1512,6 +1529,19 @@ def main(argv: list[str] | None = None) -> int:
 
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
+
+
+def _flatten_model_fallback_args(values: list[str]) -> list[str]:
+    models: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        for item in str(value or "").split(","):
+            model = item.strip()
+            if not model or model in seen:
+                continue
+            seen.add(model)
+            models.append(model)
+    return models
 
 
 def today_command(root: Path) -> int:

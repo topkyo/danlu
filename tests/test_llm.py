@@ -27,6 +27,7 @@ from aiwiki.llm import (
     LLMError,
     ModelFallbackClient,
     OpenAICompatClient,
+    advance_client_model,
     create_backend_client,
     probe_available_backends,
     probe_backend,
@@ -435,17 +436,19 @@ class LLMClientTests(unittest.TestCase):
         self.assertIsInstance(openai, OpenAICompatClient)
         self.assertIsInstance(codex, CodexCLIClient)
         self.assertIsInstance(copilot, CopilotCLIClient)
-        self.assertIsInstance(nvidia_nim, ModelFallbackClient)
+        self.assertIsInstance(nvidia_nim, OpenAICompatClient)
         self.assertIsInstance(claude, ClaudeCLIClient)
         self.assertIsInstance(anthropic, AnthropicClient)
 
-    def test_create_backend_client_nvidia_nim_falls_back_across_default_models(self) -> None:
+    def test_create_backend_client_uses_explicit_model_fallback_chain(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             root = Path(tempdir)
             client = create_backend_client(
                 LLMConfig(
                     backend=BACKEND_NVIDIA_NIM_API,
                     backend_requested=BACKEND_NVIDIA_NIM_API,
+                    model="moonshotai/kimi-k2.5",
+                    model_fallback_chain=("moonshotai/kimi-k2.5", "z-ai/glm-5.1"),
                     api_key="nvapi_test_key",
                     nvidia_nim_api_key="nvapi_test_key",
                     base_url="https://integrate.api.nvidia.com/v1",
@@ -484,6 +487,35 @@ class LLMClientTests(unittest.TestCase):
         self.assertEqual(attempts[0], "moonshotai/kimi-k2.5")
         self.assertEqual(attempts[1], "z-ai/glm-5.1")
         self.assertEqual(client.config.model, "z-ai/glm-5.1")
+
+    def test_nvidia_backend_no_implicit_chain(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            client = create_backend_client(
+                LLMConfig(
+                    backend=BACKEND_NVIDIA_NIM_API,
+                    backend_requested=BACKEND_NVIDIA_NIM_API,
+                    model="moonshotai/kimi-k2.5",
+                    model_fallback_chain=("moonshotai/kimi-k2.5",),
+                    api_key="nvapi_test_key",
+                    nvidia_nim_api_key="nvapi_test_key",
+                    base_url="https://integrate.api.nvidia.com/v1",
+                    nvidia_nim_base_url="https://integrate.api.nvidia.com/v1",
+                ),
+                root,
+            )
+
+        self.assertIsInstance(client, OpenAICompatClient)
+
+    def test_advance_client_model_empty_chain(self) -> None:
+        client = ModelFallbackClient(
+            LLMConfig(backend=BACKEND_NVIDIA_NIM_API, model="primary"),
+            Path.cwd(),
+            [LLMConfig(backend=BACKEND_NVIDIA_NIM_API, model="primary")],
+        )
+
+        self.assertFalse(advance_client_model(client))
+        self.assertEqual(client.index, 0)
 
     def test_probe_backend_reports_success_and_expected_output_match(self) -> None:
         config = LLMConfig(
