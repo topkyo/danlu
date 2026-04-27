@@ -492,6 +492,44 @@ def test_backend_failure_replay(  # pragma: no cover - explicit pytest acceptanc
         pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
 
 
+def test_universal_input_routing(  # pragma: no cover - explicit pytest acceptance gate
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B4: bare aiwiki drop <payload> routes into the typed drop-note handler."""
+    _, vault = _copy_case_and_fix_clock_from("M6.2", "case_universal_input", tmp_path, monkeypatch)
+
+    bare_source = str(vault / "inputs" / "universal-note.md")
+    bare_out = _run_cli(vault, ["drop", f"note: {bare_source}"])
+    bare_payload = json.loads(bare_out)
+
+    _, typed_vault = _copy_case_and_fix_clock_from(
+        "M6.2", "case_universal_input", tmp_path / "typed", monkeypatch
+    )
+    typed_source = str(typed_vault / "inputs" / "universal-note.md")
+    typed_out = _run_cli(typed_vault, ["drop", "note", typed_source])
+    typed_payload = json.loads(typed_out)
+
+    assert bare_payload["material"] == typed_payload["material"] == "note"
+    assert bare_payload["note_kind"] == typed_payload["note_kind"] == "note"
+    assert bare_payload["original_path"] == bare_source
+    assert typed_payload["original_path"] == typed_source
+    assert bare_payload["title"] == typed_payload["title"] == "M6.2 universal input acceptance"
+
+    bare_notes = sorted((vault / "raw" / "inbox").glob("*universal-input-acceptance.md"))
+    typed_notes = sorted((typed_vault / "raw" / "inbox").glob("*universal-input-acceptance.md"))
+    assert len(bare_notes) == len(typed_notes) == 1
+    bare_note_text = bare_notes[0].read_text(encoding="utf-8")
+    typed_note_text = typed_notes[0].read_text(encoding="utf-8")
+    assert bare_note_text.replace(bare_source, "<source>") == typed_note_text.replace(typed_source, "<source>")
+
+    bare_history = _load_jsonl(vault / ".aiwiki/state/runtime-history.jsonl")
+    typed_history = _load_jsonl(typed_vault / ".aiwiki/state/runtime-history.jsonl")
+    assert bare_history[-1]["event_type"] == "raw-added"
+    assert typed_history[-1]["event_type"] == "raw-added"
+    assert bare_history[-1]["material"] == "note"
+    assert typed_history[-1]["material"] == "note"
+
+
 def test_acceptance_no_stop_line_violations() -> None:
     """B4 guardrail: acceptance goldens must not contain Stop Line violation keywords."""
     forbidden = ["lane_judge", "auto_judge", "l3-proposal-accept", "l3-proposal-apply", "hidden_backend"]
