@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 
 from aiwiki.execution.audit_preview import (
+    AuditAppendError,
+    append_audit,
     append_universal_audit_record,
     backfill_universal_audit_stream,
     preview_universal_audit_stream,
@@ -217,3 +219,79 @@ class AuditPreviewTests(unittest.TestCase):
         ]
         self.assertEqual(audit_records, [direct["record"]])
         self.assertEqual((self.root / ".aiwiki/state/execution-receipts.jsonl").read_text(encoding="utf-8"), source_before)
+
+    def test_append_audit_writes_new_event(self) -> None:
+        result = append_audit(
+            "execution_receipts",
+            {
+                "source_ref": ".aiwiki/state/execution-receipts.jsonl#L1",
+                "event_type": "apply",
+                "occurred_at": "2026-04-26T10:00:00+00:00",
+                "trace_id": "trace-exec",
+                "subject": {"kind": "machine_memory_action", "id": "act-1"},
+                "revert_supported": True,
+            },
+            event_id="audit-new",
+            root=self.root,
+        )
+
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertTrue(result.written)
+        self.assertEqual(result.reason, "appended")
+        self.assertEqual(len(audit_records), 1)
+        self.assertEqual(
+            audit_records[0],
+            {
+                "audit_event_id": "audit-new",
+                "source_stream": "execution_receipts",
+                "source_ref": ".aiwiki/state/execution-receipts.jsonl#L1",
+                "event_type": "apply",
+                "occurred_at": "2026-04-26T10:00:00+00:00",
+                "trace_id": "trace-exec",
+                "subject": {"kind": "machine_memory_action", "id": "act-1"},
+                "revert_supported": True,
+            },
+        )
+
+    def test_append_audit_duplicate_event_id_is_noop(self) -> None:
+        first = append_audit("runtime_history", {"event_type": "nightly"}, event_id="audit-dup", root=self.root)
+        second = append_audit("runtime_history", {"event_type": "nightly"}, event_id="audit-dup", root=self.root)
+
+        audit_lines = (self.root / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertTrue(first.written)
+        self.assertFalse(second.written)
+        self.assertEqual(second.reason, "duplicate")
+        self.assertEqual(len(audit_lines), 1)
+
+    def test_append_audit_preserves_source_envelope(self) -> None:
+        append_audit("llm_receipts", {"event_type": "ok"}, event_id="audit-llm", timestamp="2026-04-26T10:01:00+00:00", root=self.root)
+        append_audit(
+            "protocol_learnings_age",
+            {"event_type": "protocol_learnings_age"},
+            event_id="audit-age",
+            timestamp="2026-04-26T10:02:00+00:00",
+            root=self.root,
+        )
+
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual([record["source_stream"] for record in audit_records], ["llm_receipts", "protocol_learnings_age"])
+        self.assertEqual([record["audit_event_id"] for record in audit_records], ["audit-llm", "audit-age"])
+        self.assertEqual([record["occurred_at"] for record in audit_records], ["2026-04-26T10:01:00+00:00", "2026-04-26T10:02:00+00:00"])
+
+    def test_append_audit_rejects_invalid_payload(self) -> None:
+        with self.assertRaisesRegex(ValueError, "payload must be a dict"):
+            append_audit("execution_receipts", [], event_id="audit-invalid", root=self.root)  # type: ignore[arg-type]
+
+    def test_append_audit_raises_explicit_error_when_file_unwritable(self) -> None:
+        state_path = self.root / ".aiwiki/state"
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text("not a directory", encoding="utf-8")
+
+        with self.assertRaisesRegex(AuditAppendError, "failed to append audit record"):
+            append_audit("execution_receipts", {"event_type": "apply"}, event_id="audit-fail", root=self.root)
