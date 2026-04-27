@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from aiwiki.config import LLMConfig
 from aiwiki.llm import CompletionResult, LLMError
 from aiwiki.runner.interfaces import SupportsComplete
 
@@ -21,6 +22,10 @@ class ReplayBackend:
             (json.loads(path.read_text(encoding="utf-8")) for path in response_dir.glob("*.json")),
             key=lambda response: int(response["sequence"]),
         )
+        first_response = self._responses[0] if self._responses else {}
+        backend = str(first_response.get("backend") or "replay")
+        model = str(first_response.get("model") or "replay-model")
+        self.config = LLMConfig(backend=backend, backend_requested=backend, model=model, model_requested=model)
         self._call_count = 0
 
     def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
@@ -89,6 +94,7 @@ def inject_replay_client(monkeypatch, case_dir: Path) -> None:
         return backend
 
     monkeypatch.setattr("aiwiki.runner.clients.create_client", _fake_create_client)
+    monkeypatch.setattr("aiwiki.runner.workflows.create_client", _fake_create_client)
 
 
 def inject_recording_client(monkeypatch, case_dir: Path) -> None:
@@ -107,3 +113,4 @@ def inject_recording_client(monkeypatch, case_dir: Path) -> None:
         return RecordingBackend(case_dir, real, backend=backend, model=model)
 
     monkeypatch.setattr("aiwiki.runner.clients.create_client", _fake_create_client)
+    monkeypatch.setattr("aiwiki.runner.workflows.create_client", _fake_create_client)

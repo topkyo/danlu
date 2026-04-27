@@ -1,0 +1,2 @@
+{"audit_event_id": "audit-d6ee7bb7998c47fdd4aa", "event_type": "query", "occurred_at": "", "revert_supported": false, "source_ref": ".aiwiki/state/runtime-history.jsonl#L1", "source_stream": "runtime_history", "subject": {"id": "", "kind": "query"}, "trace_id": ""}
+{"audit_event_id": "audit-3b72c3cfd20e5f494fcd", "event_type": "success", "occurred_at": "2026-04-27T00:00:00+00:00", "revert_supported": false, "source_ref": ".aiwiki/logs/llm-receipts.jsonl#L1", "source_stream": "llm_receipts", "subject": {"id": "", "kind": "success"}, "trace_id": ""}

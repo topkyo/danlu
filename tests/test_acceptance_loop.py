@@ -13,6 +13,7 @@ from unittest.mock import patch
 import pytest
 
 from aiwiki.cli import main
+from tests.acceptance.llm_replay import inject_replay_client
 
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "acceptance" / "M6.1"
 TRACE_ID = "550e8400-e29b-41d4-a716-446655440000"
@@ -76,15 +77,29 @@ def _read_optional_bytes(path: Path) -> bytes | None:  # pragma: no cover - expl
 def _copy_case_and_fix_clock(  # pragma: no cover - exercised by explicit pytest acceptance gate
     case_name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[Path, Path]:
-    case = FIXTURE_ROOT / case_name
+    return _copy_case_and_fix_clock_from("M6.1", case_name, tmp_path, monkeypatch)
+
+
+def _copy_case_and_fix_clock_from(  # pragma: no cover - exercised by explicit pytest acceptance gate
+    group: str, case_name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, Path]:
+    case = Path(__file__).parent / "fixtures" / "acceptance" / group / case_name
     vault = tmp_path / "vault"
     shutil.copytree(case / "root", vault)
     monkeypatch.setattr("aiwiki.clock.utc_now", lambda: FIXED_NOW)
     monkeypatch.setattr("aiwiki.runner.alchemy.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.execution.alchemy.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.app_utils.utc_now", lambda: FIXED_NOW.isoformat())
+    monkeypatch.setattr("aiwiki.app_compile.utc_now", lambda: FIXED_NOW.isoformat())
+    monkeypatch.setattr("aiwiki.content.io.utc_now", lambda: FIXED_NOW.isoformat())
+    monkeypatch.setattr("aiwiki.render.paths.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.app_shell.utc_now", lambda: FIXED_NOW.isoformat())
+    monkeypatch.setattr("aiwiki.execution.ask.datetime", _FixedDateTime)
+    monkeypatch.setattr("aiwiki.runner.receipts.datetime", _FixedDateTime)
+    monkeypatch.setattr("aiwiki.execution.audit_preview.datetime", _FixedDateTime)
+    monkeypatch.setattr("aiwiki.content.memory.datetime", _FixedDateTime)
     monkeypatch.setattr("aiwiki.app_linting.datetime", _FixedDateTime)
+    monkeypatch.setattr("aiwiki.app_queries.datetime", _FixedDateTime)
     uuids = itertools.count(1)
     monkeypatch.setattr("aiwiki.signals.collector.uuid.uuid4", lambda: uuid.UUID(int=next(uuids)))
     return case, vault
@@ -96,6 +111,69 @@ def _run_b1_chain(vault: Path) -> tuple[bytes, bytes, bytes]:  # pragma: no cove
         _run_cli(vault, ["planner-log-replay", "--execute"]),
         _run_cli(vault, ["alchemy", "auto", "--dry-run", "--scope", "all"]),
     )
+
+
+def test_happy_run_ask_replay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    case, vault = _copy_case_and_fix_clock_from("M6.1b", "case_happy_run_ask", tmp_path, monkeypatch)
+    inject_replay_client(monkeypatch, case)
+
+    out = _run_cli(vault, ["run-ask", "deterministic source-a", "--format", "report"])
+    payload = json.loads(out)
+
+    _write_or_compare(case / "expected" / "stdout" / "01-run-ask.json", out)
+    if not REFRESH:
+        assert payload["backend_requested"] == "codex-cli"
+        assert payload["backend_effective"] == "codex-cli"
+        assert payload["model_selected"] == "stub-model"
+        assert payload["model_final"] == "stub-model"
+        assert payload["contract_validated"] is True
+        assert payload.get("delivery_mode", "llm-success") == "llm-success"
+        assert payload["ranked_sources"] == ["source-a"]
+
+    target_file = vault / payload["path"]
+    assert target_file.exists()
+    content = target_file.read_text(encoding="utf-8")
+    assert content.strip()
+    assert "wiki/sources/source-a.md" in content
+
+    receipts = _load_jsonl(vault / ".aiwiki" / "logs" / "llm-receipts.jsonl")
+    assert len(receipts) == 1
+    receipt = receipts[0]
+    assert receipt["event"] == "run-ask"
+    assert receipt["status"] == "success"
+    assert receipt["backend_effective"] == "codex-cli"
+    assert receipt["model_final"] == "stub-model"
+    assert receipt["response_id"] == "stub-response-id"
+    assert receipt["usage"] == {"input_tokens": 10, "output_tokens": 20}
+
+    audit = _load_jsonl(vault / ".aiwiki" / "state" / "audit.jsonl")
+    assert [record["event_type"] for record in audit] == ["query", "success"]
+    assert [record["source_stream"] for record in audit] == ["runtime_history", "llm_receipts"]
+    assert audit[-1]["subject"] == {"kind": "success", "id": ""}
+
+    shell_summary = json.loads((vault / "output" / "control" / "shell-summary.json").read_text(encoding="utf-8"))
+    latest_llm = shell_summary["latest_llm_run"]
+    # run-ask writes the LLM receipt after ask_question refreshes shell-summary; the
+    # persisted shell summary is still byte-frozen to guard deterministic fields.
+    assert isinstance(latest_llm, dict)
+
+    _assert_files_byte_equal(
+        vault,
+        case / "expected",
+        [
+            ".aiwiki/logs/llm-receipts.jsonl",
+            ".aiwiki/logs/runs.jsonl",
+            ".aiwiki/state/audit.jsonl",
+        ],
+    )
+
+    audit_text = (vault / ".aiwiki" / "state" / "audit.jsonl").read_text(encoding="utf-8")
+    assert "lane_judge" not in audit_text
+    assert "auto_judge" not in audit_text
+    assert "l3-proposal-accept" not in audit_text
+
+    if REFRESH:
+        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
 
 
 def _assert_lane_receipt_fields(receipts: list[dict[str, object]], primitives: list[str]) -> None:
