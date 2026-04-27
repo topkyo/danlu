@@ -31,6 +31,12 @@ from ..app_utils import relative_path, runtime_write_operation
 from ..compile import compile_wiki
 
 
+def _append_run_event(root: Path, event: dict[str, Any]) -> None:
+    from ..runner.receipts import _append_log
+
+    _append_log(root, event)
+
+
 def nightly_health(root: Path) -> dict[str, Any]:
     ensure_layout(root)
     compile_result = compile_wiki(root)
@@ -46,6 +52,7 @@ def nightly_health(root: Path) -> dict[str, Any]:
     from .. import app_compile as _app_compile
 
     auto_applied: list[dict[str, Any]] = []
+    auto_failed: list[dict[str, Any]] = []
     try:
         action_state = load_machine_memory_action_state(root)
         accepted_ids = [
@@ -71,12 +78,21 @@ def nightly_health(root: Path) -> dict[str, Any]:
                     bundle_path=str(dry.get("bundle_path") or ""),
                 )
                 auto_applied.append(result)
-            except Exception:
-                pass  # skip individual failures; don't block nightly
+            except Exception as exc:
+                auto_failed.append(
+                    {"id": aid, "reason": str(exc), "error_type": type(exc).__name__}
+                )
         if auto_applied:
             compile_result = compile_wiki(root)
-    except Exception:
-        pass  # don't let auto-consumption errors block nightly
+    except Exception as exc:
+        _append_run_event(
+            root,
+            {
+                "event": "nightly_auto_consume_outer_failure",
+                "reason": str(exc),
+                "error_type": type(exc).__name__,
+            },
+        )
 
     state = write_nightly_health(
         root,
@@ -93,6 +109,7 @@ def nightly_health(root: Path) -> dict[str, Any]:
         "aging": state["aging"],
         "repair_backlog": state["repair_backlog"]["path"],
         "auto_applied": auto_applied,
+        "auto_failed": auto_failed,
         "state_path": relative_path(root, nightly_health_state_path(root)),
     }
 

@@ -360,6 +360,15 @@ class DropTests(unittest.TestCase):
             )
 
         self.assertEqual(paths, [f"raw/assets/{created.name}"])
+        events = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/logs/runs.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(events[-1]["event"], "url_image_download_skipped")
+        self.assertEqual(events[-1]["url"], "https://example.test/broken.png")
+        self.assertEqual(events[-1]["reason"], "boom")
+        self.assertEqual(events[-1]["error_type"], "RuntimeError")
 
     def test_materialize_binary_source_supports_remote_and_missing_local_file(self) -> None:
         remote_asset = self.root / "raw" / "assets" / "remote.bin"

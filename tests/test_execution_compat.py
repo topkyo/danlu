@@ -29,7 +29,9 @@ Guards (post independent oracle review):
 
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -518,6 +520,78 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
         # Two calls per accepted id: one dry-run, one real.
         self.assertEqual(len(observed), 2)
         self.assertEqual(len(result["auto_applied"]), 1)
+
+    def test_nightly_auto_consume_per_item_failure_is_returned(self) -> None:
+        from aiwiki.execution import runtime_surfaces
+
+        with patch.object(runtime_surfaces, "ensure_layout"), patch.object(
+            runtime_surfaces, "compile_wiki", return_value={"status": "ok"}
+        ), patch.object(
+            runtime_surfaces, "promote_recurring_outputs", return_value={"count": 0}
+        ), patch.object(
+            runtime_surfaces, "lint_wiki", return_value={}
+        ), patch.object(
+            runtime_surfaces,
+            "load_machine_memory_action_state",
+            return_value={
+                "actions": [
+                    {
+                        "id": "act-fail",
+                        "status": "accepted",
+                        "active": True,
+                        "kind": next(iter(runtime_surfaces.LOW_RISK_APPLYABLE_ACTION_KINDS)),
+                    }
+                ]
+            },
+        ), patch.object(
+            runtime_surfaces,
+            "write_nightly_health",
+            return_value={"aging": {}, "repair_backlog": {"path": "x"}},
+        ), patch.object(
+            runtime_surfaces, "nightly_health_state_path", return_value=MagicMock()
+        ), patch.object(
+            runtime_surfaces, "relative_path", return_value="x"
+        ), patch(
+            "aiwiki.app_compile.apply_machine_memory_action",
+            side_effect=RuntimeError("apply boom"),
+        ):
+            result = runtime_surfaces.nightly_health(MagicMock())
+
+        self.assertEqual(result["auto_applied"], [])
+        self.assertEqual(
+            result["auto_failed"],
+            [{"id": "act-fail", "reason": "apply boom", "error_type": "RuntimeError"}],
+        )
+
+    def test_nightly_auto_consume_outer_failure_writes_run_event(self) -> None:
+        from aiwiki.execution import runtime_surfaces
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            with patch.object(runtime_surfaces, "compile_wiki", return_value={"status": "ok"}), patch.object(
+                runtime_surfaces, "promote_recurring_outputs", return_value={"count": 0}
+            ), patch.object(runtime_surfaces, "lint_wiki", return_value={}), patch.object(
+                runtime_surfaces,
+                "load_machine_memory_action_state",
+                side_effect=RuntimeError("state unreadable"),
+            ), patch.object(
+                runtime_surfaces,
+                "write_nightly_health",
+                return_value={"aging": {}, "repair_backlog": {"path": "x"}},
+            ), patch.object(
+                runtime_surfaces, "relative_path", return_value=".aiwiki/state/nightly-health.json"
+            ):
+                result = runtime_surfaces.nightly_health(root)
+
+            events = [
+                json.loads(line)
+                for line in (root / ".aiwiki/logs/runs.jsonl").read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+        self.assertEqual(result["auto_failed"], [])
+        self.assertEqual(events[-1]["event"], "nightly_auto_consume_outer_failure")
+        self.assertEqual(events[-1]["reason"], "state unreadable")
+        self.assertEqual(events[-1]["error_type"], "RuntimeError")
 
     def test_b3_lifecycle_module_resolves_to_execution_module(self) -> None:
         import importlib

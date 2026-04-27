@@ -6,6 +6,13 @@
 
 ## 状态
 
+- **M6.7.3 silent fail observability — 完成**
+  - **目的**: 将 AGENTS.md “不得静默吞错”落到 6 条降级路径；主流程继续 non-blocking，但失败通过 `runs.jsonl` 事件或返回 sentinel / `auto_failed` 可观测。
+  - **核心做法**: `ask.py` / `notify.py` / `drop.py` / `runtime_surfaces.py` 复用 `runner.receipts._append_log` 写 `.aiwiki/logs/runs.jsonl`；`summary.py` metrics 异常返回 `_metrics_unavailable` sentinel；nightly auto-consume per-item 失败返回 `auto_failed`。
+  - **测试**: 新增/扩展失败路径单测覆盖 notify outer guard、notify audit fallback、ask notify dispatch、metrics sentinel、nightly per-item + outer、URL image skip。
+  - **Gates**: `scripts/verify.sh` 5/5 pass（1320 tests，coverage 93%，"All checks passed!"）；`scripts/run_acceptance.sh -v` 5/5 pass（12/12）；focused failure-path tests 14 pass。
+  - **Stop Lines**: 0 acceptance golden change；0 receipt/audit/core shell-summary schema change；主流程不新增 RuntimeError；contract 已归档到 `.codex/contracts/archive/M6.7.3-silent-fail-observability.md`。
+
 - **M6.7.2 cli.py subpackage split — 完成（literal move + import rewire，本地待 push）**
   - **现状**: `src/aiwiki/cli.py` 1955 LOC 巨石已删除，替换为 `src/aiwiki/cli/` subpackage：`__init__.py` 41 LOC、`__main__.py` 8 LOC、`dispatch.py` 1045 LOC、`parsers.py` 915 LOC
   - **目的**: 在不改变 CLI 行为、stdout/JSON/exit-code、schema 的前提下，把 argparse 注册与 main dispatch 拆开，为后续 command-group 拆分降低风险

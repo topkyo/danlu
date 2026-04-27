@@ -33,6 +33,12 @@ except ImportError:  # pragma: no cover - optional dependency
 USER_AGENT = "aiwiki/0.1 (+https://local)"
 MAX_TEXT_CHARS = 120000
 MAX_URL_IMAGES = 6
+
+
+def _append_run_event(root: Path, event: dict[str, Any]) -> None:
+    from .runner.receipts import _append_log
+
+    _append_log(root, event)
 BROWSER_RENDER_TIMEOUT_SECONDS = 45
 BROWSER_VIRTUAL_TIME_BUDGET_MS = 8000
 TEXT_FILE_SUFFIXES = {
@@ -892,7 +898,16 @@ def _materialize_url_images(root: Path, image_urls: list[str], preferred_slug: s
     for index, image_url in enumerate(image_urls[:MAX_URL_IMAGES], start=1):
         try:
             asset_path, _ = _download_asset_url(root, image_url, f"{preferred_slug}-image-{index}")
-        except Exception:
+        except Exception as exc:
+            _append_run_event(
+                root,
+                {
+                    "event": "url_image_download_skipped",
+                    "url": image_url,
+                    "reason": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+            )
             continue
         stored.append(relative_path(root, asset_path))
     return stored

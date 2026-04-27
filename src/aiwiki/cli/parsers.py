@@ -912,4 +912,3 @@ def _add_auto_flags(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="When used with --auto, skip the LLM semantic lint pass.",
     )
-

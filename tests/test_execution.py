@@ -279,6 +279,21 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(state["candidates"][0]["artifact_ref"], result["path"])
         self.assertEqual(state["candidates"][0]["candidate_state"], "pending")
 
+    def test_ask_question_records_notify_dispatch_failure_without_raising(self) -> None:
+        with patch("aiwiki.execution.ask.notify_report_generated", side_effect=RuntimeError("notify boom")):
+            result = ask_question(self.root, "Should we increase transformer training spend?", "report")
+
+        events = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/logs/runs.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertIn("path", result)
+        self.assertEqual(events[-1]["event"], "notify_dispatch_failed")
+        self.assertEqual(events[-1]["reason"], "notify boom")
+        self.assertEqual(events[-1]["error_type"], "RuntimeError")
+        self.assertEqual(events[-1]["artifact"], result["path"])
+
     def test_ask_with_corpus_flag_reuses_corpus_id(self) -> None:
         first = run_ask(self.root, "First question?", "report", client=_StubClient(["---\nfront: yes\n---\n# Title\n\nBody.\n"]))
         second = run_ask(

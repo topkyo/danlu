@@ -108,6 +108,12 @@ from .protocol_learnings import load_learnings_for_protocol
 # pattern.
 
 
+def _append_run_event(root: Path, event: dict[str, Any]) -> None:
+    from ..runner.receipts import _append_log
+
+    _append_log(root, event)
+
+
 @runtime_write_operation
 def ask_question(
     root: Path,
@@ -326,8 +332,17 @@ def ask_question(
                 "created_at": created_at,
             },
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        _append_run_event(
+            root,
+            {
+                "event": "notify_dispatch_failed",
+                "reason": str(exc),
+                "error_type": type(exc).__name__,
+                "artifact": artifact_ref,
+                "protocol": active_protocol,
+            },
+        )
     append_wiki_log(
         root,
         "query",

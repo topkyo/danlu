@@ -19,6 +19,12 @@ _ENABLED_CHANNELS_ENV = "AIWIKI_NOTIFY_ENABLED_CHANNELS"
 _HTTP_TIMEOUT_SECONDS = 5
 
 
+def _append_run_event(root: Path, event: dict[str, Any]) -> None:
+    from .runner.receipts import _append_log
+
+    _append_log(root, event)
+
+
 @dataclass(frozen=True)
 class NotifyConfig:
     """Environment-backed notification settings."""
@@ -80,7 +86,15 @@ def notify_report_generated(root: Path, artifact: dict[str, Any]) -> None:
                 continue
             reason, status_code, error_type = failure
             _safe_record_notify_failed(root, artifact, channel, reason, status_code, error_type)
-    except Exception:
+    except Exception as exc:
+        _append_run_event(
+            root,
+            {
+                "event": "notify_dispatch_failed",
+                "reason": str(exc),
+                "error_type": type(exc).__name__,
+            },
+        )
         return
 
 
@@ -154,7 +168,20 @@ def _safe_record_notify_failed(
 ) -> None:
     try:
         _record_notify_failed(root, artifact, channel, reason, status_code, error_type)
-    except Exception:
+    except Exception as exc:
+        try:
+            _append_run_event(
+                root,
+                {
+                    "event": "notify_audit_append_failed",
+                    "channel": channel,
+                    "reason": reason,
+                    "audit_error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+            )
+        except Exception:
+            return
         return
 
 

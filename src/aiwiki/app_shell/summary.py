@@ -301,5 +301,14 @@ def _build_metrics_summary(root: Path) -> list[dict[str, object]]:
             }
             for metric in compute_metrics(build_metrics_snapshot(root))
         ]
-    except Exception:
-        return []
+    except Exception as exc:
+        return [
+            {
+                "key": "_metrics_unavailable",
+                "value": None,
+                "unit": "",
+                "reason": str(exc),
+                "sample_size": 0,
+                "error_type": type(exc).__name__,
+            }
+        ]

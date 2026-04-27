@@ -9,7 +9,7 @@ import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
-from aiwiki.notify import notify_report_generated
+from aiwiki.notify import _safe_record_notify_failed, notify_report_generated
 
 
 class FakeHTTPResponse:
@@ -49,6 +49,12 @@ class NotifyTests(unittest.TestCase):
 
     def _read_audit(self) -> list[dict[str, object]]:
         path = self._audit_path()
+        if not path.exists():
+            return []
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+    def _read_runs(self) -> list[dict[str, object]]:
+        path = self.root / ".aiwiki/logs/runs.jsonl"
         if not path.exists():
             return []
         return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -201,6 +207,32 @@ class NotifyTests(unittest.TestCase):
         audit_text = self._audit_path().read_text(encoding="utf-8")
         self.assertNotIn("SECRET-TOKEN-123", audit_text)
         self.assertNotIn("test.example.com", audit_text)
+
+    def test_notify_outer_guard_records_dispatch_failure(self) -> None:
+        with patch("aiwiki.notify.NotifyConfig.from_env", side_effect=RuntimeError("bad env")):
+            notify_report_generated(self.root, self.artifact)
+
+        events = self._read_runs()
+        self.assertEqual(events[-1]["event"], "notify_dispatch_failed")
+        self.assertEqual(events[-1]["reason"], "bad env")
+        self.assertEqual(events[-1]["error_type"], "RuntimeError")
+
+    def test_notify_audit_append_failure_records_fallback_run_event(self) -> None:
+        with patch("aiwiki.notify._record_notify_failed", side_effect=RuntimeError("audit down")):
+            _safe_record_notify_failed(
+                self.root,
+                self.artifact,
+                "feishu",
+                "network_error",
+                None,
+                "URLError",
+            )
+
+        events = self._read_runs()
+        self.assertEqual(events[-1]["event"], "notify_audit_append_failed")
+        self.assertEqual(events[-1]["channel"], "feishu")
+        self.assertEqual(events[-1]["reason"], "network_error")
+        self.assertEqual(events[-1]["audit_error"], "audit down")
 
 
 if __name__ == "__main__":

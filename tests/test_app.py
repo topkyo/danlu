@@ -5186,6 +5186,24 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("capabilities", written)
         self.assertIn("judgment_assets", written)
 
+    def test_shell_status_surfaces_metrics_unavailable_sentinel(self) -> None:
+        with patch("aiwiki.metrics_io.build_metrics_snapshot", side_effect=RuntimeError("metrics boom")):
+            result = shell_status(self.root)
+
+        self.assertEqual(
+            result["metrics"],
+            [
+                {
+                    "key": "_metrics_unavailable",
+                    "value": None,
+                    "unit": "",
+                    "reason": "metrics boom",
+                    "sample_size": 0,
+                    "error_type": "RuntimeError",
+                }
+            ],
+        )
+
     def test_shell_status_surfaces_recent_outputs_and_query_runs(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
