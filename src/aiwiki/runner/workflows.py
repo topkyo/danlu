@@ -63,11 +63,11 @@ from aiwiki.runner.prompts import (
     _validate_source_page,
 )
 from aiwiki.runner.receipts import (
-    _append_llm_receipt_and_log,
     _build_llm_audit,
     _empty_llm_audit,
     _llm_audit_from_result,
     _merge_llm_audits,
+    record_llm_attempt,
 )
 
 RUN_ASK_FRONTDOOR_EVENT = "run-ask-frontdoor"
@@ -123,7 +123,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
     if (not pending and not pending_concept_slugs and not pending_rewrite_candidates) or limit <= 0:
         llm_audit = _empty_llm_audit()
         rewrite_payload = rewrite_recovery_payload_for_paths(root, updated_rewrite_proposal_pages)
-        _append_llm_receipt_and_log(
+        record_llm_attempt(
             root,
             summary_base_event(int((time.monotonic() - started) * 1000)),
             llm_audit,
@@ -220,7 +220,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     contract_validated=True,
                 )
                 aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
-                _append_llm_receipt_and_log(
+                record_llm_attempt(
                     root,
                     {
                         "event": "run-compile",
@@ -245,7 +245,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     contract_validated=False,
                 )
                 aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
-                _append_llm_receipt_and_log(
+                record_llm_attempt(
                     root,
                     {
                         "event": "run-compile",
@@ -350,7 +350,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     contract_validated=True,
                 )
                 aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
-                _append_llm_receipt_and_log(
+                record_llm_attempt(
                     root,
                     {
                         "event": "run-compile-concept",
@@ -375,7 +375,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     contract_validated=False,
                 )
                 aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
-                _append_llm_receipt_and_log(
+                record_llm_attempt(
                     root,
                     {
                         "event": "run-compile-concept",
@@ -491,7 +491,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     contract_validated=True,
                 )
                 aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
-                _append_llm_receipt_and_log(
+                record_llm_attempt(
                     root,
                     {
                         "event": "run-compile-concept-rewrite-proposal",
@@ -519,7 +519,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     contract_validated=False,
                 )
                 aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
-                _append_llm_receipt_and_log(
+                record_llm_attempt(
                     root,
                     {
                         "event": "run-compile-concept-rewrite-proposal",
@@ -549,7 +549,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
         )
         failed_audit["fallback_reason"] = str(exc)
         failed_audit["contract_validated"] = False
-        _append_llm_receipt_and_log(
+        record_llm_attempt(
             root,
             summary_base_event(int((time.monotonic() - started) * 1000)),
             failed_audit,
@@ -566,7 +566,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
         ),
         aggregate_audit,
     )
-    _append_llm_receipt_and_log(
+    record_llm_attempt(
         root,
         summary_base_event(int((time.monotonic() - started) * 1000)),
         llm_audit,
@@ -741,7 +741,7 @@ def run_ask(
             "fallback_reason": fallback_reason or str(exc),
             "contract_validated": False,
         }
-        _append_llm_receipt_and_log(
+        record_llm_attempt(
             root,
             {
                 "event": "run-ask",
@@ -776,7 +776,7 @@ def run_ask(
                 "primary_error": str(exc),
             }
             if classify_backend_error(str(exc)) in RUN_ASK_FALLBACK_ERROR_KINDS:
-                _append_llm_receipt_and_log(
+                record_llm_attempt(
                     root,
                     {
                         **frontdoor_base_event,
@@ -806,7 +806,7 @@ def run_ask(
                     "fallback_from": "run-ask",
                     "fallback_command": "ask",
                 }
-            _append_llm_receipt_and_log(
+            record_llm_attempt(
                 root,
                 frontdoor_base_event,
                 failed_audit,
@@ -832,7 +832,7 @@ def run_ask(
         "fallback_reason": fallback_reason,
         "contract_validated": True,
     }
-    _append_llm_receipt_and_log(
+    record_llm_attempt(
         root,
         {
             "event": "run-ask",
@@ -859,7 +859,7 @@ def run_ask(
         "no_cache": no_cache,
     }
     if fallback_to_ask:
-        _append_llm_receipt_and_log(
+        record_llm_attempt(
             root,
             {
                 "event": RUN_ASK_FRONTDOOR_EVENT,
@@ -951,7 +951,7 @@ def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, An
             fallback_reason=fallback_reason or str(exc),
             contract_validated=False,
         )
-        _append_llm_receipt_and_log(
+        record_llm_attempt(
             root,
             {
                 "event": "run-lint",
@@ -976,7 +976,7 @@ def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, An
         fallback_reason=fallback_reason,
         contract_validated=True,
     )
-    _append_llm_receipt_and_log(
+    record_llm_attempt(
         root,
         {
             "event": "run-lint",
@@ -1087,7 +1087,7 @@ def run_nightly(
         )
         failed_audit["fallback_reason"] = str(exc)
         failed_audit["contract_validated"] = False
-        _append_llm_receipt_and_log(
+        record_llm_attempt(
             root,
             {
                 "event": "run-nightly",
@@ -1100,7 +1100,7 @@ def run_nightly(
             error=str(exc),
         )
         raise
-    _append_llm_receipt_and_log(
+    record_llm_attempt(
         root,
         {
             "event": "run-nightly",
@@ -1135,5 +1135,3 @@ def run_nightly(
         "primary_attempt_status": str(llm_audit.get("primary_attempt_status") or ""),
         "primary_error": str(llm_audit.get("primary_error") or ""),
     }
-
-

@@ -138,6 +138,10 @@ from aiwiki.runner.receipts import (  # noqa: F401
     _llm_audit_from_result,
     _merge_llm_audits,
     _next_jsonl_line_number,
+    append_receipt_and_audit,
+    build_llm_attempt_receipt,
+    classify_fallback_stage,
+    record_llm_attempt,
 )
 from aiwiki.runner.workflows import (  # noqa: F401
     RUN_ASK_FALLBACK_ERROR_KINDS,

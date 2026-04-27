@@ -145,8 +145,25 @@ def _llm_audit_from_result(result: dict[str, Any]) -> dict[str, Any]:
     return audit
 
 
-def _append_llm_receipt_and_log(
-    root: Path,
+def classify_fallback_stage(
+    event: dict[str, Any],
+    *,
+    status: str,
+    error: str = "",
+    skipped: bool = False,
+) -> str:
+    """Classify the delivery mode for an LLM attempt receipt."""
+
+    return _infer_delivery_mode(
+        status,
+        error=error,
+        fallback_stage=str(event.get("fallback_stage") or ""),
+        explicit=str(event.get("delivery_mode") or ""),
+        skipped=skipped,
+    )
+
+
+def build_llm_attempt_receipt(
     base_event: dict[str, Any],
     llm_audit: dict[str, Any],
     *,
@@ -155,16 +172,12 @@ def _append_llm_receipt_and_log(
     response_id: str = "",
     usage: dict[str, Any] | None = None,
     skipped: bool = False,
-) -> None:
+) -> dict[str, Any]:
+    """Build the normalized receipt payload for one LLM attempt."""
+
     usage_payload = usage if isinstance(usage, dict) else {}
     normalized_event = {**llm_audit, **base_event}
-    normalized_event["delivery_mode"] = _infer_delivery_mode(
-        status,
-        error=error,
-        fallback_stage=str(normalized_event.get("fallback_stage") or ""),
-        explicit=str(normalized_event.get("delivery_mode") or ""),
-        skipped=skipped,
-    )
+    normalized_event["delivery_mode"] = classify_fallback_stage(normalized_event, status=status, error=error, skipped=skipped)
     normalized_event.setdefault("fallback_used", False)
     if not normalized_event["fallback_used"]:
         normalized_event["fallback_used"] = bool(normalized_event.get("delivery_mode") == "deterministic-fallback" or str(normalized_event.get("fallback_stage") or ""))
@@ -183,13 +196,77 @@ def _append_llm_receipt_and_log(
         "primary_attempt_status": str(normalized_event.get("primary_attempt_status") or ""),
         "primary_error": str(normalized_event.get("primary_error") or ""),
     })
-    _append_llm_receipt(root, normalized_event)
+    return normalized_event
+
+
+def append_receipt_and_audit(
+    root: Path,
+    receipt: dict[str, Any],
+    *,
+    base_event: dict[str, Any],
+    llm_audit: dict[str, Any],
+    error: str = "",
+) -> None:
+    """Append a built LLM receipt to receipt, universal audit, and run logs."""
+
+    _append_llm_receipt(root, receipt)
     run_event = {
         **base_event,
         "backend": str(llm_audit.get("backend_effective") or ""),
         "model": str(llm_audit.get("model_final") or ""),
-        **normalized_event,
+        **receipt,
     }
     if error:
         run_event["error"] = error
     _append_log(root, run_event)
+
+
+def record_llm_attempt(
+    root: Path,
+    base_event: dict[str, Any],
+    llm_audit: dict[str, Any],
+    *,
+    status: str,
+    error: str = "",
+    response_id: str = "",
+    usage: dict[str, Any] | None = None,
+    skipped: bool = False,
+) -> dict[str, Any]:
+    """Build, classify, and append one LLM attempt receipt through the single entrypoint."""
+
+    receipt = build_llm_attempt_receipt(
+        base_event,
+        llm_audit,
+        status=status,
+        error=error,
+        response_id=response_id,
+        usage=usage,
+        skipped=skipped,
+    )
+    append_receipt_and_audit(root, receipt, base_event=base_event, llm_audit=llm_audit, error=error)
+    return receipt
+
+
+def _append_llm_receipt_and_log(
+    root: Path,
+    base_event: dict[str, Any],
+    llm_audit: dict[str, Any],
+    *,
+    status: str,
+    error: str = "",
+    response_id: str = "",
+    usage: dict[str, Any] | None = None,
+    skipped: bool = False,
+) -> None:
+    """Compatibility wrapper for legacy imports; prefer record_llm_attempt."""
+
+    record_llm_attempt(
+        root,
+        base_event,
+        llm_audit,
+        status=status,
+        error=error,
+        response_id=response_id,
+        usage=usage,
+        skipped=skipped,
+    )
