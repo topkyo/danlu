@@ -5,14 +5,24 @@ support relative `require()` within plugins). The source code lives in this
 `src/` directory as separate modules for readability and maintenance.
 
 ## Product Shell home surface
-This UI follows the "Input/Output + Advanced" paradigm:
-- **AskBox**: Raycast-style single input.
-- **ReportCards**: Notion-style outputs, highlighting content.
-- unread visual distinction (planned in M-PS.1 A4)
-- **AdvancedDrawer**: All old system dashboards and views have been moved here.
+The M-PS.1 home surface is intentionally linear:
+1. **AskBox** — Raycast-style `Ask / Command...` input at the top.
+2. **Today's Reports / Previous Reports** — report cards grouped from `recent_outputs`.
+3. **DropZone** — `Drop URL / PDF / Image / Repo` ingestion surface.
+4. **Advanced** — collapsed drawer for operator/debug surfaces.
 
-### Where did my dashboards go?
-If you are looking for the System Status, LLM Health, Graph Health, Recent Runs, Review Center, Execution Center, or Repair Backlog—they are all collapsed in the **"Advanced"** drawer at the bottom of the home surface.
+Unread reports are local UI state based on `lastViewedTimestamp`: unread cards show
+a small dot and stronger title weight, without Notice or Badge behavior.
+
+DropZone accepts URL text plus PDF/image file drags; repo ingestion remains available
+through the explicit button/modal path.
+
+Advanced contains System Status, LLM Health, Review Center, Execution Center,
+Recent Runs, Refresh/Compile/Nightly, and protocol controls. Old view types and
+commands remain registered for command-palette access.
+
+Phase B preview: Feishu / WeCom webhook URLs will be configured in plugin settings,
+then bridged to the runtime through environment variables for report notifications.
 
 ## Module layout
 

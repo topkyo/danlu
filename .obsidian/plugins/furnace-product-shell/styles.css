@@ -81,15 +81,15 @@
 }
 
 .furnace-shell-status-ok {
-  color: var(--color-green);
+  color: var(--text-muted);
 }
 
 .furnace-shell-status-running {
-  color: var(--color-orange);
+  color: var(--interactive-accent);
 }
 
 .furnace-shell-status-failed {
-  color: var(--color-red);
+  color: var(--text-normal);
 }
 
 .furnace-shell-empty {
@@ -151,31 +151,33 @@
 }
 
 .furnace-shell-pill.is-running {
-  color: var(--color-orange);
+  color: var(--interactive-accent);
 }
 
 .furnace-shell-pill.is-healthy {
-  color: var(--color-green);
-  border-color: color-mix(in srgb, var(--color-green) 28%, var(--background-modifier-border));
+  color: var(--text-muted);
+  border-color: var(--background-modifier-border);
 }
 
 .furnace-shell-pill.is-degraded {
-  color: var(--color-red);
-  border-color: color-mix(in srgb, var(--color-red) 28%, var(--background-modifier-border));
+  color: var(--text-normal);
+  border-color: var(--background-modifier-border);
 }
 
 .furnace-shell-pill.is-unknown {
-  color: var(--color-orange);
-  border-color: color-mix(in srgb, var(--color-orange) 28%, var(--background-modifier-border));
+  color: var(--text-muted);
+  border-color: var(--background-modifier-border);
 }
 
 .furnace-shell-pill.is-warning {
-  color: var(--color-orange);
-  border-color: color-mix(in srgb, var(--color-orange) 28%, var(--background-modifier-border));
+  color: var(--interactive-accent);
+  border-color: var(--interactive-accent);
 }
 
 .furnace-shell-panel,
 .furnace-shell-subpanel {
+  box-sizing: border-box;
+  min-width: 0;
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 16px;
@@ -193,6 +195,7 @@
 
 .furnace-shell-panel-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
@@ -356,6 +359,7 @@
 .furnace-shell-output-item,
 .furnace-shell-inline-item {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
@@ -402,11 +406,16 @@
 }
 
 .furnace-shell-digest-value {
+  min-width: 0;
+  overflow: hidden;
   font-size: 0.92em;
   line-height: 1.45;
 }
 
 .furnace-shell-advanced {
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
   border: 1px solid var(--background-modifier-border);
   border-radius: 16px;
   background: var(--background-secondary);
@@ -415,6 +424,7 @@
 
 .furnace-shell-advanced-summary {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -427,7 +437,7 @@
 }
 
 .furnace-shell-advanced-summary:hover {
-  background: var(--background-primary);
+  background: var(--background-modifier-hover);
   color: var(--text-normal);
 }
 
@@ -562,6 +572,7 @@
 
 .furnace-shell-v3 .furnace-shell-askbox-form {
   display: flex;
+  flex-wrap: wrap;
   align-items: stretch;
   gap: 8px;
 }
@@ -585,13 +596,18 @@
 }
 
 .furnace-shell-v3 .furnace-shell-askbox-button {
-  flex: 0 0 auto;
+  flex: 1 1 88px;
+  min-width: 0;
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
   background: var(--interactive-accent);
   color: var(--text-on-accent);
   cursor: pointer;
   padding: 0 16px;
+}
+
+.furnace-shell-v3 .furnace-shell-askbox-button:hover:not(:disabled) {
+  background: var(--interactive-accent-hover);
 }
 
 .furnace-shell-v3 .furnace-shell-askbox-button:disabled,
@@ -626,6 +642,7 @@
 
 .furnace-shell-v3 .furnace-shell-report-card {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
@@ -637,14 +654,14 @@
 }
 
 .furnace-shell-v3 .furnace-shell-report-card:hover {
-  background: var(--background-primary);
+  background: var(--background-modifier-hover);
 }
 
 .furnace-shell-v3 .furnace-shell-report-content {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex: 1;
+  flex: 1 1 220px;
   min-width: 0;
 }
 
@@ -691,6 +708,7 @@
 
 .furnace-shell-v3 .furnace-shell-report-card button {
   flex: 0 0 auto;
+  margin-left: auto;
   border: 1px solid var(--background-modifier-border);
   border-radius: 10px;
   background: var(--background-primary);
@@ -712,6 +730,9 @@
 }
 
 .furnace-shell-v3 .furnace-shell-dropzone {
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
   border: 2px dashed var(--background-modifier-border);
   border-radius: 14px;
   padding: 32px;
@@ -747,16 +768,21 @@
 }
 
 .furnace-shell-v3 .furnace-shell-dropzone-actions button {
+  flex: 1 1 96px;
+  min-width: 0;
   border: 1px solid var(--background-modifier-border);
   border-radius: 10px;
   background: var(--background-secondary);
   color: var(--text-normal);
   cursor: pointer;
+  overflow: hidden;
   padding: 6px 14px;
+  text-overflow: ellipsis;
 }
 
 .furnace-shell-v3 .furnace-shell-dropzone-actions button:hover {
   border-color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
 }
 
 .furnace-shell-v3 > .furnace-shell-advanced {
