@@ -163,6 +163,113 @@ class CLITests(unittest.TestCase):
         advanced_action = next(item for item in advanced_parser._actions if getattr(item, "dest", "") == "advanced_command")
         self.assertIn("compile", advanced_action.choices)
 
+    def test_drop_subcommand_exists(self) -> None:
+        parser = build_parser()
+        action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
+
+        self.assertIn("drop", action.choices)
+        drop_parser = action.choices["drop"]
+        drop_action = next(item for item in drop_parser._actions if getattr(item, "dest", "") == "drop_command")
+        self.assertEqual(
+            {"url", "pdf", "image", "repo", "note", "question"},
+            set(drop_action.choices),
+        )
+
+    def test_drop_url_dispatches_to_drop_url_handler(self) -> None:
+        parser = build_parser()
+
+        legacy_args = parser.parse_args(["drop-url", "https://example.com", "--title", "Example"])
+        drop_args = parser.parse_args(["drop", "url", "https://example.com", "--title", "Example"])
+
+        self.assertEqual(drop_args.handler_command, legacy_args.handler_command)
+        self.assertEqual(drop_args.url, legacy_args.url)
+        self.assertEqual(drop_args.title, legacy_args.title)
+
+    def test_drop_pdf_dispatch(self) -> None:
+        parser = build_parser()
+
+        legacy_args = parser.parse_args(["drop-pdf", "paper.pdf", "--title", "Paper"])
+        drop_args = parser.parse_args(["drop", "pdf", "paper.pdf", "--title", "Paper"])
+
+        self.assertEqual(drop_args.handler_command, "drop-pdf")
+        self.assertEqual(drop_args.handler_command, legacy_args.handler_command)
+        self.assertEqual(drop_args.source, legacy_args.source)
+        self.assertEqual(drop_args.title, legacy_args.title)
+
+    def test_drop_image_dispatch(self) -> None:
+        parser = build_parser()
+
+        legacy_args = parser.parse_args(["drop-image", "chart.png", "--title", "Chart", "--no-vision"])
+        drop_args = parser.parse_args(["drop", "image", "chart.png", "--title", "Chart", "--no-vision"])
+
+        self.assertEqual(drop_args.handler_command, "drop-image")
+        self.assertEqual(drop_args.handler_command, legacy_args.handler_command)
+        self.assertEqual(drop_args.source, legacy_args.source)
+        self.assertEqual(drop_args.title, legacy_args.title)
+        self.assertEqual(drop_args.no_vision, legacy_args.no_vision)
+
+    def test_drop_repo_dispatch(self) -> None:
+        parser = build_parser()
+
+        legacy_args = parser.parse_args(["drop-repo", "repo", "--title", "Repo", "--max-files", "10"])
+        drop_args = parser.parse_args(["drop", "repo", "repo", "--title", "Repo", "--max-files", "10"])
+
+        self.assertEqual(drop_args.handler_command, "drop-repo")
+        self.assertEqual(drop_args.handler_command, legacy_args.handler_command)
+        self.assertEqual(drop_args.source, legacy_args.source)
+        self.assertEqual(drop_args.title, legacy_args.title)
+        self.assertEqual(drop_args.max_files, legacy_args.max_files)
+
+    def test_drop_note_dispatch(self) -> None:
+        parser = build_parser()
+
+        legacy_args = parser.parse_args(["drop-note", "notes.md", "--text", "hello", "--kind", "transcript"])
+        drop_args = parser.parse_args(["drop", "note", "notes.md", "--text", "hello", "--kind", "transcript"])
+
+        self.assertEqual(drop_args.handler_command, "drop-note")
+        self.assertEqual(drop_args.handler_command, legacy_args.handler_command)
+        self.assertEqual(drop_args.source, legacy_args.source)
+        self.assertEqual(drop_args.text, legacy_args.text)
+        self.assertEqual(drop_args.kind, legacy_args.kind)
+
+    def test_drop_question_dispatches_to_ask_handler(self) -> None:
+        parser = build_parser()
+
+        legacy_args = parser.parse_args(["ask", "What changed?", "--format", "slides", "--protocol", "research"])
+        drop_args = parser.parse_args(
+            ["drop", "question", "What changed?", "--format", "slides", "--protocol", "research"]
+        )
+
+        self.assertEqual(drop_args.handler_command, "ask")
+        self.assertEqual(drop_args.handler_command, legacy_args.handler_command)
+        self.assertEqual(drop_args.question, legacy_args.question)
+        self.assertEqual(drop_args.format, legacy_args.format)
+        self.assertEqual(drop_args.protocol, legacy_args.protocol)
+
+    def test_legacy_drop_url_emits_deprecation_warning(self) -> None:
+        with patch("aiwiki.cli.drop_url", return_value={"material": "url"}):
+            code, stdout, stderr = self._run_main_raw(["drop-url", "https://example.com"])
+
+        self.assertEqual(code, 0)
+        self.assertIn("deprecated", stderr.lower())
+        self.assertNotIn("deprecated", stdout.lower())
+
+    def test_advanced_drop_url_no_warning(self) -> None:
+        with patch("aiwiki.cli.drop_url", return_value={"material": "url"}):
+            code, payload, stderr = self._run_main(["advanced", "drop-url", "https://example.com"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["material"], "url")
+        self.assertNotIn("deprecated", stderr.lower())
+
+    def test_drop_url_no_warning(self) -> None:
+        with patch("aiwiki.cli.drop_url", return_value={"material": "url"}):
+            code, payload, stderr = self._run_main(["drop", "url", "https://example.com"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["material"], "url")
+        self.assertNotIn("deprecated", stderr.lower())
+
     def test_advanced_compile_dispatches_to_compile_handler(self) -> None:
         parser = build_parser()
 
@@ -216,7 +323,7 @@ class CLITests(unittest.TestCase):
 
         self.assertEqual(code, 0)
         self.assertEqual(payload["material"], "url")
-        self.assertNotIn("deprecation", stderr.lower())
+        self.assertNotIn("deprecated", stderr.lower())
 
     def test_advanced_audit_backfill_dispatch(self) -> None:
         parser = build_parser()
@@ -709,7 +816,8 @@ class CLITests(unittest.TestCase):
                 parsed_args = parser.parse_args(argv)
                 self.assertEqual(parsed_args.handler_command, parsed_args.command)
                 stdout = io.StringIO()
-                with patch("sys.stdout", new=stdout):
+                stderr = io.StringIO()
+                with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
                     if target == "ensure_layout":
                         with patch("aiwiki.cli.ensure_layout") as mocked:
                             code = main(["--root", str(self.root), *argv])
@@ -861,7 +969,7 @@ class CLITests(unittest.TestCase):
                 )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertIn("deprecated", stderr.lower())
         drop_mock.assert_called_once_with(self.root, "https://example.com", title=None)
         auto_mock.assert_called_once_with(self.root, deterministic_only=True, semantic_lint=False)
         self.assertEqual(payload["auto_process"], {"compiled": 1})

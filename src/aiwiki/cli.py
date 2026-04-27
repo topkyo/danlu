@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from .app_cache import cache_status_summary, drop_query_cache, force_rebuild_query_cache
@@ -105,6 +106,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--root", default=".", help="Project root. Defaults to the current directory.")
     subparsers = parser.add_subparsers(dest="command", required=True)
     _register_legacy_top_level_parsers(subparsers)
+    drop_parser = subparsers.add_parser("drop", help="炼丹炉输入端：投喂 URL / PDF / 图片 / 仓库 / 笔记 / 问题")
+    drop_subparsers = drop_parser.add_subparsers(dest="drop_command", required=True)
+    _register_drop_subcommand_parsers(drop_subparsers)
     advanced_parser = subparsers.add_parser(
         "advanced",
         help="高级抽屉：系统状态、receipts、audit、repair、lanes、调试入口",
@@ -132,48 +136,11 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     ingest_parser.add_argument("source", help="Local file path or URL.")
     ingest_parser.add_argument("--title", help="Optional display title.")
 
-    drop_url_parser = subparsers.add_parser("drop-url", help="Fetch a web page into raw/inbox as source material.")
-    drop_url_parser.add_argument("url", help="Web URL to fetch.")
-    drop_url_parser.add_argument("--title", help="Optional display title.")
-    _add_auto_flags(drop_url_parser)
-
-    drop_pdf_parser = subparsers.add_parser("drop-pdf", help="Import a PDF into raw/assets and raw/inbox.")
-    drop_pdf_parser.add_argument("source", help="Local PDF path or PDF URL.")
-    drop_pdf_parser.add_argument("--title", help="Optional display title.")
-    _add_auto_flags(drop_pdf_parser)
-
-    drop_image_parser = subparsers.add_parser("drop-image", help="Import an image into raw/assets and raw/inbox.")
-    drop_image_parser.add_argument("source", help="Local image path or image URL.")
-    drop_image_parser.add_argument("--title", help="Optional display title.")
-    drop_image_parser.add_argument(
-        "--no-vision",
-        action="store_true",
-        help="Skip optional LLM-backed visual analysis for the image note.",
-    )
-    _add_auto_flags(drop_image_parser)
-
-    drop_repo_parser = subparsers.add_parser("drop-repo", help="Snapshot a local or remote repo into raw/inbox.")
-    drop_repo_parser.add_argument("source", help="Local repo path or remote git URL.")
-    drop_repo_parser.add_argument("--title", help="Optional display title.")
-    drop_repo_parser.add_argument(
-        "--max-files",
-        type=int,
-        default=200,
-        help="Maximum number of repo tree entries to capture.",
-    )
-    _add_auto_flags(drop_repo_parser)
-
-    drop_note_parser = subparsers.add_parser("drop-note", help="Capture a free-text note or transcript into raw/inbox.")
-    drop_note_parser.add_argument("source", nargs="?", help="Optional markdown or text file path.")
-    drop_note_parser.add_argument("--text", help="Inline note text. Use this instead of SOURCE for free-text capture.")
-    drop_note_parser.add_argument("--title", help="Optional display title.")
-    drop_note_parser.add_argument(
-        "--kind",
-        choices=("note", "transcript"),
-        default="note",
-        help="Capture kind. Transcript enables transcript-aware compile prompts.",
-    )
-    _add_auto_flags(drop_note_parser)
+    _configure_drop_url_parser(subparsers.add_parser("drop-url", help="Fetch a web page into raw/inbox as source material."))
+    _configure_drop_pdf_parser(subparsers.add_parser("drop-pdf", help="Import a PDF into raw/assets and raw/inbox."))
+    _configure_drop_image_parser(subparsers.add_parser("drop-image", help="Import an image into raw/assets and raw/inbox."))
+    _configure_drop_repo_parser(subparsers.add_parser("drop-repo", help="Snapshot a local or remote repo into raw/inbox."))
+    _configure_drop_note_parser(subparsers.add_parser("drop-note", help="Capture a free-text note or transcript into raw/inbox."))
 
     subparsers.add_parser("compile", help="Compile manifest entries into wiki source pages and indexes.")
 
@@ -215,21 +182,7 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     )
 
     ask_parser = subparsers.add_parser("ask", help="Generate a query artifact grounded in the wiki.")
-    ask_parser.add_argument("question", help="Research question to package.")
-    ask_parser.add_argument(
-        "--format",
-        choices=("report", "decision-memo", "sop", "slides", "figure"),
-        default="report",
-        help="Output artifact format.",
-    )
-    ask_parser.add_argument("--protocol", help="Optional protocol override for this query.")
-    ask_parser.add_argument(
-        "--no-cache",
-        action="store_true",
-        help="Bypass volatile SQLite query cache and force deterministic JSON scan.",
-    )
-    ask_parser.add_argument("--corpus", help="Optional active corpus id to reuse across ask rounds.")
-    ask_parser.add_argument("--load-learnings", action="store_true", help="Load protocol learnings into the prompt.")
+    _configure_ask_parser(ask_parser)
 
     protocol_learn_add_parser = subparsers.add_parser("protocol-learn-add", help="Add a protocol learning.")
     protocol_learn_add_parser.add_argument("protocol", help="Protocol slug.")
@@ -935,6 +888,98 @@ def _set_handler_command_defaults(subparsers: argparse._SubParsersAction, handle
                 _set_handler_command_defaults(action, canonical_command)
 
 
+def _register_drop_subcommand_parsers(subparsers: argparse._SubParsersAction) -> None:
+    drop_url_parser = subparsers.add_parser("url", help="Fetch a web page into raw/inbox as source material.")
+    _configure_drop_url_parser(drop_url_parser)
+    drop_url_parser.set_defaults(handler_command="drop-url")
+
+    drop_pdf_parser = subparsers.add_parser("pdf", help="Import a PDF into raw/assets and raw/inbox.")
+    _configure_drop_pdf_parser(drop_pdf_parser)
+    drop_pdf_parser.set_defaults(handler_command="drop-pdf")
+
+    drop_image_parser = subparsers.add_parser("image", help="Import an image into raw/assets and raw/inbox.")
+    _configure_drop_image_parser(drop_image_parser)
+    drop_image_parser.set_defaults(handler_command="drop-image")
+
+    drop_repo_parser = subparsers.add_parser("repo", help="Snapshot a local or remote repo into raw/inbox.")
+    _configure_drop_repo_parser(drop_repo_parser)
+    drop_repo_parser.set_defaults(handler_command="drop-repo")
+
+    drop_note_parser = subparsers.add_parser("note", help="Capture a free-text note or transcript into raw/inbox.")
+    _configure_drop_note_parser(drop_note_parser)
+    drop_note_parser.set_defaults(handler_command="drop-note")
+
+    drop_question_parser = subparsers.add_parser("question", help="Generate a deterministic query artifact grounded in the wiki.")
+    _configure_ask_parser(drop_question_parser)
+    drop_question_parser.set_defaults(handler_command="ask")
+
+
+def _configure_drop_url_parser(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("url", help="Web URL to fetch.")
+    parser.add_argument("--title", help="Optional display title.")
+    _add_auto_flags(parser)
+
+
+def _configure_drop_pdf_parser(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("source", help="Local PDF path or PDF URL.")
+    parser.add_argument("--title", help="Optional display title.")
+    _add_auto_flags(parser)
+
+
+def _configure_drop_image_parser(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("source", help="Local image path or image URL.")
+    parser.add_argument("--title", help="Optional display title.")
+    parser.add_argument(
+        "--no-vision",
+        action="store_true",
+        help="Skip optional LLM-backed visual analysis for the image note.",
+    )
+    _add_auto_flags(parser)
+
+
+def _configure_drop_repo_parser(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("source", help="Local repo path or remote git URL.")
+    parser.add_argument("--title", help="Optional display title.")
+    parser.add_argument(
+        "--max-files",
+        type=int,
+        default=200,
+        help="Maximum number of repo tree entries to capture.",
+    )
+    _add_auto_flags(parser)
+
+
+def _configure_drop_note_parser(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("source", nargs="?", help="Optional markdown or text file path.")
+    parser.add_argument("--text", help="Inline note text. Use this instead of SOURCE for free-text capture.")
+    parser.add_argument("--title", help="Optional display title.")
+    parser.add_argument(
+        "--kind",
+        choices=("note", "transcript"),
+        default="note",
+        help="Capture kind. Transcript enables transcript-aware compile prompts.",
+    )
+    _add_auto_flags(parser)
+
+
+def _configure_ask_parser(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("question", help="Research question to package.")
+    parser.add_argument(
+        "--format",
+        choices=("report", "decision-memo", "sop", "slides", "figure"),
+        default="report",
+        help="Output artifact format.",
+    )
+    parser.add_argument("--protocol", help="Optional protocol override for this query.")
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass volatile SQLite query cache and force deterministic JSON scan.",
+    )
+    parser.add_argument("--corpus", help="Optional active corpus id to reuse across ask rounds.")
+    parser.add_argument("--load-learnings", action="store_true", help="Load protocol learnings into the prompt.")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -942,6 +987,7 @@ def main(argv: list[str] | None = None) -> int:
     text_output: str | None = None
 
     try:
+        _emit_legacy_drop_deprecation_warning(args)
         if args.handler_command == "layout":
             ensure_layout(root)
             result = {"root": str(root), "status": "ok"}
@@ -1561,6 +1607,27 @@ def _add_auto_flags(parser: argparse.ArgumentParser) -> None:
         "--no-semantic-lint",
         action="store_true",
         help="When used with --auto, skip the LLM semantic lint pass.",
+    )
+
+
+_LEGACY_DROP_REPLACEMENTS = {
+    "drop-url": "drop url",
+    "drop-pdf": "drop pdf",
+    "drop-image": "drop image",
+    "drop-repo": "drop repo",
+    "drop-note": "drop note",
+}
+
+
+def _emit_legacy_drop_deprecation_warning(args: argparse.Namespace) -> None:
+    if args.handler_command not in _LEGACY_DROP_REPLACEMENTS:
+        return
+    if args.command != args.handler_command:
+        return
+    replacement = _LEGACY_DROP_REPLACEMENTS[args.handler_command]
+    print(
+        f"[deprecated] `aiwiki {args.handler_command}` is deprecated; use `aiwiki {replacement}` instead.",
+        file=sys.stderr,
     )
 
 
