@@ -33,7 +33,11 @@ related_docs:
 
 ### M6.1 Deterministic Loop Acceptance Pack
 
-目标：定义并实现一个不依赖 LLM、不依赖外部服务、可重复跑通的炼丹炉黄金闭环。
+目标：定义并实现一个不依赖 LLM、不依赖外部服务、可重复跑通的 runtime acceptance baseline。
+
+这里的“不依赖 LLM”不是产品上限，也不是说炼丹炉最终应避免使用 GPT / Claude。它只限定 M6.1 的验收基线：先证明 `raw -> wiki -> output -> review/apply -> receipt/audit -> today` 这条 OS 内核链路在没有模型、网络、API key、额度和模型版本漂移时也能稳定成立。
+
+真正的产品黄金闭环必须使用 LLM。GPT / Claude / 其他显式选择的 backend 应用于语义提炼、判断生成、复盘、重写、金丹演化和自主建议。LLM golden loop 应建立在 M6.1 deterministic baseline 之上，而不是替代它。
 
 推荐闭环：
 
@@ -64,31 +68,60 @@ drop -> compile -> today -> review/apply -> receipt/audit -> today
 - `scripts/run_acceptance.sh`：本地一键验收入口，可被 `scripts/verify.sh` 或 harness gate 调用。
 - `output/control/` 或 `.aiwiki/state/` 中的 receipt / audit 断言样例。
 
+### M6.1b LLM Golden Loop
+
+目标：在 M6.1 deterministic baseline 通过后，用真实 LLM backend 跑通用户可感知的炼丹炉产品黄金闭环。
+
+推荐闭环：
+
+```text
+universal input -> LLM distill/judge/rewrite -> today -> human decision -> apply -> receipt/audit -> learning/evolution -> today
+```
+
+验收标准：
+
+- backend 必须由用户或配置显式选择，不允许 hidden fallback。
+- LLM 输出必须保留 provenance、prompt / backend / model metadata 和可审计 receipt。
+- L3 / judge / semantic proposal 默认只进入 review，不自动接受。
+- 同一输入至少能产生一个用户可理解的 output、一个需要拍板的 decision，或一个可回滚的建议动作。
+- `aiwiki today` 与 Product Shell Today feed 都能展示该闭环结果。
+- 失败时能明确区分 runtime failure、backend failure、schema failure 和 semantic quality failure。
+
+非目标：
+
+- 不把 LLM 输出直接写成不可追溯事实。
+- 不把模型供应商能力当作 OS 内核正确性的证明。
+- 不绕过 review / apply / revert / audit。
+
 ## 后续阶段顺序
 
 1. **M6.1 Deterministic Loop Acceptance Pack**
-   - 先证明炼丹炉不靠 LLM 也能跑完一个知识复利闭环。
+   - 先证明炼丹炉不靠 LLM 也能跑完一个 runtime acceptance baseline。
    - 这是后续 UX / autonomy / metrics 的共同基线。
 
-2. **M6.2 Universal Input**
+2. **M6.1b LLM Golden Loop**
+   - 在 M6.1 通过后，用 GPT / Claude / 其他显式 backend 验证真实炼丹产品体验。
+   - 这是“智能价值”验收，不替代 deterministic baseline。
+
+3. **M6.2 Universal Input**
    - 把 AskBox 与 DropZone 收敛成一个用户心智入口。
    - 用户输入 URL / PDF / image / repo / note / question 时，不需要先选择命令类型。
    - Product Shell 可保留高级按钮，但默认路径必须是一个输入框。
 
-3. **M6.3 Single Today Feed**
+4. **M6.3 Single Today Feed**
    - 把 reports、needs decision、review、elixir、suggested actions 收敛成一个 Today feed。
    - Advanced 继续保留运维面板，但首屏不暴露 receipt / audit / lane / planner / signal 等机制词。
    - `aiwiki today` 与 Product Shell Today feed 共享同一 shell-facing contract 或同一排序策略。
 
-4. **M6.4 Knowledge Compounding Metrics**
+5. **M6.4 Knowledge Compounding Metrics**
    - 增加可解释指标：provenance completeness、review closure rate、stale ratio、proposal acceptance rate、judgment revisit rate、output file-back rate、elixir reuse count。
    - 指标先用于本地报告，不作为自动调度硬门槛。
 
-5. **M6.5 Product Shell UI Smoke Tests**
+6. **M6.5 Product Shell UI Smoke Tests**
    - 增加真实 UI 层验证，至少覆盖首屏空状态、长文本、移动宽度、Advanced 折叠和主要按钮存在性。
    - 若不引入浏览器自动化，至少保留 DOM/string-level contract tests，避免首屏退化为 dashboard。
 
-6. **M6.6 Module Size Reduction**
+7. **M6.6 Module Size Reduction**
    - 继续拆 `render.js`、`plugin.js`、`app_shell.py`、`runner/alchemy.py` 等大模块。
    - 每次拆分只移动 ownership，不改 JSON schema、receipt schema、ShellSummary 字段和 CLI stdout contract。
 
@@ -96,7 +129,7 @@ drop -> compile -> today -> review/apply -> receipt/audit -> today
 
 任一触发即停止并重新写 contract：
 
-- 需要调用真实外部 LLM 或 webhook 才能完成 acceptance。
+- 需要调用真实外部 LLM 或 webhook 才能完成 M6.1 deterministic acceptance。
 - 需要引入 hosted service、multi-user sync、数据库服务、向量库或 fine-tuning。
 - 需要自动接受或自动写入语义判断内容。
 - 需要改变 `raw/ -> wiki/ -> output/` 分层事实。
@@ -111,11 +144,13 @@ drop -> compile -> today -> review/apply -> receipt/audit -> today
 读 SoT -> 写/更新 .codex/contracts/active.md -> 小步实现 -> focused tests -> bash scripts/verify.sh -> closed_loop -> 回写 PROGRESS.md -> 本地 commit
 ```
 
-M6.1 开始时，先把本文档中的 M6.1 物化为 `.codex/contracts/active.md`，再开始改代码。
+以后继续闭环开发炼丹炉时，默认以本文档作为下一步执行入口。除非用户明确改目标，后续任务先执行本文档中最靠前且尚未完成的 milestone，并把该 milestone 物化为 `.codex/contracts/active.md` 后再开始改代码。
+
+M6.1 开始时，先把本文档中的 M6.1 物化为 `.codex/contracts/active.md`，再开始改代码。M6.1 通过后，优先进入 M6.1b，而不是直接做 UI 收敛。
 
 ## 当前验证基线
 
 - `bash scripts/verify.sh`：1160 tests / 93% coverage / pass。
 - Product Shell build：`bash .obsidian/plugins/furnace-product-shell/build.sh` pass。
 - Product Shell syntax：`node --check .obsidian/plugins/furnace-product-shell/main.js` pass。
-- 当前分支：`investing-research` 与 `origin/investing-research` 对齐。
+- 分支同步状态以 `git status --short --branch` 为准，不作为验收条件。
