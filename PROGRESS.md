@@ -6,6 +6,24 @@
 
 ## 状态
 
+- **P1 — Evidence Chain 可视化（M8.2）— 完成**
+  - **目的**: 让用户用 1 条命令把任一资产追到原始证据，建立"知识库可信"的根基。
+  - **方向 SoT**: `docs/Furnace Next Direction P0-P3.md` §2 (P1)
+  - **核心做法**（read-only 派生，零数据层改动）:
+    - 新模块 `src/aiwiki/trace.py` (~430 行)：`TraceNode` dataclass + `resolve_trace(root, asset_id, *, direction, max_depth)` 入口 + 7 类 specialized resolver（raw / source / judgment / decision / elixir / proposal / receipt）
+    - ID router 按前缀 / 路径形态识别 7 类 asset；frontmatter id fallback；循环检测（visited set + `cycle` 标记）；depth cap = 10
+    - 渲染：`render_trace_text` ASCII 树（`├──`/`└──`/`│   `）+ `to_dict` JSON
+    - CLI: `aiwiki trace <asset_id> [--direction up|down|both] [--depth N] [--json]`，同时注册到 top-level 与 `advanced` 子组（与既有 dispatcher 模式一致）
+    - 复用 `parse_frontmatter` / `load_l3_proposal_state`；不引入第三方依赖
+  - **验证**:
+    - 单元测试新增 15 case（`tests/test_trace.py`，覆盖 6 类 ID + 找不到 + 循环 + json + depth + classifier）
+    - CLI smoke 新增 3 case（`tests/test_cli.py`，subcommand exists + dispatch + json）
+    - `bash scripts/verify.sh` **5/5 稳定 pass**（1389+ unit + 12 acceptance / 93% coverage）
+    - **acceptance golden 漂移 = 0 文件**
+    - 真实 vault smoke：`aiwiki trace decision-20260415-...` 正确展开 `decision → judgment → 6 sources → 6 raw inbox files`
+  - **影响文件**: `src/aiwiki/trace.py` (新, ~430) / `src/aiwiki/cli/parsers.py` (+22) / `src/aiwiki/cli/dispatch.py` (+19) / `tests/test_trace.py` (新, ~290) / `tests/test_cli.py` (+30)
+  - **下一步**: P2 investing 端到端 dogfood → P3 drift/aging nightly 信号
+
 - **P0 — Today Feed 实化（M8.1）— 完成**
   - **目的**: 把 `aiwiki today` 从 stub 升级为真正的 daily driver，把 M7 已落地但未浮出的 4 类信号汇聚到一屏。
   - **方向 SoT**: `docs/Furnace Next Direction P0-P3.md`（P0..P3 路线图）

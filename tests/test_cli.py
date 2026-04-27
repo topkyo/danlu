@@ -183,6 +183,33 @@ class CLITests(unittest.TestCase):
 
         self.assertIn("today", action.choices)
 
+    def test_trace_subcommand_exists_top_level_and_advanced(self) -> None:
+        parser = build_parser()
+        action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
+        self.assertIn("trace", action.choices)
+        # also under advanced
+        advanced = action.choices["advanced"]
+        adv_action = next(
+            item for item in advanced._actions if getattr(item, "dest", "") == "advanced_command"
+        )
+        self.assertIn("trace", adv_action.choices)
+
+    def test_trace_dispatches_with_unknown_asset(self) -> None:
+        # Empty vault → unknown asset → still exit 0 (renders 'not found' marker)
+        code, stdout, stderr = self._run_main_raw(["trace", "judgment-does-not-exist"])
+        self.assertEqual(code, 0, msg=stderr)
+        self.assertIn("(not found)", stdout)
+        self.assertIn("[judgment]", stdout)
+
+    def test_trace_json_output_is_valid(self) -> None:
+        code, stdout, stderr = self._run_main_raw(
+            ["trace", "judgment-does-not-exist", "--json"]
+        )
+        self.assertEqual(code, 0, msg=stderr)
+        payload = json.loads(stdout)
+        self.assertEqual(payload["kind"], "judgment")
+        self.assertTrue(payload.get("not_found"))
+
     def test_today_dispatches_to_today_handler(self) -> None:
         parser = build_parser()
 

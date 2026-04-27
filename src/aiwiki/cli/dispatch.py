@@ -221,6 +221,14 @@ def main(argv: list[str] | None = None) -> int:
             result = set_active_protocol(root, args.protocol)
         elif args.handler_command == "today":
             return today_command(root)
+        elif args.handler_command == "trace":
+            return trace_command(
+                root,
+                args.asset_id,
+                direction=args.direction,
+                depth=args.depth,
+                as_json=args.json,
+            )
         elif args.handler_command == "metrics":
             return metrics_command(root, as_json=args.json, delta=args.delta)
         elif args.handler_command == "autonomy-status":
@@ -732,6 +740,25 @@ def today_command(root: Path) -> int:
     summary = build_shell_summary(root)
     feed = build_today_feed(summary)
     print(_render_today_text(feed, summary))
+    return 0
+
+
+def trace_command(
+    root: Path,
+    asset_id: str,
+    *,
+    direction: str = "up",
+    depth: int = 5,
+    as_json: bool = False,
+) -> int:
+    """证据链追溯：渲染 ASCII 树或 JSON。"""
+    from aiwiki.trace import render_trace_text, resolve_trace
+
+    node = resolve_trace(root, asset_id, direction=direction, max_depth=depth)
+    if as_json:
+        print(json.dumps(node.to_dict(), indent=2, ensure_ascii=False))
+    else:
+        print(render_trace_text(node, direction=direction))
     return 0
 
 

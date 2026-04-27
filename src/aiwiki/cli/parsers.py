@@ -67,6 +67,29 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     autonomy_enable_parser.add_argument("flag", help="flag 名（同 autonomy-disable）")
     autonomy_enable_parser.set_defaults(handler_command="autonomy-enable")
 
+    trace_parser = subparsers.add_parser(
+        "trace",
+        help="证据链追溯：输入资产 ID（raw / source / judgment / decision / elixir / proposal / receipt action_id），输出 provenance 树。",
+    )
+    trace_parser.add_argument(
+        "asset_id",
+        help="资产 ID 或路径。raw 用 raw/... 路径；wiki 资产用 frontmatter id 或 wiki/.../*.md。",
+    )
+    trace_parser.add_argument(
+        "--direction",
+        choices=["up", "down", "both"],
+        default="up",
+        help="up=向上找来源（默认）；down=向下找派生；both=同时。",
+    )
+    trace_parser.add_argument(
+        "--depth",
+        type=int,
+        default=5,
+        help="最大递归深度（1~10，默认 5）。",
+    )
+    trace_parser.add_argument("--json", action="store_true", help="JSON 输出（机器可读）。")
+    trace_parser.set_defaults(handler_command="trace")
+
     new_vault_parser = subparsers.add_parser(
         "new-vault",
         help="Scaffold a new Obsidian 炼丹炉 vault that points back to this runtime root.",
