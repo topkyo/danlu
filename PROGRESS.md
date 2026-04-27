@@ -6,6 +6,16 @@
 
 ## 状态
 
+- **M7.4a Kill Switch Core (External LLM Hook) — 完成**
+  - **目的**: 把 9+ Contract 第 6 条 "Kill switch by design" 从 "CLI discipline" 提升为 "runtime policy"。最小可信 slice：policy 文件 + global env override + 唯一 hook = external LLM。
+  - **核心做法**: 新模块 `src/aiwiki/autonomy_policy.py`（~110 LOC，stdlib-only）：`AutonomyPolicy` dataclass / `load_policy(root)` / `is_disabled(root, flag, env=)` / `disabled_reason(...)`。Policy 文件位于 `.aiwiki/state/autonomy-policy.json`，缺失/损坏 → 全 enabled（向后 100% 兼容）。`AIWIKI_DISABLE_AUTOMATION=1` 全局 panic-button override。
+  - **Hook**: `src/aiwiki/llm.py:create_backend_client` 入口先调 `disabled_reason("disable_external_llm")`；disabled → 抛新增的 `AutonomyDisabled(LLMError)` 子类异常。所有现有 caller 已捕 `LLMError`，无需修改 → 0 行为漂移。
+  - **测试**: `tests/test_autonomy_policy.py` 10 cases（缺文件 / 文件存在 / 损坏 / 非 dict / 未知 flag / env override / env 严格仅 "1" 触发 / reason 区分 env 与 file / hook 抛异常 / 缺 policy 时默认路径不变）。
+  - **Gates**: `bash scripts/verify.sh` 5/5 稳定 pass（1340 unit + 12 acceptance / 93% coverage）。
+  - **Stop Lines**: 0 acceptance golden 漂移 / 0 receipt 字段改 / 0 shell summary 改 / 0 第三方依赖。
+  - **拆分确认（oracle-validated）**: M7.4 拆为 a/b/c/d。本轮交付 a。M7.4b = 剩余 3 hook (lane apply / alchemy auto / l3 generate)；M7.4c = autonomy CLI surface；M7.4d = model policy。
+  - **价值**: 9+ Contract 第 6 条 7.4 → 8.5+（剩 0.5 在 M7.4b 4 hook 全到位时补）。
+
 - **M7.3.1 Stage B: Metrics History + Delta — 完成**
   - **目的**: 让 `aiwiki metrics` 不仅看当下 backlog（Stage A 已交付），还能看到趋势。9+ Contract 第 1 条 "Observe before schedule" 趋势维证据成立。
   - **核心做法**: 新增 `src/aiwiki/metrics_history.py`（薄模块，~120 LOC）：`append_snapshot` + `find_baseline` + `format_delta_block`。`aiwiki metrics` 每次执行 append 一条 JSONL 到 `.aiwiki/state/metrics-history.jsonl`，schema = `{"ts": ISO, "metrics": {<7 key>: float|null}}`。`--delta 7d/30d` 倒序扫描 jsonl 找 baseline，输出 trailing delta block；无 baseline 时打印 `# delta 7d: no baseline within window`。

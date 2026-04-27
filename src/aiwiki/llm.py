@@ -30,6 +30,19 @@ class LLMError(RuntimeError):
     """Raised when the configured LLM backend fails or returns invalid output."""
 
 
+class AutonomyDisabled(LLMError):
+    """Raised when an autonomy-policy kill switch blocks an external LLM call.
+
+    Subclass of LLMError so that all existing callers (which already handle
+    LLMError) get clean structured failure without bespoke wiring. Distinguish
+    via ``isinstance(exc, AutonomyDisabled)`` when reason matters.
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"external LLM disabled by autonomy policy: {reason}")
+        self.reason = reason
+
+
 @dataclass
 class CompletionResult:
     text: str
@@ -506,6 +519,13 @@ class ModelFallbackClient:
 
 
 def create_backend_client(config: LLMConfig, workdir: Path) -> Any:
+    # M7.4a Kill Switch: external LLM hook. Defer import to avoid cycles.
+    from aiwiki import autonomy_policy
+
+    reason = autonomy_policy.disabled_reason(workdir, "disable_external_llm")
+    if reason is not None:
+        raise AutonomyDisabled(reason)
+
     model_fallback_configs = _model_fallback_configs(config)
     if len(model_fallback_configs) > 1:
         return ModelFallbackClient(config, workdir, model_fallback_configs)
