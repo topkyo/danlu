@@ -6,6 +6,19 @@
 
 ## 状态
 
+- **M7.4d Model Policy (Explicit Model + model_source) — 完成**
+  - **目的**: 落地 9+ Contract 第 5 条 "No hidden backend choice"。让 backend 默认 fallback 可见、可拒。
+  - **核心做法**:
+    - `AIWIKI_REQUIRE_EXPLICIT_MODEL=1` strict mode：用户没设 `AIWIKI_LLM_MODEL` 时 `LLMConfig.from_env()` 抛 `RuntimeError`，message 含 flag 名 + 当前 backend default model；指导用户两种修复路径
+    - `LLMConfig.status_from_env()` 输出新增 `model_source: explicit | backend_default | none`
+    - `_compute_model_source` helper 复用 `_effective_model` 逻辑，避免别处再写一份 backend default chain
+  - **保留向后兼容**: strict mode 默认 OFF；现有用户 0 行为变化。env 风格与 `AIWIKI_DISABLE_AUTOMATION` 对齐（值 `"1"` 才生效）。
+  - **测试**: `tests/test_model_policy.py` 5 cases（status 含字段 / explicit→explicit / strict 拒绝隐式 / strict + explicit 通过 / strict OFF 默认 fallback 不变）。
+  - **未做**（避免 acceptance/receipt golden 漂移）: 不动 shell summary `model_requested/effective_model` / 不动 receipt schema / 不动 lane primitive metadata。
+  - **Gates**: `bash scripts/verify.sh` 5/5 稳定 pass（1366 unit + 12 acceptance / 93% coverage / `test_model_policy` 92%）。
+  - **Stop Lines**: 0 acceptance golden 漂移。
+  - **价值**: 9+ Contract 第 5 条 "No hidden backend choice" 8.3 → 9.0+。
+
 - **M7.4b2 + M7.4b3 Kill Switch Hooks → Alchemy Auto + L3 Generate — 完成**
   - **目的**: 完成 M7.4 拆分序列剩余 2 个 hook，4 个 disable flag 全部接到唯一 chokepoint。
   - **核心做法**:

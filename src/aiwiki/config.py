@@ -62,6 +62,14 @@ class LLMConfig:
             values["model_fallback"] = model_fallback
         requested = values["requested_backend"]
         backend = _resolve_backend(values)
+        # M7.4d Model Policy: strict mode rejects implicit backend default fallback.
+        if values.get("require_explicit_model") and not values["model"]:
+            backend_default = _effective_model("", backend)
+            raise RuntimeError(
+                "AIWIKI_REQUIRE_EXPLICIT_MODEL=1 but no AIWIKI_LLM_MODEL set; "
+                f"backend `{backend}` would fall back to `{backend_default or '(none)'}`. "
+                "Set AIWIKI_LLM_MODEL=<model> or unset AIWIKI_REQUIRE_EXPLICIT_MODEL."
+            )
         effective_model = _effective_model(values["model"], backend)
         effective_model_fallback_chain = _effective_model_fallback_chain(
             effective_model,
@@ -163,6 +171,7 @@ class LLMConfig:
             "model_requested": values["model"],
             "model": effective_model or values["model"],
             "effective_model": effective_model,
+            "model_source": _compute_model_source(values["model"], backend),
             "model_fallback_chain": list(effective_model_fallback_chain),
             "api_key_present": effective_api_key_present,
             "anthropic_api_key_present": bool(values["anthropic_api_key"]),
@@ -233,6 +242,7 @@ def _read_env() -> dict[str, Any]:
     codex_path = explicit_codex_path or shutil.which(codex_command) or ""
     copilot_path = explicit_copilot_path or shutil.which(copilot_command) or ""
     claude_path = explicit_claude_path or shutil.which(claude_command) or ""
+    require_explicit_model = (os.environ.get("AIWIKI_REQUIRE_EXPLICIT_MODEL") or "").strip() == "1"
     return {
         "requested_backend": requested_backend,
         "model": model,
@@ -255,6 +265,7 @@ def _read_env() -> dict[str, Any]:
         "codex_path": codex_path,
         "copilot_path": copilot_path,
         "claude_path": claude_path,
+        "require_explicit_model": require_explicit_model,
     }
 
 
@@ -298,6 +309,24 @@ def _effective_model(requested_model: str, backend: str) -> str:
     if defaults:
         return defaults[0]
     return ""
+
+
+def _compute_model_source(requested_model: str, backend: str) -> str:
+    """M7.4d: classify how the effective model was chosen.
+
+    Returns:
+        "explicit"          — user set AIWIKI_LLM_MODEL / OPENAI_MODEL
+        "backend_default"   — empty request, backend has a known default
+        "none"              — empty request, no backend default available
+                              (also when backend resolution itself failed)
+    """
+    if requested_model.strip():
+        return "explicit"
+    if not backend:
+        return "none"
+    if _effective_model("", backend):
+        return "backend_default"
+    return "none"
 
 
 def _default_model_chain(backend: str, requested_model: str = "") -> tuple[str, ...]:
