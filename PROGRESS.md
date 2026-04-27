@@ -711,6 +711,14 @@
   - **指标**: acceptance 11 → 12；`bash scripts/verify.sh` pass（1298 tests / 93% coverage）；`bash scripts/run_acceptance.sh -v` 12 passed；`PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py -v` 12 passed；`PYTHONPATH=src python3 -m pytest tests/test_product_shell_metrics.py -v` 5 passed；5 次 acceptance 稳定性 5/5 pass；`node --check .obsidian/plugins/furnace-product-shell/main.js` pass
   - **Stop Lines**: 0 `src/aiwiki/*` B4 改动；未改 receipt / audit / planner-log / signal schema；未改 ShellSummary 既有字段 schema；指标未接入自动调度 / lane judge / auto-accept；无指标 DB / 时序服务 / LLM / 网络 / 第三方依赖；baseline / 既有 acceptance 无回归；contract 已归档到 `.codex/contracts/archive/M6.4-knowledge-compounding-metrics.md`
 
+- **M6.5 Product Shell UI Smoke Tests — 完成（2 commits，本地待 push）**
+  - **目的**: 用 stdlib string/regex contract tests 冻结 Product Shell 首屏 5 维度（empty state / 按钮 / 长文本 / responsive / Advanced collapse），防止首屏退化为 dashboard；不引入浏览器自动化或第三方依赖
+  - **批次**: B1 `b5069be` 现状冻结 12 个 smoke contract tests（empty state / 主要按钮 / 长文本）；B2+B3 本次扩 4 个 tests（responsive media/max-width + Advanced details/summary collapse）并收口归档
+  - **探查结论**: Product Shell 现状已完整覆盖 contract 5 维度，已有 `@media (max-width: 900px/640px)` 与 `details/summary` Advanced 折叠机制，无需补实现
+  - **指标**: smoke tests 12 → 16；baseline 1298 → 1314 tests / 93% coverage；`PYTHONPATH=src python3 -m pytest tests/test_product_shell_smoke.py -v` 16 passed；`bash scripts/verify.sh` pass（1314 tests / 93% coverage）；`bash scripts/run_acceptance.sh -v` 12 passed；5 次 acceptance 稳定性 5/5 pass
+  - **Stop Lines**: 0 src / plugin implementation 改动；未改 `render.js` / `styles.css` / `plugin.js` / `main.js`；未改 ShellSummary / receipt / audit / planner-log / signal schema；无第三方依赖；acceptance 12/12 无回归；contract 已归档到 `.codex/contracts/archive/M6.5-product-shell-ui-smoke.md`
+  - **Critical Notes**: B2 没补 `src` / plugin 实现，因为 B1 探查发现 5 维度均已存在；本批只增加 contract 覆盖与归档状态
+
 ## Next Steps
 
 > 后续执行入口已固化到 `docs/Furnace Next Execution Plan.md`。下一轮默认先物化 M6.1 Deterministic Loop Acceptance Pack 到 `.codex/contracts/active.md`，再按该文档继续；M6.1 通过后优先进入 M6.1b LLM Golden Loop，用 GPT / Claude / 显式 backend 验证真实产品黄金闭环。

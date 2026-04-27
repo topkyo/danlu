@@ -83,3 +83,44 @@ class ProductShellLongTextContract(unittest.TestCase):
             "overflow" in css or "max-width" in css,
             "no overflow/max-width rule in styles.css",
         )
+
+
+class ProductShellResponsiveContract(unittest.TestCase):
+    """移动宽度响应式规则。"""
+
+    def test_media_query_present(self) -> None:
+        css = STYLES_CSS.read_text(encoding="utf-8")
+        self.assertIn("@media", css, "no @media rule in styles.css (responsive missing)")
+
+    def test_at_least_one_mobile_breakpoint(self) -> None:
+        """至少 1 个 max-width breakpoint 用于 mobile/tablet。"""
+        css = STYLES_CSS.read_text(encoding="utf-8")
+        # B1 探查：已有 max-width: 900px / 640px
+        breakpoints = re.findall(r"@media\s*\([^)]*max-width:\s*(\d+)px\s*\)", css)
+        self.assertTrue(
+            any(int(bp) <= 900 for bp in breakpoints),
+            f"no mobile/tablet breakpoint found; breakpoints={breakpoints}",
+        )
+
+
+class ProductShellCollapseContract(unittest.TestCase):
+    """Advanced 折叠 / 抽屉控件。"""
+
+    def test_details_summary_used(self) -> None:
+        text = MAIN_JS.read_text(encoding="utf-8")
+        # B1 探查：已用 details/summary 标签
+        self.assertIn("details", text)
+        self.assertIn("summary", text)
+
+    def test_advanced_drawer_collapse_pattern(self) -> None:
+        """Advanced drawer 用 details 或 collapsed class 实现折叠。"""
+        text = MAIN_JS.read_text(encoding="utf-8")
+        # 任一 pattern 满足
+        has_details_in_advanced = bool(
+            re.search(r"renderAdvancedDrawer[\s\S]{0,3000}details", text)
+        )
+        has_collapsed_class = "collapsed" in text or "is-collapsed" in text
+        self.assertTrue(
+            has_details_in_advanced or has_collapsed_class,
+            "Advanced drawer has no collapse mechanism (no details near renderAdvancedDrawer; no collapsed class)",
+        )
