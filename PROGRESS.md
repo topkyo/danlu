@@ -719,6 +719,13 @@
   - **Stop Lines**: 0 src / plugin implementation 改动；未改 `render.js` / `styles.css` / `plugin.js` / `main.js`；未改 ShellSummary / receipt / audit / planner-log / signal schema；无第三方依赖；acceptance 12/12 无回归；contract 已归档到 `.codex/contracts/archive/M6.5-product-shell-ui-smoke.md`
   - **Critical Notes**: B2 没补 `src` / plugin 实现，因为 B1 探查发现 5 维度均已存在；本批只增加 contract 覆盖与归档状态
 
+- **M6.6.1 Module Size Reduction — render.js — 完成（B3 本次收口）**
+  - **批次**: B1 `46ede13`（28 函数 → primitives/input/today，`render.js` 2084→1078）；B2 `0067727`（8 函数 → advanced/runs/home，`render.js` 1078→687）；B3 本次（2 函数 → review/execution，`render.js` 687→0/删除 + contract 收口）
+  - **指标**: `render_review.js` 363 LOC；`render_execution.js` 324 LOC；`render.js` 已删除；`main.js` 7201→7226 LOC；verify 1314 tests 不变；acceptance 12 不变；5 次 acceptance 稳定性 5/5 pass
+  - **Stop Lines**: 函数实现字面 ownership 移动；0 schema / stdout / ShellSummary / DOM contract 改动；`node --check main.js` pass；29 product_shell contract tests pass；verify tests 未低于 1314；5/5 稳定
+  - **Critical Notes**: 新增 8 个 render 子模块 + 1 次 `build.sh` concat 顺序最终化；B1 test 路径引用 metrics→`render_today`，B2 metrics→`render_advanced`，B3 未调整 test 路径引用；contract 已归档到 `.codex/contracts/archive/M6.6.1-render-js-split.md`
+  - **Gates**: `bash .obsidian/plugins/furnace-product-shell/build.sh` pass；`node --check .obsidian/plugins/furnace-product-shell/main.js` pass；product_shell 29 passed；`bash scripts/verify.sh` pass（1314 tests / 93% coverage）；`bash scripts/run_acceptance.sh -v` pass（12 passed）；5 次 acceptance 12/12 passed
+
 ## Next Steps
 
 > 后续执行入口已固化到 `docs/Furnace Next Execution Plan.md`。下一轮默认先物化 M6.1 Deterministic Loop Acceptance Pack 到 `.codex/contracts/active.md`，再按该文档继续；M6.1 通过后优先进入 M6.1b LLM Golden Loop，用 GPT / Claude / 显式 backend 验证真实产品黄金闭环。

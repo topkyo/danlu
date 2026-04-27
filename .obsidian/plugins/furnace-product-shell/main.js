@@ -3632,11 +3632,9 @@ function renderFurnaceCenter(plugin, contentEl) {
   renderAdvancedDrawer(plugin, contentEl);
 }
 
-// --- src/render.js ---
+// --- src/render_review.js ---
 
-// Standalone render functions extracted from the Plugin class.
-// Each function takes the plugin instance as its first argument.
-
+// Review center render function extracted from render.js.
 
 function renderReviewCenter(plugin, contentEl) {
   contentEl.empty();
@@ -3998,6 +3996,11 @@ function renderReviewCenter(plugin, contentEl) {
     });
   });
 }
+
+
+// --- src/render_execution.js ---
+
+// Execution center render function extracted from render.js.
 
 function renderExecutionCenter(plugin, contentEl) {
   contentEl.empty();
