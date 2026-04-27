@@ -190,6 +190,8 @@
 
 ## 10. 已拍板决策（2026-04-27）
 
+> **实施状态（2026-04-27）**：M-PS.1 已完成。Phase A 已落地 AskBox + Today's Reports + DropZone + Advanced 抽屉首屏；Phase B 已落地飞书 / 企业微信 webhook Notifier、插件 env bridge、`run-ask` report hook 和 notifier tests。当前验证基线为 `bash scripts/verify.sh` 1153 tests / 93% coverage。
+
 以下决策点已闭环，本文档其余章节均已与决策对齐：
 
 1. **通知机制：飞书 + 企业微信 webhook 外部推送**
@@ -214,12 +216,14 @@
 
 ## 11. 与 SoT 的对齐说明
 
+M-PS.1 实施后，Product Shell 仍只作为 surface / trigger 运行；Notifier 是 runtime 边界上的显式 webhook 出口，仅在报告生成后发送提醒，失败写可审计 `notify_failed` 记录且不污染 report / receipt / shell-summary。
+
 本文档与 [`docs/Furnace Agent Architecture.md`](./Furnace%20Agent%20Architecture.md) §3 的全部不变量兼容。
 
 - **Single writer / many readers**：Product Shell 仍是 reader / trigger surface，不拥有并发写入权。
 - **`raw/` 不可写**：UI 只提供投料入口，事实输入仍进入 `raw/`，派生层不得覆盖原始材料。
 - **Provenance**：报告、简报和输出卡片只展示已有 provenance 的 runtime 产出，不制造无来源结论。
-- **Deterministic baseline**：本文档不修改任何 runtime 行为，只描述 UI 层呈现策略。
+- **Deterministic baseline**：UI 重写不改变 backend / model selection；Notifier 只接 report-generated hook，成功无审计副作用，失败仅追加 `notify_failed` audit，不改变 report generation exit code。
 - **Backend 显式手动选择**：UI 不做 hidden backend routing；backend / model 切换仍由操作者显式选择。
 - **Review-apply-revert-audit**：Advanced 抽屉中的治理入口继续走既有可审计、可回滚路径。
 - **Advanced 抽屉不删除能力**：System Status / LLM Health / Review Center / Execution Center / Repair Backlog / Recent Runs 都不会被删除，只是从首屏降级。
