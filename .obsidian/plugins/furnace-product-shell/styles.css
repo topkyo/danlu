@@ -906,3 +906,22 @@
 .furnace-today-feed-decision .furnace-today-feed-item { border-left-color: var(--color-orange, #d68a23); }
 .furnace-today-feed-proposal .furnace-today-feed-item { border-left-color: var(--color-blue, #2c7be5); }
 
+
+/* M6.4 B3: Advanced Metrics Panel */
+.furnace-advanced-metrics { margin: 1em 0; }
+.furnace-advanced-metrics h3 { margin-bottom: 0.5em; }
+.furnace-advanced-metrics-empty { color: var(--text-muted); padding: 0.4em; }
+.furnace-advanced-metrics-list { list-style: none; padding-left: 0; }
+.furnace-advanced-metrics-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em;
+  padding: 0.3em 0.5em;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.furnace-advanced-metrics-label { font-weight: 500; min-width: 14em; }
+.furnace-advanced-metrics-value { font-family: var(--font-monospace); }
+.furnace-advanced-metrics-unavailable { color: var(--text-muted); }
+.furnace-advanced-metrics-reason { color: var(--text-faint); font-size: 0.9em; }
+.furnace-advanced-metrics-sample { color: var(--text-faint); font-size: 0.85em; }
+.furnace-advanced-metrics-hint { color: var(--text-muted); font-size: 0.85em; margin-top: 0.5em; font-family: var(--font-monospace); }
