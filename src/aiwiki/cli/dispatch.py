@@ -222,7 +222,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.handler_command == "today":
             return today_command(root)
         elif args.handler_command == "metrics":
-            return metrics_command(root, as_json=args.json)
+            return metrics_command(root, as_json=args.json, delta=args.delta)
         elif args.handler_command == "shell-status":
             result = shell_status(root)
         elif args.handler_command == "dashboard":
@@ -729,18 +729,53 @@ def today_command(root: Path) -> int:
     return 0
 
 
-def metrics_command(root: Path, *, as_json: bool = False) -> int:
+def metrics_command(root: Path, *, as_json: bool = False, delta: str | None = None) -> int:
+    from aiwiki import metrics_history
     from aiwiki.metrics import compute_metrics
     from aiwiki.metrics_io import build_metrics_snapshot
 
     snapshot = build_metrics_snapshot(root)
     metrics = compute_metrics(snapshot)
 
+    # M7.3.1 Stage B: append history snapshot (best-effort).
+    now_iso = snapshot.now_iso
+    # Numeric subset for delta math.
+    numeric_metrics = {
+        str(m.key): float(m.value)
+        for m in metrics
+        if isinstance(m.value, (int, float))
+    }
+    # Full history record keeps all 7 keys (None becomes null in JSONL) so
+    # later samples can always line up against the same schema.
+    history_record = {
+        str(m.key): (float(m.value) if isinstance(m.value, (int, float)) else None)
+        for m in metrics
+    }
+    metrics_history.append_snapshot(root, now_iso, history_record)
+
     if as_json:
         print(json.dumps([_metric_to_dict(metric) for metric in metrics], indent=2, ensure_ascii=False))
     else:
         print(_render_metrics_text(metrics))
+
+    if delta:
+        window_days = 7 if delta == "7d" else 30
+        baseline = metrics_history.find_baseline(root, now_iso, window_days)
+        block = metrics_history.format_delta_block(
+            window_label=delta,
+            baseline=baseline,
+            current=numeric_metrics,
+        )
+        print()
+        print(block)
+
     return 0
+
+
+def _utc_now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _metric_to_dict(metric) -> dict[str, object]:

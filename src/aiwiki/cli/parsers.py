@@ -21,6 +21,12 @@ def build_parser() -> argparse.ArgumentParser:
     today_parser.set_defaults(handler_command="today")
     metrics_parser = subparsers.add_parser("metrics", help="炼丹炉知识复利指标")
     metrics_parser.add_argument("--json", action="store_true", help="JSON 输出")
+    metrics_parser.add_argument(
+        "--delta",
+        choices=["7d", "30d"],
+        default=None,
+        help="对比 7 天前 / 30 天前 baseline（基于 .aiwiki/state/metrics-history.jsonl）",
+    )
     metrics_parser.set_defaults(handler_command="metrics")
     drop_parser = subparsers.add_parser("drop", help="炼丹炉输入端：投喂 URL / PDF / 图片 / 仓库 / 笔记 / 问题")
     drop_subparsers = drop_parser.add_subparsers(dest="drop_command", required=True)

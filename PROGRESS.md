@@ -6,6 +6,15 @@
 
 ## 状态
 
+- **M7.3.1 Stage B: Metrics History + Delta — 完成**
+  - **目的**: 让 `aiwiki metrics` 不仅看当下 backlog（Stage A 已交付），还能看到趋势。9+ Contract 第 1 条 "Observe before schedule" 趋势维证据成立。
+  - **核心做法**: 新增 `src/aiwiki/metrics_history.py`（薄模块，~120 LOC）：`append_snapshot` + `find_baseline` + `format_delta_block`。`aiwiki metrics` 每次执行 append 一条 JSONL 到 `.aiwiki/state/metrics-history.jsonl`，schema = `{"ts": ISO, "metrics": {<7 key>: float|null}}`。`--delta 7d/30d` 倒序扫描 jsonl 找 baseline，输出 trailing delta block；无 baseline 时打印 `# delta 7d: no baseline within window`。
+  - **CLI**: `parsers.py` 加 `--delta` flag（choices `7d`/`30d`）；`dispatch.py` `metrics_command` 集成 history append + delta render。
+  - **测试**: `tests/test_metrics_history.py`（8 cases，覆盖 append / append-only / 缺失文件 / window 边界 / 跳过 malformed / format with-without baseline）+ `tests/test_cli.py` 加 3 cases（append jsonl / `--delta 7d` no-baseline / `--delta 30d`）。
+  - **Gates**: `bash scripts/verify.sh` 5/5 稳定 pass（1330 unit + 12 acceptance / 93% coverage）。
+  - **Stop Lines**: 0 metric key 名 / 0 metric JSON schema / 0 shell summary 字段 / 0 acceptance golden 触动 / 0 第三方依赖。
+  - **价值**: 9+ Contract 第 1 条证据从单点（当下 backlog）扩展到双点（当下 + 趋势）。
+
 - **M7.3 Stage A: Real Review Counts — 完成**
   - **目的**: 实化 `metrics_io._read_review_counts` stub（之前 `return ()`），让 `review_closure_rate` metric 真实反映 backlog（之前 `pending_now=0` 导致 ratio 失真偏高）。
   - **核心做法**: `metrics_io._read_review_counts(root)` 复用 `app_lifecycle.collect_curated_pages` + `review_queue`，返回 `(("pending_decisions", n), ("pending_judgments", m))`；运行时容错 try/except 包裹保持 metrics 命令韧性；`tests/test_metrics_io.py` 新增 `test_review_counts_reads_pending_decisions_and_judgments` + 修正 empty-vault 断言（snapshot.review_counts 现在是 `{"pending_decisions":0,"pending_judgments":0}` 而非 `()`，更诚实）。

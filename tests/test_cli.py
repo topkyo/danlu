@@ -287,6 +287,37 @@ class CLITests(unittest.TestCase):
         self.assertEqual(stderr, "")
         self.assertIn("知识溯源完整度", stdout)
 
+    def test_metrics_appends_history_jsonl_each_invocation(self) -> None:
+        # M7.3.1 Stage B: every metrics call appends one snapshot line.
+        code1, _, _ = self._run_main_raw(["metrics"])
+        self.assertEqual(code1, 0)
+        history = Path(self.root) / ".aiwiki" / "state" / "metrics-history.jsonl"
+        self.assertTrue(history.exists())
+        first_lines = history.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(first_lines), 1)
+        record = json.loads(first_lines[0])
+        self.assertIn("ts", record)
+        self.assertIn("metrics", record)
+        self.assertIn("provenance_completeness", record["metrics"])
+
+        code2, _, _ = self._run_main_raw(["metrics"])
+        self.assertEqual(code2, 0)
+        second_lines = history.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(second_lines), 2)
+
+    def test_metrics_delta_window_without_baseline_reports_no_baseline(self) -> None:
+        # M7.3.1 Stage B: --delta 7d with no historical sample older than
+        # 7d emits a "no baseline within window" trailing block.
+        code, stdout, stderr = self._run_main_raw(["metrics", "--delta", "7d"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertIn("delta 7d: no baseline within window", stdout)
+
+    def test_metrics_delta_30d_accepted(self) -> None:
+        code, stdout, _ = self._run_main_raw(["metrics", "--delta", "30d"])
+        self.assertEqual(code, 0)
+        self.assertIn("delta 30d", stdout)
+
     def test_today_does_not_mutate_shell_summary(self) -> None:
         summary = {
             "generated_at": "2026-04-27T10:00:00+00:00",
