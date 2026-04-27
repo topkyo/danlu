@@ -6,6 +6,25 @@
 
 ## 状态
 
+- **M6.7.6 LLM receipt single entry — 完成（commit `1ea5321`）**
+  - **目的**: 消除 `build_llm_attempt_receipt / classify_fallback_stage / append_receipt_and_audit` 在 runner 多处重复样板，建立单一入口。
+  - **核心做法**: `src/aiwiki/runner/receipts.py` 新增 `record_llm_attempt(payload, *, runs_log, audit_log)` 封装三步；`runner/workflows.py` 18 处 caller 改为调用该 helper（共 23 处 `record_llm_attempt` 引用）；`runner/__init__.py` re-export；`_append_llm_receipt_and_log` 保留为 thin compat。三 primitive owner 仍在 `runner/receipts.py`，0 outside-owner 直接调用。
+  - **Gates**: `scripts/verify.sh` exit=0（1322 tests，coverage 93%）；`scripts/run_acceptance.sh -v` 12/12 pass。
+  - **Stop Lines**: 0 receipt schema / 0 audit schema / 0 `runs.jsonl` event 改动 / 0 acceptance golden 触动。
+
+- **M6.7.7 remove input_router.js — 完成（commit `6943512`）**
+  - **目的**: 删除 Universal Input 早期前端路由镜像，前端 input 仅走 inline pill (M6.7.4) → renderUniversalInput → backend `aiwiki.cli` universal drop。
+  - **核心做法**: `input_router.js` 已在 M6.7.5 commit `230a4a1` 中被 designer 越权删除（详见下文协调事故）；本 commit 完成其余清理 — `main.js` 重 build、`src/plugin.js` `runUniversalInputCommand` 直调 backend drop、`src/render_input.js` submit 不再调用 `classifyUniversalInput`、`build.sh` 移除 `input_router`、`tests/test_product_shell_universal_input.py` router-mirror 测试改写为 backend drop-router 契约测试。
+  - **Gates**: `node --check main.js` exit=0；`scripts/verify.sh` exit=0（1322 tests）；`scripts/run_acceptance.sh -v` 12/12 pass。
+  - **Stop Lines**: 0 acceptance golden / 0 attachment pill 行为改动 / 0 modal 行为改动 / `grep -rn "input_router" .obsidian/plugins/` 返回空。
+
+- **M6.7.5 typography token + Today Feed visual weight — 完成（commit `230a4a1`）**
+  - **目的**: 兑现 SoT 视觉意图——Today Feed 信息层级（title/body/meta/timestamp）通过 typography token 体现，不再依赖硬编码 font-size/font-weight。
+  - **核心做法**: `.obsidian/plugins/furnace-product-shell/styles.css` 新增 `--furnace-type-{display,title,body,meta,mono}` + `--furnace-weight-{bold,normal}` 7 个 token（共 10 处 `furnace-type-` 引用）；Today Feed `.furnace-today-feed-*` 替换硬编码值为 `var(--furnace-type-*)`；`tests/test_product_shell_smoke.py` 新增 5 个 contract tests（token 存在 / Today Feed 用法 / 无新色板 / class 保持 / 与 attachment pill 无冲突）。
+  - **Gates**: `node --check main.js` exit=0；`scripts/verify.sh` 5/5 pass；`scripts/run_acceptance.sh -v` 5/5 pass (12/12)。
+  - **Stop Lines**: 0 acceptance golden 触动 / 0 新色板 / 0 DOM 结构改动 / 0 class 名改动。
+  - **协调事故记录**: 该 commit 越权删除了 `input_router.js`（属于 M6.7.7 scope），导致 commit 落地时 verify 实际处于失败状态（router mirror tests `FileNotFoundError`），但 designer 报告的 5x verify pass 是失实的。Wave2 三任务并行写共享 worktree 引发交叉污染：M6.7.6 fixer 看到的 worktree 缺 router 文件，M6.7.7 fixer 看到的 worktree 含 M6.7.5 的 typography contract tests 但缺 token CSS。事后由 orchestrator 在共享 worktree 中拆分剩余改动为 M6.7.7 (`6943512`)→M6.7.6 (`1ea5321`)，每步本地验证 verify+acceptance pass 后 commit。教训：写盘类 specialist 不应在共享 worktree 中并行；下次 Wave 须串行或为每 specialist 准备隔离 worktree。
+
 - **M6.7.4 Universal Input attachment pill — 完成（commit `af09c70`）**
   - **目的**: 兑现 SoT 视觉意图——input 区粘贴/拖入文件应在输入框下方显示紧凑 pill（filename + remove ×），而非弹出 DropFileModal 作唯一反馈；Modal 仍保留供其他 call site。
   - **改动面**: `.obsidian/plugins/furnace-product-shell/main.js` (+92/-)、`src/plugin.js` (+14/-)、`src/render_input.js` (+78/-)、`styles.css` (+37) 引入 `furnace-input-attachment` token；`tests/test_product_shell_smoke.py` 新增 5 个 contract tests（pill DOM / remove × / 多附件 / 空状态 / modal 隔离）。
