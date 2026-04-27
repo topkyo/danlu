@@ -694,6 +694,14 @@
   - **指标**: `scripts/run_acceptance.sh -v` 10 passed（M6.1 5 + M6.1b 4 + M6.2 1）；`bash scripts/verify.sh` pass（1210 tests / 93% coverage）；Product Shell build + `node --check main.js` pass
   - **Stop Lines**: 0 `src/aiwiki/*` 改动；无 LLM / 网络 acceptance 依赖；无第三方依赖；typed/legacy drop 命令未删除；contract 已归档到 `.codex/contracts/archive/M6.2-universal-input.md`
 
+- **M6.3 Single Today Feed — 完成（4 commits，本地待 push）**
+  - **目的**: 将 CLI `aiwiki today` 与 Product Shell 首屏收敛到同一 Today feed contract，保留 5 个用户向 section，同时首屏不暴露机制词
+  - **批次**: B1 `0696a5f` today_feed.py pure builder（244 LOC / 100% cov）；B2 `8e88c39` CLI today 接 feed（cli.py -89 LOC）；B3 `84c160c` Product Shell renderTodayFeed + `src/today_feed.js` mirror；B4 acceptance + DOM/string contract + flaky 修复 + 收口（本 commit）
+  - **Acceptance / Product Shell**: 新增 `tests/fixtures/acceptance/M6.3/case_today_feed/` 与 `test_today_feed_contract`（空 vault smoke：5 section heading + 5 empty placeholders + Advanced 提示 + 机制词 0 泄漏）；新增 `tests/test_product_shell_today_feed.py` 5 个 DOM/string contract tests，冻结 built `main.js` feed markers、旧 helper、JS mirror、CSS marker 与 t() 机制词 guard
+  - **Critical Notes**: `test_universal_input_routing` flaky 根因是 `_copy_case_and_fix_clock_from` 未 patch `aiwiki.drop.utc_now`，两次 drop 仍使用真实 wall-clock，导致 `Captured at` timestamp 偶发不同；B4 在 helper 中补 `monkeypatch.setattr("aiwiki.drop.utc_now", ...)`，修后 focused 10/10 pass，全 acceptance 10/10 pass
+  - **指标**: acceptance 10 → 11；`bash scripts/verify.sh` pass（1247 tests / 93% coverage）；`bash scripts/run_acceptance.sh -v` 11 passed；`PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py -v` 11 passed；`node --check .obsidian/plugins/furnace-product-shell/main.js` pass
+  - **Stop Lines**: 0 `src/aiwiki/*` 改动；未改 `ShellSummary` / receipt / audit / planner-log / signal schema；无第三方依赖；未删 Advanced 入口或 typed CLI 命令；baseline / M6.1 / M6.1b / M6.2 acceptance 无回归；contract 已归档到 `.codex/contracts/archive/M6.3-single-today-feed.md`
+
 ## Next Steps
 
 > 后续执行入口已固化到 `docs/Furnace Next Execution Plan.md`。下一轮默认先物化 M6.1 Deterministic Loop Acceptance Pack 到 `.codex/contracts/active.md`，再按该文档继续；M6.1 通过后优先进入 M6.1b LLM Golden Loop，用 GPT / Claude / 显式 backend 验证真实产品黄金闭环。

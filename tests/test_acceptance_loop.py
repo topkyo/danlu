@@ -91,6 +91,7 @@ def _copy_case_and_fix_clock_from(  # pragma: no cover - exercised by explicit p
     monkeypatch.setattr("aiwiki.execution.alchemy.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.app_utils.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.app_compile.utc_now", lambda: FIXED_NOW.isoformat())
+    monkeypatch.setattr("aiwiki.drop.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.content.io.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.render.paths.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.app_shell.utc_now", lambda: FIXED_NOW.isoformat())
@@ -528,6 +529,37 @@ def test_universal_input_routing(  # pragma: no cover - explicit pytest acceptan
     assert typed_history[-1]["event_type"] == "raw-added"
     assert bare_history[-1]["material"] == "note"
     assert typed_history[-1]["material"] == "note"
+
+
+def test_today_feed_contract(  # pragma: no cover - explicit pytest acceptance gate
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """M6.3 B4: aiwiki today 的 5 section heading + 文案契约。"""
+    _case, vault = _copy_case_and_fix_clock_from("M6.3", "case_today_feed", tmp_path, monkeypatch)
+    out = _run_cli(vault, ["today"]).decode("utf-8")
+
+    for heading in [
+        "Today's Reports",
+        "Needs Review",
+        "Completed Elixirs",
+        "L3 Proposals",
+        "Suggested Next Actions",
+    ]:
+        assert heading in out
+
+    for placeholder in [
+        "(no reports today)",
+        "(no pending review)",
+        "(no completed elixirs today)",
+        "(no L3 proposals need attention)",
+        "(no suggested next actions)",
+    ]:
+        assert placeholder in out
+
+    assert "Run `aiwiki advanced" in out
+
+    for word in ["shell-summary", "review_backlog_counts", "planner-log", "audit.jsonl", "execution-receipts"]:
+        assert word not in out, f"mechanism word leaked to today output: {word}"
 
 
 def test_acceptance_no_stop_line_violations() -> None:
