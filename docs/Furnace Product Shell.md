@@ -1,18 +1,34 @@
-# Product Shell 插件 UI 重构 (EP-024) 评估报告
+# Furnace Product Shell SoT
 
-> **本文档已于 2026-04-27 提升为 active SoT，新位置：[`docs/Furnace Product Shell.md`](../Furnace%20Product%20Shell.md)。本副本保留作为历史快照，不再更新。**
+*Obsidian 插件 UI 层事实源；炼丹炉"一个输入端 + 一个输出端"原则的可视化呈现*
+*Status: Active SoT, awaiting decision points (§10)*
+*Last updated: 2026-04-27*
 
-*Product Shell 插件 UI v3 极简重构评估与决策基础*
-*Date: 2026-04-23*
+## 0. 第一性原理
+
+本文档受 [`docs/Furnace Agent Architecture.md`](./Furnace%20Agent%20Architecture.md) §3 Stable Invariants and Non-Goals 约束。
+
+炼丹炉 Product Shell 的 UI 第一性原理是：**用户面只暴露一个输入端 + 一个输出端，其他全部隐藏**。
+
+- **一个输入端**：首屏只给用户一个清晰的 Ask / Command 输入入口，以及同一心智下的 Drop URL / PDF / Image / Repo 投料区。
+- **一个输出端**：首屏只呈现最新报告、今日简报和需要阅读的产出，不把运行态流水线当成用户目标。
+- **其他全部隐藏**：System Status / LLM Health / Review Center / Execution Center / Repair Backlog / Recent Runs 等运维、状态、监控入口全部收纳到 Advanced 抽屉。
+- **用户心智最小化**：任何 UI 层新增卡片、按钮、状态或通知，都必须证明它没有扩大用户需要理解的概念数量。
+- **通知只服务输出端**：Notice 和 Vault Badge 只提醒“有新报告需要看”，不把后台调度细节推给用户。
+- **Advanced 不是删除**：高级视图仍保留给操作者排障和治理，只是不占据默认首屏。
+- **UI 不拥有 runtime state**：Product Shell 只通过 launcher CLI 与 `output/control/shell-summary.json` 读取 shell-facing contract。
+- **UI 不新增 SoT 字段**：本文档不引入任何新的事实字段、schema 字段或 runtime contract。
+- **不扩 `shell-summary`**：§6 已论证未读状态、按日分组和通知机制均可在插件本地 settings / 内存中闭环计算。
+- **不隐式调度 backend**：UI 可以显示显式选择的 backend / model，但不得替用户自动切换。
+- **不绕过审计闭环**：UI 层触发的执行仍必须走既有 CLI、receipt、review / apply / revert / audit 边界。
 
 ## 1. Executive Summary
 
 - **核心范式 Gap**：当前 UI 是面向运维的"全量 Dashboard"，充斥系统状态、健康度、全量历史等；而用户需求是"极简输入端 + 报告输出端 + 通知提醒"，二者存在根本冲突。
 - **推荐方案**：采用 **"Linear骨架 + Raycast输入 + Superhuman通知 + Notion报告"** 混合风格，以单一入口和通知驱动为核心，原有运维视图降级为"Advanced"折叠抽屉。
-- **实施代价估算**：
+- **Furnace Product Shell M-PS.1 milestone candidate 实施代价估算**：
   - 修改/重写核心视图渲染相关文件（`plugin.js`, `render.js`, `views.js`, `styles.css`），新增 0 个文件（复用现有结构）。
   - 风险级别：**M (Medium)**，主要风险在于 Obsidian 视图注册兼容性与状态迁移。
-  - 预估轮次：1-2 轮 closed loop。
 
 ## 2. 当前 UI 问题诊断
 
@@ -77,9 +93,9 @@
 - `running`: AskBox 或 DropZone 呈现温和的进度/呼吸态。
 - `error-need-attention`: 仅当严重错误且需要用户干预时，展示在列表最上方或发 Notice。
 
-## 4. 3 风格 + 推荐对比
+## 4. 风格选择：Linear骨架 + Raycast输入 + Superhuman通知 + Notion报告
 
-**Librarian 推荐策略：Linear骨架 + Raycast输入 + Superhuman通知 + Notion报告**
+采用 **Linear骨架 + Raycast输入 + Superhuman通知 + Notion报告** 的组合。
 
 **判断：Agree (强烈赞同)**
 此组合完美契合用户"极简输入输出+通知"的需求，并且非常适合 Obsidian 插件的环境限制。
@@ -108,15 +124,15 @@
 推荐使用 **"Notice + Vault 徽标 (Badge)" 双通道组合**。
 当后台数据更新且界面处于打开状态时，轻量弹一个 Obsidian Notice；同时在主界面的右上角点亮一个醒目的 Unread Badge，直到用户点击查看该报告。坚决不用系统通知以保持克制和跨平台稳定性。
 
-## 6. `shell-summary` Contract 扩展需求评估
+## 6. `shell-summary` contract 边界
 
 为支持"通知+极简"范式，检视现有 contract 字段：
 - `today_reports` 或近期的执行记录：**无需扩展**（现有执行历史/产出列表字段可通过插件端按日期截取和 Group By 实时计算）。
 - `unread_reports_since` / `last_viewed_at`：**可不扩 runtime**（优先建议在插件设置侧或本地临时文件存储 `last_viewed_timestamp`，对比 `shell-summary` 中的报告生成时间计算未读状态）。
 
-**结论**：**严格守住底线，无需扩展 runtime `shell-summary` 字段**。所有通知机制和按日分组逻辑均可以在插件 `render.js` / `views.js` 内存和本地 plugin settings 中闭环计算。
+**结论**：**严格守住底线，无需扩展 runtime `shell-summary` 字段**，符合 KISS 原则。所有通知机制和按日分组逻辑均可以在插件 `render.js` / `views.js` 内存和本地 plugin settings 中闭环计算。
 
-## 7. 迁移路径（新旧过渡）
+## 7. 迁移路径
 
 - **Phase A (纯 UI 改造)**：
   - 重写 `plugin.js`, `render.js`, `views.js`, `styles.css`。
@@ -133,9 +149,9 @@
 - **DOM 测试破坏**：现有 `.obsidian/plugins/furnace-product-shell/` 下如果存在 UI 强相关的测试用例，可能会失败。
   - *缓解*：如果存在测试，需同步更新 selector。
 
-## 9. 实施建议（按 harness 闭环）
+## 9. 实施建议
 
-- 推荐 **合并实施**：EP-024-A（UI 重写） + EP-024-B（基于本地设置的通知机制）合并为一轮实施。因为通知和极简布局是强耦合的视觉整体，拆分会导致开发撕裂。
+- 推荐作为单一 milestone (**M-PS.1**) 一次性落地，避免 UI 改造和通知机制拆分。因为通知和极简布局是强耦合的视觉整体，拆分会导致开发撕裂。
 - 预计修改文件：`plugin.js` / `render.js` / `views.js` / `styles.css` / `README.md`，预估 delta 代码量约 800 行。
 - 测试验证重点：主题切换下的色彩令牌（token）表现、新旧报告列表的读取与渲染、Advanced 抽屉的折叠展开、未读 badge 的点亮与消除。
 
@@ -146,6 +162,15 @@
 3. **老用户引导**：首次升级后，是否需要展示一次性 Onboarding Notice 指引 "Advanced 抽屉"的位置？
 4. **实施节奏**：是否同意将极简 UI 重写和通知机制合并为单一阶段 (Phase A+B) 进行落地闭环？
 
----
-*Authors: @designer (via orchestrator) + @librarian (reference research) + @explorer (runtime fact check)*
-*Status: Draft, awaiting user approval*
+## 11. 与 SoT 的对齐说明
+
+本文档与 [`docs/Furnace Agent Architecture.md`](./Furnace%20Agent%20Architecture.md) §3 的全部不变量兼容。
+
+- **Single writer / many readers**：Product Shell 仍是 reader / trigger surface，不拥有并发写入权。
+- **`raw/` 不可写**：UI 只提供投料入口，事实输入仍进入 `raw/`，派生层不得覆盖原始材料。
+- **Provenance**：报告、简报和输出卡片只展示已有 provenance 的 runtime 产出，不制造无来源结论。
+- **Deterministic baseline**：本文档不修改任何 runtime 行为，只描述 UI 层呈现策略。
+- **Backend 显式手动选择**：UI 不做 hidden backend routing；backend / model 切换仍由操作者显式选择。
+- **Review-apply-revert-audit**：Advanced 抽屉中的治理入口继续走既有可审计、可回滚路径。
+- **Advanced 抽屉不删除能力**：System Status / LLM Health / Review Center / Execution Center / Repair Backlog / Recent Runs 都不会被删除，只是从首屏降级。
+- **同步审查要求**：当 `docs/Furnace Agent Architecture.md` §3 的不变量发生变化时，本文档必须同步审查。

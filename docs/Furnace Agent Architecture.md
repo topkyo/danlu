@@ -49,6 +49,52 @@ related_docs:
 
 操作者（human owner）永远是最终裁决者。agent 是受控执行者与受控学习者，不是共同决策者，更不是炉子本身的重写者。
 
+## 1.1 User-Facing Surface（第一性原理）
+
+炼丹炉对用户暴露的表面遵循一条强约束的第一性原理：
+
+> **一个输入端 + 一个输出端，其余全部隐藏。**
+
+这不是 UI 风格偏好，而是产品边界契约。它直接决定哪些机制可以出现在默认用户路径上、哪些必须降级为 internal mechanics。
+
+### 用户面只暴露两件事
+
+- **唯一输入端**：`drop`。用户把任意 raw 资产（URL / PDF / image / repo / text / question）丢进炼丹炉，runtime 自动识别类型并路由到对应协议。用户不需要选 protocol、不需要选 phase、不需要选 backend、不需要选 lane（heavy / light）。
+- **唯一输出端**：`today`。用户每天打开炼丹炉，只看到今天该看什么——新报告、待 review 的判断、已完成的金丹、需要拍板的 L3 proposal。其余所有运维状态（System Status / LLM Health / Graph Health / Execution Center / Repair Backlog / Recent Runs）都不在首屏，必须主动展开 Advanced 抽屉才能看到。
+
+### 一切其他细节都是 internal mechanics
+
+下列概念**对用户全部隐藏**，只对 operator / debugger / agent loop 可见：
+
+- 5 个 protocol（general / investing / research / product / ops）的内部路由
+- 4 个 backend（codex-cli / nvidia-nim-api / copilot-cli / claude-cli）的选择与切换
+- 8+ phase（compile / lint / nightly / review / distill / propose / judge / aging / repair / escalation）的调度
+- candidate plane / settled plane / receipt / audit stream / planner-log / signal stream / rollback marker
+- L1 / L2 / L3 自主权边界（用户只感知"是否需要我拍板"，不感知层级编号）
+- heavy lane / light lane / auto scheduler / primitive opt-in
+- elixir 状态机（draft / distilling / settled / superseded）
+
+它们都是**让上述两个用户面工作得更好**的 runtime 实现细节，不应该出现在用户的心智模型里。
+
+### 设计判断标准
+
+任何新增机制、CLI 命令、Product Shell UI 组件、文档章节，都必须先回答：
+
+1. **它会不会增加用户必须知道的概念？** 如果会，必须先证明这个概念无法被隐藏到 internal mechanics 中。
+2. **它属于"输入端"还是"输出端"？** 不属于这两端的，默认归 Advanced。
+3. **它能不能用 sensible default 替用户做掉？** 能的话不暴露选项；不能的话先问"能不能让它能"。
+4. **删掉它，用户的输入/输出体验会不会变差？** 不会的话，应该删掉而不是隐藏。
+
+### 与 §3 不变量的关系
+
+本节是 §3 不变量的**用户面投影**：deterministic baseline + provenance + receipt + revert + audit 是给 operator 和 agent loop 的契约；"一个输入端 + 一个输出端"是给用户的契约。两者都不能破坏，但服务对象不同。
+
+### 实现层投影
+
+- **Product Shell UI 层**的 Active SoT 是 [docs/Furnace Product Shell.md](./Furnace%20Product%20Shell.md)。它是这一原则在 Obsidian 插件上的具体形态：Raycast 风 AskBox（输入）+ Today's Reports（输出）+ DropZone（输入的另一种形态）+ Advanced 抽屉（隐藏）。
+- **CLI 层**的目标形态是 `furnace drop <anything>` + `furnace today` 两个核心命令，其余 ~48 个子命令降级为 `furnace advanced <subcommand>`。CLI 收敛工程是后续 milestone，不在本文档定义。
+- **runtime 内部接口**（agent loop / planner / phase primitives / receipt / audit）不受本节约束，它们服务的是 operator 和 agent，不是普通用户。
+
 ## 2. From Nine Layers to a Loop-First Agent Model
 
 此前的终局架构文档用“九层模型”叙事（Evidence Fabric / Knowledge Compiler / Judgment Layer / ... / Product Shell）。本轮架构不是推翻，而是把叙事重心从“静态分层”迁移到“loop-first 控制模型”。
