@@ -2213,10 +2213,9 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
   }
 }
 
-// --- src/render.js ---
+// --- src/render_primitives.js ---
 
-// Standalone render functions extracted from the Plugin class.
-// Each function takes the plugin instance as its first argument.
+// Render primitives shared by Product Shell sections.
 
 function renderCardGrid(plugin, container, cards) {
   const grid = container.createDiv({ cls: "furnace-shell-grid" });
@@ -2673,90 +2672,6 @@ function renderSuggestedNextActionsBlock(plugin, container, options = {}) {
   return true;
 }
 
-function renderNeedsDecisionSection(plugin, container) {
-  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
-  if (!summary) {
-    return;
-  }
-  const suggested = Array.isArray(summary.suggested_next_actions) ? summary.suggested_next_actions : [];
-  const drifts = Array.isArray(summary.drift_warnings) ? summary.drift_warnings : [];
-  const rewrites = Array.isArray(summary.rewrite_recovery_actions) ? summary.rewrite_recovery_actions : [];
-  const backlog = summary.review_backlog_counts && typeof summary.review_backlog_counts === "object" ? summary.review_backlog_counts : {};
-  const backlogTotal = Object.values(backlog).reduce((acc, v) => acc + (Number.isFinite(Number(v)) ? Number(v) : 0), 0);
-
-  if (!suggested.length && !drifts.length && !rewrites.length && backlogTotal <= 0) {
-    return;
-  }
-
-  const section = container.createDiv({ cls: "furnace-shell-needs-section" });
-  section.createEl("h3", { text: plugin.t("Needs your decision") });
-
-  const maxItems = 5;
-  if (suggested.length) {
-    renderSuggestedNextActionsBlock(plugin, section, { maxItems: Math.min(suggested.length, maxItems) });
-  }
-
-  const renderItem = (item, kindLabel) => {
-    const wrapper = section.createDiv({ cls: "furnace-shell-inline-list" });
-    const row = wrapper.createDiv({ cls: "furnace-shell-inline-item" });
-    const copy = row.createDiv({ cls: "furnace-shell-output-copy" });
-    copy.createEl("strong", { text: item.title || item.path || item.message || plugin.t(kindLabel) });
-    const metaParts = [plugin.t(kindLabel)];
-    if (item.reason) {
-      metaParts.push(plugin.t("reason {value}", { value: item.reason }));
-    }
-    if (item.path) {
-      metaParts.push(item.path);
-    }
-    if (metaParts.length) {
-      copy.createDiv({ cls: "furnace-shell-meta", text: metaParts.join(" | ") });
-    }
-    if (item.path) {
-      const buttons = row.createDiv({ cls: "furnace-shell-inline-actions furnace-shell-inline-actions-compact" });
-      const openButton = buttons.createEl("button", { text: plugin.t("Open") });
-      openButton.addEventListener("click", () => {
-        plugin.runUiAction(() => plugin.openWorkspacePath(item.path), `Open needs item: ${item.path}`);
-      });
-    }
-  };
-
-  let used = Math.min(suggested.length, maxItems);
-  let truncated = Math.max(0, suggested.length - maxItems);
-  for (const item of drifts) {
-    if (used >= maxItems) {
-      truncated += 1;
-      continue;
-    }
-    renderItem(item, "drift warning");
-    used += 1;
-  }
-  for (const item of rewrites) {
-    if (used >= maxItems) {
-      truncated += 1;
-      continue;
-    }
-    renderItem(item, "rewrite recovery");
-    used += 1;
-  }
-
-  if (backlogTotal > 0) {
-    const backlogRow = section.createDiv({ cls: "furnace-shell-needs-backlog" });
-    backlogRow.setText(plugin.t("Review backlog: {value} pending", { value: String(backlogTotal) }));
-  }
-
-  if (truncated > 0) {
-    const more = section.createDiv({ cls: "furnace-shell-needs-more" });
-    more.setText(plugin.t("+{value} more in Advanced", { value: String(truncated) }));
-  }
-}
-
-function renderNextActionsPanel(plugin, container) {
-  const panel = plugin.renderPanel(container, "Suggested Next Actions", "Keep the next safe action visible from the main surface.");
-  if (!renderSuggestedNextActionsBlock(plugin, panel, { maxItems: 3 })) {
-    panel.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No suggested next action right now.") });
-  }
-}
-
 function renderDigestRow(plugin, container, label, value) {
   const row = container.createDiv({ cls: "furnace-shell-digest-row" });
   row.createDiv({ cls: "furnace-shell-digest-label", text: plugin.t(label) });
@@ -2888,81 +2803,18 @@ function renderLegacyAdvancedPanel(plugin, container) {
   ], "furnace-shell-subpanel-actions");
 }
 
-
-function renderFurnaceCenter(plugin, contentEl) {
-  contentEl.empty();
-  contentEl.addClass("furnace-shell-view");
-  contentEl.addClass("furnace-shell-main-view");
-  contentEl.addClass("furnace-shell-v3");
-
-  if (!plugin.repoState.valid) {
-    contentEl.createDiv({
-      cls: "furnace-shell-empty",
-      text: plugin.t("Vault runtime unavailable. Missing scaffold or launcher: {missing}", {
-        missing: plugin.repoState.missingPaths.join(", "),
-      }),
-    });
-    return;
-  }
-
-  // 1. Universal Input
-  renderUniversalInput(plugin, contentEl);
-
-  // 2. Today Feed (统一 5 类)
-  renderTodayFeed(plugin, contentEl);
-
-  // 3. Advanced Drawer
-  renderAdvancedDrawer(plugin, contentEl);
-}
-
-function renderTodayFeed(plugin, container) {
-  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
-  if (!summary) {
-    return;
-  }
-  
-  const feed = buildTodayFeed(summary);
-  
-  const section = container.createDiv({ cls: "furnace-today-feed" });
-  section.createEl("h2", { text: plugin.t("Today") });
-  
-  if (!feed.length) {
-    section.createEl("div", { 
-      cls: "furnace-today-feed-empty", 
-      text: plugin.t("(nothing for today)") 
-    });
-    return;
-  }
-  
-  const groups = { decision: [], proposal: [], report: [], elixir: [], action: [] };
-  for (const entry of feed) groups[entry.kind].push(entry);
-  
-  const groupSpecs = [
-    ["decision", plugin.t("Needs Decision")],
-    ["proposal", plugin.t("Proposals")],
-    ["report", plugin.t("Today's Reports")],
-    ["elixir", plugin.t("Completed")],
-    ["action", plugin.t("Suggested Actions")],
-  ];
-  
-  for (const [kind, heading] of groupSpecs) {
-    const items = groups[kind];
-    if (!items.length) continue;
-    const groupEl = section.createDiv({ cls: `furnace-today-feed-group furnace-today-feed-${kind}` });
-    groupEl.createEl("h3", { text: heading });
-    const listEl = groupEl.createEl("ul", { cls: "furnace-today-feed-list" });
-    for (const entry of items) {
-      const li = listEl.createEl("li", { cls: "furnace-today-feed-item" });
-      const titleEl = li.createEl("div", { cls: "furnace-today-feed-title", text: entry.title });
-      if (entry.summary) {
-        li.createEl("div", { cls: "furnace-today-feed-summary", text: entry.summary });
-      }
-      if (entry.target) {
-        li.createEl("div", { cls: "furnace-today-feed-target", text: entry.target });
-      }
-    }
+function isHttpUrl(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch (error) {
+    return false;
   }
 }
+
+// --- src/render_input.js ---
+
+// Render input controls for Product Shell.
 
 function renderUniversalInput(plugin, container) {
   const wrapper = container.createDiv({ cls: "furnace-universal-input-wrapper" });
@@ -3111,6 +2963,120 @@ function renderAskBox(plugin, container) {
   });
 }
 
+function renderDropZone(plugin, container) {
+  const zone = container.createDiv({ cls: "furnace-shell-dropzone" });
+  zone.createDiv({ cls: "furnace-shell-dropzone-title", text: plugin.t("Drop URL / PDF / Image / Repo") });
+  const actions = zone.createDiv({ cls: "furnace-shell-dropzone-actions" });
+  [
+    { label: "URL", actionLabel: "Drop URL", onClick: () => plugin.openDropUrlModal() },
+    { label: "PDF", actionLabel: "Drop PDF", onClick: () => new DropFileModal(plugin.app, plugin).setInitialMode("pdf").open() },
+    { label: "Image", actionLabel: "Drop Image", onClick: () => new DropImageModal(plugin.app, plugin).open() },
+    { label: "Repo", actionLabel: "Drop Repo", onClick: () => new DropFileModal(plugin.app, plugin).setInitialMode("repo").open() },
+  ].forEach((item) => {
+    const button = actions.createEl("button", { text: plugin.t(item.label) });
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      plugin.runUiAction(() => item.onClick(), plugin.t(item.actionLabel));
+    });
+  });
+  zone.addEventListener("click", () => {
+    plugin.runUiAction(() => plugin.openDropUrlModal(), plugin.t("Drop URL"));
+  });
+  zone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    zone.addClass("is-drag-over");
+  });
+  zone.addEventListener("dragleave", (event) => {
+    if (!zone.contains(event.relatedTarget)) {
+      zone.removeClass("is-drag-over");
+    }
+  });
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    zone.removeClass("is-drag-over");
+    const dataTransfer = event.dataTransfer;
+    if (!dataTransfer) {
+      return;
+    }
+    const file = dataTransfer.files && dataTransfer.files[0];
+    if (file) {
+      const fileName = String(file.name || file.path || "").toLowerCase();
+      const fileType = String(file.type || "").toLowerCase();
+      if (fileType === "application/pdf" || fileName.endsWith(".pdf")) {
+        plugin.runUiAction(() => new DropFileModal(plugin.app, plugin).setInitialMode("pdf").open(), plugin.t("Drop PDF"));
+        return;
+      }
+      if (fileType.startsWith("image/")) {
+        plugin.runUiAction(() => new DropImageModal(plugin.app, plugin).open(), plugin.t("Drop Image"));
+        return;
+      }
+      return;
+    }
+    const uriList = String(dataTransfer.getData("text/uri-list") || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"));
+    const text = uriList[0] || String(dataTransfer.getData("text/plain") || "").trim();
+    if (isHttpUrl(text)) {
+      plugin.runUiAction(() => plugin.openDropUrlModal(text), plugin.t("Drop URL"));
+      return;
+    }
+  });
+}
+
+// --- src/render_today.js ---
+
+// Render today feed and report surfaces for Product Shell.
+
+function renderTodayFeed(plugin, container) {
+  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
+  if (!summary) {
+    return;
+  }
+  
+  const feed = buildTodayFeed(summary);
+  
+  const section = container.createDiv({ cls: "furnace-today-feed" });
+  section.createEl("h2", { text: plugin.t("Today") });
+  
+  if (!feed.length) {
+    section.createEl("div", { 
+      cls: "furnace-today-feed-empty", 
+      text: plugin.t("(nothing for today)") 
+    });
+    return;
+  }
+  
+  const groups = { decision: [], proposal: [], report: [], elixir: [], action: [] };
+  for (const entry of feed) groups[entry.kind].push(entry);
+  
+  const groupSpecs = [
+    ["decision", plugin.t("Needs Decision")],
+    ["proposal", plugin.t("Proposals")],
+    ["report", plugin.t("Today's Reports")],
+    ["elixir", plugin.t("Completed")],
+    ["action", plugin.t("Suggested Actions")],
+  ];
+  
+  for (const [kind, heading] of groupSpecs) {
+    const items = groups[kind];
+    if (!items.length) continue;
+    const groupEl = section.createDiv({ cls: `furnace-today-feed-group furnace-today-feed-${kind}` });
+    groupEl.createEl("h3", { text: heading });
+    const listEl = groupEl.createEl("ul", { cls: "furnace-today-feed-list" });
+    for (const entry of items) {
+      const li = listEl.createEl("li", { cls: "furnace-today-feed-item" });
+      const titleEl = li.createEl("div", { cls: "furnace-today-feed-title", text: entry.title });
+      if (entry.summary) {
+        li.createEl("div", { cls: "furnace-today-feed-summary", text: entry.summary });
+      }
+      if (entry.target) {
+        li.createEl("div", { cls: "furnace-today-feed-target", text: entry.target });
+      }
+    }
+  }
+}
+
 function renderReportsPanel(plugin, container, reports) {
   const grouped = splitReportsByLocalDate(reports, { limitPreviousDays: 7 });
   const section = container.createDiv({ cls: "furnace-shell-reports-section" });
@@ -3180,74 +3146,119 @@ function renderReportItem(plugin, container, report) {
   });
 }
 
-function renderDropZone(plugin, container) {
-  const zone = container.createDiv({ cls: "furnace-shell-dropzone" });
-  zone.createDiv({ cls: "furnace-shell-dropzone-title", text: plugin.t("Drop URL / PDF / Image / Repo") });
-  const actions = zone.createDiv({ cls: "furnace-shell-dropzone-actions" });
-  [
-    { label: "URL", actionLabel: "Drop URL", onClick: () => plugin.openDropUrlModal() },
-    { label: "PDF", actionLabel: "Drop PDF", onClick: () => new DropFileModal(plugin.app, plugin).setInitialMode("pdf").open() },
-    { label: "Image", actionLabel: "Drop Image", onClick: () => new DropImageModal(plugin.app, plugin).open() },
-    { label: "Repo", actionLabel: "Drop Repo", onClick: () => new DropFileModal(plugin.app, plugin).setInitialMode("repo").open() },
-  ].forEach((item) => {
-    const button = actions.createEl("button", { text: plugin.t(item.label) });
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      plugin.runUiAction(() => item.onClick(), plugin.t(item.actionLabel));
-    });
-  });
-  zone.addEventListener("click", () => {
-    plugin.runUiAction(() => plugin.openDropUrlModal(), plugin.t("Drop URL"));
-  });
-  zone.addEventListener("dragover", (event) => {
-    event.preventDefault();
-    zone.addClass("is-drag-over");
-  });
-  zone.addEventListener("dragleave", (event) => {
-    if (!zone.contains(event.relatedTarget)) {
-      zone.removeClass("is-drag-over");
+function renderNeedsDecisionSection(plugin, container) {
+  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
+  if (!summary) {
+    return;
+  }
+  const suggested = Array.isArray(summary.suggested_next_actions) ? summary.suggested_next_actions : [];
+  const drifts = Array.isArray(summary.drift_warnings) ? summary.drift_warnings : [];
+  const rewrites = Array.isArray(summary.rewrite_recovery_actions) ? summary.rewrite_recovery_actions : [];
+  const backlog = summary.review_backlog_counts && typeof summary.review_backlog_counts === "object" ? summary.review_backlog_counts : {};
+  const backlogTotal = Object.values(backlog).reduce((acc, v) => acc + (Number.isFinite(Number(v)) ? Number(v) : 0), 0);
+
+  if (!suggested.length && !drifts.length && !rewrites.length && backlogTotal <= 0) {
+    return;
+  }
+
+  const section = container.createDiv({ cls: "furnace-shell-needs-section" });
+  section.createEl("h3", { text: plugin.t("Needs your decision") });
+
+  const maxItems = 5;
+  if (suggested.length) {
+    renderSuggestedNextActionsBlock(plugin, section, { maxItems: Math.min(suggested.length, maxItems) });
+  }
+
+  const renderItem = (item, kindLabel) => {
+    const wrapper = section.createDiv({ cls: "furnace-shell-inline-list" });
+    const row = wrapper.createDiv({ cls: "furnace-shell-inline-item" });
+    const copy = row.createDiv({ cls: "furnace-shell-output-copy" });
+    copy.createEl("strong", { text: item.title || item.path || item.message || plugin.t(kindLabel) });
+    const metaParts = [plugin.t(kindLabel)];
+    if (item.reason) {
+      metaParts.push(plugin.t("reason {value}", { value: item.reason }));
     }
-  });
-  zone.addEventListener("drop", (event) => {
-    event.preventDefault();
-    zone.removeClass("is-drag-over");
-    const dataTransfer = event.dataTransfer;
-    if (!dataTransfer) {
-      return;
+    if (item.path) {
+      metaParts.push(item.path);
     }
-    const file = dataTransfer.files && dataTransfer.files[0];
-    if (file) {
-      const fileName = String(file.name || file.path || "").toLowerCase();
-      const fileType = String(file.type || "").toLowerCase();
-      if (fileType === "application/pdf" || fileName.endsWith(".pdf")) {
-        plugin.runUiAction(() => new DropFileModal(plugin.app, plugin).setInitialMode("pdf").open(), plugin.t("Drop PDF"));
-        return;
-      }
-      if (fileType.startsWith("image/")) {
-        plugin.runUiAction(() => new DropImageModal(plugin.app, plugin).open(), plugin.t("Drop Image"));
-        return;
-      }
-      return;
+    if (metaParts.length) {
+      copy.createDiv({ cls: "furnace-shell-meta", text: metaParts.join(" | ") });
     }
-    const uriList = String(dataTransfer.getData("text/uri-list") || "")
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#"));
-    const text = uriList[0] || String(dataTransfer.getData("text/plain") || "").trim();
-    if (isHttpUrl(text)) {
-      plugin.runUiAction(() => plugin.openDropUrlModal(text), plugin.t("Drop URL"));
-      return;
+    if (item.path) {
+      const buttons = row.createDiv({ cls: "furnace-shell-inline-actions furnace-shell-inline-actions-compact" });
+      const openButton = buttons.createEl("button", { text: plugin.t("Open") });
+      openButton.addEventListener("click", () => {
+        plugin.runUiAction(() => plugin.openWorkspacePath(item.path), `Open needs item: ${item.path}`);
+      });
     }
-  });
+  };
+
+  let used = Math.min(suggested.length, maxItems);
+  let truncated = Math.max(0, suggested.length - maxItems);
+  for (const item of drifts) {
+    if (used >= maxItems) {
+      truncated += 1;
+      continue;
+    }
+    renderItem(item, "drift warning");
+    used += 1;
+  }
+  for (const item of rewrites) {
+    if (used >= maxItems) {
+      truncated += 1;
+      continue;
+    }
+    renderItem(item, "rewrite recovery");
+    used += 1;
+  }
+
+  if (backlogTotal > 0) {
+    const backlogRow = section.createDiv({ cls: "furnace-shell-needs-backlog" });
+    backlogRow.setText(plugin.t("Review backlog: {value} pending", { value: String(backlogTotal) }));
+  }
+
+  if (truncated > 0) {
+    const more = section.createDiv({ cls: "furnace-shell-needs-more" });
+    more.setText(plugin.t("+{value} more in Advanced", { value: String(truncated) }));
+  }
 }
 
-function isHttpUrl(value) {
-  try {
-    const url = new URL(String(value || "").trim());
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch (error) {
-    return false;
+function renderNextActionsPanel(plugin, container) {
+  const panel = plugin.renderPanel(container, "Suggested Next Actions", "Keep the next safe action visible from the main surface.");
+  if (!renderSuggestedNextActionsBlock(plugin, panel, { maxItems: 3 })) {
+    panel.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No suggested next action right now.") });
   }
+}
+
+// --- src/render.js ---
+
+// Standalone render functions extracted from the Plugin class.
+// Each function takes the plugin instance as its first argument.
+
+function renderFurnaceCenter(plugin, contentEl) {
+  contentEl.empty();
+  contentEl.addClass("furnace-shell-view");
+  contentEl.addClass("furnace-shell-main-view");
+  contentEl.addClass("furnace-shell-v3");
+
+  if (!plugin.repoState.valid) {
+    contentEl.createDiv({
+      cls: "furnace-shell-empty",
+      text: plugin.t("Vault runtime unavailable. Missing scaffold or launcher: {missing}", {
+        missing: plugin.repoState.missingPaths.join(", "),
+      }),
+    });
+    return;
+  }
+
+  // 1. Universal Input
+  renderUniversalInput(plugin, contentEl);
+
+  // 2. Today Feed (统一 5 类)
+  renderTodayFeed(plugin, contentEl);
+
+  // 3. Advanced Drawer
+  renderAdvancedDrawer(plugin, contentEl);
 }
 
 function renderAdvancedDrawer(plugin, container) {

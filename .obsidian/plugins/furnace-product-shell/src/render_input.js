@@ -1,0 +1,209 @@
+// Render input controls for Product Shell.
+
+function renderUniversalInput(plugin, container) {
+  const wrapper = container.createDiv({ cls: "furnace-universal-input-wrapper" });
+  
+  // Drag and drop overlay
+  const dropOverlay = wrapper.createDiv({ cls: "furnace-universal-input-drop-overlay" });
+  dropOverlay.createDiv({ text: plugin.t("Drop file here") });
+  dropOverlay.style.display = "none";
+
+  const form = wrapper.createDiv({ cls: "furnace-universal-input-form" });
+  const textarea = form.createEl("textarea", { 
+    cls: "furnace-universal-input-textarea",
+    attr: { "aria-label": "Universal input" }
+  });
+  
+  // Include 6 keywords explicitly: URL, PDF, image, repo, note, question
+  textarea.placeholder = plugin.t("Drop URL, PDF, image, repo, note, or question...");
+  textarea.rows = 1;
+
+  const submitButton = form.createEl("button", { 
+    cls: "furnace-universal-input-button", 
+    text: plugin.t("Submit") 
+  });
+
+  const autoResize = () => {
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+  };
+  textarea.addEventListener('input', autoResize);
+
+  const handleSubmit = () => {
+    const value = textarea.value;
+    if (!value.trim()) return;
+    try {
+      const { route, payload, reason } = classifyUniversalInput(value);
+      textarea.value = '';
+      autoResize();
+      plugin.runUniversalInputCommand({ route, payload, reason });
+    } catch (e) {
+      new Notice("Invalid input: " + e.message);
+    }
+  };
+
+  submitButton.addEventListener("click", () => {
+    handleSubmit();
+  });
+
+  textarea.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  });
+
+  // Drag and Drop handlers
+  let dragCounter = 0;
+  wrapper.addEventListener("dragenter", (e) => {
+    e.preventDefault();
+    dragCounter++;
+    dropOverlay.style.display = "flex";
+  });
+  wrapper.addEventListener("dragleave", (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter === 0) {
+      dropOverlay.style.display = "none";
+    }
+  });
+  wrapper.addEventListener("dragover", (e) => {
+    e.preventDefault();
+  });
+  wrapper.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    dropOverlay.style.display = "none";
+    
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      const path = file.path;
+      if (path) {
+        try {
+          const { route, payload, reason } = classifyUniversalInput(path);
+          plugin.runUniversalInputCommand({ route, payload, reason });
+        } catch (err) {
+          new Notice("Invalid drop: " + err.message);
+        }
+      }
+    } else if (e.dataTransfer) {
+      const text = e.dataTransfer.getData("text/plain");
+      if (text) {
+        textarea.value = text;
+        autoResize();
+      }
+    }
+  });
+}
+
+function renderAskBox(plugin, container) {
+  const wrapper = container.createDiv({ cls: "furnace-shell-askbox-wrapper" });
+  const form = wrapper.createDiv({ cls: "furnace-shell-askbox-form" });
+  const input = form.createEl("input", { cls: "furnace-shell-askbox", type: "text" });
+  input.placeholder = plugin.t("Ask / Command...");
+  const askButton = form.createEl("button", { cls: "furnace-shell-askbox-button", text: plugin.t("Ask") });
+  const status = wrapper.createDiv({ cls: "furnace-shell-askbox-status" });
+  let isRunning = false;
+
+  const setRunning = (nextRunning) => {
+    isRunning = Boolean(nextRunning);
+    input.disabled = isRunning;
+    askButton.disabled = isRunning;
+    askButton.setText(isRunning ? plugin.t("Asking...") : plugin.t("Ask"));
+    status.setText(isRunning ? plugin.t("Asking...") : "");
+  };
+
+  const submitAsk = async () => {
+    if (isRunning) {
+      return;
+    }
+    const question = String(input.value || "").trim();
+    if (!question) {
+      return;
+    }
+    input.value = "";
+    setRunning(true);
+    try {
+      await plugin.runAskCommand({
+        question,
+        format: plugin.settings.defaultAskFormat,
+        mode: plugin.settings.defaultAskMode,
+        protocol: "",
+      });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  askButton.addEventListener("click", () => {
+    plugin.runUiAction(() => submitAsk(), plugin.t("Ask"));
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      plugin.runUiAction(() => submitAsk(), plugin.t("Ask"));
+    }
+  });
+}
+
+function renderDropZone(plugin, container) {
+  const zone = container.createDiv({ cls: "furnace-shell-dropzone" });
+  zone.createDiv({ cls: "furnace-shell-dropzone-title", text: plugin.t("Drop URL / PDF / Image / Repo") });
+  const actions = zone.createDiv({ cls: "furnace-shell-dropzone-actions" });
+  [
+    { label: "URL", actionLabel: "Drop URL", onClick: () => plugin.openDropUrlModal() },
+    { label: "PDF", actionLabel: "Drop PDF", onClick: () => new DropFileModal(plugin.app, plugin).setInitialMode("pdf").open() },
+    { label: "Image", actionLabel: "Drop Image", onClick: () => new DropImageModal(plugin.app, plugin).open() },
+    { label: "Repo", actionLabel: "Drop Repo", onClick: () => new DropFileModal(plugin.app, plugin).setInitialMode("repo").open() },
+  ].forEach((item) => {
+    const button = actions.createEl("button", { text: plugin.t(item.label) });
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      plugin.runUiAction(() => item.onClick(), plugin.t(item.actionLabel));
+    });
+  });
+  zone.addEventListener("click", () => {
+    plugin.runUiAction(() => plugin.openDropUrlModal(), plugin.t("Drop URL"));
+  });
+  zone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    zone.addClass("is-drag-over");
+  });
+  zone.addEventListener("dragleave", (event) => {
+    if (!zone.contains(event.relatedTarget)) {
+      zone.removeClass("is-drag-over");
+    }
+  });
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    zone.removeClass("is-drag-over");
+    const dataTransfer = event.dataTransfer;
+    if (!dataTransfer) {
+      return;
+    }
+    const file = dataTransfer.files && dataTransfer.files[0];
+    if (file) {
+      const fileName = String(file.name || file.path || "").toLowerCase();
+      const fileType = String(file.type || "").toLowerCase();
+      if (fileType === "application/pdf" || fileName.endsWith(".pdf")) {
+        plugin.runUiAction(() => new DropFileModal(plugin.app, plugin).setInitialMode("pdf").open(), plugin.t("Drop PDF"));
+        return;
+      }
+      if (fileType.startsWith("image/")) {
+        plugin.runUiAction(() => new DropImageModal(plugin.app, plugin).open(), plugin.t("Drop Image"));
+        return;
+      }
+      return;
+    }
+    const uriList = String(dataTransfer.getData("text/uri-list") || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"));
+    const text = uriList[0] || String(dataTransfer.getData("text/plain") || "").trim();
+    if (isHttpUrl(text)) {
+      plugin.runUiAction(() => plugin.openDropUrlModal(text), plugin.t("Drop URL"));
+      return;
+    }
+  });
+}

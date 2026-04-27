@@ -44,7 +44,7 @@ class ProductShellMetricsContractTests(unittest.TestCase):
 
     def test_metrics_panel_not_in_today_feed(self) -> None:
         """首屏 Today feed 不暴露 metrics（contract Stop Line）。"""
-        text = (PLUGIN / "src/render.js").read_text(encoding="utf-8")
+        text = (PLUGIN / "src/render_today.js").read_text(encoding="utf-8")
         body = _function_body_after(text, "renderTodayFeed")
         self.assertNotIn("renderAdvancedMetricsPanel", body)
         self.assertNotIn("provenance_completeness", body)
