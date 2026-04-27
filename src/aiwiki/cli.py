@@ -117,6 +117,9 @@ def build_parser() -> argparse.ArgumentParser:
     _register_legacy_top_level_parsers(subparsers)
     today_parser = subparsers.add_parser("today", help="炼丹炉今日产出 / 待办 / 建议")
     today_parser.set_defaults(handler_command="today")
+    metrics_parser = subparsers.add_parser("metrics", help="炼丹炉知识复利指标")
+    metrics_parser.add_argument("--json", action="store_true", help="JSON 输出")
+    metrics_parser.set_defaults(handler_command="metrics")
     drop_parser = subparsers.add_parser("drop", help="炼丹炉输入端：投喂 URL / PDF / 图片 / 仓库 / 笔记 / 问题")
     drop_subparsers = drop_parser.add_subparsers(dest="drop_command", required=True)
     _register_drop_subcommand_parsers(drop_subparsers)
@@ -1111,6 +1114,8 @@ def main(argv: list[str] | None = None) -> int:
             result = set_active_protocol(root, args.protocol)
         elif args.handler_command == "today":
             return today_command(root)
+        elif args.handler_command == "metrics":
+            return metrics_command(root, as_json=args.json)
         elif args.handler_command == "shell-status":
             result = shell_status(root)
         elif args.handler_command == "dashboard":
@@ -1617,6 +1622,56 @@ def today_command(root: Path) -> int:
     return 0
 
 
+def metrics_command(root: Path, *, as_json: bool = False) -> int:
+    from aiwiki.metrics import compute_metrics
+    from aiwiki.metrics_io import build_metrics_snapshot
+
+    snapshot = build_metrics_snapshot(root)
+    metrics = compute_metrics(snapshot)
+
+    if as_json:
+        print(json.dumps([_metric_to_dict(metric) for metric in metrics], indent=2, ensure_ascii=False))
+    else:
+        print(_render_metrics_text(metrics))
+    return 0
+
+
+def _metric_to_dict(metric) -> dict[str, object]:
+    return {
+        "key": metric.key,
+        "value": metric.value,
+        "unit": metric.unit,
+        "reason": metric.reason,
+        "sample_size": metric.sample_size,
+    }
+
+
+def _render_metrics_text(metrics) -> str:
+    lines = ["炼丹炉 Knowledge Compounding Metrics", ""]
+    labels = {
+        "provenance_completeness": "知识溯源完整度",
+        "stale_ratio": "过期页面占比",
+        "review_closure_rate": "审议关闭率（7d）",
+        "proposal_acceptance_rate": "提案接受率",
+        "judgment_revisit_rate": "判断重访率",
+        "output_file_back_rate": "输出回流率",
+        "elixir_reuse_count": "Elixir 复用次数",
+    }
+    for metric in metrics:
+        key = str(metric.key)
+        name = labels.get(key, key)
+        value = metric.value
+        reason = metric.reason
+        unit = metric.unit
+        sample_size = metric.sample_size
+        if value is None:
+            lines.append(f"- {name} ({key}): 不可用 — {reason}")
+        else:
+            lines.append(f"- {name} ({key}): {value} {unit} (n={sample_size})")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def _render_today_text(feed: list[FeedEntry], summary: dict[str, object]) -> str:
     generated_at = str(summary.get("generated_at") or "")
     active_protocol = str(summary.get("active_protocol") or "")
@@ -1653,6 +1708,7 @@ def _render_today_text(feed: list[FeedEntry], summary: dict[str, object]) -> str
         [
             "Advanced",
             "Run `aiwiki advanced ...` for system status, receipts, audit, repair, lanes, and debugging.",
+            "Run `aiwiki metrics` for knowledge compounding metrics.",
         ]
     )
     return "\n".join(lines)

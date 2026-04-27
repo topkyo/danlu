@@ -79,12 +79,15 @@ class MetricsSnapshot:
 
 
 def compute_metrics(snapshot: MetricsSnapshot) -> list[Metric]:
-    """Derive the B1 metrics list from ``snapshot``."""
+    """Derive the M6.4 metrics list from ``snapshot``."""
 
     return [
         compute_provenance_completeness(snapshot),
         compute_stale_ratio(snapshot),
+        compute_review_closure_rate(snapshot),
         compute_proposal_acceptance_rate(snapshot),
+        compute_judgment_revisit_rate(snapshot),
+        compute_output_file_back_rate(snapshot),
         compute_elixir_reuse_count(snapshot),
     ]
 
@@ -137,6 +140,65 @@ def compute_proposal_acceptance_rate(snapshot: MetricsSnapshot) -> Metric:
     if sample_size == 0:
         return Metric("proposal_acceptance_rate", None, "ratio", "no decided proposals", 0)
     return Metric("proposal_acceptance_rate", round(accepted / sample_size, 4), "ratio", "", sample_size)
+
+
+def compute_review_closure_rate(snapshot: MetricsSnapshot) -> Metric:
+    """Return close events in the last 7 days / (closed + current pending reviews)."""
+
+    now = _parse_iso_datetime(snapshot.now_iso)
+    if now is None:
+        return Metric("review_closure_rate", None, "ratio", "now_iso missing", 0)
+
+    window_seconds = 7 * 24 * 60 * 60
+    close_operations = {"close", "resolve", "approve", "reject"}
+    close_events_7d = 0
+    for receipt in snapshot.receipts:
+        if receipt.subject_kind != "review" or receipt.operation not in close_operations:
+            continue
+        applied_at = _parse_iso_datetime(receipt.applied_at)
+        if applied_at is None:
+            continue
+        age_seconds = (now - applied_at).total_seconds()
+        if 0 <= age_seconds <= window_seconds:
+            close_events_7d += 1
+
+    pending_now = sum(max(count, 0) for _name, count in snapshot.review_counts)
+    sample_size = close_events_7d + pending_now
+    if sample_size == 0:
+        return Metric("review_closure_rate", None, "ratio", "no review activity", 0)
+    return Metric("review_closure_rate", round(close_events_7d / sample_size, 4), "ratio", "", sample_size)
+
+
+def compute_judgment_revisit_rate(snapshot: MetricsSnapshot) -> Metric:
+    """Return ratio of judgment subjects that have receipts at two or more times."""
+
+    receipt_times_by_subject: dict[str, set[datetime]] = {}
+    for receipt in snapshot.receipts:
+        if receipt.subject_kind != "judgment":
+            continue
+        subject_id = receipt.target_subject_id or receipt.subject_id
+        if not subject_id:
+            continue
+        applied_at = _parse_iso_datetime(receipt.applied_at)
+        if applied_at is None:
+            continue
+        receipt_times_by_subject.setdefault(subject_id, set()).add(applied_at)
+
+    sample_size = len(receipt_times_by_subject)
+    if sample_size == 0:
+        return Metric("judgment_revisit_rate", None, "ratio", "no judgment receipts", 0)
+    revisited = sum(1 for times in receipt_times_by_subject.values() if len(times) >= 2)
+    return Metric("judgment_revisit_rate", round(revisited / sample_size, 4), "ratio", "", sample_size)
+
+
+def compute_output_file_back_rate(snapshot: MetricsSnapshot) -> Metric:
+    """Return ratio of output artifacts carrying any derived_from provenance."""
+
+    sample_size = len(snapshot.outputs)
+    if sample_size == 0:
+        return Metric("output_file_back_rate", None, "ratio", "no outputs", 0)
+    backed = sum(1 for output in snapshot.outputs if output.derived_from)
+    return Metric("output_file_back_rate", round(backed / sample_size, 4), "ratio", "", sample_size)
 
 
 def compute_elixir_reuse_count(snapshot: MetricsSnapshot) -> Metric:

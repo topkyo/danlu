@@ -291,5 +291,6 @@ class ShellSummary(TypedDict, total=False):
     recent_receipts: list[dict[str, Any]]
     recent_runs: list[dict[str, Any]]
     nightly: dict[str, Any]
+    metrics: list[dict[str, Any]]
     links: dict[str, str]
     capabilities: dict[str, Any]

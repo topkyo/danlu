@@ -1449,6 +1449,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
             "lint_counts": dict(nightly_state.get("lint", {}).get("counts", {})),
         },
         "knowledge_stats": _build_knowledge_stats(memory, compile_state, decisions, judgments),
+        "metrics": _build_metrics_summary(root),
         "links": shell_links(root),
         "capabilities": shell_capabilities(root),
     }
@@ -1458,6 +1459,25 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         suggested_next_actions=suggested_next_actions,
     )
     return summary
+
+
+def _build_metrics_summary(root: Path) -> list[dict[str, object]]:
+    try:
+        from aiwiki.metrics import compute_metrics
+        from aiwiki.metrics_io import build_metrics_snapshot
+
+        return [
+            {
+                "key": metric.key,
+                "value": metric.value,
+                "unit": metric.unit,
+                "reason": metric.reason,
+                "sample_size": metric.sample_size,
+            }
+            for metric in compute_metrics(build_metrics_snapshot(root))
+        ]
+    except Exception:
+        return []
 
 
 def render_product_shell_html(summary: ShellSummary) -> str:

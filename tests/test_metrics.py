@@ -6,13 +6,17 @@ from datetime import datetime, timezone
 from aiwiki.metrics import (
     Metric,
     MetricsSnapshot,
+    OutputMeta,
     ProposalMeta,
     ReceiptMeta,
     WikiPageMeta,
     compute_elixir_reuse_count,
+    compute_judgment_revisit_rate,
     compute_metrics,
+    compute_output_file_back_rate,
     compute_proposal_acceptance_rate,
     compute_provenance_completeness,
+    compute_review_closure_rate,
     compute_stale_ratio,
 )
 
@@ -36,6 +40,10 @@ def _page(
 
 def _proposal(proposal_id: str, status: str) -> ProposalMeta:
     return ProposalMeta(proposal_id=proposal_id, status=status, created_at="", decided_at="")
+
+
+def _output(path: str, *, derived_from: list[str] | None = None) -> OutputMeta:
+    return OutputMeta(path=path, derived_from=derived_from or [], generated_at="")
 
 
 def _receipt(
@@ -84,7 +92,10 @@ class MetricsTests(unittest.TestCase):
             [
                 "provenance_completeness",
                 "stale_ratio",
+                "review_closure_rate",
                 "proposal_acceptance_rate",
+                "judgment_revisit_rate",
+                "output_file_back_rate",
                 "elixir_reuse_count",
             ],
         )
@@ -260,6 +271,103 @@ class MetricsTests(unittest.TestCase):
 
         self.assertUnavailableMetric(metric, "ratio")
         self.assertEqual(metric.reason, "no decided proposals")
+
+    def test_review_closure_rate_counts_7d_closes_over_current_activity(self) -> None:
+        snapshot = MetricsSnapshot(
+            review_counts=(("pending_decisions", 2), ("pending_judgments", 1)),
+            receipts=(
+                _receipt("r1", operation="close", subject_kind="review", applied_at="2026-04-26T00:00:00Z"),
+                _receipt("r2", operation="approve", subject_kind="review", applied_at="2026-04-25T00:00:00Z"),
+                _receipt("r3", operation="reject", subject_kind="review", applied_at="2026-04-10T00:00:00Z"),
+                _receipt("r4", operation="close", subject_kind="source", applied_at="2026-04-26T00:00:00Z"),
+                _receipt("r5", operation="close", subject_kind="review", applied_at="not-a-date"),
+            ),
+            now_iso="2026-04-27T00:00:00Z",
+        )
+
+        metric = compute_review_closure_rate(snapshot)
+
+        self.assertAvailableMetric(metric, "ratio")
+        self.assertEqual(metric.value, 0.4)
+        self.assertEqual(metric.sample_size, 5)
+
+    def test_review_closure_rate_no_activity_unavailable(self) -> None:
+        snapshot = MetricsSnapshot(now_iso="2026-04-27T00:00:00Z")
+
+        metric = compute_review_closure_rate(snapshot)
+
+        self.assertUnavailableMetric(metric, "ratio")
+        self.assertEqual(metric.reason, "no review activity")
+
+    def test_review_closure_rate_now_iso_missing_unavailable(self) -> None:
+        snapshot = MetricsSnapshot(review_counts=(("pending", 1),), now_iso="")
+
+        metric = compute_review_closure_rate(snapshot)
+
+        self.assertUnavailableMetric(metric, "ratio")
+        self.assertEqual(metric.reason, "now_iso missing")
+
+    def test_judgment_revisit_rate_counts_subjects_with_later_receipts(self) -> None:
+        snapshot = MetricsSnapshot(
+            receipts=(
+                _receipt("r1", subject_kind="judgment", subject_id="receipt-1", target_subject_id="judgment-a", applied_at="2026-04-20T00:00:00Z"),
+                _receipt("r2", subject_kind="judgment", subject_id="receipt-2", target_subject_id="judgment-a", applied_at="2026-04-21T00:00:00Z"),
+                _receipt("r3", subject_kind="judgment", subject_id="judgment-b", target_subject_id="", applied_at="2026-04-21T00:00:00Z"),
+                _receipt("r4", subject_kind="judgment", subject_id="", target_subject_id="", applied_at="2026-04-21T00:00:00Z"),
+                _receipt("r5", subject_kind="judgment", subject_id="judgment-c", target_subject_id="", applied_at="not-a-date"),
+            )
+        )
+
+        metric = compute_judgment_revisit_rate(snapshot)
+
+        self.assertAvailableMetric(metric, "ratio")
+        self.assertEqual(metric.value, 0.5)
+        self.assertEqual(metric.sample_size, 2)
+
+    def test_judgment_revisit_rate_no_judgment_receipts_unavailable(self) -> None:
+        snapshot = MetricsSnapshot(receipts=(_receipt("r1", subject_kind="source"),))
+
+        metric = compute_judgment_revisit_rate(snapshot)
+
+        self.assertUnavailableMetric(metric, "ratio")
+        self.assertEqual(metric.reason, "no judgment receipts")
+
+    def test_judgment_revisit_rate_never_revisited_is_zero(self) -> None:
+        snapshot = MetricsSnapshot(
+            receipts=(
+                _receipt("r1", subject_kind="judgment", subject_id="judgment-a", applied_at="2026-04-20T00:00:00Z"),
+                _receipt("r2", subject_kind="judgment", subject_id="judgment-b", applied_at="2026-04-21T00:00:00Z"),
+                _receipt("r3", subject_kind="judgment", subject_id="judgment-b", applied_at="2026-04-21T00:00:00Z"),
+            )
+        )
+
+        metric = compute_judgment_revisit_rate(snapshot)
+
+        self.assertAvailableMetric(metric, "ratio")
+        self.assertEqual(metric.value, 0.0)
+
+    def test_output_file_back_rate_counts_outputs_with_derived_from(self) -> None:
+        snapshot = MetricsSnapshot(outputs=(_output("output/a.md", derived_from=["wiki/sources/a.md"]), _output("output/b.md")))
+
+        metric = compute_output_file_back_rate(snapshot)
+
+        self.assertAvailableMetric(metric, "ratio")
+        self.assertEqual(metric.value, 0.5)
+        self.assertEqual(metric.sample_size, 2)
+
+    def test_output_file_back_rate_empty_outputs_unavailable(self) -> None:
+        metric = compute_output_file_back_rate(MetricsSnapshot())
+
+        self.assertUnavailableMetric(metric, "ratio")
+        self.assertEqual(metric.reason, "no outputs")
+
+    def test_output_file_back_rate_no_derived_from_is_zero(self) -> None:
+        snapshot = MetricsSnapshot(outputs=(_output("output/a.md"), _output("output/b.md")))
+
+        metric = compute_output_file_back_rate(snapshot)
+
+        self.assertAvailableMetric(metric, "ratio")
+        self.assertEqual(metric.value, 0.0)
 
     def test_elixir_reuse_counts_two_later_references(self) -> None:
         snapshot = MetricsSnapshot(

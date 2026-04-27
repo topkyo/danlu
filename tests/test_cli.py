@@ -246,6 +246,46 @@ class CLITests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(stderr, "")
         self.assertIn("Run `aiwiki advanced ...`", stdout)
+        self.assertIn("Run `aiwiki metrics`", stdout)
+
+    def test_metrics_text_output_contains_all_metric_keys(self) -> None:
+        code, stdout, stderr = self._run_main_raw(["metrics"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        for key in (
+            "provenance_completeness",
+            "stale_ratio",
+            "review_closure_rate",
+            "proposal_acceptance_rate",
+            "judgment_revisit_rate",
+            "output_file_back_rate",
+            "elixir_reuse_count",
+        ):
+            self.assertIn(key, stdout)
+
+    def test_metrics_json_output_is_valid_with_seven_entries(self) -> None:
+        code, stdout, stderr = self._run_main_raw(["metrics", "--json"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        payload = json.loads(stdout)
+        self.assertEqual(len(payload), 7)
+        self.assertEqual(payload[0]["key"], "provenance_completeness")
+
+    def test_metrics_empty_vault_does_not_raise(self) -> None:
+        code, stdout, stderr = self._run_main_raw(["metrics"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertIn("炼丹炉 Knowledge Compounding Metrics", stdout)
+
+    def test_metrics_text_output_contains_chinese_label(self) -> None:
+        code, stdout, stderr = self._run_main_raw(["metrics"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertIn("知识溯源完整度", stdout)
 
     def test_today_does_not_mutate_shell_summary(self) -> None:
         summary = {
