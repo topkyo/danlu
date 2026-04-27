@@ -2830,7 +2830,6 @@ function renderUniversalInput(plugin, container) {
     attr: { "aria-label": "Universal input" }
   });
   
-  // Include 6 keywords explicitly: URL, PDF, image, repo, note, question
   textarea.placeholder = plugin.t("Drop URL, PDF, image, repo, note, or question...");
   textarea.rows = 1;
 
@@ -2839,20 +2838,63 @@ function renderUniversalInput(plugin, container) {
     text: plugin.t("Submit") 
   });
 
+  const attachmentsContainer = wrapper.createDiv({ cls: "furnace-input-attachments-container" });
+  
+  let attachedFiles = [];
+
+  const updateAttachmentPills = () => {
+    attachmentsContainer.empty();
+    if (attachedFiles.length === 0) {
+      attachmentsContainer.style.display = "none";
+      return;
+    }
+    attachmentsContainer.style.display = "flex";
+    attachedFiles.forEach((file, index) => {
+      const pill = attachmentsContainer.createDiv({ cls: "furnace-input-attachment" });
+      const nameSpan = pill.createSpan({ text: file.name, cls: "furnace-input-attachment-name" });
+      const removeBtn = pill.createSpan({ text: "×", cls: "furnace-input-attachment-remove" });
+      
+      removeBtn.addEventListener("click", () => {
+        attachedFiles.splice(index, 1);
+        updateAttachmentPills();
+      });
+    });
+  };
+
+  const addFile = (file) => {
+    // Only add if we have a path
+    if (file && file.path) {
+      attachedFiles.push(file);
+      updateAttachmentPills();
+    }
+  };
+
   const autoResize = () => {
     textarea.style.height = 'auto';
     textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
   };
   textarea.addEventListener('input', autoResize);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const value = textarea.value;
-    if (!value.trim()) return;
+    if (!value.trim() && attachedFiles.length === 0) return;
+
+    textarea.value = '';
+    autoResize();
+    const filesToProcess = [...attachedFiles];
+    attachedFiles = [];
+    updateAttachmentPills();
+
     try {
-      const { route, payload, reason } = classifyUniversalInput(value);
-      textarea.value = '';
-      autoResize();
-      plugin.runUniversalInputCommand({ route, payload, reason });
+      if (filesToProcess.length > 0) {
+        for (const file of filesToProcess) {
+          const { route, payload, reason } = classifyUniversalInput(file.path);
+          await plugin.runUniversalInputCommand({ route, payload, reason, title: value });
+        }
+      } else {
+        const { route, payload, reason } = classifyUniversalInput(value);
+        await plugin.runUniversalInputCommand({ route, payload, reason });
+      }
     } catch (e) {
       new Notice("Invalid input: " + e.message);
     }
@@ -2866,6 +2908,16 @@ function renderUniversalInput(plugin, container) {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       handleSubmit();
+    }
+  });
+
+  textarea.addEventListener("paste", (e) => {
+    if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
+      e.preventDefault();
+      for (let i = 0; i < e.clipboardData.files.length; i++) {
+        const file = e.clipboardData.files[i];
+        addFile({ name: file.name, path: file.path, type: file.type });
+      }
     }
   });
 
@@ -2892,15 +2944,9 @@ function renderUniversalInput(plugin, container) {
     dropOverlay.style.display = "none";
     
     if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      const path = file.path;
-      if (path) {
-        try {
-          const { route, payload, reason } = classifyUniversalInput(path);
-          plugin.runUniversalInputCommand({ route, payload, reason });
-        } catch (err) {
-          new Notice("Invalid drop: " + err.message);
-        }
+      for (let i = 0; i < e.dataTransfer.files.length; i++) {
+        const file = e.dataTransfer.files[i];
+        addFile({ name: file.name, path: file.path, type: file.type });
       }
     } else if (e.dataTransfer) {
       const text = e.dataTransfer.getData("text/plain");
@@ -6493,14 +6539,14 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     await this.runPluginCommand(`${this.t("Set Protocol")}: ${protocol}`, ["protocol-set", protocol], { refreshAfter: true });
   }
 
-  async runUniversalInputCommand({ route, payload, reason }) {
+  async runUniversalInputCommand({ route, payload, reason, title }) {
     switch (route) {
-      case "url": return this.runDropUrlCommand({ url: payload });
-      case "pdf": return this.runDropFileCommand({ mode: "pdf", source: payload });
-      case "image": return this.runDropImageCommand({ source: payload });
-      case "repo": return this.runDropFileCommand({ mode: "repo", source: payload });
-      case "note": return this.runDropNoteCommand({ text: payload });
-      case "ask": return this.runAskCommand({ question: payload });
+      case "url": return this.runDropUrlCommand({ url: payload, title });
+      case "pdf": return this.runDropFileCommand({ mode: "pdf", source: payload, title });
+      case "image": return this.runDropImageCommand({ source: payload, title });
+      case "repo": return this.runDropFileCommand({ mode: "repo", source: payload, title });
+      case "note": return this.runDropNoteCommand({ text: title || payload });
+      case "ask": return this.runAskCommand({ question: title || payload });
     }
   }
 

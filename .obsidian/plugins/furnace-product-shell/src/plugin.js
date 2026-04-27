@@ -1942,14 +1942,14 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     await this.runPluginCommand(`${this.t("Set Protocol")}: ${protocol}`, ["protocol-set", protocol], { refreshAfter: true });
   }
 
-  async runUniversalInputCommand({ route, payload, reason }) {
+  async runUniversalInputCommand({ route, payload, reason, title }) {
     switch (route) {
-      case "url": return this.runDropUrlCommand({ url: payload });
-      case "pdf": return this.runDropFileCommand({ mode: "pdf", source: payload });
-      case "image": return this.runDropImageCommand({ source: payload });
-      case "repo": return this.runDropFileCommand({ mode: "repo", source: payload });
-      case "note": return this.runDropNoteCommand({ text: payload });
-      case "ask": return this.runAskCommand({ question: payload });
+      case "url": return this.runDropUrlCommand({ url: payload, title });
+      case "pdf": return this.runDropFileCommand({ mode: "pdf", source: payload, title });
+      case "image": return this.runDropImageCommand({ source: payload, title });
+      case "repo": return this.runDropFileCommand({ mode: "repo", source: payload, title });
+      case "note": return this.runDropNoteCommand({ text: title || payload });
+      case "ask": return this.runAskCommand({ question: title || payload });
     }
   }
 

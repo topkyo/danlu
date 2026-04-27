@@ -124,3 +124,29 @@ class ProductShellCollapseContract(unittest.TestCase):
             has_details_in_advanced or has_collapsed_class,
             "Advanced drawer has no collapse mechanism (no details near renderAdvancedDrawer; no collapsed class)",
         )
+
+class UniversalInputPillContract(unittest.TestCase):
+    """M6.7.4: Universal Input Attachment Pill contracts."""
+
+    def test_pill_dom_class(self):
+        css = STYLES_CSS.read_text(encoding="utf-8")
+        self.assertIn(".furnace-input-attachment", css)
+        self.assertIn(".furnace-input-attachment-remove", css)
+        js = MAIN_JS.read_text(encoding="utf-8")
+        self.assertIn("furnace-input-attachment", js)
+
+    def test_remove_behavior(self):
+        js = MAIN_JS.read_text(encoding="utf-8")
+        self.assertIn("attachedFiles.splice(index, 1)", js)
+
+    def test_multiple_attachments(self):
+        js = MAIN_JS.read_text(encoding="utf-8")
+        self.assertIn("attachedFiles.push(", js)
+
+    def test_empty_state_hidden(self):
+        js = MAIN_JS.read_text(encoding="utf-8")
+        self.assertIn("attachmentsContainer.style.display = \"none\"", js)
+
+    def test_modal_preserved_for_other_call_sites(self):
+        js = MAIN_JS.read_text(encoding="utf-8")
+        self.assertIn("new DropFileModal", js)

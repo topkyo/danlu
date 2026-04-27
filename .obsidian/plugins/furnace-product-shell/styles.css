@@ -925,3 +925,40 @@
 .furnace-advanced-metrics-reason { color: var(--text-faint); font-size: 0.9em; }
 .furnace-advanced-metrics-sample { color: var(--text-faint); font-size: 0.85em; }
 .furnace-advanced-metrics-hint { color: var(--text-muted); font-size: 0.85em; margin-top: 0.5em; font-family: var(--font-monospace); }
+
+/* M6.7.4: Universal Input Attachment Pills */
+.furnace-input-attachments-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.furnace-input-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.furnace-input-attachment-name {
+  max-width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.furnace-input-attachment-remove {
+  cursor: pointer;
+  color: var(--text-faint);
+  font-weight: bold;
+}
+
+.furnace-input-attachment-remove:hover {
+  color: var(--text-error);
+}
