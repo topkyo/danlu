@@ -350,6 +350,94 @@ def test_heavy_primitives_receipt_acceptance(  # pragma: no cover - explicit pyt
         pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
 
 
+def test_heavy_after_llm_invariant(  # pragma: no cover - explicit pytest acceptance gate
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B3: LLM-origin upstream artifact must not alter deterministic heavy primitive invariants."""
+    case, vault = _copy_case_and_fix_clock_from("M6.1b", "case_heavy_after_llm", tmp_path, monkeypatch)
+    stdout_dir = case / "expected" / "stdout"
+
+    out1, out2, out3 = _run_b1_chain(vault)
+    out4 = _run_cli(
+        vault,
+        [
+            "alchemy",
+            "heavy",
+            "all",
+            "--apply",
+            "--primitive",
+            "review",
+            "--primitive",
+            "distill",
+            "--primitive",
+            "propose",
+            "--note",
+            "M6.1 heavy primitives",
+        ],
+    )
+
+    _write_or_compare(stdout_dir / "01-signals-replay.json", out1)
+    _write_or_compare(stdout_dir / "02-planner-log-replay.json", out2)
+    _write_or_compare(stdout_dir / "03-alchemy-auto-dry-run.json", out3)
+    _write_or_compare(stdout_dir / "04-alchemy-heavy-apply.json", out4)
+
+    if not REFRESH:
+        payload = json.loads(out4)
+        assert payload["lane"] == "heavy"
+        assert payload["primitives"] == ["review", "distill", "propose"]
+
+    receipts = _load_jsonl(vault / ".aiwiki/state/execution-receipts.jsonl")
+    primitive_receipts = [record for record in receipts if str(record.get("operation", "")).startswith("alchemy-")]
+    expected_per_primitive = [
+        ("aiwiki-alchemy-review", "alchemy-review-enqueue"),
+        ("aiwiki-alchemy-distill", "alchemy-distill-refresh"),
+        ("aiwiki-alchemy-propose", "alchemy-propose-generate"),
+    ]
+    actual = [
+        (record["generated_by"], record["operation"])
+        for record in primitive_receipts
+        if (record["generated_by"], record["operation"]) in expected_per_primitive
+    ]
+    assert actual == expected_per_primitive, f"primitive receipt sequence mismatch: {actual}"
+
+    audit_events = _load_jsonl(vault / ".aiwiki/state/audit.jsonl")
+    heavy_event_types = [
+        "alchemy-lane-started",
+        "alchemy-review-enqueue",
+        "alchemy-review-enqueued",
+        "alchemy-distill-refresh",
+        "alchemy-distill-refreshed",
+        "l3-proposal-create",
+        "alchemy-propose-generate",
+        "alchemy-propose-generated",
+        "alchemy-lane-completed",
+    ]
+    heavy_events = [record.get("event_type") for record in audit_events if record.get("event_type") in heavy_event_types]
+    assert heavy_events == heavy_event_types, f"audit envelope mismatch: {heavy_events}"
+
+    audit_text = (vault / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8")
+    assert "lane_judge" not in audit_text
+    assert "auto_judge" not in audit_text
+    assert "l3-proposal-accept" not in audit_text
+    assert "l3-proposal-apply" not in audit_text
+
+    for record in primitive_receipts:
+        assert record.get("llm_invoked", False) is False, f"heavy primitive receipt should NOT mark llm_invoked: {record}"
+
+    _assert_files_byte_equal(
+        vault,
+        case / "expected",
+        [
+            ".aiwiki/state/signals.jsonl",
+            ".aiwiki/state/planner-log.jsonl",
+            ".aiwiki/state/execution-receipts.jsonl",
+            ".aiwiki/state/audit.jsonl",
+        ],
+    )
+    if REFRESH:
+        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
+
+
 def test_light_primitives_compile_lint_acceptance(  # pragma: no cover - explicit pytest acceptance gate
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
