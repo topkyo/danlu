@@ -1942,15 +1942,18 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     await this.runPluginCommand(`${this.t("Set Protocol")}: ${protocol}`, ["protocol-set", protocol], { refreshAfter: true });
   }
 
-  async runUniversalInputCommand({ route, payload, reason, title }) {
-    switch (route) {
-      case "url": return this.runDropUrlCommand({ url: payload, title });
-      case "pdf": return this.runDropFileCommand({ mode: "pdf", source: payload, title });
-      case "image": return this.runDropImageCommand({ source: payload, title });
-      case "repo": return this.runDropFileCommand({ mode: "repo", source: payload, title });
-      case "note": return this.runDropNoteCommand({ text: title || payload });
-      case "ask": return this.runAskCommand({ question: title || payload });
+  async runUniversalInputCommand({ payload, title }) {
+    const normalizedPayload = String(payload || "").trim();
+    if (!normalizedPayload) {
+      new Notice(this.t("Universal input cannot be empty."));
+      return;
     }
+    const args = ["drop", normalizedPayload];
+    const normalizedTitle = String(title || "").trim();
+    if (normalizedTitle) {
+      args.push("--title", normalizedTitle);
+    }
+    await this.runPluginCommand(`${this.t("Universal Input")}: ${truncateText(normalizedTitle || normalizedPayload, 48)}`, args, { refreshAfter: true });
   }
 
   async runAskCommand({ question, format, mode, protocol }) {

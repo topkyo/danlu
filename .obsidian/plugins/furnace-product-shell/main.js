@@ -888,91 +888,6 @@ function splitReportsByLocalDate(reports, options = {}) {
   };
 }
 
-// --- src/input_router.js ---
-
-// MIRROR of src/aiwiki/input_router.py — keep in sync.
-// Pure function, no IO, no LLM, no fetch.
-const ROUTE = {
-  URL: "url",
-  PDF: "pdf",
-  IMAGE: "image",
-  REPO: "repo",
-  NOTE: "note",
-  ASK: "ask"
-};
-
-const IMAGE_SUFFIXES = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"];
-
-function classifyUniversalInput(value) {
-  const payload = (value || "").trim();
-  if (!payload) {
-    throw new Error("empty input");
-  }
-
-  const lowerPayload = payload.toLowerCase();
-
-  if (lowerPayload.startsWith("http://") || lowerPayload.startsWith("https://")) {
-    let urlPath = "";
-    try {
-      const url = new URL(payload);
-      urlPath = url.pathname.toLowerCase();
-    } catch (e) {
-      // Ignored: fallback to naive parsing if invalid URL
-    }
-    
-    if (urlPath.endsWith(".pdf")) {
-      return { route: ROUTE.PDF, payload, reason: "pdf-suffix-on-url" };
-    }
-    if (IMAGE_SUFFIXES.some(suffix => urlPath.endsWith(suffix))) {
-      return { route: ROUTE.IMAGE, payload, reason: "image-suffix-on-url" };
-    }
-    return { route: ROUTE.URL, payload, reason: "url-scheme" };
-  }
-
-  if (lowerPayload.endsWith(".pdf")) {
-    return { route: ROUTE.PDF, payload, reason: "pdf-suffix" };
-  }
-
-  if (IMAGE_SUFFIXES.some(suffix => lowerPayload.endsWith(suffix))) {
-    return { route: ROUTE.IMAGE, payload, reason: "image-suffix" };
-  }
-
-  if (lowerPayload.startsWith("git@")) {
-    return { route: ROUTE.REPO, payload, reason: "git-ssh-shorthand" };
-  }
-
-  if (lowerPayload.startsWith("ssh://")) {
-    return { route: ROUTE.REPO, payload, reason: "ssh-scheme" };
-  }
-
-  if (lowerPayload.endsWith(".git")) {
-    return { route: ROUTE.REPO, payload, reason: "git-suffix" };
-  }
-
-  if (lowerPayload.startsWith("note:")) {
-    const notePayload = payload.substring("note:".length).trim();
-    if (!notePayload) {
-      throw new Error("empty note payload");
-    }
-    return { route: ROUTE.NOTE, payload: notePayload, reason: "note-prefix" };
-  }
-
-  if (payload.includes("\n")) {
-    return { route: ROUTE.NOTE, payload, reason: "multiline-text" };
-  }
-
-  if (lowerPayload.startsWith("ask:")) {
-    const askPayload = payload.substring("ask:".length).trim();
-    return { route: ROUTE.ASK, payload: askPayload, reason: "ask-prefix" };
-  }
-
-  if (payload.includes("?")) {
-    return { route: ROUTE.ASK, payload, reason: "contains-question-mark" };
-  }
-
-  return { route: ROUTE.ASK, payload, reason: "default-ambiguous-text" };
-}
-
 // --- src/today_feed.js ---
 
 /**
@@ -2888,12 +2803,10 @@ function renderUniversalInput(plugin, container) {
     try {
       if (filesToProcess.length > 0) {
         for (const file of filesToProcess) {
-          const { route, payload, reason } = classifyUniversalInput(file.path);
-          await plugin.runUniversalInputCommand({ route, payload, reason, title: value });
+          await plugin.runUniversalInputCommand({ payload: file.path, title: value });
         }
       } else {
-        const { route, payload, reason } = classifyUniversalInput(value);
-        await plugin.runUniversalInputCommand({ route, payload, reason });
+        await plugin.runUniversalInputCommand({ payload: value });
       }
     } catch (e) {
       new Notice("Invalid input: " + e.message);
@@ -6539,15 +6452,18 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     await this.runPluginCommand(`${this.t("Set Protocol")}: ${protocol}`, ["protocol-set", protocol], { refreshAfter: true });
   }
 
-  async runUniversalInputCommand({ route, payload, reason, title }) {
-    switch (route) {
-      case "url": return this.runDropUrlCommand({ url: payload, title });
-      case "pdf": return this.runDropFileCommand({ mode: "pdf", source: payload, title });
-      case "image": return this.runDropImageCommand({ source: payload, title });
-      case "repo": return this.runDropFileCommand({ mode: "repo", source: payload, title });
-      case "note": return this.runDropNoteCommand({ text: title || payload });
-      case "ask": return this.runAskCommand({ question: title || payload });
+  async runUniversalInputCommand({ payload, title }) {
+    const normalizedPayload = String(payload || "").trim();
+    if (!normalizedPayload) {
+      new Notice(this.t("Universal input cannot be empty."));
+      return;
     }
+    const args = ["drop", normalizedPayload];
+    const normalizedTitle = String(title || "").trim();
+    if (normalizedTitle) {
+      args.push("--title", normalizedTitle);
+    }
+    await this.runPluginCommand(`${this.t("Universal Input")}: ${truncateText(normalizedTitle || normalizedPayload, 48)}`, args, { refreshAfter: true });
   }
 
   async runAskCommand({ question, format, mode, protocol }) {

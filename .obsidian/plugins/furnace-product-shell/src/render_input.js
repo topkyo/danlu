@@ -72,12 +72,10 @@ function renderUniversalInput(plugin, container) {
     try {
       if (filesToProcess.length > 0) {
         for (const file of filesToProcess) {
-          const { route, payload, reason } = classifyUniversalInput(file.path);
-          await plugin.runUniversalInputCommand({ route, payload, reason, title: value });
+          await plugin.runUniversalInputCommand({ payload: file.path, title: value });
         }
       } else {
-        const { route, payload, reason } = classifyUniversalInput(value);
-        await plugin.runUniversalInputCommand({ route, payload, reason });
+        await plugin.runUniversalInputCommand({ payload: value });
       }
     } catch (e) {
       new Notice("Invalid input: " + e.message);

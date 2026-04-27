@@ -11,7 +11,7 @@ class ProductShellUniversalInputContractTests(unittest.TestCase):
     def test_universal_input_present_in_built_main(self) -> None:
         text = (PLUGIN_ROOT / "main.js").read_text(encoding="utf-8")
 
-        for marker in ["renderUniversalInput", "runUniversalInputCommand", "classifyUniversalInput"]:
+        for marker in ["renderUniversalInput", "runUniversalInputCommand", "Universal Input"]:
             self.assertIn(marker, text)
 
         for keyword in ["URL", "PDF", "image", "repo", "note", "question"]:
@@ -20,13 +20,13 @@ class ProductShellUniversalInputContractTests(unittest.TestCase):
         self.assertIn("renderAskBox", text)
         self.assertIn("renderDropZone", text)
 
-    def test_universal_input_router_mirror_aligned(self) -> None:
-        text = (PLUGIN_ROOT / "src/input_router.js").read_text(encoding="utf-8")
+    def test_universal_input_uses_backend_drop_router(self) -> None:
+        text = (PLUGIN_ROOT / "main.js").read_text(encoding="utf-8")
 
-        for route_value in ["url", "pdf", "image", "repo", "note", "ask"]:
-            self.assertTrue(f'"{route_value}"' in text or f"'{route_value}'" in text)
-
-        self.assertTrue("input_router.py" in text or "MIRROR" in text or "mirror" in text)
+        self.assertIn('const args = ["drop", normalizedPayload]', text)
+        self.assertIn('await plugin.runUniversalInputCommand({ payload: file.path, title: value });', text)
+        self.assertIn('await plugin.runUniversalInputCommand({ payload: value });', text)
+        self.assertNotIn("classifyUniversalInput", text)
 
     def test_universal_input_styles_present(self) -> None:
         text = (PLUGIN_ROOT / "styles.css").read_text(encoding="utf-8")
