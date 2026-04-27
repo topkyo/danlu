@@ -104,7 +104,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aiwiki", description="Local-first knowledge compiler scaffold")
     parser.add_argument("--root", default=".", help="Project root. Defaults to the current directory.")
     subparsers = parser.add_subparsers(dest="command", required=True)
+    _register_legacy_top_level_parsers(subparsers)
+    return parser
 
+
+def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -> None:
     subparsers.add_parser("layout", help="Create the expected directory layout.")
 
     new_vault_parser = subparsers.add_parser(
@@ -913,7 +917,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         help="Stop after N polling cycles. Useful for tests and short-lived runs.",
     )
-    return parser
+    _set_handler_command_defaults(subparsers)
+
+
+def _set_handler_command_defaults(subparsers: argparse._SubParsersAction, handler_command: str | None = None) -> None:
+    for name, choice in subparsers.choices.items():
+        canonical_command = handler_command or name
+        choice.set_defaults(handler_command=canonical_command)
+        for action in choice._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                _set_handler_command_defaults(action, canonical_command)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -923,29 +936,29 @@ def main(argv: list[str] | None = None) -> int:
     text_output: str | None = None
 
     try:
-        if args.command == "layout":
+        if args.handler_command == "layout":
             ensure_layout(root)
             result = {"root": str(root), "status": "ok"}
-        elif args.command == "new-vault":
+        elif args.handler_command == "new-vault":
             result = bootstrap_new_vault(root, Path(args.target).resolve(), force=args.force)
-        elif args.command == "ingest":
+        elif args.handler_command == "ingest":
             result = ingest_source(root, args.source, title=args.title)
-        elif args.command == "drop-url":
+        elif args.handler_command == "drop-url":
             result = drop_url(root, args.url, title=args.title)
             result = _maybe_auto_process(root, result, args)
-        elif args.command == "drop-pdf":
+        elif args.handler_command == "drop-pdf":
             result = drop_pdf(root, args.source, title=args.title)
             result = _maybe_auto_process(root, result, args)
-        elif args.command == "drop-image":
+        elif args.handler_command == "drop-image":
             result = drop_image(root, args.source, title=args.title, enable_vision=not args.no_vision)
             result = _maybe_auto_process(root, result, args)
-        elif args.command == "drop-repo":
+        elif args.handler_command == "drop-repo":
             result = drop_repo(root, args.source, title=args.title, max_files=args.max_files)
             result = _maybe_auto_process(root, result, args)
-        elif args.command == "drop-note":
+        elif args.handler_command == "drop-note":
             result = drop_note(root, args.source, title=args.title, text=args.text, kind=args.kind)
             result = _maybe_auto_process(root, result, args)
-        elif args.command == "compile":
+        elif args.handler_command == "compile":
             result = compile_wiki(root)
             rewrite_state = result.get("concept_rewrite") or {}
             proposal_paths = [
@@ -958,27 +971,27 @@ def main(argv: list[str] | None = None) -> int:
                     **result,
                     **rewrite_recovery_payload_for_paths(root, proposal_paths),
                 }
-        elif args.command == "protocol-status":
+        elif args.handler_command == "protocol-status":
             if args.set_protocol:
                 result = set_active_protocol(root, args.set_protocol)
             else:
                 result = load_protocol_state(root)
-        elif args.command == "protocol-set":
+        elif args.handler_command == "protocol-set":
             result = set_active_protocol(root, args.protocol)
-        elif args.command == "shell-status":
+        elif args.handler_command == "shell-status":
             result = shell_status(root)
-        elif args.command == "dashboard":
+        elif args.handler_command == "dashboard":
             result = shell_status_dashboard(root)
-        elif args.command == "search":
+        elif args.handler_command == "search":
             result = shell_search(root, args.query, limit=args.limit)
-        elif args.command == "run-compile":
+        elif args.handler_command == "run-compile":
             result = run_compile(root, limit=args.limit)
-        elif args.command == "ask":
+        elif args.handler_command == "ask":
             ask_kwargs = {"protocol": args.protocol, "no_cache": args.no_cache, "load_protocol_learnings": args.load_learnings}
             if getattr(args, "corpus", None) is not None:
                 ask_kwargs["corpus_id_override"] = args.corpus
             result = ask_question(root, args.question, args.format, **ask_kwargs)
-        elif args.command == "run-ask":
+        elif args.handler_command == "run-ask":
             ask_kwargs = {
                 "protocol": args.protocol,
                 "lean": args.lean,
@@ -989,13 +1002,13 @@ def main(argv: list[str] | None = None) -> int:
             if hasattr(args, "corpus") and args.corpus is not None:
                 ask_kwargs["corpus_id_override"] = args.corpus
             result = run_ask(root, args.question, args.format, **ask_kwargs)
-        elif args.command == "file-back":
+        elif args.handler_command == "file-back":
             result = file_back(root, args.artifact, title=args.title, kind=args.kind, protocol=args.protocol)
-        elif args.command == "promote":
+        elif args.handler_command == "promote":
             result = run_promote(root, args.artifact_ref)
-        elif args.command == "demote":
+        elif args.handler_command == "demote":
             result = run_demote(root, args.artifact_ref)
-        elif args.command == "alchemy-start":
+        elif args.handler_command == "alchemy-start":
             include_elixir_ids = None
             if args.include_elixir is not None:
                 include_elixir_ids = [item.strip() for item in args.include_elixir.split(",")]
@@ -1003,7 +1016,7 @@ def main(argv: list[str] | None = None) -> int:
             if include_elixir_ids is not None:
                 kwargs["include_elixir_ids"] = include_elixir_ids
             result = run_alchemy_start(root, args.corpus_id, args.topic, **kwargs)
-        elif args.command == "alchemy-distill":
+        elif args.handler_command == "alchemy-distill":
             include_elixir_ids = None
             if args.include_elixir is not None:
                 include_elixir_ids = [item.strip() for item in args.include_elixir.split(",")]
@@ -1011,17 +1024,17 @@ def main(argv: list[str] | None = None) -> int:
             if include_elixir_ids is not None:
                 kwargs["include_elixir_ids"] = include_elixir_ids
             result = run_alchemy_distill(root, args.elixir_id, args.question, **kwargs)
-        elif args.command == "alchemy-finalize":
+        elif args.handler_command == "alchemy-finalize":
             result = run_alchemy_finalize(root, elixir_id=args.elixir_id)
-        elif args.command == "alchemy-promote":
+        elif args.handler_command == "alchemy-promote":
             result = run_alchemy_promote(root, elixir_id=args.elixir_id, note=args.note)
-        elif args.command == "alchemy-revert":
+        elif args.handler_command == "alchemy-revert":
             path = run_alchemy_revert(root, elixir_id=args.elixir_id, note=args.note)
             result = {"elixir_id": args.elixir_id, "path": str(path.relative_to(root))}
-        elif args.command == "alchemy-demote":
+        elif args.handler_command == "alchemy-demote":
             path = run_alchemy_demote(root, elixir_id=args.elixir_id, note=args.note)
             result = {"elixir_id": args.elixir_id, "path": str(path.relative_to(root))}
-        elif args.command == "alchemy":
+        elif args.handler_command == "alchemy":
             if args.alchemy_lane == "legacy-migration":
                 if args.dry_run:
                     result = run_alchemy_legacy_migration_preview(root, limit=args.limit)
@@ -1178,7 +1191,7 @@ def main(argv: list[str] | None = None) -> int:
                         note=args.note,
                         **lane_kwargs,
                     )
-        elif args.command == "l3-proposal-create":
+        elif args.handler_command == "l3-proposal-create":
             result = run_l3_proposal_create(
                 root,
                 kind=args.kind,
@@ -1190,14 +1203,14 @@ def main(argv: list[str] | None = None) -> int:
                 signal_ids=args.signal_ids,
                 pattern=args.pattern,
             )
-        elif args.command == "l3-proposal-generate":
+        elif args.handler_command == "l3-proposal-generate":
             result = run_l3_proposal_generate(
                 root,
                 planner_log_path=args.planner_log_path,
                 limit=args.limit,
                 apply=args.apply,
             )
-        elif args.command == "review":
+        elif args.handler_command == "review":
             if args.review_command == "proposals":
                 result = run_l3_proposal_list(root, kind=args.kind, state=args.state)
                 if not args.json:
@@ -1217,22 +1230,22 @@ def main(argv: list[str] | None = None) -> int:
                 result = run_l3_proposal_reject(root, args.proposal_id, note=args.note)
             else:
                 raise ValueError(f"Unsupported review command: {args.review_command}")
-        elif args.command == "apply":
+        elif args.handler_command == "apply":
             result = run_l3_proposal_apply(root, args.proposal_id, note=args.note)
-        elif args.command == "revert":
+        elif args.handler_command == "revert":
             result = run_l3_proposal_revert(root, args.receipt_id, note=args.note)
-        elif args.command == "protocol-learn-add":
+        elif args.handler_command == "protocol-learn-add":
             result = run_protocol_learn_add(root, args.protocol, args.title, args.source_refs)
-        elif args.command == "protocol-learn-list":
+        elif args.handler_command == "protocol-learn-list":
             result = run_protocol_learn_list(
                 root,
                 args.protocol,
                 state_filter=args.state,
                 include_archived=args.include_archived,
             )
-        elif args.command == "protocol-learn-show":
+        elif args.handler_command == "protocol-learn-show":
             result = run_protocol_learn_show(root, args.learning_id)
-        elif args.command == "signals-list":
+        elif args.handler_command == "signals-list":
             result = run_signals_list(
                 root,
                 kind=args.kind,
@@ -1242,7 +1255,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             if not args.json:
                 text_output = "\n".join(_format_signal_summary_line(item) for item in result) or "(no signals)"
-        elif args.command == "signals-show":
+        elif args.handler_command == "signals-show":
             result = run_signals_show(root, args.signal_id)
             if result.get("status") == "not_found":
                 raise ValueError(f"signal not found: {args.signal_id}")
@@ -1252,7 +1265,7 @@ def main(argv: list[str] | None = None) -> int:
                 if not isinstance(signal, dict) or not isinstance(planner_decisions, list):
                     raise ValueError("Invalid runner payload for signals-show.")
                 text_output = _format_signal_show_text(signal, planner_decisions)
-        elif args.command == "planner-log-list":
+        elif args.handler_command == "planner-log-list":
             result = run_planner_log_list(
                 root,
                 decision=args.decision,
@@ -1266,7 +1279,7 @@ def main(argv: list[str] | None = None) -> int:
                     "\n".join(_format_planner_decision_summary_line(item) for item in result)
                     or "(no planner decisions)"
                 )
-        elif args.command == "planner-log-rollback":
+        elif args.handler_command == "planner-log-rollback":
             if args.dry_run:
                 result = run_planner_log_rollback_preview(
                     root,
@@ -1282,25 +1295,25 @@ def main(argv: list[str] | None = None) -> int:
                     limit=args.limit,
                     apply=True,
                 )
-        elif args.command == "audit-preview":
+        elif args.handler_command == "audit-preview":
             if not args.dry_run:
                 raise ValueError("audit-preview requires --dry-run")
             result = run_audit_preview(root, limit=args.limit)
-        elif args.command == "audit-backfill":
+        elif args.handler_command == "audit-backfill":
             result = run_audit_backfill(root, limit=args.limit, apply=args.apply)
-        elif args.command == "protocol-learn-age":
+        elif args.handler_command == "protocol-learn-age":
             result = run_protocol_learn_age(root, protocol=args.protocol, apply=args.apply)
-        elif args.command == "protocol-learn-verify":
+        elif args.handler_command == "protocol-learn-verify":
             result = run_protocol_learn_verify(root, args.learning_id)
-        elif args.command == "protocol-learn-revert-activate":
+        elif args.handler_command == "protocol-learn-revert-activate":
             result = run_protocol_learn_revert_activate(root, args.learning_id, note=args.note)
-        elif args.command == "protocol-learn-demote":
+        elif args.handler_command == "protocol-learn-demote":
             result = run_protocol_learn_demote(root, args.learning_id)
-        elif args.command == "protocol-learn-archive":
+        elif args.handler_command == "protocol-learn-archive":
             result = run_protocol_learn_archive(root, args.learning_id)
-        elif args.command == "protocol-learn-supersede":
+        elif args.handler_command == "protocol-learn-supersede":
             result = run_protocol_learn_supersede(root, args.replacement_id, args.superseded_ids)
-        elif args.command == "review-page":
+        elif args.handler_command == "review-page":
             review_pages = _resolve_review_pages(
                 root,
                 args.page,
@@ -1324,26 +1337,26 @@ def main(argv: list[str] | None = None) -> int:
                     note=args.note,
                     confidence=args.confidence,
                 )
-        elif args.command == "review-rewrite":
+        elif args.handler_command == "review-rewrite":
             result = review_concept_rewrite(root, args.slug, args.status, note=args.note)
-        elif args.command == "apply-rewrite":
+        elif args.handler_command == "apply-rewrite":
             result = apply_concept_rewrite(root, args.slug, note=args.note, dry_run=args.dry_run)
-        elif args.command == "verify-rewrite":
+        elif args.handler_command == "verify-rewrite":
             result = verify_concept_rewrite(root, args.slug, note=args.note)
-        elif args.command == "revert-rewrite":
+        elif args.handler_command == "revert-rewrite":
             result = revert_concept_rewrite(root, args.slug, note=args.note)
-        elif args.command == "retire-concept":
+        elif args.handler_command == "retire-concept":
             result = retire_concept(root, args.slug, note=args.note)
-        elif args.command == "reactivate-concept":
+        elif args.handler_command == "reactivate-concept":
             result = reactivate_concept(root, args.slug, note=args.note)
-        elif args.command == "review-action":
+        elif args.handler_command == "review-action":
             result = review_machine_memory_action(
                 root,
                 _resolve_action_id(root, args.action_id),
                 args.status,
                 note=args.note,
             )
-        elif args.command == "apply-action":
+        elif args.handler_command == "apply-action":
             action_ids = _resolve_action_ids(
                 root,
                 args.action_id,
@@ -1367,43 +1380,43 @@ def main(argv: list[str] | None = None) -> int:
                     dry_run=args.dry_run,
                     bundle_path=args.bundle,
                 )
-        elif args.command == "revert-action":
+        elif args.handler_command == "revert-action":
             if args.last_batch:
                 result = revert_machine_memory_action_batch(root, note=args.note)
             else:
                 if not args.action_id:
                     raise ValueError("Provide an action id or use --last-batch.")
                 result = revert_machine_memory_action(root, _resolve_action_id(root, args.action_id), note=args.note)
-        elif args.command == "apply-archive":
+        elif args.handler_command == "apply-archive":
             result = apply_material_archive(root, args.entry_id, note=args.note, dry_run=args.dry_run)
-        elif args.command == "revert-archive":
+        elif args.handler_command == "revert-archive":
             result = revert_material_archive(root, args.entry_id, note=args.note)
-        elif args.command == "lint":
+        elif args.handler_command == "lint":
             result = lint_wiki(root)
-        elif args.command == "run-lint":
+        elif args.handler_command == "run-lint":
             result = run_lint(root)
-        elif args.command == "nightly":
+        elif args.handler_command == "nightly":
             result = nightly_health(root)
-        elif args.command == "run-nightly":
+        elif args.handler_command == "run-nightly":
             result = run_nightly(
                 root,
                 compile_limit=args.compile_limit,
                 semantic_lint=not args.no_semantic_lint,
             )
-        elif args.command == "signals-replay":
+        elif args.handler_command == "signals-replay":
             result = collect_signals(root, sources=args.source, trace_id=args.trace_id)
-        elif args.command == "planner-log-replay":
+        elif args.handler_command == "planner-log-replay":
             result = write_planner_log(
                 root,
                 signals_path=args.signals_path,
                 mode="execute" if args.execute else "observe_only",
             )
-        elif args.command == "llm-check":
+        elif args.handler_command == "llm-check":
             if args.probe or args.probe_all:
                 result = llm_probe(root, probe_all=args.probe_all, timeout_seconds=args.probe_timeout)
             else:
                 result = llm_status()
-        elif args.command == "cache":
+        elif args.handler_command == "cache":
             selected_actions = int(bool(args.status)) + int(bool(args.rebuild)) + int(bool(args.drop))
             if selected_actions != 1:
                 raise ValueError("Provide exactly one of --status, --rebuild, or --drop.")
@@ -1413,14 +1426,14 @@ def main(argv: list[str] | None = None) -> int:
                 result = force_rebuild_query_cache(root)
             else:
                 result = drop_query_cache(root)
-        elif args.command == "auto-once":
+        elif args.handler_command == "auto-once":
             result = auto_process_once(
                 root,
                 compile_limit=args.compile_limit,
                 deterministic_only=args.deterministic_only,
                 semantic_lint=not args.no_semantic_lint,
             )
-        elif args.command == "watch":
+        elif args.handler_command == "watch":
             result = watch_inbox(
                 root,
                 interval_seconds=args.interval,
@@ -1431,7 +1444,7 @@ def main(argv: list[str] | None = None) -> int:
                 max_cycles=args.max_cycles,
             )
         else:
-            raise ValueError(f"Unsupported command: {args.command}")
+            raise ValueError(f"Unsupported command: {args.handler_command}")
     except KeyboardInterrupt:  # pragma: no cover - interactive watch mode
         parser.exit(130, "interrupted\n")
     except Exception as exc:  # pragma: no cover - exercised in CLI usage

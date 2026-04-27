@@ -155,6 +155,7 @@ class CLITests(unittest.TestCase):
             parser.parse_args([removed_command, "elixir-vla-robotics-deadbeef"])
 
     def test_main_dispatches_command_handlers(self) -> None:
+        parser = build_parser()
         (self.root / "proposal-content.md").write_text("Updated prompt.\n", encoding="utf-8")
         cases = [
             ("layout", ["layout"], "ensure_layout", (self.root,), {}),
@@ -617,6 +618,8 @@ class CLITests(unittest.TestCase):
 
         for name, argv, target, expected_args, expected_kwargs in cases:
             with self.subTest(command=name):
+                parsed_args = parser.parse_args(argv)
+                self.assertEqual(parsed_args.handler_command, parsed_args.command)
                 stdout = io.StringIO()
                 with patch("sys.stdout", new=stdout):
                     if target == "ensure_layout":
