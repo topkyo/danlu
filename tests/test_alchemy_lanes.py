@@ -23,6 +23,7 @@ from aiwiki.runner import (
     run_alchemy_auto,
     run_alchemy_distill_apply,
     run_alchemy_judge_apply,
+    run_alchemy_judge_proposal_apply,
     run_alchemy_judge_propose,
     run_alchemy_lane_apply,
     run_alchemy_propose_apply,
@@ -175,6 +176,20 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         )
         path.write_text(frontmatter + "\n\n# Thesis\n\n## Judgment\n- Existing conclusion.\n", encoding="utf-8")
         return rel
+
+    def _accept_judge_proposal(self, proposal_path: str, accepted_body: str = "## Proposed Judgment Update\n- Accepted refresh.\n") -> None:
+        path = self.root / proposal_path
+        text = path.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(text)
+        frontmatter["state"] = "accepted"
+        body = text.split("---", 2)[2].strip()
+        body = (
+            body
+            + "\n\n<!-- aiwiki:accepted-judge-refresh:start -->\n"
+            + accepted_body.strip()
+            + "\n<!-- aiwiki:accepted-judge-refresh:end -->\n"
+        )
+        path.write_text(render_frontmatter(frontmatter) + "\n\n" + body, encoding="utf-8")
 
     def test_heavy_lane_dry_run_filters_enqueue_heavy_and_stabilizes_scope(self) -> None:
         self._seed_lane_records()
@@ -1108,6 +1123,126 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertIn("execution_receipts", {item["source_stream"] for item in audit_records})
         self.assertIn("runtime_history", {item["source_stream"] for item in audit_records})
 
+    def test_judge_proposal_apply_writes_accepted_managed_section_receipt_and_audit(self) -> None:
+        judgment_ref = self._write_judgment_page()
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [
+                self._signal(
+                    "sig-20260425-heavy01",
+                    severity="high",
+                    protocol="research",
+                    source_ids=["src-a"],
+                    concept_slugs=["alpha"],
+                    judgment_refs=[judgment_ref],
+                )
+            ],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [self._planner("sig-20260425-heavy01", decision="enqueue-heavy")],
+        )
+        proposal_preview = run_alchemy_judge_propose(self.root, scope="all")
+        proposal_path = proposal_preview["generated"][0]["path"]
+        self._accept_judge_proposal(proposal_path)
+
+        result = run_alchemy_judge_proposal_apply(self.root, proposal_path, note="accepted")
+
+        self.assertEqual(result["status"], "applied")
+        self.assertEqual(result["mode"], "proposal-apply")
+        self.assertEqual(result["target_file"], judgment_ref)
+        self.assertTrue(result["changed"])
+        target_text = (self.root / judgment_ref).read_text(encoding="utf-8")
+        target_frontmatter = parse_frontmatter(target_text)
+        self.assertEqual(target_frontmatter["status"], "tentative")
+        self.assertEqual(target_frontmatter["confidence"], "medium")
+        self.assertIn("aiwiki:alchemy-accepted-judge-refresh:start", target_text)
+        self.assertIn("Accepted refresh.", target_text)
+        proposal_frontmatter = parse_frontmatter((self.root / proposal_path).read_text(encoding="utf-8"))
+        self.assertEqual(proposal_frontmatter["state"], "applied")
+        self.assertEqual(proposal_frontmatter["receipt_path"], result["receipt_path"])
+        receipt = json.loads((self.root / result["receipt_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(receipt["operation"], "alchemy-judge-proposal-apply")
+        self.assertEqual(receipt["subject_kind"], "alchemy_judgment_page")
+        self.assertEqual(receipt["target_file"], judgment_ref)
+        self.assertFalse(receipt["llm_invoked"])
+        self.assertFalse(receipt["semantic_content_generated_by_runtime"])
+        runtime = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(runtime[-1]["event_type"], "alchemy-judge-proposal-applied")
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertIn("execution_receipts", {item["source_stream"] for item in audit_records})
+        self.assertIn("runtime_history", {item["source_stream"] for item in audit_records})
+
+    def test_judge_proposal_apply_rejects_stale_target_without_writes(self) -> None:
+        judgment_ref = self._write_judgment_page()
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [
+                self._signal(
+                    "sig-20260425-heavy01",
+                    severity="high",
+                    protocol="research",
+                    judgment_refs=[judgment_ref],
+                )
+            ],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [self._planner("sig-20260425-heavy01", decision="enqueue-heavy")],
+        )
+        proposal_preview = run_alchemy_judge_propose(self.root, scope="all")
+        proposal_path = proposal_preview["generated"][0]["path"]
+        self._accept_judge_proposal(proposal_path)
+        target = self.root / judgment_ref
+        before_failure = target.read_text(encoding="utf-8") + "\nManual edit.\n"
+        target.write_text(before_failure, encoding="utf-8")
+
+        with self.assertRaisesRegex(RuntimeError, "stale"):
+            run_alchemy_judge_proposal_apply(self.root, proposal_path)
+
+        self.assertEqual(target.read_text(encoding="utf-8"), before_failure)
+        self.assertEqual(parse_frontmatter((self.root / proposal_path).read_text(encoding="utf-8"))["state"], "accepted")
+
+    def test_judge_proposal_apply_requires_accepted_block_before_target_write(self) -> None:
+        judgment_ref = self._write_judgment_page()
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [
+                self._signal(
+                    "sig-20260425-heavy01",
+                    severity="high",
+                    protocol="research",
+                    judgment_refs=[judgment_ref],
+                )
+            ],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [self._planner("sig-20260425-heavy01", decision="enqueue-heavy")],
+        )
+        proposal_preview = run_alchemy_judge_propose(self.root, scope="all")
+        proposal_path = proposal_preview["generated"][0]["path"]
+        path = self.root / proposal_path
+        text = path.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(text)
+        frontmatter["state"] = "accepted"
+        body = text.split("---", 2)[2].strip()
+        path.write_text(render_frontmatter(frontmatter) + "\n\n" + body, encoding="utf-8")
+        before_target = (self.root / judgment_ref).read_text(encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "accepted refresh block"):
+            run_alchemy_judge_proposal_apply(self.root, proposal_path)
+
+        self.assertEqual((self.root / judgment_ref).read_text(encoding="utf-8"), before_target)
+
     def test_distill_preview_reports_scoped_candidates_without_writes(self) -> None:
         self._seed_lane_records()
         before = _snapshot_files(self.root)
@@ -1481,7 +1616,7 @@ class AlchemyLaneCLITests(unittest.TestCase):
         action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
         alchemy_parser = action.choices["alchemy"]
         lane_action = next(item for item in alchemy_parser._actions if getattr(item, "dest", "") == "alchemy_lane")
-        self.assertEqual(set(lane_action.choices), {"heavy", "light", "judge", "distill", "review", "propose", "legacy-migration", "auto", "superseded-cleanup"})
+        self.assertEqual(set(lane_action.choices), {"heavy", "light", "judge", "judge-proposal", "distill", "review", "propose", "legacy-migration", "auto", "superseded-cleanup"})
 
     def test_main_dispatches_alchemy_lane_dry_run(self) -> None:
         with patch("aiwiki.cli.run_alchemy_lane_dry_run", return_value={"status": "ok", "lane": "heavy"}) as mocked:
@@ -1634,6 +1769,29 @@ class AlchemyLaneCLITests(unittest.TestCase):
             max_tokens=7,
             limit=11,
             note="proposal",
+        )
+
+    def test_main_dispatches_alchemy_judge_proposal_apply(self) -> None:
+        with patch("aiwiki.cli.run_alchemy_judge_proposal_apply", return_value={"status": "applied", "primitive": "judge", "mode": "proposal-apply"}) as mocked:
+            code, payload, stderr = self._run_main(
+                [
+                    "alchemy",
+                    "judge-proposal",
+                    "output/_proposals/judge/proposal.md",
+                    "--apply",
+                    "--note",
+                    "accepted",
+                ]
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["primitive"], "judge")
+        self.assertEqual(payload["mode"], "proposal-apply")
+        mocked.assert_called_once_with(
+            self.root,
+            "output/_proposals/judge/proposal.md",
+            note="accepted",
         )
 
     def test_main_dispatches_alchemy_distill_preview(self) -> None:

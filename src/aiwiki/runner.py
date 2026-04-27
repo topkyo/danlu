@@ -1923,6 +1923,147 @@ def run_alchemy_judge_propose(
     }
 
 
+def run_alchemy_judge_proposal_apply(
+    root: Path,
+    proposal: str | Path,
+    *,
+    note: str | None = None,
+) -> dict[str, Any]:
+    from .app_execution import append_execution_receipt_history
+    from .app_state import execution_receipt_history_path
+    from .render.paths import execution_receipt_path
+
+    proposal_path = _resolve_alchemy_judge_proposal_path(root, proposal)
+    original_proposal = proposal_path.read_text(encoding="utf-8", errors="replace")
+    proposal_frontmatter = parse_frontmatter(original_proposal)
+    proposal_id = str(proposal_frontmatter.get("proposal_id") or proposal_path.stem)
+    if str(proposal_frontmatter.get("kind") or "") != "alchemy-judge-proposal":
+        raise ValueError("judge proposal apply requires kind=alchemy-judge-proposal.")
+    if str(proposal_frontmatter.get("state") or "") != "accepted":
+        raise RuntimeError("judge proposal apply requires proposal state=accepted.")
+    target_ref = str(proposal_frontmatter.get("target_file") or "").strip()
+    if not target_ref:
+        raise ValueError("judge proposal apply requires target_file.")
+    expected_hash = str(proposal_frontmatter.get("before_hash") or "").strip()
+    if not expected_hash:
+        raise ValueError("judge proposal apply requires before_hash.")
+    accepted_body = _extract_marker_section(
+        original_proposal,
+        start_marker=_ALCHEMY_JUDGE_ACCEPTED_REFRESH_START,
+        end_marker=_ALCHEMY_JUDGE_ACCEPTED_REFRESH_END,
+    )
+    if not accepted_body.strip():
+        raise ValueError("judge proposal apply requires a non-empty accepted refresh block.")
+
+    target = (root / target_ref).resolve()
+    try:
+        target.relative_to(root.resolve())
+    except ValueError as exc:
+        raise ValueError("judge proposal target_file must stay within the workspace.") from exc
+    if not target.exists() or not target.is_file():
+        raise FileNotFoundError(f"judge proposal target not found: {target_ref}")
+    original_target = target.read_text(encoding="utf-8", errors="replace")
+    target_frontmatter = parse_frontmatter(original_target)
+    target_kind = str(target_frontmatter.get("kind") or "")
+    if target_kind not in {"decision", "judgment"}:
+        raise ValueError("judge proposal target must be a judgment or decision page.")
+    before_hash = sha256_bytes(original_target.encode("utf-8"))
+    if before_hash != expected_hash:
+        raise RuntimeError("judge proposal target is stale; before_hash does not match current target.")
+
+    target_body = strip_frontmatter(original_target).strip()
+    section = _render_alchemy_judge_accepted_target_section(
+        proposal_id=proposal_id,
+        proposal_path=relative_path(root, proposal_path),
+        accepted_body=accepted_body,
+    )
+    updated_body = _replace_marker_section(
+        target_body,
+        section,
+        start_marker=_ALCHEMY_JUDGE_ACCEPTED_TARGET_START,
+        end_marker=_ALCHEMY_JUDGE_ACCEPTED_TARGET_END,
+    )
+    updated_target = f"{render_frontmatter(target_frontmatter)}\n\n{updated_body.strip()}\n"
+    changed = updated_target != original_target
+    if changed:
+        target.write_text(updated_target, encoding="utf-8")
+    after_hash = sha256_bytes(updated_target.encode("utf-8"))
+
+    applied_at = utc_now()
+    action_id = _unique_alchemy_judge_proposal_apply_action_id(root, applied_at=applied_at)
+    receipt_path = execution_receipt_path(root, action_id)
+    audit_path = relative_path(root, execution_receipt_history_path(root))
+    proposal_frontmatter["state"] = "applied"
+    proposal_frontmatter["applied_at"] = applied_at
+    proposal_frontmatter["receipt_path"] = relative_path(root, receipt_path)
+    proposal_body = strip_frontmatter(original_proposal).strip()
+    updated_proposal = f"{render_frontmatter(proposal_frontmatter)}\n\n{proposal_body}\n"
+    proposal_path.write_text(updated_proposal, encoding="utf-8")
+    receipt = {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-alchemy-judge-proposal-apply",
+        "applied_at": applied_at,
+        "operation": "alchemy-judge-proposal-apply",
+        "action_id": action_id,
+        "title": f"Apply judge proposal {proposal_id}",
+        "status": "applied",
+        "subject_kind": "alchemy_judgment_page",
+        "subject_id": target_ref,
+        "apply_mode": "alchemy-judge-proposal",
+        "note": note or "",
+        "proposal_id": proposal_id,
+        "proposal_path": relative_path(root, proposal_path),
+        "target_file": target_ref,
+        "target_kind": target_kind,
+        "before_hash": before_hash,
+        "after_hash": after_hash,
+        "changed": changed,
+        "llm_invoked": False,
+        "semantic_content_generated_by_runtime": False,
+        "receipt_path": relative_path(root, receipt_path),
+        "revert_supported": False,
+        "revert_policy": "non_revertible_managed_section: restore target from before_hash manually or apply a newer accepted judge proposal",
+        "audit_stream": "execution_receipts",
+        "audit_event": "execution_receipt_history_append",
+        "audit_path": audit_path,
+    }
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    append_execution_receipt_history(root, receipt)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "alchemy-judge-proposal-applied",
+            "recorded_at": applied_at,
+            "status": "completed",
+            "proposal_id": proposal_id,
+            "proposal_path": relative_path(root, proposal_path),
+            "target_file": target_ref,
+            "receipt_path": relative_path(root, receipt_path),
+            "subject_kind": "alchemy_judgment_page",
+            "subject_id": target_ref,
+            "changed": changed,
+            "llm_invoked": False,
+        },
+    )
+    return {
+        "status": "applied",
+        "primitive": "judge",
+        "mode": "proposal-apply",
+        "proposal_id": proposal_id,
+        "proposal_path": relative_path(root, proposal_path),
+        "target_file": target_ref,
+        "target_kind": target_kind,
+        "before_hash": before_hash,
+        "after_hash": after_hash,
+        "changed": changed,
+        "receipt_path": relative_path(root, receipt_path),
+        "audit_path": audit_path,
+        "llm_invoked": False,
+    }
+
+
 def run_alchemy_distill_preview(
     root: Path,
     *,
@@ -2762,6 +2903,10 @@ _ALCHEMY_JUDGE_REFRESH_START = "<!-- aiwiki:alchemy-judge-refresh:start -->"
 _ALCHEMY_JUDGE_REFRESH_END = "<!-- aiwiki:alchemy-judge-refresh:end -->"
 _ALCHEMY_JUDGE_PROPOSAL_START = "<!-- aiwiki:alchemy-judge-proposal:start -->"
 _ALCHEMY_JUDGE_PROPOSAL_END = "<!-- aiwiki:alchemy-judge-proposal:end -->"
+_ALCHEMY_JUDGE_ACCEPTED_REFRESH_START = "<!-- aiwiki:accepted-judge-refresh:start -->"
+_ALCHEMY_JUDGE_ACCEPTED_REFRESH_END = "<!-- aiwiki:accepted-judge-refresh:end -->"
+_ALCHEMY_JUDGE_ACCEPTED_TARGET_START = "<!-- aiwiki:alchemy-accepted-judge-refresh:start -->"
+_ALCHEMY_JUDGE_ACCEPTED_TARGET_END = "<!-- aiwiki:alchemy-accepted-judge-refresh:end -->"
 
 
 def _materialize_alchemy_judge_refresh(
@@ -2990,6 +3135,29 @@ def _replace_marker_section(existing: str, section: str, *, start_marker: str, e
     return section
 
 
+def _extract_marker_section(existing: str, *, start_marker: str, end_marker: str) -> str:
+    if start_marker not in existing or end_marker not in existing:
+        return ""
+    _, rest = existing.split(start_marker, 1)
+    body, _ = rest.split(end_marker, 1)
+    return body.strip()
+
+
+def _render_alchemy_judge_accepted_target_section(*, proposal_id: str, proposal_path: str, accepted_body: str) -> str:
+    lines = [
+        _ALCHEMY_JUDGE_ACCEPTED_TARGET_START,
+        "## Accepted Judge Refresh",
+        "",
+        f"- proposal_id: `{_markdown_cell(proposal_id)}`",
+        f"- proposal_path: `{_markdown_cell(proposal_path)}`",
+        "",
+        accepted_body.strip(),
+        _ALCHEMY_JUDGE_ACCEPTED_TARGET_END,
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def _materialize_alchemy_review_queue(
     root: Path,
     *,
@@ -3189,6 +3357,24 @@ def _alchemy_judge_proposal_idempotency_key(*, scope: str, candidate_ids: list[s
     return f"alchemy-judge-proposal:{digest}"
 
 
+def _resolve_alchemy_judge_proposal_path(root: Path, proposal: str | Path) -> Path:
+    raw = str(proposal).strip().strip("'\"`")
+    if not raw:
+        raise ValueError("judge proposal path or id is required.")
+    candidate = Path(raw)
+    if not candidate.suffix and "/" not in raw and "\\" not in raw:
+        candidate = Path("output") / "_proposals" / "judge" / f"{slugify(raw)}.md"
+    resolved = candidate if candidate.is_absolute() else root / candidate
+    resolved = resolved.resolve()
+    try:
+        resolved.relative_to(root.resolve())
+    except ValueError as exc:
+        raise ValueError("judge proposal path must stay within the workspace.") from exc
+    if not resolved.exists() or not resolved.is_file():
+        raise FileNotFoundError(f"judge proposal not found: {proposal}")
+    return resolved
+
+
 def _alchemy_distill_target_id(target_ref: str) -> str:
     normalized = target_ref.strip()
     if not normalized:
@@ -3286,6 +3472,19 @@ def _unique_alchemy_judge_proposal_action_id(root: Path, *, applied_at: str) -> 
 
     timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
     base = slugify(f"alchemy-judge-proposal-{timestamp}")
+    candidate = base
+    n = 2
+    while execution_receipt_path(root, candidate).exists():
+        candidate = f"{base}-{n}"
+        n += 1
+    return candidate
+
+
+def _unique_alchemy_judge_proposal_apply_action_id(root: Path, *, applied_at: str) -> str:
+    from .render.paths import execution_receipt_path
+
+    timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
+    base = slugify(f"alchemy-judge-proposal-apply-{timestamp}")
     candidate = base
     n = 2
     while execution_receipt_path(root, candidate).exists():

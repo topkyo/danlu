@@ -51,6 +51,7 @@ from .runner import (
     run_alchemy_finalize,
     run_alchemy_judge_apply,
     run_alchemy_judge_preview,
+    run_alchemy_judge_proposal_apply,
     run_alchemy_judge_propose,
     run_alchemy_lane_apply,
     run_alchemy_lane_dry_run,
@@ -478,6 +479,13 @@ def build_parser() -> argparse.ArgumentParser:
     judge_parser.add_argument("--max-tokens", type=int, default=None)
     judge_parser.add_argument("--limit", type=int, default=50)
     judge_parser.add_argument("--note", default=None)
+    judge_proposal_parser = alchemy_subparsers.add_parser(
+        "judge-proposal",
+        help="Apply an accepted semantic judge proposal artifact.",
+    )
+    judge_proposal_parser.add_argument("proposal")
+    judge_proposal_parser.add_argument("--apply", action="store_true", required=True)
+    judge_proposal_parser.add_argument("--note", default=None)
     distill_preview_parser = alchemy_subparsers.add_parser(
         "distill",
         help="Preview scoped elixir distillation candidates without applying them.",
@@ -1055,6 +1063,8 @@ def main(argv: list[str] | None = None) -> int:
                         max_tokens=args.max_tokens,
                         limit=args.limit,
                     )
+            elif args.alchemy_lane == "judge-proposal":
+                result = run_alchemy_judge_proposal_apply(root, args.proposal, note=args.note)
             elif args.alchemy_lane == "distill":
                 if args.apply:
                     result = run_alchemy_distill_apply(

@@ -273,6 +273,13 @@ class CLITests(unittest.TestCase):
                 },
             ),
             (
+                "alchemy-judge-proposal-apply",
+                ["alchemy", "judge-proposal", "output/_proposals/judge/proposal.md", "--apply", "--note", "accepted"],
+                "run_alchemy_judge_proposal_apply",
+                (self.root, "output/_proposals/judge/proposal.md"),
+                {"note": "accepted"},
+            ),
+            (
                 "alchemy-distill-preview",
                 ["alchemy", "distill", "all", "--dry-run", "--max-signals", "3", "--max-pages", "5", "--max-tokens", "7", "--limit", "11"],
                 "run_alchemy_distill_preview",
