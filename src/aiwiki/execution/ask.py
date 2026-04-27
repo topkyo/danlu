@@ -88,6 +88,7 @@ from ..app_utils import (
     strip_frontmatter,
 )
 from ..compile import compile_wiki
+from ..notify import notify_report_generated
 from .protocol_learnings import load_learnings_for_protocol
 
 # ``utc_now`` and ``rank_concepts`` are resolved lazily via
@@ -314,6 +315,19 @@ def ask_question(
         memory=memory,
     )
     write_shell_summary(root, build_shell_summary(root, generated_at=created_at))
+    try:
+        notify_report_generated(
+            root,
+            {
+                "path": artifact_ref,
+                "title": question,
+                "protocol": active_protocol,
+                "format": output_format,
+                "created_at": created_at,
+            },
+        )
+    except Exception:
+        pass
     append_wiki_log(
         root,
         "query",
