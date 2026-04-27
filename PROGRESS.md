@@ -6,6 +6,13 @@
 
 ## 状态
 
+- **M6.7.4 Universal Input attachment pill — 完成（commit `af09c70`）**
+  - **目的**: 兑现 SoT 视觉意图——input 区粘贴/拖入文件应在输入框下方显示紧凑 pill（filename + remove ×），而非弹出 DropFileModal 作唯一反馈；Modal 仍保留供其他 call site。
+  - **改动面**: `.obsidian/plugins/furnace-product-shell/main.js` (+92/-)、`src/plugin.js` (+14/-)、`src/render_input.js` (+78/-)、`styles.css` (+37) 引入 `furnace-input-attachment` token；`tests/test_product_shell_smoke.py` 新增 5 个 contract tests（pill DOM / remove × / 多附件 / 空状态 / modal 隔离）。
+  - **Gates**: `node --check main.js` exit=0；`scripts/verify.sh` 5/5 pass（1322 tests，coverage 93%）；`scripts/run_acceptance.sh -v` 5/5 pass (12/12)。
+  - **Stop Lines**: 0 acceptance golden change；0 新色板（沿用 `--furnace-*` token）；DropFileModal 仍保留供非 input call site；contract 已归档到 `.codex/contracts/archive/M6.7.4-attachment-pill.md`。
+  - **协调修复**: 本 milestone 首次提交因并行 agent 误执行 `git reset` 丢失（M6.7.3 commit `431dde1` 也被同操作回退），通过 reflog `git reset --hard 431dde1` 恢复 M6.7.3 后由 designer 在严格 git 约束下重做 M6.7.4，最终 commit `af09c70b9d4ada1a30e55e1939428975c560f902`。
+
 - **M6.7.3 silent fail observability — 完成**
   - **目的**: 将 AGENTS.md “不得静默吞错”落到 6 条降级路径；主流程继续 non-blocking，但失败通过 `runs.jsonl` 事件或返回 sentinel / `auto_failed` 可观测。
   - **核心做法**: `ask.py` / `notify.py` / `drop.py` / `runtime_surfaces.py` 复用 `runner.receipts._append_log` 写 `.aiwiki/logs/runs.jsonl`；`summary.py` metrics 异常返回 `_metrics_unavailable` sentinel；nightly auto-consume per-item 失败返回 `auto_failed`。
