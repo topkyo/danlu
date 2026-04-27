@@ -12,6 +12,7 @@ status: "active"
 |---|---|
 | [Furnace Agent Architecture](<./Furnace Agent Architecture.md>) | **终局架构 SoT**：loop-first agent 模型、persistent planes、L1/L2/L3 自主权红线 |
 | [Furnace Evolution Mechanics](<./Furnace Evolution Mechanics.md>) | **实现契约 SoT**：heavy/light alchemy、active corpus、金丹生命周期、L3 proposal |
+| [Furnace Next Execution Plan](<./Furnace Next Execution Plan.md>) | **下一步执行入口**：M6.1 acceptance pack、单输入/单输出收敛、指标与 UI smoke test 顺序 |
 | [Furnace Elixir](<./Furnace Elixir.md>) | 金丹机制产品思路 thesis（accepted） |
 
 ## Archived（已 superseded，保留作史料）
@@ -34,7 +35,8 @@ status: "active"
 1. 先看 [Furnace Agent Architecture](<./Furnace Agent Architecture.md>) 建立世界观。
 2. 再看 [Furnace Evolution Mechanics](<./Furnace Evolution Mechanics.md>) 建立契约与实现边界。
 3. 参考 [Furnace Elixir](<./Furnace Elixir.md>) 理解金丹产品思路。
-4. 需要看 Product Shell 时再看对应 surface / runtime 文档。
+4. 继续开发时看 [Furnace Next Execution Plan](<./Furnace Next Execution Plan.md>)。
+5. 需要看 Product Shell 时再看对应 surface / runtime 文档。
 
 ## 关系
 
