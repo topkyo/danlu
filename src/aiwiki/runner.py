@@ -1774,6 +1774,155 @@ def run_alchemy_judge_apply(
     }
 
 
+def run_alchemy_judge_propose(
+    root: Path,
+    *,
+    scope: str,
+    planner_log_path: Path | None = None,
+    signals_path: Path | None = None,
+    decision_mode: str | None = None,
+    max_signals: int | None = None,
+    max_pages: int | None = None,
+    max_tokens: int | None = None,
+    limit: int = 50,
+    note: str | None = None,
+) -> dict[str, Any]:
+    preview = run_alchemy_judge_preview(
+        root,
+        scope=scope,
+        planner_log_path=planner_log_path,
+        signals_path=signals_path,
+        decision_mode=decision_mode,
+        max_signals=max_signals,
+        max_pages=max_pages,
+        max_tokens=max_tokens,
+        limit=limit,
+    )
+    status = str(preview.get("status") or "")
+    if status != "ok":
+        raise RuntimeError(f"alchemy judge propose requires an ok dry-run preview (got {status})")
+    candidates = [
+        item
+        for item in preview.get("candidates", [])
+        if isinstance(item, dict) and item.get("apply_supported") is True and item.get("kind") == "judgment_refresh"
+    ]
+    if not candidates:
+        raise RuntimeError("alchemy judge propose requires at least one existing judgment candidate")
+
+    from .app_execution import append_execution_receipt_history
+    from .app_state import execution_receipt_history_path
+    from .render.paths import execution_receipt_path
+
+    generated: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for candidate in candidates:
+        result = _materialize_alchemy_judge_proposal(root, preview=preview, candidate=candidate)
+        if result["status"] == "skipped":
+            skipped.append(result)
+        else:
+            generated.append(result)
+
+    applied_at = utc_now()
+    action_id = _unique_alchemy_judge_proposal_action_id(root, applied_at=applied_at)
+    receipt_path = execution_receipt_path(root, action_id)
+    audit_path = relative_path(root, execution_receipt_history_path(root))
+    trace_ids = _preview_trace_ids(preview)
+    trace_id = trace_ids[0] if trace_ids else ""
+    candidate_ids = [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")]
+    proposal_ids = [
+        str(item.get("proposal_id") or "")
+        for item in [*generated, *skipped]
+        if item.get("proposal_id")
+    ]
+    idempotency_key = _alchemy_judge_proposal_idempotency_key(scope=scope, candidate_ids=candidate_ids, trace_ids=trace_ids)
+    receipt = {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-alchemy-judge-proposal",
+        "applied_at": applied_at,
+        "operation": "alchemy-judge-proposal-preview",
+        "action_id": action_id,
+        "trace_id": trace_id,
+        "trace_ids": trace_ids,
+        "title": f"Alchemy judge proposal preview {scope}",
+        "status": "applied",
+        "protocol": _first_preview_protocol(preview),
+        "subject_kind": "alchemy_judge_proposal",
+        "subject_id": f"judge-proposal:{scope}",
+        "apply_mode": "alchemy-judge-propose",
+        "note": note or "",
+        "primary_path": "output/_proposals/judge",
+        "secondary_path": "",
+        "receipt_path": relative_path(root, receipt_path),
+        "scope": scope,
+        "primitive": "judge",
+        "candidate_ids": candidate_ids,
+        "candidate_count": len(candidates),
+        "proposal_ids": proposal_ids,
+        "generated_count": len(generated),
+        "skipped_count": len(skipped),
+        "skipped": skipped,
+        "idempotency_key": idempotency_key,
+        "changed": bool(generated),
+        "llm_invoked": False,
+        "semantic_content_generated": False,
+        "human_accept_required": True,
+        "revert_supported": False,
+        "revert_policy": "non_revertible_proposal_preview: reject or ignore generated proposal artifacts; target judgment pages are unchanged",
+        "audit_stream": "execution_receipts",
+        "audit_event": "execution_receipt_history_append",
+        "audit_path": audit_path,
+        "source_preview": _judge_preview_receipt_summary(preview, candidates),
+        "result_summary": {"generated": generated, "skipped": skipped},
+    }
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    append_execution_receipt_history(root, receipt)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "alchemy-judge-proposal-created",
+            "recorded_at": applied_at,
+            "status": "completed",
+            "scope": scope,
+            "candidate_count": len(candidates),
+            "candidate_ids": candidate_ids,
+            "generated_count": len(generated),
+            "proposal_ids": proposal_ids,
+            "receipt_path": relative_path(root, receipt_path),
+            "trace_id": trace_id,
+            "trace_ids": trace_ids,
+            "subject_kind": "alchemy_judge_proposal",
+            "subject_id": f"judge-proposal:{scope}",
+            "llm_invoked": False,
+            "semantic_content_generated": False,
+        },
+    )
+    return {
+        "status": "applied",
+        "primitive": "judge",
+        "mode": "propose",
+        "scope": scope,
+        "candidate_count": len(candidates),
+        "candidate_ids": candidate_ids,
+        "generated_count": len(generated),
+        "proposal_ids": proposal_ids,
+        "generated": generated,
+        "skipped_count": len(skipped),
+        "skipped": skipped,
+        "receipt_path": relative_path(root, receipt_path),
+        "audit_path": audit_path,
+        "trace_id": trace_id,
+        "trace_ids": trace_ids,
+        "idempotency_key": idempotency_key,
+        "changed": bool(generated),
+        "llm_invoked": False,
+        "semantic_content_generated": False,
+        "human_accept_required": True,
+        "preview": preview,
+    }
+
+
 def run_alchemy_distill_preview(
     root: Path,
     *,
@@ -2611,6 +2760,8 @@ _ALCHEMY_REVIEW_QUEUE_START = "<!-- aiwiki:alchemy-review-enqueue:start -->"
 _ALCHEMY_REVIEW_QUEUE_END = "<!-- aiwiki:alchemy-review-enqueue:end -->"
 _ALCHEMY_JUDGE_REFRESH_START = "<!-- aiwiki:alchemy-judge-refresh:start -->"
 _ALCHEMY_JUDGE_REFRESH_END = "<!-- aiwiki:alchemy-judge-refresh:end -->"
+_ALCHEMY_JUDGE_PROPOSAL_START = "<!-- aiwiki:alchemy-judge-proposal:start -->"
+_ALCHEMY_JUDGE_PROPOSAL_END = "<!-- aiwiki:alchemy-judge-proposal:end -->"
 
 
 def _materialize_alchemy_judge_refresh(
@@ -2673,6 +2824,157 @@ def _render_alchemy_judge_refresh_section(*, preview: dict[str, Any], candidate:
         "",
         "This marker records a scoped judge refresh opportunity. It does not rewrite the judgment conclusion.",
         _ALCHEMY_JUDGE_REFRESH_END,
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _materialize_alchemy_judge_proposal(
+    root: Path,
+    *,
+    preview: dict[str, Any],
+    candidate: dict[str, Any],
+) -> dict[str, Any]:
+    target_ref = str(candidate.get("target_ref") or "")
+    candidate_id = str(candidate.get("candidate_id") or "")
+    proposal_id = slugify(f"alchemy-judge-proposal-{candidate_id or target_ref or 'candidate'}")
+    proposal_path = root / "output" / "_proposals" / "judge" / f"{proposal_id}.md"
+    target = (root / target_ref).resolve()
+    try:
+        target.relative_to(root.resolve())
+    except ValueError:
+        return {
+            "status": "skipped",
+            "candidate_id": candidate_id,
+            "target_ref": target_ref,
+            "proposal_id": proposal_id,
+            "reason": "target_outside_root",
+        }
+    if not target.exists():
+        return {
+            "status": "skipped",
+            "candidate_id": candidate_id,
+            "target_ref": target_ref,
+            "proposal_id": proposal_id,
+            "reason": "target_missing",
+        }
+    original = target.read_text(encoding="utf-8", errors="replace")
+    frontmatter = parse_frontmatter(original)
+    kind = str(frontmatter.get("kind") or "")
+    if kind not in {"decision", "judgment"}:
+        return {
+            "status": "skipped",
+            "candidate_id": candidate_id,
+            "target_ref": target_ref,
+            "proposal_id": proposal_id,
+            "reason": "not_judgment_asset",
+        }
+    before_hash = sha256_bytes(original.encode("utf-8"))
+    if proposal_path.exists():
+        return {
+            "status": "skipped",
+            "candidate_id": candidate_id,
+            "target_ref": target_ref,
+            "path": relative_path(root, proposal_path),
+            "proposal_id": proposal_id,
+            "before_hash": before_hash,
+            "reason": "already_exists",
+        }
+    proposal = _render_alchemy_judge_proposal_page(
+        root,
+        preview=preview,
+        candidate=candidate,
+        target_ref=target_ref,
+        proposal_id=proposal_id,
+        target_kind=kind,
+        before_hash=before_hash,
+    )
+    proposal_path.parent.mkdir(parents=True, exist_ok=True)
+    proposal_path.write_text(proposal, encoding="utf-8")
+    return {
+        "status": "generated",
+        "candidate_id": candidate_id,
+        "target_ref": target_ref,
+        "path": relative_path(root, proposal_path),
+        "proposal_id": proposal_id,
+        "kind": kind,
+        "before_hash": before_hash,
+        "changed": True,
+        "llm_invoked": False,
+        "semantic_content_generated": False,
+    }
+
+
+def _render_alchemy_judge_proposal_page(
+    root: Path,
+    *,
+    preview: dict[str, Any],
+    candidate: dict[str, Any],
+    target_ref: str,
+    proposal_id: str,
+    target_kind: str,
+    before_hash: str,
+) -> str:
+    trace_ids = _string_values(candidate.get("trace_ids"))
+    signal_ids = _string_values(candidate.get("signal_ids"))
+    frontmatter = {
+        "kind": "alchemy-judge-proposal",
+        "proposal_id": proposal_id,
+        "state": "candidate",
+        "target_file": target_ref,
+        "target_kind": target_kind,
+        "before_hash": before_hash,
+        "candidate_id": str(candidate.get("candidate_id") or ""),
+        "created_at": utc_now(),
+        "llm_invoked": "false",
+        "semantic_content_generated": "false",
+        "human_accept_required": "true",
+    }
+    lines = [
+        render_frontmatter(frontmatter),
+        "",
+        f"# Judge Proposal: {proposal_id}",
+        "",
+        _ALCHEMY_JUDGE_PROPOSAL_START,
+        "## Target",
+        "",
+        f"- target_file: `{_markdown_cell(target_ref)}`",
+        f"- target_kind: `{_markdown_cell(target_kind)}`",
+        f"- before_hash: `{_markdown_cell(before_hash)}`",
+        "",
+        "## Provenance",
+        "",
+        f"- candidate_id: `{_markdown_cell(str(candidate.get('candidate_id') or ''))}`",
+        f"- signal_ids: `{_markdown_cell(', '.join(signal_ids) or 'none')}`",
+        f"- trace_ids: `{_markdown_cell(', '.join(trace_ids) or 'none')}`",
+        f"- source_ids: `{_markdown_cell(', '.join(_string_values(candidate.get('source_ids'))) or 'none')}`",
+        f"- concept_slugs: `{_markdown_cell(', '.join(_string_values(candidate.get('concept_slugs'))) or 'none')}`",
+        f"- scope: `{_markdown_cell(str(preview.get('scope') or ''))}`",
+        "",
+        "## Semantic Refresh Contract",
+        "",
+        "- llm_invoked: `false`",
+        "- semantic_content_generated: `false`",
+        "- human_accept_required: `true`",
+        "- target_page_mutation: `false`",
+        "- next_step: `fill this proposal through an explicit human/model contract, then apply in a separate accepted-proposal milestone`",
+        "",
+        "## Proposed Change Preview",
+        "",
+        "No judgment conclusion has been generated in this baseline. This artifact reserves a reviewable proposal slot and records the exact target hash that a future accepted semantic refresh must validate before applying.",
+        "",
+        "## Candidate Prompt Package",
+        "",
+        "```text",
+        "Review the target judgment or decision page against the scoped evidence.",
+        "Return a proposed semantic refresh as a separate proposal diff.",
+        "Do not apply changes directly to the target page.",
+        f"Target: {target_ref}",
+        f"Before hash: {before_hash}",
+        f"Signals: {', '.join(signal_ids) or 'none'}",
+        f"Traces: {', '.join(trace_ids) or 'none'}",
+        "```",
+        _ALCHEMY_JUDGE_PROPOSAL_END,
         "",
     ]
     return "\n".join(lines)
@@ -2875,6 +3177,18 @@ def _alchemy_judge_idempotency_key(*, scope: str, candidate_ids: list[str], trac
     return f"alchemy-judge:{digest}"
 
 
+def _alchemy_judge_proposal_idempotency_key(*, scope: str, candidate_ids: list[str], trace_ids: list[str]) -> str:
+    payload = {
+        "primitive": "judge",
+        "mode": "proposal_preview",
+        "scope": scope,
+        "candidate_ids": sorted(candidate_ids),
+        "trace_ids": sorted(trace_ids),
+    }
+    digest = sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    return f"alchemy-judge-proposal:{digest}"
+
+
 def _alchemy_distill_target_id(target_ref: str) -> str:
     normalized = target_ref.strip()
     if not normalized:
@@ -2959,6 +3273,19 @@ def _unique_alchemy_judge_action_id(root: Path, *, applied_at: str) -> str:
 
     timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
     base = slugify(f"alchemy-judge-{timestamp}")
+    candidate = base
+    n = 2
+    while execution_receipt_path(root, candidate).exists():
+        candidate = f"{base}-{n}"
+        n += 1
+    return candidate
+
+
+def _unique_alchemy_judge_proposal_action_id(root: Path, *, applied_at: str) -> str:
+    from .render.paths import execution_receipt_path
+
+    timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
+    base = slugify(f"alchemy-judge-proposal-{timestamp}")
     candidate = base
     n = 2
     while execution_receipt_path(root, candidate).exists():

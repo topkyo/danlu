@@ -23,6 +23,7 @@ from aiwiki.runner import (
     run_alchemy_auto,
     run_alchemy_distill_apply,
     run_alchemy_judge_apply,
+    run_alchemy_judge_propose,
     run_alchemy_lane_apply,
     run_alchemy_propose_apply,
     run_alchemy_review_apply,
@@ -1038,6 +1039,75 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertIn("execution_receipts", {item["source_stream"] for item in audit_records})
         self.assertIn("runtime_history", {item["source_stream"] for item in audit_records})
 
+    def test_judge_propose_writes_proposal_receipt_without_mutating_target(self) -> None:
+        judgment_ref = self._write_judgment_page()
+        self._write_jsonl(
+            ".aiwiki/state/signals.jsonl",
+            [
+                self._signal(
+                    "sig-20260425-heavy01",
+                    severity="high",
+                    protocol="research",
+                    source_ids=["src-a"],
+                    concept_slugs=["alpha"],
+                    judgment_refs=[judgment_ref],
+                )
+            ],
+        )
+        self._write_jsonl(
+            ".aiwiki/state/planner-log.jsonl",
+            [self._planner("sig-20260425-heavy01", decision="enqueue-heavy")],
+        )
+        before_page = (self.root / judgment_ref).read_text(encoding="utf-8")
+
+        first = run_alchemy_judge_propose(self.root, scope="all", note="draft semantic proposal")
+        second = run_alchemy_judge_propose(self.root, scope="all", note="repeat")
+
+        self.assertEqual(first["status"], "applied")
+        self.assertEqual(first["mode"], "propose")
+        self.assertEqual(first["generated_count"], 1)
+        self.assertEqual(first["proposal_ids"], ["alchemy-judge-proposal-judge-refresh-wiki-judgments-thesis-md"])
+        self.assertFalse(first["llm_invoked"])
+        self.assertFalse(first["semantic_content_generated"])
+        self.assertTrue(first["human_accept_required"])
+        self.assertFalse(second["changed"])
+        self.assertEqual(second["generated_count"], 0)
+        self.assertEqual(second["proposal_ids"], first["proposal_ids"])
+        self.assertEqual(second["skipped"][0]["reason"], "already_exists")
+        self.assertEqual((self.root / judgment_ref).read_text(encoding="utf-8"), before_page)
+
+        proposal_path = self.root / first["generated"][0]["path"]
+        proposal_text = proposal_path.read_text(encoding="utf-8")
+        proposal_frontmatter = parse_frontmatter(proposal_text)
+        self.assertEqual(proposal_frontmatter["kind"], "alchemy-judge-proposal")
+        self.assertEqual(proposal_frontmatter["target_file"], judgment_ref)
+        self.assertEqual(proposal_frontmatter["llm_invoked"], "false")
+        self.assertEqual(proposal_frontmatter["semantic_content_generated"], "false")
+        self.assertEqual(proposal_frontmatter["human_accept_required"], "true")
+        self.assertIn("aiwiki:alchemy-judge-proposal:start", proposal_text)
+        self.assertIn("No judgment conclusion has been generated", proposal_text)
+        self.assertIn("Before hash:", proposal_text)
+
+        receipt = json.loads((self.root / first["receipt_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(receipt["operation"], "alchemy-judge-proposal-preview")
+        self.assertEqual(receipt["subject_kind"], "alchemy_judge_proposal")
+        self.assertFalse(receipt["llm_invoked"])
+        self.assertFalse(receipt["semantic_content_generated"])
+        self.assertTrue(receipt["human_accept_required"])
+        runtime = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(runtime[-1]["event_type"], "alchemy-judge-proposal-created")
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertIn("execution_receipts", {item["source_stream"] for item in audit_records})
+        self.assertIn("runtime_history", {item["source_stream"] for item in audit_records})
+
     def test_distill_preview_reports_scoped_candidates_without_writes(self) -> None:
         self._seed_lane_records()
         before = _snapshot_files(self.root)
@@ -1523,6 +1593,47 @@ class AlchemyLaneCLITests(unittest.TestCase):
             max_tokens=7,
             limit=11,
             note="mark",
+        )
+
+    def test_main_dispatches_alchemy_judge_propose(self) -> None:
+        with patch("aiwiki.cli.run_alchemy_judge_propose", return_value={"status": "applied", "primitive": "judge", "mode": "propose"}) as mocked:
+            code, payload, stderr = self._run_main(
+                [
+                    "alchemy",
+                    "judge",
+                    "all",
+                    "--propose",
+                    "--planner-log-path",
+                    "custom/planner-log.jsonl",
+                    "--signals-path",
+                    "custom/signals.jsonl",
+                    "--max-signals",
+                    "3",
+                    "--max-pages",
+                    "5",
+                    "--max-tokens",
+                    "7",
+                    "--limit",
+                    "11",
+                    "--note",
+                    "proposal",
+                ]
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["primitive"], "judge")
+        self.assertEqual(payload["mode"], "propose")
+        mocked.assert_called_once_with(
+            self.root,
+            scope="all",
+            planner_log_path=Path("custom/planner-log.jsonl"),
+            signals_path=Path("custom/signals.jsonl"),
+            max_signals=3,
+            max_pages=5,
+            max_tokens=7,
+            limit=11,
+            note="proposal",
         )
 
     def test_main_dispatches_alchemy_distill_preview(self) -> None:

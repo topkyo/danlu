@@ -257,6 +257,22 @@ class CLITests(unittest.TestCase):
                 },
             ),
             (
+                "alchemy-judge-propose",
+                ["alchemy", "judge", "all", "--propose", "--max-signals", "3", "--max-pages", "5", "--max-tokens", "7", "--limit", "11", "--note", "proposal"],
+                "run_alchemy_judge_propose",
+                (self.root,),
+                {
+                    "scope": "all",
+                    "planner_log_path": None,
+                    "signals_path": None,
+                    "max_signals": 3,
+                    "max_pages": 5,
+                    "max_tokens": 7,
+                    "limit": 11,
+                    "note": "proposal",
+                },
+            ),
+            (
                 "alchemy-distill-preview",
                 ["alchemy", "distill", "all", "--dry-run", "--max-signals", "3", "--max-pages", "5", "--max-tokens", "7", "--limit", "11"],
                 "run_alchemy_distill_preview",

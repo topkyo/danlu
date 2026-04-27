@@ -51,6 +51,7 @@ from .runner import (
     run_alchemy_finalize,
     run_alchemy_judge_apply,
     run_alchemy_judge_preview,
+    run_alchemy_judge_propose,
     run_alchemy_lane_apply,
     run_alchemy_lane_dry_run,
     run_alchemy_legacy_migration_apply,
@@ -469,6 +470,7 @@ def build_parser() -> argparse.ArgumentParser:
     judge_mode = judge_parser.add_mutually_exclusive_group(required=True)
     judge_mode.add_argument("--dry-run", action="store_true", help="Preview only.")
     judge_mode.add_argument("--apply", action="store_true", help="Apply deterministic scoped judge refresh markers with receipt/audit.")
+    judge_mode.add_argument("--propose", action="store_true", help="Create semantic judge proposal-preview artifacts without mutating target pages.")
     judge_parser.add_argument("--planner-log-path", type=Path, default=None)
     judge_parser.add_argument("--signals-path", type=Path, default=None)
     judge_parser.add_argument("--max-signals", type=int, default=None)
@@ -1020,6 +1022,18 @@ def main(argv: list[str] | None = None) -> int:
             elif args.alchemy_lane == "judge":
                 if args.apply:
                     result = run_alchemy_judge_apply(
+                        root,
+                        scope=args.scope,
+                        planner_log_path=args.planner_log_path,
+                        signals_path=args.signals_path,
+                        max_signals=args.max_signals,
+                        max_pages=args.max_pages,
+                        max_tokens=args.max_tokens,
+                        limit=args.limit,
+                        note=args.note,
+                    )
+                elif args.propose:
+                    result = run_alchemy_judge_propose(
                         root,
                         scope=args.scope,
                         planner_log_path=args.planner_log_path,
