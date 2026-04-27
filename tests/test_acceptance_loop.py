@@ -438,6 +438,76 @@ def test_heavy_after_llm_invariant(  # pragma: no cover - explicit pytest accept
         pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
 
 
+def test_backend_failure_replay(  # pragma: no cover - explicit pytest acceptance gate
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B4: ReplayBackend injected failure writes failed receipt and shell surfaces remain usable."""
+    case, vault = _copy_case_and_fix_clock_from("M6.1b", "case_backend_failure", tmp_path, monkeypatch)
+    inject_replay_client(monkeypatch, case)
+
+    with pytest.raises(SystemExit) as exc_info:
+        _run_cli(vault, ["run-ask", "what is source-a", "--format", "report"])
+    assert exc_info.value.code == 1
+
+    receipt_path = vault / ".aiwiki/logs/llm-receipts.jsonl"
+    assert receipt_path.exists(), "failed receipt should still be written when backend fails"
+    receipts = _load_jsonl(receipt_path)
+    assert len(receipts) == 1
+    receipt = receipts[0]
+    assert receipt["event"] == "run-ask"
+    assert receipt["status"] == "failed"
+    assert receipt["backend_effective"] == "codex-cli"
+    assert receipt["model_final"] == "stub-model"
+    assert "simulated backend timeout" in str(receipt.get("error", ""))
+    assert receipt["fallback_used"] is True
+    assert receipt["fallback_stage"] == "prompt-profile"
+    assert receipt["delivery_mode"] == "llm-failed"
+
+    audit_path = vault / ".aiwiki/state/audit.jsonl"
+    assert audit_path.exists(), "failed LLM receipt should be mirrored to audit stream"
+    audit_events = _load_jsonl(audit_path)
+    assert [record["source_stream"] for record in audit_events] == ["runtime_history", "llm_receipts"]
+    assert [record["event_type"] for record in audit_events] == ["query", "failed"]
+    assert audit_events[-1]["subject"] == {"kind": "failed", "id": ""}
+
+    summary_payload = json.loads(_run_cli(vault, ["shell-status"]))
+    assert summary_payload["summary_path"] == "output/control/shell-summary.json"
+    summary = json.loads((vault / "output/control/shell-summary.json").read_text(encoding="utf-8"))
+    latest_llm = summary["latest_llm_run"]
+    assert latest_llm["event"] == "run-ask"
+    assert latest_llm["status"] == "failed"
+    assert latest_llm["delivery_mode"] == "llm-failed"
+
+    today_out = _run_cli(vault, ["today"])
+    assert today_out.strip()
+
+    combined = audit_path.read_text(encoding="utf-8") + "\n" + receipt_path.read_text(encoding="utf-8")
+    for term in ["lane_judge", "auto_judge", "l3-proposal-accept", "l3-proposal-apply", "hidden_backend"]:
+        assert term not in combined, f"Stop Line violation: {term} found in audit/receipt"
+
+    # The failed receipt schema is stable, but duration_ms can legitimately vary
+    # between focused and full-suite runs; keep B4 schema-only for this file.
+
+    if REFRESH:
+        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
+
+
+def test_acceptance_no_stop_line_violations() -> None:
+    """B4 guardrail: acceptance goldens must not contain Stop Line violation keywords."""
+    forbidden = ["lane_judge", "auto_judge", "l3-proposal-accept", "l3-proposal-apply", "hidden_backend"]
+    fixtures_root = Path(__file__).parent / "fixtures" / "acceptance"
+
+    for golden in fixtures_root.glob("**/expected/files/*.golden"):
+        text = golden.read_text(encoding="utf-8", errors="replace")
+        for term in forbidden:
+            assert term not in text, f"Stop Line violation in {golden}: {term}"
+
+    for stdout_file in fixtures_root.glob("**/expected/stdout/*.json"):
+        text = stdout_file.read_text(encoding="utf-8", errors="replace")
+        for term in forbidden:
+            assert term not in text, f"Stop Line violation in {stdout_file}: {term}"
+
+
 def test_light_primitives_compile_lint_acceptance(  # pragma: no cover - explicit pytest acceptance gate
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

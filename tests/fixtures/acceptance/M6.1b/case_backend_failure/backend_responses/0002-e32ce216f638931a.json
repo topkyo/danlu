@@ -1,0 +1,10 @@
+{
+  "backend": "codex-cli",
+  "failure": "simulated backend timeout",
+  "model": "stub-model",
+  "prompt_hash": "e32ce216f638931a",
+  "response_id": "",
+  "response_text": "",
+  "sequence": 2,
+  "usage": {}
+}
