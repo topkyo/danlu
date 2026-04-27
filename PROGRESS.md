@@ -6,6 +6,13 @@
 
 ## 状态
 
+- **M7.0 Gate Unification — 完成**
+  - **目的**: 让 `bash scripts/verify.sh` 真正代表 baseline，统一 unit + acceptance 主门。
+  - **核心做法**: `scripts/verify.sh` 末尾追加 `bash scripts/run_acceptance.sh`，使 verify 一次性跑 ruff + compileall + coverage(unittest) + cli help + acceptance(pytest 12 cases)。
+  - **Gates**: `bash scripts/verify.sh` 5/5 连续 pass（1322 unit tests / 93% coverage / 12 acceptance pass）。
+  - **Stop Lines**: 0 acceptance test 修改 / 0 receipt|audit|shell-summary schema 改动 / 0 production code 改动。
+  - **价值**: 消除 oracle 评估指出的"verify pass ≠ acceptance pass"短板，9+ Contract 系列后续 milestone 的 gate 可信度提升到真实状态。
+
 - **M6.7.6 LLM receipt single entry — 完成（commit `1ea5321`）**
   - **目的**: 消除 `build_llm_attempt_receipt / classify_fallback_stage / append_receipt_and_audit` 在 runner 多处重复样板，建立单一入口。
   - **核心做法**: `src/aiwiki/runner/receipts.py` 新增 `record_llm_attempt(payload, *, runs_log, audit_log)` 封装三步；`runner/workflows.py` 18 处 caller 改为调用该 helper（共 23 处 `record_llm_attempt` 引用）；`runner/__init__.py` re-export；`_append_llm_receipt_and_log` 保留为 thin compat。三 primitive owner 仍在 `runner/receipts.py`，0 outside-owner 直接调用。

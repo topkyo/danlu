@@ -19,3 +19,4 @@ python3 -m coverage erase
 python3 -m coverage run --branch -m unittest discover -s tests -p 'test_*.py'
 python3 -m coverage report --skip-covered
 python3 -m aiwiki.cli --help >/dev/null
+bash scripts/run_acceptance.sh
