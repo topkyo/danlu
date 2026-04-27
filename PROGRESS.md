@@ -6,6 +6,15 @@
 
 ## 状态
 
+- **M6.7.2 cli.py subpackage split — 完成（literal move + import rewire，本地待 push）**
+  - **现状**: `src/aiwiki/cli.py` 1955 LOC 巨石已删除，替换为 `src/aiwiki/cli/` subpackage：`__init__.py` 41 LOC、`__main__.py` 8 LOC、`dispatch.py` 1045 LOC、`parsers.py` 915 LOC
+  - **目的**: 在不改变 CLI 行为、stdout/JSON/exit-code、schema 的前提下，把 argparse 注册与 main dispatch 拆开，为后续 command-group 拆分降低风险
+  - **批次**: `parsers.py` 承接 `build_parser`、legacy/top-level/drop parser registration 和 parser helper；`dispatch.py` 承接 `main()`、universal drop rewrite、today/metrics/text formatter、resolve helpers；`__init__.py` re-export 原 `aiwiki.cli` public/import surface，并同步 patch seam 到 owner module；`__main__.py` 保持 `python -m aiwiki.cli` 入口
+  - **指标**: 0 command schema 改动；0 stdout/JSON/exit-code 预期改动；`from aiwiki.cli import main, build_parser` smoke pass；`PYTHONPATH=src python3 -m aiwiki.cli --help` pass；`tests/test_cli.py` 84 pass；`scripts/run_acceptance.sh -v` 5/5 次 12/12 pass；`scripts/verify.sh` 5/5 次 exit=0 且 "All checks passed!"；coverage 93%（1320 tests）
+  - **Stop Lines**: 未新增 command-group 文件；未改 dispatch 分支语义；未改 receipt/audit/shell schema；未保留 `src/aiwiki/cli.py` 文件；public surface 经 `__init__.py` re-export 保持；vault launcher/runtime-root check 同步从 `cli.py` 改为 `cli/__main__.py`
+  - **Critical Notes**: `app_vault.py` 的 runtime-root 验证/launcher guard 必须跟随 `cli.py` 删除调整，否则 new-vault smoke 会误判 runtime root；`dispatch.py` 避免从 `aiwiki.runner` façade 导入，改为 sibling owner imports，避免 `app_compile.ask_question` lazy import 与 runner façade 形成环；contract 已归档到 `.codex/contracts/archive/M6.7.2-cli-subpackage-split.md`
+  - **路线图**: M6.7.3 silent fail 收口 → M6.7.4 Universal Input attachment pill → M6.7.5 typography token + Today Feed 视觉权重 → M6.7.6 LLM receipt 单一入口 → M6.7.7 移除 input_router.js 前端镜像（详见 `docs/Furnace M6.7 Roadmap.md`）
+
 - **M6.7.1 Acceptance Determinism — 完成（test-only normalization，本地待 push）**
   - **目的**: 修复 `tests/test_acceptance_loop.py::test_happy_run_ask_replay` 在 `scripts/verify.sh` 中 byte-flaky 失败（`duration_ms` 1 vs 0），恢复 acceptance gate 可信度，移除真实动态字段对 byte-frozen golden 比较的污染
   - **背景**: oracle 评审（task `ses_230d4bc9fffeqJ5yl2LLbLfMp1`）+ designer 评审（task `ses_230d472d8ffeyb0q2lSo7J1w3w`）综合得出 M6.7 路线图（`docs/Furnace M6.7 Roadmap.md`），M6.7.1 为最高 ROI 首发

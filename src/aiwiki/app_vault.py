@@ -511,7 +511,7 @@ def _render_launcher_script(runtime_root: Path) -> str:
             'VAULT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"',
             f"RUNTIME_ROOT={quoted_runtime}",
             "",
-            'if [ ! -f "$RUNTIME_ROOT/src/aiwiki/cli.py" ]; then',
+            'if [ ! -f "$RUNTIME_ROOT/src/aiwiki/cli/__main__.py" ]; then',
             '  echo "error: runtime root does not look like an aiwiki repo: $RUNTIME_ROOT" >&2',
             "  exit 1",
             "fi",
@@ -578,7 +578,8 @@ def _plugin_template_paths(runtime_root: Path) -> dict[str, Path]:
 
 def _validate_runtime_root(runtime_root: Path) -> None:
     required = [
-        runtime_root / "src" / "aiwiki" / "cli.py",
+        runtime_root / "src" / "aiwiki" / "cli" / "__init__.py",
+        runtime_root / "src" / "aiwiki" / "cli" / "__main__.py",
         runtime_root / ".obsidian" / "plugins" / PLUGIN_ID / "main.js",
         runtime_root / ".obsidian" / "plugins" / PLUGIN_ID / "manifest.json",
         runtime_root / ".obsidian" / "plugins" / PLUGIN_ID / "styles.css",
