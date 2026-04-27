@@ -748,6 +748,14 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(receipt["primitive"], "compile")
         self.assertEqual(receipt["lane"], "heavy")
         self.assertFalse(receipt["revert_supported"])
+        # M7.1: scope honesty — primitive runs globally, receipt declares it.
+        self.assertIn("scope_declared", receipt)
+        self.assertIsInstance(receipt["scope_declared"], dict)
+        self.assertFalse(receipt["scope_enforced"])
+        self.assertEqual(
+            receipt["scope_enforcement_reason"],
+            "primitive_global_only:compile_lint_nightly_have_no_scope_filter",
+        )
         history = [
             json.loads(line)
             for line in (self.root / ".aiwiki/state/execution-receipts.jsonl").read_text(encoding="utf-8").splitlines()

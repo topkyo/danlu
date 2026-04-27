@@ -2142,6 +2142,8 @@ def _run_receipted_lane_primitive(
     audit_path = relative_path(root, execution_receipt_history_path(root))
     trace_ids = _lane_receipt_trace_ids(plan)
     trace_id = trace_ids[0] if trace_ids else ""
+    plan_scope_preview = plan.get("scope_preview")
+    scope_declared = plan_scope_preview if isinstance(plan_scope_preview, dict) else {}
     receipt = {
         "version": 1,
         "kind": "execution-receipt",
@@ -2163,6 +2165,9 @@ def _run_receipted_lane_primitive(
         "receipt_path": relative_path(root, receipt_path),
         "lane": lane,
         "scope": scope,
+        "scope_declared": scope_declared,
+        "scope_enforced": False,
+        "scope_enforcement_reason": "primitive_global_only:compile_lint_nightly_have_no_scope_filter",
         "primitive": primitive,
         "revert_supported": False,
         "audit_stream": "execution_receipts",

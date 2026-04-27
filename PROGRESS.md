@@ -6,7 +6,19 @@
 
 ## 状态
 
+- **M7.1 Scoped Lane Hardening (Level A) — 完成**
+  - **目的**: 修正 9+ Contract 第 3 条 "Scoped primitives only"，让 lane primitive apply receipt 显式声明 scope 与 enforcement 状态，消除"scoped preview + global apply"名实不符。
+  - **核心做法**: `runner/alchemy.py` lane primitive receipt 顶层新增 `scope_declared`(取自 plan.scope_preview)、`scope_enforced=false`、`scope_enforcement_reason="primitive_global_only:compile_lint_nightly_have_no_scope_filter"` 三字段；`tests/test_alchemy_lanes.py` 补 unit test 断言；2 个 acceptance golden（`case_light_primitives_compile_lint` / `case_light_primitives_nightly`）刷新含新字段。
+  - **Gates**: `bash scripts/verify.sh` 5/5 连续 pass（unit + acceptance 12/12）。
+  - **Stop Lines**: 0 既有 receipt 字段改动 / 0 `compile_wiki|lint_wiki|nightly_health` 签名改动 / 0 production 行为变化 / golden 触动 2 文件（在 stop-line 内）。
+  - **价值**: 9+ Contract 第 3 条 7.0 → 8.0+。Level B（实质 scope filter）留作后续。
+
 - **M7.0 Gate Unification — 完成**
+  - **目的**: 让 `bash scripts/verify.sh` 真正代表 baseline，统一 unit + acceptance 主门。
+  - **核心做法**: `scripts/verify.sh` 末尾追加 `bash scripts/run_acceptance.sh`，使 verify 一次性跑 ruff + compileall + coverage(unittest) + cli help + acceptance(pytest 12 cases)。
+  - **Gates**: `bash scripts/verify.sh` 5/5 连续 pass（1322 unit tests / 93% coverage / 12 acceptance pass）。
+  - **Stop Lines**: 0 acceptance test 修改 / 0 receipt|audit|shell-summary schema 改动 / 0 production code 改动。
+  - **价值**: 消除 oracle 评估指出的"verify pass ≠ acceptance pass"短板，9+ Contract 系列后续 milestone 的 gate 可信度提升到真实状态。
   - **目的**: 让 `bash scripts/verify.sh` 真正代表 baseline，统一 unit + acceptance 主门。
   - **核心做法**: `scripts/verify.sh` 末尾追加 `bash scripts/run_acceptance.sh`，使 verify 一次性跑 ruff + compileall + coverage(unittest) + cli help + acceptance(pytest 12 cases)。
   - **Gates**: `bash scripts/verify.sh` 5/5 连续 pass（1322 unit tests / 93% coverage / 12 acceptance pass）。
