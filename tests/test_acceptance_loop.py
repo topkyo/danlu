@@ -65,6 +65,7 @@ def _copy_case_and_fix_clock(  # pragma: no cover - exercised by explicit pytest
     shutil.copytree(case / "root", vault)
     monkeypatch.setattr("aiwiki.clock.utc_now", lambda: FIXED_NOW)
     monkeypatch.setattr("aiwiki.runner.alchemy.utc_now", lambda: FIXED_NOW.isoformat())
+    monkeypatch.setattr("aiwiki.execution.alchemy.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.app_utils.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.app_linting.datetime", _FixedDateTime)
     uuids = itertools.count(1)
@@ -122,6 +123,88 @@ def test_m61_b1_execute_mode_auto_dry_run_acceptance(  # pragma: no cover - expl
         vault,
         case / "expected",
         [".aiwiki/state/signals.jsonl", ".aiwiki/state/planner-log.jsonl"],
+    )
+    if REFRESH:
+        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
+
+
+def test_heavy_primitives_receipt_acceptance(  # pragma: no cover - explicit pytest acceptance gate
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    case, vault = _copy_case_and_fix_clock("case_heavy_primitives", tmp_path, monkeypatch)
+    prompt_before = (vault / "prompts/ask.md").read_bytes()
+    stdout_dir = case / "expected" / "stdout"
+    out1, out2, out3 = _run_b1_chain(vault)
+    out4 = _run_cli(
+        vault,
+        [
+            "alchemy",
+            "heavy",
+            "all",
+            "--apply",
+            "--primitive",
+            "review",
+            "--primitive",
+            "distill",
+            "--primitive",
+            "propose",
+            "--note",
+            "M6.1 heavy primitives",
+        ],
+    )
+
+    _write_or_compare(stdout_dir / "01-signals-replay.json", out1)
+    _write_or_compare(stdout_dir / "02-planner-log-replay.json", out2)
+    _write_or_compare(stdout_dir / "03-alchemy-auto-dry-run.json", out3)
+    if not REFRESH:
+        payload = json.loads(out4)
+        assert payload["lane"] == "heavy"
+        assert payload["primitives"] == ["review", "distill", "propose"]
+
+    receipts = _load_jsonl(vault / ".aiwiki/state/execution-receipts.jsonl")
+    assert [record["primitive"] for record in receipts] == ["review", "distill", "propose"]
+    expected = {
+        "review": ("aiwiki-alchemy-review", "alchemy-review-enqueue"),
+        "distill": ("aiwiki-alchemy-distill", "alchemy-distill-refresh"),
+        "propose": ("aiwiki-alchemy-propose", "alchemy-propose-generate"),
+    }
+    for record in receipts:
+        assert record["kind"] == "execution-receipt"
+        assert record["audit_stream"] == "execution_receipts"
+        assert record["audit_event"] == "execution_receipt_history_append"
+        assert (record["generated_by"], record["operation"]) == expected[record["primitive"]]
+
+    audit = _load_jsonl(vault / ".aiwiki/state/audit.jsonl")
+    assert [record["event_type"] for record in audit] == [
+        "alchemy-lane-started",
+        "alchemy-review-enqueue",
+        "alchemy-review-enqueued",
+        "alchemy-distill-refresh",
+        "alchemy-distill-refreshed",
+        "l3-proposal-create",
+        "alchemy-propose-generate",
+        "alchemy-propose-generated",
+        "alchemy-lane-completed",
+    ]
+    assert not {"l3-proposal-apply", "l3-proposal-accept", "judge"} & {record["event_type"] for record in audit}
+    assert all("#L" in str(record["source_ref"]) for record in audit)
+    assert (vault / "prompts/ask.md").read_bytes() == prompt_before
+    assert "aiwiki:alchemy-review-enqueue:start" in (vault / "wiki/indexes/review-queue.md").read_text(encoding="utf-8")
+    assert "distill_history" in (vault / "output/_candidates/elixirs/elixir-b3.md").read_text(encoding="utf-8")
+    assert (vault / ".aiwiki/state/l3-proposals.json").exists()
+    assert list((vault / "output/_proposals/prompt").glob("*.md"))
+    assert not (vault / "output/_proposals/policy").exists()
+    assert len(_load_jsonl(vault / ".aiwiki/logs/llm-receipts.jsonl")) == 1
+
+    _assert_files_byte_equal(
+        vault,
+        case / "expected",
+        [
+            ".aiwiki/state/signals.jsonl",
+            ".aiwiki/state/planner-log.jsonl",
+            ".aiwiki/state/execution-receipts.jsonl",
+            ".aiwiki/state/audit.jsonl",
+        ],
     )
     if REFRESH:
         pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
