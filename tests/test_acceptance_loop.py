@@ -44,6 +44,57 @@ def _load_golden(path: Path) -> bytes:  # pragma: no cover - exercised by explic
     return path.read_bytes()
 
 
+# M6.7.1 acceptance determinism: real elapsed-time fields legitimately vary
+# across runs (clock granularity, CPU jitter). They are still produced by
+# production code (no fake values) but must be normalized BEFORE byte compare
+# so byte-frozen goldens stay stable. All other receipt fields remain strict.
+_DYNAMIC_RECEIPT_FIELDS: tuple[str, ...] = ("duration_ms",)
+_NORMALIZED_JSONL_SUFFIXES: tuple[str, ...] = (
+    ".aiwiki/logs/llm-receipts.jsonl",
+    ".aiwiki/logs/runs.jsonl",
+)
+
+
+def _normalize_jsonl_dynamic_fields(  # pragma: no cover - exercised by explicit pytest acceptance gate
+    raw: bytes, fields: tuple[str, ...] = _DYNAMIC_RECEIPT_FIELDS
+) -> bytes:
+    """Replace known dynamic top-level fields with deterministic placeholders.
+
+    Preserves line ordering, key ordering (sort_keys=True matches production
+    receipts which already serialize with sort_keys), and trailing newline.
+    Lines that are not valid JSON or not objects are passed through unchanged
+    (defensive; current acceptance fixtures only emit JSON-object lines).
+    """
+    out_lines: list[str] = []
+    text = raw.decode("utf-8")
+    # Preserve trailing newline semantics: splitlines drops it, so reconstruct.
+    has_trailing_newline = text.endswith("\n")
+    for line in text.splitlines():
+        if not line.strip():
+            out_lines.append(line)
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            out_lines.append(line)
+            continue
+        if not isinstance(obj, dict):
+            out_lines.append(line)
+            continue
+        for field in fields:
+            if field in obj:
+                obj[field] = 0
+        out_lines.append(json.dumps(obj, sort_keys=True, ensure_ascii=False))
+    body = "\n".join(out_lines)
+    if has_trailing_newline:
+        body += "\n"
+    return body.encode("utf-8")
+
+
+def _should_normalize(rel: str) -> bool:  # pragma: no cover - explicit gate
+    return any(rel.endswith(suffix) for suffix in _NORMALIZED_JSONL_SUFFIXES)
+
+
 def _write_or_compare(path: Path, actual: bytes) -> None:  # pragma: no cover - exercised by explicit pytest acceptance gate
     if REFRESH:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -55,7 +106,21 @@ def _write_or_compare(path: Path, actual: bytes) -> None:  # pragma: no cover - 
 def _assert_files_byte_equal(root: Path, expected_dir: Path, relpaths: list[str]) -> None:  # pragma: no cover - explicit gate
     for rel in relpaths:
         golden = expected_dir / "files" / f"{rel.replace('/', '__')}.golden"
-        _write_or_compare(golden, (root / rel).read_bytes())
+        actual = (root / rel).read_bytes()
+        if _should_normalize(rel):
+            actual_for_compare = _normalize_jsonl_dynamic_fields(actual)
+            if REFRESH:
+                # Symmetric: write normalized form so future verify runs match.
+                golden.parent.mkdir(parents=True, exist_ok=True)
+                golden.write_bytes(actual_for_compare)
+                continue
+            golden_bytes = _normalize_jsonl_dynamic_fields(_load_golden(golden))
+            assert actual_for_compare == golden_bytes, (
+                f"normalized JSONL byte mismatch at {rel}\n"
+                f"actual={actual_for_compare!r}\nexpected={golden_bytes!r}"
+            )
+            continue
+        _write_or_compare(golden, actual)
 
 
 def _snapshot_paths(root: Path, prefixes: tuple[str, ...]) -> dict[str, bytes]:  # pragma: no cover - explicit gate

@@ -6,6 +6,15 @@
 
 ## 状态
 
+- **M6.7.1 Acceptance Determinism — 完成（test-only normalization，本地待 push）**
+  - **目的**: 修复 `tests/test_acceptance_loop.py::test_happy_run_ask_replay` 在 `scripts/verify.sh` 中 byte-flaky 失败（`duration_ms` 1 vs 0），恢复 acceptance gate 可信度，移除真实动态字段对 byte-frozen golden 比较的污染
+  - **背景**: oracle 评审（task `ses_230d4bc9fffeqJ5yl2LLbLfMp1`）+ designer 评审（task `ses_230d472d8ffeyb0q2lSo7J1w3w`）综合得出 M6.7 路线图（`docs/Furnace M6.7 Roadmap.md`），M6.7.1 为最高 ROI 首发
+  - **核心做法**: 在 `tests/test_acceptance_loop.py` 新增 `_normalize_jsonl_dynamic_fields` + `_should_normalize`；`_assert_files_byte_equal` 对 `.aiwiki/logs/llm-receipts.jsonl` / `.aiwiki/logs/runs.jsonl` 走 normalization（top-level `duration_ms` 替换为 `0`）后 byte compare；REFRESH 路径同步走 normalization 保证对称；其他文件保持原 byte compare 不变
+  - **指标**: tests/test_acceptance_loop.py 67 行 +66/-1；0 production 代码改动；0 schema/receipt/audit 改动；5 次 `scripts/run_acceptance.sh -v` 12/12 全 pass；5 次 `scripts/verify.sh` 全 pass exit=0（"All checks passed!"）；coverage 维持 93%（1761 missed / 35815 lines）
+  - **Stop Lines**: 0 production code 改动（仅 `tests/test_acceptance_loop.py`）；0 receipt/audit/shell-summary schema 改动；不删除已有 byte-frozen golden；不在 production 伪造 `duration_ms`（仍由 real elapsed time 计算）；`response_id`/`usage`/`model_final`/`backend_effective`/`status`/`event` 仍 strict
+  - **Critical Notes**: 当前只 normalize top-level 字段；嵌套 dict 内的动态值（若未来引入）需扩展递归；只覆盖 `duration_ms`，未来若新增 `latency_p95_ms` 等需扩 `_DYNAMIC_RECEIPT_FIELDS`；contract 已归档到 `.codex/contracts/archive/M6.7.1-acceptance-determinism.md`
+  - **路线图**: M6.7.2 cli.py 拆分 → M6.7.3 silent fail 收口 → M6.7.4 Universal Input attachment pill → M6.7.5 typography token + Today Feed 视觉权重 → M6.7.6 LLM receipt 单一入口 → M6.7.7 移除 input_router.js 前端镜像（详见 `docs/Furnace M6.7 Roadmap.md`）
+
 - **M6.6.4 app_shell subpackage split — 完成**
   - **实现**: `src/aiwiki/app_shell.py`（1836 LOC）拆为 `src/aiwiki/app_shell/`：`__init__.py` 105 LOC、`helpers.py` 153 LOC、`surfaces.py` 579 LOC、`controls.py` 586 LOC、`meta.py` 217 LOC、`summary.py` 305 LOC、`rendering.py` 411 LOC；原单文件已删除
   - **兼容性**: 6 个外部 importer 0 修改；`aiwiki.app_shell` 通过 façade re-export 保持 33 个顶级 def（含 `_` internals）import surface
