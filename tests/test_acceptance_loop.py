@@ -57,6 +57,22 @@ def _assert_files_byte_equal(root: Path, expected_dir: Path, relpaths: list[str]
         _write_or_compare(golden, (root / rel).read_bytes())
 
 
+def _snapshot_paths(root: Path, prefixes: tuple[str, ...]) -> dict[str, bytes]:  # pragma: no cover - explicit gate
+    snapshot: dict[str, bytes] = {}
+    for prefix in prefixes:
+        base = root / prefix
+        if not base.exists():
+            continue
+        for path in sorted(base.rglob("*")):
+            if path.is_file():
+                snapshot[path.relative_to(root).as_posix()] = path.read_bytes()
+    return snapshot
+
+
+def _read_optional_bytes(path: Path) -> bytes | None:  # pragma: no cover - explicit gate
+    return path.read_bytes() if path.exists() else None
+
+
 def _copy_case_and_fix_clock(  # pragma: no cover - exercised by explicit pytest acceptance gate
     case_name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[Path, Path]:
@@ -67,6 +83,7 @@ def _copy_case_and_fix_clock(  # pragma: no cover - exercised by explicit pytest
     monkeypatch.setattr("aiwiki.runner.alchemy.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.execution.alchemy.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.app_utils.utc_now", lambda: FIXED_NOW.isoformat())
+    monkeypatch.setattr("aiwiki.app_shell.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.app_linting.datetime", _FixedDateTime)
     uuids = itertools.count(1)
     monkeypatch.setattr("aiwiki.signals.collector.uuid.uuid4", lambda: uuid.UUID(int=next(uuids)))
@@ -124,6 +141,51 @@ def test_m61_b1_execute_mode_auto_dry_run_acceptance(  # pragma: no cover - expl
         case / "expected",
         [".aiwiki/state/signals.jsonl", ".aiwiki/state/planner-log.jsonl"],
     )
+    if REFRESH:
+        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
+
+
+def test_replay_idempotency_and_presentation_acceptance(  # pragma: no cover - explicit pytest acceptance gate
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    case, vault = _copy_case_and_fix_clock("case_idempotency_shell", tmp_path, monkeypatch)
+    stdout_dir = case / "expected" / "stdout"
+    out1, out2, out3 = _run_b1_chain(vault)
+    before_today = _snapshot_paths(vault, ("output/control", ".aiwiki/state", "wiki", "output/_candidates"))
+    shell_summary_path = vault / "output/control/shell-summary.json"
+    shell_summary_before = _read_optional_bytes(shell_summary_path)
+    out4 = _run_cli(vault, ["today"])
+    after_today = _snapshot_paths(vault, ("output/control", ".aiwiki/state", "wiki", "output/_candidates"))
+    assert after_today == before_today
+    assert _read_optional_bytes(shell_summary_path) == shell_summary_before
+
+    signals_first = (vault / ".aiwiki/state/signals.jsonl").read_bytes()
+    planner_first = (vault / ".aiwiki/state/planner-log.jsonl").read_bytes()
+
+    out1b, out2b, out3b = _run_b1_chain(vault)
+    before_today2 = _snapshot_paths(vault, ("output/control", ".aiwiki/state", "wiki", "output/_candidates"))
+    out4b = _run_cli(vault, ["today"])
+    after_today2 = _snapshot_paths(vault, ("output/control", ".aiwiki/state", "wiki", "output/_candidates"))
+
+    assert (vault / ".aiwiki/state/signals.jsonl").read_bytes() == signals_first
+    assert (vault / ".aiwiki/state/planner-log.jsonl").read_bytes() == planner_first
+    assert out3b == out3
+    assert out4b == out4
+    assert before_today2 == after_today2
+    assert _read_optional_bytes(shell_summary_path) == shell_summary_before
+
+    assert json.loads(out1b)["new_count"] == 0
+    assert json.loads(out2b)["new_count"] == 0
+    out1c, out2c, out3c = _run_b1_chain(vault)
+    out4c = _run_cli(vault, ["today"])
+    assert (out1c, out2c, out3c, out4c) == (out1b, out2b, out3b, out4b)
+    assert (vault / ".aiwiki/state/signals.jsonl").read_bytes() == signals_first
+    assert (vault / ".aiwiki/state/planner-log.jsonl").read_bytes() == planner_first
+    _write_or_compare(stdout_dir / "pass1-01-signals-replay.json", out1)
+    _write_or_compare(stdout_dir / "pass1-02-planner-log-replay.json", out2)
+    _write_or_compare(stdout_dir / "pass1-03-alchemy-auto-dry-run.json", out3)
+    _write_or_compare(stdout_dir / "pass1-04-today.txt", out4)
+    _assert_files_byte_equal(vault, case / "expected", [".aiwiki/state/signals.jsonl", ".aiwiki/state/planner-log.jsonl"])
     if REFRESH:
         pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
 

@@ -1,0 +1,21 @@
+炼丹炉 Today
+Generated: 2026-04-27T00:00:00+00:00
+Active protocol: general
+
+Today's Reports
+(no reports today)
+
+Needs Review
+(no pending review)
+
+Completed Elixirs
+(no completed elixirs today)
+
+L3 Proposals
+(no L3 proposals need attention)
+
+Suggested Next Actions
+(no suggested next actions)
+
+Advanced
+Run `aiwiki advanced ...` for system status, receipts, audit, repair, lanes, and debugging.
