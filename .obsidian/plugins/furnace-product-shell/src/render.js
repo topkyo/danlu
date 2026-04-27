@@ -692,19 +692,112 @@ function renderFurnaceCenter(plugin, contentEl) {
     ? plugin.shellSummary.recent_outputs
     : [];
 
-  // 1. AskBox
-  renderAskBox(plugin, contentEl);
+  // 1. Universal Input
+  renderUniversalInput(plugin, contentEl);
 
   renderNeedsDecisionSection(plugin, contentEl);
 
   // 2. Today's Reports + Previous Reports
   renderReportsPanel(plugin, contentEl, reports);
 
-  // 3. DropZone
-  renderDropZone(plugin, contentEl);
-
-  // 4. Advanced Drawer
+  // 3. Advanced Drawer
   renderAdvancedDrawer(plugin, contentEl);
+}
+
+function renderUniversalInput(plugin, container) {
+  const wrapper = container.createDiv({ cls: "furnace-universal-input-wrapper" });
+  
+  // Drag and drop overlay
+  const dropOverlay = wrapper.createDiv({ cls: "furnace-universal-input-drop-overlay" });
+  dropOverlay.createDiv({ text: plugin.t("Drop file here") });
+  dropOverlay.style.display = "none";
+
+  const form = wrapper.createDiv({ cls: "furnace-universal-input-form" });
+  const textarea = form.createEl("textarea", { 
+    cls: "furnace-universal-input-textarea",
+    attr: { "aria-label": "Universal input" }
+  });
+  
+  // Include 6 keywords explicitly: URL, PDF, image, repo, note, question
+  textarea.placeholder = plugin.t("Drop URL, PDF, image, repo, note, or question...");
+  textarea.rows = 1;
+
+  const submitButton = form.createEl("button", { 
+    cls: "furnace-universal-input-button", 
+    text: plugin.t("Submit") 
+  });
+
+  const autoResize = () => {
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+  };
+  textarea.addEventListener('input', autoResize);
+
+  const handleSubmit = () => {
+    const value = textarea.value;
+    if (!value.trim()) return;
+    try {
+      const { route, payload, reason } = classifyUniversalInput(value);
+      textarea.value = '';
+      autoResize();
+      plugin.runUniversalInputCommand({ route, payload, reason });
+    } catch (e) {
+      new Notice("Invalid input: " + e.message);
+    }
+  };
+
+  submitButton.addEventListener("click", () => {
+    handleSubmit();
+  });
+
+  textarea.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  });
+
+  // Drag and Drop handlers
+  let dragCounter = 0;
+  wrapper.addEventListener("dragenter", (e) => {
+    e.preventDefault();
+    dragCounter++;
+    dropOverlay.style.display = "flex";
+  });
+  wrapper.addEventListener("dragleave", (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter === 0) {
+      dropOverlay.style.display = "none";
+    }
+  });
+  wrapper.addEventListener("dragover", (e) => {
+    e.preventDefault();
+  });
+  wrapper.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    dropOverlay.style.display = "none";
+    
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      const path = file.path;
+      if (path) {
+        try {
+          const { route, payload, reason } = classifyUniversalInput(path);
+          plugin.runUniversalInputCommand({ route, payload, reason });
+        } catch (err) {
+          new Notice("Invalid drop: " + err.message);
+        }
+      }
+    } else if (e.dataTransfer) {
+      const text = e.dataTransfer.getData("text/plain");
+      if (text) {
+        textarea.value = text;
+        autoResize();
+      }
+    }
+  });
 }
 
 function renderAskBox(plugin, container) {

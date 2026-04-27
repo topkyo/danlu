@@ -888,6 +888,91 @@ function splitReportsByLocalDate(reports, options = {}) {
   };
 }
 
+// --- src/input_router.js ---
+
+// MIRROR of src/aiwiki/input_router.py — keep in sync.
+// Pure function, no IO, no LLM, no fetch.
+const ROUTE = {
+  URL: "url",
+  PDF: "pdf",
+  IMAGE: "image",
+  REPO: "repo",
+  NOTE: "note",
+  ASK: "ask"
+};
+
+const IMAGE_SUFFIXES = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"];
+
+function classifyUniversalInput(value) {
+  const payload = (value || "").trim();
+  if (!payload) {
+    throw new Error("empty input");
+  }
+
+  const lowerPayload = payload.toLowerCase();
+
+  if (lowerPayload.startsWith("http://") || lowerPayload.startsWith("https://")) {
+    let urlPath = "";
+    try {
+      const url = new URL(payload);
+      urlPath = url.pathname.toLowerCase();
+    } catch (e) {
+      // Ignored: fallback to naive parsing if invalid URL
+    }
+    
+    if (urlPath.endsWith(".pdf")) {
+      return { route: ROUTE.PDF, payload, reason: "pdf-suffix-on-url" };
+    }
+    if (IMAGE_SUFFIXES.some(suffix => urlPath.endsWith(suffix))) {
+      return { route: ROUTE.IMAGE, payload, reason: "image-suffix-on-url" };
+    }
+    return { route: ROUTE.URL, payload, reason: "url-scheme" };
+  }
+
+  if (lowerPayload.endsWith(".pdf")) {
+    return { route: ROUTE.PDF, payload, reason: "pdf-suffix" };
+  }
+
+  if (IMAGE_SUFFIXES.some(suffix => lowerPayload.endsWith(suffix))) {
+    return { route: ROUTE.IMAGE, payload, reason: "image-suffix" };
+  }
+
+  if (lowerPayload.startsWith("git@")) {
+    return { route: ROUTE.REPO, payload, reason: "git-ssh-shorthand" };
+  }
+
+  if (lowerPayload.startsWith("ssh://")) {
+    return { route: ROUTE.REPO, payload, reason: "ssh-scheme" };
+  }
+
+  if (lowerPayload.endsWith(".git")) {
+    return { route: ROUTE.REPO, payload, reason: "git-suffix" };
+  }
+
+  if (lowerPayload.startsWith("note:")) {
+    const notePayload = payload.substring("note:".length).trim();
+    if (!notePayload) {
+      throw new Error("empty note payload");
+    }
+    return { route: ROUTE.NOTE, payload: notePayload, reason: "note-prefix" };
+  }
+
+  if (payload.includes("\n")) {
+    return { route: ROUTE.NOTE, payload, reason: "multiline-text" };
+  }
+
+  if (lowerPayload.startsWith("ask:")) {
+    const askPayload = payload.substring("ask:".length).trim();
+    return { route: ROUTE.ASK, payload: askPayload, reason: "ask-prefix" };
+  }
+
+  if (payload.includes("?")) {
+    return { route: ROUTE.ASK, payload, reason: "contains-question-mark" };
+  }
+
+  return { route: ROUTE.ASK, payload, reason: "default-ambiguous-text" };
+}
+
 // --- src/modals.js ---
 
 // Modal subclasses (AskCommand, CaptureNote, Protocol, Search, DropUrl,
@@ -2596,19 +2681,112 @@ function renderFurnaceCenter(plugin, contentEl) {
     ? plugin.shellSummary.recent_outputs
     : [];
 
-  // 1. AskBox
-  renderAskBox(plugin, contentEl);
+  // 1. Universal Input
+  renderUniversalInput(plugin, contentEl);
 
   renderNeedsDecisionSection(plugin, contentEl);
 
   // 2. Today's Reports + Previous Reports
   renderReportsPanel(plugin, contentEl, reports);
 
-  // 3. DropZone
-  renderDropZone(plugin, contentEl);
-
-  // 4. Advanced Drawer
+  // 3. Advanced Drawer
   renderAdvancedDrawer(plugin, contentEl);
+}
+
+function renderUniversalInput(plugin, container) {
+  const wrapper = container.createDiv({ cls: "furnace-universal-input-wrapper" });
+  
+  // Drag and drop overlay
+  const dropOverlay = wrapper.createDiv({ cls: "furnace-universal-input-drop-overlay" });
+  dropOverlay.createDiv({ text: plugin.t("Drop file here") });
+  dropOverlay.style.display = "none";
+
+  const form = wrapper.createDiv({ cls: "furnace-universal-input-form" });
+  const textarea = form.createEl("textarea", { 
+    cls: "furnace-universal-input-textarea",
+    attr: { "aria-label": "Universal input" }
+  });
+  
+  // Include 6 keywords explicitly: URL, PDF, image, repo, note, question
+  textarea.placeholder = plugin.t("Drop URL, PDF, image, repo, note, or question...");
+  textarea.rows = 1;
+
+  const submitButton = form.createEl("button", { 
+    cls: "furnace-universal-input-button", 
+    text: plugin.t("Submit") 
+  });
+
+  const autoResize = () => {
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+  };
+  textarea.addEventListener('input', autoResize);
+
+  const handleSubmit = () => {
+    const value = textarea.value;
+    if (!value.trim()) return;
+    try {
+      const { route, payload, reason } = classifyUniversalInput(value);
+      textarea.value = '';
+      autoResize();
+      plugin.runUniversalInputCommand({ route, payload, reason });
+    } catch (e) {
+      new Notice("Invalid input: " + e.message);
+    }
+  };
+
+  submitButton.addEventListener("click", () => {
+    handleSubmit();
+  });
+
+  textarea.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  });
+
+  // Drag and Drop handlers
+  let dragCounter = 0;
+  wrapper.addEventListener("dragenter", (e) => {
+    e.preventDefault();
+    dragCounter++;
+    dropOverlay.style.display = "flex";
+  });
+  wrapper.addEventListener("dragleave", (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter === 0) {
+      dropOverlay.style.display = "none";
+    }
+  });
+  wrapper.addEventListener("dragover", (e) => {
+    e.preventDefault();
+  });
+  wrapper.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    dropOverlay.style.display = "none";
+    
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      const path = file.path;
+      if (path) {
+        try {
+          const { route, payload, reason } = classifyUniversalInput(path);
+          plugin.runUniversalInputCommand({ route, payload, reason });
+        } catch (err) {
+          new Notice("Invalid drop: " + err.message);
+        }
+      }
+    } else if (e.dataTransfer) {
+      const text = e.dataTransfer.getData("text/plain");
+      if (text) {
+        textarea.value = text;
+        autoResize();
+      }
+    }
+  });
 }
 
 function renderAskBox(plugin, container) {
@@ -5921,6 +6099,17 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       "authentication",
       "auth",
     ].some((pattern) => text.includes(pattern));
+  }
+
+  async runUniversalInputCommand({ route, payload, reason }) {
+    switch (route) {
+      case "url": return this.runDropUrlCommand({ url: payload });
+      case "pdf": return this.runDropFileCommand({ mode: "pdf", source: payload });
+      case "image": return this.runDropImageCommand({ source: payload });
+      case "repo": return this.runDropFileCommand({ mode: "repo", source: payload });
+      case "note": return this.runDropNoteCommand({ text: payload });
+      case "ask": return this.runAskCommand({ question: payload });
+    }
   }
 
   async runAskCommand({ question, format, mode, protocol }) {

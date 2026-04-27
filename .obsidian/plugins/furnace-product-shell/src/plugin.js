@@ -2145,6 +2145,17 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     ].some((pattern) => text.includes(pattern));
   }
 
+  async runUniversalInputCommand({ route, payload, reason }) {
+    switch (route) {
+      case "url": return this.runDropUrlCommand({ url: payload });
+      case "pdf": return this.runDropFileCommand({ mode: "pdf", source: payload });
+      case "image": return this.runDropImageCommand({ source: payload });
+      case "repo": return this.runDropFileCommand({ mode: "repo", source: payload });
+      case "note": return this.runDropNoteCommand({ text: payload });
+      case "ask": return this.runAskCommand({ question: payload });
+    }
+  }
+
   async runAskCommand({ question, format, mode, protocol }) {
     const args = [mode, question, "--format", format];
     if (protocol) {

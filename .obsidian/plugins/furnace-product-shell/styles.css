@@ -815,3 +815,80 @@
   color: var(--text-faint);
   font-style: italic;
 }
+
+/* Universal Input */
+.furnace-universal-input-wrapper {
+  position: relative;
+  margin-bottom: var(--size-4-4);
+  max-width: 100%;
+}
+
+.furnace-universal-input-form {
+  display: flex;
+  gap: var(--size-4-2);
+  align-items: flex-start;
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  padding: var(--size-4-1);
+}
+
+.furnace-universal-input-form:focus-within {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px var(--background-modifier-border-hover);
+}
+
+.furnace-universal-input-textarea {
+  flex-grow: 1;
+  background: transparent;
+  border: none;
+  resize: none;
+  min-height: 36px;
+  max-height: 150px;
+  padding: var(--size-4-1) var(--size-4-2);
+  font-family: inherit;
+  font-size: var(--font-ui-medium);
+  line-height: 1.4;
+  color: var(--text-normal);
+  box-shadow: none;
+}
+
+.furnace-universal-input-textarea:focus {
+  box-shadow: none;
+  outline: none;
+}
+
+.furnace-universal-input-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.furnace-universal-input-button {
+  height: 36px;
+  white-space: nowrap;
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: var(--radius-s);
+  padding: 0 var(--size-4-3);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.furnace-universal-input-button:hover {
+  background-color: var(--interactive-accent-hover);
+}
+
+.furnace-universal-input-drop-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: var(--background-modifier-cover);
+  border: 2px dashed var(--interactive-accent);
+  border-radius: var(--radius-m);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  color: var(--text-accent);
+  z-index: 10;
+  pointer-events: none;
+}
