@@ -2384,26 +2384,51 @@ function renderFurnaceCenter(plugin, contentEl) {
 
 function renderAskBox(plugin, container) {
   const wrapper = container.createDiv({ cls: "furnace-shell-askbox-wrapper" });
-  const input = wrapper.createEl("input", { cls: "furnace-shell-askbox", type: "text" });
-  input.placeholder = plugin.t("Ask / Command... (Type / to see more)");
+  const form = wrapper.createDiv({ cls: "furnace-shell-askbox-form" });
+  const input = form.createEl("input", { cls: "furnace-shell-askbox", type: "text" });
+  input.placeholder = plugin.t("Ask / Command...");
+  const askButton = form.createEl("button", { cls: "furnace-shell-askbox-button", text: plugin.t("Ask") });
+  const status = wrapper.createDiv({ cls: "furnace-shell-askbox-status" });
+  let isRunning = false;
 
-  input.addEventListener("keydown", async (e) => {
+  const setRunning = (nextRunning) => {
+    isRunning = Boolean(nextRunning);
+    input.disabled = isRunning;
+    askButton.disabled = isRunning;
+    askButton.setText(isRunning ? plugin.t("Asking...") : plugin.t("Ask"));
+    status.setText(isRunning ? plugin.t("Asking...") : "");
+  };
+
+  const submitAsk = async () => {
+    if (isRunning) {
+      return;
+    }
+    const question = String(input.value || "").trim();
+    if (!question) {
+      return;
+    }
+    input.value = "";
+    setRunning(true);
+    try {
+      await plugin.runAskCommand({
+        question,
+        format: plugin.settings.defaultAskFormat,
+        mode: plugin.settings.defaultAskMode,
+        protocol: "",
+      });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  askButton.addEventListener("click", () => {
+    plugin.runUiAction(() => submitAsk(), plugin.t("Ask"));
+  });
+
+  input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      const question = String(input.value || "").trim();
-      if (!question) return;
-      if (question.startsWith("/")) {
-        // Open modal or standard palette
-        new AskCommandModal(plugin.app, plugin).open();
-      } else {
-        await plugin.runAskCommand({
-          question,
-          format: plugin.settings.defaultAskFormat,
-          mode: plugin.settings.defaultAskMode,
-          protocol: "",
-        });
-        input.value = "";
-      }
+      plugin.runUiAction(() => submitAsk(), plugin.t("Ask"));
     }
   });
 }

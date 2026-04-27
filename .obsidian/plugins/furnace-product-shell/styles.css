@@ -532,14 +532,24 @@
 /* Furnace Shell V3 Refactor */
 
 .furnace-shell-v3 .furnace-shell-askbox-wrapper {
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   margin-bottom: 24px;
 }
 
+.furnace-shell-v3 .furnace-shell-askbox-form {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
 .furnace-shell-v3 .furnace-shell-askbox {
+  flex: 1 1 auto;
   width: 100%;
-  font-size: 1.2em;
-  padding: 12px 16px;
+  min-width: 0;
+  font-size: 1.05em;
+  padding: 10px 14px;
   border-radius: 8px;
   border: 1px solid var(--background-modifier-border);
   background: var(--background-primary);
@@ -550,6 +560,28 @@
   border-color: var(--interactive-accent);
   outline: none;
   box-shadow: 0 0 0 2px var(--background-modifier-border);
+}
+
+.furnace-shell-v3 .furnace-shell-askbox-button {
+  flex: 0 0 auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  cursor: pointer;
+  padding: 0 16px;
+}
+
+.furnace-shell-v3 .furnace-shell-askbox-button:disabled,
+.furnace-shell-v3 .furnace-shell-askbox:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.furnace-shell-v3 .furnace-shell-askbox-status {
+  min-height: 1.2em;
+  color: var(--text-muted);
+  font-size: 0.85em;
 }
 
 .furnace-shell-v3 .furnace-shell-report-list {
