@@ -6,6 +6,13 @@
 
 ## 状态
 
+- **M6.6.4 app_shell subpackage split — 完成**
+  - **实现**: `src/aiwiki/app_shell.py`（1836 LOC）拆为 `src/aiwiki/app_shell/`：`__init__.py` 105 LOC、`helpers.py` 153 LOC、`surfaces.py` 579 LOC、`controls.py` 586 LOC、`meta.py` 217 LOC、`summary.py` 305 LOC、`rendering.py` 411 LOC；原单文件已删除
+  - **兼容性**: 6 个外部 importer 0 修改；`aiwiki.app_shell` 通过 façade re-export 保持 33 个顶级 def（含 `_` internals）import surface
+  - **Mock seam**: 保留 `aiwiki.app_shell.utc_now` 与 `aiwiki.app_shell.load_llm_receipt_history`；`load_llm_receipt_history` 实际源模块为 `aiwiki.app_state`
+  - **Gates**: import/mock seam smoke pass；focused pytest 374 pass；`bash scripts/verify.sh` pass（1314 tests / 93% coverage）；`bash scripts/run_acceptance.sh -v` 12 pass；acceptance 稳定性 5/5 pass
+  - **Stop Lines**: 函数 AST body 未变化；protected importer diff 为空；ShellSummary acceptance golden 未变化；contract 已归档到 `.codex/contracts/archive/M6.6.4-app-shell-subpackage.md`
+
 - **M6.6.3 app_linting subpackage split — 完成**
   - **实现**: `src/aiwiki/app_linting.py`（2001 LOC）拆为 `src/aiwiki/app_linting/`：`__init__.py` 61 LOC、`core.py` 410 LOC、`phases.py` 1029 LOC、`repair.py` 717 LOC、`nightly.py` 757 LOC；原单文件已删除
   - **兼容性**: 4 个外部 importer 0 修改；`aiwiki.app_linting` 通过 `__init__.py` re-export 保持 `Finding/lint_wiki/nightly` 与 `_` internals import surface
