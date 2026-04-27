@@ -397,19 +397,31 @@ def shell_drift_warnings(
     *,
     judgment_assets: dict[str, Any],
     compile_state: dict[str, Any],
+    aging_state: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    stored_warnings = [
-        dict(item)
-        for item in compile_state.get("drift_warnings", [])
-        if isinstance(item, dict)
-    ]
-    if stored_warnings:
-        return stored_warnings[:8]
     warnings: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    def _add(item: dict[str, Any]) -> None:
+        if not isinstance(item, dict):
+            return
+        key = (str(item.get("kind") or ""), str(item.get("path") or ""), str(item.get("message") or ""))
+        if key in seen:
+            return
+        seen.add(key)
+        warnings.append(dict(item))
+
+    for item in compile_state.get("drift_warnings", []) or []:
+        _add(item)
+
+    if isinstance(aging_state, dict):
+        for item in aging_state.get("warnings", []) or []:
+            _add(item)
+
     drift = memory.get("drift", {})
     if isinstance(drift, dict):
         for path in drift.get("missing_source_pages", [])[:4]:
-            warnings.append(
+            _add(
                 {
                     "kind": "source-reference-break",
                     "path": str(path),
@@ -417,7 +429,7 @@ def shell_drift_warnings(
                 }
             )
         for path in drift.get("missing_concept_pages", [])[:4]:
-            warnings.append(
+            _add(
                 {
                     "kind": "concept-disappear",
                     "path": str(path),
@@ -432,7 +444,7 @@ def shell_drift_warnings(
             invalidation_rule = str(page.get("invalidation_rule") or "")
             if not invalidation_rule:
                 continue
-            warnings.append(
+            _add(
                 {
                     "kind": "judgment-invalidation",
                     "path": str(page.get("path") or ""),

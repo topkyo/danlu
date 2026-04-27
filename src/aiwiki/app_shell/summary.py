@@ -104,6 +104,19 @@ from .surfaces import (
 )
 
 
+def _load_drift_aging_state(root: Path) -> dict[str, Any]:
+    from ..drift_scan import DRIFT_AGING_REL_PATH
+
+    path = root / DRIFT_AGING_REL_PATH
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def _build_knowledge_stats(
     memory: dict,
     compile_state: dict,
@@ -202,6 +215,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         memory,
         judgment_assets=judgment_assets,
         compile_state=compile_state,
+        aging_state=_load_drift_aging_state(root),
     )
     counter_evidence_pages = _counter_evidence_pages_from_memory(counter_evidence_scan)
     metrics_history_delta = _build_metrics_history_delta(root, generated_at)

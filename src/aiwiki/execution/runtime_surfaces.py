@@ -102,11 +102,28 @@ def nightly_health(root: Path) -> dict[str, Any]:
         semantic_report="",
         llm_used=False,
     )
+
+    drift_aging: dict[str, Any] = {}
+    try:
+        from ..drift_scan import drift_scan
+
+        drift_aging = drift_scan(root)
+    except Exception as exc:
+        _append_run_event(
+            root,
+            {
+                "event": "nightly_drift_scan_failure",
+                "reason": str(exc),
+                "error_type": type(exc).__name__,
+            },
+        )
+
     return {
         "compile": compile_result,
         "lint": lint_result,
         "promotions": promotion_result,
         "aging": state["aging"],
+        "drift_aging": drift_aging,
         "repair_backlog": state["repair_backlog"]["path"],
         "auto_applied": auto_applied,
         "auto_failed": auto_failed,

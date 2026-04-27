@@ -6,6 +6,32 @@
 
 ## 状态
 
+- **P3 — Drift / Aging 自动信号（M8.3）— 完成**
+  - **目的**: 让炼丹炉具备“自我维护”——不投喂也会主动提醒陈旧判断、变化的引证、断链金丹。
+  - **方向 SoT**: `docs/Furnace Next Direction P0-P3.md` §4 (P3)
+  - **契约**: `.codex/contracts/archive/M8.3-p3-drift-aging-nightly-signals.md`
+  - **核心做法**（纯派生 + 零 schema 改动）:
+    - 新模块 `src/aiwiki/drift_scan.py` (~589 行)：`drift_scan(root, *, now=None)` 入口
+    - 三类 scanner：
+      1. `_scan_stale_judgments`：`wiki/judgments/*.md` 的 `last_reviewed`/`updated_at`/`last_compiled_at` 距 `now` > `STALE_JUDGMENT_DAYS` (默认 180，env `AIWIKI_STALE_JUDGMENT_DAYS` 可 override) → `kind="drift"`、severity=medium
+      2. `_scan_changed_evidence`：复用 `analyze_citation_snapshots`，对 judgments + elixirs 的 `citation_snapshots` 与当前 `evidence_path_digest` 比对 → `kind="drift"`、severity=high；`drifted` + `stale` 双信号合并 evidence_refs
+      3. `_scan_dependency_breaks`：扫 `wiki/elixirs/*.md` 的 `derived_from`，缺失文件 → `kind="elixir_dependency_break"`、severity=high
+    - signal 直接构造 + 走 `compute_dedupe_key` / `validate` / `canonical_dumps`，不走 collector replay；自然幂等
+    - 为满足 schema 的 `source_event_ref` 锚点要求：每次有发现就在 `runtime-history.jsonl` 追加一条 `event_type=drift-scan` 行，所有本批 signal 指向该行（保留 audit trail）
+    - 派生 state `.aiwiki/state/drift-aging.json`：每次扫描覆盖写，含 findings / warnings / signals_appended / errors
+    - `nightly_health` 末尾 best-effort 调用 `drift_scan`，结果挂在返回 dict `drift_aging` 字段；任何异常仅写 `nightly_drift_scan_failure` run event，不破 nightly
+    - `shell_drift_warnings` 重构为合并模式（compile_state.drift_warnings + aging_state.warnings + memory drift + judgment attention），按 (kind, path, message) dedupe，cap 8；新增可选 `aging_state` 参数
+    - `build_shell_summary` 通过 `_load_drift_aging_state(root)` 读 `.aiwiki/state/drift-aging.json` 注入
+  - **验证**:
+    - 17 新单测（stale × 5 / changed × 4 / break × 3 / 集成 × 4 / env override × 1），全过
+    - `bash scripts/verify.sh` **5/5 稳定 pass**（1406+ unit + 12 acceptance / 93% coverage）
+    - **acceptance golden 漂移 = 0**
+    - 真实 vault smoke：`drift_scan(Path('.'))` 0 stale / 0 changed / 0 breaks / 0 errors（vault 当前洁净，符合预期）
+  - **影响文件**:
+    - 新增：`src/aiwiki/drift_scan.py` (589) / `tests/test_drift_scan.py` (413)
+    - 修改：`src/aiwiki/execution/runtime_surfaces.py` (+19) / `src/aiwiki/app_shell/surfaces.py` (重构 ~50) / `src/aiwiki/app_shell/summary.py` (+15)
+  - **下一步**: P2 investing 端到端 dogfood（产品验证而非代码工作；用真实研究材料把 P0/P1/P3 的全链路跑通并产出摩擦点报告）
+
 - **P1 — Evidence Chain 可视化（M8.2）— 完成**
   - **目的**: 让用户用 1 条命令把任一资产追到原始证据，建立"知识库可信"的根基。
   - **方向 SoT**: `docs/Furnace Next Direction P0-P3.md` §2 (P1)
