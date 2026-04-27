@@ -66,6 +66,44 @@ class ProductShellButtonContract(unittest.TestCase):
         self.assertIn("renderAdvancedDrawer", text)
 
 
+class ProductShellFirstScreenContract(unittest.TestCase):
+    """M7.2: 首屏 surface convergence — renderFurnaceCenter 只挂 Universal Input + Today + Advanced。
+
+    防止首屏退化为多入口 dashboard（重新挂 AskBox / DropZone 等独立面板）。
+    AskBox / DropZone 仍可作为 modal/legacy helpers 存在，但不挂在首屏主 view 上。
+    """
+
+    def _read_render_furnace_center_body(self) -> str:
+        text = MAIN_JS.read_text(encoding="utf-8")
+        marker = "function renderFurnaceCenter"
+        start = text.find(marker)
+        self.assertGreater(start, -1, "renderFurnaceCenter not found in main.js")
+        # 限定到该函数 body：从 marker 起取 1000 字符够了（实际函数 ~25 行）。
+        end = text.find("\n// --- src/", start)
+        self.assertGreater(end, start, "renderFurnaceCenter body terminator not found")
+        return text[start:end]
+
+    def test_first_screen_mounts_universal_input(self) -> None:
+        body = self._read_render_furnace_center_body()
+        self.assertIn("renderUniversalInput(plugin, contentEl)", body)
+
+    def test_first_screen_mounts_today_feed(self) -> None:
+        body = self._read_render_furnace_center_body()
+        self.assertIn("renderTodayFeed(plugin, contentEl)", body)
+
+    def test_first_screen_mounts_advanced_drawer(self) -> None:
+        body = self._read_render_furnace_center_body()
+        self.assertIn("renderAdvancedDrawer(plugin, contentEl)", body)
+
+    def test_first_screen_does_not_mount_ask_box(self) -> None:
+        body = self._read_render_furnace_center_body()
+        self.assertNotIn("renderAskBox(", body)
+
+    def test_first_screen_does_not_mount_drop_zone(self) -> None:
+        body = self._read_render_furnace_center_body()
+        self.assertNotIn("renderDropZone(", body)
+
+
 class ProductShellLongTextContract(unittest.TestCase):
     """长文本 wrap CSS 规则存在。"""
 

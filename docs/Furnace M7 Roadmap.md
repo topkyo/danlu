@@ -117,37 +117,32 @@ M6.x 已完成「功能与结构骨架」。M7 的唯一目的是**把综合评�
 
 ---
 
-## 4. M7.2 — Product Surface Convergence
+## 4. M7.2 — Product Surface Reconciliation（已收敛，仅 SoT 对齐）
 
-**目标**：兑现架构"一输入一输出"。Product Shell 首屏只暴露 Universal Input + Today；其它入口降级到 Advanced 或 command palette。
+**状态**：first-screen surface 已 converged。M7.2 实际改动 = 文档纠偏 + 防回归 contract test。
 
-**问题事实**：
-- `.obsidian/plugins/furnace-product-shell/src/render_input.js:143-253` 仍有 AskBox + DropZone
-- `plugin.js:51-108` 注册 7 个 public commands（Compile / Ask / Capture Note / Drop URL / Drop File / Drop Image / Search）
-- `cli/dispatch.py:792-801` today 仍按多 section 渲染
+**事实核对（2026-04-28 explorer + oracle 双检）**：
+- `.obsidian/plugins/furnace-product-shell/src/render_home.js` 首屏只挂 `renderUniversalInput → renderTodayFeed → renderAdvancedDrawer`
+- `renderAskBox` / `renderDropZone` 仍存在于 `render_input.js` 作为 legacy/compat helper（modal 仍可调用），**首屏 view 不挂载**
+- 8 个 core commands 是 command palette 快捷别名 + 投喂入口（`drop-url/file/image` 由 AGENTS.md "维持直接投喂入口"明确要求）
+- 22 个 advanced commands 已按 `showAdvancedCommands` 设置门控
+- `aiwiki today` 5-section 输出是 `tests/test_acceptance_loop.py:599-627`、`tests/test_cli.py:193-249`、`tests/test_product_shell_today_feed.py` 多处契约绑定
 
-**核心做法**：
+**结论**：原路线图把"首屏心智收敛"和"command palette 快捷入口数量"混淆。强行藏 core commands 或改 today single-feed 是负收益破坏。
 
-**Shell 端**：
-- 首屏只渲染：`renderUniversalInput` + Today Feed + Advanced（折叠）
-- 删除 / 隐藏 AskBox + DropZone 独立面板（不删 backend；只改 surface）
-- public commands 缩减到 3 个：`Universal Input`, `Today`, `Advanced Console`；其它命令转移到 `Furnace Advanced` 命名空间下（仍可通过 command palette 搜索）
+**M7.2 落地动作**（已完成）：
+1. `tests/test_product_shell_smoke.py` 新增 `ProductShellFirstScreenContract`：6 个断言，首屏只挂 Universal Input + Today + Advanced，**不挂** AskBox / DropZone。防止未来回归 dashboard 心智。
+2. 路线图本节状态更新为 `converged`。
+3. 不改 core commands、不改 today、不删 legacy helpers（legacy surface cleanup 留 future milestone 单独做）。
 
-**CLI 端**：
-- `aiwiki today` 默认输出改为 single feed（按 priority 混合排序），不再按 section 拆
-- 增加 `aiwiki today --sections` 选项保留旧行为（向后兼容）
+**对 9+ Contract 影响**：基本无实质提分（M7.2 对应架构 §1 用户面投影，不是 §2.2 六条核心可行性约束）。价值在防止未来误回退，而非提分。
 
 **Stop Lines**：
-- 不删除任何 backend 命令
-- 不改 shell-summary schema
-- 不破坏现有 acceptance（acceptance 用 `--sections` 兼容旧 golden）
-- AGENTS.md 的 single writer 等核心 invariant 保持
+- 不改 core 8 commands
+- 不改 today 输出 / 不加 `--sections` flag
+- 不删 `renderAskBox` / `renderDropZone`
+- 不改 dispatch.py / parsers.py
 
-**Gate**：
-- `bash scripts/verify.sh` pass（含 acceptance）
-- `node --check main.js` pass
-- product shell smoke tests pass
-- 新增 contract test 断言首屏只暴露 Universal Input + Today + Advanced 折叠
 
 ---
 
@@ -241,7 +236,7 @@ M7.0 ~ M7.4 全部完成后，重新对 9+ Contract 6 条评分，目标：
 | No hidden backend choice | 8.3 | **9.0+**（M7.4 model policy） |
 | Kill switch by design | 7.4 | **9.0+**（M7.4 autonomy） |
 
-加权综合分目标：**9.0 ~ 9.2**。
+加权综合分目标：**8.6 ~ 9.0**（M7.2 已确认为零提分项 —— 用户面已收敛，仅 SoT 对齐 + 防回归）。
 
 ---
 

@@ -6,6 +6,13 @@
 
 ## 状态
 
+- **M7.2 Product Surface Reconciliation — 完成**
+  - **目的**: 通过 explorer + oracle 双检确认 first-screen surface 已 converged，把原路线图（缩 core commands / today single-feed）降级为"文档纠偏 + 防回归 contract test"，避免负收益破坏。
+  - **核心做法**: `tests/test_product_shell_smoke.py` 新增 `ProductShellFirstScreenContract`（6 个断言：首屏只挂 Universal Input + Today + Advanced，不挂 AskBox / DropZone）；`docs/Furnace M7 Roadmap.md` §4 重写为"already converged" + 综合分目标下调为 8.6~9.0。
+  - **Gates**: `bash scripts/verify.sh` pass。
+  - **Stop Lines**: 0 core commands 改动 / 0 today 输出改动 / 0 legacy helper 删除 / 0 dispatch.py|parsers.py 改动。
+  - **价值**: 防止未来首屏回退为 dashboard，避免基于错误前提做有害改动。9+ Contract 实质分数不变（M7.2 本就不在六条之列）。
+
 - **M7.1 Scoped Lane Hardening (Level A) — 完成**
   - **目的**: 修正 9+ Contract 第 3 条 "Scoped primitives only"，让 lane primitive apply receipt 显式声明 scope 与 enforcement 状态，消除"scoped preview + global apply"名实不符。
   - **核心做法**: `runner/alchemy.py` lane primitive receipt 顶层新增 `scope_declared`(取自 plan.scope_preview)、`scope_enforced=false`、`scope_enforcement_reason="primitive_global_only:compile_lint_nightly_have_no_scope_filter"` 三字段；`tests/test_alchemy_lanes.py` 补 unit test 断言；2 个 acceptance golden（`case_light_primitives_compile_lint` / `case_light_primitives_nightly`）刷新含新字段。
