@@ -108,16 +108,88 @@ function reviewObjectMetaText(control, locale = DEFAULT_LOCALE) {
   return parts.join(" | ");
 }
 
-function groupReportsByDate(reports) {
-  if (!Array.isArray(reports)) return [];
-  const groups = {};
-  for (const report of reports) {
-    if (!report.created_at) continue;
-    const dateStr = report.created_at.split("T")[0];
-    if (!groups[dateStr]) groups[dateStr] = [];
-    groups[dateStr].push(report);
+function normalizeLastViewedTimestamp(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return new Date(value).toISOString();
   }
-  return Object.entries(groups)
-    .sort((a, b) => b[0].localeCompare(a[0])) // Descending dates
-    .map(([date, items]) => ({ date, items }));
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+  return "";
+}
+
+function reportDate(value) {
+  const date = new Date(String(value || ""));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function localDateKey(date) {
+  return date instanceof Date && !Number.isNaN(date.getTime()) ? date.toDateString() : "";
+}
+
+function localDateLabel(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return "unknown";
+  }
+  const yesterday = new Date();
+  yesterday.setHours(0, 0, 0, 0);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const target = new Date(date);
+  target.setHours(0, 0, 0, 0);
+  if (target.toDateString() === yesterday.toDateString()) {
+    return "Yesterday";
+  }
+  const year = target.getFullYear();
+  const month = String(target.getMonth() + 1).padStart(2, "0");
+  const day = String(target.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function isReportUnread(report, lastViewedTimestamp) {
+  const createdAt = reportDate(report && report.created_at);
+  if (!createdAt) {
+    return false;
+  }
+  const normalizedLastViewed = normalizeLastViewedTimestamp(lastViewedTimestamp);
+  if (!normalizedLastViewed) {
+    return true;
+  }
+  const lastViewed = reportDate(normalizedLastViewed);
+  if (!lastViewed) {
+    return true;
+  }
+  return createdAt.getTime() > lastViewed.getTime();
+}
+
+function splitReportsByLocalDate(reports, options = {}) {
+  const limitPreviousDays = Number.isFinite(Number(options.limitPreviousDays))
+    ? Math.max(1, Number(options.limitPreviousDays))
+    : 7;
+  const todayKey = localDateKey(new Date());
+  const today = [];
+  const previousGroups = new Map();
+
+  (Array.isArray(reports) ? reports : [])
+    .filter((report) => report && typeof report === "object")
+    .map((report) => ({ report, date: reportDate(report.created_at) }))
+    .filter((entry) => entry.date)
+    .sort((left, right) => right.date.getTime() - left.date.getTime())
+    .forEach((entry) => {
+      const key = localDateKey(entry.date);
+      if (key === todayKey) {
+        today.push(entry.report);
+        return;
+      }
+      if (!previousGroups.has(key)) {
+        previousGroups.set(key, { key, label: localDateLabel(entry.date), date: entry.date, items: [] });
+      }
+      previousGroups.get(key).items.push(entry.report);
+    });
+
+  return {
+    today,
+    previous: Array.from(previousGroups.values())
+      .sort((left, right) => right.date.getTime() - left.date.getTime())
+      .slice(0, limitPreviousDays),
+  };
 }

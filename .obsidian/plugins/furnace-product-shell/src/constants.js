@@ -20,7 +20,7 @@ const DEFAULT_SETTINGS = {
   llmModel: "",
   llmNvidiaNimApiKey: "",
   llmNvidiaNimBaseUrl: "",
-  lastViewedTimestamp: 0,
+  lastViewedTimestamp: "",
   lastKnownReportIds: [],
   onboardingShown: false,
 };

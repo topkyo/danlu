@@ -288,6 +288,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.rawPluginData = data;
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings || {});
     this.settings.locale = normalizeLocale(this.settings.locale);
+    const migratedLastViewedTimestamp = normalizeLastViewedTimestamp(this.settings.lastViewedTimestamp);
+    const lastViewedTimestampMigrated = this.settings.lastViewedTimestamp !== migratedLastViewedTimestamp;
+    this.settings.lastViewedTimestamp = migratedLastViewedTimestamp;
     const recentRuns = Array.isArray(data.recentRuns)
       ? data.recentRuns
         .filter((record) => record && typeof record === "object")
@@ -346,6 +349,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       : [];
     this.pluginState = { recentRuns };
     this.trimRecentRuns();
+    if (lastViewedTimestampMigrated) {
+      await this.savePluginState();
+    }
   }
 
   async savePluginState() {
@@ -2822,8 +2828,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   renderAskBox(container) {
     renderAskBox(this, container);
   }
-  renderReportsGroup(container, title, reports) {
-    renderReportsGroup(this, container, title, reports);
+  renderReportsPanel(container, reports) {
+    renderReportsPanel(this, container, reports);
+  }
+  renderReportsGroup(container, reports, emptyText) {
+    renderReportsGroup(this, container, reports, emptyText);
   }
   renderDropZone(container) {
     renderDropZone(this, container);

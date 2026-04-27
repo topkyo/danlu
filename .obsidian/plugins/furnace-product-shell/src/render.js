@@ -618,32 +618,8 @@ function renderFurnaceCenter(plugin, contentEl) {
   // 1. AskBox
   renderAskBox(plugin, contentEl);
 
-  // 2. Reports
-  const groupedReports = groupReportsByDate(reports);
-  if (groupedReports.length > 0) {
-    const todayStr = new Date().toISOString().split("T")[0];
-    
-    // Find today's reports
-    const todayIndex = groupedReports.findIndex(g => g.date === todayStr);
-    if (todayIndex !== -1) {
-      const todayGroup = groupedReports[todayIndex];
-      renderReportsGroup(plugin, contentEl, "Today's Reports", todayGroup.items);
-      groupedReports.splice(todayIndex, 1);
-    }
-    
-    if (groupedReports.length > 0) {
-      const prevSection = contentEl.createDiv({ cls: "furnace-shell-previous-reports" });
-      prevSection.createEl("h3", { text: plugin.t("Previous Reports") });
-      groupedReports.forEach(group => {
-        const groupEl = prevSection.createDiv({ cls: "furnace-shell-date-group" });
-        const dateHeader = groupEl.createDiv({ cls: "furnace-shell-date-header", text: group.date });
-        groupEl.appendChild(dateHeader);
-        renderReportsGroup(plugin, groupEl, null, group.items);
-      });
-    }
-  } else {
-    contentEl.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent outputs yet. Drop material or run a compile.") });
-  }
+  // 2. Today's Reports + Previous Reports
+  renderReportsPanel(plugin, contentEl, reports);
 
   // 3. DropZone
   renderDropZone(plugin, contentEl);
@@ -703,33 +679,72 @@ function renderAskBox(plugin, container) {
   });
 }
 
-function renderReportsGroup(plugin, container, title, reports) {
-  if (title) {
-    container.createEl("h3", { text: plugin.t(title) });
+function renderReportsPanel(plugin, container, reports) {
+  const grouped = splitReportsByLocalDate(reports, { limitPreviousDays: 7 });
+  const section = container.createDiv({ cls: "furnace-shell-reports-section" });
+
+  const todaySection = section.createDiv({ cls: "furnace-shell-reports-group furnace-shell-reports-today" });
+  todaySection.createEl("h3", { text: plugin.t("Today's Reports") });
+  renderReportsGroup(plugin, todaySection, grouped.today, "(no reports today)");
+
+  const previousSection = section.createDiv({ cls: "furnace-shell-reports-group furnace-shell-previous-reports" });
+  previousSection.createEl("h3", { text: plugin.t("Previous Reports") });
+  if (!grouped.previous.length) {
+    previousSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("(no previous reports)") });
+    return;
+  }
+  grouped.previous.forEach((group) => {
+    const groupEl = previousSection.createDiv({ cls: "furnace-shell-date-group" });
+    groupEl.createDiv({ cls: "furnace-shell-date-header", text: plugin.t(group.label) });
+    renderReportsGroup(plugin, groupEl, group.items, "(no previous reports)");
+  });
+}
+
+function renderReportsGroup(plugin, container, reports, emptyText) {
+  const items = Array.isArray(reports) ? reports : [];
+  if (!items.length) {
+    container.createDiv({ cls: "furnace-shell-empty", text: plugin.t(emptyText) });
+    return;
   }
   const list = container.createDiv({ cls: "furnace-shell-report-list" });
-  reports.forEach(report => {
-    const isUnread = report.created_at && (new Date(report.created_at).getTime() > (plugin.settings.lastViewedTimestamp || 0));
-    
-    const card = list.createDiv({ cls: "furnace-shell-report-card" });
-    if (isUnread) card.addClass("is-unread");
-    
-    const content = card.createDiv({ cls: "furnace-shell-report-content" });
-    
-    // Left edge accent bar handled by css .is-unread border-left
-    const protocolPill = content.createEl("span", { cls: "furnace-shell-pill", text: plugin.t(report.protocol || "general") });
-    
-    const titleText = report.title || report.path || plugin.t("output");
-    content.createEl("span", { cls: "furnace-shell-report-title", text: titleText });
-    
-    const meta = card.createDiv({ cls: "furnace-shell-report-meta" });
-    meta.createEl("span", { text: formatDisplayTime(report.created_at, plugin.locale()) });
-    
-    const openBtn = card.createEl("button", { text: plugin.t("Open") });
-    openBtn.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.openWorkspacePath(report.path), `Open output: ${report.path}`);
-      // Update unread locally if needed, but per-report read tracking isn't required by design docs, just global "mark all"
-    });
+  items.forEach((report) => renderReportItem(plugin, list, report));
+}
+
+function renderReportItem(plugin, container, report) {
+  const isUnread = isReportUnread(report, plugin.settings.lastViewedTimestamp);
+  const titleText = report.title || report.path || plugin.t("output");
+  const card = container.createDiv({ cls: "furnace-shell-report-card" });
+  if (isUnread) {
+    card.addClass("is-unread");
+  }
+
+  const openReport = async () => {
+    if (!report.path) {
+      return;
+    }
+    await plugin.openWorkspacePath(report.path);
+    plugin.settings.lastViewedTimestamp = new Date().toISOString();
+    await plugin.savePluginState();
+    plugin.refreshOpenViews();
+  };
+
+  card.addEventListener("click", () => {
+    plugin.runUiAction(() => openReport(), `Open output: ${report.path || titleText}`);
+  });
+
+  const content = card.createDiv({ cls: "furnace-shell-report-content" });
+  content.createEl("span", { cls: "furnace-shell-report-dot", attr: { "aria-hidden": "true" } });
+  const copy = content.createDiv({ cls: "furnace-shell-report-copy" });
+  copy.createEl("span", { cls: "furnace-shell-report-title", text: titleText });
+  copy.createDiv({
+    cls: "furnace-shell-report-meta",
+    text: `${plugin.t(report.protocol || "general")} · ${plugin.t(report.format || "markdown")} · ${formatDisplayTime(report.created_at, plugin.locale()) || report.created_at || plugin.t("unknown")}`,
+  });
+
+  const openBtn = card.createEl("button", { text: plugin.t("Open") });
+  openBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    plugin.runUiAction(() => openReport(), `Open output: ${report.path || titleText}`);
   });
 }
 
