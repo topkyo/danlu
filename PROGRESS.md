@@ -6,6 +6,24 @@
 
 ## 状态
 
+- **P0 — Today Feed 实化（M8.1）— 完成**
+  - **目的**: 把 `aiwiki today` 从 stub 升级为真正的 daily driver，把 M7 已落地但未浮出的 4 类信号汇聚到一屏。
+  - **方向 SoT**: `docs/Furnace Next Direction P0-P3.md`（P0..P3 路线图）
+  - **核心做法**（最低摩擦：复用现有 5 kind，零 priority 改动，零 dispatch 桶改动，零 JS schema 改动，零 acceptance golden 漂移）:
+    - `app_shell/summary.py`: `build_shell_summary` 新增 3 个派生字段 `counter_evidence_pages` / `metrics_history_delta` / `planner_log_preview`，全部 best-effort（缺数据 → 空/`available:false`）
+    - `today_feed.py`: 新增 3 个 builder
+      - `_build_counter_evidence_entries` → `kind="decision"`（归入 Needs Review）
+      - `_build_drift_entries` → `kind="decision"`（归入 Needs Review）
+      - `_build_metric_alert_entries` → `kind="action"`（归入 Suggested Next Actions）；阈值 `abs(diff) >= 0.05`
+    - 不改 `_PRIORITY` / 不改 `_render_today_text` 桶逻辑 / 不改 JS mirror schema → 5 heading + 5 placeholder + 禁机制词契约自动保留
+  - **验证**:
+    - 单元测试新增 8 case（counter-evidence × 2、drift × 2、metric × 3、组合 × 1），加现有 29 共 37 case 全过
+    - `tests/test_acceptance_loop.py::test_today_feed_contract` pass
+    - `bash scripts/verify.sh` 5/5 稳定 pass（1374+ unit + 12 acceptance / 93% coverage）
+    - **acceptance golden 漂移 = 0 文件**
+  - **影响文件**: `src/aiwiki/app_shell/summary.py` (+129) / `src/aiwiki/today_feed.py` (+100) / `tests/test_today_feed.py` (+134) / `docs/Furnace Next Direction P0-P3.md` (新)
+  - **下一步**: P1 evidence chain 可视化 → P2 investing 端到端 dogfood → P3 drift/aging 信号
+
 - **M7 路线图全部交付（M7.0 ~ M7.4） — 闭环**
   - **总览**: 8 个 commit 推进炼丹炉从 7.8/10 到 **8.83/10**（落在 M7 目标区间 8.6~9.0 高位）。
   - **commit 链**: `153881e`(M7.0) → `ca5cfb6`(M7.1) → `94afcde`(M7.2) → `e6b4898`(M7.3) → `609052c`(M7.3.1) → `f8bf121`(M7.4a) → `bd2b39c`(M7.4b1) → `c255828`(M7.4b2+b3) → `5ae67d9`(M7.4d) → `4ef60df`(M7.4c)

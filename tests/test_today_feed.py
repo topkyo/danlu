@@ -331,6 +331,140 @@ def _case_kind_values_in_allowed_set() -> None:
     assert {entry.kind for entry in feed} <= allowed
 
 
+# --- P0 M8.1: counter-evidence / drift / metric-alert entries ---
+
+
+def _case_counter_evidence_entry_built() -> None:
+    feed = build_today_feed(
+        {
+            "generated_at": "2026-04-28T09:00:00Z",
+            "counter_evidence_pages": [
+                {
+                    "path": "wiki/judgments/x.md",
+                    "subject": "Judgment X",
+                    "summary": "新证据反驳原结论",
+                    "detected_at": "2026-04-28T08:00:00Z",
+                    "protocol": "investing",
+                }
+            ],
+        }
+    )
+    assert len(feed) == 1
+    entry = feed[0]
+    assert entry.kind == "decision"
+    assert entry.title == "反证待复核: Judgment X"
+    assert entry.target == "wiki/judgments/x.md"
+    assert entry.protocol == "investing"
+
+
+def _case_counter_evidence_skipped_without_path() -> None:
+    feed = build_today_feed(
+        {"counter_evidence_pages": [{"subject": "no path"}, "bad", None, {}]}
+    )
+    assert feed == []
+
+
+def _case_drift_entry_built() -> None:
+    feed = build_today_feed(
+        {
+            "generated_at": "2026-04-28T09:00:00Z",
+            "drift_warnings": [
+                {
+                    "kind": "source-reference-break",
+                    "path": "wiki/sources/missing.md",
+                    "message": "Missing source page `wiki/sources/missing.md`.",
+                }
+            ],
+        }
+    )
+    assert len(feed) == 1
+    entry = feed[0]
+    assert entry.kind == "decision"
+    assert entry.title.startswith("知识漂移:")
+    assert "missing" in entry.target
+
+
+def _case_drift_skipped_when_empty() -> None:
+    assert build_today_feed({"drift_warnings": []}) == []
+    assert build_today_feed({"drift_warnings": "bad"}) == []
+
+
+def _case_metric_alert_entry_built() -> None:
+    feed = build_today_feed(
+        {
+            "generated_at": "2026-04-28T09:00:00Z",
+            "metrics_history_delta": {
+                "available": True,
+                "window": "7d",
+                "baseline_ts": "2026-04-21T09:00:00Z",
+                "alerts": [
+                    {
+                        "metric_key": "stale_ratio",
+                        "previous": 0.10,
+                        "current": 0.20,
+                        "diff": 0.10,
+                        "direction": "up",
+                    }
+                ],
+            },
+        }
+    )
+    assert len(feed) == 1
+    entry = feed[0]
+    assert entry.kind == "action"
+    assert "stale_ratio" in entry.title
+    assert "↑" in entry.title
+    assert entry.target == "metric:stale_ratio"
+
+
+def _case_metric_alert_skipped_when_unavailable() -> None:
+    assert build_today_feed({"metrics_history_delta": {"available": False}}) == []
+    assert build_today_feed({"metrics_history_delta": {}}) == []
+
+
+def _case_metric_alert_skipped_when_no_alerts() -> None:
+    feed = build_today_feed(
+        {
+            "metrics_history_delta": {
+                "available": True,
+                "window": "7d",
+                "baseline_ts": "2026-04-21T09:00:00Z",
+                "alerts": [],
+            }
+        }
+    )
+    assert feed == []
+
+
+def _case_p0_signals_combine_with_existing_kinds() -> None:
+    feed = build_today_feed(
+        {
+            "generated_at": "2026-04-28T09:00:00Z",
+            "review_backlog_counts": {"pending_decisions": 1},
+            "counter_evidence_pages": [
+                {"path": "wiki/judgments/y.md", "subject": "Y", "summary": "反证"}
+            ],
+            "drift_warnings": [
+                {"kind": "concept-disappear", "path": "wiki/concepts/z.md", "message": "missing z"}
+            ],
+            "metrics_history_delta": {
+                "available": True,
+                "window": "7d",
+                "baseline_ts": "2026-04-21T09:00:00Z",
+                "alerts": [{"metric_key": "stale_ratio", "previous": 0.1, "current": 0.2, "diff": 0.1, "direction": "up"}],
+            },
+            "suggested_next_actions": [{"title": "A", "command": "cmd"}],
+        }
+    )
+    kinds = [entry.kind for entry in feed]
+    # priority: decision (3 of: backlog + counter-evidence + drift) before action (2: alert + suggested)
+    assert kinds.count("decision") == 3
+    assert kinds.count("action") == 2
+    # decisions all sort before actions per _PRIORITY
+    assert kinds[:3] == ["decision", "decision", "decision"]
+    assert kinds[3:] == ["action", "action"]
+
+
 class TodayFeedTests(unittest.TestCase):
     """Expose the same pure function checks to unittest discover."""
 

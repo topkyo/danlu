@@ -41,9 +41,12 @@ def build_today_feed(summary: dict[str, Any]) -> list[FeedEntry]:
     today_date = _today_date(summary)
 
     entries.extend(_build_decision_entries(summary))
+    entries.extend(_build_counter_evidence_entries(summary))
+    entries.extend(_build_drift_entries(summary))
     entries.extend(_build_proposal_entries(summary))
     entries.extend(_build_report_entries(summary, today_date))
     entries.extend(_build_elixir_entries(summary, today_date))
+    entries.extend(_build_metric_alert_entries(summary))
     entries.extend(_build_action_entries(summary))
 
     entries.sort(key=_sort_key)
@@ -70,6 +73,103 @@ def _build_decision_entries(summary: dict[str, Any]) -> list[FeedEntry]:
                 summary=f"{count} 项待审",
                 target=f"review:{kind_text}",
                 timestamp=timestamp,
+                protocol="",
+            )
+        )
+    return entries
+
+
+def _build_counter_evidence_entries(summary: dict[str, Any]) -> list[FeedEntry]:
+    """P0 — counter-evidence pages 浮入 Needs Review (kind=decision).
+
+    源: summary.counter_evidence_pages（由 build_shell_summary 派生）。
+    """
+    pages = summary.get("counter_evidence_pages")
+    if not isinstance(pages, list):
+        return []
+    entries: list[FeedEntry] = []
+    for item in pages:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "").strip()
+        if not path:
+            continue
+        subject = str(item.get("subject") or path)
+        page_summary = str(item.get("summary") or "judgment 被反驳")
+        entries.append(
+            FeedEntry(
+                kind="decision",
+                title=f"反证待复核: {subject}",
+                summary=page_summary,
+                target=path,
+                timestamp=str(item.get("detected_at") or ""),
+                protocol=str(item.get("protocol") or ""),
+            )
+        )
+    return entries
+
+
+def _build_drift_entries(summary: dict[str, Any]) -> list[FeedEntry]:
+    """P0 — drift / source-reference-break 浮入 Needs Review (kind=decision)."""
+    warnings = summary.get("drift_warnings")
+    if not isinstance(warnings, list):
+        return []
+    entries: list[FeedEntry] = []
+    for item in warnings[:8]:
+        if not isinstance(item, dict):
+            continue
+        kind_text = str(item.get("kind") or "").strip()
+        path = str(item.get("path") or "").strip()
+        message = str(item.get("message") or "").strip()
+        if not path and not message:
+            continue
+        title_target = path or kind_text or "drift"
+        entries.append(
+            FeedEntry(
+                kind="decision",
+                title=f"知识漂移: {title_target}",
+                summary=message or kind_text or "证据已变",
+                target=path or kind_text,
+                timestamp=str(item.get("detected_at") or ""),
+                protocol=str(item.get("protocol") or ""),
+            )
+        )
+    return entries
+
+
+def _build_metric_alert_entries(summary: dict[str, Any]) -> list[FeedEntry]:
+    """P0 — metrics history delta 浮入 Suggested Next Actions (kind=action).
+
+    源: summary.metrics_history_delta.alerts。每个 alert 一条 entry。
+    """
+    delta = summary.get("metrics_history_delta")
+    if not isinstance(delta, dict) or not delta.get("available"):
+        return []
+    alerts = delta.get("alerts")
+    if not isinstance(alerts, list):
+        return []
+    window = str(delta.get("window") or "")
+    baseline_ts = str(delta.get("baseline_ts") or "")
+    entries: list[FeedEntry] = []
+    for item in alerts:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("metric_key") or "").strip()
+        if not key:
+            continue
+        direction = str(item.get("direction") or "")
+        try:
+            diff_value = float(item.get("diff", 0.0))
+        except (TypeError, ValueError):
+            diff_value = 0.0
+        arrow = "↑" if direction == "up" else "↓"
+        entries.append(
+            FeedEntry(
+                kind="action",
+                title=f"指标变化: {key} {arrow}",
+                summary=f"{window} 内 {key} 变化 {diff_value:+.3g}（vs {baseline_ts}）",
+                target=f"metric:{key}",
+                timestamp=baseline_ts,
                 protocol="",
             )
         )

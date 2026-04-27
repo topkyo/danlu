@@ -203,6 +203,9 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         judgment_assets=judgment_assets,
         compile_state=compile_state,
     )
+    counter_evidence_pages = _counter_evidence_pages_from_memory(counter_evidence_scan)
+    metrics_history_delta = _build_metrics_history_delta(root, generated_at)
+    planner_log_preview = _build_planner_log_preview(root)
     suggested_next_actions = shell_suggested_next_actions(
         planner_state=planner_state,
         review_controls=review_controls,
@@ -266,6 +269,9 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         "recent_runs": recent_runs,
         "search_results": {"query": "", "limit": 0, "result_count": 0, "results": []},
         "drift_warnings": drift_warnings,
+        "counter_evidence_pages": counter_evidence_pages,
+        "metrics_history_delta": metrics_history_delta,
+        "planner_log_preview": planner_log_preview,
         "suggested_next_actions": suggested_next_actions,
         "nightly": {
             "available": nightly_health_state_path(root).exists(),
@@ -285,6 +291,129 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         suggested_next_actions=suggested_next_actions,
     )
     return summary
+
+def _counter_evidence_pages_from_memory(counter_evidence_scan: Any) -> list[dict[str, Any]]:
+    """P0 — 把 memory.health.counter_evidence_scan.pages 抽成 today_feed 友好结构。
+
+    每页只保留 today_feed 渲染必需字段；最多 8 条。
+    """
+    if not isinstance(counter_evidence_scan, dict):
+        return []
+    pages = counter_evidence_scan.get("pages")
+    if not isinstance(pages, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in pages[:8]:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "").strip()
+        if not path:
+            continue
+        out.append(
+            {
+                "path": path,
+                "subject": str(item.get("subject") or item.get("title") or path),
+                "summary": str(item.get("summary") or item.get("reason") or "judgment 被反驳"),
+                "detected_at": str(item.get("detected_at") or item.get("updated_at") or ""),
+                "protocol": str(item.get("protocol") or ""),
+            }
+        )
+    return out
+
+
+def _build_metrics_history_delta(root: Path, generated_at: str) -> dict[str, Any]:
+    """P0 — 比对 7d/30d baseline，找出关键 metric 的方向变化。
+
+    best-effort：history 不可用 / baseline 缺失 → 返回 {available: False}。
+    阈值：abs(diff) >= 0.05（即 5 个百分点 / 5 次）才算"值得提醒"。
+    """
+    try:
+        from aiwiki.metrics import compute_metrics
+        from aiwiki.metrics_history import find_baseline
+        from aiwiki.metrics_io import build_metrics_snapshot
+
+        snapshot = build_metrics_snapshot(root)
+        metrics = compute_metrics(snapshot)
+        current: dict[str, float] = {
+            str(m.key): float(m.value)
+            for m in metrics
+            if isinstance(m.value, (int, float))
+        }
+        if not current:
+            return {"available": False, "reason": "no current metrics"}
+
+        # 优先 7d；若 7d 无 baseline，回退 30d
+        baseline_7d = find_baseline(root, generated_at or snapshot.now_iso, 7)
+        baseline = baseline_7d
+        window = "7d"
+        if baseline_7d is None:
+            baseline_30d = find_baseline(root, generated_at or snapshot.now_iso, 30)
+            if baseline_30d is None:
+                return {"available": False, "reason": "no baseline within 30d"}
+            baseline = baseline_30d
+            window = "30d"
+
+        baseline_ts, baseline_metrics = baseline
+        alerts: list[dict[str, Any]] = []
+        for key in sorted(current.keys()):
+            now_value = current[key]
+            prev_value = baseline_metrics.get(key)
+            if not isinstance(prev_value, (int, float)):
+                continue
+            diff = now_value - prev_value
+            if abs(diff) < 0.05:
+                continue
+            alerts.append(
+                {
+                    "metric_key": key,
+                    "previous": float(prev_value),
+                    "current": float(now_value),
+                    "diff": float(diff),
+                    "direction": "up" if diff > 0 else "down",
+                }
+            )
+        return {
+            "available": True,
+            "window": window,
+            "baseline_ts": baseline_ts,
+            "alerts": alerts,
+        }
+    except Exception as exc:  # pragma: no cover - best-effort
+        return {"available": False, "reason": f"{type(exc).__name__}: {exc}"}
+
+
+def _build_planner_log_preview(root: Path) -> list[dict[str, Any]]:
+    """P0 — 浮出 planner-log 中等待人工决策的 generate-proposal 候选。
+
+    best-effort：planner-log 不存在 → []. 仅返回 eligible+blockers 的 dedup 字段。
+    """
+    try:
+        from aiwiki.execution.l3_proposals import preview_l3_proposal_generation
+
+        result = preview_l3_proposal_generation(root, limit=5)
+    except Exception:  # pragma: no cover - best-effort
+        return []
+    if not isinstance(result, dict):
+        return []
+    candidates = result.get("candidates")
+    if not isinstance(candidates, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        out.append(
+            {
+                "signal_id": str(item.get("signal_id") or ""),
+                "proposal_id": str(item.get("proposal_id") or ""),
+                "target_file": str(item.get("target_file") or ""),
+                "decided_at": str(item.get("decided_at") or ""),
+                "eligible": bool(item.get("eligible")),
+                "blockers": [str(b) for b in (item.get("blockers") or []) if isinstance(b, str)],
+            }
+        )
+    return out
+
 
 def _build_metrics_summary(root: Path) -> list[dict[str, object]]:
     try:
