@@ -121,6 +121,39 @@ class AutonomyPolicyTests(unittest.TestCase):
             client = create_backend_client(cfg, root)
             self.assertIsNotNone(client)
 
+    def test_run_alchemy_lane_apply_returns_skipped_when_disabled(self) -> None:
+        # M7.4b1: lane apply hook. disabled policy → skipped dict, no side effects.
+        from aiwiki.runner.alchemy import run_alchemy_lane_apply
+
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            path = autonomy_policy.policy_path(root)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"disable_lane_apply": True}), encoding="utf-8")
+
+            result = run_alchemy_lane_apply(
+                root,
+                lane="general",
+                scope="raw",
+                action_ids=["dummy-id"],
+            )
+            self.assertEqual(result.get("status"), "skipped")
+            self.assertEqual(result.get("flag"), "disable_lane_apply")
+            self.assertIn("disable_lane_apply", result.get("reason", ""))
+            # No side effects: no .aiwiki/state lane history written.
+            history_files = list(root.rglob("*lane*history*"))
+            self.assertEqual(history_files, [])
+
+    def test_run_alchemy_lane_apply_normal_path_unchanged_without_policy(self) -> None:
+        # Without policy file, hook must be transparent: existing ValueError
+        # for missing action-id / primitive still raised.
+        from aiwiki.runner.alchemy import run_alchemy_lane_apply
+
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            with self.assertRaises(ValueError):
+                run_alchemy_lane_apply(root, lane="general", scope="raw")
+
 
 if __name__ == "__main__":
     unittest.main()

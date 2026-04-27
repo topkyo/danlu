@@ -1725,8 +1725,20 @@ def run_alchemy_lane_apply(
     max_pages: int | None = None,
     max_tokens: int | None = None,
 ) -> dict[str, Any]:
+    from aiwiki import autonomy_policy
     from aiwiki.app_compile import apply_machine_memory_actions_batch
     from aiwiki.planner import preview_alchemy_lane
+
+    # M7.4b1 Kill Switch: lane apply hook. disabled → no side effects.
+    reason = autonomy_policy.disabled_reason(root, "disable_lane_apply")
+    if reason is not None:
+        return {
+            "status": "skipped",
+            "flag": "disable_lane_apply",
+            "reason": reason,
+            "lane": lane,
+            "scope": scope,
+        }
 
     normalized_action_ids = [item.strip() for item in (action_ids or []) if item.strip()]
     normalized_primitives = _normalize_lane_primitives(primitives or [])

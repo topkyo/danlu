@@ -6,6 +6,14 @@
 
 ## 状态
 
+- **M7.4b1 Kill Switch → Lane Apply Hook — 完成**
+  - **目的**: M7.4 拆分序列第 2 步。把 `disable_lane_apply` 接到 `run_alchemy_lane_apply` 唯一 chokepoint。
+  - **核心做法**: `src/aiwiki/runner/alchemy.py:run_alchemy_lane_apply` 函数最早处先调 `autonomy_policy.disabled_reason("disable_lane_apply")`；disabled → early-return `{"status":"skipped","flag":"disable_lane_apply","reason":...,"lane":...,"scope":...}` dict，不写 receipt / lane history / nightly artifact。
+  - **shape 选择**: lane apply caller 期望 dict 返回（不像 LLM 入口期望异常），所以用 skipped dict 而非 `AutonomyDisabled` exception。`status` key 区别正常成功路径。
+  - **测试**: `tests/test_autonomy_policy.py` 加 2 cases（disabled → skipped + 0 写盘 / 缺 policy 时 ValueError 仍正常抛）。
+  - **Gates**: `bash scripts/verify.sh` 5/5 稳定 pass。
+  - **Stop Lines**: 0 acceptance golden 漂移 / 0 receipt 字段改 / 0 success-path 字段改。
+
 - **M7.4a Kill Switch Core (External LLM Hook) — 完成**
   - **目的**: 把 9+ Contract 第 6 条 "Kill switch by design" 从 "CLI discipline" 提升为 "runtime policy"。最小可信 slice：policy 文件 + global env override + 唯一 hook = external LLM。
   - **核心做法**: 新模块 `src/aiwiki/autonomy_policy.py`（~110 LOC，stdlib-only）：`AutonomyPolicy` dataclass / `load_policy(root)` / `is_disabled(root, flag, env=)` / `disabled_reason(...)`。Policy 文件位于 `.aiwiki/state/autonomy-policy.json`，缺失/损坏 → 全 enabled（向后 100% 兼容）。`AIWIKI_DISABLE_AUTOMATION=1` 全局 panic-button override。
