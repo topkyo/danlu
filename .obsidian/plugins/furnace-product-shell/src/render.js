@@ -688,20 +688,63 @@ function renderFurnaceCenter(plugin, contentEl) {
     return;
   }
 
-  const reports = plugin.shellSummary && typeof plugin.shellSummary === "object" && Array.isArray(plugin.shellSummary.recent_outputs)
-    ? plugin.shellSummary.recent_outputs
-    : [];
-
   // 1. Universal Input
   renderUniversalInput(plugin, contentEl);
 
-  renderNeedsDecisionSection(plugin, contentEl);
-
-  // 2. Today's Reports + Previous Reports
-  renderReportsPanel(plugin, contentEl, reports);
+  // 2. Today Feed (统一 5 类)
+  renderTodayFeed(plugin, contentEl);
 
   // 3. Advanced Drawer
   renderAdvancedDrawer(plugin, contentEl);
+}
+
+function renderTodayFeed(plugin, container) {
+  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
+  if (!summary) {
+    return;
+  }
+  
+  const feed = buildTodayFeed(summary);
+  
+  const section = container.createDiv({ cls: "furnace-today-feed" });
+  section.createEl("h2", { text: plugin.t("Today") });
+  
+  if (!feed.length) {
+    section.createEl("div", { 
+      cls: "furnace-today-feed-empty", 
+      text: plugin.t("(nothing for today)") 
+    });
+    return;
+  }
+  
+  const groups = { decision: [], proposal: [], report: [], elixir: [], action: [] };
+  for (const entry of feed) groups[entry.kind].push(entry);
+  
+  const groupSpecs = [
+    ["decision", plugin.t("Needs Decision")],
+    ["proposal", plugin.t("Proposals")],
+    ["report", plugin.t("Today's Reports")],
+    ["elixir", plugin.t("Completed")],
+    ["action", plugin.t("Suggested Actions")],
+  ];
+  
+  for (const [kind, heading] of groupSpecs) {
+    const items = groups[kind];
+    if (!items.length) continue;
+    const groupEl = section.createDiv({ cls: `furnace-today-feed-group furnace-today-feed-${kind}` });
+    groupEl.createEl("h3", { text: heading });
+    const listEl = groupEl.createEl("ul", { cls: "furnace-today-feed-list" });
+    for (const entry of items) {
+      const li = listEl.createEl("li", { cls: "furnace-today-feed-item" });
+      const titleEl = li.createEl("div", { cls: "furnace-today-feed-title", text: entry.title });
+      if (entry.summary) {
+        li.createEl("div", { cls: "furnace-today-feed-summary", text: entry.summary });
+      }
+      if (entry.target) {
+        li.createEl("div", { cls: "furnace-today-feed-target", text: entry.target });
+      }
+    }
+  }
 }
 
 function renderUniversalInput(plugin, container) {

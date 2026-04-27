@@ -892,3 +892,17 @@
   z-index: 10;
   pointer-events: none;
 }
+
+/* Today Feed (M6.3 B3) */
+.furnace-today-feed { margin: 1em 0; }
+.furnace-today-feed-empty { color: var(--text-muted); padding: 0.5em; }
+.furnace-today-feed-group { margin-bottom: 1em; }
+.furnace-today-feed-group h3 { margin: 0.5em 0 0.25em; }
+.furnace-today-feed-list { list-style: none; padding-left: 0; }
+.furnace-today-feed-item { padding: 0.4em 0.6em; border-left: 2px solid var(--background-modifier-border); margin-bottom: 0.25em; }
+.furnace-today-feed-title { font-weight: 600; }
+.furnace-today-feed-summary { color: var(--text-muted); font-size: 0.9em; }
+.furnace-today-feed-target { color: var(--text-faint); font-size: 0.85em; font-family: var(--font-monospace); }
+.furnace-today-feed-decision .furnace-today-feed-item { border-left-color: var(--color-orange, #d68a23); }
+.furnace-today-feed-proposal .furnace-today-feed-item { border-left-color: var(--color-blue, #2c7be5); }
+
