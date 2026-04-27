@@ -112,3 +112,61 @@ def disabled_reason(
     if bool(getattr(policy, flag, False)):
         return f"autonomy-policy.{flag}=true"
     return None
+
+
+def set_flag(root: Path, flag: str, value: bool) -> AutonomyPolicy:
+    """M7.4c: write a single flag to the policy file. Atomic, idempotent.
+
+    Unknown flag → ValueError. Missing parent dir → created. Malformed file
+    → overwritten with a clean policy preserving the new flag value (we don't
+    silently inherit corrupt fields).
+    """
+
+    if flag not in KNOWN_FLAGS:
+        raise ValueError(f"Unknown autonomy flag: {flag}. Known: {', '.join(KNOWN_FLAGS)}")
+    current = load_policy(root)
+    flags = {name: getattr(current, name, False) for name in KNOWN_FLAGS}
+    flags[flag] = bool(value)
+    payload = {"schema_version": 1, **flags}
+    path = policy_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+    return AutonomyPolicy(**flags)
+
+
+def policy_status(root: Path, *, env: Mapping[str, str] | None = None) -> dict:
+    """M7.4c: aggregate state for the autonomy-status CLI.
+
+    Shape (stable):
+        {
+          "policy_path": "<absolute>",
+          "policy_file_exists": bool,
+          "global_override_env": "AIWIKI_DISABLE_AUTOMATION",
+          "global_override_active": bool,
+          "flags": {
+            "<flag>": {"file_value": bool, "effective": bool, "reason": str|None}
+          }
+        }
+    """
+
+    path = policy_path(root)
+    file_policy = load_policy(root)
+    override = _env_global_override(env)
+    flags: dict[str, dict] = {}
+    for name in KNOWN_FLAGS:
+        file_value = bool(getattr(file_policy, name, False))
+        reason = disabled_reason(root, name, env=env)
+        flags[name] = {
+            "file_value": file_value,
+            "effective": reason is not None,
+            "reason": reason,
+        }
+    return {
+        "policy_path": str(path),
+        "policy_file_exists": path.exists(),
+        "global_override_env": GLOBAL_OVERRIDE_ENV,
+        "global_override_active": override,
+        "flags": flags,
+    }

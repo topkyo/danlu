@@ -195,5 +195,67 @@ class AutonomyPolicyTests(unittest.TestCase):
             self.assertIn("disable_l3_generate", result.get("reason", ""))
 
 
+class AutonomyPolicyMutationTests(unittest.TestCase):
+    """M7.4c: set_flag + policy_status."""
+
+    def test_set_flag_creates_file_and_persists(self) -> None:
+        from aiwiki.autonomy_policy import set_flag
+
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            self.assertFalse(autonomy_policy.policy_path(root).exists())
+            result = set_flag(root, "disable_lane_apply", True)
+            self.assertTrue(result.disable_lane_apply)
+            self.assertTrue(autonomy_policy.policy_path(root).exists())
+            data = json.loads(autonomy_policy.policy_path(root).read_text(encoding="utf-8"))
+            self.assertEqual(data["schema_version"], 1)
+            self.assertTrue(data["disable_lane_apply"])
+            self.assertFalse(data["disable_alchemy_auto"])
+
+    def test_set_flag_preserves_other_flags(self) -> None:
+        from aiwiki.autonomy_policy import set_flag
+
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            set_flag(root, "disable_lane_apply", True)
+            set_flag(root, "disable_external_llm", True)
+            policy = autonomy_policy.load_policy(root)
+            self.assertTrue(policy.disable_lane_apply)
+            self.assertTrue(policy.disable_external_llm)
+            # Toggle one off; other stays.
+            set_flag(root, "disable_lane_apply", False)
+            policy = autonomy_policy.load_policy(root)
+            self.assertFalse(policy.disable_lane_apply)
+            self.assertTrue(policy.disable_external_llm)
+
+    def test_set_flag_rejects_unknown(self) -> None:
+        from aiwiki.autonomy_policy import set_flag
+
+        with TemporaryDirectory() as tempdir:
+            with self.assertRaises(ValueError):
+                set_flag(Path(tempdir), "disable_made_up", True)
+
+    def test_policy_status_no_file_no_override(self) -> None:
+        from aiwiki.autonomy_policy import policy_status
+
+        with TemporaryDirectory() as tempdir:
+            status = policy_status(Path(tempdir), env={})
+            self.assertFalse(status["policy_file_exists"])
+            self.assertFalse(status["global_override_active"])
+            for name, info in status["flags"].items():
+                self.assertFalse(info["effective"], f"{name} should be enabled by default")
+                self.assertIsNone(info["reason"])
+
+    def test_policy_status_reflects_global_override(self) -> None:
+        from aiwiki.autonomy_policy import policy_status
+
+        with TemporaryDirectory() as tempdir:
+            status = policy_status(Path(tempdir), env={GLOBAL_OVERRIDE_ENV: "1"})
+            self.assertTrue(status["global_override_active"])
+            for _name, info in status["flags"].items():
+                self.assertTrue(info["effective"])
+                self.assertIn(GLOBAL_OVERRIDE_ENV, info["reason"] or "")
+
+
 if __name__ == "__main__":
     unittest.main()

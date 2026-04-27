@@ -43,6 +43,30 @@ def build_parser() -> argparse.ArgumentParser:
 def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -> None:
     subparsers.add_parser("layout", help="Create the expected directory layout.")
 
+    autonomy_status_parser = subparsers.add_parser(
+        "autonomy-status",
+        help="炼丹炉自动化 kill switch 状态：policy 文件 + 全局 override + 4 flag effective 状态。",
+    )
+    autonomy_status_parser.add_argument("--json", action="store_true", help="JSON 输出")
+    autonomy_status_parser.set_defaults(handler_command="autonomy-status")
+
+    autonomy_disable_parser = subparsers.add_parser(
+        "autonomy-disable",
+        help="开启某个 autonomy flag（写入 .aiwiki/state/autonomy-policy.json）。",
+    )
+    autonomy_disable_parser.add_argument(
+        "flag",
+        help="flag 名（disable_lane_apply / disable_alchemy_auto / disable_l3_generate / disable_external_llm）",
+    )
+    autonomy_disable_parser.set_defaults(handler_command="autonomy-disable")
+
+    autonomy_enable_parser = subparsers.add_parser(
+        "autonomy-enable",
+        help="关闭某个 autonomy flag。",
+    )
+    autonomy_enable_parser.add_argument("flag", help="flag 名（同 autonomy-disable）")
+    autonomy_enable_parser.set_defaults(handler_command="autonomy-enable")
+
     new_vault_parser = subparsers.add_parser(
         "new-vault",
         help="Scaffold a new Obsidian 炼丹炉 vault that points back to this runtime root.",

@@ -6,6 +6,18 @@
 
 ## 状态
 
+- **M7.4c Autonomy CLI Surface — 完成**
+  - **目的**: 让 4 个 disable flag 与 global override 可被人类操作员从 CLI 直接观察、切换。M7.4 路线图最后一项。
+  - **核心做法**:
+    - `autonomy_policy.py` 加 `set_flag(root, flag, value)`：load → mutate → atomic tmp+replace 写入；保留其他 flag、未知 flag 抛 ValueError；malformed 文件不继承（写一份干净的）
+    - `autonomy_policy.py` 加 `policy_status(root, env)`：聚合 file_path / file_exists / global_override / 4 flag 的 file_value+effective+reason
+    - `cli/parsers.py`: 注册 `autonomy-status [--json]` / `autonomy-disable <flag>` / `autonomy-enable <flag>`（在 `_register_legacy_top_level_parsers` 中，主菜单 + advanced 抽屉同时可用）
+    - `cli/dispatch.py`: `autonomy_status_command` (text/json) + `autonomy_set_command` (exit code 2 on unknown flag, stderr 列出可用 flag)
+  - **测试**: 加 5 unit (`AutonomyPolicyMutationTests`) + 3 CLI smoke (`test_autonomy_*`)。共 8 case。
+  - **Gates**: `bash scripts/verify.sh` 5/5 稳定 pass（1374 unit + 12 acceptance / 93% coverage / `autonomy_policy` 99%）。
+  - **Stop Lines**: 0 acceptance golden 漂移 / 0 receipt 改 / 0 hook 行为变化。
+  - **价值**: 不影响 9+ 评分（hooks 已在 M7.4a/b 落地），属于便利层。完成 M7 路线图最后一项；至此 M7.0~M7.4 全部交付。
+
 - **M7.4d Model Policy (Explicit Model + model_source) — 完成**
   - **目的**: 落地 9+ Contract 第 5 条 "No hidden backend choice"。让 backend 默认 fallback 可见、可拒。
   - **核心做法**:

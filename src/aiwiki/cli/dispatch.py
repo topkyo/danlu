@@ -223,6 +223,12 @@ def main(argv: list[str] | None = None) -> int:
             return today_command(root)
         elif args.handler_command == "metrics":
             return metrics_command(root, as_json=args.json, delta=args.delta)
+        elif args.handler_command == "autonomy-status":
+            return autonomy_status_command(root, as_json=args.json)
+        elif args.handler_command == "autonomy-disable":
+            return autonomy_set_command(root, flag=args.flag, value=True)
+        elif args.handler_command == "autonomy-enable":
+            return autonomy_set_command(root, flag=args.flag, value=False)
         elif args.handler_command == "shell-status":
             result = shell_status(root)
         elif args.handler_command == "dashboard":
@@ -769,6 +775,44 @@ def metrics_command(root: Path, *, as_json: bool = False, delta: str | None = No
         print()
         print(block)
 
+    return 0
+
+
+def autonomy_status_command(root: Path, *, as_json: bool = False) -> int:
+    from aiwiki import autonomy_policy
+
+    status = autonomy_policy.policy_status(root)
+    if as_json:
+        print(json.dumps(status, indent=2, sort_keys=True))
+        return 0
+    lines = [
+        f"policy file : {status['policy_path']}",
+        f"file exists : {status['policy_file_exists']}",
+        f"global env  : {status['global_override_env']} = {'1 (active)' if status['global_override_active'] else 'unset'}",
+        "flags:",
+    ]
+    for name, info in status["flags"].items():
+        marker = "DISABLED" if info["effective"] else "enabled "
+        reason = f"  ({info['reason']})" if info["reason"] else ""
+        lines.append(f"  [{marker}] {name}  file_value={info['file_value']}{reason}")
+    print("\n".join(lines))
+    return 0
+
+
+def autonomy_set_command(root: Path, *, flag: str, value: bool) -> int:
+    import sys
+
+    from aiwiki import autonomy_policy
+
+    if flag not in autonomy_policy.KNOWN_FLAGS:
+        print(
+            f"Unknown autonomy flag: {flag}. Known flags: {', '.join(autonomy_policy.KNOWN_FLAGS)}",
+            file=sys.stderr,
+        )
+        return 2
+    autonomy_policy.set_flag(root, flag, value)
+    action = "disabled" if value else "enabled"
+    print(f"autonomy flag {flag} → {action} (file: {autonomy_policy.policy_path(root)})")
     return 0
 
 

@@ -318,6 +318,33 @@ class CLITests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("delta 30d", stdout)
 
+    def test_autonomy_status_text_default_state(self) -> None:
+        # M7.4c: status command on empty vault prints all flags as enabled.
+        code, stdout, stderr = self._run_main_raw(["autonomy-status"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertIn("disable_lane_apply", stdout)
+        self.assertIn("disable_external_llm", stdout)
+        self.assertIn("file exists : False", stdout)
+
+    def test_autonomy_disable_persists_and_status_reflects(self) -> None:
+        # M7.4c: disable + status round-trip.
+        code, _, _ = self._run_main_raw(["autonomy-disable", "disable_lane_apply"])
+        self.assertEqual(code, 0)
+        code, stdout, _ = self._run_main_raw(["autonomy-status", "--json"])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout)
+        self.assertTrue(payload["policy_file_exists"])
+        self.assertTrue(payload["flags"]["disable_lane_apply"]["effective"])
+        self.assertFalse(payload["flags"]["disable_alchemy_auto"]["effective"])
+
+    def test_autonomy_unknown_flag_exits_nonzero(self) -> None:
+        # M7.4c: unknown flag → exit 2 + stderr listing valid flags.
+        code, stdout, stderr = self._run_main_raw(["autonomy-disable", "disable_made_up"])
+        self.assertEqual(code, 2)
+        self.assertIn("Unknown autonomy flag", stderr)
+        self.assertIn("disable_lane_apply", stderr)
+
     def test_today_does_not_mutate_shell_summary(self) -> None:
         summary = {
             "generated_at": "2026-04-27T10:00:00+00:00",
