@@ -4,11 +4,11 @@ The Obsidian plugin is shipped as a single `main.js` file (Obsidian does not
 support relative `require()` within plugins). The source code lives in this
 `src/` directory as separate modules for readability and maintenance.
 
-## UI v3 Paradigm (EP-024)
-This UI now follows the "Input/Output + Notification" paradigm:
+## Product Shell home surface
+This UI follows the "Input/Output + Advanced" paradigm:
 - **AskBox**: Raycast-style single input.
-- **UnreadBadge**: Superhuman-style top-right notification badge.
 - **ReportCards**: Notion-style outputs, highlighting content.
+- unread visual distinction (planned in M-PS.1 A4)
 - **AdvancedDrawer**: All old system dashboards and views have been moved here.
 
 ### Where did my dashboards go?

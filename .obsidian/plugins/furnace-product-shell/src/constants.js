@@ -25,8 +25,6 @@ const DEFAULT_SETTINGS = {
   onboardingShown: false,
 };
 const ZH_TEXT = {
-  "{count} new reports available": "{count} 份新报告",
-  "Product Shell UI refreshed. All previous dashboards have moved to 'Advanced' section at the bottom. Click to expand.": "Product Shell 界面已更新。所有旧版仪表盘均已移至底部的 Advanced (高级) 折叠区。点击可展开查看。",
   "Advanced": "高级",
   "Furnace Product Shell": "炼丹炉 Product Shell",
   "UI language": "界面语言",

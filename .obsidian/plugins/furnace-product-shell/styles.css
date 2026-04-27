@@ -552,24 +552,6 @@
   box-shadow: 0 0 0 2px var(--background-modifier-border);
 }
 
-.furnace-shell-v3 .furnace-shell-unread-badge {
-  position: absolute;
-  right: -8px;
-  top: -8px;
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
-  border-radius: 50%;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.8em;
-  font-weight: bold;
-  cursor: pointer;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-}
-
 .furnace-shell-v3 .furnace-shell-report-list {
   display: flex;
   flex-direction: column;

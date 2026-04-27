@@ -121,17 +121,3 @@ function groupReportsByDate(reports) {
     .sort((a, b) => b[0].localeCompare(a[0])) // Descending dates
     .map(([date, items]) => ({ date, items }));
 }
-
-function countUnreadReports(reports, lastViewedTimestamp) {
-  if (!Array.isArray(reports)) return 0;
-  return reports.filter(r => {
-    if (!r.created_at) return false;
-    const ts = new Date(r.created_at).getTime();
-    return !Number.isNaN(ts) && ts > lastViewedTimestamp;
-  }).length;
-}
-
-function extractReportIds(reports) {
-  if (!Array.isArray(reports)) return [];
-  return reports.map(r => r.path || r.title || r.created_at).filter(Boolean);
-}

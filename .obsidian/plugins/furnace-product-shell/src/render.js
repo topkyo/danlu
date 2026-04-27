@@ -615,10 +615,8 @@ function renderFurnaceCenter(plugin, contentEl) {
     ? plugin.shellSummary.recent_outputs
     : [];
 
-  const unreadCount = countUnreadReports(reports, plugin.settings.lastViewedTimestamp || 0);
-
   // 1. AskBox
-  renderAskBox(plugin, contentEl, unreadCount);
+  renderAskBox(plugin, contentEl);
 
   // 2. Reports
   const groupedReports = groupReportsByDate(reports);
@@ -654,19 +652,10 @@ function renderFurnaceCenter(plugin, contentEl) {
   renderAdvancedDrawer(plugin, contentEl);
 }
 
-function renderAskBox(plugin, container, unreadCount) {
+function renderAskBox(plugin, container) {
   const wrapper = container.createDiv({ cls: "furnace-shell-askbox-wrapper" });
   const input = wrapper.createEl("input", { cls: "furnace-shell-askbox", type: "text" });
   input.placeholder = plugin.t("Ask / Command... (Type / to see more)");
-  
-  if (unreadCount > 0) {
-    const badge = wrapper.createDiv({ cls: "furnace-shell-unread-badge", text: String(unreadCount) });
-    badge.addEventListener("click", async () => {
-      plugin.settings.lastViewedTimestamp = Date.now();
-      await plugin.savePluginState();
-      plugin.refreshOpenViews(); // re-render
-    });
-  }
 
   input.addEventListener("keydown", async (e) => {
     if (e.key === "Enter") {

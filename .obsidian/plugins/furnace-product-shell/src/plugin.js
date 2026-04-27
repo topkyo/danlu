@@ -6,7 +6,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
     this.pluginState = { recentRuns: [] };
     this.shellSummary = null;
-    this.hasNotifiedThisSession = false;
     this.repoState = { valid: false, root: "", launcherPath: "", missingPaths: ["vault-root"] };
     this.openViews = new Set();
     this.statusBarItem = this.addStatusBarItem();
@@ -42,7 +41,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
     await this.loadShellSummaryFromDisk();
 
-    await this.maybeShowOnboarding();
     this.updateStatusBar();
   }
 
@@ -2055,32 +2053,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
     this.settings.lastKnownReportIds = currentIds;
     void this.savePluginState();
-    if (!this.hasNotifiedThisSession) {
-      new Notice(this.t("{count} new reports available", { count: newIds.length }));
-      this.hasNotifiedThisSession = true;
-    }
-  }
-
-  async maybeShowOnboarding() {
-    if (this.settings.onboardingShown) {
-      return;
-    }
-    const data = this.rawPluginData;
-    const isFreshInstall = !data || Object.keys(data).length === 0;
-    if (isFreshInstall) {
-      this.settings.onboardingShown = true;
-      await this.savePluginState();
-      return;
-    }
-    const hadLegacyFields = Object.prototype.hasOwnProperty.call(data, "recentRuns") || Object.prototype.hasOwnProperty.call(data, "settings");
-    if (!hadLegacyFields) {
-      this.settings.onboardingShown = true;
-      await this.savePluginState();
-      return;
-    }
-    new Notice(this.t("Product Shell UI refreshed. All previous dashboards have moved to 'Advanced' section at the bottom. Click to expand."), 10000);
-    this.settings.onboardingShown = true;
-    await this.savePluginState();
   }
 
   async refreshShellSummaryCommand() {
@@ -2847,8 +2819,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   
-  renderAskBox(container, unreadCount) {
-    renderAskBox(this, container, unreadCount);
+  renderAskBox(container) {
+    renderAskBox(this, container);
   }
   renderReportsGroup(container, title, reports) {
     renderReportsGroup(this, container, title, reports);

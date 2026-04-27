@@ -45,8 +45,6 @@ const DEFAULT_SETTINGS = {
   onboardingShown: false,
 };
 const ZH_TEXT = {
-  "{count} new reports available": "{count} 份新报告",
-  "Product Shell UI refreshed. All previous dashboards have moved to 'Advanced' section at the bottom. Click to expand.": "Product Shell 界面已更新。所有旧版仪表盘均已移至底部的 Advanced (高级) 折叠区。点击可展开查看。",
   "Advanced": "高级",
   "Furnace Product Shell": "炼丹炉 Product Shell",
   "UI language": "界面语言",
@@ -776,20 +774,6 @@ function groupReportsByDate(reports) {
   return Object.entries(groups)
     .sort((a, b) => b[0].localeCompare(a[0])) // Descending dates
     .map(([date, items]) => ({ date, items }));
-}
-
-function countUnreadReports(reports, lastViewedTimestamp) {
-  if (!Array.isArray(reports)) return 0;
-  return reports.filter(r => {
-    if (!r.created_at) return false;
-    const ts = new Date(r.created_at).getTime();
-    return !Number.isNaN(ts) && ts > lastViewedTimestamp;
-  }).length;
-}
-
-function extractReportIds(reports) {
-  if (!Array.isArray(reports)) return [];
-  return reports.map(r => r.path || r.title || r.created_at).filter(Boolean);
 }
 
 // --- src/modals.js ---
@@ -2361,10 +2345,8 @@ function renderFurnaceCenter(plugin, contentEl) {
     ? plugin.shellSummary.recent_outputs
     : [];
 
-  const unreadCount = countUnreadReports(reports, plugin.settings.lastViewedTimestamp || 0);
-
   // 1. AskBox
-  renderAskBox(plugin, contentEl, unreadCount);
+  renderAskBox(plugin, contentEl);
 
   // 2. Reports
   const groupedReports = groupReportsByDate(reports);
@@ -2400,19 +2382,10 @@ function renderFurnaceCenter(plugin, contentEl) {
   renderAdvancedDrawer(plugin, contentEl);
 }
 
-function renderAskBox(plugin, container, unreadCount) {
+function renderAskBox(plugin, container) {
   const wrapper = container.createDiv({ cls: "furnace-shell-askbox-wrapper" });
   const input = wrapper.createEl("input", { cls: "furnace-shell-askbox", type: "text" });
   input.placeholder = plugin.t("Ask / Command... (Type / to see more)");
-  
-  if (unreadCount > 0) {
-    const badge = wrapper.createDiv({ cls: "furnace-shell-unread-badge", text: String(unreadCount) });
-    badge.addEventListener("click", async () => {
-      plugin.settings.lastViewedTimestamp = Date.now();
-      await plugin.savePluginState();
-      plugin.refreshOpenViews(); // re-render
-    });
-  }
 
   input.addEventListener("keydown", async (e) => {
     if (e.key === "Enter") {
@@ -3502,7 +3475,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
     this.pluginState = { recentRuns: [] };
     this.shellSummary = null;
-    this.hasNotifiedThisSession = false;
     this.repoState = { valid: false, root: "", launcherPath: "", missingPaths: ["vault-root"] };
     this.openViews = new Set();
     this.statusBarItem = this.addStatusBarItem();
@@ -3538,7 +3510,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
     await this.loadShellSummaryFromDisk();
 
-    await this.maybeShowOnboarding();
     this.updateStatusBar();
   }
 
@@ -5551,32 +5522,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
     this.settings.lastKnownReportIds = currentIds;
     void this.savePluginState();
-    if (!this.hasNotifiedThisSession) {
-      new Notice(this.t("{count} new reports available", { count: newIds.length }));
-      this.hasNotifiedThisSession = true;
-    }
-  }
-
-  async maybeShowOnboarding() {
-    if (this.settings.onboardingShown) {
-      return;
-    }
-    const data = this.rawPluginData;
-    const isFreshInstall = !data || Object.keys(data).length === 0;
-    if (isFreshInstall) {
-      this.settings.onboardingShown = true;
-      await this.savePluginState();
-      return;
-    }
-    const hadLegacyFields = Object.prototype.hasOwnProperty.call(data, "recentRuns") || Object.prototype.hasOwnProperty.call(data, "settings");
-    if (!hadLegacyFields) {
-      this.settings.onboardingShown = true;
-      await this.savePluginState();
-      return;
-    }
-    new Notice(this.t("Product Shell UI refreshed. All previous dashboards have moved to 'Advanced' section at the bottom. Click to expand."), 10000);
-    this.settings.onboardingShown = true;
-    await this.savePluginState();
   }
 
   async refreshShellSummaryCommand() {
@@ -6343,8 +6288,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   
-  renderAskBox(container, unreadCount) {
-    renderAskBox(this, container, unreadCount);
+  renderAskBox(container) {
+    renderAskBox(this, container);
   }
   renderReportsGroup(container, title, reports) {
     renderReportsGroup(this, container, title, reports);
