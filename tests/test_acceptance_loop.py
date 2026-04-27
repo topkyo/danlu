@@ -80,6 +80,16 @@ def _run_b1_chain(vault: Path) -> tuple[bytes, bytes, bytes]:  # pragma: no cove
     )
 
 
+def _assert_lane_receipt_fields(receipts: list[dict[str, object]], primitives: list[str]) -> None:
+    assert [record["primitive"] for record in receipts] == primitives
+    for record in receipts:
+        assert record["kind"] == "execution-receipt"
+        assert record["generated_by"] == "aiwiki-alchemy-lane"
+        assert record["operation"] == "alchemy-lane-primitive"
+        assert record["audit_stream"] == "execution_receipts"
+        assert record["audit_event"] == "execution_receipt_history_append"
+
+
 def test_m61_b1_execute_mode_auto_dry_run_acceptance(  # pragma: no cover - explicit pytest acceptance gate
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -147,13 +157,7 @@ def test_light_primitives_compile_lint_acceptance(  # pragma: no cover - explici
         assert json.loads(out4)["lane"] == "light"
 
     receipts = _load_jsonl(vault / ".aiwiki/state/execution-receipts.jsonl")
-    assert [record["primitive"] for record in receipts] == ["compile", "lint"]
-    for record in receipts:
-        assert record["kind"] == "execution-receipt"
-        assert record["generated_by"] == "aiwiki-alchemy-lane"
-        assert record["operation"] == "alchemy-lane-primitive"
-        assert record["audit_stream"] == "execution_receipts"
-        assert record["audit_event"] == "execution_receipt_history_append"
+    _assert_lane_receipt_fields(receipts, ["compile", "lint"])
 
     audit = _load_jsonl(vault / ".aiwiki/state/audit.jsonl")
     assert [record["event_type"] for record in audit] == [
@@ -165,6 +169,63 @@ def test_light_primitives_compile_lint_acceptance(  # pragma: no cover - explici
     assert [record["subject"]["id"] for record in audit] == ["light:all", "light:all:compile", "light:all:lint", "light:all"]
     llm_receipts = _load_jsonl(vault / ".aiwiki/logs/llm-receipts.jsonl")
     assert len(llm_receipts) == 1 and llm_receipts[0]["status"] == "failed"
+
+    _assert_files_byte_equal(
+        vault,
+        case / "expected",
+        [
+            ".aiwiki/state/signals.jsonl",
+            ".aiwiki/state/planner-log.jsonl",
+            ".aiwiki/state/execution-receipts.jsonl",
+            ".aiwiki/state/audit.jsonl",
+        ],
+    )
+    if REFRESH:
+        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
+
+
+def test_light_primitives_nightly_acceptance(  # pragma: no cover - explicit pytest acceptance gate
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    case, vault = _copy_case_and_fix_clock("case_light_primitives_nightly", tmp_path, monkeypatch)
+    stdout_dir = case / "expected" / "stdout"
+    out1, out2, out3 = _run_b1_chain(vault)
+    out4 = _run_cli(
+        vault,
+        ["alchemy", "light", "all", "--apply", "--primitive", "nightly", "--note", "M6.1 light nightly"],
+    )
+
+    _write_or_compare(stdout_dir / "01-signals-replay.json", out1)
+    _write_or_compare(stdout_dir / "02-planner-log-replay.json", out2)
+    _write_or_compare(stdout_dir / "03-alchemy-auto-dry-run.json", out3)
+    if not REFRESH:
+        payload = json.loads(out4)
+        assert payload["primitives"] == ["nightly"]
+        assert payload["lane"] == "light"
+
+    receipts = _load_jsonl(vault / ".aiwiki/state/execution-receipts.jsonl")
+    _assert_lane_receipt_fields(receipts, ["nightly"])
+    audit = _load_jsonl(vault / ".aiwiki/state/audit.jsonl")
+    assert [record["event_type"] for record in audit] == [
+        "alchemy-lane-started",
+        "nightly",
+        "alchemy-lane-primitive",
+        "alchemy-lane-completed",
+    ]
+    assert [record["subject"]["id"] for record in audit] == ["light:all", "", "light:all:nightly", "light:all"]
+    assert len(_load_jsonl(vault / ".aiwiki/logs/llm-receipts.jsonl")) == 1
+
+    b2a_receipts = _load_jsonl(FIXTURE_ROOT / "case_light_primitives_compile_lint/expected/files/.aiwiki__state__execution-receipts.jsonl.golden")
+    b2a_audit = _load_jsonl(FIXTURE_ROOT / "case_light_primitives_compile_lint/expected/files/.aiwiki__state__audit.jsonl.golden")
+    assert set(b2a_receipts[0]) == set(receipts[0])
+    stable = {"kind", "generated_by", "operation", "audit_stream", "audit_event", "lane", "scope", "status", "version"}
+    assert {key: b2a_receipts[0][key] for key in stable} == {key: receipts[0][key] for key in stable}
+    assert {record["event_type"] for record in b2a_audit} == {"alchemy-lane-started", "alchemy-lane-primitive", "alchemy-lane-completed"}
+    assert {record["event_type"] for record in audit if record["event_type"] != "nightly"} == {
+        "alchemy-lane-started",
+        "alchemy-lane-primitive",
+        "alchemy-lane-completed",
+    }
 
     _assert_files_byte_equal(
         vault,
