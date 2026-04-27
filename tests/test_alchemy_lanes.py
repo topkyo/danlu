@@ -428,7 +428,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
             "plan": {"scope_preview": {"trace_ids": ["550e8400-e29b-41d4-a716-446655440000"]}},
         }
 
-        with patch("aiwiki.runner.run_alchemy_lane_apply", return_value=applied) as mocked:
+        with patch("aiwiki.runner.alchemy.run_alchemy_lane_apply", return_value=applied) as mocked:
             result = run_alchemy_auto(self.root, apply=True, lanes=["heavy"], primitives=["review"], note="auto review")
 
         mocked.assert_called_once()
@@ -453,7 +453,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
             "plan": {"scope_preview": {"trace_ids": ["550e8400-e29b-41d4-a716-446655440000"]}},
         }
 
-        with patch("aiwiki.runner.run_alchemy_lane_apply", return_value=applied) as mocked:
+        with patch("aiwiki.runner.alchemy.run_alchemy_lane_apply", return_value=applied) as mocked:
             result = run_alchemy_auto(self.root, apply=True, lanes=["heavy"], primitives=["propose"], note="auto propose")
 
         mocked.assert_called_once()
@@ -478,7 +478,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
             "plan": {"scope_preview": {"trace_ids": ["550e8400-e29b-41d4-a716-446655440000"]}},
         }
 
-        with patch("aiwiki.runner.run_alchemy_lane_apply", return_value=applied) as mocked:
+        with patch("aiwiki.runner.alchemy.run_alchemy_lane_apply", return_value=applied) as mocked:
             result = run_alchemy_auto(self.root, apply=True, lanes=["heavy"], primitives=["distill"], note="auto distill")
 
         mocked.assert_called_once()
@@ -503,7 +503,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
             "plan": {"scope_preview": {"trace_ids": ["550e8400-e29b-41d4-a716-446655440000"]}},
         }
 
-        with patch("aiwiki.runner.run_alchemy_lane_apply", return_value=applied) as mocked:
+        with patch("aiwiki.runner.alchemy.run_alchemy_lane_apply", return_value=applied) as mocked:
             result = run_alchemy_auto(self.root, apply=True, lanes=["light"], primitives=["compile"], note="auto")
 
         mocked.assert_called_once()
@@ -624,7 +624,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
 
         with (
             patch("aiwiki.app_compile.apply_machine_memory_actions_batch") as mocked_action_batch,
-            patch("aiwiki.runner.compile_wiki") as mocked_compile,
+            patch("aiwiki.runner.alchemy.compile_wiki") as mocked_compile,
         ):
             with self.assertRaisesRegex(RuntimeError, "requires an ok dry-run plan"):
                 run_alchemy_lane_apply(
@@ -717,7 +717,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
     def test_apply_writes_receipt_for_deterministic_primitive(self) -> None:
         self._seed_lane_records()
 
-        with patch("aiwiki.runner.compile_wiki", return_value={"updated_source_pages": ["wiki/sources/a.md"]}) as mocked:
+        with patch("aiwiki.runner.alchemy.compile_wiki", return_value={"updated_source_pages": ["wiki/sources/a.md"]}) as mocked:
             result = run_alchemy_lane_apply(
                 self.root,
                 lane="heavy",
@@ -910,7 +910,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
 
         with (
             patch("aiwiki.planner.preview_alchemy_lane", return_value=plan),
-            patch("aiwiki.runner.compile_wiki") as mocked_compile,
+            patch("aiwiki.runner.alchemy.compile_wiki") as mocked_compile,
         ):
             with self.assertRaisesRegex(RuntimeError, "not apply-supported.*blocked-by-test"):
                 run_alchemy_lane_apply(self.root, lane="heavy", scope="all", action_ids=[], primitives=["compile"])

@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from aiwiki.app_compile import compile_wiki, lint_wiki, nightly_health
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_state import append_runtime_history
 from aiwiki.app_utils import (
@@ -1680,3 +1681,580 @@ def _string_values(value: Any) -> list[str]:
 
 def _markdown_cell(value: str) -> str:
     return value.replace("\n", " ").replace("|", "\\|")
+
+
+def run_alchemy_lane_dry_run(
+    root: Path,
+    *,
+    lane: str,
+    scope: str,
+    planner_log_path: Path | None = None,
+    signals_path: Path | None = None,
+    decision_mode: str | None = None,
+    max_signals: int | None = None,
+    max_pages: int | None = None,
+    max_tokens: int | None = None,
+) -> dict[str, Any]:
+    from aiwiki.planner import preview_alchemy_lane
+
+    return preview_alchemy_lane(
+        root,
+        lane=lane,
+        scope=scope,
+        planner_log_path=planner_log_path,
+        signals_path=signals_path,
+        decision_mode=decision_mode,
+        max_signals=max_signals,
+        max_pages=max_pages,
+        max_tokens=max_tokens,
+    )
+
+
+def run_alchemy_lane_apply(
+    root: Path,
+    *,
+    lane: str,
+    scope: str,
+    action_ids: list[str] | None = None,
+    primitives: list[str] | None = None,
+    note: str | None = None,
+    planner_log_path: Path | None = None,
+    signals_path: Path | None = None,
+    decision_mode: str | None = None,
+    max_signals: int | None = None,
+    max_pages: int | None = None,
+    max_tokens: int | None = None,
+) -> dict[str, Any]:
+    from aiwiki.app_compile import apply_machine_memory_actions_batch
+    from aiwiki.planner import preview_alchemy_lane
+
+    normalized_action_ids = [item.strip() for item in (action_ids or []) if item.strip()]
+    normalized_primitives = _normalize_lane_primitives(primitives or [])
+    if not normalized_action_ids and not normalized_primitives:
+        raise ValueError("alchemy lane --apply requires at least one --action-id or --primitive")
+
+    plan = preview_alchemy_lane(
+        root,
+        lane=lane,
+        scope=scope,
+        planner_log_path=planner_log_path,
+        signals_path=signals_path,
+        decision_mode=decision_mode,
+        max_signals=max_signals,
+        max_pages=max_pages,
+        max_tokens=max_tokens,
+    )
+    status = str(plan.get("status") or "")
+    if status != "ok":
+        raise RuntimeError(f"alchemy lane apply requires an ok dry-run plan (got {status})")
+    if int(plan.get("selected_count") or 0) <= 0:
+        raise RuntimeError("alchemy lane apply requires a non-empty dry-run plan")
+
+    _append_alchemy_lane_runtime_event(
+        root,
+        event_type="alchemy-lane-started",
+        lane=str(plan.get("lane") or lane),
+        scope=str(plan.get("scope") or scope),
+        action_ids=normalized_action_ids,
+        primitives=normalized_primitives,
+        plan=plan,
+        status="started",
+    )
+    primitive_results = [
+        _run_receipted_lane_primitive(
+            root,
+            lane=str(plan.get("lane") or lane),
+            scope=str(plan.get("scope") or scope),
+            primitive=primitive,
+            plan=plan,
+            note=note,
+            planner_log_path=planner_log_path,
+            signals_path=signals_path,
+            decision_mode=decision_mode,
+            max_signals=max_signals,
+            max_pages=max_pages,
+            max_tokens=max_tokens,
+        )
+        for primitive in normalized_primitives
+    ]
+    apply_result = None
+    if normalized_action_ids:
+        apply_result = apply_machine_memory_actions_batch(
+            root,
+            normalized_action_ids,
+            note=note or f"alchemy {lane} apply for scope {scope}",
+            dry_run=False,
+        )
+    _append_alchemy_lane_runtime_event(
+        root,
+        event_type="alchemy-lane-completed",
+        lane=str(plan.get("lane") or lane),
+        scope=str(plan.get("scope") or scope),
+        action_ids=normalized_action_ids,
+        primitives=normalized_primitives,
+        plan=plan,
+        status="completed",
+        primitive_results=primitive_results,
+        apply_result=apply_result,
+    )
+    return {
+        "status": "applied",
+        "lane": str(plan.get("lane") or lane),
+        "scope": str(plan.get("scope") or scope),
+        "action_ids": normalized_action_ids,
+        "primitives": normalized_primitives,
+        "plan": plan,
+        "primitive_results": primitive_results,
+        "apply_result": apply_result,
+    }
+
+
+def run_alchemy_auto(
+    root: Path,
+    *,
+    apply: bool = False,
+    lanes: list[str] | None = None,
+    scope: str = "all",
+    primitives: list[str] | None = None,
+    note: str | None = None,
+    planner_log_path: Path | None = None,
+    signals_path: Path | None = None,
+    max_signals: int | None = None,
+    max_pages: int | None = None,
+    max_tokens: int | None = None,
+) -> dict[str, Any]:
+    normalized_lanes = _normalize_auto_lanes(lanes or ["heavy", "light"])
+    requested_primitives = _normalize_lane_primitives(primitives or []) if primitives else []
+    lane_results: list[dict[str, Any]] = []
+    applied_results: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+
+    for lane in normalized_lanes:
+        plan = run_alchemy_lane_dry_run(
+            root,
+            lane=lane,
+            scope=scope,
+            planner_log_path=planner_log_path,
+            signals_path=signals_path,
+            decision_mode="execute",
+            max_signals=max_signals,
+            max_pages=max_pages,
+            max_tokens=max_tokens,
+        )
+        selected_primitives = _auto_primitives_for_lane(lane, plan, requested_primitives=requested_primitives)
+        lane_result: dict[str, Any] = {
+            "lane": lane,
+            "scope": scope,
+            "plan": plan,
+            "selected_primitives": selected_primitives,
+        }
+        skip_reason = _auto_skip_reason(plan, selected_primitives)
+        if skip_reason:
+            lane_result["status"] = "skipped"
+            lane_result["reason"] = skip_reason
+            skipped.append({"lane": lane, "reason": skip_reason})
+        elif apply:
+            apply_result = run_alchemy_lane_apply(
+                root,
+                lane=lane,
+                scope=scope,
+                primitives=selected_primitives,
+                note=note or "alchemy auto scheduler",
+                planner_log_path=planner_log_path,
+                signals_path=signals_path,
+                decision_mode="execute",
+                max_signals=max_signals,
+                max_pages=max_pages,
+                max_tokens=max_tokens,
+            )
+            lane_result["status"] = "applied"
+            lane_result["apply_result"] = apply_result
+            applied_results.append(apply_result)
+        else:
+            lane_result["status"] = "ready"
+        lane_results.append(lane_result)
+
+    if apply:
+        _append_alchemy_auto_runtime_event(
+            root,
+            scope=scope,
+            lanes=normalized_lanes,
+            primitives=requested_primitives,
+            lane_results=lane_results,
+            applied_results=applied_results,
+            skipped=skipped,
+        )
+
+    return {
+        "status": "applied" if apply and applied_results else ("noop" if apply else "preview"),
+        "mode": "apply" if apply else "dry_run",
+        "dry_run": not apply,
+        "side_effects_allowed": apply,
+        "scope": scope,
+        "decision_mode": "execute",
+        "lanes": normalized_lanes,
+        "requested_primitives": requested_primitives,
+        "applied_count": len(applied_results),
+        "skipped_count": len(skipped),
+        "lane_results": lane_results,
+    }
+
+
+def _normalize_auto_lanes(lanes: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in lanes:
+        lane = item.strip().lower()
+        if lane not in {"heavy", "light"}:
+            raise ValueError(f"unsupported alchemy auto lane: {item}")
+        if lane in seen:
+            continue
+        seen.add(lane)
+        normalized.append(lane)
+    if not normalized:
+        raise ValueError("alchemy auto requires at least one lane")
+    return normalized
+
+
+def _auto_primitives_for_lane(
+    lane: str,
+    plan: dict[str, Any],
+    *,
+    requested_primitives: list[str],
+) -> list[str]:
+    defaults = {"heavy": ["compile", "lint"], "light": ["compile", "lint", "nightly"]}[lane]
+    wanted = requested_primitives or defaults
+    auto_supported_primitives = {"compile", "lint", "nightly"}
+    if requested_primitives and lane == "heavy":
+        auto_supported_primitives.add("distill")
+        auto_supported_primitives.add("review")
+        auto_supported_primitives.add("propose")
+    supported = {
+        str(item.get("primitive") or "")
+        for item in plan.get("primitive_plan", [])
+        if (
+            isinstance(item, dict)
+            and item.get("apply_supported") is True
+            and str(item.get("primitive") or "") in auto_supported_primitives
+        )
+    }
+    return [primitive for primitive in wanted if primitive in supported]
+
+
+def _auto_skip_reason(plan: dict[str, Any], selected_primitives: list[str]) -> str:
+    status = str(plan.get("status") or "")
+    if status != "ok":
+        return f"plan_{status or 'unknown'}"
+    if int(plan.get("selected_count") or 0) <= 0:
+        return "empty_execute_plan"
+    if not selected_primitives:
+        return "no_apply_supported_primitives"
+    return ""
+
+
+def _append_alchemy_auto_runtime_event(
+    root: Path,
+    *,
+    scope: str,
+    lanes: list[str],
+    primitives: list[str],
+    lane_results: list[dict[str, Any]],
+    applied_results: list[dict[str, Any]],
+    skipped: list[dict[str, Any]],
+) -> None:
+    trace_ids: set[str] = set()
+    for lane_result in lane_results:
+        plan = lane_result.get("plan")
+        if not isinstance(plan, dict):
+            continue
+        trace_ids.update(_lane_receipt_trace_ids(plan))
+    sorted_trace_ids = sorted(trace_ids)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "alchemy-auto-scheduler",
+            "recorded_at": utc_now(),
+            "status": "completed",
+            "scope": scope,
+            "lanes": lanes,
+            "requested_primitives": primitives,
+            "applied_count": len(applied_results),
+            "skipped_count": len(skipped),
+            "skipped": skipped,
+            "trace_id": sorted_trace_ids[0] if sorted_trace_ids else "",
+            "trace_ids": sorted_trace_ids,
+            "subject_kind": "alchemy_auto_scheduler",
+            "subject_id": scope,
+        },
+    )
+
+
+def _append_alchemy_lane_runtime_event(
+    root: Path,
+    *,
+    event_type: str,
+    lane: str,
+    scope: str,
+    action_ids: list[str],
+    primitives: list[str],
+    plan: dict[str, Any],
+    status: str,
+    primitive_results: list[dict[str, Any]] | None = None,
+    apply_result: dict[str, Any] | None = None,
+) -> None:
+    trace_ids = _lane_receipt_trace_ids(plan)
+    event: dict[str, Any] = {
+        "event_type": event_type,
+        "recorded_at": utc_now(),
+        "status": status,
+        "lane": lane,
+        "scope": scope,
+        "action_ids": action_ids,
+        "primitives": primitives,
+        "selected_count": int(plan.get("selected_count") or 0),
+        "trace_id": trace_ids[0] if trace_ids else "",
+        "trace_ids": trace_ids,
+        "subject_kind": "alchemy_lane",
+        "subject_id": f"{lane}:{scope}",
+    }
+    if primitive_results is not None:
+        event["primitive_count"] = len(primitive_results)
+        event["primitive_receipts"] = [
+            str(item.get("receipt_path") or "") for item in primitive_results if isinstance(item, dict) and item.get("receipt_path")
+        ]
+    if apply_result is not None:
+        event["action_batch_receipt"] = str(apply_result.get("receipt_path") or apply_result.get("batch_receipt_path") or "")
+    append_runtime_history(root, event)
+
+
+def _normalize_lane_primitives(primitives: list[str]) -> list[str]:
+    allowed = {"compile", "distill", "lint", "nightly", "review", "propose"}
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in primitives:
+        primitive = item.strip().lower()
+        if not primitive:
+            continue
+        if primitive not in allowed:
+            raise ValueError(f"unsupported alchemy lane primitive: {item}")
+        if primitive in seen:
+            continue
+        seen.add(primitive)
+        normalized.append(primitive)
+    return normalized
+
+
+def _run_receipted_lane_primitive(
+    root: Path,
+    *,
+    lane: str,
+    scope: str,
+    primitive: str,
+    plan: dict[str, Any],
+    note: str | None,
+    planner_log_path: Path | None = None,
+    signals_path: Path | None = None,
+    decision_mode: str | None = None,
+    max_signals: int | None = None,
+    max_pages: int | None = None,
+    max_tokens: int | None = None,
+) -> dict[str, Any]:
+    plan_step = _lane_primitive_plan_step(plan, primitive)
+    if plan_step is None:
+        raise RuntimeError(f"primitive {primitive!r} is not present in the dry-run plan for lane {lane!r}")
+    if plan_step.get("apply_supported") is not True:
+        blocker = str(plan_step.get("apply_blocker") or "not_apply_supported")
+        raise RuntimeError(f"primitive {primitive!r} is not apply-supported in the dry-run plan for lane {lane!r}: {blocker}")
+
+    if primitive == "review":
+        result = run_alchemy_review_apply(
+            root,
+            scope=scope,
+            planner_log_path=planner_log_path,
+            signals_path=signals_path,
+            decision_mode=decision_mode,
+            max_signals=max_signals,
+            max_pages=max_pages,
+            max_tokens=max_tokens,
+            note=note,
+        )
+        return {
+            "primitive": primitive,
+            "trace_id": str(result.get("trace_id") or ""),
+            "audit_path": str(result.get("audit_path") or ""),
+            "receipt_path": str(result.get("receipt_path") or ""),
+            "result": result,
+        }
+    if primitive == "distill":
+        result = run_alchemy_distill_apply(
+            root,
+            scope=scope,
+            planner_log_path=planner_log_path,
+            signals_path=signals_path,
+            decision_mode=decision_mode,
+            max_signals=max_signals,
+            max_pages=max_pages,
+            max_tokens=max_tokens,
+            note=note,
+        )
+        return {
+            "primitive": primitive,
+            "trace_id": str(result.get("trace_id") or ""),
+            "audit_path": str(result.get("audit_path") or ""),
+            "receipt_path": str(result.get("receipt_path") or ""),
+            "result": result,
+        }
+    if primitive == "propose":
+        result = run_alchemy_propose_apply(
+            root,
+            scope=scope,
+            planner_log_path=planner_log_path,
+            signals_path=signals_path,
+            decision_mode=decision_mode,
+            max_signals=max_signals,
+            max_pages=max_pages,
+            max_tokens=max_tokens,
+            note=note,
+        )
+        return {
+            "primitive": primitive,
+            "trace_id": str(result.get("trace_id") or ""),
+            "audit_path": str(result.get("audit_path") or ""),
+            "receipt_path": str(result.get("receipt_path") or ""),
+            "result": result,
+        }
+    if primitive == "compile":
+        result = compile_wiki(root)
+    elif primitive == "lint":
+        result = lint_wiki(root)
+    elif primitive == "nightly":
+        result = nightly_health(root)
+    else:  # pragma: no cover - guarded by _normalize_lane_primitives
+        raise ValueError(f"unsupported alchemy lane primitive: {primitive}")
+
+    applied_at = utc_now()
+    action_id = _unique_lane_primitive_action_id(root, lane=lane, primitive=primitive, applied_at=applied_at)
+    from aiwiki.app_execution import append_execution_receipt_history
+    from aiwiki.app_state import execution_receipt_history_path
+    from aiwiki.render.paths import execution_receipt_path
+
+    receipt_path = execution_receipt_path(root, action_id)
+    audit_path = relative_path(root, execution_receipt_history_path(root))
+    trace_ids = _lane_receipt_trace_ids(plan)
+    trace_id = trace_ids[0] if trace_ids else ""
+    receipt = {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-alchemy-lane",
+        "applied_at": applied_at,
+        "operation": "alchemy-lane-primitive",
+        "action_id": action_id,
+        "trace_id": trace_id,
+        "trace_ids": trace_ids,
+        "title": f"Alchemy {lane} {primitive}",
+        "status": "applied",
+        "protocol": _first_plan_protocol(plan),
+        "subject_kind": "alchemy_lane_primitive",
+        "subject_id": f"{lane}:{scope}:{primitive}",
+        "apply_mode": f"alchemy-{lane}-{primitive}",
+        "note": note or "",
+        "primary_path": _primary_result_path(result),
+        "secondary_path": "",
+        "receipt_path": relative_path(root, receipt_path),
+        "lane": lane,
+        "scope": scope,
+        "primitive": primitive,
+        "revert_supported": False,
+        "audit_stream": "execution_receipts",
+        "audit_event": "execution_receipt_history_append",
+        "audit_path": audit_path,
+        "source_plan": _lane_receipt_plan_summary(plan),
+        "result_summary": _lane_receipt_result_summary(result),
+    }
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    append_execution_receipt_history(root, receipt)
+    return {
+        "primitive": primitive,
+        "trace_id": trace_id,
+        "audit_path": audit_path,
+        "receipt_path": relative_path(root, receipt_path),
+        "result": result,
+    }
+
+
+def _unique_lane_primitive_action_id(root: Path, *, lane: str, primitive: str, applied_at: str) -> str:
+    from aiwiki.render.paths import execution_receipt_path
+
+    timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
+    base = slugify(f"alchemy-{lane}-{primitive}-{timestamp}")
+    candidate = base
+    n = 2
+    while execution_receipt_path(root, candidate).exists():
+        candidate = f"{base}-{n}"
+        n += 1
+    return candidate
+
+
+def _lane_primitive_plan_step(plan: dict[str, Any], primitive: str) -> dict[str, Any] | None:
+    for item in plan.get("primitive_plan", []):
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("primitive") or "") == primitive:
+            return item
+    return None
+
+
+def _first_plan_protocol(plan: dict[str, Any]) -> str:
+    scope_preview = plan.get("scope_preview")
+    if isinstance(scope_preview, dict):
+        protocols = scope_preview.get("protocols")
+        if isinstance(protocols, list) and protocols:
+            return str(protocols[0])
+    return ""
+
+
+def _lane_receipt_trace_ids(plan: dict[str, Any]) -> list[str]:
+    scope_preview = plan.get("scope_preview")
+    if not isinstance(scope_preview, dict):
+        return []
+    trace_ids = scope_preview.get("trace_ids")
+    if not isinstance(trace_ids, list):
+        return []
+    normalized = sorted({item.strip() for item in trace_ids if isinstance(item, str) and item.strip()})
+    return normalized
+
+
+def _primary_result_path(result: dict[str, Any]) -> str:
+    for key in ("state_path", "path", "semantic_report"):
+        value = result.get(key)
+        if isinstance(value, str) and value:
+            return value
+    repair_backlog = result.get("repair_backlog")
+    if isinstance(repair_backlog, str) and repair_backlog:
+        return repair_backlog
+    return ""
+
+
+def _lane_receipt_plan_summary(plan: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "lane": str(plan.get("lane") or ""),
+        "scope": str(plan.get("scope") or ""),
+        "selected_count": int(plan.get("selected_count") or 0),
+        "scope_preview": plan.get("scope_preview") if isinstance(plan.get("scope_preview"), dict) else {},
+        "primitive_plan": list(plan.get("primitive_plan") or []),
+    }
+
+
+def _lane_receipt_result_summary(result: dict[str, Any]) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    for key in ("state_path", "repair_backlog", "semantic_report", "llm_used"):
+        if key in result:
+            summary[key] = result[key]
+    if "updated_source_pages" in result:
+        summary["updated_source_pages_count"] = len(result.get("updated_source_pages") or [])
+    if "updated_concept_pages" in result:
+        summary["updated_concept_pages_count"] = len(result.get("updated_concept_pages") or [])
+    if "counts" in result and isinstance(result.get("counts"), dict):
+        summary["counts"] = result["counts"]
+    return summary
