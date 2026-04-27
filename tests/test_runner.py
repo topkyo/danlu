@@ -1317,7 +1317,7 @@ class RunnerTests(unittest.TestCase):
 
         binary_path = self.root / "tiny.bin"
         binary_path.write_bytes(b"binary-content")
-        with patch("aiwiki.runner.read_text_preview", return_value="preview"):
+        with patch("aiwiki.runner.prompts.read_text_preview", return_value="preview"):
             self.assertEqual(_read_context(binary_path, 20), "preview")
 
         self.assertIn("schema/index.md", _schema_context(self.root, ("index.md", "missing.md")))
@@ -1410,5 +1410,5 @@ class RunnerTests(unittest.TestCase):
             encoding="utf-8",
         )
         self.assertEqual(_pending_summary_count(self.root), 0)
-        with patch("aiwiki.runner.LLMConfig.status_from_env", return_value={"max_context_chars": 1234}):
+        with patch("aiwiki.runner.prompts.LLMConfig.status_from_env", return_value={"max_context_chars": 1234}):
             self.assertEqual(_context_budget(), 1234)
