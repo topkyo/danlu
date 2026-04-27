@@ -4,6 +4,7 @@ import json
 import os
 import re
 from datetime import datetime
+from importlib import import_module
 from pathlib import Path
 from typing import Any, Callable
 
@@ -16,6 +17,8 @@ from .schema import (
     compute_planner_log_dedupe_key,
     validate_planner_log_record,
 )
+
+clock = import_module("aiwiki.clock")
 
 _SIGNALS_REL_PATH = ".aiwiki/state/signals.jsonl"
 _PLANNER_LOG_REL_PATH = ".aiwiki/state/planner-log.jsonl"
@@ -65,7 +68,7 @@ def write_planner_log(
 
         batch: list[dict[str, Any]] = []
         batch_dedupe: set[str] = set()
-        now_provider = _now or datetime.utcnow
+        now_provider = _now or clock.utc_now
 
         with resolved_signals_path.open("r", encoding="utf-8") as handle:
             for line_no, raw_line in enumerate(handle, start=1):

@@ -3,13 +3,15 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from datetime import datetime, timezone
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
 from ..app_utils import runtime_write_lock
 from . import adapters
 from .schema import PROTOCOLS, SCHEMA_VERSION, canonical_dumps, compute_dedupe_key, parse_trace_id, validate
+
+clock = import_module("aiwiki.clock")
 
 SIGNALS_REL_PATH = ".aiwiki/state/signals.jsonl"
 SKIP_EXAMPLES_LIMIT = 5
@@ -333,7 +335,7 @@ def _append_records(signals_path: Path, records: list[dict[str, Any]]) -> None:
 
 
 def _new_signal_id() -> str:
-    day = datetime.now(timezone.utc).strftime("%Y%m%d")
+    day = clock.utc_now().strftime("%Y%m%d")
     suffix = uuid.uuid4().hex[:12]
     return f"sig-{day}-{suffix}"
 
