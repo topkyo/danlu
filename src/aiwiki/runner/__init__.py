@@ -30,7 +30,6 @@ from aiwiki.app_utils import (
     parse_frontmatter,
     relative_path,
     render_frontmatter,
-    runtime_write_lock,
     runtime_write_operation,
     sha256_bytes,
     slugify,
@@ -41,6 +40,18 @@ from aiwiki.llm import (
     CompletionResult,
     LLMError,
     classify_backend_error,
+)
+from aiwiki.runner.alchemy import (  # noqa: F401
+    run_alchemy_demote,
+    run_alchemy_distill,
+    run_alchemy_finalize,
+    run_alchemy_legacy_migration_apply,
+    run_alchemy_legacy_migration_preview,
+    run_alchemy_promote,
+    run_alchemy_revert,
+    run_alchemy_start,
+    run_alchemy_superseded_cleanup_apply,
+    run_alchemy_superseded_cleanup_preview,
 )
 from aiwiki.runner.clients import (  # noqa: F401
     _append_fallback_stage,
@@ -53,6 +64,33 @@ from aiwiki.runner.clients import (  # noqa: F401
     create_client,
     llm_probe,
     llm_status,
+)
+from aiwiki.runner.commands import (  # noqa: F401
+    run_audit_backfill,
+    run_audit_preview,
+    run_demote,
+    run_l3_proposal_apply,
+    run_l3_proposal_create,
+    run_l3_proposal_generate,
+    run_l3_proposal_generation_preview,
+    run_l3_proposal_list,
+    run_l3_proposal_reject,
+    run_l3_proposal_revert,
+    run_planner_log_list,
+    run_planner_log_rollback,
+    run_planner_log_rollback_preview,
+    run_promote,
+    run_protocol_learn_add,
+    run_protocol_learn_age,
+    run_protocol_learn_archive,
+    run_protocol_learn_demote,
+    run_protocol_learn_list,
+    run_protocol_learn_revert_activate,
+    run_protocol_learn_show,
+    run_protocol_learn_supersede,
+    run_protocol_learn_verify,
+    run_signals_list,
+    run_signals_show,
 )
 from aiwiki.runner.interfaces import SupportsComplete  # noqa: F401
 from aiwiki.runner.prompts import (  # noqa: F401
@@ -112,144 +150,6 @@ from aiwiki.runner.receipts import (  # noqa: F401
 
 RUN_ASK_FRONTDOOR_EVENT = "run-ask-frontdoor"
 RUN_ASK_FALLBACK_ERROR_KINDS = {"quota", "timeout", "auth", "unavailable"}
-
-
-def run_l3_proposal_create(
-    root: Path,
-    *,
-    kind: str,
-    target_file: str,
-    content: str,
-    proposal_id: str | None = None,
-    rationale: str = "",
-    evidence_refs: list[str] | None = None,
-    signal_ids: list[str] | None = None,
-    pattern: str = "manual_fixture",
-) -> dict[str, Any]:
-    from aiwiki.execution.l3_proposals import create_l3_proposal
-
-    return create_l3_proposal(
-        root,
-        kind=kind,
-        target_file=target_file,
-        content=content,
-        proposal_id=proposal_id,
-        rationale=rationale,
-        evidence_refs=evidence_refs,
-        signal_ids=signal_ids,
-        pattern=pattern,
-    )
-
-
-def run_l3_proposal_list(root: Path, *, kind: str | None = None, state: str | None = None) -> list[dict[str, Any]]:
-    from aiwiki.execution.l3_proposals import list_l3_proposals
-
-    return list_l3_proposals(root, kind=kind, state=state)
-
-
-def run_l3_proposal_generation_preview(
-    root: Path,
-    *,
-    planner_log_path: Path | None = None,
-    limit: int = 20,
-) -> dict[str, Any]:
-    from aiwiki.execution.l3_proposals import preview_l3_proposal_generation
-
-    return preview_l3_proposal_generation(root, planner_log_path=planner_log_path, limit=limit)
-
-
-def run_l3_proposal_generate(
-    root: Path,
-    *,
-    planner_log_path: Path | None = None,
-    limit: int = 20,
-    apply: bool = False,
-) -> dict[str, Any]:
-    if not apply:
-        return run_l3_proposal_generation_preview(root, planner_log_path=planner_log_path, limit=limit)
-    from aiwiki.execution.l3_proposals import generate_l3_proposals_from_planner
-
-    return generate_l3_proposals_from_planner(root, planner_log_path=planner_log_path, limit=limit)
-
-
-def run_l3_proposal_apply(root: Path, proposal_id: str, *, note: str | None = None) -> dict[str, Any]:
-    from aiwiki.execution.l3_proposals import apply_l3_proposal
-
-    return apply_l3_proposal(root, proposal_id, note=note)
-
-
-def run_l3_proposal_reject(root: Path, proposal_id: str, *, note: str | None = None) -> dict[str, Any]:
-    from aiwiki.execution.l3_proposals import reject_l3_proposal
-
-    return reject_l3_proposal(root, proposal_id, note=note)
-
-
-def run_l3_proposal_revert(root: Path, receipt_id: str, *, note: str | None = None) -> dict[str, Any]:
-    from aiwiki.execution.l3_proposals import revert_l3_proposal
-
-    return revert_l3_proposal(root, receipt_id, note=note)
-
-
-def run_alchemy_legacy_migration_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
-    from aiwiki.execution.alchemy import preview_legacy_elixir_migration
-
-    return preview_legacy_elixir_migration(root, limit=limit)
-
-
-def run_alchemy_legacy_migration_apply(root: Path, *, limit: int = 50, note: str | None = None) -> dict[str, Any]:
-    from aiwiki.execution.alchemy import apply_legacy_elixir_migration
-
-    return apply_legacy_elixir_migration(root, limit=limit, note=note)
-
-
-def run_alchemy_superseded_cleanup_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
-    from aiwiki.execution.alchemy import preview_superseded_elixir_cleanup
-
-    return preview_superseded_elixir_cleanup(root, limit=limit)
-
-
-def run_alchemy_superseded_cleanup_apply(root: Path, *, limit: int = 50, note: str | None = None) -> dict[str, Any]:
-    from aiwiki.execution.alchemy import apply_superseded_elixir_cleanup
-
-    return apply_superseded_elixir_cleanup(root, limit=limit, note=note)
-
-
-def run_audit_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
-    from aiwiki.execution.audit_preview import preview_universal_audit_stream
-
-    return preview_universal_audit_stream(root, limit=limit)
-
-
-def run_audit_backfill(root: Path, *, limit: int = 50, apply: bool = False) -> dict[str, Any]:
-    from aiwiki.execution.audit_preview import backfill_universal_audit_stream
-
-    return backfill_universal_audit_stream(root, limit=limit, apply=apply)
-
-
-def run_planner_log_rollback_preview(
-    root: Path,
-    *,
-    signal_id: str | None = None,
-    trace_id: str | None = None,
-    limit: int = 20,
-) -> dict[str, Any]:
-    from aiwiki.planner.rollback import preview_planner_log_rollback
-
-    return preview_planner_log_rollback(root, signal_id=signal_id, trace_id=trace_id, limit=limit)
-
-
-def run_planner_log_rollback(
-    root: Path,
-    *,
-    signal_id: str | None = None,
-    trace_id: str | None = None,
-    limit: int = 20,
-    apply: bool = False,
-) -> dict[str, Any]:
-    from aiwiki.planner.rollback import apply_planner_log_rollback_marker
-
-    return apply_planner_log_rollback_marker(root, signal_id=signal_id, trace_id=trace_id, limit=limit, apply=apply)
-
 
 @runtime_write_operation
 def run_compile(root: Path, client: SupportsComplete | None = None, limit: int = 5) -> dict[str, Any]:
@@ -1074,21 +974,6 @@ def run_ask(
         }
     return payload
 
-
-@runtime_write_operation
-def run_promote(root: Path, artifact_ref: str) -> dict[str, Any]:
-    from aiwiki.execution.candidates import promote_candidate
-
-    return promote_candidate(root, artifact_ref)
-
-
-@runtime_write_operation
-def run_demote(root: Path, artifact_ref: str) -> dict[str, Any]:
-    from aiwiki.execution.candidates import demote_candidate
-
-    return demote_candidate(root, artifact_ref)
-
-
 @runtime_write_operation
 def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, Any]:
     ensure_layout(root)
@@ -1400,135 +1285,6 @@ def auto_process_once(
         },
     )
     return result
-
-
-@runtime_write_operation
-def run_alchemy_start(
-    root: Path,
-    corpus_id: str,
-    topic: str,
-    *,
-    protocol: str | None = None,
-    include_elixir_ids: list[str] | None = None,
-) -> dict[str, Any]:
-    from aiwiki.execution.alchemy import start_elixir
-
-    return start_elixir(root, corpus_id, protocol=protocol, topic=topic, include_elixir_ids=include_elixir_ids)
-
-
-@runtime_write_operation
-def run_alchemy_distill(root: Path, elixir_id: str, question: str, include_elixir_ids: list[str] | None = None) -> dict[str, Any]:
-    from aiwiki.execution.alchemy import distill_elixir
-
-    return distill_elixir(root, elixir_id, question=question, include_elixir_ids=include_elixir_ids)
-
-
-@runtime_write_operation
-def run_alchemy_finalize(root: Path, *, elixir_id: str) -> dict[str, Any]:
-    from aiwiki.execution.alchemy import finalize_elixir
-
-    return finalize_elixir(root, elixir_id=elixir_id)
-
-
-@runtime_write_operation
-def run_alchemy_promote(root: Path, *, elixir_id: str, note: str | None = None) -> dict[str, Any]:
-    from aiwiki.execution.alchemy import promote_elixir
-
-    return promote_elixir(root, elixir_id=elixir_id, note=note)
-
-
-def run_alchemy_revert(root: Path, *, elixir_id: str, note: str | None = None) -> Path:
-    from aiwiki.execution.alchemy import revert_elixir
-
-    with runtime_write_lock(root):
-        return revert_elixir(root, elixir_id=elixir_id, note=note)
-
-
-def run_alchemy_demote(root: Path, *, elixir_id: str, note: str | None = None) -> Path:
-    from aiwiki.execution.alchemy import demote_elixir
-
-    with runtime_write_lock(root):
-        return demote_elixir(root, elixir_id=elixir_id, note=note)
-
-
-@runtime_write_operation
-def run_protocol_learn_add(root: Path, protocol: str, title: str, source_refs: list[str] | None) -> dict[str, Any]:
-    from aiwiki.execution.protocol_learnings import add_learning
-
-    return add_learning(root, protocol, title=title, source_refs=source_refs)
-
-
-def run_protocol_learn_list(
-    root: Path,
-    protocol: str | None = None,
-    *,
-    state_filter: str | None = None,
-    include_archived: bool = False,
-) -> list[dict[str, Any]]:
-    from aiwiki.execution.protocol_learnings import list_learnings
-
-    return list_learnings(root, protocol, state_filter=state_filter, include_archived=include_archived)
-
-
-def run_protocol_learn_show(root: Path, learning_id: str) -> dict[str, Any]:
-    from aiwiki.execution.protocol_learnings import show_learning
-
-    return show_learning(root, learning_id)
-
-
-def run_signals_list(
-    root: Path,
-    *,
-    kind: str | None = None,
-    trace_id: str | None = None,
-    since: str | None = None,
-    limit: int | None = None,
-) -> list[dict[str, Any]]:
-    from aiwiki.inspection import read_signals
-
-    return read_signals(
-        root,
-        kind=kind,
-        trace_id=trace_id,
-        since=since,
-        limit=limit,
-    )
-
-
-def run_signals_show(root: Path, signal_id: str) -> dict[str, Any]:
-    from aiwiki.inspection import find_planner_decisions_for_signal, find_signal_by_id
-
-    signal = find_signal_by_id(root, signal_id)
-    if signal is None:
-        return {"status": "not_found", "signal_id": signal_id}
-    decisions = find_planner_decisions_for_signal(root, signal_id)
-    return {
-        "status": "ok",
-        "signal": signal,
-        "planner_decisions": decisions,
-    }
-
-
-def run_planner_log_list(
-    root: Path,
-    *,
-    decision: str | None = None,
-    signal_id: str | None = None,
-    trace_id: str | None = None,
-    since: str | None = None,
-    limit: int | None = None,
-) -> list[dict[str, Any]]:
-    from aiwiki.inspection import read_planner_decisions
-
-    return read_planner_decisions(
-        root,
-        decision=decision,
-        signal_id=signal_id,
-        trace_id=trace_id,
-        since=since,
-        limit=limit,
-    )
-
 
 def run_alchemy_lane_dry_run(
     root: Path,
@@ -3690,49 +3446,6 @@ def _lane_receipt_result_summary(result: dict[str, Any]) -> dict[str, Any]:
     if "counts" in result and isinstance(result.get("counts"), dict):
         summary["counts"] = result["counts"]
     return summary
-
-
-@runtime_write_operation
-def run_protocol_learn_age(root: Path, protocol: str | None = None, apply: bool = False) -> dict[str, Any]:
-    from aiwiki.execution.protocol_learnings import age_learnings
-
-    return age_learnings(root, protocol=protocol, apply=apply)
-
-
-@runtime_write_operation
-def run_protocol_learn_verify(root: Path, learning_id: str) -> dict[str, Any]:
-    from aiwiki.execution.protocol_learnings import verify_learning
-
-    return verify_learning(root, learning_id)
-
-
-@runtime_write_operation
-def run_protocol_learn_revert_activate(root: Path, learning_id: str, *, note: str | None = None) -> dict[str, Any]:
-    from aiwiki.execution.protocol_learnings import revert_learning_activation
-
-    return revert_learning_activation(root, learning_id, note=note)
-
-
-@runtime_write_operation
-def run_protocol_learn_demote(root: Path, learning_id: str) -> dict[str, Any]:
-    from aiwiki.execution.protocol_learnings import demote_learning
-
-    return demote_learning(root, learning_id)
-
-
-@runtime_write_operation
-def run_protocol_learn_archive(root: Path, learning_id: str) -> dict[str, Any]:
-    from aiwiki.execution.protocol_learnings import archive_learning
-
-    return archive_learning(root, learning_id)
-
-
-@runtime_write_operation
-def run_protocol_learn_supersede(root: Path, replacement_id: str, superseded_ids: list[str]) -> dict[str, Any]:
-    from aiwiki.execution.protocol_learnings import supersede_learning
-
-    return supersede_learning(root, replacement_id, superseded_ids)
-
 
 def watch_inbox(
     root: Path,
