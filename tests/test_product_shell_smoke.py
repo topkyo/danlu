@@ -150,3 +150,45 @@ class UniversalInputPillContract(unittest.TestCase):
     def test_modal_preserved_for_other_call_sites(self):
         js = MAIN_JS.read_text(encoding="utf-8")
         self.assertIn("new DropFileModal", js)
+
+class TodayFeedTypographyContract(unittest.TestCase):
+    """M6.7.5: Typography token + Today Feed visual weight."""
+
+    def test_typography_tokens_exist(self):
+        """(a) styles.css含 --furnace-type- 至少 4 个 token"""
+        css = STYLES_CSS.read_text(encoding="utf-8")
+        tokens = re.findall(r"--furnace-type-[\w-]+", css)
+        self.assertGreaterEqual(len(set(tokens)), 4, "Should have at least 4 --furnace-type- tokens")
+
+    def test_today_feed_uses_tokens(self):
+        """(b) Today Feed render 中至少 3 处使用 var(--furnace-type-*)"""
+        css = STYLES_CSS.read_text(encoding="utf-8")
+        # Extract the today feed section roughly
+        today_feed_css = re.search(r"/\*\s*Today Feed.*?(?=\/\*|$)", css, re.DOTALL)
+        self.assertIsNotNone(today_feed_css, "Today feed section missing in CSS")
+        usages = re.findall(r"var\(--furnace-(?:type|weight)-[\w-]+\)", today_feed_css.group(0))
+        self.assertGreaterEqual(len(usages), 3, "Today feed should use tokens at least 3 times")
+
+    def test_no_new_raw_colors(self):
+        """(c) 不引入新 raw color (today feed 范围内)"""
+        css = STYLES_CSS.read_text(encoding="utf-8")
+        today_feed_css = re.search(r"/\*\s*Today Feed.*?(?=\/\*|$)", css, re.DOTALL).group(0)
+        # Should only have the 2 old hardcoded colors or vars, no new hex/rgb besides what was there
+        hex_colors = re.findall(r"#[0-9a-fA-F]{3,6}", today_feed_css)
+        self.assertLessEqual(len(hex_colors), 2, "Should not introduce new raw colors")
+
+    def test_today_feed_classes_exist(self):
+        """(d) Today Feed 各层 class 仍存在"""
+        js = MAIN_JS.read_text(encoding="utf-8")
+        css = STYLES_CSS.read_text(encoding="utf-8")
+        for cls in ["furnace-today-feed-title", "furnace-today-feed-summary", "furnace-today-feed-target"]:
+            self.assertIn(cls, js, f"Class {cls} missing from JS")
+            self.assertIn(f".{cls}", css, f"Class {cls} missing from CSS")
+
+    def test_no_selector_conflict_with_attachment_pill(self):
+        """(e) 与 attachment pill 无 selector 冲突"""
+        css = STYLES_CSS.read_text(encoding="utf-8")
+        # Just ensure both sections exist independently and one didn't overwrite the other
+        self.assertIn(".furnace-today-feed-title", css)
+        self.assertIn(".furnace-input-attachment", css)
+        self.assertNotIn(".furnace-input-attachment .furnace-today-feed", css)
