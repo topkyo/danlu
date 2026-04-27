@@ -449,6 +449,171 @@ class CLITests(unittest.TestCase):
         self.assertEqual(payload["material"], "url")
         self.assertNotIn("deprecated", stderr.lower())
 
+    def test_bare_drop_routes_to_typed_handlers(self) -> None:
+        cases = [
+            (
+                "url",
+                ["drop", "https://example.com"],
+                "drop_url",
+                (self.root, "https://example.com"),
+                {"title": None},
+            ),
+            (
+                "pdf",
+                ["drop", "paper.pdf"],
+                "drop_pdf",
+                (self.root, "paper.pdf"),
+                {"title": None},
+            ),
+            (
+                "image",
+                ["drop", "chart.png"],
+                "drop_image",
+                (self.root, "chart.png"),
+                {"title": None, "enable_vision": True},
+            ),
+            (
+                "repo",
+                ["drop", "git@example.com:org/repo.git"],
+                "drop_repo",
+                (self.root, "git@example.com:org/repo.git"),
+                {"title": None, "max_files": 200},
+            ),
+            (
+                "note-prefix",
+                ["drop", "note: my note"],
+                "drop_note",
+                (self.root, "my note"),
+                {"title": None, "text": None, "kind": "note"},
+            ),
+            (
+                "note-multiline",
+                ["drop", "line1\nline2"],
+                "drop_note",
+                (self.root, "line1\nline2"),
+                {"title": None, "text": None, "kind": "note"},
+            ),
+        ]
+        for name, argv, target, expected_args, expected_kwargs in cases:
+            with self.subTest(route=name):
+                with patch(f"aiwiki.cli.{target}", return_value={"route": name}) as mocked:
+                    code, payload, stderr = self._run_main(argv)
+
+                self.assertEqual(code, 0)
+                self.assertEqual(stderr, "")
+                self.assertEqual(payload["route"], name)
+                mocked.assert_called_once_with(*expected_args, **expected_kwargs)
+
+    def test_bare_drop_url_equivalent_to_typed_drop_url(self) -> None:
+        calls: list[tuple[Path, str, str | None]] = []
+
+        def fake_drop_url(root: Path, url: str, *, title: str | None = None) -> dict[str, object]:
+            calls.append((root, url, title))
+            return {"url": url, "title": title}
+
+        with patch("aiwiki.cli.drop_url", side_effect=fake_drop_url):
+            bare_code, bare_payload, bare_stderr = self._run_main(["drop", "https://example.com"])
+            typed_code, typed_payload, typed_stderr = self._run_main(["drop", "url", "https://example.com"])
+
+        self.assertEqual(bare_code, typed_code)
+        self.assertEqual(bare_stderr, typed_stderr)
+        self.assertEqual(bare_payload, typed_payload)
+        self.assertEqual(calls, [(self.root, "https://example.com", None), (self.root, "https://example.com", None)])
+
+    def test_bare_drop_stdin_routes_to_url(self) -> None:
+        with patch("sys.stdin", new=io.StringIO("https://example.com\n")):
+            with patch("aiwiki.cli.drop_url", return_value={"material": "url"}) as mocked:
+                code, payload, stderr = self._run_main(["drop", "-"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["material"], "url")
+        mocked.assert_called_once_with(self.root, "https://example.com", title=None)
+
+    def test_bare_drop_empty_stdin_exits_argparse_style(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("sys.stdin", new=io.StringIO("\n")):
+            with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
+                with self.assertRaises(SystemExit) as raised:
+                    main(["--root", str(self.root), "drop", "-"])
+
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("empty stdin payload", stderr.getvalue())
+
+    def test_typed_drop_url_is_not_rewritten_by_universal_router(self) -> None:
+        with patch("aiwiki.cli.drop_url", return_value={"material": "url"}) as mocked:
+            code, payload, stderr = self._run_main(["drop", "url", "https://example.com"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["material"], "url")
+        self.assertNotIn("deprecated", stderr.lower())
+        mocked.assert_called_once_with(self.root, "https://example.com", title=None)
+
+    def test_bare_drop_question_routes_to_ask(self) -> None:
+        with patch("aiwiki.cli.ask_question", return_value={"question": "what is x?"}) as mocked:
+            code, payload, stderr = self._run_main(["drop", "what is x?"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["question"], "what is x?")
+        mocked.assert_called_once_with(
+            self.root,
+            "what is x?",
+            "report",
+            protocol=None,
+            no_cache=False,
+            load_protocol_learnings=False,
+        )
+
+    def test_bare_drop_ask_prefix_strips_prefix(self) -> None:
+        with patch("aiwiki.cli.ask_question", return_value={"question": "hello"}) as mocked:
+            code, payload, stderr = self._run_main(["drop", "ask: hello"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["question"], "hello")
+        mocked.assert_called_once_with(
+            self.root,
+            "hello",
+            "report",
+            protocol=None,
+            no_cache=False,
+            load_protocol_learnings=False,
+        )
+
+    def test_drop_without_payload_keeps_required_subparser_error(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
+            with self.assertRaises(SystemExit) as raised:
+                main(["--root", str(self.root), "drop"])
+
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("required", stderr.getvalue())
+
+    def test_universal_drop_rewrite_preserves_help_requests(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
+            with self.assertRaises(SystemExit) as raised:
+                main(["--root", str(self.root), "drop", "https://example.com", "--help"])
+
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("invalid choice", stderr.getvalue())
+
+    def test_universal_drop_rewrite_handles_sys_argv_and_global_option_forms(self) -> None:
+        with patch("sys.argv", ["aiwiki", "--root=/tmp/root", "--verbose", "drop", "paper.pdf"]):
+            with patch("sys.stdin", new=io.StringIO("https://example.com\n")):
+                from aiwiki.cli import _rewrite_universal_drop_argv
+
+                self.assertEqual(_rewrite_universal_drop_argv(None), ["--root=/tmp/root", "--verbose", "drop", "pdf", "paper.pdf"])
+
+        from aiwiki.cli import _rewrite_universal_drop_argv
+
+        self.assertEqual(_rewrite_universal_drop_argv(["--root", str(self.root)]), ["--root", str(self.root)])
+        self.assertEqual(_rewrite_universal_drop_argv(["today"]), ["today"])
+
     def test_advanced_compile_dispatches_to_compile_handler(self) -> None:
         parser = build_parser()
 

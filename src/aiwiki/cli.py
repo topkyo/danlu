@@ -40,6 +40,7 @@ from .app_shell import build_shell_summary, rewrite_recovery_payload_for_paths, 
 from .app_state import load_machine_memory_action_state
 from .app_vault import bootstrap_new_vault
 from .drop import drop_image, drop_note, drop_pdf, drop_repo, drop_url
+from .input_router import UniversalRoute, classify_universal_input
 from .planner import write_planner_log
 from .runner import (
     auto_process_once,
@@ -989,8 +990,72 @@ def _configure_ask_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--load-learnings", action="store_true", help="Load protocol learnings into the prompt.")
 
 
+_DROP_TYPED_SUBCOMMANDS = {"url", "pdf", "image", "repo", "note"}
+
+
+def _rewrite_universal_drop_argv(argv: list[str] | None) -> list[str] | None:
+    if argv is None:
+        rewritten = list(sys.argv[1:])
+    else:
+        rewritten = list(argv)
+
+    drop_index = _top_level_drop_index(rewritten)
+    if drop_index is None:
+        return argv
+    if len(rewritten) <= drop_index + 1:
+        return rewritten
+
+    payload = rewritten[drop_index + 1]
+    if payload in _DROP_TYPED_SUBCOMMANDS or payload in {"question", "-h", "--help"}:
+        return rewritten
+    if "-h" in rewritten[drop_index + 2 :] or "--help" in rewritten[drop_index + 2 :]:
+        return rewritten
+
+    if payload == "-":
+        payload = sys.stdin.read().strip()
+        if not payload:
+            print("error: empty stdin payload", file=sys.stderr)
+            raise SystemExit(2)
+
+    decision = classify_universal_input(payload)
+    routed_payload = decision.payload
+    rest = rewritten[drop_index + 2 :]
+    if decision.route == UniversalRoute.ASK:
+        rewritten[drop_index:] = ["ask", routed_payload, *rest]
+    else:
+        routed_subcommand = {
+            UniversalRoute.URL: "url",
+            UniversalRoute.PDF: "pdf",
+            UniversalRoute.IMAGE: "image",
+            UniversalRoute.REPO: "repo",
+            UniversalRoute.NOTE: "note",
+        }[decision.route]
+        rewritten[drop_index:] = ["drop", routed_subcommand, routed_payload, *rest]
+    return rewritten
+
+
+def _top_level_drop_index(argv: list[str]) -> int | None:
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if token == "drop":
+            return index
+        if token in {"--root", "--model-fallback"}:
+            index += 2
+            continue
+        if token.startswith("--root=") or token.startswith("--model-fallback="):
+            index += 1
+            continue
+        if token.startswith("-"):
+            index += 1
+            continue
+        return None
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
+    argv = _rewrite_universal_drop_argv(argv)
     args = parser.parse_args(argv)
     root = Path(args.root).resolve()
     text_output: str | None = None
