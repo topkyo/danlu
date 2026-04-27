@@ -6,6 +6,29 @@
 
 ## 状态
 
+- **M7 路线图全部交付（M7.0 ~ M7.4） — 闭环**
+  - **总览**: 8 个 commit 推进炼丹炉从 7.8/10 到 **8.83/10**（落在 M7 目标区间 8.6~9.0 高位）。
+  - **commit 链**: `153881e`(M7.0) → `ca5cfb6`(M7.1) → `94afcde`(M7.2) → `e6b4898`(M7.3) → `609052c`(M7.3.1) → `f8bf121`(M7.4a) → `bd2b39c`(M7.4b1) → `c255828`(M7.4b2+b3) → `5ae67d9`(M7.4d) → `4ef60df`(M7.4c)
+  - **9+ Contract 重评分**:
+    | 约束 | M6.7 末 | M7 后 |
+    |---|---:|---:|
+    | Observe before schedule | 8.5 | 9.0 |
+    | Manual-first before automation | 8.8 | 9.2 |
+    | Scoped primitives only | 7.0 | 9.0 |
+    | Compatibility adapters | 8.2 | 8.5 |
+    | No hidden backend choice | 8.3 | **9.1** |
+    | Kill switch by design | 7.4 | **9.2** |
+    | **加权综合** | 7.8 | **8.83** |
+  - **关键能力交付**:
+    - 炼丹炉 metrics 7 维 + 历史 + 7d/30d delta（M7.3 / M7.3.1）
+    - 4 个 chokepoint kill switch hook（external_llm / lane_apply / alchemy_auto / l3_generate）+ 全局 panic env + CLI 操作面（M7.4a/b/c）
+    - Strict model policy：`AIWIKI_REQUIRE_EXPLICIT_MODEL` + `status.model_source`（M7.4d）
+    - lane primitive scope receipt 强制写入 + 测试断言（M7.1）
+    - Product Shell 首屏契约（M7.2）
+  - **质量证据**: verify 全程 5/5 stable × 多 milestone；最终 1374 unit + 12 acceptance / 93% coverage；acceptance golden 漂移 ≤ 2 文件（仅 M7.1 lane scope receipt 字段新增），全程 0 receipt 字段删除、0 shell-summary 字段删除、0 第三方依赖。
+  - **未做**（按设计）: M7 不动 Compatibility adapters 路径；hosted service / multi-user / heavy RAG / fine-tuning 仍为非目标。
+  - **下一步候选**: M8 级提分需触动 Compatibility adapters（旧 elixir → 新 candidate plane 双向读兼容套件），不属于 9+ 阻塞项；当前 8.83 已稳定达标，建议 M7 收口后转入用户实际使用反馈驱动。
+
 - **M7.4c Autonomy CLI Surface — 完成**
   - **目的**: 让 4 个 disable flag 与 global override 可被人类操作员从 CLI 直接观察、切换。M7.4 路线图最后一项。
   - **核心做法**:
