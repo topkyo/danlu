@@ -130,6 +130,25 @@ function normalizeEnabledChannels(value) {
   );
 }
 
+function buildNotifyEnv(settings) {
+  const env = {};
+  const feishuWebhookUrl = String(settings && settings.feishuWebhookUrl || "").trim();
+  if (feishuWebhookUrl) {
+    env.AIWIKI_NOTIFY_FEISHU_WEBHOOK_URL = feishuWebhookUrl;
+  }
+  const wecomWebhookUrl = String(settings && settings.wecomWebhookUrl || "").trim();
+  if (wecomWebhookUrl) {
+    env.AIWIKI_NOTIFY_WECOM_WEBHOOK_URL = wecomWebhookUrl;
+  }
+  const enabledChannels = Array.isArray(settings && settings.enabledChannels)
+    ? settings.enabledChannels.map((channel) => String(channel || "").trim()).filter(Boolean)
+    : [];
+  if (enabledChannels.length) {
+    env.AIWIKI_NOTIFY_ENABLED_CHANNELS = enabledChannels.join(",");
+  }
+  return env;
+}
+
 function reportDate(value) {
   const date = new Date(String(value || ""));
   return Number.isNaN(date.getTime()) ? null : date;

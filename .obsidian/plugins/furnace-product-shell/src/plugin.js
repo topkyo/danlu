@@ -1592,6 +1592,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       if (this.settings.llmNvidiaNimBaseUrl) {
         env.AIWIKI_NVIDIA_NIM_BASE_URL = this.settings.llmNvidiaNimBaseUrl;
       }
+      Object.assign(env, buildNotifyEnv(this.settings));
       const child = spawn(this.repoState.launcherPath, args, {
         cwd: this.repoState.root,
         env,

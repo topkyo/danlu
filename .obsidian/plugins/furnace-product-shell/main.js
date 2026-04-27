@@ -793,6 +793,25 @@ function normalizeEnabledChannels(value) {
   );
 }
 
+function buildNotifyEnv(settings) {
+  const env = {};
+  const feishuWebhookUrl = String(settings && settings.feishuWebhookUrl || "").trim();
+  if (feishuWebhookUrl) {
+    env.AIWIKI_NOTIFY_FEISHU_WEBHOOK_URL = feishuWebhookUrl;
+  }
+  const wecomWebhookUrl = String(settings && settings.wecomWebhookUrl || "").trim();
+  if (wecomWebhookUrl) {
+    env.AIWIKI_NOTIFY_WECOM_WEBHOOK_URL = wecomWebhookUrl;
+  }
+  const enabledChannels = Array.isArray(settings && settings.enabledChannels)
+    ? settings.enabledChannels.map((channel) => String(channel || "").trim()).filter(Boolean)
+    : [];
+  if (enabledChannels.length) {
+    env.AIWIKI_NOTIFY_ENABLED_CHANNELS = enabledChannels.join(",");
+  }
+  return env;
+}
+
 function reportDate(value) {
   const date = new Date(String(value || ""));
   return Number.isNaN(date.getTime()) ? null : date;
@@ -5272,6 +5291,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       if (this.settings.llmNvidiaNimBaseUrl) {
         env.AIWIKI_NVIDIA_NIM_BASE_URL = this.settings.llmNvidiaNimBaseUrl;
       }
+      Object.assign(env, buildNotifyEnv(this.settings));
       const child = spawn(this.repoState.launcherPath, args, {
         cwd: this.repoState.root,
         env,
