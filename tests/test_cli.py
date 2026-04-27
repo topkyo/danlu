@@ -175,6 +175,140 @@ class CLITests(unittest.TestCase):
             set(drop_action.choices),
         )
 
+    def test_today_subcommand_exists(self) -> None:
+        parser = build_parser()
+        action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
+
+        self.assertIn("today", action.choices)
+
+    def test_today_dispatches_to_today_handler(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(["today"])
+
+        self.assertEqual(args.handler_command, "today")
+
+    def test_today_prints_section_headings(self) -> None:
+        summary = {"generated_at": "2026-04-27T10:00:00+00:00", "active_protocol": "research"}
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, stdout, stderr = self._run_main_raw(["today"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertIn("Today's Reports", stdout)
+        self.assertIn("Needs Review", stdout)
+        self.assertIn("Completed Elixirs", stdout)
+        self.assertIn("L3 Proposals", stdout)
+        self.assertIn("Suggested Next Actions", stdout)
+        self.assertIn("Advanced", stdout)
+
+    def test_today_does_not_mutate_shell_summary(self) -> None:
+        summary = {
+            "generated_at": "2026-04-27T10:00:00+00:00",
+            "active_protocol": "research",
+            "recent_outputs": [{"generated_at": "2026-04-27T09:00:00+00:00", "path": "output/reports/a.md"}],
+            "suggested_next_actions": [{"title": "Review", "command": "aiwiki review-page --next --status approved"}],
+        }
+        before = json.loads(json.dumps(summary, sort_keys=True))
+
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, _stdout, _stderr = self._run_main_raw(["today"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(summary, before)
+
+    def test_today_renders_empty_placeholders(self) -> None:
+        summary = {"generated_at": "2026-04-27T10:00:00+00:00", "active_protocol": "research"}
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, stdout, stderr = self._run_main_raw(["today"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertIn("(no reports today)", stdout)
+        self.assertIn("(no pending review)", stdout)
+        self.assertIn("(no completed elixirs today)", stdout)
+        self.assertIn("(no L3 proposals need attention)", stdout)
+        self.assertIn("(no suggested next actions)", stdout)
+
+    def test_today_renders_today_reports(self) -> None:
+        summary = {
+            "generated_at": "2026-04-27T10:00:00+00:00",
+            "active_protocol": "research",
+            "recent_outputs": [
+                {
+                    "generated_at": "2026-04-27T09:00:00+00:00",
+                    "protocol": "research",
+                    "title": "Daily Report",
+                    "format": "report",
+                    "path": "output/reports/daily.md",
+                }
+            ],
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, stdout, stderr = self._run_main_raw(["today"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertIn("- [research] Daily Report — report — output/reports/daily.md", stdout)
+
+    def test_today_filters_non_today_reports(self) -> None:
+        summary = {
+            "generated_at": "2026-04-27T10:00:00+00:00",
+            "active_protocol": "research",
+            "recent_outputs": [
+                {
+                    "generated_at": "2026-04-26T23:59:59+00:00",
+                    "protocol": "research",
+                    "title": "Yesterday",
+                    "format": "report",
+                    "path": "output/reports/yesterday.md",
+                }
+            ],
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, stdout, stderr = self._run_main_raw(["today"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertNotIn("output/reports/yesterday.md", stdout)
+        self.assertIn("(no reports today)", stdout)
+
+    def test_today_renders_suggested_next_actions(self) -> None:
+        summary = {
+            "generated_at": "2026-04-27T10:00:00+00:00",
+            "active_protocol": "research",
+            "suggested_next_actions": [
+                {"title": "Review next page", "command": "aiwiki review-page --next --status approved"}
+            ],
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, stdout, stderr = self._run_main_raw(["today"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertIn("Review next page", stdout)
+        self.assertIn("aiwiki review-page --next --status approved", stdout)
+
+    def test_today_no_llm_call(self) -> None:
+        summary = {"generated_at": "2026-04-27T10:00:00+00:00", "active_protocol": "research"}
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            with patch("aiwiki.llm.create_backend_client") as llm_mock:
+                code, _stdout, stderr = self._run_main_raw(["today"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        llm_mock.assert_not_called()
+
+    def test_today_does_not_mutate_shell_status_json(self) -> None:
+        summary = {"generated_at": "2026-04-27T10:00:00+00:00", "active_protocol": "research"}
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            with patch("aiwiki.cli.shell_status") as shell_status_mock:
+                code, _stdout, stderr = self._run_main_raw(["today"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        shell_status_mock.assert_not_called()
+
     def test_drop_url_dispatches_to_drop_url_handler(self) -> None:
         parser = build_parser()
 

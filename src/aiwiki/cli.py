@@ -106,6 +106,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--root", default=".", help="Project root. Defaults to the current directory.")
     subparsers = parser.add_subparsers(dest="command", required=True)
     _register_legacy_top_level_parsers(subparsers)
+    today_parser = subparsers.add_parser("today", help="炼丹炉今日产出 / 待办 / 建议")
+    today_parser.set_defaults(handler_command="today")
     drop_parser = subparsers.add_parser("drop", help="炼丹炉输入端：投喂 URL / PDF / 图片 / 仓库 / 笔记 / 问题")
     drop_subparsers = drop_parser.add_subparsers(dest="drop_command", required=True)
     _register_drop_subcommand_parsers(drop_subparsers)
@@ -1030,6 +1032,8 @@ def main(argv: list[str] | None = None) -> int:
                 result = load_protocol_state(root)
         elif args.handler_command == "protocol-set":
             result = set_active_protocol(root, args.protocol)
+        elif args.handler_command == "today":
+            return today_command(root)
         elif args.handler_command == "shell-status":
             result = shell_status(root)
         elif args.handler_command == "dashboard":
@@ -1508,6 +1512,150 @@ def main(argv: list[str] | None = None) -> int:
 
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
+
+
+def today_command(root: Path) -> int:
+    summary = build_shell_summary(root)
+    print(_render_today_text(summary))
+    return 0
+
+
+def _render_today_text(summary: dict[str, object]) -> str:
+    generated_at = str(summary.get("generated_at") or "")
+    active_protocol = str(summary.get("active_protocol") or "")
+    today_date = _date_part(generated_at)
+    lines = [
+        "炼丹炉 Today",
+        f"Generated: {generated_at}",
+        f"Active protocol: {active_protocol}",
+        "",
+        "Today's Reports",
+    ]
+    report_lines = _today_report_lines(summary, today_date)
+    lines.extend(report_lines or ["(no reports today)"])
+    lines.extend(["", "Needs Review"])
+    review_lines = _needs_review_lines(summary)
+    lines.extend(review_lines or ["(no pending review)"])
+    lines.extend(["", "Completed Elixirs"])
+    elixir_lines = _completed_elixir_lines(summary, today_date)
+    lines.extend(elixir_lines or ["(no completed elixirs today)"])
+    lines.extend(["", "L3 Proposals"])
+    l3_lines = _l3_proposal_lines(summary)
+    lines.extend(l3_lines or ["(no L3 proposals need attention)"])
+    lines.extend(["", "Suggested Next Actions"])
+    action_lines = _suggested_next_action_lines(summary)
+    lines.extend(action_lines or ["(no suggested next actions)"])
+    lines.extend(
+        [
+            "",
+            "Advanced",
+            "Run `aiwiki advanced ...` for system status, receipts, audit, repair, lanes, and debugging.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _today_report_lines(summary: dict[str, object], today_date: str) -> list[str]:
+    lines: list[str] = []
+    for item in _dict_items(summary.get("recent_outputs")):
+        if _date_part(_first_text(item, "generated_at", "created_at")) != today_date:
+            continue
+        path = _first_text(item, "path", "artifact_path")
+        title = _first_text(item, "title") or Path(path).name or "?"
+        protocol = _first_text(item, "protocol") or "?"
+        output_format = _first_text(item, "format") or "?"
+        lines.append(f"- [{protocol}] {title} — {output_format} — {path or '?'}")
+    return lines
+
+
+def _needs_review_lines(summary: dict[str, object]) -> list[str]:
+    counts = summary.get("review_backlog_counts")
+    if not isinstance(counts, dict):
+        return []
+    lines: list[str] = []
+    for kind in sorted(counts):
+        value = counts.get(kind)
+        if isinstance(value, bool):
+            count = int(value)
+        elif isinstance(value, int):
+            count = value
+        else:
+            try:
+                count = int(str(value))
+            except (TypeError, ValueError):
+                count = 0
+        if count:
+            lines.append(f"- {kind} count={count} — review_backlog_counts — pending")
+    return lines
+
+
+def _completed_elixir_lines(summary: dict[str, object], today_date: str) -> list[str]:
+    lines: list[str] = []
+    for item in _dict_items(summary.get("recent_receipts")):
+        if _date_part(_first_text(item, "applied_at", "generated_at", "created_at")) != today_date:
+            continue
+        operation = _first_text(item, "operation") or "?"
+        subject_kind = _first_text(item, "subject_kind")
+        subject_id = _first_text(item, "subject_id")
+        action_id = _first_text(item, "action_id")
+        elixir_text = " ".join([operation, subject_kind, subject_id, action_id]).lower()
+        if "elixir" not in elixir_text and not any(token in operation.lower() for token in ("promote", "demote", "revert", "finalize")):
+            continue
+        title = _first_text(item, "title") or subject_id or "?"
+        receipt_path = _first_text(item, "receipt_path", "path") or "?"
+        lines.append(f"- {title} — {operation} — {receipt_path}")
+    return lines
+
+
+def _l3_proposal_lines(summary: dict[str, object]) -> list[str]:
+    review_controls = summary.get("review_controls")
+    if not isinstance(review_controls, dict):
+        return []
+    lines: list[str] = []
+    for item in _dict_items(review_controls.get("l3_proposals")):
+        if not item.get("needs_attention"):
+            continue
+        proposal_id = _first_text(item, "proposal_id") or "?"
+        kind = _first_text(item, "kind") or "?"
+        state = _first_text(item, "state", "current_status") or "?"
+        target_file = _first_text(item, "target_file") or "?"
+        lines.append(f"- {proposal_id} — {kind} — {state} — {target_file}")
+    return lines
+
+
+def _suggested_next_action_lines(summary: dict[str, object]) -> list[str]:
+    lines: list[str] = []
+    for item in _dict_items(summary.get("suggested_next_actions")):
+        title = _first_text(item, "title", "label", "name") or "?"
+        command = _first_text(item, "command", "cli", "action") or "?"
+        lines.append(f"- {title} — {command}")
+    return lines
+
+
+def _dict_items(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _first_text(item: dict[str, object], *keys: str) -> str:
+    for key in keys:
+        value = item.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return ""
+
+
+def _date_part(value: str) -> str:
+    text = str(value or "").strip()
+    if "T" in text:
+        return text.split("T", 1)[0]
+    if " " in text:
+        return text.split(" ", 1)[0]
+    return text[:10]
 
 
 def _format_signal_summary_line(record: dict[str, object]) -> str:
