@@ -65,8 +65,28 @@ def _read_wiki_pages(root: Path) -> Iterable[WikiPageMeta]:
             continue
 
 
-def _read_review_counts(_root: Path) -> Iterable[tuple[str, int]]:
-    return ()
+def _read_review_counts(root: Path) -> Iterable[tuple[str, int]]:
+    """M7.3 Stage A: real backlog counts from curated review queue.
+
+    Returns ``(("pending_decisions", n), ("pending_judgments", m))`` so that
+    ``compute_review_closure_rate`` can include current pending workload in its
+    sample size. Falls back to empty on any error to keep ``aiwiki metrics``
+    resilient under partial vault state.
+    """
+
+    try:
+        lifecycle = import_module("aiwiki.app_lifecycle")
+        decisions = lifecycle.collect_curated_pages(root, "decisions", "decision")
+        judgments = lifecycle.collect_curated_pages(root, "judgments", "judgment")
+        queue = lifecycle.review_queue(decisions, judgments)
+    except Exception:  # pragma: no cover - best-effort, never break metrics
+        return ()
+    pending_decisions = queue.get("pending_decisions") if isinstance(queue, dict) else None
+    pending_judgments = queue.get("pending_judgments") if isinstance(queue, dict) else None
+    return (
+        ("pending_decisions", len(pending_decisions) if isinstance(pending_decisions, list) else 0),
+        ("pending_judgments", len(pending_judgments) if isinstance(pending_judgments, list) else 0),
+    )
 
 
 def _read_receipts(root: Path) -> Iterable[ReceiptMeta]:

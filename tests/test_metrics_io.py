@@ -17,7 +17,9 @@ class MetricsIOTests(unittest.TestCase):
             snapshot = build_metrics_snapshot(Path(tempdir), now_iso="2026-04-27T00:00:00Z")
 
         self.assertEqual(snapshot.wiki_pages, ())
-        self.assertEqual(snapshot.review_counts, ())
+        # M7.3 Stage A: review_counts now reflects backlog; empty vault still
+        # has no decisions/judgments folders, so counts are zero rather than ().
+        self.assertEqual(dict(snapshot.review_counts), {"pending_decisions": 0, "pending_judgments": 0})
         self.assertEqual(snapshot.receipts, ())
         self.assertEqual(snapshot.proposals, ())
         self.assertEqual(snapshot.outputs, ())
@@ -192,6 +194,38 @@ class MetricsIOTests(unittest.TestCase):
 
     def test_safe_relative_path_handles_outside_path(self) -> None:
         self.assertTrue(metrics_io._safe_relative_path(Path("/tmp/root"), Path("/other/file.md")).endswith("/other/file.md"))
+
+    def test_review_counts_reads_pending_decisions_and_judgments(self) -> None:
+        """M7.3 Stage A: _read_review_counts no longer stub; reflects backlog."""
+
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            decisions_dir = root / "wiki" / "decisions"
+            judgments_dir = root / "wiki" / "judgments"
+            decisions_dir.mkdir(parents=True)
+            judgments_dir.mkdir(parents=True)
+            (decisions_dir / "d1.md").write_text(
+                "---\nkind: decision\ntitle: D1\nstatus: proposed\n---\nbody\n",
+                encoding="utf-8",
+            )
+            (decisions_dir / "d2.md").write_text(
+                "---\nkind: decision\ntitle: D2\nstatus: accepted\nreviewed_at: 2026-04-01T00:00:00Z\n---\nbody\n",
+                encoding="utf-8",
+            )
+            (judgments_dir / "j1.md").write_text(
+                "---\nkind: judgment\ntitle: J1\nstatus: tentative\n---\nbody\n",
+                encoding="utf-8",
+            )
+
+            snapshot = build_metrics_snapshot(root, now_iso="2026-04-27T00:00:00Z")
+
+        counts = dict(snapshot.review_counts)
+        self.assertIn("pending_decisions", counts)
+        self.assertIn("pending_judgments", counts)
+        self.assertEqual(counts["pending_decisions"], 1)
+        self.assertEqual(counts["pending_judgments"], 1)
 
 
 if __name__ == "__main__":

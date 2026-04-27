@@ -6,6 +6,14 @@
 
 ## 状态
 
+- **M7.3 Stage A: Real Review Counts — 完成**
+  - **目的**: 实化 `metrics_io._read_review_counts` stub（之前 `return ()`），让 `review_closure_rate` metric 真实反映 backlog（之前 `pending_now=0` 导致 ratio 失真偏高）。
+  - **核心做法**: `metrics_io._read_review_counts(root)` 复用 `app_lifecycle.collect_curated_pages` + `review_queue`，返回 `(("pending_decisions", n), ("pending_judgments", m))`；运行时容错 try/except 包裹保持 metrics 命令韧性；`tests/test_metrics_io.py` 新增 `test_review_counts_reads_pending_decisions_and_judgments` + 修正 empty-vault 断言（snapshot.review_counts 现在是 `{"pending_decisions":0,"pending_judgments":0}` 而非 `()`，更诚实）。
+  - **Gates**: `bash scripts/verify.sh` 5/5 连续 pass。
+  - **Stop Lines**: 0 metric key 名改动 / 0 metric JSON schema 改动 / 0 shell summary 既有字段改动 / 0 `compute_review_closure_rate` 公式改动 / 0 acceptance golden 触动。
+  - **Stage B 后续**: metrics-history.jsonl + `--delta 7d/30d` 拆分为独立 M7.3.1（避免单轮改动过大）。
+  - **价值**: 9+ Contract 第 1 条 "Observe before schedule" 证据真实化（review backlog 不再隐形为 0）。
+
 - **M7.2 Product Surface Reconciliation — 完成**
   - **目的**: 通过 explorer + oracle 双检确认 first-screen surface 已 converged，把原路线图（缩 core commands / today single-feed）降级为"文档纠偏 + 防回归 contract test"，避免负收益破坏。
   - **核心做法**: `tests/test_product_shell_smoke.py` 新增 `ProductShellFirstScreenContract`（6 个断言：首屏只挂 Universal Input + Today + Advanced，不挂 AskBox / DropZone）；`docs/Furnace M7 Roadmap.md` §4 重写为"already converged" + 综合分目标下调为 8.6~9.0。
