@@ -2621,11 +2621,10 @@ function isHttpUrl(value) {
 }
 
 function renderAdvancedDrawer(plugin, container) {
-  const details = container.createEl("details", { cls: "furnace-shell-advanced-drawer" });
-  const summary = details.createEl("summary", { text: plugin.t("Advanced") });
-  const body = details.createDiv({ cls: "furnace-shell-advanced-drawer-body" });
-  
-  // Render legacy content
+  const details = container.createEl("details", { cls: "furnace-shell-advanced" });
+  details.createEl("summary", { cls: "furnace-shell-advanced-summary", text: plugin.t("Advanced") });
+  const body = details.createDiv({ cls: "furnace-shell-advanced-body" });
+
   plugin.renderMainHeader(body);
   plugin.renderStatusPanel(body);
   plugin.renderLegacyAdvancedPanel(body);
