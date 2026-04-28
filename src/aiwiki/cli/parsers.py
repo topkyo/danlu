@@ -151,7 +151,10 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         "--limit",
         type=int,
         default=5,
-        help="Maximum number of pending source pages to enrich in one run.",
+        help=(
+            "Max number of LLM-enriched pages per stage. Note: run-compile is fail-fast — "
+            "first failure aborts remaining items in this stage."
+        ),
     )
 
     ask_parser = subparsers.add_parser("ask", help="Generate a query artifact grounded in the wiki.")

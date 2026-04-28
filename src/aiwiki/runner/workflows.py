@@ -137,6 +137,15 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
     started = time.monotonic()
     prompt_profile = ""
     retry_prompt_profile = ""
+    attempted_pages = 0
+    failed_pages = 0
+    attempted_concept_pages = 0
+    failed_concept_pages = 0
+    attempted_rewrite_concept_pages = 0
+    failed_rewrite_concept_pages = 0
+    page_stage_total = len(pending[:limit]) if limit > 0 else 0
+    concept_stage_total = len(pending_concept_slugs[:remaining_budget]) if limit > 0 else 0
+    rewrite_stage_total = len(pending_rewrite_candidates[:remaining_budget]) if limit > 0 else 0
 
     def summary_base_event(duration_ms: int) -> dict[str, Any]:
         return {
@@ -145,16 +154,48 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             "updated_pages": list(updated_pages),
             "pending_pages": len(pending),
             "skipped_pages": skipped,
+            "attempted_pages": attempted_pages,
+            "succeeded_pages": len(updated_pages),
+            "failed_pages": failed_pages,
+            "remaining_pages": max(0, page_stage_total - attempted_pages) if failed_pages else 0,
             "updated_concept_pages": list(updated_placeholder_concept_pages),
             "pending_concept_pages": len(pending_concept_slugs),
             "skipped_concept_pages": skipped_concepts,
+            "attempted_concept_pages": attempted_concept_pages,
+            "succeeded_concept_pages": len(updated_placeholder_concept_pages),
+            "failed_concept_pages": failed_concept_pages,
+            "remaining_concept_pages": max(0, concept_stage_total - attempted_concept_pages) if failed_concept_pages else 0,
             "updated_rewrite_concept_pages": [],
             "updated_rewrite_proposal_pages": list(updated_rewrite_proposal_pages),
             "pending_rewrite_concept_pages": len(pending_rewrite_candidates),
             "skipped_rewrite_concept_pages": skipped_rewrite_candidates,
+            "attempted_rewrite_concept_pages": attempted_rewrite_concept_pages,
+            "succeeded_rewrite_concept_pages": len(updated_rewrite_proposal_pages),
+            "failed_rewrite_concept_pages": failed_rewrite_concept_pages,
+            "remaining_rewrite_concept_pages": max(0, rewrite_stage_total - attempted_rewrite_concept_pages)
+            if failed_rewrite_concept_pages
+            else 0,
             "prompt_profile": prompt_profile,
             "retry_prompt_profile": retry_prompt_profile,
             "duration_ms": duration_ms,
+        }
+
+    def fail_fast_counters() -> dict[str, int]:
+        return {
+            "attempted_pages": attempted_pages,
+            "succeeded_pages": len(updated_pages),
+            "failed_pages": failed_pages,
+            "remaining_pages": max(0, page_stage_total - attempted_pages) if failed_pages else 0,
+            "attempted_concept_pages": attempted_concept_pages,
+            "succeeded_concept_pages": len(updated_placeholder_concept_pages),
+            "failed_concept_pages": failed_concept_pages,
+            "remaining_concept_pages": max(0, concept_stage_total - attempted_concept_pages) if failed_concept_pages else 0,
+            "attempted_rewrite_concept_pages": attempted_rewrite_concept_pages,
+            "succeeded_rewrite_concept_pages": len(updated_rewrite_proposal_pages),
+            "failed_rewrite_concept_pages": failed_rewrite_concept_pages,
+            "remaining_rewrite_concept_pages": max(0, rewrite_stage_total - attempted_rewrite_concept_pages)
+            if failed_rewrite_concept_pages
+            else 0,
         }
 
     if (not pending and not pending_concept_slugs and not pending_rewrite_candidates) or limit <= 0:
@@ -171,6 +212,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             "updated_pages": updated_pages,
             "pending_pages": len(pending),
             "skipped_pages": skipped,
+            **fail_fast_counters(),
             "updated_concept_pages": updated_placeholder_concept_pages,
             "pending_concept_pages": len(pending_concept_slugs),
             "skipped_concept_pages": skipped_concepts,
@@ -193,6 +235,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
     retry_prompt_profile = ""
     try:
         for entry in pending[:limit]:
+            attempted_pages += 1
             target = root / "wiki" / "sources" / f"{entry['id']}.md"
             raw_path = root / entry["stored_path"]
             current_page = target.read_text(encoding="utf-8", errors="replace")
@@ -264,6 +307,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                         "prompt_profile": used_profile,
                         "retry_prompt_profile": item_retry_profile,
                         "duration_ms": int((time.monotonic() - item_started) * 1000),
+                        **fail_fast_counters(),
                     },
                     item_audit,
                     status="success",
@@ -272,6 +316,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     raw_response_path=_raw_response_path(root, item_result),
                 )
             except Exception as exc:
+                failed_pages += 1
                 used_profile = item_retry_profile or item_profile
                 item_audit = _build_llm_audit(
                     effective_client,
@@ -289,6 +334,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                         "prompt_profile": used_profile,
                         "retry_prompt_profile": item_retry_profile,
                         "duration_ms": int((time.monotonic() - item_started) * 1000),
+                        **fail_fast_counters(),
                     },
                     item_audit,
                     status="failed",
@@ -306,8 +352,10 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             memory = load_machine_memory(root)
         remaining_budget = max(0, limit - len(updated_pages))
         skipped_concepts = max(0, len(pending_concept_slugs) - remaining_budget)
+        concept_stage_total = len(pending_concept_slugs[:remaining_budget])
 
         for slug in pending_concept_slugs[:remaining_budget]:
+            attempted_concept_pages += 1
             target = root / "wiki" / "concepts" / f"{slug}.md"
             if not target.exists():
                 continue
@@ -395,6 +443,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                         "prompt_profile": used_profile,
                         "retry_prompt_profile": item_retry_profile,
                         "duration_ms": int((time.monotonic() - item_started) * 1000),
+                        **fail_fast_counters(),
                     },
                     item_audit,
                     status="success",
@@ -403,6 +452,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     raw_response_path=_raw_response_path(root, item_result),
                 )
             except Exception as exc:
+                failed_concept_pages += 1
                 used_profile = item_retry_profile or item_profile
                 item_audit = _build_llm_audit(
                     effective_client,
@@ -420,6 +470,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                         "prompt_profile": used_profile,
                         "retry_prompt_profile": item_retry_profile,
                         "duration_ms": int((time.monotonic() - item_started) * 1000),
+                        **fail_fast_counters(),
                     },
                     item_audit,
                     status="failed",
@@ -441,8 +492,10 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             exclude=set(pending_concept_slugs) | {Path(path).stem for path in updated_placeholder_concept_pages},
         )
         skipped_rewrite_candidates = max(0, len(pending_rewrite_candidates) - remaining_budget)
+        rewrite_stage_total = len(pending_rewrite_candidates[:remaining_budget])
 
         for slug in pending_rewrite_candidates[:remaining_budget]:
+            attempted_rewrite_concept_pages += 1
             target = root / "wiki" / "concepts" / f"{slug}.md"
             if not target.exists():
                 continue
@@ -540,6 +593,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                         "prompt_profile": used_profile,
                         "retry_prompt_profile": item_retry_profile,
                         "duration_ms": int((time.monotonic() - item_started) * 1000),
+                        **fail_fast_counters(),
                     },
                     item_audit,
                     status="success",
@@ -548,6 +602,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     raw_response_path=_raw_response_path(root, item_result),
                 )
             except Exception as exc:
+                failed_rewrite_concept_pages += 1
                 used_profile = item_retry_profile or item_profile
                 item_audit = _build_llm_audit(
                     effective_client,
@@ -568,6 +623,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                         "prompt_profile": used_profile,
                         "retry_prompt_profile": item_retry_profile,
                         "duration_ms": int((time.monotonic() - item_started) * 1000),
+                        **fail_fast_counters(),
                     },
                     item_audit,
                     status="failed",
@@ -617,6 +673,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
         "updated_pages": updated_pages,
         "pending_pages": len(pending),
         "skipped_pages": skipped,
+        **fail_fast_counters(),
         "updated_concept_pages": updated_placeholder_concept_pages,
         "pending_concept_pages": len(pending_concept_slugs),
         "skipped_concept_pages": skipped_concepts,

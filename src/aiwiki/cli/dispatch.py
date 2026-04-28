@@ -266,7 +266,12 @@ def main(argv: list[str] | None = None) -> int:
         elif args.handler_command == "search":
             result = shell_search(root, args.query, limit=args.limit)
         elif args.handler_command == "run-compile":
-            result = run_compile(root, limit=args.limit)
+            try:
+                result = run_compile(root, limit=args.limit)
+            except Exception:
+                _print_run_compile_fail_fast_breadcrumb(_latest_run_compile_summary(root))
+                raise
+            _print_run_compile_fail_fast_breadcrumb(result)
         elif args.handler_command == "ask":
             ask_kwargs = {"protocol": args.protocol, "no_cache": args.no_cache, "load_protocol_learnings": args.load_learnings}
             if getattr(args, "corpus", None) is not None:
@@ -765,6 +770,42 @@ def _flatten_model_fallback_args(values: list[str]) -> list[str]:
             seen.add(model)
             models.append(model)
     return models
+
+
+def _latest_run_compile_summary(root: Path) -> dict[str, object]:
+    path = root / ".aiwiki" / "logs" / "runs.jsonl"
+    if not path.exists():
+        return {}
+    for line in reversed(path.read_text(encoding="utf-8").splitlines()):
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and payload.get("event") == "run-compile-summary":
+            return payload
+    return {}
+
+
+def _print_run_compile_fail_fast_breadcrumb(result: dict[str, object]) -> None:
+    for stage, prefix in [
+        ("pages", "pages"),
+        ("concept_pages", "concept_pages"),
+        ("rewrite_concept_pages", "rewrite_concept_pages"),
+    ]:
+        failed = int(result.get(f"failed_{prefix}", 0) or 0)
+        remaining = int(result.get(f"remaining_{prefix}", 0) or 0)
+        attempted = int(result.get(f"attempted_{prefix}", 0) or 0)
+        succeeded = int(result.get(f"succeeded_{prefix}", 0) or 0)
+        if failed > 0 or remaining > 0:
+            print(
+                f"aiwiki: → run-compile aborted at {stage}: "
+                f"attempted={attempted} succeeded={succeeded} "
+                f"failed={failed} remaining={remaining} (fail-fast). "
+                f"Re-run after addressing the failure.",
+                file=sys.stderr,
+            )
 
 
 def today_command(root: Path) -> int:
