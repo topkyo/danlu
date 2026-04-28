@@ -400,6 +400,174 @@ class CLITests(unittest.TestCase):
         self.assertIn("(no L3 proposals need attention)", stdout)
         self.assertIn("(no suggested next actions)", stdout)
 
+    def test_today_json_outputs_structured_buckets(self) -> None:
+        """P4-22: today --json 按 5 个 section 桶化输出，human 路径不变。"""
+        summary = {
+            "generated_at": "2026-04-27T10:00:00+00:00",
+            "active_protocol": "research",
+            "review_backlog_counts": {"decision": 2, "concept_backlog": 5},
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, stdout, stderr = self._run_main_raw(["today", "--json"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        payload = json.loads(stdout)
+        # 顶层 keys
+        self.assertEqual(
+            set(payload.keys()),
+            {
+                "generated_at",
+                "active_protocol",
+                "todays_reports",
+                "needs_review",
+                "completed_elixirs",
+                "l3_proposals",
+                "suggested_next_actions",
+            },
+        )
+        self.assertEqual(payload["active_protocol"], "research")
+        # needs_review 桶应有 2 项（decision + concept_backlog）
+        self.assertEqual(len(payload["needs_review"]), 2)
+        # entry 字段对齐 FeedEntry
+        sample = payload["needs_review"][0]
+        self.assertEqual(
+            set(sample.keys()),
+            {"kind", "title", "summary", "target", "timestamp", "protocol"},
+        )
+
+    def test_retire_concept_batch_multiple_slugs_calls_each(self) -> None:
+        """P4-19a: retire-concept 接受多 slug，按顺序循环调；receipt 桶化 count/slugs/receipts。"""
+        with patch("aiwiki.cli.retire_concept") as mocked:
+            mocked.side_effect = lambda root, slug, note=None: {"slug": slug, "status": "retired"}
+            code, payload, stderr = self._run_main(
+                ["retire-concept", "alpha", "beta", "gamma", "--note", "noise"]
+            )
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["count"], 3)
+        self.assertEqual(payload["slugs"], ["alpha", "beta", "gamma"])
+        self.assertEqual([r["slug"] for r in payload["receipts"]], ["alpha", "beta", "gamma"])
+        self.assertEqual(mocked.call_count, 3)
+        for call, slug in zip(mocked.call_args_list, ["alpha", "beta", "gamma"], strict=True):
+            self.assertEqual(call.args[1], slug)
+            self.assertEqual(call.kwargs.get("note"), "noise")
+
+    def test_retire_concept_single_slug_backwards_compatible(self) -> None:
+        """单 slug 仍直接返回原 receipt（不包到 batch wrapper）。"""
+        with patch("aiwiki.cli.retire_concept", return_value={"slug": "solo", "status": "retired"}) as mocked:
+            code, payload, stderr = self._run_main(["retire-concept", "solo"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload, {"slug": "solo", "status": "retired"})
+        mocked.assert_called_once()
+
+    def test_retire_concept_batch_fail_fast_on_first_error(self) -> None:
+        """fail-fast：第一个失败立即停止，不调后续 slug。"""
+        calls: list[str] = []
+
+        def fake_retire(root: Path, slug: str, note: str | None = None) -> dict[str, str]:
+            calls.append(slug)
+            if slug == "bad":
+                raise ValueError(f"cannot retire {slug}")
+            return {"slug": slug, "status": "retired"}
+
+        with patch("aiwiki.cli.retire_concept", side_effect=fake_retire):
+            with self.assertRaises(SystemExit) as ctx:
+                self._run_main(["retire-concept", "ok1", "bad", "ok2"])
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertEqual(calls, ["ok1", "bad"])
+
+    def test_reactivate_concept_batch_multiple_slugs(self) -> None:
+        """reactivate-concept 同样支持批量。"""
+        with patch("aiwiki.cli.reactivate_concept") as mocked:
+            mocked.side_effect = lambda root, slug, note=None: {"slug": slug, "status": "active"}
+            code, payload, stderr = self._run_main(
+                ["reactivate-concept", "alpha", "beta", "--note", "wake"]
+            )
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["count"], 2)
+        self.assertEqual(mocked.call_count, 2)
+
+    def test_review_queue_json_buckets_decision_entries(self) -> None:
+        """P4-16a: review-queue --json 桶化 needs_review entries。"""
+        summary = {
+            "generated_at": "2026-04-27T10:00:00+00:00",
+            "active_protocol": "research",
+            "review_backlog_counts": {"concept_backlog": 30, "revisit": 5, "mm_actions": 2},
+            "counter_evidence_pages": [
+                {"path": "wiki/judgments/j1.md", "subject": "j1", "summary": "反证", "detected_at": "2026-04-27T10:00:00+00:00"},
+            ],
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, payload, stderr = self._run_main(["review-queue", "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["active_protocol"], "research")
+        # 有 3 个 review_backlog_counts buckets + counter_evidence
+        self.assertIn("concept_backlog", payload["buckets"])
+        self.assertIn("revisit", payload["buckets"])
+        self.assertIn("mm_actions", payload["buckets"])
+        self.assertIn("counter_evidence", payload["buckets"])
+        self.assertEqual(payload["total"], 4)
+        # entry schema
+        sample = payload["buckets"]["concept_backlog"][0]
+        self.assertEqual(set(sample.keys()), {"title", "summary", "target", "timestamp", "protocol"})
+
+    def test_review_queue_filter_by_bucket(self) -> None:
+        """--bucket 过滤到单 bucket。"""
+        summary = {
+            "generated_at": "2026-04-27T10:00:00+00:00",
+            "active_protocol": "research",
+            "review_backlog_counts": {"concept_backlog": 30, "revisit": 5},
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, payload, stderr = self._run_main(["review-queue", "--bucket", "concept_backlog", "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(set(payload["buckets"].keys()), {"concept_backlog"})
+        self.assertEqual(payload["total"], 1)
+
+    def test_review_queue_text_renders_headings(self) -> None:
+        """text 模式输出 # Review Queue + 每 bucket heading。"""
+        summary = {
+            "generated_at": "2026-04-27T10:00:00+00:00",
+            "active_protocol": "research",
+            "review_backlog_counts": {"concept_backlog": 30},
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, stdout, stderr = self._run_main_raw(["review-queue"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertIn("# Review Queue", stdout)
+        self.assertIn("## concept_backlog", stdout)
+        self.assertIn("total        : 1", stdout)
+
+    def test_review_queue_empty_renders_placeholder(self) -> None:
+        summary = {"generated_at": "2026-04-27T10:00:00+00:00", "active_protocol": "research"}
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, stdout, stderr = self._run_main_raw(["review-queue"])
+        self.assertEqual(code, 0)
+        self.assertIn("(no pending review)", stdout)
+
+    def test_today_text_unchanged_when_no_json(self) -> None:
+        """P4-22 fail-gate: 默认（无 --json）输出 byte-for-byte 仍含原 5 个 heading + Advanced。"""
+        summary = {"generated_at": "2026-04-27T10:00:00+00:00", "active_protocol": "research"}
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, stdout, stderr = self._run_main_raw(["today"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        for heading in [
+            "Today's Reports",
+            "Needs Review",
+            "Completed Elixirs",
+            "L3 Proposals",
+            "Suggested Next Actions",
+            "Advanced",
+        ]:
+            self.assertIn(heading, stdout)
+
     def test_cli_model_fallback_single(self) -> None:
         captured: dict[str, object] = {}
 

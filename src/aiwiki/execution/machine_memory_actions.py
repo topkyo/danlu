@@ -390,6 +390,30 @@ def apply_machine_memory_action(
     else:
         raise RuntimeError(f"Unsupported apply mode: {apply_mode}")
 
+    # P4-19a: split-overloaded-concept apply 完成时联动 retire concept，
+    # 让 noise / 过载概念退出默认 ranking。失败不阻断 apply。
+    auto_retired_concept: str | None = None
+    auto_retire_error: str | None = None
+    if kind == "split-overloaded-concept":
+        slug_candidates = [
+            str(s).strip()
+            for s in (target.get("concept_slugs") or [])
+            if isinstance(s, str) and str(s).strip()
+        ]
+        if slug_candidates:
+            slug_to_retire = slug_candidates[0]
+            try:
+                from .lifecycle import retire_concept as _retire_concept
+
+                _retire_concept(
+                    root,
+                    slug_to_retire,
+                    note=f"Auto-retired via apply-action {resolved_action_id}.",
+                )
+                auto_retired_concept = slug_to_retire
+            except Exception as exc:  # pragma: no cover - defensive
+                auto_retire_error = f"{type(exc).__name__}: {exc}"
+
     receipt = build_execution_receipt(root, target, applied_at=applied_at, note=note, proposal=proposal)
     receipt_path = execution_receipt_path(root, resolved_action_id)
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
@@ -420,13 +444,18 @@ def apply_machine_memory_action(
         ],
     )
     compile_wiki(root)
-    return {
+    response: dict[str, Any] = {
         "id": resolved_action_id,
         "status": "resolved",
         "applied_at": applied_at,
         "apply_mode": apply_mode,
         "receipt_path": relative_path(root, receipt_path),
     }
+    if auto_retired_concept is not None:
+        response["auto_retired_concept"] = auto_retired_concept
+    if auto_retire_error is not None:
+        response["auto_retire_error"] = auto_retire_error
+    return response
 
 
 @runtime_write_operation

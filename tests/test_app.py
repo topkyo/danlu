@@ -6414,6 +6414,56 @@ class AiwikiFlowTests(unittest.TestCase):
         reverted = next(a for a in state_after["actions"] if a["id"] == bridge_action["id"])
         self.assertEqual(reverted["status"], "proposed")
 
+    def test_apply_split_overloaded_concept_action_auto_retires_concept(self) -> None:
+        """P4-19a: split-overloaded-concept apply 完成后联动 retire concept，receipt 含 auto_retired_concept。"""
+        self._seed_machine_memory_actions()
+        compile_wiki(self.root)
+
+        state = load_machine_memory_action_state(self.root)
+        overloaded_action = next(
+            (a for a in state["actions"] if a["kind"] == "split-overloaded-concept" and a["active"]),
+            None,
+        )
+        self.assertIsNotNone(overloaded_action, "Expected at least one active split-overloaded-concept action.")
+        slug = (overloaded_action["concept_slugs"] or [None])[0]
+        self.assertTrue(slug)
+
+        review_machine_memory_action(self.root, overloaded_action["id"], "accepted", note="Accept overloaded action.")
+
+        dry_run = apply_machine_memory_action(self.root, overloaded_action["id"], dry_run=True)
+        self.assertEqual(dry_run["apply_mode"], "resolve-monitor")
+        # auto_retired_concept 不应出现在 dry-run receipt
+        self.assertNotIn("auto_retired_concept", dry_run)
+
+        bundle_path = self.root / dry_run["bundle_path"]
+        bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        bundle_path.write_text(
+            json.dumps(dry_run["bundle"], ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        apply_result = apply_machine_memory_action(
+            self.root,
+            overloaded_action["id"],
+            note="Resolve overloaded concept and auto-retire.",
+            bundle_path=dry_run["bundle_path"],
+        )
+        self.assertEqual(apply_result["status"], "resolved")
+        self.assertEqual(apply_result["apply_mode"], "resolve-monitor")
+        # 关键：自动 retire 联动
+        self.assertEqual(apply_result.get("auto_retired_concept"), slug)
+        self.assertNotIn("auto_retire_error", apply_result)
+
+        # 验证 lifecycle 状态确实已变 retired
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        retired_entry = next(
+            (e for e in lifecycle["entries"] if Path(e["path"]).stem == slug and e["kind"] == "concept"),
+            None,
+        )
+        self.assertIsNotNone(retired_entry)
+        self.assertEqual(retired_entry["override_state"], "retired")
+        self.assertTrue(retired_entry["override_active"])
+
     def test_compile_generates_concept_quality_page(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
 

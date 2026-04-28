@@ -242,7 +242,14 @@ def main(argv: list[str] | None = None) -> int:
         elif args.handler_command == "protocol-set":
             result = set_active_protocol(root, args.protocol)
         elif args.handler_command == "today":
-            return today_command(root)
+            return today_command(root, as_json=getattr(args, "json", False))
+        elif args.handler_command == "review-queue":
+            return review_queue_command(
+                root,
+                bucket=getattr(args, "bucket", None),
+                limit=getattr(args, "limit", None),
+                as_json=getattr(args, "json", False),
+            )
         elif args.handler_command == "trace":
             return trace_command(
                 root,
@@ -637,9 +644,23 @@ def main(argv: list[str] | None = None) -> int:
         elif args.handler_command == "revert-rewrite":
             result = revert_concept_rewrite(root, args.slug, note=args.note)
         elif args.handler_command == "retire-concept":
-            result = retire_concept(root, args.slug, note=args.note)
+            slugs = list(args.slugs) if isinstance(args.slugs, list) else [args.slugs]
+            if len(slugs) == 1:
+                result = retire_concept(root, slugs[0], note=args.note)
+            else:
+                receipts: list[dict[str, object]] = []
+                for slug in slugs:
+                    receipts.append(retire_concept(root, slug, note=args.note))
+                result = {"slugs": slugs, "receipts": receipts, "count": len(receipts)}
         elif args.handler_command == "reactivate-concept":
-            result = reactivate_concept(root, args.slug, note=args.note)
+            slugs = list(args.slugs) if isinstance(args.slugs, list) else [args.slugs]
+            if len(slugs) == 1:
+                result = reactivate_concept(root, slugs[0], note=args.note)
+            else:
+                receipts = []
+                for slug in slugs:
+                    receipts.append(reactivate_concept(root, slug, note=args.note))
+                result = {"slugs": slugs, "receipts": receipts, "count": len(receipts)}
         elif args.handler_command == "review-action":
             result = review_machine_memory_action(
                 root,
@@ -807,12 +828,146 @@ def _print_run_compile_fail_fast_breadcrumb(result: dict[str, object]) -> None:
                 file=sys.stderr,
             )
 
-
-def today_command(root: Path) -> int:
+def today_command(root: Path, *, as_json: bool = False) -> int:
     summary = build_shell_summary(root)
     feed = build_today_feed(summary)
+    if as_json:
+        print(json.dumps(_today_feed_to_json(feed, summary), indent=2, ensure_ascii=False))
+        return 0
     print(_render_today_text(feed, summary))
     return 0
+
+
+def _classify_review_bucket(entry: FeedEntry) -> str:
+    """把 needs_review entry (kind=decision) 归到子 bucket。
+
+    Sub-bucket 来源：
+    - target 形如 "review:<x>" → "<x>" (e.g. concept_backlog, revisit, mm_actions, judgment_review)
+    - title 以 "反证待复核" 开头 → "counter_evidence"
+    - title 以 "知识漂移" 开头 → "drift"
+    - 其他 → "other"
+    """
+    target = entry.target or ""
+    if target.startswith("review:"):
+        return target.split(":", 1)[1].strip() or "other"
+    title = entry.title or ""
+    if title.startswith("反证待复核"):
+        return "counter_evidence"
+    if title.startswith("知识漂移"):
+        return "drift"
+    return "other"
+
+
+def review_queue_command(
+    root: Path,
+    *,
+    bucket: str | None = None,
+    limit: int | None = None,
+    as_json: bool = False,
+) -> int:
+    """P4-16a: review-queue — 桶化展示 needs_review，与 today 共用 build_today_feed。"""
+    summary = build_shell_summary(root)
+    feed = build_today_feed(summary)
+    decisions = [e for e in feed if e.kind == "decision"]
+
+    buckets: dict[str, list[FeedEntry]] = {}
+    for entry in decisions:
+        sub = _classify_review_bucket(entry)
+        buckets.setdefault(sub, []).append(entry)
+
+    if bucket:
+        bucket_key = bucket.strip()
+        buckets = {bucket_key: buckets.get(bucket_key, [])}
+
+    if limit is not None and limit >= 0:
+        buckets = {k: v[:limit] for k, v in buckets.items()}
+
+    if as_json:
+        out = {
+            "generated_at": str(summary.get("generated_at") or ""),
+            "active_protocol": str(summary.get("active_protocol") or ""),
+            "buckets": {
+                k: [
+                    {
+                        "title": e.title,
+                        "summary": e.summary,
+                        "target": e.target,
+                        "timestamp": e.timestamp,
+                        "protocol": e.protocol,
+                    }
+                    for e in v
+                ]
+                for k, v in sorted(buckets.items())
+            },
+            "total": sum(len(v) for v in buckets.values()),
+        }
+        print(json.dumps(out, indent=2, ensure_ascii=False))
+        return 0
+
+    lines: list[str] = []
+    lines.append("# Review Queue")
+    lines.append("")
+    lines.append(f"generated_at : {summary.get('generated_at') or ''}")
+    lines.append(f"protocol     : {summary.get('active_protocol') or ''}")
+    total = sum(len(v) for v in buckets.values())
+    lines.append(f"total        : {total}")
+    lines.append("")
+    if total == 0:
+        lines.append("(no pending review)")
+    else:
+        for bucket_name in sorted(buckets):
+            entries = buckets[bucket_name]
+            if not entries:
+                continue
+            lines.append(f"## {bucket_name} ({len(entries)})")
+            for e in entries:
+                lines.append(f"- {e.title} — {e.summary}")
+                if e.target:
+                    lines.append(f"    target: {e.target}")
+            lines.append("")
+    print("\n".join(lines).rstrip() + "\n")
+    return 0
+
+
+def _today_feed_to_json(feed: list[FeedEntry], summary: dict[str, object]) -> dict[str, object]:
+    """把 today feed 桶化成结构化 dict，对应 _render_today_text 的 5 个 section。
+
+    Bucket key 与 _render_today_text 的 section 对齐：
+    - todays_reports / needs_review / completed_elixirs / l3_proposals / suggested_next_actions
+    """
+    buckets: dict[str, list[FeedEntry]] = {
+        "report": [],
+        "decision": [],
+        "elixir": [],
+        "proposal": [],
+        "action": [],
+    }
+    for entry in feed:
+        buckets.setdefault(entry.kind, []).append(entry)
+    section_map = [
+        ("todays_reports", "report"),
+        ("needs_review", "decision"),
+        ("completed_elixirs", "elixir"),
+        ("l3_proposals", "proposal"),
+        ("suggested_next_actions", "action"),
+    ]
+    out: dict[str, object] = {
+        "generated_at": str(summary.get("generated_at") or ""),
+        "active_protocol": str(summary.get("active_protocol") or ""),
+    }
+    for json_key, feed_kind in section_map:
+        out[json_key] = [
+            {
+                "kind": e.kind,
+                "title": e.title,
+                "summary": e.summary,
+                "target": e.target,
+                "timestamp": e.timestamp,
+                "protocol": e.protocol,
+            }
+            for e in buckets.get(feed_kind, [])
+        ]
+    return out
 
 
 def trace_command(

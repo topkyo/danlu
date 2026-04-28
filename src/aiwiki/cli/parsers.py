@@ -22,6 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     _register_legacy_top_level_parsers(subparsers)
     today_parser = subparsers.add_parser("today", help="炼丹炉今日产出 / 待办 / 建议")
+    today_parser.add_argument("--json", action="store_true", help="JSON 输出（按 section 桶化）")
     today_parser.set_defaults(handler_command="today")
     metrics_parser = subparsers.add_parser("metrics", help="炼丹炉知识复利指标")
     metrics_parser.add_argument("--json", action="store_true", help="JSON 输出")
@@ -644,17 +645,41 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
 
     retire_concept_parser = subparsers.add_parser(
         "retire-concept",
-        help="Apply an explicit concept lifecycle override and retire a concept from default query ranking.",
+        help="Apply an explicit concept lifecycle override and retire one or more concepts from default query ranking.",
     )
-    retire_concept_parser.add_argument("slug", help="Concept slug.")
-    retire_concept_parser.add_argument("--note", help="Optional retire note.")
+    retire_concept_parser.add_argument(
+        "slugs",
+        nargs="+",
+        help="One or more concept slugs (fail-fast: first failure aborts remaining).",
+    )
+    retire_concept_parser.add_argument("--note", help="Optional retire note (applied to all slugs).")
 
     reactivate_concept_parser = subparsers.add_parser(
         "reactivate-concept",
-        help="Clear the active retired override for a concept and return it to heuristic lifecycle routing.",
+        help="Clear the active retired override for one or more concepts and return them to heuristic lifecycle routing.",
     )
-    reactivate_concept_parser.add_argument("slug", help="Concept slug.")
-    reactivate_concept_parser.add_argument("--note", help="Optional reactivate note.")
+    reactivate_concept_parser.add_argument(
+        "slugs",
+        nargs="+",
+        help="One or more concept slugs (fail-fast: first failure aborts remaining).",
+    )
+    reactivate_concept_parser.add_argument("--note", help="Optional reactivate note (applied to all slugs).")
+
+    review_queue_parser = subparsers.add_parser(
+        "review-queue",
+        help="List pending review items grouped by sub-bucket (decision-kind feed entries).",
+    )
+    review_queue_parser.add_argument(
+        "--bucket",
+        help="Filter to one sub-bucket name (e.g. concept_backlog, revisit, mm_actions, counter_evidence, drift).",
+    )
+    review_queue_parser.add_argument(
+        "--limit",
+        type=int,
+        help="Truncate each bucket to N items (>=0).",
+    )
+    review_queue_parser.add_argument("--json", action="store_true", help="Structured JSON output.")
+    review_queue_parser.set_defaults(handler_command="review-queue")
 
     action_review_parser = subparsers.add_parser(
         "review-action",
