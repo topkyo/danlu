@@ -164,11 +164,32 @@ def _top_level_drop_index(argv: list[str]) -> int | None:
     return None
 
 
+def _resolve_vault_root(args: argparse.Namespace) -> Path:
+    """Resolve vault root.
+
+    Precedence: explicit --root > AIWIKI_VAULT env > cwd '.'.
+    Prints a one-line stderr breadcrumb only when AIWIKI_VAULT env is used,
+    so default-cwd and explicit-root paths stay silent (no test noise).
+    """
+    explicit = getattr(args, "root", None)
+    if explicit is not None:
+        return Path(explicit).resolve()
+    env_vault = os.environ.get("AIWIKI_VAULT", "").strip()
+    if env_vault:
+        resolved = Path(env_vault).resolve()
+        print(
+            f"aiwiki: vault resolved from AIWIKI_VAULT env: {resolved}",
+            file=sys.stderr,
+        )
+        return resolved
+    return Path(".").resolve()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     argv = _rewrite_universal_drop_argv(argv)
     args = parser.parse_args(argv)
-    root = Path(args.root).resolve()
+    root = _resolve_vault_root(args)
     text_output: str | None = None
     fallback_env_was_set = "AIWIKI_MODEL_FALLBACK" in os.environ
     previous_fallback_env = os.environ.get("AIWIKI_MODEL_FALLBACK", "")

@@ -17,5 +17,8 @@ export PYTHONPATH=src
 # Dogfood 真实 vault（独立于 ai-wiki 实现仓库）
 # CLI 调用必须显式 --root "$AIWIKI_DOGFOOD_VAULT"，否则会误中 ai-wiki 仓库自身的 fixture vault
 export AIWIKI_DOGFOOD_VAULT="/home/tim/danlu/炼丹炉"
+# Canonical alias used by aiwiki CLI when --root is omitted (P4-11);
+# CLI 解析优先级: 显式 --root > AIWIKI_VAULT env > cwd '.'
+export AIWIKI_VAULT="$AIWIKI_DOGFOOD_VAULT"
 # Receipt 输出位置（vault 内 output/reports/）
 export AIWIKI_DOGFOOD_RECEIPT="$AIWIKI_DOGFOOD_VAULT/output/reports/dogfood-receipt-v0.md"

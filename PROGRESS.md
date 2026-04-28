@@ -6,6 +6,22 @@
 
 ## 状态
 
+- **P4-11 — Dogfood Vault Path Explicitness — 完成（close F4）**
+  - **目的**: F4 修补结果落地到 CLI；`.envrc.dogfood` 加 `AIWIKI_DOGFOOD_VAULT` 后变量仍未被 CLI 读取，agent 仍可能误落 cwd
+  - **设计核心**:
+    - `parsers.py`: `--root` default 改 `None`（区分用户显式 vs 默认）
+    - `dispatch.py`: 新增 `_resolve_vault_root(args)`，优先级 `--root > AIWIKI_VAULT env > cwd '.'`
+    - env 命中时 stderr 打 `aiwiki: vault resolved from AIWIKI_VAULT env: <abs_path>`；显式 `--root` 与默认 cwd 路径保持静默（向后兼容现有 1400+ 测试）
+    - 空字符串 / 全空白 `AIWIKI_VAULT` 视为未设
+    - 用户显式 `--root .` 与默认未传区分清楚（不触发 env 回落）
+    - `.envrc.dogfood` 追加 `export AIWIKI_VAULT="$AIWIKI_DOGFOOD_VAULT"` canonical alias，保留旧名向后兼容
+  - **测试**: `tests/test_cli.py::VaultRootResolutionTests` 5/5（explicit-wins / env-only / default-cwd / empty-env-unset / explicit-dot-explicit）
+  - **验证**: `bash scripts/verify.sh` exit 0、`All checks passed!`、coverage 稳定、acceptance 13/13
+  - **dogfood smoke**（vault `/home/tim/danlu/炼丹炉`）:
+    - `AIWIKI_VAULT=<vault> python -m aiwiki.cli today` → stderr breadcrumb + 正确 today 输出
+    - `python -m aiwiki.cli --root <vault> today` → 无 breadcrumb + 正确输出
+  - **闭环**: closed_loop.sh PASS
+
 - **P4-3 — Trace Concept Layer Support — 完成**
   - **目的**: 修复 dogfood-receipt-v0 friction F8（`aiwiki trace` 不识别 concept 层）
   - **方向 SoT**: `docs/Furnace Next Direction P4.md` + dogfood-receipt-v0 F8

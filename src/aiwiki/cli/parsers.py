@@ -8,7 +8,11 @@ from pathlib import Path
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aiwiki", description="Local-first knowledge compiler scaffold")
-    parser.add_argument("--root", default=".", help="Project root. Defaults to the current directory.")
+    parser.add_argument(
+        "--root",
+        default=None,
+        help="Project root. Defaults to AIWIKI_VAULT env when set, else current directory.",
+    )
     parser.add_argument(
         "--model-fallback",
         action="append",

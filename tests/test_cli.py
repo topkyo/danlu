@@ -1913,5 +1913,75 @@ class CLITests(unittest.TestCase):
         self.assertIn("generate-proposal", show_stdout)
 
 
+class VaultRootResolutionTests(unittest.TestCase):
+    """P4-11: CLI vault root resolution precedence + stderr breadcrumb."""
+
+    def setUp(self) -> None:
+        from aiwiki.cli import _resolve_vault_root, build_parser  # noqa: F401
+
+        self._resolve = _resolve_vault_root
+        self._build_parser = build_parser
+        self._prev_env = os.environ.get("AIWIKI_VAULT")
+        os.environ.pop("AIWIKI_VAULT", None)
+
+    def tearDown(self) -> None:
+        if self._prev_env is None:
+            os.environ.pop("AIWIKI_VAULT", None)
+        else:
+            os.environ["AIWIKI_VAULT"] = self._prev_env
+
+    def _parse(self, argv: list[str]):
+        return self._build_parser().parse_args(argv)
+
+    def test_explicit_root_wins_over_env(self) -> None:
+        with tempfile.TemporaryDirectory() as explicit_dir, tempfile.TemporaryDirectory() as env_dir:
+            os.environ["AIWIKI_VAULT"] = env_dir
+            args = self._parse(["--root", explicit_dir, "today"])
+            stderr = io.StringIO()
+            with patch("sys.stderr", stderr):
+                resolved = self._resolve(args)
+            self.assertEqual(resolved, Path(explicit_dir).resolve())
+            self.assertEqual(stderr.getvalue(), "")
+
+    def test_env_used_when_no_explicit_root(self) -> None:
+        with tempfile.TemporaryDirectory() as env_dir:
+            os.environ["AIWIKI_VAULT"] = env_dir
+            args = self._parse(["today"])
+            stderr = io.StringIO()
+            with patch("sys.stderr", stderr):
+                resolved = self._resolve(args)
+            self.assertEqual(resolved, Path(env_dir).resolve())
+            self.assertIn("AIWIKI_VAULT env", stderr.getvalue())
+            self.assertIn(str(Path(env_dir).resolve()), stderr.getvalue())
+
+    def test_default_cwd_when_neither_set(self) -> None:
+        args = self._parse(["today"])
+        stderr = io.StringIO()
+        with patch("sys.stderr", stderr):
+            resolved = self._resolve(args)
+        self.assertEqual(resolved, Path(".").resolve())
+        self.assertEqual(stderr.getvalue(), "")
+
+    def test_empty_env_treated_as_unset(self) -> None:
+        os.environ["AIWIKI_VAULT"] = "   "
+        args = self._parse(["today"])
+        stderr = io.StringIO()
+        with patch("sys.stderr", stderr):
+            resolved = self._resolve(args)
+        self.assertEqual(resolved, Path(".").resolve())
+        self.assertEqual(stderr.getvalue(), "")
+
+    def test_explicit_dot_is_explicit_not_default(self) -> None:
+        # User typing `--root .` should NOT trigger env fallback.
+        with tempfile.TemporaryDirectory() as env_dir:
+            os.environ["AIWIKI_VAULT"] = env_dir
+            args = self._parse(["--root", ".", "today"])
+            stderr = io.StringIO()
+            with patch("sys.stderr", stderr):
+                resolved = self._resolve(args)
+            self.assertEqual(resolved, Path(".").resolve())
+            self.assertEqual(stderr.getvalue(), "")
+
+
 if __name__ == "__main__":
     unittest.main()
