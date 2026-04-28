@@ -1441,3 +1441,94 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(_pending_summary_count(self.root), 0)
         with patch("aiwiki.runner.prompts.LLMConfig.status_from_env", return_value={"max_context_chars": 1234}):
             self.assertEqual(_context_budget(), 1234)
+
+    def test_run_compile_skips_preflight_when_client_injected(self) -> None:
+        with patch("aiwiki.runner.preflight.probe_backend") as probe_backend:
+            result = run_compile(self.root, client=_DummyClient(), limit=0)
+
+        probe_backend.assert_not_called()
+        self.assertEqual(result["updated_pages"], [])
+
+    def test_run_ask_skips_preflight_when_client_injected(self) -> None:
+        artifact_path = self.root / "output" / "reports" / "query-preflight-skip.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text("---\nid: query-preflight-skip\nkind: report\n---\n\n# Placeholder\n", encoding="utf-8")
+        artifact = {
+            "path": "output/reports/query-preflight-skip.md",
+            "format": "report",
+            "protocol": "general",
+            "ranked_sources": [],
+            "ranked_concepts": [],
+            "protocol_pages": [],
+            "index_pages": [],
+            "machine_memory_query": {},
+        }
+
+        class _AskClient:
+            config = type("Config", (), {"model": "gpt-5.4", "timeout_seconds": 120})()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                del user_prompt
+                return CompletionResult(
+                    text="---\nid: query-preflight-skip\nkind: report\n---\n\n# Answer\n\nNo sources required.\n",
+                    response_id="resp-preflight-skip",
+                    usage={},
+                )
+
+        with patch("aiwiki.runner.preflight.probe_backend") as probe_backend:
+            with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
+                with patch("aiwiki.runner.workflows._validate_output_markdown", return_value=None):
+                    run_ask(self.root, "测试", "report", client=_AskClient())
+
+        probe_backend.assert_not_called()
+
+    def test_run_compile_calls_preflight_when_client_none(self) -> None:
+        with patch(
+            "aiwiki.runner.preflight.probe_backend",
+            return_value={"compatibility": "compatible", "backend": "codex-cli", "model": "gpt-5.5", "compatibility_hint": ""},
+        ) as probe_backend:
+            with patch("aiwiki.runner.preflight.LLMConfig.from_env", return_value=LLMConfig(backend="codex-cli")):
+                result = run_compile(self.root, client=None, limit=0)
+
+        probe_backend.assert_called_once()
+        self.assertEqual(result["updated_pages"], [])
+
+    def test_run_ask_calls_preflight_when_client_none(self) -> None:
+        artifact_path = self.root / "output" / "reports" / "query-preflight-call.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text("---\nid: query-preflight-call\nkind: report\n---\n\n# Placeholder\n", encoding="utf-8")
+        artifact = {
+            "path": "output/reports/query-preflight-call.md",
+            "format": "report",
+            "protocol": "general",
+            "ranked_sources": [],
+            "ranked_concepts": [],
+            "protocol_pages": [],
+            "index_pages": [],
+            "machine_memory_query": {},
+        }
+
+        class _AskClient:
+            config = type("Config", (), {"model": "gpt-5.4", "timeout_seconds": 120})()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                del user_prompt
+                return CompletionResult(
+                    text="---\nid: query-preflight-call\nkind: report\n---\n\n# Answer\n\nNo sources required.\n",
+                    response_id="resp-preflight-call",
+                    usage={},
+                )
+
+        with patch(
+            "aiwiki.runner.preflight.probe_backend",
+            return_value={"compatibility": "compatible", "backend": "codex-cli", "model": "gpt-5.5", "compatibility_hint": ""},
+        ) as probe_backend:
+            with patch("aiwiki.runner.preflight.LLMConfig.from_env", return_value=LLMConfig(backend="codex-cli")):
+                with patch("aiwiki.runner.workflows.create_client", return_value=_AskClient()):
+                    with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
+                        with patch("aiwiki.runner.workflows._validate_output_markdown", return_value=None):
+                            run_ask(self.root, "测试", "report", client=None)
+
+        probe_backend.assert_called_once()

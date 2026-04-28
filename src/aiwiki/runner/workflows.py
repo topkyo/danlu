@@ -101,6 +101,10 @@ def _raw_response_path(root: Path, result: CompletionResult | None, exc: Excepti
 @runtime_write_operation
 def run_compile(root: Path, client: SupportsComplete | None = None, limit: int = 5) -> dict[str, Any]:
     ensure_layout(root)
+    if client is None:
+        from aiwiki.runner.preflight import preflight_check_backend
+
+        preflight_check_backend(root)
     compile_result = compile_wiki(root)
     manifest = load_manifest(root)
     pending = []
@@ -655,6 +659,10 @@ def run_ask(
     ensure_layout(root)
     if timeout_seconds is not None and timeout_seconds <= 0:
         raise ValueError("run-ask timeout_seconds must be greater than 0.")
+    if client is None:
+        from aiwiki.runner.preflight import preflight_check_backend
+
+        preflight_check_backend(root)
     ask_kwargs = {"protocol": protocol, "no_cache": no_cache}
     if corpus_id_override is not None:
         ask_kwargs["corpus_id_override"] = corpus_id_override
