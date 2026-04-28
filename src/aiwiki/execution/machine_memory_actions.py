@@ -5,6 +5,7 @@ that used to live at the top of ``aiwiki.app_compile``:
 
 - ``resolve_machine_memory_action_query``
 - ``review_machine_memory_action``
+- ``review_machine_memory_actions_batch``
 - ``apply_machine_memory_action``
 - ``revert_machine_memory_action``
 - ``_save_machine_memory_action_records``
@@ -149,6 +150,34 @@ def resolve_machine_memory_action_query(
     raise FileNotFoundError(f"Machine-memory action not found: {action_query}")
 
 
+def _update_action_review_state(
+    root: Path,
+    target: dict[str, Any],
+    status: str,
+    *,
+    note: str | None,
+    reviewed_at: str,
+) -> None:
+    target["status"] = status
+    target["reviewed_at"] = reviewed_at
+    target["status_updated_at"] = reviewed_at
+    target["review_note"] = note or ""
+    target["pending_review"] = "true" if action_needs_review(status) else "false"
+    if status in PENDING_ACTION_STATUSES:
+        revisit_after, escalate_after = schedule_review_windows(
+            "action",
+            status,
+            reviewed_at,
+            protocol=str(target.get("protocol") or DEFAULT_PROTOCOL),
+            root=root,
+        )
+    else:
+        revisit_after, escalate_after = "", ""
+    target["revisit_after"] = revisit_after
+    target["escalate_after"] = escalate_after
+    target.update(evaluate_page_aging(target))
+
+
 @runtime_write_operation
 def review_machine_memory_action(
     root: Path,
@@ -172,24 +201,7 @@ def review_machine_memory_action(
     target = resolve_machine_memory_action_query(actions, action_id)
     resolved_action_id = str(target.get("id") or action_id.strip())
     reviewed_at = _app_compile.utc_now()
-    target["status"] = status
-    target["reviewed_at"] = reviewed_at
-    target["status_updated_at"] = reviewed_at
-    target["review_note"] = note or ""
-    target["pending_review"] = "true" if action_needs_review(status) else "false"
-    if status in PENDING_ACTION_STATUSES:
-        revisit_after, escalate_after = schedule_review_windows(
-            "action",
-            status,
-            reviewed_at,
-            protocol=str(target.get("protocol") or DEFAULT_PROTOCOL),
-            root=root,
-        )
-    else:
-        revisit_after, escalate_after = "", ""
-    target["revisit_after"] = revisit_after
-    target["escalate_after"] = escalate_after
-    target.update(evaluate_page_aging(target))
+    _update_action_review_state(root, target, status, note=note, reviewed_at=reviewed_at)
     save_machine_memory_action_state(root, {"version": 1, "actions": actions})
     append_wiki_log(
         root,
@@ -208,6 +220,101 @@ def review_machine_memory_action(
         "status": status,
         "reviewed_at": reviewed_at,
         "active": bool(target.get("active", True)),
+    }
+
+
+@runtime_write_operation
+def review_machine_memory_actions_batch(
+    root: Path,
+    action_ids: list[str],
+    status: str,
+    *,
+    note: str | None = None,
+) -> dict[str, Any]:
+    """Batch review machine-memory actions with one state write and compile.
+
+    The single-action API compiles after each update. Batch triage is meant for
+    review-first queues, so this owner updates every selected action first and
+    then runs one compile to refresh derived policy/apply_ready fields and wiki
+    surfaces.
+    """
+    from .. import app_compile as _app_compile
+
+    ensure_layout(root)
+    if status not in ACTION_STATUSES:
+        raise ValueError(
+            f"Unsupported machine-memory action status: {status!r}; "
+            f"expected one of: {ACTION_STATUSES}"
+        )
+    ordered_ids: list[str] = []
+    seen_ids: set[str] = set()
+    for raw in action_ids:
+        if not isinstance(raw, str):
+            continue
+        normalized = raw.strip()
+        if not normalized or normalized in seen_ids:
+            continue
+        seen_ids.add(normalized)
+        ordered_ids.append(normalized)
+    if not ordered_ids:
+        raise ValueError("Batch review-action requires at least one action id.")
+
+    state = load_machine_memory_action_state(root)
+    actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
+    targets: list[dict[str, Any]] = []
+    resolved_ids: list[str] = []
+    for action_id in ordered_ids:
+        target = resolve_machine_memory_action_query(actions, action_id)
+        resolved_id = str(target.get("id") or action_id)
+        if resolved_id in resolved_ids:
+            continue
+        targets.append(target)
+        resolved_ids.append(resolved_id)
+    if not targets:
+        raise ValueError("Batch review-action requires at least one resolved action.")
+
+    reviewed_at = _app_compile.utc_now()
+    receipts: list[dict[str, Any]] = []
+    for target, resolved_id in zip(targets, resolved_ids, strict=True):
+        _update_action_review_state(root, target, status, note=note, reviewed_at=reviewed_at)
+        receipts.append(
+            {
+                "id": resolved_id,
+                "status": status,
+                "reviewed_at": reviewed_at,
+                "active": bool(target.get("active", True)),
+            }
+        )
+    save_machine_memory_action_state(root, {"version": 1, "actions": actions})
+    append_wiki_log(
+        root,
+        "action-review-batch",
+        f"{len(receipts)} actions",
+        [
+            f"status: `{status}`",
+            f"actions: `{', '.join(resolved_ids[:5])}`",
+            f"note: `{note or ''}`",
+        ],
+    )
+    append_runtime_history(
+        root,
+        {
+            "event_type": "action-review-batch",
+            "occurred_at": reviewed_at,
+            "action_ids": resolved_ids,
+            "status": status,
+            "count": len(receipts),
+            "note": note or "",
+        },
+    )
+    compile_wiki(root)
+    return {
+        "operation": "action-review-batch",
+        "action_ids": resolved_ids,
+        "status": status,
+        "count": len(receipts),
+        "reviewed_at": reviewed_at,
+        "receipts": receipts,
     }
 
 

@@ -649,6 +649,7 @@ _LAZY_OWNERS: dict[str, str] = {
     # Machine-memory action (EP-018B group 6) — migrated to aiwiki.execution.machine_memory_actions
     "resolve_machine_memory_action_query": "aiwiki.execution.machine_memory_actions",
     "review_machine_memory_action": "aiwiki.execution.machine_memory_actions",
+    "review_machine_memory_actions_batch": "aiwiki.execution.machine_memory_actions",
     "apply_machine_memory_action": "aiwiki.execution.machine_memory_actions",
     "revert_machine_memory_action": "aiwiki.execution.machine_memory_actions",
     "_save_machine_memory_action_records": "aiwiki.execution.machine_memory_actions",

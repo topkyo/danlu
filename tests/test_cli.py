@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from aiwiki.app_compile import ask_question
 from aiwiki.app_protocol import ensure_layout
+from aiwiki.app_state import save_machine_memory_action_state
 from aiwiki.app_utils import parse_frontmatter
 from aiwiki.cli import (
     _resolve_action_id,
@@ -438,7 +439,7 @@ class CLITests(unittest.TestCase):
 
     def test_retire_concept_batch_multiple_slugs_calls_each(self) -> None:
         """P4-19a: retire-concept 接受多 slug，按顺序循环调；receipt 桶化 count/slugs/receipts。"""
-        with patch("aiwiki.cli.retire_concept") as mocked:
+        with patch("aiwiki.cli.retire_concept") as mocked, patch("aiwiki.cli.compile_wiki") as compile_mock:
             mocked.side_effect = lambda root, slug, note=None: {"slug": slug, "status": "retired"}
             code, payload, stderr = self._run_main(
                 ["retire-concept", "alpha", "beta", "gamma", "--note", "noise"]
@@ -449,18 +450,20 @@ class CLITests(unittest.TestCase):
         self.assertEqual(payload["slugs"], ["alpha", "beta", "gamma"])
         self.assertEqual([r["slug"] for r in payload["receipts"]], ["alpha", "beta", "gamma"])
         self.assertEqual(mocked.call_count, 3)
+        compile_mock.assert_called_once_with(self.root)
         for call, slug in zip(mocked.call_args_list, ["alpha", "beta", "gamma"], strict=True):
             self.assertEqual(call.args[1], slug)
             self.assertEqual(call.kwargs.get("note"), "noise")
 
     def test_retire_concept_single_slug_backwards_compatible(self) -> None:
         """单 slug 仍直接返回原 receipt（不包到 batch wrapper）。"""
-        with patch("aiwiki.cli.retire_concept", return_value={"slug": "solo", "status": "retired"}) as mocked:
+        with patch("aiwiki.cli.retire_concept", return_value={"slug": "solo", "status": "retired"}) as mocked, patch("aiwiki.cli.compile_wiki") as compile_mock:
             code, payload, stderr = self._run_main(["retire-concept", "solo"])
         self.assertEqual(code, 0)
         self.assertEqual(stderr, "")
         self.assertEqual(payload, {"slug": "solo", "status": "retired"})
         mocked.assert_called_once()
+        compile_mock.assert_called_once_with(self.root)
 
     def test_retire_concept_batch_fail_fast_on_first_error(self) -> None:
         """fail-fast：第一个失败立即停止，不调后续 slug。"""
@@ -480,7 +483,7 @@ class CLITests(unittest.TestCase):
 
     def test_reactivate_concept_batch_multiple_slugs(self) -> None:
         """reactivate-concept 同样支持批量。"""
-        with patch("aiwiki.cli.reactivate_concept") as mocked:
+        with patch("aiwiki.cli.reactivate_concept") as mocked, patch("aiwiki.cli.compile_wiki") as compile_mock:
             mocked.side_effect = lambda root, slug, note=None: {"slug": slug, "status": "active"}
             code, payload, stderr = self._run_main(
                 ["reactivate-concept", "alpha", "beta", "--note", "wake"]
@@ -489,13 +492,14 @@ class CLITests(unittest.TestCase):
         self.assertEqual(stderr, "")
         self.assertEqual(payload["count"], 2)
         self.assertEqual(mocked.call_count, 2)
+        compile_mock.assert_called_once_with(self.root)
 
     def test_review_concept_single_slug_calls_review_concept(self) -> None:
         """P4-19b: 单 slug 直接调 review_concept，不走 batch wrapper。"""
         with patch(
             "aiwiki.cli.review_concept",
             return_value={"slug": "alpha", "status": "deferred"},
-        ) as mocked:
+        ) as mocked, patch("aiwiki.cli.compile_wiki") as compile_mock:
             code, payload, stderr = self._run_main(
                 ["review-concept", "alpha", "--status", "deferred", "--note", "ack"]
             )
@@ -507,6 +511,7 @@ class CLITests(unittest.TestCase):
         self.assertEqual(call.args[1], "alpha")
         self.assertEqual(call.kwargs.get("status"), "deferred")
         self.assertEqual(call.kwargs.get("note"), "ack")
+        compile_mock.assert_called_once_with(self.root)
 
     def test_review_concept_batch_multiple_slugs_uses_batch_helper(self) -> None:
         """P4-19b: 多 slug 走 review_concepts_batch，receipt 桶化。"""
@@ -521,7 +526,7 @@ class CLITests(unittest.TestCase):
                 "count": 2,
                 "status": "deferred",
             },
-        ) as mocked:
+        ) as mocked, patch("aiwiki.cli.compile_wiki") as compile_mock:
             code, payload, stderr = self._run_main(
                 ["review-concept", "alpha", "beta", "--status", "deferred"]
             )
@@ -532,6 +537,7 @@ class CLITests(unittest.TestCase):
         call = mocked.call_args
         self.assertEqual(call.args[1], ["alpha", "beta"])
         self.assertEqual(call.kwargs.get("status"), "deferred")
+        compile_mock.assert_called_once_with(self.root)
 
     def test_review_concept_rejects_status_not_in_choices(self) -> None:
         """argparse 拒绝非法 --status (e.g. retired 走 retire-concept；revisit 是启发式状态)."""
@@ -562,13 +568,14 @@ class CLITests(unittest.TestCase):
         ), patch(
             "aiwiki.cli.review_concepts_batch",
             return_value={"slugs": [], "receipts": [], "count": 0, "status": "deferred"},
-        ) as batch_mock:
+        ) as batch_mock, patch("aiwiki.cli.compile_wiki") as compile_mock:
             code, _payload, stderr = self._run_main(
                 ["review-concept", "--status", "deferred", "--all-pending"]
             )
         self.assertEqual(code, 0)
         self.assertEqual(stderr, "")
         batch_mock.assert_called_once()
+        compile_mock.assert_called_once_with(self.root)
         slugs_arg = batch_mock.call_args.args[1]
         self.assertEqual(sorted(slugs_arg), ["alpha", "beta"])
 
@@ -592,6 +599,87 @@ class CLITests(unittest.TestCase):
                 ["review-concept", "alpha", "--status", "deferred", "--all-pending"]
             )
         self.assertEqual(ctx.exception.code, 1)
+
+    def test_review_action_multiple_ids_uses_batch_helper(self) -> None:
+        """Round 8: explicit multi-ID review-action 走 batch，一次处理多条。"""
+        with patch(
+            "aiwiki.cli.review_machine_memory_actions_batch",
+            return_value={"operation": "action-review-batch", "count": 2},
+        ) as mocked:
+            code, payload, stderr = self._run_main(
+                ["review-action", "act-1", "act-2", "--status", "accepted", "--note", "ok"]
+            )
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["count"], 2)
+        mocked.assert_called_once_with(self.root, ["act-1", "act-2"], "accepted", note="ok")
+
+    def test_review_action_all_pending_requires_kind(self) -> None:
+        """Round 8: --all-pending 必须带 --kind，避免过宽批量 triage。"""
+        with self.assertRaises(SystemExit) as ctx:
+            self._run_main(["review-action", "--status", "accepted", "--all-pending"])
+        self.assertEqual(ctx.exception.code, 1)
+
+    def test_review_action_all_pending_filters_kind_and_review_first(self) -> None:
+        """Round 8: --all-pending 只选 proposed/review/review-first/指定 kind。"""
+        ensure_layout(self.root)
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "link-a",
+                        "kind": "add-source-concept-link",
+                        "active": True,
+                        "status": "proposed",
+                        "policy_decision": "review",
+                        "execution_band": "review-first",
+                    },
+                    {
+                        "id": "bridge-a",
+                        "kind": "monitor-bridge-concept",
+                        "active": True,
+                        "status": "proposed",
+                        "policy_decision": "review",
+                        "execution_band": "review-first",
+                    },
+                    {
+                        "id": "link-accepted",
+                        "kind": "add-source-concept-link",
+                        "active": True,
+                        "status": "accepted",
+                        "policy_decision": "review",
+                        "execution_band": "review-first",
+                    },
+                    {
+                        "id": "link-manual",
+                        "kind": "add-source-concept-link",
+                        "active": True,
+                        "status": "proposed",
+                        "policy_decision": "review",
+                        "execution_band": "manual-repair",
+                    },
+                ],
+            },
+        )
+        with patch(
+            "aiwiki.cli.review_machine_memory_actions_batch",
+            return_value={"operation": "action-review-batch", "count": 1},
+        ) as mocked:
+            code, _payload, stderr = self._run_main(
+                [
+                    "review-action",
+                    "--status",
+                    "accepted",
+                    "--all-pending",
+                    "--kind",
+                    "add-source-concept-link",
+                ]
+            )
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        mocked.assert_called_once_with(self.root, ["link-a"], "accepted", note=None)
 
     def test_review_queue_json_buckets_decision_entries(self) -> None:
         """P4-16a: review-queue --json 桶化 needs_review entries。"""
@@ -1608,6 +1696,10 @@ class CLITests(unittest.TestCase):
                             mocked.assert_called_once_with(*expected_args, **expected_kwargs)
                     elif target == "bootstrap_new_vault":
                         with patch("aiwiki.cli.bootstrap_new_vault", return_value={"command": name}) as mocked:
+                            code = main(["--root", str(self.root), *argv])
+                            mocked.assert_called_once_with(*expected_args, **expected_kwargs)
+                    elif target in {"retire_concept", "reactivate_concept", "review_concept", "review_concepts_batch"}:
+                        with patch(f"aiwiki.cli.{target}", return_value={"command": name}) as mocked, patch("aiwiki.cli.compile_wiki"):
                             code = main(["--root", str(self.root), *argv])
                             mocked.assert_called_once_with(*expected_args, **expected_kwargs)
                     else:

@@ -30,6 +30,7 @@ from ..app_compile import (
     review_concept_rewrite,
     review_concepts_batch,
     review_machine_memory_action,
+    review_machine_memory_actions_batch,
     review_page,
     review_pages_batch,
     set_active_protocol,
@@ -654,6 +655,7 @@ def main(argv: list[str] | None = None) -> int:
                 for slug in slugs:
                     receipts.append(retire_concept(root, slug, note=args.note))
                 result = {"slugs": slugs, "receipts": receipts, "count": len(receipts)}
+            compile_wiki(root)
         elif args.handler_command == "reactivate-concept":
             slugs = list(args.slugs) if isinstance(args.slugs, list) else [args.slugs]
             if len(slugs) == 1:
@@ -663,6 +665,7 @@ def main(argv: list[str] | None = None) -> int:
                 for slug in slugs:
                     receipts.append(reactivate_concept(root, slug, note=args.note))
                 result = {"slugs": slugs, "receipts": receipts, "count": len(receipts)}
+            compile_wiki(root)
         elif args.handler_command == "review-concept":
             review_slugs = _resolve_review_concept_slugs(
                 root,
@@ -683,13 +686,29 @@ def main(argv: list[str] | None = None) -> int:
                     status=args.status,
                     note=args.note,
                 )
+            compile_wiki(root)
         elif args.handler_command == "review-action":
-            result = review_machine_memory_action(
+            review_action_ids = _resolve_review_action_ids(
                 root,
-                _resolve_action_id(root, args.action_id),
-                args.status,
-                note=args.note,
+                list(args.action_ids) if isinstance(args.action_ids, list) else [],
+                all_pending=args.all_pending,
+                kind=args.kind,
+                execution_band=args.execution_band,
             )
+            if len(review_action_ids) == 1 and not args.all_pending:
+                result = review_machine_memory_action(
+                    root,
+                    review_action_ids[0],
+                    args.status,
+                    note=args.note,
+                )
+            else:
+                result = review_machine_memory_actions_batch(
+                    root,
+                    review_action_ids,
+                    args.status,
+                    note=args.note,
+                )
         elif args.handler_command == "apply-action":
             action_ids = _resolve_action_ids(
                 root,
@@ -1419,6 +1438,45 @@ def _resolve_action_id(root: Path, action_query: str) -> str:
     if not actions:
         return normalized_query
     return str(resolve_machine_memory_action_query(actions, normalized_query).get("id") or normalized_query)
+
+
+def _resolve_review_action_ids(
+    root: Path,
+    action_queries: list[str],
+    *,
+    all_pending: bool,
+    kind: str | None,
+    execution_band: str | None,
+) -> list[str]:
+    cleaned = [item.strip() for item in action_queries if isinstance(item, str) and item.strip()]
+    if all_pending and cleaned:
+        raise ValueError("Pass action ids OR --all-pending, not both.")
+    if cleaned:
+        return [_resolve_action_id(root, item) for item in cleaned]
+    if not all_pending:
+        raise ValueError("Provide at least one action id or pass --all-pending with --kind.")
+    normalized_kind = (kind or "").strip()
+    if not normalized_kind:
+        raise ValueError("review-action --all-pending requires --kind to avoid broad action triage.")
+    normalized_band = (execution_band or "review-first").strip() or "review-first"
+    state = load_machine_memory_action_state(root)
+    action_ids = [
+        str(action.get("id") or "")
+        for action in state.get("actions", [])
+        if isinstance(action, dict)
+        and str(action.get("id") or "")
+        and bool(action.get("active", True))
+        and str(action.get("status") or "") == "proposed"
+        and str(action.get("policy_decision") or "") == "review"
+        and str(action.get("kind") or "") == normalized_kind
+        and str(action.get("execution_band") or "") == normalized_band
+    ]
+    if not action_ids:
+        raise RuntimeError(
+            "No proposed machine-memory actions match "
+            f"kind={normalized_kind!r} execution_band={normalized_band!r}."
+        )
+    return action_ids
 
 
 def _resolve_action_ids(

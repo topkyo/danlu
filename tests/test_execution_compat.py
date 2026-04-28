@@ -60,9 +60,10 @@ EXPECTED_LAZY_NAMES = {
     # Concept review-ack (Round 7 / P4-19b)
     "review_concept",
     "review_concepts_batch",
-    # Machine-memory action (4 public + 1 private helper)
+    # Machine-memory action (5 public + 1 private helper)
     "resolve_machine_memory_action_query",
     "review_machine_memory_action",
+    "review_machine_memory_actions_batch",
     "apply_machine_memory_action",
     "revert_machine_memory_action",
     "_save_machine_memory_action_records",
@@ -104,13 +105,13 @@ class ExecutionCompatSeamTests(unittest.TestCase):
         self.assertEqual(set(app_compile._LAZY_OWNERS.keys()), EXPECTED_LAZY_NAMES)
 
     def test_lazy_owners_count_matches_plan(self) -> None:
-        # Plan promises 31 public + 8 private helpers = 39
-        # (29 + 2 review-concept additions in Round 7 / P4-19b).
+        # Plan promises 32 public + 8 private helpers = 40
+        # (Round 8 adds review_machine_memory_actions_batch).
         keys = list(app_compile._LAZY_OWNERS.keys())
         public = [k for k in keys if not k.startswith("_")]
         private = [k for k in keys if k.startswith("_")]
-        self.assertEqual(len(keys), 39)
-        self.assertEqual(len(public), 31)
+        self.assertEqual(len(keys), 40)
+        self.assertEqual(len(public), 32)
         self.assertEqual(len(private), 8)
 
     def test_all_lazy_owners_self_reference_in_ep_018a(self) -> None:
@@ -147,6 +148,7 @@ class ExecutionCompatSeamTests(unittest.TestCase):
             # B6 — machine-memory action
             "resolve_machine_memory_action_query": "aiwiki.execution.machine_memory_actions",
             "review_machine_memory_action": "aiwiki.execution.machine_memory_actions",
+            "review_machine_memory_actions_batch": "aiwiki.execution.machine_memory_actions",
             "apply_machine_memory_action": "aiwiki.execution.machine_memory_actions",
             "revert_machine_memory_action": "aiwiki.execution.machine_memory_actions",
             "_save_machine_memory_action_records": "aiwiki.execution.machine_memory_actions",
@@ -1369,6 +1371,7 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
         migrated_names = (
             "resolve_machine_memory_action_query",
             "review_machine_memory_action",
+            "review_machine_memory_actions_batch",
             "apply_machine_memory_action",
             "revert_machine_memory_action",
             "_save_machine_memory_action_records",
@@ -1390,6 +1393,7 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
         public_names = (
             "resolve_machine_memory_action_query",
             "review_machine_memory_action",
+            "review_machine_memory_actions_batch",
             "apply_machine_memory_action",
             "revert_machine_memory_action",
         )
@@ -1400,6 +1404,7 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
             "from aiwiki.app_compile import (\n"
             "    resolve_machine_memory_action_query,\n"
             "    review_machine_memory_action,\n"
+            "    review_machine_memory_actions_batch,\n"
             "    apply_machine_memory_action,\n"
             "    revert_machine_memory_action,\n"
             ")",

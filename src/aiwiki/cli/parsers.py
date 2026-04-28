@@ -710,9 +710,32 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         "review-action",
         help="Advance a machine-memory repair action through the explicit action workflow.",
     )
-    action_review_parser.add_argument("action_id", help="Machine-memory action id or title fragment.")
-    action_review_parser.add_argument("--status", required=True, help="Target action status.")
+    action_review_parser.add_argument(
+        "action_ids",
+        nargs="*",
+        help="Machine-memory action ids or title fragments.",
+    )
+    action_review_parser.add_argument(
+        "--status",
+        required=True,
+        choices=("proposed", "accepted", "deferred", "resolved", "rejected"),
+        help="Target action status.",
+    )
     action_review_parser.add_argument("--note", help="Optional action review note.")
+    action_review_parser.add_argument(
+        "--all-pending",
+        action="store_true",
+        help="Review all proposed review-first actions matching --kind.",
+    )
+    action_review_parser.add_argument(
+        "--kind",
+        help="Required with --all-pending; filters action kind (e.g. add-source-concept-link).",
+    )
+    action_review_parser.add_argument(
+        "--execution-band",
+        default="review-first",
+        help="Execution band filter for --all-pending (default: review-first).",
+    )
 
     apply_action_parser = subparsers.add_parser(
         "apply-action",

@@ -35,6 +35,7 @@ from aiwiki.app_compile import (
     review_concept_rewrite,
     review_concepts_batch,
     review_machine_memory_action,
+    review_machine_memory_actions_batch,
     review_page,
     set_active_protocol,
     shell_status,
@@ -6828,6 +6829,61 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("已接受", actions_page)
         self.assertIn("## Ready Now", repair_plan)
         self.assertIn("review-action overloaded-concept-latency --status resolved", repair_plan)
+
+    def test_review_machine_memory_actions_batch_updates_many_and_compiles_once(self) -> None:
+        ensure_layout(self.root)
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "link-alpha",
+                        "title": "Link Alpha",
+                        "kind": "add-source-concept-link",
+                        "active": True,
+                        "status": "proposed",
+                        "policy_decision": "review",
+                        "execution_band": "review-first",
+                        "protocol": "general",
+                        "primary_path": "wiki/sources/a.md",
+                        "secondary_path": "wiki/concepts/alpha.md",
+                        "priority": "low",
+                    },
+                    {
+                        "id": "link-beta",
+                        "title": "Link Beta",
+                        "kind": "add-source-concept-link",
+                        "active": True,
+                        "status": "proposed",
+                        "policy_decision": "review",
+                        "execution_band": "review-first",
+                        "protocol": "general",
+                        "primary_path": "wiki/sources/b.md",
+                        "secondary_path": "wiki/concepts/beta.md",
+                        "priority": "low",
+                    },
+                ],
+            },
+        )
+
+        with patch("aiwiki.execution.machine_memory_actions.compile_wiki") as mocked_compile:
+            result = review_machine_memory_actions_batch(
+                self.root,
+                ["link-alpha", "link-beta", "link-alpha"],
+                "accepted",
+                note="batch triage",
+            )
+
+        mocked_compile.assert_called_once_with(self.root)
+        self.assertEqual(result["count"], 2)
+        self.assertEqual(result["action_ids"], ["link-alpha", "link-beta"])
+        state = load_machine_memory_action_state(self.root)
+        actions = {action["id"]: action for action in state["actions"]}
+        self.assertEqual(actions["link-alpha"]["status"], "accepted")
+        self.assertEqual(actions["link-beta"]["status"], "accepted")
+        self.assertEqual(actions["link-alpha"]["review_note"], "batch triage")
+        self.assertEqual(actions["link-beta"]["pending_review"], "true")
 
     def test_compile_marks_disappeared_machine_memory_action_inactive(self) -> None:
         self._seed_machine_memory_actions()
