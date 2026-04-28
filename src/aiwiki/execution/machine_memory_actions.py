@@ -163,7 +163,10 @@ def review_machine_memory_action(
 
     ensure_layout(root)
     if status not in ACTION_STATUSES:
-        raise ValueError(f"Unsupported machine-memory action status: {status}")
+        raise ValueError(
+            f"Unsupported machine-memory action status: {status!r}; "
+            f"expected one of: {ACTION_STATUSES}"
+        )
     state = load_machine_memory_action_state(root)
     actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
     target = resolve_machine_memory_action_query(actions, action_id)

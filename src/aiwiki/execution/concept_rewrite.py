@@ -222,7 +222,10 @@ def review_concept_rewrite(
 
     ensure_layout(root)
     if status not in REWRITE_PROPOSAL_STATUSES:
-        raise ValueError(f"Unsupported concept rewrite status: {status}")
+        raise ValueError(
+            f"Unsupported concept rewrite status: {status!r}; "
+            f"expected one of: {REWRITE_PROPOSAL_STATUSES}"
+        )
     proposals = _load_concept_rewrite_proposals(root)
     target = _find_concept_rewrite_proposal(proposals, slug)
     if status == "accepted" and not rewrite_proposal_candidate_is_current(root, target):

@@ -102,6 +102,7 @@ from ..today_feed import FeedEntry, build_today_feed
 from .parsers import build_parser
 
 _DROP_TYPED_SUBCOMMANDS = {"url", "pdf", "image", "repo", "note"}
+L3_PROPOSAL_REVIEW_STATUSES = ("rejected",)
 
 
 def _rewrite_universal_drop_argv(argv: list[str] | None) -> list[str] | None:
@@ -505,8 +506,11 @@ def main(argv: list[str] | None = None) -> int:
                     candidates = result.get("candidates", []) if isinstance(result, dict) else []
                     text_output = "\n".join(_format_l3_generation_preview_line(item) for item in candidates) or "(no L3 proposal generation candidates)"
             elif args.review_command == "proposal":
-                if args.status != "rejected":
-                    raise ValueError(f"Unsupported L3 proposal review status: {args.status}")
+                if args.status not in L3_PROPOSAL_REVIEW_STATUSES:
+                    raise ValueError(
+                        f"Unsupported L3 proposal review status: {args.status!r}; "
+                        f"expected one of: {L3_PROPOSAL_REVIEW_STATUSES}"
+                    )
                 result = run_l3_proposal_reject(root, args.proposal_id, note=args.note)
             else:
                 raise ValueError(f"Unsupported review command: {args.review_command}")

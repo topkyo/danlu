@@ -75,10 +75,16 @@ def review_page(
     frontmatter = parse_frontmatter(content)
     kind = str(frontmatter.get("kind") or "")
     if kind not in {"decision", "judgment"}:
-        raise ValueError("Only decision or judgment pages can enter the review workflow.")
+        raise ValueError(
+            "Only decision or judgment pages can enter the review workflow; "
+            "expected one of: ('decision', 'judgment')"
+        )
     valid_statuses = valid_curated_statuses(kind)
     if status not in valid_statuses:
-        raise ValueError(f"Unsupported review status for {kind}: {status}")
+        raise ValueError(
+            f"Unsupported review status for {kind}: {status!r}; "
+            f"expected one of: {tuple(valid_statuses)}"
+        )
     reviewed_at = _app_compile.utc_now()
     frontmatter["status"] = status
     frontmatter["reviewed_at"] = reviewed_at
