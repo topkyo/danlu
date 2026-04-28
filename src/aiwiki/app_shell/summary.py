@@ -203,6 +203,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         1 for proposal in l3_review_controls if isinstance(proposal, dict) and proposal.get("needs_attention")
     )
     execution_controls = shell_execution_controls(root, memory)
+    review_backlog_counts.update(_action_review_backlog_counts(execution_controls))
     rewrite_recovery_actions = rewrite_recovery_actions_for_controls(
         list(review_controls.get("rewrite_proposals", []))
         if isinstance(review_controls.get("rewrite_proposals", []), list)
@@ -305,6 +306,19 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         suggested_next_actions=suggested_next_actions,
     )
     return summary
+
+
+def _action_review_backlog_counts(execution_controls: dict[str, Any]) -> dict[str, int]:
+    actions = execution_controls.get("actions") if isinstance(execution_controls, dict) else []
+    action_controls = [item for item in actions if isinstance(item, dict)] if isinstance(actions, list) else []
+    machine_memory_actions = [item for item in action_controls if bool(item.get("can_apply")) or bool(item.get("can_review"))]
+    ready_actions = [
+        item
+        for item in action_controls
+        if str(item.get("current_status") or item.get("status") or "") == "accepted"
+        and (bool(item.get("can_apply")) or bool(item.get("can_review")) or bool(item.get("can_revert")))
+    ]
+    return {"machine_memory_actions": len(machine_memory_actions), "ready_actions": len(ready_actions)}
 
 def _counter_evidence_pages_from_memory(counter_evidence_scan: Any) -> list[dict[str, Any]]:
     """P0 — 把 memory.health.counter_evidence_scan.pages 抽成 today_feed 友好结构。
