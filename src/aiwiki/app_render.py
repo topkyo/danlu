@@ -20,6 +20,7 @@ from .render.paths import (  # noqa: F401
     execution_receipts_dir,
     pack_stem,
     remove_stale_generated_concept_pages,
+    remove_stale_generated_concept_pages_detailed,
     review_pack_path,
     review_packs_dir,
     sop_draft_path,

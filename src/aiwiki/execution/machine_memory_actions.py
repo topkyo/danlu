@@ -392,8 +392,11 @@ def apply_machine_memory_action(
 
     # P4-19a: split-overloaded-concept apply 完成时联动 retire concept，
     # 让 noise / 过载概念退出默认 ranking。失败不阻断 apply。
+    # F-new-13 (Round 6): active-corpus 概念不能直接 retire（lifecycle guard），
+    # 此时记 `auto_retire_skipped_active_corpus=True` 并依赖 retroactive noise rebuild。
     auto_retired_concept: str | None = None
     auto_retire_error: str | None = None
+    auto_retire_skipped_active_corpus = False
     if kind == "split-overloaded-concept":
         slug_candidates = [
             str(s).strip()
@@ -411,6 +414,12 @@ def apply_machine_memory_action(
                     note=f"Auto-retired via apply-action {resolved_action_id}.",
                 )
                 auto_retired_concept = slug_to_retire
+            except RuntimeError as exc:
+                message = str(exc)
+                if "Active-corpus concept cannot transition to retired" in message:
+                    auto_retire_skipped_active_corpus = True
+                else:
+                    auto_retire_error = f"{type(exc).__name__}: {exc}"
             except Exception as exc:  # pragma: no cover - defensive
                 auto_retire_error = f"{type(exc).__name__}: {exc}"
 
@@ -453,6 +462,8 @@ def apply_machine_memory_action(
     }
     if auto_retired_concept is not None:
         response["auto_retired_concept"] = auto_retired_concept
+    if auto_retire_skipped_active_corpus:
+        response["auto_retire_skipped_active_corpus"] = True
     if auto_retire_error is not None:
         response["auto_retire_error"] = auto_retire_error
     return response

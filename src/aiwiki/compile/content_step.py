@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from ..app_content import (
+    append_wiki_log,
     build_concept_records,
     collect_curated_pages,
     concept_render_signature,
     ensure_wiki_log,
-    remove_stale_generated_concept_pages,
+    remove_stale_generated_concept_pages_detailed,
     render_concept_page,
     render_concepts_index,
     render_curated_index,
@@ -129,10 +130,23 @@ def compile_content_phase(context: CompileContext) -> None:
         context.changed_pages += wrote
         context.concept_changed_pages += wrote
 
-    context.removed_pages += remove_stale_generated_concept_pages(
+    removed_count, removed_slugs = remove_stale_generated_concept_pages_detailed(
         context.root,
         {record["slug"] for record in context.concepts},
     )
+    context.removed_pages += removed_count
+    if removed_slugs:
+        # F-new-13 (Round 6): when noise-floor / extraction signature changes invalidate
+        # previously generated concept pages, log them so the prune is auditable.
+        append_wiki_log(
+            context.root,
+            "concept-noise-pruned",
+            f"compile pruned {len(removed_slugs)} stale concept page(s)",
+            [
+                f"slugs: {', '.join(removed_slugs)}",
+                "reason: extraction signature mismatch (noise floor or input change)",
+            ],
+        )
 
 
 __all__ = ["compile_content_phase"]

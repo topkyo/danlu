@@ -62,6 +62,18 @@ class ContentHelperTests(unittest.TestCase):
         self.assertTrue((concept_dir / "manual.md").exists())
         self.assertTrue((concept_dir / "bad-id.md").exists())
 
+        # F-new-13 (Round 6): detailed variant returns the removed slugs for wiki-log.
+        # Re-create a fresh stale page and verify the detailed return.
+        self._write_markdown(
+            concept_dir / "stale2.md",
+            {"kind": "concept", "generated_by": "aiwiki-compile", "id": "concept-stale2"},
+            "# Stale 2\n",
+        )
+        count, slugs = content.remove_stale_generated_concept_pages_detailed(self.root, {"keep"})
+        self.assertEqual(count, 1)
+        self.assertEqual(slugs, ["stale2"])
+        self.assertFalse((concept_dir / "stale2.md").exists())
+
         self.assertEqual(content.review_packs_dir(self.root), self.root / "output" / "packs" / "review")
         self.assertEqual(content.decision_memos_dir(self.root), self.root / "output" / "packs" / "decision-memos")
         self.assertEqual(content.sop_drafts_dir(self.root), self.root / "output" / "packs" / "sop-drafts")

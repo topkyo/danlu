@@ -42,6 +42,7 @@ STOP_WORDS = {
     "about",
     "after",
     "against",
+    "and",
     "article",
     "articles",
     "brief",
@@ -86,6 +87,7 @@ STOP_WORDS = {
     "sub",
     "task",
     "that",
+    "the",
     "their",
     "there",
     "these",
@@ -541,6 +543,16 @@ def html_safe_json_literal(value: Any) -> str:
     )
 
 
+_BATCH_TAG_PATTERN = re.compile(r"^round\d+$")
+
+
 def tokenize(text: str) -> list[str]:
     tokens = re.findall(r"[a-zA-Z0-9]+", text.lower())
-    return [token for token in tokens if len(token) > 2 and not token.isdigit() and token not in STOP_WORDS]
+    return [
+        token
+        for token in tokens
+        if len(token) > 2
+        and not token.isdigit()
+        and token not in STOP_WORDS
+        and not _BATCH_TAG_PATTERN.match(token)
+    ]

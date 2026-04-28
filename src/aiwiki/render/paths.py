@@ -39,7 +39,20 @@ def append_wiki_log(root: Path, category: str, title: str, details: list[str]) -
 
 
 def remove_stale_generated_concept_pages(root: Path, active_slugs: set[str]) -> int:
-    removed = 0
+    removed_count, _ = remove_stale_generated_concept_pages_detailed(root, active_slugs)
+    return removed_count
+
+
+def remove_stale_generated_concept_pages_detailed(
+    root: Path, active_slugs: set[str]
+) -> tuple[int, list[str]]:
+    """Same as `remove_stale_generated_concept_pages` but also returns the removed slugs.
+
+    Used by the compile pipeline to emit a `concept-noise-pruned` wiki log entry when
+    retroactive noise-floor changes invalidate previously generated concept pages
+    (F-new-13, Round 6).
+    """
+    removed_slugs: list[str] = []
     for path in sorted((root / "wiki" / "concepts").glob("*.md")):
         frontmatter = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
         if frontmatter.get("kind") != "concept":
@@ -53,8 +66,8 @@ def remove_stale_generated_concept_pages(root: Path, active_slugs: set[str]) -> 
         if slug in active_slugs:
             continue
         path.unlink()
-        removed += 1
-    return removed
+        removed_slugs.append(slug)
+    return len(removed_slugs), removed_slugs
 
 
 def review_packs_dir(root: Path) -> Path:

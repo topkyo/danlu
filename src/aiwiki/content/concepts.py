@@ -33,6 +33,11 @@ from .io import load_source_page_context, preserved_section, source_summary_or_p
 
 CONCEPT_RENDER_SCHEMA_VERSION = 2
 
+# Bump when concept extraction noise floor (STOP_WORDS, length filter, digit filter, etc.)
+# changes, to invalidate cached `concept-build-state.json` entries and force retroactive
+# re-extraction on the next compile. See F-new-13 (Round 6).
+CONCEPT_NOISE_FLOOR_VERSION = 3
+
 CAUSAL_RELATION_LABELS = {
     "causes": "→ causes",
     "enables": "→ enables",
@@ -78,6 +83,7 @@ def concept_source_input_signature(entry: dict[str, Any], context: str, manual_s
         "source_sha256": str(entry.get("sha256") or ""),
         "context": context,
         "manual_slugs": sorted(str(slug) for slug in manual_slugs if str(slug)),
+        "noise_floor_version": CONCEPT_NOISE_FLOOR_VERSION,
     }
     return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
 def build_concept_records(

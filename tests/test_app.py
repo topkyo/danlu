@@ -6415,7 +6415,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(reverted["status"], "proposed")
 
     def test_apply_split_overloaded_concept_action_auto_retires_concept(self) -> None:
-        """P4-19a: split-overloaded-concept apply 完成后联动 retire concept，receipt 含 auto_retired_concept。"""
+        """P4-19a: split-overloaded-concept apply 完成后联动 retire concept，receipt 含 auto_retired_concept."""
         self._seed_machine_memory_actions()
         compile_wiki(self.root)
 
@@ -6463,6 +6463,47 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIsNotNone(retired_entry)
         self.assertEqual(retired_entry["override_state"], "retired")
         self.assertTrue(retired_entry["override_active"])
+
+    def test_apply_split_overloaded_concept_skips_active_corpus_softly(self) -> None:
+        """F-new-13 (Round 6): active-corpus concept retire fails softly with auto_retire_skipped_active_corpus=True."""
+        from unittest.mock import patch
+
+        self._seed_machine_memory_actions()
+        compile_wiki(self.root)
+
+        state = load_machine_memory_action_state(self.root)
+        overloaded_action = next(
+            (a for a in state["actions"] if a["kind"] == "split-overloaded-concept" and a["active"]),
+            None,
+        )
+        self.assertIsNotNone(overloaded_action)
+        review_machine_memory_action(self.root, overloaded_action["id"], "accepted", note="Accept.")
+        dry_run = apply_machine_memory_action(self.root, overloaded_action["id"], dry_run=True)
+        bundle_path = self.root / dry_run["bundle_path"]
+        bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        bundle_path.write_text(
+            json.dumps(dry_run["bundle"], ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        # Patch retire_concept to raise the active-corpus RuntimeError as if the concept
+        # were still referenced by recent sources.
+        with patch(
+            "aiwiki.execution.lifecycle.retire_concept",
+            side_effect=RuntimeError("Active-corpus concept cannot transition to retired."),
+        ):
+            apply_result = apply_machine_memory_action(
+                self.root,
+                overloaded_action["id"],
+                note="Resolve and try auto-retire.",
+                bundle_path=dry_run["bundle_path"],
+            )
+
+        self.assertEqual(apply_result["status"], "resolved")
+        # 软失败：标记 skipped 而非 error，且不阻断 apply
+        self.assertTrue(apply_result.get("auto_retire_skipped_active_corpus"))
+        self.assertNotIn("auto_retired_concept", apply_result)
+        self.assertNotIn("auto_retire_error", apply_result)
 
     def test_compile_generates_concept_quality_page(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

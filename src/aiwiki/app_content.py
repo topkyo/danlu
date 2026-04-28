@@ -232,6 +232,7 @@ from .app_render import (  # noqa: E402
     protocol_output_pack_rows,
     protocol_scorecard,
     remove_stale_generated_concept_pages,
+    remove_stale_generated_concept_pages_detailed,
     render_agent_pack,
     render_agent_workbench,
     render_aging_report,
