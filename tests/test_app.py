@@ -1364,7 +1364,85 @@ class AiwikiFlowTests(unittest.TestCase):
         override_state = load_knowledge_lifecycle_override_state(self.root)
         self.assertFalse(any(entry["slug"] == slug and entry["active"] for entry in override_state["entries"]))
 
-    def test_review_concept_overrides_revisit_to_deferred(self) -> None:
+    def test_reactivate_concept_clears_review_ack_override(self) -> None:
+        """Round 8: reactivate-concept 清除 review-ack 覆盖项 (P4-19b 反向操作)。"""
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        concept_entry = next(entry for entry in lifecycle["entries"] if entry["kind"] == "concept")
+        slug = Path(concept_entry["path"]).stem
+
+        review_concept(self.root, slug, status="deferred", note="ack revisit")
+
+        result = reactivate_concept(self.root, slug, note="rollback ack")
+
+        self.assertEqual(result["cleared_lifecycle_state"], "deferred")
+        self.assertNotEqual(result["status"], "deferred")
+        updated = load_knowledge_lifecycle_state(self.root)
+        updated_entry = next(entry for entry in updated["entries"] if entry["path"] == concept_entry["path"])
+        self.assertFalse(updated_entry["override_active"])
+        self.assertEqual(updated_entry["override_state"], "")
+        override_state = load_knowledge_lifecycle_override_state(self.root)
+        self.assertFalse(
+            any(entry["slug"] == slug and entry["active"] for entry in override_state["entries"])
+        )
+
+    def test_reactivate_concept_clears_all_active_overrides_for_path(self) -> None:
+        """Round 8: 同一 path 多个 active override (历史 bug / 手编) 必须一次全清。"""
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        concept_entry = next(entry for entry in lifecycle["entries"] if entry["kind"] == "concept")
+        slug = Path(concept_entry["path"]).stem
+        path_ref = concept_entry["path"]
+
+        # Hand-craft duplicate active overrides on the same path (simulates state corruption).
+        from aiwiki.app_state import (
+            ensure_knowledge_lifecycle_override_state,
+            save_knowledge_lifecycle_override_state,
+        )
+        state = ensure_knowledge_lifecycle_override_state(self.root)
+        entries = list(state.get("entries", []))
+        for ls in ("review", "deferred"):
+            entries.append(
+                {
+                    "page_id": f"concept-{slug}",
+                    "slug": slug,
+                    "path": path_ref,
+                    "kind": "concept",
+                    "lifecycle_state": ls,
+                    "active": True,
+                    "operation": "review",
+                    "reason_codes": ["manual-review-ack"],
+                    "applied_at": "2026-01-01T00:00:00+00:00",
+                    "updated_at": "2026-01-01T00:00:00+00:00",
+                    "note": f"seeded {ls}",
+                }
+            )
+        save_knowledge_lifecycle_override_state(self.root, {"version": 1, "entries": entries})
+
+        result = reactivate_concept(self.root, slug, note="clear duplicates")
+
+        # cleared_lifecycle_state reports the *last* match (deferred — what apply_override pinned).
+        self.assertEqual(result["cleared_lifecycle_state"], "deferred")
+        override_state = load_knowledge_lifecycle_override_state(self.root)
+        active = [
+            entry for entry in override_state["entries"]
+            if entry["slug"] == slug and entry["active"]
+        ]
+        self.assertEqual(active, [])
+
+    def test_reactivate_concept_errors_when_no_active_override(self) -> None:
+        """Round 8: 没有任何 active concept override 时报清晰错误。"""
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        concept_entry = next(entry for entry in lifecycle["entries"] if entry["kind"] == "concept")
+        slug = Path(concept_entry["path"]).stem
+
+        with self.assertRaises(RuntimeError) as cm:
+            reactivate_concept(self.root, slug)
+        self.assertIn("No active concept lifecycle override", str(cm.exception))
         """P4-19b: review_concept 写一条 active concept 覆盖项，把 revisit 概念路由到 deferred。"""
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)

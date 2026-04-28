@@ -157,6 +157,26 @@ def retire_concept(root: Path, slug: str, *, note: str | None = None) -> dict[st
 
 @runtime_write_operation
 def reactivate_concept(root: Path, slug: str, *, note: str | None = None) -> dict[str, Any]:
+    """Clear *any* active concept lifecycle override and route the concept
+    back to heuristic lifecycle classification.
+
+    Round 8 widened the filter from ``lifecycle_state == "retired"`` to
+    "any active concept override on this path". This closes the
+    Round 7 / P4-19b reversibility gap: ``review-concept`` writes
+    ``active/deferred/review`` overrides which previously could only be
+    cleared by hand-editing ``wiki/state/knowledge_lifecycle_override.json``.
+
+    Behaviour notes:
+
+    * If multiple active overrides target the same concept path
+      (history bug / hand-edit), all of them are deactivated in one pass.
+      ``cleared_lifecycle_state`` reports the *last* match — that is
+      the one ``active_knowledge_lifecycle_overrides()`` actually pinned
+      (later entries win in its dict comprehension).
+    * Once cleared, ``apply_knowledge_lifecycle_override`` returns the
+      raw heuristic entry, so the concept rejoins the normal
+      revisit/review/active routing.
+    """
     from .. import app_compile as _app_compile
 
     ensure_layout(root)
@@ -168,23 +188,27 @@ def reactivate_concept(root: Path, slug: str, *, note: str | None = None) -> dic
         dict(entry) for entry in override_state.get("entries", []) if isinstance(entry, dict)
     ]
     path_ref = relative_path(root, path)
-    target: dict[str, Any] | None = None
-    for entry in override_entries:
+    matches: list[dict[str, Any]] = [
+        entry
+        for entry in override_entries
         if (
             bool(entry.get("active"))
             and str(entry.get("kind") or "") == "concept"
             and str(entry.get("path") or "") == path_ref
-            and str(entry.get("lifecycle_state") or "") == "retired"
-        ):
-            target = entry
-            break
-    if target is None:
-        raise RuntimeError(f"No active retired concept override exists for slug: {slug}")
+        )
+    ]
+    if not matches:
+        raise RuntimeError(f"No active concept lifecycle override exists for slug: {slug}")
+    target = matches[-1]
+    cleared_state = str(target.get("lifecycle_state") or "")
     reactivated_at = _app_compile.utc_now()
-    target["active"] = False
-    target["reactivated_at"] = reactivated_at
-    target["reactivate_note"] = note or "Concept reactivated into heuristic lifecycle routing."
-    target["updated_at"] = reactivated_at
+    for entry in matches:
+        entry["active"] = False
+        entry["reactivated_at"] = reactivated_at
+        entry["reactivate_note"] = (
+            note or "Concept reactivated into heuristic lifecycle routing."
+        )
+        entry["updated_at"] = reactivated_at
     save_knowledge_lifecycle_override_state(root, {"version": 1, "entries": override_entries})
     updated_lifecycle = refresh_knowledge_lifecycle_runtime(root, generated_at=reactivated_at)
     final_entry = concept_lifecycle_entry(updated_lifecycle, slug)
@@ -199,6 +223,7 @@ def reactivate_concept(root: Path, slug: str, *, note: str | None = None) -> dic
             "slug": slug,
             "path": path_ref,
             "lifecycle_state": str(final_entry.get("lifecycle_state") or ""),
+            "cleared_lifecycle_state": cleared_state,
             "note": note or "",
         },
     )
@@ -209,7 +234,8 @@ def reactivate_concept(root: Path, slug: str, *, note: str | None = None) -> dic
         [
             f"slug: `{slug}`",
             f"path: `{path_ref}`",
-            f"lifecycle_state: `{str(final_entry.get('lifecycle_state') or 'unknown')}`",
+            f"lifecycle_state: `{str(final_entry.get('lifecycle_state') or 'unknown')}` "
+            f"(cleared `{cleared_state or 'unknown'}` override)",
             f"override_state: `{relative_path(root, knowledge_lifecycle_override_state_path(root))}`",
         ],
     )
@@ -217,6 +243,7 @@ def reactivate_concept(root: Path, slug: str, *, note: str | None = None) -> dic
         "slug": slug,
         "path": path_ref,
         "status": str(final_entry.get("lifecycle_state") or ""),
+        "cleared_lifecycle_state": cleared_state,
         "override_path": relative_path(root, knowledge_lifecycle_override_state_path(root)),
         "knowledge_lifecycle_path": relative_path(root, knowledge_lifecycle_state_path(root)),
         "updated_at": reactivated_at,
@@ -242,11 +269,10 @@ def reactivate_concept(root: Path, slug: str, *, note: str | None = None) -> dic
 #   the revisit/review buckets at the next compile/refresh.
 #
 # Reversibility:
-#   The override is permanent until cleared. ``reactivate-concept`` only
-#   clears retired overrides today; clearing review-ack overrides
-#   currently requires editing ``wiki/state/knowledge_lifecycle_override
-#   .json`` directly. Mirroring ``reactivate-concept`` for non-retired
-#   overrides is deferred to a later round.
+#   ``reactivate-concept`` (Round 8) clears *any* active concept lifecycle
+#   override on a path, including review-ack overrides written here. It
+#   is the symmetric inverse of both ``retire-concept`` and
+#   ``review-concept``.
 #
 # Status set:
 #   ``retired`` is intentionally excluded — that path goes through
