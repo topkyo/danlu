@@ -610,7 +610,7 @@ class AppUtilsTests(unittest.TestCase):
         self.assertIn("\\u003c", safe_literal)
         self.assertIn("\\u0026", safe_literal)
         self.assertIn("\\u2028", safe_literal)
-        self.assertEqual(utils.tokenize("The fast latency and ops pipeline"), ["the", "fast", "latency", "and", "ops", "pipeline"])
+        self.assertEqual(utils.tokenize("The fast latency and ops pipeline"), ["the", "latency", "and", "ops", "pipeline"])
 
 
 if __name__ == "__main__":

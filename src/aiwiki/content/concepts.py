@@ -46,6 +46,8 @@ def concept_candidates(entries: list[dict[str, Any]]) -> list[str]:
         for token in re.findall(r"[a-zA-Z0-9]{4,}", entry["title"].lower()):
             if token in STOP_WORDS:
                 continue
+            if token.isdigit():
+                continue
             counts[token] = counts.get(token, 0) + 1
     ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     return [token for token, _count in ranked[:10]]

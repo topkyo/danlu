@@ -6,6 +6,22 @@
 
 ## 状态
 
+- **P4-9 — Concept Noise Floor Reduction — 完成（close F6）— Round 2 启动**
+  - **目的**: dogfood receipt v0 §F6 实测 27 concepts 中 11 个停用词级 token（`2026/captured/capture/fast/for/kind/lite/one/session/sub/task`），信噪比 59% → `today` "唯一输出端"被噪声压垮
+  - **设计核心**:
+    - `app_utils.py::STOP_WORDS` 加 18 个 dogfood 实测噪声 token（`capture/captured/fast/for/full/kind/lite/mode/one/session/slow/sota/sub/task/three/four/five/two`），保留字母序，注释指向 receipt v0 §F6
+    - `app_utils.py::tokenize` 加 `not token.isdigit()` 过滤（年份/版本号不应进入 token 流）
+    - `concepts.py::concept_candidates` 加 `token.isdigit()` guard（与 STOP_WORDS check 平行）
+    - `entry_concept_terms` 经 `tokenize` 路由，自动继承数字过滤
+    - 不动 schema / compile pipeline / machine memory / trace / today / run-ask 消费侧
+  - **测试**: `tests/test_concept_noise_floor.py` 4/4（stop-word / pure-digit / domain term / tokenize digit）；`tests/test_state_utils.py` tokenize 断言更新（`fast` 现在按设计被过滤）
+  - **验证**: `bash scripts/verify.sh` exit 0、`All checks passed!`、1456 unit + 13 acceptance、ruff clean、coverage 稳定
+  - **dogfood smoke**（vault `/home/tim/danlu/炼丹炉`）:
+    - `aiwiki compile` 重跑后 concept 数 27 → 27（compile 是 additive，既有 noise .md 不删；deferred 至 P4-14 retire workflow）
+    - 关键：重跑过程中 NO new noise slug 被生成 — 提取层修复确认生效
+    - 域概念全保留（`go2/jetson/qwen3/slam/vlm/imu/pid/odom/eva/lio2`）
+  - **闭环**: closed_loop.sh PASS（qa-review same-context PASS / qa-runtime scripted PASS）
+
 - **P4-11 — Dogfood Vault Path Explicitness — 完成（close F4）**
   - **目的**: F4 修补结果落地到 CLI；`.envrc.dogfood` 加 `AIWIKI_DOGFOOD_VAULT` 后变量仍未被 CLI 读取，agent 仍可能误落 cwd
   - **设计核心**:
