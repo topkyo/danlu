@@ -277,6 +277,36 @@ class MetricsIOTests(unittest.TestCase):
         self.assertEqual(report.derived_from, ["wiki/sources/a.md"])
         self.assertEqual(report.generated_at, "g")
 
+    def test_reverted_proposal_with_accepted_at_counts_as_accepted_decision(self) -> None:
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            state = root / ".aiwiki" / "state" / "l3-proposals.json"
+            state.parent.mkdir(parents=True)
+            state.write_text(
+                json.dumps(
+                    {
+                        "proposals": [
+                            {
+                                "proposal_id": "p1",
+                                "state": "reverted",
+                                "created_at": "2026-04-20T00:00:00Z",
+                                "accepted_at": "2026-04-21T00:00:00Z",
+                                "reverted_at": "2026-04-22T00:00:00Z",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            snapshot = build_metrics_snapshot(root, now_iso="2026-04-27T00:00:00Z")
+
+        self.assertEqual(len(snapshot.proposals), 1)
+        self.assertEqual(snapshot.proposals[0].status, "accepted")
+        self.assertEqual(snapshot.proposals[0].decided_at, "2026-04-21T00:00:00Z")
+
     def test_safe_relative_path_handles_outside_path(self) -> None:
         self.assertTrue(metrics_io._safe_relative_path(Path("/tmp/root"), Path("/other/file.md")).endswith("/other/file.md"))
 

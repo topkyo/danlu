@@ -279,6 +279,8 @@ def _proposal_from_mapping(mapping: dict[str, Any], fallback_id: str) -> Proposa
     status = str(mapping.get("status") or mapping.get("state") or "")
     if status == "candidate":
         status = "pending"
+    elif status == "reverted" and str(mapping.get("accepted_at") or "").strip():
+        status = "accepted"
     return ProposalMeta(
         proposal_id=str(mapping.get("proposal_id") or fallback_id),
         status=status,
