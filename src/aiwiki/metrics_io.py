@@ -195,7 +195,7 @@ def _read_proposals(root: Path) -> Iterable[ProposalMeta]:
     state_path = root / ".aiwiki" / "state" / "l3-proposals.json"
     try:
         state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
-    except (OSError, UnicodeError, json.JSONDecodeError):
+    except (AttributeError, OSError, UnicodeError, json.JSONDecodeError):
         state = {}
     proposals = state.get("proposals") if isinstance(state, dict) else []
     if isinstance(proposals, list):
@@ -237,6 +237,11 @@ def _proposal_from_mapping(mapping: dict[str, Any], fallback_id: str) -> Proposa
 
 
 def _read_outputs(root: Path) -> Iterable[OutputMeta]:
+    candidate_outputs = _read_output_candidate_metas(root)
+    if candidate_outputs:
+        yield from candidate_outputs
+        return
+
     output_root = root / "output"
     try:
         paths = sorted(output_root.glob("**/*.md")) if output_root.exists() else []
@@ -255,6 +260,35 @@ def _read_outputs(root: Path) -> Iterable[OutputMeta]:
             derived_from=derived_from,
             generated_at=str(frontmatter.get("generated_at") or frontmatter.get("created_at") or ""),
         )
+
+
+def _read_output_candidate_metas(root: Path) -> list[OutputMeta]:
+    state_path = root / ".aiwiki" / "state" / "output-candidates.json"
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
+    except (AttributeError, OSError, UnicodeError, json.JSONDecodeError):
+        state = {}
+    candidates = state.get("candidates") if isinstance(state, dict) else []
+    if not isinstance(candidates, list):
+        return []
+
+    outputs: list[OutputMeta] = []
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        artifact_ref = str(item.get("artifact_ref") or "").strip()
+        if not artifact_ref:
+            continue
+        promoted_to = str(item.get("promoted_to") or "").strip()
+        backed = str(item.get("candidate_state") or "") == "promoted" and bool(promoted_to)
+        outputs.append(
+            OutputMeta(
+                path=artifact_ref,
+                derived_from=[promoted_to] if backed else [],
+                generated_at=str(item.get("created_at") or ""),
+            )
+        )
+    return outputs
 
 
 def _as_string_list(value: Any) -> list[str]:

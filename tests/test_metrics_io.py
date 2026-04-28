@@ -220,6 +220,44 @@ class MetricsIOTests(unittest.TestCase):
         self.assertEqual(len(snapshot.outputs), 1)
         self.assertEqual(snapshot.outputs[0].derived_from, ["wiki/sources/a.md"])
 
+    def test_output_candidates_define_file_back_denominator_when_present(self) -> None:
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            state = root / ".aiwiki" / "state" / "output-candidates.json"
+            state.parent.mkdir(parents=True)
+            state.write_text(
+                json.dumps(
+                    {
+                        "candidates": [
+                            {
+                                "artifact_ref": "output/reports/a.md",
+                                "candidate_state": "promoted",
+                                "promoted_to": "wiki/derived/a.md",
+                                "created_at": "2026-04-20T00:00:00Z",
+                            },
+                            {
+                                "artifact_ref": "output/reports/b.md",
+                                "candidate_state": "pending",
+                                "promoted_to": "",
+                                "created_at": "2026-04-21T00:00:00Z",
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            extra = root / "output" / "agents" / "agent.md"
+            extra.parent.mkdir(parents=True)
+            extra.write_text("---\nsource_files:\n  - wiki/sources/noise.md\n---\n# Agent\n", encoding="utf-8")
+
+            snapshot = build_metrics_snapshot(root, now_iso="2026-04-27T00:00:00Z")
+
+        self.assertEqual([output.path for output in snapshot.outputs], ["output/reports/a.md", "output/reports/b.md"])
+        self.assertEqual(snapshot.outputs[0].derived_from, ["wiki/derived/a.md"])
+        self.assertEqual(snapshot.outputs[1].derived_from, [])
+
     def test_reads_markdown_proposal_and_scalar_output_derived_from(self) -> None:
         from tempfile import TemporaryDirectory
 
