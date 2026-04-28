@@ -8,3 +8,9 @@ export AIWIKI_LLM_BACKEND=copilot-cli
 export AIWIKI_LLM_MODEL=gpt-5.4
 export AIWIKI_STALE_JUDGMENT_DAYS=1
 export PYTHONPATH=src
+
+# Dogfood 真实 vault（独立于 ai-wiki 实现仓库）
+# CLI 调用必须显式 --root "$AIWIKI_DOGFOOD_VAULT"，否则会误中 ai-wiki 仓库自身的 fixture vault
+export AIWIKI_DOGFOOD_VAULT="/home/tim/danlu/炼丹炉"
+# Receipt 输出位置（vault 内 output/reports/）
+export AIWIKI_DOGFOOD_RECEIPT="$AIWIKI_DOGFOOD_VAULT/output/reports/dogfood-receipt-v0.md"
