@@ -770,6 +770,12 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         default=20,
         help="Timeout in seconds for each LLM probe request.",
     )
+    llm_check_parser.add_argument(
+        "--format",
+        choices=["json", "human"],
+        default="json",
+        help="Output format. 'human' renders a backend compatibility table; 'json' (default) preserves machine-readable schema.",
+    )
 
     cache_parser = subparsers.add_parser("cache", help="Inspect, rebuild, or drop the volatile SQLite query cache.")
     cache_parser.add_argument(

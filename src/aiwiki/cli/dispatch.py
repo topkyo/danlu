@@ -675,6 +675,10 @@ def main(argv: list[str] | None = None) -> int:
                 result = llm_probe(root, probe_all=args.probe_all, timeout_seconds=args.probe_timeout)
             else:
                 result = llm_status()
+            if getattr(args, "format", "json") == "human":
+                from aiwiki.cli.llm_check_render import render_llm_check_human
+
+                text_output = render_llm_check_human(result)
         elif args.handler_command == "cache":
             selected_actions = int(bool(args.status)) + int(bool(args.rebuild)) + int(bool(args.drop))
             if selected_actions != 1:
