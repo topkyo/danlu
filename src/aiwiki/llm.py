@@ -59,6 +59,14 @@ class CompletionResult:
 
 PROBE_SYSTEM_PROMPT = "You are a backend health probe. Reply with exactly OK."
 PROBE_USER_PROMPT = "Reply with exactly OK."
+FRONTMATTER_PROBE_SYSTEM_PROMPT = (
+    "You are a backend compatibility probe. Respond with the exact markdown frontmatter block the user requests."
+)
+FRONTMATTER_PROBE_USER_PROMPT = """Respond with exactly the following text, nothing else, no decoration, no commentary:
+---
+title: probe
+---
+ok"""
 
 
 class OpenAICompatClient:
@@ -621,15 +629,18 @@ def probe_backend(config: LLMConfig, workdir: Path, timeout_seconds: int | None 
     probe_config = config
     if timeout_seconds is not None:
         probe_config = replace(config, timeout_seconds=timeout_seconds)
-    client = create_backend_client(probe_config, workdir)
     started = time.monotonic()
+    client: Any | None = None
     try:
-        result = client.complete(PROBE_SYSTEM_PROMPT, PROBE_USER_PROMPT)
+        client = create_backend_client(probe_config, workdir)
+        result = client.complete(FRONTMATTER_PROBE_SYSTEM_PROMPT, FRONTMATTER_PROBE_USER_PROMPT)
     except LLMError as exc:
-        effective_config = getattr(client, "config", probe_config)
+        effective_config = getattr(client, "config", probe_config) if client is not None else probe_config
+        error_class = classify_backend_error(str(exc))
+        compatibility = "requires_credential" if _is_auth_error(str(exc)) else "unavailable"
         return {
             "ok": False,
-            "status": _classify_backend_error(str(exc)),
+            "status": compatibility,
             "backend_requested": probe_config.backend_requested or probe_config.backend,
             "backend": effective_config.backend,
             "model_requested": probe_config.model_requested,
@@ -638,21 +649,31 @@ def probe_backend(config: LLMConfig, workdir: Path, timeout_seconds: int | None 
             "response_preview": "",
             "matched_expected_output": False,
             "error": str(exc),
+            "compatibility": compatibility,
+            "error_class": error_class,
+            "raw_response_path": exc.raw_response_path or "",
+            "compatibility_hint": str(exc),
         }
 
     effective_config = getattr(client, "config", probe_config)
     response_text = result.text.strip()
+    is_compatible, compatibility_hint = _validate_frontmatter_probe_response(result.text)
+    compatibility = "compatible" if is_compatible else "degraded"
     return {
-        "ok": True,
-        "status": "ok",
+        "ok": compatibility == "compatible",
+        "status": compatibility,
         "backend_requested": probe_config.backend_requested or probe_config.backend,
         "backend": effective_config.backend,
         "model_requested": probe_config.model_requested,
         "model": effective_config.model,
         "duration_ms": int((time.monotonic() - started) * 1000),
         "response_preview": _response_preview(response_text),
-        "matched_expected_output": response_text == "OK",
+        "matched_expected_output": compatibility == "compatible",
         "error": "",
+        "compatibility": compatibility,
+        "error_class": "",
+        "raw_response_path": result.raw_response_path or "",
+        "compatibility_hint": compatibility_hint,
     }
 
 
@@ -735,6 +756,62 @@ def _is_model_fallback_error(message: str) -> bool:
     if _classify_backend_error(text) in {"quota", "timeout", "unavailable"}:
         return True
     return any(pattern in text for pattern in ("unknown model", "unsupported model", "model_not_found"))
+
+
+def _is_auth_error(message: str) -> bool:
+    text = str(message or "").lower()
+    return any(
+        pattern in text
+        for pattern in (
+            "unauthorized",
+            "not signed in",
+            "not logged in",
+            "please login",
+            "api key",
+            "api_key",
+            "authentication",
+            "forbidden",
+            "permission",
+            "organization",
+            "401",
+            "403",
+            "expired token",
+            "invalid token",
+        )
+    )
+
+
+def _validate_frontmatter_probe_response(text: str) -> tuple[bool, str]:
+    raw_text = str(text or "")
+    if not raw_text.strip():
+        return False, "empty response"
+    for line in raw_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("●"):
+            return False, "decoration prefix detected: ●"
+        if stripped.startswith("▶"):
+            return False, "decoration prefix detected: ▶"
+    lines = raw_text.splitlines()
+    first_index = next((index for index, line in enumerate(lines) if line.strip()), None)
+    if first_index is None:
+        return False, "empty response"
+    first_line = lines[first_index].strip()
+    if first_line != "---":
+        return False, f"missing opening frontmatter fence; first line: {repr(first_line[:80])}"
+    closing_index: int | None = None
+    for index in range(first_index + 1, len(lines)):
+        if lines[index].strip() == "---":
+            closing_index = index
+            break
+    if closing_index is None:
+        return False, "missing closing frontmatter fence"
+    frontmatter_lines = lines[first_index + 1 : closing_index]
+    if not any(line.strip() == "title: probe" for line in frontmatter_lines):
+        return False, "frontmatter missing 'title: probe'"
+    body = "\n".join(lines[closing_index + 1 :]).strip()
+    if "ok" not in body:
+        return False, "body missing 'ok' marker"
+    return True, ""
 
 
 def advance_client_model(client: Any) -> bool:

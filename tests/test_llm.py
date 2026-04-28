@@ -23,6 +23,7 @@ from aiwiki.llm import (
     AnthropicClient,
     ClaudeCLIClient,
     CodexCLIClient,
+    CompletionResult,
     CopilotCLIClient,
     LLMError,
     ModelFallbackClient,
@@ -530,7 +531,7 @@ class LLMClientTests(unittest.TestCase):
 
             def fake_run(command, **kwargs):
                 output_path = Path(command[command.index("--output-last-message") + 1])
-                output_path.write_text("OK\n", encoding="utf-8")
+                output_path.write_text("---\ntitle: probe\n---\nok\n", encoding="utf-8")
                 self.assertEqual(kwargs["timeout"], 11)
                 return type("Completed", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
@@ -538,13 +539,101 @@ class LLMClientTests(unittest.TestCase):
                 probe = probe_backend(config, root, timeout_seconds=11)
 
         self.assertTrue(probe["ok"])
-        self.assertEqual(probe["status"], "ok")
+        self.assertEqual(probe["status"], "compatible")
+        self.assertEqual(probe["compatibility"], "compatible")
         self.assertEqual(probe["backend"], BACKEND_CODEX_CLI)
         self.assertEqual(probe["backend_requested"], BACKEND_CODEX_CLI)
         self.assertEqual(probe["model"], "gpt-5.4")
         self.assertTrue(probe["matched_expected_output"])
-        self.assertEqual(probe["response_preview"], "OK")
+        self.assertEqual(probe["response_preview"], "--- title: probe --- ok")
         self.assertEqual(probe["error"], "")
+        self.assertEqual(probe["error_class"], "")
+        self.assertTrue(probe["raw_response_path"])
+        self.assertEqual(probe["compatibility_hint"], "")
+
+    def test_probe_backend_compatible(self) -> None:
+        config = LLMConfig(backend=BACKEND_CODEX_CLI, backend_requested=BACKEND_CODEX_CLI, model="gpt-5.4")
+
+        class FakeClient:
+            def __init__(self, llm_config: LLMConfig) -> None:
+                self.config = llm_config
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                del user_prompt
+                return CompletionResult("---\ntitle: probe\n---\nok\n", "probe", {}, "raw/probe.txt")
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            with patch("aiwiki.llm.create_backend_client", return_value=FakeClient(config)):
+                result = probe_backend(config, Path(tempdir), timeout_seconds=5)
+
+        self.assertEqual(result["compatibility"], "compatible")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["compatibility_hint"], "")
+        self.assertEqual(result["error_class"], "")
+        self.assertEqual(result["raw_response_path"], "raw/probe.txt")
+
+    def test_probe_backend_degraded_decoration(self) -> None:
+        config = LLMConfig(backend=BACKEND_CODEX_CLI, backend_requested=BACKEND_CODEX_CLI, model="gpt-5.4")
+
+        class FakeClient:
+            def __init__(self, llm_config: LLMConfig) -> None:
+                self.config = llm_config
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                del user_prompt
+                return CompletionResult("● ---\ntitle: probe\n---\nok\n", "probe", {}, "raw/decorated.txt")
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            with patch("aiwiki.llm.create_backend_client", return_value=FakeClient(config)):
+                result = probe_backend(config, Path(tempdir), timeout_seconds=5)
+
+        self.assertEqual(result["compatibility"], "degraded")
+        self.assertFalse(result["ok"])
+        self.assertIn("decoration", result["compatibility_hint"])
+
+    def test_probe_backend_requires_credential(self) -> None:
+        config = LLMConfig(backend=BACKEND_CODEX_CLI, backend_requested=BACKEND_CODEX_CLI, model="gpt-5.4")
+
+        class FakeClient:
+            def __init__(self, llm_config: LLMConfig) -> None:
+                self.config = llm_config
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                del user_prompt
+                raise LLMError("HTTP 401: not signed in", raw_response_path="raw/auth.txt")
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            with patch("aiwiki.llm.create_backend_client", return_value=FakeClient(config)):
+                result = probe_backend(config, Path(tempdir), timeout_seconds=5)
+
+        self.assertEqual(result["compatibility"], "requires_credential")
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["error_class"])
+        self.assertTrue(result["compatibility_hint"])
+        self.assertEqual(result["raw_response_path"], "raw/auth.txt")
+
+    def test_probe_backend_unavailable(self) -> None:
+        config = LLMConfig(backend=BACKEND_CODEX_CLI, backend_requested=BACKEND_CODEX_CLI, model="gpt-5.4")
+
+        class FakeClient:
+            def __init__(self, llm_config: LLMConfig) -> None:
+                self.config = llm_config
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                del user_prompt
+                raise LLMError("CLI binary not found")
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            with patch("aiwiki.llm.create_backend_client", return_value=FakeClient(config)):
+                result = probe_backend(config, Path(tempdir), timeout_seconds=5)
+
+        self.assertEqual(result["compatibility"], "unavailable")
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["compatibility_hint"])
 
     def test_probe_backend_classifies_quota_failures(self) -> None:
         config = LLMConfig(
@@ -570,7 +659,9 @@ class LLMClientTests(unittest.TestCase):
                 probe = probe_backend(config, root, timeout_seconds=7)
 
         self.assertFalse(probe["ok"])
-        self.assertEqual(probe["status"], "quota")
+        self.assertEqual(probe["status"], "unavailable")
+        self.assertEqual(probe["compatibility"], "unavailable")
+        self.assertEqual(probe["error_class"], "quota")
         self.assertEqual(probe["backend"], BACKEND_COPILOT_CLI)
         self.assertIn("no quota", probe["error"].lower())
 
