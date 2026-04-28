@@ -223,10 +223,19 @@ def compute_elixir_reuse_count(snapshot: MetricsSnapshot) -> Metric:
 
         reuse_count += sum(1 for receipt in group if receipt.target_subject_id in active_finalized)
         for receipt in group:
-            if receipt.operation == "finalize" and receipt.subject_kind == "elixir" and receipt.subject_id:
+            if _is_elixir_finalized_receipt(receipt) and receipt.subject_id:
                 active_finalized.add(receipt.subject_id)
+                if receipt.target_subject_id:
+                    active_finalized.add(receipt.target_subject_id)
+                active_finalized.add(f"wiki/elixirs/{receipt.subject_id}.md")
 
     return Metric("elixir_reuse_count", reuse_count, "count", "", len(snapshot.receipts))
+
+
+def _is_elixir_finalized_receipt(receipt: ReceiptMeta) -> bool:
+    return (receipt.operation == "finalize" and receipt.subject_kind == "elixir") or (
+        receipt.operation == "promote" and receipt.subject_kind == "elixir_promotion"
+    )
 
 
 def _page_updated_datetime(page: WikiPageMeta) -> datetime | None:

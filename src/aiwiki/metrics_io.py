@@ -132,6 +132,7 @@ def _read_receipts(root: Path) -> Iterable[ReceiptMeta]:
             yield _receipt_from_payload(payload, f"{_safe_relative_path(root, history_path)}#L{index}")
 
     yield from _read_page_review_receipts(root)
+    yield from _read_elixir_reference_receipts(root)
 
 
 def _read_page_review_receipts(root: Path) -> Iterable[ReceiptMeta]:
@@ -167,6 +168,44 @@ def _read_page_review_receipts(root: Path) -> Iterable[ReceiptMeta]:
                 applied_at=reviewed_at,
                 receipt_path=f"{rel_path}#reviewed_at",
             )
+
+
+def _read_elixir_reference_receipts(root: Path) -> Iterable[ReceiptMeta]:
+    seen_refs: set[tuple[str, str]] = set()
+    for directory in (root / "wiki" / "elixirs", root / "output" / "_candidates" / "elixirs"):
+        try:
+            paths = sorted(directory.glob("*.md")) if directory.exists() else []
+        except OSError:
+            paths = []
+        for path in paths:
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace")
+                frontmatter = parse_frontmatter(text)
+            except (OSError, UnicodeError):
+                continue
+            subject_id = str(frontmatter.get("elixir_id") or path.stem).strip()
+            if not subject_id:
+                continue
+            applied_at = str(frontmatter.get("promoted_at") or frontmatter.get("created_at") or frontmatter.get("updated_at") or "").strip()
+            if not applied_at:
+                continue
+            rel_path = _safe_relative_path(root, path)
+            for index, ref in enumerate(_as_string_list(frontmatter.get("derived_from")), start=1):
+                target_ref = _elixir_ref(ref)
+                if not target_ref:
+                    continue
+                key = (subject_id, target_ref)
+                if key in seen_refs:
+                    continue
+                seen_refs.add(key)
+                yield ReceiptMeta(
+                    operation="reference",
+                    subject_kind="elixir_reference",
+                    subject_id=subject_id,
+                    target_subject_id=target_ref,
+                    applied_at=applied_at,
+                    receipt_path=f"{rel_path}#derived_from:{index}",
+                )
 
 
 def _read_judgment_review_receipts_from_page(
@@ -342,6 +381,18 @@ def _read_output_candidate_metas(root: Path) -> list[OutputMeta]:
             )
         )
     return outputs
+
+
+def _elixir_ref(value: str) -> str:
+    text = value.strip()
+    path = Path(text)
+    parts = path.parts
+    if len(parts) != 3 or parts[0] != "wiki" or parts[1] != "elixirs" or not text.endswith(".md"):
+        return ""
+    name = path.name
+    if name in {"", ".md"}:
+        return ""
+    return f"wiki/elixirs/{name}"
 
 
 def _as_string_list(value: Any) -> list[str]:

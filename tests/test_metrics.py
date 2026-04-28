@@ -383,6 +383,26 @@ class MetricsTests(unittest.TestCase):
         self.assertAvailableMetric(metric, "count")
         self.assertEqual(metric.value, 2)
 
+    def test_elixir_reuse_promote_receipt_activates_settled_elixir_path(self) -> None:
+        snapshot = MetricsSnapshot(
+            receipts=(
+                _receipt(
+                    "r1",
+                    operation="promote",
+                    subject_kind="elixir_promotion",
+                    subject_id="elixir-1",
+                    target_subject_id="wiki/elixirs/elixir-1.md",
+                    applied_at="2026-04-20T00:00:00Z",
+                ),
+                _receipt("r2", target_subject_id="wiki/elixirs/elixir-1.md", applied_at="2026-04-20T00:00:01Z"),
+            )
+        )
+
+        metric = compute_elixir_reuse_count(snapshot)
+
+        self.assertAvailableMetric(metric, "count")
+        self.assertEqual(metric.value, 1)
+
     def test_elixir_reuse_finalize_without_later_reference_is_zero(self) -> None:
         snapshot = MetricsSnapshot(
             receipts=(

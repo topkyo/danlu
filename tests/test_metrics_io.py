@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from aiwiki import metrics_io
-from aiwiki.metrics import compute_judgment_revisit_rate, compute_review_closure_rate
+from aiwiki.metrics import compute_elixir_reuse_count, compute_judgment_revisit_rate, compute_review_closure_rate
 from aiwiki.metrics_io import build_metrics_snapshot
 
 
@@ -306,6 +306,46 @@ class MetricsIOTests(unittest.TestCase):
         self.assertEqual(len(snapshot.proposals), 1)
         self.assertEqual(snapshot.proposals[0].status, "accepted")
         self.assertEqual(snapshot.proposals[0].decided_at, "2026-04-21T00:00:00Z")
+
+    def test_elixir_derived_from_reference_counts_as_reuse_after_promotion(self) -> None:
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            receipt_path = root / "output" / "control" / "execution-receipts" / "elixir-promote-base.json"
+            receipt_path.parent.mkdir(parents=True)
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "operation": "promote",
+                        "subject_kind": "elixir_promotion",
+                        "subject_id": "base",
+                        "primary_path": "wiki/elixirs/base.md",
+                        "applied_at": "2026-04-20T00:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            candidate_path = root / "output" / "_candidates" / "elixirs" / "next.md"
+            candidate_path.parent.mkdir(parents=True)
+            candidate_path.write_text(
+                "---\n"
+                "elixir_id: next\n"
+                "elixir_state: draft\n"
+                "created_at: 2026-04-20T00:00:01Z\n"
+                "derived_from:\n"
+                "  - wiki/derived/source.md\n"
+                "  - wiki/elixirs/base.md\n"
+                "  - wiki/elixirs/../ignored.md\n"
+                "---\n"
+                "# Next\n",
+                encoding="utf-8",
+            )
+
+            snapshot = build_metrics_snapshot(root, now_iso="2026-04-27T00:00:00Z")
+
+        metric = compute_elixir_reuse_count(snapshot)
+        self.assertEqual(metric.value, 1)
 
     def test_safe_relative_path_handles_outside_path(self) -> None:
         self.assertTrue(metrics_io._safe_relative_path(Path("/tmp/root"), Path("/other/file.md")).endswith("/other/file.md"))
