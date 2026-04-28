@@ -998,6 +998,25 @@ def _action_review_item(item: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _ready_actions_batch_helper(items: list[dict[str, object]]) -> dict[str, object] | None:
+    apply_count = sum(1 for item in items if bool(item.get("can_apply")))
+    if apply_count <= 1:
+        return None
+    return {
+        "id": "batch-apply-all-accepted-low-risk",
+        "title": f"批量预览 {apply_count} 条 accepted low-risk actions",
+        "summary": "batch-helper · dry-run first",
+        "target": "review:ready_actions",
+        "timestamp": "",
+        "protocol": "",
+        "kind": "batch-helper",
+        "status": "suggested",
+        "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action --all-accepted-low-risk --dry-run",
+        "can_review": False,
+        "can_apply": True,
+    }
+
+
 def _review_action_item(item: dict[str, object]) -> dict[str, object]:
     action_id = str(item.get("id") or "").strip()
     return {
@@ -1072,12 +1091,16 @@ def _review_queue_detail_buckets(summary: dict[str, object]) -> dict[str, list[d
         if has_backlog("machine_memory_actions"):
             buckets["machine_memory_actions"] = [_action_review_item(item) for item in actionable]
         if has_backlog("ready_actions"):
-            buckets["ready_actions"] = [
+            ready_actions = [
                 _action_review_item(item)
                 for item in actions
                 if str(item.get("current_status") or item.get("status") or "") == "accepted"
                 and (bool(item.get("can_apply")) or bool(item.get("can_review")) or bool(item.get("can_revert")))
             ]
+            batch_helper = _ready_actions_batch_helper(ready_actions)
+            if batch_helper:
+                ready_actions.append(batch_helper)
+            buckets["ready_actions"] = ready_actions
 
     return {key: value for key, value in buckets.items() if value}
 

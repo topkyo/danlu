@@ -805,6 +805,50 @@ class CLITests(unittest.TestCase):
             "PYTHONPATH=src python3 -m aiwiki.cli --root . review-action resolve-me --status resolved",
         )
 
+    def test_review_queue_ready_actions_adds_batch_helper_for_multiple_apply_items(self) -> None:
+        """Round 12: ready_actions exposes the safe batch dry-run entry when useful."""
+        summary = {
+            "generated_at": "2026-04-27T10:00:00+00:00",
+            "active_protocol": "research",
+            "review_backlog_counts": {"ready_actions": 2},
+            "execution_controls": {
+                "actions": [
+                    {"action_id": "apply-a", "title": "Apply A", "kind": "x", "status": "accepted", "can_apply": True},
+                    {"action_id": "apply-b", "title": "Apply B", "kind": "x", "status": "accepted", "can_apply": True},
+                ]
+            },
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, payload, stderr = self._run_main(["review-queue", "--bucket", "ready_actions", "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        items = payload["buckets"]["ready_actions"]
+        self.assertEqual(payload["total"], 3)
+        self.assertEqual(items[-1]["id"], "batch-apply-all-accepted-low-risk")
+        self.assertEqual(items[-1]["kind"], "batch-helper")
+        self.assertEqual(
+            items[-1]["command"],
+            "PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action --all-accepted-low-risk --dry-run",
+        )
+
+    def test_review_queue_ready_actions_omits_batch_helper_for_single_apply_item(self) -> None:
+        summary = {
+            "generated_at": "2026-04-27T10:00:00+00:00",
+            "active_protocol": "research",
+            "review_backlog_counts": {"ready_actions": 1},
+            "execution_controls": {
+                "actions": [
+                    {"action_id": "apply-me", "title": "Apply me", "kind": "x", "status": "accepted", "can_apply": True},
+                ]
+            },
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, payload, stderr = self._run_main(["review-queue", "--bucket", "ready_actions", "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["total"], 1)
+        self.assertEqual(payload["buckets"]["ready_actions"][0]["id"], "apply-me")
+
     def test_review_queue_pending_judgments_bucket_drills_down_pages(self) -> None:
         """Round 9: pending_judgments 展开具体 page，并给出 review-page 命令。"""
         summary = {
