@@ -458,7 +458,7 @@ promoted_at: null
 ### 7.4 DAG 约束
 
 - 金丹引用链（`elixir_refs`）**必须**构成有向无环图。
-- 新金丹**不得**只依赖旧金丹的结论自举——必须同时锚定至少一条 `raw/` 或 `wiki/sources/` / `wiki/judgments/` 的底层证据。
+- 新金丹**不得**只依赖旧金丹的结论自举——必须同时锚定至少一条 `wiki/derived/` 的底层证据；如需引用 `raw/` / `wiki/sources/` / `wiki/judgments/` 原始证据，应先经 `aiwiki promote` 注册为 corpus candidate 并产出 derived 后再锚定。
 - 当前 `alchemy-distill / alchemy-finalize / alchemy-promote` 已校验金丹 DAG、自引用、路径穿越和底层 `wiki/derived/` 锚定。
 
 ### 7.5 Counter-evidence 强制

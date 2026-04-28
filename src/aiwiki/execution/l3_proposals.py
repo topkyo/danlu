@@ -636,10 +636,14 @@ def _resolve_l3_receipt_path(root: Path, receipt_id: str) -> Path:
 def revert_l3_proposal(root: Path, receipt_id: str, *, note: str | None = None) -> dict[str, Any]:
     receipt_path = _resolve_l3_receipt_path(root, receipt_id)
     receipt = load_json_document(receipt_path)
+    actionable_hint = (
+        "Expected receipt JSON under output/control/execution-receipts/ with kind=execution-receipt "
+        "and generated_by=aiwiki-l3-proposal. Try `aiwiki revert l3-proposal-apply-<proposal_id>`."
+    )
     if not isinstance(receipt, dict) or str(receipt.get("kind") or "") != "execution-receipt":
-        raise RuntimeError("L3 proposal receipt is not valid.")
+        raise RuntimeError(f"L3 proposal receipt is not valid: {receipt_id}. {actionable_hint}")
     if str(receipt.get("generated_by") or "") != "aiwiki-l3-proposal" or str(receipt.get("operation") or "") != "apply":
-        raise RuntimeError("Only L3 proposal apply receipts can be reverted.")
+        raise RuntimeError(f"Only L3 proposal apply receipts can be reverted: {receipt_id}. {actionable_hint}")
     proposal_id = str(receipt.get("subject_id") or "")
     proposals = [dict(item) for item in load_l3_proposal_state(root).get("proposals", []) if isinstance(item, dict)]
     proposal = _find_l3_proposal(proposals, proposal_id)

@@ -95,6 +95,8 @@ NEXT_STEP_HINTS = {
     "derived": (
         "wiki/derived 是机器记忆终态层；不进入 review-page 工作流。"
         "如需人工审阅，请用 file-back --kind judgment 或 --kind decision。"
+        "如需进入金丹链路（alchemy-start），请先用 aiwiki promote <output_ref> 注册 corpus candidate；"
+        "file-back --kind derived 不写 corpus candidate plane。"
     ),
     "judgment": (
         "next: aiwiki review-page {path} "

@@ -722,6 +722,7 @@
               ]
             }
           ],
+          "cold_start": false,
           "decision_mode": "",
           "dry_run": true,
           "human_accept_required_after_apply": true,

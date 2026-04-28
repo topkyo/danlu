@@ -26,6 +26,21 @@ from aiwiki.app_utils import (
 
 logger = logging.getLogger(__name__)
 
+_PLANNER_LOG_REL_PATH = ".aiwiki/state/planner-log.jsonl"
+_ALCHEMY_PROPOSE_COLD_START_ERROR = (
+    "planner-log not initialized: alchemy propose --apply requires execute-mode planner decisions. "
+    "Run `aiwiki nightly` or `aiwiki auto-once` first to populate planner-log.jsonl, "
+    "or use `aiwiki l3-proposal-create` for manual fixtures."
+)
+
+
+def _resolve_alchemy_planner_log_path(root: Path, planner_log_path: Path | None) -> Path:
+    if planner_log_path is None:
+        return root / _PLANNER_LOG_REL_PATH
+    if planner_log_path.is_absolute():
+        return planner_log_path
+    return root / planner_log_path
+
 
 def run_alchemy_legacy_migration_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
     from aiwiki.execution.alchemy import preview_legacy_elixir_migration
@@ -895,7 +910,8 @@ def run_alchemy_propose_preview(
 ) -> dict[str, Any]:
     from aiwiki.planner import preview_propose_primitive
 
-    return preview_propose_primitive(
+    resolved_planner_log_path = _resolve_alchemy_planner_log_path(root, planner_log_path)
+    preview = preview_propose_primitive(
         root,
         scope=scope,
         planner_log_path=planner_log_path,
@@ -906,6 +922,8 @@ def run_alchemy_propose_preview(
         max_tokens=max_tokens,
         limit=limit,
     )
+    preview["cold_start"] = not resolved_planner_log_path.exists()
+    return preview
 
 
 def run_alchemy_propose_apply(
@@ -932,6 +950,9 @@ def run_alchemy_propose_apply(
             "reason": reason,
             "scope": scope,
         }
+
+    if not _resolve_alchemy_planner_log_path(root, planner_log_path).exists():
+        raise ValueError(_ALCHEMY_PROPOSE_COLD_START_ERROR)
 
     preview = run_alchemy_propose_preview(
         root,

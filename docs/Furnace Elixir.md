@@ -122,6 +122,7 @@ aiwiki ask "新主题" --elixir <old-elixir-id>
 3. **金丹自循环 (Circular Reference)**
    - *风险*：新丹引用旧丹，旧丹的推演基础已被证伪，导致“空中楼阁”式的知识坍塌。
    - *缓解*：引用链必须是严格的有向无环图 (DAG)；新丹的推导不能仅仅依靠旧丹的结论，必须继续锚定底层的 `raw/` 或 `wiki/` 原始证据作为支撑。
+   - *来源边界*：corpus candidate plane 由 `aiwiki promote` 维护；`file-back --kind derived` 是另一条独立路径，二者不互相注册。如需进入金丹链路，应先 promote 输出候选，再由 derived 锚定。
 
 4. **协议学习变隐式 Prompt 漂移**
    - *风险*：过多的 learning 积累导致 LLM 行为难以预测，破坏 deterministic baseline。

@@ -321,7 +321,7 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         "--kind",
         choices=("derived", "decision", "judgment"),
         default="derived",
-        help="Filed-back page kind. Note: 'derived' is terminal (no review); 'decision' and 'judgment' enter the review-page workflow.",
+        help="Filed-back page kind. Note: 'derived' is terminal (no review) and separate from the corpus candidate plane; 'decision' and 'judgment' enter the review-page workflow.",
     )
     file_back_parser.add_argument("--protocol", help="Optional protocol override for the filed-back page.")
 
@@ -578,7 +578,10 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     apply_parser.add_argument("--note")
 
     revert_parser = subparsers.add_parser("revert", help="Revert an L3 proposal apply receipt.")
-    revert_parser.add_argument("receipt_id")
+    revert_parser.add_argument(
+        "receipt_id",
+        help="Receipt id of the L3 proposal apply receipt (action_id field inside output/control/execution-receipts/l3-proposal-apply-<proposal_id>.json; or full receipt path; or receipt JSON basename).",
+    )
     revert_parser.add_argument("--note")
 
     review_parser = subparsers.add_parser(
