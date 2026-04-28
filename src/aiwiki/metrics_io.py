@@ -249,9 +249,10 @@ def _read_outputs(root: Path) -> Iterable[OutputMeta]:
             frontmatter = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
         except (OSError, UnicodeError):
             continue
+        derived_from = _as_string_list(frontmatter.get("derived_from")) or _as_string_list(frontmatter.get("source_files"))
         yield OutputMeta(
             path=_safe_relative_path(root, path),
-            derived_from=_as_string_list(frontmatter.get("derived_from")),
+            derived_from=derived_from,
             generated_at=str(frontmatter.get("generated_at") or frontmatter.get("created_at") or ""),
         )
 

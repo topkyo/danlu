@@ -199,6 +199,27 @@ class MetricsIOTests(unittest.TestCase):
         self.assertEqual(len(snapshot.proposals), 1)
         self.assertEqual(snapshot.proposals[0].status, "accepted")
 
+    def test_reads_output_source_files_as_provenance_fallback(self) -> None:
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            output = root / "output" / "reports" / "report.md"
+            output.parent.mkdir(parents=True)
+            output.write_text(
+                "---\n"
+                "source_files:\n"
+                "  - wiki/sources/a.md\n"
+                "created_at: 2026-04-20T00:00:00Z\n"
+                "---\n# Report\n",
+                encoding="utf-8",
+            )
+
+            snapshot = build_metrics_snapshot(root, now_iso="2026-04-27T00:00:00Z")
+
+        self.assertEqual(len(snapshot.outputs), 1)
+        self.assertEqual(snapshot.outputs[0].derived_from, ["wiki/sources/a.md"])
+
     def test_reads_markdown_proposal_and_scalar_output_derived_from(self) -> None:
         from tempfile import TemporaryDirectory
 
