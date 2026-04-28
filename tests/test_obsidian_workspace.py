@@ -27,7 +27,7 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         main_children = workspace["main"]["children"][0]["children"]
         self.assertEqual(main_children[0]["state"]["state"]["file"], "HOME.md")
         left_children = workspace["left"]["children"][0]["children"]
-        left_titles = [child["state"]["title"] for child in left_children]
+        left_titles = [child["state"].get("title") for child in left_children]
         self.assertEqual(
             left_titles,
             ["文件列表", "原料 raw", "wiki 知识", "输出 output", "规则 schema", "书签"],

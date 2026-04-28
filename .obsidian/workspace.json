@@ -1,11 +1,15 @@
 {
-  "active": "main-home",
+  "active": "right-furnace-center",
   "lastOpenFiles": [
     "HOME.md",
-    "wiki/indexes/Raw Inbox.md",
-    "wiki/indexes/Wiki Hub.md",
-    "wiki/indexes/Outputs.md",
-    "wiki/indexes/Search Presets.md"
+    "README.md",
+    "wiki/indexes/furnace-center.md",
+    "wiki/indexes/review-center.md",
+    "wiki/indexes/execution-center.md",
+    "wiki/indexes/graph-view.md",
+    "wiki/indexes/protocols.md",
+    "schema/index.md",
+    "output/control/shell-summary.json"
   ],
   "left": {
     "children": [
@@ -14,7 +18,12 @@
           {
             "id": "left-files",
             "state": {
-              "state": {},
+              "icon": "lucide-folder-closed",
+              "state": {
+                "autoReveal": false,
+                "sortOrder": "alphabetical"
+              },
+              "title": "文件列表",
               "type": "file-explorer"
             },
             "type": "leaf"
@@ -22,14 +31,16 @@
           {
             "id": "left-search-raw",
             "state": {
+              "icon": "lucide-search",
               "state": {
                 "collapseAll": false,
                 "explainSearch": false,
                 "extraContext": false,
                 "matchingCase": false,
-                "query": "path:\"raw/inbox\"",
+                "query": "path:\"raw\"",
                 "sortOrder": "alphabetical"
               },
+              "title": "原料 raw",
               "type": "search"
             },
             "type": "leaf"
@@ -37,14 +48,16 @@
           {
             "id": "left-search-wiki",
             "state": {
+              "icon": "lucide-search",
               "state": {
                 "collapseAll": false,
                 "explainSearch": false,
                 "extraContext": false,
                 "matchingCase": false,
-                "query": "path:\"wiki/sources\" OR path:\"wiki/indexes\" OR path:\"wiki/derived\"",
+                "query": "path:\"wiki\"",
                 "sortOrder": "alphabetical"
               },
+              "title": "wiki 知识",
               "type": "search"
             },
             "type": "leaf"
@@ -52,20 +65,48 @@
           {
             "id": "left-search-output",
             "state": {
+              "icon": "lucide-search",
               "state": {
                 "collapseAll": false,
                 "explainSearch": false,
                 "extraContext": false,
                 "matchingCase": false,
-                "query": "path:\"output/reports\" OR path:\"output/slides\" OR path:\"output/figures\" OR path:\"output/lint\"",
+                "query": "path:\"output\"",
                 "sortOrder": "alphabetical"
               },
+              "title": "输出 output",
               "type": "search"
+            },
+            "type": "leaf"
+          },
+          {
+            "id": "left-search-schema",
+            "state": {
+              "icon": "lucide-search",
+              "state": {
+                "collapseAll": false,
+                "explainSearch": false,
+                "extraContext": false,
+                "matchingCase": false,
+                "query": "path:\"schema\"",
+                "sortOrder": "alphabetical"
+              },
+              "title": "规则 schema",
+              "type": "search"
+            },
+            "type": "leaf"
+          },
+          {
+            "id": "left-bookmarks",
+            "state": {
+              "icon": "lucide-bookmark",
+              "state": {},
+              "title": "书签",
+              "type": "bookmarks"
             },
             "type": "leaf"
           }
         ],
-        "currentTab": 0,
         "id": "left-tabs",
         "type": "tabs"
       }
@@ -75,24 +116,39 @@
     "type": "split",
     "width": 320
   },
+  "left-ribbon": {
+    "hiddenItems": {
+      "bases:新建数据库": false,
+      "canvas:新建白板": false,
+      "command-palette:打开命令面板": false,
+      "furnace-product-shell:Open Furnace Center": false,
+      "furnace-product-shell:打开炉心面板": false,
+      "furnace-product-shell:Refresh Furnace Shell": false,
+      "furnace-product-shell:刷新炼丹炉 Shell": false,
+      "graph:查看关系图谱": false,
+      "switcher:打开快速切换": false,
+      "workspaces:管理工作区布局": false
+    }
+  },
   "main": {
     "children": [
       {
         "children": [
           {
-            "id": "main-home",
+            "id": "home-leaf",
             "state": {
+              "icon": "lucide-file",
               "state": {
                 "file": "HOME.md",
                 "mode": "preview",
                 "source": false
               },
+              "title": "HOME",
               "type": "markdown"
             },
             "type": "leaf"
           }
         ],
-        "currentTab": 0,
         "id": "main-tabs",
         "type": "tabs"
       }
@@ -108,9 +164,14 @@
           {
             "id": "right-outline",
             "state": {
+              "icon": "lucide-list",
               "state": {
-                "file": "HOME.md"
+                "file": "HOME.md",
+                "followCursor": false,
+                "searchQuery": "",
+                "showSearch": false
               },
+              "title": "HOME 的大纲",
               "type": "outline"
             },
             "type": "leaf"
@@ -118,31 +179,63 @@
           {
             "id": "right-backlinks",
             "state": {
+              "icon": "links-coming-in",
               "state": {
+                "backlinkCollapsed": false,
                 "collapseAll": false,
                 "extraContext": false,
-                "file": "HOME.md",
-                "showSearchContext": false,
-                "sortOrder": "alphabetical"
+                "searchQuery": "",
+                "showSearch": false,
+                "sortOrder": "alphabetical",
+                "unlinkedCollapsed": true
               },
+              "title": "反向链接",
               "type": "backlink"
             },
             "type": "leaf"
           },
           {
-            "id": "right-outgoing",
+            "id": "right-furnace-center",
             "state": {
-              "state": {
-                "file": "HOME.md",
-                "linksCollapsed": false,
-                "unlinkedCollapsed": true
-              },
-              "type": "outgoing-link"
+              "icon": "flask-conical",
+              "state": {},
+              "title": "炉心面板",
+              "type": "furnace-product-shell-furnace-center"
+            },
+            "type": "leaf"
+          },
+          {
+            "id": "right-review-center",
+            "state": {
+              "icon": "clipboard-check",
+              "state": {},
+              "title": "审阅中心",
+              "type": "furnace-product-shell-review-center"
+            },
+            "type": "leaf"
+          },
+          {
+            "id": "right-execution-center",
+            "state": {
+              "icon": "play-circle",
+              "state": {},
+              "title": "执行中心",
+              "type": "furnace-product-shell-execution-center"
+            },
+            "type": "leaf"
+          },
+          {
+            "id": "right-recent-runs",
+            "state": {
+              "icon": "history",
+              "state": {},
+              "title": "最近运行",
+              "type": "furnace-product-shell-recent-runs"
             },
             "type": "leaf"
           }
         ],
-        "currentTab": 0,
+        "currentTab": 2,
         "id": "right-tabs",
         "type": "tabs"
       }

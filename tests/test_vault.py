@@ -69,7 +69,7 @@ class VaultBootstrapTests(unittest.TestCase):
         self.assertEqual(plugin_data["settings"]["locale"], "zh")
         self.assertEqual(
             [child["state"]["title"] for child in workspace["left"]["children"][0]["children"]],
-            ["文件列表", "原料 raw", "wiki 知识", "输出 output", "规则 schema"],
+            ["文件列表", "原料 raw", "wiki 知识", "输出 output", "规则 schema", "书签"],
         )
         self.assertIn(
             "furnace-product-shell-review-center",

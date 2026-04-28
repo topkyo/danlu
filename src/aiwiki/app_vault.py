@@ -252,6 +252,16 @@ def _default_workspace_document() -> dict[str, Any]:
                             },
                             "type": "leaf",
                         },
+                        {
+                            "id": "left-bookmarks",
+                            "state": {
+                                "icon": "lucide-bookmark",
+                                "state": {},
+                                "title": "书签",
+                                "type": "bookmarks",
+                            },
+                            "type": "leaf",
+                        },
                     ],
                     "id": "left-tabs",
                     "type": "tabs",
