@@ -13,6 +13,14 @@ from typing import Any, Iterable
 from aiwiki.app_utils import parse_frontmatter, relative_path
 from aiwiki.metrics import MetricsSnapshot, OutputMeta, ProposalMeta, ReceiptMeta, WikiPageMeta
 
+_PAGE_REVIEW_CLOSE_STATUSES = {
+    "approved": "approve",
+    "confirmed": "approve",
+    "needs-revisit": "close",
+    "rejected": "reject",
+    "superseded": "close",
+}
+
 
 def build_metrics_snapshot(
     root: Path,
@@ -103,25 +111,58 @@ def _read_receipts(root: Path) -> Iterable[ReceiptMeta]:
         yield _receipt_from_payload(payload, rel_path)
 
     history_path = root / ".aiwiki" / "state" / "execution-receipts.jsonl"
-    if not history_path.exists():
-        return
-    try:
-        lines = history_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except (OSError, UnicodeError):
-        return
-    for index, line in enumerate(lines, start=1):
-        if not line.strip():
-            continue
+    lines: list[str] = []
+    if history_path.exists():
         try:
-            payload = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(payload, dict):
-            continue
-        receipt_path = str(payload.get("receipt_path") or "").strip()
-        if receipt_path and receipt_path in seen_paths:
-            continue
-        yield _receipt_from_payload(payload, f"{_safe_relative_path(root, history_path)}#L{index}")
+            lines = history_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except (OSError, UnicodeError):
+            lines = []
+    for index, line in enumerate(lines, start=1):
+        if line.strip():
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            receipt_path = str(payload.get("receipt_path") or "").strip()
+            if receipt_path and receipt_path in seen_paths:
+                continue
+            yield _receipt_from_payload(payload, f"{_safe_relative_path(root, history_path)}#L{index}")
+
+    yield from _read_page_review_receipts(root)
+
+
+def _read_page_review_receipts(root: Path) -> Iterable[ReceiptMeta]:
+    for directory, expected_kind in ((root / "wiki" / "decisions", "decision"), (root / "wiki" / "judgments", "judgment")):
+        try:
+            paths = sorted(directory.glob("*.md")) if directory.exists() else []
+        except OSError:
+            paths = []
+        for path in paths:
+            try:
+                frontmatter = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+            except (OSError, UnicodeError):
+                continue
+            kind = str(frontmatter.get("kind") or expected_kind)
+            if kind != expected_kind:
+                continue
+            reviewed_at = str(frontmatter.get("reviewed_at") or frontmatter.get("last_reviewed") or "").strip()
+            if not reviewed_at:
+                continue
+            status = str(frontmatter.get("status") or "").strip()
+            operation = _PAGE_REVIEW_CLOSE_STATUSES.get(status)
+            if operation is None:
+                continue
+            rel_path = _safe_relative_path(root, path)
+            yield ReceiptMeta(
+                operation=operation,
+                subject_kind="review",
+                subject_id=str(frontmatter.get("id") or path.stem),
+                target_subject_id=rel_path,
+                applied_at=reviewed_at,
+                receipt_path=f"{rel_path}#reviewed_at",
+            )
 
 
 def _receipt_json_paths(root: Path) -> list[Path]:

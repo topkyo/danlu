@@ -437,7 +437,11 @@ def apply_machine_memory_action(
     if str(stored_bundle.get("digest") or "") != execution_bundle_digest(stored_bundle):
         raise RuntimeError("Execution bundle digest is invalid; regenerate the bundle before apply.")
     if str(stored_bundle.get("digest") or "") != str(bundle.get("digest") or ""):
-        raise RuntimeError("Execution bundle is stale; re-run compile or apply-action --dry-run before apply.")
+        raise RuntimeError(
+            "Execution bundle is stale; refresh it with "
+            f"`PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {resolved_action_id} --dry-run`, "
+            f"then rerun `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {resolved_action_id}`."
+        )
 
     applied_at = _app_compile.utc_now()
     stored_preview = stored_bundle.get("safe_apply_preview")

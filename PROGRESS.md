@@ -6,6 +6,72 @@
 
 ## 状态
 
+- **Round 11 — Metrics Review Activity From Page Reviews — 完成**
+  - **目的**: Round 10 真实 `review-page ... --status confirmed` 后，`metrics --json` 仍显示 `review_closure_rate=null reason=no review activity`。根因是 metrics 只读 execution receipts，不读 decision/judgment page review metadata
+  - **设计核心**:
+    - `metrics_io.py`: `_read_receipts()` 追加 `_read_page_review_receipts(root)` 输出，将 `wiki/decisions/*.md` / `wiki/judgments/*.md` 中带 `reviewed_at` 的 closed status 合成为 `ReceiptMeta(subject_kind="review")`
+    - closed status 口径：`approved` / `confirmed` → `approve`，`rejected` → `reject`，`needs-revisit` / `superseded` → `close`
+    - `tracking` / `tentative` 不算 closure，继续作为持续跟踪态
+    - 不改 metrics 顶层 key、不改 persisted schema、不改 `review-page` 写入格式
+  - **测试**:
+    - `tests/test_metrics_io.py::test_page_review_history_counts_as_review_closure_activity`: confirmed judgment 计入 closure，tracking judgment 不计 closure；closure / pending denominator 正确
+    - `tests/test_metrics.py` 既有 review closure tests 保持
+  - **验证**:
+    - focused: `tests/test_metrics_io.py tests/test_metrics.py -k 'review_closure or page_review'` 4/4
+    - `bash scripts/verify.sh` exit 0；1492 unit + 13 acceptance；coverage 92%
+  - **dogfood smoke**:
+    - `metrics --json`: `review_closure_rate` 从 `null/no review activity` → `1.0`，`sample_size=2`
+  - **当前评估**: 指标现在能反馈 Round 10 的 page review 闭环；下一轮可继续处理 remaining ready actions，或做 batch-safe apply UX（避免每条 apply 后 stale bundle 需要手动重跑 dry-run）
+
+- **Round 10 — Dogfood Queue Execution + Recovery Friction Fixes — 完成**
+  - **目的**: 在 Round 9 `review-queue` drilldown 后，真实执行一小批可回滚队列项，验证炼丹炉是否能从“看得见积压”推进到“能安全消化积压”
+  - **入场态**（dogfood vault `/home/tim/danlu/炼丹炉`）:
+    - `ready_actions`: 7 条
+    - `pending_judgments`: 1 条
+    - `metrics`: `review_closure_rate=0.0`、`output_file_back_rate=0.0303`、`provenance_completeness=0.0`
+  - **真实执行**:
+    - `apply-action ...-coverage --dry-run` → `apply-action ...-coverage`: 成功，receipt `output/control/execution-receipts/...coverage.json`
+    - `apply-action ...-dataset --dry-run` → 首次 apply 因第一条 apply 后 compile 导致 bundle stale；重跑 dry-run 后 apply 成功，receipt `output/control/execution-receipts/...dataset.json`
+    - `review-page wiki/judgments/judgment-20260428-054243-v3-6-vs-v3-5-slam-dogfood-judgment.md --status confirmed`: 成功
+  - **暴露摩擦与修复**:
+    - `execution/machine_memory_actions.py`: stale bundle 错误从泛化 “re-run compile or apply-action --dry-run” 改为直接给出 `apply-action <id> --dry-run` 与后续 apply 命令
+    - `cli/dispatch.py`: `review-queue --bucket ready_actions` 口径改为 accepted 且 actionable（`can_apply/can_review/can_revert` 任一为真），与 `today` 的 ready_actions 聚合对齐；排除 accepted-but-inert 历史项 `and/the`
+  - **测试**:
+    - `tests/test_app.py::test_apply_machine_memory_action_rejects_stale_bundle` 断言 stale 错误含恢复命令
+    - `tests/test_cli.py` review_queue focused 8/8，覆盖 ready_actions accepted/actionable 口径
+  - **验证**:
+    - `bash scripts/verify.sh` exit 0；1491 unit + 13 acceptance；coverage 92%
+  - **出场态**:
+    - `today --json`: machine_memory_actions 13、ready_actions 6、pending_judgments 已消失
+    - `review-queue --bucket ready_actions --json`: 6 条，与 today 对齐（5 条 safe-apply + 1 条 `overloaded-concept-vlm` resolve command）
+    - `review-queue --bucket pending_judgments --json`: total 0
+    - `metrics --json`: `review_closure_rate=null reason=no review activity`，说明 metrics 目前未把 page review history 算作 review activity；记为 Round 11 指标口径候选
+  - **当前评估**: 执行闭环可用；single-writer + stale bundle safety 机制有效但需要更好的 batch UX。下一轮最高 ROI 是 metrics review activity 口径 + remaining ready actions 的 batch-safe apply 流程
+
+- **Round 9 — Review Queue Drilldown Console — 完成（active contract refreshed）**
+  - **目的**: `.codex/contracts/active.md` 停在 Round 5，已落后于 HEAD `f6413a6`（Round 8C）。真实 dogfood 显示 `review-queue` 虽已存在，但 `review-queue --bucket machine_memory_actions` 只输出一行 “15 项待审”，不能展开具体 item / command，review throughput 仍被卡住
+  - **基线重建**:
+    - HEAD: `f6413a6 Round 8C: refresh review surfaces and batch triage actions`
+    - 已交付链: Round 5 `today --json` / retire batch / review-queue；Round 6 retroactive concept-noise rebuild；Round 7 review-concept；Round 8B reactivate override cleanup；Round 8C batch triage actions
+    - dogfood vault `/home/tim/danlu/炼丹炉`: `today --json` 显示 machine_memory_actions 15、ready_actions 8、pending_judgments 1；`metrics --json` 显示 review/output 回流仍偏低
+  - **设计核心**:
+    - 重写 `.codex/contracts/active.md` 为 Round 9 当前契约，不再以旧 Round 5 作为执行源
+    - `cli/dispatch.py::review_queue_command` 保留原 `build_today_feed()` 聚合 bucket，但用 `summary.review_controls` / `summary.execution_controls` 为可识别 bucket 提供 drilldown item
+    - 已展开 bucket: `machine_memory_actions`、`ready_actions`、`pending_judgments`、`pending_decisions`、`judgment_review_actions`、`counter_evidence_candidates`、`l3_proposals`
+    - 每条 drilldown item 输出 `id/title/summary/target/protocol/kind/status/command/can_review/can_apply`；文本模式追加 `command:` 行
+    - 不改 persisted state schema，不改 `today` 5-section contract，不执行 dogfood 写操作
+  - **测试**:
+    - `tests/test_cli.py -k review_queue`: 8/8
+    - 新增覆盖：machine_memory_actions drilldown、ready_actions 只取 can_apply、pending_judgments review-page command、text command 渲染
+  - **验证**:
+    - `bash scripts/verify.sh` exit 0；1491 unit + 13 acceptance；coverage 92%
+  - **dogfood read-only smoke**:
+    - `today --json`: 仍输出 6 个 needs_review 聚合信号
+    - `review-queue --bucket machine_memory_actions --json`: 展开 15 条具体 action，含 `apply-action ... --dry-run` / `review-action ... --status accepted|resolved`
+    - `review-queue --bucket ready_actions --json`: 展开 7 条 can_apply action
+    - `review-queue --bucket pending_judgments --json`: 展开 1 条 judgment，含 `review-page ... --status confirmed`
+  - **当前评估**: 炼丹炉已经从“能产出高质量判断”推进到“能把积压转成可执行队列”；下一轮真正产品试运行应执行一批 ready_actions / review-actions，观察 metrics 的 `review_closure_rate`、`output_file_back_rate`、provenance 指标是否改善
+
 - **P4-4 — Review Workflow Boundary Clarification — 完成（close F11）**
   - **目的**: dogfood receipt v0 §F11 — `file-back --kind derived` 落盘但 `review-page` 拒收，dogfood 演示链路出现死支线。按炼丹炉 evolution mechanics SoT，`derived = 机器记忆/聚合视图终态层`，正确路径是显式声明边界而非扩 review
   - **设计核心**:
@@ -1213,4 +1279,3 @@ oracle 复评 `ses_22e7d0c4cffex6PjhhVJ4nQzT5` 给出 8.6/10，定位三处距 9
   - `tests/test_alchemy.py`：新增三个 audit-fail rollback 测试（promote / revert / demote 各一个，patch `aiwiki.execution.audit_preview.append_audit`）+ corrupt JSONL strict 测试 `test_find_latest_elixir_promotion_receipt_raises_on_corrupt_jsonl`；旧反向测试 `test_find_latest_elixir_promotion_receipt_skips_non_dict_lines` 改写为 `..._raises_on_non_object_line`
   - `tests/test_state_utils.py`：新增 `test_load_json_document_returns_empty_when_top_level_not_object`
 - verify pass：1425 unit + 13 acceptance / 93% coverage / `--fail-under=92` gate
-

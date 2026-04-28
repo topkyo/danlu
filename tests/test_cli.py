@@ -704,7 +704,7 @@ class CLITests(unittest.TestCase):
         self.assertEqual(payload["total"], 4)
         # entry schema
         sample = payload["buckets"]["concept_backlog"][0]
-        self.assertEqual(set(sample.keys()), {"title", "summary", "target", "timestamp", "protocol"})
+        self.assertEqual(set(sample.keys()), {"title", "summary", "target", "timestamp", "protocol", "command"})
 
     def test_review_queue_filter_by_bucket(self) -> None:
         """--bucket 过滤到单 bucket。"""
@@ -734,6 +734,122 @@ class CLITests(unittest.TestCase):
         self.assertIn("# Review Queue", stdout)
         self.assertIn("## concept_backlog", stdout)
         self.assertIn("total        : 1", stdout)
+
+    def test_review_queue_machine_memory_bucket_drills_down_actions(self) -> None:
+        """Round 9: machine_memory_actions 展开具体 action，并给出可执行命令。"""
+        summary = {
+            "generated_at": "2026-04-27T10:00:00+00:00",
+            "active_protocol": "research",
+            "review_backlog_counts": {"machine_memory_actions": 15},
+            "execution_controls": {
+                "actions": [
+                    {
+                        "action_id": "link-alpha-beta",
+                        "title": "补连 Alpha -> Beta",
+                        "kind": "add-source-concept-link",
+                        "current_status": "accepted",
+                        "protocol": "research",
+                        "primary_path": "wiki/sources/alpha.md",
+                        "proposal_path": "wiki/execution-proposals/link-alpha-beta.md",
+                        "can_apply": True,
+                        "can_review": True,
+                        "default_transition": "resolved",
+                    }
+                ]
+            },
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, payload, stderr = self._run_main(["review-queue", "--bucket", "machine_memory_actions", "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["total"], 1)
+        item = payload["buckets"]["machine_memory_actions"][0]
+        self.assertEqual(item["id"], "link-alpha-beta")
+        self.assertEqual(item["status"], "accepted")
+        self.assertTrue(item["can_apply"])
+        self.assertEqual(
+            item["command"],
+            "PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action link-alpha-beta --dry-run",
+        )
+
+    def test_review_queue_ready_actions_bucket_includes_accepted_actions(self) -> None:
+        """Round 10: ready_actions 与 today 口径一致，展开 accepted action。"""
+        summary = {
+            "generated_at": "2026-04-27T10:00:00+00:00",
+            "active_protocol": "research",
+            "review_backlog_counts": {"ready_actions": 2},
+            "execution_controls": {
+                "actions": [
+                    {"action_id": "apply-me", "title": "Apply me", "kind": "x", "status": "accepted", "can_apply": True},
+                    {
+                        "action_id": "resolve-me",
+                        "title": "Resolve me",
+                        "kind": "x",
+                        "status": "accepted",
+                        "can_review": True,
+                        "default_transition": "resolved",
+                    },
+                    {"action_id": "review-me", "title": "Review me", "kind": "x", "status": "proposed", "can_review": True},
+                    {"action_id": "stale-accepted", "title": "Stale accepted", "kind": "x", "status": "accepted"},
+                ]
+            },
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, payload, stderr = self._run_main(["review-queue", "--bucket", "ready_actions", "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["total"], 2)
+        self.assertEqual([item["id"] for item in payload["buckets"]["ready_actions"]], ["apply-me", "resolve-me"])
+        self.assertEqual(
+            payload["buckets"]["ready_actions"][1]["command"],
+            "PYTHONPATH=src python3 -m aiwiki.cli --root . review-action resolve-me --status resolved",
+        )
+
+    def test_review_queue_pending_judgments_bucket_drills_down_pages(self) -> None:
+        """Round 9: pending_judgments 展开具体 page，并给出 review-page 命令。"""
+        summary = {
+            "generated_at": "2026-04-27T10:00:00+00:00",
+            "active_protocol": "research",
+            "review_backlog_counts": {"pending_judgments": 1},
+            "review_controls": {
+                "judgment_pages": [
+                    {
+                        "page_id": "judgment-alpha",
+                        "title": "Alpha judgment",
+                        "kind": "judgment",
+                        "path": "wiki/judgments/alpha.md",
+                        "current_status": "tracking",
+                        "reasons": ["pending-review"],
+                        "can_review": True,
+                        "default_transition": "confirmed",
+                        "protocol": "research",
+                    }
+                ]
+            },
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, payload, stderr = self._run_main(["review-queue", "--bucket", "pending_judgments", "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        item = payload["buckets"]["pending_judgments"][0]
+        self.assertEqual(item["id"], "judgment-alpha")
+        self.assertEqual(
+            item["command"],
+            "PYTHONPATH=src python3 -m aiwiki.cli --root . review-page wiki/judgments/alpha.md --status confirmed",
+        )
+
+    def test_review_queue_text_includes_command_for_drilldown_item(self) -> None:
+        summary = {
+            "generated_at": "2026-04-27T10:00:00+00:00",
+            "active_protocol": "research",
+            "review_backlog_counts": {"ready_actions": 1},
+            "execution_controls": {"actions": [{"action_id": "apply-me", "title": "Apply me", "kind": "x", "status": "accepted", "can_apply": True}]},
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, stdout, stderr = self._run_main_raw(["review-queue", "--bucket", "ready_actions"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertIn("command: PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action apply-me --dry-run", stdout)
 
     def test_review_queue_empty_renders_placeholder(self) -> None:
         summary = {"generated_at": "2026-04-27T10:00:00+00:00", "active_protocol": "research"}

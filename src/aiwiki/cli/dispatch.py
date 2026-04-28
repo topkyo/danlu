@@ -899,6 +899,189 @@ def _classify_review_bucket(entry: FeedEntry) -> str:
     return "other"
 
 
+def _feed_entry_to_review_item(entry: FeedEntry) -> dict[str, object]:
+    return {
+        "title": entry.title,
+        "summary": entry.summary,
+        "target": entry.target,
+        "timestamp": entry.timestamp,
+        "protocol": entry.protocol,
+        "command": "",
+    }
+
+
+def _first_string(values: object) -> str:
+    if not isinstance(values, list):
+        return ""
+    for value in values:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _review_page_command(item: dict[str, object]) -> str:
+    path = str(item.get("path") or "").strip()
+    if not path or not bool(item.get("can_review")):
+        return ""
+    transition = (
+        str(item.get("default_transition") or "").strip()
+        or _first_string(item.get("preferred_transitions"))
+        or _first_string(item.get("allowed_transitions"))
+    )
+    if not transition:
+        return ""
+    return f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-page {path} --status {transition}"
+
+
+def _action_command(item: dict[str, object]) -> str:
+    action_id = str(item.get("action_id") or item.get("id") or "").strip()
+    if not action_id:
+        return ""
+    if bool(item.get("can_apply")):
+        return f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --dry-run"
+    if bool(item.get("can_review")):
+        transition = (
+            str(item.get("default_transition") or "").strip()
+            or _first_string(item.get("preferred_transitions"))
+            or _first_string(item.get("allowed_transitions"))
+        )
+        if transition:
+            return f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-action {action_id} --status {transition}"
+    if bool(item.get("can_revert")):
+        return f"PYTHONPATH=src python3 -m aiwiki.cli --root . revert-action {action_id}"
+    return ""
+
+
+def _l3_command(item: dict[str, object]) -> str:
+    hints = item.get("command_hints")
+    if not isinstance(hints, dict):
+        return ""
+    for key in ("apply", "reject", "revert"):
+        command = hints.get(key)
+        if isinstance(command, str) and command.strip():
+            return command.strip()
+    return ""
+
+
+def _page_review_item(item: dict[str, object]) -> dict[str, object]:
+    path = str(item.get("path") or "").strip()
+    return {
+        "id": str(item.get("page_id") or Path(path).stem),
+        "title": str(item.get("title") or path),
+        "summary": ",".join(str(reason) for reason in item.get("reasons", []) if isinstance(reason, str)),
+        "target": path,
+        "timestamp": str(item.get("updated_at") or item.get("reviewed_at") or item.get("formed_at") or ""),
+        "protocol": str(item.get("protocol") or ""),
+        "kind": str(item.get("kind") or ""),
+        "status": str(item.get("current_status") or item.get("status") or ""),
+        "command": _review_page_command(item),
+        "can_review": bool(item.get("can_review")),
+        "can_apply": False,
+    }
+
+
+def _action_review_item(item: dict[str, object]) -> dict[str, object]:
+    action_id = str(item.get("action_id") or item.get("id") or "").strip()
+    target = str(item.get("proposal_path") or item.get("primary_path") or item.get("secondary_path") or action_id)
+    return {
+        "id": action_id,
+        "title": str(item.get("title") or action_id),
+        "summary": f"{item.get('kind') or 'action'} · {item.get('current_status') or item.get('status') or ''}".strip(),
+        "target": target,
+        "timestamp": str(item.get("status_updated_at") or item.get("reviewed_at") or ""),
+        "protocol": str(item.get("protocol") or ""),
+        "kind": str(item.get("kind") or ""),
+        "status": str(item.get("current_status") or item.get("status") or ""),
+        "command": _action_command(item),
+        "can_review": bool(item.get("can_review")),
+        "can_apply": bool(item.get("can_apply")),
+    }
+
+
+def _review_action_item(item: dict[str, object]) -> dict[str, object]:
+    action_id = str(item.get("id") or "").strip()
+    return {
+        "id": action_id,
+        "title": str(item.get("title") or action_id),
+        "summary": ",".join(str(reason) for reason in item.get("reason_codes", []) if isinstance(reason, str)),
+        "target": str(item.get("page_path") or action_id),
+        "timestamp": "",
+        "protocol": str(item.get("protocol") or ""),
+        "kind": str(item.get("page_kind") or "review-action"),
+        "status": str(item.get("status") or ""),
+        "command": str(item.get("review_command") or ""),
+        "can_review": bool(str(item.get("review_command") or "").strip()),
+        "can_apply": False,
+    }
+
+
+def _l3_review_item(item: dict[str, object]) -> dict[str, object]:
+    proposal_id = str(item.get("proposal_id") or "").strip()
+    return {
+        "id": proposal_id,
+        "title": str(item.get("target_file") or proposal_id),
+        "summary": f"{item.get('kind') or 'proposal'} · {item.get('current_status') or item.get('state') or ''}".strip(),
+        "target": str(item.get("proposal_path") or item.get("target_file") or proposal_id),
+        "timestamp": str(item.get("created_at") or item.get("accepted_at") or item.get("reverted_at") or ""),
+        "protocol": str(item.get("protocol") or ""),
+        "kind": str(item.get("kind") or "proposal"),
+        "status": str(item.get("current_status") or item.get("state") or ""),
+        "command": _l3_command(item),
+        "can_review": bool(item.get("can_review")),
+        "can_apply": bool(item.get("can_apply")),
+    }
+
+
+def _review_queue_detail_buckets(summary: dict[str, object]) -> dict[str, list[dict[str, object]]]:
+    buckets: dict[str, list[dict[str, object]]] = {}
+    review_controls = summary.get("review_controls")
+    execution_controls = summary.get("execution_controls")
+    counts = summary.get("review_backlog_counts")
+    review_counts = counts if isinstance(counts, dict) else {}
+
+    def has_backlog(name: str) -> bool:
+        try:
+            return int(review_counts.get(name, 0) or 0) > 0
+        except (TypeError, ValueError):
+            return False
+
+    if isinstance(review_controls, dict):
+        judgment_pages = [item for item in review_controls.get("judgment_pages", []) if isinstance(item, dict)]
+        decision_pages = [item for item in review_controls.get("decision_pages", []) if isinstance(item, dict)]
+        review_actions = [item for item in review_controls.get("review_actions", []) if isinstance(item, dict)]
+        l3_proposals = [item for item in review_controls.get("l3_proposals", []) if isinstance(item, dict)]
+
+        if has_backlog("pending_judgments"):
+            buckets["pending_judgments"] = [_page_review_item(item) for item in judgment_pages]
+        if has_backlog("pending_decisions"):
+            buckets["pending_decisions"] = [_page_review_item(item) for item in decision_pages]
+        if has_backlog("judgment_review_actions"):
+            buckets["judgment_review_actions"] = [_review_action_item(item) for item in review_actions]
+        if has_backlog("counter_evidence_candidates"):
+            buckets["counter_evidence_candidates"] = [
+                _review_action_item(item)
+                for item in review_actions
+                if "counter-evidence-candidate" in {str(reason) for reason in item.get("reason_codes", [])}
+            ]
+        if has_backlog("l3_proposals"):
+            buckets["l3_proposals"] = [_l3_review_item(item) for item in l3_proposals if bool(item.get("needs_attention"))]
+
+    if isinstance(execution_controls, dict):
+        actions = [item for item in execution_controls.get("actions", []) if isinstance(item, dict)]
+        actionable = [item for item in actions if bool(item.get("can_apply")) or bool(item.get("can_review"))]
+        if has_backlog("machine_memory_actions"):
+            buckets["machine_memory_actions"] = [_action_review_item(item) for item in actionable]
+        if has_backlog("ready_actions"):
+            buckets["ready_actions"] = [
+                _action_review_item(item)
+                for item in actions
+                if str(item.get("current_status") or item.get("status") or "") == "accepted"
+                and (bool(item.get("can_apply")) or bool(item.get("can_review")) or bool(item.get("can_revert")))
+            ]
+
+    return {key: value for key, value in buckets.items() if value}
+
+
 def review_queue_command(
     root: Path,
     *,
@@ -911,10 +1094,11 @@ def review_queue_command(
     feed = build_today_feed(summary)
     decisions = [e for e in feed if e.kind == "decision"]
 
-    buckets: dict[str, list[FeedEntry]] = {}
+    buckets: dict[str, list[dict[str, object]]] = {}
     for entry in decisions:
         sub = _classify_review_bucket(entry)
-        buckets.setdefault(sub, []).append(entry)
+        buckets.setdefault(sub, []).append(_feed_entry_to_review_item(entry))
+    buckets.update(_review_queue_detail_buckets(summary))
 
     if bucket:
         bucket_key = bucket.strip()
@@ -928,16 +1112,7 @@ def review_queue_command(
             "generated_at": str(summary.get("generated_at") or ""),
             "active_protocol": str(summary.get("active_protocol") or ""),
             "buckets": {
-                k: [
-                    {
-                        "title": e.title,
-                        "summary": e.summary,
-                        "target": e.target,
-                        "timestamp": e.timestamp,
-                        "protocol": e.protocol,
-                    }
-                    for e in v
-                ]
+                k: v
                 for k, v in sorted(buckets.items())
             },
             "total": sum(len(v) for v in buckets.values()),
@@ -962,9 +1137,11 @@ def review_queue_command(
                 continue
             lines.append(f"## {bucket_name} ({len(entries)})")
             for e in entries:
-                lines.append(f"- {e.title} — {e.summary}")
-                if e.target:
-                    lines.append(f"    target: {e.target}")
+                lines.append(f"- {e.get('title') or ''} — {e.get('summary') or ''}")
+                if e.get("target"):
+                    lines.append(f"    target: {e.get('target')}")
+                if e.get("command"):
+                    lines.append(f"    command: {e.get('command')}")
             lines.append("")
     print("\n".join(lines).rstrip() + "\n")
     return 0

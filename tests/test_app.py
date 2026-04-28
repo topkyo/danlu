@@ -3888,19 +3888,21 @@ class AiwikiFlowTests(unittest.TestCase):
             },
         )
         dry_run = apply_machine_memory_action(self.root, "manual-link-action", dry_run=True)
-        bundle_path = self.root / dry_run["bundle_path"]
-        bundle_path.parent.mkdir(parents=True, exist_ok=True)
-        bundle = dry_run["bundle"]
-        bundle["summary"] = "tampered stale bundle"
-        bundle_path.write_text(json.dumps(bundle, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        state = load_machine_memory_action_state(self.root)
+        state["actions"][0]["title"] = "Manual safe apply link after state changed"
+        save_machine_memory_action_state(self.root, state)
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(RuntimeError) as ctx:
             apply_machine_memory_action(
                 self.root,
                 "manual-link-action",
                 note="Should fail with stale bundle.",
                 bundle_path=dry_run["bundle_path"],
             )
+        message = str(ctx.exception)
+        self.assertIn("Execution bundle is stale", message)
+        self.assertIn("apply-action manual-link-action --dry-run", message)
+        self.assertIn("apply-action manual-link-action", message)
 
     def test_lint_reports_missing_execution_receipt(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")

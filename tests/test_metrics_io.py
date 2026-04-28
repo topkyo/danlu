@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from aiwiki import metrics_io
+from aiwiki.metrics import compute_review_closure_rate
 from aiwiki.metrics_io import build_metrics_snapshot
 
 
@@ -226,6 +227,46 @@ class MetricsIOTests(unittest.TestCase):
         self.assertIn("pending_judgments", counts)
         self.assertEqual(counts["pending_decisions"], 1)
         self.assertEqual(counts["pending_judgments"], 1)
+
+    def test_page_review_history_counts_as_review_closure_activity(self) -> None:
+        """Round 11: review-page writes page metadata, not execution receipts."""
+
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            judgments_dir = root / "wiki" / "judgments"
+            judgments_dir.mkdir(parents=True)
+            (judgments_dir / "j1.md").write_text(
+                "---\n"
+                "id: judgment-1\n"
+                "kind: judgment\n"
+                "title: J1\n"
+                "status: confirmed\n"
+                "reviewed_at: 2026-04-26T00:00:00Z\n"
+                "---\nbody\n",
+                encoding="utf-8",
+            )
+            (judgments_dir / "j2.md").write_text(
+                "---\n"
+                "id: judgment-2\n"
+                "kind: judgment\n"
+                "title: J2\n"
+                "status: tracking\n"
+                "reviewed_at: 2026-04-26T00:00:00Z\n"
+                "---\nbody\n",
+                encoding="utf-8",
+            )
+
+            snapshot = build_metrics_snapshot(root, now_iso="2026-04-27T00:00:00Z")
+
+        review_receipts = [receipt for receipt in snapshot.receipts if receipt.subject_kind == "review"]
+        self.assertEqual(len(review_receipts), 1)
+        self.assertEqual(review_receipts[0].operation, "approve")
+        self.assertEqual(review_receipts[0].subject_id, "judgment-1")
+        metric = compute_review_closure_rate(snapshot)
+        self.assertEqual(metric.value, 0.5)
+        self.assertEqual(metric.sample_size, 2)
 
 
 if __name__ == "__main__":
