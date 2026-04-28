@@ -4,8 +4,13 @@
 # 仅作 dogfood receipt 加速器；runtime 默认值不在此调整。
 # STALE_JUDGMENT_DAYS 全局默认仍为 180；P4 计划再做分层化。
 
-export AIWIKI_LLM_BACKEND=copilot-cli
-export AIWIKI_LLM_MODEL=gpt-5.4
+# 切到 codex-cli/gpt-5.5：dogfood receipt v0 调查发现 copilot-cli 输出装饰
+# (● + 长横线 + frontmatter reflow) 与 ai-wiki parse_frontmatter() 严格围栏
+# 不兼容（F5/F9 真因，见 dogfood-receipt-v0.md）。codex-cli/gpt-5.5 输出干净
+# 无装饰，是 ChatGPT 账号当前可用的最佳选项（codex/gpt-5、codex/gpt-4o、
+# claude-cli 在本机均不可用 — F14）。
+export AIWIKI_LLM_BACKEND=codex-cli
+export AIWIKI_LLM_MODEL=gpt-5.5
 export AIWIKI_STALE_JUDGMENT_DAYS=1
 export PYTHONPATH=src
 
