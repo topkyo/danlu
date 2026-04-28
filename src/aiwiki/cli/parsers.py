@@ -310,7 +310,7 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
 
     file_back_parser = subparsers.add_parser(
         "file-back",
-        help="File a markdown artifact back into wiki/derived, wiki/decisions, or wiki/judgments.",
+        help="File a markdown artifact back into wiki/derived (machine-memory terminal layer, no review), wiki/decisions, or wiki/judgments (subject to review-page workflow).",
     )
     file_back_parser.add_argument("artifact", help="Path to a markdown artifact.")
     file_back_parser.add_argument("--title", help="Optional filed-back title.")
@@ -318,7 +318,7 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         "--kind",
         choices=("derived", "decision", "judgment"),
         default="derived",
-        help="Filed-back page kind.",
+        help="Filed-back page kind. Note: 'derived' is terminal (no review); 'decision' and 'judgment' enter the review-page workflow.",
     )
     file_back_parser.add_argument("--protocol", help="Optional protocol override for the filed-back page.")
 

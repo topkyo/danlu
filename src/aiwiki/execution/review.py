@@ -74,6 +74,12 @@ def review_page(
     content = target.read_text(encoding="utf-8", errors="replace")
     frontmatter = parse_frontmatter(content)
     kind = str(frontmatter.get("kind") or "")
+    if kind == "derived":
+        raise ValueError(
+            f"Page kind 'derived' is the machine-memory terminal layer and is not subject to review-page workflow. "
+            f"To enter review, file the artifact back with --kind judgment or --kind decision instead. "
+            f"(page: {target})"
+        )
     if kind not in {"decision", "judgment"}:
         raise ValueError(
             "Only decision or judgment pages can enter the review workflow; "

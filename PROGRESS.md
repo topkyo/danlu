@@ -6,6 +6,23 @@
 
 ## 状态
 
+- **P4-4 — Review Workflow Boundary Clarification — 完成（close F11）**
+  - **目的**: dogfood receipt v0 §F11 — `file-back --kind derived` 落盘但 `review-page` 拒收，dogfood 演示链路出现死支线。按炼丹炉 evolution mechanics SoT，`derived = 机器记忆/聚合视图终态层`，正确路径是显式声明边界而非扩 review
+  - **设计核心**:
+    - `execution/ask.py`: 新增模块级 `NEXT_STEP_HINTS` dict，`file_back` 返回 dict 加 `next_step_hint` 字段（3 kind 各异；judgment/decision 的 hint 含 review-page 命令模板和合法 status enum）
+    - `cli/dispatch.py`: `file-back` 后 stderr 打 `aiwiki: → <hint>`（与 P4-11 vault breadcrumb 同 pattern）
+    - `cli/parsers.py`: file-back 顶层 help + `--kind` help 显式说明 derived 是终态、judgment/decision 进入 review
+    - `execution/review.py`: kind 检查前增加专项 `kind == "derived"` 分支，错误消息含 `use file-back --kind judgment or --kind decision instead`
+    - 不扩 review-page 到 derived（保持 derived 终态语义）
+    - `next_step_hint` 是 additive 字段，JSON 消费者无需改动
+  - **测试**: `tests/test_review_workflow_boundary.py` 4/4（derived hint / judgment hint / decision hint / review_page rejects derived）
+  - **验证**: `bash scripts/verify.sh` exit 0、`All checks passed!`、1456 unit + 13 acceptance
+  - **dogfood smoke**:
+    - `file-back --kind derived`: `→ wiki/derived 是机器记忆终态层；不进入 review-page 工作流...`
+    - `file-back --kind judgment`: `→ next: aiwiki review-page <path> --status <tentative|tracking|confirmed|rejected>`
+    - `review-page <derived-page> --status tentative`: `error: Page kind 'derived' is the machine-memory terminal layer... To enter review, file the artifact back with --kind judgment or --kind decision instead.`
+  - **闭环**: closed_loop.sh PASS（qa-review same-context PASS / qa-runtime scripted PASS）
+
 - **P4-5 — Review Status Self-Discovery — 完成（close F12）**
   - **目的**: dogfood receipt v0 §F12 — `review-page --status approved` 报 `Unsupported review status for decision: approved` 但不列合法值，agent 必须翻 `app_protocol.py` 摸 status 常量。违反"错误消息应清晰且可操作"。同样 anti-pattern 在 4 处复制
   - **设计核心**:

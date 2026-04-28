@@ -91,6 +91,21 @@ from ..compile import compile_wiki
 from ..notify import notify_report_generated
 from .protocol_learnings import load_learnings_for_protocol
 
+NEXT_STEP_HINTS = {
+    "derived": (
+        "wiki/derived 是机器记忆终态层；不进入 review-page 工作流。"
+        "如需人工审阅，请用 file-back --kind judgment 或 --kind decision。"
+    ),
+    "judgment": (
+        "next: aiwiki review-page {path} "
+        "--status <tentative|tracking|confirmed|rejected>"
+    ),
+    "decision": (
+        "next: aiwiki review-page {path} "
+        "--status <proposed|approved|needs-revisit|superseded>"
+    ),
+}
+
 # ``utc_now`` and ``rank_concepts`` are resolved lazily via
 # ``aiwiki.app_compile`` inside each function body. Reasons:
 #
@@ -563,7 +578,11 @@ def file_back(
         ],
     )
     compile_wiki(root)
-    return {"path": relative_path(root, destination), "protocol": resolved_protocol}
+    destination_ref = relative_path(root, destination)
+    next_step_hint = NEXT_STEP_HINTS[kind]
+    if kind in {"decision", "judgment"}:
+        next_step_hint = next_step_hint.format(path=destination_ref)
+    return {"path": destination_ref, "protocol": resolved_protocol, "next_step_hint": next_step_hint}
 
 
 __all__ = ["ask_question", "file_back"]

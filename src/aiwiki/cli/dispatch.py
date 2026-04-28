@@ -285,6 +285,8 @@ def main(argv: list[str] | None = None) -> int:
             result = run_ask(root, args.question, args.format, **ask_kwargs)
         elif args.handler_command == "file-back":
             result = file_back(root, args.artifact, title=args.title, kind=args.kind, protocol=args.protocol)
+            if result.get("next_step_hint"):
+                print(f"aiwiki: → {result['next_step_hint']}", file=sys.stderr)
         elif args.handler_command == "promote":
             result = run_promote(root, args.artifact_ref)
         elif args.handler_command == "demote":
