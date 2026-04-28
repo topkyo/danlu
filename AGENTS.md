@@ -60,6 +60,7 @@
 - 本地验证入口: `bash scripts/verify.sh`
 - 运行态验证入口: 目前使用 `tests/` 中的 fixture-driven CLI smoke tests
 - 部署入口: none
+- Dogfood receipt 试运行期间，先 `source .envrc.dogfood` 再执行 CLI；该文件仅作 dogfood 加速器，runtime 默认值不变
 
 ## 稳定约束
 

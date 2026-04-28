@@ -1,0 +1,10 @@
+# Dogfood receipt 试运行环境（v0）
+# 启用方式：source .envrc.dogfood
+#
+# 仅作 dogfood receipt 加速器；runtime 默认值不在此调整。
+# STALE_JUDGMENT_DAYS 全局默认仍为 180；P4 计划再做分层化。
+
+export AIWIKI_LLM_BACKEND=copilot-cli
+export AIWIKI_LLM_MODEL=gpt-5.4
+export AIWIKI_STALE_JUDGMENT_DAYS=1
+export PYTHONPATH=src
