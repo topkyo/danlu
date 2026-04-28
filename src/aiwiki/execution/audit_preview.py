@@ -293,6 +293,8 @@ def _audit_record(source_stream: str, source_ref: str, document: dict[str, Any])
     }
     if source_stream == "llm_receipts":
         record["raw_response_path"] = str(document.get("raw_response_path") or "")
+        compat = document.get("backend_compat")
+        record["backend_compat"] = compat if isinstance(compat, dict) else {}
     return record
 
 

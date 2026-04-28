@@ -120,6 +120,7 @@ class AuditPreviewTests(unittest.TestCase):
         self.assertTrue(records["execution_receipts"]["revert_supported"])
         self.assertEqual(records["llm_receipts"]["event_type"], "ok")
         self.assertEqual(records["llm_receipts"]["raw_response_path"], ".aiwiki/llm-responses/resp.txt")
+        self.assertEqual(records["llm_receipts"]["backend_compat"], {})
         self.assertEqual(records["runtime_history"]["event_type"], "nightly")
         self.assertEqual(records["protocol_learnings_age"]["event_type"], "protocol_learnings_age")
         self.assertFalse((self.root / ".aiwiki/state/audit.jsonl").exists())
@@ -144,6 +145,31 @@ class AuditPreviewTests(unittest.TestCase):
             ".aiwiki/state/execution-receipts.jsonl#L1",
             ".aiwiki/state/execution-receipts.jsonl#L2",
         ])
+
+    def test_preview_surfaces_llm_receipt_backend_compat(self) -> None:
+        compat = {
+            "backend_requested": "codex-cli",
+            "backend": "codex-cli",
+            "model_requested": "gpt-5.5",
+            "model": "gpt-5.5",
+            "compatibility": "compatible",
+            "compatibility_hint": "strict frontmatter ok",
+            "raw_response_path": ".aiwiki/llm-responses/preflight.txt",
+            "error_class": "",
+        }
+        self._write_jsonl(
+            ".aiwiki/logs/llm-receipts.jsonl",
+            [
+                {"kind": "llm-receipt", "status": "ok", "run_id": "with-compat", "backend_compat": compat},
+                {"kind": "llm-receipt", "status": "ok", "run_id": "without-compat"},
+            ],
+        )
+
+        result = preview_universal_audit_stream(self.root)
+
+        records = result["records"]
+        self.assertEqual(records[0]["backend_compat"], compat)
+        self.assertEqual(records[1]["backend_compat"], {})
 
     def test_preview_rejects_non_positive_limit(self) -> None:
         with self.assertRaisesRegex(ValueError, "limit must be a positive integer"):

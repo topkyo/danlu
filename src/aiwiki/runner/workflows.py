@@ -101,10 +101,18 @@ def _raw_response_path(root: Path, result: CompletionResult | None, exc: Excepti
 @runtime_write_operation
 def run_compile(root: Path, client: SupportsComplete | None = None, limit: int = 5) -> dict[str, Any]:
     ensure_layout(root)
+    backend_compat: dict[str, Any] = {}
     if client is None:
         from aiwiki.runner.preflight import preflight_check_backend
 
-        preflight_check_backend(root)
+        backend_compat = preflight_check_backend(root)
+
+    def _stamped_record(base_event: dict[str, Any], llm_audit: dict[str, Any], **kwargs: Any) -> None:
+        if backend_compat:
+            base_event = dict(base_event)
+            base_event["backend_compat"] = dict(backend_compat)
+        record_llm_attempt(root, base_event, llm_audit, **kwargs)
+
     compile_result = compile_wiki(root)
     manifest = load_manifest(root)
     pending = []
@@ -152,8 +160,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
     if (not pending and not pending_concept_slugs and not pending_rewrite_candidates) or limit <= 0:
         llm_audit = _empty_llm_audit()
         rewrite_payload = rewrite_recovery_payload_for_paths(root, updated_rewrite_proposal_pages)
-        record_llm_attempt(
-            root,
+        _stamped_record(
             summary_base_event(int((time.monotonic() - started) * 1000)),
             llm_audit,
             status="success",
@@ -249,8 +256,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     contract_validated=True,
                 )
                 aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
-                record_llm_attempt(
-                    root,
+                _stamped_record(
                     {
                         "event": "run-compile",
                         "target": relative_path(root, target),
@@ -275,8 +281,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     contract_validated=False,
                 )
                 aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
-                record_llm_attempt(
-                    root,
+                _stamped_record(
                     {
                         "event": "run-compile",
                         "target": relative_path(root, target),
@@ -382,8 +387,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     contract_validated=True,
                 )
                 aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
-                record_llm_attempt(
-                    root,
+                _stamped_record(
                     {
                         "event": "run-compile-concept",
                         "target": relative_path(root, target),
@@ -408,8 +412,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     contract_validated=False,
                 )
                 aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
-                record_llm_attempt(
-                    root,
+                _stamped_record(
                     {
                         "event": "run-compile-concept",
                         "target": relative_path(root, target),
@@ -526,8 +529,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     contract_validated=True,
                 )
                 aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
-                record_llm_attempt(
-                    root,
+                _stamped_record(
                     {
                         "event": "run-compile-concept-rewrite-proposal",
                         "target": str(proposal["proposal_path"]),
@@ -555,8 +557,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     contract_validated=False,
                 )
                 aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
-                record_llm_attempt(
-                    root,
+                _stamped_record(
                     {
                         "event": "run-compile-concept-rewrite-proposal",
                         "target": f"wiki/rewrite-proposals/{slug}.md",
@@ -587,8 +588,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
         )
         failed_audit["fallback_reason"] = str(exc)
         failed_audit["contract_validated"] = False
-        record_llm_attempt(
-            root,
+        _stamped_record(
             summary_base_event(int((time.monotonic() - started) * 1000)),
             failed_audit,
             status="failed",
@@ -606,8 +606,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
         ),
         aggregate_audit,
     )
-    record_llm_attempt(
-        root,
+    _stamped_record(
         summary_base_event(int((time.monotonic() - started) * 1000)),
         llm_audit,
         status="success",
@@ -659,10 +658,18 @@ def run_ask(
     ensure_layout(root)
     if timeout_seconds is not None and timeout_seconds <= 0:
         raise ValueError("run-ask timeout_seconds must be greater than 0.")
+    backend_compat: dict[str, Any] = {}
     if client is None:
         from aiwiki.runner.preflight import preflight_check_backend
 
-        preflight_check_backend(root)
+        backend_compat = preflight_check_backend(root)
+
+    def _stamped_record(base_event: dict[str, Any], llm_audit: dict[str, Any], **kwargs: Any) -> None:
+        if backend_compat:
+            base_event = dict(base_event)
+            base_event["backend_compat"] = dict(backend_compat)
+        record_llm_attempt(root, base_event, llm_audit, **kwargs)
+
     ask_kwargs = {"protocol": protocol, "no_cache": no_cache}
     if corpus_id_override is not None:
         ask_kwargs["corpus_id_override"] = corpus_id_override
@@ -785,8 +792,7 @@ def run_ask(
             "fallback_reason": fallback_reason or str(exc),
             "contract_validated": False,
         }
-        record_llm_attempt(
-            root,
+        _stamped_record(
             {
                 "event": "run-ask",
                 "target": artifact["path"],
@@ -822,8 +828,7 @@ def run_ask(
                 "primary_error": str(exc),
             }
             if classify_backend_error(str(exc)) in RUN_ASK_FALLBACK_ERROR_KINDS:
-                record_llm_attempt(
-                    root,
+                _stamped_record(
                     {
                         **frontdoor_base_event,
                         "delivery_mode": "deterministic-fallback",
@@ -854,8 +859,7 @@ def run_ask(
                     "fallback_from": "run-ask",
                     "fallback_command": "ask",
                 }
-            record_llm_attempt(
-                root,
+            _stamped_record(
                 frontdoor_base_event,
                 failed_audit,
                 status="failed",
@@ -882,8 +886,7 @@ def run_ask(
         "fallback_reason": fallback_reason,
         "contract_validated": True,
     }
-    record_llm_attempt(
-        root,
+    _stamped_record(
         {
             "event": "run-ask",
             "target": artifact["path"],
@@ -910,8 +913,7 @@ def run_ask(
         "no_cache": no_cache,
     }
     if fallback_to_ask:
-        record_llm_attempt(
-            root,
+        _stamped_record(
             {
                 "event": RUN_ASK_FRONTDOOR_EVENT,
                 "target": artifact["path"],

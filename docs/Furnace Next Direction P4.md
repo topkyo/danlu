@@ -31,6 +31,13 @@ P4 阶段要回答 P3 之后的核心问题：炼丹炉的 deterministic 地基�
 - LLM backend 不可用时，CLI 输出必须说明失败原因和下一步动作，而不是只在 compile/ask 中超时或 frontmatter reject。
 - dogfood receipt 能记录本次使用的 backend、model、兼容性判断和失败原因。
 
+#### P4-1d Field schema：receipt / audit-preview backend compatibility
+
+- `run-compile` / `run-ask` 在入口 preflight 实际运行时，会在每一行 LLM receipt JSONL 中附加可选嵌套字段 `backend_compat`，用于记录本次 invocation 的 backend 兼容性探测快照；显式注入 `client` 的测试/调用路径不写该字段。
+- `backend_compat` 成功形态包含 `backend_requested`、`backend`、`model_requested`、`model`、`compatibility`、`compatibility_hint`、`raw_response_path`、`error_class`。
+- fail-soft sentinel 形态为 `{"compatibility":"unknown","compatibility_hint":"preflight probe failed: ...","error_class":"preflight_probe_error"}`；当 probe 返回 `unavailable` / `requires_credential` 且未开启阻断环境变量时，也使用该 sentinel 记录未知兼容性。
+- `audit-preview` 的 LLM record 输出透传同名 `backend_compat` 字段；源 receipt 缺失或字段非对象时输出 `{}`。该字段不参与 `audit_event_id` 摘要输入，避免改变既有审计身份。
+
 **估时**：M
 
 **依赖关系**：无；应作为 P4 第一优先级。

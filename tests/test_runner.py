@@ -219,6 +219,52 @@ class RunnerTests(unittest.TestCase):
         create_client_mock.assert_called_once_with(self.root, timeout_seconds=33)
         self.assertEqual(result["timeout_seconds"], 33)
 
+    def test_run_ask_stamps_backend_compat_when_preflight_runs(self) -> None:
+        snapshot = {
+            "backend_requested": "codex-cli",
+            "backend": "codex-cli",
+            "model_requested": "gpt-5.5",
+            "model": "gpt-5.5",
+            "compatibility": "compatible",
+            "compatibility_hint": "strict frontmatter ok",
+            "raw_response_path": ".aiwiki/llm-responses/preflight.txt",
+            "error_class": "",
+        }
+        artifact_path = self.root / "output" / "reports" / "query-compat.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text("---\nid: query-compat\nkind: report\n---\n\n# Placeholder\n", encoding="utf-8")
+        artifact = {
+            "path": "output/reports/query-compat.md",
+            "format": "report",
+            "protocol": "general",
+            "ranked_sources": [],
+            "ranked_concepts": [],
+            "protocol_pages": [],
+            "index_pages": [],
+            "machine_memory_query": {},
+        }
+
+        class _AskClient:
+            config = type("Config", (), {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 120})()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                del user_prompt
+                return CompletionResult(
+                    text="---\nid: query-compat\nkind: report\n---\n\n# Answer\n\nCompatible backend stamped.\n",
+                    response_id="resp-ask-compat",
+                    usage={},
+                )
+
+        with patch("aiwiki.runner.preflight.preflight_check_backend", return_value=snapshot):
+            with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
+                with patch("aiwiki.runner.workflows.create_client", return_value=_AskClient()):
+                    run_ask(self.root, "测试", "report")
+
+        receipt = json.loads((self.root / ".aiwiki/logs/llm-receipts.jsonl").read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertEqual(receipt["event"], "run-ask")
+        self.assertEqual(receipt["backend_compat"], snapshot)
+
     def test_run_ask_passes_no_cache_to_ask_question(self) -> None:
         artifact_path = self.root / "output" / "reports" / "query-no-cache.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
@@ -744,6 +790,46 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(summary_receipt["contract_validated"])
         self.assertEqual(summary_receipt["delivery_mode"], "llm-fallback-chain")
         self.assertTrue(summary_receipt["fallback_used"])
+
+    def test_run_compile_stamps_backend_compat_when_preflight_runs(self) -> None:
+        snapshot = {
+            "backend_requested": "codex-cli",
+            "backend": "codex-cli",
+            "model_requested": "gpt-5.5",
+            "model": "gpt-5.5",
+            "compatibility": "compatible",
+            "compatibility_hint": "strict frontmatter ok",
+            "raw_response_path": ".aiwiki/llm-responses/preflight.txt",
+            "error_class": "",
+        }
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        updated = source_page.read_text(encoding="utf-8").replace(
+            "- Pending LLM summary.",
+            "- Transformers benefit from scale, with inference costs rising alongside demand.",
+        )
+
+        class _CompileClient:
+            config = type("Config", (), {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "codex-cli"})()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                del user_prompt
+                return CompletionResult(text=updated, response_id="resp-compat", usage={})
+
+        with patch("aiwiki.runner.preflight.preflight_check_backend", return_value=snapshot):
+            with patch("aiwiki.runner.workflows.create_client", return_value=_CompileClient()):
+                run_compile(self.root, limit=1)
+
+        receipts = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/logs/llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        stamped = [receipt for receipt in receipts if receipt["event"] in {"run-compile", "run-compile-summary"}]
+        self.assertTrue(stamped)
+        self.assertTrue(all(receipt["backend_compat"] == snapshot for receipt in stamped))
 
     def test_run_compile_returns_runtime_owned_rewrite_recovery_objects(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")

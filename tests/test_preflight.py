@@ -26,20 +26,34 @@ def test_truthy_env_recognizes_common_values() -> None:
 @patch("aiwiki.runner.preflight.LLMConfig")
 @patch("aiwiki.runner.preflight.probe_backend")
 def test_preflight_compatible_silent(mock_probe, mock_config, root: Path, caplog: pytest.LogCaptureFixture) -> None:
+    mock_config.from_env.return_value = type("Config", (), {"backend": "codex-cli", "model": "gpt-5.5"})()
     mock_probe.return_value = {
         "compatibility": "compatible",
         "backend": "codex-cli",
         "model": "gpt-5.5",
         "compatibility_hint": "",
+        "raw_response_path": ".aiwiki/llm-responses/probe.txt",
+        "error_class": "",
     }
     with caplog.at_level(logging.WARNING, logger="aiwiki"):
-        preflight_check_backend(root)
+        result = preflight_check_backend(root)
     assert caplog.text == ""
+    assert result == {
+        "backend_requested": "codex-cli",
+        "backend": "codex-cli",
+        "model_requested": "gpt-5.5",
+        "model": "gpt-5.5",
+        "compatibility": "compatible",
+        "compatibility_hint": "",
+        "raw_response_path": ".aiwiki/llm-responses/probe.txt",
+        "error_class": "",
+    }
 
 
 @patch("aiwiki.runner.preflight.LLMConfig")
 @patch("aiwiki.runner.preflight.probe_backend")
 def test_preflight_degraded_warns(mock_probe, mock_config, root: Path, caplog: pytest.LogCaptureFixture) -> None:
+    mock_config.from_env.return_value = type("Config", (), {"backend": "copilot-cli", "model": "gpt-5.5"})()
     mock_probe.return_value = {
         "compatibility": "degraded",
         "backend": "copilot-cli",
@@ -47,10 +61,12 @@ def test_preflight_degraded_warns(mock_probe, mock_config, root: Path, caplog: p
         "compatibility_hint": "decoration prefix detected: ●",
     }
     with caplog.at_level(logging.WARNING, logger="aiwiki"):
-        preflight_check_backend(root)
+        result = preflight_check_backend(root)
     assert "probe=degraded" in caplog.text
     assert "copilot-cli" in caplog.text
     assert "llm-check --probe-all --format human" in caplog.text
+    assert result["compatibility"] == "degraded"
+    assert result["backend_requested"] == "copilot-cli"
 
 
 @patch("aiwiki.runner.preflight.LLMConfig")
@@ -63,8 +79,11 @@ def test_preflight_unavailable_warns(mock_probe, mock_config, root: Path, caplog
         "compatibility_hint": "binary not found",
     }
     with caplog.at_level(logging.WARNING, logger="aiwiki"):
-        preflight_check_backend(root)
+        result = preflight_check_backend(root)
     assert "probe=unavailable" in caplog.text
+    assert result["compatibility"] == "unknown"
+    assert result["error_class"] == "preflight_probe_error"
+    assert "preflight probe returned unavailable" in result["compatibility_hint"]
 
 
 @patch("aiwiki.runner.preflight.LLMConfig")
@@ -77,8 +96,10 @@ def test_preflight_requires_credential_warns(mock_probe, mock_config, root: Path
         "compatibility_hint": "no access",
     }
     with caplog.at_level(logging.WARNING, logger="aiwiki"):
-        preflight_check_backend(root)
+        result = preflight_check_backend(root)
     assert "probe=requires_credential" in caplog.text
+    assert result["compatibility"] == "unknown"
+    assert result["error_class"] == "preflight_probe_error"
 
 
 @patch.dict("os.environ", {"AIWIKI_REQUIRE_COMPATIBLE_BACKEND": "1"})
@@ -104,6 +125,7 @@ def test_preflight_env_opt_in_allows_compatible(
     root: Path,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    mock_config.from_env.return_value = type("Config", (), {"backend": "codex-cli", "model": "gpt-5.5"})()
     mock_probe.return_value = {
         "compatibility": "compatible",
         "backend": "codex-cli",
@@ -111,8 +133,9 @@ def test_preflight_env_opt_in_allows_compatible(
         "compatibility_hint": "",
     }
     with caplog.at_level(logging.WARNING, logger="aiwiki"):
-        preflight_check_backend(root)
+        result = preflight_check_backend(root)
     assert caplog.text == ""
+    assert result["compatibility"] == "compatible"
 
 
 @patch.dict("os.environ", {"AIWIKI_REQUIRE_COMPATIBLE_BACKEND": "1"})
@@ -138,9 +161,11 @@ def test_preflight_fail_soft_on_probe_exception(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.WARNING, logger="aiwiki"):
-        preflight_check_backend(root)
+        result = preflight_check_backend(root)
     assert "preflight probe failed" in caplog.text
     assert "probe died" in caplog.text
+    assert result["compatibility"] == "unknown"
+    assert result["error_class"] == "preflight_probe_error"
 
 
 @patch("aiwiki.runner.preflight.LLMConfig.from_env", side_effect=RuntimeError("config died"))
@@ -152,5 +177,49 @@ def test_preflight_fail_soft_on_config_exception(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.WARNING, logger="aiwiki"):
-        preflight_check_backend(root)
+        result = preflight_check_backend(root)
     assert "preflight probe failed" in caplog.text
+    assert result["compatibility"] == "unknown"
+    assert result["error_class"] == "preflight_probe_error"
+
+
+@patch("aiwiki.runner.preflight.LLMConfig")
+@patch("aiwiki.runner.preflight.probe_backend")
+def test_preflight_success_returns_sanitized_snapshot(mock_probe, mock_config, root: Path) -> None:
+    mock_config.from_env.return_value = type("Config", (), {"backend": "codex-cli", "model": "gpt-5.5"})()
+    mock_probe.return_value = {
+        "ok": True,
+        "status": "compatible",
+        "backend_requested": "ignored-requested",
+        "backend": "codex-cli",
+        "model_requested": "ignored-model-requested",
+        "model": "gpt-5.5-effective",
+        "duration_ms": 12,
+        "compatibility": "compatible",
+        "compatibility_hint": "strict frontmatter ok",
+        "raw_response_path": ".aiwiki/llm-responses/probe.json",
+        "error_class": "",
+    }
+
+    result = preflight_check_backend(root)
+
+    assert result == {
+        "backend_requested": "codex-cli",
+        "backend": "codex-cli",
+        "model_requested": "gpt-5.5",
+        "model": "gpt-5.5-effective",
+        "compatibility": "compatible",
+        "compatibility_hint": "strict frontmatter ok",
+        "raw_response_path": ".aiwiki/llm-responses/probe.json",
+        "error_class": "",
+    }
+
+
+@patch("aiwiki.runner.preflight.LLMConfig")
+@patch("aiwiki.runner.preflight.probe_backend", side_effect=RuntimeError("probe exploded"))
+def test_preflight_probe_exception_returns_sentinel(mock_probe, mock_config, root: Path) -> None:
+    result = preflight_check_backend(root)
+
+    assert result["compatibility"] == "unknown"
+    assert result["error_class"] == "preflight_probe_error"
+    assert result["compatibility_hint"] == "preflight probe failed: probe exploded"
