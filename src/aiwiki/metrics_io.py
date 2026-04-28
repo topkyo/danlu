@@ -142,7 +142,8 @@ def _read_page_review_receipts(root: Path) -> Iterable[ReceiptMeta]:
             paths = []
         for path in paths:
             try:
-                frontmatter = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+                text = path.read_text(encoding="utf-8", errors="replace")
+                frontmatter = parse_frontmatter(text)
             except (OSError, UnicodeError):
                 continue
             kind = str(frontmatter.get("kind") or expected_kind)
@@ -151,11 +152,13 @@ def _read_page_review_receipts(root: Path) -> Iterable[ReceiptMeta]:
             reviewed_at = str(frontmatter.get("reviewed_at") or frontmatter.get("last_reviewed") or "").strip()
             if not reviewed_at:
                 continue
+            rel_path = _safe_relative_path(root, path)
+            if expected_kind == "judgment":
+                yield from _read_judgment_review_receipts_from_page(text, frontmatter, rel_path, path.stem)
             status = str(frontmatter.get("status") or "").strip()
             operation = _PAGE_REVIEW_CLOSE_STATUSES.get(status)
             if operation is None:
                 continue
-            rel_path = _safe_relative_path(root, path)
             yield ReceiptMeta(
                 operation=operation,
                 subject_kind="review",
@@ -164,6 +167,54 @@ def _read_page_review_receipts(root: Path) -> Iterable[ReceiptMeta]:
                 applied_at=reviewed_at,
                 receipt_path=f"{rel_path}#reviewed_at",
             )
+
+
+def _read_judgment_review_receipts_from_page(
+    text: str,
+    frontmatter: dict[str, Any],
+    rel_path: str,
+    fallback_id: str,
+) -> Iterable[ReceiptMeta]:
+    subject_id = str(frontmatter.get("id") or fallback_id)
+    history_receipts: list[ReceiptMeta] = []
+    for index, line in enumerate(text.splitlines(), start=1):
+        stripped = line.strip()
+        if not stripped.startswith("- `"):
+            continue
+        parts = stripped.split("`")
+        if len(parts) < 2:
+            continue
+        reviewed_at = parts[1].strip()
+        if not reviewed_at:
+            continue
+        status = ""
+        if "status `" in stripped:
+            status_parts = stripped.split("status `", 1)[1].split("`", 1)
+            status = status_parts[0].strip() if status_parts else ""
+        history_receipts.append(
+            ReceiptMeta(
+                operation=status or "review",
+                subject_kind="judgment",
+                subject_id=subject_id,
+                target_subject_id=rel_path,
+                applied_at=reviewed_at,
+                receipt_path=f"{rel_path}#review-history-L{index}",
+            )
+        )
+    if history_receipts:
+        yield from history_receipts
+        return
+
+    reviewed_at = str(frontmatter.get("reviewed_at") or frontmatter.get("last_reviewed") or "").strip()
+    if reviewed_at:
+        yield ReceiptMeta(
+            operation=str(frontmatter.get("status") or "review"),
+            subject_kind="judgment",
+            subject_id=subject_id,
+            target_subject_id=rel_path,
+            applied_at=reviewed_at,
+            receipt_path=f"{rel_path}#judgment-reviewed_at",
+        )
 
 
 def _receipt_json_paths(root: Path) -> list[Path]:

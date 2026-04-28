@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from aiwiki import metrics_io
-from aiwiki.metrics import compute_review_closure_rate
+from aiwiki.metrics import compute_judgment_revisit_rate, compute_review_closure_rate
 from aiwiki.metrics_io import build_metrics_snapshot
 
 
@@ -351,6 +351,37 @@ class MetricsIOTests(unittest.TestCase):
         metric = compute_review_closure_rate(snapshot)
         self.assertEqual(metric.value, 0.5)
         self.assertEqual(metric.sample_size, 2)
+
+    def test_judgment_review_history_counts_as_judgment_revisit_activity(self) -> None:
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            judgments_dir = root / "wiki" / "judgments"
+            judgments_dir.mkdir(parents=True)
+            (judgments_dir / "j1.md").write_text(
+                "---\n"
+                "id: judgment-1\n"
+                "kind: judgment\n"
+                "title: J1\n"
+                "status: tracking\n"
+                "reviewed_at: 2026-04-26T00:00:00Z\n"
+                "---\n"
+                "# J1\n\n"
+                "## Review History\n"
+                "- `2026-04-26T00:00:00Z` | status `confirmed` | note latest\n"
+                "- `2026-04-20T00:00:00Z` | status `tracking` | note earlier\n",
+                encoding="utf-8",
+            )
+
+            snapshot = build_metrics_snapshot(root, now_iso="2026-04-27T00:00:00Z")
+
+        judgment_receipts = [receipt for receipt in snapshot.receipts if receipt.subject_kind == "judgment"]
+        self.assertEqual(len(judgment_receipts), 2)
+        self.assertEqual({receipt.operation for receipt in judgment_receipts}, {"confirmed", "tracking"})
+        metric = compute_judgment_revisit_rate(snapshot)
+        self.assertEqual(metric.value, 1.0)
+        self.assertEqual(metric.sample_size, 1)
 
 
 if __name__ == "__main__":
