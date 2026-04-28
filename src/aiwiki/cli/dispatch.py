@@ -26,7 +26,9 @@ from ..app_compile import (
     revert_machine_memory_action,
     revert_machine_memory_action_batch,
     revert_material_archive,
+    review_concept,
     review_concept_rewrite,
+    review_concepts_batch,
     review_machine_memory_action,
     review_page,
     review_pages_batch,
@@ -661,6 +663,26 @@ def main(argv: list[str] | None = None) -> int:
                 for slug in slugs:
                     receipts.append(reactivate_concept(root, slug, note=args.note))
                 result = {"slugs": slugs, "receipts": receipts, "count": len(receipts)}
+        elif args.handler_command == "review-concept":
+            review_slugs = _resolve_review_concept_slugs(
+                root,
+                list(args.slugs) if isinstance(args.slugs, list) else [],
+                all_pending=args.all_pending,
+            )
+            if len(review_slugs) > 1 or args.all_pending:
+                result = review_concepts_batch(
+                    root,
+                    review_slugs,
+                    status=args.status,
+                    note=args.note,
+                )
+            else:
+                result = review_concept(
+                    root,
+                    review_slugs[0],
+                    status=args.status,
+                    note=args.note,
+                )
         elif args.handler_command == "review-action":
             result = review_machine_memory_action(
                 root,
@@ -1335,6 +1357,57 @@ def _resolve_review_pages(
     if page:
         return [page]
     raise ValueError("Provide a review page path or use --next/--batch/--all-pending.")
+
+
+def _resolve_review_concept_slugs(
+    root: Path,
+    slugs: list[str],
+    *,
+    all_pending: bool,
+) -> list[str]:
+    """Resolve concept slugs for ``review-concept``.
+
+    - Mutually exclusive: explicit slugs vs ``--all-pending``.
+    - ``--all-pending`` enumerates concepts whose heuristic
+      ``lifecycle_state`` is currently ``revisit`` or ``review`` (the two
+      buckets that this command is built to drain).
+    - Override-active concepts are skipped (no point re-acking).
+    """
+    cleaned = [s.strip() for s in slugs if isinstance(s, str) and s.strip()]
+    if all_pending and cleaned:
+        raise ValueError("Pass slugs OR --all-pending, not both.")
+    if cleaned:
+        return cleaned
+    if not all_pending:
+        raise ValueError("Provide at least one slug or pass --all-pending.")
+    # Lazy import to avoid heavy app_compile import at module load time.
+    from ..app_compile import refresh_knowledge_lifecycle_runtime as _refresh
+
+    lifecycle = _refresh(root)
+    pending: list[str] = []
+    for entry in lifecycle.get("entries", []) or []:
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("kind") or "") != "concept":
+            continue
+        if bool(entry.get("override_active")):
+            continue
+        if str(entry.get("lifecycle_state") or "") not in {"revisit", "review"}:
+            continue
+        slug = str(entry.get("slug") or "").strip()
+        if not slug:
+            # Lifecycle concept entries currently expose only ``path`` (e.g.
+            # ``wiki/concepts/foo.md``); derive slug from the file stem.
+            path = str(entry.get("path") or "")
+            if path:
+                slug = Path(path).stem
+        if slug:
+            pending.append(slug)
+    if not pending:
+        raise RuntimeError("No concepts are currently in the revisit/review buckets.")
+    # Stable order: by lifecycle_state then slug.
+    pending.sort()
+    return pending
 
 
 def _resolve_action_id(root: Path, action_query: str) -> str:

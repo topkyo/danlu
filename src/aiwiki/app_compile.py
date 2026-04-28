@@ -644,6 +644,8 @@ _LAZY_OWNERS: dict[str, str] = {
     "refresh_knowledge_lifecycle_runtime": "aiwiki.execution.lifecycle",
     "retire_concept": "aiwiki.execution.lifecycle",
     "reactivate_concept": "aiwiki.execution.lifecycle",
+    "review_concept": "aiwiki.execution.lifecycle",
+    "review_concepts_batch": "aiwiki.execution.lifecycle",
     # Machine-memory action (EP-018B group 6) — migrated to aiwiki.execution.machine_memory_actions
     "resolve_machine_memory_action_query": "aiwiki.execution.machine_memory_actions",
     "review_machine_memory_action": "aiwiki.execution.machine_memory_actions",

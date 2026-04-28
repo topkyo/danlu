@@ -57,6 +57,9 @@ EXPECTED_LAZY_NAMES = {
     "refresh_knowledge_lifecycle_runtime",
     "retire_concept",
     "reactivate_concept",
+    # Concept review-ack (Round 7 / P4-19b)
+    "review_concept",
+    "review_concepts_batch",
     # Machine-memory action (4 public + 1 private helper)
     "resolve_machine_memory_action_query",
     "review_machine_memory_action",
@@ -101,12 +104,13 @@ class ExecutionCompatSeamTests(unittest.TestCase):
         self.assertEqual(set(app_compile._LAZY_OWNERS.keys()), EXPECTED_LAZY_NAMES)
 
     def test_lazy_owners_count_matches_plan(self) -> None:
-        # Plan promises 29 public + 8 private helpers = 37.
+        # Plan promises 31 public + 8 private helpers = 39
+        # (29 + 2 review-concept additions in Round 7 / P4-19b).
         keys = list(app_compile._LAZY_OWNERS.keys())
         public = [k for k in keys if not k.startswith("_")]
         private = [k for k in keys if k.startswith("_")]
-        self.assertEqual(len(keys), 37)
-        self.assertEqual(len(public), 29)
+        self.assertEqual(len(keys), 39)
+        self.assertEqual(len(public), 31)
         self.assertEqual(len(private), 8)
 
     def test_all_lazy_owners_self_reference_in_ep_018a(self) -> None:
@@ -124,6 +128,9 @@ class ExecutionCompatSeamTests(unittest.TestCase):
             "refresh_knowledge_lifecycle_runtime": "aiwiki.execution.lifecycle",
             "retire_concept": "aiwiki.execution.lifecycle",
             "reactivate_concept": "aiwiki.execution.lifecycle",
+            # Round 7 / P4-19b — review-concept manual ack
+            "review_concept": "aiwiki.execution.lifecycle",
+            "review_concepts_batch": "aiwiki.execution.lifecycle",
             # B4 — material archive
             "apply_material_archive": "aiwiki.execution.archive",
             "revert_material_archive": "aiwiki.execution.archive",

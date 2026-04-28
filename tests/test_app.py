@@ -31,7 +31,9 @@ from aiwiki.app_compile import (
     revert_concept_rewrite,
     revert_machine_memory_action,
     revert_material_archive,
+    review_concept,
     review_concept_rewrite,
+    review_concepts_batch,
     review_machine_memory_action,
     review_page,
     set_active_protocol,
@@ -1361,6 +1363,122 @@ class AiwikiFlowTests(unittest.TestCase):
 
         override_state = load_knowledge_lifecycle_override_state(self.root)
         self.assertFalse(any(entry["slug"] == slug and entry["active"] for entry in override_state["entries"]))
+
+    def test_review_concept_overrides_revisit_to_deferred(self) -> None:
+        """P4-19b: review_concept 写一条 active concept 覆盖项，把 revisit 概念路由到 deferred。"""
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        concept_entry = next(entry for entry in lifecycle["entries"] if entry["kind"] == "concept")
+        slug = Path(concept_entry["path"]).stem
+
+        result = review_concept(self.root, slug, status="deferred", note="Acknowledge revisit signal.")
+
+        self.assertEqual(result["slug"], slug)
+        self.assertEqual(result["status"], "deferred")
+        updated = load_knowledge_lifecycle_state(self.root)
+        updated_entry = next(entry for entry in updated["entries"] if entry["path"] == concept_entry["path"])
+        self.assertEqual(updated_entry["lifecycle_state"], "deferred")
+        self.assertTrue(updated_entry["override_active"])
+        self.assertEqual(updated_entry["override_state"], "deferred")
+
+        override_state = load_knowledge_lifecycle_override_state(self.root)
+        active = [
+            entry for entry in override_state["entries"]
+            if entry["slug"] == slug and entry["active"]
+        ]
+        self.assertEqual(len(active), 1)
+        self.assertEqual(active[0]["lifecycle_state"], "deferred")
+        self.assertEqual(active[0]["operation"], "review")
+        self.assertIn("manual-review-ack", active[0]["reason_codes"])
+
+    def test_review_concept_rejects_invalid_status(self) -> None:
+        """retired 不能从 review-concept 进入 (走 retire-concept)；revisit 是启发式状态。"""
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        concept_entry = next(entry for entry in lifecycle["entries"] if entry["kind"] == "concept")
+        slug = Path(concept_entry["path"]).stem
+
+        with self.assertRaises(ValueError):
+            review_concept(self.root, slug, status="retired")
+        with self.assertRaises(ValueError):
+            review_concept(self.root, slug, status="revisit")
+
+    def test_review_concept_rejects_already_retired(self) -> None:
+        """已 retired 的概念必须先 reactivate 才能走 review。"""
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        concept_entry = next(entry for entry in lifecycle["entries"] if entry["kind"] == "concept")
+        slug = Path(concept_entry["path"]).stem
+        retire_concept(self.root, slug, note="Retire before review.")
+
+        with self.assertRaises(RuntimeError):
+            review_concept(self.root, slug, status="deferred")
+
+    def test_review_concept_supersedes_prior_active_concept_override(self) -> None:
+        """新 review-ack 必须把同一 path 上之前的 active 覆盖项标 inactive。"""
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        concept_entry = next(entry for entry in lifecycle["entries"] if entry["kind"] == "concept")
+        slug = Path(concept_entry["path"]).stem
+
+        review_concept(self.root, slug, status="deferred", note="first ack")
+        review_concept(self.root, slug, status="review", note="second ack")
+
+        override_state = load_knowledge_lifecycle_override_state(self.root)
+        actives = [
+            entry for entry in override_state["entries"]
+            if str(entry.get("path") or "") == concept_entry["path"] and entry.get("active")
+        ]
+        self.assertEqual(len(actives), 1)
+        self.assertEqual(actives[0]["lifecycle_state"], "review")
+
+    def test_review_concepts_batch_fail_fast(self) -> None:
+        """review_concepts_batch: 第一个失败立即停止，已成功条目不回滚。"""
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        concept_entry = next(entry for entry in lifecycle["entries"] if entry["kind"] == "concept")
+        good_slug = Path(concept_entry["path"]).stem
+
+        with self.assertRaises(FileNotFoundError):
+            review_concepts_batch(
+                self.root,
+                [good_slug, "does-not-exist", good_slug],
+                status="deferred",
+                note="batch ack",
+            )
+
+        # good_slug 第一个已写入；does-not-exist 抛错；第三个未被处理。
+        override_state = load_knowledge_lifecycle_override_state(self.root)
+        actives = [
+            entry for entry in override_state["entries"]
+            if str(entry.get("slug") or "") == good_slug and entry.get("active")
+        ]
+        self.assertEqual(len(actives), 1)
+
+    def test_review_concepts_batch_dedupes_and_returns_count(self) -> None:
+        """重复 slug 去重并保序；返回 receipts/count/status。"""
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        concept_entry = next(entry for entry in lifecycle["entries"] if entry["kind"] == "concept")
+        slug = Path(concept_entry["path"]).stem
+
+        result = review_concepts_batch(
+            self.root,
+            [slug, slug, " "],
+            status="deferred",
+            note="dedupe",
+        )
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["slugs"], [slug])
+        self.assertEqual(result["status"], "deferred")
+        self.assertEqual(len(result["receipts"]), 1)
 
     def test_archive_candidates_progress_to_ready_and_reactivate(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")

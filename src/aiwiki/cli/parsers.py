@@ -665,6 +665,31 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     )
     reactivate_concept_parser.add_argument("--note", help="Optional reactivate note (applied to all slugs).")
 
+    review_concept_parser = subparsers.add_parser(
+        "review-concept",
+        help=(
+            "Manual review-ack for concepts in the revisit/review buckets — "
+            "writes a concept lifecycle override pinning lifecycle_state."
+        ),
+    )
+    review_concept_parser.add_argument(
+        "slugs",
+        nargs="*",
+        help="One or more concept slugs (omit when using --all-pending).",
+    )
+    review_concept_parser.add_argument(
+        "--status",
+        required=True,
+        choices=("active", "deferred", "review"),
+        help="Target lifecycle_state for the override.",
+    )
+    review_concept_parser.add_argument("--note", help="Optional review note (applied to all slugs).")
+    review_concept_parser.add_argument(
+        "--all-pending",
+        action="store_true",
+        help="Review every concept currently in the revisit_concepts and review_concepts buckets.",
+    )
+
     review_queue_parser = subparsers.add_parser(
         "review-queue",
         help="List pending review items grouped by sub-bucket (decision-kind feed entries).",

@@ -490,6 +490,109 @@ class CLITests(unittest.TestCase):
         self.assertEqual(payload["count"], 2)
         self.assertEqual(mocked.call_count, 2)
 
+    def test_review_concept_single_slug_calls_review_concept(self) -> None:
+        """P4-19b: 单 slug 直接调 review_concept，不走 batch wrapper。"""
+        with patch(
+            "aiwiki.cli.review_concept",
+            return_value={"slug": "alpha", "status": "deferred"},
+        ) as mocked:
+            code, payload, stderr = self._run_main(
+                ["review-concept", "alpha", "--status", "deferred", "--note", "ack"]
+            )
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload, {"slug": "alpha", "status": "deferred"})
+        mocked.assert_called_once()
+        call = mocked.call_args
+        self.assertEqual(call.args[1], "alpha")
+        self.assertEqual(call.kwargs.get("status"), "deferred")
+        self.assertEqual(call.kwargs.get("note"), "ack")
+
+    def test_review_concept_batch_multiple_slugs_uses_batch_helper(self) -> None:
+        """P4-19b: 多 slug 走 review_concepts_batch，receipt 桶化。"""
+        with patch(
+            "aiwiki.cli.review_concepts_batch",
+            return_value={
+                "slugs": ["alpha", "beta"],
+                "receipts": [
+                    {"slug": "alpha", "status": "deferred"},
+                    {"slug": "beta", "status": "deferred"},
+                ],
+                "count": 2,
+                "status": "deferred",
+            },
+        ) as mocked:
+            code, payload, stderr = self._run_main(
+                ["review-concept", "alpha", "beta", "--status", "deferred"]
+            )
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["count"], 2)
+        mocked.assert_called_once()
+        call = mocked.call_args
+        self.assertEqual(call.args[1], ["alpha", "beta"])
+        self.assertEqual(call.kwargs.get("status"), "deferred")
+
+    def test_review_concept_rejects_status_not_in_choices(self) -> None:
+        """argparse 拒绝非法 --status (e.g. retired 走 retire-concept；revisit 是启发式状态)."""
+        with self.assertRaises(SystemExit) as ctx:
+            self._run_main(["review-concept", "alpha", "--status", "retired"])
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_review_concept_requires_slug_or_all_pending(self) -> None:
+        """无 slug 且无 --all-pending → ValueError → exit 1."""
+        with self.assertRaises(SystemExit) as ctx:
+            self._run_main(["review-concept", "--status", "deferred"])
+        self.assertEqual(ctx.exception.code, 1)
+
+    def test_review_concept_all_pending_drains_revisit_and_review_buckets(self) -> None:
+        """--all-pending 从 lifecycle entries 抽取 revisit/review 概念，去重 override_active。"""
+        lifecycle = {
+            "entries": [
+                {"kind": "concept", "path": "wiki/concepts/alpha.md", "lifecycle_state": "revisit", "override_active": False},
+                {"kind": "concept", "path": "wiki/concepts/beta.md", "lifecycle_state": "review", "override_active": False},
+                {"kind": "concept", "path": "wiki/concepts/gamma.md", "lifecycle_state": "active", "override_active": False},
+                {"kind": "concept", "path": "wiki/concepts/already-acked.md", "lifecycle_state": "deferred", "override_active": True},
+                {"kind": "decision", "path": "wiki/decisions/d1.md", "lifecycle_state": "revisit", "override_active": False},
+            ]
+        }
+        with patch(
+            "aiwiki.app_compile.refresh_knowledge_lifecycle_runtime",
+            return_value=lifecycle,
+        ), patch(
+            "aiwiki.cli.review_concepts_batch",
+            return_value={"slugs": [], "receipts": [], "count": 0, "status": "deferred"},
+        ) as batch_mock:
+            code, _payload, stderr = self._run_main(
+                ["review-concept", "--status", "deferred", "--all-pending"]
+            )
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        batch_mock.assert_called_once()
+        slugs_arg = batch_mock.call_args.args[1]
+        self.assertEqual(sorted(slugs_arg), ["alpha", "beta"])
+
+    def test_review_concept_all_pending_errors_when_empty(self) -> None:
+        """--all-pending 且 lifecycle 中无 revisit/review 概念 → exit 1。"""
+        lifecycle = {"entries": []}
+        with patch(
+            "aiwiki.app_compile.refresh_knowledge_lifecycle_runtime",
+            return_value=lifecycle,
+        ):
+            with self.assertRaises(SystemExit) as ctx:
+                self._run_main(
+                    ["review-concept", "--status", "deferred", "--all-pending"]
+                )
+        self.assertEqual(ctx.exception.code, 1)
+
+    def test_review_concept_rejects_slugs_with_all_pending(self) -> None:
+        """互斥：传 slug 又传 --all-pending → exit 1."""
+        with self.assertRaises(SystemExit) as ctx:
+            self._run_main(
+                ["review-concept", "alpha", "--status", "deferred", "--all-pending"]
+            )
+        self.assertEqual(ctx.exception.code, 1)
+
     def test_review_queue_json_buckets_decision_entries(self) -> None:
         """P4-16a: review-queue --json 桶化 needs_review entries。"""
         summary = {
