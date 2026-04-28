@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from pathlib import Path
@@ -22,6 +23,8 @@ from aiwiki.app_utils import (
     strip_frontmatter,
     utc_now,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def run_alchemy_legacy_migration_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
@@ -2147,6 +2150,24 @@ def _run_receipted_lane_primitive(
             "receipt_path": str(result.get("receipt_path") or ""),
             "result": result,
         }
+    # Lane primitive name-vs-reality reconciliation (M9-P0.2 / oracle 9.1 follow-up):
+    # `compile` / `lint` / `nightly` have no scope filter implementation; running them with a
+    # non-"all" scope previously produced `scope=<x>` + `scope_enforced=false` receipts, which is
+    # double-semantic and violates audit-honesty. We downgrade scope to "all" up-front (before
+    # invoking the primitive) so that even if the primitive raises, the warning is observable.
+    requested_scope = scope
+    effective_scope = scope
+    scope_downgraded_from = ""
+    if primitive in {"compile", "lint", "nightly"} and scope != "all":
+        effective_scope = "all"
+        scope_downgraded_from = scope
+        logger.warning(
+            "alchemy lane primitive %r runs globally; downgrading requested scope %r to 'all' "
+            "(no per-scope filter implementation)",
+            primitive,
+            scope,
+        )
+
     if primitive == "compile":
         result = compile_wiki(root)
     elif primitive == "lint":
@@ -2181,17 +2202,23 @@ def _run_receipted_lane_primitive(
         "status": "applied",
         "protocol": _first_plan_protocol(plan),
         "subject_kind": "alchemy_lane_primitive",
-        "subject_id": f"{lane}:{scope}:{primitive}",
+        "subject_id": f"{lane}:{effective_scope}:{primitive}",
         "apply_mode": f"alchemy-{lane}-{primitive}",
         "note": note or "",
         "primary_path": _primary_result_path(result),
         "secondary_path": "",
         "receipt_path": relative_path(root, receipt_path),
         "lane": lane,
-        "scope": scope,
+        "scope": effective_scope,
+        "scope_requested": requested_scope,
+        "scope_downgraded_from": scope_downgraded_from,
         "scope_declared": scope_declared,
-        "scope_enforced": False,
-        "scope_enforcement_reason": "primitive_global_only:compile_lint_nightly_have_no_scope_filter",
+        "scope_enforced": True,
+        "scope_enforcement_reason": (
+            "primitive_global_only:downgraded_to_global"
+            if scope_downgraded_from
+            else "primitive_global_only:executed_globally"
+        ),
         "primitive": primitive,
         "revert_supported": False,
         "audit_stream": "execution_receipts",

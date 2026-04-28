@@ -39,7 +39,7 @@ from aiwiki.execution.alchemy import (
 )
 from aiwiki.execution.candidates import promote_candidate
 from aiwiki.execution.protocol_learnings import add_learning
-from aiwiki.render.paths import execution_receipt_path
+from aiwiki.render.paths import execution_receipt_path, execution_receipts_dir
 from aiwiki.runner import (
     run_alchemy_demote,
     run_alchemy_distill,
@@ -1021,23 +1021,65 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         self.assertIn(str(settled_path), str(ctx.exception))
         self.assertIn(str(candidate_path), str(ctx.exception))
 
-    def test_promote_does_not_rollback_when_receipt_write_fails(self) -> None:
+    def test_promote_rolls_back_when_receipt_history_write_fails(self) -> None:
         elixir_id = self._start_candidate_elixir()
+        candidate_path = _candidate_path(self.root, elixir_id)
+        candidate_before = candidate_path.read_bytes()
+
+        from aiwiki.execution.alchemy import PromoteReceiptError
 
         with patch("aiwiki.execution.alchemy.append_execution_receipt_history", side_effect=RuntimeError("history write failed")):
-            result = run_alchemy_promote(self.root, elixir_id=elixir_id)
+            with self.assertRaises(PromoteReceiptError) as ctx:
+                run_alchemy_promote(self.root, elixir_id=elixir_id)
 
-        settled_path = _settled_path(self.root, elixir_id)
+        self.assertIn(elixir_id, str(ctx.exception))
+        # mutation must be rolled back: settled does not exist, candidate restored to pre-mutation bytes
+        self.assertFalse(_settled_path(self.root, elixir_id).exists())
+        self.assertEqual(candidate_path.read_bytes(), candidate_before)
+
+    def test_promote_rolls_back_all_receipt_artifacts_on_audit_failure(self) -> None:
+        """Receipt persistence is fully transactional: per-action receipt file + history JSONL +
+        universal audit must all be restored if any of them fails."""
+        elixir_id = self._start_candidate_elixir()
         candidate_path = _candidate_path(self.root, elixir_id)
-        self.assertEqual(result["elixir_state"], "settled")
-        self.assertTrue(settled_path.exists())
-        self.assertTrue(candidate_path.exists())
-        settled_frontmatter = parse_frontmatter(settled_path.read_text(encoding="utf-8"))
-        tombstone_frontmatter = parse_frontmatter(candidate_path.read_text(encoding="utf-8"))
-        self.assertEqual(settled_frontmatter["elixir_state"], "settled")
-        self.assertEqual(tombstone_frontmatter["elixir_state"], "superseded")
-        self.assertTrue(result["receipt_path"])
-        self.assertTrue((self.root / result["receipt_path"]).exists())
+        candidate_before = candidate_path.read_bytes()
+
+        from aiwiki.app_state import execution_receipt_history_path
+        from aiwiki.execution.alchemy import PromoteReceiptError
+        from aiwiki.execution.audit_preview import AUDIT_STREAM_PATH
+
+        history_path = execution_receipt_history_path(self.root)
+        audit_path = self.root / AUDIT_STREAM_PATH
+        receipts_dir = execution_receipts_dir(self.root)
+        receipts_dir.mkdir(parents=True, exist_ok=True)
+        receipts_before = sorted(p.name for p in receipts_dir.glob("*.json"))
+
+        # Patch universal audit append to fail. History line is already written by then,
+        # so this path forces the receipt-block to roll back receipt file + history + audit + data.
+        with patch(
+            "aiwiki.execution.audit_preview.append_audit",
+            side_effect=RuntimeError("audit append failed"),
+        ):
+            with self.assertRaises(PromoteReceiptError):
+                run_alchemy_promote(self.root, elixir_id=elixir_id)
+
+        # data layer rolled back
+        self.assertFalse(_settled_path(self.root, elixir_id).exists())
+        self.assertEqual(candidate_path.read_bytes(), candidate_before)
+        # receipt artifacts: per-action receipt file not left behind
+        self.assertEqual(sorted(p.name for p in receipts_dir.glob("*.json")), receipts_before)
+        # execution-receipts.jsonl: no false-positive line
+        if history_path.exists():
+            for line in history_path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                self.assertNotIn(elixir_id, line)
+        # audit.jsonl: no false-positive line
+        if audit_path.exists():
+            for line in audit_path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                self.assertNotIn(elixir_id, line)
 
     def test_promote_failure_before_any_write_keeps_candidate_intact(self) -> None:
         elixir_id = self._start_candidate_elixir()
@@ -1548,16 +1590,66 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             run_alchemy_revert(self.root, elixir_id="missing-revert-target")
 
-    def test_revert_does_not_rollback_when_receipt_write_fails(self) -> None:
+    def test_revert_rolls_back_when_receipt_history_write_fails(self) -> None:
         elixir_id = self._start_candidate_elixir(topic="revert-receipt-write-failure")
         run_alchemy_promote(self.root, elixir_id=elixir_id)
+        settled_path = _settled_path(self.root, elixir_id)
+        candidate_path = _candidate_path(self.root, elixir_id)
+        settled_before = settled_path.read_bytes()
+        candidate_before = candidate_path.read_bytes()
 
+        from aiwiki.execution.alchemy import RevertReceiptError
+
+        # Patch only the second history-append call: revert appends history once,
+        # promote already succeeded above. Side-effect raises on next invocation.
         with patch("aiwiki.execution.alchemy.append_execution_receipt_history", side_effect=RuntimeError("history write failed")):
-            result_path = run_alchemy_revert(self.root, elixir_id=elixir_id)
+            with self.assertRaises(RevertReceiptError) as ctx:
+                run_alchemy_revert(self.root, elixir_id=elixir_id)
 
-        self.assertEqual(result_path, _candidate_path(self.root, elixir_id))
-        self.assertFalse(_settled_path(self.root, elixir_id).exists())
-        self.assertTrue(_candidate_path(self.root, elixir_id).exists())
+        self.assertIn(elixir_id, str(ctx.exception))
+        # mutation rolled back: settled and candidate restored to post-promote bytes
+        self.assertTrue(settled_path.exists())
+        self.assertEqual(settled_path.read_bytes(), settled_before)
+        self.assertEqual(candidate_path.read_bytes(), candidate_before)
+
+    def test_revert_rolls_back_all_receipt_artifacts_on_audit_failure(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="revert-audit-fail")
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        settled_path = _settled_path(self.root, elixir_id)
+        candidate_path = _candidate_path(self.root, elixir_id)
+        settled_before = settled_path.read_bytes()
+        candidate_before = candidate_path.read_bytes()
+
+        from aiwiki.app_state import execution_receipt_history_path
+        from aiwiki.execution.alchemy import RevertReceiptError
+        from aiwiki.execution.audit_preview import AUDIT_STREAM_PATH
+
+        history_path = execution_receipt_history_path(self.root)
+        audit_path = self.root / AUDIT_STREAM_PATH
+        receipts_dir = execution_receipts_dir(self.root)
+        history_before = history_path.read_bytes() if history_path.exists() else None
+        audit_before = audit_path.read_bytes() if audit_path.exists() else None
+        receipts_before = sorted(p.name for p in receipts_dir.glob("*.json")) if receipts_dir.exists() else []
+
+        with patch(
+            "aiwiki.execution.audit_preview.append_audit",
+            side_effect=RuntimeError("audit append failed"),
+        ):
+            with self.assertRaises(RevertReceiptError):
+                run_alchemy_revert(self.root, elixir_id=elixir_id)
+
+        # data plane fully restored
+        self.assertEqual(settled_path.read_bytes(), settled_before)
+        self.assertEqual(candidate_path.read_bytes(), candidate_before)
+        # receipt artifacts unchanged
+        self.assertEqual(
+            sorted(p.name for p in receipts_dir.glob("*.json")) if receipts_dir.exists() else [],
+            receipts_before,
+        )
+        if history_before is not None:
+            self.assertEqual(history_path.read_bytes(), history_before)
+        if audit_before is not None:
+            self.assertEqual(audit_path.read_bytes(), audit_before)
 
     def test_compute_file_sha256_helper(self) -> None:
         target = self.root / "tmp-hash.txt"
@@ -1567,15 +1659,19 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
 
         self.assertEqual(digest, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
 
-    def test_promote_skips_receipt_when_hash_anchor_compute_missing_file(self) -> None:
+    def test_promote_rolls_back_when_hash_anchor_compute_fails(self) -> None:
         elixir_id = self._start_candidate_elixir(topic="promote-hash-anchor-missing")
+        candidate_path = _candidate_path(self.root, elixir_id)
+        candidate_before = candidate_path.read_bytes()
+
+        from aiwiki.execution.alchemy import PromoteReceiptError
 
         with patch("aiwiki.execution.alchemy.compute_file_sha256", side_effect=FileNotFoundError("missing")):
-            result = run_alchemy_promote(self.root, elixir_id=elixir_id)
+            with self.assertRaises(PromoteReceiptError):
+                run_alchemy_promote(self.root, elixir_id=elixir_id)
 
-        self.assertEqual(result["receipt_path"], "")
-        self.assertTrue(_settled_path(self.root, elixir_id).exists())
-        self.assertTrue(_candidate_path(self.root, elixir_id).exists())
+        self.assertFalse(_settled_path(self.root, elixir_id).exists())
+        self.assertEqual(candidate_path.read_bytes(), candidate_before)
 
     def test_revert_rejects_modified_tombstone(self) -> None:
         elixir_id = self._start_candidate_elixir()
@@ -1621,19 +1717,11 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         run_alchemy_promote(self.root, elixir_id=elixir_id)
         settled_path = _settled_path(self.root, elixir_id)
         candidate_path = _candidate_path(self.root, elixir_id)
-        from aiwiki.execution import alchemy as alchemy_module
 
-        original_write = alchemy_module._write_atomic_text
-        calls = {"count": 0}
-
-        def _flaky_write(path: Path, content: str) -> None:
-            calls["count"] += 1
-            if calls["count"] == 2:
-                raise OSError("rollback candidate write failed")
-            original_write(path, content)
-
-        with patch("aiwiki.execution.alchemy._write_atomic_text", side_effect=_flaky_write):
-            with patch.object(Path, "unlink", autospec=True, side_effect=OSError("unlink failed")):
+        # Force the settled.unlink() inside revert to fail, and force the
+        # rollback restore to also fail; expect RevertHalfWriteError.
+        with patch.object(Path, "unlink", autospec=True, side_effect=OSError("unlink failed")):
+            with patch("aiwiki.execution.alchemy._restore_file_bytes", side_effect=OSError("rollback restore failed")):
                 with self.assertRaises(RevertHalfWriteError) as ctx:
                     revert_elixir(self.root, elixir_id=elixir_id)
 
@@ -1688,7 +1776,66 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         self.assertEqual(receipt["bundle"].get("dependency_breaks"), [])
         self.assertEqual(receipt["note"], "demote")
 
-    def test_demote_writes_dependency_breaks_in_bundle(self) -> None:
+    def test_demote_rolls_back_when_receipt_history_write_fails(self) -> None:
+        elixir_id = self._start_candidate_elixir()
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        settled_path = _settled_path(self.root, elixir_id)
+        candidate_path = _candidate_path(self.root, elixir_id)
+        settled_before = settled_path.read_bytes()
+        candidate_before = candidate_path.read_bytes()
+
+        from aiwiki.execution.alchemy import DemoteReceiptError
+
+        with patch("aiwiki.execution.alchemy.append_execution_receipt_history", side_effect=RuntimeError("history write failed")):
+            with self.assertRaises(DemoteReceiptError) as ctx:
+                run_alchemy_demote(self.root, elixir_id=elixir_id)
+
+        self.assertIn(elixir_id, str(ctx.exception))
+        self.assertTrue(settled_path.exists())
+        self.assertEqual(settled_path.read_bytes(), settled_before)
+        self.assertEqual(candidate_path.read_bytes(), candidate_before)
+
+    def test_demote_rolls_back_all_receipt_artifacts_on_audit_failure(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="demote-audit-fail")
+        run_alchemy_promote(self.root, elixir_id=elixir_id)
+        settled_path = _settled_path(self.root, elixir_id)
+        candidate_path = _candidate_path(self.root, elixir_id)
+        settled_before = settled_path.read_bytes()
+        candidate_before = candidate_path.read_bytes() if candidate_path.exists() else None
+
+        from aiwiki.app_state import execution_receipt_history_path
+        from aiwiki.execution.alchemy import DemoteReceiptError
+        from aiwiki.execution.audit_preview import AUDIT_STREAM_PATH
+
+        history_path = execution_receipt_history_path(self.root)
+        audit_path = self.root / AUDIT_STREAM_PATH
+        receipts_dir = execution_receipts_dir(self.root)
+        history_before = history_path.read_bytes() if history_path.exists() else None
+        audit_before = audit_path.read_bytes() if audit_path.exists() else None
+        receipts_before = sorted(p.name for p in receipts_dir.glob("*.json")) if receipts_dir.exists() else []
+
+        with patch(
+            "aiwiki.execution.audit_preview.append_audit",
+            side_effect=RuntimeError("audit append failed"),
+        ):
+            with self.assertRaises(DemoteReceiptError):
+                run_alchemy_demote(self.root, elixir_id=elixir_id)
+
+        self.assertEqual(settled_path.read_bytes(), settled_before)
+        if candidate_before is None:
+            self.assertFalse(candidate_path.exists())
+        else:
+            self.assertEqual(candidate_path.read_bytes(), candidate_before)
+        self.assertEqual(
+            sorted(p.name for p in receipts_dir.glob("*.json")) if receipts_dir.exists() else [],
+            receipts_before,
+        )
+        if history_before is not None:
+            self.assertEqual(history_path.read_bytes(), history_before)
+        if audit_before is not None:
+            self.assertEqual(audit_path.read_bytes(), audit_before)
+
+    def test_demote_records_dependency_breaks_for_dependent_elixirs(self) -> None:
         elixir_id = self._start_candidate_elixir(topic="demote-break-source")
         run_alchemy_promote(self.root, elixir_id=elixir_id)
         dependent_id = "dependent-for-demote"
@@ -1812,7 +1959,6 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         history_path = self.root / ".aiwiki" / "state" / "execution-receipts.jsonl"
         history_path.parent.mkdir(parents=True, exist_ok=True)
         rows = [
-            "not-json",
             json.dumps({"subject_kind": "other", "subject_id": "x", "applied_at": "2026-01-01T00:00:00+00:00"}),
             json.dumps({"subject_kind": "elixir_promotion", "subject_id": "elixir-a", "applied_at": "2026-01-01T00:00:00+00:00"}),
             json.dumps({"subject_kind": "elixir_promotion", "subject_id": "elixir-a", "applied_at": "2026-01-01T00:01:00+00:00"}),
@@ -1825,24 +1971,26 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         assert latest is not None
         self.assertEqual(latest["applied_at"], "2026-01-01T00:01:00+00:00")
 
-    def test_find_latest_elixir_promotion_receipt_skips_non_dict_lines(self) -> None:
+    def test_find_latest_elixir_promotion_receipt_raises_on_non_object_line(self) -> None:
+        """M9-P0.4: authoritative receipt reader is strict; non-object JSONL records
+        must raise CorruptStateError instead of being silently skipped."""
+        from aiwiki.app_state import CorruptStateError
+
         history_path = self.root / ".aiwiki" / "state" / "execution-receipts.jsonl"
         history_path.parent.mkdir(parents=True, exist_ok=True)
-        expected = {
-            "subject_kind": "elixir_promotion",
-            "subject_id": "elixir-a",
-            "applied_at": "2026-01-01T00:02:00+00:00",
-        }
         rows = [
             "[]",
-            "null",
-            json.dumps(expected),
+            json.dumps({
+                "subject_kind": "elixir_promotion",
+                "subject_id": "elixir-a",
+                "applied_at": "2026-01-01T00:02:00+00:00",
+            }),
         ]
         history_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
 
-        latest = find_latest_elixir_promotion_receipt(self.root, elixir_id="elixir-a")
-
-        self.assertEqual(latest, expected)
+        with self.assertRaises(CorruptStateError) as ctx:
+            find_latest_elixir_promotion_receipt(self.root, elixir_id="elixir-a")
+        self.assertEqual(ctx.exception.line_number, 1)
 
     def test_find_latest_elixir_promotion_receipt_handles_missing_history_file(self) -> None:
         history_path = self.root / ".aiwiki" / "state" / "execution-receipts.jsonl"
@@ -1851,6 +1999,21 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         latest = find_latest_elixir_promotion_receipt(self.root, elixir_id="elixir-a")
 
         self.assertIsNone(latest)
+
+    def test_find_latest_elixir_promotion_receipt_raises_on_corrupt_jsonl(self) -> None:
+        from aiwiki.app_state import CorruptStateError
+
+        history_path = self.root / ".aiwiki" / "state" / "execution-receipts.jsonl"
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        history_path.write_text(
+            '{"subject_kind": "elixir_promotion", "subject_id": "elixir-a"}\n'
+            "{ this is not valid json\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(CorruptStateError) as ctx:
+            find_latest_elixir_promotion_receipt(self.root, elixir_id="elixir-a")
+        self.assertEqual(ctx.exception.line_number, 2)
 
 
 if __name__ == "__main__":

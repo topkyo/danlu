@@ -322,23 +322,41 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . protocol-status
 新增能力时，优先沿下面这张模块边界图落位，而不是继续往巨石文件里堆：
 
 ```text
-cli
-├─ drop / runner
-├─ app_compile
-│  ├─ app_compile_ops
-│  ├─ app_queries
-│  └─ app_linting
-├─ app_content
-│  ├─ app_lifecycle
-│  └─ app_render
-└─ app_memory
-   ├─ app_routing
-   └─ app_memory_surfaces
+cli/                       命令入口；只做参数解析与 dispatch
+├─ drop.py / input_router.py   外部投喂入口（drop-url / drop-pdf / drop-image / drop-repo）
+├─ runner/                 lifecycle / alchemy / nightly 等 high-level 编排
+└─ planner/                deterministic + LLM-assisted plan 生成
+
+execution/                 事实层 mutation（promote / revert / demote / archive / proposals…）
+                           硬边界：所有 mutation 必须 receipt + hash + revert（M9-P0.1）
+runner/alchemy.py          lane / primitive 编排，含 scope-honesty receipt（M9-P0.2）
+
+app_compile.py / compile/  wiki 编译 + lint + nightly health
+├─ app_compile_ops.py
+├─ app_queries.py
+└─ app_linting/
+
+app_content.py / content/  source / derived / decisions / judgments 物化
+├─ app_lifecycle.py
+└─ app_render.py / render/
+
+app_memory.py / memory/    machine memory（trace / recall / batch）
+├─ app_memory_query.py
+└─ app_memory_surfaces.py
+
+app_state.py               持久化状态 I/O 单一入口
+                           best-effort + strict 双语义；strict raise CorruptStateError（M9-P0.4）
+app_execution.py           execution receipts / audit history append
+app_protocol.py            协议 layout / state / 路由
+signals/                   review / repair / aging / escalation 信号源
+app_shell/                 product shell surfaces
 ```
 
 约定：
 
 - `raw/` 是唯一事实输入层；不要把结论直接写回 source 层。
 - `wiki/sources/` 与 `wiki/derived|decisions|judgments/` 必须分层，派生产物保留 provenance。
-- 新 CLI 命令优先放 `cli.py` + owner module，不要在 shim 或 shell surface 上偷接逻辑。
+- 新 CLI 命令优先放 `cli/` + owner module，不要在 shim 或 shell surface 上偷接逻辑。
 - 新协议能力先落 `schema/protocols/*`，再让 runtime 消费；不要反过来让代码先漂移。
+- 事实层 mutation 必须走 `execution/`，receipt 写失败必须 rollback（不允许半写）。
+- 持久化状态读取必须显式选 best-effort 还是 strict（见 `docs/Furnace Agent Architecture.md` §11.1）。

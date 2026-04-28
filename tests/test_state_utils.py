@@ -38,6 +38,69 @@ class AppStateTests(unittest.TestCase):
         jsonl_path.write_text('{"a":1}\n\nnot-json\n["skip"]\n{"b":2}\n', encoding="utf-8")
         self.assertEqual(state.load_jsonl_documents(jsonl_path), [{"a": 1}, {"b": 2}])
 
+    def test_strict_loaders_raise_corrupt_state_error(self) -> None:
+        document_path = self.root / "tmp" / "doc.json"
+        # Missing file is allowed (returns {}) — strict only rejects corrupt content.
+        self.assertEqual(state.load_json_document_strict(document_path), {})
+
+        document_path.parent.mkdir(parents=True, exist_ok=True)
+        document_path.write_text('{"alpha": 1}', encoding="utf-8")
+        self.assertEqual(state.load_json_document_strict(document_path), {"alpha": 1})
+
+        document_path.write_text("{bad json", encoding="utf-8")
+        with self.assertRaises(state.CorruptStateError) as ctx:
+            state.load_json_document_strict(document_path)
+        self.assertEqual(ctx.exception.path, document_path)
+        self.assertIn("json decode failed", ctx.exception.reason)
+
+        document_path.write_text('["not", "an", "object"]', encoding="utf-8")
+        with self.assertRaises(state.CorruptStateError) as ctx:
+            state.load_json_document_strict(document_path)
+        self.assertIn("expected JSON object", ctx.exception.reason)
+
+        jsonl_path = self.root / "tmp" / "events.jsonl"
+        self.assertEqual(state.load_jsonl_documents_strict(jsonl_path), [])
+
+        jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+        jsonl_path.write_text('{"a":1}\n{"b":2}\n', encoding="utf-8")
+        self.assertEqual(state.load_jsonl_documents_strict(jsonl_path), [{"a": 1}, {"b": 2}])
+
+        jsonl_path.write_text('{"a":1}\nnot-json\n{"b":2}\n', encoding="utf-8")
+        with self.assertRaises(state.CorruptStateError) as ctx:
+            state.load_jsonl_documents_strict(jsonl_path)
+        self.assertEqual(ctx.exception.line_number, 2)
+
+        jsonl_path.write_text('{"a":1}\n["skip"]\n', encoding="utf-8")
+        with self.assertRaises(state.CorruptStateError) as ctx:
+            state.load_jsonl_documents_strict(jsonl_path)
+        self.assertEqual(ctx.exception.line_number, 2)
+        self.assertIn("expected JSON object", ctx.exception.reason)
+
+    def test_best_effort_loaders_log_warning_on_corruption(self) -> None:
+        document_path = self.root / "tmp" / "warn.json"
+        document_path.parent.mkdir(parents=True, exist_ok=True)
+        document_path.write_text("{bad json", encoding="utf-8")
+        with self.assertLogs("aiwiki.app_state", level="WARNING") as cm:
+            self.assertEqual(state.load_json_document(document_path), {})
+        self.assertTrue(any("corrupt JSON state" in msg for msg in cm.output))
+
+        jsonl_path = self.root / "tmp" / "warn.jsonl"
+        jsonl_path.write_text('{"a":1}\nnot-json\n["skip"]\n{"b":2}\n', encoding="utf-8")
+        with self.assertLogs("aiwiki.app_state", level="WARNING") as cm:
+            result = state.load_jsonl_documents(jsonl_path)
+        self.assertEqual(result, [{"a": 1}, {"b": 2}])
+        joined = "\n".join(cm.output)
+        self.assertIn("corrupt JSONL line", joined)
+        self.assertIn("non-object JSONL record", joined)
+
+    def test_load_json_document_returns_empty_when_top_level_not_object(self) -> None:
+        document_path = self.root / "tmp" / "nonobject.json"
+        document_path.parent.mkdir(parents=True, exist_ok=True)
+        document_path.write_text('["a", "b"]', encoding="utf-8")
+        with self.assertLogs("aiwiki.app_state", level="WARNING") as cm:
+            self.assertEqual(state.load_json_document(document_path), {})
+        self.assertTrue(any("non-object JSON top-level" in msg for msg in cm.output))
+
     def test_append_runtime_history_writes_universal_audit(self) -> None:
         event = {
             "event_type": "nightly",

@@ -5,7 +5,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from ..app_execution import (
     append_execution_receipt_history,
@@ -15,8 +15,9 @@ from ..app_execution import (
     compute_file_sha256,
     find_latest_elixir_promotion_receipt,
 )
-from ..app_state import load_active_corpora_state, load_output_candidates_state
+from ..app_state import execution_receipt_history_path, load_active_corpora_state, load_output_candidates_state
 from ..app_utils import next_available_stem, parse_frontmatter, relative_path, sha256_bytes, slugify, utc_now
+from .audit_preview import AUDIT_STREAM_PATH
 
 ELIXIR_DIR = "wiki/elixirs"
 CANDIDATE_ELIXIR_DIR = "output/_candidates/elixirs"
@@ -28,33 +29,155 @@ logger = logging.getLogger("aiwiki")
 
 
 class PromoteHalfWriteError(RuntimeError):
-    def __init__(self, *, settled_path: Path, candidate_path: Path) -> None:
+    def __init__(self, *, settled_path: Path, candidate_path: Path, phase: str = "double_write") -> None:
         self.settled_path = settled_path
         self.candidate_path = candidate_path
+        self.phase = phase
         super().__init__(
-            "promote_half_write_error: failed to rollback settled after tombstone write failure; "
+            f"promote_half_write_error[{phase}]: failed to rollback after promote failure; "
             f"manual repair required (settled={settled_path}, candidate={candidate_path})"
         )
 
 
 class RevertHalfWriteError(RuntimeError):
-    def __init__(self, *, settled_path: Path, candidate_path: Path) -> None:
+    def __init__(self, *, settled_path: Path, candidate_path: Path, phase: str = "double_write") -> None:
         self.settled_path = settled_path
         self.candidate_path = candidate_path
+        self.phase = phase
         super().__init__(
-            "revert_half_write_error: failed to rollback candidate after settled delete failure; "
+            f"revert_half_write_error[{phase}]: failed to rollback after revert failure; "
             f"manual repair required (settled={settled_path}, candidate={candidate_path})"
         )
 
 
 class DemoteHalfWriteError(RuntimeError):
-    def __init__(self, *, settled_path: Path, candidate_path: Path) -> None:
+    def __init__(self, *, settled_path: Path, candidate_path: Path, phase: str = "double_write") -> None:
         self.settled_path = settled_path
         self.candidate_path = candidate_path
+        self.phase = phase
         super().__init__(
-            "demote_half_write_error: failed to rollback candidate after settled delete failure; "
+            f"demote_half_write_error[{phase}]: failed to rollback after demote failure; "
             f"manual repair required (settled={settled_path}, candidate={candidate_path})"
         )
+
+
+class ElixirMutationBoundaryError(RuntimeError):
+    """Base for receipt-boundary failures where mutation has been rolled back successfully."""
+
+
+class PromoteReceiptError(ElixirMutationBoundaryError):
+    pass
+
+
+class RevertReceiptError(ElixirMutationBoundaryError):
+    pass
+
+
+class DemoteReceiptError(ElixirMutationBoundaryError):
+    pass
+
+
+def _restore_file_bytes(path: Path, snapshot: bytes | None) -> None:
+    """Restore a file to its pre-mutation state.
+
+    Snapshot semantics:
+        None  → file did not exist before; ensure it does not exist now.
+        bytes → file existed; restore exact bytes via atomic rename.
+    """
+    if snapshot is None:
+        try:
+            path.unlink(missing_ok=True)
+        except FileNotFoundError:
+            pass
+        return
+    tmp = path.with_suffix(path.suffix + ".restore.tmp")
+    tmp.write_bytes(snapshot)
+    os.replace(tmp, path)
+
+
+def _snapshot_file_bytes(path: Path) -> bytes | None:
+    if not path.exists():
+        return None
+    return path.read_bytes()
+
+
+def _snapshot_receipt_artifacts(root: Path) -> dict[str, tuple[Path, bytes | None]]:
+    """Snapshot receipt-side artifacts before a mutation receipt is persisted.
+
+    Includes:
+        - execution receipt history JSONL
+        - universal audit stream JSONL
+
+    Per-action receipt files are snapshot lazily once their path is known
+    (see ``_persist_receipt_transactionally`` and the inline promote receipt block).
+    """
+    history_path = execution_receipt_history_path(root)
+    audit_path = root / AUDIT_STREAM_PATH
+    return {
+        "history": (history_path, _snapshot_file_bytes(history_path)),
+        "audit": (audit_path, _snapshot_file_bytes(audit_path)),
+    }
+
+
+def _restore_receipt_artifacts(snapshots: dict[str, tuple[Path, bytes | None]]) -> None:
+    """Restore receipt-side artifacts to pre-mutation bytes. Best-effort error-collecting."""
+    errors: list[Exception] = []
+    for path, snapshot in snapshots.values():
+        try:
+            _restore_file_bytes(path, snapshot)
+        except Exception as exc:  # pragma: no cover - escalated via aggregate
+            errors.append(exc)
+    if errors:
+        raise errors[0]
+
+
+def _persist_receipt_transactionally(
+    root: Path,
+    *,
+    receipt: dict[str, Any],
+    elixir_id: str,
+    operation: str,
+    rollback_data: Callable[[], None],
+    receipt_error_cls: type[ElixirMutationBoundaryError],
+    half_write_error_factory: Callable[[str], RuntimeError],
+) -> Path:
+    """Persist a mutation receipt as a single transaction.
+
+    Writes the per-action receipt JSON, appends to ``execution-receipts.jsonl`` and the universal
+    audit stream. On any failure: restores per-action receipt bytes + history JSONL + audit JSONL,
+    then invokes ``rollback_data()`` to restore the data-layer artifacts that triggered the receipt.
+
+    On secondary failure (rollback itself fails) raises ``half_write_error_factory(phase)`` so the
+    caller can surface a half-write boundary error.
+    """
+    receipt_path = root / str(receipt.get("receipt_path") or "")
+    receipt_artifact_snapshots = _snapshot_receipt_artifacts(root)
+    receipt_path_snapshot = _snapshot_file_bytes(receipt_path)
+    try:
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        receipt_path.write_text(
+            json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        append_execution_receipt_history(root, receipt)
+    except Exception as receipt_exc:
+        logger.warning(
+            "elixir %s receipt persistence failed for %s; rolling back mutation: %s",
+            operation,
+            elixir_id,
+            receipt_exc,
+        )
+        try:
+            _restore_file_bytes(receipt_path, receipt_path_snapshot)
+            _restore_receipt_artifacts(receipt_artifact_snapshots)
+            rollback_data()
+        except Exception as rollback_exc:
+            raise half_write_error_factory("receipt_rollback") from rollback_exc
+        raise receipt_error_cls(
+            f"{operation}_receipt_error: receipt persistence failed for elixir {elixir_id}; "
+            "mutation rolled back"
+        ) from receipt_exc
+    return receipt_path
 
 
 # distill_history is stored as a JSON string in frontmatter because the simple YAML
@@ -1049,20 +1172,29 @@ def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> di
 
     settled_path.parent.mkdir(parents=True, exist_ok=True)
     candidate_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Snapshot pre-mutation state for rollback on receipt-persist failure.
+    settled_snapshot = _snapshot_file_bytes(settled_path)  # expected None: gate above ensured non-existence
+    candidate_snapshot = _snapshot_file_bytes(candidate_path)  # expected non-None: gate above ensured candidate exists
+
     _write_atomic_text(settled_path, settled_text)
     try:
         _write_atomic_text(candidate_path, tombstone_text)
     except Exception as exc:
         try:
-            settled_path.unlink(missing_ok=True)
+            _restore_file_bytes(settled_path, settled_snapshot)
         except Exception as rollback_exc:
-            raise PromoteHalfWriteError(settled_path=settled_path, candidate_path=candidate_path) from rollback_exc
+            raise PromoteHalfWriteError(
+                settled_path=settled_path, candidate_path=candidate_path, phase="double_write"
+            ) from rollback_exc
         raise exc
 
     _validate_state_for_path(root, "settled", settled_path)
     _validate_state_for_path(root, "superseded", candidate_path)
 
-    receipt_result_path = ""
+    receipt_artifact_snapshots = _snapshot_receipt_artifacts(root)
+    receipt_path: Path | None = None
+    receipt_path_snapshot: bytes | None = None
     try:
         primary_hash = compute_file_sha256(settled_path)
         secondary_hash = compute_file_sha256(candidate_path)
@@ -1083,12 +1215,30 @@ def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> di
         receipt_result_path = str(receipt.get("receipt_path") or "")
         receipt_path = root / receipt_result_path
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        receipt_path_snapshot = _snapshot_file_bytes(receipt_path)
         receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         append_execution_receipt_history(root, receipt)
-    except FileNotFoundError:
-        logging.getLogger("aiwiki").exception("failed to compute elixir promotion receipt hash anchors: %s", normalized_id)
-    except Exception:
-        logging.getLogger("aiwiki").exception("failed to persist elixir promotion receipt: %s", normalized_id)
+    except Exception as receipt_exc:
+        # Mutation hard boundary: receipt persistence (per-action file + history + audit)
+        # must succeed transactionally or mutation must visibly fail with all artifacts restored.
+        logger.warning(
+            "elixir promote receipt persistence failed for %s; rolling back mutation: %s",
+            normalized_id,
+            receipt_exc,
+        )
+        try:
+            if receipt_path is not None:
+                _restore_file_bytes(receipt_path, receipt_path_snapshot)
+            _restore_receipt_artifacts(receipt_artifact_snapshots)
+            _restore_file_bytes(candidate_path, candidate_snapshot)
+            _restore_file_bytes(settled_path, settled_snapshot)
+        except Exception as rollback_exc:
+            raise PromoteHalfWriteError(
+                settled_path=settled_path, candidate_path=candidate_path, phase="receipt_rollback"
+            ) from rollback_exc
+        raise PromoteReceiptError(
+            f"promote_receipt_error: receipt persistence failed for elixir {normalized_id}; mutation rolled back"
+        ) from receipt_exc
 
     return {
         "elixir_id": normalized_id,
@@ -1160,7 +1310,8 @@ def revert_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
         )
         dependency_breaks = []
 
-    tombstone_original_text = candidate_path.read_text(encoding="utf-8", errors="replace")
+    tombstone_original_bytes = candidate_path.read_bytes()
+    settled_original_bytes = settled_path.read_bytes()
     candidate_frontmatter = dict(tombstone_frontmatter)
     candidate_frontmatter["elixir_state"] = "candidate"
     candidate_frontmatter.pop("superseded_by", None)
@@ -1172,9 +1323,11 @@ def revert_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
         settled_path.unlink()
     except Exception as exc:
         try:
-            _write_atomic_text(candidate_path, tombstone_original_text)
+            _restore_file_bytes(candidate_path, tombstone_original_bytes)
         except Exception as rollback_exc:
-            raise RevertHalfWriteError(settled_path=settled_path, candidate_path=candidate_path) from rollback_exc
+            raise RevertHalfWriteError(
+                settled_path=settled_path, candidate_path=candidate_path, phase="double_write"
+            ) from rollback_exc
         raise exc
 
     protocol = str(settled_frontmatter.get("protocol") or tombstone_frontmatter.get("protocol") or "")
@@ -1192,13 +1345,20 @@ def revert_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
         source_receipt_action_id=source_action_id,
         dependency_breaks=dependency_breaks,
     )
-    receipt_path = root / str(receipt.get("receipt_path") or "")
-    try:
-        receipt_path.parent.mkdir(parents=True, exist_ok=True)
-        receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        append_execution_receipt_history(root, receipt)
-    except Exception:
-        logging.getLogger("aiwiki").exception("failed to persist elixir revert receipt: %s", normalized_id)
+    _persist_receipt_transactionally(
+        root,
+        receipt=receipt,
+        elixir_id=normalized_id,
+        operation="revert",
+        rollback_data=lambda: (
+            _restore_file_bytes(candidate_path, tombstone_original_bytes),
+            _restore_file_bytes(settled_path, settled_original_bytes),
+        ),
+        receipt_error_cls=RevertReceiptError,
+        half_write_error_factory=lambda phase: RevertHalfWriteError(
+            settled_path=settled_path, candidate_path=candidate_path, phase=phase
+        ),
+    )
 
     return candidate_path
 
@@ -1217,7 +1377,8 @@ def demote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
         raise ValueError(f"unsupported_source_state: cannot demote elixir from state={settled_state or 'unknown'}")
 
     had_candidate_before = candidate_data is not None
-    candidate_original_text = candidate_path.read_text(encoding="utf-8", errors="replace") if had_candidate_before else ""
+    candidate_snapshot = _snapshot_file_bytes(candidate_path) if had_candidate_before else None
+    settled_snapshot = _snapshot_file_bytes(settled_path)
     if candidate_data is not None:
         candidate_frontmatter, _candidate_body = candidate_data
         candidate_state = str(candidate_frontmatter.get("elixir_state") or "")
@@ -1253,12 +1414,11 @@ def demote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
         settled_path.unlink()
     except Exception as exc:
         try:
-            if had_candidate_before:
-                _write_atomic_text(candidate_path, candidate_original_text)
-            else:
-                candidate_path.unlink(missing_ok=True)
+            _restore_file_bytes(candidate_path, candidate_snapshot)
         except Exception as rollback_exc:
-            raise DemoteHalfWriteError(settled_path=settled_path, candidate_path=candidate_path) from rollback_exc
+            raise DemoteHalfWriteError(
+                settled_path=settled_path, candidate_path=candidate_path, phase="double_write"
+            ) from rollback_exc
         raise exc
 
     protocol = str(settled_frontmatter.get("protocol") or "")
@@ -1274,12 +1434,19 @@ def demote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
         note=note,
         dependency_breaks=dependency_breaks,
     )
-    receipt_path = root / str(receipt.get("receipt_path") or "")
-    try:
-        receipt_path.parent.mkdir(parents=True, exist_ok=True)
-        receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        append_execution_receipt_history(root, receipt)
-    except Exception:
-        logging.getLogger("aiwiki").exception("failed to persist elixir demotion receipt: %s", normalized_id)
+    _persist_receipt_transactionally(
+        root,
+        receipt=receipt,
+        elixir_id=normalized_id,
+        operation="demote",
+        rollback_data=lambda: (
+            _restore_file_bytes(candidate_path, candidate_snapshot),
+            _restore_file_bytes(settled_path, settled_snapshot),
+        ),
+        receipt_error_cls=DemoteReceiptError,
+        half_write_error_factory=lambda phase: DemoteHalfWriteError(
+            settled_path=settled_path, candidate_path=candidate_path, phase=phase
+        ),
+    )
 
     return candidate_path

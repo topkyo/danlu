@@ -748,13 +748,17 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self.assertEqual(receipt["primitive"], "compile")
         self.assertEqual(receipt["lane"], "heavy")
         self.assertFalse(receipt["revert_supported"])
-        # M7.1: scope honesty — primitive runs globally, receipt declares it.
+        # M9-P0.2: scope honesty — compile/lint/nightly always run globally; when caller
+        # already requests scope="all", receipt records honest enforcement (no downgrade).
         self.assertIn("scope_declared", receipt)
         self.assertIsInstance(receipt["scope_declared"], dict)
-        self.assertFalse(receipt["scope_enforced"])
+        self.assertTrue(receipt["scope_enforced"])
+        self.assertEqual(receipt["scope"], "all")
+        self.assertEqual(receipt["scope_requested"], "all")
+        self.assertEqual(receipt["scope_downgraded_from"], "")
         self.assertEqual(
             receipt["scope_enforcement_reason"],
-            "primitive_global_only:compile_lint_nightly_have_no_scope_filter",
+            "primitive_global_only:executed_globally",
         )
         history = [
             json.loads(line)
@@ -763,6 +767,33 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         ]
         self.assertEqual(history[-1]["action_id"], receipt["action_id"])
         self.assertEqual(history[-1]["trace_id"], receipt["trace_id"])
+
+    def test_apply_downgrades_non_all_scope_for_global_only_primitive(self) -> None:
+        self._seed_lane_records()
+
+        with patch("aiwiki.runner.alchemy.compile_wiki", return_value={"updated_source_pages": []}) as mocked:
+            result = run_alchemy_lane_apply(
+                self.root,
+                lane="heavy",
+                scope="protocol:research",
+                action_ids=[],
+                primitives=["compile"],
+                note="compile lane scoped",
+            )
+
+        mocked.assert_called_once_with(self.root)
+        primitive_result = result["primitive_results"][0]
+        receipt = json.loads((self.root / primitive_result["receipt_path"]).read_text(encoding="utf-8"))
+        # M9-P0.2: requested scope!="all" must be honestly downgraded; receipt must record both.
+        self.assertEqual(receipt["scope"], "all")
+        self.assertEqual(receipt["scope_requested"], "protocol:research")
+        self.assertEqual(receipt["scope_downgraded_from"], "protocol:research")
+        self.assertTrue(receipt["scope_enforced"])
+        self.assertEqual(
+            receipt["scope_enforcement_reason"],
+            "primitive_global_only:downgraded_to_global",
+        )
+        self.assertEqual(receipt["subject_id"], "heavy:all:compile")
 
     def test_apply_writes_review_queue_via_explicit_heavy_lane_primitive(self) -> None:
         self._write_jsonl(

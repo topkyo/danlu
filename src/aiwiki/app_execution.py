@@ -490,20 +490,17 @@ def build_elixir_demotion_receipt(
 
 
 def find_latest_elixir_promotion_receipt(root: Path, *, elixir_id: str) -> dict[str, Any] | None:
+    """Authoritative reader for elixir promotion receipts (used by revert hash-gate).
+
+    Fail-closed semantics: corrupt JSONL lines raise ``CorruptStateError`` rather than being
+    silently skipped. A corrupt receipt history can otherwise cause revert to select a stale
+    receipt or report missing, both of which are silent fact-layer corruption.
+    """
+    from .app_state import load_jsonl_documents_strict
+
     path = execution_receipt_history_path(root)
-    if not path.exists():
-        return None
     latest: dict[str, Any] | None = None
-    for line in path.read_text(encoding="utf-8").splitlines():
-        row = line.strip()
-        if not row:
-            continue
-        try:
-            entry = json.loads(row)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(entry, dict):
-            continue
+    for entry in load_jsonl_documents_strict(path):
         if entry.get("subject_kind") == "elixir_promotion" and entry.get("subject_id") == elixir_id:
             latest = entry
     return latest

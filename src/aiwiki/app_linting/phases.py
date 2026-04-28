@@ -188,6 +188,7 @@ from ..app_state import (
     JUDGMENT_LIFECYCLE_STATES,
     KNOWLEDGE_LIFECYCLE_KINDS,
     KNOWLEDGE_LIFECYCLE_STATES,
+    CorruptStateError,
     active_archived_material_ids,
     active_corpora_state_path,
     active_material_archive_entries,
@@ -223,6 +224,7 @@ from ..app_state import (
     load_archive_candidates_state,
     load_concept_rewrite_state,
     load_json_document,
+    load_json_document_strict,
     load_knowledge_lifecycle_state,
     load_machine_memory,
     load_machine_memory_action_state,
@@ -499,16 +501,23 @@ def _lint_runtime_phase(context: _LintContext) -> None:
                 if action_id and not bundle_path.exists():
                     context.add("error", bundle_path, f"Missing execution bundle for action `{action_id}`.")
     if planner_state.exists():
-        planner_document = load_json_document(planner_state)
-        if not isinstance(planner_document, dict) or not isinstance(planner_document.get("priority_queue"), list):
+        try:
+            planner_document = load_json_document_strict(planner_state)
+        except CorruptStateError:
+            planner_document = None
+        if planner_document is None or not isinstance(planner_document.get("priority_queue"), list):
             context.add("error", planner_state, "Planner state is not valid JSON.")
     if query_route_telemetry.exists():
-        telemetry_document = load_json_document(query_route_telemetry)
-        if not isinstance(telemetry_document, dict) or not isinstance(telemetry_document.get("entries"), list):
+        try:
+            telemetry_document = load_json_document_strict(query_route_telemetry)
+        except CorruptStateError:
+            telemetry_document = None
+        if telemetry_document is None or not isinstance(telemetry_document.get("entries"), list):
             context.add("error", query_route_telemetry, "Query route telemetry is not valid JSON.")
     if shell_summary.exists():
-        shell_document = load_json_document(shell_summary)
-        if not isinstance(shell_document, dict):
+        try:
+            load_json_document_strict(shell_summary)
+        except CorruptStateError:
             context.add("error", shell_summary, "Shell summary is not valid JSON.")
 
     graph_export = machine_memory_graph_path(context.root)

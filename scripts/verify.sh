@@ -17,6 +17,6 @@ python3 -m ruff check src tests
 python3 -m compileall src tests >/dev/null
 python3 -m coverage erase
 python3 -m coverage run --branch -m unittest discover -s tests -p 'test_*.py'
-python3 -m coverage report --skip-covered
+python3 -m coverage report --skip-covered --fail-under=92
 python3 -m aiwiki.cli --help >/dev/null
 bash scripts/run_acceptance.sh

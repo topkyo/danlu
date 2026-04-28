@@ -791,3 +791,41 @@ def test_metrics_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
             assert metric["reason"], f"{metric['key']} unavailable but reason empty"
         else:
             assert metric["reason"] == "", f"{metric['key']} has value but reason='{metric['reason']}'"
+
+
+# M9-P1.2: corrupt-state acceptance coverage.
+#
+# Unit tests already cover receipt-failure rollback end-to-end:
+#   - tests/test_alchemy.py::test_promote_rolls_back_when_receipt_history_write_fails
+#   - tests/test_alchemy.py::test_revert_rolls_back_when_receipt_history_write_fails
+#   - tests/test_alchemy.py::test_demote_rolls_back_when_receipt_history_write_fails
+# These exercise the full mutation+receipt+rollback path with realistic fixtures.
+# Re-creating that fixture chain at the acceptance layer adds setup complexity
+# without strengthening the contract, so we hoist only the strict-loader contract
+# (which has no fixture dependency) to acceptance.
+
+
+def test_strict_loader_raises_on_corrupt_state(tmp_path: Path) -> None:
+    """M9-P0.4 acceptance: strict loader surfaces corruption instead of silent fallback."""
+    from aiwiki.app_state import (
+        CorruptStateError,
+        load_jsonl_documents,
+        load_jsonl_documents_strict,
+    )
+
+    receipts = tmp_path / "execution-receipts.jsonl"
+    receipts.write_text(
+        '{"action_id":"act-1","trace_id":"t1"}\nnot-json-here\n{"action_id":"act-2"}\n',
+        encoding="utf-8",
+    )
+
+    # Best-effort: skips bad line, returns 2 documents.
+    best_effort = load_jsonl_documents(receipts)
+    assert [doc["action_id"] for doc in best_effort] == ["act-1", "act-2"]
+
+    # Strict: raises with exact line number.
+    with pytest.raises(CorruptStateError) as ctx:
+        load_jsonl_documents_strict(receipts)
+    assert ctx.value.line_number == 2
+    assert ctx.value.path == receipts
+    assert "json decode failed" in ctx.value.reason

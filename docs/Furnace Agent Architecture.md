@@ -384,6 +384,40 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
 - Product Shell surface / UI contract → 当前参考归档史料 [[docs/archive/Furnace Product Shell Plugin|产品壳插件]] / [[docs/archive/Furnace Product Shell Runtime Plan|产品壳 runtime 计划]]
 - 具体 EP 实施路线 / 时间表 → 见 `PROGRESS.md` 与 `.codex/plans/active.md`
 
+## 11.1 State Loader 语义边界（best-effort vs strict）
+
+炼丹炉所有持久化状态（`.aiwiki/state/*.json` / `*.jsonl`）有两种合法读取语义，对应两种调用契约。M9-P0.4 起在 `aiwiki.app_state` 同时暴露两套 API，调用方必须根据"静默 fallback 是否等同于事实层数据丢失"显式选择。
+
+**Best-effort：`load_json_document` / `load_jsonl_documents`**
+
+- 文件不存在 → 返回 `{}` / `[]`
+- 文件存在但 JSON 解析失败 → `logging.warning` + 返回 `{}` / `[]`（JSONL 单行 skip 后继续）
+- 非 dict 顶层 / 非 dict JSONL 记录 → `logging.warning` + 跳过
+- 适用：preview、telemetry、drift hint、shell summary 等 caller，对"看不到 = 没有"和"看不到 = 损坏"无需区分
+- 反例：authoritative read（receipts、audit、runtime history）不应使用 best-effort，否则一次磁盘损坏可能让 promote / revert / nightly 误判 system state
+
+**Strict：`load_json_document_strict` / `load_jsonl_documents_strict`**
+
+- 文件不存在 → 返回 `{}` / `[]`（"未发生" 不视为 corrupt）
+- 文件存在但 JSON 解析失败 → 抛 `CorruptStateError(path, reason, line_number)`
+- 非 dict 顶层 / 非 dict JSONL 记录 → 抛 `CorruptStateError`
+- 适用：authoritative read 路径，要求"corrupt 必须冒泡"。caller 应捕获 `CorruptStateError` 并选择：升级为 blocker / 触发 repair / fail closed
+- `CorruptStateError.line_number` 在 JSONL 上精确到行，便于人工修复定位
+
+**迁移策略**（升级路径）
+
+当前 callers 大部分使用 best-effort 语义。逐点切换到 strict 的触发条件：
+
+1. 该 caller 的"静默 fallback 等同于事实层数据丢失"被识别（典型：执行 receipt 链路、aging 决策、escalation 计算）
+2. 同时补一条 acceptance case 覆盖 corrupt-state 行为
+3. 在 PROGRESS.md 标注切换原因并保留 best-effort fallback 的退出条件（若有）
+
+已切换到 strict 的 authoritative reader（M9-P0.4）：
+
+- `aiwiki.app_execution.find_latest_elixir_promotion_receipt`：revert hash-gate 依赖此函数选择最近一次 promotion receipt；corrupt JSONL line 必须冒泡为 `CorruptStateError`，不允许静默 `continue`，否则可能选择陈旧 receipt 或误报 missing。
+
+不在本文档列其它具体 caller 清单——以 `git grep load_json_document` / `load_jsonl_documents` 当前代码为准。
+
 ## 12. Document Status and Supersede Map
 
 本文档取代：

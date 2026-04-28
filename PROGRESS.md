@@ -1004,3 +1004,104 @@
 - `investing-research` 分支领先 origin 93 个 commit 未推送
 - `.codex/plans/active.md` 当前 2928 行仍保留旧路线图（EP-001 ~ EP-021），作为历史记忆不删；新世代 M0-M5 将 append 到 Milestone Index 末尾
 - Oracle 可行性评估结论（ses_241268474ffeuvU2CisBfxUJtC / ses_24120afd7ffewDc54gV9DUz2Nr）：M1/M4 = B（可高比例自动）、M2/M5 = C（schema 需人先定）、M3 = D（SoT 禁自动化核心）
+
+---
+
+## 2026-04-28 — 9-Standard Closure 世代启动 (M9-P0..P2)
+
+- oracle 独立评估 8.1/10（session ses_22eaafe24ffeXPmGLs8GsyjxON），目标 ≥9.0
+- 方向文档：`docs/Furnace 9-Standard Closure P0-P2.md`
+- 计划：`.codex/plans/active.md` 末尾追加 8 项 milestone（M9-P0.3 → P0.1 → P0.2 → P0.4 → P1.1 → P1.2 → P2.1 → P2.2）
+- 关键证据：
+  - `runner/alchemy.py:2150-2194` scoped lane 中 compile/lint/nightly 写 `scope_enforced=false` receipt（双语义违反审计原则）
+  - `execution/alchemy.py:1052-1091, 1196-1201, 1277-1283` promote/revert receipt 写失败仅 logging.exception（违反 mutation 硬边界）
+  - `app_state.py:279-308` load_json_document / load_jsonl_documents 静默吞错（违反 AGENTS 9 分硬约束）
+- M9-P0.3 已完成：contract 已物化（`.codex/contracts/active.md`），verify pass（1417 tests / 12 acceptance / 93%）
+- 自评：8.83 与 oracle 8.1 存在文档/事实漂移；本世代以 oracle 评估为基准
+
+### 2026-04-28 — M9-P0.1 完成
+
+- `src/aiwiki/execution/alchemy.py`: promote/revert/demote receipt 持久化失败时显式 rollback mutation 并 raise typed `*ReceiptError`，rollback 失败抛 `*HalfWriteError(phase="receipt_rollback")`
+- 新增 `_snapshot_file_bytes` / `_restore_file_bytes` helper（保存原 bytes + atomic rename 恢复）
+- 新增 exception 层级：`ElixirMutationBoundaryError` → `Promote/Revert/DemoteReceiptError`
+- 现有 `*HalfWriteError` 加 `phase` 字段区分 double_write / receipt_rollback
+- 测试更新：3 个反向断言（does_not_rollback / skips_receipt_when_hash_anchor）改为新行为；新增 demote rollback test
+- verify pass：1418 unit + 12 acceptance / 93% coverage
+
+### 2026-04-28 — M9-P0.2 完成
+
+- `src/aiwiki/runner/alchemy.py:_run_receipted_lane_primitive` lane primitive 名实一致：
+  - 当 primitive ∈ {compile,lint,nightly} 且 scope!="all" → 自动降级 `effective_scope="all"` + `logger.warning`
+  - receipt 字段重构：`scope=effective_scope` + `scope_requested=requested_scope` + `scope_downgraded_from=<orig|"">` + `scope_enforced=true`
+  - 新 reason 取值：`primitive_global_only:executed_globally` / `primitive_global_only:downgraded_to_global`
+  - 移除旧的 `scope=<x>` + `scope_enforced=false` 双语义
+- 测试更新：
+  - `tests/test_alchemy_lanes.py:test_apply_writes_receipt_for_deterministic_primitive` 反向断言改为新 schema
+  - 新增 `tests/test_alchemy_lanes.py:test_apply_downgrades_non_all_scope_for_global_only_primitive` 覆盖 scope=protocol:research → 降级 all
+  - 更新 fixture goldens：`tests/fixtures/acceptance/M6.1/case_light_primitives_compile_lint/...` / `case_light_primitives_nightly/...`
+- verify pass：1419 unit + 12 acceptance / 93% coverage
+
+### 2026-04-28 — M9-P0.4 完成
+
+- `src/aiwiki/app_state.py`:
+  - 新增 `CorruptStateError(RuntimeError)`：携带 path / reason / line_number
+  - 新增 strict API：`load_json_document_strict` / `load_jsonl_documents_strict`，遇 corrupt 直接 raise；缺失文件仍返回空（不视为 corrupt）
+  - 老的 best-effort `load_json_document` / `load_jsonl_documents` 加 `logging.warning`：corrupt JSON 行为单行 skip + 警告，非对象 JSONL 记录单独警告
+- 测试：`tests/test_state_utils.py`
+  - 新增 `test_strict_loaders_raise_corrupt_state_error` 覆盖 missing/ok/bad-json/non-object 四种路径，并断言 line_number
+  - 新增 `test_best_effort_loaders_log_warning_on_corruption` 覆盖 best-effort 警告语义
+- 显式降级：本轮 **不** 强切现有 callers 至 strict。理由：现有 callers 全为 best-effort 读取语义（review preview / aging / shell summary 等），强切会改变错误语义并风险扩散；后续按需逐点切换。退出条件：当某 caller 的"静默 fallback 等同于事实层数据丢失"被识别时，单独切换并加针对性 acceptance case
+- verify pass：1421 unit + 12 acceptance / 93% coverage
+
+### 2026-04-28 — M9-P1.1 完成
+
+- `scripts/verify.sh` 在 `coverage report` 增加 `--fail-under=92`，把当前 93% 覆盖率作为硬门槛（保守 -1pt 防抖动）
+- verify pass：1421 unit + 12 acceptance / 93% coverage
+
+### 2026-04-28 — M9-P1.2 完成
+
+- `tests/test_acceptance_loop.py` 新增 `test_strict_loader_raises_on_corrupt_state`：在 acceptance 层断言 best-effort vs strict loader 的语义差异 + line_number 精确性
+- 显式范围决策：**未** 在 acceptance 层加 receipt-failure rollback 端到端测试。理由：unit 已用真实 fixture 链路覆盖 promote/revert/demote 三条路径（`tests/test_alchemy.py::test_*_rolls_back_when_receipt_history_write_fails`）；在 acceptance 重建 corpus/state 前置成本高且不强化契约。strict_loader 无 fixture 依赖，hoist 性价比明显。退出条件：未来若 receipt-failure 出现 acceptance-only regression（例如 CLI surface 改变或多模块协作 bug），再补 acceptance case
+- verify pass：1421 unit + 13 acceptance / 93% coverage
+
+### 2026-04-28 — M9-P2.1 完成
+
+- `docs/Furnace Agent Architecture.md` 追加 §11.1 "State Loader 语义边界（best-effort vs strict）"：
+  - 区分 best-effort vs strict 两套 API 的契约
+  - 说明各自适用 / 反例 caller
+  - 给出 strict 迁移触发条件（"静默 fallback 等同事实层数据丢失" + acceptance case + PROGRESS 标注）
+  - 显式不列具体 caller 清单（以 git grep 为准），避免文档与代码漂移
+
+### 2026-04-28 — M9-P2.2 完成
+
+- `README.md` 模块边界图重写，反映当前事实分层：
+  - 增加 `execution/` / `runner/alchemy.py` 与 receipt/scope 硬边界（M9-P0.1 / P0.2）
+  - 增加 `app_state.py` best-effort vs strict 双语义说明（M9-P0.4）
+  - 增加 `signals/` / `app_shell/` / `compile/` / `render/` / `memory/` 等关键边界
+  - 约定段补充：mutation 必须 receipt + rollback；状态读必须显式选 best-effort/strict（指向 §11.1）
+- verify pass：1421 unit + 13 acceptance / 93% coverage
+
+### 2026-04-28 — M9-P2.1 完成
+
+- `docs/Furnace Agent Architecture.md` §11.1 State Loader 语义边界（best-effort vs strict）已写：双 API 契约 / 适用反例 / 迁移触发条件 / 不列具体 caller 清单（防漂移）
+- 检查其它 docs：Evolution Mechanics 自身 schema 已强调 strict；无需补改
+
+### 2026-04-28 — Oracle 8.6 复评 gap 第二轮加固
+
+oracle 复评 `ses_22e7d0c4cffex6PjhhVJ4nQzT5` 给出 8.6/10，定位三处距 9.0 的 gap：
+
+1. P0.1 receipt rollback 不是全事务：失败前已写入的 history JSONL 与 audit 行无法回滚
+2. P0.4 strict API 暴露但 authoritative caller 仍走 best-effort（如 `find_latest_elixir_promotion_receipt` revert hash-gate 路径）
+3. `load_json_document` 顶层非 dict 仍隐式转 `{}`，潜在遮蔽 corruption
+
+修复内容：
+
+- **alchemy.py**：新增 `_snapshot_receipt_artifacts` / `_restore_receipt_artifacts`；`promote_elixir` / `revert_elixir` / `demote_elixir` 三处 receipt block 现做全事务 rollback：per-action receipt path bytes + execution-receipts.jsonl bytes + audit.jsonl bytes 一起 snapshot；任一步失败时三件套 + data files 全部还原
+- **app_execution.py:492-525**：`find_latest_elixir_promotion_receipt` 切到 `load_jsonl_documents_strict`；revert hash-gate 路径不允许静默 skip corrupt 行 → fail closed
+- **app_state.py:297-336**：`load_json_document` 顶层非 dict 改为 `logging.warning` + `{}`（不再无声）；strict API `load_json_document_strict` 已存在
+- **app_linting/phases.py:501-525**：lint authoritative validation 切 strict（planner state / query route telemetry / shell summary）→ corrupt JSON 显式 lint error 而非被 best-effort 转为 missing-field error
+- **测试**：
+  - `tests/test_alchemy.py`：新增三个 audit-fail rollback 测试（promote / revert / demote 各一个，patch `aiwiki.execution.audit_preview.append_audit`）+ corrupt JSONL strict 测试 `test_find_latest_elixir_promotion_receipt_raises_on_corrupt_jsonl`；旧反向测试 `test_find_latest_elixir_promotion_receipt_skips_non_dict_lines` 改写为 `..._raises_on_non_object_line`
+  - `tests/test_state_utils.py`：新增 `test_load_json_document_returns_empty_when_top_level_not_object`
+- verify pass：1425 unit + 13 acceptance / 93% coverage / `--fail-under=92` gate
+
