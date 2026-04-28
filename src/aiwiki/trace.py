@@ -24,7 +24,7 @@ from typing import Any, Iterable
 from aiwiki.app_utils import parse_frontmatter
 
 # 资产种类 — 用前缀 / 路径形态识别
-AssetKind = str  # "raw" | "source" | "judgment" | "decision" | "elixir" | "proposal" | "receipt" | "unknown"
+AssetKind = str  # "raw" | "source" | "concept" | "judgment" | "decision" | "elixir" | "proposal" | "receipt" | "unknown"
 
 # 安全深度上限，避免病态数据导致深递归
 _MAX_DEPTH = 10
@@ -96,6 +96,8 @@ def _classify(asset_id: str) -> AssetKind:
         return "raw"
     if text.startswith("wiki/sources/") or text.startswith("source-") or text.startswith("discovered-"):
         return "source"
+    if text.startswith("wiki/concepts/") or text.startswith("concept-"):
+        return "concept"
     if text.startswith("wiki/judgments/") or text.startswith("judgment-"):
         return "judgment"
     if text.startswith("wiki/decisions/") or text.startswith("decision-"):
@@ -130,6 +132,8 @@ def _resolve_any(
         return _resolve_raw(root, asset_id, direction=direction, depth=depth, visited=visited)
     if kind == "source":
         return _resolve_source(root, asset_id, direction=direction, depth=depth, visited=visited)
+    if kind == "concept":
+        return _resolve_concept(root, asset_id, direction=direction, depth=depth, visited=visited)
     if kind == "judgment":
         return _resolve_judgment(root, asset_id, direction=direction, depth=depth, visited=visited)
     if kind == "decision":
@@ -140,6 +144,13 @@ def _resolve_any(
         return _resolve_proposal(root, asset_id, direction=direction, depth=depth, visited=visited)
     if kind == "receipt":
         return _resolve_receipt(root, asset_id, direction=direction, depth=depth, visited=visited)
+    # bare-slug fallback: classify returned "unknown" but a concept page exists with this slug.
+    # Scoped to concept layer only (concept slug namespace 与 raw/source 时间戳 id 不重叠).
+    if kind == "unknown" and "/" not in asset_id and not asset_id.endswith(".md"):
+        bare = asset_id.removesuffix(".md")
+        candidate = root / "wiki" / "concepts" / f"{bare}.md"
+        if candidate.exists() and candidate.is_file():
+            return _resolve_concept(root, asset_id, direction=direction, depth=depth, visited=visited)
     return TraceNode(id=asset_id, kind="unknown", label=asset_id, not_found=True)
 
 
@@ -195,6 +206,37 @@ def _resolve_source(root: Path, asset_id: str, *, direction: str, depth: int, vi
                 visited=visited,
             )
         )
+        # source → concept derived edge: scan wiki/concepts/* whose source_pages references this source
+        for c_path, c_fm in _iter_curated_pages(root, "wiki/concepts"):
+            sp = _as_str_list(c_fm.get("source_pages"))
+            if any(_concept_source_matches(entry, rel, node.id) for entry in sp):
+                concept_id = str(c_fm.get("id") or c_path.stem)
+                node.children.append(
+                    _resolve_any(root, concept_id, direction=direction, depth=depth - 1, visited=visited)
+                )
+    return node
+
+
+def _resolve_concept(root: Path, asset_id: str, *, direction: str, depth: int, visited: set[str]) -> TraceNode:
+    path, fm = _find_curated(root, "wiki/concepts", asset_id)
+    if path is None:
+        return TraceNode(id=asset_id, kind="concept", label=asset_id, not_found=True)
+    rel = path.relative_to(root).as_posix()
+    node = TraceNode(
+        id=str(fm.get("id") or path.stem),
+        kind="concept",
+        label=str(fm.get("title") or path.stem),
+        path=rel,
+    )
+    if direction in {"up", "both"}:
+        for src_ref in _as_str_list(fm.get("source_pages")):
+            ref = src_ref.strip()
+            if not ref:
+                continue
+            node.parents.append(
+                _resolve_any(root, ref, direction="up", depth=depth - 1, visited=visited)
+            )
+    # concept 是叶子节点：source→concept 边由 source 侧 down 展开提供，避免双向重复
     return node
 
 
@@ -445,6 +487,20 @@ def _path_matches_raw(source_file: str, raw_rel: str) -> bool:
     if not text:
         return False
     return text.endswith(raw_rel) or raw_rel in text
+
+
+def _concept_source_matches(entry: str, source_rel: str, source_id: str) -> bool:
+    """Concept frontmatter `source_pages` 项是否指向当前 source。"""
+    text = (entry or "").strip().strip("'\"`")
+    if not text:
+        return False
+    if text == source_rel:
+        return True
+    if text.endswith("/" + Path(source_rel).name):
+        return True
+    if source_id and source_id in text:
+        return True
+    return False
 
 
 def _normalize_raw_ref(value: str) -> str:

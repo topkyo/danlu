@@ -80,6 +80,19 @@ evidence:
 # Test Elixir
 """,
     )
+    _write(
+        root / "wiki" / "concepts" / "test.md",
+        """---
+id: concept-test
+kind: concept
+title: Test Concept
+source_pages:
+  - wiki/sources/discovered-20260427-test.md
+---
+
+# Test Concept
+""",
+    )
 
 
 def _seed_l3_proposal(root: Path) -> None:
@@ -127,6 +140,8 @@ def _case_classify_recognizes_known_prefixes() -> None:
     assert _classify("./raw/x.md") == "raw"
     assert _classify("wiki/sources/foo.md") == "source"
     assert _classify("discovered-20260101-foo") == "source"
+    assert _classify("wiki/concepts/jetson.md") == "concept"
+    assert _classify("concept-jetson") == "concept"
     assert _classify("wiki/judgments/j.md") == "judgment"
     assert _classify("judgment-20260101-x") == "judgment"
     assert _classify("wiki/decisions/d.md") == "decision"
@@ -159,6 +174,49 @@ def _case_resolve_source_walks_up_to_raw() -> None:
         assert node.label == "Test Source"
         # parent should be the raw file
         assert any(p.kind == "raw" for p in node.parents)
+
+
+def _case_resolve_concept_walks_up_to_source_and_raw() -> None:
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _seed_minimal_vault(root)
+        node = resolve_trace(root, "concept-test", direction="up", max_depth=4)
+        assert node.kind == "concept"
+        assert node.label == "Test Concept"
+        assert node.path == "wiki/concepts/test.md"
+        sources = [p for p in node.parents if p.kind == "source"]
+        assert sources, "concept.source_pages should produce source parent"
+        raws = [p for p in sources[0].parents if p.kind == "raw"]
+        assert raws, "source should walk up to raw"
+
+
+def _case_resolve_concept_via_path_form() -> None:
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _seed_minimal_vault(root)
+        node = resolve_trace(root, "wiki/concepts/test.md", direction="up", max_depth=2)
+        assert node.kind == "concept"
+        assert not node.not_found
+        assert node.path == "wiki/concepts/test.md"
+
+
+def _case_resolve_concept_via_bare_slug() -> None:
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _seed_minimal_vault(root)
+        node = resolve_trace(root, "test", direction="up", max_depth=2)
+        assert node.kind == "concept", f"bare slug should resolve to concept, got {node.kind}"
+        assert not node.not_found
+
+
+def _case_resolve_source_down_includes_concept() -> None:
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _seed_minimal_vault(root)
+        node = resolve_trace(root, "discovered-20260427-test", direction="down", max_depth=3)
+        assert node.kind == "source"
+        kinds = [c.kind for c in node.children]
+        assert "concept" in kinds, f"source down should expand to concept; got kinds={kinds}"
 
 
 def _case_resolve_judgment_walks_up_to_source_and_raw() -> None:

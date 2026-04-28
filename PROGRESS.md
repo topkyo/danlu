@@ -6,6 +6,24 @@
 
 ## 状态
 
+- **P4-3 — Trace Concept Layer Support — 完成**
+  - **目的**: 修复 dogfood-receipt-v0 friction F8（`aiwiki trace` 不识别 concept 层）
+  - **方向 SoT**: `docs/Furnace Next Direction P4.md` + dogfood-receipt-v0 F8
+  - **设计核心**:
+    - `trace.py` 增 `concept` kind：classify 增 `wiki/concepts/` 与 `concept-` 两种入口（receipt fallback 之前插入，不污染既有 6-kind 顺序）
+    - `_resolve_concept` up walk 通过 frontmatter `source_pages` 到 source 再到 raw（concept 是叶子，不向下展开）
+    - `_resolve_source` down walk 反向扫 `wiki/concepts/*.md` 的 `source_pages` 引用，加 concept children；新增 `_concept_source_matches` helper
+    - bare-slug fallback 在 `_resolve_any` kind=unknown 路径，仅当 `wiki/concepts/<slug>.md` 实际存在时分类为 concept（root-aware，避免行为蔓延）
+    - 不动 frontmatter schema、compile pipeline、machine memory、`_find_referrers` 既有逻辑
+  - **测试**: `tests/test_trace.py` 19/19（既有 15 + 新增 4：classify 扩展 / concept up / path-form / bare-slug / source down→concept）
+  - **验证**: `bash scripts/verify.sh` exit 0 / coverage 92% / acceptance 13/13
+  - **dogfood smoke**（vault `/home/tim/danlu/炼丹炉`）F8 4 入口全绿:
+    - `concept-jetson` → kind=concept, parent=source `discovered-20260428040741-go2`
+    - `wiki/concepts/jetson.md` → 同节点
+    - `jetson` (bare slug) → 同节点
+    - `discovered-20260428040741-go2 down depth=3` → 1 judgment + 5 concept children (concept-capture/captured/go2/jetson/pid)
+  - **闭环**: closed_loop.sh PASS（qa-review pass / qa-runtime pass / contract policy OK / verify pass）
+
 - **P4-1 系列 — Backend Compatibility Observability — 完成（5 commit 一次性收口）**
   - **目的**: 让"backend 兼容性"信号从运行时不可见 → 全栈可观测可审计
   - **方向 SoT**: `docs/Furnace Next Direction P4.md`
