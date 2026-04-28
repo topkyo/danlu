@@ -62,6 +62,31 @@ class MetricsIOTests(unittest.TestCase):
         self.assertTrue(page.has_derived_from)
         self.assertEqual(page.updated_at, "2026-04-21T00:00:00Z")
 
+    def test_wiki_page_current_source_schema_counts_as_provenance(self) -> None:
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            path = root / "wiki" / "sources" / "page.md"
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                "---\n"
+                "source_files:\n"
+                "  - raw/inbox/a.md\n"
+                "source_sha256: abc123\n"
+                "last_compiled_at: 2026-04-21T00:00:00Z\n"
+                "---\n# Page\n",
+                encoding="utf-8",
+            )
+
+            snapshot = build_metrics_snapshot(root, now_iso="2026-04-27T00:00:00Z")
+
+        self.assertEqual(len(snapshot.wiki_pages), 1)
+        page = snapshot.wiki_pages[0]
+        self.assertTrue(page.has_source_url)
+        self.assertTrue(page.has_captured_at)
+        self.assertTrue(page.has_derived_from)
+
     def test_damaged_frontmatter_still_yields_incomplete_page(self) -> None:
         from tempfile import TemporaryDirectory
 

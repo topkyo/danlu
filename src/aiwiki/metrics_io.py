@@ -61,11 +61,12 @@ def _read_wiki_pages(root: Path) -> Iterable[WikiPageMeta]:
             text = path.read_text(encoding="utf-8", errors="replace")
             frontmatter = parse_frontmatter(text)
             stat = path.stat()
+            source_files = _as_string_list(frontmatter.get("source_files"))
             yield WikiPageMeta(
                 path=_safe_relative_path(root, path),
-                has_source_url=bool(str(frontmatter.get("source_url") or "").strip()),
-                has_captured_at=bool(str(frontmatter.get("captured_at") or "").strip()),
-                has_derived_from=bool(_as_string_list(frontmatter.get("derived_from"))),
+                has_source_url=bool(str(frontmatter.get("source_url") or "").strip() or source_files),
+                has_captured_at=bool(str(frontmatter.get("captured_at") or frontmatter.get("source_sha256") or "").strip()),
+                has_derived_from=bool(_as_string_list(frontmatter.get("derived_from")) or source_files),
                 updated_at=str(frontmatter.get("updated_at") or ""),
                 mtime_epoch=stat.st_mtime,
             )
