@@ -281,7 +281,7 @@ def _audit_record(source_stream: str, source_ref: str, document: dict[str, Any])
         ensure_ascii=False,
         sort_keys=True,
     )
-    return {
+    record = {
         "audit_event_id": "audit-" + sha256_bytes(digest_payload.encode("utf-8"))[:20],
         "source_stream": source_stream,
         "source_ref": source_ref,
@@ -291,6 +291,9 @@ def _audit_record(source_stream: str, source_ref: str, document: dict[str, Any])
         "subject": subject,
         "revert_supported": bool(document.get("revert_supported", False)),
     }
+    if source_stream == "llm_receipts":
+        record["raw_response_path"] = str(document.get("raw_response_path") or "")
+    return record
 
 
 def _event_type(source_stream: str, document: dict[str, Any]) -> str:

@@ -171,6 +171,8 @@ def build_llm_attempt_receipt(
     error: str = "",
     response_id: str = "",
     usage: dict[str, Any] | None = None,
+    raw_response_path: str = "",
+    error_class: str = "",
     skipped: bool = False,
 ) -> dict[str, Any]:
     """Build the normalized receipt payload for one LLM attempt."""
@@ -185,7 +187,19 @@ def build_llm_attempt_receipt(
     normalized_event.setdefault("fallback_command", "")
     normalized_event.setdefault("primary_attempt_status", "")
     normalized_event.setdefault("primary_error", "")
-    normalized_event.update({"status": status, "response_id": response_id, "usage": usage_payload})
+    normalized_raw_response_path = raw_response_path or ""
+    if not normalized_raw_response_path and status != "success" and error:
+        normalized_raw_response_path = "no_response"
+    normalized_event.update(
+        {
+            "status": status,
+            "response_id": response_id,
+            "usage": usage_payload,
+            "raw_response_path": normalized_raw_response_path,
+            "error_class": error_class,
+            "error_message": error,
+        }
+    )
     if error:
         normalized_event["error"] = error
     llm_audit.update({
@@ -230,6 +244,8 @@ def record_llm_attempt(
     error: str = "",
     response_id: str = "",
     usage: dict[str, Any] | None = None,
+    raw_response_path: str = "",
+    error_class: str = "",
     skipped: bool = False,
 ) -> dict[str, Any]:
     """Build, classify, and append one LLM attempt receipt through the single entrypoint."""
@@ -241,6 +257,8 @@ def record_llm_attempt(
         error=error,
         response_id=response_id,
         usage=usage,
+        raw_response_path=raw_response_path,
+        error_class=error_class,
         skipped=skipped,
     )
     append_receipt_and_audit(root, receipt, base_event=base_event, llm_audit=llm_audit, error=error)
@@ -256,6 +274,8 @@ def _append_llm_receipt_and_log(
     error: str = "",
     response_id: str = "",
     usage: dict[str, Any] | None = None,
+    raw_response_path: str = "",
+    error_class: str = "",
     skipped: bool = False,
 ) -> None:
     """Compatibility wrapper for legacy imports; prefer record_llm_attempt."""
@@ -268,5 +288,7 @@ def _append_llm_receipt_and_log(
         error=error,
         response_id=response_id,
         usage=usage,
+        raw_response_path=raw_response_path,
+        error_class=error_class,
         skipped=skipped,
     )

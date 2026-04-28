@@ -15,8 +15,9 @@ def compute_prompt_hash(system_prompt: str, user_prompt: str) -> str:
 
 
 class ReplayBackend:
-    def __init__(self, case_dir: Path) -> None:
+    def __init__(self, case_dir: Path, root: Path | None = None) -> None:
         self.case_dir = case_dir
+        self.root = root
         response_dir = case_dir / "backend_responses"
         self._responses = sorted(
             (json.loads(path.read_text(encoding="utf-8")) for path in response_dir.glob("*.json")),
@@ -48,10 +49,16 @@ class ReplayBackend:
             raise LLMError(str(recorded["failure"]))
 
         usage = recorded.get("usage", {})
+        raw_response_path: str | None = None
+        if self.root is not None:
+            from aiwiki.llm import _write_raw_response
+
+            raw_response_path = _write_raw_response(self.root, str(recorded["response_text"]))
         return CompletionResult(
             text=str(recorded["response_text"]),
             response_id=str(recorded["response_id"]),
             usage=usage if isinstance(usage, dict) else {},
+            raw_response_path=raw_response_path,
         )
 
 
@@ -86,11 +93,13 @@ class RecordingBackend:
 
 def inject_replay_client(monkeypatch, case_dir: Path) -> None:
     """让 aiwiki.runner.clients.create_client 在被调用时返回 ReplayBackend(case_dir)."""
-    backend = ReplayBackend(case_dir)
+    backend: ReplayBackend | None = None
 
     def _fake_create_client(root, timeout_seconds=None):
-        del root
+        nonlocal backend
         del timeout_seconds
+        if backend is None:
+            backend = ReplayBackend(case_dir, Path(root))
         return backend
 
     monkeypatch.setattr("aiwiki.runner.clients.create_client", _fake_create_client)

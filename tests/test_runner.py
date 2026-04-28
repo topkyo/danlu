@@ -848,6 +848,35 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(run_log["delivery_mode"], "llm-failed")
         self.assertFalse(run_log["fallback_used"])
 
+    def test_run_compile_parse_failure_receipt_links_raw_response(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        raw_text = "not a frontmatter just text"
+
+        class _InvalidFrontmatterClient:
+            config = type("Config", (), {"model": "stub-model", "backend": "codex-cli", "backend_requested": "codex-cli"})()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                del user_prompt
+                return CompletionResult(text=raw_text, response_id="resp-invalid", usage={})
+
+        with self.assertRaisesRegex(RuntimeError, "frontmatter"):
+            run_compile(self.root, client=_InvalidFrontmatterClient(), limit=1)
+
+        receipts = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/logs/llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        receipt = next(record for record in receipts if record["event"] == "run-compile")
+        raw_response_path = receipt["raw_response_path"]
+        self.assertTrue(raw_response_path)
+        self.assertEqual(receipt["error_class"], "parse_error")
+        self.assertEqual(receipt["error_message"], receipt["error"])
+        self.assertEqual((self.root / raw_response_path).read_text(encoding="utf-8"), raw_text)
+        self.assertEqual(entry["title"], "Transformer Scaling")
+
     def test_cache_benchmark_script_outputs_status_and_timings(self) -> None:
         script = Path(__file__).resolve().parent.parent / "scripts" / "cache_benchmark.py"
 

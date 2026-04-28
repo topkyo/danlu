@@ -54,6 +54,7 @@ class AuditPreviewTests(unittest.TestCase):
                     "status": "ok",
                     "run_id": "run-1",
                     "created_at": "2026-04-26T10:01:00+00:00",
+                    "raw_response_path": ".aiwiki/llm-responses/resp.txt",
                 }
             ],
         )
@@ -118,6 +119,7 @@ class AuditPreviewTests(unittest.TestCase):
         self.assertEqual(records["execution_receipts"]["subject"], {"kind": "machine_memory_action", "id": "act-1"})
         self.assertTrue(records["execution_receipts"]["revert_supported"])
         self.assertEqual(records["llm_receipts"]["event_type"], "ok")
+        self.assertEqual(records["llm_receipts"]["raw_response_path"], ".aiwiki/llm-responses/resp.txt")
         self.assertEqual(records["runtime_history"]["event_type"], "nightly")
         self.assertEqual(records["protocol_learnings_age"]["event_type"], "protocol_learnings_age")
         self.assertFalse((self.root / ".aiwiki/state/audit.jsonl").exists())

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import mimetypes
 import subprocess
 import tempfile
 import time
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib import error, request
@@ -29,6 +31,10 @@ from .config import (
 class LLMError(RuntimeError):
     """Raised when the configured LLM backend fails or returns invalid output."""
 
+    def __init__(self, message: str, *, raw_response_path: str | None = None) -> None:
+        super().__init__(message)
+        self.raw_response_path = raw_response_path
+
 
 class AutonomyDisabled(LLMError):
     """Raised when an autonomy-policy kill switch blocks an external LLM call.
@@ -48,6 +54,7 @@ class CompletionResult:
     text: str
     response_id: str
     usage: dict[str, Any]
+    raw_response_path: str | None = None
 
 
 PROBE_SYSTEM_PROMPT = "You are a backend health probe. Reply with exactly OK."
@@ -57,8 +64,9 @@ PROBE_USER_PROMPT = "Reply with exactly OK."
 class OpenAICompatClient:
     """Call an OpenAI-compatible `/chat/completions` endpoint without extra dependencies."""
 
-    def __init__(self, config: LLMConfig) -> None:
+    def __init__(self, config: LLMConfig, workdir: Path | None = None) -> None:
         self.config = config
+        self.workdir = workdir or Path.cwd()
 
     def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
         payload = {
@@ -93,15 +101,23 @@ class OpenAICompatClient:
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError as exc:
-            raise LLMError("LLM endpoint returned invalid JSON.") from exc
+            raw_response_path = _write_raw_response(self.workdir, raw)
+            raise LLMError("LLM endpoint returned invalid JSON.", raw_response_path=raw_response_path) from exc
 
-        text = _extract_content(parsed)
+        try:
+            text = _extract_content(parsed)
+        except LLMError as exc:
+            exc.raw_response_path = exc.raw_response_path or _write_raw_response(self.workdir, raw)
+            raise
         if not text.strip():
-            raise LLMError("LLM endpoint returned empty content.")
+            raw_response_path = _write_raw_response(self.workdir, text)
+            raise LLMError("LLM endpoint returned empty content.", raw_response_path=raw_response_path)
+        raw_response_path = _write_raw_response(self.workdir, text)
         return CompletionResult(
             text=text,
             response_id=str(parsed.get("id", "")),
             usage=parsed.get("usage") or {},
+            raw_response_path=raw_response_path,
         )
 
     def analyze_image(self, system_prompt: str, user_prompt: str, image_path: Path) -> CompletionResult:
@@ -150,15 +166,23 @@ class OpenAICompatClient:
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError as exc:
-            raise LLMError("LLM endpoint returned invalid JSON.") from exc
+            raw_response_path = _write_raw_response(self.workdir, raw)
+            raise LLMError("LLM endpoint returned invalid JSON.", raw_response_path=raw_response_path) from exc
 
-        text = _extract_content(parsed)
+        try:
+            text = _extract_content(parsed)
+        except LLMError as exc:
+            exc.raw_response_path = exc.raw_response_path or _write_raw_response(self.workdir, raw)
+            raise
         if not text.strip():
-            raise LLMError("LLM endpoint returned empty content.")
+            raw_response_path = _write_raw_response(self.workdir, text)
+            raise LLMError("LLM endpoint returned empty content.", raw_response_path=raw_response_path)
+        raw_response_path = _write_raw_response(self.workdir, text)
         return CompletionResult(
             text=text,
             response_id=str(parsed.get("id", "")),
             usage=parsed.get("usage") or {},
+            raw_response_path=raw_response_path,
         )
 
 
@@ -210,7 +234,14 @@ class CodexCLIClient:
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:  # pragma: no cover - exercised via CLI/network usage
-            raise LLMError(f"Codex CLI timed out after {self.config.timeout_seconds} seconds.") from exc
+            raw_text = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
+            if isinstance(exc.stderr, str) and exc.stderr:
+                raw_text = f"{raw_text}\n{exc.stderr}" if raw_text else exc.stderr
+            raw_response_path = _write_raw_response(self.workdir, raw_text) if raw_text else None
+            raise LLMError(
+                f"Codex CLI timed out after {self.config.timeout_seconds} seconds.",
+                raw_response_path=raw_response_path,
+            ) from exc
         except OSError as exc:  # pragma: no cover - exercised by environment failures
             raise LLMError(f"Failed to launch Codex CLI: {exc}") from exc
         finally:
@@ -219,11 +250,14 @@ class CodexCLIClient:
 
         if completed.returncode != 0:
             details = completed.stderr.strip() or completed.stdout.strip() or text.strip()
-            raise LLMError(f"Codex CLI failed with exit code {completed.returncode}: {details}")
+            raw_text = text or completed.stdout or completed.stderr or ""
+            raw_response_path = _write_raw_response(self.workdir, raw_text) if raw_text else None
+            raise LLMError(f"Codex CLI failed with exit code {completed.returncode}: {details}", raw_response_path=raw_response_path)
         final_text = text.strip() or completed.stdout.strip()
         if not final_text:
-            raise LLMError("Codex CLI returned no final content.")
-        return CompletionResult(text=final_text, response_id="codex-cli", usage={})
+            raise LLMError("Codex CLI returned no final content.", raw_response_path=_write_raw_response(self.workdir, ""))
+        raw_response_path = _write_raw_response(self.workdir, final_text)
+        return CompletionResult(text=final_text, response_id="codex-cli", usage={}, raw_response_path=raw_response_path)
 
     def analyze_image(self, system_prompt: str, user_prompt: str, image_path: Path) -> CompletionResult:
         full_prompt = "\n\n".join(
@@ -268,7 +302,14 @@ class CodexCLIClient:
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:  # pragma: no cover - exercised via CLI/network usage
-            raise LLMError(f"Codex CLI timed out after {self.config.timeout_seconds} seconds.") from exc
+            raw_text = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
+            if isinstance(exc.stderr, str) and exc.stderr:
+                raw_text = f"{raw_text}\n{exc.stderr}" if raw_text else exc.stderr
+            raw_response_path = _write_raw_response(self.workdir, raw_text) if raw_text else None
+            raise LLMError(
+                f"Codex CLI timed out after {self.config.timeout_seconds} seconds.",
+                raw_response_path=raw_response_path,
+            ) from exc
         except OSError as exc:  # pragma: no cover - exercised by environment failures
             raise LLMError(f"Failed to launch Codex CLI: {exc}") from exc
         finally:
@@ -277,11 +318,14 @@ class CodexCLIClient:
 
         if completed.returncode != 0:
             details = completed.stderr.strip() or completed.stdout.strip() or text.strip()
-            raise LLMError(f"Codex CLI failed with exit code {completed.returncode}: {details}")
+            raw_text = text or completed.stdout or completed.stderr or ""
+            raw_response_path = _write_raw_response(self.workdir, raw_text) if raw_text else None
+            raise LLMError(f"Codex CLI failed with exit code {completed.returncode}: {details}", raw_response_path=raw_response_path)
         final_text = text.strip() or completed.stdout.strip()
         if not final_text:
-            raise LLMError("Codex CLI returned no final content.")
-        return CompletionResult(text=final_text, response_id="codex-cli", usage={})
+            raise LLMError("Codex CLI returned no final content.", raw_response_path=_write_raw_response(self.workdir, ""))
+        raw_response_path = _write_raw_response(self.workdir, final_text)
+        return CompletionResult(text=final_text, response_id="codex-cli", usage={}, raw_response_path=raw_response_path)
 
 
 class ClaudeCLIClient:
@@ -320,17 +364,27 @@ class ClaudeCLIClient:
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:  # pragma: no cover - exercised via CLI/network usage
-            raise LLMError(f"Claude CLI timed out after {self.config.timeout_seconds} seconds.") from exc
+            raw_text = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
+            if isinstance(exc.stderr, str) and exc.stderr:
+                raw_text = f"{raw_text}\n{exc.stderr}" if raw_text else exc.stderr
+            raw_response_path = _write_raw_response(self.workdir, raw_text) if raw_text else None
+            raise LLMError(
+                f"Claude CLI timed out after {self.config.timeout_seconds} seconds.",
+                raw_response_path=raw_response_path,
+            ) from exc
         except OSError as exc:  # pragma: no cover - exercised by environment failures
             raise LLMError(f"Failed to launch Claude CLI: {exc}") from exc
 
         if completed.returncode != 0:
             details = completed.stderr.strip() or completed.stdout.strip()
-            raise LLMError(f"Claude CLI failed with exit code {completed.returncode}: {details}")
+            raw_text = completed.stdout or completed.stderr or ""
+            raw_response_path = _write_raw_response(self.workdir, raw_text) if raw_text else None
+            raise LLMError(f"Claude CLI failed with exit code {completed.returncode}: {details}", raw_response_path=raw_response_path)
         final_text = completed.stdout.strip()
         if not final_text:
-            raise LLMError("Claude CLI returned no final content.")
-        return CompletionResult(text=final_text, response_id="claude-cli", usage={})
+            raise LLMError("Claude CLI returned no final content.", raw_response_path=_write_raw_response(self.workdir, ""))
+        raw_response_path = _write_raw_response(self.workdir, final_text)
+        return CompletionResult(text=final_text, response_id="claude-cli", usage={}, raw_response_path=raw_response_path)
 
     def analyze_image(self, system_prompt: str, user_prompt: str, image_path: Path) -> CompletionResult:
         del system_prompt
@@ -383,17 +437,27 @@ class CopilotCLIClient:
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:  # pragma: no cover - exercised via CLI/network usage
-            raise LLMError(f"Copilot CLI timed out after {self.config.timeout_seconds} seconds.") from exc
+            raw_text = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
+            if isinstance(exc.stderr, str) and exc.stderr:
+                raw_text = f"{raw_text}\n{exc.stderr}" if raw_text else exc.stderr
+            raw_response_path = _write_raw_response(self.workdir, raw_text) if raw_text else None
+            raise LLMError(
+                f"Copilot CLI timed out after {self.config.timeout_seconds} seconds.",
+                raw_response_path=raw_response_path,
+            ) from exc
         except OSError as exc:  # pragma: no cover - exercised by environment failures
             raise LLMError(f"Failed to launch Copilot CLI: {exc}") from exc
 
         if completed.returncode != 0:
             details = completed.stderr.strip() or completed.stdout.strip()
-            raise LLMError(f"Copilot CLI failed with exit code {completed.returncode}: {details}")
+            raw_text = completed.stdout or completed.stderr or ""
+            raw_response_path = _write_raw_response(self.workdir, raw_text) if raw_text else None
+            raise LLMError(f"Copilot CLI failed with exit code {completed.returncode}: {details}", raw_response_path=raw_response_path)
         final_text = completed.stdout.strip()
         if not final_text:
-            raise LLMError("Copilot CLI returned no final content.")
-        return CompletionResult(text=final_text, response_id="copilot-cli", usage={})
+            raise LLMError("Copilot CLI returned no final content.", raw_response_path=_write_raw_response(self.workdir, ""))
+        raw_response_path = _write_raw_response(self.workdir, final_text)
+        return CompletionResult(text=final_text, response_id="copilot-cli", usage={}, raw_response_path=raw_response_path)
 
     def analyze_image(self, system_prompt: str, user_prompt: str, image_path: Path) -> CompletionResult:
         del system_prompt
@@ -407,8 +471,9 @@ class AnthropicClient:
 
     ANTHROPIC_VERSION = "2023-06-01"
 
-    def __init__(self, config: LLMConfig) -> None:
+    def __init__(self, config: LLMConfig, workdir: Path | None = None) -> None:
         self.config = config
+        self.workdir = workdir or Path.cwd()
 
     def _call_messages(self, system_prompt: str, content: list[dict[str, Any]] | str) -> CompletionResult:
         payload: dict[str, Any] = {
@@ -443,15 +508,23 @@ class AnthropicClient:
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError as exc:
-            raise LLMError("Anthropic endpoint returned invalid JSON.") from exc
+            raw_response_path = _write_raw_response(self.workdir, raw)
+            raise LLMError("Anthropic endpoint returned invalid JSON.", raw_response_path=raw_response_path) from exc
 
-        text = _extract_anthropic_content(parsed)
+        try:
+            text = _extract_anthropic_content(parsed)
+        except LLMError as exc:
+            exc.raw_response_path = exc.raw_response_path or _write_raw_response(self.workdir, raw)
+            raise
         if not text.strip():
-            raise LLMError("Anthropic endpoint returned empty content.")
+            raw_response_path = _write_raw_response(self.workdir, text)
+            raise LLMError("Anthropic endpoint returned empty content.", raw_response_path=raw_response_path)
+        raw_response_path = _write_raw_response(self.workdir, text)
         return CompletionResult(
             text=text,
             response_id=str(parsed.get("id", "")),
             usage=parsed.get("usage") or {},
+            raw_response_path=raw_response_path,
         )
 
     def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
@@ -530,11 +603,11 @@ def create_backend_client(config: LLMConfig, workdir: Path) -> Any:
     if len(model_fallback_configs) > 1:
         return ModelFallbackClient(config, workdir, model_fallback_configs)
     if config.backend == BACKEND_OPENAI_API:
-        return OpenAICompatClient(config)
+        return OpenAICompatClient(config, workdir)
     if config.backend == BACKEND_ANTHROPIC_API:
-        return AnthropicClient(config)
+        return AnthropicClient(config, workdir)
     if config.backend == BACKEND_NVIDIA_NIM_API:
-        return OpenAICompatClient(config)
+        return OpenAICompatClient(config, workdir)
     if config.backend == BACKEND_CODEX_CLI:
         return CodexCLIClient(config, workdir)
     if config.backend == BACKEND_COPILOT_CLI:
@@ -641,7 +714,7 @@ def _instantiate_cli_client(config: LLMConfig, workdir: Path) -> Any:
     if config.backend == BACKEND_CODEX_CLI:
         return CodexCLIClient(config, workdir)
     if config.backend == BACKEND_NVIDIA_NIM_API:
-        return OpenAICompatClient(config)
+        return OpenAICompatClient(config, workdir)
     if config.backend == BACKEND_COPILOT_CLI:
         return CopilotCLIClient(config, workdir)
     if config.backend == BACKEND_CLAUDE_CLI:
@@ -675,6 +748,22 @@ def advance_client_model(client: Any) -> bool:
     if callable(advance):
         return bool(advance())
     return False
+
+
+def _write_raw_response(root: Path, raw_text: str) -> str:
+    """Best-effort persistence for one LLM raw response body."""
+
+    text = str(raw_text or "")
+    timestamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace(":", "")
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+    relative = Path(".aiwiki") / "llm-responses" / f"{timestamp}-{digest}.txt"
+    path = root / relative
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    except OSError as exc:  # pragma: no cover - environment dependent best-effort path
+        return f"write_failed:{exc}"
+    return relative.as_posix()
 
 
 def _classify_backend_error(message: str) -> str:

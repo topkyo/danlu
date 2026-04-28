@@ -30,7 +30,7 @@ from aiwiki.app_utils import (
     runtime_write_operation,
     utc_now,
 )
-from aiwiki.llm import CompletionResult, LLMError, classify_backend_error
+from aiwiki.llm import CompletionResult, LLMError, _write_raw_response, classify_backend_error
 from aiwiki.runner.clients import (
     _append_fallback_stage,
     _client_backend_name,
@@ -72,6 +72,31 @@ from aiwiki.runner.receipts import (
 
 RUN_ASK_FRONTDOOR_EVENT = "run-ask-frontdoor"
 RUN_ASK_FALLBACK_ERROR_KINDS = {"quota", "timeout", "auth", "unavailable"}
+
+
+def _receipt_error_class(exc: Exception | str) -> str:
+    message = str(exc)
+    classified = classify_backend_error(message)
+    if classified == "timeout":
+        return "timeout"
+    lowered = message.lower()
+    if "frontmatter" in lowered or "parse" in lowered or "invalid json" in lowered:
+        return "parse_error"
+    if "exit code" in lowered or "non-zero" in lowered or "nonzero" in lowered:
+        return "non_zero_exit"
+    return "other"
+
+
+def _raw_response_path(root: Path, result: CompletionResult | None, exc: Exception | None = None) -> str:
+    if exc is not None:
+        path = getattr(exc, "raw_response_path", None)
+        if isinstance(path, str) and path:
+            return path
+    if result is None:
+        return ""
+    if result.raw_response_path:
+        return result.raw_response_path
+    return _write_raw_response(root, result.text)
 
 @runtime_write_operation
 def run_compile(root: Path, client: SupportsComplete | None = None, limit: int = 5) -> dict[str, Any]:
@@ -234,6 +259,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     status="success",
                     response_id=item_result.response_id,
                     usage=item_result.usage,
+                    raw_response_path=_raw_response_path(root, item_result),
                 )
             except Exception as exc:
                 used_profile = item_retry_profile or item_profile
@@ -260,6 +286,8 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     error=str(exc),
                     response_id=getattr(item_result, "response_id", "") if item_result is not None else "",
                     usage=getattr(item_result, "usage", {}) if item_result is not None else {},
+                    raw_response_path=_raw_response_path(root, item_result, exc),
+                    error_class=_receipt_error_class(exc),
                 )
                 raise
 
@@ -364,6 +392,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     status="success",
                     response_id=item_result.response_id,
                     usage=item_result.usage,
+                    raw_response_path=_raw_response_path(root, item_result),
                 )
             except Exception as exc:
                 used_profile = item_retry_profile or item_profile
@@ -390,6 +419,8 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     error=str(exc),
                     response_id=getattr(item_result, "response_id", "") if item_result is not None else "",
                     usage=getattr(item_result, "usage", {}) if item_result is not None else {},
+                    raw_response_path=_raw_response_path(root, item_result, exc),
+                    error_class=_receipt_error_class(exc),
                 )
                 raise
 
@@ -508,6 +539,7 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     status="success",
                     response_id=item_result.response_id,
                     usage=item_result.usage,
+                    raw_response_path=_raw_response_path(root, item_result),
                 )
             except Exception as exc:
                 used_profile = item_retry_profile or item_profile
@@ -537,6 +569,8 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
                     error=str(exc),
                     response_id=getattr(item_result, "response_id", "") if item_result is not None else "",
                     usage=getattr(item_result, "usage", {}) if item_result is not None else {},
+                    raw_response_path=_raw_response_path(root, item_result, exc),
+                    error_class=_receipt_error_class(exc),
                 )
                 raise
 
@@ -555,6 +589,8 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
             failed_audit,
             status="failed",
             error=str(exc),
+            raw_response_path=getattr(exc, "raw_response_path", "") or "",
+            error_class=_receipt_error_class(exc),
         )
         raise
 
@@ -759,6 +795,8 @@ def run_ask(
             error=str(exc),
             response_id=getattr(result, "response_id", "") if result is not None else "",
             usage=getattr(result, "usage", {}) if result is not None else {},
+            raw_response_path=_raw_response_path(root, result, exc),
+            error_class=_receipt_error_class(exc),
         )
         if fallback_to_ask:
             frontdoor_base_event = {
@@ -790,6 +828,8 @@ def run_ask(
                     error=str(exc),
                     response_id=getattr(result, "response_id", "") if result is not None else "",
                     usage=getattr(result, "usage", {}) if result is not None else {},
+                    raw_response_path=_raw_response_path(root, result, exc),
+                    error_class=_receipt_error_class(exc),
                 )
                 return {
                     **artifact,
@@ -814,6 +854,8 @@ def run_ask(
                 error=str(exc),
                 response_id=getattr(result, "response_id", "") if result is not None else "",
                 usage=getattr(result, "usage", {}) if result is not None else {},
+                raw_response_path=_raw_response_path(root, result, exc),
+                error_class=_receipt_error_class(exc),
             )
         raise
     target.write_text(updated, encoding="utf-8")
@@ -849,6 +891,7 @@ def run_ask(
         status="success",
         response_id=result.response_id,
         usage=result.usage,
+        raw_response_path=_raw_response_path(root, result),
     )
     payload = {
         **artifact,
@@ -883,6 +926,7 @@ def run_ask(
             status="success",
             response_id=result.response_id,
             usage=result.usage,
+            raw_response_path=_raw_response_path(root, result),
         )
         return {
             **payload,
@@ -966,6 +1010,8 @@ def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, An
             error=str(exc),
             response_id=getattr(result, "response_id", "") if result is not None else "",
             usage=getattr(result, "usage", {}) if result is not None else {},
+            raw_response_path=_raw_response_path(root, result, exc),
+            error_class=_receipt_error_class(exc),
         )
         raise
     target.write_text(updated, encoding="utf-8")
@@ -990,6 +1036,7 @@ def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, An
         status="success",
         response_id=result.response_id,
         usage=result.usage,
+        raw_response_path=_raw_response_path(root, result),
     )
     return {
         "deterministic": deterministic,
@@ -1098,6 +1145,8 @@ def run_nightly(
             failed_audit,
             status="failed",
             error=str(exc),
+            raw_response_path=getattr(exc, "raw_response_path", "") or "",
+            error_class=_receipt_error_class(exc),
         )
         raise
     record_llm_attempt(

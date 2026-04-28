@@ -52,6 +52,7 @@ _DYNAMIC_RECEIPT_FIELDS: tuple[str, ...] = ("duration_ms",)
 _NORMALIZED_JSONL_SUFFIXES: tuple[str, ...] = (
     ".aiwiki/logs/llm-receipts.jsonl",
     ".aiwiki/logs/runs.jsonl",
+    ".aiwiki/state/audit.jsonl",
 )
 
 
@@ -84,6 +85,8 @@ def _normalize_jsonl_dynamic_fields(  # pragma: no cover - exercised by explicit
         for field in fields:
             if field in obj:
                 obj[field] = 0
+        if "raw_response_path" in obj:
+            obj["raw_response_path"] = "<raw-response-path>"
         out_lines.append(json.dumps(obj, sort_keys=True, ensure_ascii=False))
     body = "\n".join(out_lines)
     if has_trailing_newline:
@@ -211,11 +214,19 @@ def test_happy_run_ask_replay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     assert receipt["model_final"] == "stub-model"
     assert receipt["response_id"] == "stub-response-id"
     assert receipt["usage"] == {"input_tokens": 10, "output_tokens": 20}
+    raw_response_path = str(receipt["raw_response_path"])
+    assert raw_response_path.startswith(".aiwiki/llm-responses/")
+    raw_response_file = vault / raw_response_path
+    assert raw_response_file.exists()
+    assert raw_response_file.read_text(encoding="utf-8")
+    assert receipt["error_class"] == ""
+    assert receipt["error_message"] == ""
 
     audit = _load_jsonl(vault / ".aiwiki" / "state" / "audit.jsonl")
     assert [record["event_type"] for record in audit] == ["query", "success"]
     assert [record["source_stream"] for record in audit] == ["runtime_history", "llm_receipts"]
     assert audit[-1]["subject"] == {"kind": "success", "id": ""}
+    assert audit[-1]["raw_response_path"] == raw_response_path
 
     shell_summary = json.loads((vault / "output" / "control" / "shell-summary.json").read_text(encoding="utf-8"))
     latest_llm = shell_summary["latest_llm_run"]
