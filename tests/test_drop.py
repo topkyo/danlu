@@ -11,6 +11,7 @@ from unittest.mock import patch
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_utils import parse_frontmatter
 from aiwiki.drop import (
+    SensitiveContentError,
     _analyze_image_asset,
     _best_image_source,
     _client_backend_name,
@@ -217,6 +218,30 @@ class DropTests(unittest.TestCase):
         self.assertEqual(frontmatter["note_kind"], "note")
         self.assertEqual(frontmatter["original_path"], str(source))
         self.assertIn("Latency budget and reviewer load.", note)
+
+    def test_drop_note_rejects_inline_sensitive_content_by_default(self) -> None:
+        with self.assertRaisesRegex(SensitiveContentError, "Sensitive content detected"):
+            drop_note(self.root, text="device password: hunter2\n")
+
+        raw_files = list((self.root / "raw" / "inbox").glob("*.md"))
+        self.assertEqual(raw_files, [])
+
+    def test_drop_note_rejects_file_sensitive_content_by_default(self) -> None:
+        source = self.root / "device.md"
+        source.write_text("# Device\n\n密码: ' (单引号)\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(SensitiveContentError, "line 3"):
+            drop_note(self.root, str(source))
+
+        raw_files = list((self.root / "raw" / "inbox").glob("*.md"))
+        self.assertEqual(raw_files, [])
+
+    def test_drop_note_allow_sensitive_explicit_override(self) -> None:
+        result = drop_note(self.root, text="# Device\n\npassword: local-only\n", allow_sensitive=True)
+
+        note = (self.root / result["note_path"]).read_text(encoding="utf-8")
+
+        self.assertIn("password: local-only", note)
 
     def test_fetch_url_uses_plain_text_fallback_when_html_extraction_is_not_applicable(self) -> None:
         with patch(

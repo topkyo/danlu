@@ -1968,7 +1968,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runDropUrlCommand({ url, title }) {
-    const args = ["drop-url", url];
+    const args = ["drop", "url", url];
     if (title) {
       args.push("--title", title);
     }
@@ -1981,7 +1981,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async runDropFileCommand({ mode, source, title, maxFiles }) {
     const normalizedMode = String(mode || "pdf").trim() === "repo" ? "repo" : "pdf";
-    const args = [normalizedMode === "repo" ? "drop-repo" : "drop-pdf", source];
+    const args = ["drop", normalizedMode === "repo" ? "repo" : "pdf", source];
     if (title) {
       args.push("--title", title);
     }
@@ -1992,7 +1992,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runDropImageCommand({ source, title, noVision }) {
-    const args = ["drop-image", source];
+    const args = ["drop", "image", source];
     if (title) {
       args.push("--title", title);
     }
@@ -2003,7 +2003,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runDropNoteCommand({ text, title, kind }) {
-    const args = ["drop-note", "--text", text];
+    const args = ["drop", "note", "--text", text];
     if (title) {
       args.push("--title", title);
     }

@@ -1017,6 +1017,11 @@ def _configure_drop_note_parser(parser: argparse.ArgumentParser) -> None:
         default="note",
         help="Capture kind. Transcript enables transcript-aware compile prompts.",
     )
+    parser.add_argument(
+        "--allow-sensitive",
+        action="store_true",
+        help="Allow note ingestion even when credential-like content is detected.",
+    )
     _add_auto_flags(parser)
 
 

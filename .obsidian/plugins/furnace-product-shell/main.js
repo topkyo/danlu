@@ -201,7 +201,7 @@ const ZH_TEXT = {
   "Start Here": "从这里开始",
   "Obsidian Product Shell and the launcher CLI share the same runtime: Ask works from both sides, and ingest can happen through Capture Note / raw/inbox / drop-*.": "Obsidian Product Shell 与 launcher CLI 共用同一个 runtime：Ask 两边都能跑，投料可走 Capture Note / raw/inbox / drop-*。",
   "Click Refresh first so shell-summary is generated.": "先点 Refresh，确认 shell-summary 已生成。",
-  "Use Capture Note in Obsidian, or use drop-note / drop-url / drop-pdf / drop-image / drop-repo in the terminal.": "在 Obsidian 里用 Capture Note，或在终端里用 drop-note / drop-url / drop-pdf / drop-image / drop-repo 投料。",
+  "Use Capture Note in Obsidian, or use drop note / drop url / drop pdf / drop image / drop repo in the terminal.": "在 Obsidian 里用 Capture Note，或在终端里用 drop note / drop url / drop pdf / drop image / drop repo 投料。",
   "Use the Ask modal when you need to ask a question, or run ./scripts/aiwiki-launcher.sh ask ...": "需要提问时用 Ask modal，或运行 ./scripts/aiwiki-launcher.sh ask ...",
   "Follow single writer for write actions: do not run compile / nightly / apply / revert in Obsidian and the terminal at the same time.": "有写入任务运行时，等它结束后再从另一个入口开始新的写入任务。",
   "Vault runtime unavailable. Missing scaffold or launcher: {missing}": "Vault runtime 不可用。缺少 scaffold 或 launcher：{missing}",
@@ -2225,7 +2225,7 @@ function renderGettingStartedSection(plugin, container) {
   });
   const steps = section.createEl("ol");
   steps.createEl("li", { text: plugin.t("Click Refresh first so shell-summary is generated.") });
-  steps.createEl("li", { text: plugin.t("Use Capture Note in Obsidian, or use drop-note / drop-url / drop-pdf / drop-image / drop-repo in the terminal.") });
+  steps.createEl("li", { text: plugin.t("Use Capture Note in Obsidian, or use drop note / drop url / drop pdf / drop image / drop repo in the terminal.") });
   steps.createEl("li", { text: plugin.t("Use the Ask modal when you need to ask a question, or run ./scripts/aiwiki-launcher.sh ask ...") });
   steps.createEl("li", { text: plugin.t("Follow single writer for write actions: do not run compile / nightly / apply / revert in Obsidian and the terminal at the same time.") });
   plugin.renderActionButtons(section, [
@@ -6716,7 +6716,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runDropUrlCommand({ url, title }) {
-    const args = ["drop-url", url];
+    const args = ["drop", "url", url];
     if (title) {
       args.push("--title", title);
     }
@@ -6729,7 +6729,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async runDropFileCommand({ mode, source, title, maxFiles }) {
     const normalizedMode = String(mode || "pdf").trim() === "repo" ? "repo" : "pdf";
-    const args = [normalizedMode === "repo" ? "drop-repo" : "drop-pdf", source];
+    const args = ["drop", normalizedMode === "repo" ? "repo" : "pdf", source];
     if (title) {
       args.push("--title", title);
     }
@@ -6740,7 +6740,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runDropImageCommand({ source, title, noVision }) {
-    const args = ["drop-image", source];
+    const args = ["drop", "image", source];
     if (title) {
       args.push("--title", title);
     }
@@ -6751,7 +6751,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runDropNoteCommand({ text, title, kind }) {
-    const args = ["drop-note", "--text", text];
+    const args = ["drop", "note", "--text", text];
     if (title) {
       args.push("--title", title);
     }

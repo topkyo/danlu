@@ -1098,6 +1098,15 @@ class CLITests(unittest.TestCase):
         self.assertEqual(drop_args.source, legacy_args.source)
         self.assertEqual(drop_args.text, legacy_args.text)
         self.assertEqual(drop_args.kind, legacy_args.kind)
+        self.assertFalse(drop_args.allow_sensitive)
+
+    def test_drop_note_allow_sensitive_dispatch(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(["drop", "note", "notes.md", "--allow-sensitive"])
+
+        self.assertEqual(args.handler_command, "drop-note")
+        self.assertTrue(args.allow_sensitive)
 
     def test_drop_question_dispatches_to_ask_handler(self) -> None:
         parser = build_parser()
@@ -1172,14 +1181,14 @@ class CLITests(unittest.TestCase):
                 ["drop", "note: my note"],
                 "drop_note",
                 (self.root, "my note"),
-                {"title": None, "text": None, "kind": "note"},
+                {"title": None, "text": None, "kind": "note", "allow_sensitive": False},
             ),
             (
                 "note-multiline",
                 ["drop", "line1\nline2"],
                 "drop_note",
                 (self.root, "line1\nline2"),
-                {"title": None, "text": None, "kind": "note"},
+                {"title": None, "text": None, "kind": "note", "allow_sensitive": False},
             ),
         ]
         for name, argv, target, expected_args, expected_kwargs in cases:
@@ -1392,7 +1401,7 @@ class CLITests(unittest.TestCase):
             ("drop-pdf", ["drop-pdf", "paper.pdf", "--title", "Paper"], "drop_pdf", (self.root, "paper.pdf"), {"title": "Paper"}),
             ("drop-image", ["drop-image", "chart.png", "--no-vision"], "drop_image", (self.root, "chart.png"), {"title": None, "enable_vision": False}),
             ("drop-repo", ["drop-repo", "repo", "--max-files", "10"], "drop_repo", (self.root, "repo"), {"title": None, "max_files": 10}),
-            ("drop-note", ["drop-note", "--text", "meeting notes", "--kind", "transcript"], "drop_note", (self.root, None), {"title": None, "text": "meeting notes", "kind": "transcript"}),
+            ("drop-note", ["drop-note", "--text", "meeting notes", "--kind", "transcript"], "drop_note", (self.root, None), {"title": None, "text": "meeting notes", "kind": "transcript", "allow_sensitive": False}),
             ("compile", ["compile"], "compile_wiki", (self.root,), {}),
             ("protocol-status", ["protocol-status"], "load_protocol_state", (self.root,), {}),
             ("protocol-status-set", ["protocol-status", "--set", "research"], "set_active_protocol", (self.root, "research"), {}),

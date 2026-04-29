@@ -222,7 +222,14 @@ def main(argv: list[str] | None = None) -> int:
             result = drop_repo(root, args.source, title=args.title, max_files=args.max_files)
             result = _maybe_auto_process(root, result, args)
         elif args.handler_command == "drop-note":
-            result = drop_note(root, args.source, title=args.title, text=args.text, kind=args.kind)
+            result = drop_note(
+                root,
+                args.source,
+                title=args.title,
+                text=args.text,
+                kind=args.kind,
+                allow_sensitive=args.allow_sensitive,
+            )
             result = _maybe_auto_process(root, result, args)
         elif args.handler_command == "compile":
             result = compile_wiki(root)

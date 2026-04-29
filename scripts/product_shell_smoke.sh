@@ -3,14 +3,14 @@
 set -euo pipefail
 
 DEFAULT_ROOT="/home/tim/danlu/炼丹炉"
-WITH_DROP_NOTE=0
+WITH_NOTE_WRITE=0
 ROOT=""
 SMOKE_DEGRADED=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --with-drop-note)
-      WITH_DROP_NOTE=1
+    --with-note-write)
+      WITH_NOTE_WRITE=1
       shift
       ;;
     -*)
@@ -114,10 +114,10 @@ run_json "llm-check" llm-check
 run_json "ask" ask "$ASK_QUERY" --format report
 run_json "run-ask" run-ask "$RUN_ASK_QUERY" --format report
 
-if [[ "$WITH_DROP_NOTE" == "1" ]]; then
-  run_json "drop-note" drop-note --title "$DROP_TITLE" --text "$DROP_TEXT" --kind note
+if [[ "$WITH_NOTE_WRITE" == "1" ]]; then
+  run_json "drop note" drop note --title "$DROP_TITLE" --text "$DROP_TEXT" --kind note
 else
-  echo "[smoke] drop-note skipped (pass --with-drop-note to include write-path validation)"
+  echo "[smoke] drop note skipped (pass --with-note-write to include write-path validation)"
 fi
 
 if [[ "$SMOKE_DEGRADED" == "1" ]]; then

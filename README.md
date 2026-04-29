@@ -99,14 +99,14 @@ cd ../demo-furnace-vault
 1. 投料
 
 ```bash
-PYTHONPATH=src python3 -m aiwiki.cli --root . drop-note --title "Morning note" --text "Capture the latest signal."
-PYTHONPATH=src python3 -m aiwiki.cli --root . drop-url https://example.com/article
-PYTHONPATH=src python3 -m aiwiki.cli --root . drop-pdf /path/to/paper.pdf
-PYTHONPATH=src python3 -m aiwiki.cli --root . drop-image /path/to/diagram.png
-PYTHONPATH=src python3 -m aiwiki.cli --root . drop-repo https://github.com/user/repo.git
+PYTHONPATH=src python3 -m aiwiki.cli --root . drop note --title "Morning note" --text "Capture the latest signal."
+PYTHONPATH=src python3 -m aiwiki.cli --root . drop url https://example.com/article
+PYTHONPATH=src python3 -m aiwiki.cli --root . drop pdf /path/to/paper.pdf
+PYTHONPATH=src python3 -m aiwiki.cli --root . drop image /path/to/diagram.png
+PYTHONPATH=src python3 -m aiwiki.cli --root . drop repo https://github.com/user/repo.git
 ```
 
-Obsidian Product Shell 已内置投网址（Drop URL）、投文件（Drop File）、投图片（Drop Image）和记笔记（Capture Note）四种投料入口；也可以把材料直接放进 `raw/inbox/`。`drop-repo` 仍以 launcher CLI 为主。
+Obsidian Product Shell 已内置投网址（Drop URL）、投文件（Drop File）、投图片（Drop Image）和记笔记（Capture Note）四种投料入口；也可以把材料直接放进 `raw/inbox/`。`drop repo` 仍以 launcher CLI 为主。
 
 2. 编译
 
@@ -328,7 +328,7 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . protocol-status
 
 ```text
 cli/                       命令入口；只做参数解析与 dispatch
-├─ drop.py / input_router.py   外部投喂入口（drop-url / drop-pdf / drop-image / drop-repo）
+├─ drop.py / input_router.py   外部投喂入口（drop url / drop pdf / drop image / drop repo / drop note）
 ├─ runner/                 lifecycle / alchemy / nightly 等 high-level 编排
 └─ planner/                deterministic + LLM-assisted plan 生成
 

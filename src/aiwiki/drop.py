@@ -33,6 +33,42 @@ except ImportError:  # pragma: no cover - optional dependency
 USER_AGENT = "aiwiki/0.1 (+https://local)"
 MAX_TEXT_CHARS = 120000
 MAX_URL_IMAGES = 6
+SENSITIVE_SCAN_CONTEXT_CHARS = 60000
+
+_SENSITIVE_VALUE_PATTERN = re.compile(
+    r"""
+    (?:
+        \b(?:password|passwd|pwd|token|secret|api[_ -]?key|private[_ -]?key|access[_ -]?key|github[_ -]?token|ssh[_ -]?key|sudo[_ -]?password)\b
+        |(?:密码|口令|令牌|密钥|私钥)
+    )
+    \s*(?:[:=：]|is|为)\s*
+    (?P<value>.+)
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_PRIVATE_KEY_BLOCK_PATTERN = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
+_SENSITIVE_PLACEHOLDERS = {
+    "",
+    "-",
+    "none",
+    "null",
+    "n/a",
+    "no",
+    "false",
+    "redacted",
+    "[redacted]",
+    "<redacted>",
+    "***",
+    "****",
+    "xxxxx",
+    "xxxxxx",
+    "todo",
+    "tbd",
+}
+
+
+class SensitiveContentError(ValueError):
+    """Raised when a raw note appears to contain credentials or secrets."""
 
 
 def _append_run_event(root: Path, event: dict[str, Any]) -> None:
@@ -385,6 +421,7 @@ def drop_note(
     title: str | None = None,
     text: str | None = None,
     kind: str = "note",
+    allow_sensitive: bool = False,
 ) -> dict[str, Any]:
     ensure_layout(root)
     note_kind = kind.strip().lower()
@@ -409,6 +446,8 @@ def drop_note(
         fallback_title = source_path.stem or note_kind.title()
     if not captured_text:
         raise RuntimeError("Note capture is empty.")
+    if not allow_sensitive:
+        _assert_no_sensitive_text(captured_text, source_label=original_path)
     display_title = title or _note_title(captured_text, fallback=fallback_title)
     stem = _timestamped_stem(display_title)
     note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
@@ -455,6 +494,42 @@ def drop_note(
         "original_path": original_path,
         "title": display_title,
     }
+
+
+def _assert_no_sensitive_text(text: str, *, source_label: str) -> None:
+    findings = _sensitive_text_findings(text)
+    if not findings:
+        return
+    rendered = ", ".join(f"line {line_no} `{kind}`" for line_no, kind in findings[:4])
+    extra = "" if len(findings) <= 4 else f", +{len(findings) - 4} more"
+    raise SensitiveContentError(
+        f"Sensitive content detected in note input `{source_label}` ({rendered}{extra}). "
+        "Remove credentials before ingestion or rerun with --allow-sensitive for an intentional local-only secret vault."
+    )
+
+
+def _sensitive_text_findings(text: str) -> list[tuple[int, str]]:
+    findings: list[tuple[int, str]] = []
+    scanned = text[:SENSITIVE_SCAN_CONTEXT_CHARS]
+    for line_no, line in enumerate(scanned.splitlines(), start=1):
+        if _PRIVATE_KEY_BLOCK_PATTERN.search(line):
+            findings.append((line_no, "private-key"))
+            continue
+        match = _SENSITIVE_VALUE_PATTERN.search(line)
+        if not match:
+            continue
+        value = _normalized_sensitive_value(match.group("value"))
+        if value in _SENSITIVE_PLACEHOLDERS:
+            continue
+        findings.append((line_no, "credential-field"))
+    return findings
+
+
+def _normalized_sensitive_value(value: str) -> str:
+    cleaned = value.strip()
+    cleaned = re.split(r"\s+#|\s+//", cleaned, maxsplit=1)[0].strip()
+    cleaned = cleaned.strip("`\"")
+    return cleaned.lower()
 
 
 def _append_raw_added_history(
