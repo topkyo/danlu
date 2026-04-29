@@ -3,6 +3,7 @@ from aiwiki.content.concepts import (
     CONCEPT_NOISE_FLOOR_VERSION,
     concept_candidates,
     concept_source_input_signature,
+    entry_concept_terms,
 )
 
 
@@ -76,6 +77,45 @@ def test_tokenize_drops_round_batch_tags():
     assert "jetson" in result
 
 
+def test_tokenize_drops_batch_provenance_labels():
+    result = tokenize("Eva Robot Batch B dogfood receipt FAST-LIO2")
+
+    assert "batch" not in result
+    assert "receipt" not in result
+    assert "eva" in result
+    assert "robot" in result
+    assert "lio2" in result
+
+
+def test_tokenize_drops_timestamp_fragments_from_capture_metadata():
+    result = tokenize("20260429T131222 eva robot 16gb 10hz")
+
+    assert "20260429t131222" not in result
+    assert "eva" in result
+    assert "robot" in result
+    assert "16gb" in result
+    assert "10hz" in result
+
+
+def test_entry_concept_terms_drops_batch_from_title_phrase():
+    entry = {"id": "entry-1", "title": "Eva Robot Batch B - FAST-LIO2"}
+
+    result = entry_concept_terms(entry, "FAST-LIO2 replaces slam_toolbox.")
+
+    assert "eva robot batch" not in result
+    assert "batch" not in result
+    assert "eva robot lio2" in result
+
+
+def test_entry_concept_terms_dedupes_title_tokens_before_phrase():
+    entry = {"id": "entry-1", "title": "Eva Robot Batch B Robot-lite V3.3.4 VLM"}
+
+    result = entry_concept_terms(entry, "Qwen3-VL-4B improves VLM use.")
+
+    assert "eva robot robot" not in result
+    assert "eva robot vlm" in result
+
+
 def test_concept_source_input_signature_includes_noise_floor_version():
     """F-new-13 (Round 6): bumping CONCEPT_NOISE_FLOOR_VERSION must invalidate cache.
 
@@ -93,8 +133,8 @@ def test_concept_source_input_signature_includes_noise_floor_version():
     sig_again = concept_source_input_signature(entry, "context A", ["manual-slug"])
     assert sig_now == sig_again
 
-    # Version must be at least 2 (post-P4-9 retroactive bump).
-    assert CONCEPT_NOISE_FLOOR_VERSION >= 2
+    # Version must be at least 6 (Round 29 batch/timestamp filters + title phrase de-dupe).
+    assert CONCEPT_NOISE_FLOOR_VERSION >= 6
 
     # Different entry inputs still produce different sigs (sanity).
     other_sig = concept_source_input_signature(entry, "context B", ["manual-slug"])

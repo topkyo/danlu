@@ -215,6 +215,10 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare A and B" --format rep
 - `run-nightly`
 - `systemd --user` watcher + nightly timer
 
+常驻 `watch` 的默认职责是稳定入炉：发现 `raw/inbox` 变化后跑 deterministic compile / lint，保留 provenance、source page、concept graph 和 review queue 的最低可用状态。它默认不 inline 阻塞跑 LLM；如果确实要让 watcher 同步执行 LLM compile，可以显式设置 `AIWIKI_WATCH_DETERMINISTIC_ONLY=0`。
+
+LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`run-compile`、`run-ask`、`run-nightly` 和 nightly timer。这样常驻 watcher 不会长时间占用 single-writer lock，LLM 失败也不会阻断原料进入炉子。
+
 ## LLM 后端
 
 支持：

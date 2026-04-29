@@ -45,6 +45,7 @@ STOP_WORDS = {
     "and",
     "article",
     "articles",
+    "batch",
     "brief",
     "browser",
     # Round 2 P4-9 additions: empirically observed noise tokens from dogfood
@@ -77,6 +78,8 @@ STOP_WORDS = {
     "question",
     "report",
     "rendered",
+    "receipt",
+    "receipts",
     "session",
     "slow",
     "smoke",
@@ -544,6 +547,7 @@ def html_safe_json_literal(value: Any) -> str:
 
 
 _BATCH_TAG_PATTERN = re.compile(r"^round\d+$")
+_TIMESTAMP_FRAGMENT_PATTERN = re.compile(r"^\d{2,}t\d{2,}$")
 
 
 def tokenize(text: str) -> list[str]:
@@ -555,4 +559,5 @@ def tokenize(text: str) -> list[str]:
         and not token.isdigit()
         and token not in STOP_WORDS
         and not _BATCH_TAG_PATTERN.match(token)
+        and not _TIMESTAMP_FRAGMENT_PATTERN.match(token)
     ]

@@ -6117,6 +6117,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn('PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"', content)
         self.assertIn('TARGET_ROOT="${AIWIKI_VAULT:-$PROJECT_ROOT}"', content)
         self.assertIn('--root "$TARGET_ROOT"', content)
+        self.assertIn('AIWIKI_WATCH_DETERMINISTIC_ONLY:-1', content)
         self.assertIn('exec python3 -m aiwiki.cli "${ARGS[@]}"', content)
 
     def test_run_nightly_script_uses_root_relative_paths(self) -> None:
@@ -6138,6 +6139,12 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn('PLUGIN_DATA="$TARGET_ROOT/.obsidian/plugins/furnace-product-shell/data.json"', content)
         self.assertIn('export PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"', content)
         self.assertIn('exec python3 -m aiwiki.cli --root "$TARGET_ROOT" "$@"', content)
+
+    def test_install_user_service_defaults_watcher_to_deterministic_only(self) -> None:
+        script = Path("/home/tim/ai-wiki/scripts/install_user_service.sh")
+        content = script.read_text(encoding="utf-8")
+        self.assertIn("AIWIKI_WATCH_DETERMINISTIC_ONLY=1", content)
+        self.assertIn("AIWIKI_NIGHTLY_DETERMINISTIC_ONLY=0", content)
 
     def test_product_shell_plugin_manifest_declares_desktop_only(self) -> None:
         manifest_path = Path("/home/tim/ai-wiki/.obsidian/plugins/furnace-product-shell/manifest.json")

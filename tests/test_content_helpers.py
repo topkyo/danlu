@@ -44,6 +44,7 @@ class ContentHelperTests(unittest.TestCase):
             {"kind": "concept", "generated_by": "aiwiki-compile", "id": "concept-stale"},
             "# Stale\n\n## Summary\n- remove\n",
         )
+
         self._write_markdown(
             concept_dir / "manual.md",
             {"kind": "concept", "generated_by": "manual", "id": "concept-manual"},
@@ -87,6 +88,41 @@ class ContentHelperTests(unittest.TestCase):
         self.assertEqual(content.execution_bundle_path(self.root, "repair-action").name, "repair-action.json")
         self.assertEqual(content.execution_receipts_dir(self.root), self.root / "output" / "control" / "execution-receipts")
         self.assertEqual(content.execution_receipt_path(self.root, "repair-action").name, "repair-action.json")
+
+    def test_render_source_page_keeps_llm_marker_and_adds_deterministic_preview(self) -> None:
+        entry = {
+            "id": "source-alpha",
+            "title": "Alpha Source",
+            "source_type": "note-drop",
+            "original_path": "/tmp/alpha.md",
+            "stored_path": "raw/inbox/alpha.md",
+            "imported_at": "2026-01-01T00:00:00+00:00",
+            "sha256": "sha-alpha",
+        }
+        preview = "\n".join(
+            [
+                "# Alpha Source",
+                "",
+                "## Capture Metadata",
+                "- Captured at: `2026-01-01T00:00:00+00:00`",
+                "",
+                "## Captured Note",
+                "# FAST-LIO2 Integration",
+                "- Replace slam_toolbox with LiDAR-IMU odometry.",
+            ]
+        )
+
+        rendered = content.render_source_page_with_state(
+            entry,
+            preview,
+            "2026-01-01T00:01:00+00:00",
+            concepts=[],
+            existing_page="",
+        )
+
+        self.assertIn("- Pending LLM summary.", rendered)
+        self.assertIn("- Deterministic preview: Alpha Source", rendered)
+        self.assertIn("- Deterministic preview: FAST-LIO2 Integration", rendered)
 
     def test_ingest_source_writes_raw_added_runtime_history(self) -> None:
         sample = self.root / "sample.md"

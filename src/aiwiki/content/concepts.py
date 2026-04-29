@@ -36,7 +36,7 @@ CONCEPT_RENDER_SCHEMA_VERSION = 2
 # Bump when concept extraction noise floor (STOP_WORDS, length filter, digit filter, etc.)
 # changes, to invalidate cached `concept-build-state.json` entries and force retroactive
 # re-extraction on the next compile. See F-new-13 (Round 6).
-CONCEPT_NOISE_FLOOR_VERSION = 3
+CONCEPT_NOISE_FLOOR_VERSION = 6
 
 CAUSAL_RELATION_LABELS = {
     "causes": "→ causes",
@@ -66,11 +66,12 @@ def concept_label_to_title(label: str) -> str:
 def entry_concept_terms(entry: dict[str, Any], context: str, max_terms: int = 5) -> list[str]:
     scores: dict[str, int] = {}
     title_tokens = tokenize(entry["title"])
-    phrase_tokens = title_tokens[:3]
+    deduped_title_tokens = list(dict.fromkeys(title_tokens))
+    phrase_tokens = deduped_title_tokens[:3]
     if len(phrase_tokens) >= 2:
         phrase = " ".join(phrase_tokens)
         scores[phrase] = scores.get(phrase, 0) + 8
-    for token in title_tokens[:4]:
+    for token in deduped_title_tokens[:4]:
         scores[token] = scores.get(token, 0) + 5
     for token in tokenize(context):
         scores[token] = scores.get(token, 0) + 1

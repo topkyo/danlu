@@ -18,7 +18,7 @@ ARGS=(
   --compile-limit "$COMPILE_LIMIT"
 )
 
-if [[ "${AIWIKI_WATCH_DETERMINISTIC_ONLY:-0}" == "1" ]]; then
+if [[ "${AIWIKI_WATCH_DETERMINISTIC_ONLY:-1}" != "0" ]]; then
   ARGS+=(--deterministic-only)
 fi
 

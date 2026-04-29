@@ -140,6 +140,40 @@ def render_source_page(entry: dict[str, Any], preview: str, compiled_at: str) ->
     return render_source_page_with_state(entry, preview, compiled_at, concepts=[], existing_page="")
 
 
+def deterministic_source_summary(preview: str, *, max_bullets: int = 3) -> str:
+    bullets: list[str] = []
+    skip_exact = {
+        "capture metadata",
+        "captured note",
+        "source record",
+        "summary",
+        "concept links",
+        "enrichment todo",
+        "preview",
+        "citation anchor",
+    }
+    for raw_line in preview.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("```"):
+            continue
+        normalized = line.strip("# ").strip().lower()
+        if normalized in skip_exact:
+            continue
+        if line.startswith("- Captured at:") or line.startswith("- Capture mode:") or line.startswith("- Note kind:"):
+            continue
+        cleaned = re.sub(r"^#{1,6}\s*", "", line)
+        cleaned = re.sub(r"^[-*]\s*", "", cleaned).strip()
+        cleaned = re.sub(r"\s+", " ", cleaned)
+        if not cleaned:
+            continue
+        bullets.append(f"- Deterministic preview: {cleaned[:220]}")
+        if len(bullets) >= max_bullets:
+            break
+    if not bullets:
+        return "- Pending LLM summary."
+    return "\n".join(["- Pending LLM summary.", *bullets])
+
+
 def render_source_page_with_state(entry: dict[str, Any], preview: str, compiled_at: str, *, concepts: list[str], existing_page: str) -> str:
     from .. import app_content as _facade
     existing_frontmatter = parse_frontmatter(existing_page)
@@ -150,7 +184,13 @@ def render_source_page_with_state(entry: dict[str, Any], preview: str, compiled_
     confidence = existing_frontmatter.get("confidence", "low") if not source_changed else "low"
     if not isinstance(confidence, str) or not confidence:
         confidence = "low"
-    summary = preserved_section(existing_page, "Summary", "- Pending LLM summary.") if not source_changed else "- Pending LLM summary."
+    deterministic_summary = deterministic_source_summary(preview)
+    if source_changed:
+        summary = deterministic_summary
+    else:
+        summary = preserved_section(existing_page, "Summary", deterministic_summary)
+        if summary.strip() == "- Pending LLM summary.":
+            summary = deterministic_summary
     concept_links = ["- No concept links yet."] if not concepts else [f"- [{_facade.concept_label_to_title(label)}](../concepts/{_facade.concept_label_to_slug(label)}.md)" for label in concepts]
     frontmatter = render_frontmatter({"id": entry["id"], "kind": "source", "status": "compiled", "title": entry["title"], "source_files": [entry["stored_path"]], "source_sha256": entry["sha256"], "citations": citations, "concepts": concepts, "generated_by": "aiwiki-compile", "last_compiled_at": compiled_at, "confidence": confidence})
     body = "\n".join([frontmatter, "", f"# {entry['title']}", "", "## Source Record", f"- Source type: `{entry['source_type']}`", f"- Original path: `{entry['original_path']}`", f"- Stored path: `{entry['stored_path']}`", f"- Imported at: `{entry['imported_at']}`", f"- SHA256: `{entry['sha256']}`", "", "## Summary", summary, "", "## Concept Links", *concept_links, "", "## Enrichment TODO", "- Refresh concept links when new sources shift the synthesis.", "- Add backlinks from derived outputs that cite this page.", "- Preserve provenance when replacing placeholder text.", "", "## Preview", "```text", preview, "```", "", "## Citation Anchor", f"- Cite this page as `wiki/sources/{entry['id']}.md`."])
@@ -220,7 +260,13 @@ def source_summary_or_preview(root: Path, entry: dict[str, Any], preview: str) -
         content = page.read_text(encoding="utf-8", errors="replace")
         summary = preserved_section(content, "Summary", "")
         if compiled_source_sha(content) in ("", entry["sha256"]) and summary and "Pending LLM summary." not in summary:
-            return summary
+            non_preview_lines = [
+                line
+                for line in summary.splitlines()
+                if not line.strip().startswith("- Deterministic preview:")
+            ]
+            cleaned_summary = "\n".join(line for line in non_preview_lines if line.strip()).strip()
+            return cleaned_summary or summary
     return preview
 
 

@@ -755,7 +755,7 @@ def _validate_source_page(markdown: str, expected_id: str, expected_source_file:
     source_files = frontmatter.get("source_files", [])
     if expected_source_file not in source_files:
         raise RuntimeError("Compile response dropped the source file reference.")
-    if preserved_section(markdown, "Summary", "").strip() == "- Pending LLM summary.":
+    if "Pending LLM summary." in preserved_section(markdown, "Summary", ""):
         raise RuntimeError("Compile response left the source summary in placeholder state.")
 
 
@@ -863,4 +863,3 @@ def _retry_lint_prompt_profile(exc: Exception, current_profile: str, client: Sup
     del current_profile
     del client
     return ""
-
