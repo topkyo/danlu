@@ -42,7 +42,7 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         self.assertIn("Product Shell", home)
         self.assertIn("输入端", home)
         self.assertIn("输出端", home)
-        self.assertIn("高级入口", home)
+        self.assertIn("更多工具", home)
         self.assertIn("[[docs/Furnace Agent Architecture|", home)
         self.assertIn("[[docs/Furnace Evolution Mechanics|", home)
         self.assertIn("[[docs/Furnace Elixir|", home)

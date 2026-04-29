@@ -79,7 +79,7 @@ DEFAULT_OBSIDIAN_APPEARANCE = {
 
 FOLDER_LABEL_OVERRIDES: tuple[tuple[str, str], ...] = (
     ("raw", "原料 raw"),
-    ("output", "输出 output"),
+    ("output", "报告"),
     ("schema", "规则 schema"),
     ("scripts", "脚本 scripts"),
     ("prompts", "提示词 prompts"),
@@ -105,7 +105,7 @@ FOLDER_LABEL_OVERRIDES: tuple[tuple[str, str], ...] = (
     ("output/packs/decision-memos", "决策备忘 decision-memos"),
     ("output/packs/sop-drafts", "SOP 草稿 sop-drafts"),
     ("output/pilots", "协议评分 pilots"),
-    ("output/reports", "报告 reports"),
+    ("output/reports", "全部报告"),
     ("output/review", "审阅 review"),
     ("output/figures", "图表 figures"),
     ("output/slides", "幻灯片 slides"),
@@ -118,6 +118,25 @@ FOLDER_LABEL_OVERRIDES: tuple[tuple[str, str], ...] = (
     ("schema/protocols/ops", "运维协议 ops"),
 )
 
+USER_HIDDEN_FOLDER_PATHS: tuple[str, ...] = (
+    "raw",
+    "wiki",
+    "schema",
+    "scripts",
+    "prompts",
+    "output/_candidates",
+    "output/_proposals",
+    "output/agents",
+    "output/control",
+    "output/figures",
+    "output/graph",
+    "output/lint",
+    "output/packs",
+    "output/pilots",
+    "output/review",
+    "output/slides",
+)
+
 
 def _folder_label_selectors(path: str) -> tuple[str, ...]:
     return (
@@ -128,15 +147,39 @@ def _folder_label_selectors(path: str) -> tuple[str, ...]:
     )
 
 
+def _folder_container_selectors(path: str) -> tuple[str, ...]:
+    return (
+        f'.nav-folder[data-path="{path}"]',
+        f'.tree-item[data-path="{path}"]',
+        f'.nav-folder-title[data-path="{path}"]',
+        f'.tree-item-self[data-path="{path}"]',
+    )
+
+
 def _render_folder_label_snippet() -> str:
     lines = [
         "/*",
-        " * 炼丹炉 vault — 文件浏览器中文化",
-        " * 保留运行时英文路径不变，只覆盖 Obsidian 左侧文件树显示文本。",
+        " * 炼丹炉 vault — 文件浏览器用户视图",
+        " * 保留运行时英文路径不变；普通用户默认只看报告，其余运行时分层从文件树隐藏。",
         " * 同时兼容旧结构（data-path 在父级）和新结构（data-path 在 title/self）两种 DOM。",
         " */",
         "",
     ]
+    lines.extend(
+        [
+            "/* 默认隐藏 runtime / operator folders；Product Shell 和更多工具仍可打开对应页面。 */",
+        ]
+    )
+    for path in USER_HIDDEN_FOLDER_PATHS:
+        lines.extend(
+            [
+                f"/* hide {path} from the daily file tree */",
+                ",\n".join(_folder_container_selectors(path)) + " {",
+                "  display: none !important;",
+                "}",
+                "",
+            ]
+        )
     for path, label in FOLDER_LABEL_OVERRIDES:
         selectors = _folder_label_selectors(path)
         pseudo_selectors = tuple(f"{selector}::after" for selector in selectors)
@@ -316,6 +359,7 @@ def _render_vault_readme(runtime_root: Path) -> str:
                 f"- 当前绑定的 runtime root：`{runtime}`",
                 "- 当前 vault root：本目录",
                 "- 日常入口：打开 Obsidian -> 主区 Product Shell（`HOME.md` 只保留说明和关键链接；CLI 作为备用/脚本入口）",
+                "- 左侧文件树是用户视图：默认只保留报告入口；`raw/wiki/schema/output` 的完整分层仍由 runtime 管理。",
                 "- Obsidian 与 CLI 共用同一个 runtime / state，遵守 `single writer, many readers`。",
                 "- Product Shell 默认界面语言为中文，可在插件设置里切到 English。",
                 "- LLM 现在不再做 `auto` 解析；请在 Product Shell 设置或环境变量里显式设置 `AIWIKI_LLM_BACKEND`。",
@@ -336,17 +380,18 @@ def _render_vault_readme(runtime_root: Path) -> str:
                 "## 工作流",
                 "",
                 "1. 默认在 Obsidian 中工作：主区 Product Shell 是日常入口，`HOME.md` 只做说明和关键链接。",
-                "2. 投料可以走两条路：在 Obsidian 里直接整理 `raw/inbox/`，或在 CLI / agent 中使用 `drop-url / drop-pdf / drop-image / drop-repo / drop-note`。",
+                "2. 投料从 Product Shell 输入框或 CLI / agent 的 `drop-url / drop-pdf / drop-image / drop-repo / drop-note` 开始；不要从文件树理解 runtime 分层。",
                 "3. 提问也有两个入口：Obsidian Product Shell 的 `Ask`，以及 `./scripts/aiwiki-launcher.sh ask ...`。",
                 "4. `compile / nightly / apply / revert` 这类写操作不要双开；同一时刻只保留一个写入口。",
                 "",
-                "## 目录职责",
+                "## Runtime 目录职责",
                 "",
                 "- `raw/`：原料",
                 "- `wiki/`：来源、概念、判断、决策、索引",
                 "- `output/`：报告、图表、HTML 控制面、审计产物",
                 "- `schema/`：运行时规则和协议",
                 "- `.aiwiki/`：状态、缓存、日志",
+                "- 普通用户文件树默认只露出 `output/reports/`，其余目录由 Product Shell、更多工具和 CLI 间接打开。",
                 "- `raw / wiki / output / schema` 这些英文目录名是 runtime contract；中文化通过工作台导航和说明完成，不建议直接重命名路径。",
                 "",
                 "## 备注",
@@ -372,20 +417,22 @@ def _render_vault_home() -> str:
                 "",
                 "# 炼丹炉",
                 "",
-                "这是炼丹炉在 Obsidian 里的产品入口。默认从主区的 Product Shell 开始：投料、提问、看 Today、打开报告；其他治理和调试入口收在 Advanced。",
+                "这是炼丹炉在 Obsidian 里的产品入口。默认从主区的 Product Shell 开始：投料、提问、看 Today、打开报告；其他治理和调试入口收在更多工具。",
                 "",
                 "## 日常路径",
                 "",
                 "1. 在 Product Shell 输入框里投 URL / 文件 / 图片，或直接问一个问题。",
                 "2. 看 Today：报告点 `Open`，审阅点 `Open Review`，命令先 `Copy command`。",
                 "3. 把有价值的报告回流为判断、决策或金丹。",
-                "4. 需要排障时再展开 Advanced；不要先从目录结构开始工作。",
+                "4. 需要排障时再展开更多工具；不要先从目录结构开始工作。",
+                "",
+                "左侧文件树是用户视图：日常只需要报告。`raw/wiki/schema` 和 `output/` 的其他产物仍存在，但默认不作为用户入口。",
                 "",
                 "## 首屏模型",
                 "",
                 "- 输入端：Ask / Drop / Capture Note",
                 "- 输出端：Today / Today's Reports / Previous Reports",
-                "- 高级入口：Review、Execution、Recent Runs、Metrics、LLM health",
+                "- 更多工具：审阅、执行、运行记录、指标、LLM 状态",
                 "",
                 "## 关键入口",
                 "",

@@ -6,6 +6,24 @@
 
 ## 状态
 
+- **Round 26 — M-UX.5 Vault User View + Chinese Graph — 完成**
+  - **目的**: 按真机截图继续从普通用户角度收敛 dogfood vault：左侧文件树不再把 `raw/wiki/schema/output` 运行时分层作为日常入口，`output/` 用户默认只看报告；关系图谱继续中文化
+  - **设计核心**:
+    - `src/aiwiki/app_vault.py` 的 new-vault CSS snippet 增加用户视图隐藏规则：隐藏 `raw/wiki/schema/scripts/prompts`，以及 `output/` 下除 `reports/` 外的候选、控制面、图谱导出、审阅、packs、slides 等 operator folders
+    - 可见文件树文案从 `输出 output` / `报告 reports` 收敛为 `报告` / `全部报告`，保留真实 runtime 路径不变
+    - 当前 dogfood `/home/tim/danlu/炼丹炉/.obsidian/workspace.json` 改为主区 Product Shell + README，左右侧栏默认折叠，左侧只保留文件列表/书签，右侧只保留 Outline/Backlinks
+    - dogfood `HOME.md` / `README.md` 改成“用户只关心报告；runtime 层默认隐藏但仍存在”的说明
+    - `output/graph/machine-memory.html` 由 compile 重新生成，图谱 UI 从 `component/slug/wiki/rewrite` 口吻改为“关系组、关键词或来源编号、详情页、核心概念、核心来源、改写提案”等中文
+  - **验证**:
+    - `python3 -m py_compile src/aiwiki/memory/graph.py src/aiwiki/app_vault.py`
+    - focused unittest: `tests.test_vault tests.test_obsidian_workspace` + 3 个 machine-memory graph HTML tests，13/13
+    - dogfood `source .envrc.dogfood && ./scripts/aiwiki-launcher.sh compile` exit 0，更新 `output/graph/machine-memory.html` 等 3 个 dirty artifacts
+    - `bash scripts/verify.sh` exit 0；1505 unit + 13 acceptance；coverage 92%
+  - **QA gate**:
+    - `qa-review`: fresh-session reviewer 仍受 Codex usage limit 阻塞；same-context fallback pass，无发现
+    - `qa-runtime`: scripted pass；覆盖 focused checks、dogfood compile 与 full verify
+  - **当前评估**: 当前 dogfood vault 默认已经更接近“Product Shell + 报告”产品壳；runtime 分层仍可通过更多工具、链接或 CLI 到达，但不再占据普通用户文件树心智
+
 - **Round 23 — M-UX.2 Dogfood Vault Shell-first Migration — 完成**
   - **目的**: 根据真机 Obsidian 截图确认 M-UX.1 尚未实际迁移 `/home/tim/danlu/炼丹炉`；继续把 dogfood vault 改为 Product Shell-first，并修正首屏 universal input 中文化缺口
   - **截图结论**:
@@ -1511,3 +1529,12 @@ oracle 复评 `ses_22e7d0c4cffex6PjhhVJ4nQzT5` 给出 8.6/10，定位三处距 9
 - LLM 与 metrics 文案产品化：`LLM 后端` 改为 `LLM 服务`，`LLM 健康态` 改为 `LLM 状态`，`deterministic 回退` 改为 `本地兜底`，Advanced metrics 补齐“知识复利指标”等中文翻译，并隐藏 `aiwiki metrics --json` 的直读提示。
 - Verification：Product Shell focused tests pass；`bash scripts/verify.sh` pass（1505 unit + 13 acceptance，coverage 92%）。
 - QA review：fresh-session reviewer 仍被 Codex usage limit 阻塞；已记录 same-context fallback，无发现。
+
+### 2026-04-29 — Round 26 / M-UX.5 Vault 用户视图与中文关系图谱
+
+- new-vault CSS snippet 增加用户视图隐藏规则：普通用户文件树默认隐藏 `raw/wiki/schema/scripts/prompts`，并在 `output/` 下只保留 `reports/` 可见；真实 runtime 路径不改。
+- 当前 dogfood vault 已同步：workspace 主区只保留 Product Shell + README，左右侧栏默认折叠，左侧仅文件列表/书签，右侧仅大纲/反链；`HOME.md` / `README.md` 改为“日常只看报告，runtime 层默认隐藏”的产品说明。
+- 关系图谱 HTML 继续中文化：`component-*` 展示为“关系组”，搜索提示改为“标题、关键词或来源编号”，说明不再说 `wiki 页面`，`Hub` / `rewrite` 等首屏文案改为“核心概念 / 核心来源 / 改写提案”。
+- Dogfood compile 已重新生成 `/home/tim/danlu/炼丹炉/output/graph/machine-memory.html`。
+- Verification：focused UX tests 13/13 pass；`bash scripts/verify.sh` pass（1505 unit + 13 acceptance，coverage 92%）。
+- QA review：fresh-session reviewer 仍被 Codex usage limit 阻塞；same-context fallback pass，无发现。

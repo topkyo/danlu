@@ -2729,7 +2729,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("<svg", payload)
         self.assertIn("Transformer Scaling", payload)
         self.assertIn("../../wiki/indexes/graph-view.md", payload)
-        self.assertIn("图谱视图", payload)
+        self.assertIn("关系图谱说明", payload)
 
     def test_compile_writes_review_center_html(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -7056,9 +7056,14 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("graph-node-browser", payload)
         self.assertIn("graphUiData", payload)
         self.assertIn("节点详情", payload)
+        self.assertIn("关系组", payload)
+        self.assertIn("核心概念", payload)
+        self.assertIn("输入标题、关键词或来源编号", payload)
         self.assertIn('option value="judgment"', payload)
         self.assertIn('<option value="source">来源</option>', payload)
         self.assertIn("关系边", payload)
+        self.assertNotIn("输入标题、slug、来源 id", payload)
+        self.assertNotIn("Hub 概念", payload)
         self.assertNotIn("Graph View Dashboard", payload)
         self.assertNotIn("related edge", payload)
         self.assertIn("graph-zoom-in", payload)

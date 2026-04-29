@@ -98,6 +98,13 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
         }
         return labels.get(protocol, protocol or "未分配")
 
+    def component_display_label(component_id: str) -> str:
+        if component_id.startswith("component-"):
+            suffix = component_id.removeprefix("component-")
+            if suffix.isdigit():
+                return f"关系组 {suffix}"
+        return component_id or "未分组"
+
     judgment_protocol_by_id = {
         page_id: str(node.get("protocol") or DEFAULT_PROTOCOL)
         for page_id, node in judgment_nodes.items()
@@ -234,7 +241,10 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
         component_id = str(source_component_ids.get(source_id, "") or "")
         if page_id and component_id and page_id not in judgment_component_ids:
             judgment_component_ids[page_id] = component_id
-    component_label_by_id = {str(component.get("id") or ""): str(component.get("id") or "") for component in components}
+    component_label_by_id = {
+        str(component.get("id") or ""): component_display_label(str(component.get("id") or ""))
+        for component in components
+    }
     protocol_colors = {
         "general": "#38bdf8",
         "research": "#a78bfa",
@@ -343,7 +353,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             f'<rect x="20" y="{section["y"]}" width="{section_width}" height="{section["height"]}" rx="18" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5" />'
         )
         section_fragments.append(
-            f'<text x="44" y="{section["y"] + 28}" fill="#0f172a" font-size="15" font-weight="700">{html.escape(section["id"])}</text>'
+            f'<text x="44" y="{section["y"] + 28}" fill="#0f172a" font-size="15" font-weight="700">{html.escape(component_display_label(str(section["id"] or "")))}</text>'
         )
         section_fragments.append(
             f'<text x="44" y="{section["y"] + 48}" fill="#475569" font-size="12">来源 {len(section["source_ids"])} | 概念 {len(section["concept_slugs"])}</text>'
@@ -364,33 +374,33 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
         f"来源节点 {len(memory.get('source_nodes', []))}",
         f"判断节点 {len(memory.get('judgment_nodes', []))}",
         f"概念节点 {len(memory.get('concept_nodes', []))}",
-        f"分量 {health.get('component_count', 0)}",
+        f"关系组 {health.get('component_count', 0)}",
         f"桥接概念 {len(health.get('bridge_concept_slugs', []))}",
-        f"修复动作 {actions.get('total', 0)}",
-        f"执行提案 {repair_counts.get('proposals', 0)}",
-        f"rewrite 提案 {rewrite_counts.get('active', 0)}",
-        f"安全应用 {len(safe_apply_actions)}",
+        f"待处理修复 {actions.get('total', 0)}",
+        f"待确认提案 {repair_counts.get('proposals', 0)}",
+        f"改写提案 {rewrite_counts.get('active', 0)}",
+        f"可安全执行 {len(safe_apply_actions)}",
     ]
 
     hub_concept_items = "".join(
         f'<li><a href="../../wiki/concepts/{html.escape(item["slug"])}.md">{html.escape(item["title"])}</a> | 来源 {item.get("source_count", 0)} | 关联 {item.get("related_count", 0)}</li>'
         for item in hub_concepts[:8]
-    ) or "<li>当前没有 hub 概念。</li>"
+    ) or "<li>当前没有核心概念。</li>"
     hub_source_items = "".join(
         f'<li><a href="../../wiki/sources/{html.escape(item["id"])}.md">{html.escape(item["title"])}</a> | 概念 {item.get("concept_count", 0)}</li>'
         for item in hub_sources[:8]
-    ) or "<li>当前没有 hub 来源。</li>"
+    ) or "<li>当前没有核心来源。</li>"
     suggestion_items = "".join(
         f'<li><a href="../../wiki/sources/{html.escape(item["source_id"])}.md">{html.escape(item["source_title"])}</a> -> <a href="../../wiki/concepts/{html.escape(item["concept_slug"])}.md">{html.escape(item["concept_title"])}</a> | 分数 {item.get("score", 0)} | 共现词 {html.escape(", ".join(item.get("shared_terms", [])[:5]) or "无")}</li>'
         for item in health.get("link_suggestions", [])[:8]
     ) or "<li>当前没有修复候选。</li>"
     apply_ready_items = "".join(
-        f'<li>{html.escape(str(action.get("title") or action.get("id") or "动作"))} | 命令 <code>{html.escape(str(action.get("command_hint") or ""))}</code></li>'
+        f'<li>{html.escape(str(action.get("title") or action.get("id") or "动作"))} | 建议命令 <code>{html.escape(str(action.get("command_hint") or ""))}</code></li>'
         for action in safe_apply_actions[:8]
         if action.get("command_hint")
     ) or "<li>当前没有可直接安全应用的动作。</li>"
     component_options = "".join(
-        f'<option value="{html.escape(str(component.get("id") or ""))}">{html.escape(str(component.get("id") or ""))} ({len(component.get("source_ids", [])) + len(component.get("concept_slugs", []))})</option>'
+        f'<option value="{html.escape(str(component.get("id") or ""))}">{html.escape(component_display_label(str(component.get("id") or "")))} ({len(component.get("source_ids", [])) + len(component.get("concept_slugs", []))})</option>'
         for component in components
         if component.get("id")
     )
@@ -475,7 +485,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "  <section class=\"panel\">",
             "    <h1>炼丹炉关系图谱</h1>",
             f"    <p>编译时间：<code>{html.escape(str(memory.get('compiled_at', '')))}</code> | 图谱摘要：<code>{html.escape(str(graph.get('digest', '')))}</code></p>",
-            "    <p>这是炼丹炉机器记忆的本地关系图谱。来源、判断与概念按连通分量分块展示，直接点击节点可跳回对应的 wiki 页面。</p>",
+            "    <p>这是炼丹炉把材料、判断和概念连起来后的本地关系图谱。来源、判断与概念按关系组展示，点击节点可打开对应详情页。</p>",
             "    <div class=\"meta\">",
             *[f'      <div class="card"><div class="metric">{html.escape(item.split()[-1])}</div><div class="metric-label">{html.escape(" ".join(item.split()[:-1]) or item)}</div></div>' for item in summary_items],
             "    </div>",
@@ -489,10 +499,10 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             f"  {empty_state}",
             '  <section class="panel">',
             '    <div class="controls">',
-            '      <div><label for="graph-search">搜索节点</label><input id="graph-search" type="search" placeholder="输入标题、slug、来源 id" /></div>',
+            '      <div><label for="graph-search">搜索节点</label><input id="graph-search" type="search" placeholder="输入标题、关键词或来源编号" /></div>',
             '      <div><label for="graph-kind">节点类型</label><select id="graph-kind"><option value="">全部</option><option value="source">来源</option><option value="judgment">判断</option><option value="concept">概念</option></select></div>',
             f'      <div><label for="graph-protocol">协议</label><select id="graph-protocol"><option value="">全部协议</option>{protocol_options}</select></div>',
-            f'      <div><label for="graph-component">分量</label><select id="graph-component"><option value="">全部分量</option>{component_options}</select></div>',
+            f'      <div><label for="graph-component">关系组</label><select id="graph-component"><option value="">全部关系组</option>{component_options}</select></div>',
             "    </div>",
             '    <div class="workbench">',
             '      <div class="panel canvas">',
@@ -510,7 +520,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "        </svg>",
             "      </div>",
             '      <div class="details-grid">',
-            '        <div class="panel"><h2>节点详情</h2><div id="graph-node-details">选择节点详情按钮，查看分量、连接数和回链路径。</div></div>',
+            '        <div class="panel"><h2>节点详情</h2><div id="graph-node-details">选择节点详情按钮，查看关系组、连接数和详情页。</div></div>',
             '        <div class="panel node-browser"><h2>节点浏览器</h2><ul id="graph-node-browser">',
             f"{node_rows_markup}",
             "        </ul></div>",
@@ -518,26 +528,23 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "    </div>",
             "  </section>",
             "  <section class=\"lists\">",
-            '    <div class="panel"><h2>Hub 概念</h2><ul>',
+            '    <div class="panel"><h2>核心概念</h2><ul>',
             f"{hub_concept_items}",
             "    </ul></div>",
-            '    <div class="panel"><h2>Hub 来源</h2><ul>',
+            '    <div class="panel"><h2>核心来源</h2><ul>',
             f"{hub_source_items}",
             "    </ul></div>",
             '    <div class="panel"><h2>修复候选</h2><ul>',
             f"{suggestion_items}",
             "    </ul></div>",
-            '    <div class="panel"><h2>安全应用</h2><ul>',
+            '    <div class="panel"><h2>可安全执行</h2><ul>',
             f"{apply_ready_items}",
             "    </ul></div>",
             "  </section>",
             '  <section class="panel"><h2>相关入口</h2><ul>',
-            '    <li><a href="../../wiki/indexes/furnace-center.md">炉心面板</a></li>',
-            '    <li><a href="../../wiki/indexes/graph-view.md">图谱视图</a></li>',
-            '    <li><a href="../../wiki/indexes/machine-memory.md">机器记忆</a></li>',
-            '    <li><a href="../../wiki/indexes/machine-memory-topology.md">机器记忆拓扑</a></li>',
-            '    <li><a href="../../wiki/indexes/graph-health.md">图谱健康</a></li>',
-            '    <li><a href="../../wiki/indexes/machine-memory-repair-plan.md">修复计划</a></li>',
+            '    <li><a href="../../wiki/indexes/furnace-center.md">回到炼丹炉</a></li>',
+            '    <li><a href="../../wiki/indexes/graph-view.md">关系图谱说明</a></li>',
+            '    <li><a href="../../wiki/indexes/graph-health.md">关系图谱健康</a></li>',
             "  </ul></section>",
             "  <script>",
             f"    const graphUiData = {node_payload};",
@@ -599,9 +606,9 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "        `<div><strong>${node.title}</strong></div>`,",
             "        `<div>类型：<code>${node.kind_label || node.kind}</code></div>`,",
             "        `<div>协议：<code>${node.protocol_label || node.protocol || '未分配'}</code></div>`,",
-            "        `<div>分量：<code>${node.component_label || '未分组'}</code></div>`,",
+            "        `<div>关系组：<code>${node.component_label || '未分组'}</code></div>`,",
             "        `<div>连接数：<code>${node.degree}</code></div>`,",
-            "        `<div>路径：<code>${node.page_path}</code></div>`,",
+            "        `<div>详情页：<code>${node.page_path}</code></div>`,",
             "        `<div>${node.secondary_metric || ''}</div>`,",
             "        `<div><a href=\"${node.href}\">打开页面</a></div>`",
             "      ].join('');",
