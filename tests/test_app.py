@@ -6115,23 +6115,29 @@ class AiwikiFlowTests(unittest.TestCase):
         script = Path("/home/tim/ai-wiki/scripts/run_watch.sh")
         content = script.read_text(encoding="utf-8")
         self.assertIn('PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"', content)
+        self.assertIn('TARGET_ROOT="${AIWIKI_VAULT:-$PROJECT_ROOT}"', content)
+        self.assertIn('--root "$TARGET_ROOT"', content)
         self.assertIn('exec python3 -m aiwiki.cli "${ARGS[@]}"', content)
 
     def test_run_nightly_script_uses_root_relative_paths(self) -> None:
         script = Path("/home/tim/ai-wiki/scripts/run_nightly.sh")
         content = script.read_text(encoding="utf-8")
         self.assertIn('PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"', content)
+        self.assertIn('TARGET_ROOT="${AIWIKI_VAULT:-$PROJECT_ROOT}"', content)
+        self.assertIn('--root "$TARGET_ROOT"', content)
         self.assertIn('exec python3 -m aiwiki.cli "${ARGS[@]}"', content)
         self.assertIn("run-nightly", content)
         self.assertIn("nightly", content)
 
-    def test_aiwiki_launcher_script_uses_repo_local_paths(self) -> None:
+    def test_aiwiki_launcher_script_uses_env_vault_when_present(self) -> None:
         script = Path("/home/tim/ai-wiki/scripts/aiwiki-launcher.sh")
         content = script.read_text(encoding="utf-8")
         self.assertTrue(os.access(script, os.X_OK))
         self.assertIn('PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"', content)
+        self.assertIn('TARGET_ROOT="${AIWIKI_VAULT:-$PROJECT_ROOT}"', content)
+        self.assertIn('PLUGIN_DATA="$TARGET_ROOT/.obsidian/plugins/furnace-product-shell/data.json"', content)
         self.assertIn('export PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"', content)
-        self.assertIn('exec python3 -m aiwiki.cli --root "$PROJECT_ROOT" "$@"', content)
+        self.assertIn('exec python3 -m aiwiki.cli --root "$TARGET_ROOT" "$@"', content)
 
     def test_product_shell_plugin_manifest_declares_desktop_only(self) -> None:
         manifest_path = Path("/home/tim/ai-wiki/.obsidian/plugins/furnace-product-shell/manifest.json")

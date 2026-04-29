@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+TARGET_ROOT="${AIWIKI_VAULT:-$PROJECT_ROOT}"
 cd "$PROJECT_ROOT"
 
 export PYTHONPATH="${PYTHONPATH:-$PROJECT_ROOT/src}"
@@ -11,7 +12,7 @@ INTERVAL="${AIWIKI_WATCH_INTERVAL:-5}"
 COMPILE_LIMIT="${AIWIKI_WATCH_COMPILE_LIMIT:-5}"
 
 ARGS=(
-  --root "$PROJECT_ROOT"
+  --root "$TARGET_ROOT"
   watch
   --interval "$INTERVAL"
   --compile-limit "$COMPILE_LIMIT"

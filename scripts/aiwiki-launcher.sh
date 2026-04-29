@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+TARGET_ROOT="${AIWIKI_VAULT:-$PROJECT_ROOT}"
 cd "$PROJECT_ROOT"
 
 for candidate in "$HOME/.local/bin" "$HOME/.local/npm/bin" "$HOME/bin"; do
@@ -15,7 +16,7 @@ for candidate in "$HOME/.local/bin" "$HOME/.local/npm/bin" "$HOME/bin"; do
 done
 export PATH
 
-PLUGIN_DATA="$PROJECT_ROOT/.obsidian/plugins/furnace-product-shell/data.json"
+PLUGIN_DATA="$TARGET_ROOT/.obsidian/plugins/furnace-product-shell/data.json"
 if [ -f "$PLUGIN_DATA" ]; then
   while IFS= read -r line; do
     [ -n "$line" ] || continue
@@ -52,4 +53,4 @@ fi
 
 export PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 
-exec python3 -m aiwiki.cli --root "$PROJECT_ROOT" "$@"
+exec python3 -m aiwiki.cli --root "$TARGET_ROOT" "$@"

@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+TARGET_ROOT="${AIWIKI_VAULT:-$PROJECT_ROOT}"
 cd "$PROJECT_ROOT"
 
 export PYTHONPATH="${PYTHONPATH:-$PROJECT_ROOT/src}"
@@ -12,7 +13,7 @@ DETERMINISTIC_ONLY="${AIWIKI_NIGHTLY_DETERMINISTIC_ONLY:-0}"
 NO_SEMANTIC_LINT="${AIWIKI_NIGHTLY_NO_SEMANTIC_LINT:-0}"
 
 if [[ "$DETERMINISTIC_ONLY" == "1" ]]; then
-  ARGS=(--root "$PROJECT_ROOT" nightly)
+  ARGS=(--root "$TARGET_ROOT" nightly)
 else
   if python3 - <<'PY'
 from aiwiki.config import LLMConfig
@@ -22,12 +23,12 @@ status = LLMConfig.status_from_env()
 sys.exit(0 if status.get("configured") else 1)
 PY
   then
-    ARGS=(--root "$PROJECT_ROOT" run-nightly --compile-limit "$COMPILE_LIMIT")
+    ARGS=(--root "$TARGET_ROOT" run-nightly --compile-limit "$COMPILE_LIMIT")
     if [[ "$NO_SEMANTIC_LINT" == "1" ]]; then
       ARGS+=(--no-semantic-lint)
     fi
   else
-    ARGS=(--root "$PROJECT_ROOT" nightly)
+    ARGS=(--root "$TARGET_ROOT" nightly)
   fi
 fi
 
