@@ -1,7 +1,18 @@
 // Advanced drawer and metrics rendering helpers.
 function renderAdvancedDrawer(plugin, container) {
   const details = container.createEl("details", { cls: "furnace-shell-advanced" });
-  details.createEl("summary", { cls: "furnace-shell-advanced-summary", text: plugin.t("Advanced") });
+  const summaryEl = details.createEl("summary", { cls: "furnace-shell-advanced-summary" });
+  const summaryCopy = summaryEl.createDiv({ cls: "furnace-shell-advanced-copy" });
+  summaryCopy.createEl("span", { cls: "furnace-shell-advanced-title", text: plugin.t("Advanced") });
+  const counts = advancedDrawerCounts(plugin);
+  summaryCopy.createEl("span", {
+    cls: "furnace-shell-advanced-description",
+    text: plugin.t("Review {review_count} · execution {execution_count} · recent runs {run_count}", {
+      review_count: counts.review,
+      execution_count: counts.execution,
+      run_count: counts.runs,
+    }),
+  });
   const body = details.createDiv({ cls: "furnace-shell-advanced-body" });
 
   plugin.renderMainHeader(body);
@@ -9,6 +20,20 @@ function renderAdvancedDrawer(plugin, container) {
   plugin.renderLegacyAdvancedPanel(body);
 
   renderAdvancedMetricsPanel(plugin, body);
+}
+
+function advancedDrawerCounts(plugin) {
+  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : {};
+  const review = sumNumericValues(summary.review_backlog_counts || {});
+  const executionControls = summary.execution_controls && typeof summary.execution_controls === "object" ? summary.execution_controls : {};
+  const actionCount = Array.isArray(executionControls.actions)
+    ? executionControls.actions.filter((action) => action && typeof action === "object" && (action.can_apply || action.can_review || action.can_revert)).length
+    : 0;
+  const archiveCount = Array.isArray(executionControls.archives)
+    ? executionControls.archives.filter((entry) => entry && typeof entry === "object" && (entry.can_apply || entry.can_revert)).length
+    : 0;
+  const runs = plugin.pluginState && Array.isArray(plugin.pluginState.recentRuns) ? plugin.pluginState.recentRuns.length : 0;
+  return { review, execution: actionCount + archiveCount, runs };
 }
 
 function renderAdvancedMetricsPanel(plugin, container) {

@@ -47,8 +47,9 @@ class VaultBootstrapTests(unittest.TestCase):
         workspace = json.loads((self.target / ".obsidian" / "workspace.json").read_text(encoding="utf-8"))
         self.assertIn("[[wiki/indexes/furnace-center|", home)
         self.assertIn("./scripts/aiwiki-launcher.sh compile", home)
-        self.assertIn("默认界面语言是中文", home)
-        self.assertIn("gpt-5.4", home)
+        self.assertIn("Product Shell", home)
+        self.assertIn("输入端", home)
+        self.assertIn("输出端", home)
         self.assertIn("单写约束", home)
         self.assertIn("single writer, many readers", readme)
         self.assertIn("默认界面语言为中文", readme)
@@ -67,13 +68,15 @@ class VaultBootstrapTests(unittest.TestCase):
         self.assertIn("Capture Note", plugin_source)
         self.assertIn("drop-note", plugin_source)
         self.assertEqual(plugin_data["settings"]["locale"], "zh")
+        self.assertEqual(workspace["active"], "main-furnace-center")
+        self.assertEqual(workspace["main"]["children"][0]["children"][0]["state"]["type"], "furnace-product-shell-furnace-center")
         self.assertEqual(
             [child["state"]["title"] for child in workspace["left"]["children"][0]["children"]],
-            ["文件列表", "原料 raw", "wiki 知识", "输出 output", "规则 schema", "书签"],
+            ["文件列表", "书签"],
         )
-        self.assertIn(
-            "furnace-product-shell-review-center",
+        self.assertEqual(
             [child["state"]["type"] for child in workspace["right"]["children"][0]["children"]],
+            ["outline", "backlink"],
         )
 
     def test_bootstrap_new_vault_launcher_runs_shell_status(self) -> None:

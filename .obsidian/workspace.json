@@ -1,14 +1,13 @@
 {
-  "active": "right-furnace-center",
+  "active": "main-furnace-center",
   "lastOpenFiles": [
+    "wiki/indexes/furnace-center.md",
     "HOME.md",
     "README.md",
-    "wiki/indexes/furnace-center.md",
+    "wiki/indexes/Outputs.md",
+    "wiki/indexes/judgment-assets.md",
     "wiki/indexes/review-center.md",
     "wiki/indexes/execution-center.md",
-    "wiki/indexes/graph-view.md",
-    "wiki/indexes/protocols.md",
-    "schema/index.md",
     "output/control/shell-summary.json"
   ],
   "left": {
@@ -25,74 +24,6 @@
               },
               "title": "文件列表",
               "type": "file-explorer"
-            },
-            "type": "leaf"
-          },
-          {
-            "id": "left-search-raw",
-            "state": {
-              "icon": "lucide-search",
-              "state": {
-                "collapseAll": false,
-                "explainSearch": false,
-                "extraContext": false,
-                "matchingCase": false,
-                "query": "path:\"raw\"",
-                "sortOrder": "alphabetical"
-              },
-              "title": "原料 raw",
-              "type": "search"
-            },
-            "type": "leaf"
-          },
-          {
-            "id": "left-search-wiki",
-            "state": {
-              "icon": "lucide-search",
-              "state": {
-                "collapseAll": false,
-                "explainSearch": false,
-                "extraContext": false,
-                "matchingCase": false,
-                "query": "path:\"wiki\"",
-                "sortOrder": "alphabetical"
-              },
-              "title": "wiki 知识",
-              "type": "search"
-            },
-            "type": "leaf"
-          },
-          {
-            "id": "left-search-output",
-            "state": {
-              "icon": "lucide-search",
-              "state": {
-                "collapseAll": false,
-                "explainSearch": false,
-                "extraContext": false,
-                "matchingCase": false,
-                "query": "path:\"output\"",
-                "sortOrder": "alphabetical"
-              },
-              "title": "输出 output",
-              "type": "search"
-            },
-            "type": "leaf"
-          },
-          {
-            "id": "left-search-schema",
-            "state": {
-              "icon": "lucide-search",
-              "state": {
-                "collapseAll": false,
-                "explainSearch": false,
-                "extraContext": false,
-                "matchingCase": false,
-                "query": "path:\"schema\"",
-                "sortOrder": "alphabetical"
-              },
-              "title": "规则 schema",
-              "type": "search"
             },
             "type": "leaf"
           },
@@ -114,7 +45,7 @@
     "direction": "horizontal",
     "id": "left-root",
     "type": "split",
-    "width": 320
+    "width": 260
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -135,6 +66,16 @@
       {
         "children": [
           {
+            "id": "main-furnace-center",
+            "state": {
+              "icon": "flask-conical",
+              "state": {},
+              "title": "炼丹炉",
+              "type": "furnace-product-shell-furnace-center"
+            },
+            "type": "leaf"
+          },
+          {
             "id": "home-leaf",
             "state": {
               "icon": "lucide-file",
@@ -149,6 +90,7 @@
             "type": "leaf"
           }
         ],
+        "currentTab": 0,
         "id": "main-tabs",
         "type": "tabs"
       }
@@ -193,49 +135,9 @@
               "type": "backlink"
             },
             "type": "leaf"
-          },
-          {
-            "id": "right-furnace-center",
-            "state": {
-              "icon": "flask-conical",
-              "state": {},
-              "title": "炉心面板",
-              "type": "furnace-product-shell-furnace-center"
-            },
-            "type": "leaf"
-          },
-          {
-            "id": "right-review-center",
-            "state": {
-              "icon": "clipboard-check",
-              "state": {},
-              "title": "审阅中心",
-              "type": "furnace-product-shell-review-center"
-            },
-            "type": "leaf"
-          },
-          {
-            "id": "right-execution-center",
-            "state": {
-              "icon": "play-circle",
-              "state": {},
-              "title": "执行中心",
-              "type": "furnace-product-shell-execution-center"
-            },
-            "type": "leaf"
-          },
-          {
-            "id": "right-recent-runs",
-            "state": {
-              "icon": "history",
-              "state": {},
-              "title": "最近运行",
-              "type": "furnace-product-shell-recent-runs"
-            },
-            "type": "leaf"
           }
         ],
-        "currentTab": 2,
+        "currentTab": 0,
         "id": "right-tabs",
         "type": "tabs"
       }
@@ -243,6 +145,6 @@
     "direction": "horizontal",
     "id": "right-root",
     "type": "split",
-    "width": 300
+    "width": 280
   }
 }

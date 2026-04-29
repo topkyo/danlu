@@ -49,6 +49,7 @@ const DEFAULT_SETTINGS = {
 };
 const ZH_TEXT = {
   "Advanced": "高级",
+  "Review {review_count} · execution {execution_count} · recent runs {run_count}": "审阅 {review_count} · 执行 {execution_count} · 最近运行 {run_count}",
   "Furnace Product Shell": "炼丹炉 Product Shell",
   "UI language": "界面语言",
   "Default display language for the Product Shell UI. Command palette labels refresh after reloading Obsidian.": "Product Shell 默认显示语言。修改后，命令面板标签需要重载 Obsidian 才会刷新。",
@@ -243,10 +244,19 @@ const ZH_TEXT = {
   Dashboard: "仪表盘",
   "⚠️ Drift Warnings": "⚠️ 漂移警告",
   "Suggested Next Actions": "建议下一步动作",
+  Today: "今日",
+  "(nothing for today)": "今天暂无待处理内容",
+  "Needs Decision": "需要判断",
+  Proposals: "提案",
+  "Today's Reports": "今日报告",
+  Completed: "已完成",
+  "Suggested Actions": "建议动作",
   "Keep the next safe action visible from the main surface.": "把下一步安全动作直接放在首屏，不藏在 summary 深处。",
   "No suggested next action right now.": "当前没有明确的建议下一步动作。",
   "reason {value}": "原因 {value}",
   Open: "打开",
+  "Open Review": "打开审阅",
+  "Copy target": "复制目标",
   "Search Results": "搜索结果",
   "No matching pages in the compiled workspace.": "编译后的工作区中没有匹配页面。",
   "Recent Queries": "最近查询",
@@ -3024,16 +3034,98 @@ function renderTodayFeed(plugin, container) {
     groupEl.createEl("h3", { text: heading });
     const listEl = groupEl.createEl("ul", { cls: "furnace-today-feed-list" });
     for (const entry of items) {
-      const li = listEl.createEl("li", { cls: "furnace-today-feed-item" });
-      const titleEl = li.createEl("div", { cls: "furnace-today-feed-title", text: entry.title });
-      if (entry.summary) {
-        li.createEl("div", { cls: "furnace-today-feed-summary", text: entry.summary });
-      }
-      if (entry.target) {
-        li.createEl("div", { cls: "furnace-today-feed-target", text: entry.target });
-      }
+      renderTodayFeedItem(plugin, listEl, entry);
     }
   }
+}
+
+function renderTodayFeedItem(plugin, listEl, entry) {
+  const li = listEl.createEl("li", { cls: "furnace-today-feed-item furnace-today-feed-card" });
+  const copy = li.createDiv({ cls: "furnace-today-feed-copy" });
+  copy.createEl("div", { cls: "furnace-today-feed-title", text: entry.title });
+  if (entry.summary) {
+    copy.createEl("div", { cls: "furnace-today-feed-summary", text: entry.summary });
+  }
+  if (entry.target) {
+    copy.createEl("div", { cls: "furnace-today-feed-target", text: entry.target });
+  }
+
+  const actions = todayFeedActions(plugin, entry);
+  if (!actions.length) {
+    return;
+  }
+  const actionRow = li.createDiv({ cls: "furnace-today-feed-actions" });
+  for (const action of actions) {
+    const button = actionRow.createEl("button", { text: plugin.t(action.label) });
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      plugin.runUiAction(() => action.onClick(), action.description || action.label);
+    });
+  }
+}
+
+function todayFeedActions(plugin, entry) {
+  const target = String(entry && entry.target || "").trim();
+  if (!target) {
+    return [];
+  }
+  if (isReviewTarget(target)) {
+    return [
+      {
+        label: "Open Review",
+        description: `Open review surface: ${target}`,
+        onClick: async () => plugin.openReviewCenterView(),
+      },
+    ];
+  }
+  if (isWorkspaceTarget(target)) {
+    return [
+      {
+        label: entry.kind === "proposal" ? "Open proposal" : "Open",
+        description: `Open today target: ${target}`,
+        onClick: async () => plugin.openWorkspacePath(target),
+      },
+    ];
+  }
+  if (entry.kind === "action" || looksLikeCommandTarget(target)) {
+    return [
+      {
+        label: "Copy command",
+        description: `Copy today command: ${target}`,
+        onClick: async () => plugin.copyText(target),
+      },
+    ];
+  }
+  return [
+    {
+      label: "Copy target",
+      description: `Copy today target: ${target}`,
+      onClick: async () => plugin.copyText(target),
+    },
+  ];
+}
+
+function isReviewTarget(target) {
+  return String(target || "").startsWith("review:");
+}
+
+function isWorkspaceTarget(target) {
+  const text = String(target || "").trim();
+  if (!text || text.includes("\n")) {
+    return false;
+  }
+  if (/^(?:raw|wiki|output|schema|docs|\.aiwiki)\//.test(text)) {
+    return true;
+  }
+  return /\.(?:md|json|html|pdf|png|jpg|jpeg|webp|svg)$/i.test(text);
+}
+
+function looksLikeCommandTarget(target) {
+  const text = String(target || "").trim();
+  if (!text) {
+    return false;
+  }
+  return /^(?:aiwiki|python3?|PYTHONPATH=|drop-|run-|ask\b|compile\b|nightly\b|review-|apply-|revert-|file-back\b|metrics\b|today\b)/.test(text);
 }
 
 function renderReportsPanel(plugin, container, reports) {
@@ -3194,7 +3286,18 @@ function renderNextActionsPanel(plugin, container) {
 // Advanced drawer and metrics rendering helpers.
 function renderAdvancedDrawer(plugin, container) {
   const details = container.createEl("details", { cls: "furnace-shell-advanced" });
-  details.createEl("summary", { cls: "furnace-shell-advanced-summary", text: plugin.t("Advanced") });
+  const summaryEl = details.createEl("summary", { cls: "furnace-shell-advanced-summary" });
+  const summaryCopy = summaryEl.createDiv({ cls: "furnace-shell-advanced-copy" });
+  summaryCopy.createEl("span", { cls: "furnace-shell-advanced-title", text: plugin.t("Advanced") });
+  const counts = advancedDrawerCounts(plugin);
+  summaryCopy.createEl("span", {
+    cls: "furnace-shell-advanced-description",
+    text: plugin.t("Review {review_count} · execution {execution_count} · recent runs {run_count}", {
+      review_count: counts.review,
+      execution_count: counts.execution,
+      run_count: counts.runs,
+    }),
+  });
   const body = details.createDiv({ cls: "furnace-shell-advanced-body" });
 
   plugin.renderMainHeader(body);
@@ -3202,6 +3305,20 @@ function renderAdvancedDrawer(plugin, container) {
   plugin.renderLegacyAdvancedPanel(body);
 
   renderAdvancedMetricsPanel(plugin, body);
+}
+
+function advancedDrawerCounts(plugin) {
+  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : {};
+  const review = sumNumericValues(summary.review_backlog_counts || {});
+  const executionControls = summary.execution_controls && typeof summary.execution_controls === "object" ? summary.execution_controls : {};
+  const actionCount = Array.isArray(executionControls.actions)
+    ? executionControls.actions.filter((action) => action && typeof action === "object" && (action.can_apply || action.can_review || action.can_revert)).length
+    : 0;
+  const archiveCount = Array.isArray(executionControls.archives)
+    ? executionControls.archives.filter((entry) => entry && typeof entry === "object" && (entry.can_apply || entry.can_revert)).length
+    : 0;
+  const runs = plugin.pluginState && Array.isArray(plugin.pluginState.recentRuns) ? plugin.pluginState.recentRuns.length : 0;
+  return { review, execution: actionCount + archiveCount, runs };
 }
 
 function renderAdvancedMetricsPanel(plugin, container) {
@@ -7042,17 +7159,19 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
-  async openView(viewType) {
+  async openView(viewType, options = {}) {
     let leaf = this.app.workspace.getLeavesOfType(viewType)[0];
     if (!leaf) {
-      leaf = this.app.workspace.getRightLeaf(false) || this.app.workspace.getLeaf(true);
+      leaf = options.preferMain
+        ? this.app.workspace.getLeaf(true)
+        : (this.app.workspace.getRightLeaf(false) || this.app.workspace.getLeaf(true));
     }
     await leaf.setViewState({ type: viewType, active: true });
     this.app.workspace.revealLeaf(leaf);
   }
 
   async openFurnaceCenterView() {
-    await this.openView(VIEW_TYPE_FURNACE_CENTER);
+    await this.openView(VIEW_TYPE_FURNACE_CENTER, { preferMain: true });
   }
 
   async openRecentRunsView() {

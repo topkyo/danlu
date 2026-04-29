@@ -33,6 +33,20 @@ class ProductShellTodayFeedContractTests(unittest.TestCase):
     def test_today_feed_styles_present(self) -> None:
         css = (PLUGIN / "styles.css").read_text(encoding="utf-8")
         self.assertIn("furnace-today-feed", css)
+        self.assertIn("furnace-today-feed-actions", css)
+
+    def test_today_feed_items_are_actionable(self) -> None:
+        text = (PLUGIN / "src/render_today.js").read_text(encoding="utf-8")
+        self.assertIn("renderTodayFeedItem", text)
+        self.assertIn("todayFeedActions", text)
+        self.assertIn("Open Review", text)
+        self.assertIn("Copy command", text)
+        self.assertIn("Copy target", text)
+
+    def test_advanced_drawer_summary_exposes_counts(self) -> None:
+        text = (PLUGIN / "src/render_advanced.js").read_text(encoding="utf-8")
+        self.assertIn("advancedDrawerCounts", text)
+        self.assertIn("Review {review_count} · execution {execution_count} · recent runs {run_count}", text)
 
     def test_today_feed_no_mechanism_words_in_main(self) -> None:
         """首屏 i18n 文案不通过 t() 暴露具体 artifact 机制词。"""

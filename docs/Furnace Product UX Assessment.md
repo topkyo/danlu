@@ -20,6 +20,34 @@ related_docs:
 
 建议把下一步收敛为一个小 milestone：`M-UX.1`，只改插件体验和默认 workspace，不改 runtime。
 
+## 二次评估与本轮落地
+
+本轮按“新用户测试 vault”处理，不考虑老用户已有布局习惯。因此优先优化默认心智，而不是保留 operator 控制台的可见性。
+
+评估结论保持不变：炼丹炉的底层 runtime 已经可用，主要 UX 问题不是能力缺失，而是默认界面仍要求用户先理解系统分层。参考 `docs/Furnace Product Shell.md` 的 SoT，本轮将 Product Shell 继续收敛到：
+
+- 一个输入端：Ask / Drop / Capture Note。
+- 一个输出端：Today / Reports。
+- 一个折叠高级区：Review / Execution / Recent Runs / Metrics / LLM health。
+
+本轮直接落地 `M-UX.1`：
+
+- Today feed 从文本条目改为可操作卡片。
+- 路径类条目提供 `Open`。
+- review bucket 提供 `Open Review`。
+- 命令类条目只提供 `Copy command`，不直接执行。
+- Advanced summary 显示审阅、执行、最近运行计数。
+- 默认 workspace 主区打开 Product Shell；左侧只保留文件列表和书签；右侧只保留 Outline / Backlinks。
+- `HOME.md` 降级为产品入口说明和关键链接，不再承担全量索引页职责。
+
+明确不做：
+
+- 不扩展 `shell-summary` contract。
+- 不新增 runtime schema。
+- 不把 Today action 做成一键 `Run`。
+- 不迁移已有用户 vault。
+- 不把 `raw/wiki/output/schema` 分层隐藏到 runtime 之外；只是不在默认工作台首屏强迫用户理解它。
+
 ## 当前评价
 
 | 维度 | 评价 |

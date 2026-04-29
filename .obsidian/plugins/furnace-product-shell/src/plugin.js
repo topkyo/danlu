@@ -2532,17 +2532,19 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
-  async openView(viewType) {
+  async openView(viewType, options = {}) {
     let leaf = this.app.workspace.getLeavesOfType(viewType)[0];
     if (!leaf) {
-      leaf = this.app.workspace.getRightLeaf(false) || this.app.workspace.getLeaf(true);
+      leaf = options.preferMain
+        ? this.app.workspace.getLeaf(true)
+        : (this.app.workspace.getRightLeaf(false) || this.app.workspace.getLeaf(true));
     }
     await leaf.setViewState({ type: viewType, active: true });
     this.app.workspace.revealLeaf(leaf);
   }
 
   async openFurnaceCenterView() {
-    await this.openView(VIEW_TYPE_FURNACE_CENTER);
+    await this.openView(VIEW_TYPE_FURNACE_CENTER, { preferMain: true });
   }
 
   async openRecentRunsView() {

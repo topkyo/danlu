@@ -25,43 +25,32 @@ class ObsidianWorkspaceTests(unittest.TestCase):
     def test_workspace_defaults_open_home_and_furnace_center(self) -> None:
         workspace = json.loads((self.root / ".obsidian" / "workspace.json").read_text(encoding="utf-8"))
         main_children = workspace["main"]["children"][0]["children"]
-        self.assertEqual(main_children[0]["state"]["state"]["file"], "HOME.md")
+        self.assertEqual(workspace["active"], "main-furnace-center")
+        self.assertEqual(main_children[0]["state"]["type"], "furnace-product-shell-furnace-center")
+        self.assertEqual(main_children[1]["state"]["state"]["file"], "HOME.md")
         left_children = workspace["left"]["children"][0]["children"]
         left_titles = [child["state"].get("title") for child in left_children]
-        self.assertEqual(
-            left_titles,
-            ["文件列表", "原料 raw", "wiki 知识", "输出 output", "规则 schema", "书签"],
-        )
+        self.assertEqual(left_titles, ["文件列表", "书签"])
         right_children = workspace["right"]["children"][0]["children"]
         view_types = [child["state"]["type"] for child in right_children]
-        self.assertIn("furnace-product-shell-furnace-center", view_types)
-        self.assertIn("furnace-product-shell-review-center", view_types)
-        self.assertIn("furnace-product-shell-execution-center", view_types)
-        self.assertIn("furnace-product-shell-recent-runs", view_types)
+        self.assertEqual(view_types, ["outline", "backlink"])
 
     def test_home_dashboard_links_key_index_notes(self) -> None:
         home = (self.root / "HOME.md").read_text(encoding="utf-8")
-        self.assertIn("[[wiki/indexes/Raw Inbox|", home)
-        self.assertIn("[[wiki/indexes/Wiki Hub|", home)
+        self.assertIn("Product Shell", home)
+        self.assertIn("输入端", home)
+        self.assertIn("输出端", home)
+        self.assertIn("高级入口", home)
         self.assertIn("[[docs/Furnace Agent Architecture|", home)
         self.assertIn("[[docs/Furnace Evolution Mechanics|", home)
         self.assertIn("[[docs/Furnace Elixir|", home)
         self.assertIn("[[wiki/indexes/furnace-center|", home)
-        self.assertIn("[[wiki/indexes/protocols|", home)
         wiki_hub = (self.root / "wiki" / "indexes" / "Wiki Hub.md").read_text(encoding="utf-8")
         self.assertIn("[[docs/Furnace Agent Architecture|", wiki_hub)
         self.assertIn("[[docs/Furnace Evolution Mechanics|", wiki_hub)
-        self.assertIn("[[wiki/indexes/review-center|", home)
-        self.assertIn("[[wiki/indexes/graph-view|", home)
-        self.assertIn("[[wiki/indexes/machine-memory|", home)
-        self.assertIn("[[wiki/indexes/graph-health|", home)
-        self.assertIn("[[wiki/indexes/drift-report|", home)
-        self.assertIn("[[wiki/indexes/repair-backlog|", home)
-        self.assertIn("[[wiki/indexes/review-queue|", home)
-        self.assertIn("[[schema/index|", home)
-        self.assertIn("[[schema/protocols/index|", home)
         self.assertIn("[[wiki/indexes/Outputs|", home)
-        self.assertIn("[[wiki/indexes/Search Presets|", home)
+        self.assertIn("[[wiki/indexes/judgment-assets|", home)
+        self.assertNotIn("## 今日信号", home)
 
     def test_index_notes_exist(self) -> None:
         for relative in (

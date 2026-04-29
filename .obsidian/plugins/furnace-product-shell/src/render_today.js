@@ -37,16 +37,98 @@ function renderTodayFeed(plugin, container) {
     groupEl.createEl("h3", { text: heading });
     const listEl = groupEl.createEl("ul", { cls: "furnace-today-feed-list" });
     for (const entry of items) {
-      const li = listEl.createEl("li", { cls: "furnace-today-feed-item" });
-      const titleEl = li.createEl("div", { cls: "furnace-today-feed-title", text: entry.title });
-      if (entry.summary) {
-        li.createEl("div", { cls: "furnace-today-feed-summary", text: entry.summary });
-      }
-      if (entry.target) {
-        li.createEl("div", { cls: "furnace-today-feed-target", text: entry.target });
-      }
+      renderTodayFeedItem(plugin, listEl, entry);
     }
   }
+}
+
+function renderTodayFeedItem(plugin, listEl, entry) {
+  const li = listEl.createEl("li", { cls: "furnace-today-feed-item furnace-today-feed-card" });
+  const copy = li.createDiv({ cls: "furnace-today-feed-copy" });
+  copy.createEl("div", { cls: "furnace-today-feed-title", text: entry.title });
+  if (entry.summary) {
+    copy.createEl("div", { cls: "furnace-today-feed-summary", text: entry.summary });
+  }
+  if (entry.target) {
+    copy.createEl("div", { cls: "furnace-today-feed-target", text: entry.target });
+  }
+
+  const actions = todayFeedActions(plugin, entry);
+  if (!actions.length) {
+    return;
+  }
+  const actionRow = li.createDiv({ cls: "furnace-today-feed-actions" });
+  for (const action of actions) {
+    const button = actionRow.createEl("button", { text: plugin.t(action.label) });
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      plugin.runUiAction(() => action.onClick(), action.description || action.label);
+    });
+  }
+}
+
+function todayFeedActions(plugin, entry) {
+  const target = String(entry && entry.target || "").trim();
+  if (!target) {
+    return [];
+  }
+  if (isReviewTarget(target)) {
+    return [
+      {
+        label: "Open Review",
+        description: `Open review surface: ${target}`,
+        onClick: async () => plugin.openReviewCenterView(),
+      },
+    ];
+  }
+  if (isWorkspaceTarget(target)) {
+    return [
+      {
+        label: entry.kind === "proposal" ? "Open proposal" : "Open",
+        description: `Open today target: ${target}`,
+        onClick: async () => plugin.openWorkspacePath(target),
+      },
+    ];
+  }
+  if (entry.kind === "action" || looksLikeCommandTarget(target)) {
+    return [
+      {
+        label: "Copy command",
+        description: `Copy today command: ${target}`,
+        onClick: async () => plugin.copyText(target),
+      },
+    ];
+  }
+  return [
+    {
+      label: "Copy target",
+      description: `Copy today target: ${target}`,
+      onClick: async () => plugin.copyText(target),
+    },
+  ];
+}
+
+function isReviewTarget(target) {
+  return String(target || "").startsWith("review:");
+}
+
+function isWorkspaceTarget(target) {
+  const text = String(target || "").trim();
+  if (!text || text.includes("\n")) {
+    return false;
+  }
+  if (/^(?:raw|wiki|output|schema|docs|\.aiwiki)\//.test(text)) {
+    return true;
+  }
+  return /\.(?:md|json|html|pdf|png|jpg|jpeg|webp|svg)$/i.test(text);
+}
+
+function looksLikeCommandTarget(target) {
+  const text = String(target || "").trim();
+  if (!text) {
+    return false;
+  }
+  return /^(?:aiwiki|python3?|PYTHONPATH=|drop-|run-|ask\b|compile\b|nightly\b|review-|apply-|revert-|file-back\b|metrics\b|today\b)/.test(text);
 }
 
 function renderReportsPanel(plugin, container, reports) {
