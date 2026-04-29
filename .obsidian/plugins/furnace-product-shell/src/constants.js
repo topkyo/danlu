@@ -244,6 +244,8 @@ const ZH_TEXT = {
   Open: "打开",
   "Open Review": "打开审阅",
   "Copy target": "复制目标",
+  "Metric alert": "指标提醒",
+  "Command prepared for manual confirmation": "命令已准备，复制后人工确认",
   "Search Results": "搜索结果",
   "No matching pages in the compiled workspace.": "编译后的工作区中没有匹配页面。",
   "Recent Queries": "最近查询",

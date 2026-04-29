@@ -49,8 +49,9 @@ function renderTodayFeedItem(plugin, listEl, entry) {
   if (entry.summary) {
     copy.createEl("div", { cls: "furnace-today-feed-summary", text: entry.summary });
   }
-  if (entry.target) {
-    copy.createEl("div", { cls: "furnace-today-feed-target", text: entry.target });
+  const targetLabel = todayFeedTargetLabel(plugin, entry);
+  if (targetLabel) {
+    copy.createEl("div", { cls: "furnace-today-feed-target", text: targetLabel });
   }
 
   const actions = todayFeedActions(plugin, entry);
@@ -106,6 +107,26 @@ function todayFeedActions(plugin, entry) {
       onClick: async () => plugin.copyText(target),
     },
   ];
+}
+
+function todayFeedTargetLabel(plugin, entry) {
+  const target = String(entry && entry.target || "").trim();
+  if (!target) {
+    return "";
+  }
+  if (isReviewTarget(target)) {
+    return plugin.t("Review queue");
+  }
+  if (isWorkspaceTarget(target)) {
+    return target;
+  }
+  if (entry.kind === "action" || looksLikeCommandTarget(target)) {
+    if (target.startsWith("metric:")) {
+      return plugin.t("Metric alert");
+    }
+    return plugin.t("Command prepared for manual confirmation");
+  }
+  return target;
 }
 
 function isReviewTarget(target) {

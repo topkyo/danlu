@@ -1495,3 +1495,11 @@ oracle 复评 `ses_22e7d0c4cffex6PjhhVJ4nQzT5` 给出 8.6/10，定位三处距 9
   - `tests/test_alchemy.py`：新增三个 audit-fail rollback 测试（promote / revert / demote 各一个，patch `aiwiki.execution.audit_preview.append_audit`）+ corrupt JSONL strict 测试 `test_find_latest_elixir_promotion_receipt_raises_on_corrupt_jsonl`；旧反向测试 `test_find_latest_elixir_promotion_receipt_skips_non_dict_lines` 改写为 `..._raises_on_non_object_line`
   - `tests/test_state_utils.py`：新增 `test_load_json_document_returns_empty_when_top_level_not_object`
 - verify pass：1425 unit + 13 acceptance / 93% coverage / `--fail-under=92` gate
+
+### 2026-04-29 — Round 24 / M-UX.3 真机 Product Shell 继续收敛
+
+- 首屏 workspace：repo `.obsidian/workspace.json`、`bootstrap_new_vault()` 默认模板、dogfood `/home/tim/danlu/炼丹炉/.obsidian/workspace.json` 均默认折叠左右侧栏；功能上保留文件列表/书签和大纲/反链，但不再占用产品首屏。
+- Today feed：`review_backlog_counts` bucket 可见标题从内部 id 改为产品中文文案（补充反证候选、复核研究判断、处理 L3 提案、修复机器记忆等）；`review:*` target 和命令类 action target 首屏展示中文提示，不直接暴露 raw target 或整条命令。
+- 关系图谱：`output/graph/machine-memory.html` 的 title、H1、说明、legend、筛选项、详情字段、相关入口已中文化；dogfood 已重新 compile 刷新关系图谱输出。
+- Verification：focused tests pass；`bash scripts/verify.sh` pass（1504 unit + 13 acceptance，coverage 92%）。
+- QA review：fresh-session reviewer mode 可解析，但本机 Codex usage limit 阻塞独立会话启动；已记录 same-context fallback，无发现。

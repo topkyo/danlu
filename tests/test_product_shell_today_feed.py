@@ -29,6 +29,9 @@ class ProductShellTodayFeedContractTests(unittest.TestCase):
         for kind in ["decision", "proposal", "report", "elixir", "action"]:
             self.assertIn(kind, text)
         self.assertTrue("today_feed.py" in text or "MIRROR" in text or "mirror" in text)
+        self.assertIn("REVIEW_BUCKET_COPY", text)
+        self.assertIn("补充反证候选", text)
+        self.assertNotIn("待审议: ${kindText}", text)
 
     def test_today_feed_styles_present(self) -> None:
         css = (PLUGIN / "styles.css").read_text(encoding="utf-8")
@@ -39,9 +42,13 @@ class ProductShellTodayFeedContractTests(unittest.TestCase):
         text = (PLUGIN / "src/render_today.js").read_text(encoding="utf-8")
         self.assertIn("renderTodayFeedItem", text)
         self.assertIn("todayFeedActions", text)
+        self.assertIn("todayFeedTargetLabel", text)
+        self.assertIn("if (isWorkspaceTarget(target))", text)
         self.assertIn("Open Review", text)
         self.assertIn("Copy command", text)
         self.assertIn("Copy target", text)
+        self.assertIn("Review queue", text)
+        self.assertIn("Command prepared for manual confirmation", text)
 
     def test_advanced_drawer_summary_exposes_counts(self) -> None:
         text = (PLUGIN / "src/render_advanced.js").read_text(encoding="utf-8")

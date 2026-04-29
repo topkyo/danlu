@@ -70,6 +70,8 @@ class VaultBootstrapTests(unittest.TestCase):
         self.assertEqual(plugin_data["settings"]["locale"], "zh")
         self.assertEqual(workspace["active"], "main-furnace-center")
         self.assertEqual(workspace["main"]["children"][0]["children"][0]["state"]["type"], "furnace-product-shell-furnace-center")
+        self.assertTrue(workspace["left"].get("collapsed"))
+        self.assertTrue(workspace["right"].get("collapsed"))
         self.assertEqual(
             [child["state"]["title"] for child in workspace["left"]["children"][0]["children"]],
             ["文件列表", "书签"],

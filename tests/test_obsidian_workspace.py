@@ -28,6 +28,8 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         self.assertEqual(workspace["active"], "main-furnace-center")
         self.assertEqual(main_children[0]["state"]["type"], "furnace-product-shell-furnace-center")
         self.assertEqual(main_children[1]["state"]["state"]["file"], "HOME.md")
+        self.assertTrue(workspace["left"].get("collapsed"))
+        self.assertTrue(workspace["right"].get("collapsed"))
         left_children = workspace["left"]["children"][0]["children"]
         left_titles = [child["state"].get("title") for child in left_children]
         self.assertEqual(left_titles, ["文件列表", "书签"])

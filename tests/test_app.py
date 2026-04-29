@@ -2724,10 +2724,12 @@ class AiwikiFlowTests(unittest.TestCase):
         graph_html = self.root / "output" / "graph" / "machine-memory.html"
         payload = graph_html.read_text(encoding="utf-8")
         self.assertTrue(graph_html.exists())
-        self.assertIn("Machine Memory Graph", payload)
+        self.assertIn("炼丹炉关系图谱", payload)
+        self.assertNotIn("Machine Memory Graph", payload)
         self.assertIn("<svg", payload)
         self.assertIn("Transformer Scaling", payload)
         self.assertIn("../../wiki/indexes/graph-view.md", payload)
+        self.assertIn("图谱视图", payload)
 
     def test_compile_writes_review_center_html(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -7055,6 +7057,10 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("graphUiData", payload)
         self.assertIn("节点详情", payload)
         self.assertIn('option value="judgment"', payload)
+        self.assertIn('<option value="source">来源</option>', payload)
+        self.assertIn("关系边", payload)
+        self.assertNotIn("Graph View Dashboard", payload)
+        self.assertNotIn("related edge", payload)
         self.assertIn("graph-zoom-in", payload)
         self.assertIn("graph-focus-node", payload)
         self.assertIn("graph-reset-view", payload)
@@ -7089,8 +7095,8 @@ class AiwikiFlowTests(unittest.TestCase):
 
         payload = (self.root / "output" / "graph" / "machine-memory.html").read_text(encoding="utf-8")
         self.assertIn("Scaling Judgment", payload)
-        self.assertIn("judgment \u00b7 confirmed", payload)
-        self.assertIn("protocol", payload)
+        self.assertIn("判断 \u00b7 已确认", payload)
+        self.assertIn("协议", payload)
 
     def test_compile_surfaces_judgment_relations_across_memory_and_history(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

@@ -30,8 +30,8 @@ def _case_decision_entry_built_from_review_backlog() -> None:
     assert feed == [
         FeedEntry(
             kind="decision",
-            title="待审议: pending_decisions",
-            summary="2 项待审",
+            title="处理待定决策",
+            summary="2 项待处理 · 确认待定判断与执行入口",
             target="review:pending_decisions",
             timestamp="2026-04-27T10:00:00Z",
             protocol="",
@@ -51,7 +51,23 @@ def _case_decision_entry_skipped_for_blank_kind() -> None:
 def _case_decision_entry_built_from_bool_count() -> None:
     feed = build_today_feed({"review_backlog_counts": {"pending_decisions": True}})
     assert len(feed) == 1
-    assert feed[0].summary == "1 项待审"
+    assert feed[0].summary == "1 项待处理 · 确认待定判断与执行入口"
+
+
+def _case_review_backlog_uses_product_labels() -> None:
+    feed = build_today_feed(
+        {
+            "review_backlog_counts": {
+                "counter_evidence_candidates": 1,
+                "judgment_review_actions": 1,
+                "l3_proposals": 1,
+                "machine_memory_actions": 6,
+            }
+        }
+    )
+    titles = [entry.title for entry in feed]
+    assert titles == ["补充反证候选", "复核研究判断", "处理 L3 提案", "修复机器记忆"]
+    assert all("_" not in entry.title for entry in feed)
 
 
 def _case_proposal_entry_built() -> None:

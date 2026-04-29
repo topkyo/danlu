@@ -22,6 +22,16 @@ _PRIORITY: dict[str, int] = {
     "action": 5,
 }
 
+_REVIEW_BUCKET_COPY: dict[str, tuple[str, str]] = {
+    "counter_evidence_candidates": ("补充反证候选", "检查新来源是否足以反驳既有判断"),
+    "judgment_review_actions": ("复核研究判断", "处理需要重新判断的结论"),
+    "l3_proposals": ("处理 L3 提案", "确认采纳、拒绝或回滚提案"),
+    "machine_memory_actions": ("修复机器记忆", "处理可审计的记忆修复动作"),
+    "pending_decisions": ("处理待定决策", "确认待定判断与执行入口"),
+    "pending_judgments": ("复核待定判断", "推进仍在等待复核的判断"),
+    "ready_actions": ("确认待执行动作", "复核已经准备好的安全动作"),
+}
+
 
 @dataclass(frozen=True)
 class FeedEntry:
@@ -66,17 +76,27 @@ def _build_decision_entries(summary: dict[str, Any]) -> list[FeedEntry]:
         kind_text = str(kind).strip()
         if not kind_text:
             continue
+        title, hint = _review_bucket_copy(kind_text)
         entries.append(
             FeedEntry(
                 kind="decision",
-                title=f"待审议: {kind_text}",
-                summary=f"{count} 项待审",
+                title=title,
+                summary=f"{count} 项待处理 · {hint}",
                 target=f"review:{kind_text}",
                 timestamp=timestamp,
                 protocol="",
             )
         )
     return entries
+
+
+def _review_bucket_copy(kind_text: str) -> tuple[str, str]:
+    copy = _REVIEW_BUCKET_COPY.get(kind_text)
+    if copy:
+        return copy
+    label = kind_text.replace("_", " ").replace("-", " ").strip()
+    title = f"处理审阅队列：{label}" if label else "处理审阅队列"
+    return title, "进入审阅中心确认下一步"
 
 
 def _build_counter_evidence_entries(summary: dict[str, Any]) -> list[FeedEntry]:

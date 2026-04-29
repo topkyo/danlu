@@ -170,6 +170,7 @@ def _default_workspace_document() -> dict[str, Any]:
             "output/control/shell-summary.json",
         ],
         "left": {
+            "collapsed": True,
             "children": [
                 {
                     "children": [
@@ -252,6 +253,7 @@ def _default_workspace_document() -> dict[str, Any]:
             "type": "split",
         },
         "right": {
+            "collapsed": True,
             "children": [
                 {
                     "children": [

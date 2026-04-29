@@ -14,6 +14,16 @@ const PRIORITY = {
   action: 5,
 };
 
+const REVIEW_BUCKET_COPY = {
+  counter_evidence_candidates: ["补充反证候选", "检查新来源是否足以反驳既有判断"],
+  judgment_review_actions: ["复核研究判断", "处理需要重新判断的结论"],
+  l3_proposals: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
+  machine_memory_actions: ["修复机器记忆", "处理可审计的记忆修复动作"],
+  pending_decisions: ["处理待定决策", "确认待定判断与执行入口"],
+  pending_judgments: ["复核待定判断", "推进仍在等待复核的判断"],
+  ready_actions: ["确认待执行动作", "复核已经准备好的安全动作"],
+};
+
 function buildTodayFeed(summary) {
   if (!summary || typeof summary !== "object") return [];
   const todayDate = todayDateOf(summary);
@@ -41,10 +51,11 @@ function buildDecisionEntries(summary) {
     if (count <= 0) continue;
     const kindText = String(kind).trim();
     if (!kindText) continue;
+    const [title, hint] = reviewBucketCopy(kindText);
     entries.push({
       kind: "decision",
-      title: `待审议: ${kindText}`,
-      summary: `${count} 项待审`,
+      title,
+      summary: `${count} 项待处理 · ${hint}`,
       target: `review:${kindText}`,
       timestamp,
       protocol: "",
@@ -207,6 +218,13 @@ function asCount(value) {
   if (typeof value === "number") return isNaN(value) ? 0 : Math.floor(value);
   const parsed = parseInt(String(value), 10);
   return isNaN(parsed) ? 0 : parsed;
+}
+
+function reviewBucketCopy(kindText) {
+  const copy = REVIEW_BUCKET_COPY[kindText];
+  if (copy) return copy;
+  const label = String(kindText || "").replace(/[_-]/g, " ").trim();
+  return [label ? `处理审阅队列：${label}` : "处理审阅队列", "进入审阅中心确认下一步"];
 }
 
 function compareEntries(a, b) {

@@ -11,6 +11,7 @@
     "output/control/shell-summary.json"
   ],
   "left": {
+    "collapsed": true,
     "children": [
       {
         "children": [
@@ -100,6 +101,7 @@
     "type": "split"
   },
   "right": {
+    "collapsed": true,
     "children": [
       {
         "children": [
