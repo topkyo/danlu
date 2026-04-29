@@ -294,6 +294,65 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(events[-1]["error_type"], "RuntimeError")
         self.assertEqual(events[-1]["artifact"], result["path"])
 
+    def test_ask_question_uses_readable_report_filename_without_query_timestamp(self) -> None:
+        result = ask_question(self.root, "Should we increase transformer training spend?", "report")
+
+        self.assertEqual(result["path"], "output/reports/should-we-increase-transformer-training-spend.md")
+        page = (self.root / result["path"]).read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(page)
+        self.assertEqual(frontmatter["id"], "should-we-increase-transformer-training-spend")
+        self.assertTrue(frontmatter["created_at"])
+
+    def test_ask_question_preserves_cjk_title_in_report_filename(self) -> None:
+        result = ask_question(self.root, "评估炼丹炉最终形态？", "report")
+
+        self.assertEqual(result["path"], "output/reports/评估炼丹炉最终形态.md")
+
+    def test_ask_question_uses_collision_suffix_instead_of_timestamp(self) -> None:
+        first = ask_question(self.root, "Should we increase transformer training spend?", "report")
+        second = ask_question(self.root, "Should we increase transformer training spend?", "report")
+
+        self.assertEqual(first["path"], "output/reports/should-we-increase-transformer-training-spend.md")
+        self.assertEqual(second["path"], "output/reports/should-we-increase-transformer-training-spend-2.md")
+
+    def test_ask_question_keeps_format_suffix_without_timestamp(self) -> None:
+        result = ask_question(self.root, "What next?", "decision-memo")
+
+        self.assertEqual(result["path"], "output/reports/what-next-decision-memo.md")
+
+    def test_file_back_uses_readable_curated_filename_without_timestamp(self) -> None:
+        artifact = self.root / "output" / "reports" / "semantic-navigation-assessment.md"
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_text(
+            "---\n"
+            "id: semantic-navigation-assessment\n"
+            "kind: output\n"
+            "format: report\n"
+            "created_at: 2026-04-29T00:00:00+00:00\n"
+            "---\n"
+            "\n"
+            "# Semantic Navigation Assessment\n"
+            "\n"
+            "Body.\n",
+            encoding="utf-8",
+        )
+
+        result = file_back(
+            self.root,
+            "output/reports/semantic-navigation-assessment.md",
+            title="Eva Robot Batch E semantic navigation assessment",
+            kind="judgment",
+        )
+
+        self.assertEqual(
+            result["path"],
+            "wiki/judgments/judgment-eva-robot-batch-e-semantic-navigation-assessment.md",
+        )
+        page = (self.root / result["path"]).read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(page)
+        self.assertEqual(frontmatter["id"], "judgment-eva-robot-batch-e-semantic-navigation-assessment")
+        self.assertTrue(frontmatter["formed_at"])
+
     def test_ask_with_corpus_flag_reuses_corpus_id(self) -> None:
         first = run_ask(self.root, "First question?", "report", client=_StubClient(["---\nfront: yes\n---\n# Title\n\nBody.\n"]))
         second = run_ask(

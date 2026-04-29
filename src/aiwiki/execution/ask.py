@@ -27,7 +27,6 @@ we import it lazily via the seam for the same reason.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -108,6 +107,47 @@ NEXT_STEP_HINTS = {
     ),
 }
 
+READABLE_FILENAME_MAX_CHARS = 72
+OUTPUT_FORMAT_FILENAME_SUFFIXES = {
+    "decision-memo": "decision-memo",
+    "sop": "sop",
+    "slides": "slides",
+    "figure": "figure",
+}
+
+
+def _readable_filename_stem(label: str, *, fallback: str, max_chars: int = READABLE_FILENAME_MAX_CHARS) -> str:
+    parts: list[str] = []
+    pending_separator = False
+    for char in label.strip():
+        if char.isalnum():
+            if pending_separator and parts:
+                parts.append("-")
+            parts.append(char.lower() if char.isascii() else char)
+            pending_separator = False
+        elif char in {"-", "_"} or char.isspace() or not char.isprintable() or char in {"/", "\\"}:
+            pending_separator = True
+        else:
+            pending_separator = True
+    stem = "".join(parts).strip("-_")
+    if len(stem) > max_chars:
+        stem = stem[:max_chars].rstrip("-_")
+    return stem or fallback
+
+
+def _output_artifact_seed(question: str, output_format: str) -> str:
+    fallback = OUTPUT_FORMAT_FILENAME_SUFFIXES.get(output_format, output_format or "output")
+    stem = _readable_filename_stem(question, fallback=fallback)
+    suffix = OUTPUT_FORMAT_FILENAME_SUFFIXES.get(output_format)
+    if suffix:
+        return f"{stem}-{suffix}"
+    return stem
+
+
+def _file_back_entry_seed(kind: str, title: str) -> str:
+    stem = _readable_filename_stem(title, fallback=kind)
+    return f"{kind}-{stem}"
+
 # ``utc_now`` and ``rank_concepts`` are resolved lazily via
 # ``aiwiki.app_compile`` inside each function body. Reasons:
 #
@@ -186,8 +226,7 @@ def ask_question(
                 boosted_ids.add(Path(source_page).stem)
     ranked = rank_sources(root, entries, question, boost_source_ids=boosted_ids, protocol=active_protocol)
     created_at = _app_compile.utc_now()
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    artifact_seed = f"query-{stamp}-{slugify(question)[:48]}"
+    artifact_seed = _output_artifact_seed(question, output_format)
 
     if output_format == "report":
         directory = root / "output" / "reports"
@@ -196,7 +235,7 @@ def ask_question(
         content = render_report(root, question, ranked, ranked_concepts, machine_query, protocol_state, created_at, artifact_id)
     elif output_format == "decision-memo":
         directory = root / "output" / "reports"
-        artifact_id = next_available_stem(directory, f"{artifact_seed}-decision-memo")
+        artifact_id = next_available_stem(directory, artifact_seed)
         destination = directory / f"{artifact_id}.md"
         content = render_decision_memo_query(
             root,
@@ -210,7 +249,7 @@ def ask_question(
         )
     elif output_format == "sop":
         directory = root / "output" / "reports"
-        artifact_id = next_available_stem(directory, f"{artifact_seed}-sop")
+        artifact_id = next_available_stem(directory, artifact_seed)
         destination = directory / f"{artifact_id}.md"
         content = render_sop_query(
             root,
@@ -485,7 +524,6 @@ def file_back(
         raise ValueError(f"Unsupported filed-back kind: {kind}")
 
     filed_at = _app_compile.utc_now()
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     artifact_ref = (
         relative_path(root, artifact_path) if artifact_path.is_relative_to(root) else str(artifact_path)
     )
@@ -495,7 +533,7 @@ def file_back(
     citation_snapshots = build_citation_snapshots(root, citations)
     source_protocol = str(original_frontmatter.get("protocol") or "").strip()
     resolved_protocol = resolve_protocol(root, protocol or source_protocol or None)
-    entry_seed = f"{kind}-{stamp}-{slugify(title or artifact_path.stem)[:48]}"
+    entry_seed = _file_back_entry_seed(kind, title or artifact_path.stem)
     directory = {
         "derived": root / "wiki" / "derived",
         "decision": root / "wiki" / "decisions",

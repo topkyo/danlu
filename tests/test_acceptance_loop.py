@@ -163,7 +163,6 @@ def _copy_case_and_fix_clock_from(  # pragma: no cover - exercised by explicit p
     monkeypatch.setattr("aiwiki.content.io.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.render.paths.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.app_shell.utc_now", lambda: FIXED_NOW.isoformat())
-    monkeypatch.setattr("aiwiki.execution.ask.datetime", _FixedDateTime)
     monkeypatch.setattr("aiwiki.runner.receipts.datetime", _FixedDateTime)
     monkeypatch.setattr("aiwiki.execution.audit_preview.datetime", _FixedDateTime)
     monkeypatch.setattr("aiwiki.content.memory.datetime", _FixedDateTime)

@@ -407,7 +407,7 @@
   "model_final": "stub-model",
   "model_selected": "stub-model",
   "no_cache": false,
-  "path": "output/reports/query-20260427-000000-deterministic-source-a.md",
+  "path": "output/reports/deterministic-source-a.md",
   "primary_attempt_status": "",
   "primary_error": "",
   "prompt_profile": "balanced",
