@@ -43,12 +43,24 @@ class ProductShellTodayFeedContractTests(unittest.TestCase):
         self.assertIn("renderTodayFeedItem", text)
         self.assertIn("todayFeedActions", text)
         self.assertIn("todayFeedTargetLabel", text)
+        self.assertIn("workspaceTargetDisplayLabel", text)
         self.assertIn("if (isWorkspaceTarget(target))", text)
         self.assertIn("Open Review", text)
+        self.assertIn("Open report", text)
         self.assertIn("Copy command", text)
         self.assertIn("Copy target", text)
         self.assertIn("Review queue", text)
+        self.assertIn("Report", text)
+        self.assertIn("Workspace page", text)
         self.assertIn("Command prepared for manual confirmation", text)
+
+    def test_today_feed_hides_runtime_paths_behind_product_labels(self) -> None:
+        text = (PLUGIN / "src/render_today.js").read_text(encoding="utf-8")
+        self.assertIn('text.startsWith("output/reports/")', text)
+        self.assertIn('return plugin.t("Report")', text)
+        self.assertIn('return plugin.t("Decision page")', text)
+        self.assertIn('return plugin.t("Judgment page")', text)
+        self.assertIn('return plugin.t("Proposal page")', text)
 
     def test_advanced_drawer_summary_exposes_counts(self) -> None:
         text = (PLUGIN / "src/render_advanced.js").read_text(encoding="utf-8")

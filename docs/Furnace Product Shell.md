@@ -2,7 +2,7 @@
 
 *Obsidian 插件 UI 层事实源；炼丹炉"一个输入端 + 一个输出端"原则的可视化呈现*
 *Status: Active SoT, decision points resolved (§10)*
-*Last updated: 2026-04-27*
+*Last updated: 2026-04-29*
 
 ## 0. 第一性原理
 
@@ -12,10 +12,10 @@
 
 - **一个输入端**：首屏只给用户一个清晰的 Ask / Command 输入入口，以及同一心智下的 Drop URL / PDF / Image / Repo 投料区。
 - **一个输出端**：首屏只呈现最新报告、今日简报和需要阅读的产出，不把运行态流水线当成用户目标。
-- **其他全部隐藏**：System Status / LLM Health / Review Center / Execution Center / Repair Backlog / Recent Runs 等运维、状态、监控入口全部收纳到 Advanced 抽屉。
+- **其他全部隐藏**：System Status / LLM Health / Review Center / Execution Center / Repair Backlog / Recent Runs 等运维、状态、监控入口全部收纳到 Advanced / 更多工具抽屉。
 - **用户心智最小化**：任何 UI 层新增卡片、按钮、状态或通知，都必须证明它没有扩大用户需要理解的概念数量。
 - **通知只服务输出端**：外部 webhook 通知（飞书 / 企业微信）只提醒"有新报告需要看"，不把后台调度细节推给用户。
-- **Advanced 不是删除**：高级视图仍保留给操作者排障和治理，只是不占据默认首屏。
+- **Advanced / 更多工具不是删除**：高级视图仍保留给操作者排障和治理，只是不占据默认首屏。
 - **UI 不拥有 runtime state**：Product Shell 只通过 launcher CLI 与 `output/control/shell-summary.json` 读取 shell-facing contract。
 - **UI 不新增 SoT 字段**：本文档不引入任何新的事实字段、schema 字段或 runtime contract。
 - **不扩 `shell-summary`**：§6 已论证未读状态、按日分组和通知机制均可在插件本地 settings / 内存中闭环计算。
@@ -228,3 +228,16 @@ M-PS.1 实施后，Product Shell 仍只作为 surface / trigger 运行；Notifie
 - **Review-apply-revert-audit**：Advanced 抽屉中的治理入口继续走既有可审计、可回滚路径。
 - **Advanced 抽屉不删除能力**：System Status / LLM Health / Review Center / Execution Center / Repair Backlog / Recent Runs 都不会被删除，只是从首屏降级。
 - **同步审查要求**：当 `docs/Furnace Agent Architecture.md` §3 的不变量发生变化时，本文档必须同步审查。
+
+## 12. UX Follow-up Status（2026-04-29）
+
+M-UX.1 ~ M-UX.6 之后，Product Shell 的实际产品面继续向“一个输入端 + 一个输出端”收敛：
+
+- 默认 Obsidian workspace 进入主区 Product Shell，左侧仅文件列表/书签，右侧仅大纲/反链，并默认折叠左右侧栏。
+- new-vault 与 dogfood vault 的 CSS snippet 把普通用户文件树收敛为报告视图：隐藏 `raw/wiki/schema/scripts/prompts`，`output/` 下默认只露出 `reports/`。
+- Advanced 抽屉在中文界面显示为“更多工具”，摘要显示“待审 / 待执行 / 运行记录”，避免把 operator 机制放进首屏。
+- Today feed 的可见 target 不再默认展示 `output/...` / `wiki/...` runtime path，而以“报告 / 判断页 / 决策页 / 提案页 / 关系图谱”等产品标签呈现；真实路径仍由按钮动作持有。
+- 报告卡和 Today 报告动作使用 “Open report / 打开报告”，而不是泛化的 “Open / 打开”，让报告入口成为明确输出端。
+- 关系图谱 HTML 已从 `component / slug / wiki 页面 / Hub / rewrite` 口吻收敛到“关系组 / 关键词或来源编号 / 详情页 / 核心概念 / 核心来源 / 改写提案”。
+
+这些变更不扩展 `shell-summary`，不新增 settings schema，不移动 runtime 目录，也不删除 CLI/operator 能力。

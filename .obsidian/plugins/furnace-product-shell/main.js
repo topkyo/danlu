@@ -262,10 +262,23 @@ const ZH_TEXT = {
   "No suggested next action right now.": "当前没有明确的建议下一步动作。",
   "reason {value}": "原因 {value}",
   Open: "打开",
+  "Open report": "打开报告",
+  "Open decision": "打开决策",
+  "Open judgment": "打开判断",
   "Open Review": "打开审阅",
   "Copy target": "复制目标",
+  Report: "报告",
+  "Decision page": "决策页",
+  "Judgment page": "判断页",
+  "Proposal page": "提案页",
+  "Graph page": "关系图谱",
+  "Review surface": "审阅入口",
+  "Workspace page": "工作区页面",
   "Metric alert": "指标提醒",
   "Command prepared for manual confirmation": "命令已准备，复制后人工确认",
+  "Previous Reports": "过往报告",
+  "(no reports today)": "今天还没有报告",
+  "(no previous reports)": "暂无过往报告",
   "Search Results": "搜索结果",
   "No matching pages in the compiled workspace.": "编译后的工作区中没有匹配页面。",
   "Recent Queries": "最近查询",
@@ -3094,7 +3107,14 @@ function renderTodayFeedItem(plugin, listEl, entry) {
   }
   const actionRow = li.createDiv({ cls: "furnace-today-feed-actions" });
   for (const action of actions) {
-    const button = actionRow.createEl("button", { text: plugin.t(action.label) });
+    const buttonLabel = plugin.t(action.label);
+    const button = actionRow.createEl("button", {
+      text: buttonLabel,
+      attr: {
+        "aria-label": buttonLabel,
+        title: action.description || buttonLabel,
+      },
+    });
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       plugin.runUiAction(() => action.onClick(), action.description || action.label);
@@ -3119,7 +3139,7 @@ function todayFeedActions(plugin, entry) {
   if (isWorkspaceTarget(target)) {
     return [
       {
-        label: entry.kind === "proposal" ? "Open proposal" : "Open",
+        label: workspaceTargetActionLabel(target, entry),
         description: `Open today target: ${target}`,
         onClick: async () => plugin.openWorkspacePath(target),
       },
@@ -3152,7 +3172,7 @@ function todayFeedTargetLabel(plugin, entry) {
     return plugin.t("Review queue");
   }
   if (isWorkspaceTarget(target)) {
-    return target;
+    return workspaceTargetDisplayLabel(plugin, target, entry);
   }
   if (entry.kind === "action" || looksLikeCommandTarget(target)) {
     if (target.startsWith("metric:")) {
@@ -3161,6 +3181,49 @@ function todayFeedTargetLabel(plugin, entry) {
     return plugin.t("Command prepared for manual confirmation");
   }
   return target;
+}
+
+function workspaceTargetActionLabel(target, entry) {
+  const text = String(target || "").trim();
+  if (entry && entry.kind === "proposal") {
+    return "Open proposal";
+  }
+  if (text.startsWith("output/reports/")) {
+    return "Open report";
+  }
+  if (text.startsWith("wiki/decisions/")) {
+    return "Open decision";
+  }
+  if (text.startsWith("wiki/judgments/")) {
+    return "Open judgment";
+  }
+  return "Open page";
+}
+
+function workspaceTargetDisplayLabel(plugin, target, entry) {
+  const text = String(target || "").trim();
+  if (entry && entry.kind === "proposal") {
+    return plugin.t("Proposal page");
+  }
+  if (text.startsWith("output/reports/")) {
+    return plugin.t("Report");
+  }
+  if (text.startsWith("wiki/decisions/")) {
+    return plugin.t("Decision page");
+  }
+  if (text.startsWith("wiki/judgments/")) {
+    return plugin.t("Judgment page");
+  }
+  if (text.startsWith("wiki/rewrite-proposals/") || text.startsWith("output/_proposals/")) {
+    return plugin.t("Proposal page");
+  }
+  if (text.startsWith("output/graph/") || text.startsWith("wiki/indexes/graph")) {
+    return plugin.t("Graph page");
+  }
+  if (text.startsWith("output/review/") || text.startsWith("wiki/indexes/review")) {
+    return plugin.t("Review surface");
+  }
+  return plugin.t("Workspace page");
 }
 
 function isReviewTarget(target) {
@@ -3248,7 +3311,7 @@ function renderReportItem(plugin, container, report) {
     text: `${plugin.t(report.protocol || "general")} · ${plugin.t(report.format || "markdown")} · ${formatDisplayTime(report.created_at, plugin.locale()) || report.created_at || plugin.t("unknown")}`,
   });
 
-  const openBtn = card.createEl("button", { text: plugin.t("Open") });
+  const openBtn = card.createEl("button", { text: plugin.t("Open report") });
   openBtn.addEventListener("click", (event) => {
     event.stopPropagation();
     plugin.runUiAction(() => openReport(), `Open output: ${report.path || titleText}`);
