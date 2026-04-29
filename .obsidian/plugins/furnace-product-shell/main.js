@@ -85,6 +85,13 @@ const ZH_TEXT = {
   "WeCom webhook URL": "企业微信 webhook URL",
   "Enable Feishu": "启用飞书",
   "Enable WeCom": "启用企业微信",
+  "Universal input": "统一输入",
+  "Universal Input": "统一输入",
+  "Universal input cannot be empty.": "统一输入不能为空。",
+  "Drop URL, PDF, image, repo, note, or question...": "投 URL、PDF、图片、repo、笔记，或直接提问……",
+  "Drop file here": "把文件拖到这里",
+  Submit: "提交",
+  "Invalid input: {message}": "输入无效：{message}",
   "Ask 炼丹炉": "问炼丹炉",
   Question: "问题",
   "Enter the research question...": "输入研究问题……",
@@ -2752,7 +2759,7 @@ function renderUniversalInput(plugin, container) {
   const form = wrapper.createDiv({ cls: "furnace-universal-input-form" });
   const textarea = form.createEl("textarea", { 
     cls: "furnace-universal-input-textarea",
-    attr: { "aria-label": "Universal input" }
+    attr: { "aria-label": plugin.t("Universal input") }
   });
   
   textarea.placeholder = plugin.t("Drop URL, PDF, image, repo, note, or question...");
@@ -2819,7 +2826,7 @@ function renderUniversalInput(plugin, container) {
         await plugin.runUniversalInputCommand({ payload: value });
       }
     } catch (e) {
-      new Notice("Invalid input: " + e.message);
+      new Notice(plugin.t("Invalid input: {message}", { message: e.message }));
     }
   };
 

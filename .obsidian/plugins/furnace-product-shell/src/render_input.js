@@ -11,7 +11,7 @@ function renderUniversalInput(plugin, container) {
   const form = wrapper.createDiv({ cls: "furnace-universal-input-form" });
   const textarea = form.createEl("textarea", { 
     cls: "furnace-universal-input-textarea",
-    attr: { "aria-label": "Universal input" }
+    attr: { "aria-label": plugin.t("Universal input") }
   });
   
   textarea.placeholder = plugin.t("Drop URL, PDF, image, repo, note, or question...");
@@ -78,7 +78,7 @@ function renderUniversalInput(plugin, container) {
         await plugin.runUniversalInputCommand({ payload: value });
       }
     } catch (e) {
-      new Notice("Invalid input: " + e.message);
+      new Notice(plugin.t("Invalid input: {message}", { message: e.message }));
     }
   };
 
