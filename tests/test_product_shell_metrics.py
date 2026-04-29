@@ -55,3 +55,15 @@ class ProductShellMetricsContractTests(unittest.TestCase):
         text = (PLUGIN / "src/render_advanced.js").read_text(encoding="utf-8")
         body = _function_body_after(text, "renderAdvancedDrawer")
         self.assertIn("renderAdvancedMetricsPanel", body)
+
+    def test_advanced_and_status_copy_are_productized_for_zh(self) -> None:
+        text = (PLUGIN / "src/constants.js").read_text(encoding="utf-8")
+        self.assertIn('"Advanced": "更多工具"', text)
+        self.assertIn('"System status": "运行状态"', text)
+        self.assertIn('"LLM Backend": "LLM 服务"', text)
+        self.assertIn('"Knowledge Compounding Metrics": "知识复利指标"', text)
+        self.assertIn('"Run `aiwiki metrics --json` for full data.": "完整指标数据可在指标报告中查看。"', text)
+        self.assertNotIn('"Advanced": "高级"', text)
+        self.assertNotIn('"System status": "系统状态"', text)
+        self.assertNotIn("single writer 已激活", text)
+        self.assertNotIn("同时执行 compile / nightly / apply / revert", text)

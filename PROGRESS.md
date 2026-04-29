@@ -1503,3 +1503,11 @@ oracle 复评 `ses_22e7d0c4cffex6PjhhVJ4nQzT5` 给出 8.6/10，定位三处距 9
 - 关系图谱：`output/graph/machine-memory.html` 的 title、H1、说明、legend、筛选项、详情字段、相关入口已中文化；dogfood 已重新 compile 刷新关系图谱输出。
 - Verification：focused tests pass；`bash scripts/verify.sh` pass（1504 unit + 13 acceptance，coverage 92%）。
 - QA review：fresh-session reviewer mode 可解析，但本机 Codex usage limit 阻塞独立会话启动；已记录 same-context fallback，无发现。
+
+### 2026-04-29 — Round 25 / M-UX.4 Advanced 与运行状态文案收敛
+
+- Product Shell Advanced 抽屉中文标题由“高级”改为“更多工具”，摘要改为“待审 / 待执行 / 运行记录”，降低工程入口感。
+- 运行状态面板中文文案从 `single writer / command / compile-nightly-apply-revert` 口吻改为用户任务状态：当前无任务、已有写入任务运行、等结束后再开始新的写入任务。
+- LLM 与 metrics 文案产品化：`LLM 后端` 改为 `LLM 服务`，`LLM 健康态` 改为 `LLM 状态`，`deterministic 回退` 改为 `本地兜底`，Advanced metrics 补齐“知识复利指标”等中文翻译，并隐藏 `aiwiki metrics --json` 的直读提示。
+- Verification：Product Shell focused tests pass；`bash scripts/verify.sh` pass（1505 unit + 13 acceptance，coverage 92%）。
+- QA review：fresh-session reviewer 仍被 Codex usage limit 阻塞；已记录 same-context fallback，无发现。
