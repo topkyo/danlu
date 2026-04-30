@@ -36,6 +36,86 @@ from ..app_protocol import PENDING_ACTION_STATUSES, action_focus_score
 from ..app_state import DEFAULT_PROTOCOL, machine_memory_history_path
 from ..app_utils import html_safe_json_literal, tokenize
 
+# Single source of truth for relationship graph language.
+# Keep machine edge types in english (graph schema is unchanged); only the
+# human-facing strings are translated. Naming patterns:
+#   * cross-kind edges: "{源类型}{动词}{目标类型}" -> 材料提到概念 / 材料支撑判断
+#   * same-kind edges: "{节点类型}{关系动词}" -> 概念相关 / 判断支持 / 决策依据 / 因果X
+RELATION_LABELS: dict[str, str] = {
+    "HAS_CONCEPT": "材料提到概念",
+    "SUPPORTS_JUDGMENT": "材料支撑判断",
+    "RELATED_CONCEPT": "概念相关",
+    "JUDGMENT_SUPPORTS": "判断支持",
+    "JUDGMENT_CONTRADICTS": "判断冲突",
+    "JUDGMENT_RELATED": "判断相关",
+    "DECISION_SUPPORTS": "决策依据",
+    "DECISION_CONTRADICTS": "决策反证",
+    "DECISION_RELATED": "决策相关",
+    "DECISION_SUPERSEDES": "决策替代",
+    "CAUSAL_CAUSES": "因果导致",
+    "CAUSAL_ENABLES": "因果促成",
+    "CAUSAL_CONSTRAINS": "因果约束",
+    "CAUSAL_CONFLICTS_WITH": "因果冲突",
+    "CAUSAL_BLOCKS": "因果阻塞",
+}
+
+_RELATION_FAMILY_FALLBACK: tuple[tuple[str, str], ...] = (
+    ("JUDGMENT_", "判断关系"),
+    ("DECISION_", "决策关系"),
+    ("CAUSAL_", "因果关系"),
+)
+
+
+def relation_label(edge_type: str) -> str:
+    """Return the chinese label for a graph edge type.
+
+    Unknown edge types fall back to a chinese family label (e.g. ``判断关系``)
+    or ``其他关系`` so the human-facing surface never leaks english relation
+    codes.
+    """
+    if not edge_type:
+        return "其他关系"
+    if edge_type in RELATION_LABELS:
+        return RELATION_LABELS[edge_type]
+    for prefix, family in _RELATION_FAMILY_FALLBACK:
+        if edge_type.startswith(prefix):
+            return family
+    return "其他关系"
+
+
+# Stroke colors and dash styles for SVG edges; keeps each relation visually
+# distinguishable from the fallback so the legend stays readable.
+_RELATION_STYLES: dict[str, tuple[str, str]] = {
+    "HAS_CONCEPT": ("#0ea5e9", ""),  # sky-500, dedicated color (was fallback grey)
+    "RELATED_CONCEPT": ("#f59e0b", ' stroke-dasharray="8 6"'),
+    "SUPPORTS_JUDGMENT": ("#c2410c", ' stroke-dasharray="6 4"'),
+}
+
+_FAMILY_STYLES: tuple[tuple[str, tuple[str, str]], ...] = (
+    ("JUDGMENT_CONTRADICTS", ("#dc2626", ' stroke-dasharray="4 4"')),
+    ("JUDGMENT_SUPPORTS", ("#16a34a", ' stroke-dasharray="10 5"')),
+    ("DECISION_SUPPORTS", ("#2563eb", "")),
+)
+
+_FAMILY_FALLBACK_STYLES: tuple[tuple[str, tuple[str, str]], ...] = (
+    ("JUDGMENT_", ("#7c3aed", ' stroke-dasharray="3 6"')),
+    ("DECISION_", ("#b91c1c", "")),
+    ("CAUSAL_", ("#0891b2", ' stroke-dasharray="12 4"')),
+)
+
+
+def relation_style(edge_type: str) -> tuple[str, str]:
+    """Return ``(stroke_color, dash_attr)`` for a graph edge type."""
+    if edge_type in _RELATION_STYLES:
+        return _RELATION_STYLES[edge_type]
+    for key, style in _FAMILY_STYLES:
+        if edge_type == key:
+            return style
+    for prefix, style in _FAMILY_FALLBACK_STYLES:
+        if edge_type.startswith(prefix):
+            return style
+    return "#94a3b8", ""
+
 
 def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, Any]) -> str:
     health = memory.get("health", {})
@@ -105,65 +185,8 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
                 return f"关系组 {suffix}"
         return component_id or "未分组"
 
-    def edge_relation_label(edge_type: str) -> str:
-        labels = {
-            "HAS_CONCEPT": "材料提到概念",
-            "SUPPORTS_JUDGMENT": "材料支撑判断",
-            "RELATED_CONCEPT": "概念相关",
-        }
-        if edge_type in labels:
-            return labels[edge_type]
-        if edge_type.startswith("JUDGMENT_"):
-            relation = edge_type.removeprefix("JUDGMENT_")
-            if relation == "CONTRADICTS":
-                return "判断冲突"
-            if relation == "SUPPORTS":
-                return "判断支持"
-            if relation == "RELATED":
-                return "判断相关"
-            return f"判断关系：{relation.lower()}"
-        if edge_type.startswith("DECISION_"):
-            relation = edge_type.removeprefix("DECISION_")
-            if relation == "SUPPORTS":
-                return "决策依据"
-            if relation == "CONTRADICTS":
-                return "决策反证"
-            if relation == "RELATED":
-                return "决策相关"
-            if relation == "SUPERSEDES":
-                return "决策替代"
-            return "决策关系"
-        if edge_type.startswith("CAUSAL_"):
-            relation = edge_type.removeprefix("CAUSAL_")
-            if relation == "CAUSES":
-                return "因果链"
-            if relation == "ENABLES":
-                return "促成关系"
-            if relation == "CONSTRAINS":
-                return "约束关系"
-            if relation == "CONFLICTS_WITH":
-                return "冲突关系"
-            if relation == "BLOCKS":
-                return "阻塞关系"
-            return "因果关系"
-        return "其他关系"
-
-    def edge_style(edge_type: str) -> tuple[str, str]:
-        if edge_type == "RELATED_CONCEPT":
-            return "#f59e0b", ' stroke-dasharray="8 6"'
-        if edge_type == "SUPPORTS_JUDGMENT":
-            return "#c2410c", ' stroke-dasharray="6 4"'
-        if edge_type.startswith("JUDGMENT_"):
-            if edge_type.endswith("CONTRADICTS"):
-                return "#dc2626", ' stroke-dasharray="4 4"'
-            if edge_type.endswith("SUPPORTS"):
-                return "#16a34a", ' stroke-dasharray="10 5"'
-            return "#7c3aed", ' stroke-dasharray="3 6"'
-        if edge_type.startswith("DECISION_"):
-            return ("#2563eb" if edge_type.endswith("SUPPORTS") else "#b91c1c"), ""
-        if edge_type.startswith("CAUSAL_"):
-            return "#0891b2", ' stroke-dasharray="12 4"'
-        return "#94a3b8", ""
+    edge_relation_label = relation_label
+    edge_style = relation_style
 
     judgment_protocol_by_id = {
         page_id: str(node.get("protocol") or DEFAULT_PROTOCOL)
@@ -249,7 +272,10 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
     edge_fragments: list[str] = []
     degree_map: dict[str, int] = {}
     edge_records: list[dict[str, str]] = []
-    relation_counts: dict[str, int] = {}
+    # Key by edge_type (machine-readable) so future types mapping to the same
+    # chinese label do not silently merge counts. Render-time we resolve the
+    # label per type when building the summary panel.
+    relation_counts_by_type: dict[str, int] = {}
     for edge in graph.get("edges", []):
         source = str(edge.get("source") or "")
         target = str(edge.get("target") or "")
@@ -260,21 +286,21 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
         x1, y1 = positions[source]
         x2, y2 = positions[target]
         edge_type = str(edge.get("type") or "")
-        relation_label = edge_relation_label(edge_type)
-        relation_counts[relation_label] = relation_counts.get(relation_label, 0) + 1
+        edge_label = edge_relation_label(edge_type)
+        relation_counts_by_type[edge_type] = relation_counts_by_type.get(edge_type, 0) + 1
         stroke, dash = edge_style(edge_type)
         edge_fragments.append(
             f'<line class="graph-edge" data-source="{html.escape(source)}" data-target="{html.escape(target)}" '
-            f'data-relation-type="{html.escape(edge_type)}" data-relation-label="{html.escape(relation_label)}" '
+            f'data-relation-type="{html.escape(edge_type)}" data-relation-label="{html.escape(edge_label)}" '
             f'x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{stroke}" stroke-width="2"{dash} opacity="0.72">'
-            f"<title>{html.escape(relation_label)}</title></line>"
+            f"<title>{html.escape(edge_label)}</title></line>"
         )
         edge_records.append(
             {
                 "source": source,
                 "target": target,
                 "type": edge_type,
-                "label": relation_label,
+                "label": edge_label,
             }
         )
 
@@ -471,9 +497,17 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "viewBoxHeight": view_height,
         }
     )
+    # Aggregate counts by chinese label for human readability, but only after
+    # the per-edge_type counts have been collected, so multiple edge_types
+    # mapping to the same family label (e.g. unknown JUDGMENT_*) are listed
+    # transparently rather than collapsed at collection time.
+    relation_summary_rows: list[tuple[str, str, int]] = []
+    for edge_type, count in sorted(relation_counts_by_type.items()):
+        relation_summary_rows.append((edge_type, edge_relation_label(edge_type), count))
     relation_summary_items = "".join(
-        f"<li><strong>{html.escape(label)}</strong>：{count} 条</li>"
-        for label, count in sorted(relation_counts.items())
+        f"<li><strong>{html.escape(label)}</strong>：{count} 条 "
+        f"<code class=\"relation-machine-type\">{html.escape(edge_type)}</code></li>"
+        for edge_type, label, count in relation_summary_rows
     ) or "<li>当前没有关系边。</li>"
 
     empty_state = ""
@@ -533,13 +567,14 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "    .legend .source::before { background: #0f766e; }",
             "    .legend .judgment::before { background: #b45309; }",
             "    .legend .concept::before { background: #1d4ed8; }",
-            "    .legend .source-concept::before { background: #94a3b8; }",
+            "    .legend .source-concept::before { background: #0ea5e9; }",
             "    .legend .source-judgment::before { background: #c2410c; }",
             "    .legend .concept-related::before { background: #f59e0b; }",
             "    .legend .judgment-support::before { background: #16a34a; }",
             "    .legend .judgment-conflict::before { background: #dc2626; }",
             "    .legend .decision-link::before { background: #2563eb; }",
             "    .legend .causal-link::before { background: #0891b2; }",
+            "    .relation-machine-type { color: var(--muted); font-size: 11px; margin-left: 4px; }",
             "    .empty { padding: 16px; background: #fff7ed; border: 1px solid #fdba74; border-radius: 14px; color: #9a3412; }",
             "    @media (max-width: 960px) { .workbench { grid-template-columns: 1fr; } }",
             "  </style>",
@@ -563,7 +598,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             '      <span class="judgment-support">判断支持</span>',
             '      <span class="judgment-conflict">判断冲突</span>',
             '      <span class="decision-link">决策依据</span>',
-            '      <span class="causal-link">因果链</span>',
+            '      <span class="causal-link">因果关系</span>',
             "    </div>",
             "  </section>",
             f"  {empty_state}",
@@ -612,7 +647,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "    </ul></div>",
             "  </section>",
             '  <section class="panel"><h2>关系说明</h2>',
-            "    <p>图谱关系用中文表达：材料沉淀为来源节点，来源提到概念，来源支撑判断；判断之间可以互相支持、冲突或相关；决策依据来自判断；概念之间可形成相关或因果链。</p>",
+            "    <p>图谱关系用中文表达：材料沉淀为来源节点，来源提到概念，来源支撑判断；判断之间可以互相支持、冲突或相关；决策依据来自判断；概念之间可形成相关或因果关系（因果导致 / 因果促成 / 因果约束 / 因果冲突 / 因果阻塞）。</p>",
             "    <ul>",
             f"{relation_summary_items}",
             "    </ul>",

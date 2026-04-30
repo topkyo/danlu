@@ -2551,7 +2551,11 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("材料提到概念", graph_view)
         self.assertIn("判断冲突", graph_view)
         self.assertIn("决策依据", graph_view)
-        self.assertNotIn("Mihomo/Clash", graph_view)
+        # The Mihomo/Clash troubleshooting hint must be present in chinese, but
+        # we deliberately do not assert the english MIME literal `text/html` so
+        # the user-facing surface stays chinese-first.
+        self.assertIn("Mihomo/Clash", graph_view)
+        self.assertIn("代理客户端", graph_view)
 
     def test_furnace_center_surfaces_pilots_packs_receipts_and_commands(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -7212,10 +7216,130 @@ class AiwikiFlowTests(unittest.TestCase):
         payload = render_machine_memory_graph_html(memory, graph)
 
         self.assertIn("决策相关", payload)
-        self.assertIn("促成关系", payload)
-        self.assertIn("冲突关系", payload)
+        self.assertIn("因果促成", payload)
+        self.assertIn("因果冲突", payload)
         self.assertNotIn("决策关系：related", payload)
         self.assertNotIn("因果关系：enables", payload)
+        self.assertNotIn("促成关系", payload)
+        self.assertNotIn("冲突关系", payload)
+
+    def test_relation_label_table_is_uniform_chinese(self) -> None:
+        from aiwiki.memory.graph import RELATION_LABELS, relation_label
+
+        expected = {
+            "HAS_CONCEPT": "材料提到概念",
+            "SUPPORTS_JUDGMENT": "材料支撑判断",
+            "RELATED_CONCEPT": "概念相关",
+            "JUDGMENT_SUPPORTS": "判断支持",
+            "JUDGMENT_CONTRADICTS": "判断冲突",
+            "JUDGMENT_RELATED": "判断相关",
+            "DECISION_SUPPORTS": "决策依据",
+            "DECISION_CONTRADICTS": "决策反证",
+            "DECISION_RELATED": "决策相关",
+            "DECISION_SUPERSEDES": "决策替代",
+            "CAUSAL_CAUSES": "因果导致",
+            "CAUSAL_ENABLES": "因果促成",
+            "CAUSAL_CONSTRAINS": "因果约束",
+            "CAUSAL_CONFLICTS_WITH": "因果冲突",
+            "CAUSAL_BLOCKS": "因果阻塞",
+        }
+        self.assertEqual(RELATION_LABELS, expected)
+        for label in RELATION_LABELS.values():
+            for token in (":", "_", "lower", "upper", "Causes", "supports"):
+                self.assertNotIn(token, label, f"label {label!r} leaks english/code token {token!r}")
+        # Family fallbacks stay chinese for unknown future relation values.
+        self.assertEqual(relation_label("JUDGMENT_FUTURE"), "判断关系")
+        self.assertEqual(relation_label("DECISION_FUTURE"), "决策关系")
+        self.assertEqual(relation_label("CAUSAL_FUTURE"), "因果关系")
+        self.assertEqual(relation_label("UNKNOWN"), "其他关系")
+        self.assertEqual(relation_label(""), "其他关系")
+
+    def test_graph_surface_uses_unified_relation_naming(self) -> None:
+        """Round 48 lock: legacy chinese "因果链" must not leak; replace with 因果关系/因果导致."""
+        from aiwiki.memory.graph import RELATION_LABELS
+
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        graph_html = (self.root / "output" / "graph" / "machine-memory.html").read_text(encoding="utf-8")
+        graph_view = (self.root / "wiki" / "indexes" / "graph-view.md").read_text(encoding="utf-8")
+
+        for surface, payload in (("graph_html", graph_html), ("graph_view", graph_view)):
+            self.assertNotIn("因果链", payload, f"legacy label leaked into {surface}")
+            self.assertIn("因果关系", payload, f"unified family label missing from {surface}")
+        self.assertEqual(RELATION_LABELS["CAUSAL_CAUSES"], "因果导致")
+
+    def test_relation_style_has_concept_uses_dedicated_color(self) -> None:
+        from aiwiki.memory.graph import relation_style
+
+        has_concept_color, _ = relation_style("HAS_CONCEPT")
+        fallback_color, _ = relation_style("UNKNOWN")
+        self.assertNotEqual(has_concept_color, fallback_color)
+        self.assertEqual(has_concept_color, "#0ea5e9")
+        self.assertEqual(fallback_color, "#94a3b8")
+
+    def test_relation_summary_keys_by_edge_type_not_chinese_label(self) -> None:
+        memory = {
+            "compiled_at": "2026-04-30T00:00:00+00:00",
+            "source_nodes": [{"id": "src-1", "title": "材料 A", "concept_slugs": []}],
+            "concept_nodes": [
+                {"slug": "alpha", "title": "Alpha"},
+                {"slug": "beta", "title": "Beta"},
+            ],
+            "judgment_nodes": [],
+            "edges": {},
+            "health": {
+                "components": [
+                    {
+                        "id": "component-1",
+                        "source_ids": ["src-1"],
+                        "concept_slugs": ["alpha", "beta"],
+                        "judgment_ids": [],
+                    }
+                ]
+            },
+        }
+        graph = {
+            "digest": "demo",
+            "nodes": [
+                {"id": "source:src-1", "kind": "source", "title": "材料 A", "source_page": "wiki/sources/src-1.md"},
+                {"id": "concept:alpha", "kind": "concept", "title": "Alpha", "source_pages": []},
+                {"id": "concept:beta", "kind": "concept", "title": "Beta", "source_pages": []},
+            ],
+            "edges": [
+                # Two unknown JUDGMENT_* types share the chinese fallback "判断关系".
+                # If counts were keyed by chinese label they would silently merge.
+                {"source": "concept:alpha", "target": "concept:beta", "type": "JUDGMENT_NEW_FOO"},
+                {"source": "concept:beta", "target": "concept:alpha", "type": "JUDGMENT_NEW_BAR"},
+            ],
+        }
+
+        payload = render_machine_memory_graph_html(memory, graph)
+
+        # Scope the assertion to the "关系说明" summary panel so the test does
+        # NOT pass merely because raw edge types leak through SVG
+        # `data-relation-type` attributes. Extract the panel body and check both
+        # raw edge types appear there as <code class="relation-machine-type">.
+        marker = '<h2>关系说明</h2>'
+        panel_start = payload.find(marker)
+        self.assertGreater(panel_start, -1, "关系说明 panel missing")
+        panel_end = payload.find('</section>', panel_start)
+        panel_body = payload[panel_start:panel_end]
+        self.assertIn(
+            '<code class="relation-machine-type">JUDGMENT_NEW_FOO</code>',
+            panel_body,
+            "summary panel must key by edge_type, not chinese label",
+        )
+        self.assertIn(
+            '<code class="relation-machine-type">JUDGMENT_NEW_BAR</code>',
+            panel_body,
+            "summary panel must key by edge_type, not chinese label",
+        )
+        # Both still render as 判断关系 in chinese, but via two list rows.
+        self.assertGreaterEqual(panel_body.count("判断关系"), 2)
+        # Each row counts a single edge, so the two unknown types must not be
+        # silently merged into one row even though they share the chinese label.
+        self.assertGreaterEqual(panel_body.count("1 条"), 2)
 
     def test_compile_attaches_judgment_assets_to_machine_memory_graph(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")

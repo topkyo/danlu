@@ -22,7 +22,7 @@ kind: "dashboard"
 
 1. 先看报告和 Today，不把图谱当默认入口。
 2. 需要追溯时打开 `output/graph/machine-memory.html`。
-3. 按中文关系读图：材料提到概念、材料支撑判断、概念相关、判断支持、判断冲突、决策依据、因果链。
+3. 按中文关系读图：材料提到概念、材料支撑判断、概念相关、判断支持、判断冲突、决策依据、因果关系。
 4. 再回到具体 `wiki/sources/`、`wiki/judgments/`、`wiki/concepts/` 页面处理。
 
 ## 边界
@@ -30,3 +30,4 @@ kind: "dashboard"
 - 这里展示的是 `aiwiki` 的机器记忆视角，不等于 Obsidian 自带的 Graph View。
 - Obsidian Graph 更适合看笔记链接；这里更适合看知识编译后的证据、判断、概念和决策关系。
 - 图谱关系是辅助解释层；最终用户默认仍应看报告和少量关键确认。
+- Linux 上若 `output/graph/machine-memory.html` 在 Obsidian 内打开后跳到 Mihomo/Clash 等代理客户端，是系统把 `text/html` 默认程序绑给了它；在浏览器里打开或在系统设置里改默认程序即可。
