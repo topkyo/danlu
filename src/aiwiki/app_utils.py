@@ -548,6 +548,10 @@ def html_safe_json_literal(value: Any) -> str:
 
 _BATCH_TAG_PATTERN = re.compile(r"^round\d+$")
 _TIMESTAMP_FRAGMENT_PATTERN = re.compile(r"^\d{2,}t\d{2,}$")
+# P4-INV-2 (Round 57): filter quarter tokens like `2024q1` / `q42025` that pollute
+# investing-protocol concept extraction. Empirical: NVDA dogfood note surfaced
+# `2025q4` as a concept slug, see dogfood-receipt-investing-v0 §F-INV-5.
+_QUARTER_TAG_PATTERN = re.compile(r"^(?:[12]\d{3}q[1-4]|q[1-4][12]\d{3})$")
 
 
 def tokenize(text: str) -> list[str]:
@@ -560,4 +564,5 @@ def tokenize(text: str) -> list[str]:
         and token not in STOP_WORDS
         and not _BATCH_TAG_PATTERN.match(token)
         and not _TIMESTAMP_FRAGMENT_PATTERN.match(token)
+        and not _QUARTER_TAG_PATTERN.match(token)
     ]

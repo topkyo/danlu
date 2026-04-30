@@ -65,6 +65,38 @@ def test_tokenize_drops_articles_and_conjunctions():
     assert "controller" in result
 
 
+def test_tokenize_drops_quarter_tags():
+    """P4-INV-2 (Round 57): NVDA dogfood note surfaced `2025q4` as a concept slug.
+
+    Quarter tokens (YYYYqN / qNYYYY) pollute investing-protocol concept extraction
+    even though they pass the digit/length filter; filter them like timestamp / batch tags.
+    """
+    result = tokenize("NVDA 2025q4 thesis vs q42024 baseline")
+
+    assert "2025q4" not in result
+    assert "q42024" not in result
+    # Real domain tokens must NOT be filtered.
+    assert "nvda" in result
+    assert "thesis" in result
+    assert "baseline" in result
+
+
+def test_concept_candidates_filters_quarter_tags():
+    """P4-INV-2 (Round 57): concept_candidates must drop quarter tokens too."""
+    entries = [
+        {"title": "NVDA 2025q4 Datacenter Thesis", "id": "entry-1"},
+        {"title": "TSMC q42024 Capex Trace", "id": "entry-2"},
+    ]
+    result = concept_candidates(entries)
+    assert "2025q4" not in result
+    assert "q42024" not in result
+    # Domain words still kept.
+    assert "nvda" in result
+    assert "datacenter" in result
+    assert "tsmc" in result
+    assert "capex" in result
+
+
 def test_tokenize_drops_round_batch_tags():
     """F-new-13 (Round 6): round1/round2/.../roundN are dogfood batch tags, not concepts."""
     result = tokenize("round1 round4 round12 jetson roundtrip")

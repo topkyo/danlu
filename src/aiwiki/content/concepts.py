@@ -35,8 +35,8 @@ CONCEPT_RENDER_SCHEMA_VERSION = 2
 
 # Bump when concept extraction noise floor (STOP_WORDS, length filter, digit filter, etc.)
 # changes, to invalidate cached `concept-build-state.json` entries and force retroactive
-# re-extraction on the next compile. See F-new-13 (Round 6).
-CONCEPT_NOISE_FLOOR_VERSION = 6
+# re-extraction on the next compile. See F-new-13 (Round 6) / P4-INV-2 (Round 57).
+CONCEPT_NOISE_FLOOR_VERSION = 7
 
 CAUSAL_RELATION_LABELS = {
     "causes": "→ causes",
@@ -45,6 +45,9 @@ CAUSAL_RELATION_LABELS = {
     "conflicts_with": "⊘ conflicts with",
 }
 
+_CONCEPT_QUARTER_TAG_PATTERN = re.compile(r"^(?:[12]\d{3}q[1-4]|q[1-4][12]\d{3})$")
+
+
 def concept_candidates(entries: list[dict[str, Any]]) -> list[str]:
     counts: dict[str, int] = {}
     for entry in entries:
@@ -52,6 +55,8 @@ def concept_candidates(entries: list[dict[str, Any]]) -> list[str]:
             if token in STOP_WORDS:
                 continue
             if token.isdigit():
+                continue
+            if _CONCEPT_QUARTER_TAG_PATTERN.match(token):
                 continue
             counts[token] = counts.get(token, 0) + 1
     ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
