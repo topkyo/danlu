@@ -6,6 +6,81 @@
 
 ## 状态
 
+- **Round 46 — Suggested Actions De-noise — 完成**
+  - **目的**: 继续用户面最终形态迭代，把 `suggested_next_actions` 中的 batch/review/apply 维护命令从普通用户首屏移走；用户默认只看报告、自动化状态和少数高影响确认，维护命令保留在 Advanced / review-queue / operator 面
+  - **实现内容**:
+    - `src/aiwiki/today_feed.py` 新增 primary/operator action filtering：primary audience 跳过 `batch-hint:*`、`review-page`、`review-action`、`apply-action`、`revert-action`、concept/rewrite/archive/alchemy auto 等维护命令
+    - `audience="operator"` 仍保留维护命令，避免破坏 operator / review-queue 视图
+    - `.obsidian/plugins/furnace-product-shell/src/today_feed.js` 同步 `isMaintenanceCommandAction` mirror；`main.js` rebuild（7648 lines）
+    - `shell-summary.suggested_next_actions` schema 与原始数据不改；只在 primary Today/Product Shell feed 层降噪
+  - **测试 / 验证**:
+    - focused tests：`PYTHONPATH=src python3 -m pytest tests/test_today_feed.py tests/test_product_shell_today_feed.py tests/test_cli.py::CLITests::test_today_json_hides_maintenance_suggested_actions ... -q`：58 passed
+    - 干净 env `env -i HOME=$HOME PATH=$PATH LANG=C.UTF-8 bash scripts/verify.sh`：1547 unit + 13 acceptance pass，coverage 92%
+  - **dogfood 用户面验证**:
+    - `today --json` 当前 `todays_reports` 仍优先显示 Round 45 smoke report
+    - `automation_status` 显示 `已自动维护`
+    - `needs_review` 保持 3 个高影响确认：反证候选、研究判断复核、1 个 drift judgment
+    - `suggested_next_actions` 从 8 条维护命令降为 0；维护命令仍存在于 `shell-summary.suggested_next_actions` / Advanced / review-queue operator 面
+    - `aiwiki-watch.service` 与 `aiwiki-nightly.timer` 结束时均 active
+  - **当前评估 / 最终形态推进**:
+    - 用户面已经从“报告 + 自动化 + 关键确认 + 一串维护命令”推进为“报告 + 自动化 + 关键确认”；这更接近“用户只关心报告”的最终形态
+    - 剩余迭代方向：把 `needs_review` 中的高影响确认进一步产品化为一句话决策卡 / 稍后提醒，而不是 review bucket 文案
+
+- **Round 45 — Final-shape User Surface V1 — 完成**
+  - **目的**: 把用户面从“运维 backlog 首屏”推进到“报告优先 + 自动化状态 + 少数关键确认”；底层自动化继续运行，用户默认只看报告和高影响确认点
+  - **实现内容**:
+    - `src/aiwiki/today_feed.py` 调整主 feed 产品契约：`report` 优先级最高，`automation` 独立成类，`decision/proposal` 作为 Needs Your Confirmation，`action` 靠后
+    - 新增 `FeedAudience`：默认 `primary` 给用户面降噪；`review-queue` 显式用 `audience="operator"`，继续完整展示 concept / machine-memory 等低层 backlog
+    - 低层治理桶（`concept_backlog` / `review_concepts` / `revisit_concepts` / `retired_concepts` / `machine_memory_actions`）不再冒泡到普通用户首屏；仍保留在 `review_backlog_counts`、`review-queue` 和 Advanced
+    - `.obsidian/plugins/furnace-product-shell/src/today_feed.js` 同步 mirror；补齐 counter-evidence / drift / metric alert，与 Python feed 行为对齐；`render_today.js` 分组改为 `Reports` / `Automation` / `Needs Your Confirmation` / `Completed` / `Suggested Actions`
+    - `today --json` 新增 `automation_status` section；text 模式新增 `Automation` section；acceptance golden 已刷新
+    - L3 proposal 去重：主用户面只显示单条 proposal 卡，不再同时用 `l3_proposals` / `l3_proposal_attention` 两个计数字段重复提醒
+    - `main.js` 已 rebuild（7625 lines）
+  - **测试 / 验证**:
+    - focused tests：`PYTHONPATH=src python3 -m pytest tests/test_today_feed.py tests/test_product_shell_today_feed.py tests/test_app_shell_surfaces_batch_hints.py ... -q`：66 passed
+    - unittest focused：52 passed
+    - 干净 env `env -i HOME=$HOME PATH=$PATH LANG=C.UTF-8 bash scripts/verify.sh`：1543 unit + 13 acceptance pass，coverage 92%
+    - QA review gate `.codex/gates/qa-review.md`: pass；两轮 finding 已修复（CLI automation section、JS mirror 漏项、L3 proposal 重复提醒）
+  - **dogfood 用户面验证**:
+    - 暂停 watcher 后用 deterministic `ask --format report` 生成 Round 45 smoke report：`output/reports/round-45-用户面最终形态-smoke-当前炼丹炉自动化运行后-用户今天应该优先看哪些报告和确认点.md`
+    - `today --json` 现在首组 `todays_reports` 含该 report；`automation_status` 显示 `已自动维护`
+    - `needs_review` 只剩 3 个高影响确认类：反证候选、研究判断复核、1 个 drift judgment；L3 proposal 只在 proposal section 出现，避免重复
+    - `concept_backlog=11`、`machine_memory_actions=14` 等低层债不再压主用户面；当轮 `suggested_next_actions` 仍保留 8 条作为次级/Advanced 入口（Round 46 已继续降噪到 primary feed 0 条）
+    - `aiwiki-watch.service` 与 `aiwiki-nightly.timer` 结束时均 active
+  - **当前评估 / 最终形态推进**:
+    - 本轮完成“用户默认只看报告和关键确认”的第一层产品化：报告优先已在真实 dogfood 数据上成立，自动化与 backlog 不再抢首屏
+    - 剩余用户面迭代方向：把 `suggested_next_actions` 中的 batch/review 命令进一步做成一键“稍后处理/自动归档为维护债”，并让 Product Shell 首页直接显示“已自动维护 / 无需处理”的状态卡
+
+- **Round 44 — Monitoring Runtime Dogfood Assessment — 完成**
+  - **目的**: 按用户要求重新确认监控已开启，继续 `/home/tim/danlu/炼丹炉` dogfood 运行测试，并基于实时证据评估炼丹炉当前状态、功能完整度与最终形态差距
+  - **监控状态**:
+    - `aiwiki-watch.service`：active；本轮短暂停止后已恢复 active
+    - `aiwiki-nightly.timer`：active；下一次触发 `2026-05-01 00:00:00 CST`
+    - `danlu-dogfood` tmux trace session：已存在且 attached，继续观察 LLM receipts / runner runs / runtime-history / vault file activity
+  - **dogfood 只读体检**:
+    - `protocol-status`：active=`research`；available=`general / investing / ops / product / research`
+    - `llm-check`（静态）：backend=`codex-cli`，effective_model=`gpt-5.5`，auth_mode=`cli-session`，reasoning_effort=`medium`，usage_visibility=`opaque-cli`
+    - `lint`：0 errors / 91 warnings；最新报告 `output/lint/lint-20260430-104753.md`
+    - `review-queue --json`：total=35；主要 backlog 为 concept_backlog=11、counter_evidence_candidates=8、judgment_review_actions=8、machine_memory_actions=14、revisit_concepts=10、l3_proposals=1
+    - `metrics --json`：provenance_completeness=1.0，stale_ratio=0.0，review_closure_rate=1.0，proposal_acceptance_rate=1.0，judgment_revisit_rate=0.5
+    - `today --json`：suggested_next_actions=9，顶部继续 surface 3 条 batch hint（9 个 decision/judgment 页、8 个 add-source-concept-link、6 个 split-overloaded-concept）
+    - `shell-summary.json`：knowledge_stats={concept_nodes:30, source_nodes:32, judgment_nodes:9, decisions:1, edge_total:292, term_index:2187}；planner={blocked:12, executed_actions:8, pending_proposals:14, unblocked:2}；drift_warnings=1
+  - **Round 43 UX 运行态复测**:
+    - `review-next --limit 1 --non-interactive`：成功 surface 最高优先 decision（V3.6 amend），未读 stdin、未落盘
+    - `batch-review apply-low-risk --dry-run --note ...`：正确报错 "No accepted low-risk actions are ready for batch apply"；当前没有可低风险 apply 候选，符合 L2/L3 显式 gate 边界
+  - **light nightly 复测**:
+    - 手动暂停 watcher 后执行 `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1 ... run-nightly --compile-limit 0 --no-semantic-lint`
+    - `agent_loop.mode=observe_dry_run_and_light_apply`，`auto_apply.status=applied`，`applied_count=1`，`llm_used=false`
+    - 新写入 receipted light primitives：
+      - `output/control/execution-receipts/alchemy-light-compile-20260430104753.json`
+      - `output/control/execution-receipts/alchemy-light-lint-20260430104753.json`
+      - `output/control/execution-receipts/alchemy-light-nightly-20260430104754.json`
+    - signals 新增 1 条 `schedule_tick`；planner observe/execute 各新增 1 条；heavy lane `selected_count=0` / `empty_execute_plan`，未触发语义写回
+  - **当前评估 / 是否达到最终形态**:
+    - 已达到：监控常驻、deterministic/light maintenance 可无人值守并 receipt/audit、五层主线完整、协议/治理/执行面可见、batch review 与 review-next 的用户面骨架已可用
+    - 未达到：91 个 warnings 仍是实质语义债（4 个 source placeholder summary、30 个 soft concepts、judgment/decision 结构化 metadata 与 section/citation 缺口）；review backlog 仍有 35 项；LLM enrichment 仍绑定 `codex-cli` quota/opaque usage；review_closure_rate 等终局 KPI 还需要多周自然运行验证
+    - 结论：炼丹炉当前是**controlled runtime + final-shape UX skeleton**，不是最终形态本身；下一阶段不应再扩 runtime 面，而应让现有入口持续跑起来，清语义债、关 review backlog，并验证多周稳态指标
+
 - **Round 43 — Batch Adoption Surface UX (B + C + D) — 完成**
   - **目的**: 把 Round 42 的 batch hint 从「读 cmd 字符串 → 复制粘贴」推进到三个最终形态可达入口——CLI 一键 alias（B）、Obsidian 按钮（C）、CLI 交互式 review-next（D）；不破坏 §3「Runtime 不生成语义判断」与 §8/§9 L2/L3 红线，所有写回仍由用户显式触发
   - **提交基线**:

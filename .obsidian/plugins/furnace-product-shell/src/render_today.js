@@ -19,19 +19,18 @@ function renderTodayFeed(plugin, container) {
     return;
   }
   
-  const groups = { decision: [], proposal: [], report: [], elixir: [], action: [] };
+  const groups = { report: [], automation: [], decision: [], proposal: [], elixir: [], action: [] };
   for (const entry of feed) groups[entry.kind].push(entry);
   
   const groupSpecs = [
-    ["decision", plugin.t("Needs Decision")],
-    ["proposal", plugin.t("Proposals")],
-    ["report", plugin.t("Today's Reports")],
-    ["elixir", plugin.t("Completed")],
-    ["action", plugin.t("Suggested Actions")],
+    ["report", plugin.t("Reports"), groups.report],
+    ["automation", plugin.t("Automation"), groups.automation],
+    ["confirmation", plugin.t("Needs Your Confirmation"), [...groups.decision, ...groups.proposal]],
+    ["elixir", plugin.t("Completed"), groups.elixir],
+    ["action", plugin.t("Suggested Actions"), groups.action],
   ];
   
-  for (const [kind, heading] of groupSpecs) {
-    const items = groups[kind];
+  for (const [kind, heading, items] of groupSpecs) {
     if (!items.length) continue;
     const groupEl = section.createDiv({ cls: `furnace-today-feed-group furnace-today-feed-${kind}` });
     groupEl.createEl("h3", { text: heading });

@@ -1125,7 +1125,7 @@ def review_queue_command(
 ) -> int:
     """P4-16a: review-queue — 桶化展示 needs_review，与 today 共用 build_today_feed。"""
     summary = build_shell_summary(root)
-    feed = build_today_feed(summary)
+    feed = build_today_feed(summary, audience="operator")
     decisions = [e for e in feed if e.kind == "decision"]
 
     buckets: dict[str, list[dict[str, object]]] = {}
@@ -1185,10 +1185,11 @@ def _today_feed_to_json(feed: list[FeedEntry], summary: dict[str, object]) -> di
     """把 today feed 桶化成结构化 dict，对应 _render_today_text 的 5 个 section。
 
     Bucket key 与 _render_today_text 的 section 对齐：
-    - todays_reports / needs_review / completed_elixirs / l3_proposals / suggested_next_actions
+    - todays_reports / automation_status / needs_review / completed_elixirs / l3_proposals / suggested_next_actions
     """
     buckets: dict[str, list[FeedEntry]] = {
         "report": [],
+        "automation": [],
         "decision": [],
         "elixir": [],
         "proposal": [],
@@ -1198,6 +1199,7 @@ def _today_feed_to_json(feed: list[FeedEntry], summary: dict[str, object]) -> di
         buckets.setdefault(entry.kind, []).append(entry)
     section_map = [
         ("todays_reports", "report"),
+        ("automation_status", "automation"),
         ("needs_review", "decision"),
         ("completed_elixirs", "elixir"),
         ("l3_proposals", "proposal"),
@@ -1374,12 +1376,20 @@ def _render_today_text(feed: list[FeedEntry], summary: dict[str, object]) -> str
         "",
     ]
 
-    grouped: dict[str, list[FeedEntry]] = {"decision": [], "proposal": [], "report": [], "elixir": [], "action": []}
+    grouped: dict[str, list[FeedEntry]] = {
+        "report": [],
+        "automation": [],
+        "decision": [],
+        "proposal": [],
+        "elixir": [],
+        "action": [],
+    }
     for entry in feed:
-        grouped[entry.kind].append(entry)
+        grouped.setdefault(entry.kind, []).append(entry)
 
     section_specs = [
         ("Today's Reports", "report", "(no reports today)"),
+        ("Automation", "automation", "(automation idle)"),
         ("Needs Review", "decision", "(no pending review)"),
         ("Completed Elixirs", "elixir", "(no completed elixirs today)"),
         ("L3 Proposals", "proposal", "(no L3 proposals need attention)"),

@@ -66,8 +66,48 @@ def _case_review_backlog_uses_product_labels() -> None:
         }
     )
     titles = [entry.title for entry in feed]
-    assert titles == ["补充反证候选", "复核研究判断", "处理 L3 提案", "修复机器记忆"]
+    assert titles == ["补充反证候选", "复核研究判断"]
     assert all("_" not in entry.title for entry in feed)
+
+
+def _case_l3_attention_uses_single_proposal_card() -> None:
+    feed = build_today_feed(
+        {
+            "review_backlog_counts": {
+                "l3_proposals": 1,
+                "l3_proposal_attention": 1,
+            },
+            "review_controls": {
+                "l3_proposals": [
+                    {
+                        "proposal_id": "p1",
+                        "target_file": "prompts/a.md",
+                        "proposal_path": "output/_proposals/prompt/p1.json",
+                        "kind": "prompt",
+                        "state": "candidate",
+                        "needs_attention": True,
+                    }
+                ]
+            },
+        }
+    )
+    assert [(entry.kind, entry.title) for entry in feed] == [("proposal", "prompts/a.md")]
+
+
+def _case_low_level_backlog_hidden_from_primary_feed() -> None:
+    feed = build_today_feed(
+        {
+            "review_backlog_counts": {
+                "concept_backlog": 11,
+                "review_concepts": 1,
+                "revisit_concepts": 10,
+                "retired_concepts": 1,
+                "machine_memory_actions": 14,
+                "counter_evidence_candidates": 2,
+            }
+        }
+    )
+    assert [entry.title for entry in feed] == ["补充反证候选"]
 
 
 def _case_proposal_entry_built() -> None:
@@ -219,20 +259,45 @@ def _case_action_entry_built() -> None:
         {
             "generated_at": "2026-04-27T09:00:00Z",
             "suggested_next_actions": [
-                {"title": "Review page", "command": "aiwiki review-page wiki/a.md", "reason": "review-needed"}
+                {"title": "Open report pack", "command": "aiwiki report-pack --latest", "reason": "report-ready"}
             ],
         }
     )
     assert feed == [
         FeedEntry(
             kind="action",
-            title="Review page",
-            summary="建议下一步：review-needed",
-            target="aiwiki review-page wiki/a.md",
+            title="Open report pack",
+            summary="建议下一步：report-ready",
+            target="aiwiki report-pack --latest",
             timestamp="2026-04-27T09:00:00Z",
             protocol="",
         )
     ]
+
+
+def _case_primary_action_entry_skips_maintenance_commands() -> None:
+    summary = {
+        "generated_at": "2026-04-27T09:00:00Z",
+        "suggested_next_actions": [
+            {"title": "Batch review", "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-page --all-pending", "reason": "batch-hint:review-page:decision/judgment"},
+            {"title": "Review action", "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-action overloaded-concept-eva --status accepted", "reason": "planner-next-action"},
+            {"title": "Open report pack", "command": "aiwiki report-pack --latest", "reason": "report-ready"},
+        ],
+    }
+    feed = build_today_feed(summary)
+    assert [(entry.title, entry.target) for entry in feed] == [("Open report pack", "aiwiki report-pack --latest")]
+
+
+def _case_operator_action_entry_keeps_maintenance_commands() -> None:
+    summary = {
+        "generated_at": "2026-04-27T09:00:00Z",
+        "suggested_next_actions": [
+            {"title": "Batch review", "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-page --all-pending", "reason": "batch-hint:review-page:decision/judgment"},
+        ],
+    }
+    feed = build_today_feed(summary, audience="operator")
+    assert len(feed) == 1
+    assert feed[0].title == "Batch review"
 
 
 def _case_action_entry_skipped_without_command() -> None:
@@ -259,7 +324,7 @@ def _case_agent_loop_entry_built_from_nightly_summary() -> None:
 
     assert len(feed) == 1
     entry = feed[0]
-    assert entry.kind == "action"
+    assert entry.kind == "automation"
     assert entry.title == "预演下一步维护"
     assert entry.summary == "今日发现 2 个新变化，1 条维护路径可人工确认"
     assert entry.target.endswith("alchemy auto --dry-run")
@@ -334,7 +399,7 @@ def _case_priority_ordering() -> None:
             "review_backlog_counts": {"pending_decisions": 1},
         }
     )
-    assert [entry.kind for entry in feed] == ["decision", "proposal", "report", "elixir", "action"]
+    assert [entry.kind for entry in feed] == ["report", "decision", "proposal", "elixir", "action"]
 
 
 def _case_timestamp_desc_within_same_priority() -> None:
@@ -401,8 +466,8 @@ def _case_no_mechanism_words_in_summary_text() -> None:
 def _case_missing_generated_at_handled_gracefully() -> None:
     feed = build_today_feed({"review_backlog_counts": {"pending_decisions": 1}, "recent_outputs": [{"path": "x.md"}]})
     assert len(feed) == 2
-    assert feed[0].kind == "decision"
-    assert feed[1].kind == "report"
+    assert feed[0].kind == "report"
+    assert feed[1].kind == "decision"
 
 
 def _case_malformed_recent_outputs_skipped() -> None:
@@ -428,7 +493,7 @@ def _case_target_field_present() -> None:
 
 
 def _case_kind_values_in_allowed_set() -> None:
-    allowed = {"decision", "proposal", "report", "elixir", "action"}
+    allowed = {"decision", "proposal", "report", "elixir", "automation", "action"}
     feed = build_today_feed(
         {
             "generated_at": "2026-04-27T09:00:00Z",

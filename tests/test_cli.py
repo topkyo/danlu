@@ -396,6 +396,7 @@ class CLITests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(stderr, "")
         self.assertIn("(no reports today)", stdout)
+        self.assertIn("(automation idle)", stdout)
         self.assertIn("(no pending review)", stdout)
         self.assertIn("(no completed elixirs today)", stdout)
         self.assertIn("(no L3 proposals need attention)", stdout)
@@ -406,7 +407,7 @@ class CLITests(unittest.TestCase):
         summary = {
             "generated_at": "2026-04-27T10:00:00+00:00",
             "active_protocol": "research",
-            "review_backlog_counts": {"decision": 2, "concept_backlog": 5},
+            "review_backlog_counts": {"pending_decisions": 2, "concept_backlog": 5},
         }
         with patch("aiwiki.cli.build_shell_summary", return_value=summary):
             code, stdout, stderr = self._run_main_raw(["today", "--json"])
@@ -421,6 +422,7 @@ class CLITests(unittest.TestCase):
                 "generated_at",
                 "active_protocol",
                 "todays_reports",
+                "automation_status",
                 "needs_review",
                 "completed_elixirs",
                 "l3_proposals",
@@ -428,14 +430,65 @@ class CLITests(unittest.TestCase):
             },
         )
         self.assertEqual(payload["active_protocol"], "research")
-        # needs_review 桶应有 2 项（decision + concept_backlog）
-        self.assertEqual(len(payload["needs_review"]), 2)
+        self.assertEqual(payload["automation_status"], [])
+        # 用户面 today 只展示高影响确认；低层 concept_backlog 留在 review-queue / Advanced。
+        self.assertEqual(len(payload["needs_review"]), 1)
         # entry 字段对齐 FeedEntry
         sample = payload["needs_review"][0]
         self.assertEqual(
             set(sample.keys()),
             {"kind", "title", "summary", "target", "timestamp", "protocol"},
         )
+
+    def test_today_json_surfaces_automation_status(self) -> None:
+        summary = {
+            "generated_at": "2026-04-30T09:00:00+00:00",
+            "active_protocol": "research",
+            "nightly": {
+                "agent_loop": {
+                    "status": "ok",
+                    "generated_at": "2026-04-30T08:00:00+00:00",
+                    "signals": {"new_count": 2},
+                    "planner": {"execute": {"new_count": 2}},
+                    "auto_apply": {"applied_count": 1},
+                }
+            },
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, stdout, stderr = self._run_main_raw(["today", "--json"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        payload = json.loads(stdout)
+        self.assertEqual(len(payload["automation_status"]), 1)
+        self.assertEqual(payload["automation_status"][0]["kind"], "automation")
+        self.assertEqual(payload["automation_status"][0]["title"], "已自动维护")
+
+    def test_today_json_hides_maintenance_suggested_actions(self) -> None:
+        summary = {
+            "generated_at": "2026-04-30T09:00:00+00:00",
+            "active_protocol": "research",
+            "suggested_next_actions": [
+                {
+                    "title": "批量审阅",
+                    "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-page --all-pending",
+                    "reason": "batch-hint:review-page:decision/judgment",
+                },
+                {
+                    "title": "打开报告包",
+                    "command": "aiwiki report-pack --latest",
+                    "reason": "report-ready",
+                },
+            ],
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, stdout, stderr = self._run_main_raw(["today", "--json"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        payload = json.loads(stdout)
+        self.assertEqual(len(payload["suggested_next_actions"]), 1)
+        self.assertEqual(payload["suggested_next_actions"][0]["title"], "打开报告包")
 
     def test_retire_concept_batch_multiple_slugs_calls_each(self) -> None:
         """P4-19a: retire-concept 接受多 slug，按顺序循环调；receipt 桶化 count/slugs/receipts。"""
@@ -1006,7 +1059,7 @@ class CLITests(unittest.TestCase):
         self.assertNotIn("output/reports/yesterday.md", stdout)
         self.assertIn("(no reports today)", stdout)
 
-    def test_today_renders_suggested_next_actions(self) -> None:
+    def test_today_hides_maintenance_suggested_next_actions(self) -> None:
         summary = {
             "generated_at": "2026-04-27T10:00:00+00:00",
             "active_protocol": "research",
@@ -1019,8 +1072,25 @@ class CLITests(unittest.TestCase):
 
         self.assertEqual(code, 0)
         self.assertEqual(stderr, "")
-        self.assertIn("Review next page", stdout)
-        self.assertIn("aiwiki review-page --next --status approved", stdout)
+        self.assertNotIn("Review next page", stdout)
+        self.assertNotIn("aiwiki review-page --next --status approved", stdout)
+        self.assertIn("(no suggested next actions)", stdout)
+
+    def test_today_renders_non_maintenance_suggested_next_actions(self) -> None:
+        summary = {
+            "generated_at": "2026-04-27T10:00:00+00:00",
+            "active_protocol": "research",
+            "suggested_next_actions": [
+                {"title": "Open report pack", "command": "aiwiki report-pack --latest", "reason": "report-ready"}
+            ],
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, stdout, stderr = self._run_main_raw(["today"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertIn("Open report pack", stdout)
+        self.assertIn("aiwiki report-pack --latest", stdout)
 
     def test_today_no_llm_call(self) -> None:
         summary = {"generated_at": "2026-04-27T10:00:00+00:00", "active_protocol": "research"}

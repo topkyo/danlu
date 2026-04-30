@@ -13,7 +13,7 @@ class ProductShellTodayFeedContractTests(unittest.TestCase):
         text = (PLUGIN / "main.js").read_text(encoding="utf-8")
         self.assertIn("renderTodayFeed", text)
         self.assertIn("buildTodayFeed", text)
-        for kind in ["decision", "proposal", "report", "elixir", "action"]:
+        for kind in ["decision", "proposal", "report", "elixir", "automation", "action"]:
             self.assertIn(kind, text, f"feed kind missing: {kind}")
 
     def test_today_feed_old_helpers_preserved(self) -> None:
@@ -26,13 +26,19 @@ class ProductShellTodayFeedContractTests(unittest.TestCase):
     def test_today_feed_js_mirror_aligned(self) -> None:
         """JS today_feed mirror 与 Python 排序契约对齐。"""
         text = (PLUGIN / "src/today_feed.js").read_text(encoding="utf-8")
-        for kind in ["decision", "proposal", "report", "elixir", "action"]:
+        for kind in ["decision", "proposal", "report", "elixir", "automation", "action"]:
             self.assertIn(kind, text)
         self.assertTrue("today_feed.py" in text or "MIRROR" in text or "mirror" in text)
         self.assertIn("REVIEW_BUCKET_COPY", text)
+        self.assertIn("PRIMARY_REVIEW_BUCKETS", text)
+        self.assertIn("isMaintenanceCommandAction", text)
         self.assertIn("补充反证候选", text)
+        self.assertIn("buildCounterEvidenceEntries", text)
+        self.assertIn("buildDriftEntries", text)
+        self.assertIn("buildMetricAlertEntries", text)
         self.assertIn("buildAgentLoopEntries", text)
         self.assertIn("预演下一步维护", text)
+        self.assertIn("已自动维护", text)
         self.assertIn("alchemy auto --dry-run", text)
         self.assertNotIn("待审议: ${kindText}", text)
 
@@ -40,6 +46,7 @@ class ProductShellTodayFeedContractTests(unittest.TestCase):
         text = (PLUGIN / "main.js").read_text(encoding="utf-8")
         self.assertIn("buildAgentLoopEntries", text)
         self.assertIn("预演下一步维护", text)
+        self.assertIn("已自动维护", text)
         self.assertIn("alchemy auto --dry-run", text)
 
     def test_today_feed_styles_present(self) -> None:
@@ -56,6 +63,9 @@ class ProductShellTodayFeedContractTests(unittest.TestCase):
         self.assertIn("if (isWorkspaceTarget(target))", text)
         self.assertIn("Open Review", text)
         self.assertIn("Open report", text)
+        self.assertIn("Reports", text)
+        self.assertIn("Automation", text)
+        self.assertIn("Needs Your Confirmation", text)
         self.assertIn("Copy command", text)
         self.assertIn("Copy target", text)
         self.assertIn("Review queue", text)

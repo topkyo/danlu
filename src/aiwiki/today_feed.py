@@ -11,25 +11,46 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-FeedKind = Literal["decision", "proposal", "report", "elixir", "action"]
+FeedKind = Literal["decision", "proposal", "report", "elixir", "automation", "action"]
+FeedAudience = Literal["primary", "operator"]
 
 # 固定优先级：数字越小越靠前。同 priority 内按 timestamp desc。
+# 用户面最终形态：报告优先，自动化状态其次，人工确认靠后。
 _PRIORITY: dict[str, int] = {
-    "decision": 1,
-    "proposal": 2,
-    "report": 3,
-    "elixir": 4,
-    "action": 5,
+    "report": 1,
+    "automation": 2,
+    "decision": 3,
+    "proposal": 4,
+    "elixir": 5,
+    "action": 6,
 }
 
 _REVIEW_BUCKET_COPY: dict[str, tuple[str, str]] = {
     "counter_evidence_candidates": ("补充反证候选", "检查新来源是否足以反驳既有判断"),
+    "escalated_actions": ("处理升级动作", "处理已升级、需要人工确认的动作"),
+    "escalation_candidates": ("处理升级候选", "确认是否需要人工介入"),
     "judgment_review_actions": ("复核研究判断", "处理需要重新判断的结论"),
     "l3_proposals": ("处理 L3 提案", "确认采纳、拒绝或回滚提案"),
+    "l3_proposal_attention": ("处理 L3 提案", "确认采纳、拒绝或回滚提案"),
     "machine_memory_actions": ("修复机器记忆", "处理可审计的记忆修复动作"),
+    "overdue_actions": ("处理逾期动作", "确认是否继续执行或关闭"),
+    "overdue_reviews": ("处理逾期复审", "确认旧判断是否仍成立"),
     "pending_decisions": ("处理待定决策", "确认待定判断与执行入口"),
     "pending_judgments": ("复核待定判断", "推进仍在等待复核的判断"),
     "ready_actions": ("确认待执行动作", "复核已经准备好的安全动作"),
+}
+
+# 这些才是普通用户首屏的“需要你确认”。低层治理债仍在 Advanced / repair backlog。
+_PRIMARY_REVIEW_BUCKETS: set[str] = {
+    "counter_evidence_candidates",
+    "escalated_actions",
+    "escalation_candidates",
+    "judgment_review_actions",
+    "overdue_actions",
+    "overdue_reviews",
+    "pending_decisions",
+    "pending_judgments",
+    "ready_actions",
 }
 
 
@@ -43,14 +64,14 @@ class FeedEntry:
     protocol: str
 
 
-def build_today_feed(summary: dict[str, Any]) -> list[FeedEntry]:
+def build_today_feed(summary: dict[str, Any], *, audience: FeedAudience = "primary") -> list[FeedEntry]:
     """从 ShellSummary 派生统一 feed。pure function。"""
     if not isinstance(summary, dict):
         return []
     entries: list[FeedEntry] = []
     today_date = _today_date(summary)
 
-    entries.extend(_build_decision_entries(summary))
+    entries.extend(_build_decision_entries(summary, audience=audience))
     entries.extend(_build_counter_evidence_entries(summary))
     entries.extend(_build_drift_entries(summary))
     entries.extend(_build_proposal_entries(summary))
@@ -58,13 +79,13 @@ def build_today_feed(summary: dict[str, Any]) -> list[FeedEntry]:
     entries.extend(_build_elixir_entries(summary, today_date))
     entries.extend(_build_metric_alert_entries(summary))
     entries.extend(_build_agent_loop_entries(summary, today_date))
-    entries.extend(_build_action_entries(summary))
+    entries.extend(_build_action_entries(summary, audience=audience))
 
     entries.sort(key=_sort_key)
     return entries
 
 
-def _build_decision_entries(summary: dict[str, Any]) -> list[FeedEntry]:
+def _build_decision_entries(summary: dict[str, Any], *, audience: FeedAudience) -> list[FeedEntry]:
     counts = summary.get("review_backlog_counts")
     if not isinstance(counts, dict):
         return []
@@ -76,6 +97,8 @@ def _build_decision_entries(summary: dict[str, Any]) -> list[FeedEntry]:
             continue
         kind_text = str(kind).strip()
         if not kind_text:
+            continue
+        if audience == "primary" and kind_text not in _PRIMARY_REVIEW_BUCKETS:
             continue
         title, hint = _review_bucket_copy(kind_text)
         entries.append(
@@ -237,7 +260,7 @@ def _build_agent_loop_entries(summary: dict[str, Any], today_date: str) -> list[
 
     return [
         FeedEntry(
-            kind="action",
+            kind="automation",
             title=title if status != "failed" else "预演下一步维护",
             summary=summary_text,
             target=target if status != "failed" else "PYTHONPATH=src python3 -m aiwiki.cli --root . alchemy auto --dry-run",
@@ -340,7 +363,7 @@ def _build_elixir_entries(summary: dict[str, Any], today_date: str) -> list[Feed
     return entries
 
 
-def _build_action_entries(summary: dict[str, Any]) -> list[FeedEntry]:
+def _build_action_entries(summary: dict[str, Any], *, audience: FeedAudience) -> list[FeedEntry]:
     entries: list[FeedEntry] = []
     generated_at = str(summary.get("generated_at") or "")
     for item in _dict_items(summary.get("suggested_next_actions")):
@@ -349,6 +372,8 @@ def _build_action_entries(summary: dict[str, Any]) -> list[FeedEntry]:
         if not title or not target:
             continue
         reason = _first_text(item, "reason", "kind")
+        if audience == "primary" and _is_maintenance_command_action(target=target, reason=reason):
+            continue
         entries.append(
             FeedEntry(
                 kind="action",
@@ -360,6 +385,30 @@ def _build_action_entries(summary: dict[str, Any]) -> list[FeedEntry]:
             )
         )
     return entries
+
+
+def _is_maintenance_command_action(*, target: str, reason: str) -> bool:
+    """Return true for operator maintenance commands that should not be user-front-page tasks."""
+    target_text = f" {target.strip()} "
+    reason_text = reason.strip()
+    if reason_text.startswith("batch-hint:"):
+        return True
+    maintenance_tokens = (
+        " review-page ",
+        " review-action ",
+        " apply-action ",
+        " revert-action ",
+        " review-concept ",
+        " retire-concept ",
+        " reactivate-concept ",
+        " apply-rewrite ",
+        " review-rewrite ",
+        " revert-rewrite ",
+        " apply-archive ",
+        " revert-archive ",
+        " alchemy auto ",
+    )
+    return any(token in target_text for token in maintenance_tokens)
 
 
 def _today_date(summary: dict[str, Any]) -> str:

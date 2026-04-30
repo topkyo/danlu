@@ -5,6 +5,9 @@ Active protocol: general
 Today's Reports
 (no reports today)
 
+Automation
+(automation idle)
+
 Needs Review
 (no pending review)
 

@@ -941,22 +941,40 @@ function splitReportsByLocalDate(reports, options = {}) {
 "use strict";
 
 const PRIORITY = {
-  decision: 1,
-  proposal: 2,
-  report: 3,
-  elixir: 4,
-  action: 5,
+  report: 1,
+  automation: 2,
+  decision: 3,
+  proposal: 4,
+  elixir: 5,
+  action: 6,
 };
 
 const REVIEW_BUCKET_COPY = {
   counter_evidence_candidates: ["补充反证候选", "检查新来源是否足以反驳既有判断"],
+  escalated_actions: ["处理升级动作", "处理已升级、需要人工确认的动作"],
+  escalation_candidates: ["处理升级候选", "确认是否需要人工介入"],
   judgment_review_actions: ["复核研究判断", "处理需要重新判断的结论"],
   l3_proposals: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
+  l3_proposal_attention: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
   machine_memory_actions: ["修复机器记忆", "处理可审计的记忆修复动作"],
+  overdue_actions: ["处理逾期动作", "确认是否继续执行或关闭"],
+  overdue_reviews: ["处理逾期复审", "确认旧判断是否仍成立"],
   pending_decisions: ["处理待定决策", "确认待定判断与执行入口"],
   pending_judgments: ["复核待定判断", "推进仍在等待复核的判断"],
   ready_actions: ["确认待执行动作", "复核已经准备好的安全动作"],
 };
+
+const PRIMARY_REVIEW_BUCKETS = new Set([
+  "counter_evidence_candidates",
+  "escalated_actions",
+  "escalation_candidates",
+  "judgment_review_actions",
+  "overdue_actions",
+  "overdue_reviews",
+  "pending_decisions",
+  "pending_judgments",
+  "ready_actions",
+]);
 
 function buildTodayFeed(summary) {
   if (!summary || typeof summary !== "object") return [];
@@ -964,11 +982,14 @@ function buildTodayFeed(summary) {
   const entries = [];
 
   entries.push(...buildDecisionEntries(summary));
+  entries.push(...buildCounterEvidenceEntries(summary));
+  entries.push(...buildDriftEntries(summary));
   entries.push(...buildProposalEntries(summary));
   entries.push(...buildReportEntries(summary, todayDate));
   entries.push(...buildElixirEntries(summary, todayDate));
+  entries.push(...buildMetricAlertEntries(summary));
   entries.push(...buildAgentLoopEntries(summary, todayDate));
-  entries.push(...buildActionEntries(summary));
+  entries.push(...buildActionEntries(summary, "primary"));
 
   entries.sort(compareEntries);
   return entries;
@@ -986,6 +1007,7 @@ function buildDecisionEntries(summary) {
     if (count <= 0) continue;
     const kindText = String(kind).trim();
     if (!kindText) continue;
+    if (!PRIMARY_REVIEW_BUCKETS.has(kindText)) continue;
     const [title, hint] = reviewBucketCopy(kindText);
     entries.push({
       kind: "decision",
@@ -994,6 +1016,49 @@ function buildDecisionEntries(summary) {
       target: `review:${kindText}`,
       timestamp,
       protocol: "",
+    });
+  }
+  return entries;
+}
+
+function buildCounterEvidenceEntries(summary) {
+  const pages = summary.counter_evidence_pages;
+  if (!Array.isArray(pages)) return [];
+  const entries = [];
+  for (const item of dictItems(pages)) {
+    const target = firstText(item, "path");
+    if (!target) continue;
+    const subject = firstText(item, "subject") || target;
+    const pageSummary = firstText(item, "summary") || "judgment 被反驳";
+    entries.push({
+      kind: "decision",
+      title: `反证待复核: ${subject}`,
+      summary: pageSummary,
+      target,
+      timestamp: firstText(item, "detected_at"),
+      protocol: firstText(item, "protocol"),
+    });
+  }
+  return entries;
+}
+
+function buildDriftEntries(summary) {
+  const warnings = summary.drift_warnings;
+  if (!Array.isArray(warnings)) return [];
+  const entries = [];
+  for (const item of dictItems(warnings).slice(0, 8)) {
+    const kindText = firstText(item, "kind");
+    const target = firstText(item, "path");
+    const message = firstText(item, "message");
+    if (!target && !message) continue;
+    const titleTarget = target || kindText || "drift";
+    entries.push({
+      kind: "decision",
+      title: `知识漂移: ${titleTarget}`,
+      summary: message || kindText || "证据已变",
+      target: target || kindText,
+      timestamp: firstText(item, "detected_at"),
+      protocol: firstText(item, "protocol"),
     });
   }
   return entries;
@@ -1100,7 +1165,35 @@ function buildElixirEntries(summary, todayDate) {
   return entries;
 }
 
-function buildActionEntries(summary) {
+function buildMetricAlertEntries(summary) {
+  const delta = summary.metrics_history_delta;
+  if (!delta || typeof delta !== "object" || !delta.available) return [];
+  const alerts = delta.alerts;
+  if (!Array.isArray(alerts)) return [];
+  const windowLabel = String(delta.window || "");
+  const baselineTs = String(delta.baseline_ts || "");
+  const entries = [];
+  for (const item of dictItems(alerts)) {
+    const key = firstText(item, "metric_key");
+    if (!key) continue;
+    const direction = firstText(item, "direction");
+    const rawDiff = Number(item.diff || 0);
+    const diffValue = Number.isFinite(rawDiff) ? rawDiff : 0;
+    const arrow = direction === "up" ? "↑" : "↓";
+    const sign = diffValue >= 0 ? "+" : "";
+    entries.push({
+      kind: "action",
+      title: `指标变化: ${key} ${arrow}`,
+      summary: `${windowLabel} 内 ${key} 变化 ${sign}${diffValue.toPrecision(3)}（vs ${baselineTs}）`,
+      target: `metric:${key}`,
+      timestamp: baselineTs,
+      protocol: "",
+    });
+  }
+  return entries;
+}
+
+function buildActionEntries(summary, audience = "primary") {
   const entries = [];
   const generatedAt = String(summary.generated_at || "");
   for (const item of dictItems(summary.suggested_next_actions)) {
@@ -1108,6 +1201,7 @@ function buildActionEntries(summary) {
     const target = firstText(item, "command", "cli", "action", "path");
     if (!title || !target) continue;
     const reason = firstText(item, "reason", "kind");
+    if (audience === "primary" && isMaintenanceCommandAction(target, reason)) continue;
     entries.push({
       kind: "action",
       title,
@@ -1120,6 +1214,28 @@ function buildActionEntries(summary) {
   return entries;
 }
 
+function isMaintenanceCommandAction(target, reason) {
+  const targetText = ` ${String(target || "").trim()} `;
+  const reasonText = String(reason || "").trim();
+  if (reasonText.startsWith("batch-hint:")) return true;
+  const maintenanceTokens = [
+    " review-page ",
+    " review-action ",
+    " apply-action ",
+    " revert-action ",
+    " review-concept ",
+    " retire-concept ",
+    " reactivate-concept ",
+    " apply-rewrite ",
+    " review-rewrite ",
+    " revert-rewrite ",
+    " apply-archive ",
+    " revert-archive ",
+    " alchemy auto ",
+  ];
+  return maintenanceTokens.some((token) => targetText.includes(token));
+}
+
 function buildAgentLoopEntries(summary, todayDate) {
   const nightly = summary.nightly;
   if (!nightly || typeof nightly !== "object") return [];
@@ -1130,7 +1246,9 @@ function buildAgentLoopEntries(summary, todayDate) {
   const status = String(agentLoop.status || "");
   if (status !== "ok" && status !== "failed") return [];
 
+  let title = "预演下一步维护";
   let summaryText = "今日维护预演完成，暂不需要自动执行";
+  let target = "PYTHONPATH=src python3 -m aiwiki.cli --root . alchemy auto --dry-run";
   if (status === "failed") {
     summaryText = "今日维护预演失败，需要人工查看";
   } else {
@@ -1138,19 +1256,25 @@ function buildAgentLoopEntries(summary, todayDate) {
     const planner = agentLoop.planner && typeof agentLoop.planner === "object" ? agentLoop.planner : {};
     const execute = planner.execute && typeof planner.execute === "object" ? planner.execute : {};
     const autoPreview = agentLoop.auto_preview && typeof agentLoop.auto_preview === "object" ? agentLoop.auto_preview : {};
+    const autoApply = agentLoop.auto_apply && typeof agentLoop.auto_apply === "object" ? agentLoop.auto_apply : {};
     // Planner decisions are derived from signals; don't double-count one change in user-facing copy.
     const newItems = Math.max(asCount(signals.new_count), asCount(execute.new_count));
+    const appliedCount = asCount(autoApply.applied_count);
     const readyCount = asCount(autoPreview.ready_count);
-    if (readyCount > 0) {
+    if (appliedCount > 0) {
+      title = "已自动维护";
+      summaryText = `今日发现 ${newItems} 个新变化，已静默执行 ${appliedCount} 条维护路径`;
+      target = "wiki/indexes/execution-audit.md";
+    } else if (readyCount > 0) {
       summaryText = `今日发现 ${newItems} 个新变化，${readyCount} 条维护路径可人工确认`;
     }
   }
 
   return [{
-    kind: "action",
-    title: "预演下一步维护",
+    kind: "automation",
+    title,
     summary: summaryText,
-    target: "PYTHONPATH=src python3 -m aiwiki.cli --root . alchemy auto --dry-run",
+    target,
     timestamp,
     protocol: String(summary.active_protocol || ""),
   }];
@@ -3144,19 +3268,18 @@ function renderTodayFeed(plugin, container) {
     return;
   }
   
-  const groups = { decision: [], proposal: [], report: [], elixir: [], action: [] };
+  const groups = { report: [], automation: [], decision: [], proposal: [], elixir: [], action: [] };
   for (const entry of feed) groups[entry.kind].push(entry);
   
   const groupSpecs = [
-    ["decision", plugin.t("Needs Decision")],
-    ["proposal", plugin.t("Proposals")],
-    ["report", plugin.t("Today's Reports")],
-    ["elixir", plugin.t("Completed")],
-    ["action", plugin.t("Suggested Actions")],
+    ["report", plugin.t("Reports"), groups.report],
+    ["automation", plugin.t("Automation"), groups.automation],
+    ["confirmation", plugin.t("Needs Your Confirmation"), [...groups.decision, ...groups.proposal]],
+    ["elixir", plugin.t("Completed"), groups.elixir],
+    ["action", plugin.t("Suggested Actions"), groups.action],
   ];
   
-  for (const [kind, heading] of groupSpecs) {
-    const items = groups[kind];
+  for (const [kind, heading, items] of groupSpecs) {
     if (!items.length) continue;
     const groupEl = section.createDiv({ cls: `furnace-today-feed-group furnace-today-feed-${kind}` });
     groupEl.createEl("h3", { text: heading });
