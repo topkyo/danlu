@@ -733,7 +733,7 @@ def run_ask(
             base_event["backend_compat"] = dict(backend_compat)
         record_llm_attempt(root, base_event, llm_audit, **kwargs)
 
-    ask_kwargs = {"protocol": protocol, "no_cache": no_cache}
+    ask_kwargs = {"protocol": protocol, "no_cache": no_cache, "write_graph_anchors": False}
     if corpus_id_override is not None:
         ask_kwargs["corpus_id_override"] = corpus_id_override
     artifact = ask_question(root, question, output_format, **ask_kwargs)
@@ -766,6 +766,15 @@ def run_ask(
 
     target = root / artifact["path"]
     current_artifact = target.read_text(encoding="utf-8", errors="replace")
+
+    def _apply_graph_anchors_to_target() -> None:
+        anchors = [str(item) for item in artifact.get("graph_anchor_node_ids", []) if str(item).strip()]
+        if not anchors:
+            return
+        from aiwiki.execution.ask import apply_graph_anchors_to_artifact
+
+        apply_graph_anchors_to_artifact(target, anchors=anchors, memory=load_machine_memory(root))
+
     effective_client = client or create_client(root, timeout_seconds=timeout_seconds)
     backend_requested = _client_backend_requested(effective_client)
     model_selected = _client_selected_model_name(effective_client)
@@ -907,6 +916,7 @@ def run_ask(
                     raw_response_path=_raw_response_path(root, result, exc),
                     error_class=_receipt_error_class(exc),
                 )
+                _apply_graph_anchors_to_target()
                 return {
                     **artifact,
                     **failed_audit,
@@ -937,6 +947,7 @@ def run_ask(
     # LLM 覆盖了整个 artifact，需要重新注入 candidate_state 与 corpus_id frontmatter 字段
     # 让 EP-029 candidate 队列语义在 run-ask 全链路保持一致（与 ask_question 内的插入逻辑同款）。
     _reinject_candidate_frontmatter(target, corpus_id=corpus_id)
+    _apply_graph_anchors_to_target()
     backend_effective = _client_backend_name(effective_client)
     model_final = _client_model_name(effective_client)
     fallback_stage = _fallback_stage_label(fallback_stages)

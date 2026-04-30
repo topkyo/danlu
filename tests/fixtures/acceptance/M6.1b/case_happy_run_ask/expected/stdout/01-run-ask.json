@@ -10,6 +10,13 @@
   "fallback_stage": "",
   "fallback_used": false,
   "format": "report",
+  "graph_anchor_node_ids": [
+    "source:source-a",
+    "concept:acceptance",
+    "concept:establishes",
+    "concept:replay",
+    "concept:should"
+  ],
   "index_pages": [
     "wiki/indexes/index.md",
     "wiki/indexes/sources.md",

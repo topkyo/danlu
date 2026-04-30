@@ -117,7 +117,81 @@ def relation_style(edge_type: str) -> tuple[str, str]:
     return "#94a3b8", ""
 
 
-def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, Any]) -> str:
+# Round 49: report ↔ graph anchor reverse index. Compile-time helper that
+# scans recent reports for ``graph_anchor_node_ids`` and produces a
+# ``node_id -> [{"title", "path"}, ...]`` map for the graph HTML to render.
+_REPORT_ANCHOR_DIRS: tuple[str, ...] = (
+    "output/reports",
+    "output/slides",
+    "output/figures",
+)
+
+
+def collect_report_anchors(root: Path, *, limit: int = 50) -> dict[str, list[dict[str, str]]]:
+    """Collect a node_id -> referencing reports map.
+
+    Reads the most recent ``limit`` markdown files under ``output/reports``,
+    ``output/slides`` and ``output/figures``; parses their frontmatter for
+    ``graph_anchor_node_ids`` and ``title`` (falling back to ``id`` /
+    file stem). Older files are skipped to keep the scan O(limit).
+
+    The returned map is order-stable per node: most recent reports first.
+    Empty / unreadable reports are skipped silently rather than raising,
+    so a stray malformed artifact does not break compile.
+    """
+    from ..app_utils import parse_frontmatter, relative_path
+
+    candidates: list[tuple[float, Path]] = []
+    for relative in _REPORT_ANCHOR_DIRS:
+        directory = root / relative
+        if not directory.is_dir():
+            continue
+        for path in directory.iterdir():
+            if path.suffix != ".md" or not path.is_file():
+                continue
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue
+            candidates.append((mtime, path))
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    if limit > 0:
+        candidates = candidates[:limit]
+
+    index: dict[str, list[dict[str, str]]] = {}
+    for _mtime, path in candidates:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        frontmatter = parse_frontmatter(text)
+        anchors_raw = frontmatter.get("graph_anchor_node_ids")
+        if not isinstance(anchors_raw, list):
+            continue
+        anchors = [str(item).strip() for item in anchors_raw if str(item).strip()]
+        if not anchors:
+            continue
+        title = (
+            str(frontmatter.get("title") or "").strip()
+            or str(frontmatter.get("id") or "").strip()
+            or path.stem
+        )
+        report_path = relative_path(root, path)
+        record = {"title": title, "path": report_path}
+        for anchor in anchors:
+            bucket = index.setdefault(anchor, [])
+            if record not in bucket:
+                bucket.append(record)
+    return index
+
+
+def render_machine_memory_graph_html(
+    memory: dict[str, Any],
+    graph: dict[str, Any],
+    *,
+    report_anchors: dict[str, list[dict[str, str]]] | None = None,
+) -> str:
+    report_anchors = report_anchors or {}
     health = memory.get("health", {})
     source_nodes = {node["id"]: node for node in memory.get("source_nodes", [])}
     concept_nodes = {node["slug"]: node for node in memory.get("concept_nodes", [])}
@@ -406,6 +480,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             f" <span class=\"node-meta\">{html.escape(subtitle)} · {html.escape(component_label)} · 连接 {degree_map.get(node_id, 0)}</span>"
             "</li>"
         )
+        referenced_by = list(report_anchors.get(node_id, [])) if report_anchors else []
         node_records.append(
             {
                 "id": node_id,
@@ -423,6 +498,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
                 "secondary_metric": secondary_metric,
                 "x": x,
                 "y": y,
+                "referenced_by": referenced_by[:5],
             }
         )
 
@@ -718,6 +794,10 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "        .slice(0, 8)",
             "        .map((edge) => `<li>${edge.label || '关系'}：<code>${edge.source}</code> → <code>${edge.target}</code></li>`)",
             "        .join('') || '<li>暂无直接关系。</li>';",
+            "      const referencedReports = Array.isArray(node.referenced_by) ? node.referenced_by : [];",
+            "      const referencedItems = referencedReports.length",
+            "        ? referencedReports.slice(0, 5).map((report) => `<li><a href=\"../../${encodeURI(report.path || '')}\">${report.title || report.path || '未命名报告'}</a></li>`).join('')",
+            "        : '<li>暂无引用此节点的报告。</li>';",
             "      nodeDetails.innerHTML = [",
             "        `<div><strong>${node.title}</strong></div>`,",
             "        `<div>类型：<code>${node.kind_label || node.kind}</code></div>`,",
@@ -725,6 +805,7 @@ def render_machine_memory_graph_html(memory: dict[str, Any], graph: dict[str, An
             "        `<div>关系组：<code>${node.component_label || '未分组'}</code></div>`,",
             "        `<div>连接数：<code>${node.degree}</code></div>`,",
             "        `<div>相关关系：<ul>${relationItems}</ul></div>`,",
+            "        `<div>引用此节点的报告：<ul>${referencedItems}</ul></div>`,",
             "        `<div>详情页：<code>${node.page_path}</code></div>`,",
             "        `<div>${node.secondary_metric || ''}</div>`,",
             "        `<div><a href=\"${node.href}\">打开页面</a></div>`",

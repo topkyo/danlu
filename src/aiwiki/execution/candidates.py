@@ -74,6 +74,62 @@ def write_candidate_frontmatter(
     path.write_text("\n".join(filtered).rstrip() + "\n", encoding="utf-8")
 
 
+def write_graph_anchor_frontmatter(path: Path, *, anchors: list[str]) -> None:
+    """Write/update ``graph_anchor_node_ids`` into the artifact frontmatter.
+
+    Emits the multi-line ``key:`` + ``  - "value"`` shape that the project's
+    custom ``parse_frontmatter`` understands. Mirrors
+    ``write_candidate_frontmatter`` for the candidate marker so the
+    frontmatter mutation surface stays in one place.
+
+    Behaviour:
+    - If the file has frontmatter, drop any previous ``graph_anchor_node_ids``
+      key + its indented list items, then re-emit the new block right before
+      the closing ``---``.
+    - If no frontmatter exists, synthesize a minimal one rather than swallow
+      the request silently.
+    - Empty ``anchors`` is a no-op (still valid: nothing to record).
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"graph anchor target not found: {path}")
+    if not anchors:
+        return
+    cleaned = [str(item).strip() for item in anchors if str(item).strip()]
+    if not cleaned:
+        return
+    block = ["graph_anchor_node_ids:"] + [f'  - "{item}"' for item in cleaned]
+    original = path.read_text(encoding="utf-8", errors="replace")
+    lines = original.splitlines()
+    has_frontmatter = bool(lines) and lines[0].strip() == "---"
+    close_idx: int | None = None
+    if has_frontmatter:
+        for idx in range(1, len(lines)):
+            if lines[idx].strip() == "---":
+                close_idx = idx
+                break
+    if not has_frontmatter or close_idx is None:
+        header = ["---", *block, "---"]
+        synthesized = header + lines
+        path.write_text("\n".join(synthesized).rstrip() + "\n", encoding="utf-8")
+        return
+    filtered: list[str] = lines[:1]
+    skip_list_items = False
+    for item in lines[1:close_idx]:
+        if item.startswith("graph_anchor_node_ids:"):
+            skip_list_items = True
+            continue
+        if skip_list_items and item.startswith("  - "):
+            continue
+        skip_list_items = False
+        filtered.append(item)
+    new_close_idx = len(filtered)
+    filtered.append(lines[close_idx])
+    filtered.extend(lines[close_idx + 1 :])
+    for offset, line in enumerate(block):
+        filtered.insert(new_close_idx + offset, line)
+    path.write_text("\n".join(filtered).rstrip() + "\n", encoding="utf-8")
+
+
 def promote_candidate(root: Path, artifact_ref: str) -> dict[str, Any]:
     ensure_layout(root)
     candidate = _find_candidate(root, artifact_ref)

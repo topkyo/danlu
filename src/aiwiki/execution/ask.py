@@ -85,6 +85,7 @@ from ..app_utils import (
     runtime_write_operation,
     slugify,
     strip_frontmatter,
+    upsert_markdown_section,
 )
 from ..compile import compile_wiki
 from ..notify import notify_report_generated
@@ -171,6 +172,123 @@ def _append_run_event(root: Path, event: dict[str, Any]) -> None:
     _append_log(root, event)
 
 
+# Round 49: report ↔ graph anchor metadata.
+# Cap to 8 anchors so frontmatter stays readable; pick top-ranked sources and
+# concepts first, then include up to 2 judgments tied to those sources so the
+# anchor list reflects the same evidence chain the report just rendered.
+_GRAPH_ANCHOR_LIMIT = 8
+
+
+def _build_graph_anchor_node_ids(
+    machine_query: dict[str, Any],
+    memory: dict[str, Any],
+    *,
+    ranked_sources: list[dict[str, Any]] | None = None,
+    ranked_concepts: list[dict[str, Any]] | None = None,
+) -> list[str]:
+    source_ids = list(machine_query.get("ranked_source_ids", []))[:4]
+    concept_slugs = list(machine_query.get("ranked_concept_slugs", []))[:4]
+    # When the machine query did not find direct term matches, fall back to
+    # the ranked sources/concepts the report actually rendered. Without this
+    # fallback, broad questions like "compare X and Y" would yield empty
+    # anchors despite the report citing real evidence.
+    if not source_ids and ranked_sources:
+        source_ids = [
+            str(entry.get("id"))
+            for entry in ranked_sources[:4]
+            if isinstance(entry, dict) and entry.get("id")
+        ]
+    if not concept_slugs and ranked_concepts:
+        concept_slugs = [
+            str(concept.get("slug"))
+            for concept in ranked_concepts[:4]
+            if isinstance(concept, dict) and concept.get("slug")
+        ]
+    judgment_ids: list[str] = []
+    if source_ids:
+        source_set = set(source_ids)
+        for edge in memory.get("edges", {}).get("source_to_judgment", []):
+            if not isinstance(edge, dict):
+                continue
+            if str(edge.get("source_id") or "") in source_set:
+                page_id = str(edge.get("page_id") or "")
+                if page_id and page_id not in judgment_ids:
+                    judgment_ids.append(page_id)
+            if len(judgment_ids) >= 2:
+                break
+    anchors: list[str] = []
+    for source_id in source_ids:
+        anchors.append(f"source:{source_id}")
+    for slug in concept_slugs:
+        anchors.append(f"concept:{slug}")
+    for page_id in judgment_ids:
+        anchors.append(f"judgment:{page_id}")
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for anchor in anchors:
+        if anchor in seen:
+            continue
+        seen.add(anchor)
+        deduped.append(anchor)
+        if len(deduped) >= _GRAPH_ANCHOR_LIMIT:
+            break
+    return deduped
+
+
+def _resolve_anchor_title(anchor: str, memory: dict[str, Any]) -> str:
+    """Return a chinese-friendly display title for a ``kind:id`` anchor."""
+    if ":" not in anchor:
+        return anchor
+    kind, identifier = anchor.split(":", 1)
+    if kind == "source":
+        for node in memory.get("source_nodes", []):
+            if isinstance(node, dict) and str(node.get("id") or "") == identifier:
+                return str(node.get("title") or identifier)
+    elif kind == "concept":
+        for node in memory.get("concept_nodes", []):
+            if isinstance(node, dict) and str(node.get("slug") or "") == identifier:
+                return str(node.get("title") or identifier)
+    elif kind == "judgment":
+        for node in memory.get("judgment_nodes", []):
+            if isinstance(node, dict) and str(node.get("page_id") or "") == identifier:
+                return str(node.get("title") or identifier)
+    return identifier
+
+
+def _append_graph_anchor_section(
+    destination: Path, *, anchors: list[str], memory: dict[str, Any]
+) -> None:
+    """Upsert a 关系图谱锚点 section into the artifact body."""
+    if not anchors:
+        return
+    lines = [
+        "需要追溯证据链时，打开 [`output/graph/machine-memory.html`](../graph/machine-memory.html) 并搜索下列节点 id："
+    ]
+    lines.append("")
+    for anchor in anchors:
+        title = _resolve_anchor_title(anchor, memory)
+        lines.append(f"- `{anchor}` — {title}")
+    body = destination.read_text(encoding="utf-8", errors="replace")
+    body = upsert_markdown_section(body, "关系图谱锚点", "\n".join(lines))
+    destination.write_text(body.rstrip() + "\n", encoding="utf-8")
+
+
+def apply_graph_anchors_to_artifact(
+    destination: Path, *, anchors: list[str], memory: dict[str, Any]
+) -> None:
+    """Write graph anchor frontmatter and the human-readable anchor section.
+
+    Used by deterministic ``ask_question`` immediately and by ``run_ask``
+    after the LLM has replaced the artifact body.
+    """
+    if not anchors:
+        return
+    from .candidates import write_graph_anchor_frontmatter
+
+    write_graph_anchor_frontmatter(destination, anchors=anchors)
+    _append_graph_anchor_section(destination, anchors=anchors, memory=memory)
+
+
 @runtime_write_operation
 def ask_question(
     root: Path,
@@ -181,6 +299,7 @@ def ask_question(
     no_cache: bool = False,
     corpus_id_override: str | None = None,
     load_protocol_learnings: bool = False,
+    write_graph_anchors: bool = True,
 ) -> dict[str, Any]:
     from .. import app_compile as _app_compile
 
@@ -317,6 +436,19 @@ def ask_question(
         candidate_state="pending",
         corpus_id=active_corpus["corpus_id"],
     )
+    anchors = _build_graph_anchor_node_ids(
+        machine_query,
+        memory,
+        ranked_sources=ranked,
+        ranked_concepts=ranked_concepts,
+    )
+    # ``run_ask`` calls ``ask_question`` first to produce a deterministic
+    # baseline, then overwrites the file with LLM output. Writing anchors here
+    # would also poison ``current_artifact`` fed into the LLM prompt. The
+    # caller in run_ask passes ``write_graph_anchors=False`` and re-applies
+    # via ``apply_graph_anchors_to_artifact`` after the LLM step.
+    if write_graph_anchors and anchors:
+        apply_graph_anchors_to_artifact(destination, anchors=anchors, memory=memory)
     upsert_output_candidate(
         root,
         artifact_ref=artifact_ref,
@@ -429,6 +561,7 @@ def ask_question(
         "active_corpus_id": active_corpus["corpus_id"],
         "ranked_sources": [entry["id"] for entry in ranked],
         "ranked_concepts": [concept["slug"] for concept in ranked_concepts],
+        "graph_anchor_node_ids": anchors,
         "machine_memory_query": machine_query,
         "index_pages": [
             "wiki/indexes/index.md",

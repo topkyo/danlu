@@ -7278,6 +7278,96 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(has_concept_color, "#0ea5e9")
         self.assertEqual(fallback_color, "#94a3b8")
 
+    def test_ask_question_writes_graph_anchor_frontmatter_and_body(self) -> None:
+        from aiwiki.app_utils import parse_frontmatter
+
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        result = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        report_path = self.root / result["path"]
+        text = report_path.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(text)
+
+        anchors = frontmatter.get("graph_anchor_node_ids")
+        self.assertIsInstance(anchors, list)
+        self.assertTrue(anchors, "report should record at least one graph anchor")
+        self.assertLessEqual(len(anchors), 8)
+        for anchor in anchors:
+            self.assertRegex(str(anchor), r"^(source|concept|judgment):")
+
+        # Body section provides a chinese link back to the graph and lists each anchor.
+        self.assertIn("## 关系图谱锚点", text)
+        self.assertIn("output/graph/machine-memory.html", text)
+        for anchor in anchors:
+            self.assertIn(f"`{anchor}`", text)
+
+    def test_compile_graph_html_lists_referencing_reports_for_anchored_nodes(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        result = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        # Re-run compile so the graph HTML picks up the anchor-bearing report.
+        compile_wiki(self.root)
+
+        payload = (self.root / "output" / "graph" / "machine-memory.html").read_text(encoding="utf-8")
+        self.assertIn("引用此节点的报告", payload)
+        self.assertIn("referenced_by", payload)
+        # The report path should be embedded in the JSON payload that drives detail rendering.
+        self.assertIn(result["path"], payload)
+
+    def test_collect_report_anchors_returns_node_to_reports_map(self) -> None:
+        from aiwiki.memory.graph import collect_report_anchors
+
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        result = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+
+        index = collect_report_anchors(self.root)
+        self.assertIsInstance(index, dict)
+        self.assertTrue(index, "expected at least one anchor entry")
+        seen_paths = {entry["path"] for nodes in index.values() for entry in nodes}
+        self.assertIn(result["path"], seen_paths)
+        for entries in index.values():
+            self.assertLessEqual(len(entries), 50)
+            for entry in entries:
+                self.assertIn("title", entry)
+                self.assertIn("path", entry)
+
+    def test_render_graph_html_without_report_anchors_does_not_break(self) -> None:
+        from aiwiki.app_memory_surfaces import render_machine_memory_graph_html
+
+        memory = {
+            "compiled_at": "2026-04-30T00:00:00+00:00",
+            "source_nodes": [{"id": "src-1", "title": "材料 A", "concept_slugs": ["alpha"]}],
+            "concept_nodes": [{"slug": "alpha", "title": "Alpha"}],
+            "judgment_nodes": [],
+            "edges": {},
+            "health": {
+                "components": [
+                    {
+                        "id": "component-1",
+                        "source_ids": ["src-1"],
+                        "concept_slugs": ["alpha"],
+                        "judgment_ids": [],
+                    }
+                ]
+            },
+        }
+        graph = {
+            "digest": "demo",
+            "nodes": [
+                {"id": "source:src-1", "kind": "source", "title": "材料 A", "source_page": "wiki/sources/src-1.md"},
+                {"id": "concept:alpha", "kind": "concept", "title": "Alpha", "source_pages": []},
+            ],
+            "edges": [],
+        }
+
+        # Default (None) and empty-dict both must render without raising and
+        # still emit the empty-state message in the detail panel script.
+        for anchors in (None, {}):
+            payload = render_machine_memory_graph_html(memory, graph, report_anchors=anchors)
+            self.assertIn("引用此节点的报告", payload)
+            self.assertIn("暂无引用此节点的报告", payload)
+
     def test_relation_summary_keys_by_edge_type_not_chinese_label(self) -> None:
         memory = {
             "compiled_at": "2026-04-30T00:00:00+00:00",

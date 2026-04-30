@@ -151,6 +151,7 @@ class RunnerTests(unittest.TestCase):
             "protocol_pages": [],
             "index_pages": [],
             "machine_memory_query": {},
+            "graph_anchor_node_ids": ["source:source-1"],
         }
 
         class _LeanClient:
@@ -192,6 +193,7 @@ class RunnerTests(unittest.TestCase):
             "protocol_pages": [],
             "index_pages": [],
             "machine_memory_query": {},
+            "graph_anchor_node_ids": ["source:source-1"],
         }
 
         class _TimeoutClient:
@@ -298,7 +300,14 @@ class RunnerTests(unittest.TestCase):
             with patch("aiwiki.runner.workflows._build_ask_prompt", return_value="prompt"):
                 result = run_ask(self.root, "测试", "report", client=_NoCacheClient(), no_cache=True)
 
-        ask_mock.assert_called_once_with(self.root, "测试", "report", protocol=None, no_cache=True)
+        ask_mock.assert_called_once_with(
+            self.root,
+            "测试",
+            "report",
+            protocol=None,
+            no_cache=True,
+            write_graph_anchors=False,
+        )
         self.assertTrue(result["no_cache"])
 
     def test_run_ask_frontdoor_returns_deterministic_fallback_payload_when_backend_unavailable(self) -> None:
@@ -314,6 +323,7 @@ class RunnerTests(unittest.TestCase):
             "protocol_pages": [],
             "index_pages": [],
             "machine_memory_query": {},
+            "graph_anchor_node_ids": ["source:source-1"],
         }
 
         class _UnavailableAskClient:
@@ -341,6 +351,11 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(result["fallback_command"], "ask")
         self.assertFalse(result["contract_validated"])
         self.assertEqual(result["path"], "output/reports/query-frontdoor-fallback.md")
+        content = artifact_path.read_text(encoding="utf-8")
+        self.assertIn("graph_anchor_node_ids:", content)
+        self.assertIn('  - "source:source-1"', content)
+        self.assertIn("## 关系图谱锚点", content)
+        self.assertIn("`source:source-1`", content)
 
         llm_receipts = [
             json.loads(line)

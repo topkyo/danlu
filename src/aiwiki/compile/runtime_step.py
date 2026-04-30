@@ -73,6 +73,7 @@ from ..app_utils import (
     tokenize,
     write_json_document_if_changed_ignoring_generated_timestamps,
 )
+from ..memory.graph import collect_report_anchors
 from .context import CompileContext
 
 
@@ -512,9 +513,10 @@ def compile_runtime_phase(context: CompileContext) -> None:
         machine_memory_graph_path(context.root),
         json.dumps(graph, indent=2, sort_keys=True) + "\n",
     )
+    report_anchors = collect_report_anchors(context.root)
     context.write_index_artifact(
         machine_memory_graph_html_path(context.root),
-        render_machine_memory_graph_html(context.memory, graph),
+        render_machine_memory_graph_html(context.memory, graph, report_anchors=report_anchors),
     )
     append_machine_memory_history(context.root, context.memory, context.transition)
     context.write_index_artifact(
