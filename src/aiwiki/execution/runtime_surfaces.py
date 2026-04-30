@@ -102,6 +102,10 @@ def nightly_health(root: Path) -> dict[str, Any]:
         semantic_report="",
         llm_used=False,
     )
+    from ..agent_loop import attach_agent_loop_to_nightly_state, run_nightly_agent_loop_preview
+
+    agent_loop = run_nightly_agent_loop_preview(root)
+    state = attach_agent_loop_to_nightly_state(root, state, agent_loop)
 
     drift_aging: dict[str, Any] = {}
     try:
@@ -123,6 +127,7 @@ def nightly_health(root: Path) -> dict[str, Any]:
         "lint": lint_result,
         "promotions": promotion_result,
         "aging": state["aging"],
+        "agent_loop": state.get("agent_loop", {}),
         "drift_aging": drift_aging,
         "repair_backlog": state["repair_backlog"]["path"],
         "auto_applied": auto_applied,

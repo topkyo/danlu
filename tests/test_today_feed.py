@@ -239,6 +239,62 @@ def _case_action_entry_skipped_without_command() -> None:
     assert build_today_feed({"suggested_next_actions": [{"title": "No command"}]}) == []
 
 
+def _case_agent_loop_entry_built_from_nightly_summary() -> None:
+    feed = build_today_feed(
+        {
+            "generated_at": "2026-04-30T09:00:00+00:00",
+            "active_protocol": "research",
+            "nightly": {
+                "generated_at": "2026-04-30T08:00:00+00:00",
+                "agent_loop": {
+                    "status": "ok",
+                    "generated_at": "2026-04-30T08:01:00+00:00",
+                    "signals": {"new_count": 1},
+                    "planner": {"execute": {"new_count": 2}},
+                    "auto_preview": {"ready_count": 1},
+                },
+            },
+        }
+    )
+
+    assert len(feed) == 1
+    entry = feed[0]
+    assert entry.kind == "action"
+    assert entry.title == "预演下一步维护"
+    assert entry.summary == "今日发现 3 个新变化，1 条维护路径可人工确认"
+    assert entry.target.endswith("alchemy auto --dry-run")
+    assert entry.protocol == "research"
+
+
+def _case_agent_loop_failed_entry_uses_product_copy() -> None:
+    feed = build_today_feed(
+        {
+            "generated_at": "2026-04-30T09:00:00+00:00",
+            "nightly": {
+                "agent_loop": {
+                    "status": "failed",
+                    "generated_at": "2026-04-30T08:01:00+00:00",
+                    "error_type": "RuntimeError",
+                }
+            },
+        }
+    )
+
+    assert len(feed) == 1
+    assert feed[0].title == "预演下一步维护"
+    assert feed[0].summary == "今日维护预演失败，需要人工查看"
+
+
+def _case_agent_loop_entry_skipped_when_not_today() -> None:
+    feed = build_today_feed(
+        {
+            "generated_at": "2026-04-30T09:00:00+00:00",
+            "nightly": {"agent_loop": {"status": "ok", "generated_at": "2026-04-29T23:59:59+00:00"}},
+        }
+    )
+    assert feed == []
+
+
 def _case_priority_ordering() -> None:
     feed = build_today_feed(
         {
@@ -300,9 +356,19 @@ def _case_no_mechanism_words_in_summary_text() -> None:
                 {"title": "A", "operation": "promote", "receipt_path": "receipt.json", "applied_at": "2026-04-27T01:00:00Z"}
             ],
             "suggested_next_actions": [{"title": "Act", "command": "cmd", "reason": "continue"}],
+            "nightly": {
+                "agent_loop": {
+                    "status": "ok",
+                    "generated_at": "2026-04-27T02:00:00Z",
+                    "signals": {"new_count": 1},
+                    "planner": {"execute": {"new_count": 1}},
+                    "auto_preview": {"ready_count": 1},
+                }
+            },
         }
     )
     for entry in feed:
+        assert not any(word in entry.title for word in MECHANISM_WORDS)
         assert not any(word in entry.summary for word in MECHANISM_WORDS)
 
 

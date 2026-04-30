@@ -31,7 +31,16 @@ class ProductShellTodayFeedContractTests(unittest.TestCase):
         self.assertTrue("today_feed.py" in text or "MIRROR" in text or "mirror" in text)
         self.assertIn("REVIEW_BUCKET_COPY", text)
         self.assertIn("补充反证候选", text)
+        self.assertIn("buildAgentLoopEntries", text)
+        self.assertIn("预演下一步维护", text)
+        self.assertIn("alchemy auto --dry-run", text)
         self.assertNotIn("待审议: ${kindText}", text)
+
+    def test_today_feed_agent_loop_present_in_built_main(self) -> None:
+        text = (PLUGIN / "main.js").read_text(encoding="utf-8")
+        self.assertIn("buildAgentLoopEntries", text)
+        self.assertIn("预演下一步维护", text)
+        self.assertIn("alchemy auto --dry-run", text)
 
     def test_today_feed_styles_present(self) -> None:
         css = (PLUGIN / "styles.css").read_text(encoding="utf-8")

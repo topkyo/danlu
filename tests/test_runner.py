@@ -1068,6 +1068,10 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(result["contract_validated"])
         self.assertEqual(result["delivery_mode"], "llm-success")
         self.assertFalse(result["fallback_used"])
+        self.assertEqual(result["agent_loop"]["status"], "ok")
+        self.assertTrue(result["agent_loop"]["dry_run"])
+        self.assertFalse(result["agent_loop"]["side_effects_allowed"])
+        self.assertEqual(result["agent_loop"]["auto_preview"]["mode"], "dry_run")
 
         llm_receipts_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
         receipt = json.loads(llm_receipts_path.read_text(encoding="utf-8").strip().splitlines()[-1])
@@ -1092,6 +1096,10 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(nightly_events[0]["llm_used"])
         self.assertEqual(nightly_events[0]["state_path"], ".aiwiki/state/nightly-health.json")
         self.assertEqual(nightly_events[0]["repair_backlog"], result["repair_backlog"])
+        nightly_state = json.loads((self.root / ".aiwiki" / "state" / "nightly-health.json").read_text(encoding="utf-8"))
+        self.assertEqual(nightly_state["agent_loop"]["status"], "ok")
+        self.assertTrue(nightly_state["agent_loop"]["dry_run"])
+        self.assertFalse(nightly_state["agent_loop"]["side_effects_allowed"])
         # EP-029 Step 3 AC #13: nightly integrates protocol_learnings_age stage.
         self.assertIn("protocol_learnings_age", result)
         self.assertTrue(result["protocol_learnings_age"].get("apply"))

@@ -57,6 +57,7 @@ def build_today_feed(summary: dict[str, Any]) -> list[FeedEntry]:
     entries.extend(_build_report_entries(summary, today_date))
     entries.extend(_build_elixir_entries(summary, today_date))
     entries.extend(_build_metric_alert_entries(summary))
+    entries.extend(_build_agent_loop_entries(summary, today_date))
     entries.extend(_build_action_entries(summary))
 
     entries.sort(key=_sort_key)
@@ -194,6 +195,46 @@ def _build_metric_alert_entries(summary: dict[str, Any]) -> list[FeedEntry]:
             )
         )
     return entries
+
+
+def _build_agent_loop_entries(summary: dict[str, Any], today_date: str) -> list[FeedEntry]:
+    nightly = summary.get("nightly")
+    if not isinstance(nightly, dict):
+        return []
+    agent_loop = nightly.get("agent_loop")
+    if not isinstance(agent_loop, dict):
+        return []
+    timestamp = str(agent_loop.get("generated_at") or nightly.get("generated_at") or "")
+    if _date_part(timestamp) != today_date:
+        return []
+    status = str(agent_loop.get("status") or "")
+    if status not in {"ok", "failed"}:
+        return []
+
+    if status == "failed":
+        summary_text = "今日维护预演失败，需要人工查看"
+    else:
+        signals = agent_loop.get("signals") if isinstance(agent_loop.get("signals"), dict) else {}
+        planner = agent_loop.get("planner") if isinstance(agent_loop.get("planner"), dict) else {}
+        execute = planner.get("execute") if isinstance(planner.get("execute"), dict) else {}
+        auto_preview = agent_loop.get("auto_preview") if isinstance(agent_loop.get("auto_preview"), dict) else {}
+        new_items = int(signals.get("new_count") or 0) + int(execute.get("new_count") or 0)
+        ready_count = int(auto_preview.get("ready_count") or 0)
+        if ready_count > 0:
+            summary_text = f"今日发现 {new_items} 个新变化，{ready_count} 条维护路径可人工确认"
+        else:
+            summary_text = "今日维护预演完成，暂不需要自动执行"
+
+    return [
+        FeedEntry(
+            kind="action",
+            title="预演下一步维护",
+            summary=summary_text,
+            target="PYTHONPATH=src python3 -m aiwiki.cli --root . alchemy auto --dry-run",
+            timestamp=timestamp,
+            protocol=str(summary.get("active_protocol") or ""),
+        )
+    ]
 
 
 def _build_proposal_entries(summary: dict[str, Any]) -> list[FeedEntry]:

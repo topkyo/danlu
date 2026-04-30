@@ -1194,6 +1194,10 @@ def run_nightly(
                 "llm_used": llm_used,
             },
         )
+        from aiwiki.agent_loop import attach_agent_loop_to_nightly_state, run_nightly_agent_loop_preview
+
+        agent_loop = run_nightly_agent_loop_preview(root)
+        state = attach_agent_loop_to_nightly_state(root, state, agent_loop)
     except Exception as exc:
         failed_audit = _merge_llm_audits(
             _build_llm_audit(effective_client, model_selected=model_selected, contract_validated=False),
@@ -1229,6 +1233,8 @@ def run_nightly(
             "llm_used": llm_used,
             "repair_backlog": state["repair_backlog"]["path"],
             "state_path": relative_path(root, root / ".aiwiki" / "state" / "nightly-health.json"),
+            "agent_loop_status": str(state.get("agent_loop", {}).get("status") or ""),
+            "agent_loop_dry_run": bool(state.get("agent_loop", {}).get("dry_run", False)),
             "duration_ms": int((time.monotonic() - started) * 1000),
         },
         llm_audit,
@@ -1239,6 +1245,7 @@ def run_nightly(
         "lint": lint_result,
         "promotions": promotion_result,
         "protocol_learnings_age": protocol_learnings_age,
+        "agent_loop": state.get("agent_loop", {}),
         "aging": state["aging"],
         "repair_backlog": state["repair_backlog"]["path"],
         "state_path": relative_path(root, root / ".aiwiki" / "state" / "nightly-health.json"),

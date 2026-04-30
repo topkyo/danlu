@@ -2930,6 +2930,12 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue((self.root / executed["bundle_path"]).exists())
         self.assertEqual(result["state_path"], ".aiwiki/state/nightly-health.json")
         self.assertEqual(nightly_state["planner"]["recent_executed_action_ids"][0], action["id"])
+        self.assertEqual(result["agent_loop"]["status"], "ok")
+        self.assertTrue(result["agent_loop"]["dry_run"])
+        self.assertFalse(result["agent_loop"]["side_effects_allowed"])
+        self.assertEqual(nightly_state["agent_loop"]["status"], "ok")
+        self.assertTrue(nightly_state["agent_loop"]["dry_run"])
+        self.assertFalse(nightly_state["agent_loop"]["side_effects_allowed"])
 
     def test_nightly_auto_consumes_accepted_monitor_actions(self) -> None:
         self._seed_machine_memory_actions()

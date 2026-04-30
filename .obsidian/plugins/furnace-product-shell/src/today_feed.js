@@ -33,6 +33,7 @@ function buildTodayFeed(summary) {
   entries.push(...buildProposalEntries(summary));
   entries.push(...buildReportEntries(summary, todayDate));
   entries.push(...buildElixirEntries(summary, todayDate));
+  entries.push(...buildAgentLoopEntries(summary, todayDate));
   entries.push(...buildActionEntries(summary));
 
   entries.sort(compareEntries);
@@ -183,6 +184,41 @@ function buildActionEntries(summary) {
     });
   }
   return entries;
+}
+
+function buildAgentLoopEntries(summary, todayDate) {
+  const nightly = summary.nightly;
+  if (!nightly || typeof nightly !== "object") return [];
+  const agentLoop = nightly.agent_loop;
+  if (!agentLoop || typeof agentLoop !== "object") return [];
+  const timestamp = String(agentLoop.generated_at || nightly.generated_at || "");
+  if (datePart(timestamp) !== todayDate) return [];
+  const status = String(agentLoop.status || "");
+  if (status !== "ok" && status !== "failed") return [];
+
+  let summaryText = "今日维护预演完成，暂不需要自动执行";
+  if (status === "failed") {
+    summaryText = "今日维护预演失败，需要人工查看";
+  } else {
+    const signals = agentLoop.signals && typeof agentLoop.signals === "object" ? agentLoop.signals : {};
+    const planner = agentLoop.planner && typeof agentLoop.planner === "object" ? agentLoop.planner : {};
+    const execute = planner.execute && typeof planner.execute === "object" ? planner.execute : {};
+    const autoPreview = agentLoop.auto_preview && typeof agentLoop.auto_preview === "object" ? agentLoop.auto_preview : {};
+    const newItems = asCount(signals.new_count) + asCount(execute.new_count);
+    const readyCount = asCount(autoPreview.ready_count);
+    if (readyCount > 0) {
+      summaryText = `今日发现 ${newItems} 个新变化，${readyCount} 条维护路径可人工确认`;
+    }
+  }
+
+  return [{
+    kind: "action",
+    title: "预演下一步维护",
+    summary: summaryText,
+    target: "PYTHONPATH=src python3 -m aiwiki.cli --root . alchemy auto --dry-run",
+    timestamp,
+    protocol: String(summary.active_protocol || ""),
+  }];
 }
 
 // Helpers

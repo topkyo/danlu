@@ -173,6 +173,7 @@ def preview_alchemy_lane(
     max_signals: int | None = None,
     max_pages: int | None = None,
     max_tokens: int | None = None,
+    allow_current_writer_lock: bool = False,
 ) -> dict[str, Any]:
     normalized_lane = _normalize_lane(lane)
     normalized_scope = scope.strip() or "all"
@@ -202,7 +203,7 @@ def preview_alchemy_lane(
             continue
         selected.append({"decision": decision, "signal": signal})
 
-    lock = _preview_runtime_lock(root)
+    lock = _preview_runtime_lock(root, allow_current_writer=allow_current_writer_lock)
     if lock["status"] == "conflict":
         return {
             "status": "skipped",
@@ -1062,7 +1063,7 @@ def _budget_exceeded(limits: dict[str, int], used: dict[str, int]) -> tuple[bool
     return bool(reasons), reasons
 
 
-def _preview_runtime_lock(root: Path) -> dict[str, Any]:
+def _preview_runtime_lock(root: Path, *, allow_current_writer: bool = False) -> dict[str, Any]:
     path = runtime_lock_path(root)
     path_label = _path_label(root, path)
     if not path.exists():
@@ -1070,6 +1071,12 @@ def _preview_runtime_lock(root: Path) -> dict[str, Any]:
 
     local_state = app_utils._RUNTIME_LOCKS.get(str(root.resolve()))  # type: ignore[attr-defined]
     if local_state is not None and int(local_state.get("depth", 0) or 0) > 0:
+        if allow_current_writer:
+            return {
+                "status": "held_by_current_process",
+                "path": path_label,
+                "would_acquire": False,
+            }
         return {
             "status": "conflict",
             "path": path_label,

@@ -294,6 +294,9 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
             "state_path": relative_path(root, nightly_health_state_path(root)),
             "llm_used": bool(nightly_state.get("llm_used", False)),
             "lint_counts": dict(nightly_state.get("lint", {}).get("counts", {})),
+            "agent_loop": dict(nightly_state.get("agent_loop") or {})
+            if isinstance(nightly_state.get("agent_loop"), dict)
+            else {},
         },
         "knowledge_stats": _build_knowledge_stats(memory, compile_state, decisions, judgments),
         "metrics": _build_metrics_summary(root),
