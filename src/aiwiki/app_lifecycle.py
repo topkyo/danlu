@@ -74,6 +74,7 @@ from .app_state import (
     material_archive_action_id,
     material_archive_state_path,
     material_state_path,
+    save_knowledge_lifecycle_override_state,
     save_knowledge_lifecycle_state,
 )
 from .app_types import JudgmentAsset
@@ -1246,6 +1247,46 @@ def apply_knowledge_lifecycle_override(
     return normalized
 
 
+def clear_stale_knowledge_lifecycle_overrides(
+    root: Path,
+    override_state: dict[str, Any],
+    *,
+    cleared_at: str,
+) -> dict[str, Any]:
+    current_concept_paths = {
+        relative_path(root, path)
+        for path in sorted((root / "wiki" / "concepts").glob("*.md"))
+    }
+    entries: list[dict[str, Any]] = []
+    changed = False
+    for raw_entry in override_state.get("entries", []):
+        if not isinstance(raw_entry, dict):
+            continue
+        entry = dict(raw_entry)
+        path = str(entry.get("path") or "")
+        if (
+            bool(entry.get("active"))
+            and str(entry.get("kind") or "") == "concept"
+            and path.startswith("wiki/concepts/")
+            and path not in current_concept_paths
+        ):
+            entry["active"] = False
+            entry["cleared_at"] = cleared_at
+            entry["cleared_note"] = "Target concept page no longer exists; cleared by lifecycle refresh."
+            entry["cleared_reason_codes"] = ["missing-target"]
+            entry["updated_at"] = cleared_at
+            changed = True
+        entries.append(entry)
+    if not changed:
+        return override_state
+    cleaned_state = {
+        "version": int(override_state.get("version", 1) or 1),
+        "entries": entries,
+    }
+    save_knowledge_lifecycle_override_state(root, cleaned_state)
+    return cleaned_state
+
+
 def knowledge_lifecycle_counts(entries: list[dict[str, Any]]) -> dict[str, Any]:
     by_state = {state: 0 for state in KNOWLEDGE_LIFECYCLE_STATES}
     by_kind = {kind: {"total": 0, "by_state": {state: 0 for state in KNOWLEDGE_LIFECYCLE_STATES}} for kind in KNOWLEDGE_LIFECYCLE_KINDS}
@@ -1700,6 +1741,11 @@ def build_knowledge_lifecycle_document(
 ) -> dict[str, Any]:
     ensure_layout(root)
     override_state = ensure_knowledge_lifecycle_override_state(root)
+    override_state = clear_stale_knowledge_lifecycle_overrides(
+        root,
+        override_state,
+        cleared_at=generated_at,
+    )
     active_overrides = active_knowledge_lifecycle_overrides(override_state)
     manifest_entries = entries if entries is not None else load_manifest(root).get("entries", [])
     _entry_by_id, path_to_entry_id = entry_lookup_maps(manifest_entries)

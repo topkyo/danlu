@@ -69,6 +69,7 @@ from aiwiki.app_state import (
     load_output_candidates_state,
     load_planner_state,
     load_query_route_telemetry,
+    save_knowledge_lifecycle_override_state,
     save_machine_memory_action_state,
     save_manual_link_state,
     save_material_routing_state,
@@ -1432,6 +1433,38 @@ class AiwikiFlowTests(unittest.TestCase):
             if entry["slug"] == slug and entry["active"]
         ]
         self.assertEqual(active, [])
+
+    def test_compile_clears_active_lifecycle_override_for_missing_concept_page(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        override_state = load_knowledge_lifecycle_override_state(self.root)
+        entries = list(override_state.get("entries", []))
+        entries.append(
+            {
+                "page_id": "concept-missing-noise",
+                "slug": "missing-noise",
+                "path": "wiki/concepts/missing-noise.md",
+                "kind": "concept",
+                "lifecycle_state": "deferred",
+                "active": True,
+                "operation": "review",
+                "reason_codes": ["manual-review-ack"],
+                "applied_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "note": "Ack for a concept that later disappeared.",
+            }
+        )
+        save_knowledge_lifecycle_override_state(self.root, {"version": 1, "entries": entries})
+
+        compile_wiki(self.root)
+
+        updated_override_state = load_knowledge_lifecycle_override_state(self.root)
+        stale_entry = next(entry for entry in updated_override_state["entries"] if entry["slug"] == "missing-noise")
+        self.assertFalse(stale_entry["active"])
+        self.assertEqual(stale_entry["cleared_reason_codes"], ["missing-target"])
+        lint = lint_wiki(self.root)
+        lint_report = (self.root / lint["path"]).read_text(encoding="utf-8")
+        self.assertNotIn("Knowledge lifecycle override entry references missing page `wiki/concepts/missing-noise.md`.", lint_report)
 
     def test_reactivate_concept_errors_when_no_active_override(self) -> None:
         """Round 8: 没有任何 active concept override 时报清晰错误。"""
@@ -3005,6 +3038,41 @@ class AiwikiFlowTests(unittest.TestCase):
         audit_payload = (self.root / "wiki" / "indexes" / "execution-audit.md").read_text(encoding="utf-8")
         self.assertIn("Consistency Signals", audit_payload)
         self.assertIn("resolved，但最新 execution receipt 不是 apply", audit_payload)
+
+    def test_execution_audit_allows_history_only_resolved_monitor_action_without_receipt(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "monitor-action",
+                        "kind": "split-overloaded-concept",
+                        "title": "Monitor closed concept",
+                        "reason": "Already reviewed as historical noise.",
+                        "primary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "resolved",
+                        "priority": "low",
+                        "active": True,
+                        "execution_policy": "closed",
+                        "execution_band": "closed",
+                        "execution_capabilities": "history",
+                        "execution_capability_list": ["history"],
+                        "policy_decision": "history",
+                    }
+                ],
+            },
+        )
+
+        compile_wiki(self.root)
+
+        audit_payload = (self.root / "wiki" / "indexes" / "execution-audit.md").read_text(encoding="utf-8")
+        self.assertIn("Consistency Signals", audit_payload)
+        self.assertNotIn("resolved，但最新 execution receipt 不是 apply", audit_payload)
 
     def test_lint_reports_execution_consistency_issue_when_revert_receipt_keeps_manual_link_active(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")

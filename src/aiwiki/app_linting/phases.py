@@ -785,6 +785,7 @@ def _lint_governance_phase(context: _LintContext) -> None:
                         knowledge_override_path,
                         f"Knowledge lifecycle override entry has unsupported state `{lifecycle_state}`.",
                     )
+                active = bool(entry.get("active"))
                 if not isinstance(entry.get("active"), bool):
                     context.add(
                         "error",
@@ -797,13 +798,13 @@ def _lint_governance_phase(context: _LintContext) -> None:
                         knowledge_override_path,
                         "Knowledge lifecycle override entry is missing `path`.",
                     )
-                elif not (context.root / path).exists():
+                elif active and not (context.root / path).exists():
                     context.add(
                         "error",
                         knowledge_override_path,
                         f"Knowledge lifecycle override entry references missing page `{path}`.",
                     )
-                if bool(entry.get("active")):
+                if active:
                     active_override_paths[path] = active_override_paths.get(path, 0) + 1
                     if lifecycle_state != "retired":
                         context.add(

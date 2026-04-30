@@ -429,7 +429,10 @@ def collect_execution_consistency_signals(
         title = str(action.get("title") or action_id)
         primary_path = str(action.get("primary_path") or "")
 
-        if status == "resolved" and latest_operation != "apply":
+        if status == "resolved" and latest_operation != "apply" and apply_mode in {
+            "manual-link-state",
+            "citation-snapshot-refresh",
+        }:
             signals.append(
                 {
                     "severity": "error",
