@@ -304,6 +304,8 @@ from ..app_utils import (
 from ..config import LLMConfig
 from .core import _LintContext
 
+_REVIEW_LIFECYCLE_OVERRIDE_STATES = {"active", "deferred", "review"}
+
 
 def _lint_layout_phase(context: _LintContext) -> None:
     for entry in context.manifest["entries"]:
@@ -806,7 +808,12 @@ def _lint_governance_phase(context: _LintContext) -> None:
                     )
                 if active:
                     active_override_paths[path] = active_override_paths.get(path, 0) + 1
-                    if lifecycle_state != "retired":
+                    operation = str(entry.get("operation") or "")
+                    is_review_ack = (
+                        operation == "review"
+                        and lifecycle_state in _REVIEW_LIFECYCLE_OVERRIDE_STATES
+                    )
+                    if lifecycle_state != "retired" and not is_review_ack:
                         context.add(
                             "warn",
                             knowledge_override_path,

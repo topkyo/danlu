@@ -498,6 +498,90 @@ class LintingTests(unittest.TestCase):
         self.assertTrue(any("Judgment page is missing explicit `protocol` metadata." in message for message in messages))
         self.assertTrue(any("Judgment page is missing explicit confidence metadata." in message for message in messages))
 
+    def test_lint_governance_phase_accepts_active_review_lifecycle_override(self) -> None:
+        concept_path = self.root / "wiki" / "concepts" / "alpha.md"
+        self._write_markdown(
+            concept_path,
+            {
+                "kind": "concept",
+                "title": "Alpha Concept",
+                "source_pages": [],
+                "hardness": "soft",
+            },
+            "# Alpha Concept\n\nStable concept.\n\n## Conflict Signals\n- Boundary noted.\n\n## Evidence Gaps\n- None.\n",
+        )
+        override_state = self.root / ".aiwiki" / "state" / "knowledge-lifecycle-overrides.json"
+        override_state.parent.mkdir(parents=True, exist_ok=True)
+        override_state.write_text(
+            json.dumps(
+                {
+                    "entries": [
+                        {
+                            "slug": "alpha",
+                            "path": "wiki/concepts/alpha.md",
+                            "kind": "concept",
+                            "lifecycle_state": "deferred",
+                            "operation": "review",
+                            "active": True,
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        context = _LintContext(root=self.root, manifest={"entries": []})
+
+        _lint_governance_phase(context)
+
+        messages = [finding.message for finding in context.findings]
+        self.assertFalse(
+            any("Active concept lifecycle override for `alpha`" in message for message in messages)
+        )
+
+    def test_lint_governance_phase_warns_for_active_non_review_lifecycle_override(self) -> None:
+        concept_path = self.root / "wiki" / "concepts" / "alpha.md"
+        self._write_markdown(
+            concept_path,
+            {
+                "kind": "concept",
+                "title": "Alpha Concept",
+                "source_pages": [],
+                "hardness": "soft",
+            },
+            "# Alpha Concept\n\nStable concept.\n\n## Conflict Signals\n- Boundary noted.\n\n## Evidence Gaps\n- None.\n",
+        )
+        override_state = self.root / ".aiwiki" / "state" / "knowledge-lifecycle-overrides.json"
+        override_state.parent.mkdir(parents=True, exist_ok=True)
+        override_state.write_text(
+            json.dumps(
+                {
+                    "entries": [
+                        {
+                            "slug": "alpha",
+                            "path": "wiki/concepts/alpha.md",
+                            "kind": "concept",
+                            "lifecycle_state": "deferred",
+                            "operation": "manual-link-state",
+                            "active": True,
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        context = _LintContext(root=self.root, manifest={"entries": []})
+
+        _lint_governance_phase(context)
+
+        messages = [finding.message for finding in context.findings]
+        self.assertTrue(
+            any(
+                "Active concept lifecycle override for `alpha` is `deferred`; current workflow expects `retired`."
+                in message
+                for message in messages
+            )
+        )
+
     def test_lint_governance_phase_flags_undergrounded_hard_concepts(self) -> None:
         source_path = self.root / "wiki" / "sources" / "alpha.md"
         self._write_markdown(
