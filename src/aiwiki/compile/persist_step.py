@@ -393,6 +393,7 @@ def _build_compile_result_payload(
         "clean_output_pack_groups": list(context.clean_output_pack_groups),
         "dirty_domain_pilot_protocols": list(context.dirty_domain_pilot_protocols),
         "clean_domain_pilot_protocols": list(context.clean_domain_pilot_protocols),
+        "index_changed_pages": context.index_changed_pages,
         "dirty_index_artifacts": list(context.dirty_index_artifacts),
         "clean_index_artifacts": list(context.clean_index_artifacts),
         "dirty_maintenance_artifacts": list(context.dirty_maintenance_artifacts),

@@ -45,6 +45,7 @@ from ..app_memory_surfaces import (
     render_machine_memory_repair_plan,
     render_machine_memory_topology,
 )
+from ..app_protocol import DEFAULT_DASHBOARD_FILES, MANAGED_DASHBOARD_TEMPLATE_FILES
 from ..app_state import (
     DEFAULT_PROTOCOL,
     append_runtime_history,
@@ -381,6 +382,14 @@ def _append_judgment_relation_history_event(
 
 def compile_runtime_phase(context: CompileContext) -> None:
     from .. import app_compile as compile_facade
+
+    # Round 51: managed static dashboard templates are runtime-owned. Refresh
+    # them via CompileContext so compile status accounts for the write.
+    # Dynamic owner pages are intentionally excluded here and are written by
+    # their dedicated renderers later in the pipeline.
+    for relative in MANAGED_DASHBOARD_TEMPLATE_FILES:
+        content = DEFAULT_DASHBOARD_FILES[relative]
+        context.write_index_artifact(context.root / relative, content)
 
     machine_memory_build = plan_machine_memory_build(
         context.root,

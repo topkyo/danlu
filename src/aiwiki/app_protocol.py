@@ -375,6 +375,16 @@ DEFAULT_DASHBOARD_FILES = {
     + "\n",
 }
 
+# Dashboard files that are static templates at runtime and should be refreshed
+# by compile. Dynamic owner pages (protocols, furnace/execution centers,
+# cognitive history, packs, pilots, etc.) are intentionally excluded so compile
+# accounting does not count transient template rewrites before owner renderers
+# restore the same final content.
+MANAGED_DASHBOARD_TEMPLATE_FILES = (
+    "wiki/indexes/review-center.md",
+    "wiki/indexes/graph-view.md",
+)
+
 
 CURATED_ASSET_SECTION_ORDER = (
     "Counter Evidence",
@@ -1356,11 +1366,11 @@ def ensure_runtime_schema(root: Path) -> None:
             path.write_text(content, encoding="utf-8")
 
 
-def ensure_runtime_dashboards(root: Path) -> None:
+def ensure_runtime_dashboards(root: Path, *, overwrite: bool = False) -> None:
     for relative, content in DEFAULT_DASHBOARD_FILES.items():
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        if not path.exists():
+        if overwrite or not path.exists():
             path.write_text(content, encoding="utf-8")
 
 

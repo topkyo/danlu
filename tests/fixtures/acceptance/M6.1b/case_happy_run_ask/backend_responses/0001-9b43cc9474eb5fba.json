@@ -1,7 +1,7 @@
 {
   "backend": "codex-cli",
   "model": "stub-model",
-  "prompt_hash": "1e4f8b32a30d32f1",
+  "prompt_hash": "9b43cc9474eb5fba",
   "response_id": "stub-response-id",
   "response_text": "---\nkind: output\nformat: report\ngenerated_by: aiwiki-ask\n---\n\n# Stub response\n\nSource A says source-a replay acceptance is deterministic (wiki/sources/source-a.md).\n",
   "sequence": 1,

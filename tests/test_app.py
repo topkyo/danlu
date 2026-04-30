@@ -713,7 +713,10 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(compile_state["dirty_domain_pilot_protocols"])
         self.assertEqual(compile_state["clean_domain_pilot_protocols"], [])
         self.assertTrue(compile_state["dirty_index_artifacts"])
-        self.assertEqual(compile_state["clean_index_artifacts"], [])
+        # Round 51 managed dashboard templates are refreshed on every compile.
+        # Existing template pages can therefore be tracked as clean index artifacts
+        # while dynamic owner pages are still dirty below.
+        self.assertIn("wiki/indexes/graph-view.md", compile_state["clean_index_artifacts"])
         self.assertTrue(compile_state["dirty_maintenance_artifacts"])
         self.assertEqual(compile_state["clean_maintenance_artifacts"], [])
         self.assertIn(entry["id"], concept_build_state["entry_records"])
@@ -786,7 +789,7 @@ class AiwikiFlowTests(unittest.TestCase):
         index_phase = next(phase for phase in compile_state["phase_summary"] if phase["name"] == "index_refresh")
         self.assertEqual(index_phase["mode"], "incremental")
         self.assertEqual(index_phase["details"]["dirty_artifacts"], len(compile_state["dirty_index_artifacts"]))
-        self.assertEqual(index_phase["details"]["clean_artifacts"], 0)
+        self.assertEqual(index_phase["details"]["clean_artifacts"], len(compile_state["clean_index_artifacts"]))
         maintenance_phase = next(
             phase for phase in compile_state["phase_summary"] if phase["name"] == "cold_archive_maintenance"
         )
@@ -842,8 +845,9 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertEqual(compiled["clean_output_pack_groups"], [])
         self.assertEqual(compiled["dirty_domain_pilot_protocols"], compile_state["dirty_domain_pilot_protocols"])
         self.assertEqual(compiled["clean_domain_pilot_protocols"], [])
+        self.assertEqual(compiled["index_changed_pages"], index_phase["details"]["updated_artifacts"])
         self.assertEqual(compiled["dirty_index_artifacts"], compile_state["dirty_index_artifacts"])
-        self.assertEqual(compiled["clean_index_artifacts"], [])
+        self.assertEqual(compiled["clean_index_artifacts"], compile_state["clean_index_artifacts"])
         self.assertEqual(compiled["dirty_maintenance_artifacts"], compile_state["dirty_maintenance_artifacts"])
         self.assertEqual(compiled["clean_maintenance_artifacts"], [])
 
@@ -2556,6 +2560,29 @@ class AiwikiFlowTests(unittest.TestCase):
         # the user-facing surface stays chinese-first.
         self.assertIn("Mihomo/Clash", graph_view)
         self.assertIn("代理客户端", graph_view)
+
+    def test_compile_refreshes_managed_dashboard_templates(self) -> None:
+        graph_view = self.root / "wiki" / "indexes" / "graph-view.md"
+        graph_view.write_text("# Stale User Copy\n\nold graph copy\n", encoding="utf-8")
+
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        result = compile_wiki(self.root)
+
+        payload = graph_view.read_text(encoding="utf-8")
+        self.assertIn("# 图谱视图", payload)
+        self.assertIn("默认工作流仍然是先看报告", payload)
+        self.assertNotIn("Stale User Copy", payload)
+        self.assertIn("wiki/indexes/graph-view.md", result["dirty_index_artifacts"])
+        index_step = next(item for item in result["phase_summary"] if item["name"] == "index_refresh")
+        self.assertGreaterEqual(index_step["details"]["updated_artifacts"], 1)
+
+    def test_ensure_layout_does_not_overwrite_existing_dashboard_files(self) -> None:
+        graph_view = self.root / "wiki" / "indexes" / "graph-view.md"
+        graph_view.write_text("# User Owned Graph View\n\nkeep me until compile\n", encoding="utf-8")
+
+        ensure_layout(self.root)
+
+        self.assertIn("User Owned Graph View", graph_view.read_text(encoding="utf-8"))
 
     def test_furnace_center_surfaces_pilots_packs_receipts_and_commands(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
