@@ -453,6 +453,102 @@ def shell_drift_warnings(
             )
     return warnings[:8]
 
+_BATCH_HINT_THRESHOLD = 3
+_BATCH_HINT_MAX = 3
+
+
+def _collect_batch_hints(
+    review_controls: dict[str, Any],
+    execution_controls: dict[str, Any],
+    *,
+    threshold: int = _BATCH_HINT_THRESHOLD,
+) -> list[dict[str, Any]]:
+    """Surface batch-review / batch-apply commands when ≥threshold same-kind candidates queue up.
+
+    Only emits already-existing CLI surfaces (`review-page --all-pending`,
+    `review-action --all-pending --kind <kind>`, `apply-action --all-accepted-low-risk`);
+    never invents new flags or mutates state.
+    """
+
+    hints: list[dict[str, Any]] = []
+    seen_commands: set[str] = set()
+
+    def emit(kind: str, title: str, command: str, reason: str, count: int) -> None:
+        normalized = command.strip()
+        if not normalized or normalized in seen_commands:
+            return
+        seen_commands.add(normalized)
+        hints.append(
+            {
+                "kind": kind,
+                "title": title,
+                "command": normalized,
+                "path": "",
+                "reason": reason,
+                "batch_count": count,
+            }
+        )
+
+    pages_by_kind: dict[str, int] = {}
+    for page in review_controls.get("pages", []) or []:
+        if not isinstance(page, dict):
+            continue
+        page_kind = str(page.get("kind") or "").strip()
+        if not page_kind:
+            continue
+        pages_by_kind[page_kind] = pages_by_kind.get(page_kind, 0) + 1
+
+    if sum(pages_by_kind.values()) >= threshold:
+        kind_label = "/".join(sorted(pages_by_kind)) or "page"
+        emit(
+            "batch-review",
+            f"批量审阅 {sum(pages_by_kind.values())} 个待审 {kind_label} 页",
+            "PYTHONPATH=src python3 -m aiwiki.cli --root . review-page --all-pending",
+            f"batch-hint:review-page:{kind_label}",
+            sum(pages_by_kind.values()),
+        )
+
+    actions_by_kind: dict[str, int] = {}
+    can_apply_total = 0
+    for action in execution_controls.get("actions", []) or []:
+        if not isinstance(action, dict):
+            continue
+        if action.get("can_apply"):
+            can_apply_total += 1
+        if str(action.get("status") or "") != "proposed":
+            continue
+        if str(action.get("execution_band") or "") != "review-first":
+            continue
+        action_kind = str(action.get("kind") or "").strip()
+        if not action_kind:
+            continue
+        actions_by_kind[action_kind] = actions_by_kind.get(action_kind, 0) + 1
+
+    for action_kind, count in sorted(actions_by_kind.items(), key=lambda kv: (-kv[1], kv[0])):
+        if count < threshold:
+            continue
+        if len(hints) >= _BATCH_HINT_MAX:
+            break
+        emit(
+            "batch-review",
+            f"批量审阅 {count} 个 {action_kind} 候选",
+            f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-action --all-pending --kind {action_kind} --status accepted",
+            f"batch-hint:review-action:{action_kind}",
+            count,
+        )
+
+    if can_apply_total >= threshold and len(hints) < _BATCH_HINT_MAX:
+        emit(
+            "batch-apply",
+            f"批量预演 {can_apply_total} 个 low-risk apply",
+            "PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action --all-accepted-low-risk --dry-run",
+            "batch-hint:apply-action:low-risk",
+            can_apply_total,
+        )
+
+    return hints[:_BATCH_HINT_MAX]
+
+
 def shell_suggested_next_actions(
     *,
     planner_state: dict[str, Any],
@@ -561,7 +657,15 @@ def shell_suggested_next_actions(
             "archive-ready",
         )
 
-    return actions[:8]
+    batch_hints = _collect_batch_hints(review_controls, execution_controls)
+    deduped: list[dict[str, Any]] = []
+    hint_commands = {hint["command"] for hint in batch_hints}
+    for action in actions:
+        if action.get("command") in hint_commands:
+            continue
+        deduped.append(action)
+    remaining = max(0, 8 - len(batch_hints))
+    return list(batch_hints) + deduped[:remaining]
 
 def shell_dashboard(
     summary: ShellSummary,
