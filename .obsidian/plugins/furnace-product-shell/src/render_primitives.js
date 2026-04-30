@@ -413,6 +413,40 @@ function renderStatusPanel(plugin, container) {
   ]);
 }
 
+function resolveBatchHintInvocation(plugin, action) {
+  // Round 43 / Stage C: batch hint commands -> existing pickers / runners.
+  // Returns { label, run } or null when the action is not a recognised batch hint.
+  if (!action || typeof action !== "object") {
+    return null;
+  }
+  const kind = String(action.kind || "");
+  if (kind !== "batch-review" && kind !== "batch-apply") {
+    return null;
+  }
+  const command = String(action.command || "");
+  if (kind === "batch-apply" && command.includes("apply-action --all-accepted-low-risk")) {
+    return {
+      label: plugin.t("Run batch"),
+      run: () => plugin.runApplyAllAcceptedLowRiskCommand(),
+    };
+  }
+  if (kind === "batch-review" && command.includes("review-page --all-pending")) {
+    return {
+      label: plugin.t("Run batch"),
+      run: () => plugin.openReviewBatchSuggestionPicker(),
+    };
+  }
+  if (kind === "batch-review" && command.includes("review-action --all-pending")) {
+    // Action-kind batch review still routes through the batch suggestion picker;
+    // the picker filters to the active suggestion bundle, so the same entry point works.
+    return {
+      label: plugin.t("Run batch"),
+      run: () => plugin.openReviewBatchSuggestionPicker(),
+    };
+  }
+  return null;
+}
+
 function renderSuggestedNextActionsBlock(plugin, container, options = {}) {
   const maxItems = Number.isFinite(Number(options.maxItems)) ? Math.max(1, Number(options.maxItems)) : 2;
   const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
@@ -439,6 +473,13 @@ function renderSuggestedNextActionsBlock(plugin, container, options = {}) {
       copy.createDiv({ cls: "furnace-shell-meta", text: metaParts.join(" | ") });
     }
     const buttons = item.createDiv({ cls: "furnace-shell-inline-actions furnace-shell-inline-actions-compact" });
+    const batchInvocation = resolveBatchHintInvocation(plugin, action);
+    if (batchInvocation) {
+      const runButton = buttons.createEl("button", { text: batchInvocation.label, cls: "mod-cta" });
+      runButton.addEventListener("click", () => {
+        plugin.runUiAction(batchInvocation.run, `Run batch hint: ${action.title || action.command}`);
+      });
+    }
     if (action.path) {
       const openButton = buttons.createEl("button", { text: plugin.t("Open") });
       openButton.addEventListener("click", () => {

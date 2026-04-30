@@ -797,6 +797,72 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     revert_archive_parser.add_argument("entry_id", help="Manifest/material entry id.")
     revert_archive_parser.add_argument("--note", help="Optional revert note.")
 
+    batch_review_parser = subparsers.add_parser(
+        "batch-review",
+        help=(
+            "One-shot alias that routes a batch decision through existing review primitives "
+            "(review-page --all-pending / review-action --all-pending --kind ... / apply-action --all-accepted-low-risk). "
+            "User must still pick the batch and supply --note; runtime never auto-adopts."
+        ),
+    )
+    batch_review_parser.add_argument(
+        "target",
+        choices=("pages", "action", "apply-low-risk"),
+        help=(
+            "Batch target: pages = pending decision/judgment review pages; "
+            "action = machine-memory action review (requires --kind); "
+            "apply-low-risk = batch apply currently accepted low-risk actions."
+        ),
+    )
+    batch_review_parser.add_argument(
+        "--note",
+        required=True,
+        help="Required note explaining the batch decision (stored in batch receipt for audit).",
+    )
+    batch_review_parser.add_argument(
+        "--kind",
+        help="Action kind filter (required when target=action).",
+    )
+    batch_review_parser.add_argument(
+        "--status",
+        help="Optional status override (default: tracking for pages, accepted for action).",
+    )
+    batch_review_parser.add_argument(
+        "--execution-band",
+        default="review-first",
+        help="Execution band filter for target=action (default: review-first).",
+    )
+    batch_review_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview only (target=apply-low-risk).",
+    )
+    batch_review_parser.set_defaults(handler_command="batch-review")
+
+    review_next_parser = subparsers.add_parser(
+        "review-next",
+        help=(
+            "Interactive review workflow: surface the highest-priority review page, prompt for a/r/t/s/q, "
+            "write the explicit review receipt, and continue. Each step is still a user-driven decision."
+        ),
+    )
+    review_next_parser.add_argument(
+        "--limit",
+        type=int,
+        default=1,
+        help="Maximum number of items to surface in this run (default: 1).",
+    )
+    review_next_parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Print the surface block without reading stdin or writing receipts (CI / preview mode).",
+    )
+    review_next_parser.add_argument(
+        "--note",
+        help="Optional review note applied to every accepted decision in this run.",
+    )
+    review_next_parser.set_defaults(handler_command="review-next")
+
     subparsers.add_parser("lint", help="Run deterministic lint checks against the wiki.")
     subparsers.add_parser("run-lint", help="Run deterministic lint plus an LLM-backed semantic lint pass.")
     subparsers.add_parser("nightly", help="Run deterministic compile + lint and write nightly repair artifacts.")

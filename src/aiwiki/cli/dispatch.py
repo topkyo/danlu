@@ -751,6 +751,10 @@ def main(argv: list[str] | None = None) -> int:
             result = apply_material_archive(root, args.entry_id, note=args.note, dry_run=args.dry_run)
         elif args.handler_command == "revert-archive":
             result = revert_material_archive(root, args.entry_id, note=args.note)
+        elif args.handler_command == "batch-review":
+            result = _handle_batch_review_alias(root, args)
+        elif args.handler_command == "review-next":
+            result = _handle_review_next(root, args)
         elif args.handler_command == "lint":
             result = lint_wiki(root)
         elif args.handler_command == "run-lint":
@@ -1553,6 +1557,141 @@ def _pending_review_pages(root: Path) -> list[str]:
         if candidate_path:
             pending.append(candidate_path)
     return pending
+
+
+def _handle_batch_review_alias(root: Path, args: argparse.Namespace) -> dict[str, object]:
+    note = (getattr(args, "note", None) or "").strip()
+    if not note:
+        raise ValueError("batch-review --note is required (audit trail).")
+    target = getattr(args, "target", "") or ""
+    annotated_note = f"[batch-alias] {note}"
+    if target == "pages":
+        pages = _resolve_review_pages(root, None, use_next=False, batch=None, all_pending=True)
+        if not pages:
+            raise RuntimeError("No pending review pages.")
+        status = (getattr(args, "status", None) or "tracking").strip() or "tracking"
+        result = review_pages_batch(root, pages, status, note=annotated_note, confidence=None)
+    elif target == "action":
+        kind = (getattr(args, "kind", None) or "").strip()
+        if not kind:
+            raise ValueError("batch-review action requires --kind.")
+        execution_band = (getattr(args, "execution_band", None) or "review-first").strip() or "review-first"
+        action_ids = _resolve_review_action_ids(
+            root,
+            [],
+            all_pending=True,
+            kind=kind,
+            execution_band=execution_band,
+        )
+        if not action_ids:
+            raise RuntimeError(f"No pending {kind} actions in execution_band={execution_band}.")
+        status = (getattr(args, "status", None) or "accepted").strip() or "accepted"
+        result = review_machine_memory_actions_batch(root, action_ids, status, note=annotated_note)
+    elif target == "apply-low-risk":
+        action_ids = _resolve_action_ids(
+            root,
+            None,
+            batch=None,
+            all_accepted_low_risk=True,
+        )
+        if not action_ids:
+            raise RuntimeError("No accepted low-risk actions ready for batch apply.")
+        result = apply_machine_memory_actions_batch(
+            root,
+            action_ids,
+            note=annotated_note,
+            dry_run=bool(getattr(args, "dry_run", False)),
+        )
+    else:
+        raise ValueError(f"Unknown batch-review target: {target!r}.")
+    if isinstance(result, dict):
+        result.setdefault("triggered_by", "batch-alias")
+        result.setdefault("alias_target", target)
+    return result
+
+
+def _format_review_next_surface(page: dict[str, object]) -> str:
+    title = str(page.get("title") or page.get("path") or "review-page")
+    path = str(page.get("path") or "")
+    page_kind = str(page.get("kind") or "page")
+    default_transition = str(page.get("default_transition") or "")
+    allowed = page.get("allowed_transitions") or []
+    if not isinstance(allowed, list):
+        allowed = []
+    reasons = page.get("reasons") or []
+    if not isinstance(reasons, list):
+        reasons = []
+    lines = [
+        f"=== {title}",
+        f"  path     : {path}",
+        f"  kind     : {page_kind}",
+        f"  reasons  : {', '.join(str(r) for r in reasons[:5]) or '-'}",
+        f"  default  : {default_transition or '-'}",
+        f"  allowed  : {', '.join(str(a) for a in allowed[:6]) or '-'}",
+    ]
+    return "\n".join(lines)
+
+
+_REVIEW_NEXT_CHOICES: dict[str, str] = {
+    "a": "accepted",
+    "r": "rejected",
+    "t": "tracking",
+}
+
+
+def _handle_review_next(root: Path, args: argparse.Namespace) -> dict[str, object]:
+    limit = max(1, int(getattr(args, "limit", 1) or 1))
+    non_interactive = bool(getattr(args, "non_interactive", False))
+    note = getattr(args, "note", None)
+    annotated_note = f"[review-next] {note.strip()}" if isinstance(note, str) and note.strip() else "[review-next]"
+
+    summary = build_shell_summary(root)
+    review_controls = summary.get("review_controls", {}) if isinstance(summary, dict) else {}
+    pages_raw = review_controls.get("pages", []) if isinstance(review_controls, dict) else []
+    pending = [p for p in pages_raw if isinstance(p, dict) and p.get("can_review") and p.get("path")]
+    pending = pending[:limit]
+
+    surfaces: list[dict[str, object]] = []
+    decisions: list[dict[str, object]] = []
+    for page in pending:
+        block = _format_review_next_surface(page)
+        surfaces.append({"path": str(page.get("path") or ""), "surface": block, "default_transition": str(page.get("default_transition") or "")})
+        if non_interactive:
+            print(block, file=sys.stderr)
+            print("  prompt    : [a]ccept / [r]eject / [t]rack / [s]kip / [q]uit", file=sys.stderr)
+            continue
+
+        print(block, file=sys.stderr)
+        choice = input("  [a]ccept / [r]eject / [t]rack / [s]kip / [q]uit > ").strip().lower()
+        if choice in {"q", "quit"}:
+            break
+        if choice in {"s", "skip", ""}:
+            decisions.append({"path": page.get("path"), "skipped": True})
+            continue
+        target_status = _REVIEW_NEXT_CHOICES.get(choice[:1])
+        if not target_status:
+            allowed = page.get("allowed_transitions") or []
+            target_status = str(page.get("default_transition") or (allowed[0] if isinstance(allowed, list) and allowed else "tracking"))
+        receipt = review_page(
+            root,
+            str(page.get("path") or ""),
+            target_status,
+            note=annotated_note,
+            confidence=None,
+        )
+        if isinstance(receipt, dict):
+            receipt.setdefault("triggered_by", "review-next")
+        decisions.append({"path": page.get("path"), "status": target_status, "receipt": receipt})
+
+    return {
+        "operation": "review-next",
+        "non_interactive": non_interactive,
+        "limit": limit,
+        "surfaced_count": len(surfaces),
+        "surfaces": surfaces,
+        "decisions": decisions,
+        "triggered_by": "review-next",
+    }
 
 
 def _resolve_review_pages(
