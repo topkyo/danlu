@@ -2016,5 +2016,119 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         self.assertEqual(ctx.exception.line_number, 2)
 
 
+class AlchemyStage3CompoundingTests(unittest.TestCase):
+    """D-3 acceptance: end-to-end Stage-3 compounding.
+
+    flow: promote corpus-A → start/finalize/promote elixir-old →
+          promote corpus-B → start (with --include-elixir elixir-old) →
+          distill → finalize → promote elixir-new →
+          assert derived_from contains elixir-old + wiki/derived/ anchors,
+          promote receipt clean, trace upward sees elixir-old.
+    """
+
+    def setUp(self) -> None:
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+        ensure_layout(self.root)
+        (self.root / "prompts" / "compile.md").write_text("Compile prompt fixture.\n", encoding="utf-8")
+        (self.root / "prompts" / "ask.md").write_text("Ask prompt fixture.\n", encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def _make_promoted_corpus(self, *, question: str) -> str:
+        result = ask_question(self.root, question, "report")
+        promote_candidate(self.root, result["path"])
+        return str(result["active_corpus_id"])
+
+    def _settle_old_elixir(self) -> tuple[str, str]:
+        corpus_old = self._make_promoted_corpus(
+            question="What is the foundational architecture decision for VLA robotics?",
+        )
+        started = run_alchemy_start(self.root, corpus_old, "VLA foundation", protocol="research")
+        run_alchemy_finalize(self.root, elixir_id=started["elixir_id"])
+        run_alchemy_promote(self.root, elixir_id=started["elixir_id"])
+        return corpus_old, str(started["elixir_id"])
+
+    def test_stage3_new_elixir_compounds_old_and_traces_back(self) -> None:
+        # Stage 1: promote old elixir
+        _, elixir_old = self._settle_old_elixir()
+        self.assertTrue(_settled_path(self.root, elixir_old).is_file())
+
+        # Stage 2: build a new corpus with its own derived anchor
+        corpus_new = self._make_promoted_corpus(
+            question="How does latency reshape next-generation VLA architecture choices?",
+        )
+        new_started = run_alchemy_start(
+            self.root,
+            corpus_new,
+            "VLA next-generation",
+            protocol="research",
+            include_elixir_ids=[elixir_old],
+        )
+        elixir_new = str(new_started["elixir_id"])
+
+        # Frontmatter at start already contains both old elixir ref + wiki/derived anchor
+        start_fm = parse_frontmatter(_candidate_path(self.root, elixir_new).read_text(encoding="utf-8"))
+        derived_from_at_start = list(start_fm.get("derived_from") or [])
+        self.assertTrue(
+            any(ref == f"wiki/elixirs/{elixir_old}.md" for ref in derived_from_at_start),
+            f"start derived_from missing old elixir: {derived_from_at_start}",
+        )
+        self.assertTrue(
+            any(str(ref).startswith("wiki/derived/") for ref in derived_from_at_start),
+            f"start derived_from missing wiki/derived anchor: {derived_from_at_start}",
+        )
+
+        # Stage 3: distill iterates the new elixir while keeping the old reference
+        run_alchemy_distill(
+            self.root,
+            elixir_new,
+            "How does latency change the architecture tradeoffs?",
+            include_elixir_ids=[elixir_old],
+        )
+        run_alchemy_finalize(self.root, elixir_id=elixir_new)
+        promote_result = run_alchemy_promote(self.root, elixir_id=elixir_new)
+        self.assertEqual(promote_result["elixir_state"], "settled")
+        self.assertTrue(_settled_path(self.root, elixir_new).is_file())
+
+        # Settled frontmatter still contains the cross-elixir + derived anchors
+        settled_fm = parse_frontmatter(_settled_path(self.root, elixir_new).read_text(encoding="utf-8"))
+        derived_from_settled = list(settled_fm.get("derived_from") or [])
+        self.assertIn(f"wiki/elixirs/{elixir_old}.md", derived_from_settled)
+        self.assertTrue(
+            any(str(ref).startswith("wiki/derived/") for ref in derived_from_settled),
+            f"settled derived_from missing wiki/derived anchor: {derived_from_settled}",
+        )
+
+        # Promote receipt is clean: counter_evidence gate passed and hash anchors present
+        receipt = _latest_receipt_by_subject(
+            self.root, subject_kind="elixir_promotion", subject_id=elixir_new
+        )
+        self.assertIsNotNone(receipt)
+        bundle = receipt.get("bundle") if isinstance(receipt, dict) else None
+        self.assertIsInstance(bundle, dict)
+        if isinstance(bundle, dict):
+            # M2.3 promote-gate evidence: counter_evidence non-empty + hash anchors present
+            self.assertTrue(
+                bundle.get("counter_evidence"),
+                "promotion bundle missing counter_evidence (gate output)",
+            )
+            self.assertTrue(bundle.get("primary_path_sha256"))
+            self.assertTrue(bundle.get("secondary_path_sha256"))
+
+        # Trace walks from elixir_new upward and reaches elixir_old
+        from aiwiki.trace import resolve_trace
+
+        trace_root = resolve_trace(self.root, elixir_new, direction="up", max_depth=3)
+        self.assertEqual(trace_root.kind, "elixir")
+        parent_ids = {p.id for p in trace_root.parents}
+        self.assertIn(
+            elixir_old,
+            parent_ids,
+            f"trace did not surface old elixir as parent of new elixir: {parent_ids}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
