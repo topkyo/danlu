@@ -218,20 +218,29 @@ def _build_agent_loop_entries(summary: dict[str, Any], today_date: str) -> list[
         planner = agent_loop.get("planner") if isinstance(agent_loop.get("planner"), dict) else {}
         execute = planner.get("execute") if isinstance(planner.get("execute"), dict) else {}
         auto_preview = agent_loop.get("auto_preview") if isinstance(agent_loop.get("auto_preview"), dict) else {}
+        auto_apply = agent_loop.get("auto_apply") if isinstance(agent_loop.get("auto_apply"), dict) else {}
         # Planner decisions are derived from signals; don't double-count the same change in user-facing copy.
         new_items = max(int(signals.get("new_count") or 0), int(execute.get("new_count") or 0))
-        ready_count = int(auto_preview.get("ready_count") or 0)
-        if ready_count > 0:
-            summary_text = f"今日发现 {new_items} 个新变化，{ready_count} 条维护路径可人工确认"
+        applied_count = int(auto_apply.get("applied_count") or 0)
+        if applied_count > 0:
+            summary_text = f"今日发现 {new_items} 个新变化，已静默执行 {applied_count} 条维护路径"
+            title = "已自动维护"
+            target = "wiki/indexes/execution-audit.md"
         else:
+            ready_count = int(auto_preview.get("ready_count") or 0)
+            title = "预演下一步维护"
+            target = "PYTHONPATH=src python3 -m aiwiki.cli --root . alchemy auto --dry-run"
+        if applied_count <= 0 and ready_count > 0:
+            summary_text = f"今日发现 {new_items} 个新变化，{ready_count} 条维护路径可人工确认"
+        elif applied_count <= 0:
             summary_text = "今日维护预演完成，暂不需要自动执行"
 
     return [
         FeedEntry(
             kind="action",
-            title="预演下一步维护",
+            title=title if status != "failed" else "预演下一步维护",
             summary=summary_text,
-            target="PYTHONPATH=src python3 -m aiwiki.cli --root . alchemy auto --dry-run",
+            target=target if status != "failed" else "PYTHONPATH=src python3 -m aiwiki.cli --root . alchemy auto --dry-run",
             timestamp=timestamp,
             protocol=str(summary.get("active_protocol") or ""),
         )

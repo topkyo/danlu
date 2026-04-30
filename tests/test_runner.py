@@ -11,7 +11,7 @@ from unittest.mock import patch
 from aiwiki.app_compile import compile_wiki
 from aiwiki.app_content import ingest_source, sync_manifest_with_raw
 from aiwiki.app_protocol import ensure_layout
-from aiwiki.app_state import load_machine_memory, load_output_candidates_state
+from aiwiki.app_state import append_runtime_history, load_machine_memory, load_output_candidates_state
 from aiwiki.app_utils import relative_path
 from aiwiki.config import LLMConfig
 from aiwiki.drop import drop_note
@@ -1103,6 +1103,31 @@ class RunnerTests(unittest.TestCase):
         # EP-029 Step 3 AC #13: nightly integrates protocol_learnings_age stage.
         self.assertIn("protocol_learnings_age", result)
         self.assertTrue(result["protocol_learnings_age"].get("apply"))
+
+    def test_run_nightly_auto_applies_light_lane_when_env_enabled(self) -> None:
+        append_runtime_history(
+            self.root,
+            {
+                "event_type": "raw-added",
+                "occurred_at": "2026-04-30T00:00:00+00:00",
+                "protocol": "general",
+                "stored_path": "raw/inbox/example.md",
+            },
+        )
+
+        with patch.dict(os.environ, {"AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT": "1"}):
+            result = run_nightly(self.root, client=_DummyClient(), compile_limit=0, semantic_lint=False)
+
+        self.assertEqual(result["agent_loop"]["status"], "ok")
+        self.assertFalse(result["agent_loop"]["dry_run"])
+        self.assertTrue(result["agent_loop"]["side_effects_allowed"])
+        self.assertEqual(result["agent_loop"]["auto_apply"]["status"], "applied")
+        self.assertEqual(result["agent_loop"]["auto_apply"]["applied_count"], 1)
+        light = result["agent_loop"]["auto_apply"]["lane_results"][0]
+        self.assertEqual(light["selected_primitives"], ["compile", "lint", "nightly"])
+        self.assertEqual(len(light["primitive_receipts"]), 3)
+        runs_log = json.loads((self.root / ".aiwiki" / "logs" / "runs.jsonl").read_text(encoding="utf-8").strip().splitlines()[-1])
+        self.assertTrue(runs_log["agent_loop_auto_apply_light"])
 
     def test_run_nightly_applies_protocol_learnings_aging(self) -> None:
         from datetime import datetime, timedelta

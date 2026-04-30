@@ -5,7 +5,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from aiwiki.agent_loop import attach_agent_loop_to_nightly_state, run_nightly_agent_loop_preview
+from aiwiki.agent_loop import (
+    attach_agent_loop_to_nightly_state,
+    run_nightly_agent_loop,
+    run_nightly_agent_loop_preview,
+)
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_state import append_runtime_history, nightly_health_state_path
 from aiwiki.app_utils import runtime_write_lock
@@ -85,6 +89,33 @@ class AgentLoopPreviewTests(unittest.TestCase):
         self.assertEqual(locked["reason"], "lock_conflict")
         self.assertEqual(allowed["status"], "ok")
         self.assertEqual(allowed["lock"]["status"], "held_by_current_process")
+
+    def test_agent_loop_can_apply_light_lane_inside_current_writer_lock(self) -> None:
+        append_runtime_history(
+            self.root,
+            {
+                "event_type": "raw-added",
+                "occurred_at": "2026-04-30T00:00:00+00:00",
+                "protocol": "general",
+                "stored_path": "raw/inbox/example.md",
+            },
+        )
+
+        with runtime_write_lock(self.root):
+            result = run_nightly_agent_loop(self.root, apply_light=True)
+
+        self.assertEqual(result["status"], "ok")
+        self.assertFalse(result["dry_run"])
+        self.assertTrue(result["side_effects_allowed"])
+        self.assertEqual(result["auto_apply"]["status"], "applied")
+        self.assertEqual(result["auto_apply"]["applied_count"], 1)
+        light = result["auto_apply"]["lane_results"][0]
+        self.assertEqual(light["lane"], "light")
+        self.assertEqual(light["status"], "applied")
+        self.assertEqual(light["selected_primitives"], ["compile", "lint", "nightly"])
+        self.assertEqual(len(light["primitive_receipts"]), 3)
+        for receipt in light["primitive_receipts"]:
+            self.assertTrue((self.root / receipt).exists())
 
 
 if __name__ == "__main__":

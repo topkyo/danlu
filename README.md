@@ -219,6 +219,14 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare A and B" --format rep
 
 LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`run-compile`、`run-ask`、`run-nightly` 和 nightly timer。这样常驻 watcher 不会长时间占用 single-writer lock，LLM 失败也不会阻断原料进入炉子。
 
+治理债的目标是静默处理，但不是静默采纳所有结论：
+
+- L0 / deterministic hygiene：可审计、可重跑、可 receipt 的维护可以静默落盘，例如 `compile`、`lint`、`nightly`、陈旧状态清理和只改派生索引的 refresh。nightly 可用 `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` 启用 light lane 自动执行；默认仍只预演。
+- L1 / semantic candidates：source summary、judgment refresh、decision counter-evidence、concept split/merge 这类语义工作应静默生成候选、diff、receipt 和 review item，先进入 `output/_candidates` / review queue，不直接覆盖事实层结论。
+- L2 / meaning-changing adoption：接受 machine memory action、采纳 L3 proposal、改写 judgment/decision 状态、更新 prompts/policies target 属于高影响动作，必须保留显式 gate、receipt 和 revert/audit 路径。
+
+这意味着最终形态不是“没有审阅”，而是“默认不用人盯流程；人只处理少数语义采纳点和异常”。
+
 ## LLM 后端
 
 支持：

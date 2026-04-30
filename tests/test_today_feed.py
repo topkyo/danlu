@@ -266,6 +266,32 @@ def _case_agent_loop_entry_built_from_nightly_summary() -> None:
     assert entry.protocol == "research"
 
 
+def _case_agent_loop_auto_apply_entry_uses_completed_copy() -> None:
+    feed = build_today_feed(
+        {
+            "generated_at": "2026-04-30T09:00:00+00:00",
+            "active_protocol": "research",
+            "nightly": {
+                "generated_at": "2026-04-30T08:00:00+00:00",
+                "agent_loop": {
+                    "status": "ok",
+                    "generated_at": "2026-04-30T08:01:00+00:00",
+                    "signals": {"new_count": 3},
+                    "planner": {"execute": {"new_count": 2}},
+                    "auto_preview": {"ready_count": 1},
+                    "auto_apply": {"applied_count": 1},
+                },
+            },
+        }
+    )
+
+    assert len(feed) == 1
+    entry = feed[0]
+    assert entry.title == "已自动维护"
+    assert entry.summary == "今日发现 3 个新变化，已静默执行 1 条维护路径"
+    assert entry.target == "wiki/indexes/execution-audit.md"
+
+
 def _case_agent_loop_failed_entry_uses_product_copy() -> None:
     feed = build_today_feed(
         {

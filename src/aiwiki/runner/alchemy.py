@@ -1730,6 +1730,7 @@ def run_alchemy_lane_dry_run(
     max_signals: int | None = None,
     max_pages: int | None = None,
     max_tokens: int | None = None,
+    allow_current_writer_lock: bool = False,
 ) -> dict[str, Any]:
     from aiwiki.planner import preview_alchemy_lane
 
@@ -1743,6 +1744,7 @@ def run_alchemy_lane_dry_run(
         max_signals=max_signals,
         max_pages=max_pages,
         max_tokens=max_tokens,
+        allow_current_writer_lock=allow_current_writer_lock,
     )
 
 
@@ -1760,6 +1762,7 @@ def run_alchemy_lane_apply(
     max_signals: int | None = None,
     max_pages: int | None = None,
     max_tokens: int | None = None,
+    allow_current_writer_lock: bool = False,
 ) -> dict[str, Any]:
     from aiwiki import autonomy_policy
     from aiwiki.app_compile import apply_machine_memory_actions_batch
@@ -1791,6 +1794,7 @@ def run_alchemy_lane_apply(
         max_signals=max_signals,
         max_pages=max_pages,
         max_tokens=max_tokens,
+        allow_current_writer_lock=allow_current_writer_lock,
     )
     status = str(plan.get("status") or "")
     if status != "ok":
@@ -1870,6 +1874,7 @@ def run_alchemy_auto(
     max_signals: int | None = None,
     max_pages: int | None = None,
     max_tokens: int | None = None,
+    allow_current_writer_lock: bool = False,
 ) -> dict[str, Any]:
     normalized_lanes = _normalize_auto_lanes(lanes or ["heavy", "light"])
     requested_primitives = _normalize_lane_primitives(primitives or []) if primitives else []
@@ -1888,6 +1893,7 @@ def run_alchemy_auto(
             max_signals=max_signals,
             max_pages=max_pages,
             max_tokens=max_tokens,
+            allow_current_writer_lock=allow_current_writer_lock,
         )
         selected_primitives = _auto_primitives_for_lane(lane, plan, requested_primitives=requested_primitives)
         lane_result: dict[str, Any] = {
@@ -1914,6 +1920,7 @@ def run_alchemy_auto(
                 max_signals=max_signals,
                 max_pages=max_pages,
                 max_tokens=max_tokens,
+                allow_current_writer_lock=allow_current_writer_lock,
             )
             lane_result["status"] = "applied"
             lane_result["apply_result"] = apply_result

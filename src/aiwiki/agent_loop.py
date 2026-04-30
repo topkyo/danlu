@@ -1,8 +1,8 @@
-"""Nightly agent-loop preview orchestration.
+"""Nightly agent-loop orchestration.
 
-This module makes the final-shape loop visible without executing lane apply:
-signals are collected, planner decisions are replayed, and alchemy lanes are
-previewed in dry-run mode only.
+This module makes the final-shape loop visible by default and can optionally
+apply the already receipt-gated light lane. Heavy semantic lanes remain preview
+only.
 """
 
 from __future__ import annotations
@@ -29,19 +29,32 @@ def run_nightly_agent_loop_preview(
     scope: str = "all",
     lanes: tuple[str, ...] = ("heavy", "light"),
 ) -> dict[str, Any]:
-    """Run the observe + dry-run agent loop after nightly state is written.
+    """Run the observe + dry-run agent loop after nightly state is written."""
 
-    Writes are limited to signal/planner-log materialization. Lane execution is
-    never allowed here; the lane step is a read-only preview.
+    return run_nightly_agent_loop(root, scope=scope, lanes=lanes, apply_light=False)
+
+
+def run_nightly_agent_loop(
+    root: Path,
+    *,
+    scope: str = "all",
+    lanes: tuple[str, ...] = ("heavy", "light"),
+    apply_light: bool = False,
+) -> dict[str, Any]:
+    """Run nightly agent-loop preview, optionally applying the light lane.
+
+    ``apply_light`` is intentionally narrow: only the light lane's existing
+    deterministic auto primitives are executed, through the same alchemy
+    receipt path used by the CLI.
     """
 
     generated_at = utc_now()
     base: dict[str, Any] = {
         "status": "ok",
         "generated_at": generated_at,
-        "mode": "observe_and_dry_run",
-        "dry_run": True,
-        "side_effects_allowed": False,
+        "mode": "observe_dry_run_and_light_apply" if apply_light else "observe_and_dry_run",
+        "dry_run": not apply_light,
+        "side_effects_allowed": bool(apply_light),
         "scope": scope,
     }
     try:
@@ -49,6 +62,7 @@ def run_nightly_agent_loop_preview(
         observe_result = write_planner_log(root, mode="observe_only")
         execute_result = write_planner_log(root, mode="execute")
         auto_preview = _build_auto_preview(root, scope=scope, lanes=lanes)
+        auto_apply = _build_light_auto_apply(root, scope=scope) if apply_light else None
     except Exception as exc:  # noqa: BLE001 - preview failure must be surfaced in nightly state
         return {
             **base,
@@ -65,14 +79,25 @@ def run_nightly_agent_loop_preview(
             "execute": _planner_counts(execute_result),
         },
         "auto_preview": auto_preview,
+        **({"auto_apply": auto_apply} if auto_apply is not None else {}),
     }
 
 
 def attach_agent_loop_to_nightly_state(root: Path, state: dict[str, Any], agent_loop: dict[str, Any]) -> dict[str, Any]:
     """Persist ``agent_loop`` inside nightly-health and return the updated state."""
 
-    updated = {**state, "agent_loop": agent_loop}
     path = nightly_health_state_path(root)
+    latest_state = state
+    if path.exists():
+        try:
+            candidate = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(candidate, dict):
+                latest_state = candidate
+        except (TypeError, json.JSONDecodeError):
+            latest_state = state
+    if state.get("llm_used"):
+        latest_state = {**latest_state, "llm_used": True}
+    updated = {**latest_state, "agent_loop": agent_loop}
     path.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return updated
 
@@ -122,6 +147,69 @@ def _build_auto_preview(root: Path, *, scope: str, lanes: tuple[str, ...]) -> di
         "skipped": skipped,
         "lane_results": lane_results,
     }
+
+
+def _build_light_auto_apply(root: Path, *, scope: str) -> dict[str, Any]:
+    from .runner.alchemy import run_alchemy_auto
+
+    result = run_alchemy_auto(
+        root,
+        apply=True,
+        lanes=["light"],
+        scope=scope,
+        note="nightly unattended light-lane maintenance",
+        allow_current_writer_lock=True,
+    )
+    return _auto_apply_summary(result)
+
+
+def _auto_apply_summary(result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": str(result.get("status") or ""),
+        "mode": str(result.get("mode") or ""),
+        "dry_run": bool(result.get("dry_run", False)),
+        "side_effects_allowed": bool(result.get("side_effects_allowed", False)),
+        "scope": str(result.get("scope") or ""),
+        "decision_mode": str(result.get("decision_mode") or ""),
+        "lanes": [str(item) for item in result.get("lanes", []) if isinstance(item, str)],
+        "requested_primitives": [
+            str(item) for item in result.get("requested_primitives", []) if isinstance(item, str)
+        ],
+        "applied_count": int(result.get("applied_count") or 0),
+        "skipped_count": int(result.get("skipped_count") or 0),
+        "lane_results": _auto_apply_lane_summaries(result.get("lane_results", [])),
+    }
+
+
+def _auto_apply_lane_summaries(lane_results: Any) -> list[dict[str, Any]]:
+    if not isinstance(lane_results, list):
+        return []
+    summaries: list[dict[str, Any]] = []
+    for item in lane_results:
+        if not isinstance(item, dict):
+            continue
+        apply_result = item.get("apply_result") if isinstance(item.get("apply_result"), dict) else {}
+        primitive_results = apply_result.get("primitive_results") if isinstance(apply_result, dict) else []
+        summaries.append(
+            {
+                "lane": str(item.get("lane") or ""),
+                "status": str(item.get("status") or ""),
+                "reason": str(item.get("reason") or ""),
+                "selected_primitives": [
+                    str(primitive)
+                    for primitive in item.get("selected_primitives", [])
+                    if isinstance(primitive, str)
+                ],
+                "primitive_receipts": [
+                    str(result.get("receipt_path") or "")
+                    for result in primitive_results
+                    if isinstance(result, dict) and result.get("receipt_path")
+                ]
+                if isinstance(primitive_results, list)
+                else [],
+            }
+        )
+    return summaries
 
 
 def _selected_auto_primitives(lane: str, plan: dict[str, Any]) -> list[str]:
@@ -174,4 +262,8 @@ def _planner_counts(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-__all__ = ["attach_agent_loop_to_nightly_state", "run_nightly_agent_loop_preview"]
+__all__ = [
+    "attach_agent_loop_to_nightly_state",
+    "run_nightly_agent_loop",
+    "run_nightly_agent_loop_preview",
+]

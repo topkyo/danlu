@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -72,6 +73,11 @@ from aiwiki.runner.receipts import (
 
 RUN_ASK_FRONTDOOR_EVENT = "run-ask-frontdoor"
 RUN_ASK_FALLBACK_ERROR_KINDS = {"quota", "timeout", "auth", "unavailable"}
+
+
+def _env_flag(name: str) -> bool:
+    value = os.environ.get(name, "")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _receipt_error_class(exc: Exception | str) -> str:
@@ -1194,9 +1200,10 @@ def run_nightly(
                 "llm_used": llm_used,
             },
         )
-        from aiwiki.agent_loop import attach_agent_loop_to_nightly_state, run_nightly_agent_loop_preview
+        from aiwiki.agent_loop import attach_agent_loop_to_nightly_state, run_nightly_agent_loop
 
-        agent_loop = run_nightly_agent_loop_preview(root)
+        auto_apply_light = _env_flag("AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT")
+        agent_loop = run_nightly_agent_loop(root, apply_light=auto_apply_light)
         state = attach_agent_loop_to_nightly_state(root, state, agent_loop)
     except Exception as exc:
         failed_audit = _merge_llm_audits(
@@ -1235,6 +1242,7 @@ def run_nightly(
             "state_path": relative_path(root, root / ".aiwiki" / "state" / "nightly-health.json"),
             "agent_loop_status": str(state.get("agent_loop", {}).get("status") or ""),
             "agent_loop_dry_run": bool(state.get("agent_loop", {}).get("dry_run", False)),
+            "agent_loop_auto_apply_light": _env_flag("AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT"),
             "duration_ms": int((time.monotonic() - started) * 1000),
         },
         llm_audit,
