@@ -7199,6 +7199,10 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("graph-reset-view", payload)
         self.assertIn("graph-viewport", payload)
         self.assertIn("setActiveNode", payload)
+        self.assertIn("材料 A 支撑判断 J", payload)
+        self.assertIn("relation-node-link", payload)
+        self.assertIn("otherNodeId", payload)
+        self.assertIn(".legend span { flex: 1 1 140px", payload)
 
     def test_machine_memory_graph_relation_labels_are_chinese(self) -> None:
         memory = {
