@@ -329,6 +329,13 @@ def _counter_evidence_pages_from_memory(counter_evidence_scan: Any) -> list[dict
     """P0 — 把 memory.health.counter_evidence_scan.pages 抽成 today_feed 友好结构。
 
     每页只保留 today_feed 渲染必需字段；最多 8 条。
+
+    Round 58 R3 fix: scan writer (`compile/runtime_step.py:152`) emits `page_path /
+    page_title / page_kind / candidate_count / source_pages`, but this reader was
+    expecting the `path / subject / summary` schema. Mismatch silently dropped
+    every entry, so `today_feed._build_counter_evidence_entries` never surfaced
+    a counter-evidence card even when scan candidates existed. Read both schemas
+    so old/new memory caches both work.
     """
     if not isinstance(counter_evidence_scan, dict):
         return []
@@ -339,15 +346,25 @@ def _counter_evidence_pages_from_memory(counter_evidence_scan: Any) -> list[dict
     for item in pages[:8]:
         if not isinstance(item, dict):
             continue
-        path = str(item.get("path") or "").strip()
+        path = str(item.get("path") or item.get("page_path") or "").strip()
         if not path:
             continue
+        candidate_count = item.get("candidate_count")
+        if isinstance(candidate_count, int) and candidate_count > 0:
+            default_summary = f"{candidate_count} 条新证据可能反驳此判断"
+        else:
+            default_summary = "judgment 被反驳"
         out.append(
             {
                 "path": path,
-                "subject": str(item.get("subject") or item.get("title") or path),
-                "summary": str(item.get("summary") or item.get("reason") or "judgment 被反驳"),
-                "detected_at": str(item.get("detected_at") or item.get("updated_at") or ""),
+                "subject": str(item.get("subject") or item.get("title") or item.get("page_title") or path),
+                "summary": str(item.get("summary") or item.get("reason") or default_summary),
+                "detected_at": str(
+                    item.get("detected_at")
+                    or item.get("updated_at")
+                    or counter_evidence_scan.get("generated_at")
+                    or ""
+                ),
                 "protocol": str(item.get("protocol") or ""),
             }
         )
