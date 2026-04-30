@@ -261,7 +261,7 @@ def _case_agent_loop_entry_built_from_nightly_summary() -> None:
     entry = feed[0]
     assert entry.kind == "action"
     assert entry.title == "预演下一步维护"
-    assert entry.summary == "今日发现 3 个新变化，1 条维护路径可人工确认"
+    assert entry.summary == "今日发现 2 个新变化，1 条维护路径可人工确认"
     assert entry.target.endswith("alchemy auto --dry-run")
     assert entry.protocol == "research"
 

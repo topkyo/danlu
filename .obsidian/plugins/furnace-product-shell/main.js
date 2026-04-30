@@ -1138,7 +1138,8 @@ function buildAgentLoopEntries(summary, todayDate) {
     const planner = agentLoop.planner && typeof agentLoop.planner === "object" ? agentLoop.planner : {};
     const execute = planner.execute && typeof planner.execute === "object" ? planner.execute : {};
     const autoPreview = agentLoop.auto_preview && typeof agentLoop.auto_preview === "object" ? agentLoop.auto_preview : {};
-    const newItems = asCount(signals.new_count) + asCount(execute.new_count);
+    // Planner decisions are derived from signals; don't double-count one change in user-facing copy.
+    const newItems = Math.max(asCount(signals.new_count), asCount(execute.new_count));
     const readyCount = asCount(autoPreview.ready_count);
     if (readyCount > 0) {
       summaryText = `今日发现 ${newItems} 个新变化，${readyCount} 条维护路径可人工确认`;

@@ -218,7 +218,8 @@ def _build_agent_loop_entries(summary: dict[str, Any], today_date: str) -> list[
         planner = agent_loop.get("planner") if isinstance(agent_loop.get("planner"), dict) else {}
         execute = planner.get("execute") if isinstance(planner.get("execute"), dict) else {}
         auto_preview = agent_loop.get("auto_preview") if isinstance(agent_loop.get("auto_preview"), dict) else {}
-        new_items = int(signals.get("new_count") or 0) + int(execute.get("new_count") or 0)
+        # Planner decisions are derived from signals; don't double-count the same change in user-facing copy.
+        new_items = max(int(signals.get("new_count") or 0), int(execute.get("new_count") or 0))
         ready_count = int(auto_preview.get("ready_count") or 0)
         if ready_count > 0:
             summary_text = f"今日发现 {new_items} 个新变化，{ready_count} 条维护路径可人工确认"
