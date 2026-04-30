@@ -55,6 +55,7 @@ from aiwiki.app_memory import (
     build_archive_candidate_state,
     build_machine_memory_query,
 )
+from aiwiki.app_memory_surfaces import render_machine_memory_graph_html
 from aiwiki.app_protocol import ensure_layout, load_protocol_state, save_manifest
 from aiwiki.app_state import (
     load_archive_candidates_state,
@@ -2546,9 +2547,11 @@ class AiwikiFlowTests(unittest.TestCase):
         graph_view = (self.root / "wiki" / "indexes" / "graph-view.md").read_text(encoding="utf-8")
 
         self.assertIn("`output/graph/machine-memory.html`", graph_view)
-        self.assertIn("text/html", graph_view)
-        self.assertIn("Mihomo/Clash", graph_view)
-        self.assertNotIn("[本地图谱 HTML](", graph_view)
+        self.assertIn("默认工作流仍然是先看报告", graph_view)
+        self.assertIn("材料提到概念", graph_view)
+        self.assertIn("判断冲突", graph_view)
+        self.assertIn("决策依据", graph_view)
+        self.assertNotIn("Mihomo/Clash", graph_view)
 
     def test_furnace_center_surfaces_pilots_packs_receipts_and_commands(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -2763,6 +2766,10 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Transformer Scaling", payload)
         self.assertIn("../../wiki/indexes/graph-view.md", payload)
         self.assertIn("关系图谱说明", payload)
+        self.assertIn("材料提到概念", payload)
+        self.assertIn("关系说明", payload)
+        self.assertIn("data-relation-label", payload)
+        self.assertNotIn("related edge", payload)
 
     def test_compile_writes_review_center_html(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -7148,7 +7155,10 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("输入标题、关键词或来源编号", payload)
         self.assertIn('option value="judgment"', payload)
         self.assertIn('<option value="source">来源</option>', payload)
-        self.assertIn("关系边", payload)
+        self.assertIn("材料提到概念", payload)
+        self.assertIn("材料支撑判断", payload)
+        self.assertIn("概念相关", payload)
+        self.assertIn("相关关系", payload)
         self.assertNotIn("输入标题、slug、来源 id", payload)
         self.assertNotIn("Hub 概念", payload)
         self.assertNotIn("Graph View Dashboard", payload)
@@ -7158,6 +7168,54 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("graph-reset-view", payload)
         self.assertIn("graph-viewport", payload)
         self.assertIn("setActiveNode", payload)
+
+    def test_machine_memory_graph_relation_labels_are_chinese(self) -> None:
+        memory = {
+            "compiled_at": "2026-04-30T00:00:00+00:00",
+            "source_nodes": [{"id": "src-1", "title": "材料 A", "concept_slugs": ["alpha"]}],
+            "concept_nodes": [
+                {"slug": "alpha", "title": "Alpha"},
+                {"slug": "beta", "title": "Beta"},
+            ],
+            "judgment_nodes": [
+                {"page_id": "judgment-a", "title": "判断 A", "path": "wiki/judgments/a.md", "kind": "judgment", "status": "confirmed", "source_ids": ["src-1"]},
+                {"page_id": "judgment-b", "title": "判断 B", "path": "wiki/judgments/b.md", "kind": "decision", "status": "approved", "source_ids": ["src-1"]},
+            ],
+            "edges": {"source_to_judgment": [{"source_id": "src-1", "page_id": "judgment-a"}]},
+            "health": {
+                "components": [
+                    {
+                        "id": "component-1",
+                        "source_ids": ["src-1"],
+                        "concept_slugs": ["alpha", "beta"],
+                        "judgment_ids": ["judgment-a", "judgment-b"],
+                    }
+                ]
+            },
+        }
+        graph = {
+            "digest": "demo",
+            "nodes": [
+                {"id": "source:src-1", "kind": "source", "title": "材料 A", "source_page": "wiki/sources/src-1.md"},
+                {"id": "concept:alpha", "kind": "concept", "title": "Alpha", "source_pages": []},
+                {"id": "concept:beta", "kind": "concept", "title": "Beta", "source_pages": []},
+                {"id": "judgment:judgment-a", "kind": "judgment", "title": "判断 A", "page_path": "wiki/judgments/a.md", "page_kind": "judgment", "status": "confirmed", "source_ids": ["src-1"]},
+                {"id": "judgment:judgment-b", "kind": "judgment", "title": "判断 B", "page_path": "wiki/judgments/b.md", "page_kind": "decision", "status": "approved", "source_ids": ["src-1"]},
+            ],
+            "edges": [
+                {"source": "judgment:judgment-a", "target": "judgment:judgment-b", "type": "DECISION_RELATED"},
+                {"source": "concept:alpha", "target": "concept:beta", "type": "CAUSAL_ENABLES"},
+                {"source": "concept:beta", "target": "concept:alpha", "type": "CAUSAL_CONFLICTS_WITH"},
+            ],
+        }
+
+        payload = render_machine_memory_graph_html(memory, graph)
+
+        self.assertIn("决策相关", payload)
+        self.assertIn("促成关系", payload)
+        self.assertIn("冲突关系", payload)
+        self.assertNotIn("决策关系：related", payload)
+        self.assertNotIn("因果关系：enables", payload)
 
     def test_compile_attaches_judgment_assets_to_machine_memory_graph(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -7189,6 +7247,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("Scaling Judgment", payload)
         self.assertIn("判断 \u00b7 已确认", payload)
         self.assertIn("协议", payload)
+        self.assertIn("材料支撑判断", payload)
 
     def test_compile_surfaces_judgment_relations_across_memory_and_history(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -7234,6 +7293,9 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("## Judgment 关联图谱", judgment_assets)
         self.assertIn("Primary Decision", judgment_assets)
         self.assertIn("supports ->", judgment_assets)
+        graph_html = (self.root / "output" / "graph" / "machine-memory.html").read_text(encoding="utf-8")
+        self.assertIn("判断冲突", graph_html)
+        self.assertIn("决策依据", graph_html)
         self.assertIn("## Judgment Hub", topology)
         self.assertIn("## Judgment 关系事件", cognitive_history)
         self.assertIn("Primary Judgment", cognitive_history)
