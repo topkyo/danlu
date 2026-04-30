@@ -501,9 +501,12 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     auto_parser.add_argument(
         "--primitive",
         action="append",
-        choices=("compile", "lint", "nightly"),
+        choices=("compile", "lint", "nightly", "review", "propose", "distill"),
         default=[],
-        help="Restrict automatic execution to one or more deterministic primitives.",
+        help=(
+            "Restrict automatic execution to one or more primitives. "
+            "Semantic candidate primitives are only selectable with an explicit heavy lane."
+        ),
     )
     auto_parser.add_argument("--note", default=None)
     auto_parser.add_argument("--planner-log-path", type=Path, default=None)

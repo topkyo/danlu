@@ -1476,7 +1476,8 @@ class RunnerTests(unittest.TestCase):
                 "---",
                 'id: "source-1"',
                 'kind: "source"',
-                'source_files: ["raw/inbox/source.md"]',
+                "source_files:",
+                '  - "raw/inbox/source.md"',
                 'source_sha256: "sha-1"',
                 "---",
                 "",
@@ -1494,6 +1495,16 @@ class RunnerTests(unittest.TestCase):
             _validate_source_page(source_markdown.replace('id: "source-1"', 'id: "source-2"'), "source-1", "raw/inbox/source.md", "sha-1")
         with self.assertRaises(RuntimeError):
             _validate_source_page(source_markdown.replace("- Grounded summary.", "- Pending LLM summary."), "source-1", "raw/inbox/source.md", "sha-1")
+        with self.assertRaisesRegex(RuntimeError, "source_files"):
+            _validate_source_page(
+                source_markdown.replace(
+                    'source_files:\n  - "raw/inbox/source.md"',
+                    'source_files: ["raw/inbox/source.md"]',
+                ),
+                "source-1",
+                "raw/inbox/source.md",
+                "sha-1",
+            )
 
         concept_markdown = "\n".join(
             [
@@ -1501,7 +1512,8 @@ class RunnerTests(unittest.TestCase):
                 'id: "concept-agent"',
                 'kind: "concept"',
                 'source_signature: "sig-1"',
-                'source_pages: ["wiki/sources/source-1.md"]',
+                "source_pages:",
+                '  - "wiki/sources/source-1.md"',
                 'hardness: "medium"',
                 "---",
                 "",
@@ -1513,6 +1525,16 @@ class RunnerTests(unittest.TestCase):
             ]
         )
         _validate_concept_page(concept_markdown, "agent", "sig-1", ["wiki/sources/source-1.md"])
+        with self.assertRaisesRegex(RuntimeError, "source_pages"):
+            _validate_concept_page(
+                concept_markdown.replace(
+                    'source_pages:\n  - "wiki/sources/source-1.md"',
+                    'source_pages: ["wiki/sources/source-1.md"]',
+                ),
+                "agent",
+                "sig-1",
+                ["wiki/sources/source-1.md"],
+            )
         with self.assertRaises(RuntimeError):
             _validate_concept_page("# missing frontmatter\n", "agent", "sig-1", ["wiki/sources/source-1.md"])
         with self.assertRaises(RuntimeError):

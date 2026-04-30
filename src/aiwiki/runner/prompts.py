@@ -752,7 +752,11 @@ def _validate_source_page(markdown: str, expected_id: str, expected_source_file:
         raise RuntimeError("Compile response changed the page kind.")
     if frontmatter.get("source_sha256") != expected_source_sha:
         raise RuntimeError("Compile response changed or dropped the source sha.")
-    source_files = frontmatter.get("source_files", [])
+    source_files = _require_frontmatter_string_list(
+        frontmatter,
+        "source_files",
+        "Compile response must keep `source_files` as a frontmatter list.",
+    )
     if expected_source_file not in source_files:
         raise RuntimeError("Compile response dropped the source file reference.")
     if "Pending LLM summary." in preserved_section(markdown, "Summary", ""):
@@ -774,7 +778,11 @@ def _validate_concept_page(
         raise RuntimeError("Concept compile response changed the page kind.")
     if expected_source_signature and frontmatter.get("source_signature") != expected_source_signature:
         raise RuntimeError("Concept compile response changed or dropped the source signature.")
-    source_pages = frontmatter.get("source_pages", [])
+    source_pages = _require_frontmatter_string_list(
+        frontmatter,
+        "source_pages",
+        "Concept compile response must keep `source_pages` as a frontmatter list.",
+    )
     for expected_source_page in expected_source_pages:
         if expected_source_page not in source_pages:
             raise RuntimeError("Concept compile response dropped a source page reference.")
@@ -782,6 +790,13 @@ def _validate_concept_page(
         raise RuntimeError("Concept compile response is missing a valid `hardness` frontmatter value.")
     if concept_summary_is_placeholder(markdown):
         raise RuntimeError("Concept compile response left the concept summary in fallback state.")
+
+
+def _require_frontmatter_string_list(frontmatter: dict[str, Any], key: str, message: str) -> list[str]:
+    value = frontmatter.get(key)
+    if not isinstance(value, list) or any(not isinstance(item, str) or not item.strip() for item in value):
+        raise RuntimeError(message)
+    return value
 
 
 def _fit_prompt_section(text: str, max_chars: int, tail: bool = False) -> str:

@@ -1656,6 +1656,9 @@ class AlchemyLaneCLITests(unittest.TestCase):
         alchemy_parser = action.choices["alchemy"]
         lane_action = next(item for item in alchemy_parser._actions if getattr(item, "dest", "") == "alchemy_lane")
         self.assertEqual(set(lane_action.choices), {"heavy", "light", "judge", "judge-proposal", "distill", "review", "propose", "legacy-migration", "auto", "superseded-cleanup"})
+        auto_parser = lane_action.choices["auto"]
+        primitive_action = next(item for item in auto_parser._actions if getattr(item, "dest", "") == "primitive")
+        self.assertEqual(set(primitive_action.choices), {"compile", "lint", "nightly", "review", "propose", "distill"})
 
     def test_main_dispatches_alchemy_lane_dry_run(self) -> None:
         with patch("aiwiki.cli.run_alchemy_lane_dry_run", return_value={"status": "ok", "lane": "heavy"}) as mocked:
@@ -1685,6 +1688,49 @@ class AlchemyLaneCLITests(unittest.TestCase):
             self.root,
             lane="heavy",
             scope="all",
+            planner_log_path=Path("custom/planner-log.jsonl"),
+            signals_path=Path("custom/signals.jsonl"),
+            max_signals=3,
+            max_pages=5,
+            max_tokens=7,
+        )
+
+    def test_main_dispatches_alchemy_auto_heavy_semantic_primitive(self) -> None:
+        with patch("aiwiki.cli.run_alchemy_auto", return_value={"status": "preview", "requested_primitives": ["review"]}) as mocked:
+            code, payload, stderr = self._run_main(
+                [
+                    "alchemy",
+                    "auto",
+                    "--dry-run",
+                    "--scope",
+                    "all",
+                    "--lane",
+                    "heavy",
+                    "--primitive",
+                    "review",
+                    "--planner-log-path",
+                    "custom/planner-log.jsonl",
+                    "--signals-path",
+                    "custom/signals.jsonl",
+                    "--max-signals",
+                    "3",
+                    "--max-pages",
+                    "5",
+                    "--max-tokens",
+                    "7",
+                ]
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["requested_primitives"], ["review"])
+        mocked.assert_called_once_with(
+            self.root,
+            apply=False,
+            lanes=["heavy"],
+            scope="all",
+            primitives=["review"],
+            note=None,
             planner_log_path=Path("custom/planner-log.jsonl"),
             signals_path=Path("custom/signals.jsonl"),
             max_signals=3,
