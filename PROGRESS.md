@@ -7,6 +7,15 @@
 
 ## 状态
 
+- **Round 55 — D-4 Investing Dogfood Plan (Contract-Only) — 完成**
+  - **目的**: 把 D-1 方向文档识别的"投资协议端到端 dogfood 从未跑通"gap 物化为可执行 contract；本 session 不实跑，为外部 LLM backend ready 后的端到端 dogfood 提供可验收 SoT
+  - **方向 SoT**: `docs/Furnace Next Direction Post-P4.md` §D-4
+  - **新增文档**: `docs/Furnace Investing Dogfood Plan.md`（contract-only）
+  - **覆盖**: 7 步 flow（准备 / 投料 / compile / judgment / distill / compounding / L3 proposal）+ 19 条 F-INV-* 摩擦点 + 验收标准 + Stop Lines + 摩擦报告模板
+  - **状态**: `pending(blocked-on-llm)`；执行依赖外部 LLM backend ready
+  - **Stop Lines**: 0 src 改动；不引入新 schema；不在 contract 中放松 review/apply/revert 边界；不预设投资建议生成
+  - **下一步**: 本 session 范围 D 系列已收口；后续按 backend availability 触发 D-4 实跑
+
 - **Round 54 — D-3 Elixir Stage-3 Compounding End-to-End — 完成**
   - **目的**: D-1 方向文档识别的真实 gap：金丹 thesis 阶段 3 "新丹引用旧丹 + 锚定 wiki/derived 底层证据" 在 unit test 已有部分覆盖（`test_distill_include_rejects_candidate_reference` 反例），但缺一份完整的 happy-path 端到端：promote 旧丹 → 新丹引用旧丹 + DAG/anchor/counter_evidence gate 通过 → trace 反查能看到引用链
   - **方向 SoT**: `docs/Furnace Next Direction Post-P4.md` §D-3
