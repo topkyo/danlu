@@ -364,7 +364,7 @@ def _render_vault_readme(runtime_root: Path) -> str:
                 "- Product Shell 默认界面语言为中文，可在插件设置里切到 English。",
                 "- LLM 现在不再做 `auto` 解析；请在 Product Shell 设置或环境变量里显式设置 `AIWIKI_LLM_BACKEND`。",
                 "- 当前 Product Shell 暴露的可选 backend 是 `codex-cli / nvidia-nim-api / copilot-cli / claude-cli`。",
-                "- 若选择 `codex-cli` 且未显式设 model，effective model 默认 `gpt-5.4`。",
+                "- 若选择 `codex-cli` 且未显式设 model，effective model 默认 `gpt-5.5`。",
                 "- 若选择 `nvidia-nim-api` 且模型留空，会按 `Kimi K2.5 -> GLM-5.1 -> MiniMax` 依次尝试；key 默认走 `AIWIKI_NVIDIA_NIM_API_KEY`。",
                 "",
                 "## 备用 CLI / 脚本入口",

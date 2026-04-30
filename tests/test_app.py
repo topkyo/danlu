@@ -6439,7 +6439,7 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("aiwiki-nightly.service", content)
         self.assertIn("aiwiki-nightly.timer", content)
         self.assertIn("AIWIKI_NIGHTLY_COMPILE_LIMIT", content)
-        self.assertIn("AIWIKI_LLM_MODEL=gpt-5.4", content)
+        self.assertIn("AIWIKI_LLM_MODEL=gpt-5.5", content)
 
     def test_nightly_systemd_templates_exist(self) -> None:
         service_template = Path("/home/tim/ai-wiki/systemd/aiwiki-nightly.service.template")

@@ -53,7 +53,7 @@ class VaultBootstrapTests(unittest.TestCase):
         self.assertIn("单写约束", home)
         self.assertIn("single writer, many readers", readme)
         self.assertIn("默认界面语言为中文", readme)
-        self.assertIn("gpt-5.4", readme)
+        self.assertIn("gpt-5.5", readme)
         self.assertIn("drop note --title", readme)
         self.assertIn("runtime contract", readme)
         self.assertIn('$HOME/.local/npm/bin', launcher_text)
