@@ -24,6 +24,11 @@ def build_parser() -> argparse.ArgumentParser:
     today_parser = subparsers.add_parser("today", help="炼丹炉今日产出 / 待办 / 建议")
     today_parser.add_argument("--json", action="store_true", help="JSON 输出（按 section 桶化）")
     today_parser.set_defaults(handler_command="today")
+    today_snooze_parser = subparsers.add_parser("today-snooze", help="把 Today 中的确认项暂时隐藏。")
+    today_snooze_parser.add_argument("target", help="要隐藏的 Today entry target（通常是 review:<bucket> 或 wiki/... 路径）")
+    today_snooze_parser.add_argument("--days", type=int, default=1, help="隐藏天数，默认 1 天。")
+    today_snooze_parser.add_argument("--note", default="", help="可选备注。")
+    today_snooze_parser.set_defaults(handler_command="today-snooze")
     metrics_parser = subparsers.add_parser("metrics", help="炼丹炉知识复利指标")
     metrics_parser.add_argument("--json", action="store_true", help="JSON 输出")
     metrics_parser.add_argument(

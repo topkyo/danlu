@@ -62,6 +62,8 @@ class ProductShellTodayFeedContractTests(unittest.TestCase):
         self.assertIn("workspaceTargetDisplayLabel", text)
         self.assertIn("if (isWorkspaceTarget(target))", text)
         self.assertIn("Open Review", text)
+        self.assertIn("Snooze", text)
+        self.assertIn("runTodaySnoozeCommand", (PLUGIN / "src/plugin.js").read_text(encoding="utf-8"))
         self.assertIn("Open report", text)
         self.assertIn("Reports", text)
         self.assertIn("Automation", text)

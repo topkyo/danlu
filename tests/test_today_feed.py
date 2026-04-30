@@ -304,6 +304,55 @@ def _case_action_entry_skipped_without_command() -> None:
     assert build_today_feed({"suggested_next_actions": [{"title": "No command"}]}) == []
 
 
+def _case_snooze_hides_matching_primary_entry() -> None:
+    feed = build_today_feed(
+        {
+            "generated_at": "2026-04-30T09:00:00Z",
+            "review_backlog_counts": {"counter_evidence_candidates": 1, "pending_decisions": 1},
+            "today_snooze": {
+                "items": [
+                    {
+                        "target": "review:counter_evidence_candidates",
+                        "snoozed_until": "2026-04-30",
+                    }
+                ]
+            },
+        }
+    )
+    assert [entry.target for entry in feed] == ["review:pending_decisions"]
+
+
+def _case_snooze_expired_entry_is_visible_again() -> None:
+    feed = build_today_feed(
+        {
+            "generated_at": "2026-04-30T09:00:00Z",
+            "review_backlog_counts": {"counter_evidence_candidates": 1},
+            "today_snooze": {"items": [{"target": "review:counter_evidence_candidates", "snoozed_until": "2026-04-29"}]},
+        }
+    )
+    assert [entry.target for entry in feed] == ["review:counter_evidence_candidates"]
+
+
+def _case_snooze_does_not_hide_operator_feed() -> None:
+    summary = {
+        "generated_at": "2026-04-30T09:00:00Z",
+        "review_backlog_counts": {"counter_evidence_candidates": 1, "concept_backlog": 2},
+        "today_snooze": {
+            "items": [
+                {
+                    "target": "review:counter_evidence_candidates",
+                    "snoozed_until": "2026-04-30",
+                }
+            ]
+        },
+    }
+    feed = build_today_feed(summary, audience="operator")
+    assert [entry.target for entry in feed] == [
+        "review:concept_backlog",
+        "review:counter_evidence_candidates",
+    ]
+
+
 def _case_agent_loop_entry_built_from_nightly_summary() -> None:
     feed = build_today_feed(
         {

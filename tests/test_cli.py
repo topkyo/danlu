@@ -490,6 +490,40 @@ class CLITests(unittest.TestCase):
         self.assertEqual(len(payload["suggested_next_actions"]), 1)
         self.assertEqual(payload["suggested_next_actions"][0]["title"], "打开报告包")
 
+    def test_today_snooze_hides_target_from_today_json(self) -> None:
+        summary = {
+            "generated_at": "2026-04-30T09:00:00+00:00",
+            "active_protocol": "research",
+            "review_backlog_counts": {"counter_evidence_candidates": 1},
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary):
+            code, payload, stderr = self._run_main(["today-snooze", "review:counter_evidence_candidates", "--days", "1"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["status"], "snoozed")
+        self.assertEqual(payload["target"], "review:counter_evidence_candidates")
+        self.assertEqual(payload["snoozed_until"], payload["snoozed_at"][:10])
+
+        # build_shell_summary normally reads today_snooze from disk; this unit
+        # patch mirrors that contract so today can exercise the pure filter.
+        summary_with_snooze = {
+            **summary,
+            "today_snooze": {
+                "items": [
+                    {
+                        "target": "review:counter_evidence_candidates",
+                        "snoozed_until": payload["snoozed_until"],
+                    }
+                ]
+            },
+        }
+        with patch("aiwiki.cli.build_shell_summary", return_value=summary_with_snooze):
+            code, stdout, stderr = self._run_main_raw(["today", "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        data = json.loads(stdout)
+        self.assertEqual(data["needs_review"], [])
+
     def test_retire_concept_batch_multiple_slugs_calls_each(self) -> None:
         """P4-19a: retire-concept 接受多 slug，按顺序循环调；receipt 桶化 count/slugs/receipts。"""
         with patch("aiwiki.cli.retire_concept") as mocked, patch("aiwiki.cli.compile_wiki") as compile_mock:

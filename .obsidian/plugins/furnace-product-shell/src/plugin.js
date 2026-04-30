@@ -1904,6 +1904,18 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     await this.runPluginCommand(this.t("Nightly"), ["nightly"], { refreshAfter: true });
   }
 
+  async runTodaySnoozeCommand(target, days = 1) {
+    const normalizedTarget = String(target || "").trim();
+    if (!normalizedTarget) {
+      return;
+    }
+    await this.runPluginCommand(
+      `${this.t("Snooze")}: ${truncateText(normalizedTarget, 48)}`,
+      ["today-snooze", normalizedTarget, "--days", String(days)],
+      { refreshAfter: true }
+    );
+  }
+
   async runShellSearchCommand(query, limit = 8) {
     const normalizedQuery = String(query || "").trim();
     if (!normalizedQuery) {

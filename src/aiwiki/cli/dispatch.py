@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ..app_cache import cache_status_summary, drop_query_cache, force_rebuild_query_cache
@@ -40,7 +41,7 @@ from ..app_compile import (
 from ..app_content import action_supports_low_risk_apply, ingest_source
 from ..app_protocol import ensure_layout, load_protocol_state
 from ..app_shell import build_shell_summary, rewrite_recovery_payload_for_paths, shell_search, shell_status_dashboard
-from ..app_state import load_machine_memory_action_state
+from ..app_state import load_machine_memory_action_state, load_today_snooze_state, save_today_snooze_state
 from ..app_vault import bootstrap_new_vault
 from ..drop import drop_image, drop_note, drop_pdf, drop_repo, drop_url
 from ..input_router import UniversalRoute, classify_universal_input
@@ -253,6 +254,8 @@ def main(argv: list[str] | None = None) -> int:
             result = set_active_protocol(root, args.protocol)
         elif args.handler_command == "today":
             return today_command(root, as_json=getattr(args, "json", False))
+        elif args.handler_command == "today-snooze":
+            result = today_snooze_command(root, target=args.target, days=args.days, note=args.note)
         elif args.handler_command == "review-queue":
             return review_queue_command(
                 root,
@@ -888,6 +891,32 @@ def today_command(root: Path, *, as_json: bool = False) -> int:
         return 0
     print(_render_today_text(feed, summary))
     return 0
+
+
+def today_snooze_command(root: Path, *, target: str, days: int = 1, note: str = "") -> dict[str, object]:
+    target_text = str(target or "").strip()
+    if not target_text:
+        raise ValueError("today-snooze requires a non-empty target.")
+    if days <= 0:
+        raise ValueError("--days must be greater than 0.")
+    state = load_today_snooze_state(root)
+    now = datetime.now(timezone.utc)
+    # Inclusive date filter in today_feed means days=1 should hide only today.
+    snoozed_until = (now + timedelta(days=days - 1)).date().isoformat()
+    items = [
+        dict(item)
+        for item in state.get("items", [])
+        if isinstance(item, dict) and str(item.get("target") or "").strip() != target_text
+    ]
+    item = {
+        "target": target_text,
+        "snoozed_at": now.isoformat(),
+        "snoozed_until": snoozed_until,
+        "note": str(note or ""),
+    }
+    items.append(item)
+    save_today_snooze_state(root, {"version": 1, "items": items})
+    return {"operation": "today-snooze", "status": "snoozed", **item}
 
 
 def _classify_review_bucket(entry: FeedEntry) -> str:

@@ -991,8 +991,9 @@ function buildTodayFeed(summary) {
   entries.push(...buildAgentLoopEntries(summary, todayDate));
   entries.push(...buildActionEntries(summary, "primary"));
 
-  entries.sort(compareEntries);
-  return entries;
+  const filtered = applySnoozeFilter(entries, summary, todayDate);
+  filtered.sort(compareEntries);
+  return filtered;
 }
 
 function buildDecisionEntries(summary) {
@@ -1284,6 +1285,20 @@ function buildAgentLoopEntries(summary, todayDate) {
 
 function todayDateOf(summary) {
   return datePart(String(summary.generated_at || ""));
+}
+
+function applySnoozeFilter(entries, summary, todayDate) {
+  const state = summary && typeof summary === "object" ? summary.today_snooze : null;
+  if (!state || typeof state !== "object" || !Array.isArray(state.items)) return entries;
+  const activeTargets = new Set();
+  for (const item of state.items) {
+    if (!item || typeof item !== "object") continue;
+    const target = String(item.target || "").trim();
+    const until = datePart(String(item.snoozed_until || ""));
+    if (target && until && until >= todayDate) activeTargets.add(target);
+  }
+  if (!activeTargets.size) return entries;
+  return entries.filter((entry) => !activeTargets.has(String(entry.target || "")));
 }
 
 function datePart(value) {
@@ -3334,6 +3349,11 @@ function todayFeedActions(plugin, entry) {
         label: "Open Review",
         description: `Open review surface: ${target}`,
         onClick: async () => plugin.openReviewCenterView(),
+      },
+      {
+        label: "Snooze",
+        description: `Snooze today item: ${target}`,
+        onClick: async () => plugin.runTodaySnoozeCommand(target),
       },
     ];
   }
@@ -6851,6 +6871,18 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async runNightlyCommand() {
     await this.runPluginCommand(this.t("Nightly"), ["nightly"], { refreshAfter: true });
+  }
+
+  async runTodaySnoozeCommand(target, days = 1) {
+    const normalizedTarget = String(target || "").trim();
+    if (!normalizedTarget) {
+      return;
+    }
+    await this.runPluginCommand(
+      `${this.t("Snooze")}: ${truncateText(normalizedTarget, 48)}`,
+      ["today-snooze", normalizedTarget, "--days", String(days)],
+      { refreshAfter: true }
+    );
   }
 
   async runShellSearchCommand(query, limit = 8) {

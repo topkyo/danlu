@@ -60,6 +60,7 @@ from ..app_state import (
     load_planner_state,
     load_query_route_telemetry,
     load_runtime_history,
+    load_today_snooze_state,
     machine_memory_graph_html_path,
     nightly_health_state_path,
     output_packs_index_path,
@@ -288,6 +289,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         "metrics_history_delta": metrics_history_delta,
         "planner_log_preview": planner_log_preview,
         "suggested_next_actions": suggested_next_actions,
+        "today_snooze": load_today_snooze_state(root),
         "nightly": {
             "available": nightly_health_state_path(root).exists(),
             "generated_at": str(nightly_state.get("generated_at") or ""),

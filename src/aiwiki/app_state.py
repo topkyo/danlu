@@ -86,6 +86,10 @@ def shell_summary_path(root: Path) -> Path:
     return root / "output" / "control" / "shell-summary.json"
 
 
+def today_snooze_state_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "today-snooze.json"
+
+
 def product_shell_html_path(root: Path) -> Path:
     return root / "output" / "control" / "product-shell.html"
 
@@ -351,6 +355,26 @@ def load_json_document_strict(path: Path) -> dict[str, Any]:
 def save_json_document(path: Path, document: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render_json_document(document), encoding="utf-8")
+
+
+def load_today_snooze_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(today_snooze_state_path(root))
+    items = document.get("items")
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "items": [item for item in items if isinstance(item, dict)] if isinstance(items, list) else [],
+    }
+
+
+@runtime_write_operation
+def save_today_snooze_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(
+        today_snooze_state_path(root),
+        {
+            "version": int(document.get("version", 1) or 1),
+            "items": [item for item in document.get("items", []) if isinstance(item, dict)],
+        },
+    )
 
 
 def load_jsonl_documents(path: Path) -> list[dict[str, Any]]:
