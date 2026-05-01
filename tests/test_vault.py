@@ -111,12 +111,22 @@ class VaultBootstrapTests(unittest.TestCase):
         plugin_data["settings"]["llmNvidiaNimApiKey"] = "nvapi_fake_key"
         plugin_data_path.write_text(json.dumps(plugin_data, ensure_ascii=False, indent=2), encoding="utf-8")
 
+        env = os.environ.copy()
+        for key in (
+            "AIWIKI_LLM_BACKEND",
+            "AIWIKI_LLM_MODEL",
+            "AIWIKI_NVIDIA_NIM_API_KEY",
+            "AIWIKI_NVIDIA_NIM_BASE_URL",
+        ):
+            env.pop(key, None)
+
         result = subprocess.run(
             [str(self.target / "scripts" / "aiwiki-launcher.sh"), "llm-check"],
             cwd=self.target,
             capture_output=True,
             text=True,
             check=False,
+            env=env,
         )
 
         self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -174,8 +175,12 @@ class DriftScanChangedEvidenceTests(unittest.TestCase):
         self.root = Path(self._tmp.name)
         self.recent = "2026-09-15T00:00:00+00:00"
         self.now = "2026-10-01T00:00:00+00:00"
+        # Host env (e.g. AIWIKI_STALE_JUDGMENT_DAYS=1) must not shrink the stale window for these cases.
+        self._prev_stale_judgment_days = os.environ.pop("AIWIKI_STALE_JUDGMENT_DAYS", None)
 
     def tearDown(self) -> None:
+        if self._prev_stale_judgment_days is not None:
+            os.environ["AIWIKI_STALE_JUDGMENT_DAYS"] = self._prev_stale_judgment_days
         self._tmp.cleanup()
 
     def _write_source(self, slug: str, body: str = "content") -> tuple[str, str]:

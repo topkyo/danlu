@@ -20,6 +20,17 @@ TRACE_ID = "550e8400-e29b-41d4-a716-446655440000"
 FIXED_NOW = datetime(2026, 4, 27, 0, 0, 0, tzinfo=timezone.utc)
 REFRESH = os.environ.get("AIWIKI_ACCEPTANCE_REFRESH") == "1"
 
+# Frozen acceptance goldens assume `LLMConfig.from_env()` fails with the deterministic
+# `_missing_backend_message` from an unset explicit backend (see `expected/files/*.golden`).
+# Host shells exporting `AIWIKI_LLM_BACKEND` or NVIDIA credentials change resolution,
+# probe behavior, and hint strings — strip those keys only for in-process CLI runs.
+_ACCEPTANCE_HOST_LLM_ENV_KEYS: tuple[str, ...] = (
+    "AIWIKI_LLM_BACKEND",
+    "AIWIKI_LLM_MODEL",
+    "AIWIKI_NVIDIA_NIM_API_KEY",
+    "NVIDIA_NIM_API_KEY",
+)
+
 
 class _FixedDateTime(datetime):  # pragma: no cover - exercised by explicit pytest acceptance gate
     @classmethod
@@ -28,12 +39,22 @@ class _FixedDateTime(datetime):  # pragma: no cover - exercised by explicit pyte
 
 
 def _run_cli(root: Path, args: list[str]) -> bytes:  # pragma: no cover - exercised by explicit pytest acceptance gate
-    stdout = io.StringIO()
-    stderr = io.StringIO()
-    with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
-        code = main(["--root", str(root), *args])
-    assert code == 0, stderr.getvalue()
-    return stdout.getvalue().encode("utf-8")
+    restored: dict[str, str | None] = {}
+    for key in _ACCEPTANCE_HOST_LLM_ENV_KEYS:
+        restored[key] = os.environ.pop(key, None)
+    try:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
+            code = main(["--root", str(root), *args])
+        assert code == 0, stderr.getvalue()
+        return stdout.getvalue().encode("utf-8")
+    finally:
+        for key, prior in restored.items():
+            if prior is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = prior
 
 
 def _load_jsonl(path: Path) -> list[dict[str, object]]:  # pragma: no cover - exercised by explicit pytest acceptance gate
