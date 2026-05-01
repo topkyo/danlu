@@ -3,7 +3,7 @@
 > 生成时间：2026-04-30，承接 Round 52 收口（commit `6b0770a` Relationship Graph UI Polish）。
 > 来源：基于全量 SoT 重新评估（`docs/Furnace Agent Architecture.md` + `docs/Furnace Evolution Mechanics.md` + `docs/Furnace Product Shell.md`）+ git log + 代码实测校准实际落地状态。
 > 性质：**方向决策**，不是路线图；具体 milestone 走 `.codex/contracts/active.md` + harness 流程。
-> SoT 关系：补丁 `docs/Furnace Next Direction P0-P3.md` 与 `docs/Furnace Next Direction P4.md`，反映 P0/P1/P3/P4-1~15 已落地后的剩余事实 gap。
+> SoT 关系：补丁历史现已归档到 `docs/archive/Furnace Next Direction P0-P3.md` 与 `docs/archive/Furnace Next Direction P4.md`，反映 P0/P1/P3/P4-1~15 已落地后的剩余事实 gap。
 
 > **二次校准（2026-04-30 写完 D-1 后）**：初次评估把 P0 / P1 / P3 / 部分 P4 都误列为 gap，实测后发现：
 >
@@ -185,6 +185,6 @@ D-3 是本 session 真正写代码 / 加 fixture 的一轮；D-2 / D-4 是文档
 ## 6. SoT 引用关系
 
 - 上层 SoT：`docs/Furnace Agent Architecture.md` + `docs/Furnace Evolution Mechanics.md` + `docs/Furnace Product Shell.md` + `docs/Furnace Elixir.md`
-- 历史方向（partial coverage，作为参考）：`docs/Furnace Next Direction P0-P3.md` + `docs/Furnace Next Direction P4.md`
+- 历史方向（partial coverage，作为参考）：`docs/archive/Furnace Next Direction P0-P3.md` + `docs/archive/Furnace Next Direction P4.md`
 - 执行入口：`.codex/contracts/active.md` + `.codex/plans/active.md`
 - 状态文件：`PROGRESS.md`（active 世代）+ `archive/PROGRESS-pre-round1.md`（历史世代，D-2 后落地）

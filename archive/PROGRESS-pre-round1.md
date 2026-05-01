@@ -7,7 +7,7 @@
 
 - **P3 — Drift / Aging 自动信号（M8.3）— 完成**
   - **目的**: 让炼丹炉具备“自我维护”——不投喂也会主动提醒陈旧判断、变化的引证、断链金丹。
-  - **方向 SoT**: `docs/Furnace Next Direction P0-P3.md` §4 (P3)
+  - **方向 SoT**: `docs/archive/Furnace Next Direction P0-P3.md` §4 (P3)
   - **契约**: `.codex/contracts/archive/M8.3-p3-drift-aging-nightly-signals.md`
   - **核心做法**（纯派生 + 零 schema 改动）:
     - 新模块 `src/aiwiki/drift_scan.py` (~589 行)：`drift_scan(root, *, now=None)` 入口
@@ -33,7 +33,7 @@
 
 - **P1 — Evidence Chain 可视化（M8.2）— 完成**
   - **目的**: 让用户用 1 条命令把任一资产追到原始证据，建立"知识库可信"的根基。
-  - **方向 SoT**: `docs/Furnace Next Direction P0-P3.md` §2 (P1)
+  - **方向 SoT**: `docs/archive/Furnace Next Direction P0-P3.md` §2 (P1)
   - **核心做法**（read-only 派生，零数据层改动）:
     - 新模块 `src/aiwiki/trace.py` (~430 行)：`TraceNode` dataclass + `resolve_trace(root, asset_id, *, direction, max_depth)` 入口 + 7 类 specialized resolver（raw / source / judgment / decision / elixir / proposal / receipt）
     - ID router 按前缀 / 路径形态识别 7 类 asset；frontmatter id fallback；循环检测（visited set + `cycle` 标记）；depth cap = 10
@@ -51,7 +51,7 @@
 
 - **P0 — Today Feed 实化（M8.1）— 完成**
   - **目的**: 把 `aiwiki today` 从 stub 升级为真正的 daily driver，把 M7 已落地但未浮出的 4 类信号汇聚到一屏。
-  - **方向 SoT**: `docs/Furnace Next Direction P0-P3.md`（P0..P3 路线图）
+  - **方向 SoT**: `docs/archive/Furnace Next Direction P0-P3.md`（P0..P3 路线图）
   - **核心做法**（最低摩擦：复用现有 5 kind，零 priority 改动，零 dispatch 桶改动，零 JS schema 改动，零 acceptance golden 漂移）:
     - `app_shell/summary.py`: `build_shell_summary` 新增 3 个派生字段 `counter_evidence_pages` / `metrics_history_delta` / `planner_log_preview`，全部 best-effort（缺数据 → 空/`available:false`）
     - `today_feed.py`: 新增 3 个 builder
@@ -64,7 +64,7 @@
     - `tests/test_acceptance_loop.py::test_today_feed_contract` pass
     - `bash scripts/verify.sh` 5/5 稳定 pass（1374+ unit + 12 acceptance / 93% coverage）
     - **acceptance golden 漂移 = 0 文件**
-  - **影响文件**: `src/aiwiki/app_shell/summary.py` (+129) / `src/aiwiki/today_feed.py` (+100) / `tests/test_today_feed.py` (+134) / `docs/Furnace Next Direction P0-P3.md` (新)
+  - **影响文件**: `src/aiwiki/app_shell/summary.py` (+129) / `src/aiwiki/today_feed.py` (+100) / `tests/test_today_feed.py` (+134) / `docs/archive/Furnace Next Direction P0-P3.md` (新)
   - **下一步**: P1 evidence chain 可视化 → P2 investing 端到端 dogfood → P3 drift/aging 信号
 
 - **M7 路线图全部交付（M7.0 ~ M7.4） — 闭环**

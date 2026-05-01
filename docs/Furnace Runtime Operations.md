@@ -15,7 +15,7 @@ related_docs:
 本文档回答三个问题：
 1. **炼丹炉是不是"自动一直在跑"？** — 是；机制见 §1
 2. **它怎么跑？** — `systemd --user` 双服务 + 显式 LLM-backed worker 入口（§2 / §3）
-3. **当主 backend 不可用时，fallback 怎么切？** — §5 操作手册
+3. **当主 backend 不可用时，nightly 怎么自动 fallback 到 NV NIM？** — §5 操作手册
 
 ---
 
@@ -97,9 +97,14 @@ Unit=aiwiki-nightly.service
 if AIWIKI_NIGHTLY_DETERMINISTIC_ONLY == 1:
     aiwiki nightly                          ← deterministic only
 elif LLM 已 configured:
-    aiwiki run-nightly --compile-limit 5    ← LLM-backed full path
+    aiwiki run-nightly --compile-limit 5    ← primary LLM-backed full path
+    if failed and fallback enabled:
+        source AIWIKI_NIGHTLY_FALLBACK_ENV
+        AIWIKI_LLM_BACKEND=nvidia-nim-api
+        AIWIKI_LLM_MODEL=openai/gpt-oss-120b
+        aiwiki run-nightly --compile-limit 5
 else:
-    aiwiki nightly                          ← deterministic fallback
+    try configured fallback LLM, else aiwiki nightly
 ```
 
 关键 env：
@@ -107,6 +112,10 @@ else:
 - `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` —— **light lane 自动 apply**（已默认开启，Round 38 起）；agent_loop preview 完成后立即执行 receipted light primitives（compile/lint/nightly），写 receipt + audit
 - `AIWIKI_NIGHTLY_COMPILE_LIMIT=5` —— LLM enrichment 单批上限
 - `AIWIKI_NIGHTLY_NO_SEMANTIC_LINT=0` —— 是否跑 semantic lint
+- `AIWIKI_NIGHTLY_FALLBACK_ENABLED=1` —— nightly wrapper 的 operator-approved fallback 开关
+- `AIWIKI_NIGHTLY_FALLBACK_BACKEND=nvidia-nim-api`
+- `AIWIKI_NIGHTLY_FALLBACK_MODEL=openai/gpt-oss-120b`
+- `AIWIKI_NIGHTLY_FALLBACK_ENV=~/.aiwiki-secrets/nvidia.env` —— repo 外凭据文件，脚本运行时 source
 
 ### 2.4 状态查询
 
@@ -168,7 +177,7 @@ watcher 不调 LLM，那 LLM 在哪发生？三条路径：
 | copilot-cli/auto | degraded | `●` 装饰破坏 frontmatter |
 | claude-cli | requires_credential | org policy 禁止 |
 
-按 9+ feasibility contract，**runtime 永不做 cross-backend 自动 routing**——切 backend 必须显式（env 或 CLI flag）。
+按 9+ feasibility contract，**runtime core 永不做 cross-backend 自动 routing**——普通 CLI 切 backend 必须显式（env 或 CLI flag）。唯一例外是 `scripts/run_nightly.sh` 这个 operator wrapper：它只在 nightly env 已显式配置 `AIWIKI_NIGHTLY_FALLBACK_*` 时，把失败的 unattended nightly 重试到 NV NIM，并在 systemd 日志中暴露 fallback 行为。
 
 ---
 
@@ -206,34 +215,24 @@ python3 -m aiwiki.cli --root "$AIWIKI_VAULT" run-compile \
   --limit 1
 ```
 
-### 5.4 让 systemd nightly 自动用 NV 备用
+### 5.4 systemd nightly 自动用 NV 备用
 
-> **当前 systemd 默认仍是 codex-cli 主路径**。如果 codex-cli quota 失效需要切 NV，三步（推荐）：
+`scripts/install_user_service.sh` 会在 `~/.config/aiwiki/aiwiki-nightly.env` 中补齐：
 
-**Step 1**：让 nightly 服务额外读 secrets file（不污染 watch 服务）：
-
-```bash
-mkdir -p ~/.config/systemd/user/aiwiki-nightly.service.d
-cat > ~/.config/systemd/user/aiwiki-nightly.service.d/nvidia-fallback.conf <<'EOF'
-[Service]
-# `-` 前缀：文件不存在自动忽略，不报错
-EnvironmentFile=-/home/tim/.aiwiki-secrets/nvidia.env
-EOF
-systemctl --user daemon-reload
+```text
+AIWIKI_NIGHTLY_FALLBACK_ENABLED=1
+AIWIKI_NIGHTLY_FALLBACK_BACKEND=nvidia-nim-api
+AIWIKI_NIGHTLY_FALLBACK_MODEL=openai/gpt-oss-120b
+AIWIKI_NIGHTLY_FALLBACK_ENV=/home/tim/.aiwiki-secrets/nvidia.env
 ```
 
-**Step 2**：把 nightly env 的 backend 切到 NV：
+语义：
+- primary 仍是 `AIWIKI_LLM_BACKEND` / `AIWIKI_LLM_MODEL`（当前 `codex-cli/gpt-5.5`）
+- primary `run-nightly` 失败后，wrapper source fallback env file，再用 `nvidia-nim-api/openai/gpt-oss-120b` 重跑一次
+- fallback key 不进入 systemd unit、不进入 repo、不进入 nightly env；只保留 repo 外 path
+- primary 与 fallback 都不可用时，最后仍跑 deterministic `aiwiki nightly`
 
-```bash
-# 编辑 ~/.config/aiwiki/aiwiki-nightly.env，把
-#   AIWIKI_LLM_BACKEND=codex-cli
-#   AIWIKI_LLM_MODEL=gpt-5.5
-# 改为
-#   AIWIKI_LLM_BACKEND=nvidia-nim-api
-#   AIWIKI_LLM_MODEL=openai/gpt-oss-120b
-```
-
-**Step 3**：验证：
+验证：
 
 ```bash
 systemctl --user restart aiwiki-nightly.service   # 立即触发一次
@@ -242,9 +241,22 @@ journalctl --user -u aiwiki-nightly.service --since "1 minute ago"
 
 > **Watcher 不需要切**：watcher 默认 deterministic-only，不调 LLM。
 
-### 5.5 切回主 backend
+### 5.5 关闭或调整 fallback
 
-把 §5.4 Step 2 的 env 改回 `codex-cli/gpt-5.5` 即可；secrets drop-in 留着不影响（key 文件不在 → 自动忽略）。
+关闭：
+
+```bash
+AIWIKI_NIGHTLY_FALLBACK_ENABLED=0
+```
+
+调整 fallback model：
+
+```bash
+AIWIKI_NIGHTLY_FALLBACK_MODEL=openai/gpt-oss-120b
+AIWIKI_NIGHTLY_FALLBACK_MODEL_FALLBACK=meta/llama-3.3-70b-instruct
+```
+
+不建议把 primary env 改成 NV；保持 `codex-cli/gpt-5.5` 主路径 + NV NIM fallback，更容易看清 nightly 失败来源。
 
 ### 5.6 Fallback chain（同 backend 内多 model 重试）
 

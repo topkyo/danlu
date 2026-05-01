@@ -141,6 +141,7 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . nightly
 - Obsidian 工作台：[HOME.md](./HOME.md)
 - 炼丹炉 Agent 架构（终局 SoT）：[Furnace Agent Architecture.md](<./docs/Furnace Agent Architecture.md>)
 - 炼丹炉进化机制（实现契约 SoT）：[Furnace Evolution Mechanics.md](<./docs/Furnace Evolution Mechanics.md>)
+- 运行机制与 nightly fallback：[Furnace Runtime Operations.md](<./docs/Furnace Runtime Operations.md>)
 - 金丹机制 thesis：[Furnace Elixir.md](<./docs/Furnace Elixir.md>)
 - Product Shell 插件设计史料：[Furnace Product Shell Plugin.md](<./docs/archive/Furnace Product Shell Plugin.md>)
 - 归档文档索引：[docs/archive/](./docs/archive/)
@@ -246,6 +247,7 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 - `run-ask` 现在会先用 balanced prompt；如果碰到 timeout，会自动再试一次 lean prompt，只有 lean retry 也失败时，外层 Product Shell 才会做 deterministic fallback
 - `run-ask` 现在也支持显式 `--lean` 与 `--timeout <seconds>`，用于直接选择稳优先 prompt 或覆盖单次调用 timeout，而不改动全局环境变量
 - 默认不做隐式 model fallback；需要 fallback 时必须显式传 `--model-fallback model_a,model_b`（可重复）或设置 `AIWIKI_MODEL_FALLBACK=model_a,model_b`，CLI 参数优先于 env
+- `scripts/run_nightly.sh` 是唯一带跨 backend fallback 的 operator wrapper：primary 仍由 `AIWIKI_LLM_BACKEND` 显式指定；当 unattended nightly 失败时，若 `AIWIKI_NIGHTLY_FALLBACK_ENABLED=1` 且 `AIWIKI_NIGHTLY_FALLBACK_ENV` 指向可读的 repo 外 NIM key 文件，会自动用 `nvidia-nim-api/openai/gpt-oss-120b` 重跑一次；普通 CLI/runtime 不做隐式跨 backend routing
 
 常见配置：
 
@@ -271,7 +273,7 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check --probe-all --probe-time
 - `nvidia-nim-api`：走 `AIWIKI_NVIDIA_NIM_API_KEY` 或 `NVIDIA_NIM_API_KEY`；base URL 默认 `https://integrate.api.nvidia.com/v1`
 - `nvidia-nim-api`：当前按 OpenAI-compatible `/v1/chat/completions` 接入；模型留空默认使用 `openai/gpt-oss-120b`（NIM 上实测唯一干净的 frontmatter-friendly 模型，2026-04-30 探测）
 - `nvidia-nim-api`：如需多模型重试，显式设置 `AIWIKI_LLM_MODEL` 并追加 `--model-fallback openai/gpt-oss-120b`（CLI 参数优先于 env）。注意 NIM 上多数 model 已 EOL 或装饰输出与 frontmatter 不兼容（如 `moonshotai/kimi-k2.5` 4-30 EOL、`meta/llama-3.3-70b-instruct` 输出装饰），先用 `llm-check --probe-all --format human` 确认目标 model `compatible` 再启用
-- **本地凭据存放规范**：API key **不得**入 `.envrc.dogfood` 或任何 git-tracked 文件；推荐落到 `~/.aiwiki-secrets/<provider>.env`（mode 600 / 父目录 700），用前 `source ~/.aiwiki-secrets/nvidia.env` 显式导入；systemd 服务可在 `aiwiki-{watch,nightly}.service` 用第二个 `EnvironmentFile=-` 引用同路径，文件不存在自动忽略
+- **本地凭据存放规范**：API key **不得**入 `.envrc.dogfood` 或任何 git-tracked 文件；推荐落到 `~/.aiwiki-secrets/<provider>.env`（mode 600 / 父目录 700）。手动 CLI 用前 `source ~/.aiwiki-secrets/nvidia.env` 显式导入；nightly fallback 只保存 `AIWIKI_NIGHTLY_FALLBACK_ENV` 路径，运行时由 wrapper source，不把 key 写进 systemd unit 或 git-tracked 文件
 - `copilot-cli`：官方推荐 `copilot login` 的浏览器设备码 OAuth；也支持 `COPILOT_GITHUB_TOKEN -> GH_TOKEN -> GITHUB_TOKEN -> stored OAuth token -> gh auth token` 的优先链
 - `copilot-cli` 的 GitHub OAuth 路径"可行"不等于"当前账号可用"；seat / org policy / quota 不足时，probe 仍会失败
 - 当前这台机器上的真实结论：`codex-cli/gpt-5.5` 与 `nvidia-nim-api/openai/gpt-oss-120b` 双 compatible（2026-05-01 探测）；`copilot-cli/auto` 因 `●` 装饰前缀破坏 frontmatter 不能作 `run-compile` fallback；`claude-cli` 受 org policy 阻塞

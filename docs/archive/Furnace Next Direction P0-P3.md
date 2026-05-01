@@ -1,5 +1,7 @@
 # 炼丹炉 Next Direction — P0..P3 (post-M7)
 
+> **Archive note (2026-05-01)**：P0-P3 已完成并被 `docs/Furnace Next Direction Post-P4.md` 取代；本文只保留为历史方向和验收背景。
+
 > 生成时间：2026-04-28，承接 M7 闭环（commit `ddd6faf`，9+ Contract 8.83/10）。
 > SoT：`docs/Furnace Agent Architecture.md` + `Furnace Evolution Mechanics.md` + `Furnace Product Shell.md`。
 > 本文件不是路线图，是**方向决策**。具体 milestone 实现走 `.codex/contracts/active.md` + harness 流程。

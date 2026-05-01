@@ -1,9 +1,10 @@
 ---
 title: "炼丹炉 Product UX 评估"
 kind: "product-review"
-status: "draft"
+status: "archive"
 owner: "tim"
 created_at: 2026-04-29
+archived_at: 2026-05-01
 related_docs:
   - docs/Furnace Product Shell.md
   - docs/Furnace Agent Architecture.md
@@ -11,6 +12,8 @@ related_docs:
 ---
 
 # 炼丹炉 Product UX 评估
+
+> **Archive note (2026-05-01)**：M-UX.1 已落地；当前 Product Shell 事实以 `docs/Furnace Product Shell.md` 和 `PROGRESS.md` 为准。
 
 ## 结论
 

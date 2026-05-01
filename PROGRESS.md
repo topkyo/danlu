@@ -7,6 +7,30 @@
 
 ## 状态
 
+- **Round 61 — Nightly NV NIM Auto Fallback + Docs Archive Sweep — 完成**
+  - **目的**: 按用户指令把 NV NIM 从手动 fallback 升级为 nightly unattended fallback；同时清理 active docs 根目录，把过时方向/评估文档归档，并 push 当前分支
+  - **方向 SoT**: 用户在线指令（"把 NV NIM 装到 nightly 自动跑 fallback；梳理文档后哪些过时或不用的文档做清理或归档；然后 push"）+ `.codex/contracts/active.md`
+  - **nightly fallback 实现**:
+    - `scripts/run_nightly.sh` 改为 wrapper 决策：primary `run-nightly` 成功则退出；primary 失败或未配置时，若 `AIWIKI_NIGHTLY_FALLBACK_ENABLED=1`，source `AIWIKI_NIGHTLY_FALLBACK_ENV`，切到 `nvidia-nim-api/openai/gpt-oss-120b` 重跑；fallback 也不可用时最终跑 deterministic `nightly`
+    - fallback 只存在于 nightly wrapper；不改 `LLMConfig`，普通 CLI/runtime 仍保持显式 backend 选择、不做 hidden routing
+    - `scripts/install_user_service.sh` 对新旧 `~/.config/aiwiki/aiwiki-nightly.env` 补齐 `AIWIKI_NIGHTLY_FALLBACK_*`，只写 repo 外 key 路径，不写 key
+    - 顺手修正 `run_watch.sh` / `run_nightly.sh` 的 `PYTHONPATH` 前置逻辑，避免外部 ROS 等已有 `PYTHONPATH` 时找不到 `aiwiki`
+  - **本机 systemd 更新**:
+    - 已执行 `bash scripts/install_user_service.sh`
+    - 当前 nightly env：primary `codex-cli/gpt-5.5` + `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` + fallback `nvidia-nim-api/openai/gpt-oss-120b` + `AIWIKI_NIGHTLY_FALLBACK_ENV=/home/tim/.aiwiki-secrets/nvidia.env`
+    - `LLMConfig.status_from_env()` 验证 fallback configured=True / key present=True（未打印 key）
+    - `aiwiki-nightly.timer` enabled+active，next trigger Sat 2026-05-02 00:00:00 CST
+  - **文档清理 / 归档**:
+    - `docs/README.md` 改为 active SoT 索引：Agent Architecture / Evolution Mechanics / Product Shell / Runtime Operations / Next Direction Post-P4 / Investing Dogfood / Market Scan / Elixir
+    - 新增 `docs/archive/README.md`
+    - 归档：`docs/archive/Furnace Next Direction P0-P3.md`、`docs/archive/Furnace Next Direction P4.md`、`docs/archive/Furnace Product UX Assessment.md`
+    - `README.md` 与 `docs/Furnace Runtime Operations.md` 更新 nightly fallback 语义；active docs 中旧路径引用已改到 archive
+  - **Tests**:
+    - focused: `PYTHONPATH=src python3 -m unittest tests.test_app.AiwikiFlowTests.test_run_watch_script_uses_root_relative_paths tests.test_app.AiwikiFlowTests.test_run_nightly_script_uses_root_relative_paths tests.test_app.AiwikiFlowTests.test_run_nightly_script_retries_nim_fallback_before_deterministic`
+    - `python3 -m ruff check src tests`
+    - `bash scripts/verify.sh`: 1572 unit + 13 acceptance / 92% coverage / `All checks passed!`
+  - **Stop Lines**: 0 review/apply/revert 状态机改动；0 NV key 入 git；0 core runtime backend routing 语义改动；文档仅归档不删除历史
+
 - **Round 60 — Documentation Sync + Runtime Operations Manual + NV NIM Default Update — 完成**
   - **目的**: Round 59 后多处事实漂移积累；本轮把代码、README、方向文档、dogfood plan 全部对齐到现在的运行事实，并新增运行机制 / fallback 操作手册作为长期 SoT
   - **方向 SoT**: 用户在线指令（key 已保存如何文档化 / 运行机制是什么 / 文档梳理）
@@ -186,7 +210,7 @@
     - 写 `docs/Furnace Next Direction Post-P4.md`，承接 Round 52 + P4-15 收口后的剩余 gap
     - 二次校准纠错：初评把 P0/P1/P3/P4-1~15 误列为 gap；实测后确认这些已落地（line 1253 P0 / line 1235 P1 / line 1209 P3 / line 1184 P4-1）
     - 真实剩余 gap 收敛为：D-3 Stage-3 Compounding acceptance + D-4 Investing dogfood plan + 长尾 (Signal routing density / 外部 LLM)
-    - 文件大小：~9KB；引用关系：补丁 `docs/Furnace Next Direction P0-P3.md` + `docs/Furnace Next Direction P4.md`
+    - 文件大小：~9KB；引用关系：补丁 `docs/archive/Furnace Next Direction P0-P3.md` + `docs/archive/Furnace Next Direction P4.md`
   - **D-2 Archive Sweep 落地**:
     - `PROGRESS.md`: 2331 行 → 1209 行；切出 1130 行（pre-Round 1 / pre-P4 内容含 M0-M9 / M-PS / M-UX / M6 / P0~P3 / M7 / 9-Standard Closure）到 `archive/PROGRESS-pre-round1.md`
     - `.codex/plans/active.md`: 6013 行 → 1550 行；切出 4394 行（EP-001~021 / EP-PLAN-001 / Furnace M0-M5 / 9-Standard Closure M9-Px）到 `.codex/plans/archive/pre-furnace-and-furnace-rollout.md`
@@ -1027,7 +1051,7 @@
   - **当前评估**: 真机 dogfood vault 已从右侧辅助面板切到主区 Product Shell；重启/重载 Obsidian 后应进入新的 shell-first 布局。下一步应做截图复核和按钮语义精修，而不是继续移动 runtime 层。
 
 - **Round 22 — M-UX.1 Product Shell New-user UX Refactor — 完成**
-  - **目的**: 先单独提交 `docs/Furnace Product UX Assessment.md`，再按该 UX 评估和 `docs/Furnace Product Shell.md` 的“一输入端 + 一输出端 + Advanced 折叠”原则，做面向新用户测试的 Product Shell UX 收敛；本轮不考虑老用户既有布局习惯
+  - **目的**: 先单独提交 `docs/archive/Furnace Product UX Assessment.md`，再按该 UX 评估和 `docs/Furnace Product Shell.md` 的“一输入端 + 一输出端 + Advanced 折叠”原则，做面向新用户测试的 Product Shell UX 收敛；本轮不考虑老用户既有布局习惯
   - **先行提交**:
     - `b65427a docs: add Furnace product UX assessment`
   - **设计核心**:
@@ -1355,7 +1379,7 @@
 
 - **P4-3 — Trace Concept Layer Support — 完成**
   - **目的**: 修复 dogfood-receipt-v0 friction F8（`aiwiki trace` 不识别 concept 层）
-  - **方向 SoT**: `docs/Furnace Next Direction P4.md` + dogfood-receipt-v0 F8
+  - **方向 SoT**: `docs/archive/Furnace Next Direction P4.md` + dogfood-receipt-v0 F8
   - **设计核心**:
     - `trace.py` 增 `concept` kind：classify 增 `wiki/concepts/` 与 `concept-` 两种入口（receipt fallback 之前插入，不污染既有 6-kind 顺序）
     - `_resolve_concept` up walk 通过 frontmatter `source_pages` 到 source 再到 raw（concept 是叶子，不向下展开）
@@ -1373,7 +1397,7 @@
 
 - **P4-1 系列 — Backend Compatibility Observability — 完成（5 commit 一次性收口）**
   - **目的**: 让"backend 兼容性"信号从运行时不可见 → 全栈可观测可审计
-  - **方向 SoT**: `docs/Furnace Next Direction P4.md`
+  - **方向 SoT**: `docs/archive/Furnace Next Direction P4.md`
   - **commit 链**:
     - `fc6c35b` P4-2: LLM raw response 落盘 + receipt error_class/error_message 字段（排障基础设施）
     - `2852e77` P4-1a: `probe_backend()` 4 状态枚举（compatible/degraded/unavailable/requires_credential）+ frontmatter probe + 装饰前缀检测
@@ -1395,4 +1419,3 @@
   - **session 工程价值**: 5 个 oracle review + 4 个 fixer 实现 + 2 个 explorer 摸图，全程 closed_loop 闭环；harness gate fingerprint commit 后 drift 模式被识别并固化（"commit → 重写 gate → run_plan"）
   - **dogfood receipt v0**: 9.5 → 9.7（`output/reports/dogfood-receipt-v0.md` +26 行）
   - **下一步候选**: P4-3 (read-side trace concept / F8 原型)、P4-11 (F4 dogfood vault path 显式化)、drift 24h 阶段（明天）；或新方向
-

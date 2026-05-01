@@ -276,7 +276,7 @@ F-INV-1 ~ F-INV-19，每条：
 
 - 上层 SoT：`docs/Furnace Agent Architecture.md` + `docs/Furnace Evolution Mechanics.md`
 - 直接引用方向：`docs/Furnace Next Direction Post-P4.md` §D-4
-- 历史 dogfood receipt 参考：`docs/Furnace Next Direction P4.md` 引用的 `dogfood-receipt-v0.md`（research protocol）
+- 历史 dogfood receipt 参考：`docs/archive/Furnace Next Direction P4.md` 引用的 `dogfood-receipt-v0.md`（research protocol）
 - 不替代：本文档只是 contract，实跑后产出的 receipt 是另一份独立 artifact
 
 ## 7. 文档生命周期

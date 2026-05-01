@@ -1,5 +1,7 @@
 # Furnace Next Direction P4
 
+> **Archive note (2026-05-01)**：P4-1~15 已完成并被 `docs/Furnace Next Direction Post-P4.md` 取代；本文只保留 dogfood F-fix 史料。
+
 P4 阶段要回答 P3 之后的核心问题：炼丹炉的 deterministic 地基已经足够支撑 9.0 dogfood，但要进入 9.5，必须证明 **LLM 执行层可用、trace 血缘可 demo、CLI 错误可自解释、dogfood 流程可复现**；因此 P4 不是扩功能，而是把第一次真实 dogfood receipt 暴露的阻塞点收敛成可独立合并、可验收、可回归的工程路线图。
 
 > 来源证据：`output/reports/dogfood-receipt-v0.md`（炼丹炉 vault 内），含 12 个摩擦点 F1–F12 + F5/F9 真因调查 + F13/F14 派生发现。

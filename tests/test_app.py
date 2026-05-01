@@ -6275,6 +6275,7 @@ class AiwikiFlowTests(unittest.TestCase):
         content = script.read_text(encoding="utf-8")
         self.assertIn('PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"', content)
         self.assertIn('TARGET_ROOT="${AIWIKI_VAULT:-$PROJECT_ROOT}"', content)
+        self.assertIn('export PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"', content)
         self.assertIn('--root "$TARGET_ROOT"', content)
         self.assertIn('AIWIKI_WATCH_DETERMINISTIC_ONLY:-1', content)
         self.assertIn('exec python3 -m aiwiki.cli "${ARGS[@]}"', content)
@@ -6284,10 +6285,80 @@ class AiwikiFlowTests(unittest.TestCase):
         content = script.read_text(encoding="utf-8")
         self.assertIn('PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"', content)
         self.assertIn('TARGET_ROOT="${AIWIKI_VAULT:-$PROJECT_ROOT}"', content)
+        self.assertIn('export PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"', content)
         self.assertIn('--root "$TARGET_ROOT"', content)
         self.assertIn('exec python3 -m aiwiki.cli "${ARGS[@]}"', content)
         self.assertIn("run-nightly", content)
         self.assertIn("nightly", content)
+        self.assertIn("AIWIKI_NIGHTLY_FALLBACK_BACKEND:-nvidia-nim-api", content)
+        self.assertIn("AIWIKI_NIGHTLY_FALLBACK_MODEL:-openai/gpt-oss-120b", content)
+        self.assertIn("source \"$FALLBACK_ENV\"", content)
+        self.assertIn("retrying nightly with fallback", content)
+
+    def test_run_nightly_script_retries_nim_fallback_before_deterministic(self) -> None:
+        script = Path("/home/tim/ai-wiki/scripts/run_nightly.sh")
+        with tempfile.TemporaryDirectory() as tempdir:
+            temp_root = Path(tempdir)
+            bin_dir = temp_root / "bin"
+            bin_dir.mkdir()
+            fake_python = bin_dir / "python3"
+            log_path = temp_root / "python.log"
+            fallback_env = temp_root / "nvidia.env"
+            fallback_env.write_text('export AIWIKI_NVIDIA_NIM_API_KEY="nvapi_test"\n', encoding="utf-8")
+            fake_python.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "-" ]]; then
+  if [[ "${AIWIKI_LLM_BACKEND:-}" == "codex-cli" ]]; then
+    exit 0
+  fi
+  if [[ "${AIWIKI_LLM_BACKEND:-}" == "nvidia-nim-api" && -n "${AIWIKI_NVIDIA_NIM_API_KEY:-}" ]]; then
+    exit 0
+  fi
+  exit 1
+fi
+printf '%s|%s|%s\\n' "${AIWIKI_LLM_BACKEND:-}" "${AIWIKI_LLM_MODEL:-}" "$*" >>"${FAKE_PYTHON_LOG}"
+if [[ "$*" == *"run-nightly"* ]]; then
+  if [[ "${AIWIKI_LLM_BACKEND:-}" == "nvidia-nim-api" ]]; then
+    exit 0
+  fi
+  exit 42
+fi
+exit 0
+""",
+                encoding="utf-8",
+            )
+            fake_python.chmod(0o755)
+            env = os.environ.copy()
+            env.update(
+                {
+                    "PATH": f"{bin_dir}{os.pathsep}{env.get('PATH', '')}",
+                    "FAKE_PYTHON_LOG": str(log_path),
+                    "AIWIKI_VAULT": str(temp_root / "vault"),
+                    "AIWIKI_LLM_BACKEND": "codex-cli",
+                    "AIWIKI_LLM_MODEL": "gpt-5.5",
+                    "AIWIKI_NIGHTLY_FALLBACK_ENV": str(fallback_env),
+                    "AIWIKI_NIGHTLY_NO_SEMANTIC_LINT": "1",
+                }
+            )
+            completed = subprocess.run(
+                ["bash", str(script)],
+                cwd="/home/tim/ai-wiki",
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+            lines = log_path.read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(len(lines), 2)
+        self.assertIn("codex-cli|gpt-5.5|", lines[0])
+        self.assertIn("run-nightly", lines[0])
+        self.assertIn("nvidia-nim-api|openai/gpt-oss-120b|", lines[1])
+        self.assertIn("--no-semantic-lint", lines[1])
+        self.assertIn("retrying nightly with fallback nvidia-nim-api/openai/gpt-oss-120b", completed.stderr)
 
     def test_aiwiki_launcher_script_uses_env_vault_when_present(self) -> None:
         script = Path("/home/tim/ai-wiki/scripts/aiwiki-launcher.sh")
@@ -6304,6 +6375,9 @@ class AiwikiFlowTests(unittest.TestCase):
         content = script.read_text(encoding="utf-8")
         self.assertIn("AIWIKI_WATCH_DETERMINISTIC_ONLY=1", content)
         self.assertIn("AIWIKI_NIGHTLY_DETERMINISTIC_ONLY=0", content)
+        self.assertIn("AIWIKI_NIGHTLY_FALLBACK_ENABLED=1", content)
+        self.assertIn("AIWIKI_NIGHTLY_FALLBACK_BACKEND=nvidia-nim-api", content)
+        self.assertIn("AIWIKI_NIGHTLY_FALLBACK_MODEL=openai/gpt-oss-120b", content)
 
     def test_product_shell_plugin_manifest_declares_desktop_only(self) -> None:
         manifest_path = Path("/home/tim/ai-wiki/.obsidian/plugins/furnace-product-shell/manifest.json")
@@ -6487,6 +6561,8 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("aiwiki-nightly.timer", content)
         self.assertIn("AIWIKI_NIGHTLY_COMPILE_LIMIT", content)
         self.assertIn("AIWIKI_LLM_MODEL=gpt-5.5", content)
+        self.assertIn("AIWIKI_NIGHTLY_FALLBACK_ENV", content)
+        self.assertIn("ensure_env_key", content)
 
     def test_nightly_systemd_templates_exist(self) -> None:
         service_template = Path("/home/tim/ai-wiki/systemd/aiwiki-nightly.service.template")
