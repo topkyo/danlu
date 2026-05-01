@@ -685,29 +685,38 @@ def file_back(
             protocol=resolved_protocol,
             root=root,
         )
-    frontmatter = render_frontmatter(
-        {
-            "id": entry_id,
-            "kind": kind,
-            "status": default_curated_status(kind),
-            "title": title or artifact_path.stem,
-            "protocol": resolved_protocol,
-            "source_files": [artifact_ref],
-            "citations": citations,
-            "citation_snapshots": citation_snapshots,
-            "generated_by": "aiwiki-file-back",
-            "last_compiled_at": filed_at,
-            "confidence": "medium",
-            "counter_evidence": [],
-            "invalidation_rule": "",
-            "next_signals": [],
-            "formed_at": filed_at,
-            "last_reviewed": "",
-            "reviewed_at": "",
-            "revisit_after": revisit_after,
-            "escalate_after": escalate_after,
-        }
+    from aiwiki.app_protocol import protocol_judgment_extra_fields
+
+    frontmatter_payload: dict[str, Any] = {
+        "id": entry_id,
+        "kind": kind,
+        "status": default_curated_status(kind),
+        "title": title or artifact_path.stem,
+        "protocol": resolved_protocol,
+        "source_files": [artifact_ref],
+        "citations": citations,
+        "citation_snapshots": citation_snapshots,
+        "generated_by": "aiwiki-file-back",
+        "last_compiled_at": filed_at,
+        "confidence": "medium",
+        "counter_evidence": [],
+        "invalidation_rule": "",
+        "next_signals": [],
+        "formed_at": filed_at,
+        "last_reviewed": "",
+        "reviewed_at": "",
+        "revisit_after": revisit_after,
+        "escalate_after": escalate_after,
+    }
+    # P4-INV-3 (Round 59): inject protocol-specific frontmatter slots so that
+    # investing pages get thesis / catalyst / risk / invalidation_threshold,
+    # research gets hypothesis / falsification, etc. Empty values are
+    # intentional placeholders — lint stays happy, downstream consumers see
+    # the schema slot.
+    frontmatter_payload.update(
+        protocol_judgment_extra_fields(resolved_protocol, kind)
     )
+    frontmatter = render_frontmatter(frontmatter_payload)
     stripped = strip_frontmatter(original).strip()
     body_lines = curated_page_template(
         kind=kind,

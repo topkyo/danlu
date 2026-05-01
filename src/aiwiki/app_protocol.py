@@ -576,6 +576,84 @@ PROTOCOL_LIBRARY = {
 }
 
 
+# P4-INV-3 (Round 59): protocol-specific extra frontmatter fields injected
+# into freshly file-backed judgment / decision pages so domain-specific
+# semantics (thesis / catalyst / risk / invalidation_threshold for investing,
+# experiment / hypothesis / falsification for research, etc.) are present as
+# explicit empty slots. Empty strings are intentional — they signal "this
+# protocol expects this field, please fill it" without forcing lint to fail
+# on legacy pages. Type is normalized to lower-case slug -> kind -> field map.
+PROTOCOL_JUDGMENT_EXTRA_FIELDS: dict[str, dict[str, dict[str, Any]]] = {
+    "investing": {
+        "judgment": {
+            "thesis": "",
+            "catalyst": [],
+            "risk": [],
+            "invalidation_threshold": "",
+        },
+        "decision": {
+            "thesis": "",
+            "position_change": "",
+            "sizing_rationale": "",
+            "invalidation_threshold": "",
+        },
+    },
+    "research": {
+        "judgment": {
+            "hypothesis": "",
+            "falsification": "",
+            "experiment_refs": [],
+        },
+    },
+    "product": {
+        "judgment": {
+            "user_value_claim": "",
+            "kill_metric": "",
+        },
+    },
+    "ops": {
+        "judgment": {
+            "runbook_ref": "",
+            "blast_radius": "",
+        },
+    },
+    "general": {},
+}
+
+
+def protocol_judgment_extra_fields(protocol: str, kind: str) -> dict[str, Any]:
+    """Return a fresh copy of protocol-specific frontmatter slots for a kind.
+
+    P4-INV-3: callers (file-back, judgment scaffolders) inject these slots
+    into newly created pages. Lists are returned as new lists so callers may
+    mutate them safely.
+    """
+    by_protocol = PROTOCOL_JUDGMENT_EXTRA_FIELDS.get(protocol.strip(), {})
+    by_kind = by_protocol.get(kind.strip(), {})
+    out: dict[str, Any] = {}
+    for key, value in by_kind.items():
+        if isinstance(value, list):
+            out[key] = list(value)
+        elif isinstance(value, dict):
+            out[key] = dict(value)
+        else:
+            out[key] = value
+    return out
+
+
+PROTOCOL_ELIXIR_REVIEW_DAYS: dict[str, int] = {
+    # P4-INV-4 (Round 59): default `review_after` window for settled elixirs,
+    # by protocol. Investing has the fastest rhythm because catalysts /
+    # invalidation triggers tend to resolve in 1-2 quarters; ops is the
+    # fastest because operational decisions are rechecked weekly.
+    "general": 90,
+    "investing": 60,
+    "research": 90,
+    "product": 60,
+    "ops": 30,
+}
+
+
 PROTOCOL_REVIEW_WINDOWS: dict[str, dict[tuple[str, str], tuple[int, int]]] = {
     "general": {},
     "investing": {

@@ -752,6 +752,55 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(runs_log["delivery_mode"], "skipped")
         self.assertFalse(runs_log["fallback_used"])
 
+    def test_run_compile_paths_filter_restricts_pending_queue(self) -> None:
+        """P4-INV-1 (Round 59): when --paths is supplied, only matching sources
+        enter the LLM enrichment queue. Use limit=0 so we just inspect what
+        would have been queued without launching the LLM.
+        """
+        sample_a = self.root / "sample-a.md"
+        sample_a.write_text(
+            "# Source A\n\nThis is the targeted dogfood note.\n", encoding="utf-8"
+        )
+        sample_b = self.root / "sample-b.md"
+        sample_b.write_text(
+            "# Source B\n\nThis is a sibling note that should be filtered out.\n",
+            encoding="utf-8",
+        )
+        entry_a = ingest_source(self.root, str(sample_a), title="A")
+        ingest_source(self.root, str(sample_b), title="B")
+        compile_wiki(self.root)
+
+        # Without --paths, backlog has 2 pending pages.
+        baseline = run_compile(self.root, client=_DummyClient(), limit=0)
+        self.assertEqual(baseline["pending_pages"], 2)
+
+        # With --paths pointing only at A, queue must shrink to 1.
+        filtered = run_compile(
+            self.root, client=_DummyClient(), limit=0, paths=[entry_a["id"]]
+        )
+        self.assertEqual(filtered["pending_pages"], 1)
+
+        # Empty list / None must keep legacy full-backlog behavior.
+        as_full = run_compile(self.root, client=_DummyClient(), limit=0, paths=None)
+        self.assertEqual(as_full["pending_pages"], 2)
+        as_empty = run_compile(self.root, client=_DummyClient(), limit=0, paths=[])
+        self.assertEqual(as_empty["pending_pages"], 2)
+
+        # Filter accepts both wiki/sources/<id>.md form and bare id.
+        path_form = run_compile(
+            self.root,
+            client=_DummyClient(),
+            limit=0,
+            paths=[f"wiki/sources/{entry_a['id']}.md"],
+        )
+        self.assertEqual(path_form["pending_pages"], 1)
+
+        # Mismatching token filters everything out.
+        none_match = run_compile(
+            self.root, client=_DummyClient(), limit=0, paths=["nonexistent-source"]
+        )
+        self.assertEqual(none_match["pending_pages"], 0)
+
     def test_run_compile_records_audit_fields_for_success_and_summary(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)

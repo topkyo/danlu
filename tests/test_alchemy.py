@@ -2016,6 +2016,67 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         self.assertEqual(ctx.exception.line_number, 2)
 
 
+class AlchemyFinalizeReviewAfterTests(unittest.TestCase):
+    """P4-INV-4 (Round 59): alchemy-finalize must stamp `review_after`.
+
+    Locks the contract that a freshly finalized candidate elixir always carries
+    a protocol-aware `review_after` ISO date so promote receipts and aging
+    surfaces have a real expiration anchor (Furnace Evolution Mechanics §7.2).
+    """
+
+    def setUp(self) -> None:
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+        ensure_layout(self.root)
+        (self.root / "prompts" / "compile.md").write_text("Compile prompt fixture.\n", encoding="utf-8")
+        (self.root / "prompts" / "ask.md").write_text("Ask prompt fixture.\n", encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def _make_promoted_corpus(self, *, question: str = "demo") -> str:
+        result = ask_question(self.root, question, "report")
+        promote_candidate(self.root, result["path"])
+        return str(result["active_corpus_id"])
+
+    def test_finalize_writes_protocol_aware_review_after(self) -> None:
+        corpus_id = self._make_promoted_corpus(question="investing demo")
+        started = run_alchemy_start(self.root, corpus_id, "demo topic", protocol="investing")
+        result = run_alchemy_finalize(self.root, elixir_id=started["elixir_id"])
+
+        # The runner should echo the new field for callers that watch CLI output.
+        self.assertIn("review_after", result)
+        review_after = str(result["review_after"])
+        self.assertRegex(review_after, r"^\d{4}-\d{2}-\d{2}$")
+
+        # Frontmatter must persist the same value.
+        candidate = parse_frontmatter(_candidate_path(self.root, started["elixir_id"]).read_text(encoding="utf-8"))
+        self.assertEqual(candidate.get("review_after"), review_after)
+
+    def test_finalize_preserves_existing_review_after(self) -> None:
+        corpus_id = self._make_promoted_corpus(question="research demo")
+        started = run_alchemy_start(self.root, corpus_id, "demo topic", protocol="research")
+        # Author-set review_after must not be overwritten on finalize.
+        candidate_path = _candidate_path(self.root, started["elixir_id"])
+        original = candidate_path.read_text(encoding="utf-8")
+        fm = _parse_elixir_frontmatter(candidate_path)
+        fm["review_after"] = "2027-01-01"
+        _write_elixir_markdown(candidate_path, frontmatter=fm, body=original.split("---", 2)[-1].lstrip("\n"))
+
+        result = run_alchemy_finalize(self.root, elixir_id=started["elixir_id"])
+        self.assertEqual(result["review_after"], "2027-01-01")
+
+    def test_protocol_default_review_window_differs_by_protocol(self) -> None:
+        from aiwiki.execution.alchemy import _default_elixir_review_after
+
+        invest = _default_elixir_review_after(protocol="investing")
+        research = _default_elixir_review_after(protocol="research")
+        ops = _default_elixir_review_after(protocol="ops")
+        # 60d (investing) < 90d (research); ops 30d shortest.
+        self.assertLess(invest, research)
+        self.assertLess(ops, invest)
+
+
 class AlchemyStage3CompoundingTests(unittest.TestCase):
     """D-3 acceptance: end-to-end Stage-3 compounding.
 

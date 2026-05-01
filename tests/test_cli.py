@@ -1513,7 +1513,7 @@ class CLITests(unittest.TestCase):
             ("shell-status", ["shell-status"], "shell_status", (self.root,), {}),
             ("dashboard", ["dashboard"], "shell_status_dashboard", (self.root,), {}),
             ("search", ["search", "latency", "--limit", "5"], "shell_search", (self.root, "latency"), {"limit": 5}),
-            ("run-compile", ["run-compile", "--limit", "3"], "run_compile", (self.root,), {"limit": 3}),
+            ("run-compile", ["run-compile", "--limit", "3"], "run_compile", (self.root,), {"limit": 3, "paths": None}),
             (
                 "ask",
                 ["ask", "What changed?", "--format", "slides", "--protocol", "research", "--no-cache"],

@@ -104,8 +104,81 @@ def _raw_response_path(root: Path, result: CompletionResult | None, exc: Excepti
         return result.raw_response_path
     return _write_raw_response(root, result.text)
 
+def _normalize_run_compile_paths(paths: list[str] | None) -> set[str] | None:
+    """Build a normalized lookup set for `run_compile(paths=...)` filtering.
+
+    P4-INV-1 (Round 59): accept any of these forms per element and return a
+    deduplicated set of normalized tokens (lowercased, ``./`` stripped):
+
+    - source id (``discovered-...``)
+    - ``wiki/sources/<id>.md`` or absolute equivalent
+    - ``raw/inbox/<file>``: matched against entry's source_files
+    - bare basename (``<id>.md``)
+
+    Empty / blank entries are dropped. Returning ``None`` means "no filter
+    requested" (legacy behavior).
+    """
+
+    if paths is None:
+        return None
+    cleaned: set[str] = set()
+    for raw in paths:
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        text = text.lstrip("./")
+        cleaned.add(text)
+        cleaned.add(text.lower())
+        # Common dialects callers might emit.
+        if text.endswith(".md"):
+            cleaned.add(text[:-3])
+            cleaned.add(text[:-3].lower())
+    return cleaned or None
+
+
+def _entry_matches_path_filter(
+    entry: dict[str, Any], page: Path, filter_tokens: set[str]
+) -> bool:
+    """Return True when an LLM enrichment entry matches an explicit --paths token."""
+
+    entry_id = str(entry.get("id") or "").strip()
+    if entry_id and (entry_id in filter_tokens or entry_id.lower() in filter_tokens):
+        return True
+    page_rel = ""
+    try:
+        page_rel = page.resolve().relative_to(page.parent.parent.parent.resolve()).as_posix()
+    except (ValueError, OSError):
+        page_rel = ""
+    candidates = {
+        page_rel,
+        page_rel.lower() if page_rel else "",
+        f"wiki/sources/{entry_id}.md" if entry_id else "",
+        f"wiki/sources/{entry_id}.md".lower() if entry_id else "",
+        page.name,
+        page.name.lower(),
+        page.stem,
+        page.stem.lower(),
+    }
+    for source_file in entry.get("source_files", []) or []:
+        candidates.add(str(source_file))
+        candidates.add(str(source_file).lower())
+    return bool(candidates & filter_tokens)
+
+
 @runtime_write_operation
-def run_compile(root: Path, client: SupportsComplete | None = None, limit: int = 5) -> dict[str, Any]:
+def run_compile(
+    root: Path,
+    client: SupportsComplete | None = None,
+    limit: int = 5,
+    paths: list[str] | None = None,
+) -> dict[str, Any]:
+    """Compile manifest entries and run the LLM enrichment queue.
+
+    P4-INV-1 (Round 59): when ``paths`` is provided the LLM-enrichment queue
+    is restricted to entries that match any of the supplied identifiers /
+    paths. Without it the legacy behavior — full backlog — is preserved.
+    """
+
     ensure_layout(root)
     backend_compat: dict[str, Any] = {}
     if client is None:
@@ -121,10 +194,13 @@ def run_compile(root: Path, client: SupportsComplete | None = None, limit: int =
 
     compile_result = compile_wiki(root)
     manifest = load_manifest(root)
+    path_filter = _normalize_run_compile_paths(paths)
     pending = []
     for entry in manifest["entries"]:
         page = root / "wiki" / "sources" / f"{entry['id']}.md"
         if not page.exists():
+            continue
+        if path_filter is not None and not _entry_matches_path_filter(entry, page, path_filter):
             continue
         content = page.read_text(encoding="utf-8", errors="replace")
         if "Pending LLM summary." in content:

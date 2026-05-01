@@ -162,6 +162,18 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
             "first failure aborts remaining items in this stage."
         ),
     )
+    run_compile_parser.add_argument(
+        "--paths",
+        action="append",
+        default=None,
+        metavar="SOURCE_PATH",
+        help=(
+            "P4-INV-1: filter the LLM-enrichment queue to specific source pages. "
+            "Repeatable. Each value may be a path (e.g. wiki/sources/foo.md), a "
+            "raw input (raw/inbox/foo.md), or a source id (foo). Without --paths "
+            "the queue is the full backlog (existing behavior)."
+        ),
+    )
 
     ask_parser = subparsers.add_parser("ask", help="Generate a query artifact grounded in the wiki.")
     _configure_ask_parser(ask_parser)

@@ -287,7 +287,7 @@ def main(argv: list[str] | None = None) -> int:
             result = shell_search(root, args.query, limit=args.limit)
         elif args.handler_command == "run-compile":
             try:
-                result = run_compile(root, limit=args.limit)
+                result = run_compile(root, limit=args.limit, paths=getattr(args, "paths", None))
             except Exception:
                 _print_run_compile_fail_fast_breadcrumb(_latest_run_compile_summary(root))
                 raise

@@ -4354,6 +4354,53 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertIn("## Incident Evidence", ops_text)
         self.assertIn("## Confidence And Follow-up", ops_text)
 
+    def test_file_back_injects_protocol_specific_judgment_frontmatter(self) -> None:
+        """P4-INV-3 (Round 59): newly file-backed judgments must carry the
+        protocol-specific frontmatter slots (investing → thesis / catalyst /
+        risk / invalidation_threshold; research → hypothesis / falsification;
+        product → user_value_claim; ops → runbook_ref). Empty values are
+        intentional; lint must still pass on legacy pages.
+        """
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        investing_report = ask_question(self.root, "Will the NVDA thesis hold next quarter?", "report", protocol="investing")
+        research_report = ask_question(self.root, "Latency hypothesis after cache migration", "report", protocol="research")
+        product_report = ask_question(self.root, "Is this launch ready for beta users?", "report", protocol="product")
+        ops_report = ask_question(self.root, "Likely root cause of incident X", "report", protocol="ops")
+
+        investing_judgment = file_back(self.root, investing_report["path"], title="Investing Judgment", kind="judgment")
+        research_judgment = file_back(self.root, research_report["path"], title="Research Judgment", kind="judgment")
+        product_judgment = file_back(self.root, product_report["path"], title="Product Judgment", kind="judgment")
+        ops_judgment = file_back(self.root, ops_report["path"], title="Ops Judgment", kind="judgment")
+
+        from aiwiki.app_utils import parse_frontmatter
+
+        invest_fm = parse_frontmatter((self.root / investing_judgment["path"]).read_text(encoding="utf-8"))
+        research_fm = parse_frontmatter((self.root / research_judgment["path"]).read_text(encoding="utf-8"))
+        product_fm = parse_frontmatter((self.root / product_judgment["path"]).read_text(encoding="utf-8"))
+        ops_fm = parse_frontmatter((self.root / ops_judgment["path"]).read_text(encoding="utf-8"))
+
+        # investing: thesis / catalyst / risk / invalidation_threshold slots all present
+        self.assertIn("thesis", invest_fm)
+        self.assertIn("catalyst", invest_fm)
+        self.assertIn("risk", invest_fm)
+        self.assertIn("invalidation_threshold", invest_fm)
+        self.assertEqual(invest_fm.get("catalyst"), [])
+        self.assertEqual(invest_fm.get("risk"), [])
+        # research: hypothesis / falsification / experiment_refs
+        self.assertIn("hypothesis", research_fm)
+        self.assertIn("falsification", research_fm)
+        self.assertEqual(research_fm.get("experiment_refs"), [])
+        # product: user_value_claim / kill_metric
+        self.assertIn("user_value_claim", product_fm)
+        self.assertIn("kill_metric", product_fm)
+        # ops: runbook_ref / blast_radius
+        self.assertIn("runbook_ref", ops_fm)
+        self.assertIn("blast_radius", ops_fm)
+        # Cross-protocol negative: investing slots must not bleed into research page.
+        self.assertNotIn("thesis", research_fm)
+        self.assertNotIn("hypothesis", invest_fm)
+
     def test_file_back_generates_unique_paths_for_same_title(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -15,6 +15,7 @@ from ..app_execution import (
     compute_file_sha256,
     find_latest_elixir_promotion_receipt,
 )
+from ..app_protocol import PROTOCOL_ELIXIR_REVIEW_DAYS
 from ..app_state import execution_receipt_history_path, load_active_corpora_state, load_output_candidates_state
 from ..app_utils import next_available_stem, parse_frontmatter, relative_path, sha256_bytes, slugify, utc_now
 from .audit_preview import AUDIT_STREAM_PATH
@@ -1102,7 +1103,22 @@ def finalize_elixir(root: Path, *, elixir_id: str) -> dict[str, Any]:
     if cycle:
         raise ValueError("金丹引用形成环路: " + " → ".join(cycle))
 
-    frontmatter.update({"elixir_state": "candidate", "updated_at": utc_now()})
+    # P4-INV-4 (Round 59): derive a protocol-aware default `review_after` when
+    # the author did not set one explicitly, so the candidate carries a real
+    # expiration anchor (Furnace Evolution Mechanics §7.2 target schema). Never
+    # overwrite a value already in frontmatter.
+    review_after_existing = str(frontmatter.get("review_after") or "").strip()
+    review_after_value = review_after_existing or _default_elixir_review_after(
+        protocol=str(frontmatter.get("protocol") or "general"),
+    )
+
+    frontmatter.update(
+        {
+            "elixir_state": "candidate",
+            "updated_at": utc_now(),
+            "review_after": review_after_value,
+        }
+    )
     original = candidate_path.read_text(encoding="utf-8", errors="replace")
     body = original.split("---", 2)[-1].lstrip("\n")
     _write_elixir_markdown(candidate_path, frontmatter=frontmatter, body=body)
@@ -1111,7 +1127,20 @@ def finalize_elixir(root: Path, *, elixir_id: str) -> dict[str, Any]:
         "elixir_id": normalized_id,
         "path": f"{CANDIDATE_ELIXIR_DIR}/{normalized_id}.md",
         "elixir_state": "candidate",
+        "review_after": review_after_value,
     }
+
+
+def _default_elixir_review_after(*, protocol: str) -> str:
+    """Compute a default ISO date for a freshly finalized elixir's review_after.
+
+    Returns YYYY-MM-DD (UTC). Falls back to the general window when the
+    protocol is unknown.
+    """
+    days = PROTOCOL_ELIXIR_REVIEW_DAYS.get(
+        protocol.strip(), PROTOCOL_ELIXIR_REVIEW_DAYS["general"]
+    )
+    return (datetime.now(timezone.utc) + timedelta(days=days)).date().isoformat()
 
 
 def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> dict[str, Any]:
