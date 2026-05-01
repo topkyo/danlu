@@ -124,7 +124,7 @@ class VaultBootstrapTests(unittest.TestCase):
         self.assertTrue(payload["configured"])
         self.assertEqual(payload["backend_requested"], "nvidia-nim-api")
         self.assertEqual(payload["backend"], "nvidia-nim-api")
-        self.assertEqual(payload["effective_model"], "moonshotai/kimi-k2.5")
+        self.assertEqual(payload["effective_model"], "openai/gpt-oss-120b")
 
     def test_bootstrap_new_vault_rejects_non_empty_target_without_force(self) -> None:
         self.target.mkdir(parents=True, exist_ok=True)

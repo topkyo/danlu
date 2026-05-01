@@ -237,8 +237,8 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 
 当前语义：
 - `AIWIKI_LLM_BACKEND` 现在必须显式设置；runtime 不再做 `auto` 解析
-- 如果 backend 是 `codex-cli` 且没有显式设置 `AIWIKI_LLM_MODEL`，effective model 默认是 `gpt-5.4`
-- 如果 backend 是 `nvidia-nim-api` 且没有显式设置 `AIWIKI_LLM_MODEL`，effective model 默认首选是 `moonshotai/kimi-k2.5`
+- 如果 backend 是 `codex-cli` 且没有显式设置 `AIWIKI_LLM_MODEL`，effective model 默认是 `gpt-5.5`（Round 56 起；旧 `gpt-5.4` 仍可显式选）
+- 如果 backend 是 `nvidia-nim-api` 且没有显式设置 `AIWIKI_LLM_MODEL`，effective model 默认是 `openai/gpt-oss-120b`（Round 59 起；旧默认 `moonshotai/kimi-k2.5` 在 2026-04-30 EOL）
 - `codex-cli` 默认会附带 `AIWIKI_CODEX_REASONING_EFFORT=medium`，避免非交互 `run-ask` / `run-compile` / `run-lint` 被 CLI 默认的高推理档位拖慢
 - `llm-check`、`shell-summary.json`、Product Shell 会同时显示 requested/effective backend/model，以及 usage 可见性/计费口径
 - 默认 `llm-check` 只做静态路由检查；显式加 `--probe` 后才会发一个极小真实请求，区分“backend 能解析出来”和“当前账号真能跑”
@@ -269,11 +269,12 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check --probe-all --probe-time
 - `codex-cli`：走 `codex login` 的本地会话；当前环境可用 `codex login status` 查看状态
 - `codex-cli`：可以通过 `AIWIKI_CODEX_REASONING_EFFORT=medium|high|xhigh` 调节非交互推理档位；当前默认是 `medium`
 - `nvidia-nim-api`：走 `AIWIKI_NVIDIA_NIM_API_KEY` 或 `NVIDIA_NIM_API_KEY`；base URL 默认 `https://integrate.api.nvidia.com/v1`
-- `nvidia-nim-api`：当前按 OpenAI-compatible `/v1/chat/completions` 接入；模型留空默认使用 `moonshotai/kimi-k2.5`，不会自动扩展为 fallback chain
-- `nvidia-nim-api`：如需多模型重试，显式设置 `AIWIKI_LLM_MODEL=moonshotai/kimi-k2.5` 并追加 `--model-fallback z-ai/glm-5.1,minimaxai/minimax-m2.7`，或设置 `AIWIKI_MODEL_FALLBACK=z-ai/glm-5.1,minimaxai/minimax-m2.7`
+- `nvidia-nim-api`：当前按 OpenAI-compatible `/v1/chat/completions` 接入；模型留空默认使用 `openai/gpt-oss-120b`（NIM 上实测唯一干净的 frontmatter-friendly 模型，2026-04-30 探测）
+- `nvidia-nim-api`：如需多模型重试，显式设置 `AIWIKI_LLM_MODEL` 并追加 `--model-fallback openai/gpt-oss-120b`（CLI 参数优先于 env）。注意 NIM 上多数 model 已 EOL 或装饰输出与 frontmatter 不兼容（如 `moonshotai/kimi-k2.5` 4-30 EOL、`meta/llama-3.3-70b-instruct` 输出装饰），先用 `llm-check --probe-all --format human` 确认目标 model `compatible` 再启用
+- **本地凭据存放规范**：API key **不得**入 `.envrc.dogfood` 或任何 git-tracked 文件；推荐落到 `~/.aiwiki-secrets/<provider>.env`（mode 600 / 父目录 700），用前 `source ~/.aiwiki-secrets/nvidia.env` 显式导入；systemd 服务可在 `aiwiki-{watch,nightly}.service` 用第二个 `EnvironmentFile=-` 引用同路径，文件不存在自动忽略
 - `copilot-cli`：官方推荐 `copilot login` 的浏览器设备码 OAuth；也支持 `COPILOT_GITHUB_TOKEN -> GH_TOKEN -> GITHUB_TOKEN -> stored OAuth token -> gh auth token` 的优先链
-- `copilot-cli` 的 GitHub OAuth 路径“可行”不等于“当前账号可用”；seat / org policy / quota 不足时，probe 仍会失败
-- 当前这台机器上的真实结论是：`copilot-cli` 仍可能返回 `402 no quota`；如果你要稳定跑 API 路，优先显式切到 `nvidia-nim-api`
+- `copilot-cli` 的 GitHub OAuth 路径"可行"不等于"当前账号可用"；seat / org policy / quota 不足时，probe 仍会失败
+- 当前这台机器上的真实结论：`codex-cli/gpt-5.5` 与 `nvidia-nim-api/openai/gpt-oss-120b` 双 compatible（2026-05-01 探测）；`copilot-cli/auto` 因 `●` 装饰前缀破坏 frontmatter 不能作 `run-compile` fallback；`claude-cli` 受 org policy 阻塞
 
 ## 使用边界
 

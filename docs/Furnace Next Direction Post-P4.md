@@ -133,6 +133,31 @@
 
 D-3 是本 session 真正写代码 / 加 fixture 的一轮；D-2 / D-4 是文档与归档操作。
 
+## 3.1 D 系列实际收口（2026-05-01 更新）
+
+| ID | 状态 | commit / 落地 |
+|---|---|---|
+| **D-1** Direction SoT 文档 | done | commit `b880359` |
+| **D-2** PROGRESS / plans archive sweep | done | commit `b880359` |
+| **D-3** Stage-3 Compounding acceptance（unit-level） | done | commit `c012839` |
+| **D-3 R1** Stage-3 复利 real run（dogfood vault） | done | commit `7225554`（首个跨周期复利 settled elixir）|
+| **D-4** Investing Dogfood Plan contract 文档 | done | commit `20c2460` |
+| **D-4 实跑 v0** Investing 协议端到端 dogfood | done | commit `65710f4`（dogfood-receipt-investing-v0） |
+| **D-4 实跑 v1** PDF + 双 backend smoke | done | commit `0b4dabe`（dogfood-receipt-investing-v1） |
+
+后续 P4-INV follow-up 也已收口（commit `0b4dabe`，Round 59）：
+
+- **P4-INV-1** `run-compile --paths` 显式 source 过滤 — done
+- **P4-INV-2** concept extractor 季度 token 噪声过滤 — done（commit `8bd33f5`）
+- **P4-INV-3** investing protocol-specific judgment frontmatter slots — done
+- **P4-INV-4** alchemy-finalize 强制写 protocol-aware `review_after` — done
+
+剩余真实 gap（不在 D 系列范畴）：
+
+- 真实投资研报 PDF 多份 dogfood（用户提供）
+- 多周自然运行验证 review_after expiration 触发 drift
+- copilot-cli rate limit 重置后再测能否进 fallback 池
+
 ---
 
 ## 4. 非目标（明确不做）

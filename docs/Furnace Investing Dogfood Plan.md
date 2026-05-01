@@ -1,8 +1,11 @@
 # 炼丹炉 Investing 协议端到端 Dogfood Plan
 
-> 性质：**contract-only** — 本文档是炼丹炉 `investing` protocol 端到端 dogfood 的执行契约，不是已完成的 receipt。
-> 状态：`pending(blocked-on-llm)` — 实跑依赖外部 LLM backend ready；本 session 不实跑。
-> 来源：`docs/Furnace Next Direction Post-P4.md` §D-4。
+> 性质：原 contract，**已转 receipt 化**。本文档保留作为长期 dogfood SoT，新增"实跑历史"章节（§8）记录 v0 / v1 落地。
+> 状态：`closed-with-v0-and-v1-receipts`（2026-05-01）— 首两次实跑已完成，receipt 落 dogfood vault；后续 dogfood 仍按本文档 §2 七步 flow 推进
+> 来源：`docs/Furnace Next Direction Post-P4.md` §D-4
+> 实跑 receipt：
+> - v0 (2026-04-30, 9 min, 3 demo notes, codex-cli/gpt-5.5)：dogfood vault `output/reports/dogfood-receipt-investing-v0.md`
+> - v1 (2026-05-01, +PDF + 双 backend)：dogfood vault `output/reports/dogfood-receipt-investing-v1.md`
 
 ---
 
@@ -283,3 +286,30 @@ F-INV-1 ~ F-INV-19，每条：
 - 跑完后 `output/reports/dogfood-receipt-investing-v0.md` 落盘
 - 把摩擦点的 actionable items 写入新 milestone 序列（`P4-INV-X`）追加到 `.codex/plans/active.md`
 - 本契约文档保留为 dogfood SoT 的历史参考，不修改
+
+## 8. 实跑历史（receipt index）
+
+### 8.1 v0（2026-04-30，Round 56）
+- 投料：3 条 demo investing note（NVDA Q4 thesis / 推理芯片格局 / TSMC CoWoS）
+- Backend：codex-cli/gpt-5.5（唯一 compatible）
+- 产出：1 settled investing elixir + 1 confirmed judgment + 1 rejected L3 proposal
+- 19 条 F-INV-* 摩擦点首次盘点
+- Receipt：dogfood vault `output/reports/dogfood-receipt-investing-v0.md`
+- 评分：Investing 协议端到端 4 → 7-8/10
+
+### 8.2 v1（2026-05-01，Round 58–59）
+- 新增投料：1 条 Q1'26 update note + 1 条 ALERT counter-evidence note + 1 份真实中文 PDF（340KB robotics API 文档）
+- Backend：codex-cli/gpt-5.5（主）+ nvidia-nim-api/openai/gpt-oss-120b（备）双 compatible
+- 新增产出：
+  - **首个跨周期复利 settled elixir**（`elixir-nvda-q1-26-thesis-squeeze-risk-b157a58a` 引用 `elixir-nvda-4-thesis-invalidation-8fa6db3f`）
+  - 8 条 counter-evidence cards 浮入 today（修了 silent breakage）
+  - PDF 中文 ingestion path 验证通过
+- F-INV-* 摩擦点状态：F-INV-1 / 4 / 5 / 9 / 13 / 14 / 16 全部 **fixed**
+- P4-INV-1 / 2 / 3 / 4 全部 **closed**（commits `8bd33f5`, `0b4dabe`）
+- Receipt：dogfood vault `output/reports/dogfood-receipt-investing-v1.md`
+- 评分：Investing 协议 7-8 → **9/10**；加权综合 8.95 → **9.05/10**
+
+### 8.3 v2 候选（待用户提供真实研报 PDF）
+- 输入：A 股研报 / 美股年报 PDF（≥ 3 份）
+- 关注：跨多周自然运行的 review_after expiration → drift 触发链
+- 验收新增：metrics review_closure_rate 在 7d/30d 上的真实变化
