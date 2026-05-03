@@ -89,7 +89,7 @@ cd ../demo-furnace-vault
 
 当前推荐把它理解成**两个入口、同一 runtime**：
 
-- Obsidian Product Shell：极简工作台，首屏暴露交互（Ask）、原料投入（投网址 / 投文件 / 投图片 / 记笔记）、最新产出和今日简报；更多工具（Review、Execution、Protocol）折叠在面板底部，命令面板默认只注册 8 个核心命令；界面默认中文，可切到 English
+  - Obsidian Product Shell：极简工作台，首屏暴露交互（Ask 统一走 run-ask/LLM）、原料投入（投网址 / 投文件 / 投图片 / 记笔记）、最新产出和今日简报；更多工具折叠在面板底部，命令面板默认只注册 6 个核心命令；界面默认中文，可切到 English
 - 普通用户视图默认把文件树收敛到报告入口：`raw/wiki/schema` 与 `output/` 的控制面、审阅、图谱导出等 runtime/operator 层仍存在，但不作为日常导航心智
 - `scripts/aiwiki-launcher.sh` / `aiwiki CLI`：完整命令入口，负责全量 `drop-*`、批量操作和脚本化调用
 - 两边共享同一个 `.aiwiki/state` 与 `raw/wiki/output`，所以写命令遵守 `single writer, many readers`
@@ -118,7 +118,7 @@ AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . run-c
 3. 提问并出结果
 
 ```bash
-PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare company A and company B on thesis, catalyst, risk, and invalidation" --format report
+PYTHONPATH=src python3 -m aiwiki.cli --root . run-ask "Compare company A and company B on thesis, catalyst, risk, and invalidation" --format report
 AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . run-ask "Compare paper A and repo B on architecture tradeoffs and benchmark evidence" --format report
 ```
 
