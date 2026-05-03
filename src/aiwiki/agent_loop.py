@@ -31,7 +31,7 @@ def run_nightly_agent_loop_preview(
 ) -> dict[str, Any]:
     """Run the observe + dry-run agent loop after nightly state is written."""
 
-    return run_nightly_agent_loop(root, scope=scope, lanes=lanes, apply_light=False)
+    return run_nightly_agent_loop(root, scope=scope, lanes=lanes, apply_light=False, auto_adopt_l1=False, auto_adopt_l2=False)
 
 
 def run_nightly_agent_loop(
@@ -40,12 +40,18 @@ def run_nightly_agent_loop(
     scope: str = "all",
     lanes: tuple[str, ...] = ("heavy", "light"),
     apply_light: bool = False,
+    auto_adopt_l1: bool = False,
+    auto_adopt_l2: bool = False,
 ) -> dict[str, Any]:
     """Run nightly agent-loop preview, optionally applying the light lane.
 
     ``apply_light`` is intentionally narrow: only the light lane's existing
     deterministic auto primitives are executed, through the same alchemy
     receipt path used by the CLI.
+
+    ``auto_adopt_l1`` / ``auto_adopt_l2`` enable silent auto-adoption of
+    L1 semantic candidates and L2 machine-memory actions (concept splits).
+    See ``runner/auto_adopt.py`` for the full policy.
     """
 
     generated_at = utc_now()
@@ -63,6 +69,8 @@ def run_nightly_agent_loop(
         execute_result = write_planner_log(root, mode="execute")
         auto_preview = _build_auto_preview(root, scope=scope, lanes=lanes)
         auto_apply = _build_light_auto_apply(root, scope=scope) if apply_light else None
+        l1_result = _build_auto_adopt_l1(root) if auto_adopt_l1 else None
+        l2_result = _build_auto_adopt_l2(root) if auto_adopt_l2 else None
     except Exception as exc:  # noqa: BLE001 - preview failure must be surfaced in nightly state
         return {
             **base,
@@ -80,6 +88,8 @@ def run_nightly_agent_loop(
         },
         "auto_preview": auto_preview,
         **({"auto_apply": auto_apply} if auto_apply is not None else {}),
+        **({"auto_adopt_l1": l1_result} if l1_result is not None else {}),
+        **({"auto_adopt_l2": l2_result} if l2_result is not None else {}),
     }
 
 
@@ -267,3 +277,21 @@ __all__ = [
     "run_nightly_agent_loop",
     "run_nightly_agent_loop_preview",
 ]
+
+
+def _build_auto_adopt_l1(root: Path) -> dict[str, Any]:
+    from .runner.auto_adopt import auto_adopt_l1
+
+    try:
+        return auto_adopt_l1(root)
+    except Exception as exc:
+        return {"level": "L1", "applied": False, "error": str(exc)}
+
+
+def _build_auto_adopt_l2(root: Path) -> dict[str, Any]:
+    from .runner.auto_adopt import auto_adopt_l2
+
+    try:
+        return auto_adopt_l2(root)
+    except Exception as exc:
+        return {"level": "L2", "applied": False, "error": str(exc)}

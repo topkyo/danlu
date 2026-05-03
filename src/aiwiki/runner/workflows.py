@@ -1290,7 +1290,14 @@ def run_nightly(
         from aiwiki.agent_loop import attach_agent_loop_to_nightly_state, run_nightly_agent_loop
 
         auto_apply_light = _env_flag("AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT")
-        agent_loop = run_nightly_agent_loop(root, apply_light=auto_apply_light)
+        auto_adopt_l1 = _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_L1")
+        auto_adopt_l2 = _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_L2")
+        agent_loop = run_nightly_agent_loop(
+            root,
+            apply_light=auto_apply_light,
+            auto_adopt_l1=auto_adopt_l1,
+            auto_adopt_l2=auto_adopt_l2,
+        )
         state = attach_agent_loop_to_nightly_state(root, state, agent_loop)
     except Exception as exc:
         failed_audit = _merge_llm_audits(
@@ -1330,6 +1337,8 @@ def run_nightly(
             "agent_loop_status": str(state.get("agent_loop", {}).get("status") or ""),
             "agent_loop_dry_run": bool(state.get("agent_loop", {}).get("dry_run", False)),
             "agent_loop_auto_apply_light": _env_flag("AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT"),
+            "agent_loop_auto_adopt_l1": _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_L1"),
+            "agent_loop_auto_adopt_l2": _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_L2"),
             "duration_ms": int((time.monotonic() - started) * 1000),
         },
         llm_audit,

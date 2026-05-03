@@ -244,21 +244,39 @@ def _build_agent_loop_entries(summary: dict[str, Any], today_date: str) -> list[
         execute = planner.get("execute") if isinstance(planner.get("execute"), dict) else {}
         auto_preview = agent_loop.get("auto_preview") if isinstance(agent_loop.get("auto_preview"), dict) else {}
         auto_apply = agent_loop.get("auto_apply") if isinstance(agent_loop.get("auto_apply"), dict) else {}
+        auto_adopt_l1 = agent_loop.get("auto_adopt_l1") if isinstance(agent_loop.get("auto_adopt_l1"), dict) else {}
+        auto_adopt_l2 = agent_loop.get("auto_adopt_l2") if isinstance(agent_loop.get("auto_adopt_l2"), dict) else {}
         # Planner decisions are derived from signals; don't double-count the same change in user-facing copy.
         new_items = max(int(signals.get("new_count") or 0), int(execute.get("new_count") or 0))
         applied_count = int(auto_apply.get("applied_count") or 0)
-        if applied_count > 0:
-            summary_text = f"今日发现 {new_items} 个新变化，已静默执行 {applied_count} 条维护路径"
+        l1_adopted = sum(
+            item.get("count", 0) for item in auto_adopt_l1.get("items", [])
+            if isinstance(item, dict) and item.get("count", 0) > 0 and "error" not in item
+        )
+        l2_adopted = sum(
+            item.get("count", 0) for item in auto_adopt_l2.get("items", [])
+            if isinstance(item, dict) and item.get("count", 0) > 0 and "error" not in item
+        )
+        total_adopted = applied_count + l1_adopted + l2_adopted
+        if total_adopted > 0:
+            parts = [f"今日发现 {new_items} 个新变化"]
+            if applied_count > 0:
+                parts.append(f"已静默执行 {applied_count} 条维护路径")
+            if l1_adopted > 0:
+                parts.append(f"已自动消化 {l1_adopted} 条 L1 候选")
+            if l2_adopted > 0:
+                parts.append(f"已自动处理 {l2_adopted} 条 L2 动作")
+            summary_text = "，".join(parts)
             title = "已自动维护"
             target = "wiki/indexes/execution-audit.md"
         else:
             ready_count = int(auto_preview.get("ready_count") or 0)
+            if ready_count > 0:
+                summary_text = f"今日发现 {new_items} 个新变化，{ready_count} 条维护路径可人工确认"
+            else:
+                summary_text = "今日维护预演完成，暂不需要自动执行"
             title = "预演下一步维护"
             target = "PYTHONPATH=src python3 -m aiwiki.cli --root . alchemy auto --dry-run"
-        if applied_count <= 0 and ready_count > 0:
-            summary_text = f"今日发现 {new_items} 个新变化，{ready_count} 条维护路径可人工确认"
-        elif applied_count <= 0:
-            summary_text = "今日维护预演完成，暂不需要自动执行"
 
     return [
         FeedEntry(
