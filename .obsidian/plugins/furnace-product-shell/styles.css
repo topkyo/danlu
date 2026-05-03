@@ -8,6 +8,20 @@
   --furnace-weight-bold: 600;
   --furnace-weight-normal: 400;
 
+  /* Phase 2.1 Spacing Tokens */
+  --furnace-space-xs: 4px;
+  --furnace-space-sm: 8px;
+  --furnace-space-md: 12px;
+  --furnace-space-lg: 16px;
+  --furnace-space-xl: 24px;
+
+  /* Phase 2.1 Radius Tokens */
+  --furnace-radius-sm: 6px;
+  --furnace-radius-md: 8px;
+  --furnace-radius-lg: 12px;
+  --furnace-radius-xl: 16px;
+  --furnace-radius-full: 999px;
+
   padding: 12px 16px 18px;
 }
 
@@ -103,7 +117,20 @@
 
 .furnace-shell-empty {
   color: var(--text-muted);
-  padding: 12px 0;
+  padding: 14px 0;
+  font-size: 0.9em;
+  text-align: center;
+  border-radius: var(--furnace-radius-md);
+  background: var(--background-secondary);
+  border: 1px dashed var(--background-modifier-border);
+}
+
+.furnace-shell-empty::before {
+  content: "—";
+  display: block;
+  font-size: 1.4em;
+  color: var(--text-faint);
+  margin-bottom: 6px;
 }
 
 .furnace-shell-code {
@@ -318,6 +345,18 @@
   border-left: 2px solid var(--background-modifier-border);
 }
 
+.furnace-shell-run-event.furnace-shell-status-ok {
+  border-left-color: var(--text-success, #16a34a);
+}
+
+.furnace-shell-run-event.furnace-shell-status-failed {
+  border-left-color: var(--text-error, #dc2626);
+}
+
+.furnace-shell-run-event.furnace-shell-status-running {
+  border-left-color: var(--interactive-accent, #2563eb);
+}
+
 .furnace-shell-run-event-header {
   display: flex;
   align-items: baseline;
@@ -476,6 +515,18 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.furnace-shell-advanced-body > section,
+.furnace-shell-advanced-body > .furnace-shell-panel {
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 12px;
+}
+
+.furnace-shell-advanced-body > section:first-child,
+.furnace-shell-advanced-body > .furnace-shell-panel:first-child {
+  border-top: none;
+  padding-top: 0;
 }
 
 .furnace-shell-advanced[open] .furnace-shell-advanced-body {
@@ -657,16 +708,25 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: var(--furnace-space-md) var(--furnace-space-lg);
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
+  border-left: 3px solid var(--background-modifier-border);
+  border-radius: var(--furnace-radius-md);
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: background 0.2s ease, border-left-color 0.2s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .furnace-shell-v3 .furnace-shell-report-card:hover {
   background: var(--background-modifier-hover);
+  border-left-color: var(--interactive-accent);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.furnace-shell-v3 .furnace-shell-report-card.is-unread {
+  border-left-color: var(--interactive-accent);
+  background: var(--background-primary);
 }
 
 .furnace-shell-v3 .furnace-shell-report-content {
@@ -727,6 +787,13 @@
   color: var(--text-normal);
   cursor: pointer;
   padding: 6px 12px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.furnace-shell-v3 .furnace-shell-report-card button:hover {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
 }
 
 .furnace-shell-v3 .furnace-shell-date-group {
@@ -874,6 +941,13 @@
   color: var(--text-muted);
 }
 
+.furnace-universal-input-hint {
+  font-size: 0.8em;
+  color: var(--text-faint);
+  margin-top: 6px;
+  padding-left: 4px;
+}
+
 .furnace-universal-input-button {
   height: 36px;
   white-space: nowrap;
@@ -922,13 +996,19 @@
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-left-width: 3px;
-  border-radius: 8px;
+  border-radius: var(--furnace-radius-md);
   display: flex;
-  gap: 12px;
+  gap: var(--furnace-space-md);
   justify-content: space-between;
   margin-bottom: 0;
   min-width: 0;
-  padding: 10px 12px;
+  padding: var(--furnace-space-sm) var(--furnace-space-md);
+  transition: border-left-color 0.2s ease, background 0.2s ease, transform 0.15s ease;
+}
+
+.furnace-today-feed-item:hover {
+  border-left-color: var(--interactive-accent);
+  transform: translateY(-1px);
 }
 .furnace-today-feed-copy {
   display: flex;
@@ -956,17 +1036,41 @@
 .furnace-today-feed-actions button {
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
+  border-radius: var(--furnace-radius-md);
   color: var(--text-normal);
   cursor: pointer;
   padding: 5px 10px;
+  font-size: 0.85em;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
-.furnace-today-feed-actions button:hover {
-  background: var(--background-modifier-hover);
+
+/* Button semantics: primary (cta), secondary (outline), tertiary (ghost) */
+.furnace-shell-actions button.mod-cta,
+.furnace-feed-card-actions button.mod-cta {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
   border-color: var(--interactive-accent);
 }
-.furnace-today-feed-decision .furnace-today-feed-item { border-left-color: var(--color-orange, #d68a23); }
-.furnace-today-feed-proposal .furnace-today-feed-item { border-left-color: var(--color-blue, #2c7be5); }
+
+.furnace-shell-actions button:not(.mod-cta):not(.furnace-shell-ghost-button),
+.furnace-feed-card-actions button:not(.mod-cta) {
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border-color: var(--background-modifier-border);
+}
+
+.furnace-shell-actions button.furnace-shell-ghost-button {
+  background: transparent;
+  color: var(--text-muted);
+  border-color: transparent;
+}
+
+.furnace-shell-actions button.furnace-shell-ghost-button:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+.furnace-today-feed-decision .furnace-today-feed-item { border-left-color: var(--text-warning, var(--color-orange, #d68a23)); }
+.furnace-today-feed-proposal .furnace-today-feed-item { border-left-color: var(--interactive-accent, var(--color-blue, #2563eb)); }
 .furnace-today-feed-action .furnace-today-feed-item { border-left-color: var(--interactive-accent); }
 
 
@@ -1024,4 +1128,317 @@
 
 .furnace-input-attachment-remove:hover {
   color: var(--text-error);
+}
+
+/* ========================================================================== */
+/* Protocol-colored left bars (Phase C UX polish)                              */
+/* ========================================================================== */
+
+.furnace-feed-card {
+  position: relative;
+  border-left: 4px solid transparent;
+  padding-left: 12px;
+  transition: border-color 0.2s ease;
+}
+
+.furnace-protocol-investing {
+  border-left-color: var(--furnace-protocol-investing, #16a34a);
+}
+.furnace-protocol-research {
+  border-left-color: var(--furnace-protocol-research, #2563eb);
+}
+.furnace-protocol-product {
+  border-left-color: var(--furnace-protocol-product, #9333ea);
+}
+.furnace-protocol-ops {
+  border-left-color: var(--furnace-protocol-ops, #ea580c);
+}
+.furnace-protocol-general {
+  border-left-color: var(--furnace-protocol-general, #6b7280);
+}
+
+/* Unread indicator dot */
+.furnace-report-unread .furnace-feed-card-title {
+  font-weight: var(--furnace-weight-bold, 600);
+}
+.furnace-report-unread::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 14px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+}
+
+/* ========================================================================== */
+/* Advanced drawer transition (Phase C UX polish)                              */
+/* ========================================================================== */
+
+.furnace-advanced-drawer {
+  margin-top: 20px;
+}
+
+.furnace-advanced-drawer > details > summary {
+  cursor: pointer;
+  padding: 8px 4px;
+  color: var(--text-muted);
+  font-size: 0.9em;
+  user-select: none;
+  transition: color 0.15s ease;
+}
+.furnace-advanced-drawer > details > summary:hover {
+  color: var(--text-normal);
+}
+
+.furnace-advanced-drawer > details > *:not(summary) {
+  overflow: hidden;
+  animation: furnace-advanced-slide 0.25s ease;
+}
+
+@keyframes furnace-advanced-slide {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 2000px;
+  }
+}
+
+/* ========================================================================== */
+/* Compact status card (replaces full dashboard grid)                          */
+/* ========================================================================== */
+
+.furnace-status-bar-compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.furnace-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 12px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  white-space: nowrap;
+}
+
+.furnace-status-pill-ok { color: var(--text-success, #16a34a); }
+.furnace-status-pill-warn { color: var(--text-warning, #ea580c); }
+.furnace-status-pill-error { color: var(--text-error, #dc2626); }
+
+/* ========================================================================== */
+/* Start Guide (Phase 1.1 — fresh vault onboarding)                           */
+/* ========================================================================== */
+.furnace-start-guide {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  background: var(--background-secondary);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.furnace-start-guide-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.furnace-start-guide-icon {
+  font-size: 1.3em;
+}
+
+.furnace-start-guide-title {
+  font-size: 1.1em;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.furnace-start-guide-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.furnace-start-guide-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.furnace-start-guide-step-num {
+  flex: 0 0 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-size: 0.82em;
+  font-weight: 700;
+}
+
+.furnace-start-guide-step-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.furnace-start-guide-step-copy strong {
+  font-size: 0.95em;
+  color: var(--text-normal);
+}
+
+.furnace-start-guide-step-desc {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.furnace-start-guide-dismiss {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.furnace-start-guide-dismiss:hover {
+  background: var(--interactive-accent-hover);
+}
+
+/* ========================================================================== */
+/* Automation state pill (Phase 1.4)                                           */
+/* ========================================================================== */
+.furnace-auto-state-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 0.78em;
+  font-weight: 600;
+  white-space: nowrap;
+  margin-left: 8px;
+}
+
+.furnace-auto-state-ok {
+  background: var(--background-modifier-success, rgba(22, 163, 74, 0.15));
+  color: var(--text-success, #16a34a);
+}
+
+.furnace-auto-state-pending {
+  background: var(--background-modifier-accent, rgba(37, 99, 235, 0.15));
+  color: var(--interactive-accent, #2563eb);
+}
+
+.furnace-auto-state-attention {
+  background: var(--background-modifier-warning, rgba(234, 88, 12, 0.15));
+  color: var(--text-warning, #ea580c);
+}
+
+.furnace-auto-state-idle {
+  background: var(--background-secondary);
+  color: var(--text-muted);
+}
+
+/* ========================================================================== */
+/* Settings section headers (Phase 3.1)                                        */
+/* ========================================================================== */
+.furnace-settings-section {
+  color: var(--text-muted);
+  font-size: 0.85em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 20px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.furnace-settings-section:first-of-type {
+  margin-top: 4px;
+}
+
+/* ========================================================================== */
+/* Modal polish (Phase A — Round 63)                                           */
+/* ========================================================================== */
+.furnace-modal-error {
+  color: var(--text-error);
+  font-size: 0.82em;
+  margin-top: 4px;
+  display: none;
+}
+
+.furnace-modal-error.is-visible {
+  display: block;
+}
+
+.furnace-modal-field-required::after {
+  content: " *";
+  color: var(--text-error);
+  font-weight: 700;
+}
+
+.furnace-modal-field-optional {
+  opacity: 0.75;
+}
+
+.furnace-modal-help {
+  color: var(--text-muted);
+  font-size: 0.82em;
+  margin-top: 2px;
+}
+
+.furnace-modal-submit-row {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.furnace-modal-submit-row button:first-child {
+  opacity: 0.7;
+}
+
+/* Search modal tags */
+.furnace-modal-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.furnace-modal-tag {
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  font-size: 0.8em;
+  cursor: pointer;
+  border: 1px solid var(--background-modifier-border);
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.furnace-modal-tag:hover {
+  color: var(--text-normal);
+  border-color: var(--interactive-accent);
 }

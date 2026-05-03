@@ -28,6 +28,9 @@ scripts/resolve_review_mode.sh
 scripts/run_qa_review.sh
 scripts/write_calibration_entry.sh
 scripts/write_gate_artifact.sh
+scripts/materialize_contract.sh
+scripts/opencode_review_launcher.sh
+scripts/run_plan.sh
 scripts/lib/
 scripts/platforms/
 

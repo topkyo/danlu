@@ -70,10 +70,11 @@ class ProductShellTodayFeedContractTests(unittest.TestCase):
         self.assertIn("Needs Your Confirmation", text)
         self.assertIn("Copy command", text)
         self.assertIn("Copy target", text)
-        self.assertIn("Review queue", text)
+        self.assertIn("reviewBucketDisplayLabel", text)
+        self.assertIn("待审队列", text)
         self.assertIn("Report", text)
         self.assertIn("Workspace page", text)
-        self.assertIn("Command prepared for manual confirmation", text)
+        self.assertIn("待确认操作", text)
 
     def test_today_feed_hides_runtime_paths_behind_product_labels(self) -> None:
         text = (PLUGIN / "src/render_today.js").read_text(encoding="utf-8")

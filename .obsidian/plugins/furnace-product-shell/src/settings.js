@@ -10,7 +10,10 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     const t = this.plugin.t.bind(this.plugin);
     containerEl.empty();
-    containerEl.createEl("h2", { text: t("Furnace Product Shell") });
+    containerEl.createEl("h2", { text: t("炼丹炉 Product Shell") });
+
+    // ── Language & Appearance ────────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Language & Appearance") });
 
     new Setting(containerEl)
       .setName(t("UI language"))
@@ -31,6 +34,31 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName(t("Show advanced commands"))
+      .setDesc(t("Register review, execution, protocol, and legacy panel commands in the command palette. Reload Obsidian after changing this toggle."))
+      .addToggle((toggle) =>
+        toggle.setValue(Boolean(this.plugin.settings.showAdvancedCommands)).onChange(async (value) => {
+          this.plugin.settings.showAdvancedCommands = Boolean(value);
+          await this.plugin.savePluginState();
+          new Notice(this.plugin.t("Advanced command visibility refreshes after reloading Obsidian."));
+        })
+      );
+
+    new Setting(containerEl)
+      .setName(t("Show HTML shortcuts"))
+      .setDesc(t("Whether advanced panels should show HTML shortcuts when the summary exposes them."))
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.showHtmlShortcuts).onChange(async (value) => {
+          this.plugin.settings.showHtmlShortcuts = Boolean(value);
+          await this.plugin.savePluginState();
+          this.plugin.refreshOpenViews();
+        })
+      );
+
+    // ── Furnace Connection ──────────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Furnace Connection") });
+
+    new Setting(containerEl)
       .setName(t("Aiwiki launcher"))
       .setDesc(t("Vault-local or absolute launcher path. This vault may point at an external runtime root."))
       .addText((text) =>
@@ -43,6 +71,22 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
             this.plugin.refreshRepoState();
           })
       );
+
+    new Setting(containerEl)
+      .setName(t("Recent runs limit"))
+      .setDesc(t("How many plugin-triggered runs to keep in the Product Shell."))
+      .addText((text) =>
+        text.setValue(String(this.plugin.settings.recentRunsLimit)).onChange(async (value) => {
+          const parsed = Number.parseInt(value, 10);
+          this.plugin.settings.recentRunsLimit = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SETTINGS.recentRunsLimit;
+          this.plugin.trimRecentRuns();
+          await this.plugin.savePluginState();
+          this.plugin.refreshOpenViews();
+        })
+      );
+
+    // ── Ask Defaults ────────────────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Ask Defaults") });
 
     new Setting(containerEl)
       .setName(t("Default ask mode"))
@@ -73,43 +117,8 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl)
-      .setName(t("Recent runs limit"))
-      .setDesc(t("How many plugin-triggered runs to keep in the Product Shell."))
-      .addText((text) =>
-        text.setValue(String(this.plugin.settings.recentRunsLimit)).onChange(async (value) => {
-          const parsed = Number.parseInt(value, 10);
-          this.plugin.settings.recentRunsLimit = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SETTINGS.recentRunsLimit;
-          this.plugin.trimRecentRuns();
-          await this.plugin.savePluginState();
-          this.plugin.refreshOpenViews();
-        })
-      );
-
-    new Setting(containerEl)
-      .setName(t("Show advanced commands"))
-      .setDesc(t("Register review, execution, protocol, and legacy panel commands in the command palette. Reload Obsidian after changing this toggle."))
-      .addToggle((toggle) =>
-        toggle.setValue(Boolean(this.plugin.settings.showAdvancedCommands)).onChange(async (value) => {
-          this.plugin.settings.showAdvancedCommands = Boolean(value);
-          await this.plugin.savePluginState();
-          new Notice(this.plugin.t("Advanced command visibility refreshes after reloading Obsidian."));
-        })
-      );
-
-    new Setting(containerEl)
-      .setName(t("Show HTML shortcuts"))
-      .setDesc(t("Whether advanced panels should show HTML shortcuts when the summary exposes them."))
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.showHtmlShortcuts).onChange(async (value) => {
-          this.plugin.settings.showHtmlShortcuts = Boolean(value);
-          await this.plugin.savePluginState();
-          this.plugin.refreshOpenViews();
-        })
-      );
-
-    // ── LLM configuration ──────────────────────────────────
-    containerEl.createEl("h3", { text: t("LLM backend") });
+    // ── LLM Configuration ──────────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("LLM Configuration") });
     const selectedBackend = String(this.plugin.settings.llmBackend || "").trim();
 
     new Setting(containerEl)
@@ -174,8 +183,9 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
         );
     }
 
-    // ── Notifications (webhook) ──────────────────────────────
-    containerEl.createEl("h3", { text: t("Notifications (webhook)") });
+    // ── 通知（webhook） ──────────────────────────────
+    // ── Notifications ────────────────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Notifications") });
     containerEl.createEl("p", {
       text: t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."),
       cls: "setting-item-description",

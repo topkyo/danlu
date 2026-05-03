@@ -49,20 +49,11 @@ function renderExecutionCenter(plugin, contentEl) {
   const archiveControlsById = plugin.archiveControlsById();
   const actionControlObjects = plugin.executionControlList("actions");
   plugin.renderCardGrid(contentEl, [
-    { label: "Recent Receipts", value: receipts.length },
-    { label: "Execution Events", value: executionEvents.length },
-    {
-      label: "Archive Events",
-      value: executionEvents.filter((entry) => ["archive-apply", "archive-revert"].includes(entry.event_type)).length,
-    },
-    {
-      label: "Lifecycle Overrides",
-      value: executionEvents.filter((entry) => entry.event_type === "knowledge-lifecycle-override").length,
-    },
-    {
-      label: "Nightly Runs",
-      value: executionEvents.filter((entry) => entry.event_type === "nightly").length,
-    },
+    { label: plugin.t("执行收据"), value: receipts.length },
+    { label: plugin.t("执行事件"), value: executionEvents.length },
+    { label: plugin.t("归档事件"), value: executionEvents.filter((entry) => ["archive-apply", "archive-revert"].includes(entry.event_type)).length },
+    { label: plugin.t("生命周期覆盖"), value: executionEvents.filter((entry) => entry.event_type === "knowledge-lifecycle-override").length },
+    { label: plugin.t("夜间运行"), value: executionEvents.filter((entry) => entry.event_type === "nightly").length },
   ]);
 
   const planner = plugin.shellSummary.planner || {};
@@ -71,16 +62,16 @@ function renderExecutionCenter(plugin, contentEl) {
   const plannerNextAction = planner.next_action || {};
   if (plannerQueue.length || plannerCounts.pending_proposals) {
     const plannerSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-    plannerSection.createEl("h3", { text: plugin.t("Planner Queue") });
+    plannerSection.createEl("h3", { text: plugin.t("计划队列") });
     plugin.renderCardGrid(plannerSection, [
-      { label: "Pending Proposals", value: plannerCounts.pending_proposals || 0 },
-      { label: "Executed", value: plannerCounts.executed_actions || 0 },
-      { label: "Unblocked", value: plannerCounts.unblocked || 0 },
-      { label: "Blocked", value: plannerCounts.blocked || 0 },
+      { label: plugin.t("待处理提案"), value: plannerCounts.pending_proposals || 0 },
+      { label: plugin.t("已执行"), value: plannerCounts.executed_actions || 0 },
+      { label: plugin.t("已解锁"), value: plannerCounts.unblocked || 0 },
+      { label: plugin.t("已阻塞"), value: plannerCounts.blocked || 0 },
     ]);
     if (plannerNextAction.action_id) {
       const nextDiv = plannerSection.createDiv({ cls: "furnace-shell-section" });
-      nextDiv.createEl("h4", { text: plugin.t("Next Action") });
+      nextDiv.createEl("h4", { text: plugin.t("下一个动作") });
       const item = nextDiv.createDiv();
       item.createEl("strong", { text: plannerNextAction.title || plannerNextAction.action_id });
       item.createDiv({
@@ -110,9 +101,9 @@ function renderExecutionCenter(plugin, contentEl) {
   }
 
   const actionObjectsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  actionObjectsSection.createEl("h3", { text: plugin.t("Action Control Objects") });
+  actionObjectsSection.createEl("h3", { text: plugin.t("动作控制") });
   if (!actionControlObjects.length) {
-    actionObjectsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No explicit action control object is available.") });
+    actionObjectsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("当前没有动作控制对象。") });
   } else {
     const list = actionObjectsSection.createEl("ul", { cls: "furnace-shell-list" });
     actionControlObjects.slice(0, 10).forEach((action) => {
@@ -178,9 +169,9 @@ function renderExecutionCenter(plugin, contentEl) {
   }
 
   const receiptsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  receiptsSection.createEl("h3", { text: plugin.t("Recent Receipts") });
+  receiptsSection.createEl("h3", { text: plugin.t("最近收据") });
   if (!receipts.length) {
-    receiptsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent receipts are available.") });
+    receiptsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("暂无最近收据。") });
   } else {
     const list = receiptsSection.createEl("ul", { cls: "furnace-shell-list" });
     receipts.slice(0, 8).forEach((receipt) => {
@@ -242,9 +233,9 @@ function renderExecutionCenter(plugin, contentEl) {
   }
 
   const eventsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  eventsSection.createEl("h3", { text: plugin.t("Recent Execution Events") });
+  eventsSection.createEl("h3", { text: plugin.t("最近执行事件") });
   if (!executionEvents.length) {
-    eventsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent execution events are available.") });
+    eventsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("暂无最近执行事件。") });
   } else {
     const list = eventsSection.createEl("ul", { cls: "furnace-shell-list" });
     executionEvents.slice(0, 10).forEach((entry) => {

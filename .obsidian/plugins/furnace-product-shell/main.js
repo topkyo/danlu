@@ -88,7 +88,9 @@ const ZH_TEXT = {
   "Universal input": "统一输入",
   "Universal Input": "统一输入",
   "Universal input cannot be empty.": "统一输入不能为空。",
-  "Drop URL, PDF, image, repo, note, or question...": "投 URL、PDF、图片、repo、笔记，或直接提问……",
+  "Drop URL, PDF, image, repo, note, or question...": "投网址、文件、图片，或直接提问……",
+  "投网址、文件、图片，或直接提问……": "投网址、文件、图片，或直接提问……",
+  "Ctrl+Enter 提交 · 也可拖入文件": "Ctrl+Enter 提交 · 也可拖入文件",
   "Drop file here": "把文件拖到这里",
   Submit: "提交",
   "Invalid input: {message}": "输入无效：{message}",
@@ -138,6 +140,121 @@ const ZH_TEXT = {
   Fallback: "回退",
   "Ask modal": "Ask 模态框",
   "Capture Note": "记录笔记",
+  "欢迎使用炼丹炉": "欢迎使用炼丹炉",
+  投料: "投料",
+  "拖入 URL、PDF 或图片，或直接在输入框提问": "拖入 URL、PDF 或图片，或直接在输入框提问",
+  等待编译: "等待编译",
+  "炉子会自动处理原料，抽概念、建关联": "炉子会自动处理原料，抽概念、建关联",
+  看报告: "看报告",
+  "每天回到炉子，Today 里就是你需要看的": "每天回到炉子，Today 里就是你需要看的",
+  "知道了，开始使用": "知道了，开始使用",
+  "新反证待审": "新反证待审",
+  "判断需要复核": "判断需要复核",
+  "机器记忆待修复": "机器记忆待修复",
+  "待定判断": "待定判断",
+  "待定决策": "待定决策",
+  "安全动作待确认": "安全动作待确认",
+  "升级动作": "升级动作",
+  "升级候选": "升级候选",
+  "逾期动作": "逾期动作",
+  "逾期复审": "逾期复审",
+  "L3 提案": "L3 提案",
+  "L3 提案需要关注": "L3 提案需要关注",
+  "数据漂移": "数据漂移",
+  "待审队列": "待审队列",
+  "指标提醒": "指标提醒",
+  新报告: "新报告",
+  自动维护: "自动维护",
+  "金丹完成": "金丹完成",
+  "待确认操作": "待确认操作",
+  正常运行: "正常运行",
+  待确认: "待确认",
+  需要关注: "需要关注",
+  空闲: "空闲",
+  "Language & Appearance": "语言与外观",
+  "Furnace Connection": "炉子连接",
+  "Ask Defaults": "Ask 默认行为",
+  "LLM Configuration": "LLM 配置",
+  Notifications: "通知",
+  "刷新炉子": "刷新炉子",
+  "记录笔记": "记录笔记",
+  "快速记录一条笔记、会议纪要或观察，直接投入炉子的收件箱。": "快速记录一条笔记、会议纪要或观察，直接投入炉子的收件箱。",
+  "正文不能为空。": "正文不能为空。",
+  "记录中…": "记录中…",
+  "记录": "记录",
+  "投网址": "投网址",
+  "投一个网页地址，炉子会自动抓取内容并编译成知识。": "投一个网页地址，炉子会自动抓取内容并编译成知识。",
+  "网址": "网址",
+  "网址不能为空。": "网址不能为空。",
+  "抓取中…": "抓取中…",
+  "投文件": "投文件",
+  "投一个本地文件或远程地址：PDF 会抽取文本，Repo 会抓取代码快照。": "投一个本地文件或远程地址：PDF 会抽取文本，Repo 会抓取代码快照。",
+  "PDF 或 Repo": "PDF 或 Repo",
+  "来源不能为空。": "来源不能为空。",
+  "投料中…": "投料中…",
+  "投图片": "投图片",
+  "投一张图片，炉子会提取视觉信息并纳入知识库。": "投一张图片，炉子会提取视觉信息并纳入知识库。",
+  "搜索知识库": "搜索知识库",
+  "搜索 wiki、概念、判断、决策和派生页面。": "搜索 wiki、概念、判断、决策和派生页面。",
+  "关键词": "关键词",
+  "输入关键词搜索……": "输入关键词搜索……",
+  "搜索关键词不能为空。": "搜索关键词不能为空。",
+  "搜索中…": "搜索中…",
+  "搜索": "搜索",
+  "分析中…": "分析中…",
+  "运行": "运行",
+  "问题": "问题",
+  "输入一个问题，炉子会用 LLM 深度分析并生成报告。": "输入一个问题，炉子会用 LLM 深度分析并生成报告。",
+  "选择本地文件": "选择本地文件",
+  "来源": "来源",
+  "结果数量": "结果数量",
+  "跳过视觉分析": "跳过视觉分析",
+  待决策: "待决策",
+  待判断: "待判断",
+  逾期审阅: "逾期审阅",
+  已升级: "已升级",
+  概念积压: "概念积压",
+  待审概念: "待审概念",
+  需回访概念: "需回访概念",
+  已退役概念: "已退役概念",
+  "下一个审阅": "下一个审阅",
+  "当前没有待审阅项。": "当前没有待审阅项。",
+  "批处理建议": "批处理建议",
+  "暂无批处理建议。": "暂无批处理建议。",
+  "判断资产": "判断资产",
+  强资产: "强资产",
+  需关注页: "需关注页",
+  缺反证: "缺反证",
+  缺失效条件: "缺失效条件",
+  缺审阅历史: "缺审阅历史",
+  引用漂移: "引用漂移",
+  "决策页": "决策页",
+  "当前没有待审决策页。": "当前没有待审决策页。",
+  "判断页": "判断页",
+  "当前没有待审判断页。": "当前没有待审判断页。",
+  "改写提案": "改写提案",
+  "当前没有改写提案。": "当前没有改写提案。",
+  "老化摘要": "老化摘要",
+  "治理链接": "治理链接",
+  "最近审阅事件": "最近审阅事件",
+  "暂无最近审阅事件。": "暂无最近审阅事件。",
+  执行收据: "执行收据",
+  执行事件: "执行事件",
+  归档事件: "归档事件",
+  生命周期覆盖: "生命周期覆盖",
+  夜间运行: "夜间运行",
+  "计划队列": "计划队列",
+  "待处理提案": "待处理提案",
+  "已执行": "已执行",
+  "已解锁": "已解锁",
+  "已阻塞": "已阻塞",
+  "下一个动作": "下一个动作",
+  "动作控制": "动作控制",
+  "当前没有动作控制对象。": "当前没有动作控制对象。",
+  "最近收据": "最近收据",
+  "暂无最近收据。": "暂无最近收据。",
+  "最近执行事件": "最近执行事件",
+  "暂无最近执行事件。": "暂无最近执行事件。",
   Title: "标题",
   "Optional note title...": "可选笔记标题……",
   Kind: "类型",
@@ -990,6 +1107,7 @@ function buildTodayFeed(summary) {
   entries.push(...buildMetricAlertEntries(summary));
   entries.push(...buildAgentLoopEntries(summary, todayDate));
   entries.push(...buildActionEntries(summary, "primary"));
+  entries.push(...buildLlmHealthEntry(summary));
 
   const filtered = applySnoozeFilter(entries, summary, todayDate);
   filtered.sort(compareEntries);
@@ -1250,8 +1368,10 @@ function buildAgentLoopEntries(summary, todayDate) {
   let title = "预演下一步维护";
   let summaryText = "今日维护预演完成，暂不需要自动执行";
   let target = "PYTHONPATH=src python3 -m aiwiki.cli --root . alchemy auto --dry-run";
+  let autoState = "idle";
   if (status === "failed") {
     summaryText = "今日维护预演失败，需要人工查看";
+    autoState = "attention";
   } else {
     const signals = agentLoop.signals && typeof agentLoop.signals === "object" ? agentLoop.signals : {};
     const planner = agentLoop.planner && typeof agentLoop.planner === "object" ? agentLoop.planner : {};
@@ -1266,8 +1386,10 @@ function buildAgentLoopEntries(summary, todayDate) {
       title = "已自动维护";
       summaryText = `今日发现 ${newItems} 个新变化，已静默执行 ${appliedCount} 条维护路径`;
       target = "wiki/indexes/execution-audit.md";
+      autoState = "ok";
     } else if (readyCount > 0) {
       summaryText = `今日发现 ${newItems} 个新变化，${readyCount} 条维护路径可人工确认`;
+      autoState = "pending";
     }
   }
 
@@ -1278,6 +1400,32 @@ function buildAgentLoopEntries(summary, todayDate) {
     target,
     timestamp,
     protocol: String(summary.active_protocol || ""),
+    autoState: autoState,
+  }];
+}
+
+function buildLlmHealthEntry(summary) {
+  var health = summary.llm_health;
+  if (!health || typeof health !== "object") return [];
+  var status = String(health.status || "");
+  if (status === "healthy" || status === "unknown") return [];
+  var timestamp = String(health.checked_at || summary.generated_at || "");
+  var reason = String(health.reason || "");
+  var recovery = String(health.recovery_command || "");
+  var title = "LLM 后端异常";
+  var summaryText = reason || "LLM 后端暂时不可用，部分报告可能未生成";
+  if (status === "degraded") {
+    title = "LLM 后端降级";
+    summaryText = reason || "LLM 后端当前以降级模式运行，报告质量可能受影响";
+  }
+  return [{
+    kind: "automation",
+    title: title,
+    summary: summaryText,
+    target: recovery || "scripts/aiwiki-launcher.sh llm-check",
+    timestamp: timestamp,
+    protocol: "",
+    autoState: status === "degraded" ? "pending" : "attention",
   }];
 }
 
@@ -1349,13 +1497,55 @@ function compareEntries(a, b) {
 
 module.exports = {
   buildTodayFeed,
+  applySnoozeFilter,
+  compareEntries,
+  todayDateOf,
+  reviewBucketCopy,
+  isMaintenanceCommandAction,
   PRIORITY,
+  PRIMARY_REVIEW_BUCKETS,
 };
 
 // --- src/modals.js ---
 
 // Modal subclasses (AskCommand, CaptureNote, Protocol, Search, DropUrl,
 // DropFile, DropImage, StructuredCommand, ContextPicker).
+
+// Shared modal helpers
+function modalSubmitRow(containerEl, submitLabel, cancelLabel, onSubmit, onCancel) {
+  var row = containerEl.createDiv({ cls: "furnace-modal-submit-row" });
+  if (onCancel) {
+    var cancelBtn = row.createEl("button", { text: cancelLabel || "Cancel" });
+    cancelBtn.addClass("furnace-shell-ghost-button");
+    cancelBtn.addEventListener("click", function () { onCancel(); });
+  }
+  var submitBtn = row.createEl("button", { text: submitLabel || "Submit" });
+  submitBtn.addClass("mod-cta");
+  submitBtn.addEventListener("click", function () { onSubmit(submitBtn); });
+  return { row: row, submitBtn: submitBtn };
+}
+
+function setSubmitLoading(button, loadingText) {
+  button.disabled = true;
+  button.setText(loadingText || "处理中…");
+}
+
+function setSubmitReady(button, text) {
+  button.disabled = false;
+  button.setText(text);
+}
+
+function showInlineError(el, text) {
+  if (!el) return;
+  el.setText(text);
+  el.addClass("is-visible");
+}
+
+function clearInlineError(el) {
+  if (!el) return;
+  el.setText("");
+  el.removeClass("is-visible");
+}
 
 class AskCommandModal extends Modal {
   constructor(app, plugin) {
@@ -1369,14 +1559,17 @@ class AskCommandModal extends Modal {
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
     contentEl.createEl("h2", { text: t("Ask 炼丹炉") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("输入一个问题，炉子会用 LLM 深度分析并生成报告。") });
 
-    const questionSetting = new Setting(contentEl).setName(t("Question"));
+    const questionSetting = new Setting(contentEl).setName(t("问题"));
+    questionSetting.nameEl.addClass("furnace-modal-field-required");
     const questionInput = questionSetting.controlEl.createEl("textarea");
-    questionInput.rows = 5;
-    questionInput.placeholder = t("Enter the research question...");
+    questionInput.rows = 4;
+    questionInput.placeholder = t("输入研究问题……");
     questionInput.addClass("furnace-shell-code");
+    const questionError = questionSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    const formatSetting = new Setting(contentEl).setName(t("Format"));
+    const formatSetting = new Setting(contentEl).setName(t("格式"));
     const formatSelect = formatSetting.controlEl.createEl("select");
     ["report", "slides", "figure"].forEach((item) => {
       const option = formatSelect.createEl("option", { text: item, value: item });
@@ -1384,54 +1577,42 @@ class AskCommandModal extends Modal {
     });
     formatSelect.value = this.plugin.settings.defaultAskFormat;
 
-    const modeSetting = new Setting(contentEl).setName(t("Mode"));
+    const modeSetting = new Setting(contentEl).setName(t("模式"));
     const modeSelect = modeSetting.controlEl.createEl("select");
     [
-      ["ask", t("route only (no LLM)")],
-      ["run-ask", t("LLM answer (recommended)")],
+      ["ask", t("仅路由（无 LLM）")],
+      ["run-ask", t("LLM 深度回答（推荐）")],
     ].forEach(([value, label]) => {
       const option = modeSelect.createEl("option", { text: label, value });
       option.value = value;
     });
     modeSelect.value = this.plugin.settings.defaultAskMode;
 
-    const protocolSetting = new Setting(contentEl).setName(t("Protocol"));
+    const protocolSetting = new Setting(contentEl).setName(t("协议"));
     const protocolSelect = protocolSetting.controlEl.createEl("select");
-    protocolSelect.createEl("option", { text: t("current protocol"), value: "" });
+    protocolSelect.createEl("option", { text: t("当前协议"), value: "" });
     this.plugin.getAvailableProtocols().forEach((protocol) => {
       const option = protocolSelect.createEl("option", { text: protocol, value: protocol });
       option.value = protocol;
     });
 
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Run")).setCta().onClick(async () => {
-        const question = String(questionInput.value || "").trim();
-        if (!question) {
-          new Notice(t("Question cannot be empty."));
-          return;
-        }
-        const format = String(formatSelect.value || "report");
-        const mode = String(modeSelect.value || "ask");
-        const protocol = String(protocolSelect.value || "").trim();
-        this.close();
-        this.plugin.runUiAction(
-          () =>
-            this.plugin.runAskCommand({
-              question,
-              format,
-              mode,
-              protocol,
-            }),
-          t("Ask modal")
-        );
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
+    const { submitBtn } = modalSubmitRow(contentEl, t("运行"), t("取消"), function (btn) {
+      const question = String(questionInput.value || "").trim();
+      if (!question) {
+        showInlineError(questionError, t("问题不能为空。"));
+        return;
+      }
+      clearInlineError(questionError);
+      setSubmitLoading(btn, t("分析中…"));
+      const self = this;
+      const format = String(formatSelect.value || "report");
+      const mode = String(modeSelect.value || "ask");
+      const protocol = String(protocolSelect.value || "").trim();
+      self.close();
+      self.plugin.runUiAction(function () {
+        return self.plugin.runAskCommand({ question, format, mode, protocol });
+      }, t("Ask modal"));
+    }.bind(this), function () { this.close(); }.bind(this));
 
     questionInput.focus();
   }
@@ -1448,14 +1629,16 @@ class CaptureNoteModal extends Modal {
     const t = this.plugin.t.bind(this.plugin);
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("Capture Note") });
+    contentEl.createEl("h2", { text: t("记录笔记") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("快速记录一条笔记、会议纪要或观察，直接投入炉子的收件箱。") });
 
-    const titleSetting = new Setting(contentEl).setName(t("Title"));
+    const titleSetting = new Setting(contentEl).setName(t("标题"));
+    titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("Optional note title...");
+    titleInput.placeholder = t("可选笔记标题……");
     titleInput.addClass("furnace-shell-code");
 
-    const kindSetting = new Setting(contentEl).setName(t("Kind"));
+    const kindSetting = new Setting(contentEl).setName(t("类型"));
     const kindSelect = kindSetting.controlEl.createEl("select");
     [
       ["note", "note"],
@@ -1466,42 +1649,30 @@ class CaptureNoteModal extends Modal {
     });
     kindSelect.value = "note";
 
-    const textSetting = new Setting(contentEl).setName(t("Text"));
+    const textSetting = new Setting(contentEl).setName(t("正文"));
+    textSetting.nameEl.addClass("furnace-modal-field-required");
     const textInput = textSetting.controlEl.createEl("textarea");
-    textInput.rows = 10;
-    textInput.placeholder = t("Capture a note, meeting log, or quick observation...");
+    textInput.rows = 8;
+    textInput.placeholder = t("记录笔记、会议纪要或快速观察……");
     textInput.addClass("furnace-shell-code");
+    const textError = textSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    const hint = contentEl.createDiv({ cls: "furnace-shell-meta" });
-    hint.setText(t("This writes into raw/inbox through the same launcher/runtime used by CLI commands."));
-
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Capture")).setCta().onClick(async () => {
-        const text = String(textInput.value || "").trim();
-        if (!text) {
-          new Notice(t("Text cannot be empty."));
-          return;
-        }
-        const title = String(titleInput.value || "").trim();
-        const kind = String(kindSelect.value || "note");
-        this.close();
-        this.plugin.runUiAction(
-          () =>
-            this.plugin.runDropNoteCommand({
-              text,
-              title,
-              kind,
-            }),
-          t("Capture note modal")
-        );
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
+    const self = this;
+    modalSubmitRow(contentEl, t("记录"), t("取消"), function (btn) {
+      const text = String(textInput.value || "").trim();
+      if (!text) {
+        showInlineError(textError, t("正文不能为空。"));
+        return;
+      }
+      clearInlineError(textError);
+      setSubmitLoading(btn, t("记录中…"));
+      const title = String(titleInput.value || "").trim();
+      const kind = String(kindSelect.value || "note");
+      self.close();
+      self.plugin.runUiAction(function () {
+        return self.plugin.runDropNoteCommand({ text, title, kind });
+      }, t("记录笔记"));
+    }, function () { self.close(); });
 
     textInput.focus();
   }
@@ -1561,40 +1732,47 @@ class SearchCommandModal extends Modal {
     const t = this.plugin.t.bind(this.plugin);
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("Search 炼丹炉") });
+    contentEl.createEl("h2", { text: t("搜索知识库") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("搜索 wiki、概念、判断、决策和派生页面。") });
 
-    const querySetting = new Setting(contentEl).setName(t("Query"));
+    const querySetting = new Setting(contentEl).setName(t("关键词"));
+    querySetting.nameEl.addClass("furnace-modal-field-required");
     const queryInput = querySetting.controlEl.createEl("textarea");
-    queryInput.rows = 4;
-    queryInput.placeholder = t("Search wiki/sources, concepts, judgments, decisions, and derived pages...");
+    queryInput.rows = 3;
+    queryInput.placeholder = t("输入关键词搜索……");
     queryInput.addClass("furnace-shell-code");
+    const queryError = querySetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    const limitSetting = new Setting(contentEl).setName(t("Limit"));
+    var tagsRow = contentEl.createDiv({ cls: "furnace-modal-tags" });
+    ["来源", "概念", "判断", "决策", "报告"].forEach(function (tag) {
+      var tagEl = tagsRow.createDiv({ cls: "furnace-modal-tag", text: tag });
+      tagEl.addEventListener("click", function () {
+        var current = String(queryInput.value || "").trim();
+        queryInput.value = current ? current + " " + tag : tag;
+        queryInput.focus();
+      });
+    });
+
+    const limitSetting = new Setting(contentEl).setName(t("结果数量"));
     const limitInput = limitSetting.controlEl.createEl("input", { type: "text" });
     limitInput.value = "8";
     limitInput.addClass("furnace-shell-code");
 
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Search")).setCta().onClick(async () => {
-        const query = String(queryInput.value || "").trim();
-        if (!query) {
-          new Notice(t("Search query cannot be empty."));
-          return;
-        }
-        const parsedLimit = Number.parseInt(String(limitInput.value || "8"), 10);
-        this.close();
-        this.plugin.runUiAction(
-          () => this.plugin.runShellSearchCommand(query, Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 8),
-          t("Search modal")
-        );
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
+    const self = this;
+    modalSubmitRow(contentEl, t("搜索"), t("取消"), function (btn) {
+      const query = String(queryInput.value || "").trim();
+      if (!query) {
+        showInlineError(queryError, t("搜索关键词不能为空。"));
+        return;
+      }
+      clearInlineError(queryError);
+      setSubmitLoading(btn, t("搜索中…"));
+      const parsedLimit = Number.parseInt(String(limitInput.value || "8"), 10);
+      self.close();
+      self.plugin.runUiAction(function () {
+        return self.plugin.runShellSearchCommand(query, Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 8);
+      }, t("搜索"));
+    }, function () { self.close(); });
 
     queryInput.focus();
   }
@@ -1617,43 +1795,38 @@ class DropUrlModal extends Modal {
     const t = this.plugin.t.bind(this.plugin);
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("Drop URL") });
+    contentEl.createEl("h2", { text: t("投网址") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一个网页地址，炉子会自动抓取内容并编译成知识。") });
 
-    const description = contentEl.createDiv({ cls: "furnace-shell-meta" });
-    description.setText(t("Drop this web page into raw/inbox."));
-
-    const sourceSetting = new Setting(contentEl).setName(t("Web URL"));
+    const sourceSetting = new Setting(contentEl).setName(t("网址"));
+    sourceSetting.nameEl.addClass("furnace-modal-field-required");
     const sourceInput = sourceSetting.controlEl.createEl("input", { type: "text" });
     sourceInput.placeholder = "https://example.com/article";
     sourceInput.addClass("furnace-shell-code");
     sourceInput.value = this.initialUrl;
+    const sourceError = sourceSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    const titleSetting = new Setting(contentEl).setName(t("Title"));
+    const titleSetting = new Setting(contentEl).setName(t("标题"));
+    titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("Optional note title...");
+    titleInput.placeholder = t("可选笔记标题……");
     titleInput.addClass("furnace-shell-code");
 
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Drop URL")).setCta().onClick(async () => {
-        const url = String(sourceInput.value || "").trim();
-        if (!url) {
-          new Notice(t("URL cannot be empty."));
-          return;
-        }
-        const title = String(titleInput.value || "").trim();
-        this.close();
-        this.plugin.runUiAction(
-          () => this.plugin.runDropUrlCommand({ url, title }),
-          t("Drop URL modal")
-        );
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
+    const self = this;
+    modalSubmitRow(contentEl, t("投网址"), t("取消"), function (btn) {
+      const url = String(sourceInput.value || "").trim();
+      if (!url) {
+        showInlineError(sourceError, t("网址不能为空。"));
+        return;
+      }
+      clearInlineError(sourceError);
+      setSubmitLoading(btn, t("抓取中…"));
+      const title = String(titleInput.value || "").trim();
+      self.close();
+      self.plugin.runUiAction(function () {
+        return self.plugin.runDropUrlCommand({ url, title });
+      }, t("投网址"));
+    }, function () { self.close(); });
 
     sourceInput.focus();
   }
@@ -1676,12 +1849,10 @@ class DropFileModal extends Modal {
     const t = this.plugin.t.bind(this.plugin);
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("Drop File") });
+    contentEl.createEl("h2", { text: t("投文件") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一个本地文件或远程地址：PDF 会抽取文本，Repo 会抓取代码快照。") });
 
-    const description = contentEl.createDiv({ cls: "furnace-shell-meta" });
-    description.setText(t("Import a PDF or repo snapshot into raw/inbox."));
-
-    const kindSetting = new Setting(contentEl).setName(t("PDF or Repo"));
+    const kindSetting = new Setting(contentEl).setName(t("PDF 或 Repo"));
     const kindSelect = kindSetting.controlEl.createEl("select");
     [
       ["pdf", t("PDF")],
@@ -1692,78 +1863,68 @@ class DropFileModal extends Modal {
     });
     kindSelect.value = this.initialMode;
 
-    const sourceSetting = new Setting(contentEl).setName(t("Source"));
+    const sourceSetting = new Setting(contentEl).setName(t("来源"));
+    sourceSetting.nameEl.addClass("furnace-modal-field-required");
     const sourceInput = sourceSetting.controlEl.createEl("input", { type: "text" });
     sourceInput.addClass("furnace-shell-code");
     const pickerInput = sourceSetting.controlEl.createEl("input", { type: "file" });
     pickerInput.style.display = "none";
     let pickLocalButton = null;
-    sourceSetting.addButton((button) => {
+    sourceSetting.addButton(function (button) {
       pickLocalButton = button;
-      button.setButtonText(t("Select local file")).onClick(() => {
+      button.setButtonText(t("选择本地文件")).onClick(function () {
         pickerInput.click();
       });
     });
+    const sourceError = sourceSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    pickerInput.addEventListener("change", () => {
+    pickerInput.addEventListener("change", function () {
       const file = pickerInput.files && pickerInput.files[0];
       const nextPath = file ? String(file.path || file.name || "") : "";
-      if (nextPath) {
-        sourceInput.value = nextPath;
-      }
+      if (nextPath) { sourceInput.value = nextPath; }
     });
 
-    const titleSetting = new Setting(contentEl).setName(t("Title"));
+    const titleSetting = new Setting(contentEl).setName(t("标题"));
+    titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("Optional note title...");
+    titleInput.placeholder = t("可选笔记标题……");
     titleInput.addClass("furnace-shell-code");
 
-    const maxFilesSetting = new Setting(contentEl).setName(t("Repo max files"));
+    const maxFilesSetting = new Setting(contentEl).setName(t("Repo 最大文件数"));
     const maxFilesInput = maxFilesSetting.controlEl.createEl("input", { type: "text" });
     maxFilesInput.value = "200";
     maxFilesInput.addClass("furnace-shell-code");
 
-    const syncModeState = () => {
+    const syncModeState = function () {
       const mode = String(kindSelect.value || "pdf");
-      sourceInput.placeholder = mode === "repo" ? t("Local repo path or remote git URL.") : t("Local PDF path or PDF URL.");
+      sourceInput.placeholder = mode === "repo" ? t("本地 repo 路径或远程 git URL。") : t("本地 PDF 路径或 PDF URL。");
       pickerInput.accept = mode === "pdf" ? ".pdf,application/pdf" : "";
-      if (pickLocalButton) {
-        pickLocalButton.buttonEl.style.display = mode === "pdf" ? "" : "none";
-      }
+      if (pickLocalButton) { pickLocalButton.buttonEl.style.display = mode === "pdf" ? "" : "none"; }
       maxFilesSetting.settingEl.style.display = mode === "repo" ? "" : "none";
     };
     kindSelect.addEventListener("change", syncModeState);
     syncModeState();
 
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Drop File")).setCta().onClick(async () => {
-        const source = String(sourceInput.value || "").trim();
-        if (!source) {
-          new Notice(t("Source cannot be empty."));
-          return;
-        }
-        const mode = String(kindSelect.value || "pdf");
-        const title = String(titleInput.value || "").trim();
-        const maxFiles = Number.parseInt(String(maxFilesInput.value || "200"), 10);
-        this.close();
-        this.plugin.runUiAction(
-          () =>
-            this.plugin.runDropFileCommand({
-              mode,
-              source,
-              title,
-              maxFiles: Number.isFinite(maxFiles) && maxFiles > 0 ? maxFiles : 200,
-            }),
-          t("Drop File modal")
-        );
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
+    const self = this;
+    modalSubmitRow(contentEl, t("投文件"), t("取消"), function (btn) {
+      const source = String(sourceInput.value || "").trim();
+      if (!source) {
+        showInlineError(sourceError, t("来源不能为空。"));
+        return;
+      }
+      clearInlineError(sourceError);
+      setSubmitLoading(btn, t("投料中…"));
+      const mode = String(kindSelect.value || "pdf");
+      const title = String(titleInput.value || "").trim();
+      const maxFiles = Number.parseInt(String(maxFilesInput.value || "200"), 10);
+      self.close();
+      self.plugin.runUiAction(function () {
+        return self.plugin.runDropFileCommand({
+          mode, source, title,
+          maxFiles: Number.isFinite(maxFiles) && maxFiles > 0 ? maxFiles : 200,
+        });
+      }, t("投文件"));
+    }, function () { self.close(); });
 
     sourceInput.focus();
   }
@@ -1780,71 +1941,57 @@ class DropImageModal extends Modal {
     const t = this.plugin.t.bind(this.plugin);
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("Drop Image") });
+    contentEl.createEl("h2", { text: t("投图片") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一张图片，炉子会提取视觉信息并纳入知识库。") });
 
-    const description = contentEl.createDiv({ cls: "furnace-shell-meta" });
-    description.setText(t("Import an image into raw/inbox."));
-
-    const sourceSetting = new Setting(contentEl).setName(t("Source"));
+    const sourceSetting = new Setting(contentEl).setName(t("来源"));
+    sourceSetting.nameEl.addClass("furnace-modal-field-required");
     const sourceInput = sourceSetting.controlEl.createEl("input", { type: "text" });
-    sourceInput.placeholder = t("Local image path or image URL.");
+    sourceInput.placeholder = t("本地图片路径或图片 URL。");
     sourceInput.addClass("furnace-shell-code");
     const pickerInput = sourceSetting.controlEl.createEl("input", { type: "file" });
     pickerInput.style.display = "none";
     pickerInput.accept = "image/*";
-    sourceSetting.addButton((button) =>
-      button.setButtonText(t("Select local file")).onClick(() => {
+    sourceSetting.addButton(function (button) {
+      button.setButtonText(t("选择本地文件")).onClick(function () {
         pickerInput.click();
-      })
-    );
-    pickerInput.addEventListener("change", () => {
+      });
+    });
+    const sourceError = sourceSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
+    pickerInput.addEventListener("change", function () {
       const file = pickerInput.files && pickerInput.files[0];
       const nextPath = file ? String(file.path || file.name || "") : "";
-      if (nextPath) {
-        sourceInput.value = nextPath;
-      }
+      if (nextPath) { sourceInput.value = nextPath; }
     });
 
-    const titleSetting = new Setting(contentEl).setName(t("Title"));
+    const titleSetting = new Setting(contentEl).setName(t("标题"));
+    titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("Optional note title...");
+    titleInput.placeholder = t("可选笔记标题……");
     titleInput.addClass("furnace-shell-code");
 
     let skipVision = false;
     new Setting(contentEl)
-      .setName(t("Skip vision analysis"))
-      .addToggle((toggle) =>
-        toggle.setValue(false).onChange((value) => {
-          skipVision = Boolean(value);
-        })
-      );
+      .setName(t("跳过视觉分析"))
+      .addToggle(function (toggle) {
+        toggle.setValue(false).onChange(function (value) { skipVision = Boolean(value); });
+      });
 
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Drop Image")).setCta().onClick(async () => {
-        const source = String(sourceInput.value || "").trim();
-        if (!source) {
-          new Notice(t("Source cannot be empty."));
-          return;
-        }
-        const title = String(titleInput.value || "").trim();
-        this.close();
-        this.plugin.runUiAction(
-          () =>
-            this.plugin.runDropImageCommand({
-              source,
-              title,
-              noVision: skipVision,
-            }),
-          t("Drop Image modal")
-        );
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
+    const self = this;
+    modalSubmitRow(contentEl, t("投图片"), t("取消"), function (btn) {
+      const source = String(sourceInput.value || "").trim();
+      if (!source) {
+        showInlineError(sourceError, t("来源不能为空。"));
+        return;
+      }
+      clearInlineError(sourceError);
+      setSubmitLoading(btn, t("投料中…"));
+      const title = String(titleInput.value || "").trim();
+      self.close();
+      self.plugin.runUiAction(function () {
+        return self.plugin.runDropImageCommand({ source, title, noVision: skipVision });
+      }, t("投图片"));
+    }, function () { self.close(); });
 
     sourceInput.focus();
   }
@@ -2122,6 +2269,233 @@ class ExecutionCenterView extends ItemView {
   }
 }
 
+// --- src/state/repo-state.js ---
+
+// State: repo detection and validation.
+// Extracted from plugin.js to reduce monolithic Plugin class.
+// Note: fs and path are already required in the build header.
+
+function refreshRepoState(plugin) {
+  const adapter = plugin.app.vault && plugin.app.vault.adapter;
+  const root = adapter && typeof adapter.basePath === "string" ? adapter.basePath : "";
+  const launcherPath = resolveLauncherPath(root, plugin.settings);
+  const missingPaths = [];
+  if (!root) {
+    missingPaths.push("vault-root");
+  } else {
+    [
+      "raw",
+      "wiki",
+      "schema",
+      "output",
+      ".aiwiki",
+    ].forEach((relativePath) => {
+      if (!fs.existsSync(path.join(root, relativePath))) {
+        missingPaths.push(relativePath);
+      }
+    });
+    if (!launcherIsExecutable(launcherPath)) {
+      missingPaths.push(plugin.settings.launcherPath);
+    }
+  }
+  return {
+    valid: missingPaths.length === 0,
+    root,
+    launcherPath,
+    missingPaths,
+  };
+}
+
+function resolveLauncherPath(root, settings) {
+  const launcherPath = String((settings && settings.launcherPath) || (typeof DEFAULT_SETTINGS !== "undefined" ? DEFAULT_SETTINGS.launcherPath : "")).trim();
+  if (!root || !launcherPath) {
+    return "";
+  }
+  if (path.isAbsolute(launcherPath)) {
+    return launcherPath;
+  }
+  return path.join(root, launcherPath);
+}
+
+function launcherIsExecutable(launcherPath) {
+  if (!launcherPath) return false;
+  try {
+    fs.accessSync(launcherPath, fs.constants.X_OK);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+module.exports = { refreshRepoState, resolveLauncherPath, launcherIsExecutable };
+
+// --- src/bridge/launcher.js ---
+
+// Bridge: CLI launcher integration.
+// Extracted from plugin.js — wraps spawn/child_process calls to the aiwiki launcher.
+// Note: spawn, fs, path, buildNotifyEnv, readJsonText are already in the build header.
+
+function execLauncher(plugin, args) {
+  if (!plugin.repoState.valid) {
+    throw new Error(plugin.t("Missing runtime paths: {missing}", { missing: plugin.repoState.missingPaths.join(", ") }));
+  }
+  return new Promise((resolve, reject) => {
+    const env = Object.assign({}, process.env);
+    if (plugin.settings.llmBackend) {
+      env.AIWIKI_LLM_BACKEND = plugin.settings.llmBackend;
+    }
+    if (plugin.settings.llmModel) {
+      env.AIWIKI_LLM_MODEL = plugin.settings.llmModel;
+    }
+    if (plugin.settings.llmNvidiaNimApiKey) {
+      env.AIWIKI_NVIDIA_NIM_API_KEY = plugin.settings.llmNvidiaNimApiKey;
+    }
+    if (plugin.settings.llmNvidiaNimBaseUrl) {
+      env.AIWIKI_NVIDIA_NIM_BASE_URL = plugin.settings.llmNvidiaNimBaseUrl;
+    }
+    Object.assign(env, buildNotifyEnv(plugin.settings));
+    const child = spawn(plugin.repoState.launcherPath, args, {
+      cwd: plugin.repoState.root,
+      env,
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += String(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on("error", (error) => {
+      reject(error);
+    });
+    child.on("close", (code) => {
+      let payload = null;
+      try {
+        payload = readJsonText(stdout);
+      } catch (error) {
+        payload = null;
+      }
+      if (code === 0) {
+        resolve({ stdout, stderr, payload, code });
+        return;
+      }
+      const error = new Error(stderr.trim() || stdout.trim() || plugin.t("Command failed with exit code {code}", { code }));
+      error.code = code;
+      error.stdout = stdout;
+      error.stderr = stderr;
+      error.payload = payload;
+      reject(error);
+    });
+  });
+}
+
+function runUiAction(plugin, action) {
+  const label = arguments[2] || "ui-action";
+  Promise.resolve()
+    .then(() => action())
+    .catch((error) => {
+      console.error(`[furnace-product-shell] ${label} failed`, error);
+    });
+}
+
+module.exports = { execLauncher, runUiAction };
+
+// --- src/render/cards.js ---
+
+// Reusable card render helpers extracted from render_today.js and render_primitives.js.
+
+function renderFeedCard(plugin, container, entry) {
+  const card = container.createDiv({ cls: "furnace-feed-card" });
+
+  // Protocol-colored left bar
+  if (entry.protocol) {
+    card.addClass(`furnace-protocol-${entry.protocol}`);
+  }
+
+  const body = card.createDiv({ cls: "furnace-feed-card-body" });
+  const titleEl = body.createEl("div", { cls: "furnace-feed-card-title furnace-today-feed-title", text: entry.title });
+  if (entry.summary) {
+    body.createEl("div", { cls: "furnace-feed-card-summary furnace-today-feed-summary", text: entry.summary });
+  }
+
+  return { card, body };
+}
+
+function renderReportCard(plugin, cardEl, entry) {
+  const isUnread = isReportUnread(plugin, entry);
+  if (isUnread) {
+    cardEl.addClass("furnace-report-unread");
+  }
+
+  const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
+  const openBtn = actions.createEl("button", {
+    cls: "mod-cta",
+    text: plugin.t("Open report"),
+  });
+  openBtn.addEventListener("click", () => {
+    plugin.goToReport(entry.target);
+  });
+}
+
+function renderConfirmationCard(plugin, cardEl, entry) {
+  const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
+
+  if (entry.target && entry.target.startsWith("review:")) {
+    const reviewBtn = actions.createEl("button", {
+      cls: "mod-cta",
+      text: plugin.t("Review"),
+    });
+    reviewBtn.addEventListener("click", () => {
+      plugin.viewReviewTodayEntry(entry);
+    });
+
+    const snoozeBtn = actions.createEl("button", {
+      text: plugin.t("Snooze"),
+    });
+    snoozeBtn.addEventListener("click", () => {
+      plugin.snoozeTodayEntry(entry.target);
+    });
+  }
+}
+
+function renderAutomationCard(plugin, cardEl, entry) {
+  const state = String(entry.autoState || "idle");
+  var stateLabel, stateClass;
+  switch (state) {
+    case "ok":
+      stateLabel = plugin.t("正常运行");
+      stateClass = "furnace-auto-state-ok";
+      break;
+    case "pending":
+      stateLabel = plugin.t("待确认");
+      stateClass = "furnace-auto-state-pending";
+      break;
+    case "attention":
+      stateLabel = plugin.t("需要关注");
+      stateClass = "furnace-auto-state-attention";
+      break;
+    default:
+      stateLabel = plugin.t("空闲");
+      stateClass = "furnace-auto-state-idle";
+  }
+  var pill = cardEl.createDiv({ cls: "furnace-auto-state-pill " + stateClass, text: stateLabel });
+}
+
+function isReportUnread(plugin, entry) {
+  const lastViewed = plugin.settings && plugin.settings.lastViewedTimestamp;
+  if (!lastViewed || !entry.timestamp) return false;
+  return entry.timestamp > lastViewed;
+}
+
+module.exports = {
+  renderFeedCard,
+  renderReportCard,
+  renderConfirmationCard,
+  renderAutomationCard,
+  isReportUnread,
+};
+
 // --- src/settings.js ---
 
 // Plugin settings tab.
@@ -2136,7 +2510,10 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     const t = this.plugin.t.bind(this.plugin);
     containerEl.empty();
-    containerEl.createEl("h2", { text: t("Furnace Product Shell") });
+    containerEl.createEl("h2", { text: t("炼丹炉 Product Shell") });
+
+    // ── Language & Appearance ────────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Language & Appearance") });
 
     new Setting(containerEl)
       .setName(t("UI language"))
@@ -2157,6 +2534,31 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName(t("Show advanced commands"))
+      .setDesc(t("Register review, execution, protocol, and legacy panel commands in the command palette. Reload Obsidian after changing this toggle."))
+      .addToggle((toggle) =>
+        toggle.setValue(Boolean(this.plugin.settings.showAdvancedCommands)).onChange(async (value) => {
+          this.plugin.settings.showAdvancedCommands = Boolean(value);
+          await this.plugin.savePluginState();
+          new Notice(this.plugin.t("Advanced command visibility refreshes after reloading Obsidian."));
+        })
+      );
+
+    new Setting(containerEl)
+      .setName(t("Show HTML shortcuts"))
+      .setDesc(t("Whether advanced panels should show HTML shortcuts when the summary exposes them."))
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.showHtmlShortcuts).onChange(async (value) => {
+          this.plugin.settings.showHtmlShortcuts = Boolean(value);
+          await this.plugin.savePluginState();
+          this.plugin.refreshOpenViews();
+        })
+      );
+
+    // ── Furnace Connection ──────────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Furnace Connection") });
+
+    new Setting(containerEl)
       .setName(t("Aiwiki launcher"))
       .setDesc(t("Vault-local or absolute launcher path. This vault may point at an external runtime root."))
       .addText((text) =>
@@ -2169,6 +2571,22 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
             this.plugin.refreshRepoState();
           })
       );
+
+    new Setting(containerEl)
+      .setName(t("Recent runs limit"))
+      .setDesc(t("How many plugin-triggered runs to keep in the Product Shell."))
+      .addText((text) =>
+        text.setValue(String(this.plugin.settings.recentRunsLimit)).onChange(async (value) => {
+          const parsed = Number.parseInt(value, 10);
+          this.plugin.settings.recentRunsLimit = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SETTINGS.recentRunsLimit;
+          this.plugin.trimRecentRuns();
+          await this.plugin.savePluginState();
+          this.plugin.refreshOpenViews();
+        })
+      );
+
+    // ── Ask Defaults ────────────────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Ask Defaults") });
 
     new Setting(containerEl)
       .setName(t("Default ask mode"))
@@ -2199,43 +2617,8 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl)
-      .setName(t("Recent runs limit"))
-      .setDesc(t("How many plugin-triggered runs to keep in the Product Shell."))
-      .addText((text) =>
-        text.setValue(String(this.plugin.settings.recentRunsLimit)).onChange(async (value) => {
-          const parsed = Number.parseInt(value, 10);
-          this.plugin.settings.recentRunsLimit = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SETTINGS.recentRunsLimit;
-          this.plugin.trimRecentRuns();
-          await this.plugin.savePluginState();
-          this.plugin.refreshOpenViews();
-        })
-      );
-
-    new Setting(containerEl)
-      .setName(t("Show advanced commands"))
-      .setDesc(t("Register review, execution, protocol, and legacy panel commands in the command palette. Reload Obsidian after changing this toggle."))
-      .addToggle((toggle) =>
-        toggle.setValue(Boolean(this.plugin.settings.showAdvancedCommands)).onChange(async (value) => {
-          this.plugin.settings.showAdvancedCommands = Boolean(value);
-          await this.plugin.savePluginState();
-          new Notice(this.plugin.t("Advanced command visibility refreshes after reloading Obsidian."));
-        })
-      );
-
-    new Setting(containerEl)
-      .setName(t("Show HTML shortcuts"))
-      .setDesc(t("Whether advanced panels should show HTML shortcuts when the summary exposes them."))
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.showHtmlShortcuts).onChange(async (value) => {
-          this.plugin.settings.showHtmlShortcuts = Boolean(value);
-          await this.plugin.savePluginState();
-          this.plugin.refreshOpenViews();
-        })
-      );
-
-    // ── LLM configuration ──────────────────────────────────
-    containerEl.createEl("h3", { text: t("LLM backend") });
+    // ── LLM Configuration ──────────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("LLM Configuration") });
     const selectedBackend = String(this.plugin.settings.llmBackend || "").trim();
 
     new Setting(containerEl)
@@ -2300,8 +2683,9 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
         );
     }
 
-    // ── Notifications (webhook) ──────────────────────────────
-    containerEl.createEl("h3", { text: t("Notifications (webhook)") });
+    // ── 通知（webhook） ──────────────────────────────
+    // ── Notifications ────────────────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Notifications") });
     containerEl.createEl("p", {
       text: t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."),
       cls: "setting-item-description",
@@ -3022,13 +3406,16 @@ function renderUniversalInput(plugin, container) {
     attr: { "aria-label": plugin.t("Universal input") }
   });
   
-  textarea.placeholder = plugin.t("Drop URL, PDF, image, repo, note, or question...");
+  textarea.placeholder = plugin.t("投网址、文件、图片，或直接提问……");
   textarea.rows = 1;
 
   const submitButton = form.createEl("button", { 
     cls: "furnace-universal-input-button", 
     text: plugin.t("Submit") 
   });
+
+  const hint = wrapper.createDiv({ cls: "furnace-universal-input-hint" });
+  hint.setText(plugin.t("Ctrl+Enter 提交 · 也可拖入文件"));
 
   const attachmentsContainer = wrapper.createDiv({ cls: "furnace-input-attachments-container" });
   
@@ -3306,35 +3693,24 @@ function renderTodayFeed(plugin, container) {
 }
 
 function renderTodayFeedItem(plugin, listEl, entry) {
-  const li = listEl.createEl("li", { cls: "furnace-today-feed-item furnace-today-feed-card" });
-  const copy = li.createDiv({ cls: "furnace-today-feed-copy" });
-  copy.createEl("div", { cls: "furnace-today-feed-title", text: entry.title });
-  if (entry.summary) {
-    copy.createEl("div", { cls: "furnace-today-feed-summary", text: entry.summary });
-  }
-  const targetLabel = todayFeedTargetLabel(plugin, entry);
-  if (targetLabel) {
-    copy.createEl("div", { cls: "furnace-today-feed-target", text: targetLabel });
+  const li = listEl.createEl("li", { cls: "furnace-today-feed-item" });
+  const { card } = renderFeedCard(plugin, li, entry);
+
+  if (entry.kind === "report") {
+    renderReportCard(plugin, card, entry);
+  } else if (entry.kind === "decision" || entry.kind === "proposal") {
+    renderConfirmationCard(plugin, card, entry);
+  } else if (entry.kind === "automation") {
+    renderAutomationCard(plugin, card, entry);
   }
 
-  const actions = todayFeedActions(plugin, entry);
-  if (!actions.length) {
-    return;
-  }
-  const actionRow = li.createDiv({ cls: "furnace-today-feed-actions" });
-  for (const action of actions) {
-    const buttonLabel = plugin.t(action.label);
-    const button = actionRow.createEl("button", {
-      text: buttonLabel,
-      attr: {
-        "aria-label": buttonLabel,
-        title: action.description || buttonLabel,
-      },
-    });
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      plugin.runUiAction(() => action.onClick(), action.description || action.label);
-    });
+  // Fallback action buttons (for entries not handled by card renderers)
+  if (entry.kind !== "report" && entry.kind !== "decision" && entry.kind !== "proposal" && entry.kind !== "automation") {
+    const targetLabel = todayFeedTargetLabel(plugin, entry);
+    if (targetLabel && card.querySelector) {
+      const meta = card.createDiv({ cls: "furnace-today-feed-target" });
+      meta.setText(targetLabel);
+    }
   }
 }
 
@@ -3390,18 +3766,43 @@ function todayFeedTargetLabel(plugin, entry) {
     return "";
   }
   if (isReviewTarget(target)) {
-    return plugin.t("Review queue");
+    return reviewBucketDisplayLabel(plugin, target);
   }
   if (isWorkspaceTarget(target)) {
     return workspaceTargetDisplayLabel(plugin, target, entry);
   }
   if (entry.kind === "action" || looksLikeCommandTarget(target)) {
     if (target.startsWith("metric:")) {
-      return plugin.t("Metric alert");
+      return plugin.t("指标提醒");
     }
-    return plugin.t("Command prepared for manual confirmation");
+    switch (entry.kind) {
+      case "report": return plugin.t("新报告");
+      case "automation": return plugin.t("自动维护");
+      case "elixir": return plugin.t("金丹完成");
+      default: return plugin.t("待确认操作");
+    }
   }
   return target;
+}
+
+function reviewBucketDisplayLabel(plugin, target) {
+  var kind = String(target || "").replace(/^review:/, "").trim();
+  switch (kind) {
+    case "counter_evidence_candidates": return plugin.t("新反证待审");
+    case "judgment_review_actions": return plugin.t("判断需要复核");
+    case "machine_memory_actions": return plugin.t("机器记忆待修复");
+    case "pending_judgments": return plugin.t("待定判断");
+    case "pending_decisions": return plugin.t("待定决策");
+    case "ready_actions": return plugin.t("安全动作待确认");
+    case "escalated_actions": return plugin.t("升级动作");
+    case "escalation_candidates": return plugin.t("升级候选");
+    case "overdue_actions": return plugin.t("逾期动作");
+    case "overdue_reviews": return plugin.t("逾期复审");
+    case "l3_proposals": return plugin.t("L3 提案");
+    case "l3_proposal_attention": return plugin.t("L3 提案需要关注");
+    case "drift": return plugin.t("数据漂移");
+    default: return plugin.t("待审队列");
+  }
 }
 
 function workspaceTargetActionLabel(target, entry) {
@@ -3627,8 +4028,9 @@ function renderNextActionsPanel(plugin, container) {
 
 // Advanced drawer and metrics rendering helpers.
 function renderAdvancedDrawer(plugin, container) {
-  const details = container.createEl("details", { cls: "furnace-shell-advanced" });
-  const summaryEl = details.createEl("summary", { cls: "furnace-shell-advanced-summary" });
+  const wrapper = container.createDiv({ cls: "furnace-advanced-drawer" });
+  const details = wrapper.createEl("details", { cls: "furnace-shell-advanced" });
+  const summaryEl = details.createEl("summary", { cls: "furnace-shell-advanced-summary", attr: { tabindex: "0" } });
   const summaryCopy = summaryEl.createDiv({ cls: "furnace-shell-advanced-copy" });
   summaryCopy.createEl("span", { cls: "furnace-shell-advanced-title", text: plugin.t("Advanced") });
   const counts = advancedDrawerCounts(plugin);
@@ -3838,6 +4240,8 @@ function renderRunTimeline(plugin, container, record, compact = false) {
   const visibleEvents = compact ? timeline.slice(-4) : timeline;
   visibleEvents.forEach((event) => {
     const item = list.createEl("li", { cls: "furnace-shell-run-event" });
+    const statusCls = event.status === "failed" ? "furnace-shell-status-failed" : (event.status === "success" ? "furnace-shell-status-ok" : "furnace-shell-status-running");
+    item.addClass(statusCls);
     const header = item.createDiv({ cls: "furnace-shell-run-event-header" });
     header.createEl("strong", { text: plugin.t(event.stage || "event") });
     if (event.at) {
@@ -4040,14 +4444,63 @@ function renderFurnaceCenter(plugin, contentEl) {
     return;
   }
 
-  // 1. Universal Input
+  // 1. Start guide (fresh vault onboarding)
+  renderStartGuide(plugin, contentEl);
+
+  // 2. Universal Input
   renderUniversalInput(plugin, contentEl);
 
-  // 2. Today Feed (统一 5 类)
+  // 3. Today Feed (统一 5 类)
   renderTodayFeed(plugin, contentEl);
 
-  // 3. Advanced Drawer
+  // 4. Advanced Drawer
   renderAdvancedDrawer(plugin, contentEl);
+}
+
+function renderStartGuide(plugin, container) {
+  if (plugin.settings && plugin.settings.onboardingShown) return;
+
+  var summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
+  if (!summary) return;
+
+  var stats = summary.knowledge_stats;
+  var hasConcepts = stats && typeof stats.concept_nodes === "number" && stats.concept_nodes > 0;
+  var hasSources = stats && typeof stats.source_nodes === "number" && stats.source_nodes > 0;
+  var reports = Array.isArray(summary.todays_reports) ? summary.todays_reports : [];
+  var hasReports = reports.length > 0;
+
+  if (hasConcepts || hasSources || hasReports) {
+    plugin.settings.onboardingShown = true;
+    plugin.savePluginState();
+    return;
+  }
+
+  var guide = container.createDiv({ cls: "furnace-start-guide" });
+
+  var header = guide.createDiv({ cls: "furnace-start-guide-header" });
+  header.createEl("span", { cls: "furnace-start-guide-icon", text: "🔥" });
+  header.createEl("span", { cls: "furnace-start-guide-title", text: plugin.t("欢迎使用炼丹炉") });
+
+  var steps = guide.createDiv({ cls: "furnace-start-guide-steps" });
+  var stepData = [
+    [plugin.t("投料"), plugin.t("拖入 URL、PDF 或图片，或直接在输入框提问")],
+    [plugin.t("等待编译"), plugin.t("炉子会自动处理原料，抽概念、建关联")],
+    [plugin.t("看报告"), plugin.t("每天回到炉子，Today 里就是你需要看的")],
+  ];
+  stepData.forEach(function (item, i) {
+    var step = steps.createDiv({ cls: "furnace-start-guide-step" });
+    step.createEl("span", { cls: "furnace-start-guide-step-num", text: String(i + 1) });
+    var copy = step.createDiv({ cls: "furnace-start-guide-step-copy" });
+    copy.createEl("strong", { text: item[0] });
+    copy.createEl("div", { cls: "furnace-start-guide-step-desc", text: item[1] });
+  });
+
+  var dismissBtn = guide.createEl("button", { cls: "furnace-start-guide-dismiss", text: plugin.t("知道了，开始使用") });
+  dismissBtn.addEventListener("click", function () {
+    guide.remove();
+    plugin.settings.onboardingShown = true;
+    plugin.savePluginState();
+  });
 }
 
 // --- src/render_review.js ---
@@ -4098,23 +4551,23 @@ function renderReviewCenter(plugin, contentEl) {
   const judgmentAssets = plugin.shellSummary.judgment_assets || {};
   const judgmentCounts = judgmentAssets.counts || {};
   plugin.renderCardGrid(contentEl, [
-    { label: "Pending Decisions", value: review.pending_decisions || 0 },
-    { label: "Pending Judgments", value: review.pending_judgments || 0 },
-    { label: "Overdue Reviews", value: aging.overdue_count || 0 },
-    { label: "Escalation", value: aging.escalated_count || 0 },
-    { label: "Concept Backlog", value: review.concept_backlog || 0 },
-    { label: "Review Concepts", value: review.review_concepts || 0 },
-    { label: "Revisit Concepts", value: review.revisit_concepts || 0 },
-    { label: "Retired Concepts", value: review.retired_concepts || 0 },
+    { label: t("待决策"), value: review.pending_decisions || 0 },
+    { label: t("待判断"), value: review.pending_judgments || 0 },
+    { label: t("逾期审阅"), value: aging.overdue_count || 0 },
+    { label: t("已升级"), value: aging.escalated_count || 0 },
+    { label: t("概念积压"), value: review.concept_backlog || 0 },
+    { label: t("待审概念"), value: review.review_concepts || 0 },
+    { label: t("需回访概念"), value: review.revisit_concepts || 0 },
+    { label: t("已退役概念"), value: review.retired_concepts || 0 },
   ]);
 
   const nextReview = plugin.nextReviewCandidate();
   const batchSuggestions = plugin.reviewBatchSuggestions();
 
   const nextSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  nextSection.createEl("h3", { text: plugin.t("Next Review") });
+  nextSection.createEl("h3", { text: plugin.t("下一个审阅") });
   if (!nextReview) {
-    nextSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No explicit next review item is available.") });
+    nextSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("当前没有待审阅项。") });
   } else {
     const nextCard = nextSection.createDiv({ cls: "furnace-shell-card" });
     nextCard.createEl("strong", { text: nextReview.label || nextReview.pagePath || plugin.t("review-page") });
@@ -4146,9 +4599,9 @@ function renderReviewCenter(plugin, contentEl) {
   }
 
   const batchSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  batchSection.createEl("h3", { text: plugin.t("Batch Suggestions") });
+  batchSection.createEl("h3", { text: plugin.t("批处理建议") });
   if (!batchSuggestions.length) {
-    batchSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No batch review groups share the same recommended transition.") });
+    batchSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("暂无批处理建议。") });
   } else {
     const list = batchSection.createEl("ul", { cls: "furnace-shell-list" });
     batchSuggestions.slice(0, 6).forEach((suggestion) => {
@@ -4180,14 +4633,14 @@ function renderReviewCenter(plugin, contentEl) {
   }
 
   const judgmentSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  judgmentSection.createEl("h3", { text: plugin.t("Judgment Assets") });
+  judgmentSection.createEl("h3", { text: plugin.t("判断资产") });
   plugin.renderCardGrid(judgmentSection, [
-    { label: "Strong Assets", value: judgmentCounts.strong_assets || 0 },
-    { label: "Attention Pages", value: judgmentCounts.attention_pages || 0 },
-    { label: "Missing Counter Evidence", value: judgmentCounts.missing_counter_evidence || 0 },
-    { label: "Missing Invalidation", value: judgmentCounts.missing_invalidation || 0 },
-    { label: "Missing Review History", value: judgmentCounts.missing_review_history || 0 },
-    { label: "Citation Drift", value: judgmentCounts.citation_drift || 0 },
+    { label: plugin.t("强资产"), value: judgmentCounts.strong_assets || 0 },
+    { label: plugin.t("需关注页"), value: judgmentCounts.attention_pages || 0 },
+    { label: plugin.t("缺反证"), value: judgmentCounts.missing_counter_evidence || 0 },
+    { label: plugin.t("缺失效条件"), value: judgmentCounts.missing_invalidation || 0 },
+    { label: plugin.t("缺审阅历史"), value: judgmentCounts.missing_review_history || 0 },
+    { label: plugin.t("引用漂移"), value: judgmentCounts.citation_drift || 0 },
   ]);
 
   const reviewControlObjects = plugin.reviewControlList("pages");
@@ -4254,14 +4707,14 @@ function renderReviewCenter(plugin, contentEl) {
       }
     });
   };
-  renderReviewObjectSection(plugin.t("Decision Objects"), decisionControlObjects, plugin.t("No explicit decision review object is available."));
-  renderReviewObjectSection(plugin.t("Judgment Objects"), judgmentControlObjects, plugin.t("No explicit judgment review object is available."));
+  renderReviewObjectSection(plugin.t("决策页"), decisionControlObjects, plugin.t("当前没有待审决策页。"));
+  renderReviewObjectSection(plugin.t("判断页"), judgmentControlObjects, plugin.t("当前没有待审判断页。"));
 
   const rewriteControlObjects = plugin.reviewControlList("rewrite_proposals");
   const rewriteSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  rewriteSection.createEl("h3", { text: plugin.t("Rewrite Proposal Objects") });
+  rewriteSection.createEl("h3", { text: plugin.t("改写提案") });
   if (!rewriteControlObjects.length) {
-    rewriteSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No explicit rewrite proposal object is available.") });
+    rewriteSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("当前没有改写提案。") });
   } else {
     const list = rewriteSection.createEl("ul", { cls: "furnace-shell-list" });
     rewriteControlObjects.slice(0, 10).forEach((proposal) => {
@@ -4317,9 +4770,11 @@ function renderReviewCenter(plugin, contentEl) {
     });
   }
 
-  const agingSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  agingSection.createEl("h3", { text: plugin.t("Aging Summary") });
-  const agingList = agingSection.createEl("ul", { cls: "furnace-shell-list" });
+  // ── Aging (foldable) ──
+  const agingDetails = contentEl.createEl("details", { cls: "furnace-shell-section" });
+  agingDetails.createEl("summary", { text: plugin.t("老化摘要") + " · " + (aging.overdue_count || 0) + " 逾期 / " + (aging.escalated_count || 0) + " 升级", cls: "furnace-shell-panel-description" });
+  const agingBody = agingDetails.createDiv();
+  const agingList = agingBody.createEl("ul", { cls: "furnace-shell-list" });
   [
     ["Overdue pages", aging.overdue_pages || []],
     ["Escalated pages", aging.escalated_pages || []],
@@ -4351,15 +4806,17 @@ function renderReviewCenter(plugin, contentEl) {
     });
   });
 
+  // ── Recent Review Events (foldable) ──
   const reviewEvents = Array.isArray(plugin.shellSummary.recent_runs)
     ? plugin.shellSummary.recent_runs.filter((entry) => entry.event_type === "review")
     : [];
-  const eventsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  eventsSection.createEl("h3", { text: plugin.t("Recent Review Events") });
+  const eventsDetails = contentEl.createEl("details", { cls: "furnace-shell-section" });
+  eventsDetails.createEl("summary", { text: plugin.t("最近审阅事件") + " (" + reviewEvents.length + ")", cls: "furnace-shell-panel-description" });
+  const eventsBody = eventsDetails.createDiv();
   if (!reviewEvents.length) {
-    eventsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent review events are available.") });
+    eventsBody.createDiv({ cls: "furnace-shell-empty", text: plugin.t("暂无最近审阅事件。") });
   } else {
-    const list = eventsSection.createEl("ul", { cls: "furnace-shell-list" });
+    const list = eventsBody.createEl("ul", { cls: "furnace-shell-list" });
     reviewEvents.slice(0, 8).forEach((entry) => {
       const item = list.createEl("li");
       const reviewControl = reviewControlsByPath.get(String(entry.page_path || "").trim());
@@ -4389,10 +4846,12 @@ function renderReviewCenter(plugin, contentEl) {
     });
   }
 
+  // ── Links (foldable) ──
   const links = plugin.shellSummary.links || {};
-  const linksSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  linksSection.createEl("h3", { text: plugin.t("Governance Links") });
-  const linkList = linksSection.createEl("ul", { cls: "furnace-shell-list" });
+  const linksDetails = contentEl.createEl("details", { cls: "furnace-shell-section" });
+  linksDetails.createEl("summary", { text: plugin.t("治理链接"), cls: "furnace-shell-panel-description" });
+  const linksBody = linksDetails.createDiv();
+  const linkList = linksBody.createEl("ul", { cls: "furnace-shell-list" });
   [
     ["review_center_markdown", "Review Center Index"],
     ["review_center_html", "Review Center HTML"],
@@ -4469,20 +4928,11 @@ function renderExecutionCenter(plugin, contentEl) {
   const archiveControlsById = plugin.archiveControlsById();
   const actionControlObjects = plugin.executionControlList("actions");
   plugin.renderCardGrid(contentEl, [
-    { label: "Recent Receipts", value: receipts.length },
-    { label: "Execution Events", value: executionEvents.length },
-    {
-      label: "Archive Events",
-      value: executionEvents.filter((entry) => ["archive-apply", "archive-revert"].includes(entry.event_type)).length,
-    },
-    {
-      label: "Lifecycle Overrides",
-      value: executionEvents.filter((entry) => entry.event_type === "knowledge-lifecycle-override").length,
-    },
-    {
-      label: "Nightly Runs",
-      value: executionEvents.filter((entry) => entry.event_type === "nightly").length,
-    },
+    { label: plugin.t("执行收据"), value: receipts.length },
+    { label: plugin.t("执行事件"), value: executionEvents.length },
+    { label: plugin.t("归档事件"), value: executionEvents.filter((entry) => ["archive-apply", "archive-revert"].includes(entry.event_type)).length },
+    { label: plugin.t("生命周期覆盖"), value: executionEvents.filter((entry) => entry.event_type === "knowledge-lifecycle-override").length },
+    { label: plugin.t("夜间运行"), value: executionEvents.filter((entry) => entry.event_type === "nightly").length },
   ]);
 
   const planner = plugin.shellSummary.planner || {};
@@ -4491,16 +4941,16 @@ function renderExecutionCenter(plugin, contentEl) {
   const plannerNextAction = planner.next_action || {};
   if (plannerQueue.length || plannerCounts.pending_proposals) {
     const plannerSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-    plannerSection.createEl("h3", { text: plugin.t("Planner Queue") });
+    plannerSection.createEl("h3", { text: plugin.t("计划队列") });
     plugin.renderCardGrid(plannerSection, [
-      { label: "Pending Proposals", value: plannerCounts.pending_proposals || 0 },
-      { label: "Executed", value: plannerCounts.executed_actions || 0 },
-      { label: "Unblocked", value: plannerCounts.unblocked || 0 },
-      { label: "Blocked", value: plannerCounts.blocked || 0 },
+      { label: plugin.t("待处理提案"), value: plannerCounts.pending_proposals || 0 },
+      { label: plugin.t("已执行"), value: plannerCounts.executed_actions || 0 },
+      { label: plugin.t("已解锁"), value: plannerCounts.unblocked || 0 },
+      { label: plugin.t("已阻塞"), value: plannerCounts.blocked || 0 },
     ]);
     if (plannerNextAction.action_id) {
       const nextDiv = plannerSection.createDiv({ cls: "furnace-shell-section" });
-      nextDiv.createEl("h4", { text: plugin.t("Next Action") });
+      nextDiv.createEl("h4", { text: plugin.t("下一个动作") });
       const item = nextDiv.createDiv();
       item.createEl("strong", { text: plannerNextAction.title || plannerNextAction.action_id });
       item.createDiv({
@@ -4530,9 +4980,9 @@ function renderExecutionCenter(plugin, contentEl) {
   }
 
   const actionObjectsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  actionObjectsSection.createEl("h3", { text: plugin.t("Action Control Objects") });
+  actionObjectsSection.createEl("h3", { text: plugin.t("动作控制") });
   if (!actionControlObjects.length) {
-    actionObjectsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No explicit action control object is available.") });
+    actionObjectsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("当前没有动作控制对象。") });
   } else {
     const list = actionObjectsSection.createEl("ul", { cls: "furnace-shell-list" });
     actionControlObjects.slice(0, 10).forEach((action) => {
@@ -4598,9 +5048,9 @@ function renderExecutionCenter(plugin, contentEl) {
   }
 
   const receiptsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  receiptsSection.createEl("h3", { text: plugin.t("Recent Receipts") });
+  receiptsSection.createEl("h3", { text: plugin.t("最近收据") });
   if (!receipts.length) {
-    receiptsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent receipts are available.") });
+    receiptsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("暂无最近收据。") });
   } else {
     const list = receiptsSection.createEl("ul", { cls: "furnace-shell-list" });
     receipts.slice(0, 8).forEach((receipt) => {
@@ -4662,9 +5112,9 @@ function renderExecutionCenter(plugin, contentEl) {
   }
 
   const eventsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  eventsSection.createEl("h3", { text: plugin.t("Recent Execution Events") });
+  eventsSection.createEl("h3", { text: plugin.t("最近执行事件") });
   if (!executionEvents.length) {
-    eventsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent execution events are available.") });
+    eventsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("暂无最近执行事件。") });
   } else {
     const list = eventsSection.createEl("ul", { cls: "furnace-shell-list" });
     executionEvents.slice(0, 10).forEach((entry) => {
@@ -5027,14 +5477,14 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
     this.addCommand({
       id: "run-compile",
-      name: this.t("Compile"),
+      name: this.t("刷新炉子"),
       callback: () => {
-        this.runUiAction(() => this.runCompileCommand(), this.t("Compile"));
+        this.runUiAction(() => this.runCompileCommand(), this.t("刷新炉子"));
       },
     });
     this.addCommand({
       id: "run-ask",
-      name: this.t("Ask"),
+      name: this.t("Ask 炼丹炉"),
       callback: () => {
         new AskCommandModal(this.app, this).open();
       },
@@ -5058,20 +5508,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       name: this.t("Drop File"),
       callback: () => {
         new DropFileModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "drop-image",
-      name: this.t("Drop Image"),
-      callback: () => {
-        new DropImageModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "search-workspace",
-      name: this.t("Search Workspace"),
-      callback: () => {
-        new SearchCommandModal(this.app, this).open();
       },
     });
   }
@@ -5232,6 +5668,20 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       name: this.t("Open Home Note"),
       callback: () => {
         this.runUiAction(() => this.openHomeNote(), this.t("Open Home Note"));
+      },
+    });
+    this.addCommand({
+      id: "drop-image",
+      name: this.t("Drop Image"),
+      callback: () => {
+        new DropImageModal(this.app, this).open();
+      },
+    });
+    this.addCommand({
+      id: "search-workspace",
+      name: this.t("Search Workspace"),
+      callback: () => {
+        new SearchCommandModal(this.app, this).open();
       },
     });
   }
@@ -5653,49 +6103,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
-  refreshRepoState() {
-    const adapter = this.app.vault && this.app.vault.adapter;
-    const root = adapter && typeof adapter.basePath === "string" ? adapter.basePath : "";
-    const launcherPath = this.resolveLauncherPath(root);
-    const missingPaths = [];
-    if (!root) {
-      missingPaths.push("vault-root");
-    } else {
-      [
-        "raw",
-        "wiki",
-        "schema",
-        "output",
-        ".aiwiki",
-      ].forEach((relativePath) => {
-        if (!fs.existsSync(path.join(root, relativePath))) {
-          missingPaths.push(relativePath);
-        }
-      });
-      if (!launcherIsExecutable(launcherPath)) {
-        missingPaths.push(this.settings.launcherPath);
-      }
-    }
-    this.repoState = {
-      valid: missingPaths.length === 0,
-      root,
-      launcherPath,
-      missingPaths,
-    };
-    this.updateStatusBar();
-    this.refreshOpenViews();
-  }
+  refreshRepoState() { this.repoState = refreshRepoState(this); this.updateStatusBar(); this.refreshOpenViews(); }
 
-  resolveLauncherPath(root) {
-    const launcherPath = String(this.settings.launcherPath || DEFAULT_SETTINGS.launcherPath).trim();
-    if (!root || !launcherPath) {
-      return "";
-    }
-    if (path.isAbsolute(launcherPath)) {
-      return launcherPath;
-    }
-    return path.join(root, launcherPath);
-  }
 
   getActiveProtocol() {
     return String(this.shellSummary && this.shellSummary.active_protocol ? this.shellSummary.active_protocol : "general");
@@ -6389,68 +6798,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return this.shellSummary;
   }
 
-  async execLauncher(args) {
-    if (!this.repoState.valid) {
-      throw new Error(this.t("Missing runtime paths: {missing}", { missing: this.repoState.missingPaths.join(", ") }));
-    }
-    return await new Promise((resolve, reject) => {
-      const env = Object.assign({}, process.env);
-      if (this.settings.llmBackend) {
-        env.AIWIKI_LLM_BACKEND = this.settings.llmBackend;
-      }
-      if (this.settings.llmModel) {
-        env.AIWIKI_LLM_MODEL = this.settings.llmModel;
-      }
-      if (this.settings.llmNvidiaNimApiKey) {
-        env.AIWIKI_NVIDIA_NIM_API_KEY = this.settings.llmNvidiaNimApiKey;
-      }
-      if (this.settings.llmNvidiaNimBaseUrl) {
-        env.AIWIKI_NVIDIA_NIM_BASE_URL = this.settings.llmNvidiaNimBaseUrl;
-      }
-      Object.assign(env, buildNotifyEnv(this.settings));
-      const child = spawn(this.repoState.launcherPath, args, {
-        cwd: this.repoState.root,
-        env,
-      });
-      let stdout = "";
-      let stderr = "";
-      child.stdout.on("data", (chunk) => {
-        stdout += String(chunk);
-      });
-      child.stderr.on("data", (chunk) => {
-        stderr += String(chunk);
-      });
-      child.on("error", (error) => {
-        reject(error);
-      });
-      child.on("close", (code) => {
-        let payload = null;
-        try {
-          payload = readJsonText(stdout);
-        } catch (error) {
-          payload = null;
-        }
-        if (code === 0) {
-          resolve({ stdout, stderr, payload, code });
-          return;
-        }
-        const error = new Error(stderr.trim() || stdout.trim() || this.t("Command failed with exit code {code}", { code }));
-        error.code = code;
-        error.stdout = stdout;
-        error.stderr = stderr;
-        error.payload = payload;
-        reject(error);
-      });
-    });
-  }
+  async execLauncher(args) { return execLauncher(this, args); }
 
-  runUiAction(action, label = "ui-action") {
-    Promise.resolve()
-      .then(() => action())
-      .catch((error) => {
-        console.error(`[furnace-product-shell] ${label} failed`, error);
-      });
-  }
+  runUiAction(action, label = "ui-action") { runUiAction(this, action, label); }
 
   currentLlmSelection() {
     const llmStatus = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary.llm_status || {} : {};

@@ -37,7 +37,7 @@ const shell = electron && electron.shell ? electron.shell : null;
 
 HEADER
 
-  for module in constants helpers today_feed modals views settings render_primitives render_input render_today render_advanced render_runs render_home render_review render_execution plugin_helpers plugin; do
+  for module in constants helpers today_feed modals views state/repo-state bridge/launcher render/cards settings render_primitives render_input render_today render_advanced render_runs render_home render_review render_execution plugin_helpers plugin; do
     echo "// --- src/${module}.js ---"
     echo ""
     cat "$SRC/${module}.js"

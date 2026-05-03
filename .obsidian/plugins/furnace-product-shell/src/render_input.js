@@ -14,13 +14,16 @@ function renderUniversalInput(plugin, container) {
     attr: { "aria-label": plugin.t("Universal input") }
   });
   
-  textarea.placeholder = plugin.t("Drop URL, PDF, image, repo, note, or question...");
+  textarea.placeholder = plugin.t("投网址、文件、图片，或直接提问……");
   textarea.rows = 1;
 
   const submitButton = form.createEl("button", { 
     cls: "furnace-universal-input-button", 
     text: plugin.t("Submit") 
   });
+
+  const hint = wrapper.createDiv({ cls: "furnace-universal-input-hint" });
+  hint.setText(plugin.t("Ctrl+Enter 提交 · 也可拖入文件"));
 
   const attachmentsContainer = wrapper.createDiv({ cls: "furnace-input-attachments-container" });
   

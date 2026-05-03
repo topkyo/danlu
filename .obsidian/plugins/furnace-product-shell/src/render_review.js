@@ -44,23 +44,23 @@ function renderReviewCenter(plugin, contentEl) {
   const judgmentAssets = plugin.shellSummary.judgment_assets || {};
   const judgmentCounts = judgmentAssets.counts || {};
   plugin.renderCardGrid(contentEl, [
-    { label: "Pending Decisions", value: review.pending_decisions || 0 },
-    { label: "Pending Judgments", value: review.pending_judgments || 0 },
-    { label: "Overdue Reviews", value: aging.overdue_count || 0 },
-    { label: "Escalation", value: aging.escalated_count || 0 },
-    { label: "Concept Backlog", value: review.concept_backlog || 0 },
-    { label: "Review Concepts", value: review.review_concepts || 0 },
-    { label: "Revisit Concepts", value: review.revisit_concepts || 0 },
-    { label: "Retired Concepts", value: review.retired_concepts || 0 },
+    { label: t("待决策"), value: review.pending_decisions || 0 },
+    { label: t("待判断"), value: review.pending_judgments || 0 },
+    { label: t("逾期审阅"), value: aging.overdue_count || 0 },
+    { label: t("已升级"), value: aging.escalated_count || 0 },
+    { label: t("概念积压"), value: review.concept_backlog || 0 },
+    { label: t("待审概念"), value: review.review_concepts || 0 },
+    { label: t("需回访概念"), value: review.revisit_concepts || 0 },
+    { label: t("已退役概念"), value: review.retired_concepts || 0 },
   ]);
 
   const nextReview = plugin.nextReviewCandidate();
   const batchSuggestions = plugin.reviewBatchSuggestions();
 
   const nextSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  nextSection.createEl("h3", { text: plugin.t("Next Review") });
+  nextSection.createEl("h3", { text: plugin.t("下一个审阅") });
   if (!nextReview) {
-    nextSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No explicit next review item is available.") });
+    nextSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("当前没有待审阅项。") });
   } else {
     const nextCard = nextSection.createDiv({ cls: "furnace-shell-card" });
     nextCard.createEl("strong", { text: nextReview.label || nextReview.pagePath || plugin.t("review-page") });
@@ -92,9 +92,9 @@ function renderReviewCenter(plugin, contentEl) {
   }
 
   const batchSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  batchSection.createEl("h3", { text: plugin.t("Batch Suggestions") });
+  batchSection.createEl("h3", { text: plugin.t("批处理建议") });
   if (!batchSuggestions.length) {
-    batchSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No batch review groups share the same recommended transition.") });
+    batchSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("暂无批处理建议。") });
   } else {
     const list = batchSection.createEl("ul", { cls: "furnace-shell-list" });
     batchSuggestions.slice(0, 6).forEach((suggestion) => {
@@ -126,14 +126,14 @@ function renderReviewCenter(plugin, contentEl) {
   }
 
   const judgmentSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  judgmentSection.createEl("h3", { text: plugin.t("Judgment Assets") });
+  judgmentSection.createEl("h3", { text: plugin.t("判断资产") });
   plugin.renderCardGrid(judgmentSection, [
-    { label: "Strong Assets", value: judgmentCounts.strong_assets || 0 },
-    { label: "Attention Pages", value: judgmentCounts.attention_pages || 0 },
-    { label: "Missing Counter Evidence", value: judgmentCounts.missing_counter_evidence || 0 },
-    { label: "Missing Invalidation", value: judgmentCounts.missing_invalidation || 0 },
-    { label: "Missing Review History", value: judgmentCounts.missing_review_history || 0 },
-    { label: "Citation Drift", value: judgmentCounts.citation_drift || 0 },
+    { label: plugin.t("强资产"), value: judgmentCounts.strong_assets || 0 },
+    { label: plugin.t("需关注页"), value: judgmentCounts.attention_pages || 0 },
+    { label: plugin.t("缺反证"), value: judgmentCounts.missing_counter_evidence || 0 },
+    { label: plugin.t("缺失效条件"), value: judgmentCounts.missing_invalidation || 0 },
+    { label: plugin.t("缺审阅历史"), value: judgmentCounts.missing_review_history || 0 },
+    { label: plugin.t("引用漂移"), value: judgmentCounts.citation_drift || 0 },
   ]);
 
   const reviewControlObjects = plugin.reviewControlList("pages");
@@ -200,14 +200,14 @@ function renderReviewCenter(plugin, contentEl) {
       }
     });
   };
-  renderReviewObjectSection(plugin.t("Decision Objects"), decisionControlObjects, plugin.t("No explicit decision review object is available."));
-  renderReviewObjectSection(plugin.t("Judgment Objects"), judgmentControlObjects, plugin.t("No explicit judgment review object is available."));
+  renderReviewObjectSection(plugin.t("决策页"), decisionControlObjects, plugin.t("当前没有待审决策页。"));
+  renderReviewObjectSection(plugin.t("判断页"), judgmentControlObjects, plugin.t("当前没有待审判断页。"));
 
   const rewriteControlObjects = plugin.reviewControlList("rewrite_proposals");
   const rewriteSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  rewriteSection.createEl("h3", { text: plugin.t("Rewrite Proposal Objects") });
+  rewriteSection.createEl("h3", { text: plugin.t("改写提案") });
   if (!rewriteControlObjects.length) {
-    rewriteSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No explicit rewrite proposal object is available.") });
+    rewriteSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("当前没有改写提案。") });
   } else {
     const list = rewriteSection.createEl("ul", { cls: "furnace-shell-list" });
     rewriteControlObjects.slice(0, 10).forEach((proposal) => {
@@ -263,9 +263,11 @@ function renderReviewCenter(plugin, contentEl) {
     });
   }
 
-  const agingSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  agingSection.createEl("h3", { text: plugin.t("Aging Summary") });
-  const agingList = agingSection.createEl("ul", { cls: "furnace-shell-list" });
+  // ── Aging (foldable) ──
+  const agingDetails = contentEl.createEl("details", { cls: "furnace-shell-section" });
+  agingDetails.createEl("summary", { text: plugin.t("老化摘要") + " · " + (aging.overdue_count || 0) + " 逾期 / " + (aging.escalated_count || 0) + " 升级", cls: "furnace-shell-panel-description" });
+  const agingBody = agingDetails.createDiv();
+  const agingList = agingBody.createEl("ul", { cls: "furnace-shell-list" });
   [
     ["Overdue pages", aging.overdue_pages || []],
     ["Escalated pages", aging.escalated_pages || []],
@@ -297,15 +299,17 @@ function renderReviewCenter(plugin, contentEl) {
     });
   });
 
+  // ── Recent Review Events (foldable) ──
   const reviewEvents = Array.isArray(plugin.shellSummary.recent_runs)
     ? plugin.shellSummary.recent_runs.filter((entry) => entry.event_type === "review")
     : [];
-  const eventsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  eventsSection.createEl("h3", { text: plugin.t("Recent Review Events") });
+  const eventsDetails = contentEl.createEl("details", { cls: "furnace-shell-section" });
+  eventsDetails.createEl("summary", { text: plugin.t("最近审阅事件") + " (" + reviewEvents.length + ")", cls: "furnace-shell-panel-description" });
+  const eventsBody = eventsDetails.createDiv();
   if (!reviewEvents.length) {
-    eventsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent review events are available.") });
+    eventsBody.createDiv({ cls: "furnace-shell-empty", text: plugin.t("暂无最近审阅事件。") });
   } else {
-    const list = eventsSection.createEl("ul", { cls: "furnace-shell-list" });
+    const list = eventsBody.createEl("ul", { cls: "furnace-shell-list" });
     reviewEvents.slice(0, 8).forEach((entry) => {
       const item = list.createEl("li");
       const reviewControl = reviewControlsByPath.get(String(entry.page_path || "").trim());
@@ -335,10 +339,12 @@ function renderReviewCenter(plugin, contentEl) {
     });
   }
 
+  // ── Links (foldable) ──
   const links = plugin.shellSummary.links || {};
-  const linksSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  linksSection.createEl("h3", { text: plugin.t("Governance Links") });
-  const linkList = linksSection.createEl("ul", { cls: "furnace-shell-list" });
+  const linksDetails = contentEl.createEl("details", { cls: "furnace-shell-section" });
+  linksDetails.createEl("summary", { text: plugin.t("治理链接"), cls: "furnace-shell-panel-description" });
+  const linksBody = linksDetails.createDiv();
+  const linkList = linksBody.createEl("ul", { cls: "furnace-shell-list" });
   [
     ["review_center_markdown", "Review Center Index"],
     ["review_center_html", "Review Center HTML"],

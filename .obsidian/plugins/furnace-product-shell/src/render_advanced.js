@@ -1,7 +1,8 @@
 // Advanced drawer and metrics rendering helpers.
 function renderAdvancedDrawer(plugin, container) {
-  const details = container.createEl("details", { cls: "furnace-shell-advanced" });
-  const summaryEl = details.createEl("summary", { cls: "furnace-shell-advanced-summary" });
+  const wrapper = container.createDiv({ cls: "furnace-advanced-drawer" });
+  const details = wrapper.createEl("details", { cls: "furnace-shell-advanced" });
+  const summaryEl = details.createEl("summary", { cls: "furnace-shell-advanced-summary", attr: { tabindex: "0" } });
   const summaryCopy = summaryEl.createDiv({ cls: "furnace-shell-advanced-copy" });
   summaryCopy.createEl("span", { cls: "furnace-shell-advanced-title", text: plugin.t("Advanced") });
   const counts = advancedDrawerCounts(plugin);

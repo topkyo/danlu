@@ -56,6 +56,7 @@ function buildTodayFeed(summary) {
   entries.push(...buildMetricAlertEntries(summary));
   entries.push(...buildAgentLoopEntries(summary, todayDate));
   entries.push(...buildActionEntries(summary, "primary"));
+  entries.push(...buildLlmHealthEntry(summary));
 
   const filtered = applySnoozeFilter(entries, summary, todayDate);
   filtered.sort(compareEntries);
@@ -316,8 +317,10 @@ function buildAgentLoopEntries(summary, todayDate) {
   let title = "预演下一步维护";
   let summaryText = "今日维护预演完成，暂不需要自动执行";
   let target = "PYTHONPATH=src python3 -m aiwiki.cli --root . alchemy auto --dry-run";
+  let autoState = "idle";
   if (status === "failed") {
     summaryText = "今日维护预演失败，需要人工查看";
+    autoState = "attention";
   } else {
     const signals = agentLoop.signals && typeof agentLoop.signals === "object" ? agentLoop.signals : {};
     const planner = agentLoop.planner && typeof agentLoop.planner === "object" ? agentLoop.planner : {};
@@ -332,8 +335,10 @@ function buildAgentLoopEntries(summary, todayDate) {
       title = "已自动维护";
       summaryText = `今日发现 ${newItems} 个新变化，已静默执行 ${appliedCount} 条维护路径`;
       target = "wiki/indexes/execution-audit.md";
+      autoState = "ok";
     } else if (readyCount > 0) {
       summaryText = `今日发现 ${newItems} 个新变化，${readyCount} 条维护路径可人工确认`;
+      autoState = "pending";
     }
   }
 
@@ -344,6 +349,32 @@ function buildAgentLoopEntries(summary, todayDate) {
     target,
     timestamp,
     protocol: String(summary.active_protocol || ""),
+    autoState: autoState,
+  }];
+}
+
+function buildLlmHealthEntry(summary) {
+  var health = summary.llm_health;
+  if (!health || typeof health !== "object") return [];
+  var status = String(health.status || "");
+  if (status === "healthy" || status === "unknown") return [];
+  var timestamp = String(health.checked_at || summary.generated_at || "");
+  var reason = String(health.reason || "");
+  var recovery = String(health.recovery_command || "");
+  var title = "LLM 后端异常";
+  var summaryText = reason || "LLM 后端暂时不可用，部分报告可能未生成";
+  if (status === "degraded") {
+    title = "LLM 后端降级";
+    summaryText = reason || "LLM 后端当前以降级模式运行，报告质量可能受影响";
+  }
+  return [{
+    kind: "automation",
+    title: title,
+    summary: summaryText,
+    target: recovery || "scripts/aiwiki-launcher.sh llm-check",
+    timestamp: timestamp,
+    protocol: "",
+    autoState: status === "degraded" ? "pending" : "attention",
   }];
 }
 
@@ -415,5 +446,11 @@ function compareEntries(a, b) {
 
 module.exports = {
   buildTodayFeed,
+  applySnoozeFilter,
+  compareEntries,
+  todayDateOf,
+  reviewBucketCopy,
+  isMaintenanceCommandAction,
   PRIORITY,
+  PRIMARY_REVIEW_BUCKETS,
 };

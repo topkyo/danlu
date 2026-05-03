@@ -96,6 +96,8 @@ function renderRunTimeline(plugin, container, record, compact = false) {
   const visibleEvents = compact ? timeline.slice(-4) : timeline;
   visibleEvents.forEach((event) => {
     const item = list.createEl("li", { cls: "furnace-shell-run-event" });
+    const statusCls = event.status === "failed" ? "furnace-shell-status-failed" : (event.status === "success" ? "furnace-shell-status-ok" : "furnace-shell-status-running");
+    item.addClass(statusCls);
     const header = item.createDiv({ cls: "furnace-shell-run-event-header" });
     header.createEl("strong", { text: plugin.t(event.stage || "event") });
     if (event.at) {

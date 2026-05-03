@@ -42,35 +42,24 @@ function renderTodayFeed(plugin, container) {
 }
 
 function renderTodayFeedItem(plugin, listEl, entry) {
-  const li = listEl.createEl("li", { cls: "furnace-today-feed-item furnace-today-feed-card" });
-  const copy = li.createDiv({ cls: "furnace-today-feed-copy" });
-  copy.createEl("div", { cls: "furnace-today-feed-title", text: entry.title });
-  if (entry.summary) {
-    copy.createEl("div", { cls: "furnace-today-feed-summary", text: entry.summary });
-  }
-  const targetLabel = todayFeedTargetLabel(plugin, entry);
-  if (targetLabel) {
-    copy.createEl("div", { cls: "furnace-today-feed-target", text: targetLabel });
+  const li = listEl.createEl("li", { cls: "furnace-today-feed-item" });
+  const { card } = renderFeedCard(plugin, li, entry);
+
+  if (entry.kind === "report") {
+    renderReportCard(plugin, card, entry);
+  } else if (entry.kind === "decision" || entry.kind === "proposal") {
+    renderConfirmationCard(plugin, card, entry);
+  } else if (entry.kind === "automation") {
+    renderAutomationCard(plugin, card, entry);
   }
 
-  const actions = todayFeedActions(plugin, entry);
-  if (!actions.length) {
-    return;
-  }
-  const actionRow = li.createDiv({ cls: "furnace-today-feed-actions" });
-  for (const action of actions) {
-    const buttonLabel = plugin.t(action.label);
-    const button = actionRow.createEl("button", {
-      text: buttonLabel,
-      attr: {
-        "aria-label": buttonLabel,
-        title: action.description || buttonLabel,
-      },
-    });
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      plugin.runUiAction(() => action.onClick(), action.description || action.label);
-    });
+  // Fallback action buttons (for entries not handled by card renderers)
+  if (entry.kind !== "report" && entry.kind !== "decision" && entry.kind !== "proposal" && entry.kind !== "automation") {
+    const targetLabel = todayFeedTargetLabel(plugin, entry);
+    if (targetLabel && card.querySelector) {
+      const meta = card.createDiv({ cls: "furnace-today-feed-target" });
+      meta.setText(targetLabel);
+    }
   }
 }
 
@@ -126,18 +115,43 @@ function todayFeedTargetLabel(plugin, entry) {
     return "";
   }
   if (isReviewTarget(target)) {
-    return plugin.t("Review queue");
+    return reviewBucketDisplayLabel(plugin, target);
   }
   if (isWorkspaceTarget(target)) {
     return workspaceTargetDisplayLabel(plugin, target, entry);
   }
   if (entry.kind === "action" || looksLikeCommandTarget(target)) {
     if (target.startsWith("metric:")) {
-      return plugin.t("Metric alert");
+      return plugin.t("指标提醒");
     }
-    return plugin.t("Command prepared for manual confirmation");
+    switch (entry.kind) {
+      case "report": return plugin.t("新报告");
+      case "automation": return plugin.t("自动维护");
+      case "elixir": return plugin.t("金丹完成");
+      default: return plugin.t("待确认操作");
+    }
   }
   return target;
+}
+
+function reviewBucketDisplayLabel(plugin, target) {
+  var kind = String(target || "").replace(/^review:/, "").trim();
+  switch (kind) {
+    case "counter_evidence_candidates": return plugin.t("新反证待审");
+    case "judgment_review_actions": return plugin.t("判断需要复核");
+    case "machine_memory_actions": return plugin.t("机器记忆待修复");
+    case "pending_judgments": return plugin.t("待定判断");
+    case "pending_decisions": return plugin.t("待定决策");
+    case "ready_actions": return plugin.t("安全动作待确认");
+    case "escalated_actions": return plugin.t("升级动作");
+    case "escalation_candidates": return plugin.t("升级候选");
+    case "overdue_actions": return plugin.t("逾期动作");
+    case "overdue_reviews": return plugin.t("逾期复审");
+    case "l3_proposals": return plugin.t("L3 提案");
+    case "l3_proposal_attention": return plugin.t("L3 提案需要关注");
+    case "drift": return plugin.t("数据漂移");
+    default: return plugin.t("待审队列");
+  }
 }
 
 function workspaceTargetActionLabel(target, entry) {

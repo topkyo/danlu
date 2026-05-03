@@ -58,14 +58,14 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
     this.addCommand({
       id: "run-compile",
-      name: this.t("Compile"),
+      name: this.t("刷新炉子"),
       callback: () => {
-        this.runUiAction(() => this.runCompileCommand(), this.t("Compile"));
+        this.runUiAction(() => this.runCompileCommand(), this.t("刷新炉子"));
       },
     });
     this.addCommand({
       id: "run-ask",
-      name: this.t("Ask"),
+      name: this.t("Ask 炼丹炉"),
       callback: () => {
         new AskCommandModal(this.app, this).open();
       },
@@ -89,20 +89,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       name: this.t("Drop File"),
       callback: () => {
         new DropFileModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "drop-image",
-      name: this.t("Drop Image"),
-      callback: () => {
-        new DropImageModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "search-workspace",
-      name: this.t("Search Workspace"),
-      callback: () => {
-        new SearchCommandModal(this.app, this).open();
       },
     });
   }
@@ -263,6 +249,20 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       name: this.t("Open Home Note"),
       callback: () => {
         this.runUiAction(() => this.openHomeNote(), this.t("Open Home Note"));
+      },
+    });
+    this.addCommand({
+      id: "drop-image",
+      name: this.t("Drop Image"),
+      callback: () => {
+        new DropImageModal(this.app, this).open();
+      },
+    });
+    this.addCommand({
+      id: "search-workspace",
+      name: this.t("Search Workspace"),
+      callback: () => {
+        new SearchCommandModal(this.app, this).open();
       },
     });
   }
@@ -684,49 +684,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
-  refreshRepoState() {
-    const adapter = this.app.vault && this.app.vault.adapter;
-    const root = adapter && typeof adapter.basePath === "string" ? adapter.basePath : "";
-    const launcherPath = this.resolveLauncherPath(root);
-    const missingPaths = [];
-    if (!root) {
-      missingPaths.push("vault-root");
-    } else {
-      [
-        "raw",
-        "wiki",
-        "schema",
-        "output",
-        ".aiwiki",
-      ].forEach((relativePath) => {
-        if (!fs.existsSync(path.join(root, relativePath))) {
-          missingPaths.push(relativePath);
-        }
-      });
-      if (!launcherIsExecutable(launcherPath)) {
-        missingPaths.push(this.settings.launcherPath);
-      }
-    }
-    this.repoState = {
-      valid: missingPaths.length === 0,
-      root,
-      launcherPath,
-      missingPaths,
-    };
-    this.updateStatusBar();
-    this.refreshOpenViews();
-  }
+  refreshRepoState() { this.repoState = refreshRepoState(this); this.updateStatusBar(); this.refreshOpenViews(); }
 
-  resolveLauncherPath(root) {
-    const launcherPath = String(this.settings.launcherPath || DEFAULT_SETTINGS.launcherPath).trim();
-    if (!root || !launcherPath) {
-      return "";
-    }
-    if (path.isAbsolute(launcherPath)) {
-      return launcherPath;
-    }
-    return path.join(root, launcherPath);
-  }
 
   getActiveProtocol() {
     return String(this.shellSummary && this.shellSummary.active_protocol ? this.shellSummary.active_protocol : "general");
@@ -1420,68 +1379,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return this.shellSummary;
   }
 
-  async execLauncher(args) {
-    if (!this.repoState.valid) {
-      throw new Error(this.t("Missing runtime paths: {missing}", { missing: this.repoState.missingPaths.join(", ") }));
-    }
-    return await new Promise((resolve, reject) => {
-      const env = Object.assign({}, process.env);
-      if (this.settings.llmBackend) {
-        env.AIWIKI_LLM_BACKEND = this.settings.llmBackend;
-      }
-      if (this.settings.llmModel) {
-        env.AIWIKI_LLM_MODEL = this.settings.llmModel;
-      }
-      if (this.settings.llmNvidiaNimApiKey) {
-        env.AIWIKI_NVIDIA_NIM_API_KEY = this.settings.llmNvidiaNimApiKey;
-      }
-      if (this.settings.llmNvidiaNimBaseUrl) {
-        env.AIWIKI_NVIDIA_NIM_BASE_URL = this.settings.llmNvidiaNimBaseUrl;
-      }
-      Object.assign(env, buildNotifyEnv(this.settings));
-      const child = spawn(this.repoState.launcherPath, args, {
-        cwd: this.repoState.root,
-        env,
-      });
-      let stdout = "";
-      let stderr = "";
-      child.stdout.on("data", (chunk) => {
-        stdout += String(chunk);
-      });
-      child.stderr.on("data", (chunk) => {
-        stderr += String(chunk);
-      });
-      child.on("error", (error) => {
-        reject(error);
-      });
-      child.on("close", (code) => {
-        let payload = null;
-        try {
-          payload = readJsonText(stdout);
-        } catch (error) {
-          payload = null;
-        }
-        if (code === 0) {
-          resolve({ stdout, stderr, payload, code });
-          return;
-        }
-        const error = new Error(stderr.trim() || stdout.trim() || this.t("Command failed with exit code {code}", { code }));
-        error.code = code;
-        error.stdout = stdout;
-        error.stderr = stderr;
-        error.payload = payload;
-        reject(error);
-      });
-    });
-  }
+  async execLauncher(args) { return execLauncher(this, args); }
 
-  runUiAction(action, label = "ui-action") {
-    Promise.resolve()
-      .then(() => action())
-      .catch((error) => {
-        console.error(`[furnace-product-shell] ${label} failed`, error);
-      });
-  }
+  runUiAction(action, label = "ui-action") { runUiAction(this, action, label); }
 
   currentLlmSelection() {
     const llmStatus = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary.llm_status || {} : {};
