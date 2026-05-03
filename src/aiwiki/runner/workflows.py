@@ -1292,11 +1292,13 @@ def run_nightly(
         auto_apply_light = _env_flag("AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT")
         auto_adopt_l1 = _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_L1")
         auto_adopt_l2 = _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_L2")
+        auto_adopt_judgments = _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS")
         agent_loop = run_nightly_agent_loop(
             root,
             apply_light=auto_apply_light,
             auto_adopt_l1=auto_adopt_l1,
             auto_adopt_l2=auto_adopt_l2,
+            auto_adopt_judgments=auto_adopt_judgments,
         )
         state = attach_agent_loop_to_nightly_state(root, state, agent_loop)
     except Exception as exc:
@@ -1339,6 +1341,7 @@ def run_nightly(
             "agent_loop_auto_apply_light": _env_flag("AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT"),
             "agent_loop_auto_adopt_l1": _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_L1"),
             "agent_loop_auto_adopt_l2": _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_L2"),
+            "agent_loop_auto_adopt_judgments": _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS"),
             "duration_ms": int((time.monotonic() - started) * 1000),
         },
         llm_audit,

@@ -220,14 +220,14 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare A and B" --format rep
 
 LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`run-compile`、`run-ask`、`run-nightly` 和 nightly timer。这样常驻 watcher 不会长时间占用 single-writer lock，LLM 失败也不会阻断原料进入炉子。
 
-治理债的目标是自动消化，符合炼丹炉"人只看异常"的设计哲学：
+治理债的目标是自动消化，符合炼丹炉"人只看异常"的设计哲学。分层按**影响范围 × 可逆性**定义：
 
-- **L0 / deterministic hygiene**：compile / lint / nightly / 陈旧状态清理 / 派生索引 refresh — 静默自动落盘。nightly 可用 `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` 启用 auto-apply；默认仍只预演。
-- **L1 / semantic candidates**：concept backlog / revisit / source-concept links / counter-evidence — 静默自动采纳。用 `AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1` 启用（默认开启）。逻辑：concept backlog → active；revisit → deferred；counter-evidence → tracking；source-concept links → accepted + applied。
-- **L2 / machine-memory actions**：concept splits（deterministic overloaded-concept proposals）— 静默自动采纳。用 `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1` 启用（默认开启）。不覆盖 L3 proposals（prompt / policy 变更仍保留显式 gate）。
-- **L3 / meaning-changing adoption**：L3 proposal 采纳、改写 judgment/decision 语义状态、更新 prompts/policies target — 必须保留显式 gate、receipt 和 revert/audit 路径。不在任何 auto lane 内执行。
+- **维护层**：compile / lint / nightly / 陈旧状态清理 / 派生索引 refresh — 只读或可逆的操作，静默自动落盘。`AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1`。
+- **治理层**：concept backlog / revisit / source-concept links / concept splits — 结构性变更，可逆且有 receipt，静默自动采纳。`AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1` + `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1`。
+- **判断层**：counter-evidence / judgment review — LLM 驱动的语义复核，自动分析反证、写出审阅结论。`AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1`。
+- **策略层**：L3 proposal / prompt 变更 / schema 变更 — 改变系统后续运行方式，保留显式 gate。不在任何 auto lane 内执行。
 
-这意味着最终形态不是"每项都要审"，而是"只审真正需要语义判断的决策和异常"。
+最终形态不是"每项都要审"，而是"LLM 替你审判断层，你只看报告和异常"。
 
 这意味着最终形态不是“没有审阅”，而是“默认不用人盯流程；人只处理少数语义采纳点和异常”。
 
