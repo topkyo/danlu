@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import html
 import os
 import re
@@ -1251,7 +1252,10 @@ def _git_output(repo_path: Path, args: list[str]) -> str:
 
 
 def _timestamped_stem(label: str) -> str:
-    return f"{utc_now().replace(':', '').replace('-', '').replace('+00:00', 'z')}-{slugify(label)[:48]}"
+    result = slugify(label)[:64]
+    if result and result != "item":
+        return result
+    return f"doc-{hashlib.sha256(label.encode()).hexdigest()[:12]}"
 
 
 def _unique_path(directory: Path, stem: str, suffix: str) -> Path:

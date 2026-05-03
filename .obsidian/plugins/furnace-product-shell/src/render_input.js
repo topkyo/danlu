@@ -49,8 +49,8 @@ function renderUniversalInput(plugin, container) {
   };
 
   const addFile = (file) => {
-    // Only add if we have a path
-    if (file && file.path) {
+    // Use path (Electron) or name as fallback
+    if (file && (file.path || file.name)) {
       attachedFiles.push(file);
       updateAttachmentPills();
     }
@@ -75,7 +75,7 @@ function renderUniversalInput(plugin, container) {
     try {
       if (filesToProcess.length > 0) {
         for (const file of filesToProcess) {
-          await plugin.runUniversalInputCommand({ payload: file.path, title: value });
+          await plugin.runUniversalInputCommand({ payload: file.path || file.name || "", title: value });
         }
       } else {
         await plugin.runUniversalInputCommand({ payload: value });
@@ -234,13 +234,15 @@ function renderDropZone(plugin, container) {
       const fileName = String(file.name || file.path || "").toLowerCase();
       const fileType = String(file.type || "").toLowerCase();
       if (fileType === "application/pdf" || fileName.endsWith(".pdf")) {
-        plugin.runUiAction(() => new DropFileModal(plugin.app, plugin).setInitialMode("pdf").open(), plugin.t("Drop PDF"));
+        plugin.runUiAction(() => new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(file.path || "").open(), plugin.t("Drop PDF"));
         return;
       }
       if (fileType.startsWith("image/")) {
-        plugin.runUiAction(() => new DropImageModal(plugin.app, plugin).open(), plugin.t("Drop Image"));
+        plugin.runUiAction(() => new DropImageModal(plugin.app, plugin).setInitialSource(file.path || "").open(), plugin.t("Drop Image"));
         return;
       }
+      // For other file types, still try to open the drop file modal
+      plugin.runUiAction(() => new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(file.path || "").open(), plugin.t("Drop File"));
       return;
     }
     const uriList = String(dataTransfer.getData("text/uri-list") || "")

@@ -225,7 +225,7 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 - **维护层**：compile / lint / nightly / 陈旧状态清理 / 派生索引 refresh — 只读或可逆的操作，静默自动落盘。`AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1`。
 - **治理层**：concept backlog / revisit / source-concept links / concept splits — 结构性变更，可逆且有 receipt，静默自动采纳。`AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1` + `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1`。
 - **判断层**：counter-evidence / judgment review — LLM 驱动的语义复核，自动分析反证、写出审阅结论。`AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1`。
-- **策略层**：L3 proposal / prompt 变更 / schema 变更 — 改变系统后续运行方式，保留显式 gate。不在任何 auto lane 内执行。
+- **策略层**：L3 proposal / prompt 变更 / schema 变更 — 改变系统后续运行方式，自动采纳并写 receipt 保留回滚能力。`AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1`。
 
 最终形态不是"每项都要审"，而是"LLM 替你审判断层，你只看报告和异常"。
 

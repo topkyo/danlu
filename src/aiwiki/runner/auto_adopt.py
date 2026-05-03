@@ -1,22 +1,23 @@
-"""Nightly auto-adoption of L1 / L2 governance backlog.
+"""Nightly auto-adoption of L1 / L2 / L3 governance backlog.
 
 Extends the nightly agent loop beyond deterministic light-primitive apply
 (compile / lint / nightly) into *semantic-candidate adoption*. The original
-boundary kept L1 candidate-only and L2 gate-only; this module changes the
+boundary kept L1 candidate-only and L2/L3 gate-only; this module changes the
 design so that 炼丹炉 can silently auto-adopt safe-category items by default.
 
 Opt-in per level via env vars:
 - ``AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1`` — auto-adopt L1 semantic candidates
 - ``AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1`` — auto-adopt L2 machine-memory actions
+- ``AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1`` — auto-adopt L3 proposals (prompt / policy)
+- ``AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1`` — auto-adopt judgment reviews
 
-Policy (deliberately permissive, aligned with 炼丹炉 philosophy):
+Policy (aligned with 炼丹炉 self-evolution philosophy):
   L1 — concept backlog / revisit / source-concept links
   L2 — concept splits (deterministic overloaded-concept proposals)
+  L3 — prompt / policy / schema proposals (auto-adopted with receipt for audit/revert)
   Judgment — counter-evidence / judgment review (LLM-powered, nightly path)
 
-Explicitly EXCLUDED from auto-adopt:
-  L3 proposals — remain gate-only (prompt / policy changes)
-  judgment_review_actions that require reading evidence chains
+All auto-adopted items write receipts and support revert.
 """
 
 from __future__ import annotations
@@ -387,4 +388,53 @@ def _write_review_entry(root: Path, page_path: str, conclusion: dict[str, Any]) 
     page.write_text(content, encoding="utf-8")
 
 
-__all__ = ["auto_adopt_l1", "auto_adopt_l2", "auto_adopt_judgments", "_env_flag"]
+def auto_adopt_l3(root: Path) -> dict[str, Any]:
+    """Auto-adopt L3 proposals (candidate → accepted + applied).
+
+    L3 proposals are prompt/policy/schema changes. With ``AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1``,
+    they are auto-accepted and applied during nightly, with receipts for audit/revert.
+    """
+    results: dict[str, Any] = {"level": "L3", "applied": False, "items": []}
+    try:
+        from ..execution.l3_proposals import apply_l3_proposal, load_l3_proposal_state
+
+        proposals = load_l3_proposal_state(root).get("proposals", [])
+        candidates = [
+            p.get("proposal_id", "")
+            for p in proposals
+            if isinstance(p, dict) and p.get("state") == "candidate"
+        ]
+        results["candidates_count"] = len(candidates)
+    except Exception as exc:
+        results["error"] = f"L3 proposal state unavailable: {exc}"
+        return results
+
+    if not candidates:
+        return results
+
+    for proposal_id in candidates:
+        try:
+            r = apply_l3_proposal(root, proposal_id, note="nightly L3 auto-adopt")
+            results["items"].append({
+                "proposal_id": proposal_id,
+                "status": r.get("state", "accepted"),
+                "receipt_path": r.get("receipt_path", ""),
+                "target_file": r.get("target_file", ""),
+            })
+        except Exception as exc:
+            results["items"].append({
+                "proposal_id": proposal_id,
+                "status": "failed",
+                "error": str(exc),
+            })
+            _logger.warning("L3 auto-adopt failed for %s: %s", proposal_id, exc)
+
+    applied = any(
+        item.get("status") == "accepted"
+        for item in results["items"]
+    )
+    results["applied"] = applied
+    return results
+
+
+__all__ = ["auto_adopt_l1", "auto_adopt_l2", "auto_adopt_l3", "auto_adopt_judgments", "_env_flag"]

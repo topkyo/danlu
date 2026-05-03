@@ -24,7 +24,7 @@ class ProductShellUniversalInputContractTests(unittest.TestCase):
         text = (PLUGIN_ROOT / "main.js").read_text(encoding="utf-8")
 
         self.assertIn('const args = ["drop", normalizedPayload]', text)
-        self.assertIn('await plugin.runUniversalInputCommand({ payload: file.path, title: value });', text)
+        self.assertIn('await plugin.runUniversalInputCommand({ payload: file.path || file.name || "", title: value });', text)
         self.assertIn('await plugin.runUniversalInputCommand({ payload: value });', text)
         self.assertNotIn("classifyUniversalInput", text)
 

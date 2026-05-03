@@ -327,10 +327,16 @@ class DropFileModal extends Modal {
     super(app);
     this.plugin = plugin;
     this.initialMode = "pdf";
+    this.initialSource = "";
   }
 
   setInitialMode(value) {
     this.initialMode = String(value || "pdf").trim() === "repo" ? "repo" : "pdf";
+    return this;
+  }
+
+  setInitialSource(value) {
+    this.initialSource = String(value || "");
     return this;
   }
 
@@ -357,6 +363,7 @@ class DropFileModal extends Modal {
     sourceSetting.nameEl.addClass("furnace-modal-field-required");
     const sourceInput = sourceSetting.controlEl.createEl("input", { type: "text" });
     sourceInput.addClass("furnace-shell-code");
+    sourceInput.value = this.initialSource;
     const pickerInput = sourceSetting.controlEl.createEl("input", { type: "file" });
     pickerInput.style.display = "none";
     let pickLocalButton = null;
@@ -424,6 +431,12 @@ class DropImageModal extends Modal {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
+    this.initialSource = "";
+  }
+
+  setInitialSource(value) {
+    this.initialSource = String(value || "");
+    return this;
   }
 
   onOpen() {
@@ -439,6 +452,7 @@ class DropImageModal extends Modal {
     const sourceInput = sourceSetting.controlEl.createEl("input", { type: "text" });
     sourceInput.placeholder = t("本地图片路径或图片 URL。");
     sourceInput.addClass("furnace-shell-code");
+    sourceInput.value = this.initialSource;
     const pickerInput = sourceSetting.controlEl.createEl("input", { type: "file" });
     pickerInput.style.display = "none";
     pickerInput.accept = "image/*";

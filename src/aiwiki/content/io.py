@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
 from datetime import datetime, timezone
@@ -66,9 +67,12 @@ def sync_manifest_with_raw(root: Path) -> dict[str, Any]:
                 entry.update({"sha256": current_sha, "kind": current_kind, "title": current_title, "source_type": current_source_type, "note_kind": current_note_kind, "original_path": current_original_path, "updated_at": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).replace(microsecond=0).isoformat()})
                 changed = True
             continue
-        stamp = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).strftime("%Y%m%d%H%M%S")
         seed_label = metadata.get("title") or path.stem
-        seed = f"discovered-{stamp}-{slugify(seed_label)}"
+        slug = slugify(seed_label)
+        if slug and slug != "item":
+            seed = f"source-{slug}"
+        else:
+            seed = f"source-{hashlib.sha256(seed_label.encode()).hexdigest()[:12]}"
         entry_id = next_identifier(existing_ids, seed)
         existing_ids.add(entry_id)
         entries.append({"id": entry_id, "title": metadata.get("title") or path.stem, "source_type": metadata.get("source_type") or "raw-drop", "note_kind": metadata.get("note_kind") or "", "original_path": metadata.get("original_path") or stored_path, "stored_path": stored_path, "kind": detect_kind(path), "sha256": sha256_file(path), "imported_at": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).replace(microsecond=0).isoformat(), "updated_at": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).replace(microsecond=0).isoformat()})
@@ -85,10 +89,14 @@ def ingest_source(root: Path, source: str, title: str | None = None) -> dict[str
     ensure_layout(root)
     manifest = sync_manifest_with_raw(root)
     existing_ids = {entry["id"] for entry in manifest["entries"]}
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     label = title or Path(source).stem or source
     display_title = title or label
-    entry_id = next_identifier(existing_ids, f"{stamp}-{slugify(label)}")
+    slug = slugify(label)
+    if slug and slug != "item":
+        seed = slug
+    else:
+        seed = hashlib.sha256(label.encode()).hexdigest()[:12]
+    entry_id = next_identifier(existing_ids, seed)
     if source.startswith(("http://", "https://")):
         destination = root / "raw" / "inbox" / f"{entry_id}.md"
         stub_title = title or source

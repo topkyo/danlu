@@ -42,6 +42,7 @@ def run_nightly_agent_loop(
     apply_light: bool = False,
     auto_adopt_l1: bool = False,
     auto_adopt_l2: bool = False,
+    auto_adopt_l3: bool = False,
     auto_adopt_judgments: bool = False,
 ) -> dict[str, Any]:
     """Run nightly agent-loop preview, optionally applying the light lane.
@@ -50,8 +51,9 @@ def run_nightly_agent_loop(
     deterministic auto primitives are executed, through the same alchemy
     receipt path used by the CLI.
 
-    ``auto_adopt_l1`` / ``auto_adopt_l2`` enable silent auto-adoption of
-    L1 semantic candidates and L2 machine-memory actions (concept splits).
+    ``auto_adopt_l1`` / ``auto_adopt_l2`` / ``auto_adopt_l3`` enable silent
+    auto-adoption of L1 semantic candidates, L2 machine-memory actions, and
+    L3 prompt/policy/schema proposals. All write receipts enabling revert.
 
     ``auto_adopt_judgments`` enables LLM-powered counter-evidence review.
     """
@@ -73,6 +75,7 @@ def run_nightly_agent_loop(
         auto_apply = _build_light_auto_apply(root, scope=scope) if apply_light else None
         l1_result = _build_auto_adopt_l1(root) if auto_adopt_l1 else None
         l2_result = _build_auto_adopt_l2(root) if auto_adopt_l2 else None
+        l3_result = _build_auto_adopt_l3(root) if auto_adopt_l3 else None
         j_result = _build_auto_adopt_judgments(root) if auto_adopt_judgments else None
     except Exception as exc:  # noqa: BLE001 - preview failure must be surfaced in nightly state
         return {
@@ -93,6 +96,7 @@ def run_nightly_agent_loop(
         **({"auto_apply": auto_apply} if auto_apply is not None else {}),
         **({"auto_adopt_l1": l1_result} if l1_result is not None else {}),
         **({"auto_adopt_l2": l2_result} if l2_result is not None else {}),
+        **({"auto_adopt_l3": l3_result} if l3_result is not None else {}),
         **({"auto_adopt_judgments": j_result} if j_result is not None else {}),
     }
 
@@ -299,6 +303,15 @@ def _build_auto_adopt_l2(root: Path) -> dict[str, Any]:
         return auto_adopt_l2(root)
     except Exception as exc:
         return {"level": "L2", "applied": False, "error": str(exc)}
+
+
+def _build_auto_adopt_l3(root: Path) -> dict[str, Any]:
+    from .runner.auto_adopt import auto_adopt_l3
+
+    try:
+        return auto_adopt_l3(root)
+    except Exception as exc:
+        return {"level": "L3", "applied": False, "error": str(exc)}
 
 
 def _build_auto_adopt_judgments(root: Path) -> dict[str, Any]:
