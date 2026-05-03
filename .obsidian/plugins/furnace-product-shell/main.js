@@ -30,7 +30,6 @@ const DEFAULT_PROTOCOLS = ["general", "investing", "research", "product", "ops"]
 const DEFAULT_LOCALE = "zh";
 const DEFAULT_SETTINGS = {
   launcherPath: "scripts/aiwiki-launcher.sh",
-  defaultAskMode: "run-ask",
   defaultAskFormat: "report",
   recentRunsLimit: 8,
   showAdvancedCommands: false,
@@ -57,8 +56,6 @@ const ZH_TEXT = {
   English: "英文",
   "Aiwiki launcher": "Aiwiki 启动器",
   "Vault-local or absolute launcher path. This vault may point at an external runtime root.": "vault 内相对路径或绝对 launcher 路径。这个 vault 可以指向外部 runtime root。",
-  "Default ask mode": "默认 Ask 模式",
-  "Choose whether Ask defaults to deterministic `ask` or LLM-backed `run-ask`.": "选择 Ask 默认走 deterministic `ask`，还是 LLM 驱动的 `run-ask`。",
   "Default ask format": "默认 Ask 格式",
   "Default output format for the Ask modal.": "Ask 模态框的默认输出格式。",
   "Recent runs limit": "最近运行保留数",
@@ -72,8 +69,6 @@ const ZH_TEXT = {
   "Select the explicit LLM backend used by run-compile / run-ask / run-nightly. Empty = unconfigured.": "为 run-compile / run-ask / run-nightly 显式选择 LLM 后端。留空 = 未配置。",
   "LLM model": "LLM 模型",
   "Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = selected backend default strategy (`codex-cli`: `gpt-5.4`; `nvidia-nim-api`: `moonshotai/kimi-k2.5 -> z-ai/glm-5.1 -> minimaxai/minimax-m2.7`).": "覆盖模型名称（如 gpt-5.4、claude-sonnet-4.5）。留空 = 所选后端默认策略（`codex-cli`: `gpt-5.4`；`nvidia-nim-api`: `moonshotai/kimi-k2.5 -> z-ai/glm-5.1 -> minimaxai/minimax-m2.7`）。",
-  "route only (no LLM)": "仅路由（无 LLM）",
-  "LLM answer (recommended)": "LLM 深度回答（推荐）",
   "NVIDIA NIM API key": "NVIDIA NIM API Key",
   "Optional key for nvidia-nim-api. Stored locally in plugin data. Empty = use AIWIKI_NVIDIA_NIM_API_KEY / NVIDIA_NIM_API_KEY.": "nvidia-nim-api 的可选 API key。本地存储于插件数据中。留空 = 使用 AIWIKI_NVIDIA_NIM_API_KEY / NVIDIA_NIM_API_KEY。",
   "NVIDIA NIM base URL": "NVIDIA NIM Base URL",
@@ -1588,17 +1583,6 @@ class AskCommandModal extends Modal {
     });
     formatSelect.value = this.plugin.settings.defaultAskFormat;
 
-    const modeSetting = new Setting(contentEl).setName(t("模式"));
-    const modeSelect = modeSetting.controlEl.createEl("select");
-    [
-      ["ask", t("仅路由（无 LLM）")],
-      ["run-ask", t("LLM 深度回答（推荐）")],
-    ].forEach(([value, label]) => {
-      const option = modeSelect.createEl("option", { text: label, value });
-      option.value = value;
-    });
-    modeSelect.value = this.plugin.settings.defaultAskMode;
-
     const protocolSetting = new Setting(contentEl).setName(t("协议"));
     const protocolSelect = protocolSetting.controlEl.createEl("select");
     protocolSelect.createEl("option", { text: t("当前协议"), value: "" });
@@ -1617,11 +1601,10 @@ class AskCommandModal extends Modal {
       setSubmitLoading(btn, t("分析中…"));
       const self = this;
       const format = String(formatSelect.value || "report");
-      const mode = String(modeSelect.value || "ask");
       const protocol = String(protocolSelect.value || "").trim();
       self.close();
       self.plugin.runUiAction(function () {
-        return self.plugin.runAskCommand({ question, format, mode, protocol });
+        return self.plugin.runAskCommand({ question, format, mode: "run-ask", protocol });
       }, t("Ask modal"));
     }.bind(this), function () { this.close(); }.bind(this));
 
@@ -2614,20 +2597,6 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
     containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Ask Defaults") });
 
     new Setting(containerEl)
-      .setName(t("Default ask mode"))
-      .setDesc(t("Choose whether Ask defaults to deterministic `ask` or LLM-backed `run-ask`."))
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("ask", "ask")
-          .addOption("run-ask", "run-ask")
-          .setValue(this.plugin.settings.defaultAskMode)
-          .onChange(async (value) => {
-            this.plugin.settings.defaultAskMode = value;
-            await this.plugin.savePluginState();
-          })
-      );
-
-    new Setting(containerEl)
       .setName(t("Default ask format"))
       .setDesc(t("Default output format for the Ask modal."))
       .addDropdown((dropdown) =>
@@ -2912,7 +2881,7 @@ function renderInteractionPanel(plugin, container) {
         await plugin.runAskCommand({
           question,
           format: plugin.settings.defaultAskFormat,
-          mode: plugin.settings.defaultAskMode,
+          mode: "run-ask",
           protocol: "",
         });
       },
@@ -2944,12 +2913,25 @@ function renderInteractionPanel(plugin, container) {
           plugin.runAskCommand({
             question,
             format: plugin.settings.defaultAskFormat,
-            mode: plugin.settings.defaultAskMode,
-            protocol: "",
-          }),
-        plugin.t("Ask")
-      );
-    }
+          mode: "run-ask",
+          protocol: "",
+        });
+      } finally {
+        setRunning(false);
+      }
+    };
+  
+    askButton.addEventListener("click", () => {
+      plugin.runUiAction(() => submitAsk(), plugin.t("Ask"));
+    });
+  
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        plugin.runUiAction(() => submitAsk(), plugin.t("Ask"));
+      }
+    });
+  }
   });
 
   const latestInteraction = plugin.latestInteractionEntry();
@@ -3591,7 +3573,7 @@ function renderAskBox(plugin, container) {
       await plugin.runAskCommand({
         question,
         format: plugin.settings.defaultAskFormat,
-        mode: plugin.settings.defaultAskMode,
+        mode: "run-ask",
         protocol: "",
       });
     } finally {

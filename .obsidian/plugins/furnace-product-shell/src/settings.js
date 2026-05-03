@@ -89,20 +89,6 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
     containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Ask Defaults") });
 
     new Setting(containerEl)
-      .setName(t("Default ask mode"))
-      .setDesc(t("Choose whether Ask defaults to deterministic `ask` or LLM-backed `run-ask`."))
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("ask", "ask")
-          .addOption("run-ask", "run-ask")
-          .setValue(this.plugin.settings.defaultAskMode)
-          .onChange(async (value) => {
-            this.plugin.settings.defaultAskMode = value;
-            await this.plugin.savePluginState();
-          })
-      );
-
-    new Setting(containerEl)
       .setName(t("Default ask format"))
       .setDesc(t("Default output format for the Ask modal."))
       .addDropdown((dropdown) =>

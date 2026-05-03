@@ -135,7 +135,7 @@ function renderInteractionPanel(plugin, container) {
         await plugin.runAskCommand({
           question,
           format: plugin.settings.defaultAskFormat,
-          mode: plugin.settings.defaultAskMode,
+          mode: "run-ask",
           protocol: "",
         });
       },
@@ -167,12 +167,25 @@ function renderInteractionPanel(plugin, container) {
           plugin.runAskCommand({
             question,
             format: plugin.settings.defaultAskFormat,
-            mode: plugin.settings.defaultAskMode,
-            protocol: "",
-          }),
-        plugin.t("Ask")
-      );
-    }
+          mode: "run-ask",
+          protocol: "",
+        });
+      } finally {
+        setRunning(false);
+      }
+    };
+  
+    askButton.addEventListener("click", () => {
+      plugin.runUiAction(() => submitAsk(), plugin.t("Ask"));
+    });
+  
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        plugin.runUiAction(() => submitAsk(), plugin.t("Ask"));
+      }
+    });
+  }
   });
 
   const latestInteraction = plugin.latestInteractionEntry();

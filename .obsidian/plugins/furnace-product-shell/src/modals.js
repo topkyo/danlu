@@ -67,17 +67,6 @@ class AskCommandModal extends Modal {
     });
     formatSelect.value = this.plugin.settings.defaultAskFormat;
 
-    const modeSetting = new Setting(contentEl).setName(t("模式"));
-    const modeSelect = modeSetting.controlEl.createEl("select");
-    [
-      ["ask", t("仅路由（无 LLM）")],
-      ["run-ask", t("LLM 深度回答（推荐）")],
-    ].forEach(([value, label]) => {
-      const option = modeSelect.createEl("option", { text: label, value });
-      option.value = value;
-    });
-    modeSelect.value = this.plugin.settings.defaultAskMode;
-
     const protocolSetting = new Setting(contentEl).setName(t("协议"));
     const protocolSelect = protocolSetting.controlEl.createEl("select");
     protocolSelect.createEl("option", { text: t("当前协议"), value: "" });
@@ -96,11 +85,10 @@ class AskCommandModal extends Modal {
       setSubmitLoading(btn, t("分析中…"));
       const self = this;
       const format = String(formatSelect.value || "report");
-      const mode = String(modeSelect.value || "ask");
       const protocol = String(protocolSelect.value || "").trim();
       self.close();
       self.plugin.runUiAction(function () {
-        return self.plugin.runAskCommand({ question, format, mode, protocol });
+        return self.plugin.runAskCommand({ question, format, mode: "run-ask", protocol });
       }, t("Ask modal"));
     }.bind(this), function () { this.close(); }.bind(this));
 

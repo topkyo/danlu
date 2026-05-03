@@ -174,7 +174,7 @@ function renderAskBox(plugin, container) {
       await plugin.runAskCommand({
         question,
         format: plugin.settings.defaultAskFormat,
-        mode: plugin.settings.defaultAskMode,
+        mode: "run-ask",
         protocol: "",
       });
     } finally {

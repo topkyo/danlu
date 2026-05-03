@@ -10,7 +10,6 @@ const DEFAULT_PROTOCOLS = ["general", "investing", "research", "product", "ops"]
 const DEFAULT_LOCALE = "zh";
 const DEFAULT_SETTINGS = {
   launcherPath: "scripts/aiwiki-launcher.sh",
-  defaultAskMode: "run-ask",
   defaultAskFormat: "report",
   recentRunsLimit: 8,
   showAdvancedCommands: false,
@@ -37,8 +36,6 @@ const ZH_TEXT = {
   English: "英文",
   "Aiwiki launcher": "Aiwiki 启动器",
   "Vault-local or absolute launcher path. This vault may point at an external runtime root.": "vault 内相对路径或绝对 launcher 路径。这个 vault 可以指向外部 runtime root。",
-  "Default ask mode": "默认 Ask 模式",
-  "Choose whether Ask defaults to deterministic `ask` or LLM-backed `run-ask`.": "选择 Ask 默认走 deterministic `ask`，还是 LLM 驱动的 `run-ask`。",
   "Default ask format": "默认 Ask 格式",
   "Default output format for the Ask modal.": "Ask 模态框的默认输出格式。",
   "Recent runs limit": "最近运行保留数",
@@ -52,8 +49,6 @@ const ZH_TEXT = {
   "Select the explicit LLM backend used by run-compile / run-ask / run-nightly. Empty = unconfigured.": "为 run-compile / run-ask / run-nightly 显式选择 LLM 后端。留空 = 未配置。",
   "LLM model": "LLM 模型",
   "Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = selected backend default strategy (`codex-cli`: `gpt-5.4`; `nvidia-nim-api`: `moonshotai/kimi-k2.5 -> z-ai/glm-5.1 -> minimaxai/minimax-m2.7`).": "覆盖模型名称（如 gpt-5.4、claude-sonnet-4.5）。留空 = 所选后端默认策略（`codex-cli`: `gpt-5.4`；`nvidia-nim-api`: `moonshotai/kimi-k2.5 -> z-ai/glm-5.1 -> minimaxai/minimax-m2.7`）。",
-  "route only (no LLM)": "仅路由（无 LLM）",
-  "LLM answer (recommended)": "LLM 深度回答（推荐）",
   "NVIDIA NIM API key": "NVIDIA NIM API Key",
   "Optional key for nvidia-nim-api. Stored locally in plugin data. Empty = use AIWIKI_NVIDIA_NIM_API_KEY / NVIDIA_NIM_API_KEY.": "nvidia-nim-api 的可选 API key。本地存储于插件数据中。留空 = 使用 AIWIKI_NVIDIA_NIM_API_KEY / NVIDIA_NIM_API_KEY。",
   "NVIDIA NIM base URL": "NVIDIA NIM Base URL",
