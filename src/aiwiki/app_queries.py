@@ -595,13 +595,13 @@ def render_report(
     focus_lines = compact_machine_memory_focus_lines(machine_query)
     frontmatter = render_frontmatter(
         {
-            "id": artifact_id,
             "kind": "output",
             "format": "report",
-            "query": question,
             "protocol": active_protocol,
-            "generated_by": "aiwiki-ask",
+            "query": question,
             "created_at": created_at,
+            "generated_by": "aiwiki-ask",
+            "_id": artifact_id,
         }
     )
     lines = [

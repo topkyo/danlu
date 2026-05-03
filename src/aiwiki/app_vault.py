@@ -23,6 +23,22 @@ DEFAULT_OBSIDIAN_APP = {
     "showInlineTitle": True,
     "showUnsupportedFiles": True,
     "useMarkdownLinks": True,
+    "userIgnoreFilters": [
+        "wiki/derived/",
+        "wiki/decisions/",
+        "wiki/judgments/",
+        "wiki/elixirs/",
+        "wiki/sources/",
+        "wiki/concepts/",
+        "schema/",
+        "output/control/",
+        "output/graph/",
+        "output/review/",
+        "output/slides/",
+        "output/figures/",
+        "output/_proposals/",
+        ".aiwiki/",
+    ],
 }
 
 DEFAULT_OBSIDIAN_CORE_PLUGINS = {

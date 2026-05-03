@@ -300,7 +300,7 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(result["path"], "output/reports/should-we-increase-transformer-training-spend.md")
         page = (self.root / result["path"]).read_text(encoding="utf-8")
         frontmatter = parse_frontmatter(page)
-        self.assertEqual(frontmatter["id"], "should-we-increase-transformer-training-spend")
+        self.assertEqual(frontmatter["_id"], "should-we-increase-transformer-training-spend")
         self.assertTrue(frontmatter["created_at"])
 
     def test_ask_question_preserves_cjk_title_in_report_filename(self) -> None:

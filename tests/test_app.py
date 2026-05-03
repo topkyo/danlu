@@ -7439,11 +7439,10 @@ exit 0
         for anchor in anchors:
             self.assertRegex(str(anchor), r"^(source|concept|judgment):")
 
-        # Body section provides a chinese link back to the graph and lists each anchor.
+        # Body section provides a chinese anchor section with clickable .md links.
         self.assertIn("## 关系图谱锚点", text)
-        self.assertIn("output/graph/machine-memory.html", text)
-        for anchor in anchors:
-            self.assertIn(f"`{anchor}`", text)
+        self.assertIn("相关来源与概念（点击跳转）", text)
+        self.assertIn(".md)", text)
 
     def test_compile_graph_html_lists_referencing_reports_for_anchored_nodes(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

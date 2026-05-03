@@ -235,39 +235,49 @@ def _build_graph_anchor_node_ids(
     return deduped
 
 
-def _resolve_anchor_title(anchor: str, memory: dict[str, Any]) -> str:
-    """Return a chinese-friendly display title for a ``kind:id`` anchor."""
+def _resolve_anchor_md_link(anchor: str, memory: dict[str, Any], base: Path) -> str | None:
+    """Resolve a ``kind:id`` anchor to a clickable Obsidian wiki-style markdown link.
+
+    Returns ``None`` when the anchor cannot be resolved to an .md file.
+    """
     if ":" not in anchor:
-        return anchor
+        return None
     kind, identifier = anchor.split(":", 1)
     if kind == "source":
         for node in memory.get("source_nodes", []):
             if isinstance(node, dict) and str(node.get("id") or "") == identifier:
-                return str(node.get("title") or identifier)
+                title = str(node.get("title") or identifier)
+                path = f"wiki/sources/{identifier}.md"
+                return f"- [{title}](../../{path})"
     elif kind == "concept":
         for node in memory.get("concept_nodes", []):
             if isinstance(node, dict) and str(node.get("slug") or "") == identifier:
-                return str(node.get("title") or identifier)
+                title = str(node.get("title") or identifier)
+                path = f"wiki/concepts/{identifier}.md"
+                return f"- [{title}](../../{path})"
     elif kind == "judgment":
         for node in memory.get("judgment_nodes", []):
             if isinstance(node, dict) and str(node.get("page_id") or "") == identifier:
-                return str(node.get("title") or identifier)
-    return identifier
+                title = str(node.get("title") or identifier)
+                path = str(node.get("path") or f"wiki/judgments/{identifier}.md")
+                return f"- [{title}](../../{path})"
+    return None
 
 
 def _append_graph_anchor_section(
     destination: Path, *, anchors: list[str], memory: dict[str, Any]
 ) -> None:
-    """Upsert a 关系图谱锚点 section into the artifact body."""
+    """Upsert a 关系图谱锚点 section with clickable .md links into the artifact body."""
     if not anchors:
         return
-    lines = [
-        "需要追溯证据链时，打开 [`output/graph/machine-memory.html`](../graph/machine-memory.html) 并搜索下列节点 id："
-    ]
+    lines = ["相关来源与概念（点击跳转）："]
     lines.append("")
     for anchor in anchors:
-        title = _resolve_anchor_title(anchor, memory)
-        lines.append(f"- `{anchor}` — {title}")
+        link = _resolve_anchor_md_link(anchor, memory, destination.parent)
+        if link:
+            lines.append(link)
+        else:
+            lines.append(f"- `{anchor}`")
     body = destination.read_text(encoding="utf-8", errors="replace")
     body = upsert_markdown_section(body, "关系图谱锚点", "\n".join(lines))
     destination.write_text(body.rstrip() + "\n", encoding="utf-8")
