@@ -162,14 +162,16 @@ function renderInteractionPanel(plugin, container) {
         new Notice(plugin.t("Question cannot be empty."));
         return;
       }
-      plugin.runUiAction(
-        () =>
-          plugin.runAskCommand({
-            question,
-            format: plugin.settings.defaultAskFormat,
-          mode: "run-ask",
-          protocol: "",
-        });
+      try {
+        plugin.runUiAction(
+          () =>
+            plugin.runAskCommand({
+              question,
+              format: plugin.settings.defaultAskFormat,
+              mode: "run-ask",
+              protocol: "",
+            })
+        );
       } finally {
         setRunning(false);
       }
@@ -185,7 +187,6 @@ function renderInteractionPanel(plugin, container) {
         plugin.runUiAction(() => submitAsk(), plugin.t("Ask"));
       }
     });
-  }
   });
 
   const latestInteraction = plugin.latestInteractionEntry();

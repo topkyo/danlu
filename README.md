@@ -227,9 +227,7 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 - **判断层**：counter-evidence / judgment review — LLM 驱动的语义复核，自动分析反证、写出审阅结论。`AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1`。
 - **策略层**：L3 proposal / prompt 变更 / schema 变更 — 改变系统后续运行方式，自动采纳并写 receipt 保留回滚能力。`AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1`。
 
-最终形态不是"每项都要审"，而是"LLM 替你审判断层，你只看报告和异常"。
-
-这意味着最终形态不是“没有审阅”，而是“默认不用人盯流程；人只处理少数语义采纳点和异常”。
+当所有五级 auto-adopt 开启时，炼丹炉每晚自动维护、审阅、甚至改写自身策略——人只需事后审计 receipt 和异常。
 
 ## LLM 后端
 

@@ -47,7 +47,7 @@ related_docs:
 - 一个会定期炼丹（light）、也会被事件触发深度重炼（heavy）的持续进化引擎
 - 一个明确把自身自主权分层切分、且守住 L3 红线的系统
 
-操作者（human owner）永远是最终裁决者。agent 是受控执行者与受控学习者，不是共同决策者，更不是炉子本身的重写者。
+在默认 opt-in 自主权模型下，agent 可静默执行 L0-L3 维护与进化（详见 §8）；操作者通过 receipt / audit / revert 行使事后审计权，是审计者而非每步确认者。agent 可自主改变炉子自身的 prompt/policy/schema，但所有行动均可追溯、可回滚，且 L3 与 Judgment 级自主权默认关闭，需显式开启。
 
 ## 1.1 User-Facing Surface（第一性原理）
 
@@ -127,7 +127,7 @@ related_docs:
 | 金丹最小链路 | partial | 当前 CLI 为 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote`，已落 `output/_candidates/elixirs/` 候选平面、`wiki/elixirs/` 持久平面、provenance、DAG 校验与 promote/revert/demote receipt；promotion revert 已按 receipt/hash gate 回到 candidate 并写 universal audit；legacy migration 已有 read-only preview 与显式 apply baseline，superseded cleanup 已有 read-only preview 与显式 deletion apply baseline。 |
 | planner | partial | 当前已有 `.aiwiki/state/planner-state.json` 的 repair/execution proposal planner，以及 `.aiwiki/state/planner-log.jsonl` 的 signal observe-only / execute-mode decision log；`planner-log-replay --execute` 只追加 execute-mode decisions，不直接运行 lane/apply/proposal；`planner-log-rollback --dry-run/--apply` 可预览或显式追加独立 rollback marker stream，但不删除或重写 planner-log；execute-mode deterministic scheduler consumption 已通过 `alchemy auto` 和 `l3-proposal-generate` 落地，高风险 LLM-backed phase orchestration 仍需独立 primitive contract。 |
 | heavy/light alchemy lane | partial | 已有 `aiwiki alchemy heavy|light <scope> --dry-run` 只读 preview，`--apply --action-id ...` 到既有 receipted low-risk action batch 的显式桥接，`--apply --primitive compile|lint|nightly` 的 deterministic receipt wrapper，显式 heavy `--apply --primitive review` 到 direct scoped review apply 的桥接，显式 heavy `--apply --primitive distill` 到 direct scoped distill apply 的桥接，显式 heavy `--apply --primitive propose` 到 scoped proposal-plane apply 的桥接，以及 `aiwiki alchemy auto --dry-run|--apply` 对 execute-mode deterministic planner decisions 的显式调度入口；`alchemy auto --lane heavy --primitive review\|distill\|propose` 可显式 opt-in 调度 review/distill/propose，但默认 auto 不选择三者。lane apply 会写 `alchemy-lane-started / alchemy-lane-completed` runtime-history audit events，scheduler apply 会写 `alchemy-auto-scheduler` runtime-history audit event，lane primitive receipt 已显式携带 planner trace 与 execution receipt history audit metadata；`judge` 当前支持 direct `aiwiki alchemy judge <scope> --apply` 对已有 judgment/decision refs 写 deterministic managed refresh marker，也支持 `aiwiki alchemy judge <scope> --propose` 为已有 refs 生成 semantic refresh proposal-preview artifacts，以及 `aiwiki alchemy judge-proposal <proposal> --apply` 对 `state=accepted` 且 target `before_hash` 匹配的 proposal 写入 target managed section；这些路径都不由 runtime 生成判断结论、不改 status/confidence/review lifecycle、不创建 scope-only judgment/decision、不调用 LLM，也不进入 lane/auto；`review` 可显式写 review queue managed section 与 receipt/audit，但不进入 light lane；`distill` 可显式刷新 scoped preview 中已有 elixir candidate refs，并写 receipt/audit/runtime history，不创建新 elixir、不 promote/finalize、不进入 light/default auto；`propose` 可显式写 L3 proposal plane 并写 receipt/audit/runtime history，但不进入 light lane，且不写目标 prompt/policy 文件。 |
-| L3 prompt/policy proposal | partial | 已有 manual baseline：`l3-proposal-create` 写入 `output/_proposals/prompt|policy`，`l3-proposal-generate --dry-run|--apply` 可从 execute-mode `generate-proposal` planner decisions 创建 prompt proposal 候选，`alchemy propose <scope> --apply` 可从 scoped dirty preview 直接生成 prompt proposal 候选并写 proposal-generation receipt/audit，`review proposals`、`review proposal-generation` 和 `shell-status` 的 `review_controls.l3_proposals` 只读列队，`review proposal <id> --status rejected` 显式否决，`apply <proposal-id>` 通过 `before_hash` 写回 `prompts/*.md` / `schema/policies/*` 并生成 receipt，`revert <receipt-id>` 通过 `after_hash` clean revert 并写 runtime-history / universal audit，冲突时生成 `human_merge_required` hint；自动生成仍只写 proposal plane，必须人工 accept 才能写目标。 |
+| L3 prompt/policy proposal | implemented | 已有 manual baseline：`l3-proposal-create` 写入 `output/_proposals/prompt|policy`，`l3-proposal-generate --dry-run|--apply` 可从 execute-mode `generate-proposal` planner decisions 创建 prompt proposal 候选，`alchemy propose <scope> --apply` 可从 scoped dirty preview 直接生成 prompt proposal 候选并写 proposal-generation receipt/audit，`review proposals`、`review proposal-generation` 和 `shell-status` 的 `review_controls.l3_proposals` 只读列队，`review proposal <id> --status rejected` 显式否决，`apply <proposal-id>` 通过 `before_hash` 写回 `prompts/*.md` / `schema/policies/*` 并生成 receipt，`revert <receipt-id>` 通过 `after_hash` clean revert 并写 runtime-history / universal audit，冲突时生成 `human_merge_required` hint；nightly auto-adopt 路径：`AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` 后 agent loop 自动 accept + apply candidate L3 proposal，写 receipt 保留 revert。 |
 | universal audit stream | implemented | 当前已有 `aiwiki audit-preview --dry-run` 只读归一化 execution receipts、LLM receipts、runtime history 与 protocol-learning aging audit，并可通过 `aiwiki audit-backfill --apply` 显式 append 缺失 records 到 `.aiwiki/state/audit.jsonl`；execution receipt、runtime history、LLM receipt 与 protocol-learning aging writer 已直接 append universal audit record，且 backfill 对 direct append 已写 records 幂等跳过。 |
 
 ## 2.2 9+ Feasibility Contract
@@ -319,23 +319,31 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
 
 完整 schema / 生命周期 / 三阶段路线图（Chaining → Distillation → Compounding）见 [[docs/Furnace Evolution Mechanics|炼丹炉进化机制]] §7 / §8。
 
-## 8. Autonomy Boundaries: L1 / L2 / L3
+## 8. Autonomy Boundaries: L0 / L1 / L2 / L3 / Judgment
 
-本轮架构最关键的边界决策：**L3 红线只开 proposal-only 一条缝——agent 可生成对 `prompts/*.md` 和 `schema/policies/*` 的 proposal，但必须人工 accept 才能写回。** 当前 runtime 已落地 L3 手工 proposal baseline、execute-mode deterministic automatic candidate generation baseline 与 scoped/heavy-lane `alchemy propose` proposal-plane baseline；自动生成仍只写 proposal plane，不直接改目标文件。
+炼丹炉的自主权现在是**分层 opt-in 模型**：每层通过独立环境变量显式开启，所有自动采纳均写 receipt 支持 revert/audit。默认全部关闭（agent loop 仅 dry-run preview），操作者按需逐层解锁。
+
+L0（维护层）由 `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` 控制；L1-L3/Judgment 分别由 `AIWIKI_NIGHTLY_AUTO_ADOPT_L1/L2/L3/JUDGMENTS=1` 控制。
 
 红线表：
 
-| 层级 | 可以自动做 | 需要人工 accept | 永不允许自动做 |
-|---|---|---|---|
-| **L1 知识 / 运行态自维护** | `.aiwiki/state/*` 更新、active corpus 收敛、targeted compile / lint、索引刷新、候选产物生成 | 正式写入高价值长期资产（promote elixir）、高风险 apply | 覆盖 `raw/`；绕过 receipt / audit；隐式切换 backend |
-| **L2 Protocol-learning** | 聚类 review 反馈、生成 learning 候选、老化、supersede；replacement graph 校验 | 将新 learning 置为 `active`；默认装载到 ask 路径 | 隐式改 prompt / policy；跨 protocol 污染；破坏 replacement DAG |
-| **L3 Prompt/Policy Proposal**（partial） | 当前可手工创建 proposal，也可从 execute-mode `generate-proposal` planner decisions 或 scoped `alchemy propose --apply` deterministic 生成 prompt proposal 候选；生成只写 proposal plane/state | 写回 `prompts/*.md`、`schema/policies/*` | 自动修改 `src/aiwiki/**`；自动修改 schema 核心结构；自动改 protocol core contract；自动 accept L3 proposal |
+| 层级 | env flag | 自动做的事 | 写 receipt | 可 revert |
+|---|---|---|---|---|
+| **L0 维护层** | `AUTO_APPLY_LIGHT` | compile / lint / nightly 清洁；陈旧状态清理；派生索引 refresh | 是 | 是 |
+| **L1 语义层** | `AUTO_ADOPT_L1` | concept backlog → active；revisit → deferred；source-concept link accepted + apply；所有 accepted low-risk actions apply | 是 | 是 |
+| **L2 结构层** | `AUTO_ADOPT_L2` | overloaded-concept split accepted + apply | 是 | 是 |
+| **L3 策略层** | `AUTO_ADOPT_L3` | candidate prompt/policy/schema proposal accept + apply（修改 `prompts/*.md` / `schema/policies/*`） | 是 | 是 |
+| **Judgment 判断层** | `AUTO_ADOPT_JUDGMENTS` | LLM-powered counter-evidence 复核：读取新的反证来源页，调用 LLM 生成 upheld/weakened/refuted 结论，写入 judgment 页 review history | 是 | 是（人工可覆盖） |
 
-补充规则：
+永不自动做的底线（所有层级均遵守）：
 
-- L3 proposal **物理目录独立**，但**逻辑接入现有 review queue**，复用 review / apply / revert / audit 语义。
-- L3 proposal 目标文件范围 **只限** `prompts/*.md` 与 `schema/policies/*`；其他规则文件（protocol 定义、schema 核心）不在本轮开口。
-- 任何 L3 accept 必须产生可回滚 receipt；若 target 文件已被人手修改且无法 clean revert，则退化为人工 merge 提示而不是强制 revert。
+- 覆盖 `raw/`
+- 修改 `src/aiwiki/**`
+- 绕过 receipt / audit
+- 隐式切换 LLM backend
+- 静默吞错
+
+当前 dogfood 配置（2026-05）已全部五级开启，炼丹炉以全自主 agent OS 运行。
 
 ## 9. Protocols, Operator Control, and Backend Selection
 

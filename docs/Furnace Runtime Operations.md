@@ -109,7 +109,11 @@ else:
 
 关键 env：
 - `AIWIKI_NIGHTLY_DETERMINISTIC_ONLY=0` —— 默认跑 LLM；设 `1` 强制不调 LLM
-- `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` —— **light lane 自动 apply**（已默认开启，Round 38 起）；agent_loop preview 完成后立即执行 receipted light primitives（compile/lint/nightly），写 receipt + audit
+- `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` —— **L0 维护层自动 apply**；agent_loop preview 完成后立即执行 receipted light primitives（compile/lint/nightly），写 receipt + audit
+- `AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1` —— **L1 语义层自动采纳**：concept backlog → active、revisit → deferred、source-concept link 自动 accept + apply
+- `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1` —— **L2 结构层自动采纳**：overloaded-concept split 自动 accept + apply
+- `AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` —— **L3 策略层自动采纳**：candidate prompt/policy/schema proposal 自动 accept + apply，写 receipt 保留回滚
+- `AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1` —— **判断层自动复核**：LLM-powered counter-evidence review，读取反证来源页生成 upheld/weakened/refuted 结论
 - `AIWIKI_NIGHTLY_COMPILE_LIMIT=5` —— LLM enrichment 单批上限
 - `AIWIKI_NIGHTLY_NO_SEMANTIC_LINT=0` —— 是否跑 semantic lint
 - `AIWIKI_NIGHTLY_FALLBACK_ENABLED=1` —— nightly wrapper 的 operator-approved fallback 开关

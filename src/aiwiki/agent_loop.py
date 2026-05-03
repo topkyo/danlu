@@ -1,8 +1,9 @@
 """Nightly agent-loop orchestration.
 
 This module makes the final-shape loop visible by default and can optionally
-apply the already receipt-gated light lane. Heavy semantic lanes remain preview
-only.
+apply the already receipt-gated light lane. Semantic lanes (L1/L2/L3/Judgment)
+auto-adoption is opt-in via env flags (``AIWIKI_NIGHTLY_AUTO_ADOPT_*``).
+All auto-adopted items write receipts enabling revert.
 """
 
 from __future__ import annotations
