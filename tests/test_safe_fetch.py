@@ -241,6 +241,12 @@ class RawResponse:
         self.url = url
         self.body = body
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc_info):
+        return False
+
     def read(self, _size: int = -1) -> bytes:
         body = self.body
         self.body = b""

@@ -36,8 +36,20 @@
 | **Round 77 LLM receipt 事务化** (2026-05-04) | `_append_llm_receipt` snapshot-then-rollback / 复用 AuditMirror* + `_durable_truncate` / 不扩 lock 边界 / 5 unit | ✅ done |
 | **Round 78 age audit single-file 事务化** (2026-05-04) | `_durable_restore_or_remove` / `_write_age_audit` snapshot bytes + restore/remove / audit-mirror 主线收口 / 5 unit | ✅ done |
 | **Round 79 auto_adopt 顶层 lock 收口** (2026-05-04) | 4 个 `auto_adopt_*` 顶层入口加 `@runtime_write_operation` / reentrant lock 验证 / 4 unit | ✅ done |
+| **Round 80 safe_fetch response close** (2026-05-04) | `safe_fetch` urlopen response 用 with 包住 read+return / 3 close-path tests / R71-R73 残余关闭 | ✅ done |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 80 — `safe_fetch` response close 收口 — 完成
+
+- **目的**：关闭 R71/R73 引入 `safe_fetch` 后的资源泄漏残余。`urlopen()` 返回 response 之前未显式 close，正常 return / max_bytes 异常 / read 异常路径都可能泄漏 socket / fd。
+- **实现**：
+  - `app_utils.py:safe_fetch` 将 `opener.open()` 返回值改为 `raw_resp`，并用 `with raw_resp as resp:` 包住 read loop、`final_url` 获取和 return。
+  - HTTPError redirect / non-redirect 处理保持原样；不改 redirect、SSRF、auth strip、caller、参数或 helper。
+  - 为既有 `tests/test_safe_fetch.py` 的 `RawResponse` test double 补 context manager 支持以匹配 stdlib response 行为。
+- **测试**：新增 `tests/test_safe_fetch_close.py` 3 测试，覆盖正常路径、max_bytes 截断、read 异常三种路径均执行 `__exit__`。
+- **Stop Lines**：0 redirect / SSRF / auth strip 改动 / 0 caller 改动 / 0 DNS pinning / 0 新 helper 或参数。
+- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1675 unit + coverage 92%）。
 
 ### Round 79 — `auto_adopt_*` 顶层 lock 收口 — 完成
 

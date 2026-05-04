@@ -804,7 +804,7 @@ def safe_fetch(
         for key, value in current_headers.items():
             req.add_header(key, value)
         try:
-            resp = opener.open(req, timeout=timeout)
+            raw_resp = opener.open(req, timeout=timeout)
         except HTTPError as exc:
             if exc.code in (301, 302, 303, 307, 308):
                 if redirects >= max_redirects:
@@ -816,18 +816,19 @@ def safe_fetch(
                 redirects += 1
                 continue
             raise
-        chunks: list[bytes] = []
-        total = 0
-        while True:
-            chunk = resp.read(min(65536, max_bytes - total + 1))
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > max_bytes:
-                raise FetchPolicyError(f"response exceeds max_bytes={max_bytes}")
-            chunks.append(chunk)
-        final_url = resp.geturl() if hasattr(resp, "geturl") else current
-        return b"".join(chunks), _validate_safe_url(final_url, allow_private=allow_private)
+        with raw_resp as resp:
+            chunks: list[bytes] = []
+            total = 0
+            while True:
+                chunk = resp.read(min(65536, max_bytes - total + 1))
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise FetchPolicyError(f"response exceeds max_bytes={max_bytes}")
+                chunks.append(chunk)
+            final_url = resp.geturl() if hasattr(resp, "geturl") else current
+            return b"".join(chunks), _validate_safe_url(final_url, allow_private=allow_private)
 
 
 class _NoRedirectHandler(__import__("urllib.request", fromlist=["HTTPRedirectHandler"]).HTTPRedirectHandler):
