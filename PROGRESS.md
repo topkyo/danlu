@@ -39,8 +39,23 @@
 | **Round 80 safe_fetch response close** (2026-05-04) | `safe_fetch` urlopen response 用 with 包住 read+return / 3 close-path tests / R71-R73 残余关闭 | ✅ done |
 | **Round 81 citation snapshot path guard** (2026-05-04) | `citation-snapshot-refresh` 加 `safe_resolve_within` + wiki/judgments|decisions 白名单 / 4 unit | ✅ done |
 | **Round 82 citation revert guard 对称收口** (2026-05-04) | `revert_machine_memory_action` citation 分支复用同 helper / R81 follow-up 单点 1 行 | ✅ done |
+| **Round 83 safe_fetch DNS pinning + host allowlist** (2026-05-05) | custom HTTP/HTTPS connection pinned-IP connect / proxy 禁用 / SNI 保留 / opt-in allowlist via env / 11 unit | ✅ done |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 83 — `safe_fetch` DNS pinning + host allowlist — 完成
+
+- **目的**：堵 DNS rebinding 漏洞 + 加 host allowlist opt-in 加固。R71 validate 阶段 `getaddrinfo` 一次、stdlib `urlopen` connect 时再独立查一次，两次答案可能切换（public→private）；POST + API key 在 connect 时已发出，后验校验来不及。延续 R71/R73/R80 SSRF 主线。
+- **实现**：
+  - `app_utils.py` 新增 `_PinnedAddress` (NamedTuple)、`_PinnedHTTPConnection` / `_PinnedHTTPSConnection` (override `connect()`：从 pinned IP 直连；HTTPS `wrap_socket(sock, server_hostname=hostname)` 保留 SNI 和证书校验)、`_PinnedHTTPHandler` / `_PinnedHTTPSHandler` (handler 注入 connection class)。
+  - `_resolve_and_check_host(host, port, *, allow_private)` 一次 `getaddrinfo`，IPv4-mapped IPv6 normalize，pinned set 任一 private → `FetchPolicyError`；返回 pinned list。
+  - `_validate_safe_url(..., enforce_allowlist=False)` 返回 `tuple[str, list[_PinnedAddress]]`；allowlist 检查 opt-in，`safe_fetch` 三处调用传 `enforce_allowlist=True`，drop.py browser renderer guard (drop.py:622, drop.py:750) 不传参 → allowlist 不生效，行为完全不变（守 stop line）。
+  - 环境变量 `AIWIKI_SAFE_FETCH_HOST_ALLOWLIST` 逗号分隔 exact lowercase host，空 / unset 不启用，与 `allow_private` 独立。
+  - `safe_fetch` 每跳 redirect 重新 validate + pin + allowlist check；每跳重建 opener 注入新 pinned IP；`build_opener(ProxyHandler({}), _NoRedirectHandler(), _PinnedHTTPHandler(pinned_ip), _PinnedHTTPSHandler(pinned_ip))` 显式禁用 proxy（stop line）。
+  - 公共签名 `(bytes, str)` 返回不变；caller (llm.py / notify.py / drop.py) 0 改动。
+- **测试**：新增 `tests/test_safe_fetch_pinning.py` 11 测试（DNS private 拒绝 / public pinned / DNS rebinding 防护 / HTTPS SNI 保留 / allowlist unset+match+mismatch+redirect 跨边界 / proxy env 被忽略 / drop.py 路径 allowlist 不生效 / enforce_allowlist=True 时拒绝）；既有 `test_safe_fetch.py` / `test_safe_fetch_close.py` 适配新内部返回值；`test_llm` / `test_notify` / `test_drop` 不破。
+- **Stop Lines**：0 caller 改动 / 0 公共签名改动 / 0 schema 改动 / 0 browser renderer 改动 / 0 第三方依赖 / 不隐式降级回 stdlib 默认 connection / 不静默吞错。
+- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1690 unit + coverage 92%）；oracle qa-review fail-then-fix（1 blocker → 清零 → PASS），blocker = allowlist 越 stop line 影响 drop.py，修复 = `enforce_allowlist` opt-in 参数。
 
 ### Round 82 — `revert_machine_memory_action` citation 分支对称收口 — 完成
 
@@ -61,17 +76,6 @@
 - **测试**：新增 `tests/test_citation_snapshot_guard.py` 4 测试，覆盖 `wiki/judgments` / `wiki/decisions` 合法、`wiki/sources` 拒绝、`../` traversal 拒绝。
 - **Stop Lines**：0 其他 machine_memory action 分支改动 / 0 producer 链路改动 / 0 全局守护框架 / 0 schema 改动。
 - **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1679 unit + coverage 92%）。
-
-### Round 80 — `safe_fetch` response close 收口 — 完成
-
-- **目的**：关闭 R71/R73 引入 `safe_fetch` 后的资源泄漏残余。`urlopen()` 返回 response 之前未显式 close，正常 return / max_bytes 异常 / read 异常路径都可能泄漏 socket / fd。
-- **实现**：
-  - `app_utils.py:safe_fetch` 将 `opener.open()` 返回值改为 `raw_resp`，并用 `with raw_resp as resp:` 包住 read loop、`final_url` 获取和 return。
-  - HTTPError redirect / non-redirect 处理保持原样；不改 redirect、SSRF、auth strip、caller、参数或 helper。
-  - 为既有 `tests/test_safe_fetch.py` 的 `RawResponse` test double 补 context manager 支持以匹配 stdlib response 行为。
-- **测试**：新增 `tests/test_safe_fetch_close.py` 3 测试，覆盖正常路径、max_bytes 截断、read 异常三种路径均执行 `__exit__`。
-- **Stop Lines**：0 redirect / SSRF / auth strip 改动 / 0 caller 改动 / 0 DNS pinning / 0 新 helper 或参数。
-- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1675 unit + coverage 92%）。
 
 ### Round 77 — `_append_llm_receipt` 事务化 — 完成
 

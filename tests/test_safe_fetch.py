@@ -86,13 +86,18 @@ class SafeFetchTests(unittest.TestCase):
             _validate_safe_url("file:///tmp/file")
 
     def test_validate_safe_url_policy(self) -> None:
-        with patch.object(utils, "_is_private_address", side_effect=lambda host: host in {"localhost", "127.0.0.1"}):
-            self.assertEqual(_validate_safe_url("https://example.com/a"), "https://example.com/a")
+        def fake_resolve(host, port, *, allow_private):
+            if host in {"localhost", "127.0.0.1"} and not allow_private:
+                raise FetchPolicyError(f"private/link-local host rejected: {host}")
+            return [utils._PinnedAddress(socket.AF_INET, "93.184.216.34")]
+
+        with patch.object(utils, "_resolve_and_check_host", side_effect=fake_resolve):
+            self.assertEqual(_validate_safe_url("https://example.com/a")[0], "https://example.com/a")
             with self.assertRaises(FetchPolicyError):
                 _validate_safe_url("http://localhost/")
             with self.assertRaises(FetchPolicyError):
                 _validate_safe_url("http:///missing")
-            self.assertEqual(_validate_safe_url("http://127.0.0.1/", allow_private=True), "http://127.0.0.1/")
+            self.assertEqual(_validate_safe_url("http://127.0.0.1/", allow_private=True)[0], "http://127.0.0.1/")
 
     def _server(self):
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -152,7 +157,9 @@ class SafeFetchTests(unittest.TestCase):
             def open(self, *_args, **_kwargs):
                 raise TimeoutError("timed out")
 
-        with patch.object(urllib.request, "build_opener", return_value=SlowOpener()):
+        with patch.object(urllib.request, "build_opener", return_value=SlowOpener()), patch.object(
+            utils, "_resolve_and_check_host", return_value=[utils._PinnedAddress(socket.AF_INET, "93.184.216.34")]
+        ):
             with self.assertRaises(TimeoutError):
                 safe_fetch("http://example.com/", max_bytes=100, timeout=0.001, allow_private=True)
 
@@ -191,9 +198,7 @@ class SafeFetchTests(unittest.TestCase):
                 return RawResponse(req.full_url, b"ok")
 
         with patch.object(urllib.request, "build_opener", return_value=RedirectingOpener()), patch.object(
-            utils,
-            "_is_private_address",
-            return_value=False,
+            utils, "_resolve_and_check_host", return_value=[utils._PinnedAddress(socket.AF_INET, "93.184.216.34")]
         ):
             safe_fetch(
                 "http://example.com/start",
@@ -219,9 +224,7 @@ class SafeFetchTests(unittest.TestCase):
                 return RawResponse(req.full_url, b"ok")
 
         with patch.object(urllib.request, "build_opener", return_value=RedirectingOpener()), patch.object(
-            utils,
-            "_is_private_address",
-            return_value=False,
+            utils, "_resolve_and_check_host", return_value=[utils._PinnedAddress(socket.AF_INET, "93.184.216.34")]
         ):
             safe_fetch(
                 "http://example.com/start",

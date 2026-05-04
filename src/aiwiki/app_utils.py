@@ -13,20 +13,23 @@ import fcntl
 import functools
 import hashlib
 import html
+import http.client
 import ipaddress
 import json
 import logging
 import os
 import re
 import socket
+import ssl
 import tempfile
 import threading
 import time
+import urllib.request
 from collections import deque
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 
@@ -717,6 +720,11 @@ class PathOutsideWorkspaceError(ValueError):
     """Raised when a resolved path falls outside the allowed workspace root."""
 
 
+class _PinnedAddress(NamedTuple):
+    family: int
+    ip: str
+
+
 _PRIVATE_NETS_V4 = (
     ipaddress.ip_network("127.0.0.0/8"),
     ipaddress.ip_network("10.0.0.0/8"),
@@ -733,13 +741,80 @@ _PRIVATE_NETS_V6 = (
 )
 
 
-def _is_private_address(host: str) -> bool:
-    """Resolve `host` and return True if any A/AAAA record is private/link-local."""
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    def __init__(self, host, *args, _pinned_ip: str | None = None, **kwargs):
+        super().__init__(host, *args, **kwargs)
+        self._pinned_ip = _pinned_ip
+
+    def connect(self):
+        if not self._pinned_ip:
+            raise FetchPolicyError("missing pinned IP")
+        self.sock = socket.create_connection((self._pinned_ip, self.port), self.timeout, self.source_address)
+        if self._tunnel_host:
+            self._tunnel()
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    def __init__(self, host, *args, _pinned_ip: str | None = None, **kwargs):
+        super().__init__(host, *args, **kwargs)
+        self._pinned_ip = _pinned_ip
+
+    def connect(self):
+        if not self._pinned_ip:
+            raise FetchPolicyError("missing pinned IP")
+        sock = socket.create_connection((self._pinned_ip, self.port), self.timeout, self.source_address)
+        if self._tunnel_host:
+            self.sock = sock
+            self._tunnel()
+            sock = self.sock
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+
+
+class _PinnedHTTPHandler(urllib.request.HTTPHandler):
+    def __init__(self, pinned_ip: str):
+        super().__init__()
+        self._pinned_ip = pinned_ip
+
+    def http_open(self, req):
+        return self.do_open(self._make_connection, req)
+
+    def _make_connection(self, host, *args, **kwargs):
+        return _PinnedHTTPConnection(host, *args, _pinned_ip=self._pinned_ip, **kwargs)
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    def __init__(
+        self,
+        pinned_ip: str,
+        debuglevel: int = 0,
+        context: ssl.SSLContext | None = None,
+        check_hostname: bool | None = None,
+    ):
+        super().__init__(debuglevel=debuglevel, context=context, check_hostname=check_hostname)
+        self._pinned_ip = pinned_ip
+
+    def https_open(self, req):
+        return self.do_open(self._make_connection, req, context=self._context, check_hostname=self._check_hostname)
+
+    def _make_connection(self, host, *args, **kwargs):
+        return _PinnedHTTPSConnection(host, *args, _pinned_ip=self._pinned_ip, **kwargs)
+
+
+def _ip_is_private_or_link_local(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    if isinstance(ip, ipaddress.IPv4Address):
+        return any(ip in net for net in _PRIVATE_NETS_V4)
+    return any(ip in net for net in _PRIVATE_NETS_V6)
+
+
+def _resolve_and_check_host(host: str, port: int | None, *, allow_private: bool) -> list[_PinnedAddress]:
+    """Resolve host once, reject private/link-local answers unless allowed, and return pinned IPs."""
     try:
-        infos = socket.getaddrinfo(host, None)
+        infos = socket.getaddrinfo(host, port)
     except socket.gaierror as exc:
         raise FetchPolicyError(f"DNS resolution failed for {host!r}: {exc}") from exc
-    for _family, _type, _proto, _canon, sockaddr in infos:
+    pinned: list[_PinnedAddress] = []
+    seen: set[tuple[int, str]] = set()
+    for family, _type, _proto, _canon, sockaddr in infos:
         addr = sockaddr[0].split("%")[0]
         try:
             ip = ipaddress.ip_address(addr)
@@ -748,25 +823,57 @@ def _is_private_address(host: str) -> bool:
         # Normalize IPv4-mapped IPv6 (::ffff:x.x.x.x) to IPv4 to avoid bypass.
         if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
             ip = ip.ipv4_mapped
-        if isinstance(ip, ipaddress.IPv4Address):
-            if any(ip in net for net in _PRIVATE_NETS_V4):
-                return True
-        elif any(ip in net for net in _PRIVATE_NETS_V6):
+            family = socket.AF_INET
+        if _ip_is_private_or_link_local(ip) and not allow_private:
+            raise FetchPolicyError(f"private/link-local host rejected: {host}")
+        item = (family, str(ip))
+        if item not in seen:
+            seen.add(item)
+            pinned.append(_PinnedAddress(family=family, ip=str(ip)))
+    if not pinned:
+        raise FetchPolicyError(f"DNS resolution returned no usable addresses for {host!r}")
+    return pinned
+
+
+def _is_private_address(host: str) -> bool:
+    """Resolve `host` and return True if any A/AAAA record is private/link-local."""
+    try:
+        _resolve_and_check_host(host, None, allow_private=False)
+    except FetchPolicyError as exc:
+        if "private/link-local" in str(exc):
             return True
+        raise
     return False
 
 
-def _validate_safe_url(url: str, *, allow_private: bool = False) -> str:
-    """Validate scheme + host policy. Returns normalized url."""
+def _get_safe_fetch_host_allowlist() -> frozenset[str]:
+    raw = os.environ.get("AIWIKI_SAFE_FETCH_HOST_ALLOWLIST", "")
+    return frozenset(item.strip().lower() for item in raw.split(",") if item.strip())
+
+
+def _validate_safe_url(
+    url: str,
+    *,
+    allow_private: bool = False,
+    enforce_allowlist: bool = False,
+) -> tuple[str, list[_PinnedAddress]]:
+    """Validate scheme + host policy. Returns normalized url and pinned addresses.
+
+    `enforce_allowlist` is opt-in for `safe_fetch` only; browser renderer guards
+    in `drop.py` keep their original behavior (allowlist is a fetch-only knob).
+    """
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise FetchPolicyError(f"only http(s) scheme allowed, got {parsed.scheme!r}")
     host = parsed.hostname
     if not host:
         raise FetchPolicyError(f"missing host in url: {url!r}")
-    if not allow_private and _is_private_address(host):
-        raise FetchPolicyError(f"private/link-local host rejected: {host}")
-    return url
+    if enforce_allowlist:
+        allowlist = _get_safe_fetch_host_allowlist()
+        if allowlist and host.lower() not in allowlist:
+            raise FetchPolicyError(f"host not in allowlist: {host}")
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    return url, _resolve_and_check_host(host, port, allow_private=allow_private)
 
 
 def safe_fetch(
@@ -781,21 +888,26 @@ def safe_fetch(
     max_redirects: int = 5,
 ) -> tuple[bytes, str]:
     """HTTP/HTTPS fetch with SSRF defense + size cap."""
-    import urllib.request
     from urllib.parse import urljoin
 
     def _strip_auth_headers(source: dict[str, str]) -> dict[str, str]:
         sensitive = {"authorization", "x-api-key", "cookie"}
         return {key: value for key, value in source.items() if key.lower() not in sensitive}
 
-    current = _validate_safe_url(url, allow_private=allow_private)
+    current, pinned_list = _validate_safe_url(url, allow_private=allow_private, enforce_allowlist=True)
     current_headers = dict(headers or {})
     if not any(key.lower() == "user-agent" for key in current_headers):
         current_headers["User-Agent"] = "aiwiki/0.1 (+https://local)"
     redirects = 0
     previous_host: str | None = None
-    opener = urllib.request.build_opener(_NoRedirectHandler())
     while True:
+        pinned_ip = pinned_list[0].ip
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({}),
+            _NoRedirectHandler(),
+            _PinnedHTTPHandler(pinned_ip),
+            _PinnedHTTPSHandler(pinned_ip),
+        )
         current_host = urlparse(current).hostname
         if previous_host is not None and current_host != previous_host:
             current_headers = _strip_auth_headers(current_headers)
@@ -812,7 +924,7 @@ def safe_fetch(
                 location = exc.headers.get("Location")
                 if not location:
                     raise
-                current = _validate_safe_url(urljoin(current, location), allow_private=allow_private)
+                current, pinned_list = _validate_safe_url(urljoin(current, location), allow_private=allow_private, enforce_allowlist=True)
                 redirects += 1
                 continue
             raise
@@ -828,7 +940,8 @@ def safe_fetch(
                     raise FetchPolicyError(f"response exceeds max_bytes={max_bytes}")
                 chunks.append(chunk)
             final_url = resp.geturl() if hasattr(resp, "geturl") else current
-            return b"".join(chunks), _validate_safe_url(final_url, allow_private=allow_private)
+            safe_final_url, _ = _validate_safe_url(final_url, allow_private=allow_private, enforce_allowlist=True)
+            return b"".join(chunks), safe_final_url
 
 
 class _NoRedirectHandler(__import__("urllib.request", fromlist=["HTTPRedirectHandler"]).HTTPRedirectHandler):
