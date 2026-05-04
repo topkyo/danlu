@@ -68,7 +68,6 @@ from ..app_content import (
     frontmatter_string_list,
     judgment_lifecycle_profile,
     knowledge_lifecycle_governance_summary,
-    load_execution_receipt_history,
     manifest_change_summary,
     normalize_concept_hardness,
     pilot_scorecards_dir,
@@ -302,6 +301,7 @@ from ..app_utils import (
     write_json_document_if_changed_ignoring_generated_timestamps,
 )
 from ..config import LLMConfig
+from ..content.memory import load_execution_receipt_history_strict
 from .core import _LintContext
 
 _REVIEW_LIFECYCLE_OVERRIDE_STATES = {"active", "deferred", "review"}
@@ -559,7 +559,7 @@ def _lint_runtime_phase(context: _LintContext) -> None:
             consistency_signals = collect_execution_consistency_signals(
                 context.root,
                 [dict(action) for action in action_state.get("actions", []) if isinstance(action, dict)],
-                load_execution_receipt_history(context.root),
+                load_execution_receipt_history_strict(context.root),
             )
             for signal in consistency_signals:
                 context.add(

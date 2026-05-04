@@ -68,7 +68,6 @@ from ..app_content import (
     frontmatter_string_list,
     judgment_lifecycle_profile,
     knowledge_lifecycle_governance_summary,
-    load_execution_receipt_history,
     manifest_change_summary,
     normalize_concept_hardness,
     pilot_scorecards_dir,
@@ -300,6 +299,7 @@ from ..app_utils import (
     write_json_document_if_changed_ignoring_generated_timestamps,
 )
 from ..config import LLMConfig
+from ..content.memory import load_execution_receipt_history_strict
 from .core import pending_source_summary_ids
 from .repair import render_repair_backlog
 
@@ -714,7 +714,7 @@ def refresh_nightly_planner_execution_state(
             },
         )
 
-    for receipt in load_execution_receipt_history(root):
+    for receipt in load_execution_receipt_history_strict(root):
         if not isinstance(receipt, dict) or str(receipt.get("operation") or "") != "apply":
             continue
         action_id = str(receipt.get("action_id") or "")

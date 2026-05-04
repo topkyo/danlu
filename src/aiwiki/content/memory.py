@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from ..app_protocol import (
     protocol_execution_policy_rule,
 )
 from ..app_state import (
+    CorruptStateError,
     execution_policy_log_path,
     execution_receipt_history_path,
     load_machine_memory_action_state,
@@ -47,6 +49,8 @@ from .concepts import (
     parse_causal_links,
 )
 from .io import preserved_section, source_summary_or_preview, sync_manifest_with_raw
+
+logger = logging.getLogger(__name__)
 
 
 def machine_memory_source_input_signature(
@@ -576,21 +580,78 @@ def execution_policy_decision_record(
 
 
 def load_execution_policy_decision_history(root: Path, *, limit: int | None = None) -> list[dict[str, Any]]:
+    """Best-effort execution-policy decision history loader.
+
+    Failure mode: malformed JSONL rows or non-dict records are skipped and
+    exposed via logger.warning. The function never raises those row-level
+    corruption errors to callers; it returns the remaining valid records.
+    """
     path = execution_policy_log_path(root)
     if not path.exists():
         return []
     records: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as handle:
-        for raw_line in handle:
+        for line_no, raw_line in enumerate(handle, start=1):
             line = raw_line.strip()
             if not line:
                 continue
             try:
                 record = json.loads(line)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
+                logger.warning(
+                    "execution-policy decisions JSONL skip corrupt line: path=%s line_no=%d reason=%s",
+                    path,
+                    line_no,
+                    type(exc).__name__,
+                )
                 continue
             if isinstance(record, dict):
                 records.append(record)
+            else:
+                logger.warning(
+                    "execution-policy decisions JSONL skip non-dict line: path=%s line_no=%d type=%s",
+                    path,
+                    line_no,
+                    type(record).__name__,
+                )
+    records.reverse()
+    if limit is None:
+        return records
+    return records[:limit]
+
+
+def load_execution_policy_decision_history_strict(root: Path, *, limit: int | None = None) -> list[dict[str, Any]]:
+    """Strict variant for fact-layer / decision paths.
+
+    Raises CorruptStateError on malformed JSONL or non-dict records. Missing
+    file returns []; that is not corruption. Use only on fact-layer paths
+    (nightly aggregation, lint phases, execution-audit surfaces). UI/dashboard
+    should keep best-effort load_execution_policy_decision_history.
+    """
+    path = execution_policy_log_path(root)
+    if not path.exists():
+        return []
+    records: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line_no, raw_line in enumerate(handle, start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise CorruptStateError(
+                    path=path,
+                    reason=f"corrupt execution-policy decisions JSONL at {path}:{line_no}: {exc}",
+                    line_number=line_no,
+                ) from exc
+            if not isinstance(record, dict):
+                raise CorruptStateError(
+                    path=path,
+                    reason=f"non-dict execution-policy decisions JSONL row at {path}:{line_no}",
+                    line_number=line_no,
+                )
+            records.append(record)
     records.reverse()
     if limit is None:
         return records
@@ -607,20 +668,76 @@ def append_execution_policy_decisions(root: Path, decisions: list[dict[str, Any]
 
 
 def load_execution_receipt_history(root: Path) -> list[dict[str, Any]]:
+    """Best-effort execution receipt history loader.
+
+    Failure mode: malformed JSONL rows, replacement-decoded bad UTF-8, or
+    non-dict records are skipped and exposed via logger.warning. The function
+    never raises those row-level corruption errors to callers; it returns the
+    remaining valid execution-receipt records.
+    """
     path = execution_receipt_history_path(root)
     if not path.exists():
         return []
     records: list[dict[str, Any]] = []
-    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    for line_no, raw_line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
         line = raw_line.strip()
         if not line:
             continue
         try:
             payload = json.loads(line)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "execution-receipts JSONL skip corrupt line: path=%s line_no=%d reason=%s",
+                path,
+                line_no,
+                type(exc).__name__,
+            )
             continue
         if isinstance(payload, dict) and str(payload.get("kind") or "") == "execution-receipt":
             records.append(payload)
+        elif not isinstance(payload, dict):
+            logger.warning(
+                "execution-receipts JSONL skip non-dict line: path=%s line_no=%d type=%s",
+                path,
+                line_no,
+                type(payload).__name__,
+            )
+    return list(reversed(records))
+
+
+def load_execution_receipt_history_strict(root: Path) -> list[dict[str, Any]]:
+    """Strict variant for fact-layer / decision paths.
+
+    Raises CorruptStateError on malformed JSONL or non-dict records. Missing
+    file returns []; that is not corruption. Invalid UTF-8 raises
+    UnicodeDecodeError naturally. UI/dashboard should keep best-effort
+    load_execution_receipt_history.
+    """
+    path = execution_receipt_history_path(root)
+    if not path.exists():
+        return []
+    records: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line_no, raw_line in enumerate(handle, start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise CorruptStateError(
+                    path=path,
+                    reason=f"corrupt execution-receipts JSONL at {path}:{line_no}: {exc}",
+                    line_number=line_no,
+                ) from exc
+            if not isinstance(payload, dict):
+                raise CorruptStateError(
+                    path=path,
+                    reason=f"non-dict execution-receipts JSONL row at {path}:{line_no}",
+                    line_number=line_no,
+                )
+            if str(payload.get("kind") or "") == "execution-receipt":
+                records.append(payload)
     return list(reversed(records))
 
 

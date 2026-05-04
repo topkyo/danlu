@@ -21,8 +21,6 @@ from ..app_content import (
     display_rewrite_proposal_status,
     execution_band_label,
     execution_policy_profile,
-    load_execution_policy_decision_history,
-    load_execution_receipt_history,
     rewrite_proposal_is_apply_ready,
     rewrite_proposal_needs_review,
     rewrite_proposal_status_rank,
@@ -52,6 +50,7 @@ from ..app_utils import (
     sha256_bytes,
     slugify,
 )
+from ..content.memory import load_execution_policy_decision_history_strict, load_execution_receipt_history_strict
 from ..render.html_theme import html_meta_theme, html_theme_css
 
 
@@ -534,8 +533,8 @@ def build_execution_audit_snapshot(root: Path, memory: dict[str, Any], *, active
     actions = [dict(action) for action in health.get("actions", []) if isinstance(action, dict)]
     inactive_actions = [dict(action) for action in health.get("inactive_actions", []) if isinstance(action, dict)]
     all_actions = actions + inactive_actions
-    history = load_execution_receipt_history(root)
-    policy_history = load_execution_policy_decision_history(root, limit=16)
+    history = load_execution_receipt_history_strict(root)
+    policy_history = load_execution_policy_decision_history_strict(root, limit=16)
     recent_apply = [record for record in history if str(record.get("operation") or "") == "apply"][:8]
     recent_revert = [record for record in history if str(record.get("operation") or "") == "revert"][:8]
     recent_by_protocol: dict[str, dict[str, list[dict[str, Any]]]] = {
