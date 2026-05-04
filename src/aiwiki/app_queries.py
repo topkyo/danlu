@@ -1,4 +1,9 @@
-"""Query/report/slides/memo rendering helpers extracted from app_compile."""
+"""Query/report/slides/memo rendering helpers extracted from app_compile.
+
+OWNER STATUS: legacy owner. New large logic blocks should be extracted to a
+dedicated subpackage (e.g. `aiwiki.queries.*` or `aiwiki.render.*`) rather
+than added here. See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 

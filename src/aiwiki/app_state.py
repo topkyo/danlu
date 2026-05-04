@@ -1,4 +1,11 @@
-"""Phase 0 path/state helpers extracted from aiwiki.app."""
+"""Phase 0 path/state helpers extracted from aiwiki.app.
+
+OWNER STATUS: legacy owner. CENTRAL HUB - extra caution required.
+Single source of truth for global state I/O; almost every module depends on it.
+Do not refactor this file casually. New large logic blocks should be extracted
+to a dedicated subpackage (e.g. `aiwiki.state.*`) rather than added here.
+See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 

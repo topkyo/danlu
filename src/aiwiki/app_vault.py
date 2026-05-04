@@ -1,4 +1,9 @@
-"""Vault bootstrap helpers for new 炼丹炉 workspaces."""
+"""Vault bootstrap helpers for new 炼丹炉 workspaces.
+
+OWNER STATUS: legacy owner. New large logic blocks should be extracted to a
+dedicated subpackage (e.g. `aiwiki.vault.*`) rather than added here.
+See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 

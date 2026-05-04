@@ -1,4 +1,8 @@
-"""Machine-memory query and routing helpers split from surfaces."""
+"""Machine-memory query and routing helpers split from surfaces.
+
+OWNER STATUS: legacy owner. New large logic blocks should be extracted to
+`aiwiki.memory.*` rather than added here. See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,9 @@
-"""Lifecycle, governance, and curated-page helpers extracted from app_content."""
+"""Lifecycle, governance, and curated-page helpers extracted from app_content.
+
+OWNER STATUS: legacy owner. New large logic blocks should be extracted to a
+dedicated subpackage (e.g. `aiwiki.lifecycle.*`) rather than added here.
+See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 

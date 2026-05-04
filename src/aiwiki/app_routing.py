@@ -1,4 +1,9 @@
-"""Material routing and archive-candidate helpers extracted from app_memory."""
+"""Material routing and archive-candidate helpers extracted from app_memory.
+
+OWNER STATUS: legacy owner. New large logic blocks should be extracted to a
+dedicated subpackage (e.g. `aiwiki.routing.*`) rather than added here.
+See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,8 @@
-"""Protocol, promotion, and agent-pack helpers extracted from app_compile."""
+"""Protocol, promotion, and agent-pack helpers extracted from app_compile.
+
+OWNER STATUS: legacy owner. New large logic blocks should be extracted to
+`aiwiki.compile.*` rather than added here. See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,9 @@
-"""Dashboard and shell-facing render surface owners."""
+"""Dashboard and shell-facing render surface owners.
+
+OWNER STATUS: legacy owner. HIGH-ROI extraction target - see AGENTS.md.
+New large logic blocks should be extracted to `aiwiki.render.*` or
+`aiwiki.app_shell.*` rather than added here. See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 

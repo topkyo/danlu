@@ -1,4 +1,9 @@
-"""Stable runtime type declarations for cross-module contracts."""
+"""Stable runtime type declarations for cross-module contracts.
+
+OWNER STATUS: stable utility owner. Small, broadly imported; treat as a
+shared types module. Add new TypedDicts/protocols here only if they are
+genuinely cross-module contracts. See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 

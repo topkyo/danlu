@@ -1,4 +1,11 @@
-"""Protocol/runtime base extracted from aiwiki.app."""
+"""Protocol/runtime base extracted from aiwiki.app.
+
+OWNER STATUS: legacy owner. CENTRAL HUB - extra caution required.
+New large logic blocks should be extracted to a dedicated subpackage
+(e.g. `aiwiki.protocol.*`) rather than added here. See AGENTS.md migration
+policy. Do not refactor this file casually: it is depended on by most other
+modules and circular-import risk is high.
+"""
 
 from __future__ import annotations
 

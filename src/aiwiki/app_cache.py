@@ -1,4 +1,9 @@
-"""Volatile SQLite cache owner for machine-memory query acceleration."""
+"""Volatile SQLite cache owner for machine-memory query acceleration.
+
+OWNER STATUS: legacy owner. New large logic blocks should be extracted to a
+dedicated subpackage (e.g. `aiwiki.cache.*`) rather than added here.
+See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 

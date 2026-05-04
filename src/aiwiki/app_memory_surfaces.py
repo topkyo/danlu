@@ -1,5 +1,9 @@
 """Machine-memory query and render surfaces facade.
 
+OWNER STATUS: facade. DO NOT ADD LOGIC HERE.
+New code must import from `aiwiki.memory.*` (primary owner) directly.
+This file exists only to preserve external import paths and test patch seams.
+
 All renderers have been extracted to the ``aiwiki.memory`` package
 (EP-017B steps 1-4). This module now acts as a thin facade that
 re-exports symbols from the submodules plus legacy query helpers

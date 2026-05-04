@@ -1,4 +1,9 @@
-"""Output-pack, dashboard-index, and pack/path helpers extracted from app_content."""
+"""Output-pack, dashboard-index, and pack/path helpers extracted from app_content.
+
+OWNER STATUS: facade. DO NOT ADD LOGIC HERE.
+New code must import from `aiwiki.render.*` (primary owner) directly.
+This file exists only to preserve external import paths and test patch seams.
+"""
 
 # ruff: noqa: I001
 

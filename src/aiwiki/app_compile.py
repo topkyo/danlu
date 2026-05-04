@@ -1,4 +1,8 @@
-"""Top-level orchestration extracted from aiwiki.app."""
+"""Top-level orchestration extracted from aiwiki.app.
+
+OWNER STATUS: legacy owner. New large logic blocks should be extracted to
+`aiwiki.compile.*` rather than added here. See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,10 @@
-"""Phase 0 utility helpers extracted from aiwiki.app."""
+"""Phase 0 utility helpers extracted from aiwiki.app.
+
+OWNER STATUS: legacy owner. CENTRAL HUB - extra caution required.
+Imported by most modules; refactoring causes wide import churn.
+Do not refactor this file casually. New large logic blocks should be extracted
+to a dedicated subpackage rather than added here. See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 

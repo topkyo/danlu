@@ -1,5 +1,9 @@
 """Content/source/lifecycle logic extracted from aiwiki.app.
 
+OWNER STATUS: facade. DO NOT ADD LOGIC HERE.
+New code must import from `aiwiki.content.*` (primary owner) directly.
+This file exists only to preserve external import paths and test patch seams.
+
 EP-017C step 5: fully migrated. This module is now a thin facade that re-exports
 symbols from `.content.*` (primary owners), plus late re-exports from
 `.app_lifecycle` and `.app_render`. The only non-re-export imports below are

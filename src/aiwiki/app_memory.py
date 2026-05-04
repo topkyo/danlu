@@ -1,4 +1,8 @@
-"""Machine memory and execution snapshot logic extracted from aiwiki.app."""
+"""Machine memory and execution snapshot logic extracted from aiwiki.app.
+
+OWNER STATUS: legacy owner. New large logic blocks should be extracted to
+`aiwiki.memory.*` rather than added here. See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 

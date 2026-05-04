@@ -1,4 +1,8 @@
-"""Execution bundle and receipt assembly for apply/archive workflows."""
+"""Execution bundle and receipt assembly for apply/archive workflows.
+
+OWNER STATUS: legacy owner. New large logic blocks should be extracted to
+`aiwiki.execution.*` rather than added here. See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 
