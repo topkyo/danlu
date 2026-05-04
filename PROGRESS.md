@@ -24,11 +24,11 @@
 | **Round 64-66 UX Earnest** (2026-05-03) | 文件命名去时间戳 / 拖放修复 / 面板精简 / L3 自动采纳 / 图谱锚点链接化 / 导航树简化 / ask 移除 | ✅ 全部 done |
 | **Round 67 Auto-adopt Hardening** (2026-05-04) | judgment review / L3 audit / nightly aggregation / strict JSONL load | ✅ done (`6711efd`) |
 | **Round 67.5 Acceptance Fixture Refresh** (2026-05-04) | M6.1b prompt_hash drift refresh / fixture helper 文档化 | ✅ done (`284f8af`) |
-| **Round 68 Progress Slimming** (2026-05-04) | PROGRESS 三层瘦身 / rounds archive / index.json / stop_line_audit lint | ✅ done |
+| **Round 68 Progress Slimming** (2026-05-04) | PROGRESS 三层瘦身 / rounds archive / index.json / stop_line_audit lint | ✅ done (`2c408f9`) |
 
 ## 状态 — 当前活跃 3 轮
 
-### Round 68 — PROGRESS Three-Layer Slimming + stop_line_audit Lint — 完成
+### Round 68 — PROGRESS Three-Layer Slimming + stop_line_audit Lint — 完成 (commit 2c408f9)
 
 - **目的**: `PROGRESS.md` 从 1537 行瘦身到 ≤250 行，只保留 Quick Index、活跃 3 轮和改进方向。
 - **历史层**: 旧 round 详情迁移到 `archive/rounds/round-NN.md`，保留原始块语义。

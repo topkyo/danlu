@@ -1,9 +1,9 @@
 # Round 68 — PROGRESS three-layer slimming + stop_line_audit lint
 
 status: 完成
-commit:
+commit: 2c408f9
 
-Round 68 — PROGRESS three-layer slimming + stop_line_audit lint — 完成（commit hash 由后续 backfill commit 回填）
+Round 68 — PROGRESS three-layer slimming + stop_line_audit lint — 完成 (commit 2c408f9)
 - **目的**: 将 `PROGRESS.md` 从 1537 行瘦身到 ≤250 行，改为 Quick Index + 活跃 3 轮 + 改进方向指针。
 - **历史归档**: 54+ round 历史拆到 `archive/rounds/round-NN.md`，保留原始 round 块语义。
 - **机器索引**: 生成 `archive/rounds/index.json`，字段包含 `round_id` / `title` / `status` / `commit` / `archived_path` / `tags`。
