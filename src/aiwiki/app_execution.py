@@ -23,7 +23,7 @@ from .app_state import (
     material_state_path,
 )
 from .app_types import ExecutionBundle, ExecutionReceipt
-from .app_utils import atomic_append_jsonl, relative_path, sha256_bytes, slugify
+from .app_utils import atomic_append_jsonl, relative_path, runtime_write_operation, sha256_bytes, slugify
 from .render.paths import execution_receipt_path
 
 
@@ -510,6 +510,7 @@ def find_latest_elixir_promotion_receipt(root: Path, *, elixir_id: str) -> dict[
     return latest
 
 
+@runtime_write_operation
 def append_execution_receipt_history(root: Path, receipt: dict[str, Any]) -> None:
     path = execution_receipt_history_path(root)
     line_number = _next_jsonl_line_number(path)

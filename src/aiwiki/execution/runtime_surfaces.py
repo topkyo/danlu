@@ -27,7 +27,7 @@ from ..app_protocol import (
 )
 from ..app_shell import build_shell_summary, write_shell_summary
 from ..app_state import load_machine_memory_action_state, nightly_health_state_path
-from ..app_utils import relative_path, runtime_write_operation
+from ..app_utils import relative_path, runtime_write_lock, runtime_write_operation
 from ..compile import compile_wiki
 
 
@@ -38,6 +38,11 @@ def _append_run_event(root: Path, event: dict[str, Any]) -> None:
 
 
 def nightly_health(root: Path) -> dict[str, Any]:
+    with runtime_write_lock(root):
+        return _nightly_health_unlocked(root)
+
+
+def _nightly_health_unlocked(root: Path) -> dict[str, Any]:
     ensure_layout(root)
     compile_result = compile_wiki(root)
     promotion_result = promote_recurring_outputs(root)

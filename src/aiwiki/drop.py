@@ -22,6 +22,7 @@ from .app_utils import (
     first_markdown_heading,
     relative_path,
     render_frontmatter,
+    runtime_write_lock,
     safe_fetch,
     safe_resolve_within,
     slugify,
@@ -128,6 +129,11 @@ REPO_PRIORITY_FILES = (
 
 
 def drop_url(root: Path, url: str, title: str | None = None) -> dict[str, Any]:
+    with runtime_write_lock(root):
+        return _drop_url_unlocked(root, url, title)
+
+
+def _drop_url_unlocked(root: Path, url: str, title: str | None = None) -> dict[str, Any]:
     ensure_layout(root)
     fetched = _fetch_url(url, root=root)
     display_title = title or fetched["title"] or _label_from_url(fetched["final_url"])
@@ -192,6 +198,11 @@ def drop_url(root: Path, url: str, title: str | None = None) -> dict[str, Any]:
 
 
 def drop_pdf(root: Path, source: str, title: str | None = None) -> dict[str, Any]:
+    with runtime_write_lock(root):
+        return _drop_pdf_unlocked(root, source, title)
+
+
+def _drop_pdf_unlocked(root: Path, source: str, title: str | None = None) -> dict[str, Any]:
     ensure_layout(root)
     asset_path, original_path = _materialize_binary_source(root, source, preferred_slug=title or Path(source).stem)
     if asset_path.suffix.lower() != ".pdf":
@@ -254,6 +265,17 @@ def drop_pdf(root: Path, source: str, title: str | None = None) -> dict[str, Any
 
 
 def drop_image(
+    root: Path,
+    source: str,
+    title: str | None = None,
+    enable_vision: bool = True,
+    client: Any | None = None,
+) -> dict[str, Any]:
+    with runtime_write_lock(root):
+        return _drop_image_unlocked(root, source, title, enable_vision, client)
+
+
+def _drop_image_unlocked(
     root: Path,
     source: str,
     title: str | None = None,
@@ -353,6 +375,11 @@ def drop_image(
 
 
 def drop_repo(root: Path, source: str, title: str | None = None, max_files: int = 200) -> dict[str, Any]:
+    with runtime_write_lock(root):
+        return _drop_repo_unlocked(root, source, title, max_files)
+
+
+def _drop_repo_unlocked(root: Path, source: str, title: str | None = None, max_files: int = 200) -> dict[str, Any]:
     ensure_layout(root)
     cleanup_path: Path | None = None
     repo_path: Path
@@ -428,6 +455,19 @@ def drop_repo(root: Path, source: str, title: str | None = None, max_files: int 
 
 
 def drop_note(
+    root: Path,
+    source: str | None = None,
+    *,
+    title: str | None = None,
+    text: str | None = None,
+    kind: str = "note",
+    allow_sensitive: bool = False,
+) -> dict[str, Any]:
+    with runtime_write_lock(root):
+        return _drop_note_unlocked(root, source, title=title, text=text, kind=kind, allow_sensitive=allow_sensitive)
+
+
+def _drop_note_unlocked(
     root: Path,
     source: str | None = None,
     *,
