@@ -29,8 +29,22 @@
 | **Round 70 Receipt JSONL 事务化 + Revert 双 receipt** (2026-05-04) | 12 JSONL writers 全量原子化 / atomic_append_line 原语 / machine_memory revert 双 receipt + reverts/ 子目录 / receipt_path override / mock seam 清除 / R70.5 fixture refresh 归并 | ✅ done (`950f291`) |
 | **Round 71 Fetch & Path 安全** (2026-05-04) | safe_fetch + safe_resolve_within helpers / drop.py SSRF (private IP 表 + IPv4-mapped + redirect 复检) / 越界检查 / repo symlink 跳过 / Playwright page.route subresource 拦截 / 22 安全测试 | ✅ done (`a6074b9`) |
 | **Round 72 Lock 高优先级缺锁补齐** (2026-05-04) | drop_* 五入口 + nightly_health + append_execution_receipt_history 全加 runtime_write_lock / 抽 _unlocked helper 保签名 / 3 lock coverage 测试 | ✅ done (`addd53d`) |
+| **Round 73 LLM/notify HTTP 安全** (2026-05-04) | safe_fetch 扩展 POST + headers + redirect strip auth / llm.py 三处 + notify.py webhook 切换 / _LLM_MAX_BYTES 10MB + _NOTIFY_MAX_BYTES 1MB / 7 安全测试 | ✅ done (`c0cf944`) |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 73 — LLM Client + Notify HTTP 安全 — 完成 (commit c0cf944)
+
+- **目的**：把 R71 的 fetch 安全（private IP 拒绝 + redirect 复检 + max_bytes + 显式 timeout）贯通到 LLM client 与 notify webhook 路径。无人值守可信化主线第五轮（R69 原子写 → R70 receipt 事务化 → R71 drop fetch → R72 lock → R73 LLM/notify fetch）。
+- **实现**：
+  - `app_utils.safe_fetch` 扩展支持 `method="POST"` + `data: bytes | None` + `headers: dict | None`，签名返 `tuple[bytes, str]` (body, final_url)。redirect 跨 host 时 case-insensitive strip `Authorization` / `x-api-key` / `Cookie`；同 host 保留。显式 User-Agent 不被默认值覆盖。
+  - `llm.py` 三处裸 urlopen（OpenAI chat / OpenAI image / Anthropic messages）全切换；新增 `_LLM_MAX_BYTES = 10 * 1024 * 1024`；`FetchPolicyError -> LLMError("unsafe LLM endpoint: ...")`，原有 `HTTPError` / `URLError` 链不变。
+  - `notify.py` webhook 同样切换；`_NOTIFY_MAX_BYTES = 1 * 1024 * 1024`；`FetchPolicyError` 走 fail-soft audit 路径不 crash 调用方。
+  - drop.py R71 GET 调用方 `payload, final_url = safe_fetch(...)` 兼容（tuple 接口保持）。
+- **测试**：`tests/test_safe_fetch.py` 加 POST body/header + 跨 host strip auth + 同 host 保留 auth 三个；`tests/test_llm_safety.py`(3) + `tests/test_notify_safety.py`(1) 新建；`tests/test_llm.py` / `tests/test_notify.py` 既有 mock 迁移到 `safe_fetch`。
+- **Stop Lines**：0 第三方 SDK / 0 DNS pinning（推 R73+）/ 0 域名 allowlist / 0 backend 选择改动 / 0 streaming API。
+- **Residual Risks**：DNS rebinding（resolve→connect IP 变化）；TLS cert pinning 仍依赖系统 CA；域名仅黑名单未 allowlist；非阻断观察：`safe_fetch` response 未显式 `with`/`finally` close（建议未来清理）。
+- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1636 unit + coverage 92%）；oracle qa-review PASS（无 Critical/High/Medium）。
 
 ### Round 72 — Single-Writer Lock 高优先级缺锁补齐 — 完成 (commit addd53d)
 
@@ -56,35 +70,11 @@
 - **Residual Risks**：DNS rebinding（推 R73）、CLI render fallback 无 hook 能力（R71+ 视用量决定是否禁用 fallback）、HTTPS cert pinning（依赖 stdlib 默认）、CGN `100.64/10` 未拒绝（接受）。
 - **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1626 unit + coverage 92%）；oracle qa-review 经一轮 fail-then-fix（3 条 blocker → 全清零 → PASS）。
 
-### Round 70 — Receipt JSONL 事务化 + Revert 双 Receipt — 完成 (commit 950f291)
+### Round 74 — 候选方向（未启动）
 
-- **目的**：把 JSONL append 全量从 `path.open("a")` 直写迁到 R69 atomic helper；machine_memory revert 在 R67 单 receipt 基础上加 reverse-event receipt（双 receipt），让 audit/rollback 有完整事务证据。
-- **实现**：
-  - `src/aiwiki/app_utils.py` 新增 `atomic_append_line(path, line, *, fsync=True)` 单行原子 append 原语（拒绝嵌入 `\n`，自动建父目录），`atomic_append_jsonl` 保持 dict-only + sort_keys。
-  - 12 处 JSONL writer 全迁移：`app_state.append_runtime_history` / `app_execution.append_execution_receipt_history` / `runner/receipts._append_jsonl_log` / `metrics_history.append_snapshot` / `memory/graph.append_machine_memory_history` / `content/memory.append_execution_policy_decisions` / `drift_scan` runtime+signals / `planner/rollback` marker / `audit_preview.append_audit` + canonical writer `signals/collector` / `planner/log_writer` / `drift_scan` 走 `atomic_append_line`。
-  - `execution/machine_memory_actions.py` revert 写 `output/control/execution-receipts/reverts/<id>.json`（避开 forward receipt glob），payload 内 `receipt_path` override 与实际路径对齐；`metrics_io._receipt_json_paths()` 过滤 `reverts/` 子目录。
-  - `metrics_history.append_snapshot` 语义从 best-effort swallow 改为传播 fsync/IO 错误（与无人值守不静默吞错一致）。
-  - `runner/receipts.py` 删 `fsync=isinstance(log_path, Path)` 死表达式与 MagicMock seam；`tests/test_execution_compat.py` 两处 seam test 改用 `tempfile.TemporaryDirectory()` + `Path` 替代 MagicMock root。
-- **测试**：`tests/unit/test_atomic_io.py` 扩展 `atomic_append_line`（happy / fsync 失败 / 嵌入 `\n` raise / parent dir 自动建）；`tests/unit/test_machine_memory_revert_receipts.py` 新增双 receipt 验证；`test_app.py` / `test_metrics_history.py` / `test_runner.py` / `test_state_utils.py` 抽样 fsync 失败传播扩展。
-- **R70.5 归并**：M6.1b `case_backend_failure` fixture refresh（pre-existing prompt drift，与 R70 无关，借本轮归并，`f9b16282…` → `b6f002b9…`）。
-- **Stop Lines**：0 lock 实现改动 / 0 L3 自动采纳 / 0 fetch / 0 LLM client / 0 prompt builder / 0 receipt schema 改动 / 0 fact-layer 直写改动（`content/io.py:370` 推 R75）。
-- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1604 unit + coverage 92%，30 文件 complete coverage）；oracle qa-review 经一轮 fail-then-fix（5 条 blocker → 全清零 → 1 条 mock seam Medium → 修复后 PASS）。
-
-### Round 69 — Atomic State I/O Foundation — 完成 (commit 7ee3ab8)
-
-- **目的**：为炼丹炉建立原子写 + fsync 的状态 I/O 基础设施，作为 R70 receipt 事务化、R71 fetch 安全、R72 lock 全审计、R74 L3 硬护栏等"无人值守可信化"主线的最底层基石。
-- **实现**：`src/aiwiki/app_utils.py` 新增 `atomic_write_text(path, content, *, fsync=True)` + `atomic_append_jsonl(path, record, *, fsync=True)`，tmp+rename+fsync 全套语义，BaseException 也清 tmp。`src/aiwiki/app_state.py` 4 处 saver（`save_json_document` / `save_machine_memory_action_state` / `save_concept_rewrite_state` / `save_manual_link_state`）从 `path.write_text(...)` 直写迁移到 atomic helper。
-- **测试**：21 unit tests（`test_atomic_io.py` 16 + `test_app_state_atomic.py` 5），覆盖 happy path / fsync 失败 / replace 失败 / KeyboardInterrupt cleanup / 并发同 path 单胜者 / 自动建父目录 / TypeError 不留文件 / saver 级 fsync 注入失败保留原文件。
-- **R69.5 归并**：M6.1b `case_happy_run_ask` fixture pre-existing prompt drift（与 R69 无关，git stash 验证），借本轮归并，`scripts/refresh_acceptance_fixture.py` 一键刷新。
-- **Stop Lines**：0 receipt 语义改动 / 0 lock 实现改动 / 0 L3 自动采纳 / 0 fetch / 0 LLM client / 0 prompt builder / 0 73 处其他 write_text 全量迁移（推 R70+）。
-- **Lock 边界**：`save_json_document` R69 前后都是 lock-free primitive；helper 不内嵌锁，把 lock 责任完全交给调用方（R72 全 CLI lock 审计 scope）。
-- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1601+ unit + coverage 92%）；oracle qa-review PASS（无 Critical/High/Medium 残留）。
-
-### Round 73 — 候选方向（未启动）
-
-- 候选 A：LLM client 安全（`llm.py` urlopen 三处 + DNS rebinding pinning），R73 主线。
-- 候选 B：L3 自动采纳事务化 + audit 不可变 + auto-revert（R74 终局护栏）。
-- 候选 C：中优先级 8 handler lock 顶层兜底（R72 遗留）。
+- 候选 A：L3 自动采纳事务化 + audit 不可变 + auto-revert（终局护栏，无人值守可信化主线终点）。
+- 候选 B：中优先级 8 handler lock 顶层兜底（R72 遗留：today-snooze / apply-* / revert-* / planner-log-replay / batch-review / review-next）。
+- 候选 C：DNS pinning + 域名 allowlist（R73 遗留）。
 - 启动条件：选定方向后写 `.codex/contracts/active.md`，本块替换为对应 in-progress 摘要。
 
 ## 改进方向
