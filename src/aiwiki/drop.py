@@ -11,12 +11,22 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
-from urllib import parse, request
+from urllib import parse
 
 from .app_protocol import ensure_layout
 from .app_render import append_wiki_log
 from .app_state import DEFAULT_PROTOCOL, append_runtime_history
-from .app_utils import first_markdown_heading, relative_path, render_frontmatter, slugify, utc_now
+from .app_utils import (
+    FetchPolicyError,
+    _validate_safe_url,
+    first_markdown_heading,
+    relative_path,
+    render_frontmatter,
+    safe_fetch,
+    safe_resolve_within,
+    slugify,
+    utc_now,
+)
 from .config import LLMConfig
 from .llm import LLMError, create_backend_client
 
@@ -35,6 +45,8 @@ USER_AGENT = "aiwiki/0.1 (+https://local)"
 MAX_TEXT_CHARS = 120000
 MAX_URL_IMAGES = 6
 SENSITIVE_SCAN_CONTEXT_CHARS = 60000
+_HTML_MAX_BYTES = 5 * 1024 * 1024
+_ASSET_MAX_BYTES = 50 * 1024 * 1024
 
 _SENSITIVE_VALUE_PATTERN = re.compile(
     r"""
@@ -117,7 +129,7 @@ REPO_PRIORITY_FILES = (
 
 def drop_url(root: Path, url: str, title: str | None = None) -> dict[str, Any]:
     ensure_layout(root)
-    fetched = _fetch_url(url)
+    fetched = _fetch_url(url, root=root)
     display_title = title or fetched["title"] or _label_from_url(fetched["final_url"])
     asset_paths = _materialize_url_images(
         root,
@@ -351,7 +363,7 @@ def drop_repo(root: Path, source: str, title: str | None = None, max_files: int 
         _clone_repo(source, repo_path)
         original_path = source
     else:
-        repo_path = Path(source).expanduser().resolve()
+        repo_path = safe_resolve_within(Path(source).expanduser().resolve(), root)
         if not repo_path.is_dir():
             raise FileNotFoundError(f"Repository path not found: {source}")
 
@@ -557,8 +569,8 @@ def _append_raw_added_history(
     )
 
 
-def _fetch_url(url: str) -> dict[str, Any]:
-    fetched = _http_fetch_url(url)
+def _fetch_url(url: str, *, root: Path) -> dict[str, Any]:
+    fetched = _http_fetch_url(url, root=root)
     final_url = fetched["final_url"]
     content_type = fetched["content_type"]
     status = fetched["status"]
@@ -567,8 +579,9 @@ def _fetch_url(url: str) -> dict[str, Any]:
     browser_html = ""
     if _should_try_browser_render(final_url, content_type):
         try:
+            _validate_safe_url(final_url, allow_private=_allow_private_fetch())
             rendered = _render_url_in_browser(final_url)
-        except RuntimeError:
+        except (FetchPolicyError, RuntimeError):
             rendered = {"html": "", "backend": ""}
         browser_html = rendered["html"]
         browser_backend = rendered["backend"]
@@ -611,15 +624,25 @@ def _fetch_url(url: str) -> dict[str, Any]:
     }
 
 
-def _http_fetch_url(url: str) -> dict[str, str]:
+def _http_fetch_url(url: str, *, root: Path) -> dict[str, str]:
     try:
-        req = request.Request(url, headers={"User-Agent": USER_AGENT})
-        with request.urlopen(req, timeout=30) as response:
-            payload = response.read()
-            final_url = response.geturl()
-            content_type = response.headers.get_content_type()
-            charset = response.headers.get_content_charset() or "utf-8"
-            status = getattr(response, "status", 200)
+        parsed = parse.urlparse(url)
+        if parsed.scheme == "file":
+            local_path = safe_resolve_within(Path(parse.unquote(parsed.path)), root)
+            payload = local_path.read_bytes()
+            if len(payload) > _HTML_MAX_BYTES:
+                raise FetchPolicyError(f"response exceeds max_bytes={_HTML_MAX_BYTES}")
+            final_url = url
+        else:
+            payload, final_url = safe_fetch(
+                url,
+                max_bytes=_HTML_MAX_BYTES,
+                timeout=30,
+                allow_private=_allow_private_fetch(),
+            )
+        content_type = "text/html"
+        charset = "utf-8"
+        status = 200
         text = payload.decode(charset, errors="replace")
         return {
             "final_url": final_url,
@@ -675,11 +698,22 @@ def _render_url_in_browser(url: str) -> dict[str, str]:
 def _render_url_with_playwright(url: str) -> str:
     if sync_playwright is None:
         return ""
+    allow_private = _allow_private_fetch()
     try:
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
             try:
                 page = browser.new_page(user_agent=USER_AGENT)
+
+                def _guard(route, request):  # type: ignore[no-untyped-def]
+                    try:
+                        _validate_safe_url(request.url, allow_private=allow_private)
+                    except FetchPolicyError:
+                        route.abort()
+                        return
+                    route.continue_()
+
+                page.route("**/*", _guard)
                 page.goto(url, wait_until="networkidle", timeout=BROWSER_RENDER_TIMEOUT_SECONDS * 1000)
                 return page.content()
             finally:
@@ -960,13 +994,26 @@ def _best_image_source(tag: Any) -> str:
     return ""
 
 
-def _resolve_asset_url(base_url: str, candidate: str) -> str:
+def _resolve_asset_url(base_url: str, candidate: str = "", *, root: Path | None = None) -> str:
     if not candidate:
-        return ""
+        candidate = base_url
     if candidate.startswith("data:"):
         return ""
     resolved = parse.urljoin(base_url, candidate.strip())
-    return resolved if parse.urlparse(resolved).scheme in {"http", "https", "file"} else ""
+    parsed = parse.urlparse(resolved)
+    if parsed.scheme in {"http", "https"}:
+        return resolved
+    if parsed.scheme == "file":
+        base_parsed = parse.urlparse(base_url)
+        if root is None and base_parsed.scheme != "file":
+            raise FetchPolicyError("file:// asset URL requires file:// base URL")
+        workspace_root = root or Path(parse.unquote(base_parsed.path)).parent
+        return safe_resolve_within(Path(parse.unquote(parsed.path)), workspace_root).as_uri()
+    return ""
+
+
+def _allow_private_fetch() -> bool:
+    return os.environ.get("AIWIKI_ALLOW_PRIVATE_FETCH", "").strip().lower() in {"1", "true", "yes"}
 
 
 def _materialize_url_images(root: Path, image_urls: list[str], preferred_slug: str) -> list[str]:
@@ -991,11 +1038,22 @@ def _materialize_url_images(root: Path, image_urls: list[str], preferred_slug: s
 
 def _download_asset_url(root: Path, source: str, preferred_slug: str) -> tuple[Path, str]:
     asset_dir = root / "raw" / "assets"
-    req = request.Request(source, headers={"User-Agent": USER_AGENT})
-    with request.urlopen(req, timeout=60) as response:
-        payload = response.read()
-        final_url = response.geturl()
-        content_type = response.headers.get_content_type()
+    parsed = parse.urlparse(source)
+    if parsed.scheme == "file":
+        source_path = safe_resolve_within(Path(parse.unquote(parsed.path)), root)
+        if not source_path.is_file():
+            raise FileNotFoundError(f"Source not found: {source}")
+        suffix = source_path.suffix.lower() or ".bin"
+        asset_path = _unique_path(asset_dir, _timestamped_stem(preferred_slug), suffix)
+        shutil.copy2(source_path, asset_path)
+        return asset_path, str(source_path)
+    payload, final_url = safe_fetch(
+        source,
+        max_bytes=_ASSET_MAX_BYTES,
+        timeout=60,
+        allow_private=_allow_private_fetch(),
+    )
+    content_type = ""
     suffix = _suffix_from_source(final_url, content_type)
     asset_path = _unique_path(asset_dir, _timestamped_stem(preferred_slug), suffix)
     _write_bytes(asset_path, payload)
@@ -1008,7 +1066,7 @@ def _materialize_binary_source(root: Path, source: str, preferred_slug: str) -> 
         asset_path, final_url = _download_asset_url(root, source, preferred_slug)
         return asset_path, final_url
 
-    source_path = Path(source).expanduser().resolve()
+    source_path = safe_resolve_within(Path(source).expanduser().resolve(), root)
     if not source_path.is_file():
         raise FileNotFoundError(f"Source not found: {source}")
     suffix = source_path.suffix.lower() or ".bin"
@@ -1199,9 +1257,12 @@ def _repo_tree(repo_path: Path, max_files: int) -> list[str]:
     for path in sorted(repo_path.rglob("*")):
         if any(part in {".git", "node_modules", ".venv", "__pycache__", "dist", "build"} for part in path.parts):
             continue
+        if path.is_symlink():
+            continue
         if not path.is_file():
             continue
-        entries.append(path.relative_to(repo_path).as_posix())
+        safe_path = safe_resolve_within(path, repo_path)
+        entries.append(safe_path.relative_to(repo_path).as_posix())
         if len(entries) >= max_files:
             break
     return entries
@@ -1212,17 +1273,21 @@ def _repo_key_files(repo_path: Path) -> list[str]:
     seen: set[str] = set()
     for relative in REPO_PRIORITY_FILES:
         candidate = repo_path / relative
+        if candidate.is_symlink():
+            continue
         if candidate.is_file():
-            value = candidate.relative_to(repo_path).as_posix()
+            value = safe_resolve_within(candidate, repo_path).relative_to(repo_path).as_posix()
             selected.append(value)
             seen.add(value)
 
     for path in sorted(repo_path.rglob("*")):
         if any(part in {".git", "node_modules", ".venv", "__pycache__", "dist", "build"} for part in path.parts):
             continue
+        if path.is_symlink():
+            continue
         if not path.is_file():
             continue
-        relative = path.relative_to(repo_path).as_posix()
+        relative = safe_resolve_within(path, repo_path).relative_to(repo_path).as_posix()
         if relative in seen:
             continue
         if path.suffix.lower() not in TEXT_FILE_SUFFIXES and path.name not in {"Dockerfile", "Makefile"}:

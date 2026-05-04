@@ -254,7 +254,7 @@ class DropTests(unittest.TestCase):
                 "error": "",
             },
         ):
-            payload = _fetch_url("https://example.test/plain")
+            payload = _fetch_url("https://example.test/plain", root=self.root)
 
         self.assertEqual(payload["title"], "plain")
         self.assertEqual(payload["extraction_mode"], "plain-text")
@@ -283,7 +283,7 @@ class DropTests(unittest.TestCase):
                             "mode": "readability",
                         },
                     ):
-                        payload = _fetch_url("https://example.test/page")
+                        payload = _fetch_url("https://example.test/page", root=self.root)
 
         self.assertEqual(payload["title"], "Recovered Page")
         self.assertEqual(payload["browser_backend"], "")
@@ -302,7 +302,7 @@ class DropTests(unittest.TestCase):
             },
         ):
             with self.assertRaises(RuntimeError) as ctx:
-                _fetch_url("https://example.test/fail")
+                _fetch_url("https://example.test/fail", root=self.root)
 
         self.assertIn("connection reset", str(ctx.exception))
 

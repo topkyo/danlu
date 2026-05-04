@@ -7216,7 +7216,7 @@ exit 0
                 "aiwiki.drop._render_url_in_browser",
                 return_value={"html": rendered_html, "backend": "playwright-chromium"},
             ):
-                fetched = _fetch_url("https://example.com/post")
+                fetched = _fetch_url("https://example.com/post", root=self.root)
         self.assertEqual(fetched["title"], "Rendered Article")
         self.assertIn("Hydrated content wins.", fetched["text"])
         self.assertEqual(fetched["browser_backend"], "playwright-chromium")
@@ -7239,7 +7239,7 @@ exit 0
                 "aiwiki.drop._render_url_in_browser",
                 return_value={"html": rendered_html, "backend": "playwright-chromium"},
             ):
-                fetched = _fetch_url("https://example.com/app")
+                fetched = _fetch_url("https://example.com/app", root=self.root)
         self.assertEqual(fetched["status"], "browser-rendered")
         self.assertEqual(fetched["content_type"], "text/html")
         self.assertIn("Rendered after client-side app boot.", fetched["text"])

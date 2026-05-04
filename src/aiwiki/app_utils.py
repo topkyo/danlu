@@ -13,10 +13,12 @@ import fcntl
 import functools
 import hashlib
 import html
+import ipaddress
 import json
 import logging
 import os
 import re
+import socket
 import threading
 import time
 from collections import deque
@@ -24,6 +26,8 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -661,3 +665,123 @@ def tokenize(text: str) -> list[str]:
         and not _TIMESTAMP_FRAGMENT_PATTERN.match(token)
         and not _QUARTER_TAG_PATTERN.match(token)
     ]
+
+
+class FetchPolicyError(ValueError):
+    """Raised when a fetch is rejected by safety policy (SSRF / size / scheme)."""
+
+
+class PathOutsideWorkspaceError(ValueError):
+    """Raised when a resolved path falls outside the allowed workspace root."""
+
+
+_PRIVATE_NETS_V4 = (
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("0.0.0.0/8"),
+)
+_PRIVATE_NETS_V6 = (
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+    ipaddress.ip_network("::/128"),
+)
+
+
+def _is_private_address(host: str) -> bool:
+    """Resolve `host` and return True if any A/AAAA record is private/link-local."""
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror as exc:
+        raise FetchPolicyError(f"DNS resolution failed for {host!r}: {exc}") from exc
+    for _family, _type, _proto, _canon, sockaddr in infos:
+        addr = sockaddr[0].split("%")[0]
+        try:
+            ip = ipaddress.ip_address(addr)
+        except ValueError:
+            continue
+        # Normalize IPv4-mapped IPv6 (::ffff:x.x.x.x) to IPv4 to avoid bypass.
+        if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+            ip = ip.ipv4_mapped
+        if isinstance(ip, ipaddress.IPv4Address):
+            if any(ip in net for net in _PRIVATE_NETS_V4):
+                return True
+        elif any(ip in net for net in _PRIVATE_NETS_V6):
+            return True
+    return False
+
+
+def _validate_safe_url(url: str, *, allow_private: bool = False) -> str:
+    """Validate scheme + host policy. Returns normalized url."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise FetchPolicyError(f"only http(s) scheme allowed, got {parsed.scheme!r}")
+    host = parsed.hostname
+    if not host:
+        raise FetchPolicyError(f"missing host in url: {url!r}")
+    if not allow_private and _is_private_address(host):
+        raise FetchPolicyError(f"private/link-local host rejected: {host}")
+    return url
+
+
+def safe_fetch(
+    url: str,
+    *,
+    max_bytes: int,
+    timeout: float,
+    allow_private: bool = False,
+    max_redirects: int = 5,
+) -> tuple[bytes, str]:
+    """HTTP/HTTPS fetch with SSRF defense + size cap."""
+    import urllib.request
+    from urllib.parse import urljoin
+
+    current = _validate_safe_url(url, allow_private=allow_private)
+    redirects = 0
+    opener = urllib.request.build_opener(_NoRedirectHandler())
+    while True:
+        req = urllib.request.Request(current, headers={"User-Agent": "aiwiki/0.1 (+https://local)"})
+        try:
+            resp = opener.open(req, timeout=timeout)
+        except HTTPError as exc:
+            if exc.code in (301, 302, 303, 307, 308):
+                if redirects >= max_redirects:
+                    raise FetchPolicyError(f"too many redirects (max_redirects={max_redirects})") from exc
+                location = exc.headers.get("Location")
+                if not location:
+                    raise
+                current = _validate_safe_url(urljoin(current, location), allow_private=allow_private)
+                redirects += 1
+                continue
+            raise
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = resp.read(min(65536, max_bytes - total + 1))
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_bytes:
+                raise FetchPolicyError(f"response exceeds max_bytes={max_bytes}")
+            chunks.append(chunk)
+        final_url = resp.geturl() if hasattr(resp, "geturl") else current
+        return b"".join(chunks), _validate_safe_url(final_url, allow_private=allow_private)
+
+
+class _NoRedirectHandler(__import__("urllib.request", fromlist=["HTTPRedirectHandler"]).HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def safe_resolve_within(path, root) -> Path:
+    """Resolve `path`, ensure it lies within `root.resolve()` after symlink resolution."""
+    resolved = Path(path).expanduser().resolve()
+    root_resolved = Path(root).resolve()
+    if resolved == root_resolved:
+        return resolved
+    if root_resolved not in resolved.parents:
+        raise PathOutsideWorkspaceError(f"{resolved} not within {root_resolved}")
+    return resolved
