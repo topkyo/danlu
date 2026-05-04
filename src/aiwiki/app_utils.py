@@ -19,6 +19,7 @@ import logging
 import os
 import re
 import socket
+import tempfile
 import threading
 import time
 from collections import deque
@@ -195,6 +196,31 @@ def _durable_truncate(path: Path, size: int) -> None:
         handle.truncate(size)
         handle.flush()
         os.fsync(handle.fileno())
+
+
+def _durable_restore_or_remove(path: Path, snapshot: bytes | None) -> None:
+    """Restore single-file primary to snapshot state.
+
+    snapshot is None → file did not exist before; remove it (return to non-exist).
+    snapshot is bytes → write snapshot durably (tmp + fsync + replace).
+    Raises on any IO failure.
+    """
+    if snapshot is None:
+        path.unlink(missing_ok=True)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(snapshot)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        if tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
+        raise
 
 
 def atomic_write_text(

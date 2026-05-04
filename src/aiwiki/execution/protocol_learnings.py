@@ -937,14 +937,29 @@ def age_learnings(
 
 
 def _write_age_audit(root: Path, result: dict[str, Any]) -> None:
+    from aiwiki.app_utils import AuditMirrorError, AuditMirrorRollbackError, _durable_restore_or_remove
+
     audit_path = root / AUDIT_STATE_PATH
     audit_path.parent.mkdir(parents=True, exist_ok=True)
+    snapshot = audit_path.read_bytes() if audit_path.exists() else None
     _atomic_write_text(audit_path, json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
     from .audit_preview import append_universal_audit_record, protocol_learnings_age_source_ref
 
-    append_universal_audit_record(
-        root,
-        source_stream="protocol_learnings_age",
-        source_ref=protocol_learnings_age_source_ref(result),
-        document=result,
-    )
+    try:
+        append_universal_audit_record(
+            root,
+            source_stream="protocol_learnings_age",
+            source_ref=protocol_learnings_age_source_ref(result),
+            document=result,
+        )
+    except Exception as audit_exc:
+        try:
+            _durable_restore_or_remove(audit_path, snapshot)
+        except Exception as restore_exc:
+            raise AuditMirrorRollbackError(
+                "audit mirror append failed and primary restore also failed: "
+                f"audit={audit_exc!r}; restore={restore_exc!r}"
+            ) from audit_exc
+        raise AuditMirrorError(
+            f"universal audit append failed; primary restored: {audit_exc!r}"
+        ) from audit_exc

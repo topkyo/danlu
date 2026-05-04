@@ -34,8 +34,20 @@
 | **Round 75 receipt_history 事务化** (2026-05-04) | append_execution_receipt_history 改 snapshot-then-rollback / `_durable_truncate` (open r+b + truncate + flush + fsync) / ReceiptHistoryAuditError + ReceiptHistoryRollbackError / R74 partial 残余风险关闭 / 5 unit + 1 集成 | ✅ done |
 | **Round 76 runtime_history 事务化 + audit-mirror helper 上移** (2026-05-04) | `_durable_truncate` + AuditMirror* 上移 app_utils / app_execution alias 保持 R75 API / append_runtime_history snapshot-then-rollback + runtime lock / 5 unit | ✅ done |
 | **Round 77 LLM receipt 事务化** (2026-05-04) | `_append_llm_receipt` snapshot-then-rollback / 复用 AuditMirror* + `_durable_truncate` / 不扩 lock 边界 / 5 unit | ✅ done |
+| **Round 78 age audit single-file 事务化** (2026-05-04) | `_durable_restore_or_remove` / `_write_age_audit` snapshot bytes + restore/remove / audit-mirror 主线收口 / 5 unit | ✅ done |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 78 — `_write_age_audit` single-file 事务化 — 完成
+
+- **目的**：关闭 audit-mirror 二段写主线最后一条裂缝。`_write_age_audit` 原先覆盖写 `.aiwiki/state/protocol_learnings_age.json` 后再写 universal audit，audit 失败会留下 primary-only 新状态。
+- **实现**：
+  - `app_utils.py` 新增 `_durable_restore_or_remove(path, snapshot)`：`snapshot is None` 删除 primary；`bytes` 则 tmp + fsync + replace 原子还原。
+  - `execution/protocol_learnings.py:_write_age_audit` 改为 snapshot old bytes/None → `_atomic_write_text` → try `append_universal_audit_record` → audit 失败 `_durable_restore_or_remove` → `AuditMirrorError`；restore 失败 → `AuditMirrorRollbackError`。
+  - 保持 `_atomic_write_text` / `age_protocol_learnings` / `AUDIT_STATE_PATH` / schema / source_stream / source_ref / document 不动；不加 `@runtime_write_operation`。
+- **测试**：新增 `tests/test_age_audit_transaction.py` 5 测试（已有 primary 还原 / 首次写失败删除 / restore 失败 rollback error / 成功 primary 写入 / 防退化 spy helper）。
+- **Stop Lines**：0 audit_transaction context manager / 0 jsonl 事务路径改动 / 0 lock 边界扩张 / 0 schema 改动。
+- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1668 unit + coverage 92%）。
 
 ### Round 77 — `_append_llm_receipt` 事务化 — 完成
 
@@ -45,7 +57,7 @@
   - 复用 R76 上移到 `app_utils.py` 的 `_durable_truncate` / `AuditMirrorError` / `AuditMirrorRollbackError`。
   - 按 contract 不加 `@runtime_write_operation`，不动 `_append_jsonl_log` / `_next_jsonl_line_number` / schema / source_stream / source_ref / document / caller。
 - **测试**：新增 `tests/test_llm_receipt_transaction.py` 5 测试（audit 失败回滚 / truncate 失败 rollback error / 成功 primary 写入 / primary 不存在前置 / 防退化 spy helper）。
-- **Stop Lines**：0 通用 audit_transaction context manager / 0 `_write_age_audit` single-file mirror 修复（留 R78+）/ 0 lock 边界扩张 / 0 schema 改动。
+- **Stop Lines**：0 通用 audit_transaction context manager / ~~0 `_write_age_audit` single-file mirror 修复（留 R78+）~~ → R78 已关闭 / 0 lock 边界扩张 / 0 schema 改动。
 - **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1663 unit + coverage 92%）。
 
 ### Round 76 — append_runtime_history 事务化 + audit-mirror helper 上移 — 完成
