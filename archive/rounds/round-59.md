@@ -1,0 +1,65 @@
+# Round 59 — P4-INV-1/3/4 闭环 + NV backend 配置 + PDF dogfood + 市场调研留档
+
+status: 完成
+commit: 8bd33f5
+
+Round 59 — P4-INV-1/3/4 闭环 + NV backend 配置 + PDF dogfood + 市场调研留档 — 完成
+- **目的**: 把 D-4 dogfood receipt v0 暴露的 4 条 follow-up（P4-INV-1/2/3/4）全部收口；同时利用用户提供的 NV NIM API key 把多 backend 健壮度从单 provider 推到双 compatible；用真实中文 PDF 验证 ingestion path；把 Round 58 subagent 调研落档为长期 SoT
+- **方向 SoT**: `docs/Furnace Next Direction Post-P4.md` §D-4 follow-up + `docs/Furnace Investing Dogfood Plan.md`
+- **NV NIM API key 安全落地**:
+  - 用户提供的 key 落到 `~/.aiwiki-secrets/nvidia.env`（mode 600 / dir 700 / repo 外）
+  - **从未** 进入任何 git-tracked 文件、commit message、PROGRESS、receipt
+  - `.envrc.dogfood` 是 tracked 文件，明确不塞 key
+  - 实测 `llm-check --probe-all`：
+    - codex-cli/gpt-5.5 → **compatible** ✓（主路径）
+    - nvidia-nim-api/openai/gpt-oss-120b → **compatible** ✓（NIM 上能跑通的模型）
+    - nvidia-nim-api/meta/llama-3.3-70b-instruct → degraded
+    - nvidia-nim-api/{qwen, deepseek, moonshotai} → unavailable（kimi-k2.5 4-30 EOL）
+    - copilot-cli/gpt-5.4-mini → unavailable（rate limit 5-4 8:00 重置）
+    - copilot-cli/auto → degraded（`●` 装饰前缀破坏 frontmatter）
+    - claude-cli → requires_credential
+- **P4-INV-1 — `run-compile --paths` 显式 source 过滤（M）**:
+  - `cli/parsers.py` 加 `--paths` action='append'（accept source id / `wiki/sources/<id>.md` / `raw/inbox/<file>.md` / 裸 basename 等多种形态）
+  - `runner/workflows.py::run_compile` 接受 `paths: list[str] | None`；新增 `_normalize_run_compile_paths` + `_entry_matches_path_filter` 两个 helper，过滤后 pending 队列只保留匹配 source
+  - `cli/dispatch.py` 显式传 `paths=getattr(args, 'paths', None)`
+  - `tests/test_runner.py` 新加 6 case 覆盖：filter 收窄 / 空 list 与 None 走全量 / wiki/sources/`<id>`.md 形态 / 不匹配过滤为 0
+  - dogfood 验证：用 `--paths discovered-...-http-v20250903-1` 显式跑 1 page，nvidia-nim-api/openai/gpt-oss-120b 21 秒成功
+- **P4-INV-2 — 季度 token concept 噪声过滤**:（已 Round 57 commit `8bd33f5`，本 round 引用收口）
+- **P4-INV-3 — investing protocol-specific judgment frontmatter slots（M-L）**:
+  - `app_protocol.py` 加 `PROTOCOL_JUDGMENT_EXTRA_FIELDS` mapping + `protocol_judgment_extra_fields()` helper
+  - investing：thesis / catalyst / risk / invalidation_threshold（judgment）+ position_change / sizing_rationale（decision）
+  - research：hypothesis / falsification / experiment_refs
+  - product：user_value_claim / kill_metric
+  - ops：runbook_ref / blast_radius
+  - `execution/ask.py::file_back` 在 render_frontmatter 时合并 protocol-specific slots 到 base payload
+  - 空值是 placeholder（lint 不强制，下游消费者看到 schema slot）；不影响 legacy pages
+  - `tests/test_app.py` 新 `test_file_back_injects_protocol_specific_judgment_frontmatter`，4 个 protocol 全覆盖 + 跨协议负向断言（investing 字段不应进 research page）
+- **P4-INV-4 — alchemy-finalize 强制写 review_after（S）**:
+  - `app_protocol.py` 加 `PROTOCOL_ELIXIR_REVIEW_DAYS`（investing 60d / research 90d / general 90d / product 60d / ops 30d）
+  - `execution/alchemy.py::finalize_elixir` 在 candidate 状态写入时，若 frontmatter 没显式 `review_after` 则按 protocol 默认 + utc_now 派生 ISO date；返回 dict 多带 `review_after` 字段
+  - `_default_elixir_review_after` 公有 helper
+  - `tests/test_alchemy.py` 新 `AlchemyFinalizeReviewAfterTests`：默认值生效 / 已有值不被覆盖 / 跨协议默认值有差异
+- **PDF 投料 dogfood 验证**:
+  - 投料：`/home/tim/Documents/lt/机器人管控平台http接口文档_V20250903(1).pdf`（340KB 中文 robotics API 接口文档）
+  - `drop pdf` 文本抽取完整（中文章节、URL、API 表格结构保留）
+  - `run-compile --paths <pdf-source-id> --limit 1` + nvidia-nim-api/gpt-oss-120b 跑通；LLM 输出 21 秒，frontmatter 干净，中英混合精确
+  - F-INV-1 摩擦点（中文 PDF 内容丢失）**通过验证**
+- **市场调研留档**:
+  - `docs/Furnace Market Scan 2026Q2.md`（419 行）落盘
+  - 同质度最高 5 个对手详细对比矩阵；部分相似 10 个；常被混淆 5 个；4 节综合判断
+  - 综合：市面无 1:1 对手，外形最像 Reor，thesis 最像 Khoj，runtime 抽象最像 Letta；炼丹炉"知识 compiler + receipt + protocol multiplexing + 金丹"组合在 2026 Q2 仍是空位
+- **dogfood-receipt-investing-v1 落地**:
+  - `output/reports/dogfood-receipt-investing-v1.md` (dogfood vault) — v0 升级版，记录 v0→v1 7 项升级 + F-INV-* 状态变化（partial → fixed）+ 多 backend 实测矩阵
+- **Tests**:
+  - 新增：6 path-filter（test_runner）+ 1 protocol-judgment（test_app）+ 3 review_after（test_alchemy）= 10 case
+  - test_cli `run-compile` 入参 contract 同步：`{"limit": 3, "paths": None}`
+- **指标**:
+  - test count 1566 → **1571**（+5 net；3 个 review_after 是 unittest.TestCase 加新；6 path-filter 是 RunnerTests 内 method；1 protocol-judgment AiwikiFlowTests 内 method；test_cli 1 旧 case 调整）
+  - dogfood vault state 增量：sources +1（PDF）、execution-receipts +0
+  - ai-wiki repo verify：1571 unit + 13 acceptance / 92% coverage / `--fail-under=92` gate / `All checks passed!`
+- **Stop Lines**: 0 review/apply/revert 状态机改动；NV key 完全不入 git；watcher / nightly 在 PDF dogfood 期间停服，跑完恢复 active；不放松 DAG / counter_evidence / hash anchor gate
+- **评估升级（实战层）**:
+  - LLM execution 健壮度 6/10 → **8/10**（双 compatible backend）
+  - Investing 协议端到端 8/10 → **9/10**（PDF 投料 + 双 backend + protocol-specific schema + Stage 3 复利全过）
+  - 加权综合 8.95 → **9.05 / 10**
+- **下一步候选**: 真实投资研报 PDF（用户提供）→ 多周自然运行 → P4-INV-5 系列（追问/复审产品化）
