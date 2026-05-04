@@ -26,11 +26,11 @@
 | **Round 67.5 Acceptance Fixture Refresh** (2026-05-04) | M6.1b prompt_hash drift refresh / fixture helper 文档化 | ✅ done (`284f8af`) |
 | **Round 68 Progress Slimming** (2026-05-04) | PROGRESS 三层瘦身 / rounds archive / index.json / stop_line_audit lint | ✅ done (`2c408f9`) |
 | **Round 69 Atomic State I/O Foundation** (2026-05-04) | atomic_write_text + atomic_append_jsonl helpers / 4 saver 替换 / 21 unit tests / R69.5 fixture refresh 归并 | ✅ done (`7ee3ab8`) |
-| **Round 70 Receipt JSONL 事务化 + Revert 双 receipt** (2026-05-04) | 12 JSONL writers 全量原子化 / atomic_append_line 原语 / machine_memory revert 双 receipt + reverts/ 子目录 / receipt_path override / mock seam 清除 / R70.5 fixture refresh 归并 | ✅ done |
+| **Round 70 Receipt JSONL 事务化 + Revert 双 receipt** (2026-05-04) | 12 JSONL writers 全量原子化 / atomic_append_line 原语 / machine_memory revert 双 receipt + reverts/ 子目录 / receipt_path override / mock seam 清除 / R70.5 fixture refresh 归并 | ✅ done (`950f291`) |
 
 ## 状态 — 当前活跃 3 轮
 
-### Round 70 — Receipt JSONL 事务化 + Revert 双 Receipt — 完成
+### Round 70 — Receipt JSONL 事务化 + Revert 双 Receipt — 完成 (commit 950f291)
 
 - **目的**：把 JSONL append 全量从 `path.open("a")` 直写迁到 R69 atomic helper；machine_memory revert 在 R67 单 receipt 基础上加 reverse-event receipt（双 receipt），让 audit/rollback 有完整事务证据。
 - **实现**：
