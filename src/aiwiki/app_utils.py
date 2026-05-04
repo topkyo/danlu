@@ -730,6 +730,9 @@ def _validate_safe_url(url: str, *, allow_private: bool = False) -> str:
 def safe_fetch(
     url: str,
     *,
+    method: str = "GET",
+    data: bytes | None = None,
+    headers: dict[str, str] | None = None,
     max_bytes: int,
     timeout: float,
     allow_private: bool = False,
@@ -739,11 +742,25 @@ def safe_fetch(
     import urllib.request
     from urllib.parse import urljoin
 
+    def _strip_auth_headers(source: dict[str, str]) -> dict[str, str]:
+        sensitive = {"authorization", "x-api-key", "cookie"}
+        return {key: value for key, value in source.items() if key.lower() not in sensitive}
+
     current = _validate_safe_url(url, allow_private=allow_private)
+    current_headers = dict(headers or {})
+    if not any(key.lower() == "user-agent" for key in current_headers):
+        current_headers["User-Agent"] = "aiwiki/0.1 (+https://local)"
     redirects = 0
+    previous_host: str | None = None
     opener = urllib.request.build_opener(_NoRedirectHandler())
     while True:
-        req = urllib.request.Request(current, headers={"User-Agent": "aiwiki/0.1 (+https://local)"})
+        current_host = urlparse(current).hostname
+        if previous_host is not None and current_host != previous_host:
+            current_headers = _strip_auth_headers(current_headers)
+        previous_host = current_host
+        req = urllib.request.Request(current, data=data, method=method)
+        for key, value in current_headers.items():
+            req.add_header(key, value)
         try:
             resp = opener.open(req, timeout=timeout)
         except HTTPError as exc:

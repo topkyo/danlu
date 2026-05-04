@@ -12,23 +12,6 @@ from unittest.mock import patch
 from aiwiki.notify import _safe_record_notify_failed, notify_report_generated
 
 
-class FakeHTTPResponse:
-    def __init__(self, status_code: int) -> None:
-        self.status_code = status_code
-
-    def getcode(self) -> int:
-        return self.status_code
-
-    def __enter__(self) -> "FakeHTTPResponse":
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> bool:
-        del exc_type
-        del exc
-        del tb
-        return False
-
-
 class NotifyTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
@@ -60,32 +43,29 @@ class NotifyTests(unittest.TestCase):
         return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
     def test_no_config_no_op(self) -> None:
-        with patch.dict(os.environ, {}, clear=True), patch("aiwiki.notify.urllib.request.urlopen") as urlopen:
+        with patch.dict(os.environ, {}, clear=True), patch("aiwiki.notify.safe_fetch") as mock_fetch:
             notify_report_generated(self.root, self.artifact)
 
-        urlopen.assert_not_called()
+        mock_fetch.assert_not_called()
         self.assertEqual(self._read_audit(), [])
 
     def test_feishu_success_post_schema(self) -> None:
         captured: dict[str, object] = {}
 
-        def fake_urlopen(http_request, timeout: int):
-            captured["timeout"] = timeout
-            captured["url"] = http_request.full_url
-            captured["body"] = json.loads(http_request.data.decode("utf-8"))
-            return FakeHTTPResponse(200)
+        def fake_safe_fetch(url, **kwargs):
+            captured["timeout"] = kwargs["timeout"]
+            captured["url"] = url
+            captured["body"] = json.loads(kwargs["data"].decode("utf-8"))
+            return b"ok", url
 
         env = {
             "AIWIKI_NOTIFY_FEISHU_WEBHOOK_URL": "https://example.com/feishu",
             "AIWIKI_NOTIFY_ENABLED_CHANNELS": "feishu",
         }
-        with patch.dict(os.environ, env, clear=True), patch(
-            "aiwiki.notify.urllib.request.urlopen",
-            side_effect=fake_urlopen,
-        ) as urlopen:
+        with patch.dict(os.environ, env, clear=True), patch("aiwiki.notify.safe_fetch", side_effect=fake_safe_fetch) as mock_fetch:
             notify_report_generated(self.root, self.artifact)
 
-        urlopen.assert_called_once()
+        mock_fetch.assert_called_once()
         self.assertEqual(captured["url"], "https://example.com/feishu")
         self.assertEqual(
             captured["body"],
@@ -101,23 +81,19 @@ class NotifyTests(unittest.TestCase):
     def test_wecom_success_post_schema(self) -> None:
         captured: dict[str, object] = {}
 
-        def fake_urlopen(http_request, timeout: int):
-            del timeout
-            captured["url"] = http_request.full_url
-            captured["body"] = json.loads(http_request.data.decode("utf-8"))
-            return FakeHTTPResponse(200)
+        def fake_safe_fetch(url, **kwargs):
+            captured["url"] = url
+            captured["body"] = json.loads(kwargs["data"].decode("utf-8"))
+            return b"ok", url
 
         env = {
             "AIWIKI_NOTIFY_WECOM_WEBHOOK_URL": "https://example.com/wecom",
             "AIWIKI_NOTIFY_ENABLED_CHANNELS": "wecom",
         }
-        with patch.dict(os.environ, env, clear=True), patch(
-            "aiwiki.notify.urllib.request.urlopen",
-            side_effect=fake_urlopen,
-        ) as urlopen:
+        with patch.dict(os.environ, env, clear=True), patch("aiwiki.notify.safe_fetch", side_effect=fake_safe_fetch) as mock_fetch:
             notify_report_generated(self.root, self.artifact)
 
-        urlopen.assert_called_once()
+        mock_fetch.assert_called_once()
         self.assertEqual(captured["url"], "https://example.com/wecom")
         self.assertEqual(
             captured["body"],
@@ -140,10 +116,7 @@ class NotifyTests(unittest.TestCase):
             "AIWIKI_NOTIFY_ENABLED_CHANNELS": "feishu",
         }
 
-        with patch.dict(os.environ, env, clear=True), patch(
-            "aiwiki.notify.urllib.request.urlopen",
-            side_effect=http_error,
-        ):
+        with patch.dict(os.environ, env, clear=True), patch("aiwiki.notify.safe_fetch", side_effect=http_error):
             notify_report_generated(self.root, self.artifact)
 
         records = self._read_audit()
@@ -172,7 +145,7 @@ class NotifyTests(unittest.TestCase):
             "AIWIKI_NOTIFY_ENABLED_CHANNELS": "feishu",
         }
         with patch.dict(os.environ, env, clear=True), patch(
-            "aiwiki.notify.urllib.request.urlopen",
+            "aiwiki.notify.safe_fetch",
             side_effect=urllib.error.URLError("connection refused"),
         ):
             notify_report_generated(self.root, self.artifact)
@@ -187,10 +160,10 @@ class NotifyTests(unittest.TestCase):
 
     def test_enabled_channel_with_empty_url_no_op(self) -> None:
         env = {"AIWIKI_NOTIFY_ENABLED_CHANNELS": "feishu"}
-        with patch.dict(os.environ, env, clear=True), patch("aiwiki.notify.urllib.request.urlopen") as urlopen:
+        with patch.dict(os.environ, env, clear=True), patch("aiwiki.notify.safe_fetch") as mock_fetch:
             notify_report_generated(self.root, self.artifact)
 
-        urlopen.assert_not_called()
+        mock_fetch.assert_not_called()
         self.assertEqual(self._read_audit(), [])
 
     def test_audit_does_not_leak_webhook_url(self) -> None:
@@ -199,7 +172,7 @@ class NotifyTests(unittest.TestCase):
             "AIWIKI_NOTIFY_ENABLED_CHANNELS": "feishu",
         }
         with patch.dict(os.environ, env, clear=True), patch(
-            "aiwiki.notify.urllib.request.urlopen",
+            "aiwiki.notify.safe_fetch",
             side_effect=urllib.error.URLError("connection refused"),
         ):
             notify_report_generated(self.root, self.artifact)

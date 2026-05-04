@@ -80,23 +80,26 @@ class LLMClientTests(unittest.TestCase):
         client = OpenAICompatClient(config)
 
         with patch(
-            "aiwiki.llm.request.urlopen",
-            return_value=FakeHTTPResponse(
-                {
-                    "id": "resp_456",
-                    "choices": [
-                        {
-                            "message": {
-                                "content": [
-                                    {"type": "text", "text": "First line. "},
-                                    {"type": "ignored", "text": "skip"},
-                                    {"type": "text", "text": "Second line."},
-                                ]
+            "aiwiki.llm.safe_fetch",
+            return_value=(
+                json.dumps(
+                    {
+                        "id": "resp_456",
+                        "choices": [
+                            {
+                                "message": {
+                                    "content": [
+                                        {"type": "text", "text": "First line. "},
+                                        {"type": "ignored", "text": "skip"},
+                                        {"type": "text", "text": "Second line."},
+                                    ]
+                                }
                             }
-                        }
-                    ],
-                    "usage": {"total_tokens": 21},
-                }
+                        ],
+                        "usage": {"total_tokens": 21},
+                    }
+                ).encode("utf-8"),
+                "https://api.openai.com/v1/chat/completions",
             ),
         ):
             result = client.complete("System prompt", "User prompt")
@@ -121,11 +124,10 @@ class LLMClientTests(unittest.TestCase):
             image_path = Path(tempdir) / "tiny.png"
             image_path.write_bytes(image_bytes)
 
-            def fake_urlopen(http_request, timeout: int):
-                del timeout
-                captured["url"] = http_request.full_url
-                captured["body"] = json.loads(http_request.data.decode("utf-8"))
-                return FakeHTTPResponse(
+            def fake_safe_fetch(endpoint, **kwargs):
+                captured["url"] = endpoint
+                captured["body"] = json.loads(kwargs["data"].decode("utf-8"))
+                return json.dumps(
                     {
                         "id": "resp_123",
                         "choices": [
@@ -137,9 +139,9 @@ class LLMClientTests(unittest.TestCase):
                         ],
                         "usage": {"total_tokens": 42},
                     }
-                )
+                ).encode("utf-8"), endpoint
 
-            with patch("aiwiki.llm.request.urlopen", side_effect=fake_urlopen):
+            with patch("aiwiki.llm.safe_fetch", side_effect=fake_safe_fetch):
                 result = client.analyze_image("System prompt", "User prompt", image_path)
 
         self.assertEqual(captured["url"], "https://api.openai.com/v1/chat/completions")
@@ -196,20 +198,19 @@ class LLMClientTests(unittest.TestCase):
         client = OpenAICompatClient(config)
         captured: dict[str, object] = {}
 
-        def fake_urlopen(http_request, timeout: int):
-            del timeout
-            captured["url"] = http_request.full_url
-            captured["headers"] = dict(http_request.headers)
-            captured["body"] = json.loads(http_request.data.decode("utf-8"))
-            return FakeHTTPResponse(
+        def fake_safe_fetch(endpoint, **kwargs):
+            captured["url"] = endpoint
+            captured["headers"] = dict(kwargs["headers"])
+            captured["body"] = json.loads(kwargs["data"].decode("utf-8"))
+            return json.dumps(
                 {
                     "id": "nim_resp",
                     "choices": [{"message": {"content": "OK"}}],
                     "usage": {"total_tokens": 17},
                 }
-            )
+            ).encode("utf-8"), endpoint
 
-        with patch("aiwiki.llm.request.urlopen", side_effect=fake_urlopen):
+        with patch("aiwiki.llm.safe_fetch", side_effect=fake_safe_fetch):
             result = client.complete("System prompt", "User prompt")
 
         self.assertEqual(captured["url"], "https://integrate.api.nvidia.com/v1/chat/completions")
@@ -234,7 +235,7 @@ class LLMClientTests(unittest.TestCase):
             fp=io.BytesIO(b'{"error":"rate-limited"}'),
         )
 
-        with patch("aiwiki.llm.request.urlopen", side_effect=http_error):
+        with patch("aiwiki.llm.safe_fetch", side_effect=http_error):
             with self.assertRaises(LLMError) as ctx:
                 client.complete("System prompt", "User prompt")
 
@@ -250,7 +251,7 @@ class LLMClientTests(unittest.TestCase):
         )
         client = OpenAICompatClient(config)
 
-        with patch("aiwiki.llm.request.urlopen", return_value=RawHTTPResponse(b"not-json")):
+        with patch("aiwiki.llm.safe_fetch", return_value=(b"not-json", "https://api.openai.com/v1/chat/completions")):
             with self.assertRaises(LLMError) as ctx:
                 client.complete("System prompt", "User prompt")
 
@@ -265,7 +266,10 @@ class LLMClientTests(unittest.TestCase):
         )
         client = OpenAICompatClient(config)
 
-        with patch("aiwiki.llm.request.urlopen", return_value=FakeHTTPResponse({"id": "resp_123"})):
+        with patch(
+            "aiwiki.llm.safe_fetch",
+            return_value=(json.dumps({"id": "resp_123"}).encode("utf-8"), "https://api.openai.com/v1/chat/completions"),
+        ):
             with self.assertRaises(LLMError) as ctx:
                 client.complete("System prompt", "User prompt")
 
@@ -281,8 +285,11 @@ class LLMClientTests(unittest.TestCase):
         client = OpenAICompatClient(config)
 
         with patch(
-            "aiwiki.llm.request.urlopen",
-            return_value=FakeHTTPResponse({"id": "resp_123", "choices": [{"message": {"content": "   "}}]}),
+            "aiwiki.llm.safe_fetch",
+            return_value=(
+                json.dumps({"id": "resp_123", "choices": [{"message": {"content": "   "}}]}).encode("utf-8"),
+                "https://api.openai.com/v1/chat/completions",
+            ),
         ):
             with self.assertRaises(LLMError) as ctx:
                 client.complete("System prompt", "User prompt")
@@ -461,27 +468,26 @@ class LLMClientTests(unittest.TestCase):
 
             attempts: list[str] = []
 
-            def fake_urlopen(http_request, timeout: int):
-                del timeout
-                payload = json.loads(http_request.data.decode("utf-8"))
+            def fake_safe_fetch(endpoint, **kwargs):
+                payload = json.loads(kwargs["data"].decode("utf-8"))
                 attempts.append(payload["model"])
                 if len(attempts) == 1:
                     raise error.HTTPError(
-                        url=http_request.full_url,
+                        url=endpoint,
                         code=404,
                         msg="Not Found",
                         hdrs=None,
                         fp=io.BytesIO(b'{"error":{"message":"Unknown model"}}'),
                     )
-                return FakeHTTPResponse(
+                return json.dumps(
                     {
                         "id": "chatcmpl_nim_fallback",
                         "choices": [{"message": {"content": "OK"}}],
                         "usage": {"total_tokens": 12},
                     }
-                )
+                ).encode("utf-8"), endpoint
 
-            with patch("aiwiki.llm.request.urlopen", side_effect=fake_urlopen):
+            with patch("aiwiki.llm.safe_fetch", side_effect=fake_safe_fetch):
                 result = client.complete("System prompt", "User prompt")
 
         self.assertEqual(result.text, "OK")
@@ -743,25 +749,24 @@ class LLMClientTests(unittest.TestCase):
 
         captured: dict[str, object] = {}
 
-        def fake_urlopen(http_request, timeout: int):
-            del timeout
-            captured["url"] = http_request.full_url
-            captured["headers"] = dict(http_request.headers)
-            captured["body"] = json.loads(http_request.data.decode("utf-8"))
-            return FakeHTTPResponse(
+        def fake_safe_fetch(endpoint, **kwargs):
+            captured["url"] = endpoint
+            captured["headers"] = dict(kwargs["headers"])
+            captured["body"] = json.loads(kwargs["data"].decode("utf-8"))
+            return json.dumps(
                 {
                     "id": "msg_123",
                     "content": [{"type": "text", "text": "Hello from Claude."}],
                     "usage": {"input_tokens": 10, "output_tokens": 5},
                 }
-            )
+            ).encode("utf-8"), endpoint
 
-        with patch("aiwiki.llm.request.urlopen", side_effect=fake_urlopen):
+        with patch("aiwiki.llm.safe_fetch", side_effect=fake_safe_fetch):
             result = client.complete("System prompt", "User prompt")
 
         self.assertEqual(captured["url"], "https://api.anthropic.com/v1/messages")
-        self.assertEqual(captured["headers"]["X-api-key"], "sk-ant-test-key")
-        self.assertEqual(captured["headers"]["Anthropic-version"], "2023-06-01")
+        self.assertEqual(captured["headers"]["x-api-key"], "sk-ant-test-key")
+        self.assertEqual(captured["headers"]["anthropic-version"], "2023-06-01")
         self.assertEqual(captured["body"]["model"], "claude-sonnet-4-20250514")
         self.assertEqual(captured["body"]["system"], "System prompt")
         self.assertEqual(result.text, "Hello from Claude.")
@@ -778,9 +783,10 @@ class LLMClientTests(unittest.TestCase):
         client = AnthropicClient(config)
 
         with patch(
-            "aiwiki.llm.request.urlopen",
-            return_value=FakeHTTPResponse(
-                {"id": "msg_x", "content": [{"type": "text", "text": "   "}], "usage": {}}
+            "aiwiki.llm.safe_fetch",
+            return_value=(
+                json.dumps({"id": "msg_x", "content": [{"type": "text", "text": "   "}], "usage": {}}).encode("utf-8"),
+                "https://api.anthropic.com/v1/messages",
             ),
         ):
             with self.assertRaises(LLMError) as ctx:
@@ -796,7 +802,7 @@ class LLMClientTests(unittest.TestCase):
         )
         client = AnthropicClient(config)
 
-        with patch("aiwiki.llm.request.urlopen", return_value=RawHTTPResponse(b"not-json")):
+        with patch("aiwiki.llm.safe_fetch", return_value=(b"not-json", "https://api.anthropic.com/v1/messages")):
             with self.assertRaises(LLMError) as ctx:
                 client.complete("System", "User")
 
@@ -810,7 +816,10 @@ class LLMClientTests(unittest.TestCase):
         )
         client = AnthropicClient(config)
 
-        with patch("aiwiki.llm.request.urlopen", return_value=FakeHTTPResponse({"id": "msg_x"})):
+        with patch(
+            "aiwiki.llm.safe_fetch",
+            return_value=(json.dumps({"id": "msg_x"}).encode("utf-8"), "https://api.anthropic.com/v1/messages"),
+        ):
             with self.assertRaises(LLMError) as ctx:
                 client.complete("System", "User")
 
@@ -833,18 +842,18 @@ class LLMClientTests(unittest.TestCase):
             image_path = Path(tempdir) / "tiny.png"
             image_path.write_bytes(image_bytes)
 
-            def fake_urlopen(http_request, timeout: int):
-                del timeout
-                captured["body"] = json.loads(http_request.data.decode("utf-8"))
-                return FakeHTTPResponse(
+            def fake_safe_fetch(endpoint, **kwargs):
+                del endpoint
+                captured["body"] = json.loads(kwargs["data"].decode("utf-8"))
+                return json.dumps(
                     {
                         "id": "msg_img",
                         "content": [{"type": "text", "text": "Image analysis."}],
                         "usage": {"input_tokens": 100, "output_tokens": 20},
                     }
-                )
+                ).encode("utf-8"), "https://api.anthropic.com/v1/messages"
 
-            with patch("aiwiki.llm.request.urlopen", side_effect=fake_urlopen):
+            with patch("aiwiki.llm.safe_fetch", side_effect=fake_safe_fetch):
                 result = client.analyze_image("System prompt", "Describe image", image_path)
 
         body = captured["body"]

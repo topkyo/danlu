@@ -13,7 +13,9 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib import error, request
+from urllib import error
+
+from aiwiki.app_utils import FetchPolicyError, safe_fetch
 
 from .config import (
     BACKEND_ANTHROPIC_API,
@@ -67,6 +69,7 @@ FRONTMATTER_PROBE_USER_PROMPT = """Respond with exactly the following text, noth
 title: probe
 ---
 ok"""
+_LLM_MAX_BYTES = 10 * 1024 * 1024
 
 
 class OpenAICompatClient:
@@ -87,19 +90,23 @@ class OpenAICompatClient:
         }
         endpoint = f"{self.config.base_url}/chat/completions"
         body = json.dumps(payload).encode("utf-8")
-        http_request = request.Request(
-            endpoint,
-            data=body,
-            headers={
-                "Authorization": f"Bearer {self.config.api_key}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
+        headers = {
+            "Authorization": f"Bearer {self.config.api_key}",
+            "Content-Type": "application/json",
+        }
 
         try:
-            with request.urlopen(http_request, timeout=self.config.timeout_seconds) as response:
-                raw = response.read().decode("utf-8")
+            response_body, _ = safe_fetch(
+                endpoint,
+                method="POST",
+                data=body,
+                headers=headers,
+                max_bytes=_LLM_MAX_BYTES,
+                timeout=self.config.timeout_seconds,
+            )
+            raw = response_body.decode("utf-8")
+        except FetchPolicyError as exc:
+            raise LLMError(f"unsafe LLM endpoint: {exc}") from exc
         except error.HTTPError as exc:  # pragma: no cover - exercised via CLI/network usage
             details = exc.read().decode("utf-8", errors="replace")
             raise LLMError(f"HTTP {exc.code} from LLM endpoint: {details}") from exc
@@ -152,19 +159,23 @@ class OpenAICompatClient:
         }
         endpoint = f"{self.config.base_url}/chat/completions"
         body = json.dumps(payload).encode("utf-8")
-        http_request = request.Request(
-            endpoint,
-            data=body,
-            headers={
-                "Authorization": f"Bearer {self.config.api_key}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
+        headers = {
+            "Authorization": f"Bearer {self.config.api_key}",
+            "Content-Type": "application/json",
+        }
 
         try:
-            with request.urlopen(http_request, timeout=self.config.timeout_seconds) as response:
-                raw = response.read().decode("utf-8")
+            response_body, _ = safe_fetch(
+                endpoint,
+                method="POST",
+                data=body,
+                headers=headers,
+                max_bytes=_LLM_MAX_BYTES,
+                timeout=self.config.timeout_seconds,
+            )
+            raw = response_body.decode("utf-8")
+        except FetchPolicyError as exc:
+            raise LLMError(f"unsafe LLM endpoint: {exc}") from exc
         except error.HTTPError as exc:  # pragma: no cover - exercised via CLI/network usage
             details = exc.read().decode("utf-8", errors="replace")
             raise LLMError(f"HTTP {exc.code} from LLM endpoint: {details}") from exc
@@ -493,20 +504,24 @@ class AnthropicClient:
         }
         endpoint = f"{self.config.anthropic_base_url}/v1/messages"
         body = json.dumps(payload).encode("utf-8")
-        http_request = request.Request(
-            endpoint,
-            data=body,
-            headers={
-                "x-api-key": self.config.anthropic_api_key,
-                "anthropic-version": self.ANTHROPIC_VERSION,
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
+        headers = {
+            "x-api-key": self.config.anthropic_api_key,
+            "anthropic-version": self.ANTHROPIC_VERSION,
+            "Content-Type": "application/json",
+        }
 
         try:
-            with request.urlopen(http_request, timeout=self.config.timeout_seconds) as response:
-                raw = response.read().decode("utf-8")
+            response_body, _ = safe_fetch(
+                endpoint,
+                method="POST",
+                data=body,
+                headers=headers,
+                max_bytes=_LLM_MAX_BYTES,
+                timeout=self.config.timeout_seconds,
+            )
+            raw = response_body.decode("utf-8")
+        except FetchPolicyError as exc:
+            raise LLMError(f"unsafe LLM endpoint: {exc}") from exc
         except error.HTTPError as exc:  # pragma: no cover - exercised via CLI/network usage
             details = exc.read().decode("utf-8", errors="replace")
             raise LLMError(f"HTTP {exc.code} from Anthropic endpoint: {details}") from exc

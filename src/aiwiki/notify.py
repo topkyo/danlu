@@ -5,11 +5,12 @@ from __future__ import annotations
 import json
 import os
 import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from aiwiki.app_utils import FetchPolicyError, safe_fetch
 
 from .execution.audit_preview import append_audit
 
@@ -17,6 +18,7 @@ _FEISHU_ENV = "AIWIKI_NOTIFY_FEISHU_WEBHOOK_URL"
 _WECOM_ENV = "AIWIKI_NOTIFY_WECOM_WEBHOOK_URL"
 _ENABLED_CHANNELS_ENV = "AIWIKI_NOTIFY_ENABLED_CHANNELS"
 _HTTP_TIMEOUT_SECONDS = 5
+_NOTIFY_MAX_BYTES = 1 * 1024 * 1024
 
 
 def _append_run_event(root: Path, event: dict[str, Any]) -> None:
@@ -108,6 +110,8 @@ def _post_channel(channel: str, webhook_url: str, message: str) -> tuple[str, in
 
     try:
         status_code = _post_json(webhook_url, payload)
+    except FetchPolicyError as exc:
+        return ("invalid_config", None, exc.__class__.__name__)
     except urllib.error.HTTPError as exc:
         return ("http_status", int(exc.code), exc.__class__.__name__)
     except urllib.error.URLError as exc:
@@ -122,14 +126,15 @@ def _post_channel(channel: str, webhook_url: str, message: str) -> tuple[str, in
 
 def _post_json(webhook_url: str, payload: dict[str, Any]) -> int:
     body = json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
+    _body, _ = safe_fetch(
         webhook_url,
+        method="POST",
         data=body,
         headers={"Content-Type": "application/json"},
-        method="POST",
+        max_bytes=_NOTIFY_MAX_BYTES,
+        timeout=_HTTP_TIMEOUT_SECONDS,
     )
-    with urllib.request.urlopen(request, timeout=_HTTP_TIMEOUT_SECONDS) as response:
-        return int(response.getcode())
+    return 200
 
 
 def _feishu_payload(message: str) -> dict[str, Any]:

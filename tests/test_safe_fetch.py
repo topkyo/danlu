@@ -4,6 +4,7 @@ import socket
 import threading
 import unittest
 import urllib.request
+from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -37,6 +38,18 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"fallback")
+
+    def do_POST(self):  # noqa: N802
+        length = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(length)
+        if self.path == "/post":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.end_headers()
+            self.wfile.write(self.headers.get("Authorization", "").encode("utf-8") + b"\n" + body)
+        else:
+            self.send_response(404)
+            self.end_headers()
 
     def log_message(self, *_args):
         return
@@ -142,3 +155,96 @@ class SafeFetchTests(unittest.TestCase):
         with patch.object(urllib.request, "build_opener", return_value=SlowOpener()):
             with self.assertRaises(TimeoutError):
                 safe_fetch("http://example.com/", max_bytes=100, timeout=0.001, allow_private=True)
+
+    def test_safe_fetch_post_carries_body_and_headers(self) -> None:
+        server, thread, base_url = self._server()
+        try:
+            body, _ = safe_fetch(
+                f"{base_url}/post",
+                method="POST",
+                data=b"payload",
+                headers={"Authorization": "Bearer secret"},
+                max_bytes=100,
+                timeout=2,
+                allow_private=True,
+            )
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+        self.assertEqual(body, b"Bearer secret\npayload")
+
+    def test_safe_fetch_redirect_strips_auth_on_host_change(self) -> None:
+        captured = []
+
+        class RedirectingOpener:
+            def open(self, req, timeout):
+                del timeout
+                captured.append(req)
+                if len(captured) == 1:
+                    raise HTTPError(
+                        req.full_url,
+                        HTTPStatus.FOUND,
+                        "Found",
+                        {"Location": "http://other.example.com/next"},
+                        None,
+                    )
+                return RawResponse(req.full_url, b"ok")
+
+        with patch.object(urllib.request, "build_opener", return_value=RedirectingOpener()), patch.object(
+            utils,
+            "_is_private_address",
+            return_value=False,
+        ):
+            safe_fetch(
+                "http://example.com/start",
+                headers={"Authorization": "Bearer secret", "x-api-key": "key", "Cookie": "a=b"},
+                max_bytes=100,
+                timeout=2,
+            )
+
+        second_headers = {key.lower(): value for key, value in captured[1].headers.items()}
+        self.assertNotIn("authorization", second_headers)
+        self.assertNotIn("x-api-key", second_headers)
+        self.assertNotIn("cookie", second_headers)
+
+    def test_safe_fetch_redirect_keeps_auth_on_same_host(self) -> None:
+        captured = []
+
+        class RedirectingOpener:
+            def open(self, req, timeout):
+                del timeout
+                captured.append(req)
+                if len(captured) == 1:
+                    raise HTTPError(req.full_url, HTTPStatus.FOUND, "Found", {"Location": "/next"}, None)
+                return RawResponse(req.full_url, b"ok")
+
+        with patch.object(urllib.request, "build_opener", return_value=RedirectingOpener()), patch.object(
+            utils,
+            "_is_private_address",
+            return_value=False,
+        ):
+            safe_fetch(
+                "http://example.com/start",
+                headers={"Authorization": "Bearer secret", "x-api-key": "key", "Cookie": "a=b"},
+                max_bytes=100,
+                timeout=2,
+            )
+
+        second_headers = {key.lower(): value for key, value in captured[1].headers.items()}
+        self.assertEqual(second_headers["authorization"], "Bearer secret")
+        self.assertEqual(second_headers["x-api-key"], "key")
+        self.assertEqual(second_headers["cookie"], "a=b")
+
+
+class RawResponse:
+    def __init__(self, url: str, body: bytes) -> None:
+        self.url = url
+        self.body = body
+
+    def read(self, _size: int = -1) -> bytes:
+        body = self.body
+        self.body = b""
+        return body
+
+    def geturl(self) -> str:
+        return self.url
