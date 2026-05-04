@@ -27,8 +27,21 @@
 | **Round 68 Progress Slimming** (2026-05-04) | PROGRESS 三层瘦身 / rounds archive / index.json / stop_line_audit lint | ✅ done (`2c408f9`) |
 | **Round 69 Atomic State I/O Foundation** (2026-05-04) | atomic_write_text + atomic_append_jsonl helpers / 4 saver 替换 / 21 unit tests / R69.5 fixture refresh 归并 | ✅ done (`7ee3ab8`) |
 | **Round 70 Receipt JSONL 事务化 + Revert 双 receipt** (2026-05-04) | 12 JSONL writers 全量原子化 / atomic_append_line 原语 / machine_memory revert 双 receipt + reverts/ 子目录 / receipt_path override / mock seam 清除 / R70.5 fixture refresh 归并 | ✅ done (`950f291`) |
+| **Round 71 Fetch & Path 安全** (2026-05-04) | safe_fetch + safe_resolve_within helpers / drop.py SSRF (private IP 表 + IPv4-mapped + redirect 复检) / 越界检查 / repo symlink 跳过 / Playwright page.route subresource 拦截 / 22 安全测试 | ✅ done (`a6074b9`) |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 71 — Fetch & Path 安全 (drop.py SSRF + 越界 + symlink) — 完成 (commit a6074b9)
+
+- **目的**：为 drop.py URL fetch / 本地 path / repo ingest 三类入口建立统一安全边界，阻断 SSRF / 任意读 / symlink 越界。无人值守可信化主线第三轮（R69 原子写 → R70 receipt 事务化 → R71 fetch & path 安全）。
+- **实现**：
+  - `app_utils.py` 新增 `FetchPolicyError` / `PathOutsideWorkspaceError`、`_is_private_address`（IPv4 + IPv6 私网 + link-local + **IPv4-mapped IPv6 折叠**封堵 `::ffff:127.0.0.1` bypass）、`_validate_safe_url`、`safe_fetch(url, *, max_bytes, timeout, allow_private, max_redirects)`（redirect 每跳复检 + max_bytes 截断 raise）、`safe_resolve_within(path, root)`。
+  - `drop.py` 切换：`_http_fetch_url` / `_download_asset_url` 用 `safe_fetch`；`_fetch_url` / `_http_fetch_url` 加 `root: Path` 参数让 `file://` 分支走 `safe_resolve_within(path, root)` 而非 `path.parent`（封堵 `drop_url(file:///etc/passwd)` bypass）；`_materialize_binary_source` / `drop_repo` 本地分支 + `_resolve_asset_url` 的 `file://` 都走 `safe_resolve_within`；`_repo_tree` / `_repo_key_files` rglob 后跳过 symlink + 越界检查双保险；`_render_url_with_playwright` 加 `page.route("**/*", _guard)` 拦截每个 navigation/subresource。
+  - 常量：`_HTML_MAX_BYTES = 5MB` / `_ASSET_MAX_BYTES = 50MB`。
+- **测试**：`tests/test_safe_fetch.py`（9 unittest）+ `test_safe_resolve.py`（6）+ `test_drop_safety.py`（7）；caller 适配 `tests/test_drop.py` 3 处 + `tests/test_app.py` 2 处 `_fetch_url(..., root=self.root)`。
+- **Stop Lines**：0 lock 实现改动 / 0 L3 自动采纳 / 0 LLM client 改动 / 0 git clone 远程 URL / 0 fact-layer 直写改动 / 0 receipt schema 改动 / 0 第三方依赖。
+- **Residual Risks**：DNS rebinding（推 R73）、CLI render fallback 无 hook 能力（R71+ 视用量决定是否禁用 fallback）、HTTPS cert pinning（依赖 stdlib 默认）、CGN `100.64/10` 未拒绝（接受）。
+- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1626 unit + coverage 92%）；oracle qa-review 经一轮 fail-then-fix（3 条 blocker → 全清零 → PASS）。
 
 ### Round 70 — Receipt JSONL 事务化 + Revert 双 Receipt — 完成 (commit 950f291)
 
@@ -54,20 +67,12 @@
 - **Lock 边界**：`save_json_document` R69 前后都是 lock-free primitive；helper 不内嵌锁，把 lock 责任完全交给调用方（R72 全 CLI lock 审计 scope）。
 - **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1601+ unit + coverage 92%）；oracle qa-review PASS（无 Critical/High/Medium 残留）。
 
-### Round 68 — PROGRESS Three-Layer Slimming + stop_line_audit Lint — 完成 (commit 2c408f9)
+### Round 71 — 候选方向（已启动 → 见上方）
 
-- **目的**: `PROGRESS.md` 从 1537 行瘦身到 ≤250 行，只保留 Quick Index、活跃 3 轮和改进方向。
-- **历史层**: 旧 round 详情迁移到 `archive/rounds/round-NN.md`，保留原始块语义。
-- **机器层**: `archive/rounds/index.json` 提供 `round_id/title/status/commit/archived_path/tags` 最小 schema。
-- **工具**: `scripts/extract_rounds.py` 负责批量切分与索引生成；R67/R67.5/R68 手工文件合并入索引。
-- **Stop Lines**: 0 产品代码 / 0 fixture / 0 verify.sh 默认链路改动 / 0 review/apply/audit / 0 receipt schema。
-- **验证目标**: 行数 ≤250、round 文件 ≥50、index rounds ≥50、spot-check 5 个文件、`bash scripts/verify.sh` 全绿。
+### Round 72 — 候选方向（未启动）
 
-### Round 71 — 候选方向（未启动）
-
-- 候选 A：fetch & path 安全（drop.py SSRF 614/963/1197 / `file://` / repo symlink），无人值守可信化主线。
-- 候选 B：single-writer lock 全 CLI 审计（drop-* / nightly_health 缺锁，R72 候选）。
-- 候选 C：L3 自动采纳事务化 + audit 不可变 + auto-revert（R74 终局护栏）。
+- 候选 A：single-writer lock 全 CLI 审计（drop-* / nightly_health 缺锁），R72 主线。
+- 候选 B：LLM client 安全（`llm.py` urlopen 三处 + DNS rebinding pinning），R73 主线。
 - 启动条件：选定方向后写 `.codex/contracts/active.md`，本块替换为对应 in-progress 摘要。
 
 ## 改进方向
