@@ -2,7 +2,7 @@
   "backend": "codex-cli",
   "failure": "simulated backend timeout",
   "model": "stub-model",
-  "prompt_hash": "8d4df469c275390a",
+  "prompt_hash": "60bcc2f2f84818c3",
   "response_id": "",
   "response_text": "",
   "sequence": 2,
