@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import urllib.error
 from dataclasses import dataclass
@@ -19,6 +20,8 @@ _WECOM_ENV = "AIWIKI_NOTIFY_WECOM_WEBHOOK_URL"
 _ENABLED_CHANNELS_ENV = "AIWIKI_NOTIFY_ENABLED_CHANNELS"
 _HTTP_TIMEOUT_SECONDS = 5
 _NOTIFY_MAX_BYTES = 1 * 1024 * 1024
+
+logger = logging.getLogger(__name__)
 
 
 def _append_run_event(root: Path, event: dict[str, Any]) -> None:
@@ -71,6 +74,9 @@ def notify_report_generated(root: Path, artifact: dict[str, Any]) -> None:
       - never raises to caller
       - 2xx HTTP → silently success (no audit)
       - non-2xx / network error / invalid config → write notify_failed audit
+      - dispatch failure is observable only via run_events.jsonl
+        `notify_dispatch_failed` event; does not retry; does not log webhook URL
+      - strict delivery would require a separate API
     """
 
     try:
@@ -89,14 +95,33 @@ def notify_report_generated(root: Path, artifact: dict[str, Any]) -> None:
             reason, status_code, error_type = failure
             _safe_record_notify_failed(root, artifact, channel, reason, status_code, error_type)
     except Exception as exc:
-        _append_run_event(
-            root,
-            {
-                "event": "notify_dispatch_failed",
-                "reason": str(exc),
-                "error_type": type(exc).__name__,
-            },
-        )
+        try:
+            _append_run_event(
+                root,
+                {
+                    "event": "notify_dispatch_failed",
+                    "reason": str(exc),
+                    "error_type": type(exc).__name__,
+                    "artifact": str(artifact.get("path") or ""),
+                    "protocol": str(artifact.get("protocol") or ""),
+                    "format": str(artifact.get("format") or ""),
+                },
+            )
+        except Exception as event_exc:
+            # Fallback-of-fallback: even run_events.jsonl write failed. Stay
+            # fail-soft per docstring contract (never raises to caller); expose
+            # via logger.warning with sanitized metadata only (no exception
+            # messages, no webhook URLs).
+            logger.warning(
+                "notify dispatch fallback event write failed: "
+                "artifact=%s protocol=%s format=%s "
+                "original_error_type=%s recording_error_type=%s",
+                str(artifact.get("path") or ""),
+                str(artifact.get("protocol") or ""),
+                str(artifact.get("format") or ""),
+                type(exc).__name__,
+                type(event_exc).__name__,
+            )
         return
 
 
@@ -171,9 +196,15 @@ def _safe_record_notify_failed(
     status_code: int | None,
     error_type: str,
 ) -> None:
+    """Record notification failure without raising.
+
+    Double fail-soft policy: primary notification failure is written to audit;
+    if that write fails, a run event is attempted. If the fallback run event also
+    fails, emit logger.warning with exception metadata and return.
+    """
     try:
         _record_notify_failed(root, artifact, channel, reason, status_code, error_type)
-    except Exception as exc:
+    except Exception as original_exc:
         try:
             _append_run_event(
                 root,
@@ -181,11 +212,20 @@ def _safe_record_notify_failed(
                     "event": "notify_audit_append_failed",
                     "channel": channel,
                     "reason": reason,
-                    "audit_error": str(exc),
-                    "error_type": type(exc).__name__,
+                    "audit_error": str(original_exc),
+                    "error_type": type(original_exc).__name__,
                 },
             )
-        except Exception:
+        except Exception as record_exc:
+            logger.warning(
+                "notify failure recording failed for channel=%s reason=%s; "
+                "original_error=%s; recording_error=%s",
+                channel,
+                reason,
+                type(original_exc).__name__,
+                type(record_exc).__name__,
+                exc_info=True,
+            )
             return
         return
 

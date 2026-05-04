@@ -1025,6 +1025,15 @@ def load_runtime_history(root: Path) -> list[dict[str, Any]]:
     return load_jsonl_documents(runtime_history_path(root))
 
 
+def load_runtime_history_strict(root: Path) -> list[dict[str, Any]]:
+    """Strict variant of load_runtime_history for execution decision paths.
+
+    Raises CorruptStateError on malformed JSONL. Use only on fact-layer /
+    decision paths; dashboard/preview should keep best-effort load_runtime_history.
+    """
+    return load_jsonl_documents_strict(runtime_history_path(root))
+
+
 def load_run_log_history(root: Path) -> list[dict[str, Any]]:
     return load_jsonl_documents(run_log_path(root))
 

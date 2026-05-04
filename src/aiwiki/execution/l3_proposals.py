@@ -16,6 +16,7 @@ from ..app_state import (
     execution_receipt_history_path,
     l3_proposal_state_path,
     load_json_document,
+    load_json_document_strict,
     save_json_document,
 )
 from ..app_utils import (
@@ -712,7 +713,7 @@ def _resolve_l3_receipt_path(root: Path, receipt_id: str) -> Path:
 @runtime_write_operation
 def revert_l3_proposal(root: Path, receipt_id: str, *, note: str | None = None) -> dict[str, Any]:
     receipt_path = _resolve_l3_receipt_path(root, receipt_id)
-    receipt = load_json_document(receipt_path)
+    receipt = load_json_document_strict(receipt_path)
     actionable_hint = (
         "Expected receipt JSON under output/control/execution-receipts/ with kind=execution-receipt "
         "and generated_by=aiwiki-l3-proposal. Try `aiwiki revert l3-proposal-apply-<proposal_id>`."

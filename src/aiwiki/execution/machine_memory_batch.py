@@ -50,9 +50,9 @@ from ..app_render import append_wiki_log
 from ..app_state import (
     append_runtime_history,
     execution_batch_receipt_path,
-    load_json_document,
+    load_json_document_strict,
     load_machine_memory_action_state,
-    load_runtime_history,
+    load_runtime_history_strict,
 )
 from ..app_utils import relative_path, runtime_write_operation, slugify
 
@@ -66,11 +66,11 @@ def _build_batch_id(prefix: str, subjects: list[str]) -> str:
 
 def _load_latest_action_apply_batch_receipt(root: Path, batch_id: str | None) -> dict[str, Any]:
     if batch_id:
-        receipt = load_json_document(execution_batch_receipt_path(root, batch_id))
+        receipt = load_json_document_strict(execution_batch_receipt_path(root, batch_id))
         if not isinstance(receipt, dict) or not receipt:
             raise FileNotFoundError(f"Batch receipt not found: {batch_id}")
         return receipt
-    history = [event for event in load_runtime_history(root) if isinstance(event, dict)]
+    history = [event for event in load_runtime_history_strict(root) if isinstance(event, dict)]
     reverted_batch_ids = {
         str(event.get("reverted_batch_id") or "")
         for event in history
@@ -83,7 +83,7 @@ def _load_latest_action_apply_batch_receipt(root: Path, batch_id: str | None) ->
         if not candidate_batch_id or candidate_batch_id in reverted_batch_ids:
             continue
         receipt_path = root / str(event.get("receipt_path") or "")
-        receipt = load_json_document(receipt_path)
+        receipt = load_json_document_strict(receipt_path)
         if isinstance(receipt, dict):
             return receipt
     raise RuntimeError("No unreverted action apply batch found.")

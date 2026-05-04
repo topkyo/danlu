@@ -71,7 +71,7 @@ from ..app_state import (
     DEFAULT_PROTOCOL,
     append_runtime_history,
     execution_dry_run_path,
-    load_json_document,
+    load_json_document_strict,
     load_machine_memory_action_state,
     load_manual_link_state,
     save_machine_memory_action_state,
@@ -625,7 +625,7 @@ def revert_machine_memory_action(
     receipt_path = root / receipt_relative
     if not receipt_path.exists():
         raise FileNotFoundError(f"Execution receipt not found: {receipt_relative}")
-    receipt = load_json_document(receipt_path)
+    receipt = load_json_document_strict(receipt_path)
     if not isinstance(receipt, dict) or str(receipt.get("kind") or "") != "execution-receipt":
         raise RuntimeError("Execution receipt is not valid.")
     if str(receipt.get("operation") or "") != "apply":

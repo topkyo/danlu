@@ -17,7 +17,7 @@ from .app_state import (
     DEFAULT_PROTOCOL,
     execution_batch_receipt_path,
     execution_receipt_history_path,
-    load_json_document,
+    load_json_document_strict,
     material_archive_action_id,
     material_archive_state_path,
     material_state_path,
@@ -138,7 +138,7 @@ def _unique_elixir_action_id(root: Path, base: str, applied_at: datetime) -> str
 
 
 def load_execution_bundle(path: Path) -> ExecutionBundle:
-    document = load_json_document(path)
+    document = load_json_document_strict(path)
     if not isinstance(document, dict) or str(document.get("kind") or "") != "execution-bundle":
         raise RuntimeError(f"Invalid execution bundle: {path}")
     return document

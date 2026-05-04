@@ -55,7 +55,7 @@ from ..app_state import (
     archive_candidates_state_path,
     archive_dry_run_path,
     load_archive_candidates_state,
-    load_json_document,
+    load_json_document_strict,
     load_manifest,
     load_material_archive_state,
     load_material_state,
@@ -300,7 +300,7 @@ def revert_material_archive(
     receipt_path = root / receipt_relative
     if not receipt_path.exists():
         raise FileNotFoundError(f"Execution receipt not found: {receipt_relative}")
-    receipt = load_json_document(receipt_path)
+    receipt = load_json_document_strict(receipt_path)
     if not isinstance(receipt, dict) or str(receipt.get("kind") or "") != "execution-receipt":
         raise RuntimeError("Execution receipt is not valid.")
     if str(receipt.get("operation") or "") != "apply":

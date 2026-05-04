@@ -189,6 +189,29 @@ class NotifyTests(unittest.TestCase):
         self.assertEqual(events[-1]["event"], "notify_dispatch_failed")
         self.assertEqual(events[-1]["reason"], "bad env")
         self.assertEqual(events[-1]["error_type"], "RuntimeError")
+        self.assertEqual(events[-1]["artifact"], self.artifact["path"])
+        self.assertEqual(events[-1]["protocol"], self.artifact["protocol"])
+        self.assertEqual(events[-1]["format"], self.artifact["format"])
+
+    def test_notify_dispatch_double_failure_warns(self) -> None:
+        """Even if run_events.jsonl write fails inside the outer guard,
+        notify_report_generated must stay fail-soft (never raises) and expose
+        the double failure via logger.warning with sanitized metadata only."""
+        with (
+            patch("aiwiki.notify.NotifyConfig.from_env", side_effect=RuntimeError("bad env")),
+            patch("aiwiki.notify._append_run_event", side_effect=RuntimeError("run log down")),
+            self.assertLogs("aiwiki.notify", level="WARNING") as logs,
+        ):
+            notify_report_generated(self.root, self.artifact)  # must not raise
+
+        text = "\n".join(logs.output)
+        self.assertIn("notify dispatch fallback event write failed", text)
+        self.assertIn(f"artifact={self.artifact['path']}", text)
+        self.assertIn("original_error_type=RuntimeError", text)
+        self.assertIn("recording_error_type=RuntimeError", text)
+        # Must not leak raw exception messages.
+        self.assertNotIn("bad env", text)
+        self.assertNotIn("run log down", text)
 
     def test_notify_audit_append_failure_records_fallback_run_event(self) -> None:
         with patch("aiwiki.notify._record_notify_failed", side_effect=RuntimeError("audit down")):
@@ -206,6 +229,28 @@ class NotifyTests(unittest.TestCase):
         self.assertEqual(events[-1]["channel"], "feishu")
         self.assertEqual(events[-1]["reason"], "network_error")
         self.assertEqual(events[-1]["audit_error"], "audit down")
+
+    def test_notify_failure_recording_double_failure_warns(self) -> None:
+        with (
+            patch("aiwiki.notify._record_notify_failed", side_effect=RuntimeError("audit down")),
+            patch("aiwiki.notify._append_run_event", side_effect=RuntimeError("run log down")),
+            self.assertLogs("aiwiki.notify", level="WARNING") as logs,
+        ):
+            _safe_record_notify_failed(
+                self.root,
+                self.artifact,
+                "feishu",
+                "network_error",
+                None,
+                "URLError",
+            )
+
+        text = "\n".join(logs.output)
+        self.assertIn("notify failure recording failed", text)
+        self.assertIn("channel=feishu", text)
+        self.assertIn("original_error=RuntimeError", text)
+        self.assertIn("recording_error=RuntimeError", text)
+        self.assertNotIn("example.com", text)
 
 
 if __name__ == "__main__":
