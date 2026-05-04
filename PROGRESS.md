@@ -33,8 +33,20 @@
 | **Round 74 L3 事务化 + audit 失败 auto-revert** (2026-05-04) | apply_l3_proposal 后半段 5 步事务化 / target byte-equal write_bytes(snapshot) / _persist_l3_proposal_page atomic_write_text + proposal deep-copy revert / L3PostApplyAuditError 携带 failed_step+before/after_hash+target_file+action_id+deleted_receipt_path / auto_adopt_l3 标记 auto_reverted 写完整 runtime_history 严重事件 / L3RevertError 二级失败 / 9 测试 | ✅ done (`b6a64f5`) |
 | **Round 75 receipt_history 事务化** (2026-05-04) | append_execution_receipt_history 改 snapshot-then-rollback / `_durable_truncate` (open r+b + truncate + flush + fsync) / ReceiptHistoryAuditError + ReceiptHistoryRollbackError / R74 partial 残余风险关闭 / 5 unit + 1 集成 | ✅ done |
 | **Round 76 runtime_history 事务化 + audit-mirror helper 上移** (2026-05-04) | `_durable_truncate` + AuditMirror* 上移 app_utils / app_execution alias 保持 R75 API / append_runtime_history snapshot-then-rollback + runtime lock / 5 unit | ✅ done |
+| **Round 77 LLM receipt 事务化** (2026-05-04) | `_append_llm_receipt` snapshot-then-rollback / 复用 AuditMirror* + `_durable_truncate` / 不扩 lock 边界 / 5 unit | ✅ done |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 77 — `_append_llm_receipt` 事务化 — 完成
+
+- **目的**：关闭 audit-mirror 二段写主线最后一个 jsonl 同构裂缝。`_append_llm_receipt` 原先先写 `.aiwiki/logs/llm-receipts.jsonl` 再写 universal `audit.jsonl`，audit 失败会留下 primary-only 行。
+- **实现**：
+  - `runner/receipts.py:_append_llm_receipt` 改为 `size_before` snapshot → `_append_jsonl_log` → try `append_universal_audit_record` → audit 失败 `_durable_truncate(log_path, size_before)` → `AuditMirrorError`；truncate 失败 → `AuditMirrorRollbackError`。
+  - 复用 R76 上移到 `app_utils.py` 的 `_durable_truncate` / `AuditMirrorError` / `AuditMirrorRollbackError`。
+  - 按 contract 不加 `@runtime_write_operation`，不动 `_append_jsonl_log` / `_next_jsonl_line_number` / schema / source_stream / source_ref / document / caller。
+- **测试**：新增 `tests/test_llm_receipt_transaction.py` 5 测试（audit 失败回滚 / truncate 失败 rollback error / 成功 primary 写入 / primary 不存在前置 / 防退化 spy helper）。
+- **Stop Lines**：0 通用 audit_transaction context manager / 0 `_write_age_audit` single-file mirror 修复（留 R78+）/ 0 lock 边界扩张 / 0 schema 改动。
+- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1663 unit + coverage 92%）。
 
 ### Round 76 — append_runtime_history 事务化 + audit-mirror helper 上移 — 完成
 

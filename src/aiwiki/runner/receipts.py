@@ -23,15 +23,30 @@ def _append_log(root: Path, event: dict[str, Any]) -> None:
 
 
 def _append_llm_receipt(root: Path, event: dict[str, Any]) -> None:
-    payload, line_number = _append_jsonl_log(root, ".aiwiki/logs/llm-receipts.jsonl", event)
+    from aiwiki.app_utils import AuditMirrorError, AuditMirrorRollbackError, _durable_truncate
     from aiwiki.execution.audit_preview import append_universal_audit_record
 
-    append_universal_audit_record(
-        root,
-        source_stream="llm_receipts",
-        source_ref=f".aiwiki/logs/llm-receipts.jsonl#L{line_number}",
-        document=payload,
-    )
+    log_path = root / ".aiwiki/logs/llm-receipts.jsonl"
+    size_before = log_path.stat().st_size if log_path.exists() else 0
+    payload, line_number = _append_jsonl_log(root, ".aiwiki/logs/llm-receipts.jsonl", event)
+    try:
+        append_universal_audit_record(
+            root,
+            source_stream="llm_receipts",
+            source_ref=f".aiwiki/logs/llm-receipts.jsonl#L{line_number}",
+            document=payload,
+        )
+    except Exception as audit_exc:
+        try:
+            _durable_truncate(log_path, size_before)
+        except Exception as truncate_exc:
+            raise AuditMirrorRollbackError(
+                "audit mirror append failed and primary truncate also failed: "
+                f"audit={audit_exc!r}; truncate={truncate_exc!r}"
+            ) from audit_exc
+        raise AuditMirrorError(
+            f"universal audit append failed; primary truncated: {audit_exc!r}"
+        ) from audit_exc
 
 
 def _append_jsonl_log(root: Path, relative_log_path: str, event: dict[str, Any]) -> tuple[dict[str, Any], int]:
