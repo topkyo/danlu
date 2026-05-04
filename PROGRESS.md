@@ -38,8 +38,19 @@
 | **Round 79 auto_adopt 顶层 lock 收口** (2026-05-04) | 4 个 `auto_adopt_*` 顶层入口加 `@runtime_write_operation` / reentrant lock 验证 / 4 unit | ✅ done |
 | **Round 80 safe_fetch response close** (2026-05-04) | `safe_fetch` urlopen response 用 with 包住 read+return / 3 close-path tests / R71-R73 残余关闭 | ✅ done |
 | **Round 81 citation snapshot path guard** (2026-05-04) | `citation-snapshot-refresh` 加 `safe_resolve_within` + wiki/judgments|decisions 白名单 / 4 unit | ✅ done |
+| **Round 82 citation revert guard 对称收口** (2026-05-04) | `revert_machine_memory_action` citation 分支复用同 helper / R81 follow-up 单点 1 行 | ✅ done |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 82 — `revert_machine_memory_action` citation 分支对称收口 — 完成
+
+- **目的**：关闭 R81 oracle qa-review 提出的 follow-up：revert 分支仍裸 `root / page_path`，与 R81 收紧的 apply 分支不对称；若历史 receipt 含违规 `page_path`，revert 仍能写到任意路径。
+- **实现**：
+  - `execution/machine_memory_actions.py:660` 把 `page = root / page_path` 替换为 `page = _validate_citation_page_path(root, page_path)`，复用 R81 helper（safe_resolve_within + wiki/judgments|decisions 白名单）。
+  - 不动 helper、不动 apply 分支、不动其他 apply_mode、不改 producer / schema。
+- **测试**：R81 已为 helper 加 4 测试覆盖白名单 / traversal；revert 路径走同一 helper，无需新增。既有 revert 相关测试不破。
+- **Stop Lines**：0 helper 改动 / 0 apply 分支改动 / 0 schema 改动 / 0 producer 改动。
+- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1679 unit + coverage 92%）。
 
 ### Round 81 — `citation-snapshot-refresh` page_path 守护 — 完成
 
@@ -61,28 +72,6 @@
 - **测试**：新增 `tests/test_safe_fetch_close.py` 3 测试，覆盖正常路径、max_bytes 截断、read 异常三种路径均执行 `__exit__`。
 - **Stop Lines**：0 redirect / SSRF / auth strip 改动 / 0 caller 改动 / 0 DNS pinning / 0 新 helper 或参数。
 - **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1675 unit + coverage 92%）。
-
-### Round 79 — `auto_adopt_*` 顶层 lock 收口 — 完成
-
-- **目的**：关闭 R72 lock 主线遗留的 machine_memory / L3 auto-adopt 顶层入口残余。4 个 `auto_adopt_*` 是 runtime 写入口，但此前只依赖下游局部 lock，顶层缺少单一一致性边界。
-- **实现**：
-  - `runner/auto_adopt.py` 为 `auto_adopt_l1`、`auto_adopt_l2`、`auto_adopt_judgments`、`auto_adopt_l3` 加 `@runtime_write_operation`。
-  - 顶部补充 `runtime_write_operation` import；不改 4 个函数内部逻辑、caller、schema。
-  - 确认 `runtime_write_operation` 以第一个参数 `root` 获取 lock 并透传 `*args/**kwargs`，兼容 `auto_adopt_judgments(root, client, *, limit=...)`；`runtime_write_lock` 已是 depth-counted reentrant，下游已装饰函数复入不死锁。
-- **测试**：新增 `tests/test_auto_adopt_lock.py` 4 测试，用 `_RUNTIME_LOCKS` depth 验证 4 个入口执行期间已持有 root lock。
-- **Stop Lines**：0 内部裸 `path.write_text/write_bytes` 改造 / 0 nightly lock 粒度细化 / 0 新事务或新装饰器 / 0 schema 改动。
-- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1672 unit + coverage 92%）。
-
-### Round 78 — `_write_age_audit` single-file 事务化 — 完成
-
-- **目的**：关闭 audit-mirror 二段写主线最后一条裂缝。`_write_age_audit` 原先覆盖写 `.aiwiki/state/protocol_learnings_age.json` 后再写 universal audit，audit 失败会留下 primary-only 新状态。
-- **实现**：
-  - `app_utils.py` 新增 `_durable_restore_or_remove(path, snapshot)`：`snapshot is None` 删除 primary；`bytes` 则 tmp + fsync + replace 原子还原。
-  - `execution/protocol_learnings.py:_write_age_audit` 改为 snapshot old bytes/None → `_atomic_write_text` → try `append_universal_audit_record` → audit 失败 `_durable_restore_or_remove` → `AuditMirrorError`；restore 失败 → `AuditMirrorRollbackError`。
-  - 保持 `_atomic_write_text` / `age_protocol_learnings` / `AUDIT_STATE_PATH` / schema / source_stream / source_ref / document 不动；不加 `@runtime_write_operation`。
-- **测试**：新增 `tests/test_age_audit_transaction.py` 5 测试（已有 primary 还原 / 首次写失败删除 / restore 失败 rollback error / 成功 primary 写入 / 防退化 spy helper）。
-- **Stop Lines**：0 audit_transaction context manager / 0 jsonl 事务路径改动 / 0 lock 边界扩张 / 0 schema 改动。
-- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1668 unit + coverage 92%）。
 
 ### Round 77 — `_append_llm_receipt` 事务化 — 完成
 

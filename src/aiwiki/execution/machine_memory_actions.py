@@ -657,7 +657,7 @@ def revert_machine_memory_action(
         page_path = str(preview.get("page_path") or target.get("primary_path") or "")
         if not page_path:
             raise RuntimeError("Execution receipt is missing the judgment page path.")
-        page = root / page_path
+        page = _validate_citation_page_path(root, page_path)
         if not page.exists():
             raise FileNotFoundError(f"Judgment page not found: {page_path}")
         content = page.read_text(encoding="utf-8", errors="replace")
