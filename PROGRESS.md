@@ -28,8 +28,21 @@
 | **Round 69 Atomic State I/O Foundation** (2026-05-04) | atomic_write_text + atomic_append_jsonl helpers / 4 saver 替换 / 21 unit tests / R69.5 fixture refresh 归并 | ✅ done (`7ee3ab8`) |
 | **Round 70 Receipt JSONL 事务化 + Revert 双 receipt** (2026-05-04) | 12 JSONL writers 全量原子化 / atomic_append_line 原语 / machine_memory revert 双 receipt + reverts/ 子目录 / receipt_path override / mock seam 清除 / R70.5 fixture refresh 归并 | ✅ done (`950f291`) |
 | **Round 71 Fetch & Path 安全** (2026-05-04) | safe_fetch + safe_resolve_within helpers / drop.py SSRF (private IP 表 + IPv4-mapped + redirect 复检) / 越界检查 / repo symlink 跳过 / Playwright page.route subresource 拦截 / 22 安全测试 | ✅ done (`a6074b9`) |
+| **Round 72 Lock 高优先级缺锁补齐** (2026-05-04) | drop_* 五入口 + nightly_health + append_execution_receipt_history 全加 runtime_write_lock / 抽 _unlocked helper 保签名 / 3 lock coverage 测试 | ✅ done (`addd53d`) |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 72 — Single-Writer Lock 高优先级缺锁补齐 — 完成 (commit addd53d)
+
+- **目的**：为炼丹炉 single-writer-many-readers 模型补齐 3 类高优先级缺锁入口。无人值守可信化主线第四轮（R69 原子写 → R70 receipt 事务化 → R71 fetch 安全 → R72 lock 全覆盖）。
+- **实现**：
+  - `drop.py` 五个公共入口（`drop_url` / `drop_pdf` / `drop_image` / `drop_repo` / `drop_note`）抽 `_..._unlocked` 内部 helper，公共入口外层 `with runtime_write_lock(root):` 包整个事务。
+  - `runtime_surfaces.py` `nightly_health(root)` 同样 helper + 外层加锁（之前仅子流程 `write_nightly_health` 加锁）。
+  - `app_execution.py` `append_execution_receipt_history` 加 `@runtime_write_operation` 装饰器，与 `run_nightly` / `run_lint` 风格一致。
+- **测试**：`tests/test_lock_coverage.py` 3 个 unittest，patch `runtime_write_lock` 断言被调用。
+- **Stop Lines**：0 lock 实现改动 / 0 lock 文件路径改动 / 0 read-write 锁分离 / 0 atomic_* 原语自动取锁 / 0 中优先级 8 handler 顶层兜底（today-snooze / apply-* / revert-* / planner-log-replay / batch-review / review-next 留 R72+）。
+- **Residual Risks**：中优先级 8 handler 仍依赖底层分散加锁，重构可能漏；`today-snooze` load-modify-save 非事务化（accepted Medium）；NFS fcntl 异常本轮不防御。
+- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1629 unit + coverage 92%）；oracle qa-review PASS（无 Critical/High，仅 accepted residual Medium）。
 
 ### Round 71 — Fetch & Path 安全 (drop.py SSRF + 越界 + symlink) — 完成 (commit a6074b9)
 
@@ -67,12 +80,11 @@
 - **Lock 边界**：`save_json_document` R69 前后都是 lock-free primitive；helper 不内嵌锁，把 lock 责任完全交给调用方（R72 全 CLI lock 审计 scope）。
 - **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1601+ unit + coverage 92%）；oracle qa-review PASS（无 Critical/High/Medium 残留）。
 
-### Round 71 — 候选方向（已启动 → 见上方）
+### Round 73 — 候选方向（未启动）
 
-### Round 72 — 候选方向（未启动）
-
-- 候选 A：single-writer lock 全 CLI 审计（drop-* / nightly_health 缺锁），R72 主线。
-- 候选 B：LLM client 安全（`llm.py` urlopen 三处 + DNS rebinding pinning），R73 主线。
+- 候选 A：LLM client 安全（`llm.py` urlopen 三处 + DNS rebinding pinning），R73 主线。
+- 候选 B：L3 自动采纳事务化 + audit 不可变 + auto-revert（R74 终局护栏）。
+- 候选 C：中优先级 8 handler lock 顶层兜底（R72 遗留）。
 - 启动条件：选定方向后写 `.codex/contracts/active.md`，本块替换为对应 in-progress 摘要。
 
 ## 改进方向
