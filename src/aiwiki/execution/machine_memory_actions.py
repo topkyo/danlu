@@ -83,6 +83,7 @@ from ..app_utils import (
     relative_path,
     render_frontmatter,
     runtime_write_operation,
+    safe_resolve_within,
     strip_frontmatter,
 )
 from ..compile.pipeline import compile_wiki
@@ -90,6 +91,31 @@ from ..compile.pipeline import compile_wiki
 
 def _save_machine_memory_action_records(root: Path, actions: list[dict[str, Any]]) -> None:
     save_machine_memory_action_state(root, {"version": 1, "actions": actions})
+
+
+def _validate_citation_page_path(root: Path, page_path: str) -> Path:
+    """Resolve page_path under root and enforce judgment/decision page whitelist."""
+    if not page_path:
+        raise RuntimeError("citation-snapshot-refresh requires page_path")
+    try:
+        page = safe_resolve_within(root / page_path, root)
+    except (ValueError, OSError) as exc:
+        raise RuntimeError(
+            f"citation-snapshot-refresh page_path escapes vault root: {page_path}"
+        ) from exc
+    allowed_prefixes = (
+        (root / "wiki" / "judgments").resolve(),
+        (root / "wiki" / "decisions").resolve(),
+    )
+    for prefix in allowed_prefixes:
+        try:
+            page.relative_to(prefix)
+            return page
+        except ValueError:
+            continue
+    raise RuntimeError(
+        f"citation-snapshot-refresh page_path must be in wiki/judgments or wiki/decisions: {page_path}"
+    )
 
 
 def resolve_machine_memory_action_query(
@@ -483,9 +509,7 @@ def apply_machine_memory_action(
         save_manual_link_state(root, {"version": 1, "source_to_concept": manual_links})
     elif apply_mode == "citation-snapshot-refresh":
         page_path = str(stored_preview.get("page_path") or target.get("primary_path") or "")
-        if not page_path:
-            raise RuntimeError("Safe apply preview is missing the judgment page path.")
-        page = root / page_path
+        page = _validate_citation_page_path(root, page_path)
         if not page.exists():
             raise FileNotFoundError(f"Judgment page not found: {page_path}")
         content = page.read_text(encoding="utf-8", errors="replace")

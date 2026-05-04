@@ -37,8 +37,19 @@
 | **Round 78 age audit single-file 事务化** (2026-05-04) | `_durable_restore_or_remove` / `_write_age_audit` snapshot bytes + restore/remove / audit-mirror 主线收口 / 5 unit | ✅ done |
 | **Round 79 auto_adopt 顶层 lock 收口** (2026-05-04) | 4 个 `auto_adopt_*` 顶层入口加 `@runtime_write_operation` / reentrant lock 验证 / 4 unit | ✅ done |
 | **Round 80 safe_fetch response close** (2026-05-04) | `safe_fetch` urlopen response 用 with 包住 read+return / 3 close-path tests / R71-R73 残余关闭 | ✅ done |
+| **Round 81 citation snapshot path guard** (2026-05-04) | `citation-snapshot-refresh` 加 `safe_resolve_within` + wiki/judgments|decisions 白名单 / 4 unit | ✅ done |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 81 — `citation-snapshot-refresh` page_path 守护 — 完成
+
+- **目的**：关闭 fact-layer 直写审查发现的唯一 medium 风险点。`citation-snapshot-refresh` 之前信任 action payload 的 `page_path`，可能写入 `wiki/sources` / `raw` / workspace 其他文件，违反事实层边界。
+- **实现**：
+  - `execution/machine_memory_actions.py` 新增 `_validate_citation_page_path(root, page_path)`，用 `safe_resolve_within(root / page_path, root)` 防 traversal，再限制 resolved path 必须位于 `wiki/judgments` 或 `wiki/decisions`。
+  - `citation-snapshot-refresh` apply 分支改用该 helper；不动其他 apply_mode、不动 producer (`safe_apply_preview` / `app_memory.py`)、不改 schema。
+- **测试**：新增 `tests/test_citation_snapshot_guard.py` 4 测试，覆盖 `wiki/judgments` / `wiki/decisions` 合法、`wiki/sources` 拒绝、`../` traversal 拒绝。
+- **Stop Lines**：0 其他 machine_memory action 分支改动 / 0 producer 链路改动 / 0 全局守护框架 / 0 schema 改动。
+- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1679 unit + coverage 92%）。
 
 ### Round 80 — `safe_fetch` response close 收口 — 完成
 
