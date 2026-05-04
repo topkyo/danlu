@@ -35,8 +35,20 @@
 | **Round 76 runtime_history 事务化 + audit-mirror helper 上移** (2026-05-04) | `_durable_truncate` + AuditMirror* 上移 app_utils / app_execution alias 保持 R75 API / append_runtime_history snapshot-then-rollback + runtime lock / 5 unit | ✅ done |
 | **Round 77 LLM receipt 事务化** (2026-05-04) | `_append_llm_receipt` snapshot-then-rollback / 复用 AuditMirror* + `_durable_truncate` / 不扩 lock 边界 / 5 unit | ✅ done |
 | **Round 78 age audit single-file 事务化** (2026-05-04) | `_durable_restore_or_remove` / `_write_age_audit` snapshot bytes + restore/remove / audit-mirror 主线收口 / 5 unit | ✅ done |
+| **Round 79 auto_adopt 顶层 lock 收口** (2026-05-04) | 4 个 `auto_adopt_*` 顶层入口加 `@runtime_write_operation` / reentrant lock 验证 / 4 unit | ✅ done |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 79 — `auto_adopt_*` 顶层 lock 收口 — 完成
+
+- **目的**：关闭 R72 lock 主线遗留的 machine_memory / L3 auto-adopt 顶层入口残余。4 个 `auto_adopt_*` 是 runtime 写入口，但此前只依赖下游局部 lock，顶层缺少单一一致性边界。
+- **实现**：
+  - `runner/auto_adopt.py` 为 `auto_adopt_l1`、`auto_adopt_l2`、`auto_adopt_judgments`、`auto_adopt_l3` 加 `@runtime_write_operation`。
+  - 顶部补充 `runtime_write_operation` import；不改 4 个函数内部逻辑、caller、schema。
+  - 确认 `runtime_write_operation` 以第一个参数 `root` 获取 lock 并透传 `*args/**kwargs`，兼容 `auto_adopt_judgments(root, client, *, limit=...)`；`runtime_write_lock` 已是 depth-counted reentrant，下游已装饰函数复入不死锁。
+- **测试**：新增 `tests/test_auto_adopt_lock.py` 4 测试，用 `_RUNTIME_LOCKS` depth 验证 4 个入口执行期间已持有 root lock。
+- **Stop Lines**：0 内部裸 `path.write_text/write_bytes` 改造 / 0 nightly lock 粒度细化 / 0 新事务或新装饰器 / 0 schema 改动。
+- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1672 unit + coverage 92%）。
 
 ### Round 78 — `_write_age_audit` single-file 事务化 — 完成
 

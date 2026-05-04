@@ -38,7 +38,7 @@ from ..app_state import (
     load_machine_memory,
     load_planner_state,
 )
-from ..app_utils import relative_path, utc_now
+from ..app_utils import relative_path, runtime_write_operation, utc_now
 from ..config import l3_auto_adopt_min_evidence_from_env
 from ..execution.lifecycle import review_concepts_batch
 from ..execution.machine_memory_actions import review_machine_memory_actions_batch
@@ -100,6 +100,7 @@ def _env_flag(name: str) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
+@runtime_write_operation
 def auto_adopt_l1(root: Path) -> dict[str, Any]:
     """Auto-adopt L1 semantic candidates.
 
@@ -204,6 +205,7 @@ def auto_adopt_l1(root: Path) -> dict[str, Any]:
     return results
 
 
+@runtime_write_operation
 def auto_adopt_l2(root: Path) -> dict[str, Any]:
     """Auto-adopt L2 machine-memory actions (concept splits only).
 
@@ -272,6 +274,7 @@ def auto_adopt_l2(root: Path) -> dict[str, Any]:
     return results
 
 
+@runtime_write_operation
 def auto_adopt_judgments(
     root: Path,
     client: Any,
@@ -667,6 +670,7 @@ def _write_review_entry(
     return {**result, "review_id": review_id}
 
 
+@runtime_write_operation
 def auto_adopt_l3(root: Path) -> dict[str, Any]:
     """Auto-adopt L3 proposals (candidate → accepted + applied).
 
