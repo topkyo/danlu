@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,16 @@ from .app_state import (
 from .app_types import ExecutionBundle, ExecutionReceipt
 from .app_utils import atomic_append_jsonl, relative_path, runtime_write_operation, sha256_bytes, slugify
 from .render.paths import execution_receipt_path
+
+
+class ReceiptHistoryAuditError(RuntimeError):
+    """Universal audit append failed; primary receipts.jsonl successfully truncated back to pre-call size."""
+
+    failed_step = "universal_audit"
+
+
+class ReceiptHistoryRollbackError(RuntimeError):
+    """Audit append failed AND primary truncate also failed; receipts.jsonl in inconsistent state."""
 
 
 def build_execution_bundle(
@@ -513,16 +524,36 @@ def find_latest_elixir_promotion_receipt(root: Path, *, elixir_id: str) -> dict[
 @runtime_write_operation
 def append_execution_receipt_history(root: Path, receipt: dict[str, Any]) -> None:
     path = execution_receipt_history_path(root)
+    size_before = path.stat().st_size if path.exists() else 0
     line_number = _next_jsonl_line_number(path)
     atomic_append_jsonl(path, receipt)
     from .execution.audit_preview import append_universal_audit_record
 
-    append_universal_audit_record(
-        root,
-        source_stream="execution_receipts",
-        source_ref=f"{relative_path(root, path)}#L{line_number}",
-        document=receipt,
-    )
+    try:
+        append_universal_audit_record(
+            root,
+            source_stream="execution_receipts",
+            source_ref=f"{relative_path(root, path)}#L{line_number}",
+            document=receipt,
+        )
+    except Exception as audit_exc:
+        try:
+            _durable_truncate(path, size_before)
+        except Exception as truncate_exc:
+            raise ReceiptHistoryRollbackError(
+                "audit append failed and primary truncate also failed: "
+                f"audit={audit_exc!r}; truncate={truncate_exc!r}"
+            ) from audit_exc
+        raise ReceiptHistoryAuditError(
+            f"universal audit append failed; primary truncated: {audit_exc!r}"
+        ) from audit_exc
+
+
+def _durable_truncate(path: Path, size: int) -> None:
+    with open(path, "r+b") as handle:
+        handle.truncate(size)
+        handle.flush()
+        os.fsync(handle.fileno())
 
 
 def _next_jsonl_line_number(path: Path) -> int:

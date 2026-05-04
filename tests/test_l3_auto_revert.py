@@ -48,6 +48,17 @@ class L3AutoRevertTests(unittest.TestCase):
         self.assertEqual(self.target.read_text(encoding="utf-8"), self.before_content)
         self.assertFalse(self._receipt_path_for(ctx.exception).exists())
 
+    def test_l3_apply_audit_error_when_universal_audit_fails(self) -> None:
+        before_bytes = self.target.read_bytes()
+
+        with patch("aiwiki.execution.audit_preview.append_universal_audit_record", side_effect=OSError("audit fail")):
+            with self.assertRaises(L3PostApplyAuditError) as ctx:
+                apply_l3_proposal(self.root, self.proposal_id)
+
+        self.assertEqual(ctx.exception.failed_step, "append_execution_receipt_history")
+        self.assertEqual(self.target.read_bytes(), before_bytes)
+        self.assertFalse(self._receipt_path_for(ctx.exception).exists())
+
     def test_revert_on_state_save_failure(self) -> None:
         with patch("aiwiki.execution.l3_proposals.save_l3_proposal_state", side_effect=OSError("perm denied")):
             with self.assertRaises(L3PostApplyAuditError) as ctx:

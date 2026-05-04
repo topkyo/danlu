@@ -30,11 +30,25 @@
 | **Round 71 Fetch & Path 安全** (2026-05-04) | safe_fetch + safe_resolve_within helpers / drop.py SSRF (private IP 表 + IPv4-mapped + redirect 复检) / 越界检查 / repo symlink 跳过 / Playwright page.route subresource 拦截 / 22 安全测试 | ✅ done (`a6074b9`) |
 | **Round 72 Lock 高优先级缺锁补齐** (2026-05-04) | drop_* 五入口 + nightly_health + append_execution_receipt_history 全加 runtime_write_lock / 抽 _unlocked helper 保签名 / 3 lock coverage 测试 | ✅ done (`addd53d`) |
 | **Round 73 LLM/notify HTTP 安全** (2026-05-04) | safe_fetch 扩展 POST + headers + redirect strip auth / llm.py 三处 + notify.py webhook 切换 / _LLM_MAX_BYTES 10MB + _NOTIFY_MAX_BYTES 1MB / 7 安全测试 | ✅ done (`c0cf944`) |
-| **Round 74 L3 事务化 + audit 失败 auto-revert** (2026-05-04) | apply_l3_proposal 后半段 5 步事务化 / target byte-equal write_bytes(snapshot) / _persist_l3_proposal_page atomic_write_text + proposal deep-copy revert / L3PostApplyAuditError 携带 failed_step+before/after_hash+target_file+action_id+deleted_receipt_path / auto_adopt_l3 标记 auto_reverted 写完整 runtime_history 严重事件 / L3RevertError 二级失败 / 9 测试 | ✅ done |
+| **Round 74 L3 事务化 + audit 失败 auto-revert** (2026-05-04) | apply_l3_proposal 后半段 5 步事务化 / target byte-equal write_bytes(snapshot) / _persist_l3_proposal_page atomic_write_text + proposal deep-copy revert / L3PostApplyAuditError 携带 failed_step+before/after_hash+target_file+action_id+deleted_receipt_path / auto_adopt_l3 标记 auto_reverted 写完整 runtime_history 严重事件 / L3RevertError 二级失败 / 9 测试 | ✅ done (`b6a64f5`) |
+| **Round 75 receipt_history 事务化** (2026-05-04) | append_execution_receipt_history 改 snapshot-then-rollback / `_durable_truncate` (open r+b + truncate + flush + fsync) / ReceiptHistoryAuditError + ReceiptHistoryRollbackError / R74 partial 残余风险关闭 / 5 unit + 1 集成 | ✅ done |
 
 ## 状态 — 当前活跃 3 轮
 
-### Round 74 — L3 自动采纳事务化 + audit 失败 auto-revert — 完成
+### Round 75 — append_execution_receipt_history 事务化 — 完成
+
+- **目的**：关闭 R74 留下的 nested IO partial 残余风险。`append_execution_receipt_history` 内部先写 `execution-receipts.jsonl` 再写 universal `audit.jsonl`，第二步失败时 primary 已落但 audit 缺；R75 让两者要么都成功要么 primary 回滚到调用前长度。无人值守可信化主线第七轮。
+- **实现**：
+  - `app_execution.py` 新增 `ReceiptHistoryAuditError` / `ReceiptHistoryRollbackError`。
+  - `append_execution_receipt_history` 事务化：`size_before = path.stat().st_size if path.exists() else 0` → `atomic_append_jsonl(path, receipt)` → try `append_universal_audit_record(...)`；audit 失败调内部 helper `_durable_truncate(path, size_before)`（open `r+b` + truncate + flush + `os.fsync(fileno)`）回滚 primary，raise `ReceiptHistoryAuditError`；truncate/fsync 自身失败 raise `ReceiptHistoryRollbackError` 含 audit_exc + truncate_exc 双层信息。
+  - 保持 `@runtime_write_operation` 装饰器、签名、line_number 逻辑不变。所有调用方（L3 / machine_memory / alchemy / archive / runner，共 18 处）透明受益。
+  - 方案 3（snapshot-then-rollback）：保持 primary=成功标记的语义不变，避免顺序翻转影响下游消费方。
+- **测试**：`tests/test_receipt_history_transaction.py` 5 测试（audit 失败回滚 / truncate 也失败 raise rollback / 成功路径双写 / primary 不存在前置 / 防退化 spy `_durable_truncate` 必被调用）；`tests/test_l3_auto_revert.py` 新增 1 集成测试（mock universal audit 失败 → R75 primary rollback → R74 L3 revert target → raise `L3PostApplyAuditError(failed_step="append_execution_receipt_history")`）。
+- **Stop Lines**：0 通用 `with audit_transaction(root)` 抽象（推 R76+） / 0 receipts.jsonl + audit.jsonl schema 改动 / 0 atomic_append_jsonl 内部改动 / 0 调用方改动 / 0 universal audit backfill 改动 / 0 `append_runtime_history` 同类修复（留 R76+）。
+- **Residual Risks**：`append_runtime_history` 同构 nested IO partial 仍存在（runtime-history.jsonl + audit.jsonl），R76+ 收口；rollback 在 `truncate + flush + fsync` 过程中崩溃的窗口仍为接受残余风险（fsync 后 durable）；NFS 等网络文件系统的 truncate 行为不完全保证（本地 ext4/btrfs/apfs 没问题）。
+- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1653 unit + coverage 92%）；oracle qa-review 经 fail-then-fix（1 High → 清零 → PASS）。
+
+### Round 74 — L3 自动采纳事务化 + audit 失败 auto-revert — 完成 (commit b6a64f5)
 
 - **目的**：为 L3 自动采纳建立"事务化 + audit 失败 auto-revert"护栏，让 L3 默认 ON 安全（终局无人值守主线护栏第六轮）。
 - **实现**：
@@ -44,7 +58,7 @@
   - 方案 B：apply 已物理回滚 + receipt file 已删，不再调 `revert_l3_proposal`。
 - **测试**：`tests/test_l3_auto_revert.py` 9 测试（5 失败步骤 + revert 自身失败 + auto_adopt 元数据 + L3RevertError 路径）；`test_execution.py` / `test_auto_adopt.py` 既有用例预期同步更新。
 - **Stop Lines**：0 通用 `with l3_transaction(root)` 抽象 / 0 receipt+audit JSON schema 改动 / 0 audit_preview.append_audit 改动 / 0 L3 触发条件改动 / 0 machine_memory auto_adopt 类似改动（留 R75+） / 0 generate_l3_proposals_from_planner 改动。
-- **Residual Risks**：`append_execution_receipt_history` nested IO partial 失败仍可能留下 receipt_history apply 行而无对应 fact，本轮接受留 R75+；方案 B 无独立 revert receipt 文件，事后审计依赖 runtime_history 严重事件 + 原 receipt 已删。
+- **Residual Risks**：~~`append_execution_receipt_history` nested IO partial 失败仍可能留下 receipt_history apply 行而无对应 fact，本轮接受留 R75+~~ → R75 已关闭；方案 B 无独立 revert receipt 文件，事后审计依赖 runtime_history 严重事件 + 原 receipt 已删。
 - **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1647 unit + coverage 92%）；oracle qa-review 经 fail-then-fix（5 条 blocker → 全清零 → PASS）。
 
 ### Round 73 — LLM Client + Notify HTTP 安全 — 完成 (commit c0cf944)
@@ -59,18 +73,6 @@
 - **Stop Lines**：0 第三方 SDK / 0 DNS pinning（推 R73+）/ 0 域名 allowlist / 0 backend 选择改动 / 0 streaming API。
 - **Residual Risks**：DNS rebinding（resolve→connect IP 变化）；TLS cert pinning 仍依赖系统 CA；域名仅黑名单未 allowlist；非阻断观察：`safe_fetch` response 未显式 `with`/`finally` close（建议未来清理）。
 - **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1636 unit + coverage 92%）；oracle qa-review PASS（无 Critical/High/Medium）。
-
-### Round 72 — Single-Writer Lock 高优先级缺锁补齐 — 完成 (commit addd53d)
-
-- **目的**：为炼丹炉 single-writer-many-readers 模型补齐 3 类高优先级缺锁入口。无人值守可信化主线第四轮（R69 原子写 → R70 receipt 事务化 → R71 fetch 安全 → R72 lock 全覆盖）。
-- **实现**：
-  - `drop.py` 五个公共入口（`drop_url` / `drop_pdf` / `drop_image` / `drop_repo` / `drop_note`）抽 `_..._unlocked` 内部 helper，公共入口外层 `with runtime_write_lock(root):` 包整个事务。
-  - `runtime_surfaces.py` `nightly_health(root)` 同样 helper + 外层加锁（之前仅子流程 `write_nightly_health` 加锁）。
-  - `app_execution.py` `append_execution_receipt_history` 加 `@runtime_write_operation` 装饰器，与 `run_nightly` / `run_lint` 风格一致。
-- **测试**：`tests/test_lock_coverage.py` 3 个 unittest，patch `runtime_write_lock` 断言被调用。
-- **Stop Lines**：0 lock 实现改动 / 0 lock 文件路径改动 / 0 read-write 锁分离 / 0 atomic_* 原语自动取锁 / 0 中优先级 8 handler 顶层兜底（today-snooze / apply-* / revert-* / planner-log-replay / batch-review / review-next 留 R72+）。
-- **Residual Risks**：中优先级 8 handler 仍依赖底层分散加锁，重构可能漏；`today-snooze` load-modify-save 非事务化（accepted Medium）；NFS fcntl 异常本轮不防御。
-- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1629 unit + coverage 92%）；oracle qa-review PASS（无 Critical/High，仅 accepted residual Medium）。
 
 ## 改进方向
 
