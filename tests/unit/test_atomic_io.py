@@ -5,7 +5,7 @@ import os
 
 import pytest
 
-from aiwiki.app_utils import atomic_append_jsonl, atomic_write_text
+from aiwiki.app_utils import atomic_append_jsonl, atomic_append_line, atomic_write_text
 
 
 def _tmp_residue(directory):
@@ -139,6 +139,43 @@ def test_atomic_append_jsonl_fsync_failure_propagates(tmp_path, monkeypatch):
 
     with pytest.raises(OSError, match="jsonl fsync failed"):
         atomic_append_jsonl(path, {"event": "boom"})
+
+
+def test_atomic_append_line_happy_path_round_trip(tmp_path):
+    path = tmp_path / "history.jsonl"
+
+    atomic_append_line(path, '{"schema_version":1,"kind":"signal"}')
+    atomic_append_line(path, '{"schema_version":1,"kind":"planner"}')
+
+    assert path.read_text(encoding="utf-8").splitlines() == [
+        '{"schema_version":1,"kind":"signal"}',
+        '{"schema_version":1,"kind":"planner"}',
+    ]
+
+
+def test_atomic_append_line_fsync_failure_propagates(tmp_path, monkeypatch):
+    path = tmp_path / "history.jsonl"
+
+    def fail_fsync(_fd):
+        raise OSError("line fsync failed")
+
+    monkeypatch.setattr(os, "fsync", fail_fsync)
+
+    with pytest.raises(OSError, match="line fsync failed"):
+        atomic_append_line(path, '{"event":"boom"}')
+
+
+def test_atomic_append_line_rejects_embedded_newline(tmp_path):
+    with pytest.raises(ValueError, match="embedded newlines"):
+        atomic_append_line(tmp_path / "history.jsonl", '{"a":1}\n{"b":2}')
+
+
+def test_atomic_append_line_creates_parent_dir(tmp_path):
+    path = tmp_path / "missing" / "nested" / "history.jsonl"
+
+    atomic_append_line(path, '{"first":1}')
+
+    assert path.read_text(encoding="utf-8") == '{"first":1}\n'
 
 
 def test_atomic_write_text_concurrent_same_path_yields_one_winner(tmp_path):

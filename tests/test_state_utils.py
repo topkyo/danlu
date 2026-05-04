@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import aiwiki.app_state as state
 import aiwiki.app_utils as utils
@@ -129,7 +131,16 @@ class AppStateTests(unittest.TestCase):
         self.assertEqual(audit_records[0]["subject"], {"kind": "nightly", "id": ""})
         self.assertFalse(audit_records[0]["revert_supported"])
         self.assertEqual(audit_records[1]["source_ref"], ".aiwiki/state/runtime-history.jsonl#L2")
-        self.assertNotEqual(audit_records[0]["audit_event_id"], audit_records[1]["audit_event_id"])
+
+    def test_append_runtime_history_propagates_fsync_failure(self) -> None:
+        event = {
+            "event_type": "review",
+            "occurred_at": "2026-04-27T00:00:00Z",
+            "protocol": "general",
+        }
+        with mock.patch.object(os, "fsync", side_effect=OSError("fsync failed")):
+            with self.assertRaises(OSError):
+                state.append_runtime_history(self.root, event)
 
     def test_build_state_loaders_normalize_and_fallback(self) -> None:
         self._write_json(

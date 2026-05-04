@@ -4106,18 +4106,27 @@ class AiwikiFlowTests(unittest.TestCase):
             note="Apply before revert test.",
             bundle_path=dry_run["bundle_path"],
         )
+        apply_receipt_path = self.root / "output/control/execution-receipts/manual-link-action.json"
+        self.assertTrue(apply_receipt_path.exists())
+        apply_receipt_before = json.loads(apply_receipt_path.read_text(encoding="utf-8"))
+        self.assertEqual(apply_receipt_before["operation"], "apply")
 
         result = revert_machine_memory_action(self.root, "manual-link-action", note="Rollback this safe apply.")
 
         self.assertEqual(result["status"], "proposed")
+        self.assertTrue(apply_receipt_path.exists())
+        self.assertEqual(json.loads(apply_receipt_path.read_text(encoding="utf-8"))["operation"], "apply")
         manual_link_state = json.loads((self.root / ".aiwiki" / "state" / "manual-links.json").read_text(encoding="utf-8"))
         self.assertFalse(manual_link_state["source_to_concept"][0]["active"])
         receipt = json.loads((self.root / result["receipt_path"]).read_text(encoding="utf-8"))
         self.assertEqual(receipt["kind"], "execution-receipt")
         self.assertEqual(receipt["operation"], "revert")
+        self.assertTrue(result["receipt_path"].endswith("reverts/manual-link-action.json"))
+        self.assertEqual(receipt["receipt_path"], result["receipt_path"])
         self.assertEqual(receipt["bundle"]["status"], "proposed")
         history_lines = (self.root / ".aiwiki" / "state" / "execution-receipts.jsonl").read_text(encoding="utf-8").strip().splitlines()
         self.assertEqual(len(history_lines), 2)
+        self.assertEqual([json.loads(line)["operation"] for line in history_lines], ["apply", "revert"])
         state = json.loads((self.root / ".aiwiki" / "state" / "machine-memory-actions.json").read_text(encoding="utf-8"))
         action = next(action for action in state["actions"] if action["id"] == "manual-link-action")
         self.assertEqual(action["status"], "proposed")

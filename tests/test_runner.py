@@ -18,6 +18,7 @@ from aiwiki.drop import drop_note
 from aiwiki.execution.ask import ask_question
 from aiwiki.llm import CompletionResult, LLMError
 from aiwiki.runner import (
+    _append_jsonl_log,
     _append_llm_receipt,
     _append_log,
     _build_ask_prompt,
@@ -137,6 +138,11 @@ class RunnerTests(unittest.TestCase):
         self.assertFalse(audit_records[0]["revert_supported"])
         self.assertEqual(audit_records[1]["source_ref"], ".aiwiki/logs/llm-receipts.jsonl#L2")
         self.assertNotEqual(audit_records[0]["audit_event_id"], audit_records[1]["audit_event_id"])
+
+    def test_append_jsonl_log_propagates_fsync_failure(self) -> None:
+        with patch.object(os, "fsync", side_effect=OSError("fsync failed")):
+            with self.assertRaises(OSError):
+                _append_jsonl_log(self.root, ".aiwiki/logs/runs.jsonl", {"event": "run-ask"})
 
     def test_run_ask_uses_lean_prompt_immediately_when_requested(self) -> None:
         artifact_path = self.root / "output" / "reports" / "query-lean.md"

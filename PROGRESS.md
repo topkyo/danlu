@@ -26,8 +26,23 @@
 | **Round 67.5 Acceptance Fixture Refresh** (2026-05-04) | M6.1b prompt_hash drift refresh / fixture helper 文档化 | ✅ done (`284f8af`) |
 | **Round 68 Progress Slimming** (2026-05-04) | PROGRESS 三层瘦身 / rounds archive / index.json / stop_line_audit lint | ✅ done (`2c408f9`) |
 | **Round 69 Atomic State I/O Foundation** (2026-05-04) | atomic_write_text + atomic_append_jsonl helpers / 4 saver 替换 / 21 unit tests / R69.5 fixture refresh 归并 | ✅ done (`7ee3ab8`) |
+| **Round 70 Receipt JSONL 事务化 + Revert 双 receipt** (2026-05-04) | 12 JSONL writers 全量原子化 / atomic_append_line 原语 / machine_memory revert 双 receipt + reverts/ 子目录 / receipt_path override / mock seam 清除 / R70.5 fixture refresh 归并 | ✅ done |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 70 — Receipt JSONL 事务化 + Revert 双 Receipt — 完成
+
+- **目的**：把 JSONL append 全量从 `path.open("a")` 直写迁到 R69 atomic helper；machine_memory revert 在 R67 单 receipt 基础上加 reverse-event receipt（双 receipt），让 audit/rollback 有完整事务证据。
+- **实现**：
+  - `src/aiwiki/app_utils.py` 新增 `atomic_append_line(path, line, *, fsync=True)` 单行原子 append 原语（拒绝嵌入 `\n`，自动建父目录），`atomic_append_jsonl` 保持 dict-only + sort_keys。
+  - 12 处 JSONL writer 全迁移：`app_state.append_runtime_history` / `app_execution.append_execution_receipt_history` / `runner/receipts._append_jsonl_log` / `metrics_history.append_snapshot` / `memory/graph.append_machine_memory_history` / `content/memory.append_execution_policy_decisions` / `drift_scan` runtime+signals / `planner/rollback` marker / `audit_preview.append_audit` + canonical writer `signals/collector` / `planner/log_writer` / `drift_scan` 走 `atomic_append_line`。
+  - `execution/machine_memory_actions.py` revert 写 `output/control/execution-receipts/reverts/<id>.json`（避开 forward receipt glob），payload 内 `receipt_path` override 与实际路径对齐；`metrics_io._receipt_json_paths()` 过滤 `reverts/` 子目录。
+  - `metrics_history.append_snapshot` 语义从 best-effort swallow 改为传播 fsync/IO 错误（与无人值守不静默吞错一致）。
+  - `runner/receipts.py` 删 `fsync=isinstance(log_path, Path)` 死表达式与 MagicMock seam；`tests/test_execution_compat.py` 两处 seam test 改用 `tempfile.TemporaryDirectory()` + `Path` 替代 MagicMock root。
+- **测试**：`tests/unit/test_atomic_io.py` 扩展 `atomic_append_line`（happy / fsync 失败 / 嵌入 `\n` raise / parent dir 自动建）；`tests/unit/test_machine_memory_revert_receipts.py` 新增双 receipt 验证；`test_app.py` / `test_metrics_history.py` / `test_runner.py` / `test_state_utils.py` 抽样 fsync 失败传播扩展。
+- **R70.5 归并**：M6.1b `case_backend_failure` fixture refresh（pre-existing prompt drift，与 R70 无关，借本轮归并，`f9b16282…` → `b6f002b9…`）。
+- **Stop Lines**：0 lock 实现改动 / 0 L3 自动采纳 / 0 fetch / 0 LLM client / 0 prompt builder / 0 receipt schema 改动 / 0 fact-layer 直写改动（`content/io.py:370` 推 R75）。
+- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1604 unit + coverage 92%，30 文件 complete coverage）；oracle qa-review 经一轮 fail-then-fix（5 条 blocker → 全清零 → 1 条 mock seam Medium → 修复后 PASS）。
 
 ### Round 69 — Atomic State I/O Foundation — 完成 (commit 7ee3ab8)
 
@@ -48,22 +63,11 @@
 - **Stop Lines**: 0 产品代码 / 0 fixture / 0 verify.sh 默认链路改动 / 0 review/apply/audit / 0 receipt schema。
 - **验证目标**: 行数 ≤250、round 文件 ≥50、index rounds ≥50、spot-check 5 个文件、`bash scripts/verify.sh` 全绿。
 
-### Round 67.5 — Acceptance Fixture Refresh — 完成 (commit 284f8af)
+### Round 71 — 候选方向（未启动）
 
-- 修复 R67 期间发现的 M6.1b 3 个 fixture `prompt_hash` drift。
-- drift 原因是 prompt 历史漂移；与 R67 auto-adopt hardening 改动无关。
-- 新增 dev tool `scripts/refresh_acceptance_fixture.py`，复用 `CapturingBackend` 与 `compute_prompt_hash`。
-- 提取 helper 到 `tests/acceptance/case_runner.py`，并补充 `tests/fixtures/acceptance/M6.1b/README.md`。
-- 验证：`bash scripts/verify.sh` all green（13 acceptance + unit + coverage ≥ 92% fail-under）+ oracle isolated qa-review PASS（零 finding）。
-- Stop Lines：0 prompt builder / 0 ReplayBackend / 0 compute_prompt_hash / 0 expected goldens / 0 installer defaults。
-
-### Round 69 — 候选方向（已启动 → 见上方 Round 69 块；Round 70 候选见下）
-
-### Round 70 — 候选方向（未启动）
-
-- 候选 A：receipt 事务化 + JSONL append fsync 全量迁移（R69 helper 直接复用，全仓库 ~40 处 JSONL append 统一迁移）；machine_memory revert 不再覆盖原 apply receipt（execution/machine_memory_actions.py:689/698）；planner rollback dry-run 行为修正。
-- 候选 B：fetch & path 安全（drop.py SSRF / `file://` / repo symlink），R71 主线。
-- 候选 C：清理 `.obsidian/plugins/furnace-product-shell/` untracked npm residue（R68 lint 已暴露）。
+- 候选 A：fetch & path 安全（drop.py SSRF 614/963/1197 / `file://` / repo symlink），无人值守可信化主线。
+- 候选 B：single-writer lock 全 CLI 审计（drop-* / nightly_health 缺锁，R72 候选）。
+- 候选 C：L3 自动采纳事务化 + audit 不可变 + auto-revert（R74 终局护栏）。
 - 启动条件：选定方向后写 `.codex/contracts/active.md`，本块替换为对应 in-progress 摘要。
 
 ## 改进方向

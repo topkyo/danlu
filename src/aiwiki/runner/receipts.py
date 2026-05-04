@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from aiwiki.app_protocol import ensure_layout
+from aiwiki.app_utils import atomic_append_jsonl
 from aiwiki.runner.clients import (
     _append_fallback_stage,
     _client_backend_name,
@@ -41,10 +41,8 @@ def _append_jsonl_log(root: Path, relative_log_path: str, event: dict[str, Any])
         **event,
     }
     log_path = root / relative_log_path
-    log_path.parent.mkdir(parents=True, exist_ok=True)
     line_number = _next_jsonl_line_number(log_path)
-    with log_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload, sort_keys=True) + "\n")
+    atomic_append_jsonl(log_path, payload)
     return payload, line_number
 
 

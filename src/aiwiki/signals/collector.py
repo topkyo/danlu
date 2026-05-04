@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
 import uuid
 from importlib import import_module
 from pathlib import Path
 from typing import Any
 
-from ..app_utils import runtime_write_lock
+from ..app_utils import atomic_append_line, runtime_write_lock
 from . import adapters
 from .schema import PROTOCOLS, SCHEMA_VERSION, canonical_dumps, compute_dedupe_key, parse_trace_id, validate
 
@@ -326,12 +325,8 @@ def _append_skip_example(skip_examples: list[dict[str, Any]], *, reason: str, so
 
 
 def _append_records(signals_path: Path, records: list[dict[str, Any]]) -> None:
-    signals_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = "\n".join(canonical_dumps(record) for record in records) + "\n"
-    with signals_path.open("a", encoding="utf-8") as handle:
-        handle.write(payload)
-        handle.flush()
-        os.fsync(handle.fileno())
+    for record in records:
+        atomic_append_line(signals_path, canonical_dumps(record))
 
 
 def _new_signal_id() -> str:

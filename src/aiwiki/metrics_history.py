@@ -6,7 +6,7 @@ Schema of each line in ``.aiwiki/state/metrics-history.jsonl``::
 
 Design notes:
 
-- Lazy / best-effort. Append failures must never break ``aiwiki metrics``.
+- Append failures propagate so fsync / durability failures are visible to callers.
 - Lookup is reverse-scan over the JSONL file (KISS; expected file size is
   small — one line per metrics command invocation).
 - No third-party deps; stdlib datetime only.
@@ -21,6 +21,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
+from .app_utils import atomic_append_jsonl
+
 HISTORY_RELATIVE = Path(".aiwiki") / "state" / "metrics-history.jsonl"
 
 
@@ -29,17 +31,11 @@ def history_path(root: Path) -> Path:
 
 
 def append_snapshot(root: Path, ts: str, metrics: dict[str, float | None]) -> None:
-    """Append one snapshot line. Silently no-op on any error."""
+    """Append one snapshot line and propagate append durability failures."""
 
-    try:
-        path = history_path(root)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        record = {"ts": ts, "metrics": dict(metrics)}
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True))
-            handle.write("\n")
-    except Exception:  # pragma: no cover - best-effort, never break metrics
-        return
+    path = history_path(root)
+    record = {"ts": ts, "metrics": dict(metrics)}
+    atomic_append_jsonl(path, record)
 
 
 def _parse_iso(value: str) -> datetime | None:

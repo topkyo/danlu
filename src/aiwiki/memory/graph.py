@@ -34,7 +34,7 @@ from ..app_memory_query import (
 )
 from ..app_protocol import PENDING_ACTION_STATUSES, action_focus_score
 from ..app_state import DEFAULT_PROTOCOL, machine_memory_history_path
-from ..app_utils import html_safe_json_literal, tokenize
+from ..app_utils import atomic_append_jsonl, html_safe_json_literal, tokenize
 from ..render.html_theme import html_meta_theme, html_theme_css
 
 # Single source of truth for relationship graph language.
@@ -1413,5 +1413,4 @@ def append_machine_memory_history(root: Path, memory: dict[str, Any], transition
         "added_edges": transition["added_edges"],
         "removed_edges": transition["removed_edges"],
     }
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(entry, sort_keys=True) + "\n")
+    atomic_append_jsonl(path, entry)

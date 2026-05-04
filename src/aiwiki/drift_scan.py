@@ -42,6 +42,8 @@ from . import clock
 from .app_state import runtime_history_path
 from .app_utils import (
     analyze_citation_snapshots,
+    atomic_append_jsonl,
+    atomic_append_line,
     parse_frontmatter,
     parse_iso_datetime,
     relative_path,
@@ -518,7 +520,6 @@ def _append_drift_scan_event(
     the ``<rel>#L<n>`` reference for downstream signals."""
 
     path = runtime_history_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
     event = {
         "event_type": "drift-scan",
         "occurred_at": emitted_at,
@@ -532,8 +533,7 @@ def _append_drift_scan_event(
     if path.exists():
         with path.open("rb") as handle:
             line_number += sum(1 for _ in handle)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
+    atomic_append_jsonl(path, event)
     return f"{relative_path(root, path)}#L{line_number}"
 
 
@@ -559,12 +559,8 @@ def _load_existing_dedupe_keys(signals_path: Path) -> set[str]:
 
 
 def _append_signal_records(signals_path: Path, records: list[dict[str, Any]]) -> None:
-    signals_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = "\n".join(canonical_dumps(record) for record in records) + "\n"
-    with signals_path.open("a", encoding="utf-8") as handle:
-        handle.write(payload)
-        handle.flush()
-        os.fsync(handle.fileno())
+    for record in records:
+        atomic_append_line(signals_path, canonical_dumps(record))
 
 
 def _new_signal_id() -> str:

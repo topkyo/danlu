@@ -262,7 +262,7 @@ def _receipt_json_paths(root: Path) -> list[Path]:
     for directory in candidates:
         try:
             if directory.exists():
-                paths.extend(path for path in directory.glob("**/*.json") if path.is_file())
+                paths.extend(path for path in directory.glob("**/*.json") if path.is_file() and "reverts" not in path.relative_to(directory).parts)
         except OSError:
             continue
     return sorted(paths)

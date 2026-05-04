@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from datetime import datetime
 from importlib import import_module
 from pathlib import Path
 from typing import Any, Callable
 
-from ..app_utils import runtime_write_lock
+from ..app_utils import atomic_append_line, runtime_write_lock
 from .schema import (
     DECISIONS,
     MODES,
@@ -251,12 +250,8 @@ def _fingerprint_without_dedupe_identity(record: dict[str, Any]) -> str:
 
 
 def _append_records(log_path: Path, records: list[dict[str, Any]]) -> None:
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = "\n".join(canonical_dumps_planner_log(record) for record in records) + "\n"
-    with log_path.open("a", encoding="utf-8") as handle:
-        handle.write(payload)
-        handle.flush()
-        os.fsync(handle.fileno())
+    for record in records:
+        atomic_append_line(log_path, canonical_dumps_planner_log(record))
 
 
 def _append_skip_example(skip_examples: list[dict[str, Any]], item: dict[str, Any]) -> None:

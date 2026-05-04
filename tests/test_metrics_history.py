@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 from aiwiki import metrics_history
 
@@ -31,6 +33,13 @@ class MetricsHistoryTests(unittest.TestCase):
             metrics_history.append_snapshot(root, "2026-04-28T13:00:00Z", {"a": 2.0})
             lines = metrics_history.history_path(root).read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(lines), 2)
+
+    def test_append_snapshot_propagates_fsync_failure(self) -> None:
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            with mock.patch.object(os, "fsync", side_effect=OSError("fsync failed")):
+                with self.assertRaises(OSError):
+                    metrics_history.append_snapshot(root, "2026-04-28T12:00:00Z", {"a": 1.0})
 
     def test_find_baseline_returns_none_when_file_missing(self) -> None:
         with TemporaryDirectory() as tempdir:

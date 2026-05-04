@@ -238,6 +238,29 @@ def atomic_append_jsonl(
             os.fsync(handle.fileno())
 
 
+def atomic_append_line(
+    path: Path,
+    line: str,
+    *,
+    fsync: bool = True,
+) -> None:
+    """Append a single text line to JSONL file atomically with fsync.
+
+    The line must NOT contain trailing newline; this helper appends it.
+    The line must NOT contain embedded newlines (raises ValueError).
+    Use this for writers that need a custom serializer (canonical key order, etc.).
+    Use atomic_append_jsonl for default sort_keys serialization.
+    """
+    if "\n" in line:
+        raise ValueError("atomic_append_line: line must not contain embedded newlines")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(line + "\n")
+        handle.flush()
+        if fsync:
+            os.fsync(handle.fileno())
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 

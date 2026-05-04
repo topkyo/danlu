@@ -524,7 +524,8 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
             "aiwiki.app_compile.apply_machine_memory_action",
             side_effect=_fake_apply,
         ):
-            result = runtime_surfaces.nightly_health(MagicMock())
+            with tempfile.TemporaryDirectory() as tempdir:
+                result = runtime_surfaces.nightly_health(Path(tempdir))
 
         # Two calls per accepted id: one dry-run, one real.
         self.assertEqual(len(observed), 2)
@@ -564,7 +565,8 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
             "aiwiki.app_compile.apply_machine_memory_action",
             side_effect=RuntimeError("apply boom"),
         ):
-            result = runtime_surfaces.nightly_health(MagicMock())
+            with tempfile.TemporaryDirectory() as tempdir:
+                result = runtime_surfaces.nightly_health(Path(tempdir))
 
         self.assertEqual(result["auto_applied"], [])
         self.assertEqual(

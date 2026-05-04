@@ -78,6 +78,7 @@ from ..app_state import (
     save_manual_link_state,
 )
 from ..app_utils import (
+    atomic_write_text,
     parse_frontmatter,
     relative_path,
     render_frontmatter,
@@ -695,7 +696,13 @@ def revert_machine_memory_action(
         operation="revert",
         resulting_status="proposed",
     )
-    receipt_path.write_text(json.dumps(revert_receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    revert_receipt_path = receipt_path.parent / "reverts" / receipt_path.name
+    revert_receipt["receipt_path"] = relative_path(root, revert_receipt_path)
+    atomic_write_text(
+        revert_receipt_path,
+        json.dumps(revert_receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+    )
+    reverted_target["last_receipt_path"] = relative_path(root, revert_receipt_path)
     append_execution_receipt_history(root, revert_receipt)
 
     target["status"] = str(reverted_target["status"])
@@ -721,7 +728,7 @@ def revert_machine_memory_action(
         str(target.get("title") or resolved_action_id),
         [
             f"action_id: `{resolved_action_id}`",
-            f"receipt: `{relative_path(root, receipt_path)}`",
+            f"receipt: `{relative_path(root, revert_receipt_path)}`",
             f"primary: `{target.get('primary_path', '')}`",
         ],
     )
@@ -730,5 +737,5 @@ def revert_machine_memory_action(
         "id": resolved_action_id,
         "status": "proposed",
         "reverted_at": reverted_at,
-        "receipt_path": relative_path(root, receipt_path),
+        "receipt_path": relative_path(root, revert_receipt_path),
     }

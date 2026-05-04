@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from ..app_state import execution_receipt_history_path, llm_receipt_log_path, runtime_history_path
-from ..app_utils import sha256_bytes
+from ..app_utils import atomic_append_jsonl, sha256_bytes
 from .protocol_learnings import AUDIT_STATE_PATH
 
 AUDIT_STREAM_PATH = ".aiwiki/state/audit.jsonl"
@@ -103,12 +102,7 @@ def append_audit(
     try:
         if record["audit_event_id"] in _existing_audit_event_ids(audit_path, strict=True):
             return AuditAppendResult(written=False, reason="duplicate", record=record)
-        line = json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
-        audit_path.parent.mkdir(parents=True, exist_ok=True)
-        with audit_path.open("a", encoding="utf-8") as handle:
-            handle.write(line)
-            handle.flush()
-            os.fsync(handle.fileno())
+        atomic_append_jsonl(audit_path, record)
     except AuditAppendError:
         raise
     except (OSError, TypeError, ValueError) as exc:

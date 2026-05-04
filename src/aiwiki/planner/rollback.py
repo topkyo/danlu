@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ..app_utils import sha256_bytes
+from ..app_utils import atomic_append_jsonl, sha256_bytes
 from .log_writer import _PLANNER_LOG_REL_PATH
 from .schema import compute_planner_log_dedupe_key, validate_planner_log_record
 
@@ -80,10 +80,8 @@ def apply_planner_log_rollback_marker(
         return result
 
     if appendable:
-        marker_path.parent.mkdir(parents=True, exist_ok=True)
-        with marker_path.open("a", encoding="utf-8") as handle:
-            for marker in appendable:
-                handle.write(json.dumps(marker, ensure_ascii=False, sort_keys=True) + "\n")
+        for marker in appendable:
+            atomic_append_jsonl(marker_path, marker)
         result["appended_count"] = len(appendable)
     return result
 

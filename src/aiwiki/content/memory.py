@@ -25,6 +25,7 @@ from ..app_state import (
     planner_state_path,
 )
 from ..app_utils import (
+    atomic_append_jsonl,
     build_citation_snapshots,
     parse_frontmatter,
     relative_path,
@@ -601,10 +602,8 @@ def append_execution_policy_decisions(root: Path, decisions: list[dict[str, Any]
     if not decisions:
         return
     path = execution_policy_log_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        for decision in decisions:
-            handle.write(json.dumps(decision, ensure_ascii=False, sort_keys=True) + "\n")
+    for decision in decisions:
+        atomic_append_jsonl(path, decision)
 
 
 def load_execution_receipt_history(root: Path) -> list[dict[str, Any]]:

@@ -14,7 +14,14 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from .app_utils import atomic_write_text, relative_path, render_json_document, runtime_write_operation, slugify
+from .app_utils import (
+    atomic_append_jsonl,
+    atomic_write_text,
+    relative_path,
+    render_json_document,
+    runtime_write_operation,
+    slugify,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1029,9 +1036,7 @@ def load_llm_receipt_history(root: Path) -> list[dict[str, Any]]:
 def append_runtime_history(root: Path, event: dict[str, Any]) -> None:
     path = runtime_history_path(root)
     line_number = _next_jsonl_line_number(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
+    atomic_append_jsonl(path, event)
     from .execution.audit_preview import append_universal_audit_record
 
     append_universal_audit_record(
