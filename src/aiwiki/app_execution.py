@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -24,18 +23,21 @@ from .app_state import (
     material_state_path,
 )
 from .app_types import ExecutionBundle, ExecutionReceipt
-from .app_utils import atomic_append_jsonl, relative_path, runtime_write_operation, sha256_bytes, slugify
+from .app_utils import (
+    AuditMirrorError as ReceiptHistoryAuditError,
+)
+from .app_utils import (
+    AuditMirrorRollbackError as ReceiptHistoryRollbackError,
+)
+from .app_utils import (
+    _durable_truncate,
+    atomic_append_jsonl,
+    relative_path,
+    runtime_write_operation,
+    sha256_bytes,
+    slugify,
+)
 from .render.paths import execution_receipt_path
-
-
-class ReceiptHistoryAuditError(RuntimeError):
-    """Universal audit append failed; primary receipts.jsonl successfully truncated back to pre-call size."""
-
-    failed_step = "universal_audit"
-
-
-class ReceiptHistoryRollbackError(RuntimeError):
-    """Audit append failed AND primary truncate also failed; receipts.jsonl in inconsistent state."""
 
 
 def build_execution_bundle(
@@ -547,13 +549,6 @@ def append_execution_receipt_history(root: Path, receipt: dict[str, Any]) -> Non
         raise ReceiptHistoryAuditError(
             f"universal audit append failed; primary truncated: {audit_exc!r}"
         ) from audit_exc
-
-
-def _durable_truncate(path: Path, size: int) -> None:
-    with open(path, "r+b") as handle:
-        handle.truncate(size)
-        handle.flush()
-        os.fsync(handle.fileno())
 
 
 def _next_jsonl_line_number(path: Path) -> int:

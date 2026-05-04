@@ -181,6 +181,22 @@ def runtime_write_operation(func):
     return wrapper
 
 
+class AuditMirrorError(RuntimeError):
+    """Audit mirror append failed; primary file successfully truncated back to pre-call size."""
+
+
+class AuditMirrorRollbackError(RuntimeError):
+    """Audit mirror append failed AND primary truncate also failed; primary in inconsistent state."""
+
+
+def _durable_truncate(path: Path, size: int) -> None:
+    """Durable truncate: open r+b, truncate, flush, fsync. Raises on any IO failure."""
+    with open(path, "r+b") as handle:
+        handle.truncate(size)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
 def atomic_write_text(
     path: Path,
     content: str,

@@ -1033,18 +1033,34 @@ def load_llm_receipt_history(root: Path) -> list[dict[str, Any]]:
     return load_jsonl_documents(llm_receipt_log_path(root))
 
 
+@runtime_write_operation
 def append_runtime_history(root: Path, event: dict[str, Any]) -> None:
+    from .app_utils import AuditMirrorError, AuditMirrorRollbackError, _durable_truncate
+
     path = runtime_history_path(root)
+    size_before = path.stat().st_size if path.exists() else 0
     line_number = _next_jsonl_line_number(path)
     atomic_append_jsonl(path, event)
     from .execution.audit_preview import append_universal_audit_record
 
-    append_universal_audit_record(
-        root,
-        source_stream="runtime_history",
-        source_ref=f"{relative_path(root, path)}#L{line_number}",
-        document=event,
-    )
+    try:
+        append_universal_audit_record(
+            root,
+            source_stream="runtime_history",
+            source_ref=f"{relative_path(root, path)}#L{line_number}",
+            document=event,
+        )
+    except Exception as audit_exc:
+        try:
+            _durable_truncate(path, size_before)
+        except Exception as truncate_exc:
+            raise AuditMirrorRollbackError(
+                "audit mirror append failed and primary truncate also failed: "
+                f"audit={audit_exc!r}; truncate={truncate_exc!r}"
+            ) from audit_exc
+        raise AuditMirrorError(
+            f"universal audit append failed; primary truncated: {audit_exc!r}"
+        ) from audit_exc
 
 
 def default_material_routing_state() -> dict[str, Any]:

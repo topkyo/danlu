@@ -32,8 +32,21 @@
 | **Round 73 LLM/notify HTTP 安全** (2026-05-04) | safe_fetch 扩展 POST + headers + redirect strip auth / llm.py 三处 + notify.py webhook 切换 / _LLM_MAX_BYTES 10MB + _NOTIFY_MAX_BYTES 1MB / 7 安全测试 | ✅ done (`c0cf944`) |
 | **Round 74 L3 事务化 + audit 失败 auto-revert** (2026-05-04) | apply_l3_proposal 后半段 5 步事务化 / target byte-equal write_bytes(snapshot) / _persist_l3_proposal_page atomic_write_text + proposal deep-copy revert / L3PostApplyAuditError 携带 failed_step+before/after_hash+target_file+action_id+deleted_receipt_path / auto_adopt_l3 标记 auto_reverted 写完整 runtime_history 严重事件 / L3RevertError 二级失败 / 9 测试 | ✅ done (`b6a64f5`) |
 | **Round 75 receipt_history 事务化** (2026-05-04) | append_execution_receipt_history 改 snapshot-then-rollback / `_durable_truncate` (open r+b + truncate + flush + fsync) / ReceiptHistoryAuditError + ReceiptHistoryRollbackError / R74 partial 残余风险关闭 / 5 unit + 1 集成 | ✅ done |
+| **Round 76 runtime_history 事务化 + audit-mirror helper 上移** (2026-05-04) | `_durable_truncate` + AuditMirror* 上移 app_utils / app_execution alias 保持 R75 API / append_runtime_history snapshot-then-rollback + runtime lock / 5 unit | ✅ done |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 76 — append_runtime_history 事务化 + audit-mirror helper 上移 — 完成
+
+- **目的**：关闭 R75 留下的最后一口 nested IO partial。`append_runtime_history` 内部先写 `runtime-history.jsonl` 再写 universal `audit.jsonl`，第二步失败时 primary 已落但 audit 缺；R76 复用 R75 的 snapshot-then-rollback 模式，并把通用 helper 上移到 `app_utils.py`。
+- **实现**：
+  - `app_utils.py` 新增 `_durable_truncate`、`AuditMirrorError`、`AuditMirrorRollbackError` 三个公共名字。
+  - `app_execution.py` 删除本地 `_durable_truncate` / `ReceiptHistoryAuditError` / `ReceiptHistoryRollbackError` 定义，改为从 `app_utils.py` import alias，保持 R75 外部 import 兼容。
+  - `append_runtime_history` 新加 `@runtime_write_operation`，事务化为 `size_before` snapshot → `atomic_append_jsonl` → try `append_universal_audit_record` → audit 失败 `_durable_truncate(path, size_before)` → `AuditMirrorError`；truncate 失败 → `AuditMirrorRollbackError`。
+  - 保持 27 处调用方、`atomic_append_jsonl`、`append_audit` / `append_universal_audit_record`、schema 不动。
+- **测试**：新增 `tests/test_runtime_history_transaction.py` 5 测试（audit 失败回滚 / truncate 失败 rollback error / 成功路径双写 + line_number / primary 不存在前置 / 防退化 spy helper）。
+- **Stop Lines**：0 通用 `audit_transaction` context manager / 0 schema 改动 / 0 atomic append 原语改动 / 0 runtime_history 调用方改动 / 0 universal audit backfill 行为改动。
+- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1658 unit + coverage 92%）。
 
 ### Round 75 — append_execution_receipt_history 事务化 — 完成
 
@@ -45,7 +58,7 @@
   - 方案 3（snapshot-then-rollback）：保持 primary=成功标记的语义不变，避免顺序翻转影响下游消费方。
 - **测试**：`tests/test_receipt_history_transaction.py` 5 测试（audit 失败回滚 / truncate 也失败 raise rollback / 成功路径双写 / primary 不存在前置 / 防退化 spy `_durable_truncate` 必被调用）；`tests/test_l3_auto_revert.py` 新增 1 集成测试（mock universal audit 失败 → R75 primary rollback → R74 L3 revert target → raise `L3PostApplyAuditError(failed_step="append_execution_receipt_history")`）。
 - **Stop Lines**：0 通用 `with audit_transaction(root)` 抽象（推 R76+） / 0 receipts.jsonl + audit.jsonl schema 改动 / 0 atomic_append_jsonl 内部改动 / 0 调用方改动 / 0 universal audit backfill 改动 / 0 `append_runtime_history` 同类修复（留 R76+）。
-- **Residual Risks**：`append_runtime_history` 同构 nested IO partial 仍存在（runtime-history.jsonl + audit.jsonl），R76+ 收口；rollback 在 `truncate + flush + fsync` 过程中崩溃的窗口仍为接受残余风险（fsync 后 durable）；NFS 等网络文件系统的 truncate 行为不完全保证（本地 ext4/btrfs/apfs 没问题）。
+- **Residual Risks**：~~`append_runtime_history` 同构 nested IO partial 仍存在（runtime-history.jsonl + audit.jsonl），R76+ 收口~~ → R76 已关闭；rollback 在 `truncate + flush + fsync` 过程中崩溃的窗口仍为接受残余风险（fsync 后 durable）；NFS 等网络文件系统的 truncate 行为不完全保证（本地 ext4/btrfs/apfs 没问题）。
 - **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1653 unit + coverage 92%）；oracle qa-review 经 fail-then-fix（1 High → 清零 → PASS）。
 
 ### Round 74 — L3 自动采纳事务化 + audit 失败 auto-revert — 完成 (commit b6a64f5)
