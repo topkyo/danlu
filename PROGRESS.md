@@ -41,8 +41,20 @@
 | **Round 82 citation revert guard 对称收口** (2026-05-04) | `revert_machine_memory_action` citation 分支复用同 helper / R81 follow-up 单点 1 行 | ✅ done |
 | **Round 83 safe_fetch DNS pinning + host allowlist** (2026-05-05) | custom HTTP/HTTPS connection pinned-IP connect / proxy 禁用 / SNI 保留 / opt-in allowlist via env / 11 unit | ✅ done |
 | **Round 84 fail-soft 降级路径收口 + 事实层 strict read 迁移** (2026-05-05) | notify.py 双层 fallback-of-fallback logger.warning + sanitized metadata / `load_runtime_history_strict` / 6 个事实层 best-effort→strict 切换 / CorruptStateError 自然传播到 CLI / 8 strict 迁移测试 + notify 双层 warning 测试 | ✅ done (`c94cc87`) |
+| **Round 85 history JSONL strict migration** (2026-05-05) | execution policy/receipt history JSONL best-effort loader 显式 warning / strict variants / fact-layer callers 切 strict / 8 migration tests | ✅ done (`ea08d6e`) |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 85 — history JSONL strict migration — 完成
+
+- **目的**：延续 R84 事实层 strict read 主线，把 execution policy / receipt history JSONL loader 从隐式 best-effort 区分为“UI/dashboard 可跳坏行”与“事实层坏数据 fail-fast”。
+- **实现**：
+  - `content/memory.py`: `load_execution_policy_decision_history` / `load_execution_receipt_history` 保持 best-effort，但对 malformed JSONL row / non-dict row 显式 `logger.warning`，包含 `path`、`line_no`、错误类型；新增 `load_execution_policy_decision_history_strict` / `load_execution_receipt_history_strict`，missing file 返回 `[]`，malformed JSONL / non-dict row 抛 `CorruptStateError`，receipt strict 对 invalid UTF-8 自然抛 `UnicodeDecodeError`。
+  - fact-layer callers 切 strict：`app_linting/nightly.py`、`app_linting/phases.py`、`memory/execution_surfaces.py`；为守 facade stop line，strict imports 直接来自 `aiwiki.content.memory`，未添加到 `app_content.py` 等 facade re-export。
+  - 保留 best-effort 路径：`app_shell/surfaces.py`、`app_linting/core.py`、`app_linting/repair.py` 与既有 facade re-export 不动。
+- **测试**：新增 `tests/test_history_strict_migration.py` 8 测试（policy corrupt/non-dict/missing/limit；receipt corrupt/invalid UTF-8/filter kind；best-effort warning + skip）。
+- **Stop Lines**：0 public API 签名改动 / 0 schema 改动 / 0 writer path 改动 / 0 facade re-export 改动 / 不触碰 R84 runtime_history / single receipt JSON / revert receipt；untracked Obsidian/docs 文件不纳入。
+- **验证**：`PYTHONPATH=src python -m unittest tests.test_app tests.test_runner tests.test_linting tests.test_execution tests.test_history_strict_migration` 451 tests OK；`bash scripts/verify.sh` all green（1708 unit + 13 acceptance + coverage 92%）。
 
 ### Round 84 — fail-soft 降级路径收口 + 事实层 strict read 迁移 — 完成
 
@@ -70,16 +82,6 @@
 - **测试**：新增 `tests/test_safe_fetch_pinning.py` 11 测试（DNS private 拒绝 / public pinned / DNS rebinding 防护 / HTTPS SNI 保留 / allowlist unset+match+mismatch+redirect 跨边界 / proxy env 被忽略 / drop.py 路径 allowlist 不生效 / enforce_allowlist=True 时拒绝）；既有 `test_safe_fetch.py` / `test_safe_fetch_close.py` 适配新内部返回值；`test_llm` / `test_notify` / `test_drop` 不破。
 - **Stop Lines**：0 caller 改动 / 0 公共签名改动 / 0 schema 改动 / 0 browser renderer 改动 / 0 第三方依赖 / 不隐式降级回 stdlib 默认 connection / 不静默吞错。
 - **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1690 unit + coverage 92%）；oracle qa-review fail-then-fix（1 blocker → 清零 → PASS），blocker = allowlist 越 stop line 影响 drop.py，修复 = `enforce_allowlist` opt-in 参数。
-
-### Round 82 — `revert_machine_memory_action` citation 分支对称收口 — 完成
-
-- **目的**：关闭 R81 oracle qa-review 提出的 follow-up：revert 分支仍裸 `root / page_path`，与 R81 收紧的 apply 分支不对称；若历史 receipt 含违规 `page_path`，revert 仍能写到任意路径。
-- **实现**：
-  - `execution/machine_memory_actions.py:660` 把 `page = root / page_path` 替换为 `page = _validate_citation_page_path(root, page_path)`，复用 R81 helper（safe_resolve_within + wiki/judgments|decisions 白名单）。
-  - 不动 helper、不动 apply 分支、不动其他 apply_mode、不改 producer / schema。
-- **测试**：R81 已为 helper 加 4 测试覆盖白名单 / traversal；revert 路径走同一 helper，无需新增。既有 revert 相关测试不破。
-- **Stop Lines**：0 helper 改动 / 0 apply 分支改动 / 0 schema 改动 / 0 producer 改动。
-- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1679 unit + coverage 92%）。
 
 ### Round 77 — `_append_llm_receipt` 事务化 — 完成
 
