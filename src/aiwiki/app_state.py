@@ -14,7 +14,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from .app_utils import relative_path, render_json_document, runtime_write_operation, slugify
+from .app_utils import atomic_write_text, relative_path, render_json_document, runtime_write_operation, slugify
 
 logger = logging.getLogger(__name__)
 
@@ -360,8 +360,7 @@ def load_json_document_strict(path: Path) -> dict[str, Any]:
 
 
 def save_json_document(path: Path, document: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_json_document(document), encoding="utf-8")
+    atomic_write_text(path, render_json_document(document))
 
 
 def load_today_snooze_state(root: Path) -> dict[str, Any]:
@@ -1219,10 +1218,7 @@ def load_machine_memory_action_state(root: Path) -> dict[str, Any]:
 
 @runtime_write_operation
 def save_machine_memory_action_state(root: Path, document: dict[str, Any]) -> None:
-    machine_memory_action_state_path(root).write_text(
-        json.dumps(document, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_text(machine_memory_action_state_path(root), json.dumps(document, indent=2, sort_keys=True) + "\n")
 
 
 def default_planner_state() -> dict[str, Any]:
@@ -1341,10 +1337,7 @@ def load_concept_rewrite_state(root: Path) -> dict[str, Any]:
 
 @runtime_write_operation
 def save_concept_rewrite_state(root: Path, document: dict[str, Any]) -> None:
-    concept_rewrite_state_path(root).write_text(
-        json.dumps(document, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_text(concept_rewrite_state_path(root), json.dumps(document, indent=2, sort_keys=True) + "\n")
 
 
 def default_manual_link_state() -> dict[str, Any]:
@@ -1366,7 +1359,4 @@ def load_manual_link_state(root: Path) -> dict[str, Any]:
 
 @runtime_write_operation
 def save_manual_link_state(root: Path, document: dict[str, Any]) -> None:
-    manual_link_state_path(root).write_text(
-        json.dumps(document, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_text(manual_link_state_path(root), json.dumps(document, indent=2, sort_keys=True) + "\n")

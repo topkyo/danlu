@@ -25,8 +25,19 @@
 | **Round 67 Auto-adopt Hardening** (2026-05-04) | judgment review / L3 audit / nightly aggregation / strict JSONL load | ✅ done (`6711efd`) |
 | **Round 67.5 Acceptance Fixture Refresh** (2026-05-04) | M6.1b prompt_hash drift refresh / fixture helper 文档化 | ✅ done (`284f8af`) |
 | **Round 68 Progress Slimming** (2026-05-04) | PROGRESS 三层瘦身 / rounds archive / index.json / stop_line_audit lint | ✅ done (`2c408f9`) |
+| **Round 69 Atomic State I/O Foundation** (2026-05-04) | atomic_write_text + atomic_append_jsonl helpers / 4 saver 替换 / 21 unit tests / R69.5 fixture refresh 归并 | ✅ done (`4c7170e`) |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 69 — Atomic State I/O Foundation — 完成 (commit 4c7170e)
+
+- **目的**：为炼丹炉建立原子写 + fsync 的状态 I/O 基础设施，作为 R70 receipt 事务化、R71 fetch 安全、R72 lock 全审计、R74 L3 硬护栏等"无人值守可信化"主线的最底层基石。
+- **实现**：`src/aiwiki/app_utils.py` 新增 `atomic_write_text(path, content, *, fsync=True)` + `atomic_append_jsonl(path, record, *, fsync=True)`，tmp+rename+fsync 全套语义，BaseException 也清 tmp。`src/aiwiki/app_state.py` 4 处 saver（`save_json_document` / `save_machine_memory_action_state` / `save_concept_rewrite_state` / `save_manual_link_state`）从 `path.write_text(...)` 直写迁移到 atomic helper。
+- **测试**：21 unit tests（`test_atomic_io.py` 16 + `test_app_state_atomic.py` 5），覆盖 happy path / fsync 失败 / replace 失败 / KeyboardInterrupt cleanup / 并发同 path 单胜者 / 自动建父目录 / TypeError 不留文件 / saver 级 fsync 注入失败保留原文件。
+- **R69.5 归并**：M6.1b `case_happy_run_ask` fixture pre-existing prompt drift（与 R69 无关，git stash 验证），借本轮归并，`scripts/refresh_acceptance_fixture.py` 一键刷新。
+- **Stop Lines**：0 receipt 语义改动 / 0 lock 实现改动 / 0 L3 自动采纳 / 0 fetch / 0 LLM client / 0 prompt builder / 0 73 处其他 write_text 全量迁移（推 R70+）。
+- **Lock 边界**：`save_json_document` R69 前后都是 lock-free primitive；helper 不内嵌锁，把 lock 责任完全交给调用方（R72 全 CLI lock 审计 scope）。
+- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1601+ unit + coverage 92%）；oracle qa-review PASS（无 Critical/High/Medium 残留）。
 
 ### Round 68 — PROGRESS Three-Layer Slimming + stop_line_audit Lint — 完成 (commit 2c408f9)
 
@@ -46,12 +57,13 @@
 - 验证：`bash scripts/verify.sh` all green（13 acceptance + unit + coverage ≥ 92% fail-under）+ oracle isolated qa-review PASS（零 finding）。
 - Stop Lines：0 prompt builder / 0 ReplayBackend / 0 compute_prompt_hash / 0 expected goldens / 0 installer defaults。
 
-### Round 69 — 候选方向（未启动）
+### Round 69 — 候选方向（已启动 → 见上方 Round 69 块；Round 70 候选见下）
 
-- 候选 A：清理 `.obsidian/plugins/furnace-product-shell/` 历史遗留 untracked npm 文件（R68 lint 已暴露），决定保留/迁移/gitignore 边界。
-- 候选 B：H5 runtime_history 双写一致性（R67 scope 外）。
-- 候选 C：lint 接入 `closed_loop` 或 verify 的可选 gate（基于 R68 第一版误报率数据）。
-- 候选 D：`stop_line_audit` 关键词白名单扩展 / `unrecognized` 转 strict 模式。
+### Round 70 — 候选方向（未启动）
+
+- 候选 A：receipt 事务化 + JSONL append fsync 全量迁移（R69 helper 直接复用，全仓库 ~40 处 JSONL append 统一迁移）；machine_memory revert 不再覆盖原 apply receipt（execution/machine_memory_actions.py:689/698）；planner rollback dry-run 行为修正。
+- 候选 B：fetch & path 安全（drop.py SSRF / `file://` / repo symlink），R71 主线。
+- 候选 C：清理 `.obsidian/plugins/furnace-product-shell/` untracked npm residue（R68 lint 已暴露）。
 - 启动条件：选定方向后写 `.codex/contracts/active.md`，本块替换为对应 in-progress 摘要。
 
 ## 改进方向

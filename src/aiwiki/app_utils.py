@@ -8,19 +8,24 @@ to a dedicated subpackage rather than added here. See AGENTS.md migration policy
 
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import functools
 import hashlib
 import html
 import json
+import logging
 import os
 import re
 import threading
+import time
 from collections import deque
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 _RUNTIME_LOCK_GUARD = threading.RLock()
 
@@ -170,6 +175,67 @@ def runtime_write_operation(func):
             return func(root, *args, **kwargs)
 
     return wrapper
+
+
+def atomic_write_text(
+    path: Path,
+    content: str,
+    *,
+    encoding: str = "utf-8",
+    fsync: bool = True,
+) -> None:
+    """Write text atomically: tmp + fsync + replace + dir fsync.
+
+    Raises on any failure; never leaves half-written content at `path`.
+    Cleans up tmp on failure. Does NOT acquire runtime_write_lock — caller
+    must hold it (or call from inside @runtime_write_operation).
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.parent / f"{path.name}.tmp.{os.getpid()}.{time.monotonic_ns()}"
+    try:
+        with tmp.open("w", encoding=encoding) as handle:
+            handle.write(content)
+            handle.flush()
+            if fsync:
+                os.fsync(handle.fileno())
+        os.replace(tmp, path)
+        if fsync:
+            try:
+                dir_fd = os.open(path.parent, os.O_DIRECTORY)
+            except OSError:
+                return  # platform without O_DIRECTORY; file fsync already done
+            try:
+                os.fsync(dir_fd)
+            except OSError as exc:
+                logger.warning("dir fsync failed for %s: %s", path.parent, exc)
+            finally:
+                os.close(dir_fd)
+    except BaseException:
+        with contextlib.suppress(FileNotFoundError):
+            tmp.unlink()
+        raise
+
+
+def atomic_append_jsonl(
+    path: Path,
+    record: dict[str, Any],
+    *,
+    fsync: bool = True,
+) -> None:
+    """Append a JSON object as a single line, fsync before return.
+
+    Raises on non-dict, encode failure, or I/O failure. Does NOT acquire
+    runtime_write_lock — caller must hold it.
+    """
+    if not isinstance(record, dict):
+        raise TypeError(f"atomic_append_jsonl expects dict, got {type(record).__name__}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(line)
+        handle.flush()
+        if fsync:
+            os.fsync(handle.fileno())
 
 
 def utc_now() -> str:
