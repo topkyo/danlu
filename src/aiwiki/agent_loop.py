@@ -86,6 +86,10 @@ def run_nightly_agent_loop(
             "error_type": type(exc).__name__,
         }
 
+    auto_adopt_results = [item for item in (l1_result, l2_result, l3_result, j_result) if isinstance(item, dict)]
+    if any(item.get("degraded") is True for item in auto_adopt_results):
+        base["status"] = "degraded"
+
     return {
         **base,
         "signals": _signal_counts(signals_result),
@@ -292,27 +296,36 @@ def _build_auto_adopt_l1(root: Path) -> dict[str, Any]:
     from .runner.auto_adopt import auto_adopt_l1
 
     try:
-        return auto_adopt_l1(root)
+        result = auto_adopt_l1(root)
+        if result.get("degraded") is True or result.get("error"):
+            result["degraded"] = True
+        return result
     except Exception as exc:
-        return {"level": "L1", "applied": False, "error": str(exc)}
+        return {"level": "L1", "applied": False, "error": str(exc), "error_type": type(exc).__name__, "degraded": True}
 
 
 def _build_auto_adopt_l2(root: Path) -> dict[str, Any]:
     from .runner.auto_adopt import auto_adopt_l2
 
     try:
-        return auto_adopt_l2(root)
+        result = auto_adopt_l2(root)
+        if result.get("degraded") is True or result.get("error"):
+            result["degraded"] = True
+        return result
     except Exception as exc:
-        return {"level": "L2", "applied": False, "error": str(exc)}
+        return {"level": "L2", "applied": False, "error": str(exc), "error_type": type(exc).__name__, "degraded": True}
 
 
 def _build_auto_adopt_l3(root: Path) -> dict[str, Any]:
     from .runner.auto_adopt import auto_adopt_l3
 
     try:
-        return auto_adopt_l3(root)
+        result = auto_adopt_l3(root)
+        if result.get("degraded") is True or result.get("error"):
+            result["degraded"] = True
+        return result
     except Exception as exc:
-        return {"level": "L3", "applied": False, "error": str(exc)}
+        return {"level": "L3", "applied": False, "error": str(exc), "error_type": type(exc).__name__, "degraded": True}
 
 
 def _build_auto_adopt_judgments(root: Path) -> dict[str, Any]:
@@ -321,6 +334,9 @@ def _build_auto_adopt_judgments(root: Path) -> dict[str, Any]:
 
     try:
         client = create_client(root, timeout_seconds=180)
-        return auto_adopt_judgments(root, client, limit=5)
+        result = auto_adopt_judgments(root, client, limit=5)
+        if result.get("degraded") is True or result.get("error"):
+            result["degraded"] = True
+        return result
     except Exception as exc:
-        return {"level": "Judgment", "applied": False, "error": str(exc)}
+        return {"level": "Judgment", "applied": False, "error": str(exc), "error_type": type(exc).__name__, "degraded": True}

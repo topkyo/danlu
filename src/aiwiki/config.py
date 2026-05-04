@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 from dataclasses import asdict, dataclass
@@ -17,6 +18,7 @@ DEFAULT_NVIDIA_NIM_MODEL = "openai/gpt-oss-120b"
 DEFAULT_CODEX_REASONING_EFFORT = "medium"
 DEFAULT_OPENAI_API_MODEL = "gpt-4.1-mini"
 DEFAULT_ANTHROPIC_API_MODEL = "claude-sonnet-4-20250514"
+DEFAULT_L3_AUTO_ADOPT_MIN_EVIDENCE = 5
 BACKEND_OPENAI_API = "openai-api"
 BACKEND_ANTHROPIC_API = "anthropic-api"
 BACKEND_CODEX_CLI = "codex-cli"
@@ -29,6 +31,21 @@ SUPPORTED_BACKENDS = {
     BACKEND_COPILOT_CLI,
     BACKEND_CLAUDE_CLI,
 }
+
+_logger = logging.getLogger(__name__)
+
+
+def l3_auto_adopt_min_evidence_from_env() -> int:
+    raw = os.environ.get("AIWIKI_L3_AUTO_ADOPT_MIN_EVIDENCE", str(DEFAULT_L3_AUTO_ADOPT_MIN_EVIDENCE))
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        _logger.warning(
+            "Invalid AIWIKI_L3_AUTO_ADOPT_MIN_EVIDENCE=%r; using default %s",
+            raw,
+            DEFAULT_L3_AUTO_ADOPT_MIN_EVIDENCE,
+        )
+        return DEFAULT_L3_AUTO_ADOPT_MIN_EVIDENCE
 
 @dataclass
 class LLMConfig:

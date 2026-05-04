@@ -39,6 +39,7 @@ from aiwiki.app_utils import parse_frontmatter, utc_now
 from aiwiki.cli import main as cli_main
 from aiwiki.execution.alchemy import _validate_source_outputs, _write_elixir_markdown
 from aiwiki.execution.candidates import demote_candidate, promote_candidate
+from aiwiki.execution.l3_proposals import L3PostApplyAuditError, apply_l3_proposal, create_l3_proposal
 from aiwiki.execution.protocol_learnings import (
     AUDIT_STATE_PATH,
     LEARNINGS_DIR,
@@ -214,6 +215,73 @@ class ExecutionTests(unittest.TestCase):
         self.assertTrue((self.root / result["bundle_path"]).exists())
         self.assertTrue((self.root / result["dry_run_path"]).exists())
         self.assertEqual(archive_state["entries"], [])
+
+    def test_apply_l3_proposal_receipt_history_failure_keeps_target_and_degrades(self) -> None:
+        target = self.root / "prompts" / "compile.md"
+        before = target.read_text(encoding="utf-8")
+        create_l3_proposal(
+            self.root,
+            kind="prompt_proposal",
+            target_file="prompts/compile.md",
+            content="New compile prompt\n",
+            proposal_id="compile-update",
+            evidence_refs=["e1", "e2", "e3", "e4", "e5"],
+        )
+
+        with patch("aiwiki.execution.l3_proposals.append_execution_receipt_history", side_effect=RuntimeError("receipt failed")):
+            with self.assertRaises(L3PostApplyAuditError):
+                apply_l3_proposal(self.root, "compile-update")
+
+        self.assertNotEqual(target.read_text(encoding="utf-8"), before)
+
+    def _prepare_l3_apply_post_audit_failure(self, proposal_id: str = "compile-update") -> tuple[Path, str]:
+        target = self.root / "prompts" / "compile.md"
+        after = "New compile prompt\n"
+        create_l3_proposal(
+            self.root,
+            kind="prompt_proposal",
+            target_file="prompts/compile.md",
+            content=after,
+            proposal_id=proposal_id,
+            evidence_refs=["e1", "e2", "e3", "e4", "e5"],
+        )
+        return target, after
+
+    def test_apply_l3_proposal_reports_audit_failure_after_receipt_history_failure(self) -> None:
+        target, after = self._prepare_l3_apply_post_audit_failure()
+
+        with patch("aiwiki.execution.l3_proposals.append_execution_receipt_history", side_effect=RuntimeError("history failed")):
+            with self.assertRaises(L3PostApplyAuditError) as ctx:
+                apply_l3_proposal(self.root, "compile-update")
+
+        self.assertEqual(ctx.exception.failed_step, "append_execution_receipt_history")
+        self.assertEqual(target.read_text(encoding="utf-8"), after)
+        events = load_runtime_history(self.root)
+        self.assertTrue(any(item.get("event_type") == "l3-proposal-audit-failed" and item.get("failed_step") == "append_execution_receipt_history" for item in events))
+
+    def test_apply_l3_proposal_reports_audit_failure_after_state_failure(self) -> None:
+        target, after = self._prepare_l3_apply_post_audit_failure()
+
+        with patch("aiwiki.execution.l3_proposals.save_l3_proposal_state", side_effect=RuntimeError("state failed")):
+            with self.assertRaises(L3PostApplyAuditError) as ctx:
+                apply_l3_proposal(self.root, "compile-update")
+
+        self.assertEqual(ctx.exception.failed_step, "save_l3_proposal_state")
+        self.assertEqual(target.read_text(encoding="utf-8"), after)
+        events = load_runtime_history(self.root)
+        self.assertTrue(any(item.get("event_type") == "l3-proposal-audit-failed" and item.get("failed_step") == "save_l3_proposal_state" for item in events))
+
+    def test_apply_l3_proposal_reports_audit_failure_after_page_failure(self) -> None:
+        target, after = self._prepare_l3_apply_post_audit_failure()
+
+        with patch("aiwiki.execution.l3_proposals._persist_l3_proposal_page", side_effect=RuntimeError("page failed")):
+            with self.assertRaises(L3PostApplyAuditError) as ctx:
+                apply_l3_proposal(self.root, "compile-update")
+
+        self.assertEqual(ctx.exception.failed_step, "_persist_l3_proposal_page")
+        self.assertEqual(target.read_text(encoding="utf-8"), after)
+        events = load_runtime_history(self.root)
+        self.assertTrue(any(item.get("event_type") == "l3-proposal-audit-failed" and item.get("failed_step") == "_persist_l3_proposal_page" for item in events))
 
     def test_apply_concept_rewrite_dry_run_writes_preview_without_mutating_page(self) -> None:
         slug, concept_path = self._prepare_accepted_rewrite()

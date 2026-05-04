@@ -84,6 +84,19 @@ def sync_manifest_with_raw(root: Path) -> dict[str, Any]:
     return manifest
 
 
+def _next_available_raw_path(directory: Path, stem: str, suffix: str) -> Path:
+    """Return a non-existing raw path; caller must hold the single-writer lock."""
+    candidate = directory / f"{stem}{suffix}"
+    if not candidate.exists():
+        return candidate
+    index = 2
+    while True:
+        candidate = directory / f"{stem}-{index}{suffix}"
+        if not candidate.exists():
+            return candidate
+        index += 1
+
+
 @runtime_write_operation
 def ingest_source(root: Path, source: str, title: str | None = None) -> dict[str, Any]:
     ensure_layout(root)
@@ -98,7 +111,9 @@ def ingest_source(root: Path, source: str, title: str | None = None) -> dict[str
         seed = hashlib.sha256(label.encode()).hexdigest()[:12]
     entry_id = next_identifier(existing_ids, seed)
     if source.startswith(("http://", "https://")):
-        destination = root / "raw" / "inbox" / f"{entry_id}.md"
+        raw_stem = f"source-{entry_id}" if (root / "raw" / "inbox" / f"source-{entry_id}.md").exists() else entry_id
+        destination = _next_available_raw_path(root / "raw" / "inbox", raw_stem, ".md")
+        entry_id = destination.stem
         stub_title = title or source
         destination.write_text("\n".join([f"# {stub_title}", "", "## 来源 URL", f"- {source}", "", "## 采集状态", "- 这个 URL 目前只是一个占位 stub。", "- 在把它当作事实来源前，请先用剪藏 markdown 或本地附件替换成更完整材料。", "", "## 备注", "- 在补充更完整材料之前，编译器会把这个文件视为占位来源。", ""]) + "\n", encoding="utf-8")
         original_path = source
@@ -107,7 +122,10 @@ def ingest_source(root: Path, source: str, title: str | None = None) -> dict[str
         source_path = Path(source).expanduser().resolve()
         if not source_path.is_file():
             raise FileNotFoundError(f"Source not found: {source}")
-        destination = root / "raw" / "inbox" / f"{entry_id}{source_path.suffix.lower()}"
+        suffix = source_path.suffix.lower()
+        raw_stem = f"source-{entry_id}" if (root / "raw" / "inbox" / f"source-{entry_id}{suffix}").exists() else entry_id
+        destination = _next_available_raw_path(root / "raw" / "inbox", raw_stem, suffix)
+        entry_id = destination.stem
         shutil.copy2(source_path, destination)
         original_path = str(source_path)
         source_type = "file"

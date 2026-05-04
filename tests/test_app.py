@@ -456,6 +456,16 @@ class AiwikiFlowTests(unittest.TestCase):
         self.assertTrue(source_path.exists())
         self.assertIn("来源 URL", source_path.read_text(encoding="utf-8"))
 
+    def test_ingest_source_does_not_overwrite_existing_raw(self) -> None:
+        existing = self.root / "raw" / "inbox" / "source-foo.md"
+        existing.write_text("do not overwrite\n", encoding="utf-8")
+
+        entry = ingest_source(self.root, "https://example.com/foo", title="foo")
+
+        self.assertEqual(entry["stored_path"], "raw/inbox/source-foo-2.md")
+        self.assertEqual(existing.read_text(encoding="utf-8"), "do not overwrite\n")
+        self.assertTrue((self.root / "raw" / "inbox" / "source-foo-2.md").exists())
+
     def test_slides_output_contains_marp_header(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
