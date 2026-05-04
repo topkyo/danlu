@@ -257,7 +257,7 @@ class AutoAdoptCriticalFixTests(unittest.TestCase):
         self.assertTrue(result["degraded"])
         self.assertTrue(any(item.get("event_type") == "judgment-review-failed" and "corrupt" in str(item.get("failure_reason")) for item in load_runtime_history(self.root)))
 
-    def test_l3_applied_audit_failed_counts_as_applied(self) -> None:
+    def test_l3_audit_failed_counts_as_auto_reverted(self) -> None:
         error = L3PostApplyAuditError(
             "l3-proposal-apply-p1",
             "append_runtime_history",
@@ -272,7 +272,8 @@ class AutoAdoptCriticalFixTests(unittest.TestCase):
             result = auto_adopt_l3(self.root)
         self.assertTrue(result["applied"])
         self.assertTrue(result["degraded"])
-        self.assertEqual(result["items"][0]["status"], "applied_audit_failed")
+        self.assertEqual(result["items"][0]["status"], "auto_reverted")
+        self.assertEqual(result["items"][0]["revert_status"], "auto_reverted")
 
     def test_l1_auto_adopt_fail_fast_on_concept_backlog_error(self) -> None:
         review_ctrl = {"concept_backlog": [{"slug": "alpha"}], "revisit_concepts": [{"slug": "beta"}]}

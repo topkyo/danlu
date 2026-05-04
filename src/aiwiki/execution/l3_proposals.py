@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -17,6 +19,7 @@ from ..app_state import (
     save_json_document,
 )
 from ..app_utils import (
+    atomic_write_text,
     next_available_stem,
     relative_path,
     render_frontmatter,
@@ -34,13 +37,30 @@ _PLANNER_LOG_REL_PATH = ".aiwiki/state/planner-log.jsonl"
 
 
 class L3PostApplyAuditError(RuntimeError):
-    def __init__(self, action_id: str, failed_step: str, *, target_file: str, before_hash: str, after_hash: str):
-        super().__init__(f"L3 apply succeeded but audit step '{failed_step}' failed for {action_id}")
+    def __init__(
+        self,
+        action_id: str,
+        failed_step: str,
+        *,
+        target_file: str,
+        before_hash: str,
+        after_hash: str,
+        target_reverted: bool = False,
+        deleted_receipt_path: str = "",
+    ):
+        suffix = "; target reverted" if target_reverted else ""
+        super().__init__(f"L3 apply audit step '{failed_step}' failed for {action_id}{suffix}")
         self.action_id = action_id
         self.failed_step = failed_step
         self.target_file = target_file
         self.before_hash = before_hash
         self.after_hash = after_hash
+        self.target_reverted = target_reverted
+        self.deleted_receipt_path = deleted_receipt_path
+
+
+class L3RevertError(RuntimeError):
+    """Raised when L3 transactional rollback cannot restore the target."""
 
 
 def default_l3_proposal_state() -> dict[str, Any]:
@@ -173,7 +193,7 @@ def _persist_l3_proposal_page(root: Path, proposal: dict[str, Any]) -> None:
     if not path.is_absolute():
         path = root / str(proposal.get("proposal_path") or "")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_render_l3_proposal_page(proposal), encoding="utf-8")
+    atomic_write_text(path, _render_l3_proposal_page(proposal))
 
 
 def _unique_l3_action_id(root: Path, prefix: str, proposal_id: str) -> str:
@@ -529,6 +549,7 @@ def create_l3_proposal(
 def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) -> dict[str, Any]:
     proposals = [dict(item) for item in load_l3_proposal_state(root).get("proposals", []) if isinstance(item, dict)]
     proposal = _find_l3_proposal(proposals, proposal_id)
+    original_proposal = copy.deepcopy(proposal)
     state = str(proposal.get("state") or "")
     if state != "candidate":
         raise RuntimeError("Only candidate L3 proposals can be applied.")
@@ -564,6 +585,8 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
     snapshot = target.read_bytes() if target.exists() else None
     before_content = target.read_text(encoding="utf-8")
     after_content = str(patch.get("content") or "")
+    before_hash_for_audit = hashlib.sha256(snapshot or b"").hexdigest()
+    after_hash_for_audit = hashlib.sha256(after_content.encode("utf-8")).hexdigest()
     try:
         target.write_text(after_content, encoding="utf-8")
         after_hash = _hash_path(target)
@@ -599,57 +622,45 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
             target.unlink(missing_ok=True)
         raise
 
-    partial_writes_completed: list[str] = ["target", "receipt_file"]
-
     def _raise_post_apply_audit_error(failed_step: str, exc: Exception) -> None:
         try:
-            append_runtime_history(
-                root,
-                {
-                    "event_type": "l3-proposal-audit-failed",
-                    "occurred_at": utc_now(),
-                    "proposal_id": proposal_id,
-                    "action_id": action_id,
-                    "receipt_path": relative_path(root, receipt_path),
-                    "target_file": relative_path(root, target),
-                    "failed_step": failed_step,
-                    "partial_writes_completed": list(partial_writes_completed),
-                    "error": str(exc),
-                },
-            )
-        except Exception:
-            pass
+            if snapshot is not None:
+                target.write_bytes(snapshot)
+            else:
+                target.unlink(missing_ok=True)
+            receipt_path.unlink(missing_ok=True)
+            if failed_step in {"_persist_l3_proposal_page", "append_runtime_history", "append_wiki_log"}:
+                proposal.clear()
+                proposal.update(original_proposal)
+                save_l3_proposal_state(root, proposals)
+                _persist_l3_proposal_page(root, original_proposal)
+        except Exception as revert_exc:
+            raise L3RevertError(
+                f"audit step '{failed_step}' failed and target revert also failed: "
+                f"audit={exc!r}; revert={revert_exc!r}"
+            ) from exc
         raise L3PostApplyAuditError(
             action_id,
             failed_step,
             target_file=relative_path(root, target),
-            before_hash=expected_before_hash,
-            after_hash=after_hash,
+            before_hash=before_hash_for_audit,
+            after_hash=after_hash_for_audit,
+            target_reverted=True,
+            deleted_receipt_path=relative_path(root, receipt_path),
         ) from exc
 
+    failed_step = "append_execution_receipt_history"
     try:
         append_execution_receipt_history(root, receipt)
-        partial_writes_completed.append("execution_receipt_history")
-    except Exception as exc:
-        _raise_post_apply_audit_error("append_execution_receipt_history", exc)
-
-    try:
+        failed_step = "save_l3_proposal_state"
         proposal["state"] = "accepted"
         proposal["accepted_at"] = applied_at
         proposal["last_receipt_path"] = relative_path(root, receipt_path)
         proposal["after_hash"] = after_hash
         save_l3_proposal_state(root, proposals)
-        partial_writes_completed.append("l3_proposal_state")
-    except Exception as exc:
-        _raise_post_apply_audit_error("save_l3_proposal_state", exc)
-
-    try:
+        failed_step = "_persist_l3_proposal_page"
         _persist_l3_proposal_page(root, proposal)
-        partial_writes_completed.append("l3_proposal_page")
-    except Exception as exc:
-        _raise_post_apply_audit_error("_persist_l3_proposal_page", exc)
-
-    try:
+        failed_step = "append_runtime_history"
         append_runtime_history(
             root,
             {
@@ -663,11 +674,7 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
                 "note": note or "",
             },
         )
-        partial_writes_completed.append("runtime_history")
-    except Exception as exc:
-        _raise_post_apply_audit_error("append_runtime_history", exc)
-
-    try:
+        failed_step = "append_wiki_log"
         append_wiki_log(
             root,
             "l3-proposal-apply",
@@ -677,9 +684,8 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
                 f"receipt: `{relative_path(root, receipt_path)}`",
             ],
         )
-        partial_writes_completed.append("wiki_log")
     except Exception as exc:
-        _raise_post_apply_audit_error("append_wiki_log", exc)
+        _raise_post_apply_audit_error(failed_step, exc)
     return {
         "proposal_id": proposal_id,
         "state": "accepted",

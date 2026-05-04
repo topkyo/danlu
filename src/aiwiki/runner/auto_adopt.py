@@ -675,7 +675,12 @@ def auto_adopt_l3(root: Path) -> dict[str, Any]:
     """
     results: dict[str, Any] = {"level": "L3", "applied": False, "items": []}
     try:
-        from ..execution.l3_proposals import L3PostApplyAuditError, apply_l3_proposal, load_l3_proposal_state
+        from ..execution.l3_proposals import (
+            L3PostApplyAuditError,
+            L3RevertError,
+            apply_l3_proposal,
+            load_l3_proposal_state,
+        )
 
         proposals = load_l3_proposal_state(root).get("proposals", [])
         threshold = l3_auto_adopt_min_evidence_from_env()
@@ -733,10 +738,42 @@ def auto_adopt_l3(root: Path) -> dict[str, Any]:
                 "target_file": r.get("target_file", ""),
             })
         except Exception as exc:
-            status = "applied_audit_failed" if isinstance(exc, L3PostApplyAuditError) else "failed"
+            status = "failed"
+            if isinstance(exc, L3PostApplyAuditError):
+                status = "auto_reverted"
+            elif isinstance(exc, L3RevertError):
+                status = "audit_revert_failed"
+            try:
+                if isinstance(exc, (L3PostApplyAuditError, L3RevertError)):
+                    auto_revert_event = {
+                        "event_type": "l3-proposal-auto-revert",
+                        "occurred_at": utc_now(),
+                        "proposal_id": proposal_id,
+                        "status": status,
+                        "error": str(exc),
+                    }
+                    if isinstance(exc, L3PostApplyAuditError):
+                        auto_revert_event.update(
+                            {
+                                "action_id": exc.action_id,
+                                "failed_step": exc.failed_step,
+                                "target_file": exc.target_file,
+                                "before_hash": exc.before_hash,
+                                "after_hash": exc.after_hash,
+                                "target_reverted": exc.target_reverted,
+                                "deleted_receipt_path": exc.deleted_receipt_path,
+                            }
+                        )
+                    append_runtime_history(
+                        root,
+                        auto_revert_event,
+                    )
+            except Exception as audit_exc:
+                print(f"warning: failed to write l3 auto-revert audit: {audit_exc}")
             results["items"].append({
                 "proposal_id": proposal_id,
                 "status": status,
+                **({"revert_status": status} if isinstance(exc, (L3PostApplyAuditError, L3RevertError)) else {}),
                 "error": str(exc),
             })
             results["degraded"] = True
@@ -744,7 +781,7 @@ def auto_adopt_l3(root: Path) -> dict[str, Any]:
             _logger.warning("L3 auto-adopt failed for %s: %s", proposal_id, exc)
 
     applied = any(
-        item.get("status") in {"accepted", "applied_audit_failed"}
+        item.get("status") in {"accepted", "auto_reverted"}
         for item in results["items"]
     )
     results["applied"] = applied

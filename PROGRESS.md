@@ -30,8 +30,22 @@
 | **Round 71 Fetch & Path 安全** (2026-05-04) | safe_fetch + safe_resolve_within helpers / drop.py SSRF (private IP 表 + IPv4-mapped + redirect 复检) / 越界检查 / repo symlink 跳过 / Playwright page.route subresource 拦截 / 22 安全测试 | ✅ done (`a6074b9`) |
 | **Round 72 Lock 高优先级缺锁补齐** (2026-05-04) | drop_* 五入口 + nightly_health + append_execution_receipt_history 全加 runtime_write_lock / 抽 _unlocked helper 保签名 / 3 lock coverage 测试 | ✅ done (`addd53d`) |
 | **Round 73 LLM/notify HTTP 安全** (2026-05-04) | safe_fetch 扩展 POST + headers + redirect strip auth / llm.py 三处 + notify.py webhook 切换 / _LLM_MAX_BYTES 10MB + _NOTIFY_MAX_BYTES 1MB / 7 安全测试 | ✅ done (`c0cf944`) |
+| **Round 74 L3 事务化 + audit 失败 auto-revert** (2026-05-04) | apply_l3_proposal 后半段 5 步事务化 / target byte-equal write_bytes(snapshot) / _persist_l3_proposal_page atomic_write_text + proposal deep-copy revert / L3PostApplyAuditError 携带 failed_step+before/after_hash+target_file+action_id+deleted_receipt_path / auto_adopt_l3 标记 auto_reverted 写完整 runtime_history 严重事件 / L3RevertError 二级失败 / 9 测试 | ✅ done |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 74 — L3 自动采纳事务化 + audit 失败 auto-revert — 完成
+
+- **目的**：为 L3 自动采纳建立"事务化 + audit 失败 auto-revert"护栏，让 L3 默认 ON 安全（终局无人值守主线护栏第六轮）。
+- **实现**：
+  - `execution/l3_proposals.py` `apply_l3_proposal` 后半段 5 步（receipt_history / state_save / persist_proposal_page / runtime_history / wiki_log）包进单个 try/except 事务段；任一失败：`target.write_bytes(snapshot)` byte-equal 还原 + `receipt_path.unlink(missing_ok=True)` + 通过 deep-copy 的 proposal snapshot 强制恢复 state/page → raise `L3PostApplyAuditError(target_reverted=True, failed_step, target_file, before_hash, after_hash, deleted_receipt_path, action_id)`；revert 自身失败 raise `L3RevertError`。
+  - `_persist_l3_proposal_page` 改用 `atomic_write_text`，避免半写。
+  - `runner/auto_adopt.py` 捕获 `L3PostApplyAuditError` → `status="auto_reverted"`，捕获 `L3RevertError` → `status="audit_revert_failed"`；写 `l3-proposal-auto-revert` runtime history 严重事件，含 7 字段（action_id / failed_step / target_file / before_hash / after_hash / target_reverted / deleted_receipt_path）。
+  - 方案 B：apply 已物理回滚 + receipt file 已删，不再调 `revert_l3_proposal`。
+- **测试**：`tests/test_l3_auto_revert.py` 9 测试（5 失败步骤 + revert 自身失败 + auto_adopt 元数据 + L3RevertError 路径）；`test_execution.py` / `test_auto_adopt.py` 既有用例预期同步更新。
+- **Stop Lines**：0 通用 `with l3_transaction(root)` 抽象 / 0 receipt+audit JSON schema 改动 / 0 audit_preview.append_audit 改动 / 0 L3 触发条件改动 / 0 machine_memory auto_adopt 类似改动（留 R75+） / 0 generate_l3_proposals_from_planner 改动。
+- **Residual Risks**：`append_execution_receipt_history` nested IO partial 失败仍可能留下 receipt_history apply 行而无对应 fact，本轮接受留 R75+；方案 B 无独立 revert receipt 文件，事后审计依赖 runtime_history 严重事件 + 原 receipt 已删。
+- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1647 unit + coverage 92%）；oracle qa-review 经 fail-then-fix（5 条 blocker → 全清零 → PASS）。
 
 ### Round 73 — LLM Client + Notify HTTP 安全 — 完成 (commit c0cf944)
 
@@ -57,25 +71,6 @@
 - **Stop Lines**：0 lock 实现改动 / 0 lock 文件路径改动 / 0 read-write 锁分离 / 0 atomic_* 原语自动取锁 / 0 中优先级 8 handler 顶层兜底（today-snooze / apply-* / revert-* / planner-log-replay / batch-review / review-next 留 R72+）。
 - **Residual Risks**：中优先级 8 handler 仍依赖底层分散加锁，重构可能漏；`today-snooze` load-modify-save 非事务化（accepted Medium）；NFS fcntl 异常本轮不防御。
 - **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1629 unit + coverage 92%）；oracle qa-review PASS（无 Critical/High，仅 accepted residual Medium）。
-
-### Round 71 — Fetch & Path 安全 (drop.py SSRF + 越界 + symlink) — 完成 (commit a6074b9)
-
-- **目的**：为 drop.py URL fetch / 本地 path / repo ingest 三类入口建立统一安全边界，阻断 SSRF / 任意读 / symlink 越界。无人值守可信化主线第三轮（R69 原子写 → R70 receipt 事务化 → R71 fetch & path 安全）。
-- **实现**：
-  - `app_utils.py` 新增 `FetchPolicyError` / `PathOutsideWorkspaceError`、`_is_private_address`（IPv4 + IPv6 私网 + link-local + **IPv4-mapped IPv6 折叠**封堵 `::ffff:127.0.0.1` bypass）、`_validate_safe_url`、`safe_fetch(url, *, max_bytes, timeout, allow_private, max_redirects)`（redirect 每跳复检 + max_bytes 截断 raise）、`safe_resolve_within(path, root)`。
-  - `drop.py` 切换：`_http_fetch_url` / `_download_asset_url` 用 `safe_fetch`；`_fetch_url` / `_http_fetch_url` 加 `root: Path` 参数让 `file://` 分支走 `safe_resolve_within(path, root)` 而非 `path.parent`（封堵 `drop_url(file:///etc/passwd)` bypass）；`_materialize_binary_source` / `drop_repo` 本地分支 + `_resolve_asset_url` 的 `file://` 都走 `safe_resolve_within`；`_repo_tree` / `_repo_key_files` rglob 后跳过 symlink + 越界检查双保险；`_render_url_with_playwright` 加 `page.route("**/*", _guard)` 拦截每个 navigation/subresource。
-  - 常量：`_HTML_MAX_BYTES = 5MB` / `_ASSET_MAX_BYTES = 50MB`。
-- **测试**：`tests/test_safe_fetch.py`（9 unittest）+ `test_safe_resolve.py`（6）+ `test_drop_safety.py`（7）；caller 适配 `tests/test_drop.py` 3 处 + `tests/test_app.py` 2 处 `_fetch_url(..., root=self.root)`。
-- **Stop Lines**：0 lock 实现改动 / 0 L3 自动采纳 / 0 LLM client 改动 / 0 git clone 远程 URL / 0 fact-layer 直写改动 / 0 receipt schema 改动 / 0 第三方依赖。
-- **Residual Risks**：DNS rebinding（推 R73）、CLI render fallback 无 hook 能力（R71+ 视用量决定是否禁用 fallback）、HTTPS cert pinning（依赖 stdlib 默认）、CGN `100.64/10` 未拒绝（接受）。
-- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1626 unit + coverage 92%）；oracle qa-review 经一轮 fail-then-fix（3 条 blocker → 全清零 → PASS）。
-
-### Round 74 — 候选方向（未启动）
-
-- 候选 A：L3 自动采纳事务化 + audit 不可变 + auto-revert（终局护栏，无人值守可信化主线终点）。
-- 候选 B：中优先级 8 handler lock 顶层兜底（R72 遗留：today-snooze / apply-* / revert-* / planner-log-replay / batch-review / review-next）。
-- 候选 C：DNS pinning + 域名 allowlist（R73 遗留）。
-- 启动条件：选定方向后写 `.codex/contracts/active.md`，本块替换为对应 in-progress 摘要。
 
 ## 改进方向
 
