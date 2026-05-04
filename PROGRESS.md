@@ -25,11 +25,11 @@
 | **Round 67 Auto-adopt Hardening** (2026-05-04) | judgment review / L3 audit / nightly aggregation / strict JSONL load | ✅ done (`6711efd`) |
 | **Round 67.5 Acceptance Fixture Refresh** (2026-05-04) | M6.1b prompt_hash drift refresh / fixture helper 文档化 | ✅ done (`284f8af`) |
 | **Round 68 Progress Slimming** (2026-05-04) | PROGRESS 三层瘦身 / rounds archive / index.json / stop_line_audit lint | ✅ done (`2c408f9`) |
-| **Round 69 Atomic State I/O Foundation** (2026-05-04) | atomic_write_text + atomic_append_jsonl helpers / 4 saver 替换 / 21 unit tests / R69.5 fixture refresh 归并 | ✅ done (`4c7170e`) |
+| **Round 69 Atomic State I/O Foundation** (2026-05-04) | atomic_write_text + atomic_append_jsonl helpers / 4 saver 替换 / 21 unit tests / R69.5 fixture refresh 归并 | ✅ done (`7ee3ab8`) |
 
 ## 状态 — 当前活跃 3 轮
 
-### Round 69 — Atomic State I/O Foundation — 完成 (commit 4c7170e)
+### Round 69 — Atomic State I/O Foundation — 完成 (commit 7ee3ab8)
 
 - **目的**：为炼丹炉建立原子写 + fsync 的状态 I/O 基础设施，作为 R70 receipt 事务化、R71 fetch 安全、R72 lock 全审计、R74 L3 硬护栏等"无人值守可信化"主线的最底层基石。
 - **实现**：`src/aiwiki/app_utils.py` 新增 `atomic_write_text(path, content, *, fsync=True)` + `atomic_append_jsonl(path, record, *, fsync=True)`，tmp+rename+fsync 全套语义，BaseException 也清 tmp。`src/aiwiki/app_state.py` 4 处 saver（`save_json_document` / `save_machine_memory_action_state` / `save_concept_rewrite_state` / `save_manual_link_state`）从 `path.write_text(...)` 直写迁移到 atomic helper。
