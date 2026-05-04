@@ -40,8 +40,22 @@
 | **Round 81 citation snapshot path guard** (2026-05-04) | `citation-snapshot-refresh` 加 `safe_resolve_within` + wiki/judgments|decisions 白名单 / 4 unit | ✅ done |
 | **Round 82 citation revert guard 对称收口** (2026-05-04) | `revert_machine_memory_action` citation 分支复用同 helper / R81 follow-up 单点 1 行 | ✅ done |
 | **Round 83 safe_fetch DNS pinning + host allowlist** (2026-05-05) | custom HTTP/HTTPS connection pinned-IP connect / proxy 禁用 / SNI 保留 / opt-in allowlist via env / 11 unit | ✅ done |
+| **Round 84 fail-soft 降级路径收口 + 事实层 strict read 迁移** (2026-05-05) | notify.py 双层 fallback-of-fallback logger.warning + sanitized metadata / `load_runtime_history_strict` / 6 个事实层 best-effort→strict 切换 / CorruptStateError 自然传播到 CLI / 8 strict 迁移测试 + notify 双层 warning 测试 | ✅ done (`c94cc87`) |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 84 — fail-soft 降级路径收口 + 事实层 strict read 迁移 — 完成
+
+- **目的**：按 AGENTS.md "不静默吞错 / 不隐式降级" 收口 fail-soft 路径。延续 R69-R83 fact-layer / audit-mirror / SSRF 主线。R84 explorer 扫描全仓 fail-soft 模式：高 0 / 中 3（notify.py 顶层 dispatch / `_safe_record_notify_failed` 双层 / `load_json_document`+`load_jsonl_documents` 事实层调用）/ 低 4（preflight / alchemy / metrics_history / safe_apply_preview，不改）。
+- **实现**：
+  - `notify.py`: `notify_report_generated` 顶层 `except` 内 `_append_run_event(...)` 用 try/except 二次保护；fallback-of-fallback 失败 `logger.warning` 仅含 `artifact / protocol / format / original_error_type / recording_error_type` sanitized metadata（不含 `str(exc)` / 不含 webhook URL），保证 docstring "never raises to caller" 与实现一致。`_safe_record_notify_failed` 内层 `except Exception: pass` 改 `logger.warning(..., exc_info=True)` 同样 sanitized。docstring 显式三要素（触发条件 / 行为边界 / 退出条件）。dispatch payload 补 `artifact / protocol / format` 字段。
+  - `app_state.py`: 新增 `load_runtime_history_strict(root)` 事实层专用包装 `load_jsonl_documents_strict(runtime_history_path(root))`；坏 JSONL 抛 `CorruptStateError`；missing file 仍返回 `[]`（继承 strict loader 既有语义，不是 corruption）。
+  - 6 个事实层 best-effort→strict 切换：`app_execution.load_execution_bundle:142` / `machine_memory_actions.py:629` revert receipt / `archive.py:303` revert receipt / `l3_proposals.py:716` L3 revert receipt / `machine_memory_batch.py:69` explicit batch receipt / `:73` `load_runtime_history_strict` / `:86` history-derived receipt。Shell / dashboard / preview / telemetry / metrics_history / safe_apply_preview / preflight / alchemy / `content/memory.py` 全部不动（守 stop line）。
+  - 异常自然传播 `CorruptStateError` 到 CLI 边界，不在事实层吞坏数据；不再静默回退到 best-effort `{}`。
+  - 顺手清 unused import：`app_execution.py` / `machine_memory_actions.py` 的 `load_json_document`。
+- **测试**：新增 `tests/test_strict_read_migration.py` 8 测试（execution bundle / 3 个 revert 路径 receipt corrupt / batch explicit receipt / batch history receipt / corrupt runtime_history / strict vs best-effort 对比 raise/skip）；`tests/test_notify.py` 新增 `test_notify_dispatch_double_failure_warns`（mock `NotifyConfig.from_env` raise + `_append_run_event` raise → 不 raise + sanitized warning + 不泄漏 "bad env" / "run log down"）+ dispatch payload 字段断言；`tests/test_execution_compat.py` mock seam 同步 `load_json_document` → `load_json_document_strict`。
+- **Stop Lines**：0 公共 API 签名改动 / 0 schema 改动 / 0 webhook payload 改动 / 不全局替换 best-effort loader / `content/memory.py` / shell / dashboard / preview / telemetry / metrics / preflight / alchemy 不动；notify.py 修改限 line 59-130 + 166-220；app_state.py 仅新增 wrapper。
+- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1700 unit + coverage 92%）；oracle qa-review fail-then-fix（1 blocker → 清零 → PASS），blocker = `notify_report_generated` 顶层 fallback `_append_run_event` 没二次保护与 docstring "never raises" 不一致，修复 = 双层 try/except + logger.warning sanitized + return。
 
 ### Round 83 — `safe_fetch` DNS pinning + host allowlist — 完成
 
@@ -65,16 +79,6 @@
   - 不动 helper、不动 apply 分支、不动其他 apply_mode、不改 producer / schema。
 - **测试**：R81 已为 helper 加 4 测试覆盖白名单 / traversal；revert 路径走同一 helper，无需新增。既有 revert 相关测试不破。
 - **Stop Lines**：0 helper 改动 / 0 apply 分支改动 / 0 schema 改动 / 0 producer 改动。
-- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1679 unit + coverage 92%）。
-
-### Round 81 — `citation-snapshot-refresh` page_path 守护 — 完成
-
-- **目的**：关闭 fact-layer 直写审查发现的唯一 medium 风险点。`citation-snapshot-refresh` 之前信任 action payload 的 `page_path`，可能写入 `wiki/sources` / `raw` / workspace 其他文件，违反事实层边界。
-- **实现**：
-  - `execution/machine_memory_actions.py` 新增 `_validate_citation_page_path(root, page_path)`，用 `safe_resolve_within(root / page_path, root)` 防 traversal，再限制 resolved path 必须位于 `wiki/judgments` 或 `wiki/decisions`。
-  - `citation-snapshot-refresh` apply 分支改用该 helper；不动其他 apply_mode、不动 producer (`safe_apply_preview` / `app_memory.py`)、不改 schema。
-- **测试**：新增 `tests/test_citation_snapshot_guard.py` 4 测试，覆盖 `wiki/judgments` / `wiki/decisions` 合法、`wiki/sources` 拒绝、`../` traversal 拒绝。
-- **Stop Lines**：0 其他 machine_memory action 分支改动 / 0 producer 链路改动 / 0 全局守护框架 / 0 schema 改动。
 - **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1679 unit + coverage 92%）。
 
 ### Round 77 — `_append_llm_receipt` 事务化 — 完成
