@@ -161,19 +161,20 @@ class DropTests(unittest.TestCase):
             captured["cleanup_dir"] = destination.parent
             destination.mkdir(parents=True)
 
-        with patch("aiwiki.drop._clone_repo", side_effect=fake_clone):
-            with patch(
-                "aiwiki.drop._repo_snapshot",
-                return_value={
-                    "name": "Remote Fixture",
-                    "commit": "abc123",
-                    "origin": "https://example.test/repo.git",
-                    "readme": "Remote repo summary.",
-                    "tree": ["- `README.md`"],
-                    "files": [],
-                },
-            ):
-                result = drop_repo(self.root, "https://example.test/repo.git")
+        with patch.dict("os.environ", {"AIWIKI_ALLOW_REMOTE_REPO_DROP": "1"}, clear=False):
+            with patch("aiwiki.drop._clone_repo", side_effect=fake_clone):
+                with patch(
+                    "aiwiki.drop._repo_snapshot",
+                    return_value={
+                        "name": "Remote Fixture",
+                        "commit": "abc123",
+                        "origin": "https://example.test/repo.git",
+                        "readme": "Remote repo summary.",
+                        "tree": ["- `README.md`"],
+                        "files": [],
+                    },
+                ):
+                    result = drop_repo(self.root, "https://example.test/repo.git")
 
         self.assertEqual(result["material"], "repo")
         self.assertFalse(captured["cleanup_dir"].exists())

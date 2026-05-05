@@ -417,7 +417,9 @@ def _drop_repo_unlocked(root: Path, source: str, title: str | None = None, max_f
     cleanup_path: Path | None = None
     repo_path: Path
     original_path = source
-    if _looks_like_repo_url(source):
+    if _is_remote_repo_source(source):
+        if os.environ.get("AIWIKI_ALLOW_REMOTE_REPO_DROP") != "1":
+            raise ValueError("remote repo drop disabled; set AIWIKI_ALLOW_REMOTE_REPO_DROP=1 to enable")
         cleanup_path = Path(tempfile.mkdtemp(prefix="aiwiki-repo-"))
         repo_path = cleanup_path / "repo"
         _clone_repo(source, repo_path)
@@ -1288,13 +1290,23 @@ def _looks_like_repo_url(source: str) -> bool:
     return lowered.startswith("http://") or lowered.startswith("https://") or lowered.startswith("git@")
 
 
+def _is_remote_repo_source(source: str) -> bool:
+    lowered = source.lower()
+    return _looks_like_repo_url(source) or lowered.startswith("git://")
+
+
 def _clone_repo(source: str, destination: Path) -> None:
-    completed = subprocess.run(
-        ["git", "clone", "--depth", "1", source, str(destination)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            ["git", "clone", "--depth", "1", source, str(destination)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired as exc:
+        shutil.rmtree(destination, ignore_errors=True)
+        raise RuntimeError(f"git clone timed out after 60s: {source}") from exc
     if completed.returncode != 0:
         raise RuntimeError(f"git clone failed: {completed.stderr.strip() or completed.stdout.strip()}")
 

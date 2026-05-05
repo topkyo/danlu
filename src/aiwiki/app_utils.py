@@ -40,6 +40,12 @@ _RUNTIME_LOCK_GUARD = threading.RLock()
 
 _RUNTIME_LOCKS: dict[str, dict[str, Any]] = {}
 
+_LOCK_TIMEOUT_DEFAULT_SEC = 300
+
+
+class LockTimeoutError(RuntimeError):
+    pass
+
 
 TEXT_EXTENSIONS = {
     ".csv",
@@ -131,6 +137,17 @@ def runtime_lock_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "runtime.lock"
 
 
+def _resolve_lock_timeout() -> float:
+    raw = os.environ.get("AIWIKI_RUNTIME_LOCK_TIMEOUT")
+    if raw is None:
+        return float(_LOCK_TIMEOUT_DEFAULT_SEC)
+    try:
+        timeout = int(raw)
+    except (TypeError, ValueError):
+        return float(_LOCK_TIMEOUT_DEFAULT_SEC)
+    return float(max(1, min(3600, timeout)))
+
+
 @contextmanager
 def runtime_write_lock(root: Path):
     resolved_root = str(root.resolve())
@@ -143,7 +160,20 @@ def runtime_write_lock(root: Path):
             lock_path = runtime_lock_path(root)
             lock_path.parent.mkdir(parents=True, exist_ok=True)
             handle = lock_path.open("a+", encoding="utf-8")
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            timeout = _resolve_lock_timeout()
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        handle.close()
+                        raise LockTimeoutError(
+                            f"runtime write lock timeout after {timeout:.0f}s for {root}; "
+                            f"unset AIWIKI_RUNTIME_LOCK_TIMEOUT or wait for the holder to release"
+                        ) from None
+                    time.sleep(0.1)
             handle.seek(0)
             handle.truncate()
             handle.write(

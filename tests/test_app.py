@@ -6293,7 +6293,8 @@ class AiwikiFlowTests(unittest.TestCase):
         script = Path("/home/tim/ai-wiki/scripts/run_watch.sh")
         content = script.read_text(encoding="utf-8")
         self.assertIn('PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"', content)
-        self.assertIn('TARGET_ROOT="${AIWIKI_VAULT:-$PROJECT_ROOT}"', content)
+        self.assertIn('if [ -z "${AIWIKI_VAULT:-}" ]; then', content)
+        self.assertIn('TARGET_ROOT="$AIWIKI_VAULT"', content)
         self.assertIn('export PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"', content)
         self.assertIn('--root "$TARGET_ROOT"', content)
         self.assertIn('AIWIKI_WATCH_DETERMINISTIC_ONLY:-1', content)
@@ -6303,7 +6304,8 @@ class AiwikiFlowTests(unittest.TestCase):
         script = Path("/home/tim/ai-wiki/scripts/run_nightly.sh")
         content = script.read_text(encoding="utf-8")
         self.assertIn('PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"', content)
-        self.assertIn('TARGET_ROOT="${AIWIKI_VAULT:-$PROJECT_ROOT}"', content)
+        self.assertIn('if [ -z "${AIWIKI_VAULT:-}" ]; then', content)
+        self.assertIn('TARGET_ROOT="$AIWIKI_VAULT"', content)
         self.assertIn('export PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"', content)
         self.assertIn('--root "$TARGET_ROOT"', content)
         self.assertIn('exec python3 -m aiwiki.cli "${ARGS[@]}"', content)
@@ -6357,6 +6359,7 @@ exit 0
                     "AIWIKI_LLM_BACKEND": "codex-cli",
                     "AIWIKI_LLM_MODEL": "gpt-5.5",
                     "AIWIKI_NIGHTLY_FALLBACK_ENV": str(fallback_env),
+                    "AIWIKI_NIGHTLY_FALLBACK_ENABLED": "1",
                     "AIWIKI_NIGHTLY_NO_SEMANTIC_LINT": "1",
                 }
             )
@@ -6394,9 +6397,10 @@ exit 0
         content = script.read_text(encoding="utf-8")
         self.assertIn("AIWIKI_WATCH_DETERMINISTIC_ONLY=1", content)
         self.assertIn("AIWIKI_NIGHTLY_DETERMINISTIC_ONLY=0", content)
-        self.assertIn("AIWIKI_NIGHTLY_FALLBACK_ENABLED=1", content)
+        self.assertIn("AIWIKI_NIGHTLY_FALLBACK_ENABLED=${AIWIKI_NIGHTLY_FALLBACK_ENABLED:-0}", content)
         self.assertIn("AIWIKI_NIGHTLY_FALLBACK_BACKEND=nvidia-nim-api", content)
         self.assertIn("AIWIKI_NIGHTLY_FALLBACK_MODEL=openai/gpt-oss-120b", content)
+        self.assertIn("AIWIKI_NIGHTLY_AUTO_ADOPT_L1=${AIWIKI_NIGHTLY_AUTO_ADOPT_L1:-${AUTO_ADOPT_L1:-0}}", content)
 
     def test_product_shell_plugin_manifest_declares_desktop_only(self) -> None:
         manifest_path = Path("/home/tim/ai-wiki/.obsidian/plugins/furnace-product-shell/manifest.json")
