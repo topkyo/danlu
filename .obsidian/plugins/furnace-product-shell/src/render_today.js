@@ -43,11 +43,11 @@ function renderTodayFeed(plugin, container) {
   for (const entry of feed) groups[entry.kind].push(entry);
   
   const groupSpecs = [
-    ["report", plugin.t("Reports"), groups.report],
-    ["automation", plugin.t("Automation"), groups.automation],
-    ["confirmation", plugin.t("Needs Your Confirmation"), [...groups.decision, ...groups.proposal]],
-    ["elixir", plugin.t("Completed"), groups.elixir],
-    ["action", plugin.t("Suggested Actions"), groups.action],
+    ["report", plugin.t("新报告"), groups.report],
+    ["automation", plugin.t("系统动态"), groups.automation],
+    ["confirmation", plugin.t("需要你确认"), [...groups.decision, ...groups.proposal]],
+    ["elixir", plugin.t("已完成"), groups.elixir],
+    ["action", plugin.t("下一步建议"), groups.action],
   ];
   
   for (const [kind, heading, items] of groupSpecs) {
@@ -93,19 +93,32 @@ function renderPendingSubmissionsGroup(plugin, section) {
     const card = li.createDiv({ cls: "furnace-pending-card-inner" });
     const head = card.createDiv({ cls: "furnace-pending-card-head" });
     let statusLabel;
-    if (entry.status === "done") statusLabel = plugin.t("已完成");
-    else if (entry.status === "failed") statusLabel = plugin.t("失败");
-    else statusLabel = plugin.t("处理中…");
+    if (entry.status === "done") {
+      // R89: 区分 outputs / receipts
+      if (entry.reconcileTarget === "receipts") statusLabel = plugin.t("已记录");
+      else statusLabel = plugin.t("报告已生成");
+    } else if (entry.status === "received") {
+      // R89: 已接收但未 reconcile；如已 stale（>12h），换提示
+      statusLabel = entry._stale ? plugin.t("可能已完成，点上方刷新") : plugin.t("已接收，等待生成报告");
+    } else if (entry.status === "failed") {
+      statusLabel = plugin.t("失败");
+    } else {
+      statusLabel = plugin.t("处理中…");
+    }
     head.createEl("span", { cls: "furnace-pending-card-status", text: statusLabel });
     head.createEl("span", { cls: "furnace-pending-card-time", text: formatDisplayTime(entry.startedAt, plugin.locale()) || "" });
     card.createDiv({ cls: "furnace-pending-card-text", text: entry.displayText || "" });
     if (entry.status === "failed") {
+      // R89: 失败卡先给通用 hint，再给 raw error（开发者层）
+      card.createDiv({
+        cls: "furnace-pending-card-hint",
+        text: plugin.t("这次没成功。可以点重试，或检查输入是否完整。"),
+      });
       const errEl = card.createDiv({ cls: "furnace-pending-card-error", text: entry.error || plugin.t("失败") });
       errEl.setAttr && errEl.setAttr("title", entry.error || "");
       const actions = card.createDiv({ cls: "furnace-pending-card-actions" });
       const retryBtn = actions.createEl("button", { cls: "mod-cta", text: plugin.t("重试") });
       retryBtn.addEventListener("click", async () => {
-        // R88 P1 fix: 重试不删卡，把状态改回 running，复用同一卡片做闭环
         const args = entry.retryArgs || {};
         plugin.resetPendingSubmissionForRetry(entry.id);
         try {
@@ -116,11 +129,16 @@ function renderPendingSubmissionsGroup(plugin, section) {
           } else {
             await plugin.runUniversalInputCommand({ payload: args.payload || entry.displayText || "" });
           }
-          plugin.markPendingSubmissionDone(entry.id);
+          plugin.markPendingSubmissionReceived(entry.id);
         } catch (e) {
           plugin.markPendingSubmissionFailed(entry.id, e);
         }
       });
+      const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
+      dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
+    } else if (entry.status === "received") {
+      // R89: received 提供手动 Dismiss 入口（防卡死）
+      const actions = card.createDiv({ cls: "furnace-pending-card-actions" });
       const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
       dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
     }

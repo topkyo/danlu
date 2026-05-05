@@ -23,7 +23,7 @@ function renderUniversalInput(plugin, container) {
   });
 
   const hint = wrapper.createDiv({ cls: "furnace-universal-input-hint" });
-  hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 结果会出现在 Today"));
+      hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 结果会出现在“今天”"));
 
   const attachmentsContainer = wrapper.createDiv({ cls: "furnace-input-attachments-container" });
   
@@ -74,7 +74,7 @@ function renderUniversalInput(plugin, container) {
     textarea.disabled = true;
     const originalLabel = submitButton.textContent;
     submitButton.setText(plugin.t("处理中…"));
-    hint.setText(plugin.t("已提交，结果会出现在 Today"));
+    hint.setText(plugin.t("已提交，结果会出现在“今天”"));
 
     let succeeded = false;
     // R88: 立即推一个"处理中"卡片到 Today，构成视觉闭环
@@ -97,7 +97,8 @@ function renderUniversalInput(plugin, container) {
         await plugin.runUniversalInputCommand({ payload: value });
       }
       succeeded = true;
-      if (pendingId) plugin.markPendingSubmissionDone(pendingId);
+      // R89: 成功 ≠ 报告生成；先标 received（"已接收，等待生成报告"），等 reconcile 命中再 done
+      if (pendingId) plugin.markPendingSubmissionReceived(pendingId);
     } catch (e) {
       if (pendingId) plugin.markPendingSubmissionFailed(pendingId, e);
       new Notice(plugin.t("提交失败：{message}（输入已保留，可重试）", { message: e && e.message ? e.message : String(e) }));
@@ -105,7 +106,7 @@ function renderUniversalInput(plugin, container) {
       submitButton.disabled = false;
       textarea.disabled = false;
       submitButton.setText(originalLabel || plugin.t("Submit"));
-      hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 结果会出现在 Today"));
+  hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 结果会出现在“今天”"));
       if (succeeded) {
         textarea.value = '';
         autoResize();

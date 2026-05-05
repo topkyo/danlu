@@ -65,9 +65,10 @@ class ProductShellTodayFeedContractTests(unittest.TestCase):
         self.assertIn("Snooze", text)
         self.assertIn("runTodaySnoozeCommand", (PLUGIN / "src/plugin.js").read_text(encoding="utf-8"))
         self.assertIn("Open report", text)
-        self.assertIn("Reports", text)
-        self.assertIn("Automation", text)
-        self.assertIn("Needs Your Confirmation", text)
+        # R89: groupSpecs 标题改为中文
+        self.assertIn("新报告", text)
+        self.assertIn("系统动态", text)
+        self.assertIn("需要你确认", text)
         self.assertIn("Copy command", text)
         self.assertIn("Copy target", text)
         self.assertIn("reviewBucketDisplayLabel", text)

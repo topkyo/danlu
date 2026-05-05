@@ -42,7 +42,8 @@ class PendingSubmissionContractTests(unittest.TestCase):
     def test_render_input_pushes_pending_on_submit(self) -> None:
         text = (SRC / "render_input.js").read_text(encoding="utf-8")
         self.assertIn("pushPendingSubmission", text)
-        self.assertIn("markPendingSubmissionDone", text)
+        # R89: handleSubmit 成功 → markReceived；失败 → markFailed
+        self.assertIn("markPendingSubmissionReceived", text)
         self.assertIn("markPendingSubmissionFailed", text)
 
     def test_today_renders_pending_group(self) -> None:
@@ -138,8 +139,8 @@ class PendingSubmissionContractTests(unittest.TestCase):
         # 重试 handler 自身不应再 removePendingSubmission；改回 running
         self.assertNotIn("removePendingSubmission(entry.id);\n          plugin.markPending", retry_block)
         self.assertIn("resetPendingSubmissionForRetry", retry_block)
-        # 必须收口到 markDone/markFailed
-        self.assertIn("markPendingSubmissionDone", retry_block)
+        # 必须收口到 markReceived（R89 两段式：成功=已接收，等 reconcile 升 done）/markFailed
+        self.assertIn("markPendingSubmissionReceived", retry_block)
         self.assertIn("markPendingSubmissionFailed", retry_block)
 
     def test_today_empty_cta_covers_no_summary_branch(self) -> None:
@@ -151,6 +152,106 @@ class PendingSubmissionContractTests(unittest.TestCase):
         self.assertGreater(no_sum_idx, 0)
         block = today_js[no_sum_idx : no_sum_idx + 800]
         self.assertIn("renderTodayEmptyCta", block)
+
+    # ---- R89 #1 持久化 ----
+    def test_plugin_persists_pending_to_settings(self) -> None:
+        plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        # 序列化器
+        self.assertIn("serializePendingSubmissions", plugin_js)
+        # savePluginState 把 persistedPendingSubmissions 写进 settings
+        save_idx = plugin_js.find("async savePluginState()")
+        self.assertGreater(save_idx, 0)
+        save_body = plugin_js[save_idx : save_idx + 500]
+        self.assertIn("persistedPendingSubmissions", save_body)
+        self.assertIn("serializePendingSubmissions", save_body)
+
+    def test_plugin_hydrates_pending_with_ttl(self) -> None:
+        plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        self.assertIn("hydratePendingSubmissions", plugin_js)
+        hyd_idx = plugin_js.find("hydratePendingSubmissions(raw)")
+        self.assertGreater(hyd_idx, 0)
+        body = plugin_js[hyd_idx : hyd_idx + 2000]
+        # TTL 24h 常量
+        self.assertIn("24 * 60 * 60 * 1000", body)
+        # stale running → failed
+        self.assertIn('nextStatus = "failed"', body)
+        # 错误文案
+        self.assertIn("上次提交可能仍在处理或已完成", body)
+
+    def test_loadstate_calls_hydrate(self) -> None:
+        plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        load_idx = plugin_js.find("async loadPluginState()")
+        self.assertGreater(load_idx, 0)
+        body = plugin_js[load_idx : load_idx + 5000]
+        self.assertIn("hydratePendingSubmissions", body)
+        self.assertIn("persistedPendingSubmissions", body)
+
+    # ---- R89 #2 两段式语义 ----
+    def test_plugin_exposes_received_state_helper(self) -> None:
+        plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        self.assertIn("markPendingSubmissionReceived", plugin_js)
+
+    def test_render_input_calls_received_not_done(self) -> None:
+        text = (SRC / "render_input.js").read_text(encoding="utf-8")
+        # 成功路径 → markReceived（不再 markDone）
+        self.assertIn("markPendingSubmissionReceived", text)
+        # 成功 succeeded = true 之后不应直接 markDone
+        suc_idx = text.find("succeeded = true;")
+        self.assertGreater(suc_idx, 0)
+        window = text[suc_idx : suc_idx + 200]
+        self.assertIn("markPendingSubmissionReceived", window)
+        self.assertNotIn("markPendingSubmissionDone", window)
+
+    def test_today_renders_received_status(self) -> None:
+        text = (SRC / "render_today.js").read_text(encoding="utf-8")
+        self.assertIn('entry.status === "received"', text)
+        self.assertIn("已接收，等待生成报告", text)
+        self.assertIn("报告已生成", text)
+        self.assertIn("已记录", text)
+        # 区分 outputs / receipts
+        self.assertIn('reconcileTarget === "receipts"', text)
+
+    def test_reconcile_routes_target_to_markdone(self) -> None:
+        plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        idx = plugin_js.find("reconcilePendingSubmissions(summary) {")
+        self.assertGreater(idx, 0)
+        end = plugin_js.find("\n  }\n", idx)
+        body = plugin_js[idx:end]
+        # 目标分流
+        self.assertIn('target = "outputs"', body)
+        self.assertIn('target = "receipts"', body)
+        # 命中后调 markDone（带 target）
+        self.assertIn("markPendingSubmissionDone", body)
+
+    # ---- R89 #3 文案中文化 + Advanced 分隔 + 失败 hint ----
+    def test_today_groups_use_chinese(self) -> None:
+        text = (SRC / "render_today.js").read_text(encoding="utf-8")
+        # 不应再用旧英文 key 当显示文本
+        self.assertIn('plugin.t("新报告")', text)
+        self.assertIn('plugin.t("系统动态")', text)
+        self.assertIn('plugin.t("需要你确认")', text)
+        self.assertIn('plugin.t("已完成")', text)
+        self.assertIn('plugin.t("下一步建议")', text)
+
+    def test_advanced_drawer_has_dev_banner(self) -> None:
+        text = (SRC / "render_advanced.js").read_text(encoding="utf-8")
+        self.assertIn("furnace-advanced-dev-banner", text)
+        self.assertIn("以下为开发者诊断信息", text)
+        # 必须在 advanced body 内（render 顺序：body createDiv → banner → mainHeader）
+        body_idx = text.find('createDiv({ cls: "furnace-shell-advanced-body" })')
+        banner_idx = text.find("furnace-advanced-dev-banner")
+        self.assertGreater(banner_idx, body_idx)
+
+    def test_failed_card_has_user_facing_hint(self) -> None:
+        text = (SRC / "render_today.js").read_text(encoding="utf-8")
+        self.assertIn("furnace-pending-card-hint", text)
+        self.assertIn("这次没成功。可以点重试，或检查输入是否完整。", text)
+
+    def test_styles_define_received_and_dev_banner(self) -> None:
+        css = (PLUGIN / "styles.css").read_text(encoding="utf-8")
+        self.assertIn(".furnace-pending-received", css)
+        self.assertIn(".furnace-advanced-dev-banner", css)
+        self.assertIn(".furnace-pending-card-hint", css)
 
 
 if __name__ == "__main__":

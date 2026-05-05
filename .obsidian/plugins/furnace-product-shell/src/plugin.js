@@ -5,7 +5,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   async onload() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
     this.pluginState = { recentRuns: [] };
-    this.pendingSubmissions = []; // runtime-only: { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error }
+    this.pendingSubmissions = []; // R89: 持久化 + runtime; status: running | received | done | failed; { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error, reconcileTarget }
     this.shellSummary = null;
     this.repoState = { valid: false, root: "", launcherPath: "", missingPaths: ["vault-root"] };
     this.openViews = new Set();
@@ -363,6 +363,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       : [];
     this.pluginState = { recentRuns };
     this.trimRecentRuns();
+    // R89: hydrate pendingSubmissions from settings; TTL 24h stale running → failed
+    this.pendingSubmissions = this.hydratePendingSubmissions(this.settings.persistedPendingSubmissions);
     if (feishuWebhookUrlMigrated || wecomWebhookUrlMigrated || enabledChannelsMigrated || lastViewedTimestampMigrated) {
       await this.savePluginState();
     }
@@ -370,9 +372,72 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async savePluginState() {
     await this.saveData({
-      settings: this.settings,
+      settings: Object.assign({}, this.settings, {
+        // R89: 把 pending 持久化到 settings；只存最近 8 条 running/received/failed/done
+        persistedPendingSubmissions: this.serializePendingSubmissions(),
+      }),
       recentRuns: this.pluginState.recentRuns,
     });
+  }
+
+  // R89: 持久化 pending（运行时不变；只在 save 时序列化）
+  serializePendingSubmissions() {
+    if (!Array.isArray(this.pendingSubmissions)) return [];
+    return this.pendingSubmissions.slice(0, 8).map((e) => ({
+      id: String(e.id || ""),
+      payloadFingerprint: String(e.payloadFingerprint || ""),
+      displayText: String(e.displayText || ""),
+      title: String(e.title || ""),
+      status: String(e.status || "running"),
+      startedAt: String(e.startedAt || ""),
+      finishedAt: String(e.finishedAt || ""),
+      error: String(e.error || ""),
+      reconcileTarget: String(e.reconcileTarget || ""),
+      retryArgs: e.retryArgs && typeof e.retryArgs === "object" ? e.retryArgs : null,
+    }));
+  }
+
+  // R89: 启动时从持久化 settings hydrate；超过 TTL 24h 的 running/received → failed
+  hydratePendingSubmissions(raw) {
+    if (!Array.isArray(raw) || !raw.length) return [];
+    const TTL_MS = 24 * 60 * 60 * 1000;
+    const RECEIVED_STALE_MS = 12 * 60 * 60 * 1000;
+    const now = Date.now();
+    const out = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const startedAt = String(item.startedAt || "");
+      const startMs = Date.parse(startedAt);
+      const status = String(item.status || "running");
+      let nextStatus = status;
+      let error = String(item.error || "");
+      if (Number.isFinite(startMs)) {
+        const age = now - startMs;
+        if ((status === "running") && age > TTL_MS) {
+          nextStatus = "failed";
+          error = "上次提交可能仍在处理或已完成，点上方刷新查看结果";
+        } else if (status === "received" && age > RECEIVED_STALE_MS) {
+          // 不强制改 failed，保留 received 但加提示词；render 层可基于 finishedAt/startedAt 判断
+          // 这里先标记 stale 字段，render 端可读
+          item._stale = true;
+        }
+      }
+      out.push({
+        id: String(item.id || `pending-${now}-${out.length}`),
+        payloadFingerprint: String(item.payloadFingerprint || ""),
+        displayText: String(item.displayText || ""),
+        title: String(item.title || ""),
+        status: nextStatus,
+        startedAt,
+        finishedAt: String(item.finishedAt || (nextStatus === "failed" ? new Date().toISOString() : "")),
+        error,
+        reconcileTarget: String(item.reconcileTarget || ""),
+        retryArgs: item.retryArgs && typeof item.retryArgs === "object" ? item.retryArgs : null,
+        _stale: Boolean(item._stale),
+      });
+      if (out.length >= 8) break;
+    }
+    return out;
   }
 
   trimRecentRuns() {
@@ -1878,15 +1943,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     await this.runPluginCommand(`${this.t("Set Protocol")}: ${protocol}`, ["protocol-set", protocol], { refreshAfter: true });
   }
 
-  // ---------------- Pending submissions (runtime-only, R88) ----------------
+  // ---------------- Pending submissions (R88 + R89 持久化 + 两段式) ----------------
   // 用户提交后立即出现的"处理中"卡片，独立于 recentRuns（命令历史）和
-  // shellSummary（事实层）。仅用于视觉闭环：用户提交 → 看到入流水线 → 落地后消失。
+  // shellSummary（事实层）。R89: 持久化到 plugin state；status = running | received | done | failed。
   pushPendingSubmission(displayText, opts = {}) {
     const text = String(displayText || "").trim();
     if (!text) return null;
     if (!Array.isArray(this.pendingSubmissions)) this.pendingSubmissions = [];
     const fingerprint = text.slice(0, 80);
-    // R88 P2 fix: 同 fingerprint 仍在 running 的 pending 直接复用，避免双击/多入口重复卡
+    // R88 P2 fix: 同 fingerprint 仍在 running 的 pending 直接复用
     const dup = this.pendingSubmissions.find((e) => e && e.status === "running" && e.payloadFingerprint === fingerprint);
     if (dup) return dup.id;
     const id = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1895,15 +1960,16 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       payloadFingerprint: fingerprint,
       displayText: text.length > 120 ? text.slice(0, 117) + "…" : text,
       title: String(opts.title || "").trim(),
-      status: "running", // running | done | failed
+      status: "running", // R89: running | received | done | failed
       startedAt: new Date().toISOString(),
       finishedAt: "",
       error: "",
+      reconcileTarget: "",
       retryArgs: opts.retryArgs && typeof opts.retryArgs === "object" ? opts.retryArgs : null,
     };
     this.pendingSubmissions.unshift(entry);
-    // 限长 8，避免视觉堆积
     if (this.pendingSubmissions.length > 8) this.pendingSubmissions.length = 8;
+    void this.savePluginState();
     this.refreshOpenViews();
     return id;
   }
@@ -1915,16 +1981,36 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     entry.error = "";
     entry.startedAt = new Date().toISOString();
     entry.finishedAt = "";
+    entry.reconcileTarget = "";
+    entry._stale = false;
+    void this.savePluginState();
     this.refreshOpenViews();
   }
 
-  markPendingSubmissionDone(id) {
+  // R89: handleSubmit 成功 → received（"已接收，等待生成报告"）；不自动消失
+  // 防御：仅在 running 时切换；若 reconcile 已抢先把它升到 done，不要回退
+  markPendingSubmissionReceived(id) {
     const entry = this._findPending(id);
     if (!entry) return;
+    if (entry.status !== "running") return;
+    entry.status = "received";
+    entry.finishedAt = new Date().toISOString();
+    void this.savePluginState();
+    this.refreshOpenViews();
+  }
+
+  // R89: reconcile 命中 → done（"报告已生成" or "已记录"），保留 4s 自动消失
+  // reconcileTarget: "outputs" | "receipts"
+  // 防御：done/failed 不应再被升到 done（避免重复 setTimeout）
+  markPendingSubmissionDone(id, reconcileTarget) {
+    const entry = this._findPending(id);
+    if (!entry) return;
+    if (entry.status === "done" || entry.status === "failed") return;
     entry.status = "done";
     entry.finishedAt = new Date().toISOString();
+    if (reconcileTarget) entry.reconcileTarget = String(reconcileTarget);
+    void this.savePluginState();
     this.refreshOpenViews();
-    // 成功后短延迟自动消失（reconcile 也会兜底；这里给即时反馈）
     setTimeout(() => {
       this.removePendingSubmission(id);
     }, 4000);
@@ -1936,6 +2022,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     entry.status = "failed";
     entry.finishedAt = new Date().toISOString();
     entry.error = truncateText(String((error && error.message) || error || "失败"), 180);
+    void this.savePluginState();
     this.refreshOpenViews();
   }
 
@@ -1943,7 +2030,10 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (!Array.isArray(this.pendingSubmissions) || !this.pendingSubmissions.length) return;
     const before = this.pendingSubmissions.length;
     this.pendingSubmissions = this.pendingSubmissions.filter((e) => e && e.id !== id);
-    if (this.pendingSubmissions.length !== before) this.refreshOpenViews();
+    if (this.pendingSubmissions.length !== before) {
+      void this.savePluginState();
+      this.refreshOpenViews();
+    }
   }
 
   _findPending(id) {
@@ -1960,34 +2050,33 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   reconcilePendingSubmissions(summary) {
     if (!Array.isArray(this.pendingSubmissions) || !this.pendingSubmissions.length) return;
     if (!summary || typeof summary !== "object") return;
-    const candidates = [];
-    if (Array.isArray(summary.recent_outputs)) candidates.push(...summary.recent_outputs);
-    if (Array.isArray(summary.recent_receipts)) candidates.push(...summary.recent_receipts);
-    if (!candidates.length) return;
+    const outputCands = Array.isArray(summary.recent_outputs) ? summary.recent_outputs : [];
+    const receiptCands = Array.isArray(summary.recent_receipts) ? summary.recent_receipts : [];
+    if (!outputCands.length && !receiptCands.length) return;
     const SKEW_MS = 60 * 1000;
     const RECONCILE_WINDOW_MS = 5 * 60 * 1000;
     const now = Date.now();
     const remaining = [];
+    const hits = []; // {id, target}
     for (const entry of this.pendingSubmissions) {
-      if (!entry) continue;
-      // failed 保留供用户重试
-      if (entry.status === "failed") {
+      if (!entry) { continue; }
+      // failed/done 保留（done 由 setTimeout 自身移除）
+      if (entry.status === "failed" || entry.status === "done") {
         remaining.push(entry);
         continue;
       }
       const startMs = Date.parse(entry.startedAt || "") || now;
-      // 超窗：仅停止 reconcile，但保留卡片（长任务保护）
-      if (now - startMs > RECONCILE_WINDOW_MS) {
+      // 超窗（仅对 running 生效；received 长期等待 reconcile，不超窗）
+      if (entry.status === "running" && now - startMs > RECONCILE_WINDOW_MS) {
         remaining.push(entry);
         continue;
       }
       const fp = String(entry.payloadFingerprint || "").trim().toLowerCase();
       const title = String(entry.title || "").trim().toLowerCase();
-      const fpKey = fp.length >= 60 ? fp.slice(0, 60) : fp; // 至少 60 字符前缀
-      const useExact = fp.length > 0 && fp.length < 16; // 短输入用 exact 匹配防误杀
-      const hit = candidates.some((cand) => {
+      const fpKey = fp.length >= 60 ? fp.slice(0, 60) : fp;
+      const useExact = fp.length > 0 && fp.length < 16;
+      const matchAgainst = (cand) => {
         if (!cand || typeof cand !== "object") return false;
-        // 时间戳门槛
         const candTimeStr = cand.created_at || cand.generated_at || cand.applied_at || cand.occurred_at || cand.timestamp || "";
         const candMs = Date.parse(candTimeStr);
         if (!Number.isFinite(candMs)) return false;
@@ -2010,12 +2099,25 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         if (fpKey && haystack.includes(fpKey)) return true;
         if (title && title.length >= 4 && haystack.includes(title)) return true;
         return false;
-      });
-      if (!hit) remaining.push(entry);
+      };
+      let target = "";
+      if (outputCands.some(matchAgainst)) target = "outputs";
+      else if (receiptCands.some(matchAgainst)) target = "receipts";
+      // R89: 命中 → 改为 done（保留卡片），不从 list 移除；let markDone 处理 4s remove
+      if (target) {
+        hits.push({ id: entry.id, target });
+        remaining.push(entry); // 保留，markDone 会异步 remove
+      } else {
+        remaining.push(entry);
+      }
     }
     if (remaining.length !== this.pendingSubmissions.length) {
       this.pendingSubmissions = remaining;
       this.refreshOpenViews();
+    }
+    // 触发 markDone（其内部 setTimeout 4s remove + 立即 save + refresh）
+    for (const h of hits) {
+      this.markPendingSubmissionDone(h.id, h.target);
     }
   }
 

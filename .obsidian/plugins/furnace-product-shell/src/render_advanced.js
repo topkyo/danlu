@@ -20,6 +20,12 @@ function renderAdvancedDrawer(plugin, container) {
   });
   const body = details.createDiv({ cls: "furnace-shell-advanced-body" });
 
+  // R89: 开发者层心理预期分隔
+  body.createEl("div", {
+    cls: "furnace-advanced-dev-banner",
+    text: plugin.t("以下为开发者诊断信息"),
+  });
+
   plugin.renderMainHeader(body);
   plugin.renderStatusPanel(body);
   plugin.renderLegacyAdvancedPanel(body);

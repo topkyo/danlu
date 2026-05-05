@@ -1514,3 +1514,27 @@
 .furnace-today-cta-submit {
   cursor: pointer;
 }
+
+/* R89 — pending received 状态 + 失败 hint + Advanced dev banner */
+.furnace-pending-received .furnace-pending-card-inner {
+  border-left-color: var(--text-warning, #f9a825);
+  opacity: 0.95;
+}
+.furnace-pending-received .furnace-pending-card-status {
+  color: var(--text-warning, #f9a825);
+}
+.furnace-pending-card-hint {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+.furnace-advanced-dev-banner {
+  font-size: 0.82em;
+  color: var(--text-muted);
+  background: var(--background-modifier-border-hover, var(--background-secondary));
+  border-left: 3px solid var(--text-muted);
+  padding: 6px 10px;
+  margin-bottom: 10px;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+}

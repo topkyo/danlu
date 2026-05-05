@@ -45,8 +45,23 @@
 | **Round 86 safe_fetch 多 IP fallback** (2026-05-05) | R83 pinning 可用性回归修复 / `_PinnedHTTP[S]Connection` 按 resolver 顺序循环 TCP / 全失败抛 OSError 不混入 FetchPolicyError / handler 接 list / 4 fallback tests | ✅ done (`b345ecf`) |
 | **Round 87 R85/R86 non-blocking 小补丁清理** (2026-05-05) | history strict 测试 path:N 断言收紧 / receipt strict missing+non-dict edge tests / HTTPS fallback wrap_socket 单次 + server_hostname 锁定 / redirect 后 IP list 重建测试 / 实现 0 改动 | ✅ done (`0891a44`) |
 | **Round 88 PM-UX 三件套** (2026-05-05) | Today 空态 CTA「投一份材料」聚焦 universal input / 提交后"处理中"卡片（runtime-only push/done/failed/reset state machine + reconcile 时间戳门槛 + 字段扩展 + 短指纹 exact + 超窗保留 + dedupe）/ 用户层面板文案白话化（plugin/constants/render_execution/render_review/render_primitives/health-state，"shell-summary.json" → "数据还没准备好"等）/ pending 卡片样式 + pulse / 12 契约测试 / oracle qa-review 2 轮全 PASS | ✅ done |
+| **Round 89 PM/UX 信任闭环 + 文案统一** (2026-05-05) | pending 持久化（settings.persistedPendingSubmissions + serialize/hydrate + TTL 24h running→failed + cap 8）/ 状态机两段式（running → received "已接收，等待生成报告" → done(target=outputs\|receipts) "报告已生成"\|"已记录"）/ markReceived/markDone 互斥防御（防 reconcile race & 重复 setTimeout）/ 失败卡通用 hint + 重试统一收口 markReceived / Today→今天 闭环（标题 + 3 处 input hint）/ groupSpecs 中文化（新报告/系统动态/需要你确认/已完成/下一步建议）/ Advanced drawer "开发者诊断信息"分隔横条 / 23 pending 测试 + 9 today_feed 测试 + 48 jest / oracle qa-review 2 轮全 PASS | ✅ done |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 89 — PM/UX 信任闭环 + 文案统一收口 — 完成
+
+- **目的**：闭环 R88 PM/UX 二轮评估（oracle 7/10）残余 3 大痛点：pending 关闭重开断链、提交语义错位（接收=报告）、首屏机制词与中英混用。
+- **实现**：
+  - **#1 pending 持久化**：plugin.js 新增 `serializePendingSubmissions/hydratePendingSubmissions`；写入 `settings.persistedPendingSubmissions`；onload 期间 hydrate（保留 displayText 120 / payload fingerprint 80 截断）；TTL 24h running 自动降级 failed 并附文案 "上次提交可能仍在处理或已完成…"；cap 8。
+  - **#2 状态机两段式**：status 枚举 `running|received|done|failed`；新 helper `markPendingSubmissionReceived(id)` 与 `markPendingSubmissionDone(id, target)`；render_input handleSubmit 成功 → markReceived（不自动消失）；reconcile 命中 → markDone(target="outputs"|"receipts") → 4s remove；render_today 三态分文案（received="已接收，等待生成报告" / done outputs="报告已生成" / done receipts="已记录" / received >12h stale="可能已完成，点上方刷新"）。
+  - **#3 race 防御**：markReceived `if status !== "running" return`（防 reconcile 抢先升 done 后被回退）；markDone `if status === "done"|"failed" return`（防重复 4s setTimeout）。
+  - **#4 失败卡 + 重试**：render_today 失败卡上方加通用 hint "这次没成功。可以点重试，或检查输入是否完整。"；retry 成功路径统一改 markReceived（与 handleSubmit 同语义）。
+  - **#5 文案统一**：constants.js `Today: "今日" → "今天"`；render_input 三处 hint "结果会出现在 Today" → "结果会出现在“今天”"；today_feed groupSpecs 中文化（Reports→新报告 / Automation→系统动态 / Needs Your Confirmation→需要你确认 / Completed→已完成 / Suggested Actions→下一步建议）。
+  - **#6 Advanced 抽屉分隔**：render_advanced.js drawer body 顶部插入 `.furnace-advanced-dev-banner` "以下为开发者诊断信息"，把 LLM/run history/system 等开发者层面板与首屏视觉分层。
+- **验证**：pytest pending_card 23/23 + today_feed 9/9 + 全量 1739 + acceptance 13 全过；jest 48/48 全过；`bash scripts/verify.sh` 全过。
+- **qa-review**：oracle round 1 fail（3 P1：reconcile-race 回退、retry 用 markDone 破坏两段式、Today/今天未闭环）→ round 2 全 PASS。
+- **归档**：contract `.codex/contracts/archive/round-89-pm-ux-trust-loop.md`；gate `.codex/gates/qa-review.md` status=pass。
 
 ### Round 88 — PM-UX 三件套（空态 CTA / 处理中卡片 / 文案白话化）— 完成
 
