@@ -45,6 +45,8 @@ const DEFAULT_SETTINGS = {
   lastViewedTimestamp: "",
   lastKnownReportIds: [],
   onboardingShown: false,
+  // R91: Advanced 子 section 折叠态持久化；默认全折叠以降首屏认知负担
+  advancedSectionsExpanded: { status: false, history: false, devops: false },
 };
 const ZH_TEXT = {
   "Advanced": "更多工具",
@@ -396,6 +398,18 @@ const ZH_TEXT = {
   "已打开输出汇总（找不到具体报告路径）": "已打开输出汇总（找不到具体报告路径）",
   "已打开运行记录（找不到具体回执路径）": "已打开运行记录（找不到具体回执路径）",
   "无法打开目标，可能尚未生成": "无法打开目标，可能尚未生成",
+  // R91 Advanced 抽屉子 section
+  "系统状态": "系统状态",
+  "运行与历史": "运行与历史",
+  "开发者操作": "开发者操作",
+  "协议 {protocol} · LLM {llm} · 同步 {sync}": "协议 {protocol} · LLM {llm} · 同步 {sync}",
+  "最近运行 {n} 条 · 待审 {review} · 待执行 {execution}": "最近运行 {n} 条 · 待审 {review} · 待执行 {execution}",
+  "编译 / 同步 / 协议切换 / 日志等命令": "编译 / 同步 / 协议切换 / 日志等命令",
+  "未配置": "未配置",
+  "正常": "正常",
+  "异常": "异常",
+  "未知": "未知",
+  "点击展开查看详细信息": "点击展开查看详细信息",
   "{n} 分钟前": "{n} 分钟前",
   "{n} 小时前": "{n} 小时前",
   "{n} 天前": "{n} 天前",
@@ -3348,18 +3362,10 @@ function renderDigestPanel(plugin, container) {
 }
 
 function renderLegacyAdvancedPanel(plugin, container) {
-  const details = container.createEl("details", { cls: "furnace-shell-advanced" });
-  const summary = details.createEl("summary", { cls: "furnace-shell-advanced-summary" });
-  const summaryCopy = summary.createDiv({ cls: "furnace-shell-advanced-copy" });
-  summaryCopy.createEl("span", { cls: "furnace-shell-advanced-title", text: plugin.t("Advanced Actions") });
-  summaryCopy.createEl("span", { cls: "furnace-shell-advanced-description", text: plugin.t("Core workflows stay available here, but hidden by default.") });
-  const summaryBadges = summary.createDiv({ cls: "furnace-shell-pill-row" });
+  // R91: 不再嵌套 <details>，直接平铺到调用方的容器（DevOps section body 自带折叠）。
   const review = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary.review_backlog_counts || {} : {};
   const pendingReviewCount = Number(review.pending_decisions || 0) + Number(review.pending_judgments || 0);
-  plugin.renderPill(summaryBadges, `${pendingReviewCount} ${plugin.t("Pending Reviews")}`);
-  plugin.renderPill(summaryBadges, `${review.ready_actions || 0} ${plugin.t("actions")}`);
-
-  const body = details.createDiv({ cls: "furnace-shell-advanced-body" });
+  const body = container.createDiv({ cls: "furnace-shell-advanced-body" });
   plugin.renderInlineButtons(body, [
     { label: "Compile", cta: true, onClick: async () => plugin.runCompileCommand() },
     { label: "Nightly", onClick: async () => plugin.runNightlyCommand() },
@@ -4265,38 +4271,201 @@ function renderNextActionsPanel(plugin, container) {
 // --- src/render_advanced.js ---
 
 // Advanced drawer and metrics rendering helpers.
+// R91: 重组为 3 个可折叠 section（系统状态 / 运行与历史 / 开发者操作），降低首屏认知负担。
+// 不再嵌外层 Advanced <details>；三组直接挂在 wrapper 上。
 function renderAdvancedDrawer(plugin, container) {
   const wrapper = container.createDiv({ cls: "furnace-advanced-drawer" });
-  const details = wrapper.createEl("details", { cls: "furnace-shell-advanced" });
-  const summaryEl = details.createEl("summary", { cls: "furnace-shell-advanced-summary", attr: { tabindex: "0" } });
-  const summaryCopy = summaryEl.createDiv({ cls: "furnace-shell-advanced-copy" });
-  summaryCopy.createEl("span", { cls: "furnace-shell-advanced-title", text: plugin.t("Advanced") });
-  const counts = advancedDrawerCounts(plugin);
-  const totalActive = counts.review + counts.execution + counts.runs;
-  const descText = totalActive === 0
-    ? plugin.t("系统状态、模型、运行历史等高级面板")
-    : plugin.t("待复核 {review_count} · 待执行 {execution_count} · 近期运行 {run_count}", {
-        review_count: counts.review,
-        execution_count: counts.execution,
-        run_count: counts.runs,
-      });
-  summaryCopy.createEl("span", {
-    cls: "furnace-shell-advanced-description",
-    text: descText,
-  });
-  const body = details.createDiv({ cls: "furnace-shell-advanced-body" });
 
-  // R89: 开发者层心理预期分隔
-  body.createEl("div", {
+  // 顶部抽屉外置 dev banner（R89 心理预期分隔；不进任一 section）
+  wrapper.createEl("div", {
     cls: "furnace-advanced-dev-banner",
     text: plugin.t("以下为开发者诊断信息"),
   });
 
-  plugin.renderMainHeader(body);
-  plugin.renderStatusPanel(body);
-  plugin.renderLegacyAdvancedPanel(body);
+  // 三组 section 直接挂 wrapper（去掉 R90 之前的外层 Advanced 折叠层）
+  const body = wrapper;
 
-  renderAdvancedMetricsPanel(plugin, body);
+  renderAdvancedSection(plugin, body, {
+    key: "status",
+    title: plugin.t("系统状态"),
+    summaryText: buildStatusSectionSummary(plugin),
+    render: (el) => {
+      plugin.renderMainHeader(el);
+      plugin.renderStatusPanel(el);
+      renderAdvancedMetricsPanel(plugin, el);
+    },
+  });
+
+  renderAdvancedSection(plugin, body, {
+    key: "history",
+    title: plugin.t("运行与历史"),
+    summaryText: buildHistorySectionSummary(plugin),
+    render: (el) => {
+      renderHistorySectionBody(plugin, el);
+    },
+  });
+
+  renderAdvancedSection(plugin, body, {
+    key: "devops",
+    title: plugin.t("开发者操作"),
+    summaryText: plugin.t("编译 / 同步 / 协议切换 / 日志等命令"),
+    render: (el) => {
+      plugin.renderLegacyAdvancedPanel(el);
+    },
+  });
+}
+
+// R91: 单个 section 渲染。<details>/<summary> 原生折叠 + toggle 持久化。
+function renderAdvancedSection(plugin, parentEl, spec) {
+  const expanded = plugin.getAdvancedSectionExpanded(spec.key);
+  const sectionAttr = { "data-section-key": spec.key };
+  if (expanded) sectionAttr.open = "open";
+  const sectionEl = parentEl.createEl("details", {
+    cls: `furnace-advanced-section furnace-advanced-section-${spec.key}`,
+    attr: sectionAttr,
+  });
+  const summaryEl = sectionEl.createEl("summary", {
+    cls: "furnace-advanced-section-summary",
+    attr: { tabindex: "0" },
+  });
+  summaryEl.createEl("span", {
+    cls: "furnace-advanced-section-title",
+    text: spec.title,
+  });
+  const summaryHint = String(spec.summaryText || "").trim() || plugin.t("点击展开查看详细信息");
+  summaryEl.createEl("span", {
+    cls: "furnace-advanced-section-hint",
+    text: summaryHint,
+  });
+  sectionEl.addEventListener("toggle", () => {
+    const isOpen = Boolean(sectionEl.open);
+    if (isOpen === plugin.getAdvancedSectionExpanded(spec.key)) return;
+    plugin.setAdvancedSectionExpanded(spec.key, isOpen);
+  });
+  const bodyEl = sectionEl.createDiv({ cls: "furnace-advanced-section-body" });
+  try {
+    spec.render(bodyEl);
+  } catch (error) {
+    bodyEl.createEl("div", {
+      cls: "furnace-advanced-section-error",
+      text: String(error && error.message ? error.message : error),
+    });
+  }
+}
+
+// R91: 系统状态 section 摘要 — 协议 / LLM / 同步状态 一行
+function buildStatusSectionSummary(plugin) {
+  let protocolName = "";
+  if (plugin.shellSummary && typeof plugin.shellSummary === "object") {
+    protocolName = String(plugin.shellSummary.protocol || plugin.shellSummary.active_protocol || "").trim();
+  }
+  if (!protocolName) protocolName = plugin.t("未配置");
+
+  let llmLabel = "";
+  try {
+    const llmHealth = plugin.currentLlmHealth();
+    const backend = String((llmHealth && llmHealth.backend) || "").trim();
+    const model = String((llmHealth && llmHealth.model) || "").trim();
+    if (backend && model) llmLabel = `${backend}/${model}`;
+    else if (backend) llmLabel = backend;
+    else if (model) llmLabel = model;
+  } catch (error) {
+    llmLabel = "";
+  }
+  if (!llmLabel) llmLabel = plugin.t("未配置");
+
+  let syncLabel = plugin.t("未知");
+  try {
+    const sync = plugin.currentShellSyncState();
+    const status = String((sync && sync.status) || "").trim();
+    if (status === "healthy") syncLabel = plugin.t("正常");
+    else if (status === "running") syncLabel = plugin.t("Refreshing shell summary.");
+    else if (status === "unknown") syncLabel = plugin.t("未知");
+    else syncLabel = plugin.t("异常");
+  } catch (error) {
+    // keep 未知
+  }
+
+  return plugin.t("协议 {protocol} · LLM {llm} · 同步 {sync}", {
+    protocol: protocolName,
+    llm: llmLabel,
+    sync: syncLabel,
+  });
+}
+
+// R91: 运行与历史 section 摘要 — 最近运行数 + review/execution 待办
+function buildHistorySectionSummary(plugin) {
+  const counts = advancedDrawerCounts(plugin);
+  return plugin.t("最近运行 {n} 条 · 待审 {review} · 待执行 {execution}", {
+    n: counts.runs,
+    review: counts.review,
+    execution: counts.execution,
+  });
+}
+
+// R91: 运行与历史 section 主体 — 入口按钮 + 最近 LLM 运行摘要
+function renderHistorySectionBody(plugin, container) {
+  const buttons = [
+    {
+      key: "open-recent-runs",
+      label: plugin.t("Open Recent Runs"),
+      onClick: () => {
+        try {
+          plugin.openRecentRunsView();
+        } catch (error) {
+          // surface via Notice if available
+        }
+      },
+    },
+    {
+      key: "open-review-center",
+      label: plugin.t("Open Review Center"),
+      onClick: () => {
+        try {
+          plugin.openReviewCenterView();
+        } catch (error) {}
+      },
+    },
+    {
+      key: "open-execution-center",
+      label: plugin.t("Open Execution Center"),
+      onClick: () => {
+        try {
+          plugin.openExecutionCenterView();
+        } catch (error) {}
+      },
+    },
+  ];
+  if (typeof plugin.renderInlineButtons === "function") {
+    plugin.renderInlineButtons(container, buttons, "furnace-advanced-section-actions");
+  } else {
+    const row = container.createDiv({ cls: "furnace-advanced-section-actions" });
+    for (const btn of buttons) {
+      const el = row.createEl("button", { cls: "furnace-shell-button", text: btn.label });
+      el.addEventListener("click", btn.onClick);
+    }
+  }
+
+  // 最近 LLM 运行摘要（若有）
+  try {
+    const latest = plugin.latestLlmRun();
+    if (latest && (latest.command || latest.backend || latest.model)) {
+      const card = container.createDiv({ cls: "furnace-advanced-section-latest-llm" });
+      const head = card.createDiv({ cls: "furnace-advanced-section-latest-llm-head" });
+      head.createEl("span", { cls: "furnace-advanced-section-latest-llm-label", text: plugin.t("Latest LLM run") });
+      const parts = [];
+      if (latest.command) parts.push(latest.command);
+      if (latest.backend) parts.push(latest.backend);
+      if (latest.model) parts.push(latest.model);
+      if (latest.status) parts.push(latest.status);
+      head.createEl("span", { cls: "furnace-advanced-section-latest-llm-meta", text: parts.join(" · ") });
+      if (latest.errorSummary) {
+        card.createEl("div", { cls: "furnace-advanced-section-latest-llm-error", text: latest.errorSummary });
+      }
+    }
+  } catch (error) {
+    // 静默
+  }
 }
 
 function advancedDrawerCounts(plugin) {
@@ -5410,6 +5579,28 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       }),
       recentRuns: this.pluginState.recentRuns,
     });
+  }
+
+  // R91: Advanced 抽屉子 section 折叠态读写。默认全折叠（status/history/devops）。
+  getAdvancedSectionExpanded(key) {
+    const s = this.settings && this.settings.advancedSectionsExpanded;
+    if (!s || typeof s !== "object") return false;
+    return Boolean(s[key]);
+  }
+
+  async setAdvancedSectionExpanded(key, value) {
+    const current = this.settings && this.settings.advancedSectionsExpanded;
+    // 强制 own object，避免与 DEFAULT_SETTINGS 共享引用导致默认值被 mutate
+    const next = (current && typeof current === "object" && current !== DEFAULT_SETTINGS.advancedSectionsExpanded)
+      ? Object.assign({}, current)
+      : { status: false, history: false, devops: false };
+    next[key] = Boolean(value);
+    this.settings.advancedSectionsExpanded = next;
+    try {
+      await this.savePluginState();
+    } catch (error) {
+      // 折叠态写失败不影响 UI
+    }
   }
 
   // R89: 持久化 pending（运行时不变；只在 save 时序列化）

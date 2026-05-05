@@ -237,10 +237,12 @@ class PendingSubmissionContractTests(unittest.TestCase):
         text = (SRC / "render_advanced.js").read_text(encoding="utf-8")
         self.assertIn("furnace-advanced-dev-banner", text)
         self.assertIn("以下为开发者诊断信息", text)
-        # 必须在 advanced body 内（render 顺序：body createDiv → banner → mainHeader）
-        body_idx = text.find('createDiv({ cls: "furnace-shell-advanced-body" })')
+        # R91: banner 移到外置 wrapper（在 details/section 之前），不再要求在 advanced body 内
         banner_idx = text.find("furnace-advanced-dev-banner")
-        self.assertGreater(banner_idx, body_idx)
+        first_section_idx = text.find("renderAdvancedSection(plugin, body")
+        self.assertGreater(banner_idx, 0)
+        self.assertGreater(first_section_idx, 0)
+        self.assertLess(banner_idx, first_section_idx)
 
     def test_failed_card_has_user_facing_hint(self) -> None:
         text = (SRC / "render_today.js").read_text(encoding="utf-8")
@@ -271,8 +273,8 @@ class PendingSubmissionContractTests(unittest.TestCase):
             plugin_js,
             r"markPendingSubmissionDone\(\s*id\s*,\s*reconcileTarget\s*,\s*reconcilePath\s*\)",
         )
-        # 序列化记录 reconcilePath
-        ser_idx = plugin_js.find("serializePendingSubmissions")
+        # 序列化记录 reconcilePath（用函数定义起点而非首次引用，避免被 R91 中间方法影响）
+        ser_idx = plugin_js.find("serializePendingSubmissions() {")
         self.assertGreater(ser_idx, 0)
         ser_body = plugin_js[ser_idx : ser_idx + 1500]
         self.assertIn("reconcilePath", ser_body)

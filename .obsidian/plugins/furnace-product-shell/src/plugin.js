@@ -380,6 +380,28 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
+  // R91: Advanced 抽屉子 section 折叠态读写。默认全折叠（status/history/devops）。
+  getAdvancedSectionExpanded(key) {
+    const s = this.settings && this.settings.advancedSectionsExpanded;
+    if (!s || typeof s !== "object") return false;
+    return Boolean(s[key]);
+  }
+
+  async setAdvancedSectionExpanded(key, value) {
+    const current = this.settings && this.settings.advancedSectionsExpanded;
+    // 强制 own object，避免与 DEFAULT_SETTINGS 共享引用导致默认值被 mutate
+    const next = (current && typeof current === "object" && current !== DEFAULT_SETTINGS.advancedSectionsExpanded)
+      ? Object.assign({}, current)
+      : { status: false, history: false, devops: false };
+    next[key] = Boolean(value);
+    this.settings.advancedSectionsExpanded = next;
+    try {
+      await this.savePluginState();
+    } catch (error) {
+      // 折叠态写失败不影响 UI
+    }
+  }
+
   // R89: 持久化 pending（运行时不变；只在 save 时序列化）
   serializePendingSubmissions() {
     if (!Array.isArray(this.pendingSubmissions)) return [];

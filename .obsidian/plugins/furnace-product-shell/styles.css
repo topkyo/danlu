@@ -1588,3 +1588,79 @@
 .furnace-pending-done .furnace-pending-card-status {
   color: var(--text-success, #43a047);
 }
+
+/* R91: Advanced 抽屉子 section（系统状态 / 运行与历史 / 开发者操作） */
+.furnace-advanced-section {
+  margin-top: 0.6rem;
+  border: 1px solid var(--background-modifier-border, #ddd);
+  border-radius: 6px;
+  background: var(--background-secondary, transparent);
+}
+.furnace-advanced-section + .furnace-advanced-section {
+  margin-top: 0.4rem;
+}
+.furnace-advanced-section-summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  user-select: none;
+}
+.furnace-advanced-section-summary::-webkit-details-marker {
+  display: none;
+}
+.furnace-advanced-section-summary::before {
+  content: "▶";
+  font-size: 0.7em;
+  opacity: 0.6;
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+.furnace-advanced-section[open] > .furnace-advanced-section-summary::before {
+  transform: rotate(90deg);
+}
+.furnace-advanced-section-title {
+  font-weight: 600;
+}
+.furnace-advanced-section-hint {
+  color: var(--text-muted, #888);
+  font-size: 0.85em;
+}
+.furnace-advanced-section-body {
+  padding: 0.5rem 0.75rem 0.75rem;
+  border-top: 1px solid var(--background-modifier-border, #eee);
+}
+.furnace-advanced-section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+.furnace-advanced-section-latest-llm {
+  margin-top: 0.4rem;
+  padding: 0.4rem 0.5rem;
+  background: var(--background-primary-alt, transparent);
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+.furnace-advanced-section-latest-llm-head {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+.furnace-advanced-section-latest-llm-label {
+  font-weight: 600;
+}
+.furnace-advanced-section-latest-llm-meta {
+  color: var(--text-muted, #888);
+}
+.furnace-advanced-section-latest-llm-error {
+  color: var(--text-error, #c0392b);
+  margin-top: 0.25rem;
+}
+.furnace-advanced-section-error {
+  color: var(--text-error, #c0392b);
+  font-size: 0.85em;
+}

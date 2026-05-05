@@ -25,6 +25,8 @@ const DEFAULT_SETTINGS = {
   lastViewedTimestamp: "",
   lastKnownReportIds: [],
   onboardingShown: false,
+  // R91: Advanced 子 section 折叠态持久化；默认全折叠以降首屏认知负担
+  advancedSectionsExpanded: { status: false, history: false, devops: false },
 };
 const ZH_TEXT = {
   "Advanced": "更多工具",
@@ -376,6 +378,18 @@ const ZH_TEXT = {
   "已打开输出汇总（找不到具体报告路径）": "已打开输出汇总（找不到具体报告路径）",
   "已打开运行记录（找不到具体回执路径）": "已打开运行记录（找不到具体回执路径）",
   "无法打开目标，可能尚未生成": "无法打开目标，可能尚未生成",
+  // R91 Advanced 抽屉子 section
+  "系统状态": "系统状态",
+  "运行与历史": "运行与历史",
+  "开发者操作": "开发者操作",
+  "协议 {protocol} · LLM {llm} · 同步 {sync}": "协议 {protocol} · LLM {llm} · 同步 {sync}",
+  "最近运行 {n} 条 · 待审 {review} · 待执行 {execution}": "最近运行 {n} 条 · 待审 {review} · 待执行 {execution}",
+  "编译 / 同步 / 协议切换 / 日志等命令": "编译 / 同步 / 协议切换 / 日志等命令",
+  "未配置": "未配置",
+  "正常": "正常",
+  "异常": "异常",
+  "未知": "未知",
+  "点击展开查看详细信息": "点击展开查看详细信息",
   "{n} 分钟前": "{n} 分钟前",
   "{n} 小时前": "{n} 小时前",
   "{n} 天前": "{n} 天前",

@@ -564,18 +564,10 @@ function renderDigestPanel(plugin, container) {
 }
 
 function renderLegacyAdvancedPanel(plugin, container) {
-  const details = container.createEl("details", { cls: "furnace-shell-advanced" });
-  const summary = details.createEl("summary", { cls: "furnace-shell-advanced-summary" });
-  const summaryCopy = summary.createDiv({ cls: "furnace-shell-advanced-copy" });
-  summaryCopy.createEl("span", { cls: "furnace-shell-advanced-title", text: plugin.t("Advanced Actions") });
-  summaryCopy.createEl("span", { cls: "furnace-shell-advanced-description", text: plugin.t("Core workflows stay available here, but hidden by default.") });
-  const summaryBadges = summary.createDiv({ cls: "furnace-shell-pill-row" });
+  // R91: 不再嵌套 <details>，直接平铺到调用方的容器（DevOps section body 自带折叠）。
   const review = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary.review_backlog_counts || {} : {};
   const pendingReviewCount = Number(review.pending_decisions || 0) + Number(review.pending_judgments || 0);
-  plugin.renderPill(summaryBadges, `${pendingReviewCount} ${plugin.t("Pending Reviews")}`);
-  plugin.renderPill(summaryBadges, `${review.ready_actions || 0} ${plugin.t("actions")}`);
-
-  const body = details.createDiv({ cls: "furnace-shell-advanced-body" });
+  const body = container.createDiv({ cls: "furnace-shell-advanced-body" });
   plugin.renderInlineButtons(body, [
     { label: "Compile", cta: true, onClick: async () => plugin.runCompileCommand() },
     { label: "Nightly", onClick: async () => plugin.runNightlyCommand() },
