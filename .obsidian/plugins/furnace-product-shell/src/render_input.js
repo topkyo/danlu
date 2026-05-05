@@ -14,7 +14,7 @@ function renderUniversalInput(plugin, container) {
     attr: { "aria-label": plugin.t("Universal input") }
   });
   
-  textarea.placeholder = plugin.t("投网址、文件、图片，或直接提问……");
+  textarea.placeholder = plugin.t("投 URL / PDF / 图片 / repo，或直接问一个问题；炼丹炉会生成报告");
   textarea.rows = 1;
 
   const submitButton = form.createEl("button", { 
@@ -23,7 +23,7 @@ function renderUniversalInput(plugin, container) {
   });
 
   const hint = wrapper.createDiv({ cls: "furnace-universal-input-hint" });
-  hint.setText(plugin.t("Ctrl+Enter 提交 · 也可拖入文件"));
+  hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 结果会出现在 Today"));
 
   const attachmentsContainer = wrapper.createDiv({ cls: "furnace-input-attachments-container" });
   
@@ -66,12 +66,28 @@ function renderUniversalInput(plugin, container) {
     const value = textarea.value;
     if (!value.trim() && attachedFiles.length === 0) return;
 
-    textarea.value = '';
-    autoResize();
     const filesToProcess = [...attachedFiles];
-    attachedFiles = [];
-    updateAttachmentPills();
+    const originalValue = value;
 
+    // Lock UI during submit
+    submitButton.disabled = true;
+    textarea.disabled = true;
+    const originalLabel = submitButton.textContent;
+    submitButton.setText(plugin.t("处理中…"));
+    hint.setText(plugin.t("已提交，结果会出现在 Today"));
+
+    let succeeded = false;
+    // R88: 立即推一个"处理中"卡片到 Today，构成视觉闭环
+    const pendingDisplay = filesToProcess.length > 0
+      ? `${value || filesToProcess.map((f) => f.name).join(", ")}`
+      : value;
+    const retryArgs = filesToProcess.length > 0
+      ? { kind: "files", files: filesToProcess.map((f) => ({ path: f.path, name: f.name })), title: value }
+      : { kind: "text", payload: value };
+    const pendingId = plugin.pushPendingSubmission(pendingDisplay, {
+      title: filesToProcess.length > 0 ? value : "",
+      retryArgs,
+    });
     try {
       if (filesToProcess.length > 0) {
         for (const file of filesToProcess) {
@@ -80,8 +96,23 @@ function renderUniversalInput(plugin, container) {
       } else {
         await plugin.runUniversalInputCommand({ payload: value });
       }
+      succeeded = true;
+      if (pendingId) plugin.markPendingSubmissionDone(pendingId);
     } catch (e) {
-      new Notice(plugin.t("Invalid input: {message}", { message: e.message }));
+      if (pendingId) plugin.markPendingSubmissionFailed(pendingId, e);
+      new Notice(plugin.t("提交失败：{message}（输入已保留，可重试）", { message: e && e.message ? e.message : String(e) }));
+    } finally {
+      submitButton.disabled = false;
+      textarea.disabled = false;
+      submitButton.setText(originalLabel || plugin.t("Submit"));
+      hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 结果会出现在 Today"));
+      if (succeeded) {
+        textarea.value = '';
+        autoResize();
+        attachedFiles = [];
+        updateAttachmentPills();
+      }
+      // 失败：保留 textarea.value 和 attachedFiles，便于用户修正后重试
     }
   };
 

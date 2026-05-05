@@ -87,7 +87,9 @@ class ProductShellTodayFeedContractTests(unittest.TestCase):
     def test_advanced_drawer_summary_exposes_counts(self) -> None:
         text = (PLUGIN / "src/render_advanced.js").read_text(encoding="utf-8")
         self.assertIn("advancedDrawerCounts", text)
-        self.assertIn("Review {review_count} · execution {execution_count} · recent runs {run_count}", text)
+        # 计数文案：中文化 + 全 0 时回退为通用描述
+        self.assertIn("待复核 {review_count} · 待执行 {execution_count} · 近期运行 {run_count}", text)
+        self.assertIn("系统状态、模型、运行历史等高级面板", text)
 
     def test_today_feed_no_mechanism_words_in_main(self) -> None:
         """首屏 i18n 文案不通过 t() 暴露具体 artifact 机制词。"""

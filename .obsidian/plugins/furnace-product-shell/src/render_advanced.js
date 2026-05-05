@@ -6,13 +6,17 @@ function renderAdvancedDrawer(plugin, container) {
   const summaryCopy = summaryEl.createDiv({ cls: "furnace-shell-advanced-copy" });
   summaryCopy.createEl("span", { cls: "furnace-shell-advanced-title", text: plugin.t("Advanced") });
   const counts = advancedDrawerCounts(plugin);
+  const totalActive = counts.review + counts.execution + counts.runs;
+  const descText = totalActive === 0
+    ? plugin.t("系统状态、模型、运行历史等高级面板")
+    : plugin.t("待复核 {review_count} · 待执行 {execution_count} · 近期运行 {run_count}", {
+        review_count: counts.review,
+        execution_count: counts.execution,
+        run_count: counts.runs,
+      });
   summaryCopy.createEl("span", {
     cls: "furnace-shell-advanced-description",
-    text: plugin.t("Review {review_count} · execution {execution_count} · recent runs {run_count}", {
-      review_count: counts.review,
-      execution_count: counts.execution,
-      run_count: counts.runs,
-    }),
+    text: descText,
   });
   const body = details.createDiv({ cls: "furnace-shell-advanced-body" });
 

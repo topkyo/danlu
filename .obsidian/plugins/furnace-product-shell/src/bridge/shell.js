@@ -42,19 +42,38 @@ async function loadShellSummaryFromDisk(plugin) {
       plugin.refreshOpenViews();
       return null;
     }
+    let text = null;
     const summaryFile = plugin.app.vault.getAbstractFileByPath(SHELL_SUMMARY_PATH);
-    if (!summaryFile) {
+    if (summaryFile) {
+      try {
+        text = await plugin.app.vault.cachedRead(summaryFile);
+      } catch (error) {
+        console.error("[furnace-product-shell] vault read failed for shell summary, falling back to fs", error);
+        text = null;
+      }
+    }
+    if (text === null && plugin.repoState.root) {
+      const absPath = path.join(plugin.repoState.root, SHELL_SUMMARY_PATH);
+      try {
+        if (fs.existsSync(absPath)) {
+          text = fs.readFileSync(absPath, "utf8");
+        }
+      } catch (error) {
+        console.error("[furnace-product-shell] fs read failed for shell summary", error);
+        text = null;
+      }
+    }
+    if (text === null) {
       plugin.shellSummary = null;
       plugin.updateStatusBar();
       plugin.refreshOpenViews();
       return null;
     }
     try {
-      const text = await plugin.app.vault.cachedRead(summaryFile);
       plugin.shellSummary = readJsonText(text);
       plugin.processShellSummaryUpdates(plugin.shellSummary);
     } catch (error) {
-      console.error("[furnace-product-shell] failed to read shell summary", error);
+      console.error("[furnace-product-shell] failed to parse shell summary", error);
       plugin.shellSummary = null;
     }
     plugin.updateStatusBar();

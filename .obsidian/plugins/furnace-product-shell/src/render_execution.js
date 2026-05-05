@@ -23,7 +23,7 @@ function renderExecutionCenter(plugin, contentEl) {
   if (!plugin.shellSummary) {
     contentEl.createDiv({
       cls: "furnace-shell-empty",
-      text: plugin.t("shell-summary.json is not available yet. Run Refresh, Compile, or Nightly first."),
+      text: plugin.t("数据还没准备好。先点上方刷新，或等当前任务跑完。"),
     });
     return;
   }
@@ -37,7 +37,7 @@ function renderExecutionCenter(plugin, contentEl) {
   summaryRow.createEl("h3", { text: plugin.t("执行概况") });
   var stats = summaryRow.createDiv({ cls: "furnace-shell-meta" });
   stats.setText(
-    plugin.t("待执行动作") + ": " + pendingActions + "  |  " + plugin.t("最近收据") + ": " + receipts.length
+    plugin.t("待执行动作") + ": " + pendingActions + "  |  " + plugin.t("最近运行记录") + ": " + receipts.length
   );
 
   // Recent activity: last 3 receipts
@@ -54,7 +54,7 @@ function renderExecutionCenter(plugin, contentEl) {
       });
     });
   } else {
-    contentEl.createDiv({ cls: "furnace-shell-empty", text: plugin.t("暂无最近收据。") });
+    contentEl.createDiv({ cls: "furnace-shell-empty", text: plugin.t("暂无最近运行记录。") });
   }
 
   // Quick link to full execution page

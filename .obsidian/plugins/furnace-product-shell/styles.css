@@ -1442,3 +1442,75 @@
   color: var(--text-normal);
   border-color: var(--interactive-accent);
 }
+
+/* R88 — Pending submissions group (visual closed-loop after submit) */
+.furnace-today-feed-pending h3 {
+  color: var(--text-accent);
+}
+.furnace-pending-card {
+  list-style: none;
+  margin: 6px 0;
+}
+.furnace-pending-card-inner {
+  border: 1px solid var(--background-modifier-border);
+  border-left: 3px solid var(--interactive-accent);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--background-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.furnace-pending-running .furnace-pending-card-inner {
+  border-left-color: var(--interactive-accent);
+  animation: furnace-pending-pulse 1.6s ease-in-out infinite;
+}
+.furnace-pending-done .furnace-pending-card-inner {
+  border-left-color: var(--text-success, #4caf50);
+  opacity: 0.85;
+}
+.furnace-pending-failed .furnace-pending-card-inner {
+  border-left-color: var(--text-error, #e53935);
+  background: var(--background-modifier-error-hover, var(--background-secondary));
+}
+@keyframes furnace-pending-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--interactive-accent-rgb, 100, 100, 200), 0.0); }
+  50% { box-shadow: 0 0 0 4px rgba(var(--interactive-accent-rgb, 100, 100, 200), 0.18); }
+}
+.furnace-pending-card-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+.furnace-pending-card-status {
+  font-weight: 600;
+  color: var(--text-accent);
+}
+.furnace-pending-failed .furnace-pending-card-status { color: var(--text-error, #e53935); }
+.furnace-pending-done .furnace-pending-card-status { color: var(--text-success, #4caf50); }
+.furnace-pending-card-text {
+  font-size: 0.95em;
+  color: var(--text-normal);
+  word-break: break-word;
+}
+.furnace-pending-card-error {
+  font-size: 0.85em;
+  color: var(--text-error, #e53935);
+  background: var(--background-primary);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+.furnace-pending-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* R88 — Today empty-state CTA button */
+.furnace-today-feed-empty-cta {
+  margin-top: 12px;
+}
+.furnace-today-cta-submit {
+  cursor: pointer;
+}

@@ -32,7 +32,7 @@ function renderGettingStartedSection(plugin, container) {
     text: plugin.t("Obsidian Product Shell and the launcher CLI share the same runtime: Ask works from both sides, and ingest can happen through Capture Note / raw/inbox / drop-*."),
   });
   const steps = section.createEl("ol");
-  steps.createEl("li", { text: plugin.t("Click Refresh first so shell-summary is generated.") });
+  steps.createEl("li", { text: plugin.t("先点刷新生成最新数据。") });
   steps.createEl("li", { text: plugin.t("Use Capture Note in Obsidian, or use drop note / drop url / drop pdf / drop image / drop repo in the terminal.") });
   steps.createEl("li", { text: plugin.t("Use the Ask modal when you need to ask a question, or run ./scripts/aiwiki-launcher.sh ask ...") });
   steps.createEl("li", { text: plugin.t("Follow single writer for write actions: do not run compile / nightly / apply / revert in Obsidian and the terminal at the same time.") });

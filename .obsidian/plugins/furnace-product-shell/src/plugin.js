@@ -5,6 +5,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   async onload() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
     this.pluginState = { recentRuns: [] };
+    this.pendingSubmissions = []; // runtime-only: { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error }
     this.shellSummary = null;
     this.repoState = { valid: false, root: "", launcherPath: "", missingPaths: ["vault-root"] };
     this.openViews = new Set();
@@ -501,7 +502,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     }
     return {
       status: "unknown",
-      reason: this.t("shell-summary.json has not been generated yet. Run Refresh, Compile, or Nightly first."),
+      reason: this.t("数据还没生成。先点刷新，或等首次任务跑完。"),
       checkedAt: "",
       logPath: "",
     };
@@ -540,7 +541,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         key: "summary",
         status: "failed",
         title: "Shell summary",
-        detail: this.t("shell-summary.json has not been generated yet. Run Refresh, Compile, or Nightly first."),
+        detail: this.t("数据还没生成。先点刷新，或等首次任务跑完。"),
       });
     } else {
       items.push({
@@ -1359,19 +1360,40 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       this.refreshOpenViews();
       return null;
     }
+    let text = null;
     const summaryFile = this.app.vault.getAbstractFileByPath(SHELL_SUMMARY_PATH);
-    if (!summaryFile) {
+    if (summaryFile) {
+      try {
+        text = await this.app.vault.cachedRead(summaryFile);
+      } catch (error) {
+        console.error("[furnace-product-shell] vault read failed for shell summary, falling back to fs", error);
+        text = null;
+      }
+    }
+    // Fallback: vault may exclude output/control/ via userIgnoreFilters,
+    // so getAbstractFileByPath returns null. Read from fs directly.
+    if (text === null && this.repoState.root) {
+      const absPath = path.join(this.repoState.root, SHELL_SUMMARY_PATH);
+      try {
+        if (fs.existsSync(absPath)) {
+          text = fs.readFileSync(absPath, "utf8");
+        }
+      } catch (error) {
+        console.error("[furnace-product-shell] fs read failed for shell summary", error);
+        text = null;
+      }
+    }
+    if (text === null) {
       this.shellSummary = null;
       this.updateStatusBar();
       this.refreshOpenViews();
       return null;
     }
     try {
-      const text = await this.app.vault.cachedRead(summaryFile);
       this.shellSummary = readJsonText(text);
       this.processShellSummaryUpdates(this.shellSummary);
     } catch (error) {
-      console.error("[furnace-product-shell] failed to read shell summary", error);
+      console.error("[furnace-product-shell] failed to parse shell summary", error);
       this.shellSummary = null;
     }
     this.updateStatusBar();
@@ -1758,6 +1780,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   
   processShellSummaryUpdates(summary) {
+    // R88: shellSummary 刷新时尝试消解已落地的 pending submissions（视觉闭环）
+    this.reconcilePendingSubmissions(summary);
     if (!summary || !Array.isArray(summary.recent_outputs)) return;
     const outputs = summary.recent_outputs.filter((item) => item && typeof item === "object");
     const currentIds = outputs.map((r) => r.path || r.title || r.created_at).filter(Boolean);
@@ -1852,6 +1876,147 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async runProtocolSetCommand(protocol) {
     await this.runPluginCommand(`${this.t("Set Protocol")}: ${protocol}`, ["protocol-set", protocol], { refreshAfter: true });
+  }
+
+  // ---------------- Pending submissions (runtime-only, R88) ----------------
+  // 用户提交后立即出现的"处理中"卡片，独立于 recentRuns（命令历史）和
+  // shellSummary（事实层）。仅用于视觉闭环：用户提交 → 看到入流水线 → 落地后消失。
+  pushPendingSubmission(displayText, opts = {}) {
+    const text = String(displayText || "").trim();
+    if (!text) return null;
+    if (!Array.isArray(this.pendingSubmissions)) this.pendingSubmissions = [];
+    const fingerprint = text.slice(0, 80);
+    // R88 P2 fix: 同 fingerprint 仍在 running 的 pending 直接复用，避免双击/多入口重复卡
+    const dup = this.pendingSubmissions.find((e) => e && e.status === "running" && e.payloadFingerprint === fingerprint);
+    if (dup) return dup.id;
+    const id = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const entry = {
+      id,
+      payloadFingerprint: fingerprint,
+      displayText: text.length > 120 ? text.slice(0, 117) + "…" : text,
+      title: String(opts.title || "").trim(),
+      status: "running", // running | done | failed
+      startedAt: new Date().toISOString(),
+      finishedAt: "",
+      error: "",
+      retryArgs: opts.retryArgs && typeof opts.retryArgs === "object" ? opts.retryArgs : null,
+    };
+    this.pendingSubmissions.unshift(entry);
+    // 限长 8，避免视觉堆积
+    if (this.pendingSubmissions.length > 8) this.pendingSubmissions.length = 8;
+    this.refreshOpenViews();
+    return id;
+  }
+
+  resetPendingSubmissionForRetry(id) {
+    const entry = this._findPending(id);
+    if (!entry) return;
+    entry.status = "running";
+    entry.error = "";
+    entry.startedAt = new Date().toISOString();
+    entry.finishedAt = "";
+    this.refreshOpenViews();
+  }
+
+  markPendingSubmissionDone(id) {
+    const entry = this._findPending(id);
+    if (!entry) return;
+    entry.status = "done";
+    entry.finishedAt = new Date().toISOString();
+    this.refreshOpenViews();
+    // 成功后短延迟自动消失（reconcile 也会兜底；这里给即时反馈）
+    setTimeout(() => {
+      this.removePendingSubmission(id);
+    }, 4000);
+  }
+
+  markPendingSubmissionFailed(id, error) {
+    const entry = this._findPending(id);
+    if (!entry) return;
+    entry.status = "failed";
+    entry.finishedAt = new Date().toISOString();
+    entry.error = truncateText(String((error && error.message) || error || "失败"), 180);
+    this.refreshOpenViews();
+  }
+
+  removePendingSubmission(id) {
+    if (!Array.isArray(this.pendingSubmissions) || !this.pendingSubmissions.length) return;
+    const before = this.pendingSubmissions.length;
+    this.pendingSubmissions = this.pendingSubmissions.filter((e) => e && e.id !== id);
+    if (this.pendingSubmissions.length !== before) this.refreshOpenViews();
+  }
+
+  _findPending(id) {
+    if (!Array.isArray(this.pendingSubmissions)) return null;
+    return this.pendingSubmissions.find((e) => e && e.id === id) || null;
+  }
+
+  // 当 shellSummary 刷新后，匹配 pending → recent_outputs/recent_receipts
+  // R88 P1 fix:
+  //   - candidate 必须有时间戳，且时间戳 >= entry.startedAt（带 60s skew 容忍时钟漂移）
+  //   - 短指纹（< 16 字符）使用 normalized exact 匹配；长指纹至少匹配 60 字符前缀
+  //   - 匹配字段扩到 receipt_path / output_path / query / target
+  //   - running 卡片超过 5 分钟仅停止 reconcile（不删，避免长任务消失）
+  reconcilePendingSubmissions(summary) {
+    if (!Array.isArray(this.pendingSubmissions) || !this.pendingSubmissions.length) return;
+    if (!summary || typeof summary !== "object") return;
+    const candidates = [];
+    if (Array.isArray(summary.recent_outputs)) candidates.push(...summary.recent_outputs);
+    if (Array.isArray(summary.recent_receipts)) candidates.push(...summary.recent_receipts);
+    if (!candidates.length) return;
+    const SKEW_MS = 60 * 1000;
+    const RECONCILE_WINDOW_MS = 5 * 60 * 1000;
+    const now = Date.now();
+    const remaining = [];
+    for (const entry of this.pendingSubmissions) {
+      if (!entry) continue;
+      // failed 保留供用户重试
+      if (entry.status === "failed") {
+        remaining.push(entry);
+        continue;
+      }
+      const startMs = Date.parse(entry.startedAt || "") || now;
+      // 超窗：仅停止 reconcile，但保留卡片（长任务保护）
+      if (now - startMs > RECONCILE_WINDOW_MS) {
+        remaining.push(entry);
+        continue;
+      }
+      const fp = String(entry.payloadFingerprint || "").trim().toLowerCase();
+      const title = String(entry.title || "").trim().toLowerCase();
+      const fpKey = fp.length >= 60 ? fp.slice(0, 60) : fp; // 至少 60 字符前缀
+      const useExact = fp.length > 0 && fp.length < 16; // 短输入用 exact 匹配防误杀
+      const hit = candidates.some((cand) => {
+        if (!cand || typeof cand !== "object") return false;
+        // 时间戳门槛
+        const candTimeStr = cand.created_at || cand.generated_at || cand.applied_at || cand.occurred_at || cand.timestamp || "";
+        const candMs = Date.parse(candTimeStr);
+        if (!Number.isFinite(candMs)) return false;
+        if (candMs + SKEW_MS < startMs) return false;
+        const fields = [
+          cand.title,
+          cand.path,
+          cand.summary,
+          cand.payload,
+          cand.receipt_path,
+          cand.output_path,
+          cand.query,
+          cand.target,
+        ].map((v) => String(v || "").trim().toLowerCase()).filter(Boolean);
+        if (!fields.length) return false;
+        if (useExact) {
+          return fields.some((f) => f === fp || (title && f === title));
+        }
+        const haystack = fields.join(" \u0001 ");
+        if (fpKey && haystack.includes(fpKey)) return true;
+        if (title && title.length >= 4 && haystack.includes(title)) return true;
+        return false;
+      });
+      if (!hit) remaining.push(entry);
+    }
+    if (remaining.length !== this.pendingSubmissions.length) {
+      this.pendingSubmissions = remaining;
+      this.refreshOpenViews();
+    }
   }
 
   async runUniversalInputCommand({ payload, title }) {

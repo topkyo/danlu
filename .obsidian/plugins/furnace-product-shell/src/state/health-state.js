@@ -125,7 +125,7 @@ function currentShellSyncState(plugin) {
     }
     return {
       status: "unknown",
-      reason: plugin.t("shell-summary.json has not been generated yet. Run Refresh, Compile, or Nightly first."),
+      reason: plugin.t("数据还没生成。先点刷新，或等首次任务跑完。"),
       checkedAt: "",
       logPath: "",
     };
@@ -165,7 +165,7 @@ function selfCheckItems(plugin) {
         key: "summary",
         status: "failed",
         title: "Shell summary",
-        detail: plugin.t("shell-summary.json has not been generated yet. Run Refresh, Compile, or Nightly first."),
+        detail: plugin.t("数据还没生成。先点刷新，或等首次任务跑完。"),
       });
     } else {
       items.push({

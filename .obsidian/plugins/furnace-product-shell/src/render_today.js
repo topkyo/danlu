@@ -2,20 +2,40 @@
 
 function renderTodayFeed(plugin, container) {
   const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
-  if (!summary) {
-    return;
-  }
-  
-  const feed = buildTodayFeed(summary);
-  
+
   const section = container.createDiv({ cls: "furnace-today-feed" });
   section.createEl("h2", { text: plugin.t("Today") });
-  
-  if (!feed.length) {
-    section.createEl("div", { 
-      cls: "furnace-today-feed-empty", 
-      text: plugin.t("(nothing for today)") 
+
+  // R88: pending submissions（用户刚提交、流水线未落地的"处理中"卡片）
+  // 始终在最前面渲染，独立于 shellSummary 状态，构成视觉闭环
+  renderPendingSubmissionsGroup(plugin, section);
+
+  if (!summary) {
+    section.createEl("div", {
+      cls: "furnace-today-feed-empty",
+      text: plugin.t("数据还没就绪。先点上方刷新，或等首次任务跑完。"),
     });
+    // R88 #1 (P1 fix): summary 缺失也提供 CTA
+    renderTodayEmptyCta(plugin, section, container);
+    return;
+  }
+
+  const feed = buildTodayFeed(summary);
+
+  if (!feed.length) {
+    // 如果有 pending 卡片在上方，已经构成"投了在跑"的视觉反馈，不再渲染冷空态
+    const hasPending = Array.isArray(plugin.pendingSubmissions) && plugin.pendingSubmissions.length > 0;
+    if (hasPending) return;
+    const empty = section.createDiv({ cls: "furnace-today-feed-empty" });
+    empty.createEl("div", {
+      cls: "furnace-today-feed-empty-title",
+      text: plugin.t("今天还没有新报告"),
+    });
+    empty.createEl("div", {
+      cls: "furnace-today-feed-empty-hint",
+      text: plugin.t("拖入 URL / PDF / 图片 / repo，或在上方直接提一个问题；生成的报告会出现在这里。"),
+    });
+    renderTodayEmptyCta(plugin, empty, container);
     return;
   }
   
@@ -37,6 +57,72 @@ function renderTodayFeed(plugin, container) {
     const listEl = groupEl.createEl("ul", { cls: "furnace-today-feed-list" });
     for (const entry of items) {
       renderTodayFeedItem(plugin, listEl, entry);
+    }
+  }
+}
+
+// R88 #1: 空态 CTA — 聚焦上方 UniversalInput textarea
+function renderTodayEmptyCta(plugin, parentEl, viewRoot) {
+  const ctaRow = parentEl.createDiv({ cls: "furnace-today-feed-empty-cta" });
+  const ctaBtn = ctaRow.createEl("button", {
+    cls: "furnace-today-cta-submit mod-cta",
+    text: plugin.t("投一份材料"),
+  });
+  ctaBtn.addEventListener("click", () => {
+    // 优先在当前视图根内查找；不要跨 view 全局 fallback（避免误聚焦）
+    const root = (viewRoot && viewRoot.closest && (viewRoot.closest(".furnace-shell-view") || viewRoot)) || viewRoot;
+    const textarea = root && root.querySelector
+      ? root.querySelector(".furnace-universal-input-textarea")
+      : null;
+    if (textarea) {
+      textarea.focus();
+      try { textarea.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
+    }
+  });
+}
+
+// R88 #2: 渲染"处理中"卡片（runtime-only pending submissions）
+function renderPendingSubmissionsGroup(plugin, section) {
+  const items = Array.isArray(plugin.pendingSubmissions) ? plugin.pendingSubmissions : [];
+  if (!items.length) return;
+  const groupEl = section.createDiv({ cls: "furnace-today-feed-group furnace-today-feed-pending" });
+  groupEl.createEl("h3", { text: plugin.t("处理中") });
+  const listEl = groupEl.createEl("ul", { cls: "furnace-today-feed-list" });
+  for (const entry of items) {
+    const li = listEl.createEl("li", { cls: `furnace-today-feed-item furnace-pending-card furnace-pending-${entry.status || "running"}` });
+    const card = li.createDiv({ cls: "furnace-pending-card-inner" });
+    const head = card.createDiv({ cls: "furnace-pending-card-head" });
+    let statusLabel;
+    if (entry.status === "done") statusLabel = plugin.t("已完成");
+    else if (entry.status === "failed") statusLabel = plugin.t("失败");
+    else statusLabel = plugin.t("处理中…");
+    head.createEl("span", { cls: "furnace-pending-card-status", text: statusLabel });
+    head.createEl("span", { cls: "furnace-pending-card-time", text: formatDisplayTime(entry.startedAt, plugin.locale()) || "" });
+    card.createDiv({ cls: "furnace-pending-card-text", text: entry.displayText || "" });
+    if (entry.status === "failed") {
+      const errEl = card.createDiv({ cls: "furnace-pending-card-error", text: entry.error || plugin.t("失败") });
+      errEl.setAttr && errEl.setAttr("title", entry.error || "");
+      const actions = card.createDiv({ cls: "furnace-pending-card-actions" });
+      const retryBtn = actions.createEl("button", { cls: "mod-cta", text: plugin.t("重试") });
+      retryBtn.addEventListener("click", async () => {
+        // R88 P1 fix: 重试不删卡，把状态改回 running，复用同一卡片做闭环
+        const args = entry.retryArgs || {};
+        plugin.resetPendingSubmissionForRetry(entry.id);
+        try {
+          if (args.kind === "files" && Array.isArray(args.files)) {
+            for (const f of args.files) {
+              await plugin.runUniversalInputCommand({ payload: f.path || f.name || "", title: args.title || "" });
+            }
+          } else {
+            await plugin.runUniversalInputCommand({ payload: args.payload || entry.displayText || "" });
+          }
+          plugin.markPendingSubmissionDone(entry.id);
+        } catch (e) {
+          plugin.markPendingSubmissionFailed(entry.id, e);
+        }
+      });
+      const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
+      dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
     }
   }
 }

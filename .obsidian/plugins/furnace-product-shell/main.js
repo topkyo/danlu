@@ -107,9 +107,9 @@ const ZH_TEXT = {
   Sync: "同步",
   "Configured route": "当前模型",
   "Last checked": "最近检测",
-  "Refreshing shell summary.": "正在刷新 shell-summary。",
+  "Refreshing shell summary.": "正在刷新数据。",
   "Latest refresh failed.": "最近一次刷新失败。",
-  "Summary ready.": "summary 已就绪。",
+  "Summary ready.": "数据已就绪。",
   "No recent LLM health check yet.": "还没有最近一次 LLM 状态检查。",
   "LLM is not configured.": "当前没有配置 LLM。",
   "Current route changed since the last recorded ask.": "当前路由已经和最近一次记录的 Ask 不同。",
@@ -129,7 +129,7 @@ const ZH_TEXT = {
   "No explicit LLM backend is selected. Choose one in Product Shell settings or set AIWIKI_LLM_BACKEND.": "当前没有显式选择 LLM 后端。请在 Product Shell 设置里选择，或设置 AIWIKI_LLM_BACKEND。",
   "Product Shell runtime can see the selected backend {backend}.": "Product Shell 当前 runtime 能看到所选后端 {backend}。",
   "Product Shell runtime cannot see the selected backend {backend}.": "Product Shell 当前 runtime 看不到所选后端 {backend}。",
-  "Summary is stale; refresh before trusting the home surface.": "shell-summary 已过期，先 Refresh，再相信首页状态。",
+  "Summary is stale; refresh before trusting the home surface.": "数据已过期，先刷新，再相信首页状态。",
   "Generated {time}": "生成于 {time}",
   "launcher {launcher} · root {root}": "launcher {launcher} · 根目录 {root}",
   Fallback: "回退",
@@ -247,7 +247,9 @@ const ZH_TEXT = {
   "动作控制": "动作控制",
   "当前没有动作控制对象。": "当前没有动作控制对象。",
   "最近收据": "最近收据",
+  "最近运行记录": "最近运行记录",
   "暂无最近收据。": "暂无最近收据。",
+  "暂无最近运行记录。": "暂无最近运行记录。",
   "最近执行事件": "最近执行事件",
   "暂无最近执行事件。": "暂无最近执行事件。",
   Title: "标题",
@@ -312,13 +314,15 @@ const ZH_TEXT = {
   "Recent Runs": "最近运行",
   "Start Here": "从这里开始",
   "Obsidian Product Shell and the launcher CLI share the same runtime: Ask works from both sides, and ingest can happen through Capture Note / raw/inbox / drop-*.": "Obsidian Product Shell 与 launcher CLI 共用同一个 runtime：Ask 两边都能跑，投料可走 Capture Note / raw/inbox / drop-*。",
-  "Click Refresh first so shell-summary is generated.": "先点 Refresh，确认 shell-summary 已生成。",
+  "Click Refresh first so shell-summary is generated.": "先点刷新生成最新数据。",
+  "先点刷新生成最新数据。": "先点刷新生成最新数据。",
   "Use Capture Note in Obsidian, or use drop note / drop url / drop pdf / drop image / drop repo in the terminal.": "在 Obsidian 里用 Capture Note，或在终端里用 drop note / drop url / drop pdf / drop image / drop repo 投料。",
   "Use the Ask modal when you need to ask a question, or run ./scripts/aiwiki-launcher.sh ask ...": "需要提问时用 Ask modal，或运行 ./scripts/aiwiki-launcher.sh ask ...",
   "Follow single writer for write actions: do not run compile / nightly / apply / revert in Obsidian and the terminal at the same time.": "有写入任务运行时，等它结束后再从另一个入口开始新的写入任务。",
   "Vault runtime unavailable. Missing scaffold or launcher: {missing}": "Vault runtime 不可用。缺少 scaffold 或 launcher：{missing}",
   "Expected a vault scaffold (`raw/wiki/schema/output/.aiwiki`) plus an executable launcher script.": "预期存在 vault scaffold（`raw/wiki/schema/output/.aiwiki`）以及可执行的 launcher 脚本。",
-  "shell-summary.json has not been generated yet. Run Refresh, Compile, or Nightly first.": "shell-summary.json 尚未生成。先运行 Refresh、Compile 或 Nightly。",
+  "shell-summary.json has not been generated yet. Run Refresh, Compile, or Nightly first.": "数据还没生成。先点刷新，或等首次任务跑完。",
+  "数据还没生成。先点刷新，或等首次任务跑完。": "数据还没生成。先点刷新，或等首次任务跑完。",
   "Active Protocol": "当前协议",
   "LLM Backend": "LLM 服务",
   "LLM Model": "LLM 模型",
@@ -397,7 +401,7 @@ const ZH_TEXT = {
   "Judgment Focus": "判断焦点",
   "Quick Links": "快捷链接",
   "Plugin-triggered Commands": "插件触发命令",
-  "Runtime Events from shell-summary": "来自 shell-summary 的运行事件",
+  "Runtime Events from shell-summary": "运行事件",
   "Recent Receipts": "最近回执",
   "Review Center": "审阅中心",
   "Review Next": "下一项审阅",
@@ -485,7 +489,9 @@ const ZH_TEXT = {
   "No explicit rewrite proposal object is available.": "当前没有显式 rewrite proposal object。",
   "No explicit action control object is available.": "当前没有显式 action control object。",
   "No judgment asset focus object is available.": "当前没有 judgment asset focus object。",
-  "shell-summary.json is not available yet. Run Refresh, Compile, or Nightly first.": "shell-summary.json 尚未生成。先运行 Refresh / Compile / Nightly 之一。",
+  "shell-summary.json is not available yet. Run Refresh, Compile, or Nightly first.": "数据还没准备好。先点上方刷新，或等当前任务跑完。",
+  "数据还没准备好。先点上方刷新，或等当前任务跑完。": "数据还没准备好。先点上方刷新，或等当前任务跑完。",
+  "数据还没就绪。先点上方刷新，或等首次任务跑完。": "数据还没就绪。先点上方刷新，或等首次任务跑完。",
   "Repo-local runtime unavailable. Missing: {missing}": "Repo-local runtime 不可用。缺少：{missing}",
   "No visible review backlog item is available; fell back to the manual form.": "当前没有可见的 review backlog 条目，已回退到手动表单。",
   "No reviewable page is available.": "当前没有可 review 的页面。",
@@ -696,8 +702,8 @@ const ZH_TEXT = {
   "Copy command": "复制命令",
   "Reveal result": "定位结果",
   "Reveal receipt": "定位回执",
-  "Copy receipt path": "复制回执路径",
-  "Copy stderr": "复制 stderr",
+  "Copy receipt path": "复制运行记录路径",
+  "Copy stderr": "复制诊断信息",
   "Unable to reveal {path}": "无法定位 {path}",
   "Path revealed: {path}": "已定位 {path}",
   "Path not found: {path}": "路径不存在：{path}",
@@ -1379,6 +1385,7 @@ function buildAgentLoopEntries(summary, todayDate) {
     // Planner decisions are derived from signals; don't double-count one change in user-facing copy.
     const newItems = Math.max(asCount(signals.new_count), asCount(execute.new_count));
     const appliedCount = asCount(autoApply.applied_count);
+    const readyCount = asCount(autoPreview.ready_count);
     const l1Count = (Array.isArray(autoAdoptL1.items) ? autoAdoptL1.items : []).reduce(function(acc, item) { return acc + (typeof item.count === 'number' && item.count > 0 && !item.error ? item.count : 0); }, 0);
     const l2Count = (Array.isArray(autoAdoptL2.items) ? autoAdoptL2.items : []).reduce(function(acc, item) { return acc + (typeof item.count === 'number' && item.count > 0 && !item.error ? item.count : 0); }, 0);
     const jReviewed = typeof autoAdoptJ.reviewed === 'number' ? autoAdoptJ.reviewed : 0;
@@ -2778,7 +2785,7 @@ function renderGettingStartedSection(plugin, container) {
     text: plugin.t("Obsidian Product Shell and the launcher CLI share the same runtime: Ask works from both sides, and ingest can happen through Capture Note / raw/inbox / drop-*."),
   });
   const steps = section.createEl("ol");
-  steps.createEl("li", { text: plugin.t("Click Refresh first so shell-summary is generated.") });
+  steps.createEl("li", { text: plugin.t("先点刷新生成最新数据。") });
   steps.createEl("li", { text: plugin.t("Use Capture Note in Obsidian, or use drop note / drop url / drop pdf / drop image / drop repo in the terminal.") });
   steps.createEl("li", { text: plugin.t("Use the Ask modal when you need to ask a question, or run ./scripts/aiwiki-launcher.sh ask ...") });
   steps.createEl("li", { text: plugin.t("Follow single writer for write actions: do not run compile / nightly / apply / revert in Obsidian and the terminal at the same time.") });
@@ -3414,7 +3421,7 @@ function renderUniversalInput(plugin, container) {
     attr: { "aria-label": plugin.t("Universal input") }
   });
   
-  textarea.placeholder = plugin.t("投网址、文件、图片，或直接提问……");
+  textarea.placeholder = plugin.t("投 URL / PDF / 图片 / repo，或直接问一个问题；炼丹炉会生成报告");
   textarea.rows = 1;
 
   const submitButton = form.createEl("button", { 
@@ -3423,7 +3430,7 @@ function renderUniversalInput(plugin, container) {
   });
 
   const hint = wrapper.createDiv({ cls: "furnace-universal-input-hint" });
-  hint.setText(plugin.t("Ctrl+Enter 提交 · 也可拖入文件"));
+  hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 结果会出现在 Today"));
 
   const attachmentsContainer = wrapper.createDiv({ cls: "furnace-input-attachments-container" });
   
@@ -3466,12 +3473,28 @@ function renderUniversalInput(plugin, container) {
     const value = textarea.value;
     if (!value.trim() && attachedFiles.length === 0) return;
 
-    textarea.value = '';
-    autoResize();
     const filesToProcess = [...attachedFiles];
-    attachedFiles = [];
-    updateAttachmentPills();
+    const originalValue = value;
 
+    // Lock UI during submit
+    submitButton.disabled = true;
+    textarea.disabled = true;
+    const originalLabel = submitButton.textContent;
+    submitButton.setText(plugin.t("处理中…"));
+    hint.setText(plugin.t("已提交，结果会出现在 Today"));
+
+    let succeeded = false;
+    // R88: 立即推一个"处理中"卡片到 Today，构成视觉闭环
+    const pendingDisplay = filesToProcess.length > 0
+      ? `${value || filesToProcess.map((f) => f.name).join(", ")}`
+      : value;
+    const retryArgs = filesToProcess.length > 0
+      ? { kind: "files", files: filesToProcess.map((f) => ({ path: f.path, name: f.name })), title: value }
+      : { kind: "text", payload: value };
+    const pendingId = plugin.pushPendingSubmission(pendingDisplay, {
+      title: filesToProcess.length > 0 ? value : "",
+      retryArgs,
+    });
     try {
       if (filesToProcess.length > 0) {
         for (const file of filesToProcess) {
@@ -3480,8 +3503,23 @@ function renderUniversalInput(plugin, container) {
       } else {
         await plugin.runUniversalInputCommand({ payload: value });
       }
+      succeeded = true;
+      if (pendingId) plugin.markPendingSubmissionDone(pendingId);
     } catch (e) {
-      new Notice(plugin.t("Invalid input: {message}", { message: e.message }));
+      if (pendingId) plugin.markPendingSubmissionFailed(pendingId, e);
+      new Notice(plugin.t("提交失败：{message}（输入已保留，可重试）", { message: e && e.message ? e.message : String(e) }));
+    } finally {
+      submitButton.disabled = false;
+      textarea.disabled = false;
+      submitButton.setText(originalLabel || plugin.t("Submit"));
+      hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 结果会出现在 Today"));
+      if (succeeded) {
+        textarea.value = '';
+        autoResize();
+        attachedFiles = [];
+        updateAttachmentPills();
+      }
+      // 失败：保留 textarea.value 和 attachedFiles，便于用户修正后重试
     }
   };
 
@@ -3663,20 +3701,40 @@ function renderDropZone(plugin, container) {
 
 function renderTodayFeed(plugin, container) {
   const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
-  if (!summary) {
-    return;
-  }
-  
-  const feed = buildTodayFeed(summary);
-  
+
   const section = container.createDiv({ cls: "furnace-today-feed" });
   section.createEl("h2", { text: plugin.t("Today") });
-  
-  if (!feed.length) {
-    section.createEl("div", { 
-      cls: "furnace-today-feed-empty", 
-      text: plugin.t("(nothing for today)") 
+
+  // R88: pending submissions（用户刚提交、流水线未落地的"处理中"卡片）
+  // 始终在最前面渲染，独立于 shellSummary 状态，构成视觉闭环
+  renderPendingSubmissionsGroup(plugin, section);
+
+  if (!summary) {
+    section.createEl("div", {
+      cls: "furnace-today-feed-empty",
+      text: plugin.t("数据还没就绪。先点上方刷新，或等首次任务跑完。"),
     });
+    // R88 #1 (P1 fix): summary 缺失也提供 CTA
+    renderTodayEmptyCta(plugin, section, container);
+    return;
+  }
+
+  const feed = buildTodayFeed(summary);
+
+  if (!feed.length) {
+    // 如果有 pending 卡片在上方，已经构成"投了在跑"的视觉反馈，不再渲染冷空态
+    const hasPending = Array.isArray(plugin.pendingSubmissions) && plugin.pendingSubmissions.length > 0;
+    if (hasPending) return;
+    const empty = section.createDiv({ cls: "furnace-today-feed-empty" });
+    empty.createEl("div", {
+      cls: "furnace-today-feed-empty-title",
+      text: plugin.t("今天还没有新报告"),
+    });
+    empty.createEl("div", {
+      cls: "furnace-today-feed-empty-hint",
+      text: plugin.t("拖入 URL / PDF / 图片 / repo，或在上方直接提一个问题；生成的报告会出现在这里。"),
+    });
+    renderTodayEmptyCta(plugin, empty, container);
     return;
   }
   
@@ -3698,6 +3756,72 @@ function renderTodayFeed(plugin, container) {
     const listEl = groupEl.createEl("ul", { cls: "furnace-today-feed-list" });
     for (const entry of items) {
       renderTodayFeedItem(plugin, listEl, entry);
+    }
+  }
+}
+
+// R88 #1: 空态 CTA — 聚焦上方 UniversalInput textarea
+function renderTodayEmptyCta(plugin, parentEl, viewRoot) {
+  const ctaRow = parentEl.createDiv({ cls: "furnace-today-feed-empty-cta" });
+  const ctaBtn = ctaRow.createEl("button", {
+    cls: "furnace-today-cta-submit mod-cta",
+    text: plugin.t("投一份材料"),
+  });
+  ctaBtn.addEventListener("click", () => {
+    // 优先在当前视图根内查找；不要跨 view 全局 fallback（避免误聚焦）
+    const root = (viewRoot && viewRoot.closest && (viewRoot.closest(".furnace-shell-view") || viewRoot)) || viewRoot;
+    const textarea = root && root.querySelector
+      ? root.querySelector(".furnace-universal-input-textarea")
+      : null;
+    if (textarea) {
+      textarea.focus();
+      try { textarea.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
+    }
+  });
+}
+
+// R88 #2: 渲染"处理中"卡片（runtime-only pending submissions）
+function renderPendingSubmissionsGroup(plugin, section) {
+  const items = Array.isArray(plugin.pendingSubmissions) ? plugin.pendingSubmissions : [];
+  if (!items.length) return;
+  const groupEl = section.createDiv({ cls: "furnace-today-feed-group furnace-today-feed-pending" });
+  groupEl.createEl("h3", { text: plugin.t("处理中") });
+  const listEl = groupEl.createEl("ul", { cls: "furnace-today-feed-list" });
+  for (const entry of items) {
+    const li = listEl.createEl("li", { cls: `furnace-today-feed-item furnace-pending-card furnace-pending-${entry.status || "running"}` });
+    const card = li.createDiv({ cls: "furnace-pending-card-inner" });
+    const head = card.createDiv({ cls: "furnace-pending-card-head" });
+    let statusLabel;
+    if (entry.status === "done") statusLabel = plugin.t("已完成");
+    else if (entry.status === "failed") statusLabel = plugin.t("失败");
+    else statusLabel = plugin.t("处理中…");
+    head.createEl("span", { cls: "furnace-pending-card-status", text: statusLabel });
+    head.createEl("span", { cls: "furnace-pending-card-time", text: formatDisplayTime(entry.startedAt, plugin.locale()) || "" });
+    card.createDiv({ cls: "furnace-pending-card-text", text: entry.displayText || "" });
+    if (entry.status === "failed") {
+      const errEl = card.createDiv({ cls: "furnace-pending-card-error", text: entry.error || plugin.t("失败") });
+      errEl.setAttr && errEl.setAttr("title", entry.error || "");
+      const actions = card.createDiv({ cls: "furnace-pending-card-actions" });
+      const retryBtn = actions.createEl("button", { cls: "mod-cta", text: plugin.t("重试") });
+      retryBtn.addEventListener("click", async () => {
+        // R88 P1 fix: 重试不删卡，把状态改回 running，复用同一卡片做闭环
+        const args = entry.retryArgs || {};
+        plugin.resetPendingSubmissionForRetry(entry.id);
+        try {
+          if (args.kind === "files" && Array.isArray(args.files)) {
+            for (const f of args.files) {
+              await plugin.runUniversalInputCommand({ payload: f.path || f.name || "", title: args.title || "" });
+            }
+          } else {
+            await plugin.runUniversalInputCommand({ payload: args.payload || entry.displayText || "" });
+          }
+          plugin.markPendingSubmissionDone(entry.id);
+        } catch (e) {
+          plugin.markPendingSubmissionFailed(entry.id, e);
+        }
+      });
+      const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
+      dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
     }
   }
 }
@@ -4044,13 +4168,17 @@ function renderAdvancedDrawer(plugin, container) {
   const summaryCopy = summaryEl.createDiv({ cls: "furnace-shell-advanced-copy" });
   summaryCopy.createEl("span", { cls: "furnace-shell-advanced-title", text: plugin.t("Advanced") });
   const counts = advancedDrawerCounts(plugin);
+  const totalActive = counts.review + counts.execution + counts.runs;
+  const descText = totalActive === 0
+    ? plugin.t("系统状态、模型、运行历史等高级面板")
+    : plugin.t("待复核 {review_count} · 待执行 {execution_count} · 近期运行 {run_count}", {
+        review_count: counts.review,
+        execution_count: counts.execution,
+        run_count: counts.runs,
+      });
   summaryCopy.createEl("span", {
     cls: "furnace-shell-advanced-description",
-    text: plugin.t("Review {review_count} · execution {execution_count} · recent runs {run_count}", {
-      review_count: counts.review,
-      execution_count: counts.execution,
-      run_count: counts.runs,
-    }),
+    text: descText,
   });
   const body = details.createDiv({ cls: "furnace-shell-advanced-body" });
 
@@ -4373,18 +4501,22 @@ function renderFurnaceCenter(plugin, contentEl) {
 }
 
 function renderStartGuide(plugin, container) {
-  if (plugin.settings && plugin.settings.onboardingShown) return;
-
   var summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
-  if (!summary) return;
 
-  var stats = summary.knowledge_stats;
+  var stats = summary && summary.knowledge_stats;
   var hasConcepts = stats && typeof stats.concept_nodes === "number" && stats.concept_nodes > 0;
   var hasSources = stats && typeof stats.source_nodes === "number" && stats.source_nodes > 0;
-  var reports = Array.isArray(summary.todays_reports) ? summary.todays_reports : [];
+  var reports = summary && Array.isArray(summary.todays_reports) ? summary.todays_reports : [];
   var hasReports = reports.length > 0;
+  var recentOutputs = summary && Array.isArray(summary.recent_outputs) ? summary.recent_outputs : [];
+  var hasOutputs = recentOutputs.length > 0;
+  var isEmptyVault = !(hasConcepts || hasSources || hasReports || hasOutputs);
 
-  if (hasConcepts || hasSources || hasReports) {
+  // dismiss 仅作用于"非空 vault"的 onboarding；空 vault 下始终保留引导
+  if (plugin.settings && plugin.settings.onboardingShown && !isEmptyVault) return;
+
+  // 非空 vault 且 onboarding 未关闭 → 自动 dismiss
+  if (!isEmptyVault && summary) {
     plugin.settings.onboardingShown = true;
     plugin.savePluginState();
     return;
@@ -4445,7 +4577,7 @@ function renderReviewCenter(plugin, contentEl) {
   if (!plugin.shellSummary) {
     contentEl.createDiv({
       cls: "furnace-shell-empty",
-      text: plugin.t("shell-summary.json is not available yet. Run Refresh, Compile, or Nightly first."),
+      text: plugin.t("数据还没准备好。先点上方刷新，或等当前任务跑完。"),
     });
     return;
   }
@@ -4519,7 +4651,7 @@ function renderExecutionCenter(plugin, contentEl) {
   if (!plugin.shellSummary) {
     contentEl.createDiv({
       cls: "furnace-shell-empty",
-      text: plugin.t("shell-summary.json is not available yet. Run Refresh, Compile, or Nightly first."),
+      text: plugin.t("数据还没准备好。先点上方刷新，或等当前任务跑完。"),
     });
     return;
   }
@@ -4533,7 +4665,7 @@ function renderExecutionCenter(plugin, contentEl) {
   summaryRow.createEl("h3", { text: plugin.t("执行概况") });
   var stats = summaryRow.createDiv({ cls: "furnace-shell-meta" });
   stats.setText(
-    plugin.t("待执行动作") + ": " + pendingActions + "  |  " + plugin.t("最近收据") + ": " + receipts.length
+    plugin.t("待执行动作") + ": " + pendingActions + "  |  " + plugin.t("最近运行记录") + ": " + receipts.length
   );
 
   // Recent activity: last 3 receipts
@@ -4550,7 +4682,7 @@ function renderExecutionCenter(plugin, contentEl) {
       });
     });
   } else {
-    contentEl.createDiv({ cls: "furnace-shell-empty", text: plugin.t("暂无最近收据。") });
+    contentEl.createDiv({ cls: "furnace-shell-empty", text: plugin.t("暂无最近运行记录。") });
   }
 
   // Quick link to full execution page
@@ -4795,6 +4927,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   async onload() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
     this.pluginState = { recentRuns: [] };
+    this.pendingSubmissions = []; // runtime-only: { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error }
     this.shellSummary = null;
     this.repoState = { valid: false, root: "", launcherPath: "", missingPaths: ["vault-root"] };
     this.openViews = new Set();
@@ -5291,7 +5424,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     }
     return {
       status: "unknown",
-      reason: this.t("shell-summary.json has not been generated yet. Run Refresh, Compile, or Nightly first."),
+      reason: this.t("数据还没生成。先点刷新，或等首次任务跑完。"),
       checkedAt: "",
       logPath: "",
     };
@@ -5330,7 +5463,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         key: "summary",
         status: "failed",
         title: "Shell summary",
-        detail: this.t("shell-summary.json has not been generated yet. Run Refresh, Compile, or Nightly first."),
+        detail: this.t("数据还没生成。先点刷新，或等首次任务跑完。"),
       });
     } else {
       items.push({
@@ -6149,19 +6282,40 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       this.refreshOpenViews();
       return null;
     }
+    let text = null;
     const summaryFile = this.app.vault.getAbstractFileByPath(SHELL_SUMMARY_PATH);
-    if (!summaryFile) {
+    if (summaryFile) {
+      try {
+        text = await this.app.vault.cachedRead(summaryFile);
+      } catch (error) {
+        console.error("[furnace-product-shell] vault read failed for shell summary, falling back to fs", error);
+        text = null;
+      }
+    }
+    // Fallback: vault may exclude output/control/ via userIgnoreFilters,
+    // so getAbstractFileByPath returns null. Read from fs directly.
+    if (text === null && this.repoState.root) {
+      const absPath = path.join(this.repoState.root, SHELL_SUMMARY_PATH);
+      try {
+        if (fs.existsSync(absPath)) {
+          text = fs.readFileSync(absPath, "utf8");
+        }
+      } catch (error) {
+        console.error("[furnace-product-shell] fs read failed for shell summary", error);
+        text = null;
+      }
+    }
+    if (text === null) {
       this.shellSummary = null;
       this.updateStatusBar();
       this.refreshOpenViews();
       return null;
     }
     try {
-      const text = await this.app.vault.cachedRead(summaryFile);
       this.shellSummary = readJsonText(text);
       this.processShellSummaryUpdates(this.shellSummary);
     } catch (error) {
-      console.error("[furnace-product-shell] failed to read shell summary", error);
+      console.error("[furnace-product-shell] failed to parse shell summary", error);
       this.shellSummary = null;
     }
     this.updateStatusBar();
@@ -6548,6 +6702,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   
   processShellSummaryUpdates(summary) {
+    // R88: shellSummary 刷新时尝试消解已落地的 pending submissions（视觉闭环）
+    this.reconcilePendingSubmissions(summary);
     if (!summary || !Array.isArray(summary.recent_outputs)) return;
     const outputs = summary.recent_outputs.filter((item) => item && typeof item === "object");
     const currentIds = outputs.map((r) => r.path || r.title || r.created_at).filter(Boolean);
@@ -6642,6 +6798,147 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async runProtocolSetCommand(protocol) {
     await this.runPluginCommand(`${this.t("Set Protocol")}: ${protocol}`, ["protocol-set", protocol], { refreshAfter: true });
+  }
+
+  // ---------------- Pending submissions (runtime-only, R88) ----------------
+  // 用户提交后立即出现的"处理中"卡片，独立于 recentRuns（命令历史）和
+  // shellSummary（事实层）。仅用于视觉闭环：用户提交 → 看到入流水线 → 落地后消失。
+  pushPendingSubmission(displayText, opts = {}) {
+    const text = String(displayText || "").trim();
+    if (!text) return null;
+    if (!Array.isArray(this.pendingSubmissions)) this.pendingSubmissions = [];
+    const fingerprint = text.slice(0, 80);
+    // R88 P2 fix: 同 fingerprint 仍在 running 的 pending 直接复用，避免双击/多入口重复卡
+    const dup = this.pendingSubmissions.find((e) => e && e.status === "running" && e.payloadFingerprint === fingerprint);
+    if (dup) return dup.id;
+    const id = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const entry = {
+      id,
+      payloadFingerprint: fingerprint,
+      displayText: text.length > 120 ? text.slice(0, 117) + "…" : text,
+      title: String(opts.title || "").trim(),
+      status: "running", // running | done | failed
+      startedAt: new Date().toISOString(),
+      finishedAt: "",
+      error: "",
+      retryArgs: opts.retryArgs && typeof opts.retryArgs === "object" ? opts.retryArgs : null,
+    };
+    this.pendingSubmissions.unshift(entry);
+    // 限长 8，避免视觉堆积
+    if (this.pendingSubmissions.length > 8) this.pendingSubmissions.length = 8;
+    this.refreshOpenViews();
+    return id;
+  }
+
+  resetPendingSubmissionForRetry(id) {
+    const entry = this._findPending(id);
+    if (!entry) return;
+    entry.status = "running";
+    entry.error = "";
+    entry.startedAt = new Date().toISOString();
+    entry.finishedAt = "";
+    this.refreshOpenViews();
+  }
+
+  markPendingSubmissionDone(id) {
+    const entry = this._findPending(id);
+    if (!entry) return;
+    entry.status = "done";
+    entry.finishedAt = new Date().toISOString();
+    this.refreshOpenViews();
+    // 成功后短延迟自动消失（reconcile 也会兜底；这里给即时反馈）
+    setTimeout(() => {
+      this.removePendingSubmission(id);
+    }, 4000);
+  }
+
+  markPendingSubmissionFailed(id, error) {
+    const entry = this._findPending(id);
+    if (!entry) return;
+    entry.status = "failed";
+    entry.finishedAt = new Date().toISOString();
+    entry.error = truncateText(String((error && error.message) || error || "失败"), 180);
+    this.refreshOpenViews();
+  }
+
+  removePendingSubmission(id) {
+    if (!Array.isArray(this.pendingSubmissions) || !this.pendingSubmissions.length) return;
+    const before = this.pendingSubmissions.length;
+    this.pendingSubmissions = this.pendingSubmissions.filter((e) => e && e.id !== id);
+    if (this.pendingSubmissions.length !== before) this.refreshOpenViews();
+  }
+
+  _findPending(id) {
+    if (!Array.isArray(this.pendingSubmissions)) return null;
+    return this.pendingSubmissions.find((e) => e && e.id === id) || null;
+  }
+
+  // 当 shellSummary 刷新后，匹配 pending → recent_outputs/recent_receipts
+  // R88 P1 fix:
+  //   - candidate 必须有时间戳，且时间戳 >= entry.startedAt（带 60s skew 容忍时钟漂移）
+  //   - 短指纹（< 16 字符）使用 normalized exact 匹配；长指纹至少匹配 60 字符前缀
+  //   - 匹配字段扩到 receipt_path / output_path / query / target
+  //   - running 卡片超过 5 分钟仅停止 reconcile（不删，避免长任务消失）
+  reconcilePendingSubmissions(summary) {
+    if (!Array.isArray(this.pendingSubmissions) || !this.pendingSubmissions.length) return;
+    if (!summary || typeof summary !== "object") return;
+    const candidates = [];
+    if (Array.isArray(summary.recent_outputs)) candidates.push(...summary.recent_outputs);
+    if (Array.isArray(summary.recent_receipts)) candidates.push(...summary.recent_receipts);
+    if (!candidates.length) return;
+    const SKEW_MS = 60 * 1000;
+    const RECONCILE_WINDOW_MS = 5 * 60 * 1000;
+    const now = Date.now();
+    const remaining = [];
+    for (const entry of this.pendingSubmissions) {
+      if (!entry) continue;
+      // failed 保留供用户重试
+      if (entry.status === "failed") {
+        remaining.push(entry);
+        continue;
+      }
+      const startMs = Date.parse(entry.startedAt || "") || now;
+      // 超窗：仅停止 reconcile，但保留卡片（长任务保护）
+      if (now - startMs > RECONCILE_WINDOW_MS) {
+        remaining.push(entry);
+        continue;
+      }
+      const fp = String(entry.payloadFingerprint || "").trim().toLowerCase();
+      const title = String(entry.title || "").trim().toLowerCase();
+      const fpKey = fp.length >= 60 ? fp.slice(0, 60) : fp; // 至少 60 字符前缀
+      const useExact = fp.length > 0 && fp.length < 16; // 短输入用 exact 匹配防误杀
+      const hit = candidates.some((cand) => {
+        if (!cand || typeof cand !== "object") return false;
+        // 时间戳门槛
+        const candTimeStr = cand.created_at || cand.generated_at || cand.applied_at || cand.occurred_at || cand.timestamp || "";
+        const candMs = Date.parse(candTimeStr);
+        if (!Number.isFinite(candMs)) return false;
+        if (candMs + SKEW_MS < startMs) return false;
+        const fields = [
+          cand.title,
+          cand.path,
+          cand.summary,
+          cand.payload,
+          cand.receipt_path,
+          cand.output_path,
+          cand.query,
+          cand.target,
+        ].map((v) => String(v || "").trim().toLowerCase()).filter(Boolean);
+        if (!fields.length) return false;
+        if (useExact) {
+          return fields.some((f) => f === fp || (title && f === title));
+        }
+        const haystack = fields.join(" \u0001 ");
+        if (fpKey && haystack.includes(fpKey)) return true;
+        if (title && title.length >= 4 && haystack.includes(title)) return true;
+        return false;
+      });
+      if (!hit) remaining.push(entry);
+    }
+    if (remaining.length !== this.pendingSubmissions.length) {
+      this.pendingSubmissions = remaining;
+      this.refreshOpenViews();
+    }
   }
 
   async runUniversalInputCommand({ payload, title }) {

@@ -333,6 +333,7 @@ function buildAgentLoopEntries(summary, todayDate) {
     // Planner decisions are derived from signals; don't double-count one change in user-facing copy.
     const newItems = Math.max(asCount(signals.new_count), asCount(execute.new_count));
     const appliedCount = asCount(autoApply.applied_count);
+    const readyCount = asCount(autoPreview.ready_count);
     const l1Count = (Array.isArray(autoAdoptL1.items) ? autoAdoptL1.items : []).reduce(function(acc, item) { return acc + (typeof item.count === 'number' && item.count > 0 && !item.error ? item.count : 0); }, 0);
     const l2Count = (Array.isArray(autoAdoptL2.items) ? autoAdoptL2.items : []).reduce(function(acc, item) { return acc + (typeof item.count === 'number' && item.count > 0 && !item.error ? item.count : 0); }, 0);
     const jReviewed = typeof autoAdoptJ.reviewed === 'number' ? autoAdoptJ.reviewed : 0;

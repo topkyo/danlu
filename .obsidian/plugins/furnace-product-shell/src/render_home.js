@@ -29,18 +29,22 @@ function renderFurnaceCenter(plugin, contentEl) {
 }
 
 function renderStartGuide(plugin, container) {
-  if (plugin.settings && plugin.settings.onboardingShown) return;
-
   var summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
-  if (!summary) return;
 
-  var stats = summary.knowledge_stats;
+  var stats = summary && summary.knowledge_stats;
   var hasConcepts = stats && typeof stats.concept_nodes === "number" && stats.concept_nodes > 0;
   var hasSources = stats && typeof stats.source_nodes === "number" && stats.source_nodes > 0;
-  var reports = Array.isArray(summary.todays_reports) ? summary.todays_reports : [];
+  var reports = summary && Array.isArray(summary.todays_reports) ? summary.todays_reports : [];
   var hasReports = reports.length > 0;
+  var recentOutputs = summary && Array.isArray(summary.recent_outputs) ? summary.recent_outputs : [];
+  var hasOutputs = recentOutputs.length > 0;
+  var isEmptyVault = !(hasConcepts || hasSources || hasReports || hasOutputs);
 
-  if (hasConcepts || hasSources || hasReports) {
+  // dismiss 仅作用于"非空 vault"的 onboarding；空 vault 下始终保留引导
+  if (plugin.settings && plugin.settings.onboardingShown && !isEmptyVault) return;
+
+  // 非空 vault 且 onboarding 未关闭 → 自动 dismiss
+  if (!isEmptyVault && summary) {
     plugin.settings.onboardingShown = true;
     plugin.savePluginState();
     return;

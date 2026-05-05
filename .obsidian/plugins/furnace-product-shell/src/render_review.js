@@ -23,7 +23,7 @@ function renderReviewCenter(plugin, contentEl) {
   if (!plugin.shellSummary) {
     contentEl.createDiv({
       cls: "furnace-shell-empty",
-      text: plugin.t("shell-summary.json is not available yet. Run Refresh, Compile, or Nightly first."),
+      text: plugin.t("数据还没准备好。先点上方刷新，或等当前任务跑完。"),
     });
     return;
   }

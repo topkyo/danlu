@@ -44,8 +44,24 @@
 | **Round 85 history JSONL strict migration** (2026-05-05) | execution policy/receipt history JSONL best-effort loader 显式 warning / strict variants / fact-layer callers 切 strict / 8 migration tests | ✅ done (`ea08d6e`) |
 | **Round 86 safe_fetch 多 IP fallback** (2026-05-05) | R83 pinning 可用性回归修复 / `_PinnedHTTP[S]Connection` 按 resolver 顺序循环 TCP / 全失败抛 OSError 不混入 FetchPolicyError / handler 接 list / 4 fallback tests | ✅ done (`b345ecf`) |
 | **Round 87 R85/R86 non-blocking 小补丁清理** (2026-05-05) | history strict 测试 path:N 断言收紧 / receipt strict missing+non-dict edge tests / HTTPS fallback wrap_socket 单次 + server_hostname 锁定 / redirect 后 IP list 重建测试 / 实现 0 改动 | ✅ done (`0891a44`) |
+| **Round 88 PM-UX 三件套** (2026-05-05) | Today 空态 CTA「投一份材料」聚焦 universal input / 提交后"处理中"卡片（runtime-only push/done/failed/reset state machine + reconcile 时间戳门槛 + 字段扩展 + 短指纹 exact + 超窗保留 + dedupe）/ 用户层面板文案白话化（plugin/constants/render_execution/render_review/render_primitives/health-state，"shell-summary.json" → "数据还没准备好"等）/ pending 卡片样式 + pulse / 12 契约测试 / oracle qa-review 2 轮全 PASS | ✅ done |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 88 — PM-UX 三件套（空态 CTA / 处理中卡片 / 文案白话化）— 完成
+
+- **目的**：从 PM 角度把"用户投了东西看不到反馈 + 满屏机制词"这两个最伤的体验问题闭环掉。
+- **实现**：
+  - **#1 Today 空态 CTA**：`render_today.js` 抽 `renderTodayEmptyCta(plugin, parentEl, viewRoot)`；`!summary` 与 `feed.length===0` 两条空态分支都渲染「投一份材料」按钮，click 优先在 `.furnace-shell-view` 内查 `.furnace-universal-input-textarea` 并 `focus + scrollIntoView`，不做跨视图全局 fallback。
+  - **#2 提交后"处理中"卡片**：plugin.js 新增 `pendingSubmissions[]` runtime-only state（不持久化）+ `pushPendingSubmission/markPendingSubmissionDone/markPendingSubmissionFailed/removePendingSubmission/resetPendingSubmissionForRetry/reconcilePendingSubmissions` 6 个 helper；`render_input.js` handleSubmit push→done/failed 双路径，retryArgs 带 `kind:"text"|"files"`；`render_today.js` `renderPendingSubmissionsGroup` 顶部独立 group，失败态卡片含「重试」（resetForRetry → run → markDone/markFailed 同卡循环）+「Dismiss」。
+  - **#3 reconcile 收紧（P1 第二轮）**：candidate 必须含 `created_at/generated_at/applied_at/occurred_at/timestamp` 任一且 `candMs + 60s skew >= startMs`；匹配字段扩到 `title/path/summary/payload/receipt_path/output_path/query/target`；短指纹 (<16 char) 走 normalized exact 匹配，长指纹至少 60 char 前缀；title ≥4 char 才参与；超 5min 的 running 卡片仅停止 reconcile，push 进 remaining 保留显示（长任务保护，不再丢卡）。
+  - **#4 dedupe**：pushPendingSubmission 同 fingerprint+running 直接复用 dup.id，双击/多入口不会重复堆卡。
+  - **#5 文案白话化**：plugin.js 503/544、constants.js 90/92/112/295/301、render_execution.js / render_review.js / render_primitives.js / state/health-state.js 全部把 "shell-summary.json" / "Click Refresh first" / "Runtime Events from shell-summary" 等机制词替换为"数据还没准备好"/"运行事件"等白话；constants 翻译表加 self-key→self-key 兼容映射。
+  - **#6 Recent Runs 抽屉文案**：render_execution.js 顶栏 "最近收据" → "最近运行记录"；render_primitives.js LLM Health "Copy receipt path"/"Copy stderr" 翻译表 → "复制运行记录路径"/"复制诊断信息"；render_runs.js 抽屉内 stdout/stderr/Open receipt 等技术按钮保留，定位为开发者层。
+  - **样式**：styles.css 加 `.furnace-pending-card` + pulse 动画 + 失败态错误文本 + CTA 按钮样式。
+- **测试**：`tests/test_product_shell_pending_card.py` 12 case（pending helpers 暴露 / built-into-main / render_input 接入 / today group 渲染 / reconcile hooked / 空态 CTA / 文案 dejargon / reconcile timestamp+fields+useExact / 超窗保留 running / dup-fingerprint 复用 / retry 不删卡 / !summary CTA）。
+- **Stop Lines**：pendingSubmissions 不入 buildTodayFeed（不污染 today_feed.js↔py mirror 契约）/ runtime-only 不持久化 / 不改 today_feed.py / Recent Runs 技术按钮保留开发者层 / 不动 dogfood `output/control/shell-summary.json`。
+- **验证**：`bash build.sh` → main.js 7698 行；`npx jest` 48/48；`bash scripts/verify.sh` exit=0（13 acceptance + 全量 unit + coverage 92%）；`tests/test_product_shell_pending_card.py` 12/12。oracle qa-review 第一轮 6 个 P1（无 P0），整改后第二轮全 6 项 PASS、无新 P0/P1，可收口。
 
 ### Round 87 — R85/R86 non-blocking 小补丁清理 — 完成
 
