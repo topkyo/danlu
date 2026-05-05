@@ -42,8 +42,23 @@
 | **Round 83 safe_fetch DNS pinning + host allowlist** (2026-05-05) | custom HTTP/HTTPS connection pinned-IP connect / proxy 禁用 / SNI 保留 / opt-in allowlist via env / 11 unit | ✅ done |
 | **Round 84 fail-soft 降级路径收口 + 事实层 strict read 迁移** (2026-05-05) | notify.py 双层 fallback-of-fallback logger.warning + sanitized metadata / `load_runtime_history_strict` / 6 个事实层 best-effort→strict 切换 / CorruptStateError 自然传播到 CLI / 8 strict 迁移测试 + notify 双层 warning 测试 | ✅ done (`c94cc87`) |
 | **Round 85 history JSONL strict migration** (2026-05-05) | execution policy/receipt history JSONL best-effort loader 显式 warning / strict variants / fact-layer callers 切 strict / 8 migration tests | ✅ done (`ea08d6e`) |
+| **Round 86 safe_fetch 多 IP fallback** (2026-05-05) | R83 pinning 可用性回归修复 / `_PinnedHTTP[S]Connection` 按 resolver 顺序循环 TCP / 全失败抛 OSError 不混入 FetchPolicyError / handler 接 list / 4 fallback tests | ✅ done (`b345ecf`) |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 86 — safe_fetch 多 IP fallback — 完成
+
+- **目的**：修 R83 DNS pinning 引入的可用性回归。原实现 `pinned_list[0].ip` 单 IP，CDN / 多 region / dual-stack 首 IP 不可达整体失败；stdlib 默认 `getaddrinfo` 列表 TCP fallback 被丢掉。
+- **实现**：
+  - `app_utils.py` `_PinnedHTTPConnection` / `_PinnedHTTPSConnection`：`_pinned_ip: str` → `_pinned_ips: list[str]`；`connect()` 按 resolver 顺序循环 `socket.create_connection`，首个成功 break；全失败保留 last `OSError` 抛出（urllib 包成 `URLError`），不混入 `FetchPolicyError` 策略语义。
+  - HTTPS `wrap_socket(sock, server_hostname=self.host)` 仅在最终成功 sock 上执行；`_tunnel` 顺序与 R83 一致。
+  - `_PinnedHTTPHandler` / `_PinnedHTTPSHandler`：`pinned_ip: str` → `pinned_ips: list[str]`，`_make_connection` 传 `_pinned_ips=`。
+  - `safe_fetch:927`：`pinned_ips = [addr.ip for addr in pinned_list]` 保留 resolver 顺序；redirect 后下一轮 while 顶部重建。
+  - 不在 `safe_fetch` 主循环 retry 整个 request（避免 POST 重放）；只 connect 层 fallback。
+  - 不动 zone-id `split("%")` / IPv6 sockaddr 4-tuple（R87+ 候选，oracle 评估 link-local + allow_private 边缘组合，无明确需求）。
+- **测试**：新增 `tests/test_safe_fetch_multi_ip_fallback.py` 4 测试（首 IP fallback / 全失败 URLError 而非 FetchPolicyError / 单 IP 防退化 / v6+v4 顺序保留）；既有 `test_safe_fetch_pinning.py:78` 1 处 `_pinned_ip=` → `_pinned_ips=[...]` 适配；其余 11 测试不破。
+- **Stop Lines**：0 公共 API 签名 / 0 caller (drop.py / llm.py / notify.py) / 0 schema / 0 第三方依赖 / 不在 safe_fetch 层 retry POST / 不动 zone-id / 不动 IPv6 sockaddr 4-tuple / untracked Obsidian/docs 文件不纳入。
+- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1712 unit + coverage 92%）；oracle qa-review PASS（无 blocker；2 个 non-blocking 缺口：HTTPS fallback 测试 / redirect 后 IP list 重建测试，留作后续）。
 
 ### Round 85 — history JSONL strict migration — 完成
 
@@ -68,20 +83,6 @@
 - **测试**：新增 `tests/test_strict_read_migration.py` 8 测试（execution bundle / 3 个 revert 路径 receipt corrupt / batch explicit receipt / batch history receipt / corrupt runtime_history / strict vs best-effort 对比 raise/skip）；`tests/test_notify.py` 新增 `test_notify_dispatch_double_failure_warns`（mock `NotifyConfig.from_env` raise + `_append_run_event` raise → 不 raise + sanitized warning + 不泄漏 "bad env" / "run log down"）+ dispatch payload 字段断言；`tests/test_execution_compat.py` mock seam 同步 `load_json_document` → `load_json_document_strict`。
 - **Stop Lines**：0 公共 API 签名改动 / 0 schema 改动 / 0 webhook payload 改动 / 不全局替换 best-effort loader / `content/memory.py` / shell / dashboard / preview / telemetry / metrics / preflight / alchemy 不动；notify.py 修改限 line 59-130 + 166-220；app_state.py 仅新增 wrapper。
 - **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1700 unit + coverage 92%）；oracle qa-review fail-then-fix（1 blocker → 清零 → PASS），blocker = `notify_report_generated` 顶层 fallback `_append_run_event` 没二次保护与 docstring "never raises" 不一致，修复 = 双层 try/except + logger.warning sanitized + return。
-
-### Round 83 — `safe_fetch` DNS pinning + host allowlist — 完成
-
-- **目的**：堵 DNS rebinding 漏洞 + 加 host allowlist opt-in 加固。R71 validate 阶段 `getaddrinfo` 一次、stdlib `urlopen` connect 时再独立查一次，两次答案可能切换（public→private）；POST + API key 在 connect 时已发出，后验校验来不及。延续 R71/R73/R80 SSRF 主线。
-- **实现**：
-  - `app_utils.py` 新增 `_PinnedAddress` (NamedTuple)、`_PinnedHTTPConnection` / `_PinnedHTTPSConnection` (override `connect()`：从 pinned IP 直连；HTTPS `wrap_socket(sock, server_hostname=hostname)` 保留 SNI 和证书校验)、`_PinnedHTTPHandler` / `_PinnedHTTPSHandler` (handler 注入 connection class)。
-  - `_resolve_and_check_host(host, port, *, allow_private)` 一次 `getaddrinfo`，IPv4-mapped IPv6 normalize，pinned set 任一 private → `FetchPolicyError`；返回 pinned list。
-  - `_validate_safe_url(..., enforce_allowlist=False)` 返回 `tuple[str, list[_PinnedAddress]]`；allowlist 检查 opt-in，`safe_fetch` 三处调用传 `enforce_allowlist=True`，drop.py browser renderer guard (drop.py:622, drop.py:750) 不传参 → allowlist 不生效，行为完全不变（守 stop line）。
-  - 环境变量 `AIWIKI_SAFE_FETCH_HOST_ALLOWLIST` 逗号分隔 exact lowercase host，空 / unset 不启用，与 `allow_private` 独立。
-  - `safe_fetch` 每跳 redirect 重新 validate + pin + allowlist check；每跳重建 opener 注入新 pinned IP；`build_opener(ProxyHandler({}), _NoRedirectHandler(), _PinnedHTTPHandler(pinned_ip), _PinnedHTTPSHandler(pinned_ip))` 显式禁用 proxy（stop line）。
-  - 公共签名 `(bytes, str)` 返回不变；caller (llm.py / notify.py / drop.py) 0 改动。
-- **测试**：新增 `tests/test_safe_fetch_pinning.py` 11 测试（DNS private 拒绝 / public pinned / DNS rebinding 防护 / HTTPS SNI 保留 / allowlist unset+match+mismatch+redirect 跨边界 / proxy env 被忽略 / drop.py 路径 allowlist 不生效 / enforce_allowlist=True 时拒绝）；既有 `test_safe_fetch.py` / `test_safe_fetch_close.py` 适配新内部返回值；`test_llm` / `test_notify` / `test_drop` 不破。
-- **Stop Lines**：0 caller 改动 / 0 公共签名改动 / 0 schema 改动 / 0 browser renderer 改动 / 0 第三方依赖 / 不隐式降级回 stdlib 默认 connection / 不静默吞错。
-- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1690 unit + coverage 92%）；oracle qa-review fail-then-fix（1 blocker → 清零 → PASS），blocker = allowlist 越 stop line 影响 drop.py，修复 = `enforce_allowlist` opt-in 参数。
 
 ### Round 77 — `_append_llm_receipt` 事务化 — 完成
 
