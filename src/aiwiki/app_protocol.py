@@ -32,6 +32,7 @@ from .app_state import (
 )
 from .app_types import ProtocolDescriptor, ProtocolRuntimeSchema, ProtocolState
 from .app_utils import (
+    atomic_write_text,
     parse_iso_datetime,
     relative_path,
 )
@@ -1696,7 +1697,7 @@ def load_protocol_runtime_schema(root: Path, slug: str) -> ProtocolRuntimeSchema
     default_schema = default_protocol_runtime_schema(slug)
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(default_schema, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        atomic_write_text(path, json.dumps(default_schema, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
         return default_schema
     path_ref = relative_path(root, path)
     try:
@@ -1756,9 +1757,9 @@ def ensure_protocol_scaffold(root: Path) -> None:
         runtime_schema = protocol_runtime_schema_path(root, slug)
         runtime_schema.parent.mkdir(parents=True, exist_ok=True)
         if not runtime_schema.exists():
-            runtime_schema.write_text(
+            atomic_write_text(
+                runtime_schema,
                 json.dumps(default_protocol_runtime_schema(slug), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
             )
         overview = base / slug / "index.md"
         overview.parent.mkdir(parents=True, exist_ok=True)
@@ -1770,7 +1771,7 @@ def ensure_protocol_scaffold(root: Path) -> None:
                 path.write_text(render_protocol_section(slug, section), encoding="utf-8")
     state = protocol_state_path(root)
     if not state.exists():
-        state.write_text(json.dumps(default_protocol_state(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        atomic_write_text(state, json.dumps(default_protocol_state(), indent=2, sort_keys=True) + "\n")
 
 
 def available_protocols(root: Path) -> list[str]:
@@ -1804,7 +1805,7 @@ def load_protocol_state(root: Path) -> ProtocolState:
         active = DEFAULT_PROTOCOL if DEFAULT_PROTOCOL in available else (available[0] if available else DEFAULT_PROTOCOL)
     normalized = {"version": 1, "active_protocol": active}
     if state != normalized:
-        path.write_text(json.dumps(normalized, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        atomic_write_text(path, json.dumps(normalized, indent=2, sort_keys=True) + "\n")
     return {
         **normalized,
         "available_protocols": available,
@@ -1991,6 +1992,4 @@ def schedule_review_windows(
 def save_manifest(root: Path, manifest: dict[str, Any]) -> None:
     ensure_layout(root)
     path = manifest_path(root)
-    with path.open("w", encoding="utf-8") as handle:
-        json.dump(manifest, handle, indent=2, sort_keys=True)
-        handle.write("\n")
+    atomic_write_text(path, json.dumps(manifest, indent=2, sort_keys=True) + "\n")

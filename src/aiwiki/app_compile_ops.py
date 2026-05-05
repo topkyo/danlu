@@ -282,6 +282,7 @@ from .app_surfaces import (
 )
 from .app_utils import (
     analyze_citation_snapshots,
+    atomic_write_text,
     build_citation_snapshots,
     compiled_source_sha,
     extract_provenance_paths,
@@ -308,7 +309,7 @@ from .config import LLMConfig
 def set_active_protocol(root: Path, protocol: str) -> dict[str, Any]:
     active = resolve_protocol(root, protocol)
     path = protocol_state_path(root)
-    path.write_text(json.dumps({"version": 1, "active_protocol": active}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(path, json.dumps({"version": 1, "active_protocol": active}, indent=2, sort_keys=True) + "\n")
     state = load_protocol_state(root)
     write_if_changed(
         root / "wiki" / "indexes" / "protocols.md",
