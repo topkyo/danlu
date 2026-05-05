@@ -30,8 +30,7 @@ class HistoryStrictMigrationTests(unittest.TestCase):
         with self.assertRaises(CorruptStateError) as ctx:
             load_execution_policy_decision_history_strict(self.root)
 
-        self.assertIn(str(path), str(ctx.exception))
-        self.assertIn(":2", str(ctx.exception))
+        self.assertIn(f"{path}:2", str(ctx.exception))
         self.assertEqual(load_execution_policy_decision_history(self.root), [{"policy_decision": "allow"}])
 
     def test_policy_strict_non_dict_raises(self) -> None:
@@ -63,8 +62,7 @@ class HistoryStrictMigrationTests(unittest.TestCase):
         with self.assertRaises(CorruptStateError) as ctx:
             load_execution_receipt_history_strict(self.root)
 
-        self.assertIn(str(path), str(ctx.exception))
-        self.assertIn(":2", str(ctx.exception))
+        self.assertIn(f"{path}:2", str(ctx.exception))
 
     def test_receipt_strict_invalid_utf8_raises(self) -> None:
         path = execution_receipt_history_path(self.root)
@@ -87,6 +85,21 @@ class HistoryStrictMigrationTests(unittest.TestCase):
         )
 
         self.assertEqual(load_execution_receipt_history_strict(self.root), [{"kind": "execution-receipt", "action_id": "keep"}])
+
+    def test_receipt_strict_missing_file_returns_empty(self) -> None:
+        self.assertFalse(execution_receipt_history_path(self.root).exists())
+        self.assertEqual(load_execution_receipt_history_strict(self.root), [])
+
+    def test_receipt_strict_non_dict_row_raises(self) -> None:
+        path = execution_receipt_history_path(self.root)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('["a", "b"]\n', encoding="utf-8")
+
+        with self.assertRaises(CorruptStateError) as ctx:
+            load_execution_receipt_history_strict(self.root)
+
+        self.assertIn(f"{path}:1", str(ctx.exception))
+        self.assertIn("non-dict", str(ctx.exception))
 
     def test_best_effort_corrupt_logs_warning(self) -> None:
         policy_path = execution_policy_log_path(self.root)
