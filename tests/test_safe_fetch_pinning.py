@@ -76,7 +76,7 @@ class SafeFetchPinningTests(unittest.TestCase):
             "ssl.SSLContext.wrap_socket", new=fake_wrap_socket
         ):
             conn = __import__("aiwiki.app_utils", fromlist=["_PinnedHTTPSConnection"])._PinnedHTTPSConnection(
-                "example.com", 443, _pinned_ip="93.184.216.34"
+                "example.com", 443, _pinned_ips=["93.184.216.34"]
             )
             conn.connect()
 

@@ -742,27 +742,50 @@ _PRIVATE_NETS_V6 = (
 
 
 class _PinnedHTTPConnection(http.client.HTTPConnection):
-    def __init__(self, host, *args, _pinned_ip: str | None = None, **kwargs):
+    def __init__(self, host, *args, _pinned_ips: list[str] | None = None, **kwargs):
         super().__init__(host, *args, **kwargs)
-        self._pinned_ip = _pinned_ip
+        self._pinned_ips = list(_pinned_ips) if _pinned_ips else []
 
     def connect(self):
-        if not self._pinned_ip:
-            raise FetchPolicyError("missing pinned IP")
-        self.sock = socket.create_connection((self._pinned_ip, self.port), self.timeout, self.source_address)
+        if not self._pinned_ips:
+            raise FetchPolicyError("missing pinned IPs")
+        last_exc: OSError | None = None
+        sock = None
+        for ip in self._pinned_ips:
+            try:
+                sock = socket.create_connection((ip, self.port), self.timeout, self.source_address)
+                break
+            except OSError as exc:
+                last_exc = exc
+                continue
+        if sock is None:
+            assert last_exc is not None
+            raise last_exc
+        self.sock = sock
         if self._tunnel_host:
             self._tunnel()
 
 
 class _PinnedHTTPSConnection(http.client.HTTPSConnection):
-    def __init__(self, host, *args, _pinned_ip: str | None = None, **kwargs):
+    def __init__(self, host, *args, _pinned_ips: list[str] | None = None, **kwargs):
         super().__init__(host, *args, **kwargs)
-        self._pinned_ip = _pinned_ip
+        self._pinned_ips = list(_pinned_ips) if _pinned_ips else []
 
     def connect(self):
-        if not self._pinned_ip:
-            raise FetchPolicyError("missing pinned IP")
-        sock = socket.create_connection((self._pinned_ip, self.port), self.timeout, self.source_address)
+        if not self._pinned_ips:
+            raise FetchPolicyError("missing pinned IPs")
+        last_exc: OSError | None = None
+        sock = None
+        for ip in self._pinned_ips:
+            try:
+                sock = socket.create_connection((ip, self.port), self.timeout, self.source_address)
+                break
+            except OSError as exc:
+                last_exc = exc
+                continue
+        if sock is None:
+            assert last_exc is not None
+            raise last_exc
         if self._tunnel_host:
             self.sock = sock
             self._tunnel()
@@ -771,33 +794,33 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
 
 
 class _PinnedHTTPHandler(urllib.request.HTTPHandler):
-    def __init__(self, pinned_ip: str):
+    def __init__(self, pinned_ips: list[str]):
         super().__init__()
-        self._pinned_ip = pinned_ip
+        self._pinned_ips = list(pinned_ips)
 
     def http_open(self, req):
         return self.do_open(self._make_connection, req)
 
     def _make_connection(self, host, *args, **kwargs):
-        return _PinnedHTTPConnection(host, *args, _pinned_ip=self._pinned_ip, **kwargs)
+        return _PinnedHTTPConnection(host, *args, _pinned_ips=self._pinned_ips, **kwargs)
 
 
 class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
     def __init__(
         self,
-        pinned_ip: str,
+        pinned_ips: list[str],
         debuglevel: int = 0,
         context: ssl.SSLContext | None = None,
         check_hostname: bool | None = None,
     ):
         super().__init__(debuglevel=debuglevel, context=context, check_hostname=check_hostname)
-        self._pinned_ip = pinned_ip
+        self._pinned_ips = list(pinned_ips)
 
     def https_open(self, req):
         return self.do_open(self._make_connection, req, context=self._context, check_hostname=self._check_hostname)
 
     def _make_connection(self, host, *args, **kwargs):
-        return _PinnedHTTPSConnection(host, *args, _pinned_ip=self._pinned_ip, **kwargs)
+        return _PinnedHTTPSConnection(host, *args, _pinned_ips=self._pinned_ips, **kwargs)
 
 
 def _ip_is_private_or_link_local(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
@@ -901,12 +924,12 @@ def safe_fetch(
     redirects = 0
     previous_host: str | None = None
     while True:
-        pinned_ip = pinned_list[0].ip
+        pinned_ips = [addr.ip for addr in pinned_list]
         opener = urllib.request.build_opener(
             urllib.request.ProxyHandler({}),
             _NoRedirectHandler(),
-            _PinnedHTTPHandler(pinned_ip),
-            _PinnedHTTPSHandler(pinned_ip),
+            _PinnedHTTPHandler(pinned_ips),
+            _PinnedHTTPSHandler(pinned_ips),
         )
         current_host = urlparse(current).hostname
         if previous_host is not None and current_host != previous_host:
