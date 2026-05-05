@@ -19,6 +19,7 @@ from aiwiki.runner.receipts import _append_log
 from aiwiki.runner.workflows import run_compile, run_lint
 
 
+@runtime_write_operation
 def auto_process_once(
     root: Path,
     client: SupportsComplete | None = None,

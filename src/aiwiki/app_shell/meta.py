@@ -72,6 +72,7 @@ from ..app_types import ProtocolState, ShellSummary
 from ..app_utils import (
     parse_frontmatter,
     relative_path,
+    runtime_write_operation,
     strip_frontmatter,
     tokenize,
     utc_now,
@@ -210,6 +211,7 @@ def shell_search(root: Path, query: str, *, limit: int = 12) -> dict[str, Any]:
     write_shell_summary(root, summary)
     return dict(summary["search_results"])
 
+@runtime_write_operation
 def write_shell_summary(root: Path, summary: ShellSummary | None = None) -> ShellSummary:
     summary = summary or build_shell_summary(root)
     write_json_document_if_changed_ignoring_generated_timestamps(shell_summary_path(root), summary)

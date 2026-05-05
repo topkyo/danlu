@@ -31,6 +31,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
+from .app_utils import runtime_write_operation
+
 POLICY_RELATIVE = Path(".aiwiki") / "state" / "autonomy-policy.json"
 
 KNOWN_FLAGS = (
@@ -114,6 +116,7 @@ def disabled_reason(
     return None
 
 
+@runtime_write_operation
 def set_flag(root: Path, flag: str, value: bool) -> AutonomyPolicy:
     """M7.4c: write a single flag to the policy file. Atomic, idempotent.
 

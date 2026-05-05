@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..app_state import execution_receipt_history_path, llm_receipt_log_path, runtime_history_path
-from ..app_utils import atomic_append_jsonl, sha256_bytes
+from ..app_utils import atomic_append_jsonl, runtime_write_lock, sha256_bytes
 from .protocol_learnings import AUDIT_STATE_PATH
 
 AUDIT_STREAM_PATH = ".aiwiki/state/audit.jsonl"
@@ -174,19 +174,20 @@ def backfill_universal_audit_stream(root: Path, *, limit: int = 50, apply: bool 
     if not apply:
         return result
 
-    for record in appendable:
-        append_result = append_audit(
-            str(record["source_stream"]),
-            record,
-            event_id=str(record["audit_event_id"]),
-            root=root,
-        )
-        if append_result.written:
-            result["appended_count"] += 1
-        elif append_result.reason == "duplicate":
-            result["skipped_existing_count"] += 1
-    if appendable:
-        result["audit_stream_exists"] = True
+    with runtime_write_lock(root):
+        for record in appendable:
+            append_result = append_audit(
+                str(record["source_stream"]),
+                record,
+                event_id=str(record["audit_event_id"]),
+                root=root,
+            )
+            if append_result.written:
+                result["appended_count"] += 1
+            elif append_result.reason == "duplicate":
+                result["skipped_existing_count"] += 1
+        if appendable:
+            result["audit_stream_exists"] = True
     return result
 
 

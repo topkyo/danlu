@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
-from .app_utils import atomic_append_jsonl
+from .app_utils import atomic_append_jsonl, runtime_write_operation
 
 HISTORY_RELATIVE = Path(".aiwiki") / "state" / "metrics-history.jsonl"
 
@@ -30,6 +30,7 @@ def history_path(root: Path) -> Path:
     return root / HISTORY_RELATIVE
 
 
+@runtime_write_operation
 def append_snapshot(root: Path, ts: str, metrics: dict[str, float | None]) -> None:
     """Append one snapshot line and propagate append durability failures."""
 

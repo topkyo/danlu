@@ -306,6 +306,7 @@ from .app_utils import (
 from .config import LLMConfig
 
 
+@runtime_write_operation
 def set_active_protocol(root: Path, protocol: str) -> dict[str, Any]:
     active = resolve_protocol(root, protocol)
     path = protocol_state_path(root)
