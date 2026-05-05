@@ -630,7 +630,11 @@ def save_compile_state(root: Path, document: dict[str, Any]) -> None:
 
 
 def load_cache_status(root: Path) -> dict[str, Any]:
-    document = load_json_document(cache_status_path(root))
+    try:
+        document = load_json_document(cache_status_path(root))
+    except OSError as exc:
+        logger.warning("cache status load failed: %s", exc)
+        return default_cache_status()
     if not isinstance(document, dict):
         return default_cache_status()
     row_counts = document.get("row_counts")
@@ -672,7 +676,11 @@ def load_cache_status(root: Path) -> dict[str, Any]:
 
 
 def save_cache_status(root: Path, document: dict[str, Any]) -> None:
-    save_json_document(cache_status_path(root), document)
+    try:
+        save_json_document(cache_status_path(root), document)
+    except OSError as exc:
+        logger.warning("cache status save failed: %s", exc)
+        return None
 
 
 def default_concept_build_state() -> dict[str, Any]:

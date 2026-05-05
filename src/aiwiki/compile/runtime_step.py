@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +77,8 @@ from ..app_utils import (
 )
 from ..memory.graph import collect_report_anchors
 from .context import CompileContext
+
+logger = logging.getLogger(__name__)
 
 
 def _curated_page_scan_record(root: Path, page: dict[str, str]) -> dict[str, Any]:
@@ -402,10 +405,13 @@ def compile_runtime_phase(context: CompileContext) -> None:
     machine_memory_build_state = machine_memory_build.get("state_document", {})
     if not isinstance(machine_memory_build_state, dict):
         machine_memory_build_state = default_machine_memory_build_state()
-    write_json_document_if_changed_ignoring_generated_timestamps(
-        machine_memory_build_state_path(context.root),
-        machine_memory_build_state,
-    )
+    try:
+        write_json_document_if_changed_ignoring_generated_timestamps(
+            machine_memory_build_state_path(context.root),
+            machine_memory_build_state,
+        )
+    except OSError as exc:
+        logger.warning("cache machine-memory build-state save failed: %s", exc)
     context.dirty_machine_memory_source_ids = list(machine_memory_build.get("dirty_source_ids", []))
     context.clean_machine_memory_source_ids = list(machine_memory_build.get("clean_source_ids", []))
     context.dirty_machine_memory_concept_slugs = list(machine_memory_build.get("dirty_concept_slugs", []))
@@ -566,10 +572,13 @@ def compile_runtime_phase(context: CompileContext) -> None:
     ranking_build_state = ranking_build.get("state_document", {})
     if not isinstance(ranking_build_state, dict):
         ranking_build_state = default_ranking_build_state()
-    write_json_document_if_changed_ignoring_generated_timestamps(
-        ranking_build_state_path(context.root),
-        ranking_build_state,
-    )
+    try:
+        write_json_document_if_changed_ignoring_generated_timestamps(
+            ranking_build_state_path(context.root),
+            ranking_build_state,
+        )
+    except OSError as exc:
+        logger.warning("cache ranking build-state save failed: %s", exc)
     context.dirty_ranking_source_ids = list(ranking_build.get("dirty_source_ids", []))
     context.clean_ranking_source_ids = list(ranking_build.get("clean_source_ids", []))
     context.dirty_ranking_concept_slugs = list(ranking_build.get("dirty_concept_slugs", []))

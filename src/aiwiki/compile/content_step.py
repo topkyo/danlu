@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from ..app_content import (
     append_wiki_log,
     build_concept_records,
@@ -17,7 +19,11 @@ from ..app_content import (
     render_sources_index,
 )
 from ..app_queries import concept_page_requires_compile, source_page_requires_compile
-from ..app_state import concept_build_state_path, default_concept_build_state, judgment_assets_path
+from ..app_state import (
+    concept_build_state_path,
+    default_concept_build_state,
+    judgment_assets_path,
+)
 from ..app_surfaces import render_judgment_assets
 from ..app_utils import (
     read_text_preview,
@@ -25,6 +31,8 @@ from ..app_utils import (
     write_json_document_if_changed_ignoring_generated_timestamps,
 )
 from .context import CompileContext
+
+logger = logging.getLogger(__name__)
 
 
 def compile_content_phase(context: CompileContext) -> None:
@@ -42,7 +50,13 @@ def compile_content_phase(context: CompileContext) -> None:
     concept_build_state = concept_build.get("state_document", {})
     if not isinstance(concept_build_state, dict):
         concept_build_state = default_concept_build_state()
-    write_json_document_if_changed_ignoring_generated_timestamps(concept_build_state_path(context.root), concept_build_state)
+    try:
+        write_json_document_if_changed_ignoring_generated_timestamps(
+            concept_build_state_path(context.root),
+            concept_build_state,
+        )
+    except OSError as exc:
+        logger.warning("cache concept build-state save failed: %s", exc)
 
     dirty_source_id_set: set[str] = set()
     for entry in context.entries:

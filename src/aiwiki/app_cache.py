@@ -8,6 +8,7 @@ See AGENTS.md migration policy.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,12 @@ from .app_state import (
 from .app_utils import relative_path, runtime_write_lock, sha256_bytes, utc_now
 
 CACHE_SCHEMA_VERSION = 1
+
+logger = logging.getLogger(__name__)
+
+
+def _log_cache_fault(label: str, exc: BaseException) -> None:
+    logger.warning("cache %s failed: %s", label, exc)
 
 
 def _json_dumps(payload: Any) -> str:
@@ -266,8 +273,9 @@ def sync_query_cache(
     force_rebuild: bool = False,
 ) -> dict[str, Any]:
     with runtime_write_lock(root):
-        connection = _connect_cache(root)
+        connection: sqlite3.Connection | None = None
         try:
+            connection = _connect_cache(root)
             _initialize_schema(connection)
             memory_hash = query_cache_memory_hash(memory)
             rebuild_reason = _rebuild_reason(
@@ -504,19 +512,27 @@ def sync_query_cache(
             )
             document["row_counts"] = row_counts
             return document
+        except (sqlite3.Error, OSError, json.JSONDecodeError, TypeError) as exc:
+            _log_cache_fault("sync", exc)
+            return load_cache_status(root)
         finally:
-            connection.close()
+            if connection is not None:
+                connection.close()
 
 
 def _load_rows(connection: sqlite3.Connection, table: str, key_field: str) -> dict[str, Any]:
     rows = connection.execute(f"SELECT {key_field}, payload_json FROM {table}").fetchall()
     loaded: dict[str, Any] = {}
-    for row in rows:
-        key = str(row[key_field] or "")
-        if not key:
-            continue
-        payload = json.loads(str(row["payload_json"] or "{}"))
-        loaded[key] = payload
+    try:
+        for row in rows:
+            key = str(row[key_field] or "")
+            if not key:
+                continue
+            payload = json.loads(str(row["payload_json"] or "{}"))
+            loaded[key] = payload
+    except (json.JSONDecodeError, TypeError) as exc:
+        _log_cache_fault(f"load {table}", exc)
+        raise
     return loaded
 
 
@@ -524,8 +540,9 @@ def load_query_cache_snapshot(root: Path) -> dict[str, Any] | None:
     path = cache_db_path(root)
     if not path.exists():
         return None
-    connection = _connect_cache(root)
+    connection: sqlite3.Connection | None = None
     try:
+        connection = _connect_cache(root)
         _initialize_schema(connection)
         if _read_meta(connection, "schema_version") != str(CACHE_SCHEMA_VERSION):
             return None
@@ -584,16 +601,21 @@ def load_query_cache_snapshot(root: Path) -> dict[str, Any] | None:
             "knowledge_lifecycle": {"entries": concept_lifecycle_entries},
             "archive_candidates": {"entries": archive_entries},
         }
+    except (sqlite3.Error, OSError, json.JSONDecodeError, TypeError) as exc:
+        _log_cache_fault("load snapshot", exc)
+        return None
     finally:
-        connection.close()
+        if connection is not None:
+            connection.close()
 
 
 def load_cached_query_result(root: Path, query_key: str, payload_hash: str) -> dict[str, Any] | None:
     path = cache_db_path(root)
     if not path.exists():
         return None
-    connection = _connect_cache(root)
+    connection: sqlite3.Connection | None = None
     try:
+        connection = _connect_cache(root)
         _initialize_schema(connection)
         if _read_meta(connection, "schema_version") != str(CACHE_SCHEMA_VERSION):
             return None
@@ -605,14 +627,19 @@ def load_cached_query_result(root: Path, query_key: str, payload_hash: str) -> d
             return None
         payload = json.loads(str(row["payload_json"] or "{}"))
         return payload if isinstance(payload, dict) else None
+    except (sqlite3.Error, OSError, json.JSONDecodeError, TypeError) as exc:
+        _log_cache_fault("load query result", exc)
+        return None
     finally:
-        connection.close()
+        if connection is not None:
+            connection.close()
 
 
 def save_cached_query_result(root: Path, query_key: str, payload_hash: str, payload: dict[str, Any]) -> None:
     with runtime_write_lock(root):
-        connection = _connect_cache(root)
+        connection: sqlite3.Connection | None = None
         try:
+            connection = _connect_cache(root)
             _initialize_schema(connection)
             _write_meta(connection, "schema_version", str(CACHE_SCHEMA_VERSION))
             connection.execute(
@@ -622,32 +649,40 @@ def save_cached_query_result(root: Path, query_key: str, payload_hash: str, payl
             )
             connection.commit()
             _save_live_cache_status(root, connection, enabled=True)
+        except (sqlite3.Error, OSError, json.JSONDecodeError, TypeError) as exc:
+            _log_cache_fault("save query result", exc)
+            return None
         finally:
-            connection.close()
+            if connection is not None:
+                connection.close()
 
 
 def _merge_cache_status(root: Path, *, stats_delta: dict[str, int] | None = None, last_query: dict[str, Any] | None = None, last_drop: dict[str, Any] | None = None) -> dict[str, Any]:
     with runtime_write_lock(root):
-        status = load_cache_status(root)
-        stats = dict(status.get("stats", {}))
-        for key, value in (stats_delta or {}).items():
-            stats[key] = int(stats.get(key, 0) or 0) + int(value or 0)
-        document = {
-            "version": int(status.get("version", 1) or 1),
-            "enabled": bool(status.get("enabled", False)),
-            "schema_version": int(status.get("schema_version", CACHE_SCHEMA_VERSION) or CACHE_SCHEMA_VERSION),
-            "updated_at": utc_now(),
-            "db_path": str(status.get("db_path") or relative_path(root, cache_db_path(root))),
-            "state_path": str(status.get("state_path") or relative_path(root, cache_status_path(root))),
-            "row_counts": dict(status.get("row_counts", {})),
-            "stats": stats,
-            "last_sync": dict(status.get("last_sync", {})),
-            "last_query": dict(last_query if last_query is not None else status.get("last_query", {})),
-            "last_drop": dict(last_drop if last_drop is not None else status.get("last_drop", {})),
-            "last_rebuild": dict(status.get("last_rebuild", {})),
-        }
-        save_cache_status(root, document)
-        return document
+        try:
+            status = load_cache_status(root)
+            stats = dict(status.get("stats", {}))
+            for key, value in (stats_delta or {}).items():
+                stats[key] = int(stats.get(key, 0) or 0) + int(value or 0)
+            document = {
+                "version": int(status.get("version", 1) or 1),
+                "enabled": bool(status.get("enabled", False)),
+                "schema_version": int(status.get("schema_version", CACHE_SCHEMA_VERSION) or CACHE_SCHEMA_VERSION),
+                "updated_at": utc_now(),
+                "db_path": str(status.get("db_path") or relative_path(root, cache_db_path(root))),
+                "state_path": str(status.get("state_path") or relative_path(root, cache_status_path(root))),
+                "row_counts": dict(status.get("row_counts", {})),
+                "stats": stats,
+                "last_sync": dict(status.get("last_sync", {})),
+                "last_query": dict(last_query if last_query is not None else status.get("last_query", {})),
+                "last_drop": dict(last_drop if last_drop is not None else status.get("last_drop", {})),
+                "last_rebuild": dict(status.get("last_rebuild", {})),
+            }
+            save_cache_status(root, document)
+            return document
+        except (sqlite3.Error, OSError, json.JSONDecodeError, TypeError) as exc:
+            _log_cache_fault("status merge", exc)
+            return load_cache_status(root)
 
 
 def record_query_cache_event(
@@ -666,18 +701,22 @@ def record_query_cache_event(
         stats_delta = {"query_hits": 1}
     else:
         stats_delta = {"query_misses": 1}
-    return _merge_cache_status(
-        root,
-        stats_delta=stats_delta,
-        last_query={
-            "updated_at": utc_now(),
-            "query_key": query_key,
-            "payload_hash": payload_hash,
-            "hit": hit,
-            "bypass": bypass,
-            "reason": reason,
-        },
-    )
+    try:
+        return _merge_cache_status(
+            root,
+            stats_delta=stats_delta,
+            last_query={
+                "updated_at": utc_now(),
+                "query_key": query_key,
+                "payload_hash": payload_hash,
+                "hit": hit,
+                "bypass": bypass,
+                "reason": reason,
+            },
+        )
+    except (sqlite3.Error, OSError, json.JSONDecodeError, TypeError) as exc:
+        _log_cache_fault("record event", exc)
+        return load_cache_status(root)
 
 
 def drop_query_cache(root: Path) -> dict[str, Any]:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from ..app_compile_ops import build_agent_packs
@@ -65,6 +66,8 @@ from ..app_surfaces import (
 )
 from ..app_utils import write_json_document_if_changed_ignoring_generated_timestamps
 from .context import CompileContext
+
+logger = logging.getLogger(__name__)
 
 
 def _stable_output_created_at(path: Path, fallback: str) -> str:
@@ -350,10 +353,13 @@ def compile_output_phase(context: CompileContext) -> None:
     output_pack_build_state = output_pack_build.get("state_document", {})
     if not isinstance(output_pack_build_state, dict):
         output_pack_build_state = default_output_pack_build_state()
-    write_json_document_if_changed_ignoring_generated_timestamps(
-        output_pack_build_state_path(context.root),
-        output_pack_build_state,
-    )
+    try:
+        write_json_document_if_changed_ignoring_generated_timestamps(
+            output_pack_build_state_path(context.root),
+            output_pack_build_state,
+        )
+    except OSError as exc:
+        logger.warning("cache output-pack build-state save failed: %s", exc)
     context.output_packs = output_pack_build.get("output_packs", {})
     if not isinstance(context.output_packs, dict):
         context.output_packs = default_output_pack_build_state()
@@ -418,10 +424,13 @@ def compile_output_phase(context: CompileContext) -> None:
     domain_pilot_build_state = domain_pilot_build.get("state_document", {})
     if not isinstance(domain_pilot_build_state, dict):
         domain_pilot_build_state = default_domain_pilot_build_state()
-    write_json_document_if_changed_ignoring_generated_timestamps(
-        domain_pilot_build_state_path(context.root),
-        domain_pilot_build_state,
-    )
+    try:
+        write_json_document_if_changed_ignoring_generated_timestamps(
+            domain_pilot_build_state_path(context.root),
+            domain_pilot_build_state,
+        )
+    except OSError as exc:
+        logger.warning("cache domain-pilot build-state save failed: %s", exc)
     context.domain_pilots = domain_pilot_build.get("domain_pilots", {})
     if not isinstance(context.domain_pilots, dict):
         context.domain_pilots = {
