@@ -51,20 +51,35 @@ def _normalize_preview_lock_status(value: Any) -> Any:
     current process (rather than `conflict`). The on-wire preview shape, however, is
     expected to look the same as a standalone preview (`status: available`); rewrite
     here so receipts and acceptance fixtures stay stable.
+
+    Tightened: only applies the status rewrite to subtrees reached via a `lock` key,
+    so unrelated dicts that happen to share `status`/`would_acquire` shape are not
+    accidentally mutated.
     """
+    return _walk_preview_lock_status(value, in_lock_subtree=False)
+
+
+def _walk_preview_lock_status(value: Any, *, in_lock_subtree: bool) -> Any:
     if isinstance(value, dict):
         if (
-            "status" in value
+            in_lock_subtree
+            and "status" in value
             and "would_acquire" in value
             and value.get("status") == "held_by_current_process"
         ):
             normalized = dict(value)
             normalized["status"] = "available"
             normalized["would_acquire"] = True
-            return {k: _normalize_preview_lock_status(v) for k, v in normalized.items()}
-        return {k: _normalize_preview_lock_status(v) for k, v in value.items()}
+            return {
+                k: _walk_preview_lock_status(v, in_lock_subtree=(k == "lock"))
+                for k, v in normalized.items()
+            }
+        return {
+            k: _walk_preview_lock_status(v, in_lock_subtree=(k == "lock"))
+            for k, v in value.items()
+        }
     if isinstance(value, list):
-        return [_normalize_preview_lock_status(item) for item in value]
+        return [_walk_preview_lock_status(item, in_lock_subtree=in_lock_subtree) for item in value]
     return value
 
 
@@ -74,6 +89,7 @@ def run_alchemy_legacy_migration_preview(root: Path, *, limit: int = 50) -> dict
     return preview_legacy_elixir_migration(root, limit=limit)
 
 
+@runtime_write_operation
 def run_alchemy_legacy_migration_apply(root: Path, *, limit: int = 50, note: str | None = None) -> dict[str, Any]:
     from aiwiki.execution.alchemy import apply_legacy_elixir_migration
 
@@ -86,6 +102,7 @@ def run_alchemy_superseded_cleanup_preview(root: Path, *, limit: int = 50) -> di
     return preview_superseded_elixir_cleanup(root, limit=limit)
 
 
+@runtime_write_operation
 def run_alchemy_superseded_cleanup_apply(root: Path, *, limit: int = 50, note: str | None = None) -> dict[str, Any]:
     from aiwiki.execution.alchemy import apply_superseded_elixir_cleanup
 
@@ -306,6 +323,7 @@ def run_alchemy_judge_apply(
     }
 
 
+@runtime_write_operation
 def run_alchemy_judge_propose(
     root: Path,
     *,
