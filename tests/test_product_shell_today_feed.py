@@ -97,3 +97,23 @@ class ProductShellTodayFeedContractTests(unittest.TestCase):
         text = (PLUGIN / "main.js").read_text(encoding="utf-8")
         suspicious_in_t_call = re.findall(r't\("[^"]*(?:review_backlog_counts|audit\.jsonl|planner-log)[^"]*"\)', text)
         self.assertFalse(suspicious_in_t_call, f"mechanism words in t() calls: {suspicious_in_t_call}")
+
+    # ---- R90 Today 顶部 refresh + last updated ----
+    def test_r90_today_head_has_refresh_button(self) -> None:
+        text = (PLUGIN / "src/render_today.js").read_text(encoding="utf-8")
+        self.assertIn("furnace-today-feed-head", text)
+        self.assertIn("furnace-today-refresh-btn", text)
+        self.assertIn('plugin.t("刷新炉子")', text)
+        self.assertIn("refreshShellSummaryCommand", text)
+
+    def test_r90_today_head_shows_last_updated(self) -> None:
+        text = (PLUGIN / "src/render_today.js").read_text(encoding="utf-8")
+        self.assertIn("furnace-today-last-updated", text)
+        self.assertIn("getLastSummaryRefreshLabel", text)
+
+    def test_r90_plugin_exposes_last_summary_refresh_label(self) -> None:
+        plugin_js = (PLUGIN / "src/plugin.js").read_text(encoding="utf-8")
+        self.assertIn("getLastSummaryRefreshLabel", plugin_js)
+        # 4 档相对时间 + 兜底
+        for key in ["刚刚", "分钟前", "小时前", "天前", "未刷新"]:
+            self.assertIn(key, plugin_js)

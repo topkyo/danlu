@@ -4,7 +4,26 @@ function renderTodayFeed(plugin, container) {
   const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
 
   const section = container.createDiv({ cls: "furnace-today-feed" });
-  section.createEl("h2", { text: plugin.t("Today") });
+  // R90: Today 标题行 → 标题 + "刷新炉子"按钮 + last updated
+  const headRow = section.createDiv({ cls: "furnace-today-feed-head" });
+  headRow.createEl("h2", { text: plugin.t("Today"), cls: "furnace-today-feed-title" });
+  const refreshWrap = headRow.createDiv({ cls: "furnace-today-feed-refresh" });
+  const refreshBtn = refreshWrap.createEl("button", {
+    cls: "furnace-today-refresh-btn",
+    text: plugin.t("刷新炉子"),
+  });
+  refreshBtn.setAttr && refreshBtn.setAttr("aria-label", plugin.t("刷新炉子"));
+  refreshBtn.addEventListener("click", async () => {
+    refreshBtn.disabled = true;
+    try {
+      await plugin.refreshShellSummaryCommand();
+    } catch (e) { /* 已在 plugin 层 Notice */ }
+    finally { refreshBtn.disabled = false; }
+  });
+  refreshWrap.createEl("span", {
+    cls: "furnace-today-last-updated",
+    text: plugin.getLastSummaryRefreshLabel(),
+  });
 
   // R88: pending submissions（用户刚提交、流水线未落地的"处理中"卡片）
   // 始终在最前面渲染，独立于 shellSummary 状态，构成视觉闭环
@@ -98,8 +117,8 @@ function renderPendingSubmissionsGroup(plugin, section) {
       if (entry.reconcileTarget === "receipts") statusLabel = plugin.t("已记录");
       else statusLabel = plugin.t("报告已生成");
     } else if (entry.status === "received") {
-      // R89: 已接收但未 reconcile；如已 stale（>12h），换提示
-      statusLabel = entry._stale ? plugin.t("可能已完成，点上方刷新") : plugin.t("已接收，等待生成报告");
+      // R89: 已接收但未 reconcile；R90: stale 文案指向卡上"刷新状态"
+      statusLabel = entry._stale ? plugin.t("可能已完成，点下方刷新状态") : plugin.t("已接收，等待生成报告");
     } else if (entry.status === "failed") {
       statusLabel = plugin.t("失败");
     } else {
@@ -137,10 +156,45 @@ function renderPendingSubmissionsGroup(plugin, section) {
       const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
       dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
     } else if (entry.status === "received") {
-      // R89: received 提供手动 Dismiss 入口（防卡死）
+      // R89: received 提供手动 Dismiss 入口（防卡死）；R90: 加"刷新状态"
       const actions = card.createDiv({ cls: "furnace-pending-card-actions" });
+      const refreshBtn = actions.createEl("button", { cls: "furnace-pending-refresh-btn", text: plugin.t("刷新状态") });
+      refreshBtn.addEventListener("click", async () => {
+        refreshBtn.disabled = true;
+        try { await plugin.refreshShellSummaryCommand(); } catch (e) {}
+        finally { refreshBtn.disabled = false; }
+      });
       const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
       dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
+    } else if (entry.status === "running") {
+      // R90: running 卡也提供"刷新状态"，让用户主动同步而不是干等
+      const actions = card.createDiv({ cls: "furnace-pending-card-actions" });
+      const refreshBtn = actions.createEl("button", { cls: "furnace-pending-refresh-btn", text: plugin.t("刷新状态") });
+      refreshBtn.addEventListener("click", async () => {
+        refreshBtn.disabled = true;
+        try { await plugin.refreshShellSummaryCommand(); } catch (e) {}
+        finally { refreshBtn.disabled = false; }
+      });
+    } else if (entry.status === "done") {
+      // R90: done 不再 4s 自动消失；变行动卡：打开报告 / 查看回执 / 完成
+      // P1 fix: 统一走 plugin.openPendingDoneTarget(target, path)，保证 path 缺失/打开失败时
+      // 退化到 Outputs Hub / Recent Runs / HOME.md，并给用户 Notice 反馈。
+      const actions = card.createDiv({ cls: "furnace-pending-card-actions" });
+      const target = String(entry.reconcileTarget || "");
+      const reconcilePath = String(entry.reconcilePath || "");
+      if (target === "outputs") {
+        const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-open-report-btn", text: plugin.t("打开报告") });
+        openBtn.addEventListener("click", () => {
+          plugin.openPendingDoneTarget("outputs", reconcilePath);
+        });
+      } else if (target === "receipts") {
+        const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-open-receipt-btn", text: plugin.t("查看回执") });
+        openBtn.addEventListener("click", () => {
+          plugin.openPendingDoneTarget("receipts", reconcilePath);
+        });
+      }
+      const doneBtn = actions.createEl("button", { cls: "furnace-pending-done-btn", text: plugin.t("完成") });
+      doneBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
     }
   }
 }

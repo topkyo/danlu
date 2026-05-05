@@ -46,8 +46,24 @@
 | **Round 87 R85/R86 non-blocking 小补丁清理** (2026-05-05) | history strict 测试 path:N 断言收紧 / receipt strict missing+non-dict edge tests / HTTPS fallback wrap_socket 单次 + server_hostname 锁定 / redirect 后 IP list 重建测试 / 实现 0 改动 | ✅ done (`0891a44`) |
 | **Round 88 PM-UX 三件套** (2026-05-05) | Today 空态 CTA「投一份材料」聚焦 universal input / 提交后"处理中"卡片（runtime-only push/done/failed/reset state machine + reconcile 时间戳门槛 + 字段扩展 + 短指纹 exact + 超窗保留 + dedupe）/ 用户层面板文案白话化（plugin/constants/render_execution/render_review/render_primitives/health-state，"shell-summary.json" → "数据还没准备好"等）/ pending 卡片样式 + pulse / 12 契约测试 / oracle qa-review 2 轮全 PASS | ✅ done |
 | **Round 89 PM/UX 信任闭环 + 文案统一** (2026-05-05) | pending 持久化（settings.persistedPendingSubmissions + serialize/hydrate + TTL 24h running→failed + cap 8）/ 状态机两段式（running → received "已接收，等待生成报告" → done(target=outputs\|receipts) "报告已生成"\|"已记录"）/ markReceived/markDone 互斥防御（防 reconcile race & 重复 setTimeout）/ 失败卡通用 hint + 重试统一收口 markReceived / Today→今天 闭环（标题 + 3 处 input hint）/ groupSpecs 中文化（新报告/系统动态/需要你确认/已完成/下一步建议）/ Advanced drawer "开发者诊断信息"分隔横条 / 23 pending 测试 + 9 today_feed 测试 + 48 jest / oracle qa-review 2 轮全 PASS | ✅ done |
+| **Round 90 提交→状态→结果 闭环** (2026-05-05) | Today 顶部"刷新炉子"+last-updated（getLastSummaryRefreshLabel 4 档：刚刚/N 分钟前/N 小时前/N 天前 + clamp 未来时间）/ pending received/running 卡加"刷新状态"按钮 / done 卡不再 4s 自动消失 → 行动卡（outputs:打开报告 / receipts:查看回执 / 完成）/ openPendingDoneTarget helper：openWorkspacePath 改返 boolean，失败退化到 Outputs Hub / Recent Runs / HOME.md + Notice / refreshShellSummaryCommand 始终 fallback loadShellSummaryFromDisk（保证 reconcile）/ done TTL 7d hydrate（finishedAt 缺失退 startedAt）/ reconcilePath 进序列化 / +10 R90 测试（46 pending+today / 13 acceptance / 48 jest 全过）/ oracle qa-review 3 轮 PASS | ✅ done |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 90 — 提交→状态→结果 闭环 — 完成
+
+- **目的**：oracle PM/UX 三轮评估给到 8.2/10，剩余两个最大痛点：done 卡 4s 自动消失令人焦虑（用户在卡片消失前还来不及反应）+ 首屏没有"刷新炉子"主动同步入口；目标 8.2→8.7。
+- **实现**：
+  - **#1 done 卡变行动卡**：`markPendingSubmissionDone(id, target, reconcilePath)` 移除 4s `setTimeout`，新增 `reconcilePath` 参数；render_today done 分支不再静默消失，渲染按钮 outputs→「打开报告」`.furnace-pending-open-report-btn` / receipts→「查看回执」`.furnace-pending-open-receipt-btn` + 共用「完成」`.furnace-pending-done-btn`(removePendingSubmission)。done 卡颜色变绿（`.furnace-pending-done` 左 border + status text 走 `--text-success`）。
+  - **#2 reconcile 提取 path**：`reconcilePendingSubmissions` 从 hitCand 提 `path`（outputs:`hitCand.path` / receipts:`hitCand.path||hitCand.receipt_path`），通过 `hits[{id,target,path}]` 传给 markDone；`serializePendingSubmissions/hydratePendingSubmissions` 加 reconcilePath 字段；done 7 天 TTL（`finishedAt` 缺失退 `startedAt` 兜底）。
+  - **#3 顶部刷新炉子 + last updated**：render_today 标题行改 `.furnace-today-feed-head`：标题 + `.furnace-today-refresh-btn`「刷新炉子」（disabled 切换 + try/catch + Notice）+ `.furnace-today-last-updated`；plugin 新增 `getLastSummaryRefreshLabel()` 4 档（`刚刚 / N 分钟前 / N 小时前 / N 天前 / 未刷新`）+ clamp 未来时间 `Math.max(0, ...)`。
+  - **#4 受信 refresh + 退化路径**：`refreshShellSummaryCommand()` 改成 try/catch 包 `runPluginCommand` 后 **无条件** `await loadShellSummaryFromDisk()` —— 保证无论 launcher payload 形态如何都触发基于磁盘 summary 的 reconcile。`openWorkspacePath(path)` 改返 boolean（成功 2 处 return true / 失败 4 处 return false：no path / repo missing / not found / no adapter）；既有调用方不读返回值，无破坏。新增 `openPendingDoneTarget(target, path)`：基于 boolean 决定退化路径 outputs→`openOutputsHub()`+Notice / receipts→`openRecentRunsView()`+Notice / 兜底 `openHomeNote()` + 最终兜底 Notice "无法打开目标，可能尚未生成"。
+  - **#5 received stale 文案校准**：`已接收，等待生成报告 / 可能已完成，点下方刷新状态`（指向 received 卡上自带的"刷新状态"按钮，不再依赖顶部刷新）。running 卡也加「刷新状态」让用户主动同步。
+  - **#6 翻译键 + 样式**：constants.js 加 `刷新炉子 / 刷新状态 / 打开报告 / 查看回执 / 完成 / 未刷新 / 刚刚 / {n} 分钟前 / {n} 小时前 / {n} 天前 / 已打开输出汇总（找不到具体报告路径）/ 已打开运行记录（找不到具体回执路径）/ 无法打开目标，可能尚未生成`；styles.css 加 `.furnace-today-feed-head / .furnace-today-feed-title / .furnace-today-feed-refresh / .furnace-today-refresh-btn / .furnace-today-last-updated / .furnace-pending-refresh-btn / .furnace-pending-open-report-btn / .furnace-pending-open-receipt-btn / .furnace-pending-done-btn / .furnace-pending-done`。
+- **验证**：`bash build.sh` → main.js 7992 行；pytest pending_card 30/30 + today_feed 16/16 = 46 测试全过；全量 1739 + 13 acceptance 全过；jest 48/48 全过。
+- **qa-review**：oracle round 1 fail（3 P1：done 行动按钮 fallback 静默失效 / receipts 缺 path 调不存在的 openAdvancedDrawer / refreshCommand 不保证基于磁盘 reconcile）→ round 2 fail（P1-1 未完全解：openWorkspacePath 失败时不 throw 导致 helper 误判成功）→ round 3 全 PASS。
+- **Stop Lines**：done 卡不自动消失（必须用户主动「完成」）；不引入 openAdvancedDrawer 不存在的方法；不破坏既有 openWorkspacePath 调用方（boolean 返回向下兼容）；reconcile 路径与首屏刷新走同一条管道。
+- **归档**：contract `.codex/contracts/archive/round-90-submit-status-result-loop.md`；gate `.codex/gates/qa-review.md` status=pass。
 
 ### Round 89 — PM/UX 信任闭环 + 文案统一收口 — 完成
 

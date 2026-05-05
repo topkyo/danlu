@@ -253,6 +253,120 @@ class PendingSubmissionContractTests(unittest.TestCase):
         self.assertIn(".furnace-advanced-dev-banner", css)
         self.assertIn(".furnace-pending-card-hint", css)
 
+    # ---- R90 提交→状态→结果 闭环 ----
+    def test_r90_done_card_does_not_auto_dismiss(self) -> None:
+        """R90 #1: done 卡不再 4s 自动消失。"""
+        plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        # 锁住 markPendingSubmissionDone 中无 setTimeout 自动 remove
+        idx = plugin_js.find("markPendingSubmissionDone(")
+        self.assertGreater(idx, 0)
+        end = plugin_js.find("\n  }\n", idx)
+        body = plugin_js[idx:end]
+        self.assertNotIn("setTimeout", body)
+        self.assertNotIn("removePendingSubmission", body)
+
+    def test_r90_markdone_accepts_target_and_path(self) -> None:
+        plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        self.assertRegex(
+            plugin_js,
+            r"markPendingSubmissionDone\(\s*id\s*,\s*reconcileTarget\s*,\s*reconcilePath\s*\)",
+        )
+        # 序列化记录 reconcilePath
+        ser_idx = plugin_js.find("serializePendingSubmissions")
+        self.assertGreater(ser_idx, 0)
+        ser_body = plugin_js[ser_idx : ser_idx + 1500]
+        self.assertIn("reconcilePath", ser_body)
+
+    def test_r90_done_hydrate_drops_after_seven_days(self) -> None:
+        plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        hyd_idx = plugin_js.find("hydratePendingSubmissions(raw)")
+        self.assertGreater(hyd_idx, 0)
+        body = plugin_js[hyd_idx : hyd_idx + 3000]
+        # 7 天 TTL 常量
+        self.assertIn("7 * 24 * 60 * 60 * 1000", body)
+
+    def test_r90_reconcile_passes_path_to_markdone(self) -> None:
+        plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        idx = plugin_js.find("reconcilePendingSubmissions(summary) {")
+        self.assertGreater(idx, 0)
+        end = plugin_js.find("\n  }\n", idx)
+        body = plugin_js[idx:end]
+        # markDone 第三个参数为 path
+        self.assertRegex(body, r"markPendingSubmissionDone\(\s*[^,]+,\s*[^,]+,\s*[^)]+\)")
+
+    def test_r90_running_card_has_refresh_button(self) -> None:
+        text = (SRC / "render_today.js").read_text(encoding="utf-8")
+        self.assertIn("furnace-pending-refresh-btn", text)
+        self.assertIn('plugin.t("刷新状态")', text)
+
+    def test_r90_done_card_has_action_buttons(self) -> None:
+        text = (SRC / "render_today.js").read_text(encoding="utf-8")
+        # done 分支
+        self.assertIn('entry.status === "done"', text)
+        # outputs → 打开报告
+        self.assertIn("furnace-pending-open-report-btn", text)
+        self.assertIn('plugin.t("打开报告")', text)
+        # receipts → 查看回执
+        self.assertIn("furnace-pending-open-receipt-btn", text)
+        self.assertIn('plugin.t("查看回执")', text)
+        # 完成（dismiss）
+        self.assertIn("furnace-pending-done-btn", text)
+        self.assertIn('plugin.t("完成")', text)
+
+    def test_r90_styles_define_r90_classes(self) -> None:
+        css = (PLUGIN / "styles.css").read_text(encoding="utf-8")
+        self.assertIn(".furnace-pending-refresh-btn", css)
+        self.assertIn(".furnace-pending-open-report-btn", css)
+        self.assertIn(".furnace-pending-open-receipt-btn", css)
+        self.assertIn(".furnace-pending-done-btn", css)
+
+    # ---- R90 P1 修复回归 ----
+    def test_r90_done_buttons_route_through_open_helper(self) -> None:
+        """done 卡按钮统一走 plugin.openPendingDoneTarget，不直接调 openWorkspacePath。"""
+        text = (SRC / "render_today.js").read_text(encoding="utf-8")
+        # 退化入口存在
+        self.assertIn("openPendingDoneTarget", text)
+        # done 分支不再直接条件 await openWorkspacePath（避免 path 缺失静默失效）
+        done_idx = text.find("R90: done 不再 4s 自动消失")
+        self.assertGreater(done_idx, 0)
+        done_block = text[done_idx : done_idx + 1500]
+        self.assertNotIn("openAdvancedDrawer", done_block)
+        # outputs / receipts 都委托给 helper
+        self.assertIn('plugin.openPendingDoneTarget("outputs"', done_block)
+        self.assertIn('plugin.openPendingDoneTarget("receipts"', done_block)
+
+    def test_r90_open_pending_done_target_helper(self) -> None:
+        plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        self.assertIn("async openPendingDoneTarget(", plugin_js)
+        # 退化路径覆盖 outputs / receipts / 兜底
+        idx = plugin_js.find("async openPendingDoneTarget(")
+        body = plugin_js[idx : idx + 2000]
+        self.assertIn("openOutputsHub", body)
+        self.assertIn("openRecentRunsView", body)
+        self.assertIn("openHomeNote", body)
+        self.assertIn("new Notice", body)
+        # 据 openWorkspacePath 返回 boolean 决定是否退化
+        self.assertIn("if (opened) return", body)
+
+    def test_r90_open_workspace_path_returns_boolean(self) -> None:
+        """openWorkspacePath 必须显式返回 boolean，让退化判定可用。"""
+        plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        idx = plugin_js.find("async openWorkspacePath(relativePath)")
+        self.assertGreater(idx, 0)
+        body = plugin_js[idx : idx + 2500]
+        # 至少 2 处 return false（失败路径）+ 2 处 return true（成功路径）
+        self.assertGreaterEqual(body.count("return false"), 2)
+        self.assertGreaterEqual(body.count("return true"), 2)
+
+    def test_r90_refresh_command_falls_back_to_disk_summary(self) -> None:
+        plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        idx = plugin_js.find("async refreshShellSummaryCommand()")
+        self.assertGreater(idx, 0)
+        body = plugin_js[idx : idx + 1000]
+        # try/catch 包 runPluginCommand，并显式 fallback loadShellSummaryFromDisk
+        self.assertIn("loadShellSummaryFromDisk", body)
+        self.assertIn("try {", body)
+
 
 if __name__ == "__main__":
     unittest.main()

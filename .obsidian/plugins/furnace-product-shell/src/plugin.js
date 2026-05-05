@@ -393,22 +393,35 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       finishedAt: String(e.finishedAt || ""),
       error: String(e.error || ""),
       reconcileTarget: String(e.reconcileTarget || ""),
+      reconcilePath: String(e.reconcilePath || ""),
       retryArgs: e.retryArgs && typeof e.retryArgs === "object" ? e.retryArgs : null,
     }));
   }
 
   // R89: 启动时从持久化 settings hydrate；超过 TTL 24h 的 running/received → failed
+  // R90: done 状态加 7 天 TTL（避免无限堆积）
   hydratePendingSubmissions(raw) {
     if (!Array.isArray(raw) || !raw.length) return [];
     const TTL_MS = 24 * 60 * 60 * 1000;
     const RECEIVED_STALE_MS = 12 * 60 * 60 * 1000;
+    const DONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
     const now = Date.now();
     const out = [];
     for (const item of raw) {
       if (!item || typeof item !== "object") continue;
       const startedAt = String(item.startedAt || "");
+      const finishedAt = String(item.finishedAt || "");
       const startMs = Date.parse(startedAt);
+      const finishedMs = Date.parse(finishedAt);
       const status = String(item.status || "running");
+      // R90: done 卡 7 天后自动 drop
+      // P2: 旧数据缺 finishedAt 时回退 startedAt，避免无 TTL 永久保留
+      if (status === "done") {
+        const ttlBase = Number.isFinite(finishedMs)
+          ? finishedMs
+          : (Number.isFinite(startMs) ? startMs : null);
+        if (ttlBase !== null && now - ttlBase > DONE_TTL_MS) continue;
+      }
       let nextStatus = status;
       let error = String(item.error || "");
       if (Number.isFinite(startMs)) {
@@ -417,8 +430,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           nextStatus = "failed";
           error = "上次提交可能仍在处理或已完成，点上方刷新查看结果";
         } else if (status === "received" && age > RECEIVED_STALE_MS) {
-          // 不强制改 failed，保留 received 但加提示词；render 层可基于 finishedAt/startedAt 判断
-          // 这里先标记 stale 字段，render 端可读
           item._stale = true;
         }
       }
@@ -432,6 +443,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         finishedAt: String(item.finishedAt || (nextStatus === "failed" ? new Date().toISOString() : "")),
         error,
         reconcileTarget: String(item.reconcileTarget || ""),
+        reconcilePath: String(item.reconcilePath || ""),
         retryArgs: item.retryArgs && typeof item.retryArgs === "object" ? item.retryArgs : null,
         _stale: Boolean(item._stale),
       });
@@ -1878,12 +1890,57 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async refreshShellSummaryCommand() {
-    await this.runPluginCommand(this.t("Refresh Furnace Shell"), ["shell-status"], {
-      refreshAfter: false,
-      updateSummaryFromPayload: true,
-      notice: false,
-    });
+    // R90 P1: 保证无论 payload 形态如何，都重新基于磁盘 summary 触发 reconcile。
+    // updateSummaryFromPayload 仅在 payload.kind === "product-shell-summary" 时生效；
+    // 若 launcher 返回旧/异常 payload，显式 fallback loadShellSummaryFromDisk()。
+    try {
+      await this.runPluginCommand(this.t("Refresh Furnace Shell"), ["shell-status"], {
+        refreshAfter: false,
+        updateSummaryFromPayload: true,
+        notice: false,
+      });
+    } catch (error) {
+      // 失败也尝试基于磁盘 summary 推进 reconcile，避免"刷新状态"完全无反馈
+    }
+    await this.loadShellSummaryFromDisk();
   }
+
+  // R90: done 卡"打开报告/查看回执"统一入口；处理 path 缺失 + open 失败 + 用户反馈
+  async openPendingDoneTarget(target, reconcilePath) {
+    const normalizedPath = String(reconcilePath || "").trim();
+    const normalizedTarget = String(target || "").trim();
+    if (normalizedPath) {
+      let opened = false;
+      try {
+        // openWorkspacePath 返回 boolean：path 缺失 / repo missing / not found / no adapter 时为 false
+        opened = await this.openWorkspacePath(normalizedPath);
+      } catch (error) {
+        opened = false;
+      }
+      if (opened) return;
+    }
+    // 退化：outputs → Outputs Hub；receipts → Recent Runs；其余 → HOME.md
+    try {
+      if (normalizedTarget === "outputs" && typeof this.openOutputsHub === "function") {
+        await this.openOutputsHub();
+        new Notice(this.t("已打开输出汇总（找不到具体报告路径）"));
+        return;
+      }
+      if (normalizedTarget === "receipts" && typeof this.openRecentRunsView === "function") {
+        await this.openRecentRunsView();
+        new Notice(this.t("已打开运行记录（找不到具体回执路径）"));
+        return;
+      }
+      if (typeof this.openHomeNote === "function") {
+        await this.openHomeNote();
+        return;
+      }
+    } catch (error) {
+      // 最后兜底：通知失败
+    }
+    new Notice(this.t("无法打开目标，可能尚未生成"));
+  }
+
 
   async runCompileCommand() {
     await this.runPluginCommand(this.t("Compile"), ["compile"], { refreshAfter: true });
@@ -1999,21 +2056,20 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.refreshOpenViews();
   }
 
-  // R89: reconcile 命中 → done（"报告已生成" or "已记录"），保留 4s 自动消失
-  // reconcileTarget: "outputs" | "receipts"
-  // 防御：done/failed 不应再被升到 done（避免重复 setTimeout）
-  markPendingSubmissionDone(id, reconcileTarget) {
+  // R90: reconcile 命中 → done（"报告已生成" or "已记录"）
+  // reconcileTarget: "outputs" | "receipts"; reconcilePath: cand.path（可空）
+  // 不再 4s 自动消失：done 卡变行动卡，由用户点"打开报告/查看回执/完成"主动 dismiss
+  // 防御：done/failed 不应再被升到 done
+  markPendingSubmissionDone(id, reconcileTarget, reconcilePath) {
     const entry = this._findPending(id);
     if (!entry) return;
     if (entry.status === "done" || entry.status === "failed") return;
     entry.status = "done";
     entry.finishedAt = new Date().toISOString();
     if (reconcileTarget) entry.reconcileTarget = String(reconcileTarget);
+    if (reconcilePath) entry.reconcilePath = String(reconcilePath);
     void this.savePluginState();
     this.refreshOpenViews();
-    setTimeout(() => {
-      this.removePendingSubmission(id);
-    }, 4000);
   }
 
   markPendingSubmissionFailed(id, error) {
@@ -2039,6 +2095,23 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   _findPending(id) {
     if (!Array.isArray(this.pendingSubmissions)) return null;
     return this.pendingSubmissions.find((e) => e && e.id === id) || null;
+  }
+
+  // R90: 顶部"刷新炉子"按钮的 last updated 文案
+  // 源：shellSummary.generated_at；返回"刚刚 / N 分钟前 / N 小时前 / N 天前 / 未刷新"
+  getLastSummaryRefreshLabel() {
+    const ts = this.shellSummary && this.shellSummary.generated_at ? String(this.shellSummary.generated_at) : "";
+    if (!ts) return this.t("未刷新");
+    const ms = Date.parse(ts);
+    if (!Number.isFinite(ms)) return this.t("未刷新");
+    const diff = Math.max(0, Date.now() - ms);
+    if (diff < 60 * 1000) return this.t("刚刚");
+    const m = Math.floor(diff / (60 * 1000));
+    if (m < 60) return this.t("{n} 分钟前", { n: m });
+    const h = Math.floor(diff / (60 * 60 * 1000));
+    if (h < 24) return this.t("{n} 小时前", { n: h });
+    const d = Math.floor(diff / (24 * 60 * 60 * 1000));
+    return this.t("{n} 天前", { n: d });
   }
 
   // 当 shellSummary 刷新后，匹配 pending → recent_outputs/recent_receipts
@@ -2101,12 +2174,18 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         return false;
       };
       let target = "";
-      if (outputCands.some(matchAgainst)) target = "outputs";
-      else if (receiptCands.some(matchAgainst)) target = "receipts";
-      // R89: 命中 → 改为 done（保留卡片），不从 list 移除；let markDone 处理 4s remove
+      let targetPath = "";
+      const findHit = (cands) => cands.find(matchAgainst);
+      let hitCand = findHit(outputCands);
+      if (hitCand) { target = "outputs"; targetPath = String(hitCand.path || ""); }
+      else {
+        hitCand = findHit(receiptCands);
+        if (hitCand) { target = "receipts"; targetPath = String(hitCand.path || hitCand.receipt_path || ""); }
+      }
+      // R89: 命中 → 改为 done（保留卡片）；R90: done 不再自动消失
       if (target) {
-        hits.push({ id: entry.id, target });
-        remaining.push(entry); // 保留，markDone 会异步 remove
+        hits.push({ id: entry.id, target, path: targetPath });
+        remaining.push(entry);
       } else {
         remaining.push(entry);
       }
@@ -2115,9 +2194,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       this.pendingSubmissions = remaining;
       this.refreshOpenViews();
     }
-    // 触发 markDone（其内部 setTimeout 4s remove + 立即 save + refresh）
+    // R90: markDone 不再设置 setTimeout，done 卡保留等用户行动
     for (const h of hits) {
-      this.markPendingSubmissionDone(h.id, h.target);
+      this.markPendingSubmissionDone(h.id, h.target, h.path);
     }
   }
 
@@ -2739,32 +2818,35 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async openWorkspacePath(relativePath) {
+    // R90 P1-1: 返回 boolean —— true 成功打开；false 失败（无 path / repo missing / path not found / no adapter）
+    // 既有调用方不读返回值，无破坏；openPendingDoneTarget 据此判断是否进退化路径
     const normalized = String(relativePath || "").trim();
     if (!normalized) {
       new Notice(this.t("No path to open."));
-      return;
+      return false;
     }
     const abstractFile = this.app.vault.getAbstractFileByPath(normalized);
     if (abstractFile && normalized.endsWith(".md")) {
       const leaf = this.app.workspace.getLeaf(true);
       await leaf.openFile(abstractFile);
-      return;
+      return true;
     }
     if (!this.repoState.root) {
       new Notice(this.t("Unable to open {path}", { path: normalized }));
-      return;
+      return false;
     }
     const absolutePath = path.join(this.repoState.root, normalized);
     if (!fs.existsSync(absolutePath)) {
       new Notice(this.t("Path not found: {path}", { path: normalized }));
-      return;
+      return false;
     }
     if (typeof this.app.vault.adapter.getResourcePath === "function") {
       const resourcePath = this.app.vault.adapter.getResourcePath(normalized);
       window.open(resourcePath, "_blank");
-      return;
+      return true;
     }
     new Notice(this.t("Unable to open resource: {path}", { path: normalized }));
+    return false;
   }
 
 

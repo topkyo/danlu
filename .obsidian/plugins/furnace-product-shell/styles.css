@@ -1538,3 +1538,53 @@
   border-radius: 4px;
   letter-spacing: 0.02em;
 }
+
+/* R90 — Today head row + refresh + last updated + pending refresh + done actions */
+.furnace-today-feed-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.furnace-today-feed-title {
+  margin: 0;
+  flex: 0 0 auto;
+}
+.furnace-today-feed-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.furnace-today-refresh-btn {
+  cursor: pointer;
+  font-size: 0.9em;
+}
+.furnace-today-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+.furnace-today-last-updated {
+  font-size: 0.82em;
+  color: var(--text-muted);
+}
+.furnace-pending-refresh-btn {
+  cursor: pointer;
+}
+.furnace-pending-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+.furnace-pending-open-report-btn,
+.furnace-pending-open-receipt-btn {
+  cursor: pointer;
+}
+.furnace-pending-done-btn {
+  cursor: pointer;
+}
+.furnace-pending-done .furnace-pending-card-inner {
+  border-left-color: var(--text-success, #43a047);
+}
+.furnace-pending-done .furnace-pending-card-status {
+  color: var(--text-success, #43a047);
+}
