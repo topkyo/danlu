@@ -71,9 +71,12 @@ from ..app_state import (
     DEFAULT_PROTOCOL,
     append_runtime_history,
     execution_dry_run_path,
+    execution_receipt_history_path,
     load_json_document_strict,
     load_machine_memory_action_state,
     load_manual_link_state,
+    machine_memory_action_state_path,
+    manual_link_state_path,
     save_machine_memory_action_state,
     save_manual_link_state,
 )
@@ -87,6 +90,79 @@ from ..app_utils import (
     strip_frontmatter,
 )
 from ..compile.pipeline import compile_wiki
+from .audit_preview import AUDIT_STREAM_PATH
+
+# -- R92-MM-ACTION-TX: transactional snapshot/rollback helpers --------------
+
+
+class MachineMemoryActionReceiptError(RuntimeError):
+    """Raised when receipt/history/action-state persistence failed and rollback succeeded.
+
+    Pre-call file bytes have been restored; the caller can safely retry.
+    """
+
+
+class MachineMemoryActionHalfWriteError(RuntimeError):
+    """Raised when rollback itself failed; manual repair required.
+
+    This is a *loud* failure — never swallow it. Files may be in an
+    inconsistent state and external operator action is needed.
+    """
+
+
+def _snapshot_file_bytes(path: Path) -> bytes | None:
+    """Return current bytes of *path*, or ``None`` if it does not exist.
+
+    The snapshot is taken eagerly so that callers can restore the file
+    even if it is deleted before rollback runs.
+    """
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+
+
+def _restore_file_bytes(path: Path, original: bytes | None) -> None:
+    """Restore *path* to its snapshot. None means the file did not exist.
+
+    Uses atomic tmp + ``os.replace`` for the data restore so a crash
+    during rollback cannot leave a half-written file. If ``original`` is
+    ``None`` and the file currently exists, it is unlinked.
+    """
+    import os
+    import tempfile
+
+    if original is None:
+        if path.exists():
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".restore")
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(original)
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            tmp_path.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def _rollback_snapshots(snapshots: list[tuple[Path, bytes | None]]) -> list[str]:
+    """Restore all snapshots in reverse order. Returns list of restore failures."""
+    failures: list[str] = []
+    for path, original in reversed(snapshots):
+        try:
+            _restore_file_bytes(path, original)
+        except Exception as exc:  # pragma: no cover - defensive
+            failures.append(f"{path}: {type(exc).__name__}: {exc}")
+    return failures
 
 
 def _save_machine_memory_action_records(root: Path, actions: list[dict[str, Any]]) -> None:
@@ -475,108 +551,156 @@ def apply_machine_memory_action(
     if not isinstance(stored_preview, dict):
         raise RuntimeError("Execution bundle is missing the safe apply preview.")
     apply_mode = str(stored_preview.get("apply_mode") or "")
-    if apply_mode == "manual-link-state":
-        source_id, concept_slug = validate_low_risk_action_targets(root, target)
-        manual_state = load_manual_link_state(root)
-        manual_links = [dict(item) for item in manual_state.get("source_to_concept", []) if isinstance(item, dict)]
-        existing = next(
-            (
-                item
-                for item in manual_links
-                if str(item.get("source_id") or "") == source_id
-                and str(item.get("concept_slug") or "") == concept_slug
-                and bool(item.get("active", True))
-            ),
-            None,
-        )
-        if existing is None:
-            manual_links.append(
-                {
-                    "source_id": source_id,
-                    "concept_slug": concept_slug,
-                    "active": True,
-                    "created_at": applied_at,
-                    "applied_at": applied_at,
-                    "origin_action_id": resolved_action_id,
-                    "note": note or "Applied accepted low-risk repair action.",
-                }
-            )
-        else:
-            existing["active"] = True
-            existing["applied_at"] = applied_at
-            existing["origin_action_id"] = resolved_action_id
-            existing["note"] = note or str(existing.get("note") or "")
-        save_manual_link_state(root, {"version": 1, "source_to_concept": manual_links})
-    elif apply_mode == "citation-snapshot-refresh":
-        page_path = str(stored_preview.get("page_path") or target.get("primary_path") or "")
-        page = _validate_citation_page_path(root, page_path)
-        if not page.exists():
-            raise FileNotFoundError(f"Judgment page not found: {page_path}")
-        content = page.read_text(encoding="utf-8", errors="replace")
-        frontmatter = parse_frontmatter(content)
-        body = strip_frontmatter(content).strip()
-        frontmatter["citation_snapshots"] = [
-            str(item)
-            for item in stored_preview.get("updated_citation_snapshots", [])
-            if isinstance(item, str) and item.strip()
-        ]
-        page.write_text(f"{render_frontmatter(frontmatter)}\n\n{body}\n", encoding="utf-8")
-    elif apply_mode == "resolve-monitor":
-        pass  # no state mutation needed; receipt + status change is the outcome
-    else:
-        raise RuntimeError(f"Unsupported apply mode: {apply_mode}")
 
-    # P4-19a: split-overloaded-concept apply 完成时联动 retire concept，
-    # 让 noise / 过载概念退出默认 ranking。失败不阻断 apply。
-    # F-new-13 (Round 6): active-corpus 概念不能直接 retire（lifecycle guard），
-    # 此时记 `auto_retire_skipped_active_corpus=True` 并依赖 retroactive noise rebuild。
-    auto_retired_concept: str | None = None
-    auto_retire_error: str | None = None
-    auto_retire_skipped_active_corpus = False
-    if kind == "split-overloaded-concept":
-        slug_candidates = [
-            str(s).strip()
-            for s in (target.get("concept_slugs") or [])
-            if isinstance(s, str) and str(s).strip()
-        ]
-        if slug_candidates:
-            slug_to_retire = slug_candidates[0]
-            try:
-                from .lifecycle import retire_concept as _retire_concept
-
-                _retire_concept(
-                    root,
-                    slug_to_retire,
-                    note=f"Auto-retired via apply-action {resolved_action_id}.",
-                )
-                auto_retired_concept = slug_to_retire
-            except RuntimeError as exc:
-                message = str(exc)
-                if "Active-corpus concept cannot transition to retired" in message:
-                    auto_retire_skipped_active_corpus = True
-                else:
-                    auto_retire_error = f"{type(exc).__name__}: {exc}"
-            except Exception as exc:  # pragma: no cover - defensive
-                auto_retire_error = f"{type(exc).__name__}: {exc}"
-
-    receipt = build_execution_receipt(root, target, applied_at=applied_at, note=note, proposal=proposal)
+    # R92-MM-ACTION-TX: snapshot every file we may mutate before any write.
+    # Receipt path may not yet exist (None snapshot → restored by unlink).
     receipt_path = execution_receipt_path(root, resolved_action_id)
-    receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    append_execution_receipt_history(root, receipt)
+    receipt_history_path = execution_receipt_history_path(root)
+    audit_stream_full_path = root / AUDIT_STREAM_PATH
+    action_state_path = machine_memory_action_state_path(root)
+    snapshots: list[tuple[Path, bytes | None]] = [
+        (receipt_path, _snapshot_file_bytes(receipt_path)),
+        (receipt_history_path, _snapshot_file_bytes(receipt_history_path)),
+        (audit_stream_full_path, _snapshot_file_bytes(audit_stream_full_path)),
+        (action_state_path, _snapshot_file_bytes(action_state_path)),
+    ]
+    citation_page: Path | None = None
+    if apply_mode == "manual-link-state":
+        ml_path = manual_link_state_path(root)
+        snapshots.append((ml_path, _snapshot_file_bytes(ml_path)))
+    elif apply_mode == "citation-snapshot-refresh":
+        # Snapshot citation page bytes too (taken before mutation below).
+        page_path_str = str(stored_preview.get("page_path") or target.get("primary_path") or "")
+        if page_path_str:
+            try:
+                citation_page = _validate_citation_page_path(root, page_path_str)
+                snapshots.append((citation_page, _snapshot_file_bytes(citation_page)))
+            except Exception:
+                # Invalid page path will fail again inside the try-block below
+                # with the original error message; do not snapshot.
+                citation_page = None
 
-    target["status"] = "resolved"
-    target["reviewed_at"] = applied_at
-    target["status_updated_at"] = applied_at
-    target["review_note"] = note or "Semi-auto apply completed."
-    target["pending_review"] = "false"
-    target["revisit_after"] = ""
-    target["escalate_after"] = ""
-    target["aging_state"] = ""
-    target["overdue_review"] = "false"
-    target["escalation_candidate"] = "false"
-    target["last_receipt_path"] = relative_path(root, receipt_path)
-    _save_machine_memory_action_records(root, actions)
+    try:
+        if apply_mode == "manual-link-state":
+            source_id, concept_slug = validate_low_risk_action_targets(root, target)
+            manual_state = load_manual_link_state(root)
+            manual_links = [dict(item) for item in manual_state.get("source_to_concept", []) if isinstance(item, dict)]
+            existing = next(
+                (
+                    item
+                    for item in manual_links
+                    if str(item.get("source_id") or "") == source_id
+                    and str(item.get("concept_slug") or "") == concept_slug
+                    and bool(item.get("active", True))
+                ),
+                None,
+            )
+            if existing is None:
+                manual_links.append(
+                    {
+                        "source_id": source_id,
+                        "concept_slug": concept_slug,
+                        "active": True,
+                        "created_at": applied_at,
+                        "applied_at": applied_at,
+                        "origin_action_id": resolved_action_id,
+                        "note": note or "Applied accepted low-risk repair action.",
+                    }
+                )
+            else:
+                existing["active"] = True
+                existing["applied_at"] = applied_at
+                existing["origin_action_id"] = resolved_action_id
+                existing["note"] = note or str(existing.get("note") or "")
+            save_manual_link_state(root, {"version": 1, "source_to_concept": manual_links})
+        elif apply_mode == "citation-snapshot-refresh":
+            page_path = str(stored_preview.get("page_path") or target.get("primary_path") or "")
+            page = _validate_citation_page_path(root, page_path)
+            if not page.exists():
+                raise FileNotFoundError(f"Judgment page not found: {page_path}")
+            content = page.read_text(encoding="utf-8", errors="replace")
+            frontmatter = parse_frontmatter(content)
+            body = strip_frontmatter(content).strip()
+            frontmatter["citation_snapshots"] = [
+                str(item)
+                for item in stored_preview.get("updated_citation_snapshots", [])
+                if isinstance(item, str) and item.strip()
+            ]
+            atomic_write_text(
+                page,
+                f"{render_frontmatter(frontmatter)}\n\n{body}\n",
+            )
+        elif apply_mode == "resolve-monitor":
+            pass  # no state mutation needed; receipt + status change is the outcome
+        else:
+            raise RuntimeError(f"Unsupported apply mode: {apply_mode}")
+
+        # P4-19a: split-overloaded-concept apply 完成时联动 retire concept，
+        # 让 noise / 过载概念退出默认 ranking。失败不阻断 apply。
+        # F-new-13 (Round 6): active-corpus 概念不能直接 retire（lifecycle guard），
+        # 此时记 `auto_retire_skipped_active_corpus=True` 并依赖 retroactive noise rebuild。
+        # NOTE (R92-MM-ACTION-TX): auto-retire is best-effort and out of the
+        # transaction's rollback scope by design (residual risk noted in contract).
+        auto_retired_concept: str | None = None
+        auto_retire_error: str | None = None
+        auto_retire_skipped_active_corpus = False
+        if kind == "split-overloaded-concept":
+            slug_candidates = [
+                str(s).strip()
+                for s in (target.get("concept_slugs") or [])
+                if isinstance(s, str) and str(s).strip()
+            ]
+            if slug_candidates:
+                slug_to_retire = slug_candidates[0]
+                try:
+                    from .lifecycle import retire_concept as _retire_concept
+
+                    _retire_concept(
+                        root,
+                        slug_to_retire,
+                        note=f"Auto-retired via apply-action {resolved_action_id}.",
+                    )
+                    auto_retired_concept = slug_to_retire
+                except RuntimeError as exc:
+                    message = str(exc)
+                    if "Active-corpus concept cannot transition to retired" in message:
+                        auto_retire_skipped_active_corpus = True
+                    else:
+                        auto_retire_error = f"{type(exc).__name__}: {exc}"
+                except Exception as exc:  # pragma: no cover - defensive
+                    auto_retire_error = f"{type(exc).__name__}: {exc}"
+
+        receipt = build_execution_receipt(root, target, applied_at=applied_at, note=note, proposal=proposal)
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(
+            receipt_path,
+            json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        )
+        append_execution_receipt_history(root, receipt)
+
+        target["status"] = "resolved"
+        target["reviewed_at"] = applied_at
+        target["status_updated_at"] = applied_at
+        target["review_note"] = note or "Semi-auto apply completed."
+        target["pending_review"] = "false"
+        target["revisit_after"] = ""
+        target["escalate_after"] = ""
+        target["aging_state"] = ""
+        target["overdue_review"] = "false"
+        target["escalation_candidate"] = "false"
+        target["last_receipt_path"] = relative_path(root, receipt_path)
+        _save_machine_memory_action_records(root, actions)
+    except Exception as exc:
+        rollback_failures = _rollback_snapshots(snapshots)
+        if rollback_failures:
+            raise MachineMemoryActionHalfWriteError(
+                "apply-action transaction failed and rollback also failed; manual repair required: "
+                f"original={type(exc).__name__}: {exc}; rollback_failures={rollback_failures}"
+            ) from exc
+        raise MachineMemoryActionReceiptError(
+            f"apply-action transaction failed and was rolled back: {type(exc).__name__}: {exc}"
+        ) from exc
+
     append_wiki_log(
         root,
         "action-apply",
@@ -637,115 +761,153 @@ def revert_machine_memory_action(
         raise RuntimeError("Execution receipt is missing the safe apply preview.")
     reverted_at = _app_compile.utc_now()
     apply_mode = str(preview.get("apply_mode") or "")
-    if apply_mode == "manual-link-state":
-        manual_state = load_manual_link_state(root)
-        manual_links = [dict(item) for item in manual_state.get("source_to_concept", []) if isinstance(item, dict)]
-        active_entry: dict[str, Any] | None = None
-        for item in manual_links:
-            if str(item.get("origin_action_id") or "") != resolved_action_id:
-                continue
-            if bool(item.get("active", True)):
-                active_entry = item
-                break
-        if active_entry is None:
-            raise RuntimeError("No active safe-apply state exists for this action.")
-        active_entry["active"] = False
-        active_entry["reverted_at"] = reverted_at
-        active_entry["revert_note"] = note or "Safe apply reverted."
-        save_manual_link_state(root, {"version": 1, "source_to_concept": manual_links})
-    elif apply_mode == "citation-snapshot-refresh":
-        page_path = str(preview.get("page_path") or target.get("primary_path") or "")
-        if not page_path:
-            raise RuntimeError("Execution receipt is missing the judgment page path.")
-        page = _validate_citation_page_path(root, page_path)
-        if not page.exists():
-            raise FileNotFoundError(f"Judgment page not found: {page_path}")
-        content = page.read_text(encoding="utf-8", errors="replace")
-        frontmatter = parse_frontmatter(content)
-        body = strip_frontmatter(content).strip()
-        frontmatter["citation_snapshots"] = [
-            str(item)
-            for item in preview.get("previous_citation_snapshots", [])
-            if isinstance(item, str) and item.strip()
-        ]
-        page.write_text(f"{render_frontmatter(frontmatter)}\n\n{body}\n", encoding="utf-8")
-    elif apply_mode == "resolve-monitor":
-        pass  # no state to revert; status change below handles it
-    else:
-        raise RuntimeError(f"Unsupported revert apply mode: {apply_mode}")
 
-    protocol = str(target.get("protocol") or load_protocol_state(root)["active_protocol"] or DEFAULT_PROTOCOL)
-    reverted_target = {
-        **dict(target),
-        "protocol": protocol,
-        "status": "proposed",
-        "execution_policy": "triage",
-        "execution_band": "review-first",
-        "reviewed_at": reverted_at,
-        "status_updated_at": reverted_at,
-        "review_note": note or "Safe apply reverted.",
-        "pending_review": "true",
-        "last_receipt_path": relative_path(root, receipt_path),
-        "command_hint": f'PYTHONPATH=src python3 -m aiwiki.cli --root . review-action {resolved_action_id} --status accepted --note "Resume reverted repair."',
-        "next_step": "回滚后重新 review，确认是否要再次 accepted 再执行。",
-    }
-    preview_proposals = repair_execution_proposals(root, [reverted_target], active_protocol=protocol)
-    proposal = preview_proposals[0] if preview_proposals else {
-        "action_id": resolved_action_id,
-        "title": str(reverted_target.get("title") or resolved_action_id),
-        "proposal_kind": "manual-repair",
-        "risk": "low",
-        "priority": str(reverted_target.get("priority") or "medium"),
-        "protocol": protocol,
-        "status": "proposed",
-        "execution_policy": "triage",
-        "summary": str(reverted_target.get("reason") or ""),
-        "target_paths": [
-            path
-            for path in (str(reverted_target.get("primary_path") or ""), str(reverted_target.get("secondary_path") or ""))
-            if path
-        ],
-        "page_patch_plan": build_page_patch_plan(root, reverted_target, active_protocol=protocol),
-        "safe_apply_preview": safe_apply_preview(root, reverted_target),
-        "command_hint": str(reverted_target.get("command_hint") or ""),
-        "bundle_path": relative_path(root, execution_bundle_path(root, resolved_action_id)),
-        "proposal_path": relative_path(root, execution_proposal_path(root, resolved_action_id)),
-    }
-    revert_receipt = build_execution_receipt(
-        root,
-        reverted_target,
-        applied_at=reverted_at,
-        note=note,
-        proposal=proposal,
-        operation="revert",
-        resulting_status="proposed",
-    )
+    # R92-MM-ACTION-TX: snapshot every file we may mutate before any write.
     revert_receipt_path = receipt_path.parent / "reverts" / receipt_path.name
-    revert_receipt["receipt_path"] = relative_path(root, revert_receipt_path)
-    atomic_write_text(
-        revert_receipt_path,
-        json.dumps(revert_receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-    )
-    reverted_target["last_receipt_path"] = relative_path(root, revert_receipt_path)
-    append_execution_receipt_history(root, revert_receipt)
+    receipt_history_path = execution_receipt_history_path(root)
+    audit_stream_full_path = root / AUDIT_STREAM_PATH
+    action_state_path = machine_memory_action_state_path(root)
+    snapshots: list[tuple[Path, bytes | None]] = [
+        (revert_receipt_path, _snapshot_file_bytes(revert_receipt_path)),
+        (receipt_history_path, _snapshot_file_bytes(receipt_history_path)),
+        (audit_stream_full_path, _snapshot_file_bytes(audit_stream_full_path)),
+        (action_state_path, _snapshot_file_bytes(action_state_path)),
+    ]
+    if apply_mode == "manual-link-state":
+        ml_path = manual_link_state_path(root)
+        snapshots.append((ml_path, _snapshot_file_bytes(ml_path)))
+    elif apply_mode == "citation-snapshot-refresh":
+        page_path_pre = str(preview.get("page_path") or target.get("primary_path") or "")
+        if page_path_pre:
+            try:
+                page_pre = _validate_citation_page_path(root, page_path_pre)
+                snapshots.append((page_pre, _snapshot_file_bytes(page_pre)))
+            except Exception:
+                pass
 
-    target["status"] = str(reverted_target["status"])
-    target["reviewed_at"] = str(reverted_target["reviewed_at"])
-    target["status_updated_at"] = str(reverted_target["status_updated_at"])
-    target["review_note"] = str(reverted_target["review_note"])
-    target["pending_review"] = str(reverted_target["pending_review"])
-    target["last_receipt_path"] = str(reverted_target["last_receipt_path"])
-    revisit_after, escalate_after = schedule_review_windows(
-        "action",
-        "proposed",
-        reverted_at,
-        protocol=str(target.get("protocol") or DEFAULT_PROTOCOL),
-        root=root,
-    )
-    target["revisit_after"] = revisit_after
-    target["escalate_after"] = escalate_after
-    target.update(evaluate_page_aging(target))
-    _save_machine_memory_action_records(root, actions)
+    try:
+        if apply_mode == "manual-link-state":
+            manual_state = load_manual_link_state(root)
+            manual_links = [dict(item) for item in manual_state.get("source_to_concept", []) if isinstance(item, dict)]
+            active_entry: dict[str, Any] | None = None
+            for item in manual_links:
+                if str(item.get("origin_action_id") or "") != resolved_action_id:
+                    continue
+                if bool(item.get("active", True)):
+                    active_entry = item
+                    break
+            if active_entry is None:
+                raise RuntimeError("No active safe-apply state exists for this action.")
+            active_entry["active"] = False
+            active_entry["reverted_at"] = reverted_at
+            active_entry["revert_note"] = note or "Safe apply reverted."
+            save_manual_link_state(root, {"version": 1, "source_to_concept": manual_links})
+        elif apply_mode == "citation-snapshot-refresh":
+            page_path = str(preview.get("page_path") or target.get("primary_path") or "")
+            if not page_path:
+                raise RuntimeError("Execution receipt is missing the judgment page path.")
+            page = _validate_citation_page_path(root, page_path)
+            if not page.exists():
+                raise FileNotFoundError(f"Judgment page not found: {page_path}")
+            content = page.read_text(encoding="utf-8", errors="replace")
+            frontmatter = parse_frontmatter(content)
+            body = strip_frontmatter(content).strip()
+            frontmatter["citation_snapshots"] = [
+                str(item)
+                for item in preview.get("previous_citation_snapshots", [])
+                if isinstance(item, str) and item.strip()
+            ]
+            atomic_write_text(
+                page,
+                f"{render_frontmatter(frontmatter)}\n\n{body}\n",
+            )
+        elif apply_mode == "resolve-monitor":
+            pass  # no state to revert; status change below handles it
+        else:
+            raise RuntimeError(f"Unsupported revert apply mode: {apply_mode}")
+
+        protocol = str(target.get("protocol") or load_protocol_state(root)["active_protocol"] or DEFAULT_PROTOCOL)
+        reverted_target = {
+            **dict(target),
+            "protocol": protocol,
+            "status": "proposed",
+            "execution_policy": "triage",
+            "execution_band": "review-first",
+            "reviewed_at": reverted_at,
+            "status_updated_at": reverted_at,
+            "review_note": note or "Safe apply reverted.",
+            "pending_review": "true",
+            "last_receipt_path": relative_path(root, receipt_path),
+            "command_hint": f'PYTHONPATH=src python3 -m aiwiki.cli --root . review-action {resolved_action_id} --status accepted --note "Resume reverted repair."',
+            "next_step": "回滚后重新 review，确认是否要再次 accepted 再执行。",
+        }
+        preview_proposals = repair_execution_proposals(root, [reverted_target], active_protocol=protocol)
+        proposal = preview_proposals[0] if preview_proposals else {
+            "action_id": resolved_action_id,
+            "title": str(reverted_target.get("title") or resolved_action_id),
+            "proposal_kind": "manual-repair",
+            "risk": "low",
+            "priority": str(reverted_target.get("priority") or "medium"),
+            "protocol": protocol,
+            "status": "proposed",
+            "execution_policy": "triage",
+            "summary": str(reverted_target.get("reason") or ""),
+            "target_paths": [
+                path
+                for path in (str(reverted_target.get("primary_path") or ""), str(reverted_target.get("secondary_path") or ""))
+                if path
+            ],
+            "page_patch_plan": build_page_patch_plan(root, reverted_target, active_protocol=protocol),
+            "safe_apply_preview": safe_apply_preview(root, reverted_target),
+            "command_hint": str(reverted_target.get("command_hint") or ""),
+            "bundle_path": relative_path(root, execution_bundle_path(root, resolved_action_id)),
+            "proposal_path": relative_path(root, execution_proposal_path(root, resolved_action_id)),
+        }
+        revert_receipt = build_execution_receipt(
+            root,
+            reverted_target,
+            applied_at=reverted_at,
+            note=note,
+            proposal=proposal,
+            operation="revert",
+            resulting_status="proposed",
+        )
+        revert_receipt["receipt_path"] = relative_path(root, revert_receipt_path)
+        atomic_write_text(
+            revert_receipt_path,
+            json.dumps(revert_receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        )
+        reverted_target["last_receipt_path"] = relative_path(root, revert_receipt_path)
+        append_execution_receipt_history(root, revert_receipt)
+
+        target["status"] = str(reverted_target["status"])
+        target["reviewed_at"] = str(reverted_target["reviewed_at"])
+        target["status_updated_at"] = str(reverted_target["status_updated_at"])
+        target["review_note"] = str(reverted_target["review_note"])
+        target["pending_review"] = str(reverted_target["pending_review"])
+        target["last_receipt_path"] = str(reverted_target["last_receipt_path"])
+        revisit_after, escalate_after = schedule_review_windows(
+            "action",
+            "proposed",
+            reverted_at,
+            protocol=str(target.get("protocol") or DEFAULT_PROTOCOL),
+            root=root,
+        )
+        target["revisit_after"] = revisit_after
+        target["escalate_after"] = escalate_after
+        target.update(evaluate_page_aging(target))
+        _save_machine_memory_action_records(root, actions)
+    except Exception as exc:
+        rollback_failures = _rollback_snapshots(snapshots)
+        if rollback_failures:
+            raise MachineMemoryActionHalfWriteError(
+                "revert-action transaction failed and rollback also failed; manual repair required: "
+                f"original={type(exc).__name__}: {exc}; rollback_failures={rollback_failures}"
+            ) from exc
+        raise MachineMemoryActionReceiptError(
+            f"revert-action transaction failed and was rolled back: {type(exc).__name__}: {exc}"
+        ) from exc
+
     append_wiki_log(
         root,
         "action-revert",
