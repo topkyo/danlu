@@ -43,8 +43,20 @@
 | **Round 84 fail-soft 降级路径收口 + 事实层 strict read 迁移** (2026-05-05) | notify.py 双层 fallback-of-fallback logger.warning + sanitized metadata / `load_runtime_history_strict` / 6 个事实层 best-effort→strict 切换 / CorruptStateError 自然传播到 CLI / 8 strict 迁移测试 + notify 双层 warning 测试 | ✅ done (`c94cc87`) |
 | **Round 85 history JSONL strict migration** (2026-05-05) | execution policy/receipt history JSONL best-effort loader 显式 warning / strict variants / fact-layer callers 切 strict / 8 migration tests | ✅ done (`ea08d6e`) |
 | **Round 86 safe_fetch 多 IP fallback** (2026-05-05) | R83 pinning 可用性回归修复 / `_PinnedHTTP[S]Connection` 按 resolver 顺序循环 TCP / 全失败抛 OSError 不混入 FetchPolicyError / handler 接 list / 4 fallback tests | ✅ done (`b345ecf`) |
+| **Round 87 R85/R86 non-blocking 小补丁清理** (2026-05-05) | history strict 测试 path:N 断言收紧 / receipt strict missing+non-dict edge tests / HTTPS fallback wrap_socket 单次 + server_hostname 锁定 / redirect 后 IP list 重建测试 / 实现 0 改动 | ✅ done (`0891a44`) |
 
 ## 状态 — 当前活跃 3 轮
+
+### Round 87 — R85/R86 non-blocking 小补丁清理 — 完成
+
+- **目的**：清理 R85/R86 oracle qa-review 留下的 5 个 non-blocking findings；纯测试 + docstring 范畴，不改实现。
+- **实现**：
+  - `tests/test_history_strict_migration.py`：finding 1 — `:33,65` 两处分步 `assertIn(str(path),...)` + `assertIn(":2",...)` 合并为 `f"{path}:2"` 单一 assertIn（对齐 `memory.py` CorruptStateError 抛错格式 `f"... at {path}:{line_no}"`）。finding 2 — 末尾追加 `test_receipt_strict_missing_file_returns_empty`（path 不存在 → []，不抛）+ `test_receipt_strict_non_dict_row_raises`（合法 JSON `["a","b"]` 非 dict → `CorruptStateError(path:1, non-dict)`）。
+  - `tests/test_safe_fetch_multi_ip_fallback.py`：fake socket 扩展（:12）支持 status/header 用于 redirect 测试。finding 4 — `test_https_first_ip_fails_second_succeeds_wrap_once`（:146）：URL `https://example.com/path`、2 public IP、首个 OSError 第二个成功；mock `_PinnedHTTPSConnection._context.wrap_socket` 验证 (a) 调用 1 次（防每次失败都 wrap 退化）、(b) 入参为最终 sock、(c) `server_hostname="example.com"` 原始 host 不是 IP。finding 5 — `test_redirect_rebuilds_ip_list`（:177）：第一次 resolve `[1.1.1.1]` 返回 302 + Location，第二次 resolve `[2.2.2.2, 3.3.3.3]`，三次 connect IP 顺序 `["1.1.1.1","2.2.2.2","3.3.3.3"]` 锁住"redirect 后 pinned_ips 来自新 resolve 全 list 而非旧"+"新 list 内可 fallback"。
+  - finding 3：receipt best-effort docstring oracle 评估留 non-blocking（`replacement-decoded bad UTF-8 are skipped` 表述对落在 JSON string 内的坏字节略有歧义；fixer 评估清晰未改，oracle 同意 non-blocking 留作后续）。
+- **测试**：4 新增（finding 2×2 + finding 4×1 + finding 5×1）。1712 → 1716 unit。
+- **Stop Lines**：0 实现逻辑改动 / 0 docstring 改动 / 0 公共 API 签名 / 0 schema / 0 caller / 0 R86 fallback 实现 / 0 R85 strict loader 实现 / untracked Obsidian/docs 不纳入 / 不写 PROGRESS（archive 阶段统一）。
+- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1716 unit + coverage 92%）；oracle qa-review PASS（无 blocker；2 个 non-blocking 留作后续：receipt best-effort docstring 表述微调 / redirect 测试可加 `patch.dict(os.environ, {}, clear=True)` 显式 allowlist 隔离）。
 
 ### Round 86 — safe_fetch 多 IP fallback — 完成
 
@@ -70,19 +82,6 @@
 - **测试**：新增 `tests/test_history_strict_migration.py` 8 测试（policy corrupt/non-dict/missing/limit；receipt corrupt/invalid UTF-8/filter kind；best-effort warning + skip）。
 - **Stop Lines**：0 public API 签名改动 / 0 schema 改动 / 0 writer path 改动 / 0 facade re-export 改动 / 不触碰 R84 runtime_history / single receipt JSON / revert receipt；untracked Obsidian/docs 文件不纳入。
 - **验证**：`PYTHONPATH=src python -m unittest tests.test_app tests.test_runner tests.test_linting tests.test_execution tests.test_history_strict_migration` 451 tests OK；`bash scripts/verify.sh` all green（1708 unit + 13 acceptance + coverage 92%）。
-
-### Round 84 — fail-soft 降级路径收口 + 事实层 strict read 迁移 — 完成
-
-- **目的**：按 AGENTS.md "不静默吞错 / 不隐式降级" 收口 fail-soft 路径。延续 R69-R83 fact-layer / audit-mirror / SSRF 主线。R84 explorer 扫描全仓 fail-soft 模式：高 0 / 中 3（notify.py 顶层 dispatch / `_safe_record_notify_failed` 双层 / `load_json_document`+`load_jsonl_documents` 事实层调用）/ 低 4（preflight / alchemy / metrics_history / safe_apply_preview，不改）。
-- **实现**：
-  - `notify.py`: `notify_report_generated` 顶层 `except` 内 `_append_run_event(...)` 用 try/except 二次保护；fallback-of-fallback 失败 `logger.warning` 仅含 `artifact / protocol / format / original_error_type / recording_error_type` sanitized metadata（不含 `str(exc)` / 不含 webhook URL），保证 docstring "never raises to caller" 与实现一致。`_safe_record_notify_failed` 内层 `except Exception: pass` 改 `logger.warning(..., exc_info=True)` 同样 sanitized。docstring 显式三要素（触发条件 / 行为边界 / 退出条件）。dispatch payload 补 `artifact / protocol / format` 字段。
-  - `app_state.py`: 新增 `load_runtime_history_strict(root)` 事实层专用包装 `load_jsonl_documents_strict(runtime_history_path(root))`；坏 JSONL 抛 `CorruptStateError`；missing file 仍返回 `[]`（继承 strict loader 既有语义，不是 corruption）。
-  - 6 个事实层 best-effort→strict 切换：`app_execution.load_execution_bundle:142` / `machine_memory_actions.py:629` revert receipt / `archive.py:303` revert receipt / `l3_proposals.py:716` L3 revert receipt / `machine_memory_batch.py:69` explicit batch receipt / `:73` `load_runtime_history_strict` / `:86` history-derived receipt。Shell / dashboard / preview / telemetry / metrics_history / safe_apply_preview / preflight / alchemy / `content/memory.py` 全部不动（守 stop line）。
-  - 异常自然传播 `CorruptStateError` 到 CLI 边界，不在事实层吞坏数据；不再静默回退到 best-effort `{}`。
-  - 顺手清 unused import：`app_execution.py` / `machine_memory_actions.py` 的 `load_json_document`。
-- **测试**：新增 `tests/test_strict_read_migration.py` 8 测试（execution bundle / 3 个 revert 路径 receipt corrupt / batch explicit receipt / batch history receipt / corrupt runtime_history / strict vs best-effort 对比 raise/skip）；`tests/test_notify.py` 新增 `test_notify_dispatch_double_failure_warns`（mock `NotifyConfig.from_env` raise + `_append_run_event` raise → 不 raise + sanitized warning + 不泄漏 "bad env" / "run log down"）+ dispatch payload 字段断言；`tests/test_execution_compat.py` mock seam 同步 `load_json_document` → `load_json_document_strict`。
-- **Stop Lines**：0 公共 API 签名改动 / 0 schema 改动 / 0 webhook payload 改动 / 不全局替换 best-effort loader / `content/memory.py` / shell / dashboard / preview / telemetry / metrics / preflight / alchemy 不动；notify.py 修改限 line 59-130 + 166-220；app_state.py 仅新增 wrapper。
-- **验证**：`bash scripts/verify.sh` all green（13 acceptance + 1700 unit + coverage 92%）；oracle qa-review fail-then-fix（1 blocker → 清零 → PASS），blocker = `notify_report_generated` 顶层 fallback `_append_run_event` 没二次保护与 docstring "never raises" 不一致，修复 = 双层 try/except + logger.warning sanitized + return。
 
 ### Round 77 — `_append_llm_receipt` 事务化 — 完成
 
