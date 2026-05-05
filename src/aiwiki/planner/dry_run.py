@@ -271,6 +271,7 @@ def preview_judge_primitive(
     max_pages: int | None = None,
     max_tokens: int | None = None,
     limit: int = 50,
+    allow_current_writer_lock: bool = False,
 ) -> dict[str, Any]:
     if limit < 0:
         raise ValueError("limit must be non-negative")
@@ -285,6 +286,7 @@ def preview_judge_primitive(
         max_signals=max_signals,
         max_pages=max_pages,
         max_tokens=max_tokens,
+        allow_current_writer_lock=allow_current_writer_lock,
     )
     scope_preview = lane_plan.get("scope_preview") if isinstance(lane_plan.get("scope_preview"), dict) else _empty_scope_preview()
     all_candidates = _judge_preview_candidates(str(lane_plan.get("scope") or scope), scope_preview)
@@ -344,6 +346,7 @@ def preview_distill_primitive(
     max_pages: int | None = None,
     max_tokens: int | None = None,
     limit: int = 50,
+    allow_current_writer_lock: bool = False,
 ) -> dict[str, Any]:
     if limit < 0:
         raise ValueError("limit must be non-negative")
@@ -358,6 +361,7 @@ def preview_distill_primitive(
         max_signals=max_signals,
         max_pages=max_pages,
         max_tokens=max_tokens,
+        allow_current_writer_lock=allow_current_writer_lock,
     )
     scope_preview = lane_plan.get("scope_preview") if isinstance(lane_plan.get("scope_preview"), dict) else _empty_scope_preview()
     all_candidates = _distill_preview_candidates(str(lane_plan.get("scope") or scope), scope_preview)
@@ -418,6 +422,7 @@ def preview_review_primitive(
     max_pages: int | None = None,
     max_tokens: int | None = None,
     limit: int = 50,
+    allow_current_writer_lock: bool = False,
 ) -> dict[str, Any]:
     if limit < 0:
         raise ValueError("limit must be non-negative")
@@ -432,6 +437,7 @@ def preview_review_primitive(
         max_signals=max_signals,
         max_pages=max_pages,
         max_tokens=max_tokens,
+        allow_current_writer_lock=allow_current_writer_lock,
     )
     scope_preview = lane_plan.get("scope_preview") if isinstance(lane_plan.get("scope_preview"), dict) else _empty_scope_preview()
     all_candidates = _review_preview_candidates(str(lane_plan.get("scope") or scope), scope_preview)
@@ -490,6 +496,7 @@ def preview_propose_primitive(
     max_pages: int | None = None,
     max_tokens: int | None = None,
     limit: int = 50,
+    allow_current_writer_lock: bool = False,
 ) -> dict[str, Any]:
     if limit < 0:
         raise ValueError("limit must be non-negative")
@@ -504,6 +511,7 @@ def preview_propose_primitive(
         max_signals=max_signals,
         max_pages=max_pages,
         max_tokens=max_tokens,
+        allow_current_writer_lock=allow_current_writer_lock,
     )
     scope_preview = lane_plan.get("scope_preview") if isinstance(lane_plan.get("scope_preview"), dict) else _empty_scope_preview()
     all_candidates = _propose_preview_candidates(str(lane_plan.get("scope") or scope), scope_preview)

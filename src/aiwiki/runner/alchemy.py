@@ -13,6 +13,7 @@ from aiwiki.app_compile import compile_wiki, lint_wiki, nightly_health
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_state import append_runtime_history
 from aiwiki.app_utils import (
+    atomic_write_text,
     parse_frontmatter,
     relative_path,
     render_frontmatter,
@@ -40,6 +41,31 @@ def _resolve_alchemy_planner_log_path(root: Path, planner_log_path: Path | None)
     if planner_log_path.is_absolute():
         return planner_log_path
     return root / planner_log_path
+
+
+def _normalize_preview_lock_status(value: Any) -> Any:
+    """Recursively rewrite preview `lock.status: held_by_current_process` back to `available`.
+
+    Apply-path previews run under the parent `runtime_write_operation` lock and pass
+    `allow_current_writer_lock=True` so the planner reports the lock as held by the
+    current process (rather than `conflict`). The on-wire preview shape, however, is
+    expected to look the same as a standalone preview (`status: available`); rewrite
+    here so receipts and acceptance fixtures stay stable.
+    """
+    if isinstance(value, dict):
+        if (
+            "status" in value
+            and "would_acquire" in value
+            and value.get("status") == "held_by_current_process"
+        ):
+            normalized = dict(value)
+            normalized["status"] = "available"
+            normalized["would_acquire"] = True
+            return {k: _normalize_preview_lock_status(v) for k, v in normalized.items()}
+        return {k: _normalize_preview_lock_status(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_normalize_preview_lock_status(item) for item in value]
+    return value
 
 
 def run_alchemy_legacy_migration_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
@@ -126,6 +152,7 @@ def run_alchemy_judge_preview(
     max_pages: int | None = None,
     max_tokens: int | None = None,
     limit: int = 50,
+    allow_current_writer_lock: bool = False,
 ) -> dict[str, Any]:
     from aiwiki.planner import preview_judge_primitive
 
@@ -139,9 +166,11 @@ def run_alchemy_judge_preview(
         max_pages=max_pages,
         max_tokens=max_tokens,
         limit=limit,
+        allow_current_writer_lock=allow_current_writer_lock,
     )
 
 
+@runtime_write_operation
 def run_alchemy_judge_apply(
     root: Path,
     *,
@@ -165,7 +194,9 @@ def run_alchemy_judge_apply(
         max_pages=max_pages,
         max_tokens=max_tokens,
         limit=limit,
+        allow_current_writer_lock=True,
     )
+    preview = _normalize_preview_lock_status(preview)
     status = str(preview.get("status") or "")
     if status != "ok":
         raise RuntimeError(f"alchemy judge apply requires an ok dry-run preview (got {status})")
@@ -235,7 +266,7 @@ def run_alchemy_judge_apply(
         "result_summary": {"refreshed": refreshed, "skipped": skipped},
     }
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     append_execution_receipt_history(root, receipt)
     append_runtime_history(
         root,
@@ -298,7 +329,9 @@ def run_alchemy_judge_propose(
         max_pages=max_pages,
         max_tokens=max_tokens,
         limit=limit,
+        allow_current_writer_lock=True,
     )
+    preview = _normalize_preview_lock_status(preview)
     status = str(preview.get("status") or "")
     if status != "ok":
         raise RuntimeError(f"alchemy judge propose requires an ok dry-run preview (got {status})")
@@ -377,7 +410,7 @@ def run_alchemy_judge_propose(
         "result_summary": {"generated": generated, "skipped": skipped},
     }
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     append_execution_receipt_history(root, receipt)
     append_runtime_history(
         root,
@@ -424,6 +457,7 @@ def run_alchemy_judge_propose(
     }
 
 
+@runtime_write_operation
 def run_alchemy_judge_proposal_apply(
     root: Path,
     proposal: str | Path,
@@ -530,7 +564,7 @@ def run_alchemy_judge_proposal_apply(
         "audit_path": audit_path,
     }
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     append_execution_receipt_history(root, receipt)
     append_runtime_history(
         root,
@@ -576,6 +610,7 @@ def run_alchemy_distill_preview(
     max_pages: int | None = None,
     max_tokens: int | None = None,
     limit: int = 50,
+    allow_current_writer_lock: bool = False,
 ) -> dict[str, Any]:
     from aiwiki.planner import preview_distill_primitive
 
@@ -589,9 +624,11 @@ def run_alchemy_distill_preview(
         max_pages=max_pages,
         max_tokens=max_tokens,
         limit=limit,
+        allow_current_writer_lock=allow_current_writer_lock,
     )
 
 
+@runtime_write_operation
 def run_alchemy_distill_apply(
     root: Path,
     *,
@@ -615,7 +652,9 @@ def run_alchemy_distill_apply(
         max_pages=max_pages,
         max_tokens=max_tokens,
         limit=limit,
+        allow_current_writer_lock=True,
     )
+    preview = _normalize_preview_lock_status(preview)
     status = str(preview.get("status") or "")
     if status != "ok":
         raise RuntimeError(f"alchemy distill apply requires an ok dry-run preview (got {status})")
@@ -712,7 +751,7 @@ def run_alchemy_distill_apply(
         "result_summary": {"refreshed": refreshed, "skipped": skipped},
     }
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     append_execution_receipt_history(root, receipt)
     append_runtime_history(
         root,
@@ -763,6 +802,7 @@ def run_alchemy_review_preview(
     max_pages: int | None = None,
     max_tokens: int | None = None,
     limit: int = 50,
+    allow_current_writer_lock: bool = False,
 ) -> dict[str, Any]:
     from aiwiki.planner import preview_review_primitive
 
@@ -776,9 +816,11 @@ def run_alchemy_review_preview(
         max_pages=max_pages,
         max_tokens=max_tokens,
         limit=limit,
+        allow_current_writer_lock=allow_current_writer_lock,
     )
 
 
+@runtime_write_operation
 def run_alchemy_review_apply(
     root: Path,
     *,
@@ -802,7 +844,9 @@ def run_alchemy_review_apply(
         max_pages=max_pages,
         max_tokens=max_tokens,
         limit=limit,
+        allow_current_writer_lock=True,
     )
+    preview = _normalize_preview_lock_status(preview)
     status = str(preview.get("status") or "")
     if status != "ok":
         raise RuntimeError(f"alchemy review apply requires an ok dry-run preview (got {status})")
@@ -860,7 +904,7 @@ def run_alchemy_review_apply(
         "result_summary": queue_result,
     }
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     append_execution_receipt_history(root, receipt)
     append_runtime_history(
         root,
@@ -907,6 +951,7 @@ def run_alchemy_propose_preview(
     max_pages: int | None = None,
     max_tokens: int | None = None,
     limit: int = 50,
+    allow_current_writer_lock: bool = False,
 ) -> dict[str, Any]:
     from aiwiki.planner import preview_propose_primitive
 
@@ -921,11 +966,13 @@ def run_alchemy_propose_preview(
         max_pages=max_pages,
         max_tokens=max_tokens,
         limit=limit,
+        allow_current_writer_lock=allow_current_writer_lock,
     )
     preview["cold_start"] = not resolved_planner_log_path.exists()
     return preview
 
 
+@runtime_write_operation
 def run_alchemy_propose_apply(
     root: Path,
     *,
@@ -964,7 +1011,9 @@ def run_alchemy_propose_apply(
         max_pages=max_pages,
         max_tokens=max_tokens,
         limit=limit,
+        allow_current_writer_lock=True,
     )
+    preview = _normalize_preview_lock_status(preview)
     status = str(preview.get("status") or "")
     if status != "ok":
         raise RuntimeError(f"alchemy propose apply requires an ok dry-run preview (got {status})")
@@ -1059,7 +1108,7 @@ def run_alchemy_propose_apply(
         "result_summary": {"generated": generated, "skipped": skipped},
     }
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     append_execution_receipt_history(root, receipt)
     append_runtime_history(
         root,
@@ -1748,6 +1797,7 @@ def run_alchemy_lane_dry_run(
     )
 
 
+@runtime_write_operation
 def run_alchemy_lane_apply(
     root: Path,
     *,
@@ -1794,8 +1844,9 @@ def run_alchemy_lane_apply(
         max_signals=max_signals,
         max_pages=max_pages,
         max_tokens=max_tokens,
-        allow_current_writer_lock=allow_current_writer_lock,
+        allow_current_writer_lock=True,
     )
+    plan = _normalize_preview_lock_status(plan)
     status = str(plan.get("status") or "")
     if status != "ok":
         raise RuntimeError(f"alchemy lane apply requires an ok dry-run plan (got {status})")
@@ -1861,6 +1912,7 @@ def run_alchemy_lane_apply(
     }
 
 
+@runtime_write_operation
 def run_alchemy_auto(
     root: Path,
     *,
@@ -1893,8 +1945,9 @@ def run_alchemy_auto(
             max_signals=max_signals,
             max_pages=max_pages,
             max_tokens=max_tokens,
-            allow_current_writer_lock=allow_current_writer_lock,
+            allow_current_writer_lock=True,
         )
+        plan = _normalize_preview_lock_status(plan)
         selected_primitives = _auto_primitives_for_lane(lane, plan, requested_primitives=requested_primitives)
         lane_result: dict[str, Any] = {
             "lane": lane,
@@ -2256,7 +2309,7 @@ def _run_receipted_lane_primitive(
         "result_summary": _lane_receipt_result_summary(result),
     }
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     append_execution_receipt_history(root, receipt)
     return {
         "primitive": primitive,
