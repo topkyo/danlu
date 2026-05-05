@@ -48,6 +48,10 @@ MAX_URL_IMAGES = 6
 SENSITIVE_SCAN_CONTEXT_CHARS = 60000
 _HTML_MAX_BYTES = 5 * 1024 * 1024
 _ASSET_MAX_BYTES = 50 * 1024 * 1024
+# Local PDF ingestion reuses the remote asset cap; images get a tighter OCR/vision cap.
+_LOCAL_PDF_MAX_BYTES = _ASSET_MAX_BYTES
+_LOCAL_IMAGE_MAX_BYTES = 25 * 1024 * 1024
+_SUPPORTED_IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml"}
 
 _SENSITIVE_VALUE_PATTERN = re.compile(
     r"""
@@ -83,6 +87,30 @@ _SENSITIVE_PLACEHOLDERS = {
 
 class SensitiveContentError(ValueError):
     """Raised when a raw note appears to contain credentials or secrets."""
+
+
+def _assert_file_size(path: Path, max_bytes: int, label: str) -> None:
+    size = path.stat().st_size
+    if size > max_bytes:
+        raise ValueError(f"{label} exceeds size limit: {size} > {max_bytes} bytes")
+
+
+def _assert_pdf_asset(path: Path) -> None:
+    with path.open("rb") as handle:
+        magic = handle.read(5)
+    if magic != b"%PDF-":
+        raise ValueError("File does not look like a PDF (magic bytes missing)")
+
+
+def _assert_supported_image_mime(mime: str) -> None:
+    if mime not in _SUPPORTED_IMAGE_MIME_TYPES:
+        raise ValueError(f"Unsupported image MIME type: {mime}; allowed: {sorted(_SUPPORTED_IMAGE_MIME_TYPES)}")
+
+
+def _normalize_repo_max_files(max_files: int) -> int:
+    if not isinstance(max_files, int) or max_files < 1 or max_files > 1000:
+        raise ValueError(f"max_files must be 1..1000, got {max_files}")
+    return max_files
 
 
 def _append_run_event(root: Path, event: dict[str, Any]) -> None:
@@ -209,6 +237,8 @@ def _drop_pdf_unlocked(root: Path, source: str, title: str | None = None) -> dic
         renamed = asset_path.with_suffix(".pdf")
         asset_path.rename(renamed)
         asset_path = renamed
+    _assert_file_size(asset_path, _LOCAL_PDF_MAX_BYTES, "PDF asset")
+    _assert_pdf_asset(asset_path)
     extracted_text = _extract_pdf_text(asset_path)
     display_title = title or Path(original_path).stem or asset_path.stem
     stem = _timestamped_stem(display_title)
@@ -285,6 +315,8 @@ def _drop_image_unlocked(
     ensure_layout(root)
     asset_path, original_path = _materialize_binary_source(root, source, preferred_slug=title or Path(source).stem)
     mime = _detect_mime_type(asset_path)
+    _assert_supported_image_mime(mime)
+    _assert_file_size(asset_path, _LOCAL_IMAGE_MAX_BYTES, "image asset")
     width, height = _image_dimensions(asset_path)
     ocr_text = _extract_image_text(asset_path)
     vision_result = _analyze_image_asset(
@@ -381,6 +413,7 @@ def drop_repo(root: Path, source: str, title: str | None = None, max_files: int 
 
 def _drop_repo_unlocked(root: Path, source: str, title: str | None = None, max_files: int = 200) -> dict[str, Any]:
     ensure_layout(root)
+    max_files = _normalize_repo_max_files(max_files)
     cleanup_path: Path | None = None
     repo_path: Path
     original_path = source
@@ -1308,6 +1341,10 @@ def _repo_tree(repo_path: Path, max_files: int) -> list[str]:
     return entries
 
 
+# NOTE (R92-INPUT-SAFETY): max_files caps the main file walk in _repo_tree
+# but _repo_key_files does its own bounded walk (caps at 12 selected files
+# via the early-return in the loop). For a hard total walk bound, see future
+# R92-INPUT-SAFETY-WIDE.
 def _repo_key_files(repo_path: Path) -> list[str]:
     selected: list[str] = []
     seen: set[str] = set()

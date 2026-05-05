@@ -1065,13 +1065,19 @@ def _configure_drop_url_parser(parser: argparse.ArgumentParser) -> None:
 
 
 def _configure_drop_pdf_parser(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("source", help="Local PDF path or PDF URL.")
+    parser.add_argument(
+        "source",
+        help="Local PDF path or PDF URL. PDF assets must be ≤50 MB and start with %PDF- magic bytes.",
+    )
     parser.add_argument("--title", help="Optional display title.")
     _add_auto_flags(parser)
 
 
 def _configure_drop_image_parser(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("source", help="Local image path or image URL.")
+    parser.add_argument(
+        "source",
+        help="Local image path or image URL. Image assets must be ≤25 MB and one of: PNG/JPEG/GIF/WebP/SVG.",
+    )
     parser.add_argument("--title", help="Optional display title.")
     parser.add_argument(
         "--no-vision",
@@ -1088,7 +1094,7 @@ def _configure_drop_repo_parser(parser: argparse.ArgumentParser) -> None:
         "--max-files",
         type=int,
         default=200,
-        help="Maximum number of repo tree entries to capture.",
+        help="Maximum number of repo tree entries to capture (1..1000).",
     )
     _add_auto_flags(parser)
 
