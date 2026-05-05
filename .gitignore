@@ -61,6 +61,12 @@ build/
 .obsidian/themes/
 .obsidian/plugins/*/data.json
 
+# Plugin dev scaffolding (rebuild via `npm install` + jest; not for redistribution)
+.obsidian/plugins/*/node_modules/
+.obsidian/plugins/*/package.json
+.obsidian/plugins/*/package-lock.json
+.obsidian/plugins/*/__mocks__/
+
 # Probe/scratch files
 probe_*.md
 
