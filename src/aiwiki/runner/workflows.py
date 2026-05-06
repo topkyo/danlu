@@ -24,13 +24,15 @@ from aiwiki.app_content import (
 from aiwiki.app_memory import store_concept_rewrite_candidate
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_shell import rewrite_recovery_payload_for_paths
-from aiwiki.app_state import load_machine_memory, load_manifest
+from aiwiki.app_state import load_machine_memory, load_manifest, nightly_health_state_path
 from aiwiki.app_utils import (
+    atomic_write_text,
     parse_frontmatter,
     relative_path,
     runtime_write_operation,
     utc_now,
 )
+from aiwiki.execution.audit_reconciliation import reconcile_execution_receipts
 from aiwiki.llm import CompletionResult, LLMError, _write_raw_response, classify_backend_error
 from aiwiki.runner.clients import (
     _append_fallback_stage,
@@ -1288,6 +1290,21 @@ def run_nightly(
             },
         )
         from aiwiki.agent_loop import attach_agent_loop_to_nightly_state, run_nightly_agent_loop
+
+        # R95.4: audit reconciliation gate (best-effort)
+        try:
+            reconciliation_result = reconcile_execution_receipts(root)
+        except Exception as recon_exc:  # noqa: BLE001
+            import sys
+
+            print(f"[nightly] audit reconciliation failed: {recon_exc}", file=sys.stderr)
+            reconciliation_result = {"status": "failed", "error": str(recon_exc)}
+        state["audit_reconciliation"] = reconciliation_result
+        # Persist updated state so nightly health reflects reconciliation.
+        atomic_write_text(
+            nightly_health_state_path(root),
+            json.dumps(state, indent=2, sort_keys=True) + "\n",
+        )
 
         auto_apply_light = _env_flag("AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT")
         auto_adopt_l1 = _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_L1")
