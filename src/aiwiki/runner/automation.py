@@ -12,7 +12,12 @@ from typing import Any
 from aiwiki.app_compile import compile_wiki, lint_wiki
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_state import load_manifest
-from aiwiki.app_utils import relative_path, runtime_write_operation, sha256_bytes
+from aiwiki.app_utils import (
+    atomic_write_text,
+    relative_path,
+    runtime_write_operation,
+    sha256_bytes,
+)
 from aiwiki.runner.clients import llm_status
 from aiwiki.runner.interfaces import SupportsComplete
 from aiwiki.runner.receipts import _append_log
@@ -176,6 +181,5 @@ def _pending_summary_count(root: Path) -> int:
 def _write_automation_state(root: Path, result: dict[str, Any]) -> None:
     ensure_layout(root)
     path = root / ".aiwiki" / "state" / "automation.json"
-    with path.open("w", encoding="utf-8") as handle:
-        json.dump(result, handle, indent=2, sort_keys=True)
-        handle.write("\n")
+    rendered = json.dumps(result, indent=2, sort_keys=True) + "\n"
+    atomic_write_text(path, rendered, fsync=False)
