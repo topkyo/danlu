@@ -39,10 +39,9 @@ from pathlib import Path
 from typing import Any
 
 from . import clock
-from .app_state import runtime_history_path
+from .app_state import _next_jsonl_line_number, append_runtime_history, runtime_history_path
 from .app_utils import (
     analyze_citation_snapshots,
-    atomic_append_jsonl,
     atomic_append_line,
     parse_frontmatter,
     parse_iso_datetime,
@@ -528,12 +527,10 @@ def _append_drift_scan_event(
         "changed_count": changed_count,
         "breaks_count": breaks_count,
     }
-    # Compute the line number that the new row will occupy.
-    line_number = 1
-    if path.exists():
-        with path.open("rb") as handle:
-            line_number += sum(1 for _ in handle)
-    atomic_append_jsonl(path, event)
+    # Compute the line number that the new row will occupy under the
+    # canonical non-blank-line semantics shared with universal audit refs.
+    line_number = _next_jsonl_line_number(path)
+    append_runtime_history(root, event)
     return f"{relative_path(root, path)}#L{line_number}"
 
 
