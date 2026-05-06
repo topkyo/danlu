@@ -23,7 +23,7 @@ from ..app_state import (
     save_compile_state,
 )
 from ..app_surfaces import render_compile_status
-from ..app_utils import relative_path, write_if_changed
+from ..app_utils import relative_path, write_if_changed_ignoring_timestamps
 from .context import CompileContext
 
 
@@ -444,27 +444,32 @@ def finalize_compile_phase(context: CompileContext, *, force_cache_rebuild: bool
     phase_summary = _build_compile_phase_summary(context)
     compile_state = _build_compile_state_document(context, phase_summary)
     save_compile_state(context.root, compile_state)
-    compile_status_changed = int(
-        write_if_changed(
-            context.root / "wiki" / "indexes" / "compile-status.md",
-            render_compile_status(
-                context.entries,
-                context.concepts,
-                context.decision_pages,
-                context.judgment_pages,
-                context.protocol_state,
-                context.compiled_at,
-                compile_state=compile_state,
-            ),
-        )
+    wrote_compile_status, _dirty = write_if_changed_ignoring_timestamps(
+        context.root / "wiki" / "indexes" / "compile-status.md",
+        render_compile_status(
+            context.entries,
+            context.concepts,
+            context.decision_pages,
+            context.judgment_pages,
+            context.protocol_state,
+            context.compiled_at,
+            compile_state=compile_state,
+        ),
     )
+    compile_status_changed = int(wrote_compile_status)
     context.changed_pages += compile_status_changed
-    append_wiki_log(
-        context.root,
-        "compile",
-        "wiki refresh",
-        _compile_log_details(context),
+    should_log_compile = (
+        context.changed_pages > 0
+        or context.removed_pages > 0
+        or bool(context.transition.get("changed", False))
     )
+    if should_log_compile:
+        append_wiki_log(
+            context.root,
+            "compile",
+            "wiki refresh",
+            _compile_log_details(context),
+        )
     return _build_compile_result_payload(context, phase_summary)
 
 
