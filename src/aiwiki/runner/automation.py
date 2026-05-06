@@ -14,6 +14,7 @@ from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_state import load_manifest
 from aiwiki.app_utils import (
     atomic_write_text,
+    is_atomic_write_tmp_path,
     relative_path,
     runtime_write_operation,
     sha256_bytes,
@@ -152,6 +153,10 @@ def inbox_snapshot(root: Path) -> dict[str, Any]:
     files: list[dict[str, Any]] = []
     for path in sorted((root / "raw" / "inbox").glob("*")):
         if not path.is_file():
+            continue
+        # Orphan atomic-write tmp files are not real inbox content; ignore
+        # them so watcher digests don't churn on crashed-writer residue.
+        if is_atomic_write_tmp_path(path):
             continue
         stat = path.stat()
         files.append(

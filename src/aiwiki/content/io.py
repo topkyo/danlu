@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import re
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -12,11 +11,14 @@ from typing import Any
 from ..app_protocol import AUTO_PROMOTION_FORMATS, ensure_layout
 from ..app_state import DEFAULT_PROTOCOL, append_runtime_history, load_manifest, load_manual_link_state
 from ..app_utils import (
+    atomic_copy_file,
+    atomic_write_text,
     build_citation_snapshots,
     compiled_source_sha,
     detect_kind,
     extract_provenance_paths,
     first_markdown_heading,
+    is_atomic_write_tmp_path,
     next_identifier,
     normalize_workspace_path,
     parse_frontmatter,
@@ -52,6 +54,12 @@ def sync_manifest_with_raw(root: Path) -> dict[str, Any]:
     existing_ids = {entry["id"] for entry in entries}
     for path in sorted((root / "raw" / "inbox").iterdir()):
         if not path.is_file():
+            continue
+        # Skip orphan atomic-write temp files (atomic_write_text /
+        # atomic_copy_file pattern: `<name>.tmp.<pid>.<monotonic_ns>`).
+        # If a writer crashed mid-write the tmp may persist; it is NOT a
+        # fact source and must never be registered into the manifest.
+        if is_atomic_write_tmp_path(path):
             continue
         stored_path = relative_path(root, path)
         metadata = raw_note_metadata(path)
@@ -115,7 +123,7 @@ def ingest_source(root: Path, source: str, title: str | None = None) -> dict[str
         destination = _next_available_raw_path(root / "raw" / "inbox", raw_stem, ".md")
         entry_id = destination.stem
         stub_title = title or source
-        destination.write_text("\n".join([f"# {stub_title}", "", "## 来源 URL", f"- {source}", "", "## 采集状态", "- 这个 URL 目前只是一个占位 stub。", "- 在把它当作事实来源前，请先用剪藏 markdown 或本地附件替换成更完整材料。", "", "## 备注", "- 在补充更完整材料之前，编译器会把这个文件视为占位来源。", ""]) + "\n", encoding="utf-8")
+        atomic_write_text(destination, "\n".join([f"# {stub_title}", "", "## 来源 URL", f"- {source}", "", "## 采集状态", "- 这个 URL 目前只是一个占位 stub。", "- 在把它当作事实来源前，请先用剪藏 markdown 或本地附件替换成更完整材料。", "", "## 备注", "- 在补充更完整材料之前，编译器会把这个文件视为占位来源。", ""]) + "\n")
         original_path = source
         source_type = "url"
     else:
@@ -126,7 +134,7 @@ def ingest_source(root: Path, source: str, title: str | None = None) -> dict[str
         raw_stem = f"source-{entry_id}" if (root / "raw" / "inbox" / f"source-{entry_id}{suffix}").exists() else entry_id
         destination = _next_available_raw_path(root / "raw" / "inbox", raw_stem, suffix)
         entry_id = destination.stem
-        shutil.copy2(source_path, destination)
+        atomic_copy_file(source_path, destination)
         original_path = str(source_path)
         source_type = "file"
     imported_at = utc_now()

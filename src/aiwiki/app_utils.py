@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import socket
 import ssl
 import tempfile
@@ -256,6 +257,25 @@ def _durable_restore_or_remove(path: Path, snapshot: bytes | None) -> None:
         raise
 
 
+def is_atomic_write_tmp_path(path: Path) -> bool:
+    """Return True iff `path.name` matches the atomic-write tmp convention.
+
+    `atomic_write_text` and `atomic_copy_file` create tmp files named
+    `<final>.tmp.<pid>.<monotonic_ns>` in the destination directory. On
+    normal exceptions the helper unlinks them; on hard process kill they
+    may persist as orphans. Consumers that enumerate directories owned by
+    these helpers must skip files matching this pattern so orphans are
+    never treated as authoritative content.
+
+    Pattern is strict: trailing `.tmp.<digits>.<digits>` so legitimate
+    user filenames like `report.tmp.notes.md` are NOT skipped.
+    """
+    return _ATOMIC_TMP_RE.search(path.name) is not None
+
+
+_ATOMIC_TMP_RE = re.compile(r"\.tmp\.\d+\.\d+$")
+
+
 def atomic_write_text(
     path: Path,
     content: str,
@@ -263,11 +283,23 @@ def atomic_write_text(
     encoding: str = "utf-8",
     fsync: bool = True,
 ) -> None:
-    """Write text atomically: tmp + fsync + replace + dir fsync.
+    """Write text atomically: tmp + fsync + replace + best-effort dir fsync.
 
-    Raises on any failure; never leaves half-written content at `path`.
-    Cleans up tmp on failure. Does NOT acquire runtime_write_lock — caller
-    must hold it (or call from inside @runtime_write_operation).
+    Raises on any failure up to and including `os.replace`; never leaves
+    half-written content at `path`. Cleans up tmp on failure.
+
+    Directory fsync (durability of the rename) is best-effort: a dir fsync
+    failure after a successful replace is logged but not re-raised, since
+    the new file is already visible at `path`. Callers needing strict
+    crash-durability should layer their own sync.
+
+    Does NOT acquire runtime_write_lock — caller must hold it (or call
+    from inside @runtime_write_operation).
+
+    Note: tmp file lives in `path.parent` as `<name>.tmp.<pid>.<ns>`. If
+    the writer process is killed mid-write, the tmp may persist. Callers
+    that scan the parent directory must skip files matching
+    `is_atomic_write_tmp_path()` (strict trailing `.tmp.<digits>.<digits>`).
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.parent / f"{path.name}.tmp.{os.getpid()}.{time.monotonic_ns()}"
@@ -287,6 +319,48 @@ def atomic_write_text(
                 os.fsync(dir_fd)
             except OSError as exc:
                 logger.warning("dir fsync failed for %s: %s", path.parent, exc)
+            finally:
+                os.close(dir_fd)
+    except BaseException:
+        with contextlib.suppress(FileNotFoundError):
+            tmp.unlink()
+        raise
+
+
+def atomic_copy_file(src: Path, dst: Path, *, fsync: bool = True) -> None:
+    """Copy file atomically: tmp copy + fsync + replace + best-effort dir fsync.
+
+    Like atomic_write_text but for file-to-file copy. Does NOT preserve
+    src mtime/permissions — ingest pipelines compute their own imported_at
+    and permissions are not part of raw-layer semantics. Raises on any
+    failure up to and including `os.replace`; cleans tmp.
+
+    Directory fsync is best-effort (logged, not re-raised) once replace
+    succeeds. See atomic_write_text for the same caveat.
+
+    Caller must hold runtime_write_lock when writing to authoritative
+    state (e.g. raw/). Same tmp-residue caveat as atomic_write_text:
+    consumers scanning the destination directory must skip files matching
+    `is_atomic_write_tmp_path()` (strict trailing `.tmp.<digits>.<digits>`).
+    """
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dst.parent / f"{dst.name}.tmp.{os.getpid()}.{time.monotonic_ns()}"
+    try:
+        with src.open("rb") as src_handle, tmp.open("wb") as tmp_handle:
+            shutil.copyfileobj(src_handle, tmp_handle)
+            tmp_handle.flush()
+            if fsync:
+                os.fsync(tmp_handle.fileno())
+        os.replace(tmp, dst)
+        if fsync:
+            try:
+                dir_fd = os.open(dst.parent, os.O_DIRECTORY)
+            except OSError:
+                return  # platform without O_DIRECTORY; file fsync already done
+            try:
+                os.fsync(dir_fd)
+            except OSError as exc:
+                logger.warning("dir fsync failed for %s: %s", dst.parent, exc)
             finally:
                 os.close(dir_fd)
     except BaseException:
