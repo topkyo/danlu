@@ -119,6 +119,10 @@ def _append_run_event(root: Path, event: dict[str, Any]) -> None:
     _append_log(root, event)
 BROWSER_RENDER_TIMEOUT_SECONDS = 45
 BROWSER_VIRTUAL_TIME_BUDGET_MS = 8000
+PDF_EXTRACT_TIMEOUT_SECONDS = 60
+MIME_DETECT_TIMEOUT_SECONDS = 5
+IMAGE_OCR_TIMEOUT_SECONDS = 60
+GIT_METADATA_TIMEOUT_SECONDS = 15
 TEXT_FILE_SUFFIXES = {
     ".c",
     ".cc",
@@ -1151,24 +1155,34 @@ def _materialize_binary_source(root: Path, source: str, preferred_slug: str) -> 
 
 
 def _extract_pdf_text(path: Path) -> str:
-    completed = subprocess.run(
-        ["pdftotext", "-layout", str(path), "-"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            ["pdftotext", "-layout", str(path), "-"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=PDF_EXTRACT_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"pdftotext timed out after {PDF_EXTRACT_TIMEOUT_SECONDS}s"
+        ) from exc
     if completed.returncode != 0:
         raise RuntimeError(f"pdftotext failed: {completed.stderr.strip()}")
     return _truncate_text(_normalize_text(completed.stdout), MAX_TEXT_CHARS)
 
 
 def _detect_mime_type(path: Path) -> str:
-    completed = subprocess.run(
-        ["file", "--brief", "--mime-type", str(path)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            ["file", "--brief", "--mime-type", str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=MIME_DETECT_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return "application/octet-stream"
     mime = completed.stdout.strip()
     return mime or "application/octet-stream"
 
@@ -1210,12 +1224,16 @@ def _jpeg_dimensions(path: Path) -> tuple[int | None, int | None]:
 def _extract_image_text(path: Path) -> str:
     if shutil.which("tesseract") is None:
         return ""
-    completed = subprocess.run(
-        ["tesseract", str(path), "stdout"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            ["tesseract", str(path), "stdout"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=IMAGE_OCR_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return ""
     if completed.returncode != 0:
         return ""
     return _truncate_text(_normalize_text(completed.stdout), 20000)
@@ -1394,12 +1412,16 @@ def _read_text_file(path: Path) -> str:
 
 
 def _git_output(repo_path: Path, args: list[str]) -> str:
-    completed = subprocess.run(
-        ["git", "-C", str(repo_path), *args],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repo_path), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=GIT_METADATA_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return ""
     if completed.returncode != 0:
         return ""
     return completed.stdout.strip()
