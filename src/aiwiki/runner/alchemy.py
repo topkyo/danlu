@@ -57,6 +57,22 @@ class AlchemyLanePrimitiveReceiptHalfWriteError(RuntimeError):
     """Raised when lane primitive receipt persistence fails and rollback also fails; manual recovery needed."""
 
 
+class AlchemyDistillApplyError(RuntimeError):
+    """Raised when distill_apply fails and rollback succeeds."""
+
+
+class AlchemyDistillApplyHalfWriteError(RuntimeError):
+    """Raised when distill_apply fails and rollback also fails; manual recovery needed."""
+
+
+class AlchemyProposeApplyReceiptError(RuntimeError):
+    """Raised when propose_apply receipt-tier persistence fails and rollback succeeds."""
+
+
+class AlchemyProposeApplyReceiptHalfWriteError(RuntimeError):
+    """Raised when propose_apply receipt-tier rollback also fails; manual recovery needed."""
+
+
 _PLANNER_LOG_REL_PATH = ".aiwiki/state/planner-log.jsonl"
 _ALCHEMY_PROPOSE_COLD_START_ERROR = (
     "planner-log not initialized: alchemy propose --apply requires execute-mode planner decisions. "
@@ -740,50 +756,21 @@ def run_alchemy_distill_apply(
     if not candidates:
         raise RuntimeError("alchemy distill apply requires at least one apply-supported elixir candidate")
 
-    from aiwiki.app_execution import append_execution_receipt_history, compute_file_sha256
-    from aiwiki.app_state import execution_receipt_history_path
-    from aiwiki.render.paths import execution_receipt_path
+    from aiwiki.app_execution import compute_file_sha256
 
     ensure_layout(root)
     refreshed: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
 
-    for candidate in candidates:
-        candidate_id = str(candidate.get("candidate_id") or "")
-        target_ref = str(candidate.get("target_ref") or "")
-        target_id = _alchemy_distill_target_id(target_ref)
-        if not target_id:
-            skipped.append({"candidate_id": candidate_id, "target_ref": target_ref, "reason": "missing_target_ref"})
-            continue
-        candidate_path = root / "output" / "_candidates" / "elixirs" / f"{target_id}.md"
-        if not candidate_path.exists():
-            skipped.append({"candidate_id": candidate_id, "target_ref": target_ref, "elixir_id": target_id, "reason": "target_missing"})
-            continue
-        question = _alchemy_distill_question(candidate)
-        if question in _alchemy_distill_history_questions(candidate_path):
-            skipped.append({"candidate_id": candidate_id, "target_ref": target_ref, "elixir_id": target_id, "reason": "already_distilled"})
-            continue
-        before_hash = compute_file_sha256(candidate_path)
-        result = run_alchemy_distill(root, target_id, question)
-        result_path = root / str(result.get("path") or relative_path(root, candidate_path))
-        after_hash = compute_file_sha256(result_path)
-        refreshed.append(
-            {
-                "candidate_id": candidate_id,
-                "target_ref": target_ref,
-                "elixir_id": target_id,
-                "path": relative_path(root, result_path),
-                "question": question,
-                "before_hash": before_hash,
-                "after_hash": after_hash,
-                "iteration": result.get("iteration"),
-            }
-        )
-
     applied_at = utc_now()
     action_id = _unique_alchemy_distill_action_id(root, applied_at=applied_at)
     receipt_path = execution_receipt_path(root, action_id)
     audit_path = relative_path(root, execution_receipt_history_path(root))
+    history_path = execution_receipt_history_path(root)
+    history_size_before = history_path.stat().st_size if history_path.exists() else 0
+    audit_jsonl_path = root / AUDIT_STREAM_PATH
+    audit_size_before = audit_jsonl_path.stat().st_size if audit_jsonl_path.exists() else 0
+    touched_path_snapshots: dict[Path, bytes | None] = {}
     trace_ids = _preview_trace_ids(preview)
     trace_id = trace_ids[0] if trace_ids else ""
     candidate_ids = [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")]
@@ -825,26 +812,82 @@ def run_alchemy_distill_apply(
         "result_summary": {"refreshed": refreshed, "skipped": skipped},
     }
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-    append_execution_receipt_history(root, receipt)
-    append_runtime_history(
-        root,
-        {
-            "event_type": "alchemy-distill-refreshed",
-            "recorded_at": applied_at,
-            "status": "completed",
-            "scope": scope,
-            "candidate_count": len(candidates),
-            "candidate_ids": candidate_ids,
-            "refreshed_count": len(refreshed),
-            "skipped_count": len(skipped),
-            "receipt_path": relative_path(root, receipt_path),
-            "trace_id": trace_id,
-            "trace_ids": trace_ids,
-            "subject_kind": "alchemy_elixir_candidate",
-            "subject_id": f"distill:{scope}",
-        },
-    )
+    try:
+        for candidate in candidates:
+            candidate_id = str(candidate.get("candidate_id") or "")
+            target_ref = str(candidate.get("target_ref") or "")
+            target_id = _alchemy_distill_target_id(target_ref)
+            if not target_id:
+                skipped.append({"candidate_id": candidate_id, "target_ref": target_ref, "reason": "missing_target_ref"})
+                continue
+            candidate_path = root / "output" / "_candidates" / "elixirs" / f"{target_id}.md"
+            if not candidate_path.exists():
+                skipped.append({"candidate_id": candidate_id, "target_ref": target_ref, "elixir_id": target_id, "reason": "target_missing"})
+                continue
+            question = _alchemy_distill_question(candidate)
+            if question in _alchemy_distill_history_questions(candidate_path):
+                skipped.append({"candidate_id": candidate_id, "target_ref": target_ref, "elixir_id": target_id, "reason": "already_distilled"})
+                continue
+            if candidate_path not in touched_path_snapshots:
+                touched_path_snapshots[candidate_path] = _snapshot_file_bytes(candidate_path)
+            before_hash = compute_file_sha256(candidate_path)
+            result = run_alchemy_distill(root, target_id, question)
+            result_path = root / str(result.get("path") or relative_path(root, candidate_path))
+            after_hash = compute_file_sha256(result_path)
+            refreshed.append(
+                {
+                    "candidate_id": candidate_id,
+                    "target_ref": target_ref,
+                    "elixir_id": target_id,
+                    "path": relative_path(root, result_path),
+                    "question": question,
+                    "before_hash": before_hash,
+                    "after_hash": after_hash,
+                    "iteration": result.get("iteration"),
+                }
+            )
+        receipt["refreshed_count"] = len(refreshed)
+        receipt["skipped_count"] = len(skipped)
+        receipt["skipped"] = skipped
+        receipt["changed"] = bool(refreshed)
+        receipt["result_summary"] = {"refreshed": refreshed, "skipped": skipped}
+        atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        append_execution_receipt_history(root, receipt)
+        append_runtime_history(
+            root,
+            {
+                "event_type": "alchemy-distill-refreshed",
+                "recorded_at": applied_at,
+                "status": "completed",
+                "scope": scope,
+                "candidate_count": len(candidates),
+                "candidate_ids": candidate_ids,
+                "refreshed_count": len(refreshed),
+                "skipped_count": len(skipped),
+                "receipt_path": relative_path(root, receipt_path),
+                "trace_id": trace_id,
+                "trace_ids": trace_ids,
+                "subject_kind": "alchemy_elixir_candidate",
+                "subject_id": f"distill:{scope}",
+            },
+        )
+    except Exception as tx_exc:
+        try:
+            for path, snapshot in reversed(touched_path_snapshots.items()):
+                if snapshot is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    _restore_file_bytes(path, snapshot)
+            if history_path.exists():
+                _durable_truncate(history_path, history_size_before)
+            if audit_jsonl_path.exists():
+                _durable_truncate(audit_jsonl_path, audit_size_before)
+            receipt_path.unlink(missing_ok=True)
+        except Exception as rollback_exc:
+            raise AlchemyDistillApplyHalfWriteError(
+                f"distill_apply rollback failed for {scope}: tx_error={tx_exc}; rollback_error={rollback_exc}"
+            ) from rollback_exc
+        raise AlchemyDistillApplyError(f"distill_apply failed for {scope}; mutation rolled back") from tx_exc
     return {
         "status": "applied",
         "primitive": "distill",
@@ -1121,10 +1164,7 @@ def run_alchemy_propose_apply(
     if not candidates:
         raise RuntimeError("alchemy propose apply requires a non-empty dry-run preview")
 
-    from aiwiki.app_execution import append_execution_receipt_history
-    from aiwiki.app_state import execution_receipt_history_path
     from aiwiki.execution.l3_proposals import create_l3_proposal, load_l3_proposal_state
-    from aiwiki.render.paths import execution_receipt_path
 
     ensure_layout(root)
     existing_ids = {
@@ -1207,27 +1247,46 @@ def run_alchemy_propose_apply(
         "source_preview": _propose_preview_receipt_summary(preview, candidates),
         "result_summary": {"generated": generated, "skipped": skipped},
     }
+    history_path = execution_receipt_history_path(root)
+    history_size_before = history_path.stat().st_size if history_path.exists() else 0
+    audit_jsonl_path = root / AUDIT_STREAM_PATH
+    audit_size_before = audit_jsonl_path.stat().st_size if audit_jsonl_path.exists() else 0
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-    append_execution_receipt_history(root, receipt)
-    append_runtime_history(
-        root,
-        {
-            "event_type": "alchemy-propose-generated",
-            "recorded_at": applied_at,
-            "status": "completed",
-            "scope": scope,
-            "candidate_count": len(candidates),
-            "candidate_ids": candidate_ids,
-            "generated_count": len(generated),
-            "proposal_ids": proposal_ids,
-            "receipt_path": relative_path(root, receipt_path),
-            "trace_id": trace_id,
-            "trace_ids": trace_ids,
-            "subject_kind": "alchemy_proposal_plane",
-            "subject_id": f"propose:{scope}",
-        },
-    )
+    try:
+        atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        append_execution_receipt_history(root, receipt)
+        append_runtime_history(
+            root,
+            {
+                "event_type": "alchemy-propose-generated",
+                "recorded_at": applied_at,
+                "status": "completed",
+                "scope": scope,
+                "candidate_count": len(candidates),
+                "candidate_ids": candidate_ids,
+                "generated_count": len(generated),
+                "proposal_ids": proposal_ids,
+                "receipt_path": relative_path(root, receipt_path),
+                "trace_id": trace_id,
+                "trace_ids": trace_ids,
+                "subject_kind": "alchemy_proposal_plane",
+                "subject_id": f"propose:{scope}",
+            },
+        )
+    except Exception as tx_exc:
+        try:
+            if history_path.exists():
+                _durable_truncate(history_path, history_size_before)
+            if audit_jsonl_path.exists():
+                _durable_truncate(audit_jsonl_path, audit_size_before)
+            receipt_path.unlink(missing_ok=True)
+        except Exception as rollback_exc:
+            raise AlchemyProposeApplyReceiptHalfWriteError(
+                f"propose_apply receipt rollback failed for {scope}: tx_error={tx_exc}; rollback_error={rollback_exc}"
+            ) from rollback_exc
+        raise AlchemyProposeApplyReceiptError(
+            f"propose_apply receipt persistence failed for {scope}; receipt-tier residue rolled back (successful proposals retained)"
+        ) from tx_exc
     return {
         "status": "applied",
         "primitive": "propose",
