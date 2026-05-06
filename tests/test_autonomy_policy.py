@@ -36,22 +36,27 @@ class AutonomyPolicyTests(unittest.TestCase):
             self.assertTrue(policy.disable_external_llm)
             self.assertFalse(policy.disable_lane_apply)
 
-    def test_malformed_file_falls_back_to_default(self) -> None:
+    def test_malformed_file_fails_closed(self) -> None:
         with TemporaryDirectory() as tempdir:
             root = Path(tempdir)
             path = autonomy_policy.policy_path(root)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("not-json{", encoding="utf-8")
             policy = load_policy(root)
-            self.assertEqual(policy, AutonomyPolicy())
+            self.assertTrue(policy.disable_external_llm)
+            self.assertTrue(policy.disable_lane_apply)
+            self.assertIsNotNone(policy.load_error)
 
-    def test_non_dict_top_level_falls_back_to_default(self) -> None:
+    def test_non_dict_top_level_fails_closed(self) -> None:
         with TemporaryDirectory() as tempdir:
             root = Path(tempdir)
             path = autonomy_policy.policy_path(root)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(["not", "a", "dict"]), encoding="utf-8")
-            self.assertEqual(load_policy(root), AutonomyPolicy())
+            policy = load_policy(root)
+            self.assertTrue(policy.disable_external_llm)
+            self.assertTrue(policy.disable_lane_apply)
+            self.assertIsNotNone(policy.load_error)
 
     def test_is_disabled_returns_false_for_unknown_flag(self) -> None:
         with TemporaryDirectory() as tempdir:
@@ -241,6 +246,7 @@ class AutonomyPolicyMutationTests(unittest.TestCase):
         with TemporaryDirectory() as tempdir:
             status = policy_status(Path(tempdir), env={})
             self.assertFalse(status["policy_file_exists"])
+            self.assertIsNone(status["policy_load_error"])
             self.assertFalse(status["global_override_active"])
             for name, info in status["flags"].items():
                 self.assertFalse(info["effective"], f"{name} should be enabled by default")

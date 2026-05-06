@@ -13,8 +13,8 @@ The policy file lives at ``.aiwiki/state/autonomy-policy.json``::
 Backward-compat by design:
 
 - File missing  → all flags False (identical to today's behavior).
-- File malformed → all flags False (refuse to ever silently disable on parse
-  error; user can fix the file). We emit no warning here; CLIs may surface it.
+- File malformed/unreadable → all flags True (fail closed) with load_error so
+  CLIs can surface why automation is disabled.
 - Env override ``AIWIKI_DISABLE_AUTOMATION=1`` forces every flag to True
   regardless of the file. Designed as a "panic button" knob.
 
@@ -51,6 +51,7 @@ class AutonomyPolicy:
     disable_alchemy_auto: bool = False
     disable_l3_generate: bool = False
     disable_external_llm: bool = False
+    load_error: str | None = None
 
 
 def policy_path(root: Path) -> Path:
@@ -58,22 +59,34 @@ def policy_path(root: Path) -> Path:
 
 
 def load_policy(root: Path) -> AutonomyPolicy:
-    """Read the policy file. Missing/malformed → default (all False)."""
+    """Read the policy file. Missing → default; malformed/unreadable → fail closed."""
 
     path = policy_path(root)
-    if not path.exists():
-        return AutonomyPolicy()
     try:
+        if not path.exists():
+            return AutonomyPolicy()
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, ValueError):
-        return AutonomyPolicy()
+    except OSError as e:
+        return _disabled_policy(f"autonomy-policy file unreadable: {e}")
+    except (json.JSONDecodeError, ValueError) as e:
+        return _disabled_policy(f"autonomy-policy file malformed: {e}")
     if not isinstance(raw, dict):
-        return AutonomyPolicy()
+        return _disabled_policy("autonomy-policy file not a JSON object")
     return AutonomyPolicy(
         disable_lane_apply=bool(raw.get("disable_lane_apply", False)),
         disable_alchemy_auto=bool(raw.get("disable_alchemy_auto", False)),
         disable_l3_generate=bool(raw.get("disable_l3_generate", False)),
         disable_external_llm=bool(raw.get("disable_external_llm", False)),
+    )
+
+
+def _disabled_policy(reason: str) -> AutonomyPolicy:
+    return AutonomyPolicy(
+        disable_lane_apply=True,
+        disable_alchemy_auto=True,
+        disable_l3_generate=True,
+        disable_external_llm=True,
+        load_error=reason,
     )
 
 
@@ -111,6 +124,8 @@ def disabled_reason(
     if _env_global_override(env):
         return f"{GLOBAL_OVERRIDE_ENV}=1 (global kill switch active)"
     policy = load_policy(root)
+    if policy.load_error is not None:
+        return f"autonomy-policy fail-closed: {policy.load_error}"
     if bool(getattr(policy, flag, False)):
         return f"autonomy-policy.{flag}=true"
     return None
@@ -128,7 +143,10 @@ def set_flag(root: Path, flag: str, value: bool) -> AutonomyPolicy:
     if flag not in KNOWN_FLAGS:
         raise ValueError(f"Unknown autonomy flag: {flag}. Known: {', '.join(KNOWN_FLAGS)}")
     current = load_policy(root)
-    flags = {name: getattr(current, name, False) for name in KNOWN_FLAGS}
+    if current.load_error is not None:
+        flags = {name: False for name in KNOWN_FLAGS}
+    else:
+        flags = {name: getattr(current, name, False) for name in KNOWN_FLAGS}
     flags[flag] = bool(value)
     payload = {"schema_version": 1, **flags}
     path = policy_path(root)
@@ -146,6 +164,7 @@ def policy_status(root: Path, *, env: Mapping[str, str] | None = None) -> dict:
         {
           "policy_path": "<absolute>",
           "policy_file_exists": bool,
+          "policy_load_error": str|None,
           "global_override_env": "AIWIKI_DISABLE_AUTOMATION",
           "global_override_active": bool,
           "flags": {
@@ -169,6 +188,7 @@ def policy_status(root: Path, *, env: Mapping[str, str] | None = None) -> dict:
     return {
         "policy_path": str(path),
         "policy_file_exists": path.exists(),
+        "policy_load_error": file_policy.load_error,
         "global_override_env": GLOBAL_OVERRIDE_ENV,
         "global_override_active": override,
         "flags": flags,
