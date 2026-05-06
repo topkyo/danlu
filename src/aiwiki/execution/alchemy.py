@@ -17,7 +17,15 @@ from ..app_execution import (
 )
 from ..app_protocol import PROTOCOL_ELIXIR_REVIEW_DAYS
 from ..app_state import execution_receipt_history_path, load_active_corpora_state, load_output_candidates_state
-from ..app_utils import next_available_stem, parse_frontmatter, relative_path, sha256_bytes, slugify, utc_now
+from ..app_utils import (
+    atomic_write_text,
+    next_available_stem,
+    parse_frontmatter,
+    relative_path,
+    sha256_bytes,
+    slugify,
+    utc_now,
+)
 from .audit_preview import AUDIT_STREAM_PATH
 
 ELIXIR_DIR = "wiki/elixirs"
@@ -156,10 +164,7 @@ def _persist_receipt_transactionally(
     receipt_path_snapshot = _snapshot_file_bytes(receipt_path)
     try:
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
-        receipt_path.write_text(
-            json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
         append_execution_receipt_history(root, receipt)
     except Exception as receipt_exc:
         logger.warning(
@@ -1221,9 +1226,10 @@ def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> di
     _validate_state_for_path(root, "settled", settled_path)
     _validate_state_for_path(root, "superseded", candidate_path)
 
-    receipt_artifact_snapshots = _snapshot_receipt_artifacts(root)
-    receipt_path: Path | None = None
-    receipt_path_snapshot: bytes | None = None
+    def _rollback_promote_data() -> None:
+        _restore_file_bytes(candidate_path, candidate_snapshot)
+        _restore_file_bytes(settled_path, settled_snapshot)
+
     try:
         primary_hash = compute_file_sha256(settled_path)
         secondary_hash = compute_file_sha256(candidate_path)
@@ -1242,25 +1248,27 @@ def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> di
             confidence_level=str(frontmatter.get("confidence_level") or "").strip(),
         )
         receipt_result_path = str(receipt.get("receipt_path") or "")
-        receipt_path = root / receipt_result_path
-        receipt_path.parent.mkdir(parents=True, exist_ok=True)
-        receipt_path_snapshot = _snapshot_file_bytes(receipt_path)
-        receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        append_execution_receipt_history(root, receipt)
+        _persist_receipt_transactionally(
+            root,
+            receipt=receipt,
+            elixir_id=normalized_id,
+            operation="promote",
+            rollback_data=_rollback_promote_data,
+            receipt_error_cls=PromoteReceiptError,
+            half_write_error_factory=lambda phase: PromoteHalfWriteError(
+                settled_path=settled_path, candidate_path=candidate_path, phase=phase
+            ),
+        )
+    except (PromoteReceiptError, PromoteHalfWriteError):
+        raise
     except Exception as receipt_exc:
-        # Mutation hard boundary: receipt persistence (per-action file + history + audit)
-        # must succeed transactionally or mutation must visibly fail with all artifacts restored.
         logger.warning(
-            "elixir promote receipt persistence failed for %s; rolling back mutation: %s",
+            "elixir promote receipt preparation failed for %s; rolling back mutation: %s",
             normalized_id,
             receipt_exc,
         )
         try:
-            if receipt_path is not None:
-                _restore_file_bytes(receipt_path, receipt_path_snapshot)
-            _restore_receipt_artifacts(receipt_artifact_snapshots)
-            _restore_file_bytes(candidate_path, candidate_snapshot)
-            _restore_file_bytes(settled_path, settled_snapshot)
+            _rollback_promote_data()
         except Exception as rollback_exc:
             raise PromoteHalfWriteError(
                 settled_path=settled_path, candidate_path=candidate_path, phase="receipt_rollback"

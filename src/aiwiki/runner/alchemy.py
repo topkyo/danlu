@@ -10,9 +10,11 @@ from pathlib import Path
 from typing import Any
 
 from aiwiki.app_compile import compile_wiki, lint_wiki, nightly_health
+from aiwiki.app_execution import append_execution_receipt_history
 from aiwiki.app_protocol import ensure_layout
-from aiwiki.app_state import append_runtime_history
+from aiwiki.app_state import append_runtime_history, execution_receipt_history_path
 from aiwiki.app_utils import (
+    _durable_truncate,
     atomic_write_text,
     parse_frontmatter,
     relative_path,
@@ -24,8 +26,19 @@ from aiwiki.app_utils import (
     strip_frontmatter,
     utc_now,
 )
+from aiwiki.execution.alchemy import _restore_file_bytes, _snapshot_file_bytes
+from aiwiki.execution.audit_preview import AUDIT_STREAM_PATH
+from aiwiki.render.paths import execution_receipt_path
 
 logger = logging.getLogger(__name__)
+
+
+class AlchemyJudgeProposalApplyError(RuntimeError):
+    """Raised when judge_proposal_apply fails and rollback succeeds."""
+
+
+class AlchemyJudgeProposalApplyHalfWriteError(RuntimeError):
+    """Raised when judge_proposal_apply fails and rollback also fails; manual recovery needed."""
 
 _PLANNER_LOG_REL_PATH = ".aiwiki/state/planner-log.jsonl"
 _ALCHEMY_PROPOSE_COLD_START_ERROR = (
@@ -482,10 +495,6 @@ def run_alchemy_judge_proposal_apply(
     *,
     note: str | None = None,
 ) -> dict[str, Any]:
-    from aiwiki.app_execution import append_execution_receipt_history
-    from aiwiki.app_state import execution_receipt_history_path
-    from aiwiki.render.paths import execution_receipt_path
-
     proposal_path = _resolve_alchemy_judge_proposal_path(root, proposal)
     original_proposal = proposal_path.read_text(encoding="utf-8", errors="replace")
     proposal_frontmatter = parse_frontmatter(original_proposal)
@@ -536,22 +545,22 @@ def run_alchemy_judge_proposal_apply(
         start_marker=_ALCHEMY_JUDGE_ACCEPTED_TARGET_START,
         end_marker=_ALCHEMY_JUDGE_ACCEPTED_TARGET_END,
     )
-    updated_target = f"{render_frontmatter(target_frontmatter)}\n\n{updated_body.strip()}\n"
-    changed = updated_target != original_target
-    if changed:
-        target.write_text(updated_target, encoding="utf-8")
-    after_hash = sha256_bytes(updated_target.encode("utf-8"))
+    target_snapshot = _snapshot_file_bytes(target)
+    proposal_snapshot = _snapshot_file_bytes(proposal_path)
 
     applied_at = utc_now()
     action_id = _unique_alchemy_judge_proposal_apply_action_id(root, applied_at=applied_at)
     receipt_path = execution_receipt_path(root, action_id)
     audit_path = relative_path(root, execution_receipt_history_path(root))
+    updated_target = f"{render_frontmatter(target_frontmatter)}\n\n{updated_body.strip()}\n"
+    changed = updated_target != original_target
+    after_hash = sha256_bytes(updated_target.encode("utf-8"))
+
     proposal_frontmatter["state"] = "applied"
     proposal_frontmatter["applied_at"] = applied_at
     proposal_frontmatter["receipt_path"] = relative_path(root, receipt_path)
     proposal_body = strip_frontmatter(original_proposal).strip()
     updated_proposal = f"{render_frontmatter(proposal_frontmatter)}\n\n{proposal_body}\n"
-    proposal_path.write_text(updated_proposal, encoding="utf-8")
     receipt = {
         "version": 1,
         "kind": "execution-receipt",
@@ -581,25 +590,55 @@ def run_alchemy_judge_proposal_apply(
         "audit_event": "execution_receipt_history_append",
         "audit_path": audit_path,
     }
+    history_path = execution_receipt_history_path(root)
+    history_size_before = history_path.stat().st_size if history_path.exists() else 0
+    audit_jsonl_path = root / AUDIT_STREAM_PATH
+    audit_size_before = audit_jsonl_path.stat().st_size if audit_jsonl_path.exists() else 0
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-    append_execution_receipt_history(root, receipt)
-    append_runtime_history(
-        root,
-        {
-            "event_type": "alchemy-judge-proposal-applied",
-            "recorded_at": applied_at,
-            "status": "completed",
-            "proposal_id": proposal_id,
-            "proposal_path": relative_path(root, proposal_path),
-            "target_file": target_ref,
-            "receipt_path": relative_path(root, receipt_path),
-            "subject_kind": "alchemy_judgment_page",
-            "subject_id": target_ref,
-            "changed": changed,
-            "llm_invoked": False,
-        },
-    )
+    try:
+        if changed:
+            atomic_write_text(target, updated_target)
+        atomic_write_text(proposal_path, updated_proposal)
+        atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        append_execution_receipt_history(root, receipt)
+    except Exception as tx_exc:
+        try:
+            if history_path.exists():
+                _durable_truncate(history_path, history_size_before)
+            if audit_jsonl_path.exists():
+                _durable_truncate(audit_jsonl_path, audit_size_before)
+            if receipt_path.exists():
+                receipt_path.unlink()
+            _restore_file_bytes(proposal_path, proposal_snapshot)
+            _restore_file_bytes(target, target_snapshot)
+        except Exception as rollback_exc:
+            raise AlchemyJudgeProposalApplyHalfWriteError(
+                f"judge_proposal_apply rollback failed for {proposal_id}: tx_error={tx_exc}; "
+                f"rollback_error={rollback_exc}"
+            ) from rollback_exc
+        raise AlchemyJudgeProposalApplyError(
+            f"judge_proposal_apply failed for {proposal_id}; mutation rolled back"
+        ) from tx_exc
+
+    try:
+        append_runtime_history(
+            root,
+            {
+                "event_type": "alchemy-judge-proposal-applied",
+                "recorded_at": applied_at,
+                "status": "completed",
+                "proposal_id": proposal_id,
+                "proposal_path": relative_path(root, proposal_path),
+                "target_file": target_ref,
+                "receipt_path": relative_path(root, receipt_path),
+                "subject_kind": "alchemy_judgment_page",
+                "subject_id": target_ref,
+                "changed": changed,
+                "llm_invoked": False,
+            },
+        )
+    except Exception as exc:
+        logger.warning("judge_proposal_apply runtime-history append failed for %s: %s", proposal_id, exc)
     return {
         "status": "applied",
         "primitive": "judge",
