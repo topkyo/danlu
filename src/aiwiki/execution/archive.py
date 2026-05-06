@@ -30,6 +30,7 @@ Import policy (mirrors EP-018B1/B2/B3):
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -65,6 +66,8 @@ from ..app_state import (
 )
 from ..app_utils import atomic_write_text, relative_path, runtime_write_operation
 from ..compile.pipeline import compile_wiki
+
+logger = logging.getLogger(__name__)
 
 
 @runtime_write_operation
@@ -213,8 +216,6 @@ def apply_material_archive(
     )
     receipt_path = execution_receipt_path(root, material_archive_action_id(entry_id))
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-    append_execution_receipt_history(root, receipt)
 
     archive_entries = [
         dict(item)
@@ -235,29 +236,73 @@ def apply_material_archive(
             "last_receipt_path": relative_path(root, receipt_path),
         }
     )
-    save_material_archive_state(root, {"version": 1, "entries": archive_entries})
-    append_runtime_history(
-        root,
-        {
-            "event_type": "archive-apply",
-            "occurred_at": applied_at,
-            "protocol": protocol,
-            "source_ids": [entry_id],
-            "receipt_path": relative_path(root, receipt_path),
-        },
-    )
-    append_wiki_log(
-        root,
-        "archive-apply",
-        title,
-        [
-            f"entry_id: `{entry_id}`",
-            f"source: `{source_path}`",
-            "temperature: `cold -> archived`",
-            f"receipt: `{relative_path(root, receipt_path)}`",
-        ],
-    )
-    compile_wiki(root)
+
+    # R95.1: phase 1 = receipt file write -> state save (TX). Failure here
+    # rolls back the receipt file so we don't leave an orphan apply receipt
+    # claiming success when state never committed.
+    wrote_receipt = False
+    try:
+        atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        wrote_receipt = True
+        save_material_archive_state(root, {"version": 1, "entries": archive_entries})
+    except BaseException:
+        if wrote_receipt:
+            try:
+                receipt_path.unlink(missing_ok=True)
+            except BaseException as rollback_exc:
+                logger.warning(
+                    "archive apply receipt unlink failed for %s: %s (%s)",
+                    receipt_path,
+                    rollback_exc,
+                    type(rollback_exc).__name__,
+                )
+        raise
+
+    # R95.1: phase 2 = best-effort audit/derived. State is already SOT;
+    # raising here would mislead the caller into retry against an
+    # already-archived entry, which would fail at active_material_archive
+    # check with a confusing error. Per-step warning preserves observability.
+    for step_name, step_fn in (
+        ("append_execution_receipt_history", lambda: append_execution_receipt_history(root, receipt)),
+        (
+            "append_runtime_history",
+            lambda: append_runtime_history(
+                root,
+                {
+                    "event_type": "archive-apply",
+                    "occurred_at": applied_at,
+                    "protocol": protocol,
+                    "source_ids": [entry_id],
+                    "receipt_path": relative_path(root, receipt_path),
+                },
+            ),
+        ),
+        (
+            "append_wiki_log",
+            lambda: append_wiki_log(
+                root,
+                "archive-apply",
+                title,
+                [
+                    f"entry_id: `{entry_id}`",
+                    f"source: `{source_path}`",
+                    "temperature: `cold -> archived`",
+                    f"receipt: `{relative_path(root, receipt_path)}`",
+                ],
+            ),
+        ),
+        ("compile_wiki", lambda: compile_wiki(root)),
+    ):
+        try:
+            step_fn()
+        except Exception as phase2_exc:
+            logger.warning(
+                "archive apply phase 2 step %s failed for %s: %s (%s); state already saved",
+                step_name,
+                entry_id,
+                phase2_exc,
+                type(phase2_exc).__name__,
+            )
     return {
         "id": entry_id,
         "status": "archived",
@@ -332,39 +377,81 @@ def revert_material_archive(
     revert_receipt_path = apply_receipt_path.parent / "reverts" / apply_receipt_path.name
     revert_receipt_path.parent.mkdir(parents=True, exist_ok=True)
     revert_receipt["receipt_path"] = relative_path(root, revert_receipt_path)
-    atomic_write_text(
-        revert_receipt_path,
-        json.dumps(revert_receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-    )
-    append_execution_receipt_history(root, revert_receipt)
 
     target["active"] = False
     target["reverted_at"] = reverted_at
     target["revert_note"] = note or "Material archive reverted."
     target["last_receipt_path"] = relative_path(root, revert_receipt_path)
-    save_material_archive_state(root, {"version": 1, "entries": archive_entries})
-    append_runtime_history(
-        root,
-        {
-            "event_type": "archive-revert",
-            "occurred_at": reverted_at,
-            "protocol": protocol,
-            "source_ids": [entry_id],
-            "receipt_path": relative_path(root, revert_receipt_path),
-        },
-    )
-    append_wiki_log(
-        root,
-        "archive-revert",
-        title,
-        [
-            f"entry_id: `{entry_id}`",
-            f"source: `{source_path}`",
-            "temperature: `archived -> cold`",
-            f"receipt: `{relative_path(root, revert_receipt_path)}`",
-        ],
-    )
-    compile_wiki(root)
+
+    # R95.1: phase 1 = revert receipt file write -> state save (TX). Failure
+    # here unlinks the orphan revert receipt; target dict mutations live in
+    # local memory only, so no in-memory rollback is needed (the next call
+    # reloads from disk).
+    wrote_receipt = False
+    try:
+        atomic_write_text(
+            revert_receipt_path,
+            json.dumps(revert_receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        )
+        wrote_receipt = True
+        save_material_archive_state(root, {"version": 1, "entries": archive_entries})
+    except BaseException:
+        if wrote_receipt:
+            try:
+                revert_receipt_path.unlink(missing_ok=True)
+            except BaseException as rollback_exc:
+                logger.warning(
+                    "archive revert receipt unlink failed for %s: %s (%s)",
+                    revert_receipt_path,
+                    rollback_exc,
+                    type(rollback_exc).__name__,
+                )
+        raise
+
+    # R95.1: phase 2 = best-effort audit/derived. State is SOT; raising here
+    # would mislead caller into retry which would fail at the active-archive
+    # check.
+    for step_name, step_fn in (
+        ("append_execution_receipt_history", lambda: append_execution_receipt_history(root, revert_receipt)),
+        (
+            "append_runtime_history",
+            lambda: append_runtime_history(
+                root,
+                {
+                    "event_type": "archive-revert",
+                    "occurred_at": reverted_at,
+                    "protocol": protocol,
+                    "source_ids": [entry_id],
+                    "receipt_path": relative_path(root, revert_receipt_path),
+                },
+            ),
+        ),
+        (
+            "append_wiki_log",
+            lambda: append_wiki_log(
+                root,
+                "archive-revert",
+                title,
+                [
+                    f"entry_id: `{entry_id}`",
+                    f"source: `{source_path}`",
+                    "temperature: `archived -> cold`",
+                    f"receipt: `{relative_path(root, revert_receipt_path)}`",
+                ],
+            ),
+        ),
+        ("compile_wiki", lambda: compile_wiki(root)),
+    ):
+        try:
+            step_fn()
+        except Exception as phase2_exc:
+            logger.warning(
+                "archive revert phase 2 step %s failed for %s: %s (%s); state already saved",
+                step_name,
+                entry_id,
+                phase2_exc,
+                type(phase2_exc).__name__,
+            )
     return {
         "id": entry_id,
         "status": "cold",
