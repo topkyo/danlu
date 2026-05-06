@@ -49,6 +49,14 @@ class AlchemyReviewApplyHalfWriteError(RuntimeError):
     """Raised when review_apply fails and rollback also fails; manual recovery needed."""
 
 
+class AlchemyLanePrimitiveReceiptError(RuntimeError):
+    """Raised when lane primitive receipt persistence fails and rollback succeeds."""
+
+
+class AlchemyLanePrimitiveReceiptHalfWriteError(RuntimeError):
+    """Raised when lane primitive receipt persistence fails and rollback also fails; manual recovery needed."""
+
+
 _PLANNER_LOG_REL_PATH = ".aiwiki/state/planner-log.jsonl"
 _ALCHEMY_PROPOSE_COLD_START_ERROR = (
     "planner-log not initialized: alchemy propose --apply requires execute-mode planner decisions. "
@@ -2224,7 +2232,10 @@ def _append_alchemy_lane_runtime_event(
         ]
     if apply_result is not None:
         event["action_batch_receipt"] = str(apply_result.get("receipt_path") or apply_result.get("batch_receipt_path") or "")
-    append_runtime_history(root, event)
+    try:
+        append_runtime_history(root, event)
+    except Exception as exc:
+        logger.warning("alchemy lane runtime-history append failed for %s:%s:%s: %s", lane, scope, event_type, exc)
 
 
 def _normalize_lane_primitives(primitives: list[str]) -> list[str]:
@@ -2352,12 +2363,12 @@ def _run_receipted_lane_primitive(
 
     applied_at = utc_now()
     action_id = _unique_lane_primitive_action_id(root, lane=lane, primitive=primitive, applied_at=applied_at)
-    from aiwiki.app_execution import append_execution_receipt_history
-    from aiwiki.app_state import execution_receipt_history_path
-    from aiwiki.render.paths import execution_receipt_path
-
     receipt_path = execution_receipt_path(root, action_id)
     audit_path = relative_path(root, execution_receipt_history_path(root))
+    history_path = execution_receipt_history_path(root)
+    history_size_before = history_path.stat().st_size if history_path.exists() else 0
+    audit_jsonl_path = root / AUDIT_STREAM_PATH
+    audit_size_before = audit_jsonl_path.stat().st_size if audit_jsonl_path.exists() else 0
     trace_ids = _lane_receipt_trace_ids(plan)
     trace_id = trace_ids[0] if trace_ids else ""
     plan_scope_preview = plan.get("scope_preview")
@@ -2401,8 +2412,24 @@ def _run_receipted_lane_primitive(
         "result_summary": _lane_receipt_result_summary(result),
     }
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-    append_execution_receipt_history(root, receipt)
+    try:
+        atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        append_execution_receipt_history(root, receipt)
+    except Exception as tx_exc:
+        try:
+            if history_path.exists():
+                _durable_truncate(history_path, history_size_before)
+            if audit_jsonl_path.exists():
+                _durable_truncate(audit_jsonl_path, audit_size_before)
+            receipt_path.unlink(missing_ok=True)
+        except Exception as rollback_exc:
+            raise AlchemyLanePrimitiveReceiptHalfWriteError(
+                f"lane primitive receipt rollback failed for {lane}:{primitive}: tx_error={tx_exc}; "
+                f"rollback_error={rollback_exc}"
+            ) from rollback_exc
+        raise AlchemyLanePrimitiveReceiptError(
+            f"lane primitive receipt persistence failed for {lane}:{primitive}; mutation rolled back"
+        ) from tx_exc
     return {
         "primitive": primitive,
         "trace_id": trace_id,
