@@ -327,6 +327,45 @@ def atomic_write_text(
         raise
 
 
+def atomic_write_bytes(
+    path: Path,
+    content: bytes,
+    *,
+    fsync: bool = True,
+) -> None:
+    """Byte-level twin of `atomic_write_text`. Use for rollback paths or for
+    writers that must round-trip arbitrary (possibly non-UTF-8) source bytes.
+
+    Same atomicity guarantees: tmp + fsync + replace + best-effort dir fsync,
+    cleanup-on-failure, raises up to and including `os.replace`. Caller must
+    hold the runtime write lock.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.parent / f"{path.name}.tmp.{os.getpid()}.{time.monotonic_ns()}"
+    try:
+        with tmp.open("wb") as handle:
+            handle.write(content)
+            handle.flush()
+            if fsync:
+                os.fsync(handle.fileno())
+        os.replace(tmp, path)
+        if fsync:
+            try:
+                dir_fd = os.open(path.parent, os.O_DIRECTORY)
+            except OSError:
+                return
+            try:
+                os.fsync(dir_fd)
+            except OSError as exc:
+                logger.warning("dir fsync failed for %s: %s", path.parent, exc)
+            finally:
+                os.close(dir_fd)
+    except BaseException:
+        with contextlib.suppress(FileNotFoundError):
+            tmp.unlink()
+        raise
+
+
 def atomic_copy_file(src: Path, dst: Path, *, fsync: bool = True) -> None:
     """Copy file atomically: tmp copy + fsync + replace + best-effort dir fsync.
 

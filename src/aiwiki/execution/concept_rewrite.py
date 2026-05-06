@@ -32,6 +32,7 @@ Design notes:
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -54,8 +55,10 @@ from ..app_state import (
     rewrite_dry_run_path,
     save_concept_rewrite_state,
 )
-from ..app_utils import parse_frontmatter, relative_path, runtime_write_operation
+from ..app_utils import atomic_write_bytes, atomic_write_text, parse_frontmatter, relative_path, runtime_write_operation
 from ..compile.pipeline import compile_wiki
+
+logger = logging.getLogger(__name__)
 
 
 def _load_concept_rewrite_proposals(root: Path) -> list[dict[str, Any]]:
@@ -358,24 +361,49 @@ def apply_concept_rewrite(
             "path": relative_path(root, concept_path),
         }
     previous_snapshot = concept_page_snapshot(root, slug)
-    concept_path.write_text(candidate_markdown.strip() + "\n", encoding="utf-8")
-    applied_at = _app_compile.utc_now()
-    target["status"] = "applied"
-    target["applied_at"] = applied_at
-    target["last_applied_at"] = applied_at
-    target["reverted_at"] = ""
-    target["revert_note"] = ""
-    target["reviewed_at"] = applied_at
-    target["review_note"] = note or "Applied accepted rewrite proposal."
-    target["pending_review"] = "false"
-    target["apply_ready"] = False
-    target["previous_markdown"] = str(previous_snapshot.get("content") or "")
-    target["previous_digest"] = concept_rewrite_proposal_digest(str(previous_snapshot.get("content") or ""))
-    target["verification_status"] = "pending"
-    target["verification_checked_at"] = ""
-    target["verification_summary"] = ""
-    target["verification_issues"] = []
-    _save_concept_rewrite_proposals(root, proposals)
+    # R94.4: capture current bytes BEFORE overwriting concept page so we can
+    # roll back if anything in the critical section (forward write through
+    # state save) fails. concept_path is guaranteed to exist (checked above).
+    previous_content_bytes = concept_path.read_bytes()
+    new_content = candidate_markdown.strip() + "\n"
+    wrote_file = False
+    try:
+        atomic_write_text(concept_path, new_content)
+        wrote_file = True
+        applied_at = _app_compile.utc_now()
+        target["status"] = "applied"
+        target["applied_at"] = applied_at
+        target["last_applied_at"] = applied_at
+        target["reverted_at"] = ""
+        target["revert_note"] = ""
+        target["reviewed_at"] = applied_at
+        target["review_note"] = note or "Applied accepted rewrite proposal."
+        target["pending_review"] = "false"
+        target["apply_ready"] = False
+        target["previous_markdown"] = str(previous_snapshot.get("content") or "")
+        target["previous_digest"] = concept_rewrite_proposal_digest(str(previous_snapshot.get("content") or ""))
+        target["verification_status"] = "pending"
+        target["verification_checked_at"] = ""
+        target["verification_summary"] = ""
+        target["verification_issues"] = []
+        _save_concept_rewrite_proposals(root, proposals)
+    except BaseException:
+        # R94.4: critical-section failure after forward write — restore the
+        # concept file via byte-level atomic write so non-UTF-8 bytes survive.
+        # Inner except is BaseException so a rollback-time KeyboardInterrupt
+        # does not mask the original error; rollback failure is logged but
+        # never re-raised in lieu of the original.
+        if wrote_file:
+            try:
+                atomic_write_bytes(concept_path, previous_content_bytes)
+            except BaseException as rollback_exc:
+                logger.warning(
+                    "concept rewrite apply rollback failed for %s: %s (%s)",
+                    concept_path,
+                    rollback_exc,
+                    type(rollback_exc).__name__,
+                )
+        raise
     append_wiki_log(
         root,
         "rewrite-apply",
@@ -453,21 +481,42 @@ def revert_concept_rewrite(root: Path, slug: str, *, note: str | None = None) ->
     concept_path = root / str(target.get("target_path") or f"wiki/concepts/{slug}.md")
     if not concept_path.exists():
         raise FileNotFoundError(f"Concept page not found: {concept_path}")
-    concept_path.write_text(previous_markdown.strip() + "\n", encoding="utf-8")
-    reverted_at = _app_compile.utc_now()
-    target["status"] = "accepted"
-    target["reviewed_at"] = reverted_at
-    target["review_note"] = note or "Reverted applied rewrite proposal."
-    target["pending_review"] = "true" if rewrite_proposal_needs_review("accepted") else "false"
-    target["applied_at"] = ""
-    target["reverted_at"] = reverted_at
-    target["revert_note"] = note or "Reverted applied rewrite proposal."
-    target["verification_status"] = ""
-    target["verification_checked_at"] = ""
-    target["verification_summary"] = ""
-    target["verification_issues"] = []
-    target["apply_ready"] = rewrite_proposal_is_apply_ready(root, target)
-    _save_concept_rewrite_proposals(root, proposals)
+    # R94.4: snapshot current bytes (the candidate that was applied) so we can
+    # roll back the file if anything in the critical section fails halfway.
+    previous_content_bytes = concept_path.read_bytes()
+    wrote_file = False
+    try:
+        atomic_write_text(concept_path, previous_markdown.strip() + "\n")
+        wrote_file = True
+        reverted_at = _app_compile.utc_now()
+        target["status"] = "accepted"
+        target["reviewed_at"] = reverted_at
+        target["review_note"] = note or "Reverted applied rewrite proposal."
+        target["pending_review"] = "true" if rewrite_proposal_needs_review("accepted") else "false"
+        target["applied_at"] = ""
+        target["reverted_at"] = reverted_at
+        target["revert_note"] = note or "Reverted applied rewrite proposal."
+        target["verification_status"] = ""
+        target["verification_checked_at"] = ""
+        target["verification_summary"] = ""
+        target["verification_issues"] = []
+        target["apply_ready"] = rewrite_proposal_is_apply_ready(root, target)
+        _save_concept_rewrite_proposals(root, proposals)
+    except BaseException:
+        # R94.4: critical-section failure after forward write — restore the
+        # candidate bytes so the proposal still reflects an applied state and
+        # can be retried. See apply path for rationale on rollback shape.
+        if wrote_file:
+            try:
+                atomic_write_bytes(concept_path, previous_content_bytes)
+            except BaseException as rollback_exc:
+                logger.warning(
+                    "concept rewrite revert rollback failed for %s: %s (%s)",
+                    concept_path,
+                    rollback_exc,
+                    type(rollback_exc).__name__,
+                )
+        raise
     append_runtime_history(
         root,
         {
