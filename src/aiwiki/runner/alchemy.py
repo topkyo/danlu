@@ -40,6 +40,15 @@ class AlchemyJudgeProposalApplyError(RuntimeError):
 class AlchemyJudgeProposalApplyHalfWriteError(RuntimeError):
     """Raised when judge_proposal_apply fails and rollback also fails; manual recovery needed."""
 
+
+class AlchemyReviewApplyError(RuntimeError):
+    """Raised when review_apply fails and rollback succeeds."""
+
+
+class AlchemyReviewApplyHalfWriteError(RuntimeError):
+    """Raised when review_apply fails and rollback also fails; manual recovery needed."""
+
+
 _PLANNER_LOG_REL_PATH = ".aiwiki/state/planner-log.jsonl"
 _ALCHEMY_PROPOSE_COLD_START_ERROR = (
     "planner-log not initialized: alchemy propose --apply requires execute-mode planner decisions. "
@@ -911,75 +920,101 @@ def run_alchemy_review_apply(
     if not candidates:
         raise RuntimeError("alchemy review apply requires a non-empty dry-run preview")
 
-    queue_result = _materialize_alchemy_review_queue(root, preview=preview, candidates=candidates)
     applied_at = utc_now()
     action_id = _unique_alchemy_review_action_id(root, applied_at=applied_at)
 
-    from aiwiki.app_execution import append_execution_receipt_history
-    from aiwiki.app_state import execution_receipt_history_path
-    from aiwiki.render.paths import execution_receipt_path
-
     receipt_path = execution_receipt_path(root, action_id)
     audit_path = relative_path(root, execution_receipt_history_path(root))
+    history_path = execution_receipt_history_path(root)
+    history_size_before = history_path.stat().st_size if history_path.exists() else 0
+    audit_jsonl_path = root / AUDIT_STREAM_PATH
+    audit_size_before = audit_jsonl_path.stat().st_size if audit_jsonl_path.exists() else 0
+    queue_path = root / "wiki" / "indexes" / "review-queue.md"
+    queue_existed_before = queue_path.exists()
+    queue_snapshot = _snapshot_file_bytes(queue_path)
     trace_ids = _preview_trace_ids(preview)
     trace_id = trace_ids[0] if trace_ids else ""
     candidate_ids = [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")]
     idempotency_key = _alchemy_review_idempotency_key(scope=scope, candidate_ids=candidate_ids, trace_ids=trace_ids)
-    receipt = {
-        "version": 1,
-        "kind": "execution-receipt",
-        "generated_by": "aiwiki-alchemy-review",
-        "applied_at": applied_at,
-        "operation": "alchemy-review-enqueue",
-        "action_id": action_id,
-        "trace_id": trace_id,
-        "trace_ids": trace_ids,
-        "title": f"Alchemy review enqueue {scope}",
-        "status": "applied",
-        "protocol": _first_preview_protocol(preview),
-        "subject_kind": "alchemy_review_queue",
-        "subject_id": f"review:{scope}",
-        "apply_mode": "alchemy-review",
-        "note": note or "",
-        "primary_path": queue_result["path"],
-        "secondary_path": "",
-        "receipt_path": relative_path(root, receipt_path),
-        "scope": scope,
-        "primitive": "review",
-        "candidate_ids": candidate_ids,
-        "candidate_count": len(candidates),
-        "idempotency_key": idempotency_key,
-        "before_hash": queue_result["before_hash"],
-        "after_hash": queue_result["after_hash"],
-        "changed": queue_result["changed"],
-        "revert_supported": False,
-        "revert_policy": "non_revertible_derived_index: rerun compile or reapply a newer review preview to replace the managed section",
-        "audit_stream": "execution_receipts",
-        "audit_event": "execution_receipt_history_append",
-        "audit_path": audit_path,
-        "source_preview": _review_preview_receipt_summary(preview, candidates),
-        "result_summary": queue_result,
-    }
-    receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-    append_execution_receipt_history(root, receipt)
-    append_runtime_history(
-        root,
-        {
-            "event_type": "alchemy-review-enqueued",
-            "recorded_at": applied_at,
-            "status": "completed",
-            "scope": scope,
-            "candidate_count": len(candidates),
-            "candidate_ids": candidate_ids,
-            "review_queue_path": queue_result["path"],
-            "receipt_path": relative_path(root, receipt_path),
+    queue_result: dict[str, Any] = {}
+    receipt: dict[str, Any] = {}
+    try:
+        queue_result = _materialize_alchemy_review_queue(root, preview=preview, candidates=candidates)
+        receipt = {
+            "version": 1,
+            "kind": "execution-receipt",
+            "generated_by": "aiwiki-alchemy-review",
+            "applied_at": applied_at,
+            "operation": "alchemy-review-enqueue",
+            "action_id": action_id,
             "trace_id": trace_id,
             "trace_ids": trace_ids,
+            "title": f"Alchemy review enqueue {scope}",
+            "status": "applied",
+            "protocol": _first_preview_protocol(preview),
             "subject_kind": "alchemy_review_queue",
             "subject_id": f"review:{scope}",
-        },
-    )
+            "apply_mode": "alchemy-review",
+            "note": note or "",
+            "primary_path": queue_result["path"],
+            "secondary_path": "",
+            "receipt_path": relative_path(root, receipt_path),
+            "scope": scope,
+            "primitive": "review",
+            "candidate_ids": candidate_ids,
+            "candidate_count": len(candidates),
+            "idempotency_key": idempotency_key,
+            "before_hash": queue_result["before_hash"],
+            "after_hash": queue_result["after_hash"],
+            "changed": queue_result["changed"],
+            "revert_supported": False,
+            "revert_policy": "non_revertible_derived_index: rerun compile or reapply a newer review preview to replace the managed section",
+            "audit_stream": "execution_receipts",
+            "audit_event": "execution_receipt_history_append",
+            "audit_path": audit_path,
+            "source_preview": _review_preview_receipt_summary(preview, candidates),
+            "result_summary": queue_result,
+        }
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        append_execution_receipt_history(root, receipt)
+    except Exception as tx_exc:
+        try:
+            if history_path.exists():
+                _durable_truncate(history_path, history_size_before)
+            if audit_jsonl_path.exists():
+                _durable_truncate(audit_jsonl_path, audit_size_before)
+            if receipt_path.exists():
+                receipt_path.unlink()
+            if queue_existed_before:
+                _restore_file_bytes(queue_path, queue_snapshot)
+            elif queue_path.exists():
+                queue_path.unlink()
+        except Exception as rollback_exc:
+            raise AlchemyReviewApplyHalfWriteError(
+                f"review_apply rollback failed for {scope}: tx_error={tx_exc}; rollback_error={rollback_exc}"
+            ) from rollback_exc
+        raise AlchemyReviewApplyError(f"review_apply failed for {scope}; mutation rolled back") from tx_exc
+    try:
+        append_runtime_history(
+            root,
+            {
+                "event_type": "alchemy-review-enqueued",
+                "recorded_at": applied_at,
+                "status": "completed",
+                "scope": scope,
+                "candidate_count": len(candidates),
+                "candidate_ids": candidate_ids,
+                "review_queue_path": queue_result["path"],
+                "receipt_path": relative_path(root, receipt_path),
+                "trace_id": trace_id,
+                "trace_ids": trace_ids,
+                "subject_kind": "alchemy_review_queue",
+                "subject_id": f"review:{scope}",
+            },
+        )
+    except Exception as exc:
+        logger.warning("review_apply runtime-history append failed for %s: %s", scope, exc)
     return {
         "status": "applied",
         "primitive": "review",
