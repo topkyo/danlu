@@ -118,16 +118,20 @@ class L3AutoRevertTests(unittest.TestCase):
         self.assertTrue(ctx.exception.deleted_receipt_path.endswith(f"{ctx.exception.action_id}.json"))
 
     def test_revert_failure_raises_l3_revert_error(self) -> None:
-        original_write_bytes = Path.write_bytes
+        # R94.5: rollback now goes through atomic_write_bytes (not Path.write_bytes
+        # directly). Patch the atomic helper to simulate rollback failure.
+        from aiwiki.execution import l3_proposals as l3_mod
 
-        def guarded_write_bytes(path: Path, data: bytes, *args: object, **kwargs: object) -> int:
+        original_atomic = l3_mod.atomic_write_bytes
+
+        def guarded_atomic_write_bytes(path: Path, data: bytes, **kwargs: object) -> None:
             if path == self.target and data == self.before_content.encode("utf-8"):
                 raise OSError("revert also fails")
-            return original_write_bytes(path, data, *args, **kwargs)
+            original_atomic(path, data, **kwargs)
 
         with (
             patch("aiwiki.execution.l3_proposals.append_runtime_history", side_effect=OSError("audit fail")),
-            patch("pathlib.Path.write_bytes", guarded_write_bytes),
+            patch("aiwiki.execution.l3_proposals.atomic_write_bytes", side_effect=guarded_atomic_write_bytes),
         ):
             with self.assertRaises(L3RevertError):
                 apply_l3_proposal(self.root, self.proposal_id)

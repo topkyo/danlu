@@ -309,16 +309,19 @@ class ExecutionTests(unittest.TestCase):
 
     def test_apply_l3_proposal_revert_failure_raises_l3_revert_error(self) -> None:
         target, _after = self._prepare_l3_apply_post_audit_failure()
-        original_write_bytes = Path.write_bytes
+        # R94.5: rollback now goes through atomic_write_bytes; patch that.
+        from aiwiki.execution import l3_proposals as l3_mod
 
-        def guarded_write_bytes(path: Path, data: bytes, *args: object, **kwargs: object) -> int:
+        original_atomic = l3_mod.atomic_write_bytes
+
+        def guarded_atomic_write_bytes(path: Path, data: bytes, **kwargs: object) -> None:
             if path == target and data == b"Compile prompt fixture.\n":
                 raise OSError("revert also fails")
-            return original_write_bytes(path, data, *args, **kwargs)
+            original_atomic(path, data, **kwargs)
 
         with (
             patch("aiwiki.execution.l3_proposals.append_runtime_history", side_effect=RuntimeError("runtime failed")),
-            patch("pathlib.Path.write_bytes", guarded_write_bytes),
+            patch("aiwiki.execution.l3_proposals.atomic_write_bytes", side_effect=guarded_atomic_write_bytes),
         ):
             with self.assertRaises(L3RevertError):
                 apply_l3_proposal(self.root, "compile-update")

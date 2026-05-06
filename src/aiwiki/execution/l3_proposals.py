@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ from ..app_state import (
     save_json_document,
 )
 from ..app_utils import (
+    atomic_write_bytes,
     atomic_write_text,
     next_available_stem,
     relative_path,
@@ -35,6 +37,8 @@ L3_PROPOSAL_KINDS = ("prompt_proposal", "policy_proposal")
 L3_PROPOSAL_STATES = ("candidate", "accepted", "rejected", "reverted", "stale", "revert_conflict")
 L3_TRIGGER_PATTERNS = ("failure_cluster", "recurring_feedback", "drift", "contract_failure", "manual_fixture")
 _PLANNER_LOG_REL_PATH = ".aiwiki/state/planner-log.jsonl"
+
+logger = logging.getLogger(__name__)
 
 
 class L3PostApplyAuditError(RuntimeError):
@@ -589,7 +593,7 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
     before_hash_for_audit = hashlib.sha256(snapshot or b"").hexdigest()
     after_hash_for_audit = hashlib.sha256(after_content.encode("utf-8")).hexdigest()
     try:
-        target.write_text(after_content, encoding="utf-8")
+        atomic_write_text(target, after_content)
         after_hash = _hash_path(target)
         action_id = _unique_l3_action_id(root, "l3-proposal-apply", proposal_id)
         receipt_path = execution_receipt_path(root, action_id)
@@ -615,10 +619,10 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
             **_receipt_audit_metadata(root),
         }
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
-        receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     except Exception:
         if snapshot is not None:
-            target.write_bytes(snapshot)
+            atomic_write_bytes(target, snapshot)
         else:
             target.unlink(missing_ok=True)
         raise
@@ -626,7 +630,7 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
     def _raise_post_apply_audit_error(failed_step: str, exc: Exception) -> None:
         try:
             if snapshot is not None:
-                target.write_bytes(snapshot)
+                atomic_write_bytes(target, snapshot)
             else:
                 target.unlink(missing_ok=True)
             receipt_path.unlink(missing_ok=True)
@@ -736,7 +740,8 @@ def revert_l3_proposal(root: Path, receipt_id: str, *, note: str | None = None) 
         proposal["revert_conflict_at"] = reverted_at
         hint_path = l3_revert_hint_path(root, proposal)
         hint_path.parent.mkdir(parents=True, exist_ok=True)
-        hint_path.write_text(
+        atomic_write_text(
+            hint_path,
             "\n".join(
                 [
                     f"# Human Merge Required: {proposal_id}",
@@ -749,7 +754,6 @@ def revert_l3_proposal(root: Path, receipt_id: str, *, note: str | None = None) 
                     "",
                 ]
             ),
-            encoding="utf-8",
         )
         proposal["revert_hint_path"] = relative_path(root, hint_path)
         save_l3_proposal_state(root, proposals)
@@ -777,59 +781,121 @@ def revert_l3_proposal(root: Path, receipt_id: str, *, note: str | None = None) 
             "expected_after_hash": expected_after_hash,
         }
 
-    target.write_text(str(receipt.get("before_content") or ""), encoding="utf-8")
-    restored_hash = _hash_path(target)
+    # R94.5: capture target's pre-revert bytes (the applied/candidate content)
+    # so we can roll back if the critical section fails. Without this, a failed
+    # state save would leave target=before_content but state=accepted, breaking
+    # the receipt→state mapping and forcing human merge on retry.
+    before_revert_bytes = target.read_bytes()
     action_id = _unique_l3_action_id(root, "l3-proposal-revert", proposal_id)
     revert_receipt_path = execution_receipt_path(root, action_id)
-    revert_receipt = {
-        "version": 1,
-        "kind": "execution-receipt",
-        "generated_by": "aiwiki-l3-proposal",
-        "applied_at": reverted_at,
-        "operation": "revert",
-        "action_id": action_id,
-        "subject_kind": "l3_proposal",
-        "subject_id": proposal_id,
-        "source_receipt_path": relative_path(root, receipt_path),
-        "target_file": relative_path(root, target),
-        "before_hash": str(receipt.get("before_hash") or ""),
-        "after_hash": expected_after_hash,
-        "restored_hash": restored_hash,
-        "note": note or "",
-        "revert_supported": False,
-        "receipt_path": relative_path(root, revert_receipt_path),
-        **_receipt_audit_metadata(root),
-    }
-    revert_receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    revert_receipt_path.write_text(json.dumps(revert_receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    append_execution_receipt_history(root, revert_receipt)
-    proposal["state"] = "reverted"
-    proposal["reverted_at"] = reverted_at
-    proposal["last_revert_receipt_path"] = relative_path(root, revert_receipt_path)
-    save_l3_proposal_state(root, proposals)
-    _persist_l3_proposal_page(root, proposal)
-    append_runtime_history(
-        root,
-        {
-            "event_type": "l3-proposal-revert",
-            "occurred_at": reverted_at,
-            "proposal_id": proposal_id,
-            "target_file": relative_path(root, target),
+    wrote_target = False
+    wrote_receipt = False
+    try:
+        atomic_write_text(target, str(receipt.get("before_content") or ""))
+        wrote_target = True
+        restored_hash = _hash_path(target)
+        revert_receipt = {
+            "version": 1,
+            "kind": "execution-receipt",
+            "generated_by": "aiwiki-l3-proposal",
+            "applied_at": reverted_at,
+            "operation": "revert",
+            "action_id": action_id,
+            "subject_kind": "l3_proposal",
+            "subject_id": proposal_id,
             "source_receipt_path": relative_path(root, receipt_path),
-            "receipt_path": relative_path(root, revert_receipt_path),
+            "target_file": relative_path(root, target),
+            "before_hash": str(receipt.get("before_hash") or ""),
+            "after_hash": expected_after_hash,
             "restored_hash": restored_hash,
             "note": note or "",
-        },
-    )
-    append_wiki_log(
-        root,
-        "l3-proposal-revert",
-        proposal_id,
-        [
-            f"target: `{relative_path(root, target)}`",
-            f"receipt: `{relative_path(root, revert_receipt_path)}`",
-        ],
-    )
+            "revert_supported": False,
+            "receipt_path": relative_path(root, revert_receipt_path),
+            **_receipt_audit_metadata(root),
+        }
+        revert_receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(revert_receipt_path, json.dumps(revert_receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        wrote_receipt = True
+        proposal["state"] = "reverted"
+        proposal["reverted_at"] = reverted_at
+        proposal["last_revert_receipt_path"] = relative_path(root, revert_receipt_path)
+        save_l3_proposal_state(root, proposals)
+    except BaseException:
+        # R94.5: critical-section failure after target overwrite — restore
+        # original bytes via byte-level atomic write AND remove any orphan
+        # revert-receipt file that was written before the failure (otherwise
+        # we'd leave a false audit record claiming revert happened). Inner
+        # except is BaseException so KeyboardInterrupt during rollback never
+        # masks the original error; rollback failures are logged.
+        if wrote_target:
+            try:
+                atomic_write_bytes(target, before_revert_bytes)
+            except BaseException as rollback_exc:
+                logger.warning(
+                    "l3-proposal revert target rollback failed for %s: %s (%s)",
+                    target,
+                    rollback_exc,
+                    type(rollback_exc).__name__,
+                )
+        if wrote_receipt:
+            try:
+                revert_receipt_path.unlink(missing_ok=True)
+            except BaseException as rollback_exc:
+                logger.warning(
+                    "l3-proposal revert receipt unlink failed for %s: %s (%s)",
+                    revert_receipt_path,
+                    rollback_exc,
+                    type(rollback_exc).__name__,
+                )
+        raise
+    # Phase 2 (best-effort, fully isolated): audit history append, page render,
+    # runtime history, wiki log. State is already SOT; replay/recompile fixes
+    # any derived staleness. Failures here MUST NOT raise — caller would
+    # naturally retry, but a retried revert would see current_hash != after_hash
+    # and fall into revert_conflict, polluting an already-successful revert.
+    # Each step is logged on failure so operators can re-index/replay.
+    for step_name, step_fn in (
+        ("append_execution_receipt_history", lambda: append_execution_receipt_history(root, revert_receipt)),
+        ("_persist_l3_proposal_page", lambda: _persist_l3_proposal_page(root, proposal)),
+        (
+            "append_runtime_history",
+            lambda: append_runtime_history(
+                root,
+                {
+                    "event_type": "l3-proposal-revert",
+                    "occurred_at": reverted_at,
+                    "proposal_id": proposal_id,
+                    "target_file": relative_path(root, target),
+                    "source_receipt_path": relative_path(root, receipt_path),
+                    "receipt_path": relative_path(root, revert_receipt_path),
+                    "restored_hash": restored_hash,
+                    "note": note or "",
+                },
+            ),
+        ),
+        (
+            "append_wiki_log",
+            lambda: append_wiki_log(
+                root,
+                "l3-proposal-revert",
+                proposal_id,
+                [
+                    f"target: `{relative_path(root, target)}`",
+                    f"receipt: `{relative_path(root, revert_receipt_path)}`",
+                ],
+            ),
+        ),
+    ):
+        try:
+            step_fn()
+        except Exception as phase2_exc:
+            logger.warning(
+                "l3-proposal revert phase 2 step %s failed for %s: %s (%s); state already saved",
+                step_name,
+                proposal_id,
+                phase2_exc,
+                type(phase2_exc).__name__,
+            )
     return {
         "proposal_id": proposal_id,
         "state": "reverted",
