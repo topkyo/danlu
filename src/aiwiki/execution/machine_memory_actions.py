@@ -73,7 +73,7 @@ from ..app_state import (
     execution_dry_run_path,
     execution_receipt_history_path,
     load_json_document_strict,
-    load_machine_memory_action_state,
+    load_machine_memory_action_state_strict,
     load_manual_link_state,
     machine_memory_action_state_path,
     manual_link_state_path,
@@ -299,7 +299,7 @@ def review_machine_memory_action(
             f"Unsupported machine-memory action status: {status!r}; "
             f"expected one of: {ACTION_STATUSES}"
         )
-    state = load_machine_memory_action_state(root)
+    state = load_machine_memory_action_state_strict(root)
     actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
     target = resolve_machine_memory_action_query(actions, action_id)
     resolved_action_id = str(target.get("id") or action_id.strip())
@@ -362,7 +362,7 @@ def review_machine_memory_actions_batch(
     if not ordered_ids:
         raise ValueError("Batch review-action requires at least one action id.")
 
-    state = load_machine_memory_action_state(root)
+    state = load_machine_memory_action_state_strict(root)
     actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
     targets: list[dict[str, Any]] = []
     resolved_ids: list[str] = []
@@ -433,7 +433,7 @@ def apply_machine_memory_action(
     from .. import app_compile as _app_compile
 
     ensure_layout(root)
-    state = load_machine_memory_action_state(root)
+    state = load_machine_memory_action_state_strict(root)
     actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
     target = resolve_machine_memory_action_query(actions, action_id)
     resolved_action_id = str(target.get("id") or action_id.strip())
@@ -739,7 +739,7 @@ def revert_machine_memory_action(
     from .. import app_compile as _app_compile
 
     ensure_layout(root)
-    state = load_machine_memory_action_state(root)
+    state = load_machine_memory_action_state_strict(root)
     actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
     target = resolve_machine_memory_action_query(actions, action_id)
     resolved_action_id = str(target.get("id") or action_id.strip())

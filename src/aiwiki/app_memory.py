@@ -109,7 +109,7 @@ from .app_state import (
     load_json_document,
     load_knowledge_lifecycle_state,
     load_machine_memory,
-    load_machine_memory_action_state,
+    load_machine_memory_action_state_strict,
     load_machine_memory_build_state,
     load_manifest,
     load_manual_link_state,
@@ -1173,7 +1173,7 @@ def reconcile_machine_memory_actions(
     compiled_at: str,
     active_protocol: str = DEFAULT_PROTOCOL,
 ) -> dict[str, Any]:
-    previous_state = load_machine_memory_action_state(root)
+    previous_state = load_machine_memory_action_state_strict(root)
     previous_by_id = {
         str(action.get("id")): action for action in previous_state.get("actions", []) if action.get("id")
     }

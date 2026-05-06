@@ -1435,7 +1435,7 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
 
         stubs = {
             "ensure_layout": None,
-            "load_machine_memory_action_state": {"actions": [{"id": "a1", "title": "A1", "protocol": "general"}]},
+            "load_machine_memory_action_state_strict": {"actions": [{"id": "a1", "title": "A1", "protocol": "general"}]},
             "resolve_machine_memory_action_query": {"id": "a1", "title": "A1", "protocol": "general"},
             "schedule_review_windows": ("", ""),
             "evaluate_page_aging": {},
@@ -1470,7 +1470,7 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
         proposal = {"bundle_path": "bundle.json", "proposal_path": "proposal.json", "safe_apply_preview": {"apply_mode": "resolve-monitor"}}
         stubs = {
             "ensure_layout": None,
-            "load_machine_memory_action_state": {"actions": [target]},
+            "load_machine_memory_action_state_strict": {"actions": [target]},
             "resolve_machine_memory_action_query": target,
             "load_protocol_state": {"active_protocol": "general"},
             "repair_execution_proposals": [proposal],
@@ -1522,7 +1522,7 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
             bundle = {"action_id": "a1", "digest": "digest-1", "safe_apply_preview": {"apply_mode": "resolve-monitor"}}
             stubs = {
                 "ensure_layout": None,
-                "load_machine_memory_action_state": {"actions": [target]},
+                "load_machine_memory_action_state_strict": {"actions": [target]},
                 "resolve_machine_memory_action_query": target,
                 "load_protocol_state": {"active_protocol": "general"},
                 "repair_execution_proposals": [bundle],
@@ -1598,7 +1598,7 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
             target = {"id": "a1", "title": "A1", "status": "resolved", "protocol": "general", "last_receipt_path": "receipt.json"}
             stubs = {
                 "ensure_layout": None,
-                "load_machine_memory_action_state": {"actions": [target]},
+                "load_machine_memory_action_state_strict": {"actions": [target]},
                 "resolve_machine_memory_action_query": target,
                 "load_json_document_strict": {"kind": "execution-receipt", "operation": "apply", "action_id": "a1", "safe_apply_preview": {"apply_mode": "resolve-monitor"}},
                 "load_protocol_state": {"active_protocol": "general"},
@@ -1846,7 +1846,7 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
         preview = {"id": "a1", "bundle_path": "bundle.json"}
         stubs = {
             "ensure_layout": None,
-            "load_machine_memory_action_state": {"actions": [action]},
+            "load_machine_memory_action_state_strict": {"actions": [action]},
             "action_supports_low_risk_apply": True,
             "build_execution_batch_receipt": {"kind": "execution-batch-receipt", "batch_id": "b1"},
             "execution_batch_receipt_path": Path("receipt.json"),
@@ -1899,7 +1899,7 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
         apply_sequence = [preview, applied]
         stubs = {
             "ensure_layout": None,
-            "load_machine_memory_action_state": {"actions": [action]},
+            "load_machine_memory_action_state_strict": {"actions": [action]},
             "action_supports_low_risk_apply": True,
             "build_execution_batch_receipt": {"kind": "execution-batch-receipt", "batch_id": "b1"},
             "execution_batch_receipt_path": Path("receipt.json"),

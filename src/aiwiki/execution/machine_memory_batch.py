@@ -51,7 +51,7 @@ from ..app_state import (
     append_runtime_history,
     execution_batch_receipt_path,
     load_json_document_strict,
-    load_machine_memory_action_state,
+    load_machine_memory_action_state_strict,
     load_runtime_history_strict,
 )
 from ..app_utils import relative_path, runtime_write_operation, slugify
@@ -181,7 +181,7 @@ def apply_machine_memory_actions_batch(
         ordered_ids.append(normalized)
     if not ordered_ids:
         raise ValueError("Batch apply requires at least one action.")
-    state = load_machine_memory_action_state(root)
+    state = load_machine_memory_action_state_strict(root)
     actions = {
         str(action.get("id") or ""): action
         for action in state.get("actions", [])
