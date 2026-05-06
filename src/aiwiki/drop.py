@@ -19,6 +19,9 @@ from .app_state import DEFAULT_PROTOCOL, append_runtime_history
 from .app_utils import (
     FetchPolicyError,
     _validate_safe_url,
+    atomic_copy_file,
+    atomic_write_bytes,
+    atomic_write_text,
     first_markdown_heading,
     relative_path,
     render_frontmatter,
@@ -1124,7 +1127,7 @@ def _download_asset_url(root: Path, source: str, preferred_slug: str) -> tuple[P
             raise FileNotFoundError(f"Source not found: {source}")
         suffix = source_path.suffix.lower() or ".bin"
         asset_path = _unique_path(asset_dir, _timestamped_stem(preferred_slug), suffix)
-        shutil.copy2(source_path, asset_path)
+        atomic_copy_file(source_path, asset_path, fsync=True)
         return asset_path, str(source_path)
     payload, final_url = safe_fetch(
         source,
@@ -1150,7 +1153,7 @@ def _materialize_binary_source(root: Path, source: str, preferred_slug: str) -> 
         raise FileNotFoundError(f"Source not found: {source}")
     suffix = source_path.suffix.lower() or ".bin"
     asset_path = _unique_path(asset_dir, _timestamped_stem(preferred_slug), suffix)
-    shutil.copy2(source_path, asset_path)
+    atomic_copy_file(source_path, asset_path, fsync=True)
     return asset_path, str(source_path)
 
 
@@ -1445,15 +1448,11 @@ def _unique_path(directory: Path, stem: str, suffix: str) -> Path:
 
 
 def _write_text(path: Path, content: str) -> None:
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(content.rstrip() + "\n", encoding="utf-8")
-    tmp.replace(path)
+    atomic_write_text(path, content.rstrip() + "\n", fsync=True)
 
 
 def _write_bytes(path: Path, content: bytes) -> None:
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_bytes(content)
-    tmp.replace(path)
+    atomic_write_bytes(path, content, fsync=True)
 
 
 def _render_raw_note(
