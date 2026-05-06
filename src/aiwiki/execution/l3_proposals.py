@@ -21,6 +21,7 @@ from ..app_state import (
     save_json_document,
 )
 from ..app_utils import (
+    _durable_truncate,
     atomic_write_bytes,
     atomic_write_text,
     next_available_stem,
@@ -32,6 +33,7 @@ from ..app_utils import (
     utc_now,
 )
 from ..render.paths import execution_receipt_path
+from .audit_preview import AUDIT_STREAM_PATH
 
 L3_PROPOSAL_KINDS = ("prompt_proposal", "policy_proposal")
 L3_PROPOSAL_STATES = ("candidate", "accepted", "rejected", "reverted", "stale", "revert_conflict")
@@ -627,6 +629,22 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
             target.unlink(missing_ok=True)
         raise
 
+    history_jsonl_path = execution_receipt_history_path(root)
+    audit_jsonl_path = root / AUDIT_STREAM_PATH
+    history_size_before = history_jsonl_path.stat().st_size if history_jsonl_path.exists() else 0
+    audit_size_before = audit_jsonl_path.stat().st_size if audit_jsonl_path.exists() else 0
+    state_restore_steps = {
+        "_persist_l3_proposal_page",
+        "append_execution_receipt_history",
+        "append_runtime_history",
+        "append_wiki_log",
+    }
+    history_truncate_steps = {
+        "append_execution_receipt_history",
+        "append_runtime_history",
+        "append_wiki_log",
+    }
+
     def _raise_post_apply_audit_error(failed_step: str, exc: Exception) -> None:
         try:
             if snapshot is not None:
@@ -634,14 +652,19 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
             else:
                 target.unlink(missing_ok=True)
             receipt_path.unlink(missing_ok=True)
-            if failed_step in {"_persist_l3_proposal_page", "append_runtime_history", "append_wiki_log"}:
+            if failed_step in state_restore_steps:
                 proposal.clear()
                 proposal.update(original_proposal)
                 save_l3_proposal_state(root, proposals)
                 _persist_l3_proposal_page(root, original_proposal)
+            if failed_step in history_truncate_steps:
+                if history_jsonl_path.exists():
+                    _durable_truncate(history_jsonl_path, history_size_before)
+                if audit_jsonl_path.exists():
+                    _durable_truncate(audit_jsonl_path, audit_size_before)
         except Exception as revert_exc:
             raise L3RevertError(
-                f"audit step '{failed_step}' failed and target revert also failed: "
+                f"audit step '{failed_step}' failed and rollback also failed: "
                 f"audit={exc!r}; revert={revert_exc!r}"
             ) from exc
         raise L3PostApplyAuditError(
@@ -654,10 +677,8 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
             deleted_receipt_path=relative_path(root, receipt_path),
         ) from exc
 
-    failed_step = "append_execution_receipt_history"
+    failed_step = "save_l3_proposal_state"
     try:
-        append_execution_receipt_history(root, receipt)
-        failed_step = "save_l3_proposal_state"
         proposal["state"] = "accepted"
         proposal["accepted_at"] = applied_at
         proposal["last_receipt_path"] = relative_path(root, receipt_path)
@@ -665,6 +686,8 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
         save_l3_proposal_state(root, proposals)
         failed_step = "_persist_l3_proposal_page"
         _persist_l3_proposal_page(root, proposal)
+        failed_step = "append_execution_receipt_history"
+        append_execution_receipt_history(root, receipt)
         failed_step = "append_runtime_history"
         append_runtime_history(
             root,
