@@ -175,7 +175,7 @@ function extractPrimaryPath(payload) {
   if (!payload || typeof payload !== "object") {
     return "";
   }
-  const candidateKeys = ["path", "output_path", "receipt_path", "state_path", "index_path", "report_path"];
+  const candidateKeys = ["path", "output_path", "receipt_path", "state_path", "index_path", "report_path", "note_path", "stored_path", "asset_path"];
   for (const key of candidateKeys) {
     const value = payload[key];
     if (typeof value === "string" && value.trim()) {

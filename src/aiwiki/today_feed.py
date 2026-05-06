@@ -80,6 +80,7 @@ def build_today_feed(summary: dict[str, Any], *, audience: FeedAudience = "prima
     entries.extend(_build_metric_alert_entries(summary))
     entries.extend(_build_agent_loop_entries(summary, today_date))
     entries.extend(_build_action_entries(summary, audience=audience))
+    entries.extend(_build_raw_input_entries(summary, today_date))
 
     if audience == "primary":
         entries = _apply_snooze_filter(entries, summary, today_date)
@@ -405,6 +406,36 @@ def _build_action_entries(summary: dict[str, Any], *, audience: FeedAudience) ->
                 summary=f"建议下一步：{reason or '继续处理'}",
                 target=target,
                 timestamp=_first_text(item, "timestamp", "updated_at", "created_at") or generated_at,
+                protocol=_first_text(item, "protocol"),
+            )
+        )
+    return entries
+
+
+def _build_raw_input_entries(summary: dict[str, Any], today_date: str) -> list[FeedEntry]:
+    recent_raw_inputs = summary.get("recent_raw_inputs")
+    if not isinstance(recent_raw_inputs, list):
+        return []
+    entries: list[FeedEntry] = []
+    for item in recent_raw_inputs:
+        if not isinstance(item, dict):
+            continue
+        stored_path = _first_text(item, "stored_path")
+        if not stored_path:
+            continue
+        occurred_at = _first_text(item, "occurred_at")
+        if _date_part(occurred_at) != today_date:
+            continue
+        original_path = _first_text(item, "original_path")
+        title = _first_text(item, "title")
+        source_type = _first_text(item, "source_type")
+        entries.append(
+            FeedEntry(
+                kind="action",
+                title=f"已投料：{title or original_path or stored_path}",
+                summary=f"已接收 {source_type or '材料'}，等待编译/刷新",
+                target=stored_path,
+                timestamp=occurred_at,
                 protocol=_first_text(item, "protocol"),
             )
         )

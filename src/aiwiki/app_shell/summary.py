@@ -141,6 +141,31 @@ def _build_knowledge_stats(
         "compile_concepts": len(compile_state.get("concepts", {})),
     }
 
+
+def _build_recent_raw_inputs(root: Path, *, limit: int = 8) -> list[dict[str, Any]]:
+    try:
+        events = load_runtime_history(root)
+        raw_inputs: list[dict[str, Any]] = []
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            if str(event.get("event_type") or "") != "raw-added":
+                continue
+            raw_inputs.append(
+                {
+                    "stored_path": str(event.get("stored_path") or ""),
+                    "original_path": str(event.get("original_path") or ""),
+                    "source_type": str(event.get("source_type") or ""),
+                    "title": str(event.get("title") or ""),
+                    "occurred_at": str(event.get("occurred_at") or ""),
+                    "protocol": str(event.get("protocol") or ""),
+                }
+            )
+        return list(reversed(raw_inputs))[:limit]
+    except (OSError, ValueError, TypeError, json.JSONDecodeError, KeyError):
+        return []
+
+
 def build_shell_summary(root: Path, *, generated_at: str | None = None) -> ShellSummary:
     ensure_layout(root)
     generated_at = generated_at or utc_now()
@@ -213,6 +238,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
     recent_outputs = collect_recent_output_artifacts(root, limit=8)
     recent_receipts = shell_recent_receipts(root, limit=8)
     recent_runs = shell_recent_runs(root, limit=8)
+    recent_raw_inputs = _build_recent_raw_inputs(root, limit=8)
     drift_warnings = shell_drift_warnings(
         memory,
         judgment_assets=judgment_assets,
@@ -283,6 +309,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         "recent_outputs": recent_outputs,
         "recent_receipts": recent_receipts,
         "recent_runs": recent_runs,
+        "recent_raw_inputs": recent_raw_inputs,
         "search_results": {"query": "", "limit": 0, "result_count": 0, "results": []},
         "drift_warnings": drift_warnings,
         "counter_evidence_pages": counter_evidence_pages,

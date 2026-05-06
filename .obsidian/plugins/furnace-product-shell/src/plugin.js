@@ -2079,7 +2079,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   // R90: reconcile 命中 → done（"报告已生成" or "已记录"）
-  // reconcileTarget: "outputs" | "receipts"; reconcilePath: cand.path（可空）
+  // reconcileTarget: "outputs" | "receipts" | "raw"; reconcilePath: cand.path / stored_path（可空）
   // 不再 4s 自动消失：done 卡变行动卡，由用户点"打开报告/查看回执/完成"主动 dismiss
   // 防御：done/failed 不应再被升到 done
   markPendingSubmissionDone(id, reconcileTarget, reconcilePath) {
@@ -2147,7 +2147,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (!summary || typeof summary !== "object") return;
     const outputCands = Array.isArray(summary.recent_outputs) ? summary.recent_outputs : [];
     const receiptCands = Array.isArray(summary.recent_receipts) ? summary.recent_receipts : [];
-    if (!outputCands.length && !receiptCands.length) return;
+    const rawCands = Array.isArray(summary.recent_raw_inputs) ? summary.recent_raw_inputs : [];
+    if (!outputCands.length && !receiptCands.length && !rawCands.length) return;
     const SKEW_MS = 60 * 1000;
     const RECONCILE_WINDOW_MS = 5 * 60 * 1000;
     const now = Date.now();
@@ -2183,6 +2184,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           cand.payload,
           cand.receipt_path,
           cand.output_path,
+          cand.stored_path,
+          cand.original_path,
+          cand.note_path,
           cand.query,
           cand.target,
         ].map((v) => String(v || "").trim().toLowerCase()).filter(Boolean);
@@ -2203,6 +2207,10 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       else {
         hitCand = findHit(receiptCands);
         if (hitCand) { target = "receipts"; targetPath = String(hitCand.path || hitCand.receipt_path || ""); }
+      }
+      if (!hitCand) {
+        hitCand = findHit(rawCands);
+        if (hitCand) { target = "raw"; targetPath = String(hitCand.stored_path || hitCand.path || ""); }
       }
       // R89: 命中 → 改为 done（保留卡片）；R90: done 不再自动消失
       if (target) {

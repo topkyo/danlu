@@ -56,6 +56,7 @@ function buildTodayFeed(summary) {
   entries.push(...buildMetricAlertEntries(summary));
   entries.push(...buildAgentLoopEntries(summary, todayDate));
   entries.push(...buildActionEntries(summary, "primary"));
+  entries.push(...buildRawInputEntries(summary, todayDate));
   entries.push(...buildLlmHealthEntry(summary));
 
   const filtered = applySnoozeFilter(entries, summary, todayDate);
@@ -276,6 +277,30 @@ function buildActionEntries(summary, audience = "primary") {
       summary: `建议下一步：${reason || '继续处理'}`,
       target,
       timestamp: firstText(item, "timestamp", "updated_at", "created_at") || generatedAt,
+      protocol: firstText(item, "protocol"),
+    });
+  }
+  return entries;
+}
+
+function buildRawInputEntries(summary, todayDate) {
+  const recentRawInputs = summary.recent_raw_inputs;
+  if (!Array.isArray(recentRawInputs)) return [];
+  const entries = [];
+  for (const item of dictItems(recentRawInputs)) {
+    const storedPath = firstText(item, "stored_path");
+    if (!storedPath) continue;
+    const occurredAt = firstText(item, "occurred_at");
+    if (datePart(occurredAt) !== todayDate) continue;
+    const originalPath = firstText(item, "original_path");
+    const title = firstText(item, "title");
+    const sourceType = firstText(item, "source_type");
+    entries.push({
+      kind: "action",
+      title: `已投料：${title || originalPath || storedPath}`,
+      summary: `已接收 ${sourceType || "材料"}，等待编译/刷新`,
+      target: storedPath,
+      timestamp: occurredAt,
       protocol: firstText(item, "protocol"),
     });
   }

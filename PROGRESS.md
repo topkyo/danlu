@@ -59,6 +59,23 @@
 
 ## 状态 — 当前活跃 3 轮
 
+### Round 92.8 — Feed Parity (Universal Input pending closure) — 完成
+
+- **目的**：闭合 P2 fresh oracle scoping 排为 SHIP first 的用户可见 feed-parity bug——Universal Input 投料（URL/PDF/image/repo/note）成功后，pending 卡长期停在 "已接收，等待生成报告"，因为 (1) `drop_*` 返回 payload 含 `note_path` 但 plugin `extractPrimaryPath()` 只识别 `path/output_path/receipt_path/state_path/index_path/report_path`；(2) shell summary 不暴露 raw ingest，`reconcilePendingSubmissions()` 永远 miss raw drop。
+- **实现**：
+  - `src/aiwiki/app_shell/summary.py:145-166`：新增 `_build_recent_raw_inputs(root, *, limit=8)` helper，从 `load_runtime_history(root)`（NON-strict，关键：strict 会 raise 破坏 fail-soft）过滤 `event_type == "raw-added"`，倒序取 8 条，映射 `stored_path / original_path / source_type / title / occurred_at / protocol`，全部 `str() or ""` coercion；body wrap broad `try/except (OSError, ValueError, TypeError, json.JSONDecodeError, KeyError)` 返回 `[]` 不 raise。`build_shell_summary` 在 line 241 预计算，line 312 dict literal 插入 `"recent_raw_inputs": recent_raw_inputs` 紧跟 `recent_runs`。
+  - `src/aiwiki/today_feed.py:415-440`：新增 `_build_raw_input_entries(summary, today_date)` helper，仅当 `recent_raw_inputs` 是 list 时迭代；空 `stored_path` 跳过；`_date_part(occurred_at) != today_date` 跳过；构造 `FeedEntry(kind="action", title=f"已投料：{title or original_path or stored_path}", summary=f"已接收 {source_type or '材料'}，等待编译/刷新", target=stored_path, ...)`。`build_today_feed` line 82-83 在 `_build_action_entries` 之后追加。**关键**：未新增 FeedKind，复用 `kind="action"`（priority 6 最低），避免 schema 改动。
+  - `.obsidian/plugins/furnace-product-shell/src/plugin_helpers.js:178`：`extractPrimaryPath()` `candidateKeys` 数组扩展为 `["path", "output_path", "receipt_path", "state_path", "index_path", "report_path", "note_path", "stored_path", "asset_path"]`，**新增 keys 排末尾**保留既有 ask/run path 优先级。
+  - `.obsidian/plugins/furnace-product-shell/src/plugin.js:2150-2213`：`reconcilePendingSubmissions()` `rawCands = summary.recent_raw_inputs`，guard 允许 raw-only proceed；`matchAgainst` `fields` 数组扩展 `stored_path / original_path / note_path`；hit 顺序保持 outputs → receipts → raw fallback；命中 raw → `target = "raw"` + `targetPath = String(hitCand.stored_path || hitCand.path || "")` → `markPendingSubmissionDone(entry.id, "raw", targetPath)`。`markPendingSubmissionDone` 不 whitelist target 字符串（plugin.js:2085-2095 直接 `entry.reconcileTarget = String(reconcileTarget)`），"raw" 不 no-op。注释 comment 同步更新（plugin.js:2082）。
+  - `.obsidian/plugins/furnace-product-shell/src/today_feed.js:58-59,286-305`：JS mirror 同步新增 `buildRawInputEntries`，被 plugin 加载，与 Python 渲染契约一致。
+  - `tests/test_feed_parity.py` 10 测试 + `load_tests` bridge：4 summary（drop history 收录 + 全字段映射 / 无 history 空 / 损坏 JSONL fail-soft 返回 [] / 12 events 限 8 条 most-recent-first / 混 event_type 仅 raw-added）+ 3 today_feed（today date 渲染 kind=action / 昨天跳过 / 空 stored_path 跳过）+ 2 JS grep（plugin_helpers.js candidateKeys 含三新 key / plugin.js reconcile 含 `recent_raw_inputs` + `target = "raw"` + `stored_path` token）。
+- **验证**：`bash scripts/verify.sh` PASS — **1848 unittest**（+10）+ 13/13 acceptance + branch coverage 92% / ruff + compileall clean。
+- **qa-review**：fresh oracle session `ses_2055cf69dffeSzSAEpOCXG597D` PASS（首次 retry，非阻塞 concerns：JS 测试是 grep 级 vs 真执行级 / `markPendingSubmissionDone` 注释 comment 已 fix）。End-to-end 链路 trace 完整：user → Universal Input → `aiwiki drop <payload>` → `dispatch.py` rewrite → `drop_*` → `_append_raw_added_history` JSONL → `build_shell_summary` `recent_raw_inputs` → plugin reconcile `rawCands` → match via `stored_path` → `markPendingSubmissionDone("raw", stored_path)`。
+- **Stop Lines**：0 `drop_*` 返回签名改 / 0 CLI signature / 0 `runtime_history` 写语义 / 0 schema / 0 lock primitive / 0 新 FeedKind（`today_feed.FeedKind` Literal 不变）/ 0 `general` default protocol / 0 LLM defaults / 0 notify defaults / 0 `safe_fetch` allowlist / 0 Universal Input 命令字符串（plugin.js:2239 仍 `["drop", normalizedPayload]`）。
+- **Migration**：纯加层；既有 dogfood vault 重启 plugin 后 raw drop pending 卡可被 reconcile 自动 mark done；既有 ask/run path 优先级不变。
+- **Residual Risks**：JS grep 测试只覆盖 token 存在，不覆盖顺序 / 行为变化 → 未来 plugin 大改时回归防护偏弱；可在后续 round 补 node 真执行测试（DEFER 不在本轮 scope）。
+- **归档**：contract `.codex/contracts/archive/round-92-feed-parity.md`。
+
 ### Round 92.7 — Deploy/Service Defaults Hardening — 完成
 
 - **目的**：闭环 oracle batch review 的最后一项 P1 R92-DEPLOY-DEFAULTS。Tight scope 5 项 deploy/service-side 危险默认收紧（不影响本地 CLI UX）：systemd installer 默认全开 auto-adopt → deny-by-default、service script 强制要求 `AIWIKI_VAULT`、nightly LLM fallback 默认 off、`runtime_write_lock` 永久阻塞 → 加 `[1,3600]` clamp timeout、remote repo drop opt-in + subprocess timeout。
