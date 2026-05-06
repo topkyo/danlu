@@ -640,7 +640,7 @@ def write_if_changed(path: Path, content: str) -> bool:
         if current == content:
             return False
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    atomic_write_text(path, content, fsync=False)
     return True
 
 
@@ -656,7 +656,7 @@ def write_if_changed_ignoring_timestamps(path: Path, content: str) -> tuple[bool
         if normalize_generated_artifact_content(current) == normalize_generated_artifact_content(content):
             return False, False
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    atomic_write_text(path, content, fsync=False)
     return True, True
 
 
@@ -692,7 +692,7 @@ def write_json_document_if_changed_ignoring_generated_timestamps(path: Path, doc
             if normalize_generated_state_document(current_document) == normalize_generated_state_document(document):
                 return False, False
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(rendered, encoding="utf-8")
+    atomic_write_text(path, rendered, fsync=False)
     return True, True
 
 
