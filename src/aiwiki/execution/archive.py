@@ -63,7 +63,7 @@ from ..app_state import (
     material_state_path,
     save_material_archive_state,
 )
-from ..app_utils import relative_path, runtime_write_operation
+from ..app_utils import atomic_write_text, relative_path, runtime_write_operation
 from ..compile.pipeline import compile_wiki
 
 
@@ -213,10 +213,7 @@ def apply_material_archive(
     )
     receipt_path = execution_receipt_path(root, material_archive_action_id(entry_id))
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    receipt_path.write_text(
-        json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     append_execution_receipt_history(root, receipt)
 
     archive_entries = [
@@ -297,15 +294,15 @@ def revert_material_archive(
     receipt_relative = str(target.get("last_receipt_path") or "")
     if not receipt_relative:
         raise RuntimeError("Archived material has no execution receipt to revert.")
-    receipt_path = root / receipt_relative
-    if not receipt_path.exists():
+    apply_receipt_path = root / receipt_relative
+    if not apply_receipt_path.exists():
         raise FileNotFoundError(f"Execution receipt not found: {receipt_relative}")
-    receipt = load_json_document_strict(receipt_path)
-    if not isinstance(receipt, dict) or str(receipt.get("kind") or "") != "execution-receipt":
+    apply_receipt = load_json_document_strict(apply_receipt_path)
+    if not isinstance(apply_receipt, dict) or str(apply_receipt.get("kind") or "") != "execution-receipt":
         raise RuntimeError("Execution receipt is not valid.")
-    if str(receipt.get("operation") or "") != "apply":
+    if str(apply_receipt.get("operation") or "") != "apply":
         raise RuntimeError("Only the latest apply archive receipt can be reverted.")
-    if str(receipt.get("subject_id") or "") != entry_id:
+    if str(apply_receipt.get("subject_id") or "") != entry_id:
         raise RuntimeError("Execution receipt subject_id does not match the requested entry.")
 
     manifest_entry = next(
@@ -332,16 +329,19 @@ def revert_material_archive(
         current_temperature="archived",
         resulting_temperature="cold",
     )
-    receipt_path.write_text(
+    revert_receipt_path = apply_receipt_path.parent / "reverts" / apply_receipt_path.name
+    revert_receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    revert_receipt["receipt_path"] = relative_path(root, revert_receipt_path)
+    atomic_write_text(
+        revert_receipt_path,
         json.dumps(revert_receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
     )
     append_execution_receipt_history(root, revert_receipt)
 
     target["active"] = False
     target["reverted_at"] = reverted_at
     target["revert_note"] = note or "Material archive reverted."
-    target["last_receipt_path"] = relative_path(root, receipt_path)
+    target["last_receipt_path"] = relative_path(root, revert_receipt_path)
     save_material_archive_state(root, {"version": 1, "entries": archive_entries})
     append_runtime_history(
         root,
@@ -350,7 +350,7 @@ def revert_material_archive(
             "occurred_at": reverted_at,
             "protocol": protocol,
             "source_ids": [entry_id],
-            "receipt_path": relative_path(root, receipt_path),
+            "receipt_path": relative_path(root, revert_receipt_path),
         },
     )
     append_wiki_log(
@@ -361,7 +361,7 @@ def revert_material_archive(
             f"entry_id: `{entry_id}`",
             f"source: `{source_path}`",
             "temperature: `archived -> cold`",
-            f"receipt: `{relative_path(root, receipt_path)}`",
+            f"receipt: `{relative_path(root, revert_receipt_path)}`",
         ],
     )
     compile_wiki(root)
@@ -369,5 +369,5 @@ def revert_material_archive(
         "id": entry_id,
         "status": "cold",
         "reverted_at": reverted_at,
-        "receipt_path": relative_path(root, receipt_path),
+        "receipt_path": relative_path(root, revert_receipt_path),
     }
