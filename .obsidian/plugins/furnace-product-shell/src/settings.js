@@ -105,68 +105,83 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     // ── LLM Configuration ──────────────────────────
     containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("LLM Configuration") });
-    const selectedBackend = String(this.plugin.settings.llmBackend || "").trim();
+    const selectedProfile = llmProviderProfile(this.plugin.settings.llmBackend);
 
     new Setting(containerEl)
       .setName(t("LLM backend"))
-      .setDesc(t("Select the explicit LLM backend used by run-compile / run-ask / run-nightly. Empty = unconfigured."))
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("", t("unconfigured"))
-          .addOption("codex-cli", "codex-cli")
-          .addOption("nvidia-nim-api", "nvidia-nim-api")
-          .addOption("copilot-cli", "copilot-cli")
-          .addOption("claude-cli", "claude-cli")
-          .setValue(this.plugin.settings.llmBackend || "")
+      .setDesc(t("Select the LLM provider used by run-compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints."))
+      .addDropdown((dropdown) => {
+        for (const profile of LLM_PROVIDER_PROFILES) {
+          const prefix = profile.tier === "advanced" ? "Advanced · " : "";
+          dropdown.addOption(profile.value, `${prefix}${profile.label}`);
+        }
+        return dropdown
+          .setValue(selectedProfile.value)
           .onChange(async (value) => {
-            this.plugin.settings.llmBackend = value;
+            const nextProfile = llmProviderProfile(value);
+            this.plugin.settings.llmBackend = nextProfile.value;
+            this.plugin.settings.llmModel = nextProfile.defaultModel || "";
             await this.plugin.savePluginState();
             this.display();
             new Notice(t("LLM settings saved. New runs will use the updated configuration."));
-          })
-      );
+          });
+      });
 
-    new Setting(containerEl)
-      .setName(t("LLM model"))
-      .setDesc(t("Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = selected backend default strategy (`codex-cli`: `gpt-5.4`; `nvidia-nim-api`: `moonshotai/kimi-k2.5 -> z-ai/glm-5.1 -> minimaxai/minimax-m2.7`)."))
-      .addText((text) =>
-        text
-          .setPlaceholder("gpt-5.4 / z-ai/glm-5.1 / claude-sonnet-4.5")
-          .setValue(this.plugin.settings.llmModel || "")
-          .onChange(async (value) => {
-            this.plugin.settings.llmModel = String(value || "").trim();
-            await this.plugin.savePluginState();
-          })
-      );
-
-    if (selectedBackend === "nvidia-nim-api") {
+    if (llmProviderNeedsModel(selectedProfile)) {
       new Setting(containerEl)
-        .setName(t("NVIDIA NIM API key"))
-        .setDesc(t("Optional key for nvidia-nim-api. Stored locally in plugin data. Empty = use AIWIKI_NVIDIA_NIM_API_KEY / NVIDIA_NIM_API_KEY."))
+        .setName(t("LLM model"))
+        .setDesc(t("Model for the selected API provider. Empty uses that provider profile default when one exists."))
+        .addText((text) =>
+          text
+            .setPlaceholder(selectedProfile.defaultModel || "provider/model")
+            .setValue(this.plugin.settings.llmModel || "")
+            .onChange(async (value) => {
+              this.plugin.settings.llmModel = String(value || "").trim();
+              await this.plugin.savePluginState();
+            })
+        );
+    }
+
+    if (selectedProfile.apiKeySetting) {
+      new Setting(containerEl)
+        .setName(selectedProfile.value === "nvidia-nim-api" ? t("NVIDIA NIM API key") : t("API key"))
+        .setDesc(t("Stored only in local Obsidian plugin data. Leave empty to use an environment variable already available to the launcher."))
         .addText((text) => {
           text
-            .setPlaceholder("nvapi-...")
-            .setValue(this.plugin.settings.llmNvidiaNimApiKey || "")
+            .setPlaceholder(selectedProfile.keyPlaceholder || "sk-...")
+            .setValue(this.plugin.settings[selectedProfile.apiKeySetting] || "")
             .onChange(async (value) => {
-              this.plugin.settings.llmNvidiaNimApiKey = String(value || "").trim();
+              this.plugin.settings[selectedProfile.apiKeySetting] = String(value || "").trim();
               await this.plugin.savePluginState();
             });
           text.inputEl.type = "password";
           text.inputEl.autocomplete = "off";
         });
+    }
 
+    if (selectedProfile.baseUrlSetting) {
       new Setting(containerEl)
-        .setName(t("NVIDIA NIM base URL"))
-        .setDesc(t("Override the NVIDIA NIM endpoint. Empty = https://integrate.api.nvidia.com/v1."))
+        .setName(selectedProfile.value === "nvidia-nim-api" ? t("NVIDIA NIM base URL") : t("Base URL"))
+        .setDesc(t("Override the provider endpoint. Leave empty to use the provider profile default."))
         .addText((text) =>
           text
-            .setPlaceholder("https://integrate.api.nvidia.com/v1")
-            .setValue(this.plugin.settings.llmNvidiaNimBaseUrl || "")
+            .setPlaceholder(selectedProfile.defaultBaseUrl || "")
+            .setValue(this.plugin.settings[selectedProfile.baseUrlSetting] || "")
             .onChange(async (value) => {
-              this.plugin.settings.llmNvidiaNimBaseUrl = String(value || "").trim();
+              this.plugin.settings[selectedProfile.baseUrlSetting] = String(value || "").trim();
               await this.plugin.savePluginState();
             })
         );
+    }
+
+    if (selectedProfile.cliHint) {
+      new Setting(containerEl)
+        .setName(t("CLI session"))
+        .setDesc(t("This backend uses a local CLI login/session. API key fields are not used."));
+      containerEl.createEl("p", {
+        text: selectedProfile.cliHint,
+        cls: "setting-item-description",
+      });
     }
 
     // ── 通知（webhook） ──────────────────────────────

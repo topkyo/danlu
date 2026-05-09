@@ -24,8 +24,11 @@ from .config import (
     BACKEND_COPILOT_CLI,
     BACKEND_NVIDIA_NIM_API,
     BACKEND_OPENAI_API,
+    BACKEND_OPENCODE_API,
+    BACKEND_OPENROUTER_API,
     DEFAULT_CODEX_MODEL,
     DEFAULT_NVIDIA_NIM_MODEL,
+    DEFAULT_OPENCODE_MODEL,
     LLMConfig,
 )
 
@@ -625,7 +628,7 @@ def create_backend_client(config: LLMConfig, workdir: Path) -> Any:
     model_fallback_configs = _model_fallback_configs(config)
     if len(model_fallback_configs) > 1:
         return ModelFallbackClient(config, workdir, model_fallback_configs)
-    if config.backend == BACKEND_OPENAI_API:
+    if config.backend in {BACKEND_OPENCODE_API, BACKEND_OPENROUTER_API, BACKEND_OPENAI_API}:
         return OpenAICompatClient(config, workdir)
     if config.backend == BACKEND_ANTHROPIC_API:
         return AnthropicClient(config, workdir)
@@ -710,7 +713,11 @@ def _available_probe_backends(config: LLMConfig) -> list[str]:
         BACKEND_CODEX_CLI,
         BACKEND_COPILOT_CLI,
         BACKEND_CLAUDE_CLI,
+        BACKEND_OPENCODE_API,
         BACKEND_NVIDIA_NIM_API,
+        BACKEND_OPENROUTER_API,
+        BACKEND_ANTHROPIC_API,
+        BACKEND_OPENAI_API,
     ):
         if backend in ordered:
             continue
@@ -722,6 +729,14 @@ def _available_probe_backends(config: LLMConfig) -> list[str]:
             ordered.append(backend)
         elif backend == BACKEND_NVIDIA_NIM_API and config.nvidia_nim_api_key:
             ordered.append(backend)
+        elif backend == BACKEND_OPENCODE_API and config.opencode_api_key:
+            ordered.append(backend)
+        elif backend == BACKEND_OPENROUTER_API and config.openrouter_api_key:
+            ordered.append(backend)
+        elif backend == BACKEND_ANTHROPIC_API and config.anthropic_api_key:
+            ordered.append(backend)
+        elif backend == BACKEND_OPENAI_API and config.api_key:
+            ordered.append(backend)
     return ordered
 
 
@@ -731,8 +746,14 @@ def _config_for_backend(config: LLMConfig, backend: str) -> LLMConfig:
         model = model_requested
     elif backend == BACKEND_CODEX_CLI:
         model = DEFAULT_CODEX_MODEL
+    elif backend == BACKEND_OPENCODE_API:
+        model = DEFAULT_OPENCODE_MODEL
     elif backend == BACKEND_NVIDIA_NIM_API:
         model = DEFAULT_NVIDIA_NIM_MODEL
+    elif backend == BACKEND_OPENAI_API:
+        model = config.model or ""
+    elif backend == BACKEND_ANTHROPIC_API:
+        model = config.model or ""
     else:
         model = ""
     if backend == BACKEND_NVIDIA_NIM_API:
@@ -743,14 +764,32 @@ def _config_for_backend(config: LLMConfig, backend: str) -> LLMConfig:
             api_key=config.nvidia_nim_api_key,
             base_url=config.nvidia_nim_base_url,
         )
+    if backend == BACKEND_OPENCODE_API:
+        return replace(
+            config,
+            backend=backend,
+            model=model,
+            api_key=config.opencode_api_key,
+            base_url=config.opencode_base_url,
+        )
+    if backend == BACKEND_OPENROUTER_API:
+        return replace(
+            config,
+            backend=backend,
+            model=model,
+            api_key=config.openrouter_api_key,
+            base_url=config.openrouter_base_url,
+        )
     return replace(config, backend=backend, model=model)
 
 
 def _instantiate_cli_client(config: LLMConfig, workdir: Path) -> Any:
     if config.backend == BACKEND_CODEX_CLI:
         return CodexCLIClient(config, workdir)
-    if config.backend == BACKEND_NVIDIA_NIM_API:
+    if config.backend in {BACKEND_OPENCODE_API, BACKEND_OPENROUTER_API, BACKEND_OPENAI_API, BACKEND_NVIDIA_NIM_API}:
         return OpenAICompatClient(config, workdir)
+    if config.backend == BACKEND_ANTHROPIC_API:
+        return AnthropicClient(config, workdir)
     if config.backend == BACKEND_COPILOT_CLI:
         return CopilotCLIClient(config, workdir)
     if config.backend == BACKEND_CLAUDE_CLI:

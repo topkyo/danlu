@@ -16,6 +16,199 @@ try {
 const clipboard = electron && electron.clipboard ? electron.clipboard : null;
 const shell = electron && electron.shell ? electron.shell : null;
 
+// --- src/llm_settings.js ---
+
+// LLM provider profile helpers shared by settings UI and launcher bridge.
+
+const DEFAULT_PRODUCT_LLM_BACKEND = "opencode-api";
+const DEFAULT_PRODUCT_LLM_MODEL = "deepseek-v4-pro";
+
+const LLM_PROVIDER_PROFILES = [
+  {
+    value: "opencode-api",
+    label: "OpenCode",
+    tier: "common",
+    apiKeySetting: "llmOpencodeApiKey",
+    apiKeyEnv: "AIWIKI_OPENCODE_API_KEY",
+    baseUrlSetting: "llmOpencodeBaseUrl",
+    baseUrlEnv: "AIWIKI_OPENCODE_BASE_URL",
+    defaultBaseUrl: "https://opencode.ai/zen/v1",
+    defaultModel: DEFAULT_PRODUCT_LLM_MODEL,
+    keyPlaceholder: "opencode-...",
+  },
+  {
+    value: "nvidia-nim-api",
+    label: "NVIDIA NIM",
+    tier: "common",
+    apiKeySetting: "llmNvidiaNimApiKey",
+    apiKeyEnv: "AIWIKI_NVIDIA_NIM_API_KEY",
+    baseUrlSetting: "llmNvidiaNimBaseUrl",
+    baseUrlEnv: "AIWIKI_NVIDIA_NIM_BASE_URL",
+    defaultBaseUrl: "https://integrate.api.nvidia.com/v1",
+    defaultModel: "openai/gpt-oss-120b",
+    keyPlaceholder: "nvapi-...",
+  },
+  {
+    value: "openrouter-api",
+    label: "OpenRouter",
+    tier: "common",
+    apiKeySetting: "llmOpenrouterApiKey",
+    apiKeyEnv: "AIWIKI_OPENROUTER_API_KEY",
+    baseUrlSetting: "llmOpenrouterBaseUrl",
+    baseUrlEnv: "AIWIKI_OPENROUTER_BASE_URL",
+    defaultBaseUrl: "https://openrouter.ai/api/v1",
+    defaultModel: "",
+    keyPlaceholder: "sk-or-...",
+  },
+  {
+    value: "anthropic-api",
+    label: "Anthropic",
+    tier: "common",
+    apiKeySetting: "llmAnthropicApiKey",
+    apiKeyEnv: "AIWIKI_ANTHROPIC_API_KEY",
+    baseUrlSetting: "llmAnthropicBaseUrl",
+    baseUrlEnv: "AIWIKI_ANTHROPIC_BASE_URL",
+    defaultBaseUrl: "https://api.anthropic.com",
+    defaultModel: "claude-sonnet-4-20250514",
+    keyPlaceholder: "sk-ant-...",
+  },
+  {
+    value: "codex-cli",
+    label: "Codex CLI",
+    tier: "advanced",
+    cliHint: "Run `codex login` in a terminal session visible to Obsidian.",
+  },
+  {
+    value: "copilot-cli",
+    label: "Copilot CLI",
+    tier: "advanced",
+    cliHint: "Run `copilot login`; org policy and seat availability are checked by `llm-check --probe`.",
+  },
+  {
+    value: "claude-cli",
+    label: "Claude CLI",
+    tier: "advanced",
+    cliHint: "Run `claude` login/session setup before using this backend.",
+  },
+  {
+    value: "openai-api",
+    label: "Custom OpenAI-compatible",
+    tier: "advanced",
+    apiKeySetting: "llmCustomOpenaiApiKey",
+    apiKeyEnv: "AIWIKI_LLM_API_KEY",
+    baseUrlSetting: "llmCustomOpenaiBaseUrl",
+    baseUrlEnv: "AIWIKI_LLM_BASE_URL",
+    defaultBaseUrl: "https://api.openai.com/v1",
+    defaultModel: "gpt-4.1-mini",
+    keyPlaceholder: "sk-...",
+  },
+];
+
+const LLM_PROVIDER_BY_VALUE = Object.fromEntries(LLM_PROVIDER_PROFILES.map((profile) => [profile.value, profile]));
+const LLM_PROVIDER_DEFAULT_MODELS = new Set(
+  LLM_PROVIDER_PROFILES.map((profile) => profile.defaultModel).filter(Boolean)
+);
+const LLM_ENV_KEYS = [
+  "AIWIKI_LLM_BACKEND",
+  "AIWIKI_LLM_MODEL",
+  "AIWIKI_OPENCODE_API_KEY",
+  "AIWIKI_OPENCODE_BASE_URL",
+  "AIWIKI_NVIDIA_NIM_API_KEY",
+  "AIWIKI_NVIDIA_NIM_BASE_URL",
+  "AIWIKI_OPENROUTER_API_KEY",
+  "AIWIKI_OPENROUTER_BASE_URL",
+  "AIWIKI_ANTHROPIC_API_KEY",
+  "AIWIKI_ANTHROPIC_BASE_URL",
+  "AIWIKI_LLM_API_KEY",
+  "AIWIKI_LLM_BASE_URL",
+];
+const LEGACY_LLM_SETTING_KEYS = [
+  "llmGithubToken",
+  "llmGithubModelsBaseUrl",
+  "llmApiKey",
+  "llmAnthropicApiKey",
+];
+
+function llmProviderProfile(value) {
+  return LLM_PROVIDER_BY_VALUE[String(value || "").trim()] || LLM_PROVIDER_BY_VALUE[DEFAULT_PRODUCT_LLM_BACKEND];
+}
+
+function llmProviderNeedsModel(profile) {
+  return Boolean(profile && !profile.cliHint);
+}
+
+function effectiveLlmModelForProvider(settings, profile) {
+  const configured = String((settings && settings.llmModel) || "").trim();
+  if (!configured) {
+    return String((profile && profile.defaultModel) || "").trim();
+  }
+  const profileDefault = String((profile && profile.defaultModel) || "").trim();
+  if (profileDefault && configured !== profileDefault && LLM_PROVIDER_DEFAULT_MODELS.has(configured)) {
+    return profileDefault;
+  }
+  return configured;
+}
+
+function buildLlmEnv(settings) {
+  const profile = llmProviderProfile(settings && settings.llmBackend);
+  const env = {
+    AIWIKI_LLM_BACKEND: profile.value,
+  };
+  const model = effectiveLlmModelForProvider(settings, profile);
+  if (model) {
+    env.AIWIKI_LLM_MODEL = model;
+  }
+  if (profile.apiKeySetting && profile.apiKeyEnv) {
+    const key = String((settings && settings[profile.apiKeySetting]) || "").trim();
+    if (key) {
+      env[profile.apiKeyEnv] = key;
+    }
+  }
+  if (profile.baseUrlSetting && profile.baseUrlEnv) {
+    const baseUrl = String((settings && settings[profile.baseUrlSetting]) || "").trim();
+    if (baseUrl) {
+      env[profile.baseUrlEnv] = baseUrl;
+    }
+  }
+  return env;
+}
+
+function clearKnownLlmEnv(env) {
+  for (const key of LLM_ENV_KEYS) {
+    delete env[key];
+  }
+}
+
+function dropLegacyLlmSettings(settings) {
+  if (!settings || typeof settings !== "object") {
+    return false;
+  }
+  let changed = false;
+  for (const key of LEGACY_LLM_SETTING_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(settings, key)) {
+      delete settings[key];
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+if (typeof module !== "undefined") {
+  module.exports = {
+    DEFAULT_PRODUCT_LLM_BACKEND,
+    DEFAULT_PRODUCT_LLM_MODEL,
+    LEGACY_LLM_SETTING_KEYS,
+    LLM_ENV_KEYS,
+    LLM_PROVIDER_PROFILES,
+    buildLlmEnv,
+    clearKnownLlmEnv,
+    dropLegacyLlmSettings,
+    effectiveLlmModelForProvider,
+    llmProviderNeedsModel,
+    llmProviderProfile,
+  };
+}
+
 // --- src/constants.js ---
 
 // Constants, default settings, i18n dictionary, and status label maps.
@@ -35,10 +228,18 @@ const DEFAULT_SETTINGS = {
   showAdvancedCommands: false,
   showHtmlShortcuts: true,
   locale: DEFAULT_LOCALE,
-  llmBackend: "",
-  llmModel: "",
+  llmBackend: "opencode-api",
+  llmModel: "deepseek-v4-pro",
+  llmOpencodeApiKey: "",
+  llmOpencodeBaseUrl: "",
   llmNvidiaNimApiKey: "",
   llmNvidiaNimBaseUrl: "",
+  llmOpenrouterApiKey: "",
+  llmOpenrouterBaseUrl: "",
+  llmAnthropicApiKey: "",
+  llmAnthropicBaseUrl: "",
+  llmCustomOpenaiApiKey: "",
+  llmCustomOpenaiBaseUrl: "",
   feishuWebhookUrl: "",
   wecomWebhookUrl: "",
   enabledChannels: [],
@@ -68,9 +269,15 @@ const ZH_TEXT = {
   "Whether advanced panels should show HTML shortcuts when the summary exposes them.": "当 summary 暴露 HTML 面板时，是否在高级面板里显示 HTML 快捷入口。",
   "Advanced command visibility refreshes after reloading Obsidian.": "高级命令可见性会在重载 Obsidian 后刷新。",
   "LLM backend": "LLM 后端",
-  "Select the explicit LLM backend used by run-compile / run-ask / run-nightly. Empty = unconfigured.": "为 run-compile / run-ask / run-nightly 显式选择 LLM 后端。留空 = 未配置。",
+  "Select the LLM provider used by run-compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints.": "选择 run-compile / run-ask / run-nightly 使用的 LLM provider。常用 provider 排在前面；高级项用于本地 CLI 会话或自定义 OpenAI-compatible 端点。",
   "LLM model": "LLM 模型",
-  "Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = selected backend default strategy (`codex-cli`: `gpt-5.4`; `nvidia-nim-api`: `moonshotai/kimi-k2.5 -> z-ai/glm-5.1 -> minimaxai/minimax-m2.7`).": "覆盖模型名称（如 gpt-5.4、claude-sonnet-4.5）。留空 = 所选后端默认策略（`codex-cli`: `gpt-5.4`；`nvidia-nim-api`: `moonshotai/kimi-k2.5 -> z-ai/glm-5.1 -> minimaxai/minimax-m2.7`）。",
+  "Model for the selected API provider. Empty uses that provider profile default when one exists.": "所选 API provider 的模型。留空时使用该 provider profile 的默认模型（如果有）。",
+  "API key": "API Key",
+  "Stored only in local Obsidian plugin data. Leave empty to use an environment variable already available to the launcher.": "仅存放在本机 Obsidian 插件数据中。留空则使用 launcher 已能读取到的环境变量。",
+  "Base URL": "Base URL",
+  "Override the provider endpoint. Leave empty to use the provider profile default.": "覆盖 provider endpoint。留空则使用 provider profile 默认值。",
+  "CLI session": "CLI 会话",
+  "This backend uses a local CLI login/session. API key fields are not used.": "该后端使用本地 CLI 登录/会话，不使用 API key 字段。",
   "NVIDIA NIM API key": "NVIDIA NIM API Key",
   "Optional key for nvidia-nim-api. Stored locally in plugin data. Empty = use AIWIKI_NVIDIA_NIM_API_KEY / NVIDIA_NIM_API_KEY.": "nvidia-nim-api 的可选 API key。本地存储于插件数据中。留空 = 使用 AIWIKI_NVIDIA_NIM_API_KEY / NVIDIA_NIM_API_KEY。",
   "NVIDIA NIM base URL": "NVIDIA NIM Base URL",
@@ -1153,6 +1360,7 @@ function buildTodayFeed(summary) {
   entries.push(...buildMetricAlertEntries(summary));
   entries.push(...buildAgentLoopEntries(summary, todayDate));
   entries.push(...buildActionEntries(summary, "primary"));
+  entries.push(...buildRawInputEntries(summary, todayDate));
   entries.push(...buildLlmHealthEntry(summary));
 
   const filtered = applySnoozeFilter(entries, summary, todayDate);
@@ -1373,6 +1581,30 @@ function buildActionEntries(summary, audience = "primary") {
       summary: `建议下一步：${reason || '继续处理'}`,
       target,
       timestamp: firstText(item, "timestamp", "updated_at", "created_at") || generatedAt,
+      protocol: firstText(item, "protocol"),
+    });
+  }
+  return entries;
+}
+
+function buildRawInputEntries(summary, todayDate) {
+  const recentRawInputs = summary.recent_raw_inputs;
+  if (!Array.isArray(recentRawInputs)) return [];
+  const entries = [];
+  for (const item of dictItems(recentRawInputs)) {
+    const storedPath = firstText(item, "stored_path");
+    if (!storedPath) continue;
+    const occurredAt = firstText(item, "occurred_at");
+    if (datePart(occurredAt) !== todayDate) continue;
+    const originalPath = firstText(item, "original_path");
+    const title = firstText(item, "title");
+    const sourceType = firstText(item, "source_type");
+    entries.push({
+      kind: "action",
+      title: `已投料：${title || originalPath || storedPath}`,
+      summary: `已接收 ${sourceType || "材料"}，等待编译/刷新`,
+      target: storedPath,
+      timestamp: occurredAt,
       protocol: firstText(item, "protocol"),
     });
   }
@@ -2401,18 +2633,8 @@ function execLauncher(plugin, args) {
   }
   return new Promise((resolve, reject) => {
     const env = Object.assign({}, process.env);
-    if (plugin.settings.llmBackend) {
-      env.AIWIKI_LLM_BACKEND = plugin.settings.llmBackend;
-    }
-    if (plugin.settings.llmModel) {
-      env.AIWIKI_LLM_MODEL = plugin.settings.llmModel;
-    }
-    if (plugin.settings.llmNvidiaNimApiKey) {
-      env.AIWIKI_NVIDIA_NIM_API_KEY = plugin.settings.llmNvidiaNimApiKey;
-    }
-    if (plugin.settings.llmNvidiaNimBaseUrl) {
-      env.AIWIKI_NVIDIA_NIM_BASE_URL = plugin.settings.llmNvidiaNimBaseUrl;
-    }
+    clearKnownLlmEnv(env);
+    Object.assign(env, buildLlmEnv(plugin.settings));
     Object.assign(env, buildNotifyEnv(plugin.settings));
     const child = spawn(plugin.repoState.launcherPath, args, {
       cwd: plugin.repoState.root,
@@ -2665,68 +2887,83 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     // ── LLM Configuration ──────────────────────────
     containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("LLM Configuration") });
-    const selectedBackend = String(this.plugin.settings.llmBackend || "").trim();
+    const selectedProfile = llmProviderProfile(this.plugin.settings.llmBackend);
 
     new Setting(containerEl)
       .setName(t("LLM backend"))
-      .setDesc(t("Select the explicit LLM backend used by run-compile / run-ask / run-nightly. Empty = unconfigured."))
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("", t("unconfigured"))
-          .addOption("codex-cli", "codex-cli")
-          .addOption("nvidia-nim-api", "nvidia-nim-api")
-          .addOption("copilot-cli", "copilot-cli")
-          .addOption("claude-cli", "claude-cli")
-          .setValue(this.plugin.settings.llmBackend || "")
+      .setDesc(t("Select the LLM provider used by run-compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints."))
+      .addDropdown((dropdown) => {
+        for (const profile of LLM_PROVIDER_PROFILES) {
+          const prefix = profile.tier === "advanced" ? "Advanced · " : "";
+          dropdown.addOption(profile.value, `${prefix}${profile.label}`);
+        }
+        return dropdown
+          .setValue(selectedProfile.value)
           .onChange(async (value) => {
-            this.plugin.settings.llmBackend = value;
+            const nextProfile = llmProviderProfile(value);
+            this.plugin.settings.llmBackend = nextProfile.value;
+            this.plugin.settings.llmModel = nextProfile.defaultModel || "";
             await this.plugin.savePluginState();
             this.display();
             new Notice(t("LLM settings saved. New runs will use the updated configuration."));
-          })
-      );
+          });
+      });
 
-    new Setting(containerEl)
-      .setName(t("LLM model"))
-      .setDesc(t("Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = selected backend default strategy (`codex-cli`: `gpt-5.4`; `nvidia-nim-api`: `moonshotai/kimi-k2.5 -> z-ai/glm-5.1 -> minimaxai/minimax-m2.7`)."))
-      .addText((text) =>
-        text
-          .setPlaceholder("gpt-5.4 / z-ai/glm-5.1 / claude-sonnet-4.5")
-          .setValue(this.plugin.settings.llmModel || "")
-          .onChange(async (value) => {
-            this.plugin.settings.llmModel = String(value || "").trim();
-            await this.plugin.savePluginState();
-          })
-      );
-
-    if (selectedBackend === "nvidia-nim-api") {
+    if (llmProviderNeedsModel(selectedProfile)) {
       new Setting(containerEl)
-        .setName(t("NVIDIA NIM API key"))
-        .setDesc(t("Optional key for nvidia-nim-api. Stored locally in plugin data. Empty = use AIWIKI_NVIDIA_NIM_API_KEY / NVIDIA_NIM_API_KEY."))
+        .setName(t("LLM model"))
+        .setDesc(t("Model for the selected API provider. Empty uses that provider profile default when one exists."))
+        .addText((text) =>
+          text
+            .setPlaceholder(selectedProfile.defaultModel || "provider/model")
+            .setValue(this.plugin.settings.llmModel || "")
+            .onChange(async (value) => {
+              this.plugin.settings.llmModel = String(value || "").trim();
+              await this.plugin.savePluginState();
+            })
+        );
+    }
+
+    if (selectedProfile.apiKeySetting) {
+      new Setting(containerEl)
+        .setName(selectedProfile.value === "nvidia-nim-api" ? t("NVIDIA NIM API key") : t("API key"))
+        .setDesc(t("Stored only in local Obsidian plugin data. Leave empty to use an environment variable already available to the launcher."))
         .addText((text) => {
           text
-            .setPlaceholder("nvapi-...")
-            .setValue(this.plugin.settings.llmNvidiaNimApiKey || "")
+            .setPlaceholder(selectedProfile.keyPlaceholder || "sk-...")
+            .setValue(this.plugin.settings[selectedProfile.apiKeySetting] || "")
             .onChange(async (value) => {
-              this.plugin.settings.llmNvidiaNimApiKey = String(value || "").trim();
+              this.plugin.settings[selectedProfile.apiKeySetting] = String(value || "").trim();
               await this.plugin.savePluginState();
             });
           text.inputEl.type = "password";
           text.inputEl.autocomplete = "off";
         });
+    }
 
+    if (selectedProfile.baseUrlSetting) {
       new Setting(containerEl)
-        .setName(t("NVIDIA NIM base URL"))
-        .setDesc(t("Override the NVIDIA NIM endpoint. Empty = https://integrate.api.nvidia.com/v1."))
+        .setName(selectedProfile.value === "nvidia-nim-api" ? t("NVIDIA NIM base URL") : t("Base URL"))
+        .setDesc(t("Override the provider endpoint. Leave empty to use the provider profile default."))
         .addText((text) =>
           text
-            .setPlaceholder("https://integrate.api.nvidia.com/v1")
-            .setValue(this.plugin.settings.llmNvidiaNimBaseUrl || "")
+            .setPlaceholder(selectedProfile.defaultBaseUrl || "")
+            .setValue(this.plugin.settings[selectedProfile.baseUrlSetting] || "")
             .onChange(async (value) => {
-              this.plugin.settings.llmNvidiaNimBaseUrl = String(value || "").trim();
+              this.plugin.settings[selectedProfile.baseUrlSetting] = String(value || "").trim();
               await this.plugin.savePluginState();
             })
         );
+    }
+
+    if (selectedProfile.cliHint) {
+      new Setting(containerEl)
+        .setName(t("CLI session"))
+        .setDesc(t("This backend uses a local CLI login/session. API key fields are not used."));
+      containerEl.createEl("p", {
+        text: selectedProfile.cliHint,
+        cls: "setting-item-description",
+      });
     }
 
     // ── 通知（webhook） ──────────────────────────────
@@ -5154,7 +5391,7 @@ function extractPrimaryPath(payload) {
   if (!payload || typeof payload !== "object") {
     return "";
   }
-  const candidateKeys = ["path", "output_path", "receipt_path", "state_path", "index_path", "report_path"];
+  const candidateKeys = ["path", "output_path", "receipt_path", "state_path", "index_path", "report_path", "note_path", "stored_path", "asset_path"];
   for (const key of candidateKeys) {
     const value = payload[key];
     if (typeof value === "string" && value.trim()) {
@@ -5490,6 +5727,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     const rawSettings = data.settings && typeof data.settings === "object" ? data.settings : {};
     this.rawPluginData = data;
     this.settings = Object.assign({}, DEFAULT_SETTINGS, rawSettings);
+    const legacyLlmSettingsMigrated = dropLegacyLlmSettings(this.settings);
     this.settings.locale = normalizeLocale(this.settings.locale);
     const migratedFeishuWebhookUrl = String(this.settings.feishuWebhookUrl || this.settings.feishu_webhook_url || "").trim();
     const feishuWebhookUrlMigrated = this.settings.feishuWebhookUrl !== migratedFeishuWebhookUrl;
@@ -5506,6 +5744,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     const migratedLastViewedTimestamp = normalizeLastViewedTimestamp(this.settings.lastViewedTimestamp);
     const lastViewedTimestampMigrated = this.settings.lastViewedTimestamp !== migratedLastViewedTimestamp;
     this.settings.lastViewedTimestamp = migratedLastViewedTimestamp;
+    // R89: hydrate pendingSubmissions from settings; TTL 24h stale running → failed
+    this.pendingSubmissions = this.hydratePendingSubmissions(this.settings.persistedPendingSubmissions);
     const recentRuns = Array.isArray(data.recentRuns)
       ? data.recentRuns
         .filter((record) => record && typeof record === "object")
@@ -5564,9 +5804,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       : [];
     this.pluginState = { recentRuns };
     this.trimRecentRuns();
-    // R89: hydrate pendingSubmissions from settings; TTL 24h stale running → failed
-    this.pendingSubmissions = this.hydratePendingSubmissions(this.settings.persistedPendingSubmissions);
-    if (feishuWebhookUrlMigrated || wecomWebhookUrlMigrated || enabledChannelsMigrated || lastViewedTimestampMigrated) {
+    if (feishuWebhookUrlMigrated || wecomWebhookUrlMigrated || enabledChannelsMigrated || lastViewedTimestampMigrated || legacyLlmSettingsMigrated) {
       await this.savePluginState();
     }
   }
@@ -7280,7 +7518,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   // R90: reconcile 命中 → done（"报告已生成" or "已记录"）
-  // reconcileTarget: "outputs" | "receipts"; reconcilePath: cand.path（可空）
+  // reconcileTarget: "outputs" | "receipts" | "raw"; reconcilePath: cand.path / stored_path（可空）
   // 不再 4s 自动消失：done 卡变行动卡，由用户点"打开报告/查看回执/完成"主动 dismiss
   // 防御：done/failed 不应再被升到 done
   markPendingSubmissionDone(id, reconcileTarget, reconcilePath) {
@@ -7348,7 +7586,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (!summary || typeof summary !== "object") return;
     const outputCands = Array.isArray(summary.recent_outputs) ? summary.recent_outputs : [];
     const receiptCands = Array.isArray(summary.recent_receipts) ? summary.recent_receipts : [];
-    if (!outputCands.length && !receiptCands.length) return;
+    const rawCands = Array.isArray(summary.recent_raw_inputs) ? summary.recent_raw_inputs : [];
+    if (!outputCands.length && !receiptCands.length && !rawCands.length) return;
     const SKEW_MS = 60 * 1000;
     const RECONCILE_WINDOW_MS = 5 * 60 * 1000;
     const now = Date.now();
@@ -7384,6 +7623,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           cand.payload,
           cand.receipt_path,
           cand.output_path,
+          cand.stored_path,
+          cand.original_path,
+          cand.note_path,
           cand.query,
           cand.target,
         ].map((v) => String(v || "").trim().toLowerCase()).filter(Boolean);
@@ -7404,6 +7646,10 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       else {
         hitCand = findHit(receiptCands);
         if (hitCand) { target = "receipts"; targetPath = String(hitCand.path || hitCand.receipt_path || ""); }
+      }
+      if (!hitCand) {
+        hitCand = findHit(rawCands);
+        if (hitCand) { target = "raw"; targetPath = String(hitCand.stored_path || hitCand.path || ""); }
       }
       // R89: 命中 → 改为 done（保留卡片）；R90: done 不再自动消失
       if (target) {

@@ -289,6 +289,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     const rawSettings = data.settings && typeof data.settings === "object" ? data.settings : {};
     this.rawPluginData = data;
     this.settings = Object.assign({}, DEFAULT_SETTINGS, rawSettings);
+    const legacyLlmSettingsMigrated = dropLegacyLlmSettings(this.settings);
     this.settings.locale = normalizeLocale(this.settings.locale);
     const migratedFeishuWebhookUrl = String(this.settings.feishuWebhookUrl || this.settings.feishu_webhook_url || "").trim();
     const feishuWebhookUrlMigrated = this.settings.feishuWebhookUrl !== migratedFeishuWebhookUrl;
@@ -305,6 +306,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     const migratedLastViewedTimestamp = normalizeLastViewedTimestamp(this.settings.lastViewedTimestamp);
     const lastViewedTimestampMigrated = this.settings.lastViewedTimestamp !== migratedLastViewedTimestamp;
     this.settings.lastViewedTimestamp = migratedLastViewedTimestamp;
+    // R89: hydrate pendingSubmissions from settings; TTL 24h stale running → failed
+    this.pendingSubmissions = this.hydratePendingSubmissions(this.settings.persistedPendingSubmissions);
     const recentRuns = Array.isArray(data.recentRuns)
       ? data.recentRuns
         .filter((record) => record && typeof record === "object")
@@ -363,9 +366,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       : [];
     this.pluginState = { recentRuns };
     this.trimRecentRuns();
-    // R89: hydrate pendingSubmissions from settings; TTL 24h stale running → failed
-    this.pendingSubmissions = this.hydratePendingSubmissions(this.settings.persistedPendingSubmissions);
-    if (feishuWebhookUrlMigrated || wecomWebhookUrlMigrated || enabledChannelsMigrated || lastViewedTimestampMigrated) {
+    if (feishuWebhookUrlMigrated || wecomWebhookUrlMigrated || enabledChannelsMigrated || lastViewedTimestampMigrated || legacyLlmSettingsMigrated) {
       await this.savePluginState();
     }
   }

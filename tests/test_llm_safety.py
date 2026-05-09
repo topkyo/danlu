@@ -26,6 +26,7 @@ class LLMSafetyTests(unittest.TestCase):
         call_kwargs = mock_fetch.call_args.kwargs
         self.assertEqual(call_kwargs["method"], "POST")
         self.assertIn("Authorization", call_kwargs["headers"])
+        self.assertEqual(call_kwargs["headers"]["Authorization"], "Bearer secret")
         self.assertEqual(call_kwargs["max_bytes"], 10 * 1024 * 1024)
 
     def test_openai_image_analysis_uses_safe_fetch(self) -> None:
@@ -48,6 +49,7 @@ class LLMSafetyTests(unittest.TestCase):
         call_kwargs = mock_fetch.call_args.kwargs
         self.assertEqual(call_kwargs["method"], "POST")
         self.assertIn("Authorization", call_kwargs["headers"])
+        self.assertEqual(call_kwargs["headers"]["Authorization"], "Bearer secret")
 
     def test_anthropic_chat_uses_safe_fetch(self) -> None:
         config = LLMConfig(

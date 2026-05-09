@@ -17,6 +17,8 @@ from aiwiki.config import (
     BACKEND_COPILOT_CLI,
     BACKEND_NVIDIA_NIM_API,
     BACKEND_OPENAI_API,
+    BACKEND_OPENCODE_API,
+    BACKEND_OPENROUTER_API,
     LLMConfig,
 )
 from aiwiki.llm import (
@@ -414,6 +416,28 @@ class LLMClientTests(unittest.TestCase):
                 LLMConfig(backend=BACKEND_OPENAI_API, model="gpt", api_key="secret"),
                 root,
             )
+            opencode = create_backend_client(
+                LLMConfig(
+                    backend=BACKEND_OPENCODE_API,
+                    model="deepseek-v4-pro",
+                    api_key="opencode_test_key",
+                    opencode_api_key="opencode_test_key",
+                    base_url="https://opencode.ai/zen/v1",
+                    opencode_base_url="https://opencode.ai/zen/v1",
+                ),
+                root,
+            )
+            openrouter = create_backend_client(
+                LLMConfig(
+                    backend=BACKEND_OPENROUTER_API,
+                    model="anthropic/claude-sonnet-4",
+                    api_key="sk-or-test",
+                    openrouter_api_key="sk-or-test",
+                    base_url="https://openrouter.ai/api/v1",
+                    openrouter_base_url="https://openrouter.ai/api/v1",
+                ),
+                root,
+            )
             codex = create_backend_client(
                 LLMConfig(backend=BACKEND_CODEX_CLI, codex_path="/usr/bin/codex"),
                 root,
@@ -442,6 +466,8 @@ class LLMClientTests(unittest.TestCase):
             )
 
         self.assertIsInstance(openai, OpenAICompatClient)
+        self.assertIsInstance(opencode, OpenAICompatClient)
+        self.assertIsInstance(openrouter, OpenAICompatClient)
         self.assertIsInstance(codex, CodexCLIClient)
         self.assertIsInstance(copilot, CopilotCLIClient)
         self.assertIsInstance(nvidia_nim, OpenAICompatClient)
@@ -698,6 +724,8 @@ class LLMClientTests(unittest.TestCase):
             codex_path="/usr/bin/codex",
             nvidia_nim_api_key="nvapi_test_key",
             nvidia_nim_base_url="https://integrate.api.nvidia.com/v1",
+            opencode_api_key="opencode_test_key",
+            opencode_base_url="https://opencode.ai/zen/v1",
             copilot_path="/usr/bin/copilot",
             claude_path="/usr/bin/claude",
         )
@@ -730,12 +758,19 @@ class LLMClientTests(unittest.TestCase):
                 (BACKEND_CODEX_CLI, BACKEND_CODEX_CLI),
                 (BACKEND_COPILOT_CLI, BACKEND_COPILOT_CLI),
                 (BACKEND_CLAUDE_CLI, BACKEND_CLAUDE_CLI),
+                (BACKEND_OPENCODE_API, BACKEND_OPENCODE_API),
                 (BACKEND_NVIDIA_NIM_API, BACKEND_NVIDIA_NIM_API),
             ],
         )
         self.assertEqual(
             [probe["backend"] for probe in probes],
-            [BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, BACKEND_CLAUDE_CLI, BACKEND_NVIDIA_NIM_API],
+            [
+                BACKEND_CODEX_CLI,
+                BACKEND_COPILOT_CLI,
+                BACKEND_CLAUDE_CLI,
+                BACKEND_OPENCODE_API,
+                BACKEND_NVIDIA_NIM_API,
+            ],
         )
 
     def test_anthropic_complete_basic(self) -> None:

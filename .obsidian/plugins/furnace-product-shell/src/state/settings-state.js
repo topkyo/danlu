@@ -5,6 +5,7 @@ async function loadPluginState(plugin) {
     const rawSettings = data.settings && typeof data.settings === "object" ? data.settings : {};
     plugin.rawPluginData = data;
     plugin.settings = Object.assign({}, DEFAULT_SETTINGS, rawSettings);
+    const legacyLlmSettingsMigrated = dropLegacyLlmSettings(plugin.settings);
     plugin.settings.locale = normalizeLocale(plugin.settings.locale);
     const migratedFeishuWebhookUrl = String(plugin.settings.feishuWebhookUrl || plugin.settings.feishu_webhook_url || "").trim();
     const feishuWebhookUrlMigrated = plugin.settings.feishuWebhookUrl !== migratedFeishuWebhookUrl;
@@ -79,7 +80,7 @@ async function loadPluginState(plugin) {
       : [];
     plugin.pluginState = { recentRuns };
     plugin.trimRecentRuns();
-    if (feishuWebhookUrlMigrated || wecomWebhookUrlMigrated || enabledChannelsMigrated || lastViewedTimestampMigrated) {
+    if (feishuWebhookUrlMigrated || wecomWebhookUrlMigrated || enabledChannelsMigrated || lastViewedTimestampMigrated || legacyLlmSettingsMigrated) {
       await plugin.savePluginState();
     }
   }

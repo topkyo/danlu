@@ -8,18 +8,8 @@ function execLauncher(plugin, args) {
   }
   return new Promise((resolve, reject) => {
     const env = Object.assign({}, process.env);
-    if (plugin.settings.llmBackend) {
-      env.AIWIKI_LLM_BACKEND = plugin.settings.llmBackend;
-    }
-    if (plugin.settings.llmModel) {
-      env.AIWIKI_LLM_MODEL = plugin.settings.llmModel;
-    }
-    if (plugin.settings.llmNvidiaNimApiKey) {
-      env.AIWIKI_NVIDIA_NIM_API_KEY = plugin.settings.llmNvidiaNimApiKey;
-    }
-    if (plugin.settings.llmNvidiaNimBaseUrl) {
-      env.AIWIKI_NVIDIA_NIM_BASE_URL = plugin.settings.llmNvidiaNimBaseUrl;
-    }
+    clearKnownLlmEnv(env);
+    Object.assign(env, buildLlmEnv(plugin.settings));
     Object.assign(env, buildNotifyEnv(plugin.settings));
     const child = spawn(plugin.repoState.launcherPath, args, {
       cwd: plugin.repoState.root,

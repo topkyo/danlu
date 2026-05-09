@@ -9,10 +9,15 @@ from aiwiki.config import (
     BACKEND_CODEX_CLI,
     BACKEND_COPILOT_CLI,
     BACKEND_NVIDIA_NIM_API,
+    BACKEND_OPENCODE_API,
+    BACKEND_OPENROUTER_API,
     DEFAULT_CODEX_MODEL,
     DEFAULT_CODEX_REASONING_EFFORT,
     DEFAULT_NVIDIA_NIM_BASE_URL,
     DEFAULT_NVIDIA_NIM_MODEL,
+    DEFAULT_OPENCODE_BASE_URL,
+    DEFAULT_OPENCODE_MODEL,
+    DEFAULT_OPENROUTER_BASE_URL,
     LLMConfig,
 )
 
@@ -30,11 +35,35 @@ class ConfigTests(unittest.TestCase):
             with patch("aiwiki.config.shutil.which", side_effect=lambda command: commands.get(command)):
                 return LLMConfig.status_from_env()
 
-    def test_from_env_requires_explicit_backend_selection(self) -> None:
+    def test_from_env_defaults_to_opencode_and_requires_key(self) -> None:
         with self.assertRaises(RuntimeError) as ctx:
             self._from_env({}, which_map={"codex": "/usr/bin/codex"})
 
-        self.assertIn("No LLM backend selected", str(ctx.exception))
+        self.assertIn("Requested `opencode-api`", str(ctx.exception))
+
+    def test_from_env_uses_default_opencode_profile_with_key(self) -> None:
+        config = self._from_env({"AIWIKI_OPENCODE_API_KEY": "opencode_test_key"})
+
+        self.assertEqual(config.backend, BACKEND_OPENCODE_API)
+        self.assertEqual(config.backend_requested, BACKEND_OPENCODE_API)
+        self.assertEqual(config.model, DEFAULT_OPENCODE_MODEL)
+        self.assertEqual(config.api_key, "opencode_test_key")
+        self.assertEqual(config.opencode_api_key_source, "AIWIKI_OPENCODE_API_KEY")
+        self.assertEqual(config.base_url, DEFAULT_OPENCODE_BASE_URL)
+        self.assertEqual(config.model_fallback_chain, (DEFAULT_OPENCODE_MODEL,))
+
+    def test_from_env_uses_opencode_generic_key_and_base_url_override(self) -> None:
+        config = self._from_env(
+            {
+                "AIWIKI_LLM_BACKEND": BACKEND_OPENCODE_API,
+                "AIWIKI_LLM_API_KEY": "generic_key",
+                "AIWIKI_OPENCODE_BASE_URL": "https://opencode.example/v1/",
+            }
+        )
+
+        self.assertEqual(config.api_key, "generic_key")
+        self.assertEqual(config.opencode_api_key_source, "AIWIKI_LLM_API_KEY")
+        self.assertEqual(config.base_url, "https://opencode.example/v1")
 
     def test_from_env_uses_requested_codex_backend_when_available(self) -> None:
         config = self._from_env(
@@ -91,6 +120,21 @@ class ConfigTests(unittest.TestCase):
 
         self.assertEqual(config.model_fallback_chain, (DEFAULT_NVIDIA_NIM_MODEL, "fallback-a", "fallback-b"))
 
+    def test_from_env_uses_requested_openrouter_backend(self) -> None:
+        config = self._from_env(
+            {
+                "AIWIKI_LLM_BACKEND": BACKEND_OPENROUTER_API,
+                "AIWIKI_OPENROUTER_API_KEY": "sk-or-test",
+                "AIWIKI_LLM_MODEL": "anthropic/claude-sonnet-4",
+            }
+        )
+
+        self.assertEqual(config.backend, BACKEND_OPENROUTER_API)
+        self.assertEqual(config.model, "anthropic/claude-sonnet-4")
+        self.assertEqual(config.api_key, "sk-or-test")
+        self.assertEqual(config.openrouter_api_key_source, "AIWIKI_OPENROUTER_API_KEY")
+        self.assertEqual(config.base_url, DEFAULT_OPENROUTER_BASE_URL)
+
     def test_from_env_uses_requested_copilot_backend_when_available(self) -> None:
         config = self._from_env(
             {
@@ -123,15 +167,15 @@ class ConfigTests(unittest.TestCase):
 
         self.assertIn("LLM backend resolution failed", str(nim_ctx.exception))
 
-    def test_status_from_env_reports_unconfigured_when_backend_not_selected(self) -> None:
+    def test_status_from_env_reports_default_opencode_missing_key(self) -> None:
         status = self._status_from_env({}, which_map={"codex": "/usr/bin/codex", "copilot": "/usr/bin/copilot"})
 
         self.assertFalse(status["configured"])
-        self.assertEqual(status["backend_requested"], "")
+        self.assertEqual(status["backend_requested"], BACKEND_OPENCODE_API)
         self.assertEqual(status["backend"], "")
         self.assertEqual(status["available_backends"], [BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI])
-        self.assertEqual(status["missing"], ["Explicit `AIWIKI_LLM_BACKEND` selection"])
-        self.assertIn("No LLM backend selected", str(status["message"]))
+        self.assertEqual(status["missing"], ["OpenCode API key via AIWIKI_OPENCODE_API_KEY|AIWIKI_LLM_API_KEY"])
+        self.assertIn("Requested `opencode-api`", str(status["message"]))
 
     def test_status_from_env_reports_requested_backend_mismatch(self) -> None:
         status = self._status_from_env(
@@ -196,6 +240,23 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(status["nvidia_nim_api_key_present"])
         self.assertEqual(status["nvidia_nim_api_key_source"], "AIWIKI_NVIDIA_NIM_API_KEY")
         self.assertFalse(status["image_analysis_supported"])
+
+    def test_status_from_env_reports_opencode_properties(self) -> None:
+        status = self._status_from_env({"AIWIKI_OPENCODE_API_KEY": "opencode_test_key"})
+
+        self.assertTrue(status["configured"])
+        self.assertEqual(status["backend_requested"], BACKEND_OPENCODE_API)
+        self.assertEqual(status["backend"], BACKEND_OPENCODE_API)
+        self.assertEqual(status["available_backends"], [BACKEND_OPENCODE_API])
+        self.assertEqual(status["effective_model"], DEFAULT_OPENCODE_MODEL)
+        self.assertEqual(status["model_fallback_chain"], [DEFAULT_OPENCODE_MODEL])
+        self.assertTrue(status["api_key_present"])
+        self.assertTrue(status["opencode_api_key_present"])
+        self.assertEqual(status["opencode_api_key_source"], "AIWIKI_OPENCODE_API_KEY")
+        self.assertEqual(status["base_url"], DEFAULT_OPENCODE_BASE_URL)
+        self.assertEqual(status["auth_mode"], "api-key")
+        self.assertEqual(status["usage_visibility"], "response-usage")
+        self.assertEqual(status["usage_accounting"], "opencode-api")
 
     def test_from_env_path_overrides_are_respected(self) -> None:
         codex = self._from_env(

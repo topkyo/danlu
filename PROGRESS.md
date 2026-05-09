@@ -13,6 +13,10 @@
 - Active contract：`.codex/contracts/active.md`
 - 改进清单：见本文件底部「改进方向」段
 
+## 当前动态
+
+- 2026-05-09：Product Shell + runtime LLM provider profile 整理完成。默认 route 改为 `opencode-api/deepseek-v4-pro`；新增 OpenCode/OpenRouter/Anthropic/custom OpenAI-compatible profile；NVIDIA NIM fallback 保持 `nvidia-nim-api/openai/gpt-oss-120b`；Product Shell 仅透传当前 provider 需要的 env；README/vault launcher/tests/acceptance 已同步。验证：`bash scripts/verify.sh` PASS（2001 unittest + 13 acceptance，coverage 92%），Product Shell Jest PASS（55 tests）。
+
 ## Milestone Quick Index
 
 | 世代 | Milestones | 状态 |

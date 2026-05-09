@@ -53,12 +53,13 @@ class VaultBootstrapTests(unittest.TestCase):
         self.assertIn("单写约束", home)
         self.assertIn("single writer, many readers", readme)
         self.assertIn("默认界面语言为中文", readme)
-        self.assertIn("gpt-5.5", readme)
+        self.assertIn("opencode-api/deepseek-v4-pro", readme)
         self.assertIn("drop note --title", readme)
         self.assertIn("runtime contract", readme)
         self.assertIn('$HOME/.local/npm/bin', launcher_text)
         self.assertIn("export PATH", launcher_text)
         self.assertIn('PLUGIN_DATA="$VAULT_ROOT/.obsidian/plugins/furnace-product-shell/data.json"', launcher_text)
+        self.assertIn('AIWIKI_OPENCODE_API_KEY', launcher_text)
         self.assertIn('AIWIKI_NVIDIA_NIM_API_KEY', launcher_text)
         self.assertEqual(appearance["enabledCssSnippets"], ["danlu-zh-folders"])
         self.assertIn('.nav-folder[data-path="raw"],', snippet)
@@ -135,6 +136,40 @@ class VaultBootstrapTests(unittest.TestCase):
         self.assertEqual(payload["backend_requested"], "nvidia-nim-api")
         self.assertEqual(payload["backend"], "nvidia-nim-api")
         self.assertEqual(payload["effective_model"], "openai/gpt-oss-120b")
+
+    def test_bootstrap_new_vault_launcher_inherits_opencode_plugin_key(self) -> None:
+        bootstrap_new_vault(self.runtime_root, self.target)
+        plugin_data_path = self.target / ".obsidian" / "plugins" / "furnace-product-shell" / "data.json"
+        plugin_data = json.loads(plugin_data_path.read_text(encoding="utf-8"))
+        plugin_data["settings"]["llmBackend"] = "opencode-api"
+        plugin_data["settings"]["llmModel"] = "deepseek-v4-pro"
+        plugin_data["settings"]["llmOpencodeApiKey"] = "opencode_fake_key"
+        plugin_data_path.write_text(json.dumps(plugin_data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        env = os.environ.copy()
+        for key in (
+            "AIWIKI_LLM_BACKEND",
+            "AIWIKI_LLM_MODEL",
+            "AIWIKI_OPENCODE_API_KEY",
+            "AIWIKI_LLM_API_KEY",
+        ):
+            env.pop(key, None)
+
+        result = subprocess.run(
+            [str(self.target / "scripts" / "aiwiki-launcher.sh"), "llm-check"],
+            cwd=self.target,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload["configured"])
+        self.assertEqual(payload["backend_requested"], "opencode-api")
+        self.assertEqual(payload["backend"], "opencode-api")
+        self.assertEqual(payload["effective_model"], "deepseek-v4-pro")
 
     def test_bootstrap_new_vault_rejects_non_empty_target_without_force(self) -> None:
         self.target.mkdir(parents=True, exist_ok=True)

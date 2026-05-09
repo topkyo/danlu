@@ -232,19 +232,21 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 ## LLM 后端
 
 支持：
-- `codex-cli`
-- `nvidia-nim-api`
-- `copilot-cli`
-- `claude-cli`
+- 常用 API provider：`opencode-api`、`nvidia-nim-api`、`openrouter-api`、`anthropic-api`
+- 高级入口：`codex-cli`、`copilot-cli`、`claude-cli`、`openai-api`（自定义 OpenAI-compatible）
 
 当前语义：
-- `AIWIKI_LLM_BACKEND` 现在必须显式设置；runtime 不再做 `auto` 解析
-- 如果 backend 是 `codex-cli` 且没有显式设置 `AIWIKI_LLM_MODEL`，effective model 默认是 `gpt-5.5`（Round 56 起；旧 `gpt-5.4` 仍可显式选）
-- 如果 backend 是 `nvidia-nim-api` 且没有显式设置 `AIWIKI_LLM_MODEL`，effective model 默认是 `openai/gpt-oss-120b`（Round 59 起；旧默认 `moonshotai/kimi-k2.5` 在 2026-04-30 EOL）
+- 新安装默认 route 是 `opencode-api/deepseek-v4-pro`；OpenCode Zen 走 OpenAI-compatible `/chat/completions` 路径
+- `opencode-api` 默认 base URL 是 `https://opencode.ai/zen/v1`，key 走 `AIWIKI_OPENCODE_API_KEY`，也可用通用 `AIWIKI_LLM_API_KEY`
+- `nvidia-nim-api` 保留为 unattended fallback route，默认模型 `openai/gpt-oss-120b`
+- `openrouter-api` 默认 base URL 是 `https://openrouter.ai/api/v1`，key 走 `AIWIKI_OPENROUTER_API_KEY`
+- `anthropic-api` 走 Anthropic Messages API，key 走 `AIWIKI_ANTHROPIC_API_KEY`
+- `openai-api` 是高级自定义 OpenAI-compatible 入口，base URL 走 `AIWIKI_LLM_BASE_URL`，key 走 `AIWIKI_LLM_API_KEY`
+- 如果 backend 是 `codex-cli` 且没有显式设置 `AIWIKI_LLM_MODEL`，effective model 默认是 `gpt-5.5`（旧 `gpt-5.4` 仍可显式选）
 - `codex-cli` 默认会附带 `AIWIKI_CODEX_REASONING_EFFORT=medium`，避免非交互 `run-ask` / `run-compile` / `run-lint` 被 CLI 默认的高推理档位拖慢
 - `llm-check`、`shell-summary.json`、Product Shell 会同时显示 requested/effective backend/model，以及 usage 可见性/计费口径
 - 默认 `llm-check` 只做静态路由检查；显式加 `--probe` 后才会发一个极小真实请求，区分“backend 能解析出来”和“当前账号真能跑”
-- CLI 路径当前都无法给出精确 token usage，`usage_visibility` 会显示 `opaque-cli`；`nvidia-nim-api` 会直接返回 usage
+- CLI 路径当前都无法给出精确 token usage，`usage_visibility` 会显示 `opaque-cli`；API provider 会尽量透传响应里的 usage
 - `run-ask` 现在会先用 balanced prompt；如果碰到 timeout，会自动再试一次 lean prompt，只有 lean retry 也失败时，外层 Product Shell 才会做 deterministic fallback
 - `run-ask` 现在也支持显式 `--lean` 与 `--timeout <seconds>`，用于直接选择稳优先 prompt 或覆盖单次调用 timeout，而不改动全局环境变量
 - 默认不做隐式 model fallback；需要 fallback 时必须显式传 `--model-fallback model_a,model_b`（可重复）或设置 `AIWIKI_MODEL_FALLBACK=model_a,model_b`，CLI 参数优先于 env
@@ -253,8 +255,11 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 常见配置：
 
 ```bash
-AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
+AIWIKI_OPENCODE_API_KEY=opencode-... PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
 AIWIKI_LLM_BACKEND=nvidia-nim-api AIWIKI_NVIDIA_NIM_API_KEY=nvapi-... PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
+AIWIKI_LLM_BACKEND=openrouter-api AIWIKI_OPENROUTER_API_KEY=sk-or-... AIWIKI_LLM_MODEL=provider/model PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
+AIWIKI_LLM_BACKEND=anthropic-api AIWIKI_ANTHROPIC_API_KEY=sk-ant-... PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
+AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
 AIWIKI_LLM_BACKEND=copilot-cli PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
 AIWIKI_LLM_BACKEND=claude-cli PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
 ```
@@ -269,15 +274,17 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check --probe-all --probe-time
 
 认证说明：
 
+- `opencode-api`：走 `AIWIKI_OPENCODE_API_KEY` 或 `AIWIKI_LLM_API_KEY`；模型默认 `deepseek-v4-pro`。如果账号不可用或模型不可用，`llm-check --probe` 必须显式失败并显示 provider/model/base URL，不会静默伪装成 NIM fallback 成功
 - `codex-cli`：走 `codex login` 的本地会话；当前环境可用 `codex login status` 查看状态
 - `codex-cli`：可以通过 `AIWIKI_CODEX_REASONING_EFFORT=medium|high|xhigh` 调节非交互推理档位；当前默认是 `medium`
 - `nvidia-nim-api`：走 `AIWIKI_NVIDIA_NIM_API_KEY` 或 `NVIDIA_NIM_API_KEY`；base URL 默认 `https://integrate.api.nvidia.com/v1`
-- `nvidia-nim-api`：当前按 OpenAI-compatible `/v1/chat/completions` 接入；模型留空默认使用 `openai/gpt-oss-120b`（NIM 上实测唯一干净的 frontmatter-friendly 模型，2026-04-30 探测）
+- `nvidia-nim-api`：当前按 OpenAI-compatible `/v1/chat/completions` 接入；模型留空默认使用 `openai/gpt-oss-120b`
 - `nvidia-nim-api`：如需多模型重试，显式设置 `AIWIKI_LLM_MODEL` 并追加 `--model-fallback openai/gpt-oss-120b`（CLI 参数优先于 env）。注意 NIM 上多数 model 已 EOL 或装饰输出与 frontmatter 不兼容（如 `moonshotai/kimi-k2.5` 4-30 EOL、`meta/llama-3.3-70b-instruct` 输出装饰），先用 `llm-check --probe-all --format human` 确认目标 model `compatible` 再启用
-- **本地凭据存放规范**：API key **不得**入 `.envrc.dogfood` 或任何 git-tracked 文件；推荐落到 `~/.aiwiki-secrets/<provider>.env`（mode 600 / 父目录 700）。手动 CLI 用前 `source ~/.aiwiki-secrets/nvidia.env` 显式导入；nightly fallback 只保存 `AIWIKI_NIGHTLY_FALLBACK_ENV` 路径，运行时由 wrapper source，不把 key 写进 systemd unit 或 git-tracked 文件
+- `openrouter-api`：走 OpenAI-compatible `/chat/completions`，key 走 `AIWIKI_OPENROUTER_API_KEY`；通常需要显式 `AIWIKI_LLM_MODEL=provider/model`
+- `anthropic-api`：走 Anthropic Messages API；模型留空默认 `claude-sonnet-4-20250514`
+- **本地凭据存放规范**：API key **不得**进入 README、测试 fixture、`.envrc.dogfood` 或任何 git-tracked 文件。Product Shell 里填写的 key 只落到本机未跟踪的插件 `data.json`；CLI/dogfood 推荐落到 `~/.aiwiki-secrets/<provider>.env`（mode 600 / 父目录 700）。nightly fallback 只保存 `AIWIKI_NIGHTLY_FALLBACK_ENV` 路径，运行时由 wrapper source，不把 key 写进 systemd unit 或 git-tracked 文件
 - `copilot-cli`：官方推荐 `copilot login` 的浏览器设备码 OAuth；也支持 `COPILOT_GITHUB_TOKEN -> GH_TOKEN -> GITHUB_TOKEN -> stored OAuth token -> gh auth token` 的优先链
 - `copilot-cli` 的 GitHub OAuth 路径"可行"不等于"当前账号可用"；seat / org policy / quota 不足时，probe 仍会失败
-- 当前这台机器上的真实结论：`codex-cli/gpt-5.5` 与 `nvidia-nim-api/openai/gpt-oss-120b` 双 compatible（2026-05-01 探测）；`copilot-cli/auto` 因 `●` 装饰前缀破坏 frontmatter 不能作 `run-compile` fallback；`claude-cli` 受 org policy 阻塞
 
 ## 使用边界
 

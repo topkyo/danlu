@@ -894,15 +894,16 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertIn("Judgment 生命周期事件", cognitive_history)
         self.assertIn("已批准", cognitive_history)
 
-    def test_llm_status_requires_explicit_backend_selection(self) -> None:
+    def test_llm_status_defaults_to_opencode_and_reports_missing_key(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             with patch("aiwiki.config.shutil.which") as which_mock:
                 which_mock.side_effect = lambda name: "/usr/bin/codex" if name == "codex" else ""
                 status = LLMConfig.status_from_env()
         self.assertFalse(status["configured"])
         self.assertEqual(status["backend"], "")
+        self.assertEqual(status["backend_requested"], "opencode-api")
         self.assertEqual(status["available_backends"], [BACKEND_CODEX_CLI])
-        self.assertIn("No LLM backend selected", str(status["message"]))
+        self.assertIn("Requested `opencode-api`", str(status["message"]))
 
     def test_llm_config_uses_copilot_backend_when_explicitly_configured(self) -> None:
         env = {
@@ -974,7 +975,7 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertIn("aiwiki-nightly.service", content)
         self.assertIn("aiwiki-nightly.timer", content)
         self.assertIn("AIWIKI_NIGHTLY_COMPILE_LIMIT", content)
-        self.assertIn("AIWIKI_LLM_MODEL=gpt-5.5", content)
+        self.assertIn("AIWIKI_LLM_MODEL=deepseek-v4-pro", content)
         self.assertIn("AIWIKI_NIGHTLY_FALLBACK_ENV", content)
         self.assertIn("ensure_env_key", content)
 
