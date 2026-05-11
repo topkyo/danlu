@@ -86,6 +86,20 @@ from aiwiki.llm import CompletionResult
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 from tests.test_app import AppFlowTestBase, CapturingClient, FailingVisionClient, StubClient, StubVisionClient
 
+_VALID_REPORT_BODY = (
+    "---\nid: query-stub\nkind: output\nformat: report\n---\n\n"
+    "# Stub answer\n\n"
+    "## 结论\nStubbed conclusion.\n\n"
+    "## 关键证据\n"
+    "- See wiki/sources/source-1.md\n"
+    "- Secondary evidence point.\n"
+    "- Tertiary evidence point.\n\n"
+    "## 反证与不确定性\n- None observed in stub.\n\n"
+    "## 行动建议\n- Stub follow-up.\n\n"
+    "## 下次观察信号\n- Stub revisit signal.\n\n"
+    "## 引用\n- wiki/sources/source-1.md\n"
+)
+
 
 class MiscFlowTests(AppFlowTestBase):
     def test_ingest_compile_ask_file_back_and_lint(self) -> None:
@@ -117,14 +131,14 @@ class MiscFlowTests(AppFlowTestBase):
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
         report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
-        current_report = (self.root / report["path"]).read_text(encoding="utf-8")
+        self.assertTrue((self.root / report["path"]).exists())
 
         with runtime_write_lock(self.root):
             rerun = run_ask(
                 self.root,
                 "Compare transformer scale and inference cost",
                 "report",
-                client=StubClient([current_report]),
+                client=StubClient([_VALID_REPORT_BODY]),
             )
             filed = file_back(self.root, rerun["path"], title="Locked Decision", kind="decision")
 

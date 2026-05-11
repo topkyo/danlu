@@ -849,17 +849,38 @@ _REPORT_REQUIRED_SECTIONS: tuple[str, ...] = (
     "## 引用",
 )
 
+_REPORT_SECTION_BULLET_MINIMUMS: dict[str, int] = {
+    "## 关键证据": 3,
+    "## 反证与不确定性": 1,
+    "## 行动建议": 1,
+    "## 下次观察信号": 1,
+    "## 引用": 1,
+}
+
+_REPORT_PLACEHOLDER_MARKER = "_LLM:"
+
 
 def _validate_report_sections(markdown: str) -> None:
-    """Enforce decision-grade report skeleton: 6 H2 sections in fixed order.
+    """Enforce decision-grade report skeleton + per-section bullet minimums.
 
-    Only line-anchored H2 headings outside fenced code blocks count. Inline
-    body matches, fenced-code occurrences, and longer lookalikes such as
-    ``## 结论补充`` are rejected.
+    Steps (in order):
+      1. Scan line-anchored H2 headings outside fenced code blocks; require
+         the six required sections in fixed order. Inline body matches,
+         fenced-code occurrences, and longer lookalikes such as
+         ``## 结论补充`` are rejected.
+      2. Reject any unfilled ``_LLM:`` placeholder marker anywhere in the
+         document (outside fenced code blocks). LLM is expected to replace
+         every hint line before returning.
+      3. For each required section listed in ``_REPORT_SECTION_BULLET_MINIMUMS``,
+         count column-0 ``- `` bullets in its body (the lines between its H2
+         and the next H2 or end-of-document), excluding fenced code blocks,
+         empty bullets, and ``_LLM:`` placeholder lines. Sub-bullets,
+         numbered lists, and continuation lines do not count.
     """
-    h2_titles: list[str] = []
+    lines = markdown.splitlines()
+    h2_positions: list[tuple[int, str]] = []
     in_fence = False
-    for line in markdown.splitlines():
+    for index, line in enumerate(lines):
         stripped = line.lstrip()
         if stripped.startswith("```") or stripped.startswith("~~~"):
             in_fence = not in_fence
@@ -867,13 +888,75 @@ def _validate_report_sections(markdown: str) -> None:
         if in_fence:
             continue
         if line.startswith("## ") and not line.startswith("### "):
-            h2_titles.append(line.strip())
+            h2_positions.append((index, line.strip()))
+
+    h2_titles = [title for _, title in h2_positions]
     cursor = 0
     for heading in _REPORT_REQUIRED_SECTIONS:
         try:
             cursor = h2_titles.index(heading, cursor) + 1
         except ValueError as exc:
             raise RuntimeError(f"Report missing required section: {heading}") from exc
+
+    in_fence = False
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if stripped.startswith(_REPORT_PLACEHOLDER_MARKER):
+            raise RuntimeError(
+                f"Report contains unfilled placeholder marker '{_REPORT_PLACEHOLDER_MARKER}'."
+            )
+
+    section_ranges: dict[str, tuple[int, int]] = {}
+    for position_index, (line_index, title) in enumerate(h2_positions):
+        if title not in _REPORT_SECTION_BULLET_MINIMUMS:
+            continue
+        body_start = line_index + 1
+        if position_index + 1 < len(h2_positions):
+            body_end = h2_positions[position_index + 1][0]
+        else:
+            body_end = len(lines)
+        section_ranges[title] = (body_start, body_end)
+
+    for heading, minimum in _REPORT_SECTION_BULLET_MINIMUMS.items():
+        body_start, body_end = section_ranges[heading]
+        bullet_count = _count_report_bullets(lines[body_start:body_end])
+        if bullet_count < minimum:
+            raise RuntimeError(
+                f"Report section {heading} needs at least {minimum} '- ' bullets;"
+                f" found {bullet_count}."
+            )
+
+
+def _count_report_bullets(section_lines: list[str]) -> int:
+    """Count column-0 ``- `` bullets in a section body.
+
+    Skips fenced code blocks, empty bullets (``- `` with no content), and
+    ``_LLM:`` placeholder lines. Numbered lists, sub-bullets, and
+    continuation lines are not counted.
+    """
+    count = 0
+    in_fence = False
+    for line in section_lines:
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if not line.startswith("- "):
+            continue
+        body = line[2:].strip()
+        if not body:
+            continue
+        if body.startswith(_REPORT_PLACEHOLDER_MARKER):
+            continue
+        count += 1
+    return count
 
 
 def _context_budget() -> int:
