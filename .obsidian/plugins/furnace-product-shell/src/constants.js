@@ -10,7 +10,7 @@ const DEFAULT_PROTOCOLS = ["general", "investing", "research", "product", "ops"]
 const DEFAULT_LOCALE = "zh";
 const DEFAULT_SETTINGS = {
   launcherPath: "scripts/aiwiki-launcher.sh",
-  defaultAskFormat: "report",
+  defaultAskFormat: "note",
   recentRunsLimit: 8,
   showAdvancedCommands: false,
   showHtmlShortcuts: true,

@@ -61,7 +61,7 @@ class AskCommandModal extends Modal {
 
     const formatSetting = new Setting(contentEl).setName(t("格式"));
     const formatSelect = formatSetting.controlEl.createEl("select");
-    ["report", "slides", "figure"].forEach((item) => {
+    ["note", "report", "slides", "figure"].forEach((item) => {
       const option = formatSelect.createEl("option", { text: item, value: item });
       option.value = item;
     });
@@ -84,7 +84,7 @@ class AskCommandModal extends Modal {
       clearInlineError(questionError);
       setSubmitLoading(btn, t("分析中…"));
       const self = this;
-      const format = String(formatSelect.value || "report");
+      const format = String(formatSelect.value || "note");
       const protocol = String(protocolSelect.value || "").trim();
       self.close();
       self.plugin.runUiAction(function () {

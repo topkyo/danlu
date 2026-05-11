@@ -93,6 +93,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
       .setDesc(t("Default output format for the Ask modal."))
       .addDropdown((dropdown) =>
         dropdown
+          .addOption("note", "note")
           .addOption("report", "report")
           .addOption("slides", "slides")
           .addOption("figure", "figure")

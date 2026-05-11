@@ -223,7 +223,7 @@ const DEFAULT_PROTOCOLS = ["general", "investing", "research", "product", "ops"]
 const DEFAULT_LOCALE = "zh";
 const DEFAULT_SETTINGS = {
   launcherPath: "scripts/aiwiki-launcher.sh",
-  defaultAskFormat: "report",
+  defaultAskFormat: "note",
   recentRunsLimit: 8,
   showAdvancedCommands: false,
   showHtmlShortcuts: true,
@@ -1861,7 +1861,7 @@ class AskCommandModal extends Modal {
 
     const formatSetting = new Setting(contentEl).setName(t("格式"));
     const formatSelect = formatSetting.controlEl.createEl("select");
-    ["report", "slides", "figure"].forEach((item) => {
+    ["note", "report", "slides", "figure"].forEach((item) => {
       const option = formatSelect.createEl("option", { text: item, value: item });
       option.value = item;
     });
@@ -1884,7 +1884,7 @@ class AskCommandModal extends Modal {
       clearInlineError(questionError);
       setSubmitLoading(btn, t("分析中…"));
       const self = this;
-      const format = String(formatSelect.value || "report");
+      const format = String(formatSelect.value || "note");
       const protocol = String(protocolSelect.value || "").trim();
       self.close();
       self.plugin.runUiAction(function () {
@@ -2875,6 +2875,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
       .setDesc(t("Default output format for the Ask modal."))
       .addDropdown((dropdown) =>
         dropdown
+          .addOption("note", "note")
           .addOption("report", "report")
           .addOption("slides", "slides")
           .addOption("figure", "figure")
