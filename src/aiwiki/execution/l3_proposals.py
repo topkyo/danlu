@@ -18,6 +18,7 @@ from ..app_state import (
     l3_proposal_state_path,
     load_json_document,
     load_json_document_strict,
+    runtime_history_path,
     save_json_document,
 )
 from ..app_utils import (
@@ -33,6 +34,7 @@ from ..app_utils import (
     utc_now,
 )
 from ..render.paths import execution_receipt_path
+from .alchemy import _restore_file_bytes, _snapshot_file_bytes
 from .audit_preview import AUDIT_STREAM_PATH
 
 L3_PROPOSAL_KINDS = ("prompt_proposal", "policy_proposal")
@@ -68,6 +70,14 @@ class L3PostApplyAuditError(RuntimeError):
 
 class L3RevertError(RuntimeError):
     """Raised when L3 transactional rollback cannot restore the target."""
+
+
+class L3ProposalCreateError(RuntimeError):
+    """Raised when L3 proposal creation fails and rollback succeeds."""
+
+
+class L3ProposalCreateHalfWriteError(RuntimeError):
+    """Raised when L3 proposal creation fails and rollback also fails; manual recovery needed."""
 
 
 def default_l3_proposal_state() -> dict[str, Any]:
@@ -518,30 +528,57 @@ def create_l3_proposal(
         "revert_hint_path": "",
     }
     proposals.append(proposal)
-    save_l3_proposal_state(root, proposals)
-    _persist_l3_proposal_page(root, proposal)
-    append_runtime_history(
-        root,
-        {
-            "event_type": "l3-proposal-create",
-            "occurred_at": created_at,
-            "proposal_id": normalized_id,
-            "kind": kind,
-            "target_file": relative_path(root, target),
-            "proposal_path": relative_path(root, proposal_path),
-            "state": "candidate",
-        },
-    )
-    append_wiki_log(
-        root,
-        "l3-proposal-create",
-        normalized_id,
-        [
-            f"kind: `{kind}`",
-            f"target: `{relative_path(root, target)}`",
-            f"proposal: `{relative_path(root, proposal_path)}`",
-        ],
-    )
+    state_path = l3_proposal_state_path(root)
+    runtime_path = runtime_history_path(root)
+    audit_path = root / AUDIT_STREAM_PATH
+    wiki_log_path = root / "wiki" / "indexes" / "log.md"
+    snapshots: list[tuple[Path, bytes | None]] = [
+        (state_path, _snapshot_file_bytes(state_path)),
+        (proposal_path, _snapshot_file_bytes(proposal_path)),
+        (runtime_path, _snapshot_file_bytes(runtime_path)),
+        (audit_path, _snapshot_file_bytes(audit_path)),
+        (wiki_log_path, _snapshot_file_bytes(wiki_log_path)),
+    ]
+    try:
+        save_l3_proposal_state(root, proposals)
+        _persist_l3_proposal_page(root, proposal)
+        append_runtime_history(
+            root,
+            {
+                "event_type": "l3-proposal-create",
+                "occurred_at": created_at,
+                "proposal_id": normalized_id,
+                "kind": kind,
+                "target_file": relative_path(root, target),
+                "proposal_path": relative_path(root, proposal_path),
+                "state": "candidate",
+            },
+        )
+        append_wiki_log(
+            root,
+            "l3-proposal-create",
+            normalized_id,
+            [
+                f"kind: `{kind}`",
+                f"target: `{relative_path(root, target)}`",
+                f"proposal: `{relative_path(root, proposal_path)}`",
+            ],
+        )
+    except Exception as tx_exc:
+        try:
+            for path, snapshot in reversed(snapshots):
+                if snapshot is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    _restore_file_bytes(path, snapshot)
+        except Exception as rollback_exc:
+            raise L3ProposalCreateHalfWriteError(
+                f"l3 proposal create rollback failed for {normalized_id}: tx_error={tx_exc}; "
+                f"rollback_error={rollback_exc}"
+            ) from rollback_exc
+        raise L3ProposalCreateError(
+            f"l3 proposal create failed for {normalized_id}; mutation rolled back"
+        ) from tx_exc
     return {
         "proposal_id": normalized_id,
         "kind": kind,
