@@ -86,6 +86,17 @@ from aiwiki.llm import CompletionResult
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 from tests.test_app import AppFlowTestBase, CapturingClient, FailingVisionClient, StubClient, StubVisionClient
 
+_VALID_REPORT_BODY = (
+    "---\nid: query-stub\nkind: output\nformat: report\n---\n\n"
+    "# Stub answer\n\n"
+    "## 结论\nStubbed conclusion.\n\n"
+    "## 关键证据\n- See wiki/sources/source-1.md\n\n"
+    "## 反证与不确定性\nNone observed in stub.\n\n"
+    "## 行动建议\n- Stub follow-up.\n\n"
+    "## 下次观察信号\n- Stub revisit signal.\n\n"
+    "## 引用\n- wiki/sources/source-1.md\n"
+)
+
 
 class RuntimeFlowTests(AppFlowTestBase):
     def test_ask_creates_active_corpus_and_runtime_history(self) -> None:
@@ -212,8 +223,8 @@ class RuntimeFlowTests(AppFlowTestBase):
         report_text = (self.root / result["path"]).read_text(encoding="utf-8")
         self.assertIn("优先概念", report_text)
         self.assertIn("优先来源", report_text)
-        self.assertIn("## 当前线索", report_text)
-        self.assertIn("## 下一步", report_text)
+        self.assertIn("## 结论", report_text)
+        self.assertIn("## 行动建议", report_text)
         self.assertNotIn("推荐索引页", report_text)
         self.assertNotIn("机器记忆查询计划", report_text)
 
@@ -458,7 +469,7 @@ class RuntimeFlowTests(AppFlowTestBase):
         self.assertTrue(machine_query["touched_component_ids"])
         self.assertTrue(machine_query["touched_components"])
         self.assertTrue(machine_query["query_subgraph"]["edges"])
-        self.assertIn("## 当前线索", report_text)
+        self.assertIn("_机器记忆提示：_", report_text)
         self.assertIn("桥接概念", report_text)
         self.assertIn("查询入口", report_text)
         self.assertIn("latency", report_text.lower())
@@ -663,23 +674,7 @@ class RuntimeFlowTests(AppFlowTestBase):
             encoding="utf-8",
         )
 
-        report_markdown = "\n".join(
-            [
-                "---",
-                'id: "query-1"',
-                'kind: "output"',
-                'format: "report"',
-                'query: "Compare transformer scale and inference cost"',
-                'generated_by: "aiwiki-ask"',
-                'created_at: "2026-04-05T00:00:00+00:00"',
-                "---",
-                "",
-                "# Compare transformer scale and inference cost",
-                "",
-                "Transformer capability rises with scale, while inference cost also grows. See `wiki/sources/"
-                f"{entry['id']}.md`.",
-            ]
-        )
+        report_markdown = _VALID_REPORT_BODY
         ask_result = run_ask(
             self.root,
             "Compare transformer scale and inference cost",
@@ -743,22 +738,7 @@ class RuntimeFlowTests(AppFlowTestBase):
             + "\n",
             encoding="utf-8",
         )
-        report_markdown = "\n".join(
-            [
-                "---",
-                'id: "query-1"',
-                'kind: "output"',
-                'format: "report"',
-                'query: "Compare transformer scale and inference cost"',
-                'generated_by: "aiwiki-ask"',
-                'created_at: "2026-04-05T00:00:00+00:00"',
-                "---",
-                "",
-                "# Compare transformer scale and inference cost",
-                "",
-                f"See `wiki/sources/{entry['id']}.md`.",
-            ]
-        )
+        report_markdown = _VALID_REPORT_BODY
         client = CapturingClient(report_markdown)
 
         run_ask(
@@ -895,26 +875,10 @@ class RuntimeFlowTests(AppFlowTestBase):
     def test_run_ask_includes_machine_memory_query_plan_in_prompt(self) -> None:
         sample = self.root / "latency.md"
         sample.write_text("# Throughput Notes\n\nLatency throughput cache locality.\n", encoding="utf-8")
-        entry = ingest_source(self.root, str(sample), title="Throughput Notes")
+        ingest_source(self.root, str(sample), title="Throughput Notes")
         compile_wiki(self.root)
         set_active_protocol(self.root, "investing")
-        report_markdown = "\n".join(
-            [
-                "---",
-                'id: "query-1"',
-                'kind: "output"',
-                'format: "report"',
-                'query: "Compare latency tail behavior"',
-                'protocol: "investing"',
-                'generated_by: "aiwiki-ask"',
-                'created_at: "2026-04-07T00:00:00+00:00"',
-                "---",
-                "",
-                "# Compare latency tail behavior",
-                "",
-                f"See `wiki/sources/{entry['id']}.md`.",
-            ]
-        )
+        report_markdown = _VALID_REPORT_BODY
         client = CapturingClient(report_markdown)
 
         run_ask(

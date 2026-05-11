@@ -836,6 +836,44 @@ def _validate_output_markdown(markdown: str, output_format: str, source_ids: lis
             raise RuntimeError("Ask response is missing frontmatter.")
     if source_ids and "wiki/sources/" not in markdown:
         raise RuntimeError("Ask response is missing explicit source-page citations.")
+    if output_format == "report":
+        _validate_report_sections(markdown)
+
+
+_REPORT_REQUIRED_SECTIONS: tuple[str, ...] = (
+    "## 结论",
+    "## 关键证据",
+    "## 反证与不确定性",
+    "## 行动建议",
+    "## 下次观察信号",
+    "## 引用",
+)
+
+
+def _validate_report_sections(markdown: str) -> None:
+    """Enforce decision-grade report skeleton: 6 H2 sections in fixed order.
+
+    Only line-anchored H2 headings outside fenced code blocks count. Inline
+    body matches, fenced-code occurrences, and longer lookalikes such as
+    ``## 结论补充`` are rejected.
+    """
+    h2_titles: list[str] = []
+    in_fence = False
+    for line in markdown.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if line.startswith("## ") and not line.startswith("### "):
+            h2_titles.append(line.strip())
+    cursor = 0
+    for heading in _REPORT_REQUIRED_SECTIONS:
+        try:
+            cursor = h2_titles.index(heading, cursor) + 1
+        except ValueError as exc:
+            raise RuntimeError(f"Report missing required section: {heading}") from exc
 
 
 def _context_budget() -> int:

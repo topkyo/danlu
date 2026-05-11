@@ -2,9 +2,9 @@
   "backend": "codex-cli",
   "failure": "simulated backend timeout",
   "model": "stub-model",
-  "prompt_hash": "b6f002b97bc29dc7",
+  "prompt_hash": "29ff417e381549c1",
   "response_id": "",
   "response_text": "",
-  "sequence": 1,
+  "sequence": 2,
   "usage": {}
 }

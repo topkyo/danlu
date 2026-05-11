@@ -614,16 +614,35 @@ def render_report(
         "",
         f"# {question}",
         "",
-        "## 当前线索",
-        f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
-        "- 先直接回答问题本身，再补背景和延伸。",
-        "- 所有重要结论都要落回 `wiki/sources/*.md`。",
+        "## 结论",
+        "_LLM: 请在此填入一句话直接回答问题（最多 3 行）。保持判断明确，不要避而不答。_",
+        "",
+        "## 关键证据",
+        "_LLM: 请在此填入至少 3 条 bullet，每条带至少 1 个 `wiki/sources/*.md` 引用。_",
     ]
-    lines.extend(focus_lines)
+    if focus_lines and focus_lines != ["- 当前没有明显的机器记忆命中，先从优先来源开始。"]:
+        lines.append("")
+        lines.append("_机器记忆提示：_")
+        lines.extend(focus_lines)
     lines.extend(
         [
-        "",
-        "## 协议输出偏置",
+            "",
+            "## 反证与不确定性",
+            "_LLM: 请在此填入至少 1 条反证、缺口或不确定性。若证据集合确实充分，显式写明（例：未发现明显反证；证据覆盖 N 份来源 …）。_",
+            "",
+            "## 行动建议",
+            "_LLM: 请在此填入至少 1 条可执行的 next step。_",
+            "",
+            "## 下次观察信号",
+            "_LLM: 请在此填入至少 1 条触发复审的条件（当 X 出现 / Y 指标变化时复审本结论）。_",
+            "",
+            "## 引用",
+            "_LLM: 请在此列出本报告引用到的全部 `wiki/sources/*.md` 路径，去重，按出现顺序。_",
+            "",
+            "## 参考",
+            f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
+            "",
+            "_协议输出偏置：_",
         ]
     )
     lines.extend(
@@ -633,26 +652,17 @@ def render_report(
     lines.extend(
         [
             "",
-            "## 优先来源",
+            "_优先来源：_",
         ]
     )
     lines.extend(compact_source_link_lines(entries))
     lines.extend(
         [
             "",
-            "## 优先概念",
+            "_优先概念：_",
         ]
     )
     lines.extend(compact_concept_link_lines(concepts))
-    lines.extend(
-        [
-            "",
-            "## 下一步",
-            "1. 用最强来源先写 2 到 4 句直接回答。",
-            "2. 明确列出反证、缺口和不确定性。",
-            "3. 在正文里保留 source-page 内联引用。",
-        ]
-    )
     return "\n".join(lines) + "\n"
 
 

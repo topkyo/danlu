@@ -55,6 +55,17 @@ from aiwiki.runner import (
     run_nightly,
 )
 
+_VALID_REPORT_BODY = (
+    "---\nid: query-stub\nkind: output\nformat: report\n---\n\n"
+    "# Stub answer\n\n"
+    "## 结论\nStubbed conclusion.\n\n"
+    "## 关键证据\n- See wiki/sources/source-1.md\n\n"
+    "## 反证与不确定性\nNone observed in stub.\n\n"
+    "## 行动建议\n- Stub follow-up.\n\n"
+    "## 下次观察信号\n- Stub revisit signal.\n\n"
+    "## 引用\n- wiki/sources/source-1.md\n"
+)
+
 
 class _DummyClient:
     def __init__(self) -> None:
@@ -169,7 +180,7 @@ class RunnerTests(unittest.TestCase):
                 del system_prompt
                 self.prompts.append(user_prompt)
                 return CompletionResult(
-                    text="---\nid: query-lean\nkind: report\n---\n\n# Answer\n\nLean first.\n",
+                    text=_VALID_REPORT_BODY,
                     response_id="resp_lean",
                     usage={},
                 )
@@ -210,7 +221,7 @@ class RunnerTests(unittest.TestCase):
                 del system_prompt
                 del user_prompt
                 return CompletionResult(
-                    text="---\nid: query-timeout-override\nkind: report\n---\n\n# Answer\n\nok\n",
+                    text=_VALID_REPORT_BODY,
                     response_id="resp",
                     usage={},
                 )
@@ -259,7 +270,7 @@ class RunnerTests(unittest.TestCase):
                 del system_prompt
                 del user_prompt
                 return CompletionResult(
-                    text="---\nid: query-compat\nkind: report\n---\n\n# Answer\n\nCompatible backend stamped.\n",
+                    text=_VALID_REPORT_BODY,
                     response_id="resp-ask-compat",
                     usage={},
                 )
@@ -297,7 +308,7 @@ class RunnerTests(unittest.TestCase):
                 del system_prompt
                 del user_prompt
                 return CompletionResult(
-                    text="---\nid: query-no-cache\nkind: report\n---\n\n# Answer\n\nNo cache.\n",
+                    text=_VALID_REPORT_BODY,
                     response_id="resp_no_cache",
                     usage={},
                 )
@@ -509,7 +520,7 @@ class RunnerTests(unittest.TestCase):
                 if len(self.prompts) == 1:
                     raise LLMError("Codex CLI timed out after 120 seconds.")
                 return CompletionResult(
-                    text="---\nid: query-timeout\nkind: report\n---\n\n# Answer\n\nRecovered.\n",
+                    text=_VALID_REPORT_BODY,
                     response_id="resp_retry",
                     usage={},
                 )
@@ -527,7 +538,7 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(result["model_final"], "gpt-5.4")
         self.assertTrue(result["contract_validated"])
         self.assertEqual(client.prompts, ["balanced prompt", "lean prompt"])
-        self.assertIn("# Answer", artifact_path.read_text(encoding="utf-8"))
+        self.assertIn("# Stub answer", artifact_path.read_text(encoding="utf-8"))
 
     def test_run_ask_advances_to_next_model_when_first_model_returns_invalid_frontmatter(self) -> None:
         artifact_path = self.root / "output" / "reports" / "query-nim-fallback.md"
@@ -575,7 +586,7 @@ class RunnerTests(unittest.TestCase):
                         usage={},
                     )
                 return CompletionResult(
-                    text='---\nid: "query-nim-fallback"\nkind: "output"\nformat: "report"\n---\n\n# Answer\n\nGrounded result `wiki/sources/source-1.md`.\n',
+                    text=_VALID_REPORT_BODY,
                     response_id="resp_kimi",
                     usage={},
                 )
@@ -594,7 +605,7 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(result["fallback_stage"], "model-chain")
         self.assertTrue(result["contract_validated"])
         self.assertEqual(client.config.model, "z-ai/glm-5.1")
-        self.assertIn("# Answer", artifact_path.read_text(encoding="utf-8"))
+        self.assertIn("# Stub answer", artifact_path.read_text(encoding="utf-8"))
 
         llm_receipts_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
         self.assertTrue(llm_receipts_path.exists())
@@ -1624,11 +1635,26 @@ class RunnerTests(unittest.TestCase):
                 ["wiki/sources/source-1.md"],
             )
 
-        _validate_output_markdown("---\nformat: report\n---\n\nSee wiki/sources/source-1.md\n", "report", ["source-1"])
+        valid_report = (
+            "---\nformat: report\n---\n\n"
+            "## 结论\nA\n\n"
+            "## 关键证据\n- See wiki/sources/source-1.md\n\n"
+            "## 反证与不确定性\nB\n\n"
+            "## 行动建议\nC\n\n"
+            "## 下次观察信号\nD\n\n"
+            "## 引用\n- wiki/sources/source-1.md\n"
+        )
+        _validate_output_markdown(valid_report, "report", ["source-1"])
         with self.assertRaises(RuntimeError):
             _validate_output_markdown("# no frontmatter\n", "report", ["source-1"])
         with self.assertRaises(RuntimeError):
-            _validate_output_markdown("---\nformat: report\n---\n\nNo citations here.\n", "report", ["source-1"])
+            _validate_output_markdown(
+                "---\nformat: report\n---\n\n"
+                "## 结论\nA\n\n## 关键证据\nB\n\n## 反证与不确定性\nC\n\n"
+                "## 行动建议\nD\n\n## 下次观察信号\nE\n\n## 引用\nNo citations here.\n",
+                "report",
+                ["source-1"],
+            )
 
         _append_log(self.root, {"event": "runner-test"})
         log_path = self.root / ".aiwiki" / "logs" / "runs.jsonl"
@@ -1682,7 +1708,7 @@ class RunnerTests(unittest.TestCase):
                 del system_prompt
                 del user_prompt
                 return CompletionResult(
-                    text="---\nid: query-preflight-skip\nkind: report\n---\n\n# Answer\n\nNo sources required.\n",
+                    text=_VALID_REPORT_BODY,
                     response_id="resp-preflight-skip",
                     usage={},
                 )
@@ -1727,7 +1753,7 @@ class RunnerTests(unittest.TestCase):
                 del system_prompt
                 del user_prompt
                 return CompletionResult(
-                    text="---\nid: query-preflight-call\nkind: report\n---\n\n# Answer\n\nNo sources required.\n",
+                    text=_VALID_REPORT_BODY,
                     response_id="resp-preflight-call",
                     usage={},
                 )

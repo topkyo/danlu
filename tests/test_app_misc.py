@@ -798,7 +798,8 @@ class MiscFlowTests(AppFlowTestBase):
         report = ask_question(self.root, "Should we underwrite this thesis?", "report", protocol="investing")
         report_text = (self.root / report["path"]).read_text(encoding="utf-8")
 
-        self.assertIn("## 协议输出偏置", report_text)
+        self.assertIn("## 参考", report_text)
+        self.assertIn("_协议输出偏置：_", report_text)
         self.assertIn("thesis / bull-bear evidence / catalysts / risks / invalidation", report_text)
 
     def test_governance_indexes_surface_lifecycle_revisit_concepts(self) -> None:

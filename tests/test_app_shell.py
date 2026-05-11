@@ -86,6 +86,17 @@ from aiwiki.llm import CompletionResult
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 from tests.test_app import AppFlowTestBase, CapturingClient, FailingVisionClient, StubClient, StubVisionClient
 
+_VALID_REPORT_BODY = (
+    "---\nid: query-stub\nkind: output\nformat: report\n---\n\n"
+    "# Stub answer\n\n"
+    "## 结论\nStubbed conclusion.\n\n"
+    "## 关键证据\n- See wiki/sources/source-1.md\n\n"
+    "## 反证与不确定性\nNone observed in stub.\n\n"
+    "## 行动建议\n- Stub follow-up.\n\n"
+    "## 下次观察信号\n- Stub revisit signal.\n\n"
+    "## 引用\n- wiki/sources/source-1.md\n"
+)
+
 
 class ShellFlowTests(AppFlowTestBase):
     def test_furnace_center_surfaces_pilots_packs_receipts_and_commands(self) -> None:
@@ -345,25 +356,10 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(result["recent_runs"][0]["output_path"], report["path"])
 
     def test_shell_status_surfaces_latest_llm_run_and_llm_health(self) -> None:
-        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
 
-        report_markdown = "\n".join(
-            [
-                "---",
-                'id: "query-health"',
-                'kind: "output"',
-                'format: "report"',
-                'query: "Check shell summary llm health"',
-                'generated_by: "aiwiki-ask"',
-                'created_at: "2026-04-05T00:00:00+00:00"',
-                "---",
-                "",
-                "# Check shell summary llm health",
-                "",
-                f"Grounded in `wiki/sources/{entry['id']}.md`.",
-            ]
-        )
+        report_markdown = _VALID_REPORT_BODY
 
         with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "codex-cli"}, clear=False):
             ask_result = run_ask(
@@ -455,25 +451,10 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(third["latest_shell_sync_run"], {})
 
     def test_shell_status_marks_llm_route_drift_when_current_route_differs(self) -> None:
-        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
 
-        report_markdown = "\n".join(
-            [
-                "---",
-                'id: "query-drift"',
-                'kind: "output"',
-                'format: "report"',
-                'query: "Check llm route drift"',
-                'generated_by: "aiwiki-ask"',
-                'created_at: "2026-04-05T00:00:00+00:00"',
-                "---",
-                "",
-                "# Check llm route drift",
-                "",
-                f"Grounded in `wiki/sources/{entry['id']}.md`.",
-            ]
-        )
+        report_markdown = _VALID_REPORT_BODY
 
         with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "codex-cli"}, clear=False):
             run_ask(

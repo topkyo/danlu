@@ -58,6 +58,17 @@ from aiwiki.execution.protocol_learnings import (
 from aiwiki.llm import CompletionResult
 from aiwiki.runner import run_alchemy_distill, run_ask, run_compile
 
+_VALID_REPORT_BODY = (
+    "---\nid: query-stub\nkind: output\nformat: report\n---\n\n"
+    "# Stub answer\n\n"
+    "## 结论\nStubbed conclusion.\n\n"
+    "## 关键证据\n- See wiki/sources/source-1.md\n\n"
+    "## 反证与不确定性\nNone observed in stub.\n\n"
+    "## 行动建议\n- Stub follow-up.\n\n"
+    "## 下次观察信号\n- Stub revisit signal.\n\n"
+    "## 引用\n- wiki/sources/source-1.md\n"
+)
+
 
 class _StubClient:
     def __init__(self, responses: list[str]) -> None:
@@ -465,12 +476,12 @@ class ExecutionTests(unittest.TestCase):
         self.assertTrue(frontmatter["formed_at"])
 
     def test_ask_with_corpus_flag_reuses_corpus_id(self) -> None:
-        first = run_ask(self.root, "First question?", "report", client=_StubClient(["---\nfront: yes\n---\n# Title\n\nBody.\n"]))
+        first = run_ask(self.root, "First question?", "report", client=_StubClient([_VALID_REPORT_BODY]))
         second = run_ask(
             self.root,
             "Second question?",
             "report",
-            client=_StubClient(["---\nfront: yes\n---\n# Title\n\nBody.\n"]),
+            client=_StubClient([_VALID_REPORT_BODY]),
             corpus_id_override=first["active_corpus_id"],
         )
 
@@ -481,7 +492,7 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(second_frontmatter.get("candidate_state"), "pending")
 
     def test_ask_second_round_injects_previous_output_summary(self) -> None:
-        first = run_ask(self.root, "First question?", "report", client=_StubClient(["---\nfront: yes\n---\n# Title\n\nBody.\n"]))
+        first = run_ask(self.root, "First question?", "report", client=_StubClient([_VALID_REPORT_BODY]))
         captured: dict[str, str] = {}
 
         from aiwiki.runner import workflows as runner_module
@@ -497,10 +508,7 @@ class ExecutionTests(unittest.TestCase):
                 self.root,
                 "Second question?",
                 "report",
-                client=_StubClient([
-                    "---\nfront: yes\n---\n# Title\n\nBody.\n",
-                    "---\nfront: yes\n---\n# Title\n\nBody.\n",
-                ]),
+                client=_StubClient([_VALID_REPORT_BODY, _VALID_REPORT_BODY]),
                 corpus_id_override=first["active_corpus_id"],
             )
 
@@ -519,7 +527,7 @@ class ExecutionTests(unittest.TestCase):
             return captured["prompt"]
 
         with patch.object(runner_module, "_build_ask_prompt", side_effect=spy):
-            run_ask(self.root, "First question?", "report", client=_StubClient(["---\nfront: yes\n---\n# Title\n\nBody.\n"]))
+            run_ask(self.root, "First question?", "report", client=_StubClient([_VALID_REPORT_BODY]))
 
         self.assertNotIn("## Previous Output In Corpus", captured["prompt"])
 
