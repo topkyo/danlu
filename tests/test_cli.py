@@ -195,6 +195,92 @@ class CLITests(unittest.TestCase):
         )
         self.assertIn("trace", adv_action.choices)
 
+    def test_report_subgraph_subcommand_exists(self) -> None:
+        parser = build_parser()
+        action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
+        self.assertIn("report-subgraph", action.choices)
+
+    def test_report_subgraph_parser_args(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["report-subgraph", "--report", "output/reports/demo.md"])
+        self.assertEqual(args.handler_command, "report-subgraph")
+        self.assertEqual(args.report, "output/reports/demo.md")
+        self.assertIsNone(args.output)
+
+        args2 = parser.parse_args(
+            ["report-subgraph", "--report", "output/reports/demo.md", "--output", "custom/path.md"]
+        )
+        self.assertEqual(args2.output, "custom/path.md")
+
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["report-subgraph"])  # --report required
+
+    def test_report_subgraph_dispatch_writes_output_and_returns_payload(self) -> None:
+        fake_subgraph = {
+            "report": "output/reports/demo.md",
+            "anchor_node_ids": ["concept:x"],
+            "nodes": [
+                {"id": "concept:x", "kind": "concept", "title": "X"},
+                {"id": "concept:y", "kind": "concept", "title": "Y"},
+            ],
+            "edges": [
+                {"source": "concept:x", "target": "concept:y", "type": "RELATED_CONCEPT", "label": "概念相关"},
+            ],
+            "neighbors": ["concept:y"],
+        }
+        with patch(
+            "aiwiki.memory.graph.build_report_subgraph", return_value=fake_subgraph
+        ) as mocked_build, patch(
+            "aiwiki.memory.graph.render_report_subgraph_markdown", return_value="MD\n"
+        ) as mocked_render:
+            code, stdout, stderr = self._run_main_raw(
+                ["report-subgraph", "--report", "output/reports/demo.md"]
+            )
+        self.assertEqual(code, 0, msg=stderr)
+        mocked_build.assert_called_once_with(self.root, "output/reports/demo.md")
+        mocked_render.assert_called_once_with(fake_subgraph)
+        payload = json.loads(stdout)
+        self.assertEqual(payload["kind"], "report-subgraph")
+        self.assertEqual(payload["report"], "output/reports/demo.md")
+        self.assertEqual(payload["anchor_node_ids"], ["concept:x"])
+        self.assertEqual(payload["node_count"], 2)
+        self.assertEqual(payload["edge_count"], 1)
+        self.assertEqual(payload["output_path"], "output/reports/demo.subgraph.md")
+        written = (self.root / "output" / "reports" / "demo.subgraph.md").read_text(encoding="utf-8")
+        self.assertEqual(written, "MD\n")
+
+    def test_report_subgraph_dispatch_fail_loud_exits_2(self) -> None:
+        from aiwiki.memory.graph import ReportSubgraphError
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch(
+            "aiwiki.memory.graph.build_report_subgraph",
+            side_effect=ReportSubgraphError("report not found: output/reports/missing.md"),
+        ), patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
+            with self.assertRaises(SystemExit) as ctx:
+                main(["--root", str(self.root), "report-subgraph", "--report", "output/reports/missing.md"])
+        self.assertEqual(ctx.exception.code, 2)
+        self.assertIn("report-subgraph", stderr.getvalue())
+        self.assertIn("missing.md", stderr.getvalue())
+
+    def test_report_subgraph_dispatch_uncompiled_memory_exits_2(self) -> None:
+        # 未 patch build_report_subgraph：走真实路径，machine memory 未编译 → fail-loud exit 2
+        report_path = self.root / "output" / "reports" / "demo.md"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            "---\ngraph_anchor_node_ids:\n  - concept:x\n---\nbody\n",
+            encoding="utf-8",
+        )
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
+            with self.assertRaises(SystemExit) as ctx:
+                main(["--root", str(self.root), "report-subgraph", "--report", "output/reports/demo.md"])
+        self.assertEqual(ctx.exception.code, 2)
+        self.assertIn("report-subgraph", stderr.getvalue())
+        self.assertIn("machine memory", stderr.getvalue())
+
     def test_trace_dispatches_with_unknown_asset(self) -> None:
         # Empty vault → unknown asset → still exit 0 (renders 'not found' marker)
         code, stdout, stderr = self._run_main_raw(["trace", "judgment-does-not-exist"])

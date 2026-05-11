@@ -35,13 +35,14 @@ if (!HTMLElement.prototype.addClass) {
   };
 }
 
-const { renderFeedCard, isReportUnread } = require("../../render/cards");
+const { renderFeedCard, renderReportCard, isReportUnread } = require("../../render/cards");
 
 function makeMockPlugin() {
   return {
     settings: { lastViewedTimestamp: null },
     t: (key) => key,
     goToReport: jest.fn(),
+    runReportSubgraphCommand: jest.fn().mockResolvedValue(),
     viewReviewTodayEntry: jest.fn(),
     snoozeTodayEntry: jest.fn(),
   };
@@ -105,4 +106,33 @@ test("isReportUnread returns false when report is older", () => {
   const plugin = makeMockPlugin();
   plugin.settings.lastViewedTimestamp = "2026-05-05T00:00:00Z";
   expect(isReportUnread(plugin, { timestamp: "2026-05-03T12:00:00Z" })).toBe(false);
+});
+
+describe("renderReportCard", () => {
+  test("renders View graph button in advanced mode", async () => {
+    const plugin = makeMockPlugin();
+    plugin.settings.showAdvancedCommands = true;
+    const cardEl = document.createElement("div");
+
+    renderReportCard(plugin, cardEl, { target: "output/reports/foo.md" });
+
+    const graphBtn = Array.from(cardEl.querySelectorAll("button")).find((btn) => btn.textContent === "View graph");
+    expect(graphBtn).toBeTruthy();
+
+    graphBtn.click();
+    await Promise.resolve();
+
+    expect(plugin.runReportSubgraphCommand).toHaveBeenCalledWith({ reportPath: "output/reports/foo.md" });
+  });
+
+  test("does not render View graph button when advanced mode is disabled", () => {
+    const plugin = makeMockPlugin();
+    plugin.settings.showAdvancedCommands = false;
+    const cardEl = document.createElement("div");
+
+    renderReportCard(plugin, cardEl, { target: "output/reports/foo.md" });
+
+    const graphBtn = Array.from(cardEl.querySelectorAll("button")).find((btn) => btn.textContent === "View graph");
+    expect(graphBtn).toBeUndefined();
+  });
 });

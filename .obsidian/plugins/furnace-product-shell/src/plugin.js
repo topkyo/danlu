@@ -248,6 +248,13 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       },
     });
     this.addCommand({
+      id: "report-subgraph",
+      name: this.t("View report graph"),
+      callback: () => {
+        this.openReportSubgraphPicker();
+      },
+    });
+    this.addCommand({
       id: "open-home-note",
       name: this.t("Open Home Note"),
       callback: () => {
@@ -2256,6 +2263,64 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       args.push("--fallback-to-ask");
     }
     await this.runPluginCommand(`${this.t("Ask")}: ${truncateText(question, 48)}`, args, { refreshAfter: true });
+  }
+
+  async runReportSubgraphCommand({ reportPath }) {
+    const normalized = String(reportPath || "").trim();
+    if (!normalized) {
+      new Notice(this.t("Report path cannot be empty."));
+      return;
+    }
+    const args = ["report-subgraph", "--report", normalized];
+    const payload = await this.runPluginCommand(`${this.t("View report graph")}: ${truncateText(normalized, 48)}`, args, { refreshAfter: true });
+    const outputPath = payload && typeof payload.output_path === "string" ? payload.output_path.trim() : "";
+    if (outputPath) {
+      await this.openWorkspacePath(outputPath);
+    }
+    return payload;
+  }
+
+  collectReportCandidates() {
+    const summary = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary : null;
+    if (!summary) return [];
+    const outputs = Array.isArray(summary.recent_outputs) ? summary.recent_outputs : [];
+    const seen = new Set();
+    const candidates = [];
+    for (const item of outputs) {
+      if (!item || typeof item !== "object") continue;
+      const candidatePath = String(item.path || "").trim();
+      if (!candidatePath || !candidatePath.startsWith("output/reports/")) continue;
+      if (seen.has(candidatePath)) continue;
+      seen.add(candidatePath);
+      const title = String(item.title || "").trim() || candidatePath;
+      candidates.push({ value: candidatePath, label: `${title} — ${candidatePath}` });
+    }
+    return candidates;
+  }
+
+  openReportSubgraphPicker() {
+    const candidates = this.collectReportCandidates();
+    const fieldSpec = {
+      key: "reportPath",
+      label: this.t("Report path"),
+      placeholder: "output/reports/...md",
+      required: true,
+    };
+    if (candidates.length) {
+      fieldSpec.kind = "select";
+      fieldSpec.options = candidates;
+      fieldSpec.initialValue = candidates[0].value;
+    }
+    this.openStructuredCommandModal({
+      title: this.t("View report graph"),
+      description: candidates.length
+        ? this.t("Choose a recent report.")
+        : this.t("No recent reports available; enter a path manually."),
+      fields: [fieldSpec],
+      onSubmit: async (values) => {
+        await this.runReportSubgraphCommand({ reportPath: values.reportPath });
+      },
+    });
   }
 
   async runDropUrlCommand({ url, title }) {

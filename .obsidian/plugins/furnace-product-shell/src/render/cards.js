@@ -31,6 +31,16 @@ function renderReportCard(plugin, cardEl, entry) {
   openBtn.addEventListener("click", () => {
     plugin.goToReport(entry.target);
   });
+
+  // 仅 advanced mode 显示 View graph 按钮 (EP-004 SC#2)
+  if (plugin.settings && plugin.settings.showAdvancedCommands) {
+    const graphBtn = actions.createEl("button", {
+      text: plugin.t("View graph"),
+    });
+    graphBtn.addEventListener("click", async () => {
+      await plugin.runReportSubgraphCommand({ reportPath: entry.target });
+    });
+  }
 }
 
 function renderConfirmationCard(plugin, cardEl, entry) {

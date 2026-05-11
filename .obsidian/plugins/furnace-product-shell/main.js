@@ -627,6 +627,13 @@ const ZH_TEXT = {
   "reason {value}": "原因 {value}",
   Open: "打开",
   "Open report": "打开报告",
+  "View report graph": "查看报告关系图谱",
+  "View graph": "查看关系图谱",
+  "Report path cannot be empty.": "报告路径不能为空。",
+  "Enter a report markdown path (relative to vault root).": "请输入 report markdown 路径（相对 vault 根目录）。",
+  "Report path": "报告路径",
+  "No recent reports available; enter a path manually.": "暂无最近报告，可手动输入路径。",
+  "Choose a recent report.": "选择最近报告。",
   "Open decision": "打开决策",
   "Open judgment": "打开判断",
   "Open Review": "打开审阅",
@@ -2707,6 +2714,16 @@ function renderReportCard(plugin, cardEl, entry) {
   openBtn.addEventListener("click", () => {
     plugin.goToReport(entry.target);
   });
+
+  // 仅 advanced mode 显示 View graph 按钮 (EP-004 SC#2)
+  if (plugin.settings && plugin.settings.showAdvancedCommands) {
+    const graphBtn = actions.createEl("button", {
+      text: plugin.t("View graph"),
+    });
+    graphBtn.addEventListener("click", async () => {
+      await plugin.runReportSubgraphCommand({ reportPath: entry.target });
+    });
+  }
 }
 
 function renderConfirmationCard(plugin, cardEl, entry) {
@@ -5493,6 +5510,13 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       },
     });
     this.addCommand({
+      id: "report-subgraph",
+      name: this.t("View report graph"),
+      callback: () => {
+        this.openReportSubgraphPicker();
+      },
+    });
+    this.addCommand({
       id: "open-home-note",
       name: this.t("Open Home Note"),
       callback: () => {
@@ -7501,6 +7525,64 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       args.push("--fallback-to-ask");
     }
     await this.runPluginCommand(`${this.t("Ask")}: ${truncateText(question, 48)}`, args, { refreshAfter: true });
+  }
+
+  async runReportSubgraphCommand({ reportPath }) {
+    const normalized = String(reportPath || "").trim();
+    if (!normalized) {
+      new Notice(this.t("Report path cannot be empty."));
+      return;
+    }
+    const args = ["report-subgraph", "--report", normalized];
+    const payload = await this.runPluginCommand(`${this.t("View report graph")}: ${truncateText(normalized, 48)}`, args, { refreshAfter: true });
+    const outputPath = payload && typeof payload.output_path === "string" ? payload.output_path.trim() : "";
+    if (outputPath) {
+      await this.openWorkspacePath(outputPath);
+    }
+    return payload;
+  }
+
+  collectReportCandidates() {
+    const summary = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary : null;
+    if (!summary) return [];
+    const outputs = Array.isArray(summary.recent_outputs) ? summary.recent_outputs : [];
+    const seen = new Set();
+    const candidates = [];
+    for (const item of outputs) {
+      if (!item || typeof item !== "object") continue;
+      const candidatePath = String(item.path || "").trim();
+      if (!candidatePath || !candidatePath.startsWith("output/reports/")) continue;
+      if (seen.has(candidatePath)) continue;
+      seen.add(candidatePath);
+      const title = String(item.title || "").trim() || candidatePath;
+      candidates.push({ value: candidatePath, label: `${title} — ${candidatePath}` });
+    }
+    return candidates;
+  }
+
+  openReportSubgraphPicker() {
+    const candidates = this.collectReportCandidates();
+    const fieldSpec = {
+      key: "reportPath",
+      label: this.t("Report path"),
+      placeholder: "output/reports/...md",
+      required: true,
+    };
+    if (candidates.length) {
+      fieldSpec.kind = "select";
+      fieldSpec.options = candidates;
+      fieldSpec.initialValue = candidates[0].value;
+    }
+    this.openStructuredCommandModal({
+      title: this.t("View report graph"),
+      description: candidates.length
+        ? this.t("Choose a recent report.")
+        : this.t("No recent reports available; enter a path manually."),
+      fields: [fieldSpec],
+      onSubmit: async (values) => {
+        await this.runReportSubgraphCommand({ reportPath: values.reportPath });
+      },
+    });
   }
 
   async runDropUrlCommand({ url, title }) {

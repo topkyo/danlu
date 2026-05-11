@@ -329,6 +329,22 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     )
     run_ask_parser.add_argument("--corpus", help="Optional active corpus id to reuse across ask rounds.")
 
+    report_subgraph_parser = subparsers.add_parser(
+        "report-subgraph",
+        help="Generate a 1-hop subgraph markdown anchored at a single report's graph_anchor_node_ids.",
+    )
+    report_subgraph_parser.add_argument(
+        "--report",
+        required=True,
+        help="Path to the report markdown (relative to root or absolute).",
+    )
+    report_subgraph_parser.add_argument(
+        "--output",
+        default=None,
+        help="Optional output path. Defaults to output/reports/<stem>.subgraph.md next to the report.",
+    )
+    report_subgraph_parser.set_defaults(handler_command="report-subgraph")
+
     file_back_parser = subparsers.add_parser(
         "file-back",
         help="File a markdown artifact back into wiki/derived (machine-memory terminal layer, no review), wiki/decisions, or wiki/judgments (subject to review-page workflow).",

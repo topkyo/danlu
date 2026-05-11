@@ -352,6 +352,42 @@ def main(argv: list[str] | None = None) -> int:
             if hasattr(args, "corpus") and args.corpus is not None:
                 ask_kwargs["corpus_id_override"] = args.corpus
             result = run_ask(root, args.question, args.format, **ask_kwargs)
+        elif args.handler_command == "report-subgraph":
+            from ..memory.graph import (
+                ReportSubgraphError,
+                build_report_subgraph,
+                render_report_subgraph_markdown,
+            )
+
+            try:
+                subgraph = build_report_subgraph(root, args.report)
+            except ReportSubgraphError as exc:
+                print(f"aiwiki report-subgraph: {exc}", file=sys.stderr)
+                sys.exit(2)
+            markdown = render_report_subgraph_markdown(subgraph)
+            report_path = Path(args.report)
+            default_stem = report_path.stem
+            if args.output:
+                output_path = Path(args.output)
+                if not output_path.is_absolute():
+                    output_path = root / output_path
+            else:
+                output_path = root / "output" / "reports" / f"{default_stem}.subgraph.md"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(markdown, encoding="utf-8")
+            try:
+                relative_out = output_path.relative_to(root)
+                output_rel = str(relative_out).replace("\\", "/")
+            except ValueError:
+                output_rel = str(output_path)
+            result = {
+                "kind": "report-subgraph",
+                "report": subgraph["report"],
+                "anchor_node_ids": subgraph["anchor_node_ids"],
+                "output_path": output_rel,
+                "node_count": len(subgraph["nodes"]),
+                "edge_count": len(subgraph["edges"]),
+            }
         elif args.handler_command == "file-back":
             result = file_back(root, args.artifact, title=args.title, kind=args.kind, protocol=args.protocol)
             if result.get("next_step_hint"):
