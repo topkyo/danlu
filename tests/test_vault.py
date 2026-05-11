@@ -72,7 +72,6 @@ class VaultBootstrapTests(unittest.TestCase):
         self.assertIn('content: "策略 policies";', snippet)
         self.assertIn('content: "研发协议 research";', snippet)
         self.assertIn("Capture Note", plugin_source)
-        self.assertIn("drop note", plugin_source)
         self.assertNotIn("drop-note / drop-url", plugin_source)
         self.assertEqual(plugin_data["settings"]["locale"], "zh")
         self.assertEqual(workspace["active"], "main-furnace-center")

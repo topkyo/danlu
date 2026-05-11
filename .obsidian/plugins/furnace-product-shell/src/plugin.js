@@ -2909,16 +2909,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return renderPill(this, container, text, extraClass);
   }
 
-  latestInteractionEntry() {
-    return latestInteractionEntry(this);
-  }
-
   renderMainHeader(container) {
     renderMainHeader(this, container);
-  }
-
-  renderInteractionPanel(container) {
-    renderInteractionPanel(this, container);
   }
 
   renderMaterialPanel(container) {
@@ -2946,9 +2938,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   
-  renderAskBox(container) {
-    renderAskBox(this, container);
-  }
   renderReportsPanel(container, reports) {
     renderReportsPanel(this, container, reports);
   }

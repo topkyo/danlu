@@ -17,7 +17,6 @@ class ProductShellUniversalInputContractTests(unittest.TestCase):
         for keyword in ["URL", "PDF", "image", "repo", "note", "question"]:
             self.assertIn(keyword, text, f"placeholder missing keyword: {keyword}")
 
-        self.assertIn("renderAskBox", text)
         self.assertIn("renderDropZone", text)
 
     def test_universal_input_uses_backend_drop_router(self) -> None:

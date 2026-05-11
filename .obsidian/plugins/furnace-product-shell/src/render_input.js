@@ -175,57 +175,6 @@ function renderUniversalInput(plugin, container) {
   });
 }
 
-function renderAskBox(plugin, container) {
-  const wrapper = container.createDiv({ cls: "furnace-shell-askbox-wrapper" });
-  const form = wrapper.createDiv({ cls: "furnace-shell-askbox-form" });
-  const input = form.createEl("input", { cls: "furnace-shell-askbox", type: "text" });
-  input.placeholder = plugin.t("Ask / Command...");
-  const askButton = form.createEl("button", { cls: "furnace-shell-askbox-button", text: plugin.t("Ask") });
-  const status = wrapper.createDiv({ cls: "furnace-shell-askbox-status" });
-  let isRunning = false;
-
-  const setRunning = (nextRunning) => {
-    isRunning = Boolean(nextRunning);
-    input.disabled = isRunning;
-    askButton.disabled = isRunning;
-    askButton.setText(isRunning ? plugin.t("Asking...") : plugin.t("Ask"));
-    status.setText(isRunning ? plugin.t("Asking...") : "");
-  };
-
-  const submitAsk = async () => {
-    if (isRunning) {
-      return;
-    }
-    const question = String(input.value || "").trim();
-    if (!question) {
-      return;
-    }
-    input.value = "";
-    setRunning(true);
-    try {
-      await plugin.runAskCommand({
-        question,
-        format: plugin.settings.defaultAskFormat,
-        mode: "run-ask",
-        protocol: "",
-      });
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  askButton.addEventListener("click", () => {
-    plugin.runUiAction(() => submitAsk(), plugin.t("Ask"));
-  });
-
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      plugin.runUiAction(() => submitAsk(), plugin.t("Ask"));
-    }
-  });
-}
-
 function renderDropZone(plugin, container) {
   const zone = container.createDiv({ cls: "furnace-shell-dropzone" });
   zone.createDiv({ cls: "furnace-shell-dropzone-title", text: plugin.t("Drop URL / PDF / Image / Repo") });

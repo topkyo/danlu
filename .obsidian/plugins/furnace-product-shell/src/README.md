@@ -6,7 +6,7 @@ support relative `require()` within plugins). The source code lives in this
 
 ## Product Shell home surface
 The M-PS.1 home surface is intentionally linear:
-1. **AskBox** — Raycast-style `Ask / Command...` input at the top.
+1. **Universal Input** — top-level input that accepts URL / file path / drop-* command / free-form question; submits directly via `runUniversalInputCommand`. The Ask modal remains available from the command palette when explicit `format` / `protocol` selection is needed (mode is fixed to `run-ask`).
 2. **Today's Reports / Previous Reports** — report cards grouped from `recent_outputs`.
 3. **DropZone** — `Drop URL / PDF / Image / Repo` ingestion surface.
 4. **Advanced** — collapsed drawer for operator/debug surfaces.
@@ -33,7 +33,7 @@ then bridged to the runtime through environment variables for report notificatio
 | `modals.js` | All `Modal` subclasses |
 | `views.js` | All `ItemView` subclasses |
 | `settings.js` | `FurnaceProductShellSettingTab` |
-| `render.js` | Standalone render functions (AskBox, Reports, DropZone, AdvancedDrawer) |
+| `render.js` | Standalone render functions (Universal Input, Reports, DropZone, AdvancedDrawer) |
 | `plugin.js` | `FurnaceProductShellPlugin` class — lifecycle, state management, updates |
 
 ## Dependency order

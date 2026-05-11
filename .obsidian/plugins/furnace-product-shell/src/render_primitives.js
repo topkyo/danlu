@@ -29,16 +29,15 @@ function renderGettingStartedSection(plugin, container) {
   section.createEl("h3", { text: plugin.t("Start Here") });
   section.createDiv({
     cls: "furnace-shell-meta",
-    text: plugin.t("Obsidian Product Shell and the launcher CLI share the same runtime: Ask works from both sides, and ingest can happen through Capture Note / raw/inbox / drop-*."),
+    text: plugin.t("用顶部 Universal Input 直接投料或提问；也可以打开 Ask 弹窗选择 format / protocol（mode 固定 run-ask）。"),
   });
   const steps = section.createEl("ol");
   steps.createEl("li", { text: plugin.t("先点刷新生成最新数据。") });
-  steps.createEl("li", { text: plugin.t("Use Capture Note in Obsidian, or use drop note / drop url / drop pdf / drop image / drop repo in the terminal.") });
-  steps.createEl("li", { text: plugin.t("Use the Ask modal when you need to ask a question, or run ./scripts/aiwiki-launcher.sh ask ...") });
+  steps.createEl("li", { text: plugin.t("在 Universal Input 里粘贴 URL / PDF / 文件路径 / 文本笔记，或直接输入问题。") });
+  steps.createEl("li", { text: plugin.t("需要更精细控制（output format / protocol）时，打开 Ask 弹窗（mode 固定 run-ask）。") });
   steps.createEl("li", { text: plugin.t("Follow single writer for write actions: do not run compile / nightly / apply / revert in Obsidian and the terminal at the same time.") });
   plugin.renderActionButtons(section, [
     { label: "Capture Note", cta: true, onClick: async () => new CaptureNoteModal(plugin.app, plugin).open() },
-    { label: "Ask", onClick: async () => new AskCommandModal(plugin.app, plugin).open() },
     { label: "Compile", onClick: async () => plugin.runCompileCommand() },
   ]);
 }
@@ -88,15 +87,6 @@ function renderPill(plugin, container, text, extraClass = "") {
   return pill;
 }
 
-function latestInteractionEntry(plugin) {
-  const telemetry = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary.route_telemetry || {} : {};
-  const entries = Array.isArray(telemetry.entries) ? telemetry.entries : [];
-  if (entries.length) {
-    return entries[0];
-  }
-  return telemetry.last_entry && typeof telemetry.last_entry === "object" ? telemetry.last_entry : null;
-}
-
 function renderMainHeader(plugin, container) {
   const header = container.createDiv({ cls: "furnace-shell-main-header" });
   const copy = header.createDiv({ cls: "furnace-shell-main-copy" });
@@ -112,128 +102,6 @@ function renderMainHeader(plugin, container) {
   const runningCount = plugin.pluginState.recentRuns.filter((entry) => entry.status === "running").length;
   if (runningCount) {
     plugin.renderPill(badges, `${runningCount} ${plugin.t("running")}`, "is-running");
-  }
-}
-
-function renderInteractionPanel(plugin, container) {
-  const panel = plugin.renderPanel(container, "Interaction", "Ask anything about the current workspace.");
-  const input = panel.createEl("textarea", { cls: "furnace-shell-composer-input" });
-  input.rows = 3;
-  input.placeholder = plugin.t("Type a question or keyword...");
-  input.addClass("furnace-shell-code");
-
-  plugin.renderInlineButtons(panel, [
-    {
-      label: "Send",
-      cta: true,
-      onClick: async () => {
-        const question = String(input.value || "").trim();
-        if (!question) {
-          new Notice(plugin.t("Question cannot be empty."));
-          return;
-        }
-        await plugin.runAskCommand({
-          question,
-          format: plugin.settings.defaultAskFormat,
-          mode: "run-ask",
-          protocol: "",
-        });
-      },
-    },
-    {
-      label: "Search",
-      kind: "ghost",
-      onClick: async () => {
-        const query = String(input.value || "").trim();
-        if (!query) {
-          new Notice(plugin.t("Search query cannot be empty."));
-          return;
-        }
-        await plugin.runShellSearchCommand(query, 8);
-      },
-    },
-  ]);
-
-  input.addEventListener("keydown", (event) => {
-    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-      event.preventDefault();
-      const question = String(input.value || "").trim();
-      if (!question) {
-        new Notice(plugin.t("Question cannot be empty."));
-        return;
-      }
-      try {
-        plugin.runUiAction(
-          () =>
-            plugin.runAskCommand({
-              question,
-              format: plugin.settings.defaultAskFormat,
-              mode: "run-ask",
-              protocol: "",
-            })
-        );
-      } finally {
-        setRunning(false);
-      }
-    };
-  
-    askButton.addEventListener("click", () => {
-      plugin.runUiAction(() => submitAsk(), plugin.t("Ask"));
-    });
-  
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        plugin.runUiAction(() => submitAsk(), plugin.t("Ask"));
-      }
-    });
-  });
-
-  const latestInteraction = plugin.latestInteractionEntry();
-  if (latestInteraction && latestInteraction.question_preview) {
-    panel.createDiv({
-      cls: "furnace-shell-panel-note",
-      text: `${truncateText(latestInteraction.question_preview, 120)} · ${formatDisplayTime(latestInteraction.occurred_at, plugin.locale())}`,
-    });
-  } else {
-    panel.createDiv({ cls: "furnace-shell-panel-note", text: plugin.t("No interaction yet. Ask a question or run a search.") });
-  }
-
-  const latestRun = plugin.latestPluginRun();
-  const runSection = panel.createDiv({ cls: "furnace-shell-run-section" });
-  runSection.createDiv({ cls: "furnace-shell-inline-heading", text: plugin.t("Latest run") });
-  if (!latestRun) {
-    runSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No plugin run yet. Send a question or use a command.") });
-  } else {
-    renderRunDetail(plugin, runSection, latestRun, { compact: true, includeOpenRecentRuns: true });
-  }
-
-  const searchResults = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary.search_results || {} : {};
-  const searchItems = Array.isArray(searchResults.results) ? searchResults.results : [];
-  if (String(searchResults.query || "").trim()) {
-    const resultBox = panel.createDiv({ cls: "furnace-shell-inline-list" });
-    resultBox.createDiv({
-      cls: "furnace-shell-inline-heading",
-      text: `${plugin.t("Search")} · ${truncateText(searchResults.query, 48)} (${searchResults.result_count || 0})`,
-    });
-    if (!searchItems.length) {
-      resultBox.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No matching pages in the compiled workspace.") });
-    } else {
-      searchItems.slice(0, 3).forEach((result) => {
-        const item = resultBox.createDiv({ cls: "furnace-shell-inline-item" });
-        item.createEl("strong", { text: result.title || result.path || plugin.t("result") });
-        item.createDiv({
-          cls: "furnace-shell-meta",
-          text: `${plugin.t(result.kind || "page")} · ${result.path || ""}`,
-        });
-        if (result.path) {
-          const openButton = item.createEl("button", { text: plugin.t("Open") });
-          openButton.addEventListener("click", () => {
-            plugin.runUiAction(() => plugin.openWorkspacePath(result.path), `Open search result: ${result.path}`);
-          });
-        }
-      });
-    }
   }
 }
 
