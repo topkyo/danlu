@@ -22,6 +22,7 @@ class RouteDecision:
 
 
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg")
+NOTE_TEXT_SUFFIXES = (".md", ".markdown", ".txt")
 
 
 def classify_universal_input(value: str) -> RouteDecision:
@@ -61,11 +62,14 @@ def classify_universal_input(value: str) -> RouteDecision:
             raise ValueError("empty note payload")
         return RouteDecision(UniversalRoute.NOTE, note_payload, "note-prefix")
 
-    if "\n" in payload:
-        return RouteDecision(UniversalRoute.NOTE, payload, "multiline-text")
-
     if lower_payload.startswith("ask:"):
         return RouteDecision(UniversalRoute.ASK, payload[len("ask:") :].strip(), "ask-prefix")
+
+    if "?" not in payload and lower_payload.endswith(NOTE_TEXT_SUFFIXES):
+        return RouteDecision(UniversalRoute.NOTE, payload, "note-text-suffix")
+
+    if "\n" in payload:
+        return RouteDecision(UniversalRoute.NOTE, payload, "multiline-text")
 
     if "?" in payload:
         return RouteDecision(UniversalRoute.ASK, payload, "contains-question-mark")

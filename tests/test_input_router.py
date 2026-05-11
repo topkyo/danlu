@@ -56,6 +56,23 @@ class InputRouterTests(unittest.TestCase):
     def test_local_image_suffix_is_case_insensitive(self) -> None:
         self.assertDecision("diagram.SVG", UniversalRoute.IMAGE, "diagram.SVG", "image-suffix")
 
+    def test_md_suffix_routes_to_note(self) -> None:
+        self.assertDecision("notes/meeting.md", UniversalRoute.NOTE, "notes/meeting.md", "note-text-suffix")
+
+    def test_markdown_suffix_routes_to_note_case_insensitive(self) -> None:
+        self.assertDecision("README.MARKDOWN", UniversalRoute.NOTE, "README.MARKDOWN", "note-text-suffix")
+
+    def test_txt_suffix_routes_to_note(self) -> None:
+        self.assertDecision("./inbox/raw.txt", UniversalRoute.NOTE, "./inbox/raw.txt", "note-text-suffix")
+
+    def test_md_filename_with_question_mark_still_routes_to_ask(self) -> None:
+        self.assertDecision("what.md?", UniversalRoute.ASK, "what.md?", "contains-question-mark")
+
+    def test_ask_prefix_wins_over_md_suffix(self) -> None:
+        self.assertDecision(
+            "ask: summarize README.md", UniversalRoute.ASK, "summarize README.md", "ask-prefix"
+        )
+
     def test_git_ssh_shorthand_routes_to_repo(self) -> None:
         self.assertDecision(
             "git@github.com:user/repo.git", UniversalRoute.REPO, "git@github.com:user/repo.git", "git-ssh-shorthand"

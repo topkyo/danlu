@@ -109,6 +109,42 @@ _DROP_TYPED_SUBCOMMANDS = {"url", "pdf", "image", "repo", "note"}
 L3_PROPOSAL_REVIEW_STATUSES = ("rejected",)
 
 
+def _looks_like_local_path(value: str) -> bool:
+    """Detect drop payloads that resemble local file paths to avoid silent ASK fallthrough.
+
+    Heuristic only; no LLM, deterministic. Triggers on:
+    - explicit relative/absolute prefixes (./, ../, /, ~/)
+    - POSIX-style nested path with '/' (e.g. notes/file.docx)
+    - Windows-style path with '\\' or drive letter (e.g. C:\\x, notes\\x)
+    - the payload pointing at an existing file on disk
+    Excludes payloads containing '?' which clearly read as questions.
+    """
+    if not value or "?" in value:
+        return False
+    # strong path signals
+    if value.startswith(("./", "../", "/", "~/")):
+        return True
+    if "\\" in value:
+        return True
+    if (
+        len(value) >= 3
+        and value[0].isalpha()
+        and value[1] == ":"
+        and value[2] in ("\\", "/")
+    ):
+        return True
+    # POSIX nested path: must contain '/' and have no whitespace around it
+    if "/" in value and not any(ch.isspace() for ch in value):
+        return True
+    # last resort: check if it points to an existing file (whitespace ok here)
+    try:
+        if os.path.isfile(value):
+            return True
+    except (OSError, ValueError):
+        return False
+    return False
+
+
 def _rewrite_universal_drop_argv(argv: list[str] | None) -> list[str] | None:
     if argv is None:
         rewritten = list(sys.argv[1:])
@@ -137,6 +173,14 @@ def _rewrite_universal_drop_argv(argv: list[str] | None) -> list[str] | None:
     routed_payload = decision.payload
     rest = rewritten[drop_index + 2 :]
     if decision.route == UniversalRoute.ASK:
+        if _looks_like_local_path(routed_payload):
+            print(
+                f"error: drop payload looks like a file path but matches no known type: {routed_payload!r}\n"
+                "hint: use 'drop note <path>' for plain-text notes, "
+                "or prefix with 'ask:' to force a question.",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
         rewritten[drop_index:] = ["ask", routed_payload, *rest]
     else:
         routed_subcommand = {

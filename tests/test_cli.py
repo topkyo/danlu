@@ -1415,6 +1415,69 @@ class CLITests(unittest.TestCase):
         self.assertEqual(_rewrite_universal_drop_argv(["--root", str(self.root)]), ["--root", str(self.root)])
         self.assertEqual(_rewrite_universal_drop_argv(["today"]), ["today"])
 
+    def test_universal_drop_md_payload_routes_to_drop_note(self) -> None:
+        from aiwiki.cli import _rewrite_universal_drop_argv
+
+        self.assertEqual(
+            _rewrite_universal_drop_argv(["drop", "inbox/raw.md"]),
+            ["drop", "note", "inbox/raw.md"],
+        )
+
+    def test_universal_drop_txt_payload_routes_to_drop_note(self) -> None:
+        from aiwiki.cli import _rewrite_universal_drop_argv
+
+        self.assertEqual(
+            _rewrite_universal_drop_argv(["drop", "./notes/x.txt"]),
+            ["drop", "note", "./notes/x.txt"],
+        )
+
+    def test_universal_drop_path_like_unknown_fails_loud(self) -> None:
+        from aiwiki.cli import _rewrite_universal_drop_argv
+
+        stderr = io.StringIO()
+        with patch("sys.stderr", new=stderr):
+            with self.assertRaises(SystemExit) as raised:
+                _rewrite_universal_drop_argv(["drop", "./inbox/unknown.xyz"])
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("file path", stderr.getvalue())
+
+    def test_universal_drop_plain_text_still_routes_to_ask(self) -> None:
+        from aiwiki.cli import _rewrite_universal_drop_argv
+
+        self.assertEqual(
+            _rewrite_universal_drop_argv(["drop", "explain quantum entanglement"]),
+            ["ask", "explain quantum entanglement"],
+        )
+
+    def test_universal_drop_posix_relative_path_unknown_ext_fails_loud(self) -> None:
+        from aiwiki.cli import _rewrite_universal_drop_argv
+
+        stderr = io.StringIO()
+        with patch("sys.stderr", new=stderr):
+            with self.assertRaises(SystemExit) as raised:
+                _rewrite_universal_drop_argv(["drop", "notes/file.docx"])
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("file path", stderr.getvalue())
+
+    def test_universal_drop_windows_backslash_path_fails_loud(self) -> None:
+        from aiwiki.cli import _rewrite_universal_drop_argv
+
+        stderr = io.StringIO()
+        with patch("sys.stderr", new=stderr):
+            with self.assertRaises(SystemExit) as raised:
+                _rewrite_universal_drop_argv(["drop", "notes\\file.docx"])
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("file path", stderr.getvalue())
+
+    def test_universal_drop_colon_prefixed_ask_not_treated_as_path(self) -> None:
+        """Regression: 'Q: summarize README' must remain ASK, not fail-loud as drive-letter path."""
+        from aiwiki.cli import _rewrite_universal_drop_argv
+
+        self.assertEqual(
+            _rewrite_universal_drop_argv(["drop", "Q: summarize README"]),
+            ["ask", "Q: summarize README"],
+        )
+
     def test_advanced_compile_dispatches_to_compile_handler(self) -> None:
         parser = build_parser()
 
