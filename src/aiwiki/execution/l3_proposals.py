@@ -13,10 +13,10 @@ from ..app_execution import append_execution_receipt_history
 from ..app_protocol import ensure_layout
 from ..app_render import append_wiki_log
 from ..app_state import (
+    CorruptStateError,
     append_runtime_history,
     execution_receipt_history_path,
     l3_proposal_state_path,
-    load_json_document,
     load_json_document_strict,
     runtime_history_path,
     save_json_document,
@@ -85,12 +85,30 @@ def default_l3_proposal_state() -> dict[str, Any]:
 
 
 def load_l3_proposal_state(root: Path) -> dict[str, Any]:
-    document = load_json_document(l3_proposal_state_path(root))
-    if not isinstance(document, dict):
+    """Strict loader for L3 proposal authoritative state.
+
+    Raises ``CorruptStateError`` (via ``load_json_document_strict``) if the
+    state file exists but is unparseable, preserving fail-closed governance
+    semantics. Missing files yield the default empty state. Structural faults
+    (non-dict document, non-list ``proposals``) also raise ``CorruptStateError``
+    so callers cannot silently overwrite a damaged registry.
+    """
+
+    path = l3_proposal_state_path(root)
+    if not path.exists():
         return default_l3_proposal_state()
+    document = load_json_document_strict(path)
+    if not isinstance(document, dict):
+        raise CorruptStateError(
+            path=path,
+            reason="L3 proposal state is not a JSON object",
+        )
     proposals = document.get("proposals")
     if not isinstance(proposals, list):
-        return default_l3_proposal_state()
+        raise CorruptStateError(
+            path=path,
+            reason="L3 proposal state has non-list 'proposals' field",
+        )
     return {
         "version": int(document.get("version", 1) or 1),
         "proposals": [item for item in proposals if isinstance(item, dict)],

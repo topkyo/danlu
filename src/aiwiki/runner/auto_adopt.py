@@ -724,6 +724,11 @@ def auto_adopt_l3(root: Path) -> dict[str, Any]:
                 continue
             candidates.append(proposal_id)
         results["candidates_count"] = len(candidates)
+    except CorruptStateError:
+        # SC-001: fail-closed propagation. Corrupt L3 proposal state must not
+        # be downgraded to a soft "degraded" result, otherwise auto-adopt would
+        # silently skip a damaged registry and lose governance traceability.
+        raise
     except Exception as exc:
         results["error"] = f"L3 proposal state unavailable: {exc}"
         results["degraded"] = True
