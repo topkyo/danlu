@@ -27,6 +27,7 @@ import threading
 import time
 import urllib.request
 from collections import deque
+from collections.abc import Mapping
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -254,6 +255,23 @@ def _snapshot_file_bytes(path: Path) -> bytes | None:
     if not path.exists():
         return None
     return path.read_bytes()
+
+
+def _restore_snapshots(snapshots: Mapping[Path, bytes | None]) -> None:
+    """Restore a batch of files from snapshots in reverse-insertion order.
+
+    Best-effort across the batch: collects rollback exceptions and raises the
+    first one only after attempting every entry, matching the prior ad-hoc
+    rollback closures used by transactional mutation callers.
+    """
+    errors: list[Exception] = []
+    for path, snapshot in reversed(list(snapshots.items())):
+        try:
+            _restore_file_bytes(path, snapshot)
+        except Exception as exc:  # noqa: BLE001 - aggregate then re-raise
+            errors.append(exc)
+    if errors:
+        raise errors[0]
 
 
 def _durable_restore_or_remove(path: Path, snapshot: bytes | None) -> None:

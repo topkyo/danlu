@@ -52,7 +52,7 @@ class AlchemyLegacyCleanupTransactionTests(unittest.TestCase):
     SC-004 patch seam: targets the high-level transactional helper API at the
     ``aiwiki.execution.alchemy.*`` import binding (i.e. the same name the caller
     invokes). This validates rollback when ``atomic_write_text`` /
-    ``append_execution_receipt_history`` / ``_restore_file_bytes`` fail.
+    ``append_execution_receipt_history`` / ``_restore_snapshots`` fail.
     Tests deliberately do NOT patch ``os.replace`` (an OS-level primitive that
     sits below the transactional contract); they exercise the helper API the
     refactor relies on.
@@ -185,7 +185,7 @@ class AlchemyLegacyCleanupTransactionTests(unittest.TestCase):
 
         with patch("aiwiki.execution.alchemy.atomic_write_text", side_effect=fail_receipt_write):
             with patch(
-                "aiwiki.execution.alchemy._restore_file_bytes",
+                "aiwiki.execution.alchemy._restore_snapshots",
                 side_effect=OSError("injected rollback failure"),
             ):
                 with self.assertRaises(LegacyMigrationHalfWriteError) as raised:
@@ -280,7 +280,7 @@ class AlchemyLegacyCleanupTransactionTests(unittest.TestCase):
 
         with patch("aiwiki.execution.alchemy.atomic_write_text", side_effect=fail_receipt_write):
             with patch(
-                "aiwiki.execution.alchemy._restore_file_bytes",
+                "aiwiki.execution.alchemy._restore_snapshots",
                 side_effect=OSError("injected rollback failure"),
             ):
                 with self.assertRaises(SupersededCleanupHalfWriteError) as raised:
