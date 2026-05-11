@@ -29,7 +29,7 @@ from unittest.mock import patch
 
 from aiwiki import app_execution as app_execution_mod
 from aiwiki.app_protocol import ensure_layout
-from aiwiki.app_state import execution_receipt_history_path
+from aiwiki.app_state import execution_receipt_history_path, runtime_history_path
 from aiwiki.execution import l3_proposals as l3_mod
 from aiwiki.execution.audit_preview import AUDIT_STREAM_PATH
 from aiwiki.execution.l3_proposals import (
@@ -248,6 +248,7 @@ class _ApplyFixture(unittest.TestCase):
         )
         self.history_path = execution_receipt_history_path(self.root)
         self.audit_path = self.root / AUDIT_STREAM_PATH
+        self.runtime_history_path = runtime_history_path(self.root)
 
     def tearDown(self) -> None:
         self._tmp.cleanup()
@@ -256,6 +257,13 @@ class _ApplyFixture(unittest.TestCase):
         h = self.history_path.stat().st_size if self.history_path.exists() else 0
         a = self.audit_path.stat().st_size if self.audit_path.exists() else 0
         return h, a
+
+    def _runtime_history_size(self) -> int:
+        return (
+            self.runtime_history_path.stat().st_size
+            if self.runtime_history_path.exists()
+            else 0
+        )
 
 
 class ApplyL3ProposalFalseHistoryRollbackTests(_ApplyFixture):
@@ -408,6 +416,63 @@ class ApplyL3ProposalFalseHistoryRollbackTests(_ApplyFixture):
                 apply_l3_proposal(self.root, self.proposal_id)
 
         self.assertIn("truncate boom", str(ctx.exception))
+
+
+class ApplyL3ProposalRuntimeHistoryCrossStreamTests(_ApplyFixture):
+    """R96.8 — wiki_log failure must restore runtime-history.jsonl alongside
+    execution-receipts.jsonl and audit.jsonl.
+
+    Pre-R96.8 outer rollback only snapshotted execution-receipts + audit.
+    When append_wiki_log (last phase-2 step) failed, append_runtime_history
+    had already succeeded → runtime-history.jsonl retained a phantom event
+    row whose audit mirror was wiped by the outer audit truncate. This
+    leaves runtime history primary inconsistent with audit stream.
+    """
+
+    def test_apply_wiki_log_failure_truncates_runtime_history_jsonl(self) -> None:
+        rh_before = self._runtime_history_size()
+        with patch.object(
+            l3_mod,
+            "append_wiki_log",
+            side_effect=OSError("wiki log boom"),
+        ):
+            with self.assertRaises(L3PostApplyAuditError) as ctx:
+                apply_l3_proposal(self.root, self.proposal_id)
+
+        self.assertEqual(ctx.exception.failed_step, "append_wiki_log")
+        self.assertTrue(ctx.exception.target_reverted)
+        rh_after = self._runtime_history_size()
+        self.assertEqual(
+            rh_after,
+            rh_before,
+            msg="runtime-history.jsonl retained phantom event after wiki_log failure",
+        )
+
+    def test_apply_wiki_log_failure_restores_all_three_streams_byte_preserved(self) -> None:
+        # Seed all three streams with a pre-existing line so size_before > 0
+        # and byte-level preservation is verifiable.
+        self.history_path.parent.mkdir(parents=True, exist_ok=True)
+        self.audit_path.parent.mkdir(parents=True, exist_ok=True)
+        self.runtime_history_path.parent.mkdir(parents=True, exist_ok=True)
+        seed_history = b'{"seed": "history"}\n'
+        seed_audit = b'{"seed": "audit"}\n'
+        seed_runtime = b'{"seed": "runtime"}\n'
+        self.history_path.write_bytes(seed_history)
+        self.audit_path.write_bytes(seed_audit)
+        self.runtime_history_path.write_bytes(seed_runtime)
+
+        with patch.object(
+            l3_mod,
+            "append_wiki_log",
+            side_effect=OSError("wiki log boom"),
+        ):
+            with self.assertRaises(L3PostApplyAuditError):
+                apply_l3_proposal(self.root, self.proposal_id)
+
+        self.assertEqual(self.history_path.read_bytes(), seed_history)
+        self.assertEqual(self.audit_path.read_bytes(), seed_audit)
+        self.assertEqual(self.runtime_history_path.read_bytes(), seed_runtime)
+        self.assertEqual(self.target.read_text(encoding="utf-8"), self.before_content)
 
 
 if __name__ == "__main__":

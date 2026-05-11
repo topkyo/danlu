@@ -668,8 +668,12 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
 
     history_jsonl_path = execution_receipt_history_path(root)
     audit_jsonl_path = root / AUDIT_STREAM_PATH
+    runtime_history_jsonl_path = runtime_history_path(root)
     history_size_before = history_jsonl_path.stat().st_size if history_jsonl_path.exists() else 0
     audit_size_before = audit_jsonl_path.stat().st_size if audit_jsonl_path.exists() else 0
+    runtime_history_size_before = (
+        runtime_history_jsonl_path.stat().st_size if runtime_history_jsonl_path.exists() else 0
+    )
     state_restore_steps = {
         "_persist_l3_proposal_page",
         "append_execution_receipt_history",
@@ -695,10 +699,14 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
                 save_l3_proposal_state(root, proposals)
                 _persist_l3_proposal_page(root, original_proposal)
             if failed_step in history_truncate_steps:
-                if history_jsonl_path.exists():
-                    _durable_truncate(history_jsonl_path, history_size_before)
+                # Reversed write-order rollback (R96.8): audit mirror first,
+                # then runtime-history primary, then execution-receipts primary.
                 if audit_jsonl_path.exists():
                     _durable_truncate(audit_jsonl_path, audit_size_before)
+                if runtime_history_jsonl_path.exists():
+                    _durable_truncate(runtime_history_jsonl_path, runtime_history_size_before)
+                if history_jsonl_path.exists():
+                    _durable_truncate(history_jsonl_path, history_size_before)
         except Exception as revert_exc:
             raise L3RevertError(
                 f"audit step '{failed_step}' failed and rollback also failed: "
