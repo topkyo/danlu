@@ -308,6 +308,166 @@ format: report
         self.assertIn("## 引用", msg)
         self.assertIn("found 0", msg)
 
+    # ---- R98.2: citation integrity ----
+
+    def test_r982_multi_citation_passes(self) -> None:
+        """body 引用两个 source；## 引用 列出两条，各一次 → 通过。"""
+        ok = _GOOD_REPORT_BODY.replace(
+            "- 见 wiki/sources/source-1.md\n- 第二条证据。\n- 第三条证据。",
+            "- 见 wiki/sources/source-1.md\n- 见 wiki/sources/source-2.md\n- 第三条证据。",
+        ).replace(
+            "## 引用\n- wiki/sources/source-1.md\n",
+            "## 引用\n- wiki/sources/source-1.md\n- wiki/sources/source-2.md\n",
+        )
+        _validate_output_markdown(ok, "report", ["source-1", "source-2"])
+
+    def test_r982_body_repeats_same_citation_passes(self) -> None:
+        """body 在不同 section 重复同一引用；## 引用 单条 → 通过（body 侧重复允许）。"""
+        ok = _GOOD_REPORT_BODY.replace(
+            "- 当 Y 出现时复审。",
+            "- 当 Y 出现时复审 wiki/sources/source-1.md 的更新。",
+        )
+        _validate_output_markdown(ok, "report", ["source-1"])
+
+    def test_r982_fenced_body_citation_excluded(self) -> None:
+        """body 的 fenced code block 内出现引用，## 引用 未列；fence-aware 应跳过 → 通过。"""
+        ok = _GOOD_REPORT_BODY.replace(
+            "答案。",
+            "答案。\n\n```\n参考片段：wiki/sources/source-99.md\n```",
+        )
+        _validate_output_markdown(ok, "report", ["source-1"])
+
+    def test_r982_skeleton_layout_with_extra_reference_section_passes(self) -> None:
+        """模拟真实 skeleton layout：## 引用 后跟 ## 参考；## 参考 含 source paths。
+        Phase 4 必须只在 ## 引用 → 下一个 H2 之间检查，不把 ## 参考 当作 citation。"""
+        ok = _GOOD_REPORT_BODY + (
+            "\n## 参考\n"
+            "- 当前协议：investing\n"
+            "- wiki/sources/source-z.md  # 由 compact_source_link_lines 渲染\n"
+        )
+        _validate_output_markdown(ok, "report", ["source-1"])
+
+    def test_r982_unusual_filename_chars_pass(self) -> None:
+        """文件名含 dot/dash/underscore/digit → regex 应匹配。"""
+        ok = _GOOD_REPORT_BODY.replace(
+            "- 见 wiki/sources/source-1.md",
+            "- 见 wiki/sources/a.v2-3_foo.md",
+        ).replace(
+            "## 引用\n- wiki/sources/source-1.md\n",
+            "## 引用\n- wiki/sources/a.v2-3_foo.md\n",
+        )
+        _validate_output_markdown(ok, "report", ["a.v2-3_foo"])
+
+    def test_r982_reference_section_duplicate_does_not_trigger_dedup(self) -> None:
+        """## 参考 内出现同一路径多次；## 引用 内仅一次 → dedup 应只看 ## 引用 → 通过。"""
+        ok = _GOOD_REPORT_BODY + (
+            "\n## 参考\n"
+            "- wiki/sources/source-z.md\n"
+            "- wiki/sources/source-z.md\n"
+        )
+        _validate_output_markdown(ok, "report", ["source-1"])
+
+    def test_r982_duplicate_in_citations_rejects(self) -> None:
+        """## 引用 列出 source-1 两次 → 拒绝；错误消息含路径。"""
+        bad = _GOOD_REPORT_BODY.replace(
+            "## 引用\n- wiki/sources/source-1.md\n",
+            "## 引用\n- wiki/sources/source-1.md\n- wiki/sources/source-1.md\n",
+        )
+        with self.assertRaises(RuntimeError) as ctx:
+            _validate_output_markdown(bad, "report", ["source-1"])
+        msg = str(ctx.exception)
+        self.assertIn("duplicate", msg)
+        self.assertIn("wiki/sources/source-1.md", msg)
+
+    def test_r982_body_path_missing_from_citations_rejects(self) -> None:
+        """body 引用 source-2，## 引用 仅含 source-1 → 拒绝；错误消息指 source-2。"""
+        bad = _GOOD_REPORT_BODY.replace(
+            "- 第二条证据。",
+            "- 见 wiki/sources/source-2.md",
+        )
+        with self.assertRaises(RuntimeError) as ctx:
+            _validate_output_markdown(bad, "report", ["source-1", "source-2"])
+        msg = str(ctx.exception)
+        self.assertIn("## 引用", msg)
+        self.assertIn("wiki/sources/source-2.md", msg)
+
+    def test_r982_first_missing_path_in_body_order(self) -> None:
+        """body 引用 source-1 和 source-2；## 引用 列 source-1 和 source-3 →
+        缺 source-2，错误指明 source-2（按 body 出现顺序）。"""
+        bad = _GOOD_REPORT_BODY.replace(
+            "- 第二条证据。",
+            "- 见 wiki/sources/source-2.md",
+        ).replace(
+            "## 引用\n- wiki/sources/source-1.md\n",
+            "## 引用\n- wiki/sources/source-1.md\n- wiki/sources/source-3.md\n",
+        )
+        with self.assertRaises(RuntimeError) as ctx:
+            _validate_output_markdown(bad, "report", ["source-1", "source-2", "source-3"])
+        msg = str(ctx.exception)
+        self.assertIn("wiki/sources/source-2.md", msg)
+
+    def test_r982_body_citation_in_last_signal_section_caught(self) -> None:
+        """body 引用紧贴 ## 引用 前（## 下次观察信号 末尾 bullet），## 引用 未列 → 拒绝。"""
+        bad = _GOOD_REPORT_BODY.replace(
+            "- 当 Y 出现时复审。",
+            "- 当 wiki/sources/source-77.md 出现新数据时复审。",
+        )
+        with self.assertRaises(RuntimeError) as ctx:
+            _validate_output_markdown(bad, "report", ["source-1", "source-77"])
+        msg = str(ctx.exception)
+        self.assertIn("wiki/sources/source-77.md", msg)
+
+    def test_r982_reference_section_path_not_in_citations_passes_when_body_clean(
+        self,
+    ) -> None:
+        """## 参考 含 body 未提及的 path → 不应触发 subset error
+        （证明 body slice 严格止于 ## 引用 之前，且 ## 参考 不算 body）。"""
+        ok = _GOOD_REPORT_BODY + (
+            "\n## 参考\n"
+            "- wiki/sources/source-x.md\n"
+        )
+        _validate_output_markdown(ok, "report", ["source-1"])
+
+    def test_r982_stray_duplicate_citations_heading_before_conclusion_not_bypassed(
+        self,
+    ) -> None:
+        """对抗 layout：在 ## 结论 之前出现 stray ## 引用 (含某路径)，真正按序
+        匹配到的 ## 引用 在末尾且为空。Phase 4 必须基于按序匹配位置，不能复用
+        setdefault 取到的 stray range，否则 body 引用会被 stray "satisfied"。"""
+        adversarial = """---
+format: report
+---
+
+# Q
+
+## 引用
+- wiki/sources/source-2.md
+
+## 结论
+答案。
+
+## 关键证据
+- 见 wiki/sources/source-2.md
+- 第二条。
+- 第三条。
+
+## 反证与不确定性
+- 无。
+
+## 行动建议
+- 复核。
+
+## 下次观察信号
+- 当 Y。
+
+## 引用
+"""
+        with self.assertRaises(RuntimeError) as ctx:
+            _validate_output_markdown(adversarial, "report", ["source-2"])
+        msg = str(ctx.exception)
+        # 期望被 Phase 4 subset check 拒绝，而非 Phase 3 bullet check 假通过。
+        self.assertIn("wiki/sources/source-2.md", msg)
+
 
 def load_tests(loader, standard_tests, pattern):  # noqa: ARG001
     suite = unittest.TestSuite()

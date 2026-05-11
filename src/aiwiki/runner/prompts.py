@@ -859,6 +859,8 @@ _REPORT_SECTION_BULLET_MINIMUMS: dict[str, int] = {
 
 _REPORT_PLACEHOLDER_MARKER = "_LLM:"
 
+_REPORT_CITATION_PATTERN = re.compile(r"wiki/sources/[a-z0-9._-]+\.md")
+
 
 def _validate_report_sections(markdown: str) -> None:
     """Enforce decision-grade report skeleton + per-section bullet minimums.
@@ -876,6 +878,13 @@ def _validate_report_sections(markdown: str) -> None:
          and the next H2 or end-of-document), excluding fenced code blocks,
          empty bullets, and ``_LLM:`` placeholder lines. Sub-bullets,
          numbered lists, and continuation lines do not count.
+      4. Citation integrity:
+         - Dedup: every ``wiki/sources/*.md`` path under ``## 引用`` is
+           unique (fence-aware; ``## 引用`` body stops at the next H2 to
+           exclude the trailing ``## 参考`` block rendered by the skeleton).
+         - Body ⊆ Citations: every citation path appearing in the report
+           body between ``## 结论`` and ``## 引用`` (fence-aware) must also
+           appear under ``## 引用``.
     """
     lines = markdown.splitlines()
     h2_positions: list[tuple[int, str]] = []
@@ -892,11 +901,14 @@ def _validate_report_sections(markdown: str) -> None:
 
     h2_titles = [title for _, title in h2_positions]
     cursor = 0
+    matched_positions: dict[str, int] = {}
     for heading in _REPORT_REQUIRED_SECTIONS:
         try:
-            cursor = h2_titles.index(heading, cursor) + 1
+            found = h2_titles.index(heading, cursor)
         except ValueError as exc:
             raise RuntimeError(f"Report missing required section: {heading}") from exc
+        matched_positions[heading] = h2_positions[found][0]
+        cursor = found + 1
 
     in_fence = False
     for line in lines:
@@ -913,14 +925,15 @@ def _validate_report_sections(markdown: str) -> None:
 
     section_ranges: dict[str, tuple[int, int]] = {}
     for position_index, (line_index, title) in enumerate(h2_positions):
-        if title not in _REPORT_SECTION_BULLET_MINIMUMS:
+        if title not in _REPORT_REQUIRED_SECTIONS:
             continue
         body_start = line_index + 1
         if position_index + 1 < len(h2_positions):
             body_end = h2_positions[position_index + 1][0]
         else:
             body_end = len(lines)
-        section_ranges[title] = (body_start, body_end)
+        # Record only the first occurrence (R98.1 Note 1 deferred).
+        section_ranges.setdefault(title, (body_start, body_end))
 
     for heading, minimum in _REPORT_SECTION_BULLET_MINIMUMS.items():
         body_start, body_end = section_ranges[heading]
@@ -929,6 +942,39 @@ def _validate_report_sections(markdown: str) -> None:
             raise RuntimeError(
                 f"Report section {heading} needs at least {minimum} '- ' bullets;"
                 f" found {bullet_count}."
+            )
+
+    # Phase 4: citation integrity.
+    # Use matched_positions (ordered match) — NOT section_ranges — to avoid
+    # mismatch when a stray duplicate "## 引用" appears before the ordered
+    # match. citations range is computed fresh: next H2 after the matched
+    # "## 引用" line, or EOF.
+    conclusion_idx = matched_positions["## 结论"]
+    citations_idx = matched_positions["## 引用"]
+    body_start = conclusion_idx + 1
+    body_end = citations_idx
+    citations_start = citations_idx + 1
+    citations_end = len(lines)
+    for line_index, _title in h2_positions:
+        if line_index > citations_idx:
+            citations_end = line_index
+            break
+
+    citation_paths = _extract_report_citations(lines[citations_start:citations_end])
+    seen: set[str] = set()
+    for path in citation_paths:
+        if path in seen:
+            raise RuntimeError(
+                f"Report ## 引用 has duplicate citation path: {path}"
+            )
+        seen.add(path)
+
+    body_paths = _extract_report_citations(lines[body_start:body_end])
+    citation_set = set(citation_paths)
+    for path in body_paths:
+        if path not in citation_set:
+            raise RuntimeError(
+                f"Report body cites path not listed under ## 引用: {path}"
             )
 
 
@@ -957,6 +1003,27 @@ def _count_report_bullets(section_lines: list[str]) -> int:
             continue
         count += 1
     return count
+
+
+def _extract_report_citations(section_lines: list[str]) -> list[str]:
+    """Extract ``wiki/sources/*.md`` citation paths in order, fence-aware.
+
+    Skips fenced code blocks (``` or ~~~). Matches are returned in line
+    order; multiple matches on the same line preserve left-to-right order.
+    Case-sensitive; only lowercase paths are recognized (matches existing
+    fixture/skeleton conventions).
+    """
+    paths: list[str] = []
+    in_fence = False
+    for line in section_lines:
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        paths.extend(_REPORT_CITATION_PATTERN.findall(line))
+    return paths
 
 
 def _context_budget() -> int:
