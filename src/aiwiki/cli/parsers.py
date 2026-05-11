@@ -1053,10 +1053,6 @@ def _register_drop_subcommand_parsers(subparsers: argparse._SubParsersAction) ->
     _configure_drop_note_parser(drop_note_parser)
     drop_note_parser.set_defaults(handler_command="drop-note")
 
-    drop_question_parser = subparsers.add_parser("question", help="Generate a deterministic query artifact grounded in the wiki.")
-    _configure_ask_parser(drop_question_parser)
-    drop_question_parser.set_defaults(handler_command="ask")
-
 
 def _configure_drop_url_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("url", help="Web URL to fetch.")

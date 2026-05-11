@@ -174,7 +174,7 @@ class CLITests(unittest.TestCase):
         drop_parser = action.choices["drop"]
         drop_action = next(item for item in drop_parser._actions if getattr(item, "dest", "") == "drop_command")
         self.assertEqual(
-            {"url", "pdf", "image", "repo", "note", "question"},
+            {"url", "pdf", "image", "repo", "note"},
             set(drop_action.choices),
         )
 
@@ -1212,19 +1212,30 @@ class CLITests(unittest.TestCase):
         self.assertEqual(args.handler_command, "drop-note")
         self.assertTrue(args.allow_sensitive)
 
-    def test_drop_question_dispatches_to_ask_handler(self) -> None:
+    def test_drop_question_subcommand_removed(self) -> None:
+        """EP-003a: `drop question` alias is removed; argparse must fail-loud.
+
+        The bare-question path (`drop "what is x?"`) is covered by
+        test_bare_drop_question_routes_to_ask and remains supported via the
+        Universal Input router.
+        """
         parser = build_parser()
 
-        legacy_args = parser.parse_args(["ask", "What changed?", "--format", "slides", "--protocol", "research"])
-        drop_args = parser.parse_args(
-            ["drop", "question", "What changed?", "--format", "slides", "--protocol", "research"]
-        )
+        with self.assertRaises(SystemExit) as cm:
+            parser.parse_args(["drop", "question", "What changed?"])
+        self.assertEqual(cm.exception.code, 2)
 
-        self.assertEqual(drop_args.handler_command, "ask")
-        self.assertEqual(drop_args.handler_command, legacy_args.handler_command)
-        self.assertEqual(drop_args.question, legacy_args.question)
-        self.assertEqual(drop_args.format, legacy_args.format)
-        self.assertEqual(drop_args.protocol, legacy_args.protocol)
+    def test_drop_question_main_fails_loud_without_invoking_ask(self) -> None:
+        """EP-003a: `main(["drop","question",...])` must SystemExit(2) and never
+        reach ask_question. Locks the dispatch.py short-circuit that retains
+        "question" so it falls through to argparse instead of being silently
+        classified as a NOTE/ASK payload by the universal router."""
+        with patch("aiwiki.cli.ask_question") as mocked_ask:
+            with self.assertRaises(SystemExit) as cm:
+                self._run_main_raw(["drop", "question", "What changed?"])
+
+        self.assertEqual(cm.exception.code, 2)
+        mocked_ask.assert_not_called()
 
     def test_legacy_drop_url_emits_deprecation_warning(self) -> None:
         with patch("aiwiki.cli.drop_url", return_value={"material": "url"}):

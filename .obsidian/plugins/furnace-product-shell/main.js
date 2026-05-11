@@ -5503,13 +5503,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         this.runUiAction(() => this.runCompileCommand(), this.t("刷新炉子"));
       },
     });
-    this.addCommand({
-      id: "run-ask",
-      name: this.t("Ask 炼丹炉"),
-      callback: () => {
-        new AskCommandModal(this.app, this).open();
-      },
-    });
+    if (this.settings.showAdvancedCommands) {
+      this.addCommand({
+        id: "run-ask",
+        name: this.t("Ask 炼丹炉"),
+        callback: () => {
+          new AskCommandModal(this.app, this).open();
+        },
+      });
+    }
     this.addCommand({
       id: "capture-note",
       name: this.t("Capture Note"),
