@@ -15,6 +15,7 @@
 
 ## 当前动态
 
+- 2026-05-11：Decision-grade report validator R97→R98.3 系列闭环。`_validate_report_sections()` 现 6 阶段（0 fence → 1 order/missing → 1.5 duplicate → 2 `_LLM:` → 3 bullets → 4 citations），覆盖骨架顺序 / placeholder 残留 / per-section bullet 下限 / `## 引用` 去重 + body⊆citations / 重复 required H2 / unclosed fenced code block。`tests/test_decision_grade_report.py` 39 cases。verify.sh PASS：**2051 unit + 13 acceptance + 92% coverage + ruff clean**。`investing-research` 推送 4 commits 至 origin（R97 `d84a575` / R98.1 `ae9e19f` / R98.2 `dba2962` / R98.3 `78c72d2`）。
 - 2026-05-09：Product Shell + runtime LLM provider profile 整理完成。默认 route 改为 `opencode-api/deepseek-v4-pro`；新增 OpenCode/OpenRouter/Anthropic/custom OpenAI-compatible profile；NVIDIA NIM fallback 保持 `nvidia-nim-api/openai/gpt-oss-120b`；Product Shell 仅透传当前 provider 需要的 env；README/vault launcher/tests/acceptance 已同步。验证：`bash scripts/verify.sh` PASS（2001 unittest + 13 acceptance，coverage 92%），Product Shell Jest PASS（55 tests）。
 
 ## Milestone Quick Index
