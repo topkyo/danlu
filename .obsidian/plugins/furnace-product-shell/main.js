@@ -368,6 +368,7 @@ const ZH_TEXT = {
   "指标提醒": "指标提醒",
   新报告: "新报告",
   自动维护: "自动维护",
+  "系统动态": "系统动态",
   "金丹完成": "金丹完成",
   "待确认操作": "待确认操作",
   正常运行: "正常运行",
@@ -405,7 +406,6 @@ const ZH_TEXT = {
   "搜索中…": "搜索中…",
   "搜索": "搜索",
   "分析中…": "分析中…",
-  "运行": "运行",
   "问题": "问题",
   "输入一个问题，炉子会用 LLM 深度分析并生成报告。": "输入一个问题，炉子会用 LLM 深度分析并生成报告。",
   "选择本地文件": "选择本地文件",
@@ -573,14 +573,11 @@ const ZH_TEXT = {
   "⚠️ Drift Warnings": "⚠️ 漂移警告",
   "Suggested Next Actions": "建议下一步动作",
   Today: "今天",
-  "今天": "今天",
   "Furnace activity": "炉子动态",
   "No recent furnace activity": "暂无炉子动态",
   "Plugin run": "插件运行",
   Receipt: "回执",
   "Review backlog": "待处理积压",
-  "新报告": "新报告",
-  "系统动态": "系统动态",
   "需要你确认": "需要你确认",
   "下一步建议": "下一步建议",
   "(nothing for today)": "今天暂无待处理内容",
@@ -597,7 +594,6 @@ const ZH_TEXT = {
   "可能已完成，点上方刷新": "可能已完成，点上方刷新",
   // R90: 提交→状态→结果 闭环
   "可能已完成，点下方刷新状态": "可能已完成，点下方刷新状态",
-  "刷新炉子": "刷新炉子",
   "刷新状态": "刷新状态",
   "查看回执": "查看回执",
   "完成": "完成",
@@ -957,7 +953,7 @@ const ZH_TEXT = {
   "Reveal result": "定位结果",
   "Reveal receipt": "定位回执",
   "Copy receipt path": "复制运行记录路径",
-  "Copy stderr": "复制诊断信息",
+  "Copy stderr": "复制错误输出",
   "Unable to reveal {path}": "无法定位 {path}",
   "Path revealed: {path}": "已定位 {path}",
   "Path not found: {path}": "路径不存在：{path}",
@@ -1020,8 +1016,8 @@ const ZH_TEXT = {
   errors: "错误",
   "status {status} | started {started}{finished}": "状态 {status} | 开始于 {started}{finished}",
   " | finished {finished}": " | 结束于 {finished}",
-  "stdout: {value}": "stdout：{value}",
-  "stderr: {value}": "stderr：{value}",
+  "stdout: {value}": "标准输出：{value}",
+  "stderr: {value}": "错误输出：{value}",
   "error: {value}": "错误：{value}",
   "completed": "已完成",
   "failed: {message}": "失败：{message}",
@@ -1034,6 +1030,10 @@ const ZH_TEXT = {
   page: "页面",
   pages: "页面",
   archive: "归档",
+  // EP-006 jargon → user-friendly Chinese
+  stdout: "标准输出",
+  stderr: "错误输出",
+  error: "错误",
 };
 const CURATED_STATUS_LABELS = {
   proposed: "Proposed",
@@ -3885,6 +3885,28 @@ function renderTodayFeed(plugin, container) {
   }
 }
 
+const REVIEW_BUCKET_LABELS = {
+  counter_evidence_candidates: ["补充反证候选", "检查新来源是否足以反驳既有判断"],
+  escalated_actions: ["处理升级动作", "处理已升级、需要人工确认的动作"],
+  escalation_candidates: ["处理升级候选", "确认是否需要人工介入"],
+  judgment_review_actions: ["复核研究判断", "处理需要重新判断的结论"],
+  l3_proposals: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
+  l3_proposal_attention: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
+  machine_memory_actions: ["修复机器记忆", "处理可审计的记忆修复动作"],
+  overdue_actions: ["处理逾期动作", "确认是否继续执行或关闭"],
+  overdue_reviews: ["处理逾期复审", "确认旧判断是否仍成立"],
+  pending_decisions: ["处理待定决策", "确认待定判断与执行入口"],
+  pending_judgments: ["复核待定判断", "推进仍在等待复核的判断"],
+  ready_actions: ["确认待执行动作", "复核已经准备好的安全动作"],
+};
+
+function reviewBucketLabel(key) {
+  const k = String(key || "");
+  const entry = REVIEW_BUCKET_LABELS[k];
+  if (entry) return { title: entry[0], hint: entry[1] };
+  return { title: k, hint: "" };
+}
+
 function renderFurnaceActivityTimeline(plugin, parentEl) {
   const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
   const feed = summary ? buildTodayFeed(summary) : [];
@@ -3953,10 +3975,11 @@ function renderFurnaceActivityTimeline(plugin, parentEl) {
   for (const [bucketKey, rawCount] of Object.entries(backlog)) {
     const count = Number(rawCount);
     if (!Number.isFinite(count) || count <= 0) continue;
+    const { title: bucketTitle, hint: bucketHint } = reviewBucketLabel(bucketKey);
     addItem({
       kind: "review-backlog",
-      title: String(bucketKey),
-      summary: `${count} 项待处理`,
+      title: bucketTitle,
+      summary: bucketHint ? `${count} 项待处理 · ${bucketHint}` : `${count} 项待处理`,
       timestamp: String(summary.generated_at || ""),
       target: `review:${bucketKey}`,
     });

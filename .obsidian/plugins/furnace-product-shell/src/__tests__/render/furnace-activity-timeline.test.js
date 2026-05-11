@@ -167,8 +167,24 @@ test("renders all non-zero review backlog buckets", () => {
 
   const items = container.querySelectorAll("li.furnace-activity-item-review-backlog");
   expect(items).toHaveLength(1);
-  expect(items[0].querySelector(".furnace-activity-title").textContent).toBe("l3_proposals");
-  expect(items[0].querySelector(".furnace-activity-summary").textContent).toBe("3 项待处理");
+  expect(items[0].querySelector(".furnace-activity-title").textContent).toBe("处理 L3 提案");
+  expect(items[0].querySelector(".furnace-activity-summary").textContent).toBe("3 项待处理 · 确认采纳、拒绝或回滚提案");
+});
+
+test("renders unknown review backlog buckets with raw fallback", () => {
+  const renderFurnaceActivityTimeline = loadRenderer(() => []);
+  const container = document.createElement("div");
+
+  renderFurnaceActivityTimeline(makePlugin({
+    summary: {
+      generated_at: "2026-05-11T12:00:00Z",
+      review_backlog_counts: { unknown_made_up_bucket: 1 },
+    },
+  }), container);
+
+  const item = container.querySelector("li.furnace-activity-item-review-backlog");
+  expect(item).toBeTruthy();
+  expect(item.querySelector(".furnace-activity-title").textContent).toBe("unknown_made_up_bucket");
 });
 
 test("deduplicates feed elixir and raw receipt with the same target", () => {

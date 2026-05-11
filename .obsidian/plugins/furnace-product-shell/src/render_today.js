@@ -82,6 +82,28 @@ function renderTodayFeed(plugin, container) {
   }
 }
 
+const REVIEW_BUCKET_LABELS = {
+  counter_evidence_candidates: ["补充反证候选", "检查新来源是否足以反驳既有判断"],
+  escalated_actions: ["处理升级动作", "处理已升级、需要人工确认的动作"],
+  escalation_candidates: ["处理升级候选", "确认是否需要人工介入"],
+  judgment_review_actions: ["复核研究判断", "处理需要重新判断的结论"],
+  l3_proposals: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
+  l3_proposal_attention: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
+  machine_memory_actions: ["修复机器记忆", "处理可审计的记忆修复动作"],
+  overdue_actions: ["处理逾期动作", "确认是否继续执行或关闭"],
+  overdue_reviews: ["处理逾期复审", "确认旧判断是否仍成立"],
+  pending_decisions: ["处理待定决策", "确认待定判断与执行入口"],
+  pending_judgments: ["复核待定判断", "推进仍在等待复核的判断"],
+  ready_actions: ["确认待执行动作", "复核已经准备好的安全动作"],
+};
+
+function reviewBucketLabel(key) {
+  const k = String(key || "");
+  const entry = REVIEW_BUCKET_LABELS[k];
+  if (entry) return { title: entry[0], hint: entry[1] };
+  return { title: k, hint: "" };
+}
+
 function renderFurnaceActivityTimeline(plugin, parentEl) {
   const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
   const feed = summary ? buildTodayFeed(summary) : [];
@@ -150,10 +172,11 @@ function renderFurnaceActivityTimeline(plugin, parentEl) {
   for (const [bucketKey, rawCount] of Object.entries(backlog)) {
     const count = Number(rawCount);
     if (!Number.isFinite(count) || count <= 0) continue;
+    const { title: bucketTitle, hint: bucketHint } = reviewBucketLabel(bucketKey);
     addItem({
       kind: "review-backlog",
-      title: String(bucketKey),
-      summary: `${count} 项待处理`,
+      title: bucketTitle,
+      summary: bucketHint ? `${count} 项待处理 · ${bucketHint}` : `${count} 项待处理`,
       timestamp: String(summary.generated_at || ""),
       target: `review:${bucketKey}`,
     });
