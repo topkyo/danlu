@@ -35,6 +35,7 @@ ASK_INDEX_PAGES_BY_FORMAT = {
     "report": (),
     "slides": (),
     "figure": (),
+    "note": (),
 }
 ASK_PROTOCOL_PAGE_NAMES_BASE = ("index.md", "taxonomy.md", "query.md")
 ASK_PROTOCOL_PAGE_NAMES_BY_FORMAT = {
@@ -43,6 +44,7 @@ ASK_PROTOCOL_PAGE_NAMES_BY_FORMAT = {
     "report": (),
     "slides": (),
     "figure": (),
+    "note": (),
 }
 ASK_PROMPT_PROFILES = {
     "balanced": {
@@ -830,7 +832,7 @@ def _extract_related_concept_slugs(markdown: str) -> list[str]:
 
 
 def _validate_output_markdown(markdown: str, output_format: str, source_ids: list[str]) -> None:
-    if output_format in {"report", "decision-memo", "sop", "figure"}:
+    if output_format in {"report", "decision-memo", "sop", "figure", "note"}:
         frontmatter = parse_frontmatter(markdown)
         if not frontmatter:
             raise RuntimeError("Ask response is missing frontmatter.")

@@ -978,6 +978,51 @@ def render_decision_memo_query(
     return "\n".join(lines) + "\n"
 
 
+def render_note_answer(
+    root: Path,
+    question: str,
+    entries: list[dict[str, Any]],
+    concepts: list[dict[str, Any]],
+    machine_query: dict[str, Any],
+    protocol_state: dict[str, Any],
+    created_at: str,
+    artifact_id: str,
+) -> str:
+    """Lightweight ask output. Q+A 段落式答复，无 R97-98.3 decision-grade 骨架；
+    保留 frontmatter + citation 底线以便 candidate/corpus/shell summary 正常工作。"""
+    active_protocol = protocol_state["active_protocol"]
+    focus_lines = compact_machine_memory_focus_lines(machine_query)
+    frontmatter = render_frontmatter(
+        {
+            "id": artifact_id,
+            "kind": "output",
+            "format": "note",
+            "query": question,
+            "protocol": active_protocol,
+            "generated_by": "aiwiki-ask",
+            "created_at": created_at,
+        }
+    )
+    lines = [
+        frontmatter,
+        "",
+        f"# {question}",
+        "",
+        "## 回答",
+        "_LLM: 请用 2–5 段自然语言直接回答上面的问题，保持判断明确；不要求六段骨架，但每段涉及事实时附 `wiki/sources/*.md` 引用。_",
+        "",
+        f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
+    ]
+    if focus_lines and focus_lines != ["- 当前没有明显的机器记忆命中，先从优先来源开始。"]:
+        lines.extend(["", "_机器记忆提示：_"])
+        lines.extend(focus_lines)
+    lines.extend(["", "## 优先来源"])
+    lines.extend(compact_source_link_lines(entries))
+    lines.extend(["", "## 优先概念"])
+    lines.extend(compact_concept_link_lines(concepts))
+    return "\n".join(lines) + "\n"
+
+
 def render_sop_query(
     root: Path,
     question: str,

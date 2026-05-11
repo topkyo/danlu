@@ -6,7 +6,9 @@ Use this prompt when an external LLM fills a query artifact under `output/`.
 
 Answer the query using the ranked source pages in the artifact, producing a reviewable judgment asset rather than a research draft.
 
-When the artifact's frontmatter shows `format: report`, treat it as a **decision-grade report** and follow the required-section skeleton in the section below. Other formats (`slides`, `figure`, `decision-memo`, `sop`) keep their existing per-format conventions and are not subject to the 6-section requirement.
+When the artifact's frontmatter shows `format: report`, treat it as a **decision-grade report** and follow the required-section skeleton in the section below. Other formats (`slides`, `figure`, `decision-memo`, `sop`, `note`) keep their existing per-format conventions and are not subject to the 6-section requirement.
+
+When the artifact's frontmatter shows `format: note`, treat it as a **note-grade answer**: 2–5 段自然语言直接回答问题，保留 `## 优先来源` / `## 优先概念` 两个 H2 区块和最末的协议提示行。不要强行套用 report 的六段骨架；仍需对所有非琐碎断言显式引用 `wiki/sources/*.md` 路径。
 
 ## General Rules
 

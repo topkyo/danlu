@@ -49,6 +49,7 @@ from ..app_queries import (
     rank_sources,
     render_decision_memo_query,
     render_figure_brief,
+    render_note_answer,
     render_report,
     render_slides,
     render_sop_query,
@@ -114,6 +115,7 @@ OUTPUT_FORMAT_FILENAME_SUFFIXES = {
     "sop": "sop",
     "slides": "slides",
     "figure": "figure",
+    "note": "note",
 }
 
 
@@ -381,6 +383,20 @@ def ask_question(
         artifact_id = next_available_stem(directory, artifact_seed)
         destination = directory / f"{artifact_id}.md"
         content = render_sop_query(
+            root,
+            question,
+            ranked,
+            ranked_concepts,
+            machine_query,
+            protocol_state,
+            created_at,
+            artifact_id,
+        )
+    elif output_format == "note":
+        directory = root / "output" / "reports"
+        artifact_id = next_available_stem(directory, artifact_seed)
+        destination = directory / f"{artifact_id}.md"
+        content = render_note_answer(
             root,
             question,
             ranked,

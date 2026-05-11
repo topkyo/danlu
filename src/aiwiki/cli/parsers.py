@@ -302,7 +302,7 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     run_ask_parser.add_argument("question", help="Research question to answer.")
     run_ask_parser.add_argument(
         "--format",
-        choices=("report", "decision-memo", "sop", "slides", "figure"),
+        choices=("report", "decision-memo", "sop", "slides", "figure", "note"),
         default="report",
         help="Output artifact format.",
     )
@@ -1121,7 +1121,7 @@ def _configure_ask_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("question", help="Research question to package.")
     parser.add_argument(
         "--format",
-        choices=("report", "decision-memo", "sop", "slides", "figure"),
+        choices=("report", "decision-memo", "sop", "slides", "figure", "note"),
         default="report",
         help="Output artifact format.",
     )

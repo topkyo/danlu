@@ -137,7 +137,7 @@ class CLITests(unittest.TestCase):
         self.assertIsNotNone(action)
         ask_parser = next(choice for name, choice in action.choices.items() if name == "ask")
         format_action = next(item for item in ask_parser._actions if item.dest == "format")
-        self.assertEqual(format_action.choices, ("report", "decision-memo", "sop", "slides", "figure"))
+        self.assertEqual(format_action.choices, ("report", "decision-memo", "sop", "slides", "figure", "note"))
 
     def test_legacy_settled_alias_is_absent(self) -> None:
         from aiwiki import runner
