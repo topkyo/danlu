@@ -232,6 +232,30 @@ def _durable_truncate(path: Path, size: int) -> None:
         os.fsync(handle.fileno())
 
 
+def _restore_file_bytes(path: Path, snapshot: bytes | None) -> None:
+    """Restore a file to its pre-mutation state.
+
+    Snapshot semantics:
+        None  → file did not exist before; ensure it does not exist now.
+        bytes → file existed; restore exact bytes via atomic rename.
+    """
+    if snapshot is None:
+        try:
+            path.unlink(missing_ok=True)
+        except FileNotFoundError:
+            pass
+        return
+    tmp = path.with_suffix(path.suffix + ".restore.tmp")
+    tmp.write_bytes(snapshot)
+    os.replace(tmp, path)
+
+
+def _snapshot_file_bytes(path: Path) -> bytes | None:
+    if not path.exists():
+        return None
+    return path.read_bytes()
+
+
 def _durable_restore_or_remove(path: Path, snapshot: bytes | None) -> None:
     """Restore single-file primary to snapshot state.
 

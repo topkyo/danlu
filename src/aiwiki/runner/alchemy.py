@@ -1,4 +1,17 @@
-"""Alchemy lifecycle wrappers and (in later batches) scoped primitives, lane orchestration, auto scheduler."""
+"""Alchemy runner — orchestration layer.
+
+Owns: command entry points (`run_alchemy_*`), workflow sequencing, receipted
+lane primitives, telemetry. Calls into ``aiwiki.execution.alchemy`` for the
+actual filesystem mutations (write/replace/unlink).
+
+Boundary: orchestration only. Mutations live in ``execution/alchemy.py``.
+Transactional helpers (``_snapshot_file_bytes`` / ``_restore_file_bytes``) live
+in ``aiwiki.app_utils`` and are imported by both layers.
+
+Follow-up (SC-003b, not in this milestone): some apply/revert paths still
+perform filesystem mutations directly from the runner; future work should
+migrate those into ``execution/`` to fully respect the boundary.
+"""
 
 from __future__ import annotations
 
@@ -15,6 +28,8 @@ from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_state import append_runtime_history, execution_receipt_history_path
 from aiwiki.app_utils import (
     _durable_truncate,
+    _restore_file_bytes,
+    _snapshot_file_bytes,
     atomic_write_text,
     parse_frontmatter,
     relative_path,
@@ -26,7 +41,6 @@ from aiwiki.app_utils import (
     strip_frontmatter,
     utc_now,
 )
-from aiwiki.execution.alchemy import _restore_file_bytes, _snapshot_file_bytes
 from aiwiki.execution.audit_preview import AUDIT_STREAM_PATH
 from aiwiki.render.paths import execution_receipt_path
 

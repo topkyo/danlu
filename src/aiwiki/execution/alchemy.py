@@ -1,3 +1,13 @@
+"""Alchemy execution — mutation layer.
+
+Owns: filesystem writes, atomic rename, snapshot/restore, receipt persistence
+for elixir lifecycle (start → distill → finalize → promote/demote/revert).
+
+Boundary: mutation only. Higher-level orchestration lives in
+``runner/alchemy.py``. Transactional helpers (``_snapshot_file_bytes`` /
+``_restore_file_bytes``) live in ``aiwiki.app_utils``.
+"""
+
 from __future__ import annotations
 
 import json
@@ -18,6 +28,8 @@ from ..app_execution import (
 from ..app_protocol import PROTOCOL_ELIXIR_REVIEW_DAYS
 from ..app_state import execution_receipt_history_path, load_active_corpora_state, load_output_candidates_state
 from ..app_utils import (
+    _restore_file_bytes,
+    _snapshot_file_bytes,
     atomic_write_text,
     next_available_stem,
     parse_frontmatter,
@@ -84,30 +96,6 @@ class RevertReceiptError(ElixirMutationBoundaryError):
 
 class DemoteReceiptError(ElixirMutationBoundaryError):
     pass
-
-
-def _restore_file_bytes(path: Path, snapshot: bytes | None) -> None:
-    """Restore a file to its pre-mutation state.
-
-    Snapshot semantics:
-        None  → file did not exist before; ensure it does not exist now.
-        bytes → file existed; restore exact bytes via atomic rename.
-    """
-    if snapshot is None:
-        try:
-            path.unlink(missing_ok=True)
-        except FileNotFoundError:
-            pass
-        return
-    tmp = path.with_suffix(path.suffix + ".restore.tmp")
-    tmp.write_bytes(snapshot)
-    os.replace(tmp, path)
-
-
-def _snapshot_file_bytes(path: Path) -> bytes | None:
-    if not path.exists():
-        return None
-    return path.read_bytes()
 
 
 def _snapshot_receipt_artifacts(root: Path) -> dict[str, tuple[Path, bytes | None]]:
