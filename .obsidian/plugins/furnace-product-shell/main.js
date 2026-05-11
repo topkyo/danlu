@@ -574,6 +574,11 @@ const ZH_TEXT = {
   "Suggested Next Actions": "建议下一步动作",
   Today: "今天",
   "今天": "今天",
+  "Furnace activity": "炉子动态",
+  "No recent furnace activity": "暂无炉子动态",
+  "Plugin run": "插件运行",
+  Receipt: "回执",
+  "Review backlog": "待处理积压",
   "新报告": "新报告",
   "系统动态": "系统动态",
   "需要你确认": "需要你确认",
@@ -3827,6 +3832,8 @@ function renderTodayFeed(plugin, container) {
   // 始终在最前面渲染，独立于 shellSummary 状态，构成视觉闭环
   renderPendingSubmissionsGroup(plugin, section);
 
+  renderFurnaceActivityTimeline(plugin, section);
+
   if (!summary) {
     section.createEl("div", {
       cls: "furnace-today-feed-empty",
@@ -3876,6 +3883,123 @@ function renderTodayFeed(plugin, container) {
       renderTodayFeedItem(plugin, listEl, entry);
     }
   }
+}
+
+function renderFurnaceActivityTimeline(plugin, parentEl) {
+  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
+  const feed = summary ? buildTodayFeed(summary) : [];
+  const recentRuns = plugin.pluginState && Array.isArray(plugin.pluginState.recentRuns) ? plugin.pluginState.recentRuns : [];
+  const items = [];
+  const seenTargets = new Set();
+
+  const addItem = (item) => {
+    const kind = String(item.kind || "");
+    const target = String(item.target || "");
+    if (target && (kind === "elixir" || kind === "decision" || kind === "receipt" || kind === "review-backlog")) {
+      if (seenTargets.has(target)) return;
+      seenTargets.add(target);
+    }
+    const timestamp = String(item.timestamp || "");
+    items.push({
+      ...item,
+      kind,
+      title: String(item.title || ""),
+      summary: String(item.summary || ""),
+      target,
+      timestamp,
+      _epochMs: normalizeTs(timestamp),
+    });
+  };
+
+  for (const entry of feed) {
+    if (!entry || typeof entry !== "object") continue;
+    addItem({
+      kind: String(entry.kind || ""),
+      title: String(entry.title || ""),
+      summary: String(entry.summary || ""),
+      timestamp: String(entry.timestamp || ""),
+      target: String(entry.target || ""),
+    });
+  }
+
+  for (const run of recentRuns) {
+    if (!run || typeof run !== "object") continue;
+    const timestamp = String(run.finishedAt || run.startedAt || "");
+    const status = String(run.status || "");
+    const protocol = String(run.protocol || "");
+    addItem({
+      kind: "plugin-run",
+      title: String(run.label || run.command || "Plugin run"),
+      summary: `${status} · ${protocol}`,
+      timestamp,
+    });
+  }
+
+  const receipts = summary && Array.isArray(summary.recent_receipts) ? summary.recent_receipts : [];
+  for (const receipt of receipts) {
+    if (!receipt || typeof receipt !== "object") continue;
+    addItem({
+      kind: "receipt",
+      title: String(receipt.title || receipt.subject_id || receipt.action_id || "Receipt"),
+      summary: String(receipt.operation || ""),
+      timestamp: String(receipt.applied_at || receipt.generated_at || receipt.created_at || ""),
+      target: String(receipt.receipt_path || receipt.path || ""),
+    });
+  }
+
+  const backlog = summary && summary.review_backlog_counts && typeof summary.review_backlog_counts === "object"
+    ? summary.review_backlog_counts
+    : {};
+  for (const [bucketKey, rawCount] of Object.entries(backlog)) {
+    const count = Number(rawCount);
+    if (!Number.isFinite(count) || count <= 0) continue;
+    addItem({
+      kind: "review-backlog",
+      title: String(bucketKey),
+      summary: `${count} 项待处理`,
+      timestamp: String(summary.generated_at || ""),
+      target: `review:${bucketKey}`,
+    });
+  }
+
+  items.sort((left, right) => right._epochMs - left._epochMs);
+  const cappedItems = items.slice(0, 50);
+
+  const section = parentEl.createDiv({ cls: "furnace-activity-timeline" });
+  section.createEl("h3", { text: plugin.t("Furnace activity") });
+
+  if (!cappedItems.length) {
+    section.createDiv({ cls: "furnace-activity-timeline-empty", text: plugin.t("No recent furnace activity") });
+    return;
+  }
+
+  const listEl = section.createEl("ul", { cls: "furnace-activity-list" });
+  for (const item of cappedItems) {
+    const li = listEl.createEl("li", { cls: `furnace-activity-item furnace-activity-item-${item.kind}` });
+    li.createEl("span", { cls: "furnace-activity-kind", text: furnaceActivityKindLabel(plugin, item.kind) });
+    li.createEl("span", { cls: "furnace-activity-title", text: item.title });
+    li.createEl("span", { cls: "furnace-activity-summary", text: item.summary });
+  }
+}
+
+function furnaceActivityKindLabel(plugin, kind) {
+  switch (kind) {
+    case "plugin-run": return plugin.t("Plugin run");
+    case "receipt": return plugin.t("Receipt");
+    case "review-backlog": return plugin.t("Review backlog");
+    case "report": return plugin.t("新报告");
+    case "automation": return plugin.t("系统动态");
+    case "decision":
+    case "proposal": return plugin.t("需要你确认");
+    case "elixir": return plugin.t("已完成");
+    case "action": return plugin.t("下一步建议");
+    default: return plugin.t(kind || "unknown");
+  }
+}
+
+function normalizeTs(ts) {
+  const parsed = Date.parse(ts);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 // R88 #1: 空态 CTA — 聚焦上方 UniversalInput textarea
@@ -5362,6 +5486,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (!this.settings.showAdvancedCommands) {
       return;
     }
+    // EP-005: kept for backward compatibility — these views can still be opened individually,
+    // but Furnace Center now also surfaces a unified activity timeline.
     this.addCommand({
       id: "open-recent-runs",
       name: this.t("Open Recent Runs"),

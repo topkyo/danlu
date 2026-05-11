@@ -100,6 +100,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (!this.settings.showAdvancedCommands) {
       return;
     }
+    // EP-005: kept for backward compatibility — these views can still be opened individually,
+    // but Furnace Center now also surfaces a unified activity timeline.
     this.addCommand({
       id: "open-recent-runs",
       name: this.t("Open Recent Runs"),
