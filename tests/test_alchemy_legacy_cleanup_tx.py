@@ -9,10 +9,10 @@ from aiwiki.app_protocol import ensure_layout
 from aiwiki.execution.alchemy import (
     CANDIDATE_ELIXIR_DIR,
     ELIXIR_DIR,
+    LegacyMigrationApplyError,
     LegacyMigrationHalfWriteError,
-    LegacyMigrationReceiptError,
+    SupersededCleanupApplyError,
     SupersededCleanupHalfWriteError,
-    SupersededCleanupReceiptError,
     _parse_elixir_frontmatter,
     _write_elixir_markdown,
     apply_legacy_elixir_migration,
@@ -47,6 +47,17 @@ def _receipt_history_text(root: Path) -> str:
 
 
 class AlchemyLegacyCleanupTransactionTests(unittest.TestCase):
+    """Failure-injection tests for legacy elixir migration + superseded cleanup TX paths.
+
+    SC-004 patch seam: targets the high-level transactional helper API at the
+    ``aiwiki.execution.alchemy.*`` import binding (i.e. the same name the caller
+    invokes). This validates rollback when ``atomic_write_text`` /
+    ``append_execution_receipt_history`` / ``_restore_file_bytes`` fail.
+    Tests deliberately do NOT patch ``os.replace`` (an OS-level primitive that
+    sits below the transactional contract); they exercise the helper API the
+    refactor relies on.
+    """
+
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tempdir.name)
@@ -128,11 +139,15 @@ class AlchemyLegacyCleanupTransactionTests(unittest.TestCase):
             self.assertEqual(candidate.read_text(encoding="utf-8"), candidate_before[elixir_id])
         self.assertEqual(_receipt_paths(self.root), [])
 
+    # ------------------------------------------------------------------
+    # Legacy migration
+    # ------------------------------------------------------------------
+
     def test_legacy_migration_receipt_write_failure_rolls_back_tombstones(self) -> None:
         first_id, second_id, settled_before = self._write_legacy_settled_pair()
-        from aiwiki.execution import alchemy as alchemy_module
+        from aiwiki.execution import alchemy as _alchemy_module
 
-        original_atomic_write_text = alchemy_module.atomic_write_text
+        original_atomic_write_text = _alchemy_module.atomic_write_text
 
         def fail_receipt_write(path: Path, content: str, **kwargs: object) -> None:
             if path.suffix == ".json" and path.parent == _receipt_dir(self.root):
@@ -140,7 +155,7 @@ class AlchemyLegacyCleanupTransactionTests(unittest.TestCase):
             original_atomic_write_text(path, content, **kwargs)
 
         with patch("aiwiki.execution.alchemy.atomic_write_text", side_effect=fail_receipt_write):
-            with self.assertRaises(LegacyMigrationReceiptError):
+            with self.assertRaises(LegacyMigrationApplyError):
                 apply_legacy_elixir_migration(self.root)
 
         self._assert_legacy_rolled_back((first_id, second_id), settled_before)
@@ -152,16 +167,16 @@ class AlchemyLegacyCleanupTransactionTests(unittest.TestCase):
             "aiwiki.execution.alchemy.append_execution_receipt_history",
             side_effect=OSError("injected history append failure"),
         ):
-            with self.assertRaises(LegacyMigrationReceiptError):
+            with self.assertRaises(LegacyMigrationApplyError):
                 apply_legacy_elixir_migration(self.root)
 
         self._assert_legacy_rolled_back((first_id, second_id), settled_before)
 
     def test_legacy_migration_rollback_failure_raises_half_write_error(self) -> None:
         self._write_legacy_settled_pair()
-        from aiwiki.execution import alchemy as alchemy_module
+        from aiwiki.execution import alchemy as _alchemy_module
 
-        original_atomic_write_text = alchemy_module.atomic_write_text
+        original_atomic_write_text = _alchemy_module.atomic_write_text
 
         def fail_receipt_write(path: Path, content: str, **kwargs: object) -> None:
             if path.suffix == ".json" and path.parent == _receipt_dir(self.root):
@@ -169,7 +184,10 @@ class AlchemyLegacyCleanupTransactionTests(unittest.TestCase):
             original_atomic_write_text(path, content, **kwargs)
 
         with patch("aiwiki.execution.alchemy.atomic_write_text", side_effect=fail_receipt_write):
-            with patch("aiwiki.execution.alchemy._restore_file_bytes", side_effect=OSError("injected rollback failure")):
+            with patch(
+                "aiwiki.execution.alchemy._restore_file_bytes",
+                side_effect=OSError("injected rollback failure"),
+            ):
                 with self.assertRaises(LegacyMigrationHalfWriteError) as raised:
                     apply_legacy_elixir_migration(self.root)
 
@@ -180,6 +198,8 @@ class AlchemyLegacyCleanupTransactionTests(unittest.TestCase):
         first_id, second_id, settled_before = self._write_legacy_settled_pair()
         from aiwiki.execution import alchemy as alchemy_module
 
+        # _write_atomic_text is alchemy-internal (not in app_utils); patching the
+        # alchemy module-local seam is the correct injection point for this case.
         original_write_atomic_text = alchemy_module._write_atomic_text
         call_count = 0
 
@@ -190,32 +210,39 @@ class AlchemyLegacyCleanupTransactionTests(unittest.TestCase):
                 raise OSError("injected second candidate write failure")
             original_write_atomic_text(path, content)
 
-        with patch("aiwiki.execution.alchemy._write_atomic_text", side_effect=fail_second_candidate_write):
-            with self.assertRaises(LegacyMigrationReceiptError):
+        with patch.object(alchemy_module, "_write_atomic_text", side_effect=fail_second_candidate_write):
+            with self.assertRaises(LegacyMigrationApplyError):
                 apply_legacy_elixir_migration(self.root)
 
         self._assert_legacy_rolled_back((first_id, second_id), settled_before)
 
+    # ------------------------------------------------------------------
+    # Superseded cleanup
+    # ------------------------------------------------------------------
+
     def test_superseded_cleanup_unlink_failure_restores_deleted_candidate(self) -> None:
         first_id, second_id, candidate_before = self._write_superseded_cleanup_pair()
+        target_second = _candidate_path(self.root, second_id)
         original_unlink = Path.unlink
 
-        def fail_second_candidate_unlink(path: Path, *args: object, **kwargs: object) -> None:
-            if path == _candidate_path(self.root, second_id):
+        def fail_second_candidate_unlink(self_path: Path, *args: object, **kwargs: object) -> None:
+            if Path(self_path) == target_second:
                 raise OSError("injected second unlink failure")
-            original_unlink(path, *args, **kwargs)
+            original_unlink(self_path, *args, **kwargs)
 
-        with patch.object(Path, "unlink", side_effect=fail_second_candidate_unlink):
-            with self.assertRaises(SupersededCleanupReceiptError):
+        with patch.object(Path, "unlink", autospec=True, side_effect=fail_second_candidate_unlink):
+            with self.assertRaises(SupersededCleanupApplyError):
                 apply_superseded_elixir_cleanup(self.root)
 
+        # The first candidate WAS actually unlinked before the second one failed,
+        # so the rollback path must restore it from the snapshot bytes.
         self._assert_cleanup_restored((first_id, second_id), candidate_before)
 
     def test_superseded_cleanup_receipt_write_failure_restores_all_candidates(self) -> None:
         first_id, second_id, candidate_before = self._write_superseded_cleanup_pair()
-        from aiwiki.execution import alchemy as alchemy_module
+        from aiwiki.execution import alchemy as _alchemy_module
 
-        original_atomic_write_text = alchemy_module.atomic_write_text
+        original_atomic_write_text = _alchemy_module.atomic_write_text
 
         def fail_receipt_write(path: Path, content: str, **kwargs: object) -> None:
             if path.suffix == ".json" and path.parent == _receipt_dir(self.root):
@@ -223,7 +250,7 @@ class AlchemyLegacyCleanupTransactionTests(unittest.TestCase):
             original_atomic_write_text(path, content, **kwargs)
 
         with patch("aiwiki.execution.alchemy.atomic_write_text", side_effect=fail_receipt_write):
-            with self.assertRaises(SupersededCleanupReceiptError):
+            with self.assertRaises(SupersededCleanupApplyError):
                 apply_superseded_elixir_cleanup(self.root)
 
         self._assert_cleanup_restored((first_id, second_id), candidate_before)
@@ -235,16 +262,16 @@ class AlchemyLegacyCleanupTransactionTests(unittest.TestCase):
             "aiwiki.execution.alchemy.append_execution_receipt_history",
             side_effect=OSError("injected history append failure"),
         ):
-            with self.assertRaises(SupersededCleanupReceiptError):
+            with self.assertRaises(SupersededCleanupApplyError):
                 apply_superseded_elixir_cleanup(self.root)
 
         self._assert_cleanup_restored((first_id, second_id), candidate_before)
 
     def test_superseded_cleanup_rollback_failure_raises_half_write_error(self) -> None:
         self._write_superseded_cleanup_pair()
-        from aiwiki.execution import alchemy as alchemy_module
+        from aiwiki.execution import alchemy as _alchemy_module
 
-        original_atomic_write_text = alchemy_module.atomic_write_text
+        original_atomic_write_text = _alchemy_module.atomic_write_text
 
         def fail_receipt_write(path: Path, content: str, **kwargs: object) -> None:
             if path.suffix == ".json" and path.parent == _receipt_dir(self.root):
@@ -252,7 +279,10 @@ class AlchemyLegacyCleanupTransactionTests(unittest.TestCase):
             original_atomic_write_text(path, content, **kwargs)
 
         with patch("aiwiki.execution.alchemy.atomic_write_text", side_effect=fail_receipt_write):
-            with patch("aiwiki.execution.alchemy._restore_file_bytes", side_effect=OSError("injected rollback failure")):
+            with patch(
+                "aiwiki.execution.alchemy._restore_file_bytes",
+                side_effect=OSError("injected rollback failure"),
+            ):
                 with self.assertRaises(SupersededCleanupHalfWriteError) as raised:
                     apply_superseded_elixir_cleanup(self.root)
 

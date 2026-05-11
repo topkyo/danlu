@@ -98,8 +98,29 @@ class DemoteReceiptError(ElixirMutationBoundaryError):
     pass
 
 
-class LegacyMigrationReceiptError(ElixirMutationBoundaryError):
+class LegacyMigrationPlanError(ElixirMutationBoundaryError):
+    """Raised when legacy migration planning fails before any mutation occurs.
+
+    No rollback is needed — planning is read-only.
+    """
+
     pass
+
+
+class LegacyMigrationApplyError(ElixirMutationBoundaryError):
+    """Raised when legacy migration mutation or receipt persistence fails.
+
+    Implies rollback has been attempted (and succeeded); callers must NOT retry
+    without re-running preview because the in-memory plan is stale.
+    """
+
+    pass
+
+
+# Back-compat alias: receipt persistence failure was historically named
+# LegacyMigrationReceiptError. Kept as an alias to LegacyMigrationApplyError
+# so external try/except sites keep working.
+LegacyMigrationReceiptError = LegacyMigrationApplyError
 
 
 class LegacyMigrationHalfWriteError(RuntimeError):
@@ -111,8 +132,22 @@ class LegacyMigrationHalfWriteError(RuntimeError):
         )
 
 
-class SupersededCleanupReceiptError(ElixirMutationBoundaryError):
+class SupersededCleanupPlanError(ElixirMutationBoundaryError):
+    """Raised when superseded-cleanup planning fails before any mutation occurs."""
+
     pass
+
+
+class SupersededCleanupApplyError(ElixirMutationBoundaryError):
+    """Raised when superseded-cleanup mutation or receipt persistence fails.
+
+    Implies rollback has been attempted.
+    """
+
+    pass
+
+
+SupersededCleanupReceiptError = SupersededCleanupApplyError
 
 
 class SupersededCleanupHalfWriteError(RuntimeError):
@@ -356,16 +391,6 @@ def apply_legacy_elixir_migration(root: Path, *, limit: int = 50, note: str | No
         plan["candidate_path"]: _snapshot_file_bytes(plan["candidate_path"]) for plan in plans
     }
 
-    def _rollback_candidates() -> None:
-        errors: list[Exception] = []
-        for path, snapshot in reversed(list(candidate_snapshots.items())):
-            try:
-                _restore_file_bytes(path, snapshot)
-            except Exception as exc:  # pragma: no cover - escalated via aggregate
-                errors.append(exc)
-        if errors:
-            raise errors[0]
-
     # Phase 3: mutate.
     migrated: list[dict[str, Any]] = []
     try:
@@ -385,11 +410,15 @@ def apply_legacy_elixir_migration(root: Path, *, limit: int = 50, note: str | No
             )
     except Exception as tx_exc:
         logger.warning("legacy migration mutation failed; rolling back: %s", tx_exc)
-        try:
-            _rollback_candidates()
-        except Exception as rollback_exc:
-            raise LegacyMigrationHalfWriteError(phase="mutation_rollback") from rollback_exc
-        raise LegacyMigrationReceiptError(
+        rollback_errors: list[Exception] = []
+        for path, snapshot in reversed(list(candidate_snapshots.items())):
+            try:
+                _restore_file_bytes(path, snapshot)
+            except Exception as rollback_exc:
+                rollback_errors.append(rollback_exc)
+        if rollback_errors:
+            raise LegacyMigrationHalfWriteError(phase="mutation_rollback") from rollback_errors[0]
+        raise LegacyMigrationApplyError(
             "legacy_migration_error: mutation failed; rolled back"
         ) from tx_exc
 
@@ -398,13 +427,24 @@ def apply_legacy_elixir_migration(root: Path, *, limit: int = 50, note: str | No
     if migrated:
         receipt = _build_legacy_migration_receipt(root, migrated=migrated, applied_at=applied_at_dt, note=note)
         receipt_path_str = str(receipt.get("receipt_path") or "")
+
+        def _rollback_migrated_candidates() -> None:
+            errors: list[Exception] = []
+            for path, snapshot in reversed(list(candidate_snapshots.items())):
+                try:
+                    _restore_file_bytes(path, snapshot)
+                except Exception as exc:
+                    errors.append(exc)
+            if errors:
+                raise errors[0]
+
         _persist_receipt_transactionally(
             root,
             receipt=receipt,
             elixir_id="legacy-migration",
             operation="legacy_migration",
-            rollback_data=_rollback_candidates,
-            receipt_error_cls=LegacyMigrationReceiptError,
+            rollback_data=_rollback_migrated_candidates,
+            receipt_error_cls=LegacyMigrationApplyError,
             half_write_error_factory=lambda phase: LegacyMigrationHalfWriteError(phase=phase),
         )
 
@@ -610,16 +650,6 @@ def apply_superseded_elixir_cleanup(root: Path, *, limit: int = 50, note: str | 
         plan["candidate_path"]: _snapshot_file_bytes(plan["candidate_path"]) for plan in plans
     }
 
-    def _restore_candidates() -> None:
-        errors: list[Exception] = []
-        for path, snapshot in reversed(list(candidate_snapshots.items())):
-            try:
-                _restore_file_bytes(path, snapshot)
-            except Exception as exc:  # pragma: no cover - escalated via aggregate
-                errors.append(exc)
-        if errors:
-            raise errors[0]
-
     # Phase 3: mutate (unlink).
     deleted: list[dict[str, Any]] = []
     try:
@@ -636,11 +666,15 @@ def apply_superseded_elixir_cleanup(root: Path, *, limit: int = 50, note: str | 
             )
     except Exception as tx_exc:
         logger.warning("superseded cleanup mutation failed; rolling back: %s", tx_exc)
-        try:
-            _restore_candidates()
-        except Exception as rollback_exc:
-            raise SupersededCleanupHalfWriteError(phase="mutation_rollback") from rollback_exc
-        raise SupersededCleanupReceiptError(
+        rollback_errors: list[Exception] = []
+        for path, snapshot in reversed(list(candidate_snapshots.items())):
+            try:
+                _restore_file_bytes(path, snapshot)
+            except Exception as rollback_exc:
+                rollback_errors.append(rollback_exc)
+        if rollback_errors:
+            raise SupersededCleanupHalfWriteError(phase="mutation_rollback") from rollback_errors[0]
+        raise SupersededCleanupApplyError(
             "superseded_cleanup_error: mutation failed; rolled back"
         ) from tx_exc
 
@@ -649,13 +683,24 @@ def apply_superseded_elixir_cleanup(root: Path, *, limit: int = 50, note: str | 
     if deleted:
         receipt = _build_superseded_cleanup_receipt(root, deleted=deleted, applied_at=applied_at_dt, note=note)
         receipt_path_str = str(receipt.get("receipt_path") or "")
+
+        def _rollback_deleted_candidates() -> None:
+            errors: list[Exception] = []
+            for path, snapshot in reversed(list(candidate_snapshots.items())):
+                try:
+                    _restore_file_bytes(path, snapshot)
+                except Exception as exc:
+                    errors.append(exc)
+            if errors:
+                raise errors[0]
+
         _persist_receipt_transactionally(
             root,
             receipt=receipt,
             elixir_id="superseded-cleanup",
             operation="superseded_cleanup",
-            rollback_data=_restore_candidates,
-            receipt_error_cls=SupersededCleanupReceiptError,
+            rollback_data=_rollback_deleted_candidates,
+            receipt_error_cls=SupersededCleanupApplyError,
             half_write_error_factory=lambda phase: SupersededCleanupHalfWriteError(phase=phase),
         )
 
