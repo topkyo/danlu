@@ -98,6 +98,32 @@ class DemoteReceiptError(ElixirMutationBoundaryError):
     pass
 
 
+class LegacyMigrationReceiptError(ElixirMutationBoundaryError):
+    pass
+
+
+class LegacyMigrationHalfWriteError(RuntimeError):
+    def __init__(self, *, phase: str = "rollback") -> None:
+        self.phase = phase
+        super().__init__(
+            f"legacy_migration_half_write_error[{phase}]: failed to rollback after legacy migration failure; "
+            "manual repair required"
+        )
+
+
+class SupersededCleanupReceiptError(ElixirMutationBoundaryError):
+    pass
+
+
+class SupersededCleanupHalfWriteError(RuntimeError):
+    def __init__(self, *, phase: str = "rollback") -> None:
+        self.phase = phase
+        super().__init__(
+            f"superseded_cleanup_half_write_error[{phase}]: failed to rollback after superseded cleanup failure; "
+            "manual repair required"
+        )
+
+
 def _snapshot_receipt_artifacts(root: Path) -> dict[str, tuple[Path, bytes | None]]:
     """Snapshot receipt-side artifacts before a mutation receipt is persisted.
 
@@ -291,8 +317,9 @@ def apply_legacy_elixir_migration(root: Path, *, limit: int = 50, note: str | No
     targets = [record for record in preview["records"] if record.get("migration_required")]
     applied_at_dt = datetime.now(timezone.utc)
     applied_at = applied_at_dt.isoformat()
-    migrated: list[dict[str, Any]] = []
 
+    # Phase 1: plan — validate + render bytes, no writes.
+    plans: list[dict[str, Any]] = []
     for record in targets:
         elixir_id = _resolve_elixir_id(root, str(record.get("elixir_id") or ""))
         settled_path = _settled_path(root, elixir_id)
@@ -314,27 +341,72 @@ def apply_legacy_elixir_migration(root: Path, *, limit: int = 50, note: str | No
                 "promoted_at": promoted_at,
             }
         )
-        candidate_path.parent.mkdir(parents=True, exist_ok=True)
-        _write_atomic_text(candidate_path, _render_elixir_document(tombstone_frontmatter, body))
-        _validate_state_for_path(root, "superseded", candidate_path)
-        migrated.append(
+        plans.append(
             {
                 "elixir_id": elixir_id,
-                "wiki_path": relative_path(root, settled_path),
-                "candidate_path": relative_path(root, candidate_path),
+                "settled_path": settled_path,
+                "candidate_path": candidate_path,
+                "content": _render_elixir_document(tombstone_frontmatter, body),
                 "promoted_at": promoted_at,
-                "candidate_sha256": compute_file_sha256(candidate_path),
             }
         )
 
-    receipt_path = ""
+    # Phase 2: snapshot candidate paths (expected None — gate above ensured non-existence).
+    candidate_snapshots: dict[Path, bytes | None] = {
+        plan["candidate_path"]: _snapshot_file_bytes(plan["candidate_path"]) for plan in plans
+    }
+
+    def _rollback_candidates() -> None:
+        errors: list[Exception] = []
+        for path, snapshot in reversed(list(candidate_snapshots.items())):
+            try:
+                _restore_file_bytes(path, snapshot)
+            except Exception as exc:  # pragma: no cover - escalated via aggregate
+                errors.append(exc)
+        if errors:
+            raise errors[0]
+
+    # Phase 3: mutate.
+    migrated: list[dict[str, Any]] = []
+    try:
+        for plan in plans:
+            candidate_path = plan["candidate_path"]
+            candidate_path.parent.mkdir(parents=True, exist_ok=True)
+            _write_atomic_text(candidate_path, plan["content"])
+            _validate_state_for_path(root, "superseded", candidate_path)
+            migrated.append(
+                {
+                    "elixir_id": plan["elixir_id"],
+                    "wiki_path": relative_path(root, plan["settled_path"]),
+                    "candidate_path": relative_path(root, candidate_path),
+                    "promoted_at": plan["promoted_at"],
+                    "candidate_sha256": compute_file_sha256(candidate_path),
+                }
+            )
+    except Exception as tx_exc:
+        logger.warning("legacy migration mutation failed; rolling back: %s", tx_exc)
+        try:
+            _rollback_candidates()
+        except Exception as rollback_exc:
+            raise LegacyMigrationHalfWriteError(phase="mutation_rollback") from rollback_exc
+        raise LegacyMigrationReceiptError(
+            "legacy_migration_error: mutation failed; rolled back"
+        ) from tx_exc
+
+    # Phase 4: receipt (transactional).
+    receipt_path_str = ""
     if migrated:
         receipt = _build_legacy_migration_receipt(root, migrated=migrated, applied_at=applied_at_dt, note=note)
-        receipt_path = str(receipt.get("receipt_path") or "")
-        path = root / receipt_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        append_execution_receipt_history(root, receipt)
+        receipt_path_str = str(receipt.get("receipt_path") or "")
+        _persist_receipt_transactionally(
+            root,
+            receipt=receipt,
+            elixir_id="legacy-migration",
+            operation="legacy_migration",
+            rollback_data=_rollback_candidates,
+            receipt_error_cls=LegacyMigrationReceiptError,
+            half_write_error_factory=lambda phase: LegacyMigrationHalfWriteError(phase=phase),
+        )
 
     return {
         **preview,
@@ -344,7 +416,7 @@ def apply_legacy_elixir_migration(root: Path, *, limit: int = 50, note: str | No
         "applied_at": applied_at,
         "migrated_count": len(migrated),
         "migrated": migrated,
-        "receipt_path": receipt_path,
+        "receipt_path": receipt_path_str,
     }
 
 
@@ -503,8 +575,9 @@ def apply_superseded_elixir_cleanup(root: Path, *, limit: int = 50, note: str | 
     targets = [record for record in preview["records"] if record.get("cleanup_supported")]
     applied_at_dt = datetime.now(timezone.utc)
     applied_at = applied_at_dt.isoformat()
-    deleted: list[dict[str, Any]] = []
 
+    # Phase 1: plan — re-validate and collect deletion plans (no mutation).
+    plans: list[dict[str, Any]] = []
     for record in targets:
         elixir_id = _resolve_elixir_id(root, str(record.get("elixir_id") or ""))
         candidate_path = _candidate_path(root, elixir_id)
@@ -522,27 +595,69 @@ def apply_superseded_elixir_cleanup(root: Path, *, limit: int = 50, note: str | 
         settled_frontmatter = _parse_elixir_frontmatter(settled_path)
         if str(settled_frontmatter.get("elixir_state") or "") != "settled":
             continue
-        candidate_sha256 = compute_file_sha256(candidate_path)
-        settled_sha256 = compute_file_sha256(settled_path)
-        candidate_path.unlink()
-        deleted.append(
+        plans.append(
             {
                 "elixir_id": elixir_id,
-                "candidate_path": relative_path(root, candidate_path),
-                "settled_path": relative_path(root, settled_path),
-                "candidate_sha256": candidate_sha256,
-                "settled_sha256": settled_sha256,
+                "candidate_path": candidate_path,
+                "settled_path": settled_path,
+                "candidate_sha256": compute_file_sha256(candidate_path),
+                "settled_sha256": compute_file_sha256(settled_path),
             }
         )
 
-    receipt_path = ""
+    # Phase 2: snapshot candidate bytes BEFORE unlink (these are the rollback sources).
+    candidate_snapshots: dict[Path, bytes | None] = {
+        plan["candidate_path"]: _snapshot_file_bytes(plan["candidate_path"]) for plan in plans
+    }
+
+    def _restore_candidates() -> None:
+        errors: list[Exception] = []
+        for path, snapshot in reversed(list(candidate_snapshots.items())):
+            try:
+                _restore_file_bytes(path, snapshot)
+            except Exception as exc:  # pragma: no cover - escalated via aggregate
+                errors.append(exc)
+        if errors:
+            raise errors[0]
+
+    # Phase 3: mutate (unlink).
+    deleted: list[dict[str, Any]] = []
+    try:
+        for plan in plans:
+            plan["candidate_path"].unlink()
+            deleted.append(
+                {
+                    "elixir_id": plan["elixir_id"],
+                    "candidate_path": relative_path(root, plan["candidate_path"]),
+                    "settled_path": relative_path(root, plan["settled_path"]),
+                    "candidate_sha256": plan["candidate_sha256"],
+                    "settled_sha256": plan["settled_sha256"],
+                }
+            )
+    except Exception as tx_exc:
+        logger.warning("superseded cleanup mutation failed; rolling back: %s", tx_exc)
+        try:
+            _restore_candidates()
+        except Exception as rollback_exc:
+            raise SupersededCleanupHalfWriteError(phase="mutation_rollback") from rollback_exc
+        raise SupersededCleanupReceiptError(
+            "superseded_cleanup_error: mutation failed; rolled back"
+        ) from tx_exc
+
+    # Phase 4: receipt (transactional).
+    receipt_path_str = ""
     if deleted:
         receipt = _build_superseded_cleanup_receipt(root, deleted=deleted, applied_at=applied_at_dt, note=note)
-        receipt_path = str(receipt.get("receipt_path") or "")
-        path = root / receipt_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        append_execution_receipt_history(root, receipt)
+        receipt_path_str = str(receipt.get("receipt_path") or "")
+        _persist_receipt_transactionally(
+            root,
+            receipt=receipt,
+            elixir_id="superseded-cleanup",
+            operation="superseded_cleanup",
+            rollback_data=_restore_candidates,
+            receipt_error_cls=SupersededCleanupReceiptError,
+            half_write_error_factory=lambda phase: SupersededCleanupHalfWriteError(phase=phase),
+        )
 
     return {
         **preview,
@@ -552,7 +667,7 @@ def apply_superseded_elixir_cleanup(root: Path, *, limit: int = 50, note: str | 
         "applied_at": applied_at,
         "deleted_count": len(deleted),
         "deleted": deleted,
-        "receipt_path": receipt_path,
+        "receipt_path": receipt_path_str,
     }
 
 
