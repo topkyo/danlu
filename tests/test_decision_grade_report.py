@@ -432,8 +432,9 @@ format: report
         self,
     ) -> None:
         """对抗 layout：在 ## 结论 之前出现 stray ## 引用 (含某路径)，真正按序
-        匹配到的 ## 引用 在末尾且为空。Phase 4 必须基于按序匹配位置，不能复用
-        setdefault 取到的 stray range，否则 body 引用会被 stray "satisfied"。"""
+        匹配到的 ## 引用 在末尾且为空。R98.2 原本由 Phase 4 subset check 捕获；
+        R98.3 起 Phase 1.5 在更早阶段直接拒绝任何重复 required H2，所以本输入
+        现在落在 duplicate-section 错误上。场景仍被守住，只是更早 + 更具体。"""
         adversarial = """---
 format: report
 ---
@@ -465,8 +466,92 @@ format: report
         with self.assertRaises(RuntimeError) as ctx:
             _validate_output_markdown(adversarial, "report", ["source-2"])
         msg = str(ctx.exception)
-        # 期望被 Phase 4 subset check 拒绝，而非 Phase 3 bullet check 假通过。
-        self.assertIn("wiki/sources/source-2.md", msg)
+        # R98.3：duplicate required section 在 Phase 1.5 被显式拒绝
+        self.assertIn("duplicate required section", msg)
+        self.assertIn("## 引用", msg)
+
+    # ---- R98.3: strictness hardening (deferred notes from R98.1/R98.2) ----
+
+    def test_r983_duplicate_conclusion_section_rejects(self) -> None:
+        """两个 ## 结论 H2 → Phase 1.5 拒绝。"""
+        bad = _GOOD_REPORT_BODY.replace(
+            "## 关键证据\n- 见 wiki/sources/source-1.md",
+            "## 结论\n再来一段。\n\n## 关键证据\n- 见 wiki/sources/source-1.md",
+        )
+        with self.assertRaises(RuntimeError) as ctx:
+            _validate_output_markdown(bad, "report", ["source-1"])
+        msg = str(ctx.exception)
+        self.assertIn("duplicate required section", msg)
+        self.assertIn("## 结论", msg)
+
+    def test_r983_duplicate_non_required_heading_passes(self) -> None:
+        """重复的非 required H2 (如重复 ## 参考) 不应被拒绝；
+        Phase 1.5 只锁定 _REPORT_REQUIRED_SECTIONS 范围。"""
+        ok = _GOOD_REPORT_BODY + (
+            "\n## 参考\n"
+            "- 第一段参考\n"
+            "\n## 参考\n"
+            "- 第二段参考\n"
+        )
+        _validate_output_markdown(ok, "report", ["source-1"])
+
+    def test_r983_closed_fence_in_body_still_passes(self) -> None:
+        """带闭合 fence 的正常 body 仍通过 → 锁定 Phase 0 不误伤合规 fence。
+
+        fence 内包含 `## 结论` 这种 H2-looking 行 + `_LLM:` 占位串，验证
+        fence-aware 扫描会跳过 fence 内文本，因此既不会被 Phase 1.5 当成
+        duplicate required H2，也不会被 Phase 2 当成未填充占位。
+        """
+        ok = _GOOD_REPORT_BODY.replace(
+            "答案。",
+            "答案。\n\n```\n## 结论\n演示代码片段\n_LLM: 这里在 fence 内是合法的_\n```",
+        )
+        _validate_output_markdown(ok, "report", ["source-1"])
+
+    def test_r983_unclosed_triple_backtick_fence_rejects(self) -> None:
+        """`` ``` `` 开启后未闭合 → Phase 0 拒绝。
+        markdown 顶部塞 wiki/sources 字符串以绕过 _validate_output_markdown 的
+        precheck，让失败精确归因到 _validate_report_sections Phase 0。"""
+        bad = """---
+format: report
+---
+
+# Q (wiki/sources/source-1.md)
+
+```
+unclosed fence opens here
+
+## 结论
+答案。
+
+## 关键证据
+- one
+- two
+- three
+"""
+        with self.assertRaises(RuntimeError) as ctx:
+            _validate_output_markdown(bad, "report", ["source-1"])
+        msg = str(ctx.exception)
+        self.assertIn("unclosed fenced code block", msg)
+
+    def test_r983_unclosed_tilde_fence_rejects(self) -> None:
+        """`` ~~~ `` 开启后未闭合 → Phase 0 同样拒绝（toggle 语义与 ``` 一致）。"""
+        bad = """---
+format: report
+---
+
+# Q (wiki/sources/source-1.md)
+
+## 结论
+答案。
+
+~~~
+unclosed tilde fence
+"""
+        with self.assertRaises(RuntimeError) as ctx:
+            _validate_output_markdown(bad, "report", ["source-1"])
+        msg = str(ctx.exception)
+        self.assertIn("unclosed fenced code block", msg)
 
 
 def load_tests(loader, standard_tests, pattern):  # noqa: ARG001

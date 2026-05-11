@@ -885,6 +885,17 @@ def _validate_report_sections(markdown: str) -> None:
          - Body ⊆ Citations: every citation path appearing in the report
            body between ``## 结论`` and ``## 引用`` (fence-aware) must also
            appear under ``## 引用``.
+
+    R98.3 additions, ordered before existing phases:
+      0. Unclosed fenced code block: if the document ends while still
+         inside a ``` or ~~~ fence, reject with a named error before
+         attempting section detection (an unclosed fence silently
+         swallows subsequent H2s and produces misleading errors).
+      1.5. Duplicate required H2: if any heading in
+         ``_REPORT_REQUIRED_SECTIONS`` appears more than once, reject
+         with a named error. Repeating a required section has no
+         legitimate use in the six-section skeleton (use ``###`` for
+         sub-headings instead).
     """
     lines = markdown.splitlines()
     h2_positions: list[tuple[int, str]] = []
@@ -898,6 +909,11 @@ def _validate_report_sections(markdown: str) -> None:
             continue
         if line.startswith("## ") and not line.startswith("### "):
             h2_positions.append((index, line.strip()))
+    # Phase 0: unclosed fence detection (uses the final state of the
+    # same scan above so toggle semantics stay in lock-step with
+    # _count_report_bullets / _extract_report_citations).
+    if in_fence:
+        raise RuntimeError("Report has unclosed fenced code block.")
 
     h2_titles = [title for _, title in h2_positions]
     cursor = 0
@@ -909,6 +925,19 @@ def _validate_report_sections(markdown: str) -> None:
             raise RuntimeError(f"Report missing required section: {heading}") from exc
         matched_positions[heading] = h2_positions[found][0]
         cursor = found + 1
+
+    # Phase 1.5: duplicate required H2 rejection.
+    # No legitimate report repeats a required section; use ### sub-headings
+    # for finer structure. Phase 1.5 runs after Phase 1 so missing-section
+    # errors (more actionable) still take priority.
+    required_set = set(_REPORT_REQUIRED_SECTIONS)
+    seen_required: set[str] = set()
+    for _line_index, title in h2_positions:
+        if title not in required_set:
+            continue
+        if title in seen_required:
+            raise RuntimeError(f"Report has duplicate required section: {title}")
+        seen_required.add(title)
 
     in_fence = False
     for line in lines:
@@ -932,7 +961,7 @@ def _validate_report_sections(markdown: str) -> None:
             body_end = h2_positions[position_index + 1][0]
         else:
             body_end = len(lines)
-        # Record only the first occurrence (R98.1 Note 1 deferred).
+        # Phase 1.5 已拒绝 duplicate required H2，此处 setdefault 实际只会写入一次。
         section_ranges.setdefault(title, (body_start, body_end))
 
     for heading, minimum in _REPORT_SECTION_BULLET_MINIMUMS.items():
