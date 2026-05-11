@@ -303,7 +303,7 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     run_ask_parser.add_argument(
         "--format",
         choices=("report", "decision-memo", "sop", "slides", "figure", "note"),
-        default="report",
+        default="note",
         help="Output artifact format.",
     )
     run_ask_parser.add_argument("--protocol", help="Optional protocol override for this query.")
@@ -1122,7 +1122,7 @@ def _configure_ask_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--format",
         choices=("report", "decision-memo", "sop", "slides", "figure", "note"),
-        default="report",
+        default="note",
         help="Output artifact format.",
     )
     parser.add_argument("--protocol", help="Optional protocol override for this query.")

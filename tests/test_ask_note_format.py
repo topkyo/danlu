@@ -10,7 +10,8 @@ Scope:
   - FAIL: source_ids present but no `wiki/sources/` citation raises.
   - PASS: empty source_ids skips citation check.
 - CLI parsers (`ask`, `run-ask`) expose `note` in --format choices; default
-  stays `report`.
+  is `note` (EP-002b flipped default from `report`); explicit `--format report`
+  still resolves to `report` and runs the R97-98.3 decision-grade path.
 """
 
 import argparse
@@ -98,7 +99,8 @@ class ValidateNoteOutputTests(unittest.TestCase):
 
 class AskParserChoicesLockTests(unittest.TestCase):
     """Lock that `note` is a registered --format choice for both ask entries,
-    and default remains `report` so EP-002a does not flip default behavior."""
+    that default is `note` (EP-002b), and that explicit `--format report`
+    still works so the decision-grade path remains accessible."""
 
     def _ns(self, argv: list[str]) -> argparse.Namespace:
         parser = build_parser()
@@ -108,16 +110,26 @@ class AskParserChoicesLockTests(unittest.TestCase):
         ns = self._ns(["ask", "Q", "--format", "note"])
         self.assertEqual(ns.format, "note")
 
-    def test_ask_default_is_report(self) -> None:
+    def test_ask_default_is_note(self) -> None:
+        # EP-002b: default flipped from "report" to "note".
         ns = self._ns(["ask", "Q"])
+        self.assertEqual(ns.format, "note")
+
+    def test_ask_explicit_report_still_works(self) -> None:
+        # EP-002b regression: report path remains accessible via explicit flag.
+        ns = self._ns(["ask", "Q", "--format", "report"])
         self.assertEqual(ns.format, "report")
 
     def test_run_ask_accepts_note(self) -> None:
         ns = self._ns(["run-ask", "Q", "--format", "note"])
         self.assertEqual(ns.format, "note")
 
-    def test_run_ask_default_is_report(self) -> None:
+    def test_run_ask_default_is_note(self) -> None:
         ns = self._ns(["run-ask", "Q"])
+        self.assertEqual(ns.format, "note")
+
+    def test_run_ask_explicit_report_still_works(self) -> None:
+        ns = self._ns(["run-ask", "Q", "--format", "report"])
         self.assertEqual(ns.format, "report")
 
     def test_ask_rejects_unknown_format(self) -> None:

@@ -1361,7 +1361,7 @@ class CLITests(unittest.TestCase):
         mocked.assert_called_once_with(
             self.root,
             "what is x?",
-            "report",
+            "note",
             protocol=None,
             no_cache=False,
             load_protocol_learnings=False,
@@ -1377,7 +1377,7 @@ class CLITests(unittest.TestCase):
         mocked.assert_called_once_with(
             self.root,
             "hello",
-            "report",
+            "note",
             protocol=None,
             no_cache=False,
             load_protocol_learnings=False,
@@ -1584,7 +1584,7 @@ class CLITests(unittest.TestCase):
                 (self.root, "What changed?", "slides"),
                 {"protocol": "research", "no_cache": True, "load_protocol_learnings": False},
             ),
-            ("ask-load-learnings", ["ask", "What changed?", "--load-learnings"], "ask_question", (self.root, "What changed?", "report"), {"protocol": None, "no_cache": False, "load_protocol_learnings": True}),
+            ("ask-load-learnings", ["ask", "What changed?", "--load-learnings"], "ask_question", (self.root, "What changed?", "note"), {"protocol": None, "no_cache": False, "load_protocol_learnings": True}),
             (
                 "run-ask",
                 ["run-ask", "What changed?", "--format", "decision-memo", "--fallback-to-ask"],
