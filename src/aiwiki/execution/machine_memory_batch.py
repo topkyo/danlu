@@ -53,8 +53,19 @@ from ..app_state import (
     load_json_document_strict,
     load_machine_memory_action_state_strict,
     load_runtime_history_strict,
+    runtime_history_path,
 )
 from ..app_utils import relative_path, runtime_write_operation, slugify
+from .alchemy import _restore_file_bytes, _snapshot_file_bytes
+from .audit_preview import AUDIT_STREAM_PATH
+
+
+class MachineMemoryActionApplyBatchReceiptError(RuntimeError):
+    pass
+
+
+class MachineMemoryActionApplyBatchReceiptHalfWriteError(RuntimeError):
+    pass
 
 
 def _build_batch_id(prefix: str, subjects: list[str]) -> str:
@@ -219,29 +230,55 @@ def apply_machine_memory_actions_batch(
         revert_supported=not dry_run,
     )
     receipt_path = execution_batch_receipt_path(root, batch_id)
-    write_execution_batch_receipt_document(receipt_path, receipt)
-    append_runtime_history(
-        root,
-        {
-            "event_type": operation,
-            "occurred_at": generated_at,
-            "batch_id": batch_id,
-            "receipt_path": relative_path(root, receipt_path),
-            "action_ids": ordered_ids,
-            "count": len(items),
-            "dry_run": dry_run,
-        },
-    )
-    append_wiki_log(
-        root,
-        "action-batch",
-        f"{len(items)} actions",
-        [
-            f"operation: `{operation}`",
-            f"receipt: `{relative_path(root, receipt_path)}`",
-            f"actions: `{', '.join(ordered_ids[:5])}`",
-        ],
-    )
+    wiki_log_path = root / "wiki" / "indexes" / "log.md"
+    runtime_path = runtime_history_path(root)
+    audit_path = root / AUDIT_STREAM_PATH
+    # snapshot order matches write order: receipt → runtime (+audit mirror via append_runtime_history) → wiki_log.
+    # rollback uses reversed(snapshots), so we restore in reverse: wiki_log → audit → runtime → receipt.
+    snapshots: list[tuple[Path, bytes | None]] = [
+        (receipt_path, _snapshot_file_bytes(receipt_path) if receipt_path.exists() else None),
+        (runtime_path, _snapshot_file_bytes(runtime_path) if runtime_path.exists() else None),
+        (audit_path, _snapshot_file_bytes(audit_path) if audit_path.exists() else None),
+        (wiki_log_path, _snapshot_file_bytes(wiki_log_path) if wiki_log_path.exists() else None),
+    ]
+    try:
+        write_execution_batch_receipt_document(receipt_path, receipt)
+        append_runtime_history(
+            root,
+            {
+                "event_type": operation,
+                "occurred_at": generated_at,
+                "batch_id": batch_id,
+                "receipt_path": relative_path(root, receipt_path),
+                "action_ids": ordered_ids,
+                "count": len(items),
+                "dry_run": dry_run,
+            },
+        )
+        append_wiki_log(
+            root,
+            "action-batch",
+            f"{len(items)} actions",
+            [
+                f"operation: `{operation}`",
+                f"receipt: `{relative_path(root, receipt_path)}`",
+                f"actions: `{', '.join(ordered_ids[:5])}`",
+            ],
+        )
+    except Exception as tx_exc:
+        try:
+            for path, snapshot in reversed(snapshots):
+                if snapshot is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    _restore_file_bytes(path, snapshot)
+        except Exception as rollback_exc:
+            raise MachineMemoryActionApplyBatchReceiptHalfWriteError(
+                f"action-apply-batch receipt transaction half-write: tx_error={tx_exc}; rollback_error={rollback_exc}"
+            ) from rollback_exc
+        raise MachineMemoryActionApplyBatchReceiptError(
+            "action-apply-batch receipt persistence failed; successful actions retained"
+        ) from tx_exc
     return {
         "batch_id": batch_id,
         "operation": operation,
