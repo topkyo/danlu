@@ -34,3 +34,15 @@ Round 64-66 — UX Earnest 收口 — 完成
   - 知识复利: provenance=100%, stale=0%, review_closure=100%, judgment_revisit=83.3%
 - **Stop Lines**: 0 review/apply/revert 状态机改动；0 schema mutation；0 npm 依赖新增
 - **UX 评估**: 投料链路(URL/PDF/图片)畅通，文件命名简洁无时间戳，面板从运维仪表盘变为报告摘要，导航树仅暴露 raw/ 和 output/reports/，图谱锚点可点击跳转
+
+## Addendum (R107 EP-007, 2026-05-11)
+
+R66 原标题写「ask 移除」与实际不符。当时的工作是 Product Shell UI 整理（Ask modal 简化 + Settings 清理），ask 后端能力始终保留。EP-002/EP-003 后的准确口径：
+
+1. `drop question` legacy CLI alias 在 **EP-003a（R103）** 删除（`cli/parsers.py` 删 subparser；`cli/dispatch.py:161` `"question"` 短路保留以触发 fail-loud `SystemExit(2)`）。
+2. plugin `furnace-product-shell:run-ask` palette entry 在 **EP-003a（R103）** 包入 `if (this.settings.showAdvancedCommands)`（默认 `false`，常规用户不可见），**不是移除**。
+3. Universal Input 统一为 plugin 主入口；Interaction Send 面板、AskBox、Start Here Ask 按钮三处冗余 UI anchor 在 **EP-003c（R104）** 删除（`render_primitives.js` / `render_input.js` / `plugin.js` 同步退役 wrapper）。
+4. Ask modal 仍存在，作为 expert format / protocol / mode 入口，由命令面板的 `run-ask` advanced entry 唤起。`runAskCommand` 签名不变。
+5. ask `--format` default 在 **EP-002b（R101）** 从 `report` 切到 `note`；plugin `defaultAskFormat` 在 **EP-002c（R102）** 同步。Ask modal format 下拉从 `[report, slides, figure]` 扩为 `[note, report, slides, figure]`。
+
+R64 文件命名去时间戳、R65 面板精简 + L3 自动采纳 描述保持准确，无需校正。
