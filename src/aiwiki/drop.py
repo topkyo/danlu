@@ -175,16 +175,6 @@ def drop_url(root: Path, url: str, title: str | None = None) -> dict[str, Any]:
     return result
 
 
-def _drop_url_unlocked(root: Path, url: str, title: str | None = None) -> dict[str, Any]:
-    ensure_layout(root)
-    collection = _collect_url(root, url)
-    _validate_url_collection(collection)
-    result = _materialize_url(root, url, title, collection)
-    for event in collection.get("skip_events", []):
-        _append_run_event(root, event)
-    return result
-
-
 def _collect_url(root: Path, url: str) -> dict[str, Any]:
     fetched = _fetch_url(url, root=root)
     inline_images: list[dict[str, Any]] = []
@@ -309,17 +299,6 @@ def drop_pdf(root: Path, source: str, title: str | None = None) -> dict[str, Any
         shutil.rmtree(collection["tmp_dir"], ignore_errors=True)
 
 
-def _drop_pdf_unlocked(root: Path, source: str, title: str | None = None) -> dict[str, Any]:
-    ensure_layout(root)
-    collection = _collect_pdf(root, source, title)
-    try:
-        _validate_pdf(collection)
-        collection["extracted_text"] = _extract_pdf_text(collection["tmp_path"])
-        return _materialize_pdf(root, source, title, collection)
-    finally:
-        shutil.rmtree(collection["tmp_dir"], ignore_errors=True)
-
-
 def _collect_pdf(root: Path, source: str, title: str | None = None) -> dict[str, Any]:
     return _collect_binary_to_tmp(root, source, prefix="aiwiki-drop-pdf-", preferred_slug=title or Path(source).stem)
 
@@ -419,22 +398,6 @@ def drop_image(
         _validate_image(collection)
         with runtime_write_lock(root):
             return _materialize_image(root, source, title, collection)
-    finally:
-        shutil.rmtree(collection["tmp_dir"], ignore_errors=True)
-
-
-def _drop_image_unlocked(
-    root: Path,
-    source: str,
-    title: str | None = None,
-    enable_vision: bool = True,
-    client: Any | None = None,
-) -> dict[str, Any]:
-    ensure_layout(root)
-    collection = _collect_image(root, source, title, enable_vision, client)
-    try:
-        _validate_image(collection)
-        return _materialize_image(root, source, title, collection)
     finally:
         shutil.rmtree(collection["tmp_dir"], ignore_errors=True)
 
@@ -605,22 +568,12 @@ def _render_image_note(
             "vision_status": vision_status,
         },
     )
-
-
-
 def drop_repo(root: Path, source: str, title: str | None = None, max_files: int = 200) -> dict[str, Any]:
     ensure_layout(root)
     collection = _collect_repo(root, source, max_files)
     _validate_repo(collection)
     with runtime_write_lock(root):
         return _materialize_repo(root, source, title, collection)
-
-
-def _drop_repo_unlocked(root: Path, source: str, title: str | None = None, max_files: int = 200) -> dict[str, Any]:
-    ensure_layout(root)
-    collection = _collect_repo(root, source, max_files)
-    _validate_repo(collection)
-    return _materialize_repo(root, source, title, collection)
 
 
 def _collect_repo(root: Path, source: str, max_files: int = 200) -> dict[str, Any]:
@@ -871,20 +824,27 @@ def _rollback_created_paths(created_paths: list[Path]) -> None:
             path.unlink(missing_ok=True)
 
 
-def _snapshot_append_files(root: Path) -> dict[Path, int]:
+def _snapshot_append_files(root: Path) -> dict[Path, tuple[bool, int]]:
     candidates = [root / "wiki" / "indexes" / "log.md", runtime_history_path(root)]
-    sizes: dict[Path, int] = {}
+    sizes: dict[Path, tuple[bool, int]] = {}
     for path in candidates:
         try:
-            sizes[path] = path.stat().st_size if path.exists() else 0
+            if path.exists():
+                sizes[path] = (True, path.stat().st_size)
+            else:
+                sizes[path] = (False, 0)
         except OSError:
-            sizes[path] = 0
+            sizes[path] = (False, 0)
     return sizes
 
 
-def _truncate_append_files(sizes: dict[Path, int]) -> None:
-    for path, size in sizes.items():
+def _truncate_append_files(snapshots: dict[Path, tuple[bool, int]]) -> None:
+    for path, (existed, size) in snapshots.items():
         try:
+            if not existed:
+                with contextlib.suppress(FileNotFoundError):
+                    path.unlink()
+                continue
             if path.exists():
                 with path.open("rb+") as handle:
                     handle.truncate(size)

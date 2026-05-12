@@ -166,6 +166,21 @@ class DropPhaseTests(unittest.TestCase):
         self.assertEqual(self._raw_notes(), [])
         self.assertEqual(self._asset_files(), [])
 
+    def test_drop_pdf_history_failure_removes_log_when_absent(self) -> None:
+        source = self.root / "ok.pdf"
+        source.write_bytes(b"%PDF-1.4\n")
+        log_path = self.root / "wiki" / "indexes" / "log.md"
+        self.assertFalse(log_path.exists())
+
+        with patch("aiwiki.drop._extract_pdf_text", return_value="text"):
+            with patch("aiwiki.drop._append_raw_added_history", side_effect=RuntimeError("history boom")):
+                with self.assertRaisesRegex(RuntimeError, "history boom"):
+                    drop_pdf(self.root, str(source), title="Paper")
+
+        self.assertFalse(log_path.exists())
+        self.assertEqual(self._raw_notes(), [])
+        self.assertEqual(self._asset_files(), [])
+
     def test_drop_image_collect_failure_cleans_tmp(self) -> None:
         source = self.root / "img.png"
         source.write_bytes(_tiny_png())
