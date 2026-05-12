@@ -613,3 +613,43 @@ class L3ProposalTests(unittest.TestCase):
         # target left as-is (drift preserved; metadata_only revert is no-op)
         self.assertEqual(hashlib.sha256(target.read_bytes()).hexdigest(), drifted_sha)
         self.assertEqual(target.read_text(encoding="utf-8"), drifted_content)
+
+    def test_full_replace_revert_receipt_hash_fields_are_semantically_independent(self) -> None:
+        """F-INV-23: revert receipt's `after_hash` and `restored_hash` carry
+        distinct meanings:
+        - `after_hash` = expected pre-revert hash (carried over from apply
+          receipt's post-apply hash; conflict-gate reference, NOT recomputed).
+        - `restored_hash` = actual post-revert hash (computed from disk after
+          atomic write-back of `before_content`).
+        In a clean full_replace revert, restored_hash == before_hash, while
+        after_hash reflects the (different) post-apply state. They MUST differ
+        whenever the apply changed the target content.
+        """
+        create_l3_proposal(
+            self.root,
+            kind="prompt_proposal",
+            proposal_id="prop-hash-sem",
+            target_file="prompts/ask.md",
+            content="Updated ask prompt.\n",
+        )
+        applied = apply_l3_proposal(self.root, "prop-hash-sem")
+        reverted = revert_l3_proposal(self.root, str(applied["receipt_path"]))
+
+        self.assertEqual(reverted["state"], "reverted")
+        revert_receipt = json.loads((self.root / str(reverted["receipt_path"])).read_text(encoding="utf-8"))
+
+        # all three hash fields present
+        self.assertIn("before_hash", revert_receipt)
+        self.assertIn("after_hash", revert_receipt)
+        self.assertIn("restored_hash", revert_receipt)
+
+        before_hash = revert_receipt["before_hash"]
+        after_hash = revert_receipt["after_hash"]
+        restored_hash = revert_receipt["restored_hash"]
+
+        # clean full_replace revert: restored matches pre-apply (before_hash)
+        self.assertEqual(restored_hash, before_hash)
+        # after_hash carries the post-apply state, which differs from pre-apply
+        self.assertNotEqual(before_hash, after_hash)
+        # therefore restored_hash and after_hash are semantically independent
+        self.assertNotEqual(restored_hash, after_hash)

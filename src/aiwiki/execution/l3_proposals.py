@@ -862,6 +862,10 @@ def revert_l3_proposal(root: Path, receipt_id: str, *, note: str | None = None) 
     target = _target_path(root, str(proposal.get("kind") or ""), str(receipt.get("target_file") or ""))
     if not target.exists() or not target.is_file():
         raise FileNotFoundError(f"L3 proposal target not found: {receipt.get('target_file')}")
+    # F-INV-23: receipt["after_hash"] in revert context is the *expected
+    # pre-revert* hash (i.e. the apply-receipt's recorded post-apply hash).
+    # It is NOT recomputed from disk here; treat it as the conflict-gate
+    # reference. Compare against current_hash to detect drift since apply.
     expected_after_hash = str(receipt.get("after_hash") or "")
     current_hash = _hash_path(target)
     reverted_at = utc_now()
@@ -929,6 +933,18 @@ def revert_l3_proposal(root: Path, receipt_id: str, *, note: str | None = None) 
             atomic_write_text(target, str(receipt.get("before_content") or ""))
             wrote_target = True
         restored_hash = _hash_path(target)
+        # F-INV-23: revert receipt hash field semantics:
+        # - `before_hash`: pre-apply hash (carried over from apply receipt;
+        #   what target looked like before the original apply).
+        # - `after_hash`: expected pre-revert hash (carried over from apply
+        #   receipt's post-apply hash; conflict-gate reference, NOT recomputed).
+        # - `restored_hash`: actual post-revert hash (computed from disk after
+        #   atomic write-back; for metadata_only this equals current target hash
+        #   without any write).
+        # In no-drift full_replace: restored_hash == before_hash.
+        # In no-drift metadata_only: restored_hash == after_hash (no file change).
+        # Under drift (external modification between apply and revert),
+        # restored_hash may differ from both before_hash and after_hash.
         revert_receipt = {
             "version": 1,
             "kind": "execution-receipt",
