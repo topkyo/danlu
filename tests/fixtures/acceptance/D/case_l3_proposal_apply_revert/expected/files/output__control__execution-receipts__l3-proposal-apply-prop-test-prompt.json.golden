@@ -12,6 +12,7 @@
   "kind": "execution-receipt",
   "note": "acceptance apply",
   "operation": "apply",
+  "patch_kind": "full_replace",
   "proposal_kind": "prompt_proposal",
   "proposal_path": "output/_proposals/prompt/prop-test-prompt.md",
   "receipt_path": "output/control/execution-receipts/l3-proposal-apply-prop-test-prompt.json",

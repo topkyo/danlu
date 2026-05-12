@@ -419,3 +419,179 @@ class L3ProposalTests(unittest.TestCase):
         self.assertEqual(result["returned_count"], 0)
         self.assertEqual(result["candidates"], [])
         self.assertFalse(l3_proposal_state_path(self.root).exists())
+
+    def test_metadata_only_apply_does_not_modify_target_file(self) -> None:
+        """F-INV-20: metadata_only patch_kind must not write to target file.
+
+        Acknowledgement-style proposals carry trace metadata in patch.content
+        as review context only; apply records a receipt but leaves the target
+        file's sha256 unchanged.
+        """
+        import hashlib
+
+        target = self.root / "prompts" / "ask.md"
+        original_bytes = target.read_bytes()
+        original_sha = hashlib.sha256(original_bytes).hexdigest()
+
+        result = create_l3_proposal(
+            self.root,
+            kind="prompt_proposal",
+            proposal_id="prop-meta-only",
+            target_file="prompts/ask.md",
+            content="## Auto-generated review context\n- signal_id: sig-1\n",
+            rationale="metadata_only acknowledgement",
+            patch_kind="metadata_only",
+        )
+        self.assertEqual(result["state"], "candidate")
+
+        # patch.kind persisted as metadata_only in state
+        state_entry = self._state_proposal("prop-meta-only")
+        self.assertEqual(state_entry["patch"]["kind"], "metadata_only")
+
+        # apply
+        apply_result = apply_l3_proposal(self.root, "prop-meta-only")
+        self.assertEqual(apply_result["state"], "accepted")
+
+        # target file sha256 unchanged
+        after_apply_sha = hashlib.sha256(target.read_bytes()).hexdigest()
+        self.assertEqual(after_apply_sha, original_sha, "metadata_only apply must not touch target file")
+        self.assertEqual(apply_result["before_hash"], apply_result["after_hash"])
+
+        # apply receipt carries patch_kind=metadata_only
+        receipt = json.loads((self.root / apply_result["receipt_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(receipt["patch_kind"], "metadata_only")
+        self.assertEqual(receipt["before_hash"], receipt["after_hash"])
+        self.assertEqual(receipt["before_content"], receipt["after_content"])
+
+    def test_metadata_only_revert_is_noop_but_writes_receipt(self) -> None:
+        """F-INV-20: metadata_only revert leaves target untouched, writes revert receipt."""
+        import hashlib
+
+        target = self.root / "prompts" / "ask.md"
+        original_sha = hashlib.sha256(target.read_bytes()).hexdigest()
+
+        create_l3_proposal(
+            self.root,
+            kind="prompt_proposal",
+            proposal_id="prop-meta-revert",
+            target_file="prompts/ask.md",
+            content="## Review context\n",
+            patch_kind="metadata_only",
+        )
+        apply_result = apply_l3_proposal(self.root, "prop-meta-revert")
+
+        # revert by apply receipt
+        revert_result = revert_l3_proposal(self.root, apply_result["receipt_path"])
+        self.assertEqual(revert_result["proposal_id"], "prop-meta-revert")
+
+        # target still untouched
+        self.assertEqual(hashlib.sha256(target.read_bytes()).hexdigest(), original_sha)
+
+        # state moved to reverted
+        state_entry = self._state_proposal("prop-meta-revert")
+        self.assertEqual(state_entry["state"], "reverted")
+
+        # revert receipt carries patch_kind=metadata_only and restored_hash == after_hash
+        revert_receipt_path = self.root / state_entry["last_revert_receipt_path"]
+        revert_receipt = json.loads(revert_receipt_path.read_text(encoding="utf-8"))
+        self.assertEqual(revert_receipt["patch_kind"], "metadata_only")
+        self.assertEqual(revert_receipt["restored_hash"], revert_receipt["after_hash"])
+
+    def test_create_l3_proposal_rejects_unknown_patch_kind(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Unsupported L3 patch_kind"):
+            create_l3_proposal(
+                self.root,
+                kind="prompt_proposal",
+                proposal_id="prop-bad-kind",
+                target_file="prompts/ask.md",
+                content="x\n",
+                patch_kind="llm_diff",
+            )
+
+    def test_apply_defaults_missing_patch_kind_to_full_replace(self) -> None:
+        """F-INV-20 backward-compat: legacy proposals without patch.kind apply as full_replace."""
+        result = create_l3_proposal(
+            self.root,
+            kind="prompt_proposal",
+            proposal_id="prop-legacy",
+            target_file="prompts/ask.md",
+            content="Legacy proposal content.\n",
+        )
+        # Simulate legacy state where patch.kind is missing
+        state_path = l3_proposal_state_path(self.root)
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        for prop in state["proposals"]:
+            if prop["proposal_id"] == "prop-legacy":
+                prop["patch"].pop("kind", None)
+        state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        # apply must succeed (default to full_replace), not raise
+        apply_result = apply_l3_proposal(self.root, "prop-legacy")
+        self.assertEqual(apply_result["state"], "accepted")
+        self.assertEqual(
+            (self.root / "prompts" / "ask.md").read_text(encoding="utf-8"),
+            "Legacy proposal content.\n",
+        )
+        del result
+
+    def test_metadata_only_apply_is_stale_when_target_drifted(self) -> None:
+        """F-INV-20 N3: metadata_only apply still honors stale gate on before_hash.
+
+        Even though metadata_only does not write to target, the proposal is
+        anchored to a specific target snapshot via patch.before_hash; if the
+        target drifted before apply, apply must mark the proposal stale.
+        """
+        create_l3_proposal(
+            self.root,
+            kind="prompt_proposal",
+            proposal_id="prop-meta-stale",
+            target_file="prompts/ask.md",
+            content="## Review context\n",
+            patch_kind="metadata_only",
+        )
+        # External edit to target after candidate created
+        (self.root / "prompts" / "ask.md").write_text("Drifted before apply.\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(RuntimeError, "stale"):
+            apply_l3_proposal(self.root, "prop-meta-stale")
+
+        state_entry = self._state_proposal("prop-meta-stale")
+        self.assertEqual(state_entry["state"], "stale")
+        self.assertEqual(state_entry["stale_reason"], "before_hash_mismatch")
+
+    def test_metadata_only_revert_after_target_drift_still_succeeds(self) -> None:
+        """F-INV-20: metadata_only revert must not be blocked by target drift.
+
+        Since metadata_only apply did not touch the target, a later external
+        edit to the target is not a merge responsibility of this proposal.
+        Revert proceeds as no-op file op + receipt write.
+        """
+        import hashlib
+
+        target = self.root / "prompts" / "ask.md"
+
+        create_l3_proposal(
+            self.root,
+            kind="prompt_proposal",
+            proposal_id="prop-meta-drift",
+            target_file="prompts/ask.md",
+            content="## Review context\n",
+            patch_kind="metadata_only",
+        )
+        apply_result = apply_l3_proposal(self.root, "prop-meta-drift")
+
+        # Simulate external edit to target after apply (drift)
+        drifted_content = "Externally modified content.\n"
+        target.write_text(drifted_content, encoding="utf-8")
+        drifted_sha = hashlib.sha256(target.read_bytes()).hexdigest()
+
+        # revert should succeed (not enter revert_conflict)
+        revert_result = revert_l3_proposal(self.root, apply_result["receipt_path"])
+        self.assertEqual(revert_result["proposal_id"], "prop-meta-drift")
+
+        state_entry = self._state_proposal("prop-meta-drift")
+        self.assertEqual(state_entry["state"], "reverted")
+
+        # target left as-is (drift preserved; metadata_only revert is no-op)
+        self.assertEqual(hashlib.sha256(target.read_bytes()).hexdigest(), drifted_sha)
+        self.assertEqual(target.read_text(encoding="utf-8"), drifted_content)

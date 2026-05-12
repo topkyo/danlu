@@ -392,6 +392,7 @@ def generate_l3_proposals_from_planner(
             evidence_refs=[f"{preview.get('planner_log_path')}#{signal_id}"],
             signal_ids=[signal_id],
             pattern=_automatic_l3_pattern(candidate),
+            patch_kind="metadata_only",
         )
         generated.append(result)
         existing_ids.add(proposal_id)
@@ -521,6 +522,7 @@ def create_l3_proposal(
     evidence_refs: list[str] | None = None,
     signal_ids: list[str] | None = None,
     pattern: str = "manual_fixture",
+    patch_kind: str = "full_replace",
 ) -> dict[str, Any]:
     from aiwiki import autonomy_policy
 
@@ -540,6 +542,8 @@ def create_l3_proposal(
         raise ValueError(f"Unsupported L3 proposal kind: {kind}")
     if pattern not in L3_TRIGGER_PATTERNS:
         raise ValueError(f"Unsupported L3 trigger pattern: {pattern}")
+    if patch_kind not in {"full_replace", "metadata_only"}:
+        raise ValueError(f"Unsupported L3 patch_kind: {patch_kind}")
     target = _target_path(root, kind, target_file)
     if not target.exists() or not target.is_file():
         raise FileNotFoundError(f"L3 proposal target not found: {target_file}")
@@ -564,7 +568,7 @@ def create_l3_proposal(
         },
         "evidence_refs": evidence,
         "patch": {
-            "kind": "full_replace",
+            "kind": patch_kind,
             "before_hash": before_hash,
             "content": content.rstrip() + "\n",
         },
@@ -652,8 +656,12 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
     if not target.exists() or not target.is_file():
         raise FileNotFoundError(f"L3 proposal target not found: {proposal.get('target_file')}")
     patch = proposal.get("patch") if isinstance(proposal.get("patch"), dict) else {}
-    if str(patch.get("kind") or "") != "full_replace":
-        raise RuntimeError("Only full_replace L3 proposals are supported in the manual baseline.")
+    patch_kind_value = str(patch.get("kind") or "full_replace")
+    if patch_kind_value not in {"full_replace", "metadata_only"}:
+        raise RuntimeError(
+            "Only full_replace or metadata_only L3 proposals are supported in the manual baseline."
+        )
+    is_metadata_only = patch_kind_value == "metadata_only"
     expected_before_hash = str(patch.get("before_hash") or "")
     current_hash = _hash_path(target)
     applied_at = utc_now()
@@ -678,11 +686,14 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
 
     snapshot = target.read_bytes() if target.exists() else None
     before_content = target.read_text(encoding="utf-8")
-    after_content = str(patch.get("content") or "")
+    # metadata_only: target file untouched; after == before for all hash/content fields.
+    # Patch.content is preserved on the proposal page as review context, not written to target.
+    after_content = before_content if is_metadata_only else str(patch.get("content") or "")
     before_hash_for_audit = hashlib.sha256(snapshot or b"").hexdigest()
     after_hash_for_audit = hashlib.sha256(after_content.encode("utf-8")).hexdigest()
     try:
-        atomic_write_text(target, after_content)
+        if not is_metadata_only:
+            atomic_write_text(target, after_content)
         after_hash = _hash_path(target)
         action_id = _unique_l3_action_id(root, "l3-proposal-apply", proposal_id)
         receipt_path = execution_receipt_path(root, action_id)
@@ -696,6 +707,7 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
             "subject_kind": "l3_proposal",
             "subject_id": proposal_id,
             "proposal_kind": kind,
+            "patch_kind": patch_kind_value,
             "target_file": relative_path(root, target),
             "proposal_path": str(proposal.get("proposal_path") or ""),
             "before_hash": expected_before_hash,
@@ -853,7 +865,11 @@ def revert_l3_proposal(root: Path, receipt_id: str, *, note: str | None = None) 
     expected_after_hash = str(receipt.get("after_hash") or "")
     current_hash = _hash_path(target)
     reverted_at = utc_now()
-    if current_hash != expected_after_hash:
+    receipt_patch_kind = str(receipt.get("patch_kind") or "full_replace")
+    is_metadata_only_revert = receipt_patch_kind == "metadata_only"
+    # metadata_only revert is a no-op file operation; target drift is not a
+    # merge responsibility for this proposal, so skip the conflict gate.
+    if not is_metadata_only_revert and current_hash != expected_after_hash:
         proposal["state"] = "revert_conflict"
         proposal["revert_conflict_at"] = reverted_at
         hint_path = l3_revert_hint_path(root, proposal)
@@ -909,8 +925,9 @@ def revert_l3_proposal(root: Path, receipt_id: str, *, note: str | None = None) 
     wrote_target = False
     wrote_receipt = False
     try:
-        atomic_write_text(target, str(receipt.get("before_content") or ""))
-        wrote_target = True
+        if not is_metadata_only_revert:
+            atomic_write_text(target, str(receipt.get("before_content") or ""))
+            wrote_target = True
         restored_hash = _hash_path(target)
         revert_receipt = {
             "version": 1,
@@ -922,6 +939,7 @@ def revert_l3_proposal(root: Path, receipt_id: str, *, note: str | None = None) 
             "subject_kind": "l3_proposal",
             "subject_id": proposal_id,
             "source_receipt_path": relative_path(root, receipt_path),
+            "patch_kind": receipt_patch_kind,
             "target_file": relative_path(root, target),
             "before_hash": str(receipt.get("before_hash") or ""),
             "after_hash": expected_after_hash,

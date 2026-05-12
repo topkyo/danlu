@@ -10,6 +10,7 @@
   "kind": "execution-receipt",
   "note": "acceptance revert",
   "operation": "revert",
+  "patch_kind": "full_replace",
   "receipt_path": "output/control/execution-receipts/l3-proposal-revert-prop-test-prompt.json",
   "restored_hash": "sha256:bd13ffc1253b79016029c10d6e4823ff93ec0686ee8c4ec8a494684e66bc5e3b",
   "revert_supported": false,
