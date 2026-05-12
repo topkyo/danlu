@@ -12,7 +12,7 @@ const LLM_PROVIDER_PROFILES = [
     apiKeyEnv: "AIWIKI_OPENCODE_API_KEY",
     baseUrlSetting: "llmOpencodeBaseUrl",
     baseUrlEnv: "AIWIKI_OPENCODE_BASE_URL",
-    defaultBaseUrl: "https://opencode.ai/zen/v1",
+    defaultBaseUrl: "https://opencode.ai/zen/go/v1",
     defaultModel: DEFAULT_PRODUCT_LLM_MODEL,
     keyPlaceholder: "opencode-...",
   },

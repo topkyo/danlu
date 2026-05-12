@@ -237,7 +237,7 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 
 当前语义：
 - 新安装默认 route 是 `opencode-api/deepseek-v4-pro`；OpenCode Zen 走 OpenAI-compatible `/chat/completions` 路径
-- `opencode-api` 默认 base URL 是 `https://opencode.ai/zen/v1`，key 走 `AIWIKI_OPENCODE_API_KEY`，也可用通用 `AIWIKI_LLM_API_KEY`
+- `opencode-api` 默认 base URL 是 `https://opencode.ai/zen/go/v1`（DeepSeek V4 Pro 走 OpenCode Go endpoint，见 https://dev.opencode.ai/docs/go/ ），key 走 `AIWIKI_OPENCODE_API_KEY`，也可用通用 `AIWIKI_LLM_API_KEY`
 - `nvidia-nim-api` 保留为 unattended fallback route，默认模型 `openai/gpt-oss-120b`
 - `openrouter-api` 默认 base URL 是 `https://openrouter.ai/api/v1`，key 走 `AIWIKI_OPENROUTER_API_KEY`
 - `anthropic-api` 走 Anthropic Messages API，key 走 `AIWIKI_ANTHROPIC_API_KEY`

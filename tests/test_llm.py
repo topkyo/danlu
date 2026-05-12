@@ -422,8 +422,8 @@ class LLMClientTests(unittest.TestCase):
                     model="deepseek-v4-pro",
                     api_key="opencode_test_key",
                     opencode_api_key="opencode_test_key",
-                    base_url="https://opencode.ai/zen/v1",
-                    opencode_base_url="https://opencode.ai/zen/v1",
+                    base_url="https://opencode.ai/zen/go/v1",
+                    opencode_base_url="https://opencode.ai/zen/go/v1",
                 ),
                 root,
             )
@@ -725,7 +725,7 @@ class LLMClientTests(unittest.TestCase):
             nvidia_nim_api_key="nvapi_test_key",
             nvidia_nim_base_url="https://integrate.api.nvidia.com/v1",
             opencode_api_key="opencode_test_key",
-            opencode_base_url="https://opencode.ai/zen/v1",
+            opencode_base_url="https://opencode.ai/zen/go/v1",
             copilot_path="/usr/bin/copilot",
             claude_path="/usr/bin/claude",
         )
