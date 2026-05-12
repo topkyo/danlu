@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import html
+import logging
 import os
 import re
 import shutil
@@ -824,6 +825,9 @@ def _rollback_created_paths(created_paths: list[Path]) -> None:
             path.unlink(missing_ok=True)
 
 
+_LOGGER = logging.getLogger(__name__)
+
+
 def _snapshot_append_files(root: Path) -> dict[Path, tuple[bool, int]]:
     candidates = [root / "wiki" / "indexes" / "log.md", runtime_history_path(root)]
     sizes: dict[Path, tuple[bool, int]] = {}
@@ -833,8 +837,9 @@ def _snapshot_append_files(root: Path) -> dict[Path, tuple[bool, int]]:
                 sizes[path] = (True, path.stat().st_size)
             else:
                 sizes[path] = (False, 0)
-        except OSError:
-            sizes[path] = (False, 0)
+        except OSError as exc:
+            _LOGGER.warning("drop rollback snapshot stat failed for %s: %s", path, exc)
+            continue
     return sizes
 
 
@@ -848,8 +853,8 @@ def _truncate_append_files(snapshots: dict[Path, tuple[bool, int]]) -> None:
             if path.exists():
                 with path.open("rb+") as handle:
                     handle.truncate(size)
-        except OSError:
-            pass
+        except OSError as exc:
+            _LOGGER.warning("drop rollback truncate failed for %s: %s", path, exc)
 
 
 def _fetch_url(url: str, *, root: Path) -> dict[str, Any]:

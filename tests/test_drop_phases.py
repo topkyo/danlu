@@ -10,6 +10,8 @@ from unittest.mock import patch
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.drop import (
     _LOCAL_PDF_MAX_BYTES,
+    _snapshot_append_files,
+    _truncate_append_files,
     drop_image,
     drop_pdf,
     drop_repo,
@@ -281,6 +283,56 @@ class DropPhaseTests(unittest.TestCase):
                 drop_url(self.root, "https://example.test/page")
 
         self.assertEqual(timeline[:2], ["fetch", "lock-enter"])
+
+    def test_truncate_append_files_logs_warning_on_oserror(self) -> None:
+        log_path = self.root / "wiki" / "indexes" / "log.md"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("seed\nrollback-target\n", encoding="utf-8")
+        snapshots = {log_path: (True, 4)}  # truncate to "seed"
+
+        original_open = Path.open
+
+        def raising_open(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if self == log_path and "rb+" in args:
+                raise OSError("simulated truncate failure")
+            return original_open(self, *args, **kwargs)
+
+        with patch.object(Path, "open", raising_open):
+            with self.assertLogs("aiwiki.drop", level="WARNING") as captured:
+                _truncate_append_files(snapshots)
+
+        self.assertTrue(
+            any("drop rollback truncate failed" in line for line in captured.output),
+            captured.output,
+        )
+        # file still on disk because truncate failed; best-effort, no re-raise
+        self.assertEqual(log_path.read_text(encoding="utf-8"), "seed\nrollback-target\n")
+
+    def test_snapshot_append_files_skips_path_on_stat_oserror(self) -> None:
+        log_path = self.root / "wiki" / "indexes" / "log.md"
+        history_path = self.root / ".aiwiki/state/runtime-history.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("seed\n", encoding="utf-8")
+        history_path.write_text("{}\n", encoding="utf-8")
+
+        original_exists = Path.exists
+
+        def raising_exists(self):  # type: ignore[no-untyped-def]
+            if self == log_path:
+                raise OSError("simulated stat failure")
+            return original_exists(self)
+
+        with patch.object(Path, "exists", raising_exists):
+            with self.assertLogs("aiwiki.drop", level="WARNING") as captured:
+                snapshots = _snapshot_append_files(self.root)
+
+        self.assertNotIn(log_path, snapshots)
+        self.assertIn(history_path, snapshots)
+        self.assertTrue(
+            any("drop rollback snapshot stat failed" in line for line in captured.output),
+            captured.output,
+        )
 
 
 def _tiny_png() -> bytes:
