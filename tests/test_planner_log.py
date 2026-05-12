@@ -1465,6 +1465,23 @@ class TestCLI(_FixtureCase):
             },
         )
 
+    def test_cli_execute_flag_writes_execute_mode_records_to_disk(self) -> None:
+        # NEW-5 dogfood smoke: 端到端验证 `aiwiki planner-log-replay --execute`
+        # 真实落盘 mode=execute records，不走 mock。这是 F-INV-18 复现入口的
+        # 最小可断言契约：CLI flag → planner-log.jsonl 真实含 execute 记录。
+        root = self._copy_case_root("case_basic")
+        code, payload, stderr = self._run_main(root, ["planner-log-replay", "--execute"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["status"], "ok")
+
+        records = _read_jsonl(root / ".aiwiki/state/planner-log.jsonl")
+        execute_records = [item for item in records if item.get("mode") == "execute"]
+        self.assertGreater(len(execute_records), 0, "expected at least one mode=execute record after --execute")
+        for record in execute_records:
+            self.assertIn("decided_at", record)
+            self.assertIn("signal_id", record)
+
 
 class TestCanonicalDumps(unittest.TestCase):
     def test_canonical_dumps_order_and_idempotent(self) -> None:

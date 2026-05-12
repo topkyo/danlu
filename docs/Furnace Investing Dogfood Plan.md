@@ -217,6 +217,67 @@ aiwiki apply <proposal-id>
 - F-INV-18：投资 prompt 的关键约束（thesis / catalyst / risk / invalidation 必填）是否被 proposal 触及
 - F-INV-19：proposal accept 后 prompt 改进是否明显改变 ask 输出质量
 
+### 2.8 执行模式（execute-mode）开启与 F-INV-18 复现
+
+v2 dogfood 暴露：默认 planner replay 跑在 `observe_only` 模式，所有 planner-log records 都不带 `side_effects_allowed: true`，下游 candidate generator（`l3-proposal-generate`）会把它们标 `requires_execute_mode` 拒绝采纳，自动路径永远断在第一步。要复现 F-INV-18 / F-INV-19 的完整链路，必须显式开启 execute-mode。
+
+**关键概念区分**（不要混淆）：
+
+- `aiwiki planner-log-replay --execute`：把 signals 以 execute-mode 写入 `planner-log.jsonl`，让 records 带 `side_effects_allowed: true`。这是 candidate 准入的前置条件，本身**不**生成 L3 proposal。
+- `aiwiki l3-proposal-generate --apply`：扫 planner-log（要求 `mode=execute` 记录）→ 产生 L3 proposal candidate → 写入 `output/_proposals/prompt/` 或 `output/_proposals/policy/`。这是真正生成 proposal 的入口。
+- `AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` + `aiwiki run-nightly`：作用于**已存在**的 candidate proposal，自动 accept/apply（等价 `aiwiki apply <proposal-id>`），不参与 candidate 生成。
+
+**入口**：
+
+```bash
+# 步骤 1：把当前 signals 以 execute-mode 写入 planner-log
+# 默认 observe-only；--execute 让 records 带 side_effects_allowed=true
+aiwiki planner-log-replay --execute
+
+# 可选：指定 signals 路径（默认读 .aiwiki/state/signals.jsonl）
+aiwiki planner-log-replay --execute --signals-path .aiwiki/state/signals.jsonl
+```
+
+**行为差异**：
+
+- `observe_only`（默认）：planner-log 落 `mode=observe_only` + `side_effects_allowed: false`；candidate generator 会打 `requires_execute_mode` blocker，拒绝采纳
+- `--execute`：planner-log 落 `mode=execute` + `side_effects_allowed: true` + `reason_codes: [..., execute_mode_requested]`；解锁 `src/aiwiki/execution/l3_proposals.py` 中 `mode == "execute"` 路径，candidate 才能被生成
+
+**风险边界**：
+
+- `planner-log-replay --execute` 本身只写 `.aiwiki/state/planner-log.jsonl`（追加，可通过 rollback marker 回退）
+- `l3-proposal-generate --apply` 会通过 `append_wiki_log` 写 `wiki/indexes/log.md` 一条记录，并生成 `output/_proposals/prompt/*.md`（或 `output/_proposals/policy/*.md`）
+- `aiwiki apply <proposal-id>`（包括 `AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` 自动触发）会写真 `prompts/*.md`（prompt proposal）或 `schema/policies/*`（policy proposal），最大半径含 wiki 资产层
+- 不影响 raw/ 与 wiki/sources/ 与 wiki/derived/；不触发 LLM 调用
+- manual-first 仍是默认；不显式加 `--execute` 不会触发副作用
+
+**F-INV-18 复现示例**（真 vault）：
+
+```bash
+# 1. 在 dogfood 期内确保 vault 有新 signals（drop / compile / drift_scan 后会自然产生）
+source .envrc.dogfood
+
+# 2. 开启 execute-mode planner replay（前置条件）
+aiwiki planner-log-replay --execute
+
+# 3. 生成 L3 proposal candidate（真正的 candidate 生成入口）
+aiwiki l3-proposal-generate --apply
+
+# 4. 查看新落盘的 L3 proposal
+aiwiki review proposals
+ls output/_proposals/prompt/ output/_proposals/policy/ 2>/dev/null
+
+# 5.（可选）若设 AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1，nightly 会自动 apply 已生成的 proposal
+export AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1
+aiwiki run-nightly
+```
+
+**F-INV-18 成功判据**：
+
+- `output/_proposals/prompt/` 或 `output/_proposals/policy/` 出现新 proposal 文件
+- 新 proposal 的 `evidence_refs` / `signal_ids` 对应的 planner-log records 有 `trace_id` ≠ 历史 trace `9a396669-ab7d-4123-ad2c-0e5350fb05d0`（证明是 fresh trace 产生）
+- 备注：proposal 本身不存 `source_trace_id`；trace 出处需经 planner-log 反查（`signal_id` → `trace_id` 字段）
+
 ## 3. 验收标准
 
 dogfood 完成判据（必须全部命中）：
