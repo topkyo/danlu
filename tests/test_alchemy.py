@@ -798,6 +798,28 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         bundle = receipt.get("bundle") or {}
         self.assertEqual(bundle.get("counter_evidence"), ["wiki/derived/evidence-a.md", "wiki/derived/evidence-b.md"])
         self.assertEqual(bundle.get("confidence_level"), "medium")
+        self.assertEqual(bundle.get("counter_evidence_provenance"), "real")
+        settled = _parse_elixir_frontmatter(_settled_path(self.root, elixir_id))
+        self.assertEqual(settled.get("counter_evidence_provenance"), "real")
+
+    def test_promote_marks_none_found_provenance(self) -> None:
+        elixir_id = self._start_candidate_elixir(topic="promote-none-found-provenance")
+        self._update_candidate_frontmatter(
+            elixir_id,
+            counter_evidence=["NONE_FOUND"],
+            confidence_level="low",
+        )
+
+        result = run_alchemy_promote(self.root, elixir_id=elixir_id)
+
+        receipt = json.loads((self.root / str(result["receipt_path"])).read_text(encoding="utf-8"))
+        bundle = receipt.get("bundle") or {}
+        self.assertEqual(bundle.get("counter_evidence"), ["NONE_FOUND"])
+        self.assertEqual(bundle.get("counter_evidence_provenance"), "none_found")
+        settled = _parse_elixir_frontmatter(_settled_path(self.root, elixir_id))
+        self.assertEqual(settled.get("counter_evidence_provenance"), "none_found")
+        candidate_fm = _parse_elixir_frontmatter(_candidate_path(self.root, elixir_id))
+        self.assertNotIn("counter_evidence_provenance", candidate_fm)
 
     def test_promote_preserves_frontmatter_fields(self) -> None:
         elixir_id = self._start_candidate_elixir()

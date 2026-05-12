@@ -375,6 +375,7 @@ def build_elixir_promotion_receipt(
     secondary_path_sha256: str,
     counter_evidence: list[str],
     confidence_level: str,
+    counter_evidence_provenance: str,
 ) -> ExecutionReceipt:
     applied_at_value = applied_at or datetime.now(timezone.utc)
     applied_at_iso = applied_at_value.isoformat()
@@ -402,6 +403,7 @@ def build_elixir_promotion_receipt(
             "secondary_path_sha256": secondary_path_sha256,
             "counter_evidence": list(counter_evidence),
             "confidence_level": confidence_level,
+            "counter_evidence_provenance": counter_evidence_provenance,
         },
         "safe_apply_preview": None,
     }

@@ -1303,6 +1303,13 @@ def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> di
 
     _validate_promote_gate(frontmatter)
 
+    counter_evidence_items = [str(item).strip() for item in frontmatter.get("counter_evidence", [])]
+    counter_evidence_provenance = (
+        "none_found"
+        if counter_evidence_items == ["NONE_FOUND"]
+        else "real"
+    )
+
     original = candidate_path.read_text(encoding="utf-8", errors="replace")
     body = original.split("---", 2)[-1].lstrip("\n")
     applied_at_dt = datetime.now(timezone.utc)
@@ -1310,7 +1317,13 @@ def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> di
 
     settled_frontmatter = dict(frontmatter)
     settled_frontmatter.pop("sealed_at", None)
-    settled_frontmatter.update({"elixir_state": "settled", "promoted_at": applied_at})
+    settled_frontmatter.update(
+        {
+            "elixir_state": "settled",
+            "promoted_at": applied_at,
+            "counter_evidence_provenance": counter_evidence_provenance,
+        }
+    )
     tombstone_frontmatter = dict(frontmatter)
     tombstone_frontmatter.pop("sealed_at", None)
     tombstone_frontmatter.update(
@@ -1365,8 +1378,9 @@ def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> di
             note=note,
             primary_path_sha256=primary_hash,
             secondary_path_sha256=secondary_hash,
-            counter_evidence=[str(item).strip() for item in frontmatter.get("counter_evidence", [])],
+            counter_evidence=counter_evidence_items,
             confidence_level=str(frontmatter.get("confidence_level") or "").strip(),
+            counter_evidence_provenance=counter_evidence_provenance,
         )
         receipt_result_path = str(receipt.get("receipt_path") or "")
         _persist_receipt_transactionally(
