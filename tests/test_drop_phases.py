@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -357,6 +358,38 @@ class DropPhaseTests(unittest.TestCase):
         # FileNotFoundError must be swallowed without warning (expected case)
         with self.assertNoLogs("aiwiki.drop", level="WARNING"):
             _cleanup_tmp_dir(tmp_dir)
+
+    def test_drop_pdf_finally_cleanup_logs_warning_on_rmtree_failure(self) -> None:
+        """Integration test: drop_pdf 主路径成功落地，finally _cleanup_tmp_dir
+        rmtree 失败时记 warning 但不影响返回值，证明 cleanup observability 在
+        真实 collect/materialize 链路中被 exercise（非 helper unit test）。"""
+        source = self.root / "ok.pdf"
+        source.write_bytes(b"%PDF-1.4\n")
+        real_rmtree = shutil.rmtree
+        original_kept: dict[str, object] = {}
+
+        def selective_rmtree(path, *args, **kwargs):  # type: ignore[no-untyped-def]
+            # 只对 drop pdf collect tmp dir 模拟 OSError；保留其它 cleanup
+            # 路径正常工作，避免污染测试环境。
+            path_obj = Path(path)
+            if path_obj.name.startswith("aiwiki-drop-pdf-"):
+                original_kept["tmp_dir"] = path_obj
+                raise OSError("simulated cleanup failure")
+            return real_rmtree(path, *args, **kwargs)
+
+        with patch("aiwiki.drop._extract_pdf_text", return_value="text"):
+            with patch("aiwiki.drop.shutil.rmtree", side_effect=selective_rmtree):
+                with self.assertLogs("aiwiki.drop", level="WARNING") as captured:
+                    result = drop_pdf(self.root, str(source), title="Paper")
+
+        self.assertIn("note_path", result)
+        self.assertTrue((self.root / result["note_path"]).exists())
+        self.assertTrue(
+            any("drop tmp cleanup failed" in line for line in captured.output),
+            captured.output,
+        )
+        # tmp dir remained on disk because cleanup raised; assert seam fired
+        self.assertIn("tmp_dir", original_kept)
 
     def test_snapshot_append_files_skips_path_on_stat_oserror(self) -> None:
         log_path = self.root / "wiki" / "indexes" / "log.md"

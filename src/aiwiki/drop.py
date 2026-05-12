@@ -58,6 +58,8 @@ _LOCAL_PDF_MAX_BYTES = _ASSET_MAX_BYTES
 _LOCAL_IMAGE_MAX_BYTES = 25 * 1024 * 1024
 _SUPPORTED_IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml"}
 
+_LOGGER = logging.getLogger(__name__)
+
 _SENSITIVE_VALUE_PATTERN = re.compile(
     r"""
     (?:
@@ -825,9 +827,6 @@ def _rollback_created_paths(created_paths: list[Path]) -> None:
             path.unlink(missing_ok=True)
         except OSError as exc:
             _LOGGER.warning("drop rollback unlink failed for %s: %s", path, exc)
-
-
-_LOGGER = logging.getLogger(__name__)
 
 
 def _cleanup_tmp_dir(tmp_dir: Path) -> None:
