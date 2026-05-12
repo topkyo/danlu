@@ -114,3 +114,41 @@ def _run_drift_scan(  # pragma: no cover - exercised by explicit pytest acceptan
     )
     monkeypatch.setattr("aiwiki.drift_scan.clock.utc_now", lambda: FIXED_NOW)
     return drift_scan(vault, now=now)
+
+
+_DEFAULT_DROP_URL_FETCHED: dict = {
+    "title": "Agent Architecture Survey",
+    "final_url": "https://example.com/agents",
+    "content_type": "text/html",
+    "status": "200",
+    "browser_backend": "",
+    "extraction_mode": "readability",
+    "description": "A survey of agent runtime tradeoffs.",
+    "image_urls": [],
+    "text": "Agents coordinate tools, planning, and memory.",
+}
+
+
+def _run_drop_url(  # pragma: no cover - exercised by explicit pytest acceptance gate
+    vault: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    url: str,
+    title: str | None = None,
+    fetched: dict | None = None,
+) -> dict:
+    """Direct function-level invocation of `drop_url` for C acceptance fixture.
+
+    Avoids the CLI to keep the byte-stable surface focused on `drop_url`'s own
+    materialization (raw note + wiki/sources/log + runtime-history + audit
+    mirror). `_fetch_url` is the only external boundary; everything else is
+    local. `utc_now` is already patched by `_copy_case_and_fix_clock_from`
+    across `aiwiki.drop`, `aiwiki.render.paths`, and `aiwiki.app_utils`.
+    `_timestamped_stem` is slugify-only (no real timestamp), so `note_path`
+    is stem-stable from `title`.
+    """
+    from aiwiki.drop import drop_url
+
+    payload = dict(_DEFAULT_DROP_URL_FETCHED if fetched is None else fetched)
+    monkeypatch.setattr("aiwiki.drop._fetch_url", lambda u, root=None: payload)
+    return drop_url(vault, url, title=title)

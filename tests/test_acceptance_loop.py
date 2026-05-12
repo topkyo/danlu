@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.acceptance.case_runner import _copy_case_and_fix_clock_from, _run_cli, _run_drift_scan
+from tests.acceptance.case_runner import _copy_case_and_fix_clock_from, _run_cli, _run_drift_scan, _run_drop_url
 from tests.acceptance.llm_replay import inject_replay_client
 
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "acceptance" / "M6.1"
@@ -969,6 +969,45 @@ def test_drift_scan_three_scanners(  # pragma: no cover - explicit pytest accept
         [
             ".aiwiki/state/drift-aging.json",
             ".aiwiki/state/signals.jsonl",
+            ".aiwiki/state/runtime-history.jsonl",
+            ".aiwiki/state/audit.jsonl",
+        ],
+    )
+
+    if REFRESH:
+        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH=1 to verify byte-stable.")
+
+
+def test_drop_url_writes_raw_note_and_logs(  # pragma: no cover - explicit pytest acceptance gate
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C: drop_url end-to-end fixture.
+
+    Asserts byte-stable artifacts for url-drop materialization:
+    - raw/inbox/<slug>.md (frontmatter + sections)
+    - wiki/indexes/log.md (ingest entry)
+    - .aiwiki/state/runtime-history.jsonl (raw-added event)
+    - .aiwiki/state/audit.jsonl (auto-mirrored from runtime-history)
+
+    External boundary `_fetch_url` is stubbed by `_run_drop_url` via the default
+    fetched payload (image_urls=[] keeps asset download path out of scope; safety
+    reject / rollback paths are covered by existing unit tests).
+    """
+    case, vault = _copy_case_and_fix_clock_from("C", "case_drop_url", tmp_path, monkeypatch)
+    result = _run_drop_url(vault, monkeypatch, url="https://example.com/agents")
+
+    assert result["material"] == "url"
+    assert result["final_url"] == "https://example.com/agents"
+    assert result["asset_paths"] == []
+    assert result["note_path"].startswith("raw/inbox/")
+    assert result["note_path"].endswith(".md")
+
+    _assert_files_byte_equal(
+        vault,
+        case / "expected",
+        [
+            result["note_path"],
+            "wiki/indexes/log.md",
             ".aiwiki/state/runtime-history.jsonl",
             ".aiwiki/state/audit.jsonl",
         ],
