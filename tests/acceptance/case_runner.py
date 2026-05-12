@@ -67,6 +67,11 @@ def _copy_case_and_fix_clock_from(  # pragma: no cover - exercised by explicit p
     monkeypatch.setattr("aiwiki.content.io.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.render.paths.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.app_shell.utc_now", lambda: FIXED_NOW.isoformat())
+    monkeypatch.setattr("aiwiki.execution.l3_proposals.utc_now", lambda: FIXED_NOW.isoformat())
+    # `create_l3_proposal` honors AIWIKI_DISABLE_AUTOMATION via autonomy_policy and
+    # short-circuits to status=skipped when set. Acceptance fixtures must not be
+    # host-env sensitive — clear it so the kill switch never silently skews goldens.
+    monkeypatch.delenv("AIWIKI_DISABLE_AUTOMATION", raising=False)
     monkeypatch.setattr("aiwiki.runner.receipts.datetime", _FixedDateTime)
     monkeypatch.setattr("aiwiki.app_execution.datetime", _FixedDateTime)
     monkeypatch.setattr("aiwiki.execution.alchemy.datetime", _FixedDateTime)
@@ -152,3 +157,45 @@ def _run_drop_url(  # pragma: no cover - exercised by explicit pytest acceptance
     payload = dict(_DEFAULT_DROP_URL_FETCHED if fetched is None else fetched)
     monkeypatch.setattr("aiwiki.drop._fetch_url", lambda u, root=None: payload)
     return drop_url(vault, url, title=title)
+
+
+def _run_l3_proposal_apply_revert(  # pragma: no cover - exercised by explicit pytest acceptance gate
+    vault: Path,
+    *,
+    target_file: str = "prompts/test-prompt.md",
+    new_content: str = "Revised prompt body.",
+    proposal_id: str = "prop-test-prompt",
+    kind: str = "prompt_proposal",
+) -> tuple[dict, dict]:
+    """Direct function-level invocation of L3 proposal create→apply→revert chain.
+
+    Function-level (not CLI) to avoid conflict with existing acceptance stop-line
+    assertions that `l3-proposal-apply` does not appear in audit during nightly
+    happy paths. This isolated fixture exercises the governance lane explicitly.
+
+    `_unique_l3_action_id` derives action_id from `{prefix}-{proposal_id}` +
+    next-available suffix (not time-based), so receipt paths are deterministic.
+    `utc_now` is already patched by `_copy_case_and_fix_clock_from` for
+    `aiwiki.app_utils` (used inside l3_proposals.py via `from aiwiki.app_utils
+    import utc_now`).
+    """
+    from aiwiki.execution.l3_proposals import (
+        apply_l3_proposal,
+        create_l3_proposal,
+        revert_l3_proposal,
+    )
+
+    create_l3_proposal(
+        vault,
+        kind=kind,
+        target_file=target_file,
+        content=new_content,
+        proposal_id=proposal_id,
+        rationale="acceptance fixture",
+        pattern="manual_fixture",
+    )
+    apply_result = apply_l3_proposal(vault, proposal_id, note="acceptance apply")
+    # apply_result["receipt_path"] is relative; revert resolves by stem/path/action_id.
+    action_id = apply_result.get("action_id") or apply_result.get("receipt_path", "")
+    revert_result = revert_l3_proposal(vault, action_id, note="acceptance revert")
+    return apply_result, revert_result

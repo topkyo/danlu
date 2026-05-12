@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from tests.acceptance.case_runner import _copy_case_and_fix_clock_from, _run_cli, _run_drift_scan, _run_drop_url
+from tests.acceptance.case_runner import (
+    _copy_case_and_fix_clock_from,
+    _run_cli,
+    _run_drift_scan,
+    _run_drop_url,
+    _run_l3_proposal_apply_revert,
+)
 from tests.acceptance.llm_replay import inject_replay_client
 
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "acceptance" / "M6.1"
@@ -591,19 +597,33 @@ def test_today_feed_contract(  # pragma: no cover - explicit pytest acceptance g
 
 
 def test_acceptance_no_stop_line_violations() -> None:
-    """B4 guardrail: acceptance goldens must not contain Stop Line violation keywords."""
+    """B4 guardrail: acceptance goldens must not contain Stop Line violation keywords.
+
+    Exception: `D/case_l3_proposal_apply_revert/` deliberately exercises the L3
+    governance lane (create → apply → revert), so `l3-proposal-apply` is the
+    expected event/receipt name there, not a Stop Line violation. The case is
+    explicitly opt-in (not part of any nightly happy path) and remains covered
+    by `lane_judge` / `auto_judge` / `l3-proposal-accept` / `hidden_backend`
+    bans, which represent actual policy breaches.
+    """
     forbidden = ["lane_judge", "auto_judge", "l3-proposal-accept", "l3-proposal-apply", "hidden_backend"]
     fixtures_root = Path(__file__).parent / "fixtures" / "acceptance"
+    exempt_l3_apply_case = "D/case_l3_proposal_apply_revert"
+
+    def _check(path: Path) -> None:
+        rel = path.relative_to(fixtures_root).as_posix()
+        is_l3_apply_case = rel == exempt_l3_apply_case or rel.startswith(exempt_l3_apply_case + "/")
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for term in forbidden:
+            if term == "l3-proposal-apply" and is_l3_apply_case:
+                continue
+            assert term not in text, f"Stop Line violation in {path}: {term}"
 
     for golden in fixtures_root.glob("**/expected/files/*.golden"):
-        text = golden.read_text(encoding="utf-8", errors="replace")
-        for term in forbidden:
-            assert term not in text, f"Stop Line violation in {golden}: {term}"
+        _check(golden)
 
     for stdout_file in fixtures_root.glob("**/expected/stdout/*.json"):
-        text = stdout_file.read_text(encoding="utf-8", errors="replace")
-        for term in forbidden:
-            assert term not in text, f"Stop Line violation in {stdout_file}: {term}"
+        _check(stdout_file)
 
 
 def test_light_primitives_compile_lint_acceptance(  # pragma: no cover - explicit pytest acceptance gate
@@ -1010,6 +1030,66 @@ def test_drop_url_writes_raw_note_and_logs(  # pragma: no cover - explicit pytes
             "wiki/indexes/log.md",
             ".aiwiki/state/runtime-history.jsonl",
             ".aiwiki/state/audit.jsonl",
+        ],
+    )
+
+    if REFRESH:
+        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH=1 to verify byte-stable.")
+
+
+def test_l3_proposal_apply_then_revert(  # pragma: no cover - explicit pytest acceptance gate
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D: L3 proposal create → apply → revert three-step chain.
+
+    Function-level (not CLI) to exercise the L3 governance lane explicitly,
+    isolated from nightly happy paths. `_run_l3_proposal_apply_revert` calls
+    `create_l3_proposal`, `apply_l3_proposal`, then `revert_l3_proposal`
+    against `prompts/test-prompt.md`. After revert the target bytes are
+    restored to the original seed, and two execution receipts plus matching
+    runtime-history / audit / wiki-log entries exist.
+
+    `aiwiki.execution.l3_proposals.utc_now` is patched by
+    `_copy_case_and_fix_clock_from` (module-local binding via
+    `from aiwiki.app_utils import utc_now`). `_unique_l3_action_id` is
+    suffix-stable from `proposal_id`, so receipt paths are deterministic.
+    This case is the documented exception to the `l3-proposal-apply`
+    stop-line scan in `test_acceptance_no_stop_line_violations`.
+    """
+    case, vault = _copy_case_and_fix_clock_from(
+        "D", "case_l3_proposal_apply_revert", tmp_path, monkeypatch
+    )
+    apply_result, revert_result = _run_l3_proposal_apply_revert(vault)
+
+    assert apply_result["state"] == "accepted"
+    assert apply_result["proposal_id"] == "prop-test-prompt"
+    assert apply_result["receipt_path"].endswith("l3-proposal-apply-prop-test-prompt.json")
+
+    assert revert_result["state"] == "reverted"
+    assert revert_result["proposal_id"] == "prop-test-prompt"
+    assert revert_result["receipt_path"].endswith("l3-proposal-revert-prop-test-prompt.json")
+
+    # Contract hash invariants: revert restores byte-equality (restored_hash ==
+    # apply.before_hash) and the applied state was a real change (after_hash !=
+    # restored_hash). Asserting on the function return values (not just goldens)
+    # makes regressions diagnose-able without diffing 7 files.
+    assert revert_result["restored_hash"] == apply_result["before_hash"]
+    assert apply_result["after_hash"] != revert_result["restored_hash"]
+
+    # Target restored to original bytes after revert.
+    assert (vault / "prompts" / "test-prompt.md").read_text(encoding="utf-8") == "Original prompt body.\n"
+
+    _assert_files_byte_equal(
+        vault,
+        case / "expected",
+        [
+            "prompts/test-prompt.md",
+            ".aiwiki/state/l3-proposals.json",
+            "output/control/execution-receipts/l3-proposal-apply-prop-test-prompt.json",
+            "output/control/execution-receipts/l3-proposal-revert-prop-test-prompt.json",
+            ".aiwiki/state/runtime-history.jsonl",
+            ".aiwiki/state/audit.jsonl",
+            "wiki/indexes/log.md",
         ],
     )
 

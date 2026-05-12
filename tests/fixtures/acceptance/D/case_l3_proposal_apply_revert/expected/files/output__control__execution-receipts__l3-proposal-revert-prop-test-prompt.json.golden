@@ -1,0 +1,21 @@
+{
+  "action_id": "l3-proposal-revert-prop-test-prompt",
+  "after_hash": "sha256:01c60d9adbdcd79fa1a859ffa8f2c67c6957f07240114cdd5aeeb67ddf03e2d5",
+  "applied_at": "2026-04-27T00:00:00+00:00",
+  "audit_event": "execution_receipt_history_append",
+  "audit_path": ".aiwiki/state/execution-receipts.jsonl",
+  "audit_stream": "execution_receipts",
+  "before_hash": "sha256:bd13ffc1253b79016029c10d6e4823ff93ec0686ee8c4ec8a494684e66bc5e3b",
+  "generated_by": "aiwiki-l3-proposal",
+  "kind": "execution-receipt",
+  "note": "acceptance revert",
+  "operation": "revert",
+  "receipt_path": "output/control/execution-receipts/l3-proposal-revert-prop-test-prompt.json",
+  "restored_hash": "sha256:bd13ffc1253b79016029c10d6e4823ff93ec0686ee8c4ec8a494684e66bc5e3b",
+  "revert_supported": false,
+  "source_receipt_path": "output/control/execution-receipts/l3-proposal-apply-prop-test-prompt.json",
+  "subject_id": "prop-test-prompt",
+  "subject_kind": "l3_proposal",
+  "target_file": "prompts/test-prompt.md",
+  "version": 1
+}
