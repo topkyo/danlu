@@ -381,13 +381,29 @@ class L3ProposalTests(unittest.TestCase):
 
         self.assertIn("<!-- aiwiki:auto-proposal:start -->", content)
         self.assertIn("<!-- aiwiki:auto-proposal:end -->", content)
-        self.assertIn("sig-abc", content)
-        self.assertIn("trace-xyz", content)
-        self.assertIn("2026-05-12T10:00:00Z", content)
-        self.assertIn("dk-1", content)
-        self.assertIn("proposal_recommended, drift_observed", content)
-        self.assertIn("output/runtime/planner-log.jsonl#sig-abc", content)
         self.assertIn("Auto-generated L3 proposal review", content)
+        # F-INV-22: assert all 5 planner-decision bullet lines verbatim
+        self.assertIn("- `signal_id`: sig-abc", content)
+        self.assertIn("- `trace_id`: trace-xyz", content)
+        self.assertIn("- `decided_at`: 2026-05-12T10:00:00Z", content)
+        self.assertIn("- `dedupe_key`: dk-1", content)
+        self.assertIn("- `reason_codes`: proposal_recommended, drift_observed", content)
+        # F-INV-22: assert evidence bullet line verbatim
+        self.assertIn("### Evidence references", content)
+        self.assertIn("- `output/runtime/planner-log.jsonl#sig-abc`", content)
+        # F-INV-22: assert bullets are inside the auto-proposal block (not after end marker)
+        start_idx = content.index("<!-- aiwiki:auto-proposal:start -->")
+        end_idx = content.index("<!-- aiwiki:auto-proposal:end -->")
+        block = content[start_idx:end_idx]
+        for bullet in (
+            "- `signal_id`: sig-abc",
+            "- `trace_id`: trace-xyz",
+            "- `decided_at`: 2026-05-12T10:00:00Z",
+            "- `dedupe_key`: dk-1",
+            "- `reason_codes`: proposal_recommended, drift_observed",
+            "- `output/runtime/planner-log.jsonl#sig-abc`",
+        ):
+            self.assertIn(bullet, block)
 
     def test_automatic_l3_prompt_content_handles_missing_fields(self) -> None:
         candidate = {
@@ -410,6 +426,8 @@ class L3ProposalTests(unittest.TestCase):
         self.assertIn("- `decided_at`: (unknown)", content)
         self.assertIn("- `dedupe_key`: (unknown)", content)
         self.assertIn("- `reason_codes`: (none)", content)
+        # F-INV-22: evidence bullet falls back to (unknown)#(unknown) when both empty
+        self.assertIn("### Evidence references", content)
         self.assertIn("- `(unknown)#(unknown)`", content)
 
     def test_generation_preview_missing_planner_log_is_read_only_empty(self) -> None:
