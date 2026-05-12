@@ -1,0 +1,1 @@
+{"audit_event_id": "audit-bec23a6a0700d74f1a31", "event_type": "promote", "occurred_at": "2026-04-27T00:00:00+00:00", "revert_supported": false, "source_ref": ".aiwiki/state/execution-receipts.jsonl#L1", "source_stream": "execution_receipts", "subject": {"id": "elixir-d3-compounding-fcc6838c", "kind": "elixir_promotion"}, "trace_id": ""}

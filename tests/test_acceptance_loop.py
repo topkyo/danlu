@@ -756,6 +756,139 @@ def test_metrics_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
             assert metric["reason"] == "", f"{metric['key']} has value but reason='{metric['reason']}'"
 
 
+def _trace_collect_parent_ids(node: dict[str, object]) -> set[str]:  # pragma: no cover - explicit gate
+    """Recursively gather every ``id`` reachable through ``parents`` edges."""
+    seen: set[str] = set()
+    stack: list[dict[str, object]] = list(node.get("parents", []) or [])  # type: ignore[arg-type]
+    while stack:
+        cur = stack.pop()
+        if not isinstance(cur, dict):
+            continue
+        node_id = cur.get("id")
+        if isinstance(node_id, str):
+            seen.add(node_id)
+        nested = cur.get("parents") or []
+        if isinstance(nested, list):
+            stack.extend(nested)
+    return seen
+
+
+def test_elixir_stage3_compounding(  # pragma: no cover - explicit pytest acceptance gate
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D-3 acceptance: end-to-end Stage-3 compounding (promote-old → start/distill/finalize/promote-new → trace).
+
+    Seeded with a hand-crafted minimal corpus (mirrors M6.1 case_heavy_primitives
+    pattern) so the chain stays deterministic without exercising the ``ask_question``
+    path (which leaks host wall-clock into cache.db, planner-state, machine-memory).
+
+    Verifies invariants from ``docs/Furnace Next Direction Post-P4.md`` Gap P1:
+    - new elixir ``derived_from`` contains both the pre-seeded settled elixir
+      reference AND a ``wiki/derived/`` anchor;
+    - promote receipt's bundle exposes ``counter_evidence`` + dual sha256 anchors;
+    - upward trace from the new elixir reaches the pre-seeded old elixir.
+    """
+    case, vault = _copy_case_and_fix_clock_from("D3", "case_elixir_stage3_compounding", tmp_path, monkeypatch)
+
+    elixir_old = "elixir-d3-old"
+
+    out_start = _run_cli(
+        vault,
+        [
+            "alchemy-start",
+            "corpus-d3-new",
+            "--topic",
+            "D3 compounding",
+            "--protocol",
+            "research",
+            "--include-elixir",
+            elixir_old,
+        ],
+    )
+    _write_or_compare(case / "expected" / "stdout" / "01-alchemy-start.json", out_start)
+    start_payload = json.loads(out_start)
+    elixir_new = str(start_payload["elixir_id"])
+    if not REFRESH:
+        derived_at_start = list(start_payload.get("derived_from") or [])
+        assert f"wiki/elixirs/{elixir_old}.md" in derived_at_start, derived_at_start
+        assert any(
+            isinstance(ref, str) and ref.startswith("wiki/derived/") for ref in derived_at_start
+        ), derived_at_start
+
+    out_distill = _run_cli(
+        vault,
+        [
+            "alchemy-distill",
+            elixir_new,
+            "--question",
+            "How does compounding tighten the thesis?",
+            "--include-elixir",
+            elixir_old,
+        ],
+    )
+    _write_or_compare(case / "expected" / "stdout" / "02-alchemy-distill.json", out_distill)
+
+    out_finalize = _run_cli(vault, ["alchemy-finalize", "--elixir-id", elixir_new])
+    _write_or_compare(case / "expected" / "stdout" / "03-alchemy-finalize.json", out_finalize)
+
+    out_promote = _run_cli(vault, ["alchemy-promote", "--elixir-id", elixir_new])
+    _write_or_compare(case / "expected" / "stdout" / "04-alchemy-promote.json", out_promote)
+    if not REFRESH:
+        promote_payload = json.loads(out_promote)
+        assert promote_payload.get("elixir_state") == "settled"
+
+    out_trace = _run_cli(
+        vault,
+        ["trace", elixir_new, "--direction", "up", "--depth", "3", "--json"],
+    )
+    _write_or_compare(case / "expected" / "stdout" / "05-trace-up.json", out_trace)
+    if not REFRESH:
+        trace_payload = json.loads(out_trace)
+        assert trace_payload.get("id") == elixir_new
+        parent_ids = _trace_collect_parent_ids(trace_payload)
+        assert elixir_old in parent_ids, f"trace did not reach old elixir: {parent_ids}"
+
+    if not REFRESH:
+        from aiwiki.app_utils import parse_frontmatter
+
+        settled_path = vault / "wiki" / "elixirs" / f"{elixir_new}.md"
+        assert settled_path.is_file()
+        settled_fm = parse_frontmatter(settled_path.read_text(encoding="utf-8"))
+        derived_settled = list(settled_fm.get("derived_from") or [])
+        assert f"wiki/elixirs/{elixir_old}.md" in derived_settled, derived_settled
+        assert any(
+            isinstance(ref, str) and ref.startswith("wiki/derived/") for ref in derived_settled
+        ), derived_settled
+
+        receipts = _load_jsonl(vault / ".aiwiki" / "state" / "execution-receipts.jsonl")
+        promote_receipts = [
+            r
+            for r in receipts
+            if isinstance(r, dict)
+            and r.get("subject_kind") == "elixir_promotion"
+            and r.get("subject_id") == elixir_new
+        ]
+        assert promote_receipts, "no elixir_promotion receipt for new elixir"
+        bundle = promote_receipts[-1].get("bundle")
+        assert isinstance(bundle, dict)
+        assert bundle.get("counter_evidence")
+        assert bundle.get("primary_path_sha256")
+        assert bundle.get("secondary_path_sha256")
+
+    _assert_files_byte_equal(
+        vault,
+        case / "expected",
+        [
+            ".aiwiki/state/execution-receipts.jsonl",
+            ".aiwiki/state/audit.jsonl",
+            ".aiwiki/state/runtime-history.jsonl",
+        ],
+    )
+
+    if REFRESH:
+        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH=1 to verify byte-stable.")
+
+
 # M9-P1.2: corrupt-state acceptance coverage.
 #
 # Unit tests already cover receipt-failure rollback end-to-end:
