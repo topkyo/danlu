@@ -377,7 +377,11 @@ def generate_l3_proposals_from_planner(
         target = _target_path(root, kind, target_file)
         current_content = target.read_text(encoding="utf-8", errors="replace")
         signal_id = str(candidate.get("signal_id") or "")
-        content = _automatic_l3_prompt_content(current_content, signal_id=signal_id)
+        content = _automatic_l3_prompt_content(
+            current_content,
+            candidate=candidate,
+            planner_log_path=str(preview.get("planner_log_path") or ""),
+        )
         result = create_l3_proposal(
             root,
             kind=kind,
@@ -407,14 +411,42 @@ def _automatic_l3_proposal_id(signal_id: str) -> str:
     return slugify(f"auto-{signal_id or 'planner-signal'}")
 
 
-def _automatic_l3_prompt_content(current_content: str, *, signal_id: str) -> str:
+def _automatic_l3_prompt_content(
+    current_content: str,
+    *,
+    candidate: dict[str, Any],
+    planner_log_path: str,
+) -> str:
+    signal_id = str(candidate.get("signal_id") or "") or "(unknown)"
+    trace_id = str(candidate.get("trace_id") or "") or "(unknown)"
+    decided_at = str(candidate.get("decided_at") or "") or "(unknown)"
+    dedupe_key = str(candidate.get("dedupe_key") or "") or "(unknown)"
+    reason_codes = [str(item) for item in (candidate.get("reason_codes") or []) if isinstance(item, str)]
+    reason_codes_text = ", ".join(reason_codes) if reason_codes else "(none)"
+    evidence_path = planner_log_path or "(unknown)"
     base = current_content.rstrip()
     section = "\n".join(
         [
             "",
             "<!-- aiwiki:auto-proposal:start -->",
-            f"<!-- signal_id: {signal_id} -->",
-            "<!-- Review this candidate before accepting. -->",
+            "",
+            "## Auto-generated L3 proposal review",
+            "",
+            "This block was automatically produced from an execute-mode planner decision. Review the",
+            "context below and decide whether to accept the change before applying.",
+            "",
+            "### Planner decision",
+            "",
+            f"- `signal_id`: {signal_id}",
+            f"- `trace_id`: {trace_id}",
+            f"- `decided_at`: {decided_at}",
+            f"- `dedupe_key`: {dedupe_key}",
+            f"- `reason_codes`: {reason_codes_text}",
+            "",
+            "### Evidence references",
+            "",
+            f"- `{evidence_path}#{signal_id}`",
+            "",
             "<!-- aiwiki:auto-proposal:end -->",
         ]
     )

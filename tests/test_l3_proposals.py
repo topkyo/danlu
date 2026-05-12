@@ -9,6 +9,7 @@ from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_shell import build_shell_summary
 from aiwiki.app_state import l3_proposal_state_path
 from aiwiki.execution.l3_proposals import (
+    _automatic_l3_prompt_content,
     apply_l3_proposal,
     create_l3_proposal,
     generate_l3_proposals_from_planner,
@@ -361,6 +362,55 @@ class L3ProposalTests(unittest.TestCase):
             if line.strip()
         ]
         self.assertEqual(runtime_history[-1]["event_type"], "l3-proposal-create")
+
+    def test_automatic_l3_prompt_content_includes_record_fields(self) -> None:
+        candidate = {
+            "signal_id": "sig-abc",
+            "trace_id": "trace-xyz",
+            "dedupe_key": "dk-1",
+            "mode": "execute",
+            "decided_at": "2026-05-12T10:00:00Z",
+            "reason_codes": ["proposal_recommended", "drift_observed"],
+        }
+
+        content = _automatic_l3_prompt_content(
+            "# ask prompt\n",
+            candidate=candidate,
+            planner_log_path="output/runtime/planner-log.jsonl",
+        )
+
+        self.assertIn("<!-- aiwiki:auto-proposal:start -->", content)
+        self.assertIn("<!-- aiwiki:auto-proposal:end -->", content)
+        self.assertIn("sig-abc", content)
+        self.assertIn("trace-xyz", content)
+        self.assertIn("2026-05-12T10:00:00Z", content)
+        self.assertIn("dk-1", content)
+        self.assertIn("proposal_recommended, drift_observed", content)
+        self.assertIn("output/runtime/planner-log.jsonl#sig-abc", content)
+        self.assertIn("Auto-generated L3 proposal review", content)
+
+    def test_automatic_l3_prompt_content_handles_missing_fields(self) -> None:
+        candidate = {
+            "signal_id": "",
+            "trace_id": "",
+            "dedupe_key": "",
+            "mode": "",
+            "decided_at": "",
+            "reason_codes": [],
+        }
+
+        content = _automatic_l3_prompt_content(
+            "# ask prompt\n",
+            candidate=candidate,
+            planner_log_path="",
+        )
+
+        self.assertIn("- `signal_id`: (unknown)", content)
+        self.assertIn("- `trace_id`: (unknown)", content)
+        self.assertIn("- `decided_at`: (unknown)", content)
+        self.assertIn("- `dedupe_key`: (unknown)", content)
+        self.assertIn("- `reason_codes`: (none)", content)
+        self.assertIn("- `(unknown)#(unknown)`", content)
 
     def test_generation_preview_missing_planner_log_is_read_only_empty(self) -> None:
         result = preview_l3_proposal_generation(self.root)
