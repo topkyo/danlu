@@ -297,7 +297,7 @@ def drop_pdf(root: Path, source: str, title: str | None = None) -> dict[str, Any
         with runtime_write_lock(root):
             return _materialize_pdf(root, source, title, collection)
     finally:
-        shutil.rmtree(collection["tmp_dir"], ignore_errors=True)
+        _cleanup_tmp_dir(collection["tmp_dir"])
 
 
 def _collect_pdf(root: Path, source: str, title: str | None = None) -> dict[str, Any]:
@@ -400,7 +400,7 @@ def drop_image(
         with runtime_write_lock(root):
             return _materialize_image(root, source, title, collection)
     finally:
-        shutil.rmtree(collection["tmp_dir"], ignore_errors=True)
+        _cleanup_tmp_dir(collection["tmp_dir"])
 
 
 def _collect_image(
@@ -429,7 +429,7 @@ def _collect_image(
             enable_vision=enable_vision,
         )
     except Exception:
-        shutil.rmtree(collection["tmp_dir"], ignore_errors=True)
+        _cleanup_tmp_dir(collection["tmp_dir"])
         raise
     collection.update(
         {
@@ -595,7 +595,7 @@ def _collect_repo(root: Path, source: str, max_files: int = 200) -> dict[str, An
         snapshot = _repo_snapshot(repo_path, max_files=max_files)
     finally:
         if cleanup_path is not None:
-            shutil.rmtree(cleanup_path, ignore_errors=True)
+            _cleanup_tmp_dir(cleanup_path)
     return {"snapshot": snapshot, "original_path": original_path}
 
 
@@ -821,11 +821,28 @@ def _append_raw_added_history(
 
 def _rollback_created_paths(created_paths: list[Path]) -> None:
     for path in reversed(created_paths):
-        with contextlib.suppress(Exception):
+        try:
             path.unlink(missing_ok=True)
+        except OSError as exc:
+            _LOGGER.warning("drop rollback unlink failed for %s: %s", path, exc)
 
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _cleanup_tmp_dir(tmp_dir: Path) -> None:
+    """Best-effort remove a drop collect tmp dir; warn on failure, never raise.
+
+    Used by collect helpers to clear scratch dirs after materialize success or
+    on collect exception paths. Cleanup failures must not mask the original
+    error nor break the public drop API contract (no raise from cleanup).
+    """
+    try:
+        shutil.rmtree(tmp_dir)
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        _LOGGER.warning("drop tmp cleanup failed for %s: %s", tmp_dir, exc)
 
 
 def _snapshot_append_files(root: Path) -> dict[Path, tuple[bool, int]]:
@@ -1365,7 +1382,7 @@ def _collect_binary_to_tmp(root: Path, source: str, *, prefix: str, preferred_sl
             original_path = str(source_path)
         return {"tmp_dir": tmp_dir, "tmp_path": tmp_path, "original_path": original_path, "suffix": tmp_path.suffix.lower() or ".bin"}
     except Exception:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+        _cleanup_tmp_dir(tmp_dir)
         raise
 
 

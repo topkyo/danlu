@@ -10,6 +10,8 @@ from unittest.mock import patch
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.drop import (
     _LOCAL_PDF_MAX_BYTES,
+    _cleanup_tmp_dir,
+    _rollback_created_paths,
     _snapshot_append_files,
     _truncate_append_files,
     drop_image,
@@ -79,6 +81,8 @@ class DropPhaseTests(unittest.TestCase):
         ]
         self.assertEqual(events[-1]["event"], "url_image_download_skipped")
         self.assertEqual(events[-1]["reason"], "image boom")
+        self.assertEqual(events[-1]["url"], "https://example.test/broken.png")
+        self.assertEqual(events[-1]["error_type"], "RuntimeError")
 
     def test_drop_url_skip_events_inside_lock(self) -> None:
         timeline: list[str] = []
@@ -307,6 +311,52 @@ class DropPhaseTests(unittest.TestCase):
         )
         # file still on disk because truncate failed; best-effort, no re-raise
         self.assertEqual(log_path.read_text(encoding="utf-8"), "seed\nrollback-target\n")
+
+    def test_rollback_created_paths_logs_warning_on_unlink_failure(self) -> None:
+        victim = self.root / "raw" / "inbox" / "victim.md"
+        victim.parent.mkdir(parents=True, exist_ok=True)
+        victim.write_text("payload", encoding="utf-8")
+
+        original_unlink = Path.unlink
+
+        def raising_unlink(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if self == victim:
+                raise OSError("simulated unlink failure")
+            return original_unlink(self, *args, **kwargs)
+
+        with patch.object(Path, "unlink", raising_unlink):
+            with self.assertLogs("aiwiki.drop", level="WARNING") as captured:
+                _rollback_created_paths([victim])
+
+        self.assertTrue(
+            any("drop rollback unlink failed" in line for line in captured.output),
+            captured.output,
+        )
+        # best-effort: file stays on disk, no re-raise propagated to caller
+        self.assertTrue(victim.exists())
+
+    def test_cleanup_tmp_dir_logs_warning_on_rmtree_failure(self) -> None:
+        tmp_dir = self.root / "drop-tmp-probe"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        (tmp_dir / "scratch.bin").write_bytes(b"payload")
+
+        def raising_rmtree(*args, **kwargs):  # type: ignore[no-untyped-def]
+            raise OSError("simulated rmtree failure")
+
+        with patch("aiwiki.drop.shutil.rmtree", side_effect=raising_rmtree):
+            with self.assertLogs("aiwiki.drop", level="WARNING") as captured:
+                _cleanup_tmp_dir(tmp_dir)
+
+        self.assertTrue(
+            any("drop tmp cleanup failed" in line for line in captured.output),
+            captured.output,
+        )
+
+    def test_cleanup_tmp_dir_silent_when_already_absent(self) -> None:
+        tmp_dir = self.root / "never-created"
+        # FileNotFoundError must be swallowed without warning (expected case)
+        with self.assertNoLogs("aiwiki.drop", level="WARNING"):
+            _cleanup_tmp_dir(tmp_dir)
 
     def test_snapshot_append_files_skips_path_on_stat_oserror(self) -> None:
         log_path = self.root / "wiki" / "indexes" / "log.md"
