@@ -167,6 +167,63 @@ def _entry_matches_path_filter(
     return bool(candidates & filter_tokens)
 
 
+# F-INV-NEW-1: real Chinese annual-report PDFs (270+ pages) overrun the default
+# 120s LLM timeout. Estimate ~30KB of raw text per "page" and give 60s per page,
+# clamped to [240s, 1800s]. The result is per-job (not a global default change);
+# explicit ``AIWIKI_LLM_TIMEOUT`` env still wins at client creation time.
+_ADAPTIVE_COMPILE_BYTES_PER_PAGE = 30_000
+_ADAPTIVE_COMPILE_SECONDS_PER_PAGE = 60
+_ADAPTIVE_COMPILE_TIMEOUT_FLOOR = 240
+_ADAPTIVE_COMPILE_TIMEOUT_CEIL = 1800
+
+
+def _compute_adaptive_compile_timeout(root: Path, pending: list[dict[str, Any]]) -> int | None:
+    """Return adaptive ``timeout_seconds`` for run-compile based on largest pending raw size.
+
+    Returns ``None`` when there is nothing to adapt to — empty ``pending`` or an
+    explicit ``AIWIKI_LLM_TIMEOUT`` env override — so ``LLMConfig.from_env``
+    keeps its env-or-default behavior. When ``pending`` is non-empty but no raw
+    is stat-able inside ``root``, falls back to the floor so we still upgrade
+    past the historical 120s default for the typical Chinese-PDF case.
+    """
+
+    if os.environ.get("AIWIKI_LLM_TIMEOUT", "").strip():
+        # User pinned an explicit timeout — never override.
+        return None
+    if not pending:
+        return None
+    try:
+        root_resolved = root.resolve()
+    except OSError:
+        return _ADAPTIVE_COMPILE_TIMEOUT_FLOOR
+    max_bytes = 0
+    for entry in pending:
+        stored = entry.get("stored_path") if isinstance(entry, dict) else None
+        if not stored:
+            continue
+        raw_path = root / str(stored)
+        try:
+            raw_resolved = raw_path.resolve()
+        except OSError:
+            continue
+        try:
+            raw_resolved.relative_to(root_resolved)
+        except ValueError:
+            # Reject absolute / .. paths that escape the vault root.
+            continue
+        try:
+            size = raw_resolved.stat().st_size
+        except OSError:
+            continue
+        if size > max_bytes:
+            max_bytes = size
+    if max_bytes <= 0:
+        return _ADAPTIVE_COMPILE_TIMEOUT_FLOOR
+    pages = max(1, (max_bytes + _ADAPTIVE_COMPILE_BYTES_PER_PAGE - 1) // _ADAPTIVE_COMPILE_BYTES_PER_PAGE)
+    estimated = pages * _ADAPTIVE_COMPILE_SECONDS_PER_PAGE
+    return max(_ADAPTIVE_COMPILE_TIMEOUT_FLOOR, min(_ADAPTIVE_COMPILE_TIMEOUT_CEIL, estimated))
+
+
 @runtime_write_operation
 def run_compile(
     root: Path,
@@ -312,7 +369,7 @@ def run_compile(
             "retry_prompt_profile": "",
         }
 
-    effective_client = client or create_client(root)
+    effective_client = client or create_client(root, timeout_seconds=_compute_adaptive_compile_timeout(root, pending))
     model_selected = _client_model_name(effective_client)
     aggregate_audit = _empty_llm_audit()
     prompt_profile = _initial_compile_prompt_profile(effective_client)

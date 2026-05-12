@@ -772,6 +772,103 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(runs_log["delivery_mode"], "skipped")
         self.assertFalse(runs_log["fallback_used"])
 
+    def test_adaptive_compile_timeout_floor_for_empty_pending(self) -> None:
+        """F-INV-NEW-1: helper returns None when nothing is pending, so the
+        legacy LLMConfig.from_env value flows through unchanged."""
+
+        from aiwiki.runner.workflows import _compute_adaptive_compile_timeout
+
+        self.assertIsNone(_compute_adaptive_compile_timeout(self.root, []))
+
+    def test_adaptive_compile_timeout_scales_with_largest_pending_raw(self) -> None:
+        """F-INV-NEW-1: a single ~270 page raw (≈ 270 * 30KB) lands in the
+        adaptive window (floor 240s, ceil 1800s, 60s per page)."""
+
+        from aiwiki.runner.workflows import _compute_adaptive_compile_timeout
+
+        raw = self.root / "raw" / "inbox" / "big.md"
+        raw.parent.mkdir(parents=True, exist_ok=True)
+        raw.write_bytes(b"x" * (270 * 30_000))
+        pending = [{"id": "src-big", "stored_path": "raw/inbox/big.md"}]
+        # No env override: helper should compute adaptive timeout.
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("AIWIKI_LLM_TIMEOUT", None)
+            timeout = _compute_adaptive_compile_timeout(self.root, pending)
+        self.assertIsNotNone(timeout)
+        # 270 pages * 60s = 16_200, capped at 1800.
+        self.assertEqual(timeout, 1800)
+
+    def test_adaptive_compile_timeout_returns_floor_for_small_raw(self) -> None:
+        """F-INV-NEW-1: even tiny inputs get the 240s floor (still better than
+        the historical 120s default)."""
+
+        from aiwiki.runner.workflows import _compute_adaptive_compile_timeout
+
+        raw = self.root / "raw" / "inbox" / "tiny.md"
+        raw.parent.mkdir(parents=True, exist_ok=True)
+        raw.write_bytes(b"hello")
+        pending = [{"id": "src-tiny", "stored_path": "raw/inbox/tiny.md"}]
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("AIWIKI_LLM_TIMEOUT", None)
+            timeout = _compute_adaptive_compile_timeout(self.root, pending)
+        self.assertEqual(timeout, 240)
+
+    def test_adaptive_compile_timeout_respects_env_override(self) -> None:
+        """F-INV-NEW-1: explicit AIWIKI_LLM_TIMEOUT always wins; helper returns
+        None so create_client falls back to the env-derived LLMConfig value."""
+
+        from aiwiki.runner.workflows import _compute_adaptive_compile_timeout
+
+        raw = self.root / "raw" / "inbox" / "any.md"
+        raw.parent.mkdir(parents=True, exist_ok=True)
+        raw.write_bytes(b"x" * 100_000)
+        pending = [{"id": "src-any", "stored_path": "raw/inbox/any.md"}]
+        with patch.dict(os.environ, {"AIWIKI_LLM_TIMEOUT": "300"}, clear=False):
+            self.assertIsNone(_compute_adaptive_compile_timeout(self.root, pending))
+
+    def test_adaptive_compile_timeout_falls_back_to_floor_when_raw_missing(
+        self,
+    ) -> None:
+        """F-INV-NEW-1: pending non-empty but every stored_path is missing /
+        absolute / escapes the vault root → fall back to the 240s floor instead
+        of silently shrinking back to the 120s default."""
+
+        from aiwiki.runner.workflows import _compute_adaptive_compile_timeout
+
+        pending = [
+            {"id": "src-missing", "stored_path": "raw/inbox/does-not-exist.md"},
+            {"id": "src-absolute", "stored_path": "/etc/passwd"},
+            {"id": "src-escape", "stored_path": "../../../etc/hosts"},
+            {"id": "src-no-path", "stored_path": ""},
+            {"id": "src-not-dict"},  # malformed entry — should be skipped
+        ]
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("AIWIKI_LLM_TIMEOUT", None)
+            timeout = _compute_adaptive_compile_timeout(self.root, pending)
+        self.assertEqual(timeout, 240)
+
+    def test_adaptive_compile_timeout_picks_largest_entry(self) -> None:
+        """F-INV-NEW-1: with mixed sizes, the helper must size the timeout off
+        the *largest* raw in the filtered queue, not the first or the average."""
+
+        from aiwiki.runner.workflows import _compute_adaptive_compile_timeout
+
+        inbox = self.root / "raw" / "inbox"
+        inbox.mkdir(parents=True, exist_ok=True)
+        (inbox / "small.md").write_bytes(b"x" * 5_000)  # < floor pages
+        (inbox / "medium.md").write_bytes(b"x" * 90_000)  # 3 pages → 180s → floor
+        (inbox / "large.md").write_bytes(b"x" * (10 * 30_000))  # 10 pages → 600s
+        pending = [
+            {"id": "src-small", "stored_path": "raw/inbox/small.md"},
+            {"id": "src-large", "stored_path": "raw/inbox/large.md"},
+            {"id": "src-medium", "stored_path": "raw/inbox/medium.md"},
+        ]
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("AIWIKI_LLM_TIMEOUT", None)
+            timeout = _compute_adaptive_compile_timeout(self.root, pending)
+        # Largest is 10 pages * 60s = 600s, well inside [240, 1800].
+        self.assertEqual(timeout, 600)
+
     def test_run_compile_paths_filter_restricts_pending_queue(self) -> None:
         """P4-INV-1 (Round 59): when --paths is supplied, only matching sources
         enter the LLM enrichment queue. Use limit=0 so we just inspect what

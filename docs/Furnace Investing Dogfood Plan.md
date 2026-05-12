@@ -112,6 +112,25 @@ aiwiki today
 ls wiki/sources/
 ```
 
+**Adaptive timeout（P4-INV-NEW-1）**：
+
+`run-compile` 在创建 LLM client 时按 pending 队列里最大 raw 字节自适应估算 per-call timeout：
+
+```
+timeout_seconds = clamp(
+    ceil(max_raw_bytes / BYTES_PER_PAGE) * SECONDS_PER_PAGE,
+    floor = 240,   # 4 min, 防止过短
+    ceil  = 1800,  # 30 min, 防止过长
+)
+# BYTES_PER_PAGE = 30_000；SECONDS_PER_PAGE = 60
+```
+
+规则：
+- 若用户显式设置 `AIWIKI_LLM_TIMEOUT`，env 始终优先，adaptive helper 返回 `None`，沿用 `LLMConfig.from_env` 行为
+- pending 为空时返回 `None`，等同未启用 adaptive，仍走 env / 默认
+- pending 非空但所有 raw 都不可 stat（缺失 / 越出 vault root / 路径穿越）时回退到 floor（240s）
+- 该 timeout 仅作用于本次 `run-compile` 进程，不修改 `LLMConfig.timeout_seconds=120` 默认值，不写入任何配置文件
+
 **摩擦记录点**：
 - F-INV-4：LLM compile 在中文 PDF source 上的 frontmatter 成功率
 - F-INV-5：concept 抽取是否产生 investing 领域噪声词（"金额 / 季度 / 公司"等通用词应过滤）
