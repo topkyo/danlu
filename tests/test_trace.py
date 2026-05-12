@@ -460,6 +460,44 @@ def _case_invalid_direction_raises() -> None:
         raise AssertionError("expected ValueError for invalid direction")
 
 
+def _case_source_down_includes_derived_children() -> None:
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _seed_minimal_vault(root)
+        node = resolve_trace(root, "discovered-20260427-test", direction="down", max_depth=2)
+        assert node.kind == "source"
+        derived_children = [c for c in node.children if c.kind == "derived"]
+        assert derived_children, "source down should surface derived pages citing this source"
+        assert any(c.id == "derived-test" for c in derived_children)
+        assert not any(c.not_found for c in derived_children)
+
+
+def _case_derived_down_dedupes_duplicate_elixir_refs() -> None:
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _seed_minimal_vault(root)
+        # Add a settled elixir AND a candidate elixir under the same id referencing derived-test;
+        # both reference the same derived page. Dedup should collapse to one child.
+        _write(
+            root / "wiki" / "elixirs" / "elixir-dup.md",
+            """---
+elixir_id: elixir-dup
+title: Dup Elixir
+elixir_state: settled
+derived_from:
+  - wiki/derived/derived-test.md
+  - wiki/derived/derived-test.md
+---
+
+# Dup
+""",
+        )
+        node = resolve_trace(root, "derived-test", direction="down", max_depth=2)
+        assert node.kind == "derived"
+        dup_children = [c for c in node.children if c.id == "elixir-dup"]
+        assert len(dup_children) == 1, f"expected dedup, got {[c.id for c in node.children]}"
+
+
 # --- runner -----------------------------------------------------------------
 
 

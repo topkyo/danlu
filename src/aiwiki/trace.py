@@ -218,6 +218,27 @@ def _resolve_source(root: Path, asset_id: str, *, direction: str, depth: int, vi
                 node.children.append(
                     _resolve_any(root, concept_id, direction=direction, depth=depth - 1, visited=visited)
                 )
+        # source → derived edge: scan wiki/derived/* whose citations reference this source
+        seen_derived: set[str] = set()
+        for d_path, d_fm in _iter_curated_pages(root, "wiki/derived"):
+            citations = _as_str_list(d_fm.get("citations"))
+            matched = False
+            for entry in citations:
+                target = entry.split("#", 1)[0].strip().strip('"').strip("'")
+                if not target:
+                    continue
+                if target == rel or target.endswith("/" + Path(rel).name) or target == node.id:
+                    matched = True
+                    break
+            if not matched:
+                continue
+            derived_id = str(d_fm.get("id") or d_path.stem)
+            if derived_id in seen_derived:
+                continue
+            seen_derived.add(derived_id)
+            node.children.append(
+                _resolve_any(root, derived_id, direction=direction, depth=depth - 1, visited=visited)
+            )
     return node
 
 
@@ -268,14 +289,19 @@ def _resolve_derived(root: Path, asset_id: str, *, direction: str, depth: int, v
             )
     if direction in {"down", "both"}:
         # 哪些 elixir 引用此 derived 页面
+        seen_elixir: set[str] = set()
         for elixir_subdir in ("wiki/elixirs", "output/_candidates/elixirs"):
             for e_path, e_fm in _iter_curated_pages(root, elixir_subdir):
                 refs = _as_str_list(e_fm.get("derived_from"))
-                if any(_derived_ref_matches(r, rel, node.id) for r in refs):
-                    elixir_id = str(e_fm.get("id") or e_path.stem)
-                    node.children.append(
-                        _resolve_any(root, elixir_id, direction=direction, depth=depth - 1, visited=visited)
-                    )
+                if not any(_derived_ref_matches(r, rel, node.id) for r in refs):
+                    continue
+                elixir_id = str(e_fm.get("id") or e_path.stem)
+                if elixir_id in seen_elixir:
+                    continue
+                seen_elixir.add(elixir_id)
+                node.children.append(
+                    _resolve_any(root, elixir_id, direction=direction, depth=depth - 1, visited=visited)
+                )
     return node
 
 
