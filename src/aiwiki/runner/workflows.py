@@ -224,6 +224,93 @@ def _compute_adaptive_compile_timeout(root: Path, pending: list[dict[str, Any]])
     return max(_ADAPTIVE_COMPILE_TIMEOUT_FLOOR, min(_ADAPTIVE_COMPILE_TIMEOUT_CEIL, estimated))
 
 
+def _unique_run_compile_action_id(root: Path, started_at_ms: int) -> str:
+    """Return a per-job action id for a run-compile failure receipt.
+
+    Mirrors the alchemy pattern (``<kind>-<epoch_ms>`` + ``-<n>`` suffix on
+    same-millisecond collisions) so receipt filenames are stable and unique
+    inside ``output/control/execution-receipts/``.
+    """
+
+    candidate = f"run-compile-{started_at_ms}"
+    n = 2
+    while (root / "output" / "control" / "execution-receipts" / f"{candidate}.json").exists():
+        candidate = f"run-compile-{started_at_ms}-{n}"
+        n += 1
+    return candidate
+
+
+def _write_run_compile_failure_receipt(
+    root: Path,
+    *,
+    subject_kind: str,
+    subject_id: str,
+    target_file: str,
+    source: str,
+    item_audit: dict[str, Any],
+    item_result: CompletionResult | None,
+    exc: Exception,
+    started_at_ms: int,
+    duration_ms: int,
+    used_profile: str,
+    item_retry_profile: str,
+    fallback_stages: list[str],
+    fallback_reason: str,
+    extra: dict[str, Any] | None = None,
+) -> str:
+    """Persist a per-job ``run-compile-<id>.json`` receipt to
+    ``output/control/execution-receipts/`` on fail-fast.
+
+    Returns the vault-relative receipt path (empty string on write failure)
+    so callers can stamp it into the JSONL record. Never raises — the
+    original LLM exception must remain the visible failure for the caller.
+    """
+
+    try:
+        action_id = _unique_run_compile_action_id(root, started_at_ms)
+        receipt_path = root / "output" / "control" / "execution-receipts" / f"{action_id}.json"
+        applied_at = datetime.fromtimestamp(started_at_ms / 1000.0, tz=timezone.utc).isoformat()
+        receipt: dict[str, Any] = {
+            "version": 1,
+            "kind": "execution-receipt",
+            "generated_by": "aiwiki-run-compile",
+            "applied_at": applied_at,
+            "operation": "compile",
+            "status": "failed",
+            "action_id": action_id,
+            "subject_kind": subject_kind,
+            "subject_id": subject_id,
+            "target_file": target_file,
+            "source": source,
+            "prompt_profile": used_profile,
+            "retry_prompt_profile": item_retry_profile,
+            "duration_ms": duration_ms,
+            "error_class": _receipt_error_class(exc),
+            "error_message": str(exc),
+            "fallback_stages": list(fallback_stages),
+            "fallback_reason": fallback_reason,
+            "llm_audit": dict(item_audit),
+            "response_id": getattr(item_result, "response_id", "") if item_result is not None else "",
+            "usage": dict(getattr(item_result, "usage", {}) or {}) if item_result is not None else {},
+            "revert_supported": False,
+        }
+        if extra:
+            receipt.update(extra)
+        receipt_rel = relative_path(root, receipt_path)
+        receipt["receipt_path"] = receipt_rel
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(
+            receipt_path,
+            json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        )
+        return receipt_rel
+    except Exception as receipt_exc:  # noqa: BLE001 — best-effort, must not mask exc
+        logging.getLogger("aiwiki").warning(
+            "run-compile fail-fast receipt write failed: %s", receipt_exc
+        )
+        return ""
+
+
 @runtime_write_operation
 def run_compile(
     root: Path,
@@ -467,6 +554,24 @@ def run_compile(
                     contract_validated=False,
                 )
                 aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
+                _failure_duration_ms = int((time.monotonic() - item_started) * 1000)
+                _failure_started_at_ms = int((time.time() - _failure_duration_ms / 1000.0) * 1000)
+                _failure_receipt_path = _write_run_compile_failure_receipt(
+                    root,
+                    subject_kind="source_page",
+                    subject_id=str(entry.get("id", "")),
+                    target_file=relative_path(root, target),
+                    source=str(entry.get("stored_path", "")),
+                    item_audit=item_audit,
+                    item_result=item_result,
+                    exc=exc,
+                    started_at_ms=_failure_started_at_ms,
+                    duration_ms=_failure_duration_ms,
+                    used_profile=used_profile,
+                    item_retry_profile=item_retry_profile,
+                    fallback_stages=item_fallback_stages,
+                    fallback_reason=item_fallback_reason,
+                )
                 _stamped_record(
                     {
                         "event": "run-compile",
@@ -474,7 +579,8 @@ def run_compile(
                         "source": entry["stored_path"],
                         "prompt_profile": used_profile,
                         "retry_prompt_profile": item_retry_profile,
-                        "duration_ms": int((time.monotonic() - item_started) * 1000),
+                        "duration_ms": _failure_duration_ms,
+                        "receipt_path": _failure_receipt_path,
                         **fail_fast_counters(),
                     },
                     item_audit,
@@ -603,6 +709,25 @@ def run_compile(
                     contract_validated=False,
                 )
                 aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
+                _failure_duration_ms = int((time.monotonic() - item_started) * 1000)
+                _failure_started_at_ms = int((time.time() - _failure_duration_ms / 1000.0) * 1000)
+                _failure_receipt_path = _write_run_compile_failure_receipt(
+                    root,
+                    subject_kind="concept_page",
+                    subject_id=str(slug),
+                    target_file=relative_path(root, target),
+                    source="",
+                    item_audit=item_audit,
+                    item_result=item_result,
+                    exc=exc,
+                    started_at_ms=_failure_started_at_ms,
+                    duration_ms=_failure_duration_ms,
+                    used_profile=used_profile,
+                    item_retry_profile=item_retry_profile,
+                    fallback_stages=item_fallback_stages,
+                    fallback_reason=item_fallback_reason,
+                    extra={"source_pages": list(source_pages)},
+                )
                 _stamped_record(
                     {
                         "event": "run-compile-concept",
@@ -610,7 +735,8 @@ def run_compile(
                         "source_pages": source_pages,
                         "prompt_profile": used_profile,
                         "retry_prompt_profile": item_retry_profile,
-                        "duration_ms": int((time.monotonic() - item_started) * 1000),
+                        "duration_ms": _failure_duration_ms,
+                        "receipt_path": _failure_receipt_path,
                         **fail_fast_counters(),
                     },
                     item_audit,
@@ -753,6 +879,30 @@ def run_compile(
                     contract_validated=False,
                 )
                 aggregate_audit = _merge_llm_audits(aggregate_audit, item_audit)
+                _failure_duration_ms = int((time.monotonic() - item_started) * 1000)
+                _failure_started_at_ms = int((time.time() - _failure_duration_ms / 1000.0) * 1000)
+                _failure_receipt_path = _write_run_compile_failure_receipt(
+                    root,
+                    subject_kind="concept_rewrite_proposal",
+                    subject_id=str(slug),
+                    target_file=f"wiki/rewrite-proposals/{slug}.md",
+                    source="",
+                    item_audit=item_audit,
+                    item_result=item_result,
+                    exc=exc,
+                    started_at_ms=_failure_started_at_ms,
+                    duration_ms=_failure_duration_ms,
+                    used_profile=used_profile,
+                    item_retry_profile=item_retry_profile,
+                    fallback_stages=item_fallback_stages,
+                    fallback_reason=item_fallback_reason,
+                    extra={
+                        "source_pages": list(source_pages),
+                        "concept_page": relative_path(root, target),
+                        "quality_priority": quality_record.get("priority", ""),
+                        "quality_issues": list(quality_record.get("issues", []) or []),
+                    },
+                )
                 _stamped_record(
                     {
                         "event": "run-compile-concept-rewrite-proposal",
@@ -763,7 +913,8 @@ def run_compile(
                         "quality_issues": quality_record.get("issues", []),
                         "prompt_profile": used_profile,
                         "retry_prompt_profile": item_retry_profile,
-                        "duration_ms": int((time.monotonic() - item_started) * 1000),
+                        "duration_ms": _failure_duration_ms,
+                        "receipt_path": _failure_receipt_path,
                         **fail_fast_counters(),
                     },
                     item_audit,
