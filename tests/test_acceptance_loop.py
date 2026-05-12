@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.acceptance.case_runner import _copy_case_and_fix_clock_from, _run_cli
+from tests.acceptance.case_runner import _copy_case_and_fix_clock_from, _run_cli, _run_drift_scan
 from tests.acceptance.llm_replay import inject_replay_client
 
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "acceptance" / "M6.1"
@@ -925,3 +925,54 @@ def test_strict_loader_raises_on_corrupt_state(tmp_path: Path) -> None:
     assert ctx.value.line_number == 2
     assert ctx.value.path == receipts
     assert "json decode failed" in ctx.value.reason
+
+
+def test_drift_scan_three_scanners(  # pragma: no cover - explicit pytest acceptance gate
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B acceptance: drift_scan emits stale / changed-evidence / dependency-break findings.
+
+    Function-level (non-CLI) deterministic fixture covering all three scanners in
+    `aiwiki.drift_scan.drift_scan`. Asserts byte-stable artifacts for
+    `drift-aging.json` (overwrite), `signals.jsonl` (append), `runtime-history.jsonl`
+    (append), and the mirrored `audit.jsonl` record.
+
+    Fixture seeds (see `tests/fixtures/acceptance/B/case_drift_scan/root/`):
+    - `wiki/judgments/jud-stale.md` — `last_reviewed=2025-10-01` (208d before
+      FIXED_NOW=2026-04-27, past 180d STALE_JUDGMENT_DAYS_DEFAULT).
+    - `wiki/elixirs/elixir-changed.md` — citation_snapshots with a wrong digest
+      for `raw/evidence.md` (drifted) + a snapshot pointing at `raw/missing.md`
+      that does not exist on disk (stale_paths).
+    - `wiki/elixirs/elixir-broken.md` — `derived_from` references a judgment
+      path that does not exist on disk (dependency break).
+    """
+    case, vault = _copy_case_and_fix_clock_from("B", "case_drift_scan", tmp_path, monkeypatch)
+
+    result = _run_drift_scan(vault, monkeypatch, now="2026-04-27T00:00:00Z")
+
+    if not REFRESH:
+        assert len(result["stale_judgments"]) >= 1, result
+        assert any(f["judgment_id"] == "jud-stale" for f in result["stale_judgments"])
+        assert len(result["changed_evidence"]) >= 1, result
+        changed = result["changed_evidence"][0]
+        assert changed["asset_id"] == "elixir-changed"
+        assert "raw/evidence.md" in changed["drifted_paths"]
+        assert "raw/missing.md" in changed["stale_paths"]
+        assert len(result["dependency_breaks"]) >= 1, result
+        assert result["dependency_breaks"][0]["elixir_id"] == "elixir-broken"
+        assert result["signals_appended"] >= 3
+        assert result["errors"] == []
+
+    _assert_files_byte_equal(
+        vault,
+        case / "expected",
+        [
+            ".aiwiki/state/drift-aging.json",
+            ".aiwiki/state/signals.jsonl",
+            ".aiwiki/state/runtime-history.jsonl",
+            ".aiwiki/state/audit.jsonl",
+        ],
+    )
+
+    if REFRESH:
+        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH=1 to verify byte-stable.")

@@ -16,6 +16,7 @@
 
 ## 当前动态
 
+- 2026-05-12 (B drift/aging acceptance Gap B 收口)：`drift_scan` 三个扫描器（stale judgments / changed evidence / dependency breaks）上提到 acceptance 层。`tests/fixtures/acceptance/B/case_drift_scan/` 新建，含 1 stale judgment + 1 elixir w/ drifted+stale citation_snapshots（`raw/evidence.md` digest 故意错 + `raw/missing.md` 不存在）+ 1 elixir w/ broken `derived_from`，golden 覆盖 `.aiwiki/state/{drift-aging.json, signals.jsonl, runtime-history.jsonl, audit.jsonl}` 字节稳。`tests/acceptance/case_runner.py` 加 `_run_drift_scan(vault, monkeypatch, now=...)` helper（函数级直调避开 CLI 不存在 + nightly 无关 determinism；显式 `delenv AIWIKI_STALE_JUDGMENT_DAYS` + `monkeypatch uuid.uuid4 version=4` 在 helper 内部，避免 leak 到 collector path）。acceptance 14 → 15；verify PASS（2125 unit + 15 acceptance + 92% coverage + ruff clean）；oracle qa-review APPROVE after fixes（ses_1e58d3070ffemOz03PdcVDGNxv）。
 - 2026-05-12 (D-3 acceptance Gap P1 收口)：D-3「金丹复利」从 unit-only 上提到 acceptance 层。新增 fixture `tests/fixtures/acceptance/D3/case_elixir_stage3_compounding/`，跑 5 步 CLI 链（alchemy-start/distill/finalize/promote + trace up），断言新丹 `derived_from` 含旧丹 + derived anchor / promote bundle 含 counter_evidence / `trace up` 递归 parents / 3 state JSONL byte-stable。`tests/acceptance/case_runner.py` 加 monkeypatch 把 `app_execution.datetime` + `execution.alchemy.datetime` 也 patch 成 `_FixedDateTime`（之前只 patch `utc_now`，promote receipt epoch_ms 走 `datetime.now(timezone.utc)` 泄漏）。acceptance 13 → 14；verify PASS（2125 unit + 14 acceptance + 92% coverage + ruff clean）；oracle qa-review PASS（ses_1e5c14353fferejeB7qf8aa4uG）。
 - 2026-05-12 (SC-010 Structural Consolidation Sweep 完结)：清理 SC-008 fresh oracle 两条 non-blocking follow-up。`src/aiwiki/drop.py` `_LOGGER` 定义上移到模块顶部 constants 区；`tests/test_drop_phases.py` 新增 integration test `test_drop_pdf_finally_cleanup_logs_warning_on_rmtree_failure`（prefix-selective rmtree wrapper 不污染测试环境）。verify PASS；fresh oracle qa-review PASS（ses_1e5fbd4cfffek862Ps5zD09BDA）。**Structural Consolidation Sweep（SC-001..SC-010）整体收官**。完整 SC-001..SC-010 详情见 `archive/rounds/structural-consolidation-sweep.md`。
 - 2026-05-11 Product UX Rectification Sweep (R97~R108 EP-001..EP-007) 详情见 `archive/rounds/ep-001-ep007-product-ux-sweep.md`。
@@ -97,6 +98,9 @@
 | **Round 98.1 Decision-grade Report Bullet Minimums** (2026-05-11) | 每段 `- ` bullet 下限 + 拒 `_LLM:` placeholder 残留 / fence-aware bullet counter | ✅ done (`ae9e19f`) |
 | **Round 98.2 Report Citation Integrity** (2026-05-11) | `## 引用` dedup + body ⊆ citations 校验 / fence-aware path 提取 | ✅ done |
 | **Round 98.3 Report Strictness Hardening** (2026-05-11) | Phase 0 unclosed fence 拒绝 + Phase 1.5 duplicate required H2 拒绝 | ✅ done |
+| **Post-P4 D-2 PROGRESS Slim** (2026-05-12) | Round 73-92.7 + Milestone Quick Index detail 切档归档 / PROGRESS 117KB→18.5KB | ✅ done (`c472677`) |
+| **Post-P4 D-3 Acceptance Gap P1** (2026-05-12) | 金丹复利 5 步 CLI 链 acceptance / 3 state JSONL byte-stable | ✅ done (`8cd2b25`) |
+| **Post-P4 B Drift/Aging Acceptance Gap B** (2026-05-12) | drift_scan 三扫描器函数级 acceptance / 4 artifact byte-stable | ✅ done |
 
 
 ## 状态 — 当前活跃 3 轮

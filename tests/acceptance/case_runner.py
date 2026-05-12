@@ -77,3 +77,40 @@ def _copy_case_and_fix_clock_from(  # pragma: no cover - exercised by explicit p
     uuids = itertools.count(1)
     monkeypatch.setattr("aiwiki.signals.collector.uuid.uuid4", lambda: uuid.UUID(int=next(uuids)))
     return case, vault
+
+
+def _run_drift_scan(  # pragma: no cover - exercised by explicit pytest acceptance gate
+    vault: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    now: str = "2026-04-27T00:00:00Z",
+) -> dict:
+    """Direct function-level invocation of `drift_scan` for B acceptance fixture.
+
+    Avoids the CLI because `drift_scan` has no CLI entry point and exercising
+    it through the `nightly` workflow would drag in unrelated determinism risks
+    (today-feed, aging-report rendering, planner-state). Returns the structured
+    summary dict; byte-stable artifacts are asserted via `_assert_files_byte_equal`.
+
+    `uuid` is the global stdlib module — patching `aiwiki.drift_scan.uuid.uuid4`
+    technically mutates the shared `uuid` module attribute. `monkeypatch` undoes
+    the change on test teardown, so the leak window is the rest of THIS test;
+    it never bleeds into other tests. Counter starts at 1000 to keep trace_id
+    values visually distinct from the collector counter (which starts at 1) for
+    debugging, even though `_new_signal_id` only consumes the first 12 hex of
+    `uuid.uuid4().hex` — small ints all flatten to `sig-YYYYMMDD-000000000000`.
+    `_new_signal_id` derives the day prefix from `aiwiki.drift_scan.clock.utc_now`
+    so we pin that to FIXED_NOW for stable suffix-day prefixes.
+    Also clear `AIWIKI_STALE_JUDGMENT_DAYS`, which is host-env tunable and would
+    otherwise shift `stale_threshold_days` in the goldens.
+    """
+    from aiwiki.drift_scan import drift_scan
+
+    monkeypatch.delenv("AIWIKI_STALE_JUDGMENT_DAYS", raising=False)
+    drift_uuids = itertools.count(1000)
+    monkeypatch.setattr(
+        "aiwiki.drift_scan.uuid.uuid4",
+        lambda: uuid.UUID(int=next(drift_uuids), version=4),
+    )
+    monkeypatch.setattr("aiwiki.drift_scan.clock.utc_now", lambda: FIXED_NOW)
+    return drift_scan(vault, now=now)
