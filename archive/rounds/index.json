@@ -2,6 +2,22 @@
   "schema_version": 1,
   "rounds": [
     {
+      "round_id": "structural-consolidation-sweep",
+      "title": "Structural Consolidation Sweep (SC-001..SC-010)",
+      "status": "done",
+      "commit": "ae6fd59",
+      "archived_path": "archive/rounds/structural-consolidation-sweep.md",
+      "tags": ["sweep", "structural"]
+    },
+    {
+      "round_id": "ep-001-ep007-product-ux-sweep",
+      "title": "Product UX Rectification Sweep (R97~R108 EP-001..EP-007)",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/ep-001-ep007-product-ux-sweep.md",
+      "tags": ["sweep", "product-ux"]
+    },
+    {
       "round_id": "68",
       "title": "PROGRESS three-layer slimming + stop_line_audit lint",
       "status": "done",
