@@ -1299,26 +1299,6 @@ def _allow_private_fetch() -> bool:
     return os.environ.get("AIWIKI_ALLOW_PRIVATE_FETCH", "").strip().lower() in {"1", "true", "yes"}
 
 
-def _materialize_url_images(root: Path, image_urls: list[str], preferred_slug: str) -> list[str]:
-    stored: list[str] = []
-    for index, image_url in enumerate(image_urls[:MAX_URL_IMAGES], start=1):
-        try:
-            asset_path, _ = _download_asset_url(root, image_url, f"{preferred_slug}-image-{index}")
-        except Exception as exc:
-            _append_run_event(
-                root,
-                {
-                    "event": "url_image_download_skipped",
-                    "url": image_url,
-                    "reason": str(exc),
-                    "error_type": type(exc).__name__,
-                },
-            )
-            continue
-        stored.append(relative_path(root, asset_path))
-    return stored
-
-
 def _download_asset_url(root: Path, source: str, preferred_slug: str) -> tuple[Path, str]:
     asset_dir = root / "raw" / "assets"
     parsed = parse.urlparse(source)
@@ -1382,21 +1362,6 @@ def _collect_binary_to_tmp(root: Path, source: str, *, prefix: str, preferred_sl
     except Exception:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         raise
-
-
-def _materialize_binary_source(root: Path, source: str, preferred_slug: str) -> tuple[Path, str]:
-    asset_dir = root / "raw" / "assets"
-    if source.startswith("http://") or source.startswith("https://"):
-        asset_path, final_url = _download_asset_url(root, source, preferred_slug)
-        return asset_path, final_url
-
-    source_path = safe_resolve_within(Path(source).expanduser().resolve(), root)
-    if not source_path.is_file():
-        raise FileNotFoundError(f"Source not found: {source}")
-    suffix = source_path.suffix.lower() or ".bin"
-    asset_path = _unique_path(asset_dir, _timestamped_stem(preferred_slug), suffix)
-    atomic_copy_file(source_path, asset_path, fsync=True)
-    return asset_path, str(source_path)
 
 
 def _extract_pdf_text(path: Path) -> str:

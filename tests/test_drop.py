@@ -25,8 +25,6 @@ from aiwiki.drop import (
     _image_dimensions,
     _jpeg_dimensions,
     _looks_like_repo_url,
-    _materialize_binary_source,
-    _materialize_url_images,
     _maybe_create_image_client,
     _note_title,
     _render_url_in_browser,
@@ -365,56 +363,6 @@ class DropTests(unittest.TestCase):
             payload["image_urls"],
             ["https://example.test/inline.png", "https://example.test/hero.png"],
         )
-
-    def test_materialize_url_images_skips_failed_downloads(self) -> None:
-        created = self.root / "raw" / "assets" / "one.png"
-        created.parent.mkdir(parents=True, exist_ok=True)
-        created.write_bytes(b"png")
-
-        def fake_download(root: Path, source: str, preferred_slug: str) -> tuple[Path, str]:
-            del root
-            del preferred_slug
-            if source.endswith("broken.png"):
-                raise RuntimeError("boom")
-            return created, source
-
-        with patch("aiwiki.drop._download_asset_url", side_effect=fake_download):
-            paths = _materialize_url_images(
-                self.root,
-                ["https://example.test/one.png", "https://example.test/broken.png"],
-                "rich-page",
-            )
-
-        self.assertEqual(paths, [f"raw/assets/{created.name}"])
-        events = [
-            json.loads(line)
-            for line in (self.root / ".aiwiki/logs/runs.jsonl").read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
-        self.assertEqual(events[-1]["event"], "url_image_download_skipped")
-        self.assertEqual(events[-1]["url"], "https://example.test/broken.png")
-        self.assertEqual(events[-1]["reason"], "boom")
-        self.assertEqual(events[-1]["error_type"], "RuntimeError")
-
-    def test_materialize_binary_source_supports_remote_and_missing_local_file(self) -> None:
-        remote_asset = self.root / "raw" / "assets" / "remote.bin"
-        remote_asset.parent.mkdir(parents=True, exist_ok=True)
-        remote_asset.write_bytes(b"remote")
-
-        with patch(
-            "aiwiki.drop._download_asset_url",
-            return_value=(remote_asset, "https://example.test/file.bin"),
-        ):
-            asset_path, original = _materialize_binary_source(
-                self.root,
-                "https://example.test/file.bin",
-                "remote-file",
-            )
-
-        self.assertEqual(asset_path, remote_asset)
-        self.assertEqual(original, "https://example.test/file.bin")
-        with self.assertRaises(FileNotFoundError):
-            _materialize_binary_source(self.root, str(self.root / "missing.bin"), "missing-file")
 
     def test_binary_helpers_handle_tool_failures_and_fallbacks(self) -> None:
         source = self.root / "paper.pdf"
