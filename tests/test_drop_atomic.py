@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_utils import is_atomic_write_tmp_path
-from aiwiki.drop import _download_asset_url, _write_bytes, _write_text, drop_image, drop_note
+from aiwiki.drop import _write_bytes, _write_text, drop_image, drop_note
 
 
 class DropAtomicWriteTest(unittest.TestCase):
@@ -167,21 +167,6 @@ class DropAtomicWriteTest(unittest.TestCase):
             is_atomic_write_tmp_path(asset_tmp),
             f"asset tmp {asset_tmp.name} not strict atomic pattern",
         )
-
-    def test_download_asset_file_url_uses_atomic_copy(self) -> None:
-        src = self.root / "incoming" / "img.bin"
-        src.parent.mkdir(parents=True, exist_ok=True)
-        src.write_bytes(b"\x00\x01\x02\x03payload")
-        file_url = src.as_uri()  # file:///...
-        # _download_asset_url requires runtime_write_lock by callers; for
-        # this unit test, call directly (no concurrent writers in tmp).
-        asset_path, original = _download_asset_url(self.root, file_url, "probe")
-        self.assertTrue(asset_path.is_file())
-        self.assertEqual(asset_path.read_bytes(), src.read_bytes())
-        self.assertEqual(str(original), str(src))
-        asset_dir = self.root / "raw" / "assets"
-        leftovers = [p.name for p in asset_dir.iterdir() if ".tmp." in p.name]
-        self.assertEqual(leftovers, [])
 
 
 if __name__ == "__main__":

@@ -1321,30 +1321,6 @@ def _allow_private_fetch() -> bool:
     return os.environ.get("AIWIKI_ALLOW_PRIVATE_FETCH", "").strip().lower() in {"1", "true", "yes"}
 
 
-def _download_asset_url(root: Path, source: str, preferred_slug: str) -> tuple[Path, str]:
-    asset_dir = root / "raw" / "assets"
-    parsed = parse.urlparse(source)
-    if parsed.scheme == "file":
-        source_path = safe_resolve_within(Path(parse.unquote(parsed.path)), root)
-        if not source_path.is_file():
-            raise FileNotFoundError(f"Source not found: {source}")
-        suffix = source_path.suffix.lower() or ".bin"
-        asset_path = _unique_path(asset_dir, _timestamped_stem(preferred_slug), suffix)
-        atomic_copy_file(source_path, asset_path, fsync=True)
-        return asset_path, str(source_path)
-    payload, final_url = safe_fetch(
-        source,
-        max_bytes=_ASSET_MAX_BYTES,
-        timeout=60,
-        allow_private=_allow_private_fetch(),
-    )
-    content_type = ""
-    suffix = _suffix_from_source(final_url, content_type)
-    asset_path = _unique_path(asset_dir, _timestamped_stem(preferred_slug), suffix)
-    _write_bytes(asset_path, payload)
-    return asset_path, final_url
-
-
 def _collect_asset_bytes(root: Path, source: str, *, max_bytes: int) -> tuple[bytes, str]:
     parsed = parse.urlparse(source)
     if parsed.scheme == "file":
