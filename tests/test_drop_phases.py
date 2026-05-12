@@ -78,6 +78,39 @@ class DropPhaseTests(unittest.TestCase):
         self.assertEqual(events[-1]["event"], "url_image_download_skipped")
         self.assertEqual(events[-1]["reason"], "image boom")
 
+    def test_drop_url_skip_events_inside_lock(self) -> None:
+        timeline: list[str] = []
+        fetched = {
+            "title": "Page",
+            "final_url": "https://example.test/page",
+            "content_type": "text/html",
+            "status": "200",
+            "browser_backend": "",
+            "extraction_mode": "readability",
+            "description": "",
+            "image_urls": ["https://example.test/broken.png"],
+            "text": "body",
+        }
+
+        class RecordingLock:
+            def __enter__(self) -> None:
+                timeline.append("lock-enter")
+
+            def __exit__(self, exc_type, exc, tb) -> None:
+                timeline.append("lock-exit")
+
+        def fake_append(root: Path, event: dict[str, object]) -> None:
+            del root, event
+            timeline.append("append-event")
+
+        with patch("aiwiki.drop._fetch_url", return_value=fetched):
+            with patch("aiwiki.drop.safe_fetch", side_effect=RuntimeError("image boom")):
+                with patch("aiwiki.drop.runtime_write_lock", return_value=RecordingLock()):
+                    with patch("aiwiki.drop._append_run_event", side_effect=fake_append):
+                        drop_url(self.root, "https://example.test/page")
+
+        self.assertEqual(timeline, ["lock-enter", "append-event", "lock-exit"])
+
     def test_drop_pdf_collect_failure_network_does_not_write_raw(self) -> None:
         with patch("aiwiki.drop.safe_fetch", side_effect=RuntimeError("network boom")):
             with self.assertRaisesRegex(RuntimeError, "network boom"):
@@ -115,6 +148,36 @@ class DropPhaseTests(unittest.TestCase):
         self.assertEqual(self._raw_notes(), [])
         self.assertEqual(self._asset_files(), [])
 
+    def test_drop_pdf_history_failure_truncates_log(self) -> None:
+        source = self.root / "ok.pdf"
+        source.write_bytes(b"%PDF-1.4\n")
+        log_path = self.root / "wiki" / "indexes" / "log.md"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("# existing\n\n", encoding="utf-8")
+        before = log_path.stat().st_size
+
+        with patch("aiwiki.drop._extract_pdf_text", return_value="text"):
+            with patch("aiwiki.drop._append_raw_added_history", side_effect=RuntimeError("history boom")):
+                with self.assertRaisesRegex(RuntimeError, "history boom"):
+                    drop_pdf(self.root, str(source), title="Paper")
+
+        self.assertEqual(log_path.stat().st_size, before)
+        self.assertEqual(log_path.read_text(encoding="utf-8"), "# existing\n\n")
+        self.assertEqual(self._raw_notes(), [])
+        self.assertEqual(self._asset_files(), [])
+
+    def test_drop_image_collect_failure_cleans_tmp(self) -> None:
+        source = self.root / "img.png"
+        source.write_bytes(_tiny_png())
+        before = set(Path(tempfile.gettempdir()).glob("aiwiki-drop-image-*"))
+
+        with patch("aiwiki.drop._detect_mime_type", side_effect=RuntimeError("mime boom")):
+            with self.assertRaisesRegex(RuntimeError, "mime boom"):
+                drop_image(self.root, str(source), enable_vision=False)
+
+        after = set(Path(tempfile.gettempdir()).glob("aiwiki-drop-image-*"))
+        self.assertEqual(after - before, set())
+
     def test_drop_image_ocr_failure_is_non_fatal(self) -> None:
         source = self.root / "img.png"
         source.write_bytes(_tiny_png())
@@ -147,6 +210,17 @@ class DropPhaseTests(unittest.TestCase):
                     drop_repo(self.root, "https://example.test/repo.git")
         self.assertEqual(self._raw_notes(), [])
         self.assertEqual(self._runtime_history(), [])
+
+    def test_drop_repo_clone_failure_cleans_tmp(self) -> None:
+        before = set(Path(tempfile.gettempdir()).glob("aiwiki-repo-*"))
+
+        with patch.dict("os.environ", {"AIWIKI_ALLOW_REMOTE_REPO_DROP": "1"}, clear=False):
+            with patch("aiwiki.drop._clone_repo", side_effect=RuntimeError("clone boom")):
+                with self.assertRaisesRegex(RuntimeError, "clone boom"):
+                    drop_repo(self.root, "https://example.test/repo.git")
+
+        after = set(Path(tempfile.gettempdir()).glob("aiwiki-repo-*"))
+        self.assertEqual(after - before, set())
 
     def test_drop_repo_materialize_note_write_failure_does_not_append_logs(self) -> None:
         repo = self.root / "repo"

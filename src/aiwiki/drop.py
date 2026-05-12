@@ -16,7 +16,7 @@ from urllib import parse
 
 from .app_protocol import ensure_layout
 from .app_render import append_wiki_log
-from .app_state import DEFAULT_PROTOCOL, append_runtime_history
+from .app_state import DEFAULT_PROTOCOL, append_runtime_history, runtime_history_path
 from .app_utils import (
     FetchPolicyError,
     _validate_safe_url,
@@ -170,8 +170,8 @@ def drop_url(root: Path, url: str, title: str | None = None) -> dict[str, Any]:
     _validate_url_collection(collection)
     with runtime_write_lock(root):
         result = _materialize_url(root, url, title, collection)
-    for event in collection.get("skip_events", []):
-        _append_run_event(root, event)
+        for event in collection.get("skip_events", []):
+            _append_run_event(root, event)
     return result
 
 
@@ -224,6 +224,7 @@ def _materialize_url(root: Path, url: str, title: str | None, collection: dict[s
     asset_dir = root / "raw" / "assets"
     stem = _timestamped_stem(display_title)
     note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
+    append_file_sizes = _snapshot_append_files(root)
     try:
         for index, image in enumerate(collection["inline_images"], start=1):
             asset_path = _unique_path(
@@ -258,6 +259,7 @@ def _materialize_url(root: Path, url: str, title: str | None, collection: dict[s
         )
     except Exception:
         _rollback_created_paths(created_paths)
+        _truncate_append_files(append_file_sizes)
         raise
     return {
         "material": "url",
@@ -343,6 +345,7 @@ def _materialize_pdf(root: Path, source: str, title: str | None, collection: dic
     stem = _timestamped_stem(display_title)
     note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
     created_paths: list[Path] = []
+    append_file_sizes = _snapshot_append_files(root)
     try:
         atomic_copy_file(tmp_path, asset_path, fsync=True)
         created_paths.append(asset_path)
@@ -369,6 +372,7 @@ def _materialize_pdf(root: Path, source: str, title: str | None, collection: dic
         )
     except Exception:
         _rollback_created_paths(created_paths)
+        _truncate_append_files(append_file_sizes)
         raise
     return {
         "material": "pdf",
@@ -443,22 +447,26 @@ def _collect_image(
     client: Any | None = None,
 ) -> dict[str, Any]:
     collection = _collect_binary_to_tmp(root, source, prefix="aiwiki-drop-image-", preferred_slug=title or Path(source).stem)
-    tmp_path = collection["tmp_path"]
-    mime = _detect_mime_type(tmp_path)
-    _assert_supported_image_mime(mime)
-    _assert_file_size(tmp_path, _LOCAL_IMAGE_MAX_BYTES, "image asset")
-    width, height = _image_dimensions(tmp_path)
-    ocr_text = _extract_image_text(tmp_path)
-    vision_result = _analyze_image_asset(
-        root,
-        tmp_path,
-        mime=mime,
-        width=width,
-        height=height,
-        ocr_text=ocr_text,
-        client=client,
-        enable_vision=enable_vision,
-    )
+    try:
+        tmp_path = collection["tmp_path"]
+        mime = _detect_mime_type(tmp_path)
+        _assert_supported_image_mime(mime)
+        _assert_file_size(tmp_path, _LOCAL_IMAGE_MAX_BYTES, "image asset")
+        width, height = _image_dimensions(tmp_path)
+        ocr_text = _extract_image_text(tmp_path)
+        vision_result = _analyze_image_asset(
+            root,
+            tmp_path,
+            mime=mime,
+            width=width,
+            height=height,
+            ocr_text=ocr_text,
+            client=client,
+            enable_vision=enable_vision,
+        )
+    except Exception:
+        shutil.rmtree(collection["tmp_dir"], ignore_errors=True)
+        raise
     collection.update(
         {
             "mime": mime,
@@ -493,6 +501,7 @@ def _materialize_image(root: Path, source: str, title: str | None, collection: d
     stem = _timestamped_stem(display_title)
     note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
     created_paths: list[Path] = []
+    append_file_sizes = _snapshot_append_files(root)
     try:
         atomic_copy_file(tmp_path, asset_path, fsync=True)
         created_paths.append(asset_path)
@@ -532,6 +541,7 @@ def _materialize_image(root: Path, source: str, title: str | None, collection: d
         )
     except Exception:
         _rollback_created_paths(created_paths)
+        _truncate_append_files(append_file_sizes)
         raise
     return {
         "material": "image",
@@ -616,21 +626,18 @@ def _drop_repo_unlocked(root: Path, source: str, title: str | None = None, max_f
 def _collect_repo(root: Path, source: str, max_files: int = 200) -> dict[str, Any]:
     max_files = _normalize_repo_max_files(max_files)
     cleanup_path: Path | None = None
-    repo_path: Path
     original_path = source
-    if _is_remote_repo_source(source):
-        if os.environ.get("AIWIKI_ALLOW_REMOTE_REPO_DROP") != "1":
-            raise ValueError("remote repo drop disabled; set AIWIKI_ALLOW_REMOTE_REPO_DROP=1 to enable")
-        cleanup_path = Path(tempfile.mkdtemp(prefix="aiwiki-repo-"))
-        repo_path = cleanup_path / "repo"
-        _clone_repo(source, repo_path)
-        original_path = source
-    else:
-        repo_path = safe_resolve_within(Path(source).expanduser().resolve(), root)
-        if not repo_path.is_dir():
-            raise FileNotFoundError(f"Repository path not found: {source}")
-
     try:
+        if _is_remote_repo_source(source):
+            if os.environ.get("AIWIKI_ALLOW_REMOTE_REPO_DROP") != "1":
+                raise ValueError("remote repo drop disabled; set AIWIKI_ALLOW_REMOTE_REPO_DROP=1 to enable")
+            cleanup_path = Path(tempfile.mkdtemp(prefix="aiwiki-repo-"))
+            repo_path = cleanup_path / "repo"
+            _clone_repo(source, repo_path)
+        else:
+            repo_path = safe_resolve_within(Path(source).expanduser().resolve(), root)
+            if not repo_path.is_dir():
+                raise FileNotFoundError(f"Repository path not found: {source}")
         snapshot = _repo_snapshot(repo_path, max_files=max_files)
     finally:
         if cleanup_path is not None:
@@ -669,6 +676,7 @@ def _materialize_repo(root: Path, source: str, title: str | None, collection: di
         sections.append(("Key File Excerpts", file_lines))
     markdown = _render_raw_note(title=display_title, source_type="repo-drop", original_path=original_path, sections=sections)
     created_paths: list[Path] = []
+    append_file_sizes = _snapshot_append_files(root)
     try:
         _write_text(note_path, markdown)
         created_paths.append(note_path)
@@ -692,6 +700,7 @@ def _materialize_repo(root: Path, source: str, title: str | None, collection: di
         )
     except Exception:
         _rollback_created_paths(created_paths)
+        _truncate_append_files(append_file_sizes)
         raise
     return {
         "material": "repo",
@@ -860,6 +869,27 @@ def _rollback_created_paths(created_paths: list[Path]) -> None:
     for path in reversed(created_paths):
         with contextlib.suppress(Exception):
             path.unlink(missing_ok=True)
+
+
+def _snapshot_append_files(root: Path) -> dict[Path, int]:
+    candidates = [root / "wiki" / "indexes" / "log.md", runtime_history_path(root)]
+    sizes: dict[Path, int] = {}
+    for path in candidates:
+        try:
+            sizes[path] = path.stat().st_size if path.exists() else 0
+        except OSError:
+            sizes[path] = 0
+    return sizes
+
+
+def _truncate_append_files(sizes: dict[Path, int]) -> None:
+    for path, size in sizes.items():
+        try:
+            if path.exists():
+                with path.open("rb+") as handle:
+                    handle.truncate(size)
+        except OSError:
+            pass
 
 
 def _fetch_url(url: str, *, root: Path) -> dict[str, Any]:
