@@ -184,15 +184,15 @@ aiwiki alchemy-promote --elixir-id <elixir-id>
 ### 2.6 Compounding（复利复用）
 
 ```bash
-# 用现有金丹解答新问题
-aiwiki ask "新公司 W 是否符合赛道 A 的投资 thesis？" --include-elixir <elixir-id> --protocol investing
+# 先直接 ask 新问题；ask 当前不接 --include-elixir，旧丹复用通过下一步 alchemy-start --include-elixir 注入
+aiwiki ask "新公司 W 是否符合赛道 A 的投资 thesis？" --protocol investing
 
 # 起新金丹引用旧金丹（D-3 已在单元测试覆盖；这里实跑）
 aiwiki alchemy-start <new-corpus> --topic "赛道 A 2026q1 thesis 演进" --include-elixir <old-elixir-id>
 ```
 
 **摩擦记录点**：
-- F-INV-14：`--include-elixir` 是否真的能让 LLM 拿到旧丹结论
+- F-INV-14：`alchemy-start/-distill --include-elixir` 是否真的能让 LLM 拿到旧丹结论
 - F-INV-15：跨季度的金丹更新是否会形成无效循环引用
 - F-INV-16：trace 反查跨金丹链是否清晰
 
