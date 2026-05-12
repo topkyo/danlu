@@ -5,11 +5,10 @@
   "path": "wiki/elixirs/elixir-d3-compounding-fcc6838c.md",
   "parents": [
     {
-      "id": "wiki/derived/derived-d3-new.md",
-      "kind": "unknown",
-      "label": "wiki/derived/derived-d3-new.md",
-      "path": "",
-      "not_found": true
+      "id": "derived-d3-new",
+      "kind": "derived",
+      "label": "derived-d3-new",
+      "path": "wiki/derived/derived-d3-new.md"
     },
     {
       "id": "elixir-d3-old",
@@ -18,11 +17,10 @@
       "path": "wiki/elixirs/elixir-d3-old.md",
       "parents": [
         {
-          "id": "wiki/derived/derived-d3-old.md",
-          "kind": "unknown",
-          "label": "wiki/derived/derived-d3-old.md",
-          "path": "",
-          "not_found": true
+          "id": "derived-d3-old",
+          "kind": "derived",
+          "label": "derived-d3-old",
+          "path": "wiki/derived/derived-d3-old.md"
         }
       ],
       "metadata": {

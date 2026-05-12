@@ -93,6 +93,38 @@ source_pages:
 # Test Concept
 """,
     )
+    _write(
+        root / "wiki" / "derived" / "derived-test.md",
+        """---
+id: derived-test
+kind: derived
+title: Test Derived
+protocol: investing
+citations:
+  - wiki/sources/discovered-20260427-test.md#abcd1234
+---
+
+# Test Derived
+""",
+    )
+    # Augment the existing candidate elixir so it references the derived page,
+    # enabling the down-direction edge for trace tests.
+    _write(
+        root / "output" / "_candidates" / "elixirs" / "elixir-test.md",
+        """---
+elixir_id: elixir-test
+title: Test Elixir
+status: candidate
+derived_from:
+  - judgment-20260427-test
+  - wiki/derived/derived-test.md
+evidence:
+  - wiki/sources/discovered-20260427-test.md
+---
+
+# Test Elixir
+""",
+    )
 
 
 def _seed_l3_proposal(root: Path) -> None:
@@ -142,6 +174,9 @@ def _case_classify_recognizes_known_prefixes() -> None:
     assert _classify("discovered-20260101-foo") == "source"
     assert _classify("wiki/concepts/jetson.md") == "concept"
     assert _classify("concept-jetson") == "concept"
+    assert _classify("wiki/derived/derived-foo.md") == "derived"
+    assert _classify("./wiki/derived/derived-bar.md") == "derived"
+    assert _classify("derived-foo") == "derived"
     assert _classify("wiki/judgments/j.md") == "judgment"
     assert _classify("judgment-20260101-x") == "judgment"
     assert _classify("wiki/decisions/d.md") == "decision"
@@ -174,6 +209,51 @@ def _case_resolve_source_walks_up_to_raw() -> None:
         assert node.label == "Test Source"
         # parent should be the raw file
         assert any(p.kind == "raw" for p in node.parents)
+
+
+def _case_resolve_derived_walks_up_to_source_and_raw() -> None:
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _seed_minimal_vault(root)
+        node = resolve_trace(root, "wiki/derived/derived-test.md", direction="up", max_depth=4)
+        assert node.kind == "derived", f"expected derived, got {node.kind}"
+        assert not node.not_found
+        assert node.path == "wiki/derived/derived-test.md"
+        assert node.label == "Test Derived"
+        sources = [p for p in node.parents if p.kind == "source"]
+        assert sources, "derived.citations should produce source parent"
+        # source's parent should be raw (anchor fragment was stripped)
+        raws = [p for p in sources[0].parents if p.kind == "raw"]
+        assert raws, "source should walk up to raw"
+
+
+def _case_resolve_derived_via_bare_id() -> None:
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _seed_minimal_vault(root)
+        node = resolve_trace(root, "derived-test", direction="up", max_depth=2)
+        assert node.kind == "derived"
+        assert not node.not_found
+
+
+def _case_resolve_derived_down_includes_elixir() -> None:
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _seed_minimal_vault(root)
+        node = resolve_trace(root, "derived-test", direction="down", max_depth=3)
+        assert node.kind == "derived"
+        kinds = [c.kind for c in node.children]
+        assert "elixir" in kinds, f"derived down should expand to elixir; got kinds={kinds}"
+
+
+def _case_resolve_elixir_up_includes_derived_parent() -> None:
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _seed_minimal_vault(root)
+        node = resolve_trace(root, "elixir-test", direction="up", max_depth=3)
+        assert node.kind == "elixir"
+        kinds = {p.kind for p in node.parents}
+        assert "derived" in kinds, f"elixir derived_from should resolve derived parent; got {kinds}"
 
 
 def _case_resolve_concept_walks_up_to_source_and_raw() -> None:

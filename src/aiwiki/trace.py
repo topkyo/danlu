@@ -24,7 +24,7 @@ from typing import Any, Iterable
 from aiwiki.app_utils import parse_frontmatter
 
 # 资产种类 — 用前缀 / 路径形态识别
-AssetKind = str  # "raw" | "source" | "concept" | "judgment" | "decision" | "elixir" | "proposal" | "receipt" | "unknown"
+AssetKind = str  # "raw" | "source" | "concept" | "derived" | "judgment" | "decision" | "elixir" | "proposal" | "receipt" | "unknown"
 
 # 安全深度上限，避免病态数据导致深递归
 _MAX_DEPTH = 10
@@ -98,6 +98,8 @@ def _classify(asset_id: str) -> AssetKind:
         return "source"
     if text.startswith("wiki/concepts/") or text.startswith("concept-"):
         return "concept"
+    if text.startswith("wiki/derived/") or text.startswith("./wiki/derived/") or text.startswith("derived-"):
+        return "derived"
     if text.startswith("wiki/judgments/") or text.startswith("judgment-"):
         return "judgment"
     if text.startswith("wiki/decisions/") or text.startswith("decision-"):
@@ -134,6 +136,8 @@ def _resolve_any(
         return _resolve_source(root, asset_id, direction=direction, depth=depth, visited=visited)
     if kind == "concept":
         return _resolve_concept(root, asset_id, direction=direction, depth=depth, visited=visited)
+    if kind == "derived":
+        return _resolve_derived(root, asset_id, direction=direction, depth=depth, visited=visited)
     if kind == "judgment":
         return _resolve_judgment(root, asset_id, direction=direction, depth=depth, visited=visited)
     if kind == "decision":
@@ -237,6 +241,41 @@ def _resolve_concept(root: Path, asset_id: str, *, direction: str, depth: int, v
                 _resolve_any(root, ref, direction="up", depth=depth - 1, visited=visited)
             )
     # concept 是叶子节点：source→concept 边由 source 侧 down 展开提供，避免双向重复
+    return node
+
+
+def _resolve_derived(root: Path, asset_id: str, *, direction: str, depth: int, visited: set[str]) -> TraceNode:
+    path, fm = _find_curated(root, "wiki/derived", asset_id)
+    if path is None:
+        return TraceNode(id=asset_id, kind="derived", label=asset_id, not_found=True)
+    rel = path.relative_to(root).as_posix()
+    node = TraceNode(
+        id=str(fm.get("id") or path.stem),
+        kind="derived",
+        label=str(fm.get("title") or path.stem),
+        path=rel,
+        metadata={"protocol": str(fm.get("protocol") or "")} if fm.get("protocol") else {},
+    )
+    if direction in {"up", "both"}:
+        for cit in _as_str_list(fm.get("citations")):
+            ref = cit.strip()
+            if not ref:
+                continue
+            # strip anchor fragment if any (`wiki/sources/x.md#sha256`)
+            target = ref.split("#", 1)[0] if "#" in ref else ref
+            node.parents.append(
+                _resolve_any(root, target, direction="up", depth=depth - 1, visited=visited)
+            )
+    if direction in {"down", "both"}:
+        # 哪些 elixir 引用此 derived 页面
+        for elixir_subdir in ("wiki/elixirs", "output/_candidates/elixirs"):
+            for e_path, e_fm in _iter_curated_pages(root, elixir_subdir):
+                refs = _as_str_list(e_fm.get("derived_from"))
+                if any(_derived_ref_matches(r, rel, node.id) for r in refs):
+                    elixir_id = str(e_fm.get("id") or e_path.stem)
+                    node.children.append(
+                        _resolve_any(root, elixir_id, direction=direction, depth=depth - 1, visited=visited)
+                    )
     return node
 
 
@@ -517,6 +556,21 @@ def _judgment_ref_matches(supports_value: str, judgment_rel: str, judgment_id: s
     if not text:
         return False
     return text == judgment_rel or text.endswith("/" + Path(judgment_rel).name) or judgment_id in text
+
+
+def _derived_ref_matches(ref_value: str, derived_rel: str, derived_id: str) -> bool:
+    text = (ref_value or "").strip().strip("'\"`")
+    if not text:
+        return False
+    if "#" in text:
+        text = text.split("#", 1)[0]
+    if text == derived_rel:
+        return True
+    if text.endswith("/" + Path(derived_rel).name):
+        return True
+    if derived_id and derived_id in text:
+        return True
+    return False
 
 
 def _find_referrers(
