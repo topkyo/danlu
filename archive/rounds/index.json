@@ -2,6 +2,22 @@
   "schema_version": 1,
   "rounds": [
     {
+      "round_id": "73-to-92-7-snapshot",
+      "title": "Rounds 73 → 92.7 Snapshot (PROGRESS slim D-2)",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-73-to-92-7-snapshot.md",
+      "tags": ["snapshot", "progress-slim"]
+    },
+    {
+      "round_id": "milestone-quick-index-detail",
+      "title": "Milestone Quick Index Full Detail (R64~R98.3, archived from PROGRESS.md L28-101)",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/milestone-quick-index-detail.md",
+      "tags": ["snapshot", "progress-slim", "quick-index"]
+    },
+    {
       "round_id": "structural-consolidation-sweep",
       "title": "Structural Consolidation Sweep (SC-001..SC-010)",
       "status": "done",
