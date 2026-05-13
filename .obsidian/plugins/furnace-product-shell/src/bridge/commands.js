@@ -51,7 +51,7 @@ async function runAskCommand(plugin, { question, format, mode, protocol }) {
     if (mode === "run-ask") {
       args.push("--fallback-to-ask");
     }
-    await plugin.runPluginCommand(`${plugin.t("Ask")}: ${truncateText(question, 48)}`, args, { refreshAfter: true });
+    return await plugin.runPluginCommand(`${plugin.t("Ask")}: ${truncateText(question, 48)}`, args, { refreshAfter: true });
   }
 
 

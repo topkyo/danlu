@@ -135,7 +135,7 @@ class PendingSubmissionContractTests(unittest.TestCase):
         # render_today 重试路径不再调 removePendingSubmission
         retry_idx = today_js.find("retryBtn.addEventListener")
         self.assertGreater(retry_idx, 0)
-        retry_block = today_js[retry_idx : retry_idx + 900]
+        retry_block = today_js[retry_idx : retry_idx + 3000]
         # 重试 handler 自身不应再 removePendingSubmission；改回 running
         self.assertNotIn("removePendingSubmission(entry.id);\n          plugin.markPending", retry_block)
         self.assertIn("resetPendingSubmissionForRetry", retry_block)

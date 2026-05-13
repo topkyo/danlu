@@ -284,9 +284,33 @@ function renderPendingSubmissionsGroup(plugin, section) {
         plugin.resetPendingSubmissionForRetry(entry.id);
         try {
           if (args.kind === "files" && Array.isArray(args.files)) {
-            for (const f of args.files) {
-              await plugin.runUniversalInputCommand({ payload: f.path || f.name || "", title: args.title || "" });
-            }
+            const flowResult = await plugin.runDroppedFilesWithAutoAsk({
+              files: args.files,
+              question: args.question || "",
+            });
+            plugin.updatePendingSubmissionRetryArgs(entry.id, {
+              ...args,
+              materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : Array.isArray(args.materialPaths) ? args.materialPaths : [],
+              askQuestion: String(flowResult && flowResult.askQuestion || args.askQuestion || ""),
+            });
+          } else if (args.kind === "auto-ask") {
+            await plugin.runAskCommand({
+              question: args.askQuestion || args.question || entry.displayText || "",
+              format: "report",
+              mode: "run-ask",
+              protocol: args.protocol || "",
+            });
+          } else if (args.kind === "material-question") {
+            const flowResult = await plugin.runDroppedPayloadsWithAutoAsk({
+              payloads: [args.payload || ""],
+              question: args.question || "",
+              protocol: args.protocol || "",
+            });
+            plugin.updatePendingSubmissionRetryArgs(entry.id, {
+              ...args,
+              materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : Array.isArray(args.materialPaths) ? args.materialPaths : [],
+              askQuestion: String(flowResult && flowResult.askQuestion || args.askQuestion || ""),
+            });
           } else {
             await plugin.runUniversalInputCommand({ payload: args.payload || entry.displayText || "" });
           }

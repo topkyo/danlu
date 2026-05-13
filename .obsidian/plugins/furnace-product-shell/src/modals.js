@@ -355,6 +355,7 @@ class DropFileModal extends Modal {
     const pickerInput = sourceSetting.controlEl.createEl("input", { type: "file" });
     pickerInput.style.display = "none";
     let pickLocalButton = null;
+    const self = this;
     sourceSetting.addButton(function (button) {
       pickLocalButton = button;
       button.setButtonText(t("选择本地文件")).onClick(function () {
@@ -363,10 +364,15 @@ class DropFileModal extends Modal {
     });
     const sourceError = sourceSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    pickerInput.addEventListener("change", function () {
+    pickerInput.addEventListener("change", async function () {
       const file = pickerInput.files && pickerInput.files[0];
-      const nextPath = file ? String(file.path || file.name || "") : "";
-      if (nextPath) { sourceInput.value = nextPath; }
+      if (!file) { return; }
+      try {
+        const nextPath = await resolvePluginFileSource(self.plugin, file);
+        if (nextPath) { sourceInput.value = nextPath; }
+      } catch (error) {
+        showInlineError(sourceError, self.plugin.t("提交失败：{message}（输入已保留，可重试）", { message: error && error.message ? error.message : String(error) }));
+      }
     });
 
     const titleSetting = new Setting(contentEl).setName(t("标题"));
@@ -390,7 +396,6 @@ class DropFileModal extends Modal {
     kindSelect.addEventListener("change", syncModeState);
     syncModeState();
 
-    const self = this;
     modalSubmitRow(contentEl, t("投文件"), t("取消"), function (btn) {
       const source = String(sourceInput.value || "").trim();
       if (!source) {
@@ -450,10 +455,16 @@ class DropImageModal extends Modal {
       });
     });
     const sourceError = sourceSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
-    pickerInput.addEventListener("change", function () {
+    const self = this;
+    pickerInput.addEventListener("change", async function () {
       const file = pickerInput.files && pickerInput.files[0];
-      const nextPath = file ? String(file.path || file.name || "") : "";
-      if (nextPath) { sourceInput.value = nextPath; }
+      if (!file) { return; }
+      try {
+        const nextPath = await resolvePluginFileSource(self.plugin, file);
+        if (nextPath) { sourceInput.value = nextPath; }
+      } catch (error) {
+        showInlineError(sourceError, self.plugin.t("提交失败：{message}（输入已保留，可重试）", { message: error && error.message ? error.message : String(error) }));
+      }
     });
 
     const titleSetting = new Setting(contentEl).setName(t("标题"));
@@ -469,7 +480,6 @@ class DropImageModal extends Modal {
         toggle.setValue(false).onChange(function (value) { skipVision = Boolean(value); });
       });
 
-    const self = this;
     modalSubmitRow(contentEl, t("投图片"), t("取消"), function (btn) {
       const source = String(sourceInput.value || "").trim();
       if (!source) {

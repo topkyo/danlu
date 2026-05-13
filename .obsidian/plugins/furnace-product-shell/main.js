@@ -1087,6 +1087,186 @@ function truncateText(value, limit = 240) {
   return `${text.slice(0, limit - 1)}…`;
 }
 
+function sanitizeDropFileName(value) {
+  const raw = String(value || "attachment").trim() || "attachment";
+  const sanitized = raw.replace(/[\\/:*?"<>|\0\r\n\t]/g, "_").replace(/^\.+$/, "attachment");
+  return sanitized.slice(0, 160) || "attachment";
+}
+
+function nodeFs() {
+  if (typeof fs !== "undefined") return fs;
+  if (typeof require === "function") return require("fs");
+  throw new Error("File-system access is unavailable in this Obsidian runtime.");
+}
+
+function nodePath() {
+  if (typeof path !== "undefined") return path;
+  if (typeof require === "function") return require("path");
+  throw new Error("Path utilities are unavailable in this Obsidian runtime.");
+}
+
+function pluginVaultRoot(plugin) {
+  const repoRoot = plugin && plugin.repoState && typeof plugin.repoState.root === "string" ? plugin.repoState.root.trim() : "";
+  if (repoRoot) return repoRoot;
+  const adapter = plugin && plugin.app && plugin.app.vault && plugin.app.vault.adapter;
+  return adapter && typeof adapter.basePath === "string" ? adapter.basePath.trim() : "";
+}
+
+function normalizeMaterialPaths(values) {
+  const items = Array.isArray(values) ? values : [values];
+  const seen = new Set();
+  const out = [];
+  items.forEach((value) => {
+    const text = String(value || "").trim();
+    if (!text || seen.has(text)) {
+      return;
+    }
+    seen.add(text);
+    out.push(text);
+  });
+  return out;
+}
+
+async function resolvePluginFileSource(plugin, file) {
+  const fileName = String(file && file.name || "").trim();
+  const rawPath = String(file && file.path || "").trim();
+  const pathApi = nodePath();
+  if (rawPath && (pathApi.isAbsolute(rawPath) || rawPath.includes("/") || rawPath.includes("\\")) && rawPath !== fileName) {
+    return rawPath;
+  }
+  if (!file || typeof file.arrayBuffer !== "function") {
+    if (rawPath) return rawPath;
+    throw new Error("Cannot access dropped file contents; please choose a local file again.");
+  }
+  const root = pluginVaultRoot(plugin);
+  if (!root) {
+    throw new Error("Cannot save dropped file because the vault root is unavailable.");
+  }
+  const fsApi = nodeFs();
+  const targetDir = pathApi.join(root, ".aiwiki", "tmp", "product-shell-drop");
+  fsApi.mkdirSync(targetDir, { recursive: true });
+  const safeName = sanitizeDropFileName(fileName || "attachment");
+  const stamp = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  const targetPath = pathApi.join(targetDir, `${stamp}-${safeName}`);
+  const buffer = await file.arrayBuffer();
+  fsApi.writeFileSync(targetPath, new Uint8Array(buffer));
+  return targetPath;
+}
+
+function collectMaterialPathsFromPayload(payload) {
+  const out = [];
+  const seenObjects = new Set();
+  const directKeys = [
+    "note_path",
+    "asset_path",
+    "path",
+    "output_path",
+    "report_path",
+    "receipt_path",
+    "state_path",
+    "index_path",
+    "stored_path",
+  ];
+  const listKeys = [
+    "asset_paths",
+    "note_paths",
+    "paths",
+    "output_paths",
+    "report_paths",
+    "receipt_paths",
+    "state_paths",
+    "index_paths",
+    "stored_paths",
+    "material_paths",
+  ];
+  const pushValue = (value) => {
+    normalizeMaterialPaths(value).forEach((item) => out.push(item));
+  };
+  const visit = (value, depth = 0) => {
+    if (!value || depth > 3) {
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => visit(item, depth + 1));
+      return;
+    }
+    if (typeof value !== "object") {
+      return;
+    }
+    if (seenObjects.has(value)) {
+      return;
+    }
+    seenObjects.add(value);
+    directKeys.forEach((key) => pushValue(value[key]));
+    listKeys.forEach((key) => {
+      const items = value[key];
+      if (Array.isArray(items)) {
+        items.forEach((item) => pushValue(item));
+      }
+    });
+    ["material", "materials", "result", "results", "artifacts", "items"].forEach((key) => {
+      if (value[key]) {
+        visit(value[key], depth + 1);
+      }
+    });
+  };
+  visit(payload);
+  return normalizeMaterialPaths(out);
+}
+
+function buildAutoAskQuestion(question, materialPaths) {
+  const normalizedQuestion = String(question || "").trim();
+  if (!normalizedQuestion) {
+    return "";
+  }
+  const paths = normalizeMaterialPaths(materialPaths);
+  const pathBlock = paths.length
+    ? `- ${paths.join("\n- ")}`
+    : "- (drop payload 未返回可用路径)";
+  return [
+    "请基于以下本次投喂材料回答用户问题。",
+    "",
+    "本次投喂材料路径：",
+    pathBlock,
+    "",
+    "用户问题：",
+    normalizedQuestion,
+  ].join("\n");
+}
+
+function looksLikeUniversalMaterialPayload(value) {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  if (lower.startsWith("http://") || lower.startsWith("https://")) return true;
+  if (lower.startsWith("git@") || lower.startsWith("ssh://")) return true;
+  if (lower.startsWith("note:") && lower.slice("note:".length).trim()) return true;
+  if (lower.endsWith(".git")) return true;
+  if (lower.endsWith(".pdf")) return true;
+  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].some((suffix) => lower.endsWith(suffix))) return true;
+  return false;
+}
+
+function splitTextMaterialQuestion(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const nonEmptyLines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (nonEmptyLines.length >= 2 && looksLikeUniversalMaterialPayload(nonEmptyLines[0])) {
+    return {
+      payload: nonEmptyLines[0],
+      question: nonEmptyLines.slice(1).join("\n"),
+    };
+  }
+  const oneLine = text.match(/^(\S+)\s+([\s\S]+)$/);
+  if (oneLine && looksLikeUniversalMaterialPayload(oneLine[1])) {
+    return {
+      payload: oneLine[1],
+      question: oneLine[2].trim(),
+    };
+  }
+  return null;
+}
+
 function readJsonText(rawText) {
   const text = String(rawText || "").trim();
   if (!text) {
@@ -2156,6 +2336,7 @@ class DropFileModal extends Modal {
     const pickerInput = sourceSetting.controlEl.createEl("input", { type: "file" });
     pickerInput.style.display = "none";
     let pickLocalButton = null;
+    const self = this;
     sourceSetting.addButton(function (button) {
       pickLocalButton = button;
       button.setButtonText(t("选择本地文件")).onClick(function () {
@@ -2164,10 +2345,15 @@ class DropFileModal extends Modal {
     });
     const sourceError = sourceSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    pickerInput.addEventListener("change", function () {
+    pickerInput.addEventListener("change", async function () {
       const file = pickerInput.files && pickerInput.files[0];
-      const nextPath = file ? String(file.path || file.name || "") : "";
-      if (nextPath) { sourceInput.value = nextPath; }
+      if (!file) { return; }
+      try {
+        const nextPath = await resolvePluginFileSource(self.plugin, file);
+        if (nextPath) { sourceInput.value = nextPath; }
+      } catch (error) {
+        showInlineError(sourceError, self.plugin.t("提交失败：{message}（输入已保留，可重试）", { message: error && error.message ? error.message : String(error) }));
+      }
     });
 
     const titleSetting = new Setting(contentEl).setName(t("标题"));
@@ -2191,7 +2377,6 @@ class DropFileModal extends Modal {
     kindSelect.addEventListener("change", syncModeState);
     syncModeState();
 
-    const self = this;
     modalSubmitRow(contentEl, t("投文件"), t("取消"), function (btn) {
       const source = String(sourceInput.value || "").trim();
       if (!source) {
@@ -2251,10 +2436,16 @@ class DropImageModal extends Modal {
       });
     });
     const sourceError = sourceSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
-    pickerInput.addEventListener("change", function () {
+    const self = this;
+    pickerInput.addEventListener("change", async function () {
       const file = pickerInput.files && pickerInput.files[0];
-      const nextPath = file ? String(file.path || file.name || "") : "";
-      if (nextPath) { sourceInput.value = nextPath; }
+      if (!file) { return; }
+      try {
+        const nextPath = await resolvePluginFileSource(self.plugin, file);
+        if (nextPath) { sourceInput.value = nextPath; }
+      } catch (error) {
+        showInlineError(sourceError, self.plugin.t("提交失败：{message}（输入已保留，可重试）", { message: error && error.message ? error.message : String(error) }));
+      }
     });
 
     const titleSetting = new Setting(contentEl).setName(t("标题"));
@@ -2270,7 +2461,6 @@ class DropImageModal extends Modal {
         toggle.setValue(false).onChange(function (value) { skipVision = Boolean(value); });
       });
 
-    const self = this;
     modalSubmitRow(contentEl, t("投图片"), t("取消"), function (btn) {
       const source = String(sourceInput.value || "").trim();
       if (!source) {
@@ -3610,8 +3800,7 @@ function renderUniversalInput(plugin, container) {
   };
 
   const addFile = (file) => {
-    // Use path (Electron) or name as fallback
-    if (file && (file.path || file.name)) {
+    if (file && (file.path || file.name || typeof file.arrayBuffer === "function")) {
       attachedFiles.push(file);
       updateAttachmentPills();
     }
@@ -3628,7 +3817,7 @@ function renderUniversalInput(plugin, container) {
     if (!value.trim() && attachedFiles.length === 0) return;
 
     const filesToProcess = [...attachedFiles];
-    const originalValue = value;
+    const normalizedQuestion = String(value || "").trim();
 
     // Lock UI during submit
     submitButton.disabled = true;
@@ -3639,23 +3828,70 @@ function renderUniversalInput(plugin, container) {
 
     let succeeded = false;
     // R88: 立即推一个"处理中"卡片到 Today，构成视觉闭环
-    const pendingDisplay = filesToProcess.length > 0
-      ? `${value || filesToProcess.map((f) => f.name).join(", ")}`
-      : value;
-    const retryArgs = filesToProcess.length > 0
-      ? { kind: "files", files: filesToProcess.map((f) => ({ path: f.path, name: f.name })), title: value }
-      : { kind: "text", payload: value };
-    const pendingId = plugin.pushPendingSubmission(pendingDisplay, {
-      title: filesToProcess.length > 0 ? value : "",
-      retryArgs,
-    });
+    let pendingId = "";
     try {
       if (filesToProcess.length > 0) {
+        const resolvedFiles = [];
         for (const file of filesToProcess) {
-          await plugin.runUniversalInputCommand({ payload: file.path || file.name || "", title: value });
+          const source = await resolvePluginFileSource(plugin, file);
+          resolvedFiles.push({ source, name: file.name || source });
+        }
+        const pendingDisplay = `${value || resolvedFiles.map((f) => f.name).join(", ")}`;
+        const retryArgs = {
+          kind: "files",
+          files: resolvedFiles.map((f) => ({ path: f.source, name: f.name })),
+          autoAsk: Boolean(normalizedQuestion),
+          question: normalizedQuestion,
+          materialPaths: [],
+          askQuestion: "",
+        };
+        pendingId = plugin.pushPendingSubmission(pendingDisplay, {
+          title: normalizedQuestion,
+          retryArgs,
+        });
+        const flowResult = await plugin.runDroppedFilesWithAutoAsk({
+          files: resolvedFiles.map((f) => ({ path: f.source, name: f.name })),
+          question: normalizedQuestion,
+        });
+        if (pendingId) {
+          plugin.updatePendingSubmissionRetryArgs(pendingId, {
+            ...retryArgs,
+            materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : [],
+            askQuestion: String(flowResult && flowResult.askQuestion || ""),
+          });
         }
       } else {
-        await plugin.runUniversalInputCommand({ payload: value });
+        const materialQuestion = splitTextMaterialQuestion(value);
+        if (materialQuestion) {
+          const retryArgs = {
+            kind: "material-question",
+            payload: materialQuestion.payload,
+            question: materialQuestion.question,
+            materialPaths: [],
+            askQuestion: "",
+          };
+          pendingId = plugin.pushPendingSubmission(value, {
+            title: materialQuestion.question,
+            retryArgs,
+          });
+          const flowResult = await plugin.runDroppedPayloadsWithAutoAsk({
+            payloads: [materialQuestion.payload],
+            question: materialQuestion.question,
+          });
+          if (pendingId) {
+            plugin.updatePendingSubmissionRetryArgs(pendingId, {
+              ...retryArgs,
+              materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : [],
+              askQuestion: String(flowResult && flowResult.askQuestion || ""),
+            });
+          }
+        } else {
+          pendingId = plugin.pushPendingSubmission(value, {
+            title: "",
+            retryArgs: { kind: "text", payload: value },
+          });
+          await plugin.runUniversalInputCommand({ payload: value });
+        }
       }
       succeeded = true;
       // R89: 成功 ≠ 报告生成；先标 received（"已接收，等待生成报告"），等 reconcile 命中再 done
@@ -3694,7 +3930,7 @@ function renderUniversalInput(plugin, container) {
       e.preventDefault();
       for (let i = 0; i < e.clipboardData.files.length; i++) {
         const file = e.clipboardData.files[i];
-        addFile({ name: file.name, path: file.path, type: file.type });
+        addFile(file);
       }
     }
   });
@@ -3724,7 +3960,7 @@ function renderUniversalInput(plugin, container) {
     if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       for (let i = 0; i < e.dataTransfer.files.length; i++) {
         const file = e.dataTransfer.files[i];
-        addFile({ name: file.name, path: file.path, type: file.type });
+        addFile(file);
       }
     } else if (e.dataTransfer) {
       const text = e.dataTransfer.getData("text/plain");
@@ -3776,15 +4012,24 @@ function renderDropZone(plugin, container) {
       const fileName = String(file.name || file.path || "").toLowerCase();
       const fileType = String(file.type || "").toLowerCase();
       if (fileType === "application/pdf" || fileName.endsWith(".pdf")) {
-        plugin.runUiAction(() => new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(file.path || "").open(), plugin.t("Drop PDF"));
+        plugin.runUiAction(async () => {
+          const source = await resolvePluginFileSource(plugin, file);
+          new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(source).open();
+        }, plugin.t("Drop PDF"));
         return;
       }
       if (fileType.startsWith("image/")) {
-        plugin.runUiAction(() => new DropImageModal(plugin.app, plugin).setInitialSource(file.path || "").open(), plugin.t("Drop Image"));
+        plugin.runUiAction(async () => {
+          const source = await resolvePluginFileSource(plugin, file);
+          new DropImageModal(plugin.app, plugin).setInitialSource(source).open();
+        }, plugin.t("Drop Image"));
         return;
       }
       // For other file types, still try to open the drop file modal
-      plugin.runUiAction(() => new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(file.path || "").open(), plugin.t("Drop File"));
+      plugin.runUiAction(async () => {
+        const source = await resolvePluginFileSource(plugin, file);
+        new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(source).open();
+      }, plugin.t("Drop File"));
       return;
     }
     const uriList = String(dataTransfer.getData("text/uri-list") || "")
@@ -4087,9 +4332,33 @@ function renderPendingSubmissionsGroup(plugin, section) {
         plugin.resetPendingSubmissionForRetry(entry.id);
         try {
           if (args.kind === "files" && Array.isArray(args.files)) {
-            for (const f of args.files) {
-              await plugin.runUniversalInputCommand({ payload: f.path || f.name || "", title: args.title || "" });
-            }
+            const flowResult = await plugin.runDroppedFilesWithAutoAsk({
+              files: args.files,
+              question: args.question || "",
+            });
+            plugin.updatePendingSubmissionRetryArgs(entry.id, {
+              ...args,
+              materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : Array.isArray(args.materialPaths) ? args.materialPaths : [],
+              askQuestion: String(flowResult && flowResult.askQuestion || args.askQuestion || ""),
+            });
+          } else if (args.kind === "auto-ask") {
+            await plugin.runAskCommand({
+              question: args.askQuestion || args.question || entry.displayText || "",
+              format: "report",
+              mode: "run-ask",
+              protocol: args.protocol || "",
+            });
+          } else if (args.kind === "material-question") {
+            const flowResult = await plugin.runDroppedPayloadsWithAutoAsk({
+              payloads: [args.payload || ""],
+              question: args.question || "",
+              protocol: args.protocol || "",
+            });
+            plugin.updatePendingSubmissionRetryArgs(entry.id, {
+              ...args,
+              materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : Array.isArray(args.materialPaths) ? args.materialPaths : [],
+              askQuestion: String(flowResult && flowResult.askQuestion || args.askQuestion || ""),
+            });
           } else {
             await plugin.runUniversalInputCommand({ payload: args.payload || entry.displayText || "" });
           }
@@ -7540,6 +7809,14 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return this.pendingSubmissions.find((e) => e && e.id === id) || null;
   }
 
+  updatePendingSubmissionRetryArgs(id, retryArgs) {
+    const entry = this._findPending(id);
+    if (!entry) return;
+    entry.retryArgs = retryArgs && typeof retryArgs === "object" ? retryArgs : null;
+    void this.savePluginState();
+    this.refreshOpenViews();
+  }
+
   // R90: 顶部"刷新炉子"按钮的 last updated 文案
   // 源：shellSummary.generated_at；返回"刚刚 / N 分钟前 / N 小时前 / N 天前 / 未刷新"
   getLastSummaryRefreshLabel() {
@@ -7662,7 +7939,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (normalizedTitle) {
       args.push("--title", normalizedTitle);
     }
-    await this.runPluginCommand(`${this.t("Universal Input")}: ${truncateText(normalizedTitle || normalizedPayload, 48)}`, args, { refreshAfter: true });
+    return await this.runPluginCommand(`${this.t("Universal Input")}: ${truncateText(normalizedTitle || normalizedPayload, 48)}`, args, { refreshAfter: true });
   }
 
   async runAskCommand({ question, format, mode, protocol }) {
@@ -7673,7 +7950,51 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (mode === "run-ask") {
       args.push("--fallback-to-ask");
     }
-    await this.runPluginCommand(`${this.t("Ask")}: ${truncateText(question, 48)}`, args, { refreshAfter: true });
+    return await this.runPluginCommand(`${this.t("Ask")}: ${truncateText(question, 48)}`, args, { refreshAfter: true });
+  }
+
+  async runDroppedPayloadsWithAutoAsk({ payloads, question, protocol }) {
+    const normalizedPayloads = Array.isArray(payloads)
+      ? payloads.map((payload) => String(payload || "").trim()).filter(Boolean)
+      : [];
+    const normalizedQuestion = String(question || "").trim();
+    const materialPaths = [];
+    for (const payloadText of normalizedPayloads) {
+      const payload = await this.runUniversalInputCommand({ payload: payloadText });
+      collectMaterialPathsFromPayload(payload).forEach((item) => materialPaths.push(item));
+    }
+    const normalizedMaterialPaths = normalizeMaterialPaths(materialPaths);
+    const askQuestion = normalizedQuestion
+      ? buildAutoAskQuestion(normalizedQuestion, normalizedMaterialPaths)
+      : "";
+    if (normalizedQuestion) {
+      await this.runAskCommand({
+        question: askQuestion,
+        format: "report",
+        mode: "run-ask",
+        protocol,
+      });
+    }
+    return {
+      materialPaths: normalizedMaterialPaths,
+      askQuestion,
+    };
+  }
+
+  async runDroppedFilesWithAutoAsk({ files, question, protocol }) {
+    const normalizedFiles = Array.isArray(files)
+      ? files
+        .map((file) => ({
+          path: String(file && (file.path || file.source) || "").trim(),
+          name: String(file && file.name || "").trim(),
+        }))
+        .filter((file) => file.path)
+      : [];
+    return await this.runDroppedPayloadsWithAutoAsk({
+      payloads: normalizedFiles.map((file) => file.path),
+      question,
+      protocol,
+    });
   }
 
   async runReportSubgraphCommand({ reportPath }) {

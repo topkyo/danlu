@@ -49,8 +49,7 @@ function renderUniversalInput(plugin, container) {
   };
 
   const addFile = (file) => {
-    // Use path (Electron) or name as fallback
-    if (file && (file.path || file.name)) {
+    if (file && (file.path || file.name || typeof file.arrayBuffer === "function")) {
       attachedFiles.push(file);
       updateAttachmentPills();
     }
@@ -67,7 +66,7 @@ function renderUniversalInput(plugin, container) {
     if (!value.trim() && attachedFiles.length === 0) return;
 
     const filesToProcess = [...attachedFiles];
-    const originalValue = value;
+    const normalizedQuestion = String(value || "").trim();
 
     // Lock UI during submit
     submitButton.disabled = true;
@@ -78,23 +77,70 @@ function renderUniversalInput(plugin, container) {
 
     let succeeded = false;
     // R88: 立即推一个"处理中"卡片到 Today，构成视觉闭环
-    const pendingDisplay = filesToProcess.length > 0
-      ? `${value || filesToProcess.map((f) => f.name).join(", ")}`
-      : value;
-    const retryArgs = filesToProcess.length > 0
-      ? { kind: "files", files: filesToProcess.map((f) => ({ path: f.path, name: f.name })), title: value }
-      : { kind: "text", payload: value };
-    const pendingId = plugin.pushPendingSubmission(pendingDisplay, {
-      title: filesToProcess.length > 0 ? value : "",
-      retryArgs,
-    });
+    let pendingId = "";
     try {
       if (filesToProcess.length > 0) {
+        const resolvedFiles = [];
         for (const file of filesToProcess) {
-          await plugin.runUniversalInputCommand({ payload: file.path || file.name || "", title: value });
+          const source = await resolvePluginFileSource(plugin, file);
+          resolvedFiles.push({ source, name: file.name || source });
+        }
+        const pendingDisplay = `${value || resolvedFiles.map((f) => f.name).join(", ")}`;
+        const retryArgs = {
+          kind: "files",
+          files: resolvedFiles.map((f) => ({ path: f.source, name: f.name })),
+          autoAsk: Boolean(normalizedQuestion),
+          question: normalizedQuestion,
+          materialPaths: [],
+          askQuestion: "",
+        };
+        pendingId = plugin.pushPendingSubmission(pendingDisplay, {
+          title: normalizedQuestion,
+          retryArgs,
+        });
+        const flowResult = await plugin.runDroppedFilesWithAutoAsk({
+          files: resolvedFiles.map((f) => ({ path: f.source, name: f.name })),
+          question: normalizedQuestion,
+        });
+        if (pendingId) {
+          plugin.updatePendingSubmissionRetryArgs(pendingId, {
+            ...retryArgs,
+            materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : [],
+            askQuestion: String(flowResult && flowResult.askQuestion || ""),
+          });
         }
       } else {
-        await plugin.runUniversalInputCommand({ payload: value });
+        const materialQuestion = splitTextMaterialQuestion(value);
+        if (materialQuestion) {
+          const retryArgs = {
+            kind: "material-question",
+            payload: materialQuestion.payload,
+            question: materialQuestion.question,
+            materialPaths: [],
+            askQuestion: "",
+          };
+          pendingId = plugin.pushPendingSubmission(value, {
+            title: materialQuestion.question,
+            retryArgs,
+          });
+          const flowResult = await plugin.runDroppedPayloadsWithAutoAsk({
+            payloads: [materialQuestion.payload],
+            question: materialQuestion.question,
+          });
+          if (pendingId) {
+            plugin.updatePendingSubmissionRetryArgs(pendingId, {
+              ...retryArgs,
+              materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : [],
+              askQuestion: String(flowResult && flowResult.askQuestion || ""),
+            });
+          }
+        } else {
+          pendingId = plugin.pushPendingSubmission(value, {
+            title: "",
+            retryArgs: { kind: "text", payload: value },
+          });
+          await plugin.runUniversalInputCommand({ payload: value });
+        }
       }
       succeeded = true;
       // R89: 成功 ≠ 报告生成；先标 received（"已接收，等待生成报告"），等 reconcile 命中再 done
@@ -133,7 +179,7 @@ function renderUniversalInput(plugin, container) {
       e.preventDefault();
       for (let i = 0; i < e.clipboardData.files.length; i++) {
         const file = e.clipboardData.files[i];
-        addFile({ name: file.name, path: file.path, type: file.type });
+        addFile(file);
       }
     }
   });
@@ -163,7 +209,7 @@ function renderUniversalInput(plugin, container) {
     if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       for (let i = 0; i < e.dataTransfer.files.length; i++) {
         const file = e.dataTransfer.files[i];
-        addFile({ name: file.name, path: file.path, type: file.type });
+        addFile(file);
       }
     } else if (e.dataTransfer) {
       const text = e.dataTransfer.getData("text/plain");
@@ -215,15 +261,24 @@ function renderDropZone(plugin, container) {
       const fileName = String(file.name || file.path || "").toLowerCase();
       const fileType = String(file.type || "").toLowerCase();
       if (fileType === "application/pdf" || fileName.endsWith(".pdf")) {
-        plugin.runUiAction(() => new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(file.path || "").open(), plugin.t("Drop PDF"));
+        plugin.runUiAction(async () => {
+          const source = await resolvePluginFileSource(plugin, file);
+          new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(source).open();
+        }, plugin.t("Drop PDF"));
         return;
       }
       if (fileType.startsWith("image/")) {
-        plugin.runUiAction(() => new DropImageModal(plugin.app, plugin).setInitialSource(file.path || "").open(), plugin.t("Drop Image"));
+        plugin.runUiAction(async () => {
+          const source = await resolvePluginFileSource(plugin, file);
+          new DropImageModal(plugin.app, plugin).setInitialSource(source).open();
+        }, plugin.t("Drop Image"));
         return;
       }
       // For other file types, still try to open the drop file modal
-      plugin.runUiAction(() => new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(file.path || "").open(), plugin.t("Drop File"));
+      plugin.runUiAction(async () => {
+        const source = await resolvePluginFileSource(plugin, file);
+        new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(source).open();
+      }, plugin.t("Drop File"));
       return;
     }
     const uriList = String(dataTransfer.getData("text/uri-list") || "")

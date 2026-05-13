@@ -2131,6 +2131,14 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return this.pendingSubmissions.find((e) => e && e.id === id) || null;
   }
 
+  updatePendingSubmissionRetryArgs(id, retryArgs) {
+    const entry = this._findPending(id);
+    if (!entry) return;
+    entry.retryArgs = retryArgs && typeof retryArgs === "object" ? retryArgs : null;
+    void this.savePluginState();
+    this.refreshOpenViews();
+  }
+
   // R90: 顶部"刷新炉子"按钮的 last updated 文案
   // 源：shellSummary.generated_at；返回"刚刚 / N 分钟前 / N 小时前 / N 天前 / 未刷新"
   getLastSummaryRefreshLabel() {
@@ -2253,7 +2261,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (normalizedTitle) {
       args.push("--title", normalizedTitle);
     }
-    await this.runPluginCommand(`${this.t("Universal Input")}: ${truncateText(normalizedTitle || normalizedPayload, 48)}`, args, { refreshAfter: true });
+    return await this.runPluginCommand(`${this.t("Universal Input")}: ${truncateText(normalizedTitle || normalizedPayload, 48)}`, args, { refreshAfter: true });
   }
 
   async runAskCommand({ question, format, mode, protocol }) {
@@ -2264,7 +2272,51 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (mode === "run-ask") {
       args.push("--fallback-to-ask");
     }
-    await this.runPluginCommand(`${this.t("Ask")}: ${truncateText(question, 48)}`, args, { refreshAfter: true });
+    return await this.runPluginCommand(`${this.t("Ask")}: ${truncateText(question, 48)}`, args, { refreshAfter: true });
+  }
+
+  async runDroppedPayloadsWithAutoAsk({ payloads, question, protocol }) {
+    const normalizedPayloads = Array.isArray(payloads)
+      ? payloads.map((payload) => String(payload || "").trim()).filter(Boolean)
+      : [];
+    const normalizedQuestion = String(question || "").trim();
+    const materialPaths = [];
+    for (const payloadText of normalizedPayloads) {
+      const payload = await this.runUniversalInputCommand({ payload: payloadText });
+      collectMaterialPathsFromPayload(payload).forEach((item) => materialPaths.push(item));
+    }
+    const normalizedMaterialPaths = normalizeMaterialPaths(materialPaths);
+    const askQuestion = normalizedQuestion
+      ? buildAutoAskQuestion(normalizedQuestion, normalizedMaterialPaths)
+      : "";
+    if (normalizedQuestion) {
+      await this.runAskCommand({
+        question: askQuestion,
+        format: "report",
+        mode: "run-ask",
+        protocol,
+      });
+    }
+    return {
+      materialPaths: normalizedMaterialPaths,
+      askQuestion,
+    };
+  }
+
+  async runDroppedFilesWithAutoAsk({ files, question, protocol }) {
+    const normalizedFiles = Array.isArray(files)
+      ? files
+        .map((file) => ({
+          path: String(file && (file.path || file.source) || "").trim(),
+          name: String(file && file.name || "").trim(),
+        }))
+        .filter((file) => file.path)
+      : [];
+    return await this.runDroppedPayloadsWithAutoAsk({
+      payloads: normalizedFiles.map((file) => file.path),
+      question,
+      protocol,
+    });
   }
 
   async runReportSubgraphCommand({ reportPath }) {

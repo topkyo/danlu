@@ -13,6 +13,7 @@ from aiwiki.drop import (
     _repo_tree,
     _resolve_asset_url,
     drop_image,
+    drop_note,
     drop_pdf,
     drop_repo,
     drop_url,
@@ -36,13 +37,90 @@ class DropSafetyTests(unittest.TestCase):
         with self.assertRaises((PathOutsideWorkspaceError, RuntimeError)):
             drop_url(self.root, "file:///etc/passwd")
 
-    def test_drop_pdf_rejects_absolute_path_outside_workspace(self) -> None:
-        with self.assertRaises(PathOutsideWorkspaceError):
-            drop_pdf(self.root, "/etc/passwd")
+    def test_drop_pdf_imports_absolute_path_outside_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as outside:
+            source = Path(outside) / "external.pdf"
+            source.write_bytes(b"%PDF-1.4\n%external\n")
+
+            with patch("aiwiki.drop._extract_pdf_text", return_value="External PDF text"):
+                result = drop_pdf(self.root, str(source))
+
+        asset_path = self.root / result["asset_path"]
+        note = (self.root / result["note_path"]).read_text(encoding="utf-8")
+
+        self.assertEqual(result["material"], "pdf")
+        self.assertTrue(asset_path.exists())
+        self.assertEqual(result["original_path"], str(source.resolve()))
+        self.assertIn("External PDF text", note)
+
+    def test_drop_image_imports_absolute_path_outside_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as outside:
+            source = Path(outside) / "external.png"
+            source.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 32)
+
+            with patch("aiwiki.drop._detect_mime_type", return_value="image/png"):
+                with patch("aiwiki.drop._image_dimensions", return_value=(320, 240)):
+                    with patch("aiwiki.drop._extract_image_text", return_value="External OCR"):
+                        with patch(
+                            "aiwiki.drop._analyze_image_asset",
+                            return_value={"analysis": "External image analysis", "backend": "stub", "status": "generated"},
+                        ):
+                            result = drop_image(self.root, str(source), enable_vision=True)
+
+        asset_path = self.root / result["asset_path"]
+        note = (self.root / result["note_path"]).read_text(encoding="utf-8")
+
+        self.assertEqual(result["material"], "image")
+        self.assertTrue(asset_path.exists())
+        self.assertEqual(result["original_path"], str(source.resolve()))
+        self.assertIn("External OCR", note)
+        self.assertIn("External image analysis", note)
+
+    def test_drop_pdf_file_uri_outside_workspace_still_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as outside:
+            source = Path(outside) / "external-uri.pdf"
+            source.write_bytes(b"%PDF-1.4\n%external\n")
+
+            with self.assertRaises(PathOutsideWorkspaceError):
+                drop_pdf(self.root, source.as_uri())
+
+    def test_drop_pdf_treats_uppercase_http_scheme_as_url(self) -> None:
+        payload = b"%PDF-1.4\n%remote\n"
+
+        with patch("aiwiki.drop.safe_fetch", return_value=(payload, "HTTPS://example.com/paper.pdf")) as fetch:
+            with patch("aiwiki.drop._extract_pdf_text", return_value="Remote PDF text"):
+                result = drop_pdf(self.root, "HTTPS://example.com/paper.pdf")
+
+        fetch.assert_called_once()
+        self.assertEqual(result["material"], "pdf")
+        self.assertEqual(result["original_path"], "HTTPS://example.com/paper.pdf")
+        note = (self.root / result["note_path"]).read_text(encoding="utf-8")
+        self.assertIn("Remote PDF text", note)
+
+    def test_drop_image_file_uri_outside_workspace_still_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as outside:
+            source = Path(outside) / "external-uri.png"
+            source.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 32)
+
+            with self.assertRaises(PathOutsideWorkspaceError):
+                drop_image(self.root, source.as_uri(), enable_vision=False)
 
     def test_drop_repo_rejects_absolute_path_outside_workspace(self) -> None:
         with self.assertRaises(PathOutsideWorkspaceError):
             drop_repo(self.root, "/etc")
+
+    def test_drop_note_accepts_absolute_path_outside_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as outside:
+            source = Path(outside) / "external.md"
+            source.write_text("# External Note\n\nAllowed for now.\n", encoding="utf-8")
+
+            result = drop_note(self.root, str(source))
+
+        note = (self.root / result["note_path"]).read_text(encoding="utf-8")
+
+        self.assertEqual(result["material"], "note")
+        self.assertEqual(result["original_path"], str(source))
+        self.assertIn("Allowed for now.", note)
 
     def test_repo_tree_skips_symlink(self) -> None:
         repo = self.root / "repo"

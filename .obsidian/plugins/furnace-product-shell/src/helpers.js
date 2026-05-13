@@ -11,6 +11,186 @@ function truncateText(value, limit = 240) {
   return `${text.slice(0, limit - 1)}…`;
 }
 
+function sanitizeDropFileName(value) {
+  const raw = String(value || "attachment").trim() || "attachment";
+  const sanitized = raw.replace(/[\\/:*?"<>|\0\r\n\t]/g, "_").replace(/^\.+$/, "attachment");
+  return sanitized.slice(0, 160) || "attachment";
+}
+
+function nodeFs() {
+  if (typeof fs !== "undefined") return fs;
+  if (typeof require === "function") return require("fs");
+  throw new Error("File-system access is unavailable in this Obsidian runtime.");
+}
+
+function nodePath() {
+  if (typeof path !== "undefined") return path;
+  if (typeof require === "function") return require("path");
+  throw new Error("Path utilities are unavailable in this Obsidian runtime.");
+}
+
+function pluginVaultRoot(plugin) {
+  const repoRoot = plugin && plugin.repoState && typeof plugin.repoState.root === "string" ? plugin.repoState.root.trim() : "";
+  if (repoRoot) return repoRoot;
+  const adapter = plugin && plugin.app && plugin.app.vault && plugin.app.vault.adapter;
+  return adapter && typeof adapter.basePath === "string" ? adapter.basePath.trim() : "";
+}
+
+function normalizeMaterialPaths(values) {
+  const items = Array.isArray(values) ? values : [values];
+  const seen = new Set();
+  const out = [];
+  items.forEach((value) => {
+    const text = String(value || "").trim();
+    if (!text || seen.has(text)) {
+      return;
+    }
+    seen.add(text);
+    out.push(text);
+  });
+  return out;
+}
+
+async function resolvePluginFileSource(plugin, file) {
+  const fileName = String(file && file.name || "").trim();
+  const rawPath = String(file && file.path || "").trim();
+  const pathApi = nodePath();
+  if (rawPath && (pathApi.isAbsolute(rawPath) || rawPath.includes("/") || rawPath.includes("\\")) && rawPath !== fileName) {
+    return rawPath;
+  }
+  if (!file || typeof file.arrayBuffer !== "function") {
+    if (rawPath) return rawPath;
+    throw new Error("Cannot access dropped file contents; please choose a local file again.");
+  }
+  const root = pluginVaultRoot(plugin);
+  if (!root) {
+    throw new Error("Cannot save dropped file because the vault root is unavailable.");
+  }
+  const fsApi = nodeFs();
+  const targetDir = pathApi.join(root, ".aiwiki", "tmp", "product-shell-drop");
+  fsApi.mkdirSync(targetDir, { recursive: true });
+  const safeName = sanitizeDropFileName(fileName || "attachment");
+  const stamp = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  const targetPath = pathApi.join(targetDir, `${stamp}-${safeName}`);
+  const buffer = await file.arrayBuffer();
+  fsApi.writeFileSync(targetPath, new Uint8Array(buffer));
+  return targetPath;
+}
+
+function collectMaterialPathsFromPayload(payload) {
+  const out = [];
+  const seenObjects = new Set();
+  const directKeys = [
+    "note_path",
+    "asset_path",
+    "path",
+    "output_path",
+    "report_path",
+    "receipt_path",
+    "state_path",
+    "index_path",
+    "stored_path",
+  ];
+  const listKeys = [
+    "asset_paths",
+    "note_paths",
+    "paths",
+    "output_paths",
+    "report_paths",
+    "receipt_paths",
+    "state_paths",
+    "index_paths",
+    "stored_paths",
+    "material_paths",
+  ];
+  const pushValue = (value) => {
+    normalizeMaterialPaths(value).forEach((item) => out.push(item));
+  };
+  const visit = (value, depth = 0) => {
+    if (!value || depth > 3) {
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => visit(item, depth + 1));
+      return;
+    }
+    if (typeof value !== "object") {
+      return;
+    }
+    if (seenObjects.has(value)) {
+      return;
+    }
+    seenObjects.add(value);
+    directKeys.forEach((key) => pushValue(value[key]));
+    listKeys.forEach((key) => {
+      const items = value[key];
+      if (Array.isArray(items)) {
+        items.forEach((item) => pushValue(item));
+      }
+    });
+    ["material", "materials", "result", "results", "artifacts", "items"].forEach((key) => {
+      if (value[key]) {
+        visit(value[key], depth + 1);
+      }
+    });
+  };
+  visit(payload);
+  return normalizeMaterialPaths(out);
+}
+
+function buildAutoAskQuestion(question, materialPaths) {
+  const normalizedQuestion = String(question || "").trim();
+  if (!normalizedQuestion) {
+    return "";
+  }
+  const paths = normalizeMaterialPaths(materialPaths);
+  const pathBlock = paths.length
+    ? `- ${paths.join("\n- ")}`
+    : "- (drop payload 未返回可用路径)";
+  return [
+    "请基于以下本次投喂材料回答用户问题。",
+    "",
+    "本次投喂材料路径：",
+    pathBlock,
+    "",
+    "用户问题：",
+    normalizedQuestion,
+  ].join("\n");
+}
+
+function looksLikeUniversalMaterialPayload(value) {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  if (lower.startsWith("http://") || lower.startsWith("https://")) return true;
+  if (lower.startsWith("git@") || lower.startsWith("ssh://")) return true;
+  if (lower.startsWith("note:") && lower.slice("note:".length).trim()) return true;
+  if (lower.endsWith(".git")) return true;
+  if (lower.endsWith(".pdf")) return true;
+  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].some((suffix) => lower.endsWith(suffix))) return true;
+  return false;
+}
+
+function splitTextMaterialQuestion(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const nonEmptyLines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (nonEmptyLines.length >= 2 && looksLikeUniversalMaterialPayload(nonEmptyLines[0])) {
+    return {
+      payload: nonEmptyLines[0],
+      question: nonEmptyLines.slice(1).join("\n"),
+    };
+  }
+  const oneLine = text.match(/^(\S+)\s+([\s\S]+)$/);
+  if (oneLine && looksLikeUniversalMaterialPayload(oneLine[1])) {
+    return {
+      payload: oneLine[1],
+      question: oneLine[2].trim(),
+    };
+  }
+  return null;
+}
+
 function readJsonText(rawText) {
   const text = String(rawText || "").trim();
   if (!text) {

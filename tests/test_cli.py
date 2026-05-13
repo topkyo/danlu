@@ -1371,6 +1371,13 @@ class CLITests(unittest.TestCase):
                 {"title": None, "enable_vision": True},
             ),
             (
+                "file-uri-pdf",
+                ["drop", "file:///tmp/paper.pdf"],
+                "drop_pdf",
+                (self.root, "file:///tmp/paper.pdf"),
+                {"title": None},
+            ),
+            (
                 "repo",
                 ["drop", "git@example.com:org/repo.git"],
                 "drop_repo",

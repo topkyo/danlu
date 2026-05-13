@@ -1336,7 +1336,9 @@ def _collect_binary_to_tmp(root: Path, source: str, *, prefix: str, preferred_sl
     del preferred_slug
     tmp_dir = Path(tempfile.mkdtemp(prefix=prefix))
     try:
-        if source.startswith("http://") or source.startswith("https://"):
+        parsed = parse.urlparse(source)
+        source_scheme = parsed.scheme.lower()
+        if source_scheme in {"http", "https"}:
             payload, final_url = safe_fetch(
                 source,
                 max_bytes=_ASSET_MAX_BYTES,
@@ -1348,7 +1350,10 @@ def _collect_binary_to_tmp(root: Path, source: str, *, prefix: str, preferred_sl
             tmp_path.write_bytes(payload)
             original_path = final_url
         else:
-            source_path = safe_resolve_within(Path(source).expanduser().resolve(), root)
+            if source_scheme == "file":
+                source_path = safe_resolve_within(Path(parse.unquote(parsed.path)), root)
+            else:
+                source_path = Path(source).expanduser().resolve()
             if not source_path.is_file():
                 raise FileNotFoundError(f"Source not found: {source}")
             suffix = source_path.suffix.lower() or ".bin"
