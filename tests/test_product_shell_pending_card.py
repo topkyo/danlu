@@ -223,6 +223,17 @@ class PendingSubmissionContractTests(unittest.TestCase):
         # 命中后调 markDone（带 target）
         self.assertIn("markPendingSubmissionDone", body)
 
+    def test_reconcile_recent_raw_inputs_reads_stored_path_and_marks_done_with_raw_target(self) -> None:
+        plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        idx = plugin_js.find("reconcilePendingSubmissions(summary) {")
+        self.assertGreater(idx, 0)
+        end = plugin_js.find("\n  }\n", idx)
+        body = plugin_js[idx:end]
+        self.assertIn("const rawCands = Array.isArray(summary.recent_raw_inputs)", body)
+        self.assertIn("cand.stored_path", body)
+        self.assertIn('target = "raw"', body)
+        self.assertIn("this.markPendingSubmissionDone(h.id, h.target, h.path)", body)
+
     # ---- R89 #3 文案中文化 + Advanced 分隔 + 失败 hint ----
     def test_today_groups_use_chinese(self) -> None:
         text = (SRC / "render_today.js").read_text(encoding="utf-8")

@@ -173,14 +173,24 @@ class TestFeedParity(unittest.TestCase):
 
         self.assertFalse(any("已投料" in entry.title for entry in feed))
 
-    def test_extract_primary_path_recognizes_note_path(self) -> None:
+    def test_extract_primary_path_recognizes_all_checklist_candidate_keys(self) -> None:
         content = (PROJECT_ROOT / ".obsidian/plugins/furnace-product-shell/src/plugin_helpers.js").read_text(
             encoding="utf-8"
         )
         match = re.search(r"const\s+candidateKeys\s*=\s*\[(?P<body>.*?)\]", content, re.DOTALL)
         self.assertIsNotNone(match)
         body = match.group("body") if match else ""
-        for key in ('"note_path"', '"stored_path"', '"asset_path"'):
+        for key in (
+            '"path"',
+            '"output_path"',
+            '"receipt_path"',
+            '"state_path"',
+            '"index_path"',
+            '"report_path"',
+            '"note_path"',
+            '"stored_path"',
+            '"asset_path"',
+        ):
             self.assertIn(key, body)
 
     def test_reconcile_pending_includes_recent_raw_inputs(self) -> None:

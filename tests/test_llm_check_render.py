@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,9 +9,35 @@ from unittest.mock import patch
 
 from aiwiki.cli import main
 from aiwiki.cli.llm_check_render import render_llm_check_human
+from aiwiki.runner.clients import llm_status
 
 
 class LLMCheckRenderTests(unittest.TestCase):
+    def test_llm_status_unconfigured_json_shape_is_stable(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            status = llm_status()
+
+        self.assertFalse(status["configured"])
+        self.assertEqual(status["backend"], "")
+        self.assertEqual(status["model"], "")
+        self.assertIsInstance(status["available_backends"], list)
+        self.assertIsInstance(status["missing"], list)
+        self.assertIn("message", status)
+        self.assertIn("api_key_present", status)
+        self.assertIn("timeout_seconds", status)
+
+    def test_llm_status_configured_json_shape_is_stable(self) -> None:
+        with patch("shutil.which", return_value="/usr/bin/codex"):
+            with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "codex-cli", "AIWIKI_LLM_MODEL": "gpt-5.5"}, clear=True):
+                status = llm_status()
+
+        self.assertTrue(status["configured"])
+        self.assertEqual(status["backend"], "codex-cli")
+        self.assertEqual(status["model"], "gpt-5.5")
+        self.assertEqual(status["effective_model"], "gpt-5.5")
+        self.assertIn("codex_available", status)
+        self.assertIn("base_url", status)
+
     def test_render_human_not_configured(self) -> None:
         out = render_llm_check_human({"configured": False})
         self.assertIn("not configured", out)
@@ -155,6 +182,24 @@ class LLMCheckRenderTests(unittest.TestCase):
         self.assertEqual(stdout_default, stdout_json)
         mocked_default.assert_called_once_with(root, probe_all=False, timeout_seconds=20)
         mocked_json.assert_called_once_with(root, probe_all=False, timeout_seconds=20)
+
+    def test_llm_check_unconfigured_does_not_block_ask_or_drop_dispatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir).resolve()
+            with patch.dict(os.environ, {}, clear=True):
+                with patch("aiwiki.cli.ask_question", return_value={"kind": "answer", "path": "output/reports/x.md"}) as ask_mock:
+                    with patch("aiwiki.cli.drop_note", return_value={"kind": "raw-note", "note_path": "raw/inbox/x.md"}) as drop_mock:
+                        with patch("sys.stdout", new=io.StringIO()) as stdout, patch("sys.stderr", new=io.StringIO()):
+                            ask_code = main(["--root", str(root), "ask", "what is x?"])
+                            drop_code = main(["--root", str(root), "drop", "note", "--title", "t", "--text", "body"])
+
+        self.assertEqual(ask_code, 0)
+        self.assertEqual(drop_code, 0)
+        ask_mock.assert_called_once()
+        drop_mock.assert_called_once()
+        rendered = stdout.getvalue()
+        self.assertIn('"kind": "answer"', rendered)
+        self.assertIn('"kind": "raw-note"', rendered)
 
 
 def _four_state_result() -> dict[str, object]:

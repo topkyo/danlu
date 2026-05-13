@@ -90,7 +90,16 @@ if label == "shell-status":
 elif label == "llm-check":
     print(f"  backend={payload.get('backend', '')} model={payload.get('effective_model', payload.get('model', ''))}")
 else:
-    path = payload.get("path") or payload.get("output_path") or payload.get("receipt_path") or ""
+    path = (
+        payload.get("path")
+        or payload.get("output_path")
+        or payload.get("report_path")
+        or payload.get("note_path")
+        or payload.get("stored_path")
+        or payload.get("asset_path")
+        or payload.get("receipt_path")
+        or ""
+    )
     print(f"  path={path}")
 PY
   rm -f "$temp_json"
@@ -106,7 +115,8 @@ llm_backend_unavailable() {
     || [[ "$normalized" == *"login again"* ]] \
     || [[ "$normalized" == *"not have access to claude"* ]] \
     || [[ "$normalized" == *"authentication"* ]] \
-    || [[ "$normalized" == *"upgrade to pro"* ]]
+    || [[ "$normalized" == *"upgrade to pro"* ]] \
+    || [[ "$normalized" == *"llm backend resolution failed"* ]]
 }
 
 run_json "shell-status" shell-status
