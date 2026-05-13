@@ -1,0 +1,964 @@
+#!/usr/bin/env python3
+"""Repo-local dogfood maturity gate collector/runner/summarizer."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import subprocess
+import sys
+from collections import Counter
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SRC_ROOT = REPO_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+DEFAULT_VAULT_ROOT = Path("/home/tim/danlu/炼丹炉")
+MATURITY_GATE_REL_DIR = Path("output") / "control" / "maturity-gate"
+PLANNER_LOG_REL_PATH = Path(".aiwiki") / "state" / "planner-log.jsonl"
+PROMPTS_ASK_REL_PATH = Path("prompts") / "ask.md"
+SNAPSHOT_KIND = "dogfood-maturity-snapshot"
+RUN_RECEIPT_KIND = "dogfood-maturity-run-receipt"
+GENERATED_BY = "aiwiki-dogfood-maturity-gate"
+REQUIRED_SNAPSHOT_FIELDS = (
+    "backlog_total",
+    "l3_proposal_counts_by_state",
+    "judgment_review_receipt_counts",
+    "prompts_ask_sha256",
+)
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def timestamp_slug() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def resolve_root(root: str | None = None, *, env: dict[str, str] | None = None) -> Path:
+    if root:
+        return Path(root).expanduser().resolve()
+    env_map = env if env is not None else os.environ
+    for key in ("AIWIKI_DOGFOOD_VAULT", "AIWIKI_VAULT"):
+        value = str(env_map.get(key) or "").strip()
+        if value:
+            return Path(value).expanduser().resolve()
+    return DEFAULT_VAULT_ROOT.resolve()
+
+
+def maturity_gate_dir(root: Path) -> Path:
+    return root / MATURITY_GATE_REL_DIR
+
+
+def _json_dump(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_json_dump(payload), encoding="utf-8")
+    return path
+
+
+def _sha256_path(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _sum_int_values(payload: dict[str, Any]) -> int:
+    total = 0
+    for value in payload.values():
+        if isinstance(value, bool):
+            total += int(value)
+        elif isinstance(value, int):
+            total += value
+    return total
+
+
+def _excerpt(text: str, *, limit: int = 1200) -> str:
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3] + "..."
+
+
+def _load_planner_log_counts(root: Path) -> dict[str, Any]:
+    from aiwiki.app_state import load_jsonl_documents
+
+    path = root / PLANNER_LOG_REL_PATH
+    mode_counts: Counter[str] = Counter()
+    decision_counts: Counter[str] = Counter()
+    total_records = 0
+    for record in load_jsonl_documents(path):
+        total_records += 1
+        mode_counts[str(record.get("mode") or "(missing)")] += 1
+        decision_counts[str(record.get("decision") or "(missing)")] += 1
+    return {
+        "path": str(PLANNER_LOG_REL_PATH),
+        "exists": path.is_file(),
+        "total_records": total_records,
+        "mode_counts": dict(sorted(mode_counts.items())),
+        "decision_counts": dict(sorted(decision_counts.items())),
+    }
+
+
+def _load_judgment_review_receipt_counts(root: Path) -> dict[str, Any]:
+    from aiwiki.app_state import execution_receipt_history_path, load_jsonl_documents
+
+    path = execution_receipt_history_path(root)
+    operation_counts: Counter[str] = Counter()
+    review_ids: set[str] = set()
+    latest: list[dict[str, str]] = []
+    total = 0
+    for record in load_jsonl_documents(path):
+        if str(record.get("subject_kind") or "") != "judgment_review":
+            continue
+        total += 1
+        operation_counts[str(record.get("operation") or "(missing)")] += 1
+        review_id = str(record.get("subject_id") or "").strip()
+        if review_id:
+            review_ids.add(review_id)
+        latest.append(
+            {
+                "subject_id": review_id,
+                "action_id": str(record.get("action_id") or ""),
+                "target_file": str(record.get("target_file") or ""),
+                "receipt_path": str(record.get("receipt_path") or ""),
+                "applied_at": str(record.get("applied_at") or record.get("occurred_at") or ""),
+            }
+        )
+    return {
+        "path": ".aiwiki/state/execution-receipts.jsonl",
+        "exists": path.is_file(),
+        "total": total,
+        "operation_counts": dict(sorted(operation_counts.items())),
+        "unique_subject_ids": len(review_ids),
+        "latest": latest[-10:],
+    }
+
+
+def _load_judgment_lane_report(root: Path) -> dict[str, Any]:
+    from aiwiki.app_state import load_jsonl_documents, nightly_health_state_path
+    from aiwiki.app_state import execution_receipt_history_path
+    from aiwiki.app_state import load_json_document
+
+    nightly = load_json_document(nightly_health_state_path(root))
+    agent_loop = nightly.get("agent_loop") if isinstance(nightly.get("agent_loop"), dict) else {}
+    auto_judgments = agent_loop.get("auto_adopt_judgments") if isinstance(agent_loop.get("auto_adopt_judgments"), dict) else {}
+    receipts = [
+        item
+        for item in load_jsonl_documents(execution_receipt_history_path(root))
+        if isinstance(item, dict) and str(item.get("subject_kind") or "") == "judgment_review"
+    ]
+    confidence_counts: Counter[str] = Counter()
+    conclusion_counts: Counter[str] = Counter()
+    target_paths: set[str] = set()
+    review_ids: set[str] = set()
+    receipt_confidence_by_review_id: dict[str, str] = {}
+    receipt_conclusion_by_review_id: dict[str, str] = {}
+    for receipt in receipts:
+        confidence = str(receipt.get("confidence") or "").strip() or "(missing)"
+        conclusion = str(receipt.get("conclusion") or "").strip() or "(missing)"
+        confidence_counts[confidence] += 1
+        conclusion_counts[conclusion] += 1
+        target = str(receipt.get("target_file") or "").strip()
+        if target:
+            target_paths.add(target)
+        review_id = str(receipt.get("subject_id") or "").strip()
+        if review_id:
+            review_ids.add(review_id)
+            receipt_confidence_by_review_id[review_id] = confidence
+            receipt_conclusion_by_review_id[review_id] = conclusion
+    current_run_confidence_counts: Counter[str] = Counter()
+    current_run_conclusion_counts: Counter[str] = Counter()
+    for item in auto_judgments.get("items", []) if isinstance(auto_judgments.get("items"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        confidence = str(item.get("confidence") or "").strip()
+        conclusion = str(item.get("conclusion") or "").strip()
+        review_id = str(item.get("review_id") or "").strip()
+        # New receipts already carry conclusion/confidence, so only use nightly
+        # item metadata as a compatibility bridge for older receipts or pending
+        # exception-only items without a receipt row.
+        if confidence:
+            if review_id and receipt_confidence_by_review_id.get(review_id) not in {None, "(missing)"}:
+                pass
+            else:
+                current_run_confidence_counts[confidence] += 1
+                if review_id and receipt_confidence_by_review_id.get(review_id) == "(missing)":
+                    confidence_counts["(missing)"] -= 1
+        if conclusion:
+            if review_id and receipt_conclusion_by_review_id.get(review_id) not in {None, "(missing)"}:
+                pass
+            else:
+                current_run_conclusion_counts[conclusion] += 1
+                if review_id and receipt_conclusion_by_review_id.get(review_id) == "(missing)":
+                    conclusion_counts["(missing)"] -= 1
+    confidence_counts.update(current_run_confidence_counts)
+    conclusion_counts.update(current_run_conclusion_counts)
+    exception_queue = auto_judgments.get("exception_queue") if isinstance(auto_judgments.get("exception_queue"), list) else []
+    total_candidates = _coerce_int(auto_judgments.get("total_candidates"))
+    reviewed = _coerce_int(auto_judgments.get("reviewed"))
+    failed = _coerce_int(auto_judgments.get("failed"))
+    exceptions = _coerce_int(auto_judgments.get("exception_count"), len(exception_queue))
+    return {
+        "version": 1,
+        "status": "ok",
+        "limit": _coerce_int(auto_judgments.get("limit"), 5),
+        "total_candidates": total_candidates,
+        "reviewed": reviewed,
+        "failed": failed,
+        "exception_count": exceptions,
+        "processing_rate": round(reviewed / total_candidates, 4) if total_candidates else 0.0,
+        "failure_rate": round(failed / total_candidates, 4) if total_candidates else 0.0,
+        "exception_rate": round(exceptions / total_candidates, 4) if total_candidates else 0.0,
+        "exception_queue": exception_queue[-10:],
+        "confidence_counts": dict(sorted(confidence_counts.items())),
+        "conclusion_counts": dict(sorted(conclusion_counts.items())),
+        "receipt_count": len(receipts),
+        "unique_review_ids": len(review_ids),
+        "unique_target_paths": len(target_paths),
+    }
+
+
+def _load_l3_proposal_counts_by_state(root: Path) -> dict[str, int]:
+    from aiwiki.execution.l3_proposals import load_l3_proposal_state
+
+    counts: Counter[str] = Counter()
+    for proposal in load_l3_proposal_state(root).get("proposals", []):
+        if not isinstance(proposal, dict):
+            continue
+        counts[str(proposal.get("state") or "(missing)")] += 1
+    return dict(sorted(counts.items()))
+
+
+def _preview_l3_generation_summary(root: Path, *, limit: int) -> dict[str, Any]:
+    from aiwiki.execution.l3_proposals import preview_l3_proposal_generation
+
+    preview = preview_l3_proposal_generation(root, limit=limit)
+    blocker_counts: Counter[str] = Counter()
+    eligible_count = 0
+    for candidate in preview.get("candidates", []):
+        if not isinstance(candidate, dict):
+            continue
+        if bool(candidate.get("eligible")):
+            eligible_count += 1
+        for blocker in candidate.get("blockers", []):
+            if isinstance(blocker, str):
+                blocker_counts[blocker] += 1
+    return {
+        "status": str(preview.get("status") or ""),
+        "planner_log_path": str(preview.get("planner_log_path") or ""),
+        "candidate_count": int(preview.get("candidate_count") or 0),
+        "blocked_count": int(preview.get("blocked_count") or 0),
+        "returned_count": int(preview.get("returned_count") or 0),
+        "eligible_count": eligible_count,
+        "limit": int(preview.get("limit") or limit),
+        "blocker_counts": dict(sorted(blocker_counts.items())),
+    }
+
+
+def _coerce_int(value: Any, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _proposal_evidence_count(proposal: dict[str, Any]) -> int:
+    trigger = proposal.get("trigger") if isinstance(proposal.get("trigger"), dict) else {}
+    return _coerce_int(proposal.get("evidence_count", trigger.get("evidence_count", 0)))
+
+
+def _load_l3_debt_report(root: Path, *, preview_limit: int) -> dict[str, Any]:
+    from aiwiki.config import l3_auto_adopt_min_evidence_from_env
+    from aiwiki.execution.l3_proposals import load_l3_proposal_state, preview_l3_proposal_generation
+
+    threshold = l3_auto_adopt_min_evidence_from_env()
+    proposals = [item for item in load_l3_proposal_state(root).get("proposals", []) if isinstance(item, dict)]
+    preview = preview_l3_proposal_generation(root, limit=preview_limit)
+    proposal_ids = {str(item.get("proposal_id") or "") for item in proposals}
+    state_counts: Counter[str] = Counter(str(item.get("state") or "(missing)") for item in proposals)
+    dedupe_counts: Counter[str] = Counter()
+    low_evidence = 0
+    duplicate_existing = 0
+    preview_blocker_counts: Counter[str] = Counter()
+    preview_eligible = 0
+    preview_not_eligible = 0
+
+    for proposal in proposals:
+        dedupe_key = str(
+            proposal.get("dedupe_key")
+            or (proposal.get("trigger") if isinstance(proposal.get("trigger"), dict) else {}).get("dedupe_key")
+            or ""
+        ).strip()
+        if dedupe_key:
+            dedupe_counts[dedupe_key] += 1
+        if str(proposal.get("state") or "") == "candidate" and _proposal_evidence_count(proposal) < threshold:
+            low_evidence += 1
+
+    duplicate_state = sum(count - 1 for count in dedupe_counts.values() if count > 1)
+    preview_returned = [item for item in preview.get("candidates", []) if isinstance(item, dict)]
+    for candidate in preview_returned:
+        if bool(candidate.get("eligible")):
+            preview_eligible += 1
+        proposal_id = str(candidate.get("proposal_id") or "")
+        blockers = [blocker for blocker in candidate.get("blockers", []) if isinstance(blocker, str)]
+        if blockers:
+            preview_not_eligible += 1
+        elif proposal_id and proposal_id in proposal_ids:
+            duplicate_existing += 1
+        for blocker in blockers:
+            if isinstance(blocker, str):
+                preview_blocker_counts[blocker] += 1
+
+    preview_candidate_count = _coerce_int(preview.get("candidate_count"))
+    not_eligible = max(_coerce_int(preview.get("blocked_count")), preview_not_eligible)
+    effective_preview_candidates = max(preview_eligible - duplicate_existing, 0)
+    effective_attention = max(_coerce_int(state_counts.get("candidate")) - low_evidence - duplicate_state, 0)
+    preview_noise = min(duplicate_existing + not_eligible, preview_candidate_count)
+    preview_noise_ratio = (preview_noise / preview_candidate_count) if preview_candidate_count else 0.0
+    state_candidate_count = _coerce_int(state_counts.get("candidate"))
+    attention_noise = min(low_evidence + duplicate_state, state_candidate_count)
+    attention_noise_ratio = (attention_noise / state_candidate_count) if state_candidate_count else 0.0
+    return {
+        "version": 1,
+        "status": "ok",
+        "thresholds": {"low_evidence_below": threshold},
+        "state_counts": dict(sorted(state_counts.items())),
+        "preview_candidate_count": preview_candidate_count,
+        "preview_returned_count": len(preview_returned),
+        "preview_eligible_count": preview_eligible,
+        "preview_not_eligible_count": not_eligible,
+        "preview_blocker_counts": dict(sorted(preview_blocker_counts.items())),
+        "duplicate_existing_count": duplicate_existing,
+        "duplicate_state_count": duplicate_state,
+        "low_evidence_candidate_count": low_evidence,
+        "effective_preview_candidate_count": effective_preview_candidates,
+        "effective_attention_count": effective_attention,
+        "dedupe_or_noise_count": preview_noise,
+        "dedupe_or_noise_ratio": round(preview_noise_ratio, 4),
+        "attention_noise_count": attention_noise,
+        "attention_noise_ratio": round(attention_noise_ratio, 4),
+    }
+
+
+def collect_metrics(root: Path, *, preview_limit: int = 20) -> dict[str, Any]:
+    from aiwiki.app_content import collect_aging_signals, collect_curated_pages, knowledge_lifecycle_governance_summary, review_queue
+    from aiwiki.app_protocol import DEFAULT_PROTOCOL
+    from aiwiki.app_shell.controls import shell_execution_controls, shell_review_controls
+    from aiwiki.app_shell.summary import _action_review_backlog_counts
+    from aiwiki.app_state import load_json_document, load_knowledge_lifecycle_state, load_machine_memory, load_planner_state, nightly_health_state_path
+
+    decisions = collect_curated_pages(root, "decisions", "decision")
+    judgments = collect_curated_pages(root, "judgments", "judgment")
+    active_protocol = str(load_planner_state(root).get("active_protocol") or DEFAULT_PROTOCOL)
+    queue = review_queue(decisions, judgments, active_protocol=active_protocol)
+    aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
+    memory = load_machine_memory(root)
+    knowledge_lifecycle = load_knowledge_lifecycle_state(root)
+    lifecycle_summary = knowledge_lifecycle_governance_summary(
+        knowledge_lifecycle,
+        active_protocol=active_protocol,
+    )
+    counter_evidence_scan = memory.get("health", {}).get("counter_evidence_scan", {})
+    judgment_review_actions = memory.get("health", {}).get("judgment_review_actions", [])
+    review_backlog_counts = {
+        "pending_decisions": len(queue["pending_decisions"]),
+        "pending_judgments": len(queue["pending_judgments"]),
+        "overdue_reviews": len(aging["overdue"]),
+        "escalation_candidates": len(aging["escalated"]),
+        "counter_evidence_candidates": len(counter_evidence_scan.get("pages", [])) if isinstance(counter_evidence_scan, dict) else 0,
+        "judgment_review_actions": len(judgment_review_actions) if isinstance(judgment_review_actions, list) else 0,
+        "concept_backlog": lifecycle_summary.get("counts", {}).get("concept_backlog", 0),
+        "review_concepts": lifecycle_summary.get("counts", {}).get("review_concepts", 0),
+        "revisit_concepts": lifecycle_summary.get("counts", {}).get("revisit_concepts", 0),
+        "retired_concepts": lifecycle_summary.get("counts", {}).get("retired_concepts", 0),
+        "machine_memory_actions": memory.get("health", {}).get("action_counts", {}).get("total", 0),
+        "ready_actions": memory.get("health", {}).get("repair_plan", {}).get("counts", {}).get("ready", 0),
+        "overdue_actions": len(memory.get("health", {}).get("overdue_actions", [])),
+        "escalated_actions": len(memory.get("health", {}).get("escalated_actions", [])),
+    }
+    review_controls = shell_review_controls(
+        root,
+        queue=queue,
+        aging=aging,
+        active_protocol=active_protocol,
+        counter_evidence_scan=counter_evidence_scan if isinstance(counter_evidence_scan, dict) else {},
+        review_actions=judgment_review_actions if isinstance(judgment_review_actions, list) else [],
+    )
+    l3_review_controls = list(review_controls.get("l3_proposals", [])) if isinstance(review_controls.get("l3_proposals", []), list) else []
+    review_backlog_counts["l3_proposals"] = len(l3_review_controls)
+    review_backlog_counts["l3_proposal_attention"] = sum(
+        1 for proposal in l3_review_controls if isinstance(proposal, dict) and proposal.get("needs_attention")
+    )
+    review_backlog_counts.update(_action_review_backlog_counts(shell_execution_controls(root, memory)))
+    nightly = load_json_document(nightly_health_state_path(root))
+    return {
+        "kind": SNAPSHOT_KIND,
+        "version": 1,
+        "generated_by": GENERATED_BY,
+        "generated_at": utc_now(),
+        "root": str(root),
+        "review_backlog_counts": review_backlog_counts,
+        "backlog_total": _sum_int_values(review_backlog_counts),
+        "nightly_agent_loop": dict(nightly.get("agent_loop") or {}),
+        "l3_proposal_counts_by_state": _load_l3_proposal_counts_by_state(root),
+        "l3_generation_preview_summary": _preview_l3_generation_summary(root, limit=preview_limit),
+        "l3_debt_report": _load_l3_debt_report(root, preview_limit=preview_limit),
+        "planner_log_counts": _load_planner_log_counts(root),
+        "judgment_review_receipt_counts": _load_judgment_review_receipt_counts(root),
+        "judgment_lane_report": _load_judgment_lane_report(root),
+        "prompts_ask_sha256": _sha256_path(root / PROMPTS_ASK_REL_PATH),
+    }
+
+
+def write_snapshot(root: Path, snapshot: dict[str, Any]) -> Path:
+    path = maturity_gate_dir(root) / f"snapshot-{timestamp_slug()}.json"
+    return _write_json(path, snapshot)
+
+
+def _safe_collect(root: Path, *, preview_limit: int) -> tuple[dict[str, Any] | None, dict[str, str] | None]:
+    try:
+        return collect_metrics(root, preview_limit=preview_limit), None
+    except Exception as exc:  # pragma: no cover - defensive receipt preservation
+        return None, {"error_class": exc.__class__.__name__, "error_message": str(exc)}
+
+
+def prepare_nightly_env(
+    root: Path,
+    *,
+    deterministic_only: bool = False,
+    no_semantic_lint: bool = False,
+    compile_limit: int | None = None,
+    env: dict[str, str] | None = None,
+) -> dict[str, str]:
+    prepared = dict(env if env is not None else os.environ)
+    prepared["AIWIKI_VAULT"] = str(root)
+    prepared["AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT"] = "1"
+    prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L1"] = "1"
+    prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L2"] = "1"
+    prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L3"] = "1"
+    prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS"] = "1"
+    if deterministic_only:
+        prepared["AIWIKI_NIGHTLY_DETERMINISTIC_ONLY"] = "1"
+    if no_semantic_lint:
+        prepared["AIWIKI_NIGHTLY_NO_SEMANTIC_LINT"] = "1"
+    if compile_limit is not None:
+        prepared["AIWIKI_NIGHTLY_COMPILE_LIMIT"] = str(compile_limit)
+    return prepared
+
+
+def classify_nightly_failure(returncode: int, stdout: str, stderr: str) -> str:
+    if returncode == 0:
+        return "pass"
+    combined = f"{stdout}\n{stderr}".lower()
+    blocked_tokens = (
+        "not configured",
+        "credential",
+        "api key",
+        "auth",
+        "permission denied",
+        "timeout",
+        "timed out",
+    )
+    if any(token in combined for token in blocked_tokens):
+        return "blocked"
+    return "failed"
+
+
+def run_nightly_subprocess(
+    root: Path,
+    *,
+    deterministic_only: bool = False,
+    no_semantic_lint: bool = False,
+    compile_limit: int | None = None,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    prepared_env = prepare_nightly_env(
+        root,
+        deterministic_only=deterministic_only,
+        no_semantic_lint=no_semantic_lint,
+        compile_limit=compile_limit,
+        env=env,
+    )
+    command = [str(REPO_ROOT / "scripts" / "run_nightly.sh")]
+    completed = subprocess.run(
+        command,
+        cwd=str(REPO_ROOT),
+        env=prepared_env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return {
+        "command": command,
+        "returncode": completed.returncode,
+        "status": classify_nightly_failure(completed.returncode, completed.stdout, completed.stderr),
+        "stdout_excerpt": _excerpt(completed.stdout),
+        "stderr_excerpt": _excerpt(completed.stderr),
+    }
+
+
+def _summarize_l3_generation_result(result: dict[str, Any]) -> dict[str, Any]:
+    skipped = [item for item in result.get("skipped", []) if isinstance(item, dict)]
+    skipped_reason_counts: Counter[str] = Counter()
+    for item in skipped:
+        skipped_reason_counts[str(item.get("reason") or "(missing)")] += 1
+    return {
+        "status": str(result.get("status") or "ok"),
+        "generation_mode": str(result.get("generation_mode") or ""),
+        "side_effects_allowed": bool(result.get("side_effects_allowed", False)),
+        "candidate_count": int(result.get("candidate_count") or 0),
+        "blocked_count": int(result.get("blocked_count") or 0),
+        "returned_count": int(result.get("returned_count") or 0),
+        "generated_count": int(result.get("generated_count") or 0),
+        "skipped_count": int(result.get("skipped_count") or 0),
+        "already_exists_count": skipped_reason_counts.get("already_exists", 0),
+        "skipped_reason_counts": dict(sorted(skipped_reason_counts.items())),
+    }
+
+
+def run_gate(
+    root: Path,
+    *,
+    preview_limit: int = 20,
+    l3_limit: int = 20,
+    deterministic_only: bool = False,
+    no_semantic_lint: bool = False,
+    compile_limit: int | None = None,
+    apply_l3_generate: bool = False,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    from aiwiki.execution.l3_proposals import generate_l3_proposals_from_planner, preview_l3_proposal_generation
+
+    before, before_error = _safe_collect(root, preview_limit=preview_limit)
+    nightly = run_nightly_subprocess(
+        root,
+        deterministic_only=deterministic_only,
+        no_semantic_lint=no_semantic_lint,
+        compile_limit=compile_limit,
+        env=env,
+    )
+    l3_generation: dict[str, Any]
+    if not apply_l3_generate:
+        try:
+            l3_generation = _summarize_l3_generation_result(preview_l3_proposal_generation(root, limit=l3_limit))
+        except Exception as exc:  # pragma: no cover - defensive receipt preservation
+            l3_generation = {
+                "status": "failed",
+                "error_class": exc.__class__.__name__,
+                "error_message": str(exc),
+            }
+    elif nightly["returncode"] != 0:
+        l3_generation = {"status": "skipped", "reason": "nightly_failed"}
+    else:
+        try:
+            l3_generation = _summarize_l3_generation_result(
+                generate_l3_proposals_from_planner(root, limit=l3_limit)
+            )
+        except Exception as exc:  # pragma: no cover - defensive receipt preservation
+            l3_generation = {
+                "status": "failed",
+                "error_class": exc.__class__.__name__,
+                "error_message": str(exc),
+            }
+    after, after_error = _safe_collect(root, preview_limit=preview_limit)
+    status = str(nightly.get("status") or "failed")
+    if before_error is not None or after_error is not None:
+        status = "failed"
+    elif str(l3_generation.get("status") or "") == "failed":
+        status = "failed"
+    prompt_hash_unchanged = (before or {}).get("prompts_ask_sha256", "") == (after or {}).get("prompts_ask_sha256", "")
+    if before is not None and after is not None and not prompt_hash_unchanged:
+        status = "failed"
+    receipt = {
+        "kind": RUN_RECEIPT_KIND,
+        "version": 1,
+        "generated_by": GENERATED_BY,
+        "generated_at": utc_now(),
+        "root": str(root),
+        "status": status,
+        "settings": {
+            "preview_limit": preview_limit,
+            "l3_limit": l3_limit,
+            "deterministic_only": deterministic_only,
+            "no_semantic_lint": no_semantic_lint,
+            "compile_limit": compile_limit,
+            "skip_l3_generate": not apply_l3_generate,
+            "apply_l3_generate": apply_l3_generate,
+        },
+        "before": before,
+        "before_error": before_error,
+        "nightly": nightly,
+        "l3_generation": l3_generation,
+        "after": after,
+        "after_error": after_error,
+        "prompt_hash_invariant": {
+            "before": (before or {}).get("prompts_ask_sha256", ""),
+            "after": (after or {}).get("prompts_ask_sha256", ""),
+            "unchanged": prompt_hash_unchanged,
+        },
+    }
+    path = maturity_gate_dir(root) / f"run-{timestamp_slug()}.json"
+    written = _write_json(path, receipt)
+    receipt["receipt_path"] = str(written.relative_to(root))
+    _write_json(written, receipt)
+    return receipt
+
+
+def _load_run_receipt(path: Path, root: Path) -> dict[str, Any] | None:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if str(payload.get("kind") or "") != RUN_RECEIPT_KIND:
+        return None
+    payload.setdefault("receipt_path", str(path.relative_to(root)))
+    return payload
+
+
+def load_run_receipts(root: Path, *, limit: int = 3, by_days: bool = False) -> list[dict[str, Any]]:
+    receipts: list[dict[str, Any]] = []
+    seen_days: set[str] = set()
+    for path in sorted(maturity_gate_dir(root).glob("run-*.json"), reverse=True):
+        payload = _load_run_receipt(path, root)
+        if payload is None:
+            continue
+        if by_days:
+            day = _receipt_day(payload)
+            if not day or day in seen_days:
+                continue
+            seen_days.add(day)
+        receipts.append(payload)
+        if len(receipts) >= limit:
+            break
+    receipts.reverse()
+    return receipts
+
+
+def _nested_int(payload: dict[str, Any] | None, *keys: str) -> int:
+    current: Any = payload
+    for key in keys:
+        if not isinstance(current, dict):
+            return 0
+        current = current.get(key)
+    if isinstance(current, bool):
+        return int(current)
+    if isinstance(current, int):
+        return current
+    return 0
+
+
+def _receipt_day(receipt: dict[str, Any]) -> str:
+    generated_at = str(receipt.get("generated_at") or "")
+    return generated_at[:10] if len(generated_at) >= 10 else ""
+
+
+def _validate_receipt_fields(receipt: dict[str, Any]) -> list[str]:
+    missing: list[str] = []
+    for side in ("before", "after"):
+        snapshot = receipt.get(side)
+        if not isinstance(snapshot, dict):
+            missing.append(side)
+            continue
+        for field in REQUIRED_SNAPSHOT_FIELDS:
+            if field not in snapshot:
+                missing.append(f"{side}.{field}")
+    l3_generation = receipt.get("l3_generation")
+    if not isinstance(l3_generation, dict):
+        missing.append("l3_generation")
+    else:
+        for field in ("candidate_count", "blocked_count", "generated_count", "skipped_count", "already_exists_count"):
+            if field not in l3_generation:
+                missing.append(f"l3_generation.{field}")
+    return missing
+
+
+def _consecutive_days(days: list[str], *, expected_count: int) -> bool:
+    unique_days = sorted({day for day in days if day})
+    if len(unique_days) < expected_count:
+        return False
+    selected = unique_days[-expected_count:]
+    parsed = [datetime.strptime(day, "%Y-%m-%d").date() for day in selected]
+    return all((right - left) == timedelta(days=1) for left, right in zip(parsed, parsed[1:]))
+
+
+def summarize_run_receipts(receipts: list[dict[str, Any]], *, recent: int = 3) -> dict[str, Any]:
+    status_counts: Counter[str] = Counter(str(item.get("status") or "unknown") for item in receipts)
+    failed = [
+        item
+        for item in receipts
+        if str(item.get("status") or "") in {"failed", "blocked"}
+    ]
+    prompt_hash_changed = [
+        item
+        for item in receipts
+        if isinstance(item.get("prompt_hash_invariant"), dict)
+        and item.get("prompt_hash_invariant", {}).get("unchanged") is False
+    ]
+    missing_required_fields = {
+        str(item.get("receipt_path") or index): _validate_receipt_fields(item)
+        for index, item in enumerate(receipts)
+    }
+    missing_required_fields = {path: fields for path, fields in missing_required_fields.items() if fields}
+    days = [_receipt_day(item) for item in receipts]
+    consecutive_days = _consecutive_days(days, expected_count=recent) if len(receipts) >= recent else False
+    first = receipts[0] if receipts else {}
+    last = receipts[-1] if receipts else {}
+    backlog_total_delta = _nested_int(last.get("after"), "backlog_total") - _nested_int(
+        first.get("before"), "backlog_total"
+    )
+    l3_candidate_delta = _nested_int(
+        last.get("after"), "l3_proposal_counts_by_state", "candidate"
+    ) - _nested_int(first.get("before"), "l3_proposal_counts_by_state", "candidate")
+    judgment_review_receipts_delta = _nested_int(
+        last.get("after"), "judgment_review_receipt_counts", "total"
+    ) - _nested_int(first.get("before"), "judgment_review_receipt_counts", "total")
+    l3_generated_total = sum(_nested_int(item, "l3_generation", "generated_count") for item in receipts)
+    l3_skipped_total = sum(_nested_int(item, "l3_generation", "skipped_count") for item in receipts)
+    l3_already_exists_total = sum(
+        _nested_int(item, "l3_generation", "already_exists_count") for item in receipts
+    )
+    l3_not_eligible_total = sum(_nested_int(item, "l3_generation", "skipped_reason_counts", "not_eligible") for item in receipts)
+    l3_dedupe_or_converged = l3_already_exists_total > 0 or l3_candidate_delta <= 0
+    latest_l3_debt = last.get("after", {}).get("l3_debt_report") if isinstance(last.get("after"), dict) else {}
+    if not isinstance(latest_l3_debt, dict):
+        latest_l3_debt = {}
+    latest_judgment_lane = last.get("after", {}).get("judgment_lane_report") if isinstance(last.get("after"), dict) else {}
+    if not isinstance(latest_judgment_lane, dict):
+        latest_judgment_lane = {}
+    semantic_path_observed = judgment_review_receipts_delta > 0
+    if failed or prompt_hash_changed or missing_required_fields:
+        status = "fail"
+    elif len(receipts) < recent:
+        status = "warn"
+    elif not consecutive_days:
+        status = "warn"
+    elif backlog_total_delta <= 0 and l3_candidate_delta <= 0 and l3_dedupe_or_converged and semantic_path_observed:
+        status = "pass"
+    else:
+        status = "warn"
+    operational_maturity = _build_operational_maturity_report(
+        receipts,
+        recent=recent,
+        status=status,
+        backlog_total_delta=backlog_total_delta,
+        l3_candidate_delta=l3_candidate_delta,
+        l3_dedupe_or_converged=l3_dedupe_or_converged,
+        judgment_review_receipts_delta=judgment_review_receipts_delta,
+    )
+    return {
+        "kind": "dogfood-maturity-summary",
+        "version": 1,
+        "generated_by": GENERATED_BY,
+        "generated_at": utc_now(),
+        "recent": recent,
+        "receipt_count": len(receipts),
+        "receipt_paths": [str(item.get("receipt_path") or "") for item in receipts],
+        "status": status,
+        "status_counts": dict(sorted(status_counts.items())),
+        "backlog_total_delta": backlog_total_delta,
+        "l3_candidate_delta": l3_candidate_delta,
+        "l3_generated_total": l3_generated_total,
+        "l3_skipped_total": l3_skipped_total,
+        "l3_already_exists_total": l3_already_exists_total,
+        "l3_not_eligible_total": l3_not_eligible_total,
+        "l3_dedupe_or_converged": l3_dedupe_or_converged,
+        "l3_debt_report": latest_l3_debt,
+        "l3_effective_candidate_count": _coerce_int(latest_l3_debt.get("effective_preview_candidate_count")),
+        "l3_dedupe_or_noise_ratio": latest_l3_debt.get("dedupe_or_noise_ratio", 0.0),
+        "judgment_review_processed_delta": judgment_review_receipts_delta,
+        "judgment_review_new_receipts": max(judgment_review_receipts_delta, 0),
+        "judgment_lane_report": latest_judgment_lane,
+        "judgment_review_failure_rate": latest_judgment_lane.get("failure_rate", 0.0),
+        "judgment_review_exception_rate": latest_judgment_lane.get("exception_rate", 0.0),
+        "semantic_path_observed": semantic_path_observed,
+        "days": days,
+        "consecutive_days": consecutive_days,
+        "missing_required_fields": missing_required_fields,
+        "failed_runs": [str(item.get("receipt_path") or "") for item in failed],
+        "prompt_hash_changed_runs": [str(item.get("receipt_path") or "") for item in prompt_hash_changed],
+        "operational_maturity": operational_maturity,
+    }
+
+
+def _build_operational_maturity_report(
+    receipts: list[dict[str, Any]],
+    *,
+    recent: int,
+    status: str,
+    backlog_total_delta: int,
+    l3_candidate_delta: int,
+    l3_dedupe_or_converged: bool,
+    judgment_review_receipts_delta: int,
+) -> dict[str, Any]:
+    latest = receipts[-1] if receipts else {}
+    latest_after = latest.get("after") if isinstance(latest.get("after"), dict) else {}
+    if not isinstance(latest_after, dict):
+        latest_after = {}
+    l3_debt = latest_after.get("l3_debt_report") if isinstance(latest_after.get("l3_debt_report"), dict) else {}
+    judgment_lane = latest_after.get("judgment_lane_report") if isinstance(latest_after.get("judgment_lane_report"), dict) else {}
+    failed_receipts = sum(1 for item in receipts if str(item.get("status") or "") in {"failed", "blocked"})
+    exception_count = _coerce_int(judgment_lane.get("exception_count"))
+    failure_rate = float(judgment_lane.get("failure_rate") or 0.0)
+    exception_rate = float(judgment_lane.get("exception_rate") or 0.0)
+    anomaly_budget = {
+        "max_failed_runs": 0,
+        "max_judgment_failure_rate": 0.0,
+        "max_judgment_exception_rate": 0.2,
+        "max_effective_l3_candidates": 0,
+        "requires_consecutive_days": recent,
+    }
+    budget_violations: list[str] = []
+    if failed_receipts > anomaly_budget["max_failed_runs"]:
+        budget_violations.append("failed_runs")
+    if failure_rate > anomaly_budget["max_judgment_failure_rate"]:
+        budget_violations.append("judgment_failure_rate")
+    if exception_rate > anomaly_budget["max_judgment_exception_rate"]:
+        budget_violations.append("judgment_exception_rate")
+    if _coerce_int(l3_debt.get("effective_preview_candidate_count")) > anomaly_budget["max_effective_l3_candidates"]:
+        budget_violations.append("effective_l3_candidates")
+    human_only_exceptions = status == "pass" and not budget_violations
+    return {
+        "version": 1,
+        "status": "pass" if human_only_exceptions else "not-yet",
+        "human_only_exceptions": human_only_exceptions,
+        "reason": "all gates and anomaly budget pass" if human_only_exceptions else "insufficient consecutive proof or anomaly budget not met",
+        "anomaly_budget": anomaly_budget,
+        "budget_violations": budget_violations,
+        "latest": {
+            "failed_runs": failed_receipts,
+            "judgment_exception_count": exception_count,
+            "judgment_failure_rate": failure_rate,
+            "judgment_exception_rate": exception_rate,
+            "effective_l3_candidates": _coerce_int(l3_debt.get("effective_preview_candidate_count")),
+            "l3_dedupe_or_noise_ratio": l3_debt.get("dedupe_or_noise_ratio", 0.0),
+        },
+        "trend_windows": {
+            str(recent): {
+                "receipt_count": len(receipts),
+                "backlog_total_delta": backlog_total_delta,
+                "l3_candidate_delta": l3_candidate_delta,
+                "l3_dedupe_or_converged": l3_dedupe_or_converged,
+                "judgment_review_processed_delta": judgment_review_receipts_delta,
+                "judgment_failure_rate": failure_rate,
+                "judgment_exception_rate": exception_rate,
+            },
+            "7": _summarize_operational_window(receipts[-7:]),
+            "14": _summarize_operational_window(receipts[-14:]),
+        },
+    }
+
+
+def _summarize_operational_window(receipts: list[dict[str, Any]]) -> dict[str, Any]:
+    if not receipts:
+        return {"receipt_count": 0, "backlog_total_delta": 0, "l3_candidate_delta": 0}
+    first = receipts[0]
+    last = receipts[-1]
+    last_after = last.get("after") if isinstance(last.get("after"), dict) else {}
+    judgment_lane = last_after.get("judgment_lane_report") if isinstance(last_after, dict) and isinstance(last_after.get("judgment_lane_report"), dict) else {}
+    l3_debt = last_after.get("l3_debt_report") if isinstance(last_after, dict) and isinstance(last_after.get("l3_debt_report"), dict) else {}
+    return {
+        "receipt_count": len(receipts),
+        "backlog_total_delta": _nested_int(last.get("after"), "backlog_total") - _nested_int(first.get("before"), "backlog_total"),
+        "l3_candidate_delta": _nested_int(last.get("after"), "l3_proposal_counts_by_state", "candidate") - _nested_int(first.get("before"), "l3_proposal_counts_by_state", "candidate"),
+        "l3_dedupe_or_noise_ratio": l3_debt.get("dedupe_or_noise_ratio", 0.0),
+        "judgment_failure_rate": judgment_lane.get("failure_rate", 0.0),
+        "judgment_exception_rate": judgment_lane.get("exception_rate", 0.0),
+    }
+
+
+def summarize_recent_run_receipts(root: Path, *, recent: int = 3, by_days: bool = False) -> dict[str, Any]:
+    receipts = load_run_receipts(root, limit=recent, by_days=by_days)
+    summary = summarize_run_receipts(receipts, recent=recent)
+    if not by_days:
+        return summary
+    operational_maturity = summary.get("operational_maturity")
+    if not isinstance(operational_maturity, dict):
+        return summary
+    trend_windows = operational_maturity.get("trend_windows")
+    if not isinstance(trend_windows, dict):
+        return summary
+    trend_windows["7"] = _summarize_operational_window(load_run_receipts(root, limit=7, by_days=True))
+    trend_windows["14"] = _summarize_operational_window(load_run_receipts(root, limit=14, by_days=True))
+    return summary
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", help="Dogfood vault root override.")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    collect_parser = subparsers.add_parser("collect", help="Collect read-only maturity metrics.")
+    collect_parser.add_argument("--root", default=argparse.SUPPRESS, help="Dogfood vault root override.")
+    collect_parser.add_argument("--preview-limit", type=int, default=20)
+    collect_parser.add_argument("--write", action="store_true")
+
+    run_parser = subparsers.add_parser("run", help="Run nightly plus maturity sampling.")
+    run_parser.add_argument("--root", default=argparse.SUPPRESS, help="Dogfood vault root override.")
+    run_parser.add_argument("--preview-limit", type=int, default=20)
+    run_parser.add_argument("--l3-limit", type=int, default=20)
+    run_parser.add_argument("--compile-limit", type=int)
+    run_parser.add_argument("--deterministic-only", action="store_true")
+    run_parser.add_argument("--no-semantic-lint", action="store_true")
+    run_parser.add_argument(
+        "--apply-l3-generate",
+        action="store_true",
+        help="Allow the gate itself to create eligible L3 proposal candidates after nightly. Default is preview-only.",
+    )
+
+    summarize_parser = subparsers.add_parser("summarize", help="Summarize recent run receipts.")
+    summarize_parser.add_argument("--root", default=argparse.SUPPRESS, help="Dogfood vault root override.")
+    summarize_parser.add_argument("--recent", type=int, default=3)
+    summarize_parser.add_argument("--days", type=int, help="Summarize the latest receipt from each of N consecutive calendar days.")
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    root = resolve_root(args.root)
+
+    if args.command == "collect":
+        snapshot = collect_metrics(root, preview_limit=args.preview_limit)
+        if args.write:
+            path = write_snapshot(root, snapshot)
+            snapshot = {**snapshot, "snapshot_path": str(path.relative_to(root))}
+        print(_json_dump(snapshot), end="")
+        return 0
+
+    if args.command == "run":
+        receipt = run_gate(
+            root,
+            preview_limit=args.preview_limit,
+            l3_limit=args.l3_limit,
+            deterministic_only=args.deterministic_only,
+            no_semantic_lint=args.no_semantic_lint,
+            compile_limit=args.compile_limit,
+            apply_l3_generate=args.apply_l3_generate,
+        )
+        print(_json_dump(receipt), end="")
+        return 0 if receipt.get("status") == "pass" else 1
+
+    if args.command == "summarize":
+        by_days = args.days is not None
+        summary = summarize_recent_run_receipts(root, recent=args.days if by_days else args.recent, by_days=by_days)
+        print(_json_dump(summary), end="")
+        return 0
+
+    parser.error(f"unsupported command: {args.command}")
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

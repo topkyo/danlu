@@ -329,12 +329,21 @@ def _build_auto_adopt_l3(root: Path) -> dict[str, Any]:
 
 
 def _build_auto_adopt_judgments(root: Path) -> dict[str, Any]:
+    import os
+
     from .runner.auto_adopt import auto_adopt_judgments
     from .runner.clients import create_client
 
     try:
         client = create_client(root, timeout_seconds=180)
-        result = auto_adopt_judgments(root, client, limit=5)
+        raw_limit = os.environ.get("AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS_LIMIT", "5")
+        try:
+            limit = int(str(raw_limit).strip())
+        except (TypeError, ValueError):
+            limit = 5
+        if limit < 1:
+            limit = 1
+        result = auto_adopt_judgments(root, client, limit=limit)
         if result.get("degraded") is True or result.get("error"):
             result["degraded"] = True
         return result

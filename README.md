@@ -227,7 +227,7 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 - **判断层**：counter-evidence / judgment review — LLM 驱动的语义复核，自动分析反证、写出审阅结论。`AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1`。
 - **策略层**：L3 proposal / prompt 变更 / schema 变更 — 改变系统后续运行方式，自动采纳并写 receipt 保留回滚能力。`AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1`。
 
-当所有五级 auto-adopt 开启时，炼丹炉每晚自动维护、审阅、甚至改写自身策略——人只需事后审计 receipt 和异常。
+当所有五级 auto-adopt 开启时，炼丹炉可以每晚自动维护、审阅、甚至改写自身策略；但“人只需事后审计 receipt 和异常”是运行成熟度目标，不是默认事实。当前应以 `scripts/dogfood_maturity_gate.py summarize --days 3` 的 `operational_maturity.human_only_exceptions` 和连续 receipt 为准；未达到前只能说自动化可运行，不能宣称全自动成熟。
 
 ## LLM 后端
 

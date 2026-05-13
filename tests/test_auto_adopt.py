@@ -206,6 +206,46 @@ class AutoAdoptCriticalFixTests(unittest.TestCase):
         self.assertIs(receipt["revert_supported"], False)
         self.assertEqual(receipt["revert_policy"], "manual_only")
         self.assertTrue(receipt["revert_note"])
+        self.assertEqual(receipt["conclusion"], "upheld")
+        self.assertEqual(receipt["confidence"], "high")
+        self.assertEqual(receipt["scan_generated_at"], "2026-01-01T00:00:00Z")
+
+    def test_judgment_review_surfaces_weakened_exception(self) -> None:
+        page = self.root / "wiki" / "judgments" / "j1.md"
+        page.parent.mkdir(parents=True, exist_ok=True)
+        page.write_text("# J1\n", encoding="utf-8")
+        _memory_with_judgment_page(self.root, page)
+        response = json.dumps({"conclusion": "weakened", "confidence": "medium", "key_findings": ["risk"], "recommendation": "review"})
+
+        result = auto_adopt_judgments(self.root, StubClient(response), limit=1)
+
+        self.assertEqual(result["reviewed"], 1)
+        self.assertEqual(result["exception_count"], 1)
+        self.assertEqual(result["exception_queue"][0]["reason"], "weakened")
+        self.assertEqual(result["conclusion_counts"]["weakened"], 1)
+
+    def test_judgment_review_surfaces_refuted_exception(self) -> None:
+        page = self.root / "wiki" / "judgments" / "j1.md"
+        page.parent.mkdir(parents=True, exist_ok=True)
+        page.write_text("# J1\n", encoding="utf-8")
+        _memory_with_judgment_page(self.root, page)
+        response = json.dumps({"conclusion": "refuted", "confidence": "high"})
+
+        result = auto_adopt_judgments(self.root, StubClient(response), limit=1)
+
+        self.assertEqual(result["exception_queue"][0]["reason"], "refuted")
+
+    def test_judgment_review_surfaces_low_confidence_exception(self) -> None:
+        page = self.root / "wiki" / "judgments" / "j1.md"
+        page.parent.mkdir(parents=True, exist_ok=True)
+        page.write_text("# J1\n", encoding="utf-8")
+        _memory_with_judgment_page(self.root, page)
+        response = json.dumps({"conclusion": "upheld", "confidence": "low"})
+
+        result = auto_adopt_judgments(self.root, StubClient(response), limit=1)
+
+        self.assertEqual(result["exception_queue"][0]["reason"], "low-confidence")
+        self.assertEqual(result["confidence_counts"]["low"], 1)
 
     def test_judgment_review_idempotency_uses_receipt_history_not_page_text(self) -> None:
         page = self.root / "wiki" / "judgments" / "j1.md"

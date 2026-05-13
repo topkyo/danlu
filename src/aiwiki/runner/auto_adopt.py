@@ -25,6 +25,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from collections import Counter
 from pathlib import Path
 from typing import Any, Callable
 
@@ -294,7 +295,7 @@ def auto_adopt_judgments(
     """
     import json as _json
 
-    results: dict[str, Any] = {"level": "Judgment", "applied": False, "items": []}
+    results: dict[str, Any] = {"level": "Judgment", "applied": False, "items": [], "limit": limit, "exception_queue": []}
 
     try:
         from ..app_state import load_machine_memory
@@ -312,6 +313,9 @@ def auto_adopt_judgments(
 
     reviewed = 0
     failed = 0
+    exception_count = 0
+    confidence_counts: Counter[str] = Counter()
+    conclusion_counts: Counter[str] = Counter()
     scan_generated_at = str(scan.get("generated_at") or "") if isinstance(scan, dict) else ""
     scan_id = scan.get("id") if isinstance(scan, dict) else None
     reviewer_model = "judgment-llm"
@@ -345,6 +349,9 @@ def auto_adopt_judgments(
             sources_text = _read_source_pages(root, source_ids, max_chars=8000)
             conclusion = _llm_review_judgment(client, judgment_text, sources_text, str(page.get("page_title") or page_path_str))
             conclusion_value = str(conclusion.get("conclusion") or "")
+            confidence_value = str(conclusion.get("confidence") or "")
+            confidence_counts[confidence_value or "(missing)"] += 1
+            conclusion_counts[conclusion_value or "(missing)"] += 1
             if conclusion_value in {"error", "unparsed"}:
                 item = {
                     "page": page_path_str,
@@ -356,6 +363,15 @@ def auto_adopt_judgments(
                 if conclusion.get("raw"):
                     item["raw"] = conclusion.get("raw")
                 results["items"].append(item)
+                exception_count += 1
+                _append_judgment_exception(
+                    results,
+                    page_path=page_path_str,
+                    reason=item["status"],
+                    conclusion=conclusion_value,
+                    confidence=confidence_value,
+                    review_id="",
+                )
                 _record_judgment_review_failed(
                     root,
                     page_path=page_path_str,
@@ -382,6 +398,15 @@ def auto_adopt_judgments(
                 **({"review_id": write_result.get("review_id")} if write_result.get("review_id") else {}),
             })
             if write_result.get("status") == "receipt_history_corrupt":
+                exception_count += 1
+                _append_judgment_exception(
+                    results,
+                    page_path=page_path_str,
+                    reason="receipt_history_corrupt",
+                    conclusion=conclusion_value,
+                    confidence=confidence_value,
+                    review_id=str(write_result.get("review_id") or ""),
+                )
                 _record_judgment_review_failed(
                     root,
                     page_path=page_path_str,
@@ -394,19 +419,73 @@ def auto_adopt_judgments(
                 continue
             if write_result.get("status") == "applied":
                 reviewed += 1
+                exception_reason = _judgment_review_exception_reason(conclusion_value, confidence_value)
+                if exception_reason:
+                    exception_count += 1
+                    _append_judgment_exception(
+                        results,
+                        page_path=page_path_str,
+                        reason=exception_reason,
+                        conclusion=conclusion_value,
+                        confidence=confidence_value,
+                        review_id=str(write_result.get("review_id") or ""),
+                    )
         except Exception as exc:
             results["items"].append({"page": page_path_str, "status": "failed", "error": str(exc)})
             failed += 1
+            exception_count += 1
+            _append_judgment_exception(
+                results,
+                page_path=page_path_str,
+                reason="failed",
+                conclusion="error",
+                confidence="low",
+                review_id="",
+            )
             if isinstance(exc, JudgmentReviewAuditError):
                 results["degraded"] = True
 
     results["reviewed"] = reviewed
     results["failed"] = failed
+    results["exception_count"] = exception_count
+    results["exception_rate"] = round(exception_count / len(pages), 4) if pages else 0.0
+    results["confidence_counts"] = dict(sorted(confidence_counts.items()))
+    results["conclusion_counts"] = dict(sorted(conclusion_counts.items()))
     if failed > 0:
         results["degraded"] = True
     results["total_candidates"] = len(pages)
     results["applied"] = reviewed > 0
     return results
+
+
+def _judgment_review_exception_reason(conclusion: str, confidence: str) -> str:
+    if conclusion in {"weakened", "refuted"}:
+        return conclusion
+    if str(confidence or "").lower() == "low":
+        return "low-confidence"
+    return ""
+
+
+def _append_judgment_exception(
+    results: dict[str, Any],
+    *,
+    page_path: str,
+    reason: str,
+    conclusion: str,
+    confidence: str,
+    review_id: str,
+) -> None:
+    queue = results.setdefault("exception_queue", [])
+    if isinstance(queue, list):
+        queue.append(
+            {
+                "page": page_path,
+                "reason": reason,
+                "conclusion": conclusion,
+                "confidence": confidence,
+                "review_id": review_id,
+            }
+        )
 
 
 def _record_judgment_review_failed(
@@ -559,6 +638,10 @@ def _apply_judgment_review_with_receipt(target: Path, mutate_fn: Callable[[str],
         "revert_policy": "manual_only",
         "revert_note": "Judgment review pages must be reverted manually; automated revert not yet supported.",
         "receipt_path": relative_path(root, receipt_path),
+        "scan_generated_at": str(receipt_meta.get("scan_generated_at") or ""),
+        "reviewer_model": str(receipt_meta.get("reviewer_model") or ""),
+        "conclusion": str(receipt_meta.get("conclusion") or ""),
+        "confidence": str(receipt_meta.get("confidence") or ""),
     }
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
