@@ -17,6 +17,17 @@ export AIWIKI_OPENCODE_BASE_URL=https://opencode.ai/zen/go/v1
 export AIWIKI_STALE_JUDGMENT_DAYS=1
 export PYTHONPATH=src
 
+# F-INV-21: load OpenCode Go API key from chmod 600 secret if available.
+# Not all sub-shells inherit AIWIKI_OPENCODE_API_KEY from the outer login shell;
+# sourcing the secret file ensures `LLMConfig.from_env()` can resolve the
+# opencode-api backend regardless of how the shell was spawned.
+# Secret format: AIWIKI_OPENCODE_API_KEY=sk-...
+if [ -f "$HOME/.aiwiki-secrets/opencode.env" ]; then
+    # shellcheck disable=SC1091
+    . "$HOME/.aiwiki-secrets/opencode.env"
+    export AIWIKI_OPENCODE_API_KEY
+fi
+
 # Dogfood 真实 vault（独立于 ai-wiki 实现仓库）
 # CLI 调用必须显式 --root "$AIWIKI_DOGFOOD_VAULT"，否则会误中 ai-wiki 仓库自身的 fixture vault
 export AIWIKI_DOGFOOD_VAULT="/home/tim/danlu/炼丹炉"
