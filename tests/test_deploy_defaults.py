@@ -73,6 +73,84 @@ def test_run_nightly_fallback_default_off() -> None:
     assert "AIWIKI_NIGHTLY_FALLBACK_ENABLED:-0" in content
 
 
+def test_run_dogfood_maturity_requires_explicit_vault_and_skips_same_day() -> None:
+    script = PROJECT_ROOT / "scripts" / "run_dogfood_maturity.sh"
+    syntax = subprocess.run(
+        ["bash", "-n", str(script)],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert syntax.returncode == 0, syntax.stderr
+
+    env = {"PATH": os.environ.get("PATH", "")}
+    missing_vault = subprocess.run(
+        ["bash", str(script)],
+        cwd=PROJECT_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert missing_vault.returncode != 0
+    assert "AIWIKI_DOGFOOD_VAULT" in missing_vault.stderr
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        vault = Path(tempdir)
+        receipt_dir = vault / "output" / "control" / "maturity-gate"
+        receipt_dir.mkdir(parents=True)
+        today = time.strftime("%Y-%m-%d", time.gmtime())
+        receipt = receipt_dir / f"run-{today.replace('-', '')}T001500Z.json"
+        receipt.write_text(
+            '{\n  "kind": "dogfood-maturity-run-receipt",\n  "generated_at": "' + today + 'T00:15:00Z"\n}\n',
+            encoding="utf-8",
+        )
+        skip_env = {
+            "PATH": os.environ.get("PATH", ""),
+            "AIWIKI_DOGFOOD_VAULT": str(vault),
+        }
+        skipped = subprocess.run(
+            ["bash", str(script)],
+            cwd=PROJECT_ROOT,
+            env=skip_env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert skipped.returncode == 0, skipped.stderr
+        assert "skip: receipt already exists" in skipped.stdout
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        vault = Path(tempdir)
+        receipt_dir = vault / "output" / "control" / "maturity-gate"
+        receipt_dir.mkdir(parents=True)
+        today = time.strftime("%Y-%m-%d", time.gmtime())
+        filename_only_receipt = receipt_dir / f"run-{today.replace('-', '')}T235959Z.json"
+        filename_only_receipt.write_text(
+            '{\n  "kind": "dogfood-maturity-run-receipt",\n  "generated_at": ""\n}\n',
+            encoding="utf-8",
+        )
+        skipped_by_filename = subprocess.run(
+            ["bash", str(script)],
+            cwd=PROJECT_ROOT,
+            env={"PATH": os.environ.get("PATH", ""), "AIWIKI_DOGFOOD_VAULT": str(vault)},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert skipped_by_filename.returncode == 0, skipped_by_filename.stderr
+        assert "skip: receipt already exists" in skipped_by_filename.stdout
+
+    content = script.read_text(encoding="utf-8")
+    assert "AIWIKI_DOGFOOD_MATURITY_FORCE" in content
+    assert 'FORCE_RUN="${AIWIKI_DOGFOOD_MATURITY_FORCE:-0}"' in content
+    assert 'if [[ "$FORCE_RUN" != "1" ]]' in content
+    assert 'glob("run-*.json")' in content
+    assert 'payload.get("generated_at")' in content
+    assert "filename_day" in content
+
+
 def test_runtime_write_lock_timeout_raises() -> None:
     with tempfile.TemporaryDirectory() as tempdir:
         root = Path(tempdir)
@@ -240,6 +318,7 @@ def load_tests(
         test_run_watch_requires_vault,
         test_run_nightly_requires_vault,
         test_run_nightly_fallback_default_off,
+        test_run_dogfood_maturity_requires_explicit_vault_and_skips_same_day,
         test_runtime_write_lock_timeout_raises,
         test_runtime_write_lock_reentrant_does_not_timeout,
         test_runtime_write_lock_invalid_env_uses_default,

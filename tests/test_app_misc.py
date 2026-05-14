@@ -983,16 +983,34 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertIn("AIWIKI_NIGHTLY_FALLBACK_BACKEND=nvidia-nim-api", content)
         self.assertIn("AIWIKI_NIGHTLY_FALLBACK_MODEL=openai/gpt-oss-120b", content)
         self.assertIn("AIWIKI_NIGHTLY_AUTO_ADOPT_L1=${AIWIKI_NIGHTLY_AUTO_ADOPT_L1:-${AUTO_ADOPT_L1:-0}}", content)
+        self.assertIn("AIWIKI_DOGFOOD_MATURITY_PREVIEW_LIMIT=1000", content)
+        self.assertIn("AIWIKI_DOGFOOD_MATURITY_L3_LIMIT=1000", content)
+        self.assertIn("AIWIKI_DOGFOOD_MATURITY_COMPILE_LIMIT=0", content)
+        self.assertIn("AIWIKI_DOGFOOD_MATURITY_NO_SEMANTIC_LINT=1", content)
 
     def test_user_service_install_script_mentions_nightly_timer(self) -> None:
         script = Path("/home/tim/ai-wiki/scripts/install_user_service.sh")
         content = script.read_text(encoding="utf-8")
         self.assertIn("aiwiki-nightly.service", content)
         self.assertIn("aiwiki-nightly.timer", content)
+        self.assertIn("aiwiki-dogfood-maturity.service", content)
+        self.assertIn("aiwiki-dogfood-maturity.timer", content)
+        self.assertIn("aiwiki-dogfood-maturity.env", content)
         self.assertIn("AIWIKI_NIGHTLY_COMPILE_LIMIT", content)
         self.assertIn("AIWIKI_LLM_MODEL=deepseek-v4-pro", content)
         self.assertIn("AIWIKI_NIGHTLY_FALLBACK_ENV", content)
+        self.assertIn("AIWIKI_DOGFOOD_MATURITY_ON_CALENDAR", content)
+        self.assertIn("*-*-* 00:15:00 UTC", content)
+        self.assertIn("default AIWIKI_DOGFOOD_VAULT is machine-local", content)
         self.assertIn("ensure_env_key", content)
+
+    def test_uninstall_user_service_mentions_dogfood_maturity_cleanup(self) -> None:
+        script = Path("/home/tim/ai-wiki/scripts/uninstall_user_service.sh")
+        content = script.read_text(encoding="utf-8")
+        self.assertIn('systemctl --user disable --now "$DOGFOOD_MATURITY_TIMER_NAME"', content)
+        self.assertIn('systemctl --user stop "$DOGFOOD_MATURITY_SERVICE_NAME"', content)
+        self.assertIn("DOGFOOD_MATURITY_SERVICE_PATH", content)
+        self.assertIn("DOGFOOD_MATURITY_TIMER_PATH", content)
 
     def test_collect_machine_memory_actions_respects_active_protocol_focus(self) -> None:
         save_machine_memory_action_state(

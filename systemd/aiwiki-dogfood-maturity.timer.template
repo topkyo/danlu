@@ -1,0 +1,10 @@
+[Unit]
+Description=aiwiki dogfood maturity timer
+
+[Timer]
+OnCalendar=__ON_CALENDAR__
+Persistent=__PERSISTENT__
+Unit=aiwiki-dogfood-maturity.service
+
+[Install]
+WantedBy=timers.target

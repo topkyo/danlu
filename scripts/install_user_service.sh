@@ -7,19 +7,29 @@ PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 WATCH_SERVICE_NAME="aiwiki-watch.service"
 NIGHTLY_SERVICE_NAME="aiwiki-nightly.service"
 NIGHTLY_TIMER_NAME="aiwiki-nightly.timer"
+DOGFOOD_MATURITY_SERVICE_NAME="aiwiki-dogfood-maturity.service"
+DOGFOOD_MATURITY_TIMER_NAME="aiwiki-dogfood-maturity.timer"
 SYSTEMD_USER_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 AIWIKI_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/aiwiki"
 WATCH_UNIT_PATH="$SYSTEMD_USER_DIR/$WATCH_SERVICE_NAME"
 NIGHTLY_SERVICE_PATH="$SYSTEMD_USER_DIR/$NIGHTLY_SERVICE_NAME"
 NIGHTLY_TIMER_PATH="$SYSTEMD_USER_DIR/$NIGHTLY_TIMER_NAME"
+DOGFOOD_MATURITY_SERVICE_PATH="$SYSTEMD_USER_DIR/$DOGFOOD_MATURITY_SERVICE_NAME"
+DOGFOOD_MATURITY_TIMER_PATH="$SYSTEMD_USER_DIR/$DOGFOOD_MATURITY_TIMER_NAME"
 WATCH_ENV_PATH="$AIWIKI_CONFIG_DIR/aiwiki-watch.env"
 NIGHTLY_ENV_PATH="$AIWIKI_CONFIG_DIR/aiwiki-nightly.env"
+DOGFOOD_MATURITY_ENV_PATH="$AIWIKI_CONFIG_DIR/aiwiki-dogfood-maturity.env"
 WATCH_TEMPLATE_PATH="$PROJECT_ROOT/systemd/aiwiki-watch.service.template"
 NIGHTLY_SERVICE_TEMPLATE_PATH="$PROJECT_ROOT/systemd/aiwiki-nightly.service.template"
 NIGHTLY_TIMER_TEMPLATE_PATH="$PROJECT_ROOT/systemd/aiwiki-nightly.timer.template"
+DOGFOOD_MATURITY_SERVICE_TEMPLATE_PATH="$PROJECT_ROOT/systemd/aiwiki-dogfood-maturity.service.template"
+DOGFOOD_MATURITY_TIMER_TEMPLATE_PATH="$PROJECT_ROOT/systemd/aiwiki-dogfood-maturity.timer.template"
 NIGHTLY_ON_CALENDAR="${AIWIKI_NIGHTLY_ON_CALENDAR:-daily}"
 NIGHTLY_PERSISTENT="${AIWIKI_NIGHTLY_PERSISTENT:-true}"
+DOGFOOD_MATURITY_ON_CALENDAR="${AIWIKI_DOGFOOD_MATURITY_ON_CALENDAR:-*-*-* 00:15:00 UTC}"
+DOGFOOD_MATURITY_PERSISTENT="${AIWIKI_DOGFOOD_MATURITY_PERSISTENT:-true}"
 NIGHTLY_FALLBACK_ENV_DEFAULT="$HOME/.aiwiki-secrets/nvidia.env"
+DOGFOOD_MATURITY_VAULT_DEFAULT="${AIWIKI_DOGFOOD_VAULT:-/home/tim/danlu/炼丹炉}"
 
 ensure_env_key() {
   local file="$1"
@@ -71,6 +81,16 @@ AIWIKI_CLAUDE_COMMAND=claude
 EOF
 fi
 
+if [[ ! -f "$DOGFOOD_MATURITY_ENV_PATH" ]]; then
+  cat >"$DOGFOOD_MATURITY_ENV_PATH" <<EOF
+AIWIKI_DOGFOOD_VAULT=$DOGFOOD_MATURITY_VAULT_DEFAULT
+AIWIKI_DOGFOOD_MATURITY_PREVIEW_LIMIT=1000
+AIWIKI_DOGFOOD_MATURITY_L3_LIMIT=1000
+AIWIKI_DOGFOOD_MATURITY_COMPILE_LIMIT=0
+AIWIKI_DOGFOOD_MATURITY_NO_SEMANTIC_LINT=1
+EOF
+fi
+
 ensure_env_key "$NIGHTLY_ENV_PATH" "AIWIKI_NIGHTLY_FALLBACK_ENABLED" "${AIWIKI_NIGHTLY_FALLBACK_ENABLED:-0}"
 ensure_env_key "$NIGHTLY_ENV_PATH" "AIWIKI_NIGHTLY_FALLBACK_BACKEND" "nvidia-nim-api"
 ensure_env_key "$NIGHTLY_ENV_PATH" "AIWIKI_NIGHTLY_FALLBACK_MODEL" "openai/gpt-oss-120b"
@@ -80,6 +100,11 @@ ensure_env_key "$NIGHTLY_ENV_PATH" "AIWIKI_NIGHTLY_AUTO_ADOPT_L1" "${AIWIKI_NIGH
 ensure_env_key "$NIGHTLY_ENV_PATH" "AIWIKI_NIGHTLY_AUTO_ADOPT_L2" "${AIWIKI_NIGHTLY_AUTO_ADOPT_L2:-${AUTO_ADOPT_L2:-0}}"
 ensure_env_key "$NIGHTLY_ENV_PATH" "AIWIKI_NIGHTLY_AUTO_ADOPT_L3" "${AIWIKI_NIGHTLY_AUTO_ADOPT_L3:-${AUTO_ADOPT_L3:-0}}"
 ensure_env_key "$NIGHTLY_ENV_PATH" "AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS" "${AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS:-${AUTO_ADOPT_JUDGMENTS:-0}}"
+ensure_env_key "$DOGFOOD_MATURITY_ENV_PATH" "AIWIKI_DOGFOOD_VAULT" "$DOGFOOD_MATURITY_VAULT_DEFAULT"
+ensure_env_key "$DOGFOOD_MATURITY_ENV_PATH" "AIWIKI_DOGFOOD_MATURITY_PREVIEW_LIMIT" "1000"
+ensure_env_key "$DOGFOOD_MATURITY_ENV_PATH" "AIWIKI_DOGFOOD_MATURITY_L3_LIMIT" "1000"
+ensure_env_key "$DOGFOOD_MATURITY_ENV_PATH" "AIWIKI_DOGFOOD_MATURITY_COMPILE_LIMIT" "0"
+ensure_env_key "$DOGFOOD_MATURITY_ENV_PATH" "AIWIKI_DOGFOOD_MATURITY_NO_SEMANTIC_LINT" "1"
 
 sed \
   -e "s|__PROJECT_ROOT__|$PROJECT_ROOT|g" \
@@ -96,6 +121,16 @@ sed \
   -e "s|__PERSISTENT__|$NIGHTLY_PERSISTENT|g" \
   "$NIGHTLY_TIMER_TEMPLATE_PATH" >"$NIGHTLY_TIMER_PATH"
 
+sed \
+  -e "s|__PROJECT_ROOT__|$PROJECT_ROOT|g" \
+  -e "s|__ENV_FILE__|$DOGFOOD_MATURITY_ENV_PATH|g" \
+  "$DOGFOOD_MATURITY_SERVICE_TEMPLATE_PATH" >"$DOGFOOD_MATURITY_SERVICE_PATH"
+
+sed \
+  -e "s|__ON_CALENDAR__|$DOGFOOD_MATURITY_ON_CALENDAR|g" \
+  -e "s|__PERSISTENT__|$DOGFOOD_MATURITY_PERSISTENT|g" \
+  "$DOGFOOD_MATURITY_TIMER_TEMPLATE_PATH" >"$DOGFOOD_MATURITY_TIMER_PATH"
+
 systemctl --user daemon-reload
 systemctl --user enable --now "$WATCH_SERVICE_NAME"
 if ! systemctl --user is-active --quiet "$WATCH_SERVICE_NAME"; then
@@ -104,15 +139,23 @@ fi
 systemctl --user is-active --quiet "$WATCH_SERVICE_NAME"
 systemctl --user enable --now "$NIGHTLY_TIMER_NAME"
 systemctl --user is-enabled --quiet "$NIGHTLY_TIMER_NAME"
+systemctl --user enable --now "$DOGFOOD_MATURITY_TIMER_NAME"
+systemctl --user is-enabled --quiet "$DOGFOOD_MATURITY_TIMER_NAME"
 
-echo "[OK] Installed $WATCH_SERVICE_NAME and $NIGHTLY_TIMER_NAME"
+echo "[OK] Installed $WATCH_SERVICE_NAME, $NIGHTLY_TIMER_NAME, and $DOGFOOD_MATURITY_TIMER_NAME"
 echo "      watch unit:    $WATCH_UNIT_PATH"
 echo "      watch env:     $WATCH_ENV_PATH"
 echo "      nightly svc:   $NIGHTLY_SERVICE_PATH"
 echo "      nightly timer: $NIGHTLY_TIMER_PATH"
 echo "      nightly env:   $NIGHTLY_ENV_PATH"
+echo "      maturity svc:  $DOGFOOD_MATURITY_SERVICE_PATH"
+echo "      maturity timer:$DOGFOOD_MATURITY_TIMER_PATH"
+echo "      maturity env:  $DOGFOOD_MATURITY_ENV_PATH"
 echo "      on-calendar:   $NIGHTLY_ON_CALENDAR"
+echo "      maturity cal:  $DOGFOOD_MATURITY_ON_CALENDAR"
 echo "      note:          change AIWIKI_NIGHTLY_ON_CALENDAR / AIWIKI_NIGHTLY_PERSISTENT and rerun this script to rewrite the timer"
+echo "      note:          change AIWIKI_DOGFOOD_MATURITY_ON_CALENDAR / AIWIKI_DOGFOOD_MATURITY_PERSISTENT and rerun this script to rewrite the dogfood maturity timer"
+echo "      note:          default AIWIKI_DOGFOOD_VAULT is machine-local for this dogfood host; edit $DOGFOOD_MATURITY_ENV_PATH for other vaults"
 echo "Note: auto-adopt and apply defaults are now off."
 echo "To enable, edit ~/.config/systemd/user/aiwiki-nightly.service.d/override.conf or pass via env."
 echo "Example: AUTO_ADOPT_L1=1 ./scripts/install_user_service.sh"
