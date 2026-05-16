@@ -69,6 +69,12 @@ def _make_run_receipt(
                 "exception_rate": 0.25,
                 "exception_queue": [],
             },
+            "human_required_report": {
+                "human_required_count": 0,
+                "routine_primary_debt_count": 0,
+                "exception_count": 0,
+                "auto_resolved_count": 0,
+            },
         },
         "l3_generation": {
             "status": "ok",
@@ -185,7 +191,38 @@ class DogfoodMaturityGateTests(unittest.TestCase):
                 {"subject_kind": "judgment_review", "subject_id": "jr-1", "operation": "apply", "target_file": "wiki/judgments/j1.md", "conclusion": "upheld", "confidence": "high"},
                 {"subject_kind": "judgment_review", "subject_id": "jr-2", "operation": "apply", "target_file": "wiki/judgments/j2.md", "conclusion": "weakened", "confidence": "medium"},
                 {"subject_kind": "l3_proposal", "subject_id": "other", "operation": "apply"},
+                {"generated_by": "aiwiki-auto-resolve-actions", "action_id": "link-1", "operation": "apply", "note": "Auto-resolved accepted low-risk action via machine-memory:auto-resolution:v1."},
             ],
+        )
+        _write_json(
+            self.root / ".aiwiki" / "state" / "machine-memory-actions.json",
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "bridge-1",
+                        "kind": "monitor-bridge-concept",
+                        "status": "deferred",
+                        "active": True,
+                        "human_required": "true",
+                        "human_required_reason": "semantic_judgment_required",
+                        "last_receipt_path": "output/control/execution-receipts/auto-resolution/bridge-1.json",
+                    },
+                    {"id": "link-1", "kind": "add-source-concept-link", "status": "resolved", "active": True},
+                ],
+            },
+        )
+        _write_json(
+            self.root / "output" / "control" / "execution-receipts" / "auto-resolution" / "bridge-1.json",
+            {
+                "kind": "execution-receipt",
+                "generated_by": "aiwiki-auto-resolve-actions",
+                "operation": "escalate",
+                "action_id": "bridge-1",
+                "human_required": True,
+                "human_required_reason": "semantic_judgment_required",
+                "revert_supported": False,
+            },
         )
         _write_json(
             self.root / ".aiwiki" / "state" / "nightly-health.json",
@@ -240,11 +277,60 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(snapshot["judgment_lane_report"]["conclusion_counts"]["upheld"], 1)
         self.assertEqual(snapshot["judgment_lane_report"]["conclusion_counts"]["weakened"], 1)
         self.assertEqual(snapshot["judgment_lane_report"]["conclusion_counts"]["refuted"], 1)
+        self.assertEqual(snapshot["human_required_report"]["human_required_count"], 1)
+        self.assertEqual(snapshot["human_required_report"]["routine_primary_debt_count"], 0)
+        self.assertEqual(snapshot["human_required_report"]["primary_exception_counts"], {})
+        self.assertEqual(snapshot["human_required_report"]["auto_resolved_count"], 1)
+        self.assertEqual(snapshot["human_required_report"]["auto_resolution_report"]["auto_resolution_receipt_count"], 1)
+        self.assertEqual(
+            snapshot["human_required_report"]["auto_resolution_report"]["human_required_reason_counts"]["semantic_judgment_required"],
+            1,
+        )
         self.assertEqual(
             snapshot["prompts_ask_sha256"],
             hashlib.sha256(ask_path.read_bytes()).hexdigest(),
         )
         self.assertIn("review_backlog_counts", snapshot)
+
+    def test_human_required_report_counts_primary_exceptions_without_routine_backlog(self) -> None:
+        from scripts.dogfood_maturity_gate import _build_human_required_report
+
+        report = _build_human_required_report(
+            self.root,
+            {
+                "pending_judgments": 2,
+                "escalated_actions": 1,
+                "overdue_actions": 5,
+                "ready_actions": 4,
+                "overdue_reviews": 3,
+            },
+        )
+
+        self.assertEqual(report["primary_exception_count"], 3)
+        self.assertEqual(report["primary_exception_counts"], {"escalated_actions": 1, "pending_judgments": 2})
+        self.assertEqual(report["routine_primary_debt_count"], 0)
+        self.assertEqual(report["routine_primary_debt_counts"], {})
+
+    def test_human_required_report_flags_routine_bucket_policy_drift(self) -> None:
+        from aiwiki import today_feed
+        from scripts.dogfood_maturity_gate import _build_human_required_report
+
+        today_feed._PRIMARY_REVIEW_BUCKETS.add("overdue_actions")
+        try:
+            report = _build_human_required_report(
+                self.root,
+                {
+                    "pending_judgments": 2,
+                    "overdue_actions": 5,
+                },
+            )
+        finally:
+            today_feed._PRIMARY_REVIEW_BUCKETS.discard("overdue_actions")
+
+        self.assertEqual(report["primary_exception_count"], 2)
+        self.assertEqual(report["primary_exception_counts"], {"pending_judgments": 2})
+        self.assertEqual(report["routine_primary_debt_count"], 5)
+        self.assertEqual(report["routine_primary_debt_counts"], {"overdue_actions": 5})
 
     def test_summarize_warns_when_receipts_are_insufficient(self) -> None:
         self._write_receipts(
@@ -390,6 +476,54 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(summary["operational_maturity"]["status"], "pass")
         self.assertTrue(summary["operational_maturity"]["human_only_exceptions"])
         self.assertEqual(summary["operational_maturity"]["budget_violations"], [])
+
+    def test_operational_maturity_flags_routine_primary_debt(self) -> None:
+        receipts = [
+            _make_run_receipt(
+                generated_at="2026-05-13T00:00:00Z",
+                status="pass",
+                before_backlog=10,
+                after_backlog=9,
+                before_candidate=1,
+                after_candidate=0,
+                before_judgment_receipts=0,
+                after_judgment_receipts=1,
+                already_exists_count=1,
+            ),
+            _make_run_receipt(
+                generated_at="2026-05-14T00:00:00Z",
+                status="pass",
+                before_backlog=9,
+                after_backlog=8,
+                before_candidate=0,
+                after_candidate=0,
+                before_judgment_receipts=1,
+                after_judgment_receipts=2,
+                already_exists_count=1,
+            ),
+            _make_run_receipt(
+                generated_at="2026-05-15T00:00:00Z",
+                status="pass",
+                before_backlog=8,
+                after_backlog=7,
+                before_candidate=0,
+                after_candidate=0,
+                before_judgment_receipts=2,
+                after_judgment_receipts=3,
+                already_exists_count=1,
+            ),
+        ]
+        for receipt in receipts:
+            receipt["after"]["judgment_lane_report"]["exception_rate"] = 0.0
+        receipts[-1]["after"]["human_required_report"]["routine_primary_debt_count"] = 1
+        self._write_receipts(receipts)
+
+        summary = summarize_recent_run_receipts(self.root, recent=3)
+
+        self.assertEqual(summary["status"], "pass")
+        self.assertEqual(summary["routine_primary_debt_count"], 1)
+        self.assertEqual(summary["operational_maturity"]["status"], "not-yet")
+        self.assertIn("routine_primary_debt", summary["operational_maturity"]["budget_violations"])
 
     def test_summarize_warns_when_three_receipts_are_same_day(self) -> None:
         self._write_receipts(

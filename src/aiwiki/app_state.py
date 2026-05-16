@@ -184,6 +184,10 @@ def execution_dry_run_path(root: Path, action_id: str) -> Path:
     return root / "output" / "control" / "execution-bundles" / f"{slugify(action_id)}-dry-run.json"
 
 
+def run_notes_path(root: Path, run_id: str) -> Path:
+    return root / "output" / "control" / "runs" / slugify(run_id) / "thinking.md"
+
+
 def archive_dry_run_path(root: Path, entry_id: str) -> Path:
     return root / "output" / "control" / "execution-bundles" / f"{slugify(material_archive_action_id(entry_id))}-dry-run.json"
 

@@ -35,11 +35,8 @@ const PRIMARY_REVIEW_BUCKETS = new Set([
   "escalated_actions",
   "escalation_candidates",
   "judgment_review_actions",
-  "overdue_actions",
-  "overdue_reviews",
   "pending_decisions",
   "pending_judgments",
-  "ready_actions",
 ]);
 
 function buildTodayFeed(summary) {

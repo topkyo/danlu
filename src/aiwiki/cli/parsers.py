@@ -799,6 +799,28 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         help="Apply every currently accepted low-risk action as a batch.",
     )
 
+    auto_resolve_actions_parser = subparsers.add_parser(
+        "auto-resolve-actions",
+        help="Apply accepted low-risk machine-memory actions and defer human-required exceptions.",
+    )
+    auto_resolve_actions_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview auto-resolution decisions without writing receipts or state.",
+    )
+    auto_resolve_actions_parser.add_argument(
+        "--limit",
+        type=int,
+        help="Optional maximum number of active actions to evaluate.",
+    )
+    auto_resolve_actions_parser.add_argument(
+        "--accepted-only",
+        action="store_true",
+        help="Only evaluate active accepted actions; skip proposed/deferred review debt.",
+    )
+    auto_resolve_actions_parser.add_argument("--note", help="Optional note stored in auto-resolution receipts.")
+    auto_resolve_actions_parser.set_defaults(handler_command="auto-resolve-actions")
+
     revert_action_parser = subparsers.add_parser(
         "revert-action",
         help="Revert the latest low-risk safe apply for a machine-memory action.",

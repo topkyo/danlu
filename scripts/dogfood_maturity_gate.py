@@ -145,9 +145,12 @@ def _load_judgment_review_receipt_counts(root: Path) -> dict[str, Any]:
 
 
 def _load_judgment_lane_report(root: Path) -> dict[str, Any]:
-    from aiwiki.app_state import load_jsonl_documents, nightly_health_state_path
-    from aiwiki.app_state import execution_receipt_history_path
-    from aiwiki.app_state import load_json_document
+    from aiwiki.app_state import (
+        execution_receipt_history_path,
+        load_json_document,
+        load_jsonl_documents,
+        nightly_health_state_path,
+    )
 
     nightly = load_json_document(nightly_health_state_path(root))
     agent_loop = nightly.get("agent_loop") if isinstance(nightly.get("agent_loop"), dict) else {}
@@ -354,12 +357,144 @@ def _load_l3_debt_report(root: Path, *, preview_limit: int) -> dict[str, Any]:
     }
 
 
+def _read_json_file(path: Path) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _auto_resolution_receipt_records(root: Path) -> list[dict[str, Any]]:
+    receipt_dir = root / "output" / "control" / "execution-receipts" / "auto-resolution"
+    records: list[dict[str, Any]] = []
+    for path in sorted(receipt_dir.glob("*.json")):
+        payload = _read_json_file(path)
+        if payload is None:
+            continue
+        payload.setdefault("receipt_path", str(path.relative_to(root)))
+        records.append(payload)
+    return records
+
+
+def _load_auto_resolution_report(root: Path) -> dict[str, Any]:
+    from aiwiki.app_state import execution_receipt_history_path, load_jsonl_documents, load_machine_memory_action_state
+
+    state = load_machine_memory_action_state(root)
+    actions = [item for item in state.get("actions", []) if isinstance(item, dict)]
+    active_actions = [item for item in actions if bool(item.get("active", True))]
+    human_required_actions = [
+        item
+        for item in active_actions
+        if str(item.get("human_required") or "").lower() == "true"
+        or bool(str(item.get("human_required_reason") or "").strip())
+    ]
+    human_reason_counts: Counter[str] = Counter(
+        str(item.get("human_required_reason") or "(missing)") for item in human_required_actions
+    )
+    state_counts: Counter[str] = Counter(str(item.get("status") or "(missing)") for item in active_actions)
+    receipt_records = _auto_resolution_receipt_records(root)
+    receipt_operation_counts: Counter[str] = Counter(str(item.get("operation") or "(missing)") for item in receipt_records)
+    auto_resolution_history = [
+        item
+        for item in load_jsonl_documents(execution_receipt_history_path(root))
+        if isinstance(item, dict)
+        and (
+            str(item.get("generated_by") or "") == "aiwiki-auto-resolve-actions"
+            or str(item.get("policy_rule_id") or "") == "machine-memory:auto-resolution:v1"
+            or "machine-memory:auto-resolution:v1" in str(item.get("note") or "")
+        )
+    ]
+    history_operation_counts: Counter[str] = Counter(str(item.get("operation") or "(missing)") for item in auto_resolution_history)
+    resolved_operations = {"apply", "close", "reject", "resolve", "resolved"}
+    auto_resolved_count = sum(
+        count for operation, count in history_operation_counts.items() if operation in resolved_operations
+    ) + sum(count for operation, count in receipt_operation_counts.items() if operation in resolved_operations)
+    return {
+        "version": 1,
+        "status": "ok",
+        "action_state_path": ".aiwiki/state/machine-memory-actions.json",
+        "human_required_count": len(human_required_actions),
+        "human_required_reason_counts": dict(sorted(human_reason_counts.items())),
+        "active_action_count": len(active_actions),
+        "active_action_state_counts": dict(sorted(state_counts.items())),
+        "auto_resolution_receipt_count": len(receipt_records),
+        "auto_resolution_operation_counts": dict(sorted(receipt_operation_counts.items())),
+        "auto_resolution_history_count": len(auto_resolution_history),
+        "auto_resolution_history_operation_counts": dict(sorted(history_operation_counts.items())),
+        "auto_resolved_count": auto_resolved_count,
+        "latest_human_required": [
+            {
+                "id": str(item.get("id") or ""),
+                "kind": str(item.get("kind") or ""),
+                "status": str(item.get("status") or ""),
+                "human_required_reason": str(item.get("human_required_reason") or ""),
+                "last_receipt_path": str(item.get("last_receipt_path") or ""),
+            }
+            for item in human_required_actions[:10]
+        ],
+    }
+
+
+def _build_human_required_report(root: Path, review_backlog_counts: dict[str, Any]) -> dict[str, Any]:
+    from aiwiki.today_feed import build_today_feed, primary_review_bucket_keys, routine_review_bucket_keys
+
+    primary_buckets = set(primary_review_bucket_keys())
+    routine_buckets = set(routine_review_bucket_keys())
+    minimal_summary = {
+        "generated_at": utc_now(),
+        "review_backlog_counts": review_backlog_counts,
+    }
+    primary_review_counts: dict[str, int] = {}
+    routine_primary_counts: dict[str, int] = {}
+    for entry in build_today_feed(minimal_summary, audience="primary"):
+        target = str(entry.target or "")
+        if not target.startswith("review:"):
+            continue
+        bucket = target.split(":", 1)[1]
+        count = _coerce_int(review_backlog_counts.get(bucket))
+        if bucket in routine_buckets:
+            routine_primary_counts[bucket] = count
+        else:
+            primary_review_counts[bucket] = count
+    auto_resolution = _load_auto_resolution_report(root)
+    primary_exception_count = sum(primary_review_counts.values())
+    routine_primary_debt_count = sum(routine_primary_counts.values())
+    human_required_count = _coerce_int(auto_resolution.get("human_required_count"))
+    auto_resolved_count = _coerce_int(auto_resolution.get("auto_resolved_count"))
+    return {
+        "version": 1,
+        "status": "ok",
+        "primary_review_buckets": sorted(primary_buckets),
+        "routine_review_buckets": sorted(routine_buckets),
+        "primary_exception_counts": dict(sorted(primary_review_counts.items())),
+        "primary_exception_count": primary_exception_count,
+        "routine_primary_debt_counts": dict(sorted(routine_primary_counts.items())),
+        "routine_primary_debt_count": routine_primary_debt_count,
+        "human_required_count": human_required_count,
+        "exception_count": primary_exception_count + human_required_count,
+        "auto_resolved_count": auto_resolved_count,
+        "auto_resolution_report": auto_resolution,
+    }
+
+
 def collect_metrics(root: Path, *, preview_limit: int = 20) -> dict[str, Any]:
-    from aiwiki.app_content import collect_aging_signals, collect_curated_pages, knowledge_lifecycle_governance_summary, review_queue
+    from aiwiki.app_content import (
+        collect_aging_signals,
+        collect_curated_pages,
+        knowledge_lifecycle_governance_summary,
+        review_queue,
+    )
     from aiwiki.app_protocol import DEFAULT_PROTOCOL
     from aiwiki.app_shell.controls import shell_execution_controls, shell_review_controls
     from aiwiki.app_shell.summary import _action_review_backlog_counts
-    from aiwiki.app_state import load_json_document, load_knowledge_lifecycle_state, load_machine_memory, load_planner_state, nightly_health_state_path
+    from aiwiki.app_state import (
+        load_json_document,
+        load_knowledge_lifecycle_state,
+        load_machine_memory,
+        load_planner_state,
+        nightly_health_state_path,
+    )
 
     decisions = collect_curated_pages(root, "decisions", "decision")
     judgments = collect_curated_pages(root, "judgments", "judgment")
@@ -404,6 +539,7 @@ def collect_metrics(root: Path, *, preview_limit: int = 20) -> dict[str, Any]:
         1 for proposal in l3_review_controls if isinstance(proposal, dict) and proposal.get("needs_attention")
     )
     review_backlog_counts.update(_action_review_backlog_counts(shell_execution_controls(root, memory)))
+    human_required_report = _build_human_required_report(root, review_backlog_counts)
     nightly = load_json_document(nightly_health_state_path(root))
     return {
         "kind": SNAPSHOT_KIND,
@@ -413,6 +549,7 @@ def collect_metrics(root: Path, *, preview_limit: int = 20) -> dict[str, Any]:
         "root": str(root),
         "review_backlog_counts": review_backlog_counts,
         "backlog_total": _sum_int_values(review_backlog_counts),
+        "human_required_report": human_required_report,
         "nightly_agent_loop": dict(nightly.get("agent_loop") or {}),
         "l3_proposal_counts_by_state": _load_l3_proposal_counts_by_state(root),
         "l3_generation_preview_summary": _preview_l3_generation_summary(root, limit=preview_limit),
@@ -689,7 +826,7 @@ def _consecutive_days(days: list[str], *, expected_count: int) -> bool:
         return False
     selected = unique_days[-expected_count:]
     parsed = [datetime.strptime(day, "%Y-%m-%d").date() for day in selected]
-    return all((right - left) == timedelta(days=1) for left, right in zip(parsed, parsed[1:]))
+    return all((right - left) == timedelta(days=1) for left, right in zip(parsed, parsed[1:], strict=False))
 
 
 def summarize_run_receipts(receipts: list[dict[str, Any]], *, recent: int = 3) -> dict[str, Any]:
@@ -736,6 +873,9 @@ def summarize_run_receipts(receipts: list[dict[str, Any]], *, recent: int = 3) -
     latest_judgment_lane = last.get("after", {}).get("judgment_lane_report") if isinstance(last.get("after"), dict) else {}
     if not isinstance(latest_judgment_lane, dict):
         latest_judgment_lane = {}
+    latest_human_required = last.get("after", {}).get("human_required_report") if isinstance(last.get("after"), dict) else {}
+    if not isinstance(latest_human_required, dict):
+        latest_human_required = {}
     semantic_path_observed = judgment_review_receipts_delta > 0
     if failed or prompt_hash_changed or missing_required_fields:
         status = "fail"
@@ -779,6 +919,11 @@ def summarize_run_receipts(receipts: list[dict[str, Any]], *, recent: int = 3) -
         "judgment_review_processed_delta": judgment_review_receipts_delta,
         "judgment_review_new_receipts": max(judgment_review_receipts_delta, 0),
         "judgment_lane_report": latest_judgment_lane,
+        "human_required_report": latest_human_required,
+        "human_required_count": _coerce_int(latest_human_required.get("human_required_count")),
+        "routine_primary_debt_count": _coerce_int(latest_human_required.get("routine_primary_debt_count")),
+        "exception_count": _coerce_int(latest_human_required.get("exception_count")),
+        "auto_resolved_count": _coerce_int(latest_human_required.get("auto_resolved_count")),
         "judgment_review_failure_rate": latest_judgment_lane.get("failure_rate", 0.0),
         "judgment_review_exception_rate": latest_judgment_lane.get("exception_rate", 0.0),
         "semantic_path_observed": semantic_path_observed,
@@ -807,6 +952,7 @@ def _build_operational_maturity_report(
         latest_after = {}
     l3_debt = latest_after.get("l3_debt_report") if isinstance(latest_after.get("l3_debt_report"), dict) else {}
     judgment_lane = latest_after.get("judgment_lane_report") if isinstance(latest_after.get("judgment_lane_report"), dict) else {}
+    human_required = latest_after.get("human_required_report") if isinstance(latest_after.get("human_required_report"), dict) else {}
     failed_receipts = sum(1 for item in receipts if str(item.get("status") or "") in {"failed", "blocked"})
     exception_count = _coerce_int(judgment_lane.get("exception_count"))
     failure_rate = float(judgment_lane.get("failure_rate") or 0.0)
@@ -816,6 +962,7 @@ def _build_operational_maturity_report(
         "max_judgment_failure_rate": 0.0,
         "max_judgment_exception_rate": 0.2,
         "max_effective_l3_candidates": 0,
+        "max_routine_primary_debt_count": 0,
         "requires_consecutive_days": recent,
     }
     budget_violations: list[str] = []
@@ -827,6 +974,8 @@ def _build_operational_maturity_report(
         budget_violations.append("judgment_exception_rate")
     if _coerce_int(l3_debt.get("effective_preview_candidate_count")) > anomaly_budget["max_effective_l3_candidates"]:
         budget_violations.append("effective_l3_candidates")
+    if _coerce_int(human_required.get("routine_primary_debt_count")) > anomaly_budget["max_routine_primary_debt_count"]:
+        budget_violations.append("routine_primary_debt")
     human_only_exceptions = status == "pass" and not budget_violations
     return {
         "version": 1,
@@ -842,6 +991,10 @@ def _build_operational_maturity_report(
             "judgment_exception_rate": exception_rate,
             "effective_l3_candidates": _coerce_int(l3_debt.get("effective_preview_candidate_count")),
             "l3_dedupe_or_noise_ratio": l3_debt.get("dedupe_or_noise_ratio", 0.0),
+            "human_required_count": _coerce_int(human_required.get("human_required_count")),
+            "routine_primary_debt_count": _coerce_int(human_required.get("routine_primary_debt_count")),
+            "exception_count": _coerce_int(human_required.get("exception_count")),
+            "auto_resolved_count": _coerce_int(human_required.get("auto_resolved_count")),
         },
         "trend_windows": {
             str(recent): {

@@ -12,7 +12,7 @@ from aiwiki.app_compile import compile_wiki
 from aiwiki.app_content import ingest_source, sync_manifest_with_raw
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_state import append_runtime_history, load_machine_memory, load_output_candidates_state
-from aiwiki.app_utils import relative_path
+from aiwiki.app_utils import parse_frontmatter, relative_path
 from aiwiki.config import LLMConfig
 from aiwiki.drop import drop_note
 from aiwiki.execution.ask import ask_question
@@ -199,6 +199,17 @@ class RunnerTests(unittest.TestCase):
         build_prompt.assert_called_once()
         self.assertEqual(build_prompt.call_args.kwargs["prompt_profile"], "lean")
         self.assertEqual(result["timeout_seconds"], 120)
+        self.assertTrue(result["run_id"])
+        self.assertTrue(result["run_notes_path"].startswith("output/control/runs/"))
+        notes = (self.root / result["run_notes_path"]).read_text(encoding="utf-8")
+        self.assertIn('status: "llm-complete"', notes)
+        self.assertIn("Visible Run Progress", notes)
+        self.assertIn("Safety Boundary", notes)
+        self.assertNotIn("<thought>", notes)
+        self.assertNotIn(str(self.root), notes)
+        output_frontmatter = parse_frontmatter(artifact_path.read_text(encoding="utf-8"))
+        self.assertEqual(output_frontmatter["run_id"], result["run_id"])
+        self.assertEqual(output_frontmatter["run_notes_path"], result["run_notes_path"])
 
     def test_run_ask_timeout_override_is_scoped_to_single_client_creation(self) -> None:
         artifact_path = self.root / "output" / "reports" / "query-timeout-override.md"
@@ -1474,6 +1485,81 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(candidate["candidate_state"], "pending")
         self.assertEqual(candidate["promotion_origin"], "nightly-recurring")
         self.assertIn("recurring_kind", candidate)
+
+    def test_ask_question_writes_safe_run_notes_and_frontmatter(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        result = ask_question(self.root, f"Compare scaling from {self.root}/private/raw.md and /srv/private/raw.md", "report")
+
+        self.assertTrue(result["run_id"])
+        self.assertTrue(result["run_notes_path"].startswith("output/control/runs/"))
+        notes_path = self.root / result["run_notes_path"]
+        self.assertTrue(notes_path.exists())
+        notes = notes_path.read_text(encoding="utf-8")
+        self.assertIn('kind: "run-progress-notes"', notes)
+        self.assertIn('status: "deterministic-ready"', notes)
+        self.assertIn("Visible Run Progress", notes)
+        self.assertIn("Safety Boundary", notes)
+        self.assertIn("[vault-root]", notes)
+        self.assertIn("[local-path]", notes)
+        self.assertNotIn("<thought>", notes)
+        self.assertNotIn(str(self.root), notes)
+        self.assertNotIn("/srv/private/raw.md", notes)
+        self.assertNotIn("system prompt", notes.lower())
+        output_frontmatter = parse_frontmatter((self.root / result["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(output_frontmatter["run_id"], result["run_id"])
+        self.assertEqual(output_frontmatter["run_notes_path"], result["run_notes_path"])
+
+    def test_run_notes_ids_include_output_directory_to_avoid_format_collisions(self) -> None:
+        from aiwiki.execution.run_notes import run_id_for_artifact
+
+        report_id = run_id_for_artifact("output/reports/same-topic.md")
+        slides_id = run_id_for_artifact("output/slides/same-topic.md")
+
+        self.assertNotEqual(report_id, slides_id)
+        self.assertIn("output-reports-same-topic", report_id)
+        self.assertIn("output-slides-same-topic", slides_id)
+
+    def test_run_ask_prompt_excludes_run_notes_frontmatter_fields(self) -> None:
+        artifact_path = self.root / "output" / "reports" / "query-run-notes-prompt.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text(
+            "---\n"
+            "id: query-run-notes-prompt\n"
+            "kind: report\n"
+            "run_id: ask-output-reports-query-run-notes-prompt\n"
+            "run_notes_path: output/control/runs/ask-output-reports-query-run-notes-prompt/thinking.md\n"
+            "---\n\n# Placeholder\n",
+            encoding="utf-8",
+        )
+        artifact = {
+            "path": "output/reports/query-run-notes-prompt.md",
+            "format": "report",
+            "protocol": "general",
+            "ranked_sources": [],
+            "ranked_concepts": [],
+            "protocol_pages": [],
+            "index_pages": [],
+            "machine_memory_query": {},
+            "run_id": "ask-output-reports-query-run-notes-prompt",
+            "run_notes_path": "output/control/runs/ask-output-reports-query-run-notes-prompt/thinking.md",
+        }
+
+        class _PromptCaptureClient:
+            def __init__(self) -> None:
+                self.config = type("Config", (), {"model": "gpt-5.4", "timeout_seconds": 120})()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                self.prompt = user_prompt
+                return CompletionResult(text=_VALID_REPORT_BODY, response_id="resp_prompt", usage={})
+
+        client = _PromptCaptureClient()
+        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
+            run_ask(self.root, "测试", "report", client=client)
+
+        self.assertNotIn("run_id:", client.prompt)
+        self.assertNotIn("run_notes_path:", client.prompt)
 
     def test_reinject_candidate_frontmatter_synthesizes_when_llm_strips_frontmatter(self) -> None:
         target = self.root / "output" / "reports" / "stripped.md"

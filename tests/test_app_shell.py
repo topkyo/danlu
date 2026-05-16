@@ -354,9 +354,13 @@ class ShellFlowTests(AppFlowTestBase):
 
         self.assertTrue(result["recent_outputs"])
         self.assertEqual(result["recent_outputs"][0]["path"], report["path"])
+        self.assertEqual(result["recent_outputs"][0]["run_id"], report["run_id"])
+        self.assertEqual(result["recent_outputs"][0]["run_notes_path"], report["run_notes_path"])
         self.assertTrue(result["recent_runs"])
         self.assertEqual(result["recent_runs"][0]["event_type"], "query")
         self.assertEqual(result["recent_runs"][0]["output_path"], report["path"])
+        self.assertEqual(result["recent_runs"][0]["run_id"], report["run_id"])
+        self.assertEqual(result["recent_runs"][0]["run_notes_path"], report["run_notes_path"])
 
     def test_shell_status_surfaces_latest_llm_run_and_llm_health(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

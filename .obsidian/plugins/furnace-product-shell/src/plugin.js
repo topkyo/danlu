@@ -428,6 +428,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       error: String(e.error || ""),
       reconcileTarget: String(e.reconcileTarget || ""),
       reconcilePath: String(e.reconcilePath || ""),
+      runId: String(e.runId || ""),
+      runNotesPath: String(e.runNotesPath || ""),
       retryArgs: e.retryArgs && typeof e.retryArgs === "object" ? e.retryArgs : null,
     }));
   }
@@ -478,6 +480,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         error,
         reconcileTarget: String(item.reconcileTarget || ""),
         reconcilePath: String(item.reconcilePath || ""),
+        runId: String(item.runId || ""),
+        runNotesPath: String(item.runNotesPath || ""),
         retryArgs: item.retryArgs && typeof item.retryArgs === "object" ? item.retryArgs : null,
         _stale: Boolean(item._stale),
       });
@@ -2056,6 +2060,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       finishedAt: "",
       error: "",
       reconcileTarget: "",
+      runId: String(opts.runId || "").trim(),
+      runNotesPath: String(opts.runNotesPath || "").trim(),
       retryArgs: opts.retryArgs && typeof opts.retryArgs === "object" ? opts.retryArgs : null,
     };
     this.pendingSubmissions.unshift(entry);
@@ -2135,8 +2141,22 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     const entry = this._findPending(id);
     if (!entry) return;
     entry.retryArgs = retryArgs && typeof retryArgs === "object" ? retryArgs : null;
+    if (retryArgs && typeof retryArgs === "object") {
+      this.updatePendingSubmissionRunNotes(id, retryArgs.runNotesPath, retryArgs.runId, { save: false, refresh: false });
+    }
     void this.savePluginState();
     this.refreshOpenViews();
+  }
+
+  updatePendingSubmissionRunNotes(id, runNotesPath, runId, opts = {}) {
+    const entry = this._findPending(id);
+    if (!entry) return;
+    const notes = String(runNotesPath || "").trim();
+    const rid = String(runId || "").trim();
+    if (notes) entry.runNotesPath = notes;
+    if (rid) entry.runId = rid;
+    if (opts.save !== false) void this.savePluginState();
+    if (opts.refresh !== false) this.refreshOpenViews();
   }
 
   // R90: 顶部"刷新炉子"按钮的 last updated 文案
@@ -2221,9 +2241,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       };
       let target = "";
       let targetPath = "";
+      let hitRunNotesPath = "";
+      let hitRunId = "";
       const findHit = (cands) => cands.find(matchAgainst);
       let hitCand = findHit(outputCands);
-      if (hitCand) { target = "outputs"; targetPath = String(hitCand.path || ""); }
+      if (hitCand) { target = "outputs"; targetPath = String(hitCand.path || ""); hitRunNotesPath = String(hitCand.run_notes_path || ""); hitRunId = String(hitCand.run_id || ""); }
       else {
         hitCand = findHit(receiptCands);
         if (hitCand) { target = "receipts"; targetPath = String(hitCand.path || hitCand.receipt_path || ""); }
@@ -2234,7 +2256,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       }
       // R89: 命中 → 改为 done（保留卡片）；R90: done 不再自动消失
       if (target) {
-        hits.push({ id: entry.id, target, path: targetPath });
+        hits.push({ id: entry.id, target, path: targetPath, runNotesPath: hitRunNotesPath, runId: hitRunId });
         remaining.push(entry);
       } else {
         remaining.push(entry);
@@ -2246,6 +2268,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     }
     // R90: markDone 不再设置 setTimeout，done 卡保留等用户行动
     for (const h of hits) {
+      if (h.runNotesPath || h.runId) {
+        this.updatePendingSubmissionRunNotes(h.id, h.runNotesPath, h.runId, { save: false, refresh: false });
+      }
       this.markPendingSubmissionDone(h.id, h.target, h.path);
     }
   }
@@ -2289,17 +2314,23 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     const askQuestion = normalizedQuestion
       ? buildAutoAskQuestion(normalizedQuestion, normalizedMaterialPaths)
       : "";
+    let runNotesPath = "";
+    let runId = "";
     if (normalizedQuestion) {
-      await this.runAskCommand({
+      const askPayload = await this.runAskCommand({
         question: askQuestion,
         format: "report",
         mode: "run-ask",
         protocol,
       });
+      runNotesPath = String(askPayload && askPayload.run_notes_path || "");
+      runId = String(askPayload && askPayload.run_id || "");
     }
     return {
       materialPaths: normalizedMaterialPaths,
       askQuestion,
+      runNotesPath,
+      runId,
     };
   }
 

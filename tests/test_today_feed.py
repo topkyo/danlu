@@ -110,6 +110,71 @@ def _case_low_level_backlog_hidden_from_primary_feed() -> None:
     assert [entry.title for entry in feed] == ["补充反证候选"]
 
 
+def _case_routine_backlog_hidden_from_primary_feed() -> None:
+    feed = build_today_feed(
+        {
+            "review_backlog_counts": {
+                "overdue_actions": 3,
+                "overdue_reviews": 2,
+                "ready_actions": 4,
+                "counter_evidence_candidates": 1,
+                "escalated_actions": 1,
+                "pending_decisions": 1,
+            }
+        }
+    )
+    targets = [entry.target for entry in feed]
+    assert "review:overdue_actions" not in targets
+    assert "review:overdue_reviews" not in targets
+    assert "review:ready_actions" not in targets
+    assert targets == [
+        "review:counter_evidence_candidates",
+        "review:escalated_actions",
+        "review:pending_decisions",
+    ]
+
+
+def _case_exception_backlog_kept_in_primary_feed() -> None:
+    feed = build_today_feed(
+        {
+            "review_backlog_counts": {
+                "counter_evidence_candidates": 1,
+                "escalated_actions": 1,
+                "escalation_candidates": 1,
+                "judgment_review_actions": 1,
+                "pending_decisions": 1,
+                "pending_judgments": 1,
+            }
+        }
+    )
+    assert [entry.target for entry in feed] == [
+        "review:counter_evidence_candidates",
+        "review:escalated_actions",
+        "review:escalation_candidates",
+        "review:judgment_review_actions",
+        "review:pending_decisions",
+        "review:pending_judgments",
+    ]
+
+
+def _case_operator_feed_keeps_routine_backlog() -> None:
+    feed = build_today_feed(
+        {
+            "review_backlog_counts": {
+                "overdue_actions": 3,
+                "overdue_reviews": 2,
+                "ready_actions": 4,
+            }
+        },
+        audience="operator",
+    )
+    assert [entry.target for entry in feed] == [
+        "review:overdue_actions",
+        "review:overdue_reviews",
+        "review:ready_actions",
+    ]
+
+
 def _case_proposal_entry_built() -> None:
     feed = build_today_feed(
         {

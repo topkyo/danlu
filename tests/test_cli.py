@@ -184,6 +184,12 @@ class CLITests(unittest.TestCase):
 
         self.assertIn("today", action.choices)
 
+    def test_auto_resolve_actions_subcommand_exists(self) -> None:
+        parser = build_parser()
+        action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
+
+        self.assertIn("auto-resolve-actions", action.choices)
+
     def test_trace_subcommand_exists_top_level_and_advanced(self) -> None:
         parser = build_parser()
         action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
@@ -2436,6 +2442,41 @@ class CLITests(unittest.TestCase):
                     batch=None,
                     all_accepted_low_risk=True,
                 )
+
+    def test_action_resolution_helper_excludes_accepted_monitor_actions_from_low_risk(self) -> None:
+        state = {
+            "actions": [
+                {"id": "monitor-a", "title": "Monitor A", "status": "accepted", "kind": "monitor-bridge-concept", "active": True, "policy_decision": "review"},
+            ]
+        }
+        with patch("aiwiki.cli.load_machine_memory_action_state", return_value=state):
+            with self.assertRaises(RuntimeError):
+                _resolve_action_ids(self.root, None, batch=None, all_accepted_low_risk=True)
+
+    def test_auto_resolve_actions_cli_dispatches_and_returns_json(self) -> None:
+        with patch(
+            "aiwiki.cli.auto_resolve_machine_memory_actions",
+            return_value={
+                "operation": "auto-resolve-actions",
+                "dry_run": True,
+                "counts": {"evaluated": 2, "would_apply": 1, "would_escalate": 1, "applied": 0, "escalated": 0, "skipped": 0, "failed": 0},
+                "items": [{"action_id": "a-1", "operation": "apply"}],
+            },
+        ) as mocked:
+            code, payload, stderr = self._run_main(["auto-resolve-actions", "--dry-run", "--limit", "2", "--accepted-only", "--note", "triage"])
+
+        self.assertEqual(code, 0, msg=stderr)
+        self.assertEqual(payload["operation"], "auto-resolve-actions")
+        self.assertTrue(payload["dry_run"])
+        self.assertEqual(payload["counts"]["evaluated"], 2)
+        self.assertEqual(payload["items"][0]["action_id"], "a-1")
+        mocked.assert_called_once_with(
+            self.root,
+            dry_run=True,
+            limit=2,
+            include_proposed=False,
+            note="triage",
+        )
 
     def test_archive_cli_smoke_signals_replay_then_planner_log_replay(self) -> None:
         self._copy_signals_fixture_root("case_archive_apply_revert")

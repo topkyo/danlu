@@ -94,9 +94,15 @@ test("reviewBucketCopy falls back for unknown kind", () => {
 
 test("PRIMARY_REVIEW_BUCKETS contains expected keys", () => {
   expect(PRIMARY_REVIEW_BUCKETS.has("counter_evidence_candidates")).toBe(true);
+  expect(PRIMARY_REVIEW_BUCKETS.has("escalated_actions")).toBe(true);
+  expect(PRIMARY_REVIEW_BUCKETS.has("escalation_candidates")).toBe(true);
   expect(PRIMARY_REVIEW_BUCKETS.has("judgment_review_actions")).toBe(true);
-  expect(PRIMARY_REVIEW_BUCKETS.has("overdue_reviews")).toBe(true);
-  // Non-primary buckets should NOT be in this set
+  expect(PRIMARY_REVIEW_BUCKETS.has("pending_decisions")).toBe(true);
+  expect(PRIMARY_REVIEW_BUCKETS.has("pending_judgments")).toBe(true);
+  // Routine or low-level buckets should NOT be in this set
+  expect(PRIMARY_REVIEW_BUCKETS.has("overdue_actions")).toBe(false);
+  expect(PRIMARY_REVIEW_BUCKETS.has("overdue_reviews")).toBe(false);
+  expect(PRIMARY_REVIEW_BUCKETS.has("ready_actions")).toBe(false);
   expect(PRIMARY_REVIEW_BUCKETS.has("machine_memory_actions")).toBe(false);
 });
 
@@ -170,16 +176,29 @@ test("buildTodayFeed surfaces decision entries from review_backlog_counts", () =
   const summary = makeSummary({
     review_backlog_counts: {
       counter_evidence_candidates: 3,
+      escalated_actions: 1,
+      escalation_candidates: 1,
       judgment_review_actions: 1,
-      // Non-primary bucket should be filtered out
+      pending_decisions: 1,
+      pending_judgments: 1,
+      // Routine/low-level buckets should be filtered out
+      overdue_actions: 2,
+      overdue_reviews: 2,
+      ready_actions: 2,
       machine_memory_actions: 5,
     },
   });
   const feed = buildTodayFeed(summary);
   const decisions = feed.filter((e) => e.kind === "decision");
-  expect(decisions).toHaveLength(2);
-  expect(decisions[0].target).toBe("review:counter_evidence_candidates");
-  expect(decisions[1].target).toBe("review:judgment_review_actions");
+  expect(decisions).toHaveLength(6);
+  expect(decisions.map((entry) => entry.target)).toEqual([
+    "review:counter_evidence_candidates",
+    "review:escalated_actions",
+    "review:escalation_candidates",
+    "review:judgment_review_actions",
+    "review:pending_decisions",
+    "review:pending_judgments",
+  ]);
 });
 
 test("buildTodayFeed surfaces counter evidence entries", () => {

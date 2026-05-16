@@ -33,6 +33,7 @@ from aiwiki.app_utils import (
     utc_now,
 )
 from aiwiki.execution.audit_reconciliation import reconcile_execution_receipts
+from aiwiki.execution.run_notes import write_run_notes, write_run_notes_frontmatter
 from aiwiki.llm import CompletionResult, LLMError, _write_raw_response, classify_backend_error
 from aiwiki.runner.clients import (
     _append_fallback_stage,
@@ -93,6 +94,26 @@ def _receipt_error_class(exc: Exception | str) -> str:
     if "exit code" in lowered or "non-zero" in lowered or "nonzero" in lowered:
         return "non_zero_exit"
     return "other"
+
+
+def _strip_run_notes_prompt_fields(markdown: str) -> str:
+    lines = str(markdown or "").splitlines()
+    if not lines or lines[0].strip() != "---":
+        return markdown
+    close_idx: int | None = None
+    for idx in range(1, len(lines)):
+        if lines[idx].strip() == "---":
+            close_idx = idx
+            break
+    if close_idx is None:
+        return markdown
+    filtered = [
+        line
+        for line in lines[: close_idx + 1]
+        if not line.startswith("run_id:") and not line.startswith("run_notes_path:")
+    ]
+    filtered.extend(lines[close_idx + 1 :])
+    return "\n".join(filtered) + ("\n" if markdown.endswith("\n") else "")
 
 
 def _raw_response_path(root: Path, result: CompletionResult | None, exc: Exception | None = None) -> str:
@@ -1051,7 +1072,7 @@ def run_ask(
             index_pages.append((relative, page.read_text(encoding="utf-8", errors="replace")))
 
     target = root / artifact["path"]
-    current_artifact = target.read_text(encoding="utf-8", errors="replace")
+    current_artifact = _strip_run_notes_prompt_fields(target.read_text(encoding="utf-8", errors="replace"))
 
     def _apply_graph_anchors_to_target() -> None:
         anchors = [str(item) for item in artifact.get("graph_anchor_node_ids", []) if str(item).strip()]
@@ -1203,8 +1224,31 @@ def run_ask(
                     error_class=_receipt_error_class(exc),
                 )
                 _apply_graph_anchors_to_target()
+                run_notes = write_run_notes(
+                    root,
+                    run_id=str(artifact.get("run_id") or ""),
+                    status="deterministic-fallback",
+                    question=question,
+                    output_format=output_format,
+                    protocol=str(artifact.get("protocol") or ""),
+                    output_path=str(artifact.get("path") or ""),
+                    source_count=len(source_ids),
+                    concept_count=len(artifact.get("ranked_concepts", [])),
+                    receipt_path=".aiwiki/logs/llm-receipts.jsonl",
+                    backend=str(failed_audit.get("backend_effective") or ""),
+                    model=str(failed_audit.get("model_final") or ""),
+                    fallback_stage=str(failed_audit.get("fallback_stage") or ""),
+                    failure_class=_receipt_error_class(exc),
+                    stages=[
+                        "Prepared deterministic context for the request.",
+                        "The primary LLM run did not complete; deterministic fallback output remained available.",
+                        "Recorded fallback receipt and recovery metadata.",
+                    ],
+                )
+                write_run_notes_frontmatter(target, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
                 return {
                     **artifact,
+                    **run_notes,
                     **failed_audit,
                     "status": "success",
                     "prompt_profile": retry_profile or used_prompt_profile,
@@ -1264,8 +1308,31 @@ def run_ask(
         usage=result.usage,
         raw_response_path=_raw_response_path(root, result),
     )
+    run_notes = write_run_notes(
+        root,
+        run_id=str(artifact.get("run_id") or ""),
+        status="llm-complete",
+        question=question,
+        output_format=output_format,
+        protocol=str(artifact.get("protocol") or ""),
+        output_path=str(artifact.get("path") or ""),
+        source_count=len(source_ids),
+        concept_count=len(artifact.get("ranked_concepts", [])),
+        receipt_path=".aiwiki/logs/llm-receipts.jsonl",
+        backend=backend_effective,
+        model=model_final,
+        fallback_stage=fallback_stage,
+        stages=[
+            "Prepared deterministic context for the request.",
+            "Requested an LLM draft using the selected backend and prompt profile.",
+            "Validated the returned markdown contract and updated the output artifact.",
+            "Recorded LLM receipt metadata for audit and recovery.",
+        ],
+    )
+    write_run_notes_frontmatter(target, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
     payload = {
         **artifact,
+        **run_notes,
         **llm_audit,
         "prompt_profile": retry_profile or used_prompt_profile,
         "retry_prompt_profile": retry_profile,

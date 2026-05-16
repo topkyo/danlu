@@ -19,12 +19,9 @@ from pathlib import Path
 from typing import Any
 
 from ..app_compile_ops import promote_recurring_outputs
+from ..app_content import action_supports_low_risk_apply
 from ..app_linting import lint_wiki, write_nightly_health
-from ..app_protocol import (
-    LOW_RISK_APPLYABLE_ACTION_KINDS,
-    RESOLVABLE_MONITOR_ACTION_KINDS,
-    ensure_layout,
-)
+from ..app_protocol import ensure_layout
 from ..app_shell import build_shell_summary, write_shell_summary
 from ..app_state import load_machine_memory_action_state, nightly_health_state_path
 from ..app_utils import relative_path, runtime_write_lock, runtime_write_operation
@@ -64,12 +61,7 @@ def _nightly_health_unlocked(root: Path) -> dict[str, Any]:
             str(a.get("id") or "")
             for a in action_state.get("actions", [])
             if isinstance(a, dict)
-            and str(a.get("status") or "") == "accepted"
-            and bool(a.get("active", True))
-            and (
-                str(a.get("kind") or "") in LOW_RISK_APPLYABLE_ACTION_KINDS
-                or str(a.get("kind") or "") in RESOLVABLE_MONITOR_ACTION_KINDS
-            )
+            and action_supports_low_risk_apply(a)
         ]
         for aid in accepted_ids:
             try:

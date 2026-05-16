@@ -1207,6 +1207,15 @@ def reconcile_machine_memory_actions(
         reviewed_at = str(previous.get("reviewed_at") or "")
         review_note = str(previous.get("review_note") or "")
         last_receipt_path = str(previous.get("last_receipt_path") or "")
+        auto_resolution = previous.get("auto_resolution") if isinstance(previous.get("auto_resolution"), dict) else None
+        keep_auto_exception = (
+            status == "deferred"
+            and str(previous.get("human_required") or "").lower() == "true"
+            and str(previous.get("human_required_reason") or "").strip()
+        )
+        human_required = str(previous.get("human_required") or "") if keep_auto_exception else ""
+        human_required_reason = str(previous.get("human_required_reason") or "") if keep_auto_exception else ""
+        revert_supported = str(previous.get("revert_supported") or "") if keep_auto_exception else ""
         revisit_after = str(previous.get("revisit_after") or "")
         escalate_after = str(previous.get("escalate_after") or "")
         if status in PENDING_ACTION_STATUSES:
@@ -1240,6 +1249,12 @@ def reconcile_machine_memory_actions(
             "inactive_since": "",
             "pending_review": "true" if action_needs_review(status) else "false",
         }
+        if keep_auto_exception:
+            record["human_required"] = human_required
+            record["human_required_reason"] = human_required_reason
+            record["revert_supported"] = revert_supported
+        if keep_auto_exception and auto_resolution is not None:
+            record["auto_resolution"] = dict(auto_resolution)
         record.update(evaluate_page_aging(record, now=now))
         active_records.append(record)
         seen_ids.add(action_id)

@@ -259,6 +259,7 @@ test("renderUniversalInput success clears textarea and attachment pills after re
   context.renderUniversalInput(plugin, container);
 
   const wrapper = container.querySelector(".furnace-universal-input-wrapper");
+  expect(wrapper.classList.contains("furnace-conversation-composer")).toBe(true);
   const textarea = container.querySelector(".furnace-universal-input-textarea");
   const submitButton = container.querySelector(".furnace-universal-input-button");
   textarea.value = "请整理这个附件";
@@ -369,7 +370,48 @@ test("renderTodayFeed covers no-summary empty-feed and pending branches", () => 
     pendingContainer
   );
   expect(pendingContainer.textContent).not.toContain("今天还没有新报告");
-  expect(pendingContainer.querySelector(".furnace-pending-card")).toBeTruthy();
+  expect(pendingContainer.querySelector(".furnace-conversation-bubble")).toBeTruthy();
+  expect(pendingContainer.querySelector(".furnace-bubble-user").textContent).toContain("等待编译");
+  expect(pendingContainer.querySelector(".furnace-bubble-ai").textContent).toContain("正在整理材料与上下文");
+  expect(pendingContainer.querySelector(".furnace-bubble-shimmer-line")).toBeTruthy();
+});
+
+test("chat-style pending stream covers done failed and escalated bubbles", () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    shellSummary: {
+      generated_at: "2026-05-13T10:00:00Z",
+      review_backlog_counts: {},
+      recent_outputs: [],
+      recent_receipts: [],
+      suggested_next_actions: [],
+      metrics_history_delta: { available: false },
+      today_snooze: { items: [] },
+    },
+    pendingSubmissions: [
+      { id: "done-output", status: "done", displayText: "生成报告", reconcileTarget: "outputs", reconcilePath: "output/reports/r.md", runNotesPath: "output/control/runs/ask-r/thinking.md", runId: "ask-r" },
+      { id: "done-receipt", status: "done", displayText: "写回执", reconcileTarget: "receipts", reconcilePath: "output/control/r.json" },
+      { id: "failed", status: "failed", displayText: "失败任务", error: "backend unavailable", retryArgs: { kind: "text", payload: "retry" } },
+      { id: "escalated", status: "escalated", displayText: "需要确认" },
+    ],
+  });
+  const container = document.createElement("div");
+
+  context.renderTodayFeed(plugin, container);
+
+  expect(container.querySelectorAll(".furnace-conversation-item")).toHaveLength(4);
+  expect(container.textContent).toContain("报告卡片已就绪");
+  expect(container.querySelector(".furnace-pending-open-report-btn")).toBeTruthy();
+  expect(container.textContent).toContain("查看进度笔记");
+  expect(container.textContent).toContain("只包含外部化阶段记录，不包含模型内部过程。");
+  container.querySelector(".furnace-run-notes-open-btn").click();
+  expect(plugin.openWorkspacePath).toHaveBeenCalledWith("output/control/runs/ask-r/thinking.md");
+  expect(container.textContent).toContain("回执已就绪");
+  expect(container.querySelector(".furnace-pending-open-receipt-btn")).toBeTruthy();
+  expect(container.textContent).toContain("backend unavailable");
+  expect(container.textContent).toContain("重试");
+  expect(container.textContent).toContain("需要人工确认");
+  expect(container.querySelector(".furnace-pending-exception-btn")).toBeTruthy();
 });
 
 test("shell summary fixture builds today DOM headings and furnace center keeps only primary entry surfaces", () => {
@@ -390,6 +432,7 @@ test("shell summary fixture builds today DOM headings and furnace center keeps o
   expect(homeContainer.querySelector(".furnace-universal-input-textarea")).toBeTruthy();
   expect(homeContainer.querySelector(".furnace-today-feed")).toBeTruthy();
   expect(homeContainer.querySelector(".furnace-advanced-drawer")).toBeTruthy();
+  expect(homeContainer.lastElementChild.classList.contains("furnace-conversation-composer")).toBe(true);
   expect(homeContainer.querySelector(".furnace-shell-dropzone")).toBeNull();
   expect(homeContainer.textContent).not.toContain("Drop URL / PDF / Image / Repo");
   expect(homeContainer.textContent).not.toContain("System Status");

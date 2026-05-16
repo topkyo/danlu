@@ -65,6 +65,7 @@ EXPECTED_LAZY_NAMES = {
     "review_machine_memory_action",
     "review_machine_memory_actions_batch",
     "apply_machine_memory_action",
+    "auto_resolve_machine_memory_actions",
     "revert_machine_memory_action",
     "_save_machine_memory_action_records",
     # Archive
@@ -105,13 +106,13 @@ class ExecutionCompatSeamTests(unittest.TestCase):
         self.assertEqual(set(app_compile._LAZY_OWNERS.keys()), EXPECTED_LAZY_NAMES)
 
     def test_lazy_owners_count_matches_plan(self) -> None:
-        # Plan promises 32 public + 8 private helpers = 40
-        # (Round 8 adds review_machine_memory_actions_batch).
+        # Plan promises 33 public + 8 private helpers = 41
+        # (TDA-002 adds auto_resolve_machine_memory_actions).
         keys = list(app_compile._LAZY_OWNERS.keys())
         public = [k for k in keys if not k.startswith("_")]
         private = [k for k in keys if k.startswith("_")]
-        self.assertEqual(len(keys), 40)
-        self.assertEqual(len(public), 32)
+        self.assertEqual(len(keys), 41)
+        self.assertEqual(len(public), 33)
         self.assertEqual(len(private), 8)
 
     def test_all_lazy_owners_self_reference_in_ep_018a(self) -> None:
@@ -150,6 +151,7 @@ class ExecutionCompatSeamTests(unittest.TestCase):
             "review_machine_memory_action": "aiwiki.execution.machine_memory_actions",
             "review_machine_memory_actions_batch": "aiwiki.execution.machine_memory_actions",
             "apply_machine_memory_action": "aiwiki.execution.machine_memory_actions",
+            "auto_resolve_machine_memory_actions": "aiwiki.execution.machine_memory_actions",
             "revert_machine_memory_action": "aiwiki.execution.machine_memory_actions",
             "_save_machine_memory_action_records": "aiwiki.execution.machine_memory_actions",
             # B7 — review page & machine-memory batch
@@ -506,9 +508,7 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
                         "id": "act-1",
                         "status": "accepted",
                         "active": True,
-                        "kind": next(
-                            iter(runtime_surfaces.LOW_RISK_APPLYABLE_ACTION_KINDS)
-                        ),
+                        "kind": "add-source-concept-link",
                     }
                 ]
             },
@@ -549,7 +549,7 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
                         "id": "act-fail",
                         "status": "accepted",
                         "active": True,
-                        "kind": next(iter(runtime_surfaces.LOW_RISK_APPLYABLE_ACTION_KINDS)),
+                        "kind": "add-source-concept-link",
                     }
                 ]
             },

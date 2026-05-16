@@ -20,6 +20,7 @@ from aiwiki.app_compile import (
     apply_machine_memory_action,
     apply_material_archive,
     ask_question,
+    auto_resolve_machine_memory_actions,
     compile_wiki,
     file_back,
     lint_wiki,
@@ -341,7 +342,7 @@ class RuntimeFlowTests(AppFlowTestBase):
         nightly_state = json.loads((self.root / ".aiwiki" / "state" / "nightly-health.json").read_text(encoding="utf-8"))
 
         self.assertGreaterEqual(planner["counts"]["executed_actions"], 1)
-        self.assertEqual(executed["source"], "nightly-auto-bundle")
+        self.assertEqual(executed["source"], "receipt-history")
         self.assertTrue((self.root / executed["bundle_path"]).exists())
         self.assertEqual(result["state_path"], ".aiwiki/state/nightly-health.json")
         self.assertEqual(nightly_state["planner"]["recent_executed_action_ids"][0], action["id"])
@@ -363,9 +364,187 @@ class RuntimeFlowTests(AppFlowTestBase):
 
         result = nightly_health(self.root)
         auto_applied = result.get("auto_applied", [])
-        self.assertGreaterEqual(len(auto_applied), 1)
-        resolved_ids = {a["id"] for a in auto_applied if a.get("status") == "resolved"}
-        self.assertIn(bridge["id"], resolved_ids)
+        self.assertNotIn(bridge["id"], {a.get("id") for a in auto_applied})
+        refreshed = load_machine_memory_action_state(self.root)
+        updated = next(a for a in refreshed["actions"] if a["id"] == bridge["id"])
+        self.assertEqual(updated["status"], "accepted")
+        self.assertTrue(updated["active"])
+
+    def test_auto_resolve_deferred_monitor_writes_receipt_history_and_audit(self) -> None:
+        self._seed_machine_memory_actions()
+        compile_wiki(self.root)
+
+        state = load_machine_memory_action_state(self.root)
+        bridge = next(a for a in state["actions"] if a["kind"] == "monitor-bridge-concept" and a["active"])
+
+        dry_run = auto_resolve_machine_memory_actions(self.root, dry_run=True)
+        dry_item = next(item for item in dry_run["items"] if item["action_id"] == bridge["id"])
+        self.assertEqual(dry_item["operation"], "escalate")
+        self.assertEqual(dry_item["human_required_reason"], "semantic_judgment_required")
+        self.assertFalse((self.root / "output" / "control" / "execution-receipts" / "auto-resolution" / f"{bridge['id']}.json").exists())
+
+        result = auto_resolve_machine_memory_actions(self.root, note="nightly debt triage")
+        item = next(entry for entry in result["items"] if entry["action_id"] == bridge["id"])
+        self.assertEqual(item["operation"], "escalate")
+        receipt_rel = item["result"]["receipt_path"]
+        receipt_path = self.root / receipt_rel
+        self.assertTrue(receipt_path.exists())
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        self.assertEqual(receipt["operation"], "escalate")
+        self.assertEqual(receipt["status_after"], "deferred")
+        self.assertEqual(receipt["human_required_reason"], "semantic_judgment_required")
+        self.assertFalse(receipt["revert_supported"])
+
+        refreshed = load_machine_memory_action_state(self.root)
+        updated = next(a for a in refreshed["actions"] if a["id"] == bridge["id"])
+        self.assertEqual(updated["status"], "deferred")
+        self.assertEqual(updated["pending_review"], "true")
+        self.assertEqual(updated["human_required_reason"], "semantic_judgment_required")
+        self.assertEqual(updated["last_receipt_path"], receipt_rel)
+        self.assertNotEqual(updated["status"], "resolved")
+
+        history_lines = (self.root / ".aiwiki" / "state" / "execution-receipts.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertTrue(any(json.loads(line).get("action_id") == bridge["id"] and json.loads(line).get("operation") == "escalate" for line in history_lines if line.strip()))
+        audit_lines = (self.root / ".aiwiki" / "state" / "audit.jsonl").read_text(encoding="utf-8").splitlines()
+        audit_records = [json.loads(line) for line in audit_lines if line.strip()]
+        self.assertTrue(any(record.get("event_type") == "escalate" and record.get("subject", {}).get("id") == bridge["id"] for record in audit_records))
+
+    def test_auto_resolve_skips_already_deferred_human_required_exception(self) -> None:
+        self._seed_machine_memory_actions()
+        compile_wiki(self.root)
+
+        state = load_machine_memory_action_state(self.root)
+        bridge = next(a for a in state["actions"] if a["kind"] == "monitor-bridge-concept" and a["active"])
+
+        first = auto_resolve_machine_memory_actions(self.root, note="initial exceptionization")
+        first_item = next(entry for entry in first["items"] if entry["action_id"] == bridge["id"])
+        receipt_rel = first_item["result"]["receipt_path"]
+        history_path = self.root / ".aiwiki" / "state" / "execution-receipts.jsonl"
+        history_before = history_path.read_text(encoding="utf-8")
+
+        second = auto_resolve_machine_memory_actions(self.root, note="rerun should be idempotent")
+        second_item = next(entry for entry in second["items"] if entry["action_id"] == bridge["id"])
+
+        self.assertEqual(second_item["operation"], "skip")
+        self.assertEqual(second_item["reason_code"], "already_human_required_exception")
+        self.assertEqual(history_path.read_text(encoding="utf-8"), history_before)
+        refreshed = load_machine_memory_action_state(self.root)
+        updated = next(a for a in refreshed["actions"] if a["id"] == bridge["id"])
+        self.assertEqual(updated["last_receipt_path"], receipt_rel)
+
+    def test_auto_resolve_review_accept_clears_exception_metadata(self) -> None:
+        self._seed_machine_memory_actions()
+        compile_wiki(self.root)
+
+        state = load_machine_memory_action_state(self.root)
+        bridge = next(a for a in state["actions"] if a["kind"] == "monitor-bridge-concept" and a["active"])
+
+        auto_resolve_machine_memory_actions(self.root, note="mark exception")
+        review_machine_memory_action(self.root, bridge["id"], "accepted", note="human reviewed")
+
+        refreshed = load_machine_memory_action_state(self.root)
+        updated = next(a for a in refreshed["actions"] if a["id"] == bridge["id"])
+        self.assertEqual(updated["status"], "accepted")
+        self.assertNotIn("human_required", updated)
+        self.assertNotIn("human_required_reason", updated)
+        self.assertNotIn("auto_resolution", updated)
+        self.assertNotIn("revert_supported", updated)
+
+    def test_auto_resolve_applies_accepted_low_risk_link_action(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "manual-link-auto",
+                        "kind": "add-source-concept-link",
+                        "title": "Auto low-risk link",
+                        "reason": "Backfill source/concept link.",
+                        "primary_path": f"wiki/sources/{entry['id']}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "accepted",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [entry["id"]],
+                        "concept_slugs": [concept_slug],
+                    }
+                ],
+            },
+        )
+
+        dry_run = auto_resolve_machine_memory_actions(self.root, dry_run=True, include_proposed=False)
+        self.assertEqual(dry_run["counts"]["would_apply"], 1)
+        item = dry_run["items"][0]
+        self.assertEqual(item["action_id"], "manual-link-auto")
+        self.assertEqual(item["operation"], "apply")
+
+        result = auto_resolve_machine_memory_actions(self.root, include_proposed=False, note="auto apply")
+        applied = next(entry for entry in result["items"] if entry["action_id"] == "manual-link-auto")
+        self.assertEqual(applied["result"]["status"], "resolved")
+
+    def test_auto_resolve_applies_citation_snapshot_refresh_action(self) -> None:
+        _, _, action = self._prepare_citation_snapshot_refresh_action()
+        review_machine_memory_action(self.root, action["id"], "accepted", note="Ready for auto apply.")
+        compile_wiki(self.root)
+
+        dry_run = auto_resolve_machine_memory_actions(self.root, dry_run=True, include_proposed=False)
+        self.assertEqual(dry_run["counts"]["would_apply"], 1)
+        self.assertEqual(dry_run["items"][0]["action_id"], action["id"])
+
+        result = auto_resolve_machine_memory_actions(self.root, include_proposed=False)
+        applied = next(entry for entry in result["items"] if entry["action_id"] == action["id"])
+
+        self.assertEqual(applied["operation"], "apply")
+        self.assertEqual(applied["result"]["status"], "resolved")
+        receipt = json.loads((self.root / applied["result"]["receipt_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(receipt["operation"], "apply")
+        self.assertIn("Auto-resolved accepted low-risk action", receipt["note"])
+        self.assertEqual(receipt["safe_apply_preview"]["apply_mode"], "citation-snapshot-refresh")
+
+    def test_auto_resolve_mixed_apply_and_escalate_keeps_applied_state(self) -> None:
+        self._seed_machine_memory_actions()
+        compile_wiki(self.root)
+        state = load_machine_memory_action_state(self.root)
+        monitor_seed = next(a for a in state["actions"] if a["kind"] == "monitor-bridge-concept" and a["active"])
+        concept_slug = str((monitor_seed.get("concept_slugs") or [""])[0])
+        source_id = str((monitor_seed.get("source_ids") or [""])[0])
+        save_machine_memory_action_state(
+            self.root,
+            {
+                "version": 1,
+                "actions": [
+                    {
+                        "id": "manual-link-auto",
+                        "kind": "add-source-concept-link",
+                        "title": "Auto low-risk link",
+                        "reason": "Backfill source/concept link.",
+                        "primary_path": f"wiki/sources/{source_id}.md",
+                        "secondary_path": f"wiki/concepts/{concept_slug}.md",
+                        "status": "accepted",
+                        "priority": "low",
+                        "active": True,
+                        "source_ids": [source_id],
+                        "concept_slugs": [concept_slug],
+                    },
+                    monitor_seed,
+                ],
+            },
+        )
+
+        result = auto_resolve_machine_memory_actions(self.root, note="mixed run")
+        self.assertEqual(result["counts"]["applied"], 1)
+        self.assertEqual(result["counts"]["escalated"], 1)
+        self.assertEqual(result["counts"]["skipped"], 0)
+        refreshed = load_machine_memory_action_state(self.root)
+        link = next(a for a in refreshed["actions"] if a["id"] == "manual-link-auto")
+        monitor = next(a for a in refreshed["actions"] if a["id"] == monitor_seed["id"])
+        self.assertEqual(link["status"], "resolved")
+        self.assertEqual(monitor["status"], "deferred")
+        self.assertEqual(monitor["human_required_reason"], "semantic_judgment_required")
 
     def test_execution_audit_surfaces_consistency_signal_for_resolved_action_without_receipt(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")

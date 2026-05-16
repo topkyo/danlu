@@ -338,7 +338,7 @@ def collect_output_density_artifacts(root: Path) -> list[dict[str, str]]:
             content = path.read_text(encoding="utf-8", errors="replace")
             frontmatter = parse_frontmatter(content)
             if frontmatter.get("kind") == "output":
-                artifacts.append({"path": relative_path(root, path), "query": str(frontmatter.get("query") or "").strip(), "format": str(frontmatter.get("format") or "").strip(), "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL), "created_at": str(frontmatter.get("created_at") or ""), "title": first_markdown_heading(content) or path.stem})
+                artifacts.append({"path": relative_path(root, path), "query": str(frontmatter.get("query") or "").strip(), "format": str(frontmatter.get("format") or "").strip(), "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL), "created_at": str(frontmatter.get("created_at") or ""), "title": first_markdown_heading(content) or path.stem, "run_id": str(frontmatter.get("run_id") or ""), "run_notes_path": str(frontmatter.get("run_notes_path") or "")})
     return sorted(artifacts, key=lambda item: (item["created_at"], item["path"]))
 
 
@@ -349,7 +349,7 @@ def collect_recent_output_artifacts(root: Path, *, limit: int = 12) -> list[dict
             content = path.read_text(encoding="utf-8", errors="replace")
             frontmatter = parse_frontmatter(content)
             if frontmatter.get("kind") == "output" and str(frontmatter.get("generated_by") or "") != "aiwiki-compile":
-                artifacts.append({"path": relative_path(root, path), "query": str(frontmatter.get("query") or "").strip(), "format": str(frontmatter.get("format") or "").strip(), "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL), "created_at": str(frontmatter.get("created_at") or ""), "title": first_markdown_heading(content) or path.stem})
+                artifacts.append({"path": relative_path(root, path), "query": str(frontmatter.get("query") or "").strip(), "format": str(frontmatter.get("format") or "").strip(), "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL), "created_at": str(frontmatter.get("created_at") or ""), "title": first_markdown_heading(content) or path.stem, "run_id": str(frontmatter.get("run_id") or ""), "run_notes_path": str(frontmatter.get("run_notes_path") or "")})
     return sorted(artifacts, key=lambda item: (item["created_at"], item["path"]), reverse=True)[:limit]
 
 
@@ -417,7 +417,7 @@ def summarize_runtime_event_for_shell(event: dict[str, Any]) -> dict[str, Any]:
     event_type = str(event.get("event_type") or "")
     summary = {"event_type": event_type, "occurred_at": str(event.get("occurred_at") or ""), "protocol": str(event.get("protocol") or ""), "title": ""}
     if event_type == "query":
-        summary.update({"title": str(event.get("focus_ref") or "Query"), "output_path": str(event.get("output_ref") or ""), "corpus_id": str(event.get("corpus_id") or ""), "output_format": str(event.get("output_format") or "")})
+        summary.update({"title": str(event.get("focus_ref") or "Query"), "output_path": str(event.get("output_ref") or ""), "corpus_id": str(event.get("corpus_id") or ""), "output_format": str(event.get("output_format") or ""), "run_id": str(event.get("run_id") or ""), "run_notes_path": str(event.get("run_notes_path") or "")})
     elif event_type == "review":
         summary.update({"title": str(event.get("page_path") or "Review"), "page_path": str(event.get("page_path") or ""), "status": str(event.get("status") or ""), "page_kind": str(event.get("page_kind") or "")})
     elif event_type == "knowledge-lifecycle-override":

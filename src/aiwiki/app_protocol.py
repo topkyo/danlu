@@ -1290,7 +1290,7 @@ CONCEPT_HARDNESS_LEVELS = ("soft", "medium", "hard")
 CAUSAL_RELATION_TYPES = ("causes", "enables", "constrains", "conflicts_with")
 
 
-LOW_RISK_APPLYABLE_ACTION_KINDS = {"add-source-concept-link"}
+LOW_RISK_APPLYABLE_ACTION_KINDS = {"add-source-concept-link", "refresh-citation-snapshots"}
 
 # Monitoring action kinds that can be resolved with an acknowledge-and-close preview.
 RESOLVABLE_MONITOR_ACTION_KINDS = {

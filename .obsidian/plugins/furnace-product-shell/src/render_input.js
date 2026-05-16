@@ -1,14 +1,14 @@
 // Render input controls for Product Shell.
 
 function renderUniversalInput(plugin, container) {
-  const wrapper = container.createDiv({ cls: "furnace-universal-input-wrapper" });
+  const wrapper = container.createDiv({ cls: "furnace-universal-input-wrapper furnace-conversation-composer" });
   
   // Drag and drop overlay
   const dropOverlay = wrapper.createDiv({ cls: "furnace-universal-input-drop-overlay" });
   dropOverlay.createDiv({ text: plugin.t("Drop file here") });
   dropOverlay.style.display = "none";
 
-  const form = wrapper.createDiv({ cls: "furnace-universal-input-form" });
+  const form = wrapper.createDiv({ cls: "furnace-universal-input-form furnace-conversation-composer-form" });
   const textarea = form.createEl("textarea", { 
     cls: "furnace-universal-input-textarea",
     attr: { "aria-label": plugin.t("Universal input") }
@@ -73,7 +73,7 @@ function renderUniversalInput(plugin, container) {
     textarea.disabled = true;
     const originalLabel = submitButton.textContent;
     submitButton.setText(plugin.t("处理中…"));
-    hint.setText(plugin.t("已提交，结果会出现在“今天”"));
+    hint.setText(plugin.t("已提交，进度会出现在上方对话流"));
 
     let succeeded = false;
     // R88: 立即推一个"处理中"卡片到 Today，构成视觉闭环
@@ -107,6 +107,8 @@ function renderUniversalInput(plugin, container) {
             ...retryArgs,
             materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : [],
             askQuestion: String(flowResult && flowResult.askQuestion || ""),
+            runNotesPath: String(flowResult && flowResult.runNotesPath || ""),
+            runId: String(flowResult && flowResult.runId || ""),
           });
         }
       } else {
@@ -132,6 +134,8 @@ function renderUniversalInput(plugin, container) {
               ...retryArgs,
               materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : [],
               askQuestion: String(flowResult && flowResult.askQuestion || ""),
+              runNotesPath: String(flowResult && flowResult.runNotesPath || ""),
+              runId: String(flowResult && flowResult.runId || ""),
             });
           }
         } else {

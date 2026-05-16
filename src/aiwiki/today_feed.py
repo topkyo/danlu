@@ -40,18 +40,38 @@ _REVIEW_BUCKET_COPY: dict[str, tuple[str, str]] = {
     "ready_actions": ("确认待执行动作", "复核已经准备好的安全动作"),
 }
 
-# 这些才是普通用户首屏的“需要你确认”。低层治理债仍在 Advanced / repair backlog。
+# 这些才是普通用户首屏的“需要你确认”。
+# Routine backlog（如 ready/overdue actions/reviews）仍保留在 review queue / Advanced，
+# 不能在 primary Today 里伪装成需要人工处理的 exception。
 _PRIMARY_REVIEW_BUCKETS: set[str] = {
     "counter_evidence_candidates",
     "escalated_actions",
     "escalation_candidates",
     "judgment_review_actions",
-    "overdue_actions",
-    "overdue_reviews",
     "pending_decisions",
     "pending_judgments",
+}
+
+_ROUTINE_REVIEW_BUCKETS: set[str] = {
+    "l3_proposal_attention",
+    "l3_proposals",
+    "machine_memory_actions",
+    "overdue_actions",
+    "overdue_reviews",
     "ready_actions",
 }
+
+
+def primary_review_bucket_keys() -> tuple[str, ...]:
+    """Return review backlog buckets allowed in the primary Today exception queue."""
+
+    return tuple(sorted(_PRIMARY_REVIEW_BUCKETS))
+
+
+def routine_review_bucket_keys() -> tuple[str, ...]:
+    """Return routine backlog buckets that must not re-enter primary Today."""
+
+    return tuple(sorted(_ROUTINE_REVIEW_BUCKETS))
 
 
 @dataclass(frozen=True)

@@ -91,6 +91,7 @@ from ..app_utils import (
 from ..compile import compile_wiki
 from ..notify import notify_report_generated
 from .protocol_learnings import load_learnings_for_protocol
+from .run_notes import run_id_for_artifact, write_run_notes, write_run_notes_frontmatter
 
 NEXT_STEP_HINTS = {
     "derived": (
@@ -475,6 +476,24 @@ def ask_question(
     # via ``apply_graph_anchors_to_artifact`` after the LLM step.
     if write_graph_anchors and anchors:
         apply_graph_anchors_to_artifact(destination, anchors=anchors, memory=memory)
+    run_id = run_id_for_artifact(artifact_ref)
+    run_notes = write_run_notes(
+        root,
+        run_id=run_id,
+        status="deterministic-ready",
+        question=question,
+        output_format=output_format,
+        protocol=active_protocol,
+        output_path=artifact_ref,
+        source_count=len(ranked),
+        concept_count=len(ranked_concepts),
+        stages=[
+            "Received request and selected the active protocol.",
+            f"Ranked {len(ranked)} source pages and {len(ranked_concepts)} concept pages for context.",
+            "Rendered deterministic output artifact with provenance references.",
+        ],
+    )
+    write_run_notes_frontmatter(destination, run_id=run_id, run_notes_ref=run_notes["run_notes_path"])
     upsert_output_candidate(
         root,
         artifact_ref=artifact_ref,
@@ -498,6 +517,8 @@ def ask_question(
             "question_hash": question_signature(question),
             "output_format": output_format,
             "output_ref": artifact_ref,
+            "run_id": run_notes["run_id"],
+            "run_notes_path": run_notes["run_notes_path"],
             "source_ids": [entry["id"] for entry in ranked],
             "concept_slugs": [concept["slug"] for concept in ranked_concepts],
             "bridge_evidence_ids": bridge_evidence_ids,
@@ -581,6 +602,7 @@ def ask_question(
     )
     return {
         "path": artifact_ref,
+        **run_notes,
         "format": output_format,
         "protocol": active_protocol,
         "no_cache": no_cache,

@@ -36,11 +36,14 @@ class MachineMemoryActionBatchReceiptTransactionTests(unittest.TestCase):
                 "actions": [
                     {
                         "id": action_id,
-                        "kind": "monitor-bridge-concept",
+                        "kind": "add-source-concept-link",
                         "title": f"Action {action_id}",
                         "status": "accepted",
                         "active": True,
-                        "primary_path": f"wiki/concepts/{action_id}.md",
+                        "primary_path": f"wiki/sources/{action_id}.md",
+                        "secondary_path": f"wiki/concepts/{action_id}.md",
+                        "source_ids": [action_id],
+                        "concept_slugs": [action_id],
                     }
                     for action_id in self.action_ids
                 ],

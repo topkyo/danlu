@@ -172,13 +172,16 @@ function renderFurnaceActivityTimeline(plugin, parentEl) {
   for (const [bucketKey, rawCount] of Object.entries(backlog)) {
     const count = Number(rawCount);
     if (!Number.isFinite(count) || count <= 0) continue;
+    if (!isPrimaryReviewBacklogBucket(bucketKey)) continue;
+    const target = `review:${bucketKey}`;
+    if (isTodaySnoozedTarget(target, summary)) continue;
     const { title: bucketTitle, hint: bucketHint } = reviewBucketLabel(bucketKey);
     addItem({
       kind: "review-backlog",
       title: bucketTitle,
       summary: bucketHint ? `${count} 项待处理 · ${bucketHint}` : `${count} 项待处理`,
       timestamp: String(summary.generated_at || ""),
-      target: `review:${bucketKey}`,
+      target,
     });
   }
 
@@ -200,6 +203,48 @@ function renderFurnaceActivityTimeline(plugin, parentEl) {
     li.createEl("span", { cls: "furnace-activity-title", text: item.title });
     li.createEl("span", { cls: "furnace-activity-summary", text: item.summary });
   }
+}
+
+function isPrimaryReviewBacklogBucket(bucketKey) {
+  const key = String(bucketKey || "").trim();
+  if (!key) return false;
+  if (typeof PRIMARY_REVIEW_BUCKETS !== "undefined" && PRIMARY_REVIEW_BUCKETS && typeof PRIMARY_REVIEW_BUCKETS.has === "function") {
+    return PRIMARY_REVIEW_BUCKETS.has(key);
+  }
+  return [
+    "counter_evidence_candidates",
+    "escalated_actions",
+    "escalation_candidates",
+    "judgment_review_actions",
+    "pending_decisions",
+    "pending_judgments",
+  ].includes(key);
+}
+
+function isTodaySnoozedTarget(target, summary) {
+  const text = String(target || "").trim();
+  if (!text || !summary || typeof summary !== "object") return false;
+  const todayDate = activityTimelineTodayDateOf(summary);
+  const state = summary.today_snooze && typeof summary.today_snooze === "object" ? summary.today_snooze : null;
+  const items = state && Array.isArray(state.items) ? state.items : [];
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const snoozedTarget = String(item.target || "").trim();
+    const until = activityTimelineDatePart(String(item.snoozed_until || ""));
+    if (snoozedTarget === text && until && until >= todayDate) return true;
+  }
+  return false;
+}
+
+function activityTimelineTodayDateOf(summary) {
+  return activityTimelineDatePart(String(summary.generated_at || ""));
+}
+
+function activityTimelineDatePart(value) {
+  const text = String(value || "").trim();
+  if (text.includes("T")) return text.split("T")[0];
+  if (text.includes(" ")) return text.split(" ")[0];
+  return text.substring(0, 10);
 }
 
 function furnaceActivityKindLabel(plugin, kind) {
@@ -246,38 +291,43 @@ function renderTodayEmptyCta(plugin, parentEl, viewRoot) {
 function renderPendingSubmissionsGroup(plugin, section) {
   const items = Array.isArray(plugin.pendingSubmissions) ? plugin.pendingSubmissions : [];
   if (!items.length) return;
-  const groupEl = section.createDiv({ cls: "furnace-today-feed-group furnace-today-feed-pending" });
-  groupEl.createEl("h3", { text: plugin.t("处理中") });
-  const listEl = groupEl.createEl("ul", { cls: "furnace-today-feed-list" });
+  const groupEl = section.createDiv({ cls: "furnace-today-feed-group furnace-conversation-stream" });
   for (const entry of items) {
-    const li = listEl.createEl("li", { cls: `furnace-today-feed-item furnace-pending-card furnace-pending-${entry.status || "running"}` });
-    const card = li.createDiv({ cls: "furnace-pending-card-inner" });
-    const head = card.createDiv({ cls: "furnace-pending-card-head" });
-    let statusLabel;
-    if (entry.status === "done") {
-      // R89: 区分 outputs / receipts
-      if (entry.reconcileTarget === "receipts") statusLabel = plugin.t("已记录");
-      else statusLabel = plugin.t("报告已生成");
-    } else if (entry.status === "received") {
-      // R89: 已接收但未 reconcile；R90: stale 文案指向卡上"刷新状态"
-      statusLabel = entry._stale ? plugin.t("可能已完成，点下方刷新状态") : plugin.t("已接收，等待生成报告");
-    } else if (entry.status === "failed") {
-      statusLabel = plugin.t("失败");
-    } else {
-      statusLabel = plugin.t("处理中…");
+    const streamItem = groupEl.createDiv({ cls: "furnace-conversation-item" });
+
+    // User Bubble
+    const userBubble = streamItem.createDiv({ cls: "furnace-conversation-bubble furnace-bubble-user" });
+    userBubble.createDiv({ cls: "furnace-bubble-text", text: entry.displayText || entry.title || "" });
+    if (entry.retryArgs && entry.retryArgs.kind === "files" && Array.isArray(entry.retryArgs.files) && entry.retryArgs.files.length > 0) {
+      const attachments = userBubble.createDiv({ cls: "furnace-bubble-attachments" });
+      for (const file of entry.retryArgs.files) {
+        attachments.createSpan({ cls: "furnace-bubble-attachment-pill", text: file.name || file.path || "文件" });
+      }
     }
-    head.createEl("span", { cls: "furnace-pending-card-status", text: statusLabel });
-    head.createEl("span", { cls: "furnace-pending-card-time", text: formatDisplayTime(entry.startedAt, plugin.locale()) || "" });
-    card.createDiv({ cls: "furnace-pending-card-text", text: entry.displayText || "" });
+    userBubble.createDiv({ cls: "furnace-bubble-time", text: formatDisplayTime(entry.startedAt, plugin.locale()) || "" });
+
+    // AI Bubble
+    const aiBubble = streamItem.createDiv({ cls: `furnace-conversation-bubble furnace-bubble-ai furnace-pending-${entry.status || "running"}` });
+
+    const statusLabel = pendingSubmissionStageLabel(plugin, entry);
+
+    if (entry.status === "running" || entry.status === "received") {
+      const skeleton = aiBubble.createDiv({ cls: "furnace-bubble-shimmer" });
+      skeleton.createDiv({ cls: "furnace-bubble-shimmer-line" });
+      skeleton.createDiv({ cls: "furnace-bubble-shimmer-line short" });
+    }
+
+    aiBubble.createDiv({ cls: "furnace-bubble-status-text", text: statusLabel });
+    renderPendingRunNotesLink(plugin, aiBubble, entry);
+
     if (entry.status === "failed") {
-      // R89: 失败卡先给通用 hint，再给 raw error（开发者层）
-      card.createDiv({
-        cls: "furnace-pending-card-hint",
+      aiBubble.createDiv({
+        cls: "furnace-bubble-hint",
         text: plugin.t("这次没成功。可以点重试，或检查输入是否完整。"),
       });
-      const errEl = card.createDiv({ cls: "furnace-pending-card-error", text: entry.error || plugin.t("失败") });
+      const errEl = aiBubble.createDiv({ cls: "furnace-bubble-error", text: entry.error || plugin.t("失败") });
       errEl.setAttr && errEl.setAttr("title", entry.error || "");
-      const actions = card.createDiv({ cls: "furnace-pending-card-actions" });
+      const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions" });
       const retryBtn = actions.createEl("button", { cls: "mod-cta", text: plugin.t("重试") });
       retryBtn.addEventListener("click", async () => {
         const args = entry.retryArgs || {};
@@ -292,6 +342,8 @@ function renderPendingSubmissionsGroup(plugin, section) {
               ...args,
               materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : Array.isArray(args.materialPaths) ? args.materialPaths : [],
               askQuestion: String(flowResult && flowResult.askQuestion || args.askQuestion || ""),
+              runNotesPath: String(flowResult && flowResult.runNotesPath || args.runNotesPath || ""),
+              runId: String(flowResult && flowResult.runId || args.runId || ""),
             });
           } else if (args.kind === "auto-ask") {
             await plugin.runAskCommand({
@@ -310,6 +362,8 @@ function renderPendingSubmissionsGroup(plugin, section) {
               ...args,
               materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : Array.isArray(args.materialPaths) ? args.materialPaths : [],
               askQuestion: String(flowResult && flowResult.askQuestion || args.askQuestion || ""),
+              runNotesPath: String(flowResult && flowResult.runNotesPath || args.runNotesPath || ""),
+              runId: String(flowResult && flowResult.runId || args.runId || ""),
             });
           } else {
             await plugin.runUniversalInputCommand({ payload: args.payload || entry.displayText || "" });
@@ -321,33 +375,37 @@ function renderPendingSubmissionsGroup(plugin, section) {
       });
       const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
       dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
-    } else if (entry.status === "received") {
-      // R89: received 提供手动 Dismiss 入口（防卡死）；R90: 加"刷新状态"
-      const actions = card.createDiv({ cls: "furnace-pending-card-actions" });
-      const refreshBtn = actions.createEl("button", { cls: "furnace-pending-refresh-btn", text: plugin.t("刷新状态") });
-      refreshBtn.addEventListener("click", async () => {
-        refreshBtn.disabled = true;
-        try { await plugin.refreshShellSummaryCommand(); } catch (e) {}
-        finally { refreshBtn.disabled = false; }
+    } else if (entry.status === "escalated") {
+      aiBubble.createDiv({
+        cls: "furnace-bubble-hint",
+        text: plugin.t("已进入 Exception Queue，需要人工确认后继续。"),
       });
+      const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions" });
+      const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-exception-btn", text: plugin.t("打开异常队列") });
+      openBtn.addEventListener("click", async () => plugin.openReviewCenterView());
       const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
       dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
-    } else if (entry.status === "running") {
-      // R90: running 卡也提供"刷新状态"，让用户主动同步而不是干等
-      const actions = card.createDiv({ cls: "furnace-pending-card-actions" });
-      const refreshBtn = actions.createEl("button", { cls: "furnace-pending-refresh-btn", text: plugin.t("刷新状态") });
+    } else if (entry.status === "received" || entry.status === "running") {
+      const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions" });
+      const refreshBtn = actions.createEl("button", { cls: "furnace-bubble-refresh-btn", text: plugin.t("刷新状态") });
       refreshBtn.addEventListener("click", async () => {
         refreshBtn.disabled = true;
         try { await plugin.refreshShellSummaryCommand(); } catch (e) {}
         finally { refreshBtn.disabled = false; }
       });
+      if (entry.status === "received") {
+         const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
+         dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
+      }
     } else if (entry.status === "done") {
-      // R90: done 不再 4s 自动消失；变行动卡：打开报告 / 查看回执 / 完成
-      // P1 fix: 统一走 plugin.openPendingDoneTarget(target, path)，保证 path 缺失/打开失败时
-      // 退化到 Outputs Hub / Recent Runs / HOME.md，并给用户 Notice 反馈。
-      const actions = card.createDiv({ cls: "furnace-pending-card-actions" });
+      const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions" });
       const target = String(entry.reconcileTarget || "");
       const reconcilePath = String(entry.reconcilePath || "");
+      const resultCard = aiBubble.createDiv({ cls: "furnace-bubble-result-card" });
+      resultCard.createDiv({ cls: "furnace-bubble-result-title", text: pendingSubmissionResultTitle(plugin, entry) });
+      if (reconcilePath) {
+        resultCard.createDiv({ cls: "furnace-bubble-result-path", text: reconcilePath });
+      }
       if (target === "outputs") {
         const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-open-report-btn", text: plugin.t("打开报告") });
         openBtn.addEventListener("click", () => {
@@ -363,6 +421,43 @@ function renderPendingSubmissionsGroup(plugin, section) {
       doneBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
     }
   }
+}
+
+function renderPendingRunNotesLink(plugin, aiBubble, entry) {
+  const runNotesPath = String(entry && entry.runNotesPath || entry && entry.run_notes_path || "").trim();
+  if (!runNotesPath) return;
+  const details = aiBubble.createEl("details", { cls: "furnace-run-notes-details" });
+  details.createEl("summary", { text: plugin.t("查看进度笔记") });
+  details.createDiv({
+    cls: "furnace-run-notes-boundary",
+    text: plugin.t("只包含外部化阶段记录，不包含模型内部过程。"),
+  });
+  const actions = details.createDiv({ cls: "furnace-bubble-actions" });
+  const openBtn = actions.createEl("button", { cls: "furnace-run-notes-open-btn", text: plugin.t("打开进度笔记") });
+  openBtn.addEventListener("click", async () => plugin.openWorkspacePath(runNotesPath));
+}
+
+function pendingSubmissionStageLabel(plugin, entry) {
+  const status = String(entry && entry.status || "running");
+  if (status === "done") {
+    if (entry && entry.reconcileTarget === "receipts") return plugin.t("已记录回执");
+    if (entry && entry.reconcileTarget === "raw") return plugin.t("已收料");
+    return plugin.t("报告已生成");
+  }
+  if (status === "received") {
+    return entry && entry._stale ? plugin.t("可能已完成，刷新看看") : plugin.t("已接收，正在排队生成报告");
+  }
+  if (status === "failed") return plugin.t("失败");
+  if (status === "escalated") return plugin.t("需要人工确认");
+  return plugin.t("正在整理材料与上下文");
+}
+
+function pendingSubmissionResultTitle(plugin, entry) {
+  const target = String(entry && entry.reconcileTarget || "");
+  if (target === "outputs") return plugin.t("报告卡片已就绪");
+  if (target === "receipts") return plugin.t("回执已就绪");
+  if (target === "raw") return plugin.t("原料已入库");
+  return plugin.t("任务已完成");
 }
 
 function renderTodayFeedItem(plugin, listEl, entry) {

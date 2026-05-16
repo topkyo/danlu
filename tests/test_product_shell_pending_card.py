@@ -2,7 +2,7 @@
 
 锁定本轮 PM/UX 三件套不被回退：
   #1 Today 空态有可点击 CTA 按钮（聚焦 universal input textarea）
-  #2 提交后插入"处理中"卡片 + 失败重试 + 自动 reconcile
+  #2 提交后插入 chat-style 对话流 + 失败重试 + 自动 reconcile
   #3 Advanced/通用面板暴露给用户的机制词被替换为白话
 """
 from __future__ import annotations
@@ -28,6 +28,7 @@ class PendingSubmissionContractTests(unittest.TestCase):
         self.assertIn("markPendingSubmissionFailed", plugin_js)
         self.assertIn("removePendingSubmission", plugin_js)
         self.assertIn("reconcilePendingSubmissions", plugin_js)
+        self.assertIn("updatePendingSubmissionRunNotes", plugin_js)
 
     def test_pending_helpers_built_into_main(self) -> None:
         for needle in (
@@ -49,9 +50,13 @@ class PendingSubmissionContractTests(unittest.TestCase):
     def test_today_renders_pending_group(self) -> None:
         text = (SRC / "render_today.js").read_text(encoding="utf-8")
         self.assertIn("renderPendingSubmissionsGroup", text)
-        self.assertIn("furnace-today-feed-pending", text)
-        self.assertIn("furnace-pending-card", text)
-        self.assertIn("处理中", text)
+        self.assertIn("furnace-conversation-stream", text)
+        self.assertIn("furnace-conversation-item", text)
+        self.assertIn("furnace-bubble-user", text)
+        self.assertIn("furnace-bubble-ai", text)
+        self.assertIn("正在整理材料与上下文", text)
+        self.assertIn("renderPendingRunNotesLink", text)
+        self.assertIn("查看进度笔记", text)
         # 失败态有重试 + dismiss
         self.assertIn("重试", text)
         self.assertIn("Dismiss", text)
@@ -205,7 +210,7 @@ class PendingSubmissionContractTests(unittest.TestCase):
     def test_today_renders_received_status(self) -> None:
         text = (SRC / "render_today.js").read_text(encoding="utf-8")
         self.assertIn('entry.status === "received"', text)
-        self.assertIn("已接收，等待生成报告", text)
+        self.assertIn("已接收，正在排队生成报告", text)
         self.assertIn("报告已生成", text)
         self.assertIn("已记录", text)
         # 区分 outputs / receipts
@@ -257,14 +262,14 @@ class PendingSubmissionContractTests(unittest.TestCase):
 
     def test_failed_card_has_user_facing_hint(self) -> None:
         text = (SRC / "render_today.js").read_text(encoding="utf-8")
-        self.assertIn("furnace-pending-card-hint", text)
+        self.assertIn("furnace-bubble-hint", text)
         self.assertIn("这次没成功。可以点重试，或检查输入是否完整。", text)
 
     def test_styles_define_received_and_dev_banner(self) -> None:
         css = (PLUGIN / "styles.css").read_text(encoding="utf-8")
         self.assertIn(".furnace-pending-received", css)
         self.assertIn(".furnace-advanced-dev-banner", css)
-        self.assertIn(".furnace-pending-card-hint", css)
+        self.assertIn(".furnace-bubble-hint", css)
 
     # ---- R90 提交→状态→结果 闭环 ----
     def test_r90_done_card_does_not_auto_dismiss(self) -> None:
@@ -289,6 +294,24 @@ class PendingSubmissionContractTests(unittest.TestCase):
         self.assertGreater(ser_idx, 0)
         ser_body = plugin_js[ser_idx : ser_idx + 1500]
         self.assertIn("reconcilePath", ser_body)
+        self.assertIn("runId", ser_body)
+        self.assertIn("runNotesPath", ser_body)
+
+    def test_tda004_run_notes_path_reconciles_and_renders(self) -> None:
+        plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        reconcile_idx = plugin_js.find("reconcilePendingSubmissions(summary) {")
+        self.assertGreater(reconcile_idx, 0)
+        reconcile_body = plugin_js[reconcile_idx : reconcile_idx + 4500]
+        self.assertIn("hitCand.run_notes_path", reconcile_body)
+        self.assertIn("hitCand.run_id", reconcile_body)
+        self.assertIn("updatePendingSubmissionRunNotes", reconcile_body)
+        render_today = (SRC / "render_today.js").read_text(encoding="utf-8")
+        self.assertIn("furnace-run-notes-details", render_today)
+        self.assertIn("furnace-run-notes-open-btn", render_today)
+        self.assertIn("只包含外部化阶段记录，不包含模型内部过程。", render_today)
+        css = (PLUGIN / "styles.css").read_text(encoding="utf-8")
+        self.assertIn(".furnace-run-notes-details", css)
+        self.assertIn(".furnace-run-notes-open-btn", css)
 
     def test_r90_done_hydrate_drops_after_seven_days(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
@@ -309,7 +332,7 @@ class PendingSubmissionContractTests(unittest.TestCase):
 
     def test_r90_running_card_has_refresh_button(self) -> None:
         text = (SRC / "render_today.js").read_text(encoding="utf-8")
-        self.assertIn("furnace-pending-refresh-btn", text)
+        self.assertIn("furnace-bubble-refresh-btn", text)
         self.assertIn('plugin.t("刷新状态")', text)
 
     def test_r90_done_card_has_action_buttons(self) -> None:
@@ -328,7 +351,7 @@ class PendingSubmissionContractTests(unittest.TestCase):
 
     def test_r90_styles_define_r90_classes(self) -> None:
         css = (PLUGIN / "styles.css").read_text(encoding="utf-8")
-        self.assertIn(".furnace-pending-refresh-btn", css)
+        self.assertIn(".furnace-bubble-refresh-btn", css)
         self.assertIn(".furnace-pending-open-report-btn", css)
         self.assertIn(".furnace-pending-open-receipt-btn", css)
         self.assertIn(".furnace-pending-done-btn", css)
@@ -340,7 +363,7 @@ class PendingSubmissionContractTests(unittest.TestCase):
         # 退化入口存在
         self.assertIn("openPendingDoneTarget", text)
         # done 分支不再直接条件 await openWorkspacePath（避免 path 缺失静默失效）
-        done_idx = text.find("R90: done 不再 4s 自动消失")
+        done_idx = text.find('entry.status === "done"')
         self.assertGreater(done_idx, 0)
         done_block = text[done_idx : done_idx + 1500]
         self.assertNotIn("openAdvancedDrawer", done_block)

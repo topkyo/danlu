@@ -16,6 +16,7 @@ from ..app_compile import (
     apply_machine_memory_actions_batch,
     apply_material_archive,
     ask_question,
+    auto_resolve_machine_memory_actions,
     compile_wiki,
     file_back,
     lint_wiki,
@@ -559,6 +560,14 @@ def _handle_review_lifecycle(args: argparse.Namespace, root: Path) -> tuple[obje
             result = apply_machine_memory_actions_batch(root, action_ids, note=args.note, dry_run=args.dry_run)
         else:
             result = apply_machine_memory_action(root, action_ids[0], note=args.note, dry_run=args.dry_run, bundle_path=args.bundle)
+    elif args.handler_command == "auto-resolve-actions":
+        result = auto_resolve_machine_memory_actions(
+            root,
+            dry_run=args.dry_run,
+            limit=args.limit,
+            include_proposed=not args.accepted_only,
+            note=args.note,
+        )
     elif args.handler_command == "revert-action":
         if args.last_batch:
             result = revert_machine_memory_action_batch(root, note=args.note)
@@ -686,6 +695,7 @@ _HANDLERS = {
     "review-concept": _handle_review_lifecycle,
     "review-action": _handle_review_lifecycle,
     "apply-action": _handle_review_lifecycle,
+    "auto-resolve-actions": _handle_review_lifecycle,
     "revert-action": _handle_review_lifecycle,
     "apply-archive": _handle_review_lifecycle,
     "revert-archive": _handle_review_lifecycle,

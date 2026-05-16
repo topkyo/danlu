@@ -439,5 +439,7 @@
     "source-a"
   ],
   "retry_prompt_profile": "",
+  "run_id": "ask-output-reports-deterministic-source-a",
+  "run_notes_path": "output/control/runs/ask-output-reports-deterministic-source-a/thinking.md",
   "timeout_seconds": 120
 }

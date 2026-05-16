@@ -183,11 +183,11 @@ def action_status_rank(status: str) -> int:
 def action_supports_low_risk_apply(action: dict[str, Any]) -> bool:
     if not bool(action.get("active", True)) or str(action.get("status") or "") != "accepted":
         return False
+    kind = str(action.get("kind") or "")
     decision = str(action.get("policy_decision") or "")
     if decision:
-        return decision == "allow"
-    kind = str(action.get("kind") or "")
-    return kind in LOW_RISK_APPLYABLE_ACTION_KINDS or kind in RESOLVABLE_MONITOR_ACTION_KINDS
+        return decision == "allow" and kind in LOW_RISK_APPLYABLE_ACTION_KINDS
+    return kind in LOW_RISK_APPLYABLE_ACTION_KINDS
 
 
 def execution_policy_profile(action: dict[str, Any], *, root: Path | None = None) -> dict[str, Any]:

@@ -18,14 +18,14 @@ function renderFurnaceCenter(plugin, contentEl) {
   // 1. Start guide (fresh vault onboarding)
   renderStartGuide(plugin, contentEl);
 
-  // 2. Universal Input
-  renderUniversalInput(plugin, contentEl);
-
-  // 3. Today Feed (统一 5 类)
+  // 2. Today Feed / conversation stream
   renderTodayFeed(plugin, contentEl);
 
-  // 4. Advanced Drawer
+  // 3. Advanced Drawer
   renderAdvancedDrawer(plugin, contentEl);
+
+  // 4. Conversation Composer — keep it at the bottom of the shell surface.
+  renderUniversalInput(plugin, contentEl);
 }
 
 function renderStartGuide(plugin, container) {
