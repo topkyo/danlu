@@ -4367,14 +4367,17 @@ function renderPendingSubmissionsGroup(plugin, section) {
     }
 
     aiBubble.createDiv({ cls: "furnace-bubble-status-text", text: statusLabel });
+    renderPendingProgressSteps(plugin, aiBubble, entry);
     renderPendingRunNotesLink(plugin, aiBubble, entry);
 
     if (entry.status === "failed") {
-      aiBubble.createDiv({
+      const exceptionCard = aiBubble.createDiv({ cls: "furnace-inline-exception-card furnace-inline-exception-failed" });
+      exceptionCard.createDiv({ cls: "furnace-inline-exception-title", text: plugin.t("生成被阻断") });
+      exceptionCard.createDiv({
         cls: "furnace-bubble-hint",
         text: plugin.t("这次没成功。可以点重试，或检查输入是否完整。"),
       });
-      const errEl = aiBubble.createDiv({ cls: "furnace-bubble-error", text: entry.error || plugin.t("失败") });
+      const errEl = exceptionCard.createDiv({ cls: "furnace-bubble-error", text: entry.error || plugin.t("失败") });
       errEl.setAttr && errEl.setAttr("title", entry.error || "");
       const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions" });
       const retryBtn = actions.createEl("button", { cls: "mod-cta", text: plugin.t("重试") });
@@ -4425,9 +4428,11 @@ function renderPendingSubmissionsGroup(plugin, section) {
       const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
       dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
     } else if (entry.status === "escalated") {
-      aiBubble.createDiv({
+      const exceptionCard = aiBubble.createDiv({ cls: "furnace-inline-exception-card furnace-inline-exception-escalated" });
+      exceptionCard.createDiv({ cls: "furnace-inline-exception-title", text: plugin.t("需要人工确认") });
+      exceptionCard.createDiv({
         cls: "furnace-bubble-hint",
-        text: plugin.t("已进入 Exception Queue，需要人工确认后继续。"),
+        text: entry.error || plugin.t("已进入 Exception Queue，需要人工确认后继续。"),
       });
       const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions" });
       const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-exception-btn", text: plugin.t("打开异常队列") });
@@ -4447,18 +4452,32 @@ function renderPendingSubmissionsGroup(plugin, section) {
          dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
       }
     } else if (entry.status === "done") {
-      const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions" });
       const target = String(entry.reconcileTarget || "");
       const reconcilePath = String(entry.reconcilePath || "");
-      const resultCard = aiBubble.createDiv({ cls: "furnace-bubble-result-card" });
-      resultCard.createDiv({ cls: "furnace-bubble-result-title", text: pendingSubmissionResultTitle(plugin, entry) });
+      const resultCard = aiBubble.createDiv({ cls: "furnace-artifact-card furnace-bubble-result-card" });
+      resultCard.createDiv({ cls: "furnace-artifact-eyebrow", text: pendingSubmissionArtifactKind(plugin, entry) });
+      resultCard.createDiv({ cls: "furnace-bubble-result-title furnace-artifact-title", text: pendingSubmissionResultTitle(plugin, entry) });
       if (reconcilePath) {
-        resultCard.createDiv({ cls: "furnace-bubble-result-path", text: reconcilePath });
+        resultCard.createDiv({ cls: "furnace-bubble-result-path furnace-artifact-path", text: reconcilePath });
       }
+      const snippet = resultCard.createDiv({ cls: "furnace-artifact-snippet", text: pendingSubmissionSnippetFallback(plugin, entry) });
+      hydratePendingArtifactSnippet(plugin, snippet, entry);
+      const meta = resultCard.createDiv({ cls: "furnace-artifact-meta" });
+      meta.createSpan({ text: pendingSubmissionArtifactMeta(plugin, entry) });
+      if (entry.runNotesPath || entry.run_notes_path) {
+        meta.createSpan({ text: plugin.t("有进度笔记") });
+      }
+      const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions furnace-artifact-actions" });
       if (target === "outputs") {
         const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-open-report-btn", text: plugin.t("打开报告") });
         openBtn.addEventListener("click", () => {
           plugin.openPendingDoneTarget("outputs", reconcilePath);
+        });
+        const quoteBtn = actions.createEl("button", { cls: "furnace-pending-quote-report-btn", text: plugin.t("引用此报告追问") });
+        quoteBtn.addEventListener("click", () => {
+          if (typeof plugin.quoteFileToComposer === "function") {
+            plugin.quoteFileToComposer(reconcilePath);
+          }
         });
       } else if (target === "receipts") {
         const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-open-receipt-btn", text: plugin.t("查看回执") });
@@ -4470,6 +4489,67 @@ function renderPendingSubmissionsGroup(plugin, section) {
       doneBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
     }
   }
+}
+
+function renderPendingProgressSteps(plugin, aiBubble, entry) {
+  const status = String(entry && entry.status || "running");
+  if (status !== "running" && status !== "received") return;
+  const steps = pendingSubmissionProgressSteps(plugin, entry);
+  if (!steps.length) return;
+  const list = aiBubble.createDiv({ cls: "furnace-progress-steps" });
+  steps.forEach((step, index) => {
+    const item = list.createDiv({ cls: `furnace-progress-step ${index === steps.length - 1 ? "is-active" : "is-done"}` });
+    item.createSpan({ cls: "furnace-progress-step-dot" });
+    item.createSpan({ cls: "furnace-progress-step-label", text: step });
+  });
+}
+
+function pendingSubmissionProgressSteps(plugin, entry) {
+  const startedMs = Date.parse(entry && entry.startedAt || "");
+  const elapsed = Number.isFinite(startedMs) ? Math.max(0, Date.now() - startedMs) : 0;
+  if (entry && entry.status === "received") {
+    return [plugin.t("已接收请求"), plugin.t("等待产物写入"), plugin.t("刷新后关联报告")];
+  }
+  if (elapsed > 30 * 1000) {
+    return [plugin.t("已接收请求"), plugin.t("交叉对比知识库"), plugin.t("整理报告结构")];
+  }
+  if (elapsed > 10 * 1000) {
+    return [plugin.t("已接收请求"), plugin.t("提取材料与上下文"), plugin.t("交叉对比知识库")];
+  }
+  return [plugin.t("已接收请求"), plugin.t("提取材料与上下文")];
+}
+
+function hydratePendingArtifactSnippet(plugin, snippetEl, entry) {
+  const path = String(entry && entry.reconcilePath || "").trim();
+  if (!path || !plugin || typeof plugin.readWorkspaceSnippet !== "function") return;
+  plugin.readWorkspaceSnippet(path, 360).then((snippet) => {
+    const text = String(snippet || "").trim();
+    if (text) snippetEl.setText(text);
+  }).catch(() => {});
+}
+
+function pendingSubmissionSnippetFallback(plugin, entry) {
+  const target = String(entry && entry.reconcileTarget || "");
+  if (target === "outputs") return plugin.t("报告已写入本地文件；摘要加载中…");
+  if (target === "receipts") return plugin.t("回执已写入控制层，可用于审计与回滚追踪。");
+  if (target === "raw") return plugin.t("原料已进入 raw/，等待后续编译沉淀。");
+  return plugin.t("任务已完成，结果已关联到本地工作区。");
+}
+
+function pendingSubmissionArtifactKind(plugin, entry) {
+  const target = String(entry && entry.reconcileTarget || "");
+  if (target === "outputs") return plugin.t("本地报告 Artifact");
+  if (target === "receipts") return plugin.t("执行回执 Receipt");
+  if (target === "raw") return plugin.t("原料 Raw Input");
+  return plugin.t("炼丹炉 Artifact");
+}
+
+function pendingSubmissionArtifactMeta(plugin, entry) {
+  const target = String(entry && entry.reconcileTarget || "");
+  if (target === "outputs") return plugin.t("文件是事实源，可打开继续阅读");
+  if (target === "receipts") return plugin.t("保留 provenance / audit 线索");
+  if (target === "raw") return plugin.t("后续 compile 会沉淀到 wiki/output");
+  return plugin.t("本地可审计交付物");
 }
 
 function renderPendingRunNotesLink(plugin, aiBubble, entry) {
@@ -7751,6 +7831,51 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       // 最后兜底：通知失败
     }
     new Notice(this.t("无法打开目标，可能尚未生成"));
+  }
+
+  async readWorkspaceSnippet(relativePath, length = 420) {
+    const normalized = String(relativePath || "").trim();
+    if (!normalized || !this.repoState.root) return "";
+    const safePath = path.normalize(normalized).replace(/^\/+/, "");
+    if (!safePath || safePath.startsWith("..") || path.isAbsolute(normalized)) return "";
+    const absolutePath = path.join(this.repoState.root, safePath);
+    const rootPath = path.resolve(this.repoState.root);
+    const resolvedPath = path.resolve(absolutePath);
+    if (resolvedPath !== rootPath && !resolvedPath.startsWith(rootPath + path.sep)) return "";
+    try {
+      const raw = await fs.promises.readFile(resolvedPath, "utf8");
+      const withoutFrontmatter = raw.startsWith("---")
+        ? raw.replace(/^---\s*[\s\S]*?\n---\s*/, "")
+        : raw;
+      const normalizedText = withoutFrontmatter
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith("#"))
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+      const limit = Number.isFinite(Number(length)) && Number(length) > 0 ? Number(length) : 420;
+      return normalizedText.length > limit ? `${normalizedText.slice(0, Math.max(0, limit - 1))}…` : normalizedText;
+    } catch (error) {
+      return "";
+    }
+  }
+
+  quoteFileToComposer(relativePath) {
+    const normalized = String(relativePath || "").trim();
+    if (!normalized) return false;
+    const textarea = document.querySelector(".furnace-universal-input-textarea");
+    if (!textarea) {
+      new Notice(this.t("找不到输入框，无法引用报告"));
+      return false;
+    }
+    const quoteLine = this.t("引用报告：{path}", { path: normalized });
+    const current = String(textarea.value || "").trimEnd();
+    textarea.value = current ? `${current}\n${quoteLine}\n` : `${quoteLine}\n`;
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    textarea.focus();
+    try { textarea.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (error) {}
+    return true;
   }
 
 

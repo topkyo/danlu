@@ -1979,6 +1979,51 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     new Notice(this.t("无法打开目标，可能尚未生成"));
   }
 
+  async readWorkspaceSnippet(relativePath, length = 420) {
+    const normalized = String(relativePath || "").trim();
+    if (!normalized || !this.repoState.root) return "";
+    const safePath = path.normalize(normalized).replace(/^\/+/, "");
+    if (!safePath || safePath.startsWith("..") || path.isAbsolute(normalized)) return "";
+    const absolutePath = path.join(this.repoState.root, safePath);
+    const rootPath = path.resolve(this.repoState.root);
+    const resolvedPath = path.resolve(absolutePath);
+    if (resolvedPath !== rootPath && !resolvedPath.startsWith(rootPath + path.sep)) return "";
+    try {
+      const raw = await fs.promises.readFile(resolvedPath, "utf8");
+      const withoutFrontmatter = raw.startsWith("---")
+        ? raw.replace(/^---\s*[\s\S]*?\n---\s*/, "")
+        : raw;
+      const normalizedText = withoutFrontmatter
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith("#"))
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+      const limit = Number.isFinite(Number(length)) && Number(length) > 0 ? Number(length) : 420;
+      return normalizedText.length > limit ? `${normalizedText.slice(0, Math.max(0, limit - 1))}…` : normalizedText;
+    } catch (error) {
+      return "";
+    }
+  }
+
+  quoteFileToComposer(relativePath) {
+    const normalized = String(relativePath || "").trim();
+    if (!normalized) return false;
+    const textarea = document.querySelector(".furnace-universal-input-textarea");
+    if (!textarea) {
+      new Notice(this.t("找不到输入框，无法引用报告"));
+      return false;
+    }
+    const quoteLine = this.t("引用报告：{path}", { path: normalized });
+    const current = String(textarea.value || "").trimEnd();
+    textarea.value = current ? `${current}\n${quoteLine}\n` : `${quoteLine}\n`;
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    textarea.focus();
+    try { textarea.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (error) {}
+    return true;
+  }
+
 
   async runCompileCommand() {
     await this.runPluginCommand(this.t("Compile"), ["compile"], { refreshAfter: true });

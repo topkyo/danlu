@@ -29,6 +29,8 @@ class PendingSubmissionContractTests(unittest.TestCase):
         self.assertIn("removePendingSubmission", plugin_js)
         self.assertIn("reconcilePendingSubmissions", plugin_js)
         self.assertIn("updatePendingSubmissionRunNotes", plugin_js)
+        self.assertIn("readWorkspaceSnippet", plugin_js)
+        self.assertIn("quoteFileToComposer", plugin_js)
 
     def test_pending_helpers_built_into_main(self) -> None:
         for needle in (
@@ -57,6 +59,11 @@ class PendingSubmissionContractTests(unittest.TestCase):
         self.assertIn("正在整理材料与上下文", text)
         self.assertIn("renderPendingRunNotesLink", text)
         self.assertIn("查看进度笔记", text)
+        self.assertIn("furnace-artifact-card", text)
+        self.assertIn("furnace-artifact-snippet", text)
+        self.assertIn("引用此报告追问", text)
+        self.assertIn("renderPendingProgressSteps", text)
+        self.assertIn("furnace-inline-exception-card", text)
         # 失败态有重试 + dismiss
         self.assertIn("重试", text)
         self.assertIn("Dismiss", text)
@@ -348,6 +355,17 @@ class PendingSubmissionContractTests(unittest.TestCase):
         # 完成（dismiss）
         self.assertIn("furnace-pending-done-btn", text)
         self.assertIn('plugin.t("完成")', text)
+        self.assertIn("furnace-pending-quote-report-btn", text)
+        self.assertIn('plugin.t("引用此报告追问")', text)
+
+    def test_artifact_card_actions_follow_result_card(self) -> None:
+        text = (SRC / "render_today.js").read_text(encoding="utf-8")
+        done_idx = text.find('entry.status === "done"')
+        self.assertGreater(done_idx, 0)
+        done_block = text[done_idx : done_idx + 3000]
+        self.assertIn("furnace-artifact-card", done_block)
+        self.assertIn("furnace-artifact-actions", done_block)
+        self.assertLess(done_block.find("furnace-artifact-card"), done_block.find("furnace-artifact-actions"))
 
     def test_r90_styles_define_r90_classes(self) -> None:
         css = (PLUGIN / "styles.css").read_text(encoding="utf-8")
@@ -355,6 +373,10 @@ class PendingSubmissionContractTests(unittest.TestCase):
         self.assertIn(".furnace-pending-open-report-btn", css)
         self.assertIn(".furnace-pending-open-receipt-btn", css)
         self.assertIn(".furnace-pending-done-btn", css)
+        self.assertIn(".furnace-artifact-card", css)
+        self.assertIn(".furnace-artifact-snippet", css)
+        self.assertIn(".furnace-progress-steps", css)
+        self.assertIn(".furnace-inline-exception-card", css)
 
     # ---- R90 P1 修复回归 ----
     def test_r90_done_buttons_route_through_open_helper(self) -> None:
@@ -365,7 +387,7 @@ class PendingSubmissionContractTests(unittest.TestCase):
         # done 分支不再直接条件 await openWorkspacePath（避免 path 缺失静默失效）
         done_idx = text.find('entry.status === "done"')
         self.assertGreater(done_idx, 0)
-        done_block = text[done_idx : done_idx + 1500]
+        done_block = text[done_idx : done_idx + 3000]
         self.assertNotIn("openAdvancedDrawer", done_block)
         # outputs / receipts 都委托给 helper
         self.assertIn('plugin.openPendingDoneTarget("outputs"', done_block)

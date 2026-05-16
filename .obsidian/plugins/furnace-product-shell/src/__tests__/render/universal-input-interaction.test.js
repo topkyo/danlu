@@ -191,6 +191,8 @@ function makePlugin(overrides = {}) {
     openRecentRunsView: jest.fn(),
     openHomeNote: jest.fn(),
     openPendingDoneTarget: jest.fn(),
+    readWorkspaceSnippet: jest.fn().mockResolvedValue("这是报告摘要，会直接显示在交付物卡片里。"),
+    quoteFileToComposer: jest.fn(),
     currentLlmHealth: jest.fn(() => ({ backend: "", model: "" })),
     currentShellSyncState: jest.fn(() => ({ status: "healthy" })),
     ...overrides,
@@ -376,7 +378,7 @@ test("renderTodayFeed covers no-summary empty-feed and pending branches", () => 
   expect(pendingContainer.querySelector(".furnace-bubble-shimmer-line")).toBeTruthy();
 });
 
-test("chat-style pending stream covers done failed and escalated bubbles", () => {
+test("chat-style pending stream covers artifact cards failed and escalated bubbles", async () => {
   const context = loadRenderContext();
   const plugin = makePlugin({
     shellSummary: {
@@ -398,16 +400,30 @@ test("chat-style pending stream covers done failed and escalated bubbles", () =>
   const container = document.createElement("div");
 
   context.renderTodayFeed(plugin, container);
+  await flushAsyncWork();
 
   expect(container.querySelectorAll(".furnace-conversation-item")).toHaveLength(4);
   expect(container.textContent).toContain("报告卡片已就绪");
+  expect(container.textContent).toContain("本地报告 Artifact");
+  expect(container.textContent).toContain("这是报告摘要，会直接显示在交付物卡片里。");
+  expect(container.textContent).toContain("引用此报告追问");
+  const outputBubble = container.querySelector(".furnace-conversation-item .furnace-bubble-ai");
+  const resultCard = outputBubble.querySelector(".furnace-artifact-card");
+  const actions = outputBubble.querySelector(".furnace-artifact-actions");
+  expect(resultCard).toBeTruthy();
+  expect(actions).toBeTruthy();
+  expect(resultCard.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(container.querySelector(".furnace-pending-open-report-btn")).toBeTruthy();
+  container.querySelector(".furnace-pending-quote-report-btn").click();
+  expect(plugin.quoteFileToComposer).toHaveBeenCalledWith("output/reports/r.md");
   expect(container.textContent).toContain("查看进度笔记");
   expect(container.textContent).toContain("只包含外部化阶段记录，不包含模型内部过程。");
   container.querySelector(".furnace-run-notes-open-btn").click();
   expect(plugin.openWorkspacePath).toHaveBeenCalledWith("output/control/runs/ask-r/thinking.md");
   expect(container.textContent).toContain("回执已就绪");
+  expect(container.textContent).toContain("执行回执 Receipt");
   expect(container.querySelector(".furnace-pending-open-receipt-btn")).toBeTruthy();
+  expect(container.textContent).toContain("生成被阻断");
   expect(container.textContent).toContain("backend unavailable");
   expect(container.textContent).toContain("重试");
   expect(container.textContent).toContain("需要人工确认");
