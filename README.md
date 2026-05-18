@@ -48,7 +48,7 @@ Obsidian 是前端/IDE；炼丹炉是整个系统；`aiwiki` 是底层 runtime�
 - `src/aiwiki/app_render.py`：index / dashboard / output pack / domain pilot / judgment asset render
 - `src/aiwiki/app_memory.py`：machine memory graph core，以及对 routing / query surface owner modules 的兼容导出
 - `src/aiwiki/app_routing.py`：material routing、archive candidate、active corpus and temperature 逻辑
-- `src/aiwiki/app_memory_surfaces.py`：machine memory query / topology / execution surface render
+- `src/aiwiki/app_memory_surfaces.py`：machine memory public/tested query / topology / execution surface render facade；private query helpers 留在 `app_memory_query.py`
 - `src/aiwiki/app_shell.py`：shell summary、review/execution controls、shell-facing contract assembly
 - `src/aiwiki/app_surfaces.py`：dashboard / HTML / shell surface render exports
 - `src/aiwiki/app_compile.py`：compile / ask / file-back / review / nightly orchestration，以及对 compile helper modules 的兼容导出
@@ -87,12 +87,22 @@ cd ../demo-furnace-vault
 
 这个新 vault **不需要复制** `src/aiwiki/`；launcher 会把 vault 当成 `--root`，再回到当前 runtime root 执行 `aiwiki CLI`。
 
-当前推荐把它理解成**两个入口、同一 runtime**：
+当前推荐把它理解成**两个日常入口、同一 runtime**：
 
-  - Obsidian Product Shell：极简工作台，首屏暴露交互（Ask 统一走 run-ask/LLM）、原料投入（投网址 / 投文件 / 投图片 / 记笔记）、最新产出和今日简报；更多工具折叠在面板底部，命令面板默认只注册 6 个核心命令；界面默认中文，可切到 English
+- Obsidian Product Shell：极简工作台，首屏暴露交互（Ask 统一走 run-ask/LLM）、原料投入（投网址 / 投文件 / 投图片 / 记笔记）、最新产出和今日简报；更多工具折叠在面板底部，命令面板默认只注册核心投料/打开入口；界面默认中文，可切到 English
+- `scripts/aiwiki-launcher.sh` / `aiwiki CLI`：脚本化入口，默认心智收敛为 `aiwiki drop ...` 投料与 `aiwiki today` 看产出；完整治理、执行、审计和调试能力保留在 `aiwiki advanced ...`
 - 普通用户视图默认把文件树收敛到报告入口：`raw/wiki/schema` 与 `output/` 的控制面、审阅、图谱导出等 runtime/operator 层仍存在，但不作为日常导航心智
-- `scripts/aiwiki-launcher.sh` / `aiwiki CLI`：完整命令入口，负责全量 `drop-*`、批量操作和脚本化调用
 - 两边共享同一个 `.aiwiki/state` 与 `raw/wiki/output`，所以写命令遵守 `single writer, many readers`
+
+### CLI command taxonomy
+
+`aiwiki` 的命令面按产品心智分三层；AOS-002 只调整展示和文档，不删除旧命令、不新增 alias：
+
+| Layer | Commands | Purpose |
+| --- | --- | --- |
+| `primary` | `drop`, `today` | 日常投料与读取产出；`drop` 下含 `url / pdf / image / repo / note`。 |
+| `advanced` | `metrics`, `advanced ...` | 高级但仍可解释的健康度、治理、执行、审计、协议、LLM 和调试入口。 |
+| `operator/internal` | legacy top-level commands such as `compile`, `run-nightly`, `planner-log-list`, `l3-proposal-generate` | 为脚本、测试、dogfood 和旧自动化保留；默认 help 不再把它们与 `drop/today` 同权展示，完整列表见 `aiwiki advanced --help` 或旧命令自身 `--help`。 |
 
 ## 最小工作流
 

@@ -7,7 +7,14 @@ from pathlib import Path
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="aiwiki", description="Local-first knowledge compiler scaffold")
+    parser = argparse.ArgumentParser(
+        prog="aiwiki",
+        description=(
+            "炼丹炉 local-first knowledge agent runtime. "
+            "Daily path: `aiwiki drop ...` to feed material, `aiwiki today` to read outputs. "
+            "Use `aiwiki advanced ...` for operator commands."
+        ),
+    )
     parser.add_argument(
         "--root",
         default=None,
@@ -19,7 +26,11 @@ def build_parser() -> argparse.ArgumentParser:
         dest="model_fallback",
         help="Fallback model to try when current model fails. Repeatable or comma-separated. Overrides AIWIKI_MODEL_FALLBACK env.",
     )
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(
+        dest="command",
+        required=True,
+        metavar="{drop,today,metrics,advanced}",
+    )
     _register_legacy_top_level_parsers(subparsers)
     today_parser = subparsers.add_parser("today", help="炼丹炉今日产出 / 待办 / 建议")
     today_parser.add_argument("--json", action="store_true", help="JSON 输出（按 section 桶化）")
@@ -47,7 +58,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     advanced_subparsers = advanced_parser.add_subparsers(dest="advanced_command", required=True)
     _register_legacy_top_level_parsers(advanced_subparsers)
+    _converge_default_help_surface(subparsers)
     return parser
+
+
+def _converge_default_help_surface(subparsers: argparse._SubParsersAction) -> None:
+    """Keep legacy commands parseable while making top-level help product-first.
+
+    AOS-002 intentionally does not delete commands or add aliases.  The complete
+    operator surface remains available both as legacy top-level commands and via
+    ``aiwiki advanced ...``; this only changes the default help listing so the
+    daily path is `drop` + `today` rather than a backlog of internal mechanisms.
+    """
+    primary_order = ("drop", "today", "metrics", "advanced")
+    visible = {
+        getattr(action, "dest", ""): action
+        for action in subparsers._choices_actions  # type: ignore[attr-defined]
+        if getattr(action, "dest", "") in primary_order
+    }
+    subparsers._choices_actions = [  # type: ignore[attr-defined]  # argparse private display hook.
+        visible[name]
+        for name in primary_order
+        if name in visible
+    ]
 
 
 def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -> None:

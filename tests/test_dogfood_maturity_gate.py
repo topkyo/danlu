@@ -60,6 +60,26 @@ def _make_run_receipt(
             "l3_proposal_counts_by_state": {"candidate": after_candidate},
             "judgment_review_receipt_counts": {"total": after_judgment_receipts},
             "prompts_ask_sha256": "abc",
+            "knowledge_compounding_proof": {
+                "kind": "knowledge-compounding-proof-report",
+                "version": 1,
+                "status": "pass",
+                "verdict": "pass",
+                "reason": "fixture compounding proof observed",
+                "metrics": {
+                    "raw_to_wiki_count": {"value": 1},
+                    "judgment_or_elixir_reuse_count": {"value": 1},
+                    "output_file_back_rate": {"value": 1.0},
+                    "receipt_backed_actions": {"value": 1},
+                    "human_required_exception_count": {"value": 0},
+                },
+                "compounding_sample": {
+                    "artifact_path": "output/reports/r1.md",
+                    "reused_ref": "wiki/judgments/j1.md",
+                    "receipt_path": "output/control/execution-receipts/report-r1.json",
+                },
+                "missing_evidence": [],
+            },
             "l3_debt_report": {
                 "effective_preview_candidate_count": max(generated_count - already_exists_count, 0),
                 "dedupe_or_noise_ratio": 0.5 if already_exists_count else 0.0,
@@ -291,6 +311,147 @@ class DogfoodMaturityGateTests(unittest.TestCase):
             hashlib.sha256(ask_path.read_bytes()).hexdigest(),
         )
         self.assertIn("review_backlog_counts", snapshot)
+        self.assertEqual(snapshot["knowledge_compounding_proof"]["status"], "not-yet")
+        self.assertIn("trace_provenance_backed_compounding_sample", snapshot["knowledge_compounding_proof"]["missing_evidence"])
+
+    def test_collect_metrics_reports_pass_for_receipt_backed_compounding_sample(self) -> None:
+        ask_path = self.root / "prompts" / "ask.md"
+        ask_path.parent.mkdir(parents=True, exist_ok=True)
+        ask_path.write_text("# Ask\n", encoding="utf-8")
+        _write_json(
+            self.root / ".aiwiki" / "state" / "manifest.json",
+            {"version": 1, "entries": [{"id": "src-1", "stored_path": "raw/src-1.md"}]},
+        )
+        (self.root / "wiki" / "sources").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "sources" / "src-1.md").write_text(
+            "---\nsource_url: file://raw/src-1.md\ncaptured_at: 2026-05-18T00:00:00Z\nderived_from:\n  - raw/src-1.md\n---\n# Source\n",
+            encoding="utf-8",
+        )
+        output_path = self.root / "output" / "reports" / "r1.md"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            "---\nderived_from:\n  - wiki/judgments/j1.md\ngenerated_at: 2026-05-18T00:00:00Z\n---\n# Report\n",
+            encoding="utf-8",
+        )
+        _write_jsonl(
+            self.root / ".aiwiki" / "state" / "execution-receipts.jsonl",
+            [
+                {
+                    "subject_kind": "report",
+                    "subject_id": "r1",
+                    "operation": "file-back",
+                    "target_file": "output/reports/r1.md",
+                    "receipt_path": "output/control/execution-receipts/report-r1.json",
+                    "applied_at": "2026-05-18T00:00:01Z",
+                }
+            ],
+        )
+        _write_json(
+            self.root / "output" / "control" / "execution-receipts" / "report-r1.json",
+            {
+                "kind": "execution-receipt",
+                "operation": "file-back",
+                "subject_kind": "report",
+                "target_file": "output/reports/r1.md",
+                "receipt_path": "output/control/execution-receipts/report-r1.json",
+            },
+        )
+
+        snapshot = collect_metrics(self.root, preview_limit=5)
+        proof = snapshot["knowledge_compounding_proof"]
+
+        self.assertEqual(proof["status"], "pass")
+        self.assertEqual(proof["metrics"]["raw_to_wiki_count"]["value"], 1)
+        self.assertEqual(proof["metrics"]["judgment_or_elixir_reuse_count"]["value"], 1)
+        self.assertEqual(proof["metrics"]["output_file_back_rate"]["value"], 1.0)
+        self.assertEqual(proof["metrics"]["receipt_backed_actions"]["value"], 1)
+        self.assertEqual(proof["metrics"]["human_required_exception_count"]["value"], 0)
+        self.assertEqual(proof["compounding_sample"]["artifact_path"], "output/reports/r1.md")
+        self.assertEqual(proof["compounding_sample"]["reused_ref"], "wiki/judgments/j1.md")
+        self.assertEqual(proof["compounding_sample"]["receipt_path"], "output/control/execution-receipts/report-r1.json")
+        self.assertEqual(proof["missing_evidence"], [])
+
+    def test_collect_metrics_reports_not_yet_without_traceable_compounding_sample(self) -> None:
+        ask_path = self.root / "prompts" / "ask.md"
+        ask_path.parent.mkdir(parents=True, exist_ok=True)
+        ask_path.write_text("# Ask\n", encoding="utf-8")
+        _write_json(
+            self.root / ".aiwiki" / "state" / "manifest.json",
+            {"version": 1, "entries": [{"id": "src-1", "stored_path": "raw/src-1.md"}]},
+        )
+        (self.root / "wiki" / "sources").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "sources" / "src-1.md").write_text("# Source\n", encoding="utf-8")
+        output_path = self.root / "output" / "reports" / "r1.md"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            "---\nderived_from:\n  - wiki/judgments/j1.md\ngenerated_at: 2026-05-18T00:00:00Z\n---\n# Report\n",
+            encoding="utf-8",
+        )
+
+        snapshot = collect_metrics(self.root, preview_limit=5)
+        proof = snapshot["knowledge_compounding_proof"]
+
+        self.assertEqual(proof["status"], "not-yet")
+        self.assertIn("receipt_backed_actions", proof["missing_evidence"])
+        self.assertIn("trace_provenance_backed_compounding_sample", proof["missing_evidence"])
+        self.assertIsNone(proof["compounding_sample"])
+
+    def test_collect_metrics_rejects_revert_receipt_as_compounding_sample(self) -> None:
+        ask_path = self.root / "prompts" / "ask.md"
+        ask_path.parent.mkdir(parents=True, exist_ok=True)
+        ask_path.write_text("# Ask\n", encoding="utf-8")
+        _write_json(
+            self.root / ".aiwiki" / "state" / "manifest.json",
+            {"version": 1, "entries": [{"id": "src-1", "stored_path": "raw/src-1.md"}]},
+        )
+        (self.root / "wiki" / "sources").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "sources" / "src-1.md").write_text("# Source\n", encoding="utf-8")
+        output_path = self.root / "output" / "reports" / "r1.md"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            "---\nderived_from:\n  - wiki/judgments/j1.md\ngenerated_at: 2026-05-18T00:00:00Z\n---\n# Report\n",
+            encoding="utf-8",
+        )
+        _write_jsonl(
+            self.root / ".aiwiki" / "state" / "execution-receipts.jsonl",
+            [
+                {
+                    "subject_kind": "report",
+                    "subject_id": "r1",
+                    "operation": "revert",
+                    "target_file": "output/reports/r1.md",
+                    "receipt_path": "output/control/execution-receipts/revert-r1.json",
+                }
+            ],
+        )
+
+        proof = collect_metrics(self.root, preview_limit=5)["knowledge_compounding_proof"]
+
+        self.assertEqual(proof["status"], "not-yet")
+        self.assertIn("trace_provenance_backed_compounding_sample", proof["missing_evidence"])
+        self.assertIsNone(proof["compounding_sample"])
+
+    def test_summarize_old_run_receipt_without_compounding_proof_reports_not_yet(self) -> None:
+        receipt = _make_run_receipt(
+            generated_at="2026-05-13T00:00:00Z",
+            status="pass",
+            before_backlog=10,
+            after_backlog=9,
+            before_candidate=3,
+            after_candidate=2,
+            before_judgment_receipts=0,
+            after_judgment_receipts=1,
+            already_exists_count=1,
+        )
+        del receipt["after"]["knowledge_compounding_proof"]
+
+        summary = summarize_run_receipts([receipt], recent=1)
+
+        self.assertEqual(summary["status"], "pass")
+        self.assertEqual(summary["missing_required_fields"], {})
+        self.assertEqual(summary["knowledge_compounding_status"], "not-yet")
+        self.assertEqual(summary["knowledge_compounding_missing_evidence"], ["knowledge_compounding_proof"])
+        self.assertIsNone(summary["knowledge_compounding_sample"])
 
     def test_human_required_report_counts_primary_exceptions_without_routine_backlog(self) -> None:
         from scripts.dogfood_maturity_gate import _build_human_required_report
@@ -758,6 +919,9 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         summary = summarize_run_receipts(receipts, recent=1)
 
         self.assertEqual(summary["status"], "pass")
+        self.assertEqual(summary["knowledge_compounding_status"], "pass")
+        self.assertEqual(summary["knowledge_compounding_missing_evidence"], [])
+        self.assertEqual(summary["knowledge_compounding_sample"]["artifact_path"], "output/reports/r1.md")
 
     def test_summarize_fails_when_any_receipt_failed(self) -> None:
         self._write_receipts(

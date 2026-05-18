@@ -38,6 +38,8 @@
 | PROGRESS / plans 体量 | 287KB / 6013 行 | pre-Round 1 内容（M0-M9 / M-PS / M-UX / M6 / P0~P4）与当前世代失联；`.codex/plans/active.md` 含废弃 EP-001~021 | P2 |
 | Signal 闭环“执行驱动” | observe-only / execute-mode 都已落地；scheduler 可消费 deterministic primitives | **signal severity / budget_hint 实质参与 routing 决策的密度仍低**；典型 “生产 signal 但无下游 lane apply” 局面 | P3（待 P2 dogfood 后再判断是否值得动） |
 
+> **AOS-004 proof gate update（2026-05-18）**：`scripts/dogfood_maturity_gate.py` 已新增 `knowledge_compounding_proof`，把复利证明拆成可复算指标与 trace/provenance-backed sample。首版 gate 保守：真实 dogfood vault 当前能复算出 `raw_to_wiki_count`、judgment/elixir reuse、`output_file_back_rate`、receipt-backed actions 与 human-required exceptions，但缺少能把 output reuse 精确回链到同一 artifact receipt 的 sample，因此输出 `not-yet` 而不是 pass。这是符合本文 critical path 的校准：机制存在不等于复利已被证明，后续应优先补 trace-backed dogfood sample/acceptance，而不是继续堆自治机制。
+
 不再列入本轮的（已落地或非目标）：
 - ~~Today actionability / 信号融合~~ → P0 / M8.1 已 close（`PROGRESS.md` line 1253）
 - ~~Trace concept layer~~ → P4-3 已 close

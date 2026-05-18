@@ -608,6 +608,26 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertIn("agent", machine_query["ranked_concept_slugs"])
         self.assertIn("src-1", machine_query["ranked_source_ids"])
 
+    def test_private_query_helpers_are_not_reexported_from_memory_surfaces(self) -> None:
+        import aiwiki.app_memory_surfaces as memory_surfaces
+        from aiwiki.app_memory_query import _machine_memory_query_payload_hash, _route_anchor_candidates
+        from aiwiki.app_memory_surfaces import build_machine_memory_query_routes
+
+        self.assertTrue(callable(_machine_memory_query_payload_hash))
+        self.assertTrue(callable(_route_anchor_candidates))
+        self.assertTrue(callable(build_machine_memory_query_routes))
+        self.assertFalse(hasattr(memory_surfaces, "_machine_memory_query_payload_hash"))
+        self.assertFalse(hasattr(memory_surfaces, "_route_anchor_candidates"))
+
+        with self.assertRaises(ImportError):
+            exec(
+                "from aiwiki.app_memory_surfaces import _machine_memory_query_payload_hash",
+                {},
+                {},
+            )
+        with self.assertRaises(ImportError):
+            exec("from aiwiki.app_memory_surfaces import _route_anchor_candidates", {}, {})
+
     def test_machine_memory_query_ignores_stale_cache_snapshot(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)

@@ -32,6 +32,17 @@ REQUIRED_SNAPSHOT_FIELDS = (
     "judgment_review_receipt_counts",
     "prompts_ask_sha256",
 )
+COMPOUNDING_REUSE_REF_PREFIXES = (
+    "wiki/judgments/",
+    "wiki/decisions/",
+    "wiki/elixirs/",
+)
+COMPOUNDING_SAMPLE_OPERATIONS = {
+    "ask",
+    "file-back",
+    "run-ask",
+}
+FAILED_RECEIPT_STATUSES = {"blocked", "error", "failed", "reverted"}
 
 
 def utc_now() -> str:
@@ -81,6 +92,14 @@ def _sum_int_values(payload: dict[str, Any]) -> int:
         elif isinstance(value, int):
             total += value
     return total
+
+
+def _as_string_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
 
 
 def _excerpt(text: str, *, limit: int = 1200) -> str:
@@ -357,6 +376,213 @@ def _load_l3_debt_report(root: Path, *, preview_limit: int) -> dict[str, Any]:
     }
 
 
+def _build_knowledge_compounding_proof(root: Path, *, human_required_report: dict[str, Any]) -> dict[str, Any]:
+    """Build an evidence-first proof report for knowledge compounding.
+
+    AOS-004 intentionally separates "mechanisms exist" from "compounding was
+    observed".  The report only returns ``pass`` when the filesystem contains a
+    trace/provenance-backed sample that reuses a prior judgment/decision/elixir;
+    otherwise the metrics are still emitted with a ``not-yet`` verdict.
+    """
+
+    from aiwiki.app_state import execution_receipt_history_path, load_manifest
+    from aiwiki.metrics import compute_metrics
+    from aiwiki.metrics_io import build_metrics_snapshot
+
+    manifest = load_manifest(root)
+    manifest_entries = manifest.get("entries")
+    entries = manifest_entries if isinstance(manifest_entries, list) else []
+    raw_to_wiki_count = 0
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        entry_id = str(entry.get("id") or "").strip()
+        if entry_id and (root / "wiki" / "sources" / f"{entry_id}.md").is_file():
+            raw_to_wiki_count += 1
+
+    metrics_snapshot = build_metrics_snapshot(root)
+    metric_by_key = {metric.key: metric for metric in compute_metrics(metrics_snapshot)}
+    output_file_back_metric = metric_by_key.get("output_file_back_rate")
+    elixir_reuse_metric = metric_by_key.get("elixir_reuse_count")
+    output_file_back_rate = output_file_back_metric.value if output_file_back_metric is not None else None
+
+    output_reuse = _collect_judgment_or_elixir_output_reuse(root)
+    elixir_reuse_count = _coerce_int(elixir_reuse_metric.value if elixir_reuse_metric is not None else 0)
+    judgment_or_elixir_reuse_count = len(output_reuse) + elixir_reuse_count
+    receipt_records = _knowledge_compounding_receipt_records(root)
+    sample = _select_compounding_sample(output_reuse, receipt_records)
+    human_required_exception_count = _coerce_int(
+        human_required_report.get("human_required_count"),
+        _coerce_int(human_required_report.get("exception_count")),
+    )
+
+    missing: list[str] = []
+    if raw_to_wiki_count <= 0:
+        missing.append("raw_to_wiki_count")
+    if output_file_back_rate in {None, 0}:
+        missing.append("output_file_back_rate")
+    if judgment_or_elixir_reuse_count <= 0:
+        missing.append("judgment_or_elixir_reuse_count")
+    if len(receipt_records) <= 0:
+        missing.append("receipt_backed_actions")
+    if sample is None:
+        missing.append("trace_provenance_backed_compounding_sample")
+
+    status = "pass" if not missing else "not-yet"
+    return {
+        "kind": "knowledge-compounding-proof-report",
+        "version": 1,
+        "status": status,
+        "verdict": status,
+        "reason": "trace/provenance-backed compounding sample observed" if status == "pass" else "insufficient receipt-backed compounding evidence",
+        "metrics": {
+            "raw_to_wiki_count": {
+                "value": raw_to_wiki_count,
+                "source": ".aiwiki/state/manifest.json + wiki/sources/*.md",
+            },
+            "judgment_or_elixir_reuse_count": {
+                "value": judgment_or_elixir_reuse_count,
+                "source": "output frontmatter derived_from + elixir reuse metric",
+                "output_reuse_count": len(output_reuse),
+                "elixir_reuse_count": elixir_reuse_count,
+            },
+            "output_file_back_rate": {
+                "value": output_file_back_rate,
+                "unit": (output_file_back_metric.unit if output_file_back_metric is not None else "ratio"),
+                "sample_size": (output_file_back_metric.sample_size if output_file_back_metric is not None else 0),
+                "source": "aiwiki.metrics_io output metadata",
+            },
+            "receipt_backed_actions": {
+                "value": len(receipt_records),
+                "source": "output/control execution receipts + .aiwiki/state/execution-receipts.jsonl",
+            },
+            "human_required_exception_count": {
+                "value": human_required_exception_count,
+                "source": "human_required_report",
+                "exception_count": _coerce_int(human_required_report.get("exception_count")),
+            },
+        },
+        "compounding_sample": sample,
+        "missing_evidence": missing,
+        "mechanism_evidence": {
+            "manifest_entries": len(entries),
+            "metrics_snapshot_outputs": len(metrics_snapshot.outputs),
+            "metrics_snapshot_receipts": len(metrics_snapshot.receipts),
+            "execution_receipt_history_path": str(execution_receipt_history_path(root).relative_to(root)),
+        },
+    }
+
+
+def _collect_judgment_or_elixir_output_reuse(root: Path) -> list[dict[str, Any]]:
+    from aiwiki.app_utils import parse_frontmatter, relative_path
+
+    output_root = root / "output"
+    records: list[dict[str, Any]] = []
+    try:
+        paths = sorted(output_root.glob("**/*.md")) if output_root.exists() else []
+    except OSError:
+        paths = []
+    for path in paths:
+        if not path.is_file() or "control" in path.relative_to(output_root).parts:
+            continue
+        try:
+            frontmatter = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+        except (OSError, UnicodeError):
+            continue
+        refs = _as_string_list(frontmatter.get("derived_from")) or _as_string_list(frontmatter.get("source_files"))
+        reuse_refs = [ref for ref in refs if ref.startswith(COMPOUNDING_REUSE_REF_PREFIXES)]
+        if not reuse_refs:
+            continue
+        records.append(
+            {
+                "path": relative_path(root, path),
+                "reused_refs": reuse_refs,
+                "source_refs": refs,
+                "generated_at": str(frontmatter.get("generated_at") or frontmatter.get("created_at") or ""),
+            }
+        )
+    return records
+
+
+def _knowledge_compounding_receipt_records(root: Path) -> list[dict[str, str]]:
+    from aiwiki.app_state import execution_receipt_history_path, load_jsonl_documents
+    from aiwiki.metrics_io import _receipt_json_paths
+
+    records: list[dict[str, str]] = []
+    seen_receipt_paths: set[str] = set()
+    for path in _receipt_json_paths(root):
+        payload = _read_json_file(path)
+        if not payload:
+            continue
+        receipt_path = str(payload.get("receipt_path") or path.relative_to(root))
+        seen_receipt_paths.add(receipt_path)
+        records.append(
+            {
+                "receipt_path": receipt_path,
+                "operation": str(payload.get("operation") or ""),
+                "status": str(payload.get("status") or ""),
+                "subject_kind": str(payload.get("subject_kind") or ""),
+                "target": str(payload.get("target_file") or payload.get("target_subject_id") or payload.get("primary_path") or ""),
+            }
+        )
+
+    history_path = execution_receipt_history_path(root)
+    for index, payload in enumerate(load_jsonl_documents(history_path), start=1):
+        if not isinstance(payload, dict):
+            continue
+        payload_receipt_path = str(payload.get("receipt_path") or "").strip()
+        if payload_receipt_path and payload_receipt_path in seen_receipt_paths:
+            continue
+        receipt_path = payload_receipt_path or f"{history_path.relative_to(root)}#L{index}"
+        seen_receipt_paths.add(receipt_path)
+        records.append(
+            {
+                "receipt_path": receipt_path,
+                "operation": str(payload.get("operation") or ""),
+                "status": str(payload.get("status") or ""),
+                "subject_kind": str(payload.get("subject_kind") or ""),
+                "target": str(payload.get("target_file") or payload.get("target_subject_id") or payload.get("primary_path") or ""),
+            }
+        )
+    return records
+
+
+def _is_successful_compounding_receipt(record: dict[str, str]) -> bool:
+    operation = str(record.get("operation") or "").strip()
+    status = str(record.get("status") or "").strip().lower()
+    if operation not in COMPOUNDING_SAMPLE_OPERATIONS:
+        return False
+    return status not in FAILED_RECEIPT_STATUSES
+
+
+def _select_compounding_sample(
+    output_reuse: list[dict[str, Any]],
+    receipt_records: list[dict[str, str]],
+) -> dict[str, Any] | None:
+    if not output_reuse or not receipt_records:
+        return None
+    receipt_by_target = {
+        str(record.get("target") or ""): record
+        for record in receipt_records
+        if str(record.get("target") or "").strip()
+    }
+    for item in output_reuse:
+        path = str(item.get("path") or "")
+        matched_receipt = receipt_by_target.get(path)
+        if matched_receipt is None or not _is_successful_compounding_receipt(matched_receipt):
+            continue
+        return {
+            "artifact_path": path,
+            "reused_ref": (item.get("reused_refs") or [""])[0],
+            "source_refs": item.get("source_refs") or [],
+            "receipt_path": str((matched_receipt or {}).get("receipt_path") or ""),
+            "receipt_subject_kind": str((matched_receipt or {}).get("subject_kind") or ""),
+            "receipt_operation": str((matched_receipt or {}).get("operation") or ""),
+            "provenance": "output frontmatter derived_from/source_files + receipt path",
+        }
+    return None
+
+
 def _read_json_file(path: Path) -> dict[str, Any] | None:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -540,6 +766,10 @@ def collect_metrics(root: Path, *, preview_limit: int = 20) -> dict[str, Any]:
     )
     review_backlog_counts.update(_action_review_backlog_counts(shell_execution_controls(root, memory)))
     human_required_report = _build_human_required_report(root, review_backlog_counts)
+    knowledge_compounding_proof = _build_knowledge_compounding_proof(
+        root,
+        human_required_report=human_required_report,
+    )
     nightly = load_json_document(nightly_health_state_path(root))
     return {
         "kind": SNAPSHOT_KIND,
@@ -550,6 +780,7 @@ def collect_metrics(root: Path, *, preview_limit: int = 20) -> dict[str, Any]:
         "review_backlog_counts": review_backlog_counts,
         "backlog_total": _sum_int_values(review_backlog_counts),
         "human_required_report": human_required_report,
+        "knowledge_compounding_proof": knowledge_compounding_proof,
         "nightly_agent_loop": dict(nightly.get("agent_loop") or {}),
         "l3_proposal_counts_by_state": _load_l3_proposal_counts_by_state(root),
         "l3_generation_preview_summary": _preview_l3_generation_summary(root, limit=preview_limit),
@@ -876,6 +1107,18 @@ def summarize_run_receipts(receipts: list[dict[str, Any]], *, recent: int = 3) -
     latest_human_required = last.get("after", {}).get("human_required_report") if isinstance(last.get("after"), dict) else {}
     if not isinstance(latest_human_required, dict):
         latest_human_required = {}
+    latest_compounding_proof = last.get("after", {}).get("knowledge_compounding_proof") if isinstance(last.get("after"), dict) else {}
+    if not isinstance(latest_compounding_proof, dict):
+        latest_compounding_proof = {
+            "kind": "knowledge-compounding-proof-report",
+            "version": 1,
+            "status": "not-yet",
+            "verdict": "not-yet",
+            "reason": "latest run receipt has no knowledge compounding proof report",
+            "metrics": {},
+            "compounding_sample": None,
+            "missing_evidence": ["knowledge_compounding_proof"],
+        }
     semantic_path_observed = judgment_review_receipts_delta > 0
     if failed or prompt_hash_changed or missing_required_fields:
         status = "fail"
@@ -920,6 +1163,10 @@ def summarize_run_receipts(receipts: list[dict[str, Any]], *, recent: int = 3) -
         "judgment_review_new_receipts": max(judgment_review_receipts_delta, 0),
         "judgment_lane_report": latest_judgment_lane,
         "human_required_report": latest_human_required,
+        "knowledge_compounding_proof": latest_compounding_proof,
+        "knowledge_compounding_status": str(latest_compounding_proof.get("status") or "not-yet"),
+        "knowledge_compounding_missing_evidence": list(latest_compounding_proof.get("missing_evidence") or []),
+        "knowledge_compounding_sample": latest_compounding_proof.get("compounding_sample"),
         "human_required_count": _coerce_int(latest_human_required.get("human_required_count")),
         "routine_primary_debt_count": _coerce_int(latest_human_required.get("routine_primary_debt_count")),
         "exception_count": _coerce_int(latest_human_required.get("exception_count")),

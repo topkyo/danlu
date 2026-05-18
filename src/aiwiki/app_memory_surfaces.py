@@ -6,20 +6,21 @@ This file exists only to preserve external import paths and test patch seams.
 
 All renderers have been extracted to the ``aiwiki.memory`` package
 (EP-017B steps 1-4). This module now acts as a thin facade that
-re-exports symbols from the submodules plus legacy query helpers
-from :mod:`aiwiki.app_memory_query`. External callers and test
-``patch('aiwiki.app_memory_surfaces.<name>')`` seams continue to
-resolve against these re-export bindings.
+re-exports public/tested symbols from the submodules plus legacy query
+helpers from :mod:`aiwiki.app_memory_query`. Private query helpers owned
+by :mod:`aiwiki.app_memory_query` stay on that owner module instead of
+being re-exported through this facade. External callers and test
+``patch('aiwiki.app_memory_surfaces.<name>')`` seams continue to resolve
+against the remaining public re-export bindings.
 """
 
 from __future__ import annotations
 
-# EP-011 legacy re-exports: machine-memory query helpers live in
-# ``aiwiki.app_memory_query``. Monkey-patch seams targeting
-# ``aiwiki.app_memory_surfaces.<name>`` bind against this facade.
+# EP-011 legacy re-exports: public/tested machine-memory query helpers live
+# in ``aiwiki.app_memory_query``. Monkey-patch seams targeting
+# ``aiwiki.app_memory_surfaces.<name>`` bind against this facade. Private
+# underscore helpers must be imported from their owner module directly.
 from .app_memory_query import (  # noqa: F401
-    _machine_memory_query_payload_hash,
-    _route_anchor_candidates,
     build_machine_memory_adjacency,
     build_machine_memory_query_routes,
     concept_page_snapshot,

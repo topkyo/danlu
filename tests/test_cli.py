@@ -166,6 +166,46 @@ class CLITests(unittest.TestCase):
         advanced_action = next(item for item in advanced_parser._actions if getattr(item, "dest", "") == "advanced_command")
         self.assertIn("compile", advanced_action.choices)
 
+    def test_default_help_surface_is_product_first(self) -> None:
+        parser = build_parser()
+        help_text = parser.format_help()
+
+        self.assertIn("Daily path", help_text)
+        self.assertIn("drop", help_text)
+        self.assertIn("today", help_text)
+        self.assertIn("metrics", help_text)
+        self.assertIn("advanced", help_text)
+        self.assertNotIn("knowledge compiler scaffold", help_text)
+        self.assertNotIn("autonomy-status", help_text)
+        self.assertNotIn("planner-log-list", help_text)
+        self.assertNotIn("l3-proposal-generate", help_text)
+        self.assertNotIn("run-nightly", help_text)
+
+    def test_legacy_top_level_commands_remain_parseable(self) -> None:
+        parser = build_parser()
+        action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
+
+        for command in ("compile", "run-nightly", "planner-log-list", "l3-proposal-generate", "trace"):
+            self.assertIn(command, action.choices)
+
+        self.assertEqual(parser.parse_args(["compile"]).handler_command, "compile")
+        self.assertEqual(parser.parse_args(["advanced", "compile"]).handler_command, "compile")
+
+    def test_advanced_help_keeps_operator_surface_visible(self) -> None:
+        parser = build_parser()
+        advanced_parser = next(
+            action.choices["advanced"]
+            for action in parser._actions
+            if getattr(action, "dest", "") == "command"
+        )
+        help_text = advanced_parser.format_help()
+
+        self.assertIn("compile", help_text)
+        self.assertIn("run-nightly", help_text)
+        self.assertIn("planner-log-list", help_text)
+        self.assertIn("l3-proposal-generate", help_text)
+        self.assertIn("trace", help_text)
+
     def test_drop_subcommand_exists(self) -> None:
         parser = build_parser()
         action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
