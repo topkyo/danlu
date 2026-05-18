@@ -1347,7 +1347,13 @@ class AlchemyCandidatePlaneTests(unittest.TestCase):
         ]
         self.assertEqual(len(revert_audit), 1)
         self.assertEqual(revert_audit[0]["event_type"], "revert")
-        self.assertEqual(revert_audit[0]["source_ref"], ".aiwiki/state/execution-receipts.jsonl#L2")
+        history_entries = _receipt_history_entries(self.root)
+        revert_line = next(
+            index
+            for index, entry in enumerate(history_entries, start=1)
+            if entry.get("receipt_path") == latest.get("receipt_path")
+        )
+        self.assertEqual(revert_audit[0]["source_ref"], f".aiwiki/state/execution-receipts.jsonl#L{revert_line}")
 
     def test_revert_writes_dependency_breaks_in_bundle(self) -> None:
         elixir_id = self._start_candidate_elixir(topic="revert-break-source")

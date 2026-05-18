@@ -32,11 +32,12 @@ def _load_golden(path: Path) -> bytes:  # pragma: no cover - exercised by explic
 # across runs (clock granularity, CPU jitter). They are still produced by
 # production code (no fake values) but must be normalized BEFORE byte compare
 # so byte-frozen goldens stay stable. All other receipt fields remain strict.
-_DYNAMIC_RECEIPT_FIELDS: tuple[str, ...] = ("duration_ms",)
+_DYNAMIC_RECEIPT_FIELDS: tuple[str, ...] = ("duration_ms", "applied_at", "occurred_at")
 _NORMALIZED_JSONL_SUFFIXES: tuple[str, ...] = (
     ".aiwiki/logs/llm-receipts.jsonl",
     ".aiwiki/logs/runs.jsonl",
     ".aiwiki/state/audit.jsonl",
+    ".aiwiki/state/execution-receipts.jsonl",
 )
 
 
@@ -181,10 +182,20 @@ def test_happy_run_ask_replay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     assert receipt["error_message"] == ""
 
     audit = _load_jsonl(vault / ".aiwiki" / "state" / "audit.jsonl")
-    assert [record["event_type"] for record in audit] == ["query", "success"]
-    assert [record["source_stream"] for record in audit] == ["runtime_history", "llm_receipts"]
-    assert audit[-1]["subject"] == {"kind": "success", "id": ""}
-    assert audit[-1]["raw_response_path"] == raw_response_path
+    assert [record["event_type"] for record in audit] == ["query", "success", "run-ask"]
+    assert [record["source_stream"] for record in audit] == ["runtime_history", "llm_receipts", "execution_receipts"]
+    assert audit[-2]["subject"] == {"kind": "success", "id": ""}
+    assert audit[-2]["raw_response_path"] == raw_response_path
+    assert audit[-1]["subject"] == {"kind": "output-artifact", "id": "ask-output-reports-deterministic-source-a"}
+
+    execution_receipts = _load_jsonl(vault / ".aiwiki" / "state" / "execution-receipts.jsonl")
+    assert len(execution_receipts) == 1
+    execution_receipt = execution_receipts[0]
+    assert execution_receipt["operation"] == "run-ask"
+    assert execution_receipt["status"] == "success"
+    assert execution_receipt["target_file"] == payload["path"]
+    assert execution_receipt["primary_path"] == payload["path"]
+    assert (vault / str(execution_receipt["receipt_path"])).exists()
 
     shell_summary = json.loads((vault / "output" / "control" / "shell-summary.json").read_text(encoding="utf-8"))
     latest_llm = shell_summary["latest_llm_run"]
@@ -199,6 +210,7 @@ def test_happy_run_ask_replay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
             ".aiwiki/logs/llm-receipts.jsonl",
             ".aiwiki/logs/runs.jsonl",
             ".aiwiki/state/audit.jsonl",
+            ".aiwiki/state/execution-receipts.jsonl",
         ],
     )
 

@@ -35,17 +35,6 @@ from ..app_memory import (
     reuse_machine_memory_core,
     summarize_machine_memory_transition,
 )
-from ..app_memory_surfaces import (
-    render_drift_report,
-    render_execution_audit,
-    render_execution_center,
-    render_graph_health,
-    render_machine_memory_actions,
-    render_machine_memory_graph_html,
-    render_machine_memory_index,
-    render_machine_memory_repair_plan,
-    render_machine_memory_topology,
-)
 from ..app_protocol import DEFAULT_DASHBOARD_FILES, MANAGED_DASHBOARD_TEMPLATE_FILES
 from ..app_state import (
     DEFAULT_PROTOCOL,
@@ -75,7 +64,19 @@ from ..app_utils import (
     tokenize,
     write_json_document_if_changed_ignoring_generated_timestamps,
 )
-from ..memory.graph import collect_report_anchors
+from ..memory.execution_surfaces import (
+    render_execution_audit,
+    render_execution_center,
+)
+from ..memory.graph import collect_report_anchors, render_machine_memory_graph_html
+from ..memory.status import (
+    render_drift_report,
+    render_graph_health,
+    render_machine_memory_actions,
+    render_machine_memory_index,
+    render_machine_memory_repair_plan,
+)
+from ..memory.topology import render_machine_memory_topology
 from .context import CompileContext
 
 logger = logging.getLogger(__name__)

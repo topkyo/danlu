@@ -5,11 +5,13 @@
 
 ## 1. 推演前提
 
-AOS-001~004 全部完成。AOS-004 跑出 `not-yet`，唯一缺口是 `trace_provenance_backed_compounding_sample`。
+AOS-001~003 已收口；AOS-004 的工程 gate 已能跑出保守结果，但当前 active contract 仍是 `AOS-004 Knowledge compounding proof gate`，真实 dogfood verdict 仍为 `not-yet`，缺口是 `trace_provenance_backed_compounding_sample`。
+
+因此本文档只能作为 **AOS-004 收口之后** 的下一轮推演，不能覆盖当前 active contract，也不能作为立即启动 AOS-005a 的授权。
 
 下一轮（暂称 AOS-005）有两个互相独立的候选方向：
 
-- **AOS-005a — 受控的 hub/facade 削薄**：把 D 文档识别出的 ROI ≥ 12 的 4 个候选落地。
+- **AOS-005a — 受控的 hub/facade 削薄**：把 D 文档修订后识别出的 ROI ≥ 12 候选落地，但排除 README/PROGRESS 明确要求保留的 `app.py`。
 - **AOS-005b — LLM backend 收敛**：从 8 个 backend 砍到 dogfood 实际使用的 2-3 个。
 
 两个方向都有合理性。本文档分析"先做哪个"。
@@ -17,21 +19,23 @@ AOS-001~004 全部完成。AOS-004 跑出 `not-yet`，唯一缺口是 `trace_pro
 ## 2. AOS-005a — Hub/Facade 削薄
 
 ### 范围
-基于 D 文档 ROI Top 4：
+基于 D 文档修订后的 ROI 候选：
 
-1. `app.py` (554 行) — 整模块 facade，下线
-2. `app_content.py` (262 行) — facade，下线
-3. `app_memory_surfaces.py` (77 行) — facade，下线
-4. `app_surfaces.py` (1846 行 / 9 decl) — 巨函数级拆分
+1. `app_surfaces.py` (1846 行 / 9 decl) — 巨函数级拆分
+2. `app_content.py` (262 行) — 调用面迁移后退役 facade
+3. `app_memory_surfaces.py` (77 行) — 调用面迁移后退役 facade
+
+明确排除：`app.py` (554 行) 是 README 承诺保留的 `aiwiki.app` 外部兼容 shim，AOS-003 审计也已判定不能删；它只能进入长期 deprecation plan，不能列入 AOS-005a delete-now。
 
 ### 预期收益
-- 减少 ~900 行纯 re-export 噪音
+- 直接减少最多 ~339 行纯 re-export 噪音（不含 `app.py`）
+- 降低 `app_surfaces.py` 的巨函数 review 复杂度
 - 消除 facade-on-facade 路径
 - 让 `aiwiki.content.* / aiwiki.memory.* / aiwiki.compile.*` 成为唯一 owner
 
 ### 风险
-- **中等**。tests 中大量 `patch('aiwiki.app.<name>')` 需要同步改 patch target——这是 AOS-003 当时选择保守路线的根本原因。
-- 需要先做 `grep -r "from aiwiki\.app\b\|patch('aiwiki\.app\." tests src` 统计真实调用面。
+- **中等**。`app_content.py` / `app_memory_surfaces.py` 仍有 runtime/tests 调用与 patch seam，需要同步改 patch target——这是 AOS-003 当时选择保守路线的根本原因。
+- 需要先做 `grep -r "app_content\|app_memory_surfaces\|app_surfaces" src tests scripts` 统计真实调用面。
 
 ### 前置条件
 - 已有 92% coverage + 2200+ unit tests + 17 acceptance，足以兜底
@@ -39,7 +43,7 @@ AOS-001~004 全部完成。AOS-004 跑出 `not-yet`，唯一缺口是 `trace_pro
 
 ### 时间估算
 - 调用面调查：1 day
-- 4 个候选分批迁移 + tests 同步：3-5 day
+- 3 个候选分批迁移 + tests 同步：3-5 day
 - closed-loop + qa-review：1-2 day
 - **总计：~1 周**
 
@@ -82,22 +86,22 @@ AOS-001~004 全部完成。AOS-004 跑出 `not-yet`，唯一缺口是 `trace_pro
 |---|---|---|
 | 与 AOS-004 是否关联 | ❌ 独立 | ❌ 独立 |
 | 可逆性 | ✅ facade 下线易回滚 | ⚠️ 删 backend 难回滚 |
-| 对 acceptance 风险 | 中（tests 大量 patch）| 低（backend 是 plug-in 结构）|
+| 对 acceptance 风险 | 中（tests/runtime patch seam）| 中-高（backend option 与历史 receipt 兼容面）|
 | 对用户的可见度 | 几乎不可见 | 可见（CLI options 变化）|
 | 是否触碰 freeze ledger | ❌ 不触碰 | ⚠️ 触碰"不新增 backend"，但反向（删除）应该允许，需 plan 明确 |
-| 验证难度 | 中（test patch target 改造）| 低（probe + integration test）|
+| 验证难度 | 中（test patch target 改造）| 中（probe + integration + deprecation 兼容）|
 
 ### 推荐：**先 AOS-005a，后 AOS-005b**
 
 理由：
 
-1. **AOS-005a 是 AOS-003 的自然延续**——AOS-003 当时已经识别出这些 facade，只是出于保守只动了 2 个 private symbol。现在有 AOS-004 的数据基线和 92% coverage 兜底，可以推进剩余 ROI Top 4。
+1. **AOS-005a 是 AOS-003 的自然延续**——AOS-003 当时已经识别出这些 facade，只是出于保守只动了 2 个 private symbol。AOS-004 收口后，可以推进剩余高 ROI 候选，但不应删除 `app.py`。
 
 2. **AOS-005a 风险更可控**。facade 下线是机械的 import 迁移，不改 runtime 行为；backend 删除会改 CLI 选项面，需要 deprecation 周期。
 
 3. **AOS-005b 真实收益依赖使用率数据**。在没有跑统计前推进 b，可能误删某个 dogfood 中真正在用的 backend。
 
-4. **AOS-005a 完成后，`src/aiwiki/` 顶层文件数会从 19 个降到 16 个**，对新 contributor / agent review 的认知负担直接下降。
+4. **AOS-005a 完成后，`src/aiwiki/` 顶层兼容 facade 会减少，但主要收益是 review 复杂度下降**，不是大规模 LoC 删除。
 
 ## 5. AOS-005a 提案 milestone 草案
 
@@ -113,18 +117,18 @@ ask_policy: blockers-only
 max_debug_rounds: 3
 
 success_criteria:
-  - aiwiki.app facade module retired (file deleted or reduced to deprecation stub)
-  - aiwiki.app_content facade module retired
-  - aiwiki.app_memory_surfaces facade module retired
+  - aiwiki.app remains stable external compatibility shim; no deletion in this milestone
+  - aiwiki.app_content facade call sites audited and migrated where safe; facade retired only if no public/test seam remains
+  - aiwiki.app_memory_surfaces facade call sites audited and migrated where safe; facade retired only if no public/test seam remains
   - aiwiki.app_surfaces 拆分至少 3 个内聚 sub-render helper（同文件内或独立 module）
-  - tests 中所有 patch('aiwiki.app.<name>') / patch('aiwiki.app_content.<name>') 同步迁移
+  - tests 中相关 patch target 同步迁移，不留下 broken compat seam
   - 2200+ unit tests 全 PASS，coverage 不降
   - 17+ acceptance 全 PASS
   - bash scripts/verify.sh PASS
   - closed_loop PASS
 
 out_of_scope:
-  - app_protocol / app_lifecycle / drop / app_state 不动（D 文档 ROI < 12）
+  - app.py / app_protocol / app_lifecycle / drop / app_state 不动
   - LLM backend 不动（留给 AOS-005b）
   - 新增任何 facade / re-export 层
   - 改 CLI / Product Shell 任何 surface
@@ -132,12 +136,24 @@ out_of_scope:
 
 ## 6. 单句结论
 
-> **AOS-005 应该先做 hub/facade 削薄（AOS-005a），把 D 文档 ROI Top 4 的 ~900 行 facade 噪音清掉，并对 `app_surfaces.py` 1846 行做函数级拆分降低复杂度；backend 收敛（AOS-005b）等使用率统计跑出来再决定。同时 AOS-004 的翻盘（C 文档）应并行推进，不阻塞 AOS-005。**
+> **当前最高优先级仍是 AOS-004 proof flip / closure；只有 active contract 收口后，AOS-005 才应启动。届时建议先做受控 hub/facade 削薄（AOS-005a）：优先拆 `app_surfaces.py` 巨函数，并审计迁移 `app_content.py` / `app_memory_surfaces.py`；`app.py` 保留为外部兼容 shim。backend 收敛（AOS-005b）等使用率统计跑出来再决定。**
+
+## 6.1 执行状态（2026-05-19）
+
+AOS-005a 已按 harness 物化为受控削薄，而不是一次性删除 facade：
+
+- `app_surfaces.py`：已抽出 `_compile_state_string_list`、`_compile_phase_lines`、`_source_link_lines`、`_concept_link_lines`，降低 `render_compile_status` 的局部 review 复杂度；同时把该文件的 owner import 从 `app_content` / `app_memory` facade 迁到直接 owner module。
+- `app_memory_surfaces.py`：`src/aiwiki` 内直接 `from app_memory_surfaces import ...` runtime 依赖已清零；facade 仍保留，服务外部/public/test patch seam。
+- `app_content.py`：已迁移一批 owner 明确、低风险的 runtime import；但 app shell、compile/lint legacy 面和 `content.*` 内部 patch seam 仍存在，因此本轮不退役 facade。
+- `app.py`：未触碰，继续作为 README 承诺的 `aiwiki.app` external compatibility shim。
+
+修订后的执行结论：AOS-005a 的第一段收益来自 `app_surfaces.py` review complexity 降低和 `app_memory_surfaces.py` runtime 依赖移除；`app_content.py` 仍是实际 compat/test seam facade，不能在本轮强删。
 
 ## 7. 触发条件
 
 启动 AOS-005a 的前置 gate：
 - [ ] AOS-004 verdict 已经跑过至少 1 次（即使是 `not-yet`），证明 dogfood baseline 还活着
+- [ ] AOS-004 active contract 已收口或显式 re-plan，不能与当前 proof gate milestone 并行抢占
 - [ ] `bash scripts/verify.sh` 当前 PASS
 - [ ] 当前没有在飞 milestone（避免并行 plan handoff）
 - [ ] 至少 1 轮 qa-review approve 本 plan

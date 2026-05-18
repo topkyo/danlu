@@ -19,15 +19,6 @@ from ..app_content import (
     sop_drafts_dir,
 )
 from ..app_execution import build_execution_bundle
-from ..app_memory_surfaces import (
-    render_concept_quality,
-    render_concept_rewrite_index,
-    render_concept_rewrite_proposal_page,
-    render_drift_report,
-    render_execution_center_html,
-    render_execution_proposal_page,
-    render_graph_health,
-)
 from ..app_render import (
     build_domain_pilots_incremental,
     build_output_packs_incremental,
@@ -65,6 +56,17 @@ from ..app_surfaces import (
     render_review_center_html,
 )
 from ..app_utils import write_json_document_if_changed_ignoring_generated_timestamps
+from ..memory.execution_surfaces import (
+    render_concept_quality,
+    render_concept_rewrite_index,
+    render_concept_rewrite_proposal_page,
+    render_execution_center_html,
+    render_execution_proposal_page,
+)
+from ..memory.status import (
+    render_drift_report,
+    render_graph_health,
+)
 from .context import CompileContext
 
 logger = logging.getLogger(__name__)

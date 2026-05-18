@@ -72,6 +72,12 @@ _VALID_REPORT_BODY = (
 )
 
 
+def _load_jsonl_records(path: Path) -> list[dict[str, object]]:
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
 class _DummyClient:
     def __init__(self) -> None:
         self.config = type("Config", (), {"model": "dummy-model"})()
@@ -392,6 +398,209 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(receipt["backend_effective"], "codex-cli")
         self.assertEqual(receipt["model_final"], "gpt-5.5")
 
+    def test_run_ask_success_preserves_deterministic_source_files_and_writes_execution_receipts(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        judgment_path = self.root / "wiki" / "judgments" / "j1.md"
+        judgment_path.parent.mkdir(parents=True, exist_ok=True)
+        judgment_path.write_text("---\nid: j1\nkind: judgment\n---\n\n# Judgment\n", encoding="utf-8")
+
+        artifact_path = self.root / "output" / "reports" / "query-receipt-proof.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text(
+            "---\n"
+            "id: query-receipt-proof\n"
+            "kind: output\n"
+            "format: report\n"
+            "source_files:\n"
+            '  - "wiki/judgments/j1.md"\n'
+            "---\n\n"
+            "# Placeholder\n",
+            encoding="utf-8",
+        )
+        artifact = {
+            "path": "output/reports/query-receipt-proof.md",
+            "format": "report",
+            "protocol": "general",
+            "ranked_sources": [entry["id"]],
+            "ranked_concepts": [],
+            "protocol_pages": [],
+            "index_pages": [],
+            "machine_memory_query": {},
+        }
+        llm_report = (
+            "---\n"
+            "id: query-receipt-proof\n"
+            "kind: output\n"
+            "format: report\n"
+            "---\n\n"
+            "# Stub answer\n\n"
+            "## 结论\nStubbed conclusion.\n\n"
+            "## 关键证据\n"
+            f"- See wiki/sources/{entry['id']}.md\n"
+            "- Secondary evidence point.\n"
+            "- Tertiary evidence point.\n\n"
+            "## 反证与不确定性\n- None observed in stub.\n\n"
+            "## 行动建议\n- Stub follow-up.\n\n"
+            "## 下次观察信号\n- Stub revisit signal.\n\n"
+            "## 引用\n"
+            f"- wiki/sources/{entry['id']}.md\n"
+        )
+
+        class _SuccessClient:
+            def __init__(self) -> None:
+                self.config = type(
+                    "Config",
+                    (),
+                    {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 45},
+                )()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt, user_prompt
+                return CompletionResult(text=llm_report, response_id="resp_receipt_proof", usage={"total_tokens": 9})
+
+        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
+            result = run_ask(self.root, "Compare transformer scaling tradeoffs", "report", client=_SuccessClient())
+
+        final_frontmatter = parse_frontmatter(artifact_path.read_text(encoding="utf-8"))
+        self.assertEqual(final_frontmatter["source_files"], ["wiki/judgments/j1.md"])
+        self.assertEqual(result["path"], "output/reports/query-receipt-proof.md")
+
+        receipt_history = _load_jsonl_records(self.root / ".aiwiki" / "state" / "execution-receipts.jsonl")
+        matching_history = [
+            record
+            for record in receipt_history
+            if record.get("operation") == "run-ask"
+            and record.get("status") == "success"
+            and record.get("target_file") == result["path"]
+            and record.get("primary_path") == result["path"]
+        ]
+        self.assertTrue(matching_history, receipt_history)
+
+        receipt_files = []
+        receipt_dir = self.root / "output" / "control" / "execution-receipts"
+        if receipt_dir.exists():
+            receipt_files = [
+                (path, json.loads(path.read_text(encoding="utf-8")))
+                for path in receipt_dir.rglob("*.json")
+            ]
+        matching_receipts = [
+            (path, payload)
+            for path, payload in receipt_files
+            if payload.get("operation") == "run-ask"
+            and payload.get("status") == "success"
+            and payload.get("target_file") == result["path"]
+            and payload.get("primary_path") == result["path"]
+        ]
+        self.assertTrue(matching_receipts, receipt_files)
+        receipt_path, receipt_payload = matching_receipts[-1]
+        self.assertEqual(receipt_payload["receipt_path"], relative_path(self.root, receipt_path))
+
+    def test_run_ask_drops_llm_injected_provenance(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        artifact_path = self.root / "output" / "reports" / "query-forged-proof.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text(
+            "---\n"
+            "id: query-forged-proof\n"
+            "kind: output\n"
+            "format: report\n"
+            "source_files:\n"
+            f'  - "wiki/sources/{entry["id"]}.md"\n'
+            "---\n\n"
+            "# Placeholder\n",
+            encoding="utf-8",
+        )
+        artifact = {
+            "path": "output/reports/query-forged-proof.md",
+            "format": "report",
+            "protocol": "general",
+            "ranked_sources": [entry["id"]],
+            "ranked_concepts": [],
+            "protocol_pages": [],
+            "index_pages": [],
+            "machine_memory_query": {},
+        }
+        llm_report = (
+            "---\n"
+            "id: query-forged-proof\n"
+            "kind: output\n"
+            "format: report\n"
+            "source_files:\n"
+            '  - "wiki/judgments/forged.md"\n'
+            "derived_from:\n"
+            '  - "wiki/elixirs/forged.md"\n'
+            "---\n\n"
+            "# Stub answer\n\n"
+            "## 结论\nStubbed conclusion.\n\n"
+            "## 关键证据\n"
+            f"- See wiki/sources/{entry['id']}.md\n"
+            "- Secondary evidence point.\n"
+            "- Tertiary evidence point.\n\n"
+            "## 反证与不确定性\n- None observed in stub.\n\n"
+            "## 行动建议\n- Stub follow-up.\n\n"
+            "## 下次观察信号\n- Stub revisit signal.\n\n"
+            "## 引用\n"
+            f"- wiki/sources/{entry['id']}.md\n"
+        )
+
+        class _ForgeryClient:
+            def __init__(self) -> None:
+                self.config = type(
+                    "Config",
+                    (),
+                    {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 45},
+                )()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt, user_prompt
+                return CompletionResult(text=llm_report, response_id="resp_forged", usage={"total_tokens": 9})
+
+        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
+            run_ask(self.root, "Compare transformer scaling tradeoffs", "report", client=_ForgeryClient())
+
+        final_frontmatter = parse_frontmatter(artifact_path.read_text(encoding="utf-8"))
+        self.assertEqual(final_frontmatter["source_files"], [f"wiki/sources/{entry['id']}.md"])
+        self.assertNotIn("derived_from", final_frontmatter)
+
+    def test_run_ask_execution_receipt_failure_rolls_back_artifact(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        artifact_path = self.root / "output" / "reports" / "query-receipt-fails.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        original = "---\nid: query-receipt-fails\nkind: output\nformat: report\n---\n\n# Original\n"
+        artifact_path.write_text(original, encoding="utf-8")
+        artifact = {
+            "path": "output/reports/query-receipt-fails.md",
+            "format": "report",
+            "protocol": "general",
+            "ranked_sources": [entry["id"]],
+            "ranked_concepts": [],
+            "protocol_pages": [],
+            "index_pages": [],
+            "machine_memory_query": {},
+        }
+
+        class _SuccessClient:
+            def __init__(self) -> None:
+                self.config = type(
+                    "Config",
+                    (),
+                    {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 45},
+                )()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt, user_prompt
+                return CompletionResult(text=_VALID_REPORT_BODY, response_id="resp_receipt_fail", usage={"total_tokens": 9})
+
+        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
+            with patch("aiwiki.runner.workflows.write_execution_receipt", side_effect=RuntimeError("receipt failed")):
+                with self.assertRaises(RuntimeError):
+                    run_ask(self.root, "Compare transformer scaling tradeoffs", "report", client=_SuccessClient())
+
+        self.assertEqual(artifact_path.read_text(encoding="utf-8"), original)
+
     def test_run_ask_submit_and_resume_reuse_existing_background_manifest_artifact(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -437,6 +646,15 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(submitted_frontmatter["background_status"], "submitted")
         self.assertEqual(submitted_frontmatter["delivery_mode"], "background-pending")
         self.assertEqual(submitted_frontmatter["llm_status"], "pending")
+        submitted_receipts = _load_jsonl_records(self.root / ".aiwiki" / "state" / "execution-receipts.jsonl")
+        submitted_success_receipts = [
+            record
+            for record in submitted_receipts
+            if record.get("operation") == "run-ask"
+            and record.get("status") == "success"
+            and record.get("target_file") == submitted["path"]
+        ]
+        self.assertEqual(submitted_success_receipts, [])
 
         class _ResumeClient:
             def __init__(self) -> None:
@@ -472,6 +690,23 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(updated_manifest["run_id"], submitted["run_id"])
         self.assertEqual(updated_manifest["run_notes_path"], submitted["run_notes_path"])
         self.assertEqual(updated_manifest["result"]["path"], submitted["path"])
+        resumed_receipts = _load_jsonl_records(self.root / ".aiwiki" / "state" / "execution-receipts.jsonl")
+        resumed_success_receipts = [
+            record
+            for record in resumed_receipts
+            if record.get("operation") == "run-ask"
+            and record.get("status") == "success"
+            and record.get("target_file") == submitted["path"]
+            and record.get("primary_path") == submitted["path"]
+        ]
+        self.assertTrue(resumed_success_receipts, resumed_receipts)
+        receipt_path = self.root / str(resumed_success_receipts[-1]["receipt_path"])
+        receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+        self.assertEqual(receipt_payload["operation"], "run-ask")
+        self.assertEqual(receipt_payload["status"], "success")
+        self.assertEqual(receipt_payload["target_file"], submitted["path"])
+        self.assertEqual(receipt_payload["primary_path"], submitted["path"])
+        self.assertEqual(receipt_payload["receipt_path"], relative_path(self.root, receipt_path))
 
     def test_run_ask_timeout_override_is_scoped_to_single_client_creation(self) -> None:
         artifact_path = self.root / "output" / "reports" / "query-timeout-override.md"

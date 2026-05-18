@@ -77,7 +77,7 @@ from aiwiki.app_state import (
     save_material_state,
     shell_summary_path,
 )
-from aiwiki.app_utils import parse_frontmatter, render_frontmatter, runtime_write_lock, strip_frontmatter
+from aiwiki.app_utils import parse_frontmatter, relative_path, render_frontmatter, runtime_write_lock, strip_frontmatter
 from aiwiki.cli import main as cli_main
 from aiwiki.compile import compile_wiki as compile_wiki_owner
 from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, LLMConfig
@@ -99,6 +99,12 @@ _VALID_REPORT_BODY = (
     "## 下次观察信号\n- Stub revisit signal.\n\n"
     "## 引用\n- wiki/sources/source-1.md\n"
 )
+
+
+def _load_jsonl_records(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 class MiscFlowTests(AppFlowTestBase):
@@ -145,6 +151,54 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertTrue((self.root / rerun["path"]).exists())
         self.assertTrue((self.root / filed["path"]).exists())
         self.assertTrue((self.root / ".aiwiki" / "state" / "runtime.lock").exists())
+
+    def test_file_back_success_writes_execution_receipt_with_output_and_wiki_paths(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+
+        filed = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+
+        self.assertTrue((self.root / filed["path"]).exists())
+        receipt_history = _load_jsonl_records(self.root / ".aiwiki" / "state" / "execution-receipts.jsonl")
+        matching_history = [
+            record
+            for record in receipt_history
+            if record.get("operation") == "file-back"
+            and record.get("status") == "success"
+            and record.get("target_file") == report["path"]
+            and record.get("primary_path") == report["path"]
+            and record.get("secondary_path") == filed["path"]
+        ]
+        self.assertTrue(matching_history, receipt_history)
+
+        receipt_path = self.root / str(matching_history[-1]["receipt_path"])
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        self.assertEqual(receipt["operation"], "file-back")
+        self.assertEqual(receipt["status"], "success")
+        self.assertEqual(receipt["target_file"], report["path"])
+        self.assertEqual(receipt["primary_path"], report["path"])
+        self.assertEqual(receipt["secondary_path"], filed["path"])
+        self.assertEqual(receipt["receipt_path"], relative_path(self.root, receipt_path))
+
+    def test_file_back_execution_receipt_failure_rolls_back_mutation(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        before_candidates = (self.root / ".aiwiki" / "state" / "output-candidates.json").read_bytes()
+        log_path = self.root / "wiki" / "indexes" / "log.md"
+        before_log = log_path.read_bytes() if log_path.exists() else None
+
+        with patch("aiwiki.execution.ask.write_execution_receipt", side_effect=RuntimeError("receipt failed")):
+            with self.assertRaises(RuntimeError):
+                file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+
+        self.assertFalse((self.root / "wiki" / "decisions" / "scaling-decision.md").exists())
+        self.assertEqual((self.root / ".aiwiki" / "state" / "output-candidates.json").read_bytes(), before_candidates)
+        if before_log is None:
+            self.assertFalse(log_path.exists())
+        else:
+            self.assertEqual(log_path.read_bytes(), before_log)
 
     def test_ingest_source_does_not_overwrite_existing_raw(self) -> None:
         existing = self.root / "raw" / "inbox" / "source-foo.md"

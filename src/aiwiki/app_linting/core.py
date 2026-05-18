@@ -155,7 +155,6 @@ from ..app_memory import (
     summarize_machine_memory_transition,
     upsert_active_corpus,
 )
-from ..app_memory_surfaces import build_execution_audit_snapshot, collect_execution_consistency_signals
 from ..app_protocol import (
     ACTION_STATUSES,
     AGENT_PACK_LIBRARY,
@@ -300,6 +299,7 @@ from ..app_utils import (
     write_json_document_if_changed_ignoring_generated_timestamps,
 )
 from ..config import LLMConfig
+from ..memory.execution_surfaces import build_execution_audit_snapshot, collect_execution_consistency_signals
 
 
 @dataclass

@@ -158,7 +158,7 @@ from .app_memory import (
     summarize_machine_memory_transition,
     upsert_active_corpus,
 )
-from .app_memory_surfaces import (
+from .app_memory_query import (
     build_machine_memory_query_routes,
     ranked_machine_memory_anchor_nodes,
     shortest_machine_memory_path,

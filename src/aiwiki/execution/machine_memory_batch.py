@@ -40,7 +40,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_content import action_supports_low_risk_apply
 from ..app_execution import (
     build_execution_batch_receipt,
     write_execution_batch_receipt_document,
@@ -56,6 +55,7 @@ from ..app_state import (
     runtime_history_path,
 )
 from ..app_utils import relative_path, runtime_write_operation, slugify
+from ..content.memory import action_supports_low_risk_apply
 from .alchemy import _restore_file_bytes, _snapshot_file_bytes
 from .audit_preview import AUDIT_STREAM_PATH
 

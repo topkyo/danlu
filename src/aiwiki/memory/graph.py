@@ -20,7 +20,6 @@ from ..app_cache import (
     record_query_cache_event,
     save_cached_query_result,
 )
-from ..app_content import action_priority_rank, action_supports_low_risk_apply
 from ..app_memory import (
     machine_memory_query_time_focus,
     machine_memory_source_runtime_record,
@@ -35,6 +34,7 @@ from ..app_memory_query import (
 from ..app_protocol import PENDING_ACTION_STATUSES, action_focus_score
 from ..app_state import DEFAULT_PROTOCOL, machine_memory_history_path
 from ..app_utils import atomic_append_jsonl, html_safe_json_literal, tokenize
+from ..content.memory import action_priority_rank, action_supports_low_risk_apply
 from ..render.html_theme import html_meta_theme, html_theme_css
 
 # Single source of truth for relationship graph language.

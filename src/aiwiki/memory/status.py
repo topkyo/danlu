@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..app_content import display_action_status
+from ..app_lifecycle import display_action_status
 from ..app_protocol import ACTION_STATUSES
 from ..app_state import DEFAULT_PROTOCOL
 
@@ -613,5 +613,4 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
         ]
     )
     return "\n".join(lines) + "\n"
-
 

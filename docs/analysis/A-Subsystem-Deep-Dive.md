@@ -7,13 +7,13 @@
 炼丹炉的核心循环模型是 `Signal → Planner → Phase → Feedback → Learning`。本文档解剖循环上 4 个最关键的子系统：
 
 1. **`signals/`**（感知层）— 1427 行
-2. **`planner/`**（决策层）— ~580 行
-3. **`runner/` + `execution/`**（执行层）— ~14,800 行（占核心 ~60%）
+2. **`planner/`**（决策层）— 1912 行
+3. **`runner/` + `execution/`**（执行层）— 17,045 行
 4. **`memory/`**（学习/记忆层）— ~3771 行
 
 外加 1 个编排入口：**`agent_loop.py`**（351 行）。
 
-合计约 20,929 行，占 `src/aiwiki/` 核心 86%。
+合计约 24,506 行，占全部 `src/aiwiki/**/*.py` runtime（约 65,518 行）的 37%。如果只看核心 agent loop 子系统，这部分仍是主要实现重心；但不能再把它写成整个 runtime 的 86%。
 
 ## 1. `agent_loop.py` — 编排入口（351 行）
 
@@ -55,15 +55,16 @@ external event (drop/drift/counter/tick)
 - **1427 行偏大**：但 schema.py 544 行包含大量 TypedDict 和 validator，是规模合理代价。
 - **`adapters.py` 518 行可能含未实际启用的源**：如果某些 adapter 没有真实 receipt 数据，是 D 文档应该补充扫描的死代码候选。
 
-## 3. `planner/` — 决策层（~580 行，最薄）
+## 3. `planner/` — 决策层（1912 行）
 
 ### 文件结构
 | 文件 | LoC | 角色 |
 |---|---|---|
-| `dry_run.py` | (未单独读取) | preview_alchemy_lane / preview_distill / preview_judge / preview_propose / preview_review |
-| `log_writer.py` | (未单独读取) | 写 `planner-log.jsonl` |
+| `dry_run.py` | 1164 | preview_alchemy_lane / preview_distill / preview_judge / preview_propose / preview_review |
+| `log_writer.py` | 367 | 写 `planner-log.jsonl` |
 | `rollback.py` | 165 | preview_planner_log_rollback |
 | `schema.py` | 195 | Planner decision schema |
+| `__init__.py` | 21 | 公开 API re-export |
 
 ### 公开 API（来自 `planner/__init__.py`）
 ```python
@@ -77,14 +78,14 @@ write_planner_log            # 落盘 decision
 ```
 
 ### 评估
-- **planner 极薄**（~580 行）符合"observe-only + execute-mode partial"的诚实定位。
+- **planner 仍相对薄**（1912 行），但不是此前估算的 ~580 行；主要体量在 `dry_run.py`。
 - **没有 ML 模型 / 复杂启发式**：当前 planner 主要是规则 dispatch + dry-run preview。
 - **关键不变量**：planner **只写 log + 出 preview，不直接 mutate runtime state**。Mutation 全部下放到 runner/execution，确保 receipt gate 不被绕过。
 - **未来扩张风险**：如果有人想往 planner 里加"自动决策模型"，必须先证明 receipt-backed compounding sample 存在（即 AOS-004 翻 pass），否则就是盲目扩权。这正是 Slimdown Plan 冻结的内容。
 
-## 4. `runner/` + `execution/` — 执行层（~14,800 行，最大）
+## 4. `runner/` + `execution/` — 执行层（17,045 行，最大）
 
-### `runner/` 文件结构（~7137 行）
+### `runner/` 文件结构（8239 行）
 | 文件 | LoC | 角色 |
 |---|---|---|
 | `alchemy.py` | **2589** | 重炼丹主链路（heavy lane）|
@@ -99,7 +100,7 @@ write_planner_log            # 落盘 decision
 | `background.py` | 96 | 后台 job 提交 |
 | `interfaces.py` | 12 | SupportsComplete 等 protocol |
 
-### `execution/` 文件结构（~7693 行）
+### `execution/` 文件结构（8806 行）
 | 文件 | LoC | 角色 |
 |---|---|---|
 | `alchemy.py` | **1624** | 轻炼丹链路（light lane）|
@@ -113,7 +114,7 @@ write_planner_log            # 落盘 decision
 | `audit_preview.py` | 359 | 审计预览 |
 | `machine_memory_batch.py` | 362 | 批处理 |
 | `review.py` | 202 | Review 动作 |
-| 其他 | ~600 | run_notes / runtime_surfaces / audit_reconciliation / candidates |
+| 其他 | 682 | run_notes / runtime_surfaces / audit_reconciliation / candidates / `__init__` |
 
 ### 关键观察
 
@@ -138,7 +139,7 @@ write_planner_log            # 落盘 decision
 - 这是 Agent OS 中"meta-cognition"层，但严格 receipt-gated。
 
 ### 评估
-- **执行层占核心 60% 是合理的**：runtime 本身就是执行密集型。
+- **执行层是所选核心 loop 中最大部分是合理的**：runtime 本身就是执行密集型；但按全量 `src/aiwiki/**/*.py` 口径不能再写成 60%。
 - **alchemy 两份是设计选择**：heavy/light 调度模型有效分离了响应延迟需求。
 - **`auto_adopt.py` 883 行 + receipt 全闭环**：这是 Agent OS 而不是普通脚本的根本证据。
 - **风险点**：`runner/alchemy.py` 2589 行 + `execution/alchemy.py` 1624 行如果继续增长，会成为下一个削薄候选；但当前 AOS-001 已经冻结其扩张。
@@ -165,7 +166,7 @@ write_planner_log            # 落盘 decision
 | 子系统 | LoC | 健康度 | 削薄空间 |
 |---|---|---|---|
 | `agent_loop.py` | 351 | ✅ 优秀 | 无 |
-| `planner/` | ~580 | ✅ 优秀 | 无（薄是设计选择）|
+| `planner/` | 1912 | ✅ 良好 | 可关注 `dry_run.py` 增长，但非当前优先级 |
 | `signals/` | 1427 | ✅ 良好 | 仅扫死代码 adapter |
 | `memory/graph.py` | 1609 | ✅ 良好 | 无 |
 | `memory/execution_surfaces.py` | 1326 | ⚠️ 嫌疑 | 检查是否有 render 巨函数 |
@@ -178,7 +179,7 @@ write_planner_log            # 落盘 decision
 | `execution/l3_proposals.py` | 1059 | ✅ 良好 | 无 |
 
 ### 结论
-**子系统层几乎没有可削之处。** 6.5 万行的真正"肥"集中在顶层 `app_*.py` facade/hub（D 文档已识别），子系统包内部结构健康。
+**子系统层不是当前最高 ROI 的删除区。** 6.5 万行 runtime 的显性 review 复杂度仍集中在顶层 `app_*.py` facade/hub 与少数渲染巨函数（D 文档已修订），子系统包内部多数是领域逻辑而非纯 facade。
 
 这反过来证明：**项目在子包重构（EP-017A/B/C 等历史 milestone）上是成功的**。顶层 `app_*.py` 的存在是为了向后兼容，是欠债，而不是设计缺陷。
 
@@ -208,7 +209,7 @@ sequenceDiagram
 
 ## 8. 单句结论
 
-> **炼丹炉的子包内部结构健康，6.5 万行核心代码中真正的"肥肉"集中在顶层 `app_*.py` facade/hub 层；子系统层（`signals / planner / runner / execution / memory`）总计约 2 万行已经是合理实现，进一步削薄会破坏 Agent OS 的核心不变量（receipt-gated mutation + audit-first state）。**
+> **炼丹炉的子包内部结构整体健康，但本文档此前的 LoC 口径高估了其占比；下一轮削薄仍应优先处理顶层 `app_*.py` 兼容 facade 与渲染巨函数，而不是盲拆 `signals / planner / runner / execution / memory` 的领域逻辑。**
 
 ## 9. 给后续 milestone 的提示
 
@@ -216,4 +217,4 @@ sequenceDiagram
 - **不要拆 `alchemy.py`（heavy/light 两份）**：heavy/light 分层是设计选择。
 - **可以检查 `memory/execution_surfaces.py` (1326 行)**：是否存在 render 巨函数，类似 `app_surfaces.py` 模式。
 - **可以扫 `signals/adapters.py` (518 行)**：识别未启用的死 adapter。
-- **planner 极薄是优点，不是问题**：未来不要给 planner 加智能模型，除非 AOS-004 翻 pass。
+- **planner 保持规则/dry-run 定位是优点**：未来不要给 planner 加智能模型，除非 AOS-004 翻 pass。

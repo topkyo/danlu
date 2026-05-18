@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ..app_content import sync_manifest_with_raw
 from ..app_protocol import ensure_layout, load_protocol_state
 from ..app_state import load_compile_state, load_json_document, load_manifest, machine_memory_state_path
 from ..app_utils import (
@@ -15,6 +14,7 @@ from ..app_utils import (
     write_if_changed_ignoring_timestamps,
     write_json_document_if_changed_ignoring_generated_timestamps,
 )
+from ..content.io import sync_manifest_with_raw
 
 
 @dataclass

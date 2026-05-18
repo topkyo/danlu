@@ -7,7 +7,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-from aiwiki.app_content import concept_summary_is_placeholder, preserved_section
 from aiwiki.app_protocol import CONCEPT_HARDNESS_LEVELS, load_protocol_state
 from aiwiki.app_utils import (
     TEXT_EXTENSIONS,
@@ -17,6 +16,8 @@ from aiwiki.app_utils import (
     render_scalar,
 )
 from aiwiki.config import LLMConfig
+from aiwiki.content.io import preserved_section
+from aiwiki.content.memory import concept_summary_is_placeholder
 from aiwiki.runner.interfaces import SupportsComplete
 
 ASK_INDEX_PAGES_BASE = (

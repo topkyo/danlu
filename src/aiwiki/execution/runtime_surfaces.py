@@ -19,13 +19,13 @@ from pathlib import Path
 from typing import Any
 
 from ..app_compile_ops import promote_recurring_outputs
-from ..app_content import action_supports_low_risk_apply
 from ..app_linting import lint_wiki, write_nightly_health
 from ..app_protocol import ensure_layout
 from ..app_shell import build_shell_summary, write_shell_summary
 from ..app_state import load_machine_memory_action_state, nightly_health_state_path
 from ..app_utils import relative_path, runtime_write_lock, runtime_write_operation
 from ..compile import compile_wiki
+from ..content.memory import action_supports_low_risk_apply
 
 
 def _append_run_event(root: Path, event: dict[str, Any]) -> None:

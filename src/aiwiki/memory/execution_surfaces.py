@@ -14,17 +14,11 @@ import html
 from pathlib import Path
 from typing import Any
 
-from ..app_content import (
-    action_priority_rank,
-    action_supports_low_risk_apply,
+from ..app_lifecycle import (
     display_action_status,
     display_rewrite_proposal_status,
-    execution_band_label,
-    execution_policy_profile,
-    rewrite_proposal_is_apply_ready,
     rewrite_proposal_needs_review,
     rewrite_proposal_status_rank,
-    safe_apply_preview,
 )
 from ..app_memory_query import concept_page_snapshot, recent_execution_dry_runs
 from ..app_protocol import (
@@ -50,7 +44,16 @@ from ..app_utils import (
     sha256_bytes,
     slugify,
 )
-from ..content.memory import load_execution_policy_decision_history_strict, load_execution_receipt_history_strict
+from ..content.memory import (
+    action_priority_rank,
+    action_supports_low_risk_apply,
+    execution_band_label,
+    execution_policy_profile,
+    load_execution_policy_decision_history_strict,
+    load_execution_receipt_history_strict,
+    rewrite_proposal_is_apply_ready,
+    safe_apply_preview,
+)
 from ..render.html_theme import html_meta_theme, html_theme_css
 
 

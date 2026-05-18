@@ -154,7 +154,6 @@ from ..app_memory import (
     summarize_machine_memory_transition,
     upsert_active_corpus,
 )
-from ..app_memory_surfaces import build_execution_audit_snapshot, collect_execution_consistency_signals
 from ..app_protocol import (
     ACTION_STATUSES,
     AGENT_PACK_LIBRARY,
@@ -302,6 +301,7 @@ from ..app_utils import (
 )
 from ..config import LLMConfig
 from ..content.memory import load_execution_receipt_history_strict
+from ..memory.execution_surfaces import build_execution_audit_snapshot, collect_execution_consistency_signals
 from .core import _LintContext
 
 _REVIEW_LIFECYCLE_OVERRIDE_STATES = {"active", "deferred", "review"}

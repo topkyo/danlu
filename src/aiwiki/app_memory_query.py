@@ -11,7 +11,6 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
-from .app_content import preserved_section
 from .app_protocol import protocol_query_route_config
 from .app_state import (
     DEFAULT_PROTOCOL,
@@ -23,6 +22,7 @@ from .app_state import (
     save_query_route_telemetry,
 )
 from .app_utils import parse_frontmatter, question_signature, sha256_bytes, tokenize, utc_now
+from .content.io import preserved_section
 
 
 def fallback_query_route_config() -> dict[str, Any]:

@@ -12,35 +12,19 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .app_content import (
-    action_supports_low_risk_apply,
+from .app_lifecycle import (
     collect_aging_signals,
-    compact_section_lines,
     display_action_status,
     display_curated_status,
     display_judgment_lifecycle_state,
     display_knowledge_lifecycle_state,
     display_rewrite_proposal_status,
-    furnace_quick_commands,
-    judgment_asset_summary,
     knowledge_lifecycle_governance_summary,
-    protocol_execution_receipts,
-    protocol_output_pack_rows,
-    protocol_scorecard,
-    render_curated_page_summary,
     render_knowledge_lifecycle_entry_summary,
-    review_history_entries,
     review_queue,
     select_knowledge_lifecycle_entries,
     sort_curated_pages,
     sort_knowledge_lifecycle_entries,
-)
-from .app_memory import (
-    render_execution_audit,
-    render_execution_audit_html,
-    render_execution_center,
-    render_execution_center_html,
-    render_machine_memory_graph_html,
 )
 from .app_protocol import PROTOCOL_LIBRARY, page_focus_score, protocol_title
 from .app_state import (
@@ -51,7 +35,24 @@ from .app_state import (
     load_runtime_history,
 )
 from .app_utils import parse_frontmatter
+from .content.io import review_history_entries
+from .content.memory import action_supports_low_risk_apply
+from .memory.execution_surfaces import (
+    render_execution_audit,
+    render_execution_audit_html,
+    render_execution_center,
+    render_execution_center_html,
+)
+from .memory.graph import render_machine_memory_graph_html
 from .render.html_theme import html_meta_theme, html_theme_css
+from .render.packs import compact_section_lines, protocol_output_pack_rows
+from .render.pilots import protocol_scorecard
+from .render.views import (
+    furnace_quick_commands,
+    judgment_asset_summary,
+    protocol_execution_receipts,
+    render_curated_page_summary,
+)
 
 
 def _frontmatter_relation_values(frontmatter: dict[str, Any], key: str) -> list[str]:
@@ -136,6 +137,71 @@ def _collect_curated_relation_rows(root: Path, pages: list[dict[str, str]]) -> l
                     }
                 )
     return rows
+
+
+def _compile_state_string_list(compile_state: dict[str, Any], key: str) -> list[str]:
+    return [str(item) for item in compile_state.get(key, []) if str(item)]
+
+
+def _compile_phase_lines(
+    phase_summary: list[dict[str, Any]],
+    detail_labels: dict[str, str],
+) -> list[str]:
+    if not phase_summary:
+        return ["- 当前还没有 compile phase summary。"]
+    lines: list[str] = []
+    for phase in phase_summary:
+        details = phase.get("details", {})
+        detail_chunks = []
+        if isinstance(details, dict):
+            for key, value in details.items():
+                if key not in detail_labels:
+                    continue
+                detail_chunks.append(f"{detail_labels[key]}={value}")
+        label = str(phase.get("label") or phase.get("name") or "")
+        mode = str(phase.get("mode") or "full")
+        status = str(phase.get("status") or "completed")
+        detail_suffix = f" | {', '.join(detail_chunks)}" if detail_chunks else ""
+        lines.append(f"- `{phase['name']}` `{label}` [{mode}/{status}]{detail_suffix}")
+    return lines
+
+
+def _source_link_lines(
+    source_ids: list[str],
+    entry_by_id: dict[str, dict[str, Any]],
+    *,
+    empty_message: str,
+    overflow_label: str,
+) -> list[str]:
+    if not source_ids:
+        return [empty_message]
+    lines = []
+    for entry_id in source_ids[:8]:
+        entry = entry_by_id.get(entry_id, {})
+        title = str(entry.get("title") or entry_id)
+        lines.append(f"- [{title}](../sources/{entry_id}.md)")
+    if len(source_ids) > 8:
+        lines.append(f"- 其余 {overflow_label}：`{len(source_ids) - 8}`")
+    return lines
+
+
+def _concept_link_lines(
+    concept_slugs: list[str],
+    concept_by_slug: dict[str, dict[str, Any]],
+    *,
+    empty_message: str,
+    overflow_label: str,
+) -> list[str]:
+    if not concept_slugs:
+        return [empty_message]
+    lines = []
+    for slug in concept_slugs[:8]:
+        record = concept_by_slug.get(slug, {})
+        title = str(record.get("title") or slug)
+        lines.append(f"- [{title}](../concepts/{slug}.md)")
+    if len(concept_slugs) > 8:
+        lines.append(f"- 其余 {overflow_label}：`{len(concept_slugs) - 8}`")
+    return lines
 
 
 def render_judgment_assets(
@@ -1437,117 +1503,29 @@ def render_compile_status(
         for phase in compile_state.get("phase_summary", [])
         if isinstance(phase, dict) and str(phase.get("name") or "")
     ]
-    dirty_source_ids = [
-        str(entry_id)
-        for entry_id in compile_state.get("dirty_source_ids", [])
-        if str(entry_id)
-    ]
-    clean_source_ids = [
-        str(entry_id)
-        for entry_id in compile_state.get("clean_source_ids", [])
-        if str(entry_id)
-    ]
-    dirty_concept_source_ids = [
-        str(entry_id)
-        for entry_id in compile_state.get("dirty_concept_source_ids", [])
-        if str(entry_id)
-    ]
-    clean_concept_source_ids = [
-        str(entry_id)
-        for entry_id in compile_state.get("clean_concept_source_ids", [])
-        if str(entry_id)
-    ]
-    dirty_concept_slugs = [
-        str(slug)
-        for slug in compile_state.get("dirty_concept_slugs", [])
-        if str(slug)
-    ]
-    clean_concept_slugs = [
-        str(slug)
-        for slug in compile_state.get("clean_concept_slugs", [])
-        if str(slug)
-    ]
-    dirty_machine_memory_source_ids = [
-        str(entry_id)
-        for entry_id in compile_state.get("dirty_machine_memory_source_ids", [])
-        if str(entry_id)
-    ]
-    clean_machine_memory_source_ids = [
-        str(entry_id)
-        for entry_id in compile_state.get("clean_machine_memory_source_ids", [])
-        if str(entry_id)
-    ]
-    dirty_machine_memory_concept_slugs = [
-        str(slug)
-        for slug in compile_state.get("dirty_machine_memory_concept_slugs", [])
-        if str(slug)
-    ]
-    clean_machine_memory_concept_slugs = [
-        str(slug)
-        for slug in compile_state.get("clean_machine_memory_concept_slugs", [])
-        if str(slug)
-    ]
+    dirty_source_ids = _compile_state_string_list(compile_state, "dirty_source_ids")
+    clean_source_ids = _compile_state_string_list(compile_state, "clean_source_ids")
+    dirty_concept_source_ids = _compile_state_string_list(compile_state, "dirty_concept_source_ids")
+    clean_concept_source_ids = _compile_state_string_list(compile_state, "clean_concept_source_ids")
+    dirty_concept_slugs = _compile_state_string_list(compile_state, "dirty_concept_slugs")
+    clean_concept_slugs = _compile_state_string_list(compile_state, "clean_concept_slugs")
+    dirty_machine_memory_source_ids = _compile_state_string_list(compile_state, "dirty_machine_memory_source_ids")
+    clean_machine_memory_source_ids = _compile_state_string_list(compile_state, "clean_machine_memory_source_ids")
+    dirty_machine_memory_concept_slugs = _compile_state_string_list(compile_state, "dirty_machine_memory_concept_slugs")
+    clean_machine_memory_concept_slugs = _compile_state_string_list(compile_state, "clean_machine_memory_concept_slugs")
     machine_memory_core_reused = bool(compile_state.get("machine_memory_core_reused", False))
-    dirty_ranking_source_ids = [
-        str(entry_id)
-        for entry_id in compile_state.get("dirty_ranking_source_ids", [])
-        if str(entry_id)
-    ]
-    clean_ranking_source_ids = [
-        str(entry_id)
-        for entry_id in compile_state.get("clean_ranking_source_ids", [])
-        if str(entry_id)
-    ]
-    dirty_ranking_concept_slugs = [
-        str(slug)
-        for slug in compile_state.get("dirty_ranking_concept_slugs", [])
-        if str(slug)
-    ]
-    clean_ranking_concept_slugs = [
-        str(slug)
-        for slug in compile_state.get("clean_ranking_concept_slugs", [])
-        if str(slug)
-    ]
-    dirty_output_pack_groups = [
-        str(group)
-        for group in compile_state.get("dirty_output_pack_groups", [])
-        if str(group)
-    ]
-    clean_output_pack_groups = [
-        str(group)
-        for group in compile_state.get("clean_output_pack_groups", [])
-        if str(group)
-    ]
-    dirty_domain_pilot_protocols = [
-        str(protocol)
-        for protocol in compile_state.get("dirty_domain_pilot_protocols", [])
-        if str(protocol)
-    ]
-    clean_domain_pilot_protocols = [
-        str(protocol)
-        for protocol in compile_state.get("clean_domain_pilot_protocols", [])
-        if str(protocol)
-    ]
-    dirty_index_artifacts = [
-        str(path)
-        for path in compile_state.get("dirty_index_artifacts", [])
-        if str(path)
-    ]
-    clean_index_artifacts = [
-        str(path)
-        for path in compile_state.get("clean_index_artifacts", [])
-        if str(path)
-    ]
-    dirty_maintenance_artifacts = [
-        str(path)
-        for path in compile_state.get("dirty_maintenance_artifacts", [])
-        if str(path)
-    ]
-    clean_maintenance_artifacts = [
-        str(path)
-        for path in compile_state.get("clean_maintenance_artifacts", [])
-        if str(path)
-    ]
+    dirty_ranking_source_ids = _compile_state_string_list(compile_state, "dirty_ranking_source_ids")
+    clean_ranking_source_ids = _compile_state_string_list(compile_state, "clean_ranking_source_ids")
+    dirty_ranking_concept_slugs = _compile_state_string_list(compile_state, "dirty_ranking_concept_slugs")
+    clean_ranking_concept_slugs = _compile_state_string_list(compile_state, "clean_ranking_concept_slugs")
+    dirty_output_pack_groups = _compile_state_string_list(compile_state, "dirty_output_pack_groups")
+    clean_output_pack_groups = _compile_state_string_list(compile_state, "clean_output_pack_groups")
+    dirty_domain_pilot_protocols = _compile_state_string_list(compile_state, "dirty_domain_pilot_protocols")
+    clean_domain_pilot_protocols = _compile_state_string_list(compile_state, "clean_domain_pilot_protocols")
+    dirty_index_artifacts = _compile_state_string_list(compile_state, "dirty_index_artifacts")
+    clean_index_artifacts = _compile_state_string_list(compile_state, "clean_index_artifacts")
+    dirty_maintenance_artifacts = _compile_state_string_list(compile_state, "dirty_maintenance_artifacts")
+    clean_maintenance_artifacts = _compile_state_string_list(compile_state, "clean_maintenance_artifacts")
     entry_by_id = {
         str(entry.get("id") or ""): entry
         for entry in entries
@@ -1680,114 +1658,88 @@ def render_compile_status(
         "- lint 结果输出在 `output/lint/`。",
     ]
     lines.extend(["", "## Compile Phases"])
-    if not phase_summary:
-        lines.append("- 当前还没有 compile phase summary。")
-    else:
-        for phase in phase_summary:
-            details = phase.get("details", {})
-            detail_chunks = []
-            if isinstance(details, dict):
-                for key, value in details.items():
-                    if key not in detail_labels:
-                        continue
-                    detail_chunks.append(f"{detail_labels[key]}={value}")
-            label = str(phase.get("label") or phase.get("name") or "")
-            mode = str(phase.get("mode") or "full")
-            status = str(phase.get("status") or "completed")
-            detail_suffix = f" | {', '.join(detail_chunks)}" if detail_chunks else ""
-            lines.append(f"- `{phase['name']}` `{label}` [{mode}/{status}]{detail_suffix}")
+    lines.extend(_compile_phase_lines(phase_summary, detail_labels))
     lines.extend(["", "## Dirty Sources"])
-    if not dirty_source_ids:
-        lines.append("- 当前没有 dirty source page。")
-    else:
-        for entry_id in dirty_source_ids[:8]:
-            entry = entry_by_id.get(entry_id, {})
-            title = str(entry.get("title") or entry_id)
-            lines.append(f"- [{title}](../sources/{entry_id}.md)")
-        if len(dirty_source_ids) > 8:
-            lines.append(f"- 其余 dirty source：`{len(dirty_source_ids) - 8}`")
+    lines.extend(
+        _source_link_lines(
+            dirty_source_ids,
+            entry_by_id,
+            empty_message="- 当前没有 dirty source page。",
+            overflow_label="dirty source",
+        )
+    )
     lines.extend(["", "## Dirty Concept Sources"])
-    if not dirty_concept_source_ids:
-        lines.append("- 当前没有 dirty concept source。")
-    else:
-        for entry_id in dirty_concept_source_ids[:8]:
-            entry = entry_by_id.get(entry_id, {})
-            title = str(entry.get("title") or entry_id)
-            lines.append(f"- [{title}](../sources/{entry_id}.md)")
-        if len(dirty_concept_source_ids) > 8:
-            lines.append(f"- 其余 dirty concept source：`{len(dirty_concept_source_ids) - 8}`")
+    lines.extend(
+        _source_link_lines(
+            dirty_concept_source_ids,
+            entry_by_id,
+            empty_message="- 当前没有 dirty concept source。",
+            overflow_label="dirty concept source",
+        )
+    )
     lines.extend(["", "## Dirty Machine Memory Sources"])
-    if not dirty_machine_memory_source_ids:
-        lines.append("- 当前没有 dirty machine-memory source input。")
-    else:
-        for entry_id in dirty_machine_memory_source_ids[:8]:
-            entry = entry_by_id.get(entry_id, {})
-            title = str(entry.get("title") or entry_id)
-            lines.append(f"- [{title}](../sources/{entry_id}.md)")
-        if len(dirty_machine_memory_source_ids) > 8:
-            lines.append(f"- 其余 dirty machine-memory source：`{len(dirty_machine_memory_source_ids) - 8}`")
+    lines.extend(
+        _source_link_lines(
+            dirty_machine_memory_source_ids,
+            entry_by_id,
+            empty_message="- 当前没有 dirty machine-memory source input。",
+            overflow_label="dirty machine-memory source",
+        )
+    )
     lines.extend(["", "## Dirty Concepts"])
-    if not dirty_concept_slugs:
-        lines.append("- 当前没有 dirty concept page。")
-    else:
-        for slug in dirty_concept_slugs[:8]:
-            record = concept_by_slug.get(slug, {})
-            title = str(record.get("title") or slug)
-            lines.append(f"- [{title}](../concepts/{slug}.md)")
-        if len(dirty_concept_slugs) > 8:
-            lines.append(f"- 其余 dirty concept：`{len(dirty_concept_slugs) - 8}`")
+    lines.extend(
+        _concept_link_lines(
+            dirty_concept_slugs,
+            concept_by_slug,
+            empty_message="- 当前没有 dirty concept page。",
+            overflow_label="dirty concept",
+        )
+    )
     lines.extend(["", "## Dirty Machine Memory Concepts"])
-    if not dirty_machine_memory_concept_slugs:
-        lines.append("- 当前没有 dirty machine-memory concept input。")
-    else:
-        for slug in dirty_machine_memory_concept_slugs[:8]:
-            record = concept_by_slug.get(slug, {})
-            title = str(record.get("title") or slug)
-            lines.append(f"- [{title}](../concepts/{slug}.md)")
-        if len(dirty_machine_memory_concept_slugs) > 8:
-            lines.append(
-                f"- 其余 dirty machine-memory concept：`{len(dirty_machine_memory_concept_slugs) - 8}`"
-            )
+    lines.extend(
+        _concept_link_lines(
+            dirty_machine_memory_concept_slugs,
+            concept_by_slug,
+            empty_message="- 当前没有 dirty machine-memory concept input。",
+            overflow_label="dirty machine-memory concept",
+        )
+    )
     lines.extend(["", "## Dirty Ranking Sources"])
-    if not dirty_ranking_source_ids:
-        lines.append("- 当前没有 dirty ranking source record。")
-    else:
-        for entry_id in dirty_ranking_source_ids[:8]:
-            entry = entry_by_id.get(entry_id, {})
-            title = str(entry.get("title") or entry_id)
-            lines.append(f"- [{title}](../sources/{entry_id}.md)")
-        if len(dirty_ranking_source_ids) > 8:
-            lines.append(f"- 其余 dirty ranking source：`{len(dirty_ranking_source_ids) - 8}`")
+    lines.extend(
+        _source_link_lines(
+            dirty_ranking_source_ids,
+            entry_by_id,
+            empty_message="- 当前没有 dirty ranking source record。",
+            overflow_label="dirty ranking source",
+        )
+    )
     lines.extend(["", "## Clean Ranking Sources"])
-    if not clean_ranking_source_ids:
-        lines.append("- 当前没有 clean ranking source record。")
-    else:
-        for entry_id in clean_ranking_source_ids[:8]:
-            entry = entry_by_id.get(entry_id, {})
-            title = str(entry.get("title") or entry_id)
-            lines.append(f"- [{title}](../sources/{entry_id}.md)")
-        if len(clean_ranking_source_ids) > 8:
-            lines.append(f"- 其余 clean ranking source：`{len(clean_ranking_source_ids) - 8}`")
+    lines.extend(
+        _source_link_lines(
+            clean_ranking_source_ids,
+            entry_by_id,
+            empty_message="- 当前没有 clean ranking source record。",
+            overflow_label="clean ranking source",
+        )
+    )
     lines.extend(["", "## Dirty Ranking Concepts"])
-    if not dirty_ranking_concept_slugs:
-        lines.append("- 当前没有 dirty ranking concept record。")
-    else:
-        for slug in dirty_ranking_concept_slugs[:8]:
-            record = concept_by_slug.get(slug, {})
-            title = str(record.get("title") or slug)
-            lines.append(f"- [{title}](../concepts/{slug}.md)")
-        if len(dirty_ranking_concept_slugs) > 8:
-            lines.append(f"- 其余 dirty ranking concept：`{len(dirty_ranking_concept_slugs) - 8}`")
+    lines.extend(
+        _concept_link_lines(
+            dirty_ranking_concept_slugs,
+            concept_by_slug,
+            empty_message="- 当前没有 dirty ranking concept record。",
+            overflow_label="dirty ranking concept",
+        )
+    )
     lines.extend(["", "## Clean Ranking Concepts"])
-    if not clean_ranking_concept_slugs:
-        lines.append("- 当前没有 clean ranking concept record。")
-    else:
-        for slug in clean_ranking_concept_slugs[:8]:
-            record = concept_by_slug.get(slug, {})
-            title = str(record.get("title") or slug)
-            lines.append(f"- [{title}](../concepts/{slug}.md)")
-        if len(clean_ranking_concept_slugs) > 8:
-            lines.append(f"- 其余 clean ranking concept：`{len(clean_ranking_concept_slugs) - 8}`")
+    lines.extend(
+        _concept_link_lines(
+            clean_ranking_concept_slugs,
+            concept_by_slug,
+            empty_message="- 当前没有 clean ranking concept record。",
+            overflow_label="clean ranking concept",
+        )
+    )
     lines.extend(["", "## Dirty Output Pack Groups"])
     if not dirty_output_pack_groups:
         lines.append("- 当前没有 dirty output pack group。")

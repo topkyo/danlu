@@ -36,16 +36,9 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ..app_content import (
-    _validate_rewrite_candidate_markdown,
-    preserved_section,
-    rewrite_proposal_candidate_is_current,
-    rewrite_proposal_is_apply_ready,
-)
 from ..app_execution import write_execution_dry_run_document
 from ..app_lifecycle import rewrite_proposal_needs_review
 from ..app_memory_query import concept_page_snapshot
-from ..app_memory_surfaces import concept_rewrite_proposal_digest
 from ..app_protocol import REWRITE_PROPOSAL_STATUSES, ensure_layout
 from ..app_render import append_wiki_log
 from ..app_state import (
@@ -57,6 +50,13 @@ from ..app_state import (
 )
 from ..app_utils import atomic_write_bytes, atomic_write_text, parse_frontmatter, relative_path, runtime_write_operation
 from ..compile.pipeline import compile_wiki
+from ..content.io import preserved_section
+from ..content.memory import (
+    _validate_rewrite_candidate_markdown,
+    rewrite_proposal_candidate_is_current,
+    rewrite_proposal_is_apply_ready,
+)
+from ..memory.execution_surfaces import concept_rewrite_proposal_digest
 
 logger = logging.getLogger(__name__)
 

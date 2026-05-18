@@ -27,6 +27,8 @@ from aiwiki.app_queries import human_query_title
 from aiwiki.app_shell import rewrite_recovery_payload_for_paths
 from aiwiki.app_state import load_machine_memory, load_manifest, nightly_health_state_path
 from aiwiki.app_utils import (
+    _restore_file_bytes,
+    _snapshot_file_bytes,
     atomic_write_text,
     next_available_stem,
     parse_frontmatter,
@@ -38,6 +40,7 @@ from aiwiki.app_utils import (
 )
 from aiwiki.execution.ask import _output_artifact_seed
 from aiwiki.execution.audit_reconciliation import reconcile_execution_receipts
+from aiwiki.execution.receipts import write_execution_receipt
 from aiwiki.execution.run_notes import run_id_for_artifact, write_run_notes, write_run_notes_frontmatter
 from aiwiki.llm import CompletionResult, LLMError, _write_raw_response, classify_backend_error
 from aiwiki.runner.background import (
@@ -89,6 +92,79 @@ from aiwiki.runner.receipts import (
 
 RUN_ASK_FRONTDOOR_EVENT = "run-ask-frontdoor"
 RUN_ASK_FALLBACK_ERROR_KINDS = {"quota", "timeout", "auth", "unavailable"}
+
+
+def _frontmatter_string_list(frontmatter: dict[str, Any], key: str) -> list[str]:
+    value = frontmatter.get(key)
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
+
+
+def _runtime_provenance_field_lines(fields: dict[str, list[str]]) -> list[str]:
+    if not fields:
+        return []
+    rendered = render_frontmatter(fields).splitlines()
+    return rendered[1:-1]
+
+
+def _drop_frontmatter_keys(header_lines: list[str], keys: set[str]) -> list[str]:
+    filtered: list[str] = []
+    skip_list_items = False
+    for line in header_lines:
+        if skip_list_items and line.startswith("  - "):
+            continue
+        skip_list_items = False
+        if ":" not in line:
+            filtered.append(line)
+            continue
+        key, _raw = line.split(":", 1)
+        if key.strip() in keys:
+            skip_list_items = True
+            continue
+        filtered.append(line)
+    return filtered
+
+
+def _restore_run_ask_provenance_frontmatter(target: Path, deterministic_artifact: str) -> None:
+    """Restore runtime-owned provenance fields after LLM overwrites an artifact.
+
+    The LLM is allowed to rewrite the markdown body/frontmatter, but provenance used by
+    audit gates is owned by the runtime. Restore these fields strictly from the
+    deterministic artifact; LLM-provided provenance is dropped instead of trusted.
+    """
+
+    deterministic_frontmatter = parse_frontmatter(deterministic_artifact)
+    current = target.read_text(encoding="utf-8", errors="replace")
+    restored: dict[str, list[str]] = {}
+    for key in ("derived_from", "source_files"):
+        merged: list[str] = []
+        for item in _frontmatter_string_list(deterministic_frontmatter, key):
+            if item not in merged:
+                merged.append(item)
+        if merged:
+            restored[key] = merged
+
+    lines = current.splitlines()
+    has_frontmatter = bool(lines) and lines[0].strip() == "---"
+    close_idx: int | None = None
+    if has_frontmatter:
+        for idx in range(1, len(lines)):
+            if lines[idx].strip() == "---":
+                close_idx = idx
+                break
+    keys = {"derived_from", "source_files"}
+    restored_lines = _runtime_provenance_field_lines(restored)
+    if not has_frontmatter or close_idx is None:
+        if not restored_lines:
+            return
+        updated_lines = ["---", *restored_lines, "---", *lines]
+    else:
+        header = _drop_frontmatter_keys(lines[1:close_idx], keys)
+        updated_lines = [lines[0], *header, *restored_lines, lines[close_idx], *lines[close_idx + 1 :]]
+    target.write_text("\n".join(updated_lines).rstrip() + "\n", encoding="utf-8")
 
 
 def _run_ask_prepared_context(root: Path, question: str, artifact: dict[str, Any]) -> dict[str, Any]:
@@ -371,10 +447,8 @@ def _complete_run_ask_artifact(
         raise
 
     assert result is not None
+    target_snapshot = _snapshot_file_bytes(target)
     target.write_text(updated, encoding="utf-8")
-    _reinject_candidate_frontmatter(target, corpus_id=str(artifact.get("active_corpus_id") or ""))
-    _mark_run_ask_background_artifact_complete(target, status="completed", job_id=background_job_id)
-    _apply_graph_anchors_to_target()
     backend_effective = _client_backend_name(effective_client)
     model_final = _client_model_name(effective_client)
     fallback_stage = _fallback_stage_label(fallback_stages)
@@ -387,24 +461,53 @@ def _complete_run_ask_artifact(
         "fallback_reason": fallback_reason,
         "contract_validated": True,
     }
-    _stamped_record(
-        {
-            "event": "run-ask",
-            "target": artifact["path"],
-            "question": question,
-            "format": output_format,
-            "protocol": artifact.get("protocol", ""),
-            "duration_ms": int((time.monotonic() - started) * 1000),
-            "prompt_profile": retry_profile or used_prompt_profile,
-            "retry_prompt_profile": retry_profile,
-            "no_cache": no_cache,
-        },
-        llm_audit,
-        status="success",
-        response_id=result.response_id,
-        usage=result.usage,
-        raw_response_path=_raw_response_path(root, result),
-    )
+    try:
+        _restore_run_ask_provenance_frontmatter(target, current_artifact)
+        _reinject_candidate_frontmatter(target, corpus_id=str(artifact.get("active_corpus_id") or ""))
+        _apply_graph_anchors_to_target()
+        _stamped_record(
+            {
+                "event": "run-ask",
+                "target": artifact["path"],
+                "question": question,
+                "format": output_format,
+                "protocol": artifact.get("protocol", ""),
+                "duration_ms": int((time.monotonic() - started) * 1000),
+                "prompt_profile": retry_profile or used_prompt_profile,
+                "retry_prompt_profile": retry_profile,
+                "no_cache": no_cache,
+            },
+            llm_audit,
+            status="success",
+            response_id=result.response_id,
+            usage=result.usage,
+            raw_response_path=_raw_response_path(root, result),
+        )
+        _mark_run_ask_background_artifact_complete(target, status="completed", job_id=background_job_id)
+        execution_receipt = write_execution_receipt(
+            root,
+            operation="run-ask",
+            generated_by="aiwiki-run-ask",
+            subject_kind="output-artifact",
+            subject_id=str(artifact.get("run_id") or Path(str(artifact.get("path") or "")).stem),
+            target_file=str(artifact["path"]),
+            primary_path=str(artifact["path"]),
+            protocol=str(artifact.get("protocol") or ""),
+            extra={
+                "format": output_format,
+                "question": question,
+                "run_id": str(artifact.get("run_id") or ""),
+                "llm_receipt_path": ".aiwiki/logs/llm-receipts.jsonl",
+                "backend_effective": backend_effective,
+                "model_final": model_final,
+                "fallback_stage": fallback_stage,
+                "response_id": result.response_id,
+                "usage": result.usage,
+            },
+        )
+    except Exception:
+        _restore_file_bytes(target, target_snapshot)
+        raise
     run_notes = write_run_notes(
         root,
         run_id=str(artifact.get("run_id") or ""),
@@ -415,7 +518,7 @@ def _complete_run_ask_artifact(
         output_path=str(artifact.get("path") or ""),
         source_count=len(source_ids),
         concept_count=len(artifact.get("ranked_concepts", [])),
-        receipt_path=".aiwiki/logs/llm-receipts.jsonl",
+        receipt_path=str(execution_receipt.get("receipt_path") or ""),
         backend=backend_effective,
         model=model_final,
         fallback_stage=fallback_stage,
@@ -423,7 +526,7 @@ def _complete_run_ask_artifact(
             "Prepared deterministic context for the request.",
             "Requested an LLM draft using the selected backend and prompt profile.",
             "Validated the returned markdown contract and updated the output artifact.",
-            "Recorded LLM receipt metadata for audit and recovery.",
+            "Recorded authoritative execution receipt and LLM attempt metadata for audit and recovery.",
         ],
     )
     write_run_notes_frontmatter(target, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])

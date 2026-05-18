@@ -30,14 +30,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_content import sync_manifest_with_raw
 from ..app_lifecycle import (
     curated_page_template,
     default_curated_status,
     refresh_knowledge_lifecycle_state,
 )
 from ..app_memory_query import record_query_route_telemetry
-from ..app_memory_surfaces import build_machine_memory_query
 from ..app_protocol import (
     ensure_layout,
     load_protocol_state,
@@ -74,9 +72,12 @@ from ..app_state import (
     load_material_state,
     load_output_candidates_state,
     load_runtime_history,
+    output_candidates_state_path,
     upsert_output_candidate,
 )
 from ..app_utils import (
+    _restore_file_bytes,
+    _snapshot_file_bytes,
     build_citation_snapshots,
     extract_provenance_paths,
     next_available_stem,
@@ -90,8 +91,11 @@ from ..app_utils import (
     upsert_markdown_section,
 )
 from ..compile import compile_wiki
+from ..content.io import sync_manifest_with_raw
+from ..memory.graph import build_machine_memory_query
 from ..notify import notify_report_generated
 from .protocol_learnings import load_learnings_for_protocol
+from .receipts import write_execution_receipt
 from .run_notes import run_id_for_artifact, write_run_notes, write_run_notes_frontmatter
 
 NEXT_STEP_HINTS = {
@@ -778,38 +782,62 @@ def file_back(
         supporting_body=stripped,
     )
     payload = "\n".join([frontmatter, "", *body_lines]).rstrip() + "\n"
+    destination_snapshot = _snapshot_file_bytes(destination)
+    output_candidates_snapshot = _snapshot_file_bytes(output_candidates_state_path(root))
+    wiki_log_snapshot = _snapshot_file_bytes(root / "wiki" / "indexes" / "log.md")
     destination.write_text(payload, encoding="utf-8")
-    candidate_state = load_output_candidates_state(root)
-    for candidate in candidate_state.get("candidates", []):
-        if candidate.get("artifact_ref") == artifact_ref:
-            upsert_output_candidate(
-                root,
-                artifact_ref=artifact_ref,
-                candidate_state="promoted",
-                created_at=str(candidate.get("created_at") or filed_at),
-                updated_at=filed_at,
-                format=str(candidate.get("format") or ""),
-                protocol=str(candidate.get("protocol") or resolved_protocol),
-                corpus_id=str(candidate.get("corpus_id") or ""),
-                question=str(candidate.get("question") or ""),
-                promoted_to=relative_path(root, destination),
-                promoted_at=filed_at,
-                promotion_origin=str(candidate.get("promotion_origin") or "manual"),
-            )
-            break
-    append_wiki_log(
-        root,
-        "file-back",
-        title or artifact_path.stem,
-        [
-            f"kind: `{kind}`",
-            f"protocol: `{resolved_protocol}`",
-            f"from: `{artifact_ref}`",
-            f"destination: `{relative_path(root, destination)}`",
-        ],
-    )
-    compile_wiki(root)
-    destination_ref = relative_path(root, destination)
+    try:
+        candidate_state = load_output_candidates_state(root)
+        for candidate in candidate_state.get("candidates", []):
+            if candidate.get("artifact_ref") == artifact_ref:
+                upsert_output_candidate(
+                    root,
+                    artifact_ref=artifact_ref,
+                    candidate_state="promoted",
+                    created_at=str(candidate.get("created_at") or filed_at),
+                    updated_at=filed_at,
+                    format=str(candidate.get("format") or ""),
+                    protocol=str(candidate.get("protocol") or resolved_protocol),
+                    corpus_id=str(candidate.get("corpus_id") or ""),
+                    question=str(candidate.get("question") or ""),
+                    promoted_to=relative_path(root, destination),
+                    promoted_at=filed_at,
+                    promotion_origin=str(candidate.get("promotion_origin") or "manual"),
+                )
+                break
+        append_wiki_log(
+            root,
+            "file-back",
+            title or artifact_path.stem,
+            [
+                f"kind: `{kind}`",
+                f"protocol: `{resolved_protocol}`",
+                f"from: `{artifact_ref}`",
+                f"destination: `{relative_path(root, destination)}`",
+            ],
+        )
+        compile_wiki(root)
+        destination_ref = relative_path(root, destination)
+        write_execution_receipt(
+            root,
+            operation="file-back",
+            generated_by="aiwiki-file-back",
+            subject_kind="output-artifact",
+            subject_id=str(original_frontmatter.get("id") or original_frontmatter.get("_id") or artifact_path.stem),
+            target_file=artifact_ref,
+            primary_path=artifact_ref,
+            secondary_path=destination_ref,
+            protocol=resolved_protocol,
+            extra={
+                "filed_kind": kind,
+                "title": title or artifact_path.stem,
+            },
+        )
+    except Exception:
+        _restore_file_bytes(root / "wiki" / "indexes" / "log.md", wiki_log_snapshot)
+        _restore_file_bytes(output_candidates_state_path(root), output_candidates_snapshot)
+        _restore_file_bytes(destination, destination_snapshot)
+        raise
     next_step_hint = NEXT_STEP_HINTS[kind]
     if kind in {"decision", "judgment"}:
         next_step_hint = next_step_hint.format(path=destination_ref)

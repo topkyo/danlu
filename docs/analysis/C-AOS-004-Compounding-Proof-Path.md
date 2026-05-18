@@ -5,19 +5,19 @@
 
 ## 1. 问题陈述
 
-AOS-004 已完成工程实施。`scripts/dogfood_maturity_gate.py` 在真实 dogfood vault（`/home/tim/danlu/炼丹炉`）跑出的 verdict 是 `not-yet`，**唯一缺口**为：
+AOS-004 的 maturity gate 已有实现并可运行，但 active contract 尚未收口。`scripts/dogfood_maturity_gate.py` 在真实 dogfood vault（`/home/tim/danlu/炼丹炉`）跑出的 verdict 是 `not-yet`，**唯一缺口**为：
 
 ```
 missing: trace_provenance_backed_compounding_sample
 ```
 
-也就是说：六项硬指标（backlog_total、l3_proposal_counts_by_state、judgment_review_receipt_counts、prompts_ask_sha256、raw_to_wiki_count、output_file_back_rate）都已经有真实数据，**唯独缺一个能通过 receipt/trace 精确回链的 end-to-end 复用样本**。
+也就是说：AOS-004 关注的 knowledge compounding metrics（`raw_to_wiki_count`、`judgment_or_elixir_reuse_count`、`output_file_back_rate`、`receipt_backed_actions`、`human_required_exception_count`）都已经有真实数据，**唯独缺一个能通过 output provenance + receipt 精确匹配的 end-to-end 复用样本**。
 
 这是炼丹炉作为 Agent OS 当前最关键的产品价值证明缺口。
 
-## 2. `compounding_sample` 在 gate 中的判定逻辑
+## 2. `compounding_sample` 在当前 gate 中的判定逻辑
 
-从 `scripts/dogfood_maturity_gate.py` 提取的判定约束：
+从 `scripts/dogfood_maturity_gate.py` 当前实现提取的判定约束：
 
 ```python
 COMPOUNDING_REUSE_REF_PREFIXES = (
@@ -29,49 +29,55 @@ COMPOUNDING_SAMPLE_OPERATIONS = {"ask", "file-back", "run-ask"}
 FAILED_RECEIPT_STATUSES = {"blocked", "error", "failed", "reverted"}
 ```
 
-要产出一个合法 sample，必须同时满足：
+要产出一个合法 sample，当前必须同时满足：
 
-1. **存在一次 `ask` / `run-ask` / `file-back` 操作的 receipt**（即 `execution-receipts.jsonl` 中有 op ∈ COMPOUNDING_SAMPLE_OPERATIONS）。
-2. **receipt 的 status 不在 FAILED 集合**。
-3. **该 receipt 的 trace/provenance 字段引用了至少一条 `wiki/judgments/` 或 `wiki/decisions/` 或 `wiki/elixirs/` 资产**——即派生知识被复用，而不只是 raw source 被引用。
-4. **该派生资产本身可以回链到更早的 receipt**（即知识资产不是孤儿，而是被前一轮 mutation 生成的）。
+1. **存在一个 output markdown artifact**（不含 `output/control`），其 frontmatter 的 `derived_from` 或 `source_files` 至少引用一条 `wiki/judgments/`、`wiki/decisions/` 或 `wiki/elixirs/` 资产。
+2. **存在匹配该 artifact path 的 receipt**。当前 gate 从 `output/control/execution-receipts/**/*.json` 和 `.aiwiki/state/execution-receipts.jsonl` 聚合 receipt，并用 receipt 的 `target_file` / `target_subject_id` / `primary_path` 与 artifact path 匹配。
+3. **匹配 receipt 的 operation 属于 `ask` / `run-ask` / `file-back`**。
+4. **匹配 receipt 的 status 不在 FAILED 集合**。空 status 也会被视为非 failed。
 
-只有 (1)+(2)+(3)+(4) 同时成立，才算"trace-backed compounding sample"。
+只有 (1)+(2)+(3)+(4) 同时成立，才算当前实现中的"trace/provenance-backed compounding sample"。
+
+重要修正：当前 gate **并不读取** receipt 内的 `trace.provenance.wiki_refs` 或 `trace.parent_receipt_id`。这些字段是更强、更理想的审计 schema，可作为后续硬化方向，但不是 AOS-004 现行 pass 的硬要求。当前测试 `test_collect_metrics_reports_pass_for_receipt_backed_compounding_sample` 也证明：只要 output frontmatter + receipt path 匹配成立，即使没有 trace 字段也能 pass。
 
 ## 3. 当前为什么跑不出 sample
 
 基于已读 `Furnace Investing Dogfood Plan.md` 和 `Furnace Next Direction Post-P4.md`，可推断的断点（按可能性排序）：
 
-### 断点 A：派生资产的 trace 链路未落盘到 receipt
-当前 `ask` / `run-ask` 命令在生成 output report 时，receipt 中可能只记录了 `raw_refs`（原始来源），但 **未显式列出该次问答实际复用了哪些 `wiki/judgments/*.md` / `wiki/decisions/*.md` / `wiki/elixirs/*.md`**。
+### 断点 A：output artifact frontmatter 没有记录派生层复用
+当前 dogfood vault 已经存在判断/金丹复用的静态迹象，但可能没有任何 `output/**/*.md` 的 `derived_from` / `source_files` 写入 `wiki/judgments/*`、`wiki/decisions/*` 或 `wiki/elixirs/*`。
 
-判据：gate 脚本扫的是 receipt 中的 trace.provenance 引用前缀；如果 receipt 只写 `raw/...` 而不写 `wiki/judgments/...`，gate 永远拿不到 sample。
+判据：gate 首先扫 output frontmatter。若 output 只记录 `raw/...` 或 `wiki/sources/...`，即使 prompt 实际读过 judgment/elixir，也不会形成 sample。
 
-### 断点 B：`file-back` 写回时没有继承上一轮 provenance
-`file-back` 是把 output 反馈回 `wiki/decisions/` 或 `wiki/elixirs/` 的关键动作。如果 file-back receipt 只记录"这一次写入了哪个文件"，但不记录"这次写入基于哪一次 ask 的 output、那次 ask 又复用了哪些前置 wiki 资产"，那么链路就在 file-back 这一步断开。
+### 断点 B：output artifact 有派生层引用，但 receipt target 没对上 artifact path
+当前 gate 用 receipt 的 `target_file` / `target_subject_id` / `primary_path` 与 output path 做精确匹配。如果 receipt 记录的是 run id、临时 path、control artifact path，或缺少 target 字段，就无法把 output 与 receipt 接上。
 
-### 断点 C：派生资产存在但不是"被复用"，而是"首次创建"
+### 断点 C：派生资产存在但不是 receipt-backed 复用
 当前 dogfood vault 已有：
 - `raw_to_wiki_count = 25`（25 个原始 → wiki）
 - `judgment_or_elixir_reuse_count = 22`（22 个判断/金丹被引用）
 - `output_file_back_rate = 0.2909`
 
-但"被引用 22 次"是基于文本扫描的静态计数，**不等于"在 receipt 里被声明为这次操作的 input dependency"**。Gate 要求的是动态、可追溯的复用证据。
+但"被引用 22 次"是基于文本/metadata 扫描的静态计数，**不等于"某个 output artifact 同时具备派生层引用和匹配成功 receipt"**。Gate 要求的是 output provenance 与 receipt 的交集。
 
-### 断点 D：所有合格 sample 都恰好命中 FAILED_RECEIPT_STATUSES
+### 断点 D：所有匹配 sample 都恰好命中 FAILED_RECEIPT_STATUSES
 可能性较低，但需要排除——LLM 调用超时/退化的 receipt 会被打 `error` 标签从而被 gate 跳过。
 
 ## 4. 翻盘路径：从 `not-yet` 到 `pass` 的最小动作集
 
 按 ROI 排序：
 
-### 路径 1（推荐）：补 receipt 的 `trace.provenance.wiki_refs` 字段
-**改动面**：`src/aiwiki/trace.py`、`src/aiwiki/app_execution.py`、`src/aiwiki/runner/`（具体取决于 ask/run-ask/file-back 的 receipt 写入点）。
+### 路径 1（推荐）：让 ask/run-ask output frontmatter 保留派生层引用
+**改动面**：`src/aiwiki/execution/ask.py`、`src/aiwiki/runner/workflows.py`、prompt/source selection 相关路径（具体取决于 output artifact 的 frontmatter 写入点）。
 **核心动作**：
-- 在 `ask` / `run-ask` 执行链路里，把"渲染 prompt 时实际注入了哪些 wiki/judgments/* / wiki/decisions/* / wiki/elixirs/*"显式收集为列表，写入 receipt 的 `trace.provenance.wiki_refs`。
-- `file-back` 写入新 decision/elixir 时，把"本次基于哪个 ask receipt id"作为 `trace.parent_receipt_id` 记录。
-**约束**：receipt schema 是审计层，必须做向后兼容（新字段为 optional，旧 receipt 不报错）。
-**预期收益**：第一次跑出 1-2 个合法 sample，gate verdict 翻 `pass`。
+- 在 `ask` / `run-ask` 的 context/provenance 收集链路里，识别实际注入或选择的 `wiki/judgments/*`、`wiki/decisions/*`、`wiki/elixirs/*`。
+- 写 output artifact frontmatter 的 `derived_from` 或 `source_files` 时保留这些派生层 refs，而不是只保留 raw/source refs。
+- 确认对应 receipt 的 `target_file` / `primary_path` 指向同一个 output artifact。
+**约束**：frontmatter schema 必须向后兼容；不能为了 pass 手写历史 artifact 或伪造复用。
+**预期收益**：真实 dogfood 只要跑出 1 个复用派生层资产的 output，gate verdict 即可翻 `pass`。
+
+### 路径 1b（后续硬化）：补 receipt 的 `trace.provenance.wiki_refs` / `parent_receipt_id`
+这是更强的审计 schema，但不是当前 AOS-004 pass 的最短路径。它的价值是把 sample 从"output frontmatter + receipt target 匹配"升级为"receipt 自身声明 input dependency + parent receipt 链"。如果实施，必须作为向后兼容 optional 字段，并同步更新 gate/tests 后再把它升为硬要求。
 
 ### 路径 2：在 dogfood vault 里手工跑一次完整复利链路
 即使路径 1 落地了，也需要至少一次"自然发生"的 end-to-end 复用：
@@ -79,7 +85,7 @@ FAILED_RECEIPT_STATUSES = {"blocked", "error", "failed", "reverted"}
 - (b) ask 一个问题，让 LLM 在回答时显式调用 `wiki/judgments/` 或 `wiki/elixirs/` 中已有的判断/金丹。
 - (c) file-back 把 output 反馈成新的 decision/elixir，引用 (b) 的 receipt。
 - (d) 跑 `scripts/dogfood_maturity_gate.py` 验证 sample 出现。
-**关键**：(b) 步骤的 LLM 路由必须有明确的"先检索 wiki 派生层、再回答"机制；如果当前 ask prompt 只塞 raw，根本不会复用 wiki/judgments。
+**关键**：(b) 步骤的 runtime provenance 必须把派生层 ref 写回 output frontmatter；只在正文里提到 judgment/elixir 不足以通过当前 gate。
 
 ### 路径 3：审视 `prompts/ask.md` 是否引导模型复用 wiki 派生层
 检查 dogfood vault 的 `prompts/ask.md`（其 sha256 是 gate 的固定输入）：
@@ -92,14 +98,14 @@ FAILED_RECEIPT_STATUSES = {"blocked", "error", "failed", "reverted"}
 - ❌ **降低 gate 阈值**：把 `compounding_sample == null` 判为 pass。这等于伪造，违反 AOS-004 设立初衷。
 - ❌ **造假 receipt**：手写一条 trace.provenance.wiki_refs 而没有真实操作背书。`PROGRESS.md` 明确要求"不通过隐藏、删除或伪造 backlog 来制造复杂度下降"。
 - ❌ **改用静态扫描充当 sample**：用 `judgment_or_elixir_reuse_count` 替代 trace-backed sample。Gate 已经分了静态 count 和动态 sample 两层，混用就丧失证明意义。
-- ❌ **绕过 receipt 写 mock sample**：所有 sample 必须从真实 `execution-receipts.jsonl` 推出。
+- ❌ **绕过 receipt 写 mock sample**：所有 sample 必须从真实 `output/control/execution-receipts/**/*.json` 或 `.aiwiki/state/execution-receipts.jsonl` 推出。
 
 ## 6. 时间盒与决策点
 
 | 阶段 | 估算 | 决策点 |
 |---|---|---|
-| 路径 3 prompt 审视 | 0.5 day | 如果 prompt 已正确，跳到路径 1 |
-| 路径 1 schema 扩展 | 1-2 day | receipt 向后兼容是硬约束 |
+| 路径 3 prompt/context 审视 | 0.5 day | 确认 ask 是否会选择派生层资产 |
+| 路径 1 output provenance 修复 | 1-2 day | frontmatter 向后兼容是硬约束 |
 | 路径 2 自然 dogfood 跑通 | 2-5 day | 需要真实问答场景，不可加速 |
 | Gate 验证 | 0.5 day | 翻 pass 后写 `AOS-004 Compounding Proof Receipt.md` |
 
@@ -115,4 +121,4 @@ FAILED_RECEIPT_STATUSES = {"blocked", "error", "failed", "reverted"}
 
 ## 8. 单句结论
 
-> **AOS-004 的 `not-yet` 不是工程失败，而是诚实信号；翻盘的关键是把 receipt 从"记录我做了什么"升级为"记录我用了什么前置知识做了什么"。**
+> **AOS-004 的 `not-yet` 不是工程失败，而是诚实信号；当前最短翻盘路径是让真实 output artifact 的 `derived_from/source_files` 保留派生层知识引用，并确保它能精确匹配成功 receipt。receipt 内部 trace 链路是后续硬化方向，不是当前 gate 的现行硬要求。**
