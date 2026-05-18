@@ -65,7 +65,7 @@ class AskCommandModal extends Modal {
       const option = formatSelect.createEl("option", { text: item, value: item });
       option.value = item;
     });
-    formatSelect.value = this.plugin.settings.defaultAskFormat;
+    formatSelect.value = "note";
 
     const protocolSetting = new Setting(contentEl).setName(t("协议"));
     const protocolSelect = protocolSetting.controlEl.createEl("select");

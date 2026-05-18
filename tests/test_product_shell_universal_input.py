@@ -28,7 +28,8 @@ class ProductShellUniversalInputContractTests(unittest.TestCase):
         self.assertIn("product-shell-drop", text)
         self.assertIn("const source = await resolvePluginFileSource(plugin, file);", text)
         self.assertNotIn('await plugin.runUniversalInputCommand({ payload: file.path || file.name || "", title: value });', text)
-        self.assertIn('await plugin.runUniversalInputCommand({ payload: value });', text)
+        self.assertIn('await plugin.runAskCommand({', text)
+        self.assertIn('kind: "auto-ask"', text)
         self.assertNotIn("classifyUniversalInput", text)
 
     def test_drop_plus_question_auto_runs_single_run_ask_with_material_paths(self) -> None:
@@ -39,14 +40,27 @@ class ProductShellUniversalInputContractTests(unittest.TestCase):
         self.assertIn("function splitTextMaterialQuestion", text)
         self.assertIn("collectMaterialPathsFromPayload(payload)", text)
         self.assertIn("buildAutoAskQuestion(normalizedQuestion, normalizedMaterialPaths)", text)
-        self.assertIn("本次投喂材料路径：", text)
-        self.assertIn("用户问题：", text)
+        self.assertIn("inferAutoAskFormat(normalizedQuestion, normalizedMaterialPaths)", text)
+        self.assertIn("材料路径供系统路由使用：", text)
         self.assertIn('await this.runAskCommand({', text)
         self.assertIn('mode: "run-ask"', text)
-        self.assertIn('format: "report"', text)
+        self.assertIn('format: askFormat', text)
+        self.assertIn('const canUseDirect = format === "note" && !directQuestion.includes("材料路径供系统路由使用：")', text)
+        self.assertIn('--direct', text)
+        self.assertIn('--lean', text)
+        self.assertNotIn('args.push("--timeout", "45")', text)
         self.assertIn('--fallback-to-ask', text)
+        self.assertIn('longRunning', text)
+        self.assertIn('Long report task', text)
         self.assertIn('autoAsk: Boolean(normalizedQuestion)', text)
         self.assertIn('question: normalizedQuestion', text)
+
+    def test_direct_questions_infer_note_instead_of_persisted_report(self) -> None:
+        text = (PLUGIN_ROOT / "main.js").read_text(encoding="utf-8")
+
+        self.assertIn("inferAutoAskFormat(normalizedQuestion, [])", text)
+        self.assertNotIn('const askFormat = String(plugin.settings && plugin.settings.defaultAskFormat || "note").trim() || "note";', text)
+        self.assertIn('formatSelect.value = "note"', text)
 
     def test_retry_logic_preserves_auto_ask_metadata(self) -> None:
         text = (PLUGIN_ROOT / "main.js").read_text(encoding="utf-8")

@@ -144,9 +144,30 @@ function buildAutoAskQuestion(question, materialPaths) {
     return "";
   }
   const paths = normalizeMaterialPaths(materialPaths);
-  const pathBlock = paths.length
-    ? `- ${paths.join("\n- ")}`
-    : "- (drop payload 未返回可用路径)";
+  const sourceHint = paths.length
+    ? `\n\n请优先使用本次投喂材料回答；材料路径供系统路由使用：${paths.join("、")}`
+    : "";
+  return `${normalizedQuestion}${sourceHint}`;
+}
+
+function inferAutoAskFormat(question, materialPaths) {
+  const text = String(question || "").trim().toLowerCase();
+  const paths = normalizeMaterialPaths(materialPaths);
+  if (!text) {
+    return "note";
+  }
+  const explicitReportIntent = /报告|研报|深度报告|研究报告|决策备忘录|投资备忘录|完整分析|系统分析|多源对比|对比报告|证据链|引用来源|citation|citations|report|memo/.test(text);
+  const multiSourceReportIntent = paths.length > 1 && /对比|比较|综合|归纳|证据|引用|出处|研究|投资|决策/.test(text);
+  return explicitReportIntent || multiSourceReportIntent ? "report" : "note";
+}
+
+function buildAutoAskQuestionLegacy(question, materialPaths) {
+  const normalizedQuestion = String(question || "").trim();
+  if (!normalizedQuestion) {
+    return "";
+  }
+  const paths = normalizeMaterialPaths(materialPaths);
+  const pathBlock = paths.length ? `- ${paths.join("\n- ")}` : "- (drop payload 未返回可用路径)";
   return [
     "请基于以下本次投喂材料回答用户问题。",
     "",

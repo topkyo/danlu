@@ -11,7 +11,13 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from aiwiki.app_queries import render_report
+from aiwiki.app_queries import (
+    render_decision_memo_query,
+    render_figure_brief,
+    render_report,
+    render_slides,
+    render_sop_query,
+)
 from aiwiki.runner.prompts import (
     _REPORT_REQUIRED_SECTIONS,
     _REPORT_SECTION_BULLET_MINIMUMS,
@@ -163,6 +169,77 @@ format: report
             # Skeleton MUST contain at least one `_LLM:` hint line (otherwise
             # there is no placeholder for LLM to fill).
             self.assertIn("_LLM:", output)
+
+    def test_render_report_uses_human_auto_ask_title(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output = render_report(
+                root,
+                question=(
+                    "请基于以下本次投喂材料回答用户问题。\n\n"
+                    "本次投喂材料路径：\n"
+                    "- raw/inbox/a.md\n"
+                    "- raw/assets/a.pdf\n\n"
+                    "用户问题：\n"
+                    "分析下内容"
+                ),
+                entries=[{"id": "source-1", "title": "Sample Source"}],
+                concepts=[],
+                machine_query={},
+                protocol_state={"active_protocol": "general"},
+                created_at="2026-05-11T00:00:00Z",
+                artifact_id="test-id",
+            )
+        self.assertIn("# 分析下内容", output)
+        self.assertNotIn("# 请基于以下本次投喂材料", output)
+
+    def test_render_report_strips_inline_material_hint_from_title(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output = render_report(
+                root,
+                question=(
+                    "分析一下\n\n"
+                    "请优先使用本次投喂材料回答；材料路径供系统路由使用："
+                    "raw/inbox/a.md、raw/assets/a.pdf"
+                ),
+                entries=[{"id": "source-1", "title": "Sample Source"}],
+                concepts=[],
+                machine_query={},
+                protocol_state={"active_protocol": "general"},
+                created_at="2026-05-11T00:00:00Z",
+                artifact_id="test-id",
+            )
+        self.assertIn("# 分析一下", output)
+        headings = [line for line in output.splitlines() if line.startswith("# ")]
+        self.assertEqual(headings[:1], ["# 分析一下"])
+
+    def test_all_ask_formats_strip_inline_material_hint_from_visible_titles(self) -> None:
+        question = (
+            "分析一下\n\n"
+            "请优先使用本次投喂材料回答；材料路径供系统路由使用："
+            "raw/inbox/a.md、raw/assets/a.pdf"
+        )
+        root = Path(".")
+        entries = [{"id": "source-1", "title": "Sample Source"}]
+        concepts: list[dict] = []
+        machine_query: dict = {}
+        protocol_state = {"active_protocol": "general"}
+        created_at = "2026-05-11T00:00:00Z"
+        artifact_id = "test-id"
+        outputs = [
+            render_slides(root, question, entries, concepts, machine_query, protocol_state, created_at, artifact_id),
+            render_figure_brief(root, question, entries, concepts, machine_query, protocol_state, created_at, artifact_id),
+            render_decision_memo_query(root, question, entries, concepts, machine_query, protocol_state, created_at, artifact_id),
+            render_sop_query(root, question, entries, concepts, machine_query, protocol_state, created_at, artifact_id),
+        ]
+        for output in outputs:
+            headings = [line for line in output.splitlines() if line.startswith("# ")]
+            self.assertTrue(headings, output)
+            self.assertIn("分析一下", headings[0])
+            self.assertNotIn("请优先使用本次投喂材料回答", headings[0])
+            self.assertNotIn("材料路径供系统路由使用", headings[0])
+        self.assertIn('title: "\\u5206\\u6790\\u4e00\\u4e0b"', outputs[0])
 
     def test_required_sections_constant_is_tuple_of_six(self) -> None:
         self.assertEqual(len(_REPORT_REQUIRED_SECTIONS), 6)

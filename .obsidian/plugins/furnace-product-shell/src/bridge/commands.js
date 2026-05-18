@@ -44,14 +44,26 @@ async function runProtocolSetCommand(plugin, protocol) {
 
 
 async function runAskCommand(plugin, { question, format, mode, protocol }) {
-    const args = [mode, question, "--format", format];
+    const longRunning = mode === "run-ask" && format === "report";
+    const command = longRunning ? "run-ask-submit" : mode;
+    const args = [command, question, "--format", format];
     if (protocol) {
       args.push("--protocol", protocol);
     }
     if (mode === "run-ask") {
+      const directQuestion = String(question || "").trim();
+      const canUseDirect = format === "note" && !directQuestion.includes("材料路径供系统路由使用：") && !directQuestion.includes("本次投喂材料路径：");
+      if (canUseDirect) {
+        args.push("--direct");
+      }
+      args.push("--lean");
       args.push("--fallback-to-ask");
     }
-    return await plugin.runPluginCommand(`${plugin.t("Ask")}: ${truncateText(question, 48)}`, args, { refreshAfter: true });
+    return await plugin.runPluginCommand(`${longRunning ? plugin.t("Long Report") : plugin.t("Ask")}: ${truncateText(question, 48)}`, args, {
+      refreshAfter: true,
+      longRunning,
+      backgroundSubmit: longRunning,
+    });
   }
 
 

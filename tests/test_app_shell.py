@@ -43,6 +43,7 @@ from aiwiki.app_compile import (
 )
 from aiwiki.app_content import (
     collect_machine_memory_actions,
+    collect_recent_output_artifacts,
     entry_concept_terms,
     ingest_source,
     load_execution_policy_decision_history,
@@ -362,6 +363,59 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(result["recent_runs"][0]["run_id"], report["run_id"])
         self.assertEqual(result["recent_runs"][0]["run_notes_path"], report["run_notes_path"])
 
+    def test_collect_recent_output_artifacts_exposes_delivery_and_llm_fields(self) -> None:
+        report_path = self.root / "output" / "reports" / "degraded-report.md"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            "---\n"
+            'id: "degraded-report"\n'
+            'kind: "output"\n'
+            'format: "report"\n'
+            'protocol: "general"\n'
+            'created_at: "2026-05-18T00:00:00Z"\n'
+            'delivery_mode: "deterministic-fallback"\n'
+            'llm_status: "timeout_or_unavailable"\n'
+            'llm_backend: "codex-cli"\n'
+            'llm_model: "gpt-5.5"\n'
+            'llm_failure_reason: "timeout"\n'
+            "---\n\n"
+            "# Degraded report\n",
+            encoding="utf-8",
+        )
+
+        artifacts = collect_recent_output_artifacts(self.root, limit=8)
+
+        self.assertEqual(len(artifacts), 1)
+        self.assertEqual(artifacts[0]["path"], "output/reports/degraded-report.md")
+        self.assertEqual(artifacts[0]["delivery_mode"], "deterministic-fallback")
+        self.assertEqual(artifacts[0]["llm_status"], "timeout_or_unavailable")
+        self.assertEqual(artifacts[0]["llm_backend"], "codex-cli")
+        self.assertEqual(artifacts[0]["llm_model"], "gpt-5.5")
+
+    def test_collect_recent_output_artifacts_skips_background_pending_reports(self) -> None:
+        report_path = self.root / "output" / "reports" / "pending-report.md"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            "---\n"
+            'id: "pending-report"\n'
+            'kind: "output"\n'
+            'format: "report"\n'
+            'protocol: "general"\n'
+            'created_at: "2026-05-18T00:00:00Z"\n'
+            'run_id: "ask-pending"\n'
+            'background_job_id: "ask-report-job"\n'
+            'background_status: "running"\n'
+            'delivery_mode: "background-pending"\n'
+            'llm_status: "pending"\n'
+            "---\n\n"
+            "# Pending report\n",
+            encoding="utf-8",
+        )
+
+        artifacts = collect_recent_output_artifacts(self.root, limit=8)
+
+        self.assertEqual(artifacts, [])
+
     def test_shell_status_surfaces_latest_llm_run_and_llm_health(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -398,6 +452,32 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(result["llm_health"]["result_path"], ask_result["path"])
         self.assertEqual(result["llm_health"]["receipt_path"], ".aiwiki/logs/llm-receipts.jsonl")
         self.assertEqual(result["llm_health"]["log_path"], ".aiwiki/logs/runs.jsonl")
+
+    def test_shell_status_llm_status_exposes_backend_fallbacks(self) -> None:
+        fallback_status = {
+            "configured": True,
+            "backend": "opencode-api",
+            "backend_requested": "opencode-api",
+            "model_requested": "deepseek-v4-pro",
+            "model": "deepseek-v4-pro",
+            "effective_model": "deepseek-v4-pro",
+            "codex_reasoning_effort": "",
+            "available_backends": ["opencode-api", "codex-cli"],
+            "image_analysis_supported": False,
+            "auth_mode": "api-key",
+            "usage_visibility": "visible",
+            "usage_accounting": "manual",
+            "message": "configured",
+            "backend_fallbacks": [
+                {"backend": "opencode-api", "available": True, "reason": "configured"},
+                {"backend": "codex-cli", "available": True, "reason": "fallback"},
+            ],
+        }
+
+        with patch("aiwiki.app_shell.summary.LLMConfig.status_from_env", return_value=fallback_status):
+            result = shell_status(self.root)
+
+        self.assertEqual(result["llm_status"]["backend_fallbacks"], fallback_status["backend_fallbacks"])
 
     def test_shell_status_surfaces_curated_page_roots(self) -> None:
         # EP-015: curated_page_roots is a single source of truth for which

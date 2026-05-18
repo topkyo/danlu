@@ -63,6 +63,8 @@ class LLMConfig:
     model: str = ""
     model_requested: str = ""
     model_fallback_chain: tuple[str, ...] = ()
+    backend_fallback_chain: tuple[str, ...] = ()
+    backend_fallback_model: str = ""
     api_key: str = ""
     anthropic_api_key: str = ""
     opencode_api_key: str = ""
@@ -174,6 +176,8 @@ class LLMConfig:
             model=effective_model,
             model_requested=values["model"],
             model_fallback_chain=effective_model_fallback_chain,
+            backend_fallback_chain=_resolve_backend_fallback_chain(values),
+            backend_fallback_model=values["env_backend_fallback_model"],
             api_key=effective_api_key,
             anthropic_api_key=values["anthropic_api_key"],
             opencode_api_key=values["opencode_api_key"],
@@ -243,13 +247,16 @@ class LLMConfig:
             "configured": configured,
             "backend_requested": requested,
             "backend": backend,
-            "image_analysis_supported": _backend_supports_image_analysis(backend),
+            "image_analysis_supported": _backend_supports_image_analysis(backend, effective_model),
             "available_backends": _available_backends(values),
             "model_requested": values["model"],
             "model": effective_model or values["model"],
             "effective_model": effective_model,
             "model_source": _compute_model_source(values["model"], backend),
             "model_fallback_chain": list(effective_model_fallback_chain),
+            "backend_fallback_chain": list(_resolve_backend_fallback_chain(values)),
+            "backend_fallback_model": values["env_backend_fallback_model"],
+            "backend_fallbacks": _backend_fallback_statuses(values, primary_backend=backend),
             "api_key_present": effective_api_key_present,
             "anthropic_api_key_present": bool(values["anthropic_api_key"]),
             "opencode_api_key_present": bool(values["opencode_api_key"]),
@@ -302,6 +309,8 @@ def _read_env() -> dict[str, Any]:
     requested_backend = (os.environ.get("AIWIKI_LLM_BACKEND") or DEFAULT_BACKEND).strip().lower()
     model = (os.environ.get("AIWIKI_LLM_MODEL") or os.environ.get("OPENAI_MODEL") or "").strip()
     env_model_fallback = os.environ.get("AIWIKI_MODEL_FALLBACK")
+    env_backend_fallback = os.environ.get("AIWIKI_BACKEND_FALLBACK")
+    env_backend_fallback_model = (os.environ.get("AIWIKI_BACKEND_FALLBACK_MODEL") or "").strip()
     api_key = (os.environ.get("AIWIKI_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY") or "").strip()
     opencode_api_key, opencode_api_key_source = _resolve_opencode_api_key()
     openrouter_api_key, openrouter_api_key_source = _resolve_openrouter_api_key()
@@ -345,6 +354,8 @@ def _read_env() -> dict[str, Any]:
         "model": model,
         "model_fallback": None,
         "env_model_fallback": env_model_fallback,
+        "env_backend_fallback": env_backend_fallback,
+        "env_backend_fallback_model": env_backend_fallback_model,
         "api_key": api_key,
         "opencode_api_key": opencode_api_key,
         "opencode_api_key_source": opencode_api_key_source,
@@ -475,6 +486,62 @@ def _resolve_model_fallback_chain(values: dict[str, Any]) -> tuple[str, ...]:
     return _parse_model_fallback_chain(values.get("env_model_fallback"))
 
 
+def _resolve_backend_fallback_chain(values: dict[str, Any]) -> tuple[str, ...]:
+    return _parse_backend_fallback_chain(values.get("env_backend_fallback"), primary=values.get("requested_backend", ""))
+
+
+def _backend_fallback_statuses(values: dict[str, Any], *, primary_backend: str) -> list[dict[str, Any]]:
+    fallback_model = str(values.get("env_backend_fallback_model") or "").strip()
+    statuses: list[dict[str, Any]] = []
+    for backend in _resolve_backend_fallback_chain(values):
+        model = fallback_model if backend == BACKEND_CODEX_CLI and fallback_model else _default_model_for_backend(backend, values)
+        available, reason = _static_backend_available(values, backend)
+        statuses.append(
+            {
+                "backend": backend,
+                "model": model,
+                "configured": backend != primary_backend,
+                "available": available,
+                "reason": reason,
+            }
+        )
+    return statuses
+
+
+def _static_backend_available(values: dict[str, Any], backend: str) -> tuple[bool, str]:
+    if backend == BACKEND_CODEX_CLI:
+        return (bool(values.get("codex_path")), "codex command found" if values.get("codex_path") else "codex command not found")
+    if backend == BACKEND_COPILOT_CLI:
+        return (bool(values.get("copilot_path")), "copilot command found" if values.get("copilot_path") else "copilot command not found")
+    if backend == BACKEND_CLAUDE_CLI:
+        return (bool(values.get("claude_path")), "claude command found" if values.get("claude_path") else "claude command not found")
+    if backend == BACKEND_OPENCODE_API:
+        return (bool(values.get("opencode_api_key")), "opencode api key configured" if values.get("opencode_api_key") else "opencode api key missing")
+    if backend == BACKEND_OPENROUTER_API:
+        return (bool(values.get("openrouter_api_key")), "openrouter api key configured" if values.get("openrouter_api_key") else "openrouter api key missing")
+    if backend == BACKEND_NVIDIA_NIM_API:
+        return (bool(values.get("nvidia_nim_api_key")), "nvidia nim api key configured" if values.get("nvidia_nim_api_key") else "nvidia nim api key missing")
+    if backend == BACKEND_OPENAI_API:
+        return (bool(values.get("api_key")), "openai-compatible api key configured" if values.get("api_key") else "openai-compatible api key missing")
+    if backend == BACKEND_ANTHROPIC_API:
+        return (bool(values.get("anthropic_api_key")), "anthropic api key configured" if values.get("anthropic_api_key") else "anthropic api key missing")
+    return False, "unsupported backend"
+
+
+def _default_model_for_backend(backend: str, values: dict[str, Any]) -> str:
+    if backend == BACKEND_OPENCODE_API:
+        return DEFAULT_OPENCODE_MODEL
+    if backend == BACKEND_CODEX_CLI:
+        return DEFAULT_CODEX_MODEL
+    if backend == BACKEND_NVIDIA_NIM_API:
+        return DEFAULT_NVIDIA_NIM_MODEL
+    if backend == BACKEND_OPENAI_API:
+        return str(values.get("model") or DEFAULT_OPENAI_API_MODEL)
+    if backend == BACKEND_ANTHROPIC_API:
+        return str(values.get("model") or DEFAULT_ANTHROPIC_API_MODEL)
+    return str(values.get("model") or "")
+
+
 def _parse_model_fallback_chain(raw: Any) -> tuple[str, ...]:
     if raw is None:
         return ()
@@ -493,6 +560,27 @@ def _parse_model_fallback_chain(raw: Any) -> tuple[str, ...]:
             seen.add(model)
             models.append(model)
     return tuple(models)
+
+
+def _parse_backend_fallback_chain(raw: Any, *, primary: str = "") -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    raw_items: list[Any]
+    if isinstance(raw, (list, tuple)):
+        raw_items = list(raw)
+    else:
+        raw_items = [raw]
+    primary_backend = str(primary or "").strip().lower()
+    backends: list[str] = []
+    seen: set[str] = {primary_backend} if primary_backend else set()
+    for item in raw_items:
+        for candidate in str(item or "").split(","):
+            backend = candidate.strip().lower()
+            if not backend or backend in seen or backend not in SUPPORTED_BACKENDS:
+                continue
+            seen.add(backend)
+            backends.append(backend)
+    return tuple(backends)
 
 
 def _effective_model_fallback_chain(effective_model: str, fallback_chain: tuple[str, ...]) -> tuple[str, ...]:
@@ -613,8 +701,47 @@ def _usage_accounting_for_backend(backend: str) -> str:
     return ""
 
 
-def _backend_supports_image_analysis(backend: str) -> bool:
-    return backend == BACKEND_CODEX_CLI
+_IMAGE_MODEL_MARKERS = (
+    "vision",
+    "image",
+    "multimodal",
+    "gpt-4o",
+    "gpt-4.1",
+    "gpt-5",
+    "o3",
+    "o4",
+    "claude",
+    "gemini",
+    "qwen-vl",
+    "qwen2-vl",
+    "qwen2.5-vl",
+    "llava",
+    "vila",
+    "pixtral",
+    "mistral-small-3.2",
+)
+_TEXT_ONLY_MODEL_MARKERS = (
+    "gpt-oss",
+    "deepseek-v4-pro",
+    "deepseek-chat",
+    "deepseek-reasoner",
+)
+
+
+def _backend_supports_image_analysis(backend: str, model: str = "") -> bool:
+    normalized_backend = str(backend or "").strip()
+    normalized_model = str(model or "").strip().lower()
+    if normalized_backend == BACKEND_CODEX_CLI:
+        return True
+    if normalized_backend == BACKEND_ANTHROPIC_API:
+        return bool(normalized_model and "claude" in normalized_model)
+    if normalized_backend in {BACKEND_OPENCODE_API, BACKEND_OPENROUTER_API, BACKEND_OPENAI_API, BACKEND_NVIDIA_NIM_API}:
+        if not normalized_model:
+            return False
+        if any(marker in normalized_model for marker in _TEXT_ONLY_MODEL_MARKERS):
+            return False
+        return any(marker in normalized_model for marker in _IMAGE_MODEL_MARKERS)
+    return False
 
 
 def _resolve_nvidia_nim_api_key() -> tuple[str, str]:

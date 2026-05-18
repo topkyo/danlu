@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from aiwiki.config import LLMConfig
-from aiwiki.llm import probe_backend
+from aiwiki.llm import _config_for_backend, probe_backend
 
 _LOGGER = logging.getLogger("aiwiki")
 _REQUIRE_COMPATIBLE_ENV = "AIWIKI_REQUIRE_COMPATIBLE_BACKEND"
@@ -82,3 +82,48 @@ def preflight_check_backend(root: Path, *, timeout_seconds: int = 30) -> dict[st
     if compatibility in {"unavailable", "requires_credential"}:
         return _sentinel_snapshot(f"preflight probe returned {compatibility}: {hint}")
     return _probe_snapshot(config, result)
+
+
+def preflight_check_backend_chain(root: Path, *, timeout_seconds: int = 10) -> dict[str, Any]:
+    """Probe only the configured primary backend and explicit backend fallbacks."""
+
+    try:
+        config = LLMConfig.from_env()
+    except Exception as exc:  # noqa: BLE001 - submit should stay fail-soft and report snapshot.
+        return {
+            "kind": "backend-chain-preflight",
+            "status": "unavailable",
+            "primary": _sentinel_snapshot(str(exc)),
+            "fallbacks": [],
+        }
+
+    primary = _probe_chain_item(config, root, timeout_seconds=timeout_seconds, role="primary")
+    fallbacks: list[dict[str, Any]] = []
+    for backend in getattr(config, "backend_fallback_chain", ()) or ():
+        fallback_config = _config_for_backend(config, backend)
+        if backend == "codex-cli" and getattr(config, "backend_fallback_model", ""):
+            from dataclasses import replace
+
+            fallback_config = replace(fallback_config, model=config.backend_fallback_model)
+        fallbacks.append(_probe_chain_item(fallback_config, root, timeout_seconds=timeout_seconds, role="fallback"))
+    return {
+        "kind": "backend-chain-preflight",
+        "status": "compatible" if primary.get("compatibility") == "compatible" else "degraded",
+        "primary": primary,
+        "fallbacks": fallbacks,
+    }
+
+
+def _probe_chain_item(config: LLMConfig, root: Path, *, timeout_seconds: int, role: str) -> dict[str, Any]:
+    try:
+        result = probe_backend(config, root, timeout_seconds=timeout_seconds)
+        snapshot = _probe_snapshot(config, result)
+    except Exception as exc:  # noqa: BLE001 - chain snapshot should be best-effort.
+        snapshot = _sentinel_snapshot(str(exc))
+        snapshot["backend_requested"] = config.backend_requested or config.backend
+        snapshot["backend"] = config.backend
+        snapshot["model_requested"] = config.model_requested
+        snapshot["model"] = config.model
+    snapshot["role"] = role
+    snapshot["available"] = snapshot.get("compatibility") == "compatible"
+    return snapshot

@@ -186,6 +186,43 @@ function syncToneClass(status) {
   return "is-unknown";
 }
 
+function formatBackendFallbackReadiness(plugin, fallback) {
+  if (!fallback || typeof fallback !== "object") return "";
+  const backend = String(fallback.backend || "").trim() || plugin.t("unconfigured");
+  const model = String(fallback.model || "").trim();
+  const available = Boolean(fallback.available);
+  const configured = Boolean(fallback.configured);
+  const reason = String(fallback.reason || "").trim();
+  const state = available
+    ? plugin.t("available")
+    : configured
+      ? plugin.t("configured but unavailable")
+      : plugin.t("not configured");
+  const route = model ? `${backend}/${model}` : backend;
+  return reason ? `${route}: ${state} (${reason})` : `${route}: ${state}`;
+}
+
+function renderBackendFallbackReadiness(plugin, container, llmStatus) {
+  const fallbacks = llmStatus && Array.isArray(llmStatus.backend_fallbacks)
+    ? llmStatus.backend_fallbacks.filter((item) => item && typeof item === "object")
+    : [];
+  if (!fallbacks.length) {
+    container.createDiv({ cls: "furnace-shell-panel-note", text: plugin.t("No backup LLM route configured.") });
+    return;
+  }
+  const readyCount = fallbacks.filter((item) => Boolean(item.available)).length;
+  const summary = readyCount > 0
+    ? plugin.t("Backup LLM route ready: {count}/{total}", { count: readyCount, total: fallbacks.length })
+    : plugin.t("Backup LLM route not ready.");
+  container.createDiv({ cls: "furnace-shell-panel-note", text: summary });
+  const list = container.createDiv({ cls: "furnace-shell-inline-list furnace-shell-inline-list-compact" });
+  fallbacks.slice(0, 3).forEach((fallback) => {
+    const item = list.createDiv({ cls: "furnace-shell-inline-item" });
+    const text = formatBackendFallbackReadiness(plugin, fallback);
+    item.createDiv({ cls: "furnace-shell-meta", text });
+  });
+}
+
 function renderStatusPanel(plugin, container) {
   const panel = plugin.renderPanel(container, "System status", "Make runtime state explicit before you act.");
   const runningCount = plugin.pluginState.recentRuns.filter((entry) => entry.status === "running").length;
@@ -250,6 +287,7 @@ function renderStatusPanel(plugin, container) {
     cls: llmHealth.status === "degraded" ? "furnace-shell-panel-note furnace-shell-status-failed" : "furnace-shell-panel-note",
     text: plugin.t(llmHealth.reason || "No recent LLM health check yet."),
   });
+  renderBackendFallbackReadiness(plugin, healthBox, llmStatus);
   const healthActions = [];
   if (llmHealth.recoveryCommand) {
     healthActions.push({

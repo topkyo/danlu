@@ -120,6 +120,20 @@ class ConfigTests(unittest.TestCase):
 
         self.assertEqual(config.model_fallback_chain, (DEFAULT_NVIDIA_NIM_MODEL, "fallback-a", "fallback-b"))
 
+    def test_env_backend_fallback(self) -> None:
+        config = self._from_env(
+            {
+                "AIWIKI_OPENCODE_API_KEY": "opencode_test_key",
+                "AIWIKI_BACKEND_FALLBACK": "codex-cli,codex-cli,unknown-backend",
+                "AIWIKI_BACKEND_FALLBACK_MODEL": "gpt-5.5",
+            },
+            which_map={"codex": "/usr/bin/codex"},
+        )
+
+        self.assertEqual(config.backend, BACKEND_OPENCODE_API)
+        self.assertEqual(config.backend_fallback_chain, (BACKEND_CODEX_CLI,))
+        self.assertEqual(config.backend_fallback_model, "gpt-5.5")
+
     def test_from_env_uses_requested_openrouter_backend(self) -> None:
         config = self._from_env(
             {
@@ -250,6 +264,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(status["available_backends"], [BACKEND_OPENCODE_API])
         self.assertEqual(status["effective_model"], DEFAULT_OPENCODE_MODEL)
         self.assertEqual(status["model_fallback_chain"], [DEFAULT_OPENCODE_MODEL])
+        self.assertEqual(status["backend_fallback_chain"], [])
         self.assertTrue(status["api_key_present"])
         self.assertTrue(status["opencode_api_key_present"])
         self.assertEqual(status["opencode_api_key_source"], "AIWIKI_OPENCODE_API_KEY")
@@ -257,6 +272,19 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(status["auth_mode"], "api-key")
         self.assertEqual(status["usage_visibility"], "response-usage")
         self.assertEqual(status["usage_accounting"], "opencode-api")
+        self.assertFalse(status["image_analysis_supported"])
+
+    def test_status_from_env_reports_opencode_image_capable_model(self) -> None:
+        status = self._status_from_env(
+            {
+                "AIWIKI_OPENCODE_API_KEY": "opencode_test_key",
+                "AIWIKI_LLM_MODEL": "gpt-4o",
+            }
+        )
+
+        self.assertEqual(status["backend"], BACKEND_OPENCODE_API)
+        self.assertEqual(status["effective_model"], "gpt-4o")
+        self.assertTrue(status["image_analysis_supported"])
 
     def test_from_env_path_overrides_are_respected(self) -> None:
         codex = self._from_env(

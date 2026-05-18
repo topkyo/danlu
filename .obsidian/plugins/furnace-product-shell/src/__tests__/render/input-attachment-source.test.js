@@ -23,7 +23,7 @@ function loadHelpers() {
     REWRITE_STATUS_LABELS: {},
     REVIEW_REASON_LABELS: {},
   };
-  vm.runInNewContext(`${src}\nmodule.exports = { resolvePluginFileSource, sanitizeDropFileName, collectMaterialPathsFromPayload, buildAutoAskQuestion, splitTextMaterialQuestion };`, context);
+  vm.runInNewContext(`${src}\nmodule.exports = { resolvePluginFileSource, sanitizeDropFileName, collectMaterialPathsFromPayload, buildAutoAskQuestion, inferAutoAskFormat, splitTextMaterialQuestion };`, context);
   return context.module.exports;
 }
 
@@ -103,7 +103,7 @@ describe("Universal Input attachment source handling", () => {
     expect(paths).not.toContain("/home/tim/private/report.pdf");
   });
 
-  test("auto ask drops materials before one report ask without leaking question title", async () => {
+  test("auto ask drops materials before one note ask unless report is requested", async () => {
     const helpersSrc = fs.readFileSync(path.resolve(__dirname, "../../helpers.js"), "utf8");
     const pluginSrc = fs.readFileSync(path.resolve(__dirname, "../../plugin.js"), "utf8");
     const calls = [];
@@ -140,8 +140,8 @@ describe("Universal Input attachment source handling", () => {
     expect(plugin.runAskCommand).toHaveBeenCalledTimes(1);
     expect(calls.map((item) => item[0])).toEqual(["drop", "drop", "ask"]);
     expect(plugin.runAskCommand).toHaveBeenCalledWith({
-      question: expect.stringContaining("本次投喂材料路径："),
-      format: "report",
+      question: expect.stringContaining("材料路径供系统路由使用："),
+      format: "note",
       mode: "run-ask",
       protocol: "research",
     });
@@ -151,16 +151,50 @@ describe("Universal Input attachment source handling", () => {
     expect(askQuestion).toContain("请总结");
     expect(askQuestion).not.toContain("/home/tim/private/b.pdf");
     expect(result.materialPaths).toEqual(["raw/inbox/a.md", "raw/assets/b.pdf"]);
+    expect(result.askFormat).toBe("note");
+  });
+
+  test("auto ask uses report only when the user asks for report-grade output", async () => {
+    const helpersSrc = fs.readFileSync(path.resolve(__dirname, "../../helpers.js"), "utf8");
+    const pluginSrc = fs.readFileSync(path.resolve(__dirname, "../../plugin.js"), "utf8");
+    const context = {
+      module: { exports: {} },
+      exports: {},
+      require,
+      Plugin: class {},
+    };
+    vm.runInNewContext(`${helpersSrc}\n${pluginSrc}\nmodule.exports = module.exports;`, context);
+    const PluginClass = context.module.exports;
+    const plugin = new PluginClass();
+    plugin.runUniversalInputCommand = jest.fn(async () => ({ note_path: "raw/inbox/a.md" }));
+    plugin.runAskCommand = jest.fn(async () => ({ report_path: "output/reports/r.md" }));
+
+    const result = await plugin.runDroppedPayloadsWithAutoAsk({
+      payloads: ["a.pdf"],
+      question: "请生成一份研究报告，包含证据链和结论",
+    });
+
+    expect(plugin.runAskCommand).toHaveBeenCalledWith(expect.objectContaining({
+      format: "report",
+      mode: "run-ask",
+    }));
+    expect(result.askFormat).toBe("report");
+  });
+
+  test("built main routes report auto ask through background submit", () => {
+    const bundleSrc = fs.readFileSync(path.resolve(__dirname, "../../../main.js"), "utf8");
+
+    expect(bundleSrc).toMatch(/const longRunning = mode === "run-ask" && format === "report"/);
+    expect(bundleSrc).toMatch(/const command = longRunning \? "run-ask-submit" : mode/);
+    expect(bundleSrc).toMatch(/backgroundSubmit: longRunning/);
   });
 
   test("buildAutoAskQuestion includes material paths and user question", () => {
     const { buildAutoAskQuestion } = loadHelpers();
     const question = buildAutoAskQuestion("请总结要点", ["raw/inbox/a.md", "raw/assets/b.pdf"]);
 
-    expect(question).toContain("本次投喂材料路径：");
-    expect(question).toContain("- raw/inbox/a.md");
-    expect(question).toContain("- raw/assets/b.pdf");
-    expect(question).toContain("用户问题：");
+    expect(question).toMatch(/^请总结要点/);
+    expect(question).toContain("材料路径供系统路由使用：raw/inbox/a.md、raw/assets/b.pdf");
     expect(question).toContain("请总结要点");
   });
 

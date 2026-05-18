@@ -139,6 +139,45 @@ class CLITests(unittest.TestCase):
         format_action = next(item for item in ask_parser._actions if item.dest == "format")
         self.assertEqual(format_action.choices, ("report", "decision-memo", "sop", "slides", "figure", "note"))
 
+    def test_run_ask_submit_parser_supports_background_report_flags(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args([
+            "run-ask-submit",
+            "What changed?",
+            "--format",
+            "report",
+            "--lean",
+            "--timeout",
+            "45",
+            "--no-cache",
+            "--fallback-to-ask",
+            "--no-spawn",
+            "--corpus",
+            "investing-foo-abc12345",
+        ])
+
+        self.assertEqual(args.handler_command, "run-ask-submit")
+        self.assertEqual(args.question, "What changed?")
+        self.assertEqual(args.format, "report")
+        self.assertTrue(args.lean)
+        self.assertEqual(args.timeout, 45)
+        self.assertTrue(args.no_cache)
+        self.assertTrue(args.fallback_to_ask)
+        self.assertTrue(args.no_spawn)
+        self.assertEqual(args.corpus, "investing-foo-abc12345")
+
+    def test_run_ask_resume_parser_requires_job_id(self) -> None:
+        parser = build_parser()
+
+        args = parser.parse_args(["run-ask-resume", "--job-id", "ask-report-20260518T000000Z-1-2"])
+
+        self.assertEqual(args.handler_command, "run-ask-resume")
+        self.assertEqual(args.job_id, "ask-report-20260518T000000Z-1-2")
+
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["run-ask-resume"])
+
     def test_legacy_settled_alias_is_absent(self) -> None:
         from aiwiki import runner
         from aiwiki.execution import alchemy
@@ -1740,21 +1779,21 @@ class CLITests(unittest.TestCase):
                 ["run-ask", "What changed?", "--format", "decision-memo", "--fallback-to-ask"],
                 "run_ask",
                 (self.root, "What changed?", "decision-memo"),
-                {"protocol": None, "lean": False, "timeout_seconds": None, "no_cache": False, "fallback_to_ask": True},
+                {"protocol": None, "direct": False, "lean": False, "timeout_seconds": None, "no_cache": False, "fallback_to_ask": True},
             ),
             (
                 "run-ask-lean-timeout",
                 ["run-ask", "What changed?", "--format", "report", "--lean", "--timeout", "45", "--no-cache"],
                 "run_ask",
                 (self.root, "What changed?", "report"),
-                {"protocol": None, "lean": True, "timeout_seconds": 45, "no_cache": True, "fallback_to_ask": False},
+                {"protocol": None, "direct": False, "lean": True, "timeout_seconds": 45, "no_cache": True, "fallback_to_ask": False},
             ),
             (
                 "run-ask-corpus",
                 ["run-ask", "What next?", "--format", "report", "--corpus", "investing-foo-abc12345"],
                 "run_ask",
                 (self.root, "What next?", "report"),
-                {"protocol": None, "lean": False, "timeout_seconds": None, "no_cache": False, "fallback_to_ask": False, "corpus_id_override": "investing-foo-abc12345"},
+                {"protocol": None, "direct": False, "lean": False, "timeout_seconds": None, "no_cache": False, "fallback_to_ask": False, "corpus_id_override": "investing-foo-abc12345"},
             ),
             (
                 "ask-corpus",

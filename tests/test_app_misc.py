@@ -960,6 +960,28 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertEqual(status["backend"], "claude-cli")
         self.assertFalse(status["image_analysis_supported"])
 
+    def test_llm_status_marks_opencode_text_model_image_analysis_as_unsupported(self) -> None:
+        with patch.dict(os.environ, {"AIWIKI_OPENCODE_API_KEY": "opencode_test_key"}, clear=True):
+            with patch("aiwiki.config.shutil.which", return_value=""):
+                status = LLMConfig.status_from_env()
+
+        self.assertTrue(status["configured"])
+        self.assertEqual(status["backend"], "opencode-api")
+        self.assertFalse(status["image_analysis_supported"])
+
+    def test_llm_status_marks_opencode_image_capable_model_as_supported(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"AIWIKI_OPENCODE_API_KEY": "opencode_test_key", "AIWIKI_LLM_MODEL": "gpt-4o"},
+            clear=True,
+        ):
+            with patch("aiwiki.config.shutil.which", return_value=""):
+                status = LLMConfig.status_from_env()
+
+        self.assertTrue(status["configured"])
+        self.assertEqual(status["backend"], "opencode-api")
+        self.assertTrue(status["image_analysis_supported"])
+
     def test_auto_once_processes_raw_inbox_without_manual_ingest(self) -> None:
         dropped = self.root / "raw" / "inbox" / "dropped.md"
         dropped.write_text("# Dropped\n\nA dropped source should be auto-compiled.\n", encoding="utf-8")

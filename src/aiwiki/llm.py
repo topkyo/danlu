@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import mimetypes
+import socket
 import subprocess
 import tempfile
 import time
@@ -110,6 +111,8 @@ class OpenAICompatClient:
             raw = response_body.decode("utf-8")
         except FetchPolicyError as exc:
             raise LLMError(f"unsafe LLM endpoint: {exc}") from exc
+        except (TimeoutError, socket.timeout) as exc:
+            raise LLMError(f"LLM endpoint timed out after {self.config.timeout_seconds} seconds.") from exc
         except error.HTTPError as exc:  # pragma: no cover - exercised via CLI/network usage
             details = exc.read().decode("utf-8", errors="replace")
             raise LLMError(f"HTTP {exc.code} from LLM endpoint: {details}") from exc
@@ -179,6 +182,8 @@ class OpenAICompatClient:
             raw = response_body.decode("utf-8")
         except FetchPolicyError as exc:
             raise LLMError(f"unsafe LLM endpoint: {exc}") from exc
+        except (TimeoutError, socket.timeout) as exc:
+            raise LLMError(f"LLM endpoint timed out after {self.config.timeout_seconds} seconds.") from exc
         except error.HTTPError as exc:  # pragma: no cover - exercised via CLI/network usage
             details = exc.read().decode("utf-8", errors="replace")
             raise LLMError(f"HTTP {exc.code} from LLM endpoint: {details}") from exc
@@ -617,6 +622,15 @@ class ModelFallbackClient:
         raise LLMError("No usable model fallback candidate was configured.")
 
 
+class BackendFallbackClient(ModelFallbackClient):
+    """Retry alternate backends when the primary backend times out or is unavailable.
+
+    ModelFallbackClient is deliberately same-backend.  Product Shell needs a
+    separate, explicit backend fallback policy: default OpenCode DeepSeek first,
+    then Codex CLI gpt-5.5 if the primary backend cannot complete.
+    """
+
+
 def create_backend_client(config: LLMConfig, workdir: Path) -> Any:
     # M7.4a Kill Switch: external LLM hook. Defer import to avoid cycles.
     from aiwiki import autonomy_policy
@@ -625,6 +639,9 @@ def create_backend_client(config: LLMConfig, workdir: Path) -> Any:
     if reason is not None:
         raise AutonomyDisabled(reason)
 
+    backend_fallback_configs = _backend_fallback_configs(config)
+    if len(backend_fallback_configs) > 1:
+        return BackendFallbackClient(config, workdir, backend_fallback_configs)
     model_fallback_configs = _model_fallback_configs(config)
     if len(model_fallback_configs) > 1:
         return ModelFallbackClient(config, workdir, model_fallback_configs)
@@ -741,9 +758,8 @@ def _available_probe_backends(config: LLMConfig) -> list[str]:
 
 
 def _config_for_backend(config: LLMConfig, backend: str) -> LLMConfig:
-    model_requested = config.model_requested.strip()
-    if model_requested:
-        model = model_requested
+    if backend == config.backend:
+        model = config.model or _effective_backend_default_model(backend, config)
     elif backend == BACKEND_CODEX_CLI:
         model = DEFAULT_CODEX_MODEL
     elif backend == BACKEND_OPENCODE_API:
@@ -783,6 +799,16 @@ def _config_for_backend(config: LLMConfig, backend: str) -> LLMConfig:
     return replace(config, backend=backend, model=model)
 
 
+def _effective_backend_default_model(backend: str, config: LLMConfig) -> str:
+    if backend == BACKEND_OPENCODE_API:
+        return DEFAULT_OPENCODE_MODEL
+    if backend == BACKEND_NVIDIA_NIM_API:
+        return DEFAULT_NVIDIA_NIM_MODEL
+    if backend == BACKEND_CODEX_CLI:
+        return DEFAULT_CODEX_MODEL
+    return config.model or ""
+
+
 def _instantiate_cli_client(config: LLMConfig, workdir: Path) -> Any:
     if config.backend == BACKEND_CODEX_CLI:
         return CodexCLIClient(config, workdir)
@@ -803,6 +829,22 @@ def _model_fallback_configs(config: LLMConfig) -> list[LLMConfig]:
         return [_config_for_backend(config, config.backend)]
     base_config = _config_for_backend(config, config.backend)
     return [replace(base_config, model=model) for model in candidate_models]
+
+
+def _backend_fallback_configs(config: LLMConfig) -> list[LLMConfig]:
+    backends = [config.backend, *list(getattr(config, "backend_fallback_chain", ()) or ())]
+    configs: list[LLMConfig] = []
+    seen: set[str] = set()
+    for backend in backends:
+        normalized = str(backend or "").strip().lower()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        candidate = _config_for_backend(config, normalized)
+        if normalized == BACKEND_CODEX_CLI and getattr(config, "backend_fallback_model", ""):
+            candidate = replace(candidate, model=config.backend_fallback_model)
+        configs.append(candidate)
+    return configs or [_config_for_backend(config, config.backend)]
 
 
 def _is_model_fallback_error(message: str) -> bool:

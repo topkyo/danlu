@@ -93,6 +93,7 @@ function renderUniversalInput(plugin, container) {
           question: normalizedQuestion,
           materialPaths: [],
           askQuestion: "",
+          longRunning: inferAutoAskFormat(normalizedQuestion, []) === "report",
         };
         pendingId = plugin.pushPendingSubmission(pendingDisplay, {
           title: normalizedQuestion,
@@ -103,13 +104,20 @@ function renderUniversalInput(plugin, container) {
           question: normalizedQuestion,
         });
         if (pendingId) {
+          const finalFormat = String(flowResult && flowResult.askFormat || retryArgs.format || "");
           plugin.updatePendingSubmissionRetryArgs(pendingId, {
             ...retryArgs,
             materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : [],
             askQuestion: String(flowResult && flowResult.askQuestion || ""),
+            format: finalFormat,
+            longRunning: finalFormat === "report",
             runNotesPath: String(flowResult && flowResult.runNotesPath || ""),
             runId: String(flowResult && flowResult.runId || ""),
+            jobId: String(flowResult && flowResult.jobId || ""),
           });
+          if (!normalizedQuestion) {
+            plugin.completePendingMaterialDrop(pendingId, flowResult && flowResult.materialPaths);
+          }
         }
       } else {
         const materialQuestion = splitTextMaterialQuestion(value);
@@ -120,6 +128,7 @@ function renderUniversalInput(plugin, container) {
             question: materialQuestion.question,
             materialPaths: [],
             askQuestion: "",
+            longRunning: inferAutoAskFormat(materialQuestion.question, []) === "report",
           };
           pendingId = plugin.pushPendingSubmission(value, {
             title: materialQuestion.question,
@@ -130,20 +139,63 @@ function renderUniversalInput(plugin, container) {
             question: materialQuestion.question,
           });
           if (pendingId) {
+            const finalFormat = String(flowResult && flowResult.askFormat || retryArgs.format || "");
             plugin.updatePendingSubmissionRetryArgs(pendingId, {
               ...retryArgs,
               materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : [],
               askQuestion: String(flowResult && flowResult.askQuestion || ""),
+              format: finalFormat,
+              longRunning: finalFormat === "report",
               runNotesPath: String(flowResult && flowResult.runNotesPath || ""),
               runId: String(flowResult && flowResult.runId || ""),
+              jobId: String(flowResult && flowResult.jobId || ""),
             });
           }
-        } else {
+        } else if (looksLikeUniversalMaterialPayload(normalizedQuestion)) {
+          const retryArgs = {
+            kind: "material",
+            payload: normalizedQuestion,
+            materialPaths: [],
+          };
           pendingId = plugin.pushPendingSubmission(value, {
-            title: "",
-            retryArgs: { kind: "text", payload: value },
+            title: normalizedQuestion,
+            retryArgs,
           });
-          await plugin.runUniversalInputCommand({ payload: value });
+          const payload = await plugin.runUniversalInputCommand({ payload: normalizedQuestion });
+          const materialPaths = collectMaterialPathsFromPayload(payload);
+          if (pendingId) {
+            plugin.updatePendingSubmissionRetryArgs(pendingId, {
+              ...retryArgs,
+              materialPaths,
+            });
+            plugin.completePendingMaterialDrop(pendingId, materialPaths);
+          }
+        } else {
+          const askFormat = inferAutoAskFormat(normalizedQuestion, []);
+          const retryArgs = {
+            kind: "auto-ask",
+            question: normalizedQuestion,
+            askQuestion: normalizedQuestion,
+            format: askFormat,
+            longRunning: askFormat === "report",
+          };
+          pendingId = plugin.pushPendingSubmission(value, {
+            title: normalizedQuestion,
+            retryArgs,
+          });
+          const askPayload = await plugin.runAskCommand({
+            question: normalizedQuestion,
+            format: askFormat,
+            mode: "run-ask",
+          });
+          if (pendingId) {
+            plugin.updatePendingSubmissionRetryArgs(pendingId, {
+              ...retryArgs,
+              runNotesPath: String(askPayload && askPayload.run_notes_path || ""),
+              runId: String(askPayload && askPayload.run_id || ""),
+              jobId: String(askPayload && askPayload.job_id || ""),
+            });
+          }
         }
       }
       succeeded = true;

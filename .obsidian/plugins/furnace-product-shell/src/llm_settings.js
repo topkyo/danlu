@@ -2,6 +2,8 @@
 
 const DEFAULT_PRODUCT_LLM_BACKEND = "opencode-api";
 const DEFAULT_PRODUCT_LLM_MODEL = "deepseek-v4-pro";
+const DEFAULT_PRODUCT_BACKEND_FALLBACK = "codex-cli";
+const DEFAULT_PRODUCT_BACKEND_FALLBACK_MODEL = "gpt-5.5";
 
 const LLM_PROVIDER_PROFILES = [
   {
@@ -91,6 +93,9 @@ const LLM_PROVIDER_DEFAULT_MODELS = new Set(
 const LLM_ENV_KEYS = [
   "AIWIKI_LLM_BACKEND",
   "AIWIKI_LLM_MODEL",
+  "AIWIKI_MODEL_FALLBACK",
+  "AIWIKI_BACKEND_FALLBACK",
+  "AIWIKI_BACKEND_FALLBACK_MODEL",
   "AIWIKI_OPENCODE_API_KEY",
   "AIWIKI_OPENCODE_BASE_URL",
   "AIWIKI_NVIDIA_NIM_API_KEY",
@@ -138,6 +143,10 @@ function buildLlmEnv(settings) {
   if (model) {
     env.AIWIKI_LLM_MODEL = model;
   }
+  if (profile.value === DEFAULT_PRODUCT_LLM_BACKEND && model === DEFAULT_PRODUCT_LLM_MODEL) {
+    env.AIWIKI_BACKEND_FALLBACK = DEFAULT_PRODUCT_BACKEND_FALLBACK;
+    env.AIWIKI_BACKEND_FALLBACK_MODEL = DEFAULT_PRODUCT_BACKEND_FALLBACK_MODEL;
+  }
   if (profile.apiKeySetting && profile.apiKeyEnv) {
     const key = String((settings && settings[profile.apiKeySetting]) || "").trim();
     if (key) {
@@ -177,6 +186,8 @@ if (typeof module !== "undefined") {
   module.exports = {
     DEFAULT_PRODUCT_LLM_BACKEND,
     DEFAULT_PRODUCT_LLM_MODEL,
+    DEFAULT_PRODUCT_BACKEND_FALLBACK,
+    DEFAULT_PRODUCT_BACKEND_FALLBACK_MODEL,
     LEGACY_LLM_SETTING_KEYS,
     LLM_ENV_KEYS,
     LLM_PROVIDER_PROFILES,

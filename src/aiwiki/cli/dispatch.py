@@ -100,7 +100,7 @@ from ..runner.commands import (
     run_signals_list,
     run_signals_show,
 )
-from ..runner.workflows import run_ask, run_compile, run_lint, run_nightly
+from ..runner.workflows import run_ask, run_ask_resume, run_ask_submit, run_compile, run_lint, run_nightly
 from ..signals import collect_signals
 from ..today_feed import FeedEntry, build_today_feed
 from .dispatch_helpers import (
@@ -293,6 +293,7 @@ def _handle_ask_family(args: argparse.Namespace, root: Path) -> tuple[object, st
     if args.handler_command == "run-ask":
         ask_kwargs = {
             "protocol": args.protocol,
+            "direct": args.direct,
             "lean": args.lean,
             "timeout_seconds": args.timeout,
             "no_cache": args.no_cache,
@@ -301,6 +302,20 @@ def _handle_ask_family(args: argparse.Namespace, root: Path) -> tuple[object, st
         if hasattr(args, "corpus") and args.corpus is not None:
             ask_kwargs["corpus_id_override"] = args.corpus
         return _out(run_ask(root, args.question, args.format, **ask_kwargs))
+    if args.handler_command == "run-ask-submit":
+        ask_kwargs = {
+            "protocol": args.protocol,
+            "lean": args.lean,
+            "timeout_seconds": args.timeout,
+            "no_cache": args.no_cache,
+            "fallback_to_ask": args.fallback_to_ask,
+            "spawn": not args.no_spawn,
+        }
+        if hasattr(args, "corpus") and args.corpus is not None:
+            ask_kwargs["corpus_id_override"] = args.corpus
+        return _out(run_ask_submit(root, args.question, args.format, **ask_kwargs))
+    if args.handler_command == "run-ask-resume":
+        return _out(run_ask_resume(root, args.job_id))
     if args.handler_command == "report-subgraph":
         return _handle_report_subgraph(args, root)
     raise ValueError(f"Unsupported command: {args.handler_command}")
@@ -655,6 +670,8 @@ _HANDLERS = {
     "search": _handle_live_surface,
     "ask": _handle_ask_family,
     "run-ask": _handle_ask_family,
+    "run-ask-submit": _handle_ask_family,
+    "run-ask-resume": _handle_ask_family,
     "report-subgraph": _handle_ask_family,
     "promote": _handle_promote_demote,
     "demote": _handle_promote_demote,

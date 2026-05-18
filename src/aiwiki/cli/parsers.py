@@ -351,6 +351,11 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         help="Start with a smaller prompt profile for stability instead of waiting for timeout retry.",
     )
     run_ask_parser.add_argument(
+        "--direct",
+        action="store_true",
+        help="Use a lightweight direct-answer LLM path for simple note questions without loading wiki context.",
+    )
+    run_ask_parser.add_argument(
         "--timeout",
         type=int,
         help="Override the LLM timeout seconds for this run only.",
@@ -361,6 +366,51 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         help="If the LLM backend is unavailable, return the deterministic ask artifact from the same runtime call.",
     )
     run_ask_parser.add_argument("--corpus", help="Optional active corpus id to reuse across ask rounds.")
+
+    run_ask_submit_parser = subparsers.add_parser(
+        "run-ask-submit",
+        help="Create a deterministic report artifact, register a background job, and resume LLM completion asynchronously.",
+    )
+    run_ask_submit_parser.add_argument("question", help="Research question to answer.")
+    run_ask_submit_parser.add_argument(
+        "--format",
+        choices=("report",),
+        default="report",
+        help="Output artifact format. Background submit currently supports reports only.",
+    )
+    run_ask_submit_parser.add_argument("--protocol", help="Optional protocol override for this query.")
+    run_ask_submit_parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass volatile SQLite query cache and force deterministic JSON scan.",
+    )
+    run_ask_submit_parser.add_argument(
+        "--lean",
+        action="store_true",
+        help="Start background completion with a smaller prompt profile for stability.",
+    )
+    run_ask_submit_parser.add_argument(
+        "--timeout",
+        type=int,
+        help="Override the LLM timeout seconds for the background resume run only.",
+    )
+    run_ask_submit_parser.add_argument(
+        "--fallback-to-ask",
+        action="store_true",
+        help="If the LLM backend is unavailable during resume, keep the deterministic ask artifact as a degraded recovery output.",
+    )
+    run_ask_submit_parser.add_argument("--corpus", help="Optional active corpus id to reuse across ask rounds.")
+    run_ask_submit_parser.add_argument(
+        "--no-spawn",
+        action="store_true",
+        help="Register the background job without launching the resume process. Intended for tests and manual recovery.",
+    )
+
+    run_ask_resume_parser = subparsers.add_parser(
+        "run-ask-resume",
+        help="Resume a previously submitted background report job.",
+    )
+    run_ask_resume_parser.add_argument("--job-id", required=True, help="Background job id returned by run-ask-submit.")
 
     report_subgraph_parser = subparsers.add_parser(
         "report-subgraph",

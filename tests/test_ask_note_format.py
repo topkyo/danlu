@@ -65,6 +65,36 @@ class RenderNoteAnswerTests(unittest.TestCase):
         self.assertNotIn("## 关键证据", content)
         self.assertNotIn("## 反证与不确定性", content)
 
+    def test_note_answer_uses_human_auto_ask_title(self) -> None:
+        content = render_note_answer(
+            Path("."),
+            "请基于以下本次投喂材料回答用户问题。\n\n本次投喂材料路径：\n- raw/inbox/a.md\n\n用户问题：\n问你个问题，你是什么大模型？",
+            entries=[],
+            concepts=[],
+            machine_query=_machine_query(),
+            protocol_state=_protocol_state(),
+            created_at="2025-01-01T00:00:00Z",
+            artifact_id="model-question-note",
+        )
+
+        self.assertIn("# 问你个问题，你是什么大模型？", content)
+        self.assertNotIn("# 请基于以下本次投喂材料", content)
+
+    def test_note_answer_strips_inline_material_hint_from_title(self) -> None:
+        content = render_note_answer(
+            Path("."),
+            "分析一下\n\n请优先使用本次投喂材料回答；材料路径供系统路由使用：raw/inbox/a.md、raw/assets/a.pdf",
+            entries=[],
+            concepts=[],
+            machine_query=_machine_query(),
+            protocol_state=_protocol_state(),
+            created_at="2025-01-01T00:00:00Z",
+            artifact_id="inline-hint-note",
+        )
+
+        self.assertIn("# 分析一下", content)
+        self.assertNotIn("# 分析一下 请优先使用", content)
+
 
 class ValidateNoteOutputTests(unittest.TestCase):
     _BODY_WITH_CITATION = (
@@ -126,6 +156,11 @@ class AskParserChoicesLockTests(unittest.TestCase):
 
     def test_run_ask_default_is_note(self) -> None:
         ns = self._ns(["run-ask", "Q"])
+        self.assertEqual(ns.format, "note")
+
+    def test_run_ask_accepts_direct_mode(self) -> None:
+        ns = self._ns(["run-ask", "Q", "--direct"])
+        self.assertTrue(ns.direct)
         self.assertEqual(ns.format, "note")
 
     def test_run_ask_explicit_report_still_works(self) -> None:

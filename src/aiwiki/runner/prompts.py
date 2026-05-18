@@ -48,28 +48,28 @@ ASK_PROTOCOL_PAGE_NAMES_BY_FORMAT = {
 }
 ASK_PROMPT_PROFILES = {
     "balanced": {
-        "max_total_chars": 48000,
-        "index_page_chars": 2200,
-        "log_page_chars": 1800,
-        "protocol_page_chars": 1600,
-        "concept_page_chars": 2200,
-        "source_page_chars": 2800,
-        "max_index_pages": 8,
-        "max_protocol_pages": 4,
-        "max_concepts": 4,
-        "max_sources": 5,
+        "max_total_chars": 28000,
+        "index_page_chars": 1200,
+        "log_page_chars": 900,
+        "protocol_page_chars": 900,
+        "concept_page_chars": 1000,
+        "source_page_chars": 4200,
+        "max_index_pages": 6,
+        "max_protocol_pages": 2,
+        "max_concepts": 2,
+        "max_sources": 2,
     },
     "lean": {
-        "max_total_chars": 30000,
-        "index_page_chars": 1400,
-        "log_page_chars": 1200,
-        "protocol_page_chars": 1200,
-        "concept_page_chars": 1600,
-        "source_page_chars": 2200,
-        "max_index_pages": 5,
-        "max_protocol_pages": 3,
-        "max_concepts": 3,
-        "max_sources": 4,
+        "max_total_chars": 16000,
+        "index_page_chars": 800,
+        "log_page_chars": 600,
+        "protocol_page_chars": 700,
+        "concept_page_chars": 700,
+        "source_page_chars": 3200,
+        "max_index_pages": 2,
+        "max_protocol_pages": 1,
+        "max_concepts": 1,
+        "max_sources": 1,
     },
 }
 COMPILE_PROMPT_PROFILES = {
@@ -744,6 +744,47 @@ def _normalize_markdown(text: str) -> str:
     return cleaned + "\n"
 
 
+def _dedupe_report_citations(markdown: str) -> str:
+    lines = markdown.splitlines()
+    if not lines:
+        return markdown
+    h2_positions: list[tuple[int, str]] = []
+    in_fence = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if line.startswith("## "):
+            h2_positions.append((index, stripped))
+    citations_start = None
+    citations_end = len(lines)
+    for position_index, (line_index, title) in enumerate(h2_positions):
+        if title != "## 引用":
+            continue
+        citations_start = line_index + 1
+        if position_index + 1 < len(h2_positions):
+            citations_end = h2_positions[position_index + 1][0]
+        break
+    if citations_start is None:
+        return markdown
+    seen_paths: set[str] = set()
+    deduped: list[str] = []
+    for line in lines[citations_start:citations_end]:
+        paths = _extract_report_citations([line])
+        if paths:
+            path = paths[0]
+            if path in seen_paths:
+                continue
+            seen_paths.add(path)
+        deduped.append(line)
+    if len(deduped) == citations_end - citations_start:
+        return markdown
+    return "\n".join(lines[:citations_start] + deduped + lines[citations_end:]) + "\n"
+
+
 def _validate_source_page(markdown: str, expected_id: str, expected_source_file: str, expected_source_sha: str) -> None:
     frontmatter = parse_frontmatter(markdown)
     if not frontmatter:
@@ -1053,7 +1094,12 @@ def _extract_report_citations(section_lines: list[str]) -> list[str]:
             continue
         if in_fence:
             continue
-        paths.extend(_REPORT_CITATION_PATTERN.findall(line))
+        line_seen: set[str] = set()
+        for path in _REPORT_CITATION_PATTERN.findall(line):
+            if path in line_seen:
+                continue
+            line_seen.add(path)
+            paths.append(path)
     return paths
 
 

@@ -6,6 +6,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
     this.pluginState = { recentRuns: [] };
     this.pendingSubmissions = []; // R89: 持久化 + runtime; status: running | received | done | failed; { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error, reconcileTarget }
+    this.longRunningPollTimer = null;
     this.shellSummary = null;
     this.repoState = { valid: false, root: "", launcherPath: "", missingPaths: ["vault-root"] };
     this.openViews = new Set();
@@ -41,11 +42,13 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     }));
 
     await this.loadShellSummaryFromDisk();
+    this.updateLongRunningPoller();
 
     this.updateStatusBar();
   }
 
   async onunload() {
+    this.stopLongRunningPoller();
     this.openViews.clear();
   }
 
@@ -300,6 +303,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     const rawSettings = data.settings && typeof data.settings === "object" ? data.settings : {};
     this.rawPluginData = data;
     this.settings = Object.assign({}, DEFAULT_SETTINGS, rawSettings);
+    if (this.settings.defaultAskFormat === "report") {
+      this.settings.defaultAskFormat = "note";
+    }
     const legacyLlmSettingsMigrated = dropLegacyLlmSettings(this.settings);
     this.settings.locale = normalizeLocale(this.settings.locale);
     const migratedFeishuWebhookUrl = String(this.settings.feishuWebhookUrl || this.settings.feishu_webhook_url || "").trim();
@@ -377,7 +383,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       : [];
     this.pluginState = { recentRuns };
     this.trimRecentRuns();
-    if (feishuWebhookUrlMigrated || wecomWebhookUrlMigrated || enabledChannelsMigrated || lastViewedTimestampMigrated || legacyLlmSettingsMigrated) {
+    const defaultAskFormatMigrated = rawSettings.defaultAskFormat === "report";
+    if (feishuWebhookUrlMigrated || wecomWebhookUrlMigrated || enabledChannelsMigrated || lastViewedTimestampMigrated || legacyLlmSettingsMigrated || defaultAskFormatMigrated) {
       await this.savePluginState();
     }
   }
@@ -430,6 +437,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       reconcilePath: String(e.reconcilePath || ""),
       runId: String(e.runId || ""),
       runNotesPath: String(e.runNotesPath || ""),
+      jobId: String(e.jobId || ""),
+      deliveryMode: String(e.deliveryMode || ""),
+      llmStatus: String(e.llmStatus || ""),
+      llmBackend: String(e.llmBackend || ""),
+      llmModel: String(e.llmModel || ""),
       retryArgs: e.retryArgs && typeof e.retryArgs === "object" ? e.retryArgs : null,
     }));
   }
@@ -482,6 +494,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         reconcilePath: String(item.reconcilePath || ""),
         runId: String(item.runId || ""),
         runNotesPath: String(item.runNotesPath || ""),
+        jobId: String(item.jobId || ""),
+        deliveryMode: String(item.deliveryMode || ""),
+        llmStatus: String(item.llmStatus || ""),
+        llmBackend: String(item.llmBackend || ""),
+        llmModel: String(item.llmModel || ""),
         retryArgs: item.retryArgs && typeof item.retryArgs === "object" ? item.retryArgs : null,
         _stale: Boolean(item._stale),
       });
@@ -1749,6 +1766,14 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   async runPluginCommand(label, args, options = {}) {
     const record = this.createRunRecord(label, args);
     appendRunEvent(record, "Executing", args.join(" "), "running");
+    if (options.longRunning) {
+      appendRunEvent(
+        record,
+        "Long report task",
+        this.t("Report generation can take several minutes; keep this card open and refresh status if needed."),
+        "running"
+      );
+    }
     this.updateRunRecord(record, {});
     try {
       const result = await this.execLauncher(args);
@@ -1769,7 +1794,45 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         await this.refreshShellSummarySilently();
       }
       const llm = this.currentLlmSelection();
-      appendRunEvent(record, "Completed", primaryPath || receiptPath || this.t("Command completed successfully."), "success");
+      const payloadDeliveryMode = result.payload && typeof result.payload.delivery_mode === "string" ? result.payload.delivery_mode : "";
+      const payloadFallbackUsed = result.payload && Object.prototype.hasOwnProperty.call(result.payload, "fallback_used")
+        ? Boolean(result.payload.fallback_used)
+        : Boolean(record.fallbackUsed);
+      if (options.backgroundSubmit && result.payload && result.payload.kind === "run-ask-background-job") {
+        appendRunEvent(
+          record,
+          "Background job submitted",
+          result.payload.job_id || result.payload.path || this.t("Long report job accepted."),
+          "running"
+        );
+        this.updateRunRecord(record, {
+          status: "received",
+          exitCode: 0,
+          jobId: String(result.payload.job_id || ""),
+          resultPath: primaryPath,
+          runId: String(result.payload.run_id || ""),
+          runNotesPath: String(result.payload.run_notes_path || ""),
+          stdoutSummary: truncateText(result.stdout),
+          stderrSummary: truncateText(result.stderr),
+          stdoutRaw: trimDiagnosticText(result.stdout),
+          stderrRaw: trimDiagnosticText(result.stderr),
+        });
+        this.persistRunLog(record, { stdoutRaw: result.stdout, stderrRaw: result.stderr });
+        this.updateLongRunningPoller();
+        if (options.notice !== false) {
+          new Notice(this.t("Long report job accepted. The report card will update after background completion."));
+        }
+        return result.payload;
+      }
+      const degradedRun = (record.command === "run-ask" || record.command === "run-ask-resume") && (payloadFallbackUsed || payloadDeliveryMode === "deterministic-fallback");
+      appendRunEvent(
+        record,
+        degradedRun ? "LLM timeout" : "Completed",
+        degradedRun
+          ? (result.payload && (result.payload.primary_error || result.payload.fallback_reason) || this.t("LLM timed out; deterministic fallback only."))
+          : (primaryPath || receiptPath || this.t("Command completed successfully.")),
+        degradedRun ? "degraded" : "success"
+      );
       if (primaryPath || receiptPath) {
         appendRunEvent(record, "Artifacts", [primaryPath, receiptPath].filter(Boolean).join(" · "), "success");
       }
@@ -1777,7 +1840,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         appendRunEvent(record, "Rewrite proposals", this.rewriteProposalSummary({ rewriteProposalPaths }), "success");
       }
       this.updateRunRecord(record, {
-        status: "success",
+        status: degradedRun ? "degraded" : "success",
         finishedAt: new Date().toISOString(),
         exitCode: 0,
         backend: result.payload && typeof result.payload.backend_effective === "string" ? result.payload.backend_effective : (llm.backend || record.backend),
@@ -1799,10 +1862,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         fallbackReason: result.payload && typeof result.payload.fallback_reason === "string" ? result.payload.fallback_reason : record.fallbackReason,
         fallbackFrom: result.payload && typeof result.payload.fallback_from === "string" ? result.payload.fallback_from : record.fallbackFrom,
         fallbackCommand: result.payload && typeof result.payload.fallback_command === "string" ? result.payload.fallback_command : (record.fallbackCommand || ""),
-        fallbackUsed: result.payload && Object.prototype.hasOwnProperty.call(result.payload, "fallback_used")
-          ? Boolean(result.payload.fallback_used)
-          : Boolean(record.fallbackUsed),
-        deliveryMode: result.payload && typeof result.payload.delivery_mode === "string" ? result.payload.delivery_mode : (record.deliveryMode || ""),
+        fallbackUsed: payloadFallbackUsed,
+        deliveryMode: payloadDeliveryMode || record.deliveryMode || "",
         contractValidated:
           result.payload && Object.prototype.hasOwnProperty.call(result.payload, "contract_validated")
             ? Boolean(result.payload.contract_validated)
@@ -1818,11 +1879,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         resultPath: primaryPath,
         receiptPath,
       });
-      if (record.command === "run-ask") {
+      if (record.command === "run-ask" || record.command === "run-ask-resume") {
         const usedFallback = Boolean(record.fallbackUsed) || String(record.deliveryMode || "").trim() === "deterministic-fallback";
         this.recordLlmHealthFromRun(record, {
           status: usedFallback ? "degraded" : "healthy",
-          reason: usedFallback ? "Recent run-ask fell back to deterministic ask." : "Recent run-ask succeeded.",
+          reason: usedFallback ? "LLM timed out or failed; only deterministic fallback is available." : "Recent run-ask succeeded.",
           source: "run-ask",
           fallbackCommand: usedFallback ? (record.fallbackCommand || "ask") : "",
           backendRequested: record.backendRequested,
@@ -1836,7 +1897,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       }
       this.persistRunLog(record, { stdoutRaw: result.stdout, stderrRaw: result.stderr });
       if (options.notice !== false) {
-        new Notice(`${this.t(label)} ${this.t("completed")}.`);
+        new Notice(
+          degradedRun
+            ? this.t("LLM timed out; deterministic fallback only. Open the artifact for local context, then retry or switch model.")
+            : `${this.t(label)} ${this.t("completed")}.`
+        );
       }
       return result.payload;
     } catch (error) {
@@ -1851,7 +1916,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         stderrRaw: trimDiagnosticText(error.stderr || ""),
         errorSummary: truncateText(error.message || "Command failed"),
       });
-      if (record.command === "run-ask" && llmBackendUnavailable(error)) {
+      if ((record.command === "run-ask" || record.command === "run-ask-resume") && llmBackendUnavailable(error)) {
         this.recordLlmHealthFromRun(record, {
           status: "degraded",
           reason: truncateText(error.message || error.stderr || error.stdout || "LLM backend unavailable", 240),
@@ -2107,12 +2172,18 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       reconcileTarget: "",
       runId: String(opts.runId || "").trim(),
       runNotesPath: String(opts.runNotesPath || "").trim(),
+      jobId: String(opts.jobId || "").trim(),
+      deliveryMode: String(opts.deliveryMode || "").trim(),
+      llmStatus: String(opts.llmStatus || "").trim(),
+      llmBackend: String(opts.llmBackend || "").trim(),
+      llmModel: String(opts.llmModel || "").trim(),
       retryArgs: opts.retryArgs && typeof opts.retryArgs === "object" ? opts.retryArgs : null,
     };
     this.pendingSubmissions.unshift(entry);
     if (this.pendingSubmissions.length > 8) this.pendingSubmissions.length = 8;
     void this.savePluginState();
     this.refreshOpenViews();
+    this.updateLongRunningPoller();
     return id;
   }
 
@@ -2124,9 +2195,21 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     entry.startedAt = new Date().toISOString();
     entry.finishedAt = "";
     entry.reconcileTarget = "";
+    entry.reconcilePath = "";
+    entry.jobId = "";
+    entry.runId = "";
+    entry.runNotesPath = "";
+    entry.deliveryMode = "";
+    entry.llmStatus = "";
+    entry.llmBackend = "";
+    entry.llmModel = "";
+    if (entry.retryArgs && typeof entry.retryArgs === "object") {
+      entry.retryArgs = Object.assign({}, entry.retryArgs, { jobId: "", runId: "", runNotesPath: "" });
+    }
     entry._stale = false;
     void this.savePluginState();
     this.refreshOpenViews();
+    this.updateLongRunningPoller();
   }
 
   // R89: handleSubmit 成功 → received（"已接收，等待生成报告"）；不自动消失
@@ -2139,6 +2222,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     entry.finishedAt = new Date().toISOString();
     void this.savePluginState();
     this.refreshOpenViews();
+    this.updateLongRunningPoller();
   }
 
   // R90: reconcile 命中 → done（"报告已生成" or "已记录"）
@@ -2155,6 +2239,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (reconcilePath) entry.reconcilePath = String(reconcilePath);
     void this.savePluginState();
     this.refreshOpenViews();
+    this.updateLongRunningPoller();
   }
 
   markPendingSubmissionFailed(id, error) {
@@ -2165,6 +2250,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     entry.error = truncateText(String((error && error.message) || error || "失败"), 180);
     void this.savePluginState();
     this.refreshOpenViews();
+    this.updateLongRunningPoller();
   }
 
   removePendingSubmission(id) {
@@ -2174,6 +2260,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (this.pendingSubmissions.length !== before) {
       void this.savePluginState();
       this.refreshOpenViews();
+      this.updateLongRunningPoller();
     }
   }
 
@@ -2188,9 +2275,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     entry.retryArgs = retryArgs && typeof retryArgs === "object" ? retryArgs : null;
     if (retryArgs && typeof retryArgs === "object") {
       this.updatePendingSubmissionRunNotes(id, retryArgs.runNotesPath, retryArgs.runId, { save: false, refresh: false });
+      if (retryArgs.jobId) entry.jobId = String(retryArgs.jobId || "");
     }
     void this.savePluginState();
     this.refreshOpenViews();
+    this.updateLongRunningPoller();
   }
 
   updatePendingSubmissionRunNotes(id, runNotesPath, runId, opts = {}) {
@@ -2202,6 +2291,50 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (rid) entry.runId = rid;
     if (opts.save !== false) void this.savePluginState();
     if (opts.refresh !== false) this.refreshOpenViews();
+  }
+
+  updatePendingSubmissionArtifactMeta(id, meta, opts = {}) {
+    const entry = this._findPending(id);
+    if (!entry || !meta || typeof meta !== "object") return;
+    if (meta.runNotesPath || meta.run_notes_path || meta.runId || meta.run_id) {
+      this.updatePendingSubmissionRunNotes(id, meta.runNotesPath || meta.run_notes_path, meta.runId || meta.run_id, { save: false, refresh: false });
+    }
+    if (meta.deliveryMode || meta.delivery_mode) entry.deliveryMode = String(meta.deliveryMode || meta.delivery_mode || "");
+    if (meta.llmStatus || meta.llm_status) entry.llmStatus = String(meta.llmStatus || meta.llm_status || "");
+    if (meta.llmBackend || meta.llm_backend) entry.llmBackend = String(meta.llmBackend || meta.llm_backend || "");
+    if (meta.llmModel || meta.llm_model) entry.llmModel = String(meta.llmModel || meta.llm_model || "");
+    if (opts.save !== false) void this.savePluginState();
+    if (opts.refresh !== false) this.refreshOpenViews();
+  }
+
+  hasActiveLongRunningPending() {
+    if (!Array.isArray(this.pendingSubmissions)) return false;
+    return this.pendingSubmissions.some((entry) => entry && (entry.status === "running" || entry.status === "received") && entry.retryArgs && entry.retryArgs.longRunning);
+  }
+
+  updateLongRunningPoller() {
+    if (this.hasActiveLongRunningPending()) {
+      this.startLongRunningPoller();
+    } else {
+      this.stopLongRunningPoller();
+    }
+  }
+
+  startLongRunningPoller() {
+    if (this.longRunningPollTimer) return;
+    this.longRunningPollTimer = window.setInterval(() => {
+      if (!this.hasActiveLongRunningPending()) {
+        this.stopLongRunningPoller();
+        return;
+      }
+      void this.refreshShellSummarySilently();
+    }, 15000);
+  }
+
+  stopLongRunningPoller() {
+    if (!this.longRunningPollTimer) return;
+    window.clearInterval(this.longRunningPollTimer);
+    this.longRunningPollTimer = null;
   }
 
   // R90: 顶部"刷新炉子"按钮的 last updated 文案
@@ -2239,6 +2372,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     const now = Date.now();
     const remaining = [];
     const hits = []; // {id, target}
+    // Matched run_notes_path/run_id are applied via updatePendingSubmissionRunNotes before markDone.
     for (const entry of this.pendingSubmissions) {
       if (!entry) { continue; }
       // failed/done 保留（done 由 setTimeout 自身移除）
@@ -2288,12 +2422,34 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       let targetPath = "";
       let hitRunNotesPath = "";
       let hitRunId = "";
+      let hitMeta = null;
+      const entryRunId = String(entry.runId || (entry.retryArgs && entry.retryArgs.runId) || "").trim();
+      const findRunIdHit = (cands) => entryRunId ? cands.find((cand) => cand && String(cand.run_id || cand.runId || "").trim() === entryRunId) : null;
       const findHit = (cands) => cands.find(matchAgainst);
-      let hitCand = findHit(outputCands);
-      if (hitCand) { target = "outputs"; targetPath = String(hitCand.path || ""); hitRunNotesPath = String(hitCand.run_notes_path || ""); hitRunId = String(hitCand.run_id || ""); }
+      let hitCand = findRunIdHit(outputCands) || findHit(outputCands);
+      if (hitCand) {
+        target = "outputs";
+        targetPath = String(hitCand.path || "");
+        hitRunNotesPath = String(hitCand.run_notes_path || "");
+        hitRunId = String(hitCand.run_id || "");
+        hitMeta = {
+          runNotesPath: hitRunNotesPath,
+          runId: hitRunId,
+          deliveryMode: String(hitCand.delivery_mode || ""),
+          llmStatus: String(hitCand.llm_status || ""),
+          llmBackend: String(hitCand.llm_backend || ""),
+          llmModel: String(hitCand.llm_model || ""),
+        };
+      }
       else {
-        hitCand = findHit(receiptCands);
-        if (hitCand) { target = "receipts"; targetPath = String(hitCand.path || hitCand.receipt_path || ""); }
+        hitCand = findRunIdHit(receiptCands) || findHit(receiptCands);
+        if (hitCand) {
+          target = "receipts";
+          targetPath = String(hitCand.path || hitCand.receipt_path || "");
+          hitRunNotesPath = String(hitCand.run_notes_path || "");
+          hitRunId = String(hitCand.run_id || "");
+          hitMeta = { runId: hitRunId, runNotesPath: hitRunNotesPath };
+        }
       }
       if (!hitCand) {
         hitCand = findHit(rawCands);
@@ -2301,7 +2457,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       }
       // R89: 命中 → 改为 done（保留卡片）；R90: done 不再自动消失
       if (target) {
-        hits.push({ id: entry.id, target, path: targetPath, runNotesPath: hitRunNotesPath, runId: hitRunId });
+        hits.push({ id: entry.id, target, path: targetPath, runNotesPath: hitRunNotesPath, runId: hitRunId, meta: hitMeta || {} });
         remaining.push(entry);
       } else {
         remaining.push(entry);
@@ -2316,8 +2472,10 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       if (h.runNotesPath || h.runId) {
         this.updatePendingSubmissionRunNotes(h.id, h.runNotesPath, h.runId, { save: false, refresh: false });
       }
+      this.updatePendingSubmissionArtifactMeta(h.id, h.meta || {}, { save: false, refresh: false });
       this.markPendingSubmissionDone(h.id, h.target, h.path);
     }
+    this.updateLongRunningPoller();
   }
 
   async runUniversalInputCommand({ payload, title }) {
@@ -2335,14 +2493,26 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runAskCommand({ question, format, mode, protocol }) {
-    const args = [mode, question, "--format", format];
+    const longRunning = mode === "run-ask" && format === "report";
+    const command = longRunning ? "run-ask-submit" : mode;
+    const args = [command, question, "--format", format];
     if (protocol) {
       args.push("--protocol", protocol);
     }
     if (mode === "run-ask") {
+      const directQuestion = String(question || "").trim();
+      const canUseDirect = format === "note" && !directQuestion.includes("材料路径供系统路由使用：") && !directQuestion.includes("本次投喂材料路径：");
+      if (canUseDirect) {
+        args.push("--direct");
+      }
+      args.push("--lean");
       args.push("--fallback-to-ask");
     }
-    return await this.runPluginCommand(`${this.t("Ask")}: ${truncateText(question, 48)}`, args, { refreshAfter: true });
+    return await this.runPluginCommand(`${longRunning ? this.t("Long Report") : this.t("Ask")}: ${truncateText(question, 48)}`, args, {
+      refreshAfter: true,
+      longRunning,
+      backgroundSubmit: longRunning,
+    });
   }
 
   async runDroppedPayloadsWithAutoAsk({ payloads, question, protocol }) {
@@ -2361,22 +2531,38 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       : "";
     let runNotesPath = "";
     let runId = "";
+    let jobId = "";
+    let askFormat = "";
     if (normalizedQuestion) {
+      askFormat = inferAutoAskFormat(normalizedQuestion, normalizedMaterialPaths);
       const askPayload = await this.runAskCommand({
         question: askQuestion,
-        format: "report",
+        format: askFormat,
         mode: "run-ask",
         protocol,
       });
       runNotesPath = String(askPayload && askPayload.run_notes_path || "");
       runId = String(askPayload && askPayload.run_id || "");
+      jobId = String(askPayload && askPayload.job_id || "");
     }
     return {
       materialPaths: normalizedMaterialPaths,
       askQuestion,
+      askFormat,
       runNotesPath,
       runId,
+      jobId,
     };
+  }
+
+  completePendingMaterialDrop(id, materialPaths) {
+    const paths = normalizeMaterialPaths(materialPaths);
+    const rawPath = paths.find((item) => item.startsWith("raw/inbox/")) || paths[0] || "";
+    if (id && rawPath) {
+      this.markPendingSubmissionDone(id, "raw", rawPath);
+      return true;
+    }
+    return false;
   }
 
   async runDroppedFilesWithAutoAsk({ files, question, protocol }) {

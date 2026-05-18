@@ -349,7 +349,10 @@ def collect_recent_output_artifacts(root: Path, *, limit: int = 12) -> list[dict
             content = path.read_text(encoding="utf-8", errors="replace")
             frontmatter = parse_frontmatter(content)
             if frontmatter.get("kind") == "output" and str(frontmatter.get("generated_by") or "") != "aiwiki-compile":
-                artifacts.append({"path": relative_path(root, path), "query": str(frontmatter.get("query") or "").strip(), "format": str(frontmatter.get("format") or "").strip(), "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL), "created_at": str(frontmatter.get("created_at") or ""), "title": first_markdown_heading(content) or path.stem, "run_id": str(frontmatter.get("run_id") or ""), "run_notes_path": str(frontmatter.get("run_notes_path") or "")})
+                background_status = str(frontmatter.get("background_status") or "")
+                if background_status in {"submitted", "running"}:
+                    continue
+                artifacts.append({"path": relative_path(root, path), "query": str(frontmatter.get("query") or "").strip(), "format": str(frontmatter.get("format") or "").strip(), "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL), "created_at": str(frontmatter.get("created_at") or ""), "title": first_markdown_heading(content) or path.stem, "run_id": str(frontmatter.get("run_id") or ""), "run_notes_path": str(frontmatter.get("run_notes_path") or ""), "delivery_mode": str(frontmatter.get("delivery_mode") or ""), "llm_status": str(frontmatter.get("llm_status") or ""), "llm_backend": str(frontmatter.get("llm_backend") or ""), "llm_model": str(frontmatter.get("llm_model") or ""), "llm_failure_reason": str(frontmatter.get("llm_failure_reason") or ""), "background_job_id": str(frontmatter.get("background_job_id") or ""), "background_status": background_status})
     return sorted(artifacts, key=lambda item: (item["created_at"], item["path"]), reverse=True)[:limit]
 
 

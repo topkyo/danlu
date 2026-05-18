@@ -27,6 +27,7 @@ from aiwiki.runner import (
     _build_lint_prompt,
     _client_model_name,
     _context_budget,
+    _dedupe_report_citations,
     _extract_related_concept_slugs,
     _fit_log_prompt_section,
     _fit_prompt_section,
@@ -54,6 +55,7 @@ from aiwiki.runner import (
     run_lint,
     run_nightly,
 )
+from aiwiki.runner.workflows import run_ask_resume, run_ask_submit
 
 _VALID_REPORT_BODY = (
     "---\nid: query-stub\nkind: output\nformat: report\n---\n\n"
@@ -78,6 +80,32 @@ class _DummyClient:
         del system_prompt
         del user_prompt
         raise AssertionError("complete should not be called in this test")
+
+
+class _BackendFailoverAskClient:
+    def __init__(self, response_text: str | None = None) -> None:
+        self.response_text = response_text or _VALID_REPORT_BODY
+        self.config = type(
+            "Config",
+            (),
+            {"model": "deepseek-v4-pro", "backend": "opencode-api", "backend_requested": "opencode-api", "timeout_seconds": 120},
+        )()
+
+    def advance_model(self) -> bool:
+        if self.config.backend == "codex-cli":
+            return False
+        self.config = type(
+            "Config",
+            (),
+            {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "opencode-api", "timeout_seconds": 120},
+        )()
+        return True
+
+    def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+        del system_prompt, user_prompt
+        if self.config.backend == "opencode-api":
+            raise LLMError("LLM endpoint timed out after 120 seconds.")
+        return CompletionResult(text=self.response_text, response_id="resp_failover", usage={"total_tokens": 6})
 
 
 class RunnerTests(unittest.TestCase):
@@ -158,6 +186,129 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 _append_jsonl_log(self.root, ".aiwiki/logs/runs.jsonl", {"event": "run-ask"})
 
+    def test_run_ask_direct_note_uses_lightweight_llm_without_ranking_context(self) -> None:
+        class _DirectClient:
+            def __init__(self) -> None:
+                self.config = type("Config", (), {"model": "gpt-5.5", "backend": "opencode-api", "timeout_seconds": 45})()
+                self.prompts: list[str] = []
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                self.prompts.append(user_prompt)
+                self.assert_direct_prompt(system_prompt)
+                return CompletionResult(text="我是当前配置的 LLM。", response_id="resp_direct", usage={"total_tokens": 8})
+
+            def assert_direct_prompt(self, system_prompt: str) -> None:
+                self.prompts.append(f"system:{system_prompt}")
+
+        client = _DirectClient()
+        with patch("aiwiki.runner.workflows.ask_question") as deterministic_ask:
+            result = run_ask(self.root, "你是什么大模型？", "note", client=client, direct=True)
+
+        deterministic_ask.assert_not_called()
+        self.assertEqual(result["delivery_mode"], "llm-direct")
+        self.assertEqual(result["format"], "note")
+        self.assertEqual(result["model_final"], "gpt-5.5")
+        self.assertEqual(client.prompts[0], "你是什么大模型？")
+        artifact = self.root / result["path"]
+        content = artifact.read_text(encoding="utf-8")
+        self.assertIn('delivery_mode: "llm-direct"', content)
+        self.assertIn("# 你是什么大模型？", content)
+        self.assertIn("我是当前配置的 LLM。", content)
+        receipt = json.loads((self.root / ".aiwiki/logs/llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual(receipt["event"], "run-ask-direct")
+        self.assertEqual(receipt["status"], "success")
+
+    def test_run_ask_direct_note_marks_backend_failover_stage(self) -> None:
+        with patch("aiwiki.runner.workflows.ask_question") as deterministic_ask:
+            result = run_ask(
+                self.root,
+                "你是什么大模型？",
+                "note",
+                client=_BackendFailoverAskClient(response_text="我是备用 Codex。"),
+                direct=True,
+            )
+
+        deterministic_ask.assert_not_called()
+        self.assertEqual(result["delivery_mode"], "llm-direct")
+        self.assertEqual(result["backend_requested"], "opencode-api")
+        self.assertEqual(result["backend_effective"], "codex-cli")
+        self.assertEqual(result["model_selected"], "deepseek-v4-pro")
+        self.assertEqual(result["model_final"], "gpt-5.5")
+        self.assertEqual(result["fallback_stage"], "backend-failover")
+        receipt = json.loads((self.root / ".aiwiki/logs/llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual(receipt["event"], "run-ask-direct")
+        self.assertEqual(receipt["fallback_stage"], "backend-failover")
+        self.assertEqual(receipt["backend_effective"], "codex-cli")
+
+    def test_run_ask_material_note_uses_extracted_material_context_without_ranking_context(self) -> None:
+        raw_note = self.root / "raw" / "inbox" / "image-note.md"
+        raw_note.parent.mkdir(parents=True, exist_ok=True)
+        raw_note.write_text("---\ntitle: image\n---\n\n## Extracted Text\nMass to Orbit: SpaceX 841.0t. Rest of World 128.6t.\n", encoding="utf-8")
+
+        class _MaterialClient:
+            def __init__(self) -> None:
+                self.config = type("Config", (), {"model": "deepseek-v4-pro", "backend": "opencode-api", "timeout_seconds": 45})()
+                self.user_prompts: list[str] = []
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                self.user_prompts.append(user_prompt)
+                self.assert_system_prompt(system_prompt)
+                return CompletionResult(text="图片显示 SpaceX 2026 YTD 入轨质量显著高于其他地区。", response_id="resp_material", usage={"total_tokens": 12})
+
+            def assert_system_prompt(self, system_prompt: str) -> None:
+                self.user_prompts.append(f"system:{system_prompt}")
+
+        question = "图片内容？\n\n请优先使用本次投喂材料回答；材料路径供系统路由使用：raw/inbox/image-note.md、raw/assets/image.jpeg"
+        client = _MaterialClient()
+        with patch("aiwiki.runner.workflows.ask_question") as deterministic_ask:
+            result = run_ask(self.root, question, "note", client=client)
+
+        deterministic_ask.assert_not_called()
+        self.assertEqual(result["delivery_mode"], "llm-direct")
+        self.assertEqual(result["format"], "note")
+        self.assertEqual(result["material_refs"], ["raw/inbox/image-note.md", "raw/assets/image.jpeg"])
+        self.assertIn("用户问题：图片内容？", client.user_prompts[0])
+        self.assertIn("Mass to Orbit", client.user_prompts[0])
+        artifact = self.root / result["path"]
+        content = artifact.read_text(encoding="utf-8")
+        self.assertIn("# 图片内容？", content)
+        self.assertIn("SpaceX 2026 YTD", content)
+
+    def test_run_ask_material_note_writes_degraded_artifact_when_llm_times_out(self) -> None:
+        raw_note = self.root / "raw" / "inbox" / "pdf-note.md"
+        raw_note.parent.mkdir(parents=True, exist_ok=True)
+        raw_note.write_text(
+            "---\ntitle: pdf\n---\n\n## Extracted Text\n特朗普访华成果预期：不翻车即双赢。\n",
+            encoding="utf-8",
+        )
+
+        class _TimeoutClient:
+            def __init__(self) -> None:
+                self.config = type("Config", (), {"model": "deepseek-v4-pro", "backend": "opencode-api", "timeout_seconds": 45})()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt, user_prompt
+                raise LLMError("LLM endpoint timed out after 45 seconds.")
+
+        question = "分析下内容\n\n请优先使用本次投喂材料回答；材料路径供系统路由使用：raw/inbox/pdf-note.md、raw/assets/pdf.pdf"
+        with patch("aiwiki.runner.workflows.ask_question") as deterministic_ask:
+            result = run_ask(self.root, question, "note", client=_TimeoutClient(), fallback_to_ask=True)
+
+        deterministic_ask.assert_not_called()
+        self.assertEqual(result["status"], "degraded")
+        self.assertEqual(result["delivery_mode"], "deterministic-fallback")
+        self.assertEqual(result["fallback_from"], "run-ask-direct")
+        self.assertEqual(result["format"], "note")
+        artifact = self.root / result["path"]
+        content = artifact.read_text(encoding="utf-8")
+        self.assertIn("# LLM 未完成：分析下内容", content)
+        self.assertIn("本地材料预览", content)
+        self.assertIn("特朗普访华成果预期", content)
+        self.assertIn('llm_status: "timeout_or_unavailable"', content)
+        receipt = json.loads((self.root / ".aiwiki/logs/llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual(receipt["event"], "run-ask-direct")
+        self.assertEqual(receipt["status"], "degraded")
+
     def test_run_ask_uses_lean_prompt_immediately_when_requested(self) -> None:
         artifact_path = self.root / "output" / "reports" / "query-lean.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
@@ -210,6 +361,117 @@ class RunnerTests(unittest.TestCase):
         output_frontmatter = parse_frontmatter(artifact_path.read_text(encoding="utf-8"))
         self.assertEqual(output_frontmatter["run_id"], result["run_id"])
         self.assertEqual(output_frontmatter["run_notes_path"], result["run_notes_path"])
+
+    def test_run_ask_marks_backend_failover_stage_in_report_receipts(self) -> None:
+        artifact_path = self.root / "output" / "reports" / "query-backend-failover.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text("---\nid: query-backend-failover\nkind: report\n---\n\n# Placeholder\n", encoding="utf-8")
+        artifact = {
+            "path": "output/reports/query-backend-failover.md",
+            "format": "report",
+            "protocol": "general",
+            "ranked_sources": ["source-1"],
+            "ranked_concepts": [],
+            "protocol_pages": [],
+            "index_pages": [],
+            "machine_memory_query": {},
+        }
+
+        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
+            with patch("aiwiki.runner.workflows._build_ask_prompt", return_value="report prompt"):
+                result = run_ask(self.root, "测试", "report", client=_BackendFailoverAskClient(), lean=True)
+
+        self.assertEqual(result["backend_requested"], "opencode-api")
+        self.assertEqual(result["backend_effective"], "codex-cli")
+        self.assertEqual(result["model_selected"], "deepseek-v4-pro")
+        self.assertEqual(result["model_final"], "gpt-5.5")
+        self.assertEqual(result["fallback_stage"], "backend-failover")
+        receipt = json.loads((self.root / ".aiwiki/logs/llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual(receipt["event"], "run-ask")
+        self.assertEqual(receipt["fallback_stage"], "backend-failover")
+        self.assertEqual(receipt["backend_effective"], "codex-cli")
+        self.assertEqual(receipt["model_final"], "gpt-5.5")
+
+    def test_run_ask_submit_and_resume_reuse_existing_background_manifest_artifact(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        backend_preflight = {
+            "backend_requested": "codex-cli",
+            "backend": "codex-cli",
+            "model_requested": "gpt-5.5",
+            "model": "gpt-5.5",
+            "compatibility": "compatible",
+        }
+
+        with patch("aiwiki.runner.preflight.preflight_check_backend_chain", return_value=backend_preflight):
+            submitted = run_ask_submit(
+                self.root,
+                "Compare transformer scaling tradeoffs",
+                "report",
+                lean=True,
+                timeout_seconds=45,
+                spawn=False,
+            )
+
+        self.assertEqual(submitted["kind"], "run-ask-background-job")
+        self.assertEqual(submitted["status"], "submitted")
+        self.assertTrue(submitted["job_id"])
+        self.assertTrue(submitted["path"].startswith("output/reports/"))
+        self.assertTrue(submitted["run_id"])
+        self.assertTrue(submitted["run_notes_path"].startswith("output/control/runs/"))
+        self.assertEqual(submitted["backend_preflight"], backend_preflight)
+        manifest_path = self.root / submitted["job_manifest_path"]
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(manifest["status"], "submitted")
+        self.assertEqual(manifest["path"], submitted["path"])
+        self.assertEqual(manifest["run_id"], submitted["run_id"])
+        self.assertEqual(manifest["run_notes_path"], submitted["run_notes_path"])
+        self.assertEqual(manifest["artifact"]["path"], submitted["path"])
+        self.assertEqual(manifest["artifact"]["run_id"], submitted["run_id"])
+        self.assertEqual(manifest["artifact"]["run_notes_path"], submitted["run_notes_path"])
+        self.assertEqual(manifest["artifact"]["background_job_id"], submitted["job_id"])
+        self.assertEqual(manifest["artifact"]["background_status"], "submitted")
+        self.assertEqual(manifest["backend_preflight"], backend_preflight)
+        submitted_frontmatter = parse_frontmatter((self.root / submitted["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(submitted_frontmatter["background_job_id"], submitted["job_id"])
+        self.assertEqual(submitted_frontmatter["background_status"], "submitted")
+        self.assertEqual(submitted_frontmatter["delivery_mode"], "background-pending")
+        self.assertEqual(submitted_frontmatter["llm_status"], "pending")
+
+        class _ResumeClient:
+            def __init__(self) -> None:
+                self.config = type(
+                    "Config",
+                    (),
+                    {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 45},
+                )()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt, user_prompt
+                return CompletionResult(text=_VALID_REPORT_BODY, response_id="resp_background", usage={"total_tokens": 7})
+
+        with patch("aiwiki.runner.workflows.ask_question", side_effect=AssertionError("resume should reuse the submitted manifest artifact")):
+            resumed = run_ask_resume(self.root, submitted["job_id"], client=_ResumeClient())
+
+        self.assertEqual(resumed["job_id"], submitted["job_id"])
+        self.assertEqual(resumed["path"], submitted["path"])
+        self.assertEqual(resumed["run_id"], submitted["run_id"])
+        self.assertEqual(resumed["run_notes_path"], submitted["run_notes_path"])
+        self.assertEqual(sorted(path.name for path in (self.root / "output" / "reports").glob("*.md")), [Path(submitted["path"]).name])
+        artifact_path = self.root / submitted["path"]
+        self.assertIn("# Stub answer", artifact_path.read_text(encoding="utf-8"))
+        output_frontmatter = parse_frontmatter(artifact_path.read_text(encoding="utf-8"))
+        self.assertEqual(output_frontmatter["run_id"], submitted["run_id"])
+        self.assertEqual(output_frontmatter["run_notes_path"], submitted["run_notes_path"])
+        self.assertEqual(output_frontmatter["background_job_id"], submitted["job_id"])
+        self.assertEqual(output_frontmatter["background_status"], "completed")
+        self.assertNotEqual(output_frontmatter.get("delivery_mode"), "background-pending")
+        updated_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(updated_manifest["status"], "completed")
+        self.assertEqual(updated_manifest["path"], submitted["path"])
+        self.assertEqual(updated_manifest["run_id"], submitted["run_id"])
+        self.assertEqual(updated_manifest["run_notes_path"], submitted["run_notes_path"])
+        self.assertEqual(updated_manifest["result"]["path"], submitted["path"])
 
     def test_run_ask_timeout_override_is_scoped_to_single_client_creation(self) -> None:
         artifact_path = self.root / "output" / "reports" / "query-timeout-override.md"
@@ -374,7 +636,7 @@ class RunnerTests(unittest.TestCase):
             with patch("aiwiki.runner.workflows._build_ask_prompt", return_value="prompt"):
                 result = run_ask(self.root, "测试", "report", client=_UnavailableAskClient(), fallback_to_ask=True)
 
-        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["status"], "degraded")
         self.assertEqual(result["delivery_mode"], "deterministic-fallback")
         self.assertEqual(result["primary_attempt_status"], "failed")
         self.assertTrue(result["fallback_used"])
@@ -383,6 +645,8 @@ class RunnerTests(unittest.TestCase):
         self.assertFalse(result["contract_validated"])
         self.assertEqual(result["path"], "output/reports/query-frontdoor-fallback.md")
         content = artifact_path.read_text(encoding="utf-8")
+        self.assertIn("LLM 没有在本次超时时间内返回可用内容", content)
+        self.assertIn("llm_status: \"timeout_or_unavailable\"", content)
         self.assertIn("graph_anchor_node_ids:", content)
         self.assertIn('  - "source:source-1"', content)
         self.assertIn("## 关系图谱锚点", content)
@@ -393,6 +657,7 @@ class RunnerTests(unittest.TestCase):
             for line in (self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()
         ]
         self.assertEqual(llm_receipts[-1]["event"], "run-ask-frontdoor")
+        self.assertEqual(llm_receipts[-1]["status"], "degraded")
         self.assertEqual(llm_receipts[-1]["delivery_mode"], "deterministic-fallback")
         self.assertTrue(llm_receipts[-1]["fallback_used"])
 
@@ -500,11 +765,15 @@ class RunnerTests(unittest.TestCase):
 
         self.assertIn("### wiki/indexes/index.md", prompt)
         self.assertIn("### wiki/indexes/sources.md", prompt)
-        self.assertIn("### wiki/indexes/machine-memory.md", prompt)
-        self.assertIn("### schema/index.md", prompt)
+        self.assertNotIn("### wiki/indexes/machine-memory.md", prompt)
+        index_section = prompt.split("## Index Pages", 1)[1].split("## Protocol Pages", 1)[0]
+        self.assertNotIn("### schema/index.md", index_section)
+        self.assertIn("Omitted `3` additional index page", prompt)
         self.assertNotIn("review-center.md", prompt)
         self.assertIn("### schema/protocols/general/index.md", prompt)
-        self.assertIn("### schema/protocols/general/query.md", prompt)
+        protocol_section = prompt.split("## Protocol Pages", 1)[1].split("## Concept Pages", 1)[0]
+        self.assertNotIn("### schema/protocols/general/query.md", protocol_section)
+        self.assertIn("Omitted `1` additional protocol page", prompt)
         self.assertNotIn("protocol review", prompt)
         self.assertLess(len(prompt), 30000)
 
@@ -971,6 +1240,7 @@ class RunnerTests(unittest.TestCase):
         receipts = [json.loads(line) for line in llm_receipts_path.read_text(encoding="utf-8").splitlines()]
         item_receipt = next(receipt for receipt in receipts if receipt["event"] == "run-compile")
         summary_receipt = receipts[-1]
+        self.assertEqual(item_receipt["status"], "success")
         self.assertEqual(item_receipt["model_selected"], "moonshotai/kimi-k2.5")
         self.assertEqual(item_receipt["model_final"], "z-ai/glm-5.1")
         self.assertEqual(item_receipt["fallback_stage"], "model-chain")
@@ -1529,6 +1799,13 @@ class RunnerTests(unittest.TestCase):
             "kind: report\n"
             "run_id: ask-output-reports-query-run-notes-prompt\n"
             "run_notes_path: output/control/runs/ask-output-reports-query-run-notes-prompt/thinking.md\n"
+            "background_job_id: ask-report-123\n"
+            "background_status: running\n"
+            "delivery_mode: background-pending\n"
+            "llm_status: pending\n"
+            "llm_backend: opencode-api\n"
+            "llm_model: deepseek-v4-pro\n"
+            "llm_failure_reason: pending\n"
             "---\n\n# Placeholder\n",
             encoding="utf-8",
         )
@@ -1560,6 +1837,13 @@ class RunnerTests(unittest.TestCase):
 
         self.assertNotIn("run_id:", client.prompt)
         self.assertNotIn("run_notes_path:", client.prompt)
+        self.assertNotIn("background_job_id:", client.prompt)
+        self.assertNotIn("background_status:", client.prompt)
+        self.assertNotIn("delivery_mode:", client.prompt)
+        self.assertNotIn("llm_status:", client.prompt)
+        self.assertNotIn("llm_backend:", client.prompt)
+        self.assertNotIn("llm_model:", client.prompt)
+        self.assertNotIn("llm_failure_reason:", client.prompt)
 
     def test_reinject_candidate_frontmatter_synthesizes_when_llm_strips_frontmatter(self) -> None:
         target = self.root / "output" / "reports" / "stripped.md"
@@ -1834,6 +2118,15 @@ class RunnerTests(unittest.TestCase):
             "## 引用\n- wiki/sources/source-1.md\n"
         )
         _validate_output_markdown(valid_report, "report", ["source-1"])
+        duplicate_citation_report = valid_report.replace(
+            "## 引用\n- wiki/sources/source-1.md\n",
+            "## 引用\n- wiki/sources/source-1.md\n- wiki/sources/source-1.md\n",
+        )
+        with self.assertRaisesRegex(RuntimeError, "duplicate citation"):
+            _validate_output_markdown(duplicate_citation_report, "report", ["source-1"])
+        deduped_report = _dedupe_report_citations(duplicate_citation_report)
+        _validate_output_markdown(deduped_report, "report", ["source-1"])
+        self.assertEqual(deduped_report.count("wiki/sources/source-1.md"), 2)
         with self.assertRaises(RuntimeError):
             _validate_output_markdown("# no frontmatter\n", "report", ["source-1"])
         with self.assertRaises(RuntimeError):

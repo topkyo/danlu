@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -450,6 +451,38 @@ class DropTests(unittest.TestCase):
         self.assertEqual(skipped["status"], "skipped")
         self.assertEqual(failed["status"], "failed")
 
+    def test_maybe_create_image_client_allows_openai_compatible_backends(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "AIWIKI_LLM_BACKEND": "opencode-api",
+                "AIWIKI_OPENCODE_API_KEY": "opencode_test_key",
+                "AIWIKI_LLM_MODEL": "gpt-4o",
+            },
+            clear=True,
+        ):
+            with patch("aiwiki.drop.create_backend_client", return_value="client") as create:
+                client = _maybe_create_image_client(self.root)
+
+        self.assertEqual(client, "client")
+        self.assertEqual(create.call_args.args[0].backend, "opencode-api")
+        self.assertEqual(create.call_args.args[0].model, "gpt-4o")
+
+    def test_maybe_create_image_client_skips_text_only_openai_compatible_model(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "AIWIKI_LLM_BACKEND": "opencode-api",
+                "AIWIKI_OPENCODE_API_KEY": "opencode_test_key",
+            },
+            clear=True,
+        ):
+            with patch("aiwiki.drop.create_backend_client") as create:
+                client = _maybe_create_image_client(self.root)
+
+        self.assertIsNone(client)
+        create.assert_not_called()
+
     def test_clone_repo_raises_on_git_failure(self) -> None:
         with patch(
             "aiwiki.drop.subprocess.run",
@@ -532,10 +565,10 @@ class DropTests(unittest.TestCase):
         self.assertEqual(_jpeg_dimensions(jpeg), (3, 2))
         self.assertEqual(_image_dimensions(jpeg), (3, 2))
 
-        bad_client = type("ConfigHolder", (), {"backend": "copilot-cli"})()
+        bad_client = type("ConfigHolder", (), {"backend": "copilot-cli", "model": "gpt-5.5"})()
         with patch("aiwiki.drop.LLMConfig.from_env", return_value=bad_client):
             self.assertIsNone(_maybe_create_image_client(self.root))
-        good_client = type("ConfigHolder", (), {"backend": "codex-cli"})()
+        good_client = type("ConfigHolder", (), {"backend": "codex-cli", "model": "gpt-5.5"})()
         with patch("aiwiki.drop.LLMConfig.from_env", return_value=good_client):
             with patch("aiwiki.drop.create_backend_client", return_value="client") as factory:
                 self.assertEqual(_maybe_create_image_client(self.root), "client")

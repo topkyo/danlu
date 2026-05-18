@@ -105,6 +105,9 @@ function reviewBucketLabel(key) {
 }
 
 function renderFurnaceActivityTimeline(plugin, parentEl) {
+  if (!plugin.settings || !plugin.settings.showAdvancedCommands) {
+    return;
+  }
   const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
   const feed = summary ? buildTodayFeed(summary) : [];
   const recentRuns = plugin.pluginState && Array.isArray(plugin.pluginState.recentRuns) ? plugin.pluginState.recentRuns : [];
@@ -341,17 +344,20 @@ function renderPendingSubmissionsGroup(plugin, section) {
               files: args.files,
               question: args.question || "",
             });
+            const finalFormat = String(flowResult && flowResult.askFormat || args.format || "");
             plugin.updatePendingSubmissionRetryArgs(entry.id, {
               ...args,
               materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : Array.isArray(args.materialPaths) ? args.materialPaths : [],
               askQuestion: String(flowResult && flowResult.askQuestion || args.askQuestion || ""),
+              format: finalFormat,
+              longRunning: finalFormat === "report",
               runNotesPath: String(flowResult && flowResult.runNotesPath || args.runNotesPath || ""),
               runId: String(flowResult && flowResult.runId || args.runId || ""),
             });
           } else if (args.kind === "auto-ask") {
             await plugin.runAskCommand({
               question: args.askQuestion || args.question || entry.displayText || "",
-              format: "report",
+              format: args.format || "report",
               mode: "run-ask",
               protocol: args.protocol || "",
             });
@@ -361,15 +367,31 @@ function renderPendingSubmissionsGroup(plugin, section) {
               question: args.question || "",
               protocol: args.protocol || "",
             });
+            const finalFormat = String(flowResult && flowResult.askFormat || args.format || "");
             plugin.updatePendingSubmissionRetryArgs(entry.id, {
               ...args,
               materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : Array.isArray(args.materialPaths) ? args.materialPaths : [],
               askQuestion: String(flowResult && flowResult.askQuestion || args.askQuestion || ""),
+              format: finalFormat,
+              longRunning: finalFormat === "report",
               runNotesPath: String(flowResult && flowResult.runNotesPath || args.runNotesPath || ""),
               runId: String(flowResult && flowResult.runId || args.runId || ""),
             });
           } else {
-            await plugin.runUniversalInputCommand({ payload: args.payload || entry.displayText || "" });
+            const retryText = String(args.payload || entry.displayText || "").trim();
+            if (retryText && looksLikeUniversalMaterialPayload(retryText)) {
+              const payload = await plugin.runUniversalInputCommand({ payload: retryText });
+              const materialPaths = collectMaterialPathsFromPayload(payload);
+              plugin.updatePendingSubmissionRetryArgs(entry.id, { ...args, kind: "material", payload: retryText, materialPaths });
+              plugin.completePendingMaterialDrop(entry.id, materialPaths);
+            } else {
+              await plugin.runAskCommand({
+                question: retryText,
+                format: args.format || inferAutoAskFormat(retryText, []),
+                mode: "run-ask",
+                protocol: args.protocol || "",
+              });
+            }
           }
           plugin.markPendingSubmissionReceived(entry.id);
         } catch (e) {
@@ -419,22 +441,49 @@ function renderPendingSubmissionsGroup(plugin, section) {
         meta.createSpan({ text: plugin.t("有进度笔记") });
       }
       const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions furnace-artifact-actions" });
+      const degradedOutput = target === "outputs" && pendingSubmissionIsDegraded(entry);
+      const openReceiptTarget = () => plugin.openPendingDoneTarget("receipts", reconcilePath);
       if (target === "outputs") {
-        const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-open-report-btn", text: plugin.t("打开报告") });
+        const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-open-report-btn", text: degradedOutput ? plugin.t("打开产物") : plugin.t("打开报告") });
         openBtn.addEventListener("click", () => {
           plugin.openPendingDoneTarget("outputs", reconcilePath);
         });
-        const quoteBtn = actions.createEl("button", { cls: "furnace-pending-quote-report-btn", text: plugin.t("引用此报告追问") });
-        quoteBtn.addEventListener("click", () => {
-          if (typeof plugin.quoteFileToComposer === "function") {
-            plugin.quoteFileToComposer(reconcilePath);
-          }
-        });
+        if (degradedOutput) {
+          const retryBtn = actions.createEl("button", { cls: "furnace-pending-retry-report-btn", text: plugin.t("重试") });
+          retryBtn.addEventListener("click", async () => {
+            const args = entry.retryArgs || {};
+            plugin.resetPendingSubmissionForRetry(entry.id);
+            try {
+              const retryPayload = await plugin.runAskCommand({
+                question: args.askQuestion || args.question || entry.displayText || "",
+                format: args.format || "report",
+                mode: "run-ask",
+                protocol: args.protocol || "",
+              });
+              if (retryPayload && typeof plugin.updatePendingSubmissionRetryArgs === "function") {
+                plugin.updatePendingSubmissionRetryArgs(entry.id, Object.assign({}, args, {
+                  jobId: retryPayload.job_id || retryPayload.jobId || "",
+                  runId: retryPayload.run_id || retryPayload.runId || "",
+                  runNotesPath: retryPayload.run_notes_path || retryPayload.runNotesPath || "",
+                  longRunning: true,
+                }));
+              }
+              plugin.markPendingSubmissionReceived(entry.id);
+            } catch (e) {
+              plugin.markPendingSubmissionFailed(entry.id, e);
+            }
+          });
+        } else {
+          const quoteBtn = actions.createEl("button", { cls: "furnace-pending-quote-report-btn", text: plugin.t("引用此报告追问") });
+          quoteBtn.addEventListener("click", () => {
+            if (typeof plugin.quoteFileToComposer === "function") {
+              plugin.quoteFileToComposer(reconcilePath);
+            }
+          });
+        }
       } else if (target === "receipts") {
         const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-open-receipt-btn", text: plugin.t("查看回执") });
-        openBtn.addEventListener("click", () => {
-          plugin.openPendingDoneTarget("receipts", reconcilePath);
-        });
+        openBtn.addEventListener("click", openReceiptTarget);
       }
       const doneBtn = actions.createEl("button", { cls: "furnace-pending-done-btn", text: plugin.t("完成") });
       doneBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
@@ -456,6 +505,9 @@ function renderPendingProgressSteps(plugin, aiBubble, entry) {
 }
 
 function pendingSubmissionProgressSteps(plugin, entry) {
+  if (entry && entry.retryArgs && entry.retryArgs.longRunning) {
+    return [plugin.t("已接收长程报告任务"), plugin.t("LLM 正在生成结构化报告"), plugin.t("完成后会写入本地报告")];
+  }
   const startedMs = Date.parse(entry && entry.startedAt || "");
   const elapsed = Number.isFinite(startedMs) ? Math.max(0, Date.now() - startedMs) : 0;
   if (entry && entry.status === "received") {
@@ -481,6 +533,7 @@ function hydratePendingArtifactSnippet(plugin, snippetEl, entry) {
 
 function pendingSubmissionSnippetFallback(plugin, entry) {
   const target = String(entry && entry.reconcileTarget || "");
+  if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成；这是保留 provenance 的本地恢复产物，可打开检查上下文后重试。");
   if (target === "outputs") return plugin.t("报告已写入本地文件；摘要加载中…");
   if (target === "receipts") return plugin.t("回执已写入控制层，可用于审计与回滚追踪。");
   if (target === "raw") return plugin.t("原料已进入 raw/，等待后续编译沉淀。");
@@ -489,6 +542,7 @@ function pendingSubmissionSnippetFallback(plugin, entry) {
 
 function pendingSubmissionArtifactKind(plugin, entry) {
   const target = String(entry && entry.reconcileTarget || "");
+  if (pendingSubmissionIsDegraded(entry)) return plugin.t("恢复产物 Artifact");
   if (target === "outputs") return plugin.t("本地报告 Artifact");
   if (target === "receipts") return plugin.t("执行回执 Receipt");
   if (target === "raw") return plugin.t("原料 Raw Input");
@@ -497,6 +551,7 @@ function pendingSubmissionArtifactKind(plugin, entry) {
 
 function pendingSubmissionArtifactMeta(plugin, entry) {
   const target = String(entry && entry.reconcileTarget || "");
+  if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成；不是最终报告，可打开、查看进度或重试");
   if (target === "outputs") return plugin.t("文件是事实源，可打开继续阅读");
   if (target === "receipts") return plugin.t("保留 provenance / audit 线索");
   if (target === "raw") return plugin.t("后续 compile 会沉淀到 wiki/output");
@@ -520,11 +575,15 @@ function renderPendingRunNotesLink(plugin, aiBubble, entry) {
 function pendingSubmissionStageLabel(plugin, entry) {
   const status = String(entry && entry.status || "running");
   if (status === "done") {
+    if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成，已保留恢复产物");
     if (entry && entry.reconcileTarget === "receipts") return plugin.t("已记录回执");
     if (entry && entry.reconcileTarget === "raw") return plugin.t("已收料");
     return plugin.t("报告已生成");
   }
   if (status === "received") {
+    if (entry && entry.retryArgs && entry.retryArgs.longRunning) {
+      return entry._stale ? plugin.t("长程报告可能已完成，刷新看看") : plugin.t("长程报告生成中，可稍后刷新");
+    }
     return entry && entry._stale ? plugin.t("可能已完成，刷新看看") : plugin.t("已接收，正在排队生成报告");
   }
   if (status === "failed") return plugin.t("失败");
@@ -534,10 +593,17 @@ function pendingSubmissionStageLabel(plugin, entry) {
 
 function pendingSubmissionResultTitle(plugin, entry) {
   const target = String(entry && entry.reconcileTarget || "");
+  if (pendingSubmissionIsDegraded(entry)) return plugin.t("恢复产物已就绪");
   if (target === "outputs") return plugin.t("报告卡片已就绪");
   if (target === "receipts") return plugin.t("回执已就绪");
   if (target === "raw") return plugin.t("原料已入库");
   return plugin.t("任务已完成");
+}
+
+function pendingSubmissionIsDegraded(entry) {
+  const deliveryMode = String(entry && entry.deliveryMode || entry && entry.delivery_mode || "").trim();
+  const llmStatus = String(entry && entry.llmStatus || entry && entry.llm_status || "").trim();
+  return deliveryMode === "deterministic-fallback" || llmStatus === "timeout_or_unavailable";
 }
 
 function renderTodayFeedItem(plugin, listEl, entry) {

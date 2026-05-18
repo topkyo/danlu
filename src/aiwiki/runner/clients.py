@@ -8,8 +8,16 @@ from pathlib import Path
 from typing import Any
 
 from aiwiki.config import LLMConfig
-from aiwiki.llm import advance_client_model, create_backend_client, probe_available_backends, probe_backend
+from aiwiki.llm import (
+    advance_client_model,
+    create_backend_client,
+    probe_available_backends,
+    probe_backend,
+)
 from aiwiki.runner.interfaces import SupportsComplete
+
+FALLBACK_STAGE_BACKEND_FAILOVER = "backend-failover"
+FALLBACK_STAGE_MODEL_CHAIN = "model-chain"
 
 
 def llm_status() -> dict[str, Any]:
@@ -78,6 +86,13 @@ def _client_backend_name(client: SupportsComplete) -> str:
     return ""
 
 
+def _fallback_stage_for_client_transition(client: SupportsComplete, *, before_backend: str) -> str:
+    after_backend = _client_backend_name(client)
+    if before_backend and after_backend and before_backend != after_backend:
+        return FALLBACK_STAGE_BACKEND_FAILOVER
+    return FALLBACK_STAGE_MODEL_CHAIN
+
+
 def _append_fallback_stage(stages: list[str], stage: str) -> None:
     if stage and stage not in stages:
         stages.append(stage)
@@ -88,15 +103,26 @@ def _fallback_stage_label(stages: list[str]) -> str:
 
 
 def _fallback_to_next_model(client: SupportsComplete, operation: str, exc: Exception) -> bool:
+    current_backend = _client_backend_name(client)
     current_model = _client_model_name(client)
     if not advance_client_model(client):
         return False
+    next_backend = _client_backend_name(client)
     next_model = _client_model_name(client)
     logging.getLogger("aiwiki").warning(
-        "%s failed with model %s: %s; retrying with model %s",
+        "%s failed with %s/%s: %s; retrying with %s/%s",
         operation,
+        current_backend or "(default)",
         current_model or "(default)",
         exc,
+        next_backend or "(default)",
         next_model or "(default)",
     )
     return True
+
+
+def _fallback_to_next_model_with_stage(client: SupportsComplete, operation: str, exc: Exception) -> str:
+    before_backend = _client_backend_name(client)
+    if not _fallback_to_next_model(client, operation, exc):
+        return ""
+    return _fallback_stage_for_client_transition(client, before_backend=before_backend)

@@ -46,6 +46,7 @@ from ..app_protocol import (
     schedule_review_windows,
 )
 from ..app_queries import (
+    human_query_title,
     rank_sources,
     render_decision_memo_query,
     render_figure_brief,
@@ -141,7 +142,7 @@ def _readable_filename_stem(label: str, *, fallback: str, max_chars: int = READA
 
 def _output_artifact_seed(question: str, output_format: str) -> str:
     fallback = OUTPUT_FORMAT_FILENAME_SUFFIXES.get(output_format, output_format or "output")
-    stem = _readable_filename_stem(question, fallback=fallback)
+    stem = _readable_filename_stem(human_query_title(question), fallback=fallback)
     suffix = OUTPUT_FORMAT_FILENAME_SUFFIXES.get(output_format)
     if suffix:
         return f"{stem}-{suffix}"

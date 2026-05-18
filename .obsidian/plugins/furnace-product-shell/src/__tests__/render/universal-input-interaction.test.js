@@ -140,6 +140,7 @@ function loadRenderContext() {
     "helpers.js",
     "today_feed.js",
     "render/cards.js",
+    "render_primitives.js",
     "render_input.js",
     "render_today.js",
     "render_advanced.js",
@@ -171,12 +172,12 @@ function makePlugin(overrides = {}) {
     markPendingSubmissionReceived: jest.fn(),
     markPendingSubmissionFailed: jest.fn(),
     updatePendingSubmissionRetryArgs: jest.fn(),
+    completePendingMaterialDrop: jest.fn(),
     runDroppedFilesWithAutoAsk: jest.fn().mockResolvedValue({ materialPaths: ["raw/inbox/input.md"], askQuestion: "Q" }),
     runDroppedPayloadsWithAutoAsk: jest.fn().mockResolvedValue({ materialPaths: ["raw/inbox/input.md"], askQuestion: "Q" }),
     runUniversalInputCommand: jest.fn().mockResolvedValue({ note_path: "raw/inbox/url.md" }),
     runAskCommand: jest.fn().mockResolvedValue({}),
     renderMainHeader: jest.fn((el) => el.createDiv({ cls: "test-main-header", text: "header" })),
-    renderStatusPanel: jest.fn((el) => el.createDiv({ cls: "test-status-panel", text: "status" })),
     renderLegacyAdvancedPanel: jest.fn((el) => el.createDiv({ cls: "test-legacy-advanced", text: "legacy" })),
     getAdvancedSectionExpanded: jest.fn(() => false),
     setAdvancedSectionExpanded: jest.fn(),
@@ -228,6 +229,21 @@ const SHELL_SUMMARY_FIXTURE = {
     },
   ],
   recent_receipts: [],
+  llm_status: {
+    configured: true,
+    backend: "opencode-api",
+    model: "deepseek-v4-pro",
+    available_backends: ["opencode-api", "codex-cli"],
+    backend_fallbacks: [
+      {
+        backend: "codex-cli",
+        model: "gpt-5.5",
+        configured: true,
+        available: true,
+        reason: "command found",
+      },
+    ],
+  },
   suggested_next_actions: [],
   metrics_history_delta: { available: false },
   today_snooze: { items: [] },
@@ -337,6 +353,183 @@ test("drop pure URL text fills textarea and does not enter file flow", async () 
 
   expect(plugin.runDroppedFilesWithAutoAsk).not.toHaveBeenCalled();
   expect(plugin.runUniversalInputCommand).toHaveBeenCalledWith({ payload: "https://example.com/post" });
+  expect(plugin.runAskCommand).not.toHaveBeenCalled();
+  expect(plugin.completePendingMaterialDrop).toHaveBeenCalledWith("pending-1", ["raw/inbox/url.md"]);
+});
+
+test("file-only submission completes as raw material instead of staying queued", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    runDroppedFilesWithAutoAsk: jest.fn().mockResolvedValue({
+      materialPaths: ["raw/inbox/image.md", "raw/assets/image.png"],
+      askQuestion: "",
+    }),
+  });
+  const container = document.createElement("div");
+
+  context.renderUniversalInput(plugin, container);
+
+  const wrapper = container.querySelector(".furnace-universal-input-wrapper");
+  const submitButton = container.querySelector(".furnace-universal-input-button");
+  wrapper.dispatchEvent(makeDropEvent({
+    files: [{ name: "image.png", path: "/tmp/image.png" }],
+    getData: () => "",
+  }));
+
+  submitButton.click();
+  await flushAsyncWork();
+
+  expect(plugin.runDroppedFilesWithAutoAsk).toHaveBeenCalledWith({
+    files: [{ path: "/tmp/image.png", name: "image.png" }],
+    question: "",
+  });
+  expect(plugin.runAskCommand).not.toHaveBeenCalled();
+  expect(plugin.completePendingMaterialDrop).toHaveBeenCalledWith("pending-1", ["raw/inbox/image.md", "raw/assets/image.png"]);
+});
+
+test("plain question goes through run-ask instead of deterministic universal drop", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    settings: {
+      onboardingShown: true,
+      showAdvancedCommands: false,
+      advancedSectionsExpanded: {},
+      locale: "zh",
+      defaultAskFormat: "note",
+    },
+    runAskCommand: jest.fn().mockResolvedValue({ run_notes_path: "output/control/runs/ask/thinking.md", run_id: "ask-note" }),
+  });
+  const container = document.createElement("div");
+
+  context.renderUniversalInput(plugin, container);
+
+  const textarea = container.querySelector(".furnace-universal-input-textarea");
+  const submitButton = container.querySelector(".furnace-universal-input-button");
+  textarea.value = "问你个问题，你是什么大模型？";
+
+  submitButton.click();
+  await flushAsyncWork();
+
+  expect(plugin.runUniversalInputCommand).not.toHaveBeenCalled();
+  expect(plugin.runAskCommand).toHaveBeenCalledWith({
+    question: "问你个问题，你是什么大模型？",
+    format: "note",
+    mode: "run-ask",
+  });
+  expect(plugin.updatePendingSubmissionRetryArgs).toHaveBeenCalledWith("pending-1", expect.objectContaining({
+    kind: "auto-ask",
+    format: "note",
+    runNotesPath: "output/control/runs/ask/thinking.md",
+    runId: "ask-note",
+  }));
+});
+
+test("plain question ignores persisted report default and stays note", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    settings: {
+      onboardingShown: true,
+      showAdvancedCommands: false,
+      advancedSectionsExpanded: {},
+      locale: "zh",
+      defaultAskFormat: "report",
+    },
+  });
+  const container = document.createElement("div");
+
+  context.renderUniversalInput(plugin, container);
+
+  const textarea = container.querySelector(".furnace-universal-input-textarea");
+  const submitButton = container.querySelector(".furnace-universal-input-button");
+  textarea.value = "你是什么大模型？";
+
+  submitButton.click();
+  await flushAsyncWork();
+
+  expect(plugin.runUniversalInputCommand).not.toHaveBeenCalled();
+  expect(plugin.runAskCommand).toHaveBeenCalledWith({
+    question: "你是什么大模型？",
+    format: "note",
+    mode: "run-ask",
+  });
+});
+
+test("explicit report question is marked as long running", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    runAskCommand: jest.fn().mockResolvedValue({ run_notes_path: "output/control/runs/report/thinking.md", run_id: "ask-report" }),
+  });
+  const container = document.createElement("div");
+
+  context.renderUniversalInput(plugin, container);
+
+  const textarea = container.querySelector(".furnace-universal-input-textarea");
+  const submitButton = container.querySelector(".furnace-universal-input-button");
+  textarea.value = "请生成一份深度报告";
+
+  submitButton.click();
+  await flushAsyncWork();
+
+  expect(plugin.runAskCommand).toHaveBeenCalledWith({
+    question: "请生成一份深度报告",
+    format: "report",
+    mode: "run-ask",
+  });
+  expect(plugin.pushPendingSubmission).toHaveBeenCalledWith("请生成一份深度报告", expect.objectContaining({
+    retryArgs: expect.objectContaining({ format: "report", longRunning: true }),
+  }));
+});
+
+test("material question updates long running flag from final inferred format", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    runDroppedPayloadsWithAutoAsk: jest.fn().mockResolvedValue({
+      materialPaths: ["raw/inbox/input.md"],
+      askQuestion: "请生成一份深度报告\n\n请优先使用本次投喂材料回答；材料路径供系统路由使用：raw/inbox/input.md",
+      askFormat: "report",
+      run_notes_path: "output/control/runs/report/thinking.md",
+      run_id: "ask-report",
+    }),
+  });
+  const container = document.createElement("div");
+
+  context.renderUniversalInput(plugin, container);
+
+  const textarea = container.querySelector(".furnace-universal-input-textarea");
+  const submitButton = container.querySelector(".furnace-universal-input-button");
+  textarea.value = "https://example.com/article\n请生成一份深度报告";
+
+  submitButton.click();
+  await flushAsyncWork();
+
+  expect(plugin.updatePendingSubmissionRetryArgs).toHaveBeenCalledWith("pending-1", expect.objectContaining({
+    format: "report",
+    longRunning: true,
+  }));
+});
+
+test("long running pending card uses report progress language", () => {
+  const context = loadRenderContext();
+  const container = document.createElement("div");
+
+  context.renderTodayFeed(
+    makePlugin({
+      pendingSubmissions: [
+        {
+          id: "report-1",
+          status: "received",
+          displayText: "请生成一份深度报告",
+          startedAt: "2026-05-13T09:00:00Z",
+          retryArgs: { kind: "auto-ask", format: "report", longRunning: true },
+        },
+      ],
+    }),
+    container
+  );
+
+  expect(container.textContent).toContain("长程报告生成中，可稍后刷新");
+  expect(container.textContent).toContain("已接收长程报告任务");
+  expect(container.textContent).toContain("LLM 正在生成结构化报告");
 });
 
 test("renderTodayFeed covers no-summary empty-feed and pending branches", () => {
@@ -430,6 +623,170 @@ test("chat-style pending stream covers artifact cards failed and escalated bubbl
   expect(container.querySelector(".furnace-pending-exception-btn")).toBeTruthy();
 });
 
+test("degraded output card hides quote action and keeps recovery semantics", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    shellSummary: {
+      generated_at: "2026-05-13T10:00:00Z",
+      review_backlog_counts: {},
+      recent_outputs: [],
+      recent_receipts: [],
+      suggested_next_actions: [],
+      metrics_history_delta: { available: false },
+      today_snooze: { items: [] },
+    },
+    pendingSubmissions: [
+      {
+        id: "done-degraded",
+        status: "done",
+        displayText: "生成报告",
+        reconcileTarget: "outputs",
+        reconcilePath: "output/reports/degraded.md",
+        deliveryMode: "deterministic-fallback",
+        llmStatus: "timeout_or_unavailable",
+        runNotesPath: "output/control/runs/ask-r/thinking.md",
+        runId: "ask-r",
+        retryArgs: { kind: "auto-ask", format: "report", question: "重试问题" },
+      },
+    ],
+  });
+  const container = document.createElement("div");
+
+  context.renderTodayFeed(plugin, container);
+  await flushAsyncWork();
+
+  expect(container.textContent).toContain("恢复产物已就绪");
+  expect(container.textContent).toContain("恢复产物 Artifact");
+  expect(container.textContent).toContain("打开产物");
+  expect(container.textContent).toContain("重试");
+  expect(container.textContent).not.toContain("引用此报告追问");
+  expect(container.querySelector(".furnace-pending-quote-report-btn")).toBeNull();
+  expect(container.querySelector(".furnace-pending-open-report-btn").textContent).toBe("打开产物");
+});
+
+test("degraded output retry clears stale run id and records new background job", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    shellSummary: {
+      generated_at: "2026-05-13T10:00:00Z",
+      review_backlog_counts: {},
+      recent_outputs: [],
+      recent_receipts: [],
+      suggested_next_actions: [],
+      metrics_history_delta: { available: false },
+      today_snooze: { items: [] },
+    },
+    pendingSubmissions: [
+      {
+        id: "done-degraded",
+        status: "done",
+        displayText: "生成报告",
+        reconcileTarget: "outputs",
+        reconcilePath: "output/reports/degraded.md",
+        deliveryMode: "deterministic-fallback",
+        llmStatus: "timeout_or_unavailable",
+        runNotesPath: "output/control/runs/old/thinking.md",
+        runId: "old-run",
+        retryArgs: { kind: "auto-ask", format: "report", question: "重试问题", runId: "old-run", runNotesPath: "output/control/runs/old/thinking.md" },
+      },
+    ],
+  });
+  plugin.runAskCommand = jest.fn().mockResolvedValue({ job_id: "job-new", run_id: "new-run", run_notes_path: "output/control/runs/new/thinking.md" });
+  const container = document.createElement("div");
+
+  context.renderTodayFeed(plugin, container);
+  await flushAsyncWork();
+  container.querySelector(".furnace-pending-retry-report-btn").click();
+  await flushAsyncWork();
+
+  expect(plugin.runAskCommand).toHaveBeenCalledWith(expect.objectContaining({ question: "重试问题", format: "report", mode: "run-ask" }));
+  expect(plugin.pendingSubmissions[0]).toEqual(expect.objectContaining({
+    status: "received",
+    jobId: "job-new",
+    runId: "new-run",
+    runNotesPath: "output/control/runs/new/thinking.md",
+  }));
+  expect(plugin.pendingSubmissions[0].retryArgs).toEqual(expect.objectContaining({
+    jobId: "job-new",
+    runId: "new-run",
+    runNotesPath: "output/control/runs/new/thinking.md",
+    longRunning: true,
+  }));
+});
+
+test("reconcile pending report prefers run_id and stores delivery metadata", () => {
+  const context = loadRenderContext();
+  const plugin = new context.FurnaceProductShellPlugin();
+  Object.assign(plugin, makePlugin());
+  plugin.savePluginState = jest.fn();
+  plugin.refreshOpenViews = jest.fn();
+  plugin.updateLongRunningPoller = jest.fn();
+  plugin.pendingSubmissions = [
+    {
+      id: "p-report",
+      status: "received",
+      payloadFingerprint: "unmatched text fingerprint",
+      displayText: "生成报告",
+      startedAt: "2026-05-13T08:59:00Z",
+      runId: "ask-report-1",
+      retryArgs: { runId: "ask-report-1", longRunning: true, format: "report" },
+    },
+  ];
+
+  plugin.reconcilePendingSubmissions({
+    recent_outputs: [
+      {
+        path: "output/reports/final.md",
+        title: "完全不同标题",
+        created_at: "2026-05-13T09:00:00Z",
+        run_id: "ask-report-1",
+        run_notes_path: "output/control/runs/ask-report-1/thinking.md",
+        delivery_mode: "deterministic-fallback",
+        llm_status: "timeout_or_unavailable",
+        llm_backend: "codex-cli",
+        llm_model: "gpt-5.5",
+      },
+    ],
+    recent_receipts: [],
+    recent_raw_inputs: [],
+  });
+
+  expect(plugin.pendingSubmissions).toHaveLength(1);
+  expect(plugin.pendingSubmissions[0]).toEqual(expect.objectContaining({
+    id: "p-report",
+    status: "done",
+    reconcileTarget: "outputs",
+    reconcilePath: "output/reports/final.md",
+    runId: "ask-report-1",
+    runNotesPath: "output/control/runs/ask-report-1/thinking.md",
+    deliveryMode: "deterministic-fallback",
+    llmStatus: "timeout_or_unavailable",
+    llmBackend: "codex-cli",
+    llmModel: "gpt-5.5",
+  }));
+});
+
+test("runAskCommand uses background submit for report mode", async () => {
+  const context = loadRenderContext();
+  const plugin = new context.FurnaceProductShellPlugin();
+  plugin.t = (text) => text;
+  plugin.runPluginCommand = jest.fn().mockResolvedValue({ payload: { kind: "run-ask-background-job", job_id: "job-1" } });
+
+  const payload = await plugin.runAskCommand({
+    question: "请生成一份深度报告",
+    format: "report",
+    mode: "run-ask",
+    protocol: "research",
+  });
+
+  expect(plugin.runPluginCommand).toHaveBeenCalledWith(
+    expect.stringContaining("Long Report"),
+    ["run-ask-submit", "请生成一份深度报告", "--format", "report", "--protocol", "research", "--lean", "--fallback-to-ask"],
+    expect.objectContaining({ refreshAfter: true, longRunning: true, backgroundSubmit: true })
+  );
+  expect(payload).toEqual({ kind: "run-ask-background-job", job_id: "job-1" });
+});
+
 test("shell summary fixture builds today DOM headings and furnace center keeps only primary entry surfaces", () => {
   const context = loadRenderContext();
   const feed = context.buildTodayFeed(SHELL_SUMMARY_FIXTURE);
@@ -455,6 +812,22 @@ test("shell summary fixture builds today DOM headings and furnace center keeps o
   expect(homeContainer.textContent).not.toContain("LLM Health");
   expect(homeContainer.textContent).not.toContain("Repair Backlog");
   expect(homeContainer.querySelector(".furnace-advanced-drawer").textContent).toContain("Open Recent Runs");
+});
+
+test("advanced status panel renders backup LLM fallback readiness", () => {
+  const context = loadRenderContext();
+  const container = document.createElement("div");
+  const plugin = makePlugin({
+    shellSummary: SHELL_SUMMARY_FIXTURE,
+    getAdvancedSectionExpanded: jest.fn((key) => key === "status"),
+    currentLlmHealth: jest.fn(() => ({ status: "healthy", backend: "opencode-api", model: "deepseek-v4-pro" })),
+    currentShellSyncState: jest.fn(() => ({ status: "healthy", reason: "Summary ready." })),
+  });
+
+  context.renderFurnaceCenter(plugin, container);
+
+  expect(container.textContent).toContain("Backup LLM route ready: 1/1");
+  expect(container.textContent).toContain("codex-cli/gpt-5.5: available");
 });
 
 test("llm-check unconfigured summary renders operable UI degradation", () => {

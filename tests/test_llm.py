@@ -23,6 +23,7 @@ from aiwiki.config import (
 )
 from aiwiki.llm import (
     AnthropicClient,
+    BackendFallbackClient,
     ClaudeCLIClient,
     CodexCLIClient,
     CompletionResult,
@@ -520,6 +521,84 @@ class LLMClientTests(unittest.TestCase):
         self.assertEqual(attempts[0], "moonshotai/kimi-k2.5")
         self.assertEqual(attempts[1], "z-ai/glm-5.1")
         self.assertEqual(client.config.model, "z-ai/glm-5.1")
+
+    def test_model_fallback_handles_openai_compat_timeout(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            client = create_backend_client(
+                LLMConfig(
+                    backend=BACKEND_OPENCODE_API,
+                    backend_requested=BACKEND_OPENCODE_API,
+                    model="deepseek-v4-pro",
+                    model_fallback_chain=("deepseek-v4-pro", "gpt-5.5"),
+                    api_key="opencode_test_key",
+                    opencode_api_key="opencode_test_key",
+                    base_url="https://api.opencode.ai/v1",
+                    opencode_base_url="https://api.opencode.ai/v1",
+                    timeout_seconds=7,
+                ),
+                root,
+            )
+
+            attempts: list[str] = []
+
+            def fake_safe_fetch(endpoint, **kwargs):
+                payload = json.loads(kwargs["data"].decode("utf-8"))
+                attempts.append(payload["model"])
+                if len(attempts) == 1:
+                    raise TimeoutError("read timed out")
+                return json.dumps(
+                    {
+                        "id": "chatcmpl_opencode_fallback",
+                        "choices": [{"message": {"content": "OK"}}],
+                        "usage": {"total_tokens": 3},
+                    }
+                ).encode("utf-8"), endpoint
+
+            with patch("aiwiki.llm.safe_fetch", side_effect=fake_safe_fetch):
+                result = client.complete("System prompt", "User prompt")
+
+        self.assertEqual(result.text, "OK")
+        self.assertEqual(attempts, ["deepseek-v4-pro", "gpt-5.5"])
+        self.assertEqual(client.config.model, "gpt-5.5")
+
+    def test_backend_fallback_uses_codex_after_opencode_timeout(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            client = create_backend_client(
+                LLMConfig(
+                    backend=BACKEND_OPENCODE_API,
+                    backend_requested=BACKEND_OPENCODE_API,
+                    model="deepseek-v4-pro",
+                    backend_fallback_chain=(BACKEND_CODEX_CLI,),
+                    backend_fallback_model="gpt-5.5",
+                    api_key="opencode_test_key",
+                    opencode_api_key="opencode_test_key",
+                    base_url="https://api.opencode.ai/v1",
+                    opencode_base_url="https://api.opencode.ai/v1",
+                    codex_path="/usr/bin/codex",
+                    timeout_seconds=7,
+                ),
+                root,
+            )
+            self.assertIsInstance(client, BackendFallbackClient)
+
+            attempts: list[str] = []
+
+            def fake_safe_fetch(endpoint, **kwargs):
+                payload = json.loads(kwargs["data"].decode("utf-8"))
+                attempts.append(payload["model"])
+                raise TimeoutError("read timed out")
+
+            with patch("aiwiki.llm.safe_fetch", side_effect=fake_safe_fetch):
+                with patch.object(CodexCLIClient, "complete", return_value=CompletionResult("Codex OK", "codex", {})):
+                    result = client.complete("System prompt", "User prompt")
+
+        self.assertEqual(result.text, "Codex OK")
+        self.assertEqual(attempts, ["deepseek-v4-pro"])
+        self.assertEqual(client.config.backend, BACKEND_CODEX_CLI)
+        self.assertEqual(client.config.model, "gpt-5.5")
+        self.assertNotEqual(client.client_configs[0].backend, client.config.backend)
 
     def test_nvidia_backend_no_implicit_chain(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

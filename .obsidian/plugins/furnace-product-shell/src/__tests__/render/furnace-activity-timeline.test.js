@@ -54,10 +54,11 @@ function loadRenderer(buildTodayFeed) {
   return context.module.exports.renderFurnaceActivityTimeline;
 }
 
-function makePlugin({ summary = null, recentRuns = [] } = {}) {
+function makePlugin({ summary = null, recentRuns = [], showAdvancedCommands = true } = {}) {
   return {
     shellSummary: summary,
     pluginState: { recentRuns },
+    settings: { showAdvancedCommands },
     t: (key) => ({
       "Furnace activity": "炉子动态",
       "No recent furnace activity": "暂无炉子动态",
@@ -75,6 +76,15 @@ function makePlugin({ summary = null, recentRuns = [] } = {}) {
 
 beforeEach(() => {
   document.body.innerHTML = "";
+});
+
+test("hides furnace activity for normal users", () => {
+  const renderFurnaceActivityTimeline = loadRenderer(() => []);
+  const container = document.createElement("div");
+
+  renderFurnaceActivityTimeline(makePlugin({ showAdvancedCommands: false }), container);
+
+  expect(container.querySelector(".furnace-activity-timeline")).toBeNull();
 });
 
 test("renders heading and empty element when both sources are empty", () => {

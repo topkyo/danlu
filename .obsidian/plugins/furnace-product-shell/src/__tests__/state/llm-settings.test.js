@@ -3,6 +3,8 @@
 const {
   DEFAULT_PRODUCT_LLM_BACKEND,
   DEFAULT_PRODUCT_LLM_MODEL,
+  DEFAULT_PRODUCT_BACKEND_FALLBACK,
+  DEFAULT_PRODUCT_BACKEND_FALLBACK_MODEL,
   LLM_PROVIDER_PROFILES,
   buildLlmEnv,
   clearKnownLlmEnv,
@@ -18,7 +20,11 @@ test("default Product Shell LLM provider is OpenCode deepseek-v4-pro", () => {
   expect(buildLlmEnv({})).toEqual({
     AIWIKI_LLM_BACKEND: "opencode-api",
     AIWIKI_LLM_MODEL: "deepseek-v4-pro",
+    AIWIKI_BACKEND_FALLBACK: "codex-cli",
+    AIWIKI_BACKEND_FALLBACK_MODEL: "gpt-5.5",
   });
+  expect(DEFAULT_PRODUCT_BACKEND_FALLBACK).toBe("codex-cli");
+  expect(DEFAULT_PRODUCT_BACKEND_FALLBACK_MODEL).toBe("gpt-5.5");
 });
 
 test("provider list puts curated providers before advanced entries", () => {
@@ -70,11 +76,26 @@ test("clearKnownLlmEnv removes stale provider keys before launcher spawn", () =>
   const env = {
     KEEP_ME: "1",
     AIWIKI_LLM_BACKEND: "nvidia-nim-api",
+    AIWIKI_MODEL_FALLBACK: "stale-model",
+    AIWIKI_BACKEND_FALLBACK: "stale-backend",
+    AIWIKI_BACKEND_FALLBACK_MODEL: "stale-model",
     AIWIKI_NVIDIA_NIM_API_KEY: "stale",
     AIWIKI_OPENCODE_API_KEY: "stale",
   };
   clearKnownLlmEnv(env);
   expect(env).toEqual({ KEEP_ME: "1" });
+});
+
+test("OpenCode env injects Codex backend fallback, not unsupported same-backend model fallback", () => {
+  const env = buildLlmEnv({ llmBackend: "opencode-api", llmModel: "deepseek-v4-pro" });
+
+  expect(env).toEqual({
+    AIWIKI_LLM_BACKEND: "opencode-api",
+    AIWIKI_LLM_MODEL: "deepseek-v4-pro",
+    AIWIKI_BACKEND_FALLBACK: "codex-cli",
+    AIWIKI_BACKEND_FALLBACK_MODEL: "gpt-5.5",
+  });
+  expect(env.AIWIKI_MODEL_FALLBACK).toBeUndefined();
 });
 
 test("dropLegacyLlmSettings removes old unused key fields", () => {

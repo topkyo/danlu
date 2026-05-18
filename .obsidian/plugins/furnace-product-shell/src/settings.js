@@ -90,7 +90,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(t("Default ask format"))
-      .setDesc(t("Default output format for the Ask modal."))
+      .setDesc(t("Advanced fallback for manual Ask. Daily questions use note unless they explicitly request report-grade output."))
       .addDropdown((dropdown) =>
         dropdown
           .addOption("note", "note")

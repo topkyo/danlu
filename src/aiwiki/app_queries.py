@@ -305,6 +305,45 @@ from .app_utils import (
 )
 from .config import LLMConfig
 
+AUTO_ASK_PATH_MARKER = "本次投喂材料路径："
+AUTO_ASK_QUESTION_MARKER = "用户问题："
+AUTO_ASK_INLINE_PATH_MARKER = "材料路径供系统路由使用："
+AUTO_ASK_INLINE_HINT_PREFIX = "请优先使用本次投喂材料回答"
+
+
+def human_query_title(question: str) -> str:
+    """Return the user-facing title for an ask artifact.
+
+    Product Shell auto-ask prompts include repo paths as routing hints.  Those
+    hints are useful to the runtime but should not leak into report headings,
+    Obsidian titles, or output filenames.
+    """
+
+    text = str(question or "").strip()
+    if not text:
+        return "未命名问题"
+    marker_index = text.rfind(AUTO_ASK_QUESTION_MARKER)
+    if marker_index >= 0:
+        candidate = text[marker_index + len(AUTO_ASK_QUESTION_MARKER) :].strip()
+        if candidate:
+            text = candidate
+    visible_lines: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if AUTO_ASK_INLINE_PATH_MARKER in stripped:
+            before_marker = stripped.split(AUTO_ASK_INLINE_PATH_MARKER, 1)[0].strip()
+            before_marker = before_marker.removesuffix("；").removesuffix(";").strip()
+            if before_marker and before_marker != AUTO_ASK_INLINE_HINT_PREFIX:
+                visible_lines.append(before_marker)
+            continue
+        if stripped == AUTO_ASK_INLINE_HINT_PREFIX or stripped.startswith(f"{AUTO_ASK_INLINE_HINT_PREFIX}；"):
+            continue
+        visible_lines.append(line)
+    text = "\n".join(visible_lines).strip()
+    text = re.sub(r"(?m)^\s*-\s*(?:raw|wiki|output|\.aiwiki)/\S+\s*$", "", text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or "未命名问题"
+
 
 def _ranking_helpers() -> tuple[Any, Any, Any]:
     from . import app_compile as compile_facade
@@ -596,6 +635,7 @@ def render_report(
     artifact_id: str,
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
+    title = human_query_title(question)
     output_guidance = protocol_output_guidance(root, active_protocol, "report")
     focus_lines = compact_machine_memory_focus_lines(machine_query)
     frontmatter = render_frontmatter(
@@ -612,7 +652,7 @@ def render_report(
     lines = [
         frontmatter,
         "",
-        f"# {question}",
+        f"# {title}",
         "",
         "## 结论",
         "_LLM: 请在此填入一句话直接回答问题（最多 3 行）。保持判断明确，不要避而不答。_",
@@ -677,6 +717,7 @@ def render_slides(
     artifact_id: str,
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
+    title = human_query_title(question)
     output_guidance = protocol_output_guidance(root, active_protocol, "slides")
     lines = [
         "---",
@@ -687,11 +728,11 @@ def render_slides(
         f'protocol: "{active_protocol}"',
         'generated_by: "aiwiki-ask"',
         f'created_at: "{created_at}"',
-        f"title: {render_scalar(question)}",
+        f"title: {render_scalar(title)}",
         f"description: {render_scalar(f'Generated at {created_at}')}",
         "---",
         "",
-        f"# {question}",
+        f"# {title}",
         "",
         "## 本稿用途",
         f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
@@ -750,6 +791,7 @@ def render_figure_brief(
     artifact_id: str,
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
+    title = human_query_title(question)
     output_guidance = protocol_output_guidance(root, active_protocol, "figure")
     focus_lines = compact_machine_memory_focus_lines(machine_query)
     frontmatter = render_frontmatter(
@@ -766,7 +808,7 @@ def render_figure_brief(
     lines = [
         frontmatter,
         "",
-        f"# 图表简报：{question}",
+        f"# 图表简报：{title}",
         "",
         "## 这张图先回答什么",
         f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
@@ -898,6 +940,7 @@ def render_decision_memo_query(
     artifact_id: str,
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
+    title = human_query_title(question)
     output_guidance = protocol_output_guidance(root, active_protocol, "decision-memo")
     focus_lines = compact_machine_memory_focus_lines(machine_query)
     seed_ref, seed_frontmatter, seed_content = _select_output_seed_pack(
@@ -926,7 +969,7 @@ def render_decision_memo_query(
     lines = [
         frontmatter,
         "",
-        f"# Decision Memo Request · {question}",
+        f"# Decision Memo Request · {title}",
         "",
         "## 任务",
         "- 把这次问题压成一页可执行的 decision memo。",
@@ -1006,7 +1049,7 @@ def render_note_answer(
     lines = [
         frontmatter,
         "",
-        f"# {question}",
+        f"# {human_query_title(question)}",
         "",
         "## 回答",
         "_LLM: 请用 2–5 段自然语言直接回答上面的问题，保持判断明确；不要求六段骨架，但每段涉及事实时附 `wiki/sources/*.md` 引用。_",
@@ -1034,6 +1077,7 @@ def render_sop_query(
     artifact_id: str,
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
+    title = human_query_title(question)
     output_guidance = protocol_output_guidance(root, active_protocol, "sop")
     focus_lines = compact_machine_memory_focus_lines(machine_query)
     seed_ref, seed_frontmatter, seed_content = _select_output_seed_pack(
@@ -1062,7 +1106,7 @@ def render_sop_query(
     lines = [
         frontmatter,
         "",
-        f"# SOP Request · {question}",
+        f"# SOP Request · {title}",
         "",
         "## 任务",
         "- 把这次问题压成可执行的 SOP 草案。",

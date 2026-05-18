@@ -33,7 +33,7 @@ from .app_utils import (
     slugify,
     utc_now,
 )
-from .config import LLMConfig
+from .config import LLMConfig, _backend_supports_image_analysis
 from .llm import LLMError, create_backend_client
 
 try:
@@ -540,7 +540,7 @@ def _render_image_note(
     dimension_text = f"{width}x{height}" if width and height else "unknown"
     extracted_text = ocr_text or "OCR is unavailable on this machine or no text was detected. Treat this as an image reference source."
     visual_lines = [visual_analysis] if visual_analysis else [
-        "Visual analysis was not generated. Configure `codex-cli` if you want LLM-backed image understanding."
+        "Visual analysis was not generated. Configure a multimodal-capable LLM backend/model or retry with a smaller image."
     ]
     return _render_raw_note(
         title=display_title,
@@ -1508,7 +1508,7 @@ def _maybe_create_image_client(root: Path) -> Any | None:
         config = LLMConfig.from_env()
     except RuntimeError:
         return None
-    if config.backend != "codex-cli":
+    if not _backend_supports_image_analysis(config.backend, config.model):
         return None
     return create_backend_client(config, root)
 
