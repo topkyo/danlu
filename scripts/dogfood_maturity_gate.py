@@ -278,6 +278,7 @@ def _preview_l3_generation_summary(root: Path, *, limit: int) -> dict[str, Any]:
     return {
         "status": str(preview.get("status") or ""),
         "planner_log_path": str(preview.get("planner_log_path") or ""),
+        "raw_candidate_count": int(preview.get("raw_candidate_count") or preview.get("candidate_count") or 0),
         "candidate_count": int(preview.get("candidate_count") or 0),
         "blocked_count": int(preview.get("blocked_count") or 0),
         "returned_count": int(preview.get("returned_count") or 0),
@@ -305,12 +306,18 @@ def _proposal_evidence_count(proposal: dict[str, Any]) -> int:
 
 def _load_l3_debt_report(root: Path, *, preview_limit: int) -> dict[str, Any]:
     from aiwiki.config import l3_auto_adopt_min_evidence_from_env
-    from aiwiki.execution.l3_proposals import load_l3_proposal_state, preview_l3_proposal_generation
+    from aiwiki.execution.l3_proposals import (
+        l3_candidate_issue_key,
+        l3_proposal_issue_key,
+        load_l3_proposal_state,
+        preview_l3_proposal_generation,
+    )
 
     threshold = l3_auto_adopt_min_evidence_from_env()
     proposals = [item for item in load_l3_proposal_state(root).get("proposals", []) if isinstance(item, dict)]
     preview = preview_l3_proposal_generation(root, limit=preview_limit)
     proposal_ids = {str(item.get("proposal_id") or "") for item in proposals}
+    proposal_issue_keys = {key for key in (l3_proposal_issue_key(item) for item in proposals) if key}
     state_counts: Counter[str] = Counter(str(item.get("state") or "(missing)") for item in proposals)
     dedupe_counts: Counter[str] = Counter()
     low_evidence = 0
@@ -341,6 +348,10 @@ def _load_l3_debt_report(root: Path, *, preview_limit: int) -> dict[str, Any]:
             preview_not_eligible += 1
         elif proposal_id and proposal_id in proposal_ids:
             duplicate_existing += 1
+        else:
+            issue_key = str(candidate.get("issue_key") or l3_candidate_issue_key(candidate))
+            if issue_key and issue_key in proposal_issue_keys:
+                duplicate_existing += 1
         for blocker in blockers:
             if isinstance(blocker, str):
                 preview_blocker_counts[blocker] += 1
@@ -360,6 +371,7 @@ def _load_l3_debt_report(root: Path, *, preview_limit: int) -> dict[str, Any]:
         "thresholds": {"low_evidence_below": threshold},
         "state_counts": dict(sorted(state_counts.items())),
         "preview_candidate_count": preview_candidate_count,
+        "preview_raw_candidate_count": _coerce_int(preview.get("raw_candidate_count"), preview_candidate_count),
         "preview_returned_count": len(preview_returned),
         "preview_eligible_count": preview_eligible,
         "preview_not_eligible_count": not_eligible,
@@ -888,6 +900,7 @@ def _summarize_l3_generation_result(result: dict[str, Any]) -> dict[str, Any]:
         "status": str(result.get("status") or "ok"),
         "generation_mode": str(result.get("generation_mode") or ""),
         "side_effects_allowed": bool(result.get("side_effects_allowed", False)),
+        "raw_candidate_count": int(result.get("raw_candidate_count") or result.get("candidate_count") or 0),
         "candidate_count": int(result.get("candidate_count") or 0),
         "blocked_count": int(result.get("blocked_count") or 0),
         "returned_count": int(result.get("returned_count") or 0),
@@ -1223,14 +1236,46 @@ def _build_operational_maturity_report(
         budget_violations.append("effective_l3_candidates")
     if _coerce_int(human_required.get("routine_primary_debt_count")) > anomaly_budget["max_routine_primary_debt_count"]:
         budget_violations.append("routine_primary_debt")
-    human_only_exceptions = status == "pass" and not budget_violations
+    prompt_hash_changed = [
+        item
+        for item in receipts
+        if isinstance(item.get("prompt_hash_invariant"), dict)
+        and item.get("prompt_hash_invariant", {}).get("unchanged") is False
+    ]
+    missing_required_fields = {
+        str(item.get("receipt_path") or index): _validate_receipt_fields(item)
+        for index, item in enumerate(receipts)
+    }
+    missing_required_fields = {path: fields for path, fields in missing_required_fields.items() if fields}
+    consecutive_receipts = _consecutive_days([_receipt_day(item) for item in receipts], expected_count=recent)
+    receipt_integrity_ok = (
+        len(receipts) >= recent
+        and consecutive_receipts
+        and failed_receipts == 0
+        and not prompt_hash_changed
+        and not missing_required_fields
+    )
+    human_only_exceptions = receipt_integrity_ok and not budget_violations
+    if human_only_exceptions:
+        reason = "required receipts and anomaly budget pass"
+    elif not receipt_integrity_ok:
+        reason = "insufficient consecutive proof or receipt integrity not met"
+    else:
+        reason = "anomaly budget not met"
     return {
         "version": 1,
         "status": "pass" if human_only_exceptions else "not-yet",
         "human_only_exceptions": human_only_exceptions,
-        "reason": "all gates and anomaly budget pass" if human_only_exceptions else "insufficient consecutive proof or anomaly budget not met",
+        "reason": reason,
         "anomaly_budget": anomaly_budget,
         "budget_violations": budget_violations,
+        "receipt_integrity": {
+            "status": "pass" if receipt_integrity_ok else "not-yet",
+            "receipt_count": len(receipts),
+            "consecutive_days": consecutive_receipts,
+            "missing_required_fields": missing_required_fields,
+            "prompt_hash_changed_runs": [str(item.get("receipt_path") or "") for item in prompt_hash_changed],
+        },
         "latest": {
             "failed_runs": failed_receipts,
             "judgment_exception_count": exception_count,

@@ -1255,8 +1255,16 @@ function buildAutoAskQuestion(question, materialPaths) {
   return `${normalizedQuestion}${sourceHint}`;
 }
 
+function stripQuotedReportLinesForIntent(question) {
+  return String(question || "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*引用报告\s*[:：]\s*\S+\s*/i, ""))
+    .join("\n")
+    .trim();
+}
+
 function inferAutoAskFormat(question, materialPaths) {
-  const text = String(question || "").trim().toLowerCase();
+  const text = stripQuotedReportLinesForIntent(question).toLowerCase();
   const paths = normalizeMaterialPaths(materialPaths);
   if (!text) {
     return "note";
@@ -1585,8 +1593,8 @@ function buildTodayFeed(summary) {
   entries.push(...buildProposalEntries(summary));
   entries.push(...buildReportEntries(summary, todayDate));
   entries.push(...buildElixirEntries(summary, todayDate));
-  entries.push(...buildMetricAlertEntries(summary));
-  entries.push(...buildAgentLoopEntries(summary, todayDate));
+  // Routine metrics and automation status stay in Advanced/operator surfaces;
+  // primary Today only keeps reports, decision exceptions, and necessary actions.
   entries.push(...buildActionEntries(summary, "primary"));
   entries.push(...buildRawInputEntries(summary, todayDate));
   entries.push(...buildLlmHealthEntry(summary));
@@ -1707,6 +1715,7 @@ function buildProposalEntries(summary) {
 function buildReportEntries(summary, todayDate) {
   const entries = [];
   for (const item of dictItems(summary.recent_outputs)) {
+    if (!isDeliverableReportOutput(item)) continue;
     const timestamp = firstText(item, "generated_at", "created_at");
     if (datePart(timestamp) !== todayDate) continue;
     const path = firstText(item, "path", "artifact_path");
@@ -1730,6 +1739,22 @@ function buildReportEntries(summary, todayDate) {
     });
   }
   return entries;
+}
+
+function isDeliverableReportOutput(item) {
+  const deliveryMode = firstText(item, "delivery_mode");
+  const llmStatus = firstText(item, "llm_status");
+  const backgroundStatus = firstText(item, "background_status");
+  const artifactQuality = firstText(item, "artifact_quality");
+  const placeholder = firstText(item, "contains_llm_placeholder").toLowerCase();
+  const title = firstText(item, "title");
+  if (deliveryMode === "deterministic-fallback") return false;
+  if (["timeout_or_unavailable", "pending", "failed"].includes(llmStatus)) return false;
+  if (["submitted", "running", "degraded"].includes(backgroundStatus)) return false;
+  if (["degraded", "placeholder"].includes(artifactQuality)) return false;
+  if (["1", "true", "yes"].includes(placeholder)) return false;
+  if (title.startsWith("LLM 未完成")) return false;
+  return true;
 }
 
 function buildElixirEntries(summary, todayDate) {
@@ -3851,7 +3876,7 @@ function renderUniversalInput(plugin, container) {
   });
   
   textarea.placeholder = plugin.t("投 URL / PDF / 图片 / repo，或直接问一个问题；炼丹炉会生成报告");
-  textarea.rows = 1;
+  textarea.rows = 3;
 
   const submitButton = form.createEl("button", { 
     cls: "furnace-universal-input-button", 
@@ -8142,7 +8167,10 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     }
     const quoteLine = this.t("引用报告：{path}", { path: normalized });
     const current = String(textarea.value || "").trimEnd();
-    textarea.value = current ? `${current}\n${quoteLine}\n` : `${quoteLine}\n`;
+    const existingLines = current.split(/\r?\n/).map((line) => line.trim());
+    if (!existingLines.includes(quoteLine)) {
+      textarea.value = current ? `${current}\n${quoteLine}\n` : `${quoteLine}\n`;
+    }
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
     textarea.focus();
     try { textarea.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (error) {}

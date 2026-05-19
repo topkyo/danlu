@@ -150,8 +150,16 @@ function buildAutoAskQuestion(question, materialPaths) {
   return `${normalizedQuestion}${sourceHint}`;
 }
 
+function stripQuotedReportLinesForIntent(question) {
+  return String(question || "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*引用报告\s*[:：]\s*\S+\s*/i, ""))
+    .join("\n")
+    .trim();
+}
+
 function inferAutoAskFormat(question, materialPaths) {
-  const text = String(question || "").trim().toLowerCase();
+  const text = stripQuotedReportLinesForIntent(question).toLowerCase();
   const paths = normalizeMaterialPaths(materialPaths);
   if (!text) {
     return "note";

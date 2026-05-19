@@ -15,7 +15,7 @@ FeedKind = Literal["decision", "proposal", "report", "elixir", "automation", "ac
 FeedAudience = Literal["primary", "operator"]
 
 # 固定优先级：数字越小越靠前。同 priority 内按 timestamp desc。
-# 用户面最终形态：报告优先，自动化状态其次，人工确认靠后。
+# Primary Today 只保留报告、待拍板异常和必要行动；operator feed 仍可显示自动化/指标状态。
 _PRIORITY: dict[str, int] = {
     "report": 1,
     "automation": 2,
@@ -97,8 +97,9 @@ def build_today_feed(summary: dict[str, Any], *, audience: FeedAudience = "prima
     entries.extend(_build_proposal_entries(summary))
     entries.extend(_build_report_entries(summary, today_date))
     entries.extend(_build_elixir_entries(summary, today_date))
-    entries.extend(_build_metric_alert_entries(summary))
-    entries.extend(_build_agent_loop_entries(summary, today_date))
+    if audience == "operator":
+        entries.extend(_build_metric_alert_entries(summary))
+        entries.extend(_build_agent_loop_entries(summary, today_date))
     entries.extend(_build_action_entries(summary, audience=audience))
     entries.extend(_build_raw_input_entries(summary, today_date))
 
@@ -355,6 +356,8 @@ def _build_proposal_entries(summary: dict[str, Any]) -> list[FeedEntry]:
 def _build_report_entries(summary: dict[str, Any], today_date: str) -> list[FeedEntry]:
     entries: list[FeedEntry] = []
     for item in _dict_items(summary.get("recent_outputs")):
+        if not _is_deliverable_report_output(item):
+            continue
         timestamp = _first_text(item, "generated_at", "created_at")
         if _date_part(timestamp) != today_date:
             continue
@@ -374,6 +377,28 @@ def _build_report_entries(summary: dict[str, Any], today_date: str) -> list[Feed
             )
         )
     return entries
+
+
+def _is_deliverable_report_output(item: dict[str, Any]) -> bool:
+    delivery_mode = _first_text(item, "delivery_mode")
+    llm_status = _first_text(item, "llm_status")
+    background_status = _first_text(item, "background_status")
+    artifact_quality = _first_text(item, "artifact_quality")
+    placeholder = _first_text(item, "contains_llm_placeholder").lower()
+    title = _first_text(item, "title")
+    if delivery_mode == "deterministic-fallback":
+        return False
+    if llm_status in {"timeout_or_unavailable", "pending", "failed"}:
+        return False
+    if background_status in {"submitted", "running", "degraded"}:
+        return False
+    if artifact_quality in {"degraded", "placeholder"}:
+        return False
+    if placeholder in {"1", "true", "yes"}:
+        return False
+    if title.startswith("LLM 未完成"):
+        return False
+    return True
 
 
 def _build_elixir_entries(summary: dict[str, Any], today_date: str) -> list[FeedEntry]:

@@ -339,6 +339,55 @@ class L3ProposalTests(unittest.TestCase):
         self.assertEqual(candidate["target_file"], "prompts/ask.md")
         self.assertEqual(candidate["blockers"], [])
 
+    def test_generation_preview_coalesces_repeated_concrete_issue_and_prefers_execute(self) -> None:
+        planner_log = self.root / ".aiwiki" / "state" / "planner-log.jsonl"
+        planner_log.parent.mkdir(parents=True, exist_ok=True)
+        records = [
+            {
+                "schema_version": 1,
+                "signal_id": "sig-runtime-1",
+                "dedupe_key": "runtime_failure:general:llm_receipt:a",
+                "trace_id": "trace-l3-noise",
+                "decision": "generate-proposal",
+                "mode": "observe_only",
+                "reason_codes": ["runtime_failure_observed", "proposal_recommended"],
+                "decided_at": "2026-05-19T12:00:00Z",
+            },
+            {
+                "schema_version": 1,
+                "signal_id": "sig-runtime-2",
+                "dedupe_key": "runtime_failure:general:llm_receipt:b",
+                "trace_id": "trace-l3-noise",
+                "decision": "generate-proposal",
+                "mode": "execute",
+                "reason_codes": ["runtime_failure_observed", "proposal_recommended", "execute_mode_requested"],
+                "decided_at": "2026-05-19T12:01:00Z",
+            },
+            {
+                "schema_version": 1,
+                "signal_id": "sig-runtime-3",
+                "dedupe_key": "runtime_failure:general:llm_receipt:c",
+                "trace_id": "trace-l3-noise",
+                "decision": "generate-proposal",
+                "mode": "execute",
+                "reason_codes": ["runtime_failure_observed", "proposal_recommended", "execute_mode_requested"],
+                "decided_at": "2026-05-19T12:02:00Z",
+            },
+        ]
+        planner_log.write_text("\n".join(json.dumps(record, separators=(",", ":")) for record in records) + "\n", encoding="utf-8")
+
+        result = preview_l3_proposal_generation(self.root, limit=20)
+
+        self.assertEqual(result["raw_candidate_count"], 3)
+        self.assertEqual(result["candidate_count"], 1)
+        self.assertEqual(result["blocked_count"], 0)
+        self.assertEqual(result["returned_count"], 1)
+        candidate = result["candidates"][0]
+        self.assertTrue(candidate["eligible"])
+        self.assertEqual(candidate["mode"], "execute")
+        self.assertEqual(candidate["signal_id"], "sig-runtime-3")
+        self.assertEqual(candidate["issue_key"], "prompt_proposal:prompts/ask.md:contract_failure")
+
     def test_generate_l3_proposals_from_execute_mode_planner_is_idempotent_and_does_not_touch_target(self) -> None:
         self._write_l3_planner_log(mode="execute", signal_id="sig-20260424-l3exec02")
         before = (self.root / "prompts" / "ask.md").read_text(encoding="utf-8")
@@ -362,6 +411,24 @@ class L3ProposalTests(unittest.TestCase):
             if line.strip()
         ]
         self.assertEqual(runtime_history[-1]["event_type"], "l3-proposal-create")
+
+    def test_generate_l3_proposals_skips_issue_already_covered_by_existing_proposal(self) -> None:
+        create_l3_proposal(
+            self.root,
+            kind="prompt_proposal",
+            proposal_id="prop-covered-runtime-failure",
+            target_file="prompts/ask.md",
+            content="Review context only.\n",
+            pattern="contract_failure",
+            patch_kind="metadata_only",
+        )
+        reject_l3_proposal(self.root, "prop-covered-runtime-failure", note="Already reviewed as a prompt-level issue.")
+        self._write_l3_planner_log(mode="execute", signal_id="sig-20260424-covered01")
+
+        result = generate_l3_proposals_from_planner(self.root)
+
+        self.assertEqual(result["generated_count"], 0)
+        self.assertEqual(result["skipped"][0]["reason"], "already_covered")
 
     def test_automatic_l3_prompt_content_includes_record_fields(self) -> None:
         candidate = {

@@ -263,6 +263,45 @@ def _case_report_uses_generated_at_and_artifact_path_fallbacks() -> None:
     assert feed[0].title == "from-generated.md"
 
 
+def _case_report_entry_skips_degraded_and_placeholder_outputs() -> None:
+    feed = build_today_feed(
+        {
+            "generated_at": "2026-04-27T09:00:00Z",
+            "recent_outputs": [
+                {
+                    "path": "output/reports/final.md",
+                    "title": "Final",
+                    "format": "report",
+                    "created_at": "2026-04-27T08:00:00Z",
+                },
+                {
+                    "path": "output/reports/degraded.md",
+                    "title": "LLM 未完成：Q",
+                    "format": "report",
+                    "created_at": "2026-04-27T08:01:00Z",
+                    "delivery_mode": "deterministic-fallback",
+                    "llm_status": "timeout_or_unavailable",
+                },
+                {
+                    "path": "output/reports/placeholder.md",
+                    "title": "Placeholder",
+                    "format": "report",
+                    "created_at": "2026-04-27T08:02:00Z",
+                    "contains_llm_placeholder": "true",
+                },
+                {
+                    "path": "output/reports/pending.md",
+                    "title": "Pending",
+                    "format": "report",
+                    "created_at": "2026-04-27T08:03:00Z",
+                    "background_status": "running",
+                },
+            ],
+        }
+    )
+    assert [entry.target for entry in feed] == ["output/reports/final.md"]
+
+
 def _case_elixir_entry_filtered_by_today_date() -> None:
     feed = build_today_feed(
         {
@@ -433,7 +472,8 @@ def _case_agent_loop_entry_built_from_nightly_summary() -> None:
                     "auto_preview": {"ready_count": 1},
                 },
             },
-        }
+        },
+        audience="operator",
     )
 
     assert len(feed) == 1
@@ -461,7 +501,8 @@ def _case_agent_loop_auto_apply_entry_uses_completed_copy() -> None:
                     "auto_apply": {"applied_count": 1},
                 },
             },
-        }
+        },
+        audience="operator",
     )
 
     assert len(feed) == 1
@@ -482,7 +523,8 @@ def _case_agent_loop_failed_entry_uses_product_copy() -> None:
                     "error_type": "RuntimeError",
                 }
             },
-        }
+        },
+        audience="operator",
     )
 
     assert len(feed) == 1
@@ -495,6 +537,17 @@ def _case_agent_loop_entry_skipped_when_not_today() -> None:
         {
             "generated_at": "2026-04-30T09:00:00+00:00",
             "nightly": {"agent_loop": {"status": "ok", "generated_at": "2026-04-29T23:59:59+00:00"}},
+        },
+        audience="operator",
+    )
+    assert feed == []
+
+
+def _case_agent_loop_entry_skipped_from_primary_today() -> None:
+    feed = build_today_feed(
+        {
+            "generated_at": "2026-04-30T09:00:00+00:00",
+            "nightly": {"agent_loop": {"status": "ok", "generated_at": "2026-04-30T08:01:00+00:00"}},
         }
     )
     assert feed == []
@@ -694,7 +747,8 @@ def _case_metric_alert_entry_built() -> None:
                     }
                 ],
             },
-        }
+        },
+        audience="operator",
     )
     assert len(feed) == 1
     entry = feed[0]
@@ -744,12 +798,12 @@ def _case_p0_signals_combine_with_existing_kinds() -> None:
         }
     )
     kinds = [entry.kind for entry in feed]
-    # priority: decision (3 of: backlog + counter-evidence + drift) before action (2: alert + suggested)
+    # primary Today keeps decision exceptions and explicit next actions; metric trends stay operator-only.
     assert kinds.count("decision") == 3
-    assert kinds.count("action") == 2
+    assert kinds.count("action") == 1
     # decisions all sort before actions per _PRIORITY
     assert kinds[:3] == ["decision", "decision", "decision"]
-    assert kinds[3:] == ["action", "action"]
+    assert kinds[3:] == ["action"]
 
 
 class TodayFeedTests(unittest.TestCase):

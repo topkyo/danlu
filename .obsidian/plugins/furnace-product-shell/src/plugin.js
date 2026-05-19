@@ -2082,7 +2082,10 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     }
     const quoteLine = this.t("引用报告：{path}", { path: normalized });
     const current = String(textarea.value || "").trimEnd();
-    textarea.value = current ? `${current}\n${quoteLine}\n` : `${quoteLine}\n`;
+    const existingLines = current.split(/\r?\n/).map((line) => line.trim());
+    if (!existingLines.includes(quoteLine)) {
+      textarea.value = current ? `${current}\n${quoteLine}\n` : `${quoteLine}\n`;
+    }
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
     textarea.focus();
     try { textarea.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (error) {}

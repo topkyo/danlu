@@ -766,6 +766,20 @@ test("reconcile pending report prefers run_id and stores delivery metadata", () 
   }));
 });
 
+test("quoteFileToComposer does not duplicate an existing report quote", () => {
+  const context = loadRenderContext();
+  const plugin = new context.FurnaceProductShellPlugin();
+  plugin.t = (text, vars = {}) => String(text).replace("{path}", vars.path || "");
+  document.body.innerHTML = '<textarea class="furnace-universal-input-textarea"></textarea>';
+  const textarea = document.querySelector(".furnace-universal-input-textarea");
+  textarea.scrollIntoView = jest.fn();
+
+  expect(plugin.quoteFileToComposer("output/reports/r.md")).toBe(true);
+  expect(plugin.quoteFileToComposer("output/reports/r.md")).toBe(true);
+
+  expect(textarea.value.split("\n").filter((line) => line === "引用报告：output/reports/r.md")).toHaveLength(1);
+});
+
 test("runAskCommand uses background submit for report mode", async () => {
   const context = loadRenderContext();
   const plugin = new context.FurnaceProductShellPlugin();
@@ -791,13 +805,12 @@ test("shell summary fixture builds today DOM headings and furnace center keeps o
   const context = loadRenderContext();
   const feed = context.buildTodayFeed(SHELL_SUMMARY_FIXTURE);
   expect(feed.some((entry) => entry.kind === "report")).toBe(true);
-  expect(feed.some((entry) => entry.kind === "automation")).toBe(true);
+  expect(feed.some((entry) => entry.kind === "automation")).toBe(false);
   expect(feed.some((entry) => entry.kind === "decision")).toBe(true);
 
   const todayContainer = document.createElement("div");
   context.renderTodayFeed(makePlugin({ shellSummary: SHELL_SUMMARY_FIXTURE }), todayContainer);
   expect(todayContainer.textContent).toContain("新报告");
-  expect(todayContainer.textContent).toContain("系统动态");
   expect(todayContainer.textContent).toContain("需要你确认");
 
   const homeContainer = document.createElement("div");

@@ -391,6 +391,8 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(artifacts[0]["llm_status"], "timeout_or_unavailable")
         self.assertEqual(artifacts[0]["llm_backend"], "codex-cli")
         self.assertEqual(artifacts[0]["llm_model"], "gpt-5.5")
+        self.assertEqual(artifacts[0]["artifact_quality"], "degraded")
+        self.assertEqual(artifacts[0]["contains_llm_placeholder"], "false")
 
     def test_collect_recent_output_artifacts_skips_background_pending_reports(self) -> None:
         report_path = self.root / "output" / "reports" / "pending-report.md"

@@ -238,6 +238,20 @@ test("buildTodayFeed surfaces today reports only", () => {
   expect(reports[0].title).toBe("Today Report");
 });
 
+test("buildTodayFeed hides degraded and placeholder reports", () => {
+  const summary = makeSummary({
+    recent_outputs: [
+      { path: "output/reports/final.md", title: "Final", generated_at: "2026-05-03T08:00:00Z", format: "report" },
+      { path: "output/reports/degraded.md", title: "LLM 未完成：Q", generated_at: "2026-05-03T08:00:00Z", format: "report", delivery_mode: "deterministic-fallback", llm_status: "timeout_or_unavailable" },
+      { path: "output/reports/placeholder.md", title: "Template", generated_at: "2026-05-03T08:00:00Z", format: "report", artifact_quality: "placeholder", contains_llm_placeholder: "true" },
+      { path: "output/reports/pending.md", title: "Pending", generated_at: "2026-05-03T08:00:00Z", format: "report", background_status: "running" },
+    ],
+  });
+  const feed = buildTodayFeed(summary);
+  const reports = feed.filter((e) => e.kind === "report");
+  expect(reports.map((entry) => entry.target)).toEqual(["output/reports/final.md"]);
+});
+
 test("buildTodayFeed surfaces elixir entries for today", () => {
   const summary = makeSummary({
     recent_receipts: [
@@ -251,7 +265,7 @@ test("buildTodayFeed surfaces elixir entries for today", () => {
   expect(elixirs[0].title).toBe("Elixir NVDA settled");
 });
 
-test("buildTodayFeed surfaces automation entries from agent loop", () => {
+test("buildTodayFeed keeps agent loop automation out of primary Today", () => {
   const summary = makeSummary({
     nightly: {
       generated_at: "2026-05-03T12:00:00Z",
@@ -267,8 +281,7 @@ test("buildTodayFeed surfaces automation entries from agent loop", () => {
   });
   const feed = buildTodayFeed(summary);
   const automations = feed.filter((e) => e.kind === "automation");
-  expect(automations).toHaveLength(1);
-  expect(automations[0].title).toBe("已自动维护");
+  expect(automations).toHaveLength(0);
 });
 
 test("buildTodayFeed surfaces proposal entries needing attention", () => {
@@ -299,7 +312,7 @@ test("buildTodayFeed filters out maintenance commands from primary feed", () => 
   expect(actions[0].title).toBe("Ask anything");
 });
 
-test("buildTodayFeed sorts entries correctly: report > automation > decision > proposal > elixir > action", () => {
+test("buildTodayFeed sorts entries correctly: report > decision > proposal > elixir > action", () => {
   const summary = makeSummary({
     review_backlog_counts: { counter_evidence_candidates: 1 },
     recent_outputs: [
@@ -318,7 +331,7 @@ test("buildTodayFeed sorts entries correctly: report > automation > decision > p
   expect(decisionIdx).toBeLessThan(actionIdx);
 });
 
-test("buildTodayFeed surfaces metric alerts", () => {
+test("buildTodayFeed keeps metric trend alerts out of primary Today", () => {
   const summary = makeSummary({
     metrics_history_delta: {
       available: true,
@@ -331,6 +344,5 @@ test("buildTodayFeed surfaces metric alerts", () => {
   });
   const feed = buildTodayFeed(summary);
   const metrics = feed.filter((e) => e.title.startsWith("指标变化"));
-  expect(metrics).toHaveLength(1);
-  expect(metrics[0].kind).toBe("action");
+  expect(metrics).toHaveLength(0);
 });

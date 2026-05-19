@@ -246,26 +246,28 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 - 高级入口：`codex-cli`、`copilot-cli`、`claude-cli`、`openai-api`（自定义 OpenAI-compatible）
 
 当前语义：
-- 新安装默认 route 是 `opencode-api/deepseek-v4-pro`；OpenCode Zen 走 OpenAI-compatible `/chat/completions` 路径
+- 新安装默认 route 是 canonical interactive profile：`opencode-api/deepseek-v4-pro` primary，`codex-cli/gpt-5.5` backend fallback；Shell 与 CLI 共用同一组 `AIWIKI_LLM_*` / `AIWIKI_BACKEND_FALLBACK*` 环境变量
 - `opencode-api` 默认 base URL 是 `https://opencode.ai/zen/go/v1`（DeepSeek V4 Pro 走 OpenCode Go endpoint，见 https://dev.opencode.ai/docs/go/ ），key 走 `AIWIKI_OPENCODE_API_KEY`，也可用通用 `AIWIKI_LLM_API_KEY`
-- `nvidia-nim-api` 保留为 unattended fallback route，默认模型 `openai/gpt-oss-120b`
+- `nvidia-nim-api` 保留为可显式选择的 unattended route，默认模型 `openai/gpt-oss-120b`
 - `openrouter-api` 默认 base URL 是 `https://openrouter.ai/api/v1`，key 走 `AIWIKI_OPENROUTER_API_KEY`
 - `anthropic-api` 走 Anthropic Messages API，key 走 `AIWIKI_ANTHROPIC_API_KEY`
 - `openai-api` 是高级自定义 OpenAI-compatible 入口，base URL 走 `AIWIKI_LLM_BASE_URL`，key 走 `AIWIKI_LLM_API_KEY`
 - 如果 backend 是 `codex-cli` 且没有显式设置 `AIWIKI_LLM_MODEL`，effective model 默认是 `gpt-5.5`（旧 `gpt-5.4` 仍可显式选）
 - `codex-cli` 默认会附带 `AIWIKI_CODEX_REASONING_EFFORT=medium`，避免非交互 `run-ask` / `run-compile` / `run-lint` 被 CLI 默认的高推理档位拖慢
-- `llm-check`、`shell-summary.json`、Product Shell 会同时显示 requested/effective backend/model，以及 usage 可见性/计费口径
+- `llm-check`、`shell-summary.json`、Product Shell 会同时显示 requested/effective backend/model、backend fallback 链，以及 usage 可见性/计费口径
 - 默认 `llm-check` 只做静态路由检查；显式加 `--probe` 后才会发一个极小真实请求，区分“backend 能解析出来”和“当前账号真能跑”
 - CLI 路径当前都无法给出精确 token usage，`usage_visibility` 会显示 `opaque-cli`；API provider 会尽量透传响应里的 usage
 - `run-ask` 现在会先用 balanced prompt；如果碰到 timeout，会自动再试一次 lean prompt，只有 lean retry 也失败时，外层 Product Shell 才会做 deterministic fallback
 - `run-ask` 现在也支持显式 `--lean` 与 `--timeout <seconds>`，用于直接选择稳优先 prompt 或覆盖单次调用 timeout，而不改动全局环境变量
-- 默认不做隐式 model fallback；需要 fallback 时必须显式传 `--model-fallback model_a,model_b`（可重复）或设置 `AIWIKI_MODEL_FALLBACK=model_a,model_b`，CLI 参数优先于 env
-- `scripts/run_nightly.sh` 是唯一带跨 backend fallback 的 operator wrapper：primary 仍由 `AIWIKI_LLM_BACKEND` 显式指定；当 unattended nightly 失败时，若 `AIWIKI_NIGHTLY_FALLBACK_ENABLED=1` 且 `AIWIKI_NIGHTLY_FALLBACK_ENV` 指向可读的 repo 外 NIM key 文件，会自动用 `nvidia-nim-api/openai/gpt-oss-120b` 重跑一次；普通 CLI/runtime 不做隐式跨 backend routing
+- 默认不做隐式 model fallback；需要同 backend 多模型 fallback 时必须显式传 `--model-fallback model_a,model_b`（可重复）或设置 `AIWIKI_MODEL_FALLBACK=model_a,model_b`，CLI 参数优先于 env
+- 默认 backend fallback 只包含 canonical `opencode-api/deepseek-v4-pro → codex-cli/gpt-5.5`；可用 `AIWIKI_BACKEND_FALLBACK=` 显式清空，或用 `AIWIKI_BACKEND_FALLBACK=backend_a,backend_b` 覆盖。除这条显式配置链外，普通 CLI/runtime 不做隐藏跨 backend routing
+- `scripts/run_nightly.sh` 仍保留 operator unattended fallback wrapper：primary 由 `AIWIKI_LLM_BACKEND` 指定；当 unattended nightly 失败时，若 `AIWIKI_NIGHTLY_FALLBACK_ENABLED=1` 且 `AIWIKI_NIGHTLY_FALLBACK_ENV` 指向可读的 repo 外 NIM key 文件，会自动用 `nvidia-nim-api/openai/gpt-oss-120b` 重跑一次
 
 常见配置：
 
 ```bash
 AIWIKI_OPENCODE_API_KEY=opencode-... PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
+AIWIKI_OPENCODE_API_KEY=opencode-... AIWIKI_BACKEND_FALLBACK=codex-cli AIWIKI_BACKEND_FALLBACK_MODEL=gpt-5.5 PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
 AIWIKI_LLM_BACKEND=nvidia-nim-api AIWIKI_NVIDIA_NIM_API_KEY=nvapi-... PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
 AIWIKI_LLM_BACKEND=openrouter-api AIWIKI_OPENROUTER_API_KEY=sk-or-... AIWIKI_LLM_MODEL=provider/model PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
 AIWIKI_LLM_BACKEND=anthropic-api AIWIKI_ANTHROPIC_API_KEY=sk-ant-... PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check

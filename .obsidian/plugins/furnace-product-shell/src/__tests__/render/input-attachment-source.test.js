@@ -181,6 +181,14 @@ describe("Universal Input attachment source handling", () => {
     expect(result.askFormat).toBe("report");
   });
 
+  test("quoted report prefix does not force report mode for short follow-up questions", () => {
+    const { inferAutoAskFormat } = loadHelpers();
+
+    expect(inferAutoAskFormat("引用报告：output/reports/foo.md\n那好吧，你的llm是什么模型？", [])).toBe("note");
+    expect(inferAutoAskFormat("引用报告：output/reports/foo.md 那好吧，你的llm是什么模型？", [])).toBe("note");
+    expect(inferAutoAskFormat("引用报告：output/reports/foo.md\n请生成一份研究报告，包含证据链", [])).toBe("report");
+  });
+
   test("built main routes report auto ask through background submit", () => {
     const bundleSrc = fs.readFileSync(path.resolve(__dirname, "../../../main.js"), "utf8");
 

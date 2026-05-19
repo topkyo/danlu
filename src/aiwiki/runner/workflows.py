@@ -726,7 +726,7 @@ def _mark_run_ask_artifact_degraded(target: Path, *, reason: str, backend: str, 
         "- LLM 没有在本次超时时间内返回可用内容；本文件不是最终报告。",
         f"- 失败原因：`{reason}`。",
         f"- 后端 / 模型：`{backend or 'unknown'}` / `{model or 'unknown'}`。",
-        "- PDF 投料与文本抽取已完成；可以重试、切换模型，或使用更短的问题。",
+        "- 材料投喂、引用解析或上下文准备已完成；可以重试、切换模型，或使用更短的问题。",
         "",
         "## 下一步",
         "- 点击重试 run-ask，或在 Product Shell 设置里切换到更稳定的 backend/model。",
@@ -794,6 +794,20 @@ def _direct_ask_system_prompt() -> str:
         "不要编造本地仓库、文件或隐藏系统状态；如果问题询问你是什么模型，"
         "说明你是当前配置的外部 LLM 后端返回的回答，并可提及具体模型取决于运行配置。"
     )
+
+
+def _direct_answer_validation_error(answer: str) -> str:
+    text = str(answer or "").strip()
+    if not text:
+        return "LLM returned an empty direct answer."
+    lowered = text.lower()
+    if "_llm:" in lowered:
+        return "LLM returned a deterministic template marker instead of an answer."
+    if "请用 2–5 段自然语言直接回答" in text or "请用 2-5 段自然语言直接回答" in text:
+        return "LLM returned the note-answer instruction template instead of an answer."
+    if lowered.startswith("---") and "generated_by: aiwiki-ask" in lowered:
+        return "LLM returned an aiwiki deterministic artifact template instead of an answer."
+    return ""
 
 
 def _is_simple_direct_ask(question: str, output_format: str, direct: bool) -> bool:
@@ -1939,6 +1953,10 @@ def run_ask(
             while True:
                 try:
                     result = effective_client.complete(system_prompt, user_prompt)
+                    normalized_answer = _normalize_markdown(result.text)
+                    validation_error = _direct_answer_validation_error(normalized_answer)
+                    if validation_error:
+                        raise LLMError(validation_error)
                 except LLMError as exc:
                     fallback_stage = _fallback_to_next_model_with_stage(effective_client, "run-ask-direct", exc)
                     if fallback_stage:
@@ -2072,7 +2090,7 @@ def run_ask(
             question=question,
             protocol=active_protocol,
             created_at=utc_now(),
-            answer=_normalize_markdown(result.text),
+            answer=normalized_answer,
             backend=backend_effective,
             model=model_final,
         )

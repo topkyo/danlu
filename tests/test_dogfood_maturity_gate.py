@@ -271,8 +271,10 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(snapshot["l3_proposal_counts_by_state"]["candidate"], 1)
         self.assertEqual(snapshot["l3_proposal_counts_by_state"]["accepted"], 1)
         self.assertEqual(snapshot["l3_generation_preview_summary"]["candidate_count"], 2)
+        self.assertEqual(snapshot["l3_generation_preview_summary"]["raw_candidate_count"], 2)
         self.assertEqual(snapshot["l3_generation_preview_summary"]["blocked_count"], 1)
         self.assertEqual(snapshot["l3_debt_report"]["preview_candidate_count"], 2)
+        self.assertEqual(snapshot["l3_debt_report"]["preview_raw_candidate_count"], 2)
         self.assertEqual(snapshot["l3_debt_report"]["preview_eligible_count"], 1)
         self.assertEqual(snapshot["l3_debt_report"]["preview_not_eligible_count"], 1)
         self.assertEqual(snapshot["l3_debt_report"]["preview_blocker_counts"]["requires_execute_mode"], 1)
@@ -302,10 +304,57 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(snapshot["human_required_report"]["primary_exception_counts"], {})
         self.assertEqual(snapshot["human_required_report"]["auto_resolved_count"], 1)
         self.assertEqual(snapshot["human_required_report"]["auto_resolution_report"]["auto_resolution_receipt_count"], 1)
-        self.assertEqual(
-            snapshot["human_required_report"]["auto_resolution_report"]["human_required_reason_counts"]["semantic_judgment_required"],
-            1,
+
+    def test_collect_metrics_treats_existing_l3_issue_class_as_preview_noise(self) -> None:
+        ask_path = self.root / "prompts" / "ask.md"
+        ask_path.parent.mkdir(parents=True, exist_ok=True)
+        ask_path.write_text("# Ask\n", encoding="utf-8")
+        _write_json(
+            self.root / ".aiwiki" / "state" / "l3-proposals.json",
+            {
+                "version": 1,
+                "proposals": [
+                    {
+                        "proposal_id": "prop-covered-runtime-failure",
+                        "kind": "prompt_proposal",
+                        "target_file": "prompts/ask.md",
+                        "state": "rejected",
+                        "trigger": {"pattern": "contract_failure", "evidence_count": 3},
+                    }
+                ],
+            },
         )
+        _write_jsonl(
+            self.root / ".aiwiki" / "state" / "planner-log.jsonl",
+            [
+                {
+                    "decision": "generate-proposal",
+                    "mode": "execute",
+                    "signal_id": "sig-runtime-1",
+                    "trace_id": "trace-a",
+                    "dedupe_key": "runtime_failure:general:llm_receipt:a",
+                    "decided_at": "2026-05-19T00:00:00Z",
+                    "reason_codes": ["runtime_failure_observed", "proposal_recommended", "execute_mode_requested"],
+                },
+                {
+                    "decision": "generate-proposal",
+                    "mode": "execute",
+                    "signal_id": "sig-runtime-2",
+                    "trace_id": "trace-b",
+                    "dedupe_key": "runtime_failure:general:llm_receipt:b",
+                    "decided_at": "2026-05-19T00:01:00Z",
+                    "reason_codes": ["runtime_failure_observed", "proposal_recommended", "execute_mode_requested"],
+                },
+            ],
+        )
+
+        snapshot = collect_metrics(self.root, preview_limit=1000)
+
+        self.assertEqual(snapshot["l3_debt_report"]["preview_raw_candidate_count"], 2)
+        self.assertEqual(snapshot["l3_debt_report"]["preview_candidate_count"], 1)
+        self.assertEqual(snapshot["l3_debt_report"]["preview_eligible_count"], 1)
+        self.assertEqual(snapshot["l3_debt_report"]["duplicate_existing_count"], 1)
+        self.assertEqual(snapshot["l3_debt_report"]["effective_preview_candidate_count"], 0)
         self.assertEqual(
             snapshot["prompts_ask_sha256"],
             hashlib.sha256(ask_path.read_bytes()).hexdigest(),
@@ -637,6 +686,53 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(summary["operational_maturity"]["status"], "pass")
         self.assertTrue(summary["operational_maturity"]["human_only_exceptions"])
         self.assertEqual(summary["operational_maturity"]["budget_violations"], [])
+
+    def test_operational_maturity_passes_when_budget_is_clean_even_if_trend_summary_warns(self) -> None:
+        receipts = [
+            _make_run_receipt(
+                generated_at="2026-05-13T00:00:00Z",
+                status="pass",
+                before_backlog=10,
+                after_backlog=12,
+                before_candidate=0,
+                after_candidate=0,
+                before_judgment_receipts=1,
+                after_judgment_receipts=1,
+                already_exists_count=1,
+            ),
+            _make_run_receipt(
+                generated_at="2026-05-14T00:00:00Z",
+                status="pass",
+                before_backlog=12,
+                after_backlog=14,
+                before_candidate=0,
+                after_candidate=0,
+                before_judgment_receipts=1,
+                after_judgment_receipts=1,
+                already_exists_count=1,
+            ),
+            _make_run_receipt(
+                generated_at="2026-05-15T00:00:00Z",
+                status="pass",
+                before_backlog=14,
+                after_backlog=16,
+                before_candidate=0,
+                after_candidate=0,
+                before_judgment_receipts=1,
+                after_judgment_receipts=1,
+                already_exists_count=1,
+            ),
+        ]
+        for receipt in receipts:
+            receipt["after"]["judgment_lane_report"]["exception_rate"] = 0.0
+        self._write_receipts(receipts)
+
+        summary = summarize_recent_run_receipts(self.root, recent=3)
+
+        self.assertEqual(summary["status"], "warn")
+        self.assertEqual(summary["operational_maturity"]["status"], "pass")
+        self.assertEqual(summary["operational_maturity"]["budget_violations"], [])
+        self.assertTrue(summary["operational_maturity"]["receipt_integrity"]["consecutive_days"])
 
     def test_operational_maturity_flags_routine_primary_debt(self) -> None:
         receipts = [

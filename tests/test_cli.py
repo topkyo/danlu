@@ -611,7 +611,7 @@ class CLITests(unittest.TestCase):
             {"kind", "title", "summary", "target", "timestamp", "protocol"},
         )
 
-    def test_today_json_surfaces_automation_status(self) -> None:
+    def test_today_json_keeps_automation_status_out_of_primary_today(self) -> None:
         summary = {
             "generated_at": "2026-04-30T09:00:00+00:00",
             "active_protocol": "research",
@@ -631,9 +631,7 @@ class CLITests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(stderr, "")
         payload = json.loads(stdout)
-        self.assertEqual(len(payload["automation_status"]), 1)
-        self.assertEqual(payload["automation_status"][0]["kind"], "automation")
-        self.assertEqual(payload["automation_status"][0]["title"], "已自动维护")
+        self.assertEqual(payload["automation_status"], [])
 
     def test_today_json_hides_maintenance_suggested_actions(self) -> None:
         summary = {

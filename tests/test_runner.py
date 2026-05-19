@@ -246,6 +246,51 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(receipt["fallback_stage"], "backend-failover")
         self.assertEqual(receipt["backend_effective"], "codex-cli")
 
+    def test_run_ask_direct_note_rejects_template_answer_before_success(self) -> None:
+        class _TemplateThenValidClient:
+            def __init__(self) -> None:
+                self.config = type(
+                    "Config",
+                    (),
+                    {"model": "deepseek-v4-pro", "backend": "opencode-api", "backend_requested": "opencode-api", "timeout_seconds": 45},
+                )()
+                self.calls = 0
+
+            def advance_model(self) -> bool:
+                if self.config.backend == "codex-cli":
+                    return False
+                self.config = type(
+                    "Config",
+                    (),
+                    {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "opencode-api", "timeout_seconds": 45},
+                )()
+                return True
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt, user_prompt
+                self.calls += 1
+                if self.calls == 1:
+                    return CompletionResult(text="_LLM: 请用 2–5 段自然语言直接回答。", response_id="resp_template", usage={})
+                return CompletionResult(text="当前配置的备用模型是 gpt-5.5。", response_id="resp_valid", usage={"total_tokens": 7})
+
+        with patch("aiwiki.runner.workflows.ask_question") as deterministic_ask:
+            result = run_ask(
+                self.root,
+                "你是什么模型？",
+                "note",
+                client=_TemplateThenValidClient(),
+                direct=True,
+                fallback_to_ask=True,
+            )
+
+        deterministic_ask.assert_not_called()
+        self.assertEqual(result["delivery_mode"], "llm-direct")
+        self.assertEqual(result["backend_effective"], "codex-cli")
+        self.assertEqual(result["fallback_stage"], "backend-failover")
+        content = (self.root / result["path"]).read_text(encoding="utf-8")
+        self.assertIn("当前配置的备用模型是 gpt-5.5。", content)
+        self.assertNotIn("_LLM:", content)
+
     def test_run_ask_material_note_uses_extracted_material_context_without_ranking_context(self) -> None:
         raw_note = self.root / "raw" / "inbox" / "image-note.md"
         raw_note.parent.mkdir(parents=True, exist_ok=True)

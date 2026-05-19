@@ -50,8 +50,8 @@ function buildTodayFeed(summary) {
   entries.push(...buildProposalEntries(summary));
   entries.push(...buildReportEntries(summary, todayDate));
   entries.push(...buildElixirEntries(summary, todayDate));
-  entries.push(...buildMetricAlertEntries(summary));
-  entries.push(...buildAgentLoopEntries(summary, todayDate));
+  // Routine metrics and automation status stay in Advanced/operator surfaces;
+  // primary Today only keeps reports, decision exceptions, and necessary actions.
   entries.push(...buildActionEntries(summary, "primary"));
   entries.push(...buildRawInputEntries(summary, todayDate));
   entries.push(...buildLlmHealthEntry(summary));
@@ -172,6 +172,7 @@ function buildProposalEntries(summary) {
 function buildReportEntries(summary, todayDate) {
   const entries = [];
   for (const item of dictItems(summary.recent_outputs)) {
+    if (!isDeliverableReportOutput(item)) continue;
     const timestamp = firstText(item, "generated_at", "created_at");
     if (datePart(timestamp) !== todayDate) continue;
     const path = firstText(item, "path", "artifact_path");
@@ -195,6 +196,22 @@ function buildReportEntries(summary, todayDate) {
     });
   }
   return entries;
+}
+
+function isDeliverableReportOutput(item) {
+  const deliveryMode = firstText(item, "delivery_mode");
+  const llmStatus = firstText(item, "llm_status");
+  const backgroundStatus = firstText(item, "background_status");
+  const artifactQuality = firstText(item, "artifact_quality");
+  const placeholder = firstText(item, "contains_llm_placeholder").toLowerCase();
+  const title = firstText(item, "title");
+  if (deliveryMode === "deterministic-fallback") return false;
+  if (["timeout_or_unavailable", "pending", "failed"].includes(llmStatus)) return false;
+  if (["submitted", "running", "degraded"].includes(backgroundStatus)) return false;
+  if (["degraded", "placeholder"].includes(artifactQuality)) return false;
+  if (["1", "true", "yes"].includes(placeholder)) return false;
+  if (title.startsWith("LLM 未完成")) return false;
+  return true;
 }
 
 function buildElixirEntries(summary, todayDate) {

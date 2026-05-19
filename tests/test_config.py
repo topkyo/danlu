@@ -51,6 +51,8 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.opencode_api_key_source, "AIWIKI_OPENCODE_API_KEY")
         self.assertEqual(config.base_url, DEFAULT_OPENCODE_BASE_URL)
         self.assertEqual(config.model_fallback_chain, (DEFAULT_OPENCODE_MODEL,))
+        self.assertEqual(config.backend_fallback_chain, (BACKEND_CODEX_CLI,))
+        self.assertEqual(config.backend_fallback_model, DEFAULT_CODEX_MODEL)
 
     def test_from_env_uses_opencode_generic_key_and_base_url_override(self) -> None:
         config = self._from_env(
@@ -133,6 +135,19 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.backend, BACKEND_OPENCODE_API)
         self.assertEqual(config.backend_fallback_chain, (BACKEND_CODEX_CLI,))
         self.assertEqual(config.backend_fallback_model, "gpt-5.5")
+
+    def test_env_backend_fallback_empty_disables_canonical_opencode_fallback(self) -> None:
+        config = self._from_env(
+            {
+                "AIWIKI_OPENCODE_API_KEY": "opencode_test_key",
+                "AIWIKI_BACKEND_FALLBACK": "",
+            },
+            which_map={"codex": "/usr/bin/codex"},
+        )
+
+        self.assertEqual(config.backend, BACKEND_OPENCODE_API)
+        self.assertEqual(config.backend_fallback_chain, ())
+        self.assertEqual(config.backend_fallback_model, "")
 
     def test_from_env_uses_requested_openrouter_backend(self) -> None:
         config = self._from_env(
@@ -264,7 +279,8 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(status["available_backends"], [BACKEND_OPENCODE_API])
         self.assertEqual(status["effective_model"], DEFAULT_OPENCODE_MODEL)
         self.assertEqual(status["model_fallback_chain"], [DEFAULT_OPENCODE_MODEL])
-        self.assertEqual(status["backend_fallback_chain"], [])
+        self.assertEqual(status["backend_fallback_chain"], [BACKEND_CODEX_CLI])
+        self.assertEqual(status["backend_fallback_model"], DEFAULT_CODEX_MODEL)
         self.assertTrue(status["api_key_present"])
         self.assertTrue(status["opencode_api_key_present"])
         self.assertEqual(status["opencode_api_key_source"], "AIWIKI_OPENCODE_API_KEY")

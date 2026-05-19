@@ -4,13 +4,14 @@
 # 仅作 dogfood receipt 加速器；runtime 默认值不在此调整。
 # STALE_JUDGMENT_DAYS 全局默认仍为 180；P4 计划再做分层化。
 
-# v2 起切到 opencode-api/deepseek-v4-pro：与 runtime 全局默认（src/aiwiki/config.py:18-23
-# 与 scripts/install_user_service.sh、scripts/aiwiki-launcher.sh）对齐；同时是当前本机
-# 最稳可用的本地后端，避免 dogfood 中混入 backend 切换 receipt 噪声。
+# v2 起切到 canonical interactive profile：opencode-api/deepseek-v4-pro primary，
+# codex-cli/gpt-5.5 作为显式 fallback；与 runtime 默认和 Product Shell 默认对齐。
 # 历史背景：v0/v1 (2026-04-30 / 2026-05-01) 使用 codex-cli/gpt-5.5（详见
 # dogfood-receipt-investing-v0.md / v1.md），属于历史 receipt 不再回改。
 export AIWIKI_LLM_BACKEND=opencode-api
 export AIWIKI_LLM_MODEL=deepseek-v4-pro
+export AIWIKI_BACKEND_FALLBACK=codex-cli
+export AIWIKI_BACKEND_FALLBACK_MODEL=gpt-5.5
 # OpenCode Go 网关（与 OpenCode Zen 不同路径），DeepSeek V4 Pro 走 /zen/go/v1/chat/completions
 # 见 https://dev.opencode.ai/docs/go/ ；config.py 默认指向 Zen，需在 dogfood 显式覆盖
 export AIWIKI_OPENCODE_BASE_URL=https://opencode.ai/zen/go/v1
