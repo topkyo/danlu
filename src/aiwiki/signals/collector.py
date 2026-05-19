@@ -286,12 +286,7 @@ def _mapped_invalid_reason(source: str, event: dict[str, Any]) -> str | None:
                 return "archive_elixir_breaks_invalid"
 
             for item in dependency_breaks:
-                if not isinstance(item, dict):
-                    return "archive_elixir_break_item_invalid"
-                dependent_elixir_id = item.get("dependent_elixir_id")
-                if not isinstance(dependent_elixir_id, str) or not dependent_elixir_id:
-                    return "archive_elixir_break_item_invalid"
-                if item.get("break_reason") not in adapters.ELIXIR_DEPENDENCY_BREAK_REASONS:
+                if adapters.normalize_elixir_dependency_break_item(item) is None:
                     return "archive_elixir_break_item_invalid"
             return None
 

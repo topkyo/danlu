@@ -826,6 +826,134 @@ class TestArchiveAdapter(_FixtureCase):
         self.assertTrue(any(item["reason"] == "archive_elixir_break_item_invalid" for item in result["skip_examples"]))
         self.assertFalse((root / ".aiwiki/state/signals.jsonl").exists())
 
+    def test_signals_collector_keeps_valid_dependency_break_order_and_batch_dedupes_duplicates(self) -> None:
+        root = self.temp_root / "archive-elixir-mixed-order"
+        receipts_path = root / ".aiwiki/state/execution-receipts.jsonl"
+        receipts_path.parent.mkdir(parents=True, exist_ok=True)
+        receipts_path.write_text(
+            json.dumps(
+                {
+                    "kind": "execution-receipt",
+                    "subject_kind": "elixir_demotion",
+                    "subject_id": "elixir-a",
+                    "protocol": "research",
+                    "action_id": "elixir-demote-a-1714000000003",
+                    "applied_at": "2026-04-24T11:27:00+00:00",
+                    "bundle": {
+                        "dependency_breaks": [
+                            {"dependent_elixir_id": "elixir-b", "break_reason": "source_demoted"},
+                            {"dependent_elixir_id": "", "break_reason": "source_demoted"},
+                            {"dependent_elixir_id": "elixir-c", "break_reason": "source_reverted"},
+                            {"dependent_elixir_id": "elixir-b", "break_reason": "source_demoted"},
+                            {"dependent_elixir_id": "elixir-d", "break_reason": "unknown_reason"},
+                        ]
+                    },
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+
+        self.assertEqual(result["new_count"], 2)
+        self.assertEqual(result["duplicate_count"], 1)
+        self.assertEqual(result["invalid_count"], 0)
+        records = _read_jsonl(root / ".aiwiki/state/signals.jsonl")
+        self.assertEqual([record["scope"]["elixir_refs"][0] for record in records], ["wiki/elixirs/elixir-b.md", "wiki/elixirs/elixir-c.md"])
+
+    def test_signals_collector_ignores_dependency_breaks_for_non_elixir_subject(self) -> None:
+        root = self.temp_root / "archive-non-elixir-breaks"
+        receipts_path = root / ".aiwiki/state/execution-receipts.jsonl"
+        receipts_path.parent.mkdir(parents=True, exist_ok=True)
+        receipts_path.write_text(
+            json.dumps(
+                {
+                    "kind": "execution-receipt",
+                    "subject_kind": "material-archive",
+                    "subject_id": "entry-1",
+                    "protocol": "research",
+                    "current_temperature": "cold",
+                    "resulting_temperature": "archived",
+                    "applied_at": "2026-04-24T11:28:00Z",
+                    "bundle": {
+                        "dependency_breaks": [
+                            {"dependent_elixir_id": "elixir-b", "break_reason": "source_demoted"}
+                        ]
+                    },
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+
+        self.assertEqual(result["new_count"], 1)
+        self.assertEqual(result["emitted_by_kind"]["drift"], 1)
+        self.assertEqual(result["emitted_by_kind"]["elixir_dependency_break"], 0)
+
+    def test_signals_collector_archive_elixir_missing_or_empty_break_bundle_is_not_invalid(self) -> None:
+        root = self.temp_root / "archive-elixir-empty-breaks"
+        receipts_path = root / ".aiwiki/state/execution-receipts.jsonl"
+        receipts_path.parent.mkdir(parents=True, exist_ok=True)
+        receipts_path.write_text(
+            json.dumps(
+                {
+                    "kind": "execution-receipt",
+                    "subject_kind": "elixir_demotion",
+                    "subject_id": "elixir-a",
+                    "protocol": "research",
+                    "action_id": "elixir-demote-a-1714000000004",
+                    "applied_at": "2026-04-24T11:29:00+00:00",
+                    "bundle": {},
+                },
+                sort_keys=True,
+            )
+            + "\n"
+            + json.dumps(
+                {
+                    "kind": "execution-receipt",
+                    "subject_kind": "elixir_revert",
+                    "subject_id": "elixir-b",
+                    "protocol": "research",
+                    "action_id": "elixir-revert-b-1714000000005",
+                    "applied_at": "2026-04-24T11:30:00+00:00",
+                    "bundle": {"dependency_breaks": []},
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = collect_signals(root, sources=["archive"], trace_id="550e8400-e29b-41d4-a716-446655440000")
+
+        self.assertEqual(result["new_count"], 0)
+        self.assertEqual(result["invalid_count"], 0)
+        self.assertEqual(result["unmapped_count"], 2)
+        self.assertEqual(result["skip_examples"], [])
+        self.assertFalse((root / ".aiwiki/state/signals.jsonl").exists())
+
+    def test_archive_elixir_invalid_reason_string_stays_stable(self) -> None:
+        event = {
+            "kind": "execution-receipt",
+            "subject_kind": "elixir_demotion",
+            "subject_id": "elixir-a",
+            "protocol": "research",
+            "bundle": {
+                "dependency_breaks": [
+                    {"dependent_elixir_id": "elixir-b", "break_reason": "unknown_reason"}
+                ]
+            },
+        }
+
+        reason = collector._mapped_invalid_reason("archive", event)
+
+        self.assertEqual(reason, "archive_elixir_break_item_invalid")
+
 
 class TestObserveOnlyAST(unittest.TestCase):
     _ALLOWED_PREFIXES = {

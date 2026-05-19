@@ -31,6 +31,7 @@ from aiwiki.app_state import (
     load_material_archive_state,
     load_output_candidates_state,
     load_runtime_history,
+    machine_memory_state_path,
     save_active_corpora_state,
     save_machine_memory_action_state,
     save_output_candidates_state,
@@ -403,6 +404,22 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(len(state["candidates"]), 1)
         self.assertEqual(state["candidates"][0]["artifact_ref"], result["path"])
         self.assertEqual(state["candidates"][0]["candidate_state"], "pending")
+
+    def test_ask_question_merges_curated_judgment_provenance_into_source_files(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        judgment_path = self.root / "wiki" / "judgments" / "j-curated.md"
+        judgment_path.parent.mkdir(parents=True, exist_ok=True)
+        judgment_path.write_text("---\nid: j-curated\nkind: judgment\n---\n\n# Curated Judgment\n", encoding="utf-8")
+        memory = load_machine_memory(self.root)
+        memory["edges"] = dict(memory.get("edges") or {})
+        memory["edges"]["source_to_judgment"] = [{"source_id": entry["id"], "page_id": "j-curated"}]
+        machine_memory_state_path(self.root).write_text(json.dumps(memory, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+        result = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+
+        frontmatter = parse_frontmatter((self.root / result["path"]).read_text(encoding="utf-8"))
+        self.assertIn("wiki/judgments/j-curated.md", frontmatter.get("source_files", []))
 
     def test_ask_question_records_notify_dispatch_failure_without_raising(self) -> None:
         with patch("aiwiki.execution.ask.notify_report_generated", side_effect=RuntimeError("notify boom")):

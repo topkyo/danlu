@@ -22,6 +22,12 @@ class SignalSeed:
     source_identity: str
 
 
+@dataclass(frozen=True)
+class ElixirDependencyBreakItem:
+    dependent_elixir_id: str
+    break_reason: str
+
+
 def source_rel_path(source: str) -> str:
     if source == "runtime_history":
         return RUNTIME_HISTORY_REL_PATH
@@ -420,13 +426,8 @@ def _elixir_dependency_break_to_signals(
     source_event_ref = f"{receipt_rel_path}#L{history_line_no}"
     seeds: list[SignalSeed] = []
     for item in dependency_breaks:
-        if not isinstance(item, dict):
-            continue
-        dependent_elixir_id = item.get("dependent_elixir_id")
-        if not isinstance(dependent_elixir_id, str) or not dependent_elixir_id:
-            continue
-        break_reason = item.get("break_reason")
-        if break_reason not in ELIXIR_DEPENDENCY_BREAK_REASONS:
+        normalized_item = normalize_elixir_dependency_break_item(item)
+        if normalized_item is None:
             continue
 
         evidence_refs: list[str] = []
@@ -441,7 +442,7 @@ def _elixir_dependency_break_to_signals(
                         "protocol": protocol,
                         "source_ids": [],
                         "concept_slugs": [],
-                        "elixir_refs": [f"wiki/elixirs/{dependent_elixir_id}.md"],
+                        "elixir_refs": [f"wiki/elixirs/{normalized_item.dependent_elixir_id}.md"],
                         "judgment_refs": [],
                     },
                     "severity": "high",
@@ -451,35 +452,25 @@ def _elixir_dependency_break_to_signals(
                     "source_kind": "execution_receipt",
                     "source_event_ref": source_event_ref,
                 },
-                source_identity=f"{action_id}::{dependent_elixir_id}",
+                source_identity=f"{action_id}::{normalized_item.dependent_elixir_id}",
             )
         )
     return seeds
 
 
-def _iter_elixir_dependency_break_seeds(root: Path, *, trace_id: str | None) -> Iterator[SignalSeed]:
-    del trace_id
-    rel_path = ARCHIVE_RECEIPTS_REL_PATH
-    path = root / rel_path
-    if not path.exists():
-        return
-    with path.open("r", encoding="utf-8") as handle:
-        for line_no, line in enumerate(handle, start=1):
-            payload = line.strip()
-            if not payload:
-                continue
-            try:
-                receipt = json.loads(payload)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(receipt, dict):
-                continue
-            for seed in _elixir_dependency_break_to_signals(
-                receipt,
-                receipt_rel_path=rel_path,
-                history_line_no=line_no,
-            ):
-                yield seed
+def normalize_elixir_dependency_break_item(item: Any) -> ElixirDependencyBreakItem | None:
+    if not isinstance(item, dict):
+        return None
+    dependent_elixir_id = item.get("dependent_elixir_id")
+    break_reason = item.get("break_reason")
+    if not isinstance(dependent_elixir_id, str) or not dependent_elixir_id:
+        return None
+    if not isinstance(break_reason, str) or break_reason not in ELIXIR_DEPENDENCY_BREAK_REASONS:
+        return None
+    return ElixirDependencyBreakItem(
+        dependent_elixir_id=dependent_elixir_id,
+        break_reason=break_reason,
+    )
 
 
 def _source_identity(payload: dict[str, Any]) -> str:

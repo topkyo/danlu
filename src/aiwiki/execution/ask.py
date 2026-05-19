@@ -185,6 +185,102 @@ def _append_run_event(root: Path, event: dict[str, Any]) -> None:
 # concepts first, then include up to 2 judgments tied to those sources so the
 # anchor list reflects the same evidence chain the report just rendered.
 _GRAPH_ANCHOR_LIMIT = 8
+_CURATED_PROVENANCE_LIMIT = 4
+
+
+def _frontmatter_string_list(frontmatter: dict[str, Any], key: str) -> list[str]:
+    value = frontmatter.get(key)
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
+
+
+def _collect_curated_provenance_refs(
+    root: Path,
+    memory: dict[str, Any],
+    machine_query: dict[str, Any],
+    ranked_sources: list[dict[str, Any]],
+    *,
+    limit: int = _CURATED_PROVENANCE_LIMIT,
+) -> list[str]:
+    source_ids: list[str] = []
+    for entry in ranked_sources:
+        source_id = str(entry.get("id") or "").strip()
+        if source_id and source_id not in source_ids:
+            source_ids.append(source_id)
+    for source_id in machine_query.get("ranked_source_ids", []):
+        normalized = str(source_id or "").strip()
+        if normalized and normalized not in source_ids:
+            source_ids.append(normalized)
+
+    refs: list[str] = []
+    edges = memory.get("edges", {}).get("source_to_judgment", [])
+    for source_id in source_ids:
+        for edge in edges:
+            if not isinstance(edge, dict):
+                continue
+            if str(edge.get("source_id") or "").strip() != source_id:
+                continue
+            page_id = str(edge.get("page_id") or "").strip()
+            if not page_id:
+                continue
+            ref = f"wiki/judgments/{page_id}.md"
+            if not (root / ref).exists() or ref in refs:
+                continue
+            refs.append(ref)
+            if len(refs) >= limit:
+                return refs
+    return refs
+
+
+def _merge_source_files_frontmatter(path: Path, refs: list[str]) -> None:
+    cleaned: list[str] = []
+    for ref in refs:
+        normalized = str(ref).strip()
+        if normalized and normalized not in cleaned:
+            cleaned.append(normalized)
+    if not cleaned:
+        return
+
+    original = path.read_text(encoding="utf-8", errors="replace")
+    frontmatter = parse_frontmatter(original)
+    merged: list[str] = []
+    for ref in [*_frontmatter_string_list(frontmatter, "source_files"), *cleaned]:
+        if ref not in merged:
+            merged.append(ref)
+
+    block = ["source_files:", *[f'  - "{ref}"' for ref in merged]]
+    lines = original.splitlines()
+    has_frontmatter = bool(lines) and lines[0].strip() == "---"
+    close_idx: int | None = None
+    if has_frontmatter:
+        for idx in range(1, len(lines)):
+            if lines[idx].strip() == "---":
+                close_idx = idx
+                break
+    if not has_frontmatter or close_idx is None:
+        synthesized = ["---", *block, "---", *lines]
+        path.write_text("\n".join(synthesized).rstrip() + "\n", encoding="utf-8")
+        return
+
+    filtered: list[str] = lines[:1]
+    skip_list_items = False
+    for line in lines[1:close_idx]:
+        if line.startswith("source_files:"):
+            skip_list_items = True
+            continue
+        if skip_list_items and line.startswith("  - "):
+            continue
+        skip_list_items = False
+        filtered.append(line)
+    new_close_idx = len(filtered)
+    filtered.append(lines[close_idx])
+    filtered.extend(lines[close_idx + 1 :])
+    for offset, line in enumerate(block):
+        filtered.insert(new_close_idx + offset, line)
+    path.write_text("\n".join(filtered).rstrip() + "\n", encoding="utf-8")
 
 
 def _build_graph_anchor_node_ids(
@@ -468,6 +564,13 @@ def ask_question(
         candidate_state="pending",
         corpus_id=active_corpus["corpus_id"],
     )
+    curated_provenance_refs = _collect_curated_provenance_refs(
+        root,
+        memory,
+        machine_query,
+        ranked,
+    )
+    _merge_source_files_frontmatter(destination, curated_provenance_refs)
     anchors = _build_graph_anchor_node_ids(
         machine_query,
         memory,

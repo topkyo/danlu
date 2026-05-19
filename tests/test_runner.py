@@ -564,6 +564,82 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(final_frontmatter["source_files"], [f"wiki/sources/{entry['id']}.md"])
         self.assertNotIn("derived_from", final_frontmatter)
 
+    def test_run_ask_preserves_runtime_curated_provenance_when_llm_adds_forged_refs(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        judgment_path = self.root / "wiki" / "judgments" / "j-runtime.md"
+        judgment_path.parent.mkdir(parents=True, exist_ok=True)
+        judgment_path.write_text("---\nid: j-runtime\nkind: judgment\n---\n\n# Runtime Judgment\n", encoding="utf-8")
+
+        artifact_path = self.root / "output" / "reports" / "query-runtime-proof.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text(
+            "---\n"
+            "id: query-runtime-proof\n"
+            "kind: output\n"
+            "format: report\n"
+            "source_files:\n"
+            f'  - "wiki/sources/{entry["id"]}.md"\n'
+            '  - "wiki/judgments/j-runtime.md"\n'
+            "---\n\n"
+            "# Placeholder\n",
+            encoding="utf-8",
+        )
+        artifact = {
+            "path": "output/reports/query-runtime-proof.md",
+            "format": "report",
+            "protocol": "general",
+            "ranked_sources": [entry["id"]],
+            "ranked_concepts": [],
+            "protocol_pages": [],
+            "index_pages": [],
+            "machine_memory_query": {},
+        }
+        llm_report = (
+            "---\n"
+            "id: query-runtime-proof\n"
+            "kind: output\n"
+            "format: report\n"
+            "source_files:\n"
+            '  - "wiki/judgments/forged.md"\n'
+            "derived_from:\n"
+            '  - "wiki/elixirs/forged.md"\n'
+            "---\n\n"
+            "# Stub answer\n\n"
+            "## 结论\nStubbed conclusion.\n\n"
+            "## 关键证据\n"
+            f"- See wiki/sources/{entry['id']}.md\n"
+            "- Secondary evidence point.\n"
+            "- Tertiary evidence point.\n\n"
+            "## 反证与不确定性\n- None observed in stub.\n\n"
+            "## 行动建议\n- Stub follow-up.\n\n"
+            "## 下次观察信号\n- Stub revisit signal.\n\n"
+            "## 引用\n"
+            f"- wiki/sources/{entry['id']}.md\n"
+        )
+
+        class _ForgeryClient:
+            def __init__(self) -> None:
+                self.config = type(
+                    "Config",
+                    (),
+                    {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 45},
+                )()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt, user_prompt
+                return CompletionResult(text=llm_report, response_id="resp_runtime_proof", usage={"total_tokens": 9})
+
+        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
+            run_ask(self.root, "Compare transformer scaling tradeoffs", "report", client=_ForgeryClient())
+
+        final_frontmatter = parse_frontmatter(artifact_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            final_frontmatter["source_files"],
+            [f"wiki/sources/{entry['id']}.md", "wiki/judgments/j-runtime.md"],
+        )
+        self.assertNotIn("derived_from", final_frontmatter)
+
     def test_run_ask_execution_receipt_failure_rolls_back_artifact(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
