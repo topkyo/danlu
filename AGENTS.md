@@ -126,7 +126,9 @@
 - 如果本地 harness 已生成，优先走 `scripts/run_qa_review.sh`、`scripts/closed_loop.sh` 等入口；否则退回项目自有验证入口
 - 如果项目没有这些入口，就执行等价的本地检查，不凭空假设命令存在
 - 当前平台 artifact root 下的阶段 runbook 属于 agent 侧适配层；共享 gate scripts 不读取其内容作为运行前提
-- 实现后执行项目本地验证入口：`bash scripts/verify.sh`
+- 验证默认 targeted-first：实现中优先运行最小相关验证入口；harness / protocol / scaffold-only 变更可用 `bash scripts/verify.sh scripts`
+- 只有 runtime 行为变更、跨模块高风险、发布 / 推送前或 contract 明确要求时，才运行全量 `bash scripts/verify.sh`
+- `closed_loop.sh` 默认执行 `scripts/verify.sh scripts` 加 gate artifact 检查；需要全量时显式使用 `HARNESS_DIR=.codex bash scripts/closed_loop.sh --verify-full --require-contract` 或 `HARNESS_VERIFY_TARGET=all`
 - `verify` 失败时默认继续本地调试和重复验证，不把每一轮失败都升级成用户确认
 - Standard tier 默认要求 `qa-review`；当前没有独立 reviewer 时要记录 fallback 原因
 - 本地 end-to-end 收口默认可以继续到 `closed_loop -> finalize_task.sh`，前提是 local harness 已生成；是否自动 commit 以当前执行环境的更高优先级约束为准
