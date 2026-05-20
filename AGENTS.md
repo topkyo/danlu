@@ -23,6 +23,10 @@
 - 根 `AGENTS.md` / `CLAUDE.md` 放全局架构、工程闭环、安全边界和跨目录约束；子目录协议文件放局部实现细节、同步要求和验证入口
 - 冲突时，根协议的安全/边界/停止条件优先；子目录协议的实现细节、测试命令和局部约定优先
 - 优先从最小相关目录启动 agent，让其向上加载根协议；跨目录协议、模板渲染、gate scripts 或全局文档改动才从仓库根启动
+- 大仓库或未知区域默认先做局部只读探索：给出相关文件、关键符号、建议局部命令、风险和待验证假设，再进入编辑
+- 优先符号、路径、局部 grep / 局部 read，不做全仓乱读；generated/vendor/build/third-party/secrets 默认排除，`*.env` 等敏感文件默认不读
+- 宽任务、架构文档或高不确定需求，先走 `/planner` 或 contract 收敛范围，再开始编辑
+- 可并行做只读探索，但编辑、contract writeback、验证和 debug 仍由主执行闭环负责，不把 harness 变成 orchestrator
 
 禁止长期写进本文件:
 - 临时调试日志
@@ -117,6 +121,7 @@
 
 - 开工前先读 `README.md`、`PROGRESS.md` 和本地生成的 `.codex/contracts/active.md`
 - 默认顺序: `项目规范 -> 读取已有状态 -> 验收标准 -> 模糊需求先澄清；宽方案先用 /planner 生成 HARNESS_DIR/plans/active.md；执行前可用 /plan_review 做建议型审查；再用 /run_plan 或 run_plan.sh 进入 Harness 执行 -> 实现闭环 -> 按 contract 跑 gate -> 回写状态`
+- 未知代码区先做局部只读探索；探索输出至少包含相关文件、建议局部命令、风险和待验证假设
 - `PROGRESS.md` 是当前动态执行源；存在就读写，不存在才降级为 blocker 记录
 - 多文件、跨模块或运行态变更默认维护本地生成的 `.codex/contracts/active.md`；若任务指定其他平台，先显式设置 `HARNESS_DIR`
 - 若当前工作区尚未生成 local harness，先执行 `bash scripts/setup_local_harness.sh --apply --tier standard --platforms claude,codex,opencode`；若需要直接验证上游入口，等价命令是 `bash /home/tim/open-harness/scripts/bootstrap_local_scaffold.sh --apply --tier standard --platforms claude,codex,opencode`
