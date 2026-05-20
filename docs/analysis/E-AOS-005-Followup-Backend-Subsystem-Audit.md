@@ -2,6 +2,8 @@
 
 > Report-only milestone. Scope: repo-visible receipts/history and static code audit. No backend deletion, no config/CLI/schema changes, no subpackage split.
 
+> **Status update — 2026-05-20:** the adapter follow-up noted in this report was completed by AOS-006. `_iter_elixir_dependency_break_seeds` was removed, and `normalize_elixir_dependency_break_item()` became the narrow shared normalization helper used by both the adapter and collector validation. Backend deletion remains blocked by insufficient real dogfood usage telemetry.
+
 ## 0. Executive Summary
 
 Current evidence is **insufficient to delete or deprecate any backend**.
@@ -17,7 +19,7 @@ Acceptance fixtures additionally cover `codex-cli` with `stub-model`, but those 
 Subsystem audit conclusion:
 
 - `src/aiwiki/memory/execution_surfaces.py` is 1329 lines with several medium-large render/reconcile functions, but no single giant function comparable to `app_surfaces.py`; future work should be targeted helper extraction, not blind file splitting.
-- `src/aiwiki/signals/adapters.py` is 518 lines with small/medium adapters; main risk is adapter coverage / unused planned paths, not size. `_iter_elixir_dependency_break_seeds` has no current production/test caller evidence and should be proven or removed in a separate contract.
+- `src/aiwiki/signals/adapters.py` was structurally small enough for targeted cleanup rather than broad splitting. The unused `_iter_elixir_dependency_break_seeds` follow-up has since been resolved in AOS-006 by removing it and centralizing dependency-break item validation in `normalize_elixir_dependency_break_item()`.
 
 ## 1. Backend Usage Statistics
 
@@ -136,14 +138,16 @@ Tests in `tests/test_signals_collector.py` cover the main adapters and source ro
 | `_runtime_history_counter_evidence_to_signals` | 45 | low-medium |
 | `_runtime_history_raw_added_to_signals` | 43 | low-medium |
 | `_llm_receipt_to_signals` | 39 | low |
-| `_iter_elixir_dependency_break_seeds` | 23 | usage risk |
+| `_iter_elixir_dependency_break_seeds` | 23 | resolved later: removed in AOS-006 |
 | other helpers | 2–14 | low |
 
 ### 3.3 Dead/planned adapter risk
 
-`_iter_elixir_dependency_break_seeds` has no current production/test caller evidence in this repo scan. That does not prove it is wrong, but it means it should not silently remain as assumed-live runtime behavior.
+At the time of this scan, `_iter_elixir_dependency_break_seeds` had no production/test caller evidence. That did not prove it was wrong, but it meant it should not silently remain as assumed-live runtime behavior.
 
-Recommended follow-up:
+2026-05-20 status: AOS-006 resolved this item. The unused iterator was removed, and `normalize_elixir_dependency_break_item()` now provides the shared validation rule for `_elixir_dependency_break_to_signals()` and collector invalid-reason handling.
+
+Historical recommended follow-up:
 
 1. Add an explicit test or runtime call path if elixir dependency break signals are intended.
 2. Otherwise remove the unused iterator in a separate, reviewable cleanup contract.
@@ -170,9 +174,12 @@ Not allowed yet:
 Possible targeted simplification:
 
 - helper extraction in `memory/execution_surfaces.py`;
-- explicit proof/remove decision for `_iter_elixir_dependency_break_seeds`;
 - no broad split until tests and owner boundaries are written first.
+
+Completed after this report:
+
+- AOS-006 removed `_iter_elixir_dependency_break_seeds` and added focused dependency-break normalization coverage.
 
 ## 5. Single-Sentence Conclusion
 
-> **AOS-005-followup should stop at evidence: current backend usage data is too sparse for backend deletion, `memory/execution_surfaces.py` deserves targeted helper extraction later but not a blind split, and `signals/adapters.py` is structurally small enough that its main follow-up is proving or removing the currently unreferenced elixir dependency-break iterator.**
+> **AOS-005-followup correctly stopped at evidence: backend usage data was too sparse for backend deletion, `memory/execution_surfaces.py` still deserves targeted helper extraction later but not a blind split, and the `signals/adapters.py` unused iterator follow-up has since been closed by AOS-006.**

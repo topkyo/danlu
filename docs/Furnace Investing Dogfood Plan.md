@@ -7,6 +7,8 @@
 > - v0 (2026-04-30, 9 min, 3 demo notes, codex-cli/gpt-5.5)：dogfood vault `output/reports/dogfood-receipt-investing-v0.md`
 > - v1 (2026-05-01, +PDF + 双 backend)：dogfood vault `output/reports/dogfood-receipt-investing-v1.md`
 
+> **当前状态校准（2026-05-20）**：本文是 investing dogfood 的原始 contract + receipt index，不代表当前唯一运行口径。v2 / v2.1 后续已在 2026-05-12 跑通并写入 `PROGRESS.md`：v2 真实研报 dogfood 7/7 收官，v2.1 自动 L3 proposal 周期与 accept→apply→revert 真链路收口。当前普通 CLI/runtime 默认主路由已变为 `opencode-api/deepseek-v4-pro`，`codex-cli/gpt-5.5` 只作为显式手动 route；历史 v0/v1 backend 记录保留为当时 receipt 事实。
+
 ---
 
 ## 0. 为什么开这条 dogfood
@@ -361,11 +363,10 @@ F-INV-1 ~ F-INV-19，每条：
 
 ## 7. 文档生命周期
 
-- 当前 `status: pending(blocked-on-llm)`
-- 当 backend ready 且执行人决定开跑时，更新 `.codex/plans/active.md` 中 D-4 状态为 `in_progress`
-- 跑完后 `output/reports/dogfood-receipt-investing-v0.md` 落盘
-- 把摩擦点的 actionable items 写入新 milestone 序列（`P4-INV-X`）追加到 `.codex/plans/active.md`
-- 本契约文档保留为 dogfood SoT 的历史参考，不修改
+- 当前 `status: historical-contract-and-receipt-index`。
+- 原 `pending(blocked-on-llm)` 状态已由 v0/v1 实跑关闭；后续 v2 / v2.1 dogfood 继续沿 §2 七步 flow 推进，并以 `PROGRESS.md` 与 dogfood vault receipt 作为执行事实。
+- 新摩擦点的 actionable items 继续写入独立 milestone / contract（如 `P4-INV-*`、`F-INV-*`），不直接把本文升级成新的 active contract。
+- 本契约文档保留为 dogfood SoT 的历史参考；涉及当前 backend、自动化成熟度或 clean vault 状态时，以 `README.md`、`docs/Furnace Runtime Operations.md`、`PROGRESS.md` 和当前 active contract 为准。
 
 ## 8. 实跑历史（receipt index）
 
@@ -389,7 +390,13 @@ F-INV-1 ~ F-INV-19，每条：
 - Receipt：dogfood vault `output/reports/dogfood-receipt-investing-v1.md`
 - 评分：Investing 协议 7-8 → **9/10**；加权综合 8.95 → **9.05/10**
 
-### 8.3 v2 候选（待用户提供真实研报 PDF）
-- 输入：A 股研报 / 美股年报 PDF（≥ 3 份）
-- 关注：跨多周自然运行的 review_after expiration → drift 触发链
-- 验收新增：metrics review_closure_rate 在 7d/30d 上的真实变化
+### 8.3 v2（2026-05-12，真实研报 dogfood）
+- 输入：3 份真实中文 PDF（韦尔 / 宁德 / 恒瑞），共 752 页 / 16.5MB 量级。
+- Backend：`opencode-api/deepseek-v4-pro`。
+- 结果：§2.1-§2.7 七步 flow 收官为 7/7；file-back judgment、settled elixir、derived trace、drift aging、manual L3 proposal rejection 均有 receipt / runtime 记录。
+- 新摩擦点：F-INV-NEW-1~4 与 F-INV-11-revisit 后续均已拆 milestone 收口；详见 `PROGRESS.md` 2026-05-12 条目。
+
+### 8.4 v2.1（2026-05-12，自动 L3 proposal 真链路）
+- NEW-5 暴露 execute-mode 路径；F-INV-18a 修正自动 proposal 内容空洞；F-INV-18 跑通 alchemy-demote → execution receipt → signals-replay → planner-log-replay → l3-proposal-generate 自动候选链路。
+- F-INV-19 完成 accept→apply→revert 真链路，对 `prompts/ask.md` 的污染被 deterministic revert 清除。
+- 结论：自动 proposal 机制可审计、可回滚，但 prompt 内容质量仍需后续 contract 改进；不等于放开无人值守自改 prompt。

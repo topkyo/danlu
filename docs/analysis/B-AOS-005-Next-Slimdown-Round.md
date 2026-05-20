@@ -2,12 +2,13 @@
 
 > 只读推演。基于 C 文档（AOS-004 翻盘缺口）和 D 文档（ROI 排序）的结论。
 > SoT：`docs/Furnace Agent OS Slimdown Plan.md`、`docs/Furnace Next Direction Post-P4.md`。
+> **状态更新（2026-05-20）**：本文写作时 AOS-004 仍是 `not-yet`。后续 2026-05-19 P1 dogfood compounding proof 已将 `knowledge_compounding_proof` 跑到 `pass`，并有非空 `compounding_sample`。因此本文的 AOS-005 候选分析可继续作为下一轮减法/后端收敛参考，但“不应立即启动、仍被 AOS-004 阻塞”的前提已 superseded。
 
 ## 1. 推演前提
 
-AOS-001~003 已收口；AOS-004 的工程 gate 已能跑出保守结果，但当前 active contract 仍是 `AOS-004 Knowledge compounding proof gate`，真实 dogfood verdict 仍为 `not-yet`，缺口是 `trace_provenance_backed_compounding_sample`。
+AOS-001~003 已收口；AOS-004 的工程 gate 写作时已能跑出保守结果，但当时 active contract 仍是 `AOS-004 Knowledge compounding proof gate`，真实 dogfood verdict 仍为 `not-yet`，缺口是 `trace_provenance_backed_compounding_sample`。该缺口后来已由 2026-05-19 P1 dogfood compounding proof 补齐。
 
-因此本文档只能作为 **AOS-004 收口之后** 的下一轮推演，不能覆盖当前 active contract，也不能作为立即启动 AOS-005a 的授权。
+因此本文档原本只能作为 **AOS-004 收口之后** 的下一轮推演。现在 AOS-004 已历史收口，本文仍不是执行授权；真正启动 AOS-005 仍需新的 active contract。
 
 下一轮（暂称 AOS-005）有两个互相独立的候选方向：
 
@@ -136,7 +137,7 @@ out_of_scope:
 
 ## 6. 单句结论
 
-> **当前最高优先级仍是 AOS-004 proof flip / closure；只有 active contract 收口后，AOS-005 才应启动。届时建议先做受控 hub/facade 削薄（AOS-005a）：优先拆 `app_surfaces.py` 巨函数，并审计迁移 `app_content.py` / `app_memory_surfaces.py`；`app.py` 保留为外部兼容 shim。backend 收敛（AOS-005b）等使用率统计跑出来再决定。**
+> **收口复核（2026-05-20）**：AOS-004 proof 已在 2026-05-19 P1 dogfood compounding proof 中翻为 pass，AOS-005a 也已按本建议做受控 hub/facade 削薄；本文保留为当时“为什么不越过 proof gate、为什么先做 app_surfaces/app_memory_surfaces/app_content 审计”的决策依据。后续 backend 收敛仍必须先做真实 dogfood usage telemetry，不应凭静态枚举删除 backend。
 
 ## 6.1 执行状态（2026-05-19）
 
@@ -151,9 +152,9 @@ AOS-005a 已按 harness 物化为受控削薄，而不是一次性删除 facade�
 
 ## 7. 触发条件
 
-启动 AOS-005a 的前置 gate：
-- [ ] AOS-004 verdict 已经跑过至少 1 次（即使是 `not-yet`），证明 dogfood baseline 还活着
-- [ ] AOS-004 active contract 已收口或显式 re-plan，不能与当前 proof gate milestone 并行抢占
-- [ ] `bash scripts/verify.sh` 当前 PASS
-- [ ] 当前没有在飞 milestone（避免并行 plan handoff）
-- [ ] 至少 1 轮 qa-review approve 本 plan
+启动 AOS-005a 的前置 gate（历史复核）：
+- [x] AOS-004 verdict 已经跑过至少 1 次，并在 2026-05-19 P1 proof 中翻为 pass。
+- [x] AOS-004 active contract 已收口，未与 proof gate milestone 并行抢占。
+- [x] `bash scripts/verify.sh` 在 AOS-005a 执行记录中 PASS。
+- [x] AOS-005a 已按单独 active contract/harness milestone 执行。
+- [x] qa-review 已 approve AOS-005a 执行结果。

@@ -124,7 +124,7 @@ bash scripts/product_shell_smoke.sh --with-note-write
 - [ ] `drop image` 返回可 reconcile 的路径字段。
 - [ ] `drop repo` 返回可 reconcile 的路径字段。
 - [ ] `run-ask` 成功后报告路径能进入 Today。
-- [ ] `ask` deterministic fallback 失败/成功状态能被 UI 清晰呈现。
+- [ ] `run-ask` LLM 失败能以 `llm-failed` / degraded 状态清晰呈现；UI 不把 deterministic placeholder 当成功答案。
 - [ ] `llm-check` configured / unconfigured 两种状态都有稳定 JSON shape。
 - [ ] `recent_raw_inputs` 能让 raw 投料 pending 卡从 received 变 done。
 - [ ] runtime 不要求插件直接写 `.aiwiki/state/*`。

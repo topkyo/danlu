@@ -196,7 +196,7 @@ watcher 不调 LLM，那 LLM 在哪发生？三条路径：
 | Backend | 状态（2026-05-01 实测）| 用途 |
 |---|---|---|
 | **opencode-api/deepseek-v4-pro** | compatible ✓ | 默认 primary（systemd env 默认） |
-| **codex-cli/gpt-5.5** | compatible ✓ | interactive/backend fallback，需显式 route |
+| **codex-cli/gpt-5.5** | compatible ✓ | 手动 interactive route；不再作为普通 CLI/runtime 的隐藏 backend fallback |
 | **nvidia-nim-api/openai/gpt-oss-120b** | compatible ✓ | nightly operator fallback（需要 secrets file，默认关闭） |
 | nvidia-nim-api/meta/llama-3.3-70b-instruct | degraded | 输出有装饰 |
 | nvidia-nim-api/qwen / deepseek / kimi-k2.5 | unavailable | model 已 EOL 或 NIM 不支持 |

@@ -55,12 +55,14 @@
 ## Milestone: AOS-001
 
 - `title`: Expansion freeze and plan handoff
-- `status`: planned
+- `status`: completed (2026-05-19; reconfirmed 2026-05-20)
 - `qa-review`: required
 - `qa-runtime`: required
 - `execution_mode`: autonomous-closed-loop
 - `ask_policy`: blockers-only
 - `max_debug_rounds`: 3
+
+Closure note (2026-05-20 reconfirmation): `PROGRESS.md` records AOS-001 as completed with the slimdown plan added, `.codex/plans/active.md` synchronized, the contract materialization path verified, freeze ledger captured, two oracle review rounds approved, and the active contract materialized to AOS-001. This section is kept as the original plan plus completion evidence, not as a current pending milestone.
 
 ### Problem / Context
 
@@ -70,14 +72,14 @@
 
 ### Success Criteria
 
-- [ ] `docs/Furnace Agent OS Slimdown Plan.md` 存在，完整记录四阶段路线、冻结边界、风险和验证策略。
-- [ ] `.codex/plans/active.md` 与 docs plan 同步，且 `materialize_contract.sh --contract-file /tmp/opencode/aos-001-contract.md --milestone AOS-001` 可成功解析。
-- [ ] `PROGRESS.md` 记录本计划启动、review 结论、首个 milestone 的 scope 与 out-of-scope。
-- [ ] Plan 明确冻结 L3 auto-adopt/self-editing、Judgment autonomy 扩权、Product Shell 新花样和新增 operator 命令/lane。
-- [ ] 产出 freeze ledger，明确列出本阶段冻结项（L3 auto-adopt/self-editing、Judgment autonomy 扩权、Product Shell 新交互、CLI 新命令/alias/operator lane）以及允许的唯一例外（help/docs/grouping/排序/文案类收敛）。
-- [ ] Plan 明确后续拆分原则：只有能删除 shim、缩短路径或降低 review 成本的拆分才允许。
-- [ ] 多轮 review 后无 blocking findings；所有 blocker 必须折叠进 plan 后再 materialize contract。
-- [ ] `bash scripts/verify.sh` PASS；qa-review 与 qa-runtime gate artifact 刷新后 closed-loop PASS。
+- [x] `docs/Furnace Agent OS Slimdown Plan.md` 存在，完整记录四阶段路线、冻结边界、风险和验证策略。
+- [x] `.codex/plans/active.md` 与 docs plan 同步，且 `materialize_contract.sh --contract-file /tmp/opencode/aos-001-contract.md --milestone AOS-001` 可成功解析。
+- [x] `PROGRESS.md` 记录本计划启动、review 结论、首个 milestone 的 scope 与 out-of-scope。
+- [x] Plan 明确冻结 L3 auto-adopt/self-editing、Judgment autonomy 扩权、Product Shell 新花样和新增 operator 命令/lane。
+- [x] 产出 freeze ledger，明确列出本阶段冻结项（L3 auto-adopt/self-editing、Judgment autonomy 扩权、Product Shell 新交互、CLI 新命令/alias/operator lane）以及允许的唯一例外（help/docs/grouping/排序/文案类收敛）。
+- [x] Plan 明确后续拆分原则：只有能删除 shim、缩短路径或降低 review 成本的拆分才允许。
+- [x] 多轮 review 后无 blocking findings；所有 blocker 必须折叠进 plan 后再 materialize contract。
+- [x] `bash scripts/verify.sh` PASS；qa-review 与 qa-runtime gate artifact 刷新后 closed-loop PASS。
 
 ### Constraints / Dependencies
 
@@ -167,12 +169,14 @@
 ## Milestone: AOS-002
 
 - `title`: Product surface convergence
-- `status`: planned
+- `status`: completed (2026-05-19; reconfirmed 2026-05-20)
 - `qa-review`: required
 - `qa-runtime`: required
 - `execution_mode`: autonomous-closed-loop
 - `ask_policy`: blockers-only
 - `max_debug_rounds`: 3
+
+Closure note (2026-05-20 reconfirmation): `PROGRESS.md` records AOS-002 as completed with default CLI help converged to `{drop,today,metrics,advanced}`, legacy/operator commands preserved under `advanced --help`, README command taxonomy updated, Product Shell kept free of UI-owned state and implicit backend routing, and focused tests, acceptance, full verify, and oracle qa-review all passing.
 
 ### Problem / Context
 
@@ -181,14 +185,14 @@
 
 ### Success Criteria
 
-- [ ] 梳理 CLI command taxonomy，明确 `primary`、`advanced`、`operator/internal` 三层。
-- [ ] 默认 help / docs / Product Shell 入口优先呈现 `drop` 与 `today`，高级命令不再与主路径同权展示。
-- [ ] 不删除现有 operator 能力；只允许 help grouping、文档、默认入口排序和 shell 文案/分组收敛。
-- [ ] 禁止新增 CLI alias、命令、子命令、Product Shell 视图、按钮、状态字段或交互能力。
-- [ ] CLI text/JSON 行为不破坏现有 acceptance。
-- [ ] Product Shell 不新增 UI-owned state，不绕过 audit，不隐式调度 backend。
-- [ ] Focused tests 覆盖 help/surface 分层与 backward compatibility。
-- [ ] `bash scripts/verify.sh` PASS；qa-review 与 closed-loop PASS。
+- [x] 梳理 CLI command taxonomy，明确 `primary`、`advanced`、`operator/internal` 三层。
+- [x] 默认 help / docs / Product Shell 入口优先呈现 `drop` 与 `today`，高级命令不再与主路径同权展示。
+- [x] 不删除现有 operator 能力；只允许 help grouping、文档、默认入口排序和 shell 文案/分组收敛。
+- [x] 禁止新增 CLI alias、命令、子命令、Product Shell 视图、按钮、状态字段或交互能力。
+- [x] CLI text/JSON 行为不破坏现有 acceptance。
+- [x] Product Shell 不新增 UI-owned state，不绕过 audit，不隐式调度 backend。
+- [x] Focused tests 覆盖 help/surface 分层与 backward compatibility。
+- [x] `bash scripts/verify.sh` PASS；qa-review 与 closed-loop PASS。
 
 ### Constraints / Dependencies
 
@@ -268,12 +272,14 @@
 ## Milestone: AOS-003
 
 - `title`: Kernel shim retirement and hub slimming
-- `status`: planned
+- `status`: completed (2026-05-19; reconfirmed 2026-05-20)
 - `qa-review`: required
 - `qa-runtime`: required
 - `execution_mode`: autonomous-closed-loop
 - `ask_policy`: blockers-only
 - `max_debug_rounds`: 3
+
+Closure note (2026-05-20 reconfirmation): `PROGRESS.md` records AOS-003 as completed with `docs/Furnace AOS-003 Compat Shim Audit.md` added, `app.py` retained as the stable compatibility shim, `_machine_memory_query_payload_hash` and `_route_anchor_candidates` retired from private re-export paths, owner paths preserved, README runtime map synchronized, and tests, verify, and oracle qa-review passing.
 
 ### Problem / Context
 
@@ -282,13 +288,13 @@
 
 ### Success Criteria
 
-- [ ] 生成 compat shim audit 清单，按 `delete-now`、`keep-stable`、`split-later` 分级，并明确首个删除候选。
-- [ ] 至少删除或退役一个经引用证明安全、且非 acceptance / dogfood / Product Shell 主路径依赖的 compat shim 或 dead facade。
-- [ ] 若审计后确认当前无安全删除项，则本 milestone 触发 stop + re-plan，不以 blocker write-up 视为完成。
-- [ ] 对任一拆分/删除，必须减少旧入口或重复路径；不得只新增 wrapper。
-- [ ] Owner module 边界更清晰，README/runtime module map 同步更新。
-- [ ] 相关 tests 覆盖 import compatibility、CLI/runtime 行为和 removed path 的预期失败/替代路径。
-- [ ] `bash scripts/verify.sh` PASS；qa-review 与 closed-loop PASS。
+- [x] 生成 compat shim audit 清单，按 `delete-now`、`keep-stable`、`split-later` 分级，并明确首个删除候选。
+- [x] 至少删除或退役一个经引用证明安全、且非 acceptance / dogfood / Product Shell 主路径依赖的 compat shim 或 dead facade。
+- [x] 审计确认存在安全退役项，因此未触发“无安全删除项时 stop + re-plan”的完成阻断。
+- [x] 对任一拆分/删除，必须减少旧入口或重复路径；不得只新增 wrapper。
+- [x] Owner module 边界更清晰，README/runtime module map 同步更新。
+- [x] 相关 tests 覆盖 import compatibility、CLI/runtime 行为和 removed path 的预期失败/替代路径。
+- [x] `bash scripts/verify.sh` PASS；qa-review 与 closed-loop PASS。
 
 ### Constraints / Dependencies
 
@@ -372,12 +378,14 @@
 ## Milestone: AOS-004
 
 - `title`: Knowledge compounding proof gate
-- `status`: planned
+- `status`: completed (2026-05-19; reconfirmed 2026-05-20)
 - `qa-review`: required
 - `qa-runtime`: required
 - `execution_mode`: autonomous-closed-loop
 - `ask_policy`: blockers-only
 - `max_debug_rounds`: 3
+
+> **Closure note（2026-05-20）**：AOS-004 首版 gate 在 2026-05-18 诚实输出 `not-yet`，缺口是 `trace_provenance_backed_compounding_sample`。2026-05-19 P1 dogfood compounding proof 已补齐真实 sample：`knowledge_compounding_proof.status=pass`、`compounding_sample != null`，并通过 focused tests、maturity gate tests、full `bash scripts/verify.sh` 与 qa-review。当前 dogfood vault 后续已清仓恢复为干净初始状态，旧 maturity-gate receipt/snapshot 不在当前路径；历史 closure 以 git/`PROGRESS.md` 固化记录为准。
 
 ### Problem / Context
 
@@ -386,13 +394,13 @@
 
 ### Success Criteria
 
-- [ ] 定义 knowledge compounding metrics：至少覆盖 `raw_to_wiki_count`、`judgment_or_elixir_reuse_count`、`output_file_back_rate`、`receipt_backed_actions`、`human_required_exception_count`。
-- [ ] 指标从 existing manifests/receipts/summary 可复算，不依赖人工观察或不可追溯 UI 状态。
-- [ ] 针对 investing 或 research dogfood 增加 fixture/acceptance 或 maturity summary，不降低既有阈值。
-- [ ] Gate 能区分“机制存在”与“真实复利发生”；无证据时输出 warn/not-yet，而不是 pass。
-- [ ] 除 count-based metrics 外，至少输出 1 条成功的 trace/provenance-backed compounding sample（例如 report/file-back 或 ask 结果明确复用既有 judgment/elixir，并可回链到 receipt/path）；若真实 dogfood 只能给出 not-yet，也必须输出可复算 not-yet verdict 与缺口，不伪造 pass。
-- [ ] 生成一份 dogfood receipt/report，说明本轮是否证明复利、缺口是什么。
-- [ ] `bash scripts/verify.sh` PASS；qa-review 与 closed-loop PASS。
+- [x] 定义 knowledge compounding metrics：至少覆盖 `raw_to_wiki_count`、`judgment_or_elixir_reuse_count`、`output_file_back_rate`、`receipt_backed_actions`、`human_required_exception_count`。
+- [x] 指标从 existing manifests/receipts/summary 可复算，不依赖人工观察或不可追溯 UI 状态。
+- [x] 针对 investing 或 research dogfood 增加 fixture/acceptance 或 maturity summary，不降低既有阈值。
+- [x] Gate 能区分“机制存在”与“真实复利发生”；无证据时输出 warn/not-yet，而不是 pass。
+- [x] 除 count-based metrics 外，至少输出 1 条成功的 trace/provenance-backed compounding sample（例如 report/file-back 或 ask 结果明确复用既有 judgment/elixir，并可回链到 receipt/path）；若真实 dogfood 只能给出 not-yet，也必须输出可复算 not-yet verdict 与缺口，不伪造 pass。
+- [x] 生成一份 dogfood receipt/report，说明本轮是否证明复利、缺口是什么。
+- [x] `bash scripts/verify.sh` PASS；qa-review 与 closed-loop PASS。
 
 ### Constraints / Dependencies
 
@@ -465,7 +473,7 @@
 
 ### Residual Risks
 
-- 首版 gate 可能输出 not-yet；这是可接受结果，说明复利证据不足而不是工程失败。
+- 首版 gate 已按预期先输出 not-yet；后续 P1 proof 用真实 artifact + receipt 将其翻为 pass，证明 gate 没有把“机制存在”误报为“复利发生”。
 - 真实复利需要多轮 dogfood，不一定能在单个 milestone 中完全证明。
 
 ## Stop Conditions

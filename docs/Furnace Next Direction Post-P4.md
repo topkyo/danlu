@@ -14,6 +14,8 @@
 >
 > 因此本文档下面 **D-3 / D-6 已删除**，剩余真实 gap 重新编号。
 
+> **三次校准（2026-05-20）**：git/`PROGRESS.md` 复核确认，2026-05-13~15 的三天 unattended dogfood maturity 已真实 `PASS`，2026-05-19 的 P1 dogfood compounding proof 也已补齐 `knowledge_compounding_proof.status=pass` 与非空 `compounding_sample`。当前 `/home/tim/danlu/炼丹炉` 已被清仓恢复为干净初始 vault，所以旧 `output/control/maturity-gate/*` receipt/snapshot 文件不再存在；当前 summarize 读到 `0 receipts/not-yet` 只反映清仓后的文件状态，不推翻历史 pass。本文后续凡提到 AOS-004 `not-yet`，均应按历史阶段性缺口理解，已被 2026-05-19 P1 收口 supersede。
+
 ---
 
 ## 0. 视角校准
@@ -39,6 +41,8 @@
 | Signal 闭环“执行驱动” | observe-only / execute-mode 都已落地；scheduler 可消费 deterministic primitives | **signal severity / budget_hint 实质参与 routing 决策的密度仍低**；典型 “生产 signal 但无下游 lane apply” 局面 | P3（待 P2 dogfood 后再判断是否值得动） |
 
 > **AOS-004 proof gate update（2026-05-18）**：`scripts/dogfood_maturity_gate.py` 已新增 `knowledge_compounding_proof`，把复利证明拆成可复算指标与 trace/provenance-backed sample。首版 gate 保守：真实 dogfood vault 当前能复算出 `raw_to_wiki_count`、judgment/elixir reuse、`output_file_back_rate`、receipt-backed actions 与 human-required exceptions，但缺少能把 output reuse 精确回链到同一 artifact receipt 的 sample，因此输出 `not-yet` 而不是 pass。这是符合本文 critical path 的校准：机制存在不等于复利已被证明，后续应优先补 trace-backed dogfood sample/acceptance，而不是继续堆自治机制。
+
+> **AOS-004 closure update（2026-05-19/20 复核）**：上述 2026-05-18 `not-yet` 是首版 gate 的诚实中间态，已在 2026-05-19 P1 dogfood compounding proof 中补齐。实现通过 `ask_question()`/`run-ask` 保留 runtime-owned curated judgment refs 到 output frontmatter，并用成功 execution receipt 精确匹配同一 artifact；真实 dogfood sample 写入 `output/control/maturity-gate/snapshot-20260518T220253Z.json`，`knowledge_compounding_proof.status=pass`、`compounding_sample != null`。当前 clean dogfood vault 不再保留该 snapshot；历史 pass 以 git/`PROGRESS.md` 固化记录为准。
 
 不再列入本轮的（已落地或非目标）：
 - ~~Today actionability / 信号融合~~ → P0 / M8.1 已 close（`PROGRESS.md` line 1253）
@@ -105,6 +109,8 @@
 ---
 
 ### D-4 Investing Dogfood Entry Contract（contract-only）
+
+> **历史状态更新（2026-05-20）**：本节是当时的 entry contract。后续 `docs/Furnace Investing Dogfood Plan.md` 已转为 receipt index，v0/v1/v2/v2.1 investing dogfood 均已有实跑记录；这里的 `pending(blocked-on-llm)` 只保留为 P4 当时完成判据，不代表当前状态。
 
 **问题**：5 protocol 中 `investing` 唯一未跑通端到端，是炼丹炉 thesis（“给单人投资研究做知识复利”）的 critical proof。
 

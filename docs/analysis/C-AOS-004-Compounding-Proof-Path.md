@@ -2,16 +2,17 @@
 
 > 只读分析。不修改 runtime / schema / gate 阈值。
 > SoT：`scripts/dogfood_maturity_gate.py`、`docs/Furnace Agent OS Slimdown Plan.md`、`docs/Furnace Investing Dogfood Plan.md`、`PROGRESS.md`。
+> **状态更新（2026-05-20）**：本文是 AOS-004 翻盘前的路径分析。后续 2026-05-19 P1 dogfood compounding proof 已按“路径 1”补齐真实 sample，`knowledge_compounding_proof.status=pass` 且 `compounding_sample != null`。当前 `/home/tim/danlu/炼丹炉` 已被清仓恢复为干净初始 vault，旧 maturity-gate receipt/snapshot 文件不在当前路径；历史 pass 以 git/`PROGRESS.md` 中固化的旧 session 结果为准。
 
 ## 1. 问题陈述
 
-AOS-004 的 maturity gate 已有实现并可运行，但 active contract 尚未收口。`scripts/dogfood_maturity_gate.py` 在真实 dogfood vault（`/home/tim/danlu/炼丹炉`）跑出的 verdict 是 `not-yet`，**唯一缺口**为：
+AOS-004 的 maturity gate 当时已有实现并可运行，但 active contract 尚未收口。`scripts/dogfood_maturity_gate.py` 在当时真实 dogfood vault（`/home/tim/danlu/炼丹炉`）跑出的 verdict 是 `not-yet`，**唯一缺口**为：
 
 ```
 missing: trace_provenance_backed_compounding_sample
 ```
 
-也就是说：AOS-004 关注的 knowledge compounding metrics（`raw_to_wiki_count`、`judgment_or_elixir_reuse_count`、`output_file_back_rate`、`receipt_backed_actions`、`human_required_exception_count`）都已经有真实数据，**唯独缺一个能通过 output provenance + receipt 精确匹配的 end-to-end 复用样本**。
+也就是说：AOS-004 当时关注的 knowledge compounding metrics（`raw_to_wiki_count`、`judgment_or_elixir_reuse_count`、`output_file_back_rate`、`receipt_backed_actions`、`human_required_exception_count`）都已经有真实数据，**唯独缺一个能通过 output provenance + receipt 精确匹配的 end-to-end 复用样本**。该缺口后续已被 P1 dogfood compounding proof 补齐。
 
 这是炼丹炉作为 Agent OS 当前最关键的产品价值证明缺口。
 
@@ -40,12 +41,12 @@ FAILED_RECEIPT_STATUSES = {"blocked", "error", "failed", "reverted"}
 
 重要修正：当前 gate **并不读取** receipt 内的 `trace.provenance.wiki_refs` 或 `trace.parent_receipt_id`。这些字段是更强、更理想的审计 schema，可作为后续硬化方向，但不是 AOS-004 现行 pass 的硬要求。当前测试 `test_collect_metrics_reports_pass_for_receipt_backed_compounding_sample` 也证明：只要 output frontmatter + receipt path 匹配成立，即使没有 trace 字段也能 pass。
 
-## 3. 当前为什么跑不出 sample
+## 3. 当时为什么跑不出 sample
 
 基于已读 `Furnace Investing Dogfood Plan.md` 和 `Furnace Next Direction Post-P4.md`，可推断的断点（按可能性排序）：
 
 ### 断点 A：output artifact frontmatter 没有记录派生层复用
-当前 dogfood vault 已经存在判断/金丹复用的静态迹象，但可能没有任何 `output/**/*.md` 的 `derived_from` / `source_files` 写入 `wiki/judgments/*`、`wiki/decisions/*` 或 `wiki/elixirs/*`。
+当时 dogfood vault 已经存在判断/金丹复用的静态迹象，但可能没有任何 `output/**/*.md` 的 `derived_from` / `source_files` 写入 `wiki/judgments/*`、`wiki/decisions/*` 或 `wiki/elixirs/*`。
 
 判据：gate 首先扫 output frontmatter。若 output 只记录 `raw/...` 或 `wiki/sources/...`，即使 prompt 实际读过 judgment/elixir，也不会形成 sample。
 
@@ -53,7 +54,7 @@ FAILED_RECEIPT_STATUSES = {"blocked", "error", "failed", "reverted"}
 当前 gate 用 receipt 的 `target_file` / `target_subject_id` / `primary_path` 与 output path 做精确匹配。如果 receipt 记录的是 run id、临时 path、control artifact path，或缺少 target 字段，就无法把 output 与 receipt 接上。
 
 ### 断点 C：派生资产存在但不是 receipt-backed 复用
-当前 dogfood vault 已有：
+当时 dogfood vault 已有：
 - `raw_to_wiki_count = 25`（25 个原始 → wiki）
 - `judgment_or_elixir_reuse_count = 22`（22 个判断/金丹被引用）
 - `output_file_back_rate = 0.2909`
@@ -122,3 +123,5 @@ FAILED_RECEIPT_STATUSES = {"blocked", "error", "failed", "reverted"}
 ## 8. 单句结论
 
 > **AOS-004 的 `not-yet` 不是工程失败，而是诚实信号；当前最短翻盘路径是让真实 output artifact 的 `derived_from/source_files` 保留派生层知识引用，并确保它能精确匹配成功 receipt。receipt 内部 trace 链路是后续硬化方向，不是当前 gate 的现行硬要求。**
+
+> **收口复核（2026-05-20）**：这条路径已经在 2026-05-19 P1 dogfood compounding proof 中落地并通过；本文保留为“如何从 not-yet 翻到 pass”的设计依据，不再代表当前缺口。

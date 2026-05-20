@@ -81,7 +81,7 @@ write_planner_log            # 落盘 decision
 - **planner 仍相对薄**（1912 行），但不是此前估算的 ~580 行；主要体量在 `dry_run.py`。
 - **没有 ML 模型 / 复杂启发式**：当前 planner 主要是规则 dispatch + dry-run preview。
 - **关键不变量**：planner **只写 log + 出 preview，不直接 mutate runtime state**。Mutation 全部下放到 runner/execution，确保 receipt gate 不被绕过。
-- **未来扩张风险**：如果有人想往 planner 里加"自动决策模型"，必须先证明 receipt-backed compounding sample 存在（即 AOS-004 翻 pass），否则就是盲目扩权。这正是 Slimdown Plan 冻结的内容。
+- **未来扩张风险**：AOS-004 已在 2026-05-19 P1 dogfood proof 中证明 receipt-backed compounding sample 存在，但这只是解除“完全无复利证据”的前置阻断；任何 planner 自动决策模型仍必须另起 contract，证明可回滚、可审计、不会绕过 receipt gate。
 
 ## 4. `runner/` + `execution/` — 执行层（17,045 行，最大）
 
@@ -217,4 +217,4 @@ sequenceDiagram
 - **不要拆 `alchemy.py`（heavy/light 两份）**：heavy/light 分层是设计选择。
 - **可以检查 `memory/execution_surfaces.py` (1326 行)**：是否存在 render 巨函数，类似 `app_surfaces.py` 模式。
 - **可以扫 `signals/adapters.py` (518 行)**：识别未启用的死 adapter。
-- **planner 保持规则/dry-run 定位是优点**：未来不要给 planner 加智能模型，除非 AOS-004 翻 pass。
+- **planner 保持规则/dry-run 定位是优点**：即使 AOS-004 已历史 pass，也不要把 planner 升级为自动决策模型；除非新的 contract 能证明 receipt-gated、reversible、dogfood-backed 的收益大于复杂度和自治风险。

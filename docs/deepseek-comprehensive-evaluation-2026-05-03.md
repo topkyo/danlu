@@ -5,9 +5,12 @@ date: 2026-05-03
 version: v1.1
 status: final
 updates:
+  - v1.2 (2026-05-20): 增补当前运行口径校准；2026-05-03 的后端表保留为当时评估快照，当前普通 CLI/runtime 默认主路由已变为 opencode-api/deepseek-v4-pro，且不再做隐藏跨 backend fallback。
   - v1.1 (2026-05-03): 基于代码深度审查，将定位从"知识 compiler"修正为"自主知识 Agent OS"；新增 Agent 运行时架构分析
   - v1.0 (2026-05-03): 初版
 ---
+
+> **当前状态校准（2026-05-20）**：本文主体是 2026-05-03 的外部评估快照，不应当作当前 backend / CLI / dogfood proof 的唯一 SoT。当前普通 CLI/runtime 默认主路由是 `opencode-api/deepseek-v4-pro`；`codex-cli/gpt-5.5` 只作为显式手动 route 使用，不再作为隐藏 backend fallback。`scripts/run_nightly.sh` 仍保留 operator-approved unattended fallback wrapper，但默认关闭且必须显式配置 `AIWIKI_NIGHTLY_FALLBACK_*`。
 
 ## 1. 项目概览
 
@@ -189,7 +192,7 @@ runner/workflows.py    → compile/ask/nightly 等高层工作流
 
 | 后端 | 状态 | 备注 |
 |------|------|------|
-| codex-cli/gpt-5.5 | compatible | 主路径，usage_visibility=opaque-cli |
+| codex-cli/gpt-5.5 | compatible | 2026-05-03 评估时的主路径；当前仅作为显式手动 route |
 | nvidia-nim-api/openai/gpt-oss-120b | compatible | NIM 实测唯一 frontmatter-friendly 模型 |
 | copilot-cli/auto | degraded | `●` 装饰前缀破坏 frontmatter |
 | claude-cli | blocked | org policy 阻塞 |
