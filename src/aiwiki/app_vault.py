@@ -128,7 +128,6 @@ FOLDER_LABEL_OVERRIDES: tuple[tuple[str, str], ...] = (
     ("output/packs/decision-memos", "决策备忘 decision-memos"),
     ("output/packs/sop-drafts", "SOP 草稿 sop-drafts"),
     ("output/pilots", "协议评分 pilots"),
-    ("output/reports", "全部报告"),
     ("output/review", "审阅 review"),
     ("output/figures", "图表 figures"),
     ("output/slides", "幻灯片 slides"),
@@ -158,6 +157,10 @@ USER_HIDDEN_FOLDER_PATHS: tuple[str, ...] = (
     "output/pilots",
     "output/review",
     "output/slides",
+)
+
+USER_FLATTENED_FOLDER_TITLE_PATHS: tuple[str, ...] = (
+    "output/reports",
 )
 
 
@@ -198,6 +201,22 @@ def _render_folder_label_snippet() -> str:
             [
                 f"/* hide {path} from the daily file tree */",
                 ",\n".join(_folder_container_selectors(path)) + " {",
+                "  display: none !important;",
+                "}",
+                "",
+            ]
+        )
+    for path in USER_FLATTENED_FOLDER_TITLE_PATHS:
+        title_selectors = (
+            f'.nav-folder[data-path="{path}"] > .nav-folder-title',
+            f'.tree-item[data-path="{path}"] > .tree-item-self',
+            f'.nav-folder-title[data-path="{path}"]',
+            f'.tree-item-self[data-path="{path}"]',
+        )
+        lines.extend(
+            [
+                f"/* flatten {path}: hide the redundant folder title but keep its report files visible under output/ */",
+                ",\n".join(title_selectors) + " {",
                 "  display: none !important;",
                 "}",
                 "",
@@ -414,7 +433,7 @@ def _render_vault_readme(runtime_root: Path) -> str:
                 "- `output/`：报告、图表、HTML 控制面、审计产物",
                 "- `schema/`：运行时规则和协议",
                 "- `.aiwiki/`：状态、缓存、日志",
-                "- 普通用户文件树默认只露出 `output/reports/`，其余目录由 Product Shell、更多工具和 CLI 间接打开。",
+                "- 普通用户文件树默认只露出 `output/` 这一层报告入口，具体报告文件直接集中在该入口下；其余运行时分层由 Product Shell、更多工具和 CLI 间接打开。",
                 "- `raw / wiki / output / schema` 这些英文目录名是 runtime contract；中文化通过工作台导航和说明完成，不建议直接重命名路径。",
                 "",
                 "## 备注",

@@ -132,8 +132,6 @@ def _build_llm_recovery_command(event: dict[str, Any]) -> str:
             command_parts.extend(["--protocol", protocol])
         if prompt_profile == "lean":
             command_parts.append("--lean")
-        if event_name == "run-ask-frontdoor" or bool(event.get("fallback_used")):
-            command_parts.append("--fallback-to-ask")
         return " ".join(command_parts)
     if event_name == "run-compile-summary":
         limit = int(event.get("limit", 5) or 5)

@@ -896,10 +896,24 @@
 }
 
 /* Universal Input */
+.workspace-leaf-content[data-type="furnace-product-shell-furnace-center"] .view-content {
+  max-width: none;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.workspace-leaf-content[data-type="furnace-product-shell-furnace-center"] .furnace-shell-view,
+.furnace-shell-main-view {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
 .furnace-universal-input-wrapper {
   position: relative;
   margin-bottom: var(--size-4-4);
   max-width: 100%;
+  width: 100%;
 }
 
 .furnace-universal-input-form {
@@ -908,8 +922,12 @@
   align-items: flex-end;
   background-color: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  padding: var(--size-4-2);
+  border-radius: 24px;
+  padding: 8px 14px;
+  width: min(96rem, 100%);
+  max-width: 100%;
+  margin: 0 auto;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
 }
 
 .furnace-universal-input-form:focus-within {
@@ -922,11 +940,11 @@
   background: transparent;
   border: none;
   resize: none;
-  min-height: 80px;
-  max-height: 400px;
-  padding: var(--size-4-2) var(--size-4-2);
+  min-height: 24px;
+  max-height: 300px;
+  padding: 8px 0;
   font-family: inherit;
-  font-size: var(--font-ui-large, 1.1em);
+  font-size: var(--font-ui-medium, 1em);
   line-height: 1.5;
   color: var(--text-normal);
   box-shadow: none;
@@ -1682,14 +1700,72 @@
   position: sticky;
   bottom: 0;
   z-index: 100;
-  background: var(--background-primary);
-  padding: 16px 20px;
-  border-top: 1px solid var(--background-modifier-border);
-  border-radius: 20px 20px 0 0;
-  box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.08);
+  background: linear-gradient(to top, var(--background-primary) 70%, transparent);
+  padding: 12px 20px 14px;
   margin: 8px auto 0;
-  max-width: 100%;
+  width: 100%;
+  max-width: none;
   box-sizing: border-box;
+}
+
+.markdown-preview-view.aiwiki-output .metadata-container,
+.markdown-preview-view.aiwiki-output .metadata-properties,
+.markdown-preview-view.aiwiki-output .metadata-property,
+.markdown-preview-view.aiwiki-output .metadata-properties-heading,
+.markdown-preview-view.aiwiki-output .metadata-properties-title,
+.markdown-preview-view.aiwiki-output .metadata-content,
+.markdown-preview-view.aiwiki-output .metadata-add-button,
+.markdown-preview-view.aiwiki-output .metadata-property-key,
+.markdown-preview-view.aiwiki-output .metadata-property-value,
+.markdown-reading-view.aiwiki-output .metadata-container,
+.markdown-reading-view.aiwiki-output .metadata-properties,
+.markdown-reading-view.aiwiki-output .metadata-property,
+.markdown-reading-view.aiwiki-output .metadata-properties-heading,
+.markdown-reading-view.aiwiki-output .metadata-properties-title,
+.markdown-reading-view.aiwiki-output .metadata-content,
+.markdown-reading-view.aiwiki-output .metadata-add-button,
+.markdown-reading-view.aiwiki-output .metadata-property-key,
+.markdown-reading-view.aiwiki-output .metadata-property-value,
+.markdown-source-view.aiwiki-output .metadata-container,
+.markdown-source-view.aiwiki-output .metadata-properties,
+.markdown-source-view.aiwiki-output .metadata-property,
+.markdown-source-view.aiwiki-output .metadata-properties-heading,
+.markdown-source-view.aiwiki-output .metadata-properties-title,
+.markdown-source-view.aiwiki-output .metadata-content,
+.markdown-source-view.aiwiki-output .metadata-add-button,
+.markdown-source-view.aiwiki-output .metadata-property-key,
+.markdown-source-view.aiwiki-output .metadata-property-value,
+.markdown-source-view.mod-cm6.aiwiki-output .metadata-container,
+.markdown-source-view.mod-cm6.aiwiki-output .metadata-properties,
+.markdown-source-view.mod-cm6.aiwiki-output .metadata-property,
+.markdown-source-view.mod-cm6.aiwiki-output .metadata-properties-heading,
+.markdown-source-view.mod-cm6.aiwiki-output .metadata-properties-title,
+.markdown-source-view.mod-cm6.aiwiki-output .metadata-content,
+.markdown-source-view.mod-cm6.aiwiki-output .metadata-add-button,
+.markdown-source-view.mod-cm6.aiwiki-output .metadata-property-key,
+.markdown-source-view.mod-cm6.aiwiki-output .metadata-property-value,
+.aiwiki-output .metadata-container,
+.aiwiki-output .metadata-properties,
+.aiwiki-output .metadata-property,
+.aiwiki-output .metadata-properties-heading,
+.aiwiki-output .metadata-properties-title,
+.aiwiki-output .metadata-content,
+.aiwiki-output .metadata-add-button,
+.aiwiki-output .metadata-property-key,
+.aiwiki-output .metadata-property-value,
+.workspace-leaf-content[data-type="markdown"][data-path^="output/reports/"] .metadata-container,
+.workspace-leaf-content[data-type="markdown"][data-path^="output/reports/"] .metadata-properties,
+.workspace-leaf-content[data-type="markdown"][data-path^="output/reports/"] .metadata-property,
+.workspace-leaf-content[data-type="markdown"][data-path^="output/"] .metadata-container,
+.workspace-leaf-content[data-type="markdown"][data-path^="output/"] .metadata-properties,
+.workspace-leaf-content[data-type="markdown"][data-path^="output/"] .metadata-property,
+.workspace-leaf-content[data-type="markdown"][data-path^="output/"] .metadata-properties-heading,
+.workspace-leaf-content[data-type="markdown"][data-path^="output/"] .metadata-properties-title,
+.workspace-leaf-content[data-type="markdown"][data-path^="output/"] .metadata-content,
+.workspace-leaf-content[data-type="markdown"][data-path^="output/"] .metadata-add-button,
+.workspace-leaf-content[data-type="markdown"][data-path^="output/"] .metadata-property-key,
+.workspace-leaf-content[data-type="markdown"][data-path^="output/"] .metadata-property-value {
+  display: none !important;
 }
 
 .furnace-conversation-stream {

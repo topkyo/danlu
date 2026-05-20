@@ -563,7 +563,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(result["llm_health"]["backend_effective"], "codex-cli")
         self.assertIn("Current route changed", result["llm_health"]["reason"])
 
-    def test_shell_status_surfaces_runtime_owned_deterministic_ask_fallback_lineage(self) -> None:
+    def test_shell_status_surfaces_historical_frontdoor_failure_lineage_without_recovery_fallback(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
 
@@ -605,7 +605,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(result["latest_llm_run"]["fallback_from"], "run-ask")
         self.assertEqual(result["latest_llm_run"]["fallback_command"], "ask")
         self.assertEqual(result["latest_llm_run"]["result_path"], "output/reports/query-frontdoor.md")
-        self.assertIn("--fallback-to-ask", result["latest_llm_run"]["recovery_command"])
+        self.assertNotIn("--fallback-to-ask", result["latest_llm_run"]["recovery_command"])
 
         self.assertEqual(result["llm_health"]["status"], "degraded")
         self.assertEqual(result["llm_health"]["fallback_command"], "ask")

@@ -55,7 +55,7 @@ from aiwiki.runner import (
     run_lint,
     run_nightly,
 )
-from aiwiki.runner.workflows import run_ask_resume, run_ask_submit
+from aiwiki.runner.workflows import _safe_quoted_report_reference_paths, run_ask_resume, run_ask_submit
 
 _VALID_REPORT_BODY = (
     "---\nid: query-stub\nkind: output\nformat: report\n---\n\n"
@@ -224,6 +224,124 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(receipt["event"], "run-ask-direct")
         self.assertEqual(receipt["status"], "success")
 
+    def test_run_ask_quoted_report_note_uses_report_as_llm_material_context(self) -> None:
+        report = self.root / "output" / "reports" / "炼丹炉-md-files-note.md"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(
+            "---\n"
+            'id: "quoted-report"\n'
+            'kind: "output"\n'
+            'format: "note"\n'
+            'query: "炼丹炉有多少 md 文件"\n'
+            "---\n\n"
+            "# 炼丹炉 Markdown 文件统计\n\n"
+            "当前仓库有 42 个 Markdown 文件。\n"
+            "授权方式：把文件放入当前 vault，或通过引用报告路径提供上下文。\n",
+            encoding="utf-8",
+        )
+
+        class _QuotedReportClient:
+            def __init__(self) -> None:
+                self.config = type("Config", (), {"model": "deepseek-v4-pro", "backend": "opencode-api", "timeout_seconds": 45})()
+                self.system_prompts: list[str] = []
+                self.user_prompts: list[str] = []
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                self.system_prompts.append(system_prompt)
+                self.user_prompts.append(user_prompt)
+                return CompletionResult(
+                    text="根据引用报告，当前有 42 个 Markdown 文件；授权方式是把材料放进 vault 或用引用报告提供上下文。",
+                    response_id="resp_quoted_report",
+                    usage={"total_tokens": 18},
+                )
+
+        question = "引用报告：output/reports/炼丹炉-md-files-note.md\n如何给于你权限去访问呢？"
+        client = _QuotedReportClient()
+        with patch("aiwiki.runner.workflows.ask_question") as deterministic_ask:
+            result = run_ask(self.root, question, "note", client=client, direct=True)
+
+        deterministic_ask.assert_not_called()
+        self.assertEqual(result["delivery_mode"], "llm-direct")
+        self.assertEqual(result["format"], "note")
+        self.assertEqual(result["material_refs"], ["output/reports/炼丹炉-md-files-note.md"])
+        self.assertIn("材料问答助手", client.system_prompts[0])
+        self.assertIn("用户问题：如何给于你权限去访问呢？", client.user_prompts[0])
+        self.assertIn("材料摘录：", client.user_prompts[0])
+        self.assertIn("当前仓库有 42 个 Markdown 文件", client.user_prompts[0])
+        self.assertIn("授权方式：把文件放入当前 vault", client.user_prompts[0])
+        self.assertNotIn("引用报告：output/reports", client.user_prompts[0])
+        artifact = self.root / result["path"]
+        self.assertEqual(artifact.name, "如何给于你权限去访问呢-note.md")
+        content = artifact.read_text(encoding="utf-8")
+        self.assertIn("# 如何给于你权限去访问呢？", content)
+        self.assertIn("根据引用报告，当前有 42 个 Markdown 文件", content)
+        self.assertNotIn("引用报告：output/reports", content)
+        receipt = json.loads((self.root / ".aiwiki/logs/llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual(receipt["event"], "run-ask-direct")
+        self.assertEqual(receipt["status"], "success")
+        self.assertEqual(receipt["material_refs"], ["output/reports/炼丹炉-md-files-note.md"])
+
+    def test_quoted_report_reference_paths_must_stay_under_output_reports(self) -> None:
+        reports_dir = self.root / "output" / "reports"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        (reports_dir / "safe.md").write_text("# Safe report\n", encoding="utf-8")
+        secret = self.root / "raw" / "inbox" / "secret.md"
+        secret.parent.mkdir(parents=True, exist_ok=True)
+        secret.write_text("# Secret\n", encoding="utf-8")
+        refs = [
+            "output/reports/safe.md",
+            "output/reports/../../raw/inbox/secret.md",
+            r"output/reports/..\\..\\raw\\inbox\\secret.md",
+        ]
+        symlink_path = reports_dir / "linked-secret.md"
+        try:
+            symlink_path.symlink_to(secret)
+        except OSError:
+            pass
+        else:
+            refs.append("output/reports/linked-secret.md")
+
+        self.assertEqual(_safe_quoted_report_reference_paths(self.root, refs), ["output/reports/safe.md"])
+
+    def test_run_ask_elixir_count_uses_local_stats_before_direct_llm(self) -> None:
+        elixir_dir = self.root / "wiki" / "elixirs"
+        elixir_dir.mkdir(parents=True, exist_ok=True)
+        (elixir_dir / "elixir-a.md").write_text(
+            '---\nid: "elixir-a"\nkind: "elixir"\nelixir_state: "settled"\ntopic: "第一个金丹"\n---\n\n# Elixir\n',
+            encoding="utf-8",
+        )
+        (elixir_dir / "elixir-b.md").write_text(
+            '---\nid: "elixir-b"\nkind: "elixir"\nelixir_state: "settled"\ntopic: "第二个金丹"\n---\n\n# Elixir\n',
+            encoding="utf-8",
+        )
+        candidate_dir = self.root / "output" / "_candidates" / "elixirs"
+        candidate_dir.mkdir(parents=True, exist_ok=True)
+        (candidate_dir / "candidate.md").write_text("# Candidate\n", encoding="utf-8")
+
+        question = "# 引用报告：output/reports/目前炼丹炉有几个金丹-note.md 当前炼丹炉valut这个仓库有几个金丹？"
+        with patch("aiwiki.runner.workflows.ask_question") as deterministic_ask, patch(
+            "aiwiki.runner.preflight.preflight_check_backend",
+            side_effect=AssertionError("local elixir stats must not probe backend"),
+        ):
+            result = run_ask(self.root, question, "note", direct=True)
+
+        deterministic_ask.assert_not_called()
+        self.assertEqual(result["delivery_mode"], "local-deterministic")
+        self.assertEqual(result["settled_elixir_count"], 2)
+        self.assertEqual(result["candidate_elixir_count"], 1)
+        self.assertIn("当前炼丹炉vault这个仓库有几个金丹？", result["clean_question"])
+        artifact = self.root / result["path"]
+        content = artifact.read_text(encoding="utf-8")
+        self.assertIn("generated_by: \"aiwiki-local-elixir-stats\"", content)
+        self.assertIn("cssclasses:", content)
+        self.assertIn('  - "aiwiki-output"', content)
+        self.assertIn("当前 vault 已沉淀金丹 **2 个**", content)
+        self.assertIn("候选金丹 **1 个**", content)
+        self.assertIn("[第一个金丹](wiki/elixirs/elixir-a.md)", content)
+        receipt = json.loads((self.root / ".aiwiki/logs/llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual(receipt["event"], "run-ask-local-elixir-stats")
+        self.assertEqual(receipt["status"], "success")
+
     def test_run_ask_direct_note_marks_backend_failover_stage(self) -> None:
         with patch("aiwiki.runner.workflows.ask_question") as deterministic_ask:
             result = run_ask(
@@ -280,7 +398,6 @@ class RunnerTests(unittest.TestCase):
                 "note",
                 client=_TemplateThenValidClient(),
                 direct=True,
-                fallback_to_ask=True,
             )
 
         deterministic_ask.assert_not_called()
@@ -325,7 +442,57 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("# 图片内容？", content)
         self.assertIn("SpaceX 2026 YTD", content)
 
-    def test_run_ask_material_note_writes_degraded_artifact_when_llm_times_out(self) -> None:
+    def test_run_ask_markdown_count_uses_local_stats_before_direct_llm(self) -> None:
+        (self.root / "raw" / "inbox").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "sources").mkdir(parents=True, exist_ok=True)
+        (self.root / "raw" / "inbox" / "a.md").write_text("# A\n", encoding="utf-8")
+        (self.root / "wiki" / "sources" / "b.md").write_text("# B\n", encoding="utf-8")
+
+        class _UnexpectedClient:
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt, user_prompt
+                raise AssertionError("local markdown stats must not call LLM")
+
+        result = run_ask(self.root, "炼丹炉有多少md文件？", "note", client=_UnexpectedClient(), direct=True)
+
+        self.assertEqual(result["delivery_mode"], "local-deterministic")
+        self.assertGreaterEqual(result["markdown_file_count"], 2)
+        content = (self.root / result["path"]).read_text(encoding="utf-8")
+        self.assertIn(f"当前 vault 中可见 Markdown 文件共 **{result['markdown_file_count']} 个**", content)
+        self.assertIn("`raw/`：1 个", content)
+        self.assertIn("`wiki/`：", content)
+        self.assertIn("raw/inbox/a.md", content)
+        self.assertIn('generated_by: "aiwiki-local-markdown-stats"', content)
+
+    def test_run_ask_direct_note_supplies_relevant_vault_context_to_llm(self) -> None:
+        source = self.root / "wiki" / "sources" / "source-vla.md"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text(
+            "---\ntitle: VLA 技术路线\n---\n\n# VLA 技术路线\n\n机器人技术路线包括 VLA、端到端和模块化控制。投资判断关注数据闭环与部署安全。\n",
+            encoding="utf-8",
+        )
+
+        class _VaultContextClient:
+            def __init__(self) -> None:
+                self.config = type("Config", (), {"model": "deepseek-v4-pro", "backend": "opencode-api", "timeout_seconds": 45})()
+                self.user_prompt = ""
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                self.user_prompt = user_prompt
+                if "材料问答助手" not in system_prompt:
+                    raise AssertionError("system prompt should use the material QA profile")
+                return CompletionResult(text="本地材料显示，机器人路线至少包括 VLA、端到端和模块化控制。", response_id="resp_vault", usage={})
+
+        client = _VaultContextClient()
+        result = run_ask(self.root, "当前机器人路线总共有几条技术路线？", "note", client=client, direct=True)
+
+        self.assertEqual(result["delivery_mode"], "llm-direct")
+        self.assertIn("## wiki/sources/source-vla.md", client.user_prompt)
+        self.assertIn("机器人技术路线包括 VLA", client.user_prompt)
+        content = (self.root / result["path"]).read_text(encoding="utf-8")
+        self.assertIn("VLA、端到端和模块化控制", content)
+
+    def test_run_ask_material_note_fails_without_deterministic_fallback_when_llm_times_out(self) -> None:
         raw_note = self.root / "raw" / "inbox" / "pdf-note.md"
         raw_note.parent.mkdir(parents=True, exist_ok=True)
         raw_note.write_text(
@@ -343,22 +510,14 @@ class RunnerTests(unittest.TestCase):
 
         question = "分析下内容\n\n请优先使用本次投喂材料回答；材料路径供系统路由使用：raw/inbox/pdf-note.md、raw/assets/pdf.pdf"
         with patch("aiwiki.runner.workflows.ask_question") as deterministic_ask:
-            result = run_ask(self.root, question, "note", client=_TimeoutClient(), fallback_to_ask=True)
+            with self.assertRaisesRegex(LLMError, "timed out"):
+                run_ask(self.root, question, "note", client=_TimeoutClient())
 
         deterministic_ask.assert_not_called()
-        self.assertEqual(result["status"], "degraded")
-        self.assertEqual(result["delivery_mode"], "deterministic-fallback")
-        self.assertEqual(result["fallback_from"], "run-ask-direct")
-        self.assertEqual(result["format"], "note")
-        artifact = self.root / result["path"]
-        content = artifact.read_text(encoding="utf-8")
-        self.assertIn("# LLM 未完成：分析下内容", content)
-        self.assertIn("本地材料预览", content)
-        self.assertIn("特朗普访华成果预期", content)
-        self.assertIn('llm_status: "timeout_or_unavailable"', content)
         receipt = json.loads((self.root / ".aiwiki/logs/llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()[-1])
         self.assertEqual(receipt["event"], "run-ask-direct")
-        self.assertEqual(receipt["status"], "degraded")
+        self.assertEqual(receipt["status"], "failed")
+        self.assertEqual(receipt["delivery_mode"], "llm-failed")
 
     def test_run_ask_uses_lean_prompt_immediately_when_requested(self) -> None:
         artifact_path = self.root / "output" / "reports" / "query-lean.md"
@@ -959,7 +1118,7 @@ class RunnerTests(unittest.TestCase):
         )
         self.assertTrue(result["no_cache"])
 
-    def test_run_ask_frontdoor_returns_deterministic_fallback_payload_when_backend_unavailable(self) -> None:
+    def test_run_ask_frontdoor_marks_artifact_failed_without_deterministic_fallback(self) -> None:
         artifact_path = self.root / "output" / "reports" / "query-frontdoor-fallback.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text("---\nid: query-frontdoor-fallback\nkind: report\n---\n\n# Placeholder\n", encoding="utf-8")
@@ -990,19 +1149,13 @@ class RunnerTests(unittest.TestCase):
 
         with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
             with patch("aiwiki.runner.workflows._build_ask_prompt", return_value="prompt"):
-                result = run_ask(self.root, "测试", "report", client=_UnavailableAskClient(), fallback_to_ask=True)
+                with self.assertRaisesRegex(LLMError, "usage limit"):
+                    run_ask(self.root, "测试", "report", client=_UnavailableAskClient())
 
-        self.assertEqual(result["status"], "degraded")
-        self.assertEqual(result["delivery_mode"], "deterministic-fallback")
-        self.assertEqual(result["primary_attempt_status"], "failed")
-        self.assertTrue(result["fallback_used"])
-        self.assertEqual(result["fallback_from"], "run-ask")
-        self.assertEqual(result["fallback_command"], "ask")
-        self.assertFalse(result["contract_validated"])
-        self.assertEqual(result["path"], "output/reports/query-frontdoor-fallback.md")
         content = artifact_path.read_text(encoding="utf-8")
-        self.assertIn("LLM 没有在本次超时时间内返回可用内容", content)
+        self.assertIn("LLM 没有返回可用内容", content)
         self.assertIn("llm_status: \"timeout_or_unavailable\"", content)
+        self.assertIn("delivery_mode: \"llm-failed\"", content)
         self.assertIn("graph_anchor_node_ids:", content)
         self.assertIn('  - "source:source-1"', content)
         self.assertIn("## 关系图谱锚点", content)
@@ -1012,10 +1165,9 @@ class RunnerTests(unittest.TestCase):
             json.loads(line)
             for line in (self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()
         ]
-        self.assertEqual(llm_receipts[-1]["event"], "run-ask-frontdoor")
-        self.assertEqual(llm_receipts[-1]["status"], "degraded")
-        self.assertEqual(llm_receipts[-1]["delivery_mode"], "deterministic-fallback")
-        self.assertTrue(llm_receipts[-1]["fallback_used"])
+        self.assertEqual(llm_receipts[-1]["event"], "run-ask")
+        self.assertEqual(llm_receipts[-1]["status"], "failed")
+        self.assertEqual(llm_receipts[-1]["delivery_mode"], "llm-failed")
 
     def test_run_ask_frontdoor_hard_fail_still_raises(self) -> None:
         artifact_path = self.root / "output" / "reports" / "query-frontdoor-hard-fail.md"
@@ -1048,16 +1200,15 @@ class RunnerTests(unittest.TestCase):
         with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
             with patch("aiwiki.runner.workflows._build_ask_prompt", return_value="prompt"):
                 with self.assertRaisesRegex(LLMError, "schema mismatch"):
-                    run_ask(self.root, "测试", "report", client=_HardFailAskClient(), fallback_to_ask=True)
+                    run_ask(self.root, "测试", "report", client=_HardFailAskClient())
 
         llm_receipts = [
             json.loads(line)
             for line in (self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()
         ]
-        self.assertEqual(llm_receipts[-1]["event"], "run-ask-frontdoor")
+        self.assertEqual(llm_receipts[-1]["event"], "run-ask")
         self.assertEqual(llm_receipts[-1]["status"], "failed")
         self.assertEqual(llm_receipts[-1]["delivery_mode"], "llm-failed")
-        self.assertFalse(llm_receipts[-1]["fallback_used"])
 
     def test_llm_probe_returns_static_status_when_unconfigured(self) -> None:
         fake_status = {"configured": False, "message": "missing backend"}

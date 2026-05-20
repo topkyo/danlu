@@ -83,6 +83,20 @@ def _write_report(root: Path, rel: str, anchors: list[str] | None) -> Path:
     return path
 
 
+def _write_fixture_graph_pages(root: Path) -> None:
+    """Materialize the markdown pages referenced by _fixture_memory()."""
+    for rel in (
+        "wiki/sources/alpha.md",
+        "wiki/sources/beta.md",
+        "wiki/concepts/concept-x.md",
+        "wiki/concepts/concept-y.md",
+        "wiki/judgments/j1.md",
+    ):
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"# {path.stem}\n", encoding="utf-8")
+
+
 class BuildReportSubgraphTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -98,6 +112,7 @@ class BuildReportSubgraphTests(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_happy_path_collects_anchors_and_one_hop_neighbors(self) -> None:
+        _write_fixture_graph_pages(self.root)
         _write_report(self.root, "output/reports/demo.md", ["concept:concept-x"])
         result = build_report_subgraph(self.root, "output/reports/demo.md")
 
@@ -202,6 +217,9 @@ class BuildReportSubgraphUncompiledMemoryTests(unittest.TestCase):
         except (OSError, NotImplementedError):
             self.skipTest("cannot create symlink in this environment")
         _write_report(self.root, "output/reports/demo.md", ["concept:concept-x"])
+        concept_path = self.root / "wiki/concepts/concept-x.md"
+        concept_path.parent.mkdir(parents=True, exist_ok=True)
+        concept_path.write_text("# Concept X\n", encoding="utf-8")
         compiled_memory = {
             "compiled_at": "2026-05-11T00:00:00Z",
             "concept_nodes": [

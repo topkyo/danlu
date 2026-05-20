@@ -22,13 +22,13 @@
 
 ### 关键事实
 - 不拥有任何业务逻辑，只做编排。
-- 自动采纳能力（auto-adopt L1 / L2 / L3 / Judgment）默认关闭，必须显式 env flag opt-in：`AIWIKI_NIGHTLY_AUTO_ADOPT_*`。
+- 自动采纳能力（auto-adopt L1 / L2 / L3 / Judgment）由独立 env flag 控制；2026-05 本机 full furnace nightly profile 默认开启，操作者可按层改为 `0` 缩窄自动化半径。
 - 所有自动采纳都强制 receipt 落盘，保证 revert path。
 - 只支持 3 个 primitive 的 light lane 自动应用：`compile / lint / nightly`。Heavy lane 永远 preview-only。
 
 ### 评估
 - **设计正确**：编排和逻辑分离，编排层薄。
-- **安全边界清晰**：env flag 显式 opt-in 是工程上的诚实选择，不做隐式自治。
+- **安全边界清晰**：分层 env flag + receipt/revert 是工程上的诚实选择，不做无审计自治。
 - **没有膨胀风险**：351 行是合理上限。
 
 ## 2. `signals/` — 感知层（1427 行）

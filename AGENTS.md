@@ -7,6 +7,8 @@
 - 当前工作区如需工程脚手架，优先使用 `bash scripts/setup_local_harness.sh --apply --tier standard --platforms claude,codex,opencode`；它只是 `/home/tim/open-harness/scripts/bootstrap_local_scaffold.sh` 的项目内便捷别名
 - 本仓库实现 `aiwiki`，即“炼丹炉”的 local-first runtime / CLI / 仓库本体
 - “炼丹炉”是产品/系统名；`aiwiki` 是实现内核、命令名和仓库名
+- `/home/tim/ai-wiki` 是 runtime 代码仓库与开发 vault；`/home/tim/danlu/炼丹炉` 是真实 dogfood vault。分析用户实际 Product Shell 提问、报告质量、LLM receipt、run notes 或 vault 内容时，默认查 `/home/tim/danlu/炼丹炉`，不要误用当前代码仓库的 `output/control/shell-summary.json` 代替 dogfood 证据
+- 代码修改、测试和文档更新默认发生在 `/home/tim/ai-wiki`；只有用户要求验证真实 dogfood 行为或重跑坏产物时，才以 `/home/tim/danlu/炼丹炉` 作为 `--root` 运行 runtime
 - `open-harness` 负责工程闭环与质量护栏，不负责知识库 runtime 本身
 - 动态任务状态写 `PROGRESS.md`
 - 跨对话仍然成立的项目知识写 `MEMORY.md` 或等价记忆
@@ -61,7 +63,7 @@
 ## 当前方向
 
 - 维护炼丹炉五层主线：`raw / wiki / machine memory / schema / outputs`
-- 维持 deterministic baseline + 多后端 LLM 执行层（`codex-cli` / `nvidia-nim-api` / `copilot-cli` / `claude-cli`），并保持显式手动 backend 选择
+- 维持 deterministic baseline + 显式 LLM 执行层；Shell/CLI 默认主路由是 `opencode-api/deepseek-v4-pro`，不再自动 fallback 到 `codex-cli/gpt-5.5` 或写占位式 deterministic fallback 内容
 - 维持直接投喂入口：`drop-url` / `drop-pdf` / `drop-image` / `drop-repo`
 - 维持协议 runtime：`general / investing / research / product / ops`
 - 维持治理与执行层：`review / aging / escalation / repair / nightly / apply / revert / audit`

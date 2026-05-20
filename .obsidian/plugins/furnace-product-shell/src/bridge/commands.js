@@ -57,7 +57,6 @@ async function runAskCommand(plugin, { question, format, mode, protocol }) {
         args.push("--direct");
       }
       args.push("--lean");
-      args.push("--fallback-to-ask");
     }
     return await plugin.runPluginCommand(`${longRunning ? plugin.t("Long Report") : plugin.t("Ask")}: ${truncateText(question, 48)}`, args, {
       refreshAfter: true,

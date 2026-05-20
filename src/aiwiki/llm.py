@@ -622,15 +622,6 @@ class ModelFallbackClient:
         raise LLMError("No usable model fallback candidate was configured.")
 
 
-class BackendFallbackClient(ModelFallbackClient):
-    """Retry alternate backends when the primary backend times out or is unavailable.
-
-    ModelFallbackClient is deliberately same-backend.  Product Shell needs a
-    separate, explicit backend fallback policy: default OpenCode DeepSeek first,
-    then Codex CLI gpt-5.5 if the primary backend cannot complete.
-    """
-
-
 def create_backend_client(config: LLMConfig, workdir: Path) -> Any:
     # M7.4a Kill Switch: external LLM hook. Defer import to avoid cycles.
     from aiwiki import autonomy_policy
@@ -639,9 +630,6 @@ def create_backend_client(config: LLMConfig, workdir: Path) -> Any:
     if reason is not None:
         raise AutonomyDisabled(reason)
 
-    backend_fallback_configs = _backend_fallback_configs(config)
-    if len(backend_fallback_configs) > 1:
-        return BackendFallbackClient(config, workdir, backend_fallback_configs)
     model_fallback_configs = _model_fallback_configs(config)
     if len(model_fallback_configs) > 1:
         return ModelFallbackClient(config, workdir, model_fallback_configs)
@@ -829,22 +817,6 @@ def _model_fallback_configs(config: LLMConfig) -> list[LLMConfig]:
         return [_config_for_backend(config, config.backend)]
     base_config = _config_for_backend(config, config.backend)
     return [replace(base_config, model=model) for model in candidate_models]
-
-
-def _backend_fallback_configs(config: LLMConfig) -> list[LLMConfig]:
-    backends = [config.backend, *list(getattr(config, "backend_fallback_chain", ()) or ())]
-    configs: list[LLMConfig] = []
-    seen: set[str] = set()
-    for backend in backends:
-        normalized = str(backend or "").strip().lower()
-        if not normalized or normalized in seen:
-            continue
-        seen.add(normalized)
-        candidate = _config_for_backend(config, normalized)
-        if normalized == BACKEND_CODEX_CLI and getattr(config, "backend_fallback_model", ""):
-            candidate = replace(candidate, model=config.backend_fallback_model)
-        configs.append(candidate)
-    return configs or [_config_for_backend(config, config.backend)]
 
 
 def _is_model_fallback_error(message: str) -> bool:

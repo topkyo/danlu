@@ -23,7 +23,6 @@ from aiwiki.config import (
 )
 from aiwiki.llm import (
     AnthropicClient,
-    BackendFallbackClient,
     ClaudeCLIClient,
     CodexCLIClient,
     CompletionResult,
@@ -562,7 +561,7 @@ class LLMClientTests(unittest.TestCase):
         self.assertEqual(attempts, ["deepseek-v4-pro", "gpt-5.5"])
         self.assertEqual(client.config.model, "gpt-5.5")
 
-    def test_backend_fallback_uses_codex_after_opencode_timeout(self) -> None:
+    def test_backend_fallback_chain_is_ignored_after_opencode_timeout(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             root = Path(tempdir)
             client = create_backend_client(
@@ -581,7 +580,7 @@ class LLMClientTests(unittest.TestCase):
                 ),
                 root,
             )
-            self.assertIsInstance(client, BackendFallbackClient)
+            self.assertIsInstance(client, OpenAICompatClient)
 
             attempts: list[str] = []
 
@@ -591,14 +590,14 @@ class LLMClientTests(unittest.TestCase):
                 raise TimeoutError("read timed out")
 
             with patch("aiwiki.llm.safe_fetch", side_effect=fake_safe_fetch):
-                with patch.object(CodexCLIClient, "complete", return_value=CompletionResult("Codex OK", "codex", {})):
-                    result = client.complete("System prompt", "User prompt")
+                with patch.object(CodexCLIClient, "complete", return_value=CompletionResult("Codex OK", "codex", {})) as codex_complete:
+                    with self.assertRaisesRegex(LLMError, "timed out"):
+                        client.complete("System prompt", "User prompt")
 
-        self.assertEqual(result.text, "Codex OK")
         self.assertEqual(attempts, ["deepseek-v4-pro"])
-        self.assertEqual(client.config.backend, BACKEND_CODEX_CLI)
-        self.assertEqual(client.config.model, "gpt-5.5")
-        self.assertNotEqual(client.client_configs[0].backend, client.config.backend)
+        codex_complete.assert_not_called()
+        self.assertEqual(client.config.backend, BACKEND_OPENCODE_API)
+        self.assertEqual(client.config.model, "deepseek-v4-pro")
 
     def test_nvidia_backend_no_implicit_chain(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

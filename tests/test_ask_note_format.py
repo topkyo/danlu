@@ -54,6 +54,8 @@ class RenderNoteAnswerTests(unittest.TestCase):
                 artifact_id="what-is-x-note",
             )
         self.assertIn('format: "note"', content)
+        self.assertIn("cssclasses:", content)
+        self.assertIn('  - "aiwiki-output"', content)
         self.assertIn('kind: "output"', content)
         self.assertIn('id: "what-is-x-note"', content)
         self.assertIn("# What is X?", content)

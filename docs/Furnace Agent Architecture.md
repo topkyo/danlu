@@ -47,7 +47,7 @@ related_docs:
 - 一个会定期炼丹（light）、也会被事件触发深度重炼（heavy）的持续进化引擎
 - 一个明确把自身自主权分层切分、且守住 L3 红线的系统
 
-在默认 opt-in 自主权模型下，agent 可静默执行 L0-L3 维护与进化（详见 §8）；操作者通过 receipt / audit / revert 行使事后审计权，是审计者而非每步确认者。agent 可自主改变炉子自身的 prompt/policy/schema，但所有行动均可追溯、可回滚，且 L3 与 Judgment 级自主权默认关闭，需显式开启。
+在当前本机 full furnace 模型下，agent 可通过 nightly 静默执行 L0-L3 维护与进化（详见 §8）；操作者通过 receipt / audit / revert 行使事后审计权，是审计者而非每步确认者。agent 可自主改变炉子自身的 prompt/policy/schema，但所有行动均可追溯、可回滚；watcher 仍只负责 deterministic 投料入口，不承担 LLM 深度炼化。
 
 ## 1.1 User-Facing Surface（第一性原理）
 
@@ -321,7 +321,7 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
 
 ## 8. Autonomy Boundaries: L0 / L1 / L2 / L3 / Judgment
 
-炼丹炉的自主权现在是**分层 opt-in 模型**：每层通过独立环境变量显式开启，所有自动采纳均写 receipt 支持 revert/audit。默认全部关闭（agent loop 仅 dry-run preview），操作者按需逐层解锁。
+炼丹炉的自主权现在是**分层可开关模型**：每层通过独立环境变量控制，所有自动采纳均写 receipt 支持 revert/audit。新安装的 nightly full furnace profile 默认五层开启；操作者可按层把对应 env flag 改为 `0`，退回 dry-run preview 或更窄自动化半径。
 
 L0（维护层）由 `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` 控制；L1-L3/Judgment 分别由 `AIWIKI_NIGHTLY_AUTO_ADOPT_L1/L2/L3/JUDGMENTS=1` 控制。
 
@@ -343,7 +343,7 @@ L0（维护层）由 `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` 控制；L1-L3/Judgment
 - 隐式切换 LLM backend
 - 静默吞错
 
-当前 dogfood 配置（2026-05）已全部五级开启，炼丹炉以全自主 agent OS 运行。
+当前本机 full furnace / dogfood nightly profile（2026-05）已将五层 `AIWIKI_NIGHTLY_AUTO_*` 默认开启，用于每晚自动维护、治理、判断复核与受控学习；watcher 仍保持 deterministic-only，fallback 仍需显式启用，所有学习必须 receipt-gated、可审计、可回滚。
 
 ## 9. Protocols, Operator Control, and Backend Selection
 

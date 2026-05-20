@@ -30,8 +30,6 @@ BACKEND_CODEX_CLI = "codex-cli"
 BACKEND_NVIDIA_NIM_API = "nvidia-nim-api"
 BACKEND_COPILOT_CLI = "copilot-cli"
 BACKEND_CLAUDE_CLI = "claude-cli"
-DEFAULT_BACKEND_FALLBACK = BACKEND_CODEX_CLI
-DEFAULT_BACKEND_FALLBACK_MODEL = DEFAULT_CODEX_MODEL
 SUPPORTED_BACKENDS = {
     BACKEND_OPENCODE_API,
     BACKEND_OPENROUTER_API,
@@ -178,8 +176,8 @@ class LLMConfig:
             model=effective_model,
             model_requested=values["model"],
             model_fallback_chain=effective_model_fallback_chain,
-            backend_fallback_chain=_resolve_backend_fallback_chain(values),
-            backend_fallback_model=values["env_backend_fallback_model"],
+            backend_fallback_chain=(),
+            backend_fallback_model="",
             api_key=effective_api_key,
             anthropic_api_key=values["anthropic_api_key"],
             opencode_api_key=values["opencode_api_key"],
@@ -256,9 +254,9 @@ class LLMConfig:
             "effective_model": effective_model,
             "model_source": _compute_model_source(values["model"], backend),
             "model_fallback_chain": list(effective_model_fallback_chain),
-            "backend_fallback_chain": list(_resolve_backend_fallback_chain(values)),
-            "backend_fallback_model": values["env_backend_fallback_model"],
-            "backend_fallbacks": _backend_fallback_statuses(values, primary_backend=backend),
+            "backend_fallback_chain": [],
+            "backend_fallback_model": "",
+            "backend_fallbacks": [],
             "api_key_present": effective_api_key_present,
             "anthropic_api_key_present": bool(values["anthropic_api_key"]),
             "opencode_api_key_present": bool(values["opencode_api_key"]),
@@ -311,16 +309,8 @@ def _read_env() -> dict[str, Any]:
     requested_backend = (os.environ.get("AIWIKI_LLM_BACKEND") or DEFAULT_BACKEND).strip().lower()
     model = (os.environ.get("AIWIKI_LLM_MODEL") or os.environ.get("OPENAI_MODEL") or "").strip()
     env_model_fallback = os.environ.get("AIWIKI_MODEL_FALLBACK")
-    explicit_backend_fallback = "AIWIKI_BACKEND_FALLBACK" in os.environ
-    raw_backend_fallback = os.environ.get("AIWIKI_BACKEND_FALLBACK")
-    env_backend_fallback = (
-        raw_backend_fallback
-        if explicit_backend_fallback
-        else _canonical_backend_fallback(requested_backend=requested_backend, requested_model=model)
-    )
-    env_backend_fallback_model = (os.environ.get("AIWIKI_BACKEND_FALLBACK_MODEL") or "").strip()
-    if not env_backend_fallback_model and _parse_backend_fallback_chain(env_backend_fallback, primary=requested_backend):
-        env_backend_fallback_model = DEFAULT_BACKEND_FALLBACK_MODEL
+    env_backend_fallback = ""
+    env_backend_fallback_model = ""
     api_key = (os.environ.get("AIWIKI_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY") or "").strip()
     opencode_api_key, opencode_api_key_source = _resolve_opencode_api_key()
     openrouter_api_key, openrouter_api_key_source = _resolve_openrouter_api_key()
@@ -497,33 +487,13 @@ def _resolve_model_fallback_chain(values: dict[str, Any]) -> tuple[str, ...]:
 
 
 def _resolve_backend_fallback_chain(values: dict[str, Any]) -> tuple[str, ...]:
-    return _parse_backend_fallback_chain(values.get("env_backend_fallback"), primary=values.get("requested_backend", ""))
-
-
-def _canonical_backend_fallback(*, requested_backend: str, requested_model: str) -> str:
-    backend = str(requested_backend or "").strip().lower()
-    model = str(requested_model or "").strip()
-    if backend == BACKEND_OPENCODE_API and (not model or model == DEFAULT_OPENCODE_MODEL):
-        return DEFAULT_BACKEND_FALLBACK
-    return ""
+    del values
+    return ()
 
 
 def _backend_fallback_statuses(values: dict[str, Any], *, primary_backend: str) -> list[dict[str, Any]]:
-    fallback_model = str(values.get("env_backend_fallback_model") or "").strip()
-    statuses: list[dict[str, Any]] = []
-    for backend in _resolve_backend_fallback_chain(values):
-        model = fallback_model if backend == BACKEND_CODEX_CLI and fallback_model else _default_model_for_backend(backend, values)
-        available, reason = _static_backend_available(values, backend)
-        statuses.append(
-            {
-                "backend": backend,
-                "model": model,
-                "configured": backend != primary_backend,
-                "available": available,
-                "reason": reason,
-            }
-        )
-    return statuses
+    del values, primary_backend
+    return []
 
 
 def _static_backend_available(values: dict[str, Any], backend: str) -> tuple[bool, str]:
@@ -578,27 +548,6 @@ def _parse_model_fallback_chain(raw: Any) -> tuple[str, ...]:
             seen.add(model)
             models.append(model)
     return tuple(models)
-
-
-def _parse_backend_fallback_chain(raw: Any, *, primary: str = "") -> tuple[str, ...]:
-    if raw is None:
-        return ()
-    raw_items: list[Any]
-    if isinstance(raw, (list, tuple)):
-        raw_items = list(raw)
-    else:
-        raw_items = [raw]
-    primary_backend = str(primary or "").strip().lower()
-    backends: list[str] = []
-    seen: set[str] = {primary_backend} if primary_backend else set()
-    for item in raw_items:
-        for candidate in str(item or "").split(","):
-            backend = candidate.strip().lower()
-            if not backend or backend in seen or backend not in SUPPORTED_BACKENDS:
-                continue
-            seen.add(backend)
-            backends.append(backend)
-    return tuple(backends)
 
 
 def _effective_model_fallback_chain(effective_model: str, fallback_chain: tuple[str, ...]) -> tuple[str, ...]:

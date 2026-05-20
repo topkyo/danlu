@@ -509,7 +509,7 @@ def compile_runtime_phase(context: CompileContext) -> None:
         counter_evidence_scan=context.memory["health"]["counter_evidence_scan"],
     )
     context.memory["digest"] = machine_memory_digest(context.memory)
-    graph = build_machine_memory_graph(context.memory)
+    graph = build_machine_memory_graph(context.memory, root=context.root)
     context.memory["graph_digest"] = graph["digest"]
     context.memory["graph_path"] = relative_path(context.root, machine_memory_graph_path(context.root))
     context.memory["history_path"] = relative_path(context.root, machine_memory_history_path(context.root))

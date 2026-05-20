@@ -2509,7 +2509,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         args.push("--direct");
       }
       args.push("--lean");
-      args.push("--fallback-to-ask");
     }
     return await this.runPluginCommand(`${longRunning ? this.t("Long Report") : this.t("Ask")}: ${truncateText(question, 48)}`, args, {
       refreshAfter: true,

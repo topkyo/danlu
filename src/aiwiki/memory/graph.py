@@ -58,6 +58,7 @@ RELATION_LABELS: dict[str, str] = {
     "CAUSAL_CONSTRAINS": "因果约束",
     "CAUSAL_CONFLICTS_WITH": "因果冲突",
     "CAUSAL_BLOCKS": "因果阻塞",
+    "ELIXIR_DERIVED_FROM": "金丹承接",
 }
 
 _RELATION_FAMILY_FALLBACK: tuple[tuple[str, str], ...] = (
@@ -90,6 +91,7 @@ _RELATION_STYLES: dict[str, tuple[str, str]] = {
     "HAS_CONCEPT": ("#0ea5e9", ""),  # sky-500, dedicated color (was fallback grey)
     "RELATED_CONCEPT": ("#f59e0b", ' stroke-dasharray="8 6"'),
     "SUPPORTS_JUDGMENT": ("#c2410c", ' stroke-dasharray="6 4"'),
+    "ELIXIR_DERIVED_FROM": ("#facc15", ' stroke-dasharray="10 4"'),
 }
 
 _FAMILY_STYLES: tuple[tuple[str, tuple[str, str]], ...] = (
@@ -247,7 +249,7 @@ def build_report_subgraph(root: Path, report_path: str) -> dict[str, Any]:
             "machine memory is not compiled; run `aiwiki advanced compile` first"
         )
     try:
-        graph = build_machine_memory_graph(memory)
+        graph = build_machine_memory_graph(memory, root=root)
     except Exception as exc:  # corrupt/incomplete memory shape
         raise ReportSubgraphError(
             f"machine memory is corrupt or incomplete ({type(exc).__name__}: {exc}); "
@@ -359,7 +361,7 @@ def render_report_subgraph_markdown(subgraph: dict[str, Any]) -> str:
             if kind not in seen_kinds:
                 seen_kinds.append(kind)
         for kind in seen_kinds:
-            kind_zh = {"source": "来源", "concept": "概念", "judgment": "判断"}.get(kind, kind or "节点")
+            kind_zh = {"source": "来源", "concept": "概念", "judgment": "判断", "elixir": "金丹"}.get(kind, kind or "节点")
             lines.append(f"### {kind_zh}")
             lines.append("")
             for node in by_kind[kind]:
@@ -413,6 +415,7 @@ def render_machine_memory_graph_html(
             "source": "来源",
             "judgment": "判断",
             "concept": "概念",
+            "elixir": "金丹",
             "decision": "决策",
             "derived": "派生",
         }
@@ -427,6 +430,7 @@ def render_machine_memory_graph_html(
             "needs-revisit": "需复核",
             "proposed": "待确认",
             "rejected": "已拒绝",
+            "settled": "已沉淀",
             "superseded": "已替代",
             "tentative": "暂定",
             "tracking": "跟踪中",
@@ -447,6 +451,8 @@ def render_machine_memory_graph_html(
         return labels.get(protocol, protocol or "未分配")
 
     def component_display_label(component_id: str) -> str:
+        if component_id == "elixir-settled":
+            return "金丹关联"
         if component_id.startswith("component-"):
             suffix = component_id.removeprefix("component-")
             if suffix.isdigit():
@@ -477,6 +483,27 @@ def render_machine_memory_graph_html(
             if slug in [str(item) for item in node.get("concept_slugs", []) if isinstance(item, str)]
         }
         concept_protocol_by_slug[slug] = resolve_protocol(protocols)
+    def has_cjk(text: str) -> bool:
+        return any("\u4e00" <= char <= "\u9fff" for char in text)
+
+    def is_display_markdown_node(node: dict[str, Any]) -> bool:
+        page_path = str(node.get("page_path") or node.get("source_page") or "").strip()
+        if not page_path.endswith(".md"):
+            return False
+        if "chinese_related" in node:
+            return bool(node.get("chinese_related"))
+        return has_cjk(str(node.get("title") or ""))
+
+    raw_graph_nodes = list(graph.get("nodes", []))
+    graph_nodes = [node for node in raw_graph_nodes if is_display_markdown_node(node)]
+    display_node_ids = {str(node.get("id") or "") for node in graph_nodes}
+    graph_edges = [
+        edge
+        for edge in graph.get("edges", [])
+        if str(edge.get("source") or "") in display_node_ids and str(edge.get("target") or "") in display_node_ids
+    ]
+    elixir_nodes = [node for node in graph_nodes if str(node.get("kind") or "") == "elixir"]
+
     if not components and (source_nodes or concept_nodes or judgment_nodes):
         components = [
             {
@@ -493,19 +520,19 @@ def render_machine_memory_graph_html(
     current_y = 36
     section_width = 980
     for component in components:
-        source_ids = [source_id for source_id in component.get("source_ids", []) if source_id in source_nodes]
-        concept_slugs = [slug for slug in component.get("concept_slugs", []) if slug in concept_nodes]
+        source_ids = [source_id for source_id in component.get("source_ids", []) if source_id in source_nodes and f"source:{source_id}" in display_node_ids]
+        concept_slugs = [slug for slug in component.get("concept_slugs", []) if slug in concept_nodes and f"concept:{slug}" in display_node_ids]
         judgment_ids = sorted(
             {
                 page_id
                 for source_id in source_ids
                 for page_id in judgment_by_source.get(source_id, set())
-                if page_id in judgment_nodes
+                if page_id in judgment_nodes and f"judgment:{page_id}" in display_node_ids
             }
             | {
                 page_id
                 for page_id in component.get("judgment_ids", [])
-                if isinstance(page_id, str) and page_id in judgment_nodes
+                if isinstance(page_id, str) and page_id in judgment_nodes and f"judgment:{page_id}" in display_node_ids
             }
         )
         if not source_ids and not concept_slugs and not judgment_ids:
@@ -532,6 +559,25 @@ def render_machine_memory_graph_html(
         )
         current_y += section_height + 28
 
+    if elixir_nodes:
+        row_gap = 72
+        row_top = current_y + 52
+        section_height = 96 + max(len(elixir_nodes) - 1, 0) * row_gap
+        for index, node in enumerate(elixir_nodes):
+            positions[str(node.get("id") or "")] = (500, row_top + index * row_gap)
+        sections.append(
+            {
+                "id": "elixir-settled",
+                "y": current_y,
+                "height": section_height,
+                "source_ids": [],
+                "judgment_ids": [],
+                "concept_slugs": [],
+                "elixir_ids": [str(node.get("id") or "") for node in elixir_nodes],
+            }
+        )
+        current_y += section_height + 28
+
     view_height = max(current_y + 24, 320)
 
     def truncate_label(text: str, limit: int = 30) -> str:
@@ -544,7 +590,7 @@ def render_machine_memory_graph_html(
     # chinese label do not silently merge counts. Render-time we resolve the
     # label per type when building the summary panel.
     relation_counts_by_type: dict[str, int] = {}
-    for edge in graph.get("edges", []):
+    for edge in graph_edges:
         source = str(edge.get("source") or "")
         target = str(edge.get("target") or "")
         if source not in positions or target not in positions:
@@ -601,7 +647,7 @@ def render_machine_memory_graph_html(
         "mixed": "#94a3b8",
         "unassigned": "#64748b",
     }
-    for node in graph.get("nodes", []):
+    for node in graph_nodes:
         node_id = str(node.get("id") or "")
         position = positions.get(node_id)
         if not position:
@@ -632,13 +678,23 @@ def render_machine_memory_graph_html(
             component_id = str(judgment_component_ids.get(node_id.removeprefix("judgment:"), "") or "")
             secondary_metric = f"来源数 {len(node.get('source_ids', []))}"
             subtitle_fill = "#ffedd5"
+        elif kind == "elixir":
+            fill = "#a16207"
+            protocol = str(node.get("protocol") or DEFAULT_PROTOCOL)
+            stroke = protocol_colors.get(protocol, "#facc15")
+            page_path = str(node.get("page_path") or "")
+            href = f"../../{html.escape(page_path)}"
+            subtitle = f"金丹 · {status_label(str(node.get('elixir_state') or 'settled'))} · {protocol_label(protocol)}"
+            component_id = "elixir-settled"
+            secondary_metric = f"承接 {len(node.get('derived_from', []))} 个文件"
+            subtitle_fill = "#fef3c7"
         else:
             fill = "#1d4ed8"
             slug = node_id.removeprefix("concept:")
             protocol = concept_protocol_by_slug.get(slug, "unassigned")
             stroke = protocol_colors.get(protocol, protocol_colors["unassigned"])
-            page_path = f"wiki/concepts/{slug}.md"
-            href = f"../../wiki/concepts/{html.escape(slug)}.md"
+            page_path = str(node.get("page_path") or f"wiki/concepts/{slug}.md")
+            href = f"../../{html.escape(page_path)}"
             subtitle = f"概念 · {protocol_label(protocol)}"
             component_id = str(concept_component_ids.get(slug, "") or "")
             secondary_metric = f"来源页 {len(node.get('source_pages', []))}"
@@ -647,7 +703,7 @@ def render_machine_memory_graph_html(
         label = html.escape(truncate_label(title))
         rx = x - 120
         ry = y - 22
-        component_label = component_label_by_id.get(component_id, component_id or "未分组")
+        component_label = component_label_by_id.get(component_id, component_display_label(component_id) if component_id else "未分组")
         node_fragments.append(
             "\n".join(
                 [
@@ -698,6 +754,16 @@ def render_machine_memory_graph_html(
 
     section_fragments: list[str] = []
     for section in sections:
+        source_count = len(section.get("source_ids", []))
+        concept_count = len(section.get("concept_slugs", []))
+        judgment_count = len(section.get("judgment_ids", []))
+        elixir_count = len(section.get("elixir_ids", []))
+        if elixir_count:
+            section_summary = f"金丹 {elixir_count}"
+            section_detail = "金丹承接关系"
+        else:
+            section_summary = f"来源 {source_count} | 概念 {concept_count}"
+            section_detail = f"判断 {judgment_count}"
         section_fragments.append(
             f'<rect x="20" y="{section["y"]}" width="{section_width}" height="{section["height"]}" rx="18" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5" />'
         )
@@ -705,52 +771,23 @@ def render_machine_memory_graph_html(
             f'<text x="44" y="{section["y"] + 28}" fill="#0f172a" font-size="15" font-weight="700">{html.escape(component_display_label(str(section["id"] or "")))}</text>'
         )
         section_fragments.append(
-            f'<text x="44" y="{section["y"] + 48}" fill="#475569" font-size="12">来源 {len(section["source_ids"])} | 概念 {len(section["concept_slugs"])}</text>'
+            f'<text x="44" y="{section["y"] + 48}" fill="#475569" font-size="12">{html.escape(section_summary)}</text>'
         )
         section_fragments.append(
-            f'<text x="300" y="{section["y"] + 48}" fill="#9a3412" font-size="12">判断 {len(section.get("judgment_ids", []))}</text>'
+            f'<text x="300" y="{section["y"] + 48}" fill="#9a3412" font-size="12">{html.escape(section_detail)}</text>'
         )
 
-    hub_concepts = health.get("hub_concepts", [])
-    hub_sources = health.get("hub_sources", [])
-    actions = health.get("action_counts", {})
-    repair_counts = health.get("repair_plan", {}).get("counts", {})
-    rewrite_counts = health.get("concept_rewrite", {}).get("counts", {})
-    safe_apply_actions = [
-        action for action in health.get("repair_plan", {}).get("ready_actions", []) if action_supports_low_risk_apply(action)
-    ]
     summary_items = [
-        f"来源节点 {len(memory.get('source_nodes', []))}",
-        f"判断节点 {len(memory.get('judgment_nodes', []))}",
-        f"概念节点 {len(memory.get('concept_nodes', []))}",
-        f"关系组 {health.get('component_count', 0)}",
-        f"桥接概念 {len(health.get('bridge_concept_slugs', []))}",
-        f"待处理修复 {actions.get('total', 0)}",
-        f"待确认提案 {repair_counts.get('proposals', 0)}",
-        f"改写提案 {rewrite_counts.get('active', 0)}",
-        f"可安全执行 {len(safe_apply_actions)}",
+        f"来源节点 {sum(1 for node in graph_nodes if str(node.get('kind') or '') == 'source')}",
+        f"判断节点 {sum(1 for node in graph_nodes if str(node.get('kind') or '') == 'judgment')}",
+        f"概念节点 {sum(1 for node in graph_nodes if str(node.get('kind') or '') == 'concept')}",
+        f"金丹节点 {len(elixir_nodes)}",
+        f"关系边 {len(edge_records)}",
     ]
-
-    hub_concept_items = "".join(
-        f'<li><a href="../../wiki/concepts/{html.escape(item["slug"])}.md">{html.escape(item["title"])}</a> | 来源 {item.get("source_count", 0)} | 关联 {item.get("related_count", 0)}</li>'
-        for item in hub_concepts[:8]
-    ) or "<li>当前没有核心概念。</li>"
-    hub_source_items = "".join(
-        f'<li><a href="../../wiki/sources/{html.escape(item["id"])}.md">{html.escape(item["title"])}</a> | 概念 {item.get("concept_count", 0)}</li>'
-        for item in hub_sources[:8]
-    ) or "<li>当前没有核心来源。</li>"
-    suggestion_items = "".join(
-        f'<li><a href="../../wiki/sources/{html.escape(item["source_id"])}.md">{html.escape(item["source_title"])}</a> -> <a href="../../wiki/concepts/{html.escape(item["concept_slug"])}.md">{html.escape(item["concept_title"])}</a> | 分数 {item.get("score", 0)} | 共现词 {html.escape(", ".join(item.get("shared_terms", [])[:5]) or "无")}</li>'
-        for item in health.get("link_suggestions", [])[:8]
-    ) or "<li>当前没有修复候选。</li>"
-    apply_ready_items = "".join(
-        f'<li>{html.escape(str(action.get("title") or action.get("id") or "动作"))} | 建议命令 <code>{html.escape(str(action.get("command_hint") or ""))}</code></li>'
-        for action in safe_apply_actions[:8]
-        if action.get("command_hint")
-    ) or "<li>当前没有可直接安全应用的动作。</li>"
+    component_option_sections = sections
     component_options = "".join(
-        f'<option value="{html.escape(str(component.get("id") or ""))}">{html.escape(component_display_label(str(component.get("id") or "")))} ({len(component.get("source_ids", [])) + len(component.get("concept_slugs", []))})</option>'
-        for component in components
+        f'<option value="{html.escape(str(component.get("id") or ""))}">{html.escape(component_display_label(str(component.get("id") or "")))} ({len(component.get("source_ids", [])) + len(component.get("concept_slugs", [])) + len(component.get("judgment_ids", [])) + len(component.get("elixir_ids", []))})</option>'
+        for component in component_option_sections
         if component.get("id")
     )
     protocol_options = "".join(
@@ -775,14 +812,13 @@ def render_machine_memory_graph_html(
     for edge_type, count in sorted(relation_counts_by_type.items()):
         relation_summary_rows.append((edge_type, edge_relation_label(edge_type), count))
     relation_summary_items = "".join(
-        f"<li><strong>{html.escape(label)}</strong>：{count} 条 "
-        f"<code class=\"relation-machine-type\">{html.escape(edge_type)}</code></li>"
+        f"<li><strong>{html.escape(label)}</strong>：{count} 条</li>"
         for edge_type, label, count in relation_summary_rows
     ) or "<li>当前没有关系边。</li>"
 
     empty_state = ""
-    if not graph.get("nodes"):
-        empty_state = '<div class="empty">当前还没有机器记忆节点。先投料并运行 compile，再打开这个页面。</div>'
+    if not graph_nodes:
+        empty_state = '<div class="empty">当前没有可展示的中文相关 Markdown 图谱节点。请先沉淀中文内容的 source / concept / judgment / elixir 页面后重新编译。</div>'
 
     svg_body = "\n".join(section_fragments + edge_fragments + node_fragments)
     return "\n".join(
@@ -818,10 +854,10 @@ def render_machine_memory_graph_html(
             "    .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; color: var(--muted); }",
             "    .legend span::before { content: ''; display: inline-block; width: 12px; height: 12px; border-radius: 999px; margin-right: 6px; vertical-align: -1px; }",
             "    .legend .source::before { background: #0f766e; } .legend .judgment::before { background: #b45309; }",
-            "    .legend .concept::before { background: #3b82f6; } .legend .source-concept::before { background: #0ea5e9; }",
+            "    .legend .concept::before { background: #3b82f6; } .legend .elixir::before { background: #a16207; } .legend .source-concept::before { background: #0ea5e9; }",
             "    .legend .source-judgment::before { background: #c2410c; } .legend .concept-related::before { background: #f59e0b; }",
             "    .legend .judgment-support::before { background: #16a34a; } .legend .judgment-conflict::before { background: #dc2626; }",
-            "    .legend .decision-link::before { background: #3b82f6; } .legend .causal-link::before { background: #0891b2; }",
+            "    .legend .decision-link::before { background: #3b82f6; } .legend .causal-link::before { background: #0891b2; } .legend .elixir-link::before { background: #facc15; }",
             "    .relation-machine-type { color: var(--muted); font-size: 11px; margin-left: 4px; }",
             "    .relation-node-link { border: 1px solid var(--line); background: var(--bg); color: var(--accent); border-radius: 999px; padding: 2px 8px; cursor: pointer; font: inherit; }",
             "    .relation-node-link:hover { background: var(--accent); color: #fff; }",
@@ -833,7 +869,7 @@ def render_machine_memory_graph_html(
             "  <section class=\"panel\">",
             "    <h1>炼丹炉关系图谱</h1>",
             f"    <p>编译时间：<code>{html.escape(str(memory.get('compiled_at', '')))}</code> | 图谱摘要：<code>{html.escape(str(graph.get('digest', '')))}</code></p>",
-            "    <p>这是炼丹炉把材料、判断和概念连起来后的本地关系图谱。来源、判断与概念按关系组展示，点击节点可打开对应详情页。</p>",
+            "    <p>这是炼丹炉把中文材料、判断、概念和金丹连起来后的本地文件图谱。这里只展示中文相关、且对应现有 Markdown 页面的节点；英文 slug、hash 和内部修复候选不会进入默认展示。</p>",
             "    <div class=\"meta\">",
             *[f'      <div class="card"><div class="metric">{html.escape(item.split()[-1])}</div><div class="metric-label">{html.escape(" ".join(item.split()[:-1]) or item)}</div></div>' for item in summary_items],
             "    </div>",
@@ -841,6 +877,7 @@ def render_machine_memory_graph_html(
             '      <span class="source">来源</span>',
             '      <span class="judgment">判断</span>',
             '      <span class="concept">概念</span>',
+            '      <span class="elixir">金丹</span>',
             '      <span class="source-concept">材料提到概念</span>',
             '      <span class="source-judgment">材料支撑判断</span>',
             '      <span class="concept-related">概念相关</span>',
@@ -848,13 +885,14 @@ def render_machine_memory_graph_html(
             '      <span class="judgment-conflict">判断冲突</span>',
             '      <span class="decision-link">决策依据</span>',
             '      <span class="causal-link">因果关系</span>',
+            '      <span class="elixir-link">金丹承接</span>',
             "    </div>",
             "  </section>",
             f"  {empty_state}",
             '  <section class="panel">',
             '    <div class="controls">',
             '      <div><label for="graph-search">搜索节点</label><input id="graph-search" type="search" placeholder="输入标题、关键词或来源编号" /></div>',
-            '      <div><label for="graph-kind">节点类型</label><select id="graph-kind"><option value="">全部</option><option value="source">来源</option><option value="judgment">判断</option><option value="concept">概念</option></select></div>',
+            '      <div><label for="graph-kind">节点类型</label><select id="graph-kind"><option value="">全部</option><option value="source">来源</option><option value="judgment">判断</option><option value="concept">概念</option><option value="elixir">金丹</option></select></div>',
             f'      <div><label for="graph-protocol">协议</label><select id="graph-protocol"><option value="">全部协议</option>{protocol_options}</select></div>',
             f'      <div><label for="graph-component">关系组</label><select id="graph-component"><option value="">全部关系组</option>{component_options}</select></div>',
             "    </div>",
@@ -881,22 +919,8 @@ def render_machine_memory_graph_html(
             "      </div>",
             "    </div>",
             "  </section>",
-            "  <section class=\"lists\">",
-            '    <div class="panel"><h2>核心概念</h2><ul>',
-            f"{hub_concept_items}",
-            "    </ul></div>",
-            '    <div class="panel"><h2>核心来源</h2><ul>',
-            f"{hub_source_items}",
-            "    </ul></div>",
-            '    <div class="panel"><h2>修复候选</h2><ul>',
-            f"{suggestion_items}",
-            "    </ul></div>",
-            '    <div class="panel"><h2>可安全执行</h2><ul>',
-            f"{apply_ready_items}",
-            "    </ul></div>",
-            "  </section>",
             '  <section class="panel"><h2>关系说明</h2>',
-            "    <p>图谱关系用中文表达：材料沉淀为来源节点，来源提到概念，来源支撑判断；判断之间可以互相支持、冲突或相关；决策依据来自判断；概念之间可形成相关或因果关系（因果导致 / 因果促成 / 因果约束 / 因果冲突 / 因果阻塞）。</p>",
+            "    <p>图谱关系用中文表达：材料沉淀为来源节点，来源提到概念，来源支撑判断；判断之间可以互相支持、冲突或相关；决策依据来自判断；概念之间可形成相关或因果关系；金丹节点展示已沉淀的 <code>wiki/elixirs/*.md</code>，金丹承接表示一个金丹从另一个金丹继续炼化而来。</p>",
             "    <p><strong>例子：</strong>材料 A 支撑判断 J，判断 J 成为决策 D 的依据；如果新判断 K 与 J 冲突，图谱会把它显示为“判断冲突”，帮助你从报告回到证据链。</p>",
             "    <ul>",
             f"{relation_summary_items}",

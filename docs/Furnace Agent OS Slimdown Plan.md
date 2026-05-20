@@ -1,5 +1,7 @@
 # Engineering Plan — Agent OS kernel slimming and proof-before-expansion
 
+> **Status update — 2026-05-19:** AOS-001..AOS-006 与 P1 dogfood compounding proof 已完成。后续不再继续 broad slimdown campaign；复杂度治理转为 targeted simplification / ops hardening，只在能删除 shim、缩短路径、降低 review 成本或修复服务边界漂移时执行。
+
 ## Goal
 
 把炼丹炉从“机制已经像 Agent OS，但复杂度开始长胖”的状态，收敛为更薄、更可信、更可长期维护的 `local-first / single-writer / receipt-gated` 知识 Agent Runtime：先冻结扩张，再收敛产品面，随后削薄内核，最后用 dogfood receipt 证明知识复利。

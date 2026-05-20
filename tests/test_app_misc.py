@@ -1078,7 +1078,10 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertIn("AIWIKI_NIGHTLY_FALLBACK_ENABLED=${AIWIKI_NIGHTLY_FALLBACK_ENABLED:-0}", content)
         self.assertIn("AIWIKI_NIGHTLY_FALLBACK_BACKEND=nvidia-nim-api", content)
         self.assertIn("AIWIKI_NIGHTLY_FALLBACK_MODEL=openai/gpt-oss-120b", content)
-        self.assertIn("AIWIKI_NIGHTLY_AUTO_ADOPT_L1=${AIWIKI_NIGHTLY_AUTO_ADOPT_L1:-${AUTO_ADOPT_L1:-0}}", content)
+        self.assertIn("AIWIKI_NIGHTLY_AUTO_ADOPT_L1=${AIWIKI_NIGHTLY_AUTO_ADOPT_L1:-${AUTO_ADOPT_L1:-1}}", content)
+        self.assertIn("AIWIKI_NIGHTLY_AUTO_ADOPT_L3=${AIWIKI_NIGHTLY_AUTO_ADOPT_L3:-${AUTO_ADOPT_L3:-1}}", content)
+        self.assertIn("AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=${AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS:-${AUTO_ADOPT_JUDGMENTS:-1}}", content)
+        self.assertIn('INSTALL_DOGFOOD_MATURITY="${AIWIKI_INSTALL_DOGFOOD_MATURITY:-0}"', content)
         self.assertIn("AIWIKI_DOGFOOD_MATURITY_PREVIEW_LIMIT=1000", content)
         self.assertIn("AIWIKI_DOGFOOD_MATURITY_L3_LIMIT=1000", content)
         self.assertIn("AIWIKI_DOGFOOD_MATURITY_COMPILE_LIMIT=0", content)
@@ -1097,7 +1100,10 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertIn("AIWIKI_NIGHTLY_FALLBACK_ENV", content)
         self.assertIn("AIWIKI_DOGFOOD_MATURITY_ON_CALENDAR", content)
         self.assertIn("*-*-* 00:15:00 UTC", content)
-        self.assertIn("default AIWIKI_DOGFOOD_VAULT is machine-local", content)
+        self.assertIn("AIWIKI_INSTALL_DOGFOOD_MATURITY=1", content)
+        self.assertIn("maturity:      not installed", content)
+        self.assertIn("dogfood maturity is a validation harness", content)
+        self.assertIn('rm -f "$DOGFOOD_MATURITY_SERVICE_PATH" "$DOGFOOD_MATURITY_TIMER_PATH"', content)
         self.assertIn("ensure_env_key", content)
 
     def test_uninstall_user_service_mentions_dogfood_maturity_cleanup(self) -> None:
@@ -1107,6 +1113,8 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertIn('systemctl --user stop "$DOGFOOD_MATURITY_SERVICE_NAME"', content)
         self.assertIn("DOGFOOD_MATURITY_SERVICE_PATH", content)
         self.assertIn("DOGFOOD_MATURITY_TIMER_PATH", content)
+        self.assertIn("--dogfood-maturity-only", content)
+        self.assertIn("env files and vault data preserved", content)
 
     def test_collect_machine_memory_actions_respects_active_protocol_focus(self) -> None:
         save_machine_memory_action_state(
@@ -1220,8 +1228,8 @@ class MiscFlowTests(AppFlowTestBase):
             "digest": "demo",
             "nodes": [
                 {"id": "source:src-1", "kind": "source", "title": "材料 A", "source_page": "wiki/sources/src-1.md"},
-                {"id": "concept:alpha", "kind": "concept", "title": "Alpha", "source_pages": []},
-                {"id": "concept:beta", "kind": "concept", "title": "Beta", "source_pages": []},
+                {"id": "concept:alpha", "kind": "concept", "title": "Alpha", "page_path": "wiki/concepts/alpha.md", "chinese_related": True, "source_pages": []},
+                {"id": "concept:beta", "kind": "concept", "title": "Beta", "page_path": "wiki/concepts/beta.md", "chinese_related": True, "source_pages": []},
                 {"id": "judgment:judgment-a", "kind": "judgment", "title": "判断 A", "page_path": "wiki/judgments/a.md", "page_kind": "judgment", "status": "confirmed", "source_ids": ["src-1"]},
                 {"id": "judgment:judgment-b", "kind": "judgment", "title": "判断 B", "page_path": "wiki/judgments/b.md", "page_kind": "decision", "status": "approved", "source_ids": ["src-1"]},
             ],
@@ -1261,6 +1269,7 @@ class MiscFlowTests(AppFlowTestBase):
             "CAUSAL_CONSTRAINS": "因果约束",
             "CAUSAL_CONFLICTS_WITH": "因果冲突",
             "CAUSAL_BLOCKS": "因果阻塞",
+            "ELIXIR_DERIVED_FROM": "金丹承接",
         }
         self.assertEqual(RELATION_LABELS, expected)
         for label in RELATION_LABELS.values():
@@ -1376,8 +1385,8 @@ class MiscFlowTests(AppFlowTestBase):
             "digest": "demo",
             "nodes": [
                 {"id": "source:src-1", "kind": "source", "title": "材料 A", "source_page": "wiki/sources/src-1.md"},
-                {"id": "concept:alpha", "kind": "concept", "title": "Alpha", "source_pages": []},
-                {"id": "concept:beta", "kind": "concept", "title": "Beta", "source_pages": []},
+                {"id": "concept:alpha", "kind": "concept", "title": "Alpha", "page_path": "wiki/concepts/alpha.md", "chinese_related": True, "source_pages": []},
+                {"id": "concept:beta", "kind": "concept", "title": "Beta", "page_path": "wiki/concepts/beta.md", "chinese_related": True, "source_pages": []},
             ],
             "edges": [
                 # Two unknown JUDGMENT_* types share the chinese fallback "判断关系".
@@ -1390,24 +1399,15 @@ class MiscFlowTests(AppFlowTestBase):
         payload = render_machine_memory_graph_html(memory, graph)
 
         # Scope the assertion to the "关系说明" summary panel so the test does
-        # NOT pass merely because raw edge types leak through SVG
-        # `data-relation-type` attributes. Extract the panel body and check both
-        # raw edge types appear there as <code class="relation-machine-type">.
+        # NOT fail merely because raw edge types remain in machine-readable SVG
+        # `data-relation-type` attributes. The human panel should stay Chinese-only.
         marker = '<h2>关系说明</h2>'
         panel_start = payload.find(marker)
         self.assertGreater(panel_start, -1, "关系说明 panel missing")
         panel_end = payload.find('</section>', panel_start)
         panel_body = payload[panel_start:panel_end]
-        self.assertIn(
-            '<code class="relation-machine-type">JUDGMENT_NEW_FOO</code>',
-            panel_body,
-            "summary panel must key by edge_type, not chinese label",
-        )
-        self.assertIn(
-            '<code class="relation-machine-type">JUDGMENT_NEW_BAR</code>',
-            panel_body,
-            "summary panel must key by edge_type, not chinese label",
-        )
+        self.assertNotIn("JUDGMENT_NEW_FOO", panel_body)
+        self.assertNotIn("JUDGMENT_NEW_BAR", panel_body)
         # Both still render as 判断关系 in chinese, but via two list rows.
         self.assertGreaterEqual(panel_body.count("判断关系"), 2)
         # Each row counts a single edge, so the two unknown types must not be

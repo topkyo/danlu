@@ -53,6 +53,7 @@ from aiwiki.app_execution import append_execution_receipt_history
 from aiwiki.app_memory import (
     active_corpus_bridge_evidence_ids,
     build_archive_candidate_state,
+    build_machine_memory_graph,
     build_machine_memory_query,
 )
 from aiwiki.app_memory_surfaces import render_machine_memory_graph_html
@@ -1206,12 +1207,13 @@ class CompileFlowTests(AppFlowTestBase):
         self.assertIn("炼丹炉关系图谱", payload)
         self.assertNotIn("Machine Memory Graph", payload)
         self.assertIn("<svg", payload)
-        self.assertIn("Transformer Scaling", payload)
+        self.assertNotIn("Transformer Scaling", payload)
+        self.assertIn("当前没有可展示的中文相关 Markdown 图谱节点", payload)
         self.assertIn("../../wiki/indexes/graph-view.md", payload)
         self.assertIn("关系图谱说明", payload)
         self.assertIn("材料提到概念", payload)
         self.assertIn("关系说明", payload)
-        self.assertIn("data-relation-label", payload)
+        self.assertNotIn("data-relation-label", payload)
         self.assertNotIn("related edge", payload)
 
     def test_compile_writes_review_center_html(self) -> None:
@@ -1440,7 +1442,7 @@ class CompileFlowTests(AppFlowTestBase):
         compile_wiki(self.root)
         report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
         file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
-        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+        judgment = file_back(self.root, report["path"], title="缩放判断", kind="judgment")
         review_page(
             self.root,
             judgment["path"],
@@ -1800,7 +1802,9 @@ class CompileFlowTests(AppFlowTestBase):
         self.assertIn("graphUiData", payload)
         self.assertIn("节点详情", payload)
         self.assertIn("关系组", payload)
-        self.assertIn("核心概念", payload)
+        self.assertNotIn("核心概念", payload)
+        self.assertNotIn("核心来源", payload)
+        self.assertNotIn("<h2>修复候选</h2>", payload)
         self.assertIn("输入标题、关键词或来源编号", payload)
         self.assertIn('option value="judgment"', payload)
         self.assertIn('<option value="source">来源</option>', payload)
@@ -1808,6 +1812,7 @@ class CompileFlowTests(AppFlowTestBase):
         self.assertIn("材料支撑判断", payload)
         self.assertIn("概念相关", payload)
         self.assertIn("相关关系", payload)
+        self.assertIn("这里只展示中文相关", payload)
         self.assertNotIn("输入标题、slug、来源 id", payload)
         self.assertNotIn("Hub 概念", payload)
         self.assertNotIn("Graph View Dashboard", payload)
@@ -1835,11 +1840,129 @@ class CompileFlowTests(AppFlowTestBase):
         # The report path should be embedded in the JSON payload that drives detail rendering.
         self.assertIn(result["path"], payload)
 
+    def test_machine_memory_graph_keeps_only_existing_markdown_nodes_and_edges(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        memory = load_machine_memory(self.root)
+        source_id = memory["source_nodes"][0]["id"]
+        concept_slug = memory["concept_nodes"][0]["slug"]
+        memory["source_nodes"].append(
+            {
+                "id": "missing-source",
+                "title": "Missing Source",
+                "source_type": "note",
+                "source_page": "wiki/sources/missing-source.md",
+                "stored_path": "raw/missing-source.md",
+            }
+        )
+        memory["concept_nodes"].append(
+            {
+                "slug": "missing-concept",
+                "title": "Missing Concept",
+                "source_pages": [],
+            }
+        )
+        memory["edges"]["source_to_concept"].extend(
+            [
+                {"source_id": source_id, "concept_slug": "missing-concept"},
+                {"source_id": "missing-source", "concept_slug": concept_slug},
+            ]
+        )
+
+        graph = build_machine_memory_graph(memory, root=self.root)
+        node_ids = {node["id"] for node in graph["nodes"]}
+        self.assertNotIn("source:missing-source", node_ids)
+        self.assertNotIn("concept:missing-concept", node_ids)
+        for node in graph["nodes"]:
+            page_path = node.get("page_path") or node.get("source_page")
+            self.assertTrue(str(page_path).endswith(".md"))
+            self.assertTrue((self.root / str(page_path)).is_file(), page_path)
+            self.assertIn("chinese_related", node)
+        for edge in graph["edges"]:
+            self.assertIn(edge["source"], node_ids)
+            self.assertIn(edge["target"], node_ids)
+
+    def test_machine_memory_graph_displays_english_title_markdown_with_chinese_content(self) -> None:
+        source_page = self.root / "wiki" / "sources" / "english-title.md"
+        concept_page = self.root / "wiki" / "concepts" / "english-slug.md"
+        source_page.parent.mkdir(parents=True, exist_ok=True)
+        concept_page.parent.mkdir(parents=True, exist_ok=True)
+        source_page.write_text(
+            '---\ntitle: "English Title"\n---\n\n# English Title\n\n这份材料正文是中文，所以应该进入默认图谱。\n',
+            encoding="utf-8",
+        )
+        concept_page.write_text(
+            '---\ntitle: "English Concept"\n---\n\n# English Concept\n\n概念说明是中文，所以也应该展示。\n',
+            encoding="utf-8",
+        )
+        memory = {
+            "compiled_at": "2026-05-20T00:00:00+00:00",
+            "source_nodes": [
+                {
+                    "id": "src-1",
+                    "title": "English Title",
+                    "source_type": "note",
+                    "source_page": "wiki/sources/english-title.md",
+                    "stored_path": "raw/inbox/english-title.md",
+                    "concept_slugs": ["english-slug"],
+                }
+            ],
+            "concept_nodes": [
+                {"slug": "english-slug", "title": "English Concept", "source_pages": ["wiki/sources/english-title.md"]}
+            ],
+            "judgment_nodes": [],
+            "edges": {"source_to_concept": [{"source_id": "src-1", "concept_slug": "english-slug"}]},
+            "health": {"components": [{"id": "component-1", "source_ids": ["src-1"], "concept_slugs": ["english-slug"], "judgment_ids": []}]},
+        }
+
+        graph = build_machine_memory_graph(memory, root=self.root)
+        node_by_id = {node["id"]: node for node in graph["nodes"]}
+        self.assertTrue(node_by_id["source:src-1"]["chinese_related"])
+        self.assertTrue(node_by_id["concept:english-slug"]["chinese_related"])
+        html = render_machine_memory_graph_html(memory, graph=graph)
+        self.assertIn("English Title", html)
+        self.assertIn("English Concept", html)
+        self.assertIn('data-relation-label="材料提到概念"', html)
+
+    def test_machine_memory_graph_includes_settled_elixir_markdown_nodes(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        elixir_dir = self.root / "wiki" / "elixirs"
+        elixir_dir.mkdir(parents=True, exist_ok=True)
+        (elixir_dir / "elixir-a.md").write_text(
+            '---\nid: "elixir-a"\nkind: "elixir"\nelixir_state: "settled"\ntopic: "第一颗中文金丹"\nprotocol: "research"\n---\n\n# Elixir\n',
+            encoding="utf-8",
+        )
+        (elixir_dir / "elixir-b.md").write_text(
+            '---\nid: "elixir-b"\nkind: "elixir"\nelixir_state: "settled"\ntopic: "第二颗中文金丹"\nderived_from:\n  - wiki/elixirs/elixir-a.md\n---\n\n# Elixir\n',
+            encoding="utf-8",
+        )
+
+        memory = load_machine_memory(self.root)
+        graph = build_machine_memory_graph(memory, root=self.root)
+        node_by_id = {node["id"]: node for node in graph["nodes"]}
+        self.assertEqual(node_by_id["elixir:elixir-a"]["title"], "金丹：第一颗中文金丹")
+        self.assertEqual(node_by_id["elixir:elixir-b"]["page_path"], "wiki/elixirs/elixir-b.md")
+        self.assertTrue(
+            any(
+                edge == {"source": "elixir:elixir-a", "target": "elixir:elixir-b", "type": "ELIXIR_DERIVED_FROM"}
+                for edge in graph["edges"]
+            )
+        )
+
+        html = render_machine_memory_graph_html(memory, graph=graph)
+        self.assertIn("金丹：第一颗中文金丹", html)
+        self.assertIn("金丹承接", html)
+        self.assertIn("金丹关联", html)
+        self.assertIn('option value="elixir"', html)
+        self.assertNotIn("># Elixir<", html)
+
     def test_compile_attaches_judgment_assets_to_machine_memory_graph(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
         report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
-        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+        judgment = file_back(self.root, report["path"], title="缩放判断", kind="judgment")
 
         review_page(
             self.root,
@@ -1862,7 +1985,7 @@ class CompileFlowTests(AppFlowTestBase):
         )
 
         payload = (self.root / "output" / "graph" / "machine-memory.html").read_text(encoding="utf-8")
-        self.assertIn("Scaling Judgment", payload)
+        self.assertIn("缩放判断", payload)
         self.assertIn("判断 \u00b7 已确认", payload)
         self.assertIn("协议", payload)
         self.assertIn("材料支撑判断", payload)
@@ -1871,9 +1994,9 @@ class CompileFlowTests(AppFlowTestBase):
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
         report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
-        primary_judgment = file_back(self.root, report["path"], title="Primary Judgment", kind="judgment")
-        linked_judgment = file_back(self.root, report["path"], title="Linked Judgment", kind="judgment")
-        decision = file_back(self.root, report["path"], title="Primary Decision", kind="decision")
+        primary_judgment = file_back(self.root, report["path"], title="主要判断", kind="judgment")
+        linked_judgment = file_back(self.root, report["path"], title="关联判断", kind="judgment")
+        decision = file_back(self.root, report["path"], title="主要决策", kind="decision")
 
         for page_path, updates in (
             (primary_judgment["path"], {"related_judgments": [linked_judgment["path"]]}),
@@ -1909,14 +2032,14 @@ class CompileFlowTests(AppFlowTestBase):
         topology = (self.root / "wiki" / "indexes" / "machine-memory-topology.md").read_text(encoding="utf-8")
         cognitive_history = (self.root / "wiki" / "indexes" / "cognitive-history.md").read_text(encoding="utf-8")
         self.assertIn("## Judgment 关联图谱", judgment_assets)
-        self.assertIn("Primary Decision", judgment_assets)
+        self.assertIn("主要决策", judgment_assets)
         self.assertIn("supports ->", judgment_assets)
         graph_html = (self.root / "output" / "graph" / "machine-memory.html").read_text(encoding="utf-8")
         self.assertIn("判断冲突", graph_html)
         self.assertIn("决策依据", graph_html)
         self.assertIn("## Judgment Hub", topology)
         self.assertIn("## Judgment 关系事件", cognitive_history)
-        self.assertIn("Primary Judgment", cognitive_history)
+        self.assertIn("主要判断", cognitive_history)
 
     def test_compile_generates_autogenerated_figures_and_slides(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

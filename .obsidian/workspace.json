@@ -1,129 +1,108 @@
 {
-  "active": "main-furnace-center",
-  "lastOpenFiles": [
-    "wiki/indexes/furnace-center.md",
-    "HOME.md",
-    "README.md",
-    "wiki/indexes/Outputs.md",
-    "wiki/indexes/judgment-assets.md",
-    "wiki/indexes/review-center.md",
-    "wiki/indexes/execution-center.md",
-    "output/control/shell-summary.json"
-  ],
-  "left": {
-    "collapsed": true,
+  "main": {
+    "id": "main-root",
+    "type": "split",
     "children": [
       {
+        "id": "18200bc916c4b8b1",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "7eaec485aabcfcd9",
+            "type": "leaf",
+            "state": {
+              "type": "furnace-product-shell-furnace-center",
+              "state": {},
+              "icon": "flask-conical",
+              "title": "炼丹炉"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "left-root",
+    "type": "split",
+    "children": [
+      {
+        "id": "left-tabs",
+        "type": "tabs",
         "children": [
           {
             "id": "left-files",
+            "type": "leaf",
             "state": {
-              "icon": "lucide-folder-closed",
+              "type": "file-explorer",
               "state": {
-                "autoReveal": false,
-                "sortOrder": "alphabetical"
+                "sortOrder": "alphabetical",
+                "autoReveal": false
               },
-              "title": "文件列表",
-              "type": "file-explorer"
-            },
-            "type": "leaf"
+              "icon": "lucide-folder-closed",
+              "title": "文件列表"
+            }
           },
           {
             "id": "left-bookmarks",
+            "type": "leaf",
             "state": {
-              "icon": "lucide-bookmark",
+              "type": "bookmarks",
               "state": {},
-              "title": "书签",
-              "type": "bookmarks"
-            },
-            "type": "leaf"
+              "icon": "lucide-bookmark",
+              "title": "书签"
+            }
+          },
+          {
+            "id": "3cc751917b7635c6",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "搜索"
+            }
           }
-        ],
-        "id": "left-tabs",
-        "type": "tabs"
+        ]
       }
     ],
     "direction": "horizontal",
-    "id": "left-root",
-    "type": "split",
     "width": 260
   },
-  "left-ribbon": {
-    "hiddenItems": {
-      "bases:新建数据库": false,
-      "canvas:新建白板": false,
-      "command-palette:打开命令面板": false,
-      "furnace-product-shell:Open Furnace Center": false,
-      "furnace-product-shell:打开炉心面板": false,
-      "furnace-product-shell:Refresh Furnace Shell": false,
-      "furnace-product-shell:刷新炼丹炉 Shell": false,
-      "graph:查看关系图谱": false,
-      "switcher:打开快速切换": false,
-      "workspaces:管理工作区布局": false
-    }
-  },
-  "main": {
-    "children": [
-      {
-        "children": [
-          {
-            "id": "main-furnace-center",
-            "state": {
-              "icon": "flask-conical",
-              "state": {},
-              "title": "炼丹炉",
-              "type": "furnace-product-shell-furnace-center"
-            },
-            "type": "leaf"
-          },
-          {
-            "id": "home-leaf",
-            "state": {
-              "icon": "lucide-file",
-              "state": {
-                "file": "HOME.md",
-                "mode": "preview",
-                "source": false
-              },
-              "title": "HOME",
-              "type": "markdown"
-            },
-            "type": "leaf"
-          }
-        ],
-        "currentTab": 0,
-        "id": "main-tabs",
-        "type": "tabs"
-      }
-    ],
-    "direction": "vertical",
-    "id": "main-root",
-    "type": "split"
-  },
   "right": {
-    "collapsed": true,
+    "id": "right-root",
+    "type": "split",
     "children": [
       {
+        "id": "right-tabs",
+        "type": "tabs",
         "children": [
           {
             "id": "right-outline",
+            "type": "leaf",
             "state": {
-              "icon": "lucide-list",
+              "type": "outline",
               "state": {
-                "file": "HOME.md",
                 "followCursor": false,
-                "searchQuery": "",
-                "showSearch": false
+                "showSearch": false,
+                "searchQuery": ""
               },
-              "title": "HOME 的大纲",
-              "type": "outline"
-            },
-            "type": "leaf"
+              "icon": "lucide-list",
+              "title": "大纲"
+            }
           },
           {
             "id": "right-backlinks",
+            "type": "leaf",
             "state": {
-              "icon": "links-coming-in",
+              "type": "backlink",
               "state": {
                 "backlinkCollapsed": false,
                 "collapseAll": false,
@@ -133,20 +112,65 @@
                 "sortOrder": "alphabetical",
                 "unlinkedCollapsed": true
               },
-              "title": "反向链接",
-              "type": "backlink"
-            },
-            "type": "leaf"
+              "icon": "links-coming-in",
+              "title": "反向链接"
+            }
+          },
+          {
+            "id": "7bfcd31aa774a86b",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "出链"
+            }
+          },
+          {
+            "id": "fdb7cd6774054ad2",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "添加笔记属性"
+            }
           }
-        ],
-        "currentTab": 0,
-        "id": "right-tabs",
-        "type": "tabs"
+        ]
       }
     ],
     "direction": "horizontal",
-    "id": "right-root",
-    "type": "split",
-    "width": 280
-  }
+    "width": 280,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "bases:新建数据库": false,
+      "canvas:新建白板": false,
+      "command-palette:打开命令面板": false,
+      "switcher:打开快速切换": false,
+      "workspaces:管理工作区布局": false,
+      "furnace-product-shell:打开炼丹炉": false,
+      "graph:查看关系图谱": false
+    }
+  },
+  "active": "7eaec485aabcfcd9",
+  "lastOpenFiles": [
+    "output/reports/question-note.md",
+    "HOME.md",
+    "wiki/indexes/furnace-center.md",
+    "README.md",
+    "wiki/indexes/Outputs.md",
+    "wiki/indexes/judgment-assets.md",
+    "wiki/indexes/review-center.md",
+    "wiki/indexes/execution-center.md",
+    "output/control/shell-summary.json"
+  ]
 }

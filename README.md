@@ -226,9 +226,15 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare A and B" --format rep
 - `run-nightly`
 - `systemd --user` watcher + nightly timer
 
-常驻 `watch` 的默认职责是稳定入炉：发现 `raw/inbox` 变化后跑 deterministic compile / lint，保留 provenance、source page、concept graph 和 review queue 的最低可用状态。它默认不 inline 阻塞跑 LLM；如果确实要让 watcher 同步执行 LLM compile，可以显式设置 `AIWIKI_WATCH_DETERMINISTIC_ONLY=0`。
+默认本机服务只安装两条产品主线：`aiwiki-watch.service` 常驻等待投料，`aiwiki-nightly.timer` 每晚炼化。`dogfood maturity` timer 是成熟度验证 harness，不是默认产品服务；需要验证时显式 `AIWIKI_INSTALL_DOGFOOD_MATURITY=1 scripts/install_user_service.sh`，验证结束后用 `scripts/uninstall_user_service.sh --dogfood-maturity-only` 移除 unit，保留 vault 数据和 receipt。
 
-LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`run-compile`、`run-ask`、`run-nightly` 和 nightly timer。这样常驻 watcher 不会长时间占用 single-writer lock，LLM 失败也不会阻断原料进入炉子。
+常驻 `watch` 的默认职责是稳定入炉：发现 `raw/inbox` 变化后跑 deterministic compile / lint，保留 provenance、source page、concept graph 和 review queue 的最低可用状态。它默认不 inline 阻塞跑 LLM；如果确实要让 watcher 同步执行 LLM compile，可以显式设置 `AIWIKI_WATCH_DETERMINISTIC_ONLY=0`，但这会增加 single-writer lock 占用，不作为默认推荐。
+
+LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`run-compile`、`run-ask`、`run-nightly` 和 nightly timer。Product Shell 对话框属于用户显式触发的 `run-ask` / 本地统计入口，可以跑 LLM 或确定性本地回答；它不是常驻 watcher。这样 watcher 不会长时间占用 single-writer lock，LLM 失败也不会阻断原料进入炉子。
+
+默认 unattended 路径按“**等待投料 → 炼丹 → 产出 → 回馈 → 受控学习**”运行：watcher 负责等待投料和最低可用 compile；nightly 负责每天炼化、巡检、修复、回馈和学习；产物写到 `wiki/`、`output/`、receipt / audit；所有会改写系统行为的学习都必须保留 receipt、可审计、可回滚，不允许覆盖 `raw/` 或隐式切 backend。
+
+关系图谱默认是文件形态 Agent OS 的资产图：只展示能解析到现有 Markdown 的节点，核心形态是 `source / concept / judgment / elixir(金丹)`；`wiki/elixirs/*.md` 中已沉淀金丹会作为一等节点进入图谱，金丹之间的 `derived_from` 显示为“金丹承接”。节点标题优先使用 Markdown frontmatter / H1 的中文标题，避免把 slug/hash/英文占位标题当成人读节点。
 
 治理债的目标是自动消化，符合炼丹炉"人只看异常"的设计哲学。分层按**影响范围 × 可逆性**定义：
 
@@ -237,7 +243,7 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 - **判断层**：counter-evidence / judgment review — LLM 驱动的语义复核，自动分析反证、写出审阅结论。`AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1`。
 - **策略层**：L3 proposal / prompt 变更 / schema 变更 — 改变系统后续运行方式，自动采纳并写 receipt 保留回滚能力。`AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1`。
 
-当所有五级 auto-adopt 开启时，炼丹炉可以每晚自动维护、审阅、甚至改写自身策略；但“人只需事后审计 receipt 和异常”是运行成熟度目标，不是默认事实。当前应以 `scripts/dogfood_maturity_gate.py summarize --days 3` 的 `operational_maturity.human_only_exceptions` 和连续 receipt 为准；未达到前只能说自动化可运行，不能宣称全自动成熟。
+新安装的 nightly env 默认采用本机 full furnace profile：五层 `AIWIKI_NIGHTLY_AUTO_*` 全开，watcher 仍 deterministic-only，`AIWIKI_NIGHTLY_FALLBACK_ENABLED` 仍默认关闭。需要缩窄自动化时，把对应 nightly env flag 改回 `0`；需要跨 backend unattended fallback 时必须显式开启并配置 repo 外凭据文件。是否已经达到“人只需事后审计 receipt 和异常”的成熟运行状态，仍以 `scripts/dogfood_maturity_gate.py summarize --days 3` 的 `operational_maturity.human_only_exceptions` 和连续 receipt 为准。
 
 ## LLM 后端
 

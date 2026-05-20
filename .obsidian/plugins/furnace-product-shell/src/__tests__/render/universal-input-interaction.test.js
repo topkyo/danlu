@@ -78,6 +78,8 @@ function loadRenderContext() {
     navigator,
     HTMLElement,
     Node,
+    Event: window.Event,
+    KeyboardEvent: window.KeyboardEvent,
     Date,
     Math,
     Intl,
@@ -169,9 +171,31 @@ function makePlugin(overrides = {}) {
     getLastSummaryRefreshLabel: () => "刚刚",
     refreshShellSummaryCommand: jest.fn().mockResolvedValue(undefined),
     pushPendingSubmission: jest.fn(() => "pending-1"),
-    markPendingSubmissionReceived: jest.fn(),
+    markPendingSubmissionReceived: jest.fn((id) => {
+      const entry = (overrides.pendingSubmissions || []).find((item) => item && item.id === id);
+      if (entry && entry.status === "running") entry.status = "received";
+    }),
     markPendingSubmissionFailed: jest.fn(),
-    updatePendingSubmissionRetryArgs: jest.fn(),
+    updatePendingSubmissionRetryArgs: jest.fn((id, retryArgs) => {
+      const entry = (overrides.pendingSubmissions || []).find((item) => item && item.id === id);
+      if (entry) {
+        entry.retryArgs = retryArgs;
+        entry.jobId = retryArgs.jobId || "";
+        entry.runId = retryArgs.runId || "";
+        entry.runNotesPath = retryArgs.runNotesPath || "";
+      }
+    }),
+    resetPendingSubmissionForRetry: jest.fn((id) => {
+      const entry = (overrides.pendingSubmissions || []).find((item) => item && item.id === id);
+      if (entry) {
+        entry.status = "running";
+        entry.reconcileTarget = "";
+        entry.reconcilePath = "";
+        entry.jobId = "";
+        entry.runId = "";
+        entry.runNotesPath = "";
+      }
+    }),
     completePendingMaterialDrop: jest.fn(),
     runDroppedFilesWithAutoAsk: jest.fn().mockResolvedValue({ materialPaths: ["raw/inbox/input.md"], askQuestion: "Q" }),
     runDroppedPayloadsWithAutoAsk: jest.fn().mockResolvedValue({ materialPaths: ["raw/inbox/input.md"], askQuestion: "Q" }),
@@ -196,6 +220,18 @@ function makePlugin(overrides = {}) {
     quoteFileToComposer: jest.fn(),
     currentLlmHealth: jest.fn(() => ({ backend: "", model: "" })),
     currentShellSyncState: jest.fn(() => ({ status: "healthy" })),
+    renderStatusPanel(container) {
+      const status = (this.shellSummary && this.shellSummary.llm_status) || {};
+      const fallbacks = Array.isArray(status.backend_fallbacks) ? status.backend_fallbacks : [];
+      const available = fallbacks.filter((item) => item && item.available).length;
+      if (fallbacks.length) {
+        container.createDiv({ text: `Backup LLM route ready: ${available}/${fallbacks.length}` });
+        fallbacks.forEach((item) => {
+          container.createDiv({ text: `${item.backend}/${item.model}: ${item.available ? "available" : "unavailable"}` });
+        });
+      }
+      return container;
+    },
     ...overrides,
   };
 }
@@ -422,6 +458,69 @@ test("plain question goes through run-ask instead of deterministic universal dro
     runNotesPath: "output/control/runs/ask/thinking.md",
     runId: "ask-note",
   }));
+});
+
+test("ctrl enter submits the composer through the form path", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    runAskCommand: jest.fn().mockResolvedValue({ run_notes_path: "output/control/runs/ask/thinking.md", run_id: "ask-note" }),
+  });
+  const container = document.createElement("div");
+
+  context.renderUniversalInput(plugin, container);
+
+  const textarea = container.querySelector(".furnace-universal-input-textarea");
+  textarea.value = "请用 note 回答这个问题";
+  const event = new KeyboardEvent("keydown", {
+    key: "Enter",
+    code: "Enter",
+    ctrlKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+
+  textarea.dispatchEvent(event);
+  await flushAsyncWork();
+
+  expect(event.defaultPrevented).toBe(true);
+  expect(plugin.runAskCommand).toHaveBeenCalledTimes(1);
+  expect(plugin.runAskCommand).toHaveBeenCalledWith({
+    question: "请用 note 回答这个问题",
+    format: "note",
+    mode: "run-ask",
+  });
+  expect(plugin.markPendingSubmissionReceived).toHaveBeenCalledWith("pending-1");
+  expect(textarea.value).toBe("");
+});
+
+test("ctrl enter keyup fallback submits once when requestSubmit is unavailable", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    runAskCommand: jest.fn().mockResolvedValue({ run_notes_path: "output/control/runs/ask/thinking.md", run_id: "ask-note" }),
+  });
+  const container = document.createElement("div");
+
+  context.renderUniversalInput(plugin, container);
+
+  const form = container.querySelector(".furnace-universal-input-form");
+  const textarea = container.querySelector(".furnace-universal-input-textarea");
+  form.requestSubmit = undefined;
+  textarea.value = "请确认 keyup fallback 可提交";
+  const event = new KeyboardEvent("keyup", {
+    key: "NumpadEnter",
+    code: "NumpadEnter",
+    metaKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+
+  textarea.dispatchEvent(event);
+  await flushAsyncWork();
+
+  expect(event.defaultPrevented).toBe(true);
+  expect(plugin.runAskCommand).toHaveBeenCalledTimes(1);
+  expect(plugin.markPendingSubmissionReceived).toHaveBeenCalledWith("pending-1");
+  expect(textarea.value).toBe("");
 });
 
 test("plain question ignores persisted report default and stays note", async () => {
@@ -795,10 +894,10 @@ test("runAskCommand uses background submit for report mode", async () => {
 
   expect(plugin.runPluginCommand).toHaveBeenCalledWith(
     expect.stringContaining("Long Report"),
-    ["run-ask-submit", "请生成一份深度报告", "--format", "report", "--protocol", "research", "--lean", "--fallback-to-ask"],
+    ["run-ask-submit", "请生成一份深度报告", "--format", "report", "--protocol", "research", "--lean"],
     expect.objectContaining({ refreshAfter: true, longRunning: true, backgroundSubmit: true })
   );
-  expect(payload).toEqual({ kind: "run-ask-background-job", job_id: "job-1" });
+  expect(payload).toEqual({ payload: { kind: "run-ask-background-job", job_id: "job-1" } });
 });
 
 test("shell summary fixture builds today DOM headings and furnace center keeps only primary entry surfaces", () => {

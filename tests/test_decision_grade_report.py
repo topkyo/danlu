@@ -169,6 +169,8 @@ format: report
             # Skeleton MUST contain at least one `_LLM:` hint line (otherwise
             # there is no placeholder for LLM to fill).
             self.assertIn("_LLM:", output)
+            self.assertIn("cssclasses:", output)
+            self.assertIn('  - "aiwiki-output"', output)
 
     def test_render_report_uses_human_auto_ask_title(self) -> None:
         with TemporaryDirectory() as tmp:

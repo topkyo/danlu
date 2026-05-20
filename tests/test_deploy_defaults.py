@@ -19,7 +19,7 @@ from aiwiki.drop import _clone_repo, drop_repo
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_install_user_service_auto_adopt_defaults_off() -> None:
+def test_install_user_service_auto_adopt_defaults_on() -> None:
     completed = subprocess.run(
         ["bash", "-n", "scripts/install_user_service.sh"],
         cwd=PROJECT_ROOT,
@@ -37,7 +37,7 @@ def test_install_user_service_auto_adopt_defaults_off() -> None:
         "AUTO_ADOPT_JUDGMENTS": "AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS",
     }
     for short_name, env_name in defaults.items():
-        assert re.search(rf"{env_name}.*\$\{{{short_name}:-0\}}", content), env_name
+        assert re.search(rf"{env_name}.*\$\{{{short_name}:-1\}}", content), env_name
 
 
 def test_run_watch_requires_vault() -> None:
@@ -314,7 +314,7 @@ def load_tests(
     del loader, tests, pattern
     suite = unittest.TestSuite()
     for test_fn in [
-        test_install_user_service_auto_adopt_defaults_off,
+        test_install_user_service_auto_adopt_defaults_on,
         test_run_watch_requires_vault,
         test_run_nightly_requires_vault,
         test_run_nightly_fallback_default_off,

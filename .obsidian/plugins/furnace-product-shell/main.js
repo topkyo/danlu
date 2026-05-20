@@ -3869,18 +3869,19 @@ function renderUniversalInput(plugin, container) {
   dropOverlay.createDiv({ text: plugin.t("Drop file here") });
   dropOverlay.style.display = "none";
 
-  const form = wrapper.createDiv({ cls: "furnace-universal-input-form furnace-conversation-composer-form" });
+  const form = wrapper.createEl("form", { cls: "furnace-universal-input-form furnace-conversation-composer-form" });
   const textarea = form.createEl("textarea", { 
     cls: "furnace-universal-input-textarea",
     attr: { "aria-label": plugin.t("Universal input") }
   });
   
   textarea.placeholder = plugin.t("投 URL / PDF / 图片 / repo，或直接问一个问题；炼丹炉会生成报告");
-  textarea.rows = 3;
+  textarea.rows = 1;
 
   const submitButton = form.createEl("button", { 
     cls: "furnace-universal-input-button", 
-    text: plugin.t("Submit") 
+    text: plugin.t("Submit"),
+    attr: { type: "submit" }
   });
 
   const hint = wrapper.createDiv({ cls: "furnace-universal-input-hint" });
@@ -3889,6 +3890,8 @@ function renderUniversalInput(plugin, container) {
   const attachmentsContainer = wrapper.createDiv({ cls: "furnace-input-attachments-container" });
   
   let attachedFiles = [];
+  let submitting = false;
+  let lastChordSubmitAt = 0;
 
   const updateAttachmentPills = () => {
     attachmentsContainer.empty();
@@ -3918,13 +3921,37 @@ function renderUniversalInput(plugin, container) {
 
   const autoResize = () => {
     textarea.style.height = 'auto';
-    textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+    textarea.style.height = Math.min(textarea.scrollHeight, 300) + 'px';
   };
   textarea.addEventListener('input', autoResize);
 
-  const handleSubmit = async () => {
+  const isSubmitChord = (event) => {
+    const isEnter = event.key === "Enter" || event.key === "NumpadEnter" || event.code === "Enter" || event.code === "NumpadEnter" || event.keyCode === 13;
+    return isEnter && (event.ctrlKey || event.metaKey);
+  };
+
+  const submitFromChord = (event) => {
+    if (!isSubmitChord(event)) return false;
+    if (typeof event.preventDefault === "function") event.preventDefault();
+    if (typeof event.stopPropagation === "function") event.stopPropagation();
+    const now = Date.now();
+    if (now - lastChordSubmitAt < 800) return true;
+    lastChordSubmitAt = now;
+    if (submitting) return true;
+    if (typeof form.requestSubmit === "function") {
+      form.requestSubmit();
+      return true;
+    }
+    handleSubmit(event);
+    return true;
+  };
+
+  const handleSubmit = async (event) => {
+    if (event && typeof event.preventDefault === "function") event.preventDefault();
+    if (submitting) return;
     const value = textarea.value;
     if (!value.trim() && attachedFiles.length === 0) return;
+    submitting = true;
 
     const filesToProcess = [...attachedFiles];
     const normalizedQuestion = String(value || "").trim();
@@ -4068,6 +4095,7 @@ function renderUniversalInput(plugin, container) {
     } finally {
       submitButton.disabled = false;
       textarea.disabled = false;
+      submitting = false;
       submitButton.setText(originalLabel || plugin.t("Submit"));
   hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 结果会出现在“今天”"));
       if (succeeded) {
@@ -4080,15 +4108,23 @@ function renderUniversalInput(plugin, container) {
     }
   };
 
-  submitButton.addEventListener("click", () => {
-    handleSubmit();
+  form.addEventListener("submit", handleSubmit);
+  form.addEventListener("keydown", submitFromChord, true);
+  form.addEventListener("keyup", submitFromChord, true);
+  submitButton.addEventListener("click", (event) => {
+    if (typeof event.preventDefault === "function") event.preventDefault();
+    if (typeof form.requestSubmit === "function") {
+      form.requestSubmit();
+      return;
+    }
+    handleSubmit(event);
   });
 
   textarea.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      handleSubmit();
-    }
+    submitFromChord(e);
+  });
+  textarea.addEventListener("keyup", (e) => {
+    submitFromChord(e);
   });
 
   textarea.addEventListener("paste", (e) => {
@@ -8594,7 +8630,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         args.push("--direct");
       }
       args.push("--lean");
-      args.push("--fallback-to-ask");
     }
     return await this.runPluginCommand(`${longRunning ? this.t("Long Report") : this.t("Ask")}: ${truncateText(question, 48)}`, args, {
       refreshAfter: true,

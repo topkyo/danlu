@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,6 +37,7 @@ from aiwiki.app_utils import (
     render_frontmatter,
     runtime_write_operation,
     strip_frontmatter,
+    tokenize,
     utc_now,
 )
 from aiwiki.execution.ask import _output_artifact_seed
@@ -90,8 +92,7 @@ from aiwiki.runner.receipts import (
     record_llm_attempt,
 )
 
-RUN_ASK_FRONTDOOR_EVENT = "run-ask-frontdoor"
-RUN_ASK_FALLBACK_ERROR_KINDS = {"quota", "timeout", "auth", "unavailable"}
+OUTPUT_OBSIDIAN_CSSCLASS = "aiwiki-output"
 
 
 def _frontmatter_string_list(frontmatter: dict[str, Any], key: str) -> list[str]:
@@ -126,6 +127,38 @@ def _drop_frontmatter_keys(header_lines: list[str], keys: set[str]) -> list[str]
             continue
         filtered.append(line)
     return filtered
+
+
+def _ensure_output_cssclass(target: Path) -> None:
+    """Ensure generated output hides Obsidian properties without dropping audit metadata."""
+
+    if not target.exists():
+        raise FileNotFoundError(f"output artifact not found: {target}")
+    original = target.read_text(encoding="utf-8", errors="replace")
+    lines = original.splitlines()
+    has_frontmatter = bool(lines) and lines[0].strip() == "---"
+    close_idx: int | None = None
+    if has_frontmatter:
+        for idx in range(1, len(lines)):
+            if lines[idx].strip() == "---":
+                close_idx = idx
+                break
+    if not has_frontmatter or close_idx is None:
+        updated = render_frontmatter({"cssclasses": [OUTPUT_OBSIDIAN_CSSCLASS]}).splitlines() + lines
+        target.write_text("\n".join(updated).rstrip() + "\n", encoding="utf-8")
+        return
+    current = parse_frontmatter(original)
+    raw_classes = current.get("cssclasses", [])
+    classes = [str(item).strip() for item in raw_classes if str(item).strip()] if isinstance(raw_classes, list) else []
+    if isinstance(raw_classes, str) and raw_classes.strip():
+        classes = [raw_classes.strip()]
+    if OUTPUT_OBSIDIAN_CSSCLASS in classes:
+        return
+    classes.append(OUTPUT_OBSIDIAN_CSSCLASS)
+    header = _drop_frontmatter_keys(lines[1:close_idx], {"cssclasses"})
+    css_lines = _runtime_provenance_field_lines({"cssclasses": classes})
+    updated_lines = [lines[0], *header, *css_lines, lines[close_idx], *lines[close_idx + 1 :]]
+    target.write_text("\n".join(updated_lines).rstrip() + "\n", encoding="utf-8")
 
 
 def _restore_run_ask_provenance_frontmatter(target: Path, deterministic_artifact: str) -> None:
@@ -219,7 +252,6 @@ def _complete_run_ask_artifact(
     lean: bool = False,
     timeout_seconds: int | None = None,
     no_cache: bool = False,
-    fallback_to_ask: bool = False,
     backend_compat: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     backend_compat = dict(backend_compat or {})
@@ -357,93 +389,36 @@ def _complete_run_ask_artifact(
             raw_response_path=_raw_response_path(root, result, exc),
             error_class=_receipt_error_class(exc),
         )
-        if fallback_to_ask:
-            frontdoor_base_event = {
-                "event": RUN_ASK_FRONTDOOR_EVENT,
-                "target": artifact["path"],
-                "question": question,
-                "format": output_format,
-                "protocol": artifact.get("protocol", ""),
-                "duration_ms": duration_ms,
-                "prompt_profile": retry_profile or used_prompt_profile,
-                "retry_prompt_profile": retry_profile,
-                "timeout_seconds": effective_timeout_seconds,
-                "no_cache": no_cache,
-                "primary_attempt_status": "failed",
-                "primary_error": str(exc),
-            }
-            if classify_backend_error(str(exc)) in RUN_ASK_FALLBACK_ERROR_KINDS:
-                _stamped_record(
-                    {
-                        **frontdoor_base_event,
-                        "delivery_mode": "deterministic-fallback",
-                        "fallback_used": True,
-                        "fallback_from": "run-ask",
-                        "fallback_command": "ask",
-                    },
-                    {**failed_audit, "delivery_mode": "deterministic-fallback", "fallback_used": True, "fallback_from": "run-ask", "fallback_command": "ask"},
-                    status="degraded",
-                    error=str(exc),
-                    response_id=getattr(result, "response_id", "") if result is not None else "",
-                    usage=getattr(result, "usage", {}) if result is not None else {},
-                    raw_response_path=_raw_response_path(root, result, exc),
-                    error_class=_receipt_error_class(exc),
-                )
-                _mark_run_ask_artifact_degraded(
-                    target,
-                    reason=str(exc),
-                    backend=str(failed_audit.get("backend_effective") or ""),
-                    model=str(failed_audit.get("model_final") or ""),
-                )
-                _apply_graph_anchors_to_target()
-                run_notes = write_run_notes(
-                    root,
-                    run_id=str(artifact.get("run_id") or ""),
-                    status="deterministic-fallback",
-                    question=question,
-                    output_format=output_format,
-                    protocol=str(artifact.get("protocol") or ""),
-                    output_path=str(artifact.get("path") or ""),
-                    source_count=len(source_ids),
-                    concept_count=len(artifact.get("ranked_concepts", [])),
-                    receipt_path=".aiwiki/logs/llm-receipts.jsonl",
-                    backend=str(failed_audit.get("backend_effective") or ""),
-                    model=str(failed_audit.get("model_final") or ""),
-                    fallback_stage=str(failed_audit.get("fallback_stage") or ""),
-                    failure_class=_receipt_error_class(exc),
-                    stages=[
-                        "Prepared deterministic context for the request.",
-                        "The primary LLM run did not complete; deterministic fallback output remained available.",
-                        "Recorded fallback receipt and recovery metadata.",
-                    ],
-                )
-                write_run_notes_frontmatter(target, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
-                return {
-                    **artifact,
-                    **run_notes,
-                    **failed_audit,
-                    "status": "degraded",
-                    "prompt_profile": retry_profile or used_prompt_profile,
-                    "retry_prompt_profile": retry_profile,
-                    "timeout_seconds": effective_timeout_seconds,
-                    "no_cache": no_cache,
-                    "delivery_mode": "deterministic-fallback",
-                    "primary_attempt_status": "failed",
-                    "primary_error": str(exc),
-                    "fallback_used": True,
-                    "fallback_from": "run-ask",
-                    "fallback_command": "ask",
-                }
-            _stamped_record(
-                frontdoor_base_event,
-                failed_audit,
-                status="failed",
-                error=str(exc),
-                response_id=getattr(result, "response_id", "") if result is not None else "",
-                usage=getattr(result, "usage", {}) if result is not None else {},
-                raw_response_path=_raw_response_path(root, result, exc),
-                error_class=_receipt_error_class(exc),
-            )
+        _mark_run_ask_artifact_degraded(
+            target,
+            reason=str(exc),
+            backend=str(failed_audit.get("backend_effective") or ""),
+            model=str(failed_audit.get("model_final") or ""),
+        )
+        _apply_graph_anchors_to_target()
+        run_notes = write_run_notes(
+            root,
+            run_id=str(artifact.get("run_id") or ""),
+            status="llm-failed",
+            question=question,
+            output_format=output_format,
+            protocol=str(artifact.get("protocol") or ""),
+            output_path=str(artifact.get("path") or ""),
+            source_count=len(source_ids),
+            concept_count=len(artifact.get("ranked_concepts", [])),
+            receipt_path=".aiwiki/logs/llm-receipts.jsonl",
+            backend=str(failed_audit.get("backend_effective") or ""),
+            model=str(failed_audit.get("model_final") or ""),
+            fallback_stage=str(failed_audit.get("fallback_stage") or ""),
+            failure_class=_receipt_error_class(exc),
+            stages=[
+                "Prepared deterministic context for the request.",
+                "The LLM run failed or timed out.",
+                "Recorded failure metadata without writing a fallback answer.",
+            ],
+        )
+        write_run_notes_frontmatter(target, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
+        _ensure_output_cssclass(target)
         raise
 
     assert result is not None
@@ -530,6 +505,7 @@ def _complete_run_ask_artifact(
         ],
     )
     write_run_notes_frontmatter(target, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
+    _ensure_output_cssclass(target)
     payload = {
         **artifact,
         **run_notes,
@@ -539,42 +515,6 @@ def _complete_run_ask_artifact(
         "timeout_seconds": effective_timeout_seconds,
         "no_cache": no_cache,
     }
-    if fallback_to_ask:
-        _stamped_record(
-            {
-                "event": RUN_ASK_FRONTDOOR_EVENT,
-                "target": artifact["path"],
-                "question": question,
-                "format": output_format,
-                "protocol": artifact.get("protocol", ""),
-                "duration_ms": int((time.monotonic() - started) * 1000),
-                "prompt_profile": retry_profile or used_prompt_profile,
-                "retry_prompt_profile": retry_profile,
-                "timeout_seconds": effective_timeout_seconds,
-                "no_cache": no_cache,
-                "delivery_mode": "llm",
-                "primary_attempt_status": "success",
-                "primary_error": "",
-                "fallback_used": False,
-                "fallback_from": "",
-                "fallback_command": "",
-            },
-            llm_audit,
-            status="success",
-            response_id=result.response_id,
-            usage=result.usage,
-            raw_response_path=_raw_response_path(root, result),
-        )
-        return {
-            **payload,
-            "status": "success",
-            "delivery_mode": "llm",
-            "primary_attempt_status": "success",
-            "primary_error": "",
-            "fallback_used": False,
-            "fallback_from": "",
-            "fallback_command": "",
-        }
     return payload
 
 
@@ -588,7 +528,6 @@ def run_ask_submit(
     lean: bool = False,
     timeout_seconds: int | None = None,
     no_cache: bool = False,
-    fallback_to_ask: bool = False,
     corpus_id_override: str | None = None,
     spawn: bool = True,
 ) -> dict[str, Any]:
@@ -626,7 +565,6 @@ def run_ask_submit(
         "lean": lean,
         "timeout_seconds": timeout_seconds,
         "no_cache": no_cache,
-        "fallback_to_ask": fallback_to_ask,
         "corpus_id_override": corpus_id_override or "",
         "artifact": artifact,
         "path": str(artifact.get("path") or ""),
@@ -673,7 +611,6 @@ def run_ask_resume(root: Path, job_id: str, client: SupportsComplete | None = No
             lean=bool(manifest.get("lean")),
             timeout_seconds=manifest.get("timeout_seconds") if isinstance(manifest.get("timeout_seconds"), int) else None,
             no_cache=bool(manifest.get("no_cache")),
-            fallback_to_ask=bool(manifest.get("fallback_to_ask")),
             backend_compat=dict(manifest.get("backend_preflight") or {}),
         )
     except Exception as exc:
@@ -692,11 +629,11 @@ def run_ask_resume(root: Path, job_id: str, client: SupportsComplete | None = No
 
 
 def _mark_run_ask_artifact_degraded(target: Path, *, reason: str, backend: str, model: str) -> None:
-    """Replace the deterministic placeholder artifact with an explicit degraded notice."""
+    """Replace the deterministic placeholder artifact with an explicit failed notice."""
 
     current = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
     frontmatter = parse_frontmatter(current)
-    title = "LLM 未完成：请重试或切换模型"
+    title = "LLM 失败：请重试或切换模型"
     query = str(frontmatter.get("query") or "").strip()
     if query:
         try:
@@ -708,8 +645,8 @@ def _mark_run_ask_artifact_degraded(target: Path, *, reason: str, backend: str, 
     frontmatter.update(
         {
             "llm_status": "timeout_or_unavailable",
-            "delivery_mode": "deterministic-fallback",
-            "background_status": "degraded",
+            "delivery_mode": "llm-failed",
+            "background_status": "failed",
             "llm_failure_reason": reason,
             "llm_backend": backend,
             "llm_model": model,
@@ -723,7 +660,7 @@ def _mark_run_ask_artifact_degraded(target: Path, *, reason: str, backend: str, 
         f"# {title}",
         "",
         "## 当前状态",
-        "- LLM 没有在本次超时时间内返回可用内容；本文件不是最终报告。",
+        "- LLM 没有返回可用内容；本文件是失败说明，不是最终报告，也不是 fallback 占位答案。",
         f"- 失败原因：`{reason}`。",
         f"- 后端 / 模型：`{backend or 'unknown'}` / `{model or 'unknown'}`。",
         "- 材料投喂、引用解析或上下文准备已完成；可以重试、切换模型，或使用更短的问题。",
@@ -777,6 +714,7 @@ def _direct_ask_artifact_markdown(
         "id": artifact_id,
         "kind": "output",
         "format": "note",
+        "cssclasses": [OUTPUT_OBSIDIAN_CSSCLASS],
         "query": question,
         "protocol": protocol,
         "generated_by": "aiwiki-run-ask-direct",
@@ -794,6 +732,264 @@ def _direct_ask_system_prompt() -> str:
         "不要编造本地仓库、文件或隐藏系统状态；如果问题询问你是什么模型，"
         "说明你是当前配置的外部 LLM 后端返回的回答，并可提及具体模型取决于运行配置。"
     )
+
+
+_REPORT_REFERENCE_RE = re.compile(
+    r"(?im)^\s*(?:#\s*)?引用报告\s*[：:]\s*`?(output/reports/[^\s`]+?\.md)`?\s*"
+)
+
+
+def _quoted_report_reference_paths(question: str) -> list[str]:
+    paths: list[str] = []
+    seen: set[str] = set()
+    for match in _REPORT_REFERENCE_RE.finditer(str(question or "")):
+        path = match.group(1).strip().strip("` ")
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        paths.append(path)
+    return paths
+
+
+def _safe_quoted_report_reference_paths(root: Path, refs: list[str]) -> list[str]:
+    safe_refs: list[str] = []
+    seen: set[str] = set()
+    try:
+        root_resolved = root.resolve()
+        reports_root = (root / "output" / "reports").resolve()
+    except OSError:
+        return []
+    for ref in refs:
+        text = str(ref or "").strip().strip("` ")
+        if not text or "\\" in text or text.startswith("/"):
+            continue
+        if not text.startswith("output/reports/") or not text.endswith(".md"):
+            continue
+        candidate = root / text
+        try:
+            resolved = candidate.resolve()
+            resolved.relative_to(root_resolved)
+            resolved.relative_to(reports_root)
+        except (OSError, ValueError):
+            continue
+        if resolved.suffix.lower() != ".md":
+            continue
+        if text in seen:
+            continue
+        seen.add(text)
+        safe_refs.append(text)
+    return safe_refs
+
+
+def _clean_report_reference_question(question: str) -> str:
+    text = human_query_title(question)
+    text = _REPORT_REFERENCE_RE.sub("", text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or human_query_title(question)
+
+
+def _clean_local_intent_question(question: str) -> str:
+    text = _clean_report_reference_question(question)
+    text = re.sub(r"valut", "vault", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or human_query_title(question)
+
+
+def _is_elixir_count_question(question: str) -> bool:
+    text = _clean_local_intent_question(question).lower()
+    if not text:
+        return False
+    has_elixir = "金丹" in text or "elixir" in text or "elixirs" in text
+    has_count = any(marker in text for marker in ("几个", "多少", "数量", "count", "how many", "num"))
+    has_local = any(marker in text for marker in ("炼丹炉", "vault", "仓库", "当前", "本地", "这个"))
+    return has_elixir and has_count and has_local
+
+
+def _is_markdown_count_question(question: str) -> bool:
+    text = _clean_local_intent_question(question).lower()
+    if not text:
+        return False
+    has_markdown = "md" in text or "markdown" in text or "markdown 文件" in text or "md文件" in text
+    has_count = any(marker in text for marker in ("几个", "多少", "数量", "count", "how many", "num"))
+    has_local = any(marker in text for marker in ("炼丹炉", "vault", "仓库", "当前", "本地", "这个"))
+    return has_markdown and has_count and has_local
+
+
+def _markdown_count_bucket(path: Path) -> str:
+    parts = path.parts
+    if not parts:
+        return "other"
+    return parts[0] if parts[0] in {"raw", "wiki", "output", "prompts"} else "other"
+
+
+def _collect_markdown_counts(root: Path) -> dict[str, Any]:
+    ignored_dirs = {".git", ".obsidian", ".aiwiki", ".codex", ".claude", ".opencode", "node_modules", ".venv"}
+    counts = {"raw": 0, "wiki": 0, "output": 0, "prompts": 0, "other": 0}
+    examples: dict[str, list[str]] = {key: [] for key in counts}
+    total = 0
+    for path in sorted(root.rglob("*.md")):
+        try:
+            relative = path.relative_to(root)
+        except ValueError:
+            continue
+        if any(part in ignored_dirs for part in relative.parts):
+            continue
+        bucket = _markdown_count_bucket(relative)
+        counts[bucket] += 1
+        total += 1
+        if len(examples[bucket]) < 8:
+            examples[bucket].append(relative.as_posix())
+    return {"total": total, "by_top_level": counts, "examples": examples}
+
+
+def _local_markdown_count_artifact_markdown(
+    *,
+    artifact_id: str,
+    question: str,
+    protocol: str,
+    created_at: str,
+    stats: dict[str, Any],
+) -> str:
+    title = _clean_local_intent_question(question)
+    counts = dict(stats.get("by_top_level", {}))
+    examples = dict(stats.get("examples", {}))
+    frontmatter = {
+        "id": artifact_id,
+        "kind": "output",
+        "format": "note",
+        "cssclasses": [OUTPUT_OBSIDIAN_CSSCLASS],
+        "query": question,
+        "protocol": protocol,
+        "generated_by": "aiwiki-local-markdown-stats",
+        "created_at": created_at,
+        "delivery_mode": "local-deterministic",
+        "markdown_file_count": int(stats.get("total") or 0),
+    }
+    lines = [
+        render_frontmatter(frontmatter),
+        "",
+        f"# {title}",
+        "",
+        "## 回答",
+        f"- 当前 vault 中可见 Markdown 文件共 **{int(stats.get('total') or 0)} 个**。",
+        f"- `raw/`：{int(counts.get('raw') or 0)} 个。",
+        f"- `wiki/`：{int(counts.get('wiki') or 0)} 个。",
+        f"- `output/`：{int(counts.get('output') or 0)} 个。",
+        f"- `prompts/`：{int(counts.get('prompts') or 0)} 个。",
+        f"- 其他可见目录：{int(counts.get('other') or 0)} 个。",
+        "",
+        "## 示例路径",
+    ]
+    for bucket in ("raw", "wiki", "output", "prompts", "other"):
+        bucket_examples = [str(item) for item in examples.get(bucket, [])]
+        if not bucket_examples:
+            continue
+        lines.append(f"### `{bucket}/`")
+        for item in bucket_examples:
+            lines.append(f"- `{item}`")
+    lines.extend(
+        [
+            "",
+            "## 口径",
+            "- 统计对象：当前 vault 内可见的 `*.md` 文件。",
+            "- 排除目录：`.git/`、`.obsidian/`、`.aiwiki/`、local harness 目录、`node_modules/`、`.venv/`。",
+            "- 本回答由本地文件系统确定性统计生成，没有调用 LLM。",
+        ]
+    )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _elixir_markdown_title(path: Path, frontmatter: dict[str, Any]) -> str:
+    for key in ("topic", "title", "id"):
+        value = str(frontmatter.get(key) or "").strip()
+        if value and value.lower() != "elixir":
+            return value
+    body = strip_frontmatter(path.read_text(encoding="utf-8", errors="replace")) if path.exists() else ""
+    for line in body.splitlines():
+        heading = line.strip()
+        if heading.startswith("#"):
+            title = heading.lstrip("#").strip()
+            if title and title.lower() != "elixir":
+                return title
+    return path.stem
+
+
+def _collect_elixir_counts(root: Path) -> dict[str, Any]:
+    settled: list[dict[str, str]] = []
+    elixir_dir = root / "wiki" / "elixirs"
+    for path in sorted(elixir_dir.glob("*.md")) if elixir_dir.exists() else []:
+        frontmatter = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+        state = str(frontmatter.get("elixir_state") or "").strip()
+        if state and state != "settled":
+            continue
+        settled.append(
+            {
+                "path": relative_path(root, path),
+                "title": _elixir_markdown_title(path, frontmatter),
+                "state": state or "settled",
+            }
+        )
+    candidate_dir = root / "output" / "_candidates" / "elixirs"
+    candidates = [relative_path(root, path) for path in sorted(candidate_dir.glob("*.md"))] if candidate_dir.exists() else []
+    return {"settled": settled, "candidates": candidates}
+
+
+def _local_elixir_count_artifact_markdown(
+    *,
+    artifact_id: str,
+    question: str,
+    protocol: str,
+    created_at: str,
+    stats: dict[str, Any],
+) -> str:
+    title = _clean_local_intent_question(question)
+    settled = list(stats.get("settled", []))
+    candidates = [str(item) for item in stats.get("candidates", [])]
+    frontmatter = {
+        "id": artifact_id,
+        "kind": "output",
+        "format": "note",
+        "cssclasses": [OUTPUT_OBSIDIAN_CSSCLASS],
+        "query": question,
+        "protocol": protocol,
+        "generated_by": "aiwiki-local-elixir-stats",
+        "created_at": created_at,
+        "delivery_mode": "local-deterministic",
+        "settled_elixir_count": len(settled),
+        "candidate_elixir_count": len(candidates),
+    }
+    lines = [
+        render_frontmatter(frontmatter),
+        "",
+        f"# {title}",
+        "",
+        "## 回答",
+        f"- 当前 vault 已沉淀金丹 **{len(settled)} 个**。",
+        f"- 另有候选金丹 **{len(candidates)} 个**，位于 `output/_candidates/elixirs/`。",
+        "",
+        "## 已沉淀金丹",
+    ]
+    if settled:
+        for item in settled:
+            lines.append(f"- [{item['title']}]({item['path']}) — `{item['path']}`")
+    else:
+        lines.append("- 当前没有 settled 金丹文件。")
+    lines.extend(["", "## 候选金丹"])
+    if candidates:
+        for path in candidates[:20]:
+            lines.append(f"- `{path}`")
+    else:
+        lines.append("- 当前没有候选金丹文件。")
+    lines.extend(
+        [
+            "",
+            "## 口径",
+            "- settled 金丹：`wiki/elixirs/*.md` 且 `elixir_state` 为空或 `settled`。",
+            "- 候选金丹：`output/_candidates/elixirs/*.md`。",
+            "- 本回答由本地文件系统确定性统计生成，没有调用 LLM。",
+        ]
+    )
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def _direct_answer_validation_error(answer: str) -> str:
@@ -848,10 +1044,19 @@ def _material_hint_paths(question: str) -> list[str]:
 def _read_material_context_snippets(root: Path, refs: list[str], *, max_chars: int = 6000) -> str:
     snippets: list[str] = []
     remaining = max_chars
+    try:
+        root_resolved = root.resolve()
+    except OSError:
+        root_resolved = root
     for ref in refs:
         if remaining <= 0:
             break
         path = root / ref
+        try:
+            path = path.resolve()
+            path.relative_to(root_resolved)
+        except (OSError, ValueError):
+            continue
         if not path.exists() or path.is_dir():
             continue
         if path.suffix.lower() not in {".md", ".txt"}:
@@ -865,94 +1070,72 @@ def _read_material_context_snippets(root: Path, refs: list[str], *, max_chars: i
     return "\n\n".join(snippets).strip()
 
 
+def _question_terms(question: str) -> set[str]:
+    text = _clean_report_reference_question(question).lower()
+    terms = set(tokenize(text))
+    for chunk in re.findall(r"[\u4e00-\u9fff]{2,}", text):
+        if len(chunk) <= 8:
+            terms.add(chunk)
+        for size in range(2, min(6, len(chunk)) + 1):
+            for index in range(0, len(chunk) - size + 1):
+                term = chunk[index : index + size]
+                if term not in {"当前", "哪些", "多少", "一下", "关系", "相关"}:
+                    terms.add(term)
+    return {term for term in terms if len(term) >= 2}
+
+
+def _collect_vault_knowledge_context(root: Path, question: str, *, max_refs: int = 6, max_chars: int = 9000) -> str:
+    terms = _question_terms(question)
+    if not terms:
+        return ""
+    search_roots = [root / "wiki" / name for name in ("sources", "judgments", "decisions", "concepts", "elixirs")]
+    scored: list[tuple[int, str, str]] = []
+    for directory in search_roots:
+        if not directory.exists():
+            continue
+        for path in sorted(directory.glob("*.md")):
+            try:
+                relative = relative_path(root, path)
+            except ValueError:
+                continue
+            text = strip_frontmatter(path.read_text(encoding="utf-8", errors="replace")).strip()
+            if not text:
+                continue
+            haystack = f"{relative}\n{text}".lower()
+            score = sum(haystack.count(term.lower()) for term in terms)
+            if score <= 0:
+                continue
+            scored.append((score, relative, text))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    snippets: list[str] = []
+    remaining = max_chars
+    for _score, relative, text in scored[:max_refs]:
+        if remaining <= 0:
+            break
+        excerpt = text[:remaining]
+        snippets.append(f"## {relative}\n\n{excerpt}")
+        remaining -= len(excerpt)
+    context = "\n\n".join(snippets).strip()
+    if context and any(marker in _clean_report_reference_question(question) for marker in ("联网", "网上", "web", "搜索", "调研")):
+        context = (
+            "## runtime-note\n\n当前 runtime 未配置实时联网检索结果；以下是本地 vault 可访问的知识摘录。"
+            "回答时不要声称已联网，只能基于这些本地材料给出分析，并明确联网缺口。\n\n"
+            + context
+        )
+    return context
+
+
 def _material_direct_system_prompt() -> str:
     return (
         "你是炼丹炉的材料问答助手。用户会给出一个问题和已经抽取成文本的材料摘录。"
         "请优先依据材料回答，用中文给出直接结论和关键依据；如果材料不足，明确说明不足。"
-        "不要编造未在材料中出现的事实。"
+        "不要编造未在材料中出现的事实。材料可能来自用户引用的报告、投料文件，或 runtime 自动检索到的本地 vault 页面。"
     )
 
 
 def _material_direct_user_prompt(question: str, context: str) -> str:
     title = human_query_title(question)
     return f"用户问题：{title}\n\n材料摘录：\n{context}"
-
-
-def _material_context_preview(context: str, *, max_lines: int = 12, max_chars: int = 1800) -> str:
-    """Return a deterministic, clearly-labeled preview for degraded material asks."""
-
-    lines: list[str] = []
-    for raw_line in str(context or "").splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        if line.startswith("## raw/") or line.startswith("## wiki/") or line.startswith("## output/"):
-            continue
-        if line in {"## PDF Asset", "## Image Asset", "## Import Metadata", "## Image Metadata"}:
-            continue
-        if line.startswith("- Stored ") or line.startswith("- Imported at:") or line.startswith("- File size:"):
-            continue
-        lines.append(line)
-        if len(lines) >= max_lines:
-            break
-    preview = "\n".join(f"- {line}" for line in lines)
-    return preview[:max_chars].rstrip()
-
-
-def _degraded_direct_ask_artifact_markdown(
-    *,
-    artifact_id: str,
-    question: str,
-    protocol: str,
-    created_at: str,
-    reason: str,
-    backend: str,
-    model: str,
-    material_context: str = "",
-) -> str:
-    title = human_query_title(question)
-    frontmatter = {
-        "id": artifact_id,
-        "kind": "output",
-        "format": "note",
-        "query": question,
-        "protocol": protocol,
-        "generated_by": "aiwiki-run-ask-direct",
-        "created_at": created_at,
-        "delivery_mode": "deterministic-fallback",
-        "llm_status": "timeout_or_unavailable",
-        "llm_failure_reason": reason,
-        "llm_backend": backend,
-        "llm_model": model,
-    }
-    lines = [
-        render_frontmatter(frontmatter),
-        "",
-        f"# LLM 未完成：{title}",
-        "",
-        "## 当前状态",
-        f"- LLM 没有在本次超时时间内返回可用内容：`{reason}`。",
-        f"- 后端 / 模型：`{backend or 'unknown'}` / `{model or 'unknown'}`。",
-        "- 本文件是降级说明，不是完整 LLM 分析。",
-    ]
-    preview = _material_context_preview(material_context) if material_context else ""
-    if preview:
-        lines.extend(
-            [
-                "",
-                "## 本地材料预览（非 LLM 分析）",
-                preview,
-            ]
-        )
-    lines.extend(
-        [
-            "",
-            "## 下一步",
-            "- 直接重试；如果仍超时，切换更稳定的 backend/model。",
-            "- 对长 PDF，先问更窄的问题，例如“只总结核心结论和风险”。",
-        ]
-    )
-    return "\n".join(lines).rstrip() + "\n"
 
 
 def _env_flag(name: str) -> bool:
@@ -1917,17 +2100,12 @@ def run_ask(
     lean: bool = False,
     timeout_seconds: int | None = None,
     no_cache: bool = False,
-    fallback_to_ask: bool = False,
     corpus_id_override: str | None = None,
 ) -> dict[str, Any]:
     ensure_layout(root)
     if timeout_seconds is not None and timeout_seconds <= 0:
         raise ValueError("run-ask timeout_seconds must be greater than 0.")
     backend_compat: dict[str, Any] = {}
-    if client is None:
-        from aiwiki.runner.preflight import preflight_check_backend
-
-        backend_compat = preflight_check_backend(root)
 
     def _stamped_record(base_event: dict[str, Any], llm_audit: dict[str, Any], **kwargs: Any) -> None:
         if backend_compat:
@@ -1936,8 +2114,171 @@ def run_ask(
         record_llm_attempt(root, base_event, llm_audit, **kwargs)
 
     material_refs = _material_hint_paths(question) if _is_material_hint_note_ask(question, output_format) else []
+    if output_format == "note":
+        material_refs.extend(_safe_quoted_report_reference_paths(root, _quoted_report_reference_paths(question)))
+        material_refs = list(dict.fromkeys(material_refs))
     material_context = _read_material_context_snippets(root, material_refs) if material_refs else ""
+    if output_format == "note" and _is_elixir_count_question(question):
+        from aiwiki.app_protocol import resolve_protocol
+
+        active_protocol = resolve_protocol(root, protocol)
+        directory = root / "output" / "reports"
+        directory.mkdir(parents=True, exist_ok=True)
+        artifact_seed = _output_artifact_seed(_clean_local_intent_question(question), "note")
+        artifact_id = next_available_stem(directory, artifact_seed)
+        destination = directory / f"{artifact_id}.md"
+        artifact_ref = relative_path(root, destination)
+        stats = _collect_elixir_counts(root)
+        destination.write_text(
+            _local_elixir_count_artifact_markdown(
+                artifact_id=artifact_id,
+                question=question,
+                protocol=active_protocol,
+                created_at=utc_now(),
+                stats=stats,
+            ),
+            encoding="utf-8",
+        )
+        run_id = run_id_for_artifact(artifact_ref)
+        run_notes = write_run_notes(
+            root,
+            run_id=run_id,
+            status="local-deterministic-complete",
+            question=question,
+            output_format="note",
+            protocol=active_protocol,
+            output_path=artifact_ref,
+            receipt_path=".aiwiki/logs/llm-receipts.jsonl",
+            backend="local",
+            model="elixir-stats",
+            stages=[
+                "Detected a local elixir count question before the direct LLM path.",
+                "Counted settled and candidate elixir markdown files deterministically.",
+            ],
+        )
+        write_run_notes_frontmatter(destination, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
+        _ensure_output_cssclass(destination)
+        _stamped_record(
+            {
+                "event": "run-ask-local-elixir-stats",
+                "target": artifact_ref,
+                "question": question,
+                "clean_question": _clean_local_intent_question(question),
+                "format": "note",
+                "protocol": active_protocol,
+                "settled_elixir_count": len(stats.get("settled", [])),
+                "candidate_elixir_count": len(stats.get("candidates", [])),
+            },
+            {
+                "backend_requested": "local",
+                "backend_effective": "local",
+                "model_selected": "elixir-stats",
+                "model_final": "elixir-stats",
+                "fallback_stage": "",
+                "fallback_reason": "",
+                "contract_validated": True,
+                "delivery_mode": "local-deterministic",
+            },
+            status="success",
+        )
+        return {
+            "path": artifact_ref,
+            "format": "note",
+            "protocol": active_protocol,
+            "question": question,
+            "clean_question": _clean_local_intent_question(question),
+            "status": "success",
+            "delivery_mode": "local-deterministic",
+            "settled_elixir_count": len(stats.get("settled", [])),
+            "candidate_elixir_count": len(stats.get("candidates", [])),
+            "run_id": run_notes["run_id"],
+            "run_notes_path": run_notes["run_notes_path"],
+            "no_cache": no_cache,
+            "contract_validated": True,
+        }
+    if output_format == "note" and _is_markdown_count_question(question):
+        from aiwiki.app_protocol import resolve_protocol
+
+        active_protocol = resolve_protocol(root, protocol)
+        directory = root / "output" / "reports"
+        directory.mkdir(parents=True, exist_ok=True)
+        artifact_seed = _output_artifact_seed(_clean_local_intent_question(question), "note")
+        artifact_id = next_available_stem(directory, artifact_seed)
+        destination = directory / f"{artifact_id}.md"
+        artifact_ref = relative_path(root, destination)
+        stats = _collect_markdown_counts(root)
+        destination.write_text(
+            _local_markdown_count_artifact_markdown(
+                artifact_id=artifact_id,
+                question=question,
+                protocol=active_protocol,
+                created_at=utc_now(),
+                stats=stats,
+            ),
+            encoding="utf-8",
+        )
+        run_id = run_id_for_artifact(artifact_ref)
+        run_notes = write_run_notes(
+            root,
+            run_id=run_id,
+            status="local-deterministic-complete",
+            question=question,
+            output_format="note",
+            protocol=active_protocol,
+            output_path=artifact_ref,
+            receipt_path=".aiwiki/logs/llm-receipts.jsonl",
+            backend="local",
+            model="markdown-stats",
+            stages=[
+                "Detected a local markdown count question before the direct LLM path.",
+                "Counted visible markdown files deterministically inside the vault.",
+            ],
+        )
+        write_run_notes_frontmatter(destination, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
+        _ensure_output_cssclass(destination)
+        _stamped_record(
+            {
+                "event": "run-ask-local-markdown-stats",
+                "target": artifact_ref,
+                "question": question,
+                "clean_question": _clean_local_intent_question(question),
+                "format": "note",
+                "protocol": active_protocol,
+                "markdown_file_count": int(stats.get("total") or 0),
+            },
+            {
+                "backend_requested": "local",
+                "backend_effective": "local",
+                "model_selected": "markdown-stats",
+                "model_final": "markdown-stats",
+                "fallback_stage": "",
+                "fallback_reason": "",
+                "contract_validated": True,
+                "delivery_mode": "local-deterministic",
+            },
+            status="success",
+        )
+        return {
+            "path": artifact_ref,
+            "format": "note",
+            "protocol": active_protocol,
+            "question": question,
+            "clean_question": _clean_local_intent_question(question),
+            "status": "success",
+            "delivery_mode": "local-deterministic",
+            "markdown_file_count": int(stats.get("total") or 0),
+            "run_id": run_notes["run_id"],
+            "run_notes_path": run_notes["run_notes_path"],
+            "no_cache": no_cache,
+            "contract_validated": True,
+        }
+    if client is None:
+        from aiwiki.runner.preflight import preflight_check_backend
+
+        backend_compat = preflight_check_backend(root)
     direct_mode = _is_simple_direct_ask(question, output_format, direct) or bool(material_context)
+    if direct_mode and output_format == "note" and not material_context:
+        material_context = _collect_vault_knowledge_context(root, question)
     if direct_mode:
         effective_client = client or create_client(root, timeout_seconds=timeout_seconds)
         backend_requested = _client_backend_requested(effective_client)
@@ -1948,7 +2289,11 @@ def run_ask(
         fallback_stages: list[str] = []
         fallback_reason = ""
         system_prompt = _material_direct_system_prompt() if material_context else _direct_ask_system_prompt()
-        user_prompt = _material_direct_user_prompt(question, material_context) if material_context else question
+        user_prompt = (
+            _material_direct_user_prompt(_clean_report_reference_question(question), material_context)
+            if material_context
+            else _clean_report_reference_question(question)
+        )
         try:
             while True:
                 try:
@@ -1972,52 +2317,6 @@ def run_ask(
             active_protocol = resolve_protocol(root, protocol)
             backend_effective = _client_backend_name(effective_client)
             model_final = _client_model_name(effective_client)
-            artifact_ref = ""
-            run_notes_path = ""
-            run_id = ""
-            if fallback_to_ask:
-                directory = root / "output" / "reports"
-                directory.mkdir(parents=True, exist_ok=True)
-                artifact_seed = _output_artifact_seed(question, "note")
-                artifact_id = next_available_stem(directory, artifact_seed)
-                destination = directory / f"{artifact_id}.md"
-                artifact_ref = relative_path(root, destination)
-                destination.write_text(
-                    _degraded_direct_ask_artifact_markdown(
-                        artifact_id=artifact_id,
-                        question=question,
-                        protocol=active_protocol,
-                        created_at=utc_now(),
-                        reason=str(exc),
-                        backend=backend_effective,
-                        model=model_final,
-                        material_context=material_context,
-                    ),
-                    encoding="utf-8",
-                )
-                run_notes = write_run_notes(
-                    root,
-                    run_id=run_id_for_artifact(artifact_ref),
-                    status="deterministic-fallback",
-                    question=question,
-                    output_format="note",
-                    protocol=active_protocol,
-                    output_path=artifact_ref,
-                    receipt_path=".aiwiki/logs/llm-receipts.jsonl",
-                    backend=backend_effective,
-                    model=model_final,
-                    fallback_stage=_fallback_stage_label(fallback_stages),
-                    stages=[
-                        "Detected a simple note/material question and used the lightweight direct-answer LLM path.",
-                        "Primary LLM call did not complete; wrote an explicit degraded artifact instead of a placeholder answer.",
-                    ],
-                    failure_class=_receipt_error_class(exc),
-                )
-                write_run_notes_frontmatter(
-                    destination, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"]
-                )
-                run_id = run_notes["run_id"]
-                run_notes_path = run_notes["run_notes_path"]
             failed_audit = {
                 "backend_requested": backend_requested,
                 "backend_effective": backend_effective,
@@ -2026,12 +2325,12 @@ def run_ask(
                 "fallback_stage": _fallback_stage_label(fallback_stages),
                 "fallback_reason": fallback_reason or str(exc),
                 "contract_validated": False,
-                "delivery_mode": "deterministic-fallback" if fallback_to_ask else "llm-direct",
+                "delivery_mode": "llm-failed",
             }
             _stamped_record(
                 {
                     "event": "run-ask-direct",
-                    "target": artifact_ref,
+                    "target": "",
                     "question": question,
                     "format": "note",
                     "protocol": active_protocol,
@@ -2041,36 +2340,13 @@ def run_ask(
                     "material_refs": material_refs,
                 },
                 failed_audit,
-                status="degraded" if fallback_to_ask else "failed",
+                status="failed",
                 error=str(exc),
                 response_id=getattr(result, "response_id", "") if result is not None else "",
                 usage=getattr(result, "usage", {}) if result is not None else {},
                 raw_response_path=_raw_response_path(root, result, exc),
                 error_class=_receipt_error_class(exc),
             )
-            if fallback_to_ask:
-                return {
-                    "path": artifact_ref,
-                    "format": "note",
-                    "protocol": active_protocol,
-                    "question": question,
-                    "status": "degraded",
-                    "delivery_mode": "deterministic-fallback",
-                    "fallback_used": True,
-                    "fallback_from": "run-ask-direct",
-                    "fallback_reason": fallback_reason or str(exc),
-                    "fallback_stage": _fallback_stage_label(fallback_stages),
-                    "backend_requested": backend_requested,
-                    "backend_effective": backend_effective,
-                    "model_selected": model_selected,
-                    "model_final": model_final,
-                    "timeout_seconds": effective_timeout_seconds,
-                    "run_id": run_id,
-                    "run_notes_path": run_notes_path,
-                    "no_cache": no_cache,
-                    "contract_validated": False,
-                    "material_refs": material_refs,
-                }
             raise
         assert result is not None
         ensure_layout(root)
@@ -2079,7 +2355,7 @@ def run_ask(
         active_protocol = resolve_protocol(root, protocol)
         directory = root / "output" / "reports"
         directory.mkdir(parents=True, exist_ok=True)
-        artifact_seed = _output_artifact_seed(question, "note")
+        artifact_seed = _output_artifact_seed(_clean_report_reference_question(question), "note")
         artifact_id = next_available_stem(directory, artifact_seed)
         destination = directory / f"{artifact_id}.md"
         artifact_ref = relative_path(root, destination)
@@ -2087,7 +2363,7 @@ def run_ask(
         model_final = _client_model_name(effective_client)
         content = _direct_ask_artifact_markdown(
             artifact_id=artifact_id,
-            question=question,
+            question=_clean_report_reference_question(question),
             protocol=active_protocol,
             created_at=utc_now(),
             answer=normalized_answer,
@@ -2114,6 +2390,7 @@ def run_ask(
             ],
         )
         write_run_notes_frontmatter(destination, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
+        _ensure_output_cssclass(destination)
         llm_audit = {
             "backend_requested": backend_requested,
             "backend_effective": backend_effective,
@@ -2177,7 +2454,6 @@ def run_ask(
         lean=lean,
         timeout_seconds=timeout_seconds,
         no_cache=no_cache,
-        fallback_to_ask=fallback_to_ask,
         backend_compat=backend_compat,
     )
 

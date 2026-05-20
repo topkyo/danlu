@@ -297,7 +297,6 @@ def _handle_ask_family(args: argparse.Namespace, root: Path) -> tuple[object, st
             "lean": args.lean,
             "timeout_seconds": args.timeout,
             "no_cache": args.no_cache,
-            "fallback_to_ask": args.fallback_to_ask,
         }
         if hasattr(args, "corpus") and args.corpus is not None:
             ask_kwargs["corpus_id_override"] = args.corpus
@@ -308,7 +307,6 @@ def _handle_ask_family(args: argparse.Namespace, root: Path) -> tuple[object, st
             "lean": args.lean,
             "timeout_seconds": args.timeout,
             "no_cache": args.no_cache,
-            "fallback_to_ask": args.fallback_to_ask,
             "spawn": not args.no_spawn,
         }
         if hasattr(args, "corpus") and args.corpus is not None:

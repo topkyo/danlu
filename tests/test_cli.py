@@ -151,7 +151,6 @@ class CLITests(unittest.TestCase):
             "--timeout",
             "45",
             "--no-cache",
-            "--fallback-to-ask",
             "--no-spawn",
             "--corpus",
             "investing-foo-abc12345",
@@ -163,7 +162,6 @@ class CLITests(unittest.TestCase):
         self.assertTrue(args.lean)
         self.assertEqual(args.timeout, 45)
         self.assertTrue(args.no_cache)
-        self.assertTrue(args.fallback_to_ask)
         self.assertTrue(args.no_spawn)
         self.assertEqual(args.corpus, "investing-foo-abc12345")
 
@@ -1774,24 +1772,24 @@ class CLITests(unittest.TestCase):
             ("ask-load-learnings", ["ask", "What changed?", "--load-learnings"], "ask_question", (self.root, "What changed?", "note"), {"protocol": None, "no_cache": False, "load_protocol_learnings": True}),
             (
                 "run-ask",
-                ["run-ask", "What changed?", "--format", "decision-memo", "--fallback-to-ask"],
+                ["run-ask", "What changed?", "--format", "decision-memo"],
                 "run_ask",
                 (self.root, "What changed?", "decision-memo"),
-                {"protocol": None, "direct": False, "lean": False, "timeout_seconds": None, "no_cache": False, "fallback_to_ask": True},
+                {"protocol": None, "direct": False, "lean": False, "timeout_seconds": None, "no_cache": False},
             ),
             (
                 "run-ask-lean-timeout",
                 ["run-ask", "What changed?", "--format", "report", "--lean", "--timeout", "45", "--no-cache"],
                 "run_ask",
                 (self.root, "What changed?", "report"),
-                {"protocol": None, "direct": False, "lean": True, "timeout_seconds": 45, "no_cache": True, "fallback_to_ask": False},
+                {"protocol": None, "direct": False, "lean": True, "timeout_seconds": 45, "no_cache": True},
             ),
             (
                 "run-ask-corpus",
                 ["run-ask", "What next?", "--format", "report", "--corpus", "investing-foo-abc12345"],
                 "run_ask",
                 (self.root, "What next?", "report"),
-                {"protocol": None, "direct": False, "lean": False, "timeout_seconds": None, "no_cache": False, "fallback_to_ask": False, "corpus_id_override": "investing-foo-abc12345"},
+                {"protocol": None, "direct": False, "lean": False, "timeout_seconds": None, "no_cache": False, "corpus_id_override": "investing-foo-abc12345"},
             ),
             (
                 "ask-corpus",

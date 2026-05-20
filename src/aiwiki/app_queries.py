@@ -642,6 +642,7 @@ def render_report(
         {
             "kind": "output",
             "format": "report",
+            "cssclasses": ["aiwiki-output"],
             "protocol": active_protocol,
             "query": question,
             "created_at": created_at,
@@ -1040,6 +1041,7 @@ def render_note_answer(
             "id": artifact_id,
             "kind": "output",
             "format": "note",
+            "cssclasses": ["aiwiki-output"],
             "query": question,
             "protocol": active_protocol,
             "generated_by": "aiwiki-ask",

@@ -360,11 +360,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         type=int,
         help="Override the LLM timeout seconds for this run only.",
     )
-    run_ask_parser.add_argument(
-        "--fallback-to-ask",
-        action="store_true",
-        help="If the LLM backend is unavailable, return the deterministic ask artifact from the same runtime call.",
-    )
     run_ask_parser.add_argument("--corpus", help="Optional active corpus id to reuse across ask rounds.")
 
     run_ask_submit_parser = subparsers.add_parser(
@@ -393,11 +388,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         "--timeout",
         type=int,
         help="Override the LLM timeout seconds for the background resume run only.",
-    )
-    run_ask_submit_parser.add_argument(
-        "--fallback-to-ask",
-        action="store_true",
-        help="If the LLM backend is unavailable during resume, keep the deterministic ask artifact as a degraded recovery output.",
     )
     run_ask_submit_parser.add_argument("--corpus", help="Optional active corpus id to reuse across ask rounds.")
     run_ask_submit_parser.add_argument(
