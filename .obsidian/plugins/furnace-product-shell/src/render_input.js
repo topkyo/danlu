@@ -355,21 +355,21 @@ function renderDropZone(plugin, container) {
       if (fileType === "application/pdf" || fileName.endsWith(".pdf")) {
         plugin.runUiAction(async () => {
           const source = await resolvePluginFileSource(plugin, file);
-          new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(source).open();
+          new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(source).setInitialTitle(file.name || "").open();
         }, plugin.t("Drop PDF"));
         return;
       }
       if (fileType.startsWith("image/")) {
         plugin.runUiAction(async () => {
           const source = await resolvePluginFileSource(plugin, file);
-          new DropImageModal(plugin.app, plugin).setInitialSource(source).open();
+          new DropImageModal(plugin.app, plugin).setInitialSource(source).setInitialTitle(file.name || "").open();
         }, plugin.t("Drop Image"));
         return;
       }
       // For other file types, still try to open the drop file modal
       plugin.runUiAction(async () => {
         const source = await resolvePluginFileSource(plugin, file);
-        new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(source).open();
+        new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(source).setInitialTitle(file.name || "").open();
       }, plugin.t("Drop File"));
       return;
     }

@@ -331,6 +331,7 @@ def _build_ask_prompt(
     index_pages: list[tuple[str, str]],
     machine_memory_query: dict[str, Any],
     previous_output_summary: str | None = None,
+    material_context: str = "",
     prompt_profile: str = "balanced",
 ) -> str:
     template = _load_prompt(root, "ask.md")
@@ -354,6 +355,15 @@ def _build_ask_prompt(
     ]
     if previous_output_summary:
         sections.extend(["## Previous Output In Corpus", previous_output_summary, ""])
+    material_context = str(material_context or "").strip()
+    if material_context:
+        sections.extend(
+            [
+                "## Quoted Report / Material Context",
+                _fit_prompt_section(material_context, max_chars=min(12000, profile["max_total_chars"] // 2)),
+                "",
+            ]
+        )
     sections.extend([
         "## Machine Memory Query Plan",
         _render_machine_query(machine_memory_query),
@@ -716,8 +726,9 @@ def _schema_context(root: Path, names: tuple[str, ...], max_chars: int = 2200) -
 
 def _protocol_context(root: Path, names: tuple[str, ...], max_chars: int = 2200) -> str:
     state = load_protocol_state(root)
-    active = state["active_protocol"]
-    sections: list[str] = [f"- Active protocol: `{active}` ({state['state_path']})", ""]
+    active = str(state.get("active_protocol") or "general")
+    state_path = str(state.get("state_path") or ".aiwiki/state/protocol.json")
+    sections: list[str] = [f"- Active protocol: `{active}` ({state_path})", ""]
     for name in names:
         path = root / "schema" / "protocols" / active / name
         if not path.exists():

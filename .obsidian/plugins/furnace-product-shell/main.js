@@ -1175,8 +1175,10 @@ async function resolvePluginFileSource(plugin, file) {
   const targetDir = pathApi.join(root, ".aiwiki", "tmp", "product-shell-drop");
   fsApi.mkdirSync(targetDir, { recursive: true });
   const safeName = sanitizeDropFileName(fileName || "attachment");
+  const parsedName = pathApi.parse(safeName);
+  const safeStem = parsedName.name || "attachment";
   const stamp = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
-  const targetPath = pathApi.join(targetDir, `${stamp}-${safeName}`);
+  const targetPath = pathApi.join(targetDir, `${safeStem}-${stamp}${parsedName.ext || ""}`);
   const buffer = await file.arrayBuffer();
   fsApi.writeFileSync(targetPath, new Uint8Array(buffer));
   return targetPath;
@@ -2369,6 +2371,7 @@ class DropFileModal extends Modal {
     this.plugin = plugin;
     this.initialMode = "pdf";
     this.initialSource = "";
+    this.initialTitle = "";
   }
 
   setInitialMode(value) {
@@ -2378,6 +2381,11 @@ class DropFileModal extends Modal {
 
   setInitialSource(value) {
     this.initialSource = String(value || "");
+    return this;
+  }
+
+  setInitialTitle(value) {
+    this.initialTitle = String(value || "").trim();
     return this;
   }
 
@@ -2423,6 +2431,7 @@ class DropFileModal extends Modal {
       try {
         const nextPath = await resolvePluginFileSource(self.plugin, file);
         if (nextPath) { sourceInput.value = nextPath; }
+        if (!String(titleInput.value || "").trim()) { titleInput.value = String(file.name || "").trim(); }
       } catch (error) {
         showInlineError(sourceError, self.plugin.t("提交失败：{message}（输入已保留，可重试）", { message: error && error.message ? error.message : String(error) }));
       }
@@ -2433,6 +2442,7 @@ class DropFileModal extends Modal {
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
     titleInput.placeholder = t("可选笔记标题……");
     titleInput.addClass("furnace-shell-code");
+    titleInput.value = this.initialTitle;
 
     const maxFilesSetting = new Setting(contentEl).setName(t("Repo 最大文件数"));
     const maxFilesInput = maxFilesSetting.controlEl.createEl("input", { type: "text" });
@@ -2478,10 +2488,16 @@ class DropImageModal extends Modal {
     super(app);
     this.plugin = plugin;
     this.initialSource = "";
+    this.initialTitle = "";
   }
 
   setInitialSource(value) {
     this.initialSource = String(value || "");
+    return this;
+  }
+
+  setInitialTitle(value) {
+    this.initialTitle = String(value || "").trim();
     return this;
   }
 
@@ -2515,6 +2531,7 @@ class DropImageModal extends Modal {
       try {
         const nextPath = await resolvePluginFileSource(self.plugin, file);
         if (nextPath) { sourceInput.value = nextPath; }
+        if (!String(titleInput.value || "").trim()) { titleInput.value = String(file.name || "").trim(); }
       } catch (error) {
         showInlineError(sourceError, self.plugin.t("提交失败：{message}（输入已保留，可重试）", { message: error && error.message ? error.message : String(error) }));
       }
@@ -2525,6 +2542,7 @@ class DropImageModal extends Modal {
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
     titleInput.placeholder = t("可选笔记标题……");
     titleInput.addClass("furnace-shell-code");
+    titleInput.value = this.initialTitle;
 
     let skipVision = false;
     new Setting(contentEl)
@@ -4216,21 +4234,21 @@ function renderDropZone(plugin, container) {
       if (fileType === "application/pdf" || fileName.endsWith(".pdf")) {
         plugin.runUiAction(async () => {
           const source = await resolvePluginFileSource(plugin, file);
-          new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(source).open();
+          new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(source).setInitialTitle(file.name || "").open();
         }, plugin.t("Drop PDF"));
         return;
       }
       if (fileType.startsWith("image/")) {
         plugin.runUiAction(async () => {
           const source = await resolvePluginFileSource(plugin, file);
-          new DropImageModal(plugin.app, plugin).setInitialSource(source).open();
+          new DropImageModal(plugin.app, plugin).setInitialSource(source).setInitialTitle(file.name || "").open();
         }, plugin.t("Drop Image"));
         return;
       }
       // For other file types, still try to open the drop file modal
       plugin.runUiAction(async () => {
         const source = await resolvePluginFileSource(plugin, file);
-        new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(source).open();
+        new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(source).setInitialTitle(file.name || "").open();
       }, plugin.t("Drop File"));
       return;
     }
@@ -8640,12 +8658,22 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async runDroppedPayloadsWithAutoAsk({ payloads, question, protocol }) {
     const normalizedPayloads = Array.isArray(payloads)
-      ? payloads.map((payload) => String(payload || "").trim()).filter(Boolean)
+      ? payloads
+        .map((payload) => {
+          if (payload && typeof payload === "object") {
+            return {
+              path: String(payload.path || payload.source || payload.payload || "").trim(),
+              title: String(payload.title || payload.name || "").trim(),
+            };
+          }
+          return { path: String(payload || "").trim(), title: "" };
+        })
+        .filter((payload) => payload.path)
       : [];
     const normalizedQuestion = String(question || "").trim();
     const materialPaths = [];
-    for (const payloadText of normalizedPayloads) {
-      const payload = await this.runUniversalInputCommand({ payload: payloadText });
+    for (const payloadItem of normalizedPayloads) {
+      const payload = await this.runUniversalInputCommand({ payload: payloadItem.path, title: payloadItem.title });
       collectMaterialPathsFromPayload(payload).forEach((item) => materialPaths.push(item));
     }
     const normalizedMaterialPaths = normalizeMaterialPaths(materialPaths);
@@ -8698,7 +8726,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         .filter((file) => file.path)
       : [];
     return await this.runDroppedPayloadsWithAutoAsk({
-      payloads: normalizedFiles.map((file) => file.path),
+      payloads: normalizedFiles.map((file) => ({ path: file.path, title: file.name })),
       question,
       protocol,
     });
@@ -9483,4 +9511,3 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 };
-

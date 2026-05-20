@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import mimetypes
+import os
 import socket
 import subprocess
 import tempfile
@@ -74,6 +75,25 @@ title: probe
 ---
 ok"""
 _LLM_MAX_BYTES = 10 * 1024 * 1024
+_RETRYABLE_HTTP_STATUS_CODES = {429, 500, 502, 503, 504}
+
+
+def _llm_retry_attempts() -> int:
+    raw = os.environ.get("AIWIKI_LLM_RETRY_ATTEMPTS", "2").strip()
+    try:
+        return max(0, min(5, int(raw)))
+    except ValueError:
+        return 2
+
+
+def _http_retry_delay_seconds(exc: error.HTTPError, attempt_index: int) -> float:
+    retry_after = exc.headers.get("Retry-After") if exc.headers else None
+    if retry_after:
+        try:
+            return max(0.0, min(30.0, float(retry_after)))
+        except ValueError:
+            pass
+    return min(12.0, 2.0 * (attempt_index + 1))
 
 
 class OpenAICompatClient:
@@ -99,25 +119,33 @@ class OpenAICompatClient:
             "Content-Type": "application/json",
         }
 
-        try:
-            response_body, _ = safe_fetch(
-                endpoint,
-                method="POST",
-                data=body,
-                headers=headers,
-                max_bytes=_LLM_MAX_BYTES,
-                timeout=self.config.timeout_seconds,
-            )
-            raw = response_body.decode("utf-8")
-        except FetchPolicyError as exc:
-            raise LLMError(f"unsafe LLM endpoint: {exc}") from exc
-        except (TimeoutError, socket.timeout) as exc:
-            raise LLMError(f"LLM endpoint timed out after {self.config.timeout_seconds} seconds.") from exc
-        except error.HTTPError as exc:  # pragma: no cover - exercised via CLI/network usage
-            details = exc.read().decode("utf-8", errors="replace")
-            raise LLMError(f"HTTP {exc.code} from LLM endpoint: {details}") from exc
-        except error.URLError as exc:  # pragma: no cover - exercised via CLI/network usage
-            raise LLMError(f"Unable to reach LLM endpoint: {exc.reason}") from exc
+        retry_attempts = _llm_retry_attempts()
+        for attempt_index in range(retry_attempts + 1):
+            try:
+                response_body, _ = safe_fetch(
+                    endpoint,
+                    method="POST",
+                    data=body,
+                    headers=headers,
+                    max_bytes=_LLM_MAX_BYTES,
+                    timeout=self.config.timeout_seconds,
+                )
+                raw = response_body.decode("utf-8")
+                break
+            except FetchPolicyError as exc:
+                raise LLMError(f"unsafe LLM endpoint: {exc}") from exc
+            except (TimeoutError, socket.timeout) as exc:
+                raise LLMError(f"LLM endpoint timed out after {self.config.timeout_seconds} seconds.") from exc
+            except error.HTTPError as exc:  # pragma: no cover - exercised via CLI/network usage
+                details = exc.read().decode("utf-8", errors="replace")
+                if exc.code in _RETRYABLE_HTTP_STATUS_CODES and attempt_index < retry_attempts:
+                    time.sleep(_http_retry_delay_seconds(exc, attempt_index))
+                    continue
+                raise LLMError(f"HTTP {exc.code} from LLM endpoint: {details}") from exc
+            except error.URLError as exc:  # pragma: no cover - exercised via CLI/network usage
+                raise LLMError(f"Unable to reach LLM endpoint: {exc.reason}") from exc
+        else:  # pragma: no cover - loop either breaks or raises
+            raise LLMError("LLM endpoint did not return a response.")
 
         try:
             parsed = json.loads(raw)
@@ -656,6 +684,7 @@ def probe_backend(config: LLMConfig, workdir: Path, timeout_seconds: int | None 
     client: Any | None = None
     try:
         client = create_backend_client(probe_config, workdir)
+        assert client is not None
         result = client.complete(FRONTMATTER_PROBE_SYSTEM_PROMPT, FRONTMATTER_PROBE_USER_PROMPT)
     except LLMError as exc:
         effective_config = getattr(client, "config", probe_config) if client is not None else probe_config

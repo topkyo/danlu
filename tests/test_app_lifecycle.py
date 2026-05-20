@@ -167,11 +167,12 @@ class LifecycleFlowTests(AppFlowTestBase):
         ):
             self.assertTrue((self.root / relative).exists(), relative)
         state = load_protocol_state(self.root)
-        self.assertEqual(state["active_protocol"], "general")
-        self.assertIn("investing", state["available_protocols"])
-        self.assertIn("research", state["available_protocols"])
-        self.assertIn("product", state["available_protocols"])
-        self.assertIn("ops", state["available_protocols"])
+        available_protocols = state.get("available_protocols") or []
+        self.assertEqual(state.get("active_protocol"), "general")
+        self.assertIn("investing", available_protocols)
+        self.assertIn("research", available_protocols)
+        self.assertIn("product", available_protocols)
+        self.assertIn("ops", available_protocols)
         schema_index = (self.root / "schema" / "index.md").read_text(encoding="utf-8")
         self.assertIn("协议规则", schema_index)
 
@@ -181,7 +182,7 @@ class LifecycleFlowTests(AppFlowTestBase):
             ("wiki/indexes/execution-center.md", "执行中心"),
             ("wiki/indexes/execution-audit.md", "执行审计"),
             ("wiki/indexes/review-center.md", "审阅中心"),
-            ("wiki/indexes/graph-view.md", "图谱视图"),
+            ("wiki/indexes/graph-view.md", "报告证据图谱"),
         ):
             path = self.root / relative
             self.assertTrue(path.exists(), relative)

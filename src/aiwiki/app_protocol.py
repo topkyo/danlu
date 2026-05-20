@@ -23,7 +23,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from .app_state import (
     DEFAULT_PROTOCOL,
@@ -313,33 +313,33 @@ DEFAULT_DASHBOARD_FILES = {
     + "\n",
     "wiki/indexes/graph-view.md": "\n".join(
         [
-            "# 图谱视图",
+            "# 报告证据图谱",
             "",
-            "这里是炼丹炉的人用关系图谱入口，负责把机器记忆里有真实 Markdown 页面支撑的“材料 → 判断 → 概念 → 金丹/决策”关系用中文收拢起来。",
+            "这里是炼丹炉的人用报告追溯入口，优先回答：这份报告引用了哪些证据、连接到哪些判断、还能回到哪些原始材料。",
             "",
-            "默认工作流仍然是先看报告；只有当你想追溯报告背后的证据链、判断来源或概念关系时，再打开这里。",
+            "默认工作流仍然是先看报告；只有当你想复核报告背后的证据链、判断来源或下一步追问路径时，再打开这里。",
             "",
             "## 先看哪里",
             "",
-            "- [本地图谱 HTML](../../output/graph/machine-memory.html)：直接看中文关系图谱；每个节点都应能跳到对应 `.md` 文件",
-            "- [图谱健康](./graph-health.md)：看关系组、孤立来源、桥接概念、过载概念",
-            "- [机器记忆拓扑](./machine-memory-topology.md)：看 hub 和 Mermaid 拓扑切片",
-            "- [机器记忆](./machine-memory.md)：看 term index、digest、动作/提案数量",
-            "- [漂移报告](./drift-report.md)：看最近一次机器记忆结构变化",
-            "- [概念质量](./concept-quality.md)：看图谱问题如何传导到概念改写",
+            "- [报告证据 HTML](../../output/graph/machine-memory.html)：先看报告卡片，再点进证据锚点和引用来源",
+            "- [图谱健康](./graph-health.md)：仅在排查缺边、孤立来源或图谱质量时查看",
+            "- [机器记忆拓扑](./machine-memory-topology.md)：高级维护入口，普通读报告不需要看",
+            "- [机器记忆](./machine-memory.md)：高级维护入口，普通读报告不需要看",
+            "- [漂移报告](./drift-report.md)：复盘旧判断被新证据挑战时查看",
+            "- [概念质量](./concept-quality.md)：维护概念页时查看",
             "",
             "## 怎么读",
             "",
             "1. 先看报告和 Today，不把图谱当默认入口。",
-            "2. 需要追溯时打开 `output/graph/machine-memory.html`。",
-            "3. 按中文关系读图：材料提到概念、材料支撑判断、概念相关、判断支持、判断冲突、决策依据、因果关系、金丹承接。",
-            "4. 再回到具体 `wiki/sources/`、`wiki/judgments/`、`wiki/concepts/`、`wiki/elixirs/` 页面处理。",
+            "2. 需要追溯时打开 `output/graph/machine-memory.html`，先看“报告证据入口”的报告卡片。",
+            "3. 点报告下方的证据锚点，看它连接到哪些材料、判断、概念或金丹。",
+            "4. 只有做维护时，才回到具体 `wiki/sources/`、`wiki/judgments/`、`wiki/concepts/`、`wiki/elixirs/` 页面处理。",
             "",
             "## 边界",
             "",
-            "- 这里展示的是 `aiwiki` 的机器记忆视角，不等于 Obsidian 自带的 Graph View。",
-            "- Obsidian Graph 更适合看笔记链接；这里更适合看知识编译后的证据、判断、概念、金丹和决策关系。",
-            "- 图谱关系是辅助解释层；为保持简洁，这里只展示能解析到现有 `.md` 文件的节点和它们之间的关系，最终用户默认仍应看报告和少量关键确认。",
+            "- 这里不是给用户浏览内部 wiki 资产树；首屏必须围绕报告、证据链和可复审路径。",
+            "- 底层仍复用 `aiwiki` 的机器记忆关系，但机器记忆、拓扑和健康页属于高级维护入口。",
+            "- 图谱关系是辅助解释层；底层关系标签统一使用中文，例如“因果关系”；最终用户默认仍应看报告和少量关键确认。",
             "- Linux 上若 `output/graph/machine-memory.html` 在 Obsidian 内打开后跳到 Mihomo/Clash 等代理客户端，是系统把 `text/html` 默认程序绑给了它；在浏览器里打开或在系统设置里改默认程序即可。",
         ]
     )
@@ -1549,7 +1549,7 @@ def protocol_runtime_schema_path(root: Path, slug: str) -> Path:
     return root / "schema" / "protocols" / slug / "runtime.yaml"
 
 
-def default_protocol_runtime_schema(slug: str) -> dict[str, Any]:
+def default_protocol_runtime_schema(slug: str) -> ProtocolRuntimeSchema:
     metadata = PROTOCOL_LIBRARY[slug]
     review_windows = {
         f"{kind}:{status}": [window[0], window[1]]
@@ -1559,7 +1559,7 @@ def default_protocol_runtime_schema(slug: str) -> dict[str, Any]:
     execution_policy_rules.update(PROTOCOL_EXECUTION_POLICY_RULES.get(slug, {}))
     route_config = dict(PROTOCOL_QUERY_ROUTE_CONFIG.get(DEFAULT_PROTOCOL, {}))
     route_config.update(PROTOCOL_QUERY_ROUTE_CONFIG.get(slug, {}))
-    return {
+    return cast(ProtocolRuntimeSchema, {
         "version": 1,
         "slug": slug,
         "title": metadata["title"],
@@ -1578,7 +1578,7 @@ def default_protocol_runtime_schema(slug: str) -> dict[str, Any]:
             "source_markers": list(route_config.get("source_markers") or []),
             "graph_markers": list(route_config.get("graph_markers") or []),
         },
-    }
+    })
 
 
 _PROTOCOL_RUNTIME_ALLOWED_KEYS = {
@@ -1633,7 +1633,7 @@ def _validate_protocol_runtime_output_guidance(path_ref: str, value: Any) -> dic
     }
 
 
-def _validate_protocol_runtime_execution_policy(path_ref: str, value: Any) -> dict[str, Any]:
+def _validate_protocol_runtime_execution_policy(path_ref: str, value: Any) -> dict[str, dict[str, Any]]:
     if not isinstance(value, dict):
         raise _protocol_runtime_schema_error(path_ref, "`execution_policy` must be an object.")
     accepted_rules = value.get("accepted_rules")
@@ -1712,7 +1712,7 @@ def load_protocol_runtime_schema(root: Path, slug: str) -> ProtocolRuntimeSchema
     unknown_keys = sorted(set(payload) - _PROTOCOL_RUNTIME_ALLOWED_KEYS)
     if unknown_keys:
         raise _protocol_runtime_schema_error(path_ref, f"Unsupported top-level keys: {', '.join(unknown_keys)}.")
-    merged: ProtocolRuntimeSchema = dict(default_schema)
+    merged: ProtocolRuntimeSchema = cast(ProtocolRuntimeSchema, dict(default_schema))
     if "version" in payload:
         version = payload["version"]
         if not isinstance(version, int) or isinstance(version, bool):
@@ -1735,13 +1735,16 @@ def load_protocol_runtime_schema(root: Path, slug: str) -> ProtocolRuntimeSchema
     if "output_guidance" in payload:
         merged["output_guidance"] = _validate_protocol_runtime_output_guidance(path_ref, payload["output_guidance"])
     if "execution_policy" in payload:
-        merged["execution_policy"] = _validate_protocol_runtime_execution_policy(path_ref, payload["execution_policy"])
+        merged["execution_policy"] = cast(
+            Any,
+            _validate_protocol_runtime_execution_policy(path_ref, payload["execution_policy"]),
+        )
     if "query_routes" in payload:
-        merged["query_routes"] = _validate_protocol_runtime_query_routes(
+        merged["query_routes"] = cast(Any, _validate_protocol_runtime_query_routes(
             path_ref,
             payload["query_routes"],
             dict(default_schema.get("query_routes", {})),
-        )
+        ))
     if "review_windows" in payload:
         merged["review_windows"] = _validate_protocol_runtime_review_windows(path_ref, payload["review_windows"])
     return merged
@@ -1784,7 +1787,7 @@ def available_protocols(root: Path) -> list[str]:
 
 def protocol_descriptor(root: Path, slug: str) -> ProtocolDescriptor:
     base = root / "schema" / "protocols" / slug
-    return {
+    return cast(ProtocolDescriptor, {
         "slug": slug,
         "title": protocol_title(slug),
         "summary": protocol_summary(slug),
@@ -1792,7 +1795,7 @@ def protocol_descriptor(root: Path, slug: str) -> ProtocolDescriptor:
             "index": relative_path(root, base / "index.md"),
             **{section: relative_path(root, base / f"{section}.md") for section in PROTOCOL_SECTION_FILES},
         },
-    }
+    })
 
 
 def load_protocol_state(root: Path) -> ProtocolState:
@@ -1806,21 +1809,22 @@ def load_protocol_state(root: Path) -> ProtocolState:
     normalized = {"version": 1, "active_protocol": active}
     if state != normalized:
         atomic_write_text(path, json.dumps(normalized, indent=2, sort_keys=True) + "\n")
-    return {
+    return cast(ProtocolState, {
         **normalized,
         "available_protocols": available,
         "protocols": [protocol_descriptor(root, slug) for slug in available],
         "state_path": relative_path(root, path),
-    }
+    })
 
 
 def resolve_protocol(root: Path, protocol: str | None = None) -> str:
     state = load_protocol_state(root)
     if protocol is None:
-        return state["active_protocol"]
+        return str(state.get("active_protocol") or DEFAULT_PROTOCOL)
     candidate = protocol.strip().lower()
-    if candidate not in state["available_protocols"]:
-        available = ", ".join(state["available_protocols"])
+    available_protocols = list(state.get("available_protocols") or [])
+    if candidate not in available_protocols:
+        available = ", ".join(available_protocols)
         raise ValueError(f"Unknown protocol: {protocol}. Available protocols: {available}")
     return candidate
 

@@ -93,6 +93,15 @@ from aiwiki.runner.receipts import (
 )
 
 OUTPUT_OBSIDIAN_CSSCLASS = "aiwiki-output"
+DEFAULT_REPORT_TIMEOUT_SECONDS = 240
+
+
+def _effective_run_ask_timeout(output_format: str, timeout_seconds: int | None) -> int | None:
+    if timeout_seconds is not None:
+        return timeout_seconds
+    if output_format == "report" and not os.environ.get("AIWIKI_LLM_TIMEOUT", "").strip():
+        return DEFAULT_REPORT_TIMEOUT_SECONDS
+    return None
 
 
 def _frontmatter_string_list(frontmatter: dict[str, Any], key: str) -> list[str]:
@@ -286,6 +295,10 @@ def _complete_run_ask_artifact(
         from aiwiki.execution.ask import load_previous_output_summary
 
         previous_output_summary = load_previous_output_summary(root, corpus_id, exclude_artifact_ref=artifact.get("path"))
+    material_context = str(artifact.get("material_context") or "").strip()
+    if not material_context:
+        material_refs = [str(item) for item in artifact.get("material_refs", []) if str(item).strip()]
+        material_context = _read_material_context_snippets(root, material_refs, max_chars=12000) if material_refs else ""
     prompt = _build_ask_prompt(
         root,
         target,
@@ -298,6 +311,7 @@ def _complete_run_ask_artifact(
         prepared["index_pages"],
         artifact.get("machine_memory_query", {}),
         previous_output_summary=previous_output_summary,
+        material_context=material_context,
         prompt_profile=prompt_profile,
     )
     retry_profile = ""
@@ -334,6 +348,7 @@ def _complete_run_ask_artifact(
                         prepared["index_pages"],
                         artifact.get("machine_memory_query", {}),
                         previous_output_summary=previous_output_summary,
+                        material_context=material_context,
                         prompt_profile=retry_profile,
                     )
                     prompt_profile = retry_profile
@@ -538,14 +553,21 @@ def run_ask_submit(
         raise ValueError("run-ask-submit is only supported for report output.")
     if timeout_seconds is not None and timeout_seconds <= 0:
         raise ValueError("run-ask-submit timeout_seconds must be greater than 0.")
+    effective_timeout_seconds = _effective_run_ask_timeout(output_format, timeout_seconds)
 
     from aiwiki.runner.preflight import preflight_check_backend_chain
 
     backend_compat = preflight_check_backend_chain(root)
+    material_refs = _material_hint_paths(question)
+    material_refs.extend(_safe_quoted_report_reference_paths(root, _quoted_report_reference_paths(question)))
+    material_refs = list(dict.fromkeys(material_refs))
+    clean_question = _clean_report_reference_question(question) if material_refs else question
     ask_kwargs = {"protocol": protocol, "no_cache": no_cache, "write_graph_anchors": False}
     if corpus_id_override is not None:
         ask_kwargs["corpus_id_override"] = corpus_id_override
-    artifact = ask_question(root, question, output_format, **ask_kwargs)
+    artifact = ask_question(root, clean_question, output_format, **ask_kwargs)
+    if material_refs:
+        artifact["material_refs"] = material_refs
     job_id = new_job_id("ask-report")
     artifact["background_job_id"] = job_id
     artifact["background_status"] = "submitted"
@@ -559,11 +581,12 @@ def run_ask_submit(
         "status": "submitted",
         "created_at": now,
         "updated_at": now,
-        "question": question,
+        "question": clean_question,
+        "raw_question": question,
         "output_format": output_format,
         "protocol": protocol or "",
         "lean": lean,
-        "timeout_seconds": timeout_seconds,
+        "timeout_seconds": effective_timeout_seconds,
         "no_cache": no_cache,
         "corpus_id_override": corpus_id_override or "",
         "artifact": artifact,
@@ -590,7 +613,8 @@ def run_ask_submit(
         "run_notes_path": manifest["run_notes_path"],
         "format": output_format,
         "protocol": str(artifact.get("protocol") or protocol or ""),
-        "question": question,
+        "question": clean_question,
+        "raw_question": question,
         "backend_preflight": backend_compat,
         "spawn": spawn_result,
         "job_manifest_path": relative_path(root, job_manifest_path(root, job_id)),
@@ -2105,6 +2129,7 @@ def run_ask(
     ensure_layout(root)
     if timeout_seconds is not None and timeout_seconds <= 0:
         raise ValueError("run-ask timeout_seconds must be greater than 0.")
+    effective_timeout_seconds = _effective_run_ask_timeout(output_format, timeout_seconds)
     backend_compat: dict[str, Any] = {}
 
     def _stamped_record(base_event: dict[str, Any], llm_audit: dict[str, Any], **kwargs: Any) -> None:
@@ -2113,10 +2138,9 @@ def run_ask(
             base_event["backend_compat"] = dict(backend_compat)
         record_llm_attempt(root, base_event, llm_audit, **kwargs)
 
-    material_refs = _material_hint_paths(question) if _is_material_hint_note_ask(question, output_format) else []
-    if output_format == "note":
-        material_refs.extend(_safe_quoted_report_reference_paths(root, _quoted_report_reference_paths(question)))
-        material_refs = list(dict.fromkeys(material_refs))
+    material_refs = _material_hint_paths(question)
+    material_refs.extend(_safe_quoted_report_reference_paths(root, _quoted_report_reference_paths(question)))
+    material_refs = list(dict.fromkeys(material_refs))
     material_context = _read_material_context_snippets(root, material_refs) if material_refs else ""
     if output_format == "note" and _is_elixir_count_question(question):
         from aiwiki.app_protocol import resolve_protocol
@@ -2276,11 +2300,11 @@ def run_ask(
         from aiwiki.runner.preflight import preflight_check_backend
 
         backend_compat = preflight_check_backend(root)
-    direct_mode = _is_simple_direct_ask(question, output_format, direct) or bool(material_context)
+    direct_mode = _is_simple_direct_ask(question, output_format, direct) or (output_format == "note" and bool(material_context))
     if direct_mode and output_format == "note" and not material_context:
         material_context = _collect_vault_knowledge_context(root, question)
     if direct_mode:
-        effective_client = client or create_client(root, timeout_seconds=timeout_seconds)
+        effective_client = client or create_client(root, timeout_seconds=effective_timeout_seconds)
         backend_requested = _client_backend_requested(effective_client)
         model_selected = _client_selected_model_name(effective_client)
         effective_timeout_seconds = getattr(getattr(effective_client, "config", None), "timeout_seconds", timeout_seconds)
@@ -2440,19 +2464,23 @@ def run_ask(
             "material_refs": material_refs,
         }
 
+    clean_question = _clean_report_reference_question(question) if material_refs else question
     ask_kwargs = {"protocol": protocol, "no_cache": no_cache, "write_graph_anchors": False}
     if corpus_id_override is not None:
         ask_kwargs["corpus_id_override"] = corpus_id_override
-    artifact = ask_question(root, question, output_format, **ask_kwargs)
+    artifact = ask_question(root, clean_question, output_format, **ask_kwargs)
+    if material_refs:
+        artifact["material_refs"] = material_refs
+        artifact["material_context"] = material_context
     return _complete_run_ask_artifact(
         root,
         artifact=artifact,
-        question=question,
+        question=clean_question,
         output_format=output_format,
         protocol=protocol,
         client=client,
         lean=lean,
-        timeout_seconds=timeout_seconds,
+        timeout_seconds=effective_timeout_seconds,
         no_cache=no_cache,
         backend_compat=backend_compat,
     )

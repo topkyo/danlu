@@ -3,9 +3,11 @@ from __future__ import annotations
 import base64
 import io
 import json
+import os
 import subprocess
 import tempfile
 import unittest
+from email.message import Message
 from pathlib import Path
 from unittest.mock import patch
 from urllib import error
@@ -233,16 +235,56 @@ class LLMClientTests(unittest.TestCase):
             url="https://api.openai.com/v1/chat/completions",
             code=429,
             msg="Too Many Requests",
-            hdrs=None,
+            hdrs=Message(),
             fp=io.BytesIO(b'{"error":"rate-limited"}'),
         )
 
-        with patch("aiwiki.llm.safe_fetch", side_effect=http_error):
-            with self.assertRaises(LLMError) as ctx:
-                client.complete("System prompt", "User prompt")
+        with patch.dict(os.environ, {"AIWIKI_LLM_RETRY_ATTEMPTS": "0"}):
+            with patch("aiwiki.llm.safe_fetch", side_effect=http_error):
+                with self.assertRaises(LLMError) as ctx:
+                    client.complete("System prompt", "User prompt")
 
         self.assertIn("HTTP 429", str(ctx.exception))
         self.assertIn("rate-limited", str(ctx.exception))
+
+    def test_openai_compat_retries_rate_limit_once_then_succeeds(self) -> None:
+        config = LLMConfig(
+            backend=BACKEND_OPENAI_API,
+            model="gpt-4.1-mini",
+            api_key="secret",
+            base_url="https://api.openai.com/v1",
+        )
+        client = OpenAICompatClient(config)
+        http_error = error.HTTPError(
+            url="https://api.openai.com/v1/chat/completions",
+            code=429,
+            msg="Too Many Requests",
+            hdrs=Message(),
+            fp=io.BytesIO(b'{"error":"rate-limited"}'),
+        )
+        calls = [
+            http_error,
+            (
+                b'{"id":"resp_1","choices":[{"message":{"content":"OK"}}],"usage":{"total_tokens":3}}',
+                "https://api.openai.com/v1/chat/completions",
+            ),
+        ]
+
+        def fake_safe_fetch(*args, **kwargs):
+            del args, kwargs
+            next_value = calls.pop(0)
+            if isinstance(next_value, Exception):
+                raise next_value
+            return next_value
+
+        with patch.dict(os.environ, {"AIWIKI_LLM_RETRY_ATTEMPTS": "1"}):
+            with patch("aiwiki.llm.time.sleep") as sleep_mock:
+                with patch("aiwiki.llm.safe_fetch", side_effect=fake_safe_fetch) as fetch_mock:
+                    result = client.complete("System prompt", "User prompt")
+
+        self.assertEqual(result.text, "OK")
+        self.assertEqual(fetch_mock.call_count, 2)
+        sleep_mock.assert_called_once()
 
     def test_openai_compat_complete_rejects_invalid_json(self) -> None:
         config = LLMConfig(
@@ -502,7 +544,7 @@ class LLMClientTests(unittest.TestCase):
                         url=endpoint,
                         code=404,
                         msg="Not Found",
-                        hdrs=None,
+                        hdrs=Message(),
                         fp=io.BytesIO(b'{"error":{"message":"Unknown model"}}'),
                     )
                 return json.dumps(

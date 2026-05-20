@@ -281,6 +281,39 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(receipt["status"], "success")
         self.assertEqual(receipt["material_refs"], ["output/reports/炼丹炉-md-files-note.md"])
 
+    def test_run_ask_quoted_report_report_uses_clean_question_and_material_context(self) -> None:
+        report = self.root / "output" / "reports" / "base-note.md"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(
+            "---\nformat: note\n---\n\n# Base Note\n\n特朗普访华预期是不翻车即双赢，需要关注关税法律工具和随行企业信号。\n",
+            encoding="utf-8",
+        )
+
+        class _ReportClient:
+            def __init__(self) -> None:
+                self.config = type("Config", (), {"model": "deepseek-v4-pro", "backend": "opencode-api", "timeout_seconds": 120})()
+                self.user_prompt = ""
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                self.user_prompt = user_prompt
+                return CompletionResult(text=_VALID_REPORT_BODY, response_id="resp_report", usage={"total_tokens": 20})
+
+        question = "引用报告：output/reports/base-note.md\n基于原投料，做个分析评估生成一份详细报告"
+        client = _ReportClient()
+        result = run_ask(self.root, question, "report", client=client, lean=True)
+
+        self.assertEqual(result["format"], "report")
+        self.assertEqual(result["material_refs"], ["output/reports/base-note.md"])
+        self.assertIn("## Quoted Report / Material Context", client.user_prompt)
+        self.assertIn("特朗普访华预期是不翻车即双赢", client.user_prompt)
+        self.assertNotIn("引用报告：output/reports", client.user_prompt)
+        artifact = self.root / result["path"]
+        self.assertEqual(artifact.name, "基于原投料-做个分析评估生成一份详细报告.md")
+        content = artifact.read_text(encoding="utf-8")
+        self.assertIn("# Stub answer", content)
+        self.assertNotIn("引用报告：output/reports", content)
+
     def test_quoted_report_reference_paths_must_stay_under_output_reports(self) -> None:
         reports_dir = self.root / "output" / "reports"
         reports_dir.mkdir(parents=True, exist_ok=True)
@@ -1566,6 +1599,21 @@ class RunnerTests(unittest.TestCase):
         from aiwiki.runner.workflows import _compute_adaptive_compile_timeout
 
         self.assertIsNone(_compute_adaptive_compile_timeout(self.root, []))
+
+    def test_run_ask_report_timeout_defaults_to_240_without_env(self) -> None:
+        from aiwiki.runner.workflows import _effective_run_ask_timeout
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("AIWIKI_LLM_TIMEOUT", None)
+            self.assertEqual(_effective_run_ask_timeout("report", None), 240)
+            self.assertIsNone(_effective_run_ask_timeout("note", None))
+            self.assertEqual(_effective_run_ask_timeout("report", 33), 33)
+
+    def test_run_ask_report_timeout_respects_env_override(self) -> None:
+        from aiwiki.runner.workflows import _effective_run_ask_timeout
+
+        with patch.dict(os.environ, {"AIWIKI_LLM_TIMEOUT": "300"}, clear=False):
+            self.assertIsNone(_effective_run_ask_timeout("report", None))
 
     def test_adaptive_compile_timeout_scales_with_largest_pending_raw(self) -> None:
         """F-INV-NEW-1: a single ~270 page raw (≈ 270 * 30KB) lands in the

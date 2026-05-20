@@ -42,6 +42,8 @@ describe("Universal Input attachment source handling", () => {
 
     expect(source).toContain(path.join(".aiwiki", "tmp", "product-shell-drop"));
     expect(source).not.toContain("report:bad/name?.pdf");
+    expect(path.basename(source)).toMatch(/^report_bad_name_-/);
+    expect(path.basename(source)).toMatch(/\.pdf$/);
     expect(fs.readFileSync(source, "utf8")).toBe("%PDF-1.4\n");
     expect(file.arrayBuffer).toHaveBeenCalledTimes(1);
   });
@@ -135,8 +137,8 @@ describe("Universal Input attachment source handling", () => {
     });
 
     expect(plugin.runUniversalInputCommand).toHaveBeenCalledTimes(2);
-    expect(plugin.runUniversalInputCommand).toHaveBeenNthCalledWith(1, { payload: "a.pdf" });
-    expect(plugin.runUniversalInputCommand).toHaveBeenNthCalledWith(2, { payload: "b.pdf" });
+    expect(plugin.runUniversalInputCommand).toHaveBeenNthCalledWith(1, { payload: "a.pdf", title: "" });
+    expect(plugin.runUniversalInputCommand).toHaveBeenNthCalledWith(2, { payload: "b.pdf", title: "" });
     expect(plugin.runAskCommand).toHaveBeenCalledTimes(1);
     expect(calls.map((item) => item[0])).toEqual(["drop", "drop", "ask"]);
     expect(plugin.runAskCommand).toHaveBeenCalledWith({
@@ -152,6 +154,32 @@ describe("Universal Input attachment source handling", () => {
     expect(askQuestion).not.toContain("/home/tim/private/b.pdf");
     expect(result.materialPaths).toEqual(["raw/inbox/a.md", "raw/assets/b.pdf"]);
     expect(result.askFormat).toBe("note");
+  });
+
+  test("auto ask passes dropped file names as CLI titles", async () => {
+    const helpersSrc = fs.readFileSync(path.resolve(__dirname, "../../helpers.js"), "utf8");
+    const pluginSrc = fs.readFileSync(path.resolve(__dirname, "../../plugin.js"), "utf8");
+    const context = {
+      module: { exports: {} },
+      exports: {},
+      require,
+      Plugin: class {},
+    };
+    vm.runInNewContext(`${helpersSrc}\n${pluginSrc}\nmodule.exports = module.exports;`, context);
+    const PluginClass = context.module.exports;
+    const plugin = new PluginClass();
+    plugin.runUniversalInputCommand = jest.fn(async () => ({ note_path: "raw/inbox/trump-visit.md" }));
+    plugin.runAskCommand = jest.fn(async () => ({ report_path: "output/reports/r.md" }));
+
+    await plugin.runDroppedFilesWithAutoAsk({
+      files: [{ path: "/tmp/1779261245224-7b4c3390-20260513.pdf", name: "特朗普访华预期.pdf" }],
+      question: "请总结",
+    });
+
+    expect(plugin.runUniversalInputCommand).toHaveBeenCalledWith({
+      payload: "/tmp/1779261245224-7b4c3390-20260513.pdf",
+      title: "特朗普访华预期.pdf",
+    });
   });
 
   test("auto ask uses report only when the user asks for report-grade output", async () => {
@@ -211,8 +239,12 @@ describe("Universal Input attachment source handling", () => {
     const bundleSrc = fs.readFileSync(path.resolve(__dirname, "../../../main.js"), "utf8");
 
     expect(modalsSrc).toMatch(/await resolvePluginFileSource\(self\.plugin, file\)/);
+    expect(modalsSrc).toMatch(/setInitialTitle\(value\)/);
+    expect(modalsSrc).toMatch(/titleInput\.value = this\.initialTitle/);
+    expect(modalsSrc).toMatch(/titleInput\.value = String\(file\.name \|\| ""\)\.trim\(\)/);
     expect(modalsSrc).not.toMatch(/file\.path \|\| file\.name/);
     expect(bundleSrc).toMatch(/await resolvePluginFileSource\(self\.plugin, file\)/);
+    expect(bundleSrc).toMatch(/setInitialTitle\(file\.name \|\| ""\)/);
   });
 
   test("splitTextMaterialQuestion detects material plus question", () => {

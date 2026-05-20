@@ -816,6 +816,42 @@ def render_machine_memory_graph_html(
         for edge_type, label, count in relation_summary_rows
     ) or "<li>当前没有关系边。</li>"
 
+    report_index: dict[str, dict[str, Any]] = {}
+    node_title_by_id = {str(record.get("id") or ""): str(record.get("title") or record.get("id") or "") for record in node_records}
+    for node_id, reports in sorted(report_anchors.items()):
+        for report in reports:
+            path = str(report.get("path") or "").strip()
+            if not path:
+                continue
+            record = report_index.setdefault(
+                path,
+                {"path": path, "title": str(report.get("title") or path), "anchors": [], "anchor_count": 0},
+            )
+            record["anchor_count"] = int(record.get("anchor_count") or 0) + 1
+            if node_id in node_title_by_id:
+                record["anchors"].append({"node_id": node_id, "title": node_title_by_id[node_id]})
+    report_cards: list[str] = []
+    for report in sorted(report_index.values(), key=lambda item: str(item.get("title") or item.get("path") or ""))[:12]:
+        anchors = list(report.get("anchors") or [])[:8]
+        anchor_buttons = "".join(
+            f'<button type="button" class="report-anchor-link" data-node-id="{html.escape(str(anchor.get("node_id") or ""))}">{html.escape(str(anchor.get("title") or anchor.get("node_id") or "证据锚点"))}</button>'
+            for anchor in anchors
+        ) or '<span class="muted">暂无可点开的证据锚点。</span>'
+        report_cards.append(
+            "".join(
+                [
+                    '<article class="report-card">',
+                    f'<h3><a href="../../{html.escape(str(report.get("path") or ""))}">{html.escape(str(report.get("title") or report.get("path") or "未命名报告"))}</a></h3>',
+                    f'<div class="node-meta">证据锚点 {int(report.get("anchor_count") or 0)} 个，可点开 {len(report.get("anchors") or [])} 个</div>',
+                    f'<div class="report-anchors">{anchor_buttons}</div>',
+                    "</article>",
+                ]
+            )
+        )
+    report_overview_markup = "".join(report_cards) or (
+        '<div class="empty">当前还没有带证据锚点的报告。先生成报告；报告沉淀出 <code>graph_anchor_node_ids</code> 后，这里会优先显示报告到证据的追溯入口。</div>'
+    )
+
     empty_state = ""
     if not graph_nodes:
         empty_state = '<div class="empty">当前没有可展示的中文相关 Markdown 图谱节点。请先沉淀中文内容的 source / concept / judgment / elixir 页面后重新编译。</div>'
@@ -827,7 +863,7 @@ def render_machine_memory_graph_html(
             '<html lang="zh-CN">',
             "<head>",
             html_meta_theme(),
-            '  <title>炼丹炉关系图谱</title>',
+            '  <title>炼丹炉报告证据图谱</title>',
             "  <style>",
             html_theme_css(),
             "    /* Graph-specific */ ",
@@ -861,15 +897,21 @@ def render_machine_memory_graph_html(
             "    .relation-machine-type { color: var(--muted); font-size: 11px; margin-left: 4px; }",
             "    .relation-node-link { border: 1px solid var(--line); background: var(--bg); color: var(--accent); border-radius: 999px; padding: 2px 8px; cursor: pointer; font: inherit; }",
             "    .relation-node-link:hover { background: var(--accent); color: #fff; }",
+            "    .report-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }",
+            "    .report-card { border: 1px solid var(--line); border-radius: 16px; padding: 14px; background: var(--bg); }",
+            "    .report-card h3 { margin-top: 0; font-size: 16px; }",
+            "    .report-anchors { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }",
+            "    .report-anchor-link { border: 1px solid var(--line); background: var(--accent-bg); color: var(--accent); border-radius: 999px; padding: 4px 10px; cursor: pointer; font: inherit; font-size: 12px; }",
+            "    .report-anchor-link:hover { background: var(--accent); color: #fff; }",
             "    @media (max-width: 960px) { .workbench { grid-template-columns: 1fr; } .legend { gap: 8px; } .legend span { flex: 1 1 140px; font-size: 12px; } }",
             "  </style>",
             "</head>",
             "<body>",
             "<main>",
             "  <section class=\"panel\">",
-            "    <h1>炼丹炉关系图谱</h1>",
+            "    <h1>报告证据图谱</h1>",
             f"    <p>编译时间：<code>{html.escape(str(memory.get('compiled_at', '')))}</code> | 图谱摘要：<code>{html.escape(str(graph.get('digest', '')))}</code></p>",
-            "    <p>这是炼丹炉把中文材料、判断、概念和金丹连起来后的本地文件图谱。这里只展示中文相关、且对应现有 Markdown 页面的节点；英文 slug、hash 和内部修复候选不会进入默认展示。</p>",
+            "    <p>这是给读报告的人用的追溯入口：先看报告，再点证据锚点回到材料、判断和概念。内部 wiki 资产结构只作为解释层，默认不要求普通用户理解或浏览。</p>",
             "    <div class=\"meta\">",
             *[f'      <div class="card"><div class="metric">{html.escape(item.split()[-1])}</div><div class="metric-label">{html.escape(" ".join(item.split()[:-1]) or item)}</div></div>' for item in summary_items],
             "    </div>",
@@ -889,6 +931,10 @@ def render_machine_memory_graph_html(
             "    </div>",
             "  </section>",
             f"  {empty_state}",
+            '  <section class="panel"><h2>报告证据入口</h2>',
+            "    <p>优先从这里进入：选择一份报告，点它引用的证据锚点，右侧会显示直接关系、引用此节点的其他报告和原始页面。</p>",
+            f'    <div class="report-overview">{report_overview_markup}</div>',
+            "  </section>",
             '  <section class="panel">',
             '    <div class="controls">',
             '      <div><label for="graph-search">搜索节点</label><input id="graph-search" type="search" placeholder="输入标题、关键词或来源编号" /></div>',
@@ -905,14 +951,14 @@ def render_machine_memory_graph_html(
             '          <button type="button" id="graph-reset-view">重置视图</button>',
             '          <span id="graph-status" class="graph-status">100%</span>',
             "        </div>",
-            f'        <svg id="graph-canvas" viewBox="0 0 1020 {view_height}" role="img" aria-label="炼丹炉机器记忆关系图谱">',
+            f'        <svg id="graph-canvas" viewBox="0 0 1020 {view_height}" role="img" aria-label="炼丹炉报告证据图谱">',
             '          <g id="graph-viewport">',
             f"{svg_body}",
             "          </g>",
             "        </svg>",
             "      </div>",
             '      <div class="details-grid">',
-            '        <div class="panel"><h2>节点详情</h2><div id="graph-node-details">选择节点详情按钮，查看关系组、连接数和详情页。</div></div>',
+            '        <div class="panel"><h2>证据详情</h2><div id="graph-node-details">选择报告证据锚点或节点详情按钮，查看关系组、连接数和详情页。</div></div>',
             '        <div class="panel node-browser"><h2>节点浏览器</h2><ul id="graph-node-browser">',
             f"{node_rows_markup}",
             "        </ul></div>",
@@ -920,7 +966,7 @@ def render_machine_memory_graph_html(
             "    </div>",
             "  </section>",
             '  <section class="panel"><h2>关系说明</h2>',
-            "    <p>图谱关系用中文表达：材料沉淀为来源节点，来源提到概念，来源支撑判断；判断之间可以互相支持、冲突或相关；决策依据来自判断；概念之间可形成相关或因果关系；金丹节点展示已沉淀的 <code>wiki/elixirs/*.md</code>，金丹承接表示一个金丹从另一个金丹继续炼化而来。</p>",
+            "    <p>图谱关系用中文表达：报告引用证据锚点；材料沉淀为来源节点，来源提到概念，来源支撑判断；判断之间可以互相支持、冲突或相关；决策依据来自判断；概念之间可形成相关或因果关系；金丹节点展示已沉淀的 <code>wiki/elixirs/*.md</code>。</p>",
             "    <p><strong>例子：</strong>材料 A 支撑判断 J，判断 J 成为决策 D 的依据；如果新判断 K 与 J 冲突，图谱会把它显示为“判断冲突”，帮助你从报告回到证据链。</p>",
             "    <ul>",
             f"{relation_summary_items}",
@@ -1066,6 +1112,9 @@ def render_machine_memory_graph_html(
             "    }",
             "    document.querySelectorAll('.node-detail-button').forEach((button) => {",
             "      button.addEventListener('click', () => renderDetails(button.dataset.nodeId || ''));",
+            "    });",
+            "    document.querySelectorAll('.report-anchor-link').forEach((button) => {",
+            "      button.addEventListener('click', () => { renderDetails(button.dataset.nodeId || ''); focusNode(button.dataset.nodeId || ''); });",
             "    });",
             "    if (zoomOutButton) zoomOutButton.addEventListener('click', () => { scale = Math.max(0.6, scale - 0.2); if (activeNodeId) { focusNode(activeNodeId); } else { updateViewport(); } });",
             "    if (zoomInButton) zoomInButton.addEventListener('click', () => { scale = Math.min(2.4, scale + 0.2); if (activeNodeId) { focusNode(activeNodeId); } else { updateViewport(); } });",

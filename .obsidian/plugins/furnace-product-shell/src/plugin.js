@@ -2519,12 +2519,22 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async runDroppedPayloadsWithAutoAsk({ payloads, question, protocol }) {
     const normalizedPayloads = Array.isArray(payloads)
-      ? payloads.map((payload) => String(payload || "").trim()).filter(Boolean)
+      ? payloads
+        .map((payload) => {
+          if (payload && typeof payload === "object") {
+            return {
+              path: String(payload.path || payload.source || payload.payload || "").trim(),
+              title: String(payload.title || payload.name || "").trim(),
+            };
+          }
+          return { path: String(payload || "").trim(), title: "" };
+        })
+        .filter((payload) => payload.path)
       : [];
     const normalizedQuestion = String(question || "").trim();
     const materialPaths = [];
-    for (const payloadText of normalizedPayloads) {
-      const payload = await this.runUniversalInputCommand({ payload: payloadText });
+    for (const payloadItem of normalizedPayloads) {
+      const payload = await this.runUniversalInputCommand({ payload: payloadItem.path, title: payloadItem.title });
       collectMaterialPathsFromPayload(payload).forEach((item) => materialPaths.push(item));
     }
     const normalizedMaterialPaths = normalizeMaterialPaths(materialPaths);
@@ -2577,7 +2587,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         .filter((file) => file.path)
       : [];
     return await this.runDroppedPayloadsWithAutoAsk({
-      payloads: normalizedFiles.map((file) => file.path),
+      payloads: normalizedFiles.map((file) => ({ path: file.path, title: file.name })),
       question,
       protocol,
     });

@@ -108,6 +108,19 @@ class DropTests(unittest.TestCase):
         self.assertIn("Recovered PDF text.", note)
         self.assertIn("Runtime Paper", note)
 
+    def test_drop_pdf_preserves_chinese_upload_title_in_filenames(self) -> None:
+        source = self.root / "1779261245224-7b4c3390.pdf"
+        source.write_bytes(b"%PDF-1.4 fake payload")
+
+        with patch("aiwiki.drop._extract_pdf_text", return_value="Recovered PDF text."):
+            result = drop_pdf(self.root, str(source), title="特朗普访华预期.pdf")
+
+        note_stem = Path(result["note_path"]).stem
+        asset_stem = Path(result["asset_path"]).stem
+        self.assertIn("特朗普访华预期", note_stem)
+        self.assertIn("特朗普访华预期", asset_stem)
+        self.assertNotIn("1779261245224", note_stem)
+
     def test_drop_image_records_generated_visual_analysis(self) -> None:
         image_bytes = base64.b64decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z3ioAAAAASUVORK5CYII="
@@ -135,6 +148,28 @@ class DropTests(unittest.TestCase):
         self.assertEqual(frontmatter["vision_status"], "generated")
         self.assertIn("Latency chart OCR text", note)
         self.assertIn("- Chart summary", note)
+
+    def test_drop_image_preserves_chinese_upload_title_in_filenames(self) -> None:
+        image_bytes = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z3ioAAAAASUVORK5CYII="
+        )
+        image_path = self.root / "1779261245224-7b4c3390.png"
+        image_path.write_bytes(image_bytes)
+
+        with patch("aiwiki.drop._image_dimensions", return_value=(640, 480)):
+            with patch("aiwiki.drop._extract_image_text", return_value="OCR text"):
+                result = drop_image(
+                    self.root,
+                    str(image_path),
+                    title="市场结构图.png",
+                    client=StubVisionClient("- Image summary"),
+                )
+
+        note_stem = Path(result["note_path"]).stem
+        asset_stem = Path(result["asset_path"]).stem
+        self.assertIn("市场结构图", note_stem)
+        self.assertIn("市场结构图", asset_stem)
+        self.assertNotIn("1779261245224", note_stem)
 
     def test_drop_repo_snapshots_local_repository_tree(self) -> None:
         repo = self.root / "fixture-repo"

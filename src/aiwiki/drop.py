@@ -30,7 +30,6 @@ from .app_utils import (
     runtime_write_lock,
     safe_fetch,
     safe_resolve_within,
-    slugify,
     utc_now,
 )
 from .config import LLMConfig, _backend_supports_image_analysis
@@ -57,6 +56,17 @@ _ASSET_MAX_BYTES = 50 * 1024 * 1024
 _LOCAL_PDF_MAX_BYTES = _ASSET_MAX_BYTES
 _LOCAL_IMAGE_MAX_BYTES = 25 * 1024 * 1024
 _SUPPORTED_IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml"}
+_FILENAME_TITLE_SUFFIXES = {
+    ".gif",
+    ".jpeg",
+    ".jpg",
+    ".md",
+    ".markdown",
+    ".pdf",
+    ".png",
+    ".txt",
+    ".webp",
+}
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1644,7 +1654,12 @@ def _git_output(repo_path: Path, args: list[str]) -> str:
 
 
 def _timestamped_stem(label: str) -> str:
-    result = slugify(label)[:64]
+    filename_label = re.sub(r"[\\/]+", " ", label.strip())
+    suffix = Path(filename_label).suffix.lower()
+    if suffix in _FILENAME_TITLE_SUFFIXES:
+        filename_label = filename_label[: -len(suffix)]
+    result = re.sub(r"[^\w\u3400-\u9fff]+", "-", filename_label.lower(), flags=re.UNICODE).strip("-_.")[:64]
+    result = result.strip("-_.")
     if result and result != "item":
         return result
     return f"doc-{hashlib.sha256(label.encode()).hexdigest()[:12]}"

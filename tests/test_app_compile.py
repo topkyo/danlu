@@ -1172,10 +1172,11 @@ class CompileFlowTests(AppFlowTestBase):
         graph_view = (self.root / "wiki" / "indexes" / "graph-view.md").read_text(encoding="utf-8")
 
         self.assertIn("`output/graph/machine-memory.html`", graph_view)
+        self.assertIn("# 报告证据图谱", graph_view)
+        self.assertIn("报告证据 HTML", graph_view)
         self.assertIn("默认工作流仍然是先看报告", graph_view)
-        self.assertIn("材料提到概念", graph_view)
-        self.assertIn("判断冲突", graph_view)
-        self.assertIn("决策依据", graph_view)
+        self.assertIn("这份报告引用了哪些证据", graph_view)
+        self.assertIn("普通读报告不需要看", graph_view)
         # The Mihomo/Clash troubleshooting hint must be present in chinese, but
         # we deliberately do not assert the english MIME literal `text/html` so
         # the user-facing surface stays chinese-first.
@@ -1190,7 +1191,7 @@ class CompileFlowTests(AppFlowTestBase):
         result = compile_wiki(self.root)
 
         payload = graph_view.read_text(encoding="utf-8")
-        self.assertIn("# 图谱视图", payload)
+        self.assertIn("# 报告证据图谱", payload)
         self.assertIn("默认工作流仍然是先看报告", payload)
         self.assertNotIn("Stale User Copy", payload)
         self.assertIn("wiki/indexes/graph-view.md", result["dirty_index_artifacts"])
@@ -1204,7 +1205,8 @@ class CompileFlowTests(AppFlowTestBase):
         graph_html = self.root / "output" / "graph" / "machine-memory.html"
         payload = graph_html.read_text(encoding="utf-8")
         self.assertTrue(graph_html.exists())
-        self.assertIn("炼丹炉关系图谱", payload)
+        self.assertIn("炼丹炉报告证据图谱", payload)
+        self.assertIn("报告证据入口", payload)
         self.assertNotIn("Machine Memory Graph", payload)
         self.assertIn("<svg", payload)
         self.assertNotIn("Transformer Scaling", payload)
@@ -1474,7 +1476,7 @@ class CompileFlowTests(AppFlowTestBase):
         self.assertIn("SOP Draft", packs_index)
         self.assertIn("Scaling Decision", review_pack.read_text(encoding="utf-8"))
         decision_memo_text = decision_memo.read_text(encoding="utf-8")
-        self.assertIn("Scaling Judgment", decision_memo_text)
+        self.assertIn("缩放判断", decision_memo_text)
         self.assertIn("## Recommendation", decision_memo_text)
         self.assertIn("Serving optimizations lowered inference cost.", decision_memo_text)
         self.assertIn("Invalidate if cost per token keeps falling", decision_memo_text)
@@ -1800,7 +1802,7 @@ class CompileFlowTests(AppFlowTestBase):
         self.assertIn("graph-protocol", payload)
         self.assertIn("graph-node-browser", payload)
         self.assertIn("graphUiData", payload)
-        self.assertIn("节点详情", payload)
+        self.assertIn("证据详情", payload)
         self.assertIn("关系组", payload)
         self.assertNotIn("核心概念", payload)
         self.assertNotIn("核心来源", payload)
@@ -1812,7 +1814,8 @@ class CompileFlowTests(AppFlowTestBase):
         self.assertIn("材料支撑判断", payload)
         self.assertIn("概念相关", payload)
         self.assertIn("相关关系", payload)
-        self.assertIn("这里只展示中文相关", payload)
+        self.assertIn("这是给读报告的人用的追溯入口", payload)
+        self.assertIn("默认不要求普通用户理解或浏览", payload)
         self.assertNotIn("输入标题、slug、来源 id", payload)
         self.assertNotIn("Hub 概念", payload)
         self.assertNotIn("Graph View Dashboard", payload)
@@ -1835,6 +1838,7 @@ class CompileFlowTests(AppFlowTestBase):
         compile_wiki(self.root)
 
         payload = (self.root / "output" / "graph" / "machine-memory.html").read_text(encoding="utf-8")
+        self.assertIn("报告证据入口", payload)
         self.assertIn("引用此节点的报告", payload)
         self.assertIn("referenced_by", payload)
         # The report path should be embedded in the JSON payload that drives detail rendering.
@@ -2061,7 +2065,7 @@ class CompileFlowTests(AppFlowTestBase):
 
     def test_compile_escapes_script_sensitive_text_in_machine_memory_graph_html(self) -> None:
         scripted = self.root / "scripted.md"
-        scripted.write_text("# Scripted Source\n\nGraph payload should stay safe.\n", encoding="utf-8")
+        scripted.write_text("# 中文 Scripted Source\n\n这是一条中文图谱材料，Graph payload should stay safe.\n", encoding="utf-8")
         ingest_source(self.root, str(scripted), title="Bad </script> \u2028 title")
 
         compile_wiki(self.root)

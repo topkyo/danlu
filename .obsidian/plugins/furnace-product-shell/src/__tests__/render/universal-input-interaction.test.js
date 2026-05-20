@@ -112,12 +112,14 @@ function loadRenderContext() {
       return {
         setInitialMode() { return this; },
         setInitialSource() { return this; },
+        setInitialTitle() { return this; },
         open() { return this; },
       };
     },
     DropImageModal: function DropImageModal() {
       return {
         setInitialSource() { return this; },
+        setInitialTitle() { return this; },
         open() { return this; },
       };
     },

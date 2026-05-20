@@ -70,8 +70,10 @@ async function resolvePluginFileSource(plugin, file) {
   const targetDir = pathApi.join(root, ".aiwiki", "tmp", "product-shell-drop");
   fsApi.mkdirSync(targetDir, { recursive: true });
   const safeName = sanitizeDropFileName(fileName || "attachment");
+  const parsedName = pathApi.parse(safeName);
+  const safeStem = parsedName.name || "attachment";
   const stamp = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
-  const targetPath = pathApi.join(targetDir, `${stamp}-${safeName}`);
+  const targetPath = pathApi.join(targetDir, `${safeStem}-${stamp}${parsedName.ext || ""}`);
   const buffer = await file.arrayBuffer();
   fsApi.writeFileSync(targetPath, new Uint8Array(buffer));
   return targetPath;
