@@ -606,7 +606,7 @@ class CLITests(unittest.TestCase):
         sample = payload["needs_review"][0]
         self.assertEqual(
             set(sample.keys()),
-            {"kind", "title", "summary", "target", "timestamp", "protocol"},
+            {"kind", "title", "summary", "target", "timestamp", "protocol", "priority"},
         )
 
     def test_today_json_keeps_automation_status_out_of_primary_today(self) -> None:

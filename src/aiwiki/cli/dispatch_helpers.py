@@ -8,7 +8,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from ..today_feed import FeedEntry
+from ..today_feed import FeedEntry, priority_for_kind
 
 
 def _dispatch_module():
@@ -449,6 +449,7 @@ def _today_feed_to_json(feed: list[FeedEntry], summary: dict[str, object]) -> di
                 "summary": e.summary,
                 "target": e.target,
                 "timestamp": e.timestamp,
+                "priority": priority_for_kind(e.kind),
                 "protocol": e.protocol,
             }
             for e in buckets.get(feed_kind, [])

@@ -274,19 +274,22 @@ bash scripts/verify.sh
 
 | Hub | 约行数 | 状态 |
 |-----|--------|------|
-| `runner/workflows.py` | 2772 | 待 slim |
-| `runner/alchemy.py` | 2589 | 待 slim |
-| `app_protocol.py` | 1999 | 稳定 |
-| AOS-003/005/006 slim 记录 | `docs/analysis/`, `PROGRESS.md` | 部分完成 |
+| `runner/workflows.py` | ~1246 | compile/lint/nightly 编排（ask → `workflows_ask.py`） |
+| `runner/workflows_ask.py` | ~1320 | 已抽出 run-ask 路径 |
+| `runner/local_stats.py` | ~243 | 已抽出本地统计 intent |
+| `runner/workflow_shared.py` | ~45 | ask/compile 共享 helper |
+| `runner/alchemy.py` | 2589 | 待 slim（deferred） |
+| `app_protocol.py` | ~1750 | library 已抽出 |
+| AOS-003/005/006 slim 记录 | `docs/analysis/`, `PROGRESS.md` | local_stats + workflows_ask 完成 |
 
 ### 验证命令
 
 ```bash
-# AGOS-005 后：focused pytest for extracted seam
 bash scripts/verify.sh python-static
+PYTHONPATH=src python -m pytest tests/test_post_agos_risk.py -q
 ```
 
-### 当前状态：**PARTIAL**
+### 当前状态：**PASS**（seam map + ≥2 extractions：local_stats、workflows_ask）
 
 ---
 

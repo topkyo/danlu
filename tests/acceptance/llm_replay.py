@@ -104,6 +104,7 @@ def inject_replay_client(monkeypatch, case_dir: Path) -> None:
 
     monkeypatch.setattr("aiwiki.runner.clients.create_client", _fake_create_client)
     monkeypatch.setattr("aiwiki.runner.workflows.create_client", _fake_create_client)
+    monkeypatch.setattr("aiwiki.runner.workflows_ask.create_client", _fake_create_client)
 
 
 def inject_recording_client(monkeypatch, case_dir: Path) -> None:
@@ -123,3 +124,4 @@ def inject_recording_client(monkeypatch, case_dir: Path) -> None:
 
     monkeypatch.setattr("aiwiki.runner.clients.create_client", _fake_create_client)
     monkeypatch.setattr("aiwiki.runner.workflows.create_client", _fake_create_client)
+    monkeypatch.setattr("aiwiki.runner.workflows_ask.create_client", _fake_create_client)

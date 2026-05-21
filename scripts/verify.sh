@@ -40,6 +40,7 @@ verify_scripts() {
     [[ -e "$script" ]] || continue
     bash -n "$script"
   done
+  bash scripts/docs_consistency_check.sh
 }
 
 verify_python_static() {

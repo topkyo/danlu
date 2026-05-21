@@ -207,7 +207,7 @@ class RunnerTests(unittest.TestCase):
                 self.prompts.append(f"system:{system_prompt}")
 
         client = _DirectClient()
-        with patch("aiwiki.runner.workflows.ask_question") as deterministic_ask:
+        with patch("aiwiki.runner.workflows_ask.ask_question") as deterministic_ask:
             result = run_ask(self.root, "你是什么大模型？", "note", client=client, direct=True)
 
         deterministic_ask.assert_not_called()
@@ -257,7 +257,7 @@ class RunnerTests(unittest.TestCase):
 
         question = "引用报告：output/reports/炼丹炉-md-files-note.md\n如何给于你权限去访问呢？"
         client = _QuotedReportClient()
-        with patch("aiwiki.runner.workflows.ask_question") as deterministic_ask:
+        with patch("aiwiki.runner.workflows_ask.ask_question") as deterministic_ask:
             result = run_ask(self.root, question, "note", client=client, direct=True)
 
         deterministic_ask.assert_not_called()
@@ -352,7 +352,7 @@ class RunnerTests(unittest.TestCase):
         (candidate_dir / "candidate.md").write_text("# Candidate\n", encoding="utf-8")
 
         question = "# 引用报告：output/reports/目前炼丹炉有几个金丹-note.md 当前炼丹炉valut这个仓库有几个金丹？"
-        with patch("aiwiki.runner.workflows.ask_question") as deterministic_ask, patch(
+        with patch("aiwiki.runner.workflows_ask.ask_question") as deterministic_ask, patch(
             "aiwiki.runner.preflight.preflight_check_backend",
             side_effect=AssertionError("local elixir stats must not probe backend"),
         ):
@@ -376,7 +376,7 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(receipt["status"], "success")
 
     def test_run_ask_direct_note_marks_backend_failover_stage(self) -> None:
-        with patch("aiwiki.runner.workflows.ask_question") as deterministic_ask:
+        with patch("aiwiki.runner.workflows_ask.ask_question") as deterministic_ask:
             result = run_ask(
                 self.root,
                 "你是什么大模型？",
@@ -424,7 +424,7 @@ class RunnerTests(unittest.TestCase):
                     return CompletionResult(text="_LLM: 请用 2–5 段自然语言直接回答。", response_id="resp_template", usage={})
                 return CompletionResult(text="当前配置的备用模型是 gpt-5.5。", response_id="resp_valid", usage={"total_tokens": 7})
 
-        with patch("aiwiki.runner.workflows.ask_question") as deterministic_ask:
+        with patch("aiwiki.runner.workflows_ask.ask_question") as deterministic_ask:
             result = run_ask(
                 self.root,
                 "你是什么模型？",
@@ -461,7 +461,7 @@ class RunnerTests(unittest.TestCase):
 
         question = "图片内容？\n\n请优先使用本次投喂材料回答；材料路径供系统路由使用：raw/inbox/image-note.md、raw/assets/image.jpeg"
         client = _MaterialClient()
-        with patch("aiwiki.runner.workflows.ask_question") as deterministic_ask:
+        with patch("aiwiki.runner.workflows_ask.ask_question") as deterministic_ask:
             result = run_ask(self.root, question, "note", client=client)
 
         deterministic_ask.assert_not_called()
@@ -542,7 +542,7 @@ class RunnerTests(unittest.TestCase):
                 raise LLMError("LLM endpoint timed out after 45 seconds.")
 
         question = "分析下内容\n\n请优先使用本次投喂材料回答；材料路径供系统路由使用：raw/inbox/pdf-note.md、raw/assets/pdf.pdf"
-        with patch("aiwiki.runner.workflows.ask_question") as deterministic_ask:
+        with patch("aiwiki.runner.workflows_ask.ask_question") as deterministic_ask:
             with self.assertRaisesRegex(LLMError, "timed out"):
                 run_ask(self.root, question, "note", client=_TimeoutClient())
 
@@ -583,8 +583,8 @@ class RunnerTests(unittest.TestCase):
                 )
 
         client = _LeanClient()
-        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
-            with patch("aiwiki.runner.workflows._build_ask_prompt", return_value="lean prompt") as build_prompt:
+        with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
+            with patch("aiwiki.runner.workflows_ask._build_ask_prompt", return_value="lean prompt") as build_prompt:
                 result = run_ask(self.root, "测试", "report", client=client, lean=True)
 
         self.assertEqual(result["prompt_profile"], "lean")
@@ -620,8 +620,8 @@ class RunnerTests(unittest.TestCase):
             "machine_memory_query": {},
         }
 
-        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
-            with patch("aiwiki.runner.workflows._build_ask_prompt", return_value="report prompt"):
+        with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
+            with patch("aiwiki.runner.workflows_ask._build_ask_prompt", return_value="report prompt"):
                 result = run_ask(self.root, "测试", "report", client=_BackendFailoverAskClient(), lean=True)
 
         self.assertEqual(result["backend_requested"], "opencode-api")
@@ -696,7 +696,7 @@ class RunnerTests(unittest.TestCase):
                 del system_prompt, user_prompt
                 return CompletionResult(text=llm_report, response_id="resp_receipt_proof", usage={"total_tokens": 9})
 
-        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
+        with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
             result = run_ask(self.root, "Compare transformer scaling tradeoffs", "report", client=_SuccessClient())
 
         final_frontmatter = parse_frontmatter(artifact_path.read_text(encoding="utf-8"))
@@ -794,7 +794,7 @@ class RunnerTests(unittest.TestCase):
                 del system_prompt, user_prompt
                 return CompletionResult(text=llm_report, response_id="resp_forged", usage={"total_tokens": 9})
 
-        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
+        with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
             run_ask(self.root, "Compare transformer scaling tradeoffs", "report", client=_ForgeryClient())
 
         final_frontmatter = parse_frontmatter(artifact_path.read_text(encoding="utf-8"))
@@ -867,7 +867,7 @@ class RunnerTests(unittest.TestCase):
                 del system_prompt, user_prompt
                 return CompletionResult(text=llm_report, response_id="resp_runtime_proof", usage={"total_tokens": 9})
 
-        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
+        with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
             run_ask(self.root, "Compare transformer scaling tradeoffs", "report", client=_ForgeryClient())
 
         final_frontmatter = parse_frontmatter(artifact_path.read_text(encoding="utf-8"))
@@ -907,8 +907,8 @@ class RunnerTests(unittest.TestCase):
                 del system_prompt, user_prompt
                 return CompletionResult(text=_VALID_REPORT_BODY, response_id="resp_receipt_fail", usage={"total_tokens": 9})
 
-        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
-            with patch("aiwiki.runner.workflows.write_execution_receipt", side_effect=RuntimeError("receipt failed")):
+        with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
+            with patch("aiwiki.runner.workflows_ask.write_execution_receipt", side_effect=RuntimeError("receipt failed")):
                 with self.assertRaises(RuntimeError):
                     run_ask(self.root, "Compare transformer scaling tradeoffs", "report", client=_SuccessClient())
 
@@ -981,7 +981,7 @@ class RunnerTests(unittest.TestCase):
                 del system_prompt, user_prompt
                 return CompletionResult(text=_VALID_REPORT_BODY, response_id="resp_background", usage={"total_tokens": 7})
 
-        with patch("aiwiki.runner.workflows.ask_question", side_effect=AssertionError("resume should reuse the submitted manifest artifact")):
+        with patch("aiwiki.runner.workflows_ask.ask_question", side_effect=AssertionError("resume should reuse the submitted manifest artifact")):
             resumed = run_ask_resume(self.root, submitted["job_id"], client=_ResumeClient())
 
         self.assertEqual(resumed["job_id"], submitted["job_id"])
@@ -1050,8 +1050,8 @@ class RunnerTests(unittest.TestCase):
                     usage={},
                 )
 
-        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
-            with patch("aiwiki.runner.workflows.create_client", return_value=_TimeoutClient()) as create_client_mock:
+        with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
+            with patch("aiwiki.runner.workflows_ask.create_client", return_value=_TimeoutClient()) as create_client_mock:
                 result = run_ask(
                     self.root,
                     "测试",
@@ -1100,8 +1100,8 @@ class RunnerTests(unittest.TestCase):
                 )
 
         with patch("aiwiki.runner.preflight.preflight_check_backend", return_value=snapshot):
-            with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
-                with patch("aiwiki.runner.workflows.create_client", return_value=_AskClient()):
+            with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
+                with patch("aiwiki.runner.workflows_ask.create_client", return_value=_AskClient()):
                     run_ask(self.root, "测试", "report")
 
         receipt = json.loads((self.root / ".aiwiki/logs/llm-receipts.jsonl").read_text(encoding="utf-8").strip().splitlines()[-1])
@@ -1137,8 +1137,8 @@ class RunnerTests(unittest.TestCase):
                     usage={},
                 )
 
-        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact) as ask_mock:
-            with patch("aiwiki.runner.workflows._build_ask_prompt", return_value="prompt"):
+        with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact) as ask_mock:
+            with patch("aiwiki.runner.workflows_ask._build_ask_prompt", return_value="prompt"):
                 result = run_ask(self.root, "测试", "report", client=_NoCacheClient(), no_cache=True)
 
         ask_mock.assert_called_once_with(
@@ -1180,8 +1180,8 @@ class RunnerTests(unittest.TestCase):
                 del user_prompt
                 raise LLMError("usage limit exceeded")
 
-        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
-            with patch("aiwiki.runner.workflows._build_ask_prompt", return_value="prompt"):
+        with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
+            with patch("aiwiki.runner.workflows_ask._build_ask_prompt", return_value="prompt"):
                 with self.assertRaisesRegex(LLMError, "usage limit"):
                     run_ask(self.root, "测试", "report", client=_UnavailableAskClient())
 
@@ -1230,8 +1230,8 @@ class RunnerTests(unittest.TestCase):
                 del user_prompt
                 raise LLMError("unexpected schema mismatch")
 
-        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
-            with patch("aiwiki.runner.workflows._build_ask_prompt", return_value="prompt"):
+        with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
+            with patch("aiwiki.runner.workflows_ask._build_ask_prompt", return_value="prompt"):
                 with self.assertRaisesRegex(LLMError, "schema mismatch"):
                     run_ask(self.root, "测试", "report", client=_HardFailAskClient())
 
@@ -1349,8 +1349,8 @@ class RunnerTests(unittest.TestCase):
                 )
 
         client = _RetryClient()
-        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
-            with patch("aiwiki.runner.workflows._build_ask_prompt", side_effect=["balanced prompt", "lean prompt"]):
+        with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
+            with patch("aiwiki.runner.workflows_ask._build_ask_prompt", side_effect=["balanced prompt", "lean prompt"]):
                 result = run_ask(self.root, "测试", "report", client=client)
 
         self.assertEqual(result["path"], "output/reports/query-timeout.md")
@@ -1415,8 +1415,8 @@ class RunnerTests(unittest.TestCase):
                 )
 
         client = _ModelFallbackAskClient()
-        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
-            with patch("aiwiki.runner.workflows._build_ask_prompt", return_value="nim prompt"):
+        with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
+            with patch("aiwiki.runner.workflows_ask._build_ask_prompt", return_value="nim prompt"):
                 result = run_ask(self.root, "测试", "report", client=client)
 
         self.assertEqual(result["prompt_profile"], "balanced")
@@ -1470,8 +1470,8 @@ class RunnerTests(unittest.TestCase):
                     usage={"prompt_tokens": 1},
                 )
 
-        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
-            with patch("aiwiki.runner.workflows._build_ask_prompt", return_value="failing prompt"):
+        with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
+            with patch("aiwiki.runner.workflows_ask._build_ask_prompt", return_value="failing prompt"):
                 with self.assertRaises(RuntimeError) as ctx:
                     run_ask(self.root, "测试", "report", client=_FailingAskClient())
 
@@ -1534,8 +1534,8 @@ class RunnerTests(unittest.TestCase):
                     usage={"prompt_tokens": 1},
                 )
 
-        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
-            with patch("aiwiki.runner.workflows._build_ask_prompt", return_value="failing prompt"):
+        with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
+            with patch("aiwiki.runner.workflows_ask._build_ask_prompt", return_value="failing prompt"):
                 with self.assertRaises(RuntimeError):
                     run_ask(self.root, "测试", "report", client=_FailingNoCacheAskClient(), no_cache=True)
 
@@ -2387,7 +2387,7 @@ class RunnerTests(unittest.TestCase):
                 return CompletionResult(text=_VALID_REPORT_BODY, response_id="resp_prompt", usage={})
 
         client = _PromptCaptureClient()
-        with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
+        with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
             run_ask(self.root, "测试", "report", client=client)
 
         self.assertNotIn("run_id:", client.prompt)
@@ -2751,8 +2751,8 @@ class RunnerTests(unittest.TestCase):
                 )
 
         with patch("aiwiki.runner.preflight.probe_backend") as probe_backend:
-            with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
-                with patch("aiwiki.runner.workflows._validate_output_markdown", return_value=None):
+            with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
+                with patch("aiwiki.runner.workflows_ask._validate_output_markdown", return_value=None):
                     run_ask(self.root, "测试", "report", client=_AskClient())
 
         probe_backend.assert_not_called()
@@ -2800,9 +2800,9 @@ class RunnerTests(unittest.TestCase):
             return_value={"compatibility": "compatible", "backend": "codex-cli", "model": "gpt-5.5", "compatibility_hint": ""},
         ) as probe_backend:
             with patch("aiwiki.runner.preflight.LLMConfig.from_env", return_value=LLMConfig(backend="codex-cli")):
-                with patch("aiwiki.runner.workflows.create_client", return_value=_AskClient()):
-                    with patch("aiwiki.runner.workflows.ask_question", return_value=artifact):
-                        with patch("aiwiki.runner.workflows._validate_output_markdown", return_value=None):
+                with patch("aiwiki.runner.workflows_ask.create_client", return_value=_AskClient()):
+                    with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
+                        with patch("aiwiki.runner.workflows_ask._validate_output_markdown", return_value=None):
                             run_ask(self.root, "测试", "report", client=None)
 
         probe_backend.assert_called_once()

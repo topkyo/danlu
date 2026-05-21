@@ -26,7 +26,7 @@ bash scripts/agos9_dogfood_proof_status.sh
 | 类型 | 命令示例 |
 |------|----------|
 | URL | `aiwiki drop url https://example.com` |
-| 笔记 | `aiwiki drop note --title "..." --body "..."` |
+| 笔记 | `aiwiki drop note --title "..." --text "..."` |
 | 仓库 | `aiwiki drop repo /path/to/repo` |
 | PDF | `aiwiki drop pdf /path/to/report.pdf` |
 

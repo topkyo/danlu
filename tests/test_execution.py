@@ -515,7 +515,7 @@ class ExecutionTests(unittest.TestCase):
         first = run_ask(self.root, "First question?", "report", client=_StubClient([_VALID_REPORT_BODY]))
         captured: dict[str, str] = {}
 
-        from aiwiki.runner import workflows as runner_module
+        from aiwiki.runner import workflows_ask as runner_module
 
         original = runner_module._build_ask_prompt
 
@@ -538,7 +538,7 @@ class ExecutionTests(unittest.TestCase):
     def test_ask_first_round_no_previous_output_section(self) -> None:
         captured: dict[str, str] = {}
 
-        from aiwiki.runner import workflows as runner_module
+        from aiwiki.runner import workflows_ask as runner_module
 
         original = runner_module._build_ask_prompt
 

@@ -6,6 +6,7 @@ const {
   compareEntries,
   todayDateOf,
   reviewBucketCopy,
+  priorityForKind,
   isMaintenanceCommandAction,
   PRIORITY,
   PRIMARY_REVIEW_BUCKETS,
@@ -42,6 +43,11 @@ test("PRIORITY defines correct ordering", () => {
   expect(PRIORITY.action).toBe(6);
   // Lower number = higher priority
   expect(PRIORITY.report).toBeLessThan(PRIORITY.action);
+});
+
+test("priorityForKind mirrors feed entry priority", () => {
+  expect(priorityForKind("report")).toBe(1);
+  expect(priorityForKind("unknown")).toBe(99);
 });
 
 // ── compareEntries ────────────────────────────────────────────────────
@@ -191,6 +197,7 @@ test("buildTodayFeed surfaces decision entries from review_backlog_counts", () =
   const feed = buildTodayFeed(summary);
   const decisions = feed.filter((e) => e.kind === "decision");
   expect(decisions).toHaveLength(6);
+  expect(decisions.every((entry) => entry.priority === PRIORITY.decision)).toBe(true);
   expect(decisions.map((entry) => entry.target)).toEqual([
     "review:counter_evidence_candidates",
     "review:escalated_actions",

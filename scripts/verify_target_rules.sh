@@ -25,6 +25,11 @@ select_for_path() {
       add_target scripts "project shell script changed: $path"
       return 0
       ;;
+    schema/*.json|schema/**/*.json)
+      add_target python-static "schema contract changed: $path"
+      add_target unit "schema contract changed: $path"
+      return 0
+      ;;
     .obsidian/plugins/furnace-product-shell/package.json|.obsidian/plugins/furnace-product-shell/package-lock.json|.obsidian/plugins/furnace-product-shell/build.sh|.obsidian/plugins/furnace-product-shell/*.js|.obsidian/plugins/furnace-product-shell/src/*|.obsidian/plugins/furnace-product-shell/src/**/*|.obsidian/plugins/furnace-product-shell/*.css)
       add_target product-shell-static "Product Shell source changed: $path"
       return 0

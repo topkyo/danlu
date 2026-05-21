@@ -115,6 +115,7 @@ def refresh_case(case_arg: str) -> list[tuple[int, str, str, Path, Path]]:
 
             monkeypatch.setattr("aiwiki.runner.clients.create_client", _fake_create_client)
             monkeypatch.setattr("aiwiki.runner.workflows.create_client", _fake_create_client)
+            monkeypatch.setattr("aiwiki.runner.workflows_ask.create_client", _fake_create_client)
 
             try:
                 _run_cli(vault, COMMANDS[case_rel])

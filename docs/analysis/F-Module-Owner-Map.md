@@ -31,7 +31,7 @@
 
 | 文件 | LOC | 下一 seam |
 |------|-----|-----------|
-| `runner/workflows.py` | ~2400 | ask/compile 子模块 |
+| `runner/workflows.py` | ~1246 | compile/lint/nightly；ask → `workflows_ask.py` |
 | `runner/alchemy.py` | 2589 | 延后（高风险） |
 | `app_protocol.py` | ~1750 | library 已抽出 |
 | `app_lifecycle.py` | 1835 | lifecycle → execution/* |
@@ -40,6 +40,8 @@
 ## 新模块（Post-AGOS）
 
 - `runner/local_stats.py` — 本地确定性 ask intent
+- `runner/workflows_ask.py` — run-ask / background / direct ask
+- `runner/workflow_shared.py` — shared receipt/raw-response helpers
 - `protocol/library.py` — PROTOCOL_LIBRARY
 - `llm_telemetry.py` — LLM + execution receipt 聚合
 - `memory/execution_surface_helpers.py` — 渲染行构建器

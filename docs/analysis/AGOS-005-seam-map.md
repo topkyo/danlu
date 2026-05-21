@@ -18,6 +18,9 @@
 - AOS-006 signals adapter slim
 - AGOS-006: `planner/log_writer.py` budget_hint routing
 - AGOS-007: `llm_telemetry.py` aggregation module
+- Post-AGOS: `runner/local_stats.py`（local deterministic intents）
+- Post-AGOS: `runner/workflows_ask.py` + `runner/workflow_shared.py`（run-ask 路径）
+- Post-AGOS: `protocol/library.py`（PROTOCOL_LIBRARY）
 
 ## Facade rule
 

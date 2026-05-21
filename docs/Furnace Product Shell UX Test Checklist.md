@@ -2,7 +2,7 @@
 
 *Obsidian Shell 插件单元 / 功能 / 产品体验验证清单*
 
-Status: draft checklist  
+Status: active checklist（P1-B 高 ROI 项已覆盖）
 Owner: tim  
 Related:
 - `docs/Furnace Product Shell.md`
@@ -216,14 +216,14 @@ bash scripts/product_shell_smoke.sh --with-note-write
 
 优先补以下测试，收益最高：
 
-- [ ] `renderUniversalInput` 成功提交后：pending received、输入清空、按钮恢复。
-- [ ] `renderUniversalInput` 失败后：pending failed、输入保留、attachment 保留。
+- [x] `renderUniversalInput` 成功提交后：pending received、输入清空、按钮恢复。
+- [x] `renderUniversalInput` 失败后：pending failed、输入保留、attachment 保留。
 - [ ] 拖拽 URL 文本：textarea 填入 URL，不误当文件。
-- [ ] Today 空态三分支：无 summary / 空 feed / 有 pending。
+- [x] Today 空态三分支：无 summary / 空 feed / 有 pending。
 - [ ] `shell-summary` fixture → JS `buildTodayFeed()` → DOM 渲染，断言首屏只出现输入、Today、Advanced。
 - [ ] `recent_raw_inputs` fixture → pending reconcile done。
-- [ ] `llm-check` unconfigured fixture → UI 显示可操作降级，不阻塞 ask/drop。
-- [ ] 长标题 fixture → DOM 中按钮和标题都存在且未被截断到空文本。
+- [x] `llm-check` unconfigured fixture → UI 显示可操作降级，不阻塞 ask/drop。
+- [x] 长标题 fixture → DOM 中按钮和标题都存在且未被截断到空文本。
 
 ## 8. Definition Of Done
 

@@ -35,3 +35,11 @@
 ## 保留策略
 
 见 [Furnace Runtime Operations.md](./Furnace%20Runtime%20Operations.md) AGOS-008 章节。
+
+## Backend 探测结果（operator 填写）
+
+> 由 `bash scripts/backend_probe_matrix.sh` 生成；勿提交 secrets。默认无 compatible backend 只告警，`BACKEND_PROBE_STRICT=1` 时才 exit 1。
+
+| 日期 (UTC) | 命令 | compatible | 备注 |
+|------------|------|------------|------|
+| 2026-05-21 | `backend_probe_matrix.sh` | 视本机凭据 | sandbox 无 DNS/凭据时多为 `requires_credential`；dogfood 实跑前在本机重探 |

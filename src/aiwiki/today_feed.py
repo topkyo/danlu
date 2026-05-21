@@ -25,6 +25,12 @@ _PRIORITY: dict[str, int] = {
     "action": 6,
 }
 
+
+def priority_for_kind(kind: str) -> int:
+    """Return the shared Today Feed ordering priority for a feed kind."""
+
+    return _PRIORITY[str(kind)]
+
 _REVIEW_BUCKET_COPY: dict[str, tuple[str, str]] = {
     "counter_evidence_candidates": ("补充反证候选", "检查新来源是否足以反驳既有判断"),
     "escalated_actions": ("处理升级动作", "处理已升级、需要人工确认的动作"),
@@ -571,7 +577,7 @@ def _as_count(value: object) -> int:
 
 def _sort_key(entry: FeedEntry) -> tuple[int, str, str]:
     """priority asc, timestamp desc（用反向字符串实现），kind 顺序保险。"""
-    return (_PRIORITY[entry.kind], _reverse_timestamp(entry.timestamp), entry.kind)
+    return (priority_for_kind(entry.kind), _reverse_timestamp(entry.timestamp), entry.kind)
 
 
 def _reverse_timestamp(ts: str) -> str:

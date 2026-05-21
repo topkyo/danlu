@@ -56,7 +56,8 @@ function buildTodayFeed(summary) {
   entries.push(...buildRawInputEntries(summary, todayDate));
   entries.push(...buildLlmHealthEntry(summary));
 
-  const filtered = applySnoozeFilter(entries, summary, todayDate);
+  const prioritized = entries.map((entry) => ({ ...entry, priority: priorityForKind(entry.kind) }));
+  const filtered = applySnoozeFilter(prioritized, summary, todayDate);
   filtered.sort(compareEntries);
   return filtered;
 }
@@ -485,9 +486,13 @@ function reviewBucketCopy(kindText) {
   return [label ? `处理审阅队列：${label}` : "处理审阅队列", "进入审阅中心确认下一步"];
 }
 
+function priorityForKind(kind) {
+  return PRIORITY[String(kind)] || 99;
+}
+
 function compareEntries(a, b) {
-  const pa = PRIORITY[a.kind];
-  const pb = PRIORITY[b.kind];
+  const pa = priorityForKind(a.kind);
+  const pb = priorityForKind(b.kind);
   if (pa !== pb) return pa - pb;
   const ta = a.timestamp || "";
   const tb = b.timestamp || "";
@@ -501,6 +506,7 @@ module.exports = {
   compareEntries,
   todayDateOf,
   reviewBucketCopy,
+  priorityForKind,
   isMaintenanceCommandAction,
   PRIORITY,
   PRIMARY_REVIEW_BUCKETS,

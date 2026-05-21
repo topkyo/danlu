@@ -61,5 +61,13 @@ class ExecutionReceiptValidationTests(unittest.TestCase):
             self.assertEqual(receipt["status"], "success")
 
 
+class WorkflowsAskImportTests(unittest.TestCase):
+    def test_workflows_reexports_ask_entrypoints(self) -> None:
+        from aiwiki.runner import workflows, workflows_ask
+
+        for name in ("run_ask", "run_ask_submit", "run_ask_resume"):
+            self.assertIs(getattr(workflows, name), getattr(workflows_ask, name))
+
+
 if __name__ == "__main__":
     unittest.main()
