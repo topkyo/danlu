@@ -21,6 +21,11 @@ select_for_path() {
       add_target acceptance "acceptance surface changed: $path"
       return 0
       ;;
+    scripts/*.py)
+      add_target scripts "project Python script changed: $path"
+      add_target unit "project Python script changed: $path"
+      return 0
+      ;;
     scripts/*.sh)
       add_target scripts "project shell script changed: $path"
       return 0

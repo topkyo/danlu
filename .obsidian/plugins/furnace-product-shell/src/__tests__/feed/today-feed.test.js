@@ -291,6 +291,29 @@ test("buildTodayFeed keeps agent loop automation out of primary Today", () => {
   expect(automations).toHaveLength(0);
 });
 
+test("buildTodayFeed surfaces degraded LLM health as Product Shell automation entry", () => {
+  const summary = makeSummary({
+    llm_health: {
+      status: "degraded",
+      reason: "probe timeout",
+      checked_at: "2026-05-03T11:00:00Z",
+      recovery_command: "aiwiki llm-check",
+    },
+  });
+
+  const feed = buildTodayFeed(summary);
+
+  expect(feed).toHaveLength(1);
+  expect(feed[0]).toMatchObject({
+    kind: "automation",
+    title: "LLM 后端降级",
+    summary: "probe timeout",
+    target: "aiwiki llm-check",
+    priority: PRIORITY.automation,
+    autoState: "pending",
+  });
+});
+
 test("buildTodayFeed surfaces proposal entries needing attention", () => {
   const summary = makeSummary({
     review_controls: {

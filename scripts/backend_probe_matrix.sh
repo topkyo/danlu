@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 VAULT="${AIWIKI_DOGFOOD_VAULT:-${AIWIKI_ROOT:-$PROJECT_ROOT}}"
-WRITE_JSON="${BACKEND_PROBE_WRITE:-1}"
+WRITE_JSON="${BACKEND_PROBE_WRITE:-0}"
 PROBE_TIMEOUT="${BACKEND_PROBE_TIMEOUT:-25}"
 STRICT="${BACKEND_PROBE_STRICT:-0}"
 
@@ -21,6 +21,7 @@ echo "=== Backend Probe Matrix ==="
 echo "vault: $VAULT"
 echo "timeout: ${PROBE_TIMEOUT}s"
 echo "strict: $STRICT"
+echo "write_json: $WRITE_JSON"
 echo
 
 RESULT_JSON="$(python3 -m aiwiki.cli --root "$VAULT" llm-check --probe-all --format json --probe-timeout "$PROBE_TIMEOUT")"

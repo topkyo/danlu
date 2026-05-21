@@ -52,7 +52,7 @@ AGOS-001~008 机制已收口，但 **9.0 release gate 未达成**：dogfood 仅 
 ### 9.0 PASS 条件
 
 - [ ] 当前 dogfood vault 存在 maturity proof，`live` 可复算
-- [ ] `summarize --recent 3`：`operational_maturity.status=pass`，连续 3 天无 failed run
+- [ ] `summarize --days 3`：`operational_maturity.status=pass`，连续 3 个 UTC 日无 failed run
 - [ ] 至少三类真实输入：PDF、URL、note 或 repo 各至少一次成功链路
 - [ ] `knowledge_compounding_proof.status=pass` 且 `compounding_sample != null`（`live`）
 - [ ] raw → wiki → output → execution receipt 完整 provenance
@@ -71,7 +71,7 @@ AGOS-001~008 机制已收口，但 **9.0 release gate 未达成**：dogfood 仅 
 
 ```bash
 python3 scripts/dogfood_maturity_gate.py --root /home/tim/danlu/炼丹炉 collect
-python3 scripts/dogfood_maturity_gate.py --root /home/tim/danlu/炼丹炉 summarize --recent 3
+python3 scripts/dogfood_maturity_gate.py --root /home/tim/danlu/炼丹炉 summarize --days 3
 ```
 
 ### Fail gate（blocking）
@@ -99,9 +99,9 @@ Historical PASS（2026-05-13~19）不当作当前 live PASS。
 
 ### 9.0 PASS 条件
 
-- [ ] `src/` 改动未 rebuild `main.js` 时 verify 失败（bundle drift gate）
+- [ ] `scripts/check_product_shell_bundle.sh` 能发现 `src/` 与 `main.js` bundle drift
 - [ ] Universal Input、Ctrl+Enter、pending card、report open、raw 导航有 contract 测试
-- [ ] `bash scripts/verify.sh product-shell-static` 含 drift check，不只 `node --check`
+- [ ] `bash scripts/verify.sh product-shell-static` 封装 bundle drift check，不只 `node --check`
 - [ ] 默认用户面只强调 drop + today；operator 能力在 Advanced
 
 ### 证据路径
@@ -126,7 +126,7 @@ PYTHONPATH=src python -m pytest tests/test_product_shell*.py -q
 - src 与 main.js 可漂移且无 gate 失败
 - Obsidian 加载的 main.js 与测试路径行为不一致
 
-### 当前状态：**PASS**（`scripts/check_product_shell_bundle.sh` in `product-shell-static`）
+### 当前状态：**PASS**（`product-shell-static` 调用 `scripts/check_product_shell_bundle.sh`）
 
 ---
 
@@ -343,7 +343,7 @@ bash scripts/verify.sh scripts
 | 3 | Full verify | `bash scripts/verify.sh` |
 | 4 | Product Shell static + drift | `bash scripts/verify.sh product-shell-static` |
 | 5 | Acceptance replay | `bash scripts/run_acceptance.sh` |
-| 6 | Live dogfood maturity | `dogfood_maturity_gate.py summarize --recent 3` → pass |
+| 6 | Live dogfood maturity | `dogfood_maturity_gate.py summarize --days 3` → pass |
 | 7 | LLM telemetry report | AGOS-007 CLI/report |
 | 8 | Docs consistency | AGOS-004 checklist |
 | 9 | qa-review | `.codex/gates/qa-review.md` |

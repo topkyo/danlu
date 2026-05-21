@@ -1547,7 +1547,7 @@ function splitReportsByLocalDate(reports, options = {}) {
  * M6.3 B3 Today Feed builder — JS mirror of src/aiwiki/today_feed.py
  * 
  * MIRROR: 与 src/aiwiki/today_feed.py 同步排序契约与字段映射。
- * 修改任一侧时必须同步另一侧。
+ * Product Shell 额外展示 llm_health automation entry；修改共享字段/排序时必须同步另一侧。
  */
 "use strict";
 

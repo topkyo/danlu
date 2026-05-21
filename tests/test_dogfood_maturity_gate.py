@@ -155,6 +155,14 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L3"], "1")
         self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS"], "1")
         self.assertEqual(prepared["AIWIKI_NIGHTLY_COMPILE_LIMIT"], "0")
+        self.assertEqual(prepared["AIWIKI_NIGHTLY_DETERMINISTIC_ONLY"], "0")
+        self.assertEqual(prepared["AIWIKI_NIGHTLY_REQUIRE_LLM"], "1")
+
+    def test_prepare_nightly_env_allows_explicit_deterministic_debug_mode(self) -> None:
+        prepared = prepare_nightly_env(self.root, deterministic_only=True)
+
+        self.assertEqual(prepared["AIWIKI_NIGHTLY_DETERMINISTIC_ONLY"], "1")
+        self.assertEqual(prepared["AIWIKI_NIGHTLY_REQUIRE_LLM"], "0")
 
     def test_collect_metrics_reads_expected_indicators(self) -> None:
         ask_path = self.root / "prompts" / "ask.md"
@@ -911,6 +919,31 @@ class DogfoodMaturityGateTests(unittest.TestCase):
 
         self.assertEqual(summary["status"], "fail")
         self.assertEqual(summary["prompt_hash_changed_runs"], [receipt["receipt_path"]])
+
+    def test_summarize_fails_when_receipt_is_deterministic_only(self) -> None:
+        receipt = _make_run_receipt(
+            generated_at="2026-05-13T00:00:00Z",
+            status="pass",
+            before_backlog=10,
+            after_backlog=9,
+            before_candidate=3,
+            after_candidate=2,
+            before_judgment_receipts=0,
+            after_judgment_receipts=1,
+            already_exists_count=1,
+        )
+        receipt["settings"] = {"deterministic_only": True}
+        receipt["nightly"] = {"status": "pass", "returncode": 0, "deterministic_only": True}
+        self._write_receipts([receipt])
+
+        summary = summarize_recent_run_receipts(self.root, recent=1)
+
+        self.assertEqual(summary["status"], "fail")
+        self.assertEqual(summary["deterministic_only_runs"], [receipt["receipt_path"]])
+        self.assertEqual(
+            summary["operational_maturity"]["receipt_integrity"]["deterministic_only_runs"],
+            [receipt["receipt_path"]],
+        )
 
     def test_summarize_days_uses_latest_receipt_per_calendar_day(self) -> None:
         receipts = [

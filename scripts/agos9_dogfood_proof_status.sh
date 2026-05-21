@@ -20,7 +20,7 @@ echo
 
 python3 "$PROJECT_ROOT/scripts/dogfood_maturity_gate.py" --root "$VAULT" collect --write
 echo
-python3 "$PROJECT_ROOT/scripts/dogfood_maturity_gate.py" --root "$VAULT" summarize --recent 3
+python3 "$PROJECT_ROOT/scripts/dogfood_maturity_gate.py" --root "$VAULT" summarize --days 3
 echo
 python3 -m aiwiki.cli --root "$VAULT" llm-telemetry --limit 20
 echo

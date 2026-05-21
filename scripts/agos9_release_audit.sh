@@ -24,7 +24,7 @@ echo "=== AGOS-9 Release Audit ==="
 check bash scripts/verify.sh product-shell-static
 check bash scripts/docs_consistency_check.sh
 
-SUMMARY="$(python3 scripts/dogfood_maturity_gate.py --root "$VAULT" summarize --recent 3)"
+SUMMARY="$(python3 scripts/dogfood_maturity_gate.py --root "$VAULT" summarize --days 3)"
 echo "$SUMMARY"
 if python3 -c 'import json, sys; payload=json.loads(sys.argv[1]); sys.exit(0 if payload.get("operational_maturity", {}).get("status") == "pass" else 1)' "$SUMMARY"; then
   echo "[OK] operational maturity pass path visible"

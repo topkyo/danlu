@@ -37,11 +37,15 @@ const shell = electron && electron.shell ? electron.shell : null;
 
 HEADER
 
+  first_module=1
   for module in llm_settings constants helpers today_feed modals views state/repo-state bridge/launcher render/cards settings render_primitives render_input render_today render_advanced render_runs render_home render_review render_execution plugin_helpers plugin; do
+    if [[ "$first_module" -eq 0 ]]; then
+      echo ""
+    fi
+    first_module=0
     echo "// --- src/${module}.js ---"
     echo ""
     cat "$SRC/${module}.js"
-    echo ""
   done
 } > "$OUT"
 

@@ -106,11 +106,16 @@ elif LLM 已 configured:
         AIWIKI_LLM_MODEL=openai/gpt-oss-120b
         aiwiki run-nightly --compile-limit 5
 else:
-    try configured fallback LLM, else aiwiki nightly
+    try configured fallback LLM
+    if no LLM path and AIWIKI_NIGHTLY_REQUIRE_LLM == 1:
+        fail without deterministic fallback
+    else:
+        aiwiki nightly
 ```
 
 关键 env：
 - `AIWIKI_NIGHTLY_DETERMINISTIC_ONLY=0` —— 默认跑 LLM；设 `1` 强制不调 LLM
+- `AIWIKI_NIGHTLY_REQUIRE_LLM=0` —— 默认允许 wrapper 最终落到 deterministic nightly；dogfood maturity proof 会设为 `1`，避免把 deterministic fallback 计入 release proof
 - `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` —— **L0 维护层自动 apply**；agent_loop preview 完成后立即执行 receipted light primitives（compile/lint/nightly），写 receipt + audit
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1` —— **L1 语义层自动采纳**：concept backlog → active、revisit → deferred、source-concept link 自动 accept + apply
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1` —— **L2 结构层自动采纳**：overloaded-concept split 自动 accept + apply
@@ -137,7 +142,7 @@ AIWIKI_INSTALL_DOGFOOD_MATURITY=1 scripts/install_user_service.sh
 scripts/uninstall_user_service.sh --dogfood-maturity-only
 ```
 
-这条验证 harness 会写 maturity receipt，用来证明“人只看异常”的成熟度；它不应长期混在默认 watcher/nightly 服务状态里。
+这条验证 harness 会写 maturity receipt，并默认要求 LLM nightly path 可用（禁用 deterministic nightly fallback），用来证明“人只看异常”的成熟度；它不应长期混在默认 watcher/nightly 服务状态里。
 
 ### 2.5 状态查询
 

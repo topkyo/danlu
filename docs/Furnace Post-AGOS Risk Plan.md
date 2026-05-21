@@ -7,7 +7,7 @@
 
 - 运行手册：[AGOS-9-Dogfood-Proof-Runbook.md](./AGOS-9-Dogfood-Proof-Runbook.md)
 - 状态脚本：`bash scripts/agos9_dogfood_proof_status.sh`
-- 门禁：`summarize --recent 3` + compounding proof
+- 门禁：`summarize --days 3` + compounding proof
 
 ## Track B — 风险 milestone（已实现）
 

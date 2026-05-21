@@ -5,7 +5,7 @@
 ## 前置条件
 
 - Vault：`/home/tim/danlu/炼丹炉`（或 `AIWIKI_DOGFOOD_VAULT`）
-- 为显式 `run-ask` 配置 LLM 凭据（无跨 backend fallback）
+- 为显式 `run-ask` 与 maturity nightly 配置 LLM 凭据（无跨 backend fallback；release proof 禁用 deterministic nightly fallback）
 - 可选：`AIWIKI_INSTALL_DOGFOOD_MATURITY=1` 启用 systemd timer
 
 ## 每日循环（3 个 UTC 日）
@@ -42,11 +42,12 @@ bash scripts/agos9_dogfood_proof_status.sh
 ## 通过标准
 
 ```bash
-python3 scripts/dogfood_maturity_gate.py --root "$AIWIKI_DOGFOOD_VAULT" summarize --recent 3
+python3 scripts/dogfood_maturity_gate.py --root "$AIWIKI_DOGFOOD_VAULT" summarize --days 3
 ```
 
 - `operational_maturity.status=pass`
 - `consecutive_days=true`（3 个不同 UTC 日）
+- `deterministic_only_runs=[]`（debug-only deterministic receipt 不计入 release proof）
 - `knowledge_compounding_proof.status=pass`
 - 无占位式 LLM success artifact
 

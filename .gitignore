@@ -8,6 +8,14 @@ CLAUDE.local.md
 AGENTS.local.md
 PROGRESS.md
 
+# Local secrets and environment overrides
+.env
+.env.*
+.envrc
+.envrc.*
+!.env.example
+!.envrc.dogfood
+
 # Local harness scaffold (generated from /home/tim/open-harness, not committed)
 .claude/
 .codex/

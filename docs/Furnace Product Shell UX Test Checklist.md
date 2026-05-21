@@ -146,7 +146,7 @@ bash scripts/product_shell_smoke.sh --with-note-write
 - [ ] `shell-status` 可执行并返回 JSON。
 - [ ] `llm-check` 可执行并返回 configured / unconfigured 状态。
 - [ ] deterministic `ask` 可执行并返回 report path。
-- [ ] `run-ask` 可执行；若 backend 不可用，smoke 能降级验证 deterministic ask fallback。
+- [ ] `run-ask` 可执行；若 backend 不可用，smoke 应显式暴露失败并保留 degraded evidence，不依赖 deterministic fallback 伪成功。
 - [ ] smoke 不污染异常路径。
 
 写路径 smoke：

@@ -865,13 +865,17 @@ def prepare_nightly_env(
     prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L2"] = "1"
     prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L3"] = "1"
     prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS"] = "1"
-    if deterministic_only:
-        prepared["AIWIKI_NIGHTLY_DETERMINISTIC_ONLY"] = "1"
+    prepared["AIWIKI_NIGHTLY_DETERMINISTIC_ONLY"] = "1" if deterministic_only else "0"
+    prepared["AIWIKI_NIGHTLY_REQUIRE_LLM"] = "0" if deterministic_only else "1"
     if no_semantic_lint:
         prepared["AIWIKI_NIGHTLY_NO_SEMANTIC_LINT"] = "1"
     if compile_limit is not None:
         prepared["AIWIKI_NIGHTLY_COMPILE_LIMIT"] = str(compile_limit)
     return prepared
+
+
+def _is_truthy(value: Any) -> bool:
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def classify_nightly_failure(returncode: int, stdout: str, stderr: str) -> str:
@@ -920,6 +924,8 @@ def run_nightly_subprocess(
         "command": command,
         "returncode": completed.returncode,
         "status": classify_nightly_failure(completed.returncode, completed.stdout, completed.stderr),
+        "deterministic_only": _is_truthy(prepared_env.get("AIWIKI_NIGHTLY_DETERMINISTIC_ONLY")),
+        "require_llm": _is_truthy(prepared_env.get("AIWIKI_NIGHTLY_REQUIRE_LLM")),
         "stdout_excerpt": _excerpt(completed.stdout),
         "stderr_excerpt": _excerpt(completed.stderr),
     }
@@ -1098,6 +1104,14 @@ def _validate_receipt_fields(receipt: dict[str, Any]) -> list[str]:
     return missing
 
 
+def _receipt_deterministic_only(receipt: dict[str, Any]) -> bool:
+    settings_payload = receipt.get("settings")
+    settings = settings_payload if isinstance(settings_payload, dict) else {}
+    nightly_payload = receipt.get("nightly")
+    nightly = nightly_payload if isinstance(nightly_payload, dict) else {}
+    return _is_truthy(settings.get("deterministic_only")) or _is_truthy(nightly.get("deterministic_only"))
+
+
 def _consecutive_days(days: list[str], *, expected_count: int) -> bool:
     unique_days = sorted({day for day in days if day})
     if len(unique_days) < expected_count:
@@ -1120,6 +1134,7 @@ def summarize_run_receipts(receipts: list[dict[str, Any]], *, recent: int = 3) -
         if isinstance(item.get("prompt_hash_invariant"), dict)
         and item.get("prompt_hash_invariant", {}).get("unchanged") is False
     ]
+    deterministic_runs = [item for item in receipts if _receipt_deterministic_only(item)]
     missing_required_fields = {
         str(item.get("receipt_path") or index): _validate_receipt_fields(item)
         for index, item in enumerate(receipts)
@@ -1167,7 +1182,7 @@ def summarize_run_receipts(receipts: list[dict[str, Any]], *, recent: int = 3) -
             "missing_evidence": ["knowledge_compounding_proof"],
         }
     semantic_path_observed = judgment_review_receipts_delta > 0
-    if failed or prompt_hash_changed or missing_required_fields:
+    if failed or prompt_hash_changed or missing_required_fields or deterministic_runs:
         status = "fail"
     elif len(receipts) < recent:
         status = "warn"
@@ -1225,6 +1240,7 @@ def summarize_run_receipts(receipts: list[dict[str, Any]], *, recent: int = 3) -
         "consecutive_days": consecutive_days,
         "missing_required_fields": missing_required_fields,
         "failed_runs": [str(item.get("receipt_path") or "") for item in failed],
+        "deterministic_only_runs": [str(item.get("receipt_path") or "") for item in deterministic_runs],
         "prompt_hash_changed_runs": [str(item.get("receipt_path") or "") for item in prompt_hash_changed],
         "operational_maturity": operational_maturity,
     }
@@ -1244,10 +1260,14 @@ def _build_operational_maturity_report(
     latest_after = latest.get("after") if isinstance(latest.get("after"), dict) else {}
     if not isinstance(latest_after, dict):
         latest_after = {}
-    l3_debt = latest_after.get("l3_debt_report") if isinstance(latest_after.get("l3_debt_report"), dict) else {}
-    judgment_lane = latest_after.get("judgment_lane_report") if isinstance(latest_after.get("judgment_lane_report"), dict) else {}
-    human_required = latest_after.get("human_required_report") if isinstance(latest_after.get("human_required_report"), dict) else {}
+    l3_debt_payload = latest_after.get("l3_debt_report")
+    l3_debt = l3_debt_payload if isinstance(l3_debt_payload, dict) else {}
+    judgment_lane_payload = latest_after.get("judgment_lane_report")
+    judgment_lane = judgment_lane_payload if isinstance(judgment_lane_payload, dict) else {}
+    human_required_payload = latest_after.get("human_required_report")
+    human_required = human_required_payload if isinstance(human_required_payload, dict) else {}
     failed_receipts = sum(1 for item in receipts if str(item.get("status") or "") in {"failed", "blocked"})
+    deterministic_runs = [item for item in receipts if _receipt_deterministic_only(item)]
     exception_count = _coerce_int(judgment_lane.get("exception_count"))
     failure_rate = float(judgment_lane.get("failure_rate") or 0.0)
     exception_rate = float(judgment_lane.get("exception_rate") or 0.0)
@@ -1286,6 +1306,7 @@ def _build_operational_maturity_report(
         len(receipts) >= recent
         and consecutive_receipts
         and failed_receipts == 0
+        and not deterministic_runs
         and not prompt_hash_changed
         and not missing_required_fields
     )
@@ -1308,6 +1329,7 @@ def _build_operational_maturity_report(
             "receipt_count": len(receipts),
             "consecutive_days": consecutive_receipts,
             "missing_required_fields": missing_required_fields,
+            "deterministic_only_runs": [str(item.get("receipt_path") or "") for item in deterministic_runs],
             "prompt_hash_changed_runs": [str(item.get("receipt_path") or "") for item in prompt_hash_changed],
         },
         "latest": {
@@ -1343,9 +1365,12 @@ def _summarize_operational_window(receipts: list[dict[str, Any]]) -> dict[str, A
         return {"receipt_count": 0, "backlog_total_delta": 0, "l3_candidate_delta": 0}
     first = receipts[0]
     last = receipts[-1]
-    last_after = last.get("after") if isinstance(last.get("after"), dict) else {}
-    judgment_lane = last_after.get("judgment_lane_report") if isinstance(last_after, dict) and isinstance(last_after.get("judgment_lane_report"), dict) else {}
-    l3_debt = last_after.get("l3_debt_report") if isinstance(last_after, dict) and isinstance(last_after.get("l3_debt_report"), dict) else {}
+    last_after_payload = last.get("after")
+    last_after = last_after_payload if isinstance(last_after_payload, dict) else {}
+    judgment_lane_payload = last_after.get("judgment_lane_report")
+    judgment_lane = judgment_lane_payload if isinstance(judgment_lane_payload, dict) else {}
+    l3_debt_payload = last_after.get("l3_debt_report")
+    l3_debt = l3_debt_payload if isinstance(l3_debt_payload, dict) else {}
     return {
         "receipt_count": len(receipts),
         "backlog_total_delta": _nested_int(last.get("after"), "backlog_total") - _nested_int(first.get("before"), "backlog_total"),

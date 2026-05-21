@@ -23,7 +23,7 @@ echo
 bash scripts/agos9_dogfood_proof_status.sh
 
 echo
-python3 "$PROJECT_ROOT/scripts/dogfood_maturity_gate.py" --root "$VAULT" summarize --recent 3 || true
+python3 "$PROJECT_ROOT/scripts/dogfood_maturity_gate.py" --root "$VAULT" summarize --days 3 || true
 
 echo
 echo "P0 wall-clock: run 'bash scripts/run_dogfood_maturity.sh' once per UTC day for 3 days."

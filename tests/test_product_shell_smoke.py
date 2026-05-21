@@ -67,13 +67,14 @@ class ProductShellButtonContract(unittest.TestCase):
 
 
 class ProductShellSmokeScriptContract(unittest.TestCase):
-    """真实 vault smoke 要能在 LLM backend 不可用时降级到 deterministic ask。"""
+    """真实 vault smoke 不能把 run-ask backend 失败伪装成 deterministic success。"""
 
     def test_run_ask_backend_resolution_failure_is_degraded(self) -> None:
         text = (ROOT / "scripts/product_shell_smoke.sh").read_text(encoding="utf-8")
         self.assertIn("llm_backend_unavailable", text)
         self.assertIn("LLM backend resolution failed".lower(), text)
-        self.assertIn('run_json "ask-fallback" ask "$RUN_ASK_QUERY" --format report', text)
+        self.assertIn("smoke failed without deterministic fallback", text)
+        self.assertNotIn('run_json "ask-fallback" ask "$RUN_ASK_QUERY" --format report', text)
 
     def test_drop_note_smoke_reports_reconcile_path(self) -> None:
         text = (ROOT / "scripts/product_shell_smoke.sh").read_text(encoding="utf-8")

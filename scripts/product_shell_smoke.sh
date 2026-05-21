@@ -5,7 +5,6 @@ set -euo pipefail
 DEFAULT_ROOT="/home/tim/danlu/炼丹炉"
 WITH_NOTE_WRITE=0
 ROOT=""
-SMOKE_DEGRADED=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -63,11 +62,10 @@ run_json() {
   if [[ "$status" -ne 0 ]]; then
     payload="$(cat "$temp_stdout")"
     if [[ "$label" == "run-ask" ]] && llm_backend_unavailable "$(cat "$temp_stderr")"$'\n'"$payload"; then
-      SMOKE_DEGRADED=1
-      echo "  run-ask backend unavailable; verified deterministic ask fallback instead"
+      echo "  run-ask backend unavailable; smoke failed without deterministic fallback" >&2
+      cat "$temp_stderr" >&2
       rm -f "$temp_stdout" "$temp_stderr"
-      run_json "ask-fallback" ask "$RUN_ASK_QUERY" --format report
-      return 0
+      return "$status"
     fi
     cat "$temp_stderr" >&2
     rm -f "$temp_stdout" "$temp_stderr"
@@ -130,8 +128,4 @@ else
   echo "[smoke] drop note skipped (pass --with-note-write to include write-path validation)"
 fi
 
-if [[ "$SMOKE_DEGRADED" == "1" ]]; then
-  echo "[smoke] Product Shell smoke passed for $ROOT (degraded: deterministic ask fallback verified)"
-else
-  echo "[smoke] Product Shell smoke passed for $ROOT"
-fi
+echo "[smoke] Product Shell smoke passed for $ROOT"

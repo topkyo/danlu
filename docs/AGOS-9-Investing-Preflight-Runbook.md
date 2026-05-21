@@ -6,7 +6,7 @@
 
 | 项 | 预检（本文） | P0 运营证明 |
 |----|--------------|-------------|
-| maturity receipt | 不写 | 连续 3 UTC 日 |
+| maturity receipt | 默认不写 | 连续 3 UTC 日 |
 | compounding | 不验证 | 必须 pass |
 | 投资 PDF 全链路 | 可选 smoke | 必须完整 |
 
@@ -27,7 +27,7 @@ bash scripts/investing_dogfood_preflight.sh --smoke-drop-note
 
 ## 通过标准
 
-- `llm-check --probe` 可读；默认可记录 credential/DNS 缺口，`BACKEND_PROBE_STRICT=1` 时才要求至少一个 compatible backend
+- `llm-check --probe` 可读；默认只读记录 credential/DNS 缺口，`BACKEND_PROBE_STRICT=1` 时才要求至少一个 compatible backend；需落盘证据时显式 `BACKEND_PROBE_WRITE=1`
 - `protocol-set investing` 成功
 - `wiki/judgments/`、`schema/`、`prompts/ask.md` 存在
 

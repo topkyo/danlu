@@ -38,7 +38,7 @@
 
 ## Backend 探测结果（operator 填写）
 
-> 由 `bash scripts/backend_probe_matrix.sh` 生成；勿提交 secrets。默认无 compatible backend 只告警，`BACKEND_PROBE_STRICT=1` 时才 exit 1。
+> `bash scripts/backend_probe_matrix.sh` 默认只读；需要生成证据时显式 `BACKEND_PROBE_WRITE=1`。勿提交 secrets。默认无 compatible backend 只告警，`BACKEND_PROBE_STRICT=1` 时才 exit 1。
 
 | 日期 (UTC) | 命令 | compatible | 备注 |
 |------------|------|------------|------|

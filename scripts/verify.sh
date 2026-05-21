@@ -40,6 +40,10 @@ verify_scripts() {
     [[ -e "$script" ]] || continue
     bash -n "$script"
   done
+  for script in scripts/*.py; do
+    [[ -e "$script" ]] || continue
+    python3 -m py_compile "$script"
+  done
   bash scripts/docs_consistency_check.sh
 }
 

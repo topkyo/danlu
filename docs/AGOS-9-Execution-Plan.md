@@ -235,7 +235,7 @@
 ### Verification Plan
 
 - `python3 scripts/dogfood_maturity_gate.py --root /home/tim/danlu/炼丹炉 collect`
-- `python3 scripts/dogfood_maturity_gate.py --root /home/tim/danlu/炼丹炉 summarize --recent 3`
+- `python3 scripts/dogfood_maturity_gate.py --root /home/tim/danlu/炼丹炉 summarize --days 3`
 - `bash scripts/verify.sh python-static`
 - targeted pytest for changed runtime scripts/modules, if any
 - qa-runtime required
@@ -273,7 +273,7 @@
 - [ ] `src/` 改动未 rebuild `main.js` 时 verify 能失败。
 - [ ] 未纳入 build 的 `src/bridge` / `src/state` 模块被接入、删除或明确标记 deprecated。
 - [ ] Universal Input、Ctrl+Enter、pending card、report open、raw navigation、Advanced 隔离有测试或 contract 覆盖。
-- [ ] `scripts/verify.sh product-shell-static` 覆盖 bundle drift，不只 `node --check`。
+- [ ] `scripts/verify.sh product-shell-static` 调用 `scripts/check_product_shell_bundle.sh` 覆盖 bundle drift，不只 `node --check`。
 - [ ] Product Shell 默认用户面仍只强调 `drop` 和 `today`，operator 能力保持 Advanced。
 
 ### Constraints / Dependencies
@@ -960,7 +960,7 @@ Release gate audit completed on 2026-05-21, but release remains blocked by live 
 
 - `bash scripts/verify.sh`
 - Product Shell Jest/static target
-- `python3 scripts/dogfood_maturity_gate.py --root /home/tim/danlu/炼丹炉 summarize --recent 3`
+- `python3 scripts/dogfood_maturity_gate.py --root /home/tim/danlu/炼丹炉 summarize --days 3`
 - Backend telemetry command from AGOS-007
 - Docs consistency checklist
 - qa-review + qa-runtime

@@ -17,6 +17,7 @@ export PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 
 COMPILE_LIMIT="${AIWIKI_NIGHTLY_COMPILE_LIMIT:-5}"
 DETERMINISTIC_ONLY="${AIWIKI_NIGHTLY_DETERMINISTIC_ONLY:-0}"
+REQUIRE_LLM="${AIWIKI_NIGHTLY_REQUIRE_LLM:-0}"
 NO_SEMANTIC_LINT="${AIWIKI_NIGHTLY_NO_SEMANTIC_LINT:-0}"
 FALLBACK_ENABLED="${AIWIKI_NIGHTLY_FALLBACK_ENABLED:-0}"
 FALLBACK_BACKEND="${AIWIKI_NIGHTLY_FALLBACK_BACKEND:-nvidia-nim-api}"
@@ -58,6 +59,13 @@ fallback_enabled() {
   esac
 }
 
+require_llm() {
+  case "${REQUIRE_LLM,,}" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 load_fallback_env() {
   if [[ -f "$FALLBACK_ENV" ]]; then
     # shellcheck disable=SC1090
@@ -88,7 +96,11 @@ run_fallback_nightly() {
   fi
 
   if ! llm_configured; then
-    log "fallback $FALLBACK_BACKEND/$FALLBACK_MODEL is not configured; falling back to deterministic nightly"
+    if require_llm; then
+      log "fallback $FALLBACK_BACKEND/$FALLBACK_MODEL is not configured"
+    else
+      log "fallback $FALLBACK_BACKEND/$FALLBACK_MODEL is not configured; falling back to deterministic nightly"
+    fi
     return 1
   fi
 
@@ -116,6 +128,11 @@ else
 
   if run_fallback_nightly; then
     exit 0
+  fi
+
+  if require_llm; then
+    log "deterministic nightly fallback disabled by AIWIKI_NIGHTLY_REQUIRE_LLM=1"
+    exit "${primary_status:-2}"
   fi
 
   run_deterministic_nightly
