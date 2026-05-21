@@ -151,9 +151,22 @@ def _build_recent_raw_inputs(root: Path, *, limit: int = 8) -> list[dict[str, An
                 continue
             if str(event.get("event_type") or "") != "raw-added":
                 continue
+            stored_path = str(event.get("stored_path") or "")
+            material_path = Path(stored_path)
+            material_parts = material_path.parts
+            if (
+                not stored_path
+                or material_path.is_absolute()
+                or ".." in material_parts
+                or len(material_parts) < 3
+                or material_parts[0] != "raw"
+                or material_parts[1] not in {"inbox", "assets"}
+                or not (root / material_path).is_file()
+            ):
+                continue
             raw_inputs.append(
                 {
-                    "stored_path": str(event.get("stored_path") or ""),
+                    "stored_path": stored_path,
                     "original_path": str(event.get("original_path") or ""),
                     "source_type": str(event.get("source_type") or ""),
                     "title": str(event.get("title") or ""),

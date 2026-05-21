@@ -43,6 +43,12 @@ class DropPhaseTests(unittest.TestCase):
             return []
         return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
+    def _manifest_entries(self) -> list[dict[str, object]]:
+        path = self.root / ".aiwiki/state/manifest.json"
+        if not path.exists():
+            return []
+        return json.loads(path.read_text(encoding="utf-8"))["entries"]
+
     def _wiki_log_text(self) -> str:
         path = self.root / "wiki/indexes/log.md"
         return path.read_text(encoding="utf-8") if path.exists() else ""
@@ -206,7 +212,8 @@ class DropPhaseTests(unittest.TestCase):
         with patch("aiwiki.drop._detect_mime_type", return_value="image/png"):
             with patch("aiwiki.drop._extract_image_text", return_value=""):
                 result = drop_image(self.root, str(source), enable_vision=False)
-        self.assertTrue((self.root / result["note_path"]).exists())
+        self.assertTrue((self.root / result["asset_path"]).exists())
+        self.assertNotIn("note_path", result)
         self.assertFalse(result["ocr_text_present"])
 
     def test_drop_image_vision_failure_is_non_fatal(self) -> None:
@@ -222,7 +229,8 @@ class DropPhaseTests(unittest.TestCase):
         )()
         with patch("aiwiki.drop._detect_mime_type", return_value="image/png"):
             result = drop_image(self.root, str(source), client=failing_client)
-        self.assertTrue((self.root / result["note_path"]).exists())
+        self.assertTrue((self.root / result["asset_path"]).exists())
+        self.assertNotIn("note_path", result)
         self.assertEqual(result["vision_status"], "failed")
 
     def test_drop_repo_clone_failure_does_not_write_raw(self) -> None:
@@ -382,14 +390,25 @@ class DropPhaseTests(unittest.TestCase):
                 with self.assertLogs("aiwiki.drop", level="WARNING") as captured:
                     result = drop_pdf(self.root, str(source), title="Paper")
 
-        self.assertIn("note_path", result)
-        self.assertTrue((self.root / result["note_path"]).exists())
+        self.assertNotIn("note_path", result)
+        self.assertTrue((self.root / result["asset_path"]).exists())
         self.assertTrue(
             any("drop tmp cleanup failed" in line for line in captured.output),
             captured.output,
         )
         # tmp dir remained on disk because cleanup raised; assert seam fired
         self.assertIn("tmp_dir", original_kept)
+
+    def test_drop_pdf_history_failure_rolls_back_manifest_entry(self) -> None:
+        source = self.root / "ok.pdf"
+        source.write_bytes(b"%PDF-1.4\n")
+
+        with patch("aiwiki.drop._append_raw_added_history", side_effect=RuntimeError("history boom")):
+            with self.assertRaisesRegex(RuntimeError, "history boom"):
+                drop_pdf(self.root, str(source), title="Paper")
+
+        self.assertEqual(self._asset_files(), [])
+        self.assertEqual(self._manifest_entries(), [])
 
     def test_snapshot_append_files_skips_path_on_stat_oserror(self) -> None:
         log_path = self.root / "wiki" / "indexes" / "log.md"

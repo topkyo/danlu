@@ -116,7 +116,7 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . drop image /path/to/diagram.png
 PYTHONPATH=src python3 -m aiwiki.cli --root . drop repo https://github.com/user/repo.git
 ```
 
-Obsidian Product Shell 已内置投网址（Drop URL）、投文件（Drop File）、投图片（Drop Image）和记笔记（Capture Note）四种投料入口；也可以把材料直接放进 `raw/inbox/`。`drop repo` 仍以 launcher CLI 为主。
+Obsidian Product Shell 已内置投网址（Drop URL）、投文件（Drop File）、投图片（Drop Image）和记笔记（Capture Note）四种投料入口；文本、Markdown、URL 抓取和 repo snapshot 进入 `raw/inbox/`，PDF/image 原件进入 `raw/assets/`，不要把二进制原件放进 `raw/inbox/` 或转成 wrapper markdown。`drop repo` 仍以 launcher CLI 为主。
 
 2. 编译
 

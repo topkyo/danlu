@@ -127,6 +127,7 @@ bash scripts/product_shell_smoke.sh --with-note-write
 - [ ] `run-ask` LLM 失败能以 `llm-failed` / degraded 状态清晰呈现；UI 不把 deterministic placeholder 当成功答案。
 - [ ] `llm-check` configured / unconfigured 两种状态都有稳定 JSON shape。
 - [ ] `recent_raw_inputs` 能让 raw 投料 pending 卡从 received 变 done。
+- [ ] 本地文本/Markdown 投料不得被 frontmatter 或 capture metadata 包装；PDF/Image 原件只进入 `raw/assets`，不生成 raw markdown wrapper。
 - [ ] runtime 不要求插件直接写 `.aiwiki/state/*`。
 - [ ] runtime contract 改动时同步更新 JS tests 和 Python tests。
 

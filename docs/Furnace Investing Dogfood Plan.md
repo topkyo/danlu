@@ -96,9 +96,9 @@ aiwiki drop url https://example.com/announcement-2025
 ```
 
 **摩擦记录点**：
-- F-INV-1：`drop pdf` 在中文 PDF / 扫描版 PDF 上是否丢失内容
+- F-INV-1：`drop pdf` 是否只保留 PDF 原件到 `raw/assets`，后续 compile/analysis 不把抽取文本写回 raw 原料
 - F-INV-2：`drop note` 文本超过 N 字时是否截断或异常
-- F-INV-3：raw/inbox 落盘的 frontmatter 是否包含完整原始文件指针
+- F-INV-3：manifest/runtime history 是否包含完整原始文件指针，raw 原料文件本身不写入 frontmatter / capture metadata
 
 ### 2.3 Compile
 
@@ -284,7 +284,7 @@ aiwiki run-nightly
 
 dogfood 完成判据（必须全部命中）：
 
-- [ ] 至少 1 份 PDF / Note / URL drop 成功落 raw/inbox（含 source_files frontmatter）
+- [ ] 至少 1 份 PDF / Note / URL drop 成功：PDF 原件落 `raw/assets`，Note/URL 落 `raw/inbox`，metadata 只进 manifest/history 或派生层
 - [ ] 至少 1 份 source 通过 LLM compile 产生 wiki/sources frontmatter
 - [ ] 至少 1 个 investing judgment 走完 `tentative → tracking → confirmed` 三态
 - [ ] 至少 1 个 settled investing elixir 通过 promote receipt 与 counter_evidence gate

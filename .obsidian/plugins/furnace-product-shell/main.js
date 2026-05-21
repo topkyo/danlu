@@ -421,12 +421,12 @@ const ZH_TEXT = {
   "网址不能为空。": "网址不能为空。",
   "抓取中…": "抓取中…",
   "投文件": "投文件",
-  "投一个本地文件或远程地址：PDF 会抽取文本，Repo 会抓取代码快照。": "投一个本地文件或远程地址：PDF 会抽取文本，Repo 会抓取代码快照。",
+  "投一个本地文件或远程地址：PDF 原件会进入 raw/assets，Repo 会抓取代码快照。": "投一个本地文件或远程地址：PDF 原件会进入 raw/assets，Repo 会抓取代码快照。",
   "PDF 或 Repo": "PDF 或 Repo",
   "来源不能为空。": "来源不能为空。",
   "投料中…": "投料中…",
   "投图片": "投图片",
-  "投一张图片，炉子会提取视觉信息并纳入知识库。": "投一张图片，炉子会提取视觉信息并纳入知识库。",
+  "投一张图片，原件会进入 raw/assets；视觉信息只作为运行层分析，不改写原料。": "投一张图片，原件会进入 raw/assets；视觉信息只作为运行层分析，不改写原料。",
   "搜索知识库": "搜索知识库",
   "搜索 wiki、概念、判断、决策和派生页面。": "搜索 wiki、概念、判断、决策和派生页面。",
   "关键词": "关键词",
@@ -1037,8 +1037,8 @@ const ZH_TEXT = {
   "Repo max files": "Repo 最大文件数",
   "Skip vision analysis": "跳过视觉分析",
   "Drop this web page into raw/inbox.": "把网页抓取进 raw/inbox。",
-  "Import a PDF or repo snapshot into raw/inbox.": "把 PDF 或仓库快照投进 raw/inbox。",
-  "Import an image into raw/inbox.": "把图片投进 raw/inbox。",
+  "Import a PDF asset into raw/assets or a repo snapshot into raw/inbox.": "PDF 原件进 raw/assets；仓库快照进 raw/inbox。",
+  "Import an image asset into raw/assets.": "图片原件进 raw/assets。",
   "No nightly state yet.": "还没有 nightly 状态。",
   "healthy": "健康",
   warnings: "告警",
@@ -2401,7 +2401,7 @@ class DropFileModal extends Modal {
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
     contentEl.createEl("h2", { text: t("投文件") });
-    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一个本地文件或远程地址：PDF 会抽取文本，Repo 会抓取代码快照。") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一个本地文件或远程地址：PDF 原件会进入 raw/assets，Repo 会抓取代码快照。") });
 
     const kindSetting = new Setting(contentEl).setName(t("PDF 或 Repo"));
     const kindSelect = kindSetting.controlEl.createEl("select");
@@ -2446,7 +2446,7 @@ class DropFileModal extends Modal {
     const titleSetting = new Setting(contentEl).setName(t("标题"));
     titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("可选笔记标题……");
+    titleInput.placeholder = t("可选材料标题……");
     titleInput.addClass("furnace-shell-code");
     titleInput.value = this.initialTitle;
 
@@ -2513,7 +2513,7 @@ class DropImageModal extends Modal {
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
     contentEl.createEl("h2", { text: t("投图片") });
-    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一张图片，炉子会提取视觉信息并纳入知识库。") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一张图片，原件会进入 raw/assets；视觉信息只作为运行层分析，不改写原料。") });
 
     const sourceSetting = new Setting(contentEl).setName(t("来源"));
     sourceSetting.nameEl.addClass("furnace-modal-field-required");
@@ -2546,7 +2546,7 @@ class DropImageModal extends Modal {
     const titleSetting = new Setting(contentEl).setName(t("标题"));
     titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("可选笔记标题……");
+    titleInput.placeholder = t("可选材料标题……");
     titleInput.addClass("furnace-shell-code");
     titleInput.value = this.initialTitle;
 

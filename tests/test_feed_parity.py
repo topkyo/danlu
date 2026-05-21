@@ -19,6 +19,13 @@ def _write_runtime_history(root: Path, events: list[dict[str, object]]) -> None:
     path.write_text("".join(json.dumps(event, ensure_ascii=False) + "\n" for event in events), encoding="utf-8")
 
 
+def _touch_materials(root: Path, *paths: str) -> None:
+    for raw_path in paths:
+        path = root / raw_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("material\n", encoding="utf-8")
+
+
 class TestFeedParity(unittest.TestCase):
     def test_recent_raw_inputs_includes_drop_history(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -35,7 +42,7 @@ class TestFeedParity(unittest.TestCase):
                 },
                 {
                     "event_type": "raw-added",
-                    "stored_path": "raw/inbox/b.md",
+                    "stored_path": "raw/assets/b.pdf",
                     "original_path": "/tmp/b.pdf",
                     "source_type": "pdf",
                     "title": "B",
@@ -44,6 +51,7 @@ class TestFeedParity(unittest.TestCase):
                 },
             ]
             _write_runtime_history(root, events)
+            _touch_materials(root, "raw/inbox/a.md", "raw/assets/b.pdf")
 
             summary = build_shell_summary(root)
 
@@ -51,7 +59,7 @@ class TestFeedParity(unittest.TestCase):
             self.assertEqual(
                 summary["recent_raw_inputs"][0],
                 {
-                    "stored_path": "raw/inbox/b.md",
+                    "stored_path": "raw/assets/b.pdf",
                     "original_path": "/tmp/b.pdf",
                     "source_type": "pdf",
                     "title": "B",
@@ -92,6 +100,7 @@ class TestFeedParity(unittest.TestCase):
                 for idx in range(12)
             ]
             _write_runtime_history(root, events)
+            _touch_materials(root, *(f"raw/inbox/{idx}.md" for idx in range(12)))
 
             raw_inputs = _build_recent_raw_inputs(root, limit=8)
 
@@ -113,11 +122,63 @@ class TestFeedParity(unittest.TestCase):
                     },
                 ],
             )
+            _touch_materials(root, "raw/inbox/yes.md")
 
             raw_inputs = _build_recent_raw_inputs(root, limit=8)
 
             self.assertEqual(len(raw_inputs), 1)
             self.assertEqual(raw_inputs[0]["stored_path"], "raw/inbox/yes.md")
+
+    def test_recent_raw_inputs_skips_missing_stored_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            _write_runtime_history(
+                root,
+                [
+                    {
+                        "event_type": "raw-added",
+                        "stored_path": "raw/inbox/missing.md",
+                        "occurred_at": "2026-05-06T08:00:00+00:00",
+                    },
+                    {
+                        "event_type": "raw-added",
+                        "stored_path": "raw/assets/present.pdf",
+                        "occurred_at": "2026-05-06T09:00:00+00:00",
+                    },
+                ],
+            )
+            _touch_materials(root, "raw/assets/present.pdf")
+
+            raw_inputs = _build_recent_raw_inputs(root, limit=8)
+
+            self.assertEqual(len(raw_inputs), 1)
+            self.assertEqual(raw_inputs[0]["stored_path"], "raw/assets/present.pdf")
+
+    def test_recent_raw_inputs_skips_paths_outside_raw_material_layers(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            outside = root / "outside.md"
+            outside.write_text("outside\n", encoding="utf-8")
+            escaped = root.parent / "escaped.md"
+            escaped.write_text("escaped\n", encoding="utf-8")
+            try:
+                _write_runtime_history(
+                    root,
+                    [
+                        {"event_type": "raw-added", "stored_path": str(outside)},
+                        {"event_type": "raw-added", "stored_path": "../escaped.md"},
+                        {"event_type": "raw-added", "stored_path": "wiki/sources/not-raw.md"},
+                        {"event_type": "raw-added", "stored_path": "raw/assets/present.pdf"},
+                    ],
+                )
+                _touch_materials(root, "wiki/sources/not-raw.md", "raw/assets/present.pdf")
+
+                raw_inputs = _build_recent_raw_inputs(root, limit=8)
+
+                self.assertEqual(len(raw_inputs), 1)
+                self.assertEqual(raw_inputs[0]["stored_path"], "raw/assets/present.pdf")
+            finally:
+                escaped.unlink(missing_ok=True)
 
     def test_today_feed_renders_raw_input_today(self) -> None:
         summary = {

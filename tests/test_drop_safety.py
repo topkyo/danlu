@@ -42,16 +42,15 @@ class DropSafetyTests(unittest.TestCase):
             source = Path(outside) / "external.pdf"
             source.write_bytes(b"%PDF-1.4\n%external\n")
 
-            with patch("aiwiki.drop._extract_pdf_text", return_value="External PDF text"):
-                result = drop_pdf(self.root, str(source))
+            result = drop_pdf(self.root, str(source))
 
         asset_path = self.root / result["asset_path"]
-        note = (self.root / result["note_path"]).read_text(encoding="utf-8")
 
         self.assertEqual(result["material"], "pdf")
+        self.assertNotIn("note_path", result)
         self.assertTrue(asset_path.exists())
+        self.assertEqual(asset_path.read_bytes(), b"%PDF-1.4\n%external\n")
         self.assertEqual(result["original_path"], str(source.resolve()))
-        self.assertIn("External PDF text", note)
 
     def test_drop_image_imports_absolute_path_outside_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as outside:
@@ -68,13 +67,14 @@ class DropSafetyTests(unittest.TestCase):
                             result = drop_image(self.root, str(source), enable_vision=True)
 
         asset_path = self.root / result["asset_path"]
-        note = (self.root / result["note_path"]).read_text(encoding="utf-8")
 
         self.assertEqual(result["material"], "image")
+        self.assertNotIn("note_path", result)
         self.assertTrue(asset_path.exists())
+        self.assertEqual(asset_path.read_bytes(), b"\x89PNG\r\n\x1a\n" + b"\x00" * 32)
         self.assertEqual(result["original_path"], str(source.resolve()))
-        self.assertIn("External OCR", note)
-        self.assertIn("External image analysis", note)
+        self.assertTrue(result["ocr_text_present"])
+        self.assertTrue(result["visual_analysis_present"])
 
     def test_drop_pdf_file_uri_outside_workspace_still_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as outside:
@@ -88,14 +88,13 @@ class DropSafetyTests(unittest.TestCase):
         payload = b"%PDF-1.4\n%remote\n"
 
         with patch("aiwiki.drop.safe_fetch", return_value=(payload, "HTTPS://example.com/paper.pdf")) as fetch:
-            with patch("aiwiki.drop._extract_pdf_text", return_value="Remote PDF text"):
-                result = drop_pdf(self.root, "HTTPS://example.com/paper.pdf")
+            result = drop_pdf(self.root, "HTTPS://example.com/paper.pdf")
 
         fetch.assert_called_once()
         self.assertEqual(result["material"], "pdf")
+        self.assertNotIn("note_path", result)
         self.assertEqual(result["original_path"], "HTTPS://example.com/paper.pdf")
-        note = (self.root / result["note_path"]).read_text(encoding="utf-8")
-        self.assertIn("Remote PDF text", note)
+        self.assertEqual((self.root / result["asset_path"]).read_bytes(), payload)
 
     def test_drop_image_file_uri_outside_workspace_still_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as outside:
@@ -169,9 +168,9 @@ class DropSafetyTests(unittest.TestCase):
         with patch("aiwiki.drop._extract_pdf_text", return_value="ok") as extract:
             result = drop_pdf(self.root, str(source), title="Small PDF")
 
-        extract.assert_called_once()
-        note = (self.root / result["note_path"]).read_text(encoding="utf-8")
-        self.assertIn("ok", note)
+        extract.assert_not_called()
+        self.assertNotIn("note_path", result)
+        self.assertEqual((self.root / result["asset_path"]).read_bytes(), b"%PDF-1.4\n%trailer\n")
 
     def test_drop_image_rejects_oversized_local_file(self) -> None:
         source = self.root / "too-large.png"

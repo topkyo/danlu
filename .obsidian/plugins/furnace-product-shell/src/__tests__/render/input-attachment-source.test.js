@@ -74,6 +74,18 @@ describe("Universal Input attachment source handling", () => {
     expect(bundleSrc).toMatch(/product-shell-drop/);
   });
 
+  test("drop action copy reflects asset-backed PDF and image drops", () => {
+    const constantsSrc = fs.readFileSync(path.resolve(__dirname, "../../constants.js"), "utf8");
+    const bundleSrc = fs.readFileSync(path.resolve(__dirname, "../../../main.js"), "utf8");
+
+    expect(constantsSrc).toContain("PDF 原件进 raw/assets；仓库快照进 raw/inbox。");
+    expect(constantsSrc).toContain("图片原件进 raw/assets。");
+    expect(constantsSrc).not.toContain("把 PDF 或仓库快照投进 raw/inbox。");
+    expect(constantsSrc).not.toContain("把图片投进 raw/inbox。");
+    expect(bundleSrc).toContain("PDF 原件进 raw/assets；仓库快照进 raw/inbox。");
+    expect(bundleSrc).toContain("图片原件进 raw/assets。");
+  });
+
   test("collectMaterialPathsFromPayload gathers all supported drop paths", () => {
     const { collectMaterialPathsFromPayload } = loadHelpers();
     const paths = collectMaterialPathsFromPayload({

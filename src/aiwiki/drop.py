@@ -15,21 +15,25 @@ from pathlib import Path
 from typing import Any
 from urllib import parse
 
-from .app_protocol import ensure_layout
+from .app_protocol import ensure_layout, save_manifest
 from .app_render import append_wiki_log
-from .app_state import DEFAULT_PROTOCOL, append_runtime_history, runtime_history_path
+from .app_state import DEFAULT_PROTOCOL, append_runtime_history, load_manifest, manifest_path, runtime_history_path
 from .app_utils import (
     FetchPolicyError,
     _validate_safe_url,
     atomic_copy_file,
     atomic_write_bytes,
     atomic_write_text,
+    detect_kind,
     first_markdown_heading,
+    next_identifier,
     relative_path,
     render_frontmatter,
     runtime_write_lock,
     safe_fetch,
     safe_resolve_within,
+    sha256_file,
+    slugify,
     utc_now,
 )
 from .config import LLMConfig, _backend_supports_image_analysis
@@ -255,7 +259,7 @@ def _materialize_url(root: Path, url: str, title: str | None, collection: dict[s
         _append_raw_added_history(
             root,
             material="url",
-            note_path=note_path,
+            stored_path=note_path,
             original_path=url,
             source_type="url-drop",
             title=display_title,
@@ -305,7 +309,6 @@ def drop_pdf(root: Path, source: str, title: str | None = None) -> dict[str, Any
     collection = _collect_pdf(root, source, title)
     try:
         _validate_pdf(collection)
-        collection["extracted_text"] = _extract_pdf_text(collection["tmp_path"])
         with runtime_write_lock(root):
             return _materialize_pdf(root, source, title, collection)
     finally:
@@ -331,36 +334,37 @@ def _materialize_pdf(root: Path, source: str, title: str | None, collection: dic
     del source
     tmp_path = collection["tmp_path"]
     original_path = collection["original_path"]
-    extracted_text = collection["extracted_text"]
     display_title = title or Path(original_path).stem or tmp_path.stem
     asset_path = _unique_path(root / "raw" / "assets", _timestamped_stem(display_title), ".pdf")
-    stem = _timestamped_stem(display_title)
-    note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
     created_paths: list[Path] = []
     append_file_sizes = _snapshot_append_files(root)
     try:
         atomic_copy_file(tmp_path, asset_path, fsync=True)
         created_paths.append(asset_path)
-        markdown = _render_pdf_note(root, asset_path, original_path, display_title, extracted_text)
-        _write_text(note_path, markdown)
-        created_paths.append(note_path)
+        entry = _append_manifest_entry(
+            root,
+            stored_path=asset_path,
+            original_path=original_path,
+            source_type="pdf-drop",
+            title=display_title,
+        )
         append_wiki_log(
             root,
             "ingest",
             display_title,
             [
                 "source_type: `pdf-drop`",
-                f"stored_note: `{relative_path(root, note_path)}`",
                 f"asset_path: `{relative_path(root, asset_path)}`",
             ],
         )
         _append_raw_added_history(
             root,
             material="pdf",
-            note_path=note_path,
+            stored_path=asset_path,
             original_path=original_path,
             source_type="pdf-drop",
             title=display_title,
+            entry_id=entry["id"],
         )
     except Exception:
         _rollback_created_paths(created_paths)
@@ -368,34 +372,11 @@ def _materialize_pdf(root: Path, source: str, title: str | None, collection: dic
         raise
     return {
         "material": "pdf",
-        "note_path": relative_path(root, note_path),
         "asset_path": relative_path(root, asset_path),
+        "stored_path": relative_path(root, asset_path),
         "original_path": original_path,
         "title": display_title,
     }
-
-
-def _render_pdf_note(root: Path, asset_path: Path, original_path: str, display_title: str, extracted_text: str) -> str:
-    return _render_raw_note(
-        title=display_title,
-        source_type="pdf-drop",
-        original_path=original_path,
-        sections=[
-            ("PDF Asset", [f"- Stored PDF: `{relative_path(root, asset_path)}`"]),
-            (
-                "Import Metadata",
-                [
-                    f"- Imported at: `{utc_now()}`",
-                    f"- File size: `{asset_path.stat().st_size}` bytes",
-                ],
-            ),
-            (
-                "Extracted Text",
-                [extracted_text or "No PDF text could be extracted. This file may be image-only and need OCR."],
-            ),
-        ],
-        extra_frontmatter={"asset_files": [relative_path(root, asset_path)]},
-    )
 
 
 def drop_image(
@@ -474,35 +455,24 @@ def _materialize_image(root: Path, source: str, title: str | None, collection: d
     vision_status = vision_result["status"]
     display_title = title or Path(original_path).stem or tmp_path.stem
     asset_path = _unique_path(root / "raw" / "assets", _timestamped_stem(display_title), tmp_path.suffix.lower() or ".bin")
-    stem = _timestamped_stem(display_title)
-    note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
     created_paths: list[Path] = []
     append_file_sizes = _snapshot_append_files(root)
     try:
         atomic_copy_file(tmp_path, asset_path, fsync=True)
         created_paths.append(asset_path)
-        markdown = _render_image_note(
+        entry = _append_manifest_entry(
             root,
-            asset_path,
-            original_path,
-            display_title,
-            mime,
-            width,
-            height,
-            ocr_text,
-            visual_analysis,
-            vision_backend,
-            vision_status,
+            stored_path=asset_path,
+            original_path=original_path,
+            source_type="image-drop",
+            title=display_title,
         )
-        _write_text(note_path, markdown)
-        created_paths.append(note_path)
         append_wiki_log(
             root,
             "ingest",
             display_title,
             [
                 "source_type: `image-drop`",
-                f"stored_note: `{relative_path(root, note_path)}`",
                 f"asset_path: `{relative_path(root, asset_path)}`",
                 f"vision_status: `{vision_status}`",
             ],
@@ -510,10 +480,11 @@ def _materialize_image(root: Path, source: str, title: str | None, collection: d
         _append_raw_added_history(
             root,
             material="image",
-            note_path=note_path,
+            stored_path=asset_path,
             original_path=original_path,
             source_type="image-drop",
             title=display_title,
+            entry_id=entry["id"],
         )
     except Exception:
         _rollback_created_paths(created_paths)
@@ -521,8 +492,8 @@ def _materialize_image(root: Path, source: str, title: str | None, collection: d
         raise
     return {
         "material": "image",
-        "note_path": relative_path(root, note_path),
         "asset_path": relative_path(root, asset_path),
+        "stored_path": relative_path(root, asset_path),
         "original_path": original_path,
         "mime_type": mime,
         "dimensions": {"width": width, "height": height},
@@ -534,53 +505,6 @@ def _materialize_image(root: Path, source: str, title: str | None, collection: d
     }
 
 
-def _render_image_note(
-    root: Path,
-    asset_path: Path,
-    original_path: str,
-    display_title: str,
-    mime: str,
-    width: int | None,
-    height: int | None,
-    ocr_text: str,
-    visual_analysis: str,
-    vision_backend: str,
-    vision_status: str,
-) -> str:
-    dimension_text = f"{width}x{height}" if width and height else "unknown"
-    extracted_text = ocr_text or "OCR is unavailable on this machine or no text was detected. Treat this as an image reference source."
-    visual_lines = [visual_analysis] if visual_analysis else [
-        "Visual analysis was not generated. Configure a multimodal-capable LLM backend/model or retry with a smaller image."
-    ]
-    return _render_raw_note(
-        title=display_title,
-        source_type="image-drop",
-        original_path=original_path,
-        sections=[
-            ("Image Asset", [f"- Stored image: `{relative_path(root, asset_path)}`"]),
-            (
-                "Image Metadata",
-                [
-                    f"- Imported at: `{utc_now()}`",
-                    f"- MIME type: `{mime}`",
-                    f"- Dimensions: `{dimension_text}`",
-                    f"- File size: `{asset_path.stat().st_size}` bytes",
-                    f"- Vision backend: `{vision_backend or 'none'}`",
-                    f"- Vision status: `{vision_status}`",
-                ],
-            ),
-            (
-                "Extracted Text",
-                [extracted_text],
-            ),
-            ("Visual Analysis", visual_lines),
-        ],
-        extra_frontmatter={
-            "asset_files": [relative_path(root, asset_path)],
-            "vision_backend": vision_backend,
-            "vision_status": vision_status,
-        },
-    )
 def drop_repo(root: Path, source: str, title: str | None = None, max_files: int = 200) -> dict[str, Any]:
     ensure_layout(root)
     collection = _collect_repo(root, source, max_files)
@@ -659,7 +583,7 @@ def _materialize_repo(root: Path, source: str, title: str | None, collection: di
         _append_raw_added_history(
             root,
             material="repo",
-            note_path=note_path,
+            stored_path=note_path,
             original_path=original_path,
             source_type="repo-drop",
             title=display_title,
@@ -705,17 +629,18 @@ def _drop_note_unlocked(
     if source and text is not None:
         raise ValueError("Provide either a note file path or --text, not both.")
     if text is not None:
-        captured_text = _normalize_text(text)
+        captured_text = text
         original_path = "inline://note"
         capture_mode = "inline-text"
         fallback_title = note_kind.title()
+        source_path = None
     else:
         if not source:
             raise ValueError("Provide a markdown/text file path or --text for drop-note.")
         source_path = Path(source).expanduser()
         if not source_path.exists() or not source_path.is_file():
             raise FileNotFoundError(f"Note file not found: {source}")
-        captured_text = _normalize_text(source_path.read_text(encoding="utf-8", errors="replace"))
+        captured_text = source_path.read_text(encoding="utf-8", errors="replace")
         original_path = str(source)
         capture_mode = "file"
         fallback_title = source_path.stem or note_kind.title()
@@ -725,25 +650,20 @@ def _drop_note_unlocked(
         _assert_no_sensitive_text(captured_text, source_label=original_path)
     display_title = title or _note_title(captured_text, fallback=fallback_title)
     stem = _timestamped_stem(display_title)
-    note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
-    markdown = _render_raw_note(
-        title=display_title,
-        source_type="note-drop",
+    suffix = source_path.suffix.lower() if source_path is not None and source_path.suffix else ".md"
+    note_path = _unique_path(root / "raw" / "inbox", stem, suffix)
+    if source_path is None:
+        atomic_write_text(note_path, captured_text, fsync=True)
+    else:
+        atomic_copy_file(source_path, note_path, fsync=True)
+    entry = _append_manifest_entry(
+        root,
+        stored_path=note_path,
         original_path=original_path,
-        sections=[
-            (
-                "Capture Metadata",
-                [
-                    f"- Captured at: `{utc_now()}`",
-                    f"- Capture mode: `{capture_mode}`",
-                    f"- Note kind: `{note_kind}`",
-                ],
-            ),
-            ("Captured Note", [captured_text]),
-        ],
-        extra_frontmatter={"note_kind": note_kind},
+        source_type="note-drop",
+        title=display_title,
+        note_kind=note_kind,
     )
-    _write_text(note_path, markdown)
     append_wiki_log(
         root,
         "ingest",
@@ -757,10 +677,13 @@ def _drop_note_unlocked(
     _append_raw_added_history(
         root,
         material="note",
-        note_path=note_path,
+        stored_path=note_path,
         original_path=original_path,
         source_type="note-drop",
         title=display_title,
+        entry_id=entry["id"],
+        note_kind=note_kind,
+        capture_mode=capture_mode,
     )
     return {
         "material": "note",
@@ -811,24 +734,69 @@ def _append_raw_added_history(
     root: Path,
     *,
     material: str,
-    note_path: Path,
+    stored_path: Path,
     original_path: str,
     source_type: str,
     title: str,
+    entry_id: str = "",
+    note_kind: str = "",
+    capture_mode: str = "",
 ) -> None:
-    append_runtime_history(
-        root,
-        {
-            "event_type": "raw-added",
-            "occurred_at": utc_now(),
-            "protocol": DEFAULT_PROTOCOL,
-            "material": material,
-            "stored_path": relative_path(root, note_path),
-            "original_path": original_path,
-            "source_type": source_type,
-            "title": title,
-        },
-    )
+    event: dict[str, Any] = {
+        "event_type": "raw-added",
+        "occurred_at": utc_now(),
+        "protocol": DEFAULT_PROTOCOL,
+        "material": material,
+        "stored_path": relative_path(root, stored_path),
+        "original_path": original_path,
+        "source_type": source_type,
+        "title": title,
+    }
+    if entry_id:
+        event["entry_id"] = entry_id
+        event["source_ids"] = [entry_id]
+    if note_kind:
+        event["note_kind"] = note_kind
+    if capture_mode:
+        event["capture_mode"] = capture_mode
+    append_runtime_history(root, event)
+
+
+def _append_manifest_entry(
+    root: Path,
+    *,
+    stored_path: Path,
+    original_path: str,
+    source_type: str,
+    title: str,
+    note_kind: str = "",
+) -> dict[str, Any]:
+    manifest = load_manifest(root)
+    entries: list[dict[str, Any]] = manifest["entries"]
+    relative = relative_path(root, stored_path)
+    for entry in entries:
+        if entry.get("stored_path") == relative:
+            return entry
+    existing_ids = {str(entry.get("id") or "") for entry in entries}
+    slug = slugify(title or stored_path.stem)
+    seed = f"source-{slug}" if slug and slug != "item" else f"source-{hashlib.sha256(relative.encode()).hexdigest()[:12]}"
+    entry_id = next_identifier(existing_ids, seed)
+    imported_at = utc_now()
+    entry = {
+        "id": entry_id,
+        "title": title,
+        "source_type": source_type,
+        "note_kind": note_kind,
+        "original_path": original_path,
+        "stored_path": relative,
+        "kind": detect_kind(stored_path),
+        "sha256": sha256_file(stored_path),
+        "imported_at": imported_at,
+        "updated_at": imported_at,
+    }
+    entries.append(entry)
+    save_manifest(root, manifest)
+    return entry
 
 
 def _rollback_created_paths(created_paths: list[Path]) -> None:
@@ -855,7 +823,7 @@ def _cleanup_tmp_dir(tmp_dir: Path) -> None:
 
 
 def _snapshot_append_files(root: Path) -> dict[Path, tuple[bool, int]]:
-    candidates = [root / "wiki" / "indexes" / "log.md", runtime_history_path(root)]
+    candidates = [root / "wiki" / "indexes" / "log.md", runtime_history_path(root), manifest_path(root)]
     sizes: dict[Path, tuple[bool, int]] = {}
     for path in candidates:
         try:

@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from aiwiki.app_protocol import ensure_layout
-from aiwiki.app_utils import parse_frontmatter
+from aiwiki.app_state import load_manifest
 from aiwiki.drop import (
     SensitiveContentError,
     _analyze_image_asset,
@@ -90,36 +90,34 @@ class DropTests(unittest.TestCase):
         self.assertIn("A survey of agent runtime tradeoffs.", note)
         self.assertIn("Agents coordinate tools, planning, and memory.", note)
 
-    def test_drop_pdf_renames_binary_asset_and_records_frontmatter(self) -> None:
+    def test_drop_pdf_renames_binary_asset_and_records_manifest(self) -> None:
         source = self.root / "paper.bin"
         source.write_bytes(b"%PDF-1.4 fake payload")
 
-        with patch("aiwiki.drop._extract_pdf_text", return_value="Recovered PDF text."):
-            result = drop_pdf(self.root, str(source), title="Runtime Paper")
+        result = drop_pdf(self.root, str(source), title="Runtime Paper")
 
         asset_path = self.root / result["asset_path"]
-        note_path = self.root / result["note_path"]
-        note = note_path.read_text(encoding="utf-8")
-        frontmatter = parse_frontmatter(note)
 
+        self.assertNotIn("note_path", result)
         self.assertTrue(asset_path.exists())
         self.assertEqual(asset_path.suffix, ".pdf")
-        self.assertEqual(frontmatter["asset_files"], [result["asset_path"]])
-        self.assertIn("Recovered PDF text.", note)
-        self.assertIn("Runtime Paper", note)
+        self.assertEqual(asset_path.read_bytes(), b"%PDF-1.4 fake payload")
+        self.assertEqual(list((self.root / "raw" / "inbox").glob("*.md")), [])
+        entry = load_manifest(self.root)["entries"][-1]
+        self.assertEqual(entry["source_type"], "pdf-drop")
+        self.assertEqual(entry["title"], "Runtime Paper")
+        self.assertEqual(entry["stored_path"], result["asset_path"])
+        self.assertEqual(result["stored_path"], result["asset_path"])
 
     def test_drop_pdf_preserves_chinese_upload_title_in_filenames(self) -> None:
         source = self.root / "1779261245224-7b4c3390.pdf"
         source.write_bytes(b"%PDF-1.4 fake payload")
 
-        with patch("aiwiki.drop._extract_pdf_text", return_value="Recovered PDF text."):
-            result = drop_pdf(self.root, str(source), title="特朗普访华预期.pdf")
+        result = drop_pdf(self.root, str(source), title="特朗普访华预期.pdf")
 
-        note_stem = Path(result["note_path"]).stem
         asset_stem = Path(result["asset_path"]).stem
-        self.assertIn("特朗普访华预期", note_stem)
         self.assertIn("特朗普访华预期", asset_stem)
-        self.assertNotIn("1779261245224", note_stem)
+        self.assertNotIn("1779261245224", asset_stem)
 
     def test_drop_image_records_generated_visual_analysis(self) -> None:
         image_bytes = base64.b64decode(
@@ -137,17 +135,19 @@ class DropTests(unittest.TestCase):
                     client=StubVisionClient("- Chart summary\n- Confidence: medium"),
                 )
 
-        note_path = self.root / result["note_path"]
-        note = note_path.read_text(encoding="utf-8")
-        frontmatter = parse_frontmatter(note)
-
         self.assertEqual(result["material"], "image")
+        self.assertNotIn("note_path", result)
         self.assertEqual(result["vision_status"], "generated")
         self.assertTrue(result["visual_analysis_present"])
-        self.assertEqual(frontmatter["vision_backend"], "codex-cli")
-        self.assertEqual(frontmatter["vision_status"], "generated")
-        self.assertIn("Latency chart OCR text", note)
-        self.assertIn("- Chart summary", note)
+        asset_path = self.root / result["asset_path"]
+        self.assertTrue(asset_path.exists())
+        self.assertEqual(asset_path.read_bytes(), image_bytes)
+        self.assertEqual(list((self.root / "raw" / "inbox").glob("*.md")), [])
+        entry = load_manifest(self.root)["entries"][-1]
+        self.assertEqual(entry["source_type"], "image-drop")
+        self.assertEqual(entry["title"], "Latency Chart")
+        self.assertEqual(entry["stored_path"], result["asset_path"])
+        self.assertEqual(result["stored_path"], result["asset_path"])
 
     def test_drop_image_preserves_chinese_upload_title_in_filenames(self) -> None:
         image_bytes = base64.b64decode(
@@ -165,11 +165,9 @@ class DropTests(unittest.TestCase):
                     client=StubVisionClient("- Image summary"),
                 )
 
-        note_stem = Path(result["note_path"]).stem
         asset_stem = Path(result["asset_path"]).stem
-        self.assertIn("市场结构图", note_stem)
         self.assertIn("市场结构图", asset_stem)
-        self.assertNotIn("1779261245224", note_stem)
+        self.assertNotIn("1779261245224", asset_stem)
 
     def test_drop_repo_snapshots_local_repository_tree(self) -> None:
         repo = self.root / "fixture-repo"
@@ -214,22 +212,21 @@ class DropTests(unittest.TestCase):
         self.assertFalse(captured["cleanup_dir"].exists())
 
     def test_drop_note_accepts_inline_text_and_marks_transcript_kind(self) -> None:
+        raw_text = "# Weekly Sync\n\nAlice: Ship review queue.\nBob: Follow up on runtime drift.\n"
         result = drop_note(
             self.root,
-            text="# Weekly Sync\n\nAlice: Ship review queue.\nBob: Follow up on runtime drift.\n",
+            text=raw_text,
             kind="transcript",
         )
 
         note_path = self.root / result["note_path"]
         note = note_path.read_text(encoding="utf-8")
-        frontmatter = parse_frontmatter(note)
 
         self.assertEqual(result["material"], "note")
         self.assertEqual(result["note_kind"], "transcript")
-        self.assertEqual(frontmatter["source_type"], "note-drop")
-        self.assertEqual(frontmatter["note_kind"], "transcript")
-        self.assertEqual(frontmatter["original_path"], "inline://note")
-        self.assertIn("Alice: Ship review queue.", note)
+        self.assertEqual(note, raw_text)
+        self.assertNotIn("Capture Metadata", note)
+        self.assertNotIn("Captured Note", note)
         history = [
             json.loads(line)
             for line in (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
@@ -238,6 +235,20 @@ class DropTests(unittest.TestCase):
         self.assertEqual(history[-1]["event_type"], "raw-added")
         self.assertEqual(history[-1]["stored_path"], result["note_path"])
         self.assertEqual(history[-1]["source_type"], "note-drop")
+        self.assertEqual(history[-1]["note_kind"], "transcript")
+        self.assertEqual(history[-1]["capture_mode"], "inline-text")
+        entry = load_manifest(self.root)["entries"][-1]
+        self.assertEqual(entry["source_type"], "note-drop")
+        self.assertEqual(entry["note_kind"], "transcript")
+        self.assertEqual(entry["original_path"], "inline://note")
+        self.assertEqual(entry["stored_path"], result["note_path"])
+
+    def test_drop_note_preserves_inline_text_without_trimming(self) -> None:
+        raw_text = "# Scratch\n\nkeep trailing spaces  \nno forced newline"
+
+        result = drop_note(self.root, text=raw_text, title="Scratch")
+
+        self.assertEqual((self.root / result["note_path"]).read_text(encoding="utf-8"), raw_text)
 
     def test_drop_note_reads_markdown_file_and_derives_title(self) -> None:
         source = self.root / "meeting.md"
@@ -247,12 +258,16 @@ class DropTests(unittest.TestCase):
 
         note_path = self.root / result["note_path"]
         note = note_path.read_text(encoding="utf-8")
-        frontmatter = parse_frontmatter(note)
 
         self.assertEqual(result["title"], "Product Review")
-        self.assertEqual(frontmatter["note_kind"], "note")
-        self.assertEqual(frontmatter["original_path"], str(source))
-        self.assertIn("Latency budget and reviewer load.", note)
+        self.assertEqual(note, "# Product Review\n\nLatency budget and reviewer load.\n")
+        self.assertEqual(note_path.read_bytes(), source.read_bytes())
+        self.assertNotIn("Capture Metadata", note)
+        self.assertNotIn("Captured Note", note)
+        entry = load_manifest(self.root)["entries"][-1]
+        self.assertEqual(entry["note_kind"], "note")
+        self.assertEqual(entry["original_path"], str(source))
+        self.assertEqual(entry["stored_path"], result["note_path"])
 
     def test_drop_note_rejects_inline_sensitive_content_by_default(self) -> None:
         with self.assertRaisesRegex(SensitiveContentError, "Sensitive content detected"):
@@ -276,6 +291,8 @@ class DropTests(unittest.TestCase):
 
         note = (self.root / result["note_path"]).read_text(encoding="utf-8")
 
+        self.assertFalse(note.startswith("---\n"))
+        self.assertNotIn("Capture Metadata", note)
         self.assertIn("password: local-only", note)
 
     def test_fetch_url_uses_plain_text_fallback_when_html_extraction_is_not_applicable(self) -> None:

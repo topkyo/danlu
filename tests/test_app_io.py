@@ -506,16 +506,18 @@ class IoFlowTests(AppFlowTestBase):
         manifest = load_manifest(self.root)
         self.assertEqual(manifest["entries"][0]["source_type"], "url-drop")
 
-    def test_drop_pdf_creates_asset_and_note(self) -> None:
+    def test_drop_pdf_preserves_raw_asset_and_manifest_metadata(self) -> None:
         pdf_path = self.root / "paper.pdf"
         pdf_path.write_bytes(b"%PDF-1.4\n%stub\n")
-        with patch("aiwiki.drop._extract_pdf_text", return_value="Extracted PDF text"):
-            result = drop_pdf(self.root, str(pdf_path), title="Paper")
+        result = drop_pdf(self.root, str(pdf_path), title="Paper")
         self.assertTrue((self.root / result["asset_path"]).exists())
-        note_text = (self.root / result["note_path"]).read_text(encoding="utf-8")
-        self.assertIn("Extracted PDF text", note_text)
+        self.assertNotIn("note_path", result)
+        self.assertEqual((self.root / result["asset_path"]).read_bytes(), b"%PDF-1.4\n%stub\n")
+        entry = load_manifest(self.root)["entries"][-1]
+        self.assertEqual(entry["source_type"], "pdf-drop")
+        self.assertEqual(entry["stored_path"], result["asset_path"])
 
-    def test_drop_image_creates_asset_and_metadata_note(self) -> None:
+    def test_drop_image_preserves_raw_asset_and_runtime_metadata(self) -> None:
         png_bytes = base64.b64decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z3ioAAAAASUVORK5CYII="
         )
@@ -528,13 +530,14 @@ class IoFlowTests(AppFlowTestBase):
             client=StubVisionClient("- A tiny single-pixel image.\n- Confidence: low"),
         )
         self.assertTrue((self.root / result["asset_path"]).exists())
-        note_text = (self.root / result["note_path"]).read_text(encoding="utf-8")
-        self.assertIn("Dimensions: `1x1`", note_text)
-        self.assertIn("Visual Analysis", note_text)
-        self.assertIn("A tiny single-pixel image.", note_text)
+        self.assertNotIn("note_path", result)
+        self.assertEqual((self.root / result["asset_path"]).read_bytes(), png_bytes)
         self.assertTrue(result["visual_analysis_present"])
         self.assertEqual(result["vision_backend"], "codex-cli")
         self.assertEqual(result["vision_status"], "generated")
+        entry = load_manifest(self.root)["entries"][-1]
+        self.assertEqual(entry["source_type"], "image-drop")
+        self.assertEqual(entry["stored_path"], result["asset_path"])
 
     def test_drop_image_marks_failed_vision_without_fake_success_metadata(self) -> None:
         png_bytes = base64.b64decode(
@@ -548,11 +551,10 @@ class IoFlowTests(AppFlowTestBase):
             title="Broken Vision",
             client=FailingVisionClient(),
         )
-        note_text = (self.root / result["note_path"]).read_text(encoding="utf-8")
+        self.assertNotIn("note_path", result)
         self.assertFalse(result["visual_analysis_present"])
         self.assertEqual(result["vision_backend"], "codex-cli")
         self.assertEqual(result["vision_status"], "failed")
-        self.assertIn("Vision status: `failed`", note_text)
 
     def test_drop_repo_snapshots_local_repository(self) -> None:
         repo_root = self.root / "repo"

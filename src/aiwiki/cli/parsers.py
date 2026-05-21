@@ -149,10 +149,14 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     ingest_parser.add_argument("--title", help="Optional display title.")
 
     _configure_drop_url_parser(subparsers.add_parser("drop-url", help="Fetch a web page into raw/inbox as source material."))
-    _configure_drop_pdf_parser(subparsers.add_parser("drop-pdf", help="Import a PDF into raw/assets and raw/inbox."))
-    _configure_drop_image_parser(subparsers.add_parser("drop-image", help="Import an image into raw/assets and raw/inbox."))
+    _configure_drop_pdf_parser(subparsers.add_parser("drop-pdf", help="Import a PDF asset into raw/assets without rewriting it."))
+    _configure_drop_image_parser(
+        subparsers.add_parser("drop-image", help="Import an image asset into raw/assets without converting it to markdown.")
+    )
     _configure_drop_repo_parser(subparsers.add_parser("drop-repo", help="Snapshot a local or remote repo into raw/inbox."))
-    _configure_drop_note_parser(subparsers.add_parser("drop-note", help="Capture a free-text note or transcript into raw/inbox."))
+    _configure_drop_note_parser(
+        subparsers.add_parser("drop-note", help="Capture inline text or copy a local text file into raw/inbox without metadata wrapping.")
+    )
 
     subparsers.add_parser("compile", help="Compile manifest entries into wiki source pages and indexes.")
 
@@ -1170,11 +1174,11 @@ def _register_drop_subcommand_parsers(subparsers: argparse._SubParsersAction) ->
     _configure_drop_url_parser(drop_url_parser)
     drop_url_parser.set_defaults(handler_command="drop-url")
 
-    drop_pdf_parser = subparsers.add_parser("pdf", help="Import a PDF into raw/assets and raw/inbox.")
+    drop_pdf_parser = subparsers.add_parser("pdf", help="Import a PDF asset into raw/assets without rewriting it.")
     _configure_drop_pdf_parser(drop_pdf_parser)
     drop_pdf_parser.set_defaults(handler_command="drop-pdf")
 
-    drop_image_parser = subparsers.add_parser("image", help="Import an image into raw/assets and raw/inbox.")
+    drop_image_parser = subparsers.add_parser("image", help="Import an image asset into raw/assets without converting it to markdown.")
     _configure_drop_image_parser(drop_image_parser)
     drop_image_parser.set_defaults(handler_command="drop-image")
 
@@ -1182,7 +1186,7 @@ def _register_drop_subcommand_parsers(subparsers: argparse._SubParsersAction) ->
     _configure_drop_repo_parser(drop_repo_parser)
     drop_repo_parser.set_defaults(handler_command="drop-repo")
 
-    drop_note_parser = subparsers.add_parser("note", help="Capture a free-text note or transcript into raw/inbox.")
+    drop_note_parser = subparsers.add_parser("note", help="Capture inline text or copy a local text file into raw/inbox without metadata wrapping.")
     _configure_drop_note_parser(drop_note_parser)
     drop_note_parser.set_defaults(handler_command="drop-note")
 
@@ -1211,7 +1215,7 @@ def _configure_drop_image_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--no-vision",
         action="store_true",
-        help="Skip optional LLM-backed visual analysis for the image note.",
+        help="Skip optional LLM-backed visual analysis for the image drop.",
     )
     _add_auto_flags(parser)
 
@@ -1229,7 +1233,7 @@ def _configure_drop_repo_parser(parser: argparse.ArgumentParser) -> None:
 
 
 def _configure_drop_note_parser(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("source", nargs="?", help="Optional markdown or text file path.")
+    parser.add_argument("source", nargs="?", help="Optional markdown or text file path; local files are copied byte-for-byte.")
     parser.add_argument("--text", help="Inline note text. Use this instead of SOURCE for free-text capture.")
     parser.add_argument("--title", help="Optional display title.")
     parser.add_argument(

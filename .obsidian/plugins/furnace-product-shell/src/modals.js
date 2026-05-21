@@ -340,7 +340,7 @@ class DropFileModal extends Modal {
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
     contentEl.createEl("h2", { text: t("投文件") });
-    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一个本地文件或远程地址：PDF 会抽取文本，Repo 会抓取代码快照。") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一个本地文件或远程地址：PDF 原件会进入 raw/assets，Repo 会抓取代码快照。") });
 
     const kindSetting = new Setting(contentEl).setName(t("PDF 或 Repo"));
     const kindSelect = kindSetting.controlEl.createEl("select");
@@ -385,7 +385,7 @@ class DropFileModal extends Modal {
     const titleSetting = new Setting(contentEl).setName(t("标题"));
     titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("可选笔记标题……");
+    titleInput.placeholder = t("可选材料标题……");
     titleInput.addClass("furnace-shell-code");
     titleInput.value = this.initialTitle;
 
@@ -452,7 +452,7 @@ class DropImageModal extends Modal {
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
     contentEl.createEl("h2", { text: t("投图片") });
-    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一张图片，炉子会提取视觉信息并纳入知识库。") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一张图片，原件会进入 raw/assets；视觉信息只作为运行层分析，不改写原料。") });
 
     const sourceSetting = new Setting(contentEl).setName(t("来源"));
     sourceSetting.nameEl.addClass("furnace-modal-field-required");
@@ -485,7 +485,7 @@ class DropImageModal extends Modal {
     const titleSetting = new Setting(contentEl).setName(t("标题"));
     titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("可选笔记标题……");
+    titleInput.placeholder = t("可选材料标题……");
     titleInput.addClass("furnace-shell-code");
     titleInput.value = this.initialTitle;
 
