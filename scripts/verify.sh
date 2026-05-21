@@ -68,6 +68,8 @@ verify_product_shell_static() {
     return 1
   fi
 
+  bash "$SCRIPT_DIR/check_product_shell_bundle.sh"
+
   if ! command -v node >/dev/null 2>&1; then
     echo "node is required for target: product-shell-static" >&2
     return 1

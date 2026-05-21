@@ -49,7 +49,7 @@
 ## Milestone: AGOS-001-SCORECARD
 
 - `title`: 建立 9.0 AgentOS 评分卡与 release gate
-- `status`: in-progress
+- `status`: done
 - `qa-review`: required
 - `qa-runtime`: not-required
 - `execution_mode`: autonomous-closed-loop
@@ -64,11 +64,11 @@
 
 ### Success Criteria
 
-- [ ] 新增或更新一份 AgentOS 9.0 scorecard，覆盖 dogfood、Product Shell、runtime、planner、LLM、governance、maintainability、docs 八个维度。
-- [ ] 每个评分维度都有明确 PASS/FAIL 条件、证据路径、验证命令或 artifact。
-- [ ] 9.0 release gate 明确要求 clean dogfood proof、Product Shell drift gate、LLM telemetry、planner receipt、docs consistency、qa-review。
-- [ ] `README.md` 或 active architecture doc 能指向 scorecard，避免评分口径散落在对话中。
-- [ ] 不改变 runtime 行为，只建立评分与证据 contract。
+- [x] 新增或更新一份 AgentOS 9.0 scorecard，覆盖 dogfood、Product Shell、runtime、planner、LLM、governance、maintainability、docs 八个维度。
+- [x] 每个评分维度都有明确 PASS/FAIL 条件、证据路径、验证命令或 artifact。
+- [x] 9.0 release gate 明确要求 clean dogfood proof、Product Shell drift gate、LLM telemetry、planner receipt、docs consistency、qa-review。
+- [x] `README.md` 或 active architecture doc 能指向 scorecard，避免评分口径散落在对话中。
+- [x] 不改变 runtime 行为，只建立评分与证据 contract。
 
 ### Constraints / Dependencies
 
@@ -147,7 +147,7 @@
 ## Milestone: AGOS-002-DOGFOOD-PROOF
 
 - `title`: 重建当前 clean dogfood 可复算 proof
-- `status`: planned
+- `status`: done
 - `qa-review`: required
 - `qa-runtime`: required
 - `execution_mode`: autonomous-closed-loop
@@ -255,7 +255,7 @@
 ## Milestone: AGOS-003-SHELL-STABILITY
 
 - `title`: Product Shell 稳定化与 bundle/source drift gate
-- `status`: planned
+- `status`: done
 - `qa-review`: required
 - `qa-runtime`: required
 - `execution_mode`: autonomous-closed-loop
@@ -362,7 +362,7 @@
 ## Milestone: AGOS-004-DOCS-SOT
 
 - `title`: 文档 SoT 收敛与历史口径隔离
-- `status`: planned
+- `status`: done
 - `qa-review`: required
 - `qa-runtime`: not-required
 - `execution_mode`: autonomous-closed-loop
@@ -458,7 +458,7 @@
 ## Milestone: AGOS-005-RUNTIME-SLIM
 
 - `title`: Runtime legacy hub 定向瘦身
-- `status`: planned
+- `status`: done
 - `qa-review`: required
 - `qa-runtime`: not-required
 - `execution_mode`: autonomous-closed-loop
@@ -561,7 +561,7 @@
 ## Milestone: AGOS-006-PLANNER-ROUTING
 
 - `title`: Planner / signal routing 实质化
-- `status`: planned
+- `status`: done
 - `qa-review`: required
 - `qa-runtime`: required
 - `execution_mode`: autonomous-closed-loop
@@ -662,7 +662,7 @@
 ## Milestone: AGOS-007-LLM-TELEMETRY
 
 - `title`: Backend telemetry 与 LLM 可靠性硬化
-- `status`: planned
+- `status`: done
 - `qa-review`: required
 - `qa-runtime`: required
 - `execution_mode`: autonomous-closed-loop
@@ -764,7 +764,7 @@
 ## Milestone: AGOS-008-LONG-RUN
 
 - `title`: 长期运行、恢复和保留策略硬化
-- `status`: planned
+- `status`: done
 - `qa-review`: required
 - `qa-runtime`: required
 - `execution_mode`: autonomous-closed-loop
@@ -865,7 +865,9 @@
 ## Milestone: AGOS-009-RELEASE-GATE
 
 - `title`: 9.0 AgentOS release gate 与最终收口
-- `status`: planned
+- `status`: audit-completed-release-blocked
+- `execution_status`: done
+- `release_status`: blocked
 - `qa-review`: required
 - `qa-runtime`: required
 - `execution_mode`: autonomous-closed-loop
@@ -888,6 +890,8 @@
 - [ ] Docs consistency scan PASS。
 - [ ] qa-review 和 qa-runtime PASS。
 - [ ] 创建本地 final release tag，是否 push/GitHub Release 需用户另行确认。
+
+Release gate audit completed on 2026-05-21, but release remains blocked by live dogfood 3-day proof and knowledge compounding proof. This milestone is not a 9.0 release success.
 
 ### Constraints / Dependencies
 
@@ -921,8 +925,8 @@
 5. 完成 qa-review / qa-runtime。
 6. 更新 scorecard 和 release notes。
 7. 检查 `git status`、`git diff`、`git log`。
-8. 创建本地 annotated release tag。
-9. 汇报 tag、证据路径、未推送状态。
+8. 若上述 gate 全部通过，再创建本地 annotated release tag；当前因 blocking gate 未通过而跳过。
+9. 汇报证据路径、blocked 状态和后续 proof 要求。
 
 ### Stop Conditions
 
@@ -935,7 +939,7 @@
 
 - Final scorecard update
 - Release notes
-- Local annotated tag
+- Explicitly skipping local annotated tag while release gate remains blocked
 - Verification evidence summary
 
 ### Out Of Scope
@@ -950,7 +954,7 @@
 - `docs/AGOS-9-Scorecard.md`
 - `docs/releases/*` if release notes path is added
 - `PROGRESS.md`
-- Git tag metadata
+- No Git tag metadata in this blocked release-gate audit
 
 ### Verification Plan
 

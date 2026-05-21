@@ -1,5 +1,7 @@
 # 炼丹炉 Next Direction — Post-P4 / Post-Round 52
 
+> **当前有效结论（2026-05-20）**：AGOS-9 路线已启动；评分 SoT 见 [AGOS-9-Scorecard.md](./AGOS-9-Scorecard.md)。**live dogfood** 在清仓 vault 上需重新建立 proof（见 AGOS-002）；历史 2026-05-13~19 dogfood/P1 pass 以 git/`PROGRESS.md` 为 `historical` 证据。下文 D 系列与 gap 表保留方向上下文，执行以 `.codex/plans/active.md` / AGOS milestones 为准。
+
 > 生成时间：2026-04-30，承接 Round 52 收口（commit `6b0770a` Relationship Graph UI Polish）。
 > 来源：基于全量 SoT 重新评估（`docs/Furnace Agent Architecture.md` + `docs/Furnace Evolution Mechanics.md` + `docs/Furnace Product Shell.md`）+ git log + 代码实测校准实际落地状态。
 > 性质：**方向决策**，不是路线图；具体 milestone 走 `.codex/contracts/active.md` + harness 流程。

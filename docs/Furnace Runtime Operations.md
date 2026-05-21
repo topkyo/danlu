@@ -268,6 +268,20 @@ journalctl --user -u aiwiki-nightly.service --since "1 minute ago"
 
 > **Watcher 不需要切**：watcher 默认 deterministic-only，不调 LLM。
 
+## 6. Retention 与恢复（AGOS-008）
+
+本地审计证据默认 **archive-first**，不静默删除：
+
+| Artifact | 路径 | 策略 |
+|----------|------|------|
+| execution receipt | `output/control/execution-receipts/*.json` + `.aiwiki/state/execution-receipts.jsonl` | 保留；回滚依赖 |
+| planner-log | `.aiwiki/state/planner-log.jsonl` | 保留；rollback marker 追加 |
+| LLM receipt | `.aiwiki/logs/llm-receipts.jsonl` | 保留；`llm-telemetry` 只读聚合 |
+| LLM raw response | receipt 内 `raw_response_path` | 按路径引用；清理需显式 operator 策略 |
+| maturity gate | `output/control/maturity-gate/run-*.json` | 保留；自然日去重 summarize |
+
+恢复原则：corrupt JSON/JSONL 用 fault-injection tests 锁定；**不**默认删除历史 receipt 解决磁盘膨胀。watcher 仍 deterministic-only。
+
 ### 5.5 关闭或调整 fallback
 
 关闭：

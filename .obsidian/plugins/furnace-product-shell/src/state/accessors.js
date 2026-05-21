@@ -1,4 +1,5 @@
 // Extracted from plugin.js
+// DEPRECATED: not concatenated into main.js; accessors inlined in bundled modules.
 
 function getActiveProtocol(plugin) {
     return String(plugin.shellSummary && plugin.shellSummary.active_protocol ? plugin.shellSummary.active_protocol : "general");

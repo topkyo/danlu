@@ -627,6 +627,10 @@ def _handle_ops(args: argparse.Namespace, root: Path) -> tuple[object, str | Non
             from aiwiki.cli.llm_check_render import render_llm_check_human
 
             text_output = render_llm_check_human(result)
+    elif args.handler_command == "llm-telemetry":
+        from aiwiki.llm_telemetry import aggregate_llm_telemetry
+
+        result = aggregate_llm_telemetry(root, limit=max(1, int(args.limit)))
     elif args.handler_command == "cache":
         selected_actions = int(bool(args.status)) + int(bool(args.rebuild)) + int(bool(args.drop))
         if selected_actions != 1:
@@ -723,6 +727,7 @@ _HANDLERS = {
     "signals-replay": _handle_runtime_workflows,
     "planner-log-replay": _handle_runtime_workflows,
     "llm-check": _handle_ops,
+    "llm-telemetry": _handle_ops,
     "cache": _handle_ops,
     "auto-once": _handle_ops,
     "watch": _handle_ops,

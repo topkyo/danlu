@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 from unittest.mock import patch
 
 import aiwiki.planner.log_writer as log_writer
@@ -148,9 +149,22 @@ class TestSchemaValidation(unittest.TestCase):
         record["reason_codes"] = ["b", "a"]
         self.assertTrue(validate_planner_log_record(record).ok)
 
-    def test_budget_used_must_be_empty_dict(self) -> None:
+    def test_budget_used_allows_positive_page_and_token_budget(self) -> None:
         record = self._base_record()
-        record["budget_used"] = {"max_pages": 1}
+        record["budget_used"] = {"max_pages": 1, "max_tokens": 1000}
+        self.assertTrue(validate_planner_log_record(record).ok)
+
+    def test_budget_used_rejects_unknown_or_non_positive_fields(self) -> None:
+        record = self._base_record()
+        record["budget_used"] = {"max_pages": 0}
+        self.assertFalse(validate_planner_log_record(record).ok)
+
+        record = self._base_record()
+        record["budget_used"] = {"max_tokens": True}
+        self.assertFalse(validate_planner_log_record(record).ok)
+
+        record = self._base_record()
+        record["budget_used"] = {"tokens": 1000}
         self.assertFalse(validate_planner_log_record(record).ok)
 
     def test_locks_acquired_must_be_empty_list(self) -> None:
@@ -701,6 +715,53 @@ class TestIdempotency(_FixtureCase):
         self.assertEqual(record["decision"], "enqueue-light")
         self.assertEqual(set(record["reason_codes"]), {"raw_added_observed"})
         self.assertNotIn("unmapped_kind", record["reason_codes"])
+
+    def test_write_planner_log_records_budget_hint_end_to_end(self) -> None:
+        root = self.temp_root / "budget-hint-mapping"
+        signals_path = root / ".aiwiki/state/signals.jsonl"
+        signals_path.parent.mkdir(parents=True, exist_ok=True)
+        signals_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "signal_id": "sig-20260424-budget001",
+                    "dedupe_key": "raw_added:general:runtime_history:raw/inbox/src-budget.md",
+                    "kind": "raw_added",
+                    "scope": {
+                        "protocol": "general",
+                        "source_ids": ["src-budget"],
+                        "concept_slugs": [],
+                        "elixir_refs": [],
+                        "judgment_refs": [],
+                    },
+                    "severity": "medium",
+                    "evidence_refs": ["raw/inbox/src-budget.md"],
+                    "budget_hint": {"max_tokens": 9000, "max_pages": 10},
+                    "emitted_at": "2026-04-24T11:48:00Z",
+                    "emitted_by": "user",
+                    "source_kind": "runtime_history",
+                    "source_event_ref": ".aiwiki/state/runtime-history.jsonl#L4",
+                    "trace_id": "550e8400-e29b-41d4-a716-446655440000",
+                },
+                separators=(",", ":"),
+                sort_keys=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = write_planner_log(root, _now=_fixed_now)
+
+        self.assertEqual(result["new_count"], 1)
+        self.assertEqual(result["invalid_count"], 0)
+        planner_records = _read_jsonl(root / ".aiwiki/state/planner-log.jsonl")
+        record = planner_records[0]
+        self.assertEqual(record["decision"], "enqueue-heavy")
+        self.assertEqual(record["budget_used"], {"max_tokens": 9000, "max_pages": 10})
+        reason_codes = cast(list[object], record["reason_codes"])
+        self.assertIsInstance(reason_codes, list)
+        self.assertIn("budget_hint_observed", reason_codes)
+        self.assertIn("budget_hint_heavy_lane", reason_codes)
 
     def test_default_signals_path_missing_is_noop(self) -> None:
         root = self.temp_root / "empty-signals"
@@ -1585,6 +1646,27 @@ class TestCanonicalDumps(unittest.TestCase):
         }
         loaded = json.loads(canonical_dumps_planner_log(record))
         self.assertEqual(loaded["a_extra"], "x")
+
+
+class TestBudgetHintRouting(unittest.TestCase):
+    def test_heavy_budget_promotes_light_to_heavy(self) -> None:
+        decision, codes, used = log_writer._apply_budget_hint_routing(
+            "enqueue-light",
+            ["drift_routine"],
+            {"budget_hint": {"max_tokens": 9000, "max_pages": 10}},
+        )
+        self.assertEqual(decision, "enqueue-heavy")
+        self.assertIn("budget_hint_heavy_lane", codes)
+        self.assertEqual(used["max_tokens"], 9000)
+
+    def test_low_budget_demotes_heavy_to_light(self) -> None:
+        decision, codes, used = log_writer._apply_budget_hint_routing(
+            "enqueue-heavy",
+            ["drift_critical"],
+            {"budget_hint": {"max_tokens": 500, "max_pages": 2}},
+        )
+        self.assertEqual(decision, "enqueue-light")
+        self.assertIn("budget_hint_light_lane", codes)
 
 
 class TestPublicContracts(unittest.TestCase):

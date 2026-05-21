@@ -119,8 +119,13 @@ def validate_planner_log_record(record: dict[str, Any]) -> ValidationResult:
     budget_used = record.get("budget_used")
     if not isinstance(budget_used, dict):
         errors.append("budget_used must be an object")
-    elif budget_used:
-        errors.append("budget_used must be empty object in v1")
+    else:
+        for key, value in budget_used.items():
+            if key not in {"max_pages", "max_tokens"}:
+                errors.append(f"budget_used contains unsupported field: {key}")
+                continue
+            if type(value) is not int or value <= 0:
+                errors.append(f"budget_used.{key} must be a positive integer")
 
     locks_acquired = record.get("locks_acquired")
     if not isinstance(locks_acquired, list):

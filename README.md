@@ -149,6 +149,7 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . nightly
 ## 日常入口
 
 - Obsidian 工作台：[HOME.md](./HOME.md)
+- AgentOS 9.0 评分与 release gate：[AGOS-9-Scorecard.md](<./docs/AGOS-9-Scorecard.md>)（执行计划：[AGOS-9-Execution-Plan.md](<./docs/AGOS-9-Execution-Plan.md>)）
 - 炼丹炉 Agent 架构（终局 SoT）：[Furnace Agent Architecture.md](<./docs/Furnace Agent Architecture.md>)
 - 炼丹炉进化机制（实现契约 SoT）：[Furnace Evolution Mechanics.md](<./docs/Furnace Evolution Mechanics.md>)
 - 运行机制与 nightly fallback：[Furnace Runtime Operations.md](<./docs/Furnace Runtime Operations.md>)

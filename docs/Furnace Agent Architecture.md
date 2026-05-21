@@ -115,6 +115,10 @@ related_docs:
 - **实现上**：当前目录结构（`raw / wiki / .aiwiki/state / schema / output`）、治理链、执行层全部保留，并允许在其上方逐步新增完整 planner 和 proposal 机制。
 - **本文档不要求推翻任何现有 CLI 命令**。
 
+## 2.0 AgentOS 9.0 Scorecard
+
+9.0 达标口径与 release gate 见 [AGOS-9-Scorecard.md](./AGOS-9-Scorecard.md)；里程碑执行见 [AGOS-9-Execution-Plan.md](./AGOS-9-Execution-Plan.md)。评分必须区分 `historical` / `fixture` / `replay` / `live` 四类证据，不得把历史 dogfood PASS 当作当前 clean vault 的 live PASS。
+
 ## 2.1 Current Implementation Map
 
 | 能力 | 当前状态 | 说明 |

@@ -13,7 +13,7 @@ set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC="$DIR/src"
-OUT="$DIR/main.js"
+OUT="${OUT:-$DIR/main.js}"
 
 {
   cat <<'HEADER'

@@ -1,7 +1,8 @@
 ---
 kind: thesis
-status: accepted
+status: historical-thesis
 owner: tim
+doc_role: thesis-not-runtime-spec
 related_docs:
   - docs/Furnace Agent Architecture.md
   - docs/Furnace Evolution Mechanics.md
@@ -9,6 +10,8 @@ related_docs:
 ---
 
 # Furnace Elixir (金丹机制)
+
+> **文档状态（2026-05-20）**：本文件保留金丹终局 thesis 与历史设计动机；**当前 runtime 行为以** [Furnace Agent Architecture.md](./Furnace%20Agent%20Architecture.md) **与** [Furnace Evolution Mechanics.md](./Furnace%20Evolution%20Mechanics.md) **为准**。CLI 已实现 `alchemy-start/distill/finalize/promote` 最小链路，不等同于本文全部愿景已落地。
 
 ## 背景与设计动机 (Why)
 

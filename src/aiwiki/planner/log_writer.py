@@ -117,7 +117,11 @@ def write_planner_log(
                 kind = str(signal["kind"])
                 severity = str(signal["severity"])
                 decision, reason_codes = _derive_decision(kind, severity)
-                reason_codes = list(reason_codes)
+                decision, reason_codes, budget_used = _apply_budget_hint_routing(
+                    decision,
+                    list(reason_codes),
+                    signal,
+                )
                 if mode == "execute":
                     reason_codes.append("execute_mode_requested")
 
@@ -130,7 +134,7 @@ def write_planner_log(
                     "decision": decision,
                     "mode": mode,
                     "reason_codes": reason_codes,
-                    "budget_used": {},
+                    "budget_used": budget_used,
                     "locks_acquired": [],
                     "primitive_refs": [],
                     "side_effects_allowed": _decision_allows_side_effects(decision, mode),
@@ -288,6 +292,48 @@ def _validate_signal_min_shape(signal: dict[str, Any]) -> str | None:
         return "signal_invalid_trace_id"
 
     return None
+
+
+def _budget_used_from_signal(signal: dict[str, Any]) -> dict[str, int]:
+    hint = signal.get("budget_hint")
+    if not isinstance(hint, dict):
+        return {}
+    used: dict[str, int] = {}
+    for key in ("max_pages", "max_tokens"):
+        raw = hint.get(key)
+        if isinstance(raw, int) and raw > 0:
+            used[key] = raw
+    return used
+
+
+def _apply_budget_hint_routing(
+    decision: str,
+    reason_codes: list[str],
+    signal: dict[str, Any],
+) -> tuple[str, list[str], dict[str, int]]:
+    """Conservatively adjust routing when signal carries budget_hint."""
+
+    budget_used = _budget_used_from_signal(signal)
+    if not budget_used:
+        return decision, reason_codes, budget_used
+
+    codes = list(reason_codes)
+    codes.append("budget_hint_observed")
+    max_tokens = int(budget_used.get("max_tokens") or 0)
+    max_pages = int(budget_used.get("max_pages") or 0)
+
+    if max_tokens >= 8000 or max_pages >= 40:
+        if decision == "enqueue-light":
+            decision = "enqueue-heavy"
+            codes.append("budget_hint_heavy_lane")
+        elif decision == "generate-proposal":
+            codes.append("budget_hint_proposal_retained")
+    elif max_tokens <= 1000 and max_pages <= 5:
+        if decision == "enqueue-heavy":
+            decision = "enqueue-light"
+            codes.append("budget_hint_light_lane")
+
+    return decision, codes, budget_used
 
 
 def _derive_decision(kind: str, severity: str) -> tuple[str, list[str]]:

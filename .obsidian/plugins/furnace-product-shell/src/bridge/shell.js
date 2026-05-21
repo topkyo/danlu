@@ -1,4 +1,5 @@
 // Extracted from plugin.js
+// DEPRECATED: not concatenated into main.js; vault change handling lives in plugin.js.
 
 async function handleVaultChange(plugin, relativePath) {
     if (!relativePath) {

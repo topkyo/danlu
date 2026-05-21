@@ -1057,6 +1057,17 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         help="Output format. 'human' renders a backend compatibility table; 'json' (default) preserves machine-readable schema.",
     )
 
+    llm_telemetry_parser = subparsers.add_parser(
+        "llm-telemetry",
+        help="Aggregate recent LLM run receipts (backend/model success rate, latency, errors).",
+    )
+    llm_telemetry_parser.add_argument(
+        "--limit",
+        type=int,
+        default=50,
+        help="Number of recent receipts to aggregate (default: 50).",
+    )
+
     cache_parser = subparsers.add_parser("cache", help="Inspect, rebuild, or drop the volatile SQLite query cache.")
     cache_parser.add_argument(
         "--status",
