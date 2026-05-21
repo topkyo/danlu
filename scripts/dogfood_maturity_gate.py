@@ -516,6 +516,39 @@ def _collect_judgment_or_elixir_output_reuse(root: Path) -> list[dict[str, Any]]
     return records
 
 
+def _count_legacy_empty_status_receipts(root: Path) -> dict[str, Any]:
+    """Warn-only count of execution receipts missing explicit status (legacy compat)."""
+
+    from aiwiki.app_state import execution_receipt_history_path, load_jsonl_documents
+    from aiwiki.metrics_io import _receipt_json_paths
+
+    legacy_json = 0
+    legacy_history = 0
+    for path in _receipt_json_paths(root):
+        payload = _read_json_file(path)
+        if not payload:
+            continue
+        status = str(payload.get("status") or "").strip()
+        if not status:
+            legacy_json += 1
+    for item in load_jsonl_documents(execution_receipt_history_path(root)):
+        if not isinstance(item, dict):
+            continue
+        status = str(item.get("status") or "").strip()
+        if not status:
+            legacy_history += 1
+    total = legacy_json + legacy_history
+    return {
+        "kind": "legacy-empty-status-receipt-report",
+        "version": 1,
+        "count": total,
+        "json_receipt_count": legacy_json,
+        "history_line_count": legacy_history,
+        "warn_only": True,
+        "note": "Empty status is treated as success for compatibility; hard fail is deferred.",
+    }
+
+
 def _knowledge_compounding_receipt_records(root: Path) -> list[dict[str, str]]:
     from aiwiki.app_state import execution_receipt_history_path, load_jsonl_documents
     from aiwiki.metrics_io import _receipt_json_paths
@@ -793,6 +826,7 @@ def collect_metrics(root: Path, *, preview_limit: int = 20) -> dict[str, Any]:
         "backlog_total": _sum_int_values(review_backlog_counts),
         "human_required_report": human_required_report,
         "knowledge_compounding_proof": knowledge_compounding_proof,
+        "legacy_empty_status_receipts": _count_legacy_empty_status_receipts(root),
         "nightly_agent_loop": dict(nightly.get("agent_loop") or {}),
         "l3_proposal_counts_by_state": _load_l3_proposal_counts_by_state(root),
         "l3_generation_preview_summary": _preview_l3_generation_summary(root, limit=preview_limit),

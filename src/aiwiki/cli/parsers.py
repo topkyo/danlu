@@ -1068,6 +1068,17 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         help="Number of recent receipts to aggregate (default: 50).",
     )
 
+    backend_telemetry_parser = subparsers.add_parser(
+        "backend-telemetry",
+        help="Aggregate recent execution receipts (operations, status, LLM backend when present).",
+    )
+    backend_telemetry_parser.add_argument(
+        "--limit",
+        type=int,
+        default=100,
+        help="Number of recent execution receipts to aggregate (default: 100).",
+    )
+
     cache_parser = subparsers.add_parser("cache", help="Inspect, rebuild, or drop the volatile SQLite query cache.")
     cache_parser.add_argument(
         "--status",

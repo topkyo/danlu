@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TodayFeedEntry",
+  "description": "Shared contract between src/aiwiki/today_feed.py and Product Shell today_feed.js",
+  "type": "object",
+  "required": ["kind", "title", "summary", "target", "timestamp", "priority"],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": ["decision", "proposal", "report", "elixir", "automation", "action"]
+    },
+    "title": { "type": "string" },
+    "summary": { "type": "string" },
+    "target": { "type": "string" },
+    "timestamp": { "type": "string" },
+    "priority": { "type": "integer", "minimum": 1, "maximum": 6 },
+    "bucket": { "type": "string" },
+    "status": { "type": "string" },
+    "protocol": { "type": "string" }
+  },
+  "additionalProperties": true
+}

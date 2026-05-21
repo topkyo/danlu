@@ -18,10 +18,6 @@ from aiwiki.app_compile import (
     promote_recurring_outputs,
     write_nightly_health,
 )
-from aiwiki.app_content import (
-    concept_summary_is_placeholder,
-    placeholder_concept_slugs,
-)
 from aiwiki.app_memory import store_concept_rewrite_candidate
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_queries import human_query_title
@@ -40,6 +36,7 @@ from aiwiki.app_utils import (
     tokenize,
     utc_now,
 )
+from aiwiki.content.memory import concept_summary_is_placeholder, placeholder_concept_slugs
 from aiwiki.execution.ask import _output_artifact_seed
 from aiwiki.execution.audit_reconciliation import reconcile_execution_receipts
 from aiwiki.execution.receipts import write_execution_receipt
@@ -63,6 +60,18 @@ from aiwiki.runner.clients import (
     create_client,
 )
 from aiwiki.runner.interfaces import SupportsComplete
+from aiwiki.runner.local_stats import (
+    OUTPUT_OBSIDIAN_CSSCLASS,
+    OUTPUT_REPORT_LEAF_CSSCLASS,
+    clean_local_intent_question,
+    clean_report_reference_question,
+    collect_elixir_counts,
+    collect_markdown_counts,
+    is_elixir_count_question,
+    is_markdown_count_question,
+    local_elixir_count_artifact_markdown,
+    local_markdown_count_artifact_markdown,
+)
 from aiwiki.runner.prompts import (
     _build_ask_prompt,
     _build_compile_prompt,
@@ -92,7 +101,6 @@ from aiwiki.runner.receipts import (
     record_llm_attempt,
 )
 
-OUTPUT_OBSIDIAN_CSSCLASS = "aiwiki-output"
 DEFAULT_REPORT_TIMEOUT_SECONDS = 240
 
 
@@ -162,8 +170,13 @@ def _ensure_output_cssclass(target: Path) -> None:
     if isinstance(raw_classes, str) and raw_classes.strip():
         classes = [raw_classes.strip()]
     if OUTPUT_OBSIDIAN_CSSCLASS in classes:
-        return
-    classes.append(OUTPUT_OBSIDIAN_CSSCLASS)
+        needs_report_leaf = "output/reports/" in target.as_posix() and OUTPUT_REPORT_LEAF_CSSCLASS not in classes
+        if not needs_report_leaf:
+            return
+    else:
+        classes.append(OUTPUT_OBSIDIAN_CSSCLASS)
+    if "output/reports/" in target.as_posix() and OUTPUT_REPORT_LEAF_CSSCLASS not in classes:
+        classes.append(OUTPUT_REPORT_LEAF_CSSCLASS)
     header = _drop_frontmatter_keys(lines[1:close_idx], {"cssclasses"})
     css_lines = _runtime_provenance_field_lines({"cssclasses": classes})
     updated_lines = [lines[0], *header, *css_lines, lines[close_idx], *lines[close_idx + 1 :]]
@@ -806,214 +819,11 @@ def _safe_quoted_report_reference_paths(root: Path, refs: list[str]) -> list[str
 
 
 def _clean_report_reference_question(question: str) -> str:
-    text = human_query_title(question)
-    text = _REPORT_REFERENCE_RE.sub("", text).strip()
-    text = re.sub(r"\s+", " ", text).strip()
-    return text or human_query_title(question)
+    return clean_report_reference_question(question)
 
 
 def _clean_local_intent_question(question: str) -> str:
-    text = _clean_report_reference_question(question)
-    text = re.sub(r"valut", "vault", text, flags=re.IGNORECASE)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text or human_query_title(question)
-
-
-def _is_elixir_count_question(question: str) -> bool:
-    text = _clean_local_intent_question(question).lower()
-    if not text:
-        return False
-    has_elixir = "金丹" in text or "elixir" in text or "elixirs" in text
-    has_count = any(marker in text for marker in ("几个", "多少", "数量", "count", "how many", "num"))
-    has_local = any(marker in text for marker in ("炼丹炉", "vault", "仓库", "当前", "本地", "这个"))
-    return has_elixir and has_count and has_local
-
-
-def _is_markdown_count_question(question: str) -> bool:
-    text = _clean_local_intent_question(question).lower()
-    if not text:
-        return False
-    has_markdown = "md" in text or "markdown" in text or "markdown 文件" in text or "md文件" in text
-    has_count = any(marker in text for marker in ("几个", "多少", "数量", "count", "how many", "num"))
-    has_local = any(marker in text for marker in ("炼丹炉", "vault", "仓库", "当前", "本地", "这个"))
-    return has_markdown and has_count and has_local
-
-
-def _markdown_count_bucket(path: Path) -> str:
-    parts = path.parts
-    if not parts:
-        return "other"
-    return parts[0] if parts[0] in {"raw", "wiki", "output", "prompts"} else "other"
-
-
-def _collect_markdown_counts(root: Path) -> dict[str, Any]:
-    ignored_dirs = {".git", ".obsidian", ".aiwiki", ".codex", ".claude", ".opencode", "node_modules", ".venv"}
-    counts = {"raw": 0, "wiki": 0, "output": 0, "prompts": 0, "other": 0}
-    examples: dict[str, list[str]] = {key: [] for key in counts}
-    total = 0
-    for path in sorted(root.rglob("*.md")):
-        try:
-            relative = path.relative_to(root)
-        except ValueError:
-            continue
-        if any(part in ignored_dirs for part in relative.parts):
-            continue
-        bucket = _markdown_count_bucket(relative)
-        counts[bucket] += 1
-        total += 1
-        if len(examples[bucket]) < 8:
-            examples[bucket].append(relative.as_posix())
-    return {"total": total, "by_top_level": counts, "examples": examples}
-
-
-def _local_markdown_count_artifact_markdown(
-    *,
-    artifact_id: str,
-    question: str,
-    protocol: str,
-    created_at: str,
-    stats: dict[str, Any],
-) -> str:
-    title = _clean_local_intent_question(question)
-    counts = dict(stats.get("by_top_level", {}))
-    examples = dict(stats.get("examples", {}))
-    frontmatter = {
-        "id": artifact_id,
-        "kind": "output",
-        "format": "note",
-        "cssclasses": [OUTPUT_OBSIDIAN_CSSCLASS],
-        "query": question,
-        "protocol": protocol,
-        "generated_by": "aiwiki-local-markdown-stats",
-        "created_at": created_at,
-        "delivery_mode": "local-deterministic",
-        "markdown_file_count": int(stats.get("total") or 0),
-    }
-    lines = [
-        render_frontmatter(frontmatter),
-        "",
-        f"# {title}",
-        "",
-        "## 回答",
-        f"- 当前 vault 中可见 Markdown 文件共 **{int(stats.get('total') or 0)} 个**。",
-        f"- `raw/`：{int(counts.get('raw') or 0)} 个。",
-        f"- `wiki/`：{int(counts.get('wiki') or 0)} 个。",
-        f"- `output/`：{int(counts.get('output') or 0)} 个。",
-        f"- `prompts/`：{int(counts.get('prompts') or 0)} 个。",
-        f"- 其他可见目录：{int(counts.get('other') or 0)} 个。",
-        "",
-        "## 示例路径",
-    ]
-    for bucket in ("raw", "wiki", "output", "prompts", "other"):
-        bucket_examples = [str(item) for item in examples.get(bucket, [])]
-        if not bucket_examples:
-            continue
-        lines.append(f"### `{bucket}/`")
-        for item in bucket_examples:
-            lines.append(f"- `{item}`")
-    lines.extend(
-        [
-            "",
-            "## 口径",
-            "- 统计对象：当前 vault 内可见的 `*.md` 文件。",
-            "- 排除目录：`.git/`、`.obsidian/`、`.aiwiki/`、local harness 目录、`node_modules/`、`.venv/`。",
-            "- 本回答由本地文件系统确定性统计生成，没有调用 LLM。",
-        ]
-    )
-    return "\n".join(lines).rstrip() + "\n"
-
-
-def _elixir_markdown_title(path: Path, frontmatter: dict[str, Any]) -> str:
-    for key in ("topic", "title", "id"):
-        value = str(frontmatter.get(key) or "").strip()
-        if value and value.lower() != "elixir":
-            return value
-    body = strip_frontmatter(path.read_text(encoding="utf-8", errors="replace")) if path.exists() else ""
-    for line in body.splitlines():
-        heading = line.strip()
-        if heading.startswith("#"):
-            title = heading.lstrip("#").strip()
-            if title and title.lower() != "elixir":
-                return title
-    return path.stem
-
-
-def _collect_elixir_counts(root: Path) -> dict[str, Any]:
-    settled: list[dict[str, str]] = []
-    elixir_dir = root / "wiki" / "elixirs"
-    for path in sorted(elixir_dir.glob("*.md")) if elixir_dir.exists() else []:
-        frontmatter = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
-        state = str(frontmatter.get("elixir_state") or "").strip()
-        if state and state != "settled":
-            continue
-        settled.append(
-            {
-                "path": relative_path(root, path),
-                "title": _elixir_markdown_title(path, frontmatter),
-                "state": state or "settled",
-            }
-        )
-    candidate_dir = root / "output" / "_candidates" / "elixirs"
-    candidates = [relative_path(root, path) for path in sorted(candidate_dir.glob("*.md"))] if candidate_dir.exists() else []
-    return {"settled": settled, "candidates": candidates}
-
-
-def _local_elixir_count_artifact_markdown(
-    *,
-    artifact_id: str,
-    question: str,
-    protocol: str,
-    created_at: str,
-    stats: dict[str, Any],
-) -> str:
-    title = _clean_local_intent_question(question)
-    settled = list(stats.get("settled", []))
-    candidates = [str(item) for item in stats.get("candidates", [])]
-    frontmatter = {
-        "id": artifact_id,
-        "kind": "output",
-        "format": "note",
-        "cssclasses": [OUTPUT_OBSIDIAN_CSSCLASS],
-        "query": question,
-        "protocol": protocol,
-        "generated_by": "aiwiki-local-elixir-stats",
-        "created_at": created_at,
-        "delivery_mode": "local-deterministic",
-        "settled_elixir_count": len(settled),
-        "candidate_elixir_count": len(candidates),
-    }
-    lines = [
-        render_frontmatter(frontmatter),
-        "",
-        f"# {title}",
-        "",
-        "## 回答",
-        f"- 当前 vault 已沉淀金丹 **{len(settled)} 个**。",
-        f"- 另有候选金丹 **{len(candidates)} 个**，位于 `output/_candidates/elixirs/`。",
-        "",
-        "## 已沉淀金丹",
-    ]
-    if settled:
-        for item in settled:
-            lines.append(f"- [{item['title']}]({item['path']}) — `{item['path']}`")
-    else:
-        lines.append("- 当前没有 settled 金丹文件。")
-    lines.extend(["", "## 候选金丹"])
-    if candidates:
-        for path in candidates[:20]:
-            lines.append(f"- `{path}`")
-    else:
-        lines.append("- 当前没有候选金丹文件。")
-    lines.extend(
-        [
-            "",
-            "## 口径",
-            "- settled 金丹：`wiki/elixirs/*.md` 且 `elixir_state` 为空或 `settled`。",
-            "- 候选金丹：`output/_candidates/elixirs/*.md`。",
-            "- 本回答由本地文件系统确定性统计生成，没有调用 LLM。",
-        ]
-    )
-    return "\n".join(lines).rstrip() + "\n"
+    return clean_local_intent_question(question)
 
 
 def _direct_answer_validation_error(answer: str) -> str:
@@ -2142,7 +1952,7 @@ def run_ask(
     material_refs.extend(_safe_quoted_report_reference_paths(root, _quoted_report_reference_paths(question)))
     material_refs = list(dict.fromkeys(material_refs))
     material_context = _read_material_context_snippets(root, material_refs) if material_refs else ""
-    if output_format == "note" and _is_elixir_count_question(question):
+    if output_format == "note" and is_elixir_count_question(question):
         from aiwiki.app_protocol import resolve_protocol
 
         active_protocol = resolve_protocol(root, protocol)
@@ -2152,9 +1962,9 @@ def run_ask(
         artifact_id = next_available_stem(directory, artifact_seed)
         destination = directory / f"{artifact_id}.md"
         artifact_ref = relative_path(root, destination)
-        stats = _collect_elixir_counts(root)
+        stats = collect_elixir_counts(root)
         destination.write_text(
-            _local_elixir_count_artifact_markdown(
+            local_elixir_count_artifact_markdown(
                 artifact_id=artifact_id,
                 question=question,
                 protocol=active_protocol,
@@ -2220,7 +2030,7 @@ def run_ask(
             "no_cache": no_cache,
             "contract_validated": True,
         }
-    if output_format == "note" and _is_markdown_count_question(question):
+    if output_format == "note" and is_markdown_count_question(question):
         from aiwiki.app_protocol import resolve_protocol
 
         active_protocol = resolve_protocol(root, protocol)
@@ -2230,9 +2040,9 @@ def run_ask(
         artifact_id = next_available_stem(directory, artifact_seed)
         destination = directory / f"{artifact_id}.md"
         artifact_ref = relative_path(root, destination)
-        stats = _collect_markdown_counts(root)
+        stats = collect_markdown_counts(root)
         destination.write_text(
-            _local_markdown_count_artifact_markdown(
+            local_markdown_count_artifact_markdown(
                 artifact_id=artifact_id,
                 question=question,
                 protocol=active_protocol,

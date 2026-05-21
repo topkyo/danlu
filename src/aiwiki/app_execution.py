@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .app_content import execution_bundle_path
 from .app_state import (
     DEFAULT_PROTOCOL,
     execution_batch_receipt_path,
@@ -37,7 +36,7 @@ from .app_utils import (
     sha256_bytes,
     slugify,
 )
-from .render.paths import execution_receipt_path
+from .render.paths import execution_bundle_path, execution_receipt_path
 
 
 def build_execution_bundle(

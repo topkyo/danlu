@@ -27,6 +27,24 @@ _CORE_RECEIPT_FIELDS = {
 }
 
 
+class ExecutionReceiptValidationError(ValueError):
+    """Raised when an execution receipt is missing required fields."""
+
+
+def _validate_execution_receipt_fields(
+    *,
+    operation: str,
+    status: str,
+    target_file: str,
+) -> None:
+    if not str(operation or "").strip():
+        raise ExecutionReceiptValidationError("operation must be non-empty")
+    if not str(status or "").strip():
+        raise ExecutionReceiptValidationError("status must be non-empty")
+    if not str(target_file or "").strip():
+        raise ExecutionReceiptValidationError("target_file must be non-empty")
+
+
 def write_execution_receipt(
     root: Path,
     *,
@@ -47,6 +65,7 @@ def write_execution_receipt(
     It is intentionally separate from LLM attempt telemetry.
     """
 
+    _validate_execution_receipt_fields(operation=operation, status=status, target_file=target_file)
     receipt_dir = root / "output" / "control" / "execution-receipts"
     receipt_dir.mkdir(parents=True, exist_ok=True)
     seed_target = Path(target_file).stem or subject_id or operation
@@ -86,3 +105,6 @@ def write_execution_receipt(
             receipt_path.unlink()
         raise
     return receipt
+
+
+__all__ = ["ExecutionReceiptValidationError", "write_execution_receipt"]

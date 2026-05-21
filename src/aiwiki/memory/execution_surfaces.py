@@ -55,6 +55,7 @@ from ..content.memory import (
     safe_apply_preview,
 )
 from ..render.html_theme import html_meta_theme, html_theme_css
+from .execution_surface_helpers import concept_quality_summary_lines
 
 
 def render_execution_proposal_page(proposal: dict[str, Any], *, compiled_at: str) -> str:
@@ -846,39 +847,14 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
     rewrite_candidates = quality.get("rewrite_candidates", [])
     conflict_signals = quality.get("conflict_signals", [])
     gap_signals = quality.get("gap_signals", [])
-    lines = [
-        "# 概念质量",
-        "",
-        f"- 最近编译时间：`{memory['compiled_at']}`",
-        f"- 弱概念页：`{counts.get('weak', 0)}`",
-        f"- 稳定概念页：`{counts.get('stable', 0)}`",
-        f"- 占位概念页：`{counts.get('placeholders', 0)}`",
-        f"- 合并候选：`{counts.get('merge_candidates', 0)}`",
-        f"- 重写候选：`{counts.get('rewrite_candidates', 0)}`",
-        f"- 冲突信号：`{counts.get('conflict_signals', 0)}`",
-        f"- 证据缺口：`{counts.get('gap_signals', 0)}`",
-        f"- 平均质量分：`{quality.get('average_quality_score', 0)}`",
-        (
-            "- Quality bands："
-            f" strong `{counts.get('strong_quality', 0)}`"
-            f" / stable `{counts.get('stable_quality', 0)}`"
-            f" / watch `{counts.get('watch_quality', 0)}`"
-            f" / fragile `{counts.get('fragile_quality', 0)}`"
-        ),
-        (
-            "- Hardness："
-            f" hard `{counts.get('hard_hardness', 0)}`"
-            f" / medium `{counts.get('medium_hardness', 0)}`"
-            f" / soft `{counts.get('soft_hardness', 0)}`"
-        ),
-        f"- Rewrite 提案：`{rewrite_state.get('counts', {}).get('active', 0)}`",
-        f"- 待审提案：`{rewrite_state.get('counts', {}).get('pending_review', 0)}`",
-        f"- 可应用提案：`{rewrite_state.get('counts', {}).get('apply_ready', 0)}`",
-        f"- 已验证提案：`{rewrite_state.get('counts', {}).get('verified_passed', 0)}`",
-        f"- 可回滚提案：`{rewrite_state.get('counts', {}).get('revert_ready', 0)}`",
-        "",
+    lines = concept_quality_summary_lines(
+        compiled_at=str(memory.get("compiled_at") or ""),
+        quality=quality,
+        rewrite_state=rewrite_state,
+    )
+    lines.extend([
         "## Hard Concepts",
-    ]
+    ])
     if not hard_concepts:
         lines.append("- 当前还没有 `hardness` >= `medium` 的概念页。")
     else:

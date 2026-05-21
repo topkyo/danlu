@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -70,4 +71,59 @@ def _percentile(values: list[int], pct: int) -> int | None:
     return ordered[index]
 
 
-__all__ = ["aggregate_llm_telemetry"]
+def aggregate_backend_telemetry(root: Path, *, limit: int = 100) -> dict[str, Any]:
+    """Summarize execution receipts for operator backend/operation usage."""
+
+    from .app_state import execution_receipt_history_path, load_jsonl_documents
+    from .metrics_io import _receipt_json_paths
+
+    records: list[dict[str, Any]] = []
+    for path in _receipt_json_paths(root):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, dict):
+            records.append(payload)
+    for item in load_jsonl_documents(execution_receipt_history_path(root)):
+        if isinstance(item, dict):
+            records.append(item)
+    recent = records[-max(1, limit) :]
+    operation_counts: Counter[str] = Counter()
+    status_counts: Counter[str] = Counter()
+    backend_counts: Counter[str] = Counter()
+    legacy_empty_status = 0
+    for item in recent:
+        operation = str(item.get("operation") or "unknown")
+        operation_counts[operation] += 1
+        status = str(item.get("status") or "").strip()
+        if not status:
+            legacy_empty_status += 1
+            status = "legacy-empty"
+        status_counts[status] += 1
+        backend = str(
+            item.get("llm_backend")
+            or item.get("backend")
+            or item.get("backend_effective")
+            or ""
+        ).strip()
+        if backend:
+            backend_counts[backend] += 1
+    return {
+        "kind": "backend-telemetry-report",
+        "version": 1,
+        "receipt_sources": [
+            "output/control/execution-receipts/*.json",
+            ".aiwiki/state/execution-receipts.jsonl",
+        ],
+        "sample_size": len(recent),
+        "limit": limit,
+        "operation_counts": dict(sorted(operation_counts.items())),
+        "status_counts": dict(sorted(status_counts.items())),
+        "backend_counts": dict(sorted(backend_counts.items())),
+        "legacy_empty_status_count": legacy_empty_status,
+        "note": "Backend fields appear on run-ask receipts when present; probe results stay separate.",
+    }
+
+
+__all__ = ["aggregate_backend_telemetry", "aggregate_llm_telemetry"]
