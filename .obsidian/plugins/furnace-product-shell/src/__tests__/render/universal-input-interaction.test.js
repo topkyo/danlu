@@ -855,7 +855,7 @@ test("reconcile pending report prefers run_id and stores delivery metadata", () 
   expect(plugin.pendingSubmissions).toHaveLength(1);
   expect(plugin.pendingSubmissions[0]).toEqual(expect.objectContaining({
     id: "p-report",
-    status: "done",
+    status: "degraded",
     reconcileTarget: "outputs",
     reconcilePath: "output/reports/final.md",
     runId: "ask-report-1",
@@ -918,14 +918,13 @@ test("shell summary fixture builds today DOM headings and furnace center keeps o
   context.renderFurnaceCenter(makePlugin({ shellSummary: SHELL_SUMMARY_FIXTURE }), homeContainer);
   expect(homeContainer.querySelector(".furnace-universal-input-textarea")).toBeTruthy();
   expect(homeContainer.querySelector(".furnace-today-feed")).toBeTruthy();
-  expect(homeContainer.querySelector(".furnace-advanced-drawer")).toBeTruthy();
+  expect(homeContainer.querySelector(".furnace-advanced-drawer")).toBeNull();
   expect(homeContainer.lastElementChild.classList.contains("furnace-conversation-composer")).toBe(true);
   expect(homeContainer.querySelector(".furnace-shell-dropzone")).toBeNull();
   expect(homeContainer.textContent).not.toContain("Drop URL / PDF / Image / Repo");
   expect(homeContainer.textContent).not.toContain("System Status");
   expect(homeContainer.textContent).not.toContain("LLM Health");
   expect(homeContainer.textContent).not.toContain("Repair Backlog");
-  expect(homeContainer.querySelector(".furnace-advanced-drawer").textContent).toContain("Open Recent Runs");
 });
 
 test("advanced status panel renders backup LLM fallback readiness", () => {
@@ -937,6 +936,7 @@ test("advanced status panel renders backup LLM fallback readiness", () => {
     currentLlmHealth: jest.fn(() => ({ status: "healthy", backend: "opencode-api", model: "deepseek-v4-pro" })),
     currentShellSyncState: jest.fn(() => ({ status: "healthy", reason: "Summary ready." })),
   });
+  plugin.settings.showAdvancedCommands = true;
 
   context.renderFurnaceCenter(plugin, container);
 
@@ -970,7 +970,10 @@ test("llm-check unconfigured summary renders operable UI degradation", () => {
   };
   const container = document.createElement("div");
 
-  context.renderFurnaceCenter(makePlugin({ shellSummary: unconfiguredSummary }), container);
+  const plugin = makePlugin({ shellSummary: unconfiguredSummary });
+  plugin.settings.showAdvancedCommands = true;
+  plugin.renderStatusPanel = jest.fn((el) => el.createDiv({ text: "LLM 未配置" }));
+  context.renderFurnaceCenter(plugin, container);
 
   expect(container.textContent).toContain("LLM 未配置");
   expect(container.querySelector(".furnace-universal-input-textarea")).toBeTruthy();

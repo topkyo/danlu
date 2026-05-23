@@ -168,10 +168,7 @@ def collect_report_anchors(root: Path, *, limit: int = 50) -> dict[str, list[dic
         except OSError:
             continue
         frontmatter = parse_frontmatter(text)
-        anchors_raw = frontmatter.get("graph_anchor_node_ids")
-        if not isinstance(anchors_raw, list):
-            continue
-        anchors = [str(item).strip() for item in anchors_raw if str(item).strip()]
+        anchors = report_memory_anchor_ids(frontmatter)
         if not anchors:
             continue
         title = (
@@ -186,6 +183,17 @@ def collect_report_anchors(root: Path, *, limit: int = 50) -> dict[str, list[dic
             if record not in bucket:
                 bucket.append(record)
     return index
+
+
+def report_memory_anchor_ids(frontmatter: dict[str, Any]) -> list[str]:
+    """Full machine-memory anchors for HTML/subgraph; prefers ``machine_memory_anchor_node_ids``."""
+    for key in ("machine_memory_anchor_node_ids", "graph_anchor_node_ids"):
+        raw = frontmatter.get(key)
+        if isinstance(raw, list):
+            anchors = [str(item).strip() for item in raw if str(item).strip()]
+            if anchors:
+                return anchors
+    return []
 
 
 class ReportSubgraphError(ValueError):
@@ -232,15 +240,10 @@ def build_report_subgraph(root: Path, report_path: str) -> dict[str, Any]:
 
     text = absolute.read_text(encoding="utf-8", errors="replace")
     frontmatter = parse_frontmatter(text)
-    anchors_raw = frontmatter.get("graph_anchor_node_ids")
-    if not isinstance(anchors_raw, list):
-        raise ReportSubgraphError(
-            f"report {report_rel} has no `graph_anchor_node_ids` frontmatter list"
-        )
-    anchors = [str(item).strip() for item in anchors_raw if str(item).strip()]
+    anchors = report_memory_anchor_ids(frontmatter)
     if not anchors:
         raise ReportSubgraphError(
-            f"report {report_rel} has empty `graph_anchor_node_ids`"
+            f"report {report_rel} has no machine-memory graph anchors in frontmatter"
         )
 
     memory = load_machine_memory(root)
@@ -495,8 +498,29 @@ def render_machine_memory_graph_html(
         return has_cjk(str(node.get("title") or ""))
 
     raw_graph_nodes = list(graph.get("nodes", []))
+
+    def has_markdown_page(node: dict[str, Any]) -> bool:
+        page_path = str(node.get("page_path") or node.get("source_page") or "").strip()
+        return page_path.endswith(".md")
+
     graph_nodes = [node for node in raw_graph_nodes if is_display_markdown_node(node)]
     display_node_ids = {str(node.get("id") or "") for node in graph_nodes}
+    neighbor_ids: set[str] = set()
+    for edge in graph.get("edges", []):
+        source_id = str(edge.get("source") or "")
+        target_id = str(edge.get("target") or "")
+        if source_id in display_node_ids:
+            neighbor_ids.add(target_id)
+        if target_id in display_node_ids:
+            neighbor_ids.add(source_id)
+    if neighbor_ids:
+        expanded_ids = display_node_ids | neighbor_ids
+        graph_nodes = [
+            node
+            for node in raw_graph_nodes
+            if str(node.get("id") or "") in expanded_ids and has_markdown_page(node)
+        ]
+        display_node_ids = {str(node.get("id") or "") for node in graph_nodes}
     graph_edges = [
         edge
         for edge in graph.get("edges", [])
@@ -583,6 +607,17 @@ def render_machine_memory_graph_html(
     def truncate_label(text: str, limit: int = 30) -> str:
         return text if len(text) <= limit else f"{text[: limit - 3]}..."
 
+    def edge_line_points(x1: int, y1: int, x2: int, y2: int) -> tuple[int, int, int, int]:
+        half_w = 120
+        half_h = 22
+        if x1 == x2:
+            if y1 <= y2:
+                return x1, y1 + half_h, x2, y2 - half_h
+            return x1, y1 - half_h, x2, y2 + half_h
+        if x1 < x2:
+            return x1 + half_w, y1, x2 - half_w, y2
+        return x1 - half_w, y1, x2 + half_w, y2
+
     edge_fragments: list[str] = []
     degree_map: dict[str, int] = {}
     edge_records: list[dict[str, str]] = []
@@ -599,6 +634,7 @@ def render_machine_memory_graph_html(
         degree_map[target] = degree_map.get(target, 0) + 1
         x1, y1 = positions[source]
         x2, y2 = positions[target]
+        lx1, ly1, lx2, ly2 = edge_line_points(x1, y1, x2, y2)
         edge_type = str(edge.get("type") or "")
         edge_label = edge_relation_label(edge_type)
         relation_counts_by_type[edge_type] = relation_counts_by_type.get(edge_type, 0) + 1
@@ -606,7 +642,7 @@ def render_machine_memory_graph_html(
         edge_fragments.append(
             f'<line class="graph-edge" data-source="{html.escape(source)}" data-target="{html.escape(target)}" '
             f'data-relation-type="{html.escape(edge_type)}" data-relation-label="{html.escape(edge_label)}" '
-            f'x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{stroke}" stroke-width="2"{dash} opacity="0.72">'
+            f'x1="{lx1}" y1="{ly1}" x2="{lx2}" y2="{ly2}" stroke="{stroke}" stroke-width="2.5"{dash} opacity="0.88">'
             f"<title>{html.escape(edge_label)}</title></line>"
         )
         edge_records.append(
@@ -795,11 +831,18 @@ def render_machine_memory_graph_html(
         for protocol in sorted({str(record.get("protocol") or "") for record in node_records if str(record.get("protocol") or "")})
     )
     node_rows_markup = "".join(node_rows) or "<li>当前没有可浏览的节点。</li>"
+    default_node_id = ""
+    for record in node_records:
+        if record.get("kind") == "source" and int(record.get("degree") or 0) > 0:
+            default_node_id = str(record.get("id") or "")
+            break
+    if not default_node_id and node_records:
+        default_node_id = str(node_records[0].get("id") or "")
     node_payload = html_safe_json_literal(
         {
             "nodes": node_records,
             "edges": edge_records,
-            "defaultNodeId": node_records[0]["id"] if node_records else "",
+            "defaultNodeId": default_node_id,
             "viewBoxWidth": 1020,
             "viewBoxHeight": view_height,
         }
@@ -854,9 +897,9 @@ def render_machine_memory_graph_html(
 
     empty_state = ""
     if not graph_nodes:
-        empty_state = '<div class="empty">当前没有可展示的中文相关 Markdown 图谱节点。请先沉淀中文内容的 source / concept / judgment / elixir 页面后重新编译。</div>'
+        empty_state = '<div class="empty">当前没有可展示的中文相关 Markdown 图谱节点。请先沉淀中文内容的 source / concept / judgment / elixir 页面后重新编译；与已展示 source 直接相连的材料也会一并显示。</div>'
 
-    svg_body = "\n".join(section_fragments + edge_fragments + node_fragments)
+    svg_body = "\n".join(section_fragments + node_fragments + edge_fragments)
     return "\n".join(
         [
             "<!doctype html>",
@@ -883,6 +926,7 @@ def render_machine_memory_graph_html(
             "    .node-detail-button { margin-right: 8px; border: 1px solid var(--line); background: var(--accent-bg); color: var(--accent); border-radius: 999px; padding: 2px 10px; cursor: pointer; }",
             "    .node-detail-button:hover { background: var(--accent); color: #fff; }",
             "    .graph-node.hidden, .graph-edge.hidden, .node-row.hidden { display: none; }",
+            "    .graph-edge { opacity: 0.88; }",
             "    .graph-node.active rect { stroke-width: 4; filter: drop-shadow(0 0 10px rgba(59,130,246,0.4)); }",
             "    .graph-edge.active { opacity: 1; stroke-width: 4; }",
             "    .details-grid { display: grid; gap: 10px; }",
@@ -948,6 +992,7 @@ def render_machine_memory_graph_html(
             '          <button type="button" id="graph-zoom-out">缩小</button>',
             '          <button type="button" id="graph-zoom-in">放大</button>',
             '          <button type="button" id="graph-focus-node">聚焦当前节点</button>',
+            '          <button type="button" id="graph-fit-view">适配全图</button>',
             '          <button type="button" id="graph-reset-view">重置视图</button>',
             '          <span id="graph-status" class="graph-status">100%</span>',
             "        </div>",
@@ -990,11 +1035,44 @@ def render_machine_memory_graph_html(
             "    const zoomOutButton = document.getElementById('graph-zoom-out');",
             "    const zoomInButton = document.getElementById('graph-zoom-in');",
             "    const focusNodeButton = document.getElementById('graph-focus-node');",
+            "    const fitViewButton = document.getElementById('graph-fit-view');",
             "    const resetViewButton = document.getElementById('graph-reset-view');",
             "    let activeNodeId = '';",
             "    let scale = 1;",
             "    let translateX = 0;",
             "    let translateY = 0;",
+            "    function visibleGraphNodes() {",
+            "      return Array.from(document.querySelectorAll('.graph-node')).filter((element) => !element.classList.contains('hidden'));",
+            "    }",
+            "    function fitGraphToView() {",
+            "      const canvas = document.getElementById('graph-canvas');",
+            "      const nodes = visibleGraphNodes();",
+            "      if (!canvas || !nodes.length) return;",
+            "      let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;",
+            "      nodes.forEach((element) => {",
+            "        const node = nodeMap.get(element.dataset.nodeId || '');",
+            "        if (!node) return;",
+            "        const x = Number(node.x || 0);",
+            "        const y = Number(node.y || 0);",
+            "        minX = Math.min(minX, x - 140);",
+            "        maxX = Math.max(maxX, x + 140);",
+            "        minY = Math.min(minY, y - 30);",
+            "        maxY = Math.max(maxY, y + 30);",
+            "      });",
+            "      const bboxWidth = Math.max(maxX - minX, 120);",
+            "      const bboxHeight = Math.max(maxY - minY, 80);",
+            "      const viewBoxWidth = Number(graphUiData.viewBoxWidth || 1020);",
+            "      const viewBoxHeight = Number(graphUiData.viewBoxHeight || 480);",
+            "      const canvasWidth = Math.max(canvas.clientWidth || viewBoxWidth, 320);",
+            "      const canvasHeight = Math.max(canvas.clientHeight || 480, 240);",
+            "      const nextScale = Math.min(2.2, Math.max(0.35, Math.min((canvasWidth - 48) / bboxWidth, (canvasHeight - 48) / bboxHeight)));",
+            "      scale = nextScale;",
+            "      const centerX = (minX + maxX) / 2;",
+            "      const centerY = (minY + maxY) / 2;",
+            "      translateX = Math.round(viewBoxWidth / 2 - centerX * scale);",
+            "      translateY = Math.round(viewBoxHeight / 2 - centerY * scale);",
+            "      updateViewport();",
+            "    }",
             "    function updateViewport() {",
             "      if (graphViewport) {",
             "        graphViewport.setAttribute('transform', `translate(${translateX} ${translateY}) scale(${scale})`);",
@@ -1119,12 +1197,14 @@ def render_machine_memory_graph_html(
             "    if (zoomOutButton) zoomOutButton.addEventListener('click', () => { scale = Math.max(0.6, scale - 0.2); if (activeNodeId) { focusNode(activeNodeId); } else { updateViewport(); } });",
             "    if (zoomInButton) zoomInButton.addEventListener('click', () => { scale = Math.min(2.4, scale + 0.2); if (activeNodeId) { focusNode(activeNodeId); } else { updateViewport(); } });",
             "    if (focusNodeButton) focusNodeButton.addEventListener('click', () => focusNode(activeNodeId || graphUiData.defaultNodeId || ''));",
+            "    if (fitViewButton) fitViewButton.addEventListener('click', () => fitGraphToView());",
             "    if (resetViewButton) resetViewButton.addEventListener('click', () => { scale = 1; translateX = 0; translateY = 0; updateViewport(); });",
             "    [searchInput, kindSelect, protocolSelect, componentSelect].forEach((element) => element.addEventListener('input', applyFilters));",
             "    [kindSelect, protocolSelect, componentSelect].forEach((element) => element.addEventListener('change', applyFilters));",
-            "    updateViewport();",
+            "    fitGraphToView();",
             "    renderDetails(graphUiData.defaultNodeId || '');",
             "    applyFilters();",
+            "    fitGraphToView();",
             "  </script>",
             "</main>",
             "</body>",

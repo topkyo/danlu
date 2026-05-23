@@ -83,7 +83,7 @@ class ProductShellSmokeScriptContract(unittest.TestCase):
 
 
 class ProductShellFirstScreenContract(unittest.TestCase):
-    """M7.2: 首屏 surface convergence — renderFurnaceCenter 只挂 Universal Input + Today + Advanced。
+    """M7.2/C5: 首屏 surface convergence — renderFurnaceCenter 默认只挂 Universal Input + Today。
 
     防止首屏退化为多入口 dashboard（重新挂 AskBox / DropZone 等独立面板）。
     AskBox / DropZone 仍可作为 modal/legacy helpers 存在，但不挂在首屏主 view 上。
@@ -107,8 +107,13 @@ class ProductShellFirstScreenContract(unittest.TestCase):
         body = self._read_render_furnace_center_body()
         self.assertIn("renderTodayFeed(plugin, contentEl)", body)
 
-    def test_first_screen_mounts_advanced_drawer(self) -> None:
+    def test_first_screen_does_not_mount_start_guide(self) -> None:
         body = self._read_render_furnace_center_body()
+        self.assertNotIn("renderStartGuide", body)
+
+    def test_first_screen_gates_advanced_drawer(self) -> None:
+        body = self._read_render_furnace_center_body()
+        self.assertIn("showAdvancedCommands", body)
         self.assertIn("renderAdvancedDrawer(plugin, contentEl)", body)
 
     def test_first_screen_does_not_mount_ask_box(self) -> None:

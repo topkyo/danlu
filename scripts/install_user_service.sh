@@ -41,6 +41,21 @@ ensure_env_key() {
   fi
 }
 
+set_env_key() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  local tmp
+  tmp="$(mktemp "${file}.tmp.XXXXXX")"
+  awk -v key="$key" -v value="$value" '
+    BEGIN { updated = 0 }
+    index($0, key "=") == 1 { print key "=" value; updated = 1; next }
+    { print }
+    END { if (!updated) print key "=" value }
+  ' "$file" >"$tmp"
+  mv "$tmp" "$file"
+}
+
 truthy() {
   case "${1,,}" in
     1|true|yes|on) return 0 ;;
@@ -114,6 +129,9 @@ if truthy "$INSTALL_DOGFOOD_MATURITY"; then
   ensure_env_key "$DOGFOOD_MATURITY_ENV_PATH" "AIWIKI_DOGFOOD_MATURITY_L3_LIMIT" "1000"
   ensure_env_key "$DOGFOOD_MATURITY_ENV_PATH" "AIWIKI_DOGFOOD_MATURITY_COMPILE_LIMIT" "0"
   ensure_env_key "$DOGFOOD_MATURITY_ENV_PATH" "AIWIKI_DOGFOOD_MATURITY_NO_SEMANTIC_LINT" "1"
+  if [[ -n "${AIWIKI_DOGFOOD_MATURITY_ENVRC:-}" ]]; then
+    set_env_key "$DOGFOOD_MATURITY_ENV_PATH" "AIWIKI_DOGFOOD_MATURITY_ENVRC" "$AIWIKI_DOGFOOD_MATURITY_ENVRC"
+  fi
 fi
 
 sed \

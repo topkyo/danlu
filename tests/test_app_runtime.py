@@ -92,13 +92,13 @@ _VALID_REPORT_BODY = (
     "# Stub answer\n\n"
     "## 结论\nStubbed conclusion.\n\n"
     "## 关键证据\n"
-    "- See wiki/sources/source-1.md\n"
+    "- See wiki/sources/transformer-scaling.md\n"
     "- Secondary evidence point.\n"
     "- Tertiary evidence point.\n\n"
     "## 反证与不确定性\n- None observed in stub.\n\n"
     "## 行动建议\n- Stub follow-up.\n\n"
     "## 下次观察信号\n- Stub revisit signal.\n\n"
-    "## 引用\n- wiki/sources/source-1.md\n"
+    "## 引用\n- wiki/sources/transformer-scaling.md\n"
 )
 
 
@@ -1377,6 +1377,7 @@ class RuntimeFlowTests(AppFlowTestBase):
         self.assertIn("AIWIKI_NIGHTLY_FALLBACK_MODEL:-openai/gpt-oss-120b", content)
         self.assertIn("source \"$FALLBACK_ENV\"", content)
         self.assertIn("retrying nightly with fallback", content)
+        self.assertIn("deterministic nightly fallback suppressed after run-nightly failure", content)
 
     def test_run_nightly_script_retries_nim_fallback_before_deterministic(self) -> None:
         script = Path("/home/tim/ai-wiki/scripts/run_nightly.sh")
@@ -1443,6 +1444,102 @@ exit 0
         self.assertIn("nvidia-nim-api|openai/gpt-oss-120b|", lines[1])
         self.assertIn("--no-semantic-lint", lines[1])
         self.assertIn("retrying nightly with fallback nvidia-nim-api/openai/gpt-oss-120b", completed.stderr)
+
+    def test_run_nightly_script_does_not_deterministic_fallback_after_llm_failure(self) -> None:
+        script = Path("/home/tim/ai-wiki/scripts/run_nightly.sh")
+        with tempfile.TemporaryDirectory() as tempdir:
+            temp_root = Path(tempdir)
+            bin_dir = temp_root / "bin"
+            bin_dir.mkdir()
+            fake_python = bin_dir / "python3"
+            log_path = temp_root / "python.log"
+            fake_python.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "-" ]]; then
+  exit 0
+fi
+printf '%s\n' "$*" >>"${FAKE_PYTHON_LOG}"
+if [[ "$*" == *"run-nightly"* ]]; then
+  exit 42
+fi
+exit 0
+""",
+                encoding="utf-8",
+            )
+            fake_python.chmod(0o755)
+            env = os.environ.copy()
+            env.update(
+                {
+                    "PATH": f"{bin_dir}{os.pathsep}{env.get('PATH', '')}",
+                    "FAKE_PYTHON_LOG": str(log_path),
+                    "AIWIKI_VAULT": str(temp_root / "vault"),
+                    "AIWIKI_LLM_BACKEND": "codex-cli",
+                    "AIWIKI_LLM_MODEL": "gpt-5.5",
+                }
+            )
+            completed = subprocess.run(
+                ["bash", str(script)],
+                cwd="/home/tim/ai-wiki",
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+            lines = log_path.read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(completed.returncode, 42, completed.stderr)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("run-nightly", lines[0])
+        self.assertNotIn(" nightly", lines[0])
+        self.assertIn("deterministic nightly fallback suppressed after run-nightly failure", completed.stderr)
+
+    def test_run_nightly_script_allows_deterministic_when_only_fallback_is_unconfigured(self) -> None:
+        script = Path("/home/tim/ai-wiki/scripts/run_nightly.sh")
+        with tempfile.TemporaryDirectory() as tempdir:
+            temp_root = Path(tempdir)
+            bin_dir = temp_root / "bin"
+            bin_dir.mkdir()
+            fake_python = bin_dir / "python3"
+            log_path = temp_root / "python.log"
+            fake_python.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "-" ]]; then
+  exit 1
+fi
+printf '%s\n' "$*" >>"${FAKE_PYTHON_LOG}"
+exit 0
+""",
+                encoding="utf-8",
+            )
+            fake_python.chmod(0o755)
+            env = os.environ.copy()
+            env.update(
+                {
+                    "PATH": f"{bin_dir}{os.pathsep}{env.get('PATH', '')}",
+                    "FAKE_PYTHON_LOG": str(log_path),
+                    "AIWIKI_VAULT": str(temp_root / "vault"),
+                    "AIWIKI_NIGHTLY_FALLBACK_ENABLED": "1",
+                    "AIWIKI_NIGHTLY_FALLBACK_ENV": str(temp_root / "missing.env"),
+                }
+            )
+            completed = subprocess.run(
+                ["bash", str(script)],
+                cwd="/home/tim/ai-wiki",
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+            lines = log_path.read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(len(lines), 1)
+        self.assertIn(" nightly", lines[0])
+        self.assertIn("falling back to deterministic nightly", completed.stderr)
 
     def test_nightly_systemd_templates_exist(self) -> None:
         service_template = Path("/home/tim/ai-wiki/systemd/aiwiki-nightly.service.template")
@@ -1537,12 +1634,17 @@ exit 0
         self.assertTrue(anchors, "report should record at least one graph anchor")
         self.assertLessEqual(len(anchors), 8)
         for anchor in anchors:
-            self.assertRegex(str(anchor), r"^(source|concept|judgment):")
+            self.assertRegex(str(anchor), r"^(source|judgment):")
+        machine_memory_anchors = frontmatter.get("machine_memory_anchor_node_ids")
+        self.assertIsInstance(machine_memory_anchors, list)
+        self.assertTrue(any(str(anchor).startswith("concept:") for anchor in machine_memory_anchors))
 
         # Body section provides a chinese anchor section with clickable .md links.
         self.assertIn("## 关系图谱锚点", text)
-        self.assertIn("相关来源与概念（点击跳转）", text)
-        self.assertIn(".md)", text)
+        self.assertIn("相关来源（点击跳转）", text)
+        self.assertIn("[[wiki/", text)
+        anchor_section = text.split("## 关系图谱锚点", 1)[1]
+        self.assertNotIn("../../wiki/", anchor_section)
 
 
 

@@ -159,6 +159,10 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     )
 
     subparsers.add_parser("compile", help="Compile manifest entries into wiki source pages and indexes.")
+    subparsers.add_parser(
+        "sync-evidence-graph",
+        help="Restore Obsidian Graph to the evidence-only view (reports, sources, raw; no concepts).",
+    )
 
     protocol_status_parser = subparsers.add_parser(
         "protocol-status",

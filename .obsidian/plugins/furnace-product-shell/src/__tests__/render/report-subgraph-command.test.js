@@ -104,6 +104,9 @@ describe("runReportSubgraphCommand", () => {
     expect(pluginSrc).toMatch(/recent_outputs/);
     expect(pluginSrc).toMatch(/output\/reports\//);
     expect(pluginSrc).toMatch(/openReportSubgraphPicker[\s\S]{0,1200}collectReportCandidates/);
+    expect(pluginSrc).toMatch(/artifact_quality/);
+    expect(pluginSrc).toMatch(/contains_llm_placeholder/);
+    expect(pluginSrc).toMatch(/"timeout_or_unavailable", "pending", "failed", "degraded"/);
     // Falls back to plain text input only when no candidates exist.
     expect(pluginSrc).toMatch(/No recent reports available; enter a path manually\./);
   });

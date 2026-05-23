@@ -1,16 +1,13 @@
 // Advanced drawer and metrics rendering helpers.
-// R91: 重组为 3 个可折叠 section（系统状态 / 运行与历史 / 开发者操作），降低首屏认知负担。
-// 不再嵌外层 Advanced <details>；三组直接挂在 wrapper 上。
+// Operator-only diagnostics/history surface; the default shell path does not render this drawer.
 function renderAdvancedDrawer(plugin, container) {
   const wrapper = container.createDiv({ cls: "furnace-advanced-drawer" });
 
-  // 顶部抽屉外置 dev banner（R89 心理预期分隔；不进任一 section）
   wrapper.createEl("div", {
     cls: "furnace-advanced-dev-banner",
-    text: plugin.t("以下为开发者诊断信息"),
+    text: plugin.t("以下为运行诊断与历史"),
   });
 
-  // 三组 section 直接挂 wrapper（去掉 R90 之前的外层 Advanced 折叠层）
   const body = wrapper;
 
   renderAdvancedSection(plugin, body, {
@@ -33,14 +30,6 @@ function renderAdvancedDrawer(plugin, container) {
     },
   });
 
-  renderAdvancedSection(plugin, body, {
-    key: "devops",
-    title: plugin.t("开发者操作"),
-    summaryText: plugin.t("编译 / 同步 / 协议切换 / 日志等命令"),
-    render: (el) => {
-      plugin.renderLegacyAdvancedPanel(el);
-    },
-  });
 }
 
 // R91: 单个 section 渲染。<details>/<summary> 原生折叠 + toggle 持久化。
@@ -81,27 +70,8 @@ function renderAdvancedSection(plugin, parentEl, spec) {
   }
 }
 
-// R91: 系统状态 section 摘要 — 协议 / LLM / 同步状态 一行
+// R91: 系统状态 section 摘要。默认产品面不暴露 protocol/LLM/sync 机制名。
 function buildStatusSectionSummary(plugin) {
-  let protocolName = "";
-  if (plugin.shellSummary && typeof plugin.shellSummary === "object") {
-    protocolName = String(plugin.shellSummary.protocol || plugin.shellSummary.active_protocol || "").trim();
-  }
-  if (!protocolName) protocolName = plugin.t("未配置");
-
-  let llmLabel = "";
-  try {
-    const llmHealth = plugin.currentLlmHealth();
-    const backend = String((llmHealth && llmHealth.backend) || "").trim();
-    const model = String((llmHealth && llmHealth.model) || "").trim();
-    if (backend && model) llmLabel = `${backend}/${model}`;
-    else if (backend) llmLabel = backend;
-    else if (model) llmLabel = model;
-  } catch (error) {
-    llmLabel = "";
-  }
-  if (!llmLabel) llmLabel = plugin.t("未配置");
-
   let syncLabel = plugin.t("未知");
   try {
     const sync = plugin.currentShellSyncState();
@@ -114,9 +84,7 @@ function buildStatusSectionSummary(plugin) {
     // keep 未知
   }
 
-  return plugin.t("协议 {protocol} · LLM {llm} · 同步 {sync}", {
-    protocol: protocolName,
-    llm: llmLabel,
+  return plugin.t("运行诊断 · 同步 {sync}", {
     sync: syncLabel,
   });
 }

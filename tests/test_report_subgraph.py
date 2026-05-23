@@ -144,7 +144,7 @@ class BuildReportSubgraphTests(unittest.TestCase):
         _write_report(self.root, "output/reports/no-anchors.md", anchors=None)
         with self.assertRaises(ReportSubgraphError) as ctx:
             build_report_subgraph(self.root, "output/reports/no-anchors.md")
-        self.assertIn("graph_anchor_node_ids", str(ctx.exception))
+        self.assertIn("machine-memory graph anchors", str(ctx.exception))
 
     def test_anchor_pointing_to_unknown_node_raises(self) -> None:
         _write_report(self.root, "output/reports/bad.md", ["concept:does-not-exist"])

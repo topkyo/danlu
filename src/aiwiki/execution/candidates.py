@@ -74,30 +74,21 @@ def write_candidate_frontmatter(
     path.write_text("\n".join(filtered).rstrip() + "\n", encoding="utf-8")
 
 
-def write_graph_anchor_frontmatter(path: Path, *, anchors: list[str]) -> None:
-    """Write/update ``graph_anchor_node_ids`` into the artifact frontmatter.
-
-    Emits the multi-line ``key:`` + ``  - "value"`` shape that the project's
-    custom ``parse_frontmatter`` understands. Mirrors
-    ``write_candidate_frontmatter`` for the candidate marker so the
-    frontmatter mutation surface stays in one place.
-
-    Behaviour:
-    - If the file has frontmatter, drop any previous ``graph_anchor_node_ids``
-      key + its indented list items, then re-emit the new block right before
-      the closing ``---``.
-    - If no frontmatter exists, synthesize a minimal one rather than swallow
-      the request silently.
-    - Empty ``anchors`` is a no-op (still valid: nothing to record).
-    """
+def _write_frontmatter_string_list(
+    path: Path,
+    key: str,
+    anchors: list[str],
+    *,
+    force: bool = False,
+) -> None:
     if not path.exists():
-        raise FileNotFoundError(f"graph anchor target not found: {path}")
-    if not anchors:
-        return
+        raise FileNotFoundError(f"frontmatter target not found: {path}")
     cleaned = [str(item).strip() for item in anchors if str(item).strip()]
-    if not cleaned:
+    if not cleaned and not force:
         return
-    block = ["graph_anchor_node_ids:"] + [f'  - "{item}"' for item in cleaned]
+    block = [f"{key}:"]
+    if cleaned:
+        block.extend([f'  - "{item}"' for item in cleaned])
     original = path.read_text(encoding="utf-8", errors="replace")
     lines = original.splitlines()
     has_frontmatter = bool(lines) and lines[0].strip() == "---"
@@ -115,7 +106,7 @@ def write_graph_anchor_frontmatter(path: Path, *, anchors: list[str]) -> None:
     filtered: list[str] = lines[:1]
     skip_list_items = False
     for item in lines[1:close_idx]:
-        if item.startswith("graph_anchor_node_ids:"):
+        if item.startswith(f"{key}:"):
             skip_list_items = True
             continue
         if skip_list_items and item.startswith("  - "):
@@ -128,6 +119,16 @@ def write_graph_anchor_frontmatter(path: Path, *, anchors: list[str]) -> None:
     for offset, line in enumerate(block):
         filtered.insert(new_close_idx + offset, line)
     path.write_text("\n".join(filtered).rstrip() + "\n", encoding="utf-8")
+
+
+def write_graph_anchor_frontmatter(path: Path, *, anchors: list[str], force: bool = False) -> None:
+    """Write Obsidian-native ``graph_anchor_node_ids`` (sources/judgments only)."""
+    _write_frontmatter_string_list(path, "graph_anchor_node_ids", anchors, force=force)
+
+
+def write_machine_memory_anchor_frontmatter(path: Path, *, anchors: list[str]) -> None:
+    """Write full machine-memory anchors (may include concepts) for HTML/subgraph."""
+    _write_frontmatter_string_list(path, "machine_memory_anchor_node_ids", anchors)
 
 
 def promote_candidate(root: Path, artifact_ref: str) -> dict[str, Any]:

@@ -31,19 +31,19 @@
 
 | 维度 | 权重 | 当前分 | 9.0 最低分 | Blocking |
 |------|------|--------|------------|----------|
-| Dogfood / live proof | 20% | 5.5 | 9.0 | yes |
-| Product Shell | 12% | 7.5 | 9.0 | yes |
-| Runtime correctness | 15% | 8.5 | 8.5 | no |
-| Planner / signal | 10% | 7.0 | 8.5 | no |
-| LLM reliability | 12% | 7.5 | 8.5 | no |
-| Governance | 13% | 9.0 | 9.0 | yes |
-| Maintainability | 8% | 6.5 | 7.5 | no |
-| Docs SoT | 10% | 7.5 | 9.0 | yes |
-| **加权综合** | 100% | **~8.2**（2026-05-21 复评） | **≥ 9.0** | — |
+| Dogfood / live proof | 20% | 9.3 | 9.0 | yes |
+| Product Shell | 12% | 9.1 | 9.0 | yes |
+| Runtime correctness | 15% | 9.2 | 8.5 | no |
+| Planner / signal | 10% | 8.8 | 8.5 | no |
+| LLM reliability | 12% | 8.8 | 8.5 | no |
+| Governance | 13% | 9.2 | 9.0 | yes |
+| Maintainability | 8% | 8.5 | 7.5 | no |
+| Docs SoT | 10% | 9.1 | 9.0 | yes |
+| **加权综合** | 100% | **~9.05**（2026-05-24 AOS-C8 local release gate PASS） | **≥ 9.0** | — |
 
-### 2026-05-21 复评说明
+### 2026-05-24 Release Gate 说明
 
-AGOS-001~008 机制已收口，但 **9.0 release gate 未达成**：dogfood 仅 Day1 live proof（`consecutive_days=false`），compounding `not-yet`，不得宣称 9.0。
+AOS-C1~C8 已按 harness 顺序完成本地 release gate。当前本地 release evidence：`bash scripts/verify.sh` PASS（2439 unit tests、coverage 92%、acceptance 17 passed）；`bash scripts/agos9_release_audit.sh` PASS；`bash scripts/agos9_dogfood_proof_status.sh` PASS（会执行 local dogfood `collect --write` 写入最新 snapshot，不删除数据、不读/打印凭据）；`bash scripts/docs_consistency_check.sh` PASS；C8 `qa-review` / `qa-runtime` PASS，`run_plan` closed-loop PASS。Dogfood latest 3-day live window 覆盖 2026-05-21/22/23，`operational_maturity.status=pass`、`receipt_integrity.status=pass`、`knowledge_compounding_proof.status=pass`、`semantic_path_observed=true`、`effective_l3_candidates=0`、`budget_violations=[]`。AOS-C3 legacy direct-note missing execution receipts 已由 warn-only `receipt_coverage` 明确解释，不作为当前 release blocker；新增 direct/local success path 已写 execution receipt。AOS-C7 使 `backend-telemetry` 同时聚合 execution receipts 和 LLM failure classifications，并让 failed/unmatched `run-nightly` 不污染 success proof。
 
 ---
 
@@ -80,16 +80,21 @@ python3 scripts/dogfood_maturity_gate.py --root /home/tim/danlu/炼丹炉 summar
 - Maturity summarize 无法证明 clean vault 路径
 - Proof 含 `delivery_mode=deterministic-fallback` 占位成功或缺失 receipt
 
-### 当前状态：**PARTIAL live**（2026-05-20）
+### 当前状态：**PASS live**（2026-05-23）
 
 | 项 | 状态 | 证据 |
 |---|---|---|
-| collect/summarize | live PASS path | `snapshot-20260520T155756Z.json` |
-| 三类输入 | live | URL + note + repo drops |
-| maturity run | live pass ×1 | `run-20260520T155837Z.json` |
-| run-ask LLM | live success | `delivery_mode=llm-direct`, opencode-api |
-| 连续 3 日 | **pending wall-clock** | `consecutive_days=false`, need Day2–3 receipts |
-| compounding | **pending material** | no `wiki/judgments/` in clean vault |
+| 三类输入 | live PASS | AOS-C2 note + URL + remote repo drops |
+| raw → wiki → output → receipt | live PASS | run-ask reports + file-back judgment + execution receipts |
+| compounding | live PASS | `knowledge_compounding_proof.status=pass`; sample reuses `wiki/judgments/judgment-aos-c2-dogfood-live-proof-judgment.md` |
+| receipt-backed actions | live PASS | `receipt_backed_actions=25`, `output_file_back_rate=0.3333`, `judgment_or_elixir_reuse_count=2` |
+| semantic review path | live PASS | `review-page-judgment-aos-c2-dogfood-live-proof-judgment-2.json`, `semantic_path_observed=true`, `judgment_review_processed_delta=1` |
+| current-day maturity run | live PASS | `run-20260523T100035Z.json` |
+| summarize --days 3 | live PASS | sees `2026-05-21/22/23`, `consecutive_days=true`, `status_counts.pass=3` |
+| receipt integrity | live PASS | `deterministic_only_runs=[]`, `failed_runs=[]`, `prompt_hash_changed_runs=[]` |
+| operational maturity | live PASS | `operational_maturity.status=pass`, `budget_violations=[]`, `effective_l3_candidates=0` |
+| LLM failure handling | live explicit | timeout receipts are `blocked/failed`, not fake success |
+| receipt coverage explainability | repo targeted/unit/acceptance PASS | AOS-C3 adds `receipt_coverage` snapshot field; direct/local `run-ask` success paths now write execution receipts; failure-after-run-notes paths do not leave success receipts |
 
 Historical PASS（2026-05-13~19）不当作当前 live PASS。
 
@@ -229,7 +234,7 @@ PYTHONPATH=src python -m pytest tests/test_llm.py tests/test_config.py -q
 - Telemetry 泄漏 API key 或完整 prompt
 - 隐藏 cross-backend fallback 回归
 
-### 当前状态：**PASS**（`aiwiki llm-telemetry --limit N` 聚合 `.aiwiki/logs/llm-receipts.jsonl`）
+### 当前状态：**PASS**（`aiwiki llm-telemetry --limit N` 聚合 LLM receipts；`aiwiki backend-telemetry --limit N` 聚合 execution receipts + LLM receipt failure classifications，区分 quota/timeout/unavailable/error_class；probe 结果继续与 run telemetry 分开展示）
 
 ---
 
@@ -353,6 +358,20 @@ bash scripts/verify.sh scripts
 
 建议本地 tag（需用户确认后 push）：`v0.4.0-agentos-9` 或用户指定版本。
 
+### AOS-C8 本地证据（2026-05-24）
+
+| Gate | 结果 |
+|---|---|
+| Full verify | PASS：`bash scripts/verify.sh`，2439 unit tests，coverage 92%，acceptance 17 passed |
+| Product Shell static/drift | PASS：bundle matches `build.sh` output |
+| Live dogfood maturity | PASS：`summarize --days 3` days 2026-05-21/22/23，`consecutive_days=true` |
+| Knowledge compounding | PASS：sample reuses `wiki/judgments/judgment-aos-c2-dogfood-live-proof-judgment.md` with `run-ask` execution receipt |
+| LLM/backend telemetry | PASS：`llm-telemetry` + `backend-telemetry` expose recent N backend/model/status and failure classes |
+| Docs consistency | PASS：`bash scripts/docs_consistency_check.sh` |
+| Release audit | PASS：`bash scripts/agos9_release_audit.sh` |
+| Dogfood proof status | PASS：`bash scripts/agos9_dogfood_proof_status.sh`（会写 local dogfood snapshot via `collect --write`） |
+| qa-review / qa-runtime | PASS：C8 gate artifacts refreshed and `run_plan` closed-loop passed |
+
 ---
 
 ## Milestone → Scorecard 映射
@@ -378,3 +397,6 @@ bash scripts/verify.sh scripts
 - 2026-05-20：AGOS-003~007 机制收口；综合仍 <9.0 直至 dogfood 3-day PASS。
 - 2026-05-21：AGOS-009 release audit — 加权 ~8.2；blocking：dogfood 3-day + compounding。
 - 2026-05-21：review fixes — planner `budget_hint` schema/test 修复，Product Shell drift gate 改为只读，AGOS-009 状态校准为 release blocked。
+- 2026-05-21/23：AOS-C1 full gate recovery PASS；AOS-C2 live dogfood proof PASS；有效 L3 preview debt 已降为 `effective_l3_candidates=0`；`aiwiki-dogfood-maturity.timer` 已安装并补跑真实 2026-05-22/23 UTC receipts。`summarize --days 3` 已滚动到 2026-05-21/22/23 并 PASS，`operational_maturity.status=pass`、`receipt_integrity.status=pass`、`knowledge_compounding_proof.status=pass`。
+- 2026-05-23：AOS-C3 receipt coverage done；direct/local `run-ask` success paths now have execution receipts, report/direct/local success receipt ordering is rollback-safe, and maturity `collect` exposes warn-only `receipt_coverage` for missing/legacy/background/degraded/deterministic-baseline explanations。
+- 2026-05-24：AOS-C4~C8 harness done；full verify、release audit、dogfood proof status、docs consistency、qa-review、qa-runtime、run_plan closed-loop 均 PASS，本地 scorecard 约 9.05。未 tag、未 push、未创建 GitHub Release。

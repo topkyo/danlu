@@ -27,6 +27,7 @@ Migration invariants (same as B1..B6):
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 from typing import Any
 
@@ -39,8 +40,16 @@ from ..app_content import (
 from ..app_lifecycle import judgment_lifecycle_profile, valid_curated_statuses
 from ..app_protocol import ensure_layout, schedule_review_windows
 from ..app_render import append_wiki_log
-from ..app_state import DEFAULT_PROTOCOL, append_runtime_history, load_manifest
+from ..app_state import (
+    DEFAULT_PROTOCOL,
+    append_runtime_history,
+    execution_receipt_history_path,
+    load_manifest,
+    runtime_history_path,
+)
 from ..app_utils import (
+    _restore_snapshots,
+    _snapshot_file_bytes,
     analyze_citation_snapshots,
     build_citation_snapshots,
     extract_provenance_paths,
@@ -52,6 +61,8 @@ from ..app_utils import (
     upsert_markdown_section,
 )
 from ..compile.pipeline import compile_wiki
+from .audit_preview import AUDIT_STREAM_PATH
+from .receipts import write_execution_receipt
 
 
 @runtime_write_operation
@@ -77,7 +88,7 @@ def review_page(
     if kind == "derived":
         raise ValueError(
             f"Page kind 'derived' is the machine-memory terminal layer and is not subject to review-page workflow. "
-            f"To enter review, file the artifact back with --kind judgment or --kind decision instead. "
+            f"To enter review, run file-back --kind judgment or file-back --kind decision instead. "
             f"(page: {target})"
         )
     if kind not in {"decision", "judgment"}:
@@ -163,40 +174,82 @@ def review_page(
             "review_history_entries": str(len(review_history_entries(updated_body))),
         }
     )
-    target.write_text(f"{render_frontmatter(frontmatter)}\n\n{updated_body.strip()}\n", encoding="utf-8")
-    _entry_by_id, path_to_entry_id = entry_lookup_maps(load_manifest(root).get("entries", []))
-    source_ids = entry_ids_from_paths(path_to_entry_id, citations)
-    append_runtime_history(
-        root,
-        {
-            "event_type": "review",
-            "occurred_at": reviewed_at,
-            "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
-            "page_id": str(frontmatter.get("id") or target.stem),
-            "page_path": relative_path(root, target),
-            "page_kind": kind,
-            "status": status,
-            "judgment_lifecycle_state": judgment_lifecycle_state,
-            "judgment_lifecycle_reason_codes": judgment_lifecycle_reason_codes,
-            "source_ids": source_ids,
-        },
-    )
-    append_wiki_log(
-        root,
-        "review",
-        str(frontmatter.get("title") or target.stem),
-        [
-            f"kind: `{kind}`",
-            f"status: `{status}`",
-            f"path: `{relative_path(root, target)}`",
-            f"confidence: `{frontmatter.get('confidence', '') or 'n/a'}`",
-        ],
-    )
-    compile_wiki(root)
+    snapshots = {
+        target: _snapshot_file_bytes(target),
+        runtime_history_path(root): _snapshot_file_bytes(runtime_history_path(root)),
+        root / "wiki" / "indexes" / "log.md": _snapshot_file_bytes(root / "wiki" / "indexes" / "log.md"),
+        execution_receipt_history_path(root): _snapshot_file_bytes(execution_receipt_history_path(root)),
+        root / AUDIT_STREAM_PATH: _snapshot_file_bytes(root / AUDIT_STREAM_PATH),
+    }
+    receipt: dict[str, Any] | None = None
+    try:
+        target.write_text(f"{render_frontmatter(frontmatter)}\n\n{updated_body.strip()}\n", encoding="utf-8")
+        _entry_by_id, path_to_entry_id = entry_lookup_maps(load_manifest(root).get("entries", []))
+        source_ids = entry_ids_from_paths(path_to_entry_id, citations)
+        append_runtime_history(
+            root,
+            {
+                "event_type": "review",
+                "occurred_at": reviewed_at,
+                "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
+                "page_id": str(frontmatter.get("id") or target.stem),
+                "page_path": relative_path(root, target),
+                "page_kind": kind,
+                "status": status,
+                "judgment_lifecycle_state": judgment_lifecycle_state,
+                "judgment_lifecycle_reason_codes": judgment_lifecycle_reason_codes,
+                "source_ids": source_ids,
+            },
+        )
+        append_wiki_log(
+            root,
+            "review",
+            str(frontmatter.get("title") or target.stem),
+            [
+                f"kind: `{kind}`",
+                f"status: `{status}`",
+                f"path: `{relative_path(root, target)}`",
+                f"confidence: `{frontmatter.get('confidence', '') or 'n/a'}`",
+            ],
+        )
+        review_subject_kind = "judgment_review" if kind == "judgment" else "decision_review"
+        receipt = write_execution_receipt(
+            root,
+            operation="review-page",
+            generated_by="aiwiki-review-page",
+            subject_kind=review_subject_kind,
+            subject_id=str(frontmatter.get("id") or target.stem),
+            target_file=relative_path(root, target),
+            primary_path=relative_path(root, target),
+            protocol=str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
+            extra={
+                "page_kind": kind,
+                "conclusion": status,
+                "confidence": str(frontmatter.get("confidence") or ""),
+                "reviewed_at": reviewed_at,
+                "citation_count": len(citations),
+            },
+        )
+        compile_wiki(root)
+    except Exception as transaction_error:
+        if receipt:
+            receipt_path = str(receipt.get("receipt_path") or "")
+            if receipt_path:
+                with contextlib.suppress(FileNotFoundError):
+                    (root / receipt_path).unlink()
+        try:
+            _restore_snapshots(snapshots)
+        except Exception as rollback_error:
+            raise RuntimeError(
+                f"review-page rollback failed for {relative_path(root, target)}: "
+                f"transaction_error={transaction_error!r}; rollback_error={rollback_error!r}"
+            ) from rollback_error
+        raise
     return {
         "path": relative_path(root, target),
         "kind": kind,
         "status": status,
         "reviewed_at": reviewed_at,
         "confidence": str(frontmatter.get("confidence") or ""),
+        "receipt_path": str(receipt.get("receipt_path") or ""),
     }

@@ -2,7 +2,7 @@
 
 *Obsidian 插件 UI 层事实源；炼丹炉"一个输入端 + 一个输出端"原则的可视化呈现*
 *Status: Active SoT, decision points resolved (§10)*
-*Last updated: 2026-04-29*
+*Last updated: 2026-05-24*
 
 ## 0. 第一性原理
 
@@ -10,8 +10,8 @@
 
 炼丹炉 Product Shell 的 UI 第一性原理是：**用户面只暴露一个输入端 + 一个输出端，其他全部隐藏**。
 
-- **一个输入端**：首屏只给用户一个清晰的 Ask / Command 输入入口，以及同一心智下的 Drop URL / PDF / Image / Repo 投料区。
-- **一个输出端**：首屏只呈现最新报告、今日简报和需要阅读的产出，不把运行态流水线当成用户目标。
+- **一个输入端**：首屏只给用户一个 Universal Input；URL、文件拖拽、文本笔记和问题都从这里进入。
+- **一个输出端**：首屏只呈现 Today Feed 中可交付的输出、需要确认的事项和非降级活动，不把运行态流水线当成用户目标。
 - **其他全部隐藏**：System Status / LLM Health / Review Center / Execution Center / Repair Backlog / Recent Runs 等运维、状态、监控入口全部收纳到 Advanced / 更多工具抽屉。
 - **用户心智最小化**：任何 UI 层新增卡片、按钮、状态或通知，都必须证明它没有扩大用户需要理解的概念数量。
 - **通知只服务输出端**：外部 webhook 通知（飞书 / 企业微信）只提醒"有新报告需要看"，不把后台调度细节推给用户。
@@ -24,8 +24,8 @@
 
 ## 1. Executive Summary
 
-- **核心范式 Gap**：当前 UI 是面向运维的"全量 Dashboard"，充斥系统状态、健康度、全量历史等；而用户需求是"极简输入端 + 报告输出端 + 外部 IM 通知提醒"，二者存在根本冲突。
-- **推荐方案**：采用 **"Linear 骨架 + Raycast 输入 + Notion 报告"** 的 UI 风格组合，配合 **飞书 / 企业微信 webhook 外部通知**，以单一入口和 IM 推送驱动为核心，原有运维视图降级为 "Advanced" 折叠抽屉。
+- **核心范式 Gap**：旧 UI 是面向运维的"全量 Dashboard"，充斥系统状态、健康度、全量历史等；而用户需求是"极简输入端 + 输出端 + 外部 IM 通知提醒"，二者存在根本冲突。
+- **当前方案**：采用 **Today Feed + Universal Input** 的默认面，配合 **飞书 / 企业微信 webhook 外部通知**。Advanced 默认隐藏，仅作为 operator diagnostics/history/Review Center/Execution Center 入口。
 - **Furnace Product Shell M-PS.1 milestone candidate 实施代价估算**：
   - 修改/重写核心视图渲染相关文件（`plugin.js`, `render.js`, `views.js`, `styles.css`），新增 0 个文件（复用现有结构）。
   - 风险级别：**M (Medium)**，主要风险在于 Obsidian 视图注册兼容性与状态迁移。
@@ -39,8 +39,8 @@
 - Recent Runs（全量流水线历史）
 
 **用户实际需要但被淹没/藏得深的元素（需提升）**：
-- Today's Reports 入口（当前可能与各类卡片混杂）
-- 新 source 投喂入口（Drop/Ask，当前多在 command palette 或单独的 Ribbon 按钮中，缺少直观的统一界面）
+- Today Feed 入口（当前可能与各类卡片混杂）
+- 新 source 投喂入口（URL / file / note / question 统一进入 Universal Input）
 - 报告产出通知机制（当前完全缺失，依赖用户手动打开 vault 才发现新报告，覆盖不到"用户离开屏幕"场景）。
 
 **需要降级/折叠的视图清单**：
@@ -53,44 +53,35 @@
 **桌面宽屏形态 (900px+)**
 ```text
 +-------------------------------------------------------------------------+
-| [ Ask / Command... ] (Raycast style input)                              |
-+-------------------------------------------------------------------------+
-|                                                                         |
-|  Today's Reports                                                        |
+|  Today Feed                                                             |
 |  +-------------------------------------------------------------------+  |
 |  | [Protocol] Report Title A                               [ Open ]  |  |
 |  +-------------------------------------------------------------------+  |
 |  | [Protocol] Report Title B                               [ Open ]  |  |
 |  +-------------------------------------------------------------------+  |
 |                                                                         |
-|  Previous Reports (grouped by date)                                     |
-|  - ...                                                                  |
-|                                                                         |
-|                                                                         |
-| +---------------------------------------------------------------------+ |
-| |                    Drop URL / PDF / Image / Repo                    | |
-| +---------------------------------------------------------------------+ |
-|                                                                         |
-| > Advanced (Collapsed)                                                  |
+| [ Universal Input: URL / file / note / question... ]                    |
++-------------------------------------------------------------------------+
+| > Advanced (operator diagnostics, hidden unless enabled)                 |
 +-------------------------------------------------------------------------+
 ```
 
 ### 交互流图
 - **通知流**：runtime 写出新报告 → Notifier 推送飞书 / 企业微信 webhook → 用户在 IM 中收到提醒 → 回到 vault 打开报告 Markdown → UI 内对应卡片按 `last_viewed_timestamp` 更新视觉态。
-- **输入流**：用户问问题 (Ask box) → 提交 → 界面显示 running 状态 → 完成后，新报告平滑插入 Today's Reports 顶部。
-- **投喂流**：用户拖拽 URL/PDF 到下方 Drop zone → 识别类型触发对应协议跑流 → 进度提示 → 完成后进入报告列表。
+- **输入流**：用户在 Universal Input 输入问题或材料 → 提交 → 界面显示 running / received / done / failed / degraded 状态 → 完成后，可交付输出进入 Today Feed。
+- **投喂流**：用户拖拽文件或粘贴 URL 到 Universal Input → runtime 识别类型并路由 → 进度提示 → 完成后进入输出列表。
 
 ### 组件清单
-- **AskBox** (借鉴 Raycast)：置顶的单行大输入框，极简，高亮。
-- **ReportCard** (借鉴 Notion)：清晰的 block 卡片，带 serif 标题和状态小徽章，注重阅读舒缓感；未读项做轻量视觉区分（加粗 / 左侧圆点）。
-- **DropZone**：大面积虚线框/微底色区域，支持四合一拖拽输入。
-- **AdvancedDrawer**：底部/侧边的折叠面板，收纳所有遗留的 Dashboard 视图。
+- **TodayFeed**：默认输出端，只展示可交付输出、确认项和非降级活动。
+- **UniversalInput**：默认输入端，统一 URL / file / note / question。
+- **ReportCard** (借鉴 Notion)：清晰的 block 卡片，带标题和状态小徽章，注重阅读舒缓感；未读项做轻量视觉区分（加粗 / 左侧圆点）。
+- **AdvancedDrawer**：仅在 `showAdvancedCommands` 启用后出现，收纳 diagnostics/history、Recent Runs、Review Center、Execution Center 和 refresh。
 - **Notifier**（非 UI 组件，运行态侧 / sidecar）：飞书 + 企业微信 webhook 推送抽象，订阅"新报告生成"事件。
 
 ### 状态机
 - `has-unread`: Today's Reports 顶部未读卡片做加粗 / 圆点视觉区分。
 - `all-read`: 界面安静，留白。
-- `running`: AskBox 或 DropZone 呈现温和的进度/呼吸态。
+- `running`: Universal Input pending card 呈现温和的进度/呼吸态。
 - `error-need-attention`: 仅当严重错误且需要用户干预时，展示在列表最上方（不弹 Notice，不发 webhook）。
 
 ## 4. 风格选择：Linear 骨架 + Raycast 输入 + Notion 报告
@@ -190,7 +181,7 @@
 
 ## 10. 已拍板决策（2026-04-27）
 
-> **实施状态（2026-04-27）**：M-PS.1 已完成。Phase A 已落地 AskBox + Today's Reports + DropZone + Advanced 抽屉首屏；Phase B 已落地飞书 / 企业微信 webhook Notifier、插件 env bridge、`run-ask` report hook 和 notifier tests。当前验证基线为 `bash scripts/verify.sh` 1153 tests / 93% coverage。
+> **实施状态（2026-05-24）**：M-PS.1 之后的 AgentOS 收敛已完成默认面更新：首屏为 Today Feed + Universal Input；AskBox / DropZone 已吸收到 Universal Input，Advanced 仅在 `showAdvancedCommands` 下作为 diagnostics/history/Review/Execution surface 出现。Phase B 的飞书 / 企业微信 webhook Notifier、插件 env bridge、`run-ask` report hook 和 notifier tests 继续保留。
 
 以下决策点已闭环，本文档其余章节均已与决策对齐：
 

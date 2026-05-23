@@ -600,6 +600,187 @@ def _is_successful_compounding_receipt(record: dict[str, str]) -> bool:
     return status not in FAILED_RECEIPT_STATUSES
 
 
+def _is_background_pending_output(frontmatter: dict[str, Any]) -> bool:
+    delivery_mode = str(frontmatter.get("delivery_mode") or "").strip().lower()
+    background_status = str(frontmatter.get("background_status") or "").strip().lower()
+    llm_status = str(frontmatter.get("llm_status") or "").strip().lower()
+    return delivery_mode == "background-pending" or background_status in {"submitted", "running"} or llm_status == "pending"
+
+
+def _is_degraded_llm_output(frontmatter: dict[str, Any]) -> bool:
+    delivery_mode = str(frontmatter.get("delivery_mode") or "").strip().lower()
+    background_status = str(frontmatter.get("background_status") or "").strip().lower()
+    llm_status = str(frontmatter.get("llm_status") or "").strip().lower()
+    title = str(frontmatter.get("title") or "").strip()
+    return (
+        delivery_mode in {"llm-failed", "deterministic-fallback"}
+        or background_status in {"degraded", "failed"}
+        or llm_status in {"timeout_or_unavailable", "failed"}
+        or title.startswith("LLM 未完成")
+    )
+
+
+def _is_deterministic_baseline_output(frontmatter: dict[str, Any], *, run_notes_status: str) -> bool:
+    generated_by = str(frontmatter.get("generated_by") or "").strip()
+    delivery_mode = str(frontmatter.get("delivery_mode") or "").strip().lower()
+    background_status = str(frontmatter.get("background_status") or "").strip().lower()
+    llm_status = str(frontmatter.get("llm_status") or "").strip().lower()
+    return (
+        generated_by == "aiwiki-ask"
+        and run_notes_status == "deterministic-ready"
+        and not delivery_mode
+        and not background_status
+        and not llm_status
+    )
+
+
+def _build_receipt_coverage_report(
+    root: Path,
+    *,
+    legacy_empty_status_receipts: dict[str, Any],
+    preview_limit: int = 20,
+) -> dict[str, Any]:
+    from aiwiki.app_state import load_llm_receipt_history
+    from aiwiki.app_utils import parse_frontmatter, relative_path
+
+    receipt_by_target: dict[str, dict[str, str]] = {}
+    for record in _knowledge_compounding_receipt_records(root):
+        target = str(record.get("target") or "").strip()
+        status = str(record.get("status") or "").strip().lower()
+        if not target or status in FAILED_RECEIPT_STATUSES:
+            continue
+        receipt_by_target.setdefault(target, record)
+
+    llm_targets = {
+        str(record.get("target") or "").strip()
+        for record in load_llm_receipt_history(root)
+        if str(record.get("target") or "").strip()
+    }
+    output_paths: list[Path] = []
+    for directory_name in ("reports", "slides", "figures"):
+        directory = root / "output" / directory_name
+        try:
+            output_paths.extend(sorted(directory.glob("*.md")) if directory.exists() else [])
+        except OSError:
+            continue
+
+    missing_counts: Counter[str] = Counter()
+    complete_count = 0
+    exempt_count = 0
+    issue_samples: list[dict[str, Any]] = []
+    complete_samples: list[dict[str, Any]] = []
+    sample_limit = max(0, int(preview_limit))
+    outputs_checked = 0
+    for path in output_paths:
+        if not path.is_file():
+            continue
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+            frontmatter = parse_frontmatter(content)
+        except (OSError, UnicodeError):
+            continue
+        if str(frontmatter.get("kind") or "").strip() != "output":
+            continue
+        if str(frontmatter.get("generated_by") or "").strip() == "aiwiki-compile":
+            continue
+        outputs_checked += 1
+        artifact_ref = relative_path(root, path)
+        generated_by = str(frontmatter.get("generated_by") or "").strip()
+        delivery_mode = str(frontmatter.get("delivery_mode") or "").strip()
+        background_status = str(frontmatter.get("background_status") or "").strip()
+        llm_status = str(frontmatter.get("llm_status") or "").strip()
+        run_notes_ref = str(frontmatter.get("run_notes_path") or "").strip()
+        run_notes_path = Path(run_notes_ref)
+        has_run_notes = bool(run_notes_ref) and not run_notes_path.is_absolute() and (root / run_notes_path).is_file()
+        run_notes_status = ""
+        if has_run_notes:
+            try:
+                run_notes_frontmatter = parse_frontmatter((root / run_notes_path).read_text(encoding="utf-8", errors="replace"))
+                run_notes_status = str(run_notes_frontmatter.get("status") or "").strip()
+            except (OSError, UnicodeError):
+                run_notes_status = ""
+        has_execution_receipt = artifact_ref in receipt_by_target
+        has_llm_receipt = artifact_ref in llm_targets
+        source_refs = _as_string_list(frontmatter.get("derived_from")) or _as_string_list(frontmatter.get("source_files"))
+        has_artifact_provenance = bool(
+            generated_by
+            and (
+                source_refs
+                or str(frontmatter.get("created_at") or frontmatter.get("generated_at") or "").strip()
+                or run_notes_ref
+            )
+        )
+
+        missing: list[str] = []
+        exemptions: list[str] = []
+        pending = _is_background_pending_output(frontmatter)
+        degraded = _is_degraded_llm_output(frontmatter)
+        deterministic_baseline = _is_deterministic_baseline_output(frontmatter, run_notes_status=run_notes_status)
+        if pending:
+            exemptions.append("background_pending")
+        if degraded:
+            exemptions.append("failed_or_degraded_llm_artifact")
+        if deterministic_baseline:
+            exemptions.append("deterministic_baseline_output")
+
+        execution_receipt_exempt = pending or degraded or deterministic_baseline
+        llm_receipt_exempt = pending or deterministic_baseline
+        if not has_execution_receipt and not execution_receipt_exempt:
+            missing.append("execution_receipt")
+        if not has_llm_receipt and not llm_receipt_exempt:
+            missing.append("llm_receipt")
+        if not has_run_notes:
+            missing.append("run_notes")
+        if not has_artifact_provenance:
+            missing.append("artifact_provenance")
+        for key in missing:
+            missing_counts[key] += 1
+        if not missing:
+            complete_count += 1
+        if exemptions:
+            exempt_count += 1
+        sample = {
+            "path": artifact_ref,
+            "status": "complete" if not missing else "missing",
+            "generated_by": generated_by,
+            "delivery_mode": delivery_mode,
+            "background_status": background_status,
+            "llm_status": llm_status,
+            "has_execution_receipt": has_execution_receipt,
+            "execution_receipt_path": str(receipt_by_target.get(artifact_ref, {}).get("receipt_path") or ""),
+            "has_llm_receipt": has_llm_receipt,
+            "has_run_notes": has_run_notes,
+            "has_artifact_provenance": has_artifact_provenance,
+            "missing": missing,
+            "exemptions": exemptions,
+        }
+        if missing or exemptions:
+            if len(issue_samples) < sample_limit:
+                issue_samples.append(sample)
+        elif len(complete_samples) < sample_limit:
+            complete_samples.append(sample)
+
+    missing_total = sum(missing_counts.values())
+    samples = (issue_samples + complete_samples)[:sample_limit]
+    return {
+        "kind": "receipt-coverage-report",
+        "version": 1,
+        "status": "pass" if missing_total == 0 else "warn",
+        "outputs_checked": outputs_checked,
+        "complete_count": complete_count,
+        "incomplete_count": outputs_checked - complete_count,
+        "exempt_count": exempt_count,
+        "missing_execution_receipt_count": missing_counts.get("execution_receipt", 0),
+        "missing_llm_receipt_count": missing_counts.get("llm_receipt", 0),
+        "missing_run_notes_count": missing_counts.get("run_notes", 0),
+        "missing_artifact_provenance_count": missing_counts.get("artifact_provenance", 0),
+        "missing_counts": dict(sorted(missing_counts.items())),
+        "legacy_empty_status_receipts": legacy_empty_status_receipts,
+        "samples": samples,
+        "note": "Warn-only coverage explanation; pending/degraded/deterministic-baseline outputs are explicitly classified instead of hidden.",
+    }
+
+
 def _select_compounding_sample(
     output_reuse: list[dict[str, Any]],
     receipt_records: list[dict[str, str]],
@@ -815,6 +996,7 @@ def collect_metrics(root: Path, *, preview_limit: int = 20) -> dict[str, Any]:
         root,
         human_required_report=human_required_report,
     )
+    legacy_empty_status_receipts = _count_legacy_empty_status_receipts(root)
     nightly = load_json_document(nightly_health_state_path(root))
     return {
         "kind": SNAPSHOT_KIND,
@@ -826,7 +1008,12 @@ def collect_metrics(root: Path, *, preview_limit: int = 20) -> dict[str, Any]:
         "backlog_total": _sum_int_values(review_backlog_counts),
         "human_required_report": human_required_report,
         "knowledge_compounding_proof": knowledge_compounding_proof,
-        "legacy_empty_status_receipts": _count_legacy_empty_status_receipts(root),
+        "legacy_empty_status_receipts": legacy_empty_status_receipts,
+        "receipt_coverage": _build_receipt_coverage_report(
+            root,
+            legacy_empty_status_receipts=legacy_empty_status_receipts,
+            preview_limit=preview_limit,
+        ),
         "nightly_agent_loop": dict(nightly.get("agent_loop") or {}),
         "l3_proposal_counts_by_state": _load_l3_proposal_counts_by_state(root),
         "l3_generation_preview_summary": _preview_l3_generation_summary(root, limit=preview_limit),

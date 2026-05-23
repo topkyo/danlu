@@ -15,6 +15,7 @@ from typing import Any
 from .app_compile import shell_status
 from .app_protocol import ensure_layout
 from .app_utils import render_json_document, write_if_changed
+from .vault_obsidian_graph import DEFAULT_OBSIDIAN_GRAPH
 
 PLUGIN_ID = "furnace-product-shell"
 
@@ -27,9 +28,8 @@ DEFAULT_OBSIDIAN_APP = {
     "promptDelete": False,
     "showInlineTitle": True,
     "showUnsupportedFiles": True,
-    "useMarkdownLinks": True,
+    "useMarkdownLinks": False,
     "userIgnoreFilters": [
-        "raw/assets/",
         "raw/normalized/",
         "wiki/derived/",
         "wiki/decisions/",
@@ -87,42 +87,14 @@ DEFAULT_OBSIDIAN_CORE_PLUGINS = {
     "zk-prefixer": False,
 }
 
-DEFAULT_OBSIDIAN_GRAPH = {
-    "collapse-filter": False,
-    "search": 'path:"output/reports" OR path:"raw/inbox"',
-    "showTags": False,
-    "showAttachments": False,
-    "hideUnresolved": True,
-    "showOrphans": False,
-    "collapse-color-groups": False,
-    "colorGroups": [
-        {"query": 'path:"output/reports"', "color": {"a": 1, "rgb": 14701138}},
-        {"query": 'path:"raw/inbox"', "color": {"a": 1, "rgb": 5025616}},
-    ],
-    "collapse-display": True,
-    "showArrow": False,
-    "textFadeMultiplier": 0,
-    "nodeSizeMultiplier": 1,
-    "lineSizeMultiplier": 1,
-    "collapse-forces": True,
-    "centerStrength": 0.518713248970312,
-    "repelStrength": 10,
-    "linkStrength": 1,
-    "linkDistance": 250,
-    "scale": 1,
-    "close": True,
-}
-
 DEFAULT_PLUGIN_DATA = {
     "settings": {
-        "defaultAskFormat": "report",
-        "defaultAskMode": "ask",
+        "defaultAskFormat": "note",
         "launcherPath": "scripts/aiwiki-launcher.sh",
         "locale": "zh",
         "llmBackend": "opencode-api",
         "llmModel": "deepseek-v4-pro",
         "recentRunsLimit": 8,
-        "showHtmlShortcuts": True,
     },
     "recentRuns": [],
 }
@@ -134,13 +106,13 @@ DEFAULT_OBSIDIAN_APPEARANCE = {
 }
 
 FOLDER_LABEL_OVERRIDES: tuple[tuple[str, str], ...] = (
-    ("raw", "原料 raw"),
+    ("raw", "原料"),
     ("output", "报告"),
     ("schema", "规则 schema"),
     ("scripts", "脚本 scripts"),
     ("prompts", "提示词 prompts"),
-    ("raw/inbox", "收件箱 inbox"),
-    ("raw/assets", "附件 assets"),
+    ("raw/inbox", "收件箱"),
+    ("raw/assets", "附件"),
     ("raw/normalized", "标准化 normalized"),
     ("wiki/sources", "来源 sources"),
     ("wiki/concepts", "概念 concepts"),
@@ -174,7 +146,6 @@ FOLDER_LABEL_OVERRIDES: tuple[tuple[str, str], ...] = (
 )
 
 USER_HIDDEN_FOLDER_PATHS: tuple[str, ...] = (
-    "raw/assets",
     "raw/normalized",
     "wiki",
     "schema",
@@ -201,9 +172,13 @@ USER_FLATTENED_FOLDER_TITLE_PATHS: tuple[str, ...] = (
 def _folder_label_selectors(path: str) -> tuple[str, ...]:
     return (
         f'.nav-folder[data-path="{path}"] > .nav-folder-title > .nav-folder-title-content',
+        f'.nav-folder[data-path="{path}"] .nav-folder-title-content',
         f'.nav-folder-title[data-path="{path}"] > .nav-folder-title-content',
         f'.tree-item[data-path="{path}"] > .tree-item-self > .tree-item-inner',
+        f'.tree-item[data-path="{path}"] .tree-item-inner',
         f'.tree-item-self[data-path="{path}"] > .tree-item-inner',
+        f'.tree-item[data-path="{path}"] .tree-item-title',
+        f'.tree-item-self[data-path="{path}"] .tree-item-title',
     )
 
 
@@ -264,10 +239,16 @@ def _render_folder_label_snippet() -> str:
                 f"/* {path} -> {label} */",
                 ",\n".join(selectors) + " {",
                 "  font-size: 0 !important;",
+                "  line-height: 0 !important;",
+                "  color: transparent !important;",
                 "}",
                 ",\n".join(pseudo_selectors) + " {",
                 f'  content: "{label}";',
+                "  display: inline-block !important;",
                 "  font-size: var(--nav-item-size, 13px) !important;",
+                "  line-height: var(--line-height-normal, 1.4) !important;",
+                "  color: var(--nav-item-color, var(--text-normal)) !important;",
+                "  vertical-align: middle;",
                 "}",
                 "",
             ]

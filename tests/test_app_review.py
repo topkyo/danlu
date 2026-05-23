@@ -58,8 +58,10 @@ from aiwiki.app_memory import (
 from aiwiki.app_memory_surfaces import render_machine_memory_graph_html
 from aiwiki.app_protocol import ensure_layout, load_protocol_state, save_manifest
 from aiwiki.app_state import (
+    execution_receipt_history_path,
     load_archive_candidates_state,
     load_cache_status,
+    load_jsonl_documents,
     load_knowledge_lifecycle_override_state,
     load_knowledge_lifecycle_state,
     load_machine_memory,
@@ -82,6 +84,7 @@ from aiwiki.cli import main as cli_main
 from aiwiki.compile import compile_wiki as compile_wiki_owner
 from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, LLMConfig
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
+from aiwiki.execution.audit_preview import AUDIT_STREAM_PATH
 from aiwiki.llm import CompletionResult
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 from tests.test_app import AppFlowTestBase, CapturingClient, FailingVisionClient, StubClient, StubVisionClient
@@ -525,12 +528,100 @@ class ReviewFlowTests(AppFlowTestBase):
         self.assertEqual(parse_frontmatter(judgment_text)["confidence"], "high")
         self.assertTrue(parse_frontmatter(judgment_text)["reviewed_at"])
         self.assertEqual(parse_frontmatter(judgment_text)["last_reviewed"], parse_frontmatter(judgment_text)["reviewed_at"])
+        self.assertTrue(reviewed_decision["receipt_path"])
+        self.assertTrue(reviewed_judgment["receipt_path"])
+
+        receipts = load_jsonl_documents(execution_receipt_history_path(self.root))
+        judgment_review_receipts = [
+            receipt for receipt in receipts if receipt.get("subject_kind") == "judgment_review"
+        ]
+        decision_review_receipts = [
+            receipt for receipt in receipts if receipt.get("subject_kind") == "decision_review"
+        ]
+        self.assertEqual(judgment_review_receipts[-1]["target_file"], judgment["path"])
+        self.assertEqual(judgment_review_receipts[-1]["conclusion"], "confirmed")
+        self.assertEqual(judgment_review_receipts[-1]["confidence"], "high")
+        self.assertEqual(decision_review_receipts[-1]["target_file"], decision["path"])
+        self.assertEqual(decision_review_receipts[-1]["conclusion"], "approved")
 
         review_queue = (self.root / "wiki" / "indexes" / "review-queue.md").read_text(encoding="utf-8")
         self.assertIn("当前没有待审决策。", review_queue)
         self.assertIn("当前没有待审判断。", review_queue)
         self.assertIn("Scaling Decision", review_queue)
         self.assertIn("Scaling Judgment", review_queue)
+
+    def test_review_page_rolls_back_when_receipt_write_fails(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+        compile_wiki(self.root)
+
+        target = self.root / judgment["path"]
+        runtime_history = self.root / ".aiwiki" / "state" / "runtime-history.jsonl"
+        wiki_log = self.root / "wiki" / "indexes" / "log.md"
+        receipt_history = execution_receipt_history_path(self.root)
+        audit_stream = self.root / AUDIT_STREAM_PATH
+        original_target = target.read_bytes()
+        original_runtime_history = runtime_history.read_bytes()
+        original_wiki_log = wiki_log.read_bytes()
+        original_receipt_history = receipt_history.read_bytes()
+        original_audit_stream = audit_stream.read_bytes() if audit_stream.exists() else b""
+
+        with patch("aiwiki.execution.review.write_execution_receipt", side_effect=RuntimeError("receipt down")):
+            with self.assertRaisesRegex(RuntimeError, "receipt down"):
+                review_page(
+                    self.root,
+                    judgment["path"],
+                    "confirmed",
+                    note="This should rollback.",
+                    confidence="high",
+                )
+
+        self.assertEqual(target.read_bytes(), original_target)
+        self.assertEqual(runtime_history.read_bytes(), original_runtime_history)
+        self.assertEqual(wiki_log.read_bytes(), original_wiki_log)
+        self.assertEqual(receipt_history.read_bytes(), original_receipt_history)
+        self.assertEqual(audit_stream.read_bytes() if audit_stream.exists() else b"", original_audit_stream)
+        self.assertNotIn("This should rollback.", target.read_text(encoding="utf-8"))
+
+    def test_review_page_rolls_back_receipt_when_compile_fails(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+        compile_wiki(self.root)
+
+        target = self.root / judgment["path"]
+        runtime_history = self.root / ".aiwiki" / "state" / "runtime-history.jsonl"
+        wiki_log = self.root / "wiki" / "indexes" / "log.md"
+        receipt_history = execution_receipt_history_path(self.root)
+        audit_stream = self.root / AUDIT_STREAM_PATH
+        receipt_dir = self.root / "output" / "control" / "execution-receipts"
+        original_target = target.read_bytes()
+        original_runtime_history = runtime_history.read_bytes()
+        original_wiki_log = wiki_log.read_bytes()
+        original_receipt_history = receipt_history.read_bytes()
+        original_audit_stream = audit_stream.read_bytes() if audit_stream.exists() else b""
+        original_receipt_files = {path.name for path in receipt_dir.glob("review-page-*.json")}
+
+        with patch("aiwiki.execution.review.compile_wiki", side_effect=RuntimeError("compile down")):
+            with self.assertRaisesRegex(RuntimeError, "compile down"):
+                review_page(
+                    self.root,
+                    judgment["path"],
+                    "confirmed",
+                    note="This should rollback after receipt.",
+                    confidence="high",
+                )
+
+        self.assertEqual(target.read_bytes(), original_target)
+        self.assertEqual(runtime_history.read_bytes(), original_runtime_history)
+        self.assertEqual(wiki_log.read_bytes(), original_wiki_log)
+        self.assertEqual(receipt_history.read_bytes(), original_receipt_history)
+        self.assertEqual(audit_stream.read_bytes() if audit_stream.exists() else b"", original_audit_stream)
+        self.assertEqual({path.name for path in receipt_dir.glob("review-page-*.json")}, original_receipt_files)
+        self.assertNotIn("This should rollback after receipt.", target.read_text(encoding="utf-8"))
 
     def test_review_page_records_judgment_lifecycle_event_in_cognitive_history(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

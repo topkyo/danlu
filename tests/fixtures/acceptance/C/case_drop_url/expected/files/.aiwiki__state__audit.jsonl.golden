@@ -1,1 +1,1 @@
-{"audit_event_id": "audit-ba83494e23917219550e", "event_type": "raw-added", "occurred_at": "", "revert_supported": false, "source_ref": ".aiwiki/state/runtime-history.jsonl#L1", "source_stream": "runtime_history", "subject": {"id": "", "kind": "raw-added"}, "trace_id": ""}
+{"audit_event_id": "audit-ba83494e23917219550e", "event_type": "raw-added", "occurred_at": 0, "revert_supported": false, "source_ref": ".aiwiki/state/runtime-history.jsonl#L1", "source_stream": "runtime_history", "subject": {"id": "", "kind": "raw-added"}, "trace_id": ""}

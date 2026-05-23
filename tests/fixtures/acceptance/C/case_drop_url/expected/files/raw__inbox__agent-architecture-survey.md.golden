@@ -1,28 +1,3 @@
----
-title: "Agent Architecture Survey"
-source_type: "url-drop"
-original_path: "https://example.com/agents"
-asset_files:
----
-
 # Agent Architecture Survey
 
-## Source URL
-- Original URL: `https://example.com/agents`
-- Final URL: `https://example.com/agents`
-
-## Fetch Metadata
-- Fetched at: `2026-04-27T00:00:00+00:00`
-- Content type: `text/html`
-- HTTP status: `200`
-- Browser renderer: `none`
-- Extraction mode: `readability`
-
-## Description
-A survey of agent runtime tradeoffs.
-
-## Page Assets
-- No page images stored.
-
-## Extracted Content
 Agents coordinate tools, planning, and memory.

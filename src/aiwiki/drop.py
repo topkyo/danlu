@@ -28,7 +28,6 @@ from .app_utils import (
     first_markdown_heading,
     next_identifier,
     relative_path,
-    render_frontmatter,
     runtime_write_lock,
     safe_fetch,
     safe_resolve_within,
@@ -242,9 +241,28 @@ def _materialize_url(root: Path, url: str, title: str | None, collection: dict[s
             _write_bytes(asset_path, image["bytes"])
             created_paths.append(asset_path)
             asset_paths.append(relative_path(root, asset_path))
-        markdown = _render_url_note(root, url, fetched, display_title, asset_paths)
+        ingest_metadata = {
+            "original_url": url,
+            "final_url": fetched["final_url"],
+            "content_type": fetched["content_type"],
+            "http_status": fetched["status"],
+            "browser_backend": fetched["browser_backend"] or "",
+            "extraction_mode": fetched["extraction_mode"],
+            "description": fetched["description"] or "",
+            "asset_files": asset_paths,
+            "fetched_at": utc_now(),
+        }
+        markdown = _write_url_note_body(display_title, fetched, asset_paths)
         _write_text(note_path, markdown)
         created_paths.append(note_path)
+        entry = _append_manifest_entry(
+            root,
+            stored_path=note_path,
+            original_path=url,
+            source_type="url-drop",
+            title=display_title,
+            ingest_metadata=ingest_metadata,
+        )
         append_wiki_log(
             root,
             "ingest",
@@ -263,6 +281,8 @@ def _materialize_url(root: Path, url: str, title: str | None, collection: dict[s
             original_path=url,
             source_type="url-drop",
             title=display_title,
+            entry_id=entry["id"],
+            ingest_metadata=ingest_metadata,
         )
     except Exception:
         _rollback_created_paths(created_paths)
@@ -278,30 +298,53 @@ def _materialize_url(root: Path, url: str, title: str | None, collection: dict[s
     }
 
 
-def _render_url_note(root: Path, url: str, fetched: dict[str, Any], display_title: str, asset_paths: list[str]) -> str:
-    page_assets = [f"- Stored asset: `{path}`" for path in asset_paths] or ["- No page images stored."]
-    return _render_raw_note(
-        title=display_title,
-        source_type="url-drop",
-        original_path=fetched["final_url"],
-        sections=[
-            ("Source URL", [f"- Original URL: `{url}`", f"- Final URL: `{fetched['final_url']}`"]),
-            (
-                "Fetch Metadata",
-                [
-                    f"- Fetched at: `{utc_now()}`",
-                    f"- Content type: `{fetched['content_type']}`",
-                    f"- HTTP status: `{fetched['status']}`",
-                    f"- Browser renderer: `{fetched['browser_backend'] or 'none'}`",
-                    f"- Extraction mode: `{fetched['extraction_mode']}`",
-                ],
-            ),
-            ("Description", [fetched["description"] or "- No meta description found."]),
-            ("Page Assets", page_assets),
-            ("Extracted Content", [fetched["text"] or "No text content extracted from the page."]),
-        ],
-        extra_frontmatter={"asset_files": asset_paths},
-    )
+def _write_url_note_body(display_title: str, fetched: dict[str, Any], asset_paths: list[str]) -> str:
+    """Write fetched page text to raw/inbox without frontmatter or capture-metadata sections."""
+    lines = [f"# {display_title}", ""]
+    body = str(fetched.get("text") or "").strip()
+    if body:
+        lines.append(body)
+        lines.append("")
+    elif fetched.get("description"):
+        lines.append(str(fetched["description"]).strip())
+        lines.append("")
+    else:
+        lines.append("No text content extracted from the page.")
+        lines.append("")
+    if asset_paths:
+        lines.append("## Assets")
+        lines.extend(f"- `{path}`" for path in asset_paths)
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _write_repo_note_body(display_title: str, snapshot: dict[str, Any]) -> str:
+    """Write repo snapshot text to raw/inbox without frontmatter or capture-metadata sections."""
+    lines = [f"# {display_title}", ""]
+    readme = str(snapshot.get("readme") or "").strip()
+    if readme:
+        lines.append(readme)
+        lines.append("")
+    tree_lines = snapshot.get("tree") or []
+    if tree_lines:
+        lines.append("## Repository Tree")
+        lines.extend(str(item) for item in tree_lines)
+        lines.append("")
+    for item in snapshot.get("files") or []:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "").strip()
+        content = str(item.get("content") or "").strip()
+        if not path:
+            continue
+        lines.append(f"## {path}")
+        if content:
+            lines.append(content)
+        lines.append("")
+    if len(lines) <= 2:
+        lines.append("No repository text captured.")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def drop_pdf(root: Path, source: str, title: str | None = None) -> dict[str, Any]:
@@ -546,30 +589,26 @@ def _materialize_repo(root: Path, source: str, title: str | None, collection: di
     display_title = title or snapshot["name"]
     stem = _timestamped_stem(display_title)
     note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
-    sections = [
-        ("Repository", [f"- Source: `{original_path}`"]),
-        (
-            "Repository Metadata",
-            [
-                f"- Snapshot at: `{utc_now()}`",
-                f"- Commit: `{snapshot['commit'] or 'unknown'}`",
-                f"- Origin: `{snapshot['origin'] or 'unknown'}`",
-            ],
-        ),
-        ("README", [snapshot["readme"] or "No README text found."]),
-        ("Repository Tree", snapshot["tree"] or ["- No files captured."]),
-    ]
-    if snapshot["files"]:
-        file_lines = []
-        for item in snapshot["files"]:
-            file_lines.extend([f"### {item['path']}", item["content"], ""])
-        sections.append(("Key File Excerpts", file_lines))
-    markdown = _render_raw_note(title=display_title, source_type="repo-drop", original_path=original_path, sections=sections)
+    ingest_metadata = {
+        "repo_source": original_path,
+        "snapshot_at": utc_now(),
+        "commit": snapshot["commit"] or "",
+        "origin": snapshot["origin"] or "",
+    }
+    markdown = _write_repo_note_body(display_title, snapshot)
     created_paths: list[Path] = []
     append_file_sizes = _snapshot_append_files(root)
     try:
         _write_text(note_path, markdown)
         created_paths.append(note_path)
+        entry = _append_manifest_entry(
+            root,
+            stored_path=note_path,
+            original_path=original_path,
+            source_type="repo-drop",
+            title=display_title,
+            ingest_metadata=ingest_metadata,
+        )
         append_wiki_log(
             root,
             "ingest",
@@ -587,6 +626,8 @@ def _materialize_repo(root: Path, source: str, title: str | None, collection: di
             original_path=original_path,
             source_type="repo-drop",
             title=display_title,
+            entry_id=entry["id"],
+            ingest_metadata=ingest_metadata,
         )
     except Exception:
         _rollback_created_paths(created_paths)
@@ -741,6 +782,7 @@ def _append_raw_added_history(
     entry_id: str = "",
     note_kind: str = "",
     capture_mode: str = "",
+    ingest_metadata: dict[str, Any] | None = None,
 ) -> None:
     event: dict[str, Any] = {
         "event_type": "raw-added",
@@ -759,6 +801,8 @@ def _append_raw_added_history(
         event["note_kind"] = note_kind
     if capture_mode:
         event["capture_mode"] = capture_mode
+    if ingest_metadata:
+        event["ingest_metadata"] = ingest_metadata
     append_runtime_history(root, event)
 
 
@@ -770,6 +814,7 @@ def _append_manifest_entry(
     source_type: str,
     title: str,
     note_kind: str = "",
+    ingest_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     manifest = load_manifest(root)
     entries: list[dict[str, Any]] = manifest["entries"]
@@ -794,6 +839,8 @@ def _append_manifest_entry(
         "imported_at": imported_at,
         "updated_at": imported_at,
     }
+    if ingest_metadata:
+        entry["ingest_metadata"] = ingest_metadata
     entries.append(entry)
     save_manifest(root, manifest)
     return entry
@@ -1649,28 +1696,6 @@ def _write_text(path: Path, content: str) -> None:
 
 def _write_bytes(path: Path, content: bytes) -> None:
     atomic_write_bytes(path, content, fsync=True)
-
-
-def _render_raw_note(
-    title: str,
-    source_type: str,
-    original_path: str,
-    sections: list[tuple[str, list[str]]],
-    extra_frontmatter: dict[str, Any] | None = None,
-) -> str:
-    frontmatter = {
-        "title": title,
-        "source_type": source_type,
-        "original_path": original_path,
-    }
-    if extra_frontmatter:
-        frontmatter.update(extra_frontmatter)
-    lines = [render_frontmatter(frontmatter), "", f"# {title}", ""]
-    for heading, body_lines in sections:
-        lines.append(f"## {heading}")
-        lines.extend(body_lines)
-        lines.append("")
-    return "\n".join(lines)
 
 
 def _label_from_url(url: str) -> str:

@@ -24,24 +24,6 @@ function renderActionButtons(plugin, container, buttons) {
   });
 }
 
-function renderGettingStartedSection(plugin, container) {
-  const section = container.createDiv({ cls: "furnace-shell-section" });
-  section.createEl("h3", { text: plugin.t("Start Here") });
-  section.createDiv({
-    cls: "furnace-shell-meta",
-    text: plugin.t("用顶部 Universal Input 直接投料或提问；也可以打开 Ask 弹窗选择 format / protocol（mode 固定 run-ask）。"),
-  });
-  const steps = section.createEl("ol");
-  steps.createEl("li", { text: plugin.t("先点刷新生成最新数据。") });
-  steps.createEl("li", { text: plugin.t("在 Universal Input 里粘贴 URL / PDF / 文件路径 / 文本笔记，或直接输入问题。") });
-  steps.createEl("li", { text: plugin.t("需要更精细控制（output format / protocol）时，打开 Ask 弹窗（mode 固定 run-ask）。") });
-  steps.createEl("li", { text: plugin.t("Follow single writer for write actions: do not run compile / nightly / apply / revert in Obsidian and the terminal at the same time.") });
-  plugin.renderActionButtons(section, [
-    { label: "Capture Note", cta: true, onClick: async () => new CaptureNoteModal(plugin.app, plugin).open() },
-    { label: "Compile", onClick: async () => plugin.runCompileCommand() },
-  ]);
-}
-
 function renderPanel(plugin, container, title, description = "", options = {}) {
   const panel = container.createDiv({ cls: "furnace-shell-panel" });
   const header = panel.createDiv({ cls: "furnace-shell-panel-header" });
@@ -437,9 +419,14 @@ function renderDigestPanel(plugin, container) {
   const review = plugin.shellSummary.review_backlog_counts || {};
   const aging = plugin.shellSummary.aging_summary || {};
   const nightly = plugin.shellSummary.nightly || {};
+  const watcher = plugin.shellSummary.watcher || {};
   const llmStatus = plugin.shellSummary.llm_status || {};
   const lintCounts = nightly.lint_counts || {};
   const lintTotal = sumNumericValues(lintCounts);
+  const nightlyReceipt = nightly.llm_receipt || {};
+  const recoveryCommand = String(
+    nightly.recovery_command || nightlyReceipt.recovery_command || watcher.recovery_command || ""
+  ).trim();
 
   plugin.renderDigestRow(
     panel,
@@ -463,80 +450,13 @@ function renderDigestPanel(plugin, container) {
       ? `${lintTotal || 0} ${plugin.t("warnings")} · ${formatDisplayTime(nightly.generated_at, plugin.locale()) || plugin.t("healthy")}`
       : plugin.t("No nightly state yet.")
   );
+  if (recoveryCommand) {
+    renderDigestRow(plugin, panel, "Recovery command", recoveryCommand);
+  }
   panel.createDiv({
     cls: "furnace-shell-panel-note",
     text: `${plugin.t("Last sync")} ${formatDisplayTime(plugin.shellSummary.generated_at, plugin.locale()) || plugin.t("unknown")}`,
   });
-}
-
-function renderLegacyAdvancedPanel(plugin, container) {
-  // R91: 不再嵌套 <details>，直接平铺到调用方的容器（DevOps section body 自带折叠）。
-  const review = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary.review_backlog_counts || {} : {};
-  const pendingReviewCount = Number(review.pending_decisions || 0) + Number(review.pending_judgments || 0);
-  const body = container.createDiv({ cls: "furnace-shell-advanced-body" });
-  plugin.renderInlineButtons(body, [
-    { label: "Compile", cta: true, onClick: async () => plugin.runCompileCommand() },
-    { label: "Nightly", onClick: async () => plugin.runNightlyCommand() },
-    { label: "Set Protocol", onClick: async () => new ProtocolCommandModal(plugin.app, plugin).open() },
-    { label: "Sync now", kind: "ghost", onClick: async () => plugin.refreshShellSummaryCommand() },
-  ]);
-
-  const suggestedActions = body.createDiv({ cls: "furnace-shell-subpanel furnace-shell-subpanel-compact" });
-  suggestedActions.createEl("h4", { text: plugin.t("Suggested Next Actions") });
-  if (!renderSuggestedNextActionsBlock(plugin, suggestedActions, { maxItems: 2 })) {
-    suggestedActions.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No suggested next action right now.") });
-  }
-
-  const columns = body.createDiv({ cls: "furnace-shell-advanced-grid" });
-
-  const reviewCard = columns.createDiv({ cls: "furnace-shell-subpanel" });
-  reviewCard.createEl("h4", { text: plugin.t("Quick review") });
-  reviewCard.createDiv({
-    cls: "furnace-shell-meta",
-    text: `${pendingReviewCount} ${plugin.t("Pending Reviews")} · ${(plugin.shellSummary && plugin.shellSummary.aging_summary && plugin.shellSummary.aging_summary.overdue_count) || 0} ${plugin.t("Overdue")}`,
-  });
-  const nextReview = plugin.nextReviewCandidate();
-  if (nextReview && nextReview.pagePath) {
-    reviewCard.createEl("strong", { text: nextReview.label || nextReview.pagePath });
-    reviewCard.createDiv({ cls: "furnace-shell-meta", text: nextReview.description || plugin.t("review object") });
-  }
-  plugin.renderInlineButtons(reviewCard, [
-    { label: "Review Next", onClick: async () => plugin.openReviewNextTransitionPicker() },
-    { label: "Batch Review", onClick: async () => plugin.openReviewBatchSuggestionPicker() },
-    { label: "Open Review Center", kind: "ghost", onClick: async () => plugin.openReviewCenterView() },
-  ], "furnace-shell-subpanel-actions");
-
-  const executionCard = columns.createDiv({ cls: "furnace-shell-subpanel" });
-  executionCard.createEl("h4", { text: plugin.t("Quick execution") });
-  executionCard.createDiv({
-    cls: "furnace-shell-meta",
-    text: `${review.ready_actions || 0} ${plugin.t("actions")} · ${review.overdue_actions || 0} ${plugin.t("Overdue")} · ${review.escalated_actions || 0} ${plugin.t("Escalation")}`,
-  });
-  plugin.renderInlineButtons(executionCard, [
-    { label: "Review Action", onClick: async () => plugin.openReviewActionContextPicker() },
-    { label: "Apply All Low-Risk", onClick: async () => plugin.runApplyAllAcceptedLowRiskCommand() },
-    { label: "Open Execution Center", kind: "ghost", onClick: async () => plugin.openExecutionCenterView() },
-  ], "furnace-shell-subpanel-actions");
-
-  const runsCard = columns.createDiv({ cls: "furnace-shell-subpanel" });
-  runsCard.createEl("h4", { text: plugin.t("Latest plugin runs") });
-  if (!plugin.pluginState.recentRuns.length) {
-    runsCard.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent plugin runs.") });
-  } else {
-    const runList = runsCard.createDiv({ cls: "furnace-shell-inline-list" });
-    plugin.pluginState.recentRuns.slice(0, 3).forEach((record) => {
-      const item = runList.createDiv({ cls: "furnace-shell-inline-item" });
-      item.createEl("strong", { text: record.label || record.args || plugin.t("command") });
-      item.createDiv({
-        cls: "furnace-shell-meta",
-        text: `${plugin.t(record.status || "status-unknown")} · ${formatDisplayTime(record.startedAt, plugin.locale())}`,
-      });
-    });
-  }
-  plugin.renderInlineButtons(runsCard, [
-    { label: "Open Recent Runs", kind: "ghost", onClick: async () => plugin.openRecentRunsView() },
-    { label: "Open Home Note", kind: "ghost", onClick: async () => plugin.openHomeNote() },
-  ], "furnace-shell-subpanel-actions");
 }
 
 function isHttpUrl(value) {

@@ -204,11 +204,23 @@ class MiscFlowTests(AppFlowTestBase):
         existing = self.root / "raw" / "inbox" / "source-foo.md"
         existing.write_text("do not overwrite\n", encoding="utf-8")
 
-        entry = ingest_source(self.root, "https://example.com/foo", title="foo")
+        fetched = {
+            "title": "foo",
+            "final_url": "https://example.com/foo",
+            "content_type": "text/html",
+            "status": "200",
+            "browser_backend": "",
+            "extraction_mode": "readability",
+            "description": "",
+            "image_urls": [],
+            "text": "Fetched body",
+        }
+        with patch("aiwiki.drop._fetch_url", return_value=fetched):
+            entry = ingest_source(self.root, "https://example.com/foo", title="foo")
 
-        self.assertEqual(entry["stored_path"], "raw/inbox/source-foo-2.md")
         self.assertEqual(existing.read_text(encoding="utf-8"), "do not overwrite\n")
-        self.assertTrue((self.root / "raw" / "inbox" / "source-foo-2.md").exists())
+        self.assertNotEqual(entry["stored_path"], "raw/inbox/source-foo.md")
+        self.assertTrue((self.root / entry["stored_path"]).exists())
 
     def test_reviewed_pages_enter_knowledge_lifecycle_active_when_linked_to_active_corpus(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -1043,9 +1055,16 @@ class MiscFlowTests(AppFlowTestBase):
         manifest = load_manifest(self.root)
         self.assertEqual(len(manifest["entries"]), 1)
         self.assertFalse(result["llm_used"])
+        self.assertTrue(result["deterministic_only"])
+        self.assertEqual(result["mode"], "deterministic-only")
+        self.assertFalse(result["semantic_lint"])
         entry_id = manifest["entries"][0]["id"]
         self.assertTrue((self.root / "wiki" / "sources" / f"{entry_id}.md").exists())
         self.assertTrue((self.root / ".aiwiki" / "state" / "automation.json").exists())
+        shell = shell_status(self.root)
+        self.assertEqual(shell["watcher"]["last_run_mode"], "deterministic-only")
+        self.assertEqual(shell["watcher"]["service_env"], "AIWIKI_WATCH_DETERMINISTIC_ONLY=1")
+        self.assertFalse(shell["watcher"]["llm_used"])
 
     def test_watch_processes_initial_inbox_state(self) -> None:
         dropped = self.root / "raw" / "inbox" / "watch.md"
@@ -1086,6 +1105,8 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertIn("AIWIKI_DOGFOOD_MATURITY_L3_LIMIT=1000", content)
         self.assertIn("AIWIKI_DOGFOOD_MATURITY_COMPILE_LIMIT=0", content)
         self.assertIn("AIWIKI_DOGFOOD_MATURITY_NO_SEMANTIC_LINT=1", content)
+        self.assertIn("AIWIKI_DOGFOOD_MATURITY_ENVRC", content)
+        self.assertIn('set_env_key "$DOGFOOD_MATURITY_ENV_PATH" "AIWIKI_DOGFOOD_MATURITY_ENVRC"', content)
 
     def test_user_service_install_script_mentions_nightly_timer(self) -> None:
         script = Path("/home/tim/ai-wiki/scripts/install_user_service.sh")

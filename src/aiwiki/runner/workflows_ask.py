@@ -15,6 +15,7 @@ from aiwiki.app_compile import ask_question
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_queries import human_query_title
 from aiwiki.app_state import load_machine_memory, load_manifest
+from aiwiki.app_state import run_notes_path as run_notes_file_path
 from aiwiki.app_utils import (
     _restore_file_bytes,
     _snapshot_file_bytes,
@@ -24,6 +25,7 @@ from aiwiki.app_utils import (
     relative_path,
     render_frontmatter,
     runtime_write_operation,
+    slugify,
     strip_frontmatter,
     tokenize,
     utc_now,
@@ -433,6 +435,11 @@ def _complete_run_ask_artifact(
     assert result is not None
     target_snapshot = _snapshot_file_bytes(target)
     target.write_text(updated, encoding="utf-8")
+    artifact_ref = str(artifact.get("path") or "")
+    run_id = str(artifact.get("run_id") or run_id_for_artifact(artifact_ref))
+    planned_receipt_path = _planned_run_ask_output_receipt_ref(root, artifact_ref=artifact_ref, run_id=run_id)
+    notes_path = run_notes_file_path(root, run_id)
+    notes_snapshot = _snapshot_file_bytes(notes_path)
     backend_effective = _client_backend_name(effective_client)
     model_final = _client_model_name(effective_client)
     fallback_stage = _fallback_stage_label(fallback_stages)
@@ -452,7 +459,7 @@ def _complete_run_ask_artifact(
         _stamped_record(
             {
                 "event": "run-ask",
-                "target": artifact["path"],
+                "target": artifact_ref,
                 "question": question,
                 "format": output_format,
                 "protocol": artifact.get("protocol", ""),
@@ -468,19 +475,42 @@ def _complete_run_ask_artifact(
             raw_response_path=_raw_response_path(root, result),
         )
         _mark_run_ask_background_artifact_complete(target, status="completed", job_id=background_job_id)
-        execution_receipt = write_execution_receipt(
+        run_notes = write_run_notes(
+            root,
+            run_id=run_id,
+            status="llm-complete",
+            question=question,
+            output_format=output_format,
+            protocol=str(artifact.get("protocol") or ""),
+            output_path=artifact_ref,
+            source_count=len(source_ids),
+            concept_count=len(artifact.get("ranked_concepts", [])),
+            receipt_path=planned_receipt_path,
+            backend=backend_effective,
+            model=model_final,
+            fallback_stage=fallback_stage,
+            stages=[
+                "Prepared deterministic context for the request.",
+                "Requested an LLM draft using the selected backend and prompt profile.",
+                "Validated the returned markdown contract and updated the output artifact.",
+                "Recorded authoritative execution receipt and LLM attempt metadata for audit and recovery.",
+            ],
+        )
+        write_run_notes_frontmatter(target, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
+        _ensure_output_cssclass(target)
+        write_execution_receipt(
             root,
             operation="run-ask",
             generated_by="aiwiki-run-ask",
             subject_kind="output-artifact",
-            subject_id=str(artifact.get("run_id") or Path(str(artifact.get("path") or "")).stem),
-            target_file=str(artifact["path"]),
-            primary_path=str(artifact["path"]),
+            subject_id=run_id or Path(artifact_ref).stem,
+            target_file=artifact_ref,
+            primary_path=artifact_ref,
             protocol=str(artifact.get("protocol") or ""),
             extra={
                 "format": output_format,
                 "question": question,
-                "run_id": str(artifact.get("run_id") or ""),
+                "run_id": run_id,
                 "llm_receipt_path": ".aiwiki/logs/llm-receipts.jsonl",
                 "backend_effective": backend_effective,
                 "model_final": model_final,
@@ -491,30 +521,8 @@ def _complete_run_ask_artifact(
         )
     except Exception:
         _restore_file_bytes(target, target_snapshot)
+        _restore_file_bytes(notes_path, notes_snapshot)
         raise
-    run_notes = write_run_notes(
-        root,
-        run_id=str(artifact.get("run_id") or ""),
-        status="llm-complete",
-        question=question,
-        output_format=output_format,
-        protocol=str(artifact.get("protocol") or ""),
-        output_path=str(artifact.get("path") or ""),
-        source_count=len(source_ids),
-        concept_count=len(artifact.get("ranked_concepts", [])),
-        receipt_path=str(execution_receipt.get("receipt_path") or ""),
-        backend=backend_effective,
-        model=model_final,
-        fallback_stage=fallback_stage,
-        stages=[
-            "Prepared deterministic context for the request.",
-            "Requested an LLM draft using the selected backend and prompt profile.",
-            "Validated the returned markdown contract and updated the output artifact.",
-            "Recorded authoritative execution receipt and LLM attempt metadata for audit and recovery.",
-        ],
-    )
-    write_run_notes_frontmatter(target, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
-    _ensure_output_cssclass(target)
     payload = {
         **artifact,
         **run_notes,
@@ -720,6 +728,7 @@ def _direct_ask_artifact_markdown(
     answer: str,
     backend: str,
     model: str,
+    source_files: list[str] | None = None,
 ) -> str:
     title = human_query_title(question)
     frontmatter = {
@@ -735,7 +744,50 @@ def _direct_ask_artifact_markdown(
         "llm_backend": backend,
         "llm_model": model,
     }
+    if source_files:
+        frontmatter["source_files"] = list(source_files)
     return render_frontmatter(frontmatter) + f"\n# {title}\n\n## 回答\n\n{answer.strip()}\n"
+
+def _write_run_ask_output_receipt(
+    root: Path,
+    *,
+    generated_by: str,
+    artifact_ref: str,
+    run_id: str,
+    question: str,
+    output_format: str,
+    protocol: str,
+    delivery_mode: str,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    receipt_extra: dict[str, Any] = {
+        "format": output_format,
+        "question": question,
+        "run_id": run_id,
+        "llm_receipt_path": ".aiwiki/logs/llm-receipts.jsonl",
+        "delivery_mode": delivery_mode,
+    }
+    if extra:
+        receipt_extra.update(extra)
+    return write_execution_receipt(
+        root,
+        operation="run-ask",
+        generated_by=generated_by,
+        subject_kind="output-artifact",
+        subject_id=run_id or Path(artifact_ref).stem,
+        target_file=artifact_ref,
+        primary_path=artifact_ref,
+        protocol=protocol,
+        extra=receipt_extra,
+    )
+
+
+def _planned_run_ask_output_receipt_ref(root: Path, *, artifact_ref: str, run_id: str) -> str:
+    receipt_dir = root / "output" / "control" / "execution-receipts"
+    seed_target = Path(artifact_ref).stem or run_id or "run-ask"
+    seed = slugify(f"run-ask-{seed_target}") or slugify("run-ask") or "execution-receipt"
+    action_id = next_available_stem(receipt_dir, seed, suffix=".json")
+    return relative_path(root, receipt_dir / f"{action_id}.json")
 
 def _direct_ask_system_prompt() -> str:
     return (
@@ -997,6 +1049,7 @@ def run_ask(
         destination = directory / f"{artifact_id}.md"
         artifact_ref = relative_path(root, destination)
         stats = collect_elixir_counts(root)
+        destination_snapshot = _snapshot_file_bytes(destination)
         destination.write_text(
             local_elixir_count_artifact_markdown(
                 artifact_id=artifact_id,
@@ -1008,47 +1061,76 @@ def run_ask(
             encoding="utf-8",
         )
         run_id = run_id_for_artifact(artifact_ref)
-        run_notes = write_run_notes(
-            root,
-            run_id=run_id,
-            status="local-deterministic-complete",
-            question=question,
-            output_format="note",
-            protocol=active_protocol,
-            output_path=artifact_ref,
-            receipt_path=".aiwiki/logs/llm-receipts.jsonl",
-            backend="local",
-            model="elixir-stats",
-            stages=[
-                "Detected a local elixir count question before the direct LLM path.",
-                "Counted settled and candidate elixir markdown files deterministically.",
-            ],
-        )
-        write_run_notes_frontmatter(destination, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
-        _ensure_output_cssclass(destination)
-        _stamped_record(
-            {
-                "event": "run-ask-local-elixir-stats",
-                "target": artifact_ref,
-                "question": question,
-                "clean_question": _clean_local_intent_question(question),
-                "format": "note",
-                "protocol": active_protocol,
-                "settled_elixir_count": len(stats.get("settled", [])),
-                "candidate_elixir_count": len(stats.get("candidates", [])),
-            },
-            {
-                "backend_requested": "local",
-                "backend_effective": "local",
-                "model_selected": "elixir-stats",
-                "model_final": "elixir-stats",
-                "fallback_stage": "",
-                "fallback_reason": "",
-                "contract_validated": True,
-                "delivery_mode": "local-deterministic",
-            },
-            status="success",
-        )
+        planned_receipt_path = _planned_run_ask_output_receipt_ref(root, artifact_ref=artifact_ref, run_id=run_id)
+        notes_path = run_notes_file_path(root, run_id)
+        notes_snapshot = _snapshot_file_bytes(notes_path)
+        try:
+            _stamped_record(
+                {
+                    "event": "run-ask-local-elixir-stats",
+                    "target": artifact_ref,
+                    "question": question,
+                    "clean_question": _clean_local_intent_question(question),
+                    "format": "note",
+                    "protocol": active_protocol,
+                    "settled_elixir_count": len(stats.get("settled", [])),
+                    "candidate_elixir_count": len(stats.get("candidates", [])),
+                },
+                {
+                    "backend_requested": "local",
+                    "backend_effective": "local",
+                    "model_selected": "elixir-stats",
+                    "model_final": "elixir-stats",
+                    "fallback_stage": "",
+                    "fallback_reason": "",
+                    "contract_validated": True,
+                    "delivery_mode": "local-deterministic",
+                },
+                status="success",
+            )
+            run_notes = write_run_notes(
+                root,
+                run_id=run_id,
+                status="local-deterministic-complete",
+                question=question,
+                output_format="note",
+                protocol=active_protocol,
+                output_path=artifact_ref,
+                receipt_path=planned_receipt_path,
+                backend="local",
+                model="elixir-stats",
+                stages=[
+                    "Detected a local elixir count question before the direct LLM path.",
+                    "Counted settled and candidate elixir markdown files deterministically.",
+                    "Recorded authoritative execution receipt and local audit metadata.",
+                ],
+            )
+            write_run_notes_frontmatter(
+                destination,
+                run_id=run_notes["run_id"],
+                run_notes_ref=run_notes["run_notes_path"],
+            )
+            _ensure_output_cssclass(destination)
+            _write_run_ask_output_receipt(
+                root,
+                generated_by="aiwiki-local-elixir-stats",
+                artifact_ref=artifact_ref,
+                run_id=run_id,
+                question=question,
+                output_format="note",
+                protocol=active_protocol,
+                delivery_mode="local-deterministic",
+                extra={
+                    "backend_effective": "local",
+                    "model_final": "elixir-stats",
+                    "settled_elixir_count": len(stats.get("settled", [])),
+                    "candidate_elixir_count": len(stats.get("candidates", [])),
+                },
+            )
+        except Exception:
+            _restore_file_bytes(destination, destination_snapshot)
+            _restore_file_bytes(notes_path, notes_snapshot)
+            raise
         return {
             "path": artifact_ref,
             "format": "note",
@@ -1075,6 +1157,7 @@ def run_ask(
         destination = directory / f"{artifact_id}.md"
         artifact_ref = relative_path(root, destination)
         stats = collect_markdown_counts(root)
+        destination_snapshot = _snapshot_file_bytes(destination)
         destination.write_text(
             local_markdown_count_artifact_markdown(
                 artifact_id=artifact_id,
@@ -1086,46 +1169,74 @@ def run_ask(
             encoding="utf-8",
         )
         run_id = run_id_for_artifact(artifact_ref)
-        run_notes = write_run_notes(
-            root,
-            run_id=run_id,
-            status="local-deterministic-complete",
-            question=question,
-            output_format="note",
-            protocol=active_protocol,
-            output_path=artifact_ref,
-            receipt_path=".aiwiki/logs/llm-receipts.jsonl",
-            backend="local",
-            model="markdown-stats",
-            stages=[
-                "Detected a local markdown count question before the direct LLM path.",
-                "Counted visible markdown files deterministically inside the vault.",
-            ],
-        )
-        write_run_notes_frontmatter(destination, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
-        _ensure_output_cssclass(destination)
-        _stamped_record(
-            {
-                "event": "run-ask-local-markdown-stats",
-                "target": artifact_ref,
-                "question": question,
-                "clean_question": _clean_local_intent_question(question),
-                "format": "note",
-                "protocol": active_protocol,
-                "markdown_file_count": int(stats.get("total") or 0),
-            },
-            {
-                "backend_requested": "local",
-                "backend_effective": "local",
-                "model_selected": "markdown-stats",
-                "model_final": "markdown-stats",
-                "fallback_stage": "",
-                "fallback_reason": "",
-                "contract_validated": True,
-                "delivery_mode": "local-deterministic",
-            },
-            status="success",
-        )
+        planned_receipt_path = _planned_run_ask_output_receipt_ref(root, artifact_ref=artifact_ref, run_id=run_id)
+        notes_path = run_notes_file_path(root, run_id)
+        notes_snapshot = _snapshot_file_bytes(notes_path)
+        try:
+            _stamped_record(
+                {
+                    "event": "run-ask-local-markdown-stats",
+                    "target": artifact_ref,
+                    "question": question,
+                    "clean_question": _clean_local_intent_question(question),
+                    "format": "note",
+                    "protocol": active_protocol,
+                    "markdown_file_count": int(stats.get("total") or 0),
+                },
+                {
+                    "backend_requested": "local",
+                    "backend_effective": "local",
+                    "model_selected": "markdown-stats",
+                    "model_final": "markdown-stats",
+                    "fallback_stage": "",
+                    "fallback_reason": "",
+                    "contract_validated": True,
+                    "delivery_mode": "local-deterministic",
+                },
+                status="success",
+            )
+            run_notes = write_run_notes(
+                root,
+                run_id=run_id,
+                status="local-deterministic-complete",
+                question=question,
+                output_format="note",
+                protocol=active_protocol,
+                output_path=artifact_ref,
+                receipt_path=planned_receipt_path,
+                backend="local",
+                model="markdown-stats",
+                stages=[
+                    "Detected a local markdown count question before the direct LLM path.",
+                    "Counted visible markdown files deterministically inside the vault.",
+                    "Recorded authoritative execution receipt and local audit metadata.",
+                ],
+            )
+            write_run_notes_frontmatter(
+                destination,
+                run_id=run_notes["run_id"],
+                run_notes_ref=run_notes["run_notes_path"],
+            )
+            _ensure_output_cssclass(destination)
+            _write_run_ask_output_receipt(
+                root,
+                generated_by="aiwiki-local-markdown-stats",
+                artifact_ref=artifact_ref,
+                run_id=run_id,
+                question=question,
+                output_format="note",
+                protocol=active_protocol,
+                delivery_mode="local-deterministic",
+                extra={
+                    "backend_effective": "local",
+                    "model_final": "markdown-stats",
+                    "markdown_file_count": int(stats.get("total") or 0),
+                },
+            )
+        except Exception:
+            _restore_file_bytes(destination, destination_snapshot)
+            _restore_file_bytes(notes_path, notes_snapshot)
+            raise
         return {
             "path": artifact_ref,
             "format": "note",
@@ -1237,56 +1348,90 @@ def run_ask(
             answer=normalized_answer,
             backend=backend_effective,
             model=model_final,
+            source_files=material_refs,
         )
+        destination_snapshot = _snapshot_file_bytes(destination)
         destination.write_text(content, encoding="utf-8")
         run_id = run_id_for_artifact(artifact_ref)
-        run_notes = write_run_notes(
-            root,
-            run_id=run_id,
-            status="llm-direct-complete",
-            question=question,
-            output_format="note",
-            protocol=active_protocol,
-            output_path=artifact_ref,
-            receipt_path=".aiwiki/logs/llm-receipts.jsonl",
-            backend=backend_effective,
-            model=model_final,
-            fallback_stage=_fallback_stage_label(fallback_stages),
-            stages=[
-                "Detected a simple note/material question and used the lightweight direct-answer LLM path.",
-                "Recorded LLM receipt metadata for audit and recovery.",
-            ],
-        )
-        write_run_notes_frontmatter(destination, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
-        _ensure_output_cssclass(destination)
+        planned_receipt_path = _planned_run_ask_output_receipt_ref(root, artifact_ref=artifact_ref, run_id=run_id)
+        notes_path = run_notes_file_path(root, run_id)
+        notes_snapshot = _snapshot_file_bytes(notes_path)
+        fallback_stage_label = _fallback_stage_label(fallback_stages)
         llm_audit = {
             "backend_requested": backend_requested,
             "backend_effective": backend_effective,
             "model_selected": model_selected,
             "model_final": model_final,
-            "fallback_stage": _fallback_stage_label(fallback_stages),
+            "fallback_stage": fallback_stage_label,
             "fallback_reason": fallback_reason,
             "contract_validated": True,
             "delivery_mode": "llm-direct",
         }
-        _stamped_record(
-            {
-                "event": "run-ask-direct",
-                "target": artifact_ref,
-                "question": question,
-                "format": "note",
-                "protocol": active_protocol,
-                "duration_ms": int((time.monotonic() - started) * 1000),
-                "timeout_seconds": effective_timeout_seconds,
-                "no_cache": no_cache,
-                "material_refs": material_refs,
-            },
-            llm_audit,
-            status="success",
-            response_id=result.response_id,
-            usage=result.usage,
-            raw_response_path=_raw_response_path(root, result),
-        )
+        try:
+            _stamped_record(
+                {
+                    "event": "run-ask-direct",
+                    "target": artifact_ref,
+                    "question": question,
+                    "format": "note",
+                    "protocol": active_protocol,
+                    "duration_ms": int((time.monotonic() - started) * 1000),
+                    "timeout_seconds": effective_timeout_seconds,
+                    "no_cache": no_cache,
+                    "material_refs": material_refs,
+                },
+                llm_audit,
+                status="success",
+                response_id=result.response_id,
+                usage=result.usage,
+                raw_response_path=_raw_response_path(root, result),
+            )
+            run_notes = write_run_notes(
+                root,
+                run_id=run_id,
+                status="llm-direct-complete",
+                question=question,
+                output_format="note",
+                protocol=active_protocol,
+                output_path=artifact_ref,
+                receipt_path=planned_receipt_path,
+                backend=backend_effective,
+                model=model_final,
+                fallback_stage=fallback_stage_label,
+                stages=[
+                    "Detected a simple note/material question and used the lightweight direct-answer LLM path.",
+                    "Recorded LLM receipt metadata for audit and recovery.",
+                    "Recorded authoritative execution receipt for the output artifact.",
+                ],
+            )
+            write_run_notes_frontmatter(
+                destination,
+                run_id=run_notes["run_id"],
+                run_notes_ref=run_notes["run_notes_path"],
+            )
+            _ensure_output_cssclass(destination)
+            _write_run_ask_output_receipt(
+                root,
+                generated_by="aiwiki-run-ask-direct",
+                artifact_ref=artifact_ref,
+                run_id=run_id,
+                question=question,
+                output_format="note",
+                protocol=active_protocol,
+                delivery_mode="llm-direct",
+                extra={
+                    "backend_effective": backend_effective,
+                    "model_final": model_final,
+                    "fallback_stage": fallback_stage_label,
+                    "response_id": result.response_id,
+                    "usage": result.usage,
+                    "material_refs": material_refs,
+                },
+            )
+        except Exception:
+            _restore_file_bytes(destination, destination_snapshot)
+            _restore_file_bytes(notes_path, notes_snapshot)
+            raise
         return {
             "path": artifact_ref,
             "format": "note",
@@ -1298,7 +1443,7 @@ def run_ask(
             "backend_effective": backend_effective,
             "model_selected": model_selected,
             "model_final": model_final,
-            "fallback_stage": _fallback_stage_label(fallback_stages),
+            "fallback_stage": fallback_stage_label,
             "fallback_reason": fallback_reason,
             "timeout_seconds": effective_timeout_seconds,
             "run_id": run_notes["run_id"],

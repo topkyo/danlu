@@ -87,6 +87,7 @@ from .controls import (
     shell_execution_controls,
     shell_review_controls,
 )
+from .helpers import _build_llm_recovery_command, _first_non_empty
 from .meta import (
     shell_capabilities,
     shell_curated_page_roots,
@@ -177,6 +178,124 @@ def _build_recent_raw_inputs(root: Path, *, limit: int = 8) -> list[dict[str, An
         return list(reversed(raw_inputs))[:limit]
     except (OSError, ValueError, TypeError, json.JSONDecodeError, KeyError):
         return []
+
+
+def _build_watcher_summary(root: Path) -> dict[str, Any]:
+    state_path = root / ".aiwiki" / "state" / "automation.json"
+    state = load_json_document(state_path)
+    has_deterministic_flag = isinstance(state, dict) and "deterministic_only" in state
+    deterministic_only = bool(state.get("deterministic_only")) if has_deterministic_flag else None
+    if deterministic_only is True:
+        mode = "deterministic-only"
+    elif deterministic_only is False:
+        mode = "llm-enabled"
+    else:
+        mode = "unknown-legacy"
+    return {
+        "available": bool(state_path.exists()),
+        "state_path": relative_path(root, state_path),
+        "processed_at": str(state.get("processed_at") or "") if isinstance(state, dict) else "",
+        "last_run_mode": mode,
+        "deterministic_only": deterministic_only,
+        "llm_used": bool(state.get("llm_used", False)) if isinstance(state, dict) else False,
+        "llm_fallback": bool(state.get("llm_fallback", False)) if isinstance(state, dict) else False,
+        "compile_limit": int(state.get("compile_limit", 0) or 0) if isinstance(state, dict) else 0,
+        "semantic_lint": bool(state.get("semantic_lint", False)) if isinstance(state, dict) else False,
+        "default_service_mode": "deterministic-only",
+        "service_env": "AIWIKI_WATCH_DETERMINISTIC_ONLY=1",
+        "recovery_command": "./scripts/aiwiki-launcher.sh auto-once --deterministic-only",
+        "note": (
+            "Default watcher service only performs deterministic inbox processing; "
+            "LLM enrichment belongs to explicit run-* or nightly paths."
+        ),
+    }
+
+
+def _latest_run_nightly_receipt(root: Path) -> dict[str, Any]:
+    for item in reversed(load_llm_receipt_history(root)):
+        if isinstance(item, dict) and str(item.get("event") or "") == "run-nightly":
+            return dict(item)
+    return {}
+
+
+def _latest_run_nightly_execution_receipt(root: Path) -> dict[str, Any]:
+    for receipt in reversed(load_execution_receipt_history(root)):
+        if isinstance(receipt, dict) and str(receipt.get("operation") or "") == "run-nightly":
+            return dict(receipt)
+    return {}
+
+
+def _receipt_time(record: dict[str, Any]) -> str:
+    for key in ("applied_at", "created_at", "generated_at", "updated_at"):
+        value = record.get(key)
+        if value:
+            return str(value)
+    return ""
+
+
+def _build_nightly_summary(root: Path, nightly_state: dict[str, Any]) -> dict[str, Any]:
+    llm_receipt = _latest_run_nightly_receipt(root)
+    execution_receipt = _latest_run_nightly_execution_receipt(root)
+    llm_status = str(llm_receipt.get("status") or "")
+    stale_reason = ""
+    if execution_receipt and llm_status in {"failed", "error", "blocked"}:
+        stale_reason = "latest run-nightly LLM receipt failed; prior success receipt is not current proof"
+    elif execution_receipt and llm_status == "success":
+        llm_checked_at = _receipt_time(llm_receipt)
+        execution_applied_at = _receipt_time(execution_receipt)
+        if llm_checked_at and (not execution_applied_at or execution_applied_at < llm_checked_at):
+            stale_reason = "latest run-nightly LLM receipt has no matching execution receipt proof"
+    execution_receipt_stale = bool(stale_reason)
+    error_text = _first_non_empty(llm_receipt, ["error", "failure_reason", "primary_error", "fallback_reason"])
+    error_class = str(llm_receipt.get("error_class") or "") or (classify_backend_error(error_text) if error_text else "")
+    recovery_command = _build_llm_recovery_command(llm_receipt) if llm_receipt and llm_status != "success" else ""
+    return {
+        "available": nightly_health_state_path(root).exists(),
+        "generated_at": str(nightly_state.get("generated_at") or ""),
+        "state_path": relative_path(root, nightly_health_state_path(root)),
+        "llm_used": bool(nightly_state.get("llm_used", False)),
+        "lint_counts": dict(nightly_state.get("lint", {}).get("counts", {})),
+        "agent_loop": dict(nightly_state.get("agent_loop") or {})
+        if isinstance(nightly_state.get("agent_loop"), dict)
+        else {},
+        "llm_receipt": {
+            "available": bool(llm_receipt),
+            "status": llm_status,
+            "checked_at": str(llm_receipt.get("created_at") or ""),
+            "receipt_path": relative_path(root, llm_receipt_log_path(root)) if llm_receipt else "",
+            "backend_effective": str(llm_receipt.get("backend_effective") or llm_receipt.get("backend") or ""),
+            "model_final": str(llm_receipt.get("model_final") or llm_receipt.get("model") or ""),
+            "delivery_mode": str(llm_receipt.get("delivery_mode") or ""),
+            "error_class": error_class,
+            "recovery_command": recovery_command,
+        },
+        "execution_receipt": {
+            "available": bool(execution_receipt) and not execution_receipt_stale,
+            "status": "stale-after-failed-run-nightly"
+            if execution_receipt_stale and llm_status in {"failed", "error", "blocked"}
+            else "stale-after-unmatched-run-nightly-proof"
+            if execution_receipt_stale
+            else str(execution_receipt.get("status") or ""),
+            "receipt_path": "" if execution_receipt_stale else str(execution_receipt.get("receipt_path") or ""),
+            "target_file": "" if execution_receipt_stale else str(execution_receipt.get("target_file") or ""),
+            "stale": execution_receipt_stale,
+            "stale_receipt_path": str(execution_receipt.get("receipt_path") or "")
+            if execution_receipt_stale
+            else "",
+            "stale_reason": stale_reason,
+        },
+        "recovery_command": recovery_command,
+        "retention": {
+            "policy": "archive-first",
+            "delete_receipts_by_default": False,
+            "delete_logs_by_default": False,
+            "archive_candidate_state_path": ".aiwiki/state/archive-candidates.json",
+            "note": (
+                "Retention moves cold material through explicit archive/revert flows; "
+                "receipts and logs are not deleted by default."
+            ),
+        },
+    }
 
 
 def build_shell_summary(root: Path, *, generated_at: str | None = None) -> ShellSummary:
@@ -324,6 +443,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         "recent_receipts": recent_receipts,
         "recent_runs": recent_runs,
         "recent_raw_inputs": recent_raw_inputs,
+        "watcher": _build_watcher_summary(root),
         "search_results": {"query": "", "limit": 0, "result_count": 0, "results": []},
         "drift_warnings": drift_warnings,
         "counter_evidence_pages": counter_evidence_pages,
@@ -331,16 +451,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         "planner_log_preview": planner_log_preview,
         "suggested_next_actions": suggested_next_actions,
         "today_snooze": load_today_snooze_state(root),
-        "nightly": {
-            "available": nightly_health_state_path(root).exists(),
-            "generated_at": str(nightly_state.get("generated_at") or ""),
-            "state_path": relative_path(root, nightly_health_state_path(root)),
-            "llm_used": bool(nightly_state.get("llm_used", False)),
-            "lint_counts": dict(nightly_state.get("lint", {}).get("counts", {})),
-            "agent_loop": dict(nightly_state.get("agent_loop") or {})
-            if isinstance(nightly_state.get("agent_loop"), dict)
-            else {},
-        },
+        "nightly": _build_nightly_summary(root, nightly_state),
         "knowledge_stats": _build_knowledge_stats(memory, compile_state, decisions, judgments),
         "metrics": _build_metrics_summary(root),
         "links": shell_links(root),

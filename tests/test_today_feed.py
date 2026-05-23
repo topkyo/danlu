@@ -296,6 +296,13 @@ def _case_report_entry_skips_degraded_and_placeholder_outputs() -> None:
                     "created_at": "2026-04-27T08:03:00Z",
                     "background_status": "running",
                 },
+                {
+                    "path": "output/reports/literal-degraded.md",
+                    "title": "Literal degraded",
+                    "format": "report",
+                    "created_at": "2026-04-27T08:04:00Z",
+                    "llm_status": "degraded",
+                },
             ],
         }
     )

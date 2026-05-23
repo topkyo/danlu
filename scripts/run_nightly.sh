@@ -107,32 +107,48 @@ run_fallback_nightly() {
   ARGS=(--root "$TARGET_ROOT")
   append_run_nightly_args
   log "retrying nightly with fallback $FALLBACK_BACKEND/$FALLBACK_MODEL"
+  fallback_run_attempted=1
   python3 -m aiwiki.cli "${ARGS[@]}"
 }
 
 if [[ "$DETERMINISTIC_ONLY" == "1" ]]; then
   run_deterministic_nightly
 else
+  llm_attempted=0
+  llm_failure_status=2
+  fallback_run_attempted=0
   if llm_configured; then
+    llm_attempted=1
     ARGS=(--root "$TARGET_ROOT")
     append_run_nightly_args
     if python3 -m aiwiki.cli "${ARGS[@]}"; then
       exit 0
     else
       primary_status=$?
+      llm_failure_status="$primary_status"
       log "primary run-nightly failed with status $primary_status"
     fi
   else
     log "primary LLM backend is not configured"
   fi
 
-  if run_fallback_nightly; then
-    exit 0
+  if fallback_enabled; then
+    if run_fallback_nightly; then
+      exit 0
+    fi
+    if [[ "$fallback_run_attempted" == "1" ]]; then
+      llm_attempted=1
+    fi
+  fi
+
+  if [[ "$llm_attempted" == "1" ]]; then
+    log "deterministic nightly fallback suppressed after run-nightly failure"
+    exit "$llm_failure_status"
   fi
 
   if require_llm; then
     log "deterministic nightly fallback disabled by AIWIKI_NIGHTLY_REQUIRE_LLM=1"
-    exit "${primary_status:-2}"
+    exit "$llm_failure_status"
   fi
 
   run_deterministic_nightly

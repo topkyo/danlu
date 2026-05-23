@@ -339,11 +339,20 @@ def _build_graph_anchor_node_ids(
     return deduped
 
 
+def _obsidian_wikilink(vault_path: str, title: str) -> str:
+    clean = str(vault_path or "").replace("\\", "/").strip()
+    if clean.endswith(".md"):
+        clean = clean[:-3]
+    alias = str(title or clean).strip() or clean
+    return f"[[{clean}|{alias}]]"
+
+
 def _resolve_anchor_md_link(anchor: str, memory: dict[str, Any], base: Path) -> str | None:
-    """Resolve a ``kind:id`` anchor to a clickable Obsidian wiki-style markdown link.
+    """Resolve a ``kind:id`` anchor to an Obsidian wikilink for the native graph view.
 
     Returns ``None`` when the anchor cannot be resolved to an .md file.
     """
+    del base  # vault-relative links do not depend on the artifact directory.
     if ":" not in anchor:
         return None
     kind, identifier = anchor.split(":", 1)
@@ -351,20 +360,18 @@ def _resolve_anchor_md_link(anchor: str, memory: dict[str, Any], base: Path) -> 
         for node in memory.get("source_nodes", []):
             if isinstance(node, dict) and str(node.get("id") or "") == identifier:
                 title = str(node.get("title") or identifier)
-                path = f"wiki/sources/{identifier}.md"
-                return f"- [{title}](../../{path})"
+                return f"- {_obsidian_wikilink(f'wiki/sources/{identifier}.md', title)}"
     elif kind == "concept":
         for node in memory.get("concept_nodes", []):
             if isinstance(node, dict) and str(node.get("slug") or "") == identifier:
                 title = str(node.get("title") or identifier)
-                path = f"wiki/concepts/{identifier}.md"
-                return f"- [{title}](../../{path})"
+                return f"- {_obsidian_wikilink(f'wiki/concepts/{identifier}.md', title)}"
     elif kind == "judgment":
         for node in memory.get("judgment_nodes", []):
             if isinstance(node, dict) and str(node.get("page_id") or "") == identifier:
                 title = str(node.get("title") or identifier)
                 path = str(node.get("path") or f"wiki/judgments/{identifier}.md")
-                return f"- [{title}](../../{path})"
+                return f"- {_obsidian_wikilink(path, title)}"
     return None
 
 
@@ -397,10 +404,18 @@ def apply_graph_anchors_to_artifact(
     """
     if not anchors:
         return
-    from .candidates import write_graph_anchor_frontmatter
+    from ..vault_obsidian_graph import apply_native_graph_anchor_section, native_graph_anchor_ids
+    from .candidates import write_graph_anchor_frontmatter, write_machine_memory_anchor_frontmatter
 
-    write_graph_anchor_frontmatter(destination, anchors=anchors)
-    _append_graph_anchor_section(destination, anchors=anchors, memory=memory)
+    native = native_graph_anchor_ids(anchors)
+    if anchors and any(str(item).startswith("concept:") for item in anchors):
+        write_machine_memory_anchor_frontmatter(destination, anchors=anchors)
+    write_graph_anchor_frontmatter(
+        destination,
+        anchors=native,
+        force=bool(anchors) and native != anchors,
+    )
+    apply_native_graph_anchor_section(destination, anchors=native, memory=memory)
 
 
 @runtime_write_operation

@@ -24,6 +24,7 @@ from ..app_state import (
 )
 from ..app_surfaces import render_compile_status
 from ..app_utils import relative_path, write_if_changed_ignoring_timestamps
+from ..vault_obsidian_graph import sync_evidence_graph_workspace
 from .context import CompileContext
 
 
@@ -470,6 +471,7 @@ def finalize_compile_phase(context: CompileContext, *, force_cache_rebuild: bool
             "wiki refresh",
             _compile_log_details(context),
         )
+    sync_evidence_graph_workspace(context.root, context.memory)
     return _build_compile_result_payload(context, phase_summary)
 
 

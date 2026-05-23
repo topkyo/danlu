@@ -1209,13 +1209,13 @@ class CompileFlowTests(AppFlowTestBase):
         self.assertIn("报告证据入口", payload)
         self.assertNotIn("Machine Memory Graph", payload)
         self.assertIn("<svg", payload)
-        self.assertNotIn("Transformer Scaling", payload)
-        self.assertIn("当前没有可展示的中文相关 Markdown 图谱节点", payload)
+        self.assertIn("Transformer Scaling", payload)
+        self.assertNotIn("当前没有可展示的中文相关 Markdown 图谱节点", payload)
         self.assertIn("../../wiki/indexes/graph-view.md", payload)
         self.assertIn("关系图谱说明", payload)
         self.assertIn("材料提到概念", payload)
         self.assertIn("关系说明", payload)
-        self.assertNotIn("data-relation-label", payload)
+        self.assertIn("data-relation-label", payload)
         self.assertNotIn("related edge", payload)
 
     def test_compile_writes_review_center_html(self) -> None:
@@ -1928,6 +1928,55 @@ class CompileFlowTests(AppFlowTestBase):
         self.assertIn("English Title", html)
         self.assertIn("English Concept", html)
         self.assertIn('data-relation-label="材料提到概念"', html)
+
+    def test_machine_memory_graph_keeps_one_hop_neighbors_for_displayed_sources(self) -> None:
+        source_page = self.root / "wiki" / "sources" / "readme-source.md"
+        concept_page = self.root / "wiki" / "concepts" / "readme.md"
+        source_page.parent.mkdir(parents=True, exist_ok=True)
+        concept_page.parent.mkdir(parents=True, exist_ok=True)
+        source_page.write_text(
+            '---\ntitle: "Readme Source"\n---\n\n# Readme Source\n\n这份 source 页面正文是中文。\n',
+            encoding="utf-8",
+        )
+        concept_page.write_text(
+            '---\ntitle: "Readme Concept"\n---\n\n# Readme Concept\n\n- 当前概念汇总了 related sources.\n',
+            encoding="utf-8",
+        )
+        memory = {
+            "compiled_at": "2026-05-21T00:00:00+00:00",
+            "source_nodes": [
+                {
+                    "id": "readme-md",
+                    "title": "Readme Source",
+                    "source_type": "note",
+                    "source_page": "wiki/sources/readme-source.md",
+                    "stored_path": "raw/inbox/readme.md",
+                    "concept_slugs": ["readme"],
+                }
+            ],
+            "concept_nodes": [
+                {"slug": "readme", "title": "Readme Concept", "source_pages": ["wiki/sources/readme-source.md"]}
+            ],
+            "judgment_nodes": [],
+            "edges": {"source_to_concept": [{"source_id": "readme-md", "concept_slug": "readme"}]},
+            "health": {
+                "components": [
+                    {
+                        "id": "component-readme",
+                        "source_ids": ["readme-md"],
+                        "concept_slugs": ["readme"],
+                        "judgment_ids": [],
+                    }
+                ]
+            },
+        }
+        graph = build_machine_memory_graph(memory, root=self.root)
+        node_ids = {node["id"] for node in graph["nodes"]}
+        self.assertIn("source:readme-md", node_ids)
+        self.assertIn("concept:readme", node_ids)
+        html = render_machine_memory_graph_html(memory, graph=graph)
+        self.assertIn('data-source="source:readme-md"', html)
+        self.assertIn('data-target="concept:readme"', html)
 
     def test_machine_memory_graph_includes_settled_elixir_markdown_nodes(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

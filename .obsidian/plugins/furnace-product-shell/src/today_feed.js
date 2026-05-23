@@ -2,7 +2,7 @@
  * M6.3 B3 Today Feed builder — JS mirror of src/aiwiki/today_feed.py
  * 
  * MIRROR: 与 src/aiwiki/today_feed.py 同步排序契约与字段映射。
- * Product Shell 额外展示 llm_health automation entry；修改共享字段/排序时必须同步另一侧。
+ * Product Shell keeps backend health in Advanced/operator surfaces, not primary Today.
  */
 "use strict";
 
@@ -54,7 +54,6 @@ function buildTodayFeed(summary) {
   // primary Today only keeps reports, decision exceptions, and necessary actions.
   entries.push(...buildActionEntries(summary, "primary"));
   entries.push(...buildRawInputEntries(summary, todayDate));
-  entries.push(...buildLlmHealthEntry(summary));
 
   const prioritized = entries.map((entry) => ({ ...entry, priority: priorityForKind(entry.kind) }));
   const filtered = applySnoozeFilter(prioritized, summary, todayDate);
@@ -207,7 +206,7 @@ function isDeliverableReportOutput(item) {
   const placeholder = firstText(item, "contains_llm_placeholder").toLowerCase();
   const title = firstText(item, "title");
   if (deliveryMode === "deterministic-fallback") return false;
-  if (["timeout_or_unavailable", "pending", "failed"].includes(llmStatus)) return false;
+  if (["timeout_or_unavailable", "pending", "failed", "degraded"].includes(llmStatus)) return false;
   if (["submitted", "running", "degraded"].includes(backgroundStatus)) return false;
   if (["degraded", "placeholder"].includes(artifactQuality)) return false;
   if (["1", "true", "yes"].includes(placeholder)) return false;
@@ -402,31 +401,6 @@ function buildAgentLoopEntries(summary, todayDate) {
     timestamp,
     protocol: String(summary.active_protocol || ""),
     autoState: autoState,
-  }];
-}
-
-function buildLlmHealthEntry(summary) {
-  var health = summary.llm_health;
-  if (!health || typeof health !== "object") return [];
-  var status = String(health.status || "");
-  if (status === "healthy" || status === "unknown") return [];
-  var timestamp = String(health.checked_at || summary.generated_at || "");
-  var reason = String(health.reason || "");
-  var recovery = String(health.recovery_command || "");
-  var title = "LLM 后端异常";
-  var summaryText = reason || "LLM 后端暂时不可用，部分报告可能未生成";
-  if (status === "degraded") {
-    title = "LLM 后端降级";
-    summaryText = reason || "LLM 后端当前以降级模式运行，报告质量可能受影响";
-  }
-  return [{
-    kind: "automation",
-    title: title,
-    summary: summaryText,
-    target: recovery || "scripts/aiwiki-launcher.sh llm-check",
-    timestamp: timestamp,
-    protocol: "",
-    autoState: status === "degraded" ? "pending" : "attention",
   }];
 }
 

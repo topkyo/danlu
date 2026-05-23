@@ -35,23 +35,12 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(t("Show advanced commands"))
-      .setDesc(t("Register review, execution, protocol, and legacy panel commands in the command palette. Reload Obsidian after changing this toggle."))
+      .setDesc(t("Register diagnostics, history, Review Center, and Execution Center commands in the command palette. Reload Obsidian after changing this toggle."))
       .addToggle((toggle) =>
         toggle.setValue(Boolean(this.plugin.settings.showAdvancedCommands)).onChange(async (value) => {
           this.plugin.settings.showAdvancedCommands = Boolean(value);
           await this.plugin.savePluginState();
           new Notice(this.plugin.t("Advanced command visibility refreshes after reloading Obsidian."));
-        })
-      );
-
-    new Setting(containerEl)
-      .setName(t("Show HTML shortcuts"))
-      .setDesc(t("Whether advanced panels should show HTML shortcuts when the summary exposes them."))
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.showHtmlShortcuts).onChange(async (value) => {
-          this.plugin.settings.showHtmlShortcuts = Boolean(value);
-          await this.plugin.savePluginState();
-          this.plugin.refreshOpenViews();
         })
       );
 

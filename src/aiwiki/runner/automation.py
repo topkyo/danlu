@@ -77,6 +77,10 @@ def auto_process_once(
     actually_used_llm = bool(llm_enabled and not deterministic_only and not llm_failed)
     result = {
         "processed_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "mode": "deterministic-only" if deterministic_only else "llm-enabled",
+        "deterministic_only": deterministic_only,
+        "semantic_lint": semantic_lint,
+        "compile_limit": compile_limit,
         "llm_used": actually_used_llm,
         "llm_fallback": llm_failed,
         "compile": compile_result,

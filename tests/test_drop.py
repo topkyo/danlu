@@ -85,10 +85,22 @@ class DropTests(unittest.TestCase):
         note_path = self.root / result["note_path"]
         note = note_path.read_text(encoding="utf-8")
         self.assertEqual(result["material"], "url")
+        self.assertFalse(note.startswith("---\n"))
+        self.assertNotIn("Capture Metadata", note)
+        self.assertNotIn("Fetch Metadata", note)
         self.assertIn("# Agent Architecture Survey", note)
-        self.assertIn("- Final URL: `https://example.com/agents`", note)
-        self.assertIn("A survey of agent runtime tradeoffs.", note)
         self.assertIn("Agents coordinate tools, planning, and memory.", note)
+        entry = load_manifest(self.root)["entries"][-1]
+        self.assertEqual(entry["source_type"], "url-drop")
+        metadata = entry.get("ingest_metadata") or {}
+        self.assertEqual(metadata.get("final_url"), "https://example.com/agents")
+        self.assertEqual(metadata.get("extraction_mode"), "readability")
+        history = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(history[-1]["ingest_metadata"]["final_url"], "https://example.com/agents")
 
     def test_drop_pdf_renames_binary_asset_and_records_manifest(self) -> None:
         source = self.root / "paper.bin"
@@ -180,10 +192,15 @@ class DropTests(unittest.TestCase):
         note_path = self.root / result["note_path"]
         note = note_path.read_text(encoding="utf-8")
         self.assertEqual(result["material"], "repo")
+        self.assertFalse(note.startswith("---\n"))
+        self.assertNotIn("Repository Metadata", note)
         self.assertIn("Repository summary.", note)
         self.assertIn("- `README.md`", note)
-        self.assertIn("- `src/main.py`", note)
-        self.assertIn("### src/main.py", note)
+        self.assertIn("## src/main.py", note)
+        self.assertIn("print('hello repo')", note)
+        entry = load_manifest(self.root)["entries"][-1]
+        self.assertEqual(entry["source_type"], "repo-drop")
+        self.assertIn("repo_source", entry.get("ingest_metadata") or {})
 
     def test_drop_repo_clones_remote_url_and_cleans_temp_directory(self) -> None:
         captured: dict[str, Path] = {}

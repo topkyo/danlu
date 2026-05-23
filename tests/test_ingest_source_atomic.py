@@ -30,7 +30,10 @@ class IngestSourceAtomicTest(unittest.TestCase):
         stored = self.root / entry["stored_path"]
         self.assertTrue(stored.is_file())
         text = stored.read_text(encoding="utf-8")
-        self.assertIn("https://example.com/post", text)
+        self.assertIn("Example Domain", text)
+        self.assertNotIn("https://example.com/post", text)
+        manifest = load_manifest(self.root)
+        self.assertEqual(manifest["entries"][0]["ingest_metadata"]["original_url"], "https://example.com/post")
         leftovers = [p.name for p in self.inbox.iterdir() if ".tmp." in p.name]
         self.assertEqual(leftovers, [])
 

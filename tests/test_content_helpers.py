@@ -290,7 +290,7 @@ class ContentHelperTests(unittest.TestCase):
         summary = content.preserved_section(rendered, "Summary", "").strip()
 
         self.assertEqual(frontmatter.get("hardness"), "soft")
-        self.assertIn("../sources/entry-a.md", summary)
+        self.assertIn("wiki/sources/entry-a.md", summary)
         self.assertIn("MCP keeps tools, prompts, and context envelopes structured across clients.", summary)
         self.assertNotIn("This concept currently appears in", summary)
 

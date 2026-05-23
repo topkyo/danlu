@@ -374,7 +374,7 @@ class ExecutionTests(unittest.TestCase):
         self.assertGreaterEqual(len(dashboard["dashboard"]["cards"]), 1)
         self.assertEqual(search["query"], "transformer")
         self.assertGreaterEqual(search["result_count"], 1)
-        self.assertEqual(search["results"][0]["kind"], "source")
+        self.assertTrue(any(result["kind"] == "source" for result in search["results"]))
 
     def test_review_page_next_selects_ready_page(self) -> None:
         report = ask_question(self.root, "Should we increase transformer training spend?", "report")

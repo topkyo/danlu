@@ -320,32 +320,33 @@ DEFAULT_DASHBOARD_FILES = {
         [
             "# 报告证据图谱",
             "",
-            "这里是炼丹炉的人用报告追溯入口，优先回答：这份报告引用了哪些证据、连接到哪些判断、还能回到哪些原始材料。",
+            "炼丹炉有两种图谱，用途不同，不要混用。",
+            "默认工作流仍然是先看报告和 Today；普通读报告不需要看图谱页。",
             "",
-            "默认工作流仍然是先看报告；只有当你想复核报告背后的证据链、判断来源或下一步追问路径时，再打开这里。",
+            "## 证据关系图（Obsidian 原生 Graph）",
             "",
-            "## 先看哪里",
+            "- **入口**：Obsidian 侧边栏 Graph；枢纽页 [证据关系总览](../evidence-graph.md)。",
+            "- **节点**：`output/reports`、`wiki/sources`、`raw/inbox`、`raw/assets`；协议下可有 `wiki/judgments`。",
+            "- **边**：报告 → 来源页 → 原料文件；**不含** `wiki/concepts`。",
+            "- **用途**：回答“这份报告引用了哪些证据”，而不是浏览概念网络。",
+            "- **默认行为**：打开 Obsidian Graph 即是证据关系图，无需手动筛选；compile / 打开 vault 自动恢复配置。",
             "",
-            "- [报告证据 HTML](../../output/graph/machine-memory.html)：先看报告卡片，再点进证据锚点和引用来源",
-            "- [图谱健康](./graph-health.md)：仅在排查缺边、孤立来源或图谱质量时查看",
-            "- [机器记忆拓扑](./machine-memory-topology.md)：高级维护入口，普通读报告不需要看",
-            "- [机器记忆](./machine-memory.md)：高级维护入口，普通读报告不需要看",
-            "- [漂移报告](./drift-report.md)：复盘旧判断被新证据挑战时查看",
-            "- [概念质量](./concept-quality.md)：维护概念页时查看",
+            "## 机器记忆图谱（HTML）",
             "",
-            "## 怎么读",
+            "- **入口**：`output/graph/machine-memory.html`（[本地图谱 HTML](../../output/graph/machine-memory.html)，报告证据 HTML）。",
+            "- **节点**：来源、概念、判断、金丹等机器记忆资产。",
+            "- **关系**：材料提到概念、概念相关、因果关系等机器记忆关系。",
+            "- **维护**：[图谱健康](./graph-health.md)、[概念质量](./concept-quality.md)",
+            "- **排障**：如果 HTML 被 Mihomo/Clash、代理客户端或浏览器安全策略拦截，先从 Obsidian Graph 看证据链。",
             "",
-            "1. 先看报告和 Today，不把图谱当默认入口。",
-            "2. 需要追溯时打开 `output/graph/machine-memory.html`，先看“报告证据入口”的报告卡片。",
-            "3. 点报告下方的证据锚点，看它连接到哪些材料、判断、概念或金丹。",
-            "4. 只有做维护时，才回到具体 `wiki/sources/`、`wiki/judgments/`、`wiki/concepts/`、`wiki/elixirs/` 页面处理。",
+            "1. 先看报告和 Today。",
+            "2. 查证据链 → Obsidian Graph 或 `wiki/evidence-graph.md`。",
+            "3. 查概念/主题网络 → HTML 机器记忆图。",
             "",
             "## 边界",
             "",
-            "- 这里不是给用户浏览内部 wiki 资产树；首屏必须围绕报告、证据链和可复审路径。",
-            "- 底层仍复用 `aiwiki` 的机器记忆关系，但机器记忆、拓扑和健康页属于高级维护入口。",
-            "- 图谱关系是辅助解释层；底层关系标签统一使用中文，例如“因果关系”；最终用户默认仍应看报告和少量关键确认。",
-            "- Linux 上若 `output/graph/machine-memory.html` 在 Obsidian 内打开后跳到 Mihomo/Clash 等代理客户端，是系统把 `text/html` 默认程序绑给了它；在浏览器里打开或在系统设置里改默认程序即可。",
+            "- Obsidian Graph ≠ HTML 机器记忆图。",
+            "- 概念页是机器记忆索引，不是原料副本。",
         ]
     )
     + "\n",
@@ -1213,6 +1214,9 @@ def ensure_layout(root: Path) -> None:
     ensure_runtime_schema(root)
     ensure_protocol_scaffold(root)
     ensure_runtime_dashboards(root)
+    from .vault_obsidian_graph import sync_obsidian_native_graph_config
+
+    sync_obsidian_native_graph_config(root)
 
 
 def ensure_runtime_schema(root: Path) -> None:

@@ -119,13 +119,17 @@ def ingest_source(root: Path, source: str, title: str | None = None) -> dict[str
         seed = hashlib.sha256(label.encode()).hexdigest()[:12]
     entry_id = next_identifier(existing_ids, seed)
     if source.startswith(("http://", "https://")):
-        raw_stem = f"source-{entry_id}" if (root / "raw" / "inbox" / f"source-{entry_id}.md").exists() else entry_id
-        destination = _next_available_raw_path(root / "raw" / "inbox", raw_stem, ".md")
-        entry_id = destination.stem
-        stub_title = title or source
-        atomic_write_text(destination, "\n".join([f"# {stub_title}", "", "## 来源 URL", f"- {source}", "", "## 采集状态", "- 这个 URL 目前只是一个占位 stub。", "- 在把它当作事实来源前，请先用剪藏 markdown 或本地附件替换成更完整材料。", "", "## 备注", "- 在补充更完整材料之前，编译器会把这个文件视为占位来源。", ""]) + "\n")
-        original_path = source
-        source_type = "url"
+        from ..drop import drop_url
+
+        result = drop_url(root, source, title=title)
+        manifest = load_manifest(root)
+        stored_path = str(result.get("note_path") or "")
+        for entry in manifest["entries"]:
+            if entry.get("stored_path") == stored_path:
+                return entry
+        if manifest["entries"]:
+            return manifest["entries"][-1]
+        raise RuntimeError(f"drop url succeeded but manifest entry missing for {stored_path}")
     else:
         source_path = Path(source).expanduser().resolve()
         if not source_path.is_file():
@@ -209,7 +213,6 @@ def deterministic_source_summary(preview: str, *, max_bullets: int = 3) -> str:
 
 
 def render_source_page_with_state(entry: dict[str, Any], preview: str, compiled_at: str, *, concepts: list[str], existing_page: str) -> str:
-    from .. import app_content as _facade
     existing_frontmatter = parse_frontmatter(existing_page)
     source_changed = compiled_source_sha(existing_page) not in ("", entry["sha256"])
     citations = existing_frontmatter.get("citations", []) if not source_changed else []
@@ -225,9 +228,52 @@ def render_source_page_with_state(entry: dict[str, Any], preview: str, compiled_
         summary = preserved_section(existing_page, "Summary", deterministic_summary)
         if summary.strip() == "- Pending LLM summary.":
             summary = deterministic_summary
-    concept_links = ["- No concept links yet."] if not concepts else [f"- [{_facade.concept_label_to_title(label)}](../concepts/{_facade.concept_label_to_slug(label)}.md)" for label in concepts]
+    from ..vault_obsidian_graph import render_plain_concept_link_lines
+
+    concept_links = render_plain_concept_link_lines(concepts)
+    stored_path = str(entry.get("stored_path") or "").replace("\\", "/").strip()
+    raw_material_lines = (
+        [f"- [[{stored_path}|{entry['title']}]]"]
+        if stored_path.startswith("raw/")
+        else ["- 暂无 raw 原料路径。"]
+    )
     frontmatter = render_frontmatter({"id": entry["id"], "kind": "source", "status": "compiled", "title": entry["title"], "source_files": [entry["stored_path"]], "source_sha256": entry["sha256"], "citations": citations, "concepts": concepts, "generated_by": "aiwiki-compile", "last_compiled_at": compiled_at, "confidence": confidence})
-    body = "\n".join([frontmatter, "", f"# {entry['title']}", "", "## Source Record", f"- Source type: `{entry['source_type']}`", f"- Original path: `{entry['original_path']}`", f"- Stored path: `{entry['stored_path']}`", f"- Imported at: `{entry['imported_at']}`", f"- SHA256: `{entry['sha256']}`", "", "## Summary", summary, "", "## Concept Links", *concept_links, "", "## Enrichment TODO", "- Refresh concept links when new sources shift the synthesis.", "- Add backlinks from derived outputs that cite this page.", "- Preserve provenance when replacing placeholder text.", "", "## Preview", "```text", preview, "```", "", "## Citation Anchor", f"- Cite this page as `wiki/sources/{entry['id']}.md`."])
+    body = "\n".join(
+        [
+            frontmatter,
+            "",
+            f"# {entry['title']}",
+            "",
+            "## Source Record",
+            f"- Source type: `{entry['source_type']}`",
+            f"- Original path: `{entry['original_path']}`",
+            f"- Stored path: `{entry['stored_path']}`",
+            f"- Imported at: `{entry['imported_at']}`",
+            f"- SHA256: `{entry['sha256']}`",
+            "",
+            "## 原料文件",
+            *raw_material_lines,
+            "",
+            "## Summary",
+            summary,
+            "",
+            "## Concept Links",
+            *concept_links,
+            "",
+            "## Enrichment TODO",
+            "- Refresh concept links when new sources shift the synthesis.",
+            "- Add backlinks from derived outputs that cite this page.",
+            "- Preserve provenance when replacing placeholder text.",
+            "",
+            "## Preview",
+            "```text",
+            preview,
+            "```",
+            "",
+            "## Citation Anchor",
+            f"- Cite this page as `wiki/sources/{entry['id']}.md`.",
+        ]
+    )
     return body + "\n"
 
 
@@ -358,7 +404,7 @@ def collect_recent_output_artifacts(root: Path, *, limit: int = 12) -> list[dict
                 contains_placeholder = "_LLM:" in content
                 degraded = (
                     delivery_mode == "deterministic-fallback"
-                    or llm_status in {"timeout_or_unavailable", "pending", "failed"}
+                    or llm_status in {"timeout_or_unavailable", "pending", "failed", "degraded"}
                     or background_status == "degraded"
                     or title.startswith("LLM 未完成")
                 )

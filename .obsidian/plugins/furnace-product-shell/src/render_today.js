@@ -424,7 +424,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
          const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
          dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
       }
-    } else if (entry.status === "done") {
+    } else if (entry.status === "done" || entry.status === "degraded") {
       const target = String(entry.reconcileTarget || "");
       const reconcilePath = String(entry.reconcilePath || "");
       const resultCard = aiBubble.createDiv({ cls: "furnace-artifact-card furnace-bubble-result-card" });
@@ -574,6 +574,7 @@ function renderPendingRunNotesLink(plugin, aiBubble, entry) {
 
 function pendingSubmissionStageLabel(plugin, entry) {
   const status = String(entry && entry.status || "running");
+  if (status === "degraded") return plugin.t("LLM 未完成，已保留恢复产物");
   if (status === "done") {
     if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成，已保留恢复产物");
     if (entry && entry.reconcileTarget === "receipts") return plugin.t("已记录回执");
@@ -601,9 +602,19 @@ function pendingSubmissionResultTitle(plugin, entry) {
 }
 
 function pendingSubmissionIsDegraded(entry) {
+  const status = String(entry && entry.status || "").trim();
+  if (status === "degraded") return true;
   const deliveryMode = String(entry && entry.deliveryMode || entry && entry.delivery_mode || "").trim();
   const llmStatus = String(entry && entry.llmStatus || entry && entry.llm_status || "").trim();
-  return deliveryMode === "deterministic-fallback" || llmStatus === "timeout_or_unavailable";
+  const backgroundStatus = String(entry && entry.backgroundStatus || entry && entry.background_status || "").trim();
+  const artifactQuality = String(entry && entry.artifactQuality || entry && entry.artifact_quality || "").trim();
+  return deliveryMode === "deterministic-fallback"
+    || deliveryMode === "llm-failed"
+    || llmStatus === "timeout_or_unavailable"
+    || llmStatus === "failed"
+    || llmStatus === "degraded"
+    || backgroundStatus === "degraded"
+    || artifactQuality === "degraded";
 }
 
 function renderTodayFeedItem(plugin, listEl, entry) {

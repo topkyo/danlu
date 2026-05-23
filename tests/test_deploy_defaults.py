@@ -73,6 +73,12 @@ def test_run_nightly_fallback_default_off() -> None:
     assert "AIWIKI_NIGHTLY_FALLBACK_ENABLED:-0" in content
 
 
+def test_dogfood_envrc_stays_git_ignored() -> None:
+    content = (PROJECT_ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert ".envrc.*" in content
+    assert "!.envrc.dogfood" not in content
+
+
 def test_run_dogfood_maturity_requires_explicit_vault_and_skips_same_day() -> None:
     script = PROJECT_ROOT / "scripts" / "run_dogfood_maturity.sh"
     syntax = subprocess.run(
@@ -121,6 +127,23 @@ def test_run_dogfood_maturity_requires_explicit_vault_and_skips_same_day() -> No
         assert skipped.returncode == 0, skipped.stderr
         assert "skip: receipt already exists" in skipped.stdout
 
+        envrc = vault / "dogfood.envrc"
+        envrc.write_text("AIWIKI_DOGFOOD_MATURITY_FORCE=1\n", encoding="utf-8")
+        skipped_with_envrc_force = subprocess.run(
+            ["bash", str(script)],
+            cwd=PROJECT_ROOT,
+            env={
+                "PATH": os.environ.get("PATH", ""),
+                "AIWIKI_DOGFOOD_VAULT": str(vault),
+                "AIWIKI_DOGFOOD_MATURITY_ENVRC": str(envrc),
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert skipped_with_envrc_force.returncode == 0, skipped_with_envrc_force.stderr
+        assert "skip: receipt already exists" in skipped_with_envrc_force.stdout
+
     with tempfile.TemporaryDirectory() as tempdir:
         vault = Path(tempdir)
         receipt_dir = vault / "output" / "control" / "maturity-gate"
@@ -143,9 +166,12 @@ def test_run_dogfood_maturity_requires_explicit_vault_and_skips_same_day() -> No
         assert "skip: receipt already exists" in skipped_by_filename.stdout
 
     content = script.read_text(encoding="utf-8")
+    assert "AIWIKI_DOGFOOD_MATURITY_ENVRC" in content
+    assert 'source "$DOGFOOD_ENVRC"' in content
     assert "AIWIKI_DOGFOOD_MATURITY_FORCE" in content
     assert 'FORCE_RUN="${AIWIKI_DOGFOOD_MATURITY_FORCE:-0}"' in content
     assert 'if [[ "$FORCE_RUN" != "1" ]]' in content
+    assert content.index('FORCE_RUN="${AIWIKI_DOGFOOD_MATURITY_FORCE:-0}"') < content.index('source "$DOGFOOD_ENVRC"')
     assert 'glob("run-*.json")' in content
     assert 'payload.get("generated_at")' in content
     assert "filename_day" in content

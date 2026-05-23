@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .app_state import load_llm_receipt_history
+from .llm import classify_backend_error
 
 
 def aggregate_llm_telemetry(root: Path, *, limit: int = 50) -> dict[str, Any]:
@@ -72,23 +73,40 @@ def _percentile(values: list[int], pct: int) -> int | None:
 
 
 def aggregate_backend_telemetry(root: Path, *, limit: int = 100) -> dict[str, Any]:
-    """Summarize execution receipts for operator backend/operation usage."""
+    """Summarize recent execution and LLM receipts for operator backend usage."""
 
     from .app_state import execution_receipt_history_path, load_jsonl_documents
     from .metrics_io import _receipt_json_paths
 
     records: list[dict[str, Any]] = []
+    seen_receipt_paths: set[str] = set()
+
+    def add_record(payload: dict[str, Any]) -> None:
+        receipt_path = str(payload.get("receipt_path") or "")
+        if receipt_path:
+            if receipt_path in seen_receipt_paths:
+                return
+            seen_receipt_paths.add(receipt_path)
+        records.append(payload)
+
+    for item in load_jsonl_documents(execution_receipt_history_path(root)):
+        if isinstance(item, dict):
+            add_record(item)
     for path in _receipt_json_paths(root):
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
         if isinstance(payload, dict):
-            records.append(payload)
-    for item in load_jsonl_documents(execution_receipt_history_path(root)):
-        if isinstance(item, dict):
-            records.append(item)
-    recent = records[-max(1, limit) :]
+            add_record(payload)
+    ordered_records = [
+        item
+        for _, item in sorted(
+            enumerate(records),
+            key=lambda pair: (_receipt_timestamp(pair[1]), pair[0]),
+        )
+    ]
+    recent = ordered_records[-max(1, limit) :]
     operation_counts: Counter[str] = Counter()
     status_counts: Counter[str] = Counter()
     backend_counts: Counter[str] = Counter()
@@ -109,21 +127,109 @@ def aggregate_backend_telemetry(root: Path, *, limit: int = 100) -> dict[str, An
         ).strip()
         if backend:
             backend_counts[backend] += 1
+
+    llm_history = [
+        item
+        for item in load_llm_receipt_history(root)
+        if isinstance(item, dict)
+    ]
+    llm_ordered = [
+        item
+        for _, item in sorted(
+            enumerate(llm_history),
+            key=lambda pair: (_receipt_timestamp(pair[1]), pair[0]),
+        )
+    ]
+    llm_recent = llm_ordered[-max(1, limit) :]
+    llm_status_counts: Counter[str] = Counter()
+    llm_backend_counts: Counter[str] = Counter()
+    llm_model_counts: Counter[str] = Counter()
+    llm_error_class_counts: Counter[str] = Counter()
+    llm_failure_category_counts: Counter[str] = Counter()
+    failure_samples: list[dict[str, Any]] = []
+    for item in llm_recent:
+        llm_status = str(item.get("status") or "unknown")
+        llm_status_counts[llm_status] += 1
+        backend = str(
+            item.get("backend_effective")
+            or item.get("backend")
+            or item.get("backend_requested")
+            or "unknown"
+        )
+        llm_backend_counts[backend] += 1
+        model = str(item.get("model_final") or item.get("model") or item.get("model_selected") or "")
+        if model:
+            llm_model_counts[model] += 1
+        if llm_status not in {"failed", "error", "blocked"}:
+            continue
+        error_class = str(item.get("error_class") or "").strip()
+        if error_class:
+            llm_error_class_counts[error_class] += 1
+        category = _llm_failure_category(item)
+        llm_failure_category_counts[category] += 1
+        failure_samples.append(
+            {
+                "event": str(item.get("event") or ""),
+                "status": llm_status,
+                "backend": backend,
+                "model": model,
+                "error_class": error_class,
+                "failure_category": category,
+                "created_at": str(item.get("created_at") or ""),
+                "raw_response_path": str(item.get("raw_response_path") or ""),
+            }
+            )
     return {
         "kind": "backend-telemetry-report",
-        "version": 1,
+        "version": 2,
         "receipt_sources": [
             "output/control/execution-receipts/*.json",
             ".aiwiki/state/execution-receipts.jsonl",
+            ".aiwiki/logs/llm-receipts.jsonl",
         ],
         "sample_size": len(recent),
+        "execution_sample_size": len(recent),
+        "llm_sample_size": len(llm_recent),
         "limit": limit,
         "operation_counts": dict(sorted(operation_counts.items())),
         "status_counts": dict(sorted(status_counts.items())),
         "backend_counts": dict(sorted(backend_counts.items())),
         "legacy_empty_status_count": legacy_empty_status,
-        "note": "Backend fields appear on run-ask receipts when present; probe results stay separate.",
+        "llm_status_counts": dict(sorted(llm_status_counts.items())),
+        "llm_backend_counts": dict(sorted(llm_backend_counts.items())),
+        "llm_model_counts": dict(sorted(llm_model_counts.items())),
+        "llm_error_class_counts": dict(sorted(llm_error_class_counts.items())),
+        "llm_failure_category_counts": dict(sorted(llm_failure_category_counts.items())),
+        "quota_failure_count": int(llm_failure_category_counts.get("quota", 0)),
+        "timeout_failure_count": int(llm_failure_category_counts.get("timeout", 0)),
+        "unavailable_failure_count": int(llm_failure_category_counts.get("unavailable", 0)),
+        "recent_failures": failure_samples[-8:],
+        "note": (
+            "Execution receipts show operation usage; LLM receipts add "
+            "quota/timeout/unavailable classifications. Probe results stay separate."
+        ),
     }
+
+
+def _llm_failure_category(item: dict[str, Any]) -> str:
+    explicit = str(item.get("error_class") or "").strip().lower()
+    if explicit in {"quota", "timeout", "auth", "unavailable"}:
+        return explicit
+    text = " ".join(
+        str(item.get(key) or "")
+        for key in ("error", "failure_reason", "primary_error", "fallback_reason")
+    ).strip()
+    return classify_backend_error(text or explicit)
+
+
+def _receipt_timestamp(item: dict[str, Any]) -> str:
+    return str(
+        item.get("applied_at")
+        or item.get("created_at")
+        or item.get("generated_at")
+        or item.get("updated_at")
+        or ""
+    )
 
 
 __all__ = ["aggregate_backend_telemetry", "aggregate_llm_telemetry"]

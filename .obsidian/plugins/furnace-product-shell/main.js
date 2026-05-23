@@ -237,7 +237,6 @@ const DEFAULT_SETTINGS = {
   defaultAskFormat: "note",
   recentRunsLimit: 8,
   showAdvancedCommands: false,
-  showHtmlShortcuts: true,
   locale: DEFAULT_LOCALE,
   llmBackend: "opencode-api",
   llmModel: "deepseek-v4-pro",
@@ -258,7 +257,7 @@ const DEFAULT_SETTINGS = {
   lastKnownReportIds: [],
   onboardingShown: false,
   // R91: Advanced 子 section 折叠态持久化；默认全折叠以降首屏认知负担
-  advancedSectionsExpanded: { status: false, history: false, devops: false },
+  advancedSectionsExpanded: { status: false, history: false },
 };
 const ZH_TEXT = {
   "Advanced": "更多工具",
@@ -275,9 +274,7 @@ const ZH_TEXT = {
   "Recent runs limit": "最近运行保留数",
   "How many plugin-triggered runs to keep in the Product Shell.": "Product Shell 中保留多少条插件触发的运行记录。",
   "Show advanced commands": "显示高级命令",
-  "Register review, execution, protocol, and legacy panel commands in the command palette. Reload Obsidian after changing this toggle.": "是否把审阅、执行、协议与旧面板命令注册到命令面板中。修改后需要重载 Obsidian。",
-  "Show HTML shortcuts": "显示 HTML 快捷入口",
-  "Whether advanced panels should show HTML shortcuts when the summary exposes them.": "当 summary 暴露 HTML 面板时，是否在高级面板里显示 HTML 快捷入口。",
+  "Register diagnostics, history, Review Center, and Execution Center commands in the command palette. Reload Obsidian after changing this toggle.": "是否把诊断、历史、Review Center 与 Execution Center 命令注册到命令面板中。修改后需要重载 Obsidian。",
   "Advanced command visibility refreshes after reloading Obsidian.": "高级命令可见性会在重载 Obsidian 后刷新。",
   "LLM backend": "LLM 后端",
   "Select the LLM provider used by run-compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints.": "选择 run-compile / run-ask / run-nightly 使用的 LLM provider。常用 provider 排在前面；高级项用于本地 CLI 会话或自定义 OpenAI-compatible 端点。",
@@ -634,10 +631,9 @@ const ZH_TEXT = {
   // R91 Advanced 抽屉子 section
   "系统状态": "系统状态",
   "运行与历史": "运行与历史",
-  "开发者操作": "开发者操作",
-  "协议 {protocol} · LLM {llm} · 同步 {sync}": "协议 {protocol} · LLM {llm} · 同步 {sync}",
+  "以下为运行诊断与历史": "以下为运行诊断与历史",
+  "运行诊断 · 同步 {sync}": "运行诊断 · 同步 {sync}",
   "最近运行 {n} 条 · 待审 {review} · 待执行 {execution}": "最近运行 {n} 条 · 待审 {review} · 待执行 {execution}",
-  "编译 / 同步 / 协议切换 / 日志等命令": "编译 / 同步 / 协议切换 / 日志等命令",
   "未配置": "未配置",
   "正常": "正常",
   "异常": "异常",
@@ -659,6 +655,8 @@ const ZH_TEXT = {
   "Open report": "打开报告",
   "View report graph": "查看报告关系图谱",
   "View graph": "查看关系图谱",
+  "Open evidence graph": "打开证据关系图",
+  "Evidence graph": "证据关系图",
   "Report path cannot be empty.": "报告路径不能为空。",
   "Enter a report markdown path (relative to vault root).": "请输入 report markdown 路径（相对 vault 根目录）。",
   "Report path": "报告路径",
@@ -1040,6 +1038,7 @@ const ZH_TEXT = {
   "Import a PDF asset into raw/assets or a repo snapshot into raw/inbox.": "PDF 原件进 raw/assets；仓库快照进 raw/inbox。",
   "Import an image asset into raw/assets.": "图片原件进 raw/assets。",
   "No nightly state yet.": "还没有 nightly 状态。",
+  "Recovery command": "恢复命令",
   "healthy": "健康",
   warnings: "告警",
   errors: "错误",
@@ -1547,7 +1546,7 @@ function splitReportsByLocalDate(reports, options = {}) {
  * M6.3 B3 Today Feed builder — JS mirror of src/aiwiki/today_feed.py
  * 
  * MIRROR: 与 src/aiwiki/today_feed.py 同步排序契约与字段映射。
- * Product Shell 额外展示 llm_health automation entry；修改共享字段/排序时必须同步另一侧。
+ * Product Shell keeps backend health in Advanced/operator surfaces, not primary Today.
  */
 "use strict";
 
@@ -1599,7 +1598,6 @@ function buildTodayFeed(summary) {
   // primary Today only keeps reports, decision exceptions, and necessary actions.
   entries.push(...buildActionEntries(summary, "primary"));
   entries.push(...buildRawInputEntries(summary, todayDate));
-  entries.push(...buildLlmHealthEntry(summary));
 
   const prioritized = entries.map((entry) => ({ ...entry, priority: priorityForKind(entry.kind) }));
   const filtered = applySnoozeFilter(prioritized, summary, todayDate);
@@ -1752,7 +1750,7 @@ function isDeliverableReportOutput(item) {
   const placeholder = firstText(item, "contains_llm_placeholder").toLowerCase();
   const title = firstText(item, "title");
   if (deliveryMode === "deterministic-fallback") return false;
-  if (["timeout_or_unavailable", "pending", "failed"].includes(llmStatus)) return false;
+  if (["timeout_or_unavailable", "pending", "failed", "degraded"].includes(llmStatus)) return false;
   if (["submitted", "running", "degraded"].includes(backgroundStatus)) return false;
   if (["degraded", "placeholder"].includes(artifactQuality)) return false;
   if (["1", "true", "yes"].includes(placeholder)) return false;
@@ -1947,31 +1945,6 @@ function buildAgentLoopEntries(summary, todayDate) {
     timestamp,
     protocol: String(summary.active_protocol || ""),
     autoState: autoState,
-  }];
-}
-
-function buildLlmHealthEntry(summary) {
-  var health = summary.llm_health;
-  if (!health || typeof health !== "object") return [];
-  var status = String(health.status || "");
-  if (status === "healthy" || status === "unknown") return [];
-  var timestamp = String(health.checked_at || summary.generated_at || "");
-  var reason = String(health.reason || "");
-  var recovery = String(health.recovery_command || "");
-  var title = "LLM 后端异常";
-  var summaryText = reason || "LLM 后端暂时不可用，部分报告可能未生成";
-  if (status === "degraded") {
-    title = "LLM 后端降级";
-    summaryText = reason || "LLM 后端当前以降级模式运行，报告质量可能受影响";
-  }
-  return [{
-    kind: "automation",
-    title: title,
-    summary: summaryText,
-    target: recovery || "scripts/aiwiki-launcher.sh llm-check",
-    timestamp: timestamp,
-    protocol: "",
-    autoState: status === "degraded" ? "pending" : "attention",
   }];
 }
 
@@ -3114,23 +3087,12 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(t("Show advanced commands"))
-      .setDesc(t("Register review, execution, protocol, and legacy panel commands in the command palette. Reload Obsidian after changing this toggle."))
+      .setDesc(t("Register diagnostics, history, Review Center, and Execution Center commands in the command palette. Reload Obsidian after changing this toggle."))
       .addToggle((toggle) =>
         toggle.setValue(Boolean(this.plugin.settings.showAdvancedCommands)).onChange(async (value) => {
           this.plugin.settings.showAdvancedCommands = Boolean(value);
           await this.plugin.savePluginState();
           new Notice(this.plugin.t("Advanced command visibility refreshes after reloading Obsidian."));
-        })
-      );
-
-    new Setting(containerEl)
-      .setName(t("Show HTML shortcuts"))
-      .setDesc(t("Whether advanced panels should show HTML shortcuts when the summary exposes them."))
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.showHtmlShortcuts).onChange(async (value) => {
-          this.plugin.settings.showHtmlShortcuts = Boolean(value);
-          await this.plugin.savePluginState();
-          this.plugin.refreshOpenViews();
         })
       );
 
@@ -3355,24 +3317,6 @@ function renderActionButtons(plugin, container, buttons) {
       plugin.runUiAction(() => buttonConfig.onClick(), localizedLabel);
     });
   });
-}
-
-function renderGettingStartedSection(plugin, container) {
-  const section = container.createDiv({ cls: "furnace-shell-section" });
-  section.createEl("h3", { text: plugin.t("Start Here") });
-  section.createDiv({
-    cls: "furnace-shell-meta",
-    text: plugin.t("用顶部 Universal Input 直接投料或提问；也可以打开 Ask 弹窗选择 format / protocol（mode 固定 run-ask）。"),
-  });
-  const steps = section.createEl("ol");
-  steps.createEl("li", { text: plugin.t("先点刷新生成最新数据。") });
-  steps.createEl("li", { text: plugin.t("在 Universal Input 里粘贴 URL / PDF / 文件路径 / 文本笔记，或直接输入问题。") });
-  steps.createEl("li", { text: plugin.t("需要更精细控制（output format / protocol）时，打开 Ask 弹窗（mode 固定 run-ask）。") });
-  steps.createEl("li", { text: plugin.t("Follow single writer for write actions: do not run compile / nightly / apply / revert in Obsidian and the terminal at the same time.") });
-  plugin.renderActionButtons(section, [
-    { label: "Capture Note", cta: true, onClick: async () => new CaptureNoteModal(plugin.app, plugin).open() },
-    { label: "Compile", onClick: async () => plugin.runCompileCommand() },
-  ]);
 }
 
 function renderPanel(plugin, container, title, description = "", options = {}) {
@@ -3770,9 +3714,14 @@ function renderDigestPanel(plugin, container) {
   const review = plugin.shellSummary.review_backlog_counts || {};
   const aging = plugin.shellSummary.aging_summary || {};
   const nightly = plugin.shellSummary.nightly || {};
+  const watcher = plugin.shellSummary.watcher || {};
   const llmStatus = plugin.shellSummary.llm_status || {};
   const lintCounts = nightly.lint_counts || {};
   const lintTotal = sumNumericValues(lintCounts);
+  const nightlyReceipt = nightly.llm_receipt || {};
+  const recoveryCommand = String(
+    nightly.recovery_command || nightlyReceipt.recovery_command || watcher.recovery_command || ""
+  ).trim();
 
   plugin.renderDigestRow(
     panel,
@@ -3796,80 +3745,13 @@ function renderDigestPanel(plugin, container) {
       ? `${lintTotal || 0} ${plugin.t("warnings")} · ${formatDisplayTime(nightly.generated_at, plugin.locale()) || plugin.t("healthy")}`
       : plugin.t("No nightly state yet.")
   );
+  if (recoveryCommand) {
+    renderDigestRow(plugin, panel, "Recovery command", recoveryCommand);
+  }
   panel.createDiv({
     cls: "furnace-shell-panel-note",
     text: `${plugin.t("Last sync")} ${formatDisplayTime(plugin.shellSummary.generated_at, plugin.locale()) || plugin.t("unknown")}`,
   });
-}
-
-function renderLegacyAdvancedPanel(plugin, container) {
-  // R91: 不再嵌套 <details>，直接平铺到调用方的容器（DevOps section body 自带折叠）。
-  const review = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary.review_backlog_counts || {} : {};
-  const pendingReviewCount = Number(review.pending_decisions || 0) + Number(review.pending_judgments || 0);
-  const body = container.createDiv({ cls: "furnace-shell-advanced-body" });
-  plugin.renderInlineButtons(body, [
-    { label: "Compile", cta: true, onClick: async () => plugin.runCompileCommand() },
-    { label: "Nightly", onClick: async () => plugin.runNightlyCommand() },
-    { label: "Set Protocol", onClick: async () => new ProtocolCommandModal(plugin.app, plugin).open() },
-    { label: "Sync now", kind: "ghost", onClick: async () => plugin.refreshShellSummaryCommand() },
-  ]);
-
-  const suggestedActions = body.createDiv({ cls: "furnace-shell-subpanel furnace-shell-subpanel-compact" });
-  suggestedActions.createEl("h4", { text: plugin.t("Suggested Next Actions") });
-  if (!renderSuggestedNextActionsBlock(plugin, suggestedActions, { maxItems: 2 })) {
-    suggestedActions.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No suggested next action right now.") });
-  }
-
-  const columns = body.createDiv({ cls: "furnace-shell-advanced-grid" });
-
-  const reviewCard = columns.createDiv({ cls: "furnace-shell-subpanel" });
-  reviewCard.createEl("h4", { text: plugin.t("Quick review") });
-  reviewCard.createDiv({
-    cls: "furnace-shell-meta",
-    text: `${pendingReviewCount} ${plugin.t("Pending Reviews")} · ${(plugin.shellSummary && plugin.shellSummary.aging_summary && plugin.shellSummary.aging_summary.overdue_count) || 0} ${plugin.t("Overdue")}`,
-  });
-  const nextReview = plugin.nextReviewCandidate();
-  if (nextReview && nextReview.pagePath) {
-    reviewCard.createEl("strong", { text: nextReview.label || nextReview.pagePath });
-    reviewCard.createDiv({ cls: "furnace-shell-meta", text: nextReview.description || plugin.t("review object") });
-  }
-  plugin.renderInlineButtons(reviewCard, [
-    { label: "Review Next", onClick: async () => plugin.openReviewNextTransitionPicker() },
-    { label: "Batch Review", onClick: async () => plugin.openReviewBatchSuggestionPicker() },
-    { label: "Open Review Center", kind: "ghost", onClick: async () => plugin.openReviewCenterView() },
-  ], "furnace-shell-subpanel-actions");
-
-  const executionCard = columns.createDiv({ cls: "furnace-shell-subpanel" });
-  executionCard.createEl("h4", { text: plugin.t("Quick execution") });
-  executionCard.createDiv({
-    cls: "furnace-shell-meta",
-    text: `${review.ready_actions || 0} ${plugin.t("actions")} · ${review.overdue_actions || 0} ${plugin.t("Overdue")} · ${review.escalated_actions || 0} ${plugin.t("Escalation")}`,
-  });
-  plugin.renderInlineButtons(executionCard, [
-    { label: "Review Action", onClick: async () => plugin.openReviewActionContextPicker() },
-    { label: "Apply All Low-Risk", onClick: async () => plugin.runApplyAllAcceptedLowRiskCommand() },
-    { label: "Open Execution Center", kind: "ghost", onClick: async () => plugin.openExecutionCenterView() },
-  ], "furnace-shell-subpanel-actions");
-
-  const runsCard = columns.createDiv({ cls: "furnace-shell-subpanel" });
-  runsCard.createEl("h4", { text: plugin.t("Latest plugin runs") });
-  if (!plugin.pluginState.recentRuns.length) {
-    runsCard.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent plugin runs.") });
-  } else {
-    const runList = runsCard.createDiv({ cls: "furnace-shell-inline-list" });
-    plugin.pluginState.recentRuns.slice(0, 3).forEach((record) => {
-      const item = runList.createDiv({ cls: "furnace-shell-inline-item" });
-      item.createEl("strong", { text: record.label || record.args || plugin.t("command") });
-      item.createDiv({
-        cls: "furnace-shell-meta",
-        text: `${plugin.t(record.status || "status-unknown")} · ${formatDisplayTime(record.startedAt, plugin.locale())}`,
-      });
-    });
-  }
-  plugin.renderInlineButtons(runsCard, [
-    { label: "Open Recent Runs", kind: "ghost", onClick: async () => plugin.openRecentRunsView() },
-    { label: "Open Home Note", kind: "ghost", onClick: async () => plugin.openHomeNote() },
-  ], "furnace-shell-subpanel-actions");
 }
 
 function isHttpUrl(value) {
@@ -4194,78 +4076,6 @@ function renderUniversalInput(plugin, container) {
         textarea.value = text;
         autoResize();
       }
-    }
-  });
-}
-
-function renderDropZone(plugin, container) {
-  const zone = container.createDiv({ cls: "furnace-shell-dropzone" });
-  zone.createDiv({ cls: "furnace-shell-dropzone-title", text: plugin.t("Drop URL / PDF / Image / Repo") });
-  const actions = zone.createDiv({ cls: "furnace-shell-dropzone-actions" });
-  [
-    { label: "URL", actionLabel: "Drop URL", onClick: () => plugin.openDropUrlModal() },
-    { label: "PDF", actionLabel: "Drop PDF", onClick: () => new DropFileModal(plugin.app, plugin).setInitialMode("pdf").open() },
-    { label: "Image", actionLabel: "Drop Image", onClick: () => new DropImageModal(plugin.app, plugin).open() },
-    { label: "Repo", actionLabel: "Drop Repo", onClick: () => new DropFileModal(plugin.app, plugin).setInitialMode("repo").open() },
-  ].forEach((item) => {
-    const button = actions.createEl("button", { text: plugin.t(item.label) });
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      plugin.runUiAction(() => item.onClick(), plugin.t(item.actionLabel));
-    });
-  });
-  zone.addEventListener("click", () => {
-    plugin.runUiAction(() => plugin.openDropUrlModal(), plugin.t("Drop URL"));
-  });
-  zone.addEventListener("dragover", (event) => {
-    event.preventDefault();
-    zone.addClass("is-drag-over");
-  });
-  zone.addEventListener("dragleave", (event) => {
-    if (!zone.contains(event.relatedTarget)) {
-      zone.removeClass("is-drag-over");
-    }
-  });
-  zone.addEventListener("drop", (event) => {
-    event.preventDefault();
-    zone.removeClass("is-drag-over");
-    const dataTransfer = event.dataTransfer;
-    if (!dataTransfer) {
-      return;
-    }
-    const file = dataTransfer.files && dataTransfer.files[0];
-    if (file) {
-      const fileName = String(file.name || file.path || "").toLowerCase();
-      const fileType = String(file.type || "").toLowerCase();
-      if (fileType === "application/pdf" || fileName.endsWith(".pdf")) {
-        plugin.runUiAction(async () => {
-          const source = await resolvePluginFileSource(plugin, file);
-          new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(source).setInitialTitle(file.name || "").open();
-        }, plugin.t("Drop PDF"));
-        return;
-      }
-      if (fileType.startsWith("image/")) {
-        plugin.runUiAction(async () => {
-          const source = await resolvePluginFileSource(plugin, file);
-          new DropImageModal(plugin.app, plugin).setInitialSource(source).setInitialTitle(file.name || "").open();
-        }, plugin.t("Drop Image"));
-        return;
-      }
-      // For other file types, still try to open the drop file modal
-      plugin.runUiAction(async () => {
-        const source = await resolvePluginFileSource(plugin, file);
-        new DropFileModal(plugin.app, plugin).setInitialMode("pdf").setInitialSource(source).setInitialTitle(file.name || "").open();
-      }, plugin.t("Drop File"));
-      return;
-    }
-    const uriList = String(dataTransfer.getData("text/uri-list") || "")
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#"));
-    const text = uriList[0] || String(dataTransfer.getData("text/plain") || "").trim();
-    if (isHttpUrl(text)) {
-      plugin.runUiAction(() => plugin.openDropUrlModal(text), plugin.t("Drop URL"));
-      return;
     }
   });
 }
@@ -4698,7 +4508,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
          const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
          dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
       }
-    } else if (entry.status === "done") {
+    } else if (entry.status === "done" || entry.status === "degraded") {
       const target = String(entry.reconcileTarget || "");
       const reconcilePath = String(entry.reconcilePath || "");
       const resultCard = aiBubble.createDiv({ cls: "furnace-artifact-card furnace-bubble-result-card" });
@@ -4848,6 +4658,7 @@ function renderPendingRunNotesLink(plugin, aiBubble, entry) {
 
 function pendingSubmissionStageLabel(plugin, entry) {
   const status = String(entry && entry.status || "running");
+  if (status === "degraded") return plugin.t("LLM 未完成，已保留恢复产物");
   if (status === "done") {
     if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成，已保留恢复产物");
     if (entry && entry.reconcileTarget === "receipts") return plugin.t("已记录回执");
@@ -4875,9 +4686,19 @@ function pendingSubmissionResultTitle(plugin, entry) {
 }
 
 function pendingSubmissionIsDegraded(entry) {
+  const status = String(entry && entry.status || "").trim();
+  if (status === "degraded") return true;
   const deliveryMode = String(entry && entry.deliveryMode || entry && entry.delivery_mode || "").trim();
   const llmStatus = String(entry && entry.llmStatus || entry && entry.llm_status || "").trim();
-  return deliveryMode === "deterministic-fallback" || llmStatus === "timeout_or_unavailable";
+  const backgroundStatus = String(entry && entry.backgroundStatus || entry && entry.background_status || "").trim();
+  const artifactQuality = String(entry && entry.artifactQuality || entry && entry.artifact_quality || "").trim();
+  return deliveryMode === "deterministic-fallback"
+    || deliveryMode === "llm-failed"
+    || llmStatus === "timeout_or_unavailable"
+    || llmStatus === "failed"
+    || llmStatus === "degraded"
+    || backgroundStatus === "degraded"
+    || artifactQuality === "degraded";
 }
 
 function renderTodayFeedItem(plugin, listEl, entry) {
@@ -5215,18 +5036,15 @@ function renderNextActionsPanel(plugin, container) {
 // --- src/render_advanced.js ---
 
 // Advanced drawer and metrics rendering helpers.
-// R91: 重组为 3 个可折叠 section（系统状态 / 运行与历史 / 开发者操作），降低首屏认知负担。
-// 不再嵌外层 Advanced <details>；三组直接挂在 wrapper 上。
+// Operator-only diagnostics/history surface; the default shell path does not render this drawer.
 function renderAdvancedDrawer(plugin, container) {
   const wrapper = container.createDiv({ cls: "furnace-advanced-drawer" });
 
-  // 顶部抽屉外置 dev banner（R89 心理预期分隔；不进任一 section）
   wrapper.createEl("div", {
     cls: "furnace-advanced-dev-banner",
-    text: plugin.t("以下为开发者诊断信息"),
+    text: plugin.t("以下为运行诊断与历史"),
   });
 
-  // 三组 section 直接挂 wrapper（去掉 R90 之前的外层 Advanced 折叠层）
   const body = wrapper;
 
   renderAdvancedSection(plugin, body, {
@@ -5249,14 +5067,6 @@ function renderAdvancedDrawer(plugin, container) {
     },
   });
 
-  renderAdvancedSection(plugin, body, {
-    key: "devops",
-    title: plugin.t("开发者操作"),
-    summaryText: plugin.t("编译 / 同步 / 协议切换 / 日志等命令"),
-    render: (el) => {
-      plugin.renderLegacyAdvancedPanel(el);
-    },
-  });
 }
 
 // R91: 单个 section 渲染。<details>/<summary> 原生折叠 + toggle 持久化。
@@ -5297,27 +5107,8 @@ function renderAdvancedSection(plugin, parentEl, spec) {
   }
 }
 
-// R91: 系统状态 section 摘要 — 协议 / LLM / 同步状态 一行
+// R91: 系统状态 section 摘要。默认产品面不暴露 protocol/LLM/sync 机制名。
 function buildStatusSectionSummary(plugin) {
-  let protocolName = "";
-  if (plugin.shellSummary && typeof plugin.shellSummary === "object") {
-    protocolName = String(plugin.shellSummary.protocol || plugin.shellSummary.active_protocol || "").trim();
-  }
-  if (!protocolName) protocolName = plugin.t("未配置");
-
-  let llmLabel = "";
-  try {
-    const llmHealth = plugin.currentLlmHealth();
-    const backend = String((llmHealth && llmHealth.backend) || "").trim();
-    const model = String((llmHealth && llmHealth.model) || "").trim();
-    if (backend && model) llmLabel = `${backend}/${model}`;
-    else if (backend) llmLabel = backend;
-    else if (model) llmLabel = model;
-  } catch (error) {
-    llmLabel = "";
-  }
-  if (!llmLabel) llmLabel = plugin.t("未配置");
-
   let syncLabel = plugin.t("未知");
   try {
     const sync = plugin.currentShellSyncState();
@@ -5330,9 +5121,7 @@ function buildStatusSectionSummary(plugin) {
     // keep 未知
   }
 
-  return plugin.t("协议 {protocol} · LLM {llm} · 同步 {sync}", {
-    protocol: protocolName,
-    llm: llmLabel,
+  return plugin.t("运行诊断 · 同步 {sync}", {
     sync: syncLabel,
   });
 }
@@ -5710,67 +5499,16 @@ function renderFurnaceCenter(plugin, contentEl) {
     return;
   }
 
-  // 1. Start guide (fresh vault onboarding)
-  renderStartGuide(plugin, contentEl);
-
-  // 2. Today Feed / conversation stream
+  // 1. Today Feed / conversation stream
   renderTodayFeed(plugin, contentEl);
 
-  // 3. Advanced Drawer
-  renderAdvancedDrawer(plugin, contentEl);
-
-  // 4. Conversation Composer — keep it at the bottom of the shell surface.
-  renderUniversalInput(plugin, contentEl);
-}
-
-function renderStartGuide(plugin, container) {
-  var summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
-
-  var stats = summary && summary.knowledge_stats;
-  var hasConcepts = stats && typeof stats.concept_nodes === "number" && stats.concept_nodes > 0;
-  var hasSources = stats && typeof stats.source_nodes === "number" && stats.source_nodes > 0;
-  var reports = summary && Array.isArray(summary.todays_reports) ? summary.todays_reports : [];
-  var hasReports = reports.length > 0;
-  var recentOutputs = summary && Array.isArray(summary.recent_outputs) ? summary.recent_outputs : [];
-  var hasOutputs = recentOutputs.length > 0;
-  var isEmptyVault = !(hasConcepts || hasSources || hasReports || hasOutputs);
-
-  // dismiss 仅作用于"非空 vault"的 onboarding；空 vault 下始终保留引导
-  if (plugin.settings && plugin.settings.onboardingShown && !isEmptyVault) return;
-
-  // 非空 vault 且 onboarding 未关闭 → 自动 dismiss
-  if (!isEmptyVault && summary) {
-    plugin.settings.onboardingShown = true;
-    plugin.savePluginState();
-    return;
+  // 2. Operator drawer stays out of the default product path.
+  if (plugin.settings && plugin.settings.showAdvancedCommands) {
+    renderAdvancedDrawer(plugin, contentEl);
   }
 
-  var guide = container.createDiv({ cls: "furnace-start-guide" });
-
-  var header = guide.createDiv({ cls: "furnace-start-guide-header" });
-  header.createEl("span", { cls: "furnace-start-guide-icon", text: "🔥" });
-  header.createEl("span", { cls: "furnace-start-guide-title", text: plugin.t("欢迎使用炼丹炉") });
-
-  var steps = guide.createDiv({ cls: "furnace-start-guide-steps" });
-  var stepData = [
-    [plugin.t("投料"), plugin.t("拖入 URL、PDF 或图片，或直接在输入框提问")],
-    [plugin.t("等待编译"), plugin.t("炉子会自动处理原料，抽概念、建关联")],
-    [plugin.t("看报告"), plugin.t("每天回到炉子，Today 里就是你需要看的")],
-  ];
-  stepData.forEach(function (item, i) {
-    var step = steps.createDiv({ cls: "furnace-start-guide-step" });
-    step.createEl("span", { cls: "furnace-start-guide-step-num", text: String(i + 1) });
-    var copy = step.createDiv({ cls: "furnace-start-guide-step-copy" });
-    copy.createEl("strong", { text: item[0] });
-    copy.createEl("div", { cls: "furnace-start-guide-step-desc", text: item[1] });
-  });
-
-  var dismissBtn = guide.createEl("button", { cls: "furnace-start-guide-dismiss", text: plugin.t("知道了，开始使用") });
-  dismissBtn.addEventListener("click", function () {
-    guide.remove();
-    plugin.settings.onboardingShown = true;
-    plugin.savePluginState();
-  });
+  // 3. Conversation Composer — keep it at the bottom of the shell surface.
+  renderUniversalInput(plugin, contentEl);
 }
 
 // --- src/render_review.js ---
@@ -6150,7 +5888,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   async onload() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
     this.pluginState = { recentRuns: [] };
-    this.pendingSubmissions = []; // R89: 持久化 + runtime; status: running | received | done | failed; { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error, reconcileTarget }
+    this.pendingSubmissions = []; // R89: 持久化 + runtime; status: running | received | done | failed | degraded; { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error, reconcileTarget }
     this.longRunningPollTimer = null;
     this.shellSummary = null;
     this.repoState = { valid: false, root: "", launcherPath: "", missingPaths: ["vault-root"] };
@@ -6159,6 +5897,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
     await this.loadPluginState();
     this.refreshRepoState();
+    if (typeof this.syncEvidenceGraphConfig === "function") {
+      void this.syncEvidenceGraphConfig({ quiet: true }).catch(() => {});
+    }
 
     this.registerView(VIEW_TYPE_FURNACE_CENTER, (leaf) => new FurnaceCenterView(leaf, this));
     this.registerView(VIEW_TYPE_RECENT_RUNS, (leaf) => new RecentRunsView(leaf, this));
@@ -6205,43 +5946,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         this.runUiAction(() => this.openFurnaceCenterView(), this.t("Open Furnace"));
       },
     });
-    this.addCommand({
-      id: "run-compile",
-      name: this.t("刷新炉子"),
-      callback: () => {
-        this.runUiAction(() => this.runCompileCommand(), this.t("刷新炉子"));
-      },
-    });
-    if (this.settings.showAdvancedCommands) {
-      this.addCommand({
-        id: "run-ask",
-        name: this.t("Ask 炼丹炉"),
-        callback: () => {
-          new AskCommandModal(this.app, this).open();
-        },
-      });
-    }
-    this.addCommand({
-      id: "capture-note",
-      name: this.t("Capture Note"),
-      callback: () => {
-        new CaptureNoteModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "drop-url",
-      name: this.t("Drop URL"),
-      callback: () => {
-        new DropUrlModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "drop-file",
-      name: this.t("Drop File"),
-      callback: () => {
-        new DropFileModal(this.app, this).open();
-      },
-    });
   }
 
   registerAdvancedCommands() {
@@ -6278,153 +5982,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         this.runUiAction(() => this.refreshShellSummaryCommand(), this.t("Refresh Furnace Shell"));
       },
     });
-    this.addCommand({
-      id: "run-nightly",
-      name: this.t("Nightly"),
-      callback: () => {
-        this.runUiAction(() => this.runNightlyCommand(), this.t("Nightly"));
-      },
-    });
-    this.addCommand({
-      id: "set-protocol",
-      name: this.t("Set Protocol"),
-      callback: () => {
-        new ProtocolCommandModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "file-back",
-      name: this.t("File Back"),
-      callback: () => {
-        this.openFileBackModal();
-      },
-    });
-    this.addCommand({
-      id: "review-page",
-      name: this.t("Review Page"),
-      callback: () => {
-        this.openReviewPageContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "review-next-page",
-      name: this.t("Review Next Page"),
-      callback: () => {
-        this.openReviewNextTransitionPicker();
-      },
-    });
-    this.addCommand({
-      id: "batch-review-pages",
-      name: this.t("Batch Review Pages"),
-      callback: () => {
-        this.openReviewBatchSuggestionPicker();
-      },
-    });
-    this.addCommand({
-      id: "review-rewrite",
-      name: this.t("Review Rewrite"),
-      callback: () => {
-        this.openReviewRewriteContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "apply-rewrite",
-      name: this.t("Apply Rewrite"),
-      callback: () => {
-        this.openApplyRewriteModal();
-      },
-    });
-    this.addCommand({
-      id: "retire-concept",
-      name: this.t("Retire Concept"),
-      callback: () => {
-        this.openRetireConceptModal();
-      },
-    });
-    this.addCommand({
-      id: "reactivate-concept",
-      name: this.t("Reactivate Concept"),
-      callback: () => {
-        this.openReactivateConceptModal();
-      },
-    });
-    this.addCommand({
-      id: "apply-archive",
-      name: this.t("Apply archive"),
-      callback: () => {
-        this.openApplyArchiveContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "revert-archive",
-      name: this.t("Revert archive"),
-      callback: () => {
-        this.openRevertArchiveContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "review-action",
-      name: this.t("Review Action"),
-      callback: () => {
-        this.openReviewActionContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "apply-action",
-      name: this.t("Apply Action"),
-      callback: () => {
-        this.openApplyActionContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "revert-action",
-      name: this.t("Revert Action"),
-      callback: () => {
-        this.openRevertActionContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "apply-all-accepted-low-risk",
-      name: this.t("Apply All Accepted Low-Risk Actions"),
-      callback: () => {
-        this.runUiAction(() => this.runApplyAllAcceptedLowRiskCommand(), this.t("Apply All Accepted Low-Risk Actions"));
-      },
-    });
-    this.addCommand({
-      id: "revert-last-action-batch",
-      name: this.t("Revert Last Action Batch"),
-      callback: () => {
-        this.runUiAction(() => this.runRevertLastBatchCommand(), this.t("Revert Last Action Batch"));
-      },
-    });
-    this.addCommand({
-      id: "report-subgraph",
-      name: this.t("View report graph"),
-      callback: () => {
-        this.openReportSubgraphPicker();
-      },
-    });
-    this.addCommand({
-      id: "open-home-note",
-      name: this.t("Open Home Note"),
-      callback: () => {
-        this.runUiAction(() => this.openHomeNote(), this.t("Open Home Note"));
-      },
-    });
-    this.addCommand({
-      id: "drop-image",
-      name: this.t("Drop Image"),
-      callback: () => {
-        new DropImageModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "search-workspace",
-      name: this.t("Search Workspace"),
-      callback: () => {
-        new SearchCommandModal(this.app, this).open();
-      },
-    });
   }
 
   registerOpenView(view) {
@@ -6451,6 +6008,19 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (this.settings.defaultAskFormat === "report") {
       this.settings.defaultAskFormat = "note";
     }
+    const legacyShowHtmlShortcutsMigrated = Object.prototype.hasOwnProperty.call(this.settings, "showHtmlShortcuts");
+    delete this.settings.showHtmlShortcuts;
+    const legacyDefaultAskModeMigrated = Object.prototype.hasOwnProperty.call(this.settings, "defaultAskMode");
+    delete this.settings.defaultAskMode;
+    const rawAdvancedSectionsExpanded = this.settings.advancedSectionsExpanded && typeof this.settings.advancedSectionsExpanded === "object"
+      ? this.settings.advancedSectionsExpanded
+      : {};
+    const migratedAdvancedSectionsExpanded = {
+      status: Boolean(rawAdvancedSectionsExpanded.status),
+      history: Boolean(rawAdvancedSectionsExpanded.history),
+    };
+    const advancedSectionsExpandedMigrated = JSON.stringify(this.settings.advancedSectionsExpanded || {}) !== JSON.stringify(migratedAdvancedSectionsExpanded);
+    this.settings.advancedSectionsExpanded = migratedAdvancedSectionsExpanded;
     const legacyLlmSettingsMigrated = dropLegacyLlmSettings(this.settings);
     this.settings.locale = normalizeLocale(this.settings.locale);
     const migratedFeishuWebhookUrl = String(this.settings.feishuWebhookUrl || this.settings.feishu_webhook_url || "").trim();
@@ -6529,7 +6099,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.pluginState = { recentRuns };
     this.trimRecentRuns();
     const defaultAskFormatMigrated = rawSettings.defaultAskFormat === "report";
-    if (feishuWebhookUrlMigrated || wecomWebhookUrlMigrated || enabledChannelsMigrated || lastViewedTimestampMigrated || legacyLlmSettingsMigrated || defaultAskFormatMigrated) {
+    if (feishuWebhookUrlMigrated || wecomWebhookUrlMigrated || enabledChannelsMigrated || lastViewedTimestampMigrated || legacyLlmSettingsMigrated || defaultAskFormatMigrated || legacyShowHtmlShortcutsMigrated || legacyDefaultAskModeMigrated || advancedSectionsExpandedMigrated) {
       await this.savePluginState();
     }
   }
@@ -6544,7 +6114,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
-  // R91: Advanced 抽屉子 section 折叠态读写。默认全折叠（status/history/devops）。
+  // R91: Advanced 抽屉子 section 折叠态读写。默认全折叠（status/history）。
   getAdvancedSectionExpanded(key) {
     const s = this.settings && this.settings.advancedSectionsExpanded;
     if (!s || typeof s !== "object") return false;
@@ -6552,11 +6122,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async setAdvancedSectionExpanded(key, value) {
+    if (key !== "status" && key !== "history") {
+      return;
+    }
     const current = this.settings && this.settings.advancedSectionsExpanded;
     // 强制 own object，避免与 DEFAULT_SETTINGS 共享引用导致默认值被 mutate
-    const next = (current && typeof current === "object" && current !== DEFAULT_SETTINGS.advancedSectionsExpanded)
-      ? Object.assign({}, current)
-      : { status: false, history: false, devops: false };
+    const next = {
+      status: Boolean(current && typeof current === "object" && current.status),
+      history: Boolean(current && typeof current === "object" && current.history),
+    };
     next[key] = Boolean(value);
     this.settings.advancedSectionsExpanded = next;
     try {
@@ -7601,12 +7175,56 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (!relativePath) {
       return;
     }
+    if (relativePath === ".obsidian/graph.json" && typeof this.maybeRepairEvidenceGraphFilter === "function") {
+      void this.maybeRepairEvidenceGraphFilter().catch(() => {});
+      return;
+    }
     if (relativePath === SHELL_SUMMARY_PATH) {
       await this.loadShellSummaryFromDisk();
       return;
     }
     if (relativePath.startsWith("output/") || relativePath.startsWith("wiki/indexes/")) {
       this.refreshOpenViews();
+    }
+  }
+
+  async syncEvidenceGraphConfig({ quiet = true } = {}) {
+    if (!this.repoState.valid) {
+      return null;
+    }
+    try {
+      return await this.execLauncher(["sync-evidence-graph"]);
+    } catch (error) {
+      if (!quiet) {
+        console.error("[furnace-product-shell] sync-evidence-graph failed", error);
+      }
+      return null;
+    }
+  }
+
+  async maybeRepairEvidenceGraphFilter() {
+    const adapter = this.app.vault.adapter;
+    const graphPath = ".obsidian/graph.json";
+    if (!(await adapter.exists(graphPath))) {
+      return;
+    }
+    try {
+      const raw = await adapter.read(graphPath);
+      const parsed = JSON.parse(raw);
+      const search = String(parsed.search || "").trim();
+      if (!search || search.includes("wiki/concepts")) {
+        await this.syncEvidenceGraphConfig({ quiet: true });
+      }
+    } catch {
+      await this.syncEvidenceGraphConfig({ quiet: true });
+    }
+  }
+
+  async openEvidenceGraphView() {
+    await this.syncEvidenceGraphConfig({ quiet: false });
+    await this.openWorkspacePath("wiki/evidence-graph.md");
+    if (this.app.commands?.executeCommandById) {
+      await this.app.commands.executeCommandById("graph:open");
     }
   }
 
@@ -8298,7 +7916,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   // ---------------- Pending submissions (R88 + R89 持久化 + 两段式) ----------------
   // 用户提交后立即出现的"处理中"卡片，独立于 recentRuns（命令历史）和
-  // shellSummary（事实层）。R89: 持久化到 plugin state；status = running | received | done | failed。
+  // shellSummary（事实层）。R89: 持久化到 plugin state；status = running | received | done | failed | degraded。
   pushPendingSubmission(displayText, opts = {}) {
     const text = String(displayText || "").trim();
     if (!text) return null;
@@ -8313,7 +7931,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       payloadFingerprint: fingerprint,
       displayText: text.length > 120 ? text.slice(0, 117) + "…" : text,
       title: String(opts.title || "").trim(),
-      status: "running", // R89: running | received | done | failed
+      status: "running", // R89: running | received | done | failed | degraded
       startedAt: new Date().toISOString(),
       finishedAt: "",
       error: "",
@@ -8325,6 +7943,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       llmStatus: String(opts.llmStatus || "").trim(),
       llmBackend: String(opts.llmBackend || "").trim(),
       llmModel: String(opts.llmModel || "").trim(),
+      backgroundStatus: String(opts.backgroundStatus || "").trim(),
+      artifactQuality: String(opts.artifactQuality || "").trim(),
       retryArgs: opts.retryArgs && typeof opts.retryArgs === "object" ? opts.retryArgs : null,
     };
     this.pendingSubmissions.unshift(entry);
@@ -8351,6 +7971,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     entry.llmStatus = "";
     entry.llmBackend = "";
     entry.llmModel = "";
+    entry.backgroundStatus = "";
+    entry.artifactQuality = "";
     if (entry.retryArgs && typeof entry.retryArgs === "object") {
       entry.retryArgs = Object.assign({}, entry.retryArgs, { jobId: "", runId: "", runNotesPath: "" });
     }
@@ -8373,21 +7995,37 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.updateLongRunningPoller();
   }
 
-  // R90: reconcile 命中 → done（"报告已生成" or "已记录"）
+  // R90: reconcile 命中 → done/degraded（"报告已生成" / "恢复产物已保留" / "已记录"）
   // reconcileTarget: "outputs" | "receipts" | "raw"; reconcilePath: cand.path / stored_path（可空）
   // 不再 4s 自动消失：done 卡变行动卡，由用户点"打开报告/查看回执/完成"主动 dismiss
-  // 防御：done/failed 不应再被升到 done
+  // 防御：terminal states 不应再被升到 done
   markPendingSubmissionDone(id, reconcileTarget, reconcilePath) {
     const entry = this._findPending(id);
     if (!entry) return;
-    if (entry.status === "done" || entry.status === "failed") return;
-    entry.status = "done";
+    if (entry.status === "done" || entry.status === "failed" || entry.status === "degraded") return;
+    entry.status = this.isPendingSubmissionDegraded(entry) ? "degraded" : "done";
     entry.finishedAt = new Date().toISOString();
     if (reconcileTarget) entry.reconcileTarget = String(reconcileTarget);
     if (reconcilePath) entry.reconcilePath = String(reconcilePath);
     void this.savePluginState();
     this.refreshOpenViews();
     this.updateLongRunningPoller();
+  }
+
+  isPendingSubmissionDegraded(entry) {
+    if (!entry || typeof entry !== "object") return false;
+    if (entry.status === "degraded") return true;
+    const deliveryMode = String(entry.deliveryMode || entry.delivery_mode || "").trim();
+    const llmStatus = String(entry.llmStatus || entry.llm_status || "").trim();
+    const backgroundStatus = String(entry.backgroundStatus || entry.background_status || "").trim();
+    const artifactQuality = String(entry.artifactQuality || entry.artifact_quality || "").trim();
+    return deliveryMode === "deterministic-fallback"
+      || deliveryMode === "llm-failed"
+      || llmStatus === "timeout_or_unavailable"
+      || llmStatus === "failed"
+      || llmStatus === "degraded"
+      || backgroundStatus === "degraded"
+      || artifactQuality === "degraded";
   }
 
   markPendingSubmissionFailed(id, error) {
@@ -8451,6 +8089,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (meta.llmStatus || meta.llm_status) entry.llmStatus = String(meta.llmStatus || meta.llm_status || "");
     if (meta.llmBackend || meta.llm_backend) entry.llmBackend = String(meta.llmBackend || meta.llm_backend || "");
     if (meta.llmModel || meta.llm_model) entry.llmModel = String(meta.llmModel || meta.llm_model || "");
+    if (meta.backgroundStatus || meta.background_status) entry.backgroundStatus = String(meta.backgroundStatus || meta.background_status || "");
+    if (meta.artifactQuality || meta.artifact_quality) entry.artifactQuality = String(meta.artifactQuality || meta.artifact_quality || "");
     if (opts.save !== false) void this.savePluginState();
     if (opts.refresh !== false) this.refreshOpenViews();
   }
@@ -8523,8 +8163,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     // Matched run_notes_path/run_id are applied via updatePendingSubmissionRunNotes before markDone.
     for (const entry of this.pendingSubmissions) {
       if (!entry) { continue; }
-      // failed/done 保留（done 由 setTimeout 自身移除）
-      if (entry.status === "failed" || entry.status === "done") {
+      // failed/done/degraded 保留（done/degraded 等用户处理）
+      if (entry.status === "failed" || entry.status === "done" || entry.status === "degraded") {
         remaining.push(entry);
         continue;
       }
@@ -8587,6 +8227,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           llmStatus: String(hitCand.llm_status || ""),
           llmBackend: String(hitCand.llm_backend || ""),
           llmModel: String(hitCand.llm_model || ""),
+          backgroundStatus: String(hitCand.background_status || ""),
+          artifactQuality: String(hitCand.artifact_quality || ""),
         };
       }
       else {
@@ -8763,9 +8405,21 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       if (!item || typeof item !== "object") continue;
       const candidatePath = String(item.path || "").trim();
       if (!candidatePath || !candidatePath.startsWith("output/reports/")) continue;
+      const deliveryMode = String(item.delivery_mode || "").trim();
+      const llmStatus = String(item.llm_status || "").trim();
+      const backgroundStatus = String(item.background_status || "").trim();
+      const artifactQuality = String(item.artifact_quality || "").trim();
+      const containsPlaceholder = String(item.contains_llm_placeholder || "").trim().toLowerCase();
+      const rawTitle = String(item.title || "").trim();
+      if (deliveryMode === "deterministic-fallback" || deliveryMode === "llm-failed") continue;
+      if (["timeout_or_unavailable", "pending", "failed", "degraded"].includes(llmStatus)) continue;
+      if (["submitted", "running", "degraded"].includes(backgroundStatus)) continue;
+      if (["degraded", "placeholder"].includes(artifactQuality)) continue;
+      if (["1", "true", "yes"].includes(containsPlaceholder)) continue;
+      if (rawTitle.startsWith("LLM 未完成")) continue;
       if (seen.has(candidatePath)) continue;
       seen.add(candidatePath);
-      const title = String(item.title || "").trim() || candidatePath;
+      const title = rawTitle || candidatePath;
       candidates.push({ value: candidatePath, label: `${title} — ${candidatePath}` });
     }
     return candidates;
@@ -9431,10 +9085,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     renderActionButtons(this, container, buttons);
   }
 
-  renderGettingStartedSection(container) {
-    renderGettingStartedSection(this, container);
-  }
-
   renderPanel(container, title, description = "", options = {}) {
     return renderPanel(this, container, title, description, options);
   }
@@ -9482,15 +9132,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   renderReportsGroup(container, reports, emptyText) {
     renderReportsGroup(this, container, reports, emptyText);
   }
-  renderDropZone(container) {
-    renderDropZone(this, container);
-  }
   renderAdvancedDrawer(container) {
     renderAdvancedDrawer(this, container);
-  }
-
-  renderLegacyAdvancedPanel(container) {
-    renderLegacyAdvancedPanel(this, container);
   }
 
   renderFurnaceCenter(contentEl) {

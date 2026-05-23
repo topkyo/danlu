@@ -30,6 +30,7 @@ from aiwiki.app_utils import (
 )
 from aiwiki.content.memory import concept_summary_is_placeholder, placeholder_concept_slugs
 from aiwiki.execution.audit_reconciliation import reconcile_execution_receipts
+from aiwiki.execution.receipts import write_execution_receipt
 from aiwiki.llm import CompletionResult, LLMError
 from aiwiki.runner.clients import (
     _append_fallback_stage,
@@ -1226,6 +1227,27 @@ def run_nightly(
         llm_audit,
         status="success",
     )
+    nightly_receipt = write_execution_receipt(
+        root,
+        operation="run-nightly",
+        generated_by="aiwiki-run-nightly",
+        subject_kind="runtime-state",
+        subject_id="nightly-health",
+        target_file=relative_path(root, nightly_health_state_path(root)),
+        primary_path=relative_path(root, nightly_health_state_path(root)),
+        protocol=str(state.get("protocol", {}).get("active_protocol") or ""),
+        extra={
+            "compile_limit": compile_limit,
+            "semantic_lint": semantic_lint,
+            "llm_receipt_path": ".aiwiki/logs/llm-receipts.jsonl",
+            "llm_used": llm_used,
+            "delivery_mode": llm_audit.get("delivery_mode", ""),
+            "backend_effective": llm_audit.get("backend_effective", ""),
+            "model_final": llm_audit.get("model_final", ""),
+            "agent_loop_status": str(state.get("agent_loop", {}).get("status") or ""),
+            "state_path": relative_path(root, nightly_health_state_path(root)),
+        },
+    )
     return {
         "compile": compile_result,
         "lint": lint_result,
@@ -1235,6 +1257,7 @@ def run_nightly(
         "aging": state["aging"],
         "repair_backlog": state["repair_backlog"]["path"],
         "state_path": relative_path(root, root / ".aiwiki" / "state" / "nightly-health.json"),
+        "receipt_path": nightly_receipt["receipt_path"],
         "llm_used": llm_used,
         **llm_audit,
         "delivery_mode": llm_audit.get("delivery_mode", ""),

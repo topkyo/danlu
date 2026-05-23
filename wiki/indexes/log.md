@@ -44,3 +44,8 @@
 - machine_memory_changed: `True`
 - changed_pages: `51`
 - removed_concept_pages: `0`
+## [2026-05-21T08:02:25+00:00] ingest | README
+
+- source_type: `note-drop`
+- note_kind: `note`
+- stored_note: `raw/inbox/readme.md`

@@ -250,6 +250,7 @@ test("buildTodayFeed hides degraded and placeholder reports", () => {
     recent_outputs: [
       { path: "output/reports/final.md", title: "Final", generated_at: "2026-05-03T08:00:00Z", format: "report" },
       { path: "output/reports/degraded.md", title: "LLM 未完成：Q", generated_at: "2026-05-03T08:00:00Z", format: "report", delivery_mode: "deterministic-fallback", llm_status: "timeout_or_unavailable" },
+      { path: "output/reports/literal-degraded.md", title: "Literal degraded", generated_at: "2026-05-03T08:00:00Z", format: "report", llm_status: "degraded" },
       { path: "output/reports/placeholder.md", title: "Template", generated_at: "2026-05-03T08:00:00Z", format: "report", artifact_quality: "placeholder", contains_llm_placeholder: "true" },
       { path: "output/reports/pending.md", title: "Pending", generated_at: "2026-05-03T08:00:00Z", format: "report", background_status: "running" },
     ],
@@ -291,7 +292,7 @@ test("buildTodayFeed keeps agent loop automation out of primary Today", () => {
   expect(automations).toHaveLength(0);
 });
 
-test("buildTodayFeed surfaces degraded LLM health as Product Shell automation entry", () => {
+test("buildTodayFeed keeps degraded LLM health out of primary Today", () => {
   const summary = makeSummary({
     llm_health: {
       status: "degraded",
@@ -303,15 +304,7 @@ test("buildTodayFeed surfaces degraded LLM health as Product Shell automation en
 
   const feed = buildTodayFeed(summary);
 
-  expect(feed).toHaveLength(1);
-  expect(feed[0]).toMatchObject({
-    kind: "automation",
-    title: "LLM 后端降级",
-    summary: "probe timeout",
-    target: "aiwiki llm-check",
-    priority: PRIORITY.automation,
-    autoState: "pending",
-  });
+  expect(feed).toHaveLength(0);
 });
 
 test("buildTodayFeed surfaces proposal entries needing attention", () => {

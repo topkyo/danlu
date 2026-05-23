@@ -91,7 +91,7 @@ related_docs:
 
 ### 实现层投影
 
-- **Product Shell UI 层**的 Active SoT 是 [docs/Furnace Product Shell.md](./Furnace%20Product%20Shell.md)。它是这一原则在 Obsidian 插件上的具体形态：Raycast 风 AskBox（输入）+ Today's Reports（输出）+ DropZone（输入的另一种形态）+ Advanced 抽屉（隐藏）。
+- **Product Shell UI 层**的 Active SoT 是 [docs/Furnace Product Shell.md](./Furnace%20Product%20Shell.md)。它是这一原则在 Obsidian 插件上的具体形态：Today Feed（输出）+ Universal Input（唯一默认输入）+ gated Advanced（operator 诊断/历史/Review/Execution）。
 - **CLI 层**的目标形态是 `furnace drop <anything>` + `furnace today` 两个核心命令，其余 ~48 个子命令降级为 `furnace advanced <subcommand>`。CLI 收敛工程是后续 milestone，不在本文档定义。
 - **runtime 内部接口**（agent loop / planner / phase primitives / receipt / audit）不受本节约束，它们服务的是 operator 和 agent，不是普通用户。
 

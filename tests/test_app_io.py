@@ -101,11 +101,28 @@ class IoFlowTests(AppFlowTestBase):
         self.assertIn("Scaling Decision", review_queue)
         self.assertIn("Scaling Decision", decisions_index)
 
-    def test_url_ingest_creates_stub_source(self) -> None:
-        entry = ingest_source(self.root, "https://example.com/karpathy-note", title="Karpathy note")
+    def test_url_ingest_delegates_to_drop_url_without_stub_wrapper(self) -> None:
+        fetched = {
+            "title": "Karpathy Note",
+            "final_url": "https://example.com/karpathy-note",
+            "content_type": "text/html",
+            "status": "200",
+            "browser_backend": "",
+            "extraction_mode": "readability",
+            "description": "A note about knowledge bases.",
+            "image_urls": [],
+            "text": "Compiled wiki workflows are useful.",
+        }
+        with patch("aiwiki.drop._fetch_url", return_value=fetched):
+            entry = ingest_source(self.root, "https://example.com/karpathy-note", title="Karpathy note")
         source_path = self.root / entry["stored_path"]
+        note_text = source_path.read_text(encoding="utf-8")
         self.assertTrue(source_path.exists())
-        self.assertIn("来源 URL", source_path.read_text(encoding="utf-8"))
+        self.assertFalse(note_text.startswith("---\n"))
+        self.assertNotIn("来源 URL", note_text)
+        self.assertNotIn("采集状态", note_text)
+        self.assertIn("Compiled wiki workflows are useful.", note_text)
+        self.assertEqual(entry["source_type"], "url-drop")
 
     def test_slides_output_contains_marp_header(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -499,8 +516,10 @@ class IoFlowTests(AppFlowTestBase):
         self.assertNotIn("Ignore navigation boilerplate.", note_text)
         self.assertEqual(len(result["asset_paths"]), 1)
         self.assertTrue((self.root / result["asset_paths"][0]).exists())
-        frontmatter = parse_frontmatter(note_text)
-        self.assertEqual(frontmatter["asset_files"], result["asset_paths"])
+        self.assertFalse(note_text.startswith("---\n"))
+        entry = load_manifest(self.root)["entries"][-1]
+        metadata = entry.get("ingest_metadata") or {}
+        self.assertEqual(metadata.get("asset_files"), result["asset_paths"])
 
         auto_process_once(self.root, deterministic_only=True, semantic_lint=False)
         manifest = load_manifest(self.root)
@@ -564,8 +583,12 @@ class IoFlowTests(AppFlowTestBase):
         (repo_root / "src" / "main.py").write_text("print('demo')\n", encoding="utf-8")
         result = drop_repo(self.root, str(repo_root), title="Demo Repo")
         note_text = (self.root / result["note_path"]).read_text(encoding="utf-8")
+        self.assertFalse(note_text.startswith("---\n"))
+        self.assertNotIn("Repository Metadata", note_text)
         self.assertIn("Repository Tree", note_text)
-        self.assertIn("README", note_text)
+        self.assertIn("A repository snapshot.", note_text)
+        entry = load_manifest(self.root)["entries"][-1]
+        self.assertEqual(entry["source_type"], "repo-drop")
 
 
 

@@ -16,6 +16,7 @@ from aiwiki.app_utils import parse_frontmatter, relative_path
 from aiwiki.config import LLMConfig
 from aiwiki.drop import drop_note
 from aiwiki.execution.ask import ask_question
+from aiwiki.execution.run_notes import run_id_for_artifact
 from aiwiki.llm import CompletionResult, LLMError
 from aiwiki.runner import (
     _append_jsonl_log,
@@ -223,6 +224,41 @@ class RunnerTests(unittest.TestCase):
         receipt = json.loads((self.root / ".aiwiki/logs/llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()[-1])
         self.assertEqual(receipt["event"], "run-ask-direct")
         self.assertEqual(receipt["status"], "success")
+        receipt_history = _load_jsonl_records(self.root / ".aiwiki" / "state" / "execution-receipts.jsonl")
+        matching_receipts = [
+            record
+            for record in receipt_history
+            if record.get("operation") == "run-ask"
+            and record.get("status") == "success"
+            and record.get("generated_by") == "aiwiki-run-ask-direct"
+            and record.get("target_file") == result["path"]
+            and record.get("primary_path") == result["path"]
+        ]
+        self.assertTrue(matching_receipts, receipt_history)
+        self.assertEqual(matching_receipts[-1]["delivery_mode"], "llm-direct")
+        self.assertEqual(matching_receipts[-1]["llm_receipt_path"], ".aiwiki/logs/llm-receipts.jsonl")
+        run_notes = (self.root / result["run_notes_path"]).read_text(encoding="utf-8")
+        self.assertIn(matching_receipts[-1]["receipt_path"], run_notes)
+
+    def test_run_ask_direct_note_run_notes_failure_does_not_leave_success_receipt(self) -> None:
+        class _DirectClient:
+            def __init__(self) -> None:
+                self.config = type("Config", (), {"model": "gpt-5.5", "backend": "opencode-api", "timeout_seconds": 45})()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt, user_prompt
+                return CompletionResult(text="我是当前配置的 LLM。", response_id="resp_direct", usage={"total_tokens": 8})
+
+        with patch("aiwiki.runner.workflows_ask.ask_question") as deterministic_ask, patch(
+            "aiwiki.runner.workflows_ask.write_run_notes",
+            side_effect=RuntimeError("notes failed"),
+        ):
+            with self.assertRaises(RuntimeError):
+                run_ask(self.root, "你是什么大模型？", "note", client=_DirectClient(), direct=True)
+
+        deterministic_ask.assert_not_called()
+        self.assertEqual(list((self.root / "output" / "reports").glob("*.md")), [])
+        self.assertEqual(_load_jsonl_records(self.root / ".aiwiki" / "state" / "execution-receipts.jsonl"), [])
 
     def test_run_ask_quoted_report_note_uses_report_as_llm_material_context(self) -> None:
         report = self.root / "output" / "reports" / "炼丹炉-md-files-note.md"
@@ -273,6 +309,8 @@ class RunnerTests(unittest.TestCase):
         artifact = self.root / result["path"]
         self.assertEqual(artifact.name, "如何给于你权限去访问呢-note.md")
         content = artifact.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(content)
+        self.assertEqual(frontmatter["source_files"], ["output/reports/炼丹炉-md-files-note.md"])
         self.assertIn("# 如何给于你权限去访问呢？", content)
         self.assertIn("根据引用报告，当前有 42 个 Markdown 文件", content)
         self.assertNotIn("引用报告：output/reports", content)
@@ -374,6 +412,19 @@ class RunnerTests(unittest.TestCase):
         receipt = json.loads((self.root / ".aiwiki/logs/llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()[-1])
         self.assertEqual(receipt["event"], "run-ask-local-elixir-stats")
         self.assertEqual(receipt["status"], "success")
+        receipt_history = _load_jsonl_records(self.root / ".aiwiki" / "state" / "execution-receipts.jsonl")
+        matching_receipts = [
+            record
+            for record in receipt_history
+            if record.get("operation") == "run-ask"
+            and record.get("status") == "success"
+            and record.get("generated_by") == "aiwiki-local-elixir-stats"
+            and record.get("target_file") == result["path"]
+        ]
+        self.assertTrue(matching_receipts, receipt_history)
+        self.assertEqual(matching_receipts[-1]["settled_elixir_count"], 2)
+        run_notes = (self.root / result["run_notes_path"]).read_text(encoding="utf-8")
+        self.assertIn(matching_receipts[-1]["receipt_path"], run_notes)
 
     def test_run_ask_direct_note_marks_backend_failover_stage(self) -> None:
         with patch("aiwiki.runner.workflows_ask.ask_question") as deterministic_ask:
@@ -496,6 +547,28 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("`wiki/`：", content)
         self.assertIn("raw/inbox/a.md", content)
         self.assertIn('generated_by: "aiwiki-local-markdown-stats"', content)
+        receipt_history = _load_jsonl_records(self.root / ".aiwiki" / "state" / "execution-receipts.jsonl")
+        matching_receipts = [
+            record
+            for record in receipt_history
+            if record.get("operation") == "run-ask"
+            and record.get("status") == "success"
+            and record.get("generated_by") == "aiwiki-local-markdown-stats"
+            and record.get("target_file") == result["path"]
+        ]
+        self.assertTrue(matching_receipts, receipt_history)
+        self.assertEqual(matching_receipts[-1]["markdown_file_count"], result["markdown_file_count"])
+
+    def test_run_ask_local_stats_run_notes_failure_does_not_leave_success_receipt(self) -> None:
+        (self.root / "raw" / "inbox").mkdir(parents=True, exist_ok=True)
+        (self.root / "raw" / "inbox" / "a.md").write_text("# A\n", encoding="utf-8")
+
+        with patch("aiwiki.runner.workflows_ask.write_run_notes", side_effect=RuntimeError("notes failed")):
+            with self.assertRaises(RuntimeError):
+                run_ask(self.root, "炼丹炉有多少md文件？", "note", direct=True)
+
+        self.assertEqual(list((self.root / "output" / "reports").glob("*.md")), [])
+        self.assertEqual(_load_jsonl_records(self.root / ".aiwiki" / "state" / "execution-receipts.jsonl"), [])
 
     def test_run_ask_direct_note_supplies_relevant_vault_context_to_llm(self) -> None:
         source = self.root / "wiki" / "sources" / "source-vla.md"
@@ -732,6 +805,8 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(matching_receipts, receipt_files)
         receipt_path, receipt_payload = matching_receipts[-1]
         self.assertEqual(receipt_payload["receipt_path"], relative_path(self.root, receipt_path))
+        run_notes_frontmatter = parse_frontmatter((self.root / result["run_notes_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(run_notes_frontmatter["receipt_path"], receipt_payload["receipt_path"])
 
     def test_run_ask_drops_llm_injected_provenance(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -913,6 +988,89 @@ class RunnerTests(unittest.TestCase):
                     run_ask(self.root, "Compare transformer scaling tradeoffs", "report", client=_SuccessClient())
 
         self.assertEqual(artifact_path.read_text(encoding="utf-8"), original)
+
+    def test_run_ask_run_notes_failure_rolls_back_artifact_without_success_receipt(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        artifact_path = self.root / "output" / "reports" / "query-notes-fail.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        original = "---\nid: query-notes-fail\nkind: output\nformat: report\n---\n\n# Original\n"
+        artifact_path.write_text(original, encoding="utf-8")
+        artifact = {
+            "path": "output/reports/query-notes-fail.md",
+            "format": "report",
+            "protocol": "general",
+            "ranked_sources": [entry["id"]],
+            "ranked_concepts": [],
+            "protocol_pages": [],
+            "index_pages": [],
+            "machine_memory_query": {},
+        }
+
+        class _SuccessClient:
+            def __init__(self) -> None:
+                self.config = type(
+                    "Config",
+                    (),
+                    {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 45},
+                )()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt, user_prompt
+                return CompletionResult(text=_VALID_REPORT_BODY, response_id="resp_notes_fail", usage={"total_tokens": 9})
+
+        with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact), patch(
+            "aiwiki.runner.workflows_ask.write_run_notes",
+            side_effect=RuntimeError("notes failed"),
+        ):
+            with self.assertRaises(RuntimeError):
+                run_ask(self.root, "Compare transformer scaling tradeoffs", "report", client=_SuccessClient())
+
+        self.assertEqual(artifact_path.read_text(encoding="utf-8"), original)
+        self.assertEqual(_load_jsonl_records(self.root / ".aiwiki" / "state" / "execution-receipts.jsonl"), [])
+
+    def test_run_ask_css_failure_rolls_back_fallback_run_notes_path_without_success_receipt(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        artifact_ref = "output/reports/query-css-fail.md"
+        artifact_path = self.root / artifact_ref
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        original = "---\nid: query-css-fail\nkind: output\nformat: report\n---\n\n# Original\n"
+        artifact_path.write_text(original, encoding="utf-8")
+        artifact = {
+            "path": artifact_ref,
+            "format": "report",
+            "protocol": "general",
+            "ranked_sources": [entry["id"]],
+            "ranked_concepts": [],
+            "protocol_pages": [],
+            "index_pages": [],
+            "machine_memory_query": {},
+        }
+
+        class _SuccessClient:
+            def __init__(self) -> None:
+                self.config = type(
+                    "Config",
+                    (),
+                    {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 45},
+                )()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt, user_prompt
+                return CompletionResult(text=_VALID_REPORT_BODY, response_id="resp_css_fail", usage={"total_tokens": 9})
+
+        notes_path = self.root / "output" / "control" / "runs" / run_id_for_artifact(artifact_ref) / "thinking.md"
+        with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact), patch(
+            "aiwiki.runner.workflows_ask._ensure_output_cssclass",
+            side_effect=RuntimeError("css failed"),
+        ):
+            with self.assertRaises(RuntimeError):
+                run_ask(self.root, "Compare transformer scaling tradeoffs", "report", client=_SuccessClient())
+
+        self.assertEqual(artifact_path.read_text(encoding="utf-8"), original)
+        self.assertFalse(notes_path.exists())
+        self.assertEqual(_load_jsonl_records(self.root / ".aiwiki" / "state" / "execution-receipts.jsonl"), [])
 
     def test_run_ask_submit_and_resume_reuse_existing_background_manifest_artifact(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -2085,6 +2243,7 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(result["contract_validated"])
         self.assertEqual(result["delivery_mode"], "llm-success")
         self.assertFalse(result["fallback_used"])
+        self.assertTrue(result["receipt_path"].startswith("output/control/execution-receipts/run-nightly-nightly-health"))
         self.assertEqual(result["agent_loop"]["status"], "ok")
         self.assertTrue(result["agent_loop"]["dry_run"])
         self.assertFalse(result["agent_loop"]["side_effects_allowed"])
@@ -2095,6 +2254,11 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(receipt["event"], "run-nightly")
         self.assertTrue(receipt["llm_used"])
         self.assertEqual(receipt["compile_prompt_profile"], "balanced")
+        execution_receipt = json.loads((self.root / result["receipt_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(execution_receipt["operation"], "run-nightly")
+        self.assertEqual(execution_receipt["status"], "success")
+        self.assertEqual(execution_receipt["target_file"], ".aiwiki/state/nightly-health.json")
+        self.assertEqual(execution_receipt["llm_receipt_path"], ".aiwiki/logs/llm-receipts.jsonl")
         self.assertEqual(result["promotions"]["count"], 0)
         runs_log = json.loads((self.root / ".aiwiki" / "logs" / "runs.jsonl").read_text(encoding="utf-8").strip().splitlines()[-1])
         self.assertEqual(runs_log["event"], "run-nightly")

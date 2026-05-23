@@ -313,6 +313,177 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(snapshot["human_required_report"]["auto_resolved_count"], 1)
         self.assertEqual(snapshot["human_required_report"]["auto_resolution_report"]["auto_resolution_receipt_count"], 1)
 
+    def test_collect_metrics_explains_output_receipt_coverage_gaps_and_exemptions(self) -> None:
+        runs_dir = self.root / "output" / "control" / "runs"
+        for run_id in ("complete", "pending", "degraded"):
+            run_notes = runs_dir / run_id / "thinking.md"
+            run_notes.parent.mkdir(parents=True, exist_ok=True)
+            run_notes.write_text("# Run Notes\n", encoding="utf-8")
+
+        reports = self.root / "output" / "reports"
+        reports.mkdir(parents=True, exist_ok=True)
+        (reports / "complete.md").write_text(
+            "---\n"
+            'kind: "output"\n'
+            'generated_by: "aiwiki-run-ask-direct"\n'
+            'created_at: "2026-05-18T00:00:00Z"\n'
+            'delivery_mode: "llm-direct"\n'
+            'run_notes_path: "output/control/runs/complete/thinking.md"\n'
+            "---\n# Complete\n",
+            encoding="utf-8",
+        )
+        (reports / "pending.md").write_text(
+            "---\n"
+            'kind: "output"\n'
+            'generated_by: "aiwiki-ask"\n'
+            'created_at: "2026-05-18T00:01:00Z"\n'
+            'delivery_mode: "background-pending"\n'
+            'background_status: "running"\n'
+            'llm_status: "pending"\n'
+            'run_notes_path: "output/control/runs/pending/thinking.md"\n'
+            "---\n# Pending\n",
+            encoding="utf-8",
+        )
+        (reports / "degraded.md").write_text(
+            "---\n"
+            'kind: "output"\n'
+            'generated_by: "aiwiki-run-ask"\n'
+            'created_at: "2026-05-18T00:02:00Z"\n'
+            'delivery_mode: "llm-failed"\n'
+            'llm_status: "timeout_or_unavailable"\n'
+            'run_notes_path: "output/control/runs/degraded/thinking.md"\n'
+            "---\n# Degraded\n",
+            encoding="utf-8",
+        )
+        (reports / "missing.md").write_text(
+            "---\n"
+            'kind: "output"\n'
+            'generated_by: "aiwiki-run-ask-direct"\n'
+            'created_at: "2026-05-18T00:03:00Z"\n'
+            'delivery_mode: "llm-direct"\n'
+            "---\n# Missing\n",
+            encoding="utf-8",
+        )
+        _write_jsonl(
+            self.root / ".aiwiki" / "state" / "execution-receipts.jsonl",
+            [
+                {
+                    "operation": "run-ask",
+                    "status": "success",
+                    "target_file": "output/reports/complete.md",
+                    "receipt_path": "output/control/execution-receipts/complete.json",
+                }
+            ],
+        )
+        _write_jsonl(
+            self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl",
+            [
+                {"event": "run-ask-direct", "status": "success", "target": "output/reports/complete.md"},
+                {"event": "run-ask", "status": "failed", "target": "output/reports/degraded.md"},
+            ],
+        )
+
+        coverage = collect_metrics(self.root, preview_limit=10)["receipt_coverage"]
+
+        self.assertEqual(coverage["status"], "warn")
+        self.assertEqual(coverage["outputs_checked"], 4)
+        self.assertEqual(coverage["complete_count"], 3)
+        self.assertEqual(coverage["missing_execution_receipt_count"], 1)
+        self.assertEqual(coverage["missing_llm_receipt_count"], 1)
+        self.assertEqual(coverage["missing_run_notes_count"], 1)
+        self.assertGreaterEqual(coverage["exempt_count"], 2)
+        samples_by_path = {sample["path"]: sample for sample in coverage["samples"]}
+        self.assertIn("background_pending", samples_by_path["output/reports/pending.md"]["exemptions"])
+        self.assertIn("failed_or_degraded_llm_artifact", samples_by_path["output/reports/degraded.md"]["exemptions"])
+        self.assertEqual(
+            samples_by_path["output/reports/missing.md"]["missing"],
+            ["execution_receipt", "llm_receipt", "run_notes"],
+        )
+        small_preview = collect_metrics(self.root, preview_limit=1)["receipt_coverage"]
+        self.assertNotEqual(small_preview["samples"][0]["path"], "output/reports/complete.md")
+
+    def test_collect_metrics_does_not_treat_blank_output_metadata_as_deterministic_baseline(self) -> None:
+        run_notes = self.root / "output" / "control" / "runs" / "blank" / "thinking.md"
+        run_notes.parent.mkdir(parents=True, exist_ok=True)
+        run_notes.write_text("# Run Notes\n", encoding="utf-8")
+        report = self.root / "output" / "reports" / "blank.md"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(
+            "---\n"
+            'kind: "output"\n'
+            'created_at: "2026-05-18T00:00:00Z"\n'
+            'run_notes_path: "output/control/runs/blank/thinking.md"\n'
+            "---\n# Blank metadata output\n",
+            encoding="utf-8",
+        )
+
+        coverage = collect_metrics(self.root, preview_limit=10)["receipt_coverage"]
+
+        sample = coverage["samples"][0]
+        self.assertEqual(sample["path"], "output/reports/blank.md")
+        self.assertIn("execution_receipt", sample["missing"])
+        self.assertIn("llm_receipt", sample["missing"])
+        self.assertNotIn("deterministic_baseline_output", sample["exemptions"])
+
+    def test_collect_metrics_does_not_exempt_llm_complete_artifact_with_aiwiki_ask_generator(self) -> None:
+        run_notes = self.root / "output" / "control" / "runs" / "llm-complete" / "thinking.md"
+        run_notes.parent.mkdir(parents=True, exist_ok=True)
+        run_notes.write_text(
+            "---\n"
+            'kind: "run-progress-notes"\n'
+            'status: "llm-complete"\n'
+            "---\n# Run Notes\n",
+            encoding="utf-8",
+        )
+        report = self.root / "output" / "reports" / "llm-complete-aiwiki-ask.md"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(
+            "---\n"
+            'kind: "output"\n'
+            'generated_by: "aiwiki-ask"\n'
+            'created_at: "2026-05-18T00:00:00Z"\n'
+            'run_notes_path: "output/control/runs/llm-complete/thinking.md"\n'
+            "---\n# LLM-complete report\n",
+            encoding="utf-8",
+        )
+
+        coverage = collect_metrics(self.root, preview_limit=10)["receipt_coverage"]
+
+        sample = coverage["samples"][0]
+        self.assertEqual(sample["path"], "output/reports/llm-complete-aiwiki-ask.md")
+        self.assertIn("execution_receipt", sample["missing"])
+        self.assertIn("llm_receipt", sample["missing"])
+        self.assertNotIn("deterministic_baseline_output", sample["exemptions"])
+
+    def test_collect_metrics_exempts_deterministic_ready_aiwiki_ask_output_from_llm_receipts(self) -> None:
+        run_notes = self.root / "output" / "control" / "runs" / "deterministic-ready" / "thinking.md"
+        run_notes.parent.mkdir(parents=True, exist_ok=True)
+        run_notes.write_text(
+            "---\n"
+            'kind: "run-progress-notes"\n'
+            'status: "deterministic-ready"\n'
+            "---\n# Run Notes\n",
+            encoding="utf-8",
+        )
+        report = self.root / "output" / "reports" / "deterministic-ready.md"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(
+            "---\n"
+            'kind: "output"\n'
+            'generated_by: "aiwiki-ask"\n'
+            'created_at: "2026-05-18T00:00:00Z"\n'
+            'run_notes_path: "output/control/runs/deterministic-ready/thinking.md"\n'
+            "---\n# Deterministic report\n",
+            encoding="utf-8",
+        )
+
+        coverage = collect_metrics(self.root, preview_limit=10)["receipt_coverage"]
+
+        sample = coverage["samples"][0]
+        self.assertEqual(sample["path"], "output/reports/deterministic-ready.md")
+        self.assertEqual(sample["missing"], [])
+        self.assertIn("deterministic_baseline_output", sample["exemptions"])
+
     def test_collect_metrics_treats_existing_l3_issue_class_as_preview_noise(self) -> None:
         ask_path = self.root / "prompts" / "ask.md"
         ask_path.parent.mkdir(parents=True, exist_ok=True)

@@ -195,6 +195,10 @@ def _handle_vault_admin(args: argparse.Namespace, root: Path) -> tuple[object, s
         return _out(bootstrap_new_vault(root, Path(args.target).resolve(), force=args.force))
     if args.handler_command == "ingest":
         return _out(ingest_source(root, args.source, title=args.title))
+    if args.handler_command == "sync-evidence-graph":
+        from ..vault_obsidian_graph import sync_evidence_graph_workspace
+
+        return _out(sync_evidence_graph_workspace(root))
     raise ValueError(f"Unsupported command: {args.handler_command}")
 
 
@@ -653,6 +657,7 @@ _HANDLERS = {
     "layout": _handle_vault_admin,
     "new-vault": _handle_vault_admin,
     "ingest": _handle_vault_admin,
+    "sync-evidence-graph": _handle_vault_admin,
     "drop-url": _handle_drop,
     "drop-pdf": _handle_drop,
     "drop-image": _handle_drop,

@@ -259,7 +259,7 @@ class PendingSubmissionContractTests(unittest.TestCase):
     def test_advanced_drawer_has_dev_banner(self) -> None:
         text = (SRC / "render_advanced.js").read_text(encoding="utf-8")
         self.assertIn("furnace-advanced-dev-banner", text)
-        self.assertIn("以下为开发者诊断信息", text)
+        self.assertIn("以下为运行诊断与历史", text)
         # R91: banner 移到外置 wrapper（在 details/section 之前），不再要求在 advanced body 内
         banner_idx = text.find("furnace-advanced-dev-banner")
         first_section_idx = text.find("renderAdvancedSection(plugin, body")

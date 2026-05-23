@@ -53,7 +53,7 @@ verify_python_static() {
 }
 
 verify_unit() {
-  python3 -m unittest discover -s tests -p 'test_*.py'
+  python3 -m pytest tests
 }
 
 verify_acceptance() {
@@ -114,6 +114,7 @@ case "$TARGET" in
     ;;
   all|full)
     verify_scripts
+    verify_product_shell_static
     ;;
   *)
     echo "Unknown verify target: $TARGET" >&2
@@ -124,7 +125,7 @@ esac
 
 verify_python_static
 python3 -m coverage erase
-python3 -m coverage run --branch -m unittest discover -s tests -p 'test_*.py'
+python3 -m coverage run --branch -m pytest tests
 python3 -m coverage report --skip-covered --fail-under=92
 verify_cli_smoke
 verify_acceptance

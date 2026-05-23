@@ -5,7 +5,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   async onload() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
     this.pluginState = { recentRuns: [] };
-    this.pendingSubmissions = []; // R89: 持久化 + runtime; status: running | received | done | failed; { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error, reconcileTarget }
+    this.pendingSubmissions = []; // R89: 持久化 + runtime; status: running | received | done | failed | degraded; { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error, reconcileTarget }
     this.longRunningPollTimer = null;
     this.shellSummary = null;
     this.repoState = { valid: false, root: "", launcherPath: "", missingPaths: ["vault-root"] };
@@ -14,6 +14,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
     await this.loadPluginState();
     this.refreshRepoState();
+    if (typeof this.syncEvidenceGraphConfig === "function") {
+      void this.syncEvidenceGraphConfig({ quiet: true }).catch(() => {});
+    }
 
     this.registerView(VIEW_TYPE_FURNACE_CENTER, (leaf) => new FurnaceCenterView(leaf, this));
     this.registerView(VIEW_TYPE_RECENT_RUNS, (leaf) => new RecentRunsView(leaf, this));
@@ -60,43 +63,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         this.runUiAction(() => this.openFurnaceCenterView(), this.t("Open Furnace"));
       },
     });
-    this.addCommand({
-      id: "run-compile",
-      name: this.t("刷新炉子"),
-      callback: () => {
-        this.runUiAction(() => this.runCompileCommand(), this.t("刷新炉子"));
-      },
-    });
-    if (this.settings.showAdvancedCommands) {
-      this.addCommand({
-        id: "run-ask",
-        name: this.t("Ask 炼丹炉"),
-        callback: () => {
-          new AskCommandModal(this.app, this).open();
-        },
-      });
-    }
-    this.addCommand({
-      id: "capture-note",
-      name: this.t("Capture Note"),
-      callback: () => {
-        new CaptureNoteModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "drop-url",
-      name: this.t("Drop URL"),
-      callback: () => {
-        new DropUrlModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "drop-file",
-      name: this.t("Drop File"),
-      callback: () => {
-        new DropFileModal(this.app, this).open();
-      },
-    });
   }
 
   registerAdvancedCommands() {
@@ -133,153 +99,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         this.runUiAction(() => this.refreshShellSummaryCommand(), this.t("Refresh Furnace Shell"));
       },
     });
-    this.addCommand({
-      id: "run-nightly",
-      name: this.t("Nightly"),
-      callback: () => {
-        this.runUiAction(() => this.runNightlyCommand(), this.t("Nightly"));
-      },
-    });
-    this.addCommand({
-      id: "set-protocol",
-      name: this.t("Set Protocol"),
-      callback: () => {
-        new ProtocolCommandModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "file-back",
-      name: this.t("File Back"),
-      callback: () => {
-        this.openFileBackModal();
-      },
-    });
-    this.addCommand({
-      id: "review-page",
-      name: this.t("Review Page"),
-      callback: () => {
-        this.openReviewPageContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "review-next-page",
-      name: this.t("Review Next Page"),
-      callback: () => {
-        this.openReviewNextTransitionPicker();
-      },
-    });
-    this.addCommand({
-      id: "batch-review-pages",
-      name: this.t("Batch Review Pages"),
-      callback: () => {
-        this.openReviewBatchSuggestionPicker();
-      },
-    });
-    this.addCommand({
-      id: "review-rewrite",
-      name: this.t("Review Rewrite"),
-      callback: () => {
-        this.openReviewRewriteContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "apply-rewrite",
-      name: this.t("Apply Rewrite"),
-      callback: () => {
-        this.openApplyRewriteModal();
-      },
-    });
-    this.addCommand({
-      id: "retire-concept",
-      name: this.t("Retire Concept"),
-      callback: () => {
-        this.openRetireConceptModal();
-      },
-    });
-    this.addCommand({
-      id: "reactivate-concept",
-      name: this.t("Reactivate Concept"),
-      callback: () => {
-        this.openReactivateConceptModal();
-      },
-    });
-    this.addCommand({
-      id: "apply-archive",
-      name: this.t("Apply archive"),
-      callback: () => {
-        this.openApplyArchiveContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "revert-archive",
-      name: this.t("Revert archive"),
-      callback: () => {
-        this.openRevertArchiveContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "review-action",
-      name: this.t("Review Action"),
-      callback: () => {
-        this.openReviewActionContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "apply-action",
-      name: this.t("Apply Action"),
-      callback: () => {
-        this.openApplyActionContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "revert-action",
-      name: this.t("Revert Action"),
-      callback: () => {
-        this.openRevertActionContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "apply-all-accepted-low-risk",
-      name: this.t("Apply All Accepted Low-Risk Actions"),
-      callback: () => {
-        this.runUiAction(() => this.runApplyAllAcceptedLowRiskCommand(), this.t("Apply All Accepted Low-Risk Actions"));
-      },
-    });
-    this.addCommand({
-      id: "revert-last-action-batch",
-      name: this.t("Revert Last Action Batch"),
-      callback: () => {
-        this.runUiAction(() => this.runRevertLastBatchCommand(), this.t("Revert Last Action Batch"));
-      },
-    });
-    this.addCommand({
-      id: "report-subgraph",
-      name: this.t("View report graph"),
-      callback: () => {
-        this.openReportSubgraphPicker();
-      },
-    });
-    this.addCommand({
-      id: "open-home-note",
-      name: this.t("Open Home Note"),
-      callback: () => {
-        this.runUiAction(() => this.openHomeNote(), this.t("Open Home Note"));
-      },
-    });
-    this.addCommand({
-      id: "drop-image",
-      name: this.t("Drop Image"),
-      callback: () => {
-        new DropImageModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "search-workspace",
-      name: this.t("Search Workspace"),
-      callback: () => {
-        new SearchCommandModal(this.app, this).open();
-      },
-    });
   }
 
   registerOpenView(view) {
@@ -306,6 +125,19 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (this.settings.defaultAskFormat === "report") {
       this.settings.defaultAskFormat = "note";
     }
+    const legacyShowHtmlShortcutsMigrated = Object.prototype.hasOwnProperty.call(this.settings, "showHtmlShortcuts");
+    delete this.settings.showHtmlShortcuts;
+    const legacyDefaultAskModeMigrated = Object.prototype.hasOwnProperty.call(this.settings, "defaultAskMode");
+    delete this.settings.defaultAskMode;
+    const rawAdvancedSectionsExpanded = this.settings.advancedSectionsExpanded && typeof this.settings.advancedSectionsExpanded === "object"
+      ? this.settings.advancedSectionsExpanded
+      : {};
+    const migratedAdvancedSectionsExpanded = {
+      status: Boolean(rawAdvancedSectionsExpanded.status),
+      history: Boolean(rawAdvancedSectionsExpanded.history),
+    };
+    const advancedSectionsExpandedMigrated = JSON.stringify(this.settings.advancedSectionsExpanded || {}) !== JSON.stringify(migratedAdvancedSectionsExpanded);
+    this.settings.advancedSectionsExpanded = migratedAdvancedSectionsExpanded;
     const legacyLlmSettingsMigrated = dropLegacyLlmSettings(this.settings);
     this.settings.locale = normalizeLocale(this.settings.locale);
     const migratedFeishuWebhookUrl = String(this.settings.feishuWebhookUrl || this.settings.feishu_webhook_url || "").trim();
@@ -384,7 +216,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.pluginState = { recentRuns };
     this.trimRecentRuns();
     const defaultAskFormatMigrated = rawSettings.defaultAskFormat === "report";
-    if (feishuWebhookUrlMigrated || wecomWebhookUrlMigrated || enabledChannelsMigrated || lastViewedTimestampMigrated || legacyLlmSettingsMigrated || defaultAskFormatMigrated) {
+    if (feishuWebhookUrlMigrated || wecomWebhookUrlMigrated || enabledChannelsMigrated || lastViewedTimestampMigrated || legacyLlmSettingsMigrated || defaultAskFormatMigrated || legacyShowHtmlShortcutsMigrated || legacyDefaultAskModeMigrated || advancedSectionsExpandedMigrated) {
       await this.savePluginState();
     }
   }
@@ -399,7 +231,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
-  // R91: Advanced 抽屉子 section 折叠态读写。默认全折叠（status/history/devops）。
+  // R91: Advanced 抽屉子 section 折叠态读写。默认全折叠（status/history）。
   getAdvancedSectionExpanded(key) {
     const s = this.settings && this.settings.advancedSectionsExpanded;
     if (!s || typeof s !== "object") return false;
@@ -407,11 +239,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async setAdvancedSectionExpanded(key, value) {
+    if (key !== "status" && key !== "history") {
+      return;
+    }
     const current = this.settings && this.settings.advancedSectionsExpanded;
     // 强制 own object，避免与 DEFAULT_SETTINGS 共享引用导致默认值被 mutate
-    const next = (current && typeof current === "object" && current !== DEFAULT_SETTINGS.advancedSectionsExpanded)
-      ? Object.assign({}, current)
-      : { status: false, history: false, devops: false };
+    const next = {
+      status: Boolean(current && typeof current === "object" && current.status),
+      history: Boolean(current && typeof current === "object" && current.history),
+    };
     next[key] = Boolean(value);
     this.settings.advancedSectionsExpanded = next;
     try {
@@ -1456,12 +1292,56 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (!relativePath) {
       return;
     }
+    if (relativePath === ".obsidian/graph.json" && typeof this.maybeRepairEvidenceGraphFilter === "function") {
+      void this.maybeRepairEvidenceGraphFilter().catch(() => {});
+      return;
+    }
     if (relativePath === SHELL_SUMMARY_PATH) {
       await this.loadShellSummaryFromDisk();
       return;
     }
     if (relativePath.startsWith("output/") || relativePath.startsWith("wiki/indexes/")) {
       this.refreshOpenViews();
+    }
+  }
+
+  async syncEvidenceGraphConfig({ quiet = true } = {}) {
+    if (!this.repoState.valid) {
+      return null;
+    }
+    try {
+      return await this.execLauncher(["sync-evidence-graph"]);
+    } catch (error) {
+      if (!quiet) {
+        console.error("[furnace-product-shell] sync-evidence-graph failed", error);
+      }
+      return null;
+    }
+  }
+
+  async maybeRepairEvidenceGraphFilter() {
+    const adapter = this.app.vault.adapter;
+    const graphPath = ".obsidian/graph.json";
+    if (!(await adapter.exists(graphPath))) {
+      return;
+    }
+    try {
+      const raw = await adapter.read(graphPath);
+      const parsed = JSON.parse(raw);
+      const search = String(parsed.search || "").trim();
+      if (!search || search.includes("wiki/concepts")) {
+        await this.syncEvidenceGraphConfig({ quiet: true });
+      }
+    } catch {
+      await this.syncEvidenceGraphConfig({ quiet: true });
+    }
+  }
+
+  async openEvidenceGraphView() {
+    await this.syncEvidenceGraphConfig({ quiet: false });
+    await this.openWorkspacePath("wiki/evidence-graph.md");
+    if (this.app.commands?.executeCommandById) {
+      await this.app.commands.executeCommandById("graph:open");
     }
   }
 
@@ -2153,7 +2033,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   // ---------------- Pending submissions (R88 + R89 持久化 + 两段式) ----------------
   // 用户提交后立即出现的"处理中"卡片，独立于 recentRuns（命令历史）和
-  // shellSummary（事实层）。R89: 持久化到 plugin state；status = running | received | done | failed。
+  // shellSummary（事实层）。R89: 持久化到 plugin state；status = running | received | done | failed | degraded。
   pushPendingSubmission(displayText, opts = {}) {
     const text = String(displayText || "").trim();
     if (!text) return null;
@@ -2168,7 +2048,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       payloadFingerprint: fingerprint,
       displayText: text.length > 120 ? text.slice(0, 117) + "…" : text,
       title: String(opts.title || "").trim(),
-      status: "running", // R89: running | received | done | failed
+      status: "running", // R89: running | received | done | failed | degraded
       startedAt: new Date().toISOString(),
       finishedAt: "",
       error: "",
@@ -2180,6 +2060,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       llmStatus: String(opts.llmStatus || "").trim(),
       llmBackend: String(opts.llmBackend || "").trim(),
       llmModel: String(opts.llmModel || "").trim(),
+      backgroundStatus: String(opts.backgroundStatus || "").trim(),
+      artifactQuality: String(opts.artifactQuality || "").trim(),
       retryArgs: opts.retryArgs && typeof opts.retryArgs === "object" ? opts.retryArgs : null,
     };
     this.pendingSubmissions.unshift(entry);
@@ -2206,6 +2088,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     entry.llmStatus = "";
     entry.llmBackend = "";
     entry.llmModel = "";
+    entry.backgroundStatus = "";
+    entry.artifactQuality = "";
     if (entry.retryArgs && typeof entry.retryArgs === "object") {
       entry.retryArgs = Object.assign({}, entry.retryArgs, { jobId: "", runId: "", runNotesPath: "" });
     }
@@ -2228,21 +2112,37 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.updateLongRunningPoller();
   }
 
-  // R90: reconcile 命中 → done（"报告已生成" or "已记录"）
+  // R90: reconcile 命中 → done/degraded（"报告已生成" / "恢复产物已保留" / "已记录"）
   // reconcileTarget: "outputs" | "receipts" | "raw"; reconcilePath: cand.path / stored_path（可空）
   // 不再 4s 自动消失：done 卡变行动卡，由用户点"打开报告/查看回执/完成"主动 dismiss
-  // 防御：done/failed 不应再被升到 done
+  // 防御：terminal states 不应再被升到 done
   markPendingSubmissionDone(id, reconcileTarget, reconcilePath) {
     const entry = this._findPending(id);
     if (!entry) return;
-    if (entry.status === "done" || entry.status === "failed") return;
-    entry.status = "done";
+    if (entry.status === "done" || entry.status === "failed" || entry.status === "degraded") return;
+    entry.status = this.isPendingSubmissionDegraded(entry) ? "degraded" : "done";
     entry.finishedAt = new Date().toISOString();
     if (reconcileTarget) entry.reconcileTarget = String(reconcileTarget);
     if (reconcilePath) entry.reconcilePath = String(reconcilePath);
     void this.savePluginState();
     this.refreshOpenViews();
     this.updateLongRunningPoller();
+  }
+
+  isPendingSubmissionDegraded(entry) {
+    if (!entry || typeof entry !== "object") return false;
+    if (entry.status === "degraded") return true;
+    const deliveryMode = String(entry.deliveryMode || entry.delivery_mode || "").trim();
+    const llmStatus = String(entry.llmStatus || entry.llm_status || "").trim();
+    const backgroundStatus = String(entry.backgroundStatus || entry.background_status || "").trim();
+    const artifactQuality = String(entry.artifactQuality || entry.artifact_quality || "").trim();
+    return deliveryMode === "deterministic-fallback"
+      || deliveryMode === "llm-failed"
+      || llmStatus === "timeout_or_unavailable"
+      || llmStatus === "failed"
+      || llmStatus === "degraded"
+      || backgroundStatus === "degraded"
+      || artifactQuality === "degraded";
   }
 
   markPendingSubmissionFailed(id, error) {
@@ -2306,6 +2206,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (meta.llmStatus || meta.llm_status) entry.llmStatus = String(meta.llmStatus || meta.llm_status || "");
     if (meta.llmBackend || meta.llm_backend) entry.llmBackend = String(meta.llmBackend || meta.llm_backend || "");
     if (meta.llmModel || meta.llm_model) entry.llmModel = String(meta.llmModel || meta.llm_model || "");
+    if (meta.backgroundStatus || meta.background_status) entry.backgroundStatus = String(meta.backgroundStatus || meta.background_status || "");
+    if (meta.artifactQuality || meta.artifact_quality) entry.artifactQuality = String(meta.artifactQuality || meta.artifact_quality || "");
     if (opts.save !== false) void this.savePluginState();
     if (opts.refresh !== false) this.refreshOpenViews();
   }
@@ -2378,8 +2280,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     // Matched run_notes_path/run_id are applied via updatePendingSubmissionRunNotes before markDone.
     for (const entry of this.pendingSubmissions) {
       if (!entry) { continue; }
-      // failed/done 保留（done 由 setTimeout 自身移除）
-      if (entry.status === "failed" || entry.status === "done") {
+      // failed/done/degraded 保留（done/degraded 等用户处理）
+      if (entry.status === "failed" || entry.status === "done" || entry.status === "degraded") {
         remaining.push(entry);
         continue;
       }
@@ -2442,6 +2344,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           llmStatus: String(hitCand.llm_status || ""),
           llmBackend: String(hitCand.llm_backend || ""),
           llmModel: String(hitCand.llm_model || ""),
+          backgroundStatus: String(hitCand.background_status || ""),
+          artifactQuality: String(hitCand.artifact_quality || ""),
         };
       }
       else {
@@ -2618,9 +2522,21 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       if (!item || typeof item !== "object") continue;
       const candidatePath = String(item.path || "").trim();
       if (!candidatePath || !candidatePath.startsWith("output/reports/")) continue;
+      const deliveryMode = String(item.delivery_mode || "").trim();
+      const llmStatus = String(item.llm_status || "").trim();
+      const backgroundStatus = String(item.background_status || "").trim();
+      const artifactQuality = String(item.artifact_quality || "").trim();
+      const containsPlaceholder = String(item.contains_llm_placeholder || "").trim().toLowerCase();
+      const rawTitle = String(item.title || "").trim();
+      if (deliveryMode === "deterministic-fallback" || deliveryMode === "llm-failed") continue;
+      if (["timeout_or_unavailable", "pending", "failed", "degraded"].includes(llmStatus)) continue;
+      if (["submitted", "running", "degraded"].includes(backgroundStatus)) continue;
+      if (["degraded", "placeholder"].includes(artifactQuality)) continue;
+      if (["1", "true", "yes"].includes(containsPlaceholder)) continue;
+      if (rawTitle.startsWith("LLM 未完成")) continue;
       if (seen.has(candidatePath)) continue;
       seen.add(candidatePath);
-      const title = String(item.title || "").trim() || candidatePath;
+      const title = rawTitle || candidatePath;
       candidates.push({ value: candidatePath, label: `${title} — ${candidatePath}` });
     }
     return candidates;
@@ -3286,10 +3202,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     renderActionButtons(this, container, buttons);
   }
 
-  renderGettingStartedSection(container) {
-    renderGettingStartedSection(this, container);
-  }
-
   renderPanel(container, title, description = "", options = {}) {
     return renderPanel(this, container, title, description, options);
   }
@@ -3337,15 +3249,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   renderReportsGroup(container, reports, emptyText) {
     renderReportsGroup(this, container, reports, emptyText);
   }
-  renderDropZone(container) {
-    renderDropZone(this, container);
-  }
   renderAdvancedDrawer(container) {
     renderAdvancedDrawer(this, container);
-  }
-
-  renderLegacyAdvancedPanel(container) {
-    renderLegacyAdvancedPanel(this, container);
   }
 
   renderFurnaceCenter(contentEl) {

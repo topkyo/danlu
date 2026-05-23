@@ -1,28 +1,35 @@
 # 图谱视图
 
-这里是炼丹炉的人用关系图谱入口，负责把机器记忆里有真实 Markdown 页面支撑的“材料 → 判断 → 概念 → 金丹/决策”关系用中文收拢起来。
+炼丹炉有两种图谱，用途不同，不要混用。
 
-默认工作流仍然是先看报告；只有当你想追溯报告背后的证据链、判断来源或概念关系时，再打开这里。
+## 证据关系图（Obsidian 原生 Graph）
 
-## 先看哪里
+- **入口**：Obsidian 侧边栏 Graph；枢纽页 [证据关系总览](../evidence-graph.md)。
+- **节点**：`output/reports`、`wiki/sources`、`raw/inbox`、`raw/assets`；协议下可有 `wiki/judgments`。
+- **边**：报告 → 来源页 → 原料文件（wikilink）；**不含** `wiki/concepts`。
+- **默认行为**：打开 Obsidian 侧边栏 Graph 即是证据关系图，**无需手动设置筛选**。证据链靠 **报告/来源/原料之间的 wikilink** 生成；`wiki/concepts` 页不再向来源/彼此输出可索引链接（避免概念节点被拉进图）。`.obsidian/graph.json` 另加 `-path:"wiki/concepts"` 作为兜底排除。
 
-- [本地图谱 HTML](../../output/graph/machine-memory.html)：直接看中文关系图谱；每个节点都应能跳到对应 `.md` 文件
-- [图谱健康](./graph-health.md)：看关系组、孤立来源、桥接概念、过载概念
-- [机器记忆拓扑](./machine-memory-topology.md)：看 hub 和 Mermaid 拓扑切片
-- [机器记忆](./machine-memory.md)：看 term index、digest、动作/提案数量
-- [漂移报告](./drift-report.md)：看最近一次机器记忆结构变化
-- [概念质量](./concept-quality.md)：看图谱问题如何传导到概念改写
+默认工作流仍然是先看 Today 和报告；需要看「报告连到哪些材料」时，直接打开 Obsidian Graph 或 [证据关系总览](../evidence-graph.md)。
+
+## 机器记忆图谱（HTML）
+
+- **入口**：[本地图谱 HTML](../../output/graph/machine-memory.html)
+- **节点**：来源、**概念**、判断、金丹/决策等机器记忆资产。
+- **边**：材料提到概念、材料支撑判断、概念相关、判断支持等（中文关系标签）。
+- **维护**： [图谱健康](./graph-health.md)、[机器记忆](./machine-memory.md)、[概念质量](./concept-quality.md)
+
+需要追溯报告背后的完整语义网络（含概念聚类）时，打开 HTML；日常证据链用 Obsidian 证据关系图即可。
 
 ## 怎么读
 
-1. 先看报告和 Today，不把图谱当默认入口。
-2. 需要追溯时打开 `output/graph/machine-memory.html`。
-3. 按中文关系读图：材料提到概念、材料支撑判断、概念相关、判断支持、判断冲突、决策依据、因果关系、金丹承接。
-4. 再回到具体 `wiki/sources/`、`wiki/judgments/`、`wiki/concepts/`、`wiki/elixirs/` 页面处理。
+1. 先看报告和 Today，不把任何图谱当默认入口。
+2. 需要「报告引用了哪些 PDF/笔记」→ Obsidian 证据关系图或 `wiki/evidence-graph.md`。
+3. 需要「主题/概念如何串联多份材料」→ `output/graph/machine-memory.html`。
+4. 只有做维护时，才回到 `wiki/sources/`、`wiki/judgments/`、`wiki/concepts/`、`wiki/elixirs/` 具体页面。
 
 ## 边界
 
-- 这里展示的是 `aiwiki` 的机器记忆视角，不等于 Obsidian 自带的 Graph View。
-- Obsidian Graph 更适合看笔记链接；这里更适合看知识编译后的证据、判断、概念、金丹和决策关系。
-- 图谱关系是辅助解释层；为保持简洁，这里只展示能解析到现有 `.md` 文件的节点和它们之间的关系，最终用户默认仍应看报告和少量关键确认。
-- Linux 上若 `output/graph/machine-memory.html` 在 Obsidian 内打开后跳到 Mihomo/Clash 等代理客户端，是系统把 `text/html` 默认程序绑给了它；在浏览器里打开或在系统设置里改默认程序即可。
+- Obsidian Graph ≠ HTML 机器记忆图；两边节点集合 intentionally 不同。
+- 概念页是机器记忆索引，不是原料副本；不应与 `raw/` 并列出现在证据关系图里。
+- 图谱关系是辅助解释层；最终用户默认仍应看报告和少量关键确认。
+- Linux 上若 HTML 在 Obsidian 内打开后跳到代理客户端，是系统 `text/html` 默认程序问题；在浏览器打开或改系统默认程序即可。

@@ -363,7 +363,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(result["recent_runs"][0]["run_id"], report["run_id"])
         self.assertEqual(result["recent_runs"][0]["run_notes_path"], report["run_notes_path"])
 
-    def test_collect_recent_output_artifacts_exposes_delivery_and_llm_fields(self) -> None:
+    def test_collect_recent_output_artifacts_marks_degraded_outputs_for_downstream_filters(self) -> None:
         report_path = self.root / "output" / "reports" / "degraded-report.md"
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(
@@ -742,6 +742,148 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertTrue(result["recent_receipts"][0]["action_id"])
         self.assertEqual(result["recent_receipts"][0]["receipt_path"], archive_result["receipt_path"])
         self.assertEqual(result["recent_receipts"][0]["operation"], "apply")
+        self.assertEqual(result["nightly"]["retention"]["policy"], "archive-first")
+        self.assertFalse(result["nightly"]["retention"]["delete_receipts_by_default"])
+
+    def test_shell_status_exposes_failed_nightly_recovery_command(self) -> None:
+        log_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(
+            json.dumps(
+                {
+                    "event": "run-nightly",
+                    "status": "failed",
+                    "compile_limit": 2,
+                    "semantic_lint": False,
+                    "error_class": "timeout",
+                    "error": "LLM endpoint timed out after 60 seconds.",
+                    "backend_effective": "opencode-api",
+                    "model_final": "deepseek-v4-pro",
+                    "created_at": "2026-05-24T00:00:00+00:00",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = shell_status(self.root)
+
+        self.assertEqual(result["nightly"]["llm_receipt"]["status"], "failed")
+        self.assertEqual(result["nightly"]["llm_receipt"]["error_class"], "timeout")
+        self.assertEqual(
+            result["nightly"]["recovery_command"],
+            "./scripts/aiwiki-launcher.sh run-nightly --compile-limit 2 --no-semantic-lint",
+        )
+
+    def test_failed_nightly_marks_previous_success_execution_receipt_stale(self) -> None:
+        state_dir = self.root / ".aiwiki" / "state"
+        state_dir.mkdir(parents=True, exist_ok=True)
+        old_receipt = {
+            "kind": "execution-receipt",
+            "operation": "run-nightly",
+            "status": "success",
+            "receipt_path": "output/control/execution-receipts/run-nightly-nightly-health.json",
+            "target_file": ".aiwiki/state/nightly-health.json",
+            "applied_at": "2026-05-23T00:00:00+00:00",
+        }
+        (state_dir / "execution-receipts.jsonl").write_text(json.dumps(old_receipt) + "\n", encoding="utf-8")
+        log_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(
+            json.dumps(
+                {
+                    "event": "run-nightly",
+                    "status": "failed",
+                    "compile_limit": 5,
+                    "semantic_lint": True,
+                    "error_class": "timeout",
+                    "created_at": "2026-05-24T00:00:00+00:00",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = shell_status(self.root)
+
+        execution_receipt = result["nightly"]["execution_receipt"]
+        self.assertFalse(execution_receipt["available"])
+        self.assertTrue(execution_receipt["stale"])
+        self.assertEqual(execution_receipt["status"], "stale-after-failed-run-nightly")
+        self.assertEqual(execution_receipt["receipt_path"], "")
+        self.assertEqual(execution_receipt["stale_receipt_path"], old_receipt["receipt_path"])
+
+    def test_latest_nightly_llm_success_requires_matching_execution_receipt(self) -> None:
+        state_dir = self.root / ".aiwiki" / "state"
+        state_dir.mkdir(parents=True, exist_ok=True)
+        old_receipt = {
+            "kind": "execution-receipt",
+            "operation": "run-nightly",
+            "status": "success",
+            "receipt_path": "output/control/execution-receipts/run-nightly-nightly-health.json",
+            "target_file": ".aiwiki/state/nightly-health.json",
+            "applied_at": "2026-05-23T00:00:00+00:00",
+        }
+        (state_dir / "execution-receipts.jsonl").write_text(json.dumps(old_receipt) + "\n", encoding="utf-8")
+        log_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(
+            json.dumps(
+                {
+                    "event": "run-nightly",
+                    "status": "success",
+                    "compile_limit": 5,
+                    "semantic_lint": True,
+                    "created_at": "2026-05-24T00:00:00+00:00",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = shell_status(self.root)
+
+        execution_receipt = result["nightly"]["execution_receipt"]
+        self.assertFalse(execution_receipt["available"])
+        self.assertTrue(execution_receipt["stale"])
+        self.assertEqual(execution_receipt["status"], "stale-after-unmatched-run-nightly-proof")
+        self.assertEqual(execution_receipt["receipt_path"], "")
+        self.assertEqual(execution_receipt["stale_receipt_path"], old_receipt["receipt_path"])
+
+    def test_latest_nightly_llm_success_accepts_matching_execution_receipt(self) -> None:
+        state_dir = self.root / ".aiwiki" / "state"
+        state_dir.mkdir(parents=True, exist_ok=True)
+        receipt = {
+            "kind": "execution-receipt",
+            "operation": "run-nightly",
+            "status": "success",
+            "receipt_path": "output/control/execution-receipts/run-nightly-nightly-health.json",
+            "target_file": ".aiwiki/state/nightly-health.json",
+            "applied_at": "2026-05-24T00:00:01+00:00",
+        }
+        (state_dir / "execution-receipts.jsonl").write_text(json.dumps(receipt) + "\n", encoding="utf-8")
+        log_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(
+            json.dumps(
+                {
+                    "event": "run-nightly",
+                    "status": "success",
+                    "compile_limit": 5,
+                    "semantic_lint": True,
+                    "created_at": "2026-05-24T00:00:00+00:00",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = shell_status(self.root)
+
+        execution_receipt = result["nightly"]["execution_receipt"]
+        self.assertTrue(execution_receipt["available"])
+        self.assertFalse(execution_receipt["stale"])
+        self.assertEqual(execution_receipt["receipt_path"], receipt["receipt_path"])
 
     def test_shell_status_exposes_state_aware_execution_controls(self) -> None:
         archive_entry = self._prepare_ready_archive_candidate()
@@ -1056,27 +1198,34 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertIn('id: "open-review-center"', content)
         self.assertIn('id: "open-execution-center"', content)
         self.assertIn('id: "refresh-furnace-shell"', content)
-        self.assertIn('id: "run-compile"', content)
-        self.assertIn('id: "run-ask"', content)
-        self.assertIn('id: "search-workspace"', content)
-        self.assertIn('id: "run-nightly"', content)
-        self.assertIn('id: "set-protocol"', content)
-        self.assertIn('id: "open-home-note"', content)
-        self.assertIn('id: "file-back"', content)
-        self.assertIn('id: "review-page"', content)
-        self.assertIn('id: "review-next-page"', content)
-        self.assertIn('id: "batch-review-pages"', content)
-        self.assertIn('id: "review-rewrite"', content)
-        self.assertIn('id: "apply-rewrite"', content)
-        self.assertIn('id: "retire-concept"', content)
-        self.assertIn('id: "reactivate-concept"', content)
-        self.assertIn('id: "apply-archive"', content)
-        self.assertIn('id: "revert-archive"', content)
-        self.assertIn('id: "review-action"', content)
-        self.assertIn('id: "apply-action"', content)
-        self.assertIn('id: "revert-action"', content)
-        self.assertIn('id: "apply-all-accepted-low-risk"', content)
-        self.assertIn('id: "revert-last-action-batch"', content)
+        for hidden_command in (
+            'id: "run-compile"',
+            'id: "run-ask"',
+            'id: "capture-note"',
+            'id: "drop-url"',
+            'id: "drop-file"',
+            'id: "open-evidence-graph"',
+            'id: "search-workspace"',
+            'id: "run-nightly"',
+            'id: "set-protocol"',
+            'id: "open-home-note"',
+            'id: "file-back"',
+            'id: "review-page"',
+            'id: "review-next-page"',
+            'id: "batch-review-pages"',
+            'id: "review-rewrite"',
+            'id: "apply-rewrite"',
+            'id: "retire-concept"',
+            'id: "reactivate-concept"',
+            'id: "apply-archive"',
+            'id: "revert-archive"',
+            'id: "review-action"',
+            'id: "apply-action"',
+            'id: "revert-action"',
+            'id: "apply-all-accepted-low-risk"',
+            'id: "revert-last-action-batch"',
+        ):
+            self.assertNotIn(hidden_command, content)
         self.assertIn('renderReviewCenter(this.contentEl);', content)
         self.assertIn('renderExecutionCenter(this.contentEl);', content)
 

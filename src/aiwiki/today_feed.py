@@ -394,7 +394,7 @@ def _is_deliverable_report_output(item: dict[str, Any]) -> bool:
     title = _first_text(item, "title")
     if delivery_mode == "deterministic-fallback":
         return False
-    if llm_status in {"timeout_or_unavailable", "pending", "failed"}:
+    if llm_status in {"timeout_or_unavailable", "pending", "failed", "degraded"}:
         return False
     if background_status in {"submitted", "running", "degraded"}:
         return False

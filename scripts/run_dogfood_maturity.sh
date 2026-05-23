@@ -26,6 +26,18 @@ COMPILE_LIMIT="${AIWIKI_DOGFOOD_MATURITY_COMPILE_LIMIT:-0}"
 NO_SEMANTIC_LINT="${AIWIKI_DOGFOOD_MATURITY_NO_SEMANTIC_LINT:-1}"
 FORCE_RUN="${AIWIKI_DOGFOOD_MATURITY_FORCE:-0}"
 
+DOGFOOD_ENVRC="${AIWIKI_DOGFOOD_MATURITY_ENVRC:-}"
+if [[ -n "$DOGFOOD_ENVRC" ]]; then
+  if [[ ! -f "$DOGFOOD_ENVRC" ]]; then
+    echo "error: AIWIKI_DOGFOOD_MATURITY_ENVRC does not exist: $DOGFOOD_ENVRC" >&2
+    exit 1
+  fi
+  set -a
+  # shellcheck source=/dev/null
+  source "$DOGFOOD_ENVRC"
+  set +a
+fi
+
 if [[ "$FORCE_RUN" != "1" ]]; then
   TODAY_UTC="$(python3 - <<'PY'
 from datetime import datetime, timezone

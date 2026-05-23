@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Report AGOS-9 live dogfood proof status (read-only except optional collect --write).
+# Report AGOS-9 live dogfood proof status.
+# Writes a local dogfood maturity snapshot via collect --write; never deletes data or prints credentials.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

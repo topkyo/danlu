@@ -54,3 +54,16 @@ python3 scripts/dogfood_maturity_gate.py --root "$AIWIKI_DOGFOOD_VAULT" summariz
 ## Wall-clock 说明
 
 第 2–3 日的 receipt 需要真实日历时间；脚本无法模拟连续日。
+
+## 可选 systemd timer
+
+验证期可安装 user-level timer 自动跑每日 receipt。若 LLM 配置保存在本机 `.envrc.dogfood`，只保存该文件路径，不复制或打印凭据：
+
+```bash
+AIWIKI_INSTALL_DOGFOOD_MATURITY=1 \
+AIWIKI_DOGFOOD_MATURITY_ENVRC=/home/tim/ai-wiki/.envrc.dogfood \
+AIWIKI_DOGFOOD_VAULT=/home/tim/danlu/炼丹炉 \
+bash scripts/install_user_service.sh
+```
+
+Timer 默认 `00:15 UTC` 运行；若当天已有 maturity receipt，`scripts/run_dogfood_maturity.sh` 会跳过，除非显式设置 `AIWIKI_DOGFOOD_MATURITY_FORCE=1`。

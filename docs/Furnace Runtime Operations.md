@@ -105,6 +105,8 @@ elif LLM 已 configured:
         AIWIKI_LLM_BACKEND=nvidia-nim-api
         AIWIKI_LLM_MODEL=openai/gpt-oss-120b
         aiwiki run-nightly --compile-limit 5
+    if any configured LLM run-nightly failed:
+        fail closed; do not convert to deterministic success
 else:
     try configured fallback LLM
     if no LLM path and AIWIKI_NIGHTLY_REQUIRE_LLM == 1:
@@ -115,7 +117,7 @@ else:
 
 关键 env：
 - `AIWIKI_NIGHTLY_DETERMINISTIC_ONLY=0` —— 默认跑 LLM；设 `1` 强制不调 LLM
-- `AIWIKI_NIGHTLY_REQUIRE_LLM=0` —— 默认允许 wrapper 最终落到 deterministic nightly；dogfood maturity proof 会设为 `1`，避免把 deterministic fallback 计入 release proof
+- `AIWIKI_NIGHTLY_REQUIRE_LLM=0` —— 当没有任何 configured LLM path 可尝试时，默认允许 wrapper 跑 deterministic nightly；一旦 configured `run-nightly` 已失败，wrapper 会 fail closed，不把 deterministic nightly 当作本次 success proof
 - `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` —— **L0 维护层自动 apply**；agent_loop preview 完成后立即执行 receipted light primitives（compile/lint/nightly），写 receipt + audit
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1` —— **L1 语义层自动采纳**：concept backlog → active、revisit → deferred、source-concept link 自动 accept + apply
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1` —— **L2 结构层自动采纳**：overloaded-concept split 自动 accept + apply
@@ -262,7 +264,8 @@ AIWIKI_NIGHTLY_FALLBACK_ENV=/home/tim/.aiwiki-secrets/nvidia.env
 - primary 仍是 `AIWIKI_LLM_BACKEND` / `AIWIKI_LLM_MODEL`（默认 `opencode-api/deepseek-v4-pro`）
 - primary `run-nightly` 失败后，wrapper source fallback env file，再用 `nvidia-nim-api/openai/gpt-oss-120b` 重跑一次
 - fallback key 不进入 systemd unit、不进入 repo、不进入 nightly env；只保留 repo 外 path
-- primary 与 fallback 都不可用时，最后仍跑 deterministic `aiwiki nightly`
+- 如果 primary 或 fallback 的 configured `run-nightly` 已实际尝试并失败，wrapper 直接 fail closed；不会再跑 deterministic `aiwiki nightly` 伪造成成功
+- 只有在 primary/fallback 都未配置为可尝试的 LLM path，且 `AIWIKI_NIGHTLY_REQUIRE_LLM=0` 时，才跑 deterministic `aiwiki nightly`
 
 验证：
 
@@ -336,7 +339,7 @@ AIWIKI_MODEL_FALLBACK="meta/llama-3.3-70b-instruct" \
 炼丹炉 §3 "deterministic baseline" 不变量保证：**watcher 即使在 LLM 完全不可用的情况下，也能维持 raw → wiki 的最低可用流水线**。这意味着：
 
 - 出门旅行没网 → watcher 仍能 deterministic compile 投料
-- LLM provider 全 down → nightly 自动降级走 deterministic `nightly` 命令
+- LLM provider 全 down 且未实际尝试 configured `run-nightly` → nightly wrapper 可跑 deterministic `nightly` 维持维护层；如果 configured `run-nightly` 已失败，则失败显式暴露，不降级为 success proof
 - API key 过期 → run-* 命令显式失败，但 watcher 不受影响
 
 默认产品路径可以理解为：**等待投料（watch）→ 炼丹（nightly / run-*）→ 产出（wiki/output/receipt）→ 回馈（review/file-back/judgment）→ 受控学习（L0-L3/Judgment，receipt-gated）**。dogfood maturity timer 只是证明这条路径成熟度的仪表，不是路径本身。
