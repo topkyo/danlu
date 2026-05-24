@@ -37,6 +37,7 @@ COMPOUNDING_REUSE_REF_PREFIXES = (
     "wiki/decisions/",
     "wiki/elixirs/",
 )
+ELIXIR_REUSE_REF_PREFIX = "wiki/elixirs/"
 COMPOUNDING_SAMPLE_OPERATIONS = {
     "ask",
     "file-back",
@@ -423,6 +424,13 @@ def _build_knowledge_compounding_proof(root: Path, *, human_required_report: dic
     judgment_or_elixir_reuse_count = len(output_reuse) + elixir_reuse_count
     receipt_records = _knowledge_compounding_receipt_records(root)
     sample = _select_compounding_sample(output_reuse, receipt_records)
+    elixir_sample = _select_compounding_sample(
+        output_reuse,
+        receipt_records,
+        required_ref_prefix=ELIXIR_REUSE_REF_PREFIX,
+    )
+    settled_elixir_count = _count_settled_elixirs(root)
+    elixir_output_reuse_count = _count_output_reuse_refs(output_reuse, prefix=ELIXIR_REUSE_REF_PREFIX)
     human_required_exception_count = _coerce_int(
         human_required_report.get("human_required_count"),
         _coerce_int(human_required_report.get("exception_count")),
@@ -439,6 +447,17 @@ def _build_knowledge_compounding_proof(root: Path, *, human_required_report: dic
         missing.append("receipt_backed_actions")
     if sample is None:
         missing.append("trace_provenance_backed_compounding_sample")
+
+    elixir_missing: list[str] = []
+    if settled_elixir_count <= 0:
+        elixir_missing.append("settled_elixir_count")
+    if elixir_output_reuse_count + elixir_reuse_count <= 0:
+        elixir_missing.append("elixir_reuse_count")
+    if len(receipt_records) <= 0:
+        elixir_missing.append("receipt_backed_actions")
+    if elixir_sample is None:
+        elixir_missing.append("trace_provenance_backed_elixir_compounding_sample")
+    elixir_status = "pass" if not elixir_missing else "not-yet"
 
     status = "pass" if not missing else "not-yet"
     return {
@@ -475,6 +494,35 @@ def _build_knowledge_compounding_proof(root: Path, *, human_required_report: dic
             },
         },
         "compounding_sample": sample,
+        "elixir_compounding_proof": {
+            "kind": "elixir-compounding-proof-report",
+            "version": 1,
+            "status": elixir_status,
+            "verdict": elixir_status,
+            "reason": "receipt-backed settled elixir reuse observed"
+            if elixir_status == "pass"
+            else "insufficient receipt-backed settled elixir reuse evidence",
+            "metrics": {
+                "settled_elixir_count": {
+                    "value": settled_elixir_count,
+                    "source": "wiki/elixirs/*.md",
+                },
+                "elixir_output_reuse_count": {
+                    "value": elixir_output_reuse_count,
+                    "source": "output frontmatter derived_from/source_files",
+                },
+                "elixir_reuse_metric_count": {
+                    "value": elixir_reuse_count,
+                    "source": "aiwiki metrics elixir_reuse_count",
+                },
+                "receipt_backed_actions": {
+                    "value": len(receipt_records),
+                    "source": "output/control execution receipts + .aiwiki/state/execution-receipts.jsonl",
+                },
+            },
+            "compounding_sample": elixir_sample,
+            "missing_evidence": elixir_missing,
+        },
         "missing_evidence": missing,
         "mechanism_evidence": {
             "manifest_entries": len(entries),
@@ -514,6 +562,23 @@ def _collect_judgment_or_elixir_output_reuse(root: Path) -> list[dict[str, Any]]
             }
         )
     return records
+
+
+def _count_settled_elixirs(root: Path) -> int:
+    directory = root / "wiki" / "elixirs"
+    try:
+        return sum(1 for path in directory.glob("*.md") if path.is_file()) if directory.exists() else 0
+    except OSError:
+        return 0
+
+
+def _count_output_reuse_refs(output_reuse: list[dict[str, Any]], *, prefix: str) -> int:
+    count = 0
+    for item in output_reuse:
+        for ref in item.get("reused_refs") or []:
+            if str(ref).startswith(prefix):
+                count += 1
+    return count
 
 
 def _count_legacy_empty_status_receipts(root: Path) -> dict[str, Any]:
@@ -784,6 +849,8 @@ def _build_receipt_coverage_report(
 def _select_compounding_sample(
     output_reuse: list[dict[str, Any]],
     receipt_records: list[dict[str, str]],
+    *,
+    required_ref_prefix: str | None = None,
 ) -> dict[str, Any] | None:
     if not output_reuse or not receipt_records:
         return None
@@ -797,9 +864,14 @@ def _select_compounding_sample(
         matched_receipt = receipt_by_target.get(path)
         if matched_receipt is None or not _is_successful_compounding_receipt(matched_receipt):
             continue
+        reused_refs = [str(ref) for ref in item.get("reused_refs") or [] if str(ref)]
+        if required_ref_prefix is not None:
+            reused_refs = [ref for ref in reused_refs if ref.startswith(required_ref_prefix)]
+        if not reused_refs:
+            continue
         return {
             "artifact_path": path,
-            "reused_ref": (item.get("reused_refs") or [""])[0],
+            "reused_ref": reused_refs[0],
             "source_refs": item.get("source_refs") or [],
             "receipt_path": str((matched_receipt or {}).get("receipt_path") or ""),
             "receipt_subject_kind": str((matched_receipt or {}).get("subject_kind") or ""),

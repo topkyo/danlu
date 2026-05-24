@@ -235,6 +235,9 @@ class RunnerTests(unittest.TestCase):
             and record.get("primary_path") == result["path"]
         ]
         self.assertTrue(matching_receipts, receipt_history)
+        self.assertEqual(matching_receipts[-1]["receipt_matrix_version"], 1)
+        self.assertEqual(matching_receipts[-1]["run_ask_path"], "direct-note")
+        self.assertEqual(matching_receipts[-1]["artifact_status"], "completed")
         self.assertEqual(matching_receipts[-1]["delivery_mode"], "llm-direct")
         self.assertEqual(matching_receipts[-1]["llm_receipt_path"], ".aiwiki/logs/llm-receipts.jsonl")
         run_notes = (self.root / result["run_notes_path"]).read_text(encoding="utf-8")
@@ -422,6 +425,9 @@ class RunnerTests(unittest.TestCase):
             and record.get("target_file") == result["path"]
         ]
         self.assertTrue(matching_receipts, receipt_history)
+        self.assertEqual(matching_receipts[-1]["receipt_matrix_version"], 1)
+        self.assertEqual(matching_receipts[-1]["run_ask_path"], "local-elixir-stats")
+        self.assertEqual(matching_receipts[-1]["artifact_status"], "completed")
         self.assertEqual(matching_receipts[-1]["settled_elixir_count"], 2)
         run_notes = (self.root / result["run_notes_path"]).read_text(encoding="utf-8")
         self.assertIn(matching_receipts[-1]["receipt_path"], run_notes)
@@ -557,6 +563,9 @@ class RunnerTests(unittest.TestCase):
             and record.get("target_file") == result["path"]
         ]
         self.assertTrue(matching_receipts, receipt_history)
+        self.assertEqual(matching_receipts[-1]["receipt_matrix_version"], 1)
+        self.assertEqual(matching_receipts[-1]["run_ask_path"], "local-markdown-stats")
+        self.assertEqual(matching_receipts[-1]["artifact_status"], "completed")
         self.assertEqual(matching_receipts[-1]["markdown_file_count"], result["markdown_file_count"])
 
     def test_run_ask_local_stats_run_notes_failure_does_not_leave_success_receipt(self) -> None:
@@ -805,6 +814,9 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(matching_receipts, receipt_files)
         receipt_path, receipt_payload = matching_receipts[-1]
         self.assertEqual(receipt_payload["receipt_path"], relative_path(self.root, receipt_path))
+        self.assertEqual(receipt_payload["receipt_matrix_version"], 1)
+        self.assertEqual(receipt_payload["run_ask_path"], "report")
+        self.assertEqual(receipt_payload["artifact_status"], "completed")
         run_notes_frontmatter = parse_frontmatter((self.root / result["run_notes_path"]).read_text(encoding="utf-8"))
         self.assertEqual(run_notes_frontmatter["receipt_path"], receipt_payload["receipt_path"])
 
@@ -1178,6 +1190,10 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(receipt_payload["target_file"], submitted["path"])
         self.assertEqual(receipt_payload["primary_path"], submitted["path"])
         self.assertEqual(receipt_payload["receipt_path"], relative_path(self.root, receipt_path))
+        self.assertEqual(receipt_payload["receipt_matrix_version"], 1)
+        self.assertEqual(receipt_payload["run_ask_path"], "background-resume")
+        self.assertEqual(receipt_payload["artifact_status"], "completed")
+        self.assertEqual(receipt_payload["background_job_id"], submitted["job_id"])
 
     def test_run_ask_timeout_override_is_scoped_to_single_client_creation(self) -> None:
         artifact_path = self.root / "output" / "reports" / "query-timeout-override.md"

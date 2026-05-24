@@ -653,21 +653,30 @@ def _handle_ops(args: argparse.Namespace, root: Path) -> tuple[object, str | Non
     return _out(result, text_output)
 
 
-_HANDLERS = {
+_VAULT_ADMIN_HANDLERS = {
     "layout": _handle_vault_admin,
     "new-vault": _handle_vault_admin,
     "ingest": _handle_vault_admin,
     "sync-evidence-graph": _handle_vault_admin,
+}
+
+_DROP_HANDLERS = {
     "drop-url": _handle_drop,
     "drop-pdf": _handle_drop,
     "drop-image": _handle_drop,
     "drop-repo": _handle_drop,
     "drop-note": _handle_drop,
+}
+
+_COMPILE_PROTOCOL_HANDLERS = {
     "compile": _handle_compile_family,
     "run-compile": _handle_compile_family,
     "file-back": _handle_compile_family,
     "protocol-status": _handle_protocol,
     "protocol-set": _handle_protocol,
+}
+
+_LIVE_SURFACE_HANDLERS = {
     "today": _handle_live_surface,
     "today-snooze": _handle_live_surface,
     "review-queue": _handle_live_surface,
@@ -679,11 +688,17 @@ _HANDLERS = {
     "shell-status": _handle_live_surface,
     "dashboard": _handle_live_surface,
     "search": _handle_live_surface,
+}
+
+_ASK_HANDLERS = {
     "ask": _handle_ask_family,
     "run-ask": _handle_ask_family,
     "run-ask-submit": _handle_ask_family,
     "run-ask-resume": _handle_ask_family,
     "report-subgraph": _handle_ask_family,
+}
+
+_ALCHEMY_HANDLERS = {
     "promote": _handle_promote_demote,
     "demote": _handle_promote_demote,
     "alchemy-start": _handle_alchemy,
@@ -693,11 +708,17 @@ _HANDLERS = {
     "alchemy-revert": _handle_alchemy,
     "alchemy-demote": _handle_alchemy,
     "alchemy": _handle_alchemy,
+}
+
+_L3_HANDLERS = {
     "l3-proposal-create": _handle_l3,
     "l3-proposal-generate": _handle_l3,
     "review": _handle_l3,
     "apply": _handle_l3,
     "revert": _handle_l3,
+}
+
+_PROTOCOL_LEARN_HANDLERS = {
     "protocol-learn-add": _handle_protocol_learn,
     "protocol-learn-list": _handle_protocol_learn,
     "protocol-learn-show": _handle_protocol_learn,
@@ -707,12 +728,18 @@ _HANDLERS = {
     "protocol-learn-demote": _handle_protocol_learn,
     "protocol-learn-archive": _handle_protocol_learn,
     "protocol-learn-supersede": _handle_protocol_learn,
+}
+
+_SIGNALS_PLANNER_AUDIT_HANDLERS = {
     "signals-list": _handle_signals_planner_audit,
     "signals-show": _handle_signals_planner_audit,
     "planner-log-list": _handle_signals_planner_audit,
     "planner-log-rollback": _handle_signals_planner_audit,
     "audit-preview": _handle_signals_planner_audit,
     "audit-backfill": _handle_signals_planner_audit,
+}
+
+_REVIEW_LIFECYCLE_HANDLERS = {
     "review-page": _handle_review_lifecycle,
     "review-rewrite": _handle_review_lifecycle,
     "apply-rewrite": _handle_review_lifecycle,
@@ -729,18 +756,39 @@ _HANDLERS = {
     "revert-archive": _handle_review_lifecycle,
     "batch-review": _handle_review_lifecycle,
     "review-next": _handle_review_lifecycle,
+}
+
+_RUNTIME_WORKFLOW_HANDLERS = {
     "lint": _handle_runtime_workflows,
     "run-lint": _handle_runtime_workflows,
     "nightly": _handle_runtime_workflows,
     "run-nightly": _handle_runtime_workflows,
     "signals-replay": _handle_runtime_workflows,
     "planner-log-replay": _handle_runtime_workflows,
+}
+
+_OPS_HANDLERS = {
     "llm-check": _handle_ops,
     "llm-telemetry": _handle_ops,
     "backend-telemetry": _handle_ops,
     "cache": _handle_ops,
     "auto-once": _handle_ops,
     "watch": _handle_ops,
+}
+
+_HANDLERS = {
+    **_VAULT_ADMIN_HANDLERS,
+    **_DROP_HANDLERS,
+    **_COMPILE_PROTOCOL_HANDLERS,
+    **_LIVE_SURFACE_HANDLERS,
+    **_ASK_HANDLERS,
+    **_ALCHEMY_HANDLERS,
+    **_L3_HANDLERS,
+    **_PROTOCOL_LEARN_HANDLERS,
+    **_SIGNALS_PLANNER_AUDIT_HANDLERS,
+    **_REVIEW_LIFECYCLE_HANDLERS,
+    **_RUNTIME_WORKFLOW_HANDLERS,
+    **_OPS_HANDLERS,
 }
 
 

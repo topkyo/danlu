@@ -14,6 +14,8 @@ from .schema import (
     PLANNER_LOG_SCHEMA_VERSION,
     canonical_dumps_planner_log,
     compute_planner_log_dedupe_key,
+    decision_allows_side_effects,
+    phase_for_decision,
     validate_planner_log_record,
 )
 
@@ -133,11 +135,12 @@ def write_planner_log(
                     "trace_id": signal.get("trace_id"),
                     "decision": decision,
                     "mode": mode,
+                    "phase": phase_for_decision(decision),
                     "reason_codes": reason_codes,
                     "budget_used": budget_used,
                     "locks_acquired": [],
                     "primitive_refs": [],
-                    "side_effects_allowed": _decision_allows_side_effects(decision, mode),
+                    "side_effects_allowed": decision_allows_side_effects(decision, mode),
                     "decided_at": decided_at,
                 }
 
@@ -402,12 +405,6 @@ def _derive_decision(kind: str, severity: str) -> tuple[str, list[str]]:
         return "ignore", ["unmapped_kind"]
 
     return "ignore", ["unmapped_kind"]
-
-
-def _decision_allows_side_effects(decision: str, mode: str) -> bool:
-    if mode != "execute":
-        return False
-    return decision in {"enqueue-light", "enqueue-heavy", "generate-proposal"}
 
 
 __all__ = ["write_planner_log"]

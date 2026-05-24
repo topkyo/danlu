@@ -96,13 +96,25 @@ cd ../demo-furnace-vault
 
 ### CLI command taxonomy
 
-`aiwiki` 的命令面按产品心智分三层；AOS-002 只调整展示和文档，不删除旧命令、不新增 alias：
+`aiwiki` 的命令面按产品心智分三层；AOS-002 只调整展示和文档，不删除旧命令、不新增 alias。2026-05-24 之后新增脚本或用户文档不得再推荐 legacy top-level operator 命令作为日常入口；需要 operator 能力时优先写成 `aiwiki advanced ...`，旧顶层只作为 compat seam 保留：
 
 | Layer | Commands | Purpose |
 | --- | --- | --- |
 | `primary` | `drop`, `today` | 日常投料与读取产出；`drop` 下含 `url / pdf / image / repo / note`。 |
 | `advanced` | `metrics`, `advanced ...` | 高级但仍可解释的健康度、治理、执行、审计、协议、LLM 和调试入口。 |
 | `operator/internal` | legacy top-level commands such as `compile`, `run-nightly`, `planner-log-list`, `l3-proposal-generate` | 为脚本、测试、dogfood 和旧自动化保留；默认 help 不再把它们与 `drop/today` 同权展示，完整列表见 `aiwiki advanced --help` 或旧命令自身 `--help`。 |
+
+### 当前 P1-P5 稳定化清单（2026-05-24）
+
+本轮稳定化不扩大 AgentOS 半径，只把已经暴露的高风险边界固化为可验证契约：
+
+| Priority | 当前处理 | 边界 |
+| --- | --- | --- |
+| P1 Hub slimming | 继续用 seam map / owner map 约束大 hub；`runner/alchemy.py` 与 Product Shell `plugin.js` 保持 deferred residual hotspots。 | 不做 broad rewrite；每轮只削一个有测试的 owner seam。 |
+| P2 `run-ask` receipt matrix | 所有 `run-ask` success execution receipts 统一带 `receipt_matrix_version`、`run_ask_path`、`artifact_status`。 | LLM failure / degraded 仍不伪造 success execution receipt。 |
+| P3 CLI product-first | 普通入口只推荐 `drop` / `today` / `metrics` / `advanced`；legacy top-level 是 compat。 | 不删除旧命令，避免破坏脚本、tests 和 dogfood 自动化。 |
+| P4 Planner phase proof | 新 planner-log record 写入 decision-derived `phase`；旧无 `phase` 的 v1 records 仍可 replay。 | `phase` 只是可复算调度标签，不直接触发 side effect。 |
+| P5 Long-run proof | 当前 release proof 是 3-day live window；14/30-day natural run 仍是后续观测目标。 | 不伪造尚未自然发生的长期窗口。 |
 
 ## 最小工作流
 

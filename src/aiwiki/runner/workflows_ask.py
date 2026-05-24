@@ -498,25 +498,23 @@ def _complete_run_ask_artifact(
         )
         write_run_notes_frontmatter(target, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
         _ensure_output_cssclass(target)
-        write_execution_receipt(
+        _write_run_ask_output_receipt(
             root,
-            operation="run-ask",
             generated_by="aiwiki-run-ask",
-            subject_kind="output-artifact",
-            subject_id=run_id or Path(artifact_ref).stem,
-            target_file=artifact_ref,
-            primary_path=artifact_ref,
+            artifact_ref=artifact_ref,
+            run_id=run_id,
+            question=question,
+            output_format=output_format,
             protocol=str(artifact.get("protocol") or ""),
+            delivery_mode="llm-complete",
+            run_ask_path="background-resume" if background_job_id else "report",
             extra={
-                "format": output_format,
-                "question": question,
-                "run_id": run_id,
-                "llm_receipt_path": ".aiwiki/logs/llm-receipts.jsonl",
                 "backend_effective": backend_effective,
                 "model_final": model_final,
                 "fallback_stage": fallback_stage,
                 "response_id": result.response_id,
                 "usage": result.usage,
+                "background_job_id": background_job_id or "",
             },
         )
     except Exception:
@@ -758,9 +756,14 @@ def _write_run_ask_output_receipt(
     output_format: str,
     protocol: str,
     delivery_mode: str,
+    run_ask_path: str,
+    artifact_status: str = "completed",
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     receipt_extra: dict[str, Any] = {
+        "receipt_matrix_version": 1,
+        "run_ask_path": run_ask_path,
+        "artifact_status": artifact_status,
         "format": output_format,
         "question": question,
         "run_id": run_id,
@@ -1120,6 +1123,7 @@ def run_ask(
                 output_format="note",
                 protocol=active_protocol,
                 delivery_mode="local-deterministic",
+                run_ask_path="local-elixir-stats",
                 extra={
                     "backend_effective": "local",
                     "model_final": "elixir-stats",
@@ -1227,6 +1231,7 @@ def run_ask(
                 output_format="note",
                 protocol=active_protocol,
                 delivery_mode="local-deterministic",
+                run_ask_path="local-markdown-stats",
                 extra={
                     "backend_effective": "local",
                     "model_final": "markdown-stats",
@@ -1419,6 +1424,7 @@ def run_ask(
                 output_format="note",
                 protocol=active_protocol,
                 delivery_mode="llm-direct",
+                run_ask_path="direct-note",
                 extra={
                     "backend_effective": backend_effective,
                     "model_final": model_final,

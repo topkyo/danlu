@@ -18,10 +18,14 @@ from aiwiki.planner.log_writer import write_planner_log
 from aiwiki.planner.rollback import apply_planner_log_rollback_marker, preview_planner_log_rollback
 from aiwiki.planner.schema import (
     DECISIONS,
+    EXECUTABLE_DECISIONS,
     MODES,
+    PHASES,
     TOP_LEVEL_FIELD_ORDER,
     canonical_dumps_planner_log,
     compute_planner_log_dedupe_key,
+    decision_allows_side_effects,
+    phase_for_decision,
     validate_planner_log_record,
 )
 from aiwiki.signals.schema import KINDS
@@ -129,6 +133,40 @@ class TestSchemaValidation(unittest.TestCase):
         record = self._base_record()
         record["mode"] = "dry_run"
         self.assertFalse(validate_planner_log_record(record).ok)
+
+    def test_optional_phase_must_match_decision(self) -> None:
+        record = self._base_record()
+        record["phase"] = "light"
+        self.assertTrue(validate_planner_log_record(record).ok)
+        self.assertEqual(phase_for_decision("enqueue-light"), "light")
+        self.assertIn("light", PHASES)
+
+        record["phase"] = "proposal"
+        errors = validate_planner_log_record(record).errors
+        self.assertTrue(any("decision-derived phase" in item for item in errors))
+
+    def test_decision_phase_and_side_effect_policy_matrix_is_closed(self) -> None:
+        expected_phase = {
+            "ignore": "observe",
+            "enqueue-light": "light",
+            "enqueue-heavy": "heavy",
+            "generate-proposal": "proposal",
+            "escalate-human": "human",
+        }
+
+        self.assertEqual(set(expected_phase), set(DECISIONS))
+        self.assertLessEqual(EXECUTABLE_DECISIONS, DECISIONS)
+        for decision, phase in expected_phase.items():
+            self.assertEqual(phase_for_decision(decision), phase)
+            self.assertIn(phase, PHASES)
+            self.assertFalse(decision_allows_side_effects(decision, "observe_only"))
+            self.assertIs(decision_allows_side_effects(decision, "execute"), decision in EXECUTABLE_DECISIONS)
+
+    def test_optional_phase_closed_set(self) -> None:
+        record = self._base_record()
+        record["phase"] = "run-now"
+        errors = validate_planner_log_record(record).errors
+        self.assertTrue(any("phase must be one of" in item for item in errors))
 
     def test_reason_codes_non_empty_list(self) -> None:
         record = self._base_record()
@@ -409,6 +447,7 @@ class TestGenerateProposalRouting(_FixtureCase):
         target = next(item for item in planner_records if item["signal_id"] == "sig-20260424-pln000003")
         self.assertEqual(target["decision"], "generate-proposal")
         self.assertEqual(target["mode"], "observe_only")
+        self.assertEqual(target["phase"], "proposal")
 
     def test_planner_log_record_side_effects_allowed_false_when_generate_proposal(self) -> None:
         root = self._copy_case_root("case_basic")

@@ -19,6 +19,18 @@ DECISIONS: frozenset[str] = frozenset(
 
 MODES: frozenset[str] = frozenset({"observe_only", "execute"})
 
+PHASES: frozenset[str] = frozenset({"observe", "light", "heavy", "proposal", "human"})
+
+EXECUTABLE_DECISIONS: frozenset[str] = frozenset({"enqueue-light", "enqueue-heavy", "generate-proposal"})
+
+_PHASE_BY_DECISION: dict[str, str] = {
+    "ignore": "observe",
+    "enqueue-light": "light",
+    "enqueue-heavy": "heavy",
+    "generate-proposal": "proposal",
+    "escalate-human": "human",
+}
+
 TOP_LEVEL_FIELD_ORDER: tuple[str, ...] = (
     "schema_version",
     "signal_id",
@@ -35,6 +47,7 @@ TOP_LEVEL_FIELD_ORDER: tuple[str, ...] = (
 )
 
 _REQUIRED_FIELDS: frozenset[str] = frozenset(TOP_LEVEL_FIELD_ORDER)
+_OPTIONAL_FIELDS: frozenset[str] = frozenset({"phase"})
 
 _SIGNAL_ID_RE: re.Pattern[str] = re.compile(r"^sig-[0-9]{8}-[a-z0-9]{6,32}$")
 _TRACE_ID_RE: re.Pattern[str] = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
@@ -54,8 +67,9 @@ def validate_planner_log_record(record: dict[str, Any]) -> ValidationResult:
 
     errors: list[str] = []
 
+    allowed_fields = _REQUIRED_FIELDS | _OPTIONAL_FIELDS
     for key in record:
-        if key not in _REQUIRED_FIELDS:
+        if key not in allowed_fields:
             errors.append(f"unknown top-level field: {key}")
 
     for field in _REQUIRED_FIELDS:
@@ -99,6 +113,15 @@ def validate_planner_log_record(record: dict[str, Any]) -> ValidationResult:
         errors.append("mode must be a string")
     elif mode not in MODES:
         errors.append("mode must be one of the closed-set values")
+
+    phase = record.get("phase")
+    if "phase" in record:
+        if not isinstance(phase, str):
+            errors.append("phase must be a string")
+        elif phase not in PHASES:
+            errors.append("phase must be one of the closed-set values")
+        elif isinstance(decision, str) and decision in _PHASE_BY_DECISION and phase != _PHASE_BY_DECISION[decision]:
+            errors.append("phase must match the decision-derived phase")
 
     reason_codes = record.get("reason_codes")
     if not isinstance(reason_codes, list):
@@ -144,7 +167,12 @@ def validate_planner_log_record(record: dict[str, Any]) -> ValidationResult:
         errors.append("side_effects_allowed must be a strict boolean")
     elif mode == "observe_only" and side_effects_allowed is not False:
         errors.append("side_effects_allowed must be false in observe_only mode")
-    elif mode == "execute" and decision in {"ignore", "escalate-human"} and side_effects_allowed is not False:
+    elif (
+        mode == "execute"
+        and isinstance(decision, str)
+        and not decision_allows_side_effects(decision, mode)
+        and side_effects_allowed is not False
+    ):
         errors.append("side_effects_allowed must be false for non-executable decisions")
 
     decided_at = record.get("decided_at")
@@ -180,6 +208,14 @@ def compute_planner_log_dedupe_key(record: dict[str, Any]) -> str:
     return f"{record['signal_id']}:{record['mode']}"
 
 
+def phase_for_decision(decision: str) -> str:
+    return _PHASE_BY_DECISION.get(decision, "observe")
+
+
+def decision_allows_side_effects(decision: str, mode: str) -> bool:
+    return mode == "execute" and decision in EXECUTABLE_DECISIONS
+
+
 def _canonicalize_reason_codes(value: Any) -> Any:
     if not isinstance(value, list):
         return value
@@ -190,11 +226,15 @@ def _canonicalize_reason_codes(value: Any) -> Any:
 
 __all__ = [
     "DECISIONS",
+    "EXECUTABLE_DECISIONS",
     "MODES",
+    "PHASES",
     "PLANNER_LOG_SCHEMA_VERSION",
     "TOP_LEVEL_FIELD_ORDER",
     "ValidationResult",
     "canonical_dumps_planner_log",
     "compute_planner_log_dedupe_key",
+    "decision_allows_side_effects",
+    "phase_for_decision",
     "validate_planner_log_record",
 ]

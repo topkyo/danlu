@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+PRIMARY_SURFACE_COMMANDS: tuple[str, ...] = ("drop", "today", "metrics", "advanced")
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -29,7 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(
         dest="command",
         required=True,
-        metavar="{drop,today,metrics,advanced}",
+        metavar="{" + ",".join(PRIMARY_SURFACE_COMMANDS) + "}",
     )
     _register_legacy_top_level_parsers(subparsers)
     today_parser = subparsers.add_parser("today", help="炼丹炉今日产出 / 待办 / 建议")
@@ -70,15 +72,14 @@ def _converge_default_help_surface(subparsers: argparse._SubParsersAction) -> No
     ``aiwiki advanced ...``; this only changes the default help listing so the
     daily path is `drop` + `today` rather than a backlog of internal mechanisms.
     """
-    primary_order = ("drop", "today", "metrics", "advanced")
     visible = {
         getattr(action, "dest", ""): action
         for action in subparsers._choices_actions  # type: ignore[attr-defined]
-        if getattr(action, "dest", "") in primary_order
+        if getattr(action, "dest", "") in PRIMARY_SURFACE_COMMANDS
     }
     subparsers._choices_actions = [  # type: ignore[attr-defined]  # argparse private display hook.
         visible[name]
-        for name in primary_order
+        for name in PRIMARY_SURFACE_COMMANDS
         if name in visible
     ]
 

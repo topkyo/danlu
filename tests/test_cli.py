@@ -21,6 +21,7 @@ from aiwiki.cli import (
     build_parser,
     main,
 )
+from aiwiki.cli.parsers import PRIMARY_SURFACE_COMMANDS
 from aiwiki.execution.candidates import promote_candidate
 from aiwiki.today_feed import build_today_feed as real_build_today_feed
 
@@ -207,6 +208,7 @@ class CLITests(unittest.TestCase):
         parser = build_parser()
         help_text = parser.format_help()
 
+        self.assertEqual(PRIMARY_SURFACE_COMMANDS, ("drop", "today", "metrics", "advanced"))
         self.assertIn("Daily path", help_text)
         self.assertIn("drop", help_text)
         self.assertIn("today", help_text)

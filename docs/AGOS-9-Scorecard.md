@@ -12,6 +12,7 @@
    - `fixture`：repo tests / acceptance replay，不证明 live dogfood
    - `replay`：maturity gate replay / scripted recovery，弱于多周 natural run
    - `live`：当前 dogfood vault `--root /home/tim/danlu/炼丹炉` 现场可复算
+   - 当前 3-day live release proof 可支撑本地 release gate；14/30-day natural run 是更强的长期运行证据，未自然发生前不得标成 PASS。
 3. **Blocking fail**：任一 blocking gate 失败，总分不得宣称 ≥ 9.0。
 4. **非目标不变**：hosted service、multi-user sync、heavy RAG、fine-tuning、隐式跨 backend routing 仍为非目标。
 
@@ -43,7 +44,7 @@
 
 ### 2026-05-24 Release Gate 说明
 
-AOS-C1~C8 已按 harness 顺序完成本地 release gate。当前本地 release evidence：`bash scripts/verify.sh` PASS（2439 unit tests、coverage 92%、acceptance 17 passed）；`bash scripts/agos9_release_audit.sh` PASS；`bash scripts/agos9_dogfood_proof_status.sh` PASS（会执行 local dogfood `collect --write` 写入最新 snapshot，不删除数据、不读/打印凭据）；`bash scripts/docs_consistency_check.sh` PASS；C8 `qa-review` / `qa-runtime` PASS，`run_plan` closed-loop PASS。Dogfood latest 3-day live window 覆盖 2026-05-21/22/23，`operational_maturity.status=pass`、`receipt_integrity.status=pass`、`knowledge_compounding_proof.status=pass`、`semantic_path_observed=true`、`effective_l3_candidates=0`、`budget_violations=[]`。AOS-C3 legacy direct-note missing execution receipts 已由 warn-only `receipt_coverage` 明确解释，不作为当前 release blocker；新增 direct/local success path 已写 execution receipt。AOS-C7 使 `backend-telemetry` 同时聚合 execution receipts 和 LLM failure classifications，并让 failed/unmatched `run-nightly` 不污染 success proof。
+AOS-C1~C8 已按 harness 顺序完成本地 release gate。当前本地 release evidence：`bash scripts/verify.sh` PASS（2439 unit tests、coverage 92%、acceptance 17 passed）；`bash scripts/agos9_release_audit.sh` PASS；`bash scripts/agos9_dogfood_proof_status.sh` PASS（会执行 local dogfood `collect --write` 写入最新 snapshot，不删除数据、不读/打印凭据）；`bash scripts/docs_consistency_check.sh` PASS；C8 `qa-review` / `qa-runtime` PASS，`run_plan` closed-loop PASS。Dogfood latest 3-day live window 覆盖 2026-05-21/22/23，`operational_maturity.status=pass`、`receipt_integrity.status=pass`、`knowledge_compounding_proof.status=pass`、`semantic_path_observed=true`、`effective_l3_candidates=0`、`budget_violations=[]`。AOS-C3 legacy direct-note missing execution receipts 已由 warn-only `receipt_coverage` 明确解释，不作为当前 release blocker；新增 direct/local success path 已写 execution receipt；2026-05-24 P1-P5 stabilization 进一步把 report/background/direct/local success receipts 统一到 `receipt_matrix_version=1` + `run_ask_path` + `artifact_status`。AOS-C7 使 `backend-telemetry` 同时聚合 execution receipts 和 LLM failure classifications，并让 failed/unmatched `run-nightly` 不污染 success proof。14/30-day natural run 仍是后续更强 proof，不在本地 release gate 中伪装完成。
 
 ---
 
@@ -95,6 +96,7 @@ python3 scripts/dogfood_maturity_gate.py --root /home/tim/danlu/炼丹炉 summar
 | operational maturity | live PASS | `operational_maturity.status=pass`, `budget_violations=[]`, `effective_l3_candidates=0` |
 | LLM failure handling | live explicit | timeout receipts are `blocked/failed`, not fake success |
 | receipt coverage explainability | repo targeted/unit/acceptance PASS | AOS-C3 adds `receipt_coverage` snapshot field; direct/local `run-ask` success paths now write execution receipts; failure-after-run-notes paths do not leave success receipts |
+| long-run natural proof | not-yet | 3-day live release proof is PASS; 14/30-day natural window must wait for wall-clock evidence |
 
 Historical PASS（2026-05-13~19）不当作当前 live PASS。
 
@@ -165,7 +167,7 @@ bash scripts/verify.sh python-static
 - 派生层覆盖 raw source truth
 - run-ask 伪造 LLM 成功
 
-### 当前状态：**PASS**（fixture/replay；live 依赖 AGOS-002）
+### 当前状态：**PASS**（fixture/replay；live 依赖 AGOS-002；P1-P5 stabilization adds `run-ask` receipt matrix v1 across report/background/direct/local success paths）
 
 ---
 
@@ -175,6 +177,7 @@ bash scripts/verify.sh python-static
 
 - [ ] `severity` 被 planner decision 消费并记录 `reason_codes`
 - [ ] `budget_hint` 影响 routing 或 lane budget（非仅 schema/dry-run 计数）
+- [ ] planner-log record 暴露可复算 `phase`，且不破坏旧 v1 logs replay
 - [ ] `trace_id` 在 planner-log 与 downstream receipt 可关联
 - [ ] observe-only 与 execute-mode 边界有测试
 - [ ] planner side effect 均有 receipt/audit
@@ -200,7 +203,7 @@ bash scripts/run_acceptance.sh  # 含 planner/signal replay
 - execute-mode 无 receipt 的 side effect
 - rollback marker 被 downstream 忽略
 
-### 当前状态：**PASS**（`budget_hint` 消费于 `planner/log_writer.py`；schema 接受 `budget_used.max_pages/max_tokens`；tests 覆盖真实写入路径）
+### 当前状态：**PASS**（`budget_hint` 消费于 `planner/log_writer.py`；schema 接受 `budget_used.max_pages/max_tokens`；new planner-log records include decision-derived optional `phase` = `observe/light/heavy/proposal/human` while old v1 records without `phase` remain valid; tests 覆盖真实写入路径）
 
 ---
 
@@ -286,6 +289,8 @@ bash scripts/verify.sh
 | `runner/alchemy.py` | 2589 | 待 slim（deferred） |
 | `app_protocol.py` | ~1750 | library 已抽出 |
 | AOS-003/005/006 slim 记录 | `docs/analysis/`, `PROGRESS.md` | local_stats + workflows_ask 完成 |
+
+P1 当前口径：hub slimming 是持续 seam enforcement，不是一次性大拆；`runner/alchemy.py` 与 Product Shell `plugin.js` 只按最高 ROI、单 hotspot、测试先行方式继续削薄。
 
 ### 验证命令
 
@@ -400,3 +405,4 @@ bash scripts/verify.sh scripts
 - 2026-05-21/23：AOS-C1 full gate recovery PASS；AOS-C2 live dogfood proof PASS；有效 L3 preview debt 已降为 `effective_l3_candidates=0`；`aiwiki-dogfood-maturity.timer` 已安装并补跑真实 2026-05-22/23 UTC receipts。`summarize --days 3` 已滚动到 2026-05-21/22/23 并 PASS，`operational_maturity.status=pass`、`receipt_integrity.status=pass`、`knowledge_compounding_proof.status=pass`。
 - 2026-05-23：AOS-C3 receipt coverage done；direct/local `run-ask` success paths now have execution receipts, report/direct/local success receipt ordering is rollback-safe, and maturity `collect` exposes warn-only `receipt_coverage` for missing/legacy/background/degraded/deterministic-baseline explanations。
 - 2026-05-24：AOS-C4~C8 harness done；full verify、release audit、dogfood proof status、docs consistency、qa-review、qa-runtime、run_plan closed-loop 均 PASS，本地 scorecard 约 9.05。未 tag、未 push、未创建 GitHub Release。
+- 2026-05-24：P1-P5 stabilization pass；`run-ask` success receipt matrix v1 覆盖 report/background/direct/local，planner-log 新增向后兼容 optional `phase` proof，CLI legacy top-level 口径收敛为 compat，14/30-day natural run proof 明确 not-yet。

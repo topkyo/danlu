@@ -424,6 +424,14 @@
 4. 失败时生成 runtime_failure signal。
 5. 增加 tests 覆盖 kill switch、dedupe、budget、failure feedback。
 
+### Execution Notes（2026-05-24）
+
+- Planner execute mode 已落到受控 primitive 闭环：`write_planner_log()` 依据 strict signal kind/severity 写入 decision/reason codes，`mode="execute"` 会显式记录 `execute_mode_requested`，并只在 decision 允许时开放 `side_effects_allowed`。
+- `run_alchemy_auto()` 先对每个 lane 执行 dry-run，再在 `apply=True` 时调用 lane apply；默认可自动处理的 primitive 限定为 `compile` / `lint` / `nightly`，`review` / `distill` / `propose` 只在 heavy lane 且明确请求 primitive 时进入 apply path，不开放自动 judge 或 L3/Judgment auto-adopt。
+- Apply 成功会写入 runtime history `event_type=alchemy-auto-scheduler`，记录 `applied_count`、`skipped_count`、`trace_ids` 与 lane 结果；preview (`apply=False`) 只返回计划和 skip 原因，不产生 side effects。
+- `runtime_failure` signal routing 已覆盖 medium/high/critical 分流：routine failure 进入 light queue，高风险 failure 生成 proposal recommendation，critical failure 升级人工处理；dogfood maturity gate 会对 execute-mode planner records 和已 rejected/reverted 的同类 L3 issue 做去重解释，避免把旧噪音算成新 debt。
+- 验证覆盖 `tests/test_planner_log.py`、`tests/test_alchemy_lanes.py`、`tests/test_cli.py`、`tests/test_dogfood_maturity_gate.py`，并由 C8 full release verify 复跑。该 milestone 的完成边界是 safe primitive execution，不扩展高风险语义自治。
+
 ### Verification Plan
 
 - planner log tests。
@@ -495,6 +503,14 @@
 2. 保持 render/bridge/state 既有边界。
 3. 增加或更新 Jest tests。
 4. 确认 Product Shell static/bundle drift gate。
+
+### Execution Notes（2026-05-24）
+
+- Product Shell active SoT 已对齐到默认首屏 `Today Feed + Universal Input`：普通用户只看到一个输入端和一个输出端；AskBox/DropZone 被吸收到 Universal Input，diagnostics/history/Review/Execution Center 仅通过 gated Advanced surface 暴露。
+- Product Shell 只读取 launcher CLI 与 `output/control/shell-summary.json` 暴露的 shell-facing contract，不拥有 runtime state、不新增 SoT 字段、不绕过 receipt/audit/launcher 边界。
+- Today feed 与 report picker 已过滤 `timeout_or_unavailable`、`pending`、`failed`、`degraded`、`deterministic-fallback`、`llm-failed`、`placeholder` 等非 deliverable artifact；pending submissions 区分 `running` / `received` / `done` / `failed` / `degraded`，degraded 是 first-class terminal state。
+- Product Shell source/Jest/bundle gate 覆盖 Advanced gating、Universal Input、pending/reconcile、degraded output recovery、Today primary filtering 和 report artifact quality filtering；C8 full verify 继续覆盖 `product-shell-static`。
+- `plugin.js` 仍是 residual hub，当前放行点是默认用户面收敛、degraded filtering 和 Advanced gating 已受测试保护；后续削薄只应按 owner boundary 小步推进，不在本 milestone 中引入新 UI 或 runtime SoT。
 
 ### Verification Plan
 
@@ -579,6 +595,14 @@
 4. 保持 legacy import seam。
 5. 运行 targeted tests 与 full static。
 
+### Execution Notes（2026-05-24）
+
+- C6 采用 seam map + low-risk owner extraction 收口，而不是 broad refactor：`docs/analysis/AGOS-005-seam-map.md` 与 `docs/analysis/F-Module-Owner-Map.md` 记录 hotspot、owner 边界和 deferred 风险。
+- 已完成多个低风险 owner extraction：`runner/local_stats.py` 承接本地统计，`runner/workflows_ask.py` 与 `runner/workflow_shared.py` 承接 ask workflow/shared helper，`protocol/library.py` 承接 protocol library 逻辑；legacy import seam 保持，public CLI 行为不变。
+- `runner/workflows.py` 已从 2772 LOC 量级降到约 1278 LOC，`app_protocol.py` 的 protocol library 逻辑已移出；scorecard maintainability gate 以 seam map + 至少两个 owner extraction 作为 PASS 证据。
+- 当前未声称清空所有 hub：`runner/alchemy.py` 与 Product Shell `plugin.js` 仍是 deferred residual hotspots，后续只按最高 ROI、单 hotspot、测试先行的方式继续削薄。
+- 验证来自 targeted unit tests、`python-static`、`unit`、`product-shell-static` 与 C8 full release verify；本 milestone 没有 schema migration、public CLI 行为变更或 broad formatting/refactor。
+
 ### Verification Plan
 
 - targeted unit tests。
@@ -594,6 +618,12 @@
 ### Residual Risks
 
 - Hub slimming 是长期工作；本 milestone 不追求一次性清空所有大文件。
+
+### Stabilization Notes（2026-05-24）
+
+- P1 当前执行口径是 seam enforcement：`runner/alchemy.py` 与 Product Shell `plugin.js` 继续列为 deferred residual hotspots，但不做 broad rewrite；后续每轮只选一个最高 ROI owner seam，并先以 tests 锁定行为。
+- `run-ask` owner seam 已进一步收敛：report、background resume、direct note、local elixir stats、local markdown stats 的 success execution receipt 统一写 `receipt_matrix_version=1`、`run_ask_path` 与 `artifact_status=completed`；失败/degraded 仍不写 success execution receipt。
+- CLI owner seam 继续维持 product-first：默认文档与 help 只把 `drop/today/metrics/advanced` 作为普通入口，legacy top-level command 仅作为 compat seam 保留给脚本、tests、dogfood 与旧自动化。
 
 ## Milestone: AOS-C7-LONG-RUN-OPS
 
@@ -675,6 +705,11 @@
 ### Residual Risks
 
 - 真正长期稳定性仍需要多日 dogfood wall-clock 运行证明。
+
+### Stabilization Notes（2026-05-24）
+
+- P5 长期 proof 不伪造：当前 release gate 只声明 3-day live window PASS；14/30-day natural run 是后续 wall-clock 观察目标，未自然发生前状态保持 not-yet。
+- planner-log 新 record 已带 decision-derived `phase`，用于把 `signal → planner → phase` 的可复算证据补到日志层；旧无 `phase` 的 v1 logs 仍可 replay，不做 migration。
 
 ## Milestone: AOS-C8-AGENTOS-RELEASE-GATE
 
