@@ -157,62 +157,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.settings.lastViewedTimestamp = migratedLastViewedTimestamp;
     // R89: hydrate pendingSubmissions from settings; TTL 24h stale running → failed
     this.pendingSubmissions = this.hydratePendingSubmissions(this.settings.persistedPendingSubmissions);
-    const recentRuns = Array.isArray(data.recentRuns)
-      ? data.recentRuns
-        .filter((record) => record && typeof record === "object")
-        .map((record) => {
-          const rewriteProposalObjects = this.normalizeRewriteProposalObjects(record.rewriteProposalObjects || record.updatedRewriteProposals || []);
-          const rewriteRecoveryActions = this.normalizeRewriteRecoveryActions(record.rewriteRecoveryActions || []);
-          const rewriteProposalPaths = normalizeRelativePathList(
-            record.rewriteProposalPaths || this.rewriteProposalPathsFromObjects(rewriteProposalObjects)
-          );
-          const rewriteProposalSlugs = normalizeRelativePathList(
-            record.rewriteProposalSlugs || this.rewriteProposalSlugsFromObjects(rewriteProposalObjects)
-          );
-          return {
-            ...record,
-            argv: Array.isArray(record.argv) ? record.argv.map((value) => String(value || "")) : [],
-            command: String(record.command || (Array.isArray(record.argv) && record.argv.length ? record.argv[0] : "")),
-            protocol: String(record.protocol || ""),
-            backend: String(record.backend || ""),
-            backendRequested: String(record.backendRequested || ""),
-            backendEffective: String(record.backendEffective || ""),
-            model: String(record.model || ""),
-            modelSelected: String(record.modelSelected || ""),
-            modelFinal: String(record.modelFinal || ""),
-            codexReasoningEffort: String(record.codexReasoningEffort || ""),
-            promptProfile: String(record.promptProfile || ""),
-            retryPromptProfile: String(record.retryPromptProfile || ""),
-            fallbackStage: String(record.fallbackStage || ""),
-            fallbackReason: String(record.fallbackReason || ""),
-            contractValidated: Boolean(record.contractValidated),
-            rewriteProposalObjects,
-            rewriteRecoveryActions,
-            rewriteProposalPaths,
-            rewriteProposalSlugs,
-            fallbackFrom: String(record.fallbackFrom || ""),
-            fallbackCommand: String(record.fallbackCommand || ""),
-            fallbackUsed: Boolean(record.fallbackUsed),
-            deliveryMode: String(record.deliveryMode || ""),
-            logPath: String(record.logPath || ""),
-            stdoutRaw: trimDiagnosticText(record.stdoutRaw || ""),
-            stderrRaw: trimDiagnosticText(record.stderrRaw || ""),
-            exitCode: record.exitCode === 0 || Number.isFinite(Number(record.exitCode || NaN))
-              ? Number(record.exitCode)
-              : "",
-            timeline: Array.isArray(record.timeline)
-              ? record.timeline
-                .filter((event) => event && typeof event === "object")
-                .map((event) => ({
-                  stage: String(event.stage || ""),
-                  at: String(event.at || ""),
-                  summary: String(event.summary || ""),
-                  status: String(event.status || ""),
-                }))
-              : [],
-          };
-        })
-      : [];
+    const recentRuns = normalizeProductShellRecentRuns(data.recentRuns);
     this.pluginState = { recentRuns };
     this.trimRecentRuns();
     const defaultAskFormatMigrated = rawSettings.defaultAskFormat === "report";
@@ -259,88 +204,13 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   // R89: 持久化 pending（运行时不变；只在 save 时序列化）
   serializePendingSubmissions() {
-    if (!Array.isArray(this.pendingSubmissions)) return [];
-    return this.pendingSubmissions.slice(0, 8).map((e) => ({
-      id: String(e.id || ""),
-      payloadFingerprint: String(e.payloadFingerprint || ""),
-      displayText: String(e.displayText || ""),
-      title: String(e.title || ""),
-      status: String(e.status || "running"),
-      startedAt: String(e.startedAt || ""),
-      finishedAt: String(e.finishedAt || ""),
-      error: String(e.error || ""),
-      reconcileTarget: String(e.reconcileTarget || ""),
-      reconcilePath: String(e.reconcilePath || ""),
-      runId: String(e.runId || ""),
-      runNotesPath: String(e.runNotesPath || ""),
-      jobId: String(e.jobId || ""),
-      deliveryMode: String(e.deliveryMode || ""),
-      llmStatus: String(e.llmStatus || ""),
-      llmBackend: String(e.llmBackend || ""),
-      llmModel: String(e.llmModel || ""),
-      retryArgs: e.retryArgs && typeof e.retryArgs === "object" ? e.retryArgs : null,
-    }));
+    return serializePendingSubmissionList(this.pendingSubmissions);
   }
 
   // R89: 启动时从持久化 settings hydrate；超过 TTL 24h 的 running/received → failed
   // R90: done 状态加 7 天 TTL（避免无限堆积）
   hydratePendingSubmissions(raw) {
-    if (!Array.isArray(raw) || !raw.length) return [];
-    const TTL_MS = 24 * 60 * 60 * 1000;
-    const RECEIVED_STALE_MS = 12 * 60 * 60 * 1000;
-    const DONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-    const now = Date.now();
-    const out = [];
-    for (const item of raw) {
-      if (!item || typeof item !== "object") continue;
-      const startedAt = String(item.startedAt || "");
-      const finishedAt = String(item.finishedAt || "");
-      const startMs = Date.parse(startedAt);
-      const finishedMs = Date.parse(finishedAt);
-      const status = String(item.status || "running");
-      // R90: done 卡 7 天后自动 drop
-      // P2: 旧数据缺 finishedAt 时回退 startedAt，避免无 TTL 永久保留
-      if (status === "done") {
-        const ttlBase = Number.isFinite(finishedMs)
-          ? finishedMs
-          : (Number.isFinite(startMs) ? startMs : null);
-        if (ttlBase !== null && now - ttlBase > DONE_TTL_MS) continue;
-      }
-      let nextStatus = status;
-      let error = String(item.error || "");
-      if (Number.isFinite(startMs)) {
-        const age = now - startMs;
-        if ((status === "running") && age > TTL_MS) {
-          nextStatus = "failed";
-          error = "上次提交可能仍在处理或已完成，点上方刷新查看结果";
-        } else if (status === "received" && age > RECEIVED_STALE_MS) {
-          item._stale = true;
-        }
-      }
-      out.push({
-        id: String(item.id || `pending-${now}-${out.length}`),
-        payloadFingerprint: String(item.payloadFingerprint || ""),
-        displayText: String(item.displayText || ""),
-        title: String(item.title || ""),
-        status: nextStatus,
-        startedAt,
-        finishedAt: String(item.finishedAt || (nextStatus === "failed" ? new Date().toISOString() : "")),
-        error,
-        reconcileTarget: String(item.reconcileTarget || ""),
-        reconcilePath: String(item.reconcilePath || ""),
-        runId: String(item.runId || ""),
-        runNotesPath: String(item.runNotesPath || ""),
-        jobId: String(item.jobId || ""),
-        deliveryMode: String(item.deliveryMode || ""),
-        llmStatus: String(item.llmStatus || ""),
-        llmBackend: String(item.llmBackend || ""),
-        llmModel: String(item.llmModel || ""),
-        retryArgs: item.retryArgs && typeof item.retryArgs === "object" ? item.retryArgs : null,
-        _stale: Boolean(item._stale),
-      });
-      if (out.length >= 8) break;
-    }
-    return out;
+    return hydratePendingSubmissionList(raw);
   }
 
   trimRecentRuns() {
@@ -349,440 +219,90 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   normalizeLlmHealthState(value) {
-    if (!value || typeof value !== "object") {
-      return null;
-    }
-    const status = String(value.status || "").trim() || "unknown";
-    return {
-      status,
-      backend: String(value.backend || "").trim(),
-      backendRequested: String(value.backendRequested || value.backend_requested || "").trim(),
-      backendEffective: String(value.backendEffective || value.backend_effective || "").trim(),
-      model: String(value.model || "").trim(),
-      modelSelected: String(value.modelSelected || value.model_selected || "").trim(),
-      modelFinal: String(value.modelFinal || value.model_final || "").trim(),
-      reason: String(value.reason || "").trim(),
-      checkedAt: String(value.checkedAt || value.checked_at || "").trim(),
-      source: String(value.source || "").trim(),
-      fallbackCommand: String(value.fallbackCommand || value.fallback_command || "").trim(),
-      fallbackStage: String(value.fallbackStage || value.fallback_stage || "").trim(),
-      fallbackReason: String(value.fallbackReason || value.fallback_reason || "").trim(),
-      contractValidated: Object.prototype.hasOwnProperty.call(value, "contractValidated")
-        ? Boolean(value.contractValidated)
-        : Boolean(value.contract_validated),
-      recoveryCommand: String(value.recoveryCommand || value.recovery_command || "").trim(),
-      routeDrift: Boolean(value.routeDrift || value.route_drift),
-      routeDriftReason: String(value.routeDriftReason || value.route_drift_reason || "").trim(),
-      logPath: String(value.logPath || value.log_path || "").trim(),
-      resultPath: String(value.resultPath || value.result_path || "").trim(),
-      receiptPath: String(value.receiptPath || value.receipt_path || "").trim(),
-      stderrSummary: String(value.stderrSummary || value.stderr_summary || "").trim(),
-      stderrRaw: trimDiagnosticText(value.stderrRaw || value.stderr_raw || ""),
-    };
+    return normalizeLlmHealthState(this, value);
   }
 
   currentLlmHealth() {
-    const llmStatus = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary.llm_status || {} : {};
-    const summaryHealth = this.shellSummary && typeof this.shellSummary === "object"
-      ? this.normalizeLlmHealthState(this.shellSummary.llm_health)
-      : null;
-    const selected = this.currentLlmSelection();
-    if (!summaryHealth) {
-      return {
-        status: "unknown",
-        backend: selected.backend || String(llmStatus.backend || ""),
-        model: selected.model || String(llmStatus.effective_model || llmStatus.model || ""),
-        reason: llmStatus.configured ? "No summary LLM health data available yet." : "LLM is not configured.",
-        checkedAt: "",
-        source: "",
-        fallbackCommand: "",
-        logPath: "",
-        resultPath: "",
-        receiptPath: "",
-        stderrSummary: "",
-        stderrRaw: "",
-      };
-    }
-    return {
-      ...summaryHealth,
-      backend: summaryHealth.backend || selected.backend || String(llmStatus.backend || ""),
-      model: summaryHealth.model || selected.model || String(llmStatus.effective_model || llmStatus.model || ""),
-    };
+    return currentLlmHealth(this);
   }
 
   latestLlmRun() {
-    if (this.shellSummary && typeof this.shellSummary === "object" && this.shellSummary.latest_llm_run && typeof this.shellSummary.latest_llm_run === "object") {
-      const summaryRun = this.shellSummary.latest_llm_run;
-      return {
-        ...summaryRun,
-        command: String(summaryRun.command || summaryRun.event || "").trim(),
-        backend: String(summaryRun.backend || summaryRun.backend_effective || summaryRun.backend_requested || "").trim(),
-        model: String(summaryRun.model || summaryRun.model_final || summaryRun.model_selected || "").trim(),
-        resultPath: String(summaryRun.resultPath || summaryRun.result_path || "").trim(),
-        receiptPath: String(summaryRun.receiptPath || summaryRun.receipt_path || "").trim(),
-        logPath: String(summaryRun.logPath || summaryRun.log_path || "").trim(),
-        errorSummary: String(summaryRun.errorSummary || summaryRun.error || summaryRun.fallback_reason || "").trim(),
-        fallbackFrom: String(summaryRun.fallbackFrom || summaryRun.fallback_from || "").trim(),
-        fallbackCommand: String(summaryRun.fallbackCommand || summaryRun.fallback_command || "").trim(),
-        fallbackUsed: Boolean(summaryRun.fallbackUsed || summaryRun.fallback_used),
-        deliveryMode: String(summaryRun.deliveryMode || summaryRun.delivery_mode || "").trim(),
-      };
-    }
-    return null;
+    return latestLlmRun(this);
   }
 
-  // EP-015: latestShellSyncRun() removed. The sole authoritative source for
-  // the last persisted shell-summary metadata is `shellSummary.latest_shell_sync_run`;
-  // consumers should read it directly rather than going through a plugin
-  // helper that could drift back into merging plugin-local recentRuns.
   currentShellSyncState() {
-    // EP-015 Path 3: summary-only domain state.
-    // 1. Own in-flight shell-status → running (only state recentRuns can
-    //    legitimately contribute, since CLI snapshot cannot represent
-    //    in-flight work).
-    // 2. CLI snapshot present → healthy, using snapshot.generated_at.
-    // 3. Otherwise → unknown.
-    // We no longer synthesize a "failed" domain state from recentRuns;
-    // recentRuns is plugin-local command history, not authoritative health.
-    const runningRecord = this.pluginState.recentRuns.find(
-      (record) => record && record.command === "shell-status" && record.status === "running"
-    );
-    if (runningRecord) {
-      return {
-        status: "running",
-        reason: this.t("Refreshing shell summary."),
-        checkedAt: runningRecord.startedAt || "",
-        logPath: runningRecord.logPath || "",
-      };
-    }
-    if (this.shellSummary && typeof this.shellSummary === "object") {
-      const snapshot = this.shellSummary.latest_shell_sync_run;
-      const hasSnapshot = snapshot && typeof snapshot === "object" && Object.keys(snapshot).length;
-      const checkedAt = hasSnapshot
-        ? String(snapshot.generated_at || this.shellSummary.generated_at || "")
-        : String(this.shellSummary.generated_at || "");
-      return {
-        status: "healthy",
-        reason: this.t("Summary ready."),
-        checkedAt,
-        logPath: "",
-      };
-    }
-    return {
-      status: "unknown",
-      reason: this.t("数据还没生成。先点刷新，或等首次任务跑完。"),
-      checkedAt: "",
-      logPath: "",
-    };
+    return currentShellSyncState(this);
   }
 
-  /**
-   * Builds diagnostic items for the Product Shell self-check panel.
-   *
-   * NOTE (EP-012): currently not wired to any UI call site. Kept so that
-   * future self-check surfaces stay semantically correct (summary-only,
-   * no repo-truth inference from recentRuns). See PROGRESS.md §96.
-   */
   selfCheckItems() {
-    const llmStatus = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary.llm_status || {} : {};
-    const health = this.currentLlmHealth();
-    const latestLlmRun = this.latestLlmRun();
-    const availableBackends = Array.isArray(llmStatus.available_backends) ? llmStatus.available_backends.filter(Boolean) : [];
-    const requestedBackend = String(llmStatus.backend_requested || this.settings.llmBackend || "").trim();
-    const effectiveBackend = String(llmStatus.backend || "").trim();
-    const selected = this.currentLlmSelection();
-    const summaryTimestamp = parseTimestampMs(this.shellSummary && this.shellSummary.generated_at);
-    const summaryAgeMs = Number.isFinite(summaryTimestamp) ? Date.now() - summaryTimestamp : NaN;
-    const items = [];
-
-    items.push({
-      key: "runtime",
-      status: this.repoState.valid ? "healthy" : "failed",
-      title: "Runtime contract",
-      detail: this.repoState.valid
-        ? this.t("launcher {launcher} · root {root}", { launcher: this.settings.launcherPath || "", root: this.repoState.root || "" })
-        : this.t("Missing runtime paths: {missing}", { missing: this.repoState.missingPaths.join(", ") }),
-    });
-
-    if (!this.shellSummary) {
-      items.push({
-        key: "summary",
-        status: "failed",
-        title: "Shell summary",
-        detail: this.t("数据还没生成。先点刷新，或等首次任务跑完。"),
-      });
-    } else {
-      items.push({
-        key: "summary",
-        status: Number.isFinite(summaryAgeMs) && summaryAgeMs > 15 * 60 * 1000 ? "warning" : "healthy",
-        title: "Shell summary",
-        detail: Number.isFinite(summaryAgeMs) && summaryAgeMs > 15 * 60 * 1000
-          ? this.t("Summary is stale; refresh before trusting the home surface.")
-          : this.t("Generated {time}", { time: String(this.shellSummary.generated_at || "") }),
-      });
-    }
-
-    items.push({
-      key: "route",
-      status: requestedBackend && effectiveBackend && (!availableBackends.length || availableBackends.includes(effectiveBackend)) ? "healthy" : "failed",
-      title: "LLM route",
-      detail: this.t("requested {requested} · effective {effective} · available {available}", {
-        requested: requestedBackend || this.t("unconfigured"),
-        effective: effectiveBackend || this.t("unconfigured"),
-        available: availableBackends.length ? availableBackends.join(", ") : this.t("none"),
-      }),
-    });
-
-    if (!requestedBackend) {
-      items.push({
-        key: "backend-discovery",
-        status: "warning",
-        title: "Backend discovery",
-        detail: this.t("No explicit LLM backend is selected. Choose one in Product Shell settings or set AIWIKI_LLM_BACKEND."),
-      });
-    } else {
-      const backendVisible = availableBackends.includes(requestedBackend);
-      items.push({
-        key: "backend-discovery",
-        status: backendVisible ? "healthy" : "warning",
-        title: "Backend discovery",
-        detail: backendVisible
-          ? this.t("Product Shell runtime can see the selected backend {backend}.", { backend: requestedBackend })
-          : this.t("Product Shell runtime cannot see the selected backend {backend}.", { backend: requestedBackend }),
-      });
-    }
-
-    if (!latestLlmRun) {
-      items.push({
-        key: "latest-ask",
-        status: "unknown",
-        title: "Latest ask execution",
-        detail: this.t("No summary latest LLM run data available."),
-      });
-    } else {
-      const usedFallback = Boolean(latestLlmRun.fallbackUsed) || String(latestLlmRun.deliveryMode || "").trim() === "deterministic-fallback";
-      const latestStatus = usedFallback
-        ? "warning"
-        : latestLlmRun.status === "success"
-          ? "healthy"
-          : "failed";
-      const latestDetail = latestStatus === "healthy"
-        ? this.t("Latest run-ask succeeded.")
-        : latestStatus === "warning"
-          ? this.t("Latest run-ask fell back to deterministic ask.")
-          : this.t("Latest run-ask failed without deterministic fallback.");
-      items.push({
-        key: "latest-ask",
-        status: latestStatus,
-        title: "Latest ask execution",
-        detail: `${latestDetail} ${latestLlmRun.errorSummary || latestLlmRun.resultPath || ""}`.trim(),
-      });
-    }
-
-    if (latestLlmRun && latestLlmRun.backend && selected.backend && latestLlmRun.backend !== selected.backend) {
-      items.push({
-        key: "route-drift",
-        status: "warning",
-        title: "Route drift",
-        detail: this.t("Latest Product Shell ask used {latest}; current route is {current}.", {
-          latest: latestLlmRun.backend,
-          current: selected.backend,
-        }),
-      });
-    } else if (latestLlmRun && latestLlmRun.backend && selected.backend) {
-      // Have data from both sides and they match — healthy.
-      items.push({
-        key: "route-drift",
-        status: "healthy",
-        title: "Route drift",
-        detail: this.t("Latest Product Shell ask matches current route."),
-      });
-    } else {
-      // Missing summary.latest_llm_run or its backend — cannot assert health.
-      // Must not claim "healthy" just because we have no data (oracle round 6).
-      items.push({
-        key: "route-drift",
-        status: "unknown",
-        title: "Route drift",
-        detail: this.t("No summary latest LLM run data available."),
-      });
-    }
-
-    if (health.status === "degraded" || health.status === "failed") {
-      items.push({
-        key: "health",
-        status: "warning",
-        title: "LLM health",
-        detail: health.reason || this.t("Recent run-ask fell back to deterministic ask."),
-      });
-    }
-
-    return items;
+    return selfCheckItems(this);
   }
 
   updateLlmHealth(nextState) {
-    this.updateStatusBar();
-    this.refreshOpenViews();
-    void this.savePluginState();
+    return updateLlmHealth(this, nextState);
   }
 
   recordLlmHealthFromRun(record, overrides = {}) {
-    if (!record || typeof record !== "object") {
-      return;
-    }
-    this.updateLlmHealth({
-      status: overrides.status || "unknown",
-      backend: overrides.backend || record.backend,
-      backendRequested: overrides.backendRequested || record.backendRequested || "",
-      backendEffective: overrides.backendEffective || record.backendEffective || record.backend || "",
-      model: overrides.model || record.modelFinal || record.model,
-      modelSelected: overrides.modelSelected || record.modelSelected || "",
-      modelFinal: overrides.modelFinal || record.modelFinal || record.model || "",
-      reason: overrides.reason || record.errorSummary || "",
-      checkedAt: overrides.checkedAt || record.finishedAt || record.startedAt || new Date().toISOString(),
-      source: overrides.source || record.command || "",
-      fallbackCommand: overrides.fallbackCommand || record.fallbackCommand || record.fallbackFrom || "",
-      fallbackStage: overrides.fallbackStage || record.fallbackStage || "",
-      fallbackReason: overrides.fallbackReason || record.fallbackReason || "",
-      contractValidated: Object.prototype.hasOwnProperty.call(overrides, "contractValidated") ? Boolean(overrides.contractValidated) : Boolean(record.contractValidated),
-      logPath: overrides.logPath || record.logPath || "",
-      resultPath: overrides.resultPath || record.resultPath || "",
-      receiptPath: overrides.receiptPath || record.receiptPath || "",
-      stderrSummary: overrides.stderrSummary || record.stderrSummary || "",
-      stderrRaw: overrides.stderrRaw || record.stderrRaw || "",
-    });
+    return recordLlmHealthFromRun(this, record, overrides);
   }
 
   refreshRepoState() { this.repoState = refreshRepoState(this); this.updateStatusBar(); this.refreshOpenViews(); }
 
 
   getActiveProtocol() {
-    return String(this.shellSummary && this.shellSummary.active_protocol ? this.shellSummary.active_protocol : "general");
+    return getActiveProtocolFromSummary(this.shellSummary);
   }
 
   getAvailableProtocols() {
-    const fromSummary = this.shellSummary && Array.isArray(this.shellSummary.available_protocols)
-      ? this.shellSummary.available_protocols.filter((item) => typeof item === "string" && item)
-      : [];
-    return fromSummary.length ? fromSummary : DEFAULT_PROTOCOLS;
+    return getAvailableProtocolsFromSummary(this.shellSummary);
   }
 
   getActiveFilePath() {
-    const activeFile = this.app.workspace.getActiveFile ? this.app.workspace.getActiveFile() : null;
-    return activeFile && typeof activeFile.path === "string" ? activeFile.path : "";
+    return getActiveFilePathFromApp(this.app);
   }
 
   getActiveConceptSlug() {
-    const activePath = this.getActiveFilePath();
-    if (!activePath.startsWith("wiki/concepts/") || !activePath.endsWith(".md")) {
-      return "";
-    }
-    return path.basename(activePath, ".md");
+    return getConceptSlugForPath(this.getActiveFilePath());
   }
 
   getActiveOutputPath() {
-    const activePath = this.getActiveFilePath();
-    if (activePath.startsWith("output/") && activePath.endsWith(".md")) {
-      return activePath;
-    }
-    return "";
+    return getOutputPathForPath(this.getActiveFilePath());
   }
 
   getActiveCuratedPagePath() {
-    const activePath = this.getActiveFilePath();
-    if (!activePath.endsWith(".md")) {
-      return "";
-    }
-    // Curated-page prefixes come from the CLI summary (EP-015). Plugin no
-    // longer hardcodes "wiki/decisions/" / "wiki/judgments/"; CLI is the
-    // single source of truth for which repo-relative roots count as curated.
-    const roots = (this.shellSummary && typeof this.shellSummary === "object")
-      ? this.shellSummary.curated_page_roots
-      : null;
-    if (!roots || typeof roots !== "object") {
-      return "";
-    }
-    for (const key of Object.keys(roots)) {
-      const prefix = roots[key];
-      if (typeof prefix === "string" && prefix && activePath.startsWith(prefix)) {
-        return activePath;
-      }
-    }
-    return "";
+    return getCuratedPagePathForSummary(this.getActiveFilePath(), this.shellSummary);
   }
 
   normalizeRewriteProposalObjects(value) {
-    const items = Array.isArray(value) ? value : [value];
-    const seen = new Set();
-    return items
-      .map((item) => normalizeRewriteProposalObject(item))
-      .filter((item) => {
-        if (!item) {
-          return false;
-        }
-        if (seen.has(item.slug)) {
-          return false;
-        }
-        seen.add(item.slug);
-        return true;
-      });
+    return normalizeRewriteProposalObjects(value);
   }
 
   normalizeRewriteRecoveryActions(value) {
-    const items = Array.isArray(value) ? value : [value];
-    const seen = new Set();
-    return items
-      .map((item) => normalizeRewriteRecoveryAction(item))
-      .filter((item) => {
-        if (!item) {
-          return false;
-        }
-        if (seen.has(item.command)) {
-          return false;
-        }
-        seen.add(item.command);
-        return true;
-      });
+    return normalizeRewriteRecoveryActions(value);
   }
 
   rewriteProposalPathsFromObjects(objects) {
-    return normalizeRelativePathList(
-      (Array.isArray(objects) ? objects : []).map((item) => item && item.proposalPath ? item.proposalPath : "")
-    );
+    return rewriteProposalPathsFromObjects(objects);
   }
 
   rewriteProposalSlugsFromObjects(objects) {
-    return normalizeRelativePathList(
-      (Array.isArray(objects) ? objects : []).map((item) => item && item.slug ? item.slug : "")
-    );
+    return rewriteProposalSlugsFromObjects(objects);
   }
 
   extractRewriteProposalObjects(payload) {
-    if (!payload || typeof payload !== "object") {
-      return [];
-    }
-    return this.normalizeRewriteProposalObjects(payload.updated_rewrite_proposals || []);
+    return extractRewriteProposalObjects(payload);
   }
 
   extractRewriteRecoveryActions(payload) {
-    if (!payload || typeof payload !== "object") {
-      return [];
-    }
-    return this.normalizeRewriteRecoveryActions(payload.rewrite_recovery_actions || []);
+    return extractRewriteRecoveryActions(payload);
   }
 
   extractRewriteProposalPaths(payload) {
-    if (!payload || typeof payload !== "object") {
-      return [];
-    }
-    const objects = this.extractRewriteProposalObjects(payload);
-    return objects.length
-      ? this.rewriteProposalPathsFromObjects(objects)
-      : normalizeRelativePathList(payload.updated_rewrite_proposal_pages);
+    return extractRewriteProposalPaths(payload);
   }
 
   extractRewriteProposalSlugs(paths) {
-    return normalizeRelativePathList(paths).map((proposalPath) => path.basename(proposalPath, ".md"));
+    return extractRewriteProposalSlugs(paths);
   }
 
   rewriteCandidatesForSlugs(slugs, mode = "review") {
@@ -794,66 +314,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   rewriteProposalSummary(record) {
-    const count = Array.isArray(record && record.rewriteProposalObjects) && record.rewriteProposalObjects.length
-      ? record.rewriteProposalObjects.length
-      : (Array.isArray(record && record.rewriteProposalPaths) ? record.rewriteProposalPaths.length : 0);
-    if (!count) {
-      return "";
-    }
-    return this.t("rewrite proposals: {count}", { count });
+    return rewriteProposalSummary(this, record);
   }
 
   openRewriteRecovery(record) {
-    const recoveryActions = Array.isArray(record && record.rewriteRecoveryActions)
-      ? this.normalizeRewriteRecoveryActions(record.rewriteRecoveryActions)
-      : [];
-    const proposalObjects = Array.isArray(record && record.rewriteProposalObjects)
-      ? this.normalizeRewriteProposalObjects(record.rewriteProposalObjects)
-      : [];
-    if (recoveryActions.length === 1) {
-      const action = recoveryActions[0];
-      const control = proposalObjects.find((item) => item.slug === action.slug) || action;
-      if (action.kind === "apply-rewrite") {
-        this.openApplyRewriteModal({ slug: action.slug });
-        return;
-      }
-      this.openReviewRewriteTransitionPicker({
-        ...control,
-        slug: action.slug,
-        status: action.status || control.status || control.currentStatus || "",
-        currentStatus: action.currentStatus || control.currentStatus || control.status || "",
-        allowedTransitions: action.allowedTransitions || control.allowedTransitions || [],
-        preferredTransitions: action.preferredTransitions || control.preferredTransitions || [],
-        defaultTransition: action.transition || action.defaultTransition || control.defaultTransition || "",
-      });
-      return;
-    }
-    if (proposalObjects.length > 1) {
-      this.openReviewRewriteContextPicker(
-        proposalObjects.map((proposal) => ({
-          ...proposal,
-          value: proposal.slug,
-          label: proposal.title || proposal.slug || "rewrite-proposal",
-          description: `${displayRewriteStatus(proposal.status || proposal.currentStatus || "unknown", this.locale())} | ${proposal.proposalPath || proposal.targetPath || ""}`,
-        }))
-      );
-      return;
-    }
-    const rewriteControls = this.rewriteCandidatesForSlugs(record && record.rewriteProposalSlugs, "review");
-    if (rewriteControls.length === 1) {
-      this.openReviewRewriteTransitionPicker(rewriteControls[0]);
-      return;
-    }
-    if (rewriteControls.length > 1) {
-      this.openReviewRewriteContextPicker(rewriteControls);
-      return;
-    }
-    const rewriteSlugs = normalizeRelativePathList(record && record.rewriteProposalSlugs);
-    if (rewriteSlugs.length === 1) {
-      this.openReviewRewriteModal({ slug: rewriteSlugs[0] });
-      return;
-    }
-    this.runUiAction(() => this.openReviewCenterView(), this.t("Open Review Center"));
+    return openRewriteRecoveryForRecord(this, record);
   }
 
   openStructuredCommandModal(spec) {
@@ -865,51 +330,19 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   controlIdSet(key) {
-    const executionControls = this.shellSummary && typeof this.shellSummary === "object"
-      ? this.shellSummary.execution_controls
-      : null;
-    const values = executionControls && Array.isArray(executionControls[key]) ? executionControls[key] : [];
-    return new Set(values.map((item) => String(item || "").trim()).filter(Boolean));
+    return controlIdSet(this, key);
   }
 
   reviewControlList(key) {
-    const reviewControls = this.shellSummary && typeof this.shellSummary === "object"
-      ? this.shellSummary.review_controls
-      : null;
-    return reviewControls && Array.isArray(reviewControls[key]) ? reviewControls[key] : [];
+    return reviewControlList(this, key);
   }
 
   executionControlList(key) {
-    const executionControls = this.shellSummary && typeof this.shellSummary === "object"
-      ? this.shellSummary.execution_controls
-      : null;
-    return executionControls && Array.isArray(executionControls[key]) ? executionControls[key] : [];
+    return executionControlList(this, key);
   }
 
   reviewPageControlItems() {
-    const pages = this.reviewControlList("pages");
-    return uniqueContextOptions(
-      pages.map((page) => {
-        const kind = String(page.kind || "").trim() || "page";
-        const status = String(page.status || "").trim() || "unknown";
-        const metaText = truncateText(reviewObjectMetaText(page, this.locale()) || "review object", 180);
-        return {
-          value: page.path,
-          label: page.title || page.path || "review-page",
-          description: metaText || `${this.t(kind)} | ${displayCuratedStatus(status, this.locale())} | ${this.t("review object")}`,
-          pageId: String(page.page_id || ""),
-          pagePath: String(page.path || ""),
-          pageKind: kind,
-          currentStatus: status,
-          confidence: String(page.confidence || ""),
-          canRefreshReview: Boolean(page.can_refresh_review),
-          allowedTransitions: Array.isArray(page.allowed_transitions) ? page.allowed_transitions : [],
-          preferredTransitions: Array.isArray(page.preferred_transitions) ? page.preferred_transitions : [],
-          defaultTransition: String(page.default_transition || ""),
-        };
-      }),
-      "pagePath"
-    );
+    return reviewPageControlItems(this);
   }
 
   nextReviewCandidate() {
@@ -918,313 +351,55 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   reviewKindLabel(kind, count = 1) {
-    const normalized = String(kind || "").trim();
-    if (normalized === "decision") {
-      return count === 1 ? this.t("decision") : this.t("decisions");
-    }
-    if (normalized === "judgment") {
-      return count === 1 ? this.t("judgment") : this.t("judgments");
-    }
-    return count === 1 ? this.t("page") : this.t("pages");
+    return reviewKindLabel(this, kind, count);
   }
 
   commonReviewTransitionOptions(pages) {
-    const controls = Array.isArray(pages) ? pages.filter((page) => page && typeof page === "object") : [];
-    if (!controls.length) {
-      return [];
-    }
-    const stats = new Map();
-    controls.forEach((page) => {
-      const seen = new Set();
-      this.transitionOptions("page", page).forEach((option) => {
-        if (seen.has(option.value)) {
-          return;
-        }
-        seen.add(option.value);
-        const current = stats.get(option.value) || {
-          value: option.value,
-          label: option.label,
-          sharedCount: 0,
-          preferredCount: 0,
-          defaultCount: 0,
-        };
-        current.label = option.label;
-        current.sharedCount += 1;
-        if (option.isPreferred) {
-          current.preferredCount += 1;
-        }
-        if (option.isDefault) {
-          current.defaultCount += 1;
-        }
-        stats.set(option.value, current);
-      });
-    });
-    return Array.from(stats.values())
-      .filter((option) => option.sharedCount === controls.length)
-      .sort((left, right) => {
-        if (left.defaultCount !== right.defaultCount) {
-          return right.defaultCount - left.defaultCount;
-        }
-        if (left.preferredCount !== right.preferredCount) {
-          return right.preferredCount - left.preferredCount;
-        }
-        return String(left.label || "").localeCompare(String(right.label || ""));
-      });
+    return commonReviewTransitionOptions(this, pages);
   }
 
   reviewBatchSuggestions() {
-    const groups = new Map();
-    this.visibleReviewPageCandidates().forEach((page) => {
-      const prioritized = this.preferredTransitionOptions("page", page);
-      const selectedOptions = prioritized.length
-        ? prioritized
-        : this.transitionOptions("page", page).filter((option) => option.isDefault).slice(0, 1);
-      selectedOptions.forEach((transition) => {
-        const kind = String(page.pageKind || "page").trim() || "page";
-        const key = `${kind}::${transition.value}`;
-        const current = groups.get(key) || {
-          key,
-          kind,
-          status: transition.value,
-          transitionLabel: transition.label,
-          pages: [],
-        };
-        current.pages.push(page);
-        groups.set(key, current);
-      });
-    });
-    return Array.from(groups.values())
-      .filter((group) => group.pages.length >= 2)
-      .map((group) => {
-        const count = group.pages.length;
-        const kindLabel = this.reviewKindLabel(group.kind, count);
-        return {
-          key: group.key,
-          kind: group.kind,
-          status: group.status,
-          label: `${group.transitionLabel} · ${count} ${kindLabel}`,
-          description: `${count} ${kindLabel} ${this.t("share the recommended transition")} ${String(group.transitionLabel || "").toLowerCase()}.`,
-          pagePaths: group.pages.map((page) => page.pagePath).filter(Boolean),
-          pages: group.pages,
-          statusOptions: this.commonReviewTransitionOptions(group.pages),
-        };
-      })
-      .sort((left, right) => {
-        if (right.pagePaths.length !== left.pagePaths.length) {
-          return right.pagePaths.length - left.pagePaths.length;
-        }
-        return String(left.label || "").localeCompare(String(right.label || ""));
-      });
+    return reviewBatchSuggestions(this);
   }
 
   rewriteControlItems(mode = "review") {
-    const proposals = this.reviewControlList("rewrite_proposals");
-    return uniqueContextOptions(
-      proposals
-        .filter((proposal) => (mode === "apply" ? Boolean(proposal.can_apply) : Boolean(proposal.can_review)))
-        .map((proposal) => {
-          const status = String(proposal.status || "").trim() || "unknown";
-          const priority = String(proposal.priority || "").trim() || "medium";
-          return {
-            value: proposal.slug,
-            label: proposal.title || proposal.slug || "rewrite-proposal",
-            description: `${displayRewriteStatus(status, this.locale())} | ${this.t("priority")} ${priority} | ${this.t("score")} ${proposal.score || 0}`,
-            slug: String(proposal.slug || ""),
-            status,
-            currentStatus: String(proposal.current_status || status),
-            proposalPath: String(proposal.proposal_path || ""),
-            targetPath: String(proposal.target_path || ""),
-            canApply: Boolean(proposal.can_apply),
-            canRefreshReview: Boolean(proposal.can_refresh_review),
-            allowedTransitions: Array.isArray(proposal.allowed_transitions) ? proposal.allowed_transitions : [],
-            preferredTransitions: Array.isArray(proposal.preferred_transitions) ? proposal.preferred_transitions : [],
-            defaultTransition: String(proposal.default_transition || ""),
-          };
-        }),
-      "slug"
-    );
+    return rewriteControlItems(this, mode);
   }
 
   actionControlItems(mode = "review") {
-    return uniqueContextOptions(
-      this.executionControlList("actions")
-        .filter((action) => {
-          if (mode === "apply") {
-            return Boolean(action.can_apply);
-          }
-          if (mode === "revert") {
-            return Boolean(action.can_revert);
-          }
-          return Boolean(action.can_review);
-        })
-        .map((action) => {
-          const status = String(action.status || "").trim() || "unknown";
-          const priority = String(action.priority || "").trim() || "medium";
-          const primaryPath = String(action.primary_path || "").trim();
-          return {
-            value: action.action_id,
-            label: action.title || action.action_id || "action",
-            description: `${displayActionStatus(status, this.locale())} | ${this.t("priority")} ${priority}${primaryPath ? ` | ${primaryPath}` : ""}`,
-            actionId: String(action.action_id || ""),
-            status,
-            currentStatus: String(action.current_status || status),
-            bundlePath: String(action.bundle_path || ""),
-            canRefreshReview: Boolean(action.can_refresh_review),
-            allowedTransitions: Array.isArray(action.allowed_transitions) ? action.allowed_transitions : [],
-            preferredTransitions: Array.isArray(action.preferred_transitions) ? action.preferred_transitions : [],
-            defaultTransition: String(action.default_transition || ""),
-          };
-        }),
-      "actionId"
-    );
+    return actionControlItems(this, mode);
   }
 
   archiveControlItems(mode = "apply") {
-    return uniqueContextOptions(
-      this.executionControlList("archives")
-        .filter((entry) => (mode === "revert" ? Boolean(entry.can_revert) : Boolean(entry.can_apply)))
-        .map((entry) => {
-          const candidateStatus = String(entry.candidate_status || "").trim();
-          const currentTemperature = String(entry.current_temperature || "").trim();
-          return {
-            value: entry.entry_id,
-            label: entry.title || entry.entry_id || "archive-entry",
-            description: `${this.t(candidateStatus || currentTemperature || "archive")} | ${entry.source_path || ""}`,
-            entryId: String(entry.entry_id || ""),
-            allowedTransitions: Array.isArray(entry.allowed_transitions) ? entry.allowed_transitions : [],
-            preferredTransitions: Array.isArray(entry.preferred_transitions) ? entry.preferred_transitions : [],
-            defaultTransition: String(entry.default_transition || ""),
-          };
-        }),
-      "entryId"
-    );
+    return archiveControlItems(this, mode);
   }
 
   actionControlsById() {
-    const controls = this.executionControlList("actions");
-    return new Map(
-      controls
-        .filter((action) => action && typeof action === "object" && String(action.action_id || "").trim())
-        .map((action) => [String(action.action_id || "").trim(), action])
-    );
+    return actionControlsById(this);
   }
 
   archiveControlsById() {
-    const controls = this.executionControlList("archives");
-    return new Map(
-      controls
-        .filter((entry) => entry && typeof entry === "object" && String(entry.entry_id || "").trim())
-        .map((entry) => [String(entry.entry_id || "").trim(), entry])
-    );
+    return archiveControlsById(this);
   }
 
   transitionLabel(controlType, transition) {
-    if (controlType === "page") {
-      return displayCuratedStatus(transition, this.locale());
-    }
-    if (controlType === "rewrite") {
-      return displayRewriteStatus(transition, this.locale());
-    }
-    if (controlType === "action") {
-      return displayActionStatus(transition, this.locale());
-    }
-    if (controlType === "archive") {
-      return transition === "revert" ? this.t("Revert archive") : this.t("Apply archive");
-    }
-    return this.t(String(transition || "transition"));
+    return transitionLabel(this, controlType, transition);
   }
 
   transitionOptions(controlType, control) {
-    if (!control || typeof control !== "object") {
-      return [];
-    }
-    const allowed = Array.isArray(control.allowedTransitions || control.allowed_transitions)
-      ? (control.allowedTransitions || control.allowed_transitions)
-      : [];
-    const preferredSet = new Set(
-      (Array.isArray(control.preferredTransitions || control.preferred_transitions)
-        ? (control.preferredTransitions || control.preferred_transitions)
-        : []
-      ).map((item) => String(item || "").trim()).filter(Boolean)
-    );
-    const defaultTransition = String(control.defaultTransition || control.default_transition || "").trim();
-    return allowed
-      .map((value) => String(value || "").trim())
-      .filter(Boolean)
-      .map((value) => ({
-        value,
-        label: this.transitionLabel(controlType, value),
-        description: preferredSet.has(value) ? this.t("preferred transition") : this.t("allowed transition"),
-        isDefault: value === defaultTransition,
-        isPreferred: preferredSet.has(value),
-      }))
-      .sort((left, right) => {
-        if (left.isDefault !== right.isDefault) {
-          return left.isDefault ? -1 : 1;
-        }
-        if (left.isPreferred !== right.isPreferred) {
-          return left.isPreferred ? -1 : 1;
-        }
-        return String(left.label || "").localeCompare(String(right.label || ""));
-      });
+    return transitionOptions(this, controlType, control);
   }
 
   preferredTransitionOptions(controlType, control) {
-    return this.transitionOptions(controlType, control).filter((option) => option.isPreferred).slice(0, 2);
+    return preferredTransitionOptions(this, controlType, control);
   }
 
   manualReviewOption(controlType) {
-    const labelMap = {
-      page: this.t("Manual review..."),
-      rewrite: this.t("Manual rewrite review..."),
-      action: this.t("Manual action review..."),
-    };
-    return {
-      value: "__manual__",
-      label: labelMap[controlType] || this.t("Manual review..."),
-      description: this.t("keep current status and capture note / confidence in the full form"),
-      isManual: true,
-      isPreferred: false,
-      isDefault: false,
-    };
+    return manualReviewOption(this, controlType);
   }
 
   openTransitionPicker({ title, description, controlType, control, onSubmit, onFallback, onManual, emptyNotice }) {
-    const transitionOptions = this.transitionOptions(controlType, control);
-    if (!transitionOptions.length && typeof onManual !== "function") {
-      if (emptyNotice) {
-        new Notice(emptyNotice);
-      }
-      if (typeof onFallback === "function") {
-        onFallback();
-      }
-      return;
-    }
-    if (!transitionOptions.length && typeof onManual === "function") {
-      onManual();
-      return;
-    }
-    if (transitionOptions.length === 1 && typeof onManual !== "function") {
-      onSubmit(transitionOptions[0].value);
-      return;
-    }
-    const options = transitionOptions.slice();
-    if (typeof onManual === "function") {
-      options.push(this.manualReviewOption(controlType));
-    }
-    this.openContextPicker({
-      title,
-      description,
-      submitLabel: this.t("Use"),
-      options,
-      onSubmit: (option) => {
-        if (option && option.isManual && typeof onManual === "function") {
-          onManual();
-          return;
-        }
-        onSubmit(option.value);
-      },
-    });
+    return openTransitionPickerForControl(this, { title, description, controlType, control, onSubmit, onFallback, onManual, emptyNotice });
   }
 
   async runReviewPageTransition(pagePath, status) {
@@ -1269,23 +444,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   openContextAwareAction(spec) {
-    const options = uniqueContextOptions(spec.options || [], spec.keyName || "value");
-    if (!options.length) {
-      new Notice(spec.emptyNotice || this.t("No context is currently available; fell back to the manual form."));
-      spec.onFallback();
-      return;
-    }
-    if (options.length === 1) {
-      spec.onSubmit(options[0]);
-      return;
-    }
-    this.openContextPicker({
-      title: spec.title,
-      description: spec.description,
-      submitLabel: spec.submitLabel || "Use",
-      options,
-      onSubmit: spec.onSubmit,
-    });
+    return openContextAwareActionForSpec(this, spec);
   }
 
   async handleVaultChange(relativePath) {
@@ -1435,93 +594,18 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   persistRunLog(record, details = {}) {
-    if (!record || typeof record !== "object") {
-      return;
-    }
-    const logPath = String(record.logPath || runLogRelativePath(record)).trim();
-    const absolutePath = this.resolveAbsoluteWorkspacePath(logPath);
-    if (!logPath || !absolutePath) {
-      return;
-    }
-    record.logPath = logPath;
-    const stdoutText = String(details.stdoutRaw || record.stdoutRaw || "").trim();
-    const stderrText = String(details.stderrRaw || record.stderrRaw || "").trim();
-    const rewriteProposalObjects = this.normalizeRewriteProposalObjects(record.rewriteProposalObjects || []);
-    const rewriteProposalCount = rewriteProposalObjects.length || (Array.isArray(record.rewriteProposalPaths) ? record.rewriteProposalPaths.length : 0);
-    const lines = [
-      "# Product Shell Run Log",
-      "",
-      this.t("Generated by Product Shell run logging."),
-      "",
-      `- ${this.t("Status")}: ${this.t(record.status || "unknown")}`,
-      `- ${this.t("Protocol")}: ${record.protocol ? this.t(record.protocol) : this.t("unknown")}`,
-      `- ${this.t("LLM Backend")}: ${record.backend || this.t("unconfigured")}`,
-      `- backend requested: ${record.backendRequested || "-"}`,
-      `- backend effective: ${record.backendEffective || record.backend || "-"}`,
-      `- ${this.t("LLM Model")}: ${record.model || this.t("default")}`,
-      `- model selected: ${record.modelSelected || "-"}`,
-      `- model final: ${record.modelFinal || record.model || "-"}`,
-      `- ${this.t("Codex effort")}: ${record.codexReasoningEffort || "-"}`,
-      `- ${this.t("Prompt profile")}: ${record.promptProfile || "-"}`,
-      `- ${this.t("Retry prompt")}: ${record.retryPromptProfile || "-"}`,
-      `- fallback stage: ${record.fallbackStage || "-"}`,
-      `- fallback reason: ${record.fallbackReason || "-"}`,
-      `- contract validated: ${record.contractValidated ? "yes" : "no"}`,
-      `- ${this.t("Working directory")}: ${this.repoState.root || "."}`,
-      `- ${this.t("Arguments")}: ${record.args || record.command || ""}`,
-      `- ${this.t("Fallback from")}: ${record.fallbackFrom || "-"}`,
-      `- ${this.t("Result path")}: ${record.resultPath || "-"}`,
-      `- ${this.t("Receipt path")}: ${record.receiptPath || "-"}`,
-      ...(rewriteProposalCount
-        ? [`- ${this.t("rewrite proposals: {count}", { count: rewriteProposalCount })}`]
-        : []),
-      `- ${this.t("Log path")}: ${logPath}`,
-      `- ${this.t("Exit code")}: ${record.exitCode === "" ? "-" : String(record.exitCode)}`,
-      `- started: ${record.startedAt || "-"}`,
-      `- finished: ${record.finishedAt || "-"}`,
-      "",
-      "## Timeline",
-      "",
-    ];
-    const timeline = Array.isArray(record.timeline) ? record.timeline : [];
-    if (!timeline.length) {
-      lines.push(`- ${this.t("No stage events recorded.")}`);
-    } else {
-      timeline.forEach((event) => {
-        lines.push(`- ${event.at || "-"} | ${this.t(event.stage || "event")} | ${event.summary || "-"}`);
-      });
-    }
-    if (record.resultPath || record.receiptPath || record.errorSummary) {
-      lines.push("", "## Summary", "");
-      if (record.resultPath) {
-        lines.push(`- ${this.t("Result path")}: ${record.resultPath}`);
-      }
-      if (record.receiptPath) {
-        lines.push(`- ${this.t("Receipt path")}: ${record.receiptPath}`);
-      }
-      if (record.errorSummary) {
-        lines.push(`- error: ${record.errorSummary}`);
-      }
-      if (rewriteProposalObjects.length) {
-        lines.push(`- ${this.t("rewrite proposals: {count}", { count: rewriteProposalObjects.length })}`);
-        rewriteProposalObjects.forEach((proposal) => {
-          lines.push(`  - ${proposal.title || proposal.slug}: ${proposal.proposalPath || proposal.targetPath || proposal.slug}`);
-        });
-      } else if (Array.isArray(record.rewriteProposalPaths) && record.rewriteProposalPaths.length) {
-        lines.push(`- ${this.t("rewrite proposals: {count}", { count: record.rewriteProposalPaths.length })}`);
-        record.rewriteProposalPaths.forEach((proposalPath) => {
-          lines.push(`  - ${proposalPath}`);
-        });
-      }
-    }
-    if (stdoutText) {
-      lines.push("", "## Standard output", "", "```text", stdoutText, "```");
-    }
-    if (stderrText) {
-      lines.push("", "## Standard error", "", "```text", stderrText, "```");
-    }
+    const rendered = renderProductShellRunLog({
+      record,
+      details,
+      t: this.t.bind(this),
+      repoRoot: this.repoState.root || ".",
+    });
+    if (!rendered) return;
+    const absolutePath = this.resolveAbsoluteWorkspacePath(rendered.logPath);
+    if (!absolutePath) return;
+    record.logPath = rendered.logPath;
     fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
-    fs.writeFileSync(absolutePath, `${lines.join("\n")}\n`, "utf8");
+    fs.writeFileSync(absolutePath, rendered.content, "utf8");
   }
 
   async copyText(value) {
@@ -1563,55 +647,12 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   createRunRecord(label, args) {
-    const llm = this.currentLlmSelection();
-    const protocol = this.getActiveProtocol();
-    const runId = `run-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-    const record = {
-      id: runId,
+    const record = createProductShellRunRecord({
       label,
-      args: args.join(" "),
-      argv: Array.isArray(args) ? args.slice() : [],
-      command: Array.isArray(args) && args.length ? String(args[0] || "") : "",
-      status: "running",
-      startedAt: new Date().toISOString(),
-      finishedAt: "",
-      protocol,
-      backend: llm.backend,
-      backendRequested: llm.backend,
-      backendEffective: llm.backend,
-      model: llm.model,
-      modelSelected: llm.model,
-      modelFinal: llm.model,
-      codexReasoningEffort: llm.codexReasoningEffort || "",
-      promptProfile: "",
-      retryPromptProfile: "",
-      fallbackStage: "",
-      fallbackReason: "",
-      contractValidated: false,
-      rewriteProposalObjects: [],
-      rewriteRecoveryActions: [],
-      rewriteProposalPaths: [],
-      rewriteProposalSlugs: [],
-      stdoutSummary: "",
-      stderrSummary: "",
-      stdoutRaw: "",
-      stderrRaw: "",
-      resultPath: "",
-      receiptPath: "",
-      logPath: `output/control/plugin-runs/${runId}.md`,
-      exitCode: "",
-      errorSummary: "",
-      fallbackFrom: "",
-      fallbackCommand: "",
-      fallbackUsed: false,
-      deliveryMode: "",
-      timeline: [],
-    };
-    appendRunEvent(record, "Submitted", label || record.args || "command", "running");
-    if (record.protocol || record.backend || record.model) {
-      const context = [record.protocol, record.backend, record.model].filter(Boolean).join(" · ");
-      appendRunEvent(record, "Runtime selected", context, "running");
-    }
+      args,
+      llm: this.currentLlmSelection(),
+      protocol: this.getActiveProtocol(),
+    });
     this.pluginState.recentRuns.unshift(record);
     this.trimRecentRuns();
     this.persistRunLog(record);
@@ -1674,10 +715,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         await this.refreshShellSummarySilently();
       }
       const llm = this.currentLlmSelection();
-      const payloadDeliveryMode = result.payload && typeof result.payload.delivery_mode === "string" ? result.payload.delivery_mode : "";
-      const payloadFallbackUsed = result.payload && Object.prototype.hasOwnProperty.call(result.payload, "fallback_used")
-        ? Boolean(result.payload.fallback_used)
-        : Boolean(record.fallbackUsed);
       if (options.backgroundSubmit && result.payload && result.payload.kind === "run-ask-background-job") {
         appendRunEvent(
           record,
@@ -1685,18 +722,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
           result.payload.job_id || result.payload.path || this.t("Long report job accepted."),
           "running"
         );
-        this.updateRunRecord(record, {
-          status: "received",
-          exitCode: 0,
-          jobId: String(result.payload.job_id || ""),
-          resultPath: primaryPath,
-          runId: String(result.payload.run_id || ""),
-          runNotesPath: String(result.payload.run_notes_path || ""),
-          stdoutSummary: truncateText(result.stdout),
-          stderrSummary: truncateText(result.stderr),
-          stdoutRaw: trimDiagnosticText(result.stdout),
-          stderrRaw: trimDiagnosticText(result.stderr),
-        });
+        this.updateRunRecord(record, buildProductShellBackgroundRunUpdates({ result, primaryPath }));
         this.persistRunLog(record, { stdoutRaw: result.stdout, stderrRaw: result.stderr });
         this.updateLongRunningPoller();
         if (options.notice !== false) {
@@ -1704,7 +730,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         }
         return result.payload;
       }
-      const degradedRun = (record.command === "run-ask" || record.command === "run-ask-resume") && (payloadFallbackUsed || payloadDeliveryMode === "deterministic-fallback");
+      const degradedRun = isProductShellDegradedRun(record, result.payload);
       appendRunEvent(
         record,
         degradedRun ? "LLM timeout" : "Completed",
@@ -1719,46 +745,17 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       if (rewriteProposalPaths.length) {
         appendRunEvent(record, "Rewrite proposals", this.rewriteProposalSummary({ rewriteProposalPaths }), "success");
       }
-      this.updateRunRecord(record, {
-        status: degradedRun ? "degraded" : "success",
-        finishedAt: new Date().toISOString(),
-        exitCode: 0,
-        backend: result.payload && typeof result.payload.backend_effective === "string" ? result.payload.backend_effective : (llm.backend || record.backend),
-        backendRequested:
-          result.payload && typeof result.payload.backend_requested === "string" ? result.payload.backend_requested : (record.backendRequested || llm.backend || record.backend),
-        backendEffective:
-          result.payload && typeof result.payload.backend_effective === "string" ? result.payload.backend_effective : (llm.backend || record.backend),
-        model:
-          result.payload && typeof result.payload.model_final === "string" ? result.payload.model_final : (llm.model || record.model),
-        modelSelected:
-          result.payload && typeof result.payload.model_selected === "string" ? result.payload.model_selected : (record.modelSelected || llm.model || record.model),
-        modelFinal:
-          result.payload && typeof result.payload.model_final === "string" ? result.payload.model_final : (llm.model || record.model),
-        codexReasoningEffort: llm.codexReasoningEffort || record.codexReasoningEffort,
-        promptProfile: result.payload && typeof result.payload.prompt_profile === "string" ? result.payload.prompt_profile : record.promptProfile,
-        retryPromptProfile:
-          result.payload && typeof result.payload.retry_prompt_profile === "string" ? result.payload.retry_prompt_profile : record.retryPromptProfile,
-        fallbackStage: result.payload && typeof result.payload.fallback_stage === "string" ? result.payload.fallback_stage : record.fallbackStage,
-        fallbackReason: result.payload && typeof result.payload.fallback_reason === "string" ? result.payload.fallback_reason : record.fallbackReason,
-        fallbackFrom: result.payload && typeof result.payload.fallback_from === "string" ? result.payload.fallback_from : record.fallbackFrom,
-        fallbackCommand: result.payload && typeof result.payload.fallback_command === "string" ? result.payload.fallback_command : (record.fallbackCommand || ""),
-        fallbackUsed: payloadFallbackUsed,
-        deliveryMode: payloadDeliveryMode || record.deliveryMode || "",
-        contractValidated:
-          result.payload && Object.prototype.hasOwnProperty.call(result.payload, "contract_validated")
-            ? Boolean(result.payload.contract_validated)
-            : record.contractValidated,
+      this.updateRunRecord(record, buildProductShellCompletedRunUpdates({
+        record,
+        result,
+        llm,
+        primaryPath,
+        receiptPath,
         rewriteProposalObjects,
         rewriteRecoveryActions,
         rewriteProposalPaths,
         rewriteProposalSlugs,
-        stdoutSummary: truncateText(result.stdout),
-        stderrSummary: truncateText(result.stderr),
-        stdoutRaw: trimDiagnosticText(result.stdout),
-        stderrRaw: trimDiagnosticText(result.stderr),
-        resultPath: primaryPath,
-        receiptPath,
-      });
+      }));
       if (record.command === "run-ask" || record.command === "run-ask-resume") {
         const usedFallback = Boolean(record.fallbackUsed) || String(record.deliveryMode || "").trim() === "deterministic-fallback";
         this.recordLlmHealthFromRun(record, {
@@ -1786,16 +783,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       return result.payload;
     } catch (error) {
       appendRunEvent(record, "Failed", truncateText(error.message || "Command failed", 180), "failed");
-      this.updateRunRecord(record, {
-        status: "failed",
-        finishedAt: new Date().toISOString(),
-        exitCode: Number.isFinite(Number(error.code)) ? Number(error.code) : "",
-        stdoutSummary: truncateText(error.stdout || ""),
-        stderrSummary: truncateText(error.stderr || ""),
-        stdoutRaw: trimDiagnosticText(error.stdout || ""),
-        stderrRaw: trimDiagnosticText(error.stderr || ""),
-        errorSummary: truncateText(error.message || "Command failed"),
-      });
+      this.updateRunRecord(record, buildProductShellFailedRunUpdates(error));
       if ((record.command === "run-ask" || record.command === "run-ask-resume") && llmBackendUnavailable(error)) {
         this.recordLlmHealthFromRun(record, {
           status: "degraded",
@@ -1842,34 +830,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   processShellSummaryUpdates(summary) {
     // R88: shellSummary 刷新时尝试消解已落地的 pending submissions（视觉闭环）
     this.reconcilePendingSubmissions(summary);
-    if (!summary || !Array.isArray(summary.recent_outputs)) return;
-    const outputs = summary.recent_outputs.filter((item) => item && typeof item === "object");
-    const currentIds = outputs.map((r) => r.path || r.title || r.created_at).filter(Boolean);
-    const lastIds = Array.isArray(this.settings.lastKnownReportIds) ? this.settings.lastKnownReportIds.filter(Boolean) : [];
-
-    if (!currentIds.length) {
-      this.settings.lastKnownReportIds = [];
+    const update = knownReportIdsUpdateFromSummary(summary, this.settings.lastKnownReportIds);
+    if (update.shouldSave) {
+      this.settings.lastKnownReportIds = update.ids;
       void this.savePluginState();
-      return;
     }
-
-    if (!lastIds.length && outputs.length > 0) {
-      this.settings.lastKnownReportIds = currentIds;
-      void this.savePluginState();
-      return;
-    }
-
-    const newIds = currentIds.filter((id) => !lastIds.includes(id));
-    if (!newIds.length) {
-      if (currentIds.length !== lastIds.length || currentIds.some((id, i) => id !== lastIds[i])) {
-        this.settings.lastKnownReportIds = currentIds;
-        void this.savePluginState();
-      }
-      return;
-    }
-
-    this.settings.lastKnownReportIds = currentIds;
-    void this.savePluginState();
   }
 
   async refreshShellSummaryCommand() {
@@ -1925,28 +890,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async readWorkspaceSnippet(relativePath, length = 420) {
-    const normalized = String(relativePath || "").trim();
-    if (!normalized || !this.repoState.root) return "";
-    const safePath = path.normalize(normalized).replace(/^\/+/, "");
-    if (!safePath || safePath.startsWith("..") || path.isAbsolute(normalized)) return "";
-    const absolutePath = path.join(this.repoState.root, safePath);
-    const rootPath = path.resolve(this.repoState.root);
-    const resolvedPath = path.resolve(absolutePath);
-    if (resolvedPath !== rootPath && !resolvedPath.startsWith(rootPath + path.sep)) return "";
+    const resolvedPath = resolveWorkspaceSnippetPath(this.repoState.root, relativePath);
+    if (!resolvedPath) return "";
     try {
       const raw = await fs.promises.readFile(resolvedPath, "utf8");
-      const withoutFrontmatter = raw.startsWith("---")
-        ? raw.replace(/^---\s*[\s\S]*?\n---\s*/, "")
-        : raw;
-      const normalizedText = withoutFrontmatter
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter((line) => line && !line.startsWith("#"))
-        .join(" ")
-        .replace(/\s+/g, " ")
-        .trim();
-      const limit = Number.isFinite(Number(length)) && Number(length) > 0 ? Number(length) : 420;
-      return normalizedText.length > limit ? `${normalizedText.slice(0, Math.max(0, limit - 1))}…` : normalizedText;
+      return workspaceSnippetFromMarkdown(raw, length);
     } catch (error) {
       return "";
     }
@@ -1961,10 +909,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       return false;
     }
     const quoteLine = this.t("引用报告：{path}", { path: normalized });
-    const current = String(textarea.value || "").trimEnd();
-    const existingLines = current.split(/\r?\n/).map((line) => line.trim());
-    if (!existingLines.includes(quoteLine)) {
-      textarea.value = current ? `${current}\n${quoteLine}\n` : `${quoteLine}\n`;
+    const update = appendComposerReportQuote(textarea.value, quoteLine);
+    if (update.changed) {
+      textarea.value = update.value;
     }
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
     textarea.focus();
@@ -2043,27 +990,13 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     const dup = this.pendingSubmissions.find((e) => e && e.status === "running" && e.payloadFingerprint === fingerprint);
     if (dup) return dup.id;
     const id = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const entry = {
+    const entry = createPendingSubmissionEntry({
       id,
-      payloadFingerprint: fingerprint,
-      displayText: text.length > 120 ? text.slice(0, 117) + "…" : text,
-      title: String(opts.title || "").trim(),
-      status: "running", // R89: running | received | done | failed | degraded
+      displayText: text,
+      opts,
       startedAt: new Date().toISOString(),
-      finishedAt: "",
-      error: "",
-      reconcileTarget: "",
-      runId: String(opts.runId || "").trim(),
-      runNotesPath: String(opts.runNotesPath || "").trim(),
-      jobId: String(opts.jobId || "").trim(),
-      deliveryMode: String(opts.deliveryMode || "").trim(),
-      llmStatus: String(opts.llmStatus || "").trim(),
-      llmBackend: String(opts.llmBackend || "").trim(),
-      llmModel: String(opts.llmModel || "").trim(),
-      backgroundStatus: String(opts.backgroundStatus || "").trim(),
-      artifactQuality: String(opts.artifactQuality || "").trim(),
-      retryArgs: opts.retryArgs && typeof opts.retryArgs === "object" ? opts.retryArgs : null,
-    };
+    });
+    if (!entry) return null;
     this.pendingSubmissions.unshift(entry);
     if (this.pendingSubmissions.length > 8) this.pendingSubmissions.length = 8;
     void this.savePluginState();
@@ -2075,25 +1008,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   resetPendingSubmissionForRetry(id) {
     const entry = this._findPending(id);
     if (!entry) return;
-    entry.status = "running";
-    entry.error = "";
-    entry.startedAt = new Date().toISOString();
-    entry.finishedAt = "";
-    entry.reconcileTarget = "";
-    entry.reconcilePath = "";
-    entry.jobId = "";
-    entry.runId = "";
-    entry.runNotesPath = "";
-    entry.deliveryMode = "";
-    entry.llmStatus = "";
-    entry.llmBackend = "";
-    entry.llmModel = "";
-    entry.backgroundStatus = "";
-    entry.artifactQuality = "";
-    if (entry.retryArgs && typeof entry.retryArgs === "object") {
-      entry.retryArgs = Object.assign({}, entry.retryArgs, { jobId: "", runId: "", runNotesPath: "" });
-    }
-    entry._stale = false;
+    resetPendingSubmissionEntryForRetry(entry, new Date().toISOString());
     void this.savePluginState();
     this.refreshOpenViews();
     this.updateLongRunningPoller();
@@ -2104,9 +1019,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   markPendingSubmissionReceived(id) {
     const entry = this._findPending(id);
     if (!entry) return;
-    if (entry.status !== "running") return;
-    entry.status = "received";
-    entry.finishedAt = new Date().toISOString();
+    if (!markPendingSubmissionEntryReceived(entry, new Date().toISOString())) return;
     void this.savePluginState();
     this.refreshOpenViews();
     this.updateLongRunningPoller();
@@ -2119,38 +1032,20 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   markPendingSubmissionDone(id, reconcileTarget, reconcilePath) {
     const entry = this._findPending(id);
     if (!entry) return;
-    if (entry.status === "done" || entry.status === "failed" || entry.status === "degraded") return;
-    entry.status = this.isPendingSubmissionDegraded(entry) ? "degraded" : "done";
-    entry.finishedAt = new Date().toISOString();
-    if (reconcileTarget) entry.reconcileTarget = String(reconcileTarget);
-    if (reconcilePath) entry.reconcilePath = String(reconcilePath);
+    if (!markPendingSubmissionEntryDone(entry, reconcileTarget, reconcilePath, new Date().toISOString())) return;
     void this.savePluginState();
     this.refreshOpenViews();
     this.updateLongRunningPoller();
   }
 
   isPendingSubmissionDegraded(entry) {
-    if (!entry || typeof entry !== "object") return false;
-    if (entry.status === "degraded") return true;
-    const deliveryMode = String(entry.deliveryMode || entry.delivery_mode || "").trim();
-    const llmStatus = String(entry.llmStatus || entry.llm_status || "").trim();
-    const backgroundStatus = String(entry.backgroundStatus || entry.background_status || "").trim();
-    const artifactQuality = String(entry.artifactQuality || entry.artifact_quality || "").trim();
-    return deliveryMode === "deterministic-fallback"
-      || deliveryMode === "llm-failed"
-      || llmStatus === "timeout_or_unavailable"
-      || llmStatus === "failed"
-      || llmStatus === "degraded"
-      || backgroundStatus === "degraded"
-      || artifactQuality === "degraded";
+    return isPendingSubmissionDegradedEntry(entry);
   }
 
   markPendingSubmissionFailed(id, error) {
     const entry = this._findPending(id);
     if (!entry) return;
-    entry.status = "failed";
-    entry.finishedAt = new Date().toISOString();
-    entry.error = truncateText(String((error && error.message) || error || "失败"), 180);
+    markPendingSubmissionEntryFailed(entry, truncateText(String((error && error.message) || error || "失败"), 180), new Date().toISOString());
     void this.savePluginState();
     this.refreshOpenViews();
     this.updateLongRunningPoller();
@@ -2188,10 +1083,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   updatePendingSubmissionRunNotes(id, runNotesPath, runId, opts = {}) {
     const entry = this._findPending(id);
     if (!entry) return;
-    const notes = String(runNotesPath || "").trim();
-    const rid = String(runId || "").trim();
-    if (notes) entry.runNotesPath = notes;
-    if (rid) entry.runId = rid;
+    updatePendingSubmissionEntryRunNotes(entry, runNotesPath, runId);
     if (opts.save !== false) void this.savePluginState();
     if (opts.refresh !== false) this.refreshOpenViews();
   }
@@ -2199,22 +1091,13 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   updatePendingSubmissionArtifactMeta(id, meta, opts = {}) {
     const entry = this._findPending(id);
     if (!entry || !meta || typeof meta !== "object") return;
-    if (meta.runNotesPath || meta.run_notes_path || meta.runId || meta.run_id) {
-      this.updatePendingSubmissionRunNotes(id, meta.runNotesPath || meta.run_notes_path, meta.runId || meta.run_id, { save: false, refresh: false });
-    }
-    if (meta.deliveryMode || meta.delivery_mode) entry.deliveryMode = String(meta.deliveryMode || meta.delivery_mode || "");
-    if (meta.llmStatus || meta.llm_status) entry.llmStatus = String(meta.llmStatus || meta.llm_status || "");
-    if (meta.llmBackend || meta.llm_backend) entry.llmBackend = String(meta.llmBackend || meta.llm_backend || "");
-    if (meta.llmModel || meta.llm_model) entry.llmModel = String(meta.llmModel || meta.llm_model || "");
-    if (meta.backgroundStatus || meta.background_status) entry.backgroundStatus = String(meta.backgroundStatus || meta.background_status || "");
-    if (meta.artifactQuality || meta.artifact_quality) entry.artifactQuality = String(meta.artifactQuality || meta.artifact_quality || "");
+    updatePendingSubmissionEntryArtifactMeta(entry, meta);
     if (opts.save !== false) void this.savePluginState();
     if (opts.refresh !== false) this.refreshOpenViews();
   }
 
   hasActiveLongRunningPending() {
-    if (!Array.isArray(this.pendingSubmissions)) return false;
-    return this.pendingSubmissions.some((entry) => entry && (entry.status === "running" || entry.status === "received") && entry.retryArgs && entry.retryArgs.longRunning);
+    return pendingHasActiveLongRunning(this.pendingSubmissions);
   }
 
   updateLongRunningPoller() {
@@ -2267,109 +1150,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   //   - running 卡片超过 5 分钟仅停止 reconcile（不删，避免长任务消失）
   reconcilePendingSubmissions(summary) {
     if (!Array.isArray(this.pendingSubmissions) || !this.pendingSubmissions.length) return;
-    if (!summary || typeof summary !== "object") return;
-    const outputCands = Array.isArray(summary.recent_outputs) ? summary.recent_outputs : [];
-    const receiptCands = Array.isArray(summary.recent_receipts) ? summary.recent_receipts : [];
-    const rawCands = Array.isArray(summary.recent_raw_inputs) ? summary.recent_raw_inputs : [];
-    if (!outputCands.length && !receiptCands.length && !rawCands.length) return;
-    const SKEW_MS = 60 * 1000;
-    const RECONCILE_WINDOW_MS = 5 * 60 * 1000;
-    const now = Date.now();
-    const remaining = [];
-    const hits = []; // {id, target}
-    // Matched run_notes_path/run_id are applied via updatePendingSubmissionRunNotes before markDone.
-    for (const entry of this.pendingSubmissions) {
-      if (!entry) { continue; }
-      // failed/done/degraded 保留（done/degraded 等用户处理）
-      if (entry.status === "failed" || entry.status === "done" || entry.status === "degraded") {
-        remaining.push(entry);
-        continue;
-      }
-      const startMs = Date.parse(entry.startedAt || "") || now;
-      // 超窗（仅对 running 生效；received 长期等待 reconcile，不超窗）
-      if (entry.status === "running" && now - startMs > RECONCILE_WINDOW_MS) {
-        remaining.push(entry);
-        continue;
-      }
-      const fp = String(entry.payloadFingerprint || "").trim().toLowerCase();
-      const title = String(entry.title || "").trim().toLowerCase();
-      const fpKey = fp.length >= 60 ? fp.slice(0, 60) : fp;
-      const useExact = fp.length > 0 && fp.length < 16;
-      const matchAgainst = (cand) => {
-        if (!cand || typeof cand !== "object") return false;
-        const candTimeStr = cand.created_at || cand.generated_at || cand.applied_at || cand.occurred_at || cand.timestamp || "";
-        const candMs = Date.parse(candTimeStr);
-        if (!Number.isFinite(candMs)) return false;
-        if (candMs + SKEW_MS < startMs) return false;
-        const fields = [
-          cand.title,
-          cand.path,
-          cand.summary,
-          cand.payload,
-          cand.receipt_path,
-          cand.output_path,
-          cand.stored_path,
-          cand.original_path,
-          cand.note_path,
-          cand.query,
-          cand.target,
-        ].map((v) => String(v || "").trim().toLowerCase()).filter(Boolean);
-        if (!fields.length) return false;
-        if (useExact) {
-          return fields.some((f) => f === fp || (title && f === title));
-        }
-        const haystack = fields.join(" \u0001 ");
-        if (fpKey && haystack.includes(fpKey)) return true;
-        if (title && title.length >= 4 && haystack.includes(title)) return true;
-        return false;
-      };
-      let target = "";
-      let targetPath = "";
-      let hitRunNotesPath = "";
-      let hitRunId = "";
-      let hitMeta = null;
-      const entryRunId = String(entry.runId || (entry.retryArgs && entry.retryArgs.runId) || "").trim();
-      const findRunIdHit = (cands) => entryRunId ? cands.find((cand) => cand && String(cand.run_id || cand.runId || "").trim() === entryRunId) : null;
-      const findHit = (cands) => cands.find(matchAgainst);
-      let hitCand = findRunIdHit(outputCands) || findHit(outputCands);
-      if (hitCand) {
-        target = "outputs";
-        targetPath = String(hitCand.path || "");
-        hitRunNotesPath = String(hitCand.run_notes_path || "");
-        hitRunId = String(hitCand.run_id || "");
-        hitMeta = {
-          runNotesPath: hitRunNotesPath,
-          runId: hitRunId,
-          deliveryMode: String(hitCand.delivery_mode || ""),
-          llmStatus: String(hitCand.llm_status || ""),
-          llmBackend: String(hitCand.llm_backend || ""),
-          llmModel: String(hitCand.llm_model || ""),
-          backgroundStatus: String(hitCand.background_status || ""),
-          artifactQuality: String(hitCand.artifact_quality || ""),
-        };
-      }
-      else {
-        hitCand = findRunIdHit(receiptCands) || findHit(receiptCands);
-        if (hitCand) {
-          target = "receipts";
-          targetPath = String(hitCand.path || hitCand.receipt_path || "");
-          hitRunNotesPath = String(hitCand.run_notes_path || "");
-          hitRunId = String(hitCand.run_id || "");
-          hitMeta = { runId: hitRunId, runNotesPath: hitRunNotesPath };
-        }
-      }
-      if (!hitCand) {
-        hitCand = findHit(rawCands);
-        if (hitCand) { target = "raw"; targetPath = String(hitCand.stored_path || hitCand.path || ""); }
-      }
-      // R89: 命中 → 改为 done（保留卡片）；R90: done 不再自动消失
-      if (target) {
-        hits.push({ id: entry.id, target, path: targetPath, runNotesPath: hitRunNotesPath, runId: hitRunId, meta: hitMeta || {} });
-        remaining.push(entry);
-      } else {
-        remaining.push(entry);
-      }
-    }
+    const { remaining, hits } = reconcilePendingSubmissionList(this.pendingSubmissions, summary);
     if (remaining.length !== this.pendingSubmissions.length) {
       this.pendingSubmissions = remaining;
       this.refreshOpenViews();
@@ -2391,34 +1172,13 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       new Notice(this.t("Universal input cannot be empty."));
       return;
     }
-    const args = ["drop", normalizedPayload];
-    const normalizedTitle = String(title || "").trim();
-    if (normalizedTitle) {
-      args.push("--title", normalizedTitle);
-    }
-    return await this.runPluginCommand(`${this.t("Universal Input")}: ${truncateText(normalizedTitle || normalizedPayload, 48)}`, args, { refreshAfter: true });
+    const spec = buildUniversalInputCommandSpec({ payload: normalizedPayload, title });
+    return await this.runPluginCommand(commandLabel(this.t.bind(this), spec.labelKey, spec.labelSubject), spec.args, spec.options);
   }
 
   async runAskCommand({ question, format, mode, protocol }) {
-    const longRunning = mode === "run-ask" && format === "report";
-    const command = longRunning ? "run-ask-submit" : mode;
-    const args = [command, question, "--format", format];
-    if (protocol) {
-      args.push("--protocol", protocol);
-    }
-    if (mode === "run-ask") {
-      const directQuestion = String(question || "").trim();
-      const canUseDirect = format === "note" && !directQuestion.includes("材料路径供系统路由使用：") && !directQuestion.includes("本次投喂材料路径：");
-      if (canUseDirect) {
-        args.push("--direct");
-      }
-      args.push("--lean");
-    }
-    return await this.runPluginCommand(`${longRunning ? this.t("Long Report") : this.t("Ask")}: ${truncateText(question, 48)}`, args, {
-      refreshAfter: true,
-      longRunning,
-      backgroundSubmit: longRunning,
-    });
+    const spec = buildAskCommandSpec({ question, format, mode, protocol });
+    return await this.runPluginCommand(commandLabel(this.t.bind(this), spec.labelKey, spec.labelSubject), spec.args, spec.options);
   }
 
   async runDroppedPayloadsWithAutoAsk({ payloads, question, protocol }) {
@@ -2498,13 +1258,12 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runReportSubgraphCommand({ reportPath }) {
-    const normalized = String(reportPath || "").trim();
-    if (!normalized) {
+    const spec = buildReportSubgraphCommandSpec(reportPath);
+    if (!spec.normalized) {
       new Notice(this.t("Report path cannot be empty."));
       return;
     }
-    const args = ["report-subgraph", "--report", normalized];
-    const payload = await this.runPluginCommand(`${this.t("View report graph")}: ${truncateText(normalized, 48)}`, args, { refreshAfter: true });
+    const payload = await this.runPluginCommand(commandLabel(this.t.bind(this), spec.labelKey, spec.labelSubject), spec.args, spec.options);
     const outputPath = payload && typeof payload.output_path === "string" ? payload.output_path.trim() : "";
     if (outputPath) {
       await this.openWorkspacePath(outputPath);
@@ -2544,35 +1303,12 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   openReportSubgraphPicker() {
     const candidates = this.collectReportCandidates();
-    const fieldSpec = {
-      key: "reportPath",
-      label: this.t("Report path"),
-      placeholder: "output/reports/...md",
-      required: true,
-    };
-    if (candidates.length) {
-      fieldSpec.kind = "select";
-      fieldSpec.options = candidates;
-      fieldSpec.initialValue = candidates[0].value;
-    }
-    this.openStructuredCommandModal({
-      title: this.t("View report graph"),
-      description: candidates.length
-        ? this.t("Choose a recent report.")
-        : this.t("No recent reports available; enter a path manually."),
-      fields: [fieldSpec],
-      onSubmit: async (values) => {
-        await this.runReportSubgraphCommand({ reportPath: values.reportPath });
-      },
-    });
+    this.openStructuredCommandModal(buildReportSubgraphModalSpec(this, candidates));
   }
 
   async runDropUrlCommand({ url, title }) {
-    const args = ["drop", "url", url];
-    if (title) {
-      args.push("--title", title);
-    }
-    await this.runPluginCommand(`${this.t("Drop URL")}: ${truncateText(title || url, 48)}`, args, { refreshAfter: true });
+    const spec = buildDropUrlCommandSpec({ url, title });
+    await this.runPluginCommand(commandLabel(this.t.bind(this), spec.labelKey, spec.labelSubject), spec.args, spec.options);
   }
 
   openDropUrlModal(initialUrl = "") {
@@ -2580,35 +1316,18 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runDropFileCommand({ mode, source, title, maxFiles }) {
-    const normalizedMode = String(mode || "pdf").trim() === "repo" ? "repo" : "pdf";
-    const args = ["drop", normalizedMode === "repo" ? "repo" : "pdf", source];
-    if (title) {
-      args.push("--title", title);
-    }
-    if (normalizedMode === "repo") {
-      args.push("--max-files", String(Number.isFinite(Number(maxFiles)) && Number(maxFiles) > 0 ? Number(maxFiles) : 200));
-    }
-    await this.runPluginCommand(`${this.t("Drop File")}: ${truncateText(title || path.basename(source) || source, 48)}`, args, { refreshAfter: true });
+    const spec = buildDropFileCommandSpec({ mode, source, title, maxFiles });
+    await this.runPluginCommand(commandLabel(this.t.bind(this), spec.labelKey, spec.labelSubject), spec.args, spec.options);
   }
 
   async runDropImageCommand({ source, title, noVision }) {
-    const args = ["drop", "image", source];
-    if (title) {
-      args.push("--title", title);
-    }
-    if (noVision) {
-      args.push("--no-vision");
-    }
-    await this.runPluginCommand(`${this.t("Drop Image")}: ${truncateText(title || path.basename(source) || source, 48)}`, args, { refreshAfter: true });
+    const spec = buildDropImageCommandSpec({ source, title, noVision });
+    await this.runPluginCommand(commandLabel(this.t.bind(this), spec.labelKey, spec.labelSubject), spec.args, spec.options);
   }
 
   async runDropNoteCommand({ text, title, kind }) {
-    const args = ["drop", "note", "--text", text];
-    if (title) {
-      args.push("--title", title);
-    }
-    args.push("--kind", kind || "note");
-    await this.runPluginCommand(`${this.t("Capture Note")}: ${truncateText(title || text, 48)}`, args, { refreshAfter: true });
+    const spec = buildDropNoteCommandSpec({ text, title, kind });
+    await this.runPluginCommand(commandLabel(this.t.bind(this), spec.labelKey, spec.labelSubject), spec.args, spec.options);
   }
 
   async runCliAction(label, command, args = []) {
@@ -2650,245 +1369,47 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   openFileBackModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("File Back"),
-      description: this.t("File an output artifact back into wiki/derived, wiki/decisions, or wiki/judgments."),
-      fields: [
-        {
-          key: "artifact",
-          label: this.t("Artifact path"),
-          required: true,
-          placeholder: this.t("output/reports/....md"),
-          initialValue: () => prefill.artifact || this.getActiveOutputPath(),
-        },
-        {
-          key: "title",
-          label: this.t("Title"),
-          placeholder: this.t("Optional filed-back title"),
-          initialValue: prefill.title || "",
-        },
-        {
-          key: "kind",
-          label: this.t("Kind"),
-          kind: "select",
-          initialValue: prefill.kind || "derived",
-          options: [
-            ["derived", this.t("derived")],
-            ["decision", this.t("decision")],
-            ["judgment", this.t("judgment")],
-          ],
-        },
-        {
-          key: "protocol",
-          label: this.t("Protocol"),
-          kind: "select",
-          initialValue: prefill.protocol || "",
-          options: [["", this.t("current protocol")], ...this.getAvailableProtocols().map((item) => [item, item])],
-        },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.artifact];
-        appendOptionalArg(args, "--title", values.title);
-        appendOptionalArg(args, "--kind", values.kind);
-        appendOptionalArg(args, "--protocol", values.protocol);
-        await this.runCliAction(`File Back: ${values.kind}`, "file-back", args);
-      },
-    });
+    this.openStructuredCommandModal(buildFileBackModalSpec(this, prefill));
   }
 
   openReviewPageModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Review Page"),
-      description: this.t("Advance a decision or judgment page through the explicit review workflow."),
-      fields: [
-        {
-          key: "page",
-          label: this.t("Page path"),
-          required: true,
-          placeholder: this.t("wiki/decisions/... or wiki/judgments/..."),
-          initialValue: () => prefill.pagePath || this.getActiveCuratedPagePath(),
-        },
-        {
-          key: "status",
-          label: this.t("Status"),
-          required: true,
-          placeholder: this.t("approved / confirmed / needs-revision ..."),
-          initialValue: prefill.status || "",
-        },
-        {
-          key: "note",
-          label: this.t("Note"),
-          kind: "textarea",
-          placeholder: this.t("Optional review note"),
-          rows: 4,
-          initialValue: prefill.note || "",
-        },
-        {
-          key: "confidence",
-          label: this.t("Confidence"),
-          placeholder: this.t("Optional confidence override"),
-          initialValue: prefill.confidence || "",
-        },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.page, "--status", values.status];
-        appendOptionalArg(args, "--note", values.note);
-        appendOptionalArg(args, "--confidence", values.confidence);
-        await this.runCliAction(`Review Page: ${values.status}`, "review-page", args);
-      },
-    });
+    this.openStructuredCommandModal(buildReviewPageModalSpec(this, prefill));
   }
 
   openReviewRewriteModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Review Rewrite"),
-      description: this.t("Advance a concept rewrite proposal through the rewrite workflow."),
-      fields: [
-        { key: "slug", label: this.t("Concept slug"), required: true, initialValue: () => prefill.slug || this.getActiveConceptSlug() },
-        { key: "status", label: this.t("Status"), required: true, placeholder: this.t("accepted / rejected / needs-revision ..."), initialValue: prefill.status || "" },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional review note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.slug, "--status", values.status];
-        appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Review Rewrite: ${values.slug}`, "review-rewrite", args);
-      },
-    });
+    this.openStructuredCommandModal(buildReviewRewriteModalSpec(this, prefill));
   }
 
   openApplyRewriteModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Apply Rewrite"),
-      description: this.t("Apply an accepted concept rewrite proposal."),
-      fields: [
-        { key: "slug", label: this.t("Concept slug"), required: true, initialValue: () => prefill.slug || this.getActiveConceptSlug() },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional apply note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.slug];
-        appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Apply Rewrite: ${values.slug}`, "apply-rewrite", args);
-      },
-    });
+    this.openStructuredCommandModal(buildApplyRewriteModalSpec(this, prefill));
   }
 
   openRetireConceptModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Retire Concept"),
-      description: this.t("Apply an explicit retired override for a concept."),
-      fields: [
-        { key: "slug", label: this.t("Concept slug"), required: true, initialValue: () => prefill.slug || this.getActiveConceptSlug() },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Why retire this concept?"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.slug];
-        appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Retire Concept: ${values.slug}`, "retire-concept", args);
-      },
-    });
+    this.openStructuredCommandModal(buildRetireConceptModalSpec(this, prefill));
   }
 
   openReactivateConceptModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Reactivate Concept"),
-      description: this.t("Clear the explicit retired override for a concept."),
-      fields: [
-        { key: "slug", label: this.t("Concept slug"), required: true, initialValue: () => prefill.slug || this.getActiveConceptSlug() },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional reactivate note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.slug];
-        appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Reactivate Concept: ${values.slug}`, "reactivate-concept", args);
-      },
-    });
+    this.openStructuredCommandModal(buildReactivateConceptModalSpec(this, prefill));
   }
 
   openApplyArchiveModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Apply Archive"),
-      description: this.t("Apply a ready archive candidate and pin it to archived."),
-      fields: [
-        { key: "entry_id", label: this.t("Entry id"), required: true, placeholder: this.t("manifest/material entry id"), initialValue: prefill.entryId || "" },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional apply note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.entry_id];
-        appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Apply Archive: ${values.entry_id}`, "apply-archive", args);
-      },
-    });
+    this.openStructuredCommandModal(buildApplyArchiveModalSpec(this, prefill));
   }
 
   openRevertArchiveModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Revert Archive"),
-      description: this.t("Revert the latest explicit archive transition."),
-      fields: [
-        { key: "entry_id", label: this.t("Entry id"), required: true, placeholder: this.t("manifest/material entry id"), initialValue: prefill.entryId || "" },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional revert note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.entry_id];
-        appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Revert Archive: ${values.entry_id}`, "revert-archive", args);
-      },
-    });
+    this.openStructuredCommandModal(buildRevertArchiveModalSpec(this, prefill));
   }
 
   openReviewActionModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Review Action"),
-      description: this.t("Advance a machine-memory repair action through the explicit action workflow."),
-      fields: [
-        { key: "action_id", label: this.t("Action id"), required: true, placeholder: this.t("machine-memory action id"), initialValue: prefill.actionId || "" },
-        { key: "status", label: this.t("Status"), required: true, placeholder: this.t("accepted / rejected / ready ..."), initialValue: prefill.status || "" },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional action review note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.action_id, "--status", values.status];
-        appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Review Action: ${values.action_id}`, "review-action", args);
-      },
-    });
+    this.openStructuredCommandModal(buildReviewActionModalSpec(this, prefill));
   }
 
   openApplyActionModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Apply Action"),
-      description: this.t("Apply an accepted low-risk machine-memory repair action."),
-      fields: [
-        { key: "action_id", label: this.t("Action id"), required: true, placeholder: this.t("machine-memory action id"), initialValue: prefill.actionId || "" },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional apply note"), initialValue: prefill.note || "" },
-        { key: "bundle", label: this.t("Bundle path"), placeholder: this.t("Optional execution bundle path"), initialValue: prefill.bundle || "" },
-        { key: "dry_run", label: this.t("Dry run"), kind: "toggle", initialValue: Boolean(prefill.dryRun) },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.action_id];
-        appendOptionalArg(args, "--note", values.note);
-        appendOptionalArg(args, "--bundle", values.bundle);
-        if (values.dry_run) {
-          args.push("--dry-run");
-        }
-        await this.runCliAction(`Apply Action: ${values.action_id}`, "apply-action", args);
-      },
-    });
+    this.openStructuredCommandModal(buildApplyActionModalSpec(this, prefill));
   }
 
   openRevertActionModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Revert Action"),
-      description: this.t("Revert the latest low-risk safe apply for a machine-memory action."),
-      fields: [
-        { key: "action_id", label: this.t("Action id"), required: true, placeholder: this.t("machine-memory action id"), initialValue: prefill.actionId || "" },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional revert note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.action_id];
-        appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Revert Action: ${values.action_id}`, "revert-action", args);
-      },
-    });
+    this.openStructuredCommandModal(buildRevertActionModalSpec(this, prefill));
   }
 
   openReviewPageContextPicker(options = this.visibleReviewPageCandidates()) {
@@ -2913,66 +1434,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   openReviewPageBatchModal(prefill = {}) {
-    const pagePaths = Array.isArray(prefill.pagePaths) ? prefill.pagePaths : [];
-    const statusOptions = Array.isArray(prefill.statusOptions) ? prefill.statusOptions : [];
-    const normalizedStatusOptions = statusOptions.map((option) => ({
-      value: option.value,
-      label: option.label || this.transitionLabel("page", option.value),
-    }));
-    const statusField = normalizedStatusOptions.length
-      ? {
-          key: "status",
-          label: this.t("Status"),
-          required: true,
-          kind: "select",
-          initialValue: prefill.status || normalizedStatusOptions[0].value || "",
-          options: normalizedStatusOptions,
-        }
-      : {
-          key: "status",
-          label: this.t("Status"),
-          required: true,
-          placeholder: this.t("tracking / needs-revisit / approved ..."),
-          initialValue: prefill.status || "",
-        };
-    this.openStructuredCommandModal({
-      title: this.t("Batch Review Pages"),
-      description: prefill.description || this.t("Advance multiple review pages that share a safe common transition."),
-      submitLabel: this.t("Run batch"),
-      fields: [
-        {
-          key: "pages",
-          label: this.t("Page paths"),
-          required: true,
-          kind: "textarea",
-          rows: 6,
-          placeholder: this.t("wiki/judgments/... (one per line)"),
-          initialValue: pagePaths.join("\n"),
-        },
-        statusField,
-        {
-          key: "note",
-          label: this.t("Note"),
-          kind: "textarea",
-          rows: 4,
-          placeholder: this.t("Optional shared batch note"),
-          initialValue: prefill.note || "",
-        },
-        {
-          key: "confidence",
-          label: this.t("Confidence"),
-          placeholder: this.t("Optional shared confidence override"),
-          initialValue: prefill.confidence || "",
-        },
-      ],
-      onSubmit: async (values) => {
-        const paths = parseLineList(values.pages);
-        if (!paths.length) {
-          throw new Error(this.t("Batch review requires at least one page path."));
-        }
-        await this.runReviewPageBatchTransition(paths, values.status, values.note, values.confidence);
-      },
-    });
+    this.openStructuredCommandModal(buildReviewPageBatchModalSpec(this, prefill));
   }
 
   openReviewBatchSuggestionPicker() {
@@ -3162,9 +1624,14 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   async openWorkspacePath(relativePath) {
     // R90 P1-1: 返回 boolean —— true 成功打开；false 失败（无 path / repo missing / path not found / no adapter）
     // 既有调用方不读返回值，无破坏；openPendingDoneTarget 据此判断是否进退化路径
-    const normalized = String(relativePath || "").trim();
-    if (!normalized) {
+    const requestedPath = String(relativePath || "").trim();
+    const normalized = normalizeWorkspaceRelativePath(requestedPath);
+    if (!requestedPath) {
       new Notice(this.t("No path to open."));
+      return false;
+    }
+    if (!normalized) {
+      new Notice(this.t("Unable to open {path}", { path: requestedPath }));
       return false;
     }
     const abstractFile = this.app.vault.getAbstractFileByPath(normalized);
@@ -3177,7 +1644,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       new Notice(this.t("Unable to open {path}", { path: normalized }));
       return false;
     }
-    const absolutePath = path.join(this.repoState.root, normalized);
+    const absolutePath = resolveWorkspaceSnippetPath(this.repoState.root, normalized);
     if (!fs.existsSync(absolutePath)) {
       new Notice(this.t("Path not found: {path}", { path: normalized }));
       return false;

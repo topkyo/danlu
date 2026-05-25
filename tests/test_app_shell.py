@@ -1307,7 +1307,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertIn('emptyNotice: this.t("No visible machine-memory action context is available; fell back to the manual form.")', content)
         self.assertIn('output/control/shell-summary.json', content)
         self.assertIn('review_controls', content)
-        self.assertIn('reviewControlList("rewrite_proposals")', content)
+        self.assertIn('reviewControlList(plugin, "rewrite_proposals")', content)
         self.assertIn("displayReviewReason(", content)
         self.assertIn("reviewObjectMetaText(", content)
         self.assertIn('execution_controls', content)

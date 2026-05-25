@@ -331,40 +331,35 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check --probe-all --probe-time
 ## 验证
 
 ```bash
-bash scripts/verify.sh
+scripts/agentstack verify --target auto
 ```
 
 ## 开发说明
 
-`open-harness` 只负责本仓库的工程闭环和质量护栏，不属于 `aiwiki` runtime 本身；generic harness scaffold 不再作为仓库事实提交。
+本仓库使用 AgentStack 作为 agent/tooling 协议和验证入口；它不属于 `aiwiki` runtime，也不改变 CLI/runtime 行为。当前安装平台是 `codex,claude,opencode`。
 
-如需在当前工作区启用本地工程脚手架，执行：
+检查 AgentStack 安装健康：
 
 ```bash
-bash scripts/setup_local_harness.sh --apply
+scripts/agentstack doctor --platforms codex,claude,opencode
 ```
 
-该命令只是 ai-wiki 的本地便捷别名，实际等价于：
+运行当前变更的 targeted verify：
 
 ```bash
-bash /home/tim/open-harness/scripts/bootstrap_local_scaffold.sh --apply --tier standard
+scripts/agentstack verify --target auto
 ```
 
-现在 local-only scaffold 的“不入库 / 不改项目 `.gitignore` / 不删项目自带 wrapper”行为已经统一收敛到 `open-harness` 本体；ai-wiki 保留 `scripts/setup_local_harness.sh` 只是为了维持项目内统一入口。
-
-如果上游输入是一份较大的架构文档，推荐先写本地 `engineering plan`，再直接用 milestone runner 推进当前轮：
+发布级或 broad-risk 变更再运行全量验证：
 
 ```bash
-HARNESS_DIR=.codex bash scripts/run_plan.sh \
-  --plan-file .codex/plans/active.md
+scripts/agentstack verify --full
 ```
 
-如果需要强制指定某个 milestone，再显式物化 active contract：
+底层项目验证仍可直接调用：
 
 ```bash
-HARNESS_DIR=.codex bash scripts/materialize_contract.sh \
-  --plan-file .codex/plans/active.md \
-  --milestone EP-001
+bash scripts/verify.sh [scripts|smoke|python-static|unit|acceptance|cli-smoke|product-shell-static|all]
 ```
 
 ### Developer Guide

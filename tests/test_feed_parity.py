@@ -255,8 +255,10 @@ class TestFeedParity(unittest.TestCase):
             self.assertIn(key, body)
 
     def test_reconcile_pending_includes_recent_raw_inputs(self) -> None:
-        content = (PROJECT_ROOT / ".obsidian/plugins/furnace-product-shell/src/plugin.js").read_text(encoding="utf-8")
-        match = re.search(r"reconcilePendingSubmissions\(summary\) \{(?P<body>.*?)\n  \}\n\n  async runUniversalInputCommand", content, re.DOTALL)
+        plugin_content = (PROJECT_ROOT / ".obsidian/plugins/furnace-product-shell/src/plugin.js").read_text(encoding="utf-8")
+        content = (PROJECT_ROOT / ".obsidian/plugins/furnace-product-shell/src/pending_state.js").read_text(encoding="utf-8")
+        self.assertIn("reconcilePendingSubmissionList(this.pendingSubmissions, summary)", plugin_content)
+        match = re.search(r"reconcilePendingSubmissionList\(pendingSubmissions, summary.*?\) \{(?P<body>.*?)\n\}", content, re.DOTALL)
         self.assertIsNotNone(match)
         body = match.group("body") if match else ""
         self.assertIn("recent_raw_inputs", body)

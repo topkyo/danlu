@@ -102,11 +102,13 @@ class PendingSubmissionContractTests(unittest.TestCase):
     # ---- P1 round 2: reconcile robustness ----
     def test_reconcile_uses_timestamp_and_extra_fields(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        pending_state_js = (SRC / "pending_state.js").read_text(encoding="utf-8")
         idx = plugin_js.find("reconcilePendingSubmissions(summary) {")
         self.assertGreater(idx, 0)
         end = plugin_js.find("\n  }\n", idx)
         self.assertGreater(end, idx)
-        body = plugin_js[idx:end]
+        body = pending_state_js[pending_state_js.find("reconcilePendingSubmissionList") :]
+        self.assertIn("reconcilePendingSubmissionList(this.pendingSubmissions, summary)", plugin_js[idx:end])
         # 时间戳门槛
         for needle in ("created_at", "generated_at", "SKEW_MS", "candMs"):
             self.assertIn(needle, body, f"reconcile missing timestamp guard: {needle}")
@@ -118,9 +120,11 @@ class PendingSubmissionContractTests(unittest.TestCase):
 
     def test_reconcile_keeps_running_past_window(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        pending_state_js = (SRC / "pending_state.js").read_text(encoding="utf-8")
         idx = plugin_js.find("reconcilePendingSubmissions(summary) {")
-        end = plugin_js.find("\n  }\n", idx)
-        body = plugin_js[idx:end]
+        self.assertGreater(idx, 0)
+        self.assertIn("reconcilePendingSubmissionList(this.pendingSubmissions, summary)", plugin_js[idx : idx + 500])
+        body = pending_state_js[pending_state_js.find("reconcilePendingSubmissionList") :]
         self.assertIn("RECONCILE_WINDOW_MS", body)
         self.assertRegex(
             body,
@@ -179,10 +183,12 @@ class PendingSubmissionContractTests(unittest.TestCase):
 
     def test_plugin_hydrates_pending_with_ttl(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        pending_state_js = (SRC / "pending_state.js").read_text(encoding="utf-8")
         self.assertIn("hydratePendingSubmissions", plugin_js)
         hyd_idx = plugin_js.find("hydratePendingSubmissions(raw)")
         self.assertGreater(hyd_idx, 0)
-        body = plugin_js[hyd_idx : hyd_idx + 2000]
+        body = pending_state_js
+        self.assertIn("hydratePendingSubmissionList(raw)", plugin_js[hyd_idx : hyd_idx + 300])
         # TTL 24h 常量
         self.assertIn("24 * 60 * 60 * 1000", body)
         # stale running → failed
@@ -225,26 +231,30 @@ class PendingSubmissionContractTests(unittest.TestCase):
 
     def test_reconcile_routes_target_to_markdone(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        pending_state_js = (SRC / "pending_state.js").read_text(encoding="utf-8")
         idx = plugin_js.find("reconcilePendingSubmissions(summary) {")
         self.assertGreater(idx, 0)
         end = plugin_js.find("\n  }\n", idx)
-        body = plugin_js[idx:end]
+        plugin_body = plugin_js[idx:end]
+        body = pending_state_js[pending_state_js.find("reconcilePendingSubmissionList") :]
         # 目标分流
         self.assertIn('target = "outputs"', body)
         self.assertIn('target = "receipts"', body)
         # 命中后调 markDone（带 target）
-        self.assertIn("markPendingSubmissionDone", body)
+        self.assertIn("markPendingSubmissionDone", plugin_body)
 
     def test_reconcile_recent_raw_inputs_reads_stored_path_and_marks_done_with_raw_target(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        pending_state_js = (SRC / "pending_state.js").read_text(encoding="utf-8")
         idx = plugin_js.find("reconcilePendingSubmissions(summary) {")
         self.assertGreater(idx, 0)
         end = plugin_js.find("\n  }\n", idx)
-        body = plugin_js[idx:end]
+        plugin_body = plugin_js[idx:end]
+        body = pending_state_js[pending_state_js.find("reconcilePendingSubmissionList") :]
         self.assertIn("const rawCands = Array.isArray(summary.recent_raw_inputs)", body)
         self.assertIn("cand.stored_path", body)
         self.assertIn('target = "raw"', body)
-        self.assertIn("this.markPendingSubmissionDone(h.id, h.target, h.path)", body)
+        self.assertIn("this.markPendingSubmissionDone(h.id, h.target, h.path)", plugin_body)
 
     # ---- R89 #3 文案中文化 + Advanced 分隔 + 失败 hint ----
     def test_today_groups_use_chinese(self) -> None:
@@ -292,6 +302,7 @@ class PendingSubmissionContractTests(unittest.TestCase):
 
     def test_r90_markdone_accepts_target_and_path(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        pending_state_js = (SRC / "pending_state.js").read_text(encoding="utf-8")
         self.assertRegex(
             plugin_js,
             r"markPendingSubmissionDone\(\s*id\s*,\s*reconcileTarget\s*,\s*reconcilePath\s*\)",
@@ -299,18 +310,21 @@ class PendingSubmissionContractTests(unittest.TestCase):
         # 序列化记录 reconcilePath（用函数定义起点而非首次引用，避免被 R91 中间方法影响）
         ser_idx = plugin_js.find("serializePendingSubmissions() {")
         self.assertGreater(ser_idx, 0)
-        ser_body = plugin_js[ser_idx : ser_idx + 1500]
+        ser_body = pending_state_js[pending_state_js.find("serializePendingSubmissionList") : pending_state_js.find("hydratePendingSubmissionList")]
+        self.assertIn("serializePendingSubmissionList(this.pendingSubmissions)", plugin_js[ser_idx : ser_idx + 300])
         self.assertIn("reconcilePath", ser_body)
         self.assertIn("runId", ser_body)
         self.assertIn("runNotesPath", ser_body)
 
     def test_tda004_run_notes_path_reconciles_and_renders(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        pending_state_js = (SRC / "pending_state.js").read_text(encoding="utf-8")
         reconcile_idx = plugin_js.find("reconcilePendingSubmissions(summary) {")
         self.assertGreater(reconcile_idx, 0)
         reconcile_body = plugin_js[reconcile_idx : reconcile_idx + 4500]
-        self.assertIn("hitCand.run_notes_path", reconcile_body)
-        self.assertIn("hitCand.run_id", reconcile_body)
+        pending_reconcile_body = pending_state_js[pending_state_js.find("reconcilePendingSubmissionList") :]
+        self.assertIn("hitCand.run_notes_path", pending_reconcile_body)
+        self.assertIn("hitCand.run_id", pending_reconcile_body)
         self.assertIn("updatePendingSubmissionRunNotes", reconcile_body)
         render_today = (SRC / "render_today.js").read_text(encoding="utf-8")
         self.assertIn("furnace-run-notes-details", render_today)
@@ -322,9 +336,11 @@ class PendingSubmissionContractTests(unittest.TestCase):
 
     def test_r90_done_hydrate_drops_after_seven_days(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        pending_state_js = (SRC / "pending_state.js").read_text(encoding="utf-8")
         hyd_idx = plugin_js.find("hydratePendingSubmissions(raw)")
         self.assertGreater(hyd_idx, 0)
-        body = plugin_js[hyd_idx : hyd_idx + 3000]
+        body = pending_state_js
+        self.assertIn("hydratePendingSubmissionList(raw)", plugin_js[hyd_idx : hyd_idx + 300])
         # 7 天 TTL 常量
         self.assertIn("7 * 24 * 60 * 60 * 1000", body)
 

@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+default_run_id() {
+  printf '%s-%s\n' "$(date +%Y%m%d%H%M%S)" "$$"
+}
+
+run_id="${AGENTSTACK_RUN_ID:-$(default_run_id)}"
+out_dir=".agentstack/evidence/$run_id"
+mkdir -p "$out_dir"
+summary="$out_dir/summary.md"
+
+latest_verify() {
+  find .agentstack/evidence -path '*/verify.json' -type f 2>/dev/null | sort | tail -n 1 || true
+}
+
+latest_review() {
+  find .agentstack/evidence -path '*/review.md' -type f 2>/dev/null | sort | tail -n 1 || true
+}
+
+latest_dogfood() {
+  find .agentstack/evidence -path '*/dogfood-*.md' -type f 2>/dev/null | sort | tail -n 1 || true
+}
+
+verify_file="${AGENTSTACK_VERIFY_RESULT:-$(latest_verify)}"
+review_file="${AGENTSTACK_REVIEW_RESULT:-$(latest_review)}"
+dogfood_file="${AGENTSTACK_DOGFOOD_RESULT:-$(latest_dogfood)}"
+
+{
+  echo "# AgentStack Finish Summary"
+  echo
+  echo "## Changes"
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git diff --stat HEAD 2>/dev/null || git diff --stat 2>/dev/null || echo "- No git diff available."
+  else
+    echo "- No git repository detected."
+  fi
+  echo
+  echo "## Verify"
+  if [ -n "$verify_file" ] && [ -f "$verify_file" ]; then
+    echo "- Result: \`$verify_file\`"
+    grep '"status"' "$verify_file" | sed 's/^/- /' || true
+  else
+    echo "- No verify result found."
+  fi
+  echo
+  echo "## Review"
+  if [ -n "$review_file" ] && [ -f "$review_file" ]; then
+    echo "- Result: \`$review_file\`"
+    sed -n '1,12p' "$review_file" | sed 's/^/  /'
+  else
+    echo "- Not recorded."
+  fi
+  echo
+  echo "## Dogfood"
+  if [ -n "$dogfood_file" ] && [ -f "$dogfood_file" ]; then
+    echo "- Result: \`$dogfood_file\`"
+    sed -n '1,12p' "$dogfood_file" | sed 's/^/  /'
+  else
+    echo "- Not recorded."
+  fi
+  echo
+  echo "## Risks"
+  echo "- Not recorded."
+  echo
+  echo "## Follow-ups"
+  echo "- Not recorded."
+} > "$summary"
+
+echo "agentstack-finish: wrote $summary"

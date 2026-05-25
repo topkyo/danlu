@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+default_run_id() {
+  printf '%s-%s\n' "$(date +%Y%m%d%H%M%S)" "$$"
+}
+
+run_id="${AGENTSTACK_RUN_ID:-$(default_run_id)}"
+platform=""
+scenario=""
+kind="fixture"
+flow=""
+verify=""
+result=""
+extra_flow="not recorded"
+missing_context="not recorded"
+adapter_risk="not recorded"
+notes=""
+stdout="no"
+
+usage() {
+  cat <<'USAGE'
+Usage: agentstack-dogfood --platform NAME --scenario NAME --flow TEXT --verify TEXT --result pass|fail [options]
+
+Record dogfood evidence under .agentstack/evidence/<run-id>/.
+
+Options:
+  --kind fixture|real
+  --extra-flow TEXT
+  --missing-context TEXT
+  --adapter-risk TEXT
+  --notes TEXT
+  --stdout
+USAGE
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --platform)
+      [ "$#" -ge 2 ] || { echo "agentstack-dogfood: --platform requires a value" >&2; usage >&2; exit 2; }
+      platform="$2"
+      shift 2
+      ;;
+    --scenario)
+      [ "$#" -ge 2 ] || { echo "agentstack-dogfood: --scenario requires a value" >&2; usage >&2; exit 2; }
+      scenario="$2"
+      shift 2
+      ;;
+    --kind)
+      [ "$#" -ge 2 ] || { echo "agentstack-dogfood: --kind requires a value" >&2; usage >&2; exit 2; }
+      kind="$2"
+      shift 2
+      ;;
+    --flow)
+      [ "$#" -ge 2 ] || { echo "agentstack-dogfood: --flow requires a value" >&2; usage >&2; exit 2; }
+      flow="$2"
+      shift 2
+      ;;
+    --verify)
+      [ "$#" -ge 2 ] || { echo "agentstack-dogfood: --verify requires a value" >&2; usage >&2; exit 2; }
+      verify="$2"
+      shift 2
+      ;;
+    --result)
+      [ "$#" -ge 2 ] || { echo "agentstack-dogfood: --result requires a value" >&2; usage >&2; exit 2; }
+      result="$2"
+      shift 2
+      ;;
+    --extra-flow)
+      [ "$#" -ge 2 ] || { echo "agentstack-dogfood: --extra-flow requires a value" >&2; usage >&2; exit 2; }
+      extra_flow="$2"
+      shift 2
+      ;;
+    --missing-context)
+      [ "$#" -ge 2 ] || { echo "agentstack-dogfood: --missing-context requires a value" >&2; usage >&2; exit 2; }
+      missing_context="$2"
+      shift 2
+      ;;
+    --adapter-risk)
+      [ "$#" -ge 2 ] || { echo "agentstack-dogfood: --adapter-risk requires a value" >&2; usage >&2; exit 2; }
+      adapter_risk="$2"
+      shift 2
+      ;;
+    --notes)
+      [ "$#" -ge 2 ] || { echo "agentstack-dogfood: --notes requires a value" >&2; usage >&2; exit 2; }
+      notes="$2"
+      shift 2
+      ;;
+    --stdout) stdout="yes"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "agentstack-dogfood: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+[ -n "$platform" ] || { echo "agentstack-dogfood: --platform is required" >&2; exit 2; }
+[ -n "$scenario" ] || { echo "agentstack-dogfood: --scenario is required" >&2; exit 2; }
+[ -n "$flow" ] || { echo "agentstack-dogfood: --flow is required" >&2; exit 2; }
+[ -n "$verify" ] || { echo "agentstack-dogfood: --verify is required" >&2; exit 2; }
+
+case "$kind" in fixture|real) ;; *) echo "agentstack-dogfood: invalid kind: $kind" >&2; exit 2 ;; esac
+case "$result" in pass|fail) ;; *) echo "agentstack-dogfood: --result must be pass or fail" >&2; exit 2 ;; esac
+
+slug="$(printf '%s-%s' "$platform" "$scenario" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9._-' '-')"
+out_dir=".agentstack/evidence/$run_id"
+mkdir -p "$out_dir"
+out="$out_dir/dogfood-$slug.md"
+
+{
+  echo "# AgentStack Dogfood: $platform / $scenario"
+  echo
+  echo "- Kind: $kind"
+  echo "- Platform: $platform"
+  echo "- Scenario: $scenario"
+  echo "- Flow: $flow"
+  echo "- Verify: $verify"
+  echo "- Result: $result"
+  echo "- Extra flow: $extra_flow"
+  echo "- Missing context: $missing_context"
+  echo "- Adapter risk: $adapter_risk"
+  echo
+  echo "## Notes"
+  if [ -n "$notes" ]; then
+    echo "$notes"
+  else
+    echo "- Not recorded."
+  fi
+} > "$out"
+
+if [ "$stdout" = "yes" ]; then
+  cat "$out"
+else
+  echo "agentstack-dogfood: wrote $out"
+fi

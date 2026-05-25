@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+target="auto"
+json="no"
+
+default_run_id() {
+  printf '%s-%s\n' "$(date +%Y%m%d%H%M%S)" "$$"
+}
+
+run_id="${AGENTSTACK_RUN_ID:-$(default_run_id)}"
+
+usage() {
+  cat <<'USAGE'
+Usage: agentstack-verify [--target auto|NAME] [--full] [--json]
+
+Run AgentStack targeted verification and write .agentstack/evidence/<run-id>/verify.json.
+USAGE
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --target)
+      if [ "$#" -lt 2 ]; then
+        echo "agentstack-verify: --target requires a value" >&2
+        usage >&2
+        exit 2
+      fi
+      target="$2"
+      shift 2
+      ;;
+    --full)
+      target="all"
+      shift
+      ;;
+    --json)
+      json="yes"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "agentstack-verify: unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+mkdir -p ".agentstack/evidence/$run_id"
+result_path=".agentstack/evidence/$run_id/verify.json"
+
+resolve_targets() {
+  if [ "$target" = "auto" ]; then
+    if [ -x scripts/agentstack-resolve-verify-targets ]; then
+      scripts/agentstack-resolve-verify-targets
+    else
+      echo smoke
+    fi
+  else
+    echo "$target"
+  fi
+}
+
+run_shell_syntax() {
+  local found="no"
+  local file
+  local shellcheck_cmd=""
+  if command -v shellcheck >/dev/null 2>&1; then
+    shellcheck_cmd="$(command -v shellcheck)"
+  fi
+  while IFS= read -r file; do
+    found="yes"
+    bash -n "$file"
+    if [ -n "$shellcheck_cmd" ]; then
+      "$shellcheck_cmd" "$file"
+    fi
+  done < <(find . -type f -name '*.sh' ! -path './.git/*' ! -path './.agentstack/*' ! -path './node_modules/*' | sort)
+  [ "$found" = "yes" ] || true
+}
+
+run_target() {
+  local t="$1"
+  if [ -f scripts/verify.sh ]; then
+    if [ "$t" = "all" ]; then
+      bash scripts/verify.sh
+    else
+      bash scripts/verify.sh "$t"
+    fi
+    return $?
+  fi
+
+  case "$t" in
+    all|scripts|smoke)
+      run_shell_syntax
+      ;;
+    docs)
+      find . -type f -name '*.md' ! -path './.git/*' ! -path './.agentstack/*' | sort >/dev/null
+      ;;
+    python)
+      if command -v python3 >/dev/null 2>&1; then
+        python3 -m compileall -q .
+      else
+        echo "python3 not found; skipping python compile check" >&2
+      fi
+      ;;
+    node)
+      if [ -f package.json ] && command -v npm >/dev/null 2>&1; then
+        npm test --if-present
+      else
+        echo "no package.json/npm; skipping node target" >&2
+      fi
+      ;;
+    go)
+      if [ -f go.mod ] && command -v go >/dev/null 2>&1; then
+        go test ./...
+      else
+        echo "no go.mod/go; skipping go target" >&2
+      fi
+      ;;
+    rust)
+      if [ -f Cargo.toml ] && command -v cargo >/dev/null 2>&1; then
+        cargo test
+      else
+        echo "no Cargo.toml/cargo; skipping rust target" >&2
+      fi
+      ;;
+    *)
+      echo "unknown target '$t'; running shell syntax smoke" >&2
+      run_shell_syntax
+      ;;
+  esac
+}
+
+targets="$(resolve_targets | awk 'NF' | sort -u)"
+if [ -z "$targets" ]; then
+  targets="smoke"
+fi
+
+status="pass"
+log_path=".agentstack/evidence/$run_id/verify.log"
+: > "$log_path"
+
+log_progress() {
+  local message="$1"
+  if [ "$json" = "yes" ]; then
+    echo "$message" >>"$log_path"
+    echo "$message" >&2
+  else
+    echo "$message" | tee -a "$log_path"
+  fi
+}
+
+while IFS= read -r t; do
+  [ -n "$t" ] || continue
+  log_progress "agentstack-verify: running target $t"
+  if ! run_target "$t" >>"$log_path" 2>&1; then
+    status="fail"
+    log_progress "agentstack-verify: target $t failed"
+  fi
+done <<< "$targets"
+
+targets_json="$(printf '%s\n' "$targets" | awk 'NF {printf "%s\"%s\"", sep, $0; sep=","}')"
+cat > "$result_path" <<JSON
+{
+  "run_id": "$run_id",
+  "status": "$status",
+  "targets": [$targets_json],
+  "log": "$log_path"
+}
+JSON
+
+if [ "$json" = "yes" ]; then
+  cat "$result_path"
+else
+  echo "agentstack-verify: $status ($result_path)"
+fi
+
+[ "$status" = "pass" ]

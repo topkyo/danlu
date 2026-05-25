@@ -1,66 +1,105 @@
 #!/usr/bin/env bash
-# Project-owned verify-auto rules for ai-wiki.
-# Sourced by scripts/resolve_verify_targets.sh when closed_loop.sh uses --verify-auto.
+# Project-owned AgentStack verify-auto rules for ai-wiki.
+set -euo pipefail
 
-select_for_path() {
+changed_files() {
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    if git rev-parse --verify HEAD >/dev/null 2>&1; then
+      git diff --name-only HEAD -- || true
+      git diff --name-only --cached -- || true
+    fi
+    git ls-files --others --exclude-standard || true
+    return 0
+  fi
+
+  find . -type f \
+    ! -path './.git/*' \
+    ! -path './.agentstack/evidence/*' \
+    ! -path './.agentstack/local/*' \
+    ! -path './.agentstack/render-conflicts/*' \
+    ! -path './.venv/*' \
+    ! -path './node_modules/*' \
+    ! -path './dist/*' \
+    ! -path './build/*' |
+    sed 's#^\./##'
+}
+
+emit_targets_for_path() {
   local path="$1"
 
-  path_is_runtime_artifact "$path" && return 0
-
   case "$path" in
-    AGENTS.md|CLAUDE.md|PROGRESS.md|README.md|docs/*|docs/**/*|*.md)
-      add_target scripts "protocol/documentation changed: $path"
+    .agentstack/evidence/*|.agentstack/local/*|.agentstack/render-conflicts/*)
       return 0
       ;;
-    scripts/verify.sh|scripts/verify_target_rules.sh)
-      add_target scripts "verify routing changed: $path"
+    AGENTS.md|CLAUDE.md|PROGRESS.md|README.md|docs/*|docs/**/*|*.md)
+      echo scripts
+      return 0
+      ;;
+    .agents/*|.agents/**/*|.agentstack/*|.agentstack/**/*|.claude/*|.claude/**/*|.opencode/*|.opencode/**/*)
+      echo scripts
+      return 0
+      ;;
+    scripts/verify.sh|scripts/verify_target_rules.sh|scripts/agentstack|scripts/agentstack-*)
+      echo scripts
       return 0
       ;;
     scripts/run_acceptance.sh|tests/fixtures/acceptance/*|tests/fixtures/acceptance/**/*)
-      add_target scripts "acceptance runner or fixtures changed: $path"
-      add_target acceptance "acceptance surface changed: $path"
+      echo scripts
+      echo acceptance
       return 0
       ;;
     scripts/*.py)
-      add_target scripts "project Python script changed: $path"
-      add_target unit "project Python script changed: $path"
+      echo scripts
+      echo unit
       return 0
       ;;
     scripts/*.sh)
-      add_target scripts "project shell script changed: $path"
+      echo scripts
       return 0
       ;;
     schema/*.json|schema/**/*.json)
-      add_target python-static "schema contract changed: $path"
-      add_target unit "schema contract changed: $path"
+      echo python-static
+      echo unit
       return 0
       ;;
     .obsidian/plugins/furnace-product-shell/package.json|.obsidian/plugins/furnace-product-shell/package-lock.json|.obsidian/plugins/furnace-product-shell/build.sh|.obsidian/plugins/furnace-product-shell/*.js|.obsidian/plugins/furnace-product-shell/src/*|.obsidian/plugins/furnace-product-shell/src/**/*|.obsidian/plugins/furnace-product-shell/*.css)
-      add_target product-shell-static "Product Shell source changed: $path"
+      echo product-shell-static
       return 0
       ;;
     src/aiwiki/cli.py|src/aiwiki/cli/*|src/aiwiki/cli/**/*)
-      add_target python-static "Python CLI source changed: $path"
-      add_target unit "Python CLI source changed: $path"
-      add_target cli-smoke "Python CLI source changed: $path"
+      echo python-static
+      echo unit
+      echo cli-smoke
       return 0
       ;;
     src/aiwiki/*.py|src/aiwiki/*/*.py|src/aiwiki/*/*/*.py)
-      add_target python-static "Python runtime source changed: $path"
-      add_target unit "Python runtime source changed: $path"
+      echo python-static
+      echo unit
       return 0
       ;;
     tests/*.py|tests/*/*.py|tests/*/*/*.py)
-      add_target python-static "Python test changed: $path"
-      add_target unit "Python test changed: $path"
+      echo python-static
+      echo unit
       return 0
       ;;
     pyproject.toml|requirements*.txt|setup.cfg|tox.ini)
-      add_target python-static "Python tool configuration changed: $path"
-      add_target unit "Python tool configuration changed: $path"
+      echo python-static
+      echo unit
       return 0
       ;;
   esac
 
-  add_target scripts "fallback for unclassified path: $path"
+  echo scripts
 }
+
+files="$(changed_files | awk 'NF' | sort -u)"
+
+if [ -z "$files" ]; then
+  echo smoke
+  exit 0
+fi
+
+while IFS= read -r path; do
+  [ -n "$path" ] || continue
+  emit_targets_for_path "$path"
+done <<< "$files" | awk 'NF' | sort -u

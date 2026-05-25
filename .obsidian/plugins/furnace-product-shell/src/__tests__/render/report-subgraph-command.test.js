@@ -88,8 +88,12 @@ describe("runReportSubgraphCommand", () => {
     expect(pluginSrc).toMatch(
       /runReportSubgraphCommand[\s\S]{0,800}openWorkspacePath\(outputPath\)/
     );
-    // i18n contract: plugin.js must use English base keys, not Chinese.
-    expect(pluginSrc).toMatch(/this\.t\("View report graph"\)/);
+    // i18n contract: the command spec must use English base keys, not Chinese.
+    const commandSpecsSrc = fs.readFileSync(
+      path.resolve(__dirname, "../../command_specs.js"),
+      "utf8"
+    );
+    expect(commandSpecsSrc).toMatch(/labelKey: "View report graph"/);
     expect(pluginSrc).not.toMatch(/this\.t\("查看报告关系图谱"\)/);
   });
 
@@ -108,7 +112,11 @@ describe("runReportSubgraphCommand", () => {
     expect(pluginSrc).toMatch(/contains_llm_placeholder/);
     expect(pluginSrc).toMatch(/"timeout_or_unavailable", "pending", "failed", "degraded"/);
     // Falls back to plain text input only when no candidates exist.
-    expect(pluginSrc).toMatch(/No recent reports available; enter a path manually\./);
+    const modalSpecsSrc = fs.readFileSync(
+      path.resolve(__dirname, "../../modal_specs.js"),
+      "utf8"
+    );
+    expect(modalSpecsSrc).toMatch(/No recent reports available; enter a path manually\./);
   });
 
   // i18n contract lock: cards.js "View graph" button must use English base key.

@@ -21,7 +21,6 @@ from ..app_cache import (
     save_cached_query_result,
 )
 from ..app_memory import (
-    machine_memory_query_time_focus,
     machine_memory_source_runtime_record,
     question_signature,
 )
@@ -36,6 +35,7 @@ from ..app_state import DEFAULT_PROTOCOL, machine_memory_history_path
 from ..app_utils import atomic_append_jsonl, html_safe_json_literal, tokenize
 from ..content.memory import action_priority_rank, action_supports_low_risk_apply
 from ..render.html_theme import html_meta_theme, html_theme_css
+from .scoring import machine_memory_query_time_focus
 
 # Single source of truth for relationship graph language.
 # Keep machine edge types in english (graph schema is unchanged); only the

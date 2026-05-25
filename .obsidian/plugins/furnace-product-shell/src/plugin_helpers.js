@@ -74,6 +74,91 @@ function normalizeRelativePathList(value) {
   );
 }
 
+function knownReportIdsUpdateFromSummary(summary, lastKnownReportIds) {
+  if (!summary || !Array.isArray(summary.recent_outputs)) {
+    return { shouldSave: false, ids: [] };
+  }
+  const outputs = summary.recent_outputs.filter((item) => item && typeof item === "object");
+  const currentIds = outputs.map((item) => item.path || item.title || item.created_at).filter(Boolean);
+  const lastIds = Array.isArray(lastKnownReportIds) ? lastKnownReportIds.filter(Boolean) : [];
+
+  if (!currentIds.length) {
+    return { shouldSave: true, ids: [] };
+  }
+
+  if (!lastIds.length && outputs.length > 0) {
+    return { shouldSave: true, ids: currentIds };
+  }
+
+  const newIds = currentIds.filter((id) => !lastIds.includes(id));
+  if (newIds.length) {
+    return { shouldSave: true, ids: currentIds };
+  }
+
+  const changedOrderOrLength = currentIds.length !== lastIds.length || currentIds.some((id, index) => id !== lastIds[index]);
+  return { shouldSave: changedOrderOrLength, ids: changedOrderOrLength ? currentIds : lastIds };
+}
+
+function normalizeWorkspaceRelativePath(relativePath) {
+  const normalized = String(relativePath || "").trim();
+  if (!normalized || path.isAbsolute(normalized)) {
+    return "";
+  }
+  const safePath = path.normalize(normalized).replace(/^\/+/, "");
+  if (!safePath || safePath === "." || safePath.startsWith("..")) {
+    return "";
+  }
+  return safePath;
+}
+
+function resolveWorkspaceSnippetPath(rootPath, relativePath) {
+  const root = String(rootPath || "").trim();
+  if (!root) {
+    return "";
+  }
+  const safePath = normalizeWorkspaceRelativePath(relativePath);
+  if (!safePath) {
+    return "";
+  }
+  const resolvedRoot = path.resolve(root);
+  const resolvedPath = path.resolve(path.join(resolvedRoot, safePath));
+  if (resolvedPath !== resolvedRoot && !resolvedPath.startsWith(resolvedRoot + path.sep)) {
+    return "";
+  }
+  return resolvedPath;
+}
+
+function workspaceSnippetFromMarkdown(raw, length = 420) {
+  const withoutFrontmatter = String(raw || "").startsWith("---")
+    ? String(raw || "").replace(/^---\s*[\s\S]*?\n---\s*/, "")
+    : String(raw || "");
+  const normalizedText = withoutFrontmatter
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const limit = Number.isFinite(Number(length)) && Number(length) > 0 ? Number(length) : 420;
+  return normalizedText.length > limit ? `${normalizedText.slice(0, Math.max(0, limit - 1))}…` : normalizedText;
+}
+
+function appendComposerReportQuote(currentValue, quoteLine) {
+  const current = String(currentValue || "").trimEnd();
+  const normalizedQuote = String(quoteLine || "").trim();
+  if (!normalizedQuote) {
+    return { changed: false, value: String(currentValue || "") };
+  }
+  const existingLines = current.split(/\r?\n/).map((line) => line.trim());
+  if (existingLines.includes(normalizedQuote)) {
+    return { changed: false, value: String(currentValue || "") };
+  }
+  return {
+    changed: true,
+    value: current ? `${current}\n${normalizedQuote}\n` : `${normalizedQuote}\n`,
+  };
+}
+
 // extracted from plugin.js lines 853-882
 function normalizeRewriteProposalObject(value) {
   if (!value || typeof value !== "object") {

@@ -28,6 +28,14 @@ then bridged to the runtime through environment variables for report notificatio
 |------|---------|
 | `constants.js` | Plugin ID, view types, `DEFAULT_SETTINGS`, `ZH_TEXT` i18n dictionary, status label maps |
 | `helpers.js` | Pure helper functions (`truncateText`, `groupReportsByDate`, `countUnreadReports`, …) |
+| `command_specs.js` | Pure launcher command argument/label specs for Product Shell actions |
+| `pending_state.js` | Pure pending-submission serialization, hydration, and status helpers |
+| `context_state.js` | Pure active protocol/file/concept/output context helpers |
+| `rewrite_state.js` | Pure rewrite proposal/recovery normalization and extraction helpers |
+| `control_items.js` | Pure review/execution control option builders for context pickers |
+| `modal_specs.js` | Structured command modal specs for operator actions |
+| `run_state.js` | Pure run-record initialization and run-log rendering helpers |
+| `state/health-state.js` | Pure LLM health, latest-run, shell-sync, and self-check state helpers |
 | `modals.js` | All `Modal` subclasses |
 | `views.js` | All `ItemView` subclasses |
 | `settings.js` | `FurnaceProductShellSettingTab` |
@@ -41,12 +49,20 @@ The modules are concatenated in this order:
 1. `require` statements (added by `build.sh`)
 2. `constants.js`
 3. `helpers.js`
-4. `modals.js`
-5. `views.js`
-6. `settings.js`
-7. `render/cards.js`, `render_primitives.js`, `render_input.js`, `render_today.js`, `render_advanced.js`, `render_runs.js`, `render_home.js`, `render_review.js`, `render_execution.js`
-8. `plugin_helpers.js`
-9. `plugin.js`
+4. `command_specs.js`
+5. `pending_state.js`
+6. `context_state.js`
+7. `modals.js`
+8. `views.js`
+9. `settings.js`
+10. `render/cards.js`, `render_primitives.js`, `render_input.js`, `render_today.js`, `render_advanced.js`, `render_runs.js`, `render_home.js`, `render_review.js`, `render_execution.js`
+11. `plugin_helpers.js`
+12. `rewrite_state.js`
+13. `control_items.js`
+14. `modal_specs.js`
+15. `run_state.js`
+16. `state/health-state.js`
+17. `plugin.js`
 
 ## Building
 

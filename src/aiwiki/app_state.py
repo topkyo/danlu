@@ -14,14 +14,80 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from .app_state_paths import (
+    active_corpora_state_path,
+    agent_pack_path,
+    agent_workbench_path,
+    aging_report_path,
+    archive_candidates_state_path,
+    archive_dry_run_path,
+    cache_db_path,
+    cache_status_path,
+    cognitive_history_path,
+    compile_state_path,
+    concept_build_state_path,
+    concept_quality_path,
+    concept_rewrite_index_path,
+    concept_rewrite_proposal_page_path,
+    concept_rewrite_state_path,
+    domain_pilot_build_state_path,
+    domain_pilots_path,
+    execution_audit_html_path,
+    execution_audit_path,
+    execution_batch_receipt_path,
+    execution_center_html_path,
+    execution_center_path,
+    execution_dry_run_path,
+    execution_policy_log_path,
+    execution_receipt_history_path,
+    furnace_center_html_path,
+    graph_health_report_path,
+    judgment_assets_path,
+    knowledge_lifecycle_override_state_path,
+    knowledge_lifecycle_state_path,
+    l3_proposal_state_path,
+    llm_receipt_log_path,
+    machine_memory_action_state_path,
+    machine_memory_actions_path,
+    machine_memory_build_state_path,
+    machine_memory_drift_report_path,
+    machine_memory_graph_html_path,
+    machine_memory_graph_path,
+    machine_memory_history_path,
+    machine_memory_repair_plan_path,
+    machine_memory_state_path,
+    machine_memory_topology_path,
+    manifest_path,
+    manual_link_state_path,
+    material_archive_action_id,
+    material_archive_state_path,
+    material_routing_state_path,
+    material_state_path,
+    nightly_health_state_path,
+    output_candidates_state_path,
+    output_pack_build_state_path,
+    output_packs_index_path,
+    planner_state_path,
+    product_shell_html_path,
+    query_route_telemetry_path,
+    ranking_build_state_path,
+    repair_backlog_path,
+    review_center_html_path,
+    rewrite_dry_run_path,
+    run_log_path,
+    run_notes_path,
+    runtime_history_path,
+    shell_summary_path,
+    today_snooze_state_path,
+)
 from .app_utils import (
     atomic_append_jsonl,
     atomic_write_text,
     relative_path,
     render_json_document,
     runtime_write_operation,
-    slugify,
 )
+from .state.collections import active_records_by_key, normalize_versioned_record_list_state
 
 logger = logging.getLogger(__name__)
 
@@ -52,10 +118,6 @@ KNOWLEDGE_LIFECYCLE_STATES = ("active", "review", "deferred", "retired", "revisi
 JUDGMENT_LIFECYCLE_STATES = ("formed", "active", "under-review", "revised", "retired")
 
 
-def manifest_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "manifest.json"
-
-
 def default_manifest() -> dict[str, Any]:
     return {"version": 1, "entries": []}
 
@@ -66,254 +128,6 @@ def load_manifest(root: Path) -> dict[str, Any]:
         return default_manifest()
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
-
-
-def machine_memory_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "machine-memory.json"
-
-
-def cache_db_path(root: Path) -> Path:
-    return root / ".aiwiki" / "cache.db"
-
-
-def cache_status_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "cache-status.json"
-
-
-def machine_memory_graph_path(root: Path) -> Path:
-    return root / ".aiwiki" / "cache" / "machine-memory-graph.json"
-
-
-def machine_memory_graph_html_path(root: Path) -> Path:
-    return root / "output" / "graph" / "machine-memory.html"
-
-
-def review_center_html_path(root: Path) -> Path:
-    return root / "output" / "review" / "review-center.html"
-
-
-def furnace_center_html_path(root: Path) -> Path:
-    return root / "output" / "control" / "furnace-center.html"
-
-
-def shell_summary_path(root: Path) -> Path:
-    return root / "output" / "control" / "shell-summary.json"
-
-
-def today_snooze_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "today-snooze.json"
-
-
-def product_shell_html_path(root: Path) -> Path:
-    return root / "output" / "control" / "product-shell.html"
-
-
-def execution_center_html_path(root: Path) -> Path:
-    return root / "output" / "control" / "execution-center.html"
-
-
-def execution_audit_html_path(root: Path) -> Path:
-    return root / "output" / "control" / "execution-audit.html"
-
-
-def machine_memory_history_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "machine-memory-history.jsonl"
-
-
-def machine_memory_drift_report_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "drift-report.md"
-
-
-def graph_health_report_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "graph-health.md"
-
-
-def machine_memory_topology_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "machine-memory-topology.md"
-
-
-def machine_memory_actions_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "machine-memory-actions.md"
-
-
-def machine_memory_repair_plan_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "machine-memory-repair-plan.md"
-
-
-def execution_center_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "execution-center.md"
-
-
-def execution_audit_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "execution-audit.md"
-
-
-def agent_workbench_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "agent-workbench.md"
-
-
-def agent_pack_path(root: Path, role: str) -> Path:
-    return root / "output" / "agents" / f"{slugify(role)}.md"
-
-
-def output_packs_index_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "output-packs.md"
-
-
-def domain_pilots_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "domain-pilots.md"
-
-
-def execution_receipt_history_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "execution-receipts.jsonl"
-
-
-def run_log_path(root: Path) -> Path:
-    return root / ".aiwiki" / "logs" / "runs.jsonl"
-
-
-def llm_receipt_log_path(root: Path) -> Path:
-    return root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
-
-
-def execution_batch_receipt_path(root: Path, batch_id: str) -> Path:
-    return root / "output" / "control" / "execution-batches" / f"{slugify(batch_id)}.json"
-
-
-def execution_dry_run_path(root: Path, action_id: str) -> Path:
-    return root / "output" / "control" / "execution-bundles" / f"{slugify(action_id)}-dry-run.json"
-
-
-def run_notes_path(root: Path, run_id: str) -> Path:
-    return root / "output" / "control" / "runs" / slugify(run_id) / "thinking.md"
-
-
-def archive_dry_run_path(root: Path, entry_id: str) -> Path:
-    return root / "output" / "control" / "execution-bundles" / f"{slugify(material_archive_action_id(entry_id))}-dry-run.json"
-
-
-def rewrite_dry_run_path(root: Path, slug: str) -> Path:
-    return root / "output" / "control" / "execution-bundles" / f"{slugify(f'rewrite-{slug}')}-dry-run.json"
-
-
-def execution_policy_log_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "execution-policy-decisions.jsonl"
-
-
-def concept_quality_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "concept-quality.md"
-
-
-def concept_rewrite_index_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "rewrite-proposals.md"
-
-
-def concept_rewrite_proposal_page_path(root: Path, slug: str) -> Path:
-    return root / "wiki" / "rewrite-proposals" / f"{slug}.md"
-
-
-def machine_memory_action_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "machine-memory-actions.json"
-
-
-def planner_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "planner-state.json"
-
-
-def query_route_telemetry_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "query-route-telemetry.json"
-
-
-def concept_rewrite_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "concept-rewrite-proposals.json"
-
-
-def l3_proposal_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "l3-proposals.json"
-
-
-def manual_link_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "manual-links.json"
-
-
-def repair_backlog_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "repair-backlog.md"
-
-
-def judgment_assets_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "judgment-assets.md"
-
-
-def cognitive_history_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "cognitive-history.md"
-
-
-def aging_report_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "aging-report.md"
-
-
-def nightly_health_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "nightly-health.json"
-
-
-def compile_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "compile-state.json"
-
-
-def concept_build_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "concept-build-state.json"
-
-
-def machine_memory_build_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "machine-memory-build-state.json"
-
-
-def ranking_build_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "ranking-build-state.json"
-
-
-def output_pack_build_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "output-pack-build-state.json"
-
-
-def domain_pilot_build_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "domain-pilot-build-state.json"
-
-
-def material_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "material-state.json"
-
-
-def active_corpora_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "active-corpora.json"
-
-
-def output_candidates_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "output-candidates.json"
-
-
-def runtime_history_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "runtime-history.jsonl"
-
-
-def material_routing_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "material-routing.json"
-
-
-def archive_candidates_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "archive-candidates.json"
-
-
-def knowledge_lifecycle_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "knowledge-lifecycle.json"
-
-
-def knowledge_lifecycle_override_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "knowledge-lifecycle-overrides.json"
-
-
-def material_archive_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "material-archives.json"
 
 
 def load_json_document(path: Path) -> dict[str, Any]:
@@ -923,16 +737,12 @@ def default_material_state() -> dict[str, Any]:
 
 def load_material_state(root: Path) -> dict[str, Any]:
     document = load_json_document(material_state_path(root))
-    if not isinstance(document, dict):
-        return default_material_state()
-    entries = document.get("entries")
-    if not isinstance(entries, list):
-        return default_material_state()
-    return {
-        "version": int(document.get("version", 1) or 1),
-        "generated_at": str(document.get("generated_at") or ""),
-        "entries": [entry for entry in entries if isinstance(entry, dict)],
-    }
+    return normalize_versioned_record_list_state(
+        document,
+        default_state=default_material_state,
+        list_key="entries",
+        string_fields={"generated_at": ""},
+    )
 
 
 def save_material_state(root: Path, document: dict[str, Any]) -> None:
@@ -945,15 +755,11 @@ def default_active_corpora_state() -> dict[str, Any]:
 
 def load_active_corpora_state(root: Path) -> dict[str, Any]:
     document = load_json_document(active_corpora_state_path(root))
-    if not isinstance(document, dict):
-        return default_active_corpora_state()
-    corpora = document.get("corpora")
-    if not isinstance(corpora, list):
-        return default_active_corpora_state()
-    return {
-        "version": int(document.get("version", 1) or 1),
-        "corpora": [corpus for corpus in corpora if isinstance(corpus, dict)],
-    }
+    return normalize_versioned_record_list_state(
+        document,
+        default_state=default_active_corpora_state,
+        list_key="corpora",
+    )
 
 
 def save_active_corpora_state(root: Path, document: dict[str, Any]) -> None:
@@ -966,12 +772,11 @@ def default_output_candidates_state() -> dict[str, Any]:
 
 def load_output_candidates_state(root: Path) -> dict[str, Any]:
     document = load_json_document(output_candidates_state_path(root))
-    if not isinstance(document, dict):
-        return default_output_candidates_state()
-    candidates = document.get("candidates")
-    if not isinstance(candidates, list):
-        return default_output_candidates_state()
-    return {"version": int(document.get("version", 1) or 1), "candidates": [item for item in candidates if isinstance(item, dict)]}
+    return normalize_versioned_record_list_state(
+        document,
+        default_state=default_output_candidates_state,
+        list_key="candidates",
+    )
 
 
 def save_output_candidates_state(root: Path, state: dict[str, Any]) -> None:
@@ -1090,17 +895,12 @@ def default_material_routing_state() -> dict[str, Any]:
 
 def load_material_routing_state(root: Path) -> dict[str, Any]:
     document = load_json_document(material_routing_state_path(root))
-    if not isinstance(document, dict):
-        return default_material_routing_state()
-    entries = document.get("entries")
-    if not isinstance(entries, list):
-        return default_material_routing_state()
-    return {
-        "version": int(document.get("version", 1) or 1),
-        "computed_at": str(document.get("computed_at") or ""),
-        "active_protocol": str(document.get("active_protocol") or DEFAULT_PROTOCOL),
-        "entries": [entry for entry in entries if isinstance(entry, dict)],
-    }
+    return normalize_versioned_record_list_state(
+        document,
+        default_state=default_material_routing_state,
+        list_key="entries",
+        string_fields={"computed_at": "", "active_protocol": DEFAULT_PROTOCOL},
+    )
 
 
 def save_material_routing_state(root: Path, document: dict[str, Any]) -> None:
@@ -1113,16 +913,12 @@ def default_archive_candidates_state() -> dict[str, Any]:
 
 def load_archive_candidates_state(root: Path) -> dict[str, Any]:
     document = load_json_document(archive_candidates_state_path(root))
-    if not isinstance(document, dict):
-        return default_archive_candidates_state()
-    entries = document.get("entries")
-    if not isinstance(entries, list):
-        return default_archive_candidates_state()
-    return {
-        "version": int(document.get("version", 1) or 1),
-        "generated_at": str(document.get("generated_at") or ""),
-        "entries": [entry for entry in entries if isinstance(entry, dict)],
-    }
+    return normalize_versioned_record_list_state(
+        document,
+        default_state=default_archive_candidates_state,
+        list_key="entries",
+        string_fields={"generated_at": ""},
+    )
 
 
 def save_archive_candidates_state(root: Path, document: dict[str, Any]) -> None:
@@ -1173,15 +969,11 @@ def default_knowledge_lifecycle_override_state() -> dict[str, Any]:
 
 def load_knowledge_lifecycle_override_state(root: Path) -> dict[str, Any]:
     document = load_json_document(knowledge_lifecycle_override_state_path(root))
-    if not isinstance(document, dict):
-        return default_knowledge_lifecycle_override_state()
-    entries = document.get("entries")
-    if not isinstance(entries, list):
-        return default_knowledge_lifecycle_override_state()
-    return {
-        "version": int(document.get("version", 1) or 1),
-        "entries": [entry for entry in entries if isinstance(entry, dict)],
-    }
+    return normalize_versioned_record_list_state(
+        document,
+        default_state=default_knowledge_lifecycle_override_state,
+        list_key="entries",
+    )
 
 
 def save_knowledge_lifecycle_override_state(root: Path, document: dict[str, Any]) -> None:
@@ -1197,11 +989,7 @@ def ensure_knowledge_lifecycle_override_state(root: Path) -> dict[str, Any]:
 
 
 def active_knowledge_lifecycle_overrides(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    return {
-        str(entry.get("path") or ""): entry
-        for entry in document.get("entries", [])
-        if isinstance(entry, dict) and bool(entry.get("active")) and str(entry.get("path") or "")
-    }
+    return active_records_by_key(document, list_key="entries", key="path")
 
 
 def default_material_archive_state() -> dict[str, Any]:
@@ -1210,15 +998,11 @@ def default_material_archive_state() -> dict[str, Any]:
 
 def load_material_archive_state(root: Path) -> dict[str, Any]:
     document = load_json_document(material_archive_state_path(root))
-    if not isinstance(document, dict):
-        return default_material_archive_state()
-    entries = document.get("entries")
-    if not isinstance(entries, list):
-        return default_material_archive_state()
-    return {
-        "version": int(document.get("version", 1) or 1),
-        "entries": [entry for entry in entries if isinstance(entry, dict)],
-    }
+    return normalize_versioned_record_list_state(
+        document,
+        default_state=default_material_archive_state,
+        list_key="entries",
+    )
 
 
 def save_material_archive_state(root: Path, document: dict[str, Any]) -> None:
@@ -1226,19 +1010,11 @@ def save_material_archive_state(root: Path, document: dict[str, Any]) -> None:
 
 
 def active_material_archive_entries(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    return {
-        str(entry.get("entry_id") or ""): entry
-        for entry in document.get("entries", [])
-        if isinstance(entry, dict) and entry.get("entry_id") and bool(entry.get("active", False))
-    }
+    return active_records_by_key(document, list_key="entries", key="entry_id")
 
 
 def active_archived_material_ids(root: Path) -> set[str]:
     return set(active_material_archive_entries(load_material_archive_state(root)))
-
-
-def material_archive_action_id(entry_id: str) -> str:
-    return f"archive-{entry_id}"
 
 
 def default_machine_memory_action_state() -> dict[str, Any]:
@@ -1247,15 +1023,11 @@ def default_machine_memory_action_state() -> dict[str, Any]:
 
 def load_machine_memory_action_state(root: Path) -> dict[str, Any]:
     document = load_json_document(machine_memory_action_state_path(root))
-    if not isinstance(document, dict):
-        return default_machine_memory_action_state()
-    actions = document.get("actions")
-    if not isinstance(actions, list):
-        return default_machine_memory_action_state()
-    return {
-        "version": int(document.get("version", 1) or 1),
-        "actions": [action for action in actions if isinstance(action, dict)],
-    }
+    return normalize_versioned_record_list_state(
+        document,
+        default_state=default_machine_memory_action_state,
+        list_key="actions",
+    )
 
 
 def load_machine_memory_action_state_strict(root: Path) -> dict[str, Any]:

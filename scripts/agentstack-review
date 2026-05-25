@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+default_run_id() {
+  printf '%s-%s\n' "$(date +%Y%m%d%H%M%S)" "$$"
+}
+
+run_id="${AGENTSTACK_RUN_ID:-$(default_run_id)}"
+scope="Not provided."
+findings="No material findings recorded."
+risks="Not recorded."
+verify="Not recorded."
+include_diff="no"
+stdout="no"
+
+usage() {
+  cat <<'USAGE'
+Usage: agentstack-review [--scope TEXT] [--findings TEXT] [--risks TEXT] [--verify TEXT] [--diff] [--stdout]
+
+Write a standard AgentStack review artifact.
+USAGE
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --scope)
+      [ "$#" -ge 2 ] || { echo "agentstack-review: --scope requires a value" >&2; usage >&2; exit 2; }
+      scope="$2"
+      shift 2
+      ;;
+    --findings)
+      [ "$#" -ge 2 ] || { echo "agentstack-review: --findings requires a value" >&2; usage >&2; exit 2; }
+      findings="$2"
+      shift 2
+      ;;
+    --risks)
+      [ "$#" -ge 2 ] || { echo "agentstack-review: --risks requires a value" >&2; usage >&2; exit 2; }
+      risks="$2"
+      shift 2
+      ;;
+    --verify)
+      [ "$#" -ge 2 ] || { echo "agentstack-review: --verify requires a value" >&2; usage >&2; exit 2; }
+      verify="$2"
+      shift 2
+      ;;
+    --diff) include_diff="yes"; shift ;;
+    --stdout) stdout="yes"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "agentstack-review: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+out_dir=".agentstack/evidence/$run_id"
+mkdir -p "$out_dir"
+out="$out_dir/review.md"
+
+{
+  echo "# AgentStack Review"
+  echo
+  echo "## Scope"
+  echo "$scope"
+  echo
+  echo "## Findings"
+  echo "$findings"
+  echo
+  echo "## Verify"
+  echo "$verify"
+  echo
+  echo "## Risks"
+  echo "$risks"
+  if [ "$include_diff" = "yes" ]; then
+    echo
+    echo "## Diff Stat"
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      git diff --stat HEAD 2>/dev/null || git diff --stat 2>/dev/null || echo "No diff stat available."
+      untracked="$(git ls-files --others --exclude-standard 2>/dev/null || true)"
+      if [ -n "$untracked" ]; then
+        echo
+        echo "## Untracked Files"
+        printf '%s\n' "$untracked" | sed 's/^/- /'
+      fi
+    else
+      echo "No git repository detected."
+    fi
+  fi
+} > "$out"
+
+if [ "$stdout" = "yes" ]; then
+  cat "$out"
+else
+  echo "agentstack-review: wrote $out"
+fi

@@ -15,31 +15,10 @@ PROGRESS.md
 .envrc.*
 !.env.example
 
-# Local harness scaffold (generated from /home/tim/open-harness, not committed)
-.claude/
-.codex/
-.copilot/
-.opencode/
-.open-harness-tier
-.open-harness.conf
-.open-harness-upgrade/
-scripts/apply_calibration_recommendation.sh
-scripts/calibration_report.sh
-scripts/closed_loop.sh
-scripts/deploy_gate.sh
-scripts/deploy_with_gate.sh
-scripts/enforce_closed_loop_policy.sh
-scripts/finalize_task.sh
-scripts/launch_qa_review.sh
-scripts/resolve_review_mode.sh
-scripts/run_qa_review.sh
-scripts/write_calibration_entry.sh
-scripts/write_gate_artifact.sh
-scripts/materialize_contract.sh
-scripts/opencode_review_launcher.sh
-scripts/run_plan.sh
-scripts/lib/
-scripts/platforms/
+# AgentStack local state
+.agentstack/evidence/
+.agentstack/local/
+.agentstack/render-conflicts/
 
 # Runtime state and generated outputs
 .aiwiki/state/*.json

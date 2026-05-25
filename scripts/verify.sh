@@ -13,6 +13,7 @@ Usage: scripts/verify.sh [target]
 
 Targets:
   scripts               Check project shell scripts only.
+  smoke                 Run lightweight aiwiki CLI smoke.
   python-static         Run Python lint and bytecode compile checks.
   unit                  Run Python unit tests without coverage reporting.
   acceptance            Run acceptance replay checks.
@@ -37,6 +38,10 @@ verify_scripts() {
   local script=""
 
   for script in scripts/*.sh; do
+    [[ -e "$script" ]] || continue
+    bash -n "$script"
+  done
+  for script in scripts/agentstack scripts/agentstack-*; do
     [[ -e "$script" ]] || continue
     bash -n "$script"
   done
@@ -90,6 +95,10 @@ verify_product_shell_static() {
 case "$TARGET" in
   scripts)
     verify_scripts
+    exit 0
+    ;;
+  smoke)
+    verify_cli_smoke
     exit 0
     ;;
   python-static)

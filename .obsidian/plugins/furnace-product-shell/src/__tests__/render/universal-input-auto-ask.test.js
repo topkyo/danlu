@@ -27,13 +27,16 @@ test("retry source keeps auto ask metadata and replays unified flow", () => {
 test("built main keeps drop+question auto run-ask markers", () => {
   const bundleSrc = fs.readFileSync(path.resolve(__dirname, "../../../main.js"), "utf8");
 
-  expect(bundleSrc).toMatch(/return await this\.runPluginCommand\(`\$\{this\.t\("Universal Input"\)/);
+  expect(bundleSrc).toMatch(/function buildUniversalInputCommandSpec/);
+  expect(bundleSrc).toMatch(/labelKey: "Universal Input"/);
+  expect(bundleSrc).toMatch(/return await this\.runPluginCommand\(commandLabel\(this\.t\.bind\(this\), spec\.labelKey, spec\.labelSubject\)/);
   expect(bundleSrc).toMatch(/async runDroppedFilesWithAutoAsk\(/);
   expect(bundleSrc).toMatch(/async runDroppedPayloadsWithAutoAsk\(/);
   expect(bundleSrc).toMatch(/function splitTextMaterialQuestion\(/);
   expect(bundleSrc).toMatch(/collectMaterialPathsFromPayload\(payload\)/);
   expect(bundleSrc).toMatch(/buildAutoAskQuestion\(normalizedQuestion, normalizedMaterialPaths\)/);
-  expect(bundleSrc).toMatch(/const canUseDirect = format === "note" && !directQuestion\.includes\("材料路径供系统路由使用："\)/);
+  expect(bundleSrc).toMatch(/const canUseDirect = format === "note"/);
+  expect(bundleSrc).toMatch(/!directQuestion\.includes\("材料路径供系统路由使用："\)/);
   expect(bundleSrc).toMatch(/--lean/);
   expect(bundleSrc).not.toMatch(/args\.push\("--timeout", "45"\)/);
   expect(bundleSrc).not.toMatch(/--fallback-to-ask/);

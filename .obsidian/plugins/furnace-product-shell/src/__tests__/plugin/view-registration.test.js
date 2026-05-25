@@ -113,11 +113,17 @@ test("pending submissions have a first-class degraded terminal state", () => {
     path.resolve(__dirname, "../../plugin.js"),
     "utf8"
   );
+  const pendingStateSrc = fs.readFileSync(
+    path.resolve(__dirname, "../../pending_state.js"),
+    "utf8"
+  );
 
   expect(pluginSrc).toMatch(/running \| received \| done \| failed \| degraded/);
-  expect(pluginSrc).toMatch(/isPendingSubmissionDegraded\(entry\) \? "degraded" : "done"/);
-  expect(pluginSrc).toMatch(/entry\.status === "degraded"/);
-  expect(pluginSrc).toMatch(/llmStatus === "degraded"/);
-  expect(pluginSrc).toMatch(/artifactQuality/);
-  expect(pluginSrc).toMatch(/backgroundStatus/);
+  expect(pluginSrc).toMatch(/isPendingSubmissionDegradedEntry\(entry\)/);
+  expect(pendingStateSrc).toMatch(/markPendingSubmissionEntryDone/);
+  expect(pendingStateSrc).toMatch(/isPendingSubmissionDegradedEntry\(entry\) \? "degraded" : "done"/);
+  expect(pendingStateSrc).toMatch(/entry\.status === "degraded"/);
+  expect(pendingStateSrc).toMatch(/llmStatus === "degraded"/);
+  expect(pendingStateSrc).toMatch(/artifactQuality/);
+  expect(pendingStateSrc).toMatch(/backgroundStatus/);
 });

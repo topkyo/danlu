@@ -18,7 +18,7 @@ die() {
 }
 
 baseline=""
-contract=".codex/contracts/active.md"
+contract=".agentstack/context/active.md"
 json=0
 
 while [[ $# -gt 0 ]]; do

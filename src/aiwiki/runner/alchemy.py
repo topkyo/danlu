@@ -17,8 +17,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
-import time
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +41,57 @@ from aiwiki.app_utils import (
 )
 from aiwiki.execution.audit_preview import AUDIT_STREAM_PATH
 from aiwiki.render.paths import execution_receipt_path
+from aiwiki.runner import alchemy_support as _alchemy_support
+
+_ALCHEMY_JUDGE_REFRESH_START = _alchemy_support.ALCHEMY_JUDGE_REFRESH_START
+_ALCHEMY_JUDGE_REFRESH_END = _alchemy_support.ALCHEMY_JUDGE_REFRESH_END
+_ALCHEMY_JUDGE_ACCEPTED_REFRESH_START = _alchemy_support.ALCHEMY_JUDGE_ACCEPTED_REFRESH_START
+_ALCHEMY_JUDGE_ACCEPTED_REFRESH_END = _alchemy_support.ALCHEMY_JUDGE_ACCEPTED_REFRESH_END
+_ALCHEMY_JUDGE_ACCEPTED_TARGET_START = _alchemy_support.ALCHEMY_JUDGE_ACCEPTED_TARGET_START
+_ALCHEMY_JUDGE_ACCEPTED_TARGET_END = _alchemy_support.ALCHEMY_JUDGE_ACCEPTED_TARGET_END
+_extract_marker_section = _alchemy_support.extract_marker_section
+_first_preview_protocol = _alchemy_support.first_preview_protocol
+_preview_trace_ids = _alchemy_support.preview_trace_ids
+_normalize_preview_lock_status = _alchemy_support.normalize_preview_lock_status
+_walk_preview_lock_status = _alchemy_support.walk_preview_lock_status
+_apply_preview_candidates = _alchemy_support.apply_preview_candidates
+_replace_marker_section = _alchemy_support.replace_marker_section
+_replace_managed_section = _alchemy_support.replace_review_queue_section
+_string_values = _alchemy_support.string_values
+_render_alchemy_judge_accepted_target_section = _alchemy_support.render_alchemy_judge_accepted_target_section
+_render_alchemy_judge_proposal_page = _alchemy_support.render_alchemy_judge_proposal_page
+_render_alchemy_judge_refresh_section = _alchemy_support.render_alchemy_judge_refresh_section
+_render_alchemy_review_queue_section = _alchemy_support.render_alchemy_review_queue_section
+_review_preview_receipt_summary = _alchemy_support.review_preview_receipt_summary
+_propose_preview_receipt_summary = _alchemy_support.propose_preview_receipt_summary
+_distill_preview_receipt_summary = _alchemy_support.distill_preview_receipt_summary
+_judge_preview_receipt_summary = _alchemy_support.judge_preview_receipt_summary
+_alchemy_review_idempotency_key = _alchemy_support.alchemy_review_idempotency_key
+_alchemy_propose_idempotency_key = _alchemy_support.alchemy_propose_idempotency_key
+_alchemy_distill_idempotency_key = _alchemy_support.alchemy_distill_idempotency_key
+_alchemy_judge_idempotency_key = _alchemy_support.alchemy_judge_idempotency_key
+_alchemy_judge_proposal_idempotency_key = _alchemy_support.alchemy_judge_proposal_idempotency_key
+_alchemy_distill_target_id = _alchemy_support.alchemy_distill_target_id
+_alchemy_distill_question = _alchemy_support.alchemy_distill_question
+_alchemy_distill_history_questions = _alchemy_support.alchemy_distill_history_questions
+_alchemy_propose_prompt_content = _alchemy_support.alchemy_propose_prompt_content
+_unique_alchemy_propose_action_id = _alchemy_support.unique_alchemy_propose_action_id
+_unique_alchemy_distill_action_id = _alchemy_support.unique_alchemy_distill_action_id
+_unique_alchemy_judge_action_id = _alchemy_support.unique_alchemy_judge_action_id
+_unique_alchemy_judge_proposal_action_id = _alchemy_support.unique_alchemy_judge_proposal_action_id
+_unique_alchemy_judge_proposal_apply_action_id = _alchemy_support.unique_alchemy_judge_proposal_apply_action_id
+_unique_alchemy_review_action_id = _alchemy_support.unique_alchemy_review_action_id
+_first_plan_protocol = _alchemy_support.first_plan_protocol
+_lane_primitive_plan_step = _alchemy_support.lane_primitive_plan_step
+_lane_receipt_plan_summary = _alchemy_support.lane_receipt_plan_summary
+_lane_receipt_result_summary = _alchemy_support.lane_receipt_result_summary
+_lane_receipt_trace_ids = _alchemy_support.lane_receipt_trace_ids
+_normalize_auto_lanes = _alchemy_support.normalize_auto_lanes
+_normalize_lane_primitives = _alchemy_support.normalize_lane_primitives
+_auto_primitives_for_lane = _alchemy_support.auto_primitives_for_lane
+_auto_skip_reason = _alchemy_support.auto_skip_reason
+_primary_result_path = _alchemy_support.primary_result_path
+_unique_lane_primitive_action_id = _alchemy_support.unique_lane_primitive_action_id
 
 logger = logging.getLogger(__name__)
 
@@ -101,46 +150,6 @@ def _resolve_alchemy_planner_log_path(root: Path, planner_log_path: Path | None)
     if planner_log_path.is_absolute():
         return planner_log_path
     return root / planner_log_path
-
-
-def _normalize_preview_lock_status(value: Any) -> Any:
-    """Recursively rewrite preview `lock.status: held_by_current_process` back to `available`.
-
-    Apply-path previews run under the parent `runtime_write_operation` lock and pass
-    `allow_current_writer_lock=True` so the planner reports the lock as held by the
-    current process (rather than `conflict`). The on-wire preview shape, however, is
-    expected to look the same as a standalone preview (`status: available`); rewrite
-    here so receipts and acceptance fixtures stay stable.
-
-    Tightened: only applies the status rewrite to subtrees reached via a `lock` key,
-    so unrelated dicts that happen to share `status`/`would_acquire` shape are not
-    accidentally mutated.
-    """
-    return _walk_preview_lock_status(value, in_lock_subtree=False)
-
-
-def _walk_preview_lock_status(value: Any, *, in_lock_subtree: bool) -> Any:
-    if isinstance(value, dict):
-        if (
-            in_lock_subtree
-            and "status" in value
-            and "would_acquire" in value
-            and value.get("status") == "held_by_current_process"
-        ):
-            normalized = dict(value)
-            normalized["status"] = "available"
-            normalized["would_acquire"] = True
-            return {
-                k: _walk_preview_lock_status(v, in_lock_subtree=(k == "lock"))
-                for k, v in normalized.items()
-            }
-        return {
-            k: _walk_preview_lock_status(v, in_lock_subtree=(k == "lock"))
-            for k, v in value.items()
-        }
-    if isinstance(value, list):
-        return [_walk_preview_lock_status(item, in_lock_subtree=in_lock_subtree) for item in value]
-    return value
 
 
 def run_alchemy_legacy_migration_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
@@ -273,17 +282,13 @@ def run_alchemy_judge_apply(
         limit=limit,
         allow_current_writer_lock=True,
     )
-    preview = _normalize_preview_lock_status(preview)
-    status = str(preview.get("status") or "")
-    if status != "ok":
-        raise RuntimeError(f"alchemy judge apply requires an ok dry-run preview (got {status})")
-    candidates = [
-        item
-        for item in preview.get("candidates", [])
-        if isinstance(item, dict) and item.get("apply_supported") is True and item.get("kind") == "judgment_refresh"
-    ]
-    if not candidates:
-        raise RuntimeError("alchemy judge apply requires at least one apply-supported judgment candidate")
+    preview, candidates = _apply_preview_candidates(
+        preview,
+        status_error_template="alchemy judge apply requires an ok dry-run preview (got {status})",
+        empty_error_message="alchemy judge apply requires at least one apply-supported judgment candidate",
+        kind="judgment_refresh",
+        require_apply_supported=True,
+    )
 
     from aiwiki.app_execution import append_execution_receipt_history
     from aiwiki.app_state import execution_receipt_history_path
@@ -409,17 +414,13 @@ def run_alchemy_judge_propose(
         limit=limit,
         allow_current_writer_lock=True,
     )
-    preview = _normalize_preview_lock_status(preview)
-    status = str(preview.get("status") or "")
-    if status != "ok":
-        raise RuntimeError(f"alchemy judge propose requires an ok dry-run preview (got {status})")
-    candidates = [
-        item
-        for item in preview.get("candidates", [])
-        if isinstance(item, dict) and item.get("apply_supported") is True and item.get("kind") == "judgment_refresh"
-    ]
-    if not candidates:
-        raise RuntimeError("alchemy judge propose requires at least one existing judgment candidate")
+    preview, candidates = _apply_preview_candidates(
+        preview,
+        status_error_template="alchemy judge propose requires an ok dry-run preview (got {status})",
+        empty_error_message="alchemy judge propose requires at least one existing judgment candidate",
+        kind="judgment_refresh",
+        require_apply_supported=True,
+    )
 
     from aiwiki.app_execution import append_execution_receipt_history
     from aiwiki.app_state import execution_receipt_history_path
@@ -758,17 +759,13 @@ def run_alchemy_distill_apply(
         limit=limit,
         allow_current_writer_lock=True,
     )
-    preview = _normalize_preview_lock_status(preview)
-    status = str(preview.get("status") or "")
-    if status != "ok":
-        raise RuntimeError(f"alchemy distill apply requires an ok dry-run preview (got {status})")
-    candidates = [
-        item
-        for item in preview.get("candidates", [])
-        if isinstance(item, dict) and item.get("apply_supported") is True and item.get("kind") == "elixir_candidate_refresh"
-    ]
-    if not candidates:
-        raise RuntimeError("alchemy distill apply requires at least one apply-supported elixir candidate")
+    preview, candidates = _apply_preview_candidates(
+        preview,
+        status_error_template="alchemy distill apply requires an ok dry-run preview (got {status})",
+        empty_error_message="alchemy distill apply requires at least one apply-supported elixir candidate",
+        kind="elixir_candidate_refresh",
+        require_apply_supported=True,
+    )
 
     from aiwiki.app_execution import compute_file_sha256
 
@@ -977,13 +974,11 @@ def run_alchemy_review_apply(
         limit=limit,
         allow_current_writer_lock=True,
     )
-    preview = _normalize_preview_lock_status(preview)
-    status = str(preview.get("status") or "")
-    if status != "ok":
-        raise RuntimeError(f"alchemy review apply requires an ok dry-run preview (got {status})")
-    candidates = [item for item in preview.get("candidates", []) if isinstance(item, dict)]
-    if not candidates:
-        raise RuntimeError("alchemy review apply requires a non-empty dry-run preview")
+    preview, candidates = _apply_preview_candidates(
+        preview,
+        status_error_template="alchemy review apply requires an ok dry-run preview (got {status})",
+        empty_error_message="alchemy review apply requires a non-empty dry-run preview",
+    )
 
     applied_at = utc_now()
     action_id = _unique_alchemy_review_action_id(root, applied_at=applied_at)
@@ -1170,13 +1165,11 @@ def run_alchemy_propose_apply(
         limit=limit,
         allow_current_writer_lock=True,
     )
-    preview = _normalize_preview_lock_status(preview)
-    status = str(preview.get("status") or "")
-    if status != "ok":
-        raise RuntimeError(f"alchemy propose apply requires an ok dry-run preview (got {status})")
-    candidates = [item for item in preview.get("candidates", []) if isinstance(item, dict)]
-    if not candidates:
-        raise RuntimeError("alchemy propose apply requires a non-empty dry-run preview")
+    preview, candidates = _apply_preview_candidates(
+        preview,
+        status_error_template="alchemy propose apply requires an ok dry-run preview (got {status})",
+        empty_error_message="alchemy propose apply requires a non-empty dry-run preview",
+    )
 
     from aiwiki.execution.l3_proposals import create_l3_proposal, load_l3_proposal_state
 
@@ -1321,18 +1314,6 @@ def run_alchemy_propose_apply(
     }
 
 
-_ALCHEMY_REVIEW_QUEUE_START = "<!-- aiwiki:alchemy-review-enqueue:start -->"
-_ALCHEMY_REVIEW_QUEUE_END = "<!-- aiwiki:alchemy-review-enqueue:end -->"
-_ALCHEMY_JUDGE_REFRESH_START = "<!-- aiwiki:alchemy-judge-refresh:start -->"
-_ALCHEMY_JUDGE_REFRESH_END = "<!-- aiwiki:alchemy-judge-refresh:end -->"
-_ALCHEMY_JUDGE_PROPOSAL_START = "<!-- aiwiki:alchemy-judge-proposal:start -->"
-_ALCHEMY_JUDGE_PROPOSAL_END = "<!-- aiwiki:alchemy-judge-proposal:end -->"
-_ALCHEMY_JUDGE_ACCEPTED_REFRESH_START = "<!-- aiwiki:accepted-judge-refresh:start -->"
-_ALCHEMY_JUDGE_ACCEPTED_REFRESH_END = "<!-- aiwiki:accepted-judge-refresh:end -->"
-_ALCHEMY_JUDGE_ACCEPTED_TARGET_START = "<!-- aiwiki:alchemy-accepted-judge-refresh:start -->"
-_ALCHEMY_JUDGE_ACCEPTED_TARGET_END = "<!-- aiwiki:alchemy-accepted-judge-refresh:end -->"
-
-
 def _materialize_alchemy_judge_refresh(
     root: Path,
     *,
@@ -1377,25 +1358,6 @@ def _materialize_alchemy_judge_refresh(
         "after_hash": after_hash,
         "changed": changed,
     }
-
-
-def _render_alchemy_judge_refresh_section(*, preview: dict[str, Any], candidate: dict[str, Any]) -> str:
-    lines = [
-        _ALCHEMY_JUDGE_REFRESH_START,
-        "## Alchemy Judge Refresh",
-        "",
-        f"- candidate_id: `{_markdown_cell(str(candidate.get('candidate_id') or ''))}`",
-        f"- target_ref: `{_markdown_cell(str(candidate.get('target_ref') or ''))}`",
-        f"- signal_ids: `{_markdown_cell(', '.join(_string_values(candidate.get('signal_ids'))) or 'none')}`",
-        f"- trace_ids: `{_markdown_cell(', '.join(_string_values(candidate.get('trace_ids'))) or 'none')}`",
-        f"- source_ids: `{_markdown_cell(', '.join(_string_values(candidate.get('source_ids'))) or 'none')}`",
-        f"- concept_slugs: `{_markdown_cell(', '.join(_string_values(candidate.get('concept_slugs'))) or 'none')}`",
-        "",
-        "This marker records a scoped judge refresh opportunity. It does not rewrite the judgment conclusion.",
-        _ALCHEMY_JUDGE_REFRESH_END,
-        "",
-    ]
-    return "\n".join(lines)
 
 
 def _materialize_alchemy_judge_proposal(
@@ -1450,7 +1412,6 @@ def _materialize_alchemy_judge_proposal(
             "reason": "already_exists",
         }
     proposal = _render_alchemy_judge_proposal_page(
-        root,
         preview=preview,
         candidate=candidate,
         target_ref=target_ref,
@@ -1472,114 +1433,6 @@ def _materialize_alchemy_judge_proposal(
         "llm_invoked": False,
         "semantic_content_generated": False,
     }
-
-
-def _render_alchemy_judge_proposal_page(
-    root: Path,
-    *,
-    preview: dict[str, Any],
-    candidate: dict[str, Any],
-    target_ref: str,
-    proposal_id: str,
-    target_kind: str,
-    before_hash: str,
-) -> str:
-    trace_ids = _string_values(candidate.get("trace_ids"))
-    signal_ids = _string_values(candidate.get("signal_ids"))
-    frontmatter = {
-        "kind": "alchemy-judge-proposal",
-        "proposal_id": proposal_id,
-        "state": "candidate",
-        "target_file": target_ref,
-        "target_kind": target_kind,
-        "before_hash": before_hash,
-        "candidate_id": str(candidate.get("candidate_id") or ""),
-        "created_at": utc_now(),
-        "llm_invoked": "false",
-        "semantic_content_generated": "false",
-        "human_accept_required": "true",
-    }
-    lines = [
-        render_frontmatter(frontmatter),
-        "",
-        f"# Judge Proposal: {proposal_id}",
-        "",
-        _ALCHEMY_JUDGE_PROPOSAL_START,
-        "## Target",
-        "",
-        f"- target_file: `{_markdown_cell(target_ref)}`",
-        f"- target_kind: `{_markdown_cell(target_kind)}`",
-        f"- before_hash: `{_markdown_cell(before_hash)}`",
-        "",
-        "## Provenance",
-        "",
-        f"- candidate_id: `{_markdown_cell(str(candidate.get('candidate_id') or ''))}`",
-        f"- signal_ids: `{_markdown_cell(', '.join(signal_ids) or 'none')}`",
-        f"- trace_ids: `{_markdown_cell(', '.join(trace_ids) or 'none')}`",
-        f"- source_ids: `{_markdown_cell(', '.join(_string_values(candidate.get('source_ids'))) or 'none')}`",
-        f"- concept_slugs: `{_markdown_cell(', '.join(_string_values(candidate.get('concept_slugs'))) or 'none')}`",
-        f"- scope: `{_markdown_cell(str(preview.get('scope') or ''))}`",
-        "",
-        "## Semantic Refresh Contract",
-        "",
-        "- llm_invoked: `false`",
-        "- semantic_content_generated: `false`",
-        "- human_accept_required: `true`",
-        "- target_page_mutation: `false`",
-        "- next_step: `fill this proposal through an explicit human/model contract, then apply in a separate accepted-proposal milestone`",
-        "",
-        "## Proposed Change Preview",
-        "",
-        "No judgment conclusion has been generated in this baseline. This artifact reserves a reviewable proposal slot and records the exact target hash that a future accepted semantic refresh must validate before applying.",
-        "",
-        "## Candidate Prompt Package",
-        "",
-        "```text",
-        "Review the target judgment or decision page against the scoped evidence.",
-        "Return a proposed semantic refresh as a separate proposal diff.",
-        "Do not apply changes directly to the target page.",
-        f"Target: {target_ref}",
-        f"Before hash: {before_hash}",
-        f"Signals: {', '.join(signal_ids) or 'none'}",
-        f"Traces: {', '.join(trace_ids) or 'none'}",
-        "```",
-        _ALCHEMY_JUDGE_PROPOSAL_END,
-        "",
-    ]
-    return "\n".join(lines)
-
-
-def _replace_marker_section(existing: str, section: str, *, start_marker: str, end_marker: str) -> str:
-    if start_marker in existing and end_marker in existing:
-        before, rest = existing.split(start_marker, 1)
-        _, after = rest.split(end_marker, 1)
-        return before.rstrip() + "\n\n" + section + after.lstrip()
-    if existing.strip():
-        return existing.rstrip() + "\n\n" + section
-    return section
-
-
-def _extract_marker_section(existing: str, *, start_marker: str, end_marker: str) -> str:
-    if start_marker not in existing or end_marker not in existing:
-        return ""
-    _, rest = existing.split(start_marker, 1)
-    body, _ = rest.split(end_marker, 1)
-    return body.strip()
-
-
-def _render_alchemy_judge_accepted_target_section(*, proposal_id: str, proposal_path: str, accepted_body: str) -> str:
-    lines = [
-        _ALCHEMY_JUDGE_ACCEPTED_TARGET_START,
-        "## Accepted Judge Refresh",
-        "",
-        f"- proposal_id: `{_markdown_cell(proposal_id)}`",
-        f"- proposal_path: `{_markdown_cell(proposal_path)}`",
-        "",
-        accepted_body.strip(),
-        _ALCHEMY_JUDGE_ACCEPTED_TARGET_END,
-        "",
-    ]
-    return "\n".join(lines)
 
 
 def _materialize_alchemy_review_queue(
@@ -1607,180 +1460,6 @@ def _materialize_alchemy_review_queue(
     }
 
 
-def _render_alchemy_review_queue_section(*, preview: dict[str, Any], candidates: list[dict[str, Any]]) -> str:
-    scope = str(preview.get("scope") or "")
-    trace_ids = _preview_trace_ids(preview)
-    lines = [
-        _ALCHEMY_REVIEW_QUEUE_START,
-        "## Alchemy scoped review enqueue",
-        "",
-        f"- scope: `{_markdown_cell(scope)}`",
-        f"- candidate_count: `{len(candidates)}`",
-        f"- trace_ids: `{', '.join(trace_ids)}`",
-        "",
-        "| Candidate | Kind | Protocol | Target | Signals |",
-        "| --- | --- | --- | --- | --- |",
-    ]
-    for candidate in candidates:
-        lines.append(
-            "| "
-            + " | ".join(
-                [
-                    _markdown_cell(str(candidate.get("candidate_id") or "")),
-                    _markdown_cell(str(candidate.get("kind") or "")),
-                    _markdown_cell(str(candidate.get("protocol") or "")),
-                    _markdown_cell(str(candidate.get("target_ref") or "")),
-                    _markdown_cell(", ".join(_string_values(candidate.get("signal_ids")))),
-                ]
-            )
-            + " |"
-        )
-    lines.extend(["", _ALCHEMY_REVIEW_QUEUE_END, ""])
-    return "\n".join(lines)
-
-
-def _replace_managed_section(existing: str, section: str) -> str:
-    if _ALCHEMY_REVIEW_QUEUE_START in existing and _ALCHEMY_REVIEW_QUEUE_END in existing:
-        before, rest = existing.split(_ALCHEMY_REVIEW_QUEUE_START, 1)
-        _, after = rest.split(_ALCHEMY_REVIEW_QUEUE_END, 1)
-        return before.rstrip() + "\n\n" + section + after.lstrip()
-    if existing.strip():
-        return existing.rstrip() + "\n\n" + section
-    return "# Review Queue\n\n" + section
-
-
-def _review_preview_receipt_summary(preview: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[str, Any]:
-    return {
-        "status": str(preview.get("status") or ""),
-        "scope": str(preview.get("scope") or ""),
-        "selected_count": int(preview.get("selected_count") or 0),
-        "candidate_count": len(candidates),
-        "candidate_ids": [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")],
-        "scope_preview": preview.get("scope_preview") if isinstance(preview.get("scope_preview"), dict) else {},
-        "apply_contract": preview.get("apply_contract") if isinstance(preview.get("apply_contract"), dict) else {},
-    }
-
-
-def _propose_preview_receipt_summary(preview: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[str, Any]:
-    return {
-        "status": str(preview.get("status") or ""),
-        "scope": str(preview.get("scope") or ""),
-        "selected_count": int(preview.get("selected_count") or 0),
-        "candidate_count": len(candidates),
-        "candidate_ids": [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")],
-        "scope_preview": preview.get("scope_preview") if isinstance(preview.get("scope_preview"), dict) else {},
-        "apply_contract": preview.get("apply_contract") if isinstance(preview.get("apply_contract"), dict) else {},
-        "human_accept_required_after_apply": True,
-    }
-
-
-def _distill_preview_receipt_summary(preview: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[str, Any]:
-    return {
-        "status": str(preview.get("status") or ""),
-        "scope": str(preview.get("scope") or ""),
-        "selected_count": int(preview.get("selected_count") or 0),
-        "candidate_count": len(candidates),
-        "candidate_ids": [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")],
-        "scope_preview": preview.get("scope_preview") if isinstance(preview.get("scope_preview"), dict) else {},
-        "apply_contract": preview.get("apply_contract") if isinstance(preview.get("apply_contract"), dict) else {},
-        "direct_apply_only": False,
-        "lane_apply_supported": True,
-    }
-
-
-def _judge_preview_receipt_summary(preview: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[str, Any]:
-    return {
-        "status": str(preview.get("status") or ""),
-        "scope": str(preview.get("scope") or ""),
-        "selected_count": int(preview.get("selected_count") or 0),
-        "candidate_count": len(candidates),
-        "candidate_ids": [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")],
-        "scope_preview": preview.get("scope_preview") if isinstance(preview.get("scope_preview"), dict) else {},
-        "apply_contract": preview.get("apply_contract") if isinstance(preview.get("apply_contract"), dict) else {},
-        "semantic_rewrite": False,
-        "lane_apply_supported": False,
-    }
-
-
-def _preview_trace_ids(preview: dict[str, Any]) -> list[str]:
-    scope_preview = preview.get("scope_preview")
-    if not isinstance(scope_preview, dict):
-        return []
-    return _string_values(scope_preview.get("trace_ids"))
-
-
-def _first_preview_protocol(preview: dict[str, Any]) -> str:
-    scope_preview = preview.get("scope_preview")
-    if isinstance(scope_preview, dict):
-        protocols = _string_values(scope_preview.get("protocols"))
-        if protocols:
-            return protocols[0]
-    candidates = preview.get("candidates")
-    if isinstance(candidates, list):
-        for candidate in candidates:
-            if isinstance(candidate, dict) and candidate.get("protocol"):
-                return str(candidate.get("protocol") or "")
-    return ""
-
-
-def _alchemy_review_idempotency_key(*, scope: str, candidate_ids: list[str], trace_ids: list[str]) -> str:
-    payload = {
-        "primitive": "review",
-        "scope": scope,
-        "candidate_ids": sorted(candidate_ids),
-        "trace_ids": sorted(trace_ids),
-    }
-    digest = sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
-    return f"alchemy-review:{digest}"
-
-
-def _alchemy_propose_idempotency_key(*, scope: str, candidate_ids: list[str], trace_ids: list[str]) -> str:
-    payload = {
-        "primitive": "propose",
-        "scope": scope,
-        "candidate_ids": sorted(candidate_ids),
-        "trace_ids": sorted(trace_ids),
-    }
-    digest = sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
-    return f"alchemy-propose:{digest}"
-
-
-def _alchemy_distill_idempotency_key(*, scope: str, candidate_ids: list[str], trace_ids: list[str]) -> str:
-    payload = {
-        "primitive": "distill",
-        "scope": scope,
-        "candidate_ids": sorted(candidate_ids),
-        "question_template": "scoped_elixir_candidate_refresh",
-        "trace_ids": sorted(trace_ids),
-    }
-    digest = sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
-    return f"alchemy-distill:{digest}"
-
-
-def _alchemy_judge_idempotency_key(*, scope: str, candidate_ids: list[str], trace_ids: list[str]) -> str:
-    payload = {
-        "primitive": "judge",
-        "scope": scope,
-        "candidate_ids": sorted(candidate_ids),
-        "marker": "scoped_judge_refresh_marker",
-        "trace_ids": sorted(trace_ids),
-    }
-    digest = sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
-    return f"alchemy-judge:{digest}"
-
-
-def _alchemy_judge_proposal_idempotency_key(*, scope: str, candidate_ids: list[str], trace_ids: list[str]) -> str:
-    payload = {
-        "primitive": "judge",
-        "mode": "proposal_preview",
-        "scope": scope,
-        "candidate_ids": sorted(candidate_ids),
-        "trace_ids": sorted(trace_ids),
-    }
-    digest = sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
-    return f"alchemy-judge-proposal:{digest}"
-
-
 def _resolve_alchemy_judge_proposal_path(root: Path, proposal: str | Path) -> Path:
     raw = str(proposal).strip().strip("'\"`")
     if not raw:
@@ -1797,148 +1476,6 @@ def _resolve_alchemy_judge_proposal_path(root: Path, proposal: str | Path) -> Pa
     if not resolved.exists() or not resolved.is_file():
         raise FileNotFoundError(f"judge proposal not found: {proposal}")
     return resolved
-
-
-def _alchemy_distill_target_id(target_ref: str) -> str:
-    normalized = target_ref.strip()
-    if not normalized:
-        return ""
-    return Path(normalized).stem
-
-
-def _alchemy_distill_question(candidate: dict[str, Any]) -> str:
-    candidate_id = str(candidate.get("candidate_id") or "distill")
-    target_ref = str(candidate.get("target_ref") or "")
-    signal_ids = ",".join(_string_values(candidate.get("signal_ids"))) or "none"
-    return f"Alchemy scoped distill refresh for {candidate_id} ({target_ref}); signals={signal_ids}"
-
-
-def _alchemy_distill_history_questions(path: Path) -> set[str]:
-    frontmatter = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
-    raw = frontmatter.get("distill_history_json")
-    if not isinstance(raw, str) or not raw.strip():
-        return set()
-    try:
-        decoded = json.loads(raw)
-    except json.JSONDecodeError:
-        return set()
-    if not isinstance(decoded, list):
-        return set()
-    questions: set[str] = set()
-    for item in decoded:
-        if isinstance(item, dict) and isinstance(item.get("question"), str):
-            questions.add(str(item["question"]))
-    return questions
-
-
-def _alchemy_propose_prompt_content(root: Path, *, target_file: str, candidate: dict[str, Any], scope: str) -> str:
-    target = root / target_file
-    current = target.read_text(encoding="utf-8", errors="replace")
-    signal_ids = ", ".join(_string_values(candidate.get("signal_ids"))) or "none"
-    candidate_id = str(candidate.get("candidate_id") or "")
-    target_ref = str(candidate.get("target_ref") or "")
-    block = "\n".join(
-        [
-            "",
-            "<!-- aiwiki:alchemy-propose:start -->",
-            f"<!-- scope: {scope} -->",
-            f"<!-- candidate_id: {candidate_id} -->",
-            f"<!-- target_ref: {target_ref} -->",
-            f"<!-- signal_ids: {signal_ids} -->",
-            "<!-- Manual review is required before accepting this proposal. -->",
-            "<!-- aiwiki:alchemy-propose:end -->",
-        ]
-    )
-    return current.rstrip() + block + "\n"
-
-
-def _unique_alchemy_propose_action_id(root: Path, *, applied_at: str) -> str:
-    from aiwiki.render.paths import execution_receipt_path
-
-    timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
-    base = slugify(f"alchemy-propose-{timestamp}")
-    candidate = base
-    n = 2
-    while execution_receipt_path(root, candidate).exists():
-        candidate = f"{base}-{n}"
-        n += 1
-    return candidate
-
-
-def _unique_alchemy_distill_action_id(root: Path, *, applied_at: str) -> str:
-    from aiwiki.render.paths import execution_receipt_path
-
-    timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
-    base = slugify(f"alchemy-distill-{timestamp}")
-    candidate = base
-    n = 2
-    while execution_receipt_path(root, candidate).exists():
-        candidate = f"{base}-{n}"
-        n += 1
-    return candidate
-
-
-def _unique_alchemy_judge_action_id(root: Path, *, applied_at: str) -> str:
-    from aiwiki.render.paths import execution_receipt_path
-
-    timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
-    base = slugify(f"alchemy-judge-{timestamp}")
-    candidate = base
-    n = 2
-    while execution_receipt_path(root, candidate).exists():
-        candidate = f"{base}-{n}"
-        n += 1
-    return candidate
-
-
-def _unique_alchemy_judge_proposal_action_id(root: Path, *, applied_at: str) -> str:
-    from aiwiki.render.paths import execution_receipt_path
-
-    timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
-    base = slugify(f"alchemy-judge-proposal-{timestamp}")
-    candidate = base
-    n = 2
-    while execution_receipt_path(root, candidate).exists():
-        candidate = f"{base}-{n}"
-        n += 1
-    return candidate
-
-
-def _unique_alchemy_judge_proposal_apply_action_id(root: Path, *, applied_at: str) -> str:
-    from aiwiki.render.paths import execution_receipt_path
-
-    timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
-    base = slugify(f"alchemy-judge-proposal-apply-{timestamp}")
-    candidate = base
-    n = 2
-    while execution_receipt_path(root, candidate).exists():
-        candidate = f"{base}-{n}"
-        n += 1
-    return candidate
-
-
-def _unique_alchemy_review_action_id(root: Path, *, applied_at: str) -> str:
-    from aiwiki.render.paths import execution_receipt_path
-
-    timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
-    base = slugify(f"alchemy-review-{timestamp}")
-    candidate = base
-    n = 2
-    while execution_receipt_path(root, candidate).exists():
-        candidate = f"{base}-{n}"
-        n += 1
-    return candidate
-
-
-
-def _string_values(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return sorted({item.strip() for item in value if isinstance(item, str) and item.strip()})
-
-
-def _markdown_cell(value: str) -> str:
-    return value.replace("\n", " ").replace("|", "\\|")
 
 
 def run_alchemy_lane_dry_run(
@@ -2181,58 +1718,6 @@ def run_alchemy_auto(
     }
 
 
-def _normalize_auto_lanes(lanes: list[str]) -> list[str]:
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for item in lanes:
-        lane = item.strip().lower()
-        if lane not in {"heavy", "light"}:
-            raise ValueError(f"unsupported alchemy auto lane: {item}")
-        if lane in seen:
-            continue
-        seen.add(lane)
-        normalized.append(lane)
-    if not normalized:
-        raise ValueError("alchemy auto requires at least one lane")
-    return normalized
-
-
-def _auto_primitives_for_lane(
-    lane: str,
-    plan: dict[str, Any],
-    *,
-    requested_primitives: list[str],
-) -> list[str]:
-    defaults = {"heavy": ["compile", "lint"], "light": ["compile", "lint", "nightly"]}[lane]
-    wanted = requested_primitives or defaults
-    auto_supported_primitives = {"compile", "lint", "nightly"}
-    if requested_primitives and lane == "heavy":
-        auto_supported_primitives.add("distill")
-        auto_supported_primitives.add("review")
-        auto_supported_primitives.add("propose")
-    supported = {
-        str(item.get("primitive") or "")
-        for item in plan.get("primitive_plan", [])
-        if (
-            isinstance(item, dict)
-            and item.get("apply_supported") is True
-            and str(item.get("primitive") or "") in auto_supported_primitives
-        )
-    }
-    return [primitive for primitive in wanted if primitive in supported]
-
-
-def _auto_skip_reason(plan: dict[str, Any], selected_primitives: list[str]) -> str:
-    status = str(plan.get("status") or "")
-    if status != "ok":
-        return f"plan_{status or 'unknown'}"
-    if int(plan.get("selected_count") or 0) <= 0:
-        return "empty_execute_plan"
-    if not selected_primitives:
-        return "no_apply_supported_primitives"
-    return ""
-
-
 def _append_alchemy_auto_runtime_event(
     root: Path,
     *,
@@ -2309,23 +1794,6 @@ def _append_alchemy_lane_runtime_event(
         append_runtime_history(root, event)
     except Exception as exc:
         logger.warning("alchemy lane runtime-history append failed for %s:%s:%s: %s", lane, scope, event_type, exc)
-
-
-def _normalize_lane_primitives(primitives: list[str]) -> list[str]:
-    allowed = {"compile", "distill", "lint", "nightly", "review", "propose"}
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for item in primitives:
-        primitive = item.strip().lower()
-        if not primitive:
-            continue
-        if primitive not in allowed:
-            raise ValueError(f"unsupported alchemy lane primitive: {item}")
-        if primitive in seen:
-            continue
-        seen.add(primitive)
-        normalized.append(primitive)
-    return normalized
 
 
 def _run_receipted_lane_primitive(
@@ -2510,80 +1978,3 @@ def _run_receipted_lane_primitive(
         "receipt_path": relative_path(root, receipt_path),
         "result": result,
     }
-
-
-def _unique_lane_primitive_action_id(root: Path, *, lane: str, primitive: str, applied_at: str) -> str:
-    from aiwiki.render.paths import execution_receipt_path
-
-    timestamp = re.sub(r"[^0-9]", "", applied_at)[:14] or str(int(time.time()))
-    base = slugify(f"alchemy-{lane}-{primitive}-{timestamp}")
-    candidate = base
-    n = 2
-    while execution_receipt_path(root, candidate).exists():
-        candidate = f"{base}-{n}"
-        n += 1
-    return candidate
-
-
-def _lane_primitive_plan_step(plan: dict[str, Any], primitive: str) -> dict[str, Any] | None:
-    for item in plan.get("primitive_plan", []):
-        if not isinstance(item, dict):
-            continue
-        if str(item.get("primitive") or "") == primitive:
-            return item
-    return None
-
-
-def _first_plan_protocol(plan: dict[str, Any]) -> str:
-    scope_preview = plan.get("scope_preview")
-    if isinstance(scope_preview, dict):
-        protocols = scope_preview.get("protocols")
-        if isinstance(protocols, list) and protocols:
-            return str(protocols[0])
-    return ""
-
-
-def _lane_receipt_trace_ids(plan: dict[str, Any]) -> list[str]:
-    scope_preview = plan.get("scope_preview")
-    if not isinstance(scope_preview, dict):
-        return []
-    trace_ids = scope_preview.get("trace_ids")
-    if not isinstance(trace_ids, list):
-        return []
-    normalized = sorted({item.strip() for item in trace_ids if isinstance(item, str) and item.strip()})
-    return normalized
-
-
-def _primary_result_path(result: dict[str, Any]) -> str:
-    for key in ("state_path", "path", "semantic_report"):
-        value = result.get(key)
-        if isinstance(value, str) and value:
-            return value
-    repair_backlog = result.get("repair_backlog")
-    if isinstance(repair_backlog, str) and repair_backlog:
-        return repair_backlog
-    return ""
-
-
-def _lane_receipt_plan_summary(plan: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "lane": str(plan.get("lane") or ""),
-        "scope": str(plan.get("scope") or ""),
-        "selected_count": int(plan.get("selected_count") or 0),
-        "scope_preview": plan.get("scope_preview") if isinstance(plan.get("scope_preview"), dict) else {},
-        "primitive_plan": list(plan.get("primitive_plan") or []),
-    }
-
-
-def _lane_receipt_result_summary(result: dict[str, Any]) -> dict[str, Any]:
-    summary: dict[str, Any] = {}
-    for key in ("state_path", "repair_backlog", "semantic_report", "llm_used"):
-        if key in result:
-            summary[key] = result[key]
-    if "updated_source_pages" in result:
-        summary["updated_source_pages_count"] = len(result.get("updated_source_pages") or [])
-    if "updated_concept_pages" in result:
-        summary["updated_concept_pages_count"] = len(result.get("updated_concept_pages") or [])
-    if "counts" in result and isinstance(result.get("counts"), dict):
-        summary["counts"] = result["counts"]
-    return summary

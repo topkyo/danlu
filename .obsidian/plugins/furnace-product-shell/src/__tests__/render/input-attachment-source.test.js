@@ -119,6 +119,8 @@ describe("Universal Input attachment source handling", () => {
 
   test("auto ask drops materials before one note ask unless report is requested", async () => {
     const helpersSrc = fs.readFileSync(path.resolve(__dirname, "../../helpers.js"), "utf8");
+    const commandSpecsSrc = fs.readFileSync(path.resolve(__dirname, "../../command_specs.js"), "utf8");
+    const pendingStateSrc = fs.readFileSync(path.resolve(__dirname, "../../pending_state.js"), "utf8");
     const pluginSrc = fs.readFileSync(path.resolve(__dirname, "../../plugin.js"), "utf8");
     const calls = [];
     const context = {
@@ -127,7 +129,7 @@ describe("Universal Input attachment source handling", () => {
       require,
       Plugin: class {},
     };
-    vm.runInNewContext(`${helpersSrc}\n${pluginSrc}\nmodule.exports = module.exports;`, context);
+    vm.runInNewContext(`${helpersSrc}\n${commandSpecsSrc}\n${pendingStateSrc}\n${pluginSrc}\nmodule.exports = module.exports;`, context);
     const PluginClass = context.module.exports;
     const plugin = new PluginClass();
     plugin.runUniversalInputCommand = jest
@@ -170,6 +172,8 @@ describe("Universal Input attachment source handling", () => {
 
   test("auto ask passes dropped file names as CLI titles", async () => {
     const helpersSrc = fs.readFileSync(path.resolve(__dirname, "../../helpers.js"), "utf8");
+    const commandSpecsSrc = fs.readFileSync(path.resolve(__dirname, "../../command_specs.js"), "utf8");
+    const pendingStateSrc = fs.readFileSync(path.resolve(__dirname, "../../pending_state.js"), "utf8");
     const pluginSrc = fs.readFileSync(path.resolve(__dirname, "../../plugin.js"), "utf8");
     const context = {
       module: { exports: {} },
@@ -177,7 +181,7 @@ describe("Universal Input attachment source handling", () => {
       require,
       Plugin: class {},
     };
-    vm.runInNewContext(`${helpersSrc}\n${pluginSrc}\nmodule.exports = module.exports;`, context);
+    vm.runInNewContext(`${helpersSrc}\n${commandSpecsSrc}\n${pendingStateSrc}\n${pluginSrc}\nmodule.exports = module.exports;`, context);
     const PluginClass = context.module.exports;
     const plugin = new PluginClass();
     plugin.runUniversalInputCommand = jest.fn(async () => ({ note_path: "raw/inbox/trump-visit.md" }));
@@ -196,6 +200,8 @@ describe("Universal Input attachment source handling", () => {
 
   test("auto ask uses report only when the user asks for report-grade output", async () => {
     const helpersSrc = fs.readFileSync(path.resolve(__dirname, "../../helpers.js"), "utf8");
+    const commandSpecsSrc = fs.readFileSync(path.resolve(__dirname, "../../command_specs.js"), "utf8");
+    const pendingStateSrc = fs.readFileSync(path.resolve(__dirname, "../../pending_state.js"), "utf8");
     const pluginSrc = fs.readFileSync(path.resolve(__dirname, "../../plugin.js"), "utf8");
     const context = {
       module: { exports: {} },
@@ -203,7 +209,7 @@ describe("Universal Input attachment source handling", () => {
       require,
       Plugin: class {},
     };
-    vm.runInNewContext(`${helpersSrc}\n${pluginSrc}\nmodule.exports = module.exports;`, context);
+    vm.runInNewContext(`${helpersSrc}\n${commandSpecsSrc}\n${pendingStateSrc}\n${pluginSrc}\nmodule.exports = module.exports;`, context);
     const PluginClass = context.module.exports;
     const plugin = new PluginClass();
     plugin.runUniversalInputCommand = jest.fn(async () => ({ note_path: "raw/inbox/a.md" }));
@@ -232,6 +238,7 @@ describe("Universal Input attachment source handling", () => {
   test("built main routes report auto ask through background submit", () => {
     const bundleSrc = fs.readFileSync(path.resolve(__dirname, "../../../main.js"), "utf8");
 
+    expect(bundleSrc).toMatch(/function buildAskCommandSpec/);
     expect(bundleSrc).toMatch(/const longRunning = mode === "run-ask" && format === "report"/);
     expect(bundleSrc).toMatch(/const command = longRunning \? "run-ask-submit" : mode/);
     expect(bundleSrc).toMatch(/backgroundSubmit: longRunning/);
@@ -256,7 +263,7 @@ describe("Universal Input attachment source handling", () => {
     expect(modalsSrc).toMatch(/titleInput\.value = String\(file\.name \|\| ""\)\.trim\(\)/);
     expect(modalsSrc).not.toMatch(/file\.path \|\| file\.name/);
     expect(bundleSrc).toMatch(/await resolvePluginFileSource\(self\.plugin, file\)/);
-    expect(bundleSrc).toMatch(/setInitialTitle\(file\.name \|\| ""\)/);
+    expect(bundleSrc).toMatch(/titleInput\.value = String\(file\.name \|\| ""\)\.trim\(\)/);
   });
 
   test("splitTextMaterialQuestion detects material plus question", () => {

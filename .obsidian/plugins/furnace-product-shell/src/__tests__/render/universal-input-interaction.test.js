@@ -142,6 +142,8 @@ function loadRenderContext() {
 
   [
     "helpers.js",
+    "command_specs.js",
+    "pending_state.js",
     "today_feed.js",
     "render/cards.js",
     "render_primitives.js",
@@ -149,6 +151,12 @@ function loadRenderContext() {
     "render_today.js",
     "render_advanced.js",
     "render_home.js",
+    "rewrite_state.js",
+    "control_items.js",
+    "modal_specs.js",
+    "run_state.js",
+    "state/health-state.js",
+    "plugin_helpers.js",
     "plugin.js",
   ].forEach(loadFile);
 
@@ -879,6 +887,29 @@ test("quoteFileToComposer does not duplicate an existing report quote", () => {
   expect(plugin.quoteFileToComposer("output/reports/r.md")).toBe(true);
 
   expect(textarea.value.split("\n").filter((line) => line === "引用报告：output/reports/r.md")).toHaveLength(1);
+});
+
+test("openWorkspacePath rejects absolute and escaping paths before vault lookup", async () => {
+  const context = loadRenderContext();
+  const plugin = new context.FurnaceProductShellPlugin();
+  plugin.t = (text, vars = {}) => String(text).replace("{path}", vars.path || "");
+  plugin.repoState = { root: "/vault" };
+  plugin.app = {
+    vault: {
+      getAbstractFileByPath: jest.fn(),
+      adapter: { getResourcePath: jest.fn() },
+    },
+    workspace: { getLeaf: jest.fn() },
+  };
+
+  await expect(plugin.openWorkspacePath("/tmp/secret.md")).resolves.toBe(false);
+  await expect(plugin.openWorkspacePath("../secret.md")).resolves.toBe(false);
+
+  expect(plugin.app.vault.getAbstractFileByPath).not.toHaveBeenCalled();
+  expect(context.__notices).toEqual([
+    "Unable to open /tmp/secret.md",
+    "Unable to open ../secret.md",
+  ]);
 });
 
 test("runAskCommand uses background submit for report mode", async () => {
