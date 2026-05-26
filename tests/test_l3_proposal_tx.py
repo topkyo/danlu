@@ -35,6 +35,7 @@ from aiwiki.execution.audit_preview import AUDIT_STREAM_PATH
 from aiwiki.execution.l3_proposals import (
     L3PostApplyAuditError,
     L3RevertError,
+    accept_l3_proposal,
     apply_l3_proposal,
     create_l3_proposal,
     revert_l3_proposal,
@@ -62,6 +63,7 @@ class _RevertFixture(unittest.TestCase):
             content=self.after_content,
             evidence_refs=["e1", "e2", "e3", "e4", "e5"],
         )
+        accept_l3_proposal(self.root, self.proposal_id, note="test human accept")
         result = apply_l3_proposal(self.root, self.proposal_id)
         # Receipt id we'll feed to revert.
         self.receipt_path = self.root / result["receipt_path"]
@@ -203,6 +205,7 @@ class ApplyL3ProposalAtomicTests(_RevertFixture):
             content="Updated answer.\n",
             evidence_refs=["e1", "e2", "e3", "e4", "e5"],
         )
+        accept_l3_proposal(self.root, "prop-atomic-check", note="test human accept")
 
         original_atomic = l3_mod.atomic_write_text
         calls: list[Path] = []
@@ -246,6 +249,7 @@ class _ApplyFixture(unittest.TestCase):
             content=self.after_content,
             evidence_refs=["e1", "e2", "e3", "e4", "e5"],
         )
+        accept_l3_proposal(self.root, self.proposal_id, note="test human accept")
         self.history_path = execution_receipt_history_path(self.root)
         self.audit_path = self.root / AUDIT_STREAM_PATH
         self.runtime_history_path = runtime_history_path(self.root)

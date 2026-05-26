@@ -227,7 +227,7 @@ v2 dogfood 暴露：默认 planner replay 跑在 `observe_only` 模式，所有 
 
 - `aiwiki planner-log-replay --execute`：把 signals 以 execute-mode 写入 `planner-log.jsonl`，让 records 带 `side_effects_allowed: true`。这是 candidate 准入的前置条件，本身**不**生成 L3 proposal。
 - `aiwiki l3-proposal-generate --apply`：扫 planner-log（要求 `mode=execute` 记录）→ 产生 L3 proposal candidate → 写入 `output/_proposals/prompt/` 或 `output/_proposals/policy/`。这是真正生成 proposal 的入口。
-- `AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` + `aiwiki run-nightly`：作用于**已存在**的 candidate proposal，自动 accept/apply（等价 `aiwiki apply <proposal-id>`），不参与 candidate 生成。
+- `AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` + `aiwiki run-nightly`：作用于**已存在**的 candidate proposal，但只会自动登记 `metadata_only` candidate；不参与 candidate 生成，也不无人值守写核心 prompt/policy。
 
 **入口**：
 
@@ -249,7 +249,7 @@ aiwiki planner-log-replay --execute --signals-path .aiwiki/state/signals.jsonl
 
 - `planner-log-replay --execute` 本身只写 `.aiwiki/state/planner-log.jsonl`（追加，可通过 rollback marker 回退）
 - `l3-proposal-generate --apply` 会通过 `append_wiki_log` 写 `wiki/indexes/log.md` 一条记录，并生成 `output/_proposals/prompt/*.md`（或 `output/_proposals/policy/*.md`）
-- `aiwiki apply <proposal-id>`（包括 `AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` 自动触发）会写真 `prompts/*.md`（prompt proposal）或 `schema/policies/*`（policy proposal），最大半径含 wiki 资产层
+- `aiwiki apply <proposal-id>` 会在 human accepted 后写真 `prompts/*.md`（prompt proposal）或 `schema/policies/*`（policy proposal）；`metadata_only` 只写 receipt/state，不改目标文件。`AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` 不绕过这个人审 gate
 - 不影响 raw/ 与 wiki/sources/ 与 wiki/derived/；不触发 LLM 调用
 - manual-first 仍是默认；不显式加 `--execute` 不会触发副作用
 
@@ -269,9 +269,9 @@ aiwiki l3-proposal-generate --apply
 aiwiki review proposals
 ls output/_proposals/prompt/ output/_proposals/policy/ 2>/dev/null
 
-# 5.（可选）若设 AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1，nightly 会自动 apply 已生成的 proposal
-export AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1
-aiwiki run-nightly
+# 5. 人工 accept 后才能写核心目标；metadata_only proposal 可由 nightly 自动登记
+aiwiki review proposal <proposal-id> --status accepted --note "reviewed"
+aiwiki apply <proposal-id>
 ```
 
 **F-INV-18 成功判据**：

@@ -53,6 +53,7 @@ Obsidian 是前端/IDE；炼丹炉是整个系统；`aiwiki` 是底层 runtime�
 - `src/aiwiki/execution/`：execution bundles、receipts、apply/revert/audit、alchemy proposal mutation 的事实层 owner；`app_execution.py` 保留 receipt / bundle assembly 的兼容入口。
 - `src/aiwiki/runner/`：`run-compile` / `run-ask` / `nightly` / `watch` / alchemy 等 high-level workflow owner；`runner/alchemy.py` 是 deferred residual hotspot。
 - `src/aiwiki/planner/` 与 `src/aiwiki/signals/`：planner dry-run / log / safe primitive policy，以及 review / repair / aging / escalation signal source。
+- 金丹主链路已落地：`alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 覆盖 candidate plane、settled plane、DAG/provenance gate、promote/revert/demote receipt、Stage-3 compounding acceptance 与 maturity gate 的 `elixir_quality_proof`；剩余 planned 只指显式 LLM/human contract 下的 semantic distillation。
 - `src/aiwiki/app_shell/`：Product Shell summary、controls、status、HTML/surface assembly；Obsidian 插件源码在 `.obsidian/plugins/furnace-product-shell/src/`，它是用户 surface，不拥有 runtime SoT。
 - `src/aiwiki/app_routing.py`：material routing、archive candidate、active corpus and temperature 逻辑。
 - `src/aiwiki/app_queries.py`：ranking / report / slides / decision-memo / sop query helpers。
@@ -257,9 +258,9 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 - **维护层**：compile / lint / nightly / 陈旧状态清理 / 派生索引 refresh — 只读或可逆的操作，静默自动落盘。`AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1`。
 - **治理层**：concept backlog / revisit / source-concept links / concept splits — 结构性变更，可逆且有 receipt，静默自动采纳。`AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1` + `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1`。
 - **判断层**：counter-evidence / judgment review — LLM 驱动的语义复核，自动分析反证、写出审阅结论。`AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1`。
-- **策略层**：L3 proposal / prompt 变更 / schema 变更 — 改变系统后续运行方式，自动采纳并写 receipt 保留回滚能力。`AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1`。
+- **策略层**：L3 proposal / prompt 变更 / schema 变更 — 只能先生成 proposal plane；写回核心 prompt/policy/schema 前必须 `review proposal <id> --status accepted` 人工确认，再手动 `apply <proposal-id>` hash-gated 写 receipt。`AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` 只会自动登记 `metadata_only` candidate，不会无人值守改核心 prompt/policy/schema。
 
-runtime policy 缺省采用 `autonomy_profile=strong`：未写 `.aiwiki/state/autonomy-policy.json` 时，nightly 五层 `auto_apply_light / auto_adopt_l1 / auto_adopt_l2 / auto_adopt_l3 / auto_adopt_judgments` 默认开启；新安装的 nightly env 仍可显式覆盖这些开关，watcher 仍 deterministic-only，`AIWIKI_NIGHTLY_FALLBACK_ENABLED` 仍默认关闭。需要缩窄自动化时，把对应 nightly env flag 或 policy 字段改回 `0` / `false`；需要跨 backend unattended fallback 时必须显式开启并配置 repo 外凭据文件。是否已经达到“人只需事后审计 receipt 和异常”的成熟运行状态，仍以 `scripts/dogfood_maturity_gate.py summarize --days 3` 的 `operational_maturity.human_only_exceptions` 和连续 receipt 为准。
+runtime policy 缺省采用 `autonomy_profile=strong`：未写 `.aiwiki/state/autonomy-policy.json` 时，nightly 默认开启 `auto_apply_light / auto_adopt_l1 / auto_adopt_l2 / auto_adopt_judgments`，但 `auto_adopt_l3 / auto_apply_heavy_semantic / auto_adopt_core_l3` 默认关闭；新安装的 nightly env 仍可显式覆盖这些开关，watcher 仍 deterministic-only，`AIWIKI_NIGHTLY_FALLBACK_ENABLED` 仍默认关闭。需要跨 backend unattended fallback 或 heavy semantic apply 时必须显式开启并配置 repo 外凭据文件。是否已经达到“人只需事后审计 receipt 和异常”的成熟运行状态，仍以 `scripts/dogfood_maturity_gate.py summarize --days 3` 的 `operational_maturity.human_only_exceptions`、`elixir_quality_status` 和连续 receipt 为准。
 
 ## LLM 后端
 

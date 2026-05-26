@@ -71,7 +71,7 @@ class AutoAdoptCriticalFixTests(unittest.TestCase):
 
     def test_l3_auto_adopt_threshold_from_env(self) -> None:
         with (
-            patch("aiwiki.execution.l3_proposals.load_l3_proposal_state", return_value={"proposals": [{"proposal_id": "p1", "state": "candidate", "evidence_count": 3}]}),
+            patch("aiwiki.execution.l3_proposals.load_l3_proposal_state", return_value={"proposals": [{"proposal_id": "p1", "state": "candidate", "evidence_count": 3, "patch": {"kind": "metadata_only"}}]}),
             patch("aiwiki.execution.l3_proposals.apply_l3_proposal", return_value={"state": "accepted", "receipt_path": "r", "target_file": "t"}) as apply_mock,
             patch.dict(os.environ, {"AIWIKI_L3_AUTO_ADOPT_MIN_EVIDENCE": "3"}),
         ):
@@ -81,7 +81,7 @@ class AutoAdoptCriticalFixTests(unittest.TestCase):
 
     def test_l3_auto_adopt_default_threshold_boundary_passes(self) -> None:
         with (
-            patch("aiwiki.execution.l3_proposals.load_l3_proposal_state", return_value={"proposals": [{"proposal_id": "p1", "state": "candidate", "evidence_count": 5}]}),
+            patch("aiwiki.execution.l3_proposals.load_l3_proposal_state", return_value={"proposals": [{"proposal_id": "p1", "state": "candidate", "evidence_count": 5, "patch": {"kind": "metadata_only"}}]}),
             patch("aiwiki.execution.l3_proposals.apply_l3_proposal", return_value={"state": "accepted", "receipt_path": "r", "target_file": "t"}) as apply_mock,
             patch.dict(os.environ, {}, clear=True),
         ):
@@ -325,7 +325,7 @@ class AutoAdoptCriticalFixTests(unittest.TestCase):
             after_hash="sha256:after",
         )
         with (
-            patch("aiwiki.execution.l3_proposals.load_l3_proposal_state", return_value={"proposals": [{"proposal_id": "p1", "state": "candidate", "evidence_count": 5}]}),
+            patch("aiwiki.execution.l3_proposals.load_l3_proposal_state", return_value={"proposals": [{"proposal_id": "p1", "state": "candidate", "evidence_count": 5, "patch": {"kind": "metadata_only"}}]}),
             patch("aiwiki.execution.l3_proposals.apply_l3_proposal", side_effect=error),
         ):
             result = auto_adopt_l3(self.root)
@@ -385,7 +385,7 @@ class AutoAdoptCriticalFixTests(unittest.TestCase):
             patch("aiwiki.agent_loop.collect_signals", return_value={"status": "ok"}),
             patch("aiwiki.agent_loop.write_planner_log", return_value={"status": "ok"}),
             patch("aiwiki.agent_loop._build_auto_preview", return_value={"status": "preview"}),
-            patch("aiwiki.execution.l3_proposals.load_l3_proposal_state", return_value={"proposals": [{"proposal_id": "p1", "state": "candidate", "evidence_count": 5}]}),
+            patch("aiwiki.execution.l3_proposals.load_l3_proposal_state", return_value={"proposals": [{"proposal_id": "p1", "state": "candidate", "evidence_count": 5, "patch": {"kind": "metadata_only"}}]}),
             patch("aiwiki.execution.l3_proposals.apply_l3_proposal", side_effect=RuntimeError("apply failed")),
         ):
             result = run_nightly_agent_loop(self.root, auto_adopt_l3=True)
@@ -394,9 +394,9 @@ class AutoAdoptCriticalFixTests(unittest.TestCase):
 
     def test_l3_auto_adopt_respects_policy_apply_limit(self) -> None:
         proposals = [
-            {"proposal_id": "p1", "state": "candidate", "evidence_count": 5},
-            {"proposal_id": "p2", "state": "candidate", "evidence_count": 5},
-            {"proposal_id": "p3", "state": "candidate", "evidence_count": 5},
+            {"proposal_id": "p1", "state": "candidate", "evidence_count": 5, "patch": {"kind": "metadata_only"}},
+            {"proposal_id": "p2", "state": "candidate", "evidence_count": 5, "patch": {"kind": "metadata_only"}},
+            {"proposal_id": "p3", "state": "candidate", "evidence_count": 5, "patch": {"kind": "metadata_only"}},
         ]
         with (
             patch("aiwiki.execution.l3_proposals.load_l3_proposal_state", return_value={"proposals": proposals}),
@@ -409,6 +409,17 @@ class AutoAdoptCriticalFixTests(unittest.TestCase):
         self.assertEqual(result["skipped_by_limit"], 2)
         apply_mock.assert_called_once()
         self.assertEqual(apply_mock.call_args.args[1], "p1")
+
+    def test_l3_auto_adopt_never_applies_core_proposal_even_after_human_accept(self) -> None:
+        with (
+            patch("aiwiki.execution.l3_proposals.load_l3_proposal_state", return_value={"proposals": [{"proposal_id": "p-core", "state": "candidate", "evidence_count": 5, "review_state": "human_accepted", "patch": {"kind": "full_replace"}}]}),
+            patch("aiwiki.execution.l3_proposals.apply_l3_proposal") as apply_mock,
+        ):
+            result = auto_adopt_l3(self.root)
+
+        self.assertFalse(result["applied"])
+        self.assertEqual(result["items"][0]["status"], "skipped_core_l3_requires_manual_apply")
+        apply_mock.assert_not_called()
 
     def test_l3_auto_adopt_uses_policy_limit_from_agent_loop(self) -> None:
         policy_path = self.root / ".aiwiki" / "state" / "autonomy-policy.json"

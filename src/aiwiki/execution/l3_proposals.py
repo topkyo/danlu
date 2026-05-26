@@ -39,6 +39,7 @@ from .audit_preview import AUDIT_STREAM_PATH
 
 L3_PROPOSAL_KINDS = ("prompt_proposal", "policy_proposal")
 L3_PROPOSAL_STATES = ("candidate", "accepted", "rejected", "reverted", "stale", "revert_conflict")
+L3_PROPOSAL_REVIEW_STATES = ("pending_human", "human_accepted", "rejected")
 L3_TRIGGER_PATTERNS = ("failure_cluster", "recurring_feedback", "drift", "contract_failure", "manual_fixture")
 _PLANNER_LOG_REL_PATH = ".aiwiki/state/planner-log.jsonl"
 _AUTOMATIC_L3_TARGET_FILE = "prompts/ask.md"
@@ -192,6 +193,8 @@ def _render_l3_proposal_page(proposal: dict[str, Any]) -> str:
         "proposal_id": str(proposal.get("proposal_id") or ""),
         "target_file": str(proposal.get("target_file") or ""),
         "state": str(proposal.get("state") or "candidate"),
+        "review_state": str(proposal.get("review_state") or "pending_human"),
+        "human_accept_required": bool(proposal.get("human_accept_required", True)),
         "trigger_pattern": str(trigger.get("pattern") or ""),
         "evidence_count": int(trigger.get("evidence_count", 0) or 0),
         "before_hash": str(patch.get("before_hash") or ""),
@@ -266,6 +269,27 @@ def list_l3_proposals(
         proposals = [item for item in proposals if str(item.get("state") or "") == state]
     proposals.sort(key=lambda item: (str(item.get("created_at") or ""), str(item.get("proposal_id") or "")), reverse=True)
     return proposals
+
+
+def _proposal_review_state(proposal: dict[str, Any]) -> str:
+    return str(proposal.get("review_state") or "pending_human")
+
+
+def _proposal_patch_kind(proposal: dict[str, Any]) -> str:
+    patch = proposal.get("patch") if isinstance(proposal.get("patch"), dict) else {}
+    return str(patch.get("kind") or "full_replace")
+
+
+def _requires_human_accept_for_apply(proposal: dict[str, Any]) -> bool:
+    """Return true for meaning-changing core prompt/policy writes.
+
+    Current L3 target validation only allows prompts/*.md and schema/policies/*.
+    metadata_only proposals do not write target bytes, so they remain eligible for
+    automated bookkeeping. full_replace changes core behavior and must carry an
+    explicit human review state before apply.
+    """
+
+    return _proposal_patch_kind(proposal) != "metadata_only"
 
 
 def l3_proposal_issue_key(proposal: dict[str, Any]) -> str:
@@ -547,6 +571,7 @@ def reject_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None)
         raise RuntimeError("Only candidate L3 proposals can be rejected.")
     rejected_at = utc_now()
     proposal["state"] = "rejected"
+    proposal["review_state"] = "rejected"
     proposal["rejected_at"] = rejected_at
     proposal["reject_note"] = note or ""
     save_l3_proposal_state(root, proposals)
@@ -581,6 +606,53 @@ def reject_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None)
         "target_file": str(proposal.get("target_file") or ""),
         "proposal_path": str(proposal.get("proposal_path") or ""),
         "rejected_at": rejected_at,
+    }
+
+
+@runtime_write_operation
+def accept_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) -> dict[str, Any]:
+    proposals = [dict(item) for item in load_l3_proposal_state(root).get("proposals", []) if isinstance(item, dict)]
+    proposal = _find_l3_proposal(proposals, proposal_id)
+    if str(proposal.get("state") or "") != "candidate":
+        raise RuntimeError("Only candidate L3 proposals can be human-accepted.")
+    accepted_at = utc_now()
+    proposal["review_state"] = "human_accepted"
+    proposal["human_accepted_at"] = accepted_at
+    proposal["human_accept_note"] = note or ""
+    save_l3_proposal_state(root, proposals)
+    _persist_l3_proposal_page(root, proposal)
+    append_runtime_history(
+        root,
+        {
+            "event_type": "l3-proposal-human-accept",
+            "occurred_at": accepted_at,
+            "proposal_id": proposal_id,
+            "kind": str(proposal.get("kind") or ""),
+            "target_file": str(proposal.get("target_file") or ""),
+            "proposal_path": str(proposal.get("proposal_path") or ""),
+            "state": "candidate",
+            "review_state": "human_accepted",
+            "note": note or "",
+        },
+    )
+    append_wiki_log(
+        root,
+        "l3-proposal-human-accept",
+        proposal_id,
+        [
+            f"kind: `{proposal.get('kind', '')}`",
+            f"target: `{proposal.get('target_file', '')}`",
+            "review_state: `human_accepted`",
+        ],
+    )
+    return {
+        "proposal_id": proposal_id,
+        "kind": str(proposal.get("kind") or ""),
+        "state": "candidate",
+        "review_state": "human_accepted",
+        "target_file": str(proposal.get("target_file") or ""),
+        "proposal_path": str(proposal.get("proposal_path") or ""),
+        "human_accepted_at": accepted_at,
     }
 
 
@@ -650,6 +722,8 @@ def create_l3_proposal(
         "revert_plan": {"kind": "restore_before_hash", "fallback": "human_merge_required"},
         "review_queue_entry_id": f"review-{normalized_id}",
         "state": "candidate",
+        "review_state": "pending_human",
+        "human_accept_required": True,
         "created_at": created_at,
         "proposal_path": relative_path(root, proposal_path),
         "last_receipt_path": "",
@@ -736,6 +810,8 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
             "Only full_replace or metadata_only L3 proposals are supported in the manual baseline."
         )
     is_metadata_only = patch_kind_value == "metadata_only"
+    if _requires_human_accept_for_apply(proposal) and _proposal_review_state(proposal) != "human_accepted":
+        raise RuntimeError("L3 proposal apply requires explicit human accept before core prompt/policy target write.")
     expected_before_hash = str(patch.get("before_hash") or "")
     current_hash = _hash_path(target)
     applied_at = utc_now()
@@ -782,6 +858,8 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
             "subject_id": proposal_id,
             "proposal_kind": kind,
             "patch_kind": patch_kind_value,
+            "review_state": _proposal_review_state(proposal),
+            "human_accept_required": _requires_human_accept_for_apply(proposal),
             "target_file": relative_path(root, target),
             "proposal_path": str(proposal.get("proposal_path") or ""),
             "before_hash": expected_before_hash,
@@ -862,6 +940,7 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
     try:
         proposal["state"] = "accepted"
         proposal["accepted_at"] = applied_at
+        proposal.setdefault("review_state", "human_accepted" if not is_metadata_only else _proposal_review_state(proposal))
         proposal["last_receipt_path"] = relative_path(root, receipt_path)
         proposal["after_hash"] = after_hash
         save_l3_proposal_state(root, proposals)

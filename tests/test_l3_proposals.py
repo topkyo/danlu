@@ -10,6 +10,7 @@ from aiwiki.app_shell import build_shell_summary
 from aiwiki.app_state import l3_proposal_state_path
 from aiwiki.execution.l3_proposals import (
     _automatic_l3_prompt_content,
+    accept_l3_proposal,
     apply_l3_proposal,
     create_l3_proposal,
     generate_l3_proposals_from_planner,
@@ -60,6 +61,24 @@ class L3ProposalTests(unittest.TestCase):
         stored = self._state_proposal("prop-ask-tighten")
         self.assertEqual(stored["target_file"], "prompts/ask.md")
         self.assertEqual(stored["state"], "candidate")
+        self.assertEqual(stored["review_state"], "pending_human")
+        self.assertTrue(stored["human_accept_required"])
+
+    def test_full_replace_apply_requires_explicit_human_accept(self) -> None:
+        create_l3_proposal(
+            self.root,
+            kind="prompt_proposal",
+            proposal_id="prop-accept-required",
+            target_file="prompts/ask.md",
+            content="Updated ask prompt.\n",
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "requires explicit human accept"):
+            apply_l3_proposal(self.root, "prop-accept-required")
+
+        stored = self._state_proposal("prop-accept-required")
+        self.assertEqual(stored["state"], "candidate")
+        self.assertEqual(stored["review_state"], "pending_human")
 
     def test_policy_proposal_allows_schema_policies_only(self) -> None:
         result = create_l3_proposal(
@@ -90,6 +109,7 @@ class L3ProposalTests(unittest.TestCase):
             target_file="prompts/ask.md",
             content="Updated ask prompt.\n",
         )
+        accept_l3_proposal(self.root, "prop-stale", note="human reviewed")
         (self.root / "prompts" / "ask.md").write_text("Human edited prompt.\n", encoding="utf-8")
 
         with self.assertRaisesRegex(RuntimeError, "before_hash mismatch"):
@@ -128,6 +148,7 @@ class L3ProposalTests(unittest.TestCase):
             target_file="prompts/ask.md",
             content="Updated ask prompt.\n",
         )
+        accept_l3_proposal(self.root, "prop-no-reject", note="human reviewed")
         apply_l3_proposal(self.root, "prop-no-reject")
 
         with self.assertRaisesRegex(RuntimeError, "Only candidate"):
@@ -141,6 +162,7 @@ class L3ProposalTests(unittest.TestCase):
             target_file="prompts/ask.md",
             content="Updated ask prompt.\n",
         )
+        accept_l3_proposal(self.root, "prop-apply", note="human reviewed")
 
         applied = apply_l3_proposal(self.root, "prop-apply", note="accept")
 
@@ -175,7 +197,7 @@ class L3ProposalTests(unittest.TestCase):
         ]
         self.assertEqual(
             [item["event_type"] for item in runtime_history],
-            ["l3-proposal-create", "l3-proposal-apply", "l3-proposal-revert"],
+            ["l3-proposal-create", "l3-proposal-human-accept", "l3-proposal-apply", "l3-proposal-revert"],
         )
         self.assertEqual(runtime_history[-1]["proposal_id"], "prop-apply")
         self.assertEqual(runtime_history[-1]["receipt_path"], str(reverted["receipt_path"]))
@@ -189,7 +211,7 @@ class L3ProposalTests(unittest.TestCase):
         self.assertEqual([item["event_type"] for item in execution_audit], ["apply", "revert"])
         self.assertEqual(
             [item["event_type"] for item in runtime_audit],
-            ["l3-proposal-create", "l3-proposal-apply", "l3-proposal-revert"],
+            ["l3-proposal-create", "l3-proposal-human-accept", "l3-proposal-apply", "l3-proposal-revert"],
         )
         self.assertEqual(runtime_audit[-1]["subject"], {"kind": "l3-proposal-revert", "id": "prop-apply"})
 
@@ -201,6 +223,7 @@ class L3ProposalTests(unittest.TestCase):
             target_file="prompts/ask.md",
             content="Updated ask prompt.\n",
         )
+        accept_l3_proposal(self.root, "prop-conflict", note="human reviewed")
         applied = apply_l3_proposal(self.root, "prop-conflict")
         (self.root / "prompts" / "ask.md").write_text("Human post-apply edit.\n", encoding="utf-8")
 
@@ -229,6 +252,7 @@ class L3ProposalTests(unittest.TestCase):
             target_file="prompts/ask.md",
             content="Accepted prompt.\n",
         )
+        accept_l3_proposal(self.root, "prop-shell-accepted", note="human reviewed")
         accepted = apply_l3_proposal(self.root, "prop-shell-accepted")
         create_l3_proposal(
             self.root,
@@ -237,6 +261,7 @@ class L3ProposalTests(unittest.TestCase):
             target_file="prompts/ask.md",
             content="Conflict prompt.\n",
         )
+        accept_l3_proposal(self.root, "prop-shell-conflict", note="human reviewed")
         conflict = apply_l3_proposal(self.root, "prop-shell-conflict")
         (self.root / "prompts" / "ask.md").write_text("Human edit after apply.\n", encoding="utf-8")
         revert_l3_proposal(self.root, str(conflict["receipt_path"]))
@@ -248,10 +273,10 @@ class L3ProposalTests(unittest.TestCase):
         }
 
         candidate = controls["prop-shell-candidate"]
-        self.assertTrue(candidate["can_apply"])
+        self.assertFalse(candidate["can_apply"])
         self.assertTrue(candidate["can_reject"])
         self.assertFalse(candidate["can_revert"])
-        self.assertIn("apply", candidate["command_hints"])
+        self.assertIn("accept", candidate["command_hints"])
         accepted_control = controls["prop-shell-accepted"]
         self.assertFalse(accepted_control["can_apply"])
         self.assertTrue(accepted_control["can_revert"])
@@ -608,6 +633,7 @@ class L3ProposalTests(unittest.TestCase):
         for prop in state["proposals"]:
             if prop["proposal_id"] == "prop-legacy":
                 prop["patch"].pop("kind", None)
+                prop["review_state"] = "human_accepted"
         state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
         # apply must succeed (default to full_replace), not raise
@@ -699,6 +725,7 @@ class L3ProposalTests(unittest.TestCase):
             target_file="prompts/ask.md",
             content="Updated ask prompt.\n",
         )
+        accept_l3_proposal(self.root, "prop-hash-sem", note="human reviewed")
         applied = apply_l3_proposal(self.root, "prop-hash-sem")
         reverted = revert_l3_proposal(self.root, str(applied["receipt_path"]))
 

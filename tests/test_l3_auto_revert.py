@@ -10,6 +10,7 @@ from aiwiki.app_state import load_runtime_history
 from aiwiki.execution.l3_proposals import (
     L3PostApplyAuditError,
     L3RevertError,
+    accept_l3_proposal,
     apply_l3_proposal,
     create_l3_proposal,
 )
@@ -33,6 +34,7 @@ class L3AutoRevertTests(unittest.TestCase):
             content="Updated ask prompt.\n",
             evidence_refs=["e1", "e2", "e3", "e4", "e5"],
         )
+        accept_l3_proposal(self.root, self.proposal_id, note="test human accept")
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()
@@ -156,7 +158,7 @@ class AutoAdoptL3Tests(unittest.TestCase):
             target_reverted=True,
         )
         with (
-            patch("aiwiki.execution.l3_proposals.load_l3_proposal_state", return_value={"proposals": [{"proposal_id": "p1", "state": "candidate", "evidence_count": 5}]}),
+            patch("aiwiki.execution.l3_proposals.load_l3_proposal_state", return_value={"proposals": [{"proposal_id": "p1", "state": "candidate", "evidence_count": 5, "patch": {"kind": "metadata_only"}}]}),
             patch("aiwiki.execution.l3_proposals.apply_l3_proposal", side_effect=error),
         ):
             result = auto_adopt_l3(self.root)
@@ -175,7 +177,7 @@ class AutoAdoptL3Tests(unittest.TestCase):
             deleted_receipt_path="output/control/execution-receipts/l3-proposal-apply-p1.json",
         )
         with (
-            patch("aiwiki.execution.l3_proposals.load_l3_proposal_state", return_value={"proposals": [{"proposal_id": "p1", "state": "candidate", "evidence_count": 5}]}),
+            patch("aiwiki.execution.l3_proposals.load_l3_proposal_state", return_value={"proposals": [{"proposal_id": "p1", "state": "candidate", "evidence_count": 5, "patch": {"kind": "metadata_only"}}]}),
             patch("aiwiki.execution.l3_proposals.apply_l3_proposal", side_effect=error),
         ):
             auto_adopt_l3(self.root)

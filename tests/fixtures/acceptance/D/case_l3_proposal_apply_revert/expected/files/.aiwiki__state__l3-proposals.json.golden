@@ -5,6 +5,9 @@
       "after_hash": "sha256:01c60d9adbdcd79fa1a859ffa8f2c67c6957f07240114cdd5aeeb67ddf03e2d5",
       "created_at": "2026-04-27T00:00:00+00:00",
       "evidence_refs": [],
+      "human_accept_note": "acceptance human accept",
+      "human_accept_required": true,
+      "human_accepted_at": "2026-04-27T00:00:00+00:00",
       "kind": "prompt_proposal",
       "last_receipt_path": "output/control/execution-receipts/l3-proposal-apply-prop-test-prompt.json",
       "last_revert_receipt_path": "output/control/execution-receipts/l3-proposal-revert-prop-test-prompt.json",
@@ -23,6 +26,7 @@
       },
       "reverted_at": "2026-04-27T00:00:00+00:00",
       "review_queue_entry_id": "review-prop-test-prompt",
+      "review_state": "human_accepted",
       "state": "reverted",
       "target_file": "prompts/test-prompt.md",
       "trigger": {

@@ -2438,6 +2438,7 @@ class RunnerTests(unittest.TestCase):
                 "AIWIKI_NIGHTLY_AUTO_ADOPT_L2": "0",
                 "AIWIKI_NIGHTLY_AUTO_ADOPT_L3": "0",
                 "AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS": "0",
+                "AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC": "0",
             },
         ):
             result = run_nightly(self.root, client=type(
@@ -2531,6 +2532,7 @@ class RunnerTests(unittest.TestCase):
                 "AIWIKI_NIGHTLY_AUTO_ADOPT_L2": "0",
                 "AIWIKI_NIGHTLY_AUTO_ADOPT_L3": "0",
                 "AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS": "0",
+                "AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC": "0",
             },
         ):
             result = run_nightly(self.root, client=_NightlyLockProbeClient(), compile_limit=1)
@@ -2556,6 +2558,7 @@ class RunnerTests(unittest.TestCase):
             "AIWIKI_NIGHTLY_AUTO_ADOPT_L2",
             "AIWIKI_NIGHTLY_AUTO_ADOPT_L3",
             "AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS",
+            "AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC",
         ]
         with patch.dict(os.environ, {}, clear=False):
             for key in env_keys:

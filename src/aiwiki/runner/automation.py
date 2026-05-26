@@ -22,6 +22,7 @@ from aiwiki.app_utils import (
 from aiwiki.runner.clients import llm_status
 from aiwiki.runner.interfaces import SupportsComplete
 from aiwiki.runner.receipts import _append_log
+from aiwiki.runner.signal_pipeline import run_signal_pipeline
 from aiwiki.runner.workflows import run_compile, run_lint
 
 
@@ -74,6 +75,7 @@ def auto_process_once(
         }
 
     snapshot = inbox_snapshot(root)
+    signal_pipeline = run_signal_pipeline(root)
     actually_used_llm = bool(llm_enabled and not deterministic_only and not llm_failed)
     result = {
         "processed_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
@@ -85,6 +87,7 @@ def auto_process_once(
         "llm_fallback": llm_failed,
         "compile": compile_result,
         "lint": lint_result,
+        "signal_pipeline": signal_pipeline,
         "inbox_snapshot": snapshot,
     }
     _write_automation_state(root, result)

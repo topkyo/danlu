@@ -22,6 +22,12 @@ from aiwiki.app_compile import (
     set_active_protocol,
 )
 from aiwiki.app_content import ingest_source
+from aiwiki.app_execution import (
+    load_execution_bundle,
+    write_execution_batch_receipt_document,
+    write_execution_bundle_document,
+    write_execution_dry_run_document,
+)
 from aiwiki.app_protocol import ensure_layout, load_protocol_runtime_schema, save_manifest
 from aiwiki.app_shell import shell_search, shell_status_dashboard
 from aiwiki.app_state import (
@@ -40,7 +46,13 @@ from aiwiki.app_utils import parse_frontmatter, utc_now
 from aiwiki.cli import main as cli_main
 from aiwiki.execution.alchemy import _validate_source_outputs, _write_elixir_markdown
 from aiwiki.execution.candidates import demote_candidate, promote_candidate
-from aiwiki.execution.l3_proposals import L3PostApplyAuditError, L3RevertError, apply_l3_proposal, create_l3_proposal
+from aiwiki.execution.l3_proposals import (
+    L3PostApplyAuditError,
+    L3RevertError,
+    accept_l3_proposal,
+    apply_l3_proposal,
+    create_l3_proposal,
+)
 from aiwiki.execution.protocol_learnings import (
     AUDIT_STATE_PATH,
     LEARNINGS_DIR,
@@ -121,6 +133,30 @@ class ExecutionTests(unittest.TestCase):
                 code = int(exc.code or 0)
         payload = json.loads(stdout.getvalue()) if stdout.getvalue().strip() else {}
         return code, payload, stderr.getvalue()
+
+    def test_execution_documents_use_atomic_write_and_preserve_existing_target_on_failure(self) -> None:
+        bundle_path = self.root / "output" / "control" / "execution-bundles" / "bundle.json"
+        old_bundle = {"kind": "execution-bundle", "version": 1, "id": "old"}
+        write_execution_bundle_document(bundle_path, old_bundle)
+
+        with patch("aiwiki.app_execution.atomic_write_text", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                write_execution_bundle_document(bundle_path, {"kind": "execution-bundle", "version": 1, "id": "new"})
+
+        self.assertEqual(load_execution_bundle(bundle_path)["id"], "old")
+
+    def test_execution_document_write_failure_does_not_leave_target_file(self) -> None:
+        dry_run_path = self.root / "output" / "control" / "execution-dry-runs" / "dry-run.json"
+        receipt_path = self.root / "output" / "control" / "execution-batch-receipts" / "batch.json"
+
+        with patch("aiwiki.app_execution.atomic_write_text", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                write_execution_dry_run_document(dry_run_path, {"kind": "execution-dry-run", "version": 1})
+            with self.assertRaises(OSError):
+                write_execution_batch_receipt_document(receipt_path, {"kind": "execution-batch-receipt", "version": 1})
+
+        self.assertFalse(dry_run_path.exists())
+        self.assertFalse(receipt_path.exists())
 
     def _prepare_ready_archive_candidate(self) -> dict[str, str]:
         archive_source = self.root / "archive-candidate.md"
@@ -242,6 +278,7 @@ class ExecutionTests(unittest.TestCase):
             proposal_id="compile-update",
             evidence_refs=["e1", "e2", "e3", "e4", "e5"],
         )
+        accept_l3_proposal(self.root, "compile-update", note="test human accept")
 
         with patch("aiwiki.execution.l3_proposals.append_execution_receipt_history", side_effect=RuntimeError("receipt failed")):
             with self.assertRaises(L3PostApplyAuditError):
@@ -260,6 +297,7 @@ class ExecutionTests(unittest.TestCase):
             proposal_id=proposal_id,
             evidence_refs=["e1", "e2", "e3", "e4", "e5"],
         )
+        accept_l3_proposal(self.root, proposal_id, note="test human accept")
         return target, after
 
     def test_apply_l3_proposal_reports_audit_failure_after_receipt_history_failure(self) -> None:

@@ -42,6 +42,8 @@
 | PROGRESS / plans 体量 | 287KB / 6013 行 | pre-Round 1 内容（M0-M9 / M-PS / M-UX / M6 / P0~P4）与当前世代失联；`.codex/plans/active.md` 含废弃 EP-001~021 | P2 |
 | Signal 闭环“执行驱动” | observe-only / execute-mode 都已落地；scheduler 可消费 deterministic primitives | **signal severity / budget_hint 实质参与 routing 决策的密度仍低**；典型 “生产 signal 但无下游 lane apply” 局面 | P3（待 P2 dogfood 后再判断是否值得动） |
 
+> **2026-05-26 校准**：D-3 金丹 Stage-3 compounding acceptance 已存在于 `tests/fixtures/acceptance/D3/case_elixir_stage3_compounding/`，覆盖 `alchemy-start → distill → finalize → promote → trace up`；上表中的 D-3 gap 是历史缺口。当前剩余重点转为 release proof 收紧、signal 默认 light-lane 闭环和文档口径收敛。
+
 > **AOS-004 proof gate update（2026-05-18）**：`scripts/dogfood_maturity_gate.py` 已新增 `knowledge_compounding_proof`，把复利证明拆成可复算指标与 trace/provenance-backed sample。首版 gate 保守：真实 dogfood vault 当前能复算出 `raw_to_wiki_count`、judgment/elixir reuse、`output_file_back_rate`、receipt-backed actions 与 human-required exceptions，但缺少能把 output reuse 精确回链到同一 artifact receipt 的 sample，因此输出 `not-yet` 而不是 pass。这是符合本文 critical path 的校准：机制存在不等于复利已被证明，后续应优先补 trace-backed dogfood sample/acceptance，而不是继续堆自治机制。
 
 > **AOS-004 closure update（2026-05-19/20 复核）**：上述 2026-05-18 `not-yet` 是首版 gate 的诚实中间态，已在 2026-05-19 P1 dogfood compounding proof 中补齐。实现通过 `ask_question()`/`run-ask` 保留 runtime-owned curated judgment refs 到 output frontmatter，并用成功 execution receipt 精确匹配同一 artifact；真实 dogfood sample 写入 `output/control/maturity-gate/snapshot-20260518T220253Z.json`，`knowledge_compounding_proof.status=pass`、`compounding_sample != null`。当前 clean dogfood vault 不再保留该 snapshot；历史 pass 以 git/`PROGRESS.md` 固化记录为准。

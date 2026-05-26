@@ -20,7 +20,7 @@ from aiwiki.app_state import (
     save_machine_memory_action_state,
 )
 from aiwiki.execution.archive import revert_material_archive
-from aiwiki.execution.l3_proposals import apply_l3_proposal, create_l3_proposal, revert_l3_proposal
+from aiwiki.execution.l3_proposals import accept_l3_proposal, apply_l3_proposal, create_l3_proposal, revert_l3_proposal
 from aiwiki.execution.machine_memory_actions import revert_machine_memory_action
 from aiwiki.execution.machine_memory_batch import _load_latest_action_apply_batch_receipt
 
@@ -82,6 +82,7 @@ class StrictReadMigrationTests(unittest.TestCase):
             target_file="prompts/ask.md",
             content="Updated ask prompt.\n",
         )
+        accept_l3_proposal(self.root, "prop-corrupt", note="test human accept")
         applied = apply_l3_proposal(self.root, "prop-corrupt")
         receipt_path = self.root / str(applied["receipt_path"])
         receipt_path.write_text("{bad", encoding="utf-8")

@@ -72,6 +72,12 @@ def run_l3_proposal_apply(root: Path, proposal_id: str, *, note: str | None = No
     return apply_l3_proposal(root, proposal_id, note=note)
 
 
+def run_l3_proposal_accept(root: Path, proposal_id: str, *, note: str | None = None) -> dict[str, Any]:
+    from aiwiki.execution.l3_proposals import accept_l3_proposal
+
+    return accept_l3_proposal(root, proposal_id, note=note)
+
+
 def run_l3_proposal_reject(root: Path, proposal_id: str, *, note: str | None = None) -> dict[str, Any]:
     from aiwiki.execution.l3_proposals import reject_l3_proposal
 

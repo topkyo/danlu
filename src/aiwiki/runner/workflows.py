@@ -1252,6 +1252,7 @@ def run_nightly(
         auto_adopt_l2 = autonomy_flags["auto_adopt_l2"]
         auto_adopt_l3 = autonomy_flags["auto_adopt_l3"]
         auto_adopt_judgments = autonomy_flags["auto_adopt_judgments"]
+        auto_apply_heavy_semantic = autonomy_flags.get("auto_apply_heavy_semantic", False)
         agent_loop = run_nightly_agent_loop(
             root,
             apply_light=auto_apply_light,
@@ -1260,7 +1261,20 @@ def run_nightly(
             auto_adopt_l3=auto_adopt_l3,
             auto_adopt_judgments=auto_adopt_judgments,
         )
+        from aiwiki.runner.signal_pipeline import run_signal_pipeline
+
+        signal_pipeline = run_signal_pipeline(
+            root,
+            apply_light=auto_apply_light,
+            apply_heavy_semantic=auto_apply_heavy_semantic,
+        )
         state = attach_agent_loop_to_nightly_state(root, state, agent_loop)
+        state["signal_pipeline"] = signal_pipeline
+        with runtime_write_lock(root):
+            atomic_write_text(
+                nightly_health_state_path(root),
+                json.dumps(state, indent=2, sort_keys=True) + "\n",
+            )
     except Exception as exc:
         failed_audit = _merge_llm_audits(
             _build_llm_audit(effective_client, model_selected=model_selected, contract_validated=False),
@@ -1305,6 +1319,8 @@ def run_nightly(
                 "agent_loop_auto_adopt_l2": auto_adopt_l2,
                 "agent_loop_auto_adopt_l3": auto_adopt_l3,
                 "agent_loop_auto_adopt_judgments": auto_adopt_judgments,
+                "signal_pipeline_auto_apply_heavy_semantic": auto_apply_heavy_semantic,
+                "signal_pipeline_status": str(state.get("signal_pipeline", {}).get("status") or ""),
                 "duration_ms": int((time.monotonic() - started) * 1000),
             },
             llm_audit,
@@ -1337,6 +1353,7 @@ def run_nightly(
         "promotions": promotion_result,
         "protocol_learnings_age": protocol_learnings_age,
         "agent_loop": state.get("agent_loop", {}),
+        "signal_pipeline": state.get("signal_pipeline", {}),
         "aging": state["aging"],
         "repair_backlog": state["repair_backlog"]["path"],
         "state_path": relative_path(root, root / ".aiwiki" / "state" / "nightly-health.json"),

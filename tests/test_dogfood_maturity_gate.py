@@ -80,6 +80,27 @@ def _make_run_receipt(
                 },
                 "missing_evidence": [],
             },
+            "elixir_quality_proof": {
+                "kind": "elixir-quality-proof-report",
+                "version": 1,
+                "status": "pass",
+                "verdict": "pass",
+                "reason": "fixture elixir quality proof observed",
+                "metrics": {
+                    "settled_elixir_count": {"value": 1},
+                    "elixir_output_reuse_count": {"value": 1},
+                    "elixir_reuse_metric_count": {"value": 0},
+                    "receipt_backed_actions": {"value": 1},
+                    "failed_elixir_receipt_count": {"value": 0},
+                    "elixir_revert_or_demotion_count": {"value": 0},
+                },
+                "compounding_sample": {
+                    "artifact_path": "output/reports/r1.md",
+                    "reused_ref": "wiki/elixirs/e1.md",
+                    "receipt_path": "output/control/execution-receipts/report-r1.json",
+                },
+                "missing_evidence": [],
+            },
             "l3_debt_report": {
                 "effective_preview_candidate_count": max(generated_count - already_exists_count, 0),
                 "dedupe_or_noise_ratio": 0.5 if already_exists_count else 0.0,
@@ -136,7 +157,7 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(after.root, str(self.root))
         self.assertEqual(days.days, 3)
 
-    def test_prepare_nightly_env_forces_all_auto_flags(self) -> None:
+    def test_prepare_nightly_env_forces_safe_auto_flags_only(self) -> None:
         prepared = prepare_nightly_env(
             self.root,
             compile_limit=0,
@@ -152,8 +173,10 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT"], "1")
         self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L1"], "1")
         self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L2"], "1")
-        self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L3"], "1")
+        self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L3"], "0")
         self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS"], "1")
+        self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC"], "0")
+        self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3"], "0")
         self.assertEqual(prepared["AIWIKI_NIGHTLY_COMPILE_LIMIT"], "0")
         self.assertEqual(prepared["AIWIKI_NIGHTLY_DETERMINISTIC_ONLY"], "0")
         self.assertEqual(prepared["AIWIKI_NIGHTLY_REQUIRE_LLM"], "1")
@@ -312,6 +335,7 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(snapshot["human_required_report"]["primary_exception_counts"], {})
         self.assertEqual(snapshot["human_required_report"]["auto_resolved_count"], 1)
         self.assertEqual(snapshot["human_required_report"]["auto_resolution_report"]["auto_resolution_receipt_count"], 1)
+        self.assertEqual(snapshot["elixir_quality_proof"]["status"], "not-yet")
 
     def test_collect_metrics_explains_output_receipt_coverage_gaps_and_exemptions(self) -> None:
         runs_dir = self.root / "output" / "control" / "runs"
@@ -598,6 +622,7 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(proof["compounding_sample"]["reused_ref"], "wiki/judgments/j1.md")
         self.assertEqual(proof["compounding_sample"]["receipt_path"], "output/control/execution-receipts/report-r1.json")
         self.assertEqual(proof["elixir_compounding_proof"]["status"], "not-yet")
+        self.assertEqual(snapshot["elixir_quality_proof"]["status"], "not-yet")
         self.assertIn(
             "trace_provenance_backed_elixir_compounding_sample",
             proof["elixir_compounding_proof"]["missing_evidence"],
@@ -629,6 +654,13 @@ class DogfoodMaturityGateTests(unittest.TestCase):
             self.root / ".aiwiki" / "state" / "execution-receipts.jsonl",
             [
                 {
+                    "subject_kind": "elixir_demotion",
+                    "subject_id": "e-old",
+                    "operation": "demote",
+                    "target_file": "wiki/elixirs/e-old.md",
+                    "applied_at": "2026-05-17T00:00:00Z",
+                },
+                {
                     "subject_kind": "report",
                     "subject_id": "r1",
                     "operation": "file-back",
@@ -639,16 +671,69 @@ class DogfoodMaturityGateTests(unittest.TestCase):
             ],
         )
 
-        proof = collect_metrics(self.root, preview_limit=5)["knowledge_compounding_proof"]
+        snapshot = collect_metrics(self.root, preview_limit=5)
+        proof = snapshot["knowledge_compounding_proof"]
         elixir_proof = proof["elixir_compounding_proof"]
+        quality_proof = snapshot["elixir_quality_proof"]
 
         self.assertEqual(proof["status"], "pass")
         self.assertEqual(elixir_proof["status"], "pass")
+        self.assertEqual(quality_proof["status"], "pass")
         self.assertEqual(elixir_proof["metrics"]["settled_elixir_count"]["value"], 1)
         self.assertEqual(elixir_proof["metrics"]["elixir_output_reuse_count"]["value"], 1)
+        self.assertEqual(quality_proof["metrics"]["failed_elixir_receipt_count"]["value"], 0)
+        self.assertEqual(quality_proof["metrics"]["elixir_revert_or_demotion_count"]["value"], 0)
+        self.assertEqual(quality_proof["metrics"]["elixir_receipt_count"]["value"], 1)
+        self.assertEqual(quality_proof["metrics"]["recent_elixir_receipt_count"]["value"], 0)
         self.assertEqual(elixir_proof["compounding_sample"]["artifact_path"], "output/reports/r1.md")
         self.assertEqual(elixir_proof["compounding_sample"]["reused_ref"], "wiki/elixirs/e1.md")
+        self.assertEqual(quality_proof["compounding_sample"]["reused_ref"], "wiki/elixirs/e1.md")
         self.assertEqual(elixir_proof["missing_evidence"], [])
+        self.assertEqual(quality_proof["missing_evidence"], [])
+
+    def test_elixir_quality_flags_revert_after_compounding_sample(self) -> None:
+        ask_path = self.root / "prompts" / "ask.md"
+        ask_path.parent.mkdir(parents=True, exist_ok=True)
+        ask_path.write_text("# Ask\n", encoding="utf-8")
+        _write_json(
+            self.root / ".aiwiki" / "state" / "manifest.json",
+            {"version": 1, "entries": [{"id": "src-1", "stored_path": "raw/src-1.md"}]},
+        )
+        (self.root / "wiki" / "sources").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "sources" / "src-1.md").write_text("# Source\n", encoding="utf-8")
+        (self.root / "wiki" / "elixirs").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "elixirs" / "e1.md").write_text("# Elixir\n", encoding="utf-8")
+        output_path = self.root / "output" / "reports" / "r1.md"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            "---\nderived_from:\n  - wiki/elixirs/e1.md\ngenerated_at: 2026-05-18T00:00:00Z\n---\n# Report\n",
+            encoding="utf-8",
+        )
+        _write_jsonl(
+            self.root / ".aiwiki" / "state" / "execution-receipts.jsonl",
+            [
+                {
+                    "subject_kind": "report",
+                    "subject_id": "r1",
+                    "operation": "file-back",
+                    "target_file": "output/reports/r1.md",
+                    "receipt_path": "output/control/execution-receipts/report-r1.json",
+                    "applied_at": "2026-05-18T00:00:01Z",
+                },
+                {
+                    "subject_kind": "elixir_revert",
+                    "subject_id": "e1",
+                    "operation": "revert",
+                    "target_file": "wiki/elixirs/e1.md",
+                    "applied_at": "2026-05-18T00:00:02Z",
+                },
+            ],
+        )
+
+        quality_proof = collect_metrics(self.root, preview_limit=5)["elixir_quality_proof"]
+
+        self.assertEqual(quality_proof["status"], "not-yet")
+        self.assertIn("elixir_revert_or_demotion_receipts", quality_proof["missing_evidence"])
 
     def test_collect_metrics_reports_not_yet_without_traceable_compounding_sample(self) -> None:
         ask_path = self.root / "prompts" / "ask.md"
@@ -1321,6 +1406,94 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(summary["knowledge_compounding_status"], "pass")
         self.assertEqual(summary["knowledge_compounding_missing_evidence"], [])
         self.assertEqual(summary["knowledge_compounding_sample"]["artifact_path"], "output/reports/r1.md")
+        self.assertEqual(summary["elixir_quality_status"], "pass")
+        self.assertEqual(summary["elixir_quality_missing_evidence"], [])
+
+    def test_summarize_run_receipts_does_not_pass_without_elixir_quality_proof(self) -> None:
+        receipt = _make_run_receipt(
+            generated_at="2026-05-13T00:00:00Z",
+            status="pass",
+            before_backlog=3,
+            after_backlog=2,
+            before_candidate=1,
+            after_candidate=0,
+            before_judgment_receipts=0,
+            after_judgment_receipts=1,
+            already_exists_count=1,
+        )
+        del receipt["after"]["elixir_quality_proof"]
+
+        summary = summarize_run_receipts([receipt], recent=1)
+
+        self.assertEqual(summary["status"], "warn")
+        self.assertEqual(summary["elixir_quality_status"], "not-yet")
+        self.assertIn("elixir_quality_proof", summary["elixir_quality_missing_evidence"])
+
+    def test_summarize_strict_requires_current_day(self) -> None:
+        receipt = _make_run_receipt(
+            generated_at="2026-05-13T00:00:00Z",
+            status="pass",
+            before_backlog=3,
+            after_backlog=2,
+            before_candidate=1,
+            after_candidate=0,
+            before_judgment_receipts=0,
+            after_judgment_receipts=1,
+            already_exists_count=1,
+        )
+        self._write_receipts([receipt])
+
+        non_strict = summarize_recent_run_receipts(self.root, recent=1, expected_latest_day="2026-05-14")
+        strict = summarize_recent_run_receipts(
+            self.root,
+            recent=1,
+            require_current_day=True,
+            expected_latest_day="2026-05-14",
+        )
+
+        self.assertEqual(non_strict["status"], "pass")
+        self.assertEqual(strict["status"], "fail")
+        self.assertEqual(strict["freshness_status"], "stale")
+        self.assertEqual(strict["strict_failures"], ["latest_receipt_not_current_day"])
+
+    def test_summarize_strict_fails_when_newer_snapshot_fails_budget(self) -> None:
+        receipt = _make_run_receipt(
+            generated_at="2026-05-13T00:00:00Z",
+            status="pass",
+            before_backlog=3,
+            after_backlog=2,
+            before_candidate=1,
+            after_candidate=0,
+            before_judgment_receipts=0,
+            after_judgment_receipts=1,
+            already_exists_count=1,
+        )
+        self._write_receipts([receipt])
+        snapshot = dict(receipt["after"])
+        snapshot["judgment_lane_report"] = {
+            "failure_rate": 0.0,
+            "exception_rate": 0.0,
+            "exception_queue": [],
+        }
+        snapshot["human_required_report"] = {
+            "human_required_count": 0,
+            "routine_primary_debt_count": 1,
+            "exception_count": 0,
+            "auto_resolved_count": 0,
+        }
+        _write_json(maturity_gate_dir(self.root) / "snapshot-20260513T000001Z.json", snapshot)
+
+        summary = summarize_recent_run_receipts(
+            self.root,
+            recent=1,
+            require_current_day=True,
+            expected_latest_day="2026-05-13",
+        )
+
+        self.assertEqual(summary["status"], "fail")
+        self.assertTrue(summary["snapshot_consistency"]["snapshot_newer_than_latest_run"])
+        self.assertEqual(summary["snapshot_consistency"]["budget_violations"], ["routine_primary_debt"])
+        self.assertEqual(summary["strict_failures"], ["latest_snapshot_newer_than_run_failed_budget"])
 
     def test_summarize_fails_when_any_receipt_failed(self) -> None:
         self._write_receipts(

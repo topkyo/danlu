@@ -12,8 +12,10 @@ The policy file lives at ``.aiwiki/state/autonomy-policy.json``::
       "auto_apply_light": true,
       "auto_adopt_l1": true,
       "auto_adopt_l2": true,
-      "auto_adopt_l3": true,
+      "auto_adopt_l3": false,
       "auto_adopt_judgments": true,
+      "auto_apply_heavy_semantic": false,
+      "auto_adopt_core_l3": false,
       "max_l3_apply_per_run": 1,
       "judgment_review_limit": 5,
       "require_clean_before_hash": true,
@@ -68,8 +70,10 @@ class AutonomyPolicy:
     auto_apply_light: bool = True
     auto_adopt_l1: bool = True
     auto_adopt_l2: bool = True
-    auto_adopt_l3: bool = True
+    auto_adopt_l3: bool = False
     auto_adopt_judgments: bool = True
+    auto_apply_heavy_semantic: bool = False
+    auto_adopt_core_l3: bool = False
     max_l3_apply_per_run: int = 1
     judgment_review_limit: int = 5
     require_clean_before_hash: bool = True
@@ -108,8 +112,10 @@ def load_policy(root: Path) -> AutonomyPolicy:
         auto_apply_light=bool(raw.get("auto_apply_light", True)),
         auto_adopt_l1=bool(raw.get("auto_adopt_l1", True)),
         auto_adopt_l2=bool(raw.get("auto_adopt_l2", True)),
-        auto_adopt_l3=bool(raw.get("auto_adopt_l3", True)),
+        auto_adopt_l3=bool(raw.get("auto_adopt_l3", False)),
         auto_adopt_judgments=bool(raw.get("auto_adopt_judgments", True)),
+        auto_apply_heavy_semantic=bool(raw.get("auto_apply_heavy_semantic", False)),
+        auto_adopt_core_l3=bool(raw.get("auto_adopt_core_l3", False)),
         max_l3_apply_per_run=_positive_int(raw.get("max_l3_apply_per_run"), 1),
         judgment_review_limit=_positive_int(raw.get("judgment_review_limit"), 5),
         require_clean_before_hash=bool(raw.get("require_clean_before_hash", True)),
@@ -124,6 +130,8 @@ def _disabled_policy(reason: str) -> AutonomyPolicy:
         auto_adopt_l2=False,
         auto_adopt_l3=False,
         auto_adopt_judgments=False,
+        auto_apply_heavy_semantic=False,
+        auto_adopt_core_l3=False,
         disable_lane_apply=True,
         disable_alchemy_auto=True,
         disable_l3_generate=True,
@@ -222,6 +230,8 @@ def _policy_payload(policy: AutonomyPolicy) -> dict[str, object]:
         "auto_adopt_l2": bool(policy.auto_adopt_l2),
         "auto_adopt_l3": bool(policy.auto_adopt_l3),
         "auto_adopt_judgments": bool(policy.auto_adopt_judgments),
+        "auto_apply_heavy_semantic": bool(policy.auto_apply_heavy_semantic),
+        "auto_adopt_core_l3": bool(policy.auto_adopt_core_l3),
         "max_l3_apply_per_run": int(policy.max_l3_apply_per_run),
         "judgment_review_limit": int(policy.judgment_review_limit),
         "require_clean_before_hash": bool(policy.require_clean_before_hash),
@@ -252,6 +262,8 @@ def nightly_autonomy_flags(root: Path, *, env: Mapping[str, str] | None = None) 
         "auto_adopt_l2": bool(policy.auto_adopt_l2),
         "auto_adopt_l3": bool(policy.auto_adopt_l3),
         "auto_adopt_judgments": bool(policy.auto_adopt_judgments),
+        "auto_apply_heavy_semantic": bool(policy.auto_apply_heavy_semantic),
+        "auto_adopt_core_l3": bool(policy.auto_adopt_core_l3),
     }
     env_names = {
         "auto_apply_light": "AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT",
@@ -259,6 +271,8 @@ def nightly_autonomy_flags(root: Path, *, env: Mapping[str, str] | None = None) 
         "auto_adopt_l2": "AIWIKI_NIGHTLY_AUTO_ADOPT_L2",
         "auto_adopt_l3": "AIWIKI_NIGHTLY_AUTO_ADOPT_L3",
         "auto_adopt_judgments": "AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS",
+        "auto_apply_heavy_semantic": "AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC",
+        "auto_adopt_core_l3": "AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3",
     }
     effective: dict[str, bool] = {}
     for key, env_name in env_names.items():
@@ -266,16 +280,21 @@ def nightly_autonomy_flags(root: Path, *, env: Mapping[str, str] | None = None) 
         effective[key] = defaults[key] if override is None else override
     if globally_disabled or policy.disable_lane_apply:
         effective["auto_apply_light"] = False
+        effective["auto_apply_heavy_semantic"] = False
     if globally_disabled or policy.disable_alchemy_auto:
         effective["auto_apply_light"] = False
         effective["auto_adopt_l1"] = False
         effective["auto_adopt_l2"] = False
         effective["auto_adopt_l3"] = False
         effective["auto_adopt_judgments"] = False
+        effective["auto_apply_heavy_semantic"] = False
+        effective["auto_adopt_core_l3"] = False
     if globally_disabled or policy.disable_l3_generate:
         effective["auto_adopt_l3"] = False
+        effective["auto_adopt_core_l3"] = False
     if globally_disabled or policy.disable_external_llm:
         effective["auto_adopt_judgments"] = False
+        effective["auto_apply_heavy_semantic"] = False
     return effective
 
 

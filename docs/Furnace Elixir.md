@@ -13,6 +13,8 @@ related_docs:
 
 > **文档状态（2026-05-20）**：本文件保留金丹终局 thesis 与历史设计动机；**当前 runtime 行为以** [Furnace Agent Architecture.md](./Furnace%20Agent%20Architecture.md) **与** [Furnace Evolution Mechanics.md](./Furnace%20Evolution%20Mechanics.md) **为准**。CLI 已实现 `alchemy-start/distill/finalize/promote` 最小链路，不等同于本文全部愿景已落地。
 
+> **当前实现校准（2026-05-26）**：金丹最小主链路已经实现并有 acceptance 覆盖：`output/_candidates/elixirs/` 候选平面、`wiki/elixirs/` settled 平面、DAG/provenance gate、promote/revert/demote receipt，以及 Stage-3 “新丹引用旧丹 + wiki/derived anchor + trace up” 复利验证。本文剩余愿景主要指 LLM-backed semantic distillation、更高自治的金丹演化和长期自然运行 proof，不应再把基础金丹机制理解为纯计划态。
+
 ## 背景与设计动机 (Why)
 
 在“炼丹炉”的日常运转中，复杂的知识构建（如推演一个 VLA 机器人架构、沉淀一套长期的投资逻辑）往往无法通过单轮 `ask` 或单篇 `raw` 文档完成。用户需要在一个主题下进行多轮提问、补充资料（Vault/URL/PDF），并与 LLM 共同反复迭代。

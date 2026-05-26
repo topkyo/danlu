@@ -204,12 +204,16 @@ def l3_proposal_control_object(proposal: dict[str, Any]) -> dict[str, Any]:
     target_file = str(proposal.get("target_file") or "")
     proposal_path = str(proposal.get("proposal_path") or "")
     last_receipt_path = str(proposal.get("last_receipt_path") or "")
+    patch = proposal.get("patch")
+    patch_kind = str(patch.get("kind") if isinstance(patch, dict) else "full_replace")
+    review_state = str(proposal.get("review_state") or "pending_human")
     can_reject = state == "candidate"
-    can_apply = state == "candidate"
+    can_apply = state == "candidate" and (patch_kind == "metadata_only" or review_state == "human_accepted")
     can_revert = state == "accepted" and bool(last_receipt_path)
     needs_attention = state in {"candidate", "stale", "revert_conflict"}
     command_hints: dict[str, str] = {}
     if can_reject:
+        command_hints["accept"] = f"PYTHONPATH=src python3 -m aiwiki.cli --root . review proposal {proposal_id} --status accepted"
         command_hints["reject"] = f"PYTHONPATH=src python3 -m aiwiki.cli --root . review proposal {proposal_id} --status rejected"
     if can_apply:
         command_hints["apply"] = f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply {proposal_id}"

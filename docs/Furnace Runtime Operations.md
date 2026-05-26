@@ -121,10 +121,12 @@ else:
 - `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` —— **L0 维护层自动 apply**；agent_loop preview 完成后立即执行 receipted light primitives（compile/lint/nightly），写 receipt + audit
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1` —— **L1 语义层自动采纳**：concept backlog → active、revisit → deferred、source-concept link 自动 accept + apply
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1` —— **L2 结构层自动采纳**：overloaded-concept split 自动 accept + apply
-- `AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` —— **L3 策略层自动采纳**：candidate prompt/policy/schema proposal 自动 accept + apply，写 receipt 保留回滚
+- `AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` —— **L3 策略层自动采纳**：默认关闭；开启后只自动登记 `metadata_only` candidate，核心 prompt/policy/schema 写回仍必须显式 human accept + 手动 `apply` + hash gate
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1` —— **判断层自动复核**：LLM-powered counter-evidence review，读取反证来源页生成 upheld/weakened/refuted 结论
+- `AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC=1` —— **heavy semantic phase 自动 apply**：默认关闭；开启后 signal pipeline 才会执行 heavy `review/distill/propose` 的 receipt-backed apply
+- `AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3=1` —— **核心 L3 写回授权**：默认关闭；当前仍不允许无人值守改核心 prompt/policy/schema，仅作为未来显式 contract flag
 
-这些 env 是显式覆盖层；缺省值来自 `.aiwiki/state/autonomy-policy.json`，文件缺失时按 strong profile 启用五层自治。`AIWIKI_DISABLE_AUTOMATION=1` 是全局 kill switch；policy 损坏时 fail-closed。预算字段 `max_l3_apply_per_run` 与 `judgment_review_limit` 分别限制单次 nightly 的 L3 apply 数和 judgment review 数。
+这些 env 是显式覆盖层；缺省值来自 `.aiwiki/state/autonomy-policy.json`，文件缺失时按 strong profile 启用维护、治理和 judgment review，但 L3 核心写回与 heavy semantic apply 默认关闭。`AIWIKI_DISABLE_AUTOMATION=1` 是全局 kill switch；policy 损坏时 fail-closed。预算字段 `max_l3_apply_per_run` 与 `judgment_review_limit` 分别限制单次 nightly 的 L3 apply 数和 judgment review 数。
 - `AIWIKI_NIGHTLY_COMPILE_LIMIT=5` —— LLM enrichment 单批上限
 - `AIWIKI_NIGHTLY_NO_SEMANTIC_LINT=0` —— 是否跑 semantic lint
 - `AIWIKI_NIGHTLY_FALLBACK_ENABLED=0` —— nightly wrapper 的 operator-approved fallback 开关；默认关闭，避免隐式跨 backend routing

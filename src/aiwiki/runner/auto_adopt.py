@@ -771,10 +771,10 @@ def _write_review_entry(
 
 @runtime_write_operation
 def auto_adopt_l3(root: Path, *, limit: int | None = None) -> dict[str, Any]:
-    """Auto-adopt L3 proposals (candidate → accepted + applied).
+    """Auto-adopt eligible L3 proposals (candidate → accepted + applied).
 
-    L3 proposals are prompt/policy/schema changes. With ``AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1``,
-    they are auto-accepted and applied during nightly, with receipts for audit/revert.
+    Meaning-changing core prompt/policy changes remain manual-apply only. The
+    automatic path only applies metadata-only bookkeeping proposals.
     """
     try:
         parsed_limit = int(limit) if limit is not None else 0
@@ -827,6 +827,30 @@ def auto_adopt_l3(root: Path, *, limit: int | None = None) -> dict[str, Any]:
                     )
                 except Exception as exc:
                     print(f"warning: failed to write l3 low-evidence skip audit: {exc}")
+                continue
+            patch = proposal.get("patch") if isinstance(proposal.get("patch"), dict) else {}
+            patch_kind = str(patch.get("kind") or "full_replace")
+            review_state = str(proposal.get("review_state") or "pending_human")
+            if patch_kind != "metadata_only":
+                results["items"].append({
+                    "proposal_id": proposal_id,
+                    "status": "skipped_core_l3_requires_manual_apply",
+                    "patch_kind": patch_kind,
+                    "review_state": review_state,
+                })
+                try:
+                    append_runtime_history(
+                        root,
+                        {
+                            "event_type": "l3-proposal-skipped-core-l3-manual-apply",
+                            "occurred_at": utc_now(),
+                            "proposal_id": proposal_id,
+                            "patch_kind": patch_kind,
+                            "review_state": review_state,
+                        },
+                    )
+                except Exception as exc:
+                    print(f"warning: failed to write l3 human-accept skip audit: {exc}")
                 continue
             candidates.append(proposal_id)
         results["candidates_count"] = len(candidates)

@@ -31,6 +31,7 @@ from .app_utils import (
 from .app_utils import (
     _durable_truncate,
     atomic_append_jsonl,
+    atomic_write_text,
     relative_path,
     runtime_write_operation,
     sha256_bytes,
@@ -145,12 +146,12 @@ def load_execution_bundle(path: Path) -> ExecutionBundle:
 
 def write_execution_bundle_document(path: Path, bundle: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(bundle, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(path, json.dumps(bundle, ensure_ascii=False, indent=2, sort_keys=True) + "\n", fsync=True)
 
 
 def write_execution_dry_run_document(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", fsync=True)
 
 
 def build_execution_batch_receipt(
@@ -195,7 +196,7 @@ def build_execution_batch_receipt(
 
 def write_execution_batch_receipt_document(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", fsync=True)
 
 
 def build_execution_receipt(

@@ -180,6 +180,7 @@ def _run_l3_proposal_apply_revert(  # pragma: no cover - exercised by explicit p
     import utc_now`).
     """
     from aiwiki.execution.l3_proposals import (
+        accept_l3_proposal,
         apply_l3_proposal,
         create_l3_proposal,
         revert_l3_proposal,
@@ -194,6 +195,7 @@ def _run_l3_proposal_apply_revert(  # pragma: no cover - exercised by explicit p
         rationale="acceptance fixture",
         pattern="manual_fixture",
     )
+    accept_l3_proposal(vault, proposal_id, note="acceptance human accept")
     apply_result = apply_l3_proposal(vault, proposal_id, note="acceptance apply")
     # apply_result["receipt_path"] is relative; revert resolves by stem/path/action_id.
     action_id = apply_result.get("action_id") or apply_result.get("receipt_path", "")

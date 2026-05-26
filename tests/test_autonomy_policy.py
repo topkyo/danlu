@@ -24,7 +24,9 @@ class AutonomyPolicyTests(unittest.TestCase):
             self.assertEqual(policy, AutonomyPolicy())
             self.assertFalse(policy.disable_external_llm)
             self.assertEqual(policy.autonomy_profile, "strong")
-            self.assertTrue(policy.auto_adopt_l3)
+            self.assertFalse(policy.auto_adopt_l3)
+            self.assertFalse(policy.auto_apply_heavy_semantic)
+            self.assertFalse(policy.auto_adopt_core_l3)
 
     def test_nightly_autonomy_defaults_to_strong_profile(self) -> None:
         with TemporaryDirectory() as tempdir:
@@ -36,8 +38,10 @@ class AutonomyPolicyTests(unittest.TestCase):
                 "auto_apply_light": True,
                 "auto_adopt_l1": True,
                 "auto_adopt_l2": True,
-                "auto_adopt_l3": True,
+                "auto_adopt_l3": False,
                 "auto_adopt_judgments": True,
+                "auto_apply_heavy_semantic": False,
+                "auto_adopt_core_l3": False,
             },
         )
 

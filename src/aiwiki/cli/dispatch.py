@@ -77,6 +77,7 @@ from ..runner.commands import (
     run_audit_backfill,
     run_audit_preview,
     run_demote,
+    run_l3_proposal_accept,
     run_l3_proposal_apply,
     run_l3_proposal_create,
     run_l3_proposal_generate,
@@ -159,7 +160,7 @@ from .universal_input import (
     _top_level_drop_index,
 )
 
-L3_PROPOSAL_REVIEW_STATUSES = ("rejected",)
+L3_PROPOSAL_REVIEW_STATUSES = ("accepted", "rejected")
 
 
 def _resolve_vault_root(args: argparse.Namespace) -> Path:
@@ -461,7 +462,10 @@ def _handle_l3(args: argparse.Namespace, root: Path) -> tuple[object, str | None
         elif args.review_command == "proposal":
             if args.status not in L3_PROPOSAL_REVIEW_STATUSES:
                 raise ValueError(f"Unsupported L3 proposal review status: {args.status!r}; expected one of: {L3_PROPOSAL_REVIEW_STATUSES}")
-            result = run_l3_proposal_reject(root, args.proposal_id, note=args.note)
+            if args.status == "accepted":
+                result = run_l3_proposal_accept(root, args.proposal_id, note=args.note)
+            else:
+                result = run_l3_proposal_reject(root, args.proposal_id, note=args.note)
         else:
             raise ValueError(f"Unsupported review command: {args.review_command}")
     elif args.handler_command == "apply":

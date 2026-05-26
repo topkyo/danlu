@@ -81,6 +81,13 @@ def _write_json(path: Path, payload: dict[str, Any]) -> Path:
     return path
 
 
+def _slug_from_gate_path(path: Path, *, prefix: str) -> str:
+    name = path.name
+    if not name.startswith(prefix) or not name.endswith(".json"):
+        return ""
+    return name[len(prefix) : -len(".json")]
+
+
 def _sha256_path(path: Path) -> str:
     if not path.is_file():
         return ""
@@ -460,6 +467,15 @@ def _build_knowledge_compounding_proof(root: Path, *, human_required_report: dic
     if elixir_sample is None:
         elixir_missing.append("trace_provenance_backed_elixir_compounding_sample")
     elixir_status = "pass" if not elixir_missing else "not-yet"
+    elixir_quality_proof = _build_elixir_quality_proof(
+        root,
+        elixir_compounding_status=elixir_status,
+        settled_elixir_count=settled_elixir_count,
+        elixir_output_reuse_count=elixir_output_reuse_count,
+        elixir_reuse_metric_count=elixir_reuse_count,
+        receipt_backed_actions=len(receipt_records),
+        compounding_sample=elixir_sample,
+    )
 
     status = "pass" if not missing else "not-yet"
     return {
@@ -525,6 +541,7 @@ def _build_knowledge_compounding_proof(root: Path, *, human_required_report: dic
             "compounding_sample": elixir_sample,
             "missing_evidence": elixir_missing,
         },
+        "elixir_quality_proof": elixir_quality_proof,
         "missing_evidence": missing,
         "mechanism_evidence": {
             "manifest_entries": len(entries),
@@ -532,6 +549,93 @@ def _build_knowledge_compounding_proof(root: Path, *, human_required_report: dic
             "metrics_snapshot_receipts": len(metrics_snapshot.receipts),
             "execution_receipt_history_path": str(execution_receipt_history_path(root).relative_to(root)),
         },
+    }
+
+
+def _build_elixir_quality_proof(
+    root: Path,
+    *,
+    elixir_compounding_status: str,
+    settled_elixir_count: int,
+    elixir_output_reuse_count: int,
+    elixir_reuse_metric_count: int,
+    receipt_backed_actions: int,
+    compounding_sample: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Report whether settled elixirs are compounding without recent instability."""
+
+    from aiwiki.app_state import execution_receipt_history_path, load_jsonl_documents
+
+    elixir_subject_kinds = {
+        "alchemy_elixir_candidate",
+        "elixir",
+        "elixir_demotion",
+        "elixir_legacy_migration",
+        "elixir_promotion",
+        "elixir_revert",
+        "elixir_superseded_cleanup",
+    }
+    failure_statuses = {"blocked", "error", "failed"}
+    instability_subject_kinds = {"elixir_demotion", "elixir_revert"}
+    records = [
+        item
+        for item in load_jsonl_documents(execution_receipt_history_path(root))
+        if isinstance(item, dict) and str(item.get("subject_kind") or "") in elixir_subject_kinds
+    ]
+    sample_time = str((compounding_sample or {}).get("receipt_time") or "")
+
+    def at_or_after_sample(record: dict[str, Any]) -> bool:
+        if not sample_time:
+            return True
+        record_time = str(record.get("applied_at") or record.get("occurred_at") or record.get("generated_at") or "")
+        return bool(record_time and record_time >= sample_time)
+
+    recent_records = [item for item in records if at_or_after_sample(item)]
+    failed_records = [
+        item
+        for item in recent_records
+        if str(item.get("status") or "").strip().lower() in failure_statuses
+        or str(item.get("operation") or "").strip().lower() in failure_statuses
+    ]
+    instability_records = [
+        item for item in recent_records if str(item.get("subject_kind") or "") in instability_subject_kinds
+    ]
+    missing: list[str] = []
+    if elixir_compounding_status != "pass":
+        missing.append("elixir_compounding_proof")
+    if settled_elixir_count <= 0:
+        missing.append("settled_elixir_count")
+    if elixir_output_reuse_count + elixir_reuse_metric_count <= 0:
+        missing.append("elixir_reuse_count")
+    if receipt_backed_actions <= 0:
+        missing.append("receipt_backed_actions")
+    if compounding_sample is None:
+        missing.append("trace_provenance_backed_elixir_compounding_sample")
+    if failed_records:
+        missing.append("failed_elixir_receipts")
+    if instability_records:
+        missing.append("elixir_revert_or_demotion_receipts")
+    status = "pass" if not missing else "not-yet"
+    return {
+        "kind": "elixir-quality-proof-report",
+        "version": 1,
+        "status": status,
+        "verdict": status,
+        "reason": "settled elixir reuse is receipt-backed and no revert/demotion/failure receipt is present"
+        if status == "pass"
+        else "insufficient stable receipt-backed elixir reuse evidence",
+        "metrics": {
+            "settled_elixir_count": {"value": settled_elixir_count, "source": "wiki/elixirs/*.md"},
+            "elixir_output_reuse_count": {"value": elixir_output_reuse_count, "source": "output frontmatter derived_from/source_files"},
+            "elixir_reuse_metric_count": {"value": elixir_reuse_metric_count, "source": "aiwiki metrics elixir_reuse_count"},
+            "receipt_backed_actions": {"value": receipt_backed_actions, "source": "compounding receipt records"},
+            "elixir_receipt_count": {"value": len(records), "source": ".aiwiki/state/execution-receipts.jsonl"},
+            "recent_elixir_receipt_count": {"value": len(recent_records), "source": "receipts at or after compounding sample receipt_time"},
+            "failed_elixir_receipt_count": {"value": len(failed_records), "source": ".aiwiki/state/execution-receipts.jsonl"},
+            "elixir_revert_or_demotion_count": {"value": len(instability_records), "source": ".aiwiki/state/execution-receipts.jsonl"},
+        },
+        "compounding_sample": compounding_sample,
+        "missing_evidence": missing,
     }
 
 
@@ -635,6 +739,7 @@ def _knowledge_compounding_receipt_records(root: Path) -> list[dict[str, str]]:
                 "status": str(payload.get("status") or ""),
                 "subject_kind": str(payload.get("subject_kind") or ""),
                 "target": str(payload.get("target_file") or payload.get("target_subject_id") or payload.get("primary_path") or ""),
+                "applied_at": str(payload.get("applied_at") or payload.get("occurred_at") or payload.get("generated_at") or ""),
             }
         )
 
@@ -654,6 +759,7 @@ def _knowledge_compounding_receipt_records(root: Path) -> list[dict[str, str]]:
                 "status": str(payload.get("status") or ""),
                 "subject_kind": str(payload.get("subject_kind") or ""),
                 "target": str(payload.get("target_file") or payload.get("target_subject_id") or payload.get("primary_path") or ""),
+                "applied_at": str(payload.get("applied_at") or payload.get("occurred_at") or payload.get("generated_at") or ""),
             }
         )
     return records
@@ -878,6 +984,7 @@ def _select_compounding_sample(
             "receipt_path": str((matched_receipt or {}).get("receipt_path") or ""),
             "receipt_subject_kind": str((matched_receipt or {}).get("subject_kind") or ""),
             "receipt_operation": str((matched_receipt or {}).get("operation") or ""),
+            "receipt_time": str((matched_receipt or {}).get("applied_at") or (matched_receipt or {}).get("occurred_at") or ""),
             "provenance": "output frontmatter derived_from/source_files + receipt path",
         }
     return None
@@ -1082,6 +1189,7 @@ def collect_metrics(root: Path, *, preview_limit: int = 20) -> dict[str, Any]:
         "backlog_total": _sum_int_values(review_backlog_counts),
         "human_required_report": human_required_report,
         "knowledge_compounding_proof": knowledge_compounding_proof,
+        "elixir_quality_proof": knowledge_compounding_proof.get("elixir_quality_proof", {}),
         "legacy_empty_status_receipts": legacy_empty_status_receipts,
         "receipt_coverage": _build_receipt_coverage_report(
             root,
@@ -1124,8 +1232,10 @@ def prepare_nightly_env(
     prepared["AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT"] = "1"
     prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L1"] = "1"
     prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L2"] = "1"
-    prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L3"] = "1"
+    prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L3"] = "0"
     prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS"] = "1"
+    prepared["AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC"] = "0"
+    prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3"] = "0"
     prepared["AIWIKI_NIGHTLY_DETERMINISTIC_ONLY"] = "1" if deterministic_only else "0"
     prepared["AIWIKI_NIGHTLY_REQUIRE_LLM"] = "0" if deterministic_only else "1"
     if no_semantic_lint:
@@ -1327,6 +1437,106 @@ def load_run_receipts(root: Path, *, limit: int = 3, by_days: bool = False) -> l
     return receipts
 
 
+def _latest_snapshot_payload(root: Path) -> dict[str, Any]:
+    latest_path: Path | None = None
+    latest_slug = ""
+    for path in maturity_gate_dir(root).glob("snapshot-*.json"):
+        slug = _slug_from_gate_path(path, prefix="snapshot-")
+        if not slug:
+            continue
+        if latest_path is None or slug > latest_slug:
+            latest_path = path
+            latest_slug = slug
+    if latest_path is None:
+        return {"exists": False}
+    try:
+        payload = json.loads(latest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            "exists": True,
+            "path": str(latest_path.relative_to(root)),
+            "slug": latest_slug,
+            "status": "invalid",
+            "error_class": exc.__class__.__name__,
+            "error_message": str(exc),
+        }
+    if not isinstance(payload, dict):
+        return {
+            "exists": True,
+            "path": str(latest_path.relative_to(root)),
+            "slug": latest_slug,
+            "status": "invalid",
+            "error_class": "InvalidSnapshot",
+            "error_message": "snapshot payload is not an object",
+        }
+    return {
+        "exists": True,
+        "path": str(latest_path.relative_to(root)),
+        "slug": latest_slug,
+        "status": "ok",
+        "payload": payload,
+    }
+
+
+def _snapshot_release_violations(snapshot: dict[str, Any]) -> list[str]:
+    violations: list[str] = []
+    compounding = snapshot.get("knowledge_compounding_proof")
+    if not isinstance(compounding, dict) or str(compounding.get("status") or "") != "pass":
+        violations.append("knowledge_compounding_proof")
+    l3_debt = snapshot.get("l3_debt_report")
+    if isinstance(l3_debt, dict) and _coerce_int(l3_debt.get("effective_preview_candidate_count")) > 0:
+        violations.append("effective_l3_candidates")
+    human_required = snapshot.get("human_required_report")
+    if isinstance(human_required, dict):
+        if _coerce_int(human_required.get("routine_primary_debt_count")) > 0:
+            violations.append("routine_primary_debt")
+        if _coerce_int(human_required.get("exception_count")) > 0:
+            violations.append("human_required_exceptions")
+    judgment_lane = snapshot.get("judgment_lane_report")
+    if isinstance(judgment_lane, dict):
+        if float(judgment_lane.get("failure_rate") or 0.0) > 0.0:
+            violations.append("judgment_failure_rate")
+        if float(judgment_lane.get("exception_rate") or 0.0) > 0.2:
+            violations.append("judgment_exception_rate")
+    return sorted(set(violations))
+
+
+def _snapshot_consistency_report(root: Path, latest_run_receipt: dict[str, Any]) -> dict[str, Any]:
+    latest_snapshot = _latest_snapshot_payload(root)
+    latest_run_path = str(latest_run_receipt.get("receipt_path") or "")
+    latest_run_slug = _slug_from_gate_path(Path(latest_run_path), prefix="run-") if latest_run_path else ""
+    report: dict[str, Any] = {
+        "status": "not-yet",
+        "latest_run_path": latest_run_path,
+        "latest_run_slug": latest_run_slug,
+        "latest_snapshot_path": str(latest_snapshot.get("path") or ""),
+        "latest_snapshot_slug": str(latest_snapshot.get("slug") or ""),
+        "snapshot_newer_than_latest_run": False,
+        "budget_violations": [],
+    }
+    if not latest_snapshot.get("exists"):
+        report["reason"] = "no snapshot found"
+        return report
+    if latest_snapshot.get("status") != "ok":
+        report["status"] = "fail"
+        report["reason"] = "latest snapshot is invalid"
+        report["error_class"] = latest_snapshot.get("error_class", "")
+        report["error_message"] = latest_snapshot.get("error_message", "")
+        return report
+    snapshot_slug = str(latest_snapshot.get("slug") or "")
+    report["snapshot_newer_than_latest_run"] = bool(latest_run_slug and snapshot_slug > latest_run_slug)
+    payload = latest_snapshot.get("payload")
+    violations = _snapshot_release_violations(payload if isinstance(payload, dict) else {})
+    report["budget_violations"] = violations
+    report["status"] = "pass" if not violations else "fail"
+    report["reason"] = "latest snapshot release budget pass" if not violations else "latest snapshot release budget failed"
+    return report
+
+
+def _expected_utc_day() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
 def _nested_int(payload: dict[str, Any] | None, *keys: str) -> int:
     current: Any = payload
     for key in keys:
@@ -1382,7 +1592,14 @@ def _consecutive_days(days: list[str], *, expected_count: int) -> bool:
     return all((right - left) == timedelta(days=1) for left, right in zip(parsed, parsed[1:], strict=False))
 
 
-def summarize_run_receipts(receipts: list[dict[str, Any]], *, recent: int = 3) -> dict[str, Any]:
+def summarize_run_receipts(
+    receipts: list[dict[str, Any]],
+    *,
+    recent: int = 3,
+    root: Path | None = None,
+    require_current_day: bool = False,
+    expected_latest_day: str | None = None,
+) -> dict[str, Any]:
     status_counts: Counter[str] = Counter(str(item.get("status") or "unknown") for item in receipts)
     failed = [
         item
@@ -1405,6 +1622,24 @@ def summarize_run_receipts(receipts: list[dict[str, Any]], *, recent: int = 3) -
     consecutive_days = _consecutive_days(days, expected_count=recent) if len(receipts) >= recent else False
     first = receipts[0] if receipts else {}
     last = receipts[-1] if receipts else {}
+    latest_receipt_day = _receipt_day(last) if last else ""
+    resolved_expected_day = expected_latest_day or _expected_utc_day()
+    stale_days = 0
+    freshness_status = "not-yet"
+    if latest_receipt_day:
+        try:
+            stale_days = (
+                datetime.strptime(resolved_expected_day, "%Y-%m-%d").date()
+                - datetime.strptime(latest_receipt_day, "%Y-%m-%d").date()
+            ).days
+        except ValueError:
+            stale_days = 0
+        freshness_status = "pass" if stale_days <= 0 else "stale"
+    snapshot_consistency = _snapshot_consistency_report(root, last) if root is not None and last else {
+        "status": "not-checked",
+        "snapshot_newer_than_latest_run": False,
+        "budget_violations": [],
+    }
     backlog_total_delta = _nested_int(last.get("after"), "backlog_total") - _nested_int(
         first.get("before"), "backlog_total"
     )
@@ -1443,19 +1678,37 @@ def summarize_run_receipts(receipts: list[dict[str, Any]], *, recent: int = 3) -
             "compounding_sample": None,
             "missing_evidence": ["knowledge_compounding_proof"],
         }
+    latest_elixir_quality_proof = last.get("after", {}).get("elixir_quality_proof") if isinstance(last.get("after"), dict) else {}
+    if not isinstance(latest_elixir_quality_proof, dict):
+        latest_elixir_quality_proof = latest_compounding_proof.get("elixir_quality_proof") if isinstance(latest_compounding_proof.get("elixir_quality_proof"), dict) else {
+            "kind": "elixir-quality-proof-report",
+            "version": 1,
+            "status": "not-yet",
+            "verdict": "not-yet",
+            "reason": "latest run receipt has no elixir quality proof report",
+            "metrics": {},
+            "compounding_sample": None,
+            "missing_evidence": ["elixir_quality_proof"],
+        }
     semantic_path_report = build_semantic_path_report(
         latest_compounding_proof=latest_compounding_proof,
         judgment_review_receipts_delta=judgment_review_receipts_delta,
         latest_judgment_review_receipts_total=latest_judgment_review_receipts_total,
     )
     semantic_path_observed = bool(semantic_path_report.get("observed"))
-    if failed or prompt_hash_changed or missing_required_fields or deterministic_runs:
+    elixir_quality_pass = str(latest_elixir_quality_proof.get("status") or "not-yet") == "pass"
+    strict_failures: list[str] = []
+    if require_current_day and freshness_status != "pass":
+        strict_failures.append("latest_receipt_not_current_day")
+    if require_current_day and snapshot_consistency.get("snapshot_newer_than_latest_run") and snapshot_consistency.get("status") != "pass":
+        strict_failures.append("latest_snapshot_newer_than_run_failed_budget")
+    if failed or prompt_hash_changed or missing_required_fields or deterministic_runs or strict_failures:
         status = "fail"
     elif len(receipts) < recent:
         status = "warn"
     elif not consecutive_days:
         status = "warn"
-    elif backlog_total_delta <= 0 and l3_candidate_delta <= 0 and l3_dedupe_or_converged and semantic_path_observed:
+    elif backlog_total_delta <= 0 and l3_candidate_delta <= 0 and l3_dedupe_or_converged and semantic_path_observed and elixir_quality_pass:
         status = "pass"
     else:
         status = "warn"
@@ -1496,6 +1749,10 @@ def summarize_run_receipts(receipts: list[dict[str, Any]], *, recent: int = 3) -
         "knowledge_compounding_status": str(latest_compounding_proof.get("status") or "not-yet"),
         "knowledge_compounding_missing_evidence": list(latest_compounding_proof.get("missing_evidence") or []),
         "knowledge_compounding_sample": latest_compounding_proof.get("compounding_sample"),
+        "elixir_quality_proof": latest_elixir_quality_proof,
+        "elixir_quality_status": str(latest_elixir_quality_proof.get("status") or "not-yet"),
+        "elixir_quality_missing_evidence": list(latest_elixir_quality_proof.get("missing_evidence") or []),
+        "elixir_quality_sample": latest_elixir_quality_proof.get("compounding_sample"),
         "human_required_count": _coerce_int(latest_human_required.get("human_required_count")),
         "routine_primary_debt_count": _coerce_int(latest_human_required.get("routine_primary_debt_count")),
         "exception_count": _coerce_int(latest_human_required.get("exception_count")),
@@ -1505,6 +1762,14 @@ def summarize_run_receipts(receipts: list[dict[str, Any]], *, recent: int = 3) -
         "semantic_path_observed": semantic_path_observed,
         "semantic_path_report": semantic_path_report,
         "days": days,
+        "latest_receipt_day": latest_receipt_day,
+        "expected_latest_day": resolved_expected_day,
+        "latest_receipt_path": str(last.get("receipt_path") or "") if last else "",
+        "stale_days": stale_days,
+        "freshness_status": freshness_status,
+        "require_current_day": require_current_day,
+        "snapshot_consistency": snapshot_consistency,
+        "strict_failures": strict_failures,
         "consecutive_days": consecutive_days,
         "missing_required_fields": missing_required_fields,
         "failed_runs": [str(item.get("receipt_path") or "") for item in failed],
@@ -1648,9 +1913,22 @@ def _summarize_operational_window(receipts: list[dict[str, Any]]) -> dict[str, A
     }
 
 
-def summarize_recent_run_receipts(root: Path, *, recent: int = 3, by_days: bool = False) -> dict[str, Any]:
+def summarize_recent_run_receipts(
+    root: Path,
+    *,
+    recent: int = 3,
+    by_days: bool = False,
+    require_current_day: bool = False,
+    expected_latest_day: str | None = None,
+) -> dict[str, Any]:
     receipts = load_run_receipts(root, limit=recent, by_days=by_days)
-    summary = summarize_run_receipts(receipts, recent=recent)
+    summary = summarize_run_receipts(
+        receipts,
+        recent=recent,
+        root=root,
+        require_current_day=require_current_day,
+        expected_latest_day=expected_latest_day,
+    )
     if not by_days:
         return summary
     operational_maturity = summary.get("operational_maturity")
@@ -1691,6 +1969,11 @@ def build_parser() -> argparse.ArgumentParser:
     summarize_parser.add_argument("--root", default=argparse.SUPPRESS, help="Dogfood vault root override.")
     summarize_parser.add_argument("--recent", type=int, default=3)
     summarize_parser.add_argument("--days", type=int, help="Summarize the latest receipt from each of N consecutive calendar days.")
+    summarize_parser.add_argument(
+        "--require-current-day",
+        action="store_true",
+        help="Fail strict release summaries unless the latest run receipt is from the current UTC day.",
+    )
 
     return parser
 
@@ -1723,8 +2006,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "summarize":
         by_days = args.days is not None
-        summary = summarize_recent_run_receipts(root, recent=args.days if by_days else args.recent, by_days=by_days)
+        summary = summarize_recent_run_receipts(
+            root,
+            recent=args.days if by_days else args.recent,
+            by_days=by_days,
+            require_current_day=args.require_current_day,
+        )
         print(_json_dump(summary), end="")
+        if args.require_current_day:
+            return 0 if summary.get("status") == "pass" else 1
         return 0
 
     parser.error(f"unsupported command: {args.command}")
