@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ..app_protocol import ensure_layout, load_protocol_state
-from ..app_state import load_compile_state, load_json_document, load_manifest, machine_memory_state_path
+from ..app_state import load_compile_state, load_json_document_strict, load_manifest, machine_memory_state_path
 from ..app_utils import (
     relative_path,
     utc_now,
@@ -128,7 +128,7 @@ def start_compile_context(root: Path) -> CompileContext:
         compiled_at=compile_facade.utc_now(),
         protocol_state=load_protocol_state(root),
         previous_compile_state=load_compile_state(root),
-        previous_memory=load_json_document(machine_memory_state_path(root)),
+        previous_memory=load_json_document_strict(machine_memory_state_path(root)),
     )
 
 

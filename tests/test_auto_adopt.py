@@ -163,7 +163,7 @@ class AutoAdoptCriticalFixTests(unittest.TestCase):
         self.assertEqual(page.read_text(encoding="utf-8"), after_first)
         self.assertEqual(after_first.count("review_id="), 1)
 
-    def test_judgment_review_audit_failure_keeps_page_and_degrades(self) -> None:
+    def test_judgment_review_audit_failure_rolls_back_page_and_degrades(self) -> None:
         page = self.root / "wiki" / "judgments" / "j1.md"
         page.parent.mkdir(parents=True, exist_ok=True)
         page.write_text("# J1\n", encoding="utf-8")
@@ -172,7 +172,26 @@ class AutoAdoptCriticalFixTests(unittest.TestCase):
         response = json.dumps({"conclusion": "upheld", "confidence": "high"})
         with patch("aiwiki.runner.auto_adopt.append_runtime_history", side_effect=RuntimeError("audit failed")):
             result = auto_adopt_judgments(self.root, StubClient(response))
-        self.assertNotEqual(page.read_text(encoding="utf-8"), before)
+        self.assertEqual(page.read_text(encoding="utf-8"), before)
+        self.assertEqual(list((self.root / "output" / "control" / "execution-receipts").glob("*.json")), [])
+        self.assertEqual(load_jsonl_documents_strict(execution_receipt_history_path(self.root)), [])
+        self.assertEqual(result["failed"], 1)
+        self.assertTrue(result["degraded"])
+        self.assertIn("audit step", result["items"][0]["error"])
+
+    def test_judgment_review_execution_history_failure_rolls_back_page_and_degrades(self) -> None:
+        page = self.root / "wiki" / "judgments" / "j1.md"
+        page.parent.mkdir(parents=True, exist_ok=True)
+        page.write_text("# J1\n", encoding="utf-8")
+        before = page.read_text(encoding="utf-8")
+        _memory_with_judgment_page(self.root, page)
+        response = json.dumps({"conclusion": "upheld", "confidence": "high"})
+        with patch("aiwiki.runner.auto_adopt.append_execution_receipt_history", side_effect=RuntimeError("history failed")):
+            result = auto_adopt_judgments(self.root, StubClient(response))
+        self.assertEqual(page.read_text(encoding="utf-8"), before)
+        self.assertEqual(list((self.root / "output" / "control" / "execution-receipts").glob("*.json")), [])
+        self.assertEqual(load_jsonl_documents_strict(execution_receipt_history_path(self.root)), [])
+        self.assertEqual(load_runtime_history(self.root), [])
         self.assertEqual(result["failed"], 1)
         self.assertTrue(result["degraded"])
         self.assertIn("audit step", result["items"][0]["error"])

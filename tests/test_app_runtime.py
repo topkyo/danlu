@@ -1389,6 +1389,7 @@ class RuntimeFlowTests(AppFlowTestBase):
             log_path = temp_root / "python.log"
             fallback_env = temp_root / "nvidia.env"
             fallback_env.write_text('export AIWIKI_NVIDIA_NIM_API_KEY="nvapi_test"\n', encoding="utf-8")
+            fallback_env.chmod(0o600)
             fake_python.write_text(
                 """#!/usr/bin/env bash
 set -euo pipefail
@@ -1444,6 +1445,116 @@ exit 0
         self.assertIn("nvidia-nim-api|openai/gpt-oss-120b|", lines[1])
         self.assertIn("--no-semantic-lint", lines[1])
         self.assertIn("retrying nightly with fallback nvidia-nim-api/openai/gpt-oss-120b", completed.stderr)
+
+    def test_run_nightly_script_rejects_group_writable_fallback_env(self) -> None:
+        script = Path("/home/tim/ai-wiki/scripts/run_nightly.sh")
+        with tempfile.TemporaryDirectory() as tempdir:
+            temp_root = Path(tempdir)
+            bin_dir = temp_root / "bin"
+            bin_dir.mkdir()
+            fake_python = bin_dir / "python3"
+            log_path = temp_root / "python.log"
+            fallback_env = temp_root / "nvidia.env"
+            fallback_env.write_text('export AIWIKI_NVIDIA_NIM_API_KEY="nvapi_test"\n', encoding="utf-8")
+            fallback_env.chmod(0o666)
+            fake_python.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "-" ]]; then
+  exit 0
+fi
+printf '%s|%s|%s\\n' "${AIWIKI_LLM_BACKEND:-}" "${AIWIKI_LLM_MODEL:-}" "$*" >>"${FAKE_PYTHON_LOG}"
+if [[ "$*" == *"run-nightly"* ]]; then
+  exit 42
+fi
+exit 0
+""",
+                encoding="utf-8",
+            )
+            fake_python.chmod(0o755)
+            env = os.environ.copy()
+            env.update(
+                {
+                    "PATH": f"{bin_dir}{os.pathsep}{env.get('PATH', '')}",
+                    "FAKE_PYTHON_LOG": str(log_path),
+                    "AIWIKI_VAULT": str(temp_root / "vault"),
+                    "AIWIKI_LLM_BACKEND": "codex-cli",
+                    "AIWIKI_LLM_MODEL": "gpt-5.5",
+                    "AIWIKI_NIGHTLY_FALLBACK_ENV": str(fallback_env),
+                    "AIWIKI_NIGHTLY_FALLBACK_ENABLED": "1",
+                }
+            )
+            completed = subprocess.run(
+                ["bash", str(script)],
+                cwd="/home/tim/ai-wiki",
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+            lines = log_path.read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(completed.returncode, 2, completed.stderr)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("run-nightly", lines[0])
+        self.assertIn("must not be group/world writable", completed.stderr)
+
+    def test_run_nightly_script_rejects_symlink_fallback_env(self) -> None:
+        script = Path("/home/tim/ai-wiki/scripts/run_nightly.sh")
+        with tempfile.TemporaryDirectory() as tempdir:
+            temp_root = Path(tempdir)
+            bin_dir = temp_root / "bin"
+            bin_dir.mkdir()
+            fake_python = bin_dir / "python3"
+            log_path = temp_root / "python.log"
+            target_env = temp_root / "target.env"
+            target_env.write_text('export AIWIKI_NVIDIA_NIM_API_KEY="nvapi_test"\n', encoding="utf-8")
+            target_env.chmod(0o600)
+            fallback_env = temp_root / "nvidia.env"
+            fallback_env.symlink_to(target_env)
+            fake_python.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "-" ]]; then
+  exit 0
+fi
+printf '%s|%s|%s\\n' "${AIWIKI_LLM_BACKEND:-}" "${AIWIKI_LLM_MODEL:-}" "$*" >>"${FAKE_PYTHON_LOG}"
+if [[ "$*" == *"run-nightly"* ]]; then
+  exit 42
+fi
+exit 0
+""",
+                encoding="utf-8",
+            )
+            fake_python.chmod(0o755)
+            env = os.environ.copy()
+            env.update(
+                {
+                    "PATH": f"{bin_dir}{os.pathsep}{env.get('PATH', '')}",
+                    "FAKE_PYTHON_LOG": str(log_path),
+                    "AIWIKI_VAULT": str(temp_root / "vault"),
+                    "AIWIKI_LLM_BACKEND": "codex-cli",
+                    "AIWIKI_LLM_MODEL": "gpt-5.5",
+                    "AIWIKI_NIGHTLY_FALLBACK_ENV": str(fallback_env),
+                    "AIWIKI_NIGHTLY_FALLBACK_ENABLED": "1",
+                }
+            )
+            completed = subprocess.run(
+                ["bash", str(script)],
+                cwd="/home/tim/ai-wiki",
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+            lines = log_path.read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(completed.returncode, 2, completed.stderr)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("run-nightly", lines[0])
+        self.assertIn("regular non-symlink file", completed.stderr)
 
     def test_run_nightly_script_does_not_deterministic_fallback_after_llm_failure(self) -> None:
         script = Path("/home/tim/ai-wiki/scripts/run_nightly.sh")

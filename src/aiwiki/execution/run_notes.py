@@ -75,6 +75,7 @@ def write_run_notes(
     fallback_stage: str = "",
     failure_class: str = "",
     stages: list[str] | None = None,
+    context_refs: list[str] | None = None,
 ) -> dict[str, str]:
     if not str(run_id or "").strip():
         run_id = run_id_for_artifact(output_path or question or "run")
@@ -111,6 +112,7 @@ def write_run_notes(
     safe_output_path = _safe_note_text(root, output_path)
     safe_receipt_path = _safe_note_text(root, receipt_path)
     safe_stage_lines = [_safe_note_text(root, line) for line in stage_lines]
+    safe_context_refs = [_safe_note_text(root, ref) for ref in (context_refs or []) if str(ref or "").strip()]
     body_lines = [
         render_frontmatter(frontmatter),
         "",
@@ -129,6 +131,9 @@ def write_run_notes(
         "",
     ]
     body_lines.extend(f"- {line}" for line in safe_stage_lines)
+    if safe_context_refs:
+        body_lines.extend(["", "## Context References", ""])
+        body_lines.extend(f"- `{ref}`" for ref in safe_context_refs)
     if receipt_path:
         body_lines.extend(["", "## Receipt", "", f"- Receipt path: `{safe_receipt_path}`"])
     body_lines.extend([

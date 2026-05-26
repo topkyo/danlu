@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from aiwiki.app_protocol import default_protocol_runtime_schema
+from aiwiki.app_protocol import default_protocol_runtime_schema, ensure_layout, load_protocol_state, protocol_state_path
+from aiwiki.app_state import CorruptStateError
 from aiwiki.protocol.runtime_schema import merge_protocol_runtime_schema
 
 
@@ -75,3 +76,14 @@ def test_merge_protocol_runtime_schema_rejects_unknown_and_invalid_values():
             slug="research",
             path_ref="schema/protocols/research/runtime.yaml",
         )
+
+
+def test_load_protocol_state_fails_closed_on_corrupt_state(tmp_path):
+    ensure_layout(tmp_path)
+    path = protocol_state_path(tmp_path)
+    path.write_text("{not-json", encoding="utf-8")
+
+    with pytest.raises(CorruptStateError):
+        load_protocol_state(tmp_path)
+
+    assert path.read_text(encoding="utf-8") == "{not-json"

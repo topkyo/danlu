@@ -59,6 +59,7 @@ from aiwiki.app_memory import (
 from aiwiki.app_memory_surfaces import render_machine_memory_graph_html
 from aiwiki.app_protocol import ensure_layout, load_protocol_state, save_manifest
 from aiwiki.app_state import (
+    CorruptStateError,
     load_archive_candidates_state,
     load_cache_status,
     load_knowledge_lifecycle_override_state,
@@ -89,6 +90,16 @@ from tests.test_app import AppFlowTestBase, CapturingClient, FailingVisionClient
 
 
 class CompileFlowTests(AppFlowTestBase):
+    def test_compile_fails_closed_on_corrupt_previous_machine_memory(self) -> None:
+        state_path = self.root / ".aiwiki" / "state" / "machine-memory.json"
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text("{not-json", encoding="utf-8")
+
+        with self.assertRaises(CorruptStateError):
+            compile_wiki(self.root)
+
+        self.assertEqual(state_path.read_text(encoding="utf-8"), "{not-json")
+
     def test_compile_creates_concepts_master_index_and_log(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compiled = compile_wiki(self.root)

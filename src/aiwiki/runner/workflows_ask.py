@@ -292,10 +292,29 @@ def _complete_run_ask_artifact(
         from aiwiki.execution.ask import load_previous_output_summary
 
         previous_output_summary = load_previous_output_summary(root, corpus_id, exclude_artifact_ref=artifact.get("path"))
+    material_refs = [str(item) for item in artifact.get("material_refs", []) if str(item).strip()]
+    material_context_refs: list[str] = []
     material_context = str(artifact.get("material_context") or "").strip()
+    if material_context:
+        material_context_refs = _context_ref_paths(
+            [
+                record
+                for record in artifact.get("used_context_refs", [])
+                if isinstance(record, dict)
+            ]
+        )
+        if not material_context_refs:
+            material_context_refs = list(dict.fromkeys(material_refs))
     if not material_context:
-        material_refs = [str(item) for item in artifact.get("material_refs", []) if str(item).strip()]
-        material_context = _read_material_context_snippets(root, material_refs, max_chars=12000) if material_refs else ""
+        material_context_payload = _read_material_context(root, material_refs, max_chars=12000) if material_refs else {}
+        material_context = str(material_context_payload.get("text") or "")
+        material_context_refs = _context_ref_paths(
+            [
+                record
+                for record in material_context_payload.get("used_context_refs", [])
+                if isinstance(record, dict)
+            ]
+        )
     prompt = _build_ask_prompt(
         root,
         target,
@@ -428,6 +447,7 @@ def _complete_run_ask_artifact(
                 "The LLM run failed or timed out.",
                 "Recorded failure metadata without writing a fallback answer.",
             ],
+            context_refs=material_context_refs,
         )
         write_run_notes_frontmatter(target, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
         _ensure_output_cssclass(target)
@@ -496,6 +516,7 @@ def _complete_run_ask_artifact(
                 "Validated the returned markdown contract and updated the output artifact.",
                 "Recorded authoritative execution receipt and LLM attempt metadata for audit and recovery.",
             ],
+            context_refs=material_context_refs,
         )
         write_run_notes_frontmatter(target, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
         _ensure_output_cssclass(target)
@@ -730,6 +751,8 @@ def _direct_ask_artifact_markdown(
     backend: str,
     model: str,
     source_files: list[str] | None = None,
+    used_context_refs: list[str] | None = None,
+    context_budget: str = "",
 ) -> str:
     title = human_query_title(question)
     frontmatter = {
@@ -747,6 +770,10 @@ def _direct_ask_artifact_markdown(
     }
     if source_files:
         frontmatter["source_files"] = list(source_files)
+    if used_context_refs:
+        frontmatter["used_context_refs"] = list(used_context_refs)
+    if context_budget:
+        frontmatter["context_budget"] = context_budget
     return render_frontmatter(frontmatter) + f"\n# {title}\n\n## 回答\n\n{answer.strip()}\n"
 
 def _write_run_ask_output_receipt(
@@ -893,8 +920,9 @@ def _material_hint_paths(question: str) -> list[str]:
                 paths.append(item.strip("`"))
     return paths
 
-def _read_material_context_snippets(root: Path, refs: list[str], *, max_chars: int = 6000) -> str:
+def _read_material_context(root: Path, refs: list[str], *, max_chars: int = 6000) -> dict[str, Any]:
     snippets: list[str] = []
+    used_context_refs: list[dict[str, Any]] = []
     remaining = max_chars
     try:
         root_resolved = root.resolve()
@@ -918,8 +946,23 @@ def _read_material_context_snippets(root: Path, refs: list[str], *, max_chars: i
             continue
         excerpt = text[:remaining]
         snippets.append(f"## {ref}\n\n{excerpt}")
+        used_context_refs.append(
+            {
+                "path": ref,
+                "kind": _context_kind_for_path(ref),
+                "excerpt_chars": len(excerpt),
+                "selection_reason": "explicit-material-ref",
+            }
+        )
         remaining -= len(excerpt)
-    return "\n\n".join(snippets).strip()
+    return {
+        "text": "\n\n".join(snippets).strip(),
+        "used_context_refs": used_context_refs,
+        "context_budget": {"explicit_material_refs": len(refs), "max_chars": max_chars},
+    }
+
+def _read_material_context_snippets(root: Path, refs: list[str], *, max_chars: int = 6000) -> str:
+    return str(_read_material_context(root, refs, max_chars=max_chars).get("text") or "")
 
 def _question_terms(question: str) -> set[str]:
     text = _clean_report_reference_question(question).lower()
@@ -934,12 +977,62 @@ def _question_terms(question: str) -> set[str]:
                     terms.add(term)
     return {term for term in terms if len(term) >= 2}
 
-def _collect_vault_knowledge_context(root: Path, question: str, *, max_refs: int = 6, max_chars: int = 9000) -> str:
+def _context_kind_for_path(relative: str) -> str:
+    if relative.startswith("wiki/elixirs/"):
+        return "elixir"
+    if relative.startswith("wiki/judgments/"):
+        return "judgment"
+    if relative.startswith("wiki/decisions/"):
+        return "decision"
+    if relative.startswith("wiki/sources/"):
+        return "source"
+    if relative.startswith("wiki/concepts/"):
+        return "concept"
+    if relative.startswith("output/reports/"):
+        return "material-report"
+    if relative.startswith("raw/"):
+        return "raw-material"
+    return "material"
+
+def _context_priority_for_kind(kind: str) -> int:
+    return {
+        "elixir": 0,
+        "judgment": 1,
+        "decision": 1,
+        "source": 2,
+        "concept": 3,
+    }.get(kind, 4)
+
+def _material_context_ref_records(refs: list[str]) -> list[dict[str, Any]]:
+    return [
+        {
+            "path": ref,
+            "kind": _context_kind_for_path(ref),
+            "selection_reason": "explicit-material-ref",
+        }
+        for ref in refs
+    ]
+
+def _context_ref_paths(records: list[dict[str, Any]]) -> list[str]:
+    paths: list[str] = []
+    for record in records:
+        path = str(record.get("path") or "").strip()
+        if path and path not in paths:
+            paths.append(path)
+    return paths
+
+def _collect_vault_knowledge_context(
+    root: Path,
+    question: str,
+    *,
+    max_refs: int = 6,
+    max_chars: int = 9000,
+) -> dict[str, Any]:
     terms = _question_terms(question)
     if not terms:
-        return ""
+        return {"text": "", "used_context_refs": [], "context_budget": {"max_refs": max_refs, "max_chars": max_chars}}
     search_roots = [root / "wiki" / name for name in ("sources", "judgments", "decisions", "concepts", "elixirs")]
-    scored: list[tuple[int, str, str]] = []
+    scored: list[tuple[int, int, str, str, str]] = []
     for directory in search_roots:
         if not directory.exists():
             continue
@@ -955,15 +1048,26 @@ def _collect_vault_knowledge_context(root: Path, question: str, *, max_refs: int
             score = sum(haystack.count(term.lower()) for term in terms)
             if score <= 0:
                 continue
-            scored.append((score, relative, text))
-    scored.sort(key=lambda item: (-item[0], item[1]))
+            kind = _context_kind_for_path(relative)
+            scored.append((_context_priority_for_kind(kind), -score, relative, kind, text))
+    scored.sort(key=lambda item: (item[0], item[1], item[2]))
     snippets: list[str] = []
+    used_context_refs: list[dict[str, Any]] = []
     remaining = max_chars
-    for _score, relative, text in scored[:max_refs]:
+    for _priority, negative_score, relative, kind, text in scored[:max_refs]:
         if remaining <= 0:
             break
         excerpt = text[:remaining]
         snippets.append(f"## {relative}\n\n{excerpt}")
+        used_context_refs.append(
+            {
+                "path": relative,
+                "kind": kind,
+                "score": abs(negative_score),
+                "excerpt_chars": len(excerpt),
+                "selection_reason": "vault-context-rank",
+            }
+        )
         remaining -= len(excerpt)
     context = "\n\n".join(snippets).strip()
     if context and any(marker in _clean_report_reference_question(question) for marker in ("联网", "网上", "web", "搜索", "调研")):
@@ -972,7 +1076,11 @@ def _collect_vault_knowledge_context(root: Path, question: str, *, max_refs: int
             "回答时不要声称已联网，只能基于这些本地材料给出分析，并明确联网缺口。\n\n"
             + context
         )
-    return context
+    return {
+        "text": context,
+        "used_context_refs": used_context_refs,
+        "context_budget": {"max_refs": max_refs, "max_chars": max_chars},
+    }
 
 def _material_direct_system_prompt() -> str:
     return (
@@ -1045,7 +1153,17 @@ def run_ask(
     material_refs = _material_hint_paths(question)
     material_refs.extend(_safe_quoted_report_reference_paths(root, _quoted_report_reference_paths(question)))
     material_refs = list(dict.fromkeys(material_refs))
-    material_context = _read_material_context_snippets(root, material_refs) if material_refs else ""
+    material_context_payload = _read_material_context(root, material_refs) if material_refs else {}
+    material_context = str(material_context_payload.get("text") or "")
+    used_context_refs = [
+        record
+        for record in material_context_payload.get("used_context_refs", [])
+        if isinstance(record, dict)
+    ]
+    raw_material_budget = material_context_payload.get("context_budget")
+    context_budget: dict[str, Any] = (
+        dict(raw_material_budget) if isinstance(raw_material_budget, dict) else {"explicit_material_refs": len(material_refs)}
+    )
     if output_format == "note" and is_elixir_count_question(question):
         from aiwiki.app_protocol import resolve_protocol
 
@@ -1267,7 +1385,15 @@ def run_ask(
         backend_compat = preflight_check_backend(root)
     direct_mode = _is_simple_direct_ask(question, output_format, direct) or (output_format == "note" and bool(material_context))
     if direct_mode and output_format == "note" and not material_context:
-        material_context = _collect_vault_knowledge_context(root, question)
+        vault_context = _collect_vault_knowledge_context(root, question)
+        material_context = str(vault_context.get("text") or "")
+        used_context_refs = [
+            record
+            for record in vault_context.get("used_context_refs", [])
+            if isinstance(record, dict)
+        ]
+        raw_budget = vault_context.get("context_budget")
+        context_budget = dict(raw_budget) if isinstance(raw_budget, dict) else {}
     if direct_mode:
         effective_client = client or create_client(root, timeout_seconds=effective_timeout_seconds)
         backend_requested = _client_backend_requested(effective_client)
@@ -1327,6 +1453,8 @@ def run_ask(
                     "timeout_seconds": effective_timeout_seconds,
                     "no_cache": no_cache,
                     "material_refs": material_refs,
+                    "used_context_refs": used_context_refs,
+                    "context_budget": context_budget,
                 },
                 failed_audit,
                 status="failed",
@@ -1350,6 +1478,8 @@ def run_ask(
         artifact_ref = relative_path(root, destination)
         backend_effective = _client_backend_name(effective_client)
         model_final = _client_model_name(effective_client)
+        used_context_paths = _context_ref_paths(used_context_refs)
+        source_files = list(dict.fromkeys(used_context_paths))
         content = _direct_ask_artifact_markdown(
             artifact_id=artifact_id,
             question=_clean_report_reference_question(question),
@@ -1358,7 +1488,9 @@ def run_ask(
             answer=normalized_answer,
             backend=backend_effective,
             model=model_final,
-            source_files=material_refs,
+            source_files=source_files,
+            used_context_refs=used_context_paths,
+            context_budget=json.dumps(context_budget, ensure_ascii=False, sort_keys=True),
         )
         destination_snapshot = _snapshot_file_bytes(destination)
         destination.write_text(content, encoding="utf-8")
@@ -1389,6 +1521,8 @@ def run_ask(
                     "timeout_seconds": effective_timeout_seconds,
                     "no_cache": no_cache,
                     "material_refs": material_refs,
+                    "used_context_refs": used_context_refs,
+                    "context_budget": context_budget,
                 },
                 llm_audit,
                 status="success",
@@ -1410,9 +1544,11 @@ def run_ask(
                 fallback_stage=fallback_stage_label,
                 stages=[
                     "Detected a simple note/material question and used the lightweight direct-answer LLM path.",
+                    f"Selected {len(used_context_refs)} auditable context references for the direct prompt.",
                     "Recorded LLM receipt metadata for audit and recovery.",
                     "Recorded authoritative execution receipt for the output artifact.",
                 ],
+                context_refs=used_context_paths,
             )
             write_run_notes_frontmatter(
                 destination,
@@ -1437,6 +1573,8 @@ def run_ask(
                     "response_id": result.response_id,
                     "usage": result.usage,
                     "material_refs": material_refs,
+                    "used_context_refs": used_context_refs,
+                    "context_budget": context_budget,
                 },
             )
         except Exception:
@@ -1462,6 +1600,8 @@ def run_ask(
             "no_cache": no_cache,
             "contract_validated": True,
             "material_refs": material_refs,
+            "used_context_refs": used_context_refs,
+            "context_budget": context_budget,
         }
 
     clean_question = _clean_report_reference_question(question) if material_refs else question

@@ -314,6 +314,7 @@ class RunnerTests(unittest.TestCase):
         content = artifact.read_text(encoding="utf-8")
         frontmatter = parse_frontmatter(content)
         self.assertEqual(frontmatter["source_files"], ["output/reports/炼丹炉-md-files-note.md"])
+        self.assertEqual(frontmatter["used_context_refs"], ["output/reports/炼丹炉-md-files-note.md"])
         self.assertIn("# 如何给于你权限去访问呢？", content)
         self.assertIn("根据引用报告，当前有 42 个 Markdown 文件", content)
         self.assertNotIn("引用报告：output/reports", content)
@@ -321,6 +322,10 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(receipt["event"], "run-ask-direct")
         self.assertEqual(receipt["status"], "success")
         self.assertEqual(receipt["material_refs"], ["output/reports/炼丹炉-md-files-note.md"])
+        self.assertEqual(receipt["used_context_refs"][0]["path"], "output/reports/炼丹炉-md-files-note.md")
+        run_notes = (self.root / result["run_notes_path"]).read_text(encoding="utf-8")
+        self.assertIn("## Context References", run_notes)
+        self.assertIn("`output/reports/炼丹炉-md-files-note.md`", run_notes)
 
     def test_run_ask_quoted_report_report_uses_clean_question_and_material_context(self) -> None:
         report = self.root / "output" / "reports" / "base-note.md"
@@ -354,6 +359,9 @@ class RunnerTests(unittest.TestCase):
         content = artifact.read_text(encoding="utf-8")
         self.assertIn("# Stub answer", content)
         self.assertNotIn("引用报告：output/reports", content)
+        run_notes = (self.root / result["run_notes_path"]).read_text(encoding="utf-8")
+        self.assertIn("## Context References", run_notes)
+        self.assertIn("`output/reports/base-note.md`", run_notes)
 
     def test_quoted_report_reference_paths_must_stay_under_output_reports(self) -> None:
         reports_dir = self.root / "output" / "reports"
@@ -525,12 +533,21 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(result["delivery_mode"], "llm-direct")
         self.assertEqual(result["format"], "note")
         self.assertEqual(result["material_refs"], ["raw/inbox/image-note.md", "raw/assets/image.jpeg"])
+        self.assertEqual([item["path"] for item in result["used_context_refs"]], ["raw/inbox/image-note.md"])
         self.assertIn("用户问题：图片内容？", client.user_prompts[0])
         self.assertIn("Mass to Orbit", client.user_prompts[0])
+        self.assertNotIn("raw/assets/image.jpeg", client.user_prompts[0])
         artifact = self.root / result["path"]
         content = artifact.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(content)
+        self.assertEqual(frontmatter["source_files"], ["raw/inbox/image-note.md"])
+        self.assertEqual(frontmatter["used_context_refs"], ["raw/inbox/image-note.md"])
         self.assertIn("# 图片内容？", content)
         self.assertIn("SpaceX 2026 YTD", content)
+        run_notes = (self.root / result["run_notes_path"]).read_text(encoding="utf-8")
+        self.assertIn("`raw/inbox/image-note.md`", run_notes)
+        context_section = run_notes.split("## Context References", 1)[1].split("## Receipt", 1)[0]
+        self.assertNotIn("raw/assets/image.jpeg", context_section)
 
     def test_run_ask_markdown_count_uses_local_stats_before_direct_llm(self) -> None:
         (self.root / "raw" / "inbox").mkdir(parents=True, exist_ok=True)
@@ -605,7 +622,42 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("## wiki/sources/source-vla.md", client.user_prompt)
         self.assertIn("机器人技术路线包括 VLA", client.user_prompt)
         content = (self.root / result["path"]).read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(content)
+        self.assertEqual(frontmatter["source_files"], ["wiki/sources/source-vla.md"])
+        self.assertEqual(frontmatter["used_context_refs"], ["wiki/sources/source-vla.md"])
         self.assertIn("VLA、端到端和模块化控制", content)
+        self.assertEqual(result["used_context_refs"][0]["path"], "wiki/sources/source-vla.md")
+        run_notes = (self.root / result["run_notes_path"]).read_text(encoding="utf-8")
+        self.assertIn("`wiki/sources/source-vla.md`", run_notes)
+
+    def test_run_ask_direct_note_prefers_elixir_context_before_source_context(self) -> None:
+        source = self.root / "wiki" / "sources" / "source-vla.md"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("# VLA source\n\nVLA 路线需要数据闭环。\n", encoding="utf-8")
+        elixir = self.root / "wiki" / "elixirs" / "vla-thesis.md"
+        elixir.parent.mkdir(parents=True, exist_ok=True)
+        elixir.write_text("# VLA 金丹\n\nVLA 路线的金丹结论是先验证数据闭环再扩部署。\n", encoding="utf-8")
+
+        class _ContextPriorityClient:
+            def __init__(self) -> None:
+                self.config = type("Config", (), {"model": "deepseek-v4-pro", "backend": "opencode-api", "timeout_seconds": 45})()
+                self.user_prompt = ""
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                self.user_prompt = user_prompt
+                return CompletionResult(text="优先采用金丹结论：先验证数据闭环再扩部署。", response_id="resp_elixir", usage={})
+
+        client = _ContextPriorityClient()
+        result = run_ask(self.root, "VLA 路线应该如何判断？", "note", client=client, direct=True)
+
+        self.assertLess(
+            client.user_prompt.index("## wiki/elixirs/vla-thesis.md"),
+            client.user_prompt.index("## wiki/sources/source-vla.md"),
+        )
+        self.assertEqual(result["used_context_refs"][0]["path"], "wiki/elixirs/vla-thesis.md")
+        frontmatter = parse_frontmatter((self.root / result["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(frontmatter["used_context_refs"][0], "wiki/elixirs/vla-thesis.md")
 
     def test_run_ask_material_note_fails_without_deterministic_fallback_when_llm_times_out(self) -> None:
         raw_note = self.root / "raw" / "inbox" / "pdf-note.md"

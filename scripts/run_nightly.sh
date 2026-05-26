@@ -66,8 +66,33 @@ require_llm() {
   esac
 }
 
+validate_fallback_env_file() {
+  local env_path="$1"
+  local mode
+  local permissions
+
+  if [[ ! -f "$env_path" || -L "$env_path" ]]; then
+    log "fallback env $env_path must be a regular non-symlink file"
+    exit 2
+  fi
+  if [[ ! -O "$env_path" ]]; then
+    log "fallback env $env_path must be owned by the current user"
+    exit 2
+  fi
+  if ! mode="$(stat -c '%a' "$env_path" 2>/dev/null)"; then
+    log "fallback env $env_path permissions could not be inspected"
+    exit 2
+  fi
+  permissions=$((8#$mode))
+  if (( (permissions & 0022) != 0 )); then
+    log "fallback env $env_path must not be group/world writable"
+    exit 2
+  fi
+}
+
 load_fallback_env() {
-  if [[ -f "$FALLBACK_ENV" ]]; then
+  if [[ -e "$FALLBACK_ENV" ]]; then
+    validate_fallback_env_file "$FALLBACK_ENV"
     # shellcheck disable=SC1090
     set -a
     source "$FALLBACK_ENV"

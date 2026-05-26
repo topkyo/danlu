@@ -39,7 +39,7 @@ from ..app_state import (
     load_machine_memory,
     load_planner_state,
 )
-from ..app_utils import relative_path, runtime_write_operation, utc_now
+from ..app_utils import _restore_file_bytes, _snapshot_file_bytes, relative_path, runtime_write_operation, utc_now
 from ..config import l3_auto_adopt_min_evidence_from_env
 from ..execution.lifecycle import review_concepts_batch
 from ..execution.machine_memory_actions import review_machine_memory_actions_batch
@@ -610,13 +610,18 @@ def _has_judgment_review_receipt(root: Path, review_id: str) -> tuple[str, bool 
 
 def _apply_judgment_review_with_receipt(target: Path, mutate_fn: Callable[[str], str], receipt_meta: dict[str, Any]) -> dict[str, Any]:
     root = Path(receipt_meta["root"])
-    snapshot = target.read_bytes() if target.exists() else None
-    original = snapshot.decode("utf-8") if snapshot is not None else ""
+    target_snapshot = _snapshot_file_bytes(target)
+    receipt_path: Path
+    receipt_snapshot: bytes | None
+    history_snapshot = _snapshot_file_bytes(execution_receipt_history_path(root))
+    runtime_history_snapshot = _snapshot_file_bytes(root / ".aiwiki" / "state" / "runtime-history.jsonl")
+    original = target_snapshot.decode("utf-8") if target_snapshot is not None else ""
     before_hash = hashlib.sha256(original.encode("utf-8")).hexdigest()
     new_content = mutate_fn(original)
     after_hash = hashlib.sha256(new_content.encode("utf-8")).hexdigest()
     action_id = f"judgment-review-{receipt_meta['review_id']}"
     receipt_path = execution_receipt_path(root, action_id)
+    receipt_snapshot = _snapshot_file_bytes(receipt_path)
     target_rel = relative_path(root, target)
     receipt = {
         "version": 1,
@@ -643,28 +648,39 @@ def _apply_judgment_review_with_receipt(target: Path, mutate_fn: Callable[[str],
         "conclusion": str(receipt_meta.get("conclusion") or ""),
         "confidence": str(receipt_meta.get("confidence") or ""),
     }
+    def rollback() -> None:
+        _restore_file_bytes(target, target_snapshot)
+        _restore_file_bytes(receipt_path, receipt_snapshot)
+        _restore_file_bytes(execution_receipt_history_path(root), history_snapshot)
+        _restore_file_bytes(root / ".aiwiki" / "state" / "runtime-history.jsonl", runtime_history_snapshot)
+
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(new_content, encoding="utf-8")
     except Exception:
-        if snapshot is None:
-            target.unlink(missing_ok=True)
-        else:
-            target.write_bytes(snapshot)
+        rollback()
         raise
 
     try:
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
         receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     except Exception:
-        if snapshot is None:
-            target.unlink(missing_ok=True)
-        else:
-            target.write_bytes(snapshot)
+        rollback()
         raise
 
     try:
         append_execution_receipt_history(root, receipt)
+    except Exception as exc:
+        rollback()
+        raise JudgmentReviewAuditError(
+            action_id,
+            "append_execution_receipt_history",
+            target_path=target_rel,
+            before_hash=before_hash,
+            after_hash=after_hash,
+        ) from exc
+
+    try:
         append_runtime_history(
             root,
             {
@@ -676,10 +692,10 @@ def _apply_judgment_review_with_receipt(target: Path, mutate_fn: Callable[[str],
             },
         )
     except Exception as exc:
-        failed_step = "append_execution_receipt_history" if not execution_receipt_history_path(root).exists() else "append_runtime_history"
+        rollback()
         raise JudgmentReviewAuditError(
             action_id,
-            failed_step,
+            "append_runtime_history",
             target_path=target_rel,
             before_hash=before_hash,
             after_hash=after_hash,
