@@ -33,7 +33,7 @@ related_docs:
 **含义**：炼丹炉在用户睡觉时也在工作，但工作内容受三条硬约束：
 
 - **deterministic-only watcher**：watcher 默认不主动调 LLM；只跑 deterministic compile / lint，确保 raw → wiki 的最低可用流水线长期 alive
-- **nightly 五层炼化**：nightly 默认执行 L0/L1/L2/L3/Judgment 五层 auto apply/adopt，但所有变更必须 receipt/audit/revert；fallback 仍默认关闭
+- **nightly 五层炼化**：runtime policy 缺省 `autonomy_profile=strong`，nightly 默认执行 L0/L1/L2/L3/Judgment 五层 auto apply/adopt；env / policy 可按层缩窄，但所有变更必须 receipt/audit/revert；fallback 仍默认关闭
 - **LLM 隔离到受控入口**：要让 LLM 介入，必须走 `run-*` 命令或 nightly 的 `run-nightly` 路径；watcher 不会偷跑
 - **single writer**：任意时刻只允许一个 writer（watcher / nightly / 手动 CLI / Obsidian Plugin）持有 `runtime.lock`
 
@@ -123,6 +123,8 @@ else:
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1` —— **L2 结构层自动采纳**：overloaded-concept split 自动 accept + apply
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` —— **L3 策略层自动采纳**：candidate prompt/policy/schema proposal 自动 accept + apply，写 receipt 保留回滚
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1` —— **判断层自动复核**：LLM-powered counter-evidence review，读取反证来源页生成 upheld/weakened/refuted 结论
+
+这些 env 是显式覆盖层；缺省值来自 `.aiwiki/state/autonomy-policy.json`，文件缺失时按 strong profile 启用五层自治。`AIWIKI_DISABLE_AUTOMATION=1` 是全局 kill switch；policy 损坏时 fail-closed。预算字段 `max_l3_apply_per_run` 与 `judgment_review_limit` 分别限制单次 nightly 的 L3 apply 数和 judgment review 数。
 - `AIWIKI_NIGHTLY_COMPILE_LIMIT=5` —— LLM enrichment 单批上限
 - `AIWIKI_NIGHTLY_NO_SEMANTIC_LINT=0` —— 是否跑 semantic lint
 - `AIWIKI_NIGHTLY_FALLBACK_ENABLED=0` —— nightly wrapper 的 operator-approved fallback 开关；默认关闭，避免隐式跨 backend routing

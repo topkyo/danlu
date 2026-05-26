@@ -139,6 +139,7 @@ def _append_run_event(root: Path, event: dict[str, Any]) -> None:
     _append_log(root, event)
 BROWSER_RENDER_TIMEOUT_SECONDS = 45
 BROWSER_VIRTUAL_TIME_BUDGET_MS = 8000
+ALLOW_BROWSER_NO_SANDBOX_ENV = "AIWIKI_ALLOW_BROWSER_NO_SANDBOX"
 PDF_EXTRACT_TIMEOUT_SECONDS = 60
 MIME_DETECT_TIMEOUT_SECONDS = 5
 IMAGE_OCR_TIMEOUT_SECONDS = 60
@@ -1075,6 +1076,11 @@ def _render_url_with_browser_cli(url: str, browser_command: str) -> str:
         if completed.returncode != 0:
             details = completed.stderr.strip() or completed.stdout.strip()
             if "--no-sandbox" not in command and "sandbox" in details.lower():
+                if not _allow_browser_no_sandbox():
+                    raise RuntimeError(
+                        f"{Path(browser_command).name} render failed because browser sandboxing is unavailable. "
+                        f"Set {ALLOW_BROWSER_NO_SANDBOX_ENV}=1 to explicitly allow Chromium --no-sandbox fallback."
+                    )
                 return _render_url_with_browser_cli_no_sandbox(url, browser_command, user_data_dir)
             raise RuntimeError(f"{Path(browser_command).name} render failed: {details}")
         return completed.stdout
@@ -1106,6 +1112,10 @@ def _render_url_with_browser_cli_no_sandbox(url: str, browser_command: str, user
         details = completed.stderr.strip() or completed.stdout.strip()
         raise RuntimeError(f"{Path(browser_command).name} render failed: {details}")
     return completed.stdout
+
+
+def _allow_browser_no_sandbox() -> bool:
+    return os.environ.get(ALLOW_BROWSER_NO_SANDBOX_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _extract_html_title(text: str) -> str:

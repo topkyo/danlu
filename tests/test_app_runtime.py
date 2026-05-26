@@ -1334,7 +1334,17 @@ class RuntimeFlowTests(AppFlowTestBase):
         )
         semantic_lint = "# Semantic Lint Report\n\n- Review placeholder concept summaries next.\n"
 
-        result = run_nightly(self.root, client=StubClient([updated_source, semantic_lint]), compile_limit=1)
+        with patch.dict(
+            os.environ,
+            {
+                "AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT": "0",
+                "AIWIKI_NIGHTLY_AUTO_ADOPT_L1": "0",
+                "AIWIKI_NIGHTLY_AUTO_ADOPT_L2": "0",
+                "AIWIKI_NIGHTLY_AUTO_ADOPT_L3": "0",
+                "AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS": "0",
+            },
+        ):
+            result = run_nightly(self.root, client=StubClient([updated_source, semantic_lint]), compile_limit=1)
 
         backlog_path = self.root / result["repair_backlog"]
         state = json.loads((self.root / result["state_path"]).read_text(encoding="utf-8"))

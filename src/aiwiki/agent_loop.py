@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .app_state import nightly_health_state_path
-from .app_utils import utc_now
+from .app_utils import atomic_write_text, runtime_write_lock, utc_now
 from .planner import preview_alchemy_lane, write_planner_log
 from .signals import collect_signals
 
@@ -110,18 +110,19 @@ def attach_agent_loop_to_nightly_state(root: Path, state: dict[str, Any], agent_
     """Persist ``agent_loop`` inside nightly-health and return the updated state."""
 
     path = nightly_health_state_path(root)
-    latest_state = state
-    if path.exists():
-        try:
-            candidate = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(candidate, dict):
-                latest_state = candidate
-        except (TypeError, json.JSONDecodeError):
-            latest_state = state
-    if state.get("llm_used"):
-        latest_state = {**latest_state, "llm_used": True}
-    updated = {**latest_state, "agent_loop": agent_loop}
-    path.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    with runtime_write_lock(root):
+        latest_state = state
+        if path.exists():
+            try:
+                candidate = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(candidate, dict):
+                    latest_state = candidate
+            except (TypeError, json.JSONDecodeError):
+                latest_state = state
+        updated = {**state, **latest_state, "agent_loop": agent_loop}
+        if state.get("llm_used") or latest_state.get("llm_used"):
+            updated["llm_used"] = True
+        atomic_write_text(path, json.dumps(updated, indent=2, sort_keys=True) + "\n")
     return updated
 
 
@@ -317,10 +318,12 @@ def _build_auto_adopt_l2(root: Path) -> dict[str, Any]:
 
 
 def _build_auto_adopt_l3(root: Path) -> dict[str, Any]:
+    from .autonomy_policy import load_policy
     from .runner.auto_adopt import auto_adopt_l3
 
     try:
-        result = auto_adopt_l3(root)
+        policy = load_policy(root)
+        result = auto_adopt_l3(root, limit=policy.max_l3_apply_per_run)
         if result.get("degraded") is True or result.get("error"):
             result["degraded"] = True
         return result
@@ -331,16 +334,22 @@ def _build_auto_adopt_l3(root: Path) -> dict[str, Any]:
 def _build_auto_adopt_judgments(root: Path) -> dict[str, Any]:
     import os
 
+    from .autonomy_policy import load_policy
     from .runner.auto_adopt import auto_adopt_judgments
     from .runner.clients import create_client
 
     try:
         client = create_client(root, timeout_seconds=180)
-        raw_limit = os.environ.get("AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS_LIMIT", "5")
+        policy = load_policy(root)
+        default_limit = policy.judgment_review_limit
+        raw_limit = os.environ.get(
+            "AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS_LIMIT",
+            str(default_limit),
+        )
         try:
             limit = int(str(raw_limit).strip())
         except (TypeError, ValueError):
-            limit = 5
+            limit = default_limit
         if limit < 1:
             limit = 1
         result = auto_adopt_judgments(root, client, limit=limit)

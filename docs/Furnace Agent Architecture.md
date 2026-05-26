@@ -327,7 +327,7 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
 
 ## 8. Autonomy Boundaries: L0 / L1 / L2 / L3 / Judgment
 
-炼丹炉的自主权现在是**分层可开关模型**：每层通过独立环境变量控制，所有自动采纳均写 receipt 支持 revert/audit。新安装的 nightly full furnace profile 默认五层开启；操作者可按层把对应 env flag 改为 `0`，退回 dry-run preview 或更窄自动化半径。
+炼丹炉的自主权现在是**分层可开关模型**：缺省 runtime policy 为 `autonomy_profile=strong`，五层自治默认开启；每层可通过 `.aiwiki/state/autonomy-policy.json` 或独立环境变量覆盖，所有自动采纳均写 receipt 支持 revert/audit。操作者可按层把对应 policy/env flag 改为 `false` / `0`，退回 dry-run preview 或更窄自动化半径。
 
 L0（维护层）由 `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` 控制；L1-L3/Judgment 分别由 `AIWIKI_NIGHTLY_AUTO_ADOPT_L1/L2/L3/JUDGMENTS=1` 控制。
 
@@ -349,7 +349,7 @@ L0（维护层）由 `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` 控制；L1-L3/Judgment
 - 隐式切换 LLM backend
 - 静默吞错
 
-当前本机 full furnace / dogfood nightly profile（2026-05）已将五层 `AIWIKI_NIGHTLY_AUTO_*` 默认开启，用于每晚自动维护、治理、判断复核与受控学习；watcher 仍保持 deterministic-only，fallback 仍需显式启用，所有学习必须 receipt-gated、可审计、可回滚。
+当前本机 full furnace / dogfood nightly profile（2026-05）与 runtime strong policy 均默认开启五层自治，用于每晚自动维护、治理、判断复核与受控学习；watcher 仍保持 deterministic-only，fallback 仍需显式启用，所有学习必须 receipt-gated、可审计、可回滚。
 
 ## 9. Protocols, Operator Control, and Backend Selection
 

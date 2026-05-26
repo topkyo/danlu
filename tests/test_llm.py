@@ -404,7 +404,7 @@ class LLMClientTests(unittest.TestCase):
 
             def fake_run(command, **kwargs):
                 captured["command"] = command
-                captured["stdin"] = kwargs.get("stdin")
+                captured["input"] = kwargs.get("input")
                 return completed
 
             with patch("aiwiki.llm.subprocess.run", side_effect=fake_run):
@@ -416,7 +416,11 @@ class LLMClientTests(unittest.TestCase):
                 client.analyze_image("System prompt", "User prompt", image_path)
 
         self.assertEqual(result.text, "claude answer")
-        self.assertIs(captured["stdin"], subprocess.DEVNULL)
+        command = captured["command"]
+        self.assertIn("--input-format", command)
+        self.assertNotIn("bypassPermissions", command)
+        self.assertNotIn("User prompt", command)
+        self.assertEqual(captured["input"], "User prompt")
         self.assertIn("not supported", str(ctx.exception))
 
     def test_copilot_cli_complete_and_image_support_contract(self) -> None:
@@ -979,6 +983,21 @@ class LLMClientTests(unittest.TestCase):
                 client.complete("System", "User")
 
         self.assertIn("missing `content`", str(ctx.exception))
+
+    def test_anthropic_complete_wraps_timeout_as_llm_error(self) -> None:
+        config = LLMConfig(
+            backend=BACKEND_ANTHROPIC_API,
+            model="claude-sonnet-4-20250514",
+            anthropic_api_key="sk-ant-test-key",
+            timeout_seconds=7,
+        )
+        client = AnthropicClient(config)
+
+        with patch("aiwiki.llm.safe_fetch", side_effect=TimeoutError("slow")):
+            with self.assertRaises(LLMError) as ctx:
+                client.complete("System", "User")
+
+        self.assertIn("timed out after 7 seconds", str(ctx.exception))
 
     def test_anthropic_analyze_image(self) -> None:
         config = LLMConfig(

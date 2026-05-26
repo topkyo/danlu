@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 from urllib import error
 
-from aiwiki.app_utils import FetchPolicyError, safe_fetch
+from aiwiki.app_utils import FetchPolicyError, atomic_write_text, safe_fetch
 
 from .config import (
     BACKEND_ANTHROPIC_API,
@@ -396,8 +396,8 @@ class ClaudeCLIClient:
             "--print",
             "--output-format",
             "text",
-            "--permission-mode",
-            "bypassPermissions",
+            "--input-format",
+            "text",
             "--tools",
             "",
             "--add-dir",
@@ -407,13 +407,12 @@ class ClaudeCLIClient:
         ]
         if self.config.model:
             command.extend(["--model", self.config.model])
-        command.append(user_prompt)
         try:
             completed = subprocess.run(
                 command,
+                input=user_prompt,
                 text=True,
                 capture_output=True,
-                stdin=subprocess.DEVNULL,
                 cwd=self.workdir,
                 timeout=self.config.timeout_seconds,
                 check=False,
@@ -558,6 +557,8 @@ class AnthropicClient:
             raw = response_body.decode("utf-8")
         except FetchPolicyError as exc:
             raise LLMError(f"unsafe LLM endpoint: {exc}") from exc
+        except (TimeoutError, socket.timeout) as exc:
+            raise LLMError(f"Anthropic endpoint timed out after {self.config.timeout_seconds} seconds.") from exc
         except error.HTTPError as exc:  # pragma: no cover - exercised via CLI/network usage
             details = exc.read().decode("utf-8", errors="replace")
             raise LLMError(f"HTTP {exc.code} from Anthropic endpoint: {details}") from exc
@@ -934,7 +935,7 @@ def _write_raw_response(root: Path, raw_text: str) -> str:
     path = root / relative
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        atomic_write_text(path, text)
     except OSError as exc:  # pragma: no cover - environment dependent best-effort path
         return f"write_failed:{exc}"
     return relative.as_posix()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -170,8 +171,10 @@ class AuditReconciliationTests(unittest.TestCase):
             del root
             raise RuntimeError("reconcile boom")
 
-        with patch.object(workflows, "reconcile_execution_receipts", side_effect=boom):
-            result = workflows.run_nightly(self.root, client=_DummyClient(), compile_limit=0, semantic_lint=False)
+        with patch.dict(os.environ, {"AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS": "0"}):
+            patcher = patch.object(workflows, "reconcile_execution_receipts", side_effect=boom)
+            with patcher:
+                result = workflows.run_nightly(self.root, client=_DummyClient(), compile_limit=0, semantic_lint=False)
 
         state = json.loads(nightly_health_state_path(self.root).read_text(encoding="utf-8"))
         self.assertEqual(result["agent_loop"]["status"], "ok")

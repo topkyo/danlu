@@ -12,8 +12,9 @@ from aiwiki.app_compile import compile_wiki
 from aiwiki.app_content import ingest_source, sync_manifest_with_raw
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_state import append_runtime_history, load_machine_memory, load_output_candidates_state
-from aiwiki.app_utils import parse_frontmatter, relative_path
+from aiwiki.app_utils import _RUNTIME_LOCKS, parse_frontmatter, relative_path
 from aiwiki.config import LLMConfig
+from aiwiki.content.memory import placeholder_concept_slugs
 from aiwiki.drop import drop_note
 from aiwiki.execution.ask import ask_question
 from aiwiki.execution.run_notes import run_id_for_artifact
@@ -77,6 +78,29 @@ def _load_jsonl_records(path: Path) -> list[dict[str, object]]:
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def _runtime_lock_depth(root: Path) -> int:
+    return int((_RUNTIME_LOCKS.get(str(root.resolve())) or {}).get("depth", 0))
+
+
+def _seed_legacy_placeholder_summary(concept_page: Path) -> None:
+    text = concept_page.read_text(encoding="utf-8")
+    before, marker, after = text.partition("## Summary\n")
+    if not marker:
+        raise AssertionError("concept page missing Summary section")
+    _old_summary, related_marker, remainder = after.partition("\n## Related Sources\n")
+    if not related_marker:
+        raise AssertionError("concept page missing Related Sources section")
+    concept_page.write_text(
+        before
+        + marker
+        + "- This concept currently appears in `1` source page(s).\n"
+        + "- Use the linked source pages below to deepen or revise this synthesis.\n"
+        + related_marker
+        + remainder,
+        encoding="utf-8",
+    )
 
 
 class _DummyClient:
@@ -2034,6 +2058,105 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(summary_receipt["delivery_mode"], "llm-fallback-chain")
         self.assertTrue(summary_receipt["fallback_used"])
 
+    def test_run_compile_blocks_commit_when_source_changes_during_llm_call(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        original = source_page.read_text(encoding="utf-8")
+        updated = original.replace(
+            "- Pending LLM summary.",
+            "- Transformers scale capability while inference cost rises.",
+        )
+        external_mutation = original.replace(
+            "- Pending LLM summary.",
+            "- External edit landed while the LLM was running.",
+        )
+
+        class _DriftClient:
+            config = type("Config", (), {"model": "stub-model", "backend": "codex-cli"})()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt, user_prompt
+                source_page.write_text(external_mutation, encoding="utf-8")
+                return CompletionResult(text=updated, response_id="resp-drift", usage={})
+
+        with self.assertRaisesRegex(RuntimeError, "target changed during LLM call"):
+            run_compile(self.root, client=_DriftClient(), limit=1)
+
+        self.assertEqual(source_page.read_text(encoding="utf-8"), external_mutation)
+        receipts = _load_jsonl_records(self.root / ".aiwiki" / "state" / "execution-receipts.jsonl")
+        blocked = [record for record in receipts if record.get("status") == "blocked"]
+        self.assertEqual(len(blocked), 1)
+        self.assertEqual(blocked[0]["operation"], "run-compile")
+        self.assertEqual(blocked[0]["blocked_reason"], "before_hash_mismatch")
+        self.assertEqual(blocked[0]["target_file"], f"wiki/sources/{entry['id']}.md")
+
+    def test_run_compile_blocks_commit_when_concept_changes_during_llm_call(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        source_page.write_text(
+            source_page.read_text(encoding="utf-8").replace(
+                "- Pending LLM summary.",
+                "- Transformer scale improves capability and raises compute demand.",
+            ),
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+        concept_page = sorted((self.root / "wiki" / "concepts").glob("*.md"))[0]
+        _seed_legacy_placeholder_summary(concept_page)
+        target_slug = placeholder_concept_slugs(self.root)[0]
+        concept_page = self.root / "wiki" / "concepts" / f"{target_slug}.md"
+        original = concept_page.read_text(encoding="utf-8")
+        updated = original.replace(
+            "- This concept currently appears",
+            "- Enriched concept synthesis appears",
+        )
+        external_mutation = original.replace(
+            "- This concept currently appears",
+            "- External concept edit landed",
+        )
+
+        class _DriftClient:
+            config = type("Config", (), {"model": "stub-model", "backend": "codex-cli"})()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt, user_prompt
+                concept_page.write_text(external_mutation, encoding="utf-8")
+                return CompletionResult(text=updated, response_id="resp-concept-drift", usage={})
+
+        with self.assertRaisesRegex(RuntimeError, "target changed during LLM call"):
+            run_compile(self.root, client=_DriftClient(), limit=1)
+
+        self.assertEqual(concept_page.read_text(encoding="utf-8"), external_mutation)
+        receipts = _load_jsonl_records(self.root / ".aiwiki" / "state" / "execution-receipts.jsonl")
+        blocked = [record for record in receipts if record.get("status") == "blocked"]
+        self.assertEqual(len(blocked), 1)
+        self.assertEqual(blocked[0]["operation"], "run-compile-concept")
+        self.assertEqual(blocked[0]["blocked_reason"], "before_hash_mismatch")
+        self.assertEqual(blocked[0]["target_file"], f"wiki/concepts/{target_slug}.md")
+
+    def test_run_compile_does_not_hold_global_write_lock_during_llm_call(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        updated = source_page.read_text(encoding="utf-8").replace(
+            "- Pending LLM summary.",
+            "- Transformers scale capability while inference cost rises.",
+        )
+
+        class _LockProbeClient:
+            config = type("Config", (), {"model": "stub-model", "backend": "codex-cli"})()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt, user_prompt
+                self_outer.assertEqual(_runtime_lock_depth(self_outer.root), 0)
+                return CompletionResult(text=updated, response_id="resp-lock", usage={})
+
+        self_outer = self
+        result = run_compile(self.root, client=_LockProbeClient(), limit=1)
+        self.assertEqual(result["updated_pages"], [f"wiki/sources/{entry['id']}.md"])
+
     def test_run_compile_stamps_backend_compat_when_preflight_runs(self) -> None:
         snapshot = {
             "backend_requested": "codex-cli",
@@ -2280,6 +2403,23 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(runs_log["delivery_mode"], "llm-fallback-chain")
         self.assertTrue(runs_log["fallback_used"])
 
+    def test_run_lint_does_not_hold_global_write_lock_during_llm_call(self) -> None:
+        class _LockProbeLintClient:
+            config = type("Config", (), {"model": "stub-model", "backend": "codex-cli"})()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt, user_prompt
+                self_outer.assertEqual(_runtime_lock_depth(self_outer.root), 0)
+                return CompletionResult(
+                    text="# Semantic Lint Report\n\n- No semantic contradictions detected.\n",
+                    response_id="resp-lint-lock",
+                    usage={},
+                )
+
+        self_outer = self
+        result = run_lint(self.root, client=_LockProbeLintClient())
+        self.assertTrue(result["contract_validated"])
+
     def test_run_nightly_returns_top_level_audit_summary(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
@@ -2290,18 +2430,28 @@ class RunnerTests(unittest.TestCase):
         )
         semantic_lint = "# Semantic Lint Report\n\n- Review placeholder concept summaries next.\n"
 
-        result = run_nightly(self.root, client=type(
-            "NightlyClient",
-            (),
+        with patch.dict(
+            os.environ,
             {
-                "__init__": lambda self: setattr(self, "config", type("Config", (), {"model": "stub-model", "backend": "codex-cli"})()),
-                "complete": lambda self, system_prompt, user_prompt: CompletionResult(
-                    text=updated_source if "Replace file:" in user_prompt else semantic_lint,
-                    response_id="resp-nightly",
-                    usage={},
-                ),
+                "AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT": "0",
+                "AIWIKI_NIGHTLY_AUTO_ADOPT_L1": "0",
+                "AIWIKI_NIGHTLY_AUTO_ADOPT_L2": "0",
+                "AIWIKI_NIGHTLY_AUTO_ADOPT_L3": "0",
+                "AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS": "0",
             },
-        )(), compile_limit=1)
+        ):
+            result = run_nightly(self.root, client=type(
+                "NightlyClient",
+                (),
+                {
+                    "__init__": lambda self: setattr(self, "config", type("Config", (), {"model": "stub-model", "backend": "codex-cli"})()),
+                    "complete": lambda self, system_prompt, user_prompt: CompletionResult(
+                        text=updated_source if "Replace file:" in user_prompt else semantic_lint,
+                        response_id="resp-nightly",
+                        usage={},
+                    ),
+                },
+            )(), compile_limit=1)
 
         self.assertEqual(result["backend_requested"], "codex-cli")
         self.assertEqual(result["backend_effective"], "codex-cli")
@@ -2353,7 +2503,42 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("protocol_learnings_age", result)
         self.assertTrue(result["protocol_learnings_age"].get("apply"))
 
-    def test_run_nightly_auto_applies_light_lane_when_env_enabled(self) -> None:
+    def test_run_nightly_does_not_hold_global_write_lock_during_llm_calls(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        updated_source = source_page.read_text(encoding="utf-8").replace(
+            "- Pending LLM summary.",
+            "- Transformer scale improves capability and raises compute demand.",
+        )
+        semantic_lint = "# Semantic Lint Report\n\n- No semantic contradictions detected.\n"
+
+        class _NightlyLockProbeClient:
+            config = type("Config", (), {"model": "stub-model", "backend": "codex-cli"})()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                self_outer.assertEqual(_runtime_lock_depth(self_outer.root), 0)
+                text = updated_source if "Replace file:" in user_prompt else semantic_lint
+                return CompletionResult(text=text, response_id="resp-nightly-lock", usage={})
+
+        self_outer = self
+        with patch.dict(
+            os.environ,
+            {
+                "AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT": "0",
+                "AIWIKI_NIGHTLY_AUTO_ADOPT_L1": "0",
+                "AIWIKI_NIGHTLY_AUTO_ADOPT_L2": "0",
+                "AIWIKI_NIGHTLY_AUTO_ADOPT_L3": "0",
+                "AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS": "0",
+            },
+        ):
+            result = run_nightly(self.root, client=_NightlyLockProbeClient(), compile_limit=1)
+
+        self.assertTrue(result["llm_used"])
+        self.assertEqual(result["agent_loop"]["status"], "ok")
+
+    def test_run_nightly_auto_applies_light_lane_by_default_strong_policy(self) -> None:
         append_runtime_history(
             self.root,
             {
@@ -2364,13 +2549,24 @@ class RunnerTests(unittest.TestCase):
             },
         )
 
-        with patch.dict(os.environ, {"AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT": "1"}):
+        env_keys = [
+            "AIWIKI_DISABLE_AUTOMATION",
+            "AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT",
+            "AIWIKI_NIGHTLY_AUTO_ADOPT_L1",
+            "AIWIKI_NIGHTLY_AUTO_ADOPT_L2",
+            "AIWIKI_NIGHTLY_AUTO_ADOPT_L3",
+            "AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS",
+        ]
+        with patch.dict(os.environ, {}, clear=False):
+            for key in env_keys:
+                os.environ.pop(key, None)
             result = run_nightly(self.root, client=_DummyClient(), compile_limit=0, semantic_lint=False)
 
-        self.assertEqual(result["agent_loop"]["status"], "ok")
+        self.assertEqual(result["agent_loop"]["status"], "degraded")
         self.assertFalse(result["agent_loop"]["dry_run"])
         self.assertTrue(result["agent_loop"]["side_effects_allowed"])
         self.assertEqual(result["agent_loop"]["auto_apply"]["status"], "applied")
+        self.assertTrue(result["agent_loop"]["auto_adopt_judgments"]["degraded"])
         self.assertEqual(result["agent_loop"]["auto_apply"]["applied_count"], 1)
         light = result["agent_loop"]["auto_apply"]["lane_results"][0]
         self.assertEqual(light["selected_primitives"], ["compile", "lint", "nightly"])

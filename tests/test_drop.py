@@ -573,9 +573,19 @@ class DropTests(unittest.TestCase):
         with patch("aiwiki.drop.subprocess.run") as run_mock:
             run_mock.side_effect = [
                 subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="sandbox blocked"),
+            ]
+            with patch.dict(os.environ, {}, clear=True):
+                with self.assertRaises(RuntimeError) as ctx:
+                    _render_url_with_browser_cli("https://example.test/page", "chromium")
+        self.assertIn("AIWIKI_ALLOW_BROWSER_NO_SANDBOX", str(ctx.exception))
+
+        with patch("aiwiki.drop.subprocess.run") as run_mock:
+            run_mock.side_effect = [
+                subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="sandbox blocked"),
                 subprocess.CompletedProcess(args=[], returncode=0, stdout="<html>fallback</html>", stderr=""),
             ]
-            html = _render_url_with_browser_cli("https://example.test/page", "chromium")
+            with patch.dict(os.environ, {"AIWIKI_ALLOW_BROWSER_NO_SANDBOX": "1"}):
+                html = _render_url_with_browser_cli("https://example.test/page", "chromium")
         self.assertEqual(html, "<html>fallback</html>")
 
         with patch(

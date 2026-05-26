@@ -259,7 +259,7 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 - **判断层**：counter-evidence / judgment review — LLM 驱动的语义复核，自动分析反证、写出审阅结论。`AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1`。
 - **策略层**：L3 proposal / prompt 变更 / schema 变更 — 改变系统后续运行方式，自动采纳并写 receipt 保留回滚能力。`AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1`。
 
-新安装的 nightly env 默认采用本机 full furnace profile：五层 `AIWIKI_NIGHTLY_AUTO_*` 全开，watcher 仍 deterministic-only，`AIWIKI_NIGHTLY_FALLBACK_ENABLED` 仍默认关闭。需要缩窄自动化时，把对应 nightly env flag 改回 `0`；需要跨 backend unattended fallback 时必须显式开启并配置 repo 外凭据文件。是否已经达到“人只需事后审计 receipt 和异常”的成熟运行状态，仍以 `scripts/dogfood_maturity_gate.py summarize --days 3` 的 `operational_maturity.human_only_exceptions` 和连续 receipt 为准。
+runtime policy 缺省采用 `autonomy_profile=strong`：未写 `.aiwiki/state/autonomy-policy.json` 时，nightly 五层 `auto_apply_light / auto_adopt_l1 / auto_adopt_l2 / auto_adopt_l3 / auto_adopt_judgments` 默认开启；新安装的 nightly env 仍可显式覆盖这些开关，watcher 仍 deterministic-only，`AIWIKI_NIGHTLY_FALLBACK_ENABLED` 仍默认关闭。需要缩窄自动化时，把对应 nightly env flag 或 policy 字段改回 `0` / `false`；需要跨 backend unattended fallback 时必须显式开启并配置 repo 外凭据文件。是否已经达到“人只需事后审计 receipt 和异常”的成熟运行状态，仍以 `scripts/dogfood_maturity_gate.py summarize --days 3` 的 `operational_maturity.human_only_exceptions` 和连续 receipt 为准。
 
 ## LLM 后端
 

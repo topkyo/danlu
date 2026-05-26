@@ -25,7 +25,8 @@ from aiwiki.app_utils import (
     atomic_write_text,
     parse_frontmatter,
     relative_path,
-    runtime_write_operation,
+    runtime_write_lock,
+    sha256_bytes,
     utc_now,
 )
 from aiwiki.content.memory import concept_summary_is_placeholder, placeholder_concept_slugs
@@ -187,6 +188,59 @@ def _compute_adaptive_compile_timeout(root: Path, pending: list[dict[str, Any]])
     return max(_ADAPTIVE_COMPILE_TIMEOUT_FLOOR, min(_ADAPTIVE_COMPILE_TIMEOUT_CEIL, estimated))
 
 
+class RunCommitBlocked(RuntimeError):
+    """Raised when generated content cannot be committed without overwriting drift."""
+
+    def __init__(self, message: str, *, receipt_path: str = "") -> None:
+        super().__init__(message)
+        self.receipt_path = receipt_path
+
+
+def _text_hash(text: str) -> str:
+    return sha256_bytes(text.encode("utf-8"))
+
+
+def _commit_generated_text_if_unchanged(
+    root: Path,
+    *,
+    target: Path,
+    updated: str,
+    expected_text: str,
+    operation: str,
+    generated_by: str,
+    subject_kind: str,
+    subject_id: str,
+    extra: dict[str, Any] | None = None,
+) -> None:
+    """Commit generated text only if the target still matches the prompt input."""
+
+    with runtime_write_lock(root):
+        current = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
+        expected_hash = _text_hash(expected_text)
+        current_hash = _text_hash(current)
+        if current_hash != expected_hash:
+            receipt = write_execution_receipt(
+                root,
+                operation=operation,
+                generated_by=generated_by,
+                subject_kind=subject_kind,
+                subject_id=subject_id,
+                target_file=relative_path(root, target),
+                status="blocked",
+                extra={
+                    "blocked_reason": "before_hash_mismatch",
+                    "expected_before_hash": expected_hash,
+                    "current_hash": current_hash,
+                    **(extra or {}),
+                },
+            )
+            raise RunCommitBlocked(
+                f"{operation} target changed during LLM call: {relative_path(root, target)}",
+                receipt_path=str(receipt.get("receipt_path") or ""),
+            )
+        atomic_write_text(target, updated)
+
+
 def _unique_run_compile_action_id(root: Path, started_at_ms: int) -> str:
     """Return a per-job action id for a run-compile failure receipt.
 
@@ -230,42 +284,43 @@ def _write_run_compile_failure_receipt(
     """
 
     try:
-        action_id = _unique_run_compile_action_id(root, started_at_ms)
-        receipt_path = root / "output" / "control" / "execution-receipts" / f"{action_id}.json"
-        applied_at = datetime.fromtimestamp(started_at_ms / 1000.0, tz=timezone.utc).isoformat()
-        receipt: dict[str, Any] = {
-            "version": 1,
-            "kind": "execution-receipt",
-            "generated_by": "aiwiki-run-compile",
-            "applied_at": applied_at,
-            "operation": "compile",
-            "status": "failed",
-            "action_id": action_id,
-            "subject_kind": subject_kind,
-            "subject_id": subject_id,
-            "target_file": target_file,
-            "source": source,
-            "prompt_profile": used_profile,
-            "retry_prompt_profile": item_retry_profile,
-            "duration_ms": duration_ms,
-            "error_class": _receipt_error_class(exc),
-            "error_message": str(exc),
-            "fallback_stages": list(fallback_stages),
-            "fallback_reason": fallback_reason,
-            "llm_audit": dict(item_audit),
-            "response_id": getattr(item_result, "response_id", "") if item_result is not None else "",
-            "usage": dict(getattr(item_result, "usage", {}) or {}) if item_result is not None else {},
-            "revert_supported": False,
-        }
-        if extra:
-            receipt.update(extra)
-        receipt_rel = relative_path(root, receipt_path)
-        receipt["receipt_path"] = receipt_rel
-        receipt_path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(
-            receipt_path,
-            json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        )
+        with runtime_write_lock(root):
+            action_id = _unique_run_compile_action_id(root, started_at_ms)
+            receipt_path = root / "output" / "control" / "execution-receipts" / f"{action_id}.json"
+            applied_at = datetime.fromtimestamp(started_at_ms / 1000.0, tz=timezone.utc).isoformat()
+            receipt: dict[str, Any] = {
+                "version": 1,
+                "kind": "execution-receipt",
+                "generated_by": "aiwiki-run-compile",
+                "applied_at": applied_at,
+                "operation": "compile",
+                "status": "failed",
+                "action_id": action_id,
+                "subject_kind": subject_kind,
+                "subject_id": subject_id,
+                "target_file": target_file,
+                "source": source,
+                "prompt_profile": used_profile,
+                "retry_prompt_profile": item_retry_profile,
+                "duration_ms": duration_ms,
+                "error_class": _receipt_error_class(exc),
+                "error_message": str(exc),
+                "fallback_stages": list(fallback_stages),
+                "fallback_reason": fallback_reason,
+                "llm_audit": dict(item_audit),
+                "response_id": getattr(item_result, "response_id", "") if item_result is not None else "",
+                "usage": dict(getattr(item_result, "usage", {}) or {}) if item_result is not None else {},
+                "revert_supported": False,
+            }
+            if extra:
+                receipt.update(extra)
+            receipt_rel = relative_path(root, receipt_path)
+            receipt["receipt_path"] = receipt_rel
+            receipt_path.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write_text(
+                receipt_path,
+                json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            )
         return receipt_rel
     except Exception as receipt_exc:  # noqa: BLE001 — best-effort, must not mask exc
         logging.getLogger("aiwiki").warning(
@@ -274,7 +329,6 @@ def _write_run_compile_failure_receipt(
         return ""
 
 
-@runtime_write_operation
 def run_compile(
     root: Path,
     client: SupportsComplete | None = None,
@@ -299,7 +353,8 @@ def run_compile(
         if backend_compat:
             base_event = dict(base_event)
             base_event["backend_compat"] = dict(backend_compat)
-        record_llm_attempt(root, base_event, llm_audit, **kwargs)
+        with runtime_write_lock(root):
+            record_llm_attempt(root, base_event, llm_audit, **kwargs)
 
     compile_result = compile_wiki(root)
     manifest = load_manifest(root)
@@ -482,7 +537,17 @@ def run_compile(
                         raise
                     break
                 used_profile = item_retry_profile or item_profile
-                target.write_text(updated, encoding="utf-8")
+                _commit_generated_text_if_unchanged(
+                    root,
+                    target=target,
+                    updated=updated,
+                    expected_text=current_page,
+                    operation="run-compile",
+                    generated_by="aiwiki-run-compile",
+                    subject_kind="source_page",
+                    subject_id=str(entry["id"]),
+                    extra={"source": str(entry["stored_path"])},
+                )
                 updated_pages.append(relative_path(root, target))
                 item_audit = _build_llm_audit(
                     effective_client,
@@ -639,7 +704,17 @@ def run_compile(
                         raise
                     break
                 used_profile = item_retry_profile or item_profile
-                target.write_text(updated, encoding="utf-8")
+                _commit_generated_text_if_unchanged(
+                    root,
+                    target=target,
+                    updated=updated,
+                    expected_text=current_page,
+                    operation="run-compile-concept",
+                    generated_by="aiwiki-run-compile",
+                    subject_kind="concept_page",
+                    subject_id=str(slug),
+                    extra={"source_pages": list(source_pages)},
+                )
                 updated_placeholder_concept_pages.append(relative_path(root, target))
                 item_audit = _build_llm_audit(
                     effective_client,
@@ -802,13 +877,14 @@ def run_compile(
                         raise
                     break
                 used_profile = item_retry_profile or item_profile
-                proposal = store_concept_rewrite_candidate(
-                    root,
-                    slug,
-                    quality_record=quality_record,
-                    candidate_markdown=updated,
-                    generated_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-                )
+                with runtime_write_lock(root):
+                    proposal = store_concept_rewrite_candidate(
+                        root,
+                        slug,
+                        quality_record=quality_record,
+                        candidate_markdown=updated,
+                        generated_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+                    )
                 updated_rewrite_proposal_pages.append(str(proposal["proposal_path"]))
                 item_audit = _build_llm_audit(
                     effective_client,
@@ -960,7 +1036,6 @@ def _reinject_candidate_frontmatter(target: Path, *, corpus_id: str = "") -> Non
     write_candidate_frontmatter(target, candidate_state="pending", corpus_id=corpus_id)
 
 
-@runtime_write_operation
 def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, Any]:
     ensure_layout(root)
     deterministic = lint_wiki(root)
@@ -1017,6 +1092,36 @@ def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, An
             fallback_reason=fallback_reason or str(exc),
             contract_validated=False,
         )
+        with runtime_write_lock(root):
+            record_llm_attempt(
+                root,
+                {
+                    "event": "run-lint",
+                    "target": relative_path(root, target),
+                    "deterministic_report": deterministic["path"],
+                    "prompt_profile": prompt_profile,
+                    "retry_prompt_profile": retry_prompt_profile,
+                    "duration_ms": int((time.monotonic() - started) * 1000),
+                },
+                failed_audit,
+                status="failed",
+                error=str(exc),
+                response_id=getattr(result, "response_id", "") if result is not None else "",
+                usage=getattr(result, "usage", {}) if result is not None else {},
+                raw_response_path=_raw_response_path(root, result, exc),
+                error_class=_receipt_error_class(exc),
+            )
+        raise
+    with runtime_write_lock(root):
+        atomic_write_text(target, updated)
+    llm_audit = _build_llm_audit(
+        effective_client,
+        model_selected=model_selected,
+        fallback_stages=fallback_stages,
+        fallback_reason=fallback_reason,
+        contract_validated=True,
+    )
+    with runtime_write_lock(root):
         record_llm_attempt(
             root,
             {
@@ -1027,39 +1132,12 @@ def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, An
                 "retry_prompt_profile": retry_prompt_profile,
                 "duration_ms": int((time.monotonic() - started) * 1000),
             },
-            failed_audit,
-            status="failed",
-            error=str(exc),
-            response_id=getattr(result, "response_id", "") if result is not None else "",
-            usage=getattr(result, "usage", {}) if result is not None else {},
-            raw_response_path=_raw_response_path(root, result, exc),
-            error_class=_receipt_error_class(exc),
+            llm_audit,
+            status="success",
+            response_id=result.response_id,
+            usage=result.usage,
+            raw_response_path=_raw_response_path(root, result),
         )
-        raise
-    target.write_text(updated, encoding="utf-8")
-    llm_audit = _build_llm_audit(
-        effective_client,
-        model_selected=model_selected,
-        fallback_stages=fallback_stages,
-        fallback_reason=fallback_reason,
-        contract_validated=True,
-    )
-    record_llm_attempt(
-        root,
-        {
-            "event": "run-lint",
-            "target": relative_path(root, target),
-            "deterministic_report": deterministic["path"],
-            "prompt_profile": prompt_profile,
-            "retry_prompt_profile": retry_prompt_profile,
-            "duration_ms": int((time.monotonic() - started) * 1000),
-        },
-        llm_audit,
-        status="success",
-        response_id=result.response_id,
-        usage=result.usage,
-        raw_response_path=_raw_response_path(root, result),
-    )
     return {
         "deterministic": deterministic,
         "semantic_report": relative_path(root, target),
@@ -1069,7 +1147,6 @@ def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, An
     }
 
 
-@runtime_write_operation
 def run_nightly(
     root: Path,
     client: SupportsComplete | None = None,
@@ -1161,16 +1238,20 @@ def run_nightly(
             reconciliation_result = {"status": "failed", "error": str(recon_exc)}
         state["audit_reconciliation"] = reconciliation_result
         # Persist updated state so nightly health reflects reconciliation.
-        atomic_write_text(
-            nightly_health_state_path(root),
-            json.dumps(state, indent=2, sort_keys=True) + "\n",
-        )
+        with runtime_write_lock(root):
+            atomic_write_text(
+                nightly_health_state_path(root),
+                json.dumps(state, indent=2, sort_keys=True) + "\n",
+            )
 
-        auto_apply_light = _env_flag("AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT")
-        auto_adopt_l1 = _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_L1")
-        auto_adopt_l2 = _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_L2")
-        auto_adopt_l3 = _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_L3")
-        auto_adopt_judgments = _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS")
+        from aiwiki.autonomy_policy import nightly_autonomy_flags
+
+        autonomy_flags = nightly_autonomy_flags(root)
+        auto_apply_light = autonomy_flags["auto_apply_light"]
+        auto_adopt_l1 = autonomy_flags["auto_adopt_l1"]
+        auto_adopt_l2 = autonomy_flags["auto_adopt_l2"]
+        auto_adopt_l3 = autonomy_flags["auto_adopt_l3"]
+        auto_adopt_judgments = autonomy_flags["auto_adopt_judgments"]
         agent_loop = run_nightly_agent_loop(
             root,
             apply_light=auto_apply_light,
@@ -1187,67 +1268,69 @@ def run_nightly(
         )
         failed_audit["fallback_reason"] = str(exc)
         failed_audit["contract_validated"] = False
+        with runtime_write_lock(root):
+            record_llm_attempt(
+                root,
+                {
+                    "event": "run-nightly",
+                    "compile_limit": compile_limit,
+                    "semantic_lint": semantic_lint,
+                    "duration_ms": int((time.monotonic() - started) * 1000),
+                },
+                failed_audit,
+                status="failed",
+                error=str(exc),
+                raw_response_path=getattr(exc, "raw_response_path", "") or "",
+                error_class=_receipt_error_class(exc),
+            )
+        raise
+    with runtime_write_lock(root):
         record_llm_attempt(
             root,
             {
                 "event": "run-nightly",
                 "compile_limit": compile_limit,
                 "semantic_lint": semantic_lint,
+                "compile_prompt_profile": str(compile_result.get("prompt_profile") or ""),
+                "compile_retry_prompt_profile": str(compile_result.get("retry_prompt_profile") or ""),
+                "lint_prompt_profile": str(lint_result.get("prompt_profile") or ""),
+                "lint_retry_prompt_profile": str(lint_result.get("retry_prompt_profile") or ""),
+                "llm_used": llm_used,
+                "repair_backlog": state["repair_backlog"]["path"],
+                "state_path": relative_path(root, root / ".aiwiki" / "state" / "nightly-health.json"),
+                "agent_loop_status": str(state.get("agent_loop", {}).get("status") or ""),
+                "agent_loop_dry_run": bool(state.get("agent_loop", {}).get("dry_run", False)),
+                "agent_loop_auto_apply_light": auto_apply_light,
+                "agent_loop_auto_adopt_l1": auto_adopt_l1,
+                "agent_loop_auto_adopt_l2": auto_adopt_l2,
+                "agent_loop_auto_adopt_l3": auto_adopt_l3,
+                "agent_loop_auto_adopt_judgments": auto_adopt_judgments,
                 "duration_ms": int((time.monotonic() - started) * 1000),
             },
-            failed_audit,
-            status="failed",
-            error=str(exc),
-            raw_response_path=getattr(exc, "raw_response_path", "") or "",
-            error_class=_receipt_error_class(exc),
+            llm_audit,
+            status="success",
         )
-        raise
-    record_llm_attempt(
-        root,
-        {
-            "event": "run-nightly",
-            "compile_limit": compile_limit,
-            "semantic_lint": semantic_lint,
-            "compile_prompt_profile": str(compile_result.get("prompt_profile") or ""),
-            "compile_retry_prompt_profile": str(compile_result.get("retry_prompt_profile") or ""),
-            "lint_prompt_profile": str(lint_result.get("prompt_profile") or ""),
-            "lint_retry_prompt_profile": str(lint_result.get("retry_prompt_profile") or ""),
-            "llm_used": llm_used,
-            "repair_backlog": state["repair_backlog"]["path"],
-            "state_path": relative_path(root, root / ".aiwiki" / "state" / "nightly-health.json"),
-            "agent_loop_status": str(state.get("agent_loop", {}).get("status") or ""),
-            "agent_loop_dry_run": bool(state.get("agent_loop", {}).get("dry_run", False)),
-            "agent_loop_auto_apply_light": _env_flag("AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT"),
-            "agent_loop_auto_adopt_l1": _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_L1"),
-            "agent_loop_auto_adopt_l2": _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_L2"),
-            "agent_loop_auto_adopt_l3": _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_L3"),
-            "agent_loop_auto_adopt_judgments": _env_flag("AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS"),
-            "duration_ms": int((time.monotonic() - started) * 1000),
-        },
-        llm_audit,
-        status="success",
-    )
-    nightly_receipt = write_execution_receipt(
-        root,
-        operation="run-nightly",
-        generated_by="aiwiki-run-nightly",
-        subject_kind="runtime-state",
-        subject_id="nightly-health",
-        target_file=relative_path(root, nightly_health_state_path(root)),
-        primary_path=relative_path(root, nightly_health_state_path(root)),
-        protocol=str(state.get("protocol", {}).get("active_protocol") or ""),
-        extra={
-            "compile_limit": compile_limit,
-            "semantic_lint": semantic_lint,
-            "llm_receipt_path": ".aiwiki/logs/llm-receipts.jsonl",
-            "llm_used": llm_used,
-            "delivery_mode": llm_audit.get("delivery_mode", ""),
-            "backend_effective": llm_audit.get("backend_effective", ""),
-            "model_final": llm_audit.get("model_final", ""),
-            "agent_loop_status": str(state.get("agent_loop", {}).get("status") or ""),
-            "state_path": relative_path(root, nightly_health_state_path(root)),
-        },
-    )
+        nightly_receipt = write_execution_receipt(
+            root,
+            operation="run-nightly",
+            generated_by="aiwiki-run-nightly",
+            subject_kind="runtime-state",
+            subject_id="nightly-health",
+            target_file=relative_path(root, nightly_health_state_path(root)),
+            primary_path=relative_path(root, nightly_health_state_path(root)),
+            protocol=str(state.get("protocol", {}).get("active_protocol") or ""),
+            extra={
+                "compile_limit": compile_limit,
+                "semantic_lint": semantic_lint,
+                "llm_receipt_path": ".aiwiki/logs/llm-receipts.jsonl",
+                "llm_used": llm_used,
+                "delivery_mode": llm_audit.get("delivery_mode", ""),
+                "backend_effective": llm_audit.get("backend_effective", ""),
+                "model_final": llm_audit.get("model_final", ""),
+                "agent_loop_status": str(state.get("agent_loop", {}).get("status") or ""),
+                "state_path": relative_path(root, nightly_health_state_path(root)),
+            },
+        )
     return {
         "compile": compile_result,
         "lint": lint_result,

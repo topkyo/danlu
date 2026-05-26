@@ -13,6 +13,7 @@ from aiwiki.autonomy_policy import (
     disabled_reason,
     is_disabled,
     load_policy,
+    nightly_autonomy_flags,
 )
 
 
@@ -22,6 +23,41 @@ class AutonomyPolicyTests(unittest.TestCase):
             policy = load_policy(Path(tempdir))
             self.assertEqual(policy, AutonomyPolicy())
             self.assertFalse(policy.disable_external_llm)
+            self.assertEqual(policy.autonomy_profile, "strong")
+            self.assertTrue(policy.auto_adopt_l3)
+
+    def test_nightly_autonomy_defaults_to_strong_profile(self) -> None:
+        with TemporaryDirectory() as tempdir:
+            flags = nightly_autonomy_flags(Path(tempdir), env={})
+
+        self.assertEqual(
+            flags,
+            {
+                "auto_apply_light": True,
+                "auto_adopt_l1": True,
+                "auto_adopt_l2": True,
+                "auto_adopt_l3": True,
+                "auto_adopt_judgments": True,
+            },
+        )
+
+    def test_nightly_autonomy_env_and_kill_switch_override_strong_profile(self) -> None:
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            flags = nightly_autonomy_flags(
+                root,
+                env={
+                    "AIWIKI_NIGHTLY_AUTO_ADOPT_L3": "0",
+                    "AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS": "0",
+                },
+            )
+            self.assertFalse(flags["auto_adopt_l3"])
+            self.assertFalse(flags["auto_adopt_judgments"])
+            self.assertTrue(flags["auto_apply_light"])
+
+            disabled = nightly_autonomy_flags(root, env={GLOBAL_OVERRIDE_ENV: "1"})
+
+        self.assertFalse(any(disabled.values()))
 
     def test_file_with_explicit_flag_is_respected(self) -> None:
         with TemporaryDirectory() as tempdir:
@@ -213,7 +249,8 @@ class AutonomyPolicyMutationTests(unittest.TestCase):
             self.assertTrue(result.disable_lane_apply)
             self.assertTrue(autonomy_policy.policy_path(root).exists())
             data = json.loads(autonomy_policy.policy_path(root).read_text(encoding="utf-8"))
-            self.assertEqual(data["schema_version"], 1)
+            self.assertEqual(data["schema_version"], 2)
+            self.assertEqual(data["autonomy_profile"], "strong")
             self.assertTrue(data["disable_lane_apply"])
             self.assertFalse(data["disable_alchemy_auto"])
 

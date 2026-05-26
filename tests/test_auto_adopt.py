@@ -392,6 +392,104 @@ class AutoAdoptCriticalFixTests(unittest.TestCase):
         self.assertEqual(result["status"], "degraded")
         self.assertTrue(result["auto_adopt_l3"]["degraded"])
 
+    def test_l3_auto_adopt_respects_policy_apply_limit(self) -> None:
+        proposals = [
+            {"proposal_id": "p1", "state": "candidate", "evidence_count": 5},
+            {"proposal_id": "p2", "state": "candidate", "evidence_count": 5},
+            {"proposal_id": "p3", "state": "candidate", "evidence_count": 5},
+        ]
+        with (
+            patch("aiwiki.execution.l3_proposals.load_l3_proposal_state", return_value={"proposals": proposals}),
+            patch("aiwiki.execution.l3_proposals.apply_l3_proposal", return_value={"state": "accepted"}) as apply_mock,
+        ):
+            result = auto_adopt_l3(self.root, limit=1)
+
+        self.assertEqual(result["limit"], 1)
+        self.assertEqual(result["candidates_count"], 3)
+        self.assertEqual(result["skipped_by_limit"], 2)
+        apply_mock.assert_called_once()
+        self.assertEqual(apply_mock.call_args.args[1], "p1")
+
+    def test_l3_auto_adopt_uses_policy_limit_from_agent_loop(self) -> None:
+        policy_path = self.root / ".aiwiki" / "state" / "autonomy-policy.json"
+        policy_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "max_l3_apply_per_run": 2,
+                    "judgment_review_limit": 5,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        with (
+            patch("aiwiki.agent_loop.collect_signals", return_value={"status": "ok"}),
+            patch("aiwiki.agent_loop.write_planner_log", return_value={"status": "ok"}),
+            patch("aiwiki.agent_loop._build_auto_preview", return_value={"status": "preview"}),
+            patch("aiwiki.runner.auto_adopt.auto_adopt_l3", return_value={"level": "L3", "applied": False}) as adopt_mock,
+        ):
+            result = run_nightly_agent_loop(self.root, auto_adopt_l3=True)
+
+        self.assertEqual(result["status"], "ok")
+        adopt_mock.assert_called_once()
+        self.assertEqual(adopt_mock.call_args.kwargs["limit"], 2)
+
+    def test_judgment_auto_adopt_uses_policy_limit_when_env_missing(self) -> None:
+        policy_path = self.root / ".aiwiki" / "state" / "autonomy-policy.json"
+        policy_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "judgment_review_limit": 2,
+                    "max_l3_apply_per_run": 1,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        with (
+            patch("aiwiki.agent_loop.collect_signals", return_value={"status": "ok"}),
+            patch("aiwiki.agent_loop.write_planner_log", return_value={"status": "ok"}),
+            patch("aiwiki.agent_loop._build_auto_preview", return_value={"status": "preview"}),
+            patch("aiwiki.runner.clients.create_client", return_value=StubClient()),
+            patch("aiwiki.runner.auto_adopt.auto_adopt_judgments", return_value={"level": "Judgment", "applied": False}) as adopt_mock,
+            patch.dict(os.environ, {}, clear=False),
+        ):
+            os.environ.pop("AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS_LIMIT", None)
+            result = run_nightly_agent_loop(self.root, auto_adopt_judgments=True)
+
+        self.assertEqual(result["status"], "ok")
+        adopt_mock.assert_called_once()
+        self.assertEqual(adopt_mock.call_args.kwargs["limit"], 2)
+
+    def test_judgment_auto_adopt_invalid_env_falls_back_to_policy_limit(self) -> None:
+        policy_path = self.root / ".aiwiki" / "state" / "autonomy-policy.json"
+        policy_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "judgment_review_limit": 3,
+                    "max_l3_apply_per_run": 1,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        with (
+            patch("aiwiki.agent_loop.collect_signals", return_value={"status": "ok"}),
+            patch("aiwiki.agent_loop.write_planner_log", return_value={"status": "ok"}),
+            patch("aiwiki.agent_loop._build_auto_preview", return_value={"status": "preview"}),
+            patch("aiwiki.runner.clients.create_client", return_value=StubClient()),
+            patch("aiwiki.runner.auto_adopt.auto_adopt_judgments", return_value={"level": "Judgment", "applied": False}) as adopt_mock,
+            patch.dict(os.environ, {"AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS_LIMIT": "not-an-int"}),
+        ):
+            result = run_nightly_agent_loop(self.root, auto_adopt_judgments=True)
+
+        self.assertEqual(result["status"], "ok")
+        adopt_mock.assert_called_once()
+        self.assertEqual(adopt_mock.call_args.kwargs["limit"], 3)
+
 
 class AutoAdoptEnvFlagTests(unittest.TestCase):
     def test_env_flag_true_values(self) -> None:

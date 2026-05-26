@@ -770,13 +770,20 @@ def _write_review_entry(
 
 
 @runtime_write_operation
-def auto_adopt_l3(root: Path) -> dict[str, Any]:
+def auto_adopt_l3(root: Path, *, limit: int | None = None) -> dict[str, Any]:
     """Auto-adopt L3 proposals (candidate → accepted + applied).
 
     L3 proposals are prompt/policy/schema changes. With ``AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1``,
     they are auto-accepted and applied during nightly, with receipts for audit/revert.
     """
+    try:
+        parsed_limit = int(limit) if limit is not None else 0
+    except (TypeError, ValueError):
+        parsed_limit = 0
+    effective_limit = parsed_limit if parsed_limit > 0 else None
     results: dict[str, Any] = {"level": "L3", "applied": False, "items": []}
+    if effective_limit is not None:
+        results["limit"] = effective_limit
     try:
         from ..execution.l3_proposals import (
             L3PostApplyAuditError,
@@ -823,6 +830,9 @@ def auto_adopt_l3(root: Path) -> dict[str, Any]:
                 continue
             candidates.append(proposal_id)
         results["candidates_count"] = len(candidates)
+        if effective_limit is not None and len(candidates) > effective_limit:
+            results["skipped_by_limit"] = len(candidates) - effective_limit
+            candidates = candidates[:effective_limit]
     except CorruptStateError:
         # SC-001: fail-closed propagation. Corrupt L3 proposal state must not
         # be downgraded to a soft "degraded" result, otherwise auto-adopt would
