@@ -349,7 +349,7 @@ class ShellFlowTests(AppFlowTestBase):
     def test_shell_status_surfaces_recent_outputs_and_query_runs(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
-        report = ask_question(self.root, "Compare transformer scaling tradeoffs", "report")
+        report = run_ask(self.root, "Compare transformer scaling tradeoffs", "report", client=StubClient([_VALID_REPORT_BODY]))
 
         result = shell_status(self.root)
 
@@ -417,6 +417,68 @@ class ShellFlowTests(AppFlowTestBase):
         artifacts = collect_recent_output_artifacts(self.root, limit=8)
 
         self.assertEqual(artifacts, [])
+
+    def test_collect_recent_output_artifacts_skips_unfilled_placeholder_reports(self) -> None:
+        report_path = self.root / "output" / "reports" / "placeholder-report.md"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            "---\n"
+            'id: "placeholder-report"\n'
+            'kind: "output"\n'
+            'format: "report"\n'
+            'protocol: "general"\n'
+            'created_at: "2026-05-18T00:00:00Z"\n'
+            'delivery_mode: "background-pending"\n'
+            'llm_status: "pending"\n'
+            "---\n\n"
+            "# Placeholder report\n\n"
+            "## 结论\n"
+            "_LLM: 请在此填入结论。_\n",
+            encoding="utf-8",
+        )
+
+        artifacts = collect_recent_output_artifacts(self.root, limit=8)
+
+        self.assertEqual(artifacts, [])
+
+    def test_ask_entrypoints_reject_obsidian_open_links(self) -> None:
+        link = "obsidian://open?vault=%E7%82%BC%E4%B8%B9%E7%82%89&file=output%2Freports%2Fx.md"
+
+        with self.assertRaisesRegex(ValueError, "navigation targets"):
+            ask_question(self.root, link, "report")
+        with self.assertRaisesRegex(ValueError, "navigation targets"):
+            run_ask(self.root, link, "note")
+
+    def test_shell_status_filters_legacy_obsidian_open_route_telemetry(self) -> None:
+        from aiwiki.app_state import save_query_route_telemetry
+
+        save_query_route_telemetry(
+            self.root,
+            {
+                "version": 1,
+                "updated_at": "2026-05-18T00:00:00Z",
+                "state_path": ".aiwiki/state/query-route-telemetry.json",
+                "entries": [
+                    {
+                        "question_preview": "obsidian://open?vault=v&file=output%2Freports%2Fx.md",
+                        "selected_strategy": "concept-first",
+                    },
+                    {"question_preview": "real question", "selected_strategy": "source-first"},
+                ],
+                "strategy_counts": {"concept-first": 1, "source-first": 1},
+                "protocol_counts": {"general": 2},
+                "last_entry": {
+                    "question_preview": "obsidian://open?vault=v&file=output%2Freports%2Fx.md",
+                    "selected_strategy": "concept-first",
+                },
+            },
+        )
+
+        result = shell_status(self.root)
+
+        self.assertEqual(len(result["route_telemetry"]["entries"]), 1)
+        self.assertEqual(result["route_telemetry"]["last_entry"]["question_preview"], "real question")
+        self.assertEqual(result["dashboard"]["last_route"]["question_preview"], "real question")
 
     def test_shell_status_surfaces_latest_llm_run_and_llm_health(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

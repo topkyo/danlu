@@ -92,6 +92,7 @@ from ..app_utils import (
 )
 from ..compile import compile_wiki
 from ..content.io import sync_manifest_with_raw
+from ..input_router import is_obsidian_open_link
 from ..memory.graph import build_machine_memory_query
 from ..notify import notify_report_generated
 from .protocol_learnings import load_learnings_for_protocol
@@ -431,6 +432,9 @@ def ask_question(
     write_graph_anchors: bool = True,
 ) -> dict[str, Any]:
     from .. import app_compile as _app_compile
+
+    if is_obsidian_open_link(question):
+        raise ValueError("obsidian open links are navigation targets, not questions")
 
     ensure_layout(root)
     manifest = sync_manifest_with_raw(root)

@@ -80,6 +80,7 @@ from ..app_utils import (
 )
 from ..config import LLMConfig
 from ..execution.l3_proposals import list_l3_proposals
+from ..input_router import is_obsidian_open_link
 from ..llm import classify_backend_error
 
 LLM_FRONTDOOR_EVENTS = {
@@ -100,10 +101,14 @@ def _latest_llm_receipt(root: Path, *, preferred_events: tuple[str, ...] = ()) -
         for event in reversed(history):
             if not isinstance(event, dict):
                 continue
+            if is_obsidian_open_link(str(event.get("question") or "")):
+                continue
             if str(event.get("event") or "") in preferred_events:
                 return dict(event)
     for event in reversed(history):
         if not isinstance(event, dict):
+            continue
+        if is_obsidian_open_link(str(event.get("question") or "")):
             continue
         if str(event.get("event") or "") in LLM_FRONTDOOR_EVENTS:
             return dict(event)

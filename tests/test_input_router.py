@@ -18,6 +18,12 @@ class InputRouterTests(unittest.TestCase):
     def test_url_query_question_mark_stays_url(self) -> None:
         self.assertDecision("https://example.com/x?y=z", UniversalRoute.URL, "https://example.com/x?y=z", "url-scheme")
 
+    def test_obsidian_open_link_is_not_ask_input(self) -> None:
+        with self.assertRaisesRegex(ValueError, "navigation targets"):
+            classify_universal_input(
+                "obsidian://open?vault=%E7%82%BC%E4%B8%B9%E7%82%89&file=output%2Freports%2Fx.md"
+            )
+
     def test_url_pdf_suffix_routes_to_pdf(self) -> None:
         self.assertDecision(
             "https://example.com/report.pdf", UniversalRoute.PDF, "https://example.com/report.pdf", "pdf-suffix-on-url"

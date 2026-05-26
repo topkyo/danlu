@@ -25,6 +25,10 @@ IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg")
 NOTE_TEXT_SUFFIXES = (".md", ".markdown", ".txt")
 
 
+def is_obsidian_open_link(value: str) -> bool:
+    return value.strip().lower().startswith("obsidian://open")
+
+
 def classify_universal_input(value: str) -> RouteDecision:
     """Deterministic classifier. No IO, no LLM, no subprocess."""
     payload = value.strip()
@@ -32,6 +36,9 @@ def classify_universal_input(value: str) -> RouteDecision:
         raise ValueError("empty input")
 
     lower_payload = payload.lower()
+
+    if is_obsidian_open_link(payload):
+        raise ValueError("obsidian open links are navigation targets, not ask inputs")
 
     if lower_payload.startswith(("http://", "https://")):
         url_path = urlparse(payload).path.lower()

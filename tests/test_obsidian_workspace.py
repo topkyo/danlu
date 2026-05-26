@@ -73,6 +73,13 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         ):
             self.assertTrue((self.root / relative).exists(), relative)
 
+    def test_folder_label_snippet_hides_docs_from_file_tree(self) -> None:
+        from aiwiki.app_vault import _render_folder_label_snippet
+
+        snippet = _render_folder_label_snippet()
+        self.assertIn("hide docs from the daily file tree", snippet)
+        self.assertIn('.nav-folder[data-path="docs"]', snippet)
+
     def test_agent_architecture_keeps_core_invariants_visible(self) -> None:
         text = (self.root / "docs" / "Furnace Agent Architecture.md").read_text(encoding="utf-8")
         self.assertIn("Single writer", text)

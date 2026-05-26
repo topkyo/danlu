@@ -81,6 +81,7 @@ from ..app_utils import (
 )
 from ..config import LLMConfig
 from ..execution.l3_proposals import list_l3_proposals
+from ..input_router import is_obsidian_open_link
 from ..llm import classify_backend_error
 from .controls import (
     rewrite_recovery_actions_for_controls,
@@ -320,7 +321,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
     )
     memory = load_machine_memory(root)
     planner_state = load_planner_state(root)
-    route_telemetry = load_query_route_telemetry(root)
+    route_telemetry = _filter_shell_route_telemetry(load_query_route_telemetry(root))
     counter_evidence_scan = memory.get("health", {}).get("counter_evidence_scan", {})
     judgment_review_actions = memory.get("health", {}).get("judgment_review_actions", [])
     nightly_state = load_json_document(nightly_health_state_path(root))
@@ -463,6 +464,24 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         suggested_next_actions=suggested_next_actions,
     )
     return summary
+
+
+def _filter_shell_route_telemetry(route_telemetry: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(route_telemetry, dict):
+        return {}
+    filtered = dict(route_telemetry)
+    entries = [
+        entry
+        for entry in route_telemetry.get("entries", [])
+        if isinstance(entry, dict) and not is_obsidian_open_link(str(entry.get("question_preview") or ""))
+    ]
+    filtered["entries"] = entries
+    last_entry = route_telemetry.get("last_entry")
+    if isinstance(last_entry, dict) and not is_obsidian_open_link(str(last_entry.get("question_preview") or "")):
+        filtered["last_entry"] = dict(last_entry)
+    else:
+        filtered["last_entry"] = dict(entries[0]) if entries else {}
+    return filtered
 
 
 def _action_review_backlog_counts(execution_controls: dict[str, Any]) -> dict[str, int]:

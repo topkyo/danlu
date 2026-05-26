@@ -406,6 +406,29 @@ test("drop pure URL text fills textarea and does not enter file flow", async () 
   expect(plugin.completePendingMaterialDrop).toHaveBeenCalledWith("pending-1", ["raw/inbox/url.md"]);
 });
 
+test("obsidian open links navigate instead of submitting ask", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    openWorkspacePath: jest.fn().mockResolvedValue(true),
+  });
+  const container = document.createElement("div");
+
+  context.renderUniversalInput(plugin, container);
+
+  const textarea = container.querySelector(".furnace-universal-input-textarea");
+  const submitButton = container.querySelector(".furnace-universal-input-button");
+  textarea.value = "obsidian://open?vault=%E7%82%BC%E4%B8%B9%E7%82%89&file=output%2Freports%2Fdemo.md";
+
+  submitButton.click();
+  await flushAsyncWork();
+
+  expect(plugin.openWorkspacePath).toHaveBeenCalledWith("output/reports/demo.md");
+  expect(plugin.runAskCommand).not.toHaveBeenCalled();
+  expect(plugin.runUniversalInputCommand).not.toHaveBeenCalled();
+  expect(plugin.pushPendingSubmission).not.toHaveBeenCalled();
+  expect(textarea.value).toBe("");
+});
+
 test("file-only submission completes as raw material instead of staying queued", async () => {
   const context = loadRenderContext();
   const plugin = makePlugin({

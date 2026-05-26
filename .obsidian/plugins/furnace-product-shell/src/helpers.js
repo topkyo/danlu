@@ -193,6 +193,7 @@ function looksLikeUniversalMaterialPayload(value) {
   const text = String(value || "").trim();
   if (!text) return false;
   const lower = text.toLowerCase();
+  if (lower.startsWith("obsidian://open")) return false;
   if (lower.startsWith("http://") || lower.startsWith("https://")) return true;
   if (lower.startsWith("git@") || lower.startsWith("ssh://")) return true;
   if (lower.startsWith("note:") && lower.slice("note:".length).trim()) return true;
@@ -200,6 +201,36 @@ function looksLikeUniversalMaterialPayload(value) {
   if (lower.endsWith(".pdf")) return true;
   if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].some((suffix) => lower.endsWith(suffix))) return true;
   return false;
+}
+
+function isObsidianOpenLink(value) {
+  return String(value || "").trim().toLowerCase().startsWith("obsidian://open");
+}
+
+function obsidianOpenLinkFilePath(value) {
+  const text = String(value || "").trim();
+  if (!isObsidianOpenLink(text)) return "";
+  try {
+    const url = new URL(text);
+    const file = String(url.searchParams.get("file") || "").trim();
+    return normalizeWorkspaceLinkTarget(file);
+  } catch (e) {
+    const match = text.match(/[?&]file=([^&]+)/i);
+    if (!match) return "";
+    try {
+      return normalizeWorkspaceLinkTarget(decodeURIComponent(match[1].replace(/\+/g, " ")));
+    } catch (_decodeError) {
+      return "";
+    }
+  }
+}
+
+function normalizeWorkspaceLinkTarget(value) {
+  const text = String(value || "").trim().replace(/\\/g, "/");
+  if (!text || text.startsWith("/") || text.startsWith("../") || text.includes("/../")) {
+    return "";
+  }
+  return text;
 }
 
 function splitTextMaterialQuestion(value) {

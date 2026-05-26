@@ -147,6 +147,7 @@ FOLDER_LABEL_OVERRIDES: tuple[tuple[str, str], ...] = (
 
 USER_HIDDEN_FOLDER_PATHS: tuple[str, ...] = (
     "raw/normalized",
+    "docs",
     "wiki",
     "schema",
     "scripts",

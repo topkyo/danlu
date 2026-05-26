@@ -33,6 +33,7 @@ from aiwiki.app_utils import (
 from aiwiki.execution.ask import _output_artifact_seed
 from aiwiki.execution.receipts import write_execution_receipt
 from aiwiki.execution.run_notes import run_id_for_artifact, write_run_notes, write_run_notes_frontmatter
+from aiwiki.input_router import is_obsidian_open_link
 from aiwiki.llm import CompletionResult, LLMError, classify_backend_error
 from aiwiki.runner.background import (
     job_manifest_path,
@@ -548,6 +549,8 @@ def run_ask_submit(
     """Prepare a long-running report job and optionally spawn background resume."""
 
     ensure_layout(root)
+    if is_obsidian_open_link(question):
+        raise ValueError("obsidian open links are navigation targets, not questions")
     if output_format != "report":
         raise ValueError("run-ask-submit is only supported for report output.")
     if timeout_seconds is not None and timeout_seconds <= 0:
@@ -1026,6 +1029,8 @@ def run_ask(
     corpus_id_override: str | None = None,
 ) -> dict[str, Any]:
     ensure_layout(root)
+    if is_obsidian_open_link(question):
+        raise ValueError("obsidian open links are navigation targets, not questions")
     if timeout_seconds is not None and timeout_seconds <= 0:
         raise ValueError("run-ask timeout_seconds must be greater than 0.")
     effective_timeout_seconds = _effective_run_ask_timeout(output_format, timeout_seconds)

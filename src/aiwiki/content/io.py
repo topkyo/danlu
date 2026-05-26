@@ -36,6 +36,7 @@ from ..app_utils import (
     upsert_markdown_section,
     utc_now,
 )
+from ..input_router import is_obsidian_open_link
 from .outputs import normalize_query_signature
 
 
@@ -373,6 +374,8 @@ def collect_output_artifacts(root: Path) -> list[dict[str, str]]:
             output_format = str(frontmatter.get("format") or "").strip()
             if not query or output_format not in AUTO_PROMOTION_FORMATS:
                 continue
+            if is_obsidian_open_link(query):
+                continue
             artifacts.append({"path": relative_path(root, path), "query": query, "query_signature": normalize_query_signature(query), "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL), "format": output_format, "created_at": str(frontmatter.get("created_at") or ""), "title": first_markdown_heading(content) or path.stem})
     return sorted(artifacts, key=lambda item: (item["query_signature"], item["created_at"], item["path"]))
 
@@ -384,7 +387,10 @@ def collect_output_density_artifacts(root: Path) -> list[dict[str, str]]:
             content = path.read_text(encoding="utf-8", errors="replace")
             frontmatter = parse_frontmatter(content)
             if frontmatter.get("kind") == "output":
-                artifacts.append({"path": relative_path(root, path), "query": str(frontmatter.get("query") or "").strip(), "format": str(frontmatter.get("format") or "").strip(), "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL), "created_at": str(frontmatter.get("created_at") or ""), "title": first_markdown_heading(content) or path.stem, "run_id": str(frontmatter.get("run_id") or ""), "run_notes_path": str(frontmatter.get("run_notes_path") or "")})
+                query = str(frontmatter.get("query") or "").strip()
+                if is_obsidian_open_link(query):
+                    continue
+                artifacts.append({"path": relative_path(root, path), "query": query, "format": str(frontmatter.get("format") or "").strip(), "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL), "created_at": str(frontmatter.get("created_at") or ""), "title": first_markdown_heading(content) or path.stem, "run_id": str(frontmatter.get("run_id") or ""), "run_notes_path": str(frontmatter.get("run_notes_path") or "")})
     return sorted(artifacts, key=lambda item: (item["created_at"], item["path"]))
 
 
@@ -402,14 +408,21 @@ def collect_recent_output_artifacts(root: Path, *, limit: int = 12) -> list[dict
                 delivery_mode = str(frontmatter.get("delivery_mode") or "")
                 llm_status = str(frontmatter.get("llm_status") or "")
                 contains_placeholder = "_LLM:" in content
+                query = str(frontmatter.get("query") or "").strip()
+                background_job_id = str(frontmatter.get("background_job_id") or "")
+                if is_obsidian_open_link(query) or (
+                    contains_placeholder
+                    and (background_job_id or delivery_mode == "background-pending" or llm_status == "pending")
+                ):
+                    continue
                 degraded = (
                     delivery_mode == "deterministic-fallback"
                     or llm_status in {"timeout_or_unavailable", "pending", "failed", "degraded"}
                     or background_status == "degraded"
                     or title.startswith("LLM 未完成")
                 )
-                artifact_quality = "placeholder" if contains_placeholder else ("degraded" if degraded else "deliverable")
-                artifacts.append({"path": relative_path(root, path), "query": str(frontmatter.get("query") or "").strip(), "format": str(frontmatter.get("format") or "").strip(), "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL), "created_at": str(frontmatter.get("created_at") or ""), "title": title, "run_id": str(frontmatter.get("run_id") or ""), "run_notes_path": str(frontmatter.get("run_notes_path") or ""), "delivery_mode": delivery_mode, "llm_status": llm_status, "llm_backend": str(frontmatter.get("llm_backend") or ""), "llm_model": str(frontmatter.get("llm_model") or ""), "llm_failure_reason": str(frontmatter.get("llm_failure_reason") or ""), "background_job_id": str(frontmatter.get("background_job_id") or ""), "background_status": background_status, "artifact_quality": artifact_quality, "contains_llm_placeholder": "true" if contains_placeholder else "false"})
+                artifact_quality = "degraded" if degraded else "deliverable"
+                artifacts.append({"path": relative_path(root, path), "query": query, "format": str(frontmatter.get("format") or "").strip(), "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL), "created_at": str(frontmatter.get("created_at") or ""), "title": title, "run_id": str(frontmatter.get("run_id") or ""), "run_notes_path": str(frontmatter.get("run_notes_path") or ""), "delivery_mode": delivery_mode, "llm_status": llm_status, "llm_backend": str(frontmatter.get("llm_backend") or ""), "llm_model": str(frontmatter.get("llm_model") or ""), "llm_failure_reason": str(frontmatter.get("llm_failure_reason") or ""), "background_job_id": background_job_id, "background_status": background_status, "artifact_quality": artifact_quality, "contains_llm_placeholder": "true" if contains_placeholder else "false"})
     return sorted(artifacts, key=lambda item: (item["created_at"], item["path"]), reverse=True)[:limit]
 
 
@@ -477,7 +490,8 @@ def summarize_runtime_event_for_shell(event: dict[str, Any]) -> dict[str, Any]:
     event_type = str(event.get("event_type") or "")
     summary = {"event_type": event_type, "occurred_at": str(event.get("occurred_at") or ""), "protocol": str(event.get("protocol") or ""), "title": ""}
     if event_type == "query":
-        summary.update({"title": str(event.get("focus_ref") or "Query"), "output_path": str(event.get("output_ref") or ""), "corpus_id": str(event.get("corpus_id") or ""), "output_format": str(event.get("output_format") or ""), "run_id": str(event.get("run_id") or ""), "run_notes_path": str(event.get("run_notes_path") or "")})
+        focus_ref = str(event.get("focus_ref") or "")
+        summary.update({"title": focus_ref or "Query", "output_path": str(event.get("output_ref") or ""), "corpus_id": str(event.get("corpus_id") or ""), "output_format": str(event.get("output_format") or ""), "run_id": str(event.get("run_id") or ""), "run_notes_path": str(event.get("run_notes_path") or ""), "ignored_by_shell": is_obsidian_open_link(focus_ref)})
     elif event_type == "review":
         summary.update({"title": str(event.get("page_path") or "Review"), "page_path": str(event.get("page_path") or ""), "status": str(event.get("status") or ""), "page_kind": str(event.get("page_kind") or "")})
     elif event_type == "knowledge-lifecycle-override":

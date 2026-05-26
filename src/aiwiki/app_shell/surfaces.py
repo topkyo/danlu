@@ -80,6 +80,7 @@ from ..app_utils import (
 )
 from ..config import LLMConfig
 from ..execution.l3_proposals import list_l3_proposals
+from ..input_router import is_obsidian_open_link
 from ..llm import classify_backend_error
 from .controls import rewrite_recovery_action
 from .helpers import (
@@ -92,7 +93,15 @@ from .helpers import (
 
 def shell_recent_runs(root: Path, *, limit: int = 8) -> list[dict[str, Any]]:
     history = load_runtime_history(root)
-    return [summarize_runtime_event_for_shell(event) for event in list(reversed(history))[:limit]]
+    runs: list[dict[str, Any]] = []
+    for event in reversed(history):
+        summary = summarize_runtime_event_for_shell(event)
+        if summary.get("ignored_by_shell"):
+            continue
+        runs.append(summary)
+        if len(runs) >= limit:
+            break
+    return runs
 
 def shell_latest_shell_sync_run(root: Path) -> dict[str, Any]:
     """Return a metadata snapshot of the on-disk shell-summary.json.
@@ -149,7 +158,7 @@ def shell_latest_shell_sync_run(root: Path) -> dict[str, Any]:
 
 def shell_recent_receipts(root: Path, *, limit: int = 8) -> list[dict[str, Any]]:
     receipts = load_execution_receipt_history(root)
-    return [
+    summaries = [
         {
             "action_id": str(receipt.get("action_id") or ""),
             "applied_at": str(receipt.get("applied_at") or ""),
@@ -161,8 +170,10 @@ def shell_recent_receipts(root: Path, *, limit: int = 8) -> list[dict[str, Any]]
             "subject_kind": str(receipt.get("subject_kind") or ""),
             "title": str(receipt.get("title") or ""),
         }
-        for receipt in receipts[:limit]
+        for receipt in receipts
+        if not is_obsidian_open_link(str(receipt.get("question") or ""))
     ]
+    return summaries[:limit]
 
 def shell_latest_llm_run(root: Path) -> dict[str, Any]:
     receipt = _latest_llm_receipt(root, preferred_events=LLM_PRIMARY_HEALTH_EVENTS)

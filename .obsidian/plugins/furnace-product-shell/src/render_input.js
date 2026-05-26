@@ -147,6 +147,19 @@ function renderUniversalInput(plugin, container) {
           }
         }
       } else {
+        if (isObsidianOpenLink(normalizedQuestion)) {
+          const targetPath = obsidianOpenLinkFilePath(normalizedQuestion);
+          if (targetPath) {
+            const opened = await plugin.openWorkspacePath(targetPath);
+            succeeded = Boolean(opened);
+            if (!opened) {
+              new Notice(plugin.t("无法打开工作区路径：{path}", { path: targetPath }));
+            }
+          } else {
+            new Notice(plugin.t("Obsidian 打开链接是导航目标，不会作为问题提交。"));
+          }
+          return;
+        }
         const materialQuestion = splitTextMaterialQuestion(value);
         if (materialQuestion) {
           const retryArgs = {
